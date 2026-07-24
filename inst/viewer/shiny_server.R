@@ -665,6 +665,17 @@ server <- function(input, output, session) {
     }
   )
 
+  ## Coordinated (Linked) views: a general cross-modal workspace. Shown for any
+  ## single-cell data set that carries an embedding (every space it also has —
+  ## spatial, clonal — is linked automatically). Same gate as Projection.
+  insertConditionalTab(
+    "Linked views",
+    "coordinated_views",
+    "diagram-project",
+    function() availableProjections(),
+    placeholder_id = "coordinated_views"
+  )
+
   ## Cleanup snapshot artifacts that may have been left by test runs.
   snapshot_dir <- file.path(
     Cerebro.options[["cerebro_root"]],
@@ -731,6 +742,13 @@ server <- function(input, output, session) {
     paste0(
       Cerebro.options[["cerebro_root"]],
       "/viewer/hla_tcr_motifs/server.R"
+    ),
+    local = TRUE
+  )
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/coordinated_views/server.R"
     ),
     local = TRUE
   )

@@ -239,6 +239,13 @@ source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/hla_tcr_motifs/UI.R"),
   local = TRUE
 )
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/viewer/coordinated_views/UI.R"
+  ),
+  local = TRUE
+)
 
 ##----------------------------------------------------------------------------##
 ## Create dashboard with different tabs.
@@ -295,6 +302,7 @@ ui <- dashboardPage(
       div(id = "sidebar_item_spatial_placeholder"),
       div(id = "sidebar_item_trekker_placeholder"),
       div(id = "sidebar_item_hla_tcr_motifs_placeholder"),
+      div(id = "sidebar_item_coordinated_views_placeholder"),
       menuItem(
         "Gene expression",
         tabName = "geneExpression",
@@ -322,15 +330,23 @@ ui <- dashboardPage(
     ## self-contained IIFE with its own Shiny-readiness retry, so order-safe).
     ##  - custom.css      : Console design language; overrides AdminLTE 2 chrome.
     ##  - fill_height.js  : sizes any .cerebro-fill element to the live viewport.
+    ##  - cv-geom.js      : shared 2-D geometry kernels (window.CBGeom) used by
+    ##                      the canvas engines below. Deferred scripts execute in
+    ##                      document order, so it is defined before them.
     ##  - trekker.*       : Trekker page assets (scoped under .trekker-page / tk-).
     ##  - hla_motifs.*    : modebar over the visNetwork motif network.
+    ##  - coordviews.*    : Linked views assets (scoped under .coordviews-page /
+    ##                      cv- ids).
     tags$head(
       cerebro_css("custom.css"),
       cerebro_css("trekker.css"),
       cerebro_css("hla_motifs.css"),
+      cerebro_css("coordviews.css"),
       cerebro_js("fill_height.js", defer = TRUE),
+      cerebro_js("cv-geom.js", defer = TRUE),
       cerebro_js("trekker.js", defer = TRUE),
       cerebro_js("hla_motifs.js", defer = TRUE),
+      cerebro_js("coordviews.js", defer = TRUE),
       ## Shared projection-scatter engine, loaded ONCE here instead of being
       ## inlined into all five projection tabs' extendShinyjs() (~69KB x5). Both
       ## files expose only window globals (window.cerebroProjectionLayout /
@@ -355,6 +371,7 @@ ui <- dashboardPage(
       tab_spatial,
       tab_trekker,
       tab_hla_tcr_motifs,
+      tab_coordinated_views,
       tab_gene_expression,
       tab_gene_id_conversion,
       tab_color_management,

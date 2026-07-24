@@ -1,0 +1,460 @@
+/* ==========================================================================
+   Coordinated cross-modal views — layout & theme.
+   Scoped under .coordviews-page. Reuses the app's Console tokens (custom.css
+   :root vars) so it inherits the shared look. The layout is deliberately
+   full-width with a horizontal control bar (no left param column), giving the
+   linked panels the room the per-tab param/viz split does not.
+   ========================================================================== */
+
+.coordviews-page {
+  --cv-border: var(--c-border, #ececec);
+  --cv-surface: var(--c-surface, #fff);
+  --cv-surface2: var(--c-surface-2, #f4f4f5);
+  --cv-text: var(--c-text, #1c1c1e);
+  --cv-text2: var(--c-text-2, #6b6b70);
+  --cv-text3: var(--c-text-3, #9a9aa0);
+  --cv-blue: var(--c-blue, #2f6fd6);
+  --cv-blue50: var(--c-blue-50, #eef4fb);
+  --cv-blue100: var(--c-blue-100, #d7e6f7);
+  --cv-amber: var(--c-amber, #f97316);
+}
+
+/* ---- dataset meta strip ------------------------------------------------- */
+.coordviews-page .cv-meta {
+  font-size: 12.5px;
+  color: var(--cv-text2);
+  padding: 2px 0 12px;
+}
+
+/* ---- top control bar (the layout fix) ----------------------------------- */
+.coordviews-page .cv-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--cv-surface);
+  border: 1px solid var(--cv-border);
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+.coordviews-page .cv-ctl { display: flex; flex-direction: column; gap: 5px; }
+.coordviews-page .cv-ctl > label {
+  font-size: 11px; font-weight: 600; color: var(--cv-text2);
+  text-transform: uppercase; letter-spacing: .03em;
+}
+.coordviews-page .cv-topbar select {
+  padding: 6px 9px; border: 1px solid var(--c-border-2, #e0e0e0);
+  border-radius: 6px; background: var(--cv-surface); color: var(--cv-text);
+  font-size: 12.5px; font-family: inherit; min-width: 168px;
+}
+.coordviews-page .cv-topbar select:focus {
+  outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
+}
+.coordviews-page .cv-ctl-range { min-width: 150px; }
+/* Slider + its value bubble live in one fixed-height box, so this column matches
+   the dropdown columns' height and (under the bar's flex-end) its label lines up
+   with the others. The freed space above the track holds the value, centred over
+   the thumb. */
+.coordviews-page .cv-range { position: relative; width: 150px; height: 32px; }
+.coordviews-page .cv-range input[type=range] {
+  position: absolute; left: 0; bottom: 2px; margin: 0;
+  width: 150px; height: 20px; accent-color: var(--cv-amber);
+}
+.coordviews-page .cv-ps-val {
+  position: absolute; top: 0; transform: translateX(-50%); pointer-events: none;
+  font-size: 11px; font-weight: 600; color: var(--cv-text2); white-space: nowrap;
+}
+/* ---- segmented toggle (clonal-panel layout) ----------------------------- */
+.coordviews-page .cv-seg {
+  display: inline-flex; border: 1px solid var(--c-border-2, #e0e0e0);
+  border-radius: 6px; overflow: hidden; background: var(--cv-surface);
+}
+.coordviews-page .cv-seg-btn {
+  border: 0; background: transparent; color: var(--cv-text2);
+  padding: 6px 11px; font-size: 12px; font-family: inherit; cursor: pointer;
+  border-left: 1px solid var(--c-border-2, #e0e0e0);
+}
+.coordviews-page .cv-seg-btn:first-child { border-left: 0; }
+.coordviews-page .cv-seg-btn:hover { background: var(--cv-surface2); }
+.coordviews-page .cv-seg-btn.is-on {
+  background: var(--cv-blue50); color: var(--c-blue-700, #1d4ea0); font-weight: 600;
+}
+/* right-panel space switch sits in panel B's header — a touch more compact */
+.coordviews-page .cv-space-switch .cv-seg-btn { padding: 3px 9px; font-size: 11px; }
+
+/* ---- right cluster: readout + selection actions ------------------------- */
+.coordviews-page .cv-topbar-right {
+  margin-left: auto; display: flex; align-items: center; gap: 14px;
+}
+.coordviews-page .cv-shown {
+  font-size: 12px; color: var(--cv-blue); font-weight: 600; white-space: nowrap;
+}
+/* Zoom + Clear: stacked vertically while they fit on the controls' row (saves
+   width). When the other controls push them onto their own line, JS adds
+   `.cv-actions-row` and they lay out side by side to use that full-width line. */
+.coordviews-page .cv-selactions {
+  display: flex; flex-direction: column; gap: 6px; align-self: center;
+  transition: opacity .16s ease, transform .16s ease;
+}
+.coordviews-page .cv-selactions.cv-actions-row {
+  flex-direction: row; flex-wrap: wrap;
+}
+/* collapsed (hidden) state — a quiet fade + tiny lift */
+.coordviews-page .cv-selactions.cv-collapse {
+  opacity: 0; transform: translateY(-4px); pointer-events: none;
+}
+/* Zoom + Clear share IDENTICAL box metrics (same width via min-width, same
+   height via padding/font/border) and differ only by colour, so they read as
+   two equal-weight but distinct actions. */
+.coordviews-page .cv-selactions button {
+  min-width: 152px; box-sizing: border-box; text-align: center;
+  white-space: nowrap; font-family: inherit; cursor: pointer;
+  padding: 7px 14px; font-size: 12.5px; font-weight: 600; line-height: 1.2;
+  border: 1px solid; border-radius: 6px;
+}
+/* Zoom — neutral surface by default; when zoomed-in it flips to the blue
+   "active" style (same convention as the segmented toggle), so the button also
+   signals the current state, not just its label. */
+.coordviews-page .cv-zoombtn {
+  border-color: var(--cv-border); background: var(--cv-surface);
+  color: var(--cv-text2);
+}
+.coordviews-page .cv-zoombtn:hover { background: var(--cv-surface2); }
+.coordviews-page .cv-zoombtn.is-zoomed {
+  border-color: var(--cv-blue100); background: var(--cv-blue50);
+  color: var(--c-blue-700, #1d4ea0);
+}
+.coordviews-page .cv-zoombtn.is-zoomed:hover { background: var(--cv-blue100); }
+/* Clear — the app's amber accent (matches the slider / theme colour). */
+.coordviews-page .cv-clearbtn {
+  border-color: var(--c-amber-200, #fbcfa8); background: var(--c-amber-50, #fff3ea);
+  color: var(--c-amber-700, #c2410c);
+}
+.coordviews-page .cv-clearbtn:hover { background: var(--c-amber-100, #fde3cf); }
+
+/* ---- "More" toggle + collapsible panel (extra params + group filters) --- */
+.coordviews-page .cv-morebtn {
+  align-self: flex-end; padding: 6px 12px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--cv-border); background: var(--cv-surface);
+  color: var(--cv-text2); border-radius: 6px; cursor: pointer; height: 30px;
+}
+.coordviews-page .cv-morebtn:hover { background: var(--cv-surface2); }
+.coordviews-page .cv-more {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 22px 30px;
+  /* bottom margin keeps the box off the panels even with no selection (selbar
+     hidden); it collapses with the selbar's top margin when a selection shows. */
+  margin: 12px 0 14px; padding: 16px 18px;
+  background: var(--cv-surface); border: 1px solid var(--cv-border);
+  border-radius: 8px;
+}
+.coordviews-page .cv-filters { min-width: 200px; }
+/* Trekker-only controls (dissolve + evidence toggle) inside the More panel */
+.coordviews-page .cv-trekker { display: flex; gap: 20px; align-items: flex-start; }
+.coordviews-page .cv-evidence-chk { align-self: flex-end; padding-bottom: 4px; }
+/* niche-radius slider disabled until a nucleus is picked */
+.coordviews-page .cv-disabled { opacity: 0.45; }
+.coordviews-page .cv-disabled input[type=range] { cursor: not-allowed; }
+.coordviews-page .cv-filters-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.coordviews-page .cv-filt { position: relative; }
+.coordviews-page .cv-filt-btn {
+  padding: 5px 10px; font-size: 12px; font-family: inherit; cursor: pointer;
+  border: 1px solid var(--cv-border); border-radius: 6px;
+  background: var(--cv-surface2); color: var(--cv-text);
+}
+.coordviews-page .cv-filt-btn:hover { background: var(--cv-blue50); }
+.coordviews-page .cv-filt-ct { color: var(--cv-text3); font-weight: 400; }
+.coordviews-page .cv-filt-menu {
+  position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 4px;
+  min-width: 160px; max-height: 260px; overflow-y: auto; padding: 6px;
+  background: var(--cv-surface); border: 1px solid var(--cv-border);
+  border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .12);
+}
+.coordviews-page .cv-filt-acts {
+  display: flex; gap: 6px; padding: 2px 4px 6px;
+  border-bottom: 1px solid var(--cv-border); margin-bottom: 4px;
+}
+.coordviews-page .cv-filt-acts button {
+  flex: 1; font-size: 11px; padding: 3px 0; cursor: pointer;
+  border: 1px solid var(--cv-border); border-radius: 5px;
+  background: var(--cv-surface2); color: var(--cv-text2);
+}
+.coordviews-page .cv-filt-acts button:hover { background: var(--cv-blue50); }
+.coordviews-page .cv-filt-item {
+  display: flex; align-items: center; gap: 6px; padding: 3px 4px;
+  font-size: 12px; font-weight: 400; color: var(--cv-text); cursor: pointer;
+  white-space: nowrap;
+}
+.coordviews-page .cv-filt-item:hover { background: var(--cv-surface2); }
+.coordviews-page .cv-filt-item input { margin: 0; }
+
+/* ---- panel grid --------------------------------------------------------- */
+/* JS (layoutPanels + resizeAll) sets the explicit column/row tracks and the
+   square canvas size per space-count; here we only establish the grid, centre it
+   in the available width, fade panels in/out, and let each pane centre its
+   (square) canvas. */
+.coordviews-page .cv-panes {
+  display: grid; gap: 14px; justify-content: center; align-content: start;
+  /* When the available height changes (the "More" panel opening, a bar toggling)
+     resizeAll writes new px column tracks; transitioning them makes the squares
+     glide to the new size instead of snapping. The canvas transitions in step
+     (below), and resizeAll's crisp redraw lands after the transition settles. */
+  transition: grid-template-columns .28s ease;
+}
+/* Three spaces = the "rotated 品": UMAP is one centred square on the left, the two
+   other spaces stack on the right, so UMAP spans both rows. */
+.coordviews-page .cv-panes.cv-n3 .cv-pane:first-child { grid-row: 1 / span 2; }
+.coordviews-page .cv-pane {
+  position: relative;
+  background: var(--cv-surface); border: 1px solid var(--cv-border);
+  border-radius: 10px; padding: 12px;
+  display: flex; flex-direction: column;
+  transition: opacity .2s ease;
+}
+.coordviews-page .cv-pane.cv-hidden { display: none; }
+.coordviews-page .cv-pane-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  flex-wrap: wrap;   /* title + space-switch + toolbar never overflow/cut off */
+}
+.coordviews-page .cv-pane-head .cv-ptitle { font-size: 13px; font-weight: 650; }
+/* per-panel hover toolbar (plotly-style), top-right of each panel */
+.coordviews-page .cv-panebar {
+  margin-left: auto; display: flex; gap: 4px;
+  opacity: 0; transition: opacity .15s ease;
+}
+.coordviews-page .cv-pane:hover .cv-panebar { opacity: 1; }
+/* Narrow pane (set by the ResizeObserver in resizePanel): the toolbar can no
+   longer share the header row with the title + space-switch without crowding, so
+   it floats as a VERTICAL stack in the pane's top-right corner instead. */
+.coordviews-page .cv-pane.cv-narrow .cv-panebar {
+  position: absolute; top: 10px; right: 10px; z-index: 4;
+  margin-left: 0; flex-direction: column;
+  background: var(--cv-surface); border: 1px solid var(--cv-border);
+  border-radius: 6px; padding: 3px;
+}
+.coordviews-page .cv-tbtn {
+  width: 26px; height: 22px; padding: 0; font-size: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--cv-border); background: var(--cv-surface);
+  color: var(--cv-text2); border-radius: 5px; cursor: pointer;
+}
+.coordviews-page .cv-tbtn:hover { background: var(--cv-surface2); color: var(--cv-text); }
+.coordviews-page .cv-tbtn.is-on {
+  background: var(--cv-blue50); border-color: var(--cv-blue100);
+  color: var(--c-blue-700, #1d4ea0);
+}
+.coordviews-page .cv-pane-head select {
+  margin-left: auto; padding: 4px 7px; border: 1px solid var(--c-border-2, #e0e0e0);
+  border-radius: 6px; background: var(--cv-surface2); color: var(--cv-text2);
+  font-size: 11.5px; font-family: inherit;
+}
+.coordviews-page canvas {
+  /* JS sizes each canvas to a square (>=300px); margin auto centres it vertically
+     in its cell — which matters for the UMAP square in the three-space layout.
+     width/height transition in step with the grid tracks so a height-driven
+     re-fit glides rather than snaps. */
+  display: block; margin: auto 0; background: var(--cv-surface);
+  border-radius: 6px; cursor: crosshair;
+  transition: width .28s ease, height .28s ease;
+}
+.coordviews-page .cv-tip {
+  position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
+  background: rgba(28,28,30,.94); color: #fff; padding: 7px 9px;
+  border-radius: 6px; font-size: 11.5px; line-height: 1.5; white-space: nowrap;
+  z-index: 6; font-variant-numeric: tabular-nums;
+}
+
+/* ---- legend ------------------------------------------------------------- */
+.coordviews-page .cv-legend {
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+  margin: 12px 2px 0; font-size: 11.5px;
+}
+.coordviews-page .cv-lg {
+  display: flex; align-items: center; gap: 5px; cursor: pointer;
+  user-select: none; padding: 1px 4px; border-radius: 3px;
+}
+.coordviews-page .cv-lg:hover { background: var(--cv-surface2); }
+.coordviews-page .cv-lg.off { opacity: .5; }
+.coordviews-page .cv-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.coordviews-page .cv-lg-ct { color: var(--cv-text3); }
+/* RGB channel legend: informational, not a toggle */
+.coordviews-page .cv-rgb-lg { cursor: default; }
+.coordviews-page .cv-rgb-lg:hover { background: transparent; }
+.coordviews-page .cv-rgb-none { color: var(--cv-text3); font-style: italic; }
+
+/* ---- histology image control bar ---------------------------------------- */
+.coordviews-page .cv-imgbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 9px 12px; margin-bottom: 14px;
+  background: var(--cv-surface2); border: 1px solid var(--cv-border);
+  border-radius: 8px; font-size: 12px;
+}
+/* Space-scoped controls (this image bar, the clonal-layout switch) fade + lift
+   in/out on a right-panel space switch instead of popping. Same idiom as
+   .cv-selactions; JS drives it via revealEl() in updateSpaceScopedControls. */
+.coordviews-page #cv-clone-layout-ctl {
+  transition: opacity .18s ease, transform .18s ease;
+}
+/* The image bar sits ABOVE the panels, so its HEIGHT must collapse too — else the
+   panels jump up when it hits display:none. Animate max-height (overflow clipped)
+   so they slide, exactly like .cv-selbar. */
+.coordviews-page #coordviews_image_ui {
+  overflow: hidden; max-height: 100px;
+  transition: opacity .18s ease, transform .18s ease, max-height .2s ease;
+}
+.coordviews-page #coordviews_image_ui.cv-collapse { max-height: 0; }
+.coordviews-page #coordviews_image_ui.cv-collapse,
+.coordviews-page #cv-clone-layout-ctl.cv-collapse {
+  opacity: 0; transform: translateY(-4px); pointer-events: none;
+}
+.coordviews-page .cv-imgbar-title {
+  font-weight: 650; color: var(--cv-text); margin-right: 2px;
+}
+.coordviews-page .cv-img-ctl { display: flex; align-items: center; gap: 6px; }
+.coordviews-page .cv-img-ctl > label {
+  font-size: 11px; color: var(--cv-text2); font-weight: 600; white-space: nowrap;
+  line-height: 1; margin: 0;
+}
+/* margin:0 + vertical-align:middle so the native range centres on the label's
+   line rather than sitting a couple of px low (its default margin breaks the
+   flex centering). */
+.coordviews-page .cv-img-ctl input[type=range] {
+  width: 96px; height: 18px; margin: 0; vertical-align: middle;
+  accent-color: var(--cv-blue); display: block;
+}
+.coordviews-page .cv-chk {
+  display: flex; align-items: center; gap: 5px; font-size: 11.5px;
+  color: var(--cv-text2); cursor: pointer; user-select: none; margin: 0;
+}
+.coordviews-page .cv-chk input { accent-color: var(--cv-blue); }
+
+/* ---- colourbar (single-gene continuous) --------------------------------- */
+.coordviews-page .cv-cbar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 2px 0; font-size: 11px; color: var(--cv-text2);
+}
+.coordviews-page .cv-grad {
+  flex: 0 1 240px; height: 10px; border-radius: 5px;
+  border: 1px solid var(--cv-border);
+}
+.coordviews-page .cv-cbar-note { color: var(--cv-text3); }
+
+/* ---- RGB co-expression channel row -------------------------------------- */
+.coordviews-page .cv-rgb-ctl .cv-rgb-row {
+  display: flex; gap: 6px;
+}
+/* Each channel is sized to hold a gene symbol, not stretched to fill — three
+   full-width pickers would hog the bar and push the selection buttons to a new
+   row. Fixed width, no flex-grow. */
+.coordviews-page .cv-rgb-ctl .cv-rgb-row .form-group {
+  margin-bottom: 0; flex: 0 0 auto; width: 132px; min-width: 0;
+}
+.coordviews-page .cv-rgb-ctl .cv-rgb-row .selectize-control {
+  width: 132px; min-width: 0;
+}
+/* keep the mode-specific gene pickers compact in the top bar */
+.coordviews-page #cv-gene-ctl .form-group,
+.coordviews-page #cv-rgb-ctl .form-group { margin-bottom: 0; }
+.coordviews-page #cv-gene-ctl .selectize-control { min-width: 190px; }
+/* Match the gene / RGB selectize boxes to the native dropdowns (Colour by,
+   Projection): same border, radius, height, font — and keep search enabled.
+   The app theme styles .selectize-input at higher weight, so override with
+   !important on the box-defining properties. */
+.coordviews-page .cv-topbar .selectize-control .selectize-input {
+  padding: 6px 9px !important; min-height: 0 !important; line-height: 1.35 !important;
+  border: 1px solid var(--c-border-2, #e0e0e0) !important;
+  border-radius: 6px !important;
+  background: var(--cv-surface) !important; color: var(--cv-text) !important;
+  font-size: 12.5px !important; box-shadow: none !important;
+}
+.coordviews-page .cv-topbar .selectize-control .selectize-input.focus {
+  border-color: var(--cv-blue) !important; box-shadow: 0 0 0 2px var(--cv-blue100) !important;
+}
+.coordviews-page .cv-topbar .selectize-control .selectize-input input,
+.coordviews-page .cv-topbar .selectize-dropdown { font-size: 12.5px !important; }
+
+/* ---- selection bar ------------------------------------------------------ */
+/* Sits between the params and the panels: a clear gap above (stands off the
+   param boxes) and only a small gap below (hugs the panels it describes).
+   Reveals by collapsing height + margins so the panels slide, not jump. */
+.coordviews-page .cv-selbar {
+  display: flex; align-items: center; gap: 10px; margin: 14px 0 6px;
+  background: var(--cv-blue50); border: 1px solid var(--cv-blue100);
+  border-radius: 6px; padding: 8px 12px; font-size: 12.5px;
+  color: var(--c-blue-700, #1d4ea0);
+  max-height: 60px; overflow: hidden;
+  transition: max-height .2s ease, opacity .18s ease,
+    margin-top .2s ease, margin-bottom .2s ease,
+    padding-top .2s ease, padding-bottom .2s ease;
+}
+.coordviews-page .cv-selbar.cv-collapse {
+  max-height: 0; opacity: 0;
+  margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
+}
+
+/* ---- readout (composition + clonotypes) --------------------------------- */
+.coordviews-page .cv-readout {
+  display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 20px;
+  margin-top: 4px;
+}
+@media (max-width: 900px) { .coordviews-page .cv-readout { grid-template-columns: 1fr; } }
+.coordviews-page .cv-read-h {
+  font-size: 12.5px; font-weight: 650; margin-bottom: 9px;
+}
+.coordviews-page .cv-read-sub { font-weight: 400; color: var(--cv-text3); font-size: 11px; }
+.coordviews-page .cv-empty, .coordviews-page .cv-empty-sm {
+  color: var(--cv-text3); font-size: 12.5px; line-height: 1.6;
+  border: 1px dashed var(--c-border-2, #e0e0e0); border-radius: 8px;
+  padding: 18px 14px;
+}
+.coordviews-page .cv-empty-sm { padding: 10px; }
+.coordviews-page .cv-bars { font-size: 12px; }
+.coordviews-page .cv-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.coordviews-page .cv-bar-nm { width: 92px; flex: none; font-weight: 600; }
+.coordviews-page .cv-bar-tr {
+  flex: 1; background: var(--cv-surface2); border-radius: 3px; height: 14px; overflow: hidden;
+}
+.coordviews-page .cv-bar-fl { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
+.coordviews-page .cv-bar-ct {
+  width: 42px; flex: none; text-align: right; color: var(--cv-text2);
+  font-variant-numeric: tabular-nums;
+}
+
+.coordviews-page .cv-ctable { width: 100%; border-collapse: collapse; font-size: 12px; }
+.coordviews-page .cv-ctable th, .coordviews-page .cv-ctable td {
+  text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--cv-border);
+}
+.coordviews-page .cv-ctable th {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--cv-text3); font-weight: 650;
+}
+.coordviews-page .cv-ctable td.num, .coordviews-page .cv-ctable th.num {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.coordviews-page .cv-ctable tbody tr:last-child td { border-bottom: 0; }
+.coordviews-page .cv-crow { cursor: pointer; }
+.coordviews-page .cv-crow:hover { background: var(--cv-blue50); }
+.coordviews-page .cv-cdr3 {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: var(--cv-text);
+}
+.coordviews-page .cv-hint { font-size: 11px; color: var(--cv-text3); margin-top: 8px; }
+
+/* Trekker detail modal (native <dialog>, opened by coordviews.js). Content
+   classes (.tk-*) come from trekker.css via the "trekker-page" class on the
+   dialog itself; only the dialog chrome is styled here. */
+#cv-tk-modal {
+  border: 1px solid var(--cv-border, #ececec); border-radius: var(--r-md);
+  padding: 20px 22px; max-width: min(880px, 94vw); max-height: 86vh;
+  overflow: auto; box-shadow: var(--shadow-4);
+}
+#cv-tk-modal::backdrop { background: rgba(0, 0, 0, .55); }
+#cv-tk-modal .tk-zoom-x {
+  position: absolute; top: 10px; right: 12px; background: var(--c-surface-2);
+  color: var(--c-text-2); border: 1px solid var(--c-border); border-radius: var(--r-xs);
+  padding: 3px 10px; cursor: pointer; font-size: 12px;
+}
+#cv-tk-modal h4:first-of-type { margin-top: 0; }
+/* Fixed 3-column stat grid (2 rows for 6 stats) instead of trekker.css's
+   auto-fit, which ragged-wraps 4+2 at this modal's narrower width. */
+#cv-tk-modal .tk-grid { grid-template-columns: repeat(3, 1fr); }

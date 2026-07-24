@@ -86,7 +86,13 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     selectInput(
       "spatial_projection_to_display",
       label = "Spatial data",
-      choices = availableSpatial()
+      choices = availableSpatial(),
+      ## This renderUI depends on the input above (via current_spatial, for the
+      ## background-image options), so it re-runs whenever you pick a sample.
+      ## Without `selected`, the rebuilt control would snap back to the first
+      ## choice — pin it to the current selection so multi-sample data sets stay
+      ## on the sample you chose.
+      selected = current_spatial
     ),
     selectInput(
       "spatial_projection_plot_type",
