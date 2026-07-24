@@ -1,0 +1,80 @@
+---
+title: "Demo datasets: overview"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo datasets: overview}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+# What this guide is
+
+Every dataset in the app's **Select dataset** switcher is a **real, public**
+single-cell / spatial dataset that we downloaded, cleaned, down-sampled and
+packaged into one portable `.crb` file — except where noted. This page is the
+at-a-glance index; each dataset has its own full-pipeline page (download → process
+→ Seurat object → `.crb` export → Shiny app) linked below.
+
+## All datasets at a glance
+
+| Dataset (`.crb`) | Technology · tissue | Source · accession (link) | License | Full page |
+|---|---|---|---|---|
+| **Mouse brain (Visium)** `demo_spatial_visium.crb` | 10x Visium, spot · mouse brain | 10x Visium Mouse Brain, Sagittal Anterior · `anterior1` via [`stxBrain.SeuratData`](https://github.com/satijalab/seurat-data) | 10x public | [Full pipeline](demo_dataset_visium.html) |
+| **Mouse hippocampus (Slide-seq v2)** `demo_spatial_slideseq.crb` | Slide-seq v2, bead · mouse hippocampus | Stickels et al. 2021 · [doi:10.1038/s41587-020-0739-1](https://doi.org/10.1038/s41587-020-0739-1) via `ssHippo.SeuratData` | CC-BY | [Full pipeline](demo_dataset_slideseq.html) |
+| **Mouse ileum (MERFISH)** `demo_spatial_merfish.crb` | MERFISH · mouse ileum | Petukhov et al. 2021 · Bioconductor [`MerfishData::MouseIleumPetukhov2021`](https://bioconductor.org/packages/MerfishData) | Bioconductor | [Full pipeline](demo_dataset_merfish.html) |
+| **Mouse brain (Xenium)** `demo_spatial_xenium.crb` | 10x Xenium · mouse brain (CTX+HP) | 10x [`Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP`](https://www.10xgenomics.com/datasets/fresh-frozen-mouse-brain-replicates-1-standard) | 10x public | [Full pipeline](demo_dataset_xenium.html) |
+| **PBMC - Full (T+B)** `demo_full_tcr_bcr.crb` | 10x 5′ V(D)J · human PBMC | 10x [`vdj_v1_hs_pbmc3`](https://www.10xgenomics.com/datasets) (Cell Ranger 3.1.0) | 10x public | [Full pipeline](demo_dataset_pbmc_tcr_bcr.html) |
+| *(B-cell trajectory, inside the PBMC `.crb`)* | monocle2 DDRTree pseudotime | derived from the PBMC demo — no new download | inherited | [Full pipeline](demo_dataset_trajectory.html) |
+| **HLA & TCR** `demo_hla_tcr_dextramer.crb` | 10x 5′ Immune Profiling + pMHC dextramers · human CD8 T | 10x *CD8+ T cells, Healthy Donor 1–4* (2019); Zhang W et al., *Sci Adv* 2021 · [doi:10.1126/sciadv.abf5835](https://doi.org/10.1126/sciadv.abf5835) | CC BY 4.0 | [Full pipeline](demo_dataset_hla_tcr_dextramer.html) |
+| **Mouse brain (Trekker)** `demo_trekker.crb` | Trekker single-cell spatial mapping · mouse brain | Curio / Takara `Mouse_Brain_TrekkerU_C_Sept2025` example bundle — **registration required**, [curiobioscience.com](https://curiobioscience.com/) | access-gated | [Full pipeline](demo_dataset_trekker.html) |
+
+*Two earlier HLA demos — a fully synthetic fixture and a real bulk TCRβ cohort —
+were removed (2026-07-21) because neither is both real and single-cell; their
+build scripts and provenance are kept (see the
+[HLA & TCR (dextramer)](demo_dataset_hla_tcr_dextramer.html) page).*
+
+**How the pipeline is organised.** The processing code lives in `data-raw/`,
+which is excluded from the installed package (`.Rbuildignore`) and kept in the
+repository for reproducibility only. Running a `data-raw/build_*.R` script
+regenerates the shipped `.crb`. The single source of truth for provenance is
+[`data-raw/DATASETS.md`](https://github.com/duocang/CerebroNexus/blob/master/data-raw/DATASETS.md);
+this tutorial is its readable, in-app companion.
+
+**Environment of record.** The shipped `.crb` files were last built with:
+
+| Component | Version |
+|-----------|---------|
+| R | 4.5.2 |
+| Bioconductor | 3.22 |
+| Seurat | 5.4.0 |
+| SeuratObject | 5.3.0 |
+| SeuratData | 0.2.2.9002 |
+| MerfishData | 1.12.0 |
+| scRepertoire | ≥ 2.0 |
+
+# Reproducing everything
+
+Each script is self-contained and idempotent — running it re-downloads (or reuses
+a cache), re-processes, verifies, and overwrites the shipped `.crb`. From the
+repository root, with the environment of record above:
+
+```bash
+Rscript data-raw/build_spatial_demos.R          # 4 spatial .crb
+Rscript data-raw/build_ir_demos.R               # demo_full_tcr_bcr.crb
+Rscript data-raw/build_trajectory_demo.R        # trajectory slot (needs monocle)
+Rscript data-raw/build_hla_tcr_dextramer_demo.R # demo_hla_tcr_dextramer.crb
+Rscript data-raw/build_trekker_demo.R           # demo_trekker.crb (needs the bundle)
+```
+
+The verification blocks are **gates, not reports** — a drifted input stops the
+script and leaves the shipped `.crb` untouched, rather than replacing it and
+exiting 0.

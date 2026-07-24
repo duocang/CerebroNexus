@@ -18,6 +18,13 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
+![The Most expressed genes tab: per-group tables of the genes accounting for the most transcripts.](figures/app_most_expressed.jpeg)
+
+> **Demo data & source.** Shown on the demo PBMC data set (`demo_full_tcr_bcr.crb`).
+> Every dataset in the app is a real public dataset &mdash; sources, acquire
+> commands and full build code are in
+> [Demo datasets: sources &amp; processing](demo_datasets.html).
+
 # Overview
 
 The **Most expressed genes** tab shows, for every group in the dataset, the
@@ -25,8 +32,9 @@ genes with the highest mean expression. Unlike marker genes (which identify
 genes that differ _between_ groups), most expressed genes simply rank genes
 by their average expression _within_ each group.
 
-This tab is always visible in the sidebar because expression data is present
-in every `.crb` file.
+Like Marker genes and Enriched pathways, this tab is inserted into the sidebar
+conditionally — it only appears once the loaded `.crb` actually has most-
+expressed-gene tables for at least one grouping variable.
 
 # Quick start
 
@@ -51,11 +59,22 @@ The results table is rendered as an interactive DT table:
 
 # Data export
 
-Most expressed gene tables are computed automatically during
-`exportFromSeurat()`. No additional parameters are required.
+Most-expressed-gene tables are computed with `getMostExpressedGenes()`, which
+writes into `object@misc$most_expressed_genes` on the Seurat object in-place —
+`exportFromSeurat()` then just picks up whatever is already there.
 
 ```{r, eval = FALSE}
-exportFromSeurat(seurat_object, file = "my_data.crb")
+seurat_object <- getMostExpressedGenes(
+  seurat_object,
+  groups = c("sample", "seurat_clusters")
+)
+exportFromSeurat(
+  seurat_object,
+  file = "my_data.crb",
+  experiment_name = "my_experiment",
+  organism = "hg",
+  groups = c("sample", "seurat_clusters")
+)
 ```
 
 # See also

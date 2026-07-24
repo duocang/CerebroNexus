@@ -26,6 +26,13 @@ resource_files:
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
+![The Trekker tab: physical space (Location CSV, µm) beside the whole-transcriptome UMAP; a selection in one pane highlights the same nuclei in the other.](figures/app_trekker.jpeg)
+
+> **Demo data & source.** Shown on **`Mouse brain (Trekker)`** (`demo_trekker.crb`),
+> a down-sampled subset of the Curio/Takara `Mouse_Brain_TrekkerU_C` example bundle
+> (access-gated registration). Provenance and full build code:
+> [Full pipeline: Mouse brain (Trekker)](demo_dataset_trekker.html).
+
 # What this guide does
 
 This is an end-to-end, reproducible walk-through of the **Trekker** page: what
@@ -122,8 +129,10 @@ orientations**. This is measured, not assumed:
 
 The generic spatial extractor reads `@images` — and would therefore **silently
 draw the tissue transposed 90°**, with no error. So the build takes coordinates
-from the **Location CSV only**, and the page's "Coordinate source" control lets
-you switch between all three so the discrepancy is visible rather than hidden.
+from the **Location CSV only** and ships that as the sole source; the other two
+orientations are not offered as an in-app switch — they're documented here,
+in this table, so the discrepancy is visible rather than silently baked into
+the demo.
 
 # Build the demo .crb
 

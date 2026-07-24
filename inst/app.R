@@ -115,6 +115,21 @@ Cerebro.options <<- list(
 options(shiny.maxRequestSize = 800 * 1024^2)
 
 ##----------------------------------------------------------------------------##
+## Serve the rendered tutorial vignettes (www/tutorials/*.html, built from the
+## package vignettes) at /cerebro_docs so the About page can open them as
+## formatted, in-app, offline documentation.
+##----------------------------------------------------------------------------##
+local({
+  tut_dir <- file.path(
+    Cerebro.options[["cerebro_root"]],
+    "shiny/v1.4/www/tutorials"
+  )
+  if (dir.exists(tut_dir)) {
+    shiny::addResourcePath("cerebro_docs", normalizePath(tut_dir))
+  }
+})
+
+##----------------------------------------------------------------------------##
 ## load server and UI functions
 ##----------------------------------------------------------------------------##
 source("shiny/v1.4/shiny_UI.R", local = TRUE)

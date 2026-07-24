@@ -47,6 +47,7 @@ output[["about"]] <- renderText({
     <ul>
       <li>The default plot palettes are a custom low-saturation set; several colours draw on <a href="https://flatuicolors.com/" title="Flat UI Colors 2" target="_blank">Flat UI Colors 2</a>.</li>
     </ul>
-    <br>'
+    <br>
+    <a href="#shiny-tab-tutorial" data-toggle="tab" data-value="tutorial" style="font-weight:600">&rarr; See the Tutorial tab</a><br>'
   )
 })

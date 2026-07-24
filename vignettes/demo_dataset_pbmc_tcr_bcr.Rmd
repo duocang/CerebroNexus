@@ -1,0 +1,129 @@
+---
+title: "Demo dataset: PBMC - Full (T+B)"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo dataset: PBMC - Full (T+B)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+> See [Demo datasets: overview](demo_datasets.html) for the full lineup.
+
+# Overview
+
+| | |
+|---|---|
+| **Technology** | 10x Chromium 5′ V(D)J (scRNA-seq + TCR/BCR) |
+| **Organism / tissue** | human / PBMC, healthy donor |
+| **Source** | 10x Genomics public dataset `vdj_v1_hs_pbmc3` (Cell Ranger 3.1.0) |
+| **License** | 10x Genomics public dataset terms |
+| **Used in** | [Immune repertoire](immune_repertoire_analysis.html) tab · [Trajectory](trajectory_analysis.html) tab · [Linked views](../) (default dataset) |
+| **Output** | shipped as `inst/extdata/v1.4/demo_full_tcr_bcr.crb` (~1.0 MB) |
+
+This is the one dataset that carries **three** modalities at once: gene
+expression, immune repertoire (TCR + BCR), and — via
+[the trajectory build step](demo_dataset_trajectory.html) — a pseudotime
+trajectory over its B cells.
+
+**A different pipeline shape.** Unlike the four spatial demos (raw counts →
+fresh Seurat object → `.crb`), this build starts from an **already-processed**
+`.crb` (`example.crb`, itself built from a standard Seurat pipeline documented
+separately) and adds the immune-repertoire modality by operating directly on
+the Cerebro object structure. So "process" and "export" below are really one
+step: read the raw VDJ contigs, turn them into clonotypes, and inject them into
+a subset of the base object.
+
+# Download raw data
+
+```bash
+mkdir -p data-raw/vdj_10x
+BASE=https://cf.10xgenomics.com/samples/cell-vdj/3.1.0/vdj_v1_hs_pbmc3
+curl -fL -o data-raw/vdj_10x/pbmc3_t_contig.csv \
+  "$BASE/vdj_v1_hs_pbmc3_t_filtered_contig_annotations.csv"
+curl -fL -o data-raw/vdj_10x/pbmc3_b_contig.csv \
+  "$BASE/vdj_v1_hs_pbmc3_b_filtered_contig_annotations.csv"
+```
+
+# Process the repertoire (scRepertoire) & assemble the Cerebro object
+
+```r
+library(scRepertoire)
+library(CerebroNexus)
+
+pool_from <- function(csv, kind) {
+  raw <- read.csv(csv, stringsAsFactors = FALSE)
+  contigs <- loadContigs(raw, format = "10X")
+  combined <- if (kind == "TCR") combineTCR(contigs) else combineBCR(contigs, threshold = 0.85)
+  df <- do.call(rbind, combined)
+  unique(df[, c("barcode", "CTgene", "CTnt", "CTaa", "CTstrict")])
+}
+pool_tcr <- pool_from("data-raw/vdj_10x/pbmc3_t_contig.csv", "TCR")
+pool_bcr <- pool_from("data-raw/vdj_10x/pbmc3_b_contig.csv", "BCR")
+
+## The base object (example.crb) already contains only the T+B+Mono subset
+## this demo needs (1,476 cells) -- no further cell filtering happens here.
+old <- readRDS("inst/extdata/v1.4/example.crb")
+full_meta <- old$getMetaData()
+```
+
+- **sampling**: the base object (`example.crb`) is already the T + B + Mono
+  subset (1,476 cells); no additional filtering is applied at this step.
+- **clonotypes**: assigned **only** to cells of the matching lineage — TCR
+  pool → T cells, BCR pool → B cells — so the repertoire is biologically
+  plausible rather than random noise.
+- **cell-type field**: `cell_type` (inherited from `example.crb`).
+
+# Export to Cerebro (`.crb`)
+
+The Cerebro object is rebuilt from the base object's fields (a fresh
+`Cerebro_v1.3` with `expression`/`meta_data`/`projections`/`groups` copied
+over), and the clonotype pools are split per sample and written into the
+object's own `immune_repertoire` field — that field, not a nested key under
+`technical_info`, is what the app reads:
+
+```r
+new <- Cerebro_v1.3$new()
+# ... copy expression / meta_data / projections / groups from `old` ...
+
+ir_df <- rbind(pool_tcr, pool_bcr)   # both pools, cell-type-constrained above
+new$immune_repertoire <- split_ir_by_sample(ir_df, new$getMetaData())
+
+saveRDS(new, "pbmc_tcr_bcr.crb")
+```
+
+# Build & launch the Shiny app
+
+```r
+library(CerebroNexus)
+
+crb <- "pbmc_tcr_bcr.crb"
+
+createShinyApp(
+  cerebro_data = c("PBMC - Full (T+B)" = crb),
+  result_dir   = "my_cerebro_app",
+  launch_browser = FALSE
+)
+
+# Local:
+shiny::runApp("my_cerebro_app")
+
+# shinyapps.io:
+# rsconnect::deployApp(appDir = "my_cerebro_app")
+```
+
+Open the **Immune repertoire** tab, or [Linked views](../) (this is its
+default dataset).
+
+# Full build code
+
+```{r code=xfun::read_utf8('../data-raw/build_ir_demos.R')}
+```

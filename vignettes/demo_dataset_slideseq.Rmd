@@ -1,0 +1,120 @@
+---
+title: "Demo dataset: Mouse hippocampus (Slide-seq v2)"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo dataset: Mouse hippocampus (Slide-seq v2)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+> One of four real spatial-transcriptomics demos, each on a different platform.
+> See [Demo datasets: overview](demo_datasets.html) for the full lineup.
+
+# Overview
+
+| | |
+|---|---|
+| **Technology** | Slide-seq v2 (bead, 10 µm) |
+| **Organism / tissue** | mouse / hippocampus |
+| **Source** | Stickels et al. 2021 · [doi:10.1038/s41587-020-0739-1](https://doi.org/10.1038/s41587-020-0739-1), via `ssHippo.SeuratData` |
+| **License** | SeuratData terms; original data CC-BY (Broad / Macosko lab) |
+| **Used in** | [Spatial](spatial_analysis.html) tab |
+| **Output** | shipped as `inst/extdata/v1.4/demo_spatial_slideseq.crb` (~1.6 MB) |
+
+This is the end-to-end proof that `exportFromSeurat` handles **non-v5** (v4-era)
+spatial objects: `ssHippo` ships as a Seurat v3.1.4 object, so
+`UpdateSeuratObject()` repairs it before anything else runs — an intentionally
+different code path from the other three (Seurat-5-native) spatial demos.
+
+# Download raw data
+
+```r
+SeuratData::InstallData("ssHippo")
+data("ssHippo", package = "ssHippo.SeuratData")
+obj <- get("ssHippo")
+```
+
+# Process in Seurat
+
+```r
+obj <- SeuratObject::UpdateSeuratObject(obj)   # v3.1.4 -> current SlideSeq class
+assay <- "Spatial"
+
+set.seed(42)
+keep <- sample(colnames(obj), min(5000, ncol(obj)))   # down-sample first: 53k beads
+obj <- subset(obj, cells = keep)
+
+obj <- NormalizeData(obj, assay = assay) |>
+  FindVariableFeatures(assay = assay, nfeatures = 2000) |>
+  ScaleData(assay = assay) |>
+  RunPCA(assay = assay, npcs = 30) |>
+  RunUMAP(dims = 1:20) |>
+  FindNeighbors(dims = 1:20) |>
+  FindClusters(resolution = 0.5)
+obj$cluster <- factor(paste0("C", as.integer(obj$seurat_clusters)))
+```
+
+- **sampling**: 5,000 beads sampled from ~53,173, *before* processing (the source
+  is unclustered at that scale).
+- **cell-type field**: `cluster` (source ships no cell-type labels).
+- **embedded image**: **none — and this is correct, not an omission.** The
+  `SlideSeq` S4 class carries only bead `coordinates`, no tissue raster; the
+  bead scatter is the complete spatial view.
+
+# Export to Cerebro (`.crb`)
+
+```r
+library(CerebroNexus)
+exportFromSeurat(
+  object = obj,
+  assay = "Spatial",
+  slot = "data",
+  file = "slideseq_mouse_hippocampus.crb",
+  experiment_name = "Slide-seq v2 mouse hippocampus",
+  organism = "mm",
+  groups = c("cluster"),
+  nUMI = "nUMI",
+  nGene = "nGene"
+)
+```
+
+# Build & launch the Shiny app
+
+```r
+library(CerebroNexus)
+
+crb <- "slideseq_mouse_hippocampus.crb"
+
+createShinyApp(
+  cerebro_data = c("Mouse hippocampus (Slide-seq v2)" = crb),
+  result_dir   = "my_cerebro_app",
+  launch_browser = FALSE
+)
+
+# Local:
+shiny::runApp("my_cerebro_app")
+
+# shinyapps.io:
+# rsconnect::deployApp(appDir = "my_cerebro_app")
+```
+
+Open the **Spatial** tab and pick "Mouse hippocampus (Slide-seq v2)" from the
+dataset switcher.
+
+# Full build code
+
+Produced by `build_slideseq()`, one of four functions in
+[`data-raw/build_spatial_demos.R`](https://github.com/duocang/CerebroNexus/blob/master/data-raw/build_spatial_demos.R)
+(shared download/sampling helpers are defined earlier in that file):
+
+```{r code=local({src <- xfun::read_utf8("../data-raw/build_spatial_demos.R"); s <- grep("^## 2\\. Slide-seq", src); e <- grep("^## 3\\. MERFISH", src)[1] - 2; src[s:e]})}
+```

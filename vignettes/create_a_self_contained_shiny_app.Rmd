@@ -22,6 +22,12 @@ knitr::opts_chunk$set(
 )
 ```
 
+![A self-contained Cerebro app &mdash; the coordinated Linked-views workspace.](figures/app_linked.jpeg)
+
+> **Demo data & source.** The `.crb` files you bundle are real public single-cell
+> / spatial datasets; their sources, acquire commands and full build code are in
+> [Demo datasets: sources &amp; processing](demo_datasets.html).
+
 # Overview
 
 `createShinyApp()` bundles a Cerebro v1.4 Shiny app into a single output directory. It copies the Shiny sources shipped under `inst/shiny/v1.4/`, the requested `.crb` (or `.rds`) data file(s), and the `inst/extdata/` reference files, and writes an `app.R` that wires everything together with a pre-built `Cerebro.options` list. The result is a directory you can serve directly with `shiny-server`, drop behind `rsconnect`/Posit Connect, or launch locally with `shiny::runApp()` — no further calls into `CerebroNexus` are required at runtime.

@@ -1,0 +1,142 @@
+---
+title: "Demo dataset: Mouse brain (10x Xenium)"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo dataset: Mouse brain (10x Xenium)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+> One of four real spatial-transcriptomics demos, each on a different platform.
+> See [Demo datasets: overview](demo_datasets.html) for the full lineup.
+
+# Overview
+
+| | |
+|---|---|
+| **Technology** | 10x Xenium (in-situ single-cell imaging) |
+| **Organism / tissue** | mouse / brain (cortex + hippocampus) |
+| **Source** | 10x Genomics public [`Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP`](https://www.10xgenomics.com/datasets/fresh-frozen-mouse-brain-replicates-1-standard) |
+| **License** | 10x Genomics public dataset terms |
+| **Used in** | [Spatial](spatial_analysis.html) tab · [Linked views](../) |
+| **Output** | shipped as `inst/extdata/v1.4/demo_spatial_xenium.crb` (~3.4 MB) |
+
+A real cortex + hippocampus sub-section (248-gene Mouse Brain panel) with
+recognisable brain structure — not a rectangular field-of-view crop.
+
+# Download raw data
+
+The build script auto-fetches this (`ensure_unzipped()`); the manual equivalent:
+
+```bash
+mkdir -p data-raw/xenium
+BASE=https://cf.10xgenomics.com/samples/xenium/1.0.2/Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP
+curl -fL -o data-raw/xenium/brain.zip \
+  "$BASE/Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP_outs.zip"
+unzip -oq data-raw/xenium/brain.zip -d data-raw/xenium/brain
+```
+
+# Process in Seurat
+
+Built from the raw 10x outs bundle
+(`cell_feature_matrix.h5` + `cells.csv.gz` + `morphology_focus.ome.tif`)
+directly, **not** `LoadXenium()` — the public bundle ships the `.h5` matrix,
+not the mtx directory `LoadXenium` expects:
+
+```r
+set.seed(42)
+mat <- Read10X_h5("data-raw/xenium/brain/cell_feature_matrix.h5")
+cells <- read.csv(gzfile("data-raw/xenium/brain/cells.csv.gz"))
+rownames(cells) <- cells$cell_id
+common <- intersect(colnames(mat), cells$cell_id)
+
+obj <- CreateSeuratObject(counts = mat[, common], assay = "Spatial")
+xy <- data.frame(x = cells[common, "x_centroid"], y = cells[common, "y_centroid"],
+                  row.names = common)
+
+obj <- NormalizeData(obj) |> FindVariableFeatures() |> ScaleData() |>
+  RunPCA(npcs = 30) |> RunUMAP(dims = 1:20) |>
+  FindNeighbors(dims = 1:20) |> FindClusters(resolution = 0.5)
+obj$cluster <- factor(paste0("C", as.integer(obj$seurat_clusters)))
+# stratified down-sample to <= 5,000 by obj$cluster
+
+cents <- CreateCentroids(as.matrix(xy[colnames(obj), c("x", "y")]))
+obj[["fov"]] <- CreateFOV(list(centroids = cents), type = "centroids", assay = "Spatial")
+```
+
+- **sampling**: ≤ 5,000 cells stratified by cluster (here 5,000 of 36,602);
+  248-gene panel kept whole.
+- **cell-type field**: `cluster` (source ships no cell-type labels).
+- **embedded image**: **real DAPI morphology** — first channel of the OME-TIFF,
+  contrast-stretched, mapped into micron space via `px = 0.2125 µm/px`. The
+  JPEG2000-compressed OME-TIFF is read with Bioconductor's `RBioFormats` (pure
+  R); **not** vertically flipped (opposite of MERFISH). If `RBioFormats` is
+  missing, the demo is built without the image (coordinates still ship).
+
+# Export to Cerebro (`.crb`)
+
+```r
+library(CerebroNexus)
+exportFromSeurat(
+  object = obj,
+  assay = "Spatial",
+  slot = "data",
+  file = "xenium_mouse_brain.crb",
+  experiment_name = "Xenium mouse brain (CTX+HP)",
+  organism = "mm",
+  groups = c("cluster"),
+  nUMI = "nUMI",
+  nGene = "nGene"
+)
+
+## exportFromSeurat has no image= argument -- the real DAPI morphology channel
+## is injected as a second pass: read the .crb back, attach the image to its
+## spatial slot, re-save.
+crb <- readRDS("xenium_mouse_brain.crb")
+sd <- crb$getSpatialData(crb$availableSpatial()[1])
+sd$histology_image <- img_uri            # base64 PNG data: URI, native orientation
+sd$histology_image_bounds <- img_bounds  # dims * um_per_px, in coordinate space
+crb$addSpatialData(crb$availableSpatial()[1], sd)
+saveRDS(crb, "xenium_mouse_brain.crb")
+```
+
+# Build & launch the Shiny app
+
+```r
+library(CerebroNexus)
+
+crb <- "xenium_mouse_brain.crb"
+
+createShinyApp(
+  cerebro_data = c("Mouse brain (Xenium)" = crb),
+  result_dir   = "my_cerebro_app",
+  launch_browser = FALSE
+)
+
+# Local:
+shiny::runApp("my_cerebro_app")
+
+# shinyapps.io:
+# rsconnect::deployApp(appDir = "my_cerebro_app")
+```
+
+Open the **Spatial** tab and pick "Mouse brain (Xenium)" from the dataset
+switcher.
+
+# Full build code
+
+Produced by `build_xenium()`, one of four functions in
+[`data-raw/build_spatial_demos.R`](https://github.com/duocang/CerebroNexus/blob/master/data-raw/build_spatial_demos.R)
+(shared download/sampling helpers are defined earlier in that file):
+
+```{r code=local({src <- xfun::read_utf8("../data-raw/build_spatial_demos.R"); s <- grep("^## 4\\. 10x Xenium", src); e <- grep("^## run all", src)[1] - 2; src[s:e]})}
+```

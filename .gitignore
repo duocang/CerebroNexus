@@ -31,3 +31,12 @@ data-raw/xenium/
 # stray artifact, never source
 Rplots.pdf
 **/Rplots.pdf
+
+# Rendered in-app tutorials — generated from vignettes/ by
+# scripts/render-tutorials.R at build time (see .github/workflows/R-CMD-check),
+# not tracked. The app serves an empty tutorial hub until they are built.
+inst/shiny/v1.4/www/tutorials/
+# render intermediates left in vignettes/ if a render is interrupted
+vignettes/site_libs/
+vignettes/.tmp_render_*
+vignettes/*.html

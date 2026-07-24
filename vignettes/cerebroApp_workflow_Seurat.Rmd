@@ -1,5 +1,5 @@
 ---
-title: "Introduction to the cerebroApp workflow (Seurat)"
+title: "Introduction to the CerebroNexus workflow (Seurat)"
 author: "Roman Hillje"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
@@ -9,7 +9,7 @@ output:
     self_contained: yes
     mode: selfcontained
 vignette: >
-  %\VignetteIndexEntry{Introduction to the cerebroApp workflow (Seurat)}
+  %\VignetteIndexEntry{Introduction to the CerebroNexus workflow (Seurat)}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -21,13 +21,21 @@ knitr::opts_chunk$set(
 )
 ```
 
+![The interactive Cerebro app your processed data becomes &mdash; the dimensional-reduction view.](figures/app_projection.jpeg)
+
+> **Demo data & source.** This walkthrough uses Seurat's built-in `pbmc_raw`
+> 80-cell example table (`system.file("extdata", "pbmc_raw.txt", package = "Seurat")`).
+> The larger, real public datasets shipped in the app are documented &mdash; with
+> acquire commands and full build code &mdash; in
+> [Demo datasets: sources &amp; processing](demo_datasets.html).
+
 # Overview
 
-The `cerebroApp` package has two main purposes: (1) Give access to the Cerebro user interface, and (2) provide a set of functions to pre-process and export scRNA-seq data for visualization in Cerebro.
+The `CerebroNexus` package has two main purposes: (1) Give access to the Cerebro user interface, and (2) provide a set of functions to pre-process and export scRNA-seq data for visualization in Cerebro.
 The Cerebro user interface was built using the Shiny framework and designed to provide numerous perspectives on a given data set that should facilitate data interpretation.
 This vignette will give you an example of how scRNA-seq data can be processed using the [Seurat](https://satijalab.org/seurat/) toolkit and then exported for visualization in Cerebro.
 
-Ket features that can be accessed through Cerebro:
+Key features that can be accessed through Cerebro:
 
 * Interactive 2D and 3D dimensional reductions.
 * Overview panels for all grouping variables, e.g. samples and clusters.
@@ -40,7 +48,7 @@ Ket features that can be accessed through Cerebro:
 
 # Installation
 
-Before starting the workflow, we need to install `cerebroApp`, as well as the [`Seurat`](https://satijalab.org/seurat/), [`monocle`](https://cole-trapnell-lab.github.io/monocle-release/) and [`SingleR`](https://www.bioconductor.org/packages/release/bioc/html/SingleR.html) packages, which are not installed as dependencies of cerebroApp because they are only necessary if you want/need to pre-process your scRNA-seq data.
+Before starting the workflow, we need to install `CerebroNexus`, as well as the [`Seurat`](https://satijalab.org/seurat/), [`monocle`](https://cole-trapnell-lab.github.io/monocle-release/) and [`SingleR`](https://www.bioconductor.org/packages/release/bioc/html/SingleR.html) packages, which are not installed as dependencies of CerebroNexus because they are only necessary if you want/need to pre-process your scRNA-seq data.
 If you just want to launch the Cerebro user interface, e.g. because you already have the pre-processed data, you don't need those packages.
 
 ```{r installation, message=FALSE, warning=FALSE, eval=FALSE}
@@ -48,7 +56,7 @@ if ( 'BiocManager' %in% installed.packages() == FALSE ) install.packages('BiocMa
 
 library(BiocManager)
 
-if ( 'cerebroApp' %in% installed.packages() == FALSE ) install('romanhaa/cerebroApp')
+if ( 'CerebroNexus' %in% installed.packages() == FALSE ) install('mihem/CerebroNexus')
 if ( 'Seurat' %in% installed.packages() == FALSE ) install('Seurat')
 if ( 'SingleR' %in% installed.packages() == FALSE ) install('SingleR')
 if ( 'monocle' %in% installed.packages() == FALSE ) install('monocle')
@@ -63,7 +71,7 @@ library(dplyr)
 library(Seurat)
 library(SingleR)
 library(monocle)
-library(cerebroApp)
+library(CerebroNexus)
 
 options(width = 100)
 set.seed(1234567)
@@ -189,9 +197,9 @@ seurat@misc$parameters$filtering <- list(
   genes_max = Inf
 )
 
-seurat@misc$technical_info$cerebroApp_version <- utils::packageVersion('cerebroApp')
-seurat@misc$technical_info$Seurat <- utils::packageVersion('Seurat')
 seurat@misc$technical_info <- list(
+  'CerebroNexus' = utils::packageVersion('CerebroNexus'),
+  'Seurat' = utils::packageVersion('Seurat'),
   'R' = capture.output(devtools::session_info())
 )
 ```
@@ -254,9 +262,9 @@ seurat <- BuildClusterTree(
 seurat@misc$trees$cell_type_singler_blueprintencode_main <- seurat@tools$BuildClusterTree
 ```
 
-# cerebroApp functions
+# CerebroNexus functions
 
-Now we use a set of cerebroApp function to get more information about the data set and the contained clusters and cell types.
+Now we use a set of CerebroNexus functions to get more information about the data set and the contained clusters and cell types.
 
 ## Calculate percentage of mitochondrial and ribosomal transcripts
 
@@ -334,7 +342,7 @@ seurat <- performGeneSetEnrichmentAnalysis(
 # Trajectory analysis with Monocle (optional)
 
 Then, we perform trajectory analysis with [Monocle v2](https://cole-trapnell-lab.github.io/monocle-release/) using the previously identified highly variable genes.
-We extract the trajectory from the generated Monocle object with the `extractMonocleTrajectory()` function of cerebroApp and attach it to our Seurat object.
+We extract the trajectory from the generated Monocle object with the `extractMonocleTrajectory()` function of CerebroNexus and attach it to our Seurat object.
 
 ```{r analysis_with_monocle, eval=FALSE}
 monocle <- newCellDataSet(
@@ -356,7 +364,7 @@ seurat <- extractMonocleTrajectory(monocle, seurat, 'highly_variable_genes')
 
 # Export to Cerebro format
 
-Finally, we use the `exportFromSeurat()` function of cerebroApp to export our Seurat object to a `.crb` file which can be loaded into Cerebro.
+Finally, we use the `exportFromSeurat()` function of CerebroNexus to export our Seurat object to a `.crb` file which can be loaded into Cerebro.
 
 ```{r export_data, eval=FALSE}
 exportFromSeurat(

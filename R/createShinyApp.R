@@ -483,6 +483,7 @@ createShinyApp <- function(
     )
 
     shiny::addResourcePath("data", file.path(cerebro_root, "data"))
+    shiny::addResourcePath("cerebro_docs", file.path(cerebro_root, "shiny/v1.4/www/tutorials"))
 
     source(file.path(cerebro_root, "shiny/v1.4/shiny_UI.R"))
     source(file.path(cerebro_root, "shiny/v1.4/shiny_server.R"))

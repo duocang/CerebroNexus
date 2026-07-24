@@ -14,13 +14,25 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
+![The Immune repertoire tab: clonal expansion overlaid on the cell UMAP.](figures/app_immune.jpeg)
+
+> **Demo data & source.** Shown on **`PBMC - Full (T+B)`** (`demo_full_tcr_bcr.crb`),
+> built from the 10x Genomics public dataset *vdj_v1_hs_pbmc3* (Chromium 5' V(D)J).
+> Source, acquire commands and full build code:
+> [Full pipeline: PBMC - Full (T+B)](demo_dataset_pbmc_tcr_bcr.html).
+
 # Overview
 
 CerebroNexus v1.4 introduces a comprehensive **Immune Repertoire** module for
 interactive exploration of T-cell and B-cell receptor clonotype data. The module
-leverages the `scRepertoire` package and supports 19 visualization methods covering
-clonal abundance, diversity, CDR3 properties, gene usage, and cross-sample
-comparisons.
+leverages the `scRepertoire` package and ships **7 visualization tabs** by
+default (9 once ≥ 2 samples are present), covering clonal abundance, diversity,
+homeostasis, BCR isotype, paired comparisons, and clone sharing. A larger set
+of additional analyses (sequence length/AA%/entropy/property/k-mer, gene
+usage, overlap, rarefaction, ...) exists in the module's source but is kept
+disabled by default to keep the tab strip focused — see
+`inst/shiny/v1.4/immune_repertoire/visualizations.R` if you want to re-enable
+any of them in a fork.
 
 The Immune Repertoire tab appears **conditionally** in the sidebar — only when
 the loaded `.crb` file contains TCR or BCR clonotype annotations. The bundled
@@ -139,7 +151,9 @@ The settings panel provides three controls:
 
 - **Clone call**: which clonotype identifier to use for analysis
   (`gene`, `nt`, `aa`, or `strict`)
-- **Group by**: a metadata grouping variable for faceted comparisons
+- **Group results by:** a metadata grouping variable for faceted comparisons
+  (relabelled **Compare by:** on the Paired Scatter/Compare tabs, where it
+  instead picks the two comparison units)
 - **Chain**: filter to TCR chains (TRA, TRB, TRG, TRD), BCR chains
   (IGH, IGK, IGL), or all (`both`)
 
@@ -148,57 +162,41 @@ plot sample selection and multi-sample comparison.
 
 ## Visualization tabs
 
-The module provides 21 tabbed visualizations. Each includes a contextual help
-panel explaining the biological interpretation with example guidance.
+The module provides **7 tabs by default**, plus **2 more once ≥ 2 samples**
+are present (9 total). Each includes a contextual help panel explaining the
+biological interpretation with example guidance.
 
-### Basic repertoire metrics
+### Default tabs (always shown)
 
-- **Abundance**: ranks clonotypes by cell count; steep drop-off indicates
-  oligoclonal dominance
 - **Clonal UMAP**: overlays clone-expansion level
   (Single/Small/Medium/Large/Hyperexpanded) on the cell projection, reusing the
   dataset's UMAP/tSNE coordinates; a Receptor (TCR/BCR) and Projection selector
-  drive it
+  drive it. The default landing tab.
+- **Abundance**: ranks clonotypes by cell count; steep drop-off indicates
+  oligoclonal dominance
 - **Diversity**: Shannon entropy with bootstrap confidence intervals
 - **Homeostasis**: categorizes clonotypes into size classes from Rare to
   Hyperexpanded
-- **Proportion**: cumulative fraction of the repertoire occupied by top-ranked
-  clonotypes
-
-### Sequence properties
-
-- **Length**: CDR3 length distribution; shifts suggest antigen-driven selection
-- **AA %**: positional amino acid composition at each CDR3 position
-- **Entropy**: Shannon entropy at each CDR3 position
-- **Property**: physicochemical profiles (Atchley, Kidera, and other scales)
-- **K-mer**: top recurring short amino acid motifs
-
-### Gene usage
-
-- **Gene usage / vizGenes / percentGenes**: V(D)J gene segment usage
-  frequencies
-- **percentVJ**: V-J gene pairing frequencies
-
-### Cross-sample analysis
-
-When >= 2 samples are present, additional tabs become available:
-- **Compare**: alluvial diagram tracking clonotypes across samples
-- **Overlap**: pairwise clonotype sharing heatmap
-- **Scatter**: clone frequency comparison between two samples
-- **SizeDist**: hierarchical clustering of samples by clone size distribution
-
-### Repertoire structure and sharing
-
-- **Definition**: a clone-definition resolution waterfall counting unique
-  entities at each level (cells, V, J, V+J, CDR3, V+CDR3, V+J+CDR3); the drop
-  from cells to V+J+CDR3 shows how much a stricter definition collapses the
-  repertoire. Optionally faceted by the active group column. For BCR chains a
-  caveat notes that CDR3 is not collapsed by somatic hypermutation
+- **Isotype**: stacked-bar of IgM/IgD/IgG1-4/IgA1-2/IgE proportions per
+  sample or timepoint — a class-switch readout unique to BCR data
+- **Paired Scatter**: compares clonotype frequencies between two comparison
+  units (samples, conditions, cell types, ...); dots off the diagonal are
+  clones expanded or contracted between the two
 - **Clone Sharing**: classifies each clonotype as Private (in a single unit),
   Public within-group, or Public cross-group, using a configurable sharing unit
   (default `sample`); with no group selected it degrades to Private / Shared
 
-### Quality control
+### Cross-sample tabs (shown when ≥ 2 samples are present)
 
-- **Quant**: total unique clonotype count per sample
-- **Rarefaction**: clonotype discovery curves for sequencing saturation assessment
+- **Compare**: alluvial diagram tracking the top clonotypes across samples —
+  ribbons that flow across samples are shared ("public") clones
+- **SizeDist**: hierarchical (Ward) clustering of samples by their clone-size
+  distribution "shape"
+
+### Additional analyses (present in source, disabled by default)
+
+Sequence properties (Length, AA%, Entropy, Property, K-mer), gene usage
+(Gene usage/vizGenes/percentGenes/percentVJ), Scatter, Overlap, the clone-
+Definition waterfall, Quant, and Rarefaction are all implemented and kept
+commented out in `visualizations.R` to keep the default tab strip focused —
+uncomment the relevant `tabPanel(...)` call to re-enable one.

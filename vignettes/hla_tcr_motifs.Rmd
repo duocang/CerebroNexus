@@ -27,6 +27,13 @@ resource_files:
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
+![The HLA &amp; TCR Motifs tab: the TRB CDR3 motif network on antigen-selected T cells.](figures/app_hla.jpeg)
+
+> **Demo data & source.** Shown on **`HLA & TCR`** (`demo_hla_tcr_dextramer.crb`)
+> &mdash; real 10x paired single-cell VDJ + dextramers (Zhang W *et al.*, *Sci Adv*
+> 2021) with the donors' real published HLA genotypes. Source, acquire and full
+> build code: [Full pipeline: HLA & TCR (dextramer)](demo_dataset_hla_tcr_dextramer.html).
+
 # What this guide does
 
 CerebroNexus ships a standalone **HLA & TCR Motifs** page.

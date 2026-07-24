@@ -1,0 +1,77 @@
+<script>
+/* CerebroNexus tutorials — collapsible sections + collapsible code blocks.
+   (The left TOC collapse is native tocify via toc_float: collapsed.) */
+(function () {
+  function ready(fn) {
+    if (document.readyState !== "loading") fn();
+    else document.addEventListener("DOMContentLoaded", fn);
+  }
+  var HEADS = ["H1", "H2", "H3"];
+  function level(el) { return parseInt(el.tagName.substring(1), 10); }
+
+  ready(function () {
+    /* ---- collapsible body sections: click a heading to fold its content ---- */
+    var heads = Array.prototype.slice
+      .call(document.querySelectorAll("h1, h2, h3"))
+      .filter(function (h) {
+        return !h.closest("#TOC") && !h.classList.contains("title");
+      });
+
+    function sectionNodes(h) {
+      /* pandoc wraps sections in <div class="section level*">; fall back to a
+         sibling walk if it did not. */
+      var sec = h.closest(".section");
+      if (sec) {
+        return Array.prototype.filter.call(sec.children, function (c) {
+          return c !== h;
+        });
+      }
+      var lvl = level(h), out = [], n = h.nextElementSibling;
+      while (n) {
+        if (HEADS.indexOf(n.tagName) >= 0 && level(n) <= lvl) break;
+        out.push(n);
+        n = n.nextElementSibling;
+      }
+      return out;
+    }
+
+    heads.forEach(function (h) {
+      /* the fold caret is a CSS ::before pseudo-element (see custom.css) so it
+         is NOT part of the heading text — otherwise tocify copies it into the
+         TOC labels. */
+      h.classList.add("cb-fold-h");
+      h.addEventListener("click", function (e) {
+        if (e.target.tagName === "A") return; /* let links work */
+        var collapsed = h.classList.toggle("cb-collapsed");
+        sectionNodes(h).forEach(function (n) {
+          n.style.display = collapsed ? "none" : "";
+        });
+      });
+    });
+
+    /* ---- collapsible code blocks; auto-collapse long ones (build scripts) --- */
+    var blocks = document.querySelectorAll("pre");
+    Array.prototype.forEach.call(blocks, function (pre) {
+      if (pre.closest("#TOC")) return;
+      var lines = (pre.textContent.match(/\n/g) || []).length + 1;
+      var bar = document.createElement("div");
+      bar.className = "cb-code-toggle";
+      var setLabel = function (open) {
+        bar.innerHTML =
+          '<span class="cb-code-caret">' + (open ? "▾" : "▸") +
+          "</span> code &middot; " + lines + " lines";
+      };
+      var setState = function (open) {
+        pre.style.display = open ? "" : "none";
+        bar.classList.toggle("cb-collapsed", !open);
+        setLabel(open);
+      };
+      pre.parentNode.insertBefore(bar, pre);
+      bar.addEventListener("click", function () {
+        setState(pre.style.display === "none");
+      });
+      setState(lines <= 40); /* long code blocks start collapsed */
+    });
+  });
+})();
+</script>

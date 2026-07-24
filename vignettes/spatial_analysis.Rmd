@@ -18,6 +18,17 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
+![The Spatial tab on the mouse-brain Xenium demo — cells at their physical tissue coordinates, coloured by cluster.](figures/app_spatial.jpeg)
+
+> **Demo data & source.** The screenshot above uses **`Mouse brain (Xenium)`**,
+> one of four real public spatial demos in the app. Each is downloaded,
+> down-sampled and packaged as a `.crb` — with the exact acquire commands and
+> the full build script — on its own page:
+> [10x Visium](demo_dataset_visium.html) ·
+> [Slide-seq v2](demo_dataset_slideseq.html) ·
+> [MERFISH](demo_dataset_merfish.html) ·
+> [10x Xenium](demo_dataset_xenium.html).
+
 # Overview
 
 The **Spatial** tab provides interactive visualization of spatial
@@ -55,6 +66,20 @@ names of `cerebro_data`. When the app runs:
 
 # Visualization panels
 
+![The Spatial tab, annotated. The numbered panels are described below.](figures/app_spatial_annotated.jpeg)
+
+The Spatial tab is laid out like the other projection tabs:
+
+1. **Main parameters** — choose the spatial layer, **plot type**, the variable to
+   **colour cells by**, and the **background image** (histology overlay).
+2. **Additional parameters** — point size, opacity, percentage of cells to show,
+   and group labels (click to expand).
+3. **Group filters** — show or hide individual groups (e.g. specific clusters).
+4. **Projection** — the cells drawn at their physical coordinates, optionally over
+   the tissue image.
+5. **Selection toolbar** — box- or lasso-select cells (this drives the *Selected
+   cells* plot and table below), plus zoom, pan and PNG download.
+
 ## Projection
 
 The main spatial view shows cells positioned at their coordinates, optionally on
@@ -64,19 +89,30 @@ variable. Hover to see cell metadata; zoom and pan via plotly.
 ## Main parameters
 
 - **Spatial data**: which image/FOV to plot when several are present.
-- **Plot type**: `ImageDimPlot` (categorical) or `ImageFeaturePlot` (gene).
-- **Color cells by**: metadata variable used for cell coloring.
+- **Plot type**: `ImageDimPlot` (categorical), `ImageFeaturePlot` (single
+  gene), or `Co-expression (RGB)` (three genes, one per red/green/blue
+  channel, blended per cell).
+- **Color cells by**: metadata variable used for cell coloring
+  (`ImageDimPlot` only).
+- **Feature/Gene** / **Red · Green · Blue channel gene**: gene picker(s) for
+  the other two plot types.
 - **Background image**: histology overlay (only shown when a matching
   `spatial_images` entry exists for the loaded dataset).
-- **Image opacity**: blend factor for the background image.
 
 ## Additional parameters
 
 - **Point size / opacity**: control visual density.
 - **Show % of cells**: randomly downsample for performance.
-- **Point border**: toggle cell outlines.
-- **Color scale**: continuous or categorical color mapping.
-- **Show group label**: overlay group centroids.
+- **Draw border around cells**: toggle cell outlines.
+- **Plot group labels in exported PDF**: adds group-centroid labels to the
+  PDF export only, not the live plot; a second checkbox, **Outline group
+  regions (convex hull)**, draws a hull per group.
+- **Background image block** (shown once a background is selected): **Image
+  opacity**, **Move horizontally/vertically** (slider + numeric box), **Lock
+  aspect ratio** / **Scale (about centre)** or independent **Scale X/Y**,
+  **Rotate (about centre)**, **Flip horizontally/vertically**, **Reset
+  image**, and **Copy alignment as preset** (emits `Cerebro.options` code to
+  ship the hand-tuned alignment as the dataset's default).
 
 ## Group filters
 
@@ -165,7 +201,14 @@ createShinyApp(
 | `spatial_images_flip_y` | named vector/list | `NULL` | Flip the image vertically. `TRUE` mirrors across the horizontal axis. |
 | `spatial_images_scale_x` | named vector/list | `NULL` | Multiplicative X-axis scale (1.0 = no scaling). |
 | `spatial_images_scale_y` | named vector/list | `NULL` | Multiplicative Y-axis scale (1.0 = no scaling). |
+| `spatial_images_offset_x` | named vector/list | `NULL` | Horizontal image offset, in data (coordinate-space) units. |
+| `spatial_images_offset_y` | named vector/list | `NULL` | Vertical image offset, in data (coordinate-space) units. |
 | `spatial_plot_rotation` | named vector/list | `NULL` | Rotation of cell coordinates in degrees (e.g. -90 to 270), for when capture-area and image orientation differ. |
+
+Every one of these ships as the *initial* alignment; a user can still nudge it
+live via the Additional-parameters controls above, and use **Copy alignment
+as preset** to turn a hand-tuned adjustment back into this same parameter
+set.
 
 Entries with no matching dataset name are ignored with a warning rather than
 raising an error, so a typo never blocks app generation. Missing entries default

@@ -46,10 +46,12 @@ For this example, we will store the output in a temporary directory.
 ```{r}
 library(HDF5Array)
 output_dir <- tempdir()
-```# Load existing `.crb` file
+```
+
+# Load existing `.crb` file
 
 Assuming that you have already exported your data set to a `.crb` file using the `exportFromSeurat()` or `exportFromSCE()` functions, we are first going to load that file.
-Here, we use the example data set in the `cerebroApp` package:
+Here, we use the example data set in the `CerebroNexus` package:
 
 ```{r}
 crb_input <- system.file('extdata', 'v1.4', 'example.crb', package = 'CerebroNexus')
@@ -116,7 +118,8 @@ Notably, the `.h5` file is larger than the original matrix we created it from, e
 With the updated `.crb` file and `.h5` file in place, we can launch Cerebro and use it as with any other format of the expression matrix.
 
 ```{r eval=FALSE}
-cerebroApp::launchCerebroV1.3(
+CerebroNexus::launchCerebro(
+  version = "v1.4",
   crb_file_to_load = crb_output,
   expression_matrix_h5 = h5_output
 )

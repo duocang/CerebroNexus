@@ -200,6 +200,19 @@ test_that("the generated app remains self-contained at runtime", {
     collapse = "\n"
   )
 
+  ## Tutorial pages embed user-facing code SAMPLES as HTML (<div class="cb-code">
+  ## library(CerebroNexus) ... </div>). Those are displayed to the reader, never
+  ## executed by the bundle, and `library(CerebroNexus)` is exactly what a user
+  ## runs in their OWN session to export data — correct documentation. Strip the
+  ## code-sample blocks so they don't trip the runtime package-free checks below,
+  ## which target references the bundle would actually resolve at boot.
+  bundled_source <- gsub(
+    "(?s)<div class=\"cb-code\">.*?</div>",
+    "",
+    bundled_source,
+    perl = TRUE
+  )
+
   ## createShinyApp() copies the complete UI/server implementation. The bundle
   ## must therefore boot without resolving the package that created it.
   expect_false(grepl(

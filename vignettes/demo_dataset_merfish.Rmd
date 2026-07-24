@@ -1,0 +1,134 @@
+---
+title: "Demo dataset: Mouse ileum (MERFISH)"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo dataset: Mouse ileum (MERFISH)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+> One of four real spatial-transcriptomics demos, each on a different platform.
+> See [Demo datasets: overview](demo_datasets.html) for the full lineup.
+
+# Overview
+
+| | |
+|---|---|
+| **Technology** | MERFISH (single-cell imaging) |
+| **Organism / tissue** | mouse / ileum |
+| **Source** | Petukhov et al. 2021, via Bioconductor [`MerfishData::MouseIleumPetukhov2021`](https://bioconductor.org/packages/MerfishData) |
+| **License** | Bioconductor `MerfishData` / Petukhov et al. terms |
+| **Used in** | [Spatial](spatial_analysis.html) tab |
+| **Output** | shipped as `inst/extdata/v1.4/demo_spatial_merfish.crb` (~2.0 MB) |
+
+Chosen because it ships a **genuine DAPI tissue mosaic** with cells already in
+DAPI pixel coordinates, so the real image aligns to the points almost 1:1.
+
+# Download raw data
+
+```r
+BiocManager::install("MerfishData")
+spe <- MerfishData::MouseIleumPetukhov2021()   # SpatialExperiment, 241 genes x 5,800 cells
+```
+
+# Process in Seurat
+
+The source is a `SpatialExperiment`, not a Seurat object — it is assembled into
+one, with a proper `FOV` so extraction runs through the same
+`GetTissueCoordinates` path a `LoadVizgen`/`LoadXenium` object would use:
+
+```r
+set.seed(42)
+cd <- as.data.frame(SummarizedExperiment::colData(spe))
+xy <- as.data.frame(SpatialExperiment::spatialCoords(spe))[, c("x", "y")]
+
+## drop the dataset's own discard label
+keep <- colnames(spe)[!is.na(cd$leiden_final) & cd$leiden_final != "Removed"]
+# then stratified down-sample `keep` to <= 5,000 by cd$leiden_final
+
+mat <- SummarizedExperiment::assay(spe, "counts")[, keep]
+obj <- CreateSeuratObject(counts = mat, assay = "Spatial")
+obj$cell_type <- factor(as.character(cd[keep, "leiden_final"]))
+
+cents <- CreateCentroids(as.matrix(xy[keep, c("x", "y")]))
+obj[["fov"]] <- CreateFOV(list(centroids = cents), type = "centroids", assay = "Spatial")
+
+obj <- NormalizeData(obj) |> FindVariableFeatures() |> ScaleData() |>
+  RunPCA(npcs = 30) |> RunUMAP(dims = 1:20)
+```
+
+- **sampling**: `leiden_final == "Removed"` dropped, then ≤ 5,000 stratified by
+  cell type (here 5,000 of 5,800); 241-gene panel kept whole.
+- **cell-type field**: `cell_type` (source `leiden_final` labels — Enterocyte
+  tiers, Goblet, Paneth, Smooth Muscle, Myenteric Plexus, ICC, Telocyte, …).
+- **embedded image**: **real DAPI mosaic** (9392×5721), stored as
+  `histology_image`; **vertically flipped on encode** (`flip_y = TRUE`) — the
+  opposite of Xenium (verified by a brightness test; see `spatial.md`).
+
+# Export to Cerebro (`.crb`)
+
+```r
+library(CerebroNexus)
+exportFromSeurat(
+  object = obj,
+  assay = "Spatial",
+  slot = "data",
+  file = "merfish_mouse_ileum.crb",
+  experiment_name = "MERFISH mouse ileum",
+  organism = "mm",
+  groups = c("cell_type"),
+  nUMI = "nUMI",
+  nGene = "nGene"
+)
+
+## exportFromSeurat has no image= argument -- the real DAPI mosaic is injected
+## as a second pass: read the .crb back, attach the image to its spatial slot,
+## re-save.
+crb <- readRDS("merfish_mouse_ileum.crb")
+sd <- crb$getSpatialData(crb$availableSpatial()[1])
+sd$histology_image <- dapi_uri            # base64 PNG data: URI, flip_y = TRUE
+sd$histology_image_bounds <- dapi_bounds  # list(xmin, xmax, ymin, ymax) in coordinate space
+crb$addSpatialData(crb$availableSpatial()[1], sd)
+saveRDS(crb, "merfish_mouse_ileum.crb")
+```
+
+# Build & launch the Shiny app
+
+```r
+library(CerebroNexus)
+
+crb <- "merfish_mouse_ileum.crb"
+
+createShinyApp(
+  cerebro_data = c("Mouse ileum (MERFISH)" = crb),
+  result_dir   = "my_cerebro_app",
+  launch_browser = FALSE
+)
+
+# Local:
+shiny::runApp("my_cerebro_app")
+
+# shinyapps.io:
+# rsconnect::deployApp(appDir = "my_cerebro_app")
+```
+
+Open the **Spatial** tab and pick "Mouse ileum (MERFISH)" from the dataset
+switcher.
+
+# Full build code
+
+Produced by `build_merfish()`, one of four functions in
+[`data-raw/build_spatial_demos.R`](https://github.com/duocang/CerebroNexus/blob/master/data-raw/build_spatial_demos.R)
+(shared download/sampling helpers are defined earlier in that file):
+
+```{r code=local({src <- xfun::read_utf8("../data-raw/build_spatial_demos.R"); s <- grep("^## 3\\. MERFISH", src); e <- grep("^## 4\\. 10x Xenium", src)[1] - 2; src[s:e]})}
+```

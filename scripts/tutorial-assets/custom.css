@@ -1,0 +1,202 @@
+/* ==========================================================================
+   CerebroNexus tutorial theme — layered on top of the flatly html_document.
+   Console design language: warm paper surfaces, amber accent, generous spacing.
+
+   Tokens aligned with the app's www/custom.css :root so the tutorial pages
+   read as part of the same visual system.
+   ========================================================================== */
+:root {
+  --cb-amber:   #f97316;     /* match app --c-amber */
+  --cb-amber-d: #ea6a0f;     /* --c-amber-600 */
+  --cb-amber-l: #fff7ed;     /* --c-amber-50 tint */
+  --cb-ink:     #1c1c1e;     /* match app --c-text */
+  --cb-text:    #3a3a40;
+  --cb-muted:   #6b6b70;     /* match app --c-text-2 */
+  --cb-border:  #ecebeb;     /* match app --c-border */
+  --cb-border2: #e0e0e0;     /* match app --c-border-2 */
+  --cb-surface: #ffffff;     /* match app --c-surface */
+  --cb-surface2:#f4f4f5;     /* match app --c-surface-2 */
+  --cb-bg:      #f7f7f8;     /* match app --c-bg */
+  --cb-radius:  10px;
+  --cb-shadow:      0 1px 2px rgba(17,17,26,.04),0 1px 3px rgba(17,17,26,.05);
+  --cb-shadow-lift: 0 2px 4px rgba(17,17,26,.04),0 4px 12px rgba(17,17,26,.06);
+  --cb-ease: cubic-bezier(0.16,1,0.3,1);
+  --cb-dur:  0.16s;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  color: var(--cb-text);
+  font-size: 15px;
+  line-height: 1.68;
+  background: var(--cb-bg);
+}
+
+/* ---- Typography ---- */
+h1, h2, h3, h4, h5 { color: var(--cb-ink); font-weight: 700; letter-spacing: -0.012em; }
+h1 { font-size: 28px; }
+h1.title { font-weight: 800; font-size: 30px; }
+.author, .date { color: var(--cb-muted); font-size: 14px; }
+
+h2 { margin-top: 2.4em; padding-bottom: .35em; border-bottom: 2px solid var(--cb-border); }
+h3 { margin-top: 1.8em; }
+
+a { color: var(--cb-amber-d); text-decoration: none; transition: color var(--cb-dur) var(--cb-ease); }
+a:hover, a:focus { color: var(--cb-amber); text-decoration: underline; text-underline-offset: 2px; }
+
+/* numbered sections — warm amber numbers */
+.header-section-number { color: var(--cb-amber); font-weight: 700; margin-right: .45em; }
+
+/* inline code */
+code { color: var(--cb-amber-d); background: var(--cb-amber-l); padding: .15em .45em; border-radius: 4px; font-size: .9em; }
+
+/* code blocks: outer div gets the card styling; inner pre is transparent */
+div.sourceCode {
+  background: var(--cb-surface) !important;
+  border: 1px solid var(--cb-border);
+  border-left: 3px solid var(--cb-amber);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: var(--cb-shadow);
+  color: #1f2937;
+  overflow: auto;
+}
+pre, pre.sourceCode {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  color: #1f2937;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+pre code, pre.sourceCode code { color: #1f2937; background: transparent; padding: 0; }
+pre code .va, pre .va { color: #24292e; }
+pre code .co, pre .co { color: #6a737d; font-style: italic; }
+pre code .cn, pre .cn { color: #6f42c1; }
+pre code .op, pre .op { color: #b45309; }
+
+img { max-width: 100%; border-radius: 8px; }
+blockquote {
+  border-left: 4px solid var(--cb-amber); background: var(--cb-amber-l);
+  color: #7c2d12; padding: 12px 18px; border-radius: 0 8px 8px 0; margin: 18px 0;
+}
+
+/* ---- Tables — console card with clean lines ---- */
+table:not(.sourceCode) {
+  border-collapse: separate; border-spacing: 0;
+  width: auto; max-width: 100%; margin: 18px 0; font-size: 14px;
+  display: block; overflow-x: auto;
+  border: 1px solid var(--cb-border); border-radius: 10px;
+}
+table:not(.sourceCode) th, table:not(.sourceCode) td {
+  padding: 10px 16px; text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--cb-border);
+}
+table:not(.sourceCode) thead th {
+  background: #fafafa; font-weight: 700; color: var(--cb-ink);
+  border-bottom: 2px solid var(--cb-border); font-size: 12px;
+  text-transform: uppercase; letter-spacing: .05em;
+}
+table:not(.sourceCode) tbody tr:last-child td { border-bottom: none; }
+table:not(.sourceCode) tbody tr:nth-child(even) { background: #fafbfd; }
+table:not(.sourceCode) tbody tr:hover { background: var(--cb-amber-l); }
+
+/* ---- Sticky left TOC — console card with transitions ---- */
+.tocify {
+  border: 1px solid var(--cb-border);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: var(--cb-shadow);
+  background: var(--cb-surface);
+}
+.tocify-header { margin: 0; }
+.tocify .tocify-item, .tocify a {
+  color: var(--cb-muted);
+  border: 0;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: background var(--cb-dur) var(--cb-ease), color var(--cb-dur) var(--cb-ease);
+}
+.tocify .tocify-item.active, .tocify li.active > a {
+  background: var(--cb-amber-l) !important;
+  color: var(--cb-amber-d) !important;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--cb-amber);
+}
+.tocify .tocify-item:hover, .tocify a:hover { background: #f8f9fb; color: var(--cb-amber-d); }
+.tocify-subheader .tocify-item { font-size: .92em; }
+
+/* ---- Collapsible sections ---- */
+.cb-fold-h { cursor: pointer; transition: color var(--cb-dur) var(--cb-ease); }
+.cb-fold-h:hover { color: var(--cb-amber); }
+.cb-fold-h::before {
+  content: "\25BE"; /* ▾ — pseudo-element so it stays out of the TOC text */
+  display: inline-block; width: .7em; margin-right: .25em;
+  color: var(--cb-amber); font-size: .7em; vertical-align: middle;
+  transition: transform .15s var(--cb-ease);
+}
+.cb-fold-h.cb-collapsed::before { transform: rotate(-90deg); }
+.cb-fold-h.cb-collapsed::after {
+  content: "collapsed — click to expand";
+  display: inline-block; margin-left: .6em; vertical-align: middle;
+  font-size: 11px; font-weight: 600; letter-spacing: .01em;
+  color: #92400e; background: #fff7ed; border: 1px solid #fed7aa;
+  border-radius: 999px; padding: 2px 10px;
+}
+
+/* ---- Code toggle bar — console chip style with amber hover ---- */
+.cb-code-toggle {
+  cursor: pointer; user-select: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--cb-muted); background: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  border-radius: 7px; padding: 5px 12px; margin: 8px 0 4px;
+  transition: all var(--cb-dur) var(--cb-ease);
+}
+.cb-code-toggle:hover {
+  color: var(--cb-amber-d);
+  border-color: var(--cb-amber);
+  background: var(--cb-amber-l);
+  box-shadow: 0 2px 8px rgba(249,115,22,.1);
+  transform: translateY(-1px);
+}
+.cb-code-toggle:active { transform: translateY(0); }
+.cb-code-toggle .cb-code-caret { color: var(--cb-amber); font-weight: 700; font-size: 12px; }
+
+/* ---- Branded header banner — dark gradient with amber accent ---- */
+.cb-doc-banner {
+  background: linear-gradient(105deg, #1a1a22 0%, #272734 50%, var(--cb-amber-d) 160%);
+  color: #fff; border-radius: 14px; padding: 24px 28px; margin: 8px 0 34px;
+  box-shadow: 0 2px 12px rgba(15,23,42,.08);
+}
+.cb-doc-banner .cb-b-kicker {
+  font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--cb-amber); font-weight: 800;
+}
+.cb-doc-banner .cb-b-sub { color: #cbd5e1; font-size: 13.5px; margin-top: 6px; }
+.cb-pipe { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.cb-pipe .cb-pstep {
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+  color: #e2e8f0; font-size: 12px; font-weight: 600;
+  padding: 5px 14px; border-radius: 999px; white-space: nowrap;
+  transition: all var(--cb-dur) var(--cb-ease);
+}
+.cb-pipe .cb-pstep.on {
+  background: var(--cb-amber); border-color: var(--cb-amber);
+  color: #fff; font-weight: 700;
+}
+.cb-pipe .cb-parrow { color: #64748b; align-self: center; font-size: 13px; flex-shrink: 0; }
+
+/* ---- Responsive ---- */
+@media (max-width: 767px) {
+  .cb-doc-banner { padding: 18px 16px; border-radius: 12px; }
+  .cb-doc-banner .cb-b-sub { font-size: 12px; }
+}

@@ -14,9 +14,6 @@ tab_about <- tabItem(
         actionButton("browser", "browser"),
         tags$script("$('#browser').hide();")
       )
-    ),
-    fluidRow(
-      htmlOutput("about_footer")
     )
   )
 )

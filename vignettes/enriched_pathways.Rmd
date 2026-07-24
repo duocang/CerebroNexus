@@ -18,6 +18,12 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
+![The Enriched pathways tab: per-cluster enrichment tables (KEGG / GO / &hellip;) with p-values and odds ratios.](figures/app_enriched.jpeg)
+
+> **Demo data & source.** Shown on the demo PBMC data set. Dataset sources,
+> acquire commands and build code:
+> [Demo datasets: sources &amp; processing](demo_datasets.html).
+
 # Overview
 
 The **Enriched pathways** tab displays functional enrichment results from
@@ -53,16 +59,23 @@ Columns are auto-detected and formatted:
 
 # Data export
 
-Enrichment results are passed to `exportFromSeurat()` via the
-`enriched_pathways` parameter.
+Enrichment results are computed with `getEnrichedPathways()` (Enrichr) or
+`performGeneSetEnrichmentAnalysis()` (GSVA), which write into
+`object@misc$enriched_pathways[[method]][[group]]` on the Seurat object
+in-place — there is no separate `enriched_pathways=` argument on
+`exportFromSeurat()`; it just picks up whatever is already in `@misc`.
 
 ```{r, eval = FALSE}
-exportFromSeurat(seurat_object,
+seurat_object <- getEnrichedPathways(
+  seurat_object,
+  marker_genes_input = "cerebro_seurat"
+)
+exportFromSeurat(
+  seurat_object,
   file = "my_data.crb",
-  enriched_pathways = list(
-    method = "cerebro_seurat_enrichr",
-    results = enrichment_df
-  )
+  experiment_name = "my_experiment",
+  organism = "hg",
+  groups = c("sample", "cell_type")
 )
 ```
 

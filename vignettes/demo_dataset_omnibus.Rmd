@@ -1,0 +1,148 @@
+---
+title: "Demo dataset: Omnibus (all modalities)"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo dataset: Omnibus (all modalities)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+> See [Demo datasets: overview](demo_datasets.html) for the full lineup.
+
+# Overview
+
+|  |  |
+|---|---|
+| **Technology** | **Fully synthetic** — fabricated in R, no real assay |
+| **Organism / tissue** | hg (declared) / a made-up inflamed-tissue section with infiltrating lymphocytes |
+| **Source** | None. 100% fabricated from `set.seed(20260723)`. |
+| **License** | None required — freely redistributable. |
+| **Used in** | *Every* tab: Projection, Groups, Marker genes, Immune repertoire, HLA & TCR Motifs, Spatial, Trekker, Linked views. |
+| **How to open it** | It ships with CerebroNexus (~0.8 MB) — launch the app and pick **Omnibus (all modalities)** from the data-set selector. Nothing to download or build. |
+
+Unlike every other demo, this one is **not real data**. It exists for two reasons:
+
+1. **Coverage** — a single `.crb` that carries *every* modality the app supports, so you can exercise the whole application from one object instead of switching data sets.
+2. **Coexistence regression test** — it is the only demo carrying **both** a standard `spatial` slot **and** a `trekker` slot, so it guards that the two coexist as their own tiled panels in **Linked views** (see [Spatial and Trekker in one view](#spatial-and-trekker-in-one-view)).
+
+Because the data is fabricated, **no number here is a biological claim**: the HLA
+genotypes, dextramer calls, CDR3 sequences, Moran's I values, and QC metrics
+exist only to drive the app's code paths. The object says so in its own
+`technical_info$tcr_selection_detail`.
+
+# What one object carries
+
+| Modality | How it is fabricated | Tab it lights up |
+|---|---|---|
+| Expression + UMAP / tSNE / PCA | marker-driven Poisson counts (sparse), per-cluster Gaussian embeddings | Projection, Gene expression |
+| Groups | `sample`, `cell_type`, `cluster`, `region`, `dextramer_*`, `restriction_in_genotype` | Groups, Overview |
+| Marker genes | per-cell-type tables (real symbols + synthetic) | Marker genes |
+| TCR immune repertoire | 6 **convergent** CDR3 families (Hamming-1 variants) on the T compartment | Immune repertoire, Linked views (clone axis) |
+| HLA typing | three synthetic donor genotypes (one homozygous, one half-called locus) | HLA & TCR Motifs |
+| Spatial (standard) | three tissue sections, **each with an embedded synthetic H&E** | Spatial, Linked views (spatial panel) |
+| Trekker | a positioned single-cell subset + confidence + per-cell fields + evidence + Moran's I + QC | Trekker |
+
+# Spatial and Trekker in one view
+
+This is the only demo carrying **every** space at once — UMAP, the standard
+spatial map, the Trekker physical map, and the clonal axis — so **Linked views**
+gives each its **own panel** and tiles them to fill the screen: two spaces sit
+side by side, four fall into a 2×2, and three take a rotated-"品" (UMAP centred on
+the left, the other two stacked on the right). Every panel is on screen at once,
+and the linked selection stays keyed on the same cells across all of them, so a
+lasso in the UMAP lights up the same cells in tissue, in the Trekker map, and on
+the clonal axis simultaneously. Colouring by a Trekker field (spatial purity,
+cross-space concordance, position confidence) works alongside the spatial image.
+
+That coexistence is the whole point: because no *real* demo carries both
+modalities at once, this fabricated one is what keeps them from colliding as the
+app changes. (It briefly did collide — until 2026-07-23 a standard spatial map
+silently hid the Trekker one in Linked views; the fix gave Trekker its own panel,
+so both now appear. The dedicated **Spatial** and **Trekker** tabs were never
+affected.)
+
+# Rebuild it yourself (optional)
+
+You don't need to — the `.crb` already ships with the package. But because it is
+100% synthetic, you can regenerate it from scratch with no downloads. From a clone
+of the CerebroNexus repository:
+
+```bash
+Rscript data-raw/build_omnibus_demo.R
+```
+
+The script synthesises every modality deterministically, runs a verification gate
+(shape, sparsity, alignment, three-state restriction column, complete Trekker QC),
+and writes the `.crb` back into the package's own data directory so the rebuilt
+demo replaces the shipped one. (That repo path is where the *package* keeps it; if
+you just want to use the file, see the next section.)
+
+# How each modality is fabricated
+
+The script is linear and commented; the essentials:
+
+**Cells & clusters.** 3,000 cells across 3 synthetic donors, assigned to 7 cell
+types by probability, then to 12 finer clusters (kept 0-based for Trekker).
+
+**Expression.** A gene panel of 175 markers (5 real symbols + synthetic per type)
+plus 400 background genes. A lambda matrix elevates each cell's own-type markers;
+`rpois()` draws counts; library-size-normalised `log1p` is the "data" layer.
+Zeros stay zeros, so the block stays a sparse `dgCMatrix`.
+
+**Projections.** UMAP and tSNE are per-cluster Gaussian blobs (consistent with the
+marker structure by construction); PCA is `prcomp` on the expression block.
+
+**TCR.** Six germline β/α CDR3s each seed a **convergent family** of Hamming-1
+variants — the shape an antigen-selected repertoire has and an unselected one
+lacks, which is why the motif network is legible. Clone sizes follow a power law
+(a few large clones, a long singleton tail).
+
+**HLA.** Three donor genotypes, chosen so one donor is homozygous `A*03:01` and
+one has a half-called HLA-B locus — this is what exercises the three-state
+`restriction_in_genotype` column (`yes` / `no` / `unknown`), the same honesty
+logic the real dextramer demo uses.
+
+**Spatial.** Each donor's cells are laid out in a 2-D tissue by region band, and a
+small synthetic H&E (drawn with `grDevices::png`, eosin blush + haematoxylin
+nuclei) is embedded as a base64 `data:` URI with its coordinate-space bounds.
+Three donors → three histology images, all self-contained.
+
+**Trekker.** A ~70% positioned subset carries physical `x`/`y`, UMAP coordinates,
+0-based clusters, three per-cell fields (`mk_field()` → 0–255 vectors), per-nucleus
+confidence, a handful of synthetic positioning-evidence JPEGs, Moran's I rows, and
+a complete vendor-style QC block (the Trekker page and the Linked-views info modal
+call `.toFixed()` on those QC fields, so all of them must be present).
+
+# Open it in the app
+
+The demo ships with CerebroNexus, so the simplest path is: launch the app and
+choose **Omnibus (all modalities)** from the data-set selector — no file handling
+at all.
+
+If instead you have a `.crb` sitting in your working directory (e.g. one you
+rebuilt above, or your own data set) and want to wrap it into a standalone app,
+point `createShinyApp()` at that local file:
+
+```r
+library(CerebroNexus)
+createShinyApp(
+  # a plain path to wherever YOUR .crb lives — here, the working directory
+  cerebro_data = c("Omnibus (all modalities)" = "demo_omnibus.crb"),
+  result_dir = "cerebro_app"
+)
+shiny::runApp("cerebro_app")
+```
+
+# Full build code
+
+```{r code=xfun::read_utf8('../data-raw/build_omnibus_demo.R')}
+```

@@ -196,6 +196,10 @@ source(
   paste0(Cerebro.options[["cerebro_root"]], "/shiny/v1.4/about/UI.R"),
   local = TRUE
 )
+source(
+  paste0(Cerebro.options[["cerebro_root"]], "/shiny/v1.4/tutorial/UI.R"),
+  local = TRUE
+)
 
 ## Enhanced module UIs.
 source(
@@ -310,6 +314,7 @@ ui <- dashboardPage(
         tabName = "color_management",
         icon = icon("palette")
       ),
+      menuItem("Tutorial", tabName = "tutorial", icon = icon("book")),
       menuItem("About", tabName = "about", icon = icon("at"))
     )
   ),
@@ -358,6 +363,7 @@ ui <- dashboardPage(
       tab_gene_expression,
       tab_gene_id_conversion,
       tab_color_management,
+      tab_tutorial,
       tab_about
     ),
     tags$script(inactivity)

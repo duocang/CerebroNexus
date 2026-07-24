@@ -21,9 +21,10 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 # Overview
 
 CerebroNexus can load **multiple `.crb` files** in a single app. When more
-than one file is supplied to `createShinyApp()`, a **"Select dataset:"**
-switcher appears in the sidebar so users can move between data sets without
-restarting the app. Each data set keeps its own expression data, metadata, and
+than one file is supplied to `createShinyApp()`, a **"Select sample
+dataset"** switcher appears in the **Data info** tab (the app's main panel,
+not the sidebar) so users can move between data sets without restarting the
+app. Each data set keeps its own expression data, metadata, and
 module-specific slots — including the immune repertoire — so conditional tabs
 (such as *Immune Repertoire*) appear or disappear as you switch.
 
@@ -72,7 +73,7 @@ createShinyApp(
 | Mouse ileum (MERFISH)            | spatial (imaging, embedded DAPI) | Spatial |
 | Mouse brain (Xenium)             | spatial (imaging, embedded DAPI) | Spatial |
 
-When the app starts, the sidebar shows a dropdown with these samples. Switching
+When the app starts, the Data info tab shows a dropdown with these samples. Switching
 changes the whole data set — the UMAP, the cell-type composition, and the
 conditional tabs (*Immune Repertoire* / *Trajectory* / *Spatial*), which appear
 only for the data sets that carry that content.

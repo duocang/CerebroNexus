@@ -18,6 +18,14 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
+![The Trajectory tab: a monocle2 DDRTree pseudotime tree coloured by state.](figures/app_trajectory.jpeg)
+
+> **Demo data & source.** Shown on the B-cell subset of **`PBMC - Full (T+B)`**;
+> the monocle2 pseudotime trajectory is computed and stored as documented in
+> [Full pipeline: Trajectory](demo_dataset_trajectory.html). It is
+> *illustrative* of the feature &mdash; peripheral-blood B cells, not a
+> developmental lineage.
+
 # Overview
 
 The **Trajectory** tab provides interactive exploration of pseudotime
@@ -81,13 +89,20 @@ via `extractMonocleTrajectory()` before embedding in the `.crb` file.
 
 ```{r, eval = FALSE}
 library(CerebroNexus)
-traj <- extractMonocleTrajectory(
-  monocle_object,
-  seurat_object = seurat_object
+## extractMonocleTrajectory() returns the SEURAT object with the trajectory
+## embedded in @misc$trajectories$monocle2 -- exportFromSeurat() then picks it
+## up automatically; there is no separate `trajectories=` argument.
+seurat_object <- extractMonocleTrajectory(
+  monocle = monocle_object,
+  seurat = seurat_object,
+  trajectory_name = "trajectory_1"
 )
-exportFromSeurat(seurat_object,
+exportFromSeurat(
+  seurat_object,
   file = "my_data.crb",
-  trajectories = list(monocle2 = traj)
+  experiment_name = "my_experiment",
+  organism = "hg",
+  groups = c("sample", "cell_type")
 )
 ```
 

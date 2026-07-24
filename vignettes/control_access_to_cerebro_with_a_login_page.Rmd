@@ -26,6 +26,12 @@ knitr::opts_chunk$set(
 When hosting Cerebro on a web server, it can be useful to control who has access to it, especially, when it is pre-loaded with a data set (see `vignette('launch_cerebro_with_pre-loaded_data_set')`).
 This can be done with the [`shinymanager`](https://cran.r-project.org/web/packages/shinymanager/index.html) package, however some (minor) adjustments must be made to the source code of Cerebro.
 
+> **Where these files live.** The edits below assume a bundle produced by
+> `createShinyApp()` (see
+> [Create a self-contained Shiny app](create_a_self_contained_shiny_app.html)
+> and [Host on shinyapps.io](host_cerebro_on_shinyapps.html)): `app.R` at the
+> bundle root, `shiny_server.R`/`shiny_UI.R` under `shiny/v1.4/` inside it.
+
 # Preparation
 
 ## `app.R`
@@ -90,9 +96,9 @@ ui <- shinymanager::secure_app(ui)
 
 # Usage
 
-<a target="_blank" href="control_access_to_cerebro_with_a_login_page_files/login_screen.png"><img src="control_access_to_cerebro_with_a_login_page_files/login_screen.png" alt="Login screen" width="100%" height="auto" /></a>
-
-Now, when opening the Cerebro user interface, user have to authenticate themselves as one of the users in the `user_credentials` data frame.
+Now, when opening the Cerebro user interface, `shinymanager` shows a login
+form before anything else loads; users have to authenticate themselves as one
+of the users in the `user_credentials` data frame.
 Of course, the use credentials can also be loaded from a file, which might be easier to manage.
 
 Thanks to Michael Heming from the University of Münster for pointing this possibility out and sharing his implementation.

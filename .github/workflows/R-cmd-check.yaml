@@ -43,6 +43,12 @@ jobs:
       - name: Install R package dependencies
         run: nix-shell default.nix --run "echo 'R package dependencies installed'"
 
+      # The in-app tutorial pages (inst/shiny/v1.4/www/tutorials/) are generated
+      # from vignettes/ and not tracked in git; build them so the checked package
+      # ships the /cerebro_docs guides. Code is not executed, only formatted.
+      - name: Render in-app tutorials
+        run: nix-shell default.nix --run "Rscript scripts/render-tutorials.R"
+
       # Run R CMD check via devtools::check()
       - name: Run R-CMD-check
         run: |

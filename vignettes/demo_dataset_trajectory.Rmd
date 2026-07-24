@@ -1,0 +1,125 @@
+---
+title: "Demo dataset: Trajectory (B-cell maturation)"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo dataset: Trajectory (B-cell maturation)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+> See [Demo datasets: overview](demo_datasets.html) for the full lineup.
+
+# Overview
+
+| | |
+|---|---|
+| **Method** | monocle2, `DDRTree` pseudotime |
+| **Cells** | 915 B cells from [`demo_full_tcr_bcr.crb`](demo_dataset_pbmc_tcr_bcr.html) |
+| **Source** | derived entirely from the PBMC demo — **no new download** |
+| **Used in** | [Trajectory](trajectory_analysis.html) tab |
+| **Output** | overwrites the `trajectory` slot inside `demo_full_tcr_bcr.crb` |
+
+**Not a separate `.crb`.** This is the one demo where "download raw data" is a
+no-op: the trajectory is computed on cells that already live inside the PBMC
+demo and written back into it, so a single dataset ends up demonstrating TCR +
+BCR + trajectory together.
+
+**Honest scope.** These are peripheral-blood B cells, not a bone-marrow
+developmental lineage — the trajectory is *illustrative* of the pseudotime
+feature, not a biological claim about B-cell ontogeny.
+
+# "Download" raw data
+
+None — this step re-reads the already-built `.crb` from the PBMC dataset page:
+
+```r
+crb <- readRDS("pbmc_tcr_bcr.crb")
+```
+
+# Process: subset B cells and run monocle2
+
+```r
+library(monocle)
+
+md <- crb$getMetaData()
+b_idx <- which(md$cell_type == "B cells")
+expr_b <- crb$getExpressionMatrix()[, b_idx, drop = FALSE]
+
+## Already log-normalized -> Gaussian family, not monocle2's default negbinomial
+cds <- newCellDataSet(
+  as(as.matrix(expr_b), "sparseMatrix"),
+  phenoData = new("AnnotatedDataFrame", data = data.frame(cell_barcode = md$cell_barcode[b_idx])),
+  featureData = new("AnnotatedDataFrame", data = data.frame(gene_short_name = rownames(expr_b))),
+  expressionFamily = VGAM::uninormal()
+)
+
+ordering_genes <- names(sort(apply(as.matrix(expr_b), 1, var), decreasing = TRUE))[1:500]
+cds <- setOrderingFilter(cds, ordering_genes)
+cds <- reduceDimension(cds, max_components = 2, reduction_method = "DDRTree",
+                        norm_method = "none", pseudo_expr = 0)
+cds <- orderCells(cds)
+```
+
+- **sampling**: `set.seed(42)`; all 915 B cells kept, no down-sampling.
+- **ordering**: top 500 genes by variance.
+- Two small compatibility shims patch two `monocle2` internal functions that
+  call igraph APIs removed in current igraph (`graph.dfs`/`nei` → `dfs`/`.nei`)
+  — exact drop-in replacements, not a reimplementation of the ordering logic.
+  See the full script below for the patch code and its self-checks.
+
+# Export: write the trajectory back into the `.crb`
+
+No new file — the pseudotime coordinates and the minimum-spanning-tree edges
+are added to the *existing* object's `trajectory` slot and the same `.crb` is
+overwritten:
+
+```r
+crb$addTrajectory(
+  "monocle2",
+  "B_cell_maturation",
+  list(
+    meta  = data.frame(DR_1 = ..., DR_2 = ..., pseudotime = ..., state = ...),
+    edges = data.frame(source = ..., target = ..., source_dim_1 = ..., ...)
+  )
+)
+saveRDS(crb, "pbmc_tcr_bcr.crb")
+```
+
+# Build & launch the Shiny app
+
+Same `.crb` as the [PBMC - Full (T+B)](demo_dataset_pbmc_tcr_bcr.html) demo —
+the trajectory just travels with it:
+
+```r
+library(CerebroNexus)
+
+crb <- "pbmc_tcr_bcr.crb"
+
+createShinyApp(
+  cerebro_data = c("PBMC - Full (T+B)" = crb),
+  result_dir   = "my_cerebro_app",
+  launch_browser = FALSE
+)
+
+# Local:
+shiny::runApp("my_cerebro_app")
+
+# shinyapps.io:
+# rsconnect::deployApp(appDir = "my_cerebro_app")
+```
+
+Open the **Trajectory** tab.
+
+# Full build code
+
+```{r code=xfun::read_utf8('../data-raw/build_trajectory_demo.R')}
+```

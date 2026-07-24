@@ -494,6 +494,10 @@ server <- function(input, output, session) {
     paste0(Cerebro.options[["cerebro_root"]], "/shiny/v1.4/about/server.R"),
     local = TRUE
   )
+  source(
+    paste0(Cerebro.options[["cerebro_root"]], "/shiny/v1.4/tutorial/server.R"),
+    local = TRUE
+  )
   ## Enhanced module servers.
   source(
     paste0(

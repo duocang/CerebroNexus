@@ -1,0 +1,176 @@
+---
+title: "Demo dataset: HLA & TCR (dextramer)"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo dataset: HLA & TCR (dextramer)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+> See [Demo datasets: overview](demo_datasets.html) for the full lineup.
+
+# Overview
+
+| | |
+|---|---|
+| **Technology** | 10x 5′ Immune Profiling — paired αβ V(D)J + gene expression + TotalSeq-C + dCODE pMHC **dextramers**. Real single cells. |
+| **Organism / tissue** | human / peripheral-blood CD8+ T cells, four healthy donors |
+| **Source** | 10x Genomics *CD8+ T cells of Healthy Donor 1–4* (2019); Zhang W et al., *Sci Adv* 7(20):eabf5835 (2021), [doi:10.1126/sciadv.abf5835](https://doi.org/10.1126/sciadv.abf5835) |
+| **License** | CC BY 4.0 (10x Genomics datasets) |
+| **Used in** | [HLA & TCR motifs](hla_tcr_motifs.html) tab · [HLA & TCR motifs](hla_tcr_motifs.html) and [Antigen-selected TCRs](hla_tcr_antigen_selected.html) tutorials |
+| **Output** | shipped as `inst/extdata/v1.4/demo_hla_tcr_dextramer.crb` (~5.2 MB) |
+
+**HLA typing is real, `genotyped`** — the donors' published haplotypes (paper
+table S1), kept inline in the build script; carrier/non-carrier contrasts are
+therefore real comparisons, not artefacts of the sorting.
+
+**Honest caveats** (all declared in the `.crb` and surfaced in the app): the
+repertoire is **antigen-selected** (`tcr_selection = "antigen-selected"`), so
+which receptors are present was decided by the reagent panel; the
+`dextramer_*` columns are **raw binder calls, not specificity**, so a
+`restriction_in_genotype` column (yes / no / unknown) ships to make that noise
+colourable. No HLA-association claim rests on the binder calls — the
+carrier/non-carrier contrasts use the published genotypes. Full reasoning:
+[`data-raw/DATASETS.md`](https://github.com/duocang/CerebroNexus/blob/master/data-raw/DATASETS.md).
+
+# Download raw data
+
+The build script downloads ~1.6 GB on demand and caches it; the manual
+equivalent, all four donors:
+
+```bash
+base=https://cf.10xgenomics.com/samples/cell-vdj/3.0.2
+cache=data-raw/vdj_10x_dextramer
+mkdir -p "$cache"
+for d in 1 2 3 4; do
+  stem="vdj_v1_hs_aggregated_donor${d}"
+  for f in _all_contig_annotations.csv _binarized_matrix.csv _filtered_feature_bc_matrix.tar.gz; do
+    curl -fL --retry 5 -C - -o "${cache}/${stem}${f}" "${base}/${stem}/${stem}${f}"
+  done
+  mkdir -p "${cache}/${stem}_gex"
+  tar xzf "${cache}/${stem}_filtered_feature_bc_matrix.tar.gz" -C "${cache}/${stem}_gex"
+done
+```
+
+# Process: clonotypes, dextramer calls, cell selection
+
+The build script narrates its own stages (`cat()` progress markers) — this is
+that pipeline, one donor's contribution at a time, then pooled:
+
+```r
+## 2. TCR contigs -> clonotypes (scRepertoire, per donor)
+tcr_by_donor <- lapply(donors, function(d) combineTCR(loadContigs(contigs[[d]], format = "10X")))
+
+## 3. dextramer binder calls: TotalSeq-C ADT matrix -> per-cell binder assignment
+##    (a cell "binds" a dextramer if its ADT count clears the binarization threshold)
+
+## 4. cell selection: keep only cells with BOTH chains resolved AND exactly one
+##    dextramer bound; deterministic subsample to 3,000 cells x 4 donors
+set.seed(20260721)
+
+## 5. expression + UMAP: NormalizeData -> FindVariableFeatures -> ScaleData ->
+##    RunPCA -> RunUMAP, matrix cut to 2,000 variable genes, kept sparse
+```
+
+- **sampling**: cells kept only if a clonotype has **both** chains resolved
+  **and** binds exactly **one** dextramer; deterministically subsampled to
+  3,000 cells × 4 donors = **12,000 cells** (`set.seed(20260721)`); matrix cut
+  to 2,000 variable genes, kept **sparse**.
+
+# Assemble the Cerebro object & export to `.crb`
+
+This dataset is assembled directly on the `Cerebro_v1.3` object rather than via
+`exportFromSeurat()` — the groups the app can colour / filter by are the same
+kind of thing `groups=` would carry, just set as a plain list:
+
+```r
+crb <- Cerebro_v1.3$new()
+crb$expression <- expression
+crb$setMetaData(meta)
+crb$projections <- list(umap = umap)
+crb$groups <- list(
+  sample = sort(unique(meta$sample)),
+  cell_type = sort(unique(meta$cell_type)),
+  dextramer_antigen = sort(unique(meta$dextramer_antigen)),
+  dextramer_allele = sort(unique(meta$dextramer_allele)),
+  restriction_in_genotype = sort(unique(meta$restriction_in_genotype))
+)
+crb$immune_repertoire <- immune_repertoire
+crb$technical_info <- list(
+  observation_unit = "cell",
+  receptor_key = "v_gene+cdr3",
+  tcr_selection = "antigen-selected",
+  lineage_column = "cell_type"     # declared so the app never has to guess
+)
+crb$addHLATyping(
+  donor_typing,
+  source_type = "genotyped",
+  typing_method = "HLA typing published in table S1 of Zhang et al., Sci Adv 2021",
+  source_reference = "10x Genomics CD8+ T cells of Healthy Donor 1-4; Zhang et al., Sci Adv 2021, eabf5835"
+)
+
+## Verification is a GATE, not a report: written to a staging path, re-read,
+## re-measured with the package's own motif core, and every number asserted
+## before the staged file publishes as the real output.
+staged <- paste0("hla_tcr_dextramer.crb", ".staged")
+saveRDS(crb, staged, compress = "xz")
+# ... re-read `staged`, assert cell counts / HLA coverage / donor balance ...
+file.rename(staged, "hla_tcr_dextramer.crb")
+```
+
+- **cell-type field**: `cell_type` — declared explicitly as `lineage_column` in
+  `technical_info` so the app never has to guess which grouping column holds
+  it.
+- **groups**: `sample`, `cell_type`, `dextramer_antigen`, `dextramer_allele`,
+  `restriction_in_genotype` — the last three exist only on this dataset (the
+  dextramer/genotype axes), which is what makes the carrier-contrast analysis
+  possible.
+
+# Build & launch the Shiny app
+
+```r
+library(CerebroNexus)
+
+crb <- "hla_tcr_dextramer.crb"
+
+createShinyApp(
+  cerebro_data = c("HLA & TCR" = crb),
+  result_dir   = "my_cerebro_app",
+  launch_browser = FALSE
+)
+
+# Local:
+shiny::runApp("my_cerebro_app")
+
+# shinyapps.io:
+# rsconnect::deployApp(appDir = "my_cerebro_app")
+```
+
+Open the **HLA & TCR Motifs** tab and pick "HLA & TCR" from the dataset
+switcher.
+
+# Full build code
+
+The verification block is a **gate, not a report**: the object is written to a
+staging path, re-read, re-measured with the package's own motif core, and
+every number asserted before `file.rename()` publishes it:
+
+```{r code=xfun::read_utf8('../data-raw/build_hla_tcr_dextramer_demo.R')}
+```
+
+> **Two HLA demos were removed** (2026-07-21), not kept for coverage — a fully
+> **synthetic** fixture and a **real bulk** TCRβ cohort — because neither is
+> both real *and* single-cell. Their build scripts remain in `data-raw/`
+> (`build_hla_tcr_demo.R`, `build_hla_tcr_bulk_demo.R`) and the bulk workflow
+> now lives in the
+> [HLA associations on bulk TCRβ](hla_bulk_tcr_associations.html)
+> bring-your-own-cohort guide.

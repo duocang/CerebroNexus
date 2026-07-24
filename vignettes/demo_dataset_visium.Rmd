@@ -1,0 +1,119 @@
+---
+title: "Demo dataset: Mouse brain (10x Visium)"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Demo dataset: Mouse brain (10x Visium)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
+```
+
+> One of four real spatial-transcriptomics demos, each on a different platform.
+> See [Demo datasets: overview](demo_datasets.html) for the full lineup.
+
+# Overview
+
+| | |
+|---|---|
+| **Technology** | 10x Visium (spot, 55 µm) |
+| **Organism / tissue** | mouse / brain, sagittal anterior section |
+| **Source** | 10x Genomics Visium Mouse Brain (Sagittal Anterior), via `stxBrain.SeuratData` |
+| **License** | 10x Genomics public dataset terms (freely redistributable) |
+| **Used in** | [Spatial](spatial_analysis.html) tab · [Linked views](../) |
+| **Output** | shipped as `inst/extdata/v1.4/demo_spatial_visium.crb` (~6.1 MB) + `demo_spatial_visium_he.png` (~0.5 MB) |
+
+This is the deliberate live example of the **external-image** path: unlike the
+other three spatial demos, the histology image is written to a standalone PNG
+and loaded via `spatial_images` in `inst/app.R`, not embedded in the `.crb`.
+
+# Download raw data
+
+```r
+install.packages("SeuratData")   # or remotes::install_github("satijalab/seurat-data")
+SeuratData::InstallData("stxBrain")
+obj <- SeuratData::LoadData("stxBrain", type = "anterior1")
+```
+
+# Process in Seurat
+
+The loaded object is already a Seurat `VisiumV2` object (Seurat 5). The source
+ships no cell-type labels, so a Louvain clustering becomes the `cell-type`
+field:
+
+```r
+set.seed(42)
+assay <- "Spatial"
+obj <- NormalizeData(obj, assay = assay) |>
+  FindVariableFeatures(assay = assay, nfeatures = 2000) |>
+  ScaleData(assay = assay) |>
+  RunPCA(assay = assay, npcs = 30) |>
+  RunUMAP(dims = 1:20) |>
+  FindNeighbors(dims = 1:20) |>
+  FindClusters(resolution = 0.5)
+obj$cluster <- factor(paste0("C", as.integer(obj$seurat_clusters)))
+```
+
+- **sampling**: ≤ 5,000 spots stratified by cluster (here 2,696 spots, the full
+  anterior1 section); expression trimmed to 1,200 genes (variable + top-expressed)
+  to keep the `.crb` small.
+- **cell-type field**: `cluster` (`FindClusters(resolution = 0.5)`).
+- **embedded image**: **none — an EXTERNAL image instead.** The real low-res H&E
+  (599×600×3) is written to `demo_spatial_visium_he.png` and loaded via
+  `spatial_images` in `inst/app.R`, displayed with `spatial_images_flip_y = TRUE`.
+
+# Export to Cerebro (`.crb`)
+
+```r
+library(CerebroNexus)
+exportFromSeurat(
+  object = obj,
+  assay = "Spatial",
+  slot = "data",
+  file = "visium_mouse_brain.crb",
+  experiment_name = "Visium mouse brain (anterior)",
+  organism = "mm",
+  groups = c("cluster"),
+  nUMI = "nUMI",
+  nGene = "nGene"
+)
+```
+
+# Build & launch the Shiny app
+
+```r
+library(CerebroNexus)
+
+crb <- "visium_mouse_brain.crb"
+
+createShinyApp(
+  cerebro_data = c("Mouse brain (Visium)" = crb),
+  result_dir   = "my_cerebro_app",
+  launch_browser = FALSE
+)
+
+# Local:
+shiny::runApp("my_cerebro_app")
+
+# shinyapps.io:
+# rsconnect::deployApp(appDir = "my_cerebro_app")
+```
+
+Open the **Spatial** tab and pick "Mouse brain (Visium)" from the dataset
+switcher.
+
+# Full build code
+
+Produced by `build_visium()`, one of four functions in
+[`data-raw/build_spatial_demos.R`](https://github.com/duocang/CerebroNexus/blob/master/data-raw/build_spatial_demos.R)
+(shared download/sampling helpers are defined earlier in that file):
+
+```{r code=local({src <- xfun::read_utf8("../data-raw/build_spatial_demos.R"); s <- grep("^## 1\\. 10x Visium", src); e <- grep("^## 2\\. Slide-seq", src)[1] - 2; src[s:e]})}
+```

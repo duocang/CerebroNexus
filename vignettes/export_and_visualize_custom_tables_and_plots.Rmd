@@ -103,7 +103,6 @@ You can see that among the marker gene results is the `custom_method` and `custo
 
 Then, after loading the data into Cerebro, we will see this:
 
-<a target="_blank" href="export_and_visualize_custom_tables_and_plots_files/table_marker_genes.png"><img src="export_and_visualize_custom_tables_and_plots_files/table_marker_genes.png" alt="Custom marker gene table in Cerebro" width="100%" height="auto" /></a>
 
 Granted, this isn't a very pretty table, but you get the idea.
 
@@ -173,7 +172,6 @@ extra material:
 
 This time, you see that our table with the name "test" was exported as part of the extra material. In Cerebro, when a data set contains extra material, a tab will appear in the side bar which will give you access to the table, as shown in the screenshot:
 
-<a target="_blank" href="export_and_visualize_custom_tables_and_plots_files/table_extra_material.png"><img src="export_and_visualize_custom_tables_and_plots_files/table_extra_material.png" alt="Custom table as extra material in Cerebro" width="100%" height="auto" /></a>
 
 Again, this table isn't particularly informative, but hopefully you got an idea of the procedure.
 
@@ -246,7 +244,6 @@ In the log messages of the export process, we see that the plot was correctly ex
 
 In Cerebro, we can now access this table in the "Extra material" tab through the "plots" category.
 
-<a target="_blank" href="export_and_visualize_custom_tables_and_plots_files/plot_extra_material_1.png"><img src="export_and_visualize_custom_tables_and_plots_files/plot_extra_material_1.png" alt="Custom plot as extra material in Cerebro" width="100%" height="auto" /></a>
 
 ## Example #2
 
@@ -400,8 +397,6 @@ extra material:
 
 Shown in the first screenshot is the interactive version of the plot:
 
-<a target="_blank" href="export_and_visualize_custom_tables_and_plots_files/plot_extra_material_2_interactive.png"><img src="export_and_visualize_custom_tables_and_plots_files/plot_extra_material_2_interactive.png" alt="Custom plot as extra material in Cerebro" width="100%" height="auto" /></a>
 
 We notice that the legend for the dot size is missing. In cases where the plot isn't shown correctly (conversion with plotly works well but not always perfectly), you can switch of interactivity and see the plain, unmodified plot:
 
-<a target="_blank" href="export_and_visualize_custom_tables_and_plots_files/plot_extra_material_2_plain.png"><img src="export_and_visualize_custom_tables_and_plots_files/plot_extra_material_2_plain.png" alt="Custom plot as extra material in Cerebro" width="100%" height="auto" /></a>
