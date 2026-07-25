@@ -85,6 +85,21 @@ cerebro_www_prefix <- local({
   )
 })
 
+## Content-hashed URL for a registered asset: append ?v=<md5> so a redeployed
+## app at the same address cannot keep serving a stale cached file. The token
+## changes exactly when the file's bytes change — which is when the browser must
+## refetch. (The per-directory prefix only prevents same-process path
+## collisions; the path is identical across versions, so it does nothing for
+## cross-version caching.)
+cerebro_asset_url <- function(file) {
+  url <- paste0(cerebro_www_prefix, "/", file)
+  ver <- tryCatch(
+    unname(tools::md5sum(file.path(cerebro_www_dir, file))),
+    error = function(e) NA_character_
+  )
+  if (is.na(ver)) url else paste0(url, "?v=", substr(ver, 1, 10))
+}
+
 ## Emit a <link>/<script> for a www asset, or — when registration was
 ## unavailable — inline the file contents so the page still works instead of
 ## 404-ing. This is the fallback the previous cerebro_asset() described in a
@@ -94,7 +109,7 @@ cerebro_css <- function(file) {
     tags$link(
       rel = "stylesheet",
       type = "text/css",
-      href = paste0(cerebro_www_prefix, "/", file)
+      href = cerebro_asset_url(file)
     )
   } else {
     tags$style(HTML(cerebro_read_file(file.path(cerebro_www_dir, file))))
@@ -102,7 +117,7 @@ cerebro_css <- function(file) {
 }
 cerebro_js <- function(file, defer = FALSE) {
   if (!is.null(cerebro_www_prefix)) {
-    src <- paste0(cerebro_www_prefix, "/", file)
+    src <- cerebro_asset_url(file)
     if (defer) tags$script(defer = NA, src = src) else tags$script(src = src)
   } else {
     tags$script(HTML(cerebro_read_file(file.path(cerebro_www_dir, file))))
