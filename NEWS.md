@@ -20,11 +20,14 @@
   namespace load); the package is loaded lazily on the first repertoire
   calculation, i.e. only when a plot is actually drawn. Repertoire figures are
   unchanged — they are still computed by `scRepertoire`.
-- **Background prewarm.** After the first flush, `scRepertoire`'s dependencies
-  are loaded in the background one per event-loop tick (yielding between each),
-  so the load does not block startup or freeze other tabs in one long stretch.
-  By the time a repertoire plot is opened it is usually already loaded: the first
-  Homeostasis plot drops from ~4.5s (cold) to ~0.75s.
+- **True lazy loading — no background prewarm.** `scRepertoire` is loaded only
+  when the first repertoire plot is actually drawn. There is intentionally no
+  background prewarm: `later::later()` is cooperative scheduling on Shiny's
+  single R thread, so loading the ~90-package tree "in the background" would
+  still block the event loop and freeze every session in the process for
+  several seconds. The trade-off is explicit and honest — app startup never
+  pays for `scRepertoire`, and a repertoire user waits once (a few seconds) on
+  their first plot, after which it stays warm for the rest of the session.
 - **Heavy dependencies load on demand.** All dependencies stay mandatory, so a
   standard install gives every feature out of the box; heavy packages
   (`scRepertoire`, `GSVA`, `biomaRt`, `httr`, `qvalue`, `future.apply`,

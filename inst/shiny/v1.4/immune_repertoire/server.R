@@ -15,49 +15,42 @@ has_scRepertoire <- function() {
   nzchar(system.file(package = "scRepertoire"))
 }
 
-## ---- Background prewarm of scRepertoire -------------------------------- ##
-## Startup stays cheap (has_scRepertoire uses system.file, no namespace load),
-## but rather than make the user wait the full ~4s scRepertoire load on their
-## first repertoire plot, we prewarm the namespaces in the background AFTER the
-## first flush. Loading scRepertoire in one call would block the single R thread
-## for ~4s; instead we load its recursive dependencies ONE PER EVENT-LOOP TICK,
-## yielding to the loop between each, so no single stretch blocks for long and
-## other tabs stay responsive while it warms. By the time a repertoire plot is
-## opened, scRepertoire is usually already loaded and renders like a warm one.
-## Idempotent and process-global: the option guard runs it once per R process;
-## already-loaded namespaces are skipped, so it is a no-op once warm.
-ir_prewarm_scRepertoire <- function() {
-  if (isTRUE(getOption("cerebro.ir_prewarmed"))) {
-    return(invisible())
-  }
-  if (!nzchar(system.file(package = "scRepertoire"))) {
-    return(invisible())
-  }
-  options(cerebro.ir_prewarmed = TRUE)
-  deps <- tryCatch(
-    tools::package_dependencies(
-      "scRepertoire",
-      db = utils::installed.packages(), # local DB — never contact CRAN
-      recursive = TRUE,
-      which = c("Depends", "Imports", "LinkingTo")
-    )[[1]],
-    error = function(e) character(0)
+## ---- Lazy-load boundary ------------------------------------------------ ##
+## scRepertoire is loaded lazily: the first scRepertoire::fn() call inside a
+## plot renderer triggers loadNamespace() (~8s, ~90 packages). We deliberately
+## do NOT prewarm it in the background — later::later() is cooperative
+## scheduling on Shiny's single R thread, so a "background" loadNamespace()
+## still blocks the event loop and freezes every session sharing the process.
+## Startup therefore never loads scRepertoire; a repertoire user instead pays a
+## predictable one-time load on their first plot.
+##
+## req_scRepertoire() gates every repertoire renderer. It cheaply confirms the
+## package is installed (system.file, no namespace load), then forces the
+## idempotent namespace load HERE so a broken or partial install surfaces as an
+## explicit, useful message inside the plot box — rather than an opaque error
+## from deep inside a scRepertoire call, or a full UI that only fails when a
+## renderer runs (system.file alone cannot detect a missing transitive
+## dependency, incompatible binary, failed .onLoad, or corrupt lazy-load DB).
+## The settings and tab gates keep using the cheap has_scRepertoire() probe so
+## the first flush stays free of any namespace load.
+req_scRepertoire <- function() {
+  req(has_scRepertoire())
+  loaded <- tryCatch(
+    {
+      loadNamespace("scRepertoire")
+      TRUE
+    },
+    error = function(e) conditionMessage(e)
   )
-  queue <- setdiff(c(deps, "scRepertoire"), loadedNamespaces())
-  step <- function() {
-    if (!length(queue)) {
-      return(invisible())
-    }
-    pkg <- queue[[1]]
-    queue <<- queue[-1]
-    try(loadNamespace(pkg), silent = TRUE)
-    later::later(step, 0) # yield to the event loop, then load the next one
-  }
-  later::later(step, 1) # start ~1s after the first flush
+  validate(need(
+    isTRUE(loaded),
+    paste0(
+      "scRepertoire is installed but could not be loaded",
+      if (is.character(loaded)) paste0(": ", loaded) else "",
+      ". Please reinstall it and its dependencies."
+    )
+  ))
 }
-
-## Kick off once per process, after the session's first flush has rendered.
-ir_prewarm_scRepertoire()
 
 ## ---- Missing-dependency notice ---------------------------------------- ##
 ## scRepertoire is a mandatory dependency, so a standard install always has it;

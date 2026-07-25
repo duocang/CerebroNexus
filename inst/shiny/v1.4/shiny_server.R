@@ -737,6 +737,11 @@ server <- function(input, output, session) {
       } else {
         expression_projection_expression_levels()
       }
-    }
+    },
+    ## Lazy-load regression guard: app startup must NOT load scRepertoire. Its
+    ## ~90-package tree is exactly what deferred loading avoids, so if this is
+    ## TRUE at startup the settings/tab gates have regressed into eager loading.
+    ## Only a real repertoire plot render should pull scRepertoire in.
+    scRepertoire_loaded = "scRepertoire" %in% loadedNamespaces()
   )
 }

@@ -266,6 +266,25 @@ test_that("{shinytest2} recording: marker_genes", {
 })
 
 
+test_that("app startup does not eagerly load scRepertoire", {
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "no_screp_at_startup",
+    height = 950,
+    width = 1619
+  )
+  app$wait_for_idle(timeout = 20000)
+
+  ## Deferred-loading contract: the IR settings render on the first flush
+  ## (suspendWhenHidden = FALSE), but startup must probe availability with
+  ## system.file() only and never load the ~90-package scRepertoire tree. Only a
+  ## real repertoire plot render is allowed to pull it in, so at a fresh startup
+  ## with no repertoire tab opened the namespace must be absent.
+  expect_false(isTRUE(app$get_value(export = "scRepertoire_loaded")))
+  app$stop()
+})
+
 test_that("{shinytest2} recording: gene_expression", {
   local_app_support(inst_dir)
   app <- AppDriver$new(
