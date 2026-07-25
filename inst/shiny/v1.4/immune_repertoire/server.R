@@ -2,15 +2,18 @@
 ## Tab: Immune Repertoire server — entry point
 ##----------------------------------------------------------------------------##
 
-## Availability check WITHOUT loading the namespace. requireNamespace() would
-## attach scRepertoire and, through its Imports (SingleCellExperiment,
-## SummarizedExperiment, S4Vectors, Seurat, iNEXT, ...), drag in ~90 packages
-## and ~5s of lazyLoadDBfetch. Because the IR settings outputs are
+## Availability check WITHOUT loading the namespace. Loading scRepertoire's
+## namespace (its .onLoad, plus Imports: SingleCellExperiment,
+## SummarizedExperiment, S4Vectors, Seurat, iNEXT, ...) drags in ~90 packages
+## and several seconds of lazyLoadDBfetch — note this is loadNamespace, not
+## attaching it to the search path. Because the IR settings outputs are
 ## suspendWhenHidden = FALSE, they render on the very first flush and used to
-## pay that cost at startup even when the user never opens the tab. system.file()
+## pay that cost at startup even when the user never opened the tab. system.file()
 ## only resolves the package directory on disk — no .onLoad, no dependency
 ## cascade — so startup stays cheap. The real load happens lazily on the first
-## scRepertoire::fn() call, i.e. when a plot is actually computed.
+## scRepertoire::fn() call, i.e. the first scRepertoire-backed plot; self-made
+## IR plots (Clone Sharing, Definition) and the default Clonal UMAP never
+## trigger it.
 has_scRepertoire <- function() {
   nzchar(system.file(package = "scRepertoire"))
 }

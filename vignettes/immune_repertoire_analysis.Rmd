@@ -51,14 +51,17 @@ per-cell clonotype annotations. CerebroNexus depends on it as a mandatory
 BiocManager::install("scRepertoire")
 ```
 
-Because attaching `scRepertoire` pulls in a large dependency tree (~90 packages
-and several seconds of loading), CerebroNexus does **not** load it at app
-startup. Availability is probed cheaply with `system.file()`, and the namespace
-is loaded lazily on the first repertoire calculation — that is, the first time
-you actually draw a repertoire plot. That first plot therefore pays a one-time
-load of several seconds; every plot afterwards in the same session is warm. There
-is no background prewarm (it cannot be made non-blocking on Shiny's single R
-thread). Repertoire figures are still computed by `scRepertoire` — only the
+Because loading `scRepertoire`'s namespace pulls in a large dependency tree
+(~90 packages and several seconds of `lazyLoadDBfetch`), CerebroNexus does
+**not** load it at app startup. Availability is probed cheaply with
+`system.file()`, and the namespace is loaded lazily on the first
+*scRepertoire-backed* plot — self-made plots (Clone Sharing, Definition) and the
+default Clonal UMAP do not need it and never trigger the load. That first
+scRepertoire plot therefore pays a one-time load of several seconds; because a
+namespace is process-wide, every plot afterwards is warm for every session
+sharing that R worker (and that first load briefly blocks those other sessions).
+There is no background prewarm — it cannot be made non-blocking on Shiny's single
+R thread. Repertoire figures are still computed by `scRepertoire`; only the
 timing of the load changed.
 
 The full scRepertoire workflow is documented in its vignettes —

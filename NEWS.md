@@ -17,25 +17,36 @@
   `scRepertoire` — and, through its imports, ~90 packages and several seconds of
   `lazyLoadDBfetch` — to load at startup even when the tab was never opened.
   Availability is now probed with `system.file()` (a disk-path lookup, no
-  namespace load); the package is loaded lazily on the first repertoire
-  calculation, i.e. only when a plot is actually drawn. Repertoire figures are
-  unchanged — they are still computed by `scRepertoire`.
+  namespace load); the namespace is loaded lazily on the first
+  scRepertoire-backed plot — self-made plots (Clone Sharing, Definition) and the
+  default Clonal UMAP never trigger it. Repertoire figures are unchanged — they
+  are still computed by `scRepertoire`.
 - **True lazy loading — no background prewarm.** `scRepertoire` is loaded only
-  when the first repertoire plot is actually drawn. There is intentionally no
+  when the first scRepertoire-backed plot is drawn. There is intentionally no
   background prewarm: `later::later()` is cooperative scheduling on Shiny's
   single R thread, so loading the ~90-package tree "in the background" would
   still block the event loop and freeze every session in the process for
   several seconds. The trade-off is explicit and honest — app startup never
   pays for `scRepertoire`, and a repertoire user waits once (several seconds —
-  the full namespace load) on their first plot, after which it stays warm for
-  the rest of the session.
+  the full namespace load) on their first scRepertoire plot. Because a namespace
+  is process-wide, it then stays warm for every session in that R worker (not
+  only the one that triggered it — which also means that first load briefly
+  blocks the other sessions sharing the process). Measured: startup drops ~50%
+  (median 8.2 s → 4.0 s) while the first Abundance plot rises correspondingly
+  (1.4 s → 5.2 s), so the two roughly cancel — the cost is moved off startup,
+  not removed.
 - **Heavy dependencies load on demand.** All dependencies stay mandatory, so a
   standard install gives every feature out of the box; other heavy packages
   (`GSVA`, `biomaRt`, `httr`, `qvalue`, `future.apply`, `pbapply`) are accessed
   via `requireNamespace()` and loaded only when the feature that needs them is
   first used, not at package/app startup. (`scRepertoire` is loaded the same
-  way — see above.) Dropped the genuinely unused `ape`, `readr`, and `viridis`,
-  and synced the nix environment.
+  way — see above.) Dropped the genuinely unused `ape` and `readr`, and synced
+  the nix environment. `viridis` is also no longer a dependency, but that was a
+  *substitution*, not removal of dead code: the two `viridis::scale_fill_viridis()`
+  calls became `ggplot2::scale_fill_viridis_c()` (the same viridis palette via
+  viridisLite). The continuous interpolation differs very slightly — the palette
+  midpoint shifts `#21908D` → `#2B9089` — so expression colour maps are
+  near-identical but not byte-for-byte.
 - **Cached static assets and single projection-engine load.** Static UI assets
   are now cached and the shared projection engine is loaded once rather than per
   tab, reducing repeated work on startup and tab switches.
