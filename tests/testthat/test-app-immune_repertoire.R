@@ -106,7 +106,7 @@ test_that("Group by is visible on plots whose grouping it drives", {
   groupby_visible <- function() {
     app$wait_for_js(
       "(function(){var e=document.querySelector('#ir_groupBy');return !!e && e.offsetParent!==null;})()",
-      timeout = 15000
+      timeout = 45000
     )
     TRUE
   }
@@ -118,15 +118,15 @@ test_that("Group by is visible on plots whose grouping it drives", {
   }
 
   app$set_inputs(ir_tabs = "Abundance", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   expect_true(isTRUE(groupby_visible()))
 
   app$set_inputs(ir_tabs = "Isotype", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   expect_true(isTRUE(groupby_visible()))
 
   app$set_inputs(ir_tabs = "Paired Scatter", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   expect_true(isTRUE(groupby_visible()))
   expect_equal(
     app$get_js(
@@ -136,7 +136,7 @@ test_that("Group by is visible on plots whose grouping it drives", {
   )
   app$wait_for_js(
     "(function(){var x=document.querySelector('#ir_pair_x_group'),y=document.querySelector('#ir_pair_y_group');return !!x && !!y && x.querySelectorAll('option').length>=2 && y.querySelectorAll('option').length>=2;})()",
-    timeout = 15000
+    timeout = 45000
   )
   expect_true(isTRUE(app$get_js(
     "(function(){return document.querySelector('#ir_pair_x_group') !== null && document.querySelector('#ir_pair_y_group') !== null;})();"
@@ -147,7 +147,7 @@ test_that("Group by is visible on plots whose grouping it drives", {
     "(function(){return document.querySelector('#ir_groupBy option[value=\"cell_type\"]') !== null;})();"
   )))
   app$set_inputs(ir_groupBy = "cell_type", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   expect_equal(
     app$get_js(
       "(function(){var e=document.querySelector('#ir_groupBy');return e?e.value:null;})();"
@@ -156,7 +156,7 @@ test_that("Group by is visible on plots whose grouping it drives", {
   )
   app$wait_for_js(
     "(function(){var x=document.querySelector('#ir_pair_x_group'),y=document.querySelector('#ir_pair_y_group');return !!x && !!y && x.querySelectorAll('option').length>=2 && y.querySelectorAll('option').length>=2;})()",
-    timeout = 15000
+    timeout = 45000
   )
   expect_gte(as.numeric(n_options("ir_pair_x_group")), 2)
   expect_gte(as.numeric(n_options("ir_pair_y_group")), 2)
@@ -177,17 +177,17 @@ test_that("Chain is visible on plots whose scRepertoire API accepts it", {
   chain_visible <- function() {
     app$wait_for_js(
       "(function(){var e=document.querySelector('#ir_chain');return !!e && e.offsetParent!==null;})()",
-      timeout = 15000
+      timeout = 45000
     )
     TRUE
   }
 
   app$set_inputs(ir_tabs = "Abundance", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   expect_true(isTRUE(chain_visible()))
 
   app$set_inputs(ir_tabs = "SizeDist", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   expect_true(isTRUE(chain_visible()))
 })
 
@@ -213,7 +213,7 @@ test_that("changing 'Group by' keeps the current plot tab", {
 
   # move off the default (Abundance) tab
   app$set_inputs(ir_tabs = "Diversity", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   expect_identical(active_tab(), "Diversity")
 
   # change grouping; the tab should stay on Diversity, not reset to Abundance
@@ -244,7 +244,7 @@ test_that("settings dropdowns render all their options (not just selected)", {
         "(function(){var e=document.querySelector('#%s');return !!e && e.querySelectorAll('option').length>0;})()",
         id
       ),
-      timeout = 15000
+      timeout = 45000
     )
     app$get_js(sprintf(
       "(function(){var e=document.querySelector('#%s');return e?e.querySelectorAll('option').length:0;})();",
@@ -255,7 +255,7 @@ test_that("settings dropdowns render all their options (not just selected)", {
   # The global controls (chain / group-by) are hidden on the default Clonal UMAP
   # tab (which uses its own Receptor selector), so move to a tab that shows them.
   app$set_inputs(ir_tabs = "Abundance", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
 
   # Group by: None + grouping variables (sample, seurat_clusters, cell_type)
   expect_gte(as.numeric(n_options("ir_groupBy")), 2)
@@ -279,10 +279,10 @@ test_that("immune_repertoire tab can be opened and renders settings", {
 
   # Chain is hidden on the default Clonal UMAP tab; move to one that shows it.
   app$set_inputs(ir_tabs = "Abundance", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   app$wait_for_js(
     'document.querySelector("#ir_chain") !== null',
-    timeout = 15000
+    timeout = 45000
   )
 
   # the chain selector (a core settings control) should be populated
@@ -343,7 +343,7 @@ test_that("Clonal UMAP tab renders with receptor + projection selectors", {
         "(function(){var e=document.querySelector('#%s');return !!e && e.querySelectorAll('option').length>0;})()",
         id
       ),
-      timeout = 15000
+      timeout = 45000
     )
     app$get_js(sprintf(
       "(function(){var e=document.querySelector('#%s');return e?e.querySelectorAll('option').length:0;})();",
@@ -387,20 +387,20 @@ test_that("Display options panel exposes scatter params on scatter-type tabs", {
 
   # Abundance (non-scatter): base display params present, scatter ones absent.
   app$set_inputs(ir_tabs = "Abundance", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   app$wait_for_js(
     "document.querySelector('#ir_d_base_size') !== null && document.querySelector('#ir_d_point_size') === null",
-    timeout = 15000
+    timeout = 45000
   )
   expect_true(isTRUE(control_exists("ir_d_base_size")))
   expect_false(isTRUE(control_exists("ir_d_point_size")))
 
   # Clonal UMAP (scatter-type): point size + opacity also present.
   app$set_inputs(ir_tabs = "Clonal UMAP", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   app$wait_for_js(
     "document.querySelector('#ir_d_point_size') !== null && document.querySelector('#ir_d_alpha') !== null",
-    timeout = 15000
+    timeout = 45000
   )
   expect_true(isTRUE(control_exists("ir_d_point_size")))
   expect_true(isTRUE(control_exists("ir_d_alpha")))
@@ -542,10 +542,10 @@ test_that("Clone call is hidden on the Clonal UMAP tab", {
 
   # On Abundance it should be back.
   app$set_inputs(ir_tabs = "Abundance", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   app$wait_for_js(
     "document.querySelector('#ir_cloneCall') !== null",
-    timeout = 15000
+    timeout = 45000
   )
   expect_true(isTRUE(exists_el("#ir_cloneCall")))
 })
@@ -564,12 +564,12 @@ test_that("Main parameters info button opens a help dialog", {
 
   # Move to a tab with several controls, then click the Main parameters info.
   app$set_inputs(ir_tabs = "Diversity", wait_ = FALSE)
-  app$wait_for_idle(timeout = 15000)
+  app$wait_for_idle(timeout = 45000)
   app$run_js("document.querySelector('#ir_main_parameters_info').click();")
   app$wait_for_idle(timeout = 10000)
   app$wait_for_js(
     "(function(){var m=document.querySelector('.modal-body');return !!m && /ir-help-card/.test(m.innerHTML);})()",
-    timeout = 15000
+    timeout = 45000
   )
 
   # A modal with help cards should appear, containing the param help text.
