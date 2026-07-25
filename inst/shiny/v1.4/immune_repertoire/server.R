@@ -15,11 +15,55 @@ has_scRepertoire <- function() {
   nzchar(system.file(package = "scRepertoire"))
 }
 
+## ---- Background prewarm of scRepertoire -------------------------------- ##
+## Startup stays cheap (has_scRepertoire uses system.file, no namespace load),
+## but rather than make the user wait the full ~4s scRepertoire load on their
+## first repertoire plot, we prewarm the namespaces in the background AFTER the
+## first flush. Loading scRepertoire in one call would block the single R thread
+## for ~4s; instead we load its recursive dependencies ONE PER EVENT-LOOP TICK,
+## yielding to the loop between each, so no single stretch blocks for long and
+## other tabs stay responsive while it warms. By the time a repertoire plot is
+## opened, scRepertoire is usually already loaded and renders like a warm one.
+## Idempotent and process-global: the option guard runs it once per R process;
+## already-loaded namespaces are skipped, so it is a no-op once warm.
+ir_prewarm_scRepertoire <- function() {
+  if (isTRUE(getOption("cerebro.ir_prewarmed"))) {
+    return(invisible())
+  }
+  if (!nzchar(system.file(package = "scRepertoire"))) {
+    return(invisible())
+  }
+  options(cerebro.ir_prewarmed = TRUE)
+  deps <- tryCatch(
+    tools::package_dependencies(
+      "scRepertoire",
+      db = utils::installed.packages(), # local DB — never contact CRAN
+      recursive = TRUE,
+      which = c("Depends", "Imports", "LinkingTo")
+    )[[1]],
+    error = function(e) character(0)
+  )
+  queue <- setdiff(c(deps, "scRepertoire"), loadedNamespaces())
+  step <- function() {
+    if (!length(queue)) {
+      return(invisible())
+    }
+    pkg <- queue[[1]]
+    queue <<- queue[-1]
+    try(loadNamespace(pkg), silent = TRUE)
+    later::later(step, 0) # yield to the event loop, then load the next one
+  }
+  later::later(step, 1) # start ~1s after the first flush
+}
+
+## Kick off once per process, after the session's first flush has rendered.
+ir_prewarm_scRepertoire()
+
 ## ---- Missing-dependency notice ---------------------------------------- ##
-## scRepertoire is a Suggests dependency (GitHub/Bioconductor). When it is
-## not installed the immune repertoire UI cannot render, so instead of a
-## silent blank panel we show an explicit prompt telling the user how to
-## enable the feature. Shown in both the settings and visualizations boxes.
+## scRepertoire is a mandatory dependency, so a standard install always has it;
+## this notice is a defensive fallback for a broken/partial install. Rather than
+## a silent blank panel we show an explicit prompt telling the user how to
+## reinstall it. Shown in both the settings and visualizations boxes.
 ir_scRepertoire_missing_ui <- function() {
   div(
     class = "alert alert-warning",
