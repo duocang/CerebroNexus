@@ -2180,7 +2180,10 @@ output$ir_plot_percentKmer <- renderPlot({
 ## V+J+CDR3. The clone definition is parsed from the CT* columns for the active
 ## chain (ir_parse_segments); faceted by the active group.by column when chosen.
 output$ir_plot_cloneDefinition <- plotly::renderPlotly({
-  req_scRepertoire()
+  ## Self-made plot (ir_build_definition_plot in data.R) — does NOT call
+  ## scRepertoire, so gate on the cheap availability probe only and never load
+  ## the namespace here.
+  req(has_scRepertoire())
   req_plot_space("ir_plot_cloneDefinition")
   ir_render_ggplotly(
     ir_build_definition_plot(
@@ -2201,7 +2204,10 @@ output$ir_plot_cloneDefinition <- plotly::renderPlotly({
 ## Public(within-group) / Public(cross-group) using the chosen sharing unit and
 ## the active group.by, then bars the class counts.
 output$ir_plot_cloneSharing <- plotly::renderPlotly({
-  req_scRepertoire()
+  ## Self-made plot (ir_build_sharing_plot in data.R) — does NOT call
+  ## scRepertoire, so gate on the cheap availability probe only and never load
+  ## the namespace here.
+  req(has_scRepertoire())
   req_plot_space("ir_plot_cloneSharing")
   fig <- ir_render_ggplotly(
     ir_build_sharing_plot(

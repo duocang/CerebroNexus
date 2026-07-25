@@ -715,10 +715,11 @@ observeEvent(input$ir_help_example_btn, {
 ## ---- Demo plot renderer ----------------------------------------------- ##
 output$ir_demo_plot <- renderPlot({
   req_plot_space("ir_demo_plot")
-  ## Same lazy-load gate as the real plots: the demo figures call scRepertoire
-  ## directly, so load it (and surface a broken install) at this boundary rather
-  ## than eagerly or with an opaque failure.
-  req_scRepertoire()
+  ## The demo switches across both scRepertoire-backed tabs and self-made ones
+  ## (Isotype / SHM Proxy use synthetic BCR data + self-made plots). Do NOT gate
+  ## the whole render on loading scRepertoire, or a self-made tab would drag in
+  ## ~90 packages. The scRepertoire-backed branches load it lazily via their own
+  ## scRepertoire::fn() call, wrapped in the tryCatch below.
   tab <- input$ir_tabs
   if (is.null(tab)) {
     plot.new()
