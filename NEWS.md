@@ -26,14 +26,16 @@
   single R thread, so loading the ~90-package tree "in the background" would
   still block the event loop and freeze every session in the process for
   several seconds. The trade-off is explicit and honest — app startup never
-  pays for `scRepertoire`, and a repertoire user waits once (a few seconds) on
-  their first plot, after which it stays warm for the rest of the session.
+  pays for `scRepertoire`, and a repertoire user waits once (several seconds —
+  the full namespace load) on their first plot, after which it stays warm for
+  the rest of the session.
 - **Heavy dependencies load on demand.** All dependencies stay mandatory, so a
-  standard install gives every feature out of the box; heavy packages
-  (`scRepertoire`, `GSVA`, `biomaRt`, `httr`, `qvalue`, `future.apply`,
-  `pbapply`) are now accessed via `requireNamespace()` and loaded only when the
-  feature that needs them is first used, not at package/app startup. Dropped the
-  genuinely unused `ape`, `readr`, and `viridis`, and synced the nix environment.
+  standard install gives every feature out of the box; other heavy packages
+  (`GSVA`, `biomaRt`, `httr`, `qvalue`, `future.apply`, `pbapply`) are accessed
+  via `requireNamespace()` and loaded only when the feature that needs them is
+  first used, not at package/app startup. (`scRepertoire` is loaded the same
+  way — see above.) Dropped the genuinely unused `ape`, `readr`, and `viridis`,
+  and synced the nix environment.
 - **Cached static assets and single projection-engine load.** Static UI assets
   are now cached and the shared projection engine is loaded once rather than per
   tab, reducing repeated work on startup and tab switches.

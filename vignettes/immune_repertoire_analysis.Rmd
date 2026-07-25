@@ -56,7 +56,7 @@ and several seconds of loading), CerebroNexus does **not** load it at app
 startup. Availability is probed cheaply with `system.file()`, and the namespace
 is loaded lazily on the first repertoire calculation — that is, the first time
 you actually draw a repertoire plot. That first plot therefore pays a one-time
-load of a few seconds; every plot afterwards in the same session is warm. There
+load of several seconds; every plot afterwards in the same session is warm. There
 is no background prewarm (it cannot be made non-blocking on Shiny's single R
 thread). Repertoire figures are still computed by `scRepertoire` — only the
 timing of the load changed.

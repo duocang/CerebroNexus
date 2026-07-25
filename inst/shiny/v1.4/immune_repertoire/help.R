@@ -715,6 +715,10 @@ observeEvent(input$ir_help_example_btn, {
 ## ---- Demo plot renderer ----------------------------------------------- ##
 output$ir_demo_plot <- renderPlot({
   req_plot_space("ir_demo_plot")
+  ## Same lazy-load gate as the real plots: the demo figures call scRepertoire
+  ## directly, so load it (and surface a broken install) at this boundary rather
+  ## than eagerly or with an opaque failure.
+  req_scRepertoire()
   tab <- input$ir_tabs
   if (is.null(tab)) {
     plot.new()
