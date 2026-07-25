@@ -10,6 +10,29 @@
   `convertSeuratToCerebro()`.
 - Updated the HLA export metadata field to `CerebroNexus_version`.
 
+## Faster startup
+
+- **Deferred `scRepertoire` loading.** The Immune Repertoire settings render on
+  the first flush (they are `suspendWhenHidden = FALSE`), which previously forced
+  `scRepertoire` — and, through its imports, ~90 packages and several seconds of
+  `lazyLoadDBfetch` — to load at startup even when the tab was never opened.
+  Availability is now probed with `system.file()` (a disk-path lookup, no
+  namespace load); the package is loaded lazily on the first repertoire
+  calculation, i.e. only when a plot is actually drawn. Repertoire figures are
+  unchanged — they are still computed by `scRepertoire`.
+- **Heavy dependencies load on demand.** All dependencies stay mandatory, so a
+  standard install gives every feature out of the box; heavy packages
+  (`scRepertoire`, `GSVA`, `biomaRt`, `httr`, `qvalue`, `future.apply`,
+  `pbapply`) are now accessed via `requireNamespace()` and loaded only when the
+  feature that needs them is first used, not at package/app startup. Dropped the
+  genuinely unused `ape`, `readr`, and `viridis`, and synced the nix environment.
+- **Cached static assets and single projection-engine load.** Static UI assets
+  are now cached and the shared projection engine is loaded once rather than per
+  tab, reducing repeated work on startup and tab switches.
+- **No more Immune Repertoire plot flashing** when switching between the tab's
+  sub-tabs (the theme fade-in animation no longer re-runs on already-rendered
+  plots).
+
 # Version 2.3.0
 
 ## HLA & TCR Motifs
