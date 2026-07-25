@@ -52,10 +52,12 @@ BiocManager::install("scRepertoire")
 ```
 
 Because attaching `scRepertoire` pulls in a large dependency tree, CerebroNexus
-loads it **on demand** — only when you first draw a repertoire plot, not at app
-startup. The first plot in a session therefore takes a moment longer while the
-package loads; everything after is immediate. Repertoire figures are still
-computed by `scRepertoire` — only the timing of the load changed.
+loads it **on demand** — not at app startup. After the first page renders,
+`scRepertoire` is prewarmed in the background, so by the time you open a
+repertoire plot it is usually already loaded and renders immediately. (Only if
+you jump to a repertoire statistic within the first few seconds might you wait
+briefly while it finishes loading.) Repertoire figures are still computed by
+`scRepertoire` — only the timing of the load changed.
 
 The full scRepertoire workflow is documented in its vignettes —
 [Loading data](https://www.borch.dev/uploads/screpertoire/articles/loading) and
