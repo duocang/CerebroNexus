@@ -42,27 +42,71 @@ cerebro_read_file <- function(path) {
   readChar(path, file.info(path)$size)
 }
 
-## Register the www/ directory as a cacheable static resource path, so the app's
-## own CSS/JS are delivered as <link>/<script src> (browser-cached, downloaded in
-## parallel, deferred) instead of being inlined into every page's HTML on every
-## connection. Runs once when this file is sourced — by inst/app.R and by
-## exported apps alike (both source shiny_UI.R with Cerebro.options already set).
-## cerebro_asset() returns the served URL for a www file, or NULL when the path
-## could not be registered (then the caller falls back to inlining).
-local({
-  www_dir <- file.path(
-    Cerebro.options[["cerebro_root"]],
-    "shiny/v1.4/www"
-  )
-  if (dir.exists(www_dir)) {
-    tryCatch(
-      shiny::addResourcePath("cerebro_www", normalizePath(www_dir)),
-      error = function(e) NULL
-    )
+## Serve the www/ directory as cacheable static assets, so the app's own CSS/JS
+## are delivered as <link>/<script src> (browser-cached, downloaded in parallel,
+## deferred) instead of being inlined into every page's HTML on every connection.
+## Runs once when this file is sourced — by inst/app.R and by exported apps alike
+## (both source shiny_UI.R with Cerebro.options already set).
+cerebro_www_dir <- normalizePath(
+  file.path(Cerebro.options[["cerebro_root"]], "shiny/v1.4/www"),
+  mustWork = FALSE
+)
+## Register under a prefix UNIQUE to this directory. addResourcePath's namespace
+## is process-global, so a fixed "cerebro_www" would let a second exported app in
+## the same process silently replace the first app's mapping and serve assets
+## from the wrong bundle. Reuse a prefix already pointing here (idempotent);
+## otherwise allocate a fresh, unused one. NULL = registration unavailable, so
+## callers inline the asset instead.
+cerebro_www_prefix <- local({
+  if (!dir.exists(cerebro_www_dir)) {
+    return(NULL)
   }
+  existing <- shiny::resourcePaths()
+  same <- names(existing)[vapply(
+    existing,
+    function(p) normalizePath(p, mustWork = FALSE) == cerebro_www_dir,
+    logical(1)
+  )]
+  if (length(same)) {
+    return(same[[1]])
+  }
+  prefix <- "cerebro_www"
+  i <- 1L
+  while (prefix %in% names(existing)) {
+    prefix <- paste0("cerebro_www_", i)
+    i <- i + 1L
+  }
+  tryCatch(
+    {
+      shiny::addResourcePath(prefix, cerebro_www_dir)
+      prefix
+    },
+    error = function(e) NULL
+  )
 })
-cerebro_asset <- function(file) {
-  paste0("cerebro_www/", file)
+
+## Emit a <link>/<script> for a www asset, or — when registration was
+## unavailable — inline the file contents so the page still works instead of
+## 404-ing. This is the fallback the previous cerebro_asset() described in a
+## comment but never actually provided.
+cerebro_css <- function(file) {
+  if (!is.null(cerebro_www_prefix)) {
+    tags$link(
+      rel = "stylesheet",
+      type = "text/css",
+      href = paste0(cerebro_www_prefix, "/", file)
+    )
+  } else {
+    tags$style(HTML(cerebro_read_file(file.path(cerebro_www_dir, file))))
+  }
+}
+cerebro_js <- function(file, defer = FALSE) {
+  if (!is.null(cerebro_www_prefix)) {
+    src <- paste0(cerebro_www_prefix, "/", file)
+    if (defer) tags$script(defer = NA, src = src) else tags$script(src = src)
+  } else {
+    tags$script(HTML(cerebro_read_file(file.path(cerebro_www_dir, file))))
+  }
 }
 
 ##----------------------------------------------------------------------------##
@@ -264,24 +308,12 @@ ui <- dashboardPage(
     ##  - trekker.*       : Trekker page assets (scoped under .trekker-page / tk-).
     ##  - hla_motifs.*    : modebar over the visNetwork motif network.
     tags$head(
-      tags$link(
-        rel = "stylesheet",
-        type = "text/css",
-        href = cerebro_asset("custom.css")
-      ),
-      tags$link(
-        rel = "stylesheet",
-        type = "text/css",
-        href = cerebro_asset("trekker.css")
-      ),
-      tags$link(
-        rel = "stylesheet",
-        type = "text/css",
-        href = cerebro_asset("hla_motifs.css")
-      ),
-      tags$script(defer = NA, src = cerebro_asset("fill_height.js")),
-      tags$script(defer = NA, src = cerebro_asset("trekker.js")),
-      tags$script(defer = NA, src = cerebro_asset("hla_motifs.js")),
+      cerebro_css("custom.css"),
+      cerebro_css("trekker.css"),
+      cerebro_css("hla_motifs.css"),
+      cerebro_js("fill_height.js", defer = TRUE),
+      cerebro_js("trekker.js", defer = TRUE),
+      cerebro_js("hla_motifs.js", defer = TRUE),
       ## Shared projection-scatter engine, loaded ONCE here instead of being
       ## inlined into all five projection tabs' extendShinyjs() (~69KB x5). Both
       ## files expose only window globals (window.cerebroProjectionLayout /
@@ -289,8 +321,8 @@ ui <- dashboardPage(
       ## (still inlined via extendShinyjs) calls those globals. These are NOT
       ## deferred so the globals exist before the tab scripts' registerPlot()
       ## runs; layouts before scatter since scatter builds on the layout helpers.
-      tags$script(src = cerebro_asset("projection_layouts.js")),
-      tags$script(src = cerebro_asset("projection_scatter.js"))
+      cerebro_js("projection_layouts.js"),
+      cerebro_js("projection_scatter.js")
     ),
     tags$script(HTML('$("body").addClass("fixed");')),
     tabItems(
