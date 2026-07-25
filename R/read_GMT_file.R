@@ -21,9 +21,14 @@
   ## read provided file
   ## The original parser used ';' as the delimiter — a character GMT files do
   ## not contain — so every row collapsed into a single column `X1` holding the
-  ## whole line. readLines reproduces that exactly (one line per element) while
-  ## faithfully preserving the ragged, tab-separated rows split below.
-  gmt <- data.frame(X1 = readLines(file), stringsAsFactors = FALSE)
+  ## whole line. readLines gives the same one-line-per-element shape. Drop blank
+  ## lines first: a GMT file that ends in a trailing newline (as the bundled
+  ## example_gene_set.gmt does) would otherwise produce a phantom final row with
+  ## NA name/description/genes that pollutes downstream enrichment. readr's
+  ## read_delim (the parser this replaced) skipped empty rows — match that.
+  lines <- readLines(file)
+  lines <- lines[nzchar(trimws(lines))]
+  gmt <- data.frame(X1 = lines, stringsAsFactors = FALSE)
 
   ## prepare empty list for results
   gene_set_genes <- list()
