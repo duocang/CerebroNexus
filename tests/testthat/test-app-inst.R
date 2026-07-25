@@ -17,8 +17,18 @@ if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
 ## Poll get_value(...) until it returns a non-NULL result or the timeout expires.
 ## A query that errors (server 500 while the output is still rendering) is
 ## retried; if no value arrives, report the last real error instead of replacing
-## it with an unexplained NULL.
-retry_get_value <- function(app, ..., timeout = 20000, interval = 300) {
+## it with an unexplained NULL. `validate`, when supplied, is a predicate the
+## value must also satisfy: an async output can return a non-NULL but transient
+## error state (e.g. a shiny.silent.error while req() is unmet) that is not yet
+## the real payload, so keep polling until validate(val) is TRUE. A predicate
+## that errors counts as not-yet-ready and is retried.
+retry_get_value <- function(
+  app,
+  ...,
+  timeout = 20000,
+  interval = 300,
+  validate = NULL
+) {
   deadline <- Sys.time() + timeout / 1000
   last_error <- NULL
   repeat {
@@ -29,7 +39,17 @@ retry_get_value <- function(app, ..., timeout = 20000, interval = 300) {
         NULL
       }
     )
-    if (!is.null(val)) {
+    ok <- !is.null(val)
+    if (ok && !is.null(validate)) {
+      ok <- tryCatch(
+        isTRUE(validate(val)),
+        error = function(e) {
+          last_error <<- e
+          FALSE
+        }
+      )
+    }
+    if (ok) {
       return(val)
     }
     if (Sys.time() > deadline) {
@@ -196,8 +216,18 @@ test_that("{shinytest2} recording: marker_genes", {
   app$set_inputs(marker_genes_selected_table = "seurat_clusters", wait_ = FALSE)
   app$wait_for_idle(timeout = 10000)
 
-  ## table renders
-  table_val <- retry_get_value(app, output = "marker_genes_table")
+  ## table renders — marker gene results render asynchronously, so the output can
+  ## momentarily hold a shiny.silent.error (req() not yet satisfied) that
+  ## serialises to non-JSON. Poll until the value parses as the expected DT
+  ## payload instead of reading once and letting fromJSON choke on that transient
+  ## error state.
+  table_val <- retry_get_value(
+    app,
+    output = "marker_genes_table",
+    validate = function(v) {
+      !is.null(jsonlite::fromJSON(v, simplifyVector = FALSE)$x$container)
+    }
+  )
   expect_false(is.null(table_val))
 
   ## verify expected columns are present in the table header
