@@ -13,7 +13,6 @@
 #  > "shinyvalidate",
 #  > "Seurat",
 #  > "SeuratObject",
-#  > "ape",
 #  > "biomaRt",
 #  > "colourpicker",
 #  > "dplyr",
@@ -33,7 +32,6 @@
 #  > "plotly",
 #  > "qvalue",
 #  > "R6",
-#  > "readr",
 #  > "rlang",
 #  > "scales",
 #  > "scRepertoire",
@@ -46,7 +44,6 @@
 #  >      "tibble",
 #  > "tidyr",
 #  > "tidyselect",
-#  > "viridis",
 #  > "stringdist",
 #  > "visNetwork"),
 #  > system_pkgs = c("chromium",
@@ -66,8 +63,7 @@ let
  pkgs = import (fetchTarball "https://github.com/rstats-on-nix/nixpkgs/archive/2026-06-22.tar.gz") {};
  
   rpkgs = builtins.attrValues {
-    inherit (pkgs.rPackages) 
-      ape
+    inherit (pkgs.rPackages)
       biomaRt
       callr
       colourpicker
@@ -92,7 +88,6 @@ let
       png
       qvalue
       R6
-      readr
       rlang
       scales
       scRepertoire
@@ -112,7 +107,6 @@ let
       tibble
       tidyr
       tidyselect
-      viridis
       visNetwork
       withr;
   };
