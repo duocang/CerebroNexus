@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -72,6 +72,22 @@
       <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="3.0.1" id="cerebronexus-301">CerebroNexus 3.0.1<a class="anchor" aria-label="anchor" href="#cerebronexus-301"></a></h2>
+<div class="section level3">
+<h3 id="faster-startup-3-0-1">Faster startup<a class="anchor" aria-label="anchor" href="#faster-startup-3-0-1"></a></h3>
+<ul><li>
+<strong>Deferred <code>scRepertoire</code> loading.</strong> The Immune Repertoire settings render on the first flush (they are <code>suspendWhenHidden = FALSE</code>), which previously forced <code>scRepertoire</code> — and, through its imports, ~90 packages and several seconds of <code>lazyLoadDBfetch</code> — to load at startup even when the tab was never opened. Availability is now probed with <code><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file()</a></code> (a disk-path lookup, no namespace load); the namespace is loaded lazily on the first scRepertoire-backed plot — self-made plots (Clone Sharing, Definition) and the default Clonal UMAP never trigger it. Repertoire figures are unchanged — they are still computed by <code>scRepertoire</code>.</li>
+<li>
+<strong>True lazy loading — no background prewarm.</strong> <code>scRepertoire</code> is loaded only when the first scRepertoire-backed plot is drawn. There is intentionally no background prewarm: <code><a href="https://later.r-lib.org/reference/later.html" class="external-link">later::later()</a></code> is cooperative scheduling on Shiny’s single R thread, so loading the ~90-package tree “in the background” would still block the event loop and freeze every session in the process for several seconds. The trade-off is explicit and honest — app startup never pays for <code>scRepertoire</code>, and a repertoire user waits once (several seconds — the full namespace load) on their first scRepertoire plot. Because a namespace is process-wide, it then stays warm for every session in that R worker (not only the one that triggered it — which also means that first load briefly blocks the other sessions sharing the process). Measured: startup drops ~50% (median 8.2 s → 4.0 s) while the first Abundance plot rises correspondingly (1.4 s → 5.2 s), so the two roughly cancel — the cost is moved off startup, not removed.</li>
+<li>
+<strong>Heavy dependencies load on demand.</strong> All dependencies stay mandatory, so a standard install gives every feature out of the box; other heavy packages (<code>GSVA</code>, <code>biomaRt</code>, <code>httr</code>, <code>qvalue</code>, <code>future.apply</code>, <code>pbapply</code>) are accessed via <code><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace()</a></code> and loaded only when the feature that needs them is first used, not at package/app startup. (<code>scRepertoire</code> is loaded the same way — see above.) Dropped the genuinely unused <code>ape</code> and <code>readr</code>, and synced the nix environment. <code>viridis</code> is also no longer a dependency, but that was a <em>substitution</em>, not removal of dead code: the two <code><a href="https://sjmgarnier.github.io/viridis/reference/scale_viridis.html" class="external-link">viridis::scale_fill_viridis()</a></code> calls became <code><a href="https://ggplot2.tidyverse.org/reference/scale_viridis.html" class="external-link">ggplot2::scale_fill_viridis_c()</a></code> (the same viridis palette via viridisLite). The continuous interpolation differs very slightly — the palette midpoint shifts <code>#21908D</code> → <code>#2B9089</code> — so expression colour maps are near-identical but not byte-for-byte.</li>
+<li>
+<strong>Cached static assets and single projection-engine load.</strong> Static UI assets are now cached and the shared projection engine is loaded once rather than per tab, reducing repeated work on startup and tab switches.</li>
+<li>
+<strong>No more Immune Repertoire plot flashing</strong> when switching between the tab’s sub-tabs (the theme fade-in animation no longer re-runs on already-rendered plots).</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="3.0.0" id="cerebronexus-300">CerebroNexus 3.0.0<a class="anchor" aria-label="anchor" href="#cerebronexus-300"></a></h2>
 <div class="section level3">

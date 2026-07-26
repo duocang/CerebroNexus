@@ -81,10 +81,10 @@ pbmc <- performGeneSetEnrichmentAnalysis(
   thresh_p_val = 0.05,
   thresh_q_val = 0.1
 )
-#> [12:07:25] Loading gene sets...
-#> [12:07:25] Loaded 2 gene sets from GMT file.
-#> [12:07:25] Extracting transcript counts from `data` slot of `RNA` assay...
-#> [12:07:25] Performing analysis for 2 subgroups of group `sample`...
+#> [19:58:18] Loading gene sets...
+#> [19:58:18] Loaded 2 gene sets from GMT file.
+#> [19:58:18] Extracting transcript counts from `data` slot of `RNA` assay...
+#> [19:58:18] Performing analysis for 2 subgroups of group `sample`...
 #> ℹ GSVA version 2.6.2
 #> ℹ Searching for rows with constant values
 #> ℹ Calculating GSVA ranks
@@ -96,8 +96,8 @@ pbmc <- performGeneSetEnrichmentAnalysis(
 #> ℹ GSVA dense (classical) algorithm
 #> ℹ Calculating GSVA scores for 2 gene sets
 #> ✔ Calculations finished
-#> [12:07:25] 0 gene sets passed the thresholds across all subgroups of group `sample`.
-#> [12:07:25] Performing analysis for 2 subgroups of group `seurat_clusters`...
+#> [19:58:18] 0 gene sets passed the thresholds across all subgroups of group `sample`.
+#> [19:58:18] Performing analysis for 2 subgroups of group `seurat_clusters`...
 #> ℹ GSVA version 2.6.2
 #> ℹ Searching for rows with constant values
 #> ℹ Calculating GSVA ranks
@@ -109,5 +109,5 @@ pbmc <- performGeneSetEnrichmentAnalysis(
 #> ℹ GSVA dense (classical) algorithm
 #> ℹ Calculating GSVA scores for 2 gene sets
 #> ✔ Calculations finished
-#> [12:07:25] 0 gene sets passed the thresholds across all subgroups of group `seurat_clusters`.
+#> [19:58:18] 0 gene sets passed the thresholds across all subgroups of group `seurat_clusters`.
 ```

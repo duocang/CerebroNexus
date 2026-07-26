@@ -21,7 +21,7 @@
 
     <a class="navbar-brand me-2" href="index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -95,6 +95,7 @@
 </h1></div>
 <p>Interactive visualization of single-cell RNA-seq data, built on top of <a href="https://shiny.posit.co/" class="external-link">Shiny</a>.</p>
 <p>CerebroNexus supports loading pre-processed single-cell data, exploring projections and gene expression, browsing marker genes and enriched pathways, and inspecting group compositions — all through an interactive web interface. The sections below cover the key features.</p>
+<p>A live demo is available at <a href="https://osmzhlab.uni-muenster.de/shiny/demo/" class="external-link uri">https://osmzhlab.uni-muenster.de/shiny/demo/</a>.</p>
 <p>For the original feature set and data preparation workflows, refer to the upstream cerebroApp documentation at <a href="https://romanhaa.github.io/cerebroApp/" class="external-link uri">https://romanhaa.github.io/cerebroApp/</a> — everything described there works the same way here.</p>
 <p><em>A community fork of <a href="https://github.com/romanhaa/cerebroApp" class="external-link">cerebroApp</a> by Roman Hillje, developed and maintained by <a href="https://github.com/mihem" class="external-link">mihem</a>.</em></p>
 <div class="section level2">
@@ -129,6 +130,7 @@
 </h2>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">'mihem/CerebroNexus'</span><span class="op">)</span></span></code></pre></div>
+<p>This pulls in every dependency, so all features work out of the box. Heavy packages (e.g. <code>scRepertoire</code>) are still <strong>loaded on demand</strong> — only when you first use the feature that needs them — so the app starts fast regardless.</p>
 </div>
 <div class="section level2">
 <h2 id="id_2-features">2. Features<a class="anchor" aria-label="anchor" href="#id_2-features"></a>
