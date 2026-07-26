@@ -403,14 +403,15 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
 }
 .cerebro-fill.is-filled {
   opacity: 1;
-  /* Fade in ONLY. Never transition `height`: the element is revealed only after
+  /* Reveal INSTANTLY — no opacity fade. The plot is shown only after
      fill_height.js has measured a settled height (two equal frames), so the
-     first visible frame is already final. A height transition would instead
-     animate the placeholder (60vh) up/down to that final height — the visible
-     "short-then-tall" grow the projection tabs never had, because their gate
-     reveals via `visibility` with no height tween. Later re-measures (resize,
-     legend wrap) also apply in one frame, matching the projection engine. */
-  transition: opacity 0.12s ease;
+     first visible frame is already final; fading it in just makes an
+     already-rendered plot blink in on the first view of each sub-tab (the IR
+     "flash" users see). Match the projection engine, which reveals via
+     `visibility` with no tween. Height is likewise never transitioned: a height
+     tween would animate the 60vh placeholder up/down to the final size — the
+     "short-then-tall" grow the projection tabs never had. Re-measures (resize,
+     legend wrap) also apply in one frame. */
 }
 /* The spinner wrapper (or the output directly) fills the sized wrapper. */
 .cerebro-fill > .shiny-spinner-output-container,
@@ -1169,6 +1170,13 @@ body .fa-spinner { color: var(--c-amber) !important; }
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+/* A `.cerebro-fill` plot has its OWN reveal gate (hidden until fill_height.js
+   measures a settled height, then shown). The tab-content fade-in above would
+   re-run that opacity 0->1 animation every time its sub-tab is shown — an
+   already-rendered plot visibly fading in again on each switch (the IR "flash").
+   Exempt fills; their gate is the single source of truth. Higher specificity
+   than `.tab-pane.active > *` so it wins. */
+.tab-pane.active > .cerebro-fill { animation: none; }
 
 /* Primary buttons press in slightly for tactile feedback. Stat cards already
    lift on hover (see .small-box); content/parameter boxes deliberately do NOT

@@ -2,15 +2,64 @@
 ## Tab: Immune Repertoire server — entry point
 ##----------------------------------------------------------------------------##
 
+## Availability check WITHOUT loading the namespace. Loading scRepertoire's
+## namespace (its .onLoad, plus Imports: SingleCellExperiment,
+## SummarizedExperiment, S4Vectors, Seurat, iNEXT, ...) drags in ~90 packages
+## and several seconds of lazyLoadDBfetch — note this is loadNamespace, not
+## attaching it to the search path. Because the IR settings outputs are
+## suspendWhenHidden = FALSE, they render on the very first flush and used to
+## pay that cost at startup even when the user never opened the tab. system.file()
+## only resolves the package directory on disk — no .onLoad, no dependency
+## cascade — so startup stays cheap. The real load happens lazily on the first
+## scRepertoire::fn() call, i.e. the first scRepertoire-backed plot; self-made
+## IR plots (Clone Sharing, Definition) and the default Clonal UMAP never
+## trigger it.
 has_scRepertoire <- function() {
-  requireNamespace("scRepertoire", quietly = TRUE)
+  nzchar(system.file(package = "scRepertoire"))
+}
+
+## ---- Lazy-load boundary ------------------------------------------------ ##
+## scRepertoire is loaded lazily: the first scRepertoire::fn() call inside a
+## plot renderer triggers loadNamespace() (~8s, ~90 packages). We deliberately
+## do NOT prewarm it in the background — later::later() is cooperative
+## scheduling on Shiny's single R thread, so a "background" loadNamespace()
+## still blocks the event loop and freezes every session sharing the process.
+## Startup therefore never loads scRepertoire; a repertoire user instead pays a
+## predictable one-time load on their first plot.
+##
+## req_scRepertoire() gates every repertoire renderer. It cheaply confirms the
+## package is installed (system.file, no namespace load), then forces the
+## idempotent namespace load HERE so a broken or partial install surfaces as an
+## explicit, useful message inside the plot box — rather than an opaque error
+## from deep inside a scRepertoire call, or a full UI that only fails when a
+## renderer runs (system.file alone cannot detect a missing transitive
+## dependency, incompatible binary, failed .onLoad, or corrupt lazy-load DB).
+## The settings and tab gates keep using the cheap has_scRepertoire() probe so
+## the first flush stays free of any namespace load.
+req_scRepertoire <- function() {
+  req(has_scRepertoire())
+  loaded <- tryCatch(
+    {
+      loadNamespace("scRepertoire")
+      TRUE
+    },
+    error = function(e) conditionMessage(e)
+  )
+  validate(need(
+    isTRUE(loaded),
+    paste0(
+      "scRepertoire is installed but could not be loaded",
+      if (is.character(loaded)) paste0(": ", loaded) else "",
+      ". Please reinstall it and its dependencies."
+    )
+  ))
 }
 
 ## ---- Missing-dependency notice ---------------------------------------- ##
-## scRepertoire is a Suggests dependency (GitHub/Bioconductor). When it is
-## not installed the immune repertoire UI cannot render, so instead of a
-## silent blank panel we show an explicit prompt telling the user how to
-## enable the feature. Shown in both the settings and visualizations boxes.
+## scRepertoire is a mandatory dependency, so a standard install always has it;
+## this notice is a defensive fallback for a broken/partial install. Rather than
+## a silent blank panel we show an explicit prompt telling the user how to
+## reinstall it. Shown in both the settings and visualizations boxes.
 ir_scRepertoire_missing_ui <- function() {
   div(
     class = "alert alert-warning",
@@ -476,6 +525,13 @@ source(
   paste0(
     Cerebro.options[["cerebro_root"]],
     "/shiny/v1.4/immune_repertoire/tabs.R"
+  ),
+  local = TRUE
+)
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/shiny/v1.4/immune_repertoire/help_demo_helpers.R"
   ),
   local = TRUE
 )

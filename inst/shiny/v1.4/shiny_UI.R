@@ -33,6 +33,97 @@ boxTitle <- function(title) {
   p(title, style = "padding-right: 5px; display: inline")
 }
 
+## Read an entire file into a single string. Used to inline .js/.svg/.html
+## assets into the UI. readChar reads `size` bytes (the file's byte count) and
+## stops at EOF, which faithfully covers ASCII/UTF-8 assets. Defined here,
+## before the per-tab UI.R files are sourced with local = TRUE, so it is in
+## scope for every one of them.
+cerebro_read_file <- function(path) {
+  readChar(path, file.info(path)$size)
+}
+
+## Serve the www/ directory as cacheable static assets, so the app's own CSS/JS
+## are delivered as <link>/<script src> (browser-cached, downloaded in parallel,
+## deferred) instead of being inlined into every page's HTML on every connection.
+## Runs once when this file is sourced — by inst/app.R and by exported apps alike
+## (both source shiny_UI.R with Cerebro.options already set).
+cerebro_www_dir <- normalizePath(
+  file.path(Cerebro.options[["cerebro_root"]], "shiny/v1.4/www"),
+  mustWork = FALSE
+)
+## Register under a prefix UNIQUE to this directory. addResourcePath's namespace
+## is process-global, so a fixed "cerebro_www" would let a second exported app in
+## the same process silently replace the first app's mapping and serve assets
+## from the wrong bundle. Reuse a prefix already pointing here (idempotent);
+## otherwise allocate a fresh, unused one. NULL = registration unavailable, so
+## callers inline the asset instead.
+cerebro_www_prefix <- local({
+  if (!dir.exists(cerebro_www_dir)) {
+    return(NULL)
+  }
+  existing <- shiny::resourcePaths()
+  same <- names(existing)[vapply(
+    existing,
+    function(p) normalizePath(p, mustWork = FALSE) == cerebro_www_dir,
+    logical(1)
+  )]
+  if (length(same)) {
+    return(same[[1]])
+  }
+  prefix <- "cerebro_www"
+  i <- 1L
+  while (prefix %in% names(existing)) {
+    prefix <- paste0("cerebro_www_", i)
+    i <- i + 1L
+  }
+  tryCatch(
+    {
+      shiny::addResourcePath(prefix, cerebro_www_dir)
+      prefix
+    },
+    error = function(e) NULL
+  )
+})
+
+## Content-hashed URL for a registered asset: append ?v=<md5> so a redeployed
+## app at the same address cannot keep serving a stale cached file. The token
+## changes exactly when the file's bytes change — which is when the browser must
+## refetch. (The per-directory prefix only prevents same-process path
+## collisions; the path is identical across versions, so it does nothing for
+## cross-version caching.)
+cerebro_asset_url <- function(file) {
+  url <- paste0(cerebro_www_prefix, "/", file)
+  ver <- tryCatch(
+    unname(tools::md5sum(file.path(cerebro_www_dir, file))),
+    error = function(e) NA_character_
+  )
+  if (is.na(ver)) url else paste0(url, "?v=", substr(ver, 1, 10))
+}
+
+## Emit a <link>/<script> for a www asset, or — when registration was
+## unavailable — inline the file contents so the page still works instead of
+## 404-ing. This is the fallback the previous cerebro_asset() described in a
+## comment but never actually provided.
+cerebro_css <- function(file) {
+  if (!is.null(cerebro_www_prefix)) {
+    tags$link(
+      rel = "stylesheet",
+      type = "text/css",
+      href = cerebro_asset_url(file)
+    )
+  } else {
+    tags$style(HTML(cerebro_read_file(file.path(cerebro_www_dir, file))))
+  }
+}
+cerebro_js <- function(file, defer = FALSE) {
+  if (!is.null(cerebro_www_prefix)) {
+    src <- cerebro_asset_url(file)
+    if (defer) tags$script(defer = NA, src = src) else tags$script(src = src)
+  } else {
+    tags$script(HTML(cerebro_read_file(file.path(cerebro_www_dir, file))))
+  }
+}
+
 ##----------------------------------------------------------------------------##
 ## timeout function
 ##----------------------------------------------------------------------------##
@@ -222,44 +313,31 @@ ui <- dashboardPage(
   ),
   dashboardBody(
     shinyjs::useShinyjs(),
-    ## Console design language — see www/custom.css. Loaded here so the theme
-    ## overrides AdminLTE 2 / shinydashboard chrome across every tab.
-    includeCSS(
-      file.path(Cerebro.options[["cerebro_root"]], "shiny/v1.4/www/custom.css")
-    ),
-    ## Fill-to-viewport height, app-wide. Any element with class "cerebro-fill"
-    ## is sized to (viewport - its live top offset - a bottom gap), so a plot
-    ## fills the screen without a hardcoded height and re-measures itself when the
-    ## chrome above it changes. See www/fill_height.js.
-    includeScript(
-      file.path(
-        Cerebro.options[["cerebro_root"]],
-        "shiny/v1.4/www/fill_height.js"
-      )
-    ),
-    ## Trekker page assets (scoped under .trekker-page / tk- ids so they do not
-    ## affect any other tab). Loaded app-wide like the theme above so the tab —
-    ## which is registered in tabItems() but conditionally shown — is styled and
-    ## wired whenever a Trekker .crb is loaded.
-    includeCSS(
-      file.path(Cerebro.options[["cerebro_root"]], "shiny/v1.4/www/trekker.css")
-    ),
-    includeScript(
-      file.path(Cerebro.options[["cerebro_root"]], "shiny/v1.4/www/trekker.js")
-    ),
-    ## HLA & TCR Motifs modebar (draws a plotly-style toolbar over the visNetwork
-    ## motif network; visNetwork's own nav buttons are turned off for consistency).
-    includeCSS(
-      file.path(
-        Cerebro.options[["cerebro_root"]],
-        "shiny/v1.4/www/hla_motifs.css"
-      )
-    ),
-    includeScript(
-      file.path(
-        Cerebro.options[["cerebro_root"]],
-        "shiny/v1.4/www/hla_motifs.js"
-      )
+    ## App CSS/JS as cacheable static resources (served from the cerebro_www
+    ## resource path registered above) instead of inlined into every page. The
+    ## browser caches them across connections and downloads them in parallel;
+    ## scripts are deferred so they run after the document parses (each is a
+    ## self-contained IIFE with its own Shiny-readiness retry, so order-safe).
+    ##  - custom.css      : Console design language; overrides AdminLTE 2 chrome.
+    ##  - fill_height.js  : sizes any .cerebro-fill element to the live viewport.
+    ##  - trekker.*       : Trekker page assets (scoped under .trekker-page / tk-).
+    ##  - hla_motifs.*    : modebar over the visNetwork motif network.
+    tags$head(
+      cerebro_css("custom.css"),
+      cerebro_css("trekker.css"),
+      cerebro_css("hla_motifs.css"),
+      cerebro_js("fill_height.js", defer = TRUE),
+      cerebro_js("trekker.js", defer = TRUE),
+      cerebro_js("hla_motifs.js", defer = TRUE),
+      ## Shared projection-scatter engine, loaded ONCE here instead of being
+      ## inlined into all five projection tabs' extendShinyjs() (~69KB x5). Both
+      ## files expose only window globals (window.cerebroProjectionLayout /
+      ## window.cerebroProjection); each tab's thin js_projection_update_plot.js
+      ## (still inlined via extendShinyjs) calls those globals. These are NOT
+      ## deferred so the globals exist before the tab scripts' registerPlot()
+      ## runs; layouts before scatter since scatter builds on the layout helpers.
+      cerebro_js("projection_layouts.js"),
+      cerebro_js("projection_scatter.js")
     ),
     tags$script(HTML('$("body").addClass("fixed");')),
     tabItems(

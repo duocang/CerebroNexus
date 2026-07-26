@@ -17,8 +17,18 @@ if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
 ## Poll get_value(...) until it returns a non-NULL result or the timeout expires.
 ## A query that errors (server 500 while the output is still rendering) is
 ## retried; if no value arrives, report the last real error instead of replacing
-## it with an unexplained NULL.
-retry_get_value <- function(app, ..., timeout = 20000, interval = 300) {
+## it with an unexplained NULL. `validate`, when supplied, is a predicate the
+## value must also satisfy: an async output can return a non-NULL but transient
+## error state (e.g. a shiny.silent.error while req() is unmet) that is not yet
+## the real payload, so keep polling until validate(val) is TRUE. A predicate
+## that errors counts as not-yet-ready and is retried.
+retry_get_value <- function(
+  app,
+  ...,
+  timeout = 20000,
+  interval = 300,
+  validate = NULL
+) {
   deadline <- Sys.time() + timeout / 1000
   last_error <- NULL
   repeat {
@@ -29,7 +39,17 @@ retry_get_value <- function(app, ..., timeout = 20000, interval = 300) {
         NULL
       }
     )
-    if (!is.null(val)) {
+    ok <- !is.null(val)
+    if (ok && !is.null(validate)) {
+      ok <- tryCatch(
+        isTRUE(validate(val)),
+        error = function(e) {
+          last_error <<- e
+          FALSE
+        }
+      )
+    }
+    if (ok) {
       return(val)
     }
     if (Sys.time() > deadline) {
@@ -196,8 +216,18 @@ test_that("{shinytest2} recording: marker_genes", {
   app$set_inputs(marker_genes_selected_table = "seurat_clusters", wait_ = FALSE)
   app$wait_for_idle(timeout = 10000)
 
-  ## table renders
-  table_val <- retry_get_value(app, output = "marker_genes_table")
+  ## table renders — marker gene results render asynchronously, so the output can
+  ## momentarily hold a shiny.silent.error (req() not yet satisfied) that
+  ## serialises to non-JSON. Poll until the value parses as the expected DT
+  ## payload instead of reading once and letting fromJSON choke on that transient
+  ## error state.
+  table_val <- retry_get_value(
+    app,
+    output = "marker_genes_table",
+    validate = function(v) {
+      !is.null(jsonlite::fromJSON(v, simplifyVector = FALSE)$x$container)
+    }
+  )
   expect_false(is.null(table_val))
 
   ## verify expected columns are present in the table header
@@ -235,6 +265,37 @@ test_that("{shinytest2} recording: marker_genes", {
   app$stop()
 })
 
+
+test_that("app startup does not eagerly load scRepertoire", {
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "no_screp_at_startup",
+    height = 950,
+    width = 1619
+  )
+  withr::defer(app$stop())
+  app$wait_for_idle(timeout = 20000)
+
+  ## Deferred-loading contract: the IR settings render on the first flush
+  ## (suspendWhenHidden = FALSE), but startup must probe availability with
+  ## system.file() only and never load the ~90-package scRepertoire tree. Only a
+  ## real repertoire plot render is allowed to pull it in, so at a fresh startup
+  ## with no repertoire tab opened the namespace must be absent.
+  ##
+  ## Strict identity (not `expect_false(isTRUE(...))`): a missing or NULL export
+  ## must FAIL, not silently pass as though it were FALSE.
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+
+  ## Delayed re-check: wait past the former one-second background-prewarm timer,
+  ## so any deferred/prewarm-style loader would have fired by now. Still unloaded
+  ## => genuinely lazy, not merely sampled before a callback ran.
+  Sys.sleep(1.5)
+  app$wait_for_idle(timeout = 10000)
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+})
 
 test_that("{shinytest2} recording: gene_expression", {
   local_app_support(inst_dir)

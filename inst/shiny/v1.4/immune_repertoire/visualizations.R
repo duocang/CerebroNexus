@@ -1072,7 +1072,7 @@ ir_paired_scatter_panel <- function(
 ## Single-panel paired scatter -> interactive plotly. The default ggplotly hover
 ## already shows the x/y group values and the clone class.
 output$ir_plot_pairedScatter <- plotly::renderPlotly({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_pairedScatter")
   data <- ir_data_annotated()
   req(!is.null(data))
@@ -1134,7 +1134,7 @@ output$ir_plot_pairedScatter <- plotly::renderPlotly({
 ## Faceted paired scatter -> static patchwork grid (plotly cannot lay out the
 ## multi-panel grid cleanly, so this variant stays a ggplot).
 output$ir_plot_pairedScatter_facet <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_pairedScatter_facet")
   data <- ir_data_annotated()
   req(!is.null(data))
@@ -1203,7 +1203,7 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
   )
 
 output$ir_plot_clonalAbundance <- plotly::renderPlotly({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalAbundance")
   data <- ir_data()
   req(!is.null(data))
@@ -1235,7 +1235,7 @@ output$ir_plot_clonalAbundance <- plotly::renderPlotly({
 ## graph mode was dropped: Compare is about tracking clones across groups, which
 ## is the alluvial, and mixing a plotOutput/plotlyOutput per mode is not worth it.
 output$ir_plot_clonalCompare <- plotly::renderPlotly({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalCompare")
   samples <- input$ir_compare_samples
   req(!is.null(samples) && length(samples) >= 2)
@@ -1437,7 +1437,7 @@ ir_plot_clonal_diversity <- function(
 }
 
 output$ir_plot_clonalDiversity <- plotly::renderPlotly({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalDiversity")
   data <- ir_data()
   req(!is.null(data))
@@ -1474,7 +1474,7 @@ output$ir_plot_clonalDiversity <- plotly::renderPlotly({
   )
 
 output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalHomeostasis")
   data <- ir_data()
   req(!is.null(data))
@@ -1502,7 +1502,7 @@ output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
   )
 
 output$ir_plot_clonalLength <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalLength")
   data <- ir_data()
   req(!is.null(data))
@@ -1570,7 +1570,7 @@ output$ir_plot_clonalLength <- renderPlot({
   )
 
 output$ir_plot_clonalOverlap <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalOverlap")
   data <- ir_data()
   req(!is.null(data))
@@ -1596,7 +1596,7 @@ output$ir_plot_clonalOverlap <- renderPlot({
   )
 
 output$ir_plot_clonalProportion <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalProportion")
   data <- ir_data()
   req(!is.null(data))
@@ -1630,7 +1630,7 @@ output$ir_plot_clonalProportion <- renderPlot({
   )
 
 output$ir_plot_clonalQuant <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalQuant")
   data <- ir_data()
   req(!is.null(data))
@@ -1665,7 +1665,7 @@ output$ir_ui_clonalRarefaction <- renderUI({
 })
 
 output$ir_plot_clonalRarefaction <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalRarefaction")
   data <- ir_data()
   req(!is.null(data))
@@ -1701,7 +1701,7 @@ output$ir_plot_clonalRarefaction <- renderPlot({
   )
 
 output$ir_plot_clonalScatter <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalScatter")
   data <- ir_data()
   req(!is.null(data))
@@ -1763,7 +1763,7 @@ output$ir_plot_clonalScatter <- renderPlot({
   )
 
 output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_clonalSizeDistribution")
   data <- ir_data()
   req(!is.null(data))
@@ -1812,7 +1812,7 @@ output$ir_ui_percentGeneUsage <- renderUI({
 })
 
 output$ir_plot_percentGeneUsage <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_percentGeneUsage")
   data <- ir_data()
   req(!is.null(data))
@@ -1854,7 +1854,7 @@ output$ir_ui_vizGenes <- renderUI({
 })
 
 output$ir_plot_vizGenes <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_vizGenes")
   data <- ir_data()
   req(!is.null(data))
@@ -1897,7 +1897,7 @@ output$ir_ui_percentGenes <- renderUI({
 })
 
 output$ir_plot_percentGenes <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_percentGenes")
   data <- ir_data()
   req(!is.null(data))
@@ -1934,7 +1934,7 @@ output$ir_ui_percentVJ <- renderUI({
 })
 
 output$ir_plot_percentVJ <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_percentVJ")
   data <- ir_data()
   req(!is.null(data))
@@ -1971,7 +1971,7 @@ output$ir_ui_percentAA <- renderUI({
 })
 
 output$ir_plot_percentAA <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_percentAA")
   data <- ir_data()
   req(!is.null(data))
@@ -2004,7 +2004,7 @@ output$ir_plot_percentAA <- renderPlot({
   )
 
 output$ir_plot_positionalEntropy <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_positionalEntropy")
   data <- ir_data()
   req(!is.null(data))
@@ -2096,7 +2096,7 @@ output$ir_ui_positionalProperty <- renderUI({
 })
 
 output$ir_plot_positionalProperty <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_positionalProperty")
   data <- ir_data()
   req(!is.null(data))
@@ -2142,7 +2142,7 @@ output$ir_ui_percentKmer <- renderUI({
 })
 
 output$ir_plot_percentKmer <- renderPlot({
-  req(has_scRepertoire())
+  req_scRepertoire()
   req_plot_space("ir_plot_percentKmer")
   data <- ir_data()
   req(!is.null(data))
@@ -2180,6 +2180,9 @@ output$ir_plot_percentKmer <- renderPlot({
 ## V+J+CDR3. The clone definition is parsed from the CT* columns for the active
 ## chain (ir_parse_segments); faceted by the active group.by column when chosen.
 output$ir_plot_cloneDefinition <- plotly::renderPlotly({
+  ## Self-made plot (ir_build_definition_plot in data.R) — does NOT call
+  ## scRepertoire, so gate on the cheap availability probe only and never load
+  ## the namespace here.
   req(has_scRepertoire())
   req_plot_space("ir_plot_cloneDefinition")
   ir_render_ggplotly(
@@ -2201,6 +2204,9 @@ output$ir_plot_cloneDefinition <- plotly::renderPlotly({
 ## Public(within-group) / Public(cross-group) using the chosen sharing unit and
 ## the active group.by, then bars the class counts.
 output$ir_plot_cloneSharing <- plotly::renderPlotly({
+  ## Self-made plot (ir_build_sharing_plot in data.R) — does NOT call
+  ## scRepertoire, so gate on the cheap availability probe only and never load
+  ## the namespace here.
   req(has_scRepertoire())
   req_plot_space("ir_plot_cloneSharing")
   fig <- ir_render_ggplotly(
@@ -2222,6 +2228,19 @@ output$ir_plot_cloneSharing <- plotly::renderPlotly({
       }
       tr
     })
+    # ggplotly ignores the ggplot `legend.position` and drops a horizontal
+    # legend along the TOP, where it collided with the plot title. Move it below
+    # the plot so the title sits cleanly on its own row.
+    fig <- plotly::layout(
+      fig,
+      legend = list(
+        orientation = "h",
+        x = 0.5,
+        xanchor = "center",
+        y = -0.14,
+        yanchor = "top"
+      )
+    )
   }
   fig
 }) %>%

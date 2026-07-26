@@ -1,19 +1,29 @@
 ##----------------------------------------------------------------------------##
 ## Server function for Cerebro.
 ##----------------------------------------------------------------------------##
+
+## plotting_functions.R holds only pure plot-builder functions (no reactive /
+## input / output / session references), so source it ONCE at process startup
+## instead of re-evaluating every definition on every new browser session. It
+## lands in this file's environment (which encloses server()), so the server
+## reactives still reach the functions by lexical scope. color_setup.R and
+## utility_functions.R stay inside server(): the former defines a top-level
+## reactive (reactive_colors); the latter's helpers close over session-scope
+## reactives (data_set(), preferences, ...).
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/shiny/v1.4/plotting_functions.R"
+  ),
+  local = TRUE
+)
+
 server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
-  ## Load color setup, plotting and utility functions.
+  ## Load color setup and utility functions.
   ##--------------------------------------------------------------------------##
   source(
     paste0(Cerebro.options[["cerebro_root"]], "/shiny/v1.4/color_setup.R"),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/shiny/v1.4/plotting_functions.R"
-    ),
     local = TRUE
   )
   source(
@@ -727,6 +737,19 @@ server <- function(input, output, session) {
       } else {
         expression_projection_expression_levels()
       }
-    }
+    },
+    ## Lazy-load regression guard: app startup must NOT load scRepertoire. Its
+    ## ~90-package tree is exactly what deferred loading avoids, so if this is
+    ## TRUE at startup the settings/tab gates have regressed into eager loading.
+    ## Only a real repertoire plot render should pull scRepertoire in.
+    scRepertoire_loaded = "scRepertoire" %in% loadedNamespaces(),
+    ## Representative heavy deps unique to the scRepertoire tree (immApex / iNEXT
+    ## are pulled in by nothing else). A prewarm-like implementation would load
+    ## these too, so asserting they stay absent — with a delayed re-check in the
+    ## test, past the former 1s prewarm timer — catches a deferred loader that
+    ## was merely sampled before its callback ran.
+    ir_heavy_deps_loaded = any(
+      c("scRepertoire", "immApex", "iNEXT") %in% loadedNamespaces()
+    )
   )
 }

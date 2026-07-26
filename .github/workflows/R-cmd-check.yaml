@@ -23,6 +23,9 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      # R CMD check launches nested vanilla R processes while scanning tests.
+      # A repository file reaches those children; parent options(repos) does not.
+      R_REPOSITORIES: ${{ github.workspace }}/.github/ci-repositories
 
     steps:
       - uses: actions/checkout@v6

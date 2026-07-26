@@ -1,0 +1,7 @@
+## Repository definitions used by R CMD check and every nested R process.
+## Nix supplies dependencies; R expands %v to its matching Bioconductor version.
+menu_name	URL	default	source	win.binary	mac.binary
+CRAN	"CRAN"	https://cloud.r-project.org	TRUE	TRUE	TRUE	TRUE
+BioCsoft	"BioC software"	https://bioconductor.posit.co/packages/%v/bioc	FALSE	TRUE	TRUE	TRUE
+BioCann	"BioC annotation"	https://bioconductor.posit.co/packages/%v/data/annotation	FALSE	TRUE	TRUE	TRUE
+BioCexp	"BioC experiment"	https://bioconductor.posit.co/packages/%v/data/experiment	FALSE	TRUE	TRUE	TRUE

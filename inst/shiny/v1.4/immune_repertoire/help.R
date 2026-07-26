@@ -546,6 +546,16 @@ output$ir_help_panel <- renderUI({
   if (is.null(info)) {
     return(NULL)
   }
+  example_button <- if (ir_help_has_example(tab)) {
+    actionButton(
+      "ir_help_example_btn",
+      label = tags$span(icon("lightbulb"), " Example"),
+      class = "btn-xs",
+      style = "white-space: nowrap; margin-top: 2px; background: #0f6cbd; color: #fff; border: none;"
+    )
+  } else {
+    NULL
+  }
   div(
     style = "background: #e5f0fa; border-left: 4px solid #0f6cbd; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; border-radius: 2px; display: flex; align-items: flex-start; gap: 10px;",
     div(
@@ -556,12 +566,7 @@ output$ir_help_panel <- renderUI({
         info$summary
       )
     ),
-    actionButton(
-      "ir_help_example_btn",
-      label = tags$span(icon("lightbulb"), " Example"),
-      class = "btn-xs",
-      style = "white-space: nowrap; margin-top: 2px; background: #0f6cbd; color: #fff; border: none;"
-    )
+    example_button
   )
 })
 
@@ -572,107 +577,36 @@ ir_demo_data <- reactiveVal(NULL)
   if (!is.null(ir_demo_data())) {
     return(ir_demo_data())
   }
-  tryCatch(
-    {
-      data("contig_list", package = "scRepertoire", envir = environment())
-      demo <- scRepertoire::combineTCR(
-        contig_list[1:2],
-        samples = c("Healthy", "Disease")
-      )
-      ir_demo_data(demo)
-      demo
-    },
-    error = function(e) NULL
+  data("contig_list", package = "scRepertoire", envir = environment())
+  demo <- scRepertoire::combineTCR(
+    contig_list[1:2],
+    samples = c("Healthy", "Disease")
   )
+  ir_demo_data(demo)
+  demo
 }
 
 ## ---- BCR demo data (synthetic — scRepertoire has no built-in BCR) ---- ##
-## The Isotype and SHM Proxy tabs require BCR (IGH) data. We generate a
-## realistic synthetic dataset with two samples: Pre-vaccination (mostly
-## IgM/IgD, naive B cells) and Post-vaccination (class-switched to IgG/IgA).
 ir_bcr_demo_data <- reactiveVal(NULL)
 
 .get_bcr_demo_data <- function() {
   if (!is.null(ir_bcr_demo_data())) {
     return(ir_bcr_demo_data())
   }
-  set.seed(42)
-  n <- 200L
-
-  make_ctgene <- function(iso) {
-    v <- sample(
-      c("IGHV1-2", "IGHV1-18", "IGHV3-23", "IGHV3-30", "IGHV4-34"),
-      1L
-    )
-    d <- sample(c("IGHD2-2", "IGHD3-10", "IGHD6-13"), 1L)
-    j <- sample(c("IGHJ4", "IGHJ5", "IGHJ6"), 1L)
-    paste(v, d, j, iso, sep = "_")
-  }
-
-  make_nt <- function() {
-    paste(sample(c("A", "T", "G", "C"), 300L, replace = TRUE), collapse = "")
-  }
-
-  make_bc <- function(i, prefix) {
-    paste0(prefix, "_BCR_", sprintf("%04d", i))
-  }
-
-  make_df <- function(prefix, iso_probs) {
-    isos <- sample(names(iso_probs), n, replace = TRUE, prob = iso_probs)
-    clones <- sample(1L:40L, n, replace = TRUE)
-    data.frame(
-      barcode = vapply(seq_len(n), function(i) make_bc(i, prefix), ""),
-      CTgene = vapply(isos, make_ctgene, ""),
-      CTnt = vapply(seq_len(n), function(i) make_nt(), ""),
-      CTaa = paste0(
-        "C",
-        vapply(
-          seq_len(n),
-          function(i) {
-            paste(
-              sample(
-                strsplit("ARNDCQEGHILKMFPSTWYV", "")[[1]],
-                15L,
-                replace = TRUE
-              ),
-              collapse = ""
-            )
-          },
-          ""
-        )
-      ),
-      CTstrict = vapply(clones, function(c) sprintf("IGH_clone_%03d", c), ""),
-      sample = prefix,
-      cloneSize = sample(1L:8L, n, replace = TRUE),
-      stringsAsFactors = FALSE
-    )
-  }
-
-  demo <- list(
-    "Pre-vaccination" = make_df(
-      "Pre-vaccination",
-      c(
-        IGHM = 0.60,
-        IGHD = 0.20,
-        IGHG1 = 0.10,
-        IGHG2 = 0.05,
-        IGHA1 = 0.05
-      )
-    ),
-    "Post-vaccination" = make_df(
-      "Post-vaccination",
-      c(
-        IGHM = 0.20,
-        IGHD = 0.05,
-        IGHG1 = 0.30,
-        IGHG2 = 0.15,
-        IGHG3 = 0.10,
-        IGHA1 = 0.15,
-        IGHE = 0.05
-      )
-    )
-  )
+  demo <- ir_make_bcr_demo_data()
   ir_bcr_demo_data(demo)
+  demo
+}
+
+## ---- TCR demo data (synthetic — for SELF-MADE plots, no scRepertoire) - ##
+ir_tcr_demo_data <- reactiveVal(NULL)
+
+.get_tcr_demo_data <- function() {
+  if (!is.null(ir_tcr_demo_data())) {
+    return(ir_tcr_demo_data())
+  }
+  demo <- ir_make_tcr_demo_data()
+  ir_tcr_demo_data(demo)
   demo
 }
 
@@ -683,9 +617,25 @@ observeEvent(input$ir_help_example_btn, {
     return()
   }
   info <- ir_tab_help[[tab]]
-  if (is.null(info)) {
+  demo_kind <- ir_help_demo_kind(tab)
+  if (is.null(info) || identical(demo_kind, "none")) {
     return()
   }
+  demo_note <- switch(
+    demo_kind,
+    local_bcr = paste(
+      "Generated from a synthetic BCR demo",
+      "(2 samples: Pre- vs Post-vaccination)."
+    ),
+    local_tcr = paste(
+      "Generated from a synthetic TCR demo",
+      "(2 samples: Healthy vs Disease) — no scRepertoire needed."
+    ),
+    backed = paste(
+      "Generated from scRepertoire built-in demo data",
+      "(2 TCR samples: Healthy vs Disease)."
+    )
+  )
 
   showModal(modalDialog(
     title = paste0("Example: ", tab),
@@ -700,11 +650,7 @@ observeEvent(input$ir_help_example_btn, {
       tags$hr(),
       tags$p(
         style = "color: var(--neutral-tertiary); font-size: 12px;",
-        if (tab %in% c("Isotype", "SHM Proxy")) {
-          "Generated from a synthetic BCR demo (2 samples: Pre- vs Post-vaccination)."
-        } else {
-          "Generated from scRepertoire built-in demo data (2 TCR samples: Healthy vs Disease)."
-        }
+        demo_note
       ),
       plotOutput("ir_demo_plot", height = "450px")
     ),
@@ -717,21 +663,25 @@ output$ir_demo_plot <- renderPlot({
   req_plot_space("ir_demo_plot")
   tab <- input$ir_tabs
   if (is.null(tab)) {
-    plot.new()
-    text(0.5, 0.5, "Demo data unavailable", cex = 1.2)
     return()
   }
-  # BCR-specific tabs use synthetic BCR data; all others use scRepertoire's
-  # built-in TCR demo.
-  is_bcr_tab <- tab %in% c("Isotype", "SHM Proxy")
-  demo <- if (is_bcr_tab) .get_bcr_demo_data() else .get_demo_data()
-  if (is.null(demo)) {
-    plot.new()
-    text(0.5, 0.5, "Demo data unavailable", cex = 1.2)
+  demo_kind <- ir_help_demo_kind(tab)
+  if (identical(demo_kind, "none")) {
     return()
+  }
+  ## Keep the explicit load/error boundary used by live backed renderers.
+  ## Local BCR/TCR examples never cross it.
+  if (identical(demo_kind, "backed")) {
+    req_scRepertoire()
   }
   tryCatch(
     {
+      demo <- switch(
+        demo_kind,
+        local_bcr = .get_bcr_demo_data(),
+        local_tcr = .get_tcr_demo_data(),
+        backed = .get_demo_data()
+      )
       p <- switch(
         tab,
         "Abundance" = scRepertoire::clonalAbundance(demo, cloneCall = "gene"),
@@ -852,6 +802,14 @@ output$ir_demo_plot <- renderPlot({
           y.axis = names(demo)[2],
           palette = "inferno"
         ),
+        "Paired Scatter" = scRepertoire::clonalScatter(
+          demo,
+          cloneCall = "gene",
+          chain = "TRB",
+          x.axis = names(demo)[1],
+          y.axis = names(demo)[2],
+          palette = "inferno"
+        ),
         "SizeDist" = scRepertoire::clonalSizeDistribution(
           demo,
           cloneCall = "gene",
@@ -881,12 +839,14 @@ output$ir_demo_plot <- renderPlot({
         ),
         "Isotype" = bcr_isotype_plot(demo, group_col = "sample"),
         "SHM Proxy" = bcr_shm_proxy_plot(demo, group_col = "sample"),
-        {
-          plot.new()
-          text(0.5, 0.5, paste("No example available for:", tab), cex = 1.2)
-        }
+        stop("No example renderer registered for: ", tab)
       )
-      if (inherits(p, "gg")) print(p)
+      if (is.null(p)) {
+        stop("Example renderer returned no plot for: ", tab)
+      }
+      if (inherits(p, "gg")) {
+        print(p)
+      }
     },
     error = function(e) {
       plot.new()

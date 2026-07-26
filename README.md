@@ -38,6 +38,10 @@ For the original feature set and data preparation workflows, refer to the upstre
 remotes::install_github('mihem/CerebroNexus')
 ```
 
+This pulls in every dependency, so all features work out of the box. Heavy
+packages (e.g. `scRepertoire`) are still **loaded on demand** — only when you
+first use the feature that needs them — so the app starts fast regardless.
+
 ## 2. Features
 
 ### 2.1 convertSeuratToCerebro()
