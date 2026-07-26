@@ -231,11 +231,20 @@ test_that("generic fill never animates height, only opacity", {
     collapse = "\n"
   )
 
-  # The height-grow flash fix: the is-filled reveal fades opacity only; the
-  # height is applied in one frame (settled before reveal), never tweened. Assert
-  # the opacity-only declaration exists and the old height tween is gone.
-  expect_match(css, "transition: opacity 0.12s ease;", fixed = TRUE)
+  # Flash fix: the `.cerebro-fill.is-filled` reveal is INSTANT — no opacity
+  # tween and no height tween. fill_height.js settles the height before adding
+  # `.is-filled`, so the first visible frame is already final; any tween just
+  # blinks an already-rendered plot in (the IR/HLA flash). Assert the is-filled
+  # block carries neither transition. `[\\s\\S]*?` is air-reflow tolerant.
   expect_false(grepl("height 0.2s ease", css, fixed = TRUE))
+  is_filled_block <- regmatches(
+    css,
+    regexpr("\\.cerebro-fill\\.is-filled\\s*\\{[\\s\\S]*?\\}", css, perl = TRUE)
+  )
+  expect_length(is_filled_block, 1L)
+  # `transition:` (with the colon) matches the CSS property, not the word
+  # "transitioned" that appears in the block's explanatory comment.
+  expect_false(grepl("transition:", is_filled_block, fixed = TRUE))
 })
 
 test_that("content wrapper prefers dynamic viewport units with a fallback", {
