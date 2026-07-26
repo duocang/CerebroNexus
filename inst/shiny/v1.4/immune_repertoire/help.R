@@ -676,6 +676,61 @@ ir_bcr_demo_data <- reactiveVal(NULL)
   demo
 }
 
+## ---- TCR demo data (synthetic — for SELF-MADE plots, no scRepertoire) - ##
+## The self-made help examples (Clonal UMAP, Definition, Clone Sharing) draw
+## their own plots (ir_build_*), so their demo data must NOT come from
+## scRepertoire::combineTCR() — that would load ~90 packages just to open a help
+## dialog. This mirrors combineTCR's single-chain TRB shape (CTgene = a `.`-joined
+## V.D.J.C slot, CTaa = the CDR3) so ir_parse_segments(chain = "TRB") resolves it
+## exactly like real data. A fixed clone pool shared across the two samples gives
+## Clone Sharing real cross-sample clones to classify.
+ir_tcr_demo_data <- reactiveVal(NULL)
+
+.get_tcr_demo_data <- function() {
+  if (!is.null(ir_tcr_demo_data())) {
+    return(ir_tcr_demo_data())
+  }
+  set.seed(7)
+  aa <- strsplit("ARNDCQEGHILKMFPSTWYV", "")[[1]]
+  vs <- c("TRBV5-1", "TRBV7-9", "TRBV19", "TRBV20-1", "TRBV28")
+  js <- c("TRBJ1-1", "TRBJ2-1", "TRBJ2-7")
+  # Fixed clone pool so clones can be SHARED across samples (Sharing needs this).
+  pool <- lapply(seq_len(60L), function(k) {
+    list(
+      CTgene = paste0(sample(vs, 1L), ".None.", sample(js, 1L), ".TRBC2"),
+      CTaa = paste0(
+        "CASS",
+        paste(sample(aa, 9L, replace = TRUE), collapse = ""),
+        "F"
+      ),
+      CTnt = paste(
+        sample(c("A", "T", "G", "C"), 42L, replace = TRUE),
+        collapse = ""
+      )
+    )
+  })
+  make_df <- function(prefix, idx) {
+    n <- length(idx)
+    data.frame(
+      barcode = sprintf("%s_TCR_%04d", prefix, seq_len(n)),
+      CTgene = vapply(idx, function(k) pool[[k]]$CTgene, ""),
+      CTnt = vapply(idx, function(k) pool[[k]]$CTnt, ""),
+      CTaa = vapply(idx, function(k) pool[[k]]$CTaa, ""),
+      CTstrict = vapply(idx, function(k) sprintf("TRB_clone_%03d", k), ""),
+      sample = prefix,
+      cloneSize = sample(1L:8L, n, replace = TRUE),
+      stringsAsFactors = FALSE
+    )
+  }
+  # Healthy draws clones 1-40, Disease 20-60 -> clones 20-40 are shared.
+  demo <- list(
+    "Healthy" = make_df("Healthy", sample(1L:40L, 200L, replace = TRUE)),
+    "Disease" = make_df("Disease", sample(20L:60L, 200L, replace = TRUE))
+  )
+  ir_tcr_demo_data(demo)
+  demo
+}
+
 ## ---- Example modal ---------------------------------------------------- ##
 observeEvent(input$ir_help_example_btn, {
   tab <- input$ir_tabs
@@ -702,6 +757,8 @@ observeEvent(input$ir_help_example_btn, {
         style = "color: var(--neutral-tertiary); font-size: 12px;",
         if (tab %in% c("Isotype", "SHM Proxy")) {
           "Generated from a synthetic BCR demo (2 samples: Pre- vs Post-vaccination)."
+        } else if (tab %in% c("Clonal UMAP", "Definition", "Clone Sharing")) {
+          "Generated from a synthetic TCR demo (2 samples: Healthy vs Disease) — no scRepertoire needed."
         } else {
           "Generated from scRepertoire built-in demo data (2 TCR samples: Healthy vs Disease)."
         }
@@ -726,10 +783,20 @@ output$ir_demo_plot <- renderPlot({
     text(0.5, 0.5, "Demo data unavailable", cex = 1.2)
     return()
   }
-  # BCR-specific tabs use synthetic BCR data; all others use scRepertoire's
-  # built-in TCR demo.
-  is_bcr_tab <- tab %in% c("Isotype", "SHM Proxy")
-  demo <- if (is_bcr_tab) .get_bcr_demo_data() else .get_demo_data()
+  # Classify the branch BEFORE picking demo data. Self-made plots draw their own
+  # figures (ir_build_*), so their examples must use synthetic data and never
+  # load scRepertoire: Isotype / SHM use the synthetic BCR demo; Clonal UMAP /
+  # Definition / Clone Sharing use the synthetic TRB demo. Only the genuinely
+  # scRepertoire-backed branches use combineTCR's built-in TCR demo.
+  self_made_bcr <- tab %in% c("Isotype", "SHM Proxy")
+  self_made_tcr <- tab %in% c("Clonal UMAP", "Definition", "Clone Sharing")
+  demo <- if (self_made_bcr) {
+    .get_bcr_demo_data()
+  } else if (self_made_tcr) {
+    .get_tcr_demo_data()
+  } else {
+    .get_demo_data()
+  }
   if (is.null(demo)) {
     plot.new()
     text(0.5, 0.5, "Demo data unavailable", cex = 1.2)
