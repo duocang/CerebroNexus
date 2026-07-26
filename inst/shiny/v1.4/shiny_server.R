@@ -742,6 +742,14 @@ server <- function(input, output, session) {
     ## ~90-package tree is exactly what deferred loading avoids, so if this is
     ## TRUE at startup the settings/tab gates have regressed into eager loading.
     ## Only a real repertoire plot render should pull scRepertoire in.
-    scRepertoire_loaded = "scRepertoire" %in% loadedNamespaces()
+    scRepertoire_loaded = "scRepertoire" %in% loadedNamespaces(),
+    ## Representative heavy deps unique to the scRepertoire tree (immApex / iNEXT
+    ## are pulled in by nothing else). A prewarm-like implementation would load
+    ## these too, so asserting they stay absent — with a delayed re-check in the
+    ## test, past the former 1s prewarm timer — catches a deferred loader that
+    ## was merely sampled before its callback ran.
+    ir_heavy_deps_loaded = any(
+      c("scRepertoire", "immApex", "iNEXT") %in% loadedNamespaces()
+    )
   )
 }

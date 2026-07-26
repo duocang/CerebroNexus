@@ -281,7 +281,19 @@ test_that("app startup does not eagerly load scRepertoire", {
   ## system.file() only and never load the ~90-package scRepertoire tree. Only a
   ## real repertoire plot render is allowed to pull it in, so at a fresh startup
   ## with no repertoire tab opened the namespace must be absent.
-  expect_false(isTRUE(app$get_value(export = "scRepertoire_loaded")))
+  ##
+  ## Strict identity (not `expect_false(isTRUE(...))`): a missing or NULL export
+  ## must FAIL, not silently pass as though it were FALSE.
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+
+  ## Delayed re-check: wait past the former one-second background-prewarm timer,
+  ## so any deferred/prewarm-style loader would have fired by now. Still unloaded
+  ## => genuinely lazy, not merely sampled before a callback ran.
+  Sys.sleep(1.5)
+  app$wait_for_idle(timeout = 10000)
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
   app$stop()
 })
 

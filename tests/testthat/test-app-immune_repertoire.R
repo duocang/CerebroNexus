@@ -591,32 +591,35 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   app$wait_for_idle(timeout = 60000)
 
   ## Startup: nothing repertoire-related has rendered, so scRepertoire is unloaded.
-  expect_false(isTRUE(app$get_value(export = "scRepertoire_loaded")))
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
 
   ## Landing on the IR tab shows the default "Clonal UMAP" — a self-made plot —
   ## which must not drag in scRepertoire.
   activate_ir_tab(app)
   app$wait_for_idle(timeout = 45000)
-  expect_false(isTRUE(app$get_value(export = "scRepertoire_loaded")))
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
 
   ## Clone Sharing is self-made (ir_build_sharing_plot, no scRepertoire:: call).
   ## Opening it must NOT load scRepertoire — this is the over-broad-gate
   ## regression: previously every renderer forced loadNamespace().
   app$set_inputs(ir_tabs = "Clone Sharing", wait_ = FALSE)
   app$wait_for_idle(timeout = 45000)
-  expect_false(isTRUE(app$get_value(export = "scRepertoire_loaded")))
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
 
   ## Abundance IS scRepertoire-backed — it loads the namespace at that boundary
   ## and renders a plot.
   app$set_inputs(ir_tabs = "Abundance", wait_ = FALSE)
   app$wait_for_idle(timeout = 60000)
-  expect_true(isTRUE(app$get_value(export = "scRepertoire_loaded")))
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), TRUE)
   expect_false(is.null(app$get_value(output = "ir_plot_clonalAbundance")))
 
   ## A second scRepertoire-backed plot also renders (namespace already warm).
   app$set_inputs(ir_tabs = "Homeostasis", wait_ = FALSE)
   app$wait_for_idle(timeout = 45000)
-  expect_true(isTRUE(app$get_value(export = "scRepertoire_loaded")))
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), TRUE)
   expect_false(is.null(app$get_value(output = "ir_plot_clonalHomeostasis")))
 
   app$stop()
