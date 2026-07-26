@@ -225,7 +225,7 @@ test_that("generic fill reveals only after the height settles across two frames"
   expect_equal(output, "[false,false,true]")
 })
 
-test_that("generic fill never animates height, only opacity", {
+test_that("generic fill reveal has no height or opacity transition", {
   css <- paste(
     readLines(repo_file("inst", "shiny", "v1.4", "www", "custom.css")),
     collapse = "\n"

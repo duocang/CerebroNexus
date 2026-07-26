@@ -274,6 +274,7 @@ test_that("app startup does not eagerly load scRepertoire", {
     height = 950,
     width = 1619
   )
+  withr::defer(app$stop())
   app$wait_for_idle(timeout = 20000)
 
   ## Deferred-loading contract: the IR settings render on the first flush
@@ -294,7 +295,6 @@ test_that("app startup does not eagerly load scRepertoire", {
   app$wait_for_idle(timeout = 10000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
-  app$stop()
 })
 
 test_that("{shinytest2} recording: gene_expression", {

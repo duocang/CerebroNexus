@@ -588,6 +588,7 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
     height = 950,
     width = 1619
   )
+  withr::defer(app$stop())
   app$wait_for_idle(timeout = 60000)
 
   ## Startup: nothing repertoire-related has rendered, so scRepertoire is unloaded.
@@ -600,6 +601,15 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   app$wait_for_idle(timeout = 45000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+  ## Clonal UMAP has no standalone help renderer. Do not offer a button that
+  ## opens a modal containing only "No example available".
+  app$wait_for_js(
+    'document.querySelector("#ir_help_panel") !== null',
+    timeout = 45000
+  )
+  expect_true(isTRUE(app$get_js(
+    'document.querySelector("#ir_help_example_btn") === null;'
+  )))
 
   ## Clone Sharing is self-made (ir_build_sharing_plot, no scRepertoire:: call).
   ## Opening it must NOT load scRepertoire — this is the over-broad-gate
@@ -608,6 +618,29 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   app$wait_for_idle(timeout = 45000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+
+  ## The same boundary must hold for the help example, not only the live plot.
+  app$wait_for_js(
+    'document.querySelector("#ir_help_example_btn") !== null',
+    timeout = 45000
+  )
+  app$run_js('document.querySelector("#ir_help_example_btn").click();')
+  app$wait_for_js(
+    'document.querySelector(".modal-body #ir_demo_plot img") !== null',
+    timeout = 45000
+  )
+  expect_false(is.null(app$get_value(output = "ir_demo_plot")))
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+  Sys.sleep(1.5)
+  app$wait_for_idle(timeout = 10000)
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+  app$run_js('document.querySelector(".modal-footer button").click();')
+  app$wait_for_js(
+    'document.querySelector(".modal") === null',
+    timeout = 10000
+  )
 
   ## Abundance IS scRepertoire-backed — it loads the namespace at that boundary
   ## and renders a plot.
@@ -621,6 +654,4 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   app$wait_for_idle(timeout = 45000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), TRUE)
   expect_false(is.null(app$get_value(output = "ir_plot_clonalHomeostasis")))
-
-  app$stop()
 })

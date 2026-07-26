@@ -35,6 +35,7 @@ test_that("immune_repertoire module files parse without errors", {
     "data.R",
     "settings.R",
     "tabs.R",
+    "help_demo_helpers.R",
     "help.R",
     "visualizations.R"
   )

@@ -531,6 +531,13 @@ source(
 source(
   paste0(
     Cerebro.options[["cerebro_root"]],
+    "/shiny/v1.4/immune_repertoire/help_demo_helpers.R"
+  ),
+  local = TRUE
+)
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
     "/shiny/v1.4/immune_repertoire/help.R"
   ),
   local = TRUE
