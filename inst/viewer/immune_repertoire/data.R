@@ -298,16 +298,17 @@ IR_BCR_CHAINS <- CEREBRO_BCR_CHAINS
 ## Returns a named vector ("TCR" / "BCR") of the receptor types actually
 ## detected, so the Clonal UMAP selector only offers what exists. The names
 ## are the labels shown to the user; values feed ir_umap_chains().
+## Reads clone_contract.R's detector rather than detect_chains(), which samples
+## only the first three list entries -- fine for picking a default gene family,
+## wrong here: a data set whose fourth sample is the only one carrying TCR would
+## offer a different default receptor on this page than in Linked views, and the
+## two would then be describing different cells.
 ir_receptor_types <- reactive({
-  chains <- tryCatch(detect_chains(ir_data()), error = function(e) character(0))
-  types <- character(0)
-  if (length(intersect(chains, IR_TCR_CHAINS)) > 0) {
-    types <- c(types, "TCR" = "TCR")
-  }
-  if (length(intersect(chains, IR_BCR_CHAINS)) > 0) {
-    types <- c(types, "BCR" = "BCR")
-  }
-  types
+  present <- tryCatch(
+    cerebro_receptors_present(ir_data()),
+    error = function(e) character(0)
+  )
+  stats::setNames(present, present)
 })
 
 ## ---- Chains belonging to the selected receptor type ------------------- ##
@@ -416,6 +417,21 @@ ir_clonal_umap_data <- function(
   if (has_receptor) {
     # Clone size = number of cells sharing the clonotype; bin into expansion levels.
     rows <- rows[!is.na(rows$clone) & nzchar(rows$clone), , drop = FALSE]
+    # Count over cells the object actually HAS. An IR table can reference
+    # barcodes that never made it into the data set, and counting those inflated
+    # every clone they touched -- silently, and differently from Linked views,
+    # which aligns to the cell list first. A clone straddling a bin boundary then
+    # read Large on one page and Medium on the other. The restriction is to the
+    # object's cells, never to the group filter: a clone's size is a property of
+    # the data set, not of what is on screen.
+    all_cells <- tryCatch(
+      as.character(getMetaData()$cell_barcode),
+      error = function(e) NULL
+    )
+    if (!is.null(all_cells)) {
+      rows <- rows[rows$barcode %in% all_cells, , drop = FALSE]
+    }
+    has_receptor <- nrow(rows) > 0
   }
   if (!has_receptor || nrow(rows) == 0) {
     # No receptor cells. With show_all we can still draw the grey background;

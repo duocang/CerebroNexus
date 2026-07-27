@@ -410,8 +410,11 @@ test_that("Clonal UMAP does not depend on the hidden Clone call control", {
   content <- paste(readLines(viz), collapse = "\n")
   ## The Clonal UMAP renderers (non-faceted shared-projection observe + faceted
   ## static ggplot) live between the "Draw the non-faceted Clonal UMAP" marker
-  ## and the BCR-specific renderers section. Both must colour by clone_call
-  ## "gene" and must not read the hidden Clone-call control.
+  ## and the BCR-specific renderers section. Both must take the clone call from
+  ## clone_contract.R -- which is what Linked views reads, so changing it moves
+  ## both pages rather than one -- and must not read the hidden Clone-call
+  ## control. The literal "gene" used to be spelled out here, which met the
+  ## second requirement and quietly defeated the first.
   block <- regmatches(
     content,
     regexpr(
@@ -421,7 +424,8 @@ test_that("Clonal UMAP does not depend on the hidden Clone call control", {
     )
   )
   expect_length(block, 1)
-  expect_match(block, 'clone_call <- "gene"')
+  expect_match(block, "clone_call <- CEREBRO_CLONE_CALL", fixed = TRUE)
+  expect_no_match(block, 'clone_call <- "gene"')
   expect_no_match(block, "ir_params\\(\\)\\$cloneCall")
   expect_no_match(block, "input\\$ir_cloneCall")
 })

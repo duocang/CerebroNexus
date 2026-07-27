@@ -421,3 +421,134 @@ test_that("cv_build_bundle assembles every modality from the omnibus demo", {
   expect_null(b$projections$umap$z)
   expect_null(b$projections$tsne$z)
 })
+
+test_that("a clone's label names its dominant CDR3 and says how many it hides", {
+  skip_if_not(have_bundle)
+  ## A clone is called on CTgene, and one CTgene clone routinely covers several
+  ## CDR3s -- in the omnibus demo, every one of them does. Naming the row after
+  ## whichever CDR3 came first presented one sequence while the row selected
+  ## cells carrying the others, under a column header that read "CDR3".
+  ir <- list(data.frame(
+    barcode = c("c1", "c2", "c3", "c4"),
+    CTgene = rep("TRAV1-2.TRAJ33.TRAC_TRBV6-4.TRBJ2-1.TRBC2", 4),
+    CTstrict = paste0(
+      "TRAV1-2.TRAJ33.TRAC_CAV",
+      c("A", "B", "B", "B"),
+      "_TRBV6-4.TRBJ2-1.TRBC2"
+    ),
+    ## "CASSB" is carried by three of the four cells; "CASSA" by one, and it
+    ## comes first, which is exactly what the old label picked.
+    CTaa = c("CASSA", "CASSB", "CASSB", "CASSB"),
+    stringsAsFactors = FALSE
+  ))
+  crb <- list(getImmuneRepertoire = function() ir)
+  cells <- c("c1", "c2", "c3", "c4")
+  out <- cv_env$cv_build_clone(crb, cells, length(cells))
+
+  expect_false(is.null(out))
+  expect_equal(out$bundle$n_clones, 1)
+  expect_equal(as.character(out$bundle$label[1]), "CASSB")
+  expect_equal(as.integer(out$bundle$n_cdr3[1]), 2L)
+})
+
+test_that("a single-CDR3 clone is not annotated", {
+  skip_if_not(have_bundle)
+  ir <- list(data.frame(
+    barcode = c("c1", "c2"),
+    CTgene = rep("TRAV1-2.TRAJ33.TRAC_TRBV6-4.TRBJ2-1.TRBC2", 2),
+    CTstrict = rep("TRAV1-2.TRAJ33.TRAC_CAVX_TRBV6-4.TRBJ2-1.TRBC2", 2),
+    CTaa = c("CASSX", "CASSX"),
+    stringsAsFactors = FALSE
+  ))
+  crb <- list(getImmuneRepertoire = function() ir)
+  out <- cv_env$cv_build_clone(crb, c("c1", "c2"), 2)
+  expect_equal(as.character(out$bundle$label[1]), "CASSX")
+  expect_equal(as.integer(out$bundle$n_cdr3[1]), 1L)
+})
+
+## The divergences that clone_contract.R exists to prevent were never visible to
+## a test of either page on its own: each was self-consistent. This one computes
+## a clone's size the way each page does, on the same object, and compares -- the
+## only shape of test that can fail when the two drift apart again.
+test_that("both pages give a clone the same size", {
+  skip_if_not(have_bundle)
+  skip_if_not(nzchar(omnibus_crb) && file.exists(omnibus_crb))
+
+  crb <- readRDS(omnibus_crb)
+  md <- crb$getMetaData()
+  cells <- as.character(md$cell_barcode)
+  ir <- crb$getImmuneRepertoire()
+
+  ## Linked views: align to the object's cells, then count.
+  cp <- cv_env$cv_clone_per_cell(ir, cells)
+  cv_sizes <- table(cp$clone[!is.na(cp$clone)])
+
+  ## Immune repertoire: the same contract, applied independently -- one row per
+  ## barcode, receptor-scoped, restricted to cells the object has, then counted.
+  clone_col <- cv_env$cerebro_clonecall_col()
+  receptor <- cv_env$cerebro_receptors_present(ir)[1]
+  rows <- do.call(
+    rbind,
+    lapply(ir, function(df) {
+      keep <- cv_env$cerebro_rows_in_receptor(df, receptor, clone_col)
+      df <- df[keep, , drop = FALSE]
+      if (!nrow(df)) {
+        return(NULL)
+      }
+      data.frame(
+        barcode = as.character(df$barcode),
+        clone = as.character(df[[clone_col]]),
+        stringsAsFactors = FALSE
+      )
+    })
+  )
+  rows <- rows[!is.na(rows$clone) & nzchar(rows$clone), , drop = FALSE]
+  rows <- rows[!duplicated(rows$barcode), , drop = FALSE]
+  rows <- rows[rows$barcode %in% cells, , drop = FALSE]
+  ir_sizes <- table(rows$clone)
+
+  expect_equal(length(cv_sizes), length(ir_sizes))
+  expect_setequal(names(cv_sizes), names(ir_sizes))
+  expect_equal(
+    as.integer(cv_sizes[names(ir_sizes)]),
+    as.integer(ir_sizes)
+  )
+
+  ## ... and therefore the same expansion level for every clone.
+  expect_equal(
+    as.character(cv_env$cerebro_clone_expansion(as.integer(cv_sizes))),
+    as.character(cv_env$cerebro_clone_expansion(
+      as.integer(ir_sizes[names(cv_sizes)])
+    ))
+  )
+})
+
+test_that("receptor detection does not stop at the third sample", {
+  skip_if_not(have_bundle)
+  ## detect_chains() samples the first three list entries, which is fine for
+  ## guessing a default gene family and wrong for deciding which receptor a page
+  ## defaults to: a data set whose FOURTH sample is the only one carrying TCR
+  ## would have shown BCR on one page and TCR on the other.
+  bcr <- function(i) {
+    data.frame(
+      barcode = paste0("b", i),
+      CTgene = "IGHV3-23.IGHJ4.IGHM_IGKV1-5.IGKJ1.IGKC",
+      CTstrict = "IGHV3-23.IGHJ4.IGHM_CARDX_IGKV1-5.IGKJ1.IGKC_CQQY",
+      CTaa = "CARD_CQQY",
+      stringsAsFactors = FALSE
+    )
+  }
+  ir <- list(
+    bcr(1),
+    bcr(2),
+    bcr(3),
+    data.frame(
+      barcode = "t1",
+      CTgene = "TRAV1-2.TRAJ33.TRAC_TRBV6-4.TRBJ2-1.TRBC2",
+      CTstrict = "TRAV1-2.TRAJ33.TRAC_CAVX_TRBV6-4.TRBJ2-1.TRBC2_CASSX",
+      CTaa = "CAVX_CASSX",
+      stringsAsFactors = FALSE
+    )
+  )
+  expect_setequal(cv_env$cerebro_receptors_present(ir), c("TCR", "BCR"))
+})

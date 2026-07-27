@@ -587,7 +587,7 @@ observe({
 
   receptor <- ir_param("ir_p_umap_receptor")
   projection <- ir_param("ir_p_umap_projection")
-  clone_call <- "gene"
+  clone_call <- CEREBRO_CLONE_CALL
   show_all <- isTRUE(ir_param("ir_p_umap_show_all", TRUE))
   cells <- ir_umap_cells_to_show()
   df <- ir_clonal_umap_data(
@@ -761,7 +761,7 @@ output$ir_plot_clonalUMAP_static <- renderPlot(
     projection <- ir_param("ir_p_umap_projection")
     group_by <- ir_param("ir_p_umap_group_by", "")
     validate(need(nzchar(group_by), "Choose a grouping column."))
-    clone_call <- "gene"
+    clone_call <- CEREBRO_CLONE_CALL
     show_all <- isTRUE(ir_param("ir_p_umap_show_all", TRUE))
     cells <- ir_umap_cells_to_show()
     df <- ir_clonal_umap_data(

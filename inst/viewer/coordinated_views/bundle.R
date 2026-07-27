@@ -203,7 +203,8 @@ cv_clone <- function(
   size,
   n_clones,
   n_receptor,
-  receptor = NA_character_
+  receptor = NA_character_,
+  n_cdr3 = NULL
 ) {
   ## id/label/size are arrays; n_clones/n_receptor are true scalars (left bare).
   ## The expansion bins travel WITH the data: the client re-lays-out the clone
@@ -214,6 +215,10 @@ cv_clone <- function(
     id = I(id),
     label = I(label),
     size = I(size),
+    ## How many distinct CDR3s each clone covers. 1 means the label names the
+    ## clone exactly; more means it names the clone's dominant sequence, and the
+    ## client has to say so rather than present it as the clonotype.
+    n_cdr3 = I(if (is.null(n_cdr3)) rep(1L, length(size)) else n_cdr3),
     n_clones = n_clones,
     n_receptor = n_receptor,
     receptor = receptor,
@@ -559,12 +564,35 @@ cv_build_clone <- function(crb, cells, n) {
   clone_keys <- names(tab)
   clone_size <- as.integer(tab)
   cell_clone <- match(ct, clone_keys) # 1..K, NA if none
+  ## A clone is called on CTgene, and one CTgene clone routinely spans several
+  ## CDR3s -- in the omnibus demo every clone does, one of them across twelve.
+  ## Labelling it with whichever CDR3 happened to come first therefore named the
+  ## row after one of its members: the table showed a single sequence while
+  ## clicking it selected cells carrying eleven others. The dominant sequence is
+  ## still the useful handle, so it stays, but the count of the rest travels with
+  ## it and the column no longer claims to be a CDR3.
   ctaa <- cp$ctaa
+  clone_cdr3 <- vapply(
+    clone_keys,
+    function(k) {
+      aa <- ctaa[which(ct == k)]
+      aa <- aa[!is.na(aa) & nzchar(aa)]
+      if (!length(aa)) {
+        return(NA_integer_)
+      }
+      length(unique(aa))
+    },
+    integer(1)
+  )
   clone_label <- vapply(
     clone_keys,
     function(k) {
-      lab <- ctaa[which(ct == k)[1]]
-      if (is.na(lab)) k else lab
+      aa <- ctaa[which(ct == k)]
+      aa <- aa[!is.na(aa) & nzchar(aa)]
+      if (!length(aa)) {
+        return(k)
+      }
+      names(sort(table(aa), decreasing = TRUE))[1]
     },
     character(1)
   )
@@ -625,7 +653,8 @@ cv_build_clone <- function(crb, cells, n) {
     clone_size,
     K,
     sum(!is.na(cell_clone)),
-    cp$receptor
+    cp$receptor,
+    unname(clone_cdr3)
   )
   list(space = space, group = group, bundle = bundle)
 }
