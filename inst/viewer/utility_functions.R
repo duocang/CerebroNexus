@@ -315,7 +315,6 @@ prettifyTable <- function(
   ## - align numerics to the right
   table <- DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = FALSE,
     extensions = table_extensions,
@@ -613,7 +612,6 @@ prettifyTable <- function(
 prepareEmptyTable <- function(table) {
   DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = FALSE,
     filter = "none",
