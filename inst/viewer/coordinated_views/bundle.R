@@ -251,13 +251,18 @@ cv_build_fields <- function(md, skip = "cell_barcode") {
 ## tab offers every meta column in "Color cells by" while its "Group filters" box
 ## only lists getGroups(); this mirrors that split — these are colourings (legend,
 ## legend-hiding) but they do not become filters.
-## A column with (nearly) as many levels as cells is an identifier, not a
-## grouping: colouring by it would produce one colour per cell and a legend
-## thousands of rows long, so it is skipped.
+##
+## Returns list(groups, skipped). A column with (nearly) as many levels as cells
+## is an identifier rather than a grouping: one colour per cell, and a legend
+## thousands of rows long. Those cannot be coloured by, but they are REPORTED
+## instead of dropped — `skipped` is name -> level count, which the client shows
+## greyed out in the picker. Silently omitting them left the two tabs offering
+## different lists with no way to tell why.
 cv_build_extra_groups <- function(md, group_names, colors_fn) {
   n <- nrow(md)
   max_levels <- max(2L, min(60L, as.integer(n / 2)))
   extra <- list()
+  skipped <- list()
   for (mc in colnames(md)) {
     if (mc == "cell_barcode" || mc %in% group_names) {
       next
@@ -268,7 +273,11 @@ cv_build_extra_groups <- function(md, group_names, colors_fn) {
     }
     lev <- if (is.factor(v)) levels(v) else sort(unique(as.character(v)))
     lev <- lev[!is.na(lev)]
-    if (length(lev) < 1 || length(lev) > max_levels) {
+    if (!length(lev)) {
+      next
+    }
+    if (length(lev) > max_levels) {
+      skipped[[mc]] <- length(lev)
       next
     }
     extra[[mc]] <- cv_group(
@@ -277,7 +286,7 @@ cv_build_extra_groups <- function(md, group_names, colors_fn) {
       colors_fn(mc, lev)
     )
   }
-  extra
+  list(groups = extra, skipped = skipped)
 }
 
 ## Every projection's coordinates travel in the bundle, keyed by name, so the
@@ -611,7 +620,9 @@ cv_build_bundle <- function(crb) {
   ##   fields    — numeric columns (+ Trekker's physical fields): continuous
   group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
   groups <- cv_build_groups(crb, md, cv_group_colors)
-  cat_extra <- cv_build_extra_groups(md, group_names, cv_group_colors)
+  extra <- cv_build_extra_groups(md, group_names, cv_group_colors)
+  cat_extra <- extra$groups
+  cat_skipped <- extra$skipped
   fields <- cv_build_fields(md)
 
   ## spaces: umap (always) + spatial/trekker (if present) + clone (if present)
@@ -679,6 +690,7 @@ cv_build_bundle <- function(crb) {
     n = n,
     groups = groups,
     cat_extra = cat_extra,
+    cat_skipped = cat_skipped,
     fields = fields,
     default_group = default_group,
     projections = projections,

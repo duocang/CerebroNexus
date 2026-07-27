@@ -150,19 +150,25 @@ test_that("cv_build_extra_groups covers categorical columns that are not groups"
   })
   ## registered groups stay out (they are already offered, and they own the
   ## group filters); unregistered categorical columns come in.
-  expect_false("cluster" %in% names(eg))
-  expect_true("dextramer_allele" %in% names(eg))
+  expect_false("cluster" %in% names(eg$groups))
+  expect_true("dextramer_allele" %in% names(eg$groups))
   expect_equal(
-    as.character(eg$dextramer_allele$levels),
+    as.character(eg$groups$dextramer_allele$levels),
     c("A*02:01", "B*07:02")
   )
-  expect_equal(as.integer(eg$dextramer_allele$values), c(0L, 0L, 1L))
-  ## a column with as many levels as cells is an identifier, not a grouping
+  expect_equal(as.integer(eg$groups$dextramer_allele$values), c(0L, 0L, 1L))
+  expect_length(eg$skipped, 0)
+
+  ## A column with as many levels as cells is an identifier, not a grouping —
+  ## not colourable, but REPORTED rather than dropped, so the picker can say why
+  ## a column the Projection tab offers is missing here.
   md$barcode_copy <- md$cell_barcode
   eg2 <- cv_env$cv_build_extra_groups(md, "cluster", function(g, lev) {
     cv_env$cv_colors_for(lev)
   })
-  expect_false("barcode_copy" %in% names(eg2))
+  expect_false("barcode_copy" %in% names(eg2$groups))
+  expect_true("barcode_copy" %in% names(eg2$skipped))
+  expect_equal(eg2$skipped$barcode_copy, 3L)
 })
 
 test_that("cv_build_projections records dimensionality instead of dropping it", {
@@ -270,9 +276,13 @@ test_that("cv_build_bundle assembles every modality from the omnibus demo", {
   ## three lists — a column that is in none of them cannot be coloured by, which
   ## is the gap that kept Linked views from replacing the Projection tab.
   md <- crb$getMetaData()
+  ## cat_skipped counts as accounted-for: those columns cannot be coloured by,
+  ## but the picker lists them (disabled, with the reason) rather than dropping
+  ## them, so they are still reachable as an answer.
   offered <- c(
     names(b$groups),
     names(b$cat_extra),
+    names(b$cat_skipped),
     sub(
       "^meta:",
       "",

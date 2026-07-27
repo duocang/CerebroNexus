@@ -1026,6 +1026,24 @@
     return { cx: cx, cy: cy, span: v.span };
   }
 
+  // Call after REPLACING a space's coordinates (a different projection, spatial
+  // section, or clonal layout). Everything a panel remembers about where it was
+  // looking refers to coordinates that no longer exist:
+  //   * p.view is a fraction of the space's own box — the box is still there,
+  //     but different points are in it now, so the same fraction lands
+  //     somewhere arbitrary. Zoomed in, that is usually blank canvas.
+  //   * p.lasso is in screen pixels, so it would outline whatever happens to
+  //     sit beneath it now.
+  // Note that clampView() cannot save this: it runs on pan and zoom, and this
+  // is neither — which is how a view can still end up on empty space despite it.
+  function resetSpaceViews(spaceId) {
+    panels.forEach(function (p) {
+      if (p.spaceId !== spaceId) return;
+      p.view = null; p.lasso = null;
+    });
+    if (spaceId === 'umap' && zoomed) { zoomed = false; updateZoomBtn(); }
+  }
+
   // Zoom about a screen point, keeping whatever is under it fixed — the gesture
   // every map and every plotly plot uses. `factor` < 1 zooms in. Passing the
   // panel centre gives the plain in/out of the toolbar buttons.
@@ -1727,8 +1745,8 @@
     host.style.display = '';
     host.innerHTML = cands.map(function (s) {
       return '<button type="button" class="cv-seg-btn' +
-        (s.id === pB.spaceId ? ' is-on' : '') + '" data-space="' + s.id + '">' +
-        spaceSwitchLabel(s) + '</button>';
+        (s.id === pB.spaceId ? ' is-on' : '') + '" data-space="' + esc(s.id) + '">' +
+        esc(spaceSwitchLabel(s)) + '</button>';
     }).join('');
   }
   // Coordinate-source / QC / positioning / Moran's I detail for a Trekker data
@@ -1879,7 +1897,14 @@
     var html = grp('Grouping variables',
       optsOf(Object.keys(D.groups || {}), '', groupLabel));
     html += grp('Other categorical',
-      optsOf(Object.keys(D.cat_extra || {}), '', function (k) { return k; }));
+      optsOf(Object.keys(D.cat_extra || {}), '', function (k) { return k; }) +
+      // Columns with too many levels to colour by are listed but disabled. They
+      // exist in the meta data and appear on the Projection tab, so omitting
+      // them silently left the two tabs disagreeing with no way to see why.
+      Object.keys(D.cat_skipped || {}).map(function (k) {
+        return '<option disabled>' + esc(k) + ' — ' +
+          fmt(D.cat_skipped[k]) + ' levels, too many to colour</option>';
+      }).join(''));
     html += grp('Continuous',
       optsOf(Object.keys(D.fields || {}), FIELD_PREFIX, function (k) {
         return D.fields[k].label || k;
@@ -1932,7 +1957,8 @@
     if (ctl) ctl.style.display = names.length ? '' : 'none';
     if (!names.length) return;
     selEl.innerHTML = names.map(function (nm) {
-      return '<option value="' + nm + '">' + projOptionLabel(nm) + '</option>';
+      return '<option value="' + esc(nm) + '">' +
+        esc(projOptionLabel(nm)) + '</option>';
     }).join('');
     selEl.value = curProj || D.default_projection || names[0];
     selEl.onchange = function () { setProjection(selEl.value); };
@@ -1948,6 +1974,7 @@
     var pj = D.projections[name];
     sp.x = pj.x; sp.y = pj.y; sp._unit = null;
     sp.label = projSpaceLabel(name);
+    resetSpaceViews('umap');   // the old viewport means nothing in the new one
     panels.forEach(function (p) {
       if (p.spaceId !== 'umap') return;
       project(p);
@@ -1989,7 +2016,7 @@
     }
     ctl.style.display = '';
     selEl.innerHTML = samples.map(function (s) {
-      return '<option value="' + s.name + '">' + s.name + '</option>';
+      return '<option value="' + esc(s.name) + '">' + esc(s.name) + '</option>';
     }).join('');
     selEl.value = sp._sampleName || samples[0].name;
     selEl.onchange = function () { setSpatialSample(selEl.value); };
@@ -2003,6 +2030,7 @@
     sp._unit = null;
     loadSpaceImage(sp);            // the section's own histology image (or none)
     updateSpaceScopedControls();   // image bar visibility follows the new sample
+    resetSpaceViews('spatial');    // a different section, so a different geometry
     panels.forEach(function (p) {
       if (p.spaceId !== 'spatial') return;
       project(p);
@@ -2029,12 +2057,13 @@
         var col = (g.colors && g.colors[li]) || PAL[li % PAL.length];
         return '<label class="cv-filt-item"><input type="checkbox" data-lv="' + li +
           '"' + (on ? ' checked' : '') + '><span class="cv-dot" style="background:' +
-          col + '"></span>' + nm + '</label>';
+          esc(col) + '"></span>' + esc(nm) + '</label>';
       }).join('');
       var wrap = document.createElement('div');
       wrap.className = 'cv-filt';
       wrap.setAttribute('data-group', gname);
-      wrap.innerHTML = '<button type="button" class="cv-filt-btn">' + groupLabel(gname) +
+      wrap.innerHTML = '<button type="button" class="cv-filt-btn">' +
+        esc(groupLabel(gname)) +
         ' <span class="cv-filt-ct">' + nsel + '/' + g.levels.length +
         '</span></button><div class="cv-filt-menu" style="display:none">' +
         '<div class="cv-filt-acts"><button type="button" data-act="all">All</button>' +
@@ -2373,6 +2402,7 @@
         var mode = seg.getAttribute('data-mode');
         if (mode === CLONE_MODE) return;
         setSegOn(mode); applyCloneLayout(mode);
+        resetSpaceViews('clone');   // the layout moved every cell in this space
         panels.forEach(function (p) { if (p.spaceId === 'clone') project(p); });
         drawAll();
         return;
