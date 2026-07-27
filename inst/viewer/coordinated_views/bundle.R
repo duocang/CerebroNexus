@@ -292,9 +292,10 @@ cv_build_extra_groups <- function(md, group_names, colors_fn) {
 ## Every projection's coordinates travel in the bundle, keyed by name, so the
 ## expression panel can switch between UMAP / tSNE / PCA client-side with no
 ## server round-trip (the "one bundle per dataset, instant" contract).
-## `ndim` travels with them: the panels are 2-D, so a 3-D embedding is shown by
-## its first two dimensions — but the client must be able to SAY so rather than
-## silently flatten it (the Projection tab renders such an object in real 3D).
+##
+## A 3-D embedding also sends its third dimension, so the client can orbit it
+## rather than show a flattened shadow of it. `ndim` travels either way — the
+## client needs to know which panels can rotate and which are flat.
 cv_build_projections <- function(crb, cells) {
   proj_names <- tryCatch(crb$availableProjections(), error = function(e) NULL)
   projections <- list()
@@ -304,11 +305,18 @@ cv_build_projections <- function(crb, cells) {
       next
     }
     pjidx <- match(cells, rownames(pj))
-    projections[[pn]] <- list(
+    nd <- as.integer(ncol(pj))
+    entry <- list(
       x = round(as.numeric(pj[pjidx, 1]), 4),
       y = round(as.numeric(pj[pjidx, 2]), 4),
-      ndim = as.integer(ncol(pj))
+      ndim = nd
     )
+    ## I() so a single-cell data set still serialises z as an array, the same
+    ## invariant cv_space() enforces for x/y.
+    if (nd >= 3) {
+      entry$z <- I(round(as.numeric(pj[pjidx, 3]), 4))
+    }
+    projections[[pn]] <- entry
   }
   projections
 }
@@ -636,12 +644,18 @@ cv_build_bundle <- function(crb) {
     names(projections)[1]
   }
   dp <- projections[[default_projection]]
-  spaces <- list(cv_space(
+  umap_space <- cv_space(
     "umap",
     paste0(default_projection, " (expression)"),
     dp$x,
     dp$y
-  ))
+  )
+  ## A 3-D embedding carries its z into the space too, so the expression panel
+  ## starts orbitable rather than only becoming so after a projection switch.
+  if (!is.null(dp$z)) {
+    umap_space$z <- dp$z
+  }
+  spaces <- list(umap_space)
 
   ## Standard spatial and the Trekker physical mapping are INDEPENDENT spaces:
   ## add each whenever the object carries it. An object with both gets both panels

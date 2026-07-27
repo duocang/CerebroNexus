@@ -187,9 +187,15 @@ test_that("cv_build_projections records dimensionality instead of dropping it", 
   )
   pj <- cv_env$cv_build_projections(crb, cells)
   expect_equal(pj$umap$ndim, 2L)
-  ## a 3-D projection is still usable, but the client must be able to SAY it is
-  ## showing the first two dimensions of three.
   expect_equal(pj$umap_3D$ndim, 3L)
+  ## The third dimension travels so the client can rotate the embedding rather
+  ## than show a flattened shadow of it. A 2-D projection must NOT carry a z —
+  ## the client uses its presence to decide which panels can be turned.
+  expect_null(pj$umap$z)
+  expect_length(pj$umap_3D$z, length(cells))
+  expect_equal(as.numeric(pj$umap_3D$z), c(5, 6))
+  ## and it is array-wrapped, like every other per-cell vector in the bundle
+  expect_s3_class(pj$umap_3D$z, "AsIs")
 })
 
 test_that("cv_build_bundle still works when no grouping variable is registered", {

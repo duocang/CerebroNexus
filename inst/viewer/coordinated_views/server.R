@@ -594,9 +594,9 @@ observeEvent(input[["coordinated_views_info"]], {
         tags$b("Navigating"),
         " — scroll to zoom about the cursor, and drag with the hand tool (or ",
         "shift-drag / middle-drag from any tool) to pan. Each panel's toolbar ",
-        "also has zoom in/out, reset, and PNG download. Note that the panels are ",
-        "2-D: a 3-D embedding is shown by its first two dimensions, and the ",
-        "projection picker says so — use the Projection tab to rotate it in 3-D."
+        "also has zoom in/out, reset, and PNG download. A 3-D embedding is ",
+        "marked as such in the projection picker and gains a rotate tool: drag ",
+        "to turn it, and nearer cells are drawn larger so the depth reads."
       ),
       tags$p(
         style = "color:#6b6b70;",

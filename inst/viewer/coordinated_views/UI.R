@@ -39,6 +39,18 @@ cv_panebar <- function(panel) {
     ## Pan is its own mode (and is also reachable from any mode via middle-drag
     ## or shift-drag) — without it a zoomed panel can only be reset, never moved.
     tbtn("pan", "Pan · or shift-drag", "up-down-left-right"),
+    ## Only meaningful for a 3-D embedding, so JS reveals it on the panels whose
+    ## space carries a third dimension and leaves it hidden everywhere else.
+    tags$button(
+      type = "button",
+      class = "cv-tbtn cv-orbit-btn",
+      `data-act` = "orbit",
+      `data-panel` = panel,
+      style = "display:none",
+      `data-tip` = "Rotate · 3-D embedding",
+      `aria-label` = "Rotate the 3-D embedding",
+      icon("cube")
+    ),
     tbtn("zin", "Zoom in · or scroll", "search-plus"),
     tbtn("zout", "Zoom out · or scroll", "search-minus"),
     ## A house, not the four-corner "expand" glyph that was here: that one reads

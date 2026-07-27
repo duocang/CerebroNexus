@@ -196,7 +196,7 @@
   // fill the box on their own — otherwise a wide clone-rank axis squashes the
   // expansion axis into a needle.
   function unitOf(space) {
-    var xs = space.x, ys = space.y, n = xs.length;
+    var xs = space.x, ys = space.y, zs = space.z || null, n = xs.length;
     var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (var i = 0; i < n; i++) {
       var xv = xs[i], yv = ys[i];
@@ -213,15 +213,57 @@
       kx = k; ky = k; ox = (1 - dw * k) / 2; oy = (1 - dh * k) / 2;
     }
     var nx = new Float32Array(n), ny = new Float32Array(n), ok = new Uint8Array(n);
+    // ---- third dimension, when the embedding has one ----------------------
+    // Normalised on the SAME scale as x/y (an embedding's axes are comparable,
+    // so stretching one would misrepresent the shape), then the whole cloud is
+    // scaled to fit inside the unit box's inscribed SPHERE. That is what makes
+    // rotation safe: a cube's corners stick out of the box when you turn it, a
+    // sphere never does, so no angle can throw points off the panel.
+    var nz = null;
+    if (zs) {
+      var z0 = Infinity, z1 = -Infinity;
+      for (i = 0; i < n; i++) {
+        var zv = zs[i];
+        if (zv == null || isNaN(zv)) continue;
+        if (zv < z0) z0 = zv; if (zv > z1) z1 = zv;
+      }
+      if (!isFinite(z0)) { z0 = 0; z1 = 1; }
+      nz = new Float32Array(n);
+      var zmid = (z0 + z1) / 2, kz = kx;
+      var rmax = 0;
+      for (i = 0; i < n; i++) {
+        var ax = xs[i], ay = ys[i], az = zs[i];
+        if (ax == null || isNaN(ax) || ay == null || isNaN(ay)) continue;
+        var ddx = (ax - x0) * kx + ox - 0.5;
+        var ddy = (ay - y0) * ky + oy - 0.5;
+        var ddz = (az == null || isNaN(az)) ? 0 : (az - zmid) * kz;
+        var rr = ddx * ddx + ddy * ddy + ddz * ddz;
+        if (rr > rmax) rmax = rr;
+      }
+      rmax = Math.sqrt(rmax) || 1;
+      var shrink = 0.5 / rmax;                     // fit the inscribed sphere
+      for (i = 0; i < n; i++) {
+        var bx2 = xs[i], by2 = ys[i], bz2 = zs[i];
+        if (bx2 == null || isNaN(bx2) || by2 == null || isNaN(by2)) continue;
+        nz[i] = ((bz2 == null || isNaN(bz2)) ? 0 : (bz2 - zmid) * kz) * shrink;
+      }
+      // x/y shrink to match, applied in the main loop below
+      space._shrink3 = shrink;
+    }
     // Occupancy of a coarse lattice over the unit box, plus the centre of mass —
     // both used by clampView() to keep a panned view on actual data. A bounding
     // box cannot do that job: a UMAP fills its box very unevenly, so a view held
     // at a corner of the BOX can still show nothing at all.
     var occ = new Uint8Array(OCC * OCC), cmx = 0, cmy = 0, cnt = 0;
+    var sh = nz ? space._shrink3 : 1;
     for (var j = 0; j < n; j++) {
       var a = xs[j], b = ys[j];
       if (a == null || isNaN(a) || b == null || isNaN(b)) { ok[j] = 0; continue; }
-      nx[j] = (a - x0) * kx + ox; ny[j] = (b - y0) * ky + oy; ok[j] = 1;
+      // 3-D clouds shrink about the centre so x/y/z share one scale and the
+      // whole thing sits inside the sphere that rotation is safe within.
+      nx[j] = ((a - x0) * kx + ox - 0.5) * sh + 0.5;
+      ny[j] = ((b - y0) * ky + oy - 0.5) * sh + 0.5;
+      ok[j] = 1;
       cmx += nx[j]; cmy += ny[j]; cnt++;
       occ[occIdx(ny[j]) * OCC + occIdx(nx[j])] = 1;
     }
@@ -233,8 +275,11 @@
     // `bx` is where the DATA actually lies inside the unit box. Aspect-preserving
     // spaces letterbox the shorter axis, so that is not [0,1] on both axes, and
     // clampView() needs the real extent to keep a panned view on the data.
-    return { nx: nx, ny: ny, ok: ok, x0: x0, y0: y0, k: kx, ky: ky, ox: ox, oy: oy,
-      bx: { x0: ox, x1: ox + dw * kx, y0: oy, y1: oy + dh * ky },
+    return { nx: nx, ny: ny, nz: nz, ok: ok,
+      x0: x0, y0: y0, k: kx, ky: ky, ox: ox, oy: oy,
+      bx: nz
+        ? { x0: 0, x1: 1, y0: 0, y1: 1 }   // rotatable: the sphere fills the box
+        : { x0: ox, x1: ox + dw * kx, y0: oy, y1: oy + dh * ky },
       occ: occ, sat: occSAT(occ),
       cmx: cnt ? cmx / cnt : 0.5, cmy: cnt ? cmy / cnt : 0.5 };
   }
@@ -377,15 +422,89 @@
     var ox = padL + (p.W - padL - padR - S) / 2;
     var oy = padT + (p.H - padT - padB - S) / 2;
     p._S = S; p._sox = ox; p._soy = oy;      // for dataToScreen (image bounds)
-    p.sx = new Float32Array(n); p.sy = new Float32Array(n); p.ok = u.ok;
+    if (!p.sx || p.sx.length !== n) {
+      p.sx = new Float32Array(n); p.sy = new Float32Array(n);
+    }
+    p.ok = u.ok;
     // Inline the unitToScreen transform (avoids per-cell allocation on big sets).
     var v = p.view;
+    // ---- 3-D: rotate about the cloud's centre, then flatten ---------------
+    // Orthographic, not perspective: a scatter is read by comparing positions,
+    // and perspective makes the same distance mean different things depending on
+    // where in the frame it falls. Depth is kept per point (-0.5..0.5) so the
+    // draw can shade by it — with no depth sort, that shading is what carries
+    // which end of the cloud is nearer.
+    var rot = u.nz ? (p.rot || null) : null;
+    if (!u.nz) { p.depth = null; p.rot = null; }
+    if (u.nz) {
+      if (!p.depth || p.depth.length !== n) p.depth = new Float32Array(n);
+      if (!p._rx || p._rx.length !== n) {
+        p._rx = new Float32Array(n); p._ry = new Float32Array(n);
+      }
+    }
+    var dmin = Infinity, dmax = -Infinity;
+    var cy1 = 1, sy1 = 0, cx1 = 1, sx1 = 0;
+    if (rot) {
+      cy1 = Math.cos(rot.ry); sy1 = Math.sin(rot.ry);
+      cx1 = Math.cos(rot.rx); sx1 = Math.sin(rot.rx);
+    }
     for (var i = 0; i < n; i++) {
+      var ux = u.nx[i], uy = u.ny[i];
+      if (u.nz) {
+        var dx = ux - 0.5, dy = uy - 0.5, dz = u.nz[i];
+        if (rot) {
+          var x1 = dx * cy1 + dz * sy1;          // yaw about the vertical axis
+          var z1 = dz * cy1 - dx * sy1;
+          var y1 = dy * cx1 - z1 * sx1;          // pitch about the horizontal
+          var z2 = z1 * cx1 + dy * sx1;
+          ux = x1 + 0.5; uy = y1 + 0.5; p.depth[i] = z2;
+        } else {
+          p.depth[i] = dz;
+        }
+        var dv = p.depth[i];
+        if (dv < dmin) dmin = dv;
+        if (dv > dmax) dmax = dv;
+        p._rx[i] = ux; p._ry[i] = uy;   // post-rotation unit coords (minimap)
+      }
       var zx, zy;
-      if (v) { zx = (u.nx[i] - v.cx) / v.span + 0.5; zy = (u.ny[i] - v.cy) / v.span + 0.5; }
-      else { zx = u.nx[i]; zy = u.ny[i]; }
+      if (v) { zx = (ux - v.cx) / v.span + 0.5; zy = (uy - v.cy) / v.span + 0.5; }
+      else { zx = ux; zy = uy; }
       p.sx[i] = ox + zx * S;
       p.sy[i] = oy + S - zy * S;   // y up
+    }
+    // Depth is scaled to the range actually present, not to the theoretical
+    // ±0.5 of the unit sphere. At most angles the cloud occupies a fraction of
+    // that, and mapping against the theoretical range left the near/far size
+    // difference at about 1.1x — measurable, invisible.
+    if (u.nz) {
+      if (isFinite(dmin) && dmax > dmin) {
+        p._dmin = dmin; p._dspan = dmax - dmin;
+      } else {
+        // Every cell at the same depth (a constant z, or a single cell). Map
+        // them to the MIDDLE of the size range: anchoring at 0 would shrink the
+        // whole cloud to the "furthest" size for no reason.
+        p._dmin = -0.5; p._dspan = 1;
+      }
+    }
+  }
+
+  // Is this panel showing an embedding that can be turned?
+  function panelIs3D(p) {
+    var sp = p && spaceById[p.spaceId];
+    return !!(sp && sp.z);
+  }
+
+  // Show the rotate tool exactly where there is a third dimension to rotate.
+  // Called from layoutPanels (spaces assigned) AND from setProjection (a panel
+  // keeps its space but that space changes dimensionality) — the second is not
+  // reachable from the first, which is how a flat projection kept the tool.
+  function syncOrbitButtons() {
+    panels.forEach(function (p) {
+      var ob = p.pane && p.pane.querySelector('.cv-orbit-btn');
+      if (ob) ob.style.display = panelIs3D(p) ? '' : 'none';
+    });
+    if (selectMode === 'orbit' && !panels.some(panelIs3D)) {
+      selectMode = 'lasso'; syncModeButtons();
     }
   }
   // Size one panel's canvas to a `side` x `side` square (resizeAll computes the
@@ -572,11 +691,15 @@
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     var S = MINI - MINI_PAD * 2;
     var step = Math.max(1, Math.floor(D.n / MINI_DOTS));
+    // A rotated cloud must be thumbnailed at its CURRENT angle, or the frame
+    // would sit over a shape that is no longer on screen.
+    var mx = (u.nz && p._rx) ? p._rx : u.nx;
+    var my = (u.nz && p._ry) ? p._ry : u.ny;
     c.fillStyle = '#9aa3b0';
     for (var i = 0; i < D.n; i += step) {
       if (!u.ok[i]) continue;
-      c.fillRect(MINI_PAD + u.nx[i] * S - 0.6,
-        MINI_PAD + S - u.ny[i] * S - 0.6, 1.2, 1.2);
+      c.fillRect(MINI_PAD + mx[i] * S - 0.6,
+        MINI_PAD + S - my[i] * S - 0.6, 1.2, 1.2);
     }
     p.miniUnit = u;
     return off;
@@ -603,11 +726,23 @@
     c.strokeRect(x + 0.5, y + 0.5, w - 1, w - 1);
   }
 
+  // Radius of one point. In a rotatable space it also carries depth: nearer
+  // points are drawn larger. Size rather than opacity, because the batched draw
+  // path fills one path per COLOUR — a path can hold arcs of different radii,
+  // but not of different alphas, so shading by opacity would cost the batching
+  // exactly where it matters most.
+  function radiusOf(p, i) {
+    if (!p.depth) return ps;
+    var t = (p.depth[i] - p._dmin) / p._dspan;   // 0 = furthest, 1 = nearest
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    return ps * (0.5 + 0.85 * t);
+  }
+
   function paintCell(p, i, alpha) {
     var c = p.ctx;
     c.globalAlpha = alpha;
     c.fillStyle = colorOf(i);
-    c.beginPath(); c.arc(p.sx[i], p.sy[i], ps, 0, 6.2832); c.fill();
+    c.beginPath(); c.arc(p.sx[i], p.sy[i], radiusOf(p, i), 0, 6.2832); c.fill();
   }
 
   function draw(p) {
@@ -661,9 +796,9 @@
             c.fillStyle = col2;
             c.beginPath();
             for (var b = 0; b < idx.length; b++) {
-              var j = idx[b];
-              c.moveTo(p.sx[j] + ps, p.sy[j]);
-              c.arc(p.sx[j], p.sy[j], ps, 0, 6.2832);
+              var j = idx[b], rj = radiusOf(p, j);
+              c.moveTo(p.sx[j] + rj, p.sy[j]);
+              c.arc(p.sx[j], p.sy[j], rj, 0, 6.2832);
             }
             c.fill();
           }
@@ -971,7 +1106,7 @@
   }
   // Sync the active drag-mode highlight (box vs lasso) across every toolbar.
   function syncModeButtons() {
-    ['box', 'lasso', 'pan'].forEach(function (m) {
+    ['box', 'lasso', 'pan', 'orbit'].forEach(function (m) {
       var btns = document.querySelectorAll('.cv-tbtn[data-act="' + m + '"]');
       Array.prototype.forEach.call(btns, function (b) {
         b.classList.toggle('is-on', selectMode === m);
@@ -1012,6 +1147,10 @@
     var b = u.bx;
     var cx = Math.min(Math.max(v.cx, b.x0), b.x1);
     var cy = Math.min(Math.max(v.cy, b.y0), b.y1);
+    // The occupancy lattice is built from the UNROTATED cloud, so it says
+    // nothing useful once a 3-D space has been turned; the bounding-box clamp
+    // above still applies, and the sphere fit keeps the cloud inside it.
+    if (u.nz && p.rot) return { cx: cx, cy: cy, span: v.span };
     if (!viewHasData(u, cx, cy, v.span)) {
       var STEPS = 24, found = false;
       for (var s = 1; s <= STEPS && !found; s++) {
@@ -1040,6 +1179,7 @@
     panels.forEach(function (p) {
       if (p.spaceId !== spaceId) return;
       p.view = null; p.lasso = null;
+      p.rot = null; p.depth = null; p.miniBg = null;
     });
     if (spaceId === 'umap' && zoomed) { zoomed = false; updateZoomBtn(); }
   }
@@ -1556,9 +1696,20 @@
       return [e.clientX - r.left, e.clientY - r.top];
     };
     p.canvas.addEventListener('mousedown', function (e) {
+      // Orbit: only where there is a third dimension to turn. On a flat panel
+      // the tool falls through to pan rather than doing nothing, since the mode
+      // is shared by every panel and one of them may well be 2-D.
+      if (selectMode === 'orbit' && panelIs3D(p)) {
+        e.preventDefault();
+        p.orbiting = true; p.orbitFrom = pos(e);
+        p.orbitBase = p.rot ? { rx: p.rot.rx, ry: p.rot.ry } : { rx: 0, ry: 0 };
+        p.canvas.classList.add('cv-grabbing');
+        return;
+      }
       // Pan: the toolbar's hand mode, or middle-drag / shift-drag from any mode
       // (the shortcut plotly users reach for without switching tools).
-      if (selectMode === 'pan' || e.button === 1 || e.shiftKey) {
+      if (selectMode === 'pan' || selectMode === 'orbit' ||
+        e.button === 1 || e.shiftKey) {
         e.preventDefault();
         p.panning = true; p.panFrom = pos(e);
         p.panView = p.view
@@ -1573,6 +1724,18 @@
       p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start];
     });
     p.canvas.addEventListener('mousemove', function (e) {
+      if (p.orbiting) {
+        var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
+        p.rot = {
+          ry: p.orbitBase.ry + (oq[0] - p.orbitFrom[0]) * RAD,
+          // Pitch stops short of ±90°: past vertical the cloud reads as
+          // upside-down and the drag direction appears to invert.
+          rx: Math.max(-1.4, Math.min(1.4,
+            p.orbitBase.rx + (oq[1] - p.orbitFrom[1]) * RAD))
+        };
+        project(p); draw(p);
+        return;
+      }
       if (p.panning) {
         var pq = pos(e), S = p._S || 1, v = p.panView;
         // screen delta -> view units; y is inverted (canvas y grows downward).
@@ -1613,6 +1776,13 @@
         e.deltaY < 0 ? 1 / 1.15 : 1.15);
     }, { passive: false });
     window.addEventListener('mouseup', function (e) {
+      if (p.orbiting) {
+        p.orbiting = false;
+        p.canvas.classList.remove('cv-grabbing');
+        p.miniBg = null;    // the thumbnail is of the old angle
+        drawAll();
+        return;
+      }
       if (p.panning) {
         p.panning = false;
         p.canvas.classList.remove('cv-grabbing');
@@ -1940,20 +2110,20 @@
   }
   function projOptionLabel(nm) {
     var nd = projDims(nm);
-    return nd > 2 ? nm + ' (' + nd + 'D — showing dims 1-2)' : nm;
+    return nd > 2 ? nm + ' (' + nd + '-D)' : nm;
   }
   function projSpaceLabel(nm) {
     var nd = projDims(nm);
-    return nm + ' (expression' + (nd > 2 ? ', dims 1-2 of ' + nd : '') + ')';
+    return nm + ' (expression' + (nd > 2 ? ', ' + nd + '-D' : '') + ')';
   }
   function fillProjPicker() {
     var selEl = $('cv-pick-proj'); if (!selEl) return;
     var names = D.projections ? Object.keys(D.projections) : [];
     var ctl = $('cv-proj-ctl');
     // Shown even with a single projection. Hiding it saved a little width but
-    // took away the answer to "which embedding am I looking at?" — and on a 3-D
-    // embedding the picker is also where the "showing dims 1-2" note lives, so
-    // hiding it hid exactly the data set that most needs it explained.
+    // took away the answer to "which embedding am I looking at?" — and it is
+    // where a 3-D embedding is marked as such, which is the one a user most
+    // needs told apart from the rest.
     if (ctl) ctl.style.display = names.length ? '' : 'none';
     if (!names.length) return;
     selEl.innerHTML = names.map(function (nm) {
@@ -1973,7 +2143,11 @@
     var sp = spaceById['umap']; if (!sp) return;
     var pj = D.projections[name];
     sp.x = pj.x; sp.y = pj.y; sp._unit = null;
+    // z has to travel with x/y: without this a 2-D projection would keep the
+    // previous 3-D one's z and claim to be rotatable.
+    if (pj.z) sp.z = pj.z; else delete sp.z;
     sp.label = projSpaceLabel(name);
+    syncOrbitButtons();   // this panel may have just gained or lost a dimension
     resetSpaceViews('umap');   // the old viewport means nothing in the new one
     panels.forEach(function (p) {
       if (p.spaceId !== 'umap') return;
@@ -2140,6 +2314,7 @@
       var btn = $('cv-tk-info-' + p.key.toLowerCase());
       if (btn) btn.style.display = (showTk && p.spaceId === 'trekker') ? '' : 'none';
     });
+    syncOrbitButtons();
   }
   // Size ALL visible panels to equal squares that fill the width AND height in a
   // single viewport (so every linked panel is on-screen at once), never below
@@ -2366,7 +2541,7 @@
         var act = tb.getAttribute('data-act'), key = tb.getAttribute('data-panel');
         var pp = null;
         panels.forEach(function (p) { if (p.key === key) pp = p; });
-        if (act === 'box' || act === 'lasso' || act === 'pan') {
+        if (act === 'box' || act === 'lasso' || act === 'pan' || act === 'orbit') {
           selectMode = act; syncModeButtons(); return;
         }
         if (act === 'trekker-info') { openTrekkerModal(); return; }
@@ -2375,6 +2550,8 @@
           else if (act === 'zin') { zoomStep(pp, 0.8); }
           else if (act === 'zout') { zoomStep(pp, 1.25); }
           else if (act === 'reset') {
+            // rotation is part of "where you are looking" too
+            if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
             if (pp.spaceId === 'umap') { zoomed = false; updateZoomBtn(); }
             clearLassos(); drawAll();
