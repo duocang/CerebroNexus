@@ -39,9 +39,18 @@ if (!is.na(local_inst)) {
 ## Source the pure builders into an isolated env (no app scope). The app-only
 ## helpers reactive_colors() / cerebro_group_colors() are absent here; bundle.R
 ## guards each, so cv_build_bundle() simply falls back to its own palette.
+##
+## clone_contract.R is NOT optional and is deliberately not guarded: it defines
+## what a clone is, and the app sources it before any module for the same reason
+## this env has to. A bundle built without it would silently answer that question
+## on its own again, which is the divergence the file exists to prevent.
+contract_file <- file.path(dirname(bundle_file), "..", "clone_contract.R")
 cv_env <- new.env()
-have_bundle <- nzchar(bundle_file) && file.exists(bundle_file)
+have_bundle <- nzchar(bundle_file) &&
+  file.exists(bundle_file) &&
+  file.exists(contract_file)
 if (have_bundle) {
+  sys.source(contract_file, envir = cv_env)
   sys.source(bundle_file, envir = cv_env)
 }
 
@@ -92,20 +101,100 @@ test_that("cv_group/cv_space/cv_clone force JSON arrays even at length 1", {
   expect_false(startsWith(arr(cl$n_clones), "["))
 })
 
-test_that("cv_clone_per_cell aligns clone identity to cells, NA when unmatched", {
-  skip_if_not(have_bundle)
-  ir <- list(data.frame(
-    barcode = c("c1", "c2", "c3"),
-    CTstrict = c("A", "A", "B"),
-    CTaa = c("CASSL", "CASSL", "CASSF"),
+## A minimal but realistically-shaped IR table: the CT* columns spell out chain
+## names, because that is what the receptor scoping reads. c1/c2 share a CTgene
+## clone that CTstrict splits in two -- the exact case where reading the wrong
+## column changes the answer rather than just the formatting.
+cv_ir_fixture <- function() {
+  list(data.frame(
+    barcode = c("c1", "c2", "c3", "b1"),
+    CTgene = c(
+      "TRAV1-2.TRAJ33.TRAC_TRBV6-4.TRBJ2-1.TRBC2",
+      "TRAV1-2.TRAJ33.TRAC_TRBV6-4.TRBJ2-1.TRBC2",
+      "TRAV12-1.TRAJ20.TRAC_TRBV20-1.TRBJ1-2.TRBC1",
+      "IGHV3-23.IGHJ4.IGHM_IGKV1-5.IGKJ1.IGKC"
+    ),
+    CTstrict = c(
+      "TRAV1-2.TRAJ33.TRAC_CAVMDSNYQLIW_TRBV6-4.TRBJ2-1.TRBC2_CASSAAA",
+      "TRAV1-2.TRAJ33.TRAC_CAVMDSNYQLIW_TRBV6-4.TRBJ2-1.TRBC2_CASSBBB",
+      "TRAV12-1.TRAJ20.TRAC_CAVXX_TRBV20-1.TRBJ1-2.TRBC1_CASSCCC",
+      "IGHV3-23.IGHJ4.IGHM_CARDXX_IGKV1-5.IGKJ1.IGKC_CQQYX"
+    ),
+    CTaa = c("CAVM_CASSAAA", "CAVM_CASSBBB", "CAVX_CASSCCC", "CARD_CQQY"),
     stringsAsFactors = FALSE
   ))
+}
+
+test_that("cv_clone_per_cell aligns clone identity to cells, NA when unmatched", {
+  skip_if_not(have_bundle)
+  ir <- cv_ir_fixture()
   cells <- c("c3", "c1", "cX") # cX carries no receptor
   out <- cv_env$cv_clone_per_cell(ir, cells)
-  expect_equal(out$ctstrict, c("B", "A", NA))
-  expect_equal(out$ctaa, c("CASSF", "CASSL", NA))
+  expect_equal(
+    out$clone,
+    c(
+      "TRAV12-1.TRAJ20.TRAC_TRBV20-1.TRBJ1-2.TRBC1",
+      "TRAV1-2.TRAJ33.TRAC_TRBV6-4.TRBJ2-1.TRBC2",
+      NA
+    )
+  )
+  expect_equal(out$ctaa, c("CAVX_CASSCCC", "CAVM_CASSAAA", NA))
   ## No IR at all -> NULL (the immune axis is simply skipped).
   expect_null(cv_env$cv_clone_per_cell(NULL, cells))
+})
+
+test_that("cv_clone_per_cell calls clones the way the Clonal UMAP does", {
+  skip_if_not(have_bundle)
+  ir <- cv_ir_fixture()
+  cells <- c("c1", "c2", "c3")
+  out <- cv_env$cv_clone_per_cell(ir, cells)
+  ## c1 and c2 are ONE clone by CTgene and TWO by CTstrict. Reading the stricter
+  ## column here reported more, smaller clones than the Clonal UMAP did for the
+  ## same cells -- a different scientific answer under the same word.
+  expect_equal(out$clone[1], out$clone[2])
+  expect_equal(length(unique(out$clone)), 2)
+})
+
+test_that("cv_clone_per_cell keeps to one receptor class", {
+  skip_if_not(have_bundle)
+  ir <- cv_ir_fixture()
+  ## b1 is a B cell. Mixing it in would put BCR and TCR clonotypes in one ranking
+  ## and one expansion legend, which no page in the app does.
+  out <- cv_env$cv_clone_per_cell(ir, c("c1", "b1"))
+  expect_equal(out$receptor, "TCR")
+  expect_false(is.na(out$clone[1]))
+  expect_true(is.na(out$clone[2]))
+  ## ... and asking for the other class gives its cells instead.
+  bcr <- cv_env$cv_clone_per_cell(ir, c("c1", "b1"), receptor = "BCR")
+  expect_true(is.na(bcr$clone[1]))
+  expect_false(is.na(bcr$clone[2]))
+})
+
+test_that("both clone pages read one definition of a clone", {
+  skip_if_not(have_bundle)
+  ## The contract itself.
+  expect_equal(cv_env$CEREBRO_CLONE_BINS, c(0, 1, 5, 20, 100, Inf))
+  expect_equal(length(cv_env$CEREBRO_CLONE_LABELS), 5)
+  expect_match(cv_env$CEREBRO_CLONE_LABELS[5], "Hyperexpanded")
+  expect_equal(cv_env$cerebro_clonecall_col(), "CTgene")
+
+  ## And that neither page has quietly gone back to declaring its own. This is a
+  ## source check because the divergence was not a wrong value anywhere -- both
+  ## pages were self-consistent -- but two right-looking definitions of one term.
+  ir_data <- file.path(
+    dirname(bundle_file),
+    "..",
+    "immune_repertoire",
+    "data.R"
+  )
+  skip_if_not(file.exists(ir_data))
+  txt <- paste(readLines(ir_data, warn = FALSE), collapse = "\n")
+  expect_match(txt, "IR_CLONE_BINS <- CEREBRO_CLONE_BINS", fixed = TRUE)
+  expect_match(txt, "IR_CLONE_LABELS <- CEREBRO_CLONE_LABELS", fixed = TRUE)
+
+  bundle_txt <- paste(readLines(bundle_file, warn = FALSE), collapse = "\n")
+  expect_false(grepl("breaks = c(0, 1, 5, 20", bundle_txt, fixed = TRUE))
+  expect_match(bundle_txt, "cerebro_clone_expansion(", fixed = TRUE)
 })
 
 test_that("cv_build_fields turns every numeric meta column into a colouring", {

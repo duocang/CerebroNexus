@@ -33,6 +33,15 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
+  ## What a clone is, for every page that shows one. Sourced before the modules
+  ## so the Immune repertoire tab and Linked views cannot answer it differently.
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/clone_contract.R"
+    ),
+    local = TRUE
+  )
 
   ##--------------------------------------------------------------------------##
   ## Central parameters.

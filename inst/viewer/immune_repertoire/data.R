@@ -288,8 +288,11 @@ ir_plot_height <- function(facet_mode = c("none", "grid", "wrap")) {
 ##----------------------------------------------------------------------------##
 
 ## ---- Chains that define each receptor class --------------------------- ##
-IR_TCR_CHAINS <- c("TRA", "TRB", "TRG", "TRD")
-IR_BCR_CHAINS <- c("IGH", "IGK", "IGL")
+## Defined in clone_contract.R, which Linked views reads too. Kept under the
+## IR_ names because this module's call sites and tests use them; the point is
+## that there is now one definition rather than two that can drift apart.
+IR_TCR_CHAINS <- CEREBRO_TCR_CHAINS
+IR_BCR_CHAINS <- CEREBRO_BCR_CHAINS
 
 ## ---- Which receptor classes are present in the data ------------------- ##
 ## Returns a named vector ("TCR" / "BCR") of the receptor types actually
@@ -315,25 +318,14 @@ ir_umap_chains <- function(receptor) {
 ## ---- Clone-size bin breaks / labels (scRepertoire cloneSize defaults) -- ##
 ## A clone's size = number of cells carrying that clonotype (within the
 ## selected receptor). Cells are binned into the standard expansion levels.
-IR_CLONE_BINS <- c(0, 1, 5, 20, 100, Inf)
-IR_CLONE_LABELS <- c(
-  "Single (0 < X <= 1)",
-  "Small (1 < X <= 5)",
-  "Medium (5 < X <= 20)",
-  "Large (20 < X <= 100)",
-  "Hyperexpanded (100 < X)"
-)
+## Shared with Linked views via clone_contract.R -- see there for why.
+IR_CLONE_BINS <- CEREBRO_CLONE_BINS
+IR_CLONE_LABELS <- CEREBRO_CLONE_LABELS
 
 ## ---- Which CT* column a cloneCall maps to ----------------------------- ##
+## Shared with Linked views via clone_contract.R.
 ir_clonecall_col <- function(cloneCall) {
-  switch(
-    cloneCall %||% "gene",
-    "gene" = "CTgene",
-    "nt" = "CTnt",
-    "aa" = "CTaa",
-    "strict" = "CTstrict",
-    "CTgene"
-  )
+  cerebro_clonecall_col(cloneCall)
 }
 
 ## ---- Clonal UMAP data: coords + per-cell expansion level --------------- ##

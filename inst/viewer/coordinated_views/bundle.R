@@ -46,29 +46,46 @@ cv_colors_for <- function(levels) {
   cv_palette[((seq_len(n) - 1) %% length(cv_palette)) + 1]
 }
 
-## Per-cell clone identity (CTstrict) + human label (CTaa) from the IR list,
-## aligned to `cells`. NA where a cell carries no receptor.
-cv_clone_per_cell <- function(ir, cells) {
+## Per-cell clone identity + human label (CTaa) from the IR list, aligned to
+## `cells`. NA where a cell carries no receptor of the selected class.
+##
+## The clone column and the receptor scoping both come from clone_contract.R,
+## not from here. This used to read CTstrict and take every receptor at once,
+## while the Clonal UMAP read CTgene within one receptor -- so the two pages
+## disagreed about which cells share a clone, and the stricter column split
+## clones the other page reported as one. `receptor` defaults to whichever class
+## the Clonal UMAP would offer first, so the default views match.
+cv_clone_per_cell <- function(ir, cells, receptor = NULL) {
   if (is.null(ir) || !length(ir)) {
     return(NULL)
   }
+  present <- cerebro_receptors_present(ir)
+  if (is.null(receptor)) {
+    receptor <- if (length(present)) present[1] else "TCR"
+  }
+  clone_col <- cerebro_clonecall_col()
   rows <- do.call(
     rbind,
     lapply(ir, function(df) {
       if (
         is.null(df) ||
           !("barcode" %in% names(df)) ||
-          !("CTstrict" %in% names(df))
+          !(clone_col %in% names(df))
       ) {
+        return(NULL)
+      }
+      keep <- cerebro_rows_in_receptor(df, receptor, clone_col)
+      df <- df[keep, , drop = FALSE]
+      if (!nrow(df)) {
         return(NULL)
       }
       data.frame(
         barcode = as.character(df$barcode),
-        CTstrict = as.character(df$CTstrict),
+        clone = as.character(df[[clone_col]]),
         CTaa = if ("CTaa" %in% names(df)) {
           as.character(df$CTaa)
         } else {
-          as.character(df$CTstrict)
+          as.character(df[[clone_col]])
         },
         stringsAsFactors = FALSE
       )
@@ -77,10 +94,10 @@ cv_clone_per_cell <- function(ir, cells) {
   if (is.null(rows) || !nrow(rows)) {
     return(NULL)
   }
-  rows <- rows[!is.na(rows$CTstrict) & nzchar(rows$CTstrict), , drop = FALSE]
+  rows <- rows[!is.na(rows$clone) & nzchar(rows$clone), , drop = FALSE]
   rows <- rows[!duplicated(rows$barcode), , drop = FALSE]
   idx <- match(cells, rows$barcode)
-  list(ctstrict = rows$CTstrict[idx], ctaa = rows$CTaa[idx])
+  list(clone = rows$clone[idx], ctaa = rows$CTaa[idx], receptor = receptor)
 }
 
 ## Resolve an EXTERNAL histology image (Cerebro.options$spatial_images) for the
@@ -180,14 +197,28 @@ cv_field_scale <- 1000L
 cv_field <- function(label, v, min, max, scale = cv_field_scale) {
   list(label = label, v = I(v), min = min, max = max, scale = scale)
 }
-cv_clone <- function(id, label, size, n_clones, n_receptor) {
+cv_clone <- function(
+  id,
+  label,
+  size,
+  n_clones,
+  n_receptor,
+  receptor = NA_character_
+) {
   ## id/label/size are arrays; n_clones/n_receptor are true scalars (left bare).
+  ## The expansion bins travel WITH the data: the client re-lays-out the clone
+  ## space between representations without a server round-trip, and a second
+  ## copy of the thresholds in JavaScript is a second thing to keep in step with
+  ## clone_contract.R. `tiers` are the upper bounds, `tier_labels` their names.
   list(
     id = I(id),
     label = I(label),
     size = I(size),
     n_clones = n_clones,
-    n_receptor = n_receptor
+    n_receptor = n_receptor,
+    receptor = receptor,
+    tiers = I(utils::head(CEREBRO_CLONE_BINS[-1], -1)),
+    tier_labels = I(CEREBRO_CLONE_LABELS)
   )
 }
 
@@ -520,10 +551,10 @@ cv_build_trekker <- function(crb, cells, md) {
 cv_build_clone <- function(crb, cells, n) {
   ir <- tryCatch(crb$getImmuneRepertoire(), error = function(e) NULL)
   cp <- cv_clone_per_cell(ir, cells)
-  if (is.null(cp) || !any(!is.na(cp$ctstrict))) {
+  if (is.null(cp) || !any(!is.na(cp$clone))) {
     return(NULL)
   }
-  ct <- cp$ctstrict
+  ct <- cp$clone
   tab <- sort(table(ct[!is.na(ct)]), decreasing = TRUE)
   clone_keys <- names(tab)
   clone_size <- as.integer(tab)
@@ -557,9 +588,16 @@ cv_build_clone <- function(crb, cells, n) {
     cx[na_cells] <- -max(1, round(K * 0.06))
     cy[na_cells] <- stats::runif(length(na_cells), 0, maxstack)
   }
+  ## Name the receptor in the label. The clonotypes shown are one class only
+  ## (mixing TCR and BCR into one ranking is not something any page here does),
+  ## and a data set carrying both would otherwise give no clue which is on screen.
   space <- cv_space(
     "clone",
-    "Clonal expansion",
+    if (is.na(cp$receptor)) {
+      "Clonal expansion"
+    } else {
+      paste0("Clonal expansion (", cp$receptor, ")")
+    },
     cx,
     cy
   )
@@ -568,30 +606,26 @@ cv_build_clone <- function(crb, cells, n) {
     NA_integer_,
     clone_size[cell_clone]
   )
-  lvl <- as.character(cut(
-    size_per_cell,
-    breaks = c(0, 1, 5, 20, Inf),
-    labels = c("Single (1)", "Small (2-5)", "Medium (6-20)", "Large (>20)")
-  ))
+  ## Bins and labels come from clone_contract.R, so a clone lands in the same
+  ## expansion level here as it does on the Clonal UMAP. "No receptor" is this
+  ## page's own extra level: the Clonal UMAP draws those cells as a grey
+  ## background layer rather than a level, but here every cell is in the same
+  ## legend, so the absence has to be nameable.
+  lvl <- as.character(cerebro_clone_expansion(size_per_cell))
   lvl[is.na(lvl)] <- "No receptor"
-  lev <- c(
-    "No receptor",
-    "Single (1)",
-    "Small (2-5)",
-    "Medium (6-20)",
-    "Large (>20)"
-  )
+  lev <- c("No receptor", CEREBRO_CLONE_LABELS)
   group <- cv_group(
     match(lvl, lev) - 1L,
     lev,
-    c("#e0e0e0", "#c6dbef", "#6baed6", "#f97316", "#c2410c")
+    c("#e0e0e0", "#c6dbef", "#6baed6", "#f97316", "#c2410c", "#7f1d1d")
   )
   bundle <- cv_clone(
     ifelse(is.na(cell_clone), -1L, cell_clone - 1L),
     unname(clone_label),
     clone_size,
     K,
-    sum(!is.na(cell_clone))
+    sum(!is.na(cell_clone)),
+    cp$receptor
   )
   list(space = space, group = group, bundle = bundle)
 }
