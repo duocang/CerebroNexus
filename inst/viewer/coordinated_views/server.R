@@ -24,19 +24,51 @@ source(
   local = TRUE
 )
 
+## Always resolves to something sendable: the bundle, or a list(error = <text>)
+## describing why this data set has no linked views. Never NULL — see the observe
+## below for why silence is the one outcome we cannot afford.
 coordviews_bundle <- reactive({
   req(!is.null(data_set()))
-  tryCatch(cv_build_bundle(data_set()), error = function(e) NULL)
+  tryCatch(
+    {
+      b <- cv_build_bundle(data_set())
+      if (is.null(b)) {
+        list(
+          error = paste(
+            "This data set carries no dimensional reduction, so there is",
+            "nothing to link its modalities on."
+          )
+        )
+      } else {
+        b
+      }
+    },
+    error = function(e) {
+      ## The message goes to the console for debugging; the client gets a
+      ## generic one (an internal error string is neither useful nor safe to
+      ## render in the browser).
+      warning(
+        "Linked views bundle failed: ",
+        conditionMessage(e),
+        call. = FALSE
+      )
+      list(error = "Linked views could not be built for this data set.")
+    }
+  )
 })
 
-## Push the bundle on (re)connect (coordviews_ready) or data-set change.
+## The bundle when it actually built; NULL otherwise. Server-side consumers
+## (gene vectors, histology controls) need real cells, not an error payload.
+cv_ok <- function(b) {
+  if (is.null(b) || !is.null(b$error)) NULL else b
+}
+
+## Push on (re)connect (coordviews_ready) or data-set change. The error payload
+## is pushed too, and that is the point: staying silent would leave the PREVIOUS
+## data set's panels on screen, presenting one data set's cells as another's.
 observe({
   input[["coordviews_ready"]]
-  b <- coordviews_bundle()
-  if (is.null(b)) {
-    return()
-  }
-  session$sendCustomMessage("coordviews_data", b)
+  session$sendCustomMessage("coordviews_data", coordviews_bundle())
 })
 
 ##----------------------------------------------------------------------------##
@@ -60,11 +92,19 @@ coordviews_selected_barcodes <- reactive({
 ## would reset the "Variable to compare" dropdown each lasso — so seed it from the
 ## current input via isolate(): the user's choice survives the rebuild, and reading
 ## it isolated adds no extra dependency (no rebuild when only the variable changes).
+## The `cv-rise` class + its delay continue the stagger the client-side readout
+## starts (composition 0ms, clonotypes 60ms), so everything a selection produces
+## arrives as one motion instead of three boxes popping in independently. It is a
+## CSS animation rather than a transition because Shiny rebuilds these two from
+## scratch on every selection change — a new element has nothing to transition
+## from. Definition: www/coordviews.css, @keyframes cvRise.
 output[["coordviews_selected_cells_UI"]] <- renderUI({
   req(coordviews_selected_barcodes())
   meta_cols <- colnames(getMetaData())
   tagList(
     fluidRow(
+      class = "cv-rise",
+      style = "--cv-rise-delay:120ms",
       cerebroBox(
         title = tagList(
           boxTitle("Plot of selected cells"),
@@ -84,6 +124,8 @@ output[["coordviews_selected_cells_UI"]] <- renderUI({
       )
     ),
     fluidRow(
+      class = "cv-rise",
+      style = "--cv-rise-delay:180ms",
       cerebroBox(
         title = tagList(
           boxTitle("Table of selected cells"),
@@ -307,7 +349,7 @@ lapply(
 )
 
 observeEvent(input[["coordviews_gene"]], {
-  b <- coordviews_bundle()
+  b <- cv_ok(coordviews_bundle())
   g <- input[["coordviews_gene"]]
   if (is.null(b) || is.null(g) || !nzchar(g)) {
     return()
@@ -332,7 +374,7 @@ observeEvent(
     input[["coordviews_gene_b"]]
   ),
   {
-    b <- coordviews_bundle()
+    b <- cv_ok(coordviews_bundle())
     if (is.null(b)) {
       return()
     }
@@ -372,7 +414,7 @@ observeEvent(
 ## the canvas instantly and never round-trips to the server.
 ##----------------------------------------------------------------------------##
 output[["coordviews_image_ui"]] <- renderUI({
-  b <- coordviews_bundle()
+  b <- cv_ok(coordviews_bundle())
   img <- NULL
   if (!is.null(b)) {
     for (s in b$spaces) {
@@ -451,6 +493,59 @@ output[["coordviews_image_ui"]] <- renderUI({
 outputOptions(output, "coordviews_image_ui", suspendWhenHidden = FALSE)
 
 ##----------------------------------------------------------------------------##
+## Single-cell detail card — the complete meta row for one clicked cell.
+##
+## The bundle deliberately does not carry this: it holds categorical LEVELS and
+## numerics quantised for colouring, which is right for drawing and wrong for
+## reading. A card that shows a cell's meta data should show the values the data
+## set actually holds, so the client asks for the row when a card opens (one
+## small round-trip per click, and the card is already on screen meanwhile).
+##----------------------------------------------------------------------------##
+cv_fmt_value <- function(v) {
+  if (length(v) != 1 || is.na(v)) {
+    return("NA")
+  }
+  if (is.numeric(v)) {
+    ## integers plain, otherwise enough decimals to stay meaningful — the same
+    ## reading the "Table of selected cells" gives, without its column-wide
+    ## type inference (a single value carries no column to infer from).
+    if (abs(v - round(v)) < 1e-9) {
+      return(format(round(v), big.mark = ",", scientific = FALSE, trim = TRUE))
+    }
+    return(format(
+      signif(v, 5),
+      big.mark = ",",
+      scientific = FALSE,
+      trim = TRUE
+    ))
+  }
+  as.character(v)
+}
+
+observeEvent(input[["coordviews_cell_detail"]], {
+  bc <- input[["coordviews_cell_detail"]]
+  if (is.null(bc) || !nzchar(bc)) {
+    return()
+  }
+  md <- tryCatch(getMetaData(), error = function(e) NULL)
+  if (is.null(md) || !("cell_barcode" %in% colnames(md))) {
+    return()
+  }
+  idx <- match(as.character(bc), as.character(md$cell_barcode))
+  if (is.na(idx)) {
+    return()
+  }
+  cols <- setdiff(colnames(md), "cell_barcode")
+  rows <- lapply(cols, function(cn) {
+    list(k = cn, v = cv_fmt_value(md[[cn]][idx]))
+  })
+  session$sendCustomMessage(
+    "coordviews_cell_meta",
+    list(cell = as.character(bc), rows = rows)
+  )
+})
+
+##----------------------------------------------------------------------------##
 ## Info modal
 ##----------------------------------------------------------------------------##
 observeEvent(input[["coordinated_views_info"]], {
@@ -487,6 +582,21 @@ observeEvent(input[["coordinated_views_info"]], {
         " — the selection's cell-type composition and its top clonotypes ",
         "(CDR3, clone size, share of the selection) update live. Click a ",
         "clonotype row to select all of its cells across every panel."
+      ),
+      tags$p(
+        tags$b("Colouring"),
+        " — every meta data column is available, exactly as on the Projection ",
+        "tab: the grouping variables, any other categorical column, and every ",
+        "numeric one (number of transcripts, percent mitochondrial, scores) on a ",
+        "continuous scale. Single genes and three-gene co-expression are there too."
+      ),
+      tags$p(
+        tags$b("Navigating"),
+        " — scroll to zoom about the cursor, and drag with the hand tool (or ",
+        "shift-drag / middle-drag from any tool) to pan. Each panel's toolbar ",
+        "also has zoom in/out, reset, and PNG download. Note that the panels are ",
+        "2-D: a 3-D embedding is shown by its first two dimensions, and the ",
+        "projection picker says so — use the Projection tab to rotate it in 3-D."
       ),
       tags$p(
         style = "color:#6b6b70;",

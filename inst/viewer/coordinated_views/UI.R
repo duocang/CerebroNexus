@@ -15,6 +15,11 @@
 
 ## Per-panel hover modebar (plotly-style). `panel` is the JS panel key ("A"/"B").
 ## Lasso is the default active drag mode. All buttons are wired client-side.
+## The label goes in `data-tip`, NOT `title`: the native tooltip's delay is the
+## browser's to decide (~1s in Chrome) and cannot be configured, which is far too
+## slow for a toolbar you sweep across. CSS draws it instead (see .cv-tbtn::after)
+## on a 350ms delay. `aria-label` then carries the accessible name that `title`
+## used to provide — these buttons have no text of their own.
 cv_panebar <- function(panel) {
   tbtn <- function(act, tip, ic, active = FALSE) {
     tags$button(
@@ -22,7 +27,8 @@ cv_panebar <- function(panel) {
       class = if (active) "cv-tbtn is-on" else "cv-tbtn",
       `data-act` = act,
       `data-panel` = panel,
-      title = tip,
+      `data-tip` = tip,
+      `aria-label` = tip,
       icon(ic)
     )
   }
@@ -30,9 +36,15 @@ cv_panebar <- function(panel) {
     class = "cv-panebar",
     tbtn("box", "Box select", "vector-square"),
     tbtn("lasso", "Lasso select", "draw-polygon", active = TRUE),
-    tbtn("zin", "Zoom in", "search-plus"),
-    tbtn("zout", "Zoom out", "search-minus"),
-    tbtn("reset", "Reset view", "expand"),
+    ## Pan is its own mode (and is also reachable from any mode via middle-drag
+    ## or shift-drag) — without it a zoomed panel can only be reset, never moved.
+    tbtn("pan", "Pan · or shift-drag", "up-down-left-right"),
+    tbtn("zin", "Zoom in · or scroll", "search-plus"),
+    tbtn("zout", "Zoom out · or scroll", "search-minus"),
+    ## A house, not the four-corner "expand" glyph that was here: that one reads
+    ## as fullscreen everywhere else. This is the same mark plotly puts on its
+    ## "Reset axes" button, which is where these users are coming from.
+    tbtn("reset", "Reset view", "house"),
     tbtn("png", "Download PNG", "download")
   )
 }
@@ -55,13 +67,29 @@ cv_pane <- function(key) {
         id = paste0("cv-tk-info-", low),
         `data-act` = "trekker-info",
         style = "display:none",
-        title = "Trekker coordinate source, QC & Moran's I",
+        `data-tip` = "Trekker coordinate source, QC & Moran's I",
+        `aria-label` = "Trekker coordinate source, QC and Moran's I",
         icon("circle-info")
       ),
       cv_panebar(key)
     ),
-    tags$canvas(id = paste0("cv-cv-", low)),
-    div(class = "cv-tip", id = paste0("cv-tip-", low))
+    ## The canvas gets a positioned wrapper so the minimap can sit at the
+    ## CANVAS's bottom-left rather than the pane's. It matters because the square
+    ## is not always flush with the pane: in the three-space layout the UMAP pane
+    ## is stretched over two rows and its canvas centres itself in the extra
+    ## height. Anchoring in CSS also means the minimap follows the canvas's
+    ## width/height transition for free, instead of being re-measured per frame.
+    div(
+      class = "cv-canvas-wrap",
+      tags$canvas(id = paste0("cv-cv-", low)),
+      ## Read-only overview: the whole space in miniature with a frame marking
+      ## the visible part. Only shown while the panel is zoomed or panned.
+      tags$canvas(class = "cv-mini", id = paste0("cv-mini-", low)),
+      ## Inside the wrapper, so the coordinates the hover code computes (which
+      ## are relative to the CANVAS) are the coordinates this is positioned by.
+      ## As a child of the pane it was offset by the header's height.
+      div(class = "cv-tip", id = paste0("cv-tip-", low))
+    )
   )
 }
 
@@ -250,12 +278,32 @@ tab_coordinated_views <- tabItem(
           )
         )
       ),
-      ## Reveals the "More" panel: point opacity, cell subsampling, group filters.
+      ## Group labels at each level's median position, as the Projection tab
+      ## draws them. ON by default, and in the bar rather than behind "More":
+      ## it changes what is drawn on every panel, which is not the kind of switch
+      ## to keep folded away.
+      div(
+        class = "cv-ctl",
+        tags$label("Labels"),
+        tags$label(
+          class = "cv-chk cv-chk-ctl",
+          tags$input(type = "checkbox", id = "cv-labels", checked = "checked"),
+          "Group labels"
+        )
+      ),
+      ## Reveals the rest of the control bar (point opacity, cell subsampling,
+      ## group filters). The caret is its own element so it can ROTATE between
+      ## pointing right (collapsed) and down (open) rather than swap glyphs.
       tags$button(
         type = "button",
         id = "cv-more-btn",
         class = "cv-morebtn",
-        HTML("More &#9662;")
+        `aria-expanded` = "false",
+        `aria-controls` = "cv-more",
+        tags$span("More"),
+        ## drawn in CSS (a glyph's position inside its box varies by font, which
+        ## a rotation makes visible as a wobble)
+        tags$span(class = "cv-caret")
       ),
       ## Right-aligned cluster: the filter/subsample readout + the selection
       ## actions. Both are hidden by default and surface only when relevant.
@@ -278,75 +326,87 @@ tab_coordinated_views <- tabItem(
           ),
           tags$button(id = "cv-clear", class = "cv-clearbtn", "Clear selection")
         )
-      )
-    ),
+      ),
 
-    ## ---- collapsible "More" panel --------------------------------------- ##
-    ## Additional projection parameters (opacity, % of cells) + per-group
-    ## filters, mirroring the Overview/Spatial param boxes but kept out of the
-    ## way so the top bar stays compact. All client-owned; group-filter chips are
-    ## rendered into #cv-filters-row from the bundle's categorical groups.
-    div(
-      class = "cv-more",
-      id = "cv-more",
-      style = "display:none",
-      cv_range(
-        "Point opacity",
-        "cv-opacity",
-        min = "0.1",
-        max = "1",
-        step = "0.05",
-        value = "0.8",
-        disp = "0.80",
-        val_id = "cv-op-val"
-      ),
-      cv_range(
-        "Show % of cells",
-        "cv-pct",
-        min = "5",
-        max = "100",
-        step = "5",
-        value = "100",
-        disp = "100",
-        val_id = "cv-pct-val"
-      ),
+      ## ---- collapsible second row of the SAME bar ----------------------- ##
+      ## Additional projection parameters (opacity, % of cells) + per-group
+      ## filters. These belong to the same control surface as the row above, so
+      ## they live in the same card and are separated by a hairline rather than
+      ## floating in a second box. Being a 100%-wide flex item, it wraps onto its
+      ## own line inside the bar.
+      ##
+      ## Three nested elements is what a height animation costs when the content
+      ## height is unknown: `.cv-more` animates grid-template-rows 0fr -> 1fr,
+      ## `.cv-more-clip` supplies the overflow:hidden/min-height:0 that lets the
+      ## 0fr row actually collapse, and `.cv-more-inner` carries the hairline and
+      ## padding (they would still paint at zero height if put on the clip).
       div(
-        class = "cv-ctl cv-filters",
-        tags$label("Group filters"),
-        div(class = "cv-filters-row", id = "cv-filters-row")
-      ),
-      ## Trekker-only controls (shown by JS when the bundle carries Trekker data):
-      ## dissolve least-confident positions + ring nuclei with positioning
-      ## evidence. Colour-by physical/meta fields is added to the Colour by list.
-      div(
-        class = "cv-trekker",
-        id = "cv-trekker-ctl",
-        style = "display:none",
-        cv_range(
-          "Dissolve least-confident (%)",
-          "cv-dissolve",
-          min = "0",
-          max = "95",
-          step = "5",
-          value = "0",
-          disp = "0",
-          val_id = "cv-dissolve-val"
-        ),
-        cv_range(
-          "Niche radius (µm)",
-          "cv-niche",
-          min = "50",
-          max = "500",
-          step = "25",
-          value = "250",
-          disp = "250",
-          val_id = "cv-niche-val",
-          wrap_id = "cv-niche-wrap"
-        ),
-        tags$label(
-          class = "cv-chk cv-evidence-chk",
-          tags$input(type = "checkbox", id = "cv-evidence"),
-          "Mark positioning evidence"
+        class = "cv-more",
+        id = "cv-more",
+        div(
+          class = "cv-more-clip",
+          div(
+            class = "cv-more-inner",
+            cv_range(
+              "Point opacity",
+              "cv-opacity",
+              min = "0.1",
+              max = "1",
+              step = "0.05",
+              value = "0.8",
+              disp = "0.80",
+              val_id = "cv-op-val"
+            ),
+            cv_range(
+              "Show % of cells",
+              "cv-pct",
+              min = "5",
+              max = "100",
+              step = "5",
+              value = "100",
+              disp = "100",
+              val_id = "cv-pct-val"
+            ),
+            div(
+              class = "cv-ctl cv-filters",
+              tags$label("Group filters"),
+              div(class = "cv-filters-row", id = "cv-filters-row")
+            ),
+            ## Trekker-only controls (shown by JS when the bundle carries Trekker data):
+            ## dissolve least-confident positions + ring nuclei with positioning
+            ## evidence. Colour-by physical/meta fields is added to the Colour by list.
+            div(
+              class = "cv-trekker",
+              id = "cv-trekker-ctl",
+              style = "display:none",
+              cv_range(
+                "Dissolve least-confident (%)",
+                "cv-dissolve",
+                min = "0",
+                max = "95",
+                step = "5",
+                value = "0",
+                disp = "0",
+                val_id = "cv-dissolve-val"
+              ),
+              cv_range(
+                "Niche radius (µm)",
+                "cv-niche",
+                min = "50",
+                max = "500",
+                step = "25",
+                value = "250",
+                disp = "250",
+                val_id = "cv-niche-val",
+                wrap_id = "cv-niche-wrap"
+              ),
+              tags$label(
+                class = "cv-chk cv-evidence-chk",
+                tags$input(type = "checkbox", id = "cv-evidence"),
+                "Mark positioning evidence"
+              )
+            )
+          )
         )
       )
     ),
@@ -373,7 +433,40 @@ tab_coordinated_views <- tabItem(
       cv_pane("A"),
       cv_pane("B"),
       cv_pane("C"),
-      cv_pane("D")
+      cv_pane("D"),
+      ## ---- single-cell detail card ------------------------------------- ##
+      ## Clicking a cell promotes its hover tooltip into this: the same facts,
+      ## uncut, parked in the middle of the panel grid instead of chasing the
+      ## pointer — so a barcode can be copied and a full CDR3 read while the
+      ## panels stay usable. Absolutely positioned, so it never enters the grid.
+      ## The outer element owns the centring, the inner one owns the fly-in
+      ## transform; keeping those on separate elements means neither has to
+      ## reconstruct the other's translate.
+      div(
+        class = "cv-card-pos",
+        id = "cv-card-pos",
+        div(
+          class = "cv-card",
+          id = "cv-card",
+          role = "dialog",
+          `aria-label` = "Cell details",
+          div(
+            class = "cv-card-head",
+            div(
+              tags$div(class = "cv-card-title", id = "cv-card-title", "—"),
+              tags$div(class = "cv-card-bc", id = "cv-card-bc", "")
+            ),
+            tags$button(
+              type = "button",
+              class = "cv-card-x",
+              id = "cv-card-x",
+              `aria-label` = "Close",
+              HTML("&times;")
+            )
+          ),
+          div(class = "cv-card-body", id = "cv-card-body")
+        )
+      )
     ),
 
     ## ---- legend (categorical) or colourbar (continuous gene) ------------ ##

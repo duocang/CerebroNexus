@@ -77,12 +77,118 @@
       Math.round(a[1] + (b[1] - a[1]) * f),
       Math.round(a[2] + (b[2] - a[2]) * f)];
   }
+  // Continuous colouring builds a CSS colour per cell per draw; on a large data
+  // set that is hundreds of thousands of string allocations per frame, on the
+  // lasso-drag path. The ramp only has 256 distinct steps, so build them once.
+  var VIR_CSS = (function () {
+    var out = new Array(256);
+    for (var k = 0; k < 256; k++) {
+      var c = viridis(k / 255);
+      out[k] = 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+    }
+    return out;
+  })();
+  function viridisCss(t) {
+    var k = Math.round(Math.max(0, Math.min(1, t)) * 255);
+    return VIR_CSS[k];
+  }
 
   function $(id) { return document.getElementById(id); }
+  // Level names, column names and clonotype labels all come from the data set,
+  // so everything interpolated into innerHTML goes through here.
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
   function fmt(n) { return (n == null || isNaN(n)) ? '—' : n.toLocaleString('en-US'); }
   // Human-facing label for a group key. Metadata columns keep their own names;
   // the server-synthesised expansion group gets a readable label.
   function groupLabel(g) { return g === 'clone_expansion' ? 'Clone Expansion' : g; }
+
+  // ---- colouring sources ---------------------------------------------------
+  // Three of them, mirroring how the Projection tab splits its two boxes:
+  //   D.groups    registered grouping variables — colour AND group filters
+  //   D.cat_extra other categorical meta columns — colour only (no filter)
+  //   D.fields    numeric meta columns + Trekker's physical fields — continuous
+  // Everything that reads a categorical colouring goes through catOf(), so the
+  // two categorical sources never have to be special-cased at the call site.
+  function catOf(name) {
+    if (!D || !name) return null;
+    return (D.groups && D.groups[name]) ||
+      (D.cat_extra && D.cat_extra[name]) || null;
+  }
+  // The categorical variable the composition readout summarises by: cell_type
+  // when present, else the active categorical colouring, else the first one
+  // available. colorBy may be a gene/RGB/field pseudo-mode that is not
+  // categorical at all, so it is used only when catOf() resolves it.
+  function compGroupName() {
+    if (!D) return null;
+    if (D.groups && D.groups['cell_type']) return 'cell_type';
+    if (catOf(colorBy)) return colorBy;
+    var k = D.groups ? Object.keys(D.groups) : [];
+    if (k.length) return k[0];
+    var e = D.cat_extra ? Object.keys(D.cat_extra) : [];
+    return e.length ? e[0] : null;
+  }
+  // True value behind a field's quantised code (fields travel 0..scale to keep
+  // the bundle small; min/max carry the real range).
+  function fieldValue(fld, i) {
+    var q = fld.v[i];
+    if (q == null || isNaN(q)) return null;
+    return fld.min + (q / (fld.scale || 255)) * (fld.max - fld.min);
+  }
+  // Compact display of a continuous value: integers plain, small values with
+  // enough decimals to be meaningful (percent.mt 3.7, a score 0.042).
+  function fmtVal(v) {
+    if (v == null) return '—';
+    var a = Math.abs(v);
+    if (a >= 1000) return Math.round(v).toLocaleString('en-US');
+    if (a >= 10) return v.toFixed(1);
+    if (a >= 1) return v.toFixed(2);
+    return v.toFixed(3);
+  }
+
+  // ---- occupancy of the unit box ------------------------------------------
+  // Which parts of the box actually hold points, on a coarse lattice, plus a
+  // summed-area table over it. The SAT answers "does this view rectangle contain
+  // any point?" in four lookups no matter how much of the box the view spans —
+  // which is what makes the check affordable on the per-mousemove pan path.
+  var OCC = 64;
+  function occIdx(v) {
+    var i = Math.floor(v * OCC);
+    return i < 0 ? 0 : (i > OCC - 1 ? OCC - 1 : i);
+  }
+  function occSAT(occ) {
+    var W = OCC + 1, s = new Int32Array(W * W);
+    for (var y = 0; y < OCC; y++) {
+      for (var x = 0; x < OCC; x++) {
+        s[(y + 1) * W + x + 1] = occ[y * OCC + x] +
+          s[y * W + x + 1] + s[(y + 1) * W + x] - s[y * W + x];
+      }
+    }
+    return s;
+  }
+  // Number of occupied cells in the inclusive lattice rectangle (clipped).
+  function occCount(u, gx0, gy0, gx1, gy1) {
+    var W = OCC + 1, s = u.sat;
+    gx0 = Math.max(0, gx0); gy0 = Math.max(0, gy0);
+    gx1 = Math.min(OCC - 1, gx1); gy1 = Math.min(OCC - 1, gy1);
+    if (gx1 < gx0 || gy1 < gy0) return 0;
+    return s[(gy1 + 1) * W + gx1 + 1] - s[gy0 * W + gx1 + 1] -
+      s[(gy1 + 1) * W + gx0] + s[gy0 * W + gx0];
+  }
+  // Only cells lying ENTIRELY within the view count. A cell the view merely
+  // clips can hold its points on the outside of that edge, which is exactly how
+  // a "there is data here" answer ends up in front of a blank canvas. Requiring
+  // full containment can only err the safe way — toward reporting no data — and
+  // the lattice is fine enough (1/64) that even the tightest zoom still contains
+  // whole cells.
+  function viewHasData(u, cx, cy, span) {
+    var h = span / 2;
+    return occCount(u,
+      Math.ceil((cx - h) * OCC), Math.ceil((cy - h) * OCC),
+      Math.floor((cx + h) * OCC) - 1, Math.floor((cy + h) * OCC) - 1) > 0;
+  }
 
   // ---- per-space unit normalisation ---------------------------------------
   // Real geometry (umap, spatial) preserves aspect ratio. An abstract space
@@ -107,16 +213,30 @@
       kx = k; ky = k; ox = (1 - dw * k) / 2; oy = (1 - dh * k) / 2;
     }
     var nx = new Float32Array(n), ny = new Float32Array(n), ok = new Uint8Array(n);
+    // Occupancy of a coarse lattice over the unit box, plus the centre of mass —
+    // both used by clampView() to keep a panned view on actual data. A bounding
+    // box cannot do that job: a UMAP fills its box very unevenly, so a view held
+    // at a corner of the BOX can still show nothing at all.
+    var occ = new Uint8Array(OCC * OCC), cmx = 0, cmy = 0, cnt = 0;
     for (var j = 0; j < n; j++) {
       var a = xs[j], b = ys[j];
       if (a == null || isNaN(a) || b == null || isNaN(b)) { ok[j] = 0; continue; }
       nx[j] = (a - x0) * kx + ox; ny[j] = (b - y0) * ky + oy; ok[j] = 1;
+      cmx += nx[j]; cmy += ny[j]; cnt++;
+      occ[occIdx(ny[j]) * OCC + occIdx(nx[j])] = 1;
     }
     // x0/y0/k/ox/oy let us map ARBITRARY data coords (e.g. image bounds) to the
     // same unit box the points use, so a background image aligns to the cells.
     // (Aspect-preserving spaces only — kx === ky there; the image never uses a
     // stretched space.)
-    return { nx: nx, ny: ny, ok: ok, x0: x0, y0: y0, k: kx, ky: ky, ox: ox, oy: oy };
+    //
+    // `bx` is where the DATA actually lies inside the unit box. Aspect-preserving
+    // spaces letterbox the shorter axis, so that is not [0,1] on both axes, and
+    // clampView() needs the real extent to keep a panned view on the data.
+    return { nx: nx, ny: ny, ok: ok, x0: x0, y0: y0, k: kx, ky: ky, ox: ox, oy: oy,
+      bx: { x0: ox, x1: ox + dw * kx, y0: oy, y1: oy + dh * ky },
+      occ: occ, sat: occSAT(occ),
+      cmx: cnt ? cmx / cnt : 0.5, cmy: cnt ? cmy / cnt : 0.5 };
   }
 
   // Map a unit-box coord (nx, ny in [0,1]) to this panel's screen pixels,
@@ -153,8 +273,7 @@
   function colorOf(i) {
     if (colorBy === GENE_MODE) {
       if (!D.gene) return '#dcdcdc';
-      var c = viridis(D.gene.v[i] / 255);
-      return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+      return viridisCss(D.gene.v[i] / 255);
     }
     if (colorBy === RGB_MODE) {
       var e = rgbAt(i);
@@ -170,11 +289,10 @@
     if (fld) {
       var fv = fld.v[i];
       if (fv == null || isNaN(fv)) return '#e6e7ea';   // unpositioned / NA → faint
-      var vc = viridis(fv / 255);
-      return 'rgb(' + vc[0] + ',' + vc[1] + ',' + vc[2] + ')';
+      return viridisCss(fv / (fld.scale || 255));
     }
-    var g = D.groups[colorBy];
-    if (!g) return '#888';
+    var g = catOf(colorBy);
+    if (!g) return '#7b8794';   // nothing categorical to colour by → one colour
     var lv = g.values[i];
     if (lv < 0 || lv == null) return '#cccccc';
     return (g.colors && g.colors[lv]) || PAL[lv % PAL.length];
@@ -182,7 +300,7 @@
   function visible(i) {
     // Continuous modes never hide points (no categorical legend to toggle).
     if (colorBy === GENE_MODE || colorBy === RGB_MODE || fieldOf()) return true;
-    var g = D.groups[colorBy];
+    var g = catOf(colorBy);
     if (!g) return true;
     return !hidden.has(g.values[i]);
   }
@@ -365,6 +483,126 @@
   }
 
   // Paint one cell dot at the given alpha, coloured by the active mode.
+  // ---- group labels --------------------------------------------------------
+  // Each level's median position, drawn on the panel. The Projection tab draws
+  // the same labels (centerOfGroups + a plotly text trace); without them a
+  // cluster map can only be read by cross-referencing the legend.
+  //
+  // Cached per (space, colouring) in SPACE units, so panning and zooming reuse
+  // it — a median over n cells must never run on the drag-redraw path. The
+  // positions deliberately ignore the group filters: a label that jumps every
+  // time a filter changes is worse than one that stays where the group is.
+  var labelsOn = true;
+  var _lblCache = { d: null };
+  function groupLabelsFor(p) {
+    var g = catOf(colorBy); if (!g) return null;
+    var sp = spaceById[p.spaceId], u = sp && sp._unit;
+    if (!u) return null;
+    var key = p.spaceId + '|' + colorBy;
+    if (_lblCache.d !== D) _lblCache = { d: D };
+    // The cached medians belong to ONE unit normalisation; switching projection,
+    // spatial sample or clonal layout rebuilds `_unit`, which must invalidate
+    // them (identity check, so no extra bookkeeping at those call sites).
+    var hit = _lblCache[key];
+    if (hit && hit.u === u) return hit.out;
+    var nlev = g.levels.length, xs = [], ys = [], li;
+    for (li = 0; li < nlev; li++) { xs.push([]); ys.push([]); }
+    for (var i = 0; i < D.n; i++) {
+      if (!u.ok[i]) continue;
+      var lv = g.values[i];
+      if (lv == null || lv < 0 || lv >= nlev) continue;
+      xs[lv].push(u.nx[i]); ys[lv].push(u.ny[i]);
+    }
+    var med = function (a) {
+      if (!a.length) return null;
+      a.sort(function (x, y) { return x - y; });
+      return a[a.length >> 1];
+    };
+    var out = [];
+    for (li = 0; li < nlev; li++) {
+      var mx = med(xs[li]);
+      if (mx == null) continue;
+      out.push({ li: li, nx: mx, ny: med(ys[li]), text: String(g.levels[li]) });
+    }
+    _lblCache[key] = { u: u, out: out };
+    return out;
+  }
+  function drawGroupLabels(p) {
+    // Below ~260px a label chip covers a meaningful share of the panel.
+    if (!labelsOn || p.W < 260) return;
+    var L = groupLabelsFor(p); if (!L || !L.length) return;
+    var c = p.ctx, v = p.view, S = p._S, ox = p._sox, oy = p._soy;
+    if (!S) return;
+    c.save();
+    c.globalAlpha = 1;
+    c.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    L.forEach(function (o) {
+      if (hidden.has(o.li)) return;
+      var zx = v ? (o.nx - v.cx) / v.span + 0.5 : o.nx;
+      var zy = v ? (o.ny - v.cy) / v.span + 0.5 : o.ny;
+      var x = ox + zx * S, y = oy + S - zy * S;
+      if (x < ox || x > ox + S || y < oy || y > oy + S) return;
+      var t = o.text.length > 18 ? o.text.slice(0, 17) + '…' : o.text;
+      var w = c.measureText(t).width;
+      c.fillStyle = 'rgba(255,255,255,.80)';
+      c.fillRect(x - w / 2 - 4, y - 8, w + 8, 16);
+      c.fillStyle = '#1c1c1e';
+      c.fillText(t, x, y);
+    });
+    c.restore();
+  }
+
+  // ---- minimap -------------------------------------------------------------
+  // Once a panel is zoomed or panned, the view alone no longer says where it
+  // sits in the whole space. A coarse thumbnail with a frame around the visible
+  // part answers that, and nothing more — it is read-only, and deliberately
+  // rough (a fixed sample budget, one flat colour) because "roughly where" is
+  // the entire question.
+  //
+  // The dots are rendered ONCE per space normalisation into an offscreen canvas
+  // and then blitted. Panning and zooming cannot change them — only the frame
+  // moves — so redrawing them per frame would be pure waste on the drag path.
+  var MINI = 84, MINI_PAD = 5, MINI_DOTS = 2600;
+  function buildMiniBg(p, u) {
+    var off = document.createElement('canvas');
+    var dpr = window.devicePixelRatio || 1;
+    off.width = MINI * dpr; off.height = MINI * dpr;
+    var c = off.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var S = MINI - MINI_PAD * 2;
+    var step = Math.max(1, Math.floor(D.n / MINI_DOTS));
+    c.fillStyle = '#9aa3b0';
+    for (var i = 0; i < D.n; i += step) {
+      if (!u.ok[i]) continue;
+      c.fillRect(MINI_PAD + u.nx[i] * S - 0.6,
+        MINI_PAD + S - u.ny[i] * S - 0.6, 1.2, 1.2);
+    }
+    p.miniUnit = u;
+    return off;
+  }
+  function drawMinimap(p) {
+    if (!p.mini || !p.mctx) return;
+    var sp = spaceById[p.spaceId], u = sp && sp._unit;
+    var on = !!(p.view && D && p.sx && u);
+    p.mini.classList.toggle('is-on', on);
+    if (!on) return;
+    if (!p.miniBg || p.miniUnit !== u) p.miniBg = buildMiniBg(p, u);
+    var c = p.mctx, S = MINI - MINI_PAD * 2, v = p.view;
+    c.clearRect(0, 0, MINI, MINI);
+    c.drawImage(p.miniBg, 0, 0, MINI, MINI);
+    // The frame, in the same padded unit box as the dots. It can extend past the
+    // edge when the view runs off the data; the canvas clips it, which reads
+    // correctly — part of what is on screen is outside the space.
+    var x = MINI_PAD + (v.cx - v.span / 2) * S;
+    var y = MINI_PAD + S - (v.cy + v.span / 2) * S;
+    var w = v.span * S;
+    c.fillStyle = 'rgba(47,111,214,.14)';
+    c.fillRect(x, y, w, w);
+    c.strokeStyle = '#2f6fd6'; c.lineWidth = 1.25;
+    c.strokeRect(x + 0.5, y + 0.5, w - 1, w - 1);
+  }
+
   function paintCell(p, i, alpha) {
     var c = p.ctx;
     c.globalAlpha = alpha;
@@ -392,14 +630,50 @@
     // on the hot lasso-drag redraw path.
     var shownMask = new Uint8Array(n);
     for (i = 0; i < n; i++) shownMask[i] = shown(i) ? 1 : 0;
+    // Within one layer the alpha is CONSTANT (it depends only on fg/hiSet, which
+    // is what defines the layer), so a layer can be drawn as one path per colour
+    // instead of one path per cell. On a large data set that turns ~n canvas
+    // operations per frame into ~(number of distinct colours), which is what
+    // makes a 100k-cell lasso drag usable at all.
+    //
+    // It is not free: inside a single path, overlapping same-colour dots fill
+    // ONCE, so dense regions lose the alpha build-up that per-cell fills give.
+    // That build-up reads as density, so the per-cell path is kept for the data
+    // sets where it is visible and affordable, and batching only kicks in past
+    // the size where the frame cost dominates.
+    var BATCH_MIN = 20000;
     for (var layer = 0; layer < 2; layer++) {
+      var alpha = hiSet ? (layer === 1 ? 0.95 : 0.05)
+        : rgb ? (layer === 1 ? 1 : 0.5 * pointOpacity) : pointOpacity;
+      if (n >= BATCH_MIN) {
+        var buckets = null;
+        for (i = 0; i < n; i++) {
+          if (!p.ok[i] || !shownMask[i]) continue;
+          if ((layer === 0) === (rgb ? rgbExpressing(i) : !!(hiSet && hiSet.has(i)))) continue;
+          var col = colorOf(i);
+          if (!buckets) buckets = {};
+          (buckets[col] || (buckets[col] = [])).push(i);
+        }
+        if (buckets) {
+          c.globalAlpha = alpha;
+          for (var col2 in buckets) {
+            var idx = buckets[col2];
+            c.fillStyle = col2;
+            c.beginPath();
+            for (var b = 0; b < idx.length; b++) {
+              var j = idx[b];
+              c.moveTo(p.sx[j] + ps, p.sy[j]);
+              c.arc(p.sx[j], p.sy[j], ps, 0, 6.2832);
+            }
+            c.fill();
+          }
+        }
+        continue;
+      }
       for (i = 0; i < n; i++) {
         if (!p.ok[i] || !shownMask[i]) continue;
         var fg = rgb ? rgbExpressing(i) : !!(hiSet && hiSet.has(i));
         if ((layer === 0) === fg) continue;   // bg on layer 0, fg on layer 1
-        var inHi = !hiSet || hiSet.has(i);
-        var alpha = hiSet ? (inHi ? 0.95 : 0.05)
-          : rgb ? (fg ? 1 : 0.5 * pointOpacity) : pointOpacity;
         paintCell(p, i, alpha);
       }
     }
@@ -411,6 +685,7 @@
         c.beginPath(); c.arc(p.sx[i], p.sy[i], ps + 2.5, 0, 6.2832); c.stroke();
       }
     }
+    drawGroupLabels(p);
     // picked cell ring
     if (pick != null && p.ok[pick]) {
       c.globalAlpha = 1; c.strokeStyle = '#f97316'; c.lineWidth = 2.2;
@@ -444,6 +719,8 @@
       }
     }
     c.globalAlpha = 1;
+    // Its own canvas — drawn last so it also settles after a view change.
+    drawMinimap(p);
   }
   // Live "showing N / M cells" readout — the single feedback that a filter or
   // subsample took effect, regardless of what the panels are coloured by.
@@ -460,6 +737,46 @@
   function drawAll() { panels.forEach(draw); renderShownCount(); }
   // Drop any committed lasso outlines (their screen coords go stale on reproject,
   // and a new selection supersedes them). Returns true if anything was cleared.
+  // Default point radius from the cell count and the panel size: a 200k-cell
+  // panel needs smaller dots than a 2k one, and nobody should have to find the
+  // slider to get a readable first paint. Same idea as the Projection tab's
+  // dynamicPointSize(), fitted to this canvas's radius scale.
+  //
+  // It seeds the value ONCE per data set and then leaves it alone. Recomputing
+  // on every resize would mean the dots visibly change size when the bar's
+  // second row opens or a bar appears — the panels shrink slightly, and a point
+  // size that twitches at every unrelated layout change reads as a glitch.
+  var psSeeded = false;
+  function autoPointSize(side) {
+    if (!D) return;
+    psSeeded = true;
+    var base = 6.5 - Math.log10(Math.max(1, D.n));
+    var scale = Math.max(0.75, Math.min(1.35, (side || 520) / 520));
+    var v = Math.max(0.8, Math.min(7, base * scale));
+    ps = Math.round(v * 5) / 5;                    // slider step is 0.2
+    var el = $('cv-ps'); if (el) el.value = String(ps);
+    var lbl = $('cv-ps-val'); if (lbl) lbl.textContent = ps.toFixed(1);
+    positionRangeVal('cv-ps', 'cv-ps-val');
+  }
+
+  // ---- the control bar's collapsible second row ----------------------------
+  // Open/closed is one class on the row plus aria-expanded on the button; CSS
+  // drives the height, the caret rotation and the button's active style from
+  // those two. Opening changes how much height the panels have, so the grid is
+  // re-fitted in the same tick — its own transitions then run alongside the
+  // row's, and the squares glide instead of snapping when the animation lands.
+  function isMoreOpen() {
+    var mp = $('cv-more');
+    return !!(mp && mp.classList.contains('is-open'));
+  }
+  function setMoreOpen(open) {
+    var mp = $('cv-more'), btn = $('cv-more-btn');
+    if (!mp) return;
+    mp.classList.toggle('is-open', open);
+    if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (D) resizeAll();
+  }
+
   function clearLassos() {
     var any = false;
     panels.forEach(function (p) { if (p.lasso) { p.lasso = null; any = true; } });
@@ -581,7 +898,8 @@
       if (!any) return;
       var span = Math.max(nx1 - nx0, ny1 - ny0) * 1.25;
       if (!(span > 0.02)) span = 0.02;   // floor: don't over-zoom a tiny selection
-      p.view = { cx: (nx0 + nx1) / 2, cy: (ny0 + ny1) / 2, span: span };
+      p.view = clampView(p,
+        { cx: (nx0 + nx1) / 2, cy: (ny0 + ny1) / 2, span: span });
       project(p);
       did = true;
     });
@@ -608,28 +926,92 @@
   }
   // Sync the active drag-mode highlight (box vs lasso) across every toolbar.
   function syncModeButtons() {
-    ['box', 'lasso'].forEach(function (m) {
+    ['box', 'lasso', 'pan'].forEach(function (m) {
       var btns = document.querySelectorAll('.cv-tbtn[data-act="' + m + '"]');
       Array.prototype.forEach.call(btns, function (b) {
         b.classList.toggle('is-on', selectMode === m);
       });
     });
+    // the cursor has to say which gesture a drag will perform
+    panels.forEach(function (p) {
+      p.canvas.classList.toggle('cv-pannable', selectMode === 'pan');
+    });
   }
   // Step-zoom a panel about its current view centre. factor<1 zooms in, >1 out;
   // zooming back past the full extent clears the zoom.
-  function zoomStep(p, factor) {
+  // ---- keeping a view on the data -----------------------------------------
+  // Panning and zooming are otherwise unbounded, and a view dragged off the data
+  // is a dead end: the canvas goes blank, the minimap's frame slides out of
+  // frame, and nothing on screen distinguishes "you went too far" from "this
+  // broke". The rule is that a view must always show SOMETHING.
+  //
+  // Two steps, because the first alone is not enough. Holding the centre inside
+  // the data's bounding box still allows a blank view — a UMAP occupies its box
+  // very unevenly, and panning to one edge of the demo left the canvas entirely
+  // empty even with the box respected. So a view that ends up seeing no points
+  // is walked back toward the data's centre of mass and stopped at the first
+  // position that sees any.
+  //
+  // Dragging further past that point keeps resolving to the same place, so it
+  // reads as hitting a wall rather than being yanked around — while a view that
+  // legitimately crosses a gap between clusters is untouched, because it still
+  // has the clusters on either side in frame.
+  //
+  // Every path that moves a view goes through here rather than clamping for
+  // itself: pan, wheel/button zoom and zoom-to-selection can all push a view
+  // out, and a rule enforced in one of three places is a rule with holes.
+  function clampView(p, v) {
+    if (!v) return v;
+    var sp = spaceById[p.spaceId], u = sp && sp._unit;
+    if (!u || !u.bx || !u.sat) return v;
+    var b = u.bx;
+    var cx = Math.min(Math.max(v.cx, b.x0), b.x1);
+    var cy = Math.min(Math.max(v.cy, b.y0), b.y1);
+    if (!viewHasData(u, cx, cy, v.span)) {
+      var STEPS = 24, found = false;
+      for (var s = 1; s <= STEPS && !found; s++) {
+        var t = s / STEPS;
+        var qx = cx + (u.cmx - cx) * t, qy = cy + (u.cmy - cy) * t;
+        if (viewHasData(u, qx, qy, v.span)) { cx = qx; cy = qy; found = true; }
+      }
+      // Nothing along that line saw anything (a ring-shaped space whose centre
+      // of mass falls in the hole) — sit on the centre of mass and accept it.
+      if (!found) { cx = u.cmx; cy = u.cmy; }
+    }
+    return { cx: cx, cy: cy, span: v.span };
+  }
+
+  // Zoom about a screen point, keeping whatever is under it fixed — the gesture
+  // every map and every plotly plot uses. `factor` < 1 zooms in. Passing the
+  // panel centre gives the plain in/out of the toolbar buttons.
+  function zoomAt(p, mx, my, factor) {
+    if (!p._S) return;
     clearLassos();
     var v = p.view || { cx: 0.5, cy: 0.5, span: 1 };
     var span = v.span * factor;
     if (span >= 1) {
       if (p.view) { p.view = null; project(p); }
     } else {
-      p.view = { cx: v.cx, cy: v.cy, span: Math.max(0.04, span) };
+      span = Math.max(0.04, span);
+      // cursor position in view-relative units, then in space units
+      var zx = (mx - p._sox) / p._S, zy = (p._soy + p._S - my) / p._S;
+      var ux = v.cx + (zx - 0.5) * v.span, uy = v.cy + (zy - 0.5) * v.span;
+      // Clamped, so zooming toward a point near the edge slides the anchor a
+      // little rather than carrying the view off the data.
+      p.view = clampView(p, {
+        cx: ux - (zx - 0.5) * span,
+        cy: uy - (zy - 0.5) * span,
+        span: span
+      });
       project(p);
     }
     // keep the umap "Zoom back" toggle honest when the panel returns to full
     if (p.spaceId === 'umap' && !p.view && zoomed) { zoomed = false; updateZoomBtn(); }
     drawAll();
+  }
+  function zoomStep(p, factor) {
+    if (!p._S) return;
+    zoomAt(p, p._sox + p._S / 2, p._soy + p._S / 2, factor);
   }
   function downloadPanelPNG(p) {
     try {
@@ -695,22 +1077,21 @@
     return rows.map(function (r) {
       var col = (g.colors && g.colors[r[0]]) || PAL[r[0] % PAL.length];
       return '<div class="cv-bar"><span class="cv-bar-nm" style="color:' + col + '">' +
-        g.levels[r[0]] + '</span><span class="cv-bar-tr"><span class="cv-bar-fl" style="width:' +
+        esc(g.levels[r[0]]) + '</span><span class="cv-bar-tr"><span class="cv-bar-fl" style="width:' +
         (r[1] / mx * 100).toFixed(1) + '%;background:' + col + '"></span></span>' +
         '<span class="cv-bar-ct">' + r[1] + '</span></div>';
     }).join('');
   }
   function renderNiche(host) {
     if (!nicheSet) return false;
-    var compGroup = D.groups['cell_type'] ? 'cell_type'
-      : (D.groups[colorBy] ? colorBy : Object.keys(D.groups)[0]);
-    var g = D.groups[compGroup]; if (!g) return false;
+    var compGroup = compGroupName();
+    var g = catOf(compGroup); if (!g) return false;
     var comp = {}, tot = 0;
     nicheSet.forEach(function (i) {
       if (i === pick) return;   // the composition is of the neighbours
       var lv = g.values[i]; comp[lv] = (comp[lv] || 0) + 1; tot++;
     });
-    var head = '<div class="cv-readcol"><h4 class="cv-read-h">Niche of picked nucleus ' +
+    var head = '<div class="cv-readcol cv-rise"><h4 class="cv-read-h">Niche of picked nucleus ' +
       '<span class="cv-read-sub">' + fmt(tot) + ' neighbours within ' + nicheRadius +
       ' µm · by ' + groupLabel(compGroup) + '</span></h4>';
     if (!tot) {
@@ -749,15 +1130,22 @@
     }
     var idxs = []; sel.forEach(function (i) { idxs.push(i); });
 
-    // composition by cell_type if present, else the active categorical group,
-    // else the first available group. colorBy may be a gene/RGB pseudo-mode that
-    // is NOT a real group — falling back to it would crash on g.values below.
-    var compGroup = D.groups['cell_type'] ? 'cell_type'
-      : (D.groups[colorBy] ? colorBy : Object.keys(D.groups)[0]);
-    var g = D.groups[compGroup];
-    var comp = {};
-    idxs.forEach(function (i) { var lv = g.values[i]; comp[lv] = (comp[lv] || 0) + 1; });
-    var compHtml = compBars(comp, g);
+    // Composition by cell_type if present, else the active categorical colouring,
+    // else the first available one. A data set with NO categorical column at all
+    // (only numeric meta) has no composition to show — the clonotype readout and
+    // the selected-cell panels below still work, so we simply omit this column
+    // instead of throwing on g.values.
+    var compGroup = compGroupName();
+    var g = catOf(compGroup);
+    var compHtml = '';
+    if (g) {
+      var comp = {};
+      idxs.forEach(function (i) { var lv = g.values[i]; comp[lv] = (comp[lv] || 0) + 1; });
+      // Same rise as the server-rendered plot/table below, first in the stagger.
+      compHtml = '<div class="cv-readcol cv-rise"><h4 class="cv-read-h">Composition ' +
+        '<span class="cv-read-sub">by ' + groupLabel(compGroup) + '</span></h4>' +
+        '<div class="cv-bars">' + compBars(comp, g) + '</div></div>';
+    }
 
     // top clonotypes among the selection (the immune axis in the loop)
     var cloneHtml = '';
@@ -768,7 +1156,7 @@
         .sort(function (a, b) { return b[1] - a[1]; }).slice(0, 8);
       var withRcp = idxs.filter(function (i) { return D.clone.id[i] >= 0; }).length;
       if (crows.length) {
-        cloneHtml = '<div class="cv-readcol"><h4 class="cv-read-h">Top clonotypes in selection' +
+        cloneHtml = '<div class="cv-readcol cv-rise" style="--cv-rise-delay:60ms"><h4 class="cv-read-h">Top clonotypes in selection' +
           ' <span class="cv-read-sub">' + fmt(withRcp) + ' of ' + fmt(sel.size) +
           ' carry a receptor</span></h4><table class="cv-ctable"><thead><tr>' +
           '<th>#</th><th>CDR3 (clonotype)</th><th class="num">in sel.</th>' +
@@ -783,14 +1171,12 @@
           }).join('') + '</tbody></table>' +
           '<div class="cv-hint">Click a clonotype row to select all its cells across every panel.</div></div>';
       } else {
-        cloneHtml = '<div class="cv-readcol"><h4 class="cv-read-h">Clonotypes</h4>' +
+        cloneHtml = '<div class="cv-readcol cv-rise" style="--cv-rise-delay:60ms"><h4 class="cv-read-h">Clonotypes</h4>' +
           '<div class="cv-empty-sm">No receptor-bearing cells in this selection.</div></div>';
       }
     }
 
-    host.innerHTML =
-      '<div class="cv-readcol"><h4 class="cv-read-h">Composition <span class="cv-read-sub">by ' +
-      groupLabel(compGroup) + '</span></h4><div class="cv-bars">' + compHtml + '</div></div>' + cloneHtml;
+    host.innerHTML = compHtml + cloneHtml;
 
     // wire clonotype-row -> select its cells (repertoire selection into the loop)
     Array.prototype.forEach.call(host.querySelectorAll('.cv-crow'), function (tr) {
@@ -854,7 +1240,7 @@
       return;
     }
     renderColorbar(false);
-    var g = D.groups[colorBy];
+    var g = catOf(colorBy);
     if (!g) return;
     var counts = {};
     for (var i = 0; i < D.n; i++) counts[g.values[i]] = (counts[g.values[i]] || 0) + 1;
@@ -862,8 +1248,8 @@
       var col = (g.colors && g.colors[li]) || PAL[li % PAL.length];
       var d = document.createElement('div');
       d.className = 'cv-lg' + (hidden.has(li) ? ' off' : '');
-      d.innerHTML = '<span class="cv-dot" style="background:' + col + '"></span>' + nm +
-        ' <span class="cv-lg-ct">(' + (counts[li] || 0) + ')</span>';
+      d.innerHTML = '<span class="cv-dot" style="background:' + col + '"></span>' +
+        esc(nm) + ' <span class="cv-lg-ct">(' + (counts[li] || 0) + ')</span>';
       d.onclick = function () {
         if (hidden.has(li)) hidden.delete(li); else hidden.add(li);
         renderLegend(); drawAll();
@@ -873,25 +1259,228 @@
   }
 
   // ---- hover tooltip -------------------------------------------------------
+  // Same content as the Projection tab's plotly hover (buildHoverInfoForProjections):
+  // the cell barcode, then every registered grouping variable — plus, here, the
+  // clonotype and whatever continuous variable is currently being coloured by,
+  // shown as its REAL value (fields travel quantised; fieldValue() undoes it).
+  var HOVER_MAX_GROUPS = 6;
+  function hoverHtml(i) {
+    var rows = [];
+    var g = catOf(colorBy);
+    // headline = the active categorical level, else the barcode
+    var head = g ? g.levels[g.values[i]] : D.cells[i];
+    var h = '<div class="cv-tip-row"><b>' + esc(head) + '</b></div>';
+    if (g) rows.push(['cell', D.cells[i]]);
+    // the continuous variable in play, at its true value
+    var fld = fieldOf();
+    if (fld) rows.push([fld.label, fmtVal(fieldValue(fld, i))]);
+    if (colorBy === GENE_MODE && D.gene) {
+      rows.push([D.gene.gene, fmtVal(D.gene.v[i] / 255 * D.gene.max)]);
+    }
+    // every grouping variable, as the Projection tab does (capped so a data set
+    // with many registered groups cannot produce a tooltip taller than the panel)
+    var gn = D.groups ? Object.keys(D.groups) : [];
+    gn.slice(0, HOVER_MAX_GROUPS).forEach(function (k) {
+      if (k === colorBy) return;
+      var gg = D.groups[k];
+      rows.push([groupLabel(k), gg.levels[gg.values[i]]]);
+    });
+    if (D.clone && D.clone.id[i] >= 0) {
+      var lab = D.clone.label[D.clone.id[i]] || '';
+      if (lab.length > 28) lab = lab.slice(0, 26) + '…';
+      rows.push(['clone', lab + ' (' + D.clone.size[D.clone.id[i]] + ' cells)']);
+    }
+    rows.forEach(function (r) {
+      if (r[1] == null || r[1] === '') return;
+      h += '<div class="cv-tip-row"><span class="cv-tip-k">' + esc(r[0]) +
+        ':</span> ' + esc(r[1]) + '</div>';
+    });
+    return h;
+  }
+  // ---- single-cell detail card ---------------------------------------------
+  // Clicking a cell promotes the hover tooltip into a card parked in the middle
+  // of the panel grid: the same facts plus everything the tooltip has to cut
+  // (the full CDR3, every meta column, the cell's coordinates in each space),
+  // held still so it can be read and copied.
+  //
+  // The card opens with what the client already has and asks the server for the
+  // complete meta row in parallel — the bundle carries categorical levels and
+  // quantised numerics, not the original values, and a cell's meta row is
+  // exactly the kind of thing worth being exact about.
+  var cardCell = null;          // cell index the card is showing, or null
+  var cardMeta = null;          // { cell, rows } from the server, when it lands
+
+  function cardOpen() { return cardCell != null; }
+
+  function cardCoordRows() {
+    var rows = [];
+    orderedSpaces().forEach(function (id) {
+      var sp = spaceById[id];
+      if (!sp) return;
+      var x = sp.x[cardCell], y = sp.y[cardCell];
+      rows.push([sp.label, (x == null || isNaN(x)) ? 'not positioned'
+        : (fmtVal(x) + ',  ' + fmtVal(y))]);
+    });
+    return rows;
+  }
+
+  function kvHtml(rows) {
+    if (!rows.length) return '';
+    return '<div class="cv-card-kv">' + rows.map(function (r) {
+      return '<div class="cv-card-k">' + esc(r[0]) + '</div>' +
+        '<div class="cv-card-v">' + esc(r[1]) + '</div>';
+    }).join('') + '</div>';
+  }
+
+  function renderCard() {
+    if (cardCell == null || !D) return;
+    var i = cardCell;
+    var g = catOf(colorBy);
+    var t = $('cv-card-title'), b = $('cv-card-bc'), body = $('cv-card-body');
+    if (t) t.textContent = g ? g.levels[g.values[i]] : 'Cell';
+    if (b) b.textContent = D.cells[i];
+    if (!body) return;
+    var html = '';
+    // clonotype, in full — the tooltip can only ever show a prefix of this
+    if (D.clone && D.clone.id[i] >= 0) {
+      var ci = D.clone.id[i];
+      html += '<div class="cv-card-sec">Clonotype</div>' +
+        '<div class="cv-card-seq">' + esc(D.clone.label[ci] || '—') + '</div>' +
+        '<div class="cv-card-sub">' + fmt(D.clone.size[ci]) + ' cells in this clone</div>';
+    }
+    html += '<div class="cv-card-sec">Position</div>' + kvHtml(cardCoordRows());
+    // the full meta row, or a placeholder until the server answers
+    html += '<div class="cv-card-sec">Meta data</div>';
+    if (cardMeta && cardMeta.cell === D.cells[i] && cardMeta.rows) {
+      html += kvHtml(cardMeta.rows.map(function (r) { return [r.k, r.v]; }));
+    } else {
+      html += '<div class="cv-card-skel"><span></span><span></span><span></span></div>';
+    }
+    body.innerHTML = html;
+    // The meta row arriving makes the card taller, so where it was centred is no
+    // longer the centre. Re-centre (left/top are transitioned, so it glides).
+    if (cardOpen() && $('cv-card').classList.contains('is-open')) centreCard();
+  }
+
+  // Centre the card on the VISIBLE part of the panel grid, and keep it inside
+  // the grid's bounds. Centring on the whole grid is wrong whenever the grid is
+  // taller than the window — the card then opens below the fold, which on a
+  // small screen looks exactly like nothing happened. Clamped as well, so a
+  // short grid cannot push it out the other side.
+  function centreCard() {
+    var card = $('cv-card'), host = document.querySelector('.cv-panes');
+    if (!card || !host) return;
+    var hr = host.getBoundingClientRect();
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var l = Math.max(hr.left, 0), rgt = Math.min(hr.right, vw);
+    var t = Math.max(hr.top, 0), b = Math.min(hr.bottom, vh);
+    // no overlap with the viewport at all → fall back to the grid's own centre
+    if (rgt <= l || b <= t) { l = hr.left; rgt = hr.right; t = hr.top; b = hr.bottom; }
+    var m = 10;
+    // Cap the height to the band that is actually visible BEFORE measuring. The
+    // stylesheet can only cap against the grid and the viewport as wholes, which
+    // says nothing about how much of the grid is on screen — and when the grid
+    // starts near the bottom of the window, there is no position that fits a
+    // card sized against either. Capping first means a fit always exists; the
+    // body scrolls instead.
+    card.style.maxHeight = Math.max(200, Math.min(560, (b - t) - 2 * m)) + 'px';
+    var cw = card.offsetWidth, ch = card.offsetHeight;
+    // Clamped against BOTH boxes: inside the grid it belongs to, and on screen.
+    // The grid alone is not enough — it can extend well past the bottom of the
+    // window, and a card merely "inside the grid" can still be off screen.
+    var clamp = function (v, lo, hi) {
+      return hi < lo ? lo : Math.max(lo, Math.min(v, hi));
+    };
+    var x = clamp((l + rgt) / 2 - hr.left - cw / 2,
+      Math.max(m, m - hr.left),
+      Math.min(hr.width - cw - m, vw - cw - m - hr.left));
+    var y = clamp((t + b) / 2 - hr.top - ch / 2,
+      Math.max(m, m - hr.top),
+      Math.min(hr.height - ch - m, vh - ch - m - hr.top));
+    card.style.left = Math.round(x) + 'px';
+    card.style.top = Math.round(y) + 'px';
+  }
+
+  // Fly in FROM the clicked point: the card is placed and measured where it will
+  // land, then offset back onto the point and released, so it travels under its
+  // own transform. Position and scale only — no layout is touched mid-flight.
+  function cardFlyFrom(p, i) {
+    var card = $('cv-card'), host = document.querySelector('.cv-panes');
+    if (!card || !host) return;
+    card.classList.add('is-open');
+    card.classList.remove('is-in');
+    centreCard();                       // land it before measuring the landing
+    var cr = card.getBoundingClientRect();
+    var from = null;
+    if (p && p.sx && p.canvas) {
+      var canv = p.canvas.getBoundingClientRect();
+      from = { x: canv.left + p.sx[i], y: canv.top + p.sy[i] };
+    }
+    // The start state must be written with transitions OFF. Left on, the browser
+    // coalesces "jump to the point" and "go back to centre" into a single
+    // no-op change and the card simply appears, already landed.
+    card.style.transition = 'none';
+    if (from) {
+      var dx = from.x - (cr.left + cr.width / 2);
+      var dy = from.y - (cr.top + cr.height / 2);
+      card.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(.28)';
+    } else {
+      card.style.transform = 'scale(.9)';
+    }
+    void card.offsetWidth;        // commit the start state
+    card.style.transition = '';   // hand the transition back to the stylesheet
+    card.style.transform = '';
+    card.classList.add('is-in');
+  }
+
+  function openCard(p, i) {
+    cardCell = i;
+    if (!cardMeta || cardMeta.cell !== D.cells[i]) cardMeta = null;
+    renderCard();
+    // The tooltip has just been promoted into the card — leaving it up would
+    // show the same cell twice, once truncated. It returns on the next hover.
+    var tip = p && $(p.tipId);
+    if (tip) tip.style.opacity = 0;
+    cardFlyFrom(p, i);
+    // ask for the exact meta row; the card is already on screen either way
+    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+      Shiny.setInputValue('coordviews_cell_detail', D.cells[i],
+        { priority: 'event' });
+    }
+  }
+
+  function closeCard() {
+    var card = $('cv-card');
+    cardCell = null;
+    if (!card || !card.classList.contains('is-open')) return;
+    card.classList.remove('is-in');
+    // let the fade finish before it leaves the flow
+    setTimeout(function () {
+      if (cardCell == null) { card.classList.remove('is-open'); card.style.transform = ''; }
+    }, 220);
+  }
+
   function wireHover(p) {
     var tip = $(p.tipId);
     p.canvas.addEventListener('mousemove', function (e) {
       var r = p.canvas.getBoundingClientRect();
       var mx = e.clientX - r.left, my = e.clientY - r.top;
-      if (p.drag) { tip.style.opacity = 0; return; }
+      if (p.drag || p.panning) { tip.style.opacity = 0; return; }
       var i = nearest(p, mx, my);
       if (i < 0) { tip.style.opacity = 0; return; }
-      var g = D.groups[colorBy];
-      var h = '<b>' + (g ? g.levels[g.values[i]] : D.cells[i]) + '</b>';
-      if (D.clone && D.clone.id[i] >= 0) {
-        var lab = D.clone.label[D.clone.id[i]] || '';
-        if (lab.length > 36) lab = lab.slice(0, 34) + '…';
-        h += '<br>clone: ' + lab + ' <span style="opacity:.7">(' +
-          D.clone.size[D.clone.id[i]] + ' cells)</span>';
-      }
-      tip.innerHTML = h; tip.style.opacity = 1;
-      var tx = p.sx[i] + 12, ty = p.sy[i] - 8;
-      if (tx + tip.offsetWidth > p.W) tx = p.sx[i] - tip.offsetWidth - 12;
+      tip.innerHTML = hoverHtml(i); tip.style.opacity = 1;
+      // Sit above-right of the point, flipping to the other side of either axis
+      // when that would overflow, and then clamped into the canvas on both.
+      // Flipping alone is not enough: near a corner the flipped position can
+      // overflow the OTHER edge, which is how a tooltip ends up half outside the
+      // panel with its labels cut off — leaving the values on screen with
+      // nothing to say what they are.
+      var tw = tip.offsetWidth, th = tip.offsetHeight, m = 4;
+      var tx = p.sx[i] + 14, ty = p.sy[i] - th - 10;
+      if (tx + tw > p.W - m) tx = p.sx[i] - tw - 14;   // flip left
+      if (ty < m) ty = p.sy[i] + 14;                   // flip below
+      tx = Math.max(m, Math.min(tx, p.W - tw - m));
+      ty = Math.max(m, Math.min(ty, p.H - th - m));
       tip.style.left = tx + 'px'; tip.style.top = ty + 'px';
     });
     p.canvas.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
@@ -904,12 +1493,36 @@
       return [e.clientX - r.left, e.clientY - r.top];
     };
     p.canvas.addEventListener('mousedown', function (e) {
+      // Pan: the toolbar's hand mode, or middle-drag / shift-drag from any mode
+      // (the shortcut plotly users reach for without switching tools).
+      if (selectMode === 'pan' || e.button === 1 || e.shiftKey) {
+        e.preventDefault();
+        p.panning = true; p.panFrom = pos(e);
+        p.panView = p.view
+          ? { cx: p.view.cx, cy: p.view.cy, span: p.view.span }
+          : { cx: 0.5, cy: 0.5, span: 1 };
+        p.canvas.classList.add('cv-grabbing');
+        return;
+      }
       // a fresh brush supersedes any committed lasso (this panel's is replaced,
       // the other panel's is dropped)
       panels.forEach(function (o) { if (o !== p) o.lasso = null; });
       p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start];
     });
     p.canvas.addEventListener('mousemove', function (e) {
+      if (p.panning) {
+        var pq = pos(e), S = p._S || 1, v = p.panView;
+        // screen delta -> view units; y is inverted (canvas y grows downward).
+        // Clamped, so dragging on past the edge simply stops instead of sailing
+        // off into blank canvas.
+        p.view = clampView(p, {
+          cx: v.cx - (pq[0] - p.panFrom[0]) / S * v.span,
+          cy: v.cy + (pq[1] - p.panFrom[1]) / S * v.span,
+          span: v.span
+        });
+        project(p); draw(p);
+        return;
+      }
       if (!p.drag) return;
       var q = pos(e);
       if (selectMode === 'box') {
@@ -927,7 +1540,22 @@
         }
       }
     });
+    // Wheel: zoom about the cursor. Non-passive so the page does not scroll
+    // out from under the gesture.
+    p.canvas.addEventListener('wheel', function (e) {
+      if (!D || !p.sx) return;
+      e.preventDefault();
+      var r = p.canvas.getBoundingClientRect();
+      zoomAt(p, e.clientX - r.left, e.clientY - r.top,
+        e.deltaY < 0 ? 1 / 1.15 : 1.15);
+    }, { passive: false });
     window.addEventListener('mouseup', function (e) {
+      if (p.panning) {
+        p.panning = false;
+        p.canvas.classList.remove('cv-grabbing');
+        drawAll();
+        return;
+      }
       if (!p.drag) return;
       p.drag = false;
       if (!D || !p.ok || !p.sx) { p.lasso = null; return; }  // not projected yet
@@ -940,11 +1568,16 @@
         // A real lasso selection supersedes any prior single-cell pick — clear it
         // BEFORE setSelection so its drawAll() drops the stale orange pick ring
         // (that ring is not gated on `!sel`). An empty lasso keeps the pick.
-        if (s.size) { pick = null; setSelection(s); keep = true; }  // keep the trace
+        // a lasso is a different question from "tell me about this one cell"
+        if (s.size) { pick = null; closeCard(); setSelection(s); keep = true; }
         else { setSelection(null); }
       } else {
         var m = pos(e), k = nearest(p, m[0], m[1]);
-        pick = (k >= 0) ? k : null;
+        // Clicking the same cell again closes the card (and drops the pick), so
+        // the click that opened it is also the click that puts it away.
+        var again = (k >= 0 && k === cardCell && cardOpen());
+        pick = (k >= 0 && !again) ? k : null;
+        if (pick != null) openCard(p, pick); else closeCard();
         rebuildNiche();              // Trekker: cells within the picked niche
         updateSelActions();          // niche pick → show the (animated) Clear button
         drawAll();
@@ -966,16 +1599,27 @@
     // FOUR slots: A = umap, B/C/D take whatever other spaces the data set has.
     // layoutPanels() assigns spaces + hides the unused ones each onData.
     var defs = [
-      { key: 'A', canvasId: 'cv-cv-a', tipId: 'cv-tip-a' },
-      { key: 'B', canvasId: 'cv-cv-b', tipId: 'cv-tip-b' },
-      { key: 'C', canvasId: 'cv-cv-c', tipId: 'cv-tip-c' },
-      { key: 'D', canvasId: 'cv-cv-d', tipId: 'cv-tip-d' }
+      { key: 'A', canvasId: 'cv-cv-a', tipId: 'cv-tip-a', miniId: 'cv-mini-a' },
+      { key: 'B', canvasId: 'cv-cv-b', tipId: 'cv-tip-b', miniId: 'cv-mini-b' },
+      { key: 'C', canvasId: 'cv-cv-c', tipId: 'cv-tip-c', miniId: 'cv-mini-c' },
+      { key: 'D', canvasId: 'cv-cv-d', tipId: 'cv-tip-d', miniId: 'cv-mini-d' }
     ];
+    var dpr = window.devicePixelRatio || 1;
     defs.forEach(function (d) {
       var cv = $(d.canvasId); if (!cv) return;
+      var mini = $(d.miniId);
       var p = { key: d.key, canvas: cv, ctx: cv.getContext('2d'), tipId: d.tipId,
-        pane: cv.parentElement, spaceId: null, W: 0, H: 0, sx: null, sy: null,
-        ok: null, lasso: null, drag: false, moved: false, view: null };
+        // the canvas sits in .cv-canvas-wrap now, so the pane is two levels up
+        pane: cv.closest('.cv-pane'), spaceId: null, W: 0, H: 0,
+        sx: null, sy: null, ok: null, lasso: null, drag: false, moved: false,
+        view: null, mini: mini, mctx: null, miniBg: null, miniUnit: null };
+      // The minimap is a FIXED size, so its backing store is set once here
+      // rather than on every re-fit.
+      if (mini) {
+        mini.width = MINI * dpr; mini.height = MINI * dpr;
+        p.mctx = mini.getContext('2d');
+        p.mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
       panels.push(p);
       wireHover(p); wireBrush(p);
     });
@@ -986,7 +1630,7 @@
       resizeTimer = setTimeout(function () { if (D) resizeAll(); }, 30);
     });
     panels.forEach(function (p) {
-      if (p.canvas.parentElement) resizeObserver.observe(p.canvas.parentElement);
+      if (p.pane) resizeObserver.observe(p.pane);
     });
     // Also re-fit when the CHROME above the panels changes height — the "More"
     // panel expanding/collapsing, or the histology-image / selection bars
@@ -1165,29 +1809,41 @@
   function fieldOf() {
     if (_fldCacheD === D && _fldCacheKey === colorBy) return _fldCacheVal;
     var v = null;
-    if (D && D.trekker && D.trekker.fields && colorBy &&
-      colorBy.indexOf(FIELD_PREFIX) === 0) {
-      v = D.trekker.fields[colorBy.slice(FIELD_PREFIX.length)] || null;
+    if (D && D.fields && colorBy && colorBy.indexOf(FIELD_PREFIX) === 0) {
+      v = D.fields[colorBy.slice(FIELD_PREFIX.length)] || null;
     }
     _fldCacheD = D; _fldCacheKey = colorBy; _fldCacheVal = v;
     return v;
   }
+  // The "Colour by" list mirrors the Projection tab's, which offers EVERY meta
+  // column: registered groups first, then the other categorical columns, then
+  // every continuous field (numeric meta columns — including the QC ones people
+  // actually colour by — plus Trekker's physical fields), then the gene modes.
+  // Grouped into <optgroup>s because the list is now long enough to need them.
   function fillColorPicker() {
     var sel = $('cv-pick-color'); if (!sel) return;
-    var opts = Object.keys(D.groups).map(function (g) {
-      return '<option value="' + g + '">' + groupLabel(g) + '</option>';
-    });
-    // Trekker physical / meta fields — continuous colourings of the physical map.
-    if (D.trekker && D.trekker.fields) {
-      Object.keys(D.trekker.fields).forEach(function (k) {
-        opts.push('<option value="' + FIELD_PREFIX + k + '">' +
-          D.trekker.fields[k].label + '</option>');
-      });
-    }
-    opts.push('<option value="' + GENE_MODE + '">Gene expression</option>');
-    opts.push('<option value="' + RGB_MODE + '">Co-expression (RGB)</option>');
-    sel.innerHTML = opts.join('');
-    sel.value = colorBy;
+    var optsOf = function (keys, prefix, labelOf) {
+      return keys.map(function (k) {
+        return '<option value="' + esc(prefix + k) + '">' +
+          esc(labelOf(k)) + '</option>';
+      }).join('');
+    };
+    var grp = function (label, body) {
+      return body ? '<optgroup label="' + esc(label) + '">' + body + '</optgroup>' : '';
+    };
+    var html = grp('Grouping variables',
+      optsOf(Object.keys(D.groups || {}), '', groupLabel));
+    html += grp('Other categorical',
+      optsOf(Object.keys(D.cat_extra || {}), '', function (k) { return k; }));
+    html += grp('Continuous',
+      optsOf(Object.keys(D.fields || {}), FIELD_PREFIX, function (k) {
+        return D.fields[k].label || k;
+      }));
+    html += grp('Expression',
+      '<option value="' + GENE_MODE + '">Gene expression</option>' +
+      '<option value="' + RGB_MODE + '">Co-expression (RGB)</option>');
+    sel.innerHTML = html;
+    if (colorBy) sel.value = colorBy;
     sel.onchange = function () { setColorBy(sel.value); };
   }
   function setColorBy(mode) {
@@ -1204,6 +1860,22 @@
   // Every projection's coords are in the bundle, so switching is client-side:
   // swap the umap space's x/y, re-normalise, reproject the expression panel(s).
   // The control hides itself when the data set offers only one projection.
+  // The panels are 2-D, so a 3-D embedding is shown by its first two dimensions.
+  // Say that in the picker and in the panel title instead of flattening it
+  // silently — the Projection tab renders the same object in real 3D, so a user
+  // coming from there must be able to see which one they are looking at.
+  function projDims(nm) {
+    var pj = D.projections && D.projections[nm];
+    return (pj && pj.ndim) || 2;
+  }
+  function projOptionLabel(nm) {
+    var nd = projDims(nm);
+    return nd > 2 ? nm + ' (' + nd + 'D — showing dims 1-2)' : nm;
+  }
+  function projSpaceLabel(nm) {
+    var nd = projDims(nm);
+    return nm + ' (expression' + (nd > 2 ? ', dims 1-2 of ' + nd : '') + ')';
+  }
   function fillProjPicker() {
     var selEl = $('cv-pick-proj'); if (!selEl) return;
     var names = D.projections ? Object.keys(D.projections) : [];
@@ -1211,10 +1883,14 @@
     if (ctl) ctl.style.display = (names.length > 1) ? '' : 'none';
     if (!names.length) return;
     selEl.innerHTML = names.map(function (nm) {
-      return '<option value="' + nm + '">' + nm + '</option>';
+      return '<option value="' + nm + '">' + projOptionLabel(nm) + '</option>';
     }).join('');
     selEl.value = curProj || D.default_projection || names[0];
     selEl.onchange = function () { setProjection(selEl.value); };
+    // Keep the panel title in sync with the projection actually on screen (the
+    // server labels the space before it knows about the 3-D flag).
+    var sp = spaceById['umap'];
+    if (sp) sp.label = projSpaceLabel(selEl.value);
   }
   function setProjection(name) {
     if (!D || !D.projections || !D.projections[name]) return;
@@ -1222,7 +1898,7 @@
     var sp = spaceById['umap']; if (!sp) return;
     var pj = D.projections[name];
     sp.x = pj.x; sp.y = pj.y; sp._unit = null;
-    sp.label = name + ' (expression)';
+    sp.label = projSpaceLabel(name);
     panels.forEach(function (p) {
       if (p.spaceId !== 'umap') return;
       project(p);
@@ -1433,25 +2109,72 @@
     panes.style.gridTemplateColumns = col.join(' ');
     panes.style.gridTemplateRows = '';
     vis.forEach(function (p) { resizePanelSquare(p, side); });
+    if (!psSeeded) autoPointSize(side);
     drawAll();
   }
 
   // ---- receive the bundle --------------------------------------------------
+  // Blank the workspace when the current data set has nothing to link. Every
+  // element that could still be showing the PREVIOUS data set is cleared —
+  // canvases, legend, readout, selection bar — including the server-side
+  // selection that drives the selected-cell plot and table, which would
+  // otherwise describe cells from a data set no longer on screen.
+  function showUnavailable(msg) {
+    closeCard(); cardMeta = null;
+    D = null; spaceById = {}; sel = null; pick = null; nicheSet = null;
+    zoomed = false; hidden = new Set(); groupFilter = {};
+    panels.forEach(function (p) {
+      p.spaceId = null; p.sx = null; p.sy = null; p.ok = null;
+      p.lasso = null; p.view = null;
+      p.miniBg = null; p.miniUnit = null;
+      if (p.mini) p.mini.classList.remove('is-on');
+      if (p.ctx) p.ctx.clearRect(0, 0, p.W, p.H);
+      if (p.pane) p.pane.classList.add('cv-hidden');
+    });
+    var meta = $('cv-meta');
+    if (meta) {
+      meta.textContent = msg ||
+        'This data set has no dimensional reduction to link its modalities on.';
+    }
+    var L = $('cv-legend'); if (L) L.innerHTML = '';
+    var C = $('cv-cbar'); if (C) C.style.display = 'none';
+    var R = $('cv-readout');
+    if (R) {
+      R.innerHTML = '<div class="cv-empty">Nothing to show for this data set.</div>';
+    }
+    ['cv-selbar', 'cv-selactions', 'cv-shown', 'cv-trekker-ctl',
+      'cv-clone-layout-ctl'].forEach(function (id) {
+      var el = $(id); if (el) el.style.display = 'none';
+    });
+    setMoreOpen(false);
+    reportSelection();
+  }
+
   function onData(bundle) {
+    // A data set the builders cannot turn into a bundle (no embedding, or a
+    // build error) arrives as {error: "..."}. Blank the workspace and SAY so —
+    // returning early would leave the PREVIOUS data set's panels on screen,
+    // silently attributing one data set's cells to another.
+    if (!bundle || bundle.error || !bundle.spaces || !bundle.spaces.length) {
+      showUnavailable(bundle && bundle.error);
+      return;
+    }
     D = bundle;
-    if (!D || !D.spaces || !D.spaces.length) return;
+    closeCard(); cardMeta = null;   // the card described the previous data set
     spaceById = {}; D.spaces.forEach(function (s) { s._unit = null; spaceById[s.id] = s; });
-    colorBy = D.default_group || Object.keys(D.groups)[0];
+    colorBy = D.default_group ||
+      (D.groups ? Object.keys(D.groups)[0] : null) || null;
     hidden = new Set(); sel = null; pick = null;
     // Reset the additional-parameter state to defaults for the new dataset.
     curProj = D.default_projection ||
       (D.projections ? Object.keys(D.projections)[0] : null);
     pctShow = 100; pctMask = null; groupFilter = {}; pointOpacity = 0.8;
+    psSeeded = false;   // a new data set re-seeds the point size from ITS cell count
     var opEl = $('cv-opacity'); if (opEl) opEl.value = '0.8';
     var opLbl = $('cv-op-val'); if (opLbl) opLbl.textContent = '0.80';
     var pctEl = $('cv-pct'); if (pctEl) pctEl.value = '100';
     var pctLbl = $('cv-pct-val'); if (pctLbl) pctLbl.textContent = '100';
-    var moreP = $('cv-more'); if (moreP) moreP.style.display = 'none';
+    setMoreOpen(false);   // a new data set starts with the bar's second row folded
     // Trekker controls reset
     dissolvePct = 0; dissolveThresh = null; evidenceOn = false; nicheRadius = 250;
     nicheSet = null;
@@ -1532,6 +2255,14 @@
       D.gene = { gene: m.gene, v: m.v, max: m.max };
       if (colorBy === GENE_MODE) { renderLegend(); drawAll(); }
     });
+    // The exact meta row behind the open detail card. Ignored if the card has
+    // since moved on to another cell (or closed) — a slow reply must not
+    // repaint a card that is now describing something else.
+    Shiny.addCustomMessageHandler('coordviews_cell_meta', function (m) {
+      if (!m || !m.cell) return;
+      cardMeta = { cell: m.cell, rows: m.rows || [] };
+      if (cardOpen() && D && D.cells[cardCell] === m.cell) renderCard();
+    });
     // Three 0-255 channels for RGB co-expression.
     Shiny.addCustomMessageHandler('coordviews_rgbval', function (m) {
       if (!D || !m || !m.ok) return;
@@ -1557,7 +2288,9 @@
         var act = tb.getAttribute('data-act'), key = tb.getAttribute('data-panel');
         var pp = null;
         panels.forEach(function (p) { if (p.key === key) pp = p; });
-        if (act === 'box' || act === 'lasso') { selectMode = act; syncModeButtons(); return; }
+        if (act === 'box' || act === 'lasso' || act === 'pan') {
+          selectMode = act; syncModeButtons(); return;
+        }
         if (act === 'trekker-info') { openTrekkerModal(); return; }
         if (pp) {
           if (act === 'png') { downloadPanelPNG(pp); }
@@ -1571,14 +2304,20 @@
         }
         return;
       }
-      if (t && t.id === 'cv-zoom') { toggleZoom(); return; }
-      if (t && t.id === 'cv-clear') { pick = null; clearLassos(); setSelection(null); return; }
-      // "More" panel toggle
-      if (t && t.id === 'cv-more-btn') {
-        var mp = $('cv-more');
-        if (mp) mp.style.display = (mp.style.display === 'none') ? '' : 'none';
+      if (t && t.closest && t.closest('#cv-card-x')) {
+        pick = null; closeCard(); drawAll();
+        if (!sel) { rebuildNiche(); renderReadout(); }
         return;
       }
+      if (t && t.id === 'cv-zoom') { toggleZoom(); return; }
+      if (t && t.id === 'cv-clear') {
+        pick = null; closeCard(); clearLassos(); setSelection(null); return;
+      }
+      // "More" panel toggle
+      // "More" toggles the bar's second row. closest(), because the click can
+      // land on the label or the caret inside the button.
+      var moreBtn = t && t.closest && t.closest('#cv-more-btn');
+      if (moreBtn) { setMoreOpen(!isMoreOpen()); return; }
       // clonal-layout segmented toggle: recompute the clone space + reproject
       var seg = t && t.closest && t.closest('#cv-clone-layout .cv-seg-btn');
       if (seg) {
@@ -1614,6 +2353,7 @@
     document.addEventListener('input', function (e) {
       var id = e.target && e.target.id;
       if (id === 'cv-ps') {
+        psSeeded = true;            // a chosen size is never overwritten
         ps = +e.target.value;
         var lbl = $('cv-ps-val'); if (lbl) lbl.textContent = (+e.target.value).toFixed(1);
         positionRangeVal('cv-ps', 'cv-ps-val');
@@ -1648,16 +2388,26 @@
       var id = e.target && e.target.id;
       if (id && id.indexOf('cv-img-') === 0) { syncImgControls(); drawAll(); return; }
       if (id === 'cv-evidence') { evidenceOn = e.target.checked; drawAll(); return; }
+      if (id === 'cv-labels') { labelsOn = e.target.checked; drawAll(); return; }
       // a group-filter level checkbox toggled
       var fwrap = e.target && e.target.closest && e.target.closest('.cv-filt');
       if (fwrap && e.target.matches && e.target.matches('.cv-filt-menu input[type=checkbox]')) {
         readFilter(fwrap);
       }
     });
+    // Escape closes the detail card — it behaves like a dialog, so it should
+    // dismiss like one.
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !cardOpen()) return;
+      pick = null; closeCard(); drawAll();
+      if (!sel) { rebuildNiche(); renderReadout(); }
+    });
     window.addEventListener('resize', function () {
       clearLassos();   // screen-space lasso no longer matches the reprojected points
       if (D) resizeAll();
       updateSelActionsLayout();
+      // the grid just changed shape; an open card has to be re-centred on it
+      if (cardOpen()) centreCard();
     });
   }
 

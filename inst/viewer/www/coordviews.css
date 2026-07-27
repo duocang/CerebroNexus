@@ -133,20 +133,83 @@
 }
 .coordviews-page .cv-clearbtn:hover { background: var(--c-amber-100, #fde3cf); }
 
-/* ---- "More" toggle + collapsible panel (extra params + group filters) --- */
+/* ---- "More" toggle + the bar's collapsible second row ------------------- */
 .coordviews-page .cv-morebtn {
-  align-self: flex-end; padding: 6px 12px; font-size: 12px; font-weight: 600;
+  align-self: flex-end; display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px; font-size: 12px; font-weight: 600;
   border: 1px solid var(--cv-border); background: var(--cv-surface);
   color: var(--cv-text2); border-radius: 6px; cursor: pointer; height: 30px;
+  transition: background .18s ease, border-color .18s ease, color .18s ease,
+    transform .12s cubic-bezier(.34, 1.4, .64, 1);
 }
 .coordviews-page .cv-morebtn:hover { background: var(--cv-surface2); }
+/* press: a small give, springing back on release */
+.coordviews-page .cv-morebtn:active { transform: scale(.955); }
+/* open: same blue "active" convention the segmented toggles use, so the button
+   states which half of the bar it controls is currently showing */
+.coordviews-page .cv-morebtn[aria-expanded="true"] {
+  background: var(--cv-blue50); border-color: var(--cv-blue100);
+  color: var(--c-blue-700, #1d4ea0);
+}
+.coordviews-page .cv-morebtn[aria-expanded="true"]:hover {
+  background: var(--cv-blue100);
+}
+/* The caret ROTATES between pointing right (collapsed) and down (open) — one
+   mark that travels, rather than two glyphs swapping. Drawn with borders rather
+   than set as a glyph: a triangle character sits differently in its box from
+   font to font, and rotating it turns that offset into a visible wobble.
+   transform-origin is the triangle's own centroid (~45% of its width), so it
+   pivots in place instead of orbiting the empty box corner. */
+.coordviews-page .cv-caret {
+  width: 0; height: 0; flex: none;
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+  border-left: 5.5px solid currentColor;
+  transform-origin: 2.5px 50%;
+  transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+  transform: rotate(0deg);
+}
+.coordviews-page .cv-morebtn[aria-expanded="true"] .cv-caret {
+  transform: rotate(90deg);
+}
+
+/* The second row of the SAME bar. Height animates via grid-template-rows
+   0fr -> 1fr, which interpolates to the content's natural height — no magic
+   max-height to guess and overshoot. `.cv-more-clip` provides the
+   overflow/min-height that makes the 0fr row collapse; `.cv-more-inner` carries
+   the hairline and padding so neither paints while collapsed. */
 .coordviews-page .cv-more {
+  flex: 0 0 100%; display: grid; grid-template-rows: 0fr; opacity: 0;
+  /* The bar's own 16px row-gap would still separate this row while it is
+     collapsed, leaving dead space under the controls; the negative margin
+     cancels exactly that gap, so a folded row costs nothing. Open, the gap
+     comes back and sits above the hairline, balancing its 15px padding below. */
+  margin-top: -16px;
+  transition: grid-template-rows .32s cubic-bezier(.4, 0, .2, 1),
+    opacity .2s ease, margin-top .32s cubic-bezier(.4, 0, .2, 1);
+}
+.coordviews-page .cv-more.is-open {
+  grid-template-rows: 1fr; opacity: 1; margin-top: 0;
+}
+.coordviews-page .cv-more-clip { overflow: hidden; min-height: 0; }
+.coordviews-page .cv-more-inner {
   display: flex; flex-wrap: wrap; align-items: flex-start; gap: 22px 30px;
-  /* bottom margin keeps the box off the panels even with no selection (selbar
-     hidden); it collapses with the selbar's top margin when a selection shows. */
-  margin: 12px 0 14px; padding: 16px 18px;
-  background: var(--cv-surface); border: 1px solid var(--cv-border);
-  border-radius: 8px;
+  padding-top: 15px; border-top: 1px solid var(--cv-border);
+}
+/* The controls drift up a few px as the row closes, so the row reads as folding
+   away rather than being clipped off. */
+.coordviews-page .cv-more-inner > * {
+  transition: transform .3s cubic-bezier(.4, 0, .2, 1), opacity .22s ease;
+  transform: translateY(-5px); opacity: .35;
+}
+.coordviews-page .cv-more.is-open .cv-more-inner > * {
+  transform: none; opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .coordviews-page .cv-more,
+  .coordviews-page .cv-more-inner > *,
+  .coordviews-page .cv-caret,
+  .coordviews-page .cv-morebtn { transition: none; }
 }
 .coordviews-page .cv-filters { min-width: 200px; }
 /* Trekker-only controls (dissolve + evidence toggle) inside the More panel */
@@ -195,6 +258,9 @@
    (square) canvas. */
 .coordviews-page .cv-panes {
   display: grid; gap: 14px; justify-content: center; align-content: start;
+  /* anchors the detail card to the grid's centre (it is absolutely positioned,
+     so it stays out of the grid's own layout) */
+  position: relative;
   /* When the available height changes (the "More" panel opening, a bar toggling)
      resizeAll writes new px column tracks; transitioning them makes the squares
      glide to the new size instead of snapping. The canvas transitions in step
@@ -220,9 +286,16 @@
 /* per-panel hover toolbar (plotly-style), top-right of each panel */
 .coordviews-page .cv-panebar {
   margin-left: auto; display: flex; gap: 4px;
-  opacity: 0; transition: opacity .15s ease;
+  /* Hidden until the pointer is over the panel — but with pointer-events off
+     while invisible, so a click that lands where an invisible button sits does
+     not fire it. :focus-within keeps it reachable by keyboard, which a
+     hover-only reveal would otherwise lock out. */
+  opacity: 0; pointer-events: none; transition: opacity .15s ease;
 }
-.coordviews-page .cv-pane:hover .cv-panebar { opacity: 1; }
+.coordviews-page .cv-pane:hover .cv-panebar,
+.coordviews-page .cv-panebar:focus-within {
+  opacity: 1; pointer-events: auto;
+}
 /* Narrow pane (set by the ResizeObserver in resizePanel): the toolbar can no
    longer share the header row with the title + space-switch without crowding, so
    it floats as a VERTICAL stack in the pane's top-right corner instead. */
@@ -233,10 +306,46 @@
   border-radius: 6px; padding: 3px;
 }
 .coordviews-page .cv-tbtn {
+  position: relative;
   width: 26px; height: 22px; padding: 0; font-size: 11px;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--cv-border); background: var(--cv-surface);
   color: var(--cv-text2); border-radius: 5px; cursor: pointer;
+}
+/* Toolbar tooltip, drawn rather than delegated to the native `title` — the
+   native delay is the browser's (~1s in Chrome) and is not configurable, which
+   is far too long for a bar you sweep across to find a tool.
+   350ms: long enough that passing over the row stays silent, short enough that
+   stopping on a button feels like an answer rather than a wait. Leaving hides it
+   at once (the delay lives only on the :hover rule), so moving between buttons
+   does not trail a stale label. */
+.coordviews-page .cv-tbtn::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 7px); right: 0; z-index: 30;
+  white-space: nowrap; pointer-events: none;
+  padding: 5px 8px; border-radius: 5px;
+  background: rgba(28, 28, 30, .94); color: #fff;
+  font-size: 11.5px; font-weight: 500; line-height: 1.2;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
+  opacity: 0; transform: translateY(-3px);
+  transition: opacity .13s ease, transform .13s ease;
+}
+.coordviews-page .cv-tbtn:hover::after,
+.coordviews-page .cv-tbtn:focus-visible::after {
+  opacity: 1; transform: none; transition-delay: .35s;
+}
+/* Narrow pane: the toolbar is a vertical stack in the corner, so a tooltip
+   below would cover the next button — put it to the left instead. */
+.coordviews-page .cv-pane.cv-narrow .cv-tbtn::after {
+  top: 50%; right: calc(100% + 7px);
+  transform: translateY(-50%) translateX(3px);
+}
+.coordviews-page .cv-pane.cv-narrow .cv-tbtn:hover::after,
+.coordviews-page .cv-pane.cv-narrow .cv-tbtn:focus-visible::after {
+  transform: translateY(-50%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .coordviews-page .cv-tbtn::after { transition: opacity .01s ease; }
 }
 .coordviews-page .cv-tbtn:hover { background: var(--cv-surface2); color: var(--cv-text); }
 .coordviews-page .cv-tbtn.is-on {
@@ -248,20 +357,181 @@
   border-radius: 6px; background: var(--cv-surface2); color: var(--cv-text2);
   font-size: 11.5px; font-family: inherit;
 }
+/* The wrapper takes over the vertical centring the canvas used to do itself, so
+   it hugs the square exactly and gives the minimap something to anchor to. */
+.coordviews-page .cv-canvas-wrap { position: relative; margin: auto 0; }
 .coordviews-page canvas {
-  /* JS sizes each canvas to a square (>=300px); margin auto centres it vertically
-     in its cell — which matters for the UMAP square in the three-space layout.
-     width/height transition in step with the grid tracks so a height-driven
-     re-fit glides rather than snaps. */
-  display: block; margin: auto 0; background: var(--cv-surface);
+  /* JS sizes each canvas to a square (>=300px); the wrapper's margin auto centres
+     it vertically in its cell — which matters for the UMAP square in the
+     three-space layout. width/height transition in step with the grid tracks so a
+     height-driven re-fit glides rather than snaps. */
+  display: block; background: var(--cv-surface);
   border-radius: 6px; cursor: crosshair;
   transition: width .28s ease, height .28s ease;
 }
+/* ---- minimap ------------------------------------------------------------ */
+/* Deliberately coarse: a subsampled impression of the space plus a frame for the
+   visible part. It exists to answer "where am I", which needs no detail. Fades
+   in only once a panel is zoomed or panned, and never takes the pointer — it is
+   an indicator, not a control. */
+.coordviews-page .cv-mini {
+  position: absolute; left: 10px; bottom: 10px; z-index: 3;
+  width: 84px; height: 84px; margin: 0;
+  background: rgba(255, 255, 255, .84);
+  border: 1px solid var(--cv-border); border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .10);
+  cursor: default; pointer-events: none;
+  opacity: 0; transform: translateY(5px) scale(.97); transform-origin: 0 100%;
+  transition: opacity .2s ease, transform .24s cubic-bezier(.4, 0, .2, 1);
+}
+.coordviews-page .cv-mini.is-on { opacity: 1; transform: none; }
+/* On a small panel 84px is a big share of the square; scale it down (the canvas
+   keeps its backing store, so this only shrinks how it is presented). */
+.coordviews-page .cv-pane.cv-narrow .cv-mini {
+  width: 64px; height: 64px; left: 8px; bottom: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .coordviews-page .cv-mini { transition: none; }
+}
+/* Pan mode: the cursor is the only cue that a drag will move the view rather
+   than select cells, so it has to change with the mode and while dragging. */
+.coordviews-page canvas.cv-pannable { cursor: grab; }
+.coordviews-page canvas.cv-grabbing { cursor: grabbing; }
 .coordviews-page .cv-tip {
   position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
   background: rgba(28,28,30,.94); color: #fff; padding: 7px 9px;
-  border-radius: 6px; font-size: 11.5px; line-height: 1.5; white-space: nowrap;
+  border-radius: 6px; font-size: 11.5px; line-height: 1.5;
   z-index: 6; font-variant-numeric: tabular-nums;
+  /* Never wider than the panel it lives in: the JS clamps the position, but a
+     tooltip wider than the canvas cannot be clamped into view at all. */
+  max-width: min(280px, calc(100% - 16px));
+}
+/* One row per fact, each truncating on its own — a long clonotype gets an
+   ellipsis instead of pushing the whole box past the edge and taking every
+   label with it. */
+.coordviews-page .cv-tip-row {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.coordviews-page .cv-tip-k { opacity: .65; }
+
+/* ---- results reveal ------------------------------------------------------ */
+/* Everything a selection produces — the composition + clonotype readout, the
+   plot of selected cells, the table of selected cells — enters the same way:
+   a short rise out of nothing, staggered top to bottom so the three read as one
+   response arriving rather than three unrelated boxes appearing at once.
+   An ANIMATION rather than a transition, because two of the three are rebuilt
+   from scratch by Shiny on every selection change; a transition has nothing to
+   transition FROM on a brand-new element.
+   `both` keeps the pre-animation state applied during the delay, so a staggered
+   block cannot flash at full opacity before its turn. */
+@keyframes cvRise {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 1; transform: none; }
+}
+.coordviews-page .cv-rise {
+  animation: cvRise .34s cubic-bezier(.22, 1, .36, 1) both;
+  animation-delay: var(--cv-rise-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .coordviews-page .cv-rise { animation: none; }
+}
+
+/* ---- single-cell detail card -------------------------------------------- */
+/* Two elements on purpose: .cv-card-pos holds the centring translate, .cv-card
+   holds the fly-in transform. One element would have to rebuild the -50%/-50%
+   inside every animation frame's transform, and any mistake there shows up as a
+   card that lands off-centre. */
+/* Spans the grid so the card can be sized against the GRID, not the viewport.
+   Sizing against the viewport is the trap: the grid is centred inside the page,
+   which itself sits beside the sidebar, so its centre is not the viewport's —
+   a 90vw card centred on the grid hangs off the side of the screen on a narrow
+   window. Measuring against the grid makes the card fit by construction. */
+.coordviews-page .cv-card-pos {
+  position: absolute; inset: 0; z-index: 40;
+  pointer-events: none;             /* only the card itself is interactive */
+}
+/* left/top are written by centreCard(): CSS can centre on the grid, but not on
+   the part of the grid that is actually on screen — and when the panels are
+   taller than the window those are not the same place. */
+.coordviews-page .cv-card {
+  position: absolute; pointer-events: auto;
+  width: min(400px, 100% - 20px);
+  max-height: min(560px, 100% - 20px, 76vh);
+  display: none; flex-direction: column;
+  background: var(--cv-surface); color: var(--cv-text);
+  border: 1px solid var(--cv-border); border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .20), 0 2px 8px rgba(0, 0, 0, .08);
+  overflow: hidden;
+  opacity: 0;
+  /* transform is written per-open by the fly-in, so it is not declared here.
+     left/top are transitioned too: the card is re-centred when the server's meta
+     row arrives and makes it taller, and that correction should glide rather
+     than jump. */
+  transition: opacity .2s ease, transform .34s cubic-bezier(.22, 1, .36, 1),
+    left .3s cubic-bezier(.22, 1, .36, 1), top .3s cubic-bezier(.22, 1, .36, 1);
+}
+.coordviews-page .cv-card.is-open { display: flex; }
+.coordviews-page .cv-card.is-in { opacity: 1; transform: none; }
+.coordviews-page .cv-card-head {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 13px 14px 11px; border-bottom: 1px solid var(--cv-border);
+}
+.coordviews-page .cv-card-title {
+  font-size: 14.5px; font-weight: 650; line-height: 1.25;
+}
+.coordviews-page .cv-card-bc {
+  margin-top: 2px; font-size: 11.5px; color: var(--cv-text2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+.coordviews-page .cv-card-x {
+  margin-left: auto; flex: none; width: 24px; height: 24px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 17px; line-height: 1; font-family: inherit;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--cv-text3); cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.coordviews-page .cv-card-x:hover {
+  background: var(--cv-surface2); color: var(--cv-text);
+}
+.coordviews-page .cv-card-body { overflow-y: auto; padding: 4px 14px 14px; }
+.coordviews-page .cv-card-sec {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--cv-text3);
+  margin: 13px 0 6px;
+}
+/* Key/value rows: the keys share one column so the values line up and can be
+   read straight down. The column gives way on a narrow card rather than forcing
+   every value to wrap — a meta column name is more compressible than its value. */
+.coordviews-page .cv-card-kv {
+  display: grid; grid-template-columns: minmax(74px, 116px) 1fr; gap: 3px 10px;
+  font-size: 12px; align-items: baseline;
+}
+.coordviews-page .cv-card-k { color: var(--cv-text2); word-break: break-word; }
+.coordviews-page .cv-card-v {
+  color: var(--cv-text); font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+/* The full CDR3 — the reason the card exists; never truncated here. */
+.coordviews-page .cv-card-seq {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px; line-height: 1.5; word-break: break-all;
+  background: var(--cv-surface2); border-radius: 6px; padding: 7px 9px;
+}
+.coordviews-page .cv-card-sub { font-size: 11.5px; color: var(--cv-text2); margin-top: 5px; }
+/* Placeholder rows shown while the full meta row is fetched from the server. */
+.coordviews-page .cv-card-skel { display: grid; gap: 6px; }
+.coordviews-page .cv-card-skel span {
+  height: 11px; border-radius: 3px; background: var(--cv-surface2);
+  animation: cvSkel 1.1s ease-in-out infinite;
+}
+.coordviews-page .cv-card-skel span:nth-child(2) { width: 82%; }
+.coordviews-page .cv-card-skel span:nth-child(3) { width: 64%; }
+@keyframes cvSkel { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .coordviews-page .cv-card { transition: opacity .12s ease; }
+  .coordviews-page .cv-card-skel span { animation: none; }
 }
 
 /* ---- legend ------------------------------------------------------------- */
@@ -327,6 +597,21 @@
   color: var(--cv-text2); cursor: pointer; user-select: none; margin: 0;
 }
 .coordviews-page .cv-chk input { accent-color: var(--cv-blue); }
+/* A checkbox sitting in the top bar as a control in its own right: boxed like
+   the selects and sliders beside it, and the same 30px tall so the row's
+   baseline stays even. */
+.coordviews-page .cv-chk-ctl {
+  height: 30px; box-sizing: border-box; padding: 0 11px; gap: 7px;
+  border: 1px solid var(--cv-border); border-radius: 6px;
+  background: var(--cv-surface); color: var(--cv-text);
+  font-size: 12px; white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease;
+}
+.coordviews-page .cv-chk-ctl:hover { background: var(--cv-surface2); }
+.coordviews-page .cv-chk-ctl:has(input:checked) {
+  background: var(--cv-blue50); border-color: var(--cv-blue100);
+  color: var(--c-blue-700, #1d4ea0);
+}
 
 /* ---- colourbar (single-gene continuous) --------------------------------- */
 .coordviews-page .cv-cbar {

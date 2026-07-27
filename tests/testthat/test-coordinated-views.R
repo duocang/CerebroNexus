@@ -108,6 +108,114 @@ test_that("cv_clone_per_cell aligns clone identity to cells, NA when unmatched",
   expect_null(cv_env$cv_clone_per_cell(NULL, cells))
 })
 
+test_that("cv_build_fields turns every numeric meta column into a colouring", {
+  skip_if_not(have_bundle)
+  md <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    cluster = c("a", "b", "a"),
+    nUMI = c(100, 200, 300),
+    percent.mt = c(1.5, NA, 3.5),
+    constant = c(7, 7, 7),
+    stringsAsFactors = FALSE
+  )
+  f <- cv_env$cv_build_fields(md)
+  ## QC-looking columns are exactly what users colour by — they must be offered.
+  expect_true("meta:nUMI" %in% names(f))
+  expect_true("meta:percent.mt" %in% names(f))
+  ## no colouring can be built from a constant column or a non-numeric one
+  expect_false("meta:constant" %in% names(f))
+  expect_false("meta:cluster" %in% names(f))
+  expect_false("meta:cell_barcode" %in% names(f))
+  ## the quantised vector is aligned to the rows, spans the full scale, and
+  ## carries the true range so the client can show real values, not 0-255.
+  fu <- f[["meta:nUMI"]]
+  expect_length(fu$v, nrow(md))
+  expect_equal(as.integer(fu$v), c(0L, fu$scale %/% 2L, fu$scale))
+  expect_equal(fu$min, 100)
+  expect_equal(fu$max, 300)
+  ## NA stays NA so the client can draw it as "no value" rather than as zero.
+  expect_true(is.na(f[["meta:percent.mt"]]$v[2]))
+})
+
+test_that("cv_build_extra_groups covers categorical columns that are not groups", {
+  skip_if_not(have_bundle)
+  md <- data.frame(
+    cell_barcode = c("c1", "c2", "c3"),
+    cluster = c("a", "b", "a"),
+    dextramer_allele = c("A*02:01", "A*02:01", "B*07:02"),
+    stringsAsFactors = FALSE
+  )
+  eg <- cv_env$cv_build_extra_groups(md, "cluster", function(g, lev) {
+    cv_env$cv_colors_for(lev)
+  })
+  ## registered groups stay out (they are already offered, and they own the
+  ## group filters); unregistered categorical columns come in.
+  expect_false("cluster" %in% names(eg))
+  expect_true("dextramer_allele" %in% names(eg))
+  expect_equal(
+    as.character(eg$dextramer_allele$levels),
+    c("A*02:01", "B*07:02")
+  )
+  expect_equal(as.integer(eg$dextramer_allele$values), c(0L, 0L, 1L))
+  ## a column with as many levels as cells is an identifier, not a grouping
+  md$barcode_copy <- md$cell_barcode
+  eg2 <- cv_env$cv_build_extra_groups(md, "cluster", function(g, lev) {
+    cv_env$cv_colors_for(lev)
+  })
+  expect_false("barcode_copy" %in% names(eg2))
+})
+
+test_that("cv_build_projections records dimensionality instead of dropping it", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  crb <- list(
+    availableProjections = function() c("umap", "umap_3D"),
+    getProjection = function(n) {
+      m <- if (n == "umap_3D") {
+        matrix(1:6, nrow = 2, dimnames = list(cells, c("x", "y", "z")))
+      } else {
+        matrix(1:4, nrow = 2, dimnames = list(cells, c("x", "y")))
+      }
+      m
+    }
+  )
+  pj <- cv_env$cv_build_projections(crb, cells)
+  expect_equal(pj$umap$ndim, 2L)
+  ## a 3-D projection is still usable, but the client must be able to SAY it is
+  ## showing the first two dimensions of three.
+  expect_equal(pj$umap_3D$ndim, 3L)
+})
+
+test_that("cv_build_bundle still works when no grouping variable is registered", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2", "c3")
+  md <- data.frame(
+    cell_barcode = cells,
+    nUMI = c(10, 20, 30),
+    stringsAsFactors = FALSE
+  )
+  crb <- list(
+    getMetaData = function() md,
+    getGroups = function() character(0),
+    availableProjections = function() "umap",
+    getProjection = function(n) {
+      matrix(1:6, nrow = 3, dimnames = list(cells, c("x", "y")))
+    },
+    availableSpatial = function() NULL,
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL
+  )
+  b <- cv_env$cv_build_bundle(crb)
+  ## Projection colours cells by ANY meta column, so an object with no
+  ## registered group is perfectly usable there — Linked views must not go blank.
+  expect_type(b, "list")
+  expect_equal(b$n, 3L)
+  expect_true("meta:nUMI" %in% names(b$fields))
+  ## with nothing categorical to fall back on, the default colouring is the
+  ## first continuous field, expressed as the client's field mode string.
+  expect_equal(b$default_group, paste0(cv_env$cv_field_mode, "meta:nUMI"))
+})
+
 test_that("cv_build_bundle assembles every modality from the omnibus demo", {
   skip_if_not(have_bundle)
   skip_if_not(
@@ -156,4 +264,42 @@ test_that("cv_build_bundle assembles every modality from the omnibus demo", {
   expect_false(is.null(b$clone))
   expect_true(b$default_projection %in% names(b$projections))
   expect_true(b$default_group %in% names(b$groups))
+
+  ## Colour-by parity with the Projection tab, which offers EVERY meta column.
+  ## Whatever the meta data holds must be reachable through exactly one of the
+  ## three lists — a column that is in none of them cannot be coloured by, which
+  ## is the gap that kept Linked views from replacing the Projection tab.
+  md <- crb$getMetaData()
+  offered <- c(
+    names(b$groups),
+    names(b$cat_extra),
+    sub(
+      "^meta:",
+      "",
+      names(b$fields)
+    )
+  )
+  for (cn in setdiff(colnames(md), "cell_barcode")) {
+    v <- md[[cn]]
+    ## constant columns have no colouring to offer; everything else must
+    if (length(unique(v[!is.na(v)])) <= 1) {
+      next
+    }
+    expect_true(cn %in% offered, info = cn)
+  }
+  ## the QC columns specifically — they were previously filtered out
+  expect_true("meta:nCount_RNA" %in% names(b$fields))
+  ## fields carry a true range and a quantisation scale, not raw 0-255 codes
+  for (f in b$fields) {
+    expect_length(f$v, b$n)
+    expect_true(is.numeric(f$scale) && f$scale > 0)
+    expect_true(f$max > f$min)
+  }
+  ## Trekker's physical fields join the SAME list (no second lookup on $trekker)
+  expect_null(b$trekker$fields)
+  expect_true(any(!grepl("^meta:", names(b$fields))))
+  ## every projection reports its dimensionality
+  for (p in b$projections) {
+    expect_true(is.numeric(p$ndim) && p$ndim >= 2)
+  }
 })

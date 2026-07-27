@@ -169,6 +169,17 @@ cv_group <- function(values, levels, colors) {
 cv_space <- function(id, label, x, y) {
   list(id = id, label = label, x = I(x), y = I(y))
 }
+
+## A continuous colouring. `v` is quantised to 0..scale (an integer vector keeps
+## the bundle small); `min`/`max` carry the TRUE range so the client can render a
+## real-valued colourbar and hover value instead of the quantised index. Trekker's
+## own fields arrive pre-quantised to 0-255, hence the per-field `scale` rather
+## than one global constant. Must match FIELD_PREFIX in www/coordviews.js.
+cv_field_mode <- "__field__"
+cv_field_scale <- 1000L
+cv_field <- function(label, v, min, max, scale = cv_field_scale) {
+  list(label = label, v = I(v), min = min, max = max, scale = scale)
+}
 cv_clone <- function(id, label, size, n_clones, n_receptor) {
   ## id/label/size are arrays; n_clones/n_receptor are true scalars (left bare).
   list(
@@ -204,9 +215,77 @@ cv_build_groups <- function(crb, md, colors_fn) {
   groups
 }
 
+## Continuous colourings from the meta data — every numeric column, aligned to
+## the meta data's row order (which IS `cells` order). This is the Projection
+## tab's "Color cells by" list minus the categorical columns: it deliberately
+## includes the QC columns (nUMI / nGene / percent.mt / nCount_*), because
+## "colour the embedding by percent.mt and see which blob is junk" is one of the
+## most-used actions on that page. Constant and all-NA columns are skipped —
+## there is no colouring to build from them.
+cv_build_fields <- function(md, skip = "cell_barcode") {
+  fields <- list()
+  for (mc in colnames(md)) {
+    if (mc %in% skip) {
+      next
+    }
+    v <- md[[mc]]
+    if (!is.numeric(v)) {
+      next
+    }
+    rng <- suppressWarnings(range(v, na.rm = TRUE))
+    if (!all(is.finite(rng)) || rng[2] <= rng[1]) {
+      next
+    }
+    q <- as.integer(round((v - rng[1]) / (rng[2] - rng[1]) * cv_field_scale))
+    fields[[paste0("meta:", mc)]] <- cv_field(
+      mc,
+      q,
+      round(rng[1], 4),
+      round(rng[2], 4)
+    )
+  }
+  fields
+}
+
+## Categorical columns that are NOT registered grouping variables. The Projection
+## tab offers every meta column in "Color cells by" while its "Group filters" box
+## only lists getGroups(); this mirrors that split — these are colourings (legend,
+## legend-hiding) but they do not become filters.
+## A column with (nearly) as many levels as cells is an identifier, not a
+## grouping: colouring by it would produce one colour per cell and a legend
+## thousands of rows long, so it is skipped.
+cv_build_extra_groups <- function(md, group_names, colors_fn) {
+  n <- nrow(md)
+  max_levels <- max(2L, min(60L, as.integer(n / 2)))
+  extra <- list()
+  for (mc in colnames(md)) {
+    if (mc == "cell_barcode" || mc %in% group_names) {
+      next
+    }
+    v <- md[[mc]]
+    if (!(is.character(v) || is.factor(v) || is.logical(v))) {
+      next
+    }
+    lev <- if (is.factor(v)) levels(v) else sort(unique(as.character(v)))
+    lev <- lev[!is.na(lev)]
+    if (length(lev) < 1 || length(lev) > max_levels) {
+      next
+    }
+    extra[[mc]] <- cv_group(
+      match(as.character(v), lev) - 1L,
+      lev,
+      colors_fn(mc, lev)
+    )
+  }
+  extra
+}
+
 ## Every projection's coordinates travel in the bundle, keyed by name, so the
 ## expression panel can switch between UMAP / tSNE / PCA client-side with no
 ## server round-trip (the "one bundle per dataset, instant" contract).
+## `ndim` travels with them: the panels are 2-D, so a 3-D embedding is shown by
+## its first two dimensions — but the client must be able to SAY so rather than
+## silently flatten it (the Projection tab renders such an object in real 3D).
 cv_build_projections <- function(crb, cells) {
   proj_names <- tryCatch(crb$availableProjections(), error = function(e) NULL)
   projections <- list()
@@ -218,7 +297,8 @@ cv_build_projections <- function(crb, cells) {
     pjidx <- match(cells, rownames(pj))
     projections[[pn]] <- list(
       x = round(as.numeric(pj[pjidx, 1]), 4),
-      y = round(as.numeric(pj[pjidx, 2]), 4)
+      y = round(as.numeric(pj[pjidx, 2]), 4),
+      ndim = as.integer(ncol(pj))
     )
   }
   projections
@@ -357,44 +437,24 @@ cv_build_trekker <- function(crb, cells, md) {
     round(as.numeric(tk$y)[tk_idx], 2)
   )
   ## Bring the Trekker page's extra controls into Linked views: continuous
-  ## physical/meta fields to colour by, per-cell positioning confidence
-  ## (dissolve), and a positioning-evidence flag (nuclei markers). All
-  ## aligned to `cells`; positioned-only fields are NA where unpositioned.
+  ## physical fields to colour by, per-cell positioning confidence (dissolve),
+  ## and a positioning-evidence flag (nuclei markers). All aligned to `cells`;
+  ## positioned-only fields are NA where unpositioned. Numeric META columns are
+  ## NOT built here — cv_build_fields() offers every one of them for every data
+  ## set, Trekker or not.
   flds <- list()
   for (fn in names(tk$fields)) {
     f <- tk$fields[[fn]]
     if (is.null(f$v)) {
       next
     }
-    flds[[fn]] <- list(
-      label = f$label %||% fn,
-      v = I(as.integer(f$v)[tk_idx]),
-      min = f$min %||% 0,
-      max = f$max %||% 1
-    )
-  }
-  ## numeric, non-constant meta columns (e.g. Myelination) as extra
-  ## colour-by options; already in `cells` order, so no re-index needed.
-  ## Skip QC/technical columns (nCount_*, nFeature_*, percent.*, log10_*):
-  ## they are not analysis variables and only clutter the "Colour by" list.
-  qc_col <- "^(nCount|nFeature|percent|log10)"
-  for (mc in colnames(md)) {
-    v <- md[[mc]]
-    if (grepl(qc_col, mc)) {
-      next
-    }
-    if (!is.numeric(v) || length(unique(v[!is.na(v)])) <= 1) {
-      next
-    }
-    rng <- suppressWarnings(range(v, na.rm = TRUE))
-    if (!all(is.finite(rng))) {
-      next
-    }
-    flds[[paste0("meta:", mc)]] <- list(
-      label = mc,
-      v = I(as.integer(round((v - rng[1]) / (rng[2] - rng[1]) * 255))),
-      min = round(rng[1], 3),
-      max = round(rng[2], 3)
+    ## Trekker's own fields arrive pre-quantised to 0-255.
+    flds[[fn]] <- cv_field(
+      f$label %||% fn,
+      as.integer(f$v)[tk_idx],
+      f$min %||% 0,
+      f$max %||% 1,
+      scale = 255L
     )
   }
   conf_v <- if (!is.null(tk$conf) && !is.null(tk$conf$prop_top)) {
@@ -412,7 +472,6 @@ cv_build_trekker <- function(crb, cells, md) {
     ev_flag <- I(as.integer(cells %in% ev_bc))
   }
   bundle <- list(
-    fields = flds,
     conf = conf_v,
     evidence = ev_flag,
     ## Dataset-level (not per-cell, no `tk_idx` re-indexing needed): the
@@ -421,7 +480,10 @@ cv_build_trekker <- function(crb, cells, md) {
     qc = tk$qc,
     moran = tk$moran
   )
-  list(space = space, bundle = bundle)
+  ## `fields` goes to the bundle's TOP-LEVEL field list, not into $trekker: the
+  ## client reads one list of continuous colourings regardless of where each came
+  ## from, so there is a single place to add, look up and render them.
+  list(space = space, bundle = bundle, fields = flds)
 }
 
 ## Immune axis: clone identity, sizes, ranks, a clone "space", expansion level.
@@ -541,15 +603,16 @@ cv_build_bundle <- function(crb) {
     cols
   }
 
+  ## Three colouring sources, mirroring the Projection tab's "Color cells by"
+  ## (which offers every meta column) while keeping its narrower "Group filters"
+  ## (which lists only getGroups()):
+  ##   groups    — registered grouping variables: colour AND filter
+  ##   cat_extra — other categorical columns: colour only
+  ##   fields    — numeric columns (+ Trekker's physical fields): continuous
+  group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
   groups <- cv_build_groups(crb, md, cv_group_colors)
-  if (!length(groups)) {
-    return(NULL)
-  }
-  default_group <- if ("cell_type" %in% names(groups)) {
-    "cell_type"
-  } else {
-    names(groups)[1]
-  }
+  cat_extra <- cv_build_extra_groups(md, group_names, cv_group_colors)
+  fields <- cv_build_fields(md)
 
   ## spaces: umap (always) + spatial/trekker (if present) + clone (if present)
   projections <- cv_build_projections(crb, cells)
@@ -581,6 +644,7 @@ cv_build_bundle <- function(crb) {
   if (!is.null(tk)) {
     spaces[[length(spaces) + 1]] <- tk$space
     trekker_bundle <- tk$bundle
+    fields <- c(fields, tk$fields)
   }
 
   ## immune axis: adds a clone space + a clone_expansion group when receptors
@@ -593,10 +657,29 @@ cv_build_bundle <- function(crb) {
     clone_bundle <- cl$bundle
   }
 
+  ## Default colouring: a registered group if there is one (cell_type first, as
+  ## before), else any other categorical column, else the first continuous field
+  ## expressed as the client's field-mode string. An object with no colourable
+  ## column at all still yields a usable bundle — the panels simply draw in one
+  ## colour, which is strictly better than a blank tab.
+  default_group <- if ("cell_type" %in% names(groups)) {
+    "cell_type"
+  } else if (length(groups)) {
+    names(groups)[1]
+  } else if (length(cat_extra)) {
+    names(cat_extra)[1]
+  } else if (length(fields)) {
+    paste0(cv_field_mode, names(fields)[1])
+  } else {
+    NULL
+  }
+
   list(
     cells = cells,
     n = n,
     groups = groups,
+    cat_extra = cat_extra,
+    fields = fields,
     default_group = default_group,
     projections = projections,
     default_projection = default_projection,
