@@ -243,29 +243,63 @@
 }
 .coordviews-page .cv-filt-btn:hover { background: var(--cv-amber50); border-color: var(--cv-amber200); }
 .coordviews-page .cv-filt-ct { color: var(--cv-text3); font-weight: 400; }
+/* Styled to sit beside the native <select> menus in the same bar. Those are
+   drawn by the OS and cannot be restyled, so this one moves toward them: a soft
+   large radius, a tick in a reserved gutter instead of a checkbox, and full-row
+   highlights. The tall shadow and the padding around the list are what make a
+   popover read as floating above the page rather than pasted onto it. */
 .coordviews-page .cv-filt-menu {
-  position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 4px;
-  min-width: 160px; max-height: 260px; overflow-y: auto; padding: 6px;
+  position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 5px;
+  min-width: 172px; padding: 5px;
+  /* Tall enough that a normal set of levels is shown whole — scrolling inside a
+     list of eight is worse than a slightly taller menu. Only a genuinely long
+     list (fine-grained clusters) ever scrolls. */
+  max-height: min(60vh, 480px); overflow-y: auto;
   background: var(--cv-surface); border: 1px solid var(--cv-border);
-  border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .12);
+  border-radius: 11px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .13), 0 2px 6px rgba(0, 0, 0, .06);
 }
 .coordviews-page .cv-filt-acts {
-  display: flex; gap: 6px; padding: 2px 4px 6px;
-  border-bottom: 1px solid var(--cv-border); margin-bottom: 4px;
+  display: flex; gap: 6px; padding: 1px 3px 7px; margin-bottom: 5px;
+  border-bottom: 1px solid var(--cv-border);
 }
 .coordviews-page .cv-filt-acts button {
-  flex: 1; font-size: 11px; padding: 3px 0; cursor: pointer;
-  border: 1px solid var(--cv-border); border-radius: 5px;
+  flex: 1; font-size: 11px; padding: 4px 0; cursor: pointer;
+  border: 1px solid var(--cv-border); border-radius: 6px;
   background: var(--cv-surface2); color: var(--cv-text2);
+  transition: background .14s ease, color .14s ease;
 }
-.coordviews-page .cv-filt-acts button:hover { background: var(--cv-amber50); }
+.coordviews-page .cv-filt-acts button:hover {
+  background: var(--cv-amber50); color: var(--cv-amber700);
+}
 .coordviews-page .cv-filt-item {
-  display: flex; align-items: center; gap: 6px; padding: 3px 4px;
-  font-size: 12px; font-weight: 400; color: var(--cv-text); cursor: pointer;
+  display: flex; align-items: center; gap: 7px; padding: 5px 9px 5px 5px;
+  border-radius: 6px;
+  font-size: 12.5px; font-weight: 400; color: var(--cv-text); cursor: pointer;
   white-space: nowrap;
 }
-.coordviews-page .cv-filt-item:hover { background: var(--cv-surface2); }
-.coordviews-page .cv-filt-item input { margin: 0; }
+.coordviews-page .cv-filt-item:hover { background: var(--cv-amber50); }
+/* The checkbox stays for semantics and keyboard use, but is not what is drawn —
+   a tick in a fixed-width gutter reads better next to the OS menus, and the
+   gutter is always reserved so rows do not shift as levels are toggled. */
+/* 1px rather than 0: a zero-sized control is skipped by keyboard navigation in
+   some browsers, and this one still has to be tabbable. */
+.coordviews-page .cv-filt-item input {
+  position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0;
+  pointer-events: none;
+}
+.coordviews-page .cv-filt-item::before {
+  content: "✓"; flex: none; width: 13px; text-align: center;
+  font-size: 12px; font-weight: 700; line-height: 1;
+  color: var(--cv-amber); opacity: 0;
+  transition: opacity .12s ease;
+}
+.coordviews-page .cv-filt-item:has(input:checked)::before { opacity: 1; }
+/* keyboard focus has to be visible even though the input itself is not */
+.coordviews-page .cv-filt-item:focus-within {
+  background: var(--cv-amber50);
+  outline: 2px solid var(--cv-amber200); outline-offset: -2px;
+}
 
 /* ---- panel grid --------------------------------------------------------- */
 /* JS (layoutPanels + resizeAll) sets the explicit column/row tracks and the
