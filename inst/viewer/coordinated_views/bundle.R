@@ -315,6 +315,18 @@ cv_build_projections <- function(crb, cells) {
     ## invariant cv_space() enforces for x/y.
     if (nd >= 3) {
       entry$z <- I(round(as.numeric(pj[pjidx, 3]), 4))
+      ## The three axis names, for the tripod the client draws on a rotated
+      ## cloud. Its own column names rather than a generic X/Y/Z: on a PCA those
+      ## carry which components are being shown, which is the whole question
+      ## when only three of many are drawn.
+      ax <- colnames(pj)[1:3]
+      entry$axes <- I(
+        if (is.null(ax) || anyNA(ax)) {
+          paste0("dim ", 1:3)
+        } else {
+          as.character(ax)
+        }
+      )
     }
     projections[[pn]] <- entry
   }
@@ -654,6 +666,7 @@ cv_build_bundle <- function(crb) {
   ## starts orbitable rather than only becoming so after a projection switch.
   if (!is.null(dp$z)) {
     umap_space$z <- dp$z
+    umap_space$axes <- dp$axes
   }
   spaces <- list(umap_space)
 

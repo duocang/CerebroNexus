@@ -488,6 +488,20 @@
     }
   }
 
+  // The rotation project() applies, as a function. Anything that has to land
+  // in the same place as the cells — the group labels, the axis tripod — turns
+  // through here. project() inlines the identical arithmetic on its per-cell
+  // path, where a call per point would cost more than the duplication does; the
+  // two MUST stay in step.
+  function rotUnit(rot, dx, dy, dz) {
+    if (!rot) return [dx, dy, dz];
+    var cy = Math.cos(rot.ry), sy = Math.sin(rot.ry);
+    var cx = Math.cos(rot.rx), sx = Math.sin(rot.rx);
+    var x1 = dx * cy + dz * sy;
+    var z1 = dz * cy - dx * sy;
+    return [x1, dy * cx - z1 * sx, z1 * cx + dy * sx];
+  }
+
   // Is this panel showing an embedding that can be turned?
   function panelIs3D(p) {
     var sp = p && spaceById[p.spaceId];
@@ -655,13 +669,14 @@
     // them (identity check, so no extra bookkeeping at those call sites).
     var hit = _lblCache[key];
     if (hit && hit.u === u) return hit.out;
-    var nlev = g.levels.length, xs = [], ys = [], li;
-    for (li = 0; li < nlev; li++) { xs.push([]); ys.push([]); }
+    var nlev = g.levels.length, xs = [], ys = [], zs = [], li;
+    for (li = 0; li < nlev; li++) { xs.push([]); ys.push([]); zs.push([]); }
     for (var i = 0; i < D.n; i++) {
       if (!u.ok[i]) continue;
       var lv = g.values[i];
       if (lv == null || lv < 0 || lv >= nlev) continue;
       xs[lv].push(u.nx[i]); ys[lv].push(u.ny[i]);
+      if (u.nz) zs[lv].push(u.nz[i]);
     }
     var med = function (a) {
       if (!a.length) return null;
@@ -672,11 +687,71 @@
     for (li = 0; li < nlev; li++) {
       var mx = med(xs[li]);
       if (mx == null) continue;
-      out.push({ li: li, nx: mx, ny: med(ys[li]), text: String(g.levels[li]) });
+      // The THIRD component is cached too, so a rotation only has to turn one
+      // point per level instead of re-deriving a median over every cell. Cached
+      // unrotated, since the cache must survive the rotation changing.
+      out.push({ li: li, nx: mx, ny: med(ys[li]),
+        nz: u.nz ? (med(zs[li]) || 0) : 0, text: String(g.levels[li]) });
     }
     _lblCache[key] = { u: u, out: out };
     return out;
   }
+  // ---- 3-D axis tripod -----------------------------------------------------
+  // Three arms from the cloud's centre, named after the projection's own
+  // columns. Without them a turned cloud has no frame of reference at all: the
+  // shape moves, nothing says which way it went, and two similar angles are
+  // indistinguishable. Drawn faintly and over the cells — under them it would
+  // vanish into a dense cloud, which is exactly when orientation is hardest.
+  var AXIS_LEN = 0.42;   // just inside the sphere the cloud is fitted to
+  function drawAxes3D(p) {
+    var sp = spaceById[p.spaceId], u = sp && sp._unit;
+    if (!u || !u.nz || p.W < 260) return;
+    var c = p.ctx, S = p._S, ox = p._sox, oy = p._soy, v = p.view;
+    if (!S) return;
+    var names = sp.axes || ['dim 1', 'dim 2', 'dim 3'];
+    var arms = [[AXIS_LEN, 0, 0], [0, AXIS_LEN, 0], [0, 0, AXIS_LEN]];
+    var toScreen = function (dx, dy) {
+      var zx = v ? (dx + 0.5 - v.cx) / v.span + 0.5 : dx + 0.5;
+      var zy = v ? (dy + 0.5 - v.cy) / v.span + 0.5 : dy + 0.5;
+      return [ox + zx * S, oy + S - zy * S];
+    };
+    var o0 = toScreen(0, 0);
+    c.save();
+    c.font = '600 10px system-ui, -apple-system, "Segoe UI", sans-serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (var k = 0; k < 3; k++) {
+      var r = rotUnit(p.rot, arms[k][0], arms[k][1], arms[k][2]);
+      var e = toScreen(r[0], r[1]);
+      // An arm pointing away from the viewer is drawn fainter, so the tripod
+      // itself shows which way the cloud is facing.
+      var near = 0.5 + r[2] / (AXIS_LEN * 2);
+      if (near < 0) near = 0; else if (near > 1) near = 1;
+      c.globalAlpha = 0.35 + 0.5 * near;
+      c.strokeStyle = '#7c8595'; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(o0[0], o0[1]); c.lineTo(e[0], e[1]); c.stroke();
+      c.fillStyle = '#7c8595';
+      c.beginPath(); c.arc(e[0], e[1], 2.2, 0, 6.2832); c.fill();
+      // An arm pointing straight at the viewer collapses to a dot; its label
+      // would then sit on the origin, on top of the other two. Below a few
+      // pixels of projected length there is no direction left to name, so the
+      // name is dropped and the dot alone marks it.
+      var len = Math.hypot(e[0] - o0[0], e[1] - o0[1]);
+      if (len < 14) continue;
+      var t = String(names[k] || ('dim ' + (k + 1)));
+      if (t.length > 12) t = t.slice(0, 11) + '…';
+      var w = c.measureText(t).width;
+      // push the label a little further out, so it clears the arm's own dot
+      var ux2 = (e[0] - o0[0]) / len, uy2 = (e[1] - o0[1]) / len;
+      var lx = e[0] + ux2 * 9, ly = e[1] + uy2 * 9;
+      c.globalAlpha = 0.6 + 0.4 * near;
+      c.fillStyle = 'rgba(255,255,255,.86)';
+      c.fillRect(lx - w / 2 - 3, ly - 7, w + 6, 14);
+      c.fillStyle = '#4a5261';
+      c.fillText(t, lx, ly);
+    }
+    c.restore();
+  }
+
   function drawGroupLabels(p) {
     // Below ~260px a label chip covers a meaningful share of the panel.
     if (!labelsOn || p.W < 260) return;
@@ -687,10 +762,20 @@
     c.globalAlpha = 1;
     c.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
     c.textAlign = 'center'; c.textBaseline = 'middle';
+    var u3 = spaceById[p.spaceId] && spaceById[p.spaceId]._unit;
+    var rot = (u3 && u3.nz) ? p.rot : null;
     L.forEach(function (o) {
       if (hidden.has(o.li)) return;
-      var zx = v ? (o.nx - v.cx) / v.span + 0.5 : o.nx;
-      var zy = v ? (o.ny - v.cy) / v.span + 0.5 : o.ny;
+      var ux = o.nx, uy = o.ny;
+      if (rot) {
+        // Turn the cached centre with the cloud. Without this the labels sat
+        // still while the cells moved under them — pinned to where each group
+        // used to be, which is worse than no label at all.
+        var rp = rotUnit(rot, ux - 0.5, uy - 0.5, o.nz);
+        ux = rp[0] + 0.5; uy = rp[1] + 0.5;
+      }
+      var zx = v ? (ux - v.cx) / v.span + 0.5 : ux;
+      var zy = v ? (uy - v.cy) / v.span + 0.5 : uy;
       var x = ox + zx * S, y = oy + S - zy * S;
       if (x < ox || x > ox + S || y < oy || y > oy + S) return;
       var t = o.text.length > 18 ? o.text.slice(0, 17) + '…' : o.text;
@@ -851,6 +936,7 @@
         c.beginPath(); c.arc(p.sx[i], p.sy[i], ps + 2.5, 0, 6.2832); c.stroke();
       }
     }
+    drawAxes3D(p);
     drawGroupLabels(p);
     // picked cell ring
     if (pick != null && p.ok[pick]) {
@@ -2198,7 +2284,8 @@
     sp.x = pj.x; sp.y = pj.y; sp._unit = null;
     // z has to travel with x/y: without this a 2-D projection would keep the
     // previous 3-D one's z and claim to be rotatable.
-    if (pj.z) sp.z = pj.z; else delete sp.z;
+    if (pj.z) { sp.z = pj.z; sp.axes = pj.axes; }
+    else { delete sp.z; delete sp.axes; }
     sp.label = projSpaceLabel(name);
     syncOrbitButtons();   // this panel may have just gained or lost a dimension
     resetSpaceViews('umap');   // the old viewport means nothing in the new one
