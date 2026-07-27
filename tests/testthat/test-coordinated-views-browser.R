@@ -160,15 +160,16 @@ test_that("switching projection resets the viewport and the lasso", {
     timeout = 15000
   )
 
-  # zoom deep into a corner, and leave a committed lasso behind
+  # zoom in hard with the toolbar (the wheel no longer zooms), and leave a
+  # committed lasso behind
   app$run_js(
     paste0(
       "(function () {\n",
       "  var cv = document.getElementById('cv-cv-a');\n",
       "  var r = cv.getBoundingClientRect();\n",
-      "  for (var k = 0; k < 8; k++) cv.dispatchEvent(new WheelEvent('wheel',\n",
-      "    { clientX: r.left + 110, clientY: r.top + 380, deltaY: -100,\n",
-      "      bubbles: true, cancelable: true }));\n",
+      "  var zin = document.querySelector(\n",
+      "    '.cv-tbtn[data-act=\"zin\"][data-panel=\"A\"]');\n",
+      "  for (var k = 0; k < 8; k++) zin.click();\n",
       "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
       "    { clientX: r.left + 60, clientY: r.top + 60, bubbles: true }));\n",
       "  for (var s = 40; s <= 200; s += 40)\n",
@@ -1415,7 +1416,7 @@ test_that("a click pins the tooltip, and the card opens only on request", {
     0
   )
 
-  ## Close puts back what the click did: the tooltip and the pick behind it.
+  ## Close dismisses the tooltip.
   app$run_js("document.querySelector('#cv-tip-a .cv-tip-close').click();")
   app$wait_for_idle(timeout = 5000)
   expect_equal(
@@ -1425,7 +1426,10 @@ test_that("a click pins the tooltip, and the card opens only on request", {
   expect_false(app$get_js(
     "document.getElementById('cv-tip-a').classList.contains('cv-tip-pinned')"
   ))
-  expect_false(app$get_js(
+  ## ... but NOT the pick behind it. The ring and, on a Trekker data set, the
+  ## niche readout are what the cell was clicked for; putting the tooltip away
+  ## is not a reason to give them up. Clicking the cell again drops the pick.
+  expect_true(app$get_js(
     paste0(
       "document.getElementById('cv-readout').textContent",
       ".indexOf('Niche of picked nucleus') >= 0"
