@@ -373,6 +373,44 @@ var hoverCell = null;
   function rgbExpressing(i) { return rgbAt(i).m > RGB_MIN; }
 
   // ---- colour of a cell under the active mode -----------------------------
+  // Painting order for a CONTINUOUS colouring: ascending value, so the cells
+  // carrying the signal land on top. Index order is arbitrary with respect to
+  // expression, so without this a focus of high expression is at the mercy of
+  // whichever low-expressing neighbours happen to come after it in the array --
+  // they paint over it, and a real signal reads as absent. Categorical
+  // colourings have no such order and keep the natural one.
+  //
+  // Cached per (data set, colouring, gene): the sort is over every cell and the
+  // answer only changes when one of those does.
+  var _ordD = null, _ordKey = null, _ordVal = null;
+  function paintOrder() {
+    if (!D) return null;
+    var key = colorBy + '|' + (D.gene ? D.gene.gene : '');
+    if (_ordD === D && _ordKey === key) return _ordVal;
+    var vals = null;
+    if (colorBy === GENE_MODE && D.gene) {
+      vals = D.gene.v;
+    } else {
+      var f = fieldOf();
+      if (f) vals = f.v;
+    }
+    var ord = null;
+    if (vals) {
+      ord = new Array(D.n);
+      for (var i = 0; i < D.n; i++) ord[i] = i;
+      // Missing values sort first: an unpositioned or NA cell has no signal to
+      // show, so it must never end up covering one that has.
+      ord.sort(function (a, b) {
+        var va = vals[a], vb = vals[b];
+        if (va == null || isNaN(va)) va = -Infinity;
+        if (vb == null || isNaN(vb)) vb = -Infinity;
+        return va - vb;
+      });
+    }
+    _ordD = D; _ordKey = key; _ordVal = ord;
+    return ord;
+  }
+
   function colorOf(i) {
     if (colorBy === GENE_MODE) {
       if (!D.gene) return '#dcdcdc';
@@ -957,12 +995,18 @@ var hoverCell = null;
     // sets where it is visible and affordable, and batching only kicks in past
     // the size where the frame cost dominates.
     var BATCH_MIN = 20000;
+    // Ascending-value order for a continuous colouring; null (= natural order)
+    // otherwise. In the batched path this also fixes the ORDER OF THE BUCKETS:
+    // they are created as their first member is met, and object keys keep
+    // insertion order, so filling them low-to-high paints them low-to-high.
+    var ord = paintOrder();
     for (var layer = 0; layer < 2; layer++) {
       var alpha = hiSet ? (layer === 1 ? 0.95 : 0.05)
         : rgb ? (layer === 1 ? 1 : 0.5 * pointOpacity) : pointOpacity;
       if (n >= BATCH_MIN) {
         var buckets = null;
-        for (i = 0; i < n; i++) {
+        for (var oi = 0; oi < n; oi++) {
+          i = ord ? ord[oi] : oi;
           if (!p.ok[i] || !shownMask[i]) continue;
           if ((layer === 0) === (rgb ? rgbExpressing(i) : !!(hiSet && hiSet.has(i)))) continue;
           var col = colorOf(i);
@@ -985,7 +1029,8 @@ var hoverCell = null;
         }
         continue;
       }
-      for (i = 0; i < n; i++) {
+      for (var oj = 0; oj < n; oj++) {
+        i = ord ? ord[oj] : oj;
         if (!p.ok[i] || !shownMask[i]) continue;
         var fg = rgb ? rgbExpressing(i) : !!(hiSet && hiSet.has(i));
         if ((layer === 0) === fg) continue;   // bg on layer 0, fg on layer 1

@@ -1438,3 +1438,83 @@ test_that("a click pins the tooltip, and the card opens only on request", {
 
   app$stop()
 })
+
+## Index order is arbitrary with respect to expression, so a cell painted late
+## covers whatever it overlaps regardless of what either is worth. Where cells
+## overlap -- which is everywhere on a real embedding -- that turned a focus of
+## high expression into whatever its low-expressing neighbours happened to be.
+## Continuous colourings are now painted low value first.
+test_that("high values are painted over low ones", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_paint_order")
+
+  ## Two cells at the SAME position: a high-expressing one early in the array
+  ## and a low-expressing one after it. Whatever is drawn second wins the pixel,
+  ## so the colour there names the order. The rest of the cloud sits far away so
+  ## it cannot contribute to the probe.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var n = 40, x = [], y = [], cells = [], vals = [], gv = [];\n",
+      "  for (var j = 0; j < n; j++) {\n",
+      "    x.push(j === 0 || j === 1 ? 0 : 40 + (j % 5));\n",
+      "    y.push(j === 0 || j === 1 ? 0 : 40 + Math.floor(j / 5));\n",
+      "    cells.push('c' + j); vals.push(0);\n",
+      ## cell 0 high, cell 1 at the SAME spot low
+      "    gv.push(j === 0 ? 255 : 0);\n",
+      "  }\n",
+      "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+      "    coordviews_data: {\n",
+      "      cells: cells, n: n,\n",
+      "      groups: { cluster: { values: vals, levels: ['a'],\n",
+      "        colors: ['#636EFA'] } },\n",
+      "      cat_extra: {}, cat_skipped: {},\n",
+      "      fields: { 'meta:score': { label: 'score', v: gv,\n",
+      "        min: 0, max: 255, scale: 255 } },\n",
+      "      default_group: 'cluster',\n",
+      "      projections: { umap: { x: x, y: y, ndim: 2 } },\n",
+      "      default_projection: 'umap',\n",
+      "      spaces: [{ id: 'umap', label: 'umap (expression)', x: x, y: y }],\n",
+      "      clone: null, trekker: null\n",
+      "    } } }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.indexOf('40 cells') >= 0",
+    timeout = 15000
+  )
+
+  ## Colour by the numeric field, so both cells take a viridis colour.
+  app$run_js(paste0(
+    "(function () { var s = document.getElementById('cv-pick-color');\n",
+    "  s.value = '__field__meta:score'; s.onchange(); })();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+
+  ## The two cells coincide exactly and are drawn at the same radius, so the one
+  ## painted second hides the other. Viridis runs dark blue-purple at 0 to yellow
+  ## at 1 and every other cell here sits at 0, so anything yellow can only be the
+  ## high one. Measured both ways rather than assumed: painted low-last leaves 4
+  ## yellow pixels of anti-aliased rim and a brightest red of 161, painted
+  ## low-first leaves 128 and 222. "Any yellow at all" therefore proves nothing --
+  ## the rim survives either way -- so both the area and the purity are asserted.
+  stats <- unlist(app$get_js(paste0(
+    "(function () {\n",
+    "  var cv = document.getElementById('cv-cv-a');\n",
+    "  var d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;\n",
+    "  var yellow = 0, maxr = 0;\n",
+    "  for (var i = 0; i < d.length; i += 4) {\n",
+    "    if (d[i + 3] === 0) continue;\n",
+    "    if (d[i] > 245 && d[i+1] > 245 && d[i+2] > 245) continue;\n",
+    "    if (d[i] > d[i+2] + 40 && d[i+1] > 120) yellow++;\n",
+    "    if (d[i] > maxr) maxr = d[i];\n",
+    "  }\n",
+    "  return [yellow, maxr];\n",
+    "})();"
+  )))
+  expect_gt(stats[1], 50)
+  expect_gt(stats[2], 200)
+
+  app$stop()
+})
