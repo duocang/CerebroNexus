@@ -24,6 +24,14 @@
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
   var pick = null;              // hovered/clicked cell index
+// Panel + cell of a PINNED tooltip: the one a click left in place, carrying the
+// Details and Close buttons. {null, null} when no tooltip is pinned.
+var pinnedTip = { panel: null, cell: null };
+// Cell under the cursor, wherever it is. The whole point of linked views is that
+// a cell is the SAME cell in every panel, so pointing at it in one has to mark it
+// in the others -- that is how the eye carries a position in the embedding over
+// to a position in tissue. Null when the cursor is not on a cell.
+var hoverCell = null;
   var zoomed = false;           // is the umap panel currently zoomed to a selection
   var selectMode = 'lasso';     // drag-select mode: 'lasso' (freeform) or 'box'
   // Trekker controls brought into Linked views (only when D.trekker is present):
@@ -994,6 +1002,19 @@
     }
     drawAxes3D(p);
     drawGroupLabels(p);
+    // Hovered cell, marked in EVERY panel including the one being pointed at.
+    // Thinner and cooler than the pick ring so the two never read as the same
+    // state: this one follows the cursor and is gone the moment it leaves.
+    if (hoverCell != null && hoverCell !== pick && p.ok[hoverCell]) {
+      c.globalAlpha = 1; c.strokeStyle = '#0f172a'; c.lineWidth = 1.6;
+      c.beginPath();
+      c.arc(p.sx[hoverCell], p.sy[hoverCell], ps + 3.5, 0, 6.2832);
+      c.stroke();
+      c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1;
+      c.beginPath();
+      c.arc(p.sx[hoverCell], p.sy[hoverCell], ps + 5, 0, 6.2832);
+      c.stroke();
+    }
     // picked cell ring
     if (pick != null && p.ok[pick]) {
       c.globalAlpha = 1; c.strokeStyle = '#f97316'; c.lineWidth = 2.2;
@@ -1029,6 +1050,10 @@
     c.globalAlpha = 1;
     // Its own canvas — drawn last so it also settles after a view change.
     drawMinimap(p);
+    // A pinned tooltip points at a cell, so it has to move when the cell does —
+    // a pan, a zoom, a rotation. Left where it was, it would be labelling
+    // whatever the view slid underneath it.
+    repositionPinned(p);
   }
   // Live "showing N / M cells" readout — the single feedback that a filter or
   // subsample took effect, regardless of what the panels are coloured by.
@@ -1558,13 +1583,23 @@
         cloneHtml = '<div class="cv-readcol cv-rise" style="--cv-rise-delay:60ms"><h4 class="cv-read-h">Top clonotypes in selection' +
           ' <span class="cv-read-sub">' + fmt(withRcp) + ' of ' + fmt(sel.size) +
           ' carry a receptor</span></h4><table class="cv-ctable"><thead><tr>' +
-          '<th>#</th><th>CDR3 (clonotype)</th><th class="num">in sel.</th>' +
+          '<th>#</th><th>Clonotype</th><th class="num">in sel.</th>' +
           '<th class="num">clone size</th><th class="num">% of sel.</th></tr></thead><tbody>' +
           crows.map(function (r, k) {
             var lab = D.clone.label[r[0]] || '(clone ' + r[0] + ')';
             if (lab.length > 42) lab = lab.slice(0, 40) + '…';
+            // A clone is called on the V(D)J genes, and one such clone can cover
+            // several CDR3s. The label names its dominant sequence; saying so is
+            // the difference between a handle and a false identification, since
+            // clicking the row selects every cell of the clone, not the ones
+            // carrying that sequence.
+            var nseq = (D.clone.n_cdr3 && D.clone.n_cdr3[r[0]]) || 1;
+            var extra = nseq > 1
+              ? ' <span class="cv-cdr3-more" title="' + esc(String(nseq)) +
+                ' distinct CDR3 sequences in this clone">+' + (nseq - 1) + '</span>'
+              : '';
             return '<tr class="cv-crow" data-clone="' + r[0] + '"><td class="num">' + (k + 1) +
-              '</td><td class="cv-cdr3">' + esc(lab) + '</td><td class="num">' + r[1] +
+              '</td><td class="cv-cdr3">' + esc(lab) + extra + '</td><td class="num">' + r[1] +
               '</td><td class="num">' + D.clone.size[r[0]] + '</td><td class="num">' +
               (r[1] / sel.size * 100).toFixed(1) + '%</td></tr>';
           }).join('') + '</tbody></table>' +
@@ -1658,12 +1693,20 @@
   }
 
   // ---- hover tooltip -------------------------------------------------------
-  // Same content as the Projection tab's plotly hover (buildHoverInfoForProjections):
-  // the cell barcode, then every registered grouping variable — plus, here, the
-  // clonotype and whatever continuous variable is currently being coloured by,
-  // shown as its REAL value (fields travel quantised; fieldValue() undoes it).
+  // Three depths, and each is reached deliberately from the one before:
+  //
+  //   hover   what the cell IS under the current colouring -- a glance, so it
+  //           stays short. It follows the cursor and cannot be interacted with.
+  //   pinned  after a click: the same, plus every registered grouping variable,
+  //           and the two actions. It stops following the cursor, which is what
+  //           makes those buttons reachable at all.
+  //   card    everything, via Details.
+  //
+  // The hover used to carry the pinned set, which is a paragraph to read past
+  // while moving the mouse and, on a data set with several grouping variables,
+  // a tooltip taller than what it is pointing at.
   var HOVER_MAX_GROUPS = 6;
-  function hoverHtml(i) {
+  function hoverHtml(i, pinned) {
     var rows = [];
     var g = catOf(colorBy);
     // headline = the active categorical level, else the barcode
@@ -1676,14 +1719,16 @@
     if (colorBy === GENE_MODE && D.gene) {
       rows.push([D.gene.gene, fmtVal(D.gene.v[i] / 255 * D.gene.max)]);
     }
-    // every grouping variable, as the Projection tab does (capped so a data set
-    // with many registered groups cannot produce a tooltip taller than the panel)
-    var gn = D.groups ? Object.keys(D.groups) : [];
-    gn.slice(0, HOVER_MAX_GROUPS).forEach(function (k) {
-      if (k === colorBy) return;
-      var gg = D.groups[k];
-      rows.push([groupLabel(k), gg.levels[gg.values[i]]]);
-    });
+    if (pinned) {
+      // every grouping variable, as the Projection tab does (capped so a data
+      // set with many registered groups cannot outgrow the panel)
+      var gn = D.groups ? Object.keys(D.groups) : [];
+      gn.slice(0, HOVER_MAX_GROUPS).forEach(function (k) {
+        if (k === colorBy) return;
+        var gg = D.groups[k];
+        rows.push([groupLabel(k), gg.levels[gg.values[i]]]);
+      });
+    }
     if (D.clone && D.clone.id[i] >= 0) {
       var lab = D.clone.label[D.clone.id[i]] || '';
       if (lab.length > 28) lab = lab.slice(0, 26) + '…';
@@ -1694,6 +1739,18 @@
       h += '<div class="cv-tip-row"><span class="cv-tip-k">' + esc(r[0]) +
         ':</span> ' + esc(r[1]) + '</div>';
     });
+    if (pinned) {
+      // The way to the full record, offered rather than imposed. Clicking a cell
+      // used to throw a large card over the middle of the workspace -- a lot of
+      // screen for a question the user may not have asked, landing on top of the
+      // panels at the moment a Trekker user was clicking nuclei to read their
+      // niche. Close dismisses this tooltip and nothing else: the pick it came
+      // from stays, because the niche readout is what the click was for.
+      h += '<div class="cv-tip-act">' +
+        '<button type="button" class="cv-tip-btn cv-tip-details">Details</button>' +
+        '<button type="button" class="cv-tip-btn cv-tip-close" ' +
+        'aria-label="Close">Close</button></div>';
+    }
     return h;
   }
   // ---- single-cell detail card ---------------------------------------------
@@ -1859,30 +1916,96 @@
     }, 220);
   }
 
+  // Place a panel's tooltip beside cell `i`: above-right, flipping to the other
+  // side of either axis when that would overflow, then clamped into the canvas
+  // on both. Flipping alone is not enough: near a corner the flipped position
+  // can overflow the OTHER edge, which is how a tooltip ends up half outside the
+  // panel with its labels cut off — leaving the values on screen with nothing to
+  // say what they are.
+  function placeTip(p, tip, i) {
+    var tw = tip.offsetWidth, th = tip.offsetHeight, m = 4;
+    var tx = p.sx[i] + 14, ty = p.sy[i] - th - 10;
+    if (tx + tw > p.W - m) tx = p.sx[i] - tw - 14;   // flip left
+    if (ty < m) ty = p.sy[i] + 14;                   // flip below
+    tx = Math.max(m, Math.min(tx, p.W - tw - m));
+    ty = Math.max(m, Math.min(ty, p.H - th - m));
+    tip.style.left = tx + 'px'; tip.style.top = ty + 'px';
+  }
+
+  // Pin a panel's tooltip to a cell: it stops following the cursor, gains the
+  // grouping variables and the two actions, and stays until closed. This is what
+  // makes the buttons usable -- a tooltip that tracks the pointer moves out from
+  // under any attempt to click it.
+  function pinTip(p, i) {
+    var tip = $(p.tipId); if (!tip) return;
+    pinnedTip = { panel: p, cell: i };
+    tip.classList.add('cv-tip-pinned');
+    tip.innerHTML = hoverHtml(i, true);
+    tip.style.opacity = 1;
+    placeTip(p, tip, i);
+  }
+  function unpinTip() {
+    var p = pinnedTip.panel;
+    pinnedTip = { panel: null, cell: null };
+    if (!p) return;
+    var tip = $(p.tipId); if (!tip) return;
+    tip.classList.remove('cv-tip-pinned');
+    tip.style.opacity = 0;
+  }
+  // Keep a pinned tooltip on its cell through pans, zooms and rotations, and
+  // take it away when that cell leaves the panel — a tooltip clamped to an edge,
+  // pointing at nothing, is worse than none.
+  function repositionPinned(p) {
+    if (pinnedTip.panel !== p) return;
+    var i = pinnedTip.cell, tip = $(p.tipId);
+    if (!tip) return;
+    var x = p.sx[i], y = p.sy[i];
+    if (x == null || isNaN(x) || x < 0 || y < 0 || x > p.W || y > p.H) {
+      tip.style.opacity = 0;
+      return;
+    }
+    tip.style.opacity = 1;
+    placeTip(p, tip, i);
+  }
+
+  // Mark the hovered cell everywhere. Redraws only when the cell CHANGES: a
+  // mousemove fires far more often than the answer to "which cell is nearest"
+  // changes, and each redraw is the whole cloud in every panel.
+  function setHoverCell(i) {
+    if (hoverCell === i) return;
+    hoverCell = i;
+    drawAll();
+  }
+
   function wireHover(p) {
     var tip = $(p.tipId);
     p.canvas.addEventListener('mousemove', function (e) {
       var r = p.canvas.getBoundingClientRect();
       var mx = e.clientX - r.left, my = e.clientY - r.top;
-      if (p.drag || p.panning) { tip.style.opacity = 0; return; }
+      // A pinned tooltip owns this panel's tooltip element until it is closed —
+      // but the cross-panel mark still follows the cursor.
+      var own = pinnedTip.panel !== p;
+      if (p.drag || p.panning) {
+        if (own) tip.style.opacity = 0;
+        setHoverCell(null);
+        return;
+      }
       var i = nearest(p, mx, my);
-      if (i < 0) { tip.style.opacity = 0; return; }
-      tip.innerHTML = hoverHtml(i); tip.style.opacity = 1;
-      // Sit above-right of the point, flipping to the other side of either axis
-      // when that would overflow, and then clamped into the canvas on both.
-      // Flipping alone is not enough: near a corner the flipped position can
-      // overflow the OTHER edge, which is how a tooltip ends up half outside the
-      // panel with its labels cut off — leaving the values on screen with
-      // nothing to say what they are.
-      var tw = tip.offsetWidth, th = tip.offsetHeight, m = 4;
-      var tx = p.sx[i] + 14, ty = p.sy[i] - th - 10;
-      if (tx + tw > p.W - m) tx = p.sx[i] - tw - 14;   // flip left
-      if (ty < m) ty = p.sy[i] + 14;                   // flip below
-      tx = Math.max(m, Math.min(tx, p.W - tw - m));
-      ty = Math.max(m, Math.min(ty, p.H - th - m));
-      tip.style.left = tx + 'px'; tip.style.top = ty + 'px';
+      if (i < 0) {
+        if (own) tip.style.opacity = 0;
+        setHoverCell(null);
+        return;
+      }
+      setHoverCell(i);
+      if (!own) return;
+      tip.innerHTML = hoverHtml(i, false); tip.style.opacity = 1;
+      placeTip(p, tip, i);
     });
-    p.canvas.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    p.canvas.addEventListener('mouseleave', function () {
+      setHoverCell(null);
+      if (pinnedTip.panel === p) return;
+      tip.style.opacity = 0;
+    });
   }
 
   // ---- brush + pick --------------------------------------------------------
@@ -1973,15 +2096,10 @@
         }
       }
     });
-    // Wheel: zoom about the cursor. Non-passive so the page does not scroll
-    // out from under the gesture.
-    p.canvas.addEventListener('wheel', function (e) {
-      if (!D || !p.sx) return;
-      e.preventDefault();
-      var r = p.canvas.getBoundingClientRect();
-      zoomAt(p, e.clientX - r.left, e.clientY - r.top,
-        e.deltaY < 0 ? 1 / 1.15 : 1.15);
-    }, { passive: false });
+    // Zooming is a toolbar action only. Wheel-zoom made the panels hostile to
+    // scroll past: a page scroll that happened to cross a panel silently rescaled
+    // it instead, and on a trackpad the two gestures are the same one. The wheel
+    // is therefore left to the page.
     window.addEventListener('mouseup', function (e) {
       if (p.orbiting) {
         p.orbiting = false;
@@ -2009,15 +2127,24 @@
         // BEFORE setSelection so its drawAll() drops the stale orange pick ring
         // (that ring is not gated on `!sel`). An empty lasso keeps the pick.
         // a lasso is a different question from "tell me about this one cell"
-        if (s.size) { pick = null; closeCard(); setSelection(s); keep = true; }
-        else { setSelection(null); }
+        if (s.size) {
+          pick = null; unpinTip(); closeCard(); setSelection(s); keep = true;
+        } else { setSelection(null); }
       } else {
         var m = pos(e), k = nearest(p, m[0], m[1]);
-        // Clicking the same cell again closes the card (and drops the pick), so
-        // the click that opened it is also the click that puts it away.
-        var again = (k >= 0 && k === cardCell && cardOpen());
+        // A click PICKS -- it no longer opens the detail card. On a Trekker data
+        // set picking a nucleus is how its niche is read, and having a card
+        // covering the panels every time made that unusable. The card is opened
+        // deliberately, from the tooltip's Details button.
+        //
+        // Clicking the picked cell again drops the pick, so the click that made
+        // it is also the click that undoes it.
+        var again = (k >= 0 && k === pick);
         pick = (k >= 0 && !again) ? k : null;
-        if (pick != null) openCard(p, pick); else closeCard();
+        // Any open card described a cell the user has now moved on from.
+        if (cardOpen()) closeCard();
+        unpinTip();
+        if (pick != null) pinTip(p, pick);
         rebuildNiche();              // Trekker: cells within the picked niche
         updateSelActions();          // niche pick → show the (animated) Clear button
         drawAll();
@@ -2490,10 +2617,20 @@
     syncOrbitButtons();
   }
   // Size ALL visible panels to equal squares that fill the width AND height in a
-  // single viewport (so every linked panel is on-screen at once), never below
-  // 300px. The grid is 1x2 (two spaces), a rotated "品" (three: one centred square
-  // left + two stacked right) or 2x2 (four). Falls back to a single column when
-  // two >=300 columns can't fit the width.
+  // single viewport, so every linked panel is on screen at once. The grid is 1x2
+  // (two spaces), a rotated "品" (three: one centred square left + two stacked
+  // right) or 2x2 (four). Falls back to a single column when two comfortable
+  // columns cannot fit the width.
+  //
+  // Two floors, and the difference matters. PREF_SIDE is the size below which a
+  // panel stops being comfortable, and it decides the column count. MIN_SIDE is
+  // the size below which it stops being useful, and it is the only hard floor on
+  // the squares. Using the comfortable size as the hard floor is what broke the
+  // promise above: on a 1366x768 screen four panels need more height than the
+  // viewport has, the floor refused to go under 300, and the last row simply
+  // fell off the bottom -- on the one layout that most needs to be seen at once.
+  var PREF_SIDE = 300;
+  var MIN_SIDE = 150;
   function resizeAll() {
     if (!D || !panels.length) return;
     var panes = panels[0].pane && panels[0].pane.parentElement;
@@ -2521,12 +2658,15 @@
     // + chrome. `overhead` already carries the vertical equivalent.
     var chromeX = 26;
     // Layout: two columns unless a single column is forced by a narrow viewport.
-    var single = availW < ((300 + chromeX) * 2 + gap);
+    var single = availW < ((PREF_SIDE + chromeX) * 2 + gap);
     var cols = single ? 1 : 2;
     var rows = single ? k : (k <= 2 ? 1 : 2);
     var colW = (availW - (cols - 1) * gap) / cols;
     var rowCanvasH = (availH - rows * overhead - (rows - 1) * gap) / rows;
-    var side = Math.max(300, Math.floor(Math.min(colW - chromeX, rowCanvasH)));
+    var side = Math.max(
+      MIN_SIDE,
+      Math.floor(Math.min(colW - chromeX, rowCanvasH))
+    );
     // Explicit column tracks (px) so cells hug the squares and the grid centres in
     // availW; rows stay auto (each pane = head + square), so the "品" span works.
     panes.classList.remove('cv-n2', 'cv-n3', 'cv-n4', 'cv-single');
@@ -2547,7 +2687,9 @@
   // otherwise describe cells from a data set no longer on screen.
   function showUnavailable(msg) {
     closeCard(); cardMeta = null;
+    unpinTip();
     D = null; spaceById = {}; sel = null; pick = null; nicheSet = null;
+    hoverCell = null;
     zoomed = false; hidden = new Set(); groupFilter = {};
     panels.forEach(function (p) {
       p.spaceId = null; p.sx = null; p.sy = null; p.ok = null;
@@ -2592,7 +2734,8 @@
     spaceById = {}; D.spaces.forEach(function (s) { s._unit = null; spaceById[s.id] = s; });
     colorBy = D.default_group ||
       (D.groups ? Object.keys(D.groups)[0] : null) || null;
-    hidden = new Set(); sel = null; pick = null;
+    unpinTip();
+    hidden = new Set(); sel = null; pick = null; hoverCell = null;
     // Reset the additional-parameter state to defaults for the new dataset.
     curProj = D.default_projection ||
       (D.projections ? Object.keys(D.projections)[0] : null);
@@ -2698,33 +2841,39 @@
       if (colorBy === RGB_MODE) { renderLegend(); drawAll(); }
     });
 
-    // Ask for the bundle the first time the workspace is actually on screen --
-    // never on connect. Building it walks every cell of the loaded object, and
-    // this is one tab of eighteen; a session that never opens it should pay
-    // nothing. The server will not send until asked.
+    // Report whether the workspace is on screen -- both ways, and not just the
+    // first time. Building the bundle walks every cell of the loaded object and
+    // this is one tab of eighteen, so a session that never opens it should pay
+    // nothing; but "has opened it once" is not enough either, because the bundle
+    // is rebuilt whenever a group colour changes and the user is by then usually
+    // on the Color management tab. The server holds off while this is false.
     //
     // The condition is "the workspace has a layout box", not the sidebar's
     // active-tab input: that reports shinydashboard's idea of which tab is
     // selected, which a programmatic tab switch leaves untouched even though the
     // panels are plainly visible. Size is true however the tab was opened.
-    var ping = function () {
-      if (Shiny.setInputValue) {
-        Shiny.setInputValue('coordviews_ready', Date.now(), { priority: 'event' });
-      }
-    };
-    var asked = false;
-    function askWhenVisible() {
-      if (asked) return;
+    var lastVis = null;
+    function reportVisibility() {
       var el = $('cv-meta');
-      if (!el || el.offsetParent === null) return;   // absent or display:none
-      asked = true;
-      ping();
+      var vis = !!(el && el.offsetParent !== null);   // absent or display:none
+      if (vis === lastVis) return;
+      lastVis = vis;
+      if (Shiny.setInputValue) {
+        Shiny.setInputValue('coordviews_visible', vis);
+      }
     }
-    setInterval(askWhenVisible, 250);
-    askWhenVisible();
-    // A reconnect gives a fresh server session that has sent nothing yet, so the
-    // request has to be made again -- but still only if the tab is open.
-    var onConnected = function () { asked = false; askWhenVisible(); };
+    setInterval(reportVisibility, 250);
+    reportVisibility();
+    // The poll is the backstop; a tab switch is a click, so report on the way
+    // out too. Without this the server can still believe the workspace is on
+    // screen for up to one interval after the user has left it -- long enough
+    // for the recolour they went to Color management to make.
+    document.addEventListener('click', function () {
+      setTimeout(reportVisibility, 0);
+    }, true);
+    // A reconnect gives a fresh server session that knows nothing, so the state
+    // has to be sent again rather than suppressed as unchanged.
+    var onConnected = function () { lastVis = null; reportVisibility(); };
     var jq = window.jQuery;
     if (jq) { jq(document).on('shiny:connected', onConnected); }
     else { document.addEventListener('shiny:connected', onConnected); }
@@ -2732,6 +2881,23 @@
     // clear button + point-size slider live in the top bar (client-owned)
     document.addEventListener('click', function (e) {
       var t = e.target;
+      // The pinned tooltip's two actions. Checked before anything else, because
+      // the tooltip sits over a panel and the handlers below would otherwise
+      // read the click as one on the workspace underneath.
+      if (t && t.closest && t.closest('.cv-tip-details')) {
+        if (pinnedTip.panel && pinnedTip.cell != null) {
+          openCard(pinnedTip.panel, pinnedTip.cell);
+        }
+        return;
+      }
+      if (t && t.closest && t.closest('.cv-tip-close')) {
+        // Dismisses the tooltip ONLY. The pick stays -- its ring, and on a
+        // Trekker data set the niche readout it drives, are the reason the cell
+        // was clicked; putting the tooltip away is not a reason to give them up.
+        // Clicking the cell again is what drops the pick.
+        unpinTip();
+        return;
+      }
       // per-panel modebar: select mode (box/lasso), zoom in/out, reset, PNG
       var tb = t && t.closest && t.closest('.cv-tbtn');
       if (tb) {
@@ -2757,13 +2923,14 @@
         return;
       }
       if (t && t.closest && t.closest('#cv-card-x')) {
-        pick = null; closeCard(); drawAll();
+        pick = null; unpinTip(); closeCard(); drawAll();
         if (!sel) { rebuildNiche(); renderReadout(); }
         return;
       }
       if (t && t.id === 'cv-zoom') { toggleZoom(); return; }
       if (t && t.id === 'cv-clear') {
-        pick = null; closeCard(); clearLassos(); setSelection(null); return;
+        pick = null; unpinTip(); closeCard(); clearLassos(); setSelection(null);
+        return;
       }
       // "More" panel toggle
       // "More" toggles the bar's second row. closest(), because the click can
@@ -2866,7 +3033,7 @@
       if (e.key !== 'Escape') return;
       closeFilterMenus();
       if (!cardOpen()) return;
-      pick = null; closeCard(); drawAll();
+      pick = null; unpinTip(); closeCard(); drawAll();
       if (!sel) { rebuildNiche(); renderReadout(); }
     });
     window.addEventListener('resize', function () {

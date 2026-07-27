@@ -82,24 +82,28 @@ cv_ok <- function(b) {
 ## reactive_colors(), recolouring a group on the Projection tab rebuilt and
 ## re-sent the whole thing while Linked views sat hidden.
 ##
-## The client asks (`coordviews_ready`) the first time the workspace is on
-## screen, and not before -- see www/coordviews.js for why that signal rather
-## than the sidebar's active-tab input. Once asked, the flag stays set: leaving
-## the tab must not discard the workspace, and a data-set switch or a recolour
-## while it is open still has to reach it, so the observe below keeps its
-## dependency on the bundle.
-coordviews_opened <- reactiveVal(FALSE)
-observeEvent(input[["coordviews_ready"]], {
-  coordviews_opened(TRUE)
+## The client reports whether the workspace is on screen (`coordviews_visible`)
+## -- see www/coordviews.js for why that signal rather than the sidebar's
+## active-tab input. The gate is CURRENT visibility, not "was opened once":
+## a sticky flag stopped the first build but left every later one, so opening
+## the tab, going to Color management and changing a colour rebuilt and re-sent
+## the whole bundle to a hidden page.
+coordviews_visible <- reactiveVal(FALSE)
+observeEvent(input[["coordviews_visible"]], {
+  coordviews_visible(isTRUE(input[["coordviews_visible"]]))
 })
 
-## Push on first open, on (re)connect (coordviews_ready) and on data-set change.
-## The error payload is pushed too, and that is the point: staying silent would
-## leave the PREVIOUS data set's panels on screen, presenting one data set's
-## cells as another's.
+## Push while visible, and on every change that reaches it then: a data-set
+## switch, a recolour. The error payload is pushed too, and that is the point:
+## staying silent would leave the PREVIOUS data set's panels on screen,
+## presenting one data set's cells as another's.
+##
+## The req() has to come FIRST. It is what keeps this observer from taking a
+## dependency on the bundle while hidden -- so a colour change then invalidates
+## nothing here, nothing is rebuilt, and the work happens when the user comes
+## back and the observer runs again.
 observe({
-  input[["coordviews_ready"]]
-  req(coordviews_opened())
+  req(coordviews_visible())
   session$sendCustomMessage("coordviews_data", coordviews_bundle())
 })
 
@@ -381,7 +385,7 @@ lapply(
 )
 
 observeEvent(input[["coordviews_gene"]], {
-  req(coordviews_opened())
+  req(coordviews_visible())
   b <- cv_ok(coordviews_bundle())
   g <- input[["coordviews_gene"]]
   if (is.null(b) || is.null(g) || !nzchar(g)) {
@@ -412,7 +416,7 @@ observeEvent(
     input[["coordviews_gene_b"]]
   ),
   {
-    req(coordviews_opened())
+    req(coordviews_visible())
     b <- cv_ok(coordviews_bundle())
     if (is.null(b)) {
       return()
@@ -458,7 +462,7 @@ output[["coordviews_image_ui"]] <- renderUI({
   ## hidden -- and it reads the bundle. Without the same gate as the push, it
   ## would build the bundle on connect on its own and the laziness would be
   ## worth nothing.
-  req(coordviews_opened())
+  req(coordviews_visible())
   b <- cv_ok(coordviews_bundle())
   img <- NULL
   if (!is.null(b)) {
@@ -639,9 +643,9 @@ observeEvent(input[["coordinated_views_info"]], {
       ),
       tags$p(
         tags$b("Navigating"),
-        " — scroll to zoom about the cursor, and drag with the hand tool (or ",
-        "shift-drag / middle-drag from any tool) to pan. Each panel's toolbar ",
-        "also has zoom in/out, reset, and PNG download. A 3-D embedding is ",
+        " — zoom with each panel's toolbar buttons, and drag with the hand tool ",
+        "(or shift-drag / middle-drag from any tool) to pan. The toolbar also ",
+        "has reset and PNG download. A 3-D embedding is ",
         "marked as such in the projection picker and gains a rotate tool: drag ",
         "to turn it, and nearer cells are drawn larger so the depth reads."
       ),

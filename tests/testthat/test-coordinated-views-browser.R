@@ -652,6 +652,15 @@ test_that("a 3-D panel navigates but cannot be selected on", {
     )
   )
   app$wait_for_idle(timeout = 5000)
+  # A pick reveals the selection actions (that is what makes it clearable), so
+  # that bar is the observable. The card used to be the observable here, which
+  # stopped meaning anything once a click no longer opens one -- the assertion
+  # would have passed against a 3-D panel that picked freely.
+  expect_false(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-selbar')).display !== 'none'"
+    )
+  )
   expect_false(
     app$get_js(
       "document.getElementById('cv-card').classList.contains('is-open')"
@@ -1091,9 +1100,11 @@ test_that("a data-set switch does not carry the rotation over", {
 ## every cell of the loaded object -- reductions, spatial coordinates, the immune
 ## repertoire -- into ~156 KB of payload. That used to happen on connect, for
 ## every session, whether or not anyone opened the tab; worse, the bundle reads
-## the reactive colour map, so recolouring a group on the Projection tab rebuilt
-## and re-sent all of it while the tab sat hidden.
-test_that("no bundle is built for a tab nobody opened", {
+## the reactive colour map, so recolouring a group on another tab rebuilt and
+## re-sent all of it while the tab sat hidden. Both halves are asserted here: the
+## first version of this test only covered "never opened", and a sticky
+## opened-once flag passed it while still rebuilding on every later colour change.
+test_that("the bundle is built only while the workspace is on screen", {
   local_app_support(inst_dir)
   app <- AppDriver$new(
     inst_dir,
@@ -1109,8 +1120,7 @@ test_that("no bundle is built for a tab nobody opened", {
 
   ## The tab exists and its data set is loaded -- and still nothing has been
   ## built. Waiting for the link first matters: asserting before the conditional
-  ## tabs are inserted would pass against an eager build that simply had not run
-  ## yet.
+  ## tabs are inserted would pass against an eager build that had not run yet.
   expect_equal(app$get_value(export = "coordviews_bundles_built"), 0)
 
   app$run_js(
@@ -1118,15 +1128,309 @@ test_that("no bundle is built for a tab nobody opened", {
   )
   app$wait_for_idle(timeout = 20000)
 
-  ## Opening it builds it exactly once, and the workspace really is populated --
-  ## a gate that never opens would also report "0 built before, 1 after" if the
-  ## assertion stopped at the counter.
+  ## Opening it builds it once, and the workspace really is populated -- a gate
+  ## that never opens would also report "0 before, 1 after" if the assertion
+  ## stopped at the counter.
   expect_equal(app$get_value(export = "coordviews_bundles_built"), 1)
   app$wait_for_js(
     "document.getElementById('cv-meta').textContent.length > 0",
     timeout = 20000
   )
   expect_gt(app$get_js(cv_ink_js()), 1)
+
+  ## Leave for Color management and change a group colour. This invalidates the
+  ## bundle, and the workspace is not on screen to receive it.
+  app$run_js(
+    "document.querySelector('a[href=\"#shiny-tab-color_management\"]').click();"
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-meta').offsetParent === null",
+    timeout = 10000
+  )
+  ## Wait for the SERVER to know it is hidden, not just the DOM. The client
+  ## reports on the way out and again on a poll; asserting before that lands
+  ## would be asserting against a window in which the server still believes the
+  ## workspace is on screen.
+  app$wait_for_value(
+    input = "coordviews_visible",
+    ignore = list(TRUE, NULL),
+    timeout = 10000
+  )
+  app$wait_for_idle(timeout = 10000)
+  app$wait_for_js(
+    "document.querySelector('[id^=\"color_\"]') !== null",
+    timeout = 20000
+  )
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var el = document.querySelector('[id^=\"color_\"]');\n",
+      "  Shiny.setInputValue(el.id, '#123456');\n",
+      "})();"
+    )
+  )
+  app$wait_for_idle(timeout = 15000)
+  expect_equal(app$get_value(export = "coordviews_bundles_built"), 1)
+
+  ## Coming back does pick the change up -- the gate defers the work, it does
+  ## not drop it.
+  app$run_js(
+    "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-meta').offsetParent !== null",
+    timeout = 10000
+  )
+  app$wait_for_idle(timeout = 20000)
+  expect_equal(app$get_value(export = "coordviews_bundles_built"), 2)
+
+  app$stop()
+})
+
+## "Every linked panel on screen at once" is the whole premise of the layout: a
+## panel below the fold is one the user cannot compare against. The squares were
+## floored at the size below which a panel stops being COMFORTABLE, which on a
+## 1366x768 screen is more height than three or four panels have -- so the last
+## row fell past the bottom and the page scrolled, on exactly the layouts that
+## most need to be seen together.
+test_that("three and four panels fit one viewport on a small screen", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_viewport_fit")
+  ## A 1366x768 laptop, the smallest screen this is expected to work on.
+  app$set_window_size(width = 1366, height = 768)
+  app$wait_for_idle(timeout = 10000)
+
+  spaces <- function(n) {
+    ids <- c("umap", "spatial", "trekker", "clone")[seq_len(n)]
+    paste0(
+      "[",
+      paste(
+        vapply(
+          ids,
+          function(id) {
+            paste0(
+              "{ id: '",
+              id,
+              "', label: '",
+              id,
+              "',",
+              " x: blob(0), y: blob(0) }"
+            )
+          },
+          character(1)
+        ),
+        collapse = ", "
+      ),
+      "]"
+    )
+  }
+  ## The panels' own bottom edge, not documentElement.scrollHeight: the grid is
+  ## clipped rather than allowed to extend the document, so a row past the fold
+  ## does not lengthen the page -- it simply cannot be reached. scrollHeight
+  ## reads 768 either way, which is why an earlier version of this test passed
+  ## against the very layout it was written to catch.
+  overflow <- paste0(
+    "(function () {\n",
+    "  var panes = document.querySelector('.cv-panes');\n",
+    "  return Math.round(panes.getBoundingClientRect().bottom) -\n",
+    "    window.innerHeight;\n",
+    "})();"
+  )
+
+  for (n in c(3, 4)) {
+    app$run_js(cv_bundle_js(paste0("{ spaces: ", spaces(n), " }")))
+    app$wait_for_js(
+      paste0(
+        "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length === ",
+        n
+      ),
+      timeout = 15000
+    )
+    app$wait_for_idle(timeout = 10000)
+
+    ## Every panel drew, so this is not "fits because nothing is there".
+    expect_equal(
+      app$get_js(
+        paste0(
+          "Array.from(document.querySelectorAll('.cv-pane:not(.cv-hidden) canvas'))",
+          ".filter(function (c) { return c.width > 0 && c.height > 0; }).length"
+        )
+      ),
+      n * 2, # each pane carries its canvas and its minimap
+      info = paste(n, "panels")
+    )
+    ## ... and the page does not scroll to show them.
+    expect_lte(app$get_js(overflow), 0)
+    ## The squares stay usable rather than collapsing to fit.
+    expect_gte(
+      app$get_js("document.getElementById('cv-cv-a').clientWidth"),
+      150
+    )
+  }
+
+  app$stop()
+})
+
+## Clicking a cell used to throw the full detail card over the middle of the
+## workspace. On a Trekker data set that is the same click that picks a nucleus
+## to read its niche, so the answer arrived buried under a card covering the
+## panels it was about.
+##
+## Three depths now, each entered deliberately: hover gives a short read that
+## follows the cursor; a click PINS that tooltip, which is what makes its buttons
+## clickable at all -- one that tracks the pointer moves out from under any
+## attempt to press it -- and adds Details and Close; Details opens the card.
+test_that("a click pins the tooltip, and the card opens only on request", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_detail_button")
+
+  ## A regular grid, so a probe lands unambiguously on one cell.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var n = 81;\n",
+      "  var x = [], y = [], cells = [], vals = [];\n",
+      "  for (var j = 0; j < n; j++) {\n",
+      "    x.push((j % 9) - 4);\n",
+      "    y.push(Math.floor(j / 9) - 4);\n",
+      "    cells.push('c' + j); vals.push(j % 2);\n",
+      "  }\n",
+      "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+      "    coordviews_data: {\n",
+      "      cells: cells, n: n,\n",
+      "      groups: { cluster: { values: vals, levels: ['a', 'b'],\n",
+      "        colors: ['#636EFA', '#EF553B'] },\n",
+      "        sample: { values: vals, levels: ['s1', 's2'],\n",
+      "          colors: ['#111111', '#222222'] } },\n",
+      "      cat_extra: {}, cat_skipped: {}, fields: {},\n",
+      "      default_group: 'cluster',\n",
+      "      projections: { umap: { x: x, y: y, ndim: 2 } },\n",
+      "      default_projection: 'umap',\n",
+      "      spaces: [{ id: 'umap', label: 'umap (expression)', x: x, y: y },\n",
+      "        { id: 'trekker', label: 'Trekker (physical)',\n",
+      "          x: x.map(function (v) { return v * 60; }),\n",
+      "          y: y.map(function (v) { return v * 60; }), unit: 'um' }],\n",
+      "      clone: null, trekker: { qc: null }\n",
+      "    } } }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.indexOf('81 cells') >= 0",
+    timeout = 15000
+  )
+
+  card_open <- "document.getElementById('cv-card').classList.contains('is-open')"
+  tip_txt <- "document.getElementById('cv-tip-a').textContent"
+  hover <- function() {
+    app$run_js(paste0(
+      "(function () { var cv = document.getElementById('cv-cv-a');\n",
+      "  var r = cv.getBoundingClientRect();\n",
+      "  cv.dispatchEvent(new MouseEvent('mousemove',\n",
+      "    { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,\n",
+      "      bubbles: true })); })();"
+    ))
+  }
+
+  ## Hover: a short read, and no controls -- they would be unreachable anyway,
+  ## since the tooltip follows the cursor.
+  hover()
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-tip-a')).opacity === '1'",
+    timeout = 5000
+  )
+  expect_null(app$get_js(
+    "document.querySelector('#cv-tip-a .cv-tip-btn') || null"
+  ))
+  hover_text <- app$get_js(tip_txt)
+  ## The grouping variables are not part of the glance.
+  expect_false(grepl("sample", hover_text, fixed = TRUE))
+
+  ## Click: the tooltip pins, gains both actions, and no card appears.
+  app$run_js(paste0(
+    "(function () { var cv = document.getElementById('cv-cv-a');\n",
+    "  var r = cv.getBoundingClientRect();\n",
+    "  var x = r.left + r.width / 2, y = r.top + r.height / 2;\n",
+    "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
+    "    { clientX: x, clientY: y, bubbles: true }));\n",
+    "  window.dispatchEvent(new MouseEvent('mouseup',\n",
+    "    { clientX: x, clientY: y, bubbles: true })); })();"
+  ))
+  app$wait_for_js(
+    "document.querySelector('#cv-tip-a .cv-tip-details') !== null",
+    timeout = 10000
+  )
+  expect_false(app$get_js(card_open))
+  expect_true(app$get_js(
+    "document.querySelector('#cv-tip-a .cv-tip-close') !== null"
+  ))
+  expect_true(app$get_js(
+    "document.getElementById('cv-tip-a').classList.contains('cv-tip-pinned')"
+  ))
+  ## Pinned, it says more than the glance did.
+  expect_match(app$get_js(tip_txt), "sample")
+  ## The pick happened: on a Trekker data set that is what the click is for.
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-readout').textContent",
+      ".indexOf('Niche of picked nucleus') >= 0"
+    ),
+    timeout = 10000
+  )
+
+  ## It stays put when the pointer moves away -- otherwise the buttons could not
+  ## be reached, which is the whole reason for pinning.
+  app$run_js(paste0(
+    "(function () { var cv = document.getElementById('cv-cv-a');\n",
+    "  cv.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true })); })();"
+  ))
+  app$wait_for_idle(timeout = 5000)
+  expect_equal(
+    app$get_js("getComputedStyle(document.getElementById('cv-tip-a')).opacity"),
+    "1"
+  )
+  ## The tooltip must not become a hit target itself, or it would block hovering
+  ## whatever sits under it; only the buttons are clickable.
+  expect_equal(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-tip-a')).pointerEvents"
+    ),
+    "none"
+  )
+  expect_equal(
+    app$get_js(
+      paste0(
+        "getComputedStyle(document.querySelector('#cv-tip-a .cv-tip-details'))",
+        ".pointerEvents"
+      )
+    ),
+    "auto"
+  )
+
+  ## Details opens the card.
+  app$run_js("document.querySelector('#cv-tip-a .cv-tip-details').click();")
+  app$wait_for_js(card_open, timeout = 10000)
+  expect_gt(
+    app$get_js("document.getElementById('cv-card-body').textContent.length"),
+    0
+  )
+
+  ## Close puts back what the click did: the tooltip and the pick behind it.
+  app$run_js("document.querySelector('#cv-tip-a .cv-tip-close').click();")
+  app$wait_for_idle(timeout = 5000)
+  expect_equal(
+    app$get_js("getComputedStyle(document.getElementById('cv-tip-a')).opacity"),
+    "0"
+  )
+  expect_false(app$get_js(
+    "document.getElementById('cv-tip-a').classList.contains('cv-tip-pinned')"
+  ))
+  expect_false(app$get_js(
+    paste0(
+      "document.getElementById('cv-readout').textContent",
+      ".indexOf('Niche of picked nucleus') >= 0"
+    )
+  ))
 
   app$stop()
 })
