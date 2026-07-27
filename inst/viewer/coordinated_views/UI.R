@@ -51,8 +51,33 @@ cv_panebar <- function(panel) {
       `aria-label` = "Rotate the 3-D embedding",
       icon("cube")
     ),
-    tbtn("zin", "Zoom in · or scroll", "search-plus"),
-    tbtn("zout", "Zoom out · or scroll", "search-minus"),
+    tbtn("zin", "Zoom in", "search-plus"),
+    tbtn("zout", "Zoom out", "search-minus"),
+    ## Zoom THIS panel to the selection. The top bar's button does the expression
+    ## panel only; getting in close on the tissue or the clonal layout needs a
+    ## per-panel one. JS reveals it while a selection exists.
+    tags$button(
+      type = "button",
+      class = "cv-tbtn cv-zsel-btn",
+      `data-act` = "zsel",
+      `data-panel` = panel,
+      style = "display:none",
+      `data-tip` = "Zoom this panel to the selection",
+      `aria-label` = "Zoom this panel to the selection",
+      icon("crop-simple")
+    ),
+    ## Temporarily give one panel the whole grid. With three or four panels each
+    ## square is small enough that detail is guesswork; the selection is kept and
+    ## stays coordinated, so this is a change of magnification, not of state.
+    tags$button(
+      type = "button",
+      class = "cv-tbtn cv-focus-btn",
+      `data-act` = "focus",
+      `data-panel` = panel,
+      `data-tip` = "Maximise this panel",
+      `aria-label` = "Maximise this panel",
+      icon("expand")
+    ),
     ## A house, not the four-corner "expand" glyph that was here: that one reads
     ## as fullscreen everywhere else. This is the same mark plotly puts on its
     ## "Reset axes" button, which is where these users are coming from.

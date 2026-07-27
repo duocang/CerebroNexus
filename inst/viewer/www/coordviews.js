@@ -32,6 +32,11 @@ var pinnedTip = { panel: null, cell: null };
 // in the others -- that is how the eye carries a position in the embedding over
 // to a position in tissue. Null when the cursor is not on a cell.
 var hoverCell = null;
+// Panel key currently given the whole grid, or null for the normal layout. With
+// three or four panels each square is small enough that detail becomes guesswork;
+// this is a change of magnification only -- the selection is kept and every panel
+// stays coordinated, so what returns is the same workspace, larger.
+var focusPanel = null;
   var zoomed = false;           // is the umap panel currently zoomed to a selection
   var selectMode = 'lasso';     // drag-select mode: 'lasso' (freeform) or 'box'
   // Trekker controls brought into Linked views (only when D.trekker is present):
@@ -1300,6 +1305,7 @@ var hoverCell = null;
     if (zoomed) { resetZoom(); zoomed = false; }
     updateZoomBtn();
     updateSelActions();
+    updateZselButtons();
     renderSelbar(); renderReadout(); reportSelection(); drawAll();
   }
   // Subtle reveal/collapse for the selection bar + the Zoom/Clear group, so they
@@ -1355,11 +1361,17 @@ var hoverCell = null;
   // clonal rank layout has no meaningful "zoom", and the spatial context is more
   // useful whole. The umap panel maps the selection's unit-box extent (padded,
   // aspect-preserved, centred) to fill itself.
-  function zoomToSelection() {
+  // `only` = a single panel to zoom, or null for the default (the expression
+  // panel). The default is deliberately narrow: "zoom to selection" from the top
+  // bar is about inspecting the umap's internal structure for a selection, and a
+  // clonal rank layout has no meaningful zoom while the spatial context reads
+  // better whole. But that is a default, not a rule -- a panel's own toolbar can
+  // ask for its own, which is the only way to get in close on the tissue.
+  function zoomToSelection(only) {
     if (!sel || !sel.size) return false;
     var did = false;
     panels.forEach(function (p) {
-      if (p.spaceId !== 'umap') return;
+      if (only ? p !== only : p.spaceId !== 'umap') return;
       var sp = spaceById[p.spaceId], u = sp && sp._unit;
       if (!u) return;
       var nx0 = Infinity, nx1 = -Infinity, ny0 = Infinity, ny1 = -Infinity, any = false;
@@ -1380,6 +1392,39 @@ var hoverCell = null;
     });
     if (did) drawAll();
     return did;
+  }
+  // Give one panel the grid, or hand it back. The folded panels keep their space
+  // and their view -- they are display:none, not unassigned -- so returning is
+  // instant and nothing about the selection changes.
+  function setFocusPanel(key) {
+    focusPanel = (focusPanel === key) ? null : key;
+    panels.forEach(function (p) {
+      if (!p.pane) return;
+      p.pane.classList.toggle('cv-folded',
+        !!focusPanel && p.key !== focusPanel && !!p.spaceId);
+      var btn = p.pane.querySelector('.cv-focus-btn');
+      if (btn) {
+        var on = focusPanel === p.key;
+        btn.classList.toggle('is-on', on);
+        var tip = on ? 'Back to all panels' : 'Maximise this panel';
+        btn.setAttribute('data-tip', tip);
+        btn.setAttribute('aria-label', tip);
+      }
+    });
+    var host = panels[0] && panels[0].pane && panels[0].pane.parentElement;
+    if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
+    resizeAll();
+  }
+  // The per-panel "zoom to selection" is only an action while there IS one, and
+  // only on a panel that lays cells out in a plane -- a rotated cloud has no
+  // rectangle to zoom to that survives the next turn.
+  function updateZselButtons() {
+    var on = !!(sel && sel.size);
+    panels.forEach(function (p) {
+      if (!p.pane) return;
+      var btn = p.pane.querySelector('.cv-zsel-btn');
+      if (btn) btn.style.display = (on && p.spaceId && !panelIs3D(p)) ? '' : 'none';
+    });
   }
   function resetZoom() {
     var any = false;
@@ -2760,6 +2805,16 @@ var hoverCell = null;
   }
   function layoutPanels() {
     var order = orderedSpaces();
+    // A new data set is a new set of spaces; whichever panel had the grid may
+    // not even hold the same one now.
+    focusPanel = null;
+    panels.forEach(function (p) {
+      if (p.pane) p.pane.classList.remove('cv-folded');
+      var fb = p.pane && p.pane.querySelector('.cv-focus-btn');
+      if (fb) fb.classList.remove('is-on');
+    });
+    var host0 = panels[0] && panels[0].pane && panels[0].pane.parentElement;
+    if (host0) host0.classList.remove('cv-has-focus');
     panels.forEach(function (p, i) {
       if (i < order.length) {
         var reappearing = p.pane && p.pane.classList.contains('cv-hidden');
@@ -2800,7 +2855,9 @@ var hoverCell = null;
     if (!D || !panels.length) return;
     var panes = panels[0].pane && panels[0].pane.parentElement;
     if (!panes) return;
-    var vis = panels.filter(function (p) { return p.spaceId; });
+    var vis = panels.filter(function (p) {
+      return p.spaceId && (!focusPanel || p.key === focusPanel);
+    });
     var k = vis.length;
     if (!k) return;
     var availW = panes.clientWidth;
@@ -2854,7 +2911,7 @@ var hoverCell = null;
     closeCard(); cardMeta = null;
     unpinTip();
     D = null; spaceById = {}; sel = null; pick = null; nicheSet = null;
-    hoverCell = null;
+    hoverCell = null; focusPanel = null;
     zoomed = false; hidden = new Set(); groupFilter = {};
     panels.forEach(function (p) {
       p.spaceId = null; p.sx = null; p.sy = null; p.ok = null;
@@ -2902,6 +2959,7 @@ var hoverCell = null;
       (D.groups ? Object.keys(D.groups)[0] : null) || null;
     unpinTip();
     hidden = new Set(); sel = null; pick = null; hoverCell = null;
+    focusPanel = null;
     // Reset the additional-parameter state to defaults for the new dataset.
     curProj = D.default_projection ||
       (D.projections ? Object.keys(D.projections)[0] : null);
@@ -2942,6 +3000,7 @@ var hoverCell = null;
     layoutPanels();
     zoomed = false; updateZoomBtn(); syncModeButtons();
     updateSelActions();   // hide the Zoom / Clear group until a selection exists
+    updateZselButtons();
     // Immune axis present → reveal the clonal-layout switch and lay out the
     // clone space (client-owned) before the first projection runs.
     var hasClone = !!spaceById['clone'];
@@ -3082,6 +3141,8 @@ var hoverCell = null;
           if (act === 'png') { downloadPanelPNG(pp); }
           else if (act === 'zin') { zoomStep(pp, 0.8); }
           else if (act === 'zout') { zoomStep(pp, 1.25); }
+          else if (act === 'focus') { setFocusPanel(pp.key); }
+          else if (act === 'zsel') { clearLassos(); zoomToSelection(pp); }
           else if (act === 'reset') {
             // rotation is part of "where you are looking" too
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }

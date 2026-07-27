@@ -1695,3 +1695,119 @@ test_that("a Moran's I row colours the panels by that gene", {
 
   app$stop()
 })
+
+## With three or four panels each square is small enough that detail becomes
+## guesswork, and the way out used to be leaving for a dedicated page. Maximising
+## is a change of magnification only: the folded panels keep their space and
+## their view, and the selection stays exactly as it was, coordinated.
+test_that("a panel can take the grid without losing the selection", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_focus")
+
+  blob4 <- paste0(
+    "{ spaces: [",
+    "{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },",
+    "{ id: 'spatial', label: 'spatial', x: blob(0), y: blob(0) },",
+    "{ id: 'trekker', label: 'trekker', x: blob(0), y: blob(0) },",
+    "{ id: 'clone', label: 'clone', x: blob(0), y: blob(0) }] }"
+  )
+  app$run_js(cv_bundle_js(blob4))
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length === 4",
+    timeout = 15000
+  )
+  app$wait_for_idle(timeout = 10000)
+  small <- app$get_js("document.getElementById('cv-cv-a').clientWidth")
+
+  ## Select something first, so the claim about keeping it can be tested.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var cv = document.getElementById('cv-cv-a');\n",
+      "  var r = cv.getBoundingClientRect();\n",
+      "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
+      "    { clientX: r.left + 4, clientY: r.top + 4, bubbles: true }));\n",
+      "  var pts = [[r.width - 4, 4], [r.width - 4, r.height - 4],\n",
+      "    [4, r.height - 4], [4, 4]];\n",
+      "  pts.forEach(function (q) {\n",
+      "    cv.dispatchEvent(new MouseEvent('mousemove',\n",
+      "      { clientX: r.left + q[0], clientY: r.top + q[1], bubbles: true }));\n",
+      "  });\n",
+      "  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-seltext').textContent.indexOf('Selected') >= 0",
+    timeout = 10000
+  )
+  before <- app$get_js("document.getElementById('cv-seltext').textContent")
+
+  ## Maximise panel A.
+  app$run_js(
+    "document.querySelector('.cv-focus-btn[data-panel=\"A\"]').click();"
+  )
+  app$wait_for_idle(timeout = 10000)
+  expect_equal(
+    app$get_js(
+      paste0(
+        "document.querySelectorAll('.cv-pane:not(.cv-hidden)",
+        ":not(.cv-folded)').length"
+      )
+    ),
+    1
+  )
+  ## It is bigger, and the panels still fit the viewport.
+  expect_gt(app$get_js("document.getElementById('cv-cv-a').clientWidth"), small)
+  expect_lte(
+    app$get_js(
+      paste0(
+        "Math.round(document.querySelector('.cv-panes')",
+        ".getBoundingClientRect().bottom) - window.innerHeight"
+      )
+    ),
+    0
+  )
+  ## The selection is untouched -- this is magnification, not a reset.
+  expect_equal(
+    app$get_js("document.getElementById('cv-seltext').textContent"),
+    before
+  )
+
+  ## And back.
+  app$run_js(
+    "document.querySelector('.cv-focus-btn[data-panel=\"A\"]').click();"
+  )
+  app$wait_for_idle(timeout = 10000)
+  expect_equal(
+    app$get_js(
+      paste0(
+        "document.querySelectorAll('.cv-pane:not(.cv-hidden)",
+        ":not(.cv-folded)').length"
+      )
+    ),
+    4
+  )
+
+  ## Per-panel zoom-to-selection: offered while a selection exists, and it moves
+  ## only the panel that asked. The top bar's button does the expression panel,
+  ## which is no help for getting in close on the tissue.
+  expect_true(app$get_js(
+    paste0(
+      "getComputedStyle(document.querySelector(",
+      "'.cv-zsel-btn[data-panel=\"B\"]')).display !== 'none'"
+    )
+  ))
+  app$run_js(
+    "document.querySelector('.cv-zsel-btn[data-panel=\"B\"]').click();"
+  )
+  app$wait_for_idle(timeout = 10000)
+  expect_true(app$get_js(
+    "document.getElementById('cv-mini-b').classList.contains('is-on')"
+  ))
+  expect_false(app$get_js(
+    "document.getElementById('cv-mini-a').classList.contains('is-on')"
+  ))
+
+  app$stop()
+})

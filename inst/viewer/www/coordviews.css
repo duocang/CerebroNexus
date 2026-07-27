@@ -865,3 +865,12 @@
 /* Fixed 3-column stat grid (2 rows for 6 stats) instead of trekker.css's
    auto-fit, which ragged-wraps 4+2 at this modal's narrower width. */
 #cv-tk-modal .tk-grid { grid-template-columns: repeat(3, 1fr); }
+
+/* A panel folded away while another has the grid. Not "unassigned": it keeps
+   its space and its view, so coming back is instant and nothing about the
+   selection changes. */
+.coordviews-page .cv-pane.cv-folded { display: none; }
+/* The maximise button while it is the one holding the grid. */
+.coordviews-page .cv-tbtn.cv-focus-btn.is-on {
+  background: var(--cv-amber50); color: var(--cv-amber700);
+}
