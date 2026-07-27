@@ -1,4 +1,4 @@
-# CerebroNexus 3.0.1
+# CerebroNexus 3.0.2
 
 ## Interface and documentation
 
@@ -13,6 +13,8 @@
   covered only the export API, so Immune repertoire, Spatial, Trekker, HLA & TCR
   Motifs and Trajectory went unmentioned. Each now states what a `.crb` must
   carry for its tab to appear, with a link to the corresponding guide.
+
+# CerebroNexus 3.0.1
 
 ## Faster startup
 
