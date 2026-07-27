@@ -103,8 +103,12 @@
 .coordviews-page .cv-topbar-right {
   margin-left: auto; display: flex; align-items: center; gap: 14px;
 }
+/* Sized up to match the buttons beside it — it reports on the same selection
+   they act on, and at 12px it read as a footnote to them. One line, so the bar's
+   height is still set by the buttons and does not change. */
 .coordviews-page .cv-shown {
-  font-size: 12px; color: var(--cv-amber700); font-weight: 600; white-space: nowrap;
+  font-size: 15px; color: var(--cv-amber700); font-weight: 700;
+  white-space: nowrap;
 }
 /* Zoom + Clear: stacked vertically while they fit on the controls' row (saves
    width). When the other controls push them onto their own line, JS adds
@@ -120,13 +124,19 @@
 .coordviews-page .cv-selactions.cv-collapse {
   opacity: 0; transform: translateY(-4px); pointer-events: none;
 }
-/* Zoom + Clear share IDENTICAL box metrics (same width via min-width, same
-   height via padding/font/border) and differ only by colour, so they read as
-   two equal-weight but distinct actions. */
+/* Zoom + Clear share IDENTICAL box metrics — 152x31, fixed — and differ only by
+   colour, so they read as two equal-weight but distinct actions.
+   The label is deliberately larger than the rest of the bar: these are the
+   actions, not another setting. The box does not grow with it. Height is fixed
+   and the label centred by flex, so type size no longer drives height; and the
+   horizontal padding is only a minimum gutter (width comes from min-width), so
+   it can be spent on type. "Zoom to selection" at 15/700 needs ~132px of the
+   150px inside the border — 14px gutters would have pushed the button wider. */
 .coordviews-page .cv-selactions button {
-  min-width: 152px; box-sizing: border-box; text-align: center;
+  min-width: 152px; height: 31px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
   white-space: nowrap; font-family: inherit; cursor: pointer;
-  padding: 7px 14px; font-size: 12.5px; font-weight: 600; line-height: 1.2;
+  padding: 0 6px; font-size: 15px; font-weight: 700; line-height: 1;
   border: 1px solid; border-radius: 6px;
 }
 /* These two are deliberately OUTSIDE the amber vocabulary. Everything else in
