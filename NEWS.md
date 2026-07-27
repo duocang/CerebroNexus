@@ -21,6 +21,52 @@
   version selector and version-named `launchCerebroV1.x()` exports were removed
   because CerebroNexus ships one Viewer implementation.
 
+## Linked views
+
+- **A new coordinated cross-modal workspace.** Every modality a data set carries
+  -- the expression embedding, the physical map (Spatial or Trekker), and the
+  immune repertoire's clonal axis -- is drawn as its own panel of the *same*
+  cells. A lasso in any 2-D panel highlights those cells in every other panel,
+  because the selection is keyed on the cell rather than on a panel's
+  coordinates: select a cluster to see where it sits in tissue and which
+  clonotypes it carries, or select an expanded clone to see where its cells fall
+  in the embedding. The selection's cell-type composition and its top clonotypes
+  are computed live, and clicking a clonotype selects all of its cells.
+- **3-D embeddings are rotated rather than flattened.** A reduction with three or
+  more components is marked as such in the projection picker and gains a rotate
+  tool; nearer cells are drawn larger so the depth reads. Those panels navigate
+  but do not select -- with depth on screen, what a lasso encloses depends on the
+  viewing angle, so a selection made there could not be verified.
+- **Colouring covers the whole meta data.** Every grouping variable, every other
+  categorical column and every numeric one (transcript counts, percent
+  mitochondrial, scores) is offered, plus single-gene and three-gene
+  co-expression. A column with as many levels as cells is listed greyed out
+  rather than silently dropped.
+
+## Fixes
+
+- **A clone means the same thing on every page.** The Clonal UMAP and Linked
+  views each decided for themselves which `CT*` column names a clone, which
+  receptor's chains count, and where the expansion bins fall -- and disagreed on
+  two of the three. The same cell could belong to a different clone on each page,
+  and a clone of several hundred cells read "Hyperexpanded" on one and "Large"
+  on the other. Both now read one definition, and Linked views no longer ranks
+  TCR and BCR clonotypes together.
+- **Reductions with more than three dimensions plot.** The projection plots
+  dispatch on 2-D versus 3-D, so a wider reduction -- what `RunPCA()` produces by
+  default, and what `addProjection()` accepts -- matched neither branch and left
+  the previous plot on screen. Its first three components are now drawn. The
+  selected-cell table no longer carries the remaining components as data.
+- **The workspace is built only when it is opened.** Its bundle walks every cell
+  of the loaded object and was previously assembled on connect for every session,
+  then rebuilt whenever a group colour changed -- for a tab most sessions never
+  open.
+- **Values from the data set cannot inject markup.** Space labels, gene names,
+  grouping column names and clonotype labels are escaped wherever they are
+  rendered, and group colours are validated against the browser's own colour
+  parser instead: a colour lands in a `style` attribute, where escaping does not
+  prevent a value from appending declarations of its own.
+
 ## Internal
 
 - Viewer runtime sources now live under `inst/viewer/`, and bundled examples
@@ -214,7 +260,6 @@
   `convertSeuratToCerebro()` also hands its already validated resolution to
   `exportFromSeurat()`, avoiding a second joined matrix and the corresponding
   peak-memory duplication.
-
 # CerebroNexus 3.0.2
 
 ## Interface and documentation
