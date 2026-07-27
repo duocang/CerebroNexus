@@ -318,4 +318,17 @@ test_that("cv_build_bundle assembles every modality from the omnibus demo", {
   for (p in b$projections) {
     expect_true(is.numeric(p$ndim) && p$ndim >= 2)
   }
+  ## The omnibus is the only demo carrying reductions that are not flat, and it
+  ## carries BOTH shapes the client treats differently: exactly three components
+  ## (a RunUMAP(n.components = 3) result) and more than three (a PCA, of which
+  ## only the first three are rendered). Without them the rotate path had no
+  ## demo to run on at all.
+  expect_equal(b$projections$umap_3d$ndim, 3L)
+  expect_length(b$projections$umap_3d$z, b$n)
+  expect_equal(b$projections$pca$ndim, 5L)
+  expect_length(b$projections$pca$z, b$n)
+  ## and the flat ones must NOT carry a z — its presence is what the client uses
+  ## to decide a panel can be turned
+  expect_null(b$projections$umap$z)
+  expect_null(b$projections$tsne$z)
 })

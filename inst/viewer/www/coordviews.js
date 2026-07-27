@@ -2153,13 +2153,21 @@
     var pj = D.projections && D.projections[nm];
     return (pj && pj.ndim) || 2;
   }
+  // What a panel is actually showing. Only the first three dimensions are
+  // rendered, which needs saying whenever there are more: a PCA is routinely
+  // exported with 50 components, and calling that "50-D" would claim a view
+  // nothing here provides.
+  function projDimLabel(nd) {
+    if (nd <= 2) return '';
+    return nd === 3 ? '3-D' : '3-D of ' + nd;
+  }
   function projOptionLabel(nm) {
-    var nd = projDims(nm);
-    return nd > 2 ? nm + ' (' + nd + '-D)' : nm;
+    var t = projDimLabel(projDims(nm));
+    return t ? nm + ' (' + t + ')' : nm;
   }
   function projSpaceLabel(nm) {
-    var nd = projDims(nm);
-    return nm + ' (expression' + (nd > 2 ? ', ' + nd + '-D' : '') + ')';
+    var t = projDimLabel(projDims(nm));
+    return nm + ' (expression' + (t ? ', ' + t : '') + ')';
   }
   function fillProjPicker() {
     var selEl = $('cv-pick-proj'); if (!selEl) return;

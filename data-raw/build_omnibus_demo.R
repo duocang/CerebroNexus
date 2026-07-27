@@ -216,11 +216,48 @@ mk_embedding <- function(centers, spread, seed, nm) {
   rownames(df) <- barcodes
   df
 }
+## Cluster centres on a SPHERE for the 3-D embedding. A ring lifted into 3-D
+## still reads as a ring from most angles; points spread over a sphere only
+## resolve once the cloud is turned, which is what a 3-D demo has to show.
+## Fibonacci spiral, so they spread evenly instead of bunching at the poles.
+blob_centers_3d <- function(k, radius, seed) {
+  set.seed(seed)
+  i <- seq_len(k) - 0.5
+  phi <- acos(1 - 2 * i / k)
+  theta <- pi * (1 + sqrt(5)) * i
+  cbind(
+    radius * cos(theta) * sin(phi),
+    radius * sin(theta) * sin(phi),
+    radius * cos(phi)
+  ) +
+    matrix(rnorm(k * 3, 0, 0.6), ncol = 3)
+}
+mk_embedding_3d <- function(centers, spread, seed, nm) {
+  set.seed(seed)
+  co <- centers[cluster_of_cell + 1, , drop = FALSE] +
+    matrix(rnorm(N * 3, 0, spread), ncol = 3)
+  df <- data.frame(round(co, 3))
+  colnames(df) <- paste0(nm, c("_1", "_2", "_3"))
+  rownames(df) <- barcodes
+  df
+}
 umap <- mk_embedding(blob_centers(n_clusters, 10, 101), 0.9, 11, "UMAP")
 tsne <- mk_embedding(blob_centers(n_clusters, 14, 202), 1.3, 22, "tSNE")
-pca_fit <- stats::prcomp(t(as.matrix(expression)), rank. = 2, center = TRUE)
-pca <- data.frame(round(pca_fit$x[, 1:2], 3))
-colnames(pca) <- c("PC_1", "PC_2")
+## A genuine 3-D reduction — what RunUMAP(n.components = 3) produces. Until this
+## existed no demo carried one, so the Linked views rotate path had nothing real
+## to run on.
+umap_3d <- mk_embedding_3d(
+  blob_centers_3d(n_clusters, 10, 303),
+  0.9,
+  33,
+  "UMAP3D"
+)
+## FIVE components, not two: a PCA is normally exported with far more than three
+## (RunPCA defaults to 50), and Linked views renders the first three and says so
+## — "3-D of 5". Keeping this at 2 left that path untested by any demo.
+pca_fit <- stats::prcomp(t(as.matrix(expression)), rank. = 5, center = TRUE)
+pca <- data.frame(round(pca_fit$x[, 1:5], 3))
+colnames(pca) <- paste0("PC_", 1:5)
 rownames(pca) <- barcodes
 
 ## ---- 4. immune repertoire: convergent TCR on the T compartment ----------- ##
@@ -423,6 +460,7 @@ meta <- data.frame(
 )
 rownames(umap) <- meta$cell_barcode
 rownames(tsne) <- meta$cell_barcode
+rownames(umap_3d) <- meta$cell_barcode
 rownames(pca) <- meta$cell_barcode
 
 groups <- list(
@@ -782,7 +820,12 @@ cat("== 10. assemble .crb ==\n")
 crb <- Cerebro_v1.3$new()
 crb$expression <- expression
 crb$setMetaData(meta)
-crb$projections <- list(umap = umap, tsne = tsne, pca = pca)
+crb$projections <- list(
+  umap = umap,
+  tsne = tsne,
+  umap_3d = umap_3d,
+  pca = pca
+)
 crb$groups <- groups
 crb$addMarkerGenes("cerebro_seurat", "cell_type", marker_df)
 crb$immune_repertoire <- immune_repertoire
@@ -833,8 +876,11 @@ stopifnot(
   ),
   "projections missing" = setequal(
     check$availableProjections(),
-    c("umap", "tsne", "pca")
+    c("umap", "tsne", "umap_3d", "pca")
   ),
+  ## the two shapes Linked views treats differently from a plain 2-D embedding
+  "umap_3d not 3 columns" = ncol(check$projections$umap_3d) == 3,
+  "pca not 5 columns" = ncol(check$projections$pca) == 5,
   "umap not aligned" = identical(
     rownames(check$projections$umap),
     m$cell_barcode

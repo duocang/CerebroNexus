@@ -398,6 +398,18 @@ test_that("a 3-D embedding can be rotated, and a 2-D one cannot", {
     app$get_js("document.getElementById('cv-title-a').textContent"),
     "3-D"
   )
+  # Exactly three components reads as "3-D"; more than three has to say that
+  # only the first three are drawn, or a 50-component PCA would claim a view
+  # nothing here provides.
+  expect_equal(
+    app$get_js(
+      paste0(
+        "Array.from(document.getElementById('cv-pick-proj').options)",
+        ".map(function (o) { return o.textContent; })"
+      )
+    ),
+    list("umap_3D (3-D)", "umap_2D")
+  )
   orbit_shown <- paste0(
     "getComputedStyle(document.querySelector(",
     "'.cv-pane:first-child .cv-orbit-btn')).display !== 'none'"
