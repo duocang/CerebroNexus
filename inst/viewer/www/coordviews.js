@@ -2332,13 +2332,55 @@ var hoverCell = null;
     var CT = window.CerebroTrekker;
     if (!dlg || !CT || !D.trekker || !D.trekker.qc) return;
     var q = D.trekker.qc;
-    $('cv-tk-stats').innerHTML = CT.buildStatsGrid(q);
-    $('cv-tk-postbl').innerHTML = CT.buildPositionTable(q);
-    $('cv-tk-salvflag').innerHTML = CT.buildSalvFlag(q);
-    $('cv-tk-prov').innerHTML = CT.buildProvenanceDl(q);
-    $('cv-tk-rangeflag').innerHTML = CT.buildRangeFlag(q);
-    $('cv-tk-morantbl').innerHTML = D.trekker.moran ? CT.buildMoranRows(D.trekker.moran, false) : '';
+    // Each box is filled independently. The builders read a couple of dozen QC
+    // fields and throw on one that is absent, so a .crb carrying a partial QC
+    // record used to lose the WHOLE modal to whichever box failed first --
+    // including the Moran table, which does not depend on any of them.
+    var fill = function (id, build) {
+      var el = $(id); if (!el) return;
+      try { el.innerHTML = build(q); } catch (err) { el.innerHTML = ''; }
+    };
+    fill('cv-tk-stats', CT.buildStatsGrid);
+    fill('cv-tk-postbl', CT.buildPositionTable);
+    fill('cv-tk-salvflag', CT.buildSalvFlag);
+    fill('cv-tk-prov', CT.buildProvenanceDl);
+    fill('cv-tk-rangeflag', CT.buildRangeFlag);
+    // Linkable: the table names the genes whose expression is spatially
+    // structured, and this workspace can colour by a gene, so each row is one
+    // click from the map that makes the number mean something. It was built
+    // unlinked back when there was no gene mode here to send it to.
+    $('cv-tk-morantbl').innerHTML = D.trekker.moran
+      ? CT.buildMoranRows(D.trekker.moran, true) : '';
+    Array.prototype.forEach.call(
+      $('cv-tk-morantbl').querySelectorAll('a[data-g]'),
+      function (a) {
+        a.onclick = function (e) {
+          e.preventDefault();
+          dlg.close();
+          colourByGene(a.getAttribute('data-g'));
+        };
+      }
+    );
     dlg.showModal();
+  }
+
+  // Colour every panel by `gene`, from anywhere that names one. The gene picker
+  // is a server-side selectize, so the option has to be added before it can be
+  // selected -- it holds only the page of names the server last sent, and the
+  // one being asked for is usually not in it. Setting the value through the
+  // widget rather than the input keeps the control showing what is on screen.
+  function colourByGene(gene) {
+    if (!gene) return;
+    var sel = $('cv-pick-color');
+    if (sel) { sel.value = GENE_MODE; }
+    setColorBy(GENE_MODE);
+    var el = $('coordviews_gene');
+    if (el && el.selectize) {
+      el.selectize.addOption({ value: gene, label: gene });
+      el.selectize.setValue(gene, false);   // false: do fire change → Shiny
+    } else if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+      Shiny.setInputValue('coordviews_gene', gene);
+    }
   }
   // Controls that belong to a specific right-panel space (the clonal-layout switch,
   // the histology-image bar) are shown only while that space is the one on screen —

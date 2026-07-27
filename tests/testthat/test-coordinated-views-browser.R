@@ -1614,3 +1614,84 @@ test_that("an outlier does not flatten the colour scale", {
 
   app$stop()
 })
+
+## The Moran's I table names the genes whose expression is spatially structured.
+## Reading one and then hunting for it in the gene picker is the gap between a
+## number and the map that makes it mean something, so each row links straight
+## to colouring by that gene. The table was built unlinked back when this
+## workspace had no gene mode to send it to.
+test_that("a Moran's I row colours the panels by that gene", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_moran_link")
+
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var n = 40, x = [], y = [], cells = [], vals = [];\n",
+      "  for (var j = 0; j < n; j++) {\n",
+      "    x.push((j % 8) * 2); y.push(Math.floor(j / 8) * 2);\n",
+      "    cells.push('c' + j); vals.push(0);\n",
+      "  }\n",
+      "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+      "    coordviews_data: {\n",
+      "      cells: cells, n: n,\n",
+      "      groups: { cluster: { values: vals, levels: ['a'],\n",
+      "        colors: ['#636EFA'] } },\n",
+      "      cat_extra: {}, cat_skipped: {}, fields: {},\n",
+      "      default_group: 'cluster',\n",
+      "      projections: { umap: { x: x, y: y, ndim: 2 } },\n",
+      "      default_projection: 'umap',\n",
+      "      spaces: [{ id: 'umap', label: 'umap (expression)', x: x, y: y },\n",
+      "        { id: 'trekker', label: 'Trekker (physical)', x: x, y: y,\n",
+      "          unit: 'um' }],\n",
+      "      clone: null,\n",
+      "      trekker: { qc: { sample_id: 's1' },\n",
+      "        moran: [{ rank: 1, gene: 'GENE1', I: 0.42 },\n",
+      "          { rank: 2, gene: 'GENE2', I: 0.31 }] }\n",
+      "    } } }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.indexOf('40 cells') >= 0",
+    timeout = 15000
+  )
+
+  ## Open the Trekker detail modal, where the table lives.
+  app$run_js(
+    paste0(
+      "(function () { var b = document.querySelector(",
+      "'.cv-tbtn[data-act=\"trekker-info\"]:not([style*=\"none\"])');\n",
+      "  (b || document.querySelector('.cv-tbtn[data-act=\"trekker-info\"]'))",
+      ".click(); })();"
+    )
+  )
+  app$wait_for_js(
+    "document.querySelectorAll('#cv-tk-morantbl a[data-g]').length === 2",
+    timeout = 10000
+  )
+
+  ## Clicking a row leaves the modal, switches to gene colouring and asks for
+  ## that gene -- all three, since any one alone leaves the user somewhere they
+  ## did not ask to be.
+  app$run_js(
+    "document.querySelector('#cv-tk-morantbl a[data-g=\"GENE2\"]').click();"
+  )
+  app$wait_for_idle(timeout = 10000)
+  expect_false(app$get_js("document.getElementById('cv-tk-modal').open"))
+  expect_equal(
+    app$get_js("document.getElementById('cv-pick-color').value"),
+    "__gene__"
+  )
+  expect_equal(
+    app$get_js(
+      paste0(
+        "(function () { var el = document.getElementById('coordviews_gene');\n",
+        "  return (el && el.selectize) ? el.selectize.getValue() : null; })();"
+      )
+    ),
+    "GENE2"
+  )
+
+  app$stop()
+})
