@@ -1880,7 +1880,11 @@
     var selEl = $('cv-pick-proj'); if (!selEl) return;
     var names = D.projections ? Object.keys(D.projections) : [];
     var ctl = $('cv-proj-ctl');
-    if (ctl) ctl.style.display = (names.length > 1) ? '' : 'none';
+    // Shown even with a single projection. Hiding it saved a little width but
+    // took away the answer to "which embedding am I looking at?" — and on a 3-D
+    // embedding the picker is also where the "showing dims 1-2" note lives, so
+    // hiding it hid exactly the data set that most needs it explained.
+    if (ctl) ctl.style.display = names.length ? '' : 'none';
     if (!names.length) return;
     selEl.innerHTML = names.map(function (nm) {
       return '<option value="' + nm + '">' + projOptionLabel(nm) + '</option>';
