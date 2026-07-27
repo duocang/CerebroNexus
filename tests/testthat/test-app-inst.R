@@ -424,3 +424,45 @@ test_that("createShinyApp bundles a working app", {
 
   app$stop()
 })
+
+test_that("a bundled app starts without the rendered guides", {
+  ## The in-app guides are rendered from vignettes/ at build time and are not in
+  ## the repository, so whether they exist depends on how the package was built.
+  ## addResourcePath() does not tolerate a missing directory -- it fails on the
+  ## path it cannot normalize and takes the app down with it -- and the bundled,
+  ## package-free app is the one place with no other way to notice: running from
+  ## inst/ has always guarded the same call, and every other test runs against a
+  ## build where the directory happens to be there.
+  example <- system.file("extdata/v1.4/example.crb", package = "CerebroNexus")
+  skip_if_not(nzchar(example), "example.crb not found")
+
+  tmp <- file.path(tempdir(), "demo_noguides.crb")
+  app_dir <- file.path(tempdir(), "test_create_app_no_guides")
+  file.copy(example, tmp, overwrite = TRUE)
+  on.exit(unlink(app_dir, recursive = TRUE), add = TRUE)
+
+  createShinyApp(
+    cerebro_data = c("mydata" = tmp),
+    result_dir = app_dir,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  ## Reproduce a build that never rendered them.
+  guides <- file.path(app_dir, "shiny/v1.4/www/tutorials")
+  unlink(guides, recursive = TRUE)
+  expect_false(dir.exists(guides))
+
+  app <- AppDriver$new(
+    app_dir,
+    height = 950,
+    width = 1619,
+    load_timeout = 30000
+  )
+  app$wait_for_idle(timeout = 20000)
+
+  cells <- retry_get_value(app, output = "load_data_number_of_cells")
+  expect_true(grepl("1,?476", cells$html))
+
+  app$stop()
+})

@@ -483,7 +483,17 @@ createShinyApp <- function(
     )
 
     shiny::addResourcePath("data", file.path(cerebro_root, "data"))
-    shiny::addResourcePath("cerebro_docs", file.path(cerebro_root, "shiny/v1.4/www/tutorials"))
+
+    ## The rendered guides are built from vignettes/ at package-build time and
+    ## are not in the repository, so a source checkout has no such directory --
+    ## and addResourcePath() fails outright on a path it cannot normalize,
+    ## taking the whole exported app down with it. Serve them when they are
+    ## there; the About page simply offers no guides when they are not. Same
+    ## guard as inst/app.R.
+    tutorials_dir <- file.path(cerebro_root, "shiny/v1.4/www/tutorials")
+    if (dir.exists(tutorials_dir)) {{
+      shiny::addResourcePath("cerebro_docs", normalizePath(tutorials_dir))
+    }}
 
     source(file.path(cerebro_root, "shiny/v1.4/shiny_UI.R"))
     source(file.path(cerebro_root, "shiny/v1.4/shiny_server.R"))
