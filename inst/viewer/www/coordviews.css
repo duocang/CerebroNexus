@@ -26,6 +26,13 @@
   --cv-amber100: var(--c-amber-100, #fde3cf);
   --cv-amber200: var(--c-amber-200, #fbcfa8);
   --cv-amber700: var(--c-amber-700, #c2410c);
+  /* Tints of the theme's --c-error, which ships as a single value. Used only by
+     Clear selection — see the selection-actions block for why those two buttons
+     sit outside the amber vocabulary. */
+  --cv-red50: #fef2f2;
+  --cv-red100: #fee2e2;
+  --cv-red200: #fecaca;
+  --cv-red700: #b91c1c;
 }
 
 /* ---- dataset meta strip ------------------------------------------------- */
@@ -122,26 +129,36 @@
   padding: 7px 14px; font-size: 12.5px; font-weight: 600; line-height: 1.2;
   border: 1px solid; border-radius: 6px;
 }
-/* Zoom — neutral surface by default; when zoomed-in it takes on a filled style
-   so the button signals the current state, not just its label. It is the one
-   active state NOT in amber: Clear sits directly beside it and is already
-   amber, and two adjacent buttons in the same fill stop reading as two. */
+/* These two are deliberately OUTSIDE the amber vocabulary. Everything else in
+   the bar is a persistent control whose amber means "this is on"; these appear
+   only once a selection exists and act ON it. Sharing amber with the always-on
+   controls is exactly what made them stop standing out.
+   Blue and red rather than green and red: green/red is the pairing that
+   collapses for the ~8% of men with red-green colour blindness, and blue also
+   ties Zoom to the blue already used for selection geometry — the lasso outline
+   and the minimap's viewport frame. */
+/* Only background and text are set: the shared rule above declares `border: 1px
+   solid` with no colour, so the border follows `color`. That is what lets one
+   set of box metrics produce two clearly different buttons, and it gives each an
+   outline strong enough to hold its own against the panels behind it. */
 .coordviews-page .cv-zoombtn {
-  border-color: var(--cv-border); background: var(--cv-surface);
-  color: var(--cv-text2);
+  background: var(--cv-blue50); color: var(--c-blue-700, #1d4ea0);
 }
-.coordviews-page .cv-zoombtn:hover { background: var(--cv-surface2); }
+.coordviews-page .cv-zoombtn:hover { background: var(--cv-blue100); }
+/* Zoomed-in flips to a filled blue, so the state is legible at a glance rather
+   than needing the label to be read. The border is set explicitly here — the
+   text has gone white, and an inherited white border would ring the button. */
 .coordviews-page .cv-zoombtn.is-zoomed {
-  border-color: var(--cv-blue100); background: var(--cv-blue50);
-  color: var(--c-blue-700, #1d4ea0);
+  border-color: var(--cv-blue); background: var(--cv-blue); color: #fff;
 }
-.coordviews-page .cv-zoombtn.is-zoomed:hover { background: var(--cv-blue100); }
-/* Clear — the app's amber accent (matches the slider / theme colour). */
+.coordviews-page .cv-zoombtn.is-zoomed:hover {
+  background: var(--c-blue-600, #2560bd); border-color: var(--c-blue-600, #2560bd);
+}
+/* Clear — red, for the one action here that takes something away. */
 .coordviews-page .cv-clearbtn {
-  border-color: var(--cv-amber200); background: var(--cv-amber50);
-  color: var(--cv-amber700);
+  background: var(--cv-red50); color: var(--cv-red700);
 }
-.coordviews-page .cv-clearbtn:hover { background: var(--cv-amber100); }
+.coordviews-page .cv-clearbtn:hover { background: var(--cv-red100); }
 
 /* ---- "More" toggle + the bar's collapsible second row ------------------- */
 .coordviews-page .cv-morebtn {
