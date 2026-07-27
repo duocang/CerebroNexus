@@ -769,11 +769,36 @@
     var mp = $('cv-more');
     return !!(mp && mp.classList.contains('is-open'));
   }
+  var moreClipTimer = null;
   function setMoreOpen(open) {
     var mp = $('cv-more'), btn = $('cv-more-btn');
     if (!mp) return;
     mp.classList.toggle('is-open', open);
     if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    // The overflow:hidden that lets the row collapse also clips the group-filter
+    // dropdowns, which open downwards out of it. Release it once the opening
+    // animation has landed; re-apply it immediately on close so the collapse
+    // still hides what it is folding away.
+    var clip = mp.querySelector('.cv-more-clip');
+    clearTimeout(moreClipTimer);
+    if (clip) {
+      if (open) {
+        moreClipTimer = setTimeout(function () {
+          clip.classList.add('is-clear');
+        }, 340);
+      } else {
+        clip.classList.remove('is-clear');
+      }
+    }
+    // A level menu left open inside a folded row would still be "open" when the
+    // row comes back — and the click that reopens the row would then read as the
+    // click that closes the menu. Fold them away with their row.
+    if (!open) {
+      Array.prototype.forEach.call(
+        mp.querySelectorAll('.cv-filt-menu'),
+        function (m) { m.style.display = 'none'; }
+      );
+    }
     if (D) resizeAll();
   }
 

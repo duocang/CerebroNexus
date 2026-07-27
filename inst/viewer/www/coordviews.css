@@ -202,6 +202,12 @@
   grid-template-rows: 1fr; opacity: 1; margin-top: 0;
 }
 .coordviews-page .cv-more-clip { overflow: hidden; min-height: 0; }
+/* The clip that makes the height animation possible also clips anything the row
+   opens DOWNWARDS — the group-filter dropdowns live here, and inside a clipped
+   box they are invisible and unclickable. Once the row has finished opening
+   there is nothing left to clip, so JS hands overflow back (and takes it away
+   again the instant a close starts, so the collapse still hides its contents). */
+.coordviews-page .cv-more-clip.is-clear { overflow: visible; }
 .coordviews-page .cv-more-inner {
   display: flex; flex-wrap: wrap; align-items: flex-start; gap: 22px 30px;
   padding-top: 15px; border-top: 1px solid var(--cv-border);
