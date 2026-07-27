@@ -19,7 +19,7 @@ expression_projection_parameters_plot_raw <- reactive({
   # message('--> trigger "expression_projection_parameters_plot_raw"')
   if (input[["expression_projection_to_display"]] %in% availableProjections()) {
     is_trajectory <- FALSE
-    n_dimensions <- ncol(getProjection(input[[
+    n_dimensions <- nProjectionDimensions(getProjection(input[[
       "expression_projection_to_display"
     ]]))
   } else {

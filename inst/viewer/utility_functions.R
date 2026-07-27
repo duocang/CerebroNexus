@@ -878,6 +878,38 @@ getXYranges <- function(table) {
 }
 
 ##----------------------------------------------------------------------------##
+## Limit a projection to the dimensions the projection plots can draw.
+##----------------------------------------------------------------------------##
+## The plots dispatch on 2 vs. 3 dimensions, so a wider projection used to match
+## neither branch: no plot update was requested at all and the previous
+## projection stayed on screen. `exportFromSeurat()` drops the PCA whenever a
+## non-PCA reduction exists, which is why this went unnoticed, but a PCA is
+## normally computed with far more than three components (`RunPCA()` defaults to
+## 50) and `addProjection()` accepts a projection of any width. Anything wider is
+## therefore shown through its first three dimensions -- what the 3-D plot would
+## display in any case.
+cerebro_max_projection_dimensions <- 3L
+
+nProjectionDimensions <- function(projection) {
+  min(ncol(projection), cerebro_max_projection_dimensions)
+}
+
+## `max_dimensions` is the plottable three by default. The selected-cell panels
+## pass 2: they cbind the projection onto the meta data purely to rebuild the
+## X1-X2 selection identifier, then drop those two columns again -- so every
+## dimension past the second is a coordinate column that reaches the user's table
+## as data, which for a PCA means PC_3 through PC_50.
+capProjectionDimensions <- function(
+  projection,
+  max_dimensions = cerebro_max_projection_dimensions
+) {
+  projection[,
+    seq_len(min(ncol(projection), max_dimensions)),
+    drop = FALSE
+  ]
+}
+
+##----------------------------------------------------------------------------##
 ## Function to get genes for selected gene set.
 ##----------------------------------------------------------------------------##
 getGenesForGeneSet <- function(gene_set) {

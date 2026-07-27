@@ -33,7 +33,10 @@ overview_projection_selected_cells <- reactive({
   hidden_groups <- input[["overview_projection_hidden_groups"]]
   if (length(hidden_groups) > 0) {
     color_variable <- input[["overview_projection_point_color"]]
-    projection <- getProjection(input[["overview_projection_to_display"]])
+    projection <- capProjectionDimensions(
+      getProjection(input[["overview_projection_to_display"]]),
+      2
+    )
     metadata <- cbind(projection, getMetaData())
     metadata <- metadata %>%
       dplyr::rename(X1 = 1, X2 = 2) %>%

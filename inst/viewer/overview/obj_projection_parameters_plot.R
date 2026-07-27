@@ -18,7 +18,7 @@ overview_projection_parameters_plot_raw <- reactive({
   # message('--> trigger "overview_projection_parameters_plot"')
   parameters <- list(
     projection = input[["overview_projection_to_display"]],
-    n_dimensions = ncol(getProjection(input[[
+    n_dimensions = nProjectionDimensions(getProjection(input[[
       "overview_projection_to_display"
     ]])),
     color_variable = input[["overview_projection_point_color"]],

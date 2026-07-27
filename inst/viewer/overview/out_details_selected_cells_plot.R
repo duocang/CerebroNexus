@@ -12,7 +12,10 @@ output[["overview_details_selected_cells_plot"]] <- plotly::renderPlotly({
   )
   ## extract cells to plot
   cells_df <- cbind(
-    getProjection(input[["overview_projection_to_display"]]),
+    capProjectionDimensions(
+      getProjection(input[["overview_projection_to_display"]]),
+      2
+    ),
     getMetaData()
   )
   ## check selection

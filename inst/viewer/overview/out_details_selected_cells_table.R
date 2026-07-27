@@ -18,7 +18,10 @@ output[["overview_details_selected_cells_table"]] <- DT::renderDataTable({
   } else {
     ## extract cells for table
     cells_df <- cbind(
-      getProjection(input[["overview_projection_to_display"]]),
+      capProjectionDimensions(
+        getProjection(input[["overview_projection_to_display"]]),
+        2
+      ),
       getMetaData()
     ) %>%
       as.data.frame()
