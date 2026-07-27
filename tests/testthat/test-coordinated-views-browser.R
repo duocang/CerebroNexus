@@ -487,6 +487,197 @@ test_that("a 3-D embedding can be rotated, and a 2-D one cannot", {
 })
 
 
+test_that("a 3-D panel navigates but cannot be selected on", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_three_d_navigate_only")
+
+  # A 3-D expression space AND a flat clonal one. The pairing is the point: it
+  # lets a selection mode be armed on the flat panel and then carried onto the
+  # 3-D one, which is the case hiding the buttons cannot cover on its own.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var n = 1200;\n",
+      "  var x = [], y = [], z = [], cx = [], cy = [];\n",
+      "  var cells = [], vals = [], cid = [];\n",
+      "  for (var i = 0; i < n; i++) {\n",
+      "    var k = i % 3;\n",
+      "    x.push((k - 1) * 4 + Math.random());\n",
+      "    y.push(Math.random() * 2);\n",
+      "    z.push((k - 1) * 5 + Math.random());\n",
+      "    cx.push(i % 40); cy.push(Math.floor(i / 40) % 30);\n",
+      "    cells.push('c' + i); vals.push(k); cid.push(i % 20);\n",
+      "  }\n",
+      "  var lab = [], sz = [];\n",
+      "  for (var q = 0; q < 20; q++) { lab.push('CASS' + q); sz.push(60 - q); }\n",
+      "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+      "    coordviews_data: {\n",
+      "      cells: cells, n: n,\n",
+      "      groups: { cluster: { values: vals, levels: ['a', 'b', 'c'],\n",
+      "        colors: ['#636EFA', '#EF553B', '#00CC96'] } },\n",
+      "      cat_extra: {}, cat_skipped: {}, fields: {},\n",
+      "      default_group: 'cluster',\n",
+      "      projections: { umap_3D: { x: x, y: y, z: z, ndim: 3 } },\n",
+      "      default_projection: 'umap_3D',\n",
+      "      spaces: [\n",
+      "        { id: 'umap', label: 'umap_3D (expression, 3-D)',\n",
+      "          x: x, y: y, z: z },\n",
+      "        { id: 'clone', label: 'Clonal expansion', x: cx, y: cy }],\n",
+      "      clone: { id: cid, label: lab, size: sz,\n",
+      "        n_clones: 20, n_receptor: n },\n",
+      "      trekker: null\n",
+      "    } } }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-title-b').textContent.indexOf('Clonal') >= 0",
+    timeout = 15000
+  )
+
+  vis <- function(key, act) {
+    paste0(
+      "getComputedStyle(document.getElementById('cv-cv-",
+      key,
+      "')",
+      ".closest('.cv-pane').querySelector('.cv-tbtn[data-act=\"",
+      act,
+      "\"]')).display !== 'none'"
+    )
+  }
+  # navigation stays, selection goes
+  expect_false(app$get_js(vis("a", "lasso")))
+  expect_false(app$get_js(vis("a", "box")))
+  expect_true(app$get_js(vis("a", "orbit")))
+  expect_true(app$get_js(vis("a", "pan")))
+  expect_true(app$get_js(vis("a", "reset")))
+  expect_true(app$get_js(vis("a", "png")))
+  # and the flat panel is the mirror image
+  expect_true(app$get_js(vis("b", "lasso")))
+  expect_false(app$get_js(vis("b", "orbit")))
+
+  # THE case buttons cannot cover: arm lasso on the flat panel, then drag on
+  # the 3-D one. selectMode is global, so without an override at the event this
+  # still draws a selection nobody could verify.
+  app$run_js(
+    "document.querySelector('.cv-tbtn[data-act=\"lasso\"][data-panel=\"B\"]').click();"
+  )
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var cv = document.getElementById('cv-cv-a');\n",
+      "  var r = cv.getBoundingClientRect();\n",
+      "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
+      "    { clientX: r.left + 120, clientY: r.top + 120, bubbles: true }));\n",
+      "  for (var s = 30; s <= 210; s += 30)\n",
+      "    cv.dispatchEvent(new MouseEvent('mousemove',\n",
+      "      { clientX: r.left + 120 + s, clientY: r.top + 120 + s * 0.7,\n",
+      "        bubbles: true }));\n",
+      "  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_idle(timeout = 5000)
+  expect_false(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-selbar')).display !== 'none'"
+    )
+  )
+  # the drag was not swallowed either — it turned the cloud
+  expect_true(app$get_js("document.getElementById('cv-mini-a') !== null"))
+
+  # clicking a single cell there must not pick one, for the same reason
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var cv = document.getElementById('cv-cv-a');\n",
+      "  var r = cv.getBoundingClientRect();\n",
+      "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
+      "    { clientX: r.left + 260, clientY: r.top + 260, bubbles: true }));\n",
+      "  window.dispatchEvent(new MouseEvent('mouseup',\n",
+      "    { clientX: r.left + 260, clientY: r.top + 260, bubbles: true }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_idle(timeout = 5000)
+  expect_false(
+    app$get_js(
+      "document.getElementById('cv-card').classList.contains('is-open')"
+    )
+  )
+
+  # selecting on the FLAT panel still works, and reaches the 3-D one
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  document.querySelector(",
+      "'.cv-tbtn[data-act=\"box\"][data-panel=\"B\"]').click();\n",
+      "  var cv = document.getElementById('cv-cv-b');\n",
+      "  var r = cv.getBoundingClientRect();\n",
+      "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
+      "    { clientX: r.left + 8, clientY: r.top + 8, bubbles: true }));\n",
+      "  for (var s = 40; s <= r.width - 20; s += 40)\n",
+      "    cv.dispatchEvent(new MouseEvent('mousemove',\n",
+      "      { clientX: r.left + 8 + s,\n",
+      "        clientY: r.top + 8 + s * (r.height / r.width), bubbles: true }));\n",
+      "  window.dispatchEvent(new MouseEvent('mouseup',\n",
+      "    { clientX: r.right - 10, clientY: r.bottom - 10, bubbles: true }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-seltext').textContent.indexOf('Selected') >= 0",
+    timeout = 10000
+  )
+  expect_match(
+    app$get_js("document.getElementById('cv-seltext').textContent"),
+    "coordinated across all panels"
+  )
+
+  app$stop()
+})
+
+
+test_that("an all-3-D data set says where selection has gone", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_three_d_only")
+
+  app$run_js(cv_bundle_js(
+    paste0(
+      "(function () {\n",
+      "  var zz = blob(0);\n",
+      "  return { projections: { umap_3D: { x: blob(0), y: blob(0), z: zz,\n",
+      "      ndim: 3 } },\n",
+      "    default_projection: 'umap_3D',\n",
+      "    spaces: [{ id: 'umap', label: 'umap_3D (expression, 3-D)',\n",
+      "      x: blob(0), y: blob(0), z: zz }] };\n",
+      "})()"
+    )
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-title-a').textContent.indexOf('3-D') >= 0",
+    timeout = 15000
+  )
+
+  # The empty readout normally says "lasso-drag in any panel". With nothing but
+  # rotatable panels that instruction is false, so it must not be the one shown.
+  readout <- app$get_js("document.getElementById('cv-readout').textContent")
+  expect_false(grepl("Lasso-drag in any panel", readout, fixed = TRUE))
+  expect_match(readout, "turning and looking")
+  expect_match(readout, "Projection")
+
+  # and the toolbar cannot be sitting in a mode no panel offers
+  expect_true(
+    app$get_js(
+      "document.querySelector('.cv-pane:first-child .cv-tbtn.is-on')
+       .getAttribute('data-act') === 'orbit'"
+    )
+  )
+
+  app$stop()
+})
+
+
 test_that("a data set with no linked views blanks the workspace", {
   local_app_support(inst_dir)
   app <- cv_app("cv_browser_unavailable")

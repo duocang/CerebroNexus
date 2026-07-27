@@ -494,18 +494,49 @@
     return !!(sp && sp.z);
   }
 
-  // Show the rotate tool exactly where there is a third dimension to rotate.
-  // Called from layoutPanels (spaces assigned) AND from setProjection (a panel
-  // keeps its space but that space changes dimensionality) — the second is not
-  // reachable from the first, which is how a flat projection kept the tool.
+  // Is there a panel one can actually select on?
+  function anyFlatPanel() {
+    return panels.some(function (p) { return p.spaceId && !panelIs3D(p); });
+  }
+
+  // The cursor is the only warning of what a drag is about to do. A rotatable
+  // panel always drags-to-turn, whatever the toolbar says, so it always shows
+  // the grab cursor rather than the crosshair that promises a selection.
+  function syncCursors() {
+    panels.forEach(function (p) {
+      if (!p.canvas) return;
+      p.canvas.classList.toggle('cv-pannable',
+        panelIs3D(p) || selectMode === 'pan' || selectMode === 'orbit');
+    });
+  }
+
+  // Match the per-panel toolbar to what the panel can actually do. Called from
+  // layoutPanels (spaces assigned) AND from setProjection (a panel keeps its
+  // space but that space changes dimensionality) — the second is not reachable
+  // from the first, which is how a flat projection once kept the rotate tool.
   function syncOrbitButtons() {
     panels.forEach(function (p) {
+      var is3d = panelIs3D(p);
       var ob = p.pane && p.pane.querySelector('.cv-orbit-btn');
-      if (ob) ob.style.display = panelIs3D(p) ? '' : 'none';
+      if (ob) ob.style.display = is3d ? '' : 'none';
+      // Box and lasso come off a rotatable panel: selection there is keyed on
+      // screen position, which stops being a faithful key once the cloud has
+      // depth (see wireBrush). The buttons go with the behaviour — offering a
+      // tool that silently does something else is worse than not offering it.
+      ['box', 'lasso'].forEach(function (act) {
+        var b = p.pane &&
+          p.pane.querySelector('.cv-tbtn[data-act="' + act + '"]');
+        if (b) b.style.display = is3d ? 'none' : '';
+      });
     });
+    // Never leave the toolbar in a mode none of the panels offer.
+    var flat = anyFlatPanel();
     if (selectMode === 'orbit' && !panels.some(panelIs3D)) {
       selectMode = 'lasso'; syncModeButtons();
+    } else if (!flat && (selectMode === 'box' || selectMode === 'lasso')) {
+      selectMode = 'orbit'; syncModeButtons();
     }
+    syncCursors();
   }
   // Size one panel's canvas to a `side` x `side` square (resizeAll computes the
   // side so all visible panels fit the width AND height in one viewport; floor
@@ -1112,10 +1143,7 @@
         b.classList.toggle('is-on', selectMode === m);
       });
     });
-    // the cursor has to say which gesture a drag will perform
-    panels.forEach(function (p) {
-      p.canvas.classList.toggle('cv-pannable', selectMode === 'pan');
-    });
+    syncCursors();
   }
   // Step-zoom a panel about its current view centre. factor<1 zooms in, >1 out;
   // zooming back past the full extent clears the zoom.
@@ -1323,12 +1351,18 @@
     updateNicheEnabled();
     if (!sel || !sel.size) {
       if (renderNiche(host)) return;   // Trekker: picked-nucleus niche composition
-      host.innerHTML = '<div class="cv-empty">Lasso-drag in any panel to select cells. ' +
-        'The same cells highlight in every panel, and their composition and ' +
-        'top clonotypes appear here.' +
-        (D.trekker ? ' <b>Or click a single nucleus</b> to see its niche — the ' +
-          'cell-type composition within the radius (µm).' : '') +
-        '</div>';
+      host.innerHTML = '<div class="cv-empty">' + (anyFlatPanel()
+        ? ('Lasso-drag in any panel to select cells. The same cells highlight ' +
+          'in every panel, and their composition and top clonotypes appear here.' +
+          (D.trekker ? ' <b>Or click a single nucleus</b> to see its niche — ' +
+            'the cell-type composition within the radius (µm).' : ''))
+        // Everything this data set offers is rotatable, so there is nowhere here
+        // to draw a selection that means anything. Say so rather than leave the
+        // instruction above pointing at a gesture that will silently rotate.
+        : ('This data set\'s only embedding is 3-D, so these panels are for ' +
+          'turning and looking. A lasso on a rotated cloud would take in cells ' +
+          'hidden behind the ones you can see, so selection is left to the ' +
+          '<b>Projection</b> tab.')) + '</div>';
       return;
     }
     var idxs = []; sel.forEach(function (i) { idxs.push(i); });
@@ -1696,10 +1730,19 @@
       return [e.clientX - r.left, e.clientY - r.top];
     };
     p.canvas.addEventListener('mousedown', function (e) {
-      // Orbit: only where there is a third dimension to turn. On a flat panel
-      // the tool falls through to pan rather than doing nothing, since the mode
-      // is shared by every panel and one of them may well be 2-D.
-      if (selectMode === 'orbit' && panelIs3D(p)) {
+      // A rotatable panel NAVIGATES; it does not select. Selection here is done
+      // on screen coordinates, and once the cloud has depth those stop being a
+      // faithful key to it: cells at different depths overlap on screen, so a
+      // lasso would take in cells the user cannot see it taking in, and the set
+      // it produced would change with the viewing angle. That is a selection
+      // nobody can check. Selecting happens on a flat panel and highlights here.
+      //
+      // Hiding the box/lasso buttons is NOT enough on its own: selectMode is
+      // shared by every panel, so a lasso chosen on a flat panel would still
+      // arm a drag on this one. The mode is therefore overridden at the event,
+      // and a drag that would have selected orbits instead — the gesture stays
+      // useful rather than dying silently.
+      if (panelIs3D(p) && selectMode !== 'pan' && e.button !== 1 && !e.shiftKey) {
         e.preventDefault();
         p.orbiting = true; p.orbitFrom = pos(e);
         p.orbitBase = p.rot ? { rx: p.rot.rx, ry: p.rot.ry } : { rx: 0, ry: 0 };
@@ -1707,7 +1750,9 @@
         return;
       }
       // Pan: the toolbar's hand mode, or middle-drag / shift-drag from any mode
-      // (the shortcut plotly users reach for without switching tools).
+      // (the shortcut plotly users reach for without switching tools). Orbit
+      // mode lands here too when the panel is FLAT — there is nothing to turn,
+      // and panning is the nearest useful reading of the same drag.
       if (selectMode === 'pan' || selectMode === 'orbit' ||
         e.button === 1 || e.shiftKey) {
         e.preventDefault();
