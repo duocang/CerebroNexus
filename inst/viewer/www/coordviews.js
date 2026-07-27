@@ -100,6 +100,56 @@
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+  // Colours reach a `style` attribute rather than a text node, and they are as
+  // data-driven as the labels are: the group colours are seeded from the object
+  // and only then made editable in Color management. Escaping is the wrong tool
+  // here -- `red;position:fixed;inset:0` never leaves the attribute, so nothing
+  // needs quoting for it to append declarations of its own -- so a value that is
+  // not a colour is replaced by one that is.
+  //
+  // The browser's own parser is the authority, but it has to be the RIGHT
+  // parser. `CSS.supports('color', x)` answers "is this a legal value for the
+  // CSS color property", which is a wider question: the CSS-wide keywords
+  // (inherit, initial, unset, revert) and var(--x) all pass it and none of them
+  // is a colour a canvas can paint. The strictest consumer here is the canvas,
+  // so ask the canvas.
+  //
+  // Assigning an unparsable value to fillStyle is a no-op -- it keeps whatever
+  // was there -- which is also the failure being defended against. Two different
+  // sentinels turn that silence into an answer: a refused value reads back as
+  // whichever sentinel preceded it, so the two reads disagree. One sentinel
+  // could not tell a refusal apart from a colour that happens to equal it.
+  var _colCtx = (function () {
+    try {
+      var el = document.createElement('canvas');
+      el.width = 1; el.height = 1;
+      return el.getContext('2d');
+    } catch (e) { return null; }
+  })();
+  function cssColor(c, fallback) {
+    var s = String(c == null ? '' : c).trim();
+    var fb = fallback || '#888888';
+    if (!_colCtx) {
+      return /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)
+        ? s : fb;
+    }
+    _colCtx.fillStyle = '#000000'; _colCtx.fillStyle = s;
+    var a = _colCtx.fillStyle;
+    _colCtx.fillStyle = '#ffffff'; _colCtx.fillStyle = s;
+    return a === _colCtx.fillStyle ? a : fb;
+  }
+  // Validate every colour once, as the bundle lands, so no consumer has to
+  // remember to. The canvas is why this is done here rather than at each sink:
+  // it takes a colour per point per frame, which is no place for a parser call.
+  function sanitiseColors(bundle) {
+    ['groups', 'cat_extra'].forEach(function (k) {
+      var m = bundle[k]; if (!m) return;
+      Object.keys(m).forEach(function (g) {
+        var cols = m[g] && m[g].colors; if (!cols) return;
+        for (var i = 0; i < cols.length; i++) cols[i] = cssColor(cols[i]);
+      });
+    });
+  }
   function fmt(n) { return (n == null || isNaN(n)) ? '—' : n.toLocaleString('en-US'); }
   // Human-facing label for a group key. Metadata columns keep their own names;
   // the server-synthesised expansion group gets a readable label.
@@ -511,6 +561,12 @@
   // Is there a panel one can actually select on?
   function anyFlatPanel() {
     return panels.some(function (p) { return p.spaceId && !panelIs3D(p); });
+  }
+  // Whether the data set offers a 2-D embedding at all -- not whether one is on
+  // screen. Decides whether "you cannot select here" can be followed by advice.
+  function anyFlatProjection() {
+    var P = D && D.projections; if (!P) return false;
+    return Object.keys(P).some(function (k) { return (P[k].ndim || 2) < 3; });
   }
 
   // The cursor is the only warning of what a drag is about to do. A rotatable
@@ -1289,11 +1345,19 @@
   //     sit beneath it now.
   // Note that clampView() cannot save this: it runs on pan and zoom, and this
   // is neither — which is how a view can still end up on empty space despite it.
+  // Everything a panel remembers about how it is currently looking at its space.
+  // Kept in one place because it is dropped from two directions -- the space's
+  // coordinates changing under the panel, and the panel being handed a different
+  // space on a data-set switch -- and a field cleared in only one of them
+  // survives into a data set it was never computed for.
+  function clearPanelView(p) {
+    p.view = null; p.lasso = null;
+    p.rot = null; p.depth = null; p.miniBg = null;
+  }
   function resetSpaceViews(spaceId) {
     panels.forEach(function (p) {
       if (p.spaceId !== spaceId) return;
-      p.view = null; p.lasso = null;
-      p.rot = null; p.depth = null; p.miniBg = null;
+      clearPanelView(p);
     });
     if (spaceId === 'umap' && zoomed) { zoomed = false; updateZoomBtn(); }
   }
@@ -1392,7 +1456,7 @@
       .sort(function (a, b) { return b[1] - a[1]; });
     var mx = rows.length ? rows[0][1] : 1;
     return rows.map(function (r) {
-      var col = (g.colors && g.colors[r[0]]) || PAL[r[0] % PAL.length];
+      var col = cssColor((g.colors && g.colors[r[0]]) || PAL[r[0] % PAL.length]);
       return '<div class="cv-bar"><span class="cv-bar-nm" style="color:' + col + '">' +
         esc(g.levels[r[0]]) + '</span><span class="cv-bar-tr"><span class="cv-bar-fl" style="width:' +
         (r[1] / mx * 100).toFixed(1) + '%;background:' + col + '"></span></span>' +
@@ -1410,7 +1474,7 @@
     });
     var head = '<div class="cv-readcol cv-rise"><h4 class="cv-read-h">Niche of picked nucleus ' +
       '<span class="cv-read-sub">' + fmt(tot) + ' neighbours within ' + nicheRadius +
-      ' µm · by ' + groupLabel(compGroup) + '</span></h4>';
+      ' µm · by ' + esc(groupLabel(compGroup)) + '</span></h4>';
     if (!tot) {
       host.innerHTML = head + '<div class="cv-empty-sm">No other nuclei within this ' +
         'radius — increase the niche radius.</div></div>';
@@ -1438,17 +1502,29 @@
     if (!sel || !sel.size) {
       if (renderNiche(host)) return;   // Trekker: picked-nucleus niche composition
       host.innerHTML = '<div class="cv-empty">' + (anyFlatPanel()
-        ? ('Lasso-drag in any panel to select cells. The same cells highlight ' +
+        ? ('Lasso-drag in any ' + (panels.some(panelIs3D) ? '2-D ' : '') +
+          'panel to select cells. The same cells highlight ' +
           'in every panel, and their composition and top clonotypes appear here.' +
           (D.trekker ? ' <b>Or click a single nucleus</b> to see its niche — ' +
             'the cell-type composition within the radius (µm).' : ''))
-        // Everything this data set offers is rotatable, so there is nowhere here
-        // to draw a selection that means anything. Say so rather than leave the
-        // instruction above pointing at a gesture that will silently rotate.
-        : ('This data set\'s only embedding is 3-D, so these panels are for ' +
-          'turning and looking. A lasso on a rotated cloud would take in cells ' +
-          'hidden behind the ones you can see, so selection is left to the ' +
-          '<b>Projection</b> tab.')) + '</div>';
+        // Everything on screen is rotatable, so there is nowhere here to draw a
+        // selection that means anything. Say so rather than leave the instruction
+        // above pointing at a gesture that will silently rotate. Both halves have
+        // to agree about what the data set holds: "the only embedding is 3-D"
+        // followed by "pick a 2-D one" contradicts itself, and the half that is
+        // wrong is the one the user will act on. Pointing at the Projection tab
+        // is no answer either -- its 3-D scatter is no more lassoable than these
+        // panels are.
+        : ((anyFlatProjection()
+          ? 'Every panel is showing a 3-D embedding, so they are for turning ' +
+            'and looking.'
+          : 'This data set\'s only embedding is 3-D, so these panels are for ' +
+            'turning and looking.') +
+          ' A lasso on a rotated cloud would take in cells ' +
+          'hidden behind the ones you can see, so ' + (anyFlatProjection()
+            ? 'pick a <b>2-D</b> projection above to select.'
+            : 'selecting needs a 2-D embedding, which this data set does not ' +
+              'carry.'))) + '</div>';
       return;
     }
     var idxs = []; sel.forEach(function (i) { idxs.push(i); });
@@ -1466,7 +1542,7 @@
       idxs.forEach(function (i) { var lv = g.values[i]; comp[lv] = (comp[lv] || 0) + 1; });
       // Same rise as the server-rendered plot/table below, first in the stagger.
       compHtml = '<div class="cv-readcol cv-rise"><h4 class="cv-read-h">Composition ' +
-        '<span class="cv-read-sub">by ' + groupLabel(compGroup) + '</span></h4>' +
+        '<span class="cv-read-sub">by ' + esc(groupLabel(compGroup)) + '</span></h4>' +
         '<div class="cv-bars">' + compBars(comp, g) + '</div></div>';
     }
 
@@ -1488,7 +1564,7 @@
             var lab = D.clone.label[r[0]] || '(clone ' + r[0] + ')';
             if (lab.length > 42) lab = lab.slice(0, 40) + '…';
             return '<tr class="cv-crow" data-clone="' + r[0] + '"><td class="num">' + (k + 1) +
-              '</td><td class="cv-cdr3">' + lab + '</td><td class="num">' + r[1] +
+              '</td><td class="cv-cdr3">' + esc(lab) + '</td><td class="num">' + r[1] +
               '</td><td class="num">' + D.clone.size[r[0]] + '</td><td class="num">' +
               (r[1] / sel.size * 100).toFixed(1) + '%</td></tr>';
           }).join('') + '</tbody></table>' +
@@ -1557,7 +1633,7 @@
         d.className = 'cv-lg cv-rgb-lg' + (gene ? '' : ' off');
         d.innerHTML = '<span class="cv-dot" style="background:' + ch[1] + '"></span>' +
           '<b style="color:' + ch[1] + '">' + ch[0] + '</b> ' +
-          (gene ? gene : '<span class="cv-rgb-none">not set</span>');
+          (gene ? esc(gene) : '<span class="cv-rgb-none">not set</span>');
         L.appendChild(d);
       });
       return;
@@ -1568,7 +1644,7 @@
     var counts = {};
     for (var i = 0; i < D.n; i++) counts[g.values[i]] = (counts[g.values[i]] || 0) + 1;
     g.levels.forEach(function (nm, li) {
-      var col = (g.colors && g.colors[li]) || PAL[li % PAL.length];
+      var col = cssColor((g.colors && g.colors[li]) || PAL[li % PAL.length]);
       var d = document.createElement('div');
       d.className = 'cv-lg' + (hidden.has(li) ? ' off' : '');
       d.innerHTML = '<span class="cv-dot" style="background:' + col + '"></span>' +
@@ -2006,50 +2082,6 @@
     });
   }
 
-  // Panels: A = umap (expression), always. B = a "right candidate" (any non-umap
-  // space). Default right space is SMART: the physical map (spatial/Trekker) if it
-  // carries a histology image, else the clonal axis, else whichever single
-  // candidate exists. When >1 candidate exists, a segmented switch in panel B's
-  // header (renderSpaceSwitch) lets the user flip between them — nothing is ever
-  // silently dropped, which the old "spatial > clone > last" priority did.
-  function rightCandidates() {
-    return D.spaces.filter(function (s) { return s.id !== 'umap'; });
-  }
-  function defaultSpaceFor(key) {
-    if (key === 'A') return 'umap';
-    var cands = rightCandidates();
-    if (!cands.length) return null;
-    var phys = cands.filter(function (s) { return s.id === 'spatial'; })[0];
-    if (phys && phys.image) return 'spatial';   // tissue image is the compelling view
-    var clone = cands.filter(function (s) { return s.id === 'clone'; })[0];
-    if (clone) return 'clone';                  // else the differentiating immune axis
-    return cands[0].id;
-  }
-  var panelB = function () {
-    var b = null;
-    panels.forEach(function (p) { if (p.key === 'B') b = p; });
-    return b;
-  };
-  // Short label for the switch button (the panel title carries the full label).
-  function spaceSwitchLabel(s) {
-    if (s.id === 'spatial') return s.image ? 'Spatial' : 'Physical';
-    if (s.id === 'trekker') return 'Trekker';
-    if (s.id === 'clone') return 'Clonal';
-    return s.label || s.id;
-  }
-  // Render the right-panel space switch — one segmented button per candidate,
-  // shown only when there are ≥2 (with one, the panel just shows it, as before).
-  function renderSpaceSwitch() {
-    var host = $('cv-space-switch'); if (!host) return;
-    var cands = rightCandidates(), pB = panelB();
-    if (cands.length < 2 || !pB) { host.style.display = 'none'; host.innerHTML = ''; return; }
-    host.style.display = '';
-    host.innerHTML = cands.map(function (s) {
-      return '<button type="button" class="cv-seg-btn' +
-        (s.id === pB.spaceId ? ' is-on' : '') + '" data-space="' + esc(s.id) + '">' +
-        esc(spaceSwitchLabel(s)) + '</button>';
-    }).join('');
-  }
   // Coordinate-source / QC / positioning / Moran's I detail for a Trekker data
   // set — same content as the dedicated Trekker page's "Data and QC" +
   // "Moran's I" boxes, built by the shared functions in www/trekker.js
@@ -2066,21 +2098,6 @@
     $('cv-tk-rangeflag').innerHTML = CT.buildRangeFlag(q);
     $('cv-tk-morantbl').innerHTML = D.trekker.moran ? CT.buildMoranRows(D.trekker.moran, false) : '';
     dlg.showModal();
-  }
-  // Flip the right panel to another space. The selection/pick/coordination are
-  // keyed on cell index, so they are untouched — the highlighted cells simply
-  // re-render in the newly shown space. Lassos are screen-space, so they go stale.
-  function setPanelBSpace(id) {
-    var pB = panelB();
-    if (!pB || pB.spaceId === id || !spaceById[id]) return;
-    clearLassos();
-    pB.spaceId = id; pB.view = null;
-    project(pB);
-    var t = $('cv-title-b'), sp = spaceById[id];
-    if (t) t.textContent = sp ? sp.label : id;
-    updateSpaceScopedControls();
-    renderSpaceSwitch();
-    drawAll();
   }
   // Controls that belong to a specific right-panel space (the clonal-layout switch,
   // the histology-image bar) are shown only while that space is the one on screen —
@@ -2104,8 +2121,24 @@
   // clone id + per-clone size). No-receptor cells are left NA (not plotted):
   // they have no clonal identity, so they belong in the UMAP/Spatial panels.
   var CLONE_MODE = 'stack';
+  // The bins arrive with the data (clone_contract.R owns them, and the Immune
+  // repertoire tab reads the same file). They were hard-coded here as four
+  // tiers topping out at "Large (>20)" while that tab used five -- so a
+  // 500-cell clone was Hyperexpanded on one page and Large on the other, from
+  // the same object. The fallback is only for a bundle built before the bins
+  // travelled; it is the old four-tier scheme and is deliberately not extended.
+  var TIER_UB = [1, 5, 20];
   var TIER_LAB = ['Single (1)', 'Small (2–5)', 'Medium (6–20)', 'Large (>20)'];
-  function tierOf(sz) { return sz > 20 ? 3 : sz > 5 ? 2 : sz > 1 ? 1 : 0; }
+  function syncCloneTiers() {
+    var c = D && D.clone;
+    if (!c || !c.tiers || !c.tiers.length || !c.tier_labels) return;
+    TIER_UB = c.tiers.slice();
+    TIER_LAB = c.tier_labels.slice();
+  }
+  function tierOf(sz) {
+    for (var k = 0; k < TIER_UB.length; k++) if (sz <= TIER_UB[k]) return k;
+    return TIER_LAB.length - 1;
+  }
 
   function applyCloneLayout(mode) {
     var sp = spaceById['clone'];
@@ -2371,7 +2404,7 @@
         var col = (g.colors && g.colors[li]) || PAL[li % PAL.length];
         return '<label class="cv-filt-item"><input type="checkbox" data-lv="' + li +
           '"' + (on ? ' checked' : '') + '><span class="cv-dot" style="background:' +
-          esc(col) + '"></span>' + esc(nm) + '</label>';
+          cssColor(col) + '"></span>' + esc(nm) + '</label>';
       }).join('');
       var wrap = document.createElement('div');
       wrap.className = 'cv-filt';
@@ -2438,7 +2471,7 @@
     panels.forEach(function (p, i) {
       if (i < order.length) {
         var reappearing = p.pane && p.pane.classList.contains('cv-hidden');
-        p.spaceId = order[i]; p.view = null; p.lasso = null;
+        p.spaceId = order[i]; clearPanelView(p);
         if (p.pane) {
           p.pane.classList.remove('cv-hidden');
           if (reappearing) fadeInPane(p.pane);
@@ -2553,6 +2586,8 @@
       return;
     }
     D = bundle;
+    sanitiseColors(D);
+    syncCloneTiers();
     closeCard(); cardMeta = null;   // the card described the previous data set
     spaceById = {}; D.spaces.forEach(function (s) { s._unit = null; spaceById[s.id] = s; });
     colorBy = D.default_group ||
@@ -2585,7 +2620,7 @@
 
     var meta = $('cv-meta');
     if (meta) {
-      var spaceLabels = D.spaces.map(function (s) { return s.label; }).join(' · ');
+      var spaceLabels = D.spaces.map(function (s) { return esc(s.label); }).join(' · ');
       meta.innerHTML = fmt(D.n) + ' cells · ' + D.spaces.length +
         ' linked spaces (' + spaceLabels + ')' +
         (D.clone ? ' · ' + fmt(D.clone.n_receptor) + ' receptor-bearing cells, ' +
@@ -2663,14 +2698,36 @@
       if (colorBy === RGB_MODE) { renderLegend(); drawAll(); }
     });
 
+    // Ask for the bundle the first time the workspace is actually on screen --
+    // never on connect. Building it walks every cell of the loaded object, and
+    // this is one tab of eighteen; a session that never opens it should pay
+    // nothing. The server will not send until asked.
+    //
+    // The condition is "the workspace has a layout box", not the sidebar's
+    // active-tab input: that reports shinydashboard's idea of which tab is
+    // selected, which a programmatic tab switch leaves untouched even though the
+    // panels are plainly visible. Size is true however the tab was opened.
     var ping = function () {
       if (Shiny.setInputValue) {
         Shiny.setInputValue('coordviews_ready', Date.now(), { priority: 'event' });
       }
     };
+    var asked = false;
+    function askWhenVisible() {
+      if (asked) return;
+      var el = $('cv-meta');
+      if (!el || el.offsetParent === null) return;   // absent or display:none
+      asked = true;
+      ping();
+    }
+    setInterval(askWhenVisible, 250);
+    askWhenVisible();
+    // A reconnect gives a fresh server session that has sent nothing yet, so the
+    // request has to be made again -- but still only if the tab is open.
+    var onConnected = function () { asked = false; askWhenVisible(); };
     var jq = window.jQuery;
-    if (jq) { jq(document).on('shiny:connected', ping); }
-    else { document.addEventListener('shiny:connected', ping); }
+    if (jq) { jq(document).on('shiny:connected', onConnected); }
+    else { document.addEventListener('shiny:connected', onConnected); }
 
     // clear button + point-size slider live in the top bar (client-owned)
     document.addEventListener('click', function (e) {
@@ -2724,9 +2781,6 @@
         drawAll();
         return;
       }
-      // right-panel space switch: flip panel B between physical / clonal
-      var ssw = t && t.closest && t.closest('#cv-space-switch .cv-seg-btn');
-      if (ssw) { setPanelBSpace(ssw.getAttribute('data-space')); return; }
       // group-filter chip: open/close its level menu. Only ever one at a time —
       // several open at once overlap each other and say nothing more than one.
       var fbtn = t && t.closest && t.closest('.cv-filt-btn');

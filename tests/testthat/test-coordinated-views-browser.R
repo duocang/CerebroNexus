@@ -716,7 +716,11 @@ test_that("an all-3-D data set says where selection has gone", {
   readout <- app$get_js("document.getElementById('cv-readout').textContent")
   expect_false(grepl("Lasso-drag in any panel", readout, fixed = TRUE))
   expect_match(readout, "turning and looking")
-  expect_match(readout, "Projection")
+  # This data set carries no flat embedding at all, so there is no advice to
+  # give. Sending the user to the Projection tab was the wrong answer: its 3-D
+  # scatter is no more lassoable than these panels are.
+  expect_match(readout, "does not carry")
+  expect_false(grepl("Projection", readout, fixed = TRUE))
 
   # and the toolbar cannot be sitting in a mode no panel offers
   expect_true(
@@ -725,6 +729,37 @@ test_that("an all-3-D data set says where selection has gone", {
        .getAttribute('data-act') === 'orbit'"
     )
   )
+
+  # When the data set DOES carry a flat embedding and is merely showing the 3-D
+  # one, there is something to say: the picker is the way back to selecting.
+  app$run_js(cv_bundle_js(
+    paste0(
+      "(function () {\n",
+      "  var zz = blob(0);\n",
+      "  return { projections: { umap_3D: { x: blob(0), y: blob(0), z: zz,\n",
+      "      ndim: 3 }, umap_2D: { x: blob(0), y: blob(0), ndim: 2 } },\n",
+      "    default_projection: 'umap_3D',\n",
+      "    spaces: [{ id: 'umap', label: 'umap_3D (expression, 3-D)',\n",
+      "      x: blob(0), y: blob(0), z: zz }] };\n",
+      "})()"
+    )
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-readout').textContent",
+      ".indexOf('turning and looking') >= 0"
+    ),
+    timeout = 15000
+  )
+  readout <- app$get_js("document.getElementById('cv-readout').textContent")
+  expect_match(readout, "pick a 2-D projection above")
+  expect_false(grepl("does not carry", readout, fixed = TRUE))
+  ## Both halves of the sentence describe the same data set, so the opening
+  ## claim has to change with the advice: "the only embedding is 3-D" followed
+  ## by "pick a 2-D one" contradicts itself, and a reader acting on the first
+  ## half gives up on a data set that can in fact be selected in.
+  expect_false(grepl("only embedding is 3-D", readout, fixed = TRUE))
+  expect_match(readout, "Every panel is showing a 3-D embedding")
 
   app$stop()
 })
@@ -767,6 +802,331 @@ test_that("a data set with no linked views blanks the workspace", {
     app$get_js("document.getElementById('cv-legend').innerHTML;"),
     ""
   )
+
+  app$stop()
+})
+
+## Every string in the bundle originates in a `.crb` the user opened, so each one
+## interpolated into innerHTML is an injection point, and there are more of them
+## than any one screen shows: the meta line, the legend (categorical and RGB),
+## the composition header, the clonotype table, the group filters. A test that
+## checks one sink says nothing about the others, so each is driven and asserted
+## here -- the composition and clonotype paths went unescaped precisely because
+## the earlier version of this test never made a selection and so never rendered
+## them.
+##
+## Colours are the second kind. They land in a `style` attribute, where escaping
+## buys nothing: `red;position:fixed;inset:0` never leaves the attribute, it just
+## appends declarations. Those are validated against the browser's own colour
+## parser instead, once, as the bundle lands.
+test_that("data-set strings cannot inject markup into the workspace", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_escaping")
+
+  ## No quotes in the payload, so it survives the R -> JS -> JSON trip unaltered
+  ## and any difference on screen is the app's doing rather than the harness's.
+  payload <- "<img src=x onerror=window.__cvXss=1>"
+  ## Needs no quote to escape: it stays inside the attribute and adds its own
+  ## declarations, which is why esc() is not the tool for a colour.
+  css_payload <- "red;position:fixed;inset:0;z-index:9999"
+  ## Four bad colours of three different kinds, because each kind gets past a
+  ## different validator: the CSS injection defeats escaping, `notacolor` defeats
+  ## a permissive hand-written grammar, and `inherit` / `var(--x)` defeat
+  ## CSS.supports('color', ...) -- legal CSS values that a canvas will not paint.
+  bad_colors <- "'{CSS}', 'notacolor', 'inherit', 'var(--cv-x)'"
+
+  app$run_js(cv_bundle_js(
+    extra = paste0(
+      "{ groups: { '",
+      payload,
+      "': { values: cells.map(function (c, i) ",
+      "{ return i % 4; }),\n",
+      "  levels: ['",
+      payload,
+      "', 'b', 'c', 'd'],\n",
+      "  colors: [",
+      sub("{CSS}", css_payload, bad_colors, fixed = TRUE),
+      "] } },\n",
+      "  default_group: '",
+      payload,
+      "',\n",
+      "  spaces: [{ id: 'umap', label: '",
+      payload,
+      "',\n",
+      "    x: blob(0), y: blob(0) }],\n",
+      "  rgb: { genes: ['",
+      payload,
+      "', 'GeneB', 'GeneC'] },\n",
+      "  clone: { id: vals.map(function (v) { return v % 2; }),\n",
+      "    label: ['",
+      payload,
+      "', 'CASSIRSSYEQYF'],\n",
+      "    size: [400, 400], n_receptor: 800, n_clones: 2 } }"
+    )
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.length > 0",
+    timeout = 15000
+  )
+
+  ## Select everything, so the composition and clonotype readouts render.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var cv = document.getElementById('cv-cv-a');\n",
+      "  var r = cv.getBoundingClientRect();\n",
+      "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
+      "    { clientX: r.left + 2, clientY: r.top + 2, bubbles: true }));\n",
+      "  var pts = [[r.width - 2, 2], [r.width - 2, r.height - 2],\n",
+      "    [2, r.height - 2], [2, 2]];\n",
+      "  pts.forEach(function (q) {\n",
+      "    cv.dispatchEvent(new MouseEvent('mousemove',\n",
+      "      { clientX: r.left + q[0], clientY: r.top + q[1], bubbles: true }));\n",
+      "  });\n",
+      "  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-readout').textContent",
+      ".indexOf('Composition') >= 0"
+    ),
+    timeout = 10000
+  )
+
+  ## Each sink separately: the payload has to be ON SCREEN as text. Asserting
+  ## only "no <img> element" would pass against a build that renders nothing.
+  sinks <- list(
+    meta = "cv-meta",
+    legend = "cv-legend",
+    readout = "cv-readout"
+  )
+  for (nm in names(sinks)) {
+    expect_true(
+      app$get_js(paste0(
+        "document.getElementById('",
+        sinks[[nm]],
+        "')",
+        ".textContent.indexOf('<img') >= 0;"
+      )),
+      info = nm
+    )
+  }
+  ## The composition header interpolates the grouping COLUMN NAME, which the
+  ## level names inside the same readout would otherwise mask: those are escaped
+  ## already, so `#cv-readout` keeps showing the payload as text even when the
+  ## header has turned it into an element. Assert on the header itself.
+  expect_true(app$get_js(
+    paste0(
+      "(function () { var e = document.querySelector('.cv-read-sub');\n",
+      "  return !!e && e.textContent.indexOf('<img') >= 0; })();"
+    )
+  ))
+  ## The clonotype table is its own builder inside the readout.
+  expect_true(app$get_js(
+    paste0(
+      "(function () { var e = document.querySelector('.cv-cdr3');\n",
+      "  return !!e && e.textContent.indexOf('<img') >= 0; })();"
+    )
+  ))
+  ## ... as is the group-filter list, which renders whether or not it is open.
+  expect_true(app$get_js(
+    paste0(
+      "(function () { var e = document.querySelector('.cv-filt-item');\n",
+      "  return !!e && e.textContent.indexOf('<img') >= 0; })();"
+    )
+  ))
+
+  ## Colours, while the CATEGORICAL legend is still up. Checking after the switch
+  ## to RGB inspects that legend's hard-coded channel swatches instead, which are
+  ## a colour whatever the group colours did -- an assertion that cannot fail.
+  expect_equal(
+    app$get_js(
+      paste0(
+        "Array.from(document.querySelectorAll('.cv-dot, .cv-bar-fl'))\n",
+        "  .map(function (e) { return e.getAttribute('style') || ''; })\n",
+        "  .filter(function (s) { return /position:fixed|notacolor|inherit/\n",
+        "    .test(s) || s.indexOf('var(') >= 0; }).length;"
+      )
+    ),
+    0
+  )
+  ## An invalid colour is REPLACED, not merely dropped: a canvas keeps its
+  ## PREVIOUS fillStyle on a bad assignment, so a point whose colour silently
+  ## went missing inherits its neighbour's rather than showing as unpainted.
+  ## Every swatch has to be a colour the canvas itself accepted.
+  expect_true(app$get_js(
+    paste0(
+      "(function () {\n",
+      "  var ctx = document.createElement('canvas').getContext('2d');\n",
+      "  var sw = Array.from(document.querySelectorAll(\n",
+      "    '#cv-legend .cv-dot, .cv-filt-item .cv-dot, .cv-bar-fl'));\n",
+      "  if (!sw.length) return false;\n",
+      "  return sw.every(function (e) {\n",
+      "    var c = (e.getAttribute('style') || '').split(':').pop();\n",
+      "    ctx.fillStyle = '#000000'; ctx.fillStyle = c;\n",
+      "    var a = ctx.fillStyle;\n",
+      "    ctx.fillStyle = '#ffffff'; ctx.fillStyle = c;\n",
+      "    return a === ctx.fillStyle;\n",
+      "  });\n",
+      "})();"
+    )
+  ))
+
+  ## The RGB channel legend is a separate builder again.
+  app$run_js(paste0(
+    "(function () { var s = document.getElementById('cv-pick-color');\n",
+    "  s.value = '__rgb__'; s.onchange(); })();"
+  ))
+  expect_true(app$get_js(
+    "document.getElementById('cv-legend').textContent.indexOf('<img') >= 0;"
+  ))
+
+  ## Nowhere did any of it become an element, and no handler ran.
+  expect_null(app$get_js("window.__cvXss || null;"))
+  expect_equal(
+    app$get_js("document.querySelectorAll('img[src=\"x\"]').length;"),
+    0
+  )
+
+  app$stop()
+})
+
+## A panel remembers how it is looking at its space: the view rectangle, the
+## lasso, and -- once a 3-D embedding exists -- the rotation, the depth buffer and
+## the cached minimap. Handing a panel a different data set dropped the first two
+## and kept the rest, so switching between two 3-D data sets opened the new one at
+## the old one's angle, with a depth buffer computed for cells that were gone.
+test_that("a data-set switch does not carry the rotation over", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_switch_rot")
+
+  ## Deterministic coordinates, so the same bundle pushed twice must draw the
+  ## same pixels. With Math.random() the comparison could not tell a carried-over
+  ## rotation from a different cloud.
+  push_3d <- paste0(
+    "(function () {\n",
+    "  var per = 60, n = per * 3;\n",
+    "  var x = [], y = [], z = [], cells = [], vals = [];\n",
+    "  for (var k = 0; k < 3; k++)\n",
+    "    for (var j = 0; j < per; j++) {\n",
+    "      x.push((k - 1) * 9 + (j % 8) * 0.9);\n",
+    "      y.push(Math.floor(j / 8) * 1.2 - 4);\n",
+    "      z.push((k - 1) * 6);\n",
+    "      cells.push('c' + (k * per + j)); vals.push(k);\n",
+    "    }\n",
+    "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+    "    coordviews_data: {\n",
+    "      cells: cells, n: n,\n",
+    "      groups: { cluster: { values: vals, levels: ['a', 'b', 'c'],\n",
+    "        colors: ['#636EFA', '#EF553B', '#00CC96'] } },\n",
+    "      cat_extra: {}, cat_skipped: {}, fields: {},\n",
+    "      default_group: 'cluster',\n",
+    "      projections: { umap_3D: { x: x, y: y, z: z, ndim: 3 } },\n",
+    "      default_projection: 'umap_3D',\n",
+    "      spaces: [{ id: 'umap', label: 'umap_3D (expression, 3-D)',\n",
+    "        x: x, y: y, z: z }],\n",
+    "      clone: null, trekker: null\n",
+    "    } } }));\n",
+    "})();"
+  )
+  centroid <- paste0(
+    "(function () {\n",
+    "  var cv = document.getElementById('cv-cv-a');\n",
+    "  var d = cv.getContext('2d')\n",
+    "    .getImageData(0, 0, cv.width, cv.height).data;\n",
+    "  var sx = 0, sy = 0, k = 0;\n",
+    "  for (var yy = 0; yy < cv.height; yy += 2)\n",
+    "    for (var xx = 0; xx < cv.width; xx += 2) {\n",
+    "      var i = (yy * cv.width + xx) * 4;\n",
+    "      if (d[i + 3] > 0 && d[i] > 60 && d[i] < 140 &&\n",
+    "          d[i + 2] > 200) { sx += xx; sy += yy; k++; }\n",
+    "    }\n",
+    "  return k ? [Math.round(sx / k), Math.round(sy / k)] : null;\n",
+    "})()"
+  )
+
+  app$run_js(push_3d)
+  app$wait_for_js(
+    "document.getElementById('cv-title-a').textContent.indexOf('3-D') >= 0",
+    timeout = 15000
+  )
+  app$wait_for_idle(timeout = 5000)
+  before <- unlist(app$get_js(centroid))
+  expect_false(is.null(before))
+
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  document.querySelector(",
+      "'.cv-tbtn[data-act=\"orbit\"][data-panel=\"A\"]').click();\n",
+      "  var cv = document.getElementById('cv-cv-a');\n",
+      "  var r = cv.getBoundingClientRect();\n",
+      "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
+      "    { clientX: r.left + 260, clientY: r.top + 260, bubbles: true }));\n",
+      "  for (var s = 20; s <= 160; s += 20)\n",
+      "    cv.dispatchEvent(new MouseEvent('mousemove',\n",
+      "      { clientX: r.left + 260 + s, clientY: r.top + 260,\n",
+      "        bubbles: true }));\n",
+      "  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_idle(timeout = 5000)
+  rotated <- unlist(app$get_js(centroid))
+  expect_gt(sqrt(sum((rotated - before)^2)), 20)
+
+  ## The switch. Identical coordinates, so anything but the starting angle is
+  ## state the previous data set left behind.
+  app$run_js(push_3d)
+  app$wait_for_idle(timeout = 5000)
+  after <- unlist(app$get_js(centroid))
+  expect_lt(sqrt(sum((after - before)^2)), 5)
+
+  app$stop()
+})
+
+## Linked views is one tab among eighteen, and building its bundle means walking
+## every cell of the loaded object -- reductions, spatial coordinates, the immune
+## repertoire -- into ~156 KB of payload. That used to happen on connect, for
+## every session, whether or not anyone opened the tab; worse, the bundle reads
+## the reactive colour map, so recolouring a group on the Projection tab rebuilt
+## and re-sent all of it while the tab sat hidden.
+test_that("no bundle is built for a tab nobody opened", {
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "cv_browser_lazy",
+    height = 950,
+    width = 1619
+  )
+  app$wait_for_idle(timeout = 30000)
+  app$wait_for_js(
+    "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]') !== null",
+    timeout = 30000
+  )
+
+  ## The tab exists and its data set is loaded -- and still nothing has been
+  ## built. Waiting for the link first matters: asserting before the conditional
+  ## tabs are inserted would pass against an eager build that simply had not run
+  ## yet.
+  expect_equal(app$get_value(export = "coordviews_bundles_built"), 0)
+
+  app$run_js(
+    "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"
+  )
+  app$wait_for_idle(timeout = 20000)
+
+  ## Opening it builds it exactly once, and the workspace really is populated --
+  ## a gate that never opens would also report "0 built before, 1 after" if the
+  ## assertion stopped at the counter.
+  expect_equal(app$get_value(export = "coordviews_bundles_built"), 1)
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.length > 0",
+    timeout = 20000
+  )
+  expect_gt(app$get_js(cv_ink_js()), 1)
 
   app$stop()
 })

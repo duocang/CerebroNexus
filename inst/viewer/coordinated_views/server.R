@@ -27,8 +27,18 @@ source(
 ## Always resolves to something sendable: the bundle, or a list(error = <text>)
 ## describing why this data set has no linked views. Never NULL — see the observe
 ## below for why silence is the one outcome we cannot afford.
+## How many times the bundle has actually been built this session. A plain
+## environment rather than a reactiveVal: it is written from inside the reactive
+## that it counts, and a reactive value would make that a dependency on itself.
+## Read back through exportTestValues -- "was any work done for a tab nobody
+## opened" is otherwise invisible from the outside, which is how it went
+## unnoticed in the first place.
+coordviews_build_log <- new.env(parent = emptyenv())
+coordviews_build_log$n <- 0L
+
 coordviews_bundle <- reactive({
   req(!is.null(data_set()))
+  coordviews_build_log$n <- coordviews_build_log$n + 1L
   tryCatch(
     {
       b <- cv_build_bundle(data_set())
@@ -63,11 +73,33 @@ cv_ok <- function(b) {
   if (is.null(b) || !is.null(b$error)) NULL else b
 }
 
-## Push on (re)connect (coordviews_ready) or data-set change. The error payload
-## is pushed too, and that is the point: staying silent would leave the PREVIOUS
-## data set's panels on screen, presenting one data set's cells as another's.
+## Nothing is built or sent until the user actually opens the tab.
+##
+## `coordviews_bundle()` walks every cell of the loaded object -- reductions,
+## spatial coordinates, the immune repertoire -- and the result is sizeable
+## (~156 KB for the omnibus demo). Doing that on connect made every session pay
+## for a tab most of them never open, and because the bundle reads
+## reactive_colors(), recolouring a group on the Projection tab rebuilt and
+## re-sent the whole thing while Linked views sat hidden.
+##
+## The client asks (`coordviews_ready`) the first time the workspace is on
+## screen, and not before -- see www/coordviews.js for why that signal rather
+## than the sidebar's active-tab input. Once asked, the flag stays set: leaving
+## the tab must not discard the workspace, and a data-set switch or a recolour
+## while it is open still has to reach it, so the observe below keeps its
+## dependency on the bundle.
+coordviews_opened <- reactiveVal(FALSE)
+observeEvent(input[["coordviews_ready"]], {
+  coordviews_opened(TRUE)
+})
+
+## Push on first open, on (re)connect (coordviews_ready) and on data-set change.
+## The error payload is pushed too, and that is the point: staying silent would
+## leave the PREVIOUS data set's panels on screen, presenting one data set's
+## cells as another's.
 observe({
   input[["coordviews_ready"]]
+  req(coordviews_opened())
   session$sendCustomMessage("coordviews_data", coordviews_bundle())
 })
 
@@ -349,6 +381,7 @@ lapply(
 )
 
 observeEvent(input[["coordviews_gene"]], {
+  req(coordviews_opened())
   b <- cv_ok(coordviews_bundle())
   g <- input[["coordviews_gene"]]
   if (is.null(b) || is.null(g) || !nzchar(g)) {
@@ -367,6 +400,11 @@ observeEvent(input[["coordviews_gene"]], {
 
 ## RGB co-expression: one gene per channel, each scaled independently; an empty
 ## channel is all-zero. Recompute whenever any of the three genes changes.
+## ignoreInit: the event value is a LIST, and a list of three NULLs is not NULL,
+## so ignoreNULL does not suppress the initial run the way it does for the
+## single-gene selector above. Without it this observer built the whole bundle
+## on connect -- the one place the laziness leaked, and invisible from outside
+## because the bundle was built but never sent.
 observeEvent(
   list(
     input[["coordviews_gene_r"]],
@@ -374,6 +412,7 @@ observeEvent(
     input[["coordviews_gene_b"]]
   ),
   {
+    req(coordviews_opened())
     b <- cv_ok(coordviews_bundle())
     if (is.null(b)) {
       return()
@@ -414,6 +453,12 @@ observeEvent(
 ## the canvas instantly and never round-trips to the server.
 ##----------------------------------------------------------------------------##
 output[["coordviews_image_ui"]] <- renderUI({
+  ## suspendWhenHidden = FALSE below keeps these controls in the DOM for
+  ## coordviews.js to wire, which also means this output runs while the tab is
+  ## hidden -- and it reads the bundle. Without the same gate as the push, it
+  ## would build the bundle on connect on its own and the laziness would be
+  ## worth nothing.
+  req(coordviews_opened())
   b <- cv_ok(coordviews_bundle())
   img <- NULL
   if (!is.null(b)) {
@@ -556,7 +601,7 @@ observeEvent(input[["coordinated_views_info"]], {
     size = "l",
     tagList(
       tags$p(
-        "Every modality is shown as a 2-D layout of the ",
+        "Every modality is a layout of the ",
         tags$b("same cells"),
         ": the ",
         tags$b("UMAP"),
@@ -568,14 +613,16 @@ observeEvent(input[["coordinated_views_info"]], {
       ),
       tags$p(
         tags$b("Coordinated selection"),
-        " — lasso-drag in ",
-        tags$i("any"),
+        " — lasso-drag in any ",
+        tags$i("2-D"),
         " panel and the same cells highlight in ",
         tags$i("every"),
         " panel, because the selection is keyed on the cell, not on a panel's ",
         "coordinates. Select a UMAP cluster to see where those cells sit in ",
         "tissue and which clonotypes they carry; select an expanded clone to see ",
-        "where its cells fall in the UMAP."
+        "where its cells fall in the UMAP. A 3-D panel is for navigating: with ",
+        "depth on screen, what a lasso encloses depends on the viewing angle, so ",
+        "those panels display a selection rather than make one."
       ),
       tags$p(
         tags$b("Readout"),

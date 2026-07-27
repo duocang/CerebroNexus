@@ -96,8 +96,6 @@
 .coordviews-page .cv-seg-btn.is-on {
   background: var(--cv-amber50); color: var(--cv-amber700); font-weight: 600;
 }
-/* right-panel space switch sits in panel B's header — a touch more compact */
-.coordviews-page .cv-space-switch .cv-seg-btn { padding: 3px 9px; font-size: 11px; }
 
 /* ---- right cluster: readout + selection actions ------------------------- */
 .coordviews-page .cv-topbar-right {
