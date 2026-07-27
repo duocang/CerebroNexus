@@ -769,6 +769,19 @@
     var mp = $('cv-more');
     return !!(mp && mp.classList.contains('is-open'));
   }
+  // Shut every open group-filter menu and clear the "open" look on its chip.
+  function closeFilterMenus() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('.coordviews-page .cv-filt'),
+      function (wrap) {
+        var m = wrap.querySelector('.cv-filt-menu');
+        if (m) m.style.display = 'none';
+        var b = wrap.querySelector('.cv-filt-btn');
+        if (b) b.classList.remove('is-open');
+      }
+    );
+  }
+
   var moreClipTimer = null;
   function setMoreOpen(open) {
     var mp = $('cv-more'), btn = $('cv-more-btn');
@@ -793,12 +806,7 @@
     // A level menu left open inside a folded row would still be "open" when the
     // row comes back — and the click that reopens the row would then read as the
     // click that closes the menu. Fold them away with their row.
-    if (!open) {
-      Array.prototype.forEach.call(
-        mp.querySelectorAll('.cv-filt-menu'),
-        function (m) { m.style.display = 'none'; }
-      );
-    }
+    if (!open) closeFilterMenus();
     if (D) resizeAll();
   }
 
@@ -2360,11 +2368,16 @@
       // right-panel space switch: flip panel B between physical / clonal
       var ssw = t && t.closest && t.closest('#cv-space-switch .cv-seg-btn');
       if (ssw) { setPanelBSpace(ssw.getAttribute('data-space')); return; }
-      // group-filter chip: open/close its level menu
+      // group-filter chip: open/close its level menu. Only ever one at a time —
+      // several open at once overlap each other and say nothing more than one.
       var fbtn = t && t.closest && t.closest('.cv-filt-btn');
       if (fbtn) {
-        var menu = fbtn.parentElement.querySelector('.cv-filt-menu');
-        if (menu) menu.style.display = (menu.style.display === 'none') ? '' : 'none';
+        var wrap0 = fbtn.parentElement;
+        var menu = wrap0.querySelector('.cv-filt-menu');
+        var willOpen = !!menu && menu.style.display === 'none';
+        closeFilterMenus();
+        if (menu) menu.style.display = willOpen ? '' : 'none';
+        fbtn.classList.toggle('is-open', willOpen);
         return;
       }
       // group-filter All / None
@@ -2424,10 +2437,22 @@
         readFilter(fwrap);
       }
     });
+    // A click anywhere outside a filter widget dismisses its menu — a popover
+    // that only closes via the control that opened it is a trap. Registered
+    // separately from the main click handler because that one returns early on
+    // most branches, and this has to run for all of them. Clicks INSIDE the
+    // widget are left alone so several levels can be ticked in one visit.
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (t && t.closest && t.closest('.cv-filt')) return;
+      closeFilterMenus();
+    });
     // Escape closes the detail card — it behaves like a dialog, so it should
-    // dismiss like one.
+    // dismiss like one — and any open filter menu, for the same reason.
     document.addEventListener('keydown', function (e) {
-      if (e.key !== 'Escape' || !cardOpen()) return;
+      if (e.key !== 'Escape') return;
+      closeFilterMenus();
+      if (!cardOpen()) return;
       pick = null; closeCard(); drawAll();
       if (!sel) { rebuildNiche(); renderReadout(); }
     });

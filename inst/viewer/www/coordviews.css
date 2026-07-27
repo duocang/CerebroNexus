@@ -242,6 +242,13 @@
   background: var(--cv-surface2); color: var(--cv-text);
 }
 .coordviews-page .cv-filt-btn:hover { background: var(--cv-amber50); border-color: var(--cv-amber200); }
+/* While its menu is open the chip stays lit, so the menu can be traced back to
+   the chip it belongs to — which matters most when several chips sit in a row. */
+.coordviews-page .cv-filt-btn.is-open {
+  background: var(--cv-amber50); border-color: var(--cv-amber200);
+  color: var(--cv-amber700);
+}
+.coordviews-page .cv-filt-btn.is-open .cv-filt-ct { color: var(--cv-amber); }
 .coordviews-page .cv-filt-ct { color: var(--cv-text3); font-weight: 400; }
 /* Styled to sit beside the native <select> menus in the same bar. Those are
    drawn by the OS and cannot be restyled, so this one moves toward them: a soft
