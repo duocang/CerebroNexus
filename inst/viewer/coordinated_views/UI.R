@@ -379,6 +379,23 @@ tab_coordinated_views <- tabItem(
               disp = "100",
               val_id = "cv-pct-val"
             ),
+            ## Continuous colourings only (JS shows it for a gene or a numeric
+            ## field). A single extreme value otherwise owns the top of the
+            ## scale and presses every other cell into the bottom few percent of
+            ## the colour map, where nothing can be told apart.
+            div(
+              class = "cv-ctl",
+              id = "cv-clip-ctl",
+              style = "display:none",
+              tags$label("Colour range"),
+              tags$select(
+                id = "cv-clip",
+                tags$option(value = "0", "Full range"),
+                tags$option(value = "0.01", selected = NA, "1-99%"),
+                tags$option(value = "0.02", "2-98%"),
+                tags$option(value = "0.05", "5-95%")
+              )
+            ),
             div(
               class = "cv-ctl cv-filters",
               tags$label("Group filters"),

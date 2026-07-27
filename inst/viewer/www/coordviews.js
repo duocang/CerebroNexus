@@ -411,10 +411,62 @@ var hoverCell = null;
     return ord;
   }
 
+  // ---- colour range --------------------------------------------------------
+  // Fraction trimmed from EACH tail of a continuous colouring before it is
+  // mapped onto viridis. Mapping the full min-max instead hands the top of the
+  // scale to whichever cell happens to be the most extreme, and presses every
+  // other one into the bottom few percent of the colour map, where differences
+  // that matter are differences nobody can see. The trimmed values are not
+  // hidden -- they saturate at the ends, and the colourbar says so.
+  var colorClip = 0.01;
+  var _clipD = null, _clipKey = null, _clipVal = null;
+  function clipRange() {
+    if (!D) return null;
+    var vals = null, span = 255;
+    if (colorBy === GENE_MODE && D.gene) { vals = D.gene.v; span = 255; }
+    else {
+      var f = fieldOf();
+      if (f) { vals = f.v; span = f.scale || 255; }
+    }
+    if (!vals) return null;
+    var key = colorBy + '|' + (D.gene ? D.gene.gene : '') + '|' + colorClip;
+    if (_clipD === D && _clipKey === key) return _clipVal;
+    var r;
+    if (colorClip <= 0) {
+      r = { lo: 0, hi: span };
+    } else {
+      // Histogram rather than a sort: the values arrive quantised into a known
+      // number of steps, so the quantile is a running count over the bins and
+      // costs one pass instead of n log n on every change.
+      var bins = new Int32Array(span + 1), k = 0, i;
+      for (i = 0; i < vals.length; i++) {
+        var v = vals[i];
+        if (v == null || isNaN(v)) continue;
+        bins[Math.max(0, Math.min(span, v | 0))]++; k++;
+      }
+      if (!k) return (_clipD = D, _clipKey = key, _clipVal = { lo: 0, hi: span });
+      var want = colorClip * k, acc = 0, lo = 0, hi = span;
+      for (i = 0; i <= span; i++) { acc += bins[i]; if (acc >= want) { lo = i; break; } }
+      acc = 0;
+      for (i = span; i >= 0; i--) { acc += bins[i]; if (acc >= want) { hi = i; break; } }
+      if (hi <= lo) { lo = 0; hi = span; }   // degenerate (constant) -- show it all
+      r = { lo: lo, hi: hi };
+    }
+    _clipD = D; _clipKey = key; _clipVal = r;
+    return r;
+  }
+  // Quantised value -> 0..1 across the active colour range.
+  function clipT(v, span) {
+    var r = _clipVal;
+    if (!r) return v / span;
+    if (r.hi <= r.lo) return 0;
+    return Math.max(0, Math.min(1, (v - r.lo) / (r.hi - r.lo)));
+  }
+
   function colorOf(i) {
     if (colorBy === GENE_MODE) {
       if (!D.gene) return '#dcdcdc';
-      return viridisCss(D.gene.v[i] / 255);
+      return viridisCss(clipT(D.gene.v[i], 255));
     }
     if (colorBy === RGB_MODE) {
       var e = rgbAt(i);
@@ -430,7 +482,7 @@ var hoverCell = null;
     if (fld) {
       var fv = fld.v[i];
       if (fv == null || isNaN(fv)) return '#e6e7ea';   // unpositioned / NA → faint
-      return viridisCss(fv / (fld.scale || 255));
+      return viridisCss(clipT(fv, fld.scale || 255));
     }
     var g = catOf(colorBy);
     if (!g) return '#7b8794';   // nothing categorical to colour by → one colour
@@ -1683,8 +1735,25 @@ var hoverCell = null;
       }
       g.style.background = 'linear-gradient(90deg,' + stops.join(',') + ')';
     }
-    var cb0 = $('cv-cb0'); if (cb0) cb0.textContent = (minVal == null ? '0' : (+minVal).toFixed(1));
-    var cb1 = $('cv-cb1'); if (cb1) cb1.textContent = (maxVal == null ? '' : (+maxVal).toFixed(1));
+    // The bar has to show the range the COLOURS actually span. Printing the
+    // data's min and max while the colours stop short of them would misreport
+    // every cell at the ends: they saturate, and the reader would take the
+    // brightest ones for the maximum. The chevrons say where that happens.
+    var lo = (minVal == null ? 0 : +minVal), hi = (maxVal == null ? null : +maxVal);
+    var r = clipRange(), clipped = false;
+    if (r && hi != null) {
+      var span = (colorBy === GENE_MODE) ? 255 : ((fieldOf() || {}).scale || 255);
+      if (r.lo > 0 || r.hi < span) {
+        var lo0 = lo, hi0 = hi;
+        lo = lo0 + (hi0 - lo0) * (r.lo / span);
+        hi = lo0 + (hi0 - lo0) * (r.hi / span);
+        clipped = true;
+      }
+    }
+    var cb0 = $('cv-cb0');
+    if (cb0) cb0.textContent = (clipped ? '≤' : '') + lo.toFixed(1);
+    var cb1 = $('cv-cb1');
+    if (cb1) cb1.textContent = hi == null ? '' : (clipped ? '≥' : '') + hi.toFixed(1);
     var note = $('cv-cbar-note'); if (note) note.textContent = label || 'expression';
   }
   function renderLegend() {
@@ -2422,11 +2491,20 @@ var hoverCell = null;
     if (colorBy) sel.value = colorBy;
     sel.onchange = function () { setColorBy(sel.value); };
   }
+  // The colour-range control belongs to a continuous colouring and nothing else:
+  // a categorical one has no range to trim, and RGB blends three of them.
+  function updateClipControl() {
+    var el = $('cv-clip-ctl'); if (!el) return;
+    var on = (colorBy === GENE_MODE) || !!fieldOf();
+    el.style.display = on ? '' : 'none';
+  }
   function setColorBy(mode) {
     colorBy = mode; hidden = new Set();
     var geneCtl = $('cv-gene-ctl'), rgbCtl = $('cv-rgb-ctl');
     if (geneCtl) geneCtl.style.display = (mode === GENE_MODE) ? '' : 'none';
     if (rgbCtl) rgbCtl.style.display = (mode === RGB_MODE) ? '' : 'none';
+    updateClipControl();
+    clipRange();                 // seed the cache the colours read from
     renderLegend(); drawAll(); renderReadout();
     // RGB mode widens the bar and may push the action buttons onto their own line
     updateSelActionsLayout();
@@ -2775,6 +2853,7 @@ var hoverCell = null;
     D = bundle;
     sanitiseColors(D);
     syncCloneTiers();
+    _clipD = null;   // ranges belong to the data set that produced them
     closeCard(); cardMeta = null;   // the card described the previous data set
     spaceById = {}; D.spaces.forEach(function (s) { s._unit = null; spaceById[s.id] = s; });
     colorBy = D.default_group ||
@@ -2842,6 +2921,7 @@ var hoverCell = null;
     var geneCtl = $('cv-gene-ctl'), rgbCtl = $('cv-rgb-ctl');
     if (geneCtl) geneCtl.style.display = 'none';
     if (rgbCtl) rgbCtl.style.display = 'none';
+    updateClipControl();
     panels.forEach(function (p) {
       var t = $('cv-title-' + p.key.toLowerCase());
       if (t) { var sp = spaceById[p.spaceId]; t.textContent = sp ? sp.label : p.spaceId; }
@@ -2869,6 +2949,9 @@ var hoverCell = null;
     Shiny.addCustomMessageHandler('coordviews_geneval', function (m) {
       if (!D || !m || !m.ok) return;
       D.gene = { gene: m.gene, v: m.v, max: m.max };
+      // A new gene is a new distribution, so the trimmed range has to be
+      // recomputed before anything reads a colour from it.
+      clipRange();
       if (colorBy === GENE_MODE) { renderLegend(); drawAll(); }
     });
     // The exact meta row behind the open detail card. Ignored if the card has
@@ -3054,6 +3137,12 @@ var hoverCell = null;
     document.addEventListener('change', function (e) {
       var id = e.target && e.target.id;
       if (id && id.indexOf('cv-img-') === 0) { syncImgControls(); drawAll(); return; }
+      if (id === 'cv-clip') {
+        colorClip = parseFloat(e.target.value) || 0;
+        clipRange();               // recompute before anything reads the colours
+        renderLegend(); drawAll();
+        return;
+      }
       if (id === 'cv-evidence') { evidenceOn = e.target.checked; drawAll(); return; }
       if (id === 'cv-labels') { labelsOn = e.target.checked; drawAll(); return; }
       // a group-filter level checkbox toggled

@@ -1518,3 +1518,99 @@ test_that("high values are painted over low ones", {
 
   app$stop()
 })
+
+## One extreme value owns the top of a full min-max scale and presses every other
+## cell into the bottom few percent of the colour map, where the differences that
+## matter are differences nobody can see. Trimming the tails is the default; the
+## trimmed cells are not hidden, they saturate, and the colourbar says so.
+test_that("an outlier does not flatten the colour scale", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_colour_clip")
+
+  ## 199 cells spread evenly across the bottom 6% of the field's range, plus one
+  ## at the top. Against the full scale all 199 collapse onto viridis' darkest
+  ## end. 200 cells so that a 1% tail is two of them: with fewer, the single
+  ## outlier IS the first percentile and trimming would not reach it.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var n = 200, x = [], y = [], cells = [], vals = [], fv = [];\n",
+      "  for (var j = 0; j < n; j++) {\n",
+      "    x.push((j % 20) * 2); y.push(Math.floor(j / 20) * 2);\n",
+      "    cells.push('c' + j); vals.push(0);\n",
+      "    fv.push(j === n - 1 ? 1000 : Math.round(j / (n - 2) * 60));\n",
+      "  }\n",
+      "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+      "    coordviews_data: {\n",
+      "      cells: cells, n: n,\n",
+      "      groups: { cluster: { values: vals, levels: ['a'],\n",
+      "        colors: ['#636EFA'] } },\n",
+      "      cat_extra: {}, cat_skipped: {},\n",
+      "      fields: { 'meta:score': { label: 'score', v: fv,\n",
+      "        min: 0, max: 1000, scale: 1000 } },\n",
+      "      default_group: 'cluster',\n",
+      "      projections: { umap: { x: x, y: y, ndim: 2 } },\n",
+      "      default_projection: 'umap',\n",
+      "      spaces: [{ id: 'umap', label: 'umap (expression)', x: x, y: y }],\n",
+      "      clone: null, trekker: null\n",
+      "    } } }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.indexOf('200 cells') >= 0",
+    timeout = 15000
+  )
+  app$run_js(paste0(
+    "(function () { var s = document.getElementById('cv-pick-color');\n",
+    "  s.value = '__field__meta:score'; s.onchange(); })();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+
+  ## How many distinct colours the cloud is drawn in: with the scale owned by the
+  ## outlier the 60 all collapse onto viridis' darkest end.
+  distinct <- paste0(
+    "(function () {\n",
+    "  var cv = document.getElementById('cv-cv-a');\n",
+    "  var d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;\n",
+    "  var seen = {}, k = 0;\n",
+    "  for (var i = 0; i < d.length; i += 4) {\n",
+    "    if (d[i + 3] === 0) continue;\n",
+    "    if (d[i] > 245 && d[i+1] > 245 && d[i+2] > 245) continue;\n",
+    "    var key = (d[i] >> 3) + ',' + (d[i+1] >> 3) + ',' + (d[i+2] >> 3);\n",
+    "    if (!seen[key]) { seen[key] = 1; k++; }\n",
+    "  }\n",
+    "  return k;\n",
+    "})();"
+  )
+  clipped <- app$get_js(distinct)
+
+  ## The control is offered for a continuous colouring, and turning it off puts
+  ## the flat picture back -- which is what makes the number above meaningful.
+  expect_true(app$get_js(
+    "getComputedStyle(document.getElementById('cv-clip-ctl')).display !== 'none'"
+  ))
+  app$run_js(paste0(
+    "(function () { var s = document.getElementById('cv-clip');\n",
+    "  s.value = '0'; s.dispatchEvent(new Event('change', { bubbles: true }));",
+    " })();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+  full <- app$get_js(distinct)
+  expect_gt(clipped, full)
+
+  ## The bar must report the range the COLOURS span, not the data's, or every
+  ## saturated cell is misread as the maximum.
+  app$run_js(paste0(
+    "(function () { var s = document.getElementById('cv-clip');\n",
+    "  s.value = '0.05'; s.dispatchEvent(new Event('change', { bubbles: true }));",
+    " })();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+  expect_match(
+    app$get_js("document.getElementById('cv-cb1').textContent"),
+    "^≥"
+  )
+
+  app$stop()
+})

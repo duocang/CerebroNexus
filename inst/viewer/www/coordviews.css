@@ -67,6 +67,16 @@
 .coordviews-page .cv-topbar select:focus {
   outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
 }
+/* The "More" panel is not inside .cv-topbar, so its dropdowns need the same
+   look stated for them rather than inherited. */
+.coordviews-page .cv-more-inner select {
+  padding: 6px 9px; border: 1px solid var(--c-border-2, #e0e0e0);
+  border-radius: 6px; background: var(--cv-surface); color: var(--cv-text);
+  font-size: 12.5px; font-family: inherit; min-width: 150px;
+}
+.coordviews-page .cv-more-inner select:focus {
+  outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
+}
 .coordviews-page .cv-ctl-range { min-width: 150px; }
 /* Slider + its value bubble live in one fixed-height box, so this column matches
    the dropdown columns' height and (under the bar's flex-end) its label lines up
