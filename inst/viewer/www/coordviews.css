@@ -16,7 +16,16 @@
   --cv-blue: var(--c-blue, #2f6fd6);
   --cv-blue50: var(--c-blue-50, #eef4fb);
   --cv-blue100: var(--c-blue-100, #d7e6f7);
+  /* Amber is the app's accent, so it is what "this control is on" looks like:
+     the tints below carry every active/checked state on this page. Blue is left
+     to focus rings (a platform convention worth keeping distinct) and to the
+     geometry of a selection — the lasso outline and the minimap's viewport
+     frame — which are marks on the data, not states of a control. */
   --cv-amber: var(--c-amber, #f97316);
+  --cv-amber50: var(--c-amber-50, #fff3ea);
+  --cv-amber100: var(--c-amber-100, #fde3cf);
+  --cv-amber200: var(--c-amber-200, #fbcfa8);
+  --cv-amber700: var(--c-amber-700, #c2410c);
 }
 
 /* ---- dataset meta strip ------------------------------------------------- */
@@ -78,7 +87,7 @@
 .coordviews-page .cv-seg-btn:first-child { border-left: 0; }
 .coordviews-page .cv-seg-btn:hover { background: var(--cv-surface2); }
 .coordviews-page .cv-seg-btn.is-on {
-  background: var(--cv-blue50); color: var(--c-blue-700, #1d4ea0); font-weight: 600;
+  background: var(--cv-amber50); color: var(--cv-amber700); font-weight: 600;
 }
 /* right-panel space switch sits in panel B's header — a touch more compact */
 .coordviews-page .cv-space-switch .cv-seg-btn { padding: 3px 9px; font-size: 11px; }
@@ -148,11 +157,11 @@
 /* open: same blue "active" convention the segmented toggles use, so the button
    states which half of the bar it controls is currently showing */
 .coordviews-page .cv-morebtn[aria-expanded="true"] {
-  background: var(--cv-blue50); border-color: var(--cv-blue100);
-  color: var(--c-blue-700, #1d4ea0);
+  background: var(--cv-amber50); border-color: var(--cv-amber200);
+  color: var(--cv-amber700);
 }
 .coordviews-page .cv-morebtn[aria-expanded="true"]:hover {
-  background: var(--cv-blue100);
+  background: var(--cv-amber100);
 }
 /* The caret ROTATES between pointing right (collapsed) and down (open) — one
    mark that travels, rather than two glyphs swapping. Drawn with borders rather
@@ -349,8 +358,8 @@
 }
 .coordviews-page .cv-tbtn:hover { background: var(--cv-surface2); color: var(--cv-text); }
 .coordviews-page .cv-tbtn.is-on {
-  background: var(--cv-blue50); border-color: var(--cv-blue100);
-  color: var(--c-blue-700, #1d4ea0);
+  background: var(--cv-amber50); border-color: var(--cv-amber200);
+  color: var(--cv-amber700);
 }
 .coordviews-page .cv-pane-head select {
   margin-left: auto; padding: 4px 7px; border: 1px solid var(--c-border-2, #e0e0e0);
@@ -590,13 +599,13 @@
    flex centering). */
 .coordviews-page .cv-img-ctl input[type=range] {
   width: 96px; height: 18px; margin: 0; vertical-align: middle;
-  accent-color: var(--cv-blue); display: block;
+  accent-color: var(--cv-amber); display: block;
 }
 .coordviews-page .cv-chk {
   display: flex; align-items: center; gap: 5px; font-size: 11.5px;
   color: var(--cv-text2); cursor: pointer; user-select: none; margin: 0;
 }
-.coordviews-page .cv-chk input { accent-color: var(--cv-blue); }
+.coordviews-page .cv-chk input { accent-color: var(--cv-amber); }
 /* A checkbox sitting in the top bar as a control in its own right: boxed like
    the selects and sliders beside it, and the same 30px tall so the row's
    baseline stays even. */
@@ -609,8 +618,8 @@
 }
 .coordviews-page .cv-chk-ctl:hover { background: var(--cv-surface2); }
 .coordviews-page .cv-chk-ctl:has(input:checked) {
-  background: var(--cv-blue50); border-color: var(--cv-blue100);
-  color: var(--c-blue-700, #1d4ea0);
+  background: var(--cv-amber50); border-color: var(--cv-amber200);
+  color: var(--cv-amber700);
 }
 
 /* ---- colourbar (single-gene continuous) --------------------------------- */
