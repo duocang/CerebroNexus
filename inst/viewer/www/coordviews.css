@@ -97,7 +97,7 @@
   margin-left: auto; display: flex; align-items: center; gap: 14px;
 }
 .coordviews-page .cv-shown {
-  font-size: 12px; color: var(--cv-blue); font-weight: 600; white-space: nowrap;
+  font-size: 12px; color: var(--cv-amber700); font-weight: 600; white-space: nowrap;
 }
 /* Zoom + Clear: stacked vertically while they fit on the controls' row (saves
    width). When the other controls push them onto their own line, JS adds
@@ -122,9 +122,10 @@
   padding: 7px 14px; font-size: 12.5px; font-weight: 600; line-height: 1.2;
   border: 1px solid; border-radius: 6px;
 }
-/* Zoom — neutral surface by default; when zoomed-in it flips to the blue
-   "active" style (same convention as the segmented toggle), so the button also
-   signals the current state, not just its label. */
+/* Zoom — neutral surface by default; when zoomed-in it takes on a filled style
+   so the button signals the current state, not just its label. It is the one
+   active state NOT in amber: Clear sits directly beside it and is already
+   amber, and two adjacent buttons in the same fill stop reading as two. */
 .coordviews-page .cv-zoombtn {
   border-color: var(--cv-border); background: var(--cv-surface);
   color: var(--cv-text2);
@@ -137,10 +138,10 @@
 .coordviews-page .cv-zoombtn.is-zoomed:hover { background: var(--cv-blue100); }
 /* Clear — the app's amber accent (matches the slider / theme colour). */
 .coordviews-page .cv-clearbtn {
-  border-color: var(--c-amber-200, #fbcfa8); background: var(--c-amber-50, #fff3ea);
-  color: var(--c-amber-700, #c2410c);
+  border-color: var(--cv-amber200); background: var(--cv-amber50);
+  color: var(--cv-amber700);
 }
-.coordviews-page .cv-clearbtn:hover { background: var(--c-amber-100, #fde3cf); }
+.coordviews-page .cv-clearbtn:hover { background: var(--cv-amber100); }
 
 /* ---- "More" toggle + the bar's collapsible second row ------------------- */
 .coordviews-page .cv-morebtn {
@@ -154,8 +155,8 @@
 .coordviews-page .cv-morebtn:hover { background: var(--cv-surface2); }
 /* press: a small give, springing back on release */
 .coordviews-page .cv-morebtn:active { transform: scale(.955); }
-/* open: same blue "active" convention the segmented toggles use, so the button
-   states which half of the bar it controls is currently showing */
+/* open: the same amber "active" convention the segmented toggles use, so the
+   button states which half of the bar it controls is currently showing */
 .coordviews-page .cv-morebtn[aria-expanded="true"] {
   background: var(--cv-amber50); border-color: var(--cv-amber200);
   color: var(--cv-amber700);
@@ -234,7 +235,7 @@
   border: 1px solid var(--cv-border); border-radius: 6px;
   background: var(--cv-surface2); color: var(--cv-text);
 }
-.coordviews-page .cv-filt-btn:hover { background: var(--cv-blue50); }
+.coordviews-page .cv-filt-btn:hover { background: var(--cv-amber50); border-color: var(--cv-amber200); }
 .coordviews-page .cv-filt-ct { color: var(--cv-text3); font-weight: 400; }
 .coordviews-page .cv-filt-menu {
   position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 4px;
@@ -251,7 +252,7 @@
   border: 1px solid var(--cv-border); border-radius: 5px;
   background: var(--cv-surface2); color: var(--cv-text2);
 }
-.coordviews-page .cv-filt-acts button:hover { background: var(--cv-blue50); }
+.coordviews-page .cv-filt-acts button:hover { background: var(--cv-amber50); }
 .coordviews-page .cv-filt-item {
   display: flex; align-items: center; gap: 6px; padding: 3px 4px;
   font-size: 12px; font-weight: 400; color: var(--cv-text); cursor: pointer;
@@ -673,9 +674,9 @@
    Reveals by collapsing height + margins so the panels slide, not jump. */
 .coordviews-page .cv-selbar {
   display: flex; align-items: center; gap: 10px; margin: 14px 0 6px;
-  background: var(--cv-blue50); border: 1px solid var(--cv-blue100);
+  background: var(--cv-amber50); border: 1px solid var(--cv-amber200);
   border-radius: 6px; padding: 8px 12px; font-size: 12.5px;
-  color: var(--c-blue-700, #1d4ea0);
+  color: var(--cv-amber700);
   max-height: 60px; overflow: hidden;
   transition: max-height .2s ease, opacity .18s ease,
     margin-top .2s ease, margin-bottom .2s ease,
@@ -727,7 +728,7 @@
 }
 .coordviews-page .cv-ctable tbody tr:last-child td { border-bottom: 0; }
 .coordviews-page .cv-crow { cursor: pointer; }
-.coordviews-page .cv-crow:hover { background: var(--cv-blue50); }
+.coordviews-page .cv-crow:hover { background: var(--cv-amber50); }
 .coordviews-page .cv-cdr3 {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px; color: var(--cv-text);
