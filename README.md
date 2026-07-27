@@ -10,9 +10,6 @@
 ![Lifecycle: stable](https://lifecycle.r-lib.org/articles/figures/lifecycle-stable.svg)
 
 
-
-# CerebroNexus
-
 Interactive visualization of single-cell RNA-seq data, built on top of [Shiny](https://shiny.posit.co/).
 
 CerebroNexus supports loading pre-processed single-cell data, exploring projections and gene expression, browsing marker genes and enriched pathways, and inspecting group compositions — all through an interactive web interface. The sections below cover the key features.
