@@ -782,10 +782,22 @@
     );
   }
 
-  var moreClipTimer = null;
+  var moreClipTimer = null, moreMountTimer = null;
   function setMoreOpen(open) {
     var mp = $('cv-more'), btn = $('cv-more-btn');
     if (!mp) return;
+    // Mount before opening, unmount after closing. While folded the row is
+    // display:none so it costs the bar neither a flex line nor that line's
+    // row-gap; the animation still needs a laid-out box, hence the extra frame.
+    clearTimeout(moreMountTimer);
+    if (open) {
+      mp.classList.add('is-mounted');
+      void mp.offsetWidth;              // commit the display change first
+    } else {
+      moreMountTimer = setTimeout(function () {
+        if (!mp.classList.contains('is-open')) mp.classList.remove('is-mounted');
+      }, 340);
+    }
     mp.classList.toggle('is-open', open);
     if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     // The overflow:hidden that lets the row collapse also clips the group-filter

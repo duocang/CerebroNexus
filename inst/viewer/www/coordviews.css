@@ -215,19 +215,21 @@
    max-height to guess and overshoot. `.cv-more-clip` provides the
    overflow/min-height that makes the 0fr row collapse; `.cv-more-inner` carries
    the hairline and padding so neither paints while collapsed. */
+/* Folded, this is display:none so the bar does not hold a flex line — and that
+   line's 16px row-gap — for a row that is not there. A negative margin cannot
+   pay for the gap: row-gap sits BETWEEN lines rather than on the item, and
+   under the bar's align-items:flex-end a margin-top does not move the item
+   either. JS mounts it (is-mounted) a frame before opening it, and unmounts it
+   after the collapse finishes, so the height animation still has a box to run
+   in. Open, the bar's gap sits above the hairline and balances its padding. */
 .coordviews-page .cv-more {
-  flex: 0 0 100%; display: grid; grid-template-rows: 0fr; opacity: 0;
-  /* The bar's own 16px row-gap would still separate this row while it is
-     collapsed, leaving dead space under the controls; the negative margin
-     cancels exactly that gap, so a folded row costs nothing. Open, the gap
-     comes back and sits above the hairline, balancing its 15px padding below. */
-  margin-top: -16px;
+  display: none;
+  flex: 0 0 100%; grid-template-rows: 0fr; opacity: 0;
   transition: grid-template-rows .32s cubic-bezier(.4, 0, .2, 1),
-    opacity .2s ease, margin-top .32s cubic-bezier(.4, 0, .2, 1);
+    opacity .2s ease;
 }
-.coordviews-page .cv-more.is-open {
-  grid-template-rows: 1fr; opacity: 1; margin-top: 0;
-}
+.coordviews-page .cv-more.is-mounted { display: grid; }
+.coordviews-page .cv-more.is-open { grid-template-rows: 1fr; opacity: 1; }
 .coordviews-page .cv-more-clip { overflow: hidden; min-height: 0; }
 /* The clip that makes the height animation possible also clips anything the row
    opens DOWNWARDS — the group-filter dropdowns live here, and inside a clipped
