@@ -43,6 +43,39 @@
   co-expression. A column with as many levels as cells is listed greyed out
   rather than silently dropped.
 
+## Reading a continuous value
+
+- **High values are painted last.** A gene or numeric colouring was drawn in
+  index order, which is arbitrary with respect to the value, so wherever cells
+  overlap a high-expressing one could be covered by whichever low-expressing
+  neighbours came after it in the array -- and a real focus of expression read
+  as absent.
+- **The colour scale no longer belongs to its outlier.** The full min-max was
+  mapped onto viridis, so one extreme cell owned the top of the scale and
+  pressed every other one into the bottom few percent of the colour map. The
+  tails are trimmed by default (1% each side, adjustable in "More"); trimmed
+  cells saturate rather than disappear, and the colourbar reports the range the
+  colours actually span.
+
+## Working in the panels
+
+- **Any panel can take the whole grid, and hand it back.** With three or four
+  panels each square is small enough that detail is guesswork. The folded panels
+  keep their space and their view, and the selection is untouched, so this is a
+  change of magnification rather than of state. Offered from three panels up,
+  where the grid takes a second row and there is height to reclaim.
+- **"Zoom to selection" is offered per panel**, not only for the expression one.
+- **Clicking a cell no longer throws a card over the workspace.** It picks --
+  which on a Trekker data set is how a nucleus's niche is read -- and pins the
+  hover tooltip, which then carries Details and Close. Hovering marks the same
+  cell in every panel that has a position for it.
+- **The Moran's I table links to the map.** Each row in the Trekker detail modal
+  colours every panel by that gene.
+- **Positioning is on the single-cell card**: per-cell confidence, whether
+  positioning evidence was recorded, and Trekker's own physical fields.
+- **Zooming is a toolbar action.** Wheel-zoom made the panels hostile to scroll
+  past, and on a trackpad the scroll and the zoom are one gesture.
+
 ## Fixes
 
 - **A clone means the same thing on every page.** The Clonal UMAP and Linked
@@ -57,6 +90,11 @@
   default, and what `addProjection()` accepts -- matched neither branch and left
   the previous plot on screen. Its first three components are now drawn. The
   selected-cell table no longer carries the remaining components as data.
+- **A non-uniform histology calibration survives.** An alignment preset can
+  carry different X and Y scales; one Scale slider had to collapse them, and
+  every control in the bar rewrote the pair from it, so a nudge to the opacity
+  squared the image up. Two sliders now, with an aspect lock and a way back to
+  the preset.
 - **The workspace is built only when it is opened.** Its bundle walks every cell
   of the loaded object and was previously assembled on connect for every session,
   then rebuilt whenever a group colour changed -- for a tab most sessions never
