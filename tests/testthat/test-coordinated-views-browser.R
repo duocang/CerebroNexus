@@ -696,6 +696,25 @@ test_that("a 3-D panel navigates but cannot be selected on", {
     "coordinated across all panels"
   )
 
+  # The top bar's "Zoom to selection" defaults to the expression panel, which
+  # here is the 3-D one. A zoom is a rectangle in screen space, and on a rotated
+  # cloud that rectangle belongs to the current angle only -- turn it afterwards
+  # and the cells it was fitted to are elsewhere, possibly off screen. The
+  # per-panel button is hidden on a 3-D panel for exactly this reason, so the
+  # top-bar one must not quietly do it instead.
+  expect_false(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-zoom')).display !== 'none'"
+    )
+  )
+  app$run_js("document.getElementById('cv-zoom').click();")
+  app$wait_for_idle(timeout = 5000)
+  expect_false(
+    app$get_js(
+      "document.getElementById('cv-mini-a').classList.contains('is-on')"
+    )
+  )
+
   app$stop()
 })
 

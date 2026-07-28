@@ -1343,7 +1343,13 @@ var focusPanel = null;
     revealEl($('cv-selactions'), show);
     if (show) updateSelActionsLayout();
     var zb = $('cv-zoom');
-    if (zb) zb.style.display = hasSel ? '' : 'none';
+    // Offered only when there is a flat panel for it to act on: with the
+    // expression panel showing a 3-D embedding it would have nothing to zoom,
+    // and a button that does nothing reads as one that failed.
+    var canZoom = hasSel && panels.some(function (p) {
+      return p.spaceId === 'umap' && !panelIs3D(p);
+    });
+    if (zb) zb.style.display = canZoom ? '' : 'none';
   }
   // Vertical stack while the buttons fit on the controls' row; horizontal once
   // the other controls push them onto their own (full-width) line. Detected by
@@ -1376,6 +1382,13 @@ var focusPanel = null;
     var did = false;
     panels.forEach(function (p) {
       if (only ? p !== only : p.spaceId !== 'umap') return;
+      // Never a rotated cloud, whichever button asked. A zoom is a rectangle in
+      // screen space, and on a 3-D panel that rectangle is only the one the
+      // current angle produces -- turn it afterwards and the cells it was fitted
+      // to are somewhere else, quite possibly off screen. The per-panel button
+      // is hidden on a 3-D panel for this reason; the top bar's defaults to the
+      // expression panel, which can itself be showing a 3-D embedding.
+      if (panelIs3D(p)) return;
       var sp = spaceById[p.spaceId], u = sp && sp._unit;
       if (!u) return;
       var nx0 = Infinity, nx1 = -Infinity, ny0 = Infinity, ny1 = -Infinity, any = false;
