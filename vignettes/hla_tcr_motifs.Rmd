@@ -527,7 +527,18 @@ contig_list <- lapply(sample_dirs, function(d) {
 })
 combined <- combineTCR(contig_list, samples = donor_ids) # a list named by donor
 
-seurat@misc$immune_repertoire <- combined
+seurat <- addImmuneRepertoire(seurat, tcr = combined)
+```
+
+`addImmuneRepertoire()` also takes the contig files directly, doing the
+`combineTCR()` step for you:
+
+```{r, eval = FALSE}
+seurat <- addImmuneRepertoire(
+  seurat,
+  tcr = file.path(sample_dirs, "filtered_contig_annotations.csv"),
+  sample_names = donor_ids
+)
 ```
 
 The page reads two things out of each row: the V gene (the first dot-separated token of `CTgene`) and the CDR3 amino acids (`CTaa`).

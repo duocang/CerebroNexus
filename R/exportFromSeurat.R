@@ -895,11 +895,17 @@ exportFromSeurat <- function(
   ##--------------------------------------------------------------------------##
   ## Immune repertoire data (unified)
   ##--------------------------------------------------------------------------##
-  if (
+  ## `is.list()` was the whole guard, and a data.frame passes it -- its columns
+  ## became the sample names and the wrong shape reached the .crb intact.
+  has_unified_repertoire <-
     !is.null(object@misc$immune_repertoire) &&
-      is.list(object@misc$immune_repertoire) &&
-      length(object@misc$immune_repertoire) > 0
-  ) {
+    length(object@misc$immune_repertoire) > 0
+  if (has_unified_repertoire) {
+    .validateImmuneRepertoire(
+      object@misc$immune_repertoire,
+      cell_barcodes = Seurat::Cells(object),
+      source_label = "`@misc$immune_repertoire`"
+    )
     if (verbose) {
       message(
         paste0(
@@ -947,13 +953,14 @@ exportFromSeurat <- function(
   ## BCR data (legacy)
   ##--------------------------------------------------------------------------##
   if (!is.null(object@misc$bcr_data)) {
-    ## check if it's a list
-    if (!is.list(object@misc$bcr_data)) {
-      stop(
-        '`object@misc$bcr_data` is not a list.',
-        call. = FALSE
-      )
-    }
+    ## Same check as the unified slot: `getImmuneRepertoire()` falls back to
+    ## merging the legacy slots, so leaving them unchecked would just move the
+    ## way around it rather than close it.
+    .validateImmuneRepertoire(
+      object@misc$bcr_data,
+      cell_barcodes = Seurat::Cells(object),
+      source_label = "`@misc$bcr_data`"
+    )
     if (verbose) {
       message(
         paste0(
@@ -970,13 +977,11 @@ exportFromSeurat <- function(
   ## TCR data (legacy)
   ##--------------------------------------------------------------------------##
   if (!is.null(object@misc$tcr_data)) {
-    ## check if it's a list
-    if (!is.list(object@misc$tcr_data)) {
-      stop(
-        '`object@misc$tcr_data` is not a list.',
-        call. = FALSE
-      )
-    }
+    .validateImmuneRepertoire(
+      object@misc$tcr_data,
+      cell_barcodes = Seurat::Cells(object),
+      source_label = "`@misc$tcr_data`"
+    )
     if (verbose) {
       message(
         paste0(
@@ -987,6 +992,20 @@ exportFromSeurat <- function(
       )
     }
     export$addTCRData(object@misc$tcr_data)
+  }
+
+  ## R6 methods are serialized into the .crb, so changing the class getter does
+  ## not repair files that were already written. For new exports that only use
+  ## the two legacy slots, populate the unified field that the serialized getter
+  ## already prefers. Keep the legacy fields above for getBCR()/getTCR().
+  if (!has_unified_repertoire) {
+    legacy_repertoire <- .mergeRepertoiresBySample(
+      object@misc$tcr_data,
+      object@misc$bcr_data
+    )
+    if (!is.null(legacy_repertoire) && length(legacy_repertoire) > 0) {
+      export$addImmuneRepertoire(legacy_repertoire)
+    }
   }
 
   ##--------------------------------------------------------------------------##

@@ -1,221 +1,7 @@
-#' @keywords internal
-#' @noRd
-.loadImmuneRepertoireData <- function(file_path, data_type, verbose = TRUE) {
-  data_type_upper <- toupper(data_type)
-
-  if (is.null(file_path) || !nzchar(file_path)) {
-    return(NULL)
-  }
-
-  if (!file.exists(file_path)) {
-    stop(
-      data_type_upper,
-      " file not found: ",
-      file_path,
-      "\n",
-      "Suggestions:\n",
-      "  1. Check if the file path is correct\n",
-      "  2. Verify the file extension is .rds\n",
-      "  3. Ensure you have read permissions for the file"
-    )
-  }
-
-  data <- tryCatch(
-    {
-      readRDS(file_path)
-    },
-    error = function(e) {
-      stop(
-        "Failed to read ",
-        data_type_upper,
-        " data from: ",
-        file_path,
-        "\n",
-        "  Error: ",
-        e$message,
-        "\n",
-        "Suggestions:\n",
-        "  1. Verify the file is a valid .rds file\n",
-        "  2. Check if the file was created using saveRDS()\n",
-        "  3. Try reading the file directly: readRDS('",
-        file_path,
-        "')"
-      )
-    }
-  )
-
-  if (is.null(data)) {
-    stop(
-      data_type_upper,
-      " data is NULL after reading from: ",
-      file_path,
-      "\n",
-      "Suggestions:\n",
-      "  1. Check if the source file contains valid data\n",
-      "  2. Verify the file was not corrupted\n",
-      "  3. Try recreating the .rds file"
-    )
-  }
-
-  if (!is.list(data) || length(data) == 0) {
-    stop(
-      data_type_upper,
-      " data is not a valid list or is empty.\n",
-      "  Expected: A list of contig annotations\n",
-      "  Received: ",
-      class(data)[1],
-      " with length ",
-      length(data),
-      "\n",
-      "Suggestions:\n",
-      "  1. Verify the data structure matches scRepertoire format\n",
-      "  2. Check if the data was properly saved using saveRDS()\n",
-      "  3. Ensure the data contains contig annotations"
-    )
-  }
-
-  if (verbose) {
-    message("[INFO] Loaded ", data_type_upper, " data from: ", file_path)
-    message(
-      "[INFO] ",
-      data_type_upper,
-      " data contains ",
-      length(data),
-      " samples"
-    )
-  }
-
-  return(data)
-}
-
-#' Extract immune repertoire data from Seurat metadata
-#'
-#' When scRepertoire's \code{combineExpression()} has been used, the Seurat
-#' metadata contains columns like CTgene, CTnt, CTaa, CTstrict, etc.
-#' This function extracts those columns and splits by sample into the
-#' list-of-data.frames format expected by scRepertoire visualization functions.
-#' TCR and BCR data are kept together; scRepertoire's \code{chain} parameter
-#' handles filtering at plot time.
-#'
-#' @param seurat A Seurat object with scRepertoire columns in meta.data.
-#' @param groups Character vector of group column names to include in output.
-#' @param sample_col Column name to split samples by; defaults to "orig.ident".
-#' @param verbose Logical; print progress messages.
-#' @return A named list of data.frames (one per sample), or NULL if no
-#'   repertoire data is found.
-#' @keywords internal
-#' @noRd
-.extractRepertoireFromMetadata <- function(
-  seurat,
-  groups = NULL,
-  sample_col = "orig.ident",
-  verbose = TRUE
-) {
-  core_cols <- c("CTgene", "CTnt", "CTaa", "CTstrict")
-  meta_names <- names(seurat@meta.data)
-  present_core <- core_cols[core_cols %in% meta_names]
-
-  if (length(present_core) == 0) {
-    if (verbose) {
-      message(
-        "[INFO] No scRepertoire columns found in metadata, ",
-        "skipping repertoire extraction."
-      )
-    }
-    return(NULL)
-  }
-
-  if (verbose) {
-    message(paste0(
-      "[",
-      format(Sys.time(), "%H:%M:%S"),
-      "] Found scRepertoire columns in metadata: ",
-      paste(present_core, collapse = ", ")
-    ))
-  }
-
-  # Additional scRepertoire columns to preserve
-  optional_cols <- c(
-    "clonalProportion",
-    "clonalFrequency",
-    "cloneSize",
-    "Frequency",
-    "frequency",
-    "cloneType"
-  )
-  present_optional <- optional_cols[optional_cols %in% meta_names]
-
-  # Identify cells with non-NA repertoire data
-  primary_col <- if ("CTgene" %in% present_core) "CTgene" else present_core[1]
-  has_data <- !is.na(seurat@meta.data[[primary_col]]) &
-    nzchar(as.character(seurat@meta.data[[primary_col]]))
-
-  if (sum(has_data) == 0) {
-    if (verbose) {
-      message("[INFO] No cells with non-NA repertoire data found.")
-    }
-    return(NULL)
-  }
-
-  # Columns to keep
-  cols_to_keep <- unique(c(present_core, present_optional))
-  if (!is.null(groups)) {
-    cols_to_keep <- unique(c(cols_to_keep, groups[groups %in% meta_names]))
-  }
-
-  rep_df <- seurat@meta.data[has_data, cols_to_keep, drop = FALSE]
-  rep_df$barcode <- rownames(seurat@meta.data)[has_data]
-
-  # Determine sample column for splitting
-  actual_sample_col <- NULL
-  for (col in c(sample_col, "orig.ident", "sample", "Sample")) {
-    if (col %in% meta_names) {
-      actual_sample_col <- col
-      break
-    }
-  }
-
-  if (!is.null(actual_sample_col)) {
-    rep_df$.sample_id <- as.character(
-      seurat@meta.data[[actual_sample_col]][has_data]
-    )
-  } else {
-    rep_df$.sample_id <- "Sample_1"
-  }
-
-  # Split by sample into list-of-data.frames
-  result <- split(rep_df, rep_df$.sample_id)
-  result <- lapply(result, function(x) {
-    x$.sample_id <- NULL
-    x
-  })
-
-  if (verbose) {
-    # Detect data types present
-    types <- character(0)
-    if ("CTgene" %in% names(rep_df)) {
-      ct <- as.character(rep_df$CTgene)
-      if (any(grepl("TR[ABDG]", ct))) {
-        types <- c(types, "TCR")
-      }
-      if (any(grepl("IG[HKL]", ct))) types <- c(types, "BCR")
-    }
-    message(paste0(
-      "[INFO] Extracted immune repertoire: ",
-      sum(has_data),
-      " cells in ",
-      length(result),
-      " sample(s)",
-      if (length(types) > 0) {
-        paste0(" [", paste(types, collapse = "+"), "]")
-      } else {
-        ""
-      }
-    ))
-  }
-
-  return(result)
-}
+## `.loadImmuneRepertoireData()` and `.extractRepertoireFromMetadata()` used to
+## live here, reachable only by running this whole pipeline. They are now the
+## implementation behind `addImmuneRepertoire()`, in R/addImmuneRepertoire.R,
+## so someone calling `exportFromSeurat()` directly can reach them too.
 
 #' @keywords internal
 #' @noRd
@@ -806,30 +592,31 @@ convertSeuratToCerebro <- function(
   # Priority: external files (bcr_file/tcr_file) > metadata extraction
   # All data is stored in the unified immune_repertoire slot.
 
-  bcr_data <- .loadImmuneRepertoireData(bcr_file, "BCR", verbose)
-  tcr_data <- .loadImmuneRepertoireData(tcr_file, "TCR", verbose)
+  ## Same entry point a user calling exportFromSeurat() directly would use, so
+  ## both routes build the slot the same way and get the same shape check.
+  ## Priority is unchanged: given files replace whatever is in the slot, and
+  ## the meta.data columns are read only when there is nothing else.
+  has_repertoire_file <- (!is.null(bcr_file) && nzchar(bcr_file)) ||
+    (!is.null(tcr_file) && nzchar(tcr_file))
 
-  if (!is.null(bcr_data) || !is.null(tcr_data)) {
-    # External files provided — merge into immune_repertoire
-    seurat@misc$immune_repertoire <- c(
-      if (!is.null(bcr_data)) bcr_data else list(),
-      if (!is.null(tcr_data)) tcr_data else list()
+  if (has_repertoire_file) {
+    seurat <- addImmuneRepertoire(
+      seurat,
+      bcr = bcr_file,
+      tcr = tcr_file,
+      groups = groups,
+      from_metadata = FALSE,
+      verbose = verbose
     )
-  }
-
-  # Fallback: extract from Seurat metadata (scRepertoire columns)
-  if (
+  } else if (
     is.null(seurat@misc$immune_repertoire) ||
       length(seurat@misc$immune_repertoire) == 0
   ) {
-    rep_data <- .extractRepertoireFromMetadata(
+    seurat <- addImmuneRepertoire(
       seurat,
       groups = groups,
       verbose = verbose
     )
-    if (!is.null(rep_data) && length(rep_data) > 0) {
-      seurat@misc$immune_repertoire <- rep_data
-    }
   }
 
   # Get the base name for the file

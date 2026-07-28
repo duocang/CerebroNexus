@@ -1,3 +1,48 @@
+# CerebroNexus 3.0.5
+
+## Export
+
+- **`addImmuneRepertoire()` puts TCR/BCR data into a Seurat object.** The logic
+  that builds `@misc$immune_repertoire` already existed, but only inside
+  `convertSeuratToCerebro()` and only reachable by running that whole pipeline.
+  Anyone using `exportFromSeurat()` directly was told, in a vignette, to assign
+  the slot by hand — a convention with no function behind it. The new function
+  takes what `scRepertoire::combineTCR()` / `combineBCR()` return, the path to
+  an `.rds` holding that, or Cell Ranger `filtered_contig_annotations.csv`
+  files (assembled with scRepertoire); with no arguments it reads the
+  repertoire out of scRepertoire's `meta.data` columns.
+  `convertSeuratToCerebro()` now goes through the same function, so both routes
+  build the slot identically. TCR and BCR data for the same sample are
+  row-bound into one table rather than concatenated into two entries with the
+  same name — a name identifies one biological sample, and `x[["donorA"]]`
+  returns only the first match, so one receptor type would have silently
+  disappeared.
+- **The shape of a repertoire is checked on the way out.** A flat data.frame
+  satisfies `is.list()`, and its `length()` is its column count, so the old
+  guard waved one through and its column names became the sample names. The
+  file exported intact and came apart only in the running app, where the sample
+  selector lists `barcode`, `CTgene`, `CTaa` and every panel is empty. Data
+  that cannot be read at all — not a named list, a duplicated sample name, an
+  entry that is not a data.frame, a missing `barcode`, or barcodes matching no
+  cell at all — now stops the export and says which entry and what to do about
+  it. The last of those is what `combineTCR(samples = )` prefixing produces
+  when the cell names were not renamed to match, and it leaves every receptor
+  orphaned, which is not a degraded page but no page. Data that merely degrades
+  the page warns: a missing `CTgene` leaves chain detection with nothing to
+  scan, and a single sample whose barcodes match no cell while its neighbours
+  do goes silently empty. A partial match is left alone, since filtering cells
+  after combining a repertoire is ordinary. The legacy `bcr_data` / `tcr_data`
+  slots are each held to the same shape, since `getImmuneRepertoire()` falls
+  back to them. **This is a behaviour change**: an export that previously
+  produced an unusable `.crb` in silence now fails.
+
+  When only the legacy `bcr_data` / `tcr_data` slots are present, the exporter
+  now also row-binds them by sample into the unified slot while retaining the
+  originals for `getBCR()` / `getTCR()`. This prevents the serialized
+  `getImmuneRepertoire()` from returning duplicate sample names and hiding one
+  receptor type. R6 methods travel inside a `.crb`, so existing files retain
+  their old getter and need to be re-exported to receive this correction.
+
 # CerebroNexus 3.0.4
 
 ## Export

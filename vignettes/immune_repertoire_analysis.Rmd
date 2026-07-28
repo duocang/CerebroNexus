@@ -95,25 +95,23 @@ combined_bcr <- combineBCR(bcr_contigs, samples = sample_names)
 
 ## Step 3 — attach to the Seurat object and export
 
-Build a named list of data.frames (one element per sample) holding the
-scRepertoire clonotype columns, attach it to the Seurat object's
-`@misc$immune_repertoire` slot, and export. `exportFromSeurat()` picks the slot
-up automatically. To include both receptor types, row-bind the T- and B-cell
-clonotypes per sample (cells are mutually exclusive — a cell has a TCR *or* a
-BCR):
+Hand both receptor types to `addImmuneRepertoire()` and export.
+`exportFromSeurat()` picks the slot up automatically. A sample is one
+biological sample rather than one receptor type, so the T- and B-cell
+clonotypes of a given sample are row-bound into a single table — cells are
+mutually exclusive, a cell has a TCR *or* a BCR. `addImmuneRepertoire()` does
+that for you, and checks the result as it stores it, so a wrong shape or
+barcodes that reach no cell are reported here rather than turning into an
+empty Immune repertoire page later:
 
 ```{r, eval = FALSE}
 library(CerebroNexus)
 
-ir_cols <- c("barcode", "CTgene", "CTnt", "CTaa", "CTstrict")
-to_df <- function(x) x[, ir_cols, drop = FALSE]
-
-ir_data <- lapply(sample_names, function(s) {
-  rbind(to_df(combined_tcr[[s]]), to_df(combined_bcr[[s]]))
-})
-names(ir_data) <- sample_names
-
-seurat_object@misc$immune_repertoire <- ir_data
+seurat_object <- addImmuneRepertoire(
+  seurat_object,
+  tcr = combined_tcr,
+  bcr = combined_bcr
+)
 
 exportFromSeurat(
   seurat_object,
@@ -123,6 +121,12 @@ exportFromSeurat(
   groups = c("sample", "seurat_clusters")
 )
 ```
+
+One thing to watch: `combineTCR(samples = )` and `combineBCR(samples = )`
+prefix every barcode with the sample name. The cell names have to carry the
+same prefix — `SeuratObject::RenameCells()` — or no receptor can be tied to a
+cell. `addImmuneRepertoire()` stops with that diagnosis rather than storing a
+repertoire that reaches nothing.
 
 Each data.frame must contain the scRepertoire clonotype columns `barcode`,
 `CTgene`, `CTnt`, `CTaa`, and `CTstrict`. The `barcode` values should match
