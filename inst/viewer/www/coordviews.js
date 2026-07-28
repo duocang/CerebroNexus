@@ -1442,22 +1442,49 @@ var focusPanel = null;
   // "maximised" panel would come back exactly the size it was. It earns its
   // place from three panels up, where the grid takes a second row.
   function updateFocusButtons() {
-    var k = panels.filter(function (p) { return p.spaceId; }).length;
+    // Offered where it can deliver, and that is a question about the LAYOUT, not
+    // about how many panels there are. Panels are squares sized by whichever of
+    // width and height runs out first; folding the others only helps when doing
+    // so removes a row. Two panels are one row on a desktop -- and two rows on a
+    // narrow window, where maximising is exactly what is wanted. Counting panels
+    // got the desktop answer and applied it everywhere.
+    var vis = panels.filter(function (p) { return p.spaceId; });
+    var host = panels[0] && panels[0].pane && panels[0].pane.parentElement;
+    var rows = 1;
+    if (host && vis.length) {
+      var availW = host.clientWidth;
+      var single = availW < ((PREF_SIDE + 26) * 2 + 14);
+      var cols = single ? 1 : 2;
+      rows = Math.ceil(vis.length / cols);
+    }
     panels.forEach(function (p) {
       if (!p.pane) return;
       var btn = p.pane.querySelector('.cv-focus-btn');
       if (!btn) return;
-      var useful = k >= 3 || focusPanel === p.key;
+      var useful = rows > 1 || focusPanel === p.key;
       btn.style.display = (p.spaceId && useful) ? '' : 'none';
     });
   }
   function updateZselButtons() {
-    var on = !!(sel && sel.size);
     panels.forEach(function (p) {
       if (!p.pane) return;
       var btn = p.pane.querySelector('.cv-zsel-btn');
-      if (btn) btn.style.display = (on && p.spaceId && !panelIs3D(p)) ? '' : 'none';
+      if (!btn) return;
+      btn.style.display = canZoomPanel(p) ? '' : 'none';
     });
+  }
+  // Only where the button would do something: a selection, a flat panel (a
+  // rotated cloud has no rectangle to zoom to that survives the next turn), and
+  // at least one selected cell that HAS a position in this space. On a
+  // multi-section spatial data set the selection can be entirely in another
+  // section, and the button then looked available and did nothing.
+  function canZoomPanel(p) {
+    if (!sel || !sel.size || !p.spaceId || panelIs3D(p)) return false;
+    var sp = spaceById[p.spaceId], u = sp && sp._unit;
+    if (!u || !u.ok) return false;
+    var any = false;
+    sel.forEach(function (i) { if (u.ok[i]) any = true; });
+    return any;
   }
   function resetZoom() {
     var any = false;
@@ -3043,6 +3070,10 @@ var focusPanel = null;
     panes.style.gridTemplateRows = '';
     vis.forEach(function (p) { resizePanelSquare(p, side); });
     if (!psSeeded) autoPointSize(side);
+    // Whether maximising can help is a fact about the layout that was just
+    // computed, so it is re-decided here rather than only when the data changes:
+    // narrowing the window is what turns one row of panels into two.
+    updateFocusButtons();
     drawAll();
   }
 

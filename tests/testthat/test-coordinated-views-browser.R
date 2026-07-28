@@ -1838,8 +1838,10 @@ test_that("a panel can take the grid without losing the selection", {
     "document.getElementById('cv-mini-a').classList.contains('is-on')"
   ))
 
-  ## Two panels are one row, so there is nothing to maximise into and the button
-  ## says so by not being there.
+  ## Two panels are one row on this window, so there is nothing to maximise into
+  ## and the button says so by not being there. It is the LAYOUT that decides,
+  ## not the count: the same two panels wrap to two rows on a narrow window, and
+  ## there maximising is exactly what is wanted.
   app$run_js(cv_bundle_js(
     paste0(
       "{ spaces: [",
@@ -1852,12 +1854,16 @@ test_that("a panel can take the grid without losing the selection", {
     timeout = 15000
   )
   app$wait_for_idle(timeout = 10000)
-  expect_false(app$get_js(
-    paste0(
-      "getComputedStyle(document.querySelector(",
-      "'.cv-focus-btn[data-panel=\"A\"]')).display !== 'none'"
-    )
-  ))
+  focus_shown <- paste0(
+    "getComputedStyle(document.querySelector(",
+    "'.cv-focus-btn[data-panel=\"A\"]')).display !== 'none'"
+  )
+  expect_false(app$get_js(focus_shown))
+
+  ## Narrow the window until those same two panels stack, and it comes back.
+  app$set_window_size(width = 700, height = 900)
+  app$wait_for_idle(timeout = 10000)
+  expect_true(app$get_js(focus_shown))
 
   app$stop()
 })
