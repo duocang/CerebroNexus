@@ -36,6 +36,79 @@
   )
 }
 
+#' Find Seurat v5 layer groups that form real cell partitions
+#'
+#' A dotted name is not sufficient evidence that a layer came from
+#' `split.Assay5()`: ordinary custom layers such as `data.imputed` use the same
+#' naming shape. A split group has at least two non-empty, non-full-cell layers
+#' under one semantic root; their cell memberships are pairwise disjoint and
+#' together cover the assay's cells.
+#'
+#' Full-cell layers are ignored while evaluating a group. This allows a real
+#' `data.s1`/`data.s2` partition to coexist with a custom `data.imputed` layer
+#' without the latter either hiding the partition or being joined into it.
+#'
+#' @keywords internal
+#' @noRd
+.split_layer_groups <- function(assay) {
+  layer_names <- SeuratObject::Layers(assay)
+  assay_cells <- SeuratObject::Cells(assay)
+  roots <- .layer_semantic_root(layer_names)
+
+  groups <- lapply(
+    .cerebro_layer_roots,
+    function(root) {
+      ## An exact layer takes precedence in Seurat's prefix lookup, so treating
+      ## dotted siblings as a joinable group while it exists is unsafe.
+      if (root %in% layer_names) {
+        return(character())
+      }
+
+      candidates <- layer_names[roots == root]
+      if (length(candidates) < 2L) {
+        return(character())
+      }
+
+      memberships <- lapply(
+        candidates,
+        function(layer) SeuratObject::Cells(assay, layer = layer)
+      )
+      is_partial <- lengths(memberships) > 0L &
+        lengths(memberships) < length(assay_cells)
+      candidates <- candidates[is_partial]
+      memberships <- memberships[is_partial]
+      if (length(candidates) < 2L) {
+        return(character())
+      }
+
+      pairs <- utils::combn(seq_along(memberships), 2L)
+      disjoint <- all(vapply(
+        seq_len(ncol(pairs)),
+        function(i) {
+          length(base::intersect(
+            memberships[[pairs[1L, i]]],
+            memberships[[pairs[2L, i]]]
+          )) ==
+            0L
+        },
+        logical(1)
+      ))
+      covers_assay <- setequal(
+        Reduce(base::union, memberships),
+        assay_cells
+      )
+
+      if (disjoint && covers_assay) {
+        candidates
+      } else {
+        character()
+      }
+    }
+  )
+  names(groups) <- .cerebro_layer_roots
+  groups[lengths(groups) > 0L]
+}
+
 #' Filter candidate fallback layers to the same semantic class as the request
 #'
 #' Given a requested layer name (e.g. "data", "counts", "scale.data") and the
@@ -125,42 +198,76 @@
       )
     }
 
-    ## A layer is a split layer exactly when its semantic root is not its own
-    ## name -- `counts.s1` roots as `counts`, a plain `counts` roots as itself.
-    ## Testing the root rather than a `counts\\.[0-9]+` pattern catches the
-    ## sample-name form that real data almost always takes, and catches it on
-    ## whichever class is split (an assay can carry `data.s1` without `counts.*`).
     layer_names <- SeuratObject::Layers(seurat[[assay]])
-    has_split_layers <- any(.layer_semantic_root(layer_names) != layer_names)
+    split_layer_groups <- .split_layer_groups(seurat[[assay]])
+    has_split_layers <- length(split_layer_groups) > 0L
 
-    ## Joining consumes the split layers, so asking for one of them by name and
-    ## joining first cannot both happen. A caller naming `data.s2` wants that
-    ## sample's values, not every sample's, and the substitution would be
-    ## invisible: the joined `data` satisfies the request's own semantic root,
-    ## so not even the cross-semantic warning fires. Honour the request; the
-    ## export's cell-count check is what reports that one sample is not a whole
-    ## object.
-    requests_a_split_layer <- length(slot) == 1 &&
+    ## Joining consumes dotted layers. Honour any exact dotted-layer request,
+    ## whether it names a true split (`data.s2`) or an ordinary custom layer
+    ## (`data.imputed`); substituting the joined root would be invisible to the
+    ## caller.
+    requests_a_dotted_layer <- length(slot) == 1 &&
       slot %in% layer_names &&
       .layer_semantic_root(slot) != slot
 
-    if (join_samples && has_split_layers && !requests_a_split_layer) {
+    if (join_samples && has_split_layers && !requests_a_dotted_layer) {
       if (verbose) {
         message(
           "[",
           format(Sys.time(), "%H:%M:%S"),
-          "] Merging multi-sample layers using JoinLayers..."
+          "] Merging multi-sample layer partitions using JoinLayers..."
         )
       }
-      seurat <- SeuratObject::JoinLayers(seurat, assay = assay)
+
+      ## JoinLayers searches by prefix. Without protection, joining `data.s1`
+      ## and `data.s2` also captures a full-cell `data.imputed`; whichever layer
+      ## appears first can silently supply the returned values. Temporarily
+      ## remove same-root layers that membership analysis did not identify as
+      ## part of the partition, then restore them after the targeted joins.
+      split_layers <- unlist(split_layer_groups, use.names = FALSE)
+      split_roots <- names(split_layer_groups)
+      protected_layers <- layer_names[
+        .layer_semantic_root(layer_names) %in%
+          split_roots &
+          !layer_names %in% split_layers &
+          !layer_names %in% split_roots
+      ]
+      protected_data <- lapply(
+        protected_layers,
+        function(layer) {
+          SeuratObject::LayerData(seurat[[assay]], layer = layer)
+        }
+      )
+      names(protected_data) <- protected_layers
+
+      for (layer in protected_layers) {
+        suppressWarnings(
+          SeuratObject::LayerData(
+            seurat[[assay]],
+            layer = layer
+          ) <- NULL
+        )
+      }
+      seurat <- SeuratObject::JoinLayers(
+        seurat,
+        assay = assay,
+        layers = split_roots,
+        new = split_roots
+      )
+      for (layer in protected_layers) {
+        SeuratObject::LayerData(
+          seurat[[assay]],
+          layer = layer
+        ) <- protected_data[[layer]]
+      }
       layer_names <- SeuratObject::Layers(seurat[[assay]])
-    } else if (join_samples && requests_a_split_layer && verbose) {
+    } else if (join_samples && requests_a_dotted_layer && verbose) {
       message(
         "[",
         format(Sys.time(), "%H:%M:%S"),
         "] Layer `",
         slot,
-        "` was requested by name; leaving the split layers unjoined."
+        "` was requested by name; leaving other layers unchanged."
       )
     }
 
