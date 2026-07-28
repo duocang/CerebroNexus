@@ -2157,3 +2157,90 @@ test_that("the image controls follow the spatial section", {
 
   app$stop()
 })
+
+## Between asking for a gene and being answered, the picker already showed the
+## new name while the points and the colourbar still showed the OLD gene -- the
+## workspace naming one thing and drawing another. And a reply the server could
+## not fulfil was dropped, so a gene that does not exist left the previous one's
+## colours on screen under its name.
+test_that("a gene request does not leave the previous gene on screen", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_gene_request")
+
+  app$run_js(cv_bundle_js())
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.indexOf('800 cells') >= 0",
+    timeout = 15000
+  )
+
+  ## Draw a gene by hand: push the vector the server would have sent.
+  app$run_js(paste0(
+    "(function () {\n",
+    "  var v = []; for (var i = 0; i < 800; i++) v.push(i % 256);\n",
+    "  var s = document.getElementById('cv-pick-color');\n",
+    "  s.value = '__gene__'; s.onchange();\n",
+    "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+    "    coordviews_geneval: { gene: 'GENE1', ok: true, v: v, max: 5 } } }));\n",
+    "})();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+  ink <- cv_ink_js()
+  drawn <- app$get_js(ink)
+  expect_gt(drawn, 1)
+  expect_match(
+    app$get_js("document.getElementById('cv-cbar-note').textContent"),
+    "GENE1"
+  )
+
+  ## Now ask for one the server cannot provide. The failure reply must clear the
+  ## previous gene rather than be ignored.
+  app$run_js(paste0(
+    "(function () {\n",
+    "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+    "    coordviews_geneval: { gene: 'NOPE', ok: false } } }));\n",
+    "})();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+  expect_match(
+    app$get_js("document.getElementById('cv-cbar-note').textContent"),
+    "not available"
+  )
+  ## GENE1's colours are gone: what remains is the neutral no-gene grey, which
+  ## is a different picture from the viridis one measured above.
+  expect_false(app$get_js(
+    paste0(
+      "(function () {\n",
+      "  var cv = document.getElementById('cv-cv-a');\n",
+      "  var d = cv.getContext('2d')\n",
+      "    .getImageData(0, 0, cv.width, cv.height).data;\n",
+      "  for (var i = 0; i < d.length; i += 4) {\n",
+      "    if (d[i + 3] === 0) continue;\n",
+      "    if (d[i] > d[i + 2] + 40 && d[i + 1] > 120) return true;\n",
+      "  }\n",
+      "  return false;\n",
+      "})();"
+    )
+  ))
+
+  ## A late reply for a gene nobody is waiting for any more is ignored.
+  app$run_js(paste0(
+    "(function () {\n",
+    "  var s = document.getElementById('coordviews_gene');\n",
+    "  if (s && s.selectize) {\n",
+    "    s.selectize.addOption({ value: 'GENE3', label: 'GENE3' });\n",
+    "    s.selectize.setValue('GENE3', false);\n",
+    "  }\n",
+    "  var v = []; for (var i = 0; i < 800; i++) v.push(200);\n",
+    "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+    "    coordviews_geneval: { gene: 'GENE1', ok: true, v: v, max: 5 } } }));\n",
+    "})();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+  expect_false(grepl(
+    "GENE1",
+    app$get_js("document.getElementById('cv-cbar-note').textContent"),
+    fixed = TRUE
+  ))
+
+  app$stop()
+})

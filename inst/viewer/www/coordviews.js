@@ -32,6 +32,10 @@ var pinnedTip = { panel: null, cell: null };
 // in the others -- that is how the eye carries a position in the embedding over
 // to a position in tissue. Null when the cursor is not on a cell.
 var hoverCell = null;
+// The gene a reply is still wanted for. Set when one is asked for and cleared by
+// the reply, so a late answer for a gene the user has moved on from is dropped
+// rather than drawn under the current gene's name.
+var geneWanted = null;
 // Panel key currently given the whole grid, or null for the normal layout. With
 // three or four panels each square is small enough that detail becomes guesswork;
 // this is a change of magnification only -- the selection is kept and every panel
@@ -2478,6 +2482,16 @@ var focusPanel = null;
     dlg.showModal();
   }
 
+  // Mark a gene as asked-for and clear what is on screen for the previous one.
+  function requestGene(gene) {
+    geneWanted = gene;
+    D.gene = null;
+    clipRange();
+    if (colorBy === GENE_MODE) {
+      renderColorbar(true, null, 'loading ' + esc(gene) + '…');
+    }
+  }
+
   // Colour every panel by `gene`, from anywhere that names one. The gene picker
   // is a server-side selectize, so the option has to be added before it can be
   // selected -- it holds only the page of names the server last sent, and the
@@ -2487,6 +2501,10 @@ var focusPanel = null;
     if (!gene) return;
     var sel = $('cv-pick-color');
     if (sel) { sel.value = GENE_MODE; }
+    // Drop the previous gene BEFORE switching: the picker is about to say
+    // `gene`, and until the reply arrives the old vector would be drawn under
+    // that name. Cells fall back to the neutral "no gene" colour meanwhile.
+    requestGene(gene);
     setColorBy(GENE_MODE);
     var el = $('coordviews_gene');
     if (el && el.selectize) {
@@ -3161,8 +3179,27 @@ var focusPanel = null;
     Shiny.addCustomMessageHandler('coordviews_data', onData);
 
     // Single-gene expression vector (0-255) for the current gene.
+    // A reply is only for the gene still being asked about. Two things used to
+    // go wrong here. Between asking and answering the picker already showed the
+    // new gene while the points and the colourbar still showed the OLD one --
+    // the workspace naming one gene and drawing another. And a reply with
+    // ok = FALSE was dropped on the floor, so a gene the server could not
+    // provide left the previous one's colours on screen under its name, with
+    // nothing to say the request had failed.
     Shiny.addCustomMessageHandler('coordviews_geneval', function (m) {
-      if (!D || !m || !m.ok) return;
+      if (!D || !m) return;
+      if (geneWanted != null && m.gene !== geneWanted) return;   // stale reply
+      geneWanted = null;
+      if (!m.ok) {
+        // Nothing to draw. Say so rather than keep showing the last gene.
+        D.gene = null;
+        clipRange();
+        if (colorBy === GENE_MODE) {
+          renderColorbar(true, null, esc(m.gene) + ' — not available');
+          drawAll();
+        }
+        return;
+      }
       D.gene = { gene: m.gene, v: m.v, max: m.max };
       // A new gene is a new distribution, so the trimmed range has to be
       // recomputed before anything reads a colour from it.
@@ -3355,6 +3392,14 @@ var focusPanel = null;
     document.addEventListener('change', function (e) {
       var id = e.target && e.target.id;
       if (id && id.indexOf('cv-img-') === 0) { syncImgControls(id); drawAll(); return; }
+      // The gene picker is read by the server directly, so without this the
+      // client would not know a request was in flight and would keep drawing the
+      // previous gene under the new gene's name until the reply landed.
+      if (id === 'coordviews_gene') {
+        var g = e.target.value;
+        if (g) { requestGene(g); drawAll(); }
+        return;
+      }
       if (id === 'cv-clip') {
         colorClip = parseFloat(e.target.value) || 0;
         clipRange();               // recompute before anything reads the colours
