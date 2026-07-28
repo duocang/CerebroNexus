@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -68,9 +68,21 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/test/v5-custom-layer-review/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="3.0.3" id="cerebronexus-303">CerebroNexus 3.0.3<a class="anchor" aria-label="anchor" href="#cerebronexus-303"></a></h2>
+<div class="section level3">
+<h3 id="export-3-0-3">Export<a class="anchor" aria-label="anchor" href="#export-3-0-3"></a></h3>
+<ul><li>
+<strong>Split Seurat v5 objects no longer export a single sample.</strong> <code><a href="https://rdrr.io/r/base/split.html" class="external-link">split()</a></code> names an assay’s layers <code>&lt;root&gt;.&lt;level&gt;</code>, and the level is whatever the splitting factor holds — sample names (<code>counts.pbmc_1</code>) at least as often as integers (<code>counts.1</code>). Layer resolution recognised only the integer form, so an object split by sample was never joined and <code><a href="../reference/exportFromSeurat.html">exportFromSeurat()</a></code> read the first layer alone. In <code>embedded</code> mode that surfaced as an error about the meta data not matching the expression matrix, which pointed at the wrong thing; in <code>h5</code> and <code>bpcells</code> mode nothing compared the two at all and the export succeeded, writing a <code>.crb</code> that described every cell next to a matrix holding one sample’s. Layers are now matched by semantic root, and <code><a href="../reference/exportFromSeurat.html">exportFromSeurat()</a></code> joins them the way <code><a href="../reference/convertSeuratToCerebro.html">convertSeuratToCerebro()</a></code> always has. <code>scale.data</code> keeps its own root rather than being read as a variant of <code>data</code>. A layer asked for by name (<code>slot = "data.s2"</code>) is left alone: joining would consume it, and the substitution would be invisible, since the joined <code>data</code> satisfies the request’s own semantic root.</li>
+<li>
+<strong>An expression matrix that does not cover every cell is refused.</strong> The check runs once, before the storage modes diverge, so <code>embedded</code>, <code>h5</code> and <code>bpcells</code> fail identically and name the likely cause instead of leaving the external-matrix modes to write a file whose two halves disagree. The matrix is also ordered to match the cells the meta data is built from.</li>
+<li>
+<strong>A disk-backed source assay says so when it is refused.</strong> Reading a Seurat object whose layers are BPCells or DelayedArray matrices is still not supported, but the refusal used to read <code>Received: RenameDims</code> and nothing more. It now says the data lives on disk, shows how to bring a layer into memory, and points out that this is unrelated to <code>expression_matrix_mode</code>, which controls how the exported <code>.crb</code> stores its matrix rather than how the source object holds it.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="3.0.2" id="cerebronexus-302">CerebroNexus 3.0.2<a class="anchor" aria-label="anchor" href="#cerebronexus-302"></a></h2>
 <div class="section level3">
