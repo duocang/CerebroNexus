@@ -2640,3 +2640,47 @@ test_that("re-sending the same data set keeps the image adjustments", {
 
   app$stop()
 })
+
+## The line above the panels names the spaces on screen. Switching spatial
+## section left it naming the section that had just been left, so the header and
+## the panel title disagreed about what was being shown.
+test_that("the summary line follows the spatial section", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_meta_section")
+
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },\n",
+      "  { id: 'spatial', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "    samples: [\n",
+      "      { name: 'A', label: 'A (spatial)', x: blob(0), y: blob(0) },\n",
+      "      { name: 'B', label: 'B (spatial)', x: blob(0), y: blob(0) }] }] }"
+    )
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-pick-spatial') !== null",
+    timeout = 15000
+  )
+  expect_match(
+    app$get_js("document.getElementById('cv-meta').textContent"),
+    "A (spatial)",
+    fixed = TRUE
+  )
+
+  app$run_js(paste0(
+    "(function () { var s = document.getElementById('cv-pick-spatial');\n",
+    "  s.value = 'B'; s.dispatchEvent(new Event('change')); })();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+  meta <- app$get_js("document.getElementById('cv-meta').textContent")
+  expect_match(meta, "B (spatial)", fixed = TRUE)
+  expect_false(grepl("A (spatial)", meta, fixed = TRUE))
+  ## ... and it agrees with the panel that is showing it.
+  expect_match(
+    app$get_js("document.getElementById('cv-title-b').textContent"),
+    "B (spatial)",
+    fixed = TRUE
+  )
+
+  app$stop()
+})

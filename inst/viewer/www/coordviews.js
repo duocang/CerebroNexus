@@ -2812,6 +2812,7 @@ var focusPanel = null;
       var t = $('cv-title-' + p.key.toLowerCase());
       if (t) t.textContent = sp.label;
     });
+    renderMeta();
     drawAll();
   }
 
@@ -2893,6 +2894,10 @@ var focusPanel = null;
     // A newer request invalidates whatever is still decoding, including when
     // the newer request is "none".
     imgToken++;
+    // A new bundle is a reason to lay out whatever the window is doing. The
+    // guard below exists to stop the layout retriggering ITSELF, not to skip a
+    // relayout the data asked for.
+    _layoutKey = null;
     var img = currentImage(space);
     if (!img || !img.uri) return;
     var k = imgKey(space, img);
@@ -2907,6 +2912,21 @@ var focusPanel = null;
     };
     im.src = img.uri;
     imgEl = im;
+  }
+
+  // The line above the panels names the spaces on screen, so it has to be
+  // rebuilt when one of them changes -- switching spatial section left it naming
+  // the section the user had just moved away from.
+  function renderMeta() {
+    var meta = $('cv-meta');
+    if (!meta || !D) return;
+    var spaceLabels = D.spaces.map(function (s) {
+      return esc(s.label);
+    }).join(' · ');
+    meta.innerHTML = fmt(D.n) + ' cells · ' + D.spaces.length +
+      ' linked spaces (' + spaceLabels + ')' +
+      (D.clone ? ' · ' + fmt(D.clone.n_receptor) + ' receptor-bearing cells, ' +
+        fmt(D.clone.n_clones) + ' clonotypes' : '');
   }
 
   // The background picker. Hidden with one image -- there is nothing to choose,
@@ -3064,6 +3084,7 @@ var focusPanel = null;
       var t = $('cv-title-' + p.key.toLowerCase());
       if (t) t.textContent = sp.label;
     });
+    renderMeta();   // the line above the panels names the section on screen
     drawAll();
   }
 
@@ -3216,6 +3237,42 @@ var focusPanel = null;
   // fell off the bottom -- on the one layout that most needs to be seen at once.
   var PREF_SIDE = 300;
   var MIN_SIDE = 150;
+  // The square's size is computed from the pane header's height, and the header
+  // grows when the pane is narrow enough for its toolbar to wrap. That is a
+  // positive feedback loop: a smaller square makes a taller header makes a
+  // smaller square. Measured on the omnibus data set the moment the histology
+  // bar appeared -- 26 shrinking steps over three seconds, from 240px down to
+  // the floor, while every INPUT (available width, the panels' top, the legend's
+  // height, the window) stayed exactly the same. It reads as the panels
+  // shivering.
+  //
+  // So: one corrective pass per genuine change of those inputs, and no more.
+  // The first pass sizes from the header as it was; the second takes account of
+  // a wrap that pass caused; anything after that is the loop feeding itself.
+  var _layoutKey = null, _layoutPass = 0;
+  //
+  // The width and height are QUANTISED to 24px. A classic (space-taking)
+  // scrollbar is the other way this feeds back on itself: sizing the grid to
+  // just fill the viewport makes the page overflow by a hair, the scrollbar
+  // appears and takes ~15px of width, the grid is re-fitted smaller, the
+  // overflow goes away, the scrollbar leaves, and it starts again -- a loop with
+  // no end, and the one that looks like shaking rather than settling. It cannot
+  // be reproduced in a headless browser, whose scrollbars are overlays and take
+  // no width at all. Ignoring sub-24px changes costs nothing on a grid of
+  // hundreds of pixels and leaves no way for that cycle to continue.
+  function layoutInputs(host) {
+    var q = function (v) { return Math.round(v / 24); };
+    return [
+      q(host ? host.clientWidth : 0),
+      q(host ? host.getBoundingClientRect().top : 0),
+      ($('cv-legend') || {}).offsetHeight || 0,
+      ($('cv-cbar') && $('cv-cbar').style.display !== 'none')
+        ? $('cv-cbar').offsetHeight : 0,
+      q(window.innerHeight),
+      panels.filter(function (p) { return p.spaceId; }).length,
+      focusPanel || ''
+    ].join('|');
+  }
   function resizeAll() {
     if (!D || !panels.length) return;
     var panes = panels[0].pane && panels[0].pane.parentElement;
@@ -3227,6 +3284,14 @@ var focusPanel = null;
     if (!k) return;
     var availW = panes.clientWidth;
     if (availW < 20) return;                 // tab still hidden; observer re-runs
+    var key = layoutInputs(panes);
+    if (key === _layoutKey) {
+      if (_layoutPass >= 2) return;
+      _layoutPass++;
+    } else {
+      _layoutKey = key;
+      _layoutPass = 1;
+    }
     var gap = 14;
     // Per-pane non-canvas overhead (title row + the pane's padding/border/margin),
     // measured so the square maths accounts for it rather than guessing.
@@ -3367,14 +3432,7 @@ var focusPanel = null;
     });
     loadSpaceImage(withImg);
 
-    var meta = $('cv-meta');
-    if (meta) {
-      var spaceLabels = D.spaces.map(function (s) { return esc(s.label); }).join(' · ');
-      meta.innerHTML = fmt(D.n) + ' cells · ' + D.spaces.length +
-        ' linked spaces (' + spaceLabels + ')' +
-        (D.clone ? ' · ' + fmt(D.clone.n_receptor) + ' receptor-bearing cells, ' +
-          fmt(D.clone.n_clones) + ' clonotypes' : '');
-    }
+    renderMeta();
 
     buildPanels();
     // Give every present space its own panel and hide the unused slots (this also
