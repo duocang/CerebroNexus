@@ -1955,6 +1955,33 @@ var focusPanel = null;
     return rows;
   }
 
+  // What Trekker knows about THIS nucleus's position. Empty for a data set that
+  // carries none, so the card gains a section only where there is one to gain.
+  //
+  // The physical fields are read out of the same list the colour picker offers,
+  // which is what keeps this honest: whatever Trekker exported -- bead noise,
+  // spatial-barcode counts, purity -- appears here without this code being told
+  // its name, and cannot disagree with what colouring by it would show.
+  function trekkerCellRows(i) {
+    var rows = [];
+    if (!D || !D.trekker) return rows;
+    if (D.trekker.conf && D.trekker.conf[i] != null && !isNaN(D.trekker.conf[i])) {
+      rows.push(['position confidence', fmtVal(D.trekker.conf[i])]);
+    }
+    if (D.trekker.evidence) {
+      rows.push(['positioning evidence',
+        D.trekker.evidence[i] === 1 ? 'recorded' : 'none']);
+    }
+    Object.keys(D.fields || {}).forEach(function (k) {
+      if (k.indexOf('meta:') === 0) return;   // a meta column, not Trekker's own
+      var f = D.fields[k];
+      var v = fieldValue(f, i);
+      if (v == null) return;
+      rows.push([f.label || k, fmtVal(v)]);
+    });
+    return rows;
+  }
+
   function kvHtml(rows) {
     if (!rows.length) return '';
     return '<div class="cv-card-kv">' + rows.map(function (r) {
@@ -1980,6 +2007,17 @@ var focusPanel = null;
         '<div class="cv-card-sub">' + fmt(D.clone.size[ci]) + ' cells in this clone</div>';
     }
     html += '<div class="cv-card-sec">Position</div>' + kvHtml(cardCoordRows());
+    // Trekker: how much to trust where this nucleus was put. A physical position
+    // is an inference, not a measurement, and the card is where a reader decides
+    // whether to believe the one they just clicked -- otherwise the only way to
+    // ask was to colour the whole map by confidence and squint at one dot.
+    // Everything here is already in the bundle: the per-cell confidence, the
+    // evidence flag, and Trekker's own physical fields, which are offered as
+    // colourings and therefore carry a value for every cell.
+    var tkRows = trekkerCellRows(i);
+    if (tkRows.length) {
+      html += '<div class="cv-card-sec">Positioning</div>' + kvHtml(tkRows);
+    }
     // the full meta row, or a placeholder until the server answers
     html += '<div class="cv-card-sec">Meta data</div>';
     if (cardMeta && cardMeta.cell === D.cells[i] && cardMeta.rows) {

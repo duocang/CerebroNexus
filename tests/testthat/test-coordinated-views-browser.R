@@ -1842,3 +1842,105 @@ test_that("a panel can take the grid without losing the selection", {
 
   app$stop()
 })
+
+## A physical position is an inference, not a measurement, so the card that
+## describes a nucleus has to say how much to trust the one being read. Without
+## it the only way to ask was to colour the whole map by confidence and squint at
+## a single dot.
+test_that("the card reports what is known about a position", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_card_trekker")
+
+  ## A regular grid, so the probe at the centre lands on a cell. A random cloud
+  ## of the same size leaves gaps wider than the hit radius.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var n = 81, x = [], y = [], cells = [], vals = [];\n",
+      "  var conf = [], ev = [], noise = [];\n",
+      "  for (var j = 0; j < n; j++) {\n",
+      "    x.push((j % 9) - 4); y.push(Math.floor(j / 9) - 4);\n",
+      "    cells.push('c' + j); vals.push(j % 2);\n",
+      "    conf.push(Math.round(j / n * 1000) / 1000);\n",
+      "    ev.push(j % 2); noise.push((j * 3) % 256);\n",
+      "  }\n",
+      "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+      "    coordviews_data: {\n",
+      "      cells: cells, n: n,\n",
+      "      groups: { cluster: { values: vals, levels: ['a', 'b'],\n",
+      "        colors: ['#636EFA', '#EF553B'] } },\n",
+      "      cat_extra: {}, cat_skipped: {},\n",
+      "      fields: { bead_noise: { label: 'bead noise', v: noise,\n",
+      "        min: 0, max: 1, scale: 255 },\n",
+      "        'meta:nUMI': { label: 'nUMI', v: noise,\n",
+      "          min: 100, max: 9000, scale: 255 } },\n",
+      "      default_group: 'cluster',\n",
+      "      projections: { umap: { x: x, y: y, ndim: 2 } },\n",
+      "      default_projection: 'umap',\n",
+      "      spaces: [{ id: 'umap', label: 'umap', x: x, y: y },\n",
+      "        { id: 'trekker', label: 'Trekker (physical)',\n",
+      "          x: x.map(function (v) { return v * 60; }),\n",
+      "          y: y.map(function (v) { return v * 60; }), unit: 'um' }],\n",
+      "      clone: null,\n",
+      "      trekker: { qc: { sample_id: 's1' }, conf: conf, evidence: ev }\n",
+      "    } } }));\n",
+      "})();"
+    )
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.indexOf('81 cells') >= 0",
+    timeout = 15000
+  )
+
+  ## Click a cell, then ask for its details.
+  app$run_js(
+    paste0(
+      "(function () { var cv = document.getElementById('cv-cv-a');\n",
+      "  var r = cv.getBoundingClientRect();\n",
+      "  var x = r.left + r.width / 2, y = r.top + r.height / 2;\n",
+      "  cv.dispatchEvent(new MouseEvent('mousemove',\n",
+      "    { clientX: x, clientY: y, bubbles: true }));\n",
+      "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
+      "    { clientX: x, clientY: y, bubbles: true }));\n",
+      "  window.dispatchEvent(new MouseEvent('mouseup',\n",
+      "    { clientX: x, clientY: y, bubbles: true })); })();"
+    )
+  )
+  app$wait_for_js(
+    "document.querySelector('#cv-tip-a .cv-tip-details') !== null",
+    timeout = 10000
+  )
+  app$run_js("document.querySelector('#cv-tip-a .cv-tip-details').click();")
+  app$wait_for_js(
+    "document.getElementById('cv-card').classList.contains('is-open')",
+    timeout = 10000
+  )
+
+  card <- app$get_js("document.getElementById('cv-card-body').textContent")
+  expect_match(card, "Positioning")
+  expect_match(card, "position confidence")
+  expect_match(card, "positioning evidence")
+  ## Trekker's own physical fields are read out of the list the colour picker
+  ## offers, so whatever was exported appears without this being told its name.
+  expect_match(card, "bead noise")
+  ## ... and a meta column does not follow them in: it belongs to the meta
+  ## section, which the server fills, not to what Trekker knows about a position.
+  expect_equal(
+    app$get_js(
+      paste0(
+        "(function () {\n",
+        "  var secs = document.querySelectorAll('#cv-card-body .cv-card-sec');\n",
+        "  var out = null;\n",
+        "  secs.forEach(function (s) {\n",
+        "    if (s.textContent !== 'Positioning') return;\n",
+        "    out = s.nextElementSibling.textContent;\n",
+        "  });\n",
+        "  return out === null ? null : (out.indexOf('nUMI') >= 0);\n",
+        "})();"
+      )
+    ),
+    FALSE
+  )
+
+  app$stop()
+})
