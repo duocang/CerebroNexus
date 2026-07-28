@@ -42,6 +42,13 @@ var geneWanted = null;
 // was never made for. Keyed `section|imageId`; cleared with the data set, since
 // the ids belong to the object that produced them.
 var imgStates = {};
+// Which background each section was last showing, so returning to a section
+// returns the view of it the user left, not merely its alignment. Keyed by
+// section name; cleared with the data set.
+var imgChoice = {};
+// The data set the current state belongs to. Compared against the incoming
+// bundle's identity to tell a new data set from a re-sent one.
+var dataShown = null;
 // Guards the async decode: a fast switch could have an earlier image finish
 // loading after a later one and paint itself over the current choice.
 var imgToken = 0;
@@ -2820,7 +2827,9 @@ var focusPanel = null;
   function spatialImages(sp) {
     if (!sp) return [];
     if (sp.images && sp.images.length) return sp.images;
-    return sp.image ? [sp.image] : [];   // older singular contract
+    // `image` is a reference to the default, without the pixels -- it names an
+    // entry of `images`. Only a bundle predating that carries a usable one.
+    return (sp.image && sp.image.uri) ? [sp.image] : [];
   }
   function currentImage(sp) {
     if (sp && sp._imageId === IMG_NONE) return null;   // deliberately no image
@@ -2854,7 +2863,11 @@ var focusPanel = null;
       offsetY: (pr.offsetY != null ? pr.offsetY : 0),
       scaleX: (pr.scaleX != null ? pr.scaleX : 1),
       scaleY: (pr.scaleY != null ? pr.scaleY : 1),
-      flipX: !!pr.flipX, flipY: !!pr.flipY, rotate: 0
+      flipX: !!pr.flipX, flipY: !!pr.flipY, rotate: 0,
+      // Part of the state, not of the controls: unlocking while X and Y happen
+      // to be equal is a decision, and reading the lock back off the checkbox
+      // silently re-made it as "locked" on the next visit.
+      lock: (pr.scaleX == null || pr.scaleY == null || pr.scaleX === pr.scaleY)
     };
   }
   // Put away what the user has done to the image currently on screen, so coming
@@ -2862,6 +2875,13 @@ var focusPanel = null;
   // switch would make comparing two backgrounds mean re-aligning each time.
   function stashImgState() {
     var sp = spaceById['spatial'];
+    if (sp) {
+      // Which background this section was showing, so returning to it returns
+      // the view that was left rather than resetting to its first image.
+      var nm = sp._sampleName ||
+        (sp.samples && sp.samples[0] && sp.samples[0].name) || sp.id;
+      if (nm) imgChoice[nm] = sp._imageId || null;
+    }
     var k = imgKey(sp, currentImage(sp));
     if (!k) return;
     var copy = {};
@@ -2950,21 +2970,30 @@ var focusPanel = null;
     var tick = function (id, on) { var el = $(id); if (el) el.checked = !!on; };
     var span = (cur && cur.coord_span) || null;
     if (span && span.length >= 2) {
-      var rerange = function (id, ext) {
+      // Ranged on the section's coordinate span, but never tighter than the
+      // value being written: a range that excludes its own value clamps it, and
+      // the clamped number is what the next read of the bar puts into the state.
+      var rerange = function (id, ext, want) {
         var el = $(id); if (!el) return;
-        var lim = Math.abs(ext) * 1.2;
+        var lim = Math.max(Math.abs(ext) * 1.2, Math.abs(want || 0) * 1.1);
         el.min = String(-lim); el.max = String(lim);
         el.step = String(Math.max(lim / 200, 1e-6));
       };
-      rerange('cv-img-offx', span[0]);
-      rerange('cv-img-offy', span[1]);
+      rerange('cv-img-offx', span[0], v.offsetX);
+      rerange('cv-img-offy', span[1], v.offsetY);
     }
+    var sLo = Math.min(0.3, v.scaleX * 0.9, v.scaleY * 0.9);
+    var sHi = Math.max(3, v.scaleX * 1.1, v.scaleY * 1.1);
+    ['cv-img-scalex', 'cv-img-scaley'].forEach(function (id) {
+      var el = $(id); if (!el) return;
+      el.min = String(sLo); el.max = String(sHi);
+    });
     set('cv-img-opacity', v.opacity);
     set('cv-img-offx', v.offsetX);
     set('cv-img-offy', v.offsetY);
     set('cv-img-scalex', v.scaleX);
     set('cv-img-scaley', v.scaleY);
-    tick('cv-img-lock', v.scaleX === v.scaleY);
+    tick('cv-img-lock', v.lock != null ? v.lock : (v.scaleX === v.scaleY));
     set('cv-img-rotate', v.rotate || 0);
     tick('cv-img-flipx', v.flipX);
     tick('cv-img-flipy', v.flipY);
@@ -3010,9 +3039,12 @@ var focusPanel = null;
     sp.x = s.x; sp.y = s.y; sp.label = s.label;
     sp.image = s.image || null;
     sp.images = s.images || (s.image ? [s.image] : []);
-    // Each section chooses its own default background; the previous section's
-    // choice is not a choice about this one.
-    sp._imageId = (sp.images[0] && sp.images[0].id) || null;
+    // Its own last choice if it has one -- including "none", which is a choice.
+    // Otherwise its first background. Never the section being left: that was a
+    // choice about a different slide.
+    sp._imageId = Object.prototype.hasOwnProperty.call(imgChoice, name)
+      ? imgChoice[name]
+      : ((sp.images[0] && sp.images[0].id) || null);
     sp._unit = null;
     // Put away what was done to the section being left, so returning to it
     // returns that work; then load the target's own state -- its remembered
@@ -3095,6 +3127,7 @@ var focusPanel = null;
     // opacity. `changed` is the control the user just moved; with the aspect
     // locked the other follows it, and nothing else in the bar disturbs either.
     var lock = chk('cv-img-lock', true);
+    imgState.lock = lock;
     var sxEl = $('cv-img-scalex'), syEl = $('cv-img-scaley');
     var sxv = num('cv-img-scalex', imgState.scaleX);
     var syv = num('cv-img-scaley', imgState.scaleY);
@@ -3109,6 +3142,11 @@ var focusPanel = null;
     imgState.rotate = num('cv-img-rotate', imgState.rotate);
     imgState.flipX = chk('cv-img-flipx', imgState.flipX);
     imgState.flipY = chk('cv-img-flipy', imgState.flipY);
+    // Write through to the per-image store on every adjustment, so it is always
+    // the authority. Recording only on a switch left the work in flight: a
+    // bundle re-sent while the user was still adjusting reloaded from the preset
+    // and undid it.
+    stashImgState();
   }
 
   // Spaces in panel order: umap first, then spatial / trekker / clone (present
@@ -3284,10 +3322,17 @@ var focusPanel = null;
     sanitiseColors(D);
     syncCloneTiers();
     _clipD = null;   // ranges belong to the data set that produced them
-    // Image ids are the previous object's; so are the alignments stored under
-    // them. Keeping them would let one data set's calibration describe another's
-    // slide the moment two ids happened to match.
-    imgStates = {}; imgToken++;
+    // Image ids belong to the object that produced them, so alignment stored
+    // under them is dropped when the DATA SET changes -- not when a bundle
+    // arrives. Bundles are re-sent for reasons that are not a change of data
+    // set: returning to the tab, recolouring a group. Clearing on every push
+    // meant a user's alignment work survived only until they looked away.
+    if (D.dataset_id !== dataShown) {
+      imgStates = {};
+      imgChoice = {};
+    }
+    dataShown = D.dataset_id;
+    imgToken++;
     closeCard(); cardMeta = null;   // the card described the previous data set
     spaceById = {}; D.spaces.forEach(function (s) { s._unit = null; spaceById[s.id] = s; });
     colorBy = D.default_group ||
@@ -3356,6 +3401,10 @@ var focusPanel = null;
     fillSpatialPicker();
     renderGroupFilters();
     renderImagePicker();
+    // The controls have to show the state just loaded. In the app the bar is
+    // re-rendered by the server per data set, which hid the omission; but the
+    // client owns the values, so it is the client that must write them.
+    seedImgControls();
     // hide the gene/RGB pickers on a fresh dataset (starts in a categorical mode)
     var geneCtl = $('cv-gene-ctl'), rgbCtl = $('cv-rgb-ctl');
     if (geneCtl) geneCtl.style.display = 'none';

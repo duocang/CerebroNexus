@@ -2567,3 +2567,76 @@ test_that("point size sits with point opacity", {
 
   app$stop()
 })
+
+
+## A bundle is re-sent for reasons that are not a change of data set: returning
+## to the tab, recolouring a group. Clearing the per-image alignment on every
+## push meant the user's work survived only until they looked away -- the state
+## was keyed on "a message arrived" rather than on which data set it described.
+test_that("re-sending the same data set keeps the image adjustments", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_img_repush")
+
+  png1 <- paste0(
+    "data:image/png;base64,",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8",
+    "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  )
+  bundle <- function(id) {
+    cv_bundle_js(paste0(
+      "{ dataset_id: '",
+      id,
+      "',\n",
+      "  spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },\n",
+      "  { id: 'spatial', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "    images: [{ id: 'one', label: 'One', uri: '",
+      png1,
+      "',\n",
+      "      coord_span: [400, 400],\n",
+      "      preset: { scaleX: 1, scaleY: 1, opacity: 0.6 } }] }] }"
+    ))
+  }
+  app$run_js(bundle("ds-A"))
+  app$wait_for_js(
+    "document.getElementById('cv-img-pick').options.length === 2",
+    timeout = 15000
+  )
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var host = document.createElement('div');\n",
+      "  host.innerHTML =\n",
+      "    '<input type=\"range\" id=\"cv-img-scalex\" min=\"0.3\" max=\"3\"' +\n",
+      "    ' step=\"0.02\" value=\"1\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-scaley\" min=\"0.3\" max=\"3\"' +\n",
+      "    ' step=\"0.02\" value=\"1\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-lock\" checked>';\n",
+      "  document.body.appendChild(host);\n",
+      "})();"
+    )
+  )
+  scalex <- "parseFloat(document.getElementById('cv-img-scalex').value)"
+  app$run_js(
+    paste0(
+      "(function () { var x = document.getElementById('cv-img-scalex');\n",
+      "  x.value = '2.5';\n",
+      "  x.dispatchEvent(new Event('input', { bubbles: true })); })();"
+    )
+  )
+  app$wait_for_idle(timeout = 5000)
+  expect_equal(app$get_js(scalex), 2.5)
+
+  ## The SAME data set arriving again -- what leaving and returning to the tab
+  ## produces -- must not undo it.
+  app$run_js(bundle("ds-A"))
+  app$wait_for_idle(timeout = 10000)
+  expect_equal(app$get_js(scalex), 2.5)
+
+  ## A different data set must, though: the ids the alignments are stored under
+  ## belong to the object that produced them.
+  app$run_js(bundle("ds-B"))
+  app$wait_for_idle(timeout = 10000)
+  expect_equal(app$get_js(scalex), 1)
+
+  app$stop()
+})

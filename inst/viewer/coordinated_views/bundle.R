@@ -403,8 +403,8 @@ cv_build_projections <- function(crb, cells) {
 ## unitless, flip). The client maps the bounds to screen with the same transform
 ## as the cells, so the image aligns; preset/user transforms adjust on top.
 ##   - EMBEDDED (Xenium/MERFISH): image + its own bounds travel in the .crb.
-##   - EXTERNAL (Visium H&E): a separate file with a hand-tuned Cerebro.options
-##     preset; only offered for the primary sample (allow_external).
+##   - EXTERNAL (Visium H&E): separate files with a hand-tuned Cerebro.options
+##     preset. Configured per DATA SET, so offered on every section.
 ## Returns list(name, x, y, image) or NULL.
 cv_spatial_one <- function(crb, cells, nm, allow_external) {
   sd <- tryCatch(crb$getSpatialData(nm), error = function(e) NULL)
@@ -471,7 +471,22 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
       )
     }
   }
-  image <- if (length(images)) images[[1]] else NULL
+  ## The default background, as a REFERENCE rather than a copy. A histology
+  ## image is megabytes of base64; carrying the same one under both `image` and
+  ## `images[1]` doubled it, and once more again for the space's own default --
+  ## measured at 1.6 MB per copy on the Xenium demo, in a 3.6 MB bundle. Older
+  ## readers of the singular field get the id and can look it up.
+  image <- if (length(images)) {
+    list(
+      id = images[[1]]$id,
+      label = images[[1]]$label,
+      bounds = images[[1]]$bounds,
+      preset = images[[1]]$preset,
+      coord_span = images[[1]]$coord_span
+    )
+  } else {
+    NULL
+  }
 
   list(
     name = nm,
@@ -496,7 +511,13 @@ cv_build_spatial <- function(crb, cells) {
   }
   built <- lapply(
     seq_along(sp_names),
-    function(i) cv_spatial_one(crb, cells, sp_names[i], allow_external = i == 1)
+    ## `spatial_images` is configured PER DATA SET -- its shape carries no way
+    ## to say which section a file belongs to -- so its images are offered on
+    ## every section rather than silently attached to the first one. A reader
+    ## who has a background for their second section could not reach it at all.
+    ## Saying which image goes with which section needs a new option shape; the
+    ## client already remembers the choice per section.
+    function(i) cv_spatial_one(crb, cells, sp_names[i], allow_external = TRUE)
   )
   built <- Filter(Negate(is.null), built)
   if (!length(built)) {
@@ -512,7 +533,10 @@ cv_build_spatial <- function(crb, cells) {
   if (!is.null(first$image)) {
     space$image <- first$image
   }
-  if (length(first$images)) {
+  ## Only when there is no `samples` list to hold them: with one, the space's
+  ## default section IS samples[[1]] and repeating its images here would send
+  ## every one of them twice.
+  if (length(first$images) && length(built) == 1) {
     space$images <- I(first$images)
   }
   if (length(built) > 1) {
@@ -850,6 +874,24 @@ cv_build_bundle <- function(crb) {
   }
 
   list(
+    ## Which data set this bundle IS. The client keeps per-image alignment state
+    ## across pushes, and a bundle is re-sent for reasons that are not a change
+    ## of data set -- returning to the tab, recolouring a group. Without an
+    ## identity to compare, "a new bundle" and "a new data set" look the same and
+    ## the user's alignment work is thrown away by walking away and back.
+    dataset_id = tryCatch(
+      {
+        if (
+          exists("available_crb_files") &&
+            !is.null(available_crb_files$selected)
+        ) {
+          as.character(available_crb_files$selected)
+        } else {
+          paste0("cells:", n, ":", if (n) cells[1] else "")
+        }
+      },
+      error = function(e) paste0("cells:", n)
+    ),
     cells = cells,
     n = n,
     groups = groups,

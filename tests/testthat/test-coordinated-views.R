@@ -17,21 +17,21 @@ inst_candidates <- c(
 )
 local_inst <- inst_candidates[file.exists(file.path(
   inst_candidates,
-  "shiny/v1.4"
+  "viewer"
 ))][1]
 if (!is.na(local_inst)) {
   bundle_file <- file.path(
     local_inst,
     "viewer/coordinated_views/bundle.R"
   )
-  omnibus_crb <- file.path(local_inst, "extdata/v1.4/demo_omnibus.crb")
+  omnibus_crb <- file.path(local_inst, "extdata/examples/demo_omnibus.crb")
 } else {
   bundle_file <- system.file(
     "viewer/coordinated_views/bundle.R",
     package = "CerebroNexus"
   )
   omnibus_crb <- system.file(
-    "extdata/v1.4/demo_omnibus.crb",
+    "extdata/examples/demo_omnibus.crb",
     package = "CerebroNexus"
   )
 }
@@ -745,4 +745,140 @@ test_that("the alignment bar follows the chosen background, not the data set", {
     perl = TRUE
   )
   expect_no_match(txt, "hasImg = D.spaces.some", fixed = TRUE)
+})
+
+test_that("bundling two images of the same basename keeps both", {
+  ## The ids kept them apart in the bundle, but createShinyApp() copied both to
+  ## data/<basename> and let the second overwrite the first, so two entries in
+  ## the picker resolved to one file. The earlier test called the builder on the
+  ## original absolute paths and never went through the packaging that breaks it.
+  tmp <- file.path(tempdir(), "cv_pack")
+  unlink(tmp, recursive = TRUE)
+  dir.create(file.path(tmp, "a"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(tmp, "b"), recursive = TRUE, showWarnings = FALSE)
+  px <- as.raw(c(
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    0x0d,
+    0x0a,
+    0x1a,
+    0x0a,
+    0x00,
+    0x00,
+    0x00,
+    0x0d,
+    0x49,
+    0x48,
+    0x44,
+    0x52,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x08,
+    0x06,
+    0x00,
+    0x00,
+    0x00,
+    0x1f,
+    0x15,
+    0xc4,
+    0x89,
+    0x00,
+    0x00,
+    0x00,
+    0x0d,
+    0x49,
+    0x44,
+    0x41,
+    0x54,
+    0x78,
+    0x9c,
+    0x63,
+    0xf8,
+    0xcf,
+    0xc0,
+    0x50,
+    0x0f,
+    0x00,
+    0x04,
+    0x85,
+    0x01,
+    0x80,
+    0x84,
+    0xa9,
+    0x8c,
+    0x21,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x49,
+    0x45,
+    0x4e,
+    0x44,
+    0xae,
+    0x42,
+    0x60,
+    0x82
+  ))
+  p1 <- file.path(tmp, "a", "he.png")
+  p2 <- file.path(tmp, "b", "he.png")
+  writeBin(px, p1)
+  writeBin(px, p2)
+
+  example <- system.file(
+    "extdata/examples/example.crb",
+    package = "CerebroNexus"
+  )
+  skip_if_not(nzchar(example))
+  crb <- file.path(tmp, "demo.crb")
+  file.copy(example, crb, overwrite = TRUE)
+  app_dir <- file.path(tmp, "app")
+  createShinyApp(
+    cerebro_data = c("ds" = crb),
+    result_dir = app_dir,
+    spatial_images = list(ds = c(p1, p2)),
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  copied <- list.files(
+    file.path(app_dir, "spatial-assets"),
+    pattern = "he.*[.]png$"
+  )
+  expect_equal(length(copied), 2)
+  ## ... and the bundled configuration points at the two distinct files rather
+  ## than twice at one. (The paths live in cerebro_config.rds, not app.R.)
+  cfg <- readRDS(file.path(app_dir, "cerebro_config.rds"))
+  expect_equal(length(unique(cfg$spatial_images$ds)), 2)
+  expect_true(all(file.exists(file.path(app_dir, cfg$spatial_images$ds))))
+})
+
+test_that("external images are offered on every spatial section", {
+  ## `spatial_images` is configured per DATA SET; its shape cannot say which
+  ## section a file belongs to. Attaching them to the first section only meant a
+  ## reader with a background for their second section could not reach it.
+  path <- bundle_file
+  txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  expect_match(txt, "allow_external = TRUE", fixed = TRUE)
+  expect_no_match(txt, "allow_external = i == 1", fixed = TRUE)
+})
+
+test_that("the alignment sliders contain the preset they are given", {
+  ## A preset is a calibration someone measured. A slider ranged on the
+  ## coordinate span alone clamps anything outside it, and because the bar is
+  ## read back as a whole the clamped number is then written into the state by an
+  ## unrelated nudge -- the alignment quietly becoming one nobody chose.
+  path <- file.path(dirname(bundle_file), "server.R")
+  txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  expect_match(txt, "abs(pr$offsetX", fixed = TRUE)
+  expect_match(txt, "scale_lo", fixed = TRUE)
+  expect_no_match(txt, 'rng("cv-img-scalex", 0.3, 3', fixed = TRUE)
 })

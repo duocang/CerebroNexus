@@ -527,8 +527,23 @@ output[["coordviews_image_ui"]] <- renderUI({
       label
     )
   }
-  sx <- signif(span[1] * 1.2, 3)
-  sy <- signif(span[2] * 1.2, 3)
+  ## The range has to CONTAIN the value it is being asked to show. A preset is a
+  ## calibration someone measured; a slider ranged on the coordinate span alone
+  ## clamps anything outside it, and because the whole bar is read back together
+  ## the clamped number is then written into the state by an unrelated nudge --
+  ## the alignment silently becoming one nobody chose.
+  sx <- signif(max(span[1] * 1.2, abs(pr$offsetX %||% 0) * 1.1), 3)
+  sy <- signif(max(span[2] * 1.2, abs(pr$offsetY %||% 0) * 1.1), 3)
+  scale_lo <- min(
+    0.3,
+    (pr$scaleX %||% 1) * 0.9,
+    (pr$scaleY %||% pr$scaleX %||% 1) * 0.9
+  )
+  scale_hi <- max(
+    3,
+    (pr$scaleX %||% 1) * 1.1,
+    (pr$scaleY %||% pr$scaleX %||% 1) * 1.1
+  )
   div(
     class = "cv-imgbar",
     tags$span(class = "cv-imgbar-title", "Histology image"),
@@ -556,12 +571,18 @@ output[["coordviews_image_ui"]] <- renderUI({
     div(
       class = "cv-img-ctl",
       tags$label("Scale X"),
-      rng("cv-img-scalex", 0.3, 3, pr$scaleX %||% 1, 0.02)
+      rng("cv-img-scalex", scale_lo, scale_hi, pr$scaleX %||% 1, 0.02)
     ),
     div(
       class = "cv-img-ctl",
       tags$label("Scale Y"),
-      rng("cv-img-scaley", 0.3, 3, pr$scaleY %||% pr$scaleX %||% 1, 0.02)
+      rng(
+        "cv-img-scaley",
+        scale_lo,
+        scale_hi,
+        pr$scaleY %||% pr$scaleX %||% 1,
+        0.02
+      )
     ),
     chk(
       "cv-img-lock",

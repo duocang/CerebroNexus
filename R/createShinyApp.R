@@ -2335,6 +2335,35 @@ createShinyApp <- function(
   ## apps mapped /data over HTTP, so replacement bundles never reuse that path.
   if (!is.null(spatial_images) && length(spatial_images) > 0L) {
     bundled_spatial_images <- list()
+    unique_spatial_target <- function(image) {
+      base <- basename(image)
+      stem <- tools::file_path_sans_ext(base)
+      extension <- tools::file_ext(base)
+      candidate <- paste0("spatial-assets/", base)
+      index <- 2L
+      while (tolower(candidate) %in% claimed_keys) {
+        claim_index <- match(tolower(candidate), claimed_keys)
+        same_source <- identical(
+          normalizePath(image, winslash = "/", mustWork = TRUE),
+          claimed_sources[[claim_index]]
+        )
+        if (
+          same_source &&
+            identical(claimed_artifacts[[claim_index]], "spatial image")
+        ) {
+          return(candidate)
+        }
+        base <- paste0(
+          stem,
+          "_",
+          index,
+          if (nzchar(extension)) paste0(".", extension) else ""
+        )
+        candidate <- paste0("spatial-assets/", base)
+        index <- index + 1L
+      }
+      candidate
+    }
     for (index in seq_along(spatial_images)) {
       dataset <- names(spatial_images)[[index]]
       copied_paths <- character()
@@ -2343,7 +2372,7 @@ createShinyApp <- function(
           warning("Spatial image not found: ", image, call. = FALSE)
           next
         }
-        target <- paste0("spatial-assets/", basename(image))
+        target <- unique_spatial_target(image)
         claim_target(
           target,
           normalizePath(image, winslash = "/", mustWork = TRUE),
