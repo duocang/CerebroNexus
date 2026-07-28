@@ -1,11 +1,49 @@
+## The layer names Seurat gives an assay's three semantic classes. Split layers
+## are named `<root>.<suffix>`, so these are also the prefixes that identify one.
+## Ordered longest first: `scale.data` has to be recognised before `data` could
+## claim any part of it.
+.cerebro_layer_roots <- c("scale.data", "counts", "data")
+
+#' Semantic root of a (possibly split) Seurat v5 layer name
+#'
+#' `split(assay, f = ...)` names each layer `<root>.<level>`, where the level is
+#' whatever the splitting factor's values are -- sample names (`counts.pbmc_1`)
+#' at least as often as integers (`counts.1`). Matching only the numeric form
+#' left every sample-split object looking unsplit.
+#'
+#' Roots are matched against a whitelist rather than stripped with a general
+#' rule, because `scale.data` contains a dot itself: `sub("\\.[^.]+$", "", x)`
+#' would root it as `scale` and quietly divorce it from its own split layers.
+#' Layer names outside the whitelist keep the legacy numeric-suffix handling, so
+#' a custom slot such as `foo.1` still resolves to `foo`.
+#'
+#' @keywords internal
+#' @noRd
+.layer_semantic_root <- function(x) {
+  vapply(
+    x,
+    function(layer) {
+      known <- .cerebro_layer_roots[
+        startsWith(layer, paste0(.cerebro_layer_roots, "."))
+      ]
+      if (length(known) > 0) {
+        return(known[[1L]])
+      }
+      sub("\\.[0-9]+$", "", layer)
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
 #' Filter candidate fallback layers to the same semantic class as the request
 #'
 #' Given a requested layer name (e.g. "data", "counts", "scale.data") and the
 #' layers actually present in an assay, return the acceptable fallback layers.
 #' By default only layers sharing the same semantic root are kept, so that a
 #' missing "data" layer never silently falls back to "counts" (raw) or
-#' "scale.data" (scaled). Seurat v5 split layers ("data.1", "data.2", ...) share
-#' the root of their base layer and are therefore kept. Set
+#' "scale.data" (scaled). Seurat v5 split layers ("data.1", "data.s1", ...)
+#' share the root of their base layer and are therefore kept. Set
 #' \code{allow_cross_semantic = TRUE} for the legacy behaviour where any
 #' available layer is an acceptable fallback (requested layer ordered first).
 #'
@@ -16,9 +54,7 @@
   available_layers,
   allow_cross_semantic = FALSE
 ) {
-  # semantic root = layer name up to (but not including) a split-layer suffix,
-  # e.g. "data.1" -> "data", "scale.data" -> "scale.data" (no numeric suffix).
-  root_of <- function(x) sub("\\.[0-9]+$", "", x)
+  root_of <- .layer_semantic_root
 
   if (isTRUE(allow_cross_semantic)) {
     return(unique(c(
@@ -89,8 +125,26 @@
       )
     }
 
+    ## A layer is a split layer exactly when its semantic root is not its own
+    ## name -- `counts.s1` roots as `counts`, a plain `counts` roots as itself.
+    ## Testing the root rather than a `counts\\.[0-9]+` pattern catches the
+    ## sample-name form that real data almost always takes, and catches it on
+    ## whichever class is split (an assay can carry `data.s1` without `counts.*`).
     layer_names <- SeuratObject::Layers(seurat[[assay]])
-    if (join_samples && any(grepl("^counts\\.[0-9]+", layer_names))) {
+    has_split_layers <- any(.layer_semantic_root(layer_names) != layer_names)
+
+    ## Joining consumes the split layers, so asking for one of them by name and
+    ## joining first cannot both happen. A caller naming `data.s2` wants that
+    ## sample's values, not every sample's, and the substitution would be
+    ## invisible: the joined `data` satisfies the request's own semantic root,
+    ## so not even the cross-semantic warning fires. Honour the request; the
+    ## export's cell-count check is what reports that one sample is not a whole
+    ## object.
+    requests_a_split_layer <- length(slot) == 1 &&
+      slot %in% layer_names &&
+      .layer_semantic_root(slot) != slot
+
+    if (join_samples && has_split_layers && !requests_a_split_layer) {
       if (verbose) {
         message(
           "[",
@@ -100,6 +154,14 @@
       }
       seurat <- SeuratObject::JoinLayers(seurat, assay = assay)
       layer_names <- SeuratObject::Layers(seurat[[assay]])
+    } else if (join_samples && requests_a_split_layer && verbose) {
+      message(
+        "[",
+        format(Sys.time(), "%H:%M:%S"),
+        "] Layer `",
+        slot,
+        "` was requested by name; leaving the split layers unjoined."
+      )
     }
 
     layer_name <- switch(
@@ -152,9 +214,7 @@
         allow_cross_semantic = allow_cross_semantic_fallback
       )
       fallback_candidates <- setdiff(fallback_candidates, layer_name)
-      ## semantic root = layer name without a split-layer numeric suffix, matching
-      ## .filter_same_semantic_layers (e.g. "data.1" -> "data").
-      semantic_root <- function(x) sub("\\.[0-9]+$", "", x)
+      semantic_root <- .layer_semantic_root
       for (fallback_layer in fallback_candidates) {
         if (semantic_root(fallback_layer) != semantic_root(layer_name)) {
           ## A cross-semantic substitution (e.g. requested `data`, served
@@ -277,6 +337,16 @@
       )
     }
   } else {
+    ## A disk-backed assay lands here: BPCells hands back an `IterableMatrix`
+    ## (often wrapped, e.g. `RenameDims`), DelayedArray a `DelayedMatrix`. The
+    ## class name alone says nothing about what went wrong or what to do, and
+    ## an object whose matrix already lives on disk is a reasonable thing to
+    ## want to export -- reading it is simply not supported yet. Say which of
+    ## the two situations this is.
+    disk_backed <- inherits(
+      expr_matrix,
+      c("IterableMatrix", "DelayedMatrix", "DelayedArray")
+    )
     stop(
       "Expression matrix is not a valid matrix type.\n",
       "  Expected: matrix or dgCMatrix\n",
@@ -289,15 +359,53 @@
       "  Slot/Layer: ",
       slot,
       "\n",
-      "Suggestions:\n",
-      "  1. Check the assay structure in your Seurat object\n",
-      "  2. Verify the data type using: class(GetAssayData(seurat, assay = \"",
-      assay,
-      "\"",
-      if (is_seurat_v5) {
-        paste0(', layer = "', slot, '"))')
+      if (disk_backed) {
+        ## Convert every layer rather than the requested one. On a split assay
+        ## `LayerData(layer = "counts")` reaches for a layer that is not there
+        ## and settles for one of the `counts.*` layers, so converting "the"
+        ## layer would quietly leave the object holding a single sample -- the
+        ## very failure this file exists to prevent. Looping is correct whether
+        ## or not the assay is split.
+        paste0(
+          "This assay's data already lives on disk. Reading a disk-backed ",
+          "assay is not supported yet; bring every layer into memory first ",
+          "(this materialises the whole matrix, which is what the on-disk ",
+          "backend was avoiding):\n",
+          "  for (nm in SeuratObject::Layers(seurat[[\"",
+          assay,
+          "\"]])) {\n",
+          "    SeuratObject::LayerData(seurat, assay = \"",
+          assay,
+          "\", layer = nm) <-\n",
+          "      methods::as(\n",
+          "        SeuratObject::LayerData(seurat, assay = \"",
+          assay,
+          "\", layer = nm),\n",
+          "        \"dgCMatrix\"\n",
+          "      )\n",
+          "  }\n",
+          "Convert every layer, not just `",
+          slot,
+          "`: on a split assay a request for a root layer settles for one of ",
+          "its `<root>.<sample>` layers, so converting only that one would ",
+          "leave the object holding a single sample.\n",
+          "Note that this is unrelated to `expression_matrix_mode`, which ",
+          "controls how the exported .crb stores its matrix, not how the ",
+          "source object holds it."
+        )
       } else {
-        paste0(', slot = "', slot, '"))')
+        paste0(
+          "Suggestions:\n",
+          "  1. Check the assay structure in your Seurat object\n",
+          "  2. Verify the data type using: class(GetAssayData(seurat, assay = \"",
+          assay,
+          "\"",
+          if (is_seurat_v5) {
+            paste0(', layer = "', slot, '"))')
+          } else {
+            paste0(', slot = "', slot, '"))')
+          }
+        )
       }
     )
   }
