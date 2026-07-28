@@ -731,3 +731,18 @@ test_that("a section offers every background it has, each with its own id", {
   expect_equal(length(unique(ids)), 2) # same basename, different identity
   expect_true(all(grepl("he\\.png$", ids)))
 })
+
+test_that("the alignment bar follows the chosen background, not the data set", {
+  ## With "None" chosen there is nothing on screen for those controls to adjust,
+  ## so the bar goes away with the image. Keyed on the CURRENT choice rather than
+  ## on whether the data set has an image at all, which is what it used to ask.
+  js <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
+  skip_if_not(file.exists(js))
+  txt <- paste(readLines(js, warn = FALSE), collapse = "\n")
+  expect_match(
+    txt,
+    "hasImg = !!\\(sp && currentImage\\(sp\\)\\)",
+    perl = TRUE
+  )
+  expect_no_match(txt, "hasImg = D.spaces.some", fixed = TRUE)
+})

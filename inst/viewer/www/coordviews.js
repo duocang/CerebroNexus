@@ -2575,7 +2575,10 @@ var focusPanel = null;
     // clone panel exists, the histology-image bar when a spatial panel carries an
     // image. revealEl fades them in/out (see .cv-collapse CSS).
     var hasClone = !!spaceById['clone'];
-    var hasImg = D.spaces.some(function (s) { return s.image && s.image.uri; });
+    // The alignment bar adjusts the image ON SCREEN, so it follows the choice
+    // rather than the data set: with "None" chosen there is nothing to align.
+    var sp = spaceById['spatial'];
+    var hasImg = !!(sp && currentImage(sp));
     revealEl($('cv-clone-layout-ctl'), hasClone);
     revealEl($('coordviews_image_ui'), hasImg);
   }
@@ -2811,12 +2814,16 @@ var focusPanel = null;
   // A section can be shown against several backgrounds (its own embedded
   // histology, whatever the deployment configured), each with its own identity
   // and its own calibration. These read whichever is currently chosen.
+  // The picker's value for "no background", kept out of the id space a builder
+  // can produce.
+  var IMG_NONE = '__none__';
   function spatialImages(sp) {
     if (!sp) return [];
     if (sp.images && sp.images.length) return sp.images;
     return sp.image ? [sp.image] : [];   // older singular contract
   }
   function currentImage(sp) {
+    if (sp && sp._imageId === IMG_NONE) return null;   // deliberately no image
     var list = spatialImages(sp);
     if (!list.length) return null;
     for (var i = 0; i < list.length; i++) {
@@ -2863,13 +2870,16 @@ var focusPanel = null;
   }
   function loadSpaceImage(space) {
     imgEl = null; imgReady = false;
+    // A newer request invalidates whatever is still decoding, including when
+    // the newer request is "none".
+    imgToken++;
     var img = currentImage(space);
     if (!img || !img.uri) return;
     var k = imgKey(space, img);
     imgState = (k && imgStates[k]) ? imgStates[k] : presetState(img);
     // Only the newest request may paint. Without the token a large image chosen
     // first can finish decoding after a small one chosen second and replace it.
-    var mine = ++imgToken;
+    var mine = imgToken;
     var im = new Image();
     im.onload = function () {
       if (mine !== imgToken) return;
@@ -2886,17 +2896,28 @@ var focusPanel = null;
     var ctl = $('cv-img-pick-ctl'), selEl = $('cv-img-pick');
     if (!ctl || !selEl) return;
     var sp = spaceById['spatial'];
+    if (!sp) { ctl.style.display = 'none'; return; }
     var list = spatialImages(sp);
-    if (list.length < 2) { ctl.style.display = 'none'; return; }
+    // Shown whenever there is a spatial section, even with one background or
+    // none. "None" is a real answer -- the tissue photo can be the thing in the
+    // way of seeing the cells -- and a control that vanishes when a data set has
+    // one image reads as a control that is broken. With no image at all the list
+    // says so rather than leaving the reader to wonder where it went.
     ctl.style.display = '';
-    selEl.innerHTML = list.map(function (im) {
+    var opts = list.map(function (im) {
       return '<option value="' + esc(im.id) + '">' +
         esc(im.label || im.id) + '</option>';
-    }).join('');
-    var cur = currentImage(sp);
-    if (cur) selEl.value = cur.id;
+    });
+    opts.unshift('<option value="' + IMG_NONE + '">' +
+      (list.length ? 'None' : 'None (no image in this data set)') +
+      '</option>');
+    selEl.innerHTML = opts.join('');
+    selEl.disabled = !list.length;
+    var cur = sp._imageId === IMG_NONE ? null : currentImage(sp);
+    selEl.value = cur ? cur.id : IMG_NONE;
     selEl.onchange = function () { setSpatialImage(selEl.value); };
   }
+
   // Switch background. The cells have not moved -- only what is behind them --
   // so the viewport is left exactly as it is; re-fitting it here would throw
   // away the zoom the user was comparing at.
@@ -2904,7 +2925,7 @@ var focusPanel = null;
     var sp = spaceById['spatial'];
     if (!sp || !id) return;
     var cur = currentImage(sp);
-    if (cur && cur.id === id) return;
+    if (cur ? cur.id === id : id === IMG_NONE) return;
     stashImgState();
     sp._imageId = id;
     loadSpaceImage(sp);

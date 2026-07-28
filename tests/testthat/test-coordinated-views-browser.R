@@ -2332,7 +2332,8 @@ test_that("each section and background keeps its own alignment", {
     timeout = 15000
   )
 
-  ## Section A has two backgrounds, so the picker is offered and lists both.
+  ## Section A has two backgrounds; both are listed, after the standing option
+  ## of showing none.
   expect_true(app$get_js(
     paste0(
       "getComputedStyle(document.getElementById('cv-img-pick-ctl'))",
@@ -2346,7 +2347,7 @@ test_that("each section and background keeps its own alignment", {
         ".map(function (o) { return o.value; })"
       )
     ),
-    list("a1", "a2")
+    list("__none__", "a1", "a2")
   )
 
   ## The bar itself is server-rendered, so put it in place seeded from a1.
@@ -2428,13 +2429,16 @@ test_that("each section and background keeps its own alignment", {
   ## Switch section. B's single background has its own, non-uniform calibration.
   pick_sample("B")
   expect_equal(scales(), c(1.4, 0.7))
-  ## One background, so nothing to choose between.
-  expect_false(app$get_js(
-    paste0(
-      "getComputedStyle(document.getElementById('cv-img-pick-ctl'))",
-      ".display !== 'none'"
-    )
-  ))
+  ## One background, and still a choice: show it or show none.
+  expect_equal(
+    app$get_js(
+      paste0(
+        "Array.from(document.getElementById('cv-img-pick').options)",
+        ".map(function (o) { return o.value; })"
+      )
+    ),
+    list("__none__", "b1")
+  )
 
   ## Back to A: still on a1, still carrying its adjustment.
   pick_sample("A")
@@ -2448,6 +2452,118 @@ test_that("each section and background keeps its own alignment", {
   expect_equal(scales(), c(1, 1))
   pick_img("a2")
   expect_equal(scales(), c(2, 2))
+
+  app$stop()
+})
+
+
+## The picker used to hide itself when a section had fewer than two backgrounds,
+## which is exactly when a reader wonders where the control went -- and left no
+## way to turn a single image off from the same place it is chosen. "None" is a
+## real answer: the tissue photo can be the thing in the way of seeing the cells.
+test_that("the background picker is offered even with one image or none", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_img_none")
+
+  png1 <- paste0(
+    "data:image/png;base64,",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8",
+    "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  )
+  pick_opts <- paste0(
+    "Array.from(document.getElementById('cv-img-pick').options)",
+    ".map(function (o) { return o.value; })"
+  )
+  pick_shown <- paste0(
+    "getComputedStyle(document.getElementById('cv-img-pick-ctl'))",
+    ".display !== 'none'"
+  )
+
+  ## One background: still offered, with None beside it.
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },\n",
+      "  { id: 'spatial', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "    images: [{ id: 'only', label: 'Only one', uri: '",
+      png1,
+      "',\n",
+      "      coord_span: [400, 400],\n",
+      "      preset: { scaleX: 1, scaleY: 1, opacity: 0.6 } }] }] }"
+    )
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-img-pick').options.length > 0",
+    timeout = 15000
+  )
+  expect_true(app$get_js(pick_shown))
+  expect_equal(app$get_js(pick_opts), list("__none__", "only"))
+  expect_equal(
+    app$get_js("document.getElementById('cv-img-pick').value"),
+    "only"
+  )
+
+  ## Choosing None is accepted and held. That it also takes the alignment bar
+  ## away is not assertable here -- the bar is server-rendered from the SERVER's
+  ## bundle, and this app's data set has no image, so the container is empty
+  ## rather than hidden either way. The rule is pinned in
+  ## test-coordinated-views.R and was checked on the running app.
+  app$run_js(paste0(
+    "(function () { var s = document.getElementById('cv-img-pick');\n",
+    "  s.value = '__none__'; s.onchange(); })();"
+  ))
+  app$wait_for_idle(timeout = 8000)
+  expect_equal(
+    app$get_js("document.getElementById('cv-img-pick').value"),
+    "__none__"
+  )
+
+  ## A section with no background at all still shows the control, saying so.
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },\n",
+      "  { id: 'spatial', label: 'A (spatial)', x: blob(0), y: blob(0) }] }"
+    )
+  ))
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length === 2",
+    timeout = 15000
+  )
+  expect_true(app$get_js(pick_shown))
+  expect_equal(app$get_js(pick_opts), list("__none__"))
+  expect_true(app$get_js("document.getElementById('cv-img-pick').disabled"))
+
+  app$stop()
+})
+
+test_that("point size sits with point opacity", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_ps_row")
+  app$run_js(cv_bundle_js())
+  app$wait_for_js(
+    "document.getElementById('cv-meta').textContent.indexOf('800 cells') >= 0",
+    timeout = 15000
+  )
+  ## They adjust the same marks in the same way, so they belong together rather
+  ## than one in the always-visible bar and the other behind "More".
+  expect_true(app$get_js(
+    paste0(
+      "(function () {\n",
+      "  var ps = document.getElementById('cv-ps');\n",
+      "  var op = document.getElementById('cv-opacity');\n",
+      "  if (!ps || !op) return false;\n",
+      "  return ps.closest('.cv-more-inner') === op.closest('.cv-more-inner') &&\n",
+      "    ps.closest('.cv-more-inner') !== null;\n",
+      "})();"
+    )
+  ))
+  ## ... and it still drives the drawing.
+  app$run_js(paste0(
+    "(function () { var ps = document.getElementById('cv-ps');\n",
+    "  ps.value = '7';\n",
+    "  ps.dispatchEvent(new Event('input', { bubbles: true })); })();"
+  ))
+  app$wait_for_idle(timeout = 5000)
+  expect_gt(app$get_js(cv_ink_js()), 1)
 
   app$stop()
 })

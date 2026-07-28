@@ -291,16 +291,6 @@ tab_coordinated_views <- tabItem(
           )
         )
       ),
-      cv_range(
-        "Point size",
-        "cv-ps",
-        min = "0.8",
-        max = "7",
-        step = "0.2",
-        value = "3",
-        disp = "3.0",
-        val_id = "cv-ps-val"
-      ),
       ## Clonal-panel layout switch. Shown only when the data set carries an
       ## immune axis (a "clone" space). The clone panel's X/Y are abstract, so
       ## unlike UMAP/Spatial it draws labelled axes and can be re-laid-out
@@ -398,6 +388,19 @@ tab_coordinated_views <- tabItem(
           class = "cv-more-clip",
           div(
             class = "cv-more-inner",
+            ## Point size sits with Point opacity: they are the same kind of
+            ## adjustment to the same marks, and separating them put one in the
+            ## always-visible bar and the other behind "More".
+            cv_range(
+              "Point size",
+              "cv-ps",
+              min = "0.8",
+              max = "7",
+              step = "0.2",
+              value = "3",
+              disp = "3.0",
+              val_id = "cv-ps-val"
+            ),
             cv_range(
               "Point opacity",
               "cv-opacity",
