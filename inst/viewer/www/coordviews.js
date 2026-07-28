@@ -2806,6 +2806,11 @@ var focusPanel = null;
     sp.x = s.x; sp.y = s.y; sp.label = s.label; sp.image = s.image || null;
     sp._unit = null;
     loadSpaceImage(sp);            // the section's own histology image (or none)
+    // ... and the controls have to follow it. They held the PREVIOUS section's
+    // numbers, so the first nudge to any of them read those back and overwrote
+    // the new section's calibration with the old one's -- the alignment silently
+    // reverting to a different slide's.
+    resetImgToPreset();
     updateSpaceScopedControls();   // image bar visibility follows the new sample
     resetSpaceViews('spatial');    // a different section, so a different geometry
     panels.forEach(function (p) {

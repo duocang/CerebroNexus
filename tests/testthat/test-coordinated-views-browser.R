@@ -2041,3 +2041,119 @@ test_that("a non-uniform image calibration survives the other controls", {
 
   app$stop()
 })
+
+
+## Switching spatial section is where the alignment bar goes wrong, and the
+## earlier test could not see it: it exercised one section only. The bundle here
+## carries two real sections with different presets and the switch goes through
+## setSpatialSample() exactly as the picker drives it.
+##
+## The bar's MARKUP is server-rendered from the server's own bundle, so a pushed
+## one cannot produce it; it is put in place here seeded as the server seeds it,
+## from the section showing at the time. What is under test is what happens to it
+## on the switch. That the server renders a bar at all when only a LATER section
+## carries the image is pinned in test-coordinated-views.R.
+test_that("the image controls follow the spatial section", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_sample_switch")
+
+  png1 <- paste0(
+    "data:image/png;base64,",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8",
+    "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  )
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },\n",
+      "  { id: 'spatial', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "    coord_span: [400, 400],\n",
+      "    image: { uri: '",
+      png1,
+      "',\n",
+      "      preset: { scaleX: 1, scaleY: 1, opacity: 0.6, offsetX: 0 } },\n",
+      "    samples: [\n",
+      "      { name: 'A', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "        image: { uri: '",
+      png1,
+      "',\n",
+      "          preset: { scaleX: 1, scaleY: 1, opacity: 0.6, offsetX: 0 } } },\n",
+      "      { name: 'B', label: 'B (spatial)', x: blob(0), y: blob(0),\n",
+      "        image: { uri: '",
+      png1,
+      "',\n",
+      "          preset: { scaleX: 1.4, scaleY: 0.7, opacity: 0.5,\n",
+      "            offsetX: 30, flipX: true } } }] }] }"
+    )
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-pick-spatial') !== null",
+    timeout = 15000
+  )
+
+  ## The bar as the server would have rendered it for section A.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var host = document.createElement('div');\n",
+      "  host.innerHTML =\n",
+      "    '<input type=\"range\" id=\"cv-img-opacity\" min=\"0\" max=\"1\"' +\n",
+      "    ' step=\"0.05\" value=\"0.6\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-offx\" min=\"-480\" max=\"480\"' +\n",
+      "    ' step=\"2\" value=\"0\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-offy\" min=\"-480\" max=\"480\"' +\n",
+      "    ' step=\"2\" value=\"0\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-scalex\" min=\"0.3\" max=\"3\"' +\n",
+      "    ' step=\"0.02\" value=\"1\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-scaley\" min=\"0.3\" max=\"3\"' +\n",
+      "    ' step=\"0.02\" value=\"1\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-lock\" checked>' +\n",
+      "    '<input type=\"range\" id=\"cv-img-rotate\" min=\"-180\" max=\"180\"' +\n",
+      "    ' step=\"1\" value=\"0\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-flipx\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-flipy\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-show\" checked>' +\n",
+      "    '<button type=\"button\" id=\"cv-img-reset\">Reset</button>';\n",
+      "  document.body.appendChild(host);\n",
+      "})();"
+    )
+  )
+
+  scales <- function() {
+    unlist(app$get_js(
+      paste0(
+        "[parseFloat(document.getElementById('cv-img-scalex').value),\n",
+        " parseFloat(document.getElementById('cv-img-scaley').value)]"
+      )
+    ))
+  }
+  expect_equal(scales(), c(1, 1))
+
+  ## Switch to section B, whose calibration is non-uniform.
+  app$run_js(paste0(
+    "(function () { var s = document.getElementById('cv-pick-spatial');\n",
+    "  s.value = 'B'; s.dispatchEvent(new Event('change')); })();"
+  ))
+  app$wait_for_idle(timeout = 10000)
+
+  ## The controls read B now. They used to still read A, so the first nudge to
+  ## any of them wrote A's alignment back over B's.
+  expect_equal(scales(), c(1.4, 0.7))
+  expect_true(app$get_js("document.getElementById('cv-img-flipx').checked"))
+  expect_equal(
+    app$get_js("parseFloat(document.getElementById('cv-img-offx').value)"),
+    30
+  )
+
+  ## ... and a nudge to something unrelated leaves B's calibration alone.
+  app$run_js(
+    paste0(
+      "(function () { var el = document.getElementById('cv-img-opacity');\n",
+      "  el.value = '0.3';\n",
+      "  el.dispatchEvent(new Event('input', { bubbles: true })); })();"
+    )
+  )
+  app$wait_for_idle(timeout = 5000)
+  expect_equal(scales(), c(1.4, 0.7))
+
+  app$stop()
+})

@@ -466,9 +466,19 @@ output[["coordviews_image_ui"]] <- renderUI({
   b <- cv_ok(coordviews_bundle())
   img <- NULL
   if (!is.null(b)) {
+    ## A space's own `image` is its FIRST sample's, so a data set whose first
+    ## section carries no histology used to render no bar at all -- and switching
+    ## to a section that does have one then revealed an empty box. Any sample
+    ## having an image is enough for the bar to exist; the client re-seeds it
+    ## from whichever section is on screen.
     for (s in b$spaces) {
       if (!is.null(s$image)) {
         img <- s$image
+      }
+      for (smp in (s$samples %||% list())) {
+        if (!is.null(smp$image)) {
+          img <- smp$image
+        }
       }
     }
   }

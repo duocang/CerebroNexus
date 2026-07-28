@@ -604,3 +604,18 @@ test_that("the trekker bundle carries what a placement is judged on", {
   expect_true(length(tk_fields) > 0)
   expect_false("bead_noise" %in% tk_fields)
 })
+
+test_that("the histology bar exists when any section carries an image", {
+  ## A space's own `image` is its FIRST sample's. A data set whose first section
+  ## has no histology therefore rendered no bar at all, and switching to a
+  ## section that does have one revealed an empty box. Pinned at the source: the
+  ## bar only renders for a data set with an image, which no test app loads.
+  path <- file.path(dirname(bundle_file), "server.R")
+  skip_if_not(file.exists(path))
+  txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  expect_match(
+    txt,
+    "for \\(smp in \\(s\\$samples[\\s\\S]{0,120}smp\\$image",
+    perl = TRUE
+  )
+})
