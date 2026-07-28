@@ -571,3 +571,36 @@ test_that("the histology bar offers both scale axes and a way back", {
   expect_match(txt, "cv-img-reset", fixed = TRUE)
   expect_no_match(txt, "\"cv-img-scale\"")
 })
+
+
+## The card's Positioning section is only as good as what the builder actually
+## ships. It used to be tested against a hand-written payload, which is how it
+## came to read a `fields.bead_noise` that no builder has ever produced while
+## printing position confidence twice -- once from `conf`, once from the field of
+## the same name. These assertions are on the real output for the real object.
+test_that("the trekker bundle carries what a placement is judged on", {
+  skip_if_not(have_bundle)
+  trekker_crb <- file.path(dirname(omnibus_crb), "demo_trekker.crb")
+  skip_if_not(file.exists(trekker_crb))
+
+  b <- cv_env$cv_build_bundle(readRDS(trekker_crb))
+  expect_false(is.null(b$trekker))
+
+  ## position_confidence is a FIELD -- a colouring -- so the card reads it from
+  ## there. `conf` remains the bare vector the dissolve slider indexes.
+  expect_true("position_confidence" %in% names(b$fields))
+  expect_false(is.null(b$trekker$conf))
+
+  ## The two numbers the dedicated page prints beside confidence, which say
+  ## whether that confidence is worth anything, now travel with it.
+  expect_false(is.null(b$trekker$conf_noise))
+  expect_false(is.null(b$trekker$conf_sb))
+  expect_equal(length(b$trekker$conf_noise), b$n)
+  expect_equal(length(b$trekker$conf_sb), b$n)
+
+  ## No field is invented: everything the card lists as Trekker's own is a key
+  ## the builder produced.
+  tk_fields <- Filter(function(k) !startsWith(k, "meta:"), names(b$fields))
+  expect_true(length(tk_fields) > 0)
+  expect_false("bead_noise" %in% tk_fields)
+})

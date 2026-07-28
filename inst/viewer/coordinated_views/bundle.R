@@ -527,6 +527,22 @@ cv_build_trekker <- function(crb, cells, md) {
   } else {
     NULL
   }
+  ## The rest of what Trekker recorded about a position, per cell. `conf` stays a
+  ## bare vector because the dissolve slider indexes it directly; these travel
+  ## beside it. Without them the workspace could say how confident a placement
+  ## was but not how noisy the beads under it were or how many spatial barcodes
+  ## it rested on -- the two numbers the dedicated page shows next to it, and the
+  ## ones that say whether the confidence is worth anything.
+  conf_extra <- list()
+  if (!is.null(tk$conf)) {
+    for (k in c("prop_noise", "sb_total", "sb_umi_top")) {
+      v <- tk$conf[[k]]
+      if (is.null(v)) {
+        next
+      }
+      conf_extra[[k]] <- I(round(as.numeric(v)[tk_idx], 4))
+    }
+  }
   ev_flag <- NULL
   if (length(tk$evidence)) {
     ev_bc <- vapply(
@@ -538,6 +554,9 @@ cv_build_trekker <- function(crb, cells, md) {
   }
   bundle <- list(
     conf = conf_v,
+    conf_noise = conf_extra$prop_noise,
+    conf_sb = conf_extra$sb_total,
+    conf_sb_umi = conf_extra$sb_umi_top,
     evidence = ev_flag,
     ## Dataset-level (not per-cell, no `tk_idx` re-indexing needed): the
     ## same coordinate-source / QC / Moran's I detail the Trekker page

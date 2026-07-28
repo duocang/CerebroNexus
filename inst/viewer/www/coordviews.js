@@ -1965,13 +1965,11 @@ var focusPanel = null;
   function trekkerCellRows(i) {
     var rows = [];
     if (!D || !D.trekker) return rows;
-    if (D.trekker.conf && D.trekker.conf[i] != null && !isNaN(D.trekker.conf[i])) {
-      rows.push(['position confidence', fmtVal(D.trekker.conf[i])]);
-    }
-    if (D.trekker.evidence) {
-      rows.push(['positioning evidence',
-        D.trekker.evidence[i] === 1 ? 'recorded' : 'none']);
-    }
+    var tk = D.trekker;
+    // Trekker's own physical fields FIRST, and they already include
+    // position_confidence -- it is one of the colourings. Adding a row from
+    // D.trekker.conf as well printed that number twice under two names. `conf`
+    // is still what the dissolve slider indexes; it is just not a separate fact.
     Object.keys(D.fields || {}).forEach(function (k) {
       if (k.indexOf('meta:') === 0) return;   // a meta column, not Trekker's own
       var f = D.fields[k];
@@ -1979,6 +1977,23 @@ var focusPanel = null;
       if (v == null) return;
       rows.push([f.label || k, fmtVal(v)]);
     });
+    // ... then the rest of what was recorded about the placement, named and
+    // formatted as the dedicated Trekker page names it, so a reader moving
+    // between the two is reading the same quantities.
+    var pct = function (v) {
+      return (v == null || isNaN(v)) ? null : Math.round(v * 100) + '%';
+    };
+    if (tk.conf_noise) {
+      var noise = pct(tk.conf_noise[i]);
+      if (noise != null) rows.push(['bead noise', noise]);
+    }
+    if (tk.conf_sb && tk.conf_sb[i] != null && !isNaN(tk.conf_sb[i])) {
+      rows.push(['spatial barcodes', fmt(tk.conf_sb[i])]);
+    }
+    if (tk.evidence) {
+      rows.push(['positioning evidence',
+        tk.evidence[i] === 1 ? 'recorded' : 'none']);
+    }
     return rows;
   }
 

@@ -1844,68 +1844,65 @@ test_that("a panel can take the grid without losing the selection", {
 })
 
 ## A physical position is an inference, not a measurement, so the card that
-## describes a nucleus has to say how much to trust the one being read. Without
-## it the only way to ask was to colour the whole map by confidence and squint at
-## a single dot.
+## describes a nucleus has to say how much to trust the one being read.
+##
+## The payload here is the REAL builder's, read out of the Trekker demo rather
+## than written by hand. The first version of this test invented a
+## `fields.bead_noise` that no builder produces, so it proved a contract that did
+## not exist -- and missed that the real one lists position_confidence as a
+## field, which the card was also printing from `conf`, twice under two names.
 test_that("the card reports what is known about a position", {
   local_app_support(inst_dir)
+  skip_if_not(nzchar(inst_dir))
+  trekker_crb <- file.path(inst_dir, "extdata/v1.4/demo_trekker.crb")
+  skip_if_not(file.exists(trekker_crb))
+
+  ## Build the bundle exactly as the app does, then hand the client that.
+  bundle_file <- file.path(inst_dir, "shiny/v1.4/coordinated_views/bundle.R")
+  contract_file <- file.path(inst_dir, "shiny/v1.4/clone_contract.R")
+  skip_if_not(file.exists(bundle_file) && file.exists(contract_file))
+  benv <- new.env()
+  sys.source(contract_file, envir = benv)
+  sys.source(bundle_file, envir = benv)
+  b <- benv$cv_build_bundle(readRDS(trekker_crb))
+  skip_if_not(!is.null(b) && !is.null(b$trekker))
+
   app <- cv_app("cv_browser_card_trekker")
-
-  ## A regular grid, so the probe at the centre lands on a cell. A random cloud
-  ## of the same size leaves gaps wider than the hit radius.
-  app$run_js(
-    paste0(
-      "(function () {\n",
-      "  var n = 81, x = [], y = [], cells = [], vals = [];\n",
-      "  var conf = [], ev = [], noise = [];\n",
-      "  for (var j = 0; j < n; j++) {\n",
-      "    x.push((j % 9) - 4); y.push(Math.floor(j / 9) - 4);\n",
-      "    cells.push('c' + j); vals.push(j % 2);\n",
-      "    conf.push(Math.round(j / n * 1000) / 1000);\n",
-      "    ev.push(j % 2); noise.push((j * 3) % 256);\n",
-      "  }\n",
-      "  Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
-      "    coordviews_data: {\n",
-      "      cells: cells, n: n,\n",
-      "      groups: { cluster: { values: vals, levels: ['a', 'b'],\n",
-      "        colors: ['#636EFA', '#EF553B'] } },\n",
-      "      cat_extra: {}, cat_skipped: {},\n",
-      "      fields: { bead_noise: { label: 'bead noise', v: noise,\n",
-      "        min: 0, max: 1, scale: 255 },\n",
-      "        'meta:nUMI': { label: 'nUMI', v: noise,\n",
-      "          min: 100, max: 9000, scale: 255 } },\n",
-      "      default_group: 'cluster',\n",
-      "      projections: { umap: { x: x, y: y, ndim: 2 } },\n",
-      "      default_projection: 'umap',\n",
-      "      spaces: [{ id: 'umap', label: 'umap', x: x, y: y },\n",
-      "        { id: 'trekker', label: 'Trekker (physical)',\n",
-      "          x: x.map(function (v) { return v * 60; }),\n",
-      "          y: y.map(function (v) { return v * 60; }), unit: 'um' }],\n",
-      "      clone: null,\n",
-      "      trekker: { qc: { sample_id: 's1' }, conf: conf, evidence: ev }\n",
-      "    } } }));\n",
-      "})();"
-    )
-  )
+  app$run_js(paste0(
+    "Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
+    "  coordviews_data: ",
+    jsonlite::toJSON(b, auto_unbox = TRUE, null = "null", digits = 6),
+    " } }));"
+  ))
   app$wait_for_js(
-    "document.getElementById('cv-meta').textContent.indexOf('81 cells') >= 0",
-    timeout = 15000
+    "document.getElementById('cv-meta').textContent.length > 0",
+    timeout = 20000
   )
+  app$wait_for_idle(timeout = 10000)
 
-  ## Click a cell, then ask for its details.
-  app$run_js(
-    paste0(
-      "(function () { var cv = document.getElementById('cv-cv-a');\n",
-      "  var r = cv.getBoundingClientRect();\n",
-      "  var x = r.left + r.width / 2, y = r.top + r.height / 2;\n",
-      "  cv.dispatchEvent(new MouseEvent('mousemove',\n",
-      "    { clientX: x, clientY: y, bubbles: true }));\n",
-      "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
-      "    { clientX: x, clientY: y, bubbles: true }));\n",
-      "  window.dispatchEvent(new MouseEvent('mouseup',\n",
-      "    { clientX: x, clientY: y, bubbles: true })); })();"
-    )
-  )
+  ## Click a cell in the Trekker panel and ask for its details. Probing outward
+  ## from the centre: a real tissue section is not a grid, so the exact middle
+  ## need not carry a nucleus.
+  app$run_js(paste0(
+    "(function () {\n",
+    "  var cv = document.getElementById('cv-cv-a');\n",
+    "  var r = cv.getBoundingClientRect();\n",
+    "  for (var d = 0; d < 200; d += 6) {\n",
+    "    var x = r.left + r.width / 2 + d, y = r.top + r.height / 2;\n",
+    "    cv.dispatchEvent(new MouseEvent('mousemove',\n",
+    "      { clientX: x, clientY: y, bubbles: true }));\n",
+    ## The handler writes the INLINE opacity synchronously; the computed one is
+    ## mid-transition and still reads 0 inside a loop like this.
+    "    if (document.getElementById('cv-tip-a').style.opacity === '1') {\n",
+    "      cv.dispatchEvent(new MouseEvent('mousedown',\n",
+    "        { clientX: x, clientY: y, bubbles: true }));\n",
+    "      window.dispatchEvent(new MouseEvent('mouseup',\n",
+    "        { clientX: x, clientY: y, bubbles: true }));\n",
+    "      return;\n",
+    "    }\n",
+    "  }\n",
+    "})();"
+  ))
   app$wait_for_js(
     "document.querySelector('#cv-tip-a .cv-tip-details') !== null",
     timeout = 10000
@@ -1918,28 +1915,24 @@ test_that("the card reports what is known about a position", {
 
   card <- app$get_js("document.getElementById('cv-card-body').textContent")
   expect_match(card, "Positioning")
-  expect_match(card, "position confidence")
-  expect_match(card, "positioning evidence")
-  ## Trekker's own physical fields are read out of the list the colour picker
-  ## offers, so whatever was exported appears without this being told its name.
+  ## The field labels are the builder's own -- "Position confidence", not a name
+  ## chosen here -- which is the point of driving this from the real bundle.
+  expect_match(card, "Position confidence")
+  expect_match(card, "Spatial purity")
+  ## The two numbers the dedicated page prints beside confidence, named as it
+  ## names them, so a reader moving between the two reads the same quantities.
   expect_match(card, "bead noise")
-  ## ... and a meta column does not follow them in: it belongs to the meta
-  ## section, which the server fills, not to what Trekker knows about a position.
+  expect_match(card, "spatial barcodes")
+  ## ... and confidence appears ONCE. It is a field AND it is in `conf`; the card
+  ## printed both, twice under two names.
   expect_equal(
     app$get_js(
       paste0(
-        "(function () {\n",
-        "  var secs = document.querySelectorAll('#cv-card-body .cv-card-sec');\n",
-        "  var out = null;\n",
-        "  secs.forEach(function (s) {\n",
-        "    if (s.textContent !== 'Positioning') return;\n",
-        "    out = s.nextElementSibling.textContent;\n",
-        "  });\n",
-        "  return out === null ? null : (out.indexOf('nUMI') >= 0);\n",
-        "})();"
+        "(document.getElementById('cv-card-body').textContent",
+        ".match(/onfidence/g) || []).length"
       )
     ),
-    FALSE
+    1
   )
 
   app$stop()
