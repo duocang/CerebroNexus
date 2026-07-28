@@ -2742,6 +2742,30 @@ var focusPanel = null;
     im.src = space.image.uri;
     imgEl = im;
   }
+  // Back to the alignment the data set shipped with. Alignment is fiddly and
+  // easy to lose, and the preset is the only reference point in the bar; without
+  // this the way back was reloading the page.
+  function resetImgToPreset() {
+    var sp = spaceById['spatial'];
+    var pr = (sp && sp.image && sp.image.preset) || {};
+    var set = function (id, v) { var el = $(id); if (el) el.value = String(v); };
+    var tick = function (id, on) { var el = $(id); if (el) el.checked = !!on; };
+    set('cv-img-opacity', pr.opacity != null ? pr.opacity : 0.6);
+    set('cv-img-offx', pr.offsetX != null ? pr.offsetX : 0);
+    set('cv-img-offy', pr.offsetY != null ? pr.offsetY : 0);
+    var px = pr.scaleX != null ? pr.scaleX : 1;
+    var py = pr.scaleY != null ? pr.scaleY : px;
+    set('cv-img-scalex', px);
+    set('cv-img-scaley', py);
+    tick('cv-img-lock', px === py);
+    set('cv-img-rotate', 0);
+    tick('cv-img-flipx', pr.flipX);
+    tick('cv-img-flipy', pr.flipY);
+    tick('cv-img-show', true);
+    syncImgControls('cv-img-reset');
+    drawAll();
+  }
+
   // Spatial-sample picker — shown only when the data set has >1 spatial section.
   // Each sample is its own coordinate system + image; all travel in the bundle
   // (spaceById['spatial'].samples), so switching is client-side and instant.
@@ -2825,15 +2849,30 @@ var focusPanel = null;
 
   // Read the client-owned histology-image controls into imgState. Missing
   // controls (before render / no image) leave the current value unchanged.
-  function syncImgControls() {
+  function syncImgControls(changed) {
     var num = function (id, cur) { var el = $(id); return el ? parseFloat(el.value) : cur; };
     var chk = function (id, cur) { var el = $(id); return el ? el.checked : cur; };
     imgState.show = chk('cv-img-show', imgState.show);
     imgState.opacity = num('cv-img-opacity', imgState.opacity);
     imgState.offsetX = num('cv-img-offx', imgState.offsetX);   // data units
     imgState.offsetY = num('cv-img-offy', imgState.offsetY);   // data units
-    var sc = num('cv-img-scale', imgState.scaleX);
-    imgState.scaleX = sc; imgState.scaleY = sc;
+    // Two axes, read separately. One slider driving both meant that touching
+    // ANY control in this bar rewrote the other axis from it, so a preset whose
+    // calibration was genuinely non-uniform was squared up by a nudge to the
+    // opacity. `changed` is the control the user just moved; with the aspect
+    // locked the other follows it, and nothing else in the bar disturbs either.
+    var lock = chk('cv-img-lock', true);
+    var sxEl = $('cv-img-scalex'), syEl = $('cv-img-scaley');
+    var sxv = num('cv-img-scalex', imgState.scaleX);
+    var syv = num('cv-img-scaley', imgState.scaleY);
+    if (lock && changed === 'cv-img-scalex') {
+      syv = sxv; if (syEl) syEl.value = String(sxv);
+    } else if (lock && changed === 'cv-img-scaley') {
+      sxv = syv; if (sxEl) sxEl.value = String(syv);
+    } else if (lock && changed === 'cv-img-lock') {
+      syv = sxv; if (syEl) syEl.value = String(sxv);
+    }
+    imgState.scaleX = sxv; imgState.scaleY = syv;
     imgState.rotate = num('cv-img-rotate', imgState.rotate);
     imgState.flipX = chk('cv-img-flipx', imgState.flipX);
     imgState.flipY = chk('cv-img-flipy', imgState.flipY);
@@ -3168,6 +3207,7 @@ var focusPanel = null;
       // The pinned tooltip's two actions. Checked before anything else, because
       // the tooltip sits over a panel and the handlers below would otherwise
       // read the click as one on the workspace underneath.
+      if (t && t.id === 'cv-img-reset') { resetImgToPreset(); return; }
       if (t && t.closest && t.closest('.cv-tip-details')) {
         if (pinnedTip.panel && pinnedTip.cell != null) {
           openCard(pinnedTip.panel, pinnedTip.cell);
@@ -3289,12 +3329,12 @@ var focusPanel = null;
         drawAll();
         if (!sel) renderReadout();     // recompute the niche of the picked cell
       } else if (id && id.indexOf('cv-img-') === 0) {
-        syncImgControls(); drawAll();
+        syncImgControls(id); drawAll();
       }
     });
     document.addEventListener('change', function (e) {
       var id = e.target && e.target.id;
-      if (id && id.indexOf('cv-img-') === 0) { syncImgControls(); drawAll(); return; }
+      if (id && id.indexOf('cv-img-') === 0) { syncImgControls(id); drawAll(); return; }
       if (id === 'cv-clip') {
         colorClip = parseFloat(e.target.value) || 0;
         clipRange();               // recompute before anything reads the colours

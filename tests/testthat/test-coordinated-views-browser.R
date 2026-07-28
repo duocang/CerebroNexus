@@ -1944,3 +1944,107 @@ test_that("the card reports what is known about a position", {
 
   app$stop()
 })
+
+## A histology preset can carry scaleX != scaleY: a calibration that is genuinely
+## non-uniform. One slider had to pick a single number for both, and every
+## control in the bar rewrote the pair from it -- so nudging the opacity squared
+## the image up and threw the calibration away without saying so.
+##
+## The bar itself is server-rendered and only appears for a data set carrying an
+## image, which the app under test does not have; test-coordinated-views.R pins
+## what the server emits. What is exercised here is the client behaviour, with
+## the controls put in place directly -- the preset still arrives the way it
+## normally does, in the bundle.
+test_that("a non-uniform image calibration survives the other controls", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_img_scale")
+
+  ## A 1x1 transparent PNG is enough: this is about the transform, not the pixels.
+  png1 <- paste0(
+    "data:image/png;base64,",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8",
+    "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  )
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },\n",
+      "  { id: 'spatial', label: 'spatial', x: blob(0), y: blob(0),\n",
+      "    image: { uri: '",
+      png1,
+      "',\n",
+      "      preset: { scaleX: 1.4, scaleY: 0.7, opacity: 0.6 } },\n",
+      "    coord_span: [400, 400] }] }"
+    )
+  ))
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length === 2",
+    timeout = 15000
+  )
+
+  ## Put the bar's controls in place, seeded from the preset exactly as the
+  ## server seeds them.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var host = document.createElement('div');\n",
+      "  host.id = 'cv-test-imgbar';\n",
+      "  host.innerHTML =\n",
+      "    '<input type=\"range\" id=\"cv-img-opacity\" min=\"0\" max=\"1\"' +\n",
+      "    ' step=\"0.05\" value=\"0.6\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-scalex\" min=\"0.3\" max=\"3\"' +\n",
+      "    ' step=\"0.02\" value=\"1.4\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-scaley\" min=\"0.3\" max=\"3\"' +\n",
+      "    ' step=\"0.02\" value=\"0.7\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-lock\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-rotate\" min=\"-180\" max=\"180\"' +\n",
+      "    ' step=\"1\" value=\"0\">' +\n",
+      "    '<button type=\"button\" id=\"cv-img-reset\">Reset</button>';\n",
+      "  document.body.appendChild(host);\n",
+      "})();"
+    )
+  )
+
+  scales <- function() {
+    unlist(app$get_js(
+      paste0(
+        "[parseFloat(document.getElementById('cv-img-scalex').value),\n",
+        " parseFloat(document.getElementById('cv-img-scaley').value)]"
+      )
+    ))
+  }
+
+  ## Moving an unrelated control must leave both scales alone. This is the
+  ## regression: one slider for two axes meant any input rewrote the pair.
+  app$run_js(
+    paste0(
+      "(function () { var el = document.getElementById('cv-img-opacity');\n",
+      "  el.value = '0.3';\n",
+      "  el.dispatchEvent(new Event('input', { bubbles: true })); })();"
+    )
+  )
+  app$wait_for_idle(timeout = 5000)
+  expect_equal(scales(), c(1.4, 0.7))
+
+  ## With the aspect locked, one axis follows the other -- the common case, and
+  ## the reason a single slider existed at all.
+  app$run_js(
+    paste0(
+      "(function () { var l = document.getElementById('cv-img-lock');\n",
+      "  l.checked = true;\n",
+      "  l.dispatchEvent(new Event('change', { bubbles: true }));\n",
+      "  var x = document.getElementById('cv-img-scalex');\n",
+      "  x.value = '2';\n",
+      "  x.dispatchEvent(new Event('input', { bubbles: true })); })();"
+    )
+  )
+  app$wait_for_idle(timeout = 5000)
+  expect_equal(scales(), c(2, 2))
+
+  ## And the preset is reachable again without reloading the page.
+  app$run_js("document.getElementById('cv-img-reset').click();")
+  app$wait_for_idle(timeout = 5000)
+  expect_equal(scales(), c(1.4, 0.7))
+  expect_false(app$get_js("document.getElementById('cv-img-lock').checked"))
+
+  app$stop()
+})

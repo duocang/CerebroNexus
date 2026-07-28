@@ -552,3 +552,22 @@ test_that("receptor detection does not stop at the third sample", {
   )
   expect_setequal(cv_env$cerebro_receptors_present(ir), c("TCR", "BCR"))
 })
+
+test_that("the histology bar offers both scale axes and a way back", {
+  ## A preset can be non-uniform. A single Scale control had to collapse the two
+  ## axes into one number, and every other control in the bar then rewrote the
+  ## pair from it -- so a nudge to the opacity squared the image up. Pinned at
+  ## the source because the bar only renders for a data set carrying an image,
+  ## which no test app loads.
+  path <- file.path(
+    dirname(bundle_file),
+    "server.R"
+  )
+  skip_if_not(file.exists(path))
+  txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  expect_match(txt, "cv-img-scalex", fixed = TRUE)
+  expect_match(txt, "cv-img-scaley", fixed = TRUE)
+  expect_match(txt, "cv-img-lock", fixed = TRUE)
+  expect_match(txt, "cv-img-reset", fixed = TRUE)
+  expect_no_match(txt, "\"cv-img-scale\"")
+})

@@ -874,3 +874,15 @@
 .coordviews-page .cv-tbtn.cv-focus-btn.is-on {
   background: var(--cv-amber50); color: var(--cv-amber700);
 }
+
+/* "Reset to preset" sits at the end of the histology alignment bar. Quiet: it
+   undoes work rather than doing any, and it is next to the controls it undoes. */
+.coordviews-page .cv-imgbar-reset {
+  margin-left: 8px; padding: 4px 10px; cursor: pointer;
+  border: 1px solid var(--c-border-2, #e0e0e0); border-radius: 6px;
+  background: var(--cv-surface); color: var(--cv-text2);
+  font-family: inherit; font-size: 12px;
+}
+.coordviews-page .cv-imgbar-reset:hover {
+  background: var(--cv-surface2); color: var(--cv-text);
+}

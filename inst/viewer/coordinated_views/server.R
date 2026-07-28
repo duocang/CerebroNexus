@@ -525,10 +525,25 @@ output[["coordviews_image_ui"]] <- renderUI({
       tags$label("Move Y"),
       rng("cv-img-offy", -sy, sy, pr$offsetY %||% 0, signif(sy / 200, 2))
     ),
+    ## Two scales, not one. A preset can carry scaleX != scaleY -- a calibration
+    ## that is genuinely non-uniform -- and a single slider had to pick a number
+    ## for both, so touching ANY control in this bar silently squared the image
+    ## up and threw that calibration away. Locked together by default, since a
+    ## uniform scale is the common case and two sliders to drag is a worse one.
     div(
       class = "cv-img-ctl",
-      tags$label("Scale"),
-      rng("cv-img-scale", 0.3, 3, pr$scaleX %||% 1, 0.02)
+      tags$label("Scale X"),
+      rng("cv-img-scalex", 0.3, 3, pr$scaleX %||% 1, 0.02)
+    ),
+    div(
+      class = "cv-img-ctl",
+      tags$label("Scale Y"),
+      rng("cv-img-scaley", 0.3, 3, pr$scaleY %||% pr$scaleX %||% 1, 0.02)
+    ),
+    chk(
+      "cv-img-lock",
+      "Lock aspect",
+      isTRUE(is.null(pr$scaleY) || identical(pr$scaleY, pr$scaleX))
     ),
     div(
       class = "cv-img-ctl",
@@ -536,7 +551,15 @@ output[["coordviews_image_ui"]] <- renderUI({
       rng("cv-img-rotate", -180, 180, 0, 1)
     ),
     chk("cv-img-flipx", "Flip X", isTRUE(pr$flipX)),
-    chk("cv-img-flipy", "Flip Y", isTRUE(pr$flipY))
+    chk("cv-img-flipy", "Flip Y", isTRUE(pr$flipY)),
+    ## Alignment is fiddly and easy to lose; the preset is the state the data set
+    ## shipped with, so there has to be a way back to it that is not "reload".
+    tags$button(
+      type = "button",
+      id = "cv-img-reset",
+      class = "cv-imgbar-reset",
+      "Reset to preset"
+    )
   )
 })
 outputOptions(output, "coordviews_image_ui", suspendWhenHidden = FALSE)
