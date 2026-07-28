@@ -206,6 +206,75 @@ test_that("exportFromSeurat: h5 mode errors clearly when HDF5Array is missing", 
   expect_error(do.call(exportFromSeurat, args), regexp = "HDF5Array")
 })
 
+## ---------------------------------------------------------------------------
+## Artifact transaction: a failed re-export must not damage what is on disk
+## ---------------------------------------------------------------------------
+
+## Build a valid object with a caller-chosen cell count, so a replacement
+## export can be told apart from the artifact it is replacing.
+make_transaction_object <- function(n_cells) {
+  keep <- colnames(obj_raw)[seq_len(n_cells)]
+  subset(obj_raw, cells = keep)
+}
+
+## Export helper mirroring `valid_args`, but for a caller-supplied object.
+export_transaction_object <- function(object, file, experiment, mode) {
+  exportFromSeurat(
+    object = object,
+    file = file,
+    experiment_name = experiment,
+    organism = "hg",
+    groups = c("sample", "seurat_clusters"),
+    nUMI = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    expression_matrix_mode = mode,
+    verbose = FALSE
+  )
+}
+
+test_that("a failed h5 re-export preserves the existing artifact pair", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("withr")
+
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "dataset.crb")
+  h5 <- file.path(root, "dataset.h5")
+
+  old <- make_transaction_object(n_cells = 20)
+  export_transaction_object(old, crb, "v1", "h5")
+
+  old_crb_md5 <- unname(tools::md5sum(crb))
+  old_h5_md5 <- unname(tools::md5sum(h5))
+
+  ## A replacement that fails validation *after* the matrix would be written.
+  ## The repertoire entry has no `barcode` column, which is a fatal shape
+  ## error on every call path.
+  replacement <- make_transaction_object(n_cells = 12)
+  replacement@misc$immune_repertoire <- list(
+    sample = data.frame(CTgene = "TRAV1", stringsAsFactors = FALSE)
+  )
+
+  expect_error(
+    export_transaction_object(replacement, crb, "v2", "h5"),
+    "barcode"
+  )
+
+  ## Neither artifact may have moved.
+  expect_identical(unname(tools::md5sum(crb)), old_crb_md5)
+  expect_identical(unname(tools::md5sum(h5)), old_h5_md5)
+
+  ## The surviving pair must still describe each other. Checksums alone would
+  ## not catch a rewritten sibling that happens to hash the same way, and the
+  ## cell count is the invariant the un-transactional exporter violated.
+  preserved <- readRDS(crb)
+  expect_identical(preserved$getExperiment()$experiment_name, "v1")
+  expect_equal(nrow(preserved$getMetaData()), 20)
+  expect_equal(
+    nrow(HDF5Array::TENxMatrix(h5, group = "expression")),
+    20
+  )
+})
+
 test_that("h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
            seed, not an eagerly materialised dgCMatrix (low RAM, instant attach)", {
   skip_if_not_installed("HDF5Array")
