@@ -1,3 +1,45 @@
+# CerebroNexus 3.0.4
+
+## Export
+
+- **`createShinyApp()` reads where the expression matrix is instead of guessing.**
+  A `.crb` written with `expression_matrix_mode = "h5"` or `"bpcells"` holds no
+  matrix, only a tag naming the sibling that does. The bundler looked for that
+  sibling by appending `.h5` / `.bpcells` to the `.crb`'s own file name, which is
+  right until the `.crb` is renamed — an ordinary thing to do when giving
+  datasets readable names. The guess then missed a sibling sitting right there
+  under the name the tag records, and the miss was silent: the bundle looked
+  complete and the generated app failed only once someone opened it. The tag is
+  now the authority, and the sibling keeps its name in the bundle, since that is
+  what the app resolves.
+- **A missing sibling stops the build.** Copying a `.crb` on its own is the easy
+  mistake — it looks like one file. That now fails while the bundle is being
+  written, naming the file it looked for, the `.crb` the name came from, and the
+  `cerebro_options` entry that points at a matrix held elsewhere. Bundles
+  configured with such an override are expected to have no sibling and are left
+  alone. **This is a behaviour change**: a build that previously produced a
+  broken bundle in silence now errors. Reading the tag also means
+  `createShinyApp()` opens every data file it bundles, which costs one
+  deserialisation per file.
+- **Two data sets can no longer overwrite each other's matrix.** Exporting
+  `ds.crb` twice in different directories is enough to give both the same
+  location tag, and every sibling lands in the one `data/`, so the second copy
+  replaced the first and both `.crb` files then read the same matrix — silently,
+  and with plausible dimensions whenever the two data sets were the same size.
+  The name comes from a tag inside each `.crb`, so it cannot be changed while
+  bundling; the collision is reported instead, naming both sources.
+- **An override has to be a usable path.** The check for one was
+  `!is.null(...)`, which an empty string passes, so a typo turned the
+  missing-sibling guarantee off and moved the failure back to run time. It now
+  has to be a single non-empty path. Because `Cerebro.options` is one list for
+  the whole app rather than per-dataset, bundling several `.crb` files of the
+  same backend type alongside an override now warns that they will all read the
+  same matrix.
+- **A location tag has to stay inside the bundle.** The runtime resolves it
+  relative to the `.crb`, so an absolute path was mis-joined anyway
+  (`file.path("data", "/abs/m.h5")` is `"data//abs/m.h5"`) and a `..` segment
+  would have written outside the bundle. Both are refused.
+
 # CerebroNexus 3.0.3
 
 ## Export

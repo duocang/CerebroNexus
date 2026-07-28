@@ -56,10 +56,14 @@ dedent <- function(string) {
 #' run with \code{shiny::runApp(result_dir)}.
 #'
 #' Supports external expression backends (\code{bpcells}, \code{h5}) in
-#' addition to the embedded mode. When \code{cerebro_data} points to a
-#' \code{.crb} with an external backend, the sibling \code{.bpcells/}
-#' directory or \code{.h5} file is detected and copied into the bundle
-#' alongside the \code{.crb}.
+#' addition to the embedded mode. Such a \code{.crb} holds no expression
+#' matrix, only a tag naming the sibling \code{.bpcells/} directory or
+#' \code{.h5} file that holds it. The sibling is read from that tag and copied
+#' into the bundle under the same name, so renaming the \code{.crb} does not
+#' lose it. A sibling that cannot be found is an error rather than a silent
+#' omission: the generated app would otherwise start and then fail to show any
+#' expression data. Pass \code{cerebro_options$expression_matrix_h5} or
+#' \code{expression_matrix_BPCells} to point at a matrix elsewhere instead.
 #'
 #' @param cerebro_data Named character vector or list of \code{.crb} (or
 #'   \code{.rds}) file paths. Names are used as dataset labels.
@@ -302,6 +306,18 @@ createShinyApp <- function(
   if (verbose) {
     cat("Copying Cerebro data file(s)...\n")
   }
+  ## Shared across the data files so a second data set cannot claim a sibling
+  ## name the first one already took.
+  claimed_siblings <- new.env(parent = emptyenv())
+  on.exit(
+    {
+      claim_root <- claimed_siblings[[".filesystem_claim_root"]]
+      if (is.character(claim_root) && length(claim_root) == 1) {
+        unlink(claim_root, recursive = TRUE, force = TRUE)
+      }
+    },
+    add = TRUE
+  )
   for (file in cerebro_data) {
     if (verbose) {
       cat("  -", basename(file), "\n")
@@ -309,36 +325,13 @@ createShinyApp <- function(
     if (!file.copy(file, data_dir, recursive = TRUE)) {
       stop("Failed to copy Cerebro data file: ", basename(file), call. = FALSE)
     }
-    ## External-backend crbs store only metadata; the expression matrix
-    ## lives in a sibling file/dir resolved relative to the crb at runtime.
-    ## Copy the sibling alongside so the bundle stays portable.
-    crb_stem <- tools::file_path_sans_ext(basename(file))
-    bpc_src <- file.path(dirname(file), paste0(crb_stem, ".bpcells"))
-    if (dir.exists(bpc_src)) {
-      if (verbose) {
-        cat("  -", basename(bpc_src), "(bpcells sibling)\n")
-      }
-      if (!file.copy(bpc_src, data_dir, recursive = TRUE)) {
-        stop(
-          "Failed to copy bpcells sibling directory: ",
-          basename(bpc_src),
-          call. = FALSE
-        )
-      }
-    }
-    h5_src <- file.path(dirname(file), paste0(crb_stem, ".h5"))
-    if (file.exists(h5_src)) {
-      if (verbose) {
-        cat("  -", basename(h5_src), "(h5 sibling)\n")
-      }
-      if (!file.copy(h5_src, data_dir, overwrite = TRUE)) {
-        stop(
-          "Failed to copy h5 sibling file: ",
-          basename(h5_src),
-          call. = FALSE
-        )
-      }
-    }
+    .copyExpressionBackendSibling(
+      crb_path = file,
+      data_dir = data_dir,
+      cerebro_options = cerebro_options,
+      claimed = claimed_siblings,
+      verbose = verbose
+    )
   }
 
   # Copy spatial images ------------------------------------------------------##
@@ -524,4 +517,424 @@ createShinyApp <- function(
   }
 
   invisible(result_dir)
+}
+
+#' Copy a .crb's external expression-matrix sibling into the bundle
+#'
+#' A `.crb` written with `expression_matrix_mode = "h5"` or `"bpcells"` carries
+#' no expression matrix. It carries a backend tag naming a sibling file or
+#' directory, which the running app resolves relative to the `.crb`.
+#'
+#' The sibling used to be located by guessing `<crb stem>.h5` and
+#' `<crb stem>.bpcells`. The guess is right until someone renames the `.crb` --
+#' an ordinary thing to do when giving datasets readable names -- and when it
+#' missed, nothing was copied and nothing was said. The bundle looked complete
+#' and failed only when a user opened the app. The tag is the authority on the
+#' sibling's name, so read it, and treat a sibling that cannot be found as a
+#' failure to build the bundle rather than a detail to skip.
+#'
+#' @param crb_path Path to the `.crb` that was just copied into the bundle.
+#' @param data_dir The bundle's `data/` directory.
+#' @param cerebro_options The options list passed to `createShinyApp()`.
+#' @param claimed An environment shared across the data files of one bundle,
+#'   recording which sibling names have been claimed and by which source, so a
+#'   second data set cannot quietly overwrite the first one's matrix.
+#' @param verbose Print progress messages.
+#'
+#' @keywords internal
+#' @noRd
+.copyExpressionBackendSibling <- function(
+  crb_path,
+  data_dir,
+  cerebro_options = NULL,
+  claimed = new.env(parent = emptyenv()),
+  verbose = TRUE
+) {
+  ## `.rds` inputs and pre-backend `.crb` files have no tag to read. Reading it
+  ## costs one deserialisation per data file; for the external backends this is
+  ## cheap, because those objects hold no matrix.
+  object <- readRDS(crb_path)
+  backend <- NULL
+  if (is.environment(object) || is.list(object)) {
+    getter <- object[["getExpressionBackend"]]
+    if (is.function(getter)) {
+      backend <- getter()
+    }
+  }
+  rm(object)
+
+  if (is.null(backend) || identical(backend$type, "embedded")) {
+    return(invisible(NULL))
+  }
+
+  ## An absolute path in `Cerebro.options` outranks sibling resolution at
+  ## runtime, so a bundle configured that way is expected to have no sibling
+  ## next to the .crb. Demanding one would reject a working configuration.
+  override_key <- switch(
+    backend$type,
+    bpcells = "expression_matrix_BPCells",
+    h5 = "expression_matrix_h5",
+    NULL
+  )
+  override <- if (is.null(override_key)) {
+    NULL
+  } else {
+    cerebro_options[[override_key]]
+  }
+
+  if (!is.null(override)) {
+    ## Skipping the sibling check on the strength of an override means the
+    ## override has to be a usable *value*. An empty string is not one, and
+    ## `!is.null("")` was the whole test -- so a typo turned the fail-loud
+    ## guarantee off and the failure moved back to run time.
+    ##
+    ## Deliberately not checked: whether the path exists. It is resolved on
+    ## whatever machine runs the generated app, which is routinely not this
+    ## one, so a build machine without the matrix is a normal situation rather
+    ## than an error. That is the limit of what this guarantees -- the value is
+    ## well-formed, not that it will resolve.
+    if (
+      !is.character(override) ||
+        length(override) != 1 ||
+        is.na(override) ||
+        !nzchar(override)
+    ) {
+      stop(
+        "cerebro_options[['",
+        override_key,
+        "']] has to be a single non-empty path to the expression matrix. ",
+        "Received: ",
+        paste(utils::capture.output(utils::str(override)), collapse = " "),
+        call. = FALSE
+      )
+    }
+
+    ## `Cerebro.options` is one list for the whole app, so this override is not
+    ## per-dataset: every .crb with this backend resolves to the same matrix.
+    ## With one such .crb that is the intent; with several it is almost
+    ## certainly not, and it would show as the wrong expression values rather
+    ## than as an error.
+    previous <- claimed[[paste0("override:", override_key)]]
+    if (!is.null(previous)) {
+      warning(
+        "cerebro_options[['",
+        override_key,
+        "']] is a single setting for the whole app, but '",
+        basename(crb_path),
+        "' and '",
+        basename(previous),
+        "' both use the ",
+        backend$type,
+        " backend. Both will read the same expression matrix.",
+        call. = FALSE
+      )
+    }
+    claimed[[paste0("override:", override_key)]] <- crb_path
+
+    if (verbose) {
+      cat(
+        "  - expression matrix taken from cerebro_options$",
+        override_key,
+        "; no sibling copied\n",
+        sep = ""
+      )
+    }
+    return(invisible(NULL))
+  }
+
+  if (is.null(backend$location) || !nzchar(backend$location)) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' declares an external '",
+      backend$type,
+      "' expression backend but carries no location tag, so the matrix it ",
+      "refers to cannot be found. This .crb may have been generated by a ",
+      "buggy exporter; re-export it with exportFromSeurat().",
+      call. = FALSE
+    )
+  }
+
+  ## The tag is resolved against the .crb's directory at runtime, so it has to
+  ## be a relative path that stays inside the bundle. An absolute one would be
+  ## mis-joined here anyway -- file.path("data", "/abs/m.h5") is
+  ## "data//abs/m.h5" -- and a `..` segment would write outside the bundle
+  ## while still failing to resolve once the app is deployed elsewhere.
+  ## Normalise the tag lexically before anything compares or joins it. `m.h5`
+  ## and `./m.h5` name one file but are two different strings, and comparing
+  ## the strings is what the collision check below does -- so without this,
+  ## two data sets could claim the same destination under different spellings
+  ## and one would silently overwrite the other. Lexical rather than
+  ## `normalizePath()`, because the destination does not exist yet.
+  location_parts <- strsplit(backend$location, "[/\\\\]+")[[1]]
+  location_parts <- location_parts[
+    nzchar(location_parts) & location_parts != "."
+  ]
+  normalised_location <- paste(location_parts, collapse = "/")
+
+  if (
+    grepl("^(/|~|[A-Za-z]:)", backend$location) ||
+      any(location_parts == "..") ||
+      !nzchar(normalised_location)
+  ) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' declares its ",
+      backend$type,
+      " expression matrix at '",
+      backend$location,
+      "', which is not a path inside the .crb's own directory. The runtime ",
+      "resolves this tag relative to the .crb, so it has to stay relative and ",
+      "must not climb out with '..'. Re-export with exportFromSeurat(), or ",
+      "point at the matrix with cerebro_options[['",
+      override_key,
+      "']].",
+      call. = FALSE
+    )
+  }
+
+  is_directory_backend <- identical(backend$type, "bpcells")
+  source_path <- file.path(dirname(crb_path), normalised_location)
+  exists_on_disk <- if (is_directory_backend) dir.exists else file.exists
+
+  if (!exists_on_disk(source_path)) {
+    stop(
+      "Expected the ",
+      backend$type,
+      " expression matrix at '",
+      source_path,
+      "' (derived from '",
+      basename(crb_path),
+      "' + backend location '",
+      backend$location,
+      "'), but it is not there. ",
+      "Did the sibling get left behind when the .crb was moved or renamed? ",
+      "The .crb holds no expression data on its own, so the generated app ",
+      "would start and then fail to show any. ",
+      "You can also point at a different absolute location via ",
+      "cerebro_options[['",
+      override_key,
+      "']].",
+      call. = FALSE
+    )
+  }
+
+  ## Keep the sibling's name: the app resolves it by the location tag, which
+  ## does not change when the .crb is renamed. `location` is normally a bare
+  ## file name, but honour a relative sub-path if one was set.
+  ##
+  ## Two data sets can carry the same tag -- exporting `ds.crb` twice in
+  ## different directories is enough -- and every sibling lands in the one
+  ## `data/`. The second copy would overwrite the first and both .crb files
+  ## would then read the same matrix. Renaming is not available as a fix: the
+  ## tag lives inside the .crb and is what the app looks for. So refuse, and
+  ## say which two files collided.
+  ##
+  ## Resolve sources before comparing them, so one source reached by two paths
+  ## remains a harmless repeated claim. Destination identity is different:
+  ## normalizePath() is not guaranteed to return a directory entry's actual
+  ## case on every case-insensitive file system. Record each claim in a fresh
+  ## directory on the bundle's own file system instead. Its directory lookup
+  ## then decides whether two spellings are aliases, without confusing a
+  ## sibling left by an overwrite = FALSE rebuild with a claim made now.
+  resolved_source <- normalizePath(
+    source_path,
+    winslash = "/",
+    mustWork = FALSE
+  )
+  claim_key <- paste0("sibling:", normalised_location)
+  previous_source <- claimed[[claim_key]]
+  if (
+    !is.null(previous_source) && !identical(previous_source, resolved_source)
+  ) {
+    stop(
+      "Two data sets want different expression matrices under the same name ",
+      "in the bundle: '",
+      normalised_location,
+      "' from '",
+      previous_source,
+      "' and from '",
+      resolved_source,
+      "'. One would overwrite the other and both .crb files would read the ",
+      "same matrix. The name comes from a tag inside each .crb, so it cannot ",
+      "be changed here -- re-export one of them under a different file name, ",
+      "which gives its matrix a different name too.",
+      call. = FALSE
+    )
+  }
+  if (!is.null(previous_source)) {
+    ## the same source bundled twice: nothing to do, and nothing wrong
+    return(invisible(NULL))
+  }
+
+  destination_dir <- file.path(data_dir, dirname(normalised_location))
+  dir.create(destination_dir, recursive = TRUE, showWarnings = FALSE)
+  destination_path <- file.path(
+    destination_dir,
+    basename(normalised_location)
+  )
+
+  claim_root <- claimed[[".filesystem_claim_root"]]
+  if (is.null(claim_root)) {
+    claim_root <- tempfile(
+      pattern = ".cerebro-sibling-claims-",
+      tmpdir = dirname(data_dir)
+    )
+    if (!dir.create(claim_root, showWarnings = FALSE)) {
+      stop(
+        "Failed to create a temporary sibling-claim directory beside '",
+        data_dir,
+        "'.",
+        call. = FALSE
+      )
+    }
+    claimed[[".filesystem_claim_root"]] <- claim_root
+  }
+
+  claim_parts <- strsplit(normalised_location, "/", fixed = TRUE)[[1]]
+  claim_cursor <- claim_root
+  claim_conflict <- FALSE
+  if (length(claim_parts) > 1) {
+    for (part in claim_parts[-length(claim_parts)]) {
+      claim_cursor <- file.path(claim_cursor, part)
+      if (file.exists(file.path(claim_cursor, ".claimed"))) {
+        claim_conflict <- TRUE
+        break
+      }
+      if (
+        !dir.exists(claim_cursor) &&
+          !dir.create(claim_cursor, showWarnings = FALSE)
+      ) {
+        claim_conflict <- TRUE
+        break
+      }
+    }
+  }
+  claim_path <- file.path(claim_root, normalised_location)
+  if (
+    claim_conflict ||
+      dir.exists(claim_path) ||
+      !dir.create(claim_path, showWarnings = FALSE)
+  ) {
+    stop(
+      "The expression-matrix destination '",
+      destination_path,
+      "' is already claimed in this bundle build while copying '",
+      resolved_source,
+      "'. The destination file system may treat this tag as an alias of an ",
+      "earlier data set's tag (for example, names that differ only by case). ",
+      "Copying it would overwrite the matrix already there.",
+      call. = FALSE
+    )
+  }
+  if (!file.create(file.path(claim_path, ".claimed"))) {
+    stop(
+      "Failed to record the expression-matrix destination claim for '",
+      destination_path,
+      "'.",
+      call. = FALSE
+    )
+  }
+  claimed[[claim_key]] <- resolved_source
+
+  if (verbose) {
+    cat("  -", normalised_location, paste0("(", backend$type, " matrix)"), "\n")
+  }
+
+  ## Recursive file.copy() can populate part of an existing BPCells directory
+  ## before returning FALSE. Copy into a private directory first, then swap the
+  ## complete file/directory into place. This also makes overwrite = FALSE
+  ## rebuilds replace the old sibling as a unit instead of mixing generations.
+  destination_existed <- file.exists(destination_path)
+  stage_dir <- tempfile(
+    pattern = paste0(".", basename(normalised_location), "-stage-"),
+    tmpdir = destination_dir
+  )
+  if (!dir.create(stage_dir, showWarnings = FALSE)) {
+    stop(
+      "Failed to create a temporary directory while copying the ",
+      backend$type,
+      " expression matrix '",
+      normalised_location,
+      "'.",
+      call. = FALSE
+    )
+  }
+  on.exit(unlink(stage_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  copied <- file.copy(
+    source_path,
+    stage_dir,
+    overwrite = FALSE,
+    recursive = is_directory_backend
+  )
+  staged_path <- file.path(stage_dir, basename(source_path))
+  if (!isTRUE(copied) || !exists_on_disk(staged_path)) {
+    stop(
+      "Failed to copy the ",
+      backend$type,
+      " expression matrix '",
+      normalised_location,
+      "' into the app bundle.",
+      call. = FALSE
+    )
+  }
+
+  if (!destination_existed && file.exists(destination_path)) {
+    stop(
+      "Failed to copy the ",
+      backend$type,
+      " expression matrix '",
+      normalised_location,
+      "' into the app bundle because its destination appeared during the ",
+      "copy. The existing destination was left unchanged.",
+      call. = FALSE
+    )
+  }
+
+  backup_path <- NULL
+  if (destination_existed) {
+    backup_path <- tempfile(
+      pattern = paste0(".", basename(normalised_location), "-backup-"),
+      tmpdir = destination_dir
+    )
+    if (!file.rename(destination_path, backup_path)) {
+      stop(
+        "Failed to move the existing ",
+        backend$type,
+        " expression matrix aside while rebuilding '",
+        normalised_location,
+        "'.",
+        call. = FALSE
+      )
+    }
+  }
+
+  if (!file.rename(staged_path, destination_path)) {
+    restored <- is.null(backup_path) ||
+      file.rename(backup_path, destination_path)
+    stop(
+      "Failed to install the copied ",
+      backend$type,
+      " expression matrix '",
+      normalised_location,
+      "' into the app bundle.",
+      if (!restored) {
+        paste0(
+          " Restoring the previous matrix also failed; its backup remains at '",
+          backup_path,
+          "'."
+        )
+      } else {
+        ""
+      },
+      call. = FALSE
+    )
+  }
+  if (!is.null(backup_path)) {
+    unlink(backup_path, recursive = TRUE, force = TRUE)
+  }
+
+  invisible(NULL)
 }

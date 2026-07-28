@@ -112,8 +112,12 @@ run with \code{shiny::runApp(result_dir)}.
 }
 \details{
 Supports external expression backends (\code{bpcells}, \code{h5}) in
-addition to the embedded mode. When \code{cerebro_data} points to a
-\code{.crb} with an external backend, the sibling \code{.bpcells/}
-directory or \code{.h5} file is detected and copied into the bundle
-alongside the \code{.crb}.
+addition to the embedded mode. Such a \code{.crb} holds no expression
+matrix, only a tag naming the sibling \code{.bpcells/} directory or
+\code{.h5} file that holds it. The sibling is read from that tag and copied
+into the bundle under the same name, so renaming the \code{.crb} does not
+lose it. A sibling that cannot be found is an error rather than a silent
+omission: the generated app would otherwise start and then fail to show any
+expression data. Pass \code{cerebro_options$expression_matrix_h5} or
+\code{expression_matrix_BPCells} to point at a matrix elsewhere instead.
 }
