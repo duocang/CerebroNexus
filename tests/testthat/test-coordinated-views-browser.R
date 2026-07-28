@@ -1743,6 +1743,16 @@ test_that("a panel can take the grid without losing the selection", {
   )
   before <- app$get_js("document.getElementById('cv-seltext').textContent")
 
+  ## The button is offered here because four panels take two rows. It is not
+  ## offered on a one-row layout, where folding the others cannot make the
+  ## remaining square any bigger -- the height it is already using is the limit.
+  expect_true(app$get_js(
+    paste0(
+      "getComputedStyle(document.querySelector(",
+      "'.cv-focus-btn[data-panel=\"A\"]')).display !== 'none'"
+    )
+  ))
+
   ## Maximise panel A.
   app$run_js(
     "document.querySelector('.cv-focus-btn[data-panel=\"A\"]').click();"
@@ -1807,6 +1817,27 @@ test_that("a panel can take the grid without losing the selection", {
   ))
   expect_false(app$get_js(
     "document.getElementById('cv-mini-a').classList.contains('is-on')"
+  ))
+
+  ## Two panels are one row, so there is nothing to maximise into and the button
+  ## says so by not being there.
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ spaces: [",
+      "{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },",
+      "{ id: 'spatial', label: 'spatial', x: blob(0), y: blob(0) }] }"
+    )
+  ))
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length === 2",
+    timeout = 15000
+  )
+  app$wait_for_idle(timeout = 10000)
+  expect_false(app$get_js(
+    paste0(
+      "getComputedStyle(document.querySelector(",
+      "'.cv-focus-btn[data-panel=\"A\"]')).display !== 'none'"
+    )
   ))
 
   app$stop()

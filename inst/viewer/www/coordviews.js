@@ -1413,11 +1413,27 @@ var focusPanel = null;
     });
     var host = panels[0] && panels[0].pane && panels[0].pane.parentElement;
     if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
+    updateFocusButtons();
     resizeAll();
   }
   // The per-panel "zoom to selection" is only an action while there IS one, and
   // only on a panel that lays cells out in a plane -- a rotated cloud has no
   // rectangle to zoom to that survives the next turn.
+  // Maximise is only offered where it can deliver. The panels are squares sized
+  // by whichever of width and height runs out first, and with one row of them
+  // that is the height -- which folding the others does not change, so the
+  // "maximised" panel would come back exactly the size it was. It earns its
+  // place from three panels up, where the grid takes a second row.
+  function updateFocusButtons() {
+    var k = panels.filter(function (p) { return p.spaceId; }).length;
+    panels.forEach(function (p) {
+      if (!p.pane) return;
+      var btn = p.pane.querySelector('.cv-focus-btn');
+      if (!btn) return;
+      var useful = k >= 3 || focusPanel === p.key;
+      btn.style.display = (p.spaceId && useful) ? '' : 'none';
+    });
+  }
   function updateZselButtons() {
     var on = !!(sel && sel.size);
     panels.forEach(function (p) {
@@ -2834,6 +2850,7 @@ var focusPanel = null;
       var btn = $('cv-tk-info-' + p.key.toLowerCase());
       if (btn) btn.style.display = (showTk && p.spaceId === 'trekker') ? '' : 'none';
     });
+    updateFocusButtons();
     syncOrbitButtons();
   }
   // Size ALL visible panels to equal squares that fill the width AND height in a
