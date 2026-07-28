@@ -1,3 +1,35 @@
+# CerebroNexus 3.0.3
+
+## Export
+
+- **Split Seurat v5 objects no longer export a single sample.** `split()` names
+  an assay's layers `<root>.<level>`, and the level is whatever the splitting
+  factor holds — sample names (`counts.pbmc_1`) at least as often as integers
+  (`counts.1`). Layer resolution recognised only the integer form, so an object
+  split by sample was never joined and `exportFromSeurat()` read the first
+  layer alone. In `embedded` mode that surfaced as an error about the meta data
+  not matching the expression matrix, which pointed at the wrong thing; in `h5`
+  and `bpcells` mode nothing compared the two at all and the export succeeded,
+  writing a `.crb` that described every cell next to a matrix holding one
+  sample's. Layers are now matched by semantic root, and `exportFromSeurat()`
+  joins them the way `convertSeuratToCerebro()` always has. `scale.data` keeps
+  its own root rather than being read as a variant of `data`. A layer asked for
+  by name (`slot = "data.s2"`) is left alone: joining would consume it, and the
+  substitution would be invisible, since the joined `data` satisfies the
+  request's own semantic root.
+- **An expression matrix that does not cover every cell is refused.** The check
+  runs once, before the storage modes diverge, so `embedded`, `h5` and
+  `bpcells` fail identically and name the likely cause instead of leaving the
+  external-matrix modes to write a file whose two halves disagree. The matrix
+  is also ordered to match the cells the meta data is built from.
+- **A disk-backed source assay says so when it is refused.** Reading a Seurat
+  object whose layers are BPCells or DelayedArray matrices is still not
+  supported, but the refusal used to read `Received: RenameDims` and nothing
+  more. It now says the data lives on disk, shows how to bring a layer into
+  memory, and points out that this is unrelated to `expression_matrix_mode`,
+  which controls how the exported `.crb` stores its matrix rather than how the
+  source object holds it.
+
 # CerebroNexus 3.0.2
 
 ## Interface and documentation
