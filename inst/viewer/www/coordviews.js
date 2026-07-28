@@ -36,6 +36,15 @@ var hoverCell = null;
 // the reply, so a late answer for a gene the user has moved on from is dropped
 // rather than drawn under the current gene's name.
 var geneWanted = null;
+// Alignment is a property of a (section, background image) PAIR, not of the
+// workspace. One shared imgState meant the numbers followed the user from one
+// slide to another, which is how a calibration ended up describing an image it
+// was never made for. Keyed `section|imageId`; cleared with the data set, since
+// the ids belong to the object that produced them.
+var imgStates = {};
+// Guards the async decode: a fast switch could have an earlier image finish
+// loading after a later one and paint itself over the current choice.
+var imgToken = 0;
 // Panel key currently given the whole grid, or null for the normal layout. With
 // three or four panels each square is small enough that detail becomes guesswork;
 // this is a change of magnification only -- the selection is kept and every panel
@@ -735,8 +744,9 @@ var focusPanel = null;
   // so it aligns; opacity/offset/scale/flip/rotate then adjust it on top.
   function drawImage(p) {
     var sp = spaceById[p.spaceId];
-    if (!sp || !sp.image || !imgEl || !imgReady || !imgState.show) return;
-    var b = sp.image.bounds;
+    var cimg = currentImage(sp);
+    if (!sp || !cimg || !imgEl || !imgReady || !imgState.show) return;
+    var b = cimg.bounds;
     if (!b) return;
     var tl = dataToScreen(p, b.xmin, b.ymax);   // data ymax = top (y-up)
     var br = dataToScreen(p, b.xmax, b.ymin);
@@ -2797,11 +2807,40 @@ var focusPanel = null;
 
   // Preload a space's histology image + seed the transform state from its preset.
   // Reused by onData and by the Spatial-sample switch below.
-  function loadSpaceImage(space) {
-    imgEl = null; imgReady = false;
-    if (!space || !space.image || !space.image.uri) return;
-    var pr = space.image.preset || {};
-    imgState = {
+  // ---- background images ---------------------------------------------------
+  // A section can be shown against several backgrounds (its own embedded
+  // histology, whatever the deployment configured), each with its own identity
+  // and its own calibration. These read whichever is currently chosen.
+  function spatialImages(sp) {
+    if (!sp) return [];
+    if (sp.images && sp.images.length) return sp.images;
+    return sp.image ? [sp.image] : [];   // older singular contract
+  }
+  function currentImage(sp) {
+    var list = spatialImages(sp);
+    if (!list.length) return null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === sp._imageId) return list[i];
+    }
+    return list[0];
+  }
+  // The key a calibration is stored under. Both halves matter: the same image
+  // against a different section is a different alignment problem.
+  function imgKey(sp, img) {
+    if (!sp || !img) return null;
+    // The section name has to resolve the same way BEFORE the first switch as
+    // after it. `_sampleName` is only set when the picker is used, so falling
+    // back to the space id gave the opening section one key and the same
+    // section a different one on return -- and the alignment stored under the
+    // first was never found again.
+    var name = sp._sampleName ||
+      (sp.samples && sp.samples[0] && sp.samples[0].name) ||
+      sp.id || 'spatial';
+    return name + '|' + (img.id || 'image');
+  }
+  function presetState(img) {
+    var pr = (img && img.preset) || {};
+    return {
       show: true,
       opacity: (pr.opacity != null ? pr.opacity : 0.6),
       offsetX: (pr.offsetX != null ? pr.offsetX : 0),
@@ -2810,32 +2849,117 @@ var focusPanel = null;
       scaleY: (pr.scaleY != null ? pr.scaleY : 1),
       flipX: !!pr.flipX, flipY: !!pr.flipY, rotate: 0
     };
+  }
+  // Put away what the user has done to the image currently on screen, so coming
+  // back to it returns their work rather than the preset. Losing it on every
+  // switch would make comparing two backgrounds mean re-aligning each time.
+  function stashImgState() {
+    var sp = spaceById['spatial'];
+    var k = imgKey(sp, currentImage(sp));
+    if (!k) return;
+    var copy = {};
+    for (var f in imgState) copy[f] = imgState[f];
+    imgStates[k] = copy;
+  }
+  function loadSpaceImage(space) {
+    imgEl = null; imgReady = false;
+    var img = currentImage(space);
+    if (!img || !img.uri) return;
+    var k = imgKey(space, img);
+    imgState = (k && imgStates[k]) ? imgStates[k] : presetState(img);
+    // Only the newest request may paint. Without the token a large image chosen
+    // first can finish decoding after a small one chosen second and replace it.
+    var mine = ++imgToken;
     var im = new Image();
-    im.onload = function () { imgReady = true; drawAll(); };
-    im.src = space.image.uri;
+    im.onload = function () {
+      if (mine !== imgToken) return;
+      imgReady = true; drawAll();
+    };
+    im.src = img.uri;
     imgEl = im;
   }
+
+  // The background picker. Hidden with one image -- there is nothing to choose,
+  // and "Show" in the alignment bar is already how it is turned off, so the list
+  // carries no entry duplicating that.
+  function renderImagePicker() {
+    var ctl = $('cv-img-pick-ctl'), selEl = $('cv-img-pick');
+    if (!ctl || !selEl) return;
+    var sp = spaceById['spatial'];
+    var list = spatialImages(sp);
+    if (list.length < 2) { ctl.style.display = 'none'; return; }
+    ctl.style.display = '';
+    selEl.innerHTML = list.map(function (im) {
+      return '<option value="' + esc(im.id) + '">' +
+        esc(im.label || im.id) + '</option>';
+    }).join('');
+    var cur = currentImage(sp);
+    if (cur) selEl.value = cur.id;
+    selEl.onchange = function () { setSpatialImage(selEl.value); };
+  }
+  // Switch background. The cells have not moved -- only what is behind them --
+  // so the viewport is left exactly as it is; re-fitting it here would throw
+  // away the zoom the user was comparing at.
+  function setSpatialImage(id) {
+    var sp = spaceById['spatial'];
+    if (!sp || !id) return;
+    var cur = currentImage(sp);
+    if (cur && cur.id === id) return;
+    stashImgState();
+    sp._imageId = id;
+    loadSpaceImage(sp);
+    seedImgControls();
+    updateSpaceScopedControls();
+    drawAll();
+  }
+
   // Back to the alignment the data set shipped with. Alignment is fiddly and
   // easy to lose, and the preset is the only reference point in the bar; without
   // this the way back was reloading the page.
+  // Write a state object into the bar's controls, including the ranges: the Move
+  // sliders are in DATA units, ranged to the section's coordinate span, so
+  // carrying the previous section's range over can put the target's own offset
+  // outside it. The slider then clamps and the alignment quietly is not the one
+  // that was asked for.
+  function seedImgControls(st) {
+    var sp = spaceById['spatial'];
+    var cur = currentImage(sp);
+    var v = st || imgState || presetState(cur);
+    var set = function (id, x) { var el = $(id); if (el) el.value = String(x); };
+    var tick = function (id, on) { var el = $(id); if (el) el.checked = !!on; };
+    var span = (cur && cur.coord_span) || null;
+    if (span && span.length >= 2) {
+      var rerange = function (id, ext) {
+        var el = $(id); if (!el) return;
+        var lim = Math.abs(ext) * 1.2;
+        el.min = String(-lim); el.max = String(lim);
+        el.step = String(Math.max(lim / 200, 1e-6));
+      };
+      rerange('cv-img-offx', span[0]);
+      rerange('cv-img-offy', span[1]);
+    }
+    set('cv-img-opacity', v.opacity);
+    set('cv-img-offx', v.offsetX);
+    set('cv-img-offy', v.offsetY);
+    set('cv-img-scalex', v.scaleX);
+    set('cv-img-scaley', v.scaleY);
+    tick('cv-img-lock', v.scaleX === v.scaleY);
+    set('cv-img-rotate', v.rotate || 0);
+    tick('cv-img-flipx', v.flipX);
+    tick('cv-img-flipy', v.flipY);
+    tick('cv-img-show', v.show !== false);
+  }
+
+  // Back to the alignment THIS (section, image) shipped with -- and only this
+  // one. Alignment is fiddly and easy to lose, and the preset is the sole
+  // reference point in the bar; without this the way back was reloading.
   function resetImgToPreset() {
     var sp = spaceById['spatial'];
-    var pr = (sp && sp.image && sp.image.preset) || {};
-    var set = function (id, v) { var el = $(id); if (el) el.value = String(v); };
-    var tick = function (id, on) { var el = $(id); if (el) el.checked = !!on; };
-    set('cv-img-opacity', pr.opacity != null ? pr.opacity : 0.6);
-    set('cv-img-offx', pr.offsetX != null ? pr.offsetX : 0);
-    set('cv-img-offy', pr.offsetY != null ? pr.offsetY : 0);
-    var px = pr.scaleX != null ? pr.scaleX : 1;
-    var py = pr.scaleY != null ? pr.scaleY : px;
-    set('cv-img-scalex', px);
-    set('cv-img-scaley', py);
-    tick('cv-img-lock', px === py);
-    set('cv-img-rotate', 0);
-    tick('cv-img-flipx', pr.flipX);
-    tick('cv-img-flipy', pr.flipY);
-    tick('cv-img-show', true);
-    syncImgControls('cv-img-reset');
+    var cur = currentImage(sp);
+    imgState = presetState(cur);
+    var k = imgKey(sp, cur);
+    if (k) delete imgStates[k];   // forget the adjustments, for this pair only
+    seedImgControls(imgState);
     drawAll();
   }
 
@@ -2860,15 +2984,25 @@ var focusPanel = null;
     var sp = spaceById['spatial']; if (!sp || !sp.samples) return;
     var s = sp.samples.filter(function (x) { return x.name === name; })[0];
     if (!s) return;
+    stashImgState();               // remember this section's alignment work
     sp._sampleName = name;
-    sp.x = s.x; sp.y = s.y; sp.label = s.label; sp.image = s.image || null;
+    sp.x = s.x; sp.y = s.y; sp.label = s.label;
+    sp.image = s.image || null;
+    sp.images = s.images || (s.image ? [s.image] : []);
+    // Each section chooses its own default background; the previous section's
+    // choice is not a choice about this one.
+    sp._imageId = (sp.images[0] && sp.images[0].id) || null;
     sp._unit = null;
-    loadSpaceImage(sp);            // the section's own histology image (or none)
-    // ... and the controls have to follow it. They held the PREVIOUS section's
-    // numbers, so the first nudge to any of them read those back and overwrote
-    // the new section's calibration with the old one's -- the alignment silently
-    // reverting to a different slide's.
-    resetImgToPreset();
+    // Put away what was done to the section being left, so returning to it
+    // returns that work; then load the target's own state -- its remembered
+    // adjustments if it has any, otherwise its preset. NEVER the state of the
+    // section being left: that is a calibration made for a different slide.
+    loadSpaceImage(sp);            // the section's own background (or none)
+    // The controls have to follow it. They held the PREVIOUS section's numbers,
+    // so the first nudge to any of them read those back and wrote the old
+    // slide's alignment over the new one's, silently.
+    seedImgControls();
+    renderImagePicker();           // its backgrounds, not the last section's
     updateSpaceScopedControls();   // image bar visibility follows the new sample
     resetSpaceViews('spatial');    // a different section, so a different geometry
     panels.forEach(function (p) {
@@ -3129,6 +3263,10 @@ var focusPanel = null;
     sanitiseColors(D);
     syncCloneTiers();
     _clipD = null;   // ranges belong to the data set that produced them
+    // Image ids are the previous object's; so are the alignments stored under
+    // them. Keeping them would let one data set's calibration describe another's
+    // slide the moment two ids happened to match.
+    imgStates = {}; imgToken++;
     closeCard(); cardMeta = null;   // the card described the previous data set
     spaceById = {}; D.spaces.forEach(function (s) { s._unit = null; spaceById[s.id] = s; });
     colorBy = D.default_group ||
@@ -3158,7 +3296,9 @@ var focusPanel = null;
     // Preload the histology image, if any spatial space carries one, and seed
     // the transform state from its preset (e.g. flipY for some platforms).
     var withImg = null;
-    D.spaces.forEach(function (s) { if (s.image && s.image.uri) withImg = s; });
+    D.spaces.forEach(function (s) {
+      if (spatialImages(s).length) withImg = s;
+    });
     loadSpaceImage(withImg);
 
     var meta = $('cv-meta');
@@ -3194,6 +3334,7 @@ var focusPanel = null;
     fillProjPicker();
     fillSpatialPicker();
     renderGroupFilters();
+    renderImagePicker();
     // hide the gene/RGB pickers on a fresh dataset (starts in a categorical mode)
     var geneCtl = $('cv-gene-ctl'), rgbCtl = $('cv-rgb-ctl');
     if (geneCtl) geneCtl.style.display = 'none';

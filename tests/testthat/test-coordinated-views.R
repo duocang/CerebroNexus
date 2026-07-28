@@ -619,3 +619,115 @@ test_that("the histology bar exists when any section carries an image", {
     perl = TRUE
   )
 })
+
+test_that("a section offers every background it has, each with its own id", {
+  skip_if_not(have_bundle)
+  ## Embedded and external used to be exclusive -- an object carrying its own
+  ## histology silently dropped whatever the deployment had configured -- and
+  ## only the FIRST configured file was read. Two files of the same basename
+  ## also have to stay apart, so the id cannot be the basename alone.
+  tmp <- file.path(tempdir(), "cv_imgs")
+  dir.create(file.path(tmp, "a"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(tmp, "b"), recursive = TRUE, showWarnings = FALSE)
+  png <- file.path(tmp, "a", "he.png")
+  png2 <- file.path(tmp, "b", "he.png")
+  ## A real 1x1 PNG written byte-wise: no graphics device needed, so this does
+  ## not depend on one being available in the check environment.
+  px <- as.raw(c(
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    0x0d,
+    0x0a,
+    0x1a,
+    0x0a,
+    0x00,
+    0x00,
+    0x00,
+    0x0d,
+    0x49,
+    0x48,
+    0x44,
+    0x52,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x08,
+    0x06,
+    0x00,
+    0x00,
+    0x00,
+    0x1f,
+    0x15,
+    0xc4,
+    0x89,
+    0x00,
+    0x00,
+    0x00,
+    0x0d,
+    0x49,
+    0x44,
+    0x41,
+    0x54,
+    0x78,
+    0x9c,
+    0x63,
+    0xf8,
+    0xcf,
+    0xc0,
+    0x50,
+    0x0f,
+    0x00,
+    0x04,
+    0x85,
+    0x01,
+    0x80,
+    0x84,
+    0xa9,
+    0x8c,
+    0x21,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x49,
+    0x45,
+    0x4e,
+    0x44,
+    0xae,
+    0x42,
+    0x60,
+    0x82
+  ))
+  writeBin(px, png)
+  writeBin(px, png2)
+  skip_if_not(file.exists(png) && file.exists(png2))
+  skip_if_not_installed("base64enc")
+
+  ## The builders read these two app-scope objects when they exist; this is the
+  ## same shape the running app provides.
+  cv_env$Cerebro.options <- list(spatial_images = list(ds = c(png, png2)))
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  imgs <- cv_env$cv_external_images()
+  expect_equal(length(imgs), 2) # not just the first
+  ids <- vapply(imgs, function(x) x$id, character(1))
+  expect_equal(length(unique(ids)), 2) # same basename, different identity
+  expect_true(all(grepl("he\\.png$", ids)))
+})

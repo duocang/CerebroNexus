@@ -105,12 +105,12 @@ cv_clone_per_cell <- function(ir, cells, receptor = NULL) {
 ## browser can show it. Returns list(uri, preset) or NULL. The preset offset is
 ## in DATA units and scale is a unitless multiplier (same contract the Spatial
 ## page uses), so it transfers to the coordinated-views canvas unchanged.
-cv_external_image <- function() {
+cv_external_images <- function() {
   if (
     !exists("Cerebro.options") ||
       is.null(Cerebro.options[["spatial_images"]])
   ) {
-    return(NULL)
+    return(list())
   }
   si <- Cerebro.options[["spatial_images"]]
   nm <- NULL
@@ -125,50 +125,78 @@ cv_external_image <- function() {
     }
   }
   if (is.null(nm) || is.na(nm) || !(nm %in% names(si))) {
-    return(NULL)
+    return(list())
   }
-  path <- si[[nm]][1]
+  paths <- si[[nm]]
   root <- Cerebro.options[["cerebro_root"]]
-  img_path <- if (!is.null(root)) file.path(root, path) else path
-  if (!file.exists(img_path)) {
-    img_path <- path
-  }
-  if (
-    !file.exists(img_path) || !requireNamespace("base64enc", quietly = TRUE)
-  ) {
-    return(NULL)
-  }
-  ext <- tolower(tools::file_ext(img_path))
-  mime <- switch(
-    ext,
-    "jpg" = "image/jpeg",
-    "jpeg" = "image/jpeg",
-    "png" = "image/png",
-    "svg" = "image/svg+xml",
-    "image/png"
-  )
-  uri <- paste0(
-    "data:",
-    mime,
-    ";base64,",
-    base64enc::base64encode(img_path)
-  )
   pget <- function(key, d) {
     v <- Cerebro.options[[key]]
     if (is.null(v) || is.null(names(v)) || !(nm %in% names(v))) d else v[[nm]]
   }
-  list(
-    uri = uri,
-    preset = list(
-      offsetX = as.numeric(pget("spatial_images_offset_x", 0)),
-      offsetY = as.numeric(pget("spatial_images_offset_y", 0)),
-      scaleX = as.numeric(pget("spatial_images_scale_x", 1)),
-      scaleY = as.numeric(pget("spatial_images_scale_y", 1)),
-      flipX = isTRUE(pget("spatial_images_flip_x", FALSE)),
-      flipY = isTRUE(pget("spatial_images_flip_y", FALSE)),
-      opacity = 0.6
-    )
+  ## The alignment options are indexed by DATA SET, not by image, so every
+  ## external image of one data set starts from the same numbers. That is the
+  ## configuration contract as it stands; per-image presets would need a new
+  ## option shape, and the client remembers what the user does to each image
+  ## separately regardless.
+  preset <- list(
+    offsetX = as.numeric(pget("spatial_images_offset_x", 0)),
+    offsetY = as.numeric(pget("spatial_images_offset_y", 0)),
+    scaleX = as.numeric(pget("spatial_images_scale_x", 1)),
+    scaleY = as.numeric(pget("spatial_images_scale_y", 1)),
+    flipX = isTRUE(pget("spatial_images_flip_x", FALSE)),
+    flipY = isTRUE(pget("spatial_images_flip_y", FALSE)),
+    opacity = 0.6
   )
+  out <- list()
+  for (i in seq_along(paths)) {
+    path <- paths[i]
+    img_path <- if (!is.null(root)) file.path(root, path) else path
+    if (!file.exists(img_path)) {
+      img_path <- path
+    }
+    if (
+      !file.exists(img_path) || !requireNamespace("base64enc", quietly = TRUE)
+    ) {
+      next
+    }
+    ext <- tolower(tools::file_ext(img_path))
+    mime <- switch(
+      ext,
+      "jpg" = "image/jpeg",
+      "jpeg" = "image/jpeg",
+      "png" = "image/png",
+      "svg" = "image/svg+xml",
+      "image/png"
+    )
+    base <- basename(path)
+    label <- if (!is.null(names(paths)) && nzchar(names(paths)[i] %||% "")) {
+      names(paths)[i]
+    } else {
+      base
+    }
+    out[[length(out) + 1]] <- list(
+      ## The index keeps two files of the same basename apart, and keeps the id
+      ## stable: it is the position in the configured list, not a hash of
+      ## content or a counter that moves when another data set is opened.
+      id = paste0("ext", i, ":", base),
+      label = label,
+      uri = paste0(
+        "data:",
+        mime,
+        ";base64,",
+        base64enc::base64encode(img_path)
+      ),
+      preset = preset
+    )
+  }
+  out
+}
+
+## Kept for callers wanting only the primary image (and for the previous
+## single-image contract): the first external image, or NULL.
+cv_external_image <- function() {
+  imgs <- cv_external_images()
+  if (!length(imgs)) NULL else imgs[[1]]
 }
 
 ## Bundle constructors — the ONE place the "which fields are JS arrays" contract
@@ -396,14 +424,30 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
     flipY = FALSE,
     opacity = 0.6
   )
-  image <- NULL
+  ## Every background this section can be shown against, as objects with their
+  ## own identity and calibration -- not one image tucked into the section.
+  ## Embedded and external used to be exclusive, so an object carrying its own
+  ## histology silently dropped whatever the deployment had configured, and only
+  ## the first configured file was read at all.
+  bounds_default <- list(
+    xmin = xr[1],
+    xmax = xr[2],
+    ymin = yr[1],
+    ymax = yr[2]
+  )
+  span <- c(diff(xr), diff(yr))
+  images <- list()
   emb <- sd$histology_image
   if (!is.null(emb) && is.character(emb) && nzchar(emb)) {
     b <- sd$histology_image_bounds
     if (is.null(b)) {
-      b <- list(xmin = xr[1], xmax = xr[2], ymin = yr[1], ymax = yr[2])
+      b <- bounds_default
     }
-    image <- list(
+    ## The embedded image comes out of the same pipeline as the coordinates, so
+    ## it needs no hand alignment and is the default where it exists.
+    images[[length(images) + 1]] <- list(
+      id = "embedded",
+      label = "Embedded histology",
       uri = emb,
       bounds = list(
         xmin = as.numeric(b$xmin),
@@ -412,24 +456,31 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
         ymax = as.numeric(b$ymax)
       ),
       preset = identity_preset,
-      coord_span = c(diff(xr), diff(yr))
+      coord_span = span
     )
-  } else if (allow_external) {
-    ext_img <- tryCatch(cv_external_image(), error = function(e) NULL)
-    if (!is.null(ext_img)) {
-      image <- list(
-        uri = ext_img$uri,
-        bounds = list(xmin = xr[1], xmax = xr[2], ymin = yr[1], ymax = yr[2]),
-        preset = ext_img$preset,
-        coord_span = c(diff(xr), diff(yr))
+  }
+  if (allow_external) {
+    for (ex in cv_external_images()) {
+      images[[length(images) + 1]] <- list(
+        id = ex$id,
+        label = ex$label,
+        uri = ex$uri,
+        bounds = bounds_default,
+        preset = ex$preset,
+        coord_span = span
       )
     }
   }
+  image <- if (length(images)) images[[1]] else NULL
+
   list(
     name = nm,
     x = round(as.numeric(co[sidx, 1]), 3),
     y = round(as.numeric(co[sidx, 2]), 3),
-    image = image
+    ## `image` is the default one, kept so anything reading the older singular
+    ## contract still works; `images` is the list the picker is built from.
+    image = image,
+    images = images
   )
 }
 
@@ -461,6 +512,9 @@ cv_build_spatial <- function(crb, cells) {
   if (!is.null(first$image)) {
     space$image <- first$image
   }
+  if (length(first$images)) {
+    space$images <- I(first$images)
+  }
   if (length(built) > 1) {
     space$samples <- lapply(built, function(s) {
       list(
@@ -468,7 +522,8 @@ cv_build_spatial <- function(crb, cells) {
         label = paste0(s$name, " (spatial)"),
         x = I(s$x),
         y = I(s$y),
-        image = s$image
+        image = s$image,
+        images = I(s$images)
       )
     })
   }

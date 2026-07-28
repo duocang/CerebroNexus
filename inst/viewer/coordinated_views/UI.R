@@ -212,6 +212,20 @@ tab_coordinated_views <- tabItem(
         tags$label("Spatial data"),
         tags$select(id = "cv-pick-spatial")
       ),
+      ## Which background the section is shown against. Beside "Spatial data"
+      ## because it answers the same kind of question -- what am I looking at --
+      ## rather than in the alignment bar, which is about adjusting whatever is
+      ## chosen here. Filled and revealed by JS: only the client knows how many
+      ## backgrounds the section on screen has, and with one there is nothing to
+      ## choose. "Show" in the alignment bar stays the way to turn it off, so the
+      ## list carries no "none" entry duplicating it.
+      div(
+        class = "cv-ctl",
+        id = "cv-img-pick-ctl",
+        style = "display:none",
+        tags$label("Background image"),
+        tags$select(id = "cv-img-pick")
+      ),
       ## Single-gene expression picker — a real server-side gene search (the
       ## whole transcriptome), shown only in "Gene expression" mode. JS toggles
       ## visibility; the server pushes the 0-255 vector on change.

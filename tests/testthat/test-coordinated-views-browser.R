@@ -2269,3 +2269,185 @@ test_that("a gene request does not leave the previous gene on screen", {
 
   app$stop()
 })
+
+
+## Alignment belongs to a (section, background image) PAIR. One shared state let
+## the numbers follow the user from one slide to another, so a calibration ended
+## up describing an image it was never made for. Two sections, two backgrounds
+## each, all four with different presets: the test is that nothing crosses over
+## and that going back returns what was left behind.
+test_that("each section and background keeps its own alignment", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_img_identity")
+
+  png1 <- paste0(
+    "data:image/png;base64,",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8",
+    "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  )
+  img <- function(id, label, sx, sy) {
+    paste0(
+      "{ id: '",
+      id,
+      "', label: '",
+      label,
+      "', uri: '",
+      png1,
+      "',\n",
+      "  coord_span: [400, 400],\n",
+      "  preset: { scaleX: ",
+      sx,
+      ", scaleY: ",
+      sy,
+      ", opacity: 0.6,\n",
+      "    offsetX: 0, offsetY: 0 } }"
+    )
+  }
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },\n",
+      "  { id: 'spatial', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "    images: [",
+      img("a1", "A one", 1.0, 1.0),
+      ",\n",
+      "             ",
+      img("a2", "A two", 2.0, 2.0),
+      "],\n",
+      "    samples: [\n",
+      "      { name: 'A', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "        images: [",
+      img("a1", "A one", 1.0, 1.0),
+      ",\n",
+      "                 ",
+      img("a2", "A two", 2.0, 2.0),
+      "] },\n",
+      "      { name: 'B', label: 'B (spatial)', x: blob(0), y: blob(0),\n",
+      "        images: [",
+      img("b1", "B one", 1.4, 0.7),
+      "] }] }] }"
+    )
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-pick-spatial') !== null",
+    timeout = 15000
+  )
+
+  ## Section A has two backgrounds, so the picker is offered and lists both.
+  expect_true(app$get_js(
+    paste0(
+      "getComputedStyle(document.getElementById('cv-img-pick-ctl'))",
+      ".display !== 'none'"
+    )
+  ))
+  expect_equal(
+    app$get_js(
+      paste0(
+        "Array.from(document.getElementById('cv-img-pick').options)",
+        ".map(function (o) { return o.value; })"
+      )
+    ),
+    list("a1", "a2")
+  )
+
+  ## The bar itself is server-rendered, so put it in place seeded from a1.
+  app$run_js(
+    paste0(
+      "(function () {\n",
+      "  var host = document.createElement('div');\n",
+      "  host.innerHTML =\n",
+      "    '<input type=\"range\" id=\"cv-img-opacity\" min=\"0\" max=\"1\"' +\n",
+      "    ' step=\"0.05\" value=\"0.6\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-offx\" min=\"-480\" max=\"480\"' +\n",
+      "    ' step=\"2\" value=\"0\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-offy\" min=\"-480\" max=\"480\"' +\n",
+      "    ' step=\"2\" value=\"0\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-scalex\" min=\"0.3\" max=\"3\"' +\n",
+      "    ' step=\"0.02\" value=\"1\">' +\n",
+      "    '<input type=\"range\" id=\"cv-img-scaley\" min=\"0.3\" max=\"3\"' +\n",
+      "    ' step=\"0.02\" value=\"1\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-lock\" checked>' +\n",
+      "    '<input type=\"range\" id=\"cv-img-rotate\" min=\"-180\" max=\"180\"' +\n",
+      "    ' step=\"1\" value=\"0\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-flipx\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-flipy\">' +\n",
+      "    '<input type=\"checkbox\" id=\"cv-img-show\" checked>' +\n",
+      "    '<button type=\"button\" id=\"cv-img-reset\">Reset</button>';\n",
+      "  document.body.appendChild(host);\n",
+      "})();"
+    )
+  )
+  scales <- function() {
+    unlist(app$get_js(
+      paste0(
+        "[parseFloat(document.getElementById('cv-img-scalex').value),\n",
+        " parseFloat(document.getElementById('cv-img-scaley').value)]"
+      )
+    ))
+  }
+  pick_img <- function(id) {
+    app$run_js(paste0(
+      "(function () { var s = document.getElementById('cv-img-pick');\n",
+      "  s.value = '",
+      id,
+      "'; s.onchange(); })();"
+    ))
+    app$wait_for_idle(timeout = 8000)
+  }
+  pick_sample <- function(name) {
+    app$run_js(paste0(
+      "(function () { var s = document.getElementById('cv-pick-spatial');\n",
+      "  s.value = '",
+      name,
+      "'; s.dispatchEvent(new Event('change')); })();"
+    ))
+    app$wait_for_idle(timeout = 8000)
+  }
+  nudge <- function(v) {
+    app$run_js(paste0(
+      "(function () { var x = document.getElementById('cv-img-scalex');\n",
+      "  x.value = '",
+      v,
+      "';\n",
+      "  x.dispatchEvent(new Event('input', { bubbles: true })); })();"
+    ))
+    app$wait_for_idle(timeout = 5000)
+  }
+
+  ## Adjust A/a1, then switch background within the same section.
+  nudge(2.5)
+  expect_equal(scales(), c(2.5, 2.5))
+  pick_img("a2")
+  ## a2's own preset, not a1's adjustment.
+  expect_equal(scales(), c(2, 2))
+
+  ## Back to a1: the work done to it is returned, not thrown away. Comparing two
+  ## backgrounds would otherwise mean re-aligning on every switch.
+  pick_img("a1")
+  expect_equal(scales(), c(2.5, 2.5))
+
+  ## Switch section. B's single background has its own, non-uniform calibration.
+  pick_sample("B")
+  expect_equal(scales(), c(1.4, 0.7))
+  ## One background, so nothing to choose between.
+  expect_false(app$get_js(
+    paste0(
+      "getComputedStyle(document.getElementById('cv-img-pick-ctl'))",
+      ".display !== 'none'"
+    )
+  ))
+
+  ## Back to A: still on a1, still carrying its adjustment.
+  pick_sample("A")
+  expect_equal(scales(), c(2.5, 2.5))
+  expect_equal(app$get_js("document.getElementById('cv-img-pick').value"), "a1")
+
+  ## Reset touches only the pair on screen: a1 goes back to its preset, a2 keeps
+  ## what it had.
+  app$run_js("document.getElementById('cv-img-reset').click();")
+  app$wait_for_idle(timeout = 5000)
+  expect_equal(scales(), c(1, 1))
+  pick_img("a2")
+  expect_equal(scales(), c(2, 2))
+
+  app$stop()
+})

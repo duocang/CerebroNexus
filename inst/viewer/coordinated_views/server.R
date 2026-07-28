@@ -464,16 +464,26 @@ output[["coordviews_image_ui"]] <- renderUI({
   ## worth nothing.
   req(coordviews_visible())
   b <- cv_ok(coordviews_bundle())
+  ## Two separate questions, and conflating them is what went wrong before.
+  ##
+  ## DOES a bar exist? Any section carrying an image is enough. A space's own
+  ## `image` is its FIRST section's, so a data set whose first section has no
+  ## histology used to render no bar at all, and switching to one that does
+  ## revealed an empty box.
+  ##
+  ## What does it open SHOWING? The section that is on screen, which is the
+  ## first one. Scanning for "any image" and keeping the last one found seeded
+  ## the controls -- values, and the slider ranges built from the coordinate
+  ## span -- from a section the user is not looking at.
   img <- NULL
+  seed <- NULL
   if (!is.null(b)) {
-    ## A space's own `image` is its FIRST sample's, so a data set whose first
-    ## section carries no histology used to render no bar at all -- and switching
-    ## to a section that does have one then revealed an empty box. Any sample
-    ## having an image is enough for the bar to exist; the client re-seeds it
-    ## from whichever section is on screen.
     for (s in b$spaces) {
       if (!is.null(s$image)) {
         img <- s$image
+        if (is.null(seed)) {
+          seed <- s$image
+        }
       }
       for (smp in (s$samples %||% list())) {
         if (!is.null(smp$image)) {
@@ -485,6 +495,9 @@ output[["coordviews_image_ui"]] <- renderUI({
   if (is.null(img)) {
     return(NULL)
   }
+  ## The displayed section's image when it has one; otherwise any, purely so the
+  ## controls exist for the client to re-seed on the first switch.
+  img <- seed %||% img
   ## Seed the controls from the alignment preset so an external image (Visium
   ## H&E) opens PRE-ALIGNED, exactly as the Spatial tab does. Move sliders are in
   ## DATA units, ranged to the coordinate span so the nudge is meaningful.
