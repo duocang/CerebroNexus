@@ -163,6 +163,54 @@ test_that("the legacy numeric split form keeps resolving as before", {
   expect_true(any(matrix_out@x %% 1 != 0))
 })
 
+test_that("a full-cell dotted custom layer is not treated as split", {
+  obj <- make_split_object(c("s1", "s2"))
+  obj[["RNA"]] <- SeuratObject::JoinLayers(obj[["RNA"]])
+  SeuratObject::LayerData(
+    obj[["RNA"]],
+    layer = "data.imputed"
+  ) <- SeuratObject::LayerData(obj[["RNA"]], layer = "data")
+
+  expect_no_message(
+    matrix_out <- .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "counts",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = TRUE,
+      verbose = TRUE
+    )
+  )
+  expect_equal(ncol(matrix_out), ncol(obj))
+  expect_setequal(colnames(matrix_out), colnames(obj))
+})
+
+test_that("a full-cell custom layer is excluded from a real split join", {
+  obj <- make_split_object(c("s1", "s2"))
+  obj[["RNA"]] <- SeuratObject::JoinLayers(obj[["RNA"]])
+  joined_data <- SeuratObject::LayerData(obj[["RNA"]], layer = "data")
+  imputed_data <- joined_data
+  imputed_data@x <- imputed_data@x + 100
+  SeuratObject::LayerData(
+    obj[["RNA"]],
+    layer = "data.imputed"
+  ) <- imputed_data
+  obj[["RNA"]] <- split(obj[["RNA"]], f = obj$sample)
+
+  expect_no_error(
+    matrix_out <- .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "data",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = TRUE
+    )
+  )
+  expect_equal(ncol(matrix_out), ncol(obj))
+  expect_setequal(colnames(matrix_out), colnames(obj))
+  expect_equal(matrix_out, joined_data)
+})
+
 ## ---------------------------------------------------------------------------
 ## Export entry point
 ## ---------------------------------------------------------------------------
