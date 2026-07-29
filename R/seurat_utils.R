@@ -44,9 +44,10 @@
 #' under one semantic root; their cell memberships are pairwise disjoint and
 #' together cover the assay's cells.
 #'
-#' Full-cell layers are ignored while evaluating a group. This allows a real
-#' `data.s1`/`data.s2` partition to coexist with a custom `data.imputed` layer
-#' without the latter either hiding the partition or being joined into it.
+#' Full-cell layers and partial candidates unrelated to the exact partition are
+#' ignored while evaluating a group. This allows a real `data.s1`/`data.s2`
+#' partition to coexist with a custom `data.imputed` layer without the latter
+#' either hiding the partition or being joined into it.
 #'
 #' @keywords internal
 #' @noRd
@@ -81,27 +82,66 @@
         return(character())
       }
 
-      pairs <- utils::combn(seq_along(memberships), 2L)
-      disjoint <- all(vapply(
-        seq_len(ncol(pairs)),
-        function(i) {
-          length(base::intersect(
-            memberships[[pairs[1L, i]]],
-            memberships[[pairs[2L, i]]]
-          )) ==
-            0L
-        },
-        logical(1)
-      ))
-      covers_assay <- setequal(
-        Reduce(base::union, memberships),
-        assay_cells
-      )
+      names(memberships) <- candidates
 
-      if (disjoint && covers_assay) {
-        candidates
-      } else {
+      ## Find an exact cover independently of unrelated overlapping candidates.
+      ## Choosing the least-ambiguous uncovered cell first keeps the backtrack
+      ## small for the normal case of one layer per sample.
+      find_partition <- function(covered, available) {
+        uncovered <- base::setdiff(assay_cells, covered)
+        if (length(uncovered) == 0L) {
+          return(character())
+        }
+
+        eligible <- available[vapply(
+          available,
+          function(layer) {
+            length(base::intersect(memberships[[layer]], covered)) == 0L
+          },
+          logical(1)
+        )]
+        if (length(eligible) == 0L) {
+          return(NULL)
+        }
+
+        n_choices <- vapply(
+          uncovered,
+          function(cell) {
+            sum(vapply(
+              eligible,
+              function(layer) cell %in% memberships[[layer]],
+              logical(1)
+            ))
+          },
+          integer(1)
+        )
+        if (any(n_choices == 0L)) {
+          return(NULL)
+        }
+
+        pivot <- uncovered[[which.min(n_choices)]]
+        choices <- eligible[vapply(
+          eligible,
+          function(layer) pivot %in% memberships[[layer]],
+          logical(1)
+        )]
+        for (choice in choices) {
+          remainder <- find_partition(
+            covered = base::union(covered, memberships[[choice]]),
+            available = base::setdiff(eligible, choice)
+          )
+          if (!is.null(remainder)) {
+            return(c(choice, remainder))
+          }
+        }
+        NULL
+      }
+
+      partition <- find_partition(character(), candidates)
+      if (is.null(partition) || length(partition) < 2L) {
         character()
+      } else {
+        partition
       }
     }
   )
@@ -219,19 +259,24 @@
         )
       }
 
-      ## JoinLayers searches by prefix. Without protection, joining `data.s1`
-      ## and `data.s2` also captures a full-cell `data.imputed`; whichever layer
-      ## appears first can silently supply the returned values. Temporarily
-      ## remove same-root layers that membership analysis did not identify as
-      ## part of the partition, then restore them after the targeted joins.
+      ## JoinLayers delegates its candidate lookup to Layers(search = root),
+      ## whose first pattern is `^root`. Reuse that exact lookup rather than
+      ## approximating it with Cerebro's semantic-name rules: names such as
+      ## `data_imputed` and `dataBackup` are candidates too. Temporarily remove
+      ## every candidate not selected for the partition, then restore it after
+      ## the targeted joins.
       split_layers <- unlist(split_layer_groups, use.names = FALSE)
       split_roots <- names(split_layer_groups)
-      protected_layers <- layer_names[
-        .layer_semantic_root(layer_names) %in%
-          split_roots &
-          !layer_names %in% split_layers &
-          !layer_names %in% split_roots
-      ]
+      join_candidates <- unique(unlist(
+        lapply(
+          split_roots,
+          function(root) {
+            SeuratObject::Layers(seurat[[assay]], search = root)
+          }
+        ),
+        use.names = FALSE
+      ))
+      protected_layers <- base::setdiff(join_candidates, split_layers)
       protected_data <- lapply(
         protected_layers,
         function(layer) {
