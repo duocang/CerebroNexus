@@ -23,6 +23,9 @@
 #' @param cell_barcodes The object's cell names, when known, for the join check.
 #' @param source_label How to refer to `data` in messages, e.g.
 #'   "`@misc$immune_repertoire`" or "the `tcr` argument".
+#' @param zero_overlap What to do when not one barcode matches a cell.
+#'   `"error"` when the caller supplied the data on purpose, `"warning"` when
+#'   the export merely discovered it on the object.
 #'
 #' @return `data`, invisibly.
 #'
@@ -31,8 +34,10 @@
 .validateImmuneRepertoire <- function(
   data,
   cell_barcodes = NULL,
-  source_label = "`@misc$immune_repertoire`"
+  source_label = "`@misc$immune_repertoire`",
+  zero_overlap = c("error", "warning")
 ) {
+  zero_overlap <- match.arg(zero_overlap)
   shape_advice <- paste0(
     "Immune repertoire data has to be a named list of data.frames, one per ",
     "sample -- the names become the sample labels in the app. ",
@@ -129,7 +134,10 @@
     }
   }
 
-  ## Below here nothing is fatal: the file is readable, the page is poorer.
+  ## Shape checking ends here. What follows compares the repertoire against
+  ## the object's cells: a missing column only makes the page poorer, while
+  ## the severity of "no barcode matches any cell" is the caller's to choose
+  ## -- see `zero_overlap`.
   missing_ctgene <- sample_names[
     !vapply(data, function(df) "CTgene" %in% names(df), logical(1))
   ]
@@ -158,27 +166,39 @@
     ))
     total_overlap <- sum(per_sample_overlap)
 
-    ## No overlap at all is not a degraded page, it is no page: every receptor
-    ## is orphaned, and the documented contract -- barcodes are the object's
-    ## cell names -- is simply not met. The usual cause is `combineTCR(samples =)`
-    ## prefixing barcodes without `RenameCells()` on the object to match.
+    ## No overlap at all means no receptor can ever be tied to a cell. How bad
+    ## that is depends on who is asking. Someone handing repertoire data in
+    ## deliberately wants it refused. An export that merely found a slot on the
+    ## object cannot assume the same: subsetting a Seurat object keeps `@misc`,
+    ## so a perfectly ordinary "run TCR, then keep one compartment" workflow
+    ## arrives here with a stale slot, and refusing it would block an export
+    ## that used to succeed with an empty repertoire page.
+    ##
+    ## The message stays neutral about the cause, because both explanations are
+    ## common and the data cannot tell them apart.
     if (total_overlap == 0) {
-      stop(
+      overlap_message <- paste0(
         source_label,
         " shares no barcode with the object's cells: 0 of ",
         length(repertoire_barcodes),
         " repertoire barcodes match any of ",
         length(cell_barcodes),
-        " cell names, so no receptor could ever be tied to a cell. ",
-        "combineTCR(samples = ) and combineBCR(samples = ) prefix barcodes ",
-        "with the sample name -- if they did, the same prefix has to be on ",
-        "the cell names, via SeuratObject::RenameCells(). ",
+        " cell names, so no receptor can be tied to a cell. ",
+        "Either the barcodes are prefixed differently -- combineTCR(samples = ) ",
+        "and combineBCR(samples = ) prefix them with the sample name, which ",
+        "then has to be on the cell names too via SeuratObject::RenameCells() ",
+        "-- or the object was subset after the repertoire was built, leaving a ",
+        "repertoire for cells that are no longer present. ",
         "Repertoire barcodes look like: ",
         paste(utils::head(repertoire_barcodes, 2), collapse = ", "),
         "; cell names look like: ",
         paste(utils::head(cell_barcodes, 2), collapse = ", "),
-        call. = FALSE
+        "."
       )
+      if (identical(zero_overlap, "error")) {
+        stop(overlap_message, call. = FALSE)
+      }
+      warning(overlap_message, call. = FALSE)
     }
 
     ## Some receptors not matching a cell is ordinary -- cells get filtered

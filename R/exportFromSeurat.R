@@ -918,7 +918,10 @@ exportFromSeurat <- function(
     .validateImmuneRepertoire(
       object@misc$immune_repertoire,
       cell_barcodes = Seurat::Cells(object),
-      source_label = "`@misc$immune_repertoire`"
+      source_label = "`@misc$immune_repertoire`",
+      ## Discovered on the object rather than handed in: a stale
+      ## slot left behind by subsetting must not block the export.
+      zero_overlap = "warning"
     )
     if (verbose) {
       message(
@@ -973,7 +976,10 @@ exportFromSeurat <- function(
     .validateImmuneRepertoire(
       object@misc$bcr_data,
       cell_barcodes = Seurat::Cells(object),
-      source_label = "`@misc$bcr_data`"
+      source_label = "`@misc$bcr_data`",
+      ## Discovered on the object rather than handed in: a stale
+      ## slot left behind by subsetting must not block the export.
+      zero_overlap = "warning"
     )
     if (verbose) {
       message(
@@ -994,7 +1000,10 @@ exportFromSeurat <- function(
     .validateImmuneRepertoire(
       object@misc$tcr_data,
       cell_barcodes = Seurat::Cells(object),
-      source_label = "`@misc$tcr_data`"
+      source_label = "`@misc$tcr_data`",
+      ## Discovered on the object rather than handed in: a stale
+      ## slot left behind by subsetting must not block the export.
+      zero_overlap = "warning"
     )
     if (verbose) {
       message(

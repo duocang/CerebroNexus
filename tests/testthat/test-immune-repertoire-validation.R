@@ -132,10 +132,11 @@ test_that("a missing CTgene column warns rather than stops", {
   expect_warning(export_repertoire(object), regexp = "CTgene")
 })
 
-test_that("barcodes that match no cell stop the export", {
-  ## `combineTCR(samples = )` prefixes barcodes. If the cell names were not
-  ## renamed to match, every receptor is orphaned -- that is not a degraded
-  ## page but no page, and it breaks the contract the function documents.
+test_that("a slot matching no cell warns and still exports", {
+  ## An export did not ask for this data, it found it. Subsetting a Seurat
+  ## object keeps `@misc`, so "run TCR, then keep one compartment" arrives here
+  ## with a stale slot. Refusing would block an export that used to succeed
+  ## with an empty repertoire page, so the export says so and carries on.
   object <- make_repertoire_seurat()
   repertoire <- lapply(make_repertoire(object), function(df) {
     df$barcode <- paste0("donorA_", df$barcode)
@@ -143,14 +144,61 @@ test_that("barcodes that match no cell stop the export", {
   })
   object@misc$immune_repertoire <- repertoire
 
-  err <- tryCatch(
-    export_repertoire(object),
-    error = function(e) conditionMessage(e)
+  crb <- tempfile(fileext = ".crb")
+  expect_warning(
+    export_repertoire(object, file = crb),
+    regexp = "shares no barcode"
   )
-  expect_true(grepl("shares no barcode", err, fixed = TRUE))
-  expect_true(grepl("RenameCells", err, fixed = TRUE))
+  expect_true(file.exists(crb))
+  ## the repertoire is kept rather than silently dropped
+  expect_length(readRDS(crb)$getImmuneRepertoire(), 2)
+})
+
+test_that("the no-overlap message names both causes, not just prefixes", {
+  ## Blaming combineTCR() sends anyone whose object was subset after the fact
+  ## looking for a prefix problem they do not have.
+  object <- make_repertoire_seurat()
+  repertoire <- lapply(make_repertoire(object), function(df) {
+    df$barcode <- paste0("donorA_", df$barcode)
+    df
+  })
+  object@misc$immune_repertoire <- repertoire
+
+  msg <- tryCatch(
+    export_repertoire(object),
+    warning = function(w) conditionMessage(w)
+  )
+  expect_true(grepl("RenameCells", msg, fixed = TRUE))
+  expect_true(grepl("subset", msg, fixed = TRUE))
   ## and it shows both sides so the mismatch is visible
-  expect_true(grepl("donorA_cell", err, fixed = TRUE))
+  expect_true(grepl("donorA_cell", msg, fixed = TRUE))
+})
+
+test_that("a stale legacy slot warns rather than blocking the export", {
+  ## Same reasoning for the legacy slots, which `getImmuneRepertoire()` merges
+  ## when the unified one is empty.
+  object <- make_repertoire_seurat()
+  object@misc$tcr_data <- lapply(make_repertoire(object), function(df) {
+    df$barcode <- paste0("stale_", df$barcode)
+    df
+  })
+
+  crb <- tempfile(fileext = ".crb")
+  expect_warning(
+    export_repertoire(object, file = crb),
+    regexp = "shares no barcode"
+  )
+  expect_true(file.exists(crb))
+})
+
+test_that("shape errors stay fatal even when overlap is only a warning", {
+  ## Tolerance is about the join, not about the shape: data the app cannot
+  ## read at all must still stop the export on every path.
+  object <- make_repertoire_seurat()
+  object@misc$bcr_data <- list(
+    s1 = data.frame(CTgene = "TRAV1", stringsAsFactors = FALSE)
+  )
+  expect_error(export_repertoire(object), "barcode")
 })
 
 test_that("one sample matching no cell warns while the others still export", {
