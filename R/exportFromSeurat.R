@@ -286,6 +286,33 @@ exportFromSeurat <- function(
   }
 
   ##--------------------------------------------------------------------------##
+  ## prepare the artifact transaction
+  ##--------------------------------------------------------------------------##
+
+  ## Everything this run writes goes to a hidden staging directory next to the
+  ## target first. Whatever is already on disk is moved aside only once the
+  ## ordinary export work has succeeded, and is put back if publishing fails.
+  ## Before this, the sibling matrix was deleted and rewritten early, so a
+  ## failure further down left the previous .crb sitting next to a matrix from
+  ## the run that failed -- a pair that still looked complete and described
+  ## two different data sets.
+  ##
+  ## Building the layout here also forces `file`, which has no default: a
+  ## missing or unwritable path used to surface only at the very end, after
+  ## the whole export had been computed.
+  artifact_layout <- .newExportArtifactLayout(file, expression_matrix_mode)
+  artifact_rollback_needed <- FALSE
+  on.exit(
+    {
+      if (artifact_rollback_needed) {
+        .restoreExportArtifacts(artifact_layout)
+      }
+      .cleanupExportArtifactLayout(artifact_layout)
+    },
+    add = TRUE
+  )
+
+  ##--------------------------------------------------------------------------##
   ## initialize Cerebro object
   ##--------------------------------------------------------------------------##
   if (verbose) {
@@ -419,19 +446,10 @@ exportFromSeurat <- function(
     ## machine, same paths) can use it immediately. Step 7.3's runtime attach
     ## will additionally re-resolve the relative location when the crb has
     ## been moved to a different machine or layout.
-    crb_dir <- dirname(file)
-    if (!nzchar(crb_dir) || crb_dir == "") {
-      crb_dir <- "."
-    }
-    crb_stem <- tools::file_path_sans_ext(basename(file))
-    bpc_dirname <- paste0(crb_stem, ".bpcells")
-    bpc_abs <- file.path(crb_dir, bpc_dirname)
-
-    ## BPCells writes an error if the directory already exists; clean first
-    ## so the exporter is idempotent.
-    if (dir.exists(bpc_abs)) {
-      unlink(bpc_abs, recursive = TRUE)
-    }
+    ## Write into staging. The previous directory of the same name, if any, is
+    ## left untouched until the commit window at the end of the export.
+    bpc_dirname <- artifact_layout$sibling_name
+    bpc_abs <- artifact_layout$staged_sibling
 
     ## Sparse dgCMatrix is BPCells' native input; dense matrices have to be
     ## coerced once. Everything else (RleMatrix, DelayedMatrix) is rare enough
@@ -478,9 +496,11 @@ exportFromSeurat <- function(
     BPCells::write_matrix_dir(mat = bpc_iter, dir = bpc_abs)
     mat_handle <- BPCells::open_matrix_dir(dir = bpc_abs)
 
-    ## Carry the live handle (absolute path inside @dir -- BPCells normalises
-    ## it on open_matrix_dir()) AND the portable relative location tag. Step
-    ## 7.3's attach reads the tag, not @dir, so the crb stays portable.
+    ## The staged handle is attached now so that the cell-count checks in
+    ## setMetaData() and addProjection() still have a matrix to compare
+    ## against. It points into the staging directory, which will not exist
+    ## after this call returns, so the commit window below reopens the matrix
+    ## at its published path before anything is serialised.
     export$setExpression(mat_handle, backend = "external")
     export$setExpressionBackend(type = "bpcells", location = bpc_dirname)
   } else if (expression_matrix_mode == "h5") {
@@ -490,13 +510,10 @@ exportFromSeurat <- function(
     ## that Cerebro does at runtime become single-column lookups. Cerebro's
     ## internal layout is genes x cells, so the runtime attach lazily
     ## transposes the TENxMatrix seed back via DelayedArray::t() (free).
-    crb_dir <- dirname(file)
-    if (!nzchar(crb_dir) || crb_dir == "") {
-      crb_dir <- "."
-    }
-    crb_stem <- tools::file_path_sans_ext(basename(file))
-    h5_filename <- paste0(crb_stem, ".h5")
-    h5_abs <- file.path(crb_dir, h5_filename)
+    ## Write into staging; the previous sibling stays where it is until the
+    ## commit window at the end of the export.
+    h5_filename <- artifact_layout$sibling_name
+    h5_abs <- artifact_layout$staged_sibling
 
     if (!inherits(expression_data, "dgCMatrix")) {
       if (inherits(expression_data, "matrix")) {
@@ -520,9 +537,6 @@ exportFromSeurat <- function(
       ))
     }
 
-    if (file.exists(h5_abs)) {
-      file.remove(h5_abs)
-    }
     HDF5Array::writeTENxMatrix(m_disk, h5_abs, group = "expression")
 
     ## self$expression stays NULL — saveRDS therefore does not embed the
@@ -1320,17 +1334,8 @@ exportFromSeurat <- function(
   ## save Cerebro object to disk
   ##--------------------------------------------------------------------------##
 
-  ## check if output directory exists and create it if not
-  if (!file.exists(dirname(file))) {
-    message(
-      paste0(
-        '[',
-        format(Sys.time(), '%H:%M:%S'),
-        '] Creating output directory...'
-      )
-    )
-    dir.create(dirname(file), showWarnings = FALSE)
-  }
+  ## The output directory was created when the artifact layout was built, so
+  ## by this point it exists even for a multi-level path.
 
   ## log message
   message(
@@ -1342,8 +1347,61 @@ exportFromSeurat <- function(
     )
   )
 
-  ## save file
-  saveRDS(export, file)
+  ##--------------------------------------------------------------------------##
+  ## commit window
+  ##
+  ## Everything above this point can fail without touching what is already on
+  ## disk. From here the previous artifacts are moved aside and the staged
+  ## ones take their place; any error or interrupt in between puts the
+  ## previous set back. See R/utils-export-artifacts.R for the exact
+  ## guarantee, which stops at process death.
+  ##--------------------------------------------------------------------------##
+
+  if (expression_matrix_mode == "bpcells") {
+    ## BPCells stores an absolute path inside the handle, so the object may
+    ## only be serialised once the matrix sits at its published location.
+    ## Publishing therefore has to happen before saveRDS(), not after.
+    .backupExportArtifacts(artifact_layout)
+    artifact_rollback_needed <- TRUE
+    .publishStagedArtifact(
+      artifact_layout$staged_sibling,
+      artifact_layout$target_sibling
+    )
+    export$setExpression(
+      BPCells::open_matrix_dir(dir = artifact_layout$target_sibling),
+      backend = "external"
+    )
+    export$setExpressionBackend(
+      type = "bpcells",
+      location = artifact_layout$sibling_name
+    )
+    saveRDS(export, artifact_layout$staged_crb)
+    .publishStagedArtifact(
+      artifact_layout$staged_crb,
+      artifact_layout$target_crb
+    )
+  } else {
+    ## `embedded` carries the matrix inside the object and `h5` carries only a
+    ## relative tag, so both can be serialised before anything on disk moves.
+    ## That keeps the window in which the two entries disagree down to two
+    ## renames.
+    saveRDS(export, artifact_layout$staged_crb)
+    .backupExportArtifacts(artifact_layout)
+    artifact_rollback_needed <- TRUE
+    if (!is.null(artifact_layout$staged_sibling)) {
+      .publishStagedArtifact(
+        artifact_layout$staged_sibling,
+        artifact_layout$target_sibling
+      )
+    }
+    .publishStagedArtifact(
+      artifact_layout$staged_crb,
+      artifact_layout$target_crb
+    )
+  }
+
+  artifact_rollback_needed <- FALSE
+  .cleanupExportArtifactLayout(artifact_layout)
 
   ## log message
   ## ... writing to file was successful

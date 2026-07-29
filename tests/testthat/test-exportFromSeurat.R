@@ -275,6 +275,146 @@ test_that("a failed h5 re-export preserves the existing artifact pair", {
   )
 })
 
+test_that("a failed bpcells re-export preserves the existing artifact pair", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("withr")
+
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "dataset.crb")
+  sibling <- file.path(root, "dataset.bpcells")
+
+  old <- make_transaction_object(n_cells = 20)
+  export_transaction_object(old, crb, "v1", "bpcells")
+  expect_true(dir.exists(sibling))
+
+  replacement <- make_transaction_object(n_cells = 12)
+  replacement@misc$immune_repertoire <- list(
+    sample = data.frame(CTgene = "TRAV1", stringsAsFactors = FALSE)
+  )
+  expect_error(
+    export_transaction_object(replacement, crb, "v2", "bpcells"),
+    "barcode"
+  )
+
+  preserved <- readRDS(crb)
+  expect_identical(preserved$getExperiment()$experiment_name, "v1")
+  expect_equal(nrow(preserved$getMetaData()), 20)
+  expect_equal(
+    ncol(BPCells::open_matrix_dir(dir = sibling)),
+    20
+  )
+})
+
+test_that("a failed first export leaves neither a .crb nor a sibling", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("withr")
+
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "fresh.crb")
+
+  doomed <- make_transaction_object(n_cells = 12)
+  doomed@misc$immune_repertoire <- list(
+    sample = data.frame(CTgene = "TRAV1", stringsAsFactors = FALSE)
+  )
+  expect_error(export_transaction_object(doomed, crb, "v1", "h5"), "barcode")
+
+  expect_false(file.exists(crb))
+  expect_false(file.exists(file.path(root, "fresh.h5")))
+  ## and nothing half-written left lying around
+  expect_length(
+    list.files(root, all.files = TRUE, pattern = "^\\.cerebro-export"),
+    0
+  )
+})
+
+test_that("a successful replacement publishes a matching pair and cleans up", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("withr")
+
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "dataset.crb")
+  h5 <- file.path(root, "dataset.h5")
+
+  export_transaction_object(make_transaction_object(20), crb, "v1", "h5")
+  export_transaction_object(make_transaction_object(12), crb, "v2", "h5")
+
+  replaced <- readRDS(crb)
+  expect_identical(replaced$getExperiment()$experiment_name, "v2")
+  expect_equal(nrow(replaced$getMetaData()), 12)
+  expect_equal(nrow(HDF5Array::TENxMatrix(h5, group = "expression")), 12)
+
+  ## the stored tag must be the published basename, never a staging path
+  expect_identical(replaced$getExpressionBackend()$location, "dataset.h5")
+
+  expect_length(
+    list.files(root, all.files = TRUE, pattern = "^\\.cerebro-export"),
+    0
+  )
+})
+
+test_that("a successful bpcells replacement leaves a usable published handle", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("withr")
+
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "dataset.crb")
+  sibling <- file.path(root, "dataset.bpcells")
+
+  export_transaction_object(make_transaction_object(20), crb, "v1", "bpcells")
+  export_transaction_object(make_transaction_object(12), crb, "v2", "bpcells")
+
+  replaced <- readRDS(crb)
+  expect_equal(nrow(replaced$getMetaData()), 12)
+  expect_identical(
+    replaced$getExpressionBackend()$location,
+    "dataset.bpcells"
+  )
+
+  ## The serialised handle must point at the published directory. If it still
+  ## referenced the staging path, the directory would be gone by now and
+  ## reading a value would fail.
+  expect_equal(ncol(replaced$expression), 12)
+  expect_no_error(as.matrix(replaced$expression[1:2, 1:2]))
+
+  expect_length(
+    list.files(root, all.files = TRUE, pattern = "^\\.cerebro-export"),
+    0
+  )
+})
+
+test_that("an interrupted export restores the previous pair", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("withr")
+
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "dataset.crb")
+  h5 <- file.path(root, "dataset.h5")
+
+  export_transaction_object(make_transaction_object(20), crb, "v1", "h5")
+  old_h5_md5 <- unname(tools::md5sum(h5))
+
+  ## Fail inside the commit window itself rather than before it: publishing
+  ## the sibling succeeds, then the .crb publish is sabotaged.
+  local_mocked_bindings(
+    .publishStagedArtifact = function(from, to) {
+      if (grepl("\\.crb$", to)) {
+        stop("simulated failure mid-commit", call. = FALSE)
+      }
+      .moveExportArtifact(from, to)
+      invisible(TRUE)
+    }
+  )
+
+  expect_error(
+    export_transaction_object(make_transaction_object(12), crb, "v2", "h5"),
+    "simulated failure"
+  )
+
+  expect_identical(unname(tools::md5sum(h5)), old_h5_md5)
+  expect_equal(nrow(HDF5Array::TENxMatrix(h5, group = "expression")), 20)
+  expect_identical(readRDS(crb)$getExperiment()$experiment_name, "v1")
+})
+
 test_that("h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
            seed, not an eagerly materialised dgCMatrix (low RAM, instant attach)", {
   skip_if_not_installed("HDF5Array")
