@@ -3,6 +3,7 @@
 ## Ordered longest first: `scale.data` has to be recognised before `data` could
 ## claim any part of it.
 .cerebro_layer_roots <- c("scale.data", "counts", "data")
+.cerebro_fallback_roots <- c("data", "counts", "scale.data")
 
 #' Semantic root of a (possibly split) Seurat v5 layer name
 #'
@@ -36,117 +37,426 @@
   )
 }
 
-#' Find Seurat v5 layer groups that form real cell partitions
+#' Find a unique Seurat v5 layer partition
 #'
-#' A dotted name is not sufficient evidence that a layer came from
-#' `split.Assay5()`: ordinary custom layers such as `data.imputed` use the same
-#' naming shape. A split group has at least two non-empty, non-full-cell layers
-#' under one semantic root; their cell memberships are pairwise disjoint and
-#' together cover the assay's cells.
-#'
-#' Full-cell layers and partial candidates unrelated to the exact partition are
-#' ignored while evaluating a group. This allows a real `data.s1`/`data.s2`
-#' partition to coexist with a custom `data.imputed` layer without the latter
-#' either hiding the partition or being joined into it.
+#' The normal `split.Assay5()` case is linear in the number of cells and layer
+#' memberships. An indexed exact-cover search is used only when unrelated
+#' overlapping candidates make the normal ownership count inconclusive.
 #'
 #' @keywords internal
 #' @noRd
-.split_layer_groups <- function(assay) {
-  layer_names <- SeuratObject::Layers(assay)
-  assay_cells <- SeuratObject::Cells(assay)
-  roots <- .layer_semantic_root(layer_names)
+.find_layer_partition <- function(
+  assay_cells,
+  memberships,
+  max_solutions = 2L
+) {
+  if (
+    !is.character(assay_cells) ||
+      length(assay_cells) == 0L ||
+      anyNA(assay_cells) ||
+      any(!nzchar(assay_cells)) ||
+      anyDuplicated(assay_cells)
+  ) {
+    stop(
+      "`assay_cells` must contain unique, non-empty cell names.",
+      call. = FALSE
+    )
+  }
+  if (
+    !is.list(memberships) ||
+      is.null(names(memberships)) ||
+      anyNA(names(memberships)) ||
+      any(!nzchar(names(memberships))) ||
+      anyDuplicated(names(memberships))
+  ) {
+    stop(
+      "`memberships` must be a list with unique, non-empty layer names.",
+      call. = FALSE
+    )
+  }
+  if (
+    length(max_solutions) != 1L ||
+      is.na(max_solutions) ||
+      max_solutions < 2L
+  ) {
+    stop(
+      "`max_solutions` must be a single integer of at least 2.",
+      call. = FALSE
+    )
+  }
 
-  groups <- lapply(
-    .cerebro_layer_roots,
-    function(root) {
-      ## An exact layer takes precedence in Seurat's prefix lookup, so treating
-      ## dotted siblings as a joinable group while it exists is unsafe.
-      if (root %in% layer_names) {
-        return(character())
-      }
-
-      candidates <- layer_names[roots == root]
-      if (length(candidates) < 2L) {
-        return(character())
-      }
-
-      memberships <- lapply(
-        candidates,
-        function(layer) SeuratObject::Cells(assay, layer = layer)
-      )
-      is_partial <- lengths(memberships) > 0L &
-        lengths(memberships) < length(assay_cells)
-      candidates <- candidates[is_partial]
-      memberships <- memberships[is_partial]
-      if (length(candidates) < 2L) {
-        return(character())
-      }
-
-      names(memberships) <- candidates
-
-      ## Find an exact cover independently of unrelated overlapping candidates.
-      ## Choosing the least-ambiguous uncovered cell first keeps the backtrack
-      ## small for the normal case of one layer per sample.
-      find_partition <- function(covered, available) {
-        uncovered <- base::setdiff(assay_cells, covered)
-        if (length(uncovered) == 0L) {
-          return(character())
-        }
-
-        eligible <- available[vapply(
-          available,
-          function(layer) {
-            length(base::intersect(memberships[[layer]], covered)) == 0L
-          },
-          logical(1)
-        )]
-        if (length(eligible) == 0L) {
-          return(NULL)
-        }
-
-        n_choices <- vapply(
-          uncovered,
-          function(cell) {
-            sum(vapply(
-              eligible,
-              function(layer) cell %in% memberships[[layer]],
-              logical(1)
-            ))
-          },
-          integer(1)
+  memberships <- lapply(
+    memberships,
+    function(cells) {
+      cells <- as.character(cells)
+      if (anyNA(cells) || any(!nzchar(cells))) {
+        stop(
+          "Layer memberships must contain non-empty cell names.",
+          call. = FALSE
         )
-        if (any(n_choices == 0L)) {
-          return(NULL)
-        }
-
-        pivot <- uncovered[[which.min(n_choices)]]
-        choices <- eligible[vapply(
-          eligible,
-          function(layer) pivot %in% memberships[[layer]],
-          logical(1)
-        )]
-        for (choice in choices) {
-          remainder <- find_partition(
-            covered = base::union(covered, memberships[[choice]]),
-            available = base::setdiff(eligible, choice)
-          )
-          if (!is.null(remainder)) {
-            return(c(choice, remainder))
-          }
-        }
-        NULL
       }
-
-      partition <- find_partition(character(), candidates)
-      if (is.null(partition) || length(partition) < 2L) {
-        character()
-      } else {
-        partition
-      }
+      unique(cells)
     }
   )
-  names(groups) <- .cerebro_layer_roots
-  groups[lengths(groups) > 0L]
+  outside <- base::setdiff(
+    unique(unlist(memberships, use.names = FALSE)),
+    assay_cells
+  )
+  if (length(outside) > 0L) {
+    stop(
+      "Layer memberships contain cells outside the assay: ",
+      paste(utils::head(outside, 5L), collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  n_cells <- length(assay_cells)
+  is_partial <- lengths(memberships) > 0L &
+    lengths(memberships) < n_cells
+  memberships <- memberships[is_partial]
+  if (length(memberships) < 2L) {
+    return(list(
+      status = "none",
+      layers = character(),
+      solutions = list()
+    ))
+  }
+
+  memberships <- memberships[order(names(memberships))]
+  layer_cells <- lapply(
+    memberships,
+    function(cells) match(cells, assay_cells)
+  )
+  claimed <- tabulate(
+    unlist(layer_cells, use.names = FALSE),
+    nbins = n_cells
+  )
+
+  if (all(claimed == 1L)) {
+    solution <- names(layer_cells)
+    return(list(
+      status = "unique",
+      layers = solution,
+      solutions = list(solution)
+    ))
+  }
+
+  ## Build sparse integer adjacency once. The recursive search below never
+  ## scans character memberships or recomputes full-vector intersections.
+  cell_layers <- vector("list", n_cells)
+  assignments <- split(
+    rep(seq_along(layer_cells), lengths(layer_cells)),
+    unlist(layer_cells, use.names = FALSE)
+  )
+  assignment_cells <- as.integer(names(assignments))
+  cell_layers[assignment_cells] <- unname(assignments)
+
+  conflicts <- lapply(
+    seq_along(layer_cells),
+    function(layer_id) {
+      sort(unique(unlist(
+        cell_layers[layer_cells[[layer_id]]],
+        use.names = FALSE
+      )))
+    }
+  )
+
+  solutions <- list()
+  search_partition <- function(covered, available, chosen) {
+    if (length(solutions) >= max_solutions) {
+      return(invisible(NULL))
+    }
+    if (all(covered)) {
+      if (length(chosen) >= 2L) {
+        solutions[[length(solutions) + 1L]] <<-
+          sort(names(layer_cells)[chosen])
+      }
+      return(invisible(NULL))
+    }
+
+    feasible <- which(available)
+    feasible <- feasible[vapply(
+      feasible,
+      function(layer_id) !any(covered[layer_cells[[layer_id]]]),
+      logical(1)
+    )]
+    if (length(feasible) == 0L) {
+      return(invisible(NULL))
+    }
+
+    choices_per_cell <- tabulate(
+      unlist(layer_cells[feasible], use.names = FALSE),
+      nbins = n_cells
+    )
+    if (any(choices_per_cell[!covered] == 0L)) {
+      return(invisible(NULL))
+    }
+    choices_per_cell[covered] <- .Machine$integer.max
+    pivot <- which.min(choices_per_cell)
+    choices <- sort(base::intersect(cell_layers[[pivot]], feasible))
+
+    for (choice in choices) {
+      next_covered <- covered
+      next_covered[layer_cells[[choice]]] <- TRUE
+      next_available <- available
+      next_available[conflicts[[choice]]] <- FALSE
+      search_partition(
+        covered = next_covered,
+        available = next_available,
+        chosen = c(chosen, choice)
+      )
+      if (length(solutions) >= max_solutions) {
+        break
+      }
+    }
+    invisible(NULL)
+  }
+
+  search_partition(
+    covered = rep(FALSE, n_cells),
+    available = rep(TRUE, length(layer_cells)),
+    chosen = integer()
+  )
+
+  if (length(solutions) == 0L) {
+    return(list(
+      status = "none",
+      layers = character(),
+      solutions = list()
+    ))
+  }
+
+  solution_keys <- vapply(
+    solutions,
+    paste,
+    collapse = "\r",
+    FUN.VALUE = character(1)
+  )
+  solutions <- solutions[order(solution_keys)]
+  if (length(solutions) == 1L) {
+    return(list(
+      status = "unique",
+      layers = solutions[[1L]],
+      solutions = solutions
+    ))
+  }
+
+  list(
+    status = "ambiguous",
+    layers = character(),
+    solutions = solutions[seq_len(max_solutions)]
+  )
+}
+
+.layer_prefix_pattern <- function(root) {
+  escaped <- gsub(
+    "([\\^$.|?*+()\\[\\]{}\\\\\\-])",
+    "\\\\\\1",
+    root,
+    perl = TRUE
+  )
+  paste0("^", escaped)
+}
+
+.layer_prefix_candidates <- function(assay, root) {
+  pattern <- .layer_prefix_pattern(root)
+  candidates <- suppressWarnings(
+    SeuratObject::Layers(assay, search = pattern)
+  )
+  unique(base::setdiff(candidates, root))
+}
+
+.supported_expression_matrix <- function(x) {
+  is.matrix(x) || inherits(x, "dgCMatrix")
+}
+
+.disk_backed_expression_matrix <- function(x) {
+  inherits(x, c("IterableMatrix", "DelayedMatrix", "DelayedArray"))
+}
+
+.format_layer_solutions <- function(solutions) {
+  paste(
+    vapply(
+      solutions,
+      function(solution) {
+        paste0("[", paste(solution, collapse = ", "), "]")
+      },
+      character(1)
+    ),
+    collapse = " or "
+  )
+}
+
+#' Resolve one requested Seurat v5 layer
+#'
+#' Exact physical layers are authoritative. If an exact root is absent,
+#' prefix candidates are accepted only when their cell memberships form one
+#' unique complete partition. This function never performs cross-semantic
+#' fallback; the facade applies that policy after same-root resolution.
+#'
+#' @keywords internal
+#' @noRd
+.resolve_seurat_v5_layer <- function(
+  seurat,
+  assay,
+  requested_layer,
+  join_samples = TRUE,
+  verbose = FALSE
+) {
+  assay_object <- seurat[[assay]]
+  layer_names <- SeuratObject::Layers(assay_object)
+  assay_cells <- SeuratObject::Cells(assay_object)
+
+  if (requested_layer %in% layer_names) {
+    return(list(
+      data = suppressWarnings(
+        SeuratObject::LayerData(assay_object, layer = requested_layer)
+      ),
+      requested = requested_layer,
+      resolved = requested_layer,
+      joined = FALSE,
+      candidates = character()
+    ))
+  }
+
+  candidates <- .layer_prefix_candidates(assay_object, requested_layer)
+  if (length(candidates) == 0L) {
+    return(list(
+      data = NULL,
+      requested = requested_layer,
+      resolved = NULL,
+      joined = FALSE,
+      candidates = character()
+    ))
+  }
+
+  memberships <- lapply(
+    candidates,
+    function(layer) {
+      SeuratObject::Cells(assay_object, layer = layer)
+    }
+  )
+  names(memberships) <- candidates
+  partition <- .find_layer_partition(assay_cells, memberships)
+
+  if (identical(partition$status, "ambiguous")) {
+    stop(
+      "Layer `",
+      requested_layer,
+      "` in assay `",
+      assay,
+      "` has more than one valid cell partition: ",
+      .format_layer_solutions(partition$solutions),
+      ". Refusing to choose one silently.",
+      call. = FALSE
+    )
+  }
+
+  partial_candidates <- candidates[
+    lengths(memberships) > 0L &
+      lengths(memberships) < length(assay_cells)
+  ]
+  if (identical(partition$status, "none")) {
+    if (length(partial_candidates) > 0L) {
+      stop(
+        "Exact layer `",
+        requested_layer,
+        "` is absent from assay `",
+        assay,
+        "`. No unique disjoint partition covers the assay cells.\n",
+        "Prefix candidates: ",
+        paste(candidates, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    return(list(
+      data = NULL,
+      requested = requested_layer,
+      resolved = NULL,
+      joined = FALSE,
+      candidates = candidates
+    ))
+  }
+
+  if (!isTRUE(join_samples)) {
+    stop(
+      "Exact layer `",
+      requested_layer,
+      "` is absent, but split layers ",
+      paste(partition$layers, collapse = ", "),
+      " form a complete partition. Set `join_samples = TRUE` to merge them.",
+      call. = FALSE
+    )
+  }
+
+  first_layer <- suppressWarnings(
+    SeuratObject::LayerData(
+      assay_object,
+      layer = partition$layers[[1L]]
+    )
+  )
+  if (!.supported_expression_matrix(first_layer)) {
+    return(list(
+      data = first_layer,
+      requested = requested_layer,
+      resolved = partition$layers[[1L]],
+      joined = FALSE,
+      candidates = candidates
+    ))
+  }
+
+  if (verbose) {
+    message(
+      "[",
+      format(Sys.time(), "%H:%M:%S"),
+      "] Joining layer partition for `",
+      requested_layer,
+      "`: ",
+      paste(partition$layers, collapse = ", ")
+    )
+  }
+
+  ## JoinLayers uses Layers(search = layers). Use the same escaped, anchored
+  ## search for discovery and joining. Remove every matching layer outside the
+  ## selected partition from the local value so custom names such as
+  ## `data.imputed`, `data_imputed`, and `dataBackup` cannot be consumed.
+  local_object <- seurat
+  protected <- base::setdiff(candidates, partition$layers)
+  for (layer in protected) {
+    suppressWarnings(
+      SeuratObject::LayerData(
+        local_object[[assay]],
+        layer = layer
+      ) <- NULL
+    )
+  }
+  local_object <- SeuratObject::JoinLayers(
+    local_object,
+    assay = assay,
+    layers = .layer_prefix_pattern(requested_layer),
+    new = requested_layer
+  )
+  joined_data <- suppressWarnings(
+    SeuratObject::LayerData(
+      local_object[[assay]],
+      layer = requested_layer
+    )
+  )
+  if (
+    .supported_expression_matrix(joined_data) &&
+      setequal(colnames(joined_data), assay_cells) &&
+      !identical(colnames(joined_data), assay_cells)
+  ) {
+    joined_data <- joined_data[, assay_cells, drop = FALSE]
+  }
+
+  list(
+    data = joined_data,
+    requested = requested_layer,
+    resolved = requested_layer,
+    joined = TRUE,
+    candidates = candidates
+  )
 }
 
 #' Filter candidate fallback layers to the same semantic class as the request
@@ -238,208 +548,112 @@
       )
     }
 
-    layer_names <- SeuratObject::Layers(seurat[[assay]])
-    split_layer_groups <- .split_layer_groups(seurat[[assay]])
-    has_split_layers <- length(split_layer_groups) > 0L
-
-    ## Joining consumes dotted layers. Honour any exact dotted-layer request,
-    ## whether it names a true split (`data.s2`) or an ordinary custom layer
-    ## (`data.imputed`); substituting the joined root would be invisible to the
-    ## caller.
-    requests_a_dotted_layer <- length(slot) == 1 &&
-      slot %in% layer_names &&
-      .layer_semantic_root(slot) != slot
-
-    if (join_samples && has_split_layers && !requests_a_dotted_layer) {
-      if (verbose) {
-        message(
-          "[",
-          format(Sys.time(), "%H:%M:%S"),
-          "] Merging multi-sample layer partitions using JoinLayers..."
-        )
-      }
-
-      ## JoinLayers delegates its candidate lookup to Layers(search = root),
-      ## whose first pattern is `^root`. Reuse that exact lookup rather than
-      ## approximating it with Cerebro's semantic-name rules: names such as
-      ## `data_imputed` and `dataBackup` are candidates too. Temporarily remove
-      ## every candidate not selected for the partition, then restore it after
-      ## the targeted joins.
-      split_layers <- unlist(split_layer_groups, use.names = FALSE)
-      split_roots <- names(split_layer_groups)
-      join_candidates <- unique(unlist(
-        lapply(
-          split_roots,
-          function(root) {
-            SeuratObject::Layers(seurat[[assay]], search = root)
-          }
-        ),
-        use.names = FALSE
-      ))
-      protected_layers <- base::setdiff(join_candidates, split_layers)
-      protected_data <- lapply(
-        protected_layers,
-        function(layer) {
-          SeuratObject::LayerData(seurat[[assay]], layer = layer)
-        }
-      )
-      names(protected_data) <- protected_layers
-
-      for (layer in protected_layers) {
-        suppressWarnings(
-          SeuratObject::LayerData(
-            seurat[[assay]],
-            layer = layer
-          ) <- NULL
-        )
-      }
-      seurat <- SeuratObject::JoinLayers(
-        seurat,
-        assay = assay,
-        layers = split_roots,
-        new = split_roots
-      )
-      for (layer in protected_layers) {
-        SeuratObject::LayerData(
-          seurat[[assay]],
-          layer = layer
-        ) <- protected_data[[layer]]
-      }
-      layer_names <- SeuratObject::Layers(seurat[[assay]])
-    } else if (join_samples && requests_a_dotted_layer && verbose) {
-      message(
-        "[",
-        format(Sys.time(), "%H:%M:%S"),
-        "] Layer `",
-        slot,
-        "` was requested by name; leaving other layers unchanged."
-      )
+    layer_name <- as.character(slot)
+    if (length(layer_name) != 1L || is.na(layer_name) || !nzchar(layer_name)) {
+      stop("`slot` must be one non-empty layer name.", call. = FALSE)
     }
 
-    layer_name <- switch(
-      slot,
-      "data" = "data",
-      "counts" = "counts",
-      "scale.data" = "scale.data",
-      slot
+    resolution <- .resolve_seurat_v5_layer(
+      seurat = seurat,
+      assay = assay,
+      requested_layer = layer_name,
+      join_samples = join_samples,
+      verbose = verbose
     )
 
-    available_layers <- SeuratObject::Layers(seurat[[assay]])
+    ## Cross-semantic fallback is deliberately narrow and deterministic.
+    ## Arbitrary requested roots never silently turn into a standard expression
+    ## class. Standard roots are tried in a fixed compatibility order, and a
+    ## replacement is accepted only if it covers every assay cell.
+    if (
+      is.null(resolution$data) &&
+        isTRUE(allow_cross_semantic_fallback) &&
+        layer_name %in% .cerebro_fallback_roots
+    ) {
+      assay_cells <- SeuratObject::Cells(seurat[[assay]])
+      fallback_roots <- base::setdiff(
+        .cerebro_fallback_roots,
+        layer_name
+      )
+      for (fallback_root in fallback_roots) {
+        fallback <- .resolve_seurat_v5_layer(
+          seurat = seurat,
+          assay = assay,
+          requested_layer = fallback_root,
+          join_samples = join_samples,
+          verbose = verbose
+        )
+        if (is.null(fallback$data)) {
+          next
+        }
 
-    expression_data <- try(
-      suppressWarnings(
-        Seurat::GetAssayData(seurat, assay = assay, layer = layer_name)
-      ),
-      silent = TRUE
-    )
+        fallback_is_disk_backed <- .disk_backed_expression_matrix(
+          fallback$data
+        )
+        fallback_is_complete <- fallback_is_disk_backed ||
+          (.supported_expression_matrix(fallback$data) &&
+            setequal(colnames(fallback$data), assay_cells))
+        if (!fallback_is_complete) {
+          next
+        }
 
-    ## Seurat v5 does NOT error on a missing layer: GetAssayData(layer = "data")
-    ## on a counts-only assay returns an EMPTY matrix (0 rows/cols) plus a
-    ## warning. Treat that the same as a hard failure so the fallback path runs;
-    ## otherwise the empty matrix sails through to the downstream emptiness stop
-    ## and the object can never be exported (the counts-only v5 regression).
-    layer_unavailable <- inherits(expression_data, "try-error") ||
-      is.null(expression_data) ||
-      nrow(expression_data) == 0 ||
-      ncol(expression_data) == 0
-
-    if (layer_unavailable) {
-      if (verbose) {
-        message(
-          "[",
-          format(Sys.time(), "%H:%M:%S"),
-          "] Layer `",
+        warning(
+          "Requested layer `",
           layer_name,
           "` not found in `",
           assay,
-          "` assay."
-        )
-      }
-
-      # Only fall back to layers in the same semantic class as the request
-      # (e.g. data -> data.*, never data -> counts/scale.data), unless the
-      # caller explicitly opts into legacy cross-semantic fallback. This stops
-      # normalised/scaled values being silently returned as if they were counts.
-      fallback_candidates <- .filter_same_semantic_layers(
-        layer_name,
-        available_layers,
-        allow_cross_semantic = allow_cross_semantic_fallback
-      )
-      fallback_candidates <- setdiff(fallback_candidates, layer_name)
-      semantic_root <- .layer_semantic_root
-      for (fallback_layer in fallback_candidates) {
-        if (semantic_root(fallback_layer) != semantic_root(layer_name)) {
-          ## A cross-semantic substitution (e.g. requested `data`, served
-          ## `counts`) changes what the numbers MEAN, so surface it
-          ## unconditionally — a verbose-only message would let a
-          ## normalised-vs-raw swap pass unnoticed.
-          warning(
-            "Requested layer `",
-            layer_name,
-            "` not found in `",
-            assay,
-            "` assay; falling back to `",
-            fallback_layer,
-            "`. Values now reflect `",
-            fallback_layer,
-            "`, not `",
-            layer_name,
-            "`.",
-            call. = FALSE
-          )
-        } else if (verbose) {
-          message(
-            "[",
-            format(Sys.time(), "%H:%M:%S"),
-            "] Falling back to layer `",
-            fallback_layer,
-            "`"
-          )
-        }
-        expression_data <- suppressWarnings(
-          Seurat::GetAssayData(
-            seurat,
-            assay = assay,
-            layer = fallback_layer
-          )
-        )
-        break
-      }
-
-      ## Still unavailable if no candidate was tried (empty fallback set) or the
-      ## chosen layer came back empty — mirror the layer_unavailable test above
-      ## so an empty matrix can never masquerade as a successful fallback.
-      still_unavailable <- inherits(expression_data, "try-error") ||
-        is.null(expression_data) ||
-        nrow(expression_data) == 0 ||
-        ncol(expression_data) == 0
-
-      if (still_unavailable) {
-        stop(
-          paste0(
-            "Layer `",
-            layer_name,
-            "` could not be found in `",
-            assay,
-            "` assay, and no same-semantic fallback layer is available.\n",
-            "Available layers: ",
-            paste(available_layers, collapse = ", "),
-            "\n",
-            "Suggestions:\n",
-            "  1. Use one of the available layers listed above\n",
-            "  2. Check if the assay has been properly initialized\n",
-            "  3. Verify the assay structure using: Layers(seurat[[\"",
-            assay,
-            "\"]])\n",
-            "  4. To allow cross-semantic fallback (e.g. data -> counts), call ",
-            ".getExpressionMatrix(..., allow_cross_semantic_fallback = TRUE)"
-          ),
+          "` assay; falling back to `",
+          fallback_root,
+          "`. Values now reflect `",
+          fallback_root,
+          "`, not `",
+          layer_name,
+          "`.",
           call. = FALSE
         )
+        resolution <- fallback
+        break
       }
     }
 
-    expr_matrix <- expression_data
+    if (is.null(resolution$data)) {
+      available_layers <- SeuratObject::Layers(seurat[[assay]])
+      prefix_detail <- if (length(resolution$candidates) > 0L) {
+        paste0(
+          "Exact layer `",
+          layer_name,
+          "` is absent. Prefix-matching layers (",
+          paste(resolution$candidates, collapse = ", "),
+          ") do not form a split partition.\n"
+        )
+      } else {
+        ""
+      }
+      stop(
+        paste0(
+          prefix_detail,
+          "Layer `",
+          layer_name,
+          "` could not be found in `",
+          assay,
+          "` assay, and no same-semantic fallback layer is available.\n",
+          "Available layers: ",
+          paste(available_layers, collapse = ", "),
+          "\n",
+          "Suggestions:\n",
+          "  1. Use one of the available layers listed above\n",
+          "  2. Check if the assay has been properly initialized\n",
+          "  3. Verify the assay structure using: Layers(seurat[[\"",
+          assay,
+          "\"]])\n",
+          "  4. To allow cross-semantic fallback (e.g. data -> counts), call ",
+          ".getExpressionMatrix(..., allow_cross_semantic_fallback = TRUE)"
+        ),
+        call. = FALSE
+      )
+    }
+
+    expr_matrix <- resolution$data
   }
 
   if (is.null(expr_matrix)) {
