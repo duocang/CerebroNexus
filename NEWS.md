@@ -1,3 +1,55 @@
+# CerebroNexus 3.0.3
+
+## Export
+
+- **Split Seurat v5 objects no longer export a single sample.** `split()` names
+  an assay's layers `<root>.<level>`, but the old fallback accepted the first
+  readable layer and could pair one sample's matrix with every sample's
+  metadata. Resolution is now driven by the requested layer: an exact physical
+  name remains authoritative, otherwise candidate cell memberships must prove
+  one unique complete partition before CerebroNexus joins it on a local copy.
+  This works for sample names and arbitrary roots, ignores unrelated overlapping
+  layers, protects every custom layer matched by Seurat's own prefix search, and
+  reports ambiguous or incomplete covers instead of guessing. Incomplete
+  requested-prefix noise is returned as a structured resolution failure, so it
+  cannot short-circuit an explicitly enabled, complete compatibility fallback.
+- **Every complete-matrix consumer shares the same coverage contract.**
+  `exportFromSeurat()`, `convertSeuratToCerebro()`,
+  `calculatePercentGenes()`, `getMostExpressedGenes()`,
+  `addPercentMtRibo()`, and `performGeneSetEnrichmentAnalysis()` now resolve
+  layered assays through one gateway. The resulting matrix must contain exactly
+  the object's cells and is reordered once before analysis or storage.
+  `embedded`, `h5`, and `bpcells` therefore fail identically on partial data,
+  and conversion errors are propagated rather than printed and swallowed.
+- **Spatial export reuses the validated expression resolution.** Each image
+  intersects coordinates with the already-resolved matrix instead of resolving
+  and joining the assay again. Spatial payloads keep the requested and physical
+  layer names separately, so a warned `data` to `counts` compatibility fallback
+  cannot serialize counts while labelling them as normalized data.
+- **A disk-backed source assay says so when it is refused.** Reading a Seurat
+  object whose layers are BPCells or DelayedArray matrices is still not
+  supported. Every selected partition member is inspected, the refusal names
+  the disk-backed layer, shows how to bring every layer into memory, and points
+  out that this is unrelated to `expression_matrix_mode`, which controls how
+  the exported `.crb` stores its matrix rather than how the source object holds
+  it.
+- **A new layered-assay vignette documents the full contract.** It includes
+  troubleshooting, storage guidance, custom-root examples, and four colour
+  diagrams covering the original failure, membership-based partition proof,
+  resolver decisions, and public entry points.
+- **Prefix protection and partition proof are separate.** Seurat's broad
+  `Layers(search = "^root")` result remains the authority for everything
+  `JoinLayers()` might consume, but only `<root>.*` layers may prove the
+  requested partition. A complete nested custom root such as
+  `data.imputed.s1/s2` is semantically ambiguous when `data` is requested and
+  now fails closed instead of becoming normalized data silently.
+- **Pathological exact-cover search has deterministic work budgets.** Highly
+  overlapping prefix noise can no longer consume unbounded memory or recursion;
+  the diagnostic asks the user to rename noise or join the intended layers.
+  `convertSeuratToCerebro()` also hands its already validated resolution to
+  `exportFromSeurat()`, avoiding a second joined matrix and the corresponding
+  peak-memory duplication.
+
 # CerebroNexus 3.0.2
 
 ## Interface and documentation

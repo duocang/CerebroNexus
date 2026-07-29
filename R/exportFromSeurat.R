@@ -65,6 +65,9 @@
 #' }
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
 #' defaults to \code{FALSE}.
+#' @param .expression_resolution Internal handoff used by
+#' \code{convertSeuratToCerebro()} to reuse a matrix that has already been
+#' resolved and validated. Users should leave this as \code{NULL}.
 #'
 #' @section Immune Repertoire:
 #' If \code{object@misc$immune_repertoire} contains a named list of
@@ -122,7 +125,8 @@ exportFromSeurat <- function(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
-  verbose = FALSE
+  verbose = FALSE,
+  .expression_resolution = NULL
 ) {
   ##--------------------------------------------------------------------------##
   ## safety checks before starting to do anything
@@ -329,13 +333,56 @@ exportFromSeurat <- function(
   ## slot = "data"). Without this the export would hard-stop here — before even
   ## reaching the spatial block — on objects that exported fine on master. The
   ## fallback itself warns, so the substitution is never silent.
-  expression_data <- .getExpressionMatrix(
-    seurat = object,
+  ## Split (layered) Seurat v5 objects are joined first, matching
+  ## `convertSeuratToCerebro()`. Without it only the first sample's layer is
+  ## read: the meta data still describes every cell while the matrix describes
+  ## one sample, and the two are never compared again in the `h5` and `bpcells`
+  ## modes. `JoinLayers()` materialises the merged matrix, so a very large split
+  ## object pays one memory peak here -- the price of exporting all of it.
+  if (is.null(.expression_resolution)) {
+    expression_resolution <- .getExpressionMatrix(
+      seurat = object,
+      assay = assay,
+      slot = slot,
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = TRUE,
+      verbose = verbose,
+      return_resolution = TRUE
+    )
+  } else {
+    required_resolution_fields <- c(
+      "data",
+      "assay",
+      "requested",
+      "resolved",
+      "joined",
+      "fallback"
+    )
+    if (
+      !is.list(.expression_resolution) ||
+        !all(required_resolution_fields %in% names(.expression_resolution)) ||
+        !identical(.expression_resolution$assay, as.character(assay)) ||
+        !identical(.expression_resolution$requested, as.character(slot))
+    ) {
+      stop(
+        "`.expression_resolution` must be the validated resolution for the ",
+        "requested `assay` and `slot`. It is an internal conversion handoff; ",
+        "users should leave it as NULL.",
+        call. = FALSE
+      )
+    }
+    expression_resolution <- .expression_resolution
+  }
+
+  ## Backend-independent guard. Validate once before the storage modes diverge,
+  ## and retain both the requested and physically resolved layer in diagnostics.
+  object_cells <- Seurat::Cells(object)
+  expression_data <- .validate_expression_cells(
+    expression_data = expression_resolution$data,
+    object_cells = object_cells,
     assay = assay,
-    slot = slot,
-    join_samples = FALSE,
-    allow_cross_semantic_fallback = TRUE,
-    verbose = verbose
+    requested_layer = expression_resolution$requested,
+    resolved_layer = expression_resolution$resolved
   )
 
   if (expression_matrix_mode == "embedded") {
@@ -1168,7 +1215,9 @@ exportFromSeurat <- function(
             object,
             image = image_name,
             layer = slot,
-            assay = assay
+            assay = assay,
+            expression_data = expression_data,
+            expression_layer = expression_resolution$resolved
           )
 
           # Also add coordinates as a projection for compatibility with existing visualization functions

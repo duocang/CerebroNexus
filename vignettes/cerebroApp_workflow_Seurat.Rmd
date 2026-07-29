@@ -376,6 +376,13 @@ exportFromSeurat(
 
 The Cerebro use interface can be launched using the `launchCerebro()` function.
 
+# See also
+
+If your Seurat v5 assay is split into one layer per sample, see
+[Seurat v5 layered assays: complete and safe expression matrices](seurat_v5_layered_assays.html)
+for the automatic resolution rules, custom-layer safeguards, and troubleshooting
+steps.
+
 # Session info
 
 ```{r session_info, eval=FALSE}

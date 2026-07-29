@@ -54,6 +54,7 @@ articles:
   - title: "How-to guides"
     navbar: How-to
     contents:
+      - seurat_v5_layered_assays
       - create_a_self_contained_shiny_app
       - create_expression_matrix_in_h5_format
       - launch_cerebro_with_pre-loaded_data_set

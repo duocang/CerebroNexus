@@ -133,8 +133,23 @@ performGeneSetEnrichmentAnalysis <- function(
     )
   }
 
-  ## get data matrix using the Seurat API (works for both Assay and Assay5)
-  data_matrix <- Seurat::GetAssayData(object, assay = assay, layer = "data")
+  ## Resolve split Seurat v5 assays through the shared layer resolver. GSVA
+  ## requires normalized data and therefore never falls back to raw counts.
+  data_resolution <- .getExpressionMatrix(
+    seurat = object,
+    assay = assay,
+    slot = "data",
+    join_samples = TRUE,
+    allow_cross_semantic_fallback = FALSE,
+    return_resolution = TRUE
+  )
+  data_matrix <- .validate_expression_cells(
+    expression_data = data_resolution$data,
+    object_cells = colnames(object),
+    assay = assay,
+    requested_layer = data_resolution$requested,
+    resolved_layer = data_resolution$resolved
+  )
 
   ## check if `data` matrix exist in provided assay
   if (is.null(data_matrix) || nrow(data_matrix) == 0) {

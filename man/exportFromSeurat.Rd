@@ -19,7 +19,8 @@ exportFromSeurat(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
-  verbose = FALSE
+  verbose = FALSE,
+  .expression_resolution = NULL
 )
 }
 \arguments{
@@ -98,6 +99,10 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
 
 \item{verbose}{Set this to \code{TRUE} if you want additional log messages;
 defaults to \code{FALSE}.}
+
+\item{.expression_resolution}{Internal handoff used by
+\code{convertSeuratToCerebro()} to reuse a matrix that has already been
+resolved and validated. Users should leave this as \code{NULL}.}
 }
 \value{
 No data returned.
