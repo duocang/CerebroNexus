@@ -128,12 +128,21 @@
   }
 
   memberships <- memberships[order(names(memberships), method = "radix")]
-  layer_cells <- lapply(
-    memberships,
-    function(cells) match(cells, assay_cells)
+  membership_lengths <- lengths(memberships)
+  encoded_memberships <- match(
+    unlist(memberships, use.names = FALSE),
+    assay_cells
   )
+  membership_ends <- cumsum(membership_lengths)
+  membership_starts <- c(1L, head(membership_ends, -1L) + 1L)
+  layer_cells <- Map(
+    function(start, end) encoded_memberships[seq.int(start, end)],
+    membership_starts,
+    membership_ends
+  )
+  names(layer_cells) <- names(memberships)
   claimed <- tabulate(
-    unlist(layer_cells, use.names = FALSE),
+    encoded_memberships,
     nbins = n_cells
   )
 
@@ -292,6 +301,57 @@
   )
 }
 
+.format_layer_counts <- function(counts) {
+  counts <- counts[order(names(counts), method = "radix")]
+  paste0(names(counts), "=", counts, collapse = ", ")
+}
+
+.stop_incomplete_layer_resolution <- function(
+  resolution,
+  assay,
+  requested_layer
+) {
+  failure <- resolution$failure
+  stop(
+    "Exact layer `",
+    requested_layer,
+    "` is absent from assay `",
+    assay,
+    "`. No unique disjoint partition covers ",
+    failure$total_count,
+    " assay cells.\n",
+    "Prefix candidates: ",
+    paste(resolution$candidates, collapse = ", "),
+    "\nLayer cell counts: ",
+    .format_layer_counts(failure$candidate_counts),
+    "\nPartial candidate union covers ",
+    failure$covered_count,
+    " of ",
+    failure$total_count,
+    " assay cells; ",
+    failure$overlap_count,
+    " cell(s) occur in more than one candidate.\n",
+    "Missing assay cells (",
+    failure$missing_count,
+    "): ",
+    if (failure$missing_count == 0L) {
+      "none"
+    } else {
+      paste(failure$missing_examples, collapse = ", ")
+    },
+    "\nInspect with:\n",
+    "  SeuratObject::Layers(object[[\"",
+    assay,
+    "\"]])\n",
+    "  SeuratObject::Cells(object[[\"",
+    assay,
+    "\"]], layer = \"<layer>\")\n",
+    "Rename unrelated prefix layers or join the intended representation ",
+    "explicitly.",
+    call. = FALSE
+  )
+}
+
 #' Resolve one requested Seurat v5 layer
 #'
 #' Exact physical layers are authoritative. If an exact root is absent,
@@ -345,6 +405,7 @@
   partition <- .find_layer_partition(assay_cells, memberships)
 
   if (identical(partition$status, "ambiguous")) {
+    candidate_counts <- lengths(memberships)
     stop(
       "Layer `",
       requested_layer,
@@ -355,6 +416,17 @@
       ". Refusing to choose one silently.\n",
       "Prefix candidates: ",
       paste(candidates, collapse = ", "),
+      "\nLayer cell counts: ",
+      .format_layer_counts(candidate_counts),
+      "\nInspect candidates with:\n",
+      "  SeuratObject::Layers(object[[\"",
+      assay,
+      "\"]])\n",
+      "  SeuratObject::Cells(object[[\"",
+      assay,
+      "\"]], layer = \"<layer>\")\n",
+      "Rename unrelated prefix layers or join the intended representation ",
+      "explicitly.",
       call. = FALSE
     )
   }
@@ -364,25 +436,23 @@
       lengths(memberships) < length(assay_cells)
   ]
   if (identical(partition$status, "none")) {
+    failure <- NULL
     if (length(partial_candidates) > 0L) {
-      covered_cells <- unique(unlist(
-        memberships[partial_candidates],
-        use.names = FALSE
-      ))
-      stop(
-        "Exact layer `",
-        requested_layer,
-        "` is absent from assay `",
-        assay,
-        "`. No unique disjoint partition covers the assay cells.\n",
-        "Prefix candidates: ",
-        paste(candidates, collapse = ", "),
-        "\nThese candidates cover ",
-        length(covered_cells),
-        " of the object's ",
-        length(assay_cells),
-        " cells, so JoinLayers cannot create a complete matrix.",
-        call. = FALSE
+      candidate_claims <- tabulate(
+        match(
+          unlist(memberships[partial_candidates], use.names = FALSE),
+          assay_cells
+        ),
+        nbins = length(assay_cells)
+      )
+      missing_cells <- assay_cells[candidate_claims == 0L]
+      failure <- list(
+        candidate_counts = lengths(memberships),
+        covered_count = sum(candidate_claims > 0L),
+        total_count = length(assay_cells),
+        overlap_count = sum(candidate_claims > 1L),
+        missing_count = length(missing_cells),
+        missing_examples = utils::head(missing_cells, 5L)
       )
     }
     return(list(
@@ -390,7 +460,8 @@
       requested = requested_layer,
       resolved = NULL,
       joined = FALSE,
-      candidates = candidates
+      candidates = candidates,
+      failure = failure
     ))
   }
 
@@ -733,6 +804,17 @@
         resolution <- fallback
         break
       }
+    }
+
+    if (
+      is.null(resolution$data) &&
+        !is.null(resolution$failure)
+    ) {
+      .stop_incomplete_layer_resolution(
+        resolution = resolution,
+        assay = assay,
+        requested_layer = layer_name
+      )
     }
 
     if (is.null(resolution$data)) {
