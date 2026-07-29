@@ -120,12 +120,13 @@ test_that("spatial extraction can reuse an already resolved matrix", {
   object <- make_public_layered_object()
   object$x <- seq_len(ncol(object))
   object$y <- rev(seq_len(ncol(object)))
-  expression <- .getExpressionMatrix(
+  resolution <- .getExpressionMatrix(
     seurat = object,
     assay = "RNA",
     slot = "data",
     join_samples = TRUE,
-    allow_cross_semantic_fallback = FALSE
+    allow_cross_semantic_fallback = FALSE,
+    return_resolution = TRUE
   )
 
   expect_no_error(
@@ -135,13 +136,59 @@ test_that("spatial extraction can reuse an already resolved matrix", {
       assay = "RNA",
       coord_source = "metadata",
       coord_cols = c("x", "y"),
-      expression_data = expression
+      expression_data = resolution$data,
+      expression_layer = resolution$resolved
     )
   )
 
   expect_equal(ncol(spatial$expression), ncol(object))
   expect_setequal(colnames(spatial$expression), colnames(object))
   expect_identical(rownames(spatial$coordinates), colnames(object))
+  expect_identical(spatial$requested_layer, "data")
+  expect_identical(spatial$layer, resolution$resolved)
+})
+
+test_that("spatial payload records a cross-semantic fallback honestly", {
+  skip_if_no_layered_seurat()
+  counts <- matrix(
+    seq_len(24),
+    nrow = 4,
+    dimnames = list(
+      paste0("g", seq_len(4)),
+      paste0("c", seq_len(6))
+    )
+  )
+  object <- suppressWarnings(
+    Seurat::CreateSeuratObject(counts = counts)
+  )
+  object$x <- seq_len(ncol(object))
+  object$y <- rev(seq_len(ncol(object)))
+
+  expect_warning(
+    resolution <- .getExpressionMatrix(
+      seurat = object,
+      assay = "RNA",
+      slot = "data",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = TRUE,
+      return_resolution = TRUE
+    ),
+    "falling back to `counts`",
+    fixed = TRUE
+  )
+
+  spatial <- .getSpatialData(
+    object = object,
+    layer = resolution$requested,
+    assay = "RNA",
+    coord_source = "metadata",
+    coord_cols = c("x", "y"),
+    expression_data = resolution$data,
+    expression_layer = resolution$resolved
+  )
+
+  expect_identical(spatial$requested_layer, "data")
+  expect_identical(spatial$layer, "counts")
 })
 
 test_that("public consumers do not cross semantic classes", {

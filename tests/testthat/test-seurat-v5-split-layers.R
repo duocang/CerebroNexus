@@ -770,6 +770,39 @@ test_that("a disk-backed assay is refused with the reason, not just a class", {
   expect_setequal(colnames(materialised), colnames(dense))
 })
 
+test_that("every selected split layer is checked for disk-backed storage", {
+  skip_if_not_installed("BPCells")
+
+  obj <- make_split_object(c("s1", "s2"))
+  disk_layer <- SeuratObject::LayerData(
+    obj[["RNA"]],
+    layer = "counts.s2"
+  )
+  matrix_dir <- file.path(withr::local_tempdir(), "counts-s2")
+  BPCells::write_matrix_dir(
+    methods::as(disk_layer, "IterableMatrix"),
+    dir = matrix_dir
+  )
+  SeuratObject::LayerData(
+    obj[["RNA"]],
+    layer = "counts.s2"
+  ) <- BPCells::open_matrix_dir(dir = matrix_dir)
+
+  err <- tryCatch(
+    .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "counts",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = TRUE
+    ),
+    error = function(e) conditionMessage(e)
+  )
+
+  expect_true(grepl("lives on disk", err, fixed = TRUE))
+  expect_true(grepl("counts.s2", err, fixed = TRUE))
+})
+
 test_that("exporting one named split layer fails on the cell count, clearly", {
   ## Honouring the request above means the export then holds a matrix covering
   ## one sample, which is exactly what the cell-count check exists to refuse --
@@ -836,4 +869,28 @@ test_that("a partial expression matrix is rejected identically in every mode", {
   ## the same defect must not report itself differently depending on where the
   ## matrix was headed
   expect_equal(length(unique(messages)), 1L)
+})
+
+test_that("convertSeuratToCerebro propagates export failures", {
+  obj <- make_split_object(c("s1", "s2"))
+  out_dir <- withr::local_tempdir()
+
+  expect_error(
+    convertSeuratToCerebro(
+      seurat_file = obj,
+      result_dir = out_dir,
+      assay = "RNA",
+      slot = "data.s1",
+      experiment_name = "partial split",
+      organism = "mm",
+      groups = c("sample", "cluster"),
+      nUMI = "nCount_RNA",
+      nGene = "nFeature_RNA",
+      add_most_expressed_genes = FALSE,
+      verbose = FALSE
+    ),
+    "Error processing <Seurat:partial split>",
+    fixed = TRUE
+  )
+  expect_length(list.files(out_dir, pattern = "\\.crb$"), 0L)
 })
