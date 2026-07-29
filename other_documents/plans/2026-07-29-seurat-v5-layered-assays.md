@@ -129,6 +129,13 @@ Add `skip_on_cran()`, but do not skip in repository CI.
 Expected red result: helper missing. The final test would also reject the old
 quadratic implementation if it were wired into this interface.
 
+Add a second scale-shaped regression with 2,000 singleton layers:
+
+- the ordinary disjoint partition must stay on the linear fast path;
+- adding one overlapping noise layer must enter exact-cover search;
+- search must stop with the depth-budget diagnostic before R raises
+  `node stack overflow`.
+
 ### 1.3 Implement membership encoding and the linear fast path
 
 In `R/seurat_utils.R`, implement:
@@ -137,7 +144,10 @@ In `R/seurat_utils.R`, implement:
 .find_layer_partition <- function(
   assay_cells,
   memberships,
-  max_solutions = 2L
+  max_solutions = 2L,
+  max_search_nodes = 100000L,
+  max_search_depth = 128L,
+  max_conflict_work = 5000000L
 )
 ```
 
@@ -164,6 +174,11 @@ recursion.
 
 Stop after `max_solutions`, default two. Return ambiguity rather than the first
 solution.
+
+Bound conflict-index work, visited search nodes, and recursion depth
+independently. Check the depth budget before making the next recursive call;
+budget exhaustion must produce an actionable error rather than a partial
+partition or an R call-stack failure.
 
 ### 1.5 Push green implementation
 

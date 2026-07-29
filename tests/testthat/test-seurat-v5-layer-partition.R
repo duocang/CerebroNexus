@@ -222,7 +222,11 @@ test_that("pathological overlap stops at deterministic work budgets", {
     "budget"
   )
 
-  for (argument in c("max_search_nodes", "max_conflict_work")) {
+  for (argument in c(
+    "max_search_nodes",
+    "max_search_depth",
+    "max_conflict_work"
+  )) {
     values <- list(0, Inf, 1.5, "1", numeric())
     for (invalid in values) {
       args <- list(
