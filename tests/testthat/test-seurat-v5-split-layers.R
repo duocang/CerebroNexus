@@ -97,6 +97,28 @@ add_custom_partition <- function(
   )
 }
 
+make_incomplete_requested_root <- function() {
+  object <- make_split_object(c("s1", "s2"))
+  partial_data <- SeuratObject::LayerData(
+    object[["RNA"]],
+    layer = "data.s1"
+  )
+  for (layer in grep(
+    "^data",
+    SeuratObject::Layers(object[["RNA"]]),
+    value = TRUE
+  )) {
+    suppressWarnings(
+      SeuratObject::LayerData(object[["RNA"]], layer = layer) <- NULL
+    )
+  }
+  SeuratObject::LayerData(
+    object[["RNA"]],
+    layer = "data.imputed"
+  ) <- partial_data
+  object
+}
+
 export_args <- function(object, file, ...) {
   c(
     list(
@@ -554,6 +576,55 @@ test_that("cross-semantic fallback resolves a split replacement root", {
   )
   expect_equal(ncol(matrix_out), ncol(obj))
   expect_setequal(colnames(matrix_out), colnames(obj))
+})
+
+test_that("incomplete requested-prefix noise does not block compatibility", {
+  obj <- make_incomplete_requested_root()
+
+  expect_warning(
+    resolution <- .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "data",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = TRUE,
+      return_resolution = TRUE
+    ),
+    "falling back to `counts`",
+    fixed = TRUE
+  )
+
+  expect_identical(resolution$requested, "data")
+  expect_identical(resolution$resolved, "counts")
+  expect_equal(ncol(resolution$data), ncol(obj))
+  expect_setequal(colnames(resolution$data), colnames(obj))
+})
+
+test_that("strict incomplete-root errors carry actionable diagnostics", {
+  obj <- make_incomplete_requested_root()
+
+  err <- tryCatch(
+    .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "data",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = FALSE
+    ),
+    error = function(e) conditionMessage(e)
+  )
+
+  expect_true(grepl(
+    "Layer cell counts: data.imputed=10",
+    err,
+    fixed = TRUE
+  ))
+  expect_true(grepl("Missing assay cells (10):", err, fixed = TRUE))
+  expect_true(grepl(
+    "SeuratObject::Cells",
+    err,
+    fixed = TRUE
+  ))
 })
 
 test_that("resolving a partition leaves every caller layer unchanged", {
