@@ -239,6 +239,31 @@ test_that("pathological overlap stops at deterministic work budgets", {
   }
 })
 
+test_that("deep conflicting partitions stop before exhausting R's call stack", {
+  n_layers <- 2000L
+  cells <- paste0("c", seq_len(n_layers))
+  singleton_partition <- as.list(cells)
+  names(singleton_partition) <- paste0(
+    "data.sample_",
+    seq_len(n_layers)
+  )
+
+  ## A large ordinary partition must stay on the non-recursive linear path.
+  result <- .find_layer_partition(cells, singleton_partition)
+  expect_identical(result$status, "unique")
+  expect_setequal(result$layers, names(singleton_partition))
+
+  ## One overlapping prefix candidate activates exact-cover search. The valid
+  ## solution is still roughly 2,000 layers deep, so an unguarded recursive
+  ## implementation reaches R's call-stack limit before its node budget.
+  memberships <- singleton_partition
+  memberships[["data.noise"]] <- cells[1:2]
+  expect_error(
+    .find_layer_partition(cells, memberships),
+    "search depth budget exceeded"
+  )
+})
+
 test_that("the normal partition path scales to 50000 cells", {
   skip_on_cran()
 
