@@ -211,6 +211,61 @@ test_that("a full-cell custom layer is excluded from a real split join", {
   expect_equal(matrix_out, joined_data)
 })
 
+test_that("Seurat-prefix custom layers are excluded from a real split join", {
+  for (custom_name in c("data_imputed", "dataBackup")) {
+    obj <- make_split_object(c("s1", "s2"))
+    obj[["RNA"]] <- SeuratObject::JoinLayers(obj[["RNA"]])
+    joined_data <- SeuratObject::LayerData(obj[["RNA"]], layer = "data")
+    custom_data <- joined_data
+    custom_data@x <- custom_data@x + 100
+    SeuratObject::LayerData(
+      obj[["RNA"]],
+      layer = custom_name
+    ) <- custom_data
+    obj[["RNA"]] <- split(obj[["RNA"]], f = obj$sample)
+
+    expect_no_error(
+      matrix_out <- .getExpressionMatrix(
+        seurat = obj,
+        assay = "RNA",
+        slot = "data",
+        join_samples = TRUE,
+        allow_cross_semantic_fallback = TRUE
+      )
+    )
+    expect_equal(matrix_out, joined_data, info = custom_name)
+  }
+})
+
+test_that("an unrelated partial layer does not hide a real split partition", {
+  obj <- make_split_object(c("s1", "s2"))
+  joined <- SeuratObject::JoinLayers(obj[["RNA"]])
+  joined_data <- SeuratObject::LayerData(joined, layer = "data")
+  custom_cells <- c(
+    colnames(obj)[obj$sample == "s1"][1:3],
+    colnames(obj)[obj$sample == "s2"][1:3]
+  )
+  custom_data <- joined_data[, custom_cells, drop = FALSE]
+  custom_data@x <- custom_data@x + 100
+  SeuratObject::LayerData(
+    obj[["RNA"]],
+    layer = "data.imputed"
+  ) <- custom_data
+
+  expect_no_error(
+    matrix_out <- .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "data",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = TRUE
+    )
+  )
+  expect_equal(ncol(matrix_out), ncol(obj))
+  expect_setequal(colnames(matrix_out), colnames(obj))
+  expect_equal(matrix_out, joined_data)
+})
+
 ## ---------------------------------------------------------------------------
 ## Export entry point
 ## ---------------------------------------------------------------------------
