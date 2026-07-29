@@ -134,7 +134,7 @@
     assay_cells
   )
   membership_ends <- cumsum(membership_lengths)
-  membership_starts <- c(1L, head(membership_ends, -1L) + 1L)
+  membership_starts <- c(1L, utils::head(membership_ends, -1L) + 1L)
   layer_cells <- Map(
     function(start, end) encoded_memberships[seq.int(start, end)],
     membership_starts,
@@ -347,7 +347,7 @@
     assay,
     "\"]], layer = \"<layer>\")\n",
     "Rename unrelated prefix layers or join the intended representation ",
-    "explicitly.",
+    "explicitly with SeuratObject::JoinLayers().",
     call. = FALSE
   )
 }

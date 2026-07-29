@@ -897,13 +897,21 @@ test_that("exporting one named split layer fails on the cell count, clearly", {
 
 test_that("a partial expression matrix is rejected identically in every mode", {
   ## An assay can hold a layer that covers only part of the object -- here by
-  ## dropping one sample's counts before joining. Joining then yields a `counts`
-  ## layer for half the cells, which no amount of layer-name matching can fix.
+  ## dropping one sample's counts and every complete compatibility replacement.
   ## The export has to refuse it rather than pair it with a full meta data table.
   obj <- make_split_object(c("s1", "s2"))
   suppressWarnings(
     SeuratObject::LayerData(obj[["RNA"]], layer = "counts.s2") <- NULL
   )
+  for (layer in grep(
+    "^data",
+    SeuratObject::Layers(obj[["RNA"]]),
+    value = TRUE
+  )) {
+    suppressWarnings(
+      SeuratObject::LayerData(obj[["RNA"]], layer = layer) <- NULL
+    )
+  }
 
   out_dir <- file.path(tempdir(), "split_layers_partial")
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
