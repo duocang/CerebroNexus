@@ -335,51 +335,26 @@ exportFromSeurat <- function(
   ## one sample, and the two are never compared again in the `h5` and `bpcells`
   ## modes. `JoinLayers()` materialises the merged matrix, so a very large split
   ## object pays one memory peak here -- the price of exporting all of it.
-  expression_data <- .getExpressionMatrix(
+  expression_resolution <- .getExpressionMatrix(
     seurat = object,
     assay = assay,
     slot = slot,
     join_samples = TRUE,
     allow_cross_semantic_fallback = TRUE,
-    verbose = verbose
+    verbose = verbose,
+    return_resolution = TRUE
   )
 
-  ## Backend-independent guard. `embedded` used to catch a short matrix by
-  ## accident, in `setMetaData()`, and reported it as a meta data problem;
-  ## `h5` and `bpcells` never populate `self$expression` and so caught nothing
-  ## at all, writing a .crb whose meta data and matrix disagree. Check here,
-  ## once, before the modes diverge, so every mode fails the same way.
+  ## Backend-independent guard. Validate once before the storage modes diverge,
+  ## and retain both the requested and physically resolved layer in diagnostics.
   object_cells <- Seurat::Cells(object)
-  if (!setequal(colnames(expression_data), object_cells)) {
-    stop(
-      "Expression matrix covers ",
-      ncol(expression_data),
-      " of the object's ",
-      length(object_cells),
-      " cells.\n",
-      "This usually means the object is a split (layered) Seurat v5 object ",
-      "whose layers could not be merged.\n",
-      "Suggestions:\n",
-      "  1. Join the layers before exporting: object <- ",
-      "SeuratObject::JoinLayers(object, assay = \"",
-      assay,
-      "\")\n",
-      "  2. Inspect the layers with: Layers(object[[\"",
-      assay,
-      "\"]])\n",
-      "  3. Check that the requested slot (`",
-      slot,
-      "`) exists for every cell, not just some samples",
-      call. = FALSE
-    )
-  }
-  ## Meta data, projections and every other table are built from `Cells(object)`
-  ## further down; line the matrix up with them rather than trusting the layer
-  ## order, which `JoinLayers()` groups by sample. Guarded because reordering
-  ## copies the whole matrix, and an unsplit object already arrives in order.
-  if (!identical(colnames(expression_data), object_cells)) {
-    expression_data <- expression_data[, object_cells, drop = FALSE]
-  }
+  expression_data <- .validate_expression_cells(
+    expression_data = expression_resolution$data,
+    object_cells = object_cells,
+    assay = assay,
+    requested_layer = expression_resolution$requested,
+    resolved_layer = expression_resolution$resolved
+  )
 
   if (expression_matrix_mode == "embedded") {
     ## convert expression data to "RleArray" if requested, if it is "dgCMatrix" or
@@ -1211,7 +1186,8 @@ exportFromSeurat <- function(
             object,
             image = image_name,
             layer = slot,
-            assay = assay
+            assay = assay,
+            expression_data = expression_data
           )
 
           # Also add coordinates as a projection for compatibility with existing visualization functions

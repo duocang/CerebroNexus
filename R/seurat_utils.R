@@ -74,16 +74,20 @@
       call. = FALSE
     )
   }
-  if (
-    length(max_solutions) != 1L ||
-      is.na(max_solutions) ||
-      max_solutions < 2L
-  ) {
+  valid_max_solutions <- is.numeric(max_solutions) &&
+    length(max_solutions) == 1L &&
+    is.finite(max_solutions) &&
+    max_solutions == floor(max_solutions) &&
+    max_solutions >= 2 &&
+    max_solutions <= .Machine$integer.max
+  if (!valid_max_solutions) {
     stop(
-      "`max_solutions` must be a single integer of at least 2.",
+      "`max_solutions` must be one finite integer of at least 2.",
       call. = FALSE
     )
   }
+  max_solutions <- as.integer(max_solutions)
+  assay_cells <- sort(assay_cells, method = "radix")
 
   memberships <- lapply(
     memberships,
@@ -122,7 +126,7 @@
     ))
   }
 
-  memberships <- memberships[order(names(memberships))]
+  memberships <- memberships[order(names(memberships), method = "radix")]
   layer_cells <- lapply(
     memberships,
     function(cells) match(cells, assay_cells)
@@ -169,7 +173,7 @@
     if (all(covered)) {
       if (length(chosen) >= 2L) {
         solutions[[length(solutions) + 1L]] <<-
-          sort(names(layer_cells)[chosen])
+          sort(names(layer_cells)[chosen], method = "radix")
       }
       return(invisible(NULL))
     }
@@ -232,7 +236,7 @@
     collapse = "\r",
     FUN.VALUE = character(1)
   )
-  solutions <- solutions[order(solution_keys)]
+  solutions <- solutions[order(solution_keys, method = "radix")]
   if (length(solutions) == 1L) {
     return(list(
       status = "unique",
@@ -244,7 +248,7 @@
   list(
     status = "ambiguous",
     layers = character(),
-    solutions = solutions[seq_len(max_solutions)]
+    solutions = solutions
   )
 }
 
@@ -502,6 +506,92 @@
   available_layers[root_of(available_layers) == requested_root]
 }
 
+#' Validate expression-matrix cell coverage and order
+#'
+#' @keywords internal
+#' @noRd
+.validate_expression_cells <- function(
+  expression_data,
+  object_cells,
+  assay,
+  requested_layer,
+  resolved_layer = requested_layer
+) {
+  matrix_cells <- colnames(expression_data)
+  if (
+    is.null(matrix_cells) ||
+      length(matrix_cells) == 0L ||
+      anyNA(matrix_cells) ||
+      any(!nzchar(matrix_cells)) ||
+      anyDuplicated(matrix_cells)
+  ) {
+    stop(
+      "Expression matrix must have unique, non-empty cell names.\n",
+      "Assay `",
+      assay,
+      "`, requested `",
+      requested_layer,
+      "`, resolved `",
+      resolved_layer,
+      "`.",
+      call. = FALSE
+    )
+  }
+  if (
+    !is.character(object_cells) ||
+      length(object_cells) == 0L ||
+      anyNA(object_cells) ||
+      any(!nzchar(object_cells)) ||
+      anyDuplicated(object_cells)
+  ) {
+    stop(
+      "`object_cells` must contain unique, non-empty cell names.",
+      call. = FALSE
+    )
+  }
+
+  missing_cells <- base::setdiff(object_cells, matrix_cells)
+  unexpected_cells <- base::setdiff(matrix_cells, object_cells)
+  if (length(missing_cells) > 0L || length(unexpected_cells) > 0L) {
+    format_examples <- function(cells) {
+      if (length(cells) == 0L) {
+        return("none")
+      }
+      paste(utils::head(cells, 5L), collapse = ", ")
+    }
+    stop(
+      "Expression matrix cell coverage mismatch for assay `",
+      assay,
+      "` (requested `",
+      requested_layer,
+      "`, resolved `",
+      resolved_layer,
+      "`).\n",
+      "Missing object cells (",
+      length(missing_cells),
+      "): ",
+      format_examples(missing_cells),
+      "\n",
+      "Unexpected matrix cells (",
+      length(unexpected_cells),
+      "): ",
+      format_examples(unexpected_cells),
+      "\n",
+      "The matrix covers ",
+      length(matrix_cells),
+      " of the object's ",
+      length(object_cells),
+      " cells. Inspect the assay layers and JoinLayers result before continuing.",
+      call. = FALSE
+    )
+  }
+
+  if (identical(matrix_cells, object_cells)) {
+    return(expression_data)
+  }
+  expression_data[, object_cells, drop = FALSE]
+}
+
 #' @keywords internal
 #' @noRd
 .getExpressionMatrix <- function(
@@ -510,10 +600,21 @@
   slot = "data",
   join_samples = TRUE,
   allow_cross_semantic_fallback = FALSE,
-  verbose = FALSE
+  verbose = FALSE,
+  return_resolution = FALSE
 ) {
+  if (
+    !is.logical(return_resolution) ||
+      length(return_resolution) != 1L ||
+      is.na(return_resolution)
+  ) {
+    stop("`return_resolution` must be TRUE or FALSE.", call. = FALSE)
+  }
   seurat_version <- as.character(utils::packageVersion("Seurat"))
   is_seurat_v5 <- utils::compareVersion(seurat_version, "5.0.0") >= 0
+  requested_layer <- as.character(slot)
+  resolved_layer <- requested_layer
+  joined_layers <- FALSE
 
   if (!is_seurat_v5) {
     expr_matrix <- tryCatch(
@@ -666,6 +767,8 @@
     }
 
     expr_matrix <- resolution$data
+    resolved_layer <- resolution$resolved
+    joined_layers <- isTRUE(resolution$joined)
   }
 
   if (is.null(expr_matrix)) {
@@ -788,6 +891,15 @@
     )
   }
 
+  if (isTRUE(return_resolution)) {
+    return(list(
+      data = expr_matrix,
+      requested = requested_layer,
+      resolved = resolved_layer,
+      joined = joined_layers,
+      fallback = !identical(requested_layer, resolved_layer)
+    ))
+  }
   return(expr_matrix)
 }
 
@@ -865,7 +977,8 @@
   image_policy = c("first", "all"),
   allow_molecule_fallback = FALSE,
   warn_on_image_overlap = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  expression_data = NULL
 ) {
   coord_source <- match.arg(coord_source)
   image_policy <- match.arg(image_policy)
@@ -1217,7 +1330,9 @@
   }
 
   # 1. Expression matrix ------------------------------------------------------
-  if (exists(".getExpressionMatrix", mode = "function")) {
+  if (!is.null(expression_data)) {
+    expr_data <- expression_data
+  } else if (exists(".getExpressionMatrix", mode = "function")) {
     expr_data <- .getExpressionMatrix(
       seurat = object,
       assay = assay,
