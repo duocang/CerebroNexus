@@ -100,6 +100,24 @@ test_that("ambiguous solutions are deterministic across candidate order", {
   expect_identical(forward, reverse)
 })
 
+test_that("ambiguous examples are independent of assay-cell order", {
+  cells <- paste0("c", seq_len(4))
+  memberships <- list(
+    "data.a" = cells[c(1, 2)],
+    "data.z" = cells[c(3, 4)],
+    "data.b" = cells[c(1, 3)],
+    "data.y" = cells[c(2, 4)],
+    "data.c" = cells[c(1, 4)],
+    "data.x" = cells[c(2, 3)]
+  )
+
+  forward <- .find_layer_partition(cells, memberships)
+  reverse <- .find_layer_partition(rev(cells), memberships)
+
+  expect_identical(forward$status, "ambiguous")
+  expect_identical(forward, reverse)
+})
+
 test_that("partition resolution is independent of candidate order", {
   cells <- paste0("c", seq_len(12))
   memberships <- list(
@@ -145,6 +163,39 @@ test_that("structurally invalid memberships fail rather than disappear", {
   )
 })
 
+test_that("solution caps are finite integers and never pad results", {
+  cells <- paste0("c", seq_len(4))
+  memberships <- list(
+    "data.a" = cells[c(1, 2)],
+    "data.z" = cells[c(3, 4)],
+    "data.b" = cells[c(1, 3)],
+    "data.y" = cells[c(2, 4)],
+    "data.c" = cells[c(1, 4)],
+    "data.x" = cells[c(2, 3)]
+  )
+
+  result <- .find_layer_partition(
+    cells,
+    memberships,
+    max_solutions = 5L
+  )
+  expect_identical(result$status, "ambiguous")
+  expect_length(result$solutions, 3L)
+  expect_false(any(vapply(result$solutions, is.null, logical(1))))
+
+  for (invalid in list(Inf, NaN, 2.5, "2", numeric())) {
+    expect_error(
+      .find_layer_partition(
+        cells,
+        memberships,
+        max_solutions = invalid
+      ),
+      "finite integer",
+      info = paste(invalid, collapse = ", ")
+    )
+  }
+})
+
 test_that("the normal partition path scales to 50000 cells", {
   skip_on_cran()
 
@@ -163,5 +214,33 @@ test_that("the normal partition path scales to 50000 cells", {
 
   expect_identical(result$status, "unique")
   expect_setequal(result$layers, names(groups))
+  expect_lt(elapsed, 15)
+})
+
+test_that("overlapping noise stays scalable on a large partition", {
+  skip_on_cran()
+
+  n_cells <- 50000L
+  n_layers <- 8L
+  cells <- paste0("c", seq_len(n_cells))
+  groups <- split(
+    cells,
+    rep(seq_len(n_layers), length.out = n_cells)
+  )
+  names(groups) <- paste0("data.sample_", seq_len(n_layers))
+  groups[["data.corrected"]] <- c(
+    utils::head(groups[[1L]], 2500L),
+    utils::head(groups[[2L]], 2500L)
+  )
+
+  elapsed <- system.time(
+    result <- .find_layer_partition(cells, groups)
+  )[["elapsed"]]
+
+  expect_identical(result$status, "unique")
+  expect_setequal(
+    result$layers,
+    paste0("data.sample_", seq_len(n_layers))
+  )
   expect_lt(elapsed, 15)
 })
