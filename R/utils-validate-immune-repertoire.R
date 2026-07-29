@@ -177,24 +177,35 @@
     ## The message stays neutral about the cause, because both explanations are
     ## common and the data cannot tell them apart.
     if (total_overlap == 0) {
-      overlap_message <- paste0(
-        source_label,
-        " shares no barcode with the object's cells: 0 of ",
-        length(repertoire_barcodes),
-        " repertoire barcodes match any of ",
-        length(cell_barcodes),
-        " cell names, so no receptor can be tied to a cell. ",
-        "Either the barcodes are prefixed differently -- combineTCR(samples = ) ",
-        "and combineBCR(samples = ) prefix them with the sample name, which ",
-        "then has to be on the cell names too via SeuratObject::RenameCells() ",
-        "-- or the object was subset after the repertoire was built, leaving a ",
-        "repertoire for cells that are no longer present. ",
-        "Repertoire barcodes look like: ",
-        paste(utils::head(repertoire_barcodes, 2), collapse = ", "),
-        "; cell names look like: ",
-        paste(utils::head(cell_barcodes, 2), collapse = ", "),
-        "."
-      )
+      overlap_message <- if (length(repertoire_barcodes) == 0) {
+        ## No barcodes at all is a different problem from barcodes that do not
+        ## line up, and the explanations below would all be wrong for it.
+        paste0(
+          source_label,
+          " carries no barcodes at all: every entry's `barcode` column is ",
+          "empty, so nothing can be tied to a cell."
+        )
+      } else {
+        paste0(
+          source_label,
+          " shares no barcode with the object's cells: 0 of ",
+          length(repertoire_barcodes),
+          " repertoire barcodes match any of ",
+          length(cell_barcodes),
+          " cell names, so no receptor can be tied to a cell. ",
+          "Common causes: the barcodes are prefixed differently -- ",
+          "combineTCR(samples = ) and combineBCR(samples = ) prefix them with ",
+          "the sample name, which then has to be on the cell names too via ",
+          "SeuratObject::RenameCells(); the object was subset after the ",
+          "repertoire was built, leaving a repertoire for cells that are no ",
+          "longer present; or the two differ only by a suffix such as `-1`. ",
+          "Repertoire barcodes look like: ",
+          paste(utils::head(repertoire_barcodes, 2), collapse = ", "),
+          "; cell names look like: ",
+          paste(utils::head(cell_barcodes, 2), collapse = ", "),
+          "."
+        )
+      }
       if (identical(zero_overlap, "error")) {
         stop(overlap_message, call. = FALSE)
       }
@@ -205,7 +216,15 @@
     ## after the repertoire is combined. A whole sample matching nothing while
     ## its neighbours match is not: that is a naming problem confined to one
     ## sample, and it would leave that sample silently empty.
-    empty_samples <- sample_names[per_sample_overlap == 0]
+    ##
+    ## Only when some sample did match. With no overlap at all every sample is
+    ## empty, the message above already said so, and saying "while the other
+    ## samples' are not" would be false.
+    empty_samples <- if (total_overlap > 0) {
+      sample_names[per_sample_overlap == 0]
+    } else {
+      character()
+    }
     if (length(empty_samples) > 0) {
       warning(
         source_label,

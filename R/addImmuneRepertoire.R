@@ -247,14 +247,37 @@
     "filtered_contig_annotations.csv",
     "all_contig_annotations.csv"
   )
+  ## `dirname()` answers "." for a bare file name and "" at the filesystem
+  ## root, neither of which is a sample. Resolve the path first so that
+  ## `filtered_contig_annotations.csv`, run from inside the sample's own
+  ## directory, still finds that directory's name.
+  parent_of <- function(p) {
+    parent <- basename(dirname(p))
+    unusable <- parent %in% c(".", "..", "", "/", "~")
+    if (any(unusable)) {
+      parent[unusable] <- basename(dirname(normalizePath(
+        p[unusable],
+        mustWork = FALSE
+      )))
+    }
+    parent
+  }
+
   sample_names <- tools::file_path_sans_ext(basename(paths))
   from_cellranger <- basename(paths) %in% standard_names
-  sample_names[from_cellranger] <- basename(dirname(paths[from_cellranger]))
+  sample_names[from_cellranger] <- parent_of(paths[from_cellranger])
 
   ## Renamed files can still collide with each other; the directory is the
   ## next best guess for all of them.
   if (anyDuplicated(sample_names)) {
-    sample_names <- basename(dirname(paths))
+    sample_names <- parent_of(paths)
+  }
+  if (any(!nzchar(sample_names) | sample_names %in% c(".", "..", "/"))) {
+    stop(
+      "Could not derive a sample name from the contig file path(s). ",
+      "Pass `sample_names` explicitly.",
+      call. = FALSE
+    )
   }
   if (anyDuplicated(sample_names)) {
     stop(

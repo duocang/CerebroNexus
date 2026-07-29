@@ -468,3 +468,29 @@ test_that("names that cannot be told apart ask for sample_names", {
   )
   expect_error(.deriveContigSampleNames(paths), "sample_names")
 })
+
+test_that("a bare Cell Ranger path resolves to its real directory", {
+  ## `dirname("filtered_contig_annotations.csv")` is "." -- a sample called "."
+  ## would be prefixed onto every barcode and match nothing.
+  root <- withr::local_tempdir()
+  donor <- file.path(root, "donorA")
+  dir.create(donor)
+  writeLines("x", file.path(donor, "filtered_contig_annotations.csv"))
+
+  withr::local_dir(donor)
+  expect_identical(
+    .deriveContigSampleNames("filtered_contig_annotations.csv"),
+    "donorA"
+  )
+  expect_identical(
+    .deriveContigSampleNames("./filtered_contig_annotations.csv"),
+    "donorA"
+  )
+})
+
+test_that("a path with no usable directory asks for sample_names", {
+  expect_error(
+    .deriveContigSampleNames("/filtered_contig_annotations.csv"),
+    "sample_names"
+  )
+})

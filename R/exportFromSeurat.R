@@ -304,10 +304,17 @@ exportFromSeurat <- function(
   artifact_rollback_needed <- FALSE
   on.exit(
     {
+      artifact_unrestored <- character()
       if (artifact_rollback_needed) {
-        .restoreExportArtifacts(artifact_layout)
+        artifact_unrestored <- .restoreExportArtifacts(artifact_layout)
       }
-      .cleanupExportArtifactLayout(artifact_layout)
+      ## Anything the rollback could not put back exists only in the backup
+      ## directory now, and RECOVERY.txt in there says where it belongs.
+      ## Deleting it would turn a failed export into lost data.
+      .cleanupExportArtifactLayout(
+        artifact_layout,
+        keep_backup = length(artifact_unrestored) > 0
+      )
     },
     add = TRUE
   )
@@ -1367,47 +1374,41 @@ exportFromSeurat <- function(
   ##--------------------------------------------------------------------------##
 
   if (expression_matrix_mode == "bpcells") {
-    ## BPCells stores an absolute path inside the handle, so the object may
-    ## only be serialised once the matrix sits at its published location.
-    ## Publishing therefore has to happen before saveRDS(), not after.
-    .backupExportArtifacts(artifact_layout)
-    artifact_rollback_needed <- TRUE
-    .publishStagedArtifact(
-      artifact_layout$staged_sibling,
-      artifact_layout$target_sibling
+    ## A BPCells handle carries the absolute path it was opened at, and that
+    ## path is currently inside staging. Point it at where the directory is
+    ## about to live before serialising, so the .crb can be written -- the
+    ## expensive part -- before anything on disk moves. Reading through the
+    ## handle would fail until the rename happens, but nothing reads it here:
+    ## the cell-count checks ran earlier, off the dimensions the handle
+    ## already carries.
+    published_handle <- export$expression
+    published_handle@dir <- normalizePath(
+      artifact_layout$target_sibling,
+      mustWork = FALSE
     )
-    export$setExpression(
-      BPCells::open_matrix_dir(dir = artifact_layout$target_sibling),
-      backend = "external"
-    )
+    export$setExpression(published_handle, backend = "external")
     export$setExpressionBackend(
       type = "bpcells",
       location = artifact_layout$sibling_name
     )
-    saveRDS(export, artifact_layout$staged_crb)
+  }
+
+  ## Serialise first, then move. Every mode reaches the commit window with the
+  ## .crb already written, so the window itself is two renames.
+  saveRDS(export, artifact_layout$staged_crb)
+
+  .backupExportArtifacts(artifact_layout)
+  artifact_rollback_needed <- TRUE
+  if (!is.null(artifact_layout$staged_sibling)) {
     .publishStagedArtifact(
-      artifact_layout$staged_crb,
-      artifact_layout$target_crb
-    )
-  } else {
-    ## `embedded` carries the matrix inside the object and `h5` carries only a
-    ## relative tag, so both can be serialised before anything on disk moves.
-    ## That keeps the window in which the two entries disagree down to two
-    ## renames.
-    saveRDS(export, artifact_layout$staged_crb)
-    .backupExportArtifacts(artifact_layout)
-    artifact_rollback_needed <- TRUE
-    if (!is.null(artifact_layout$staged_sibling)) {
-      .publishStagedArtifact(
-        artifact_layout$staged_sibling,
-        artifact_layout$target_sibling
-      )
-    }
-    .publishStagedArtifact(
-      artifact_layout$staged_crb,
-      artifact_layout$target_crb
+      artifact_layout$staged_sibling,
+      artifact_layout$target_sibling
     )
   }
+  .publishStagedArtifact(
+    artifact_layout$staged_crb,
+    artifact_layout$target_crb
+  )
 
   artifact_rollback_needed <- FALSE
   .cleanupExportArtifactLayout(artifact_layout)

@@ -224,3 +224,119 @@ test_that("embedded mode has no sibling to move", {
   .cleanupExportArtifactLayout(layout)
   expect_false(dir.exists(layout$backup_dir))
 })
+
+## ---------------------------------------------------------------------------
+## Failure modes found in review
+## ---------------------------------------------------------------------------
+
+test_that("an existing directory at the target is refused, not moved aside", {
+  root <- withr::local_tempdir()
+  victim <- file.path(root, "dataset.crb")
+  dir.create(victim)
+  writeLines("keep me", file.path(victim, "IMPORTANT.txt"))
+
+  expect_error(
+    .newExportArtifactLayout(victim, "embedded"),
+    "existing directory"
+  )
+  expect_true(dir.exists(victim))
+  expect_true(file.exists(file.path(victim, "IMPORTANT.txt")))
+})
+
+test_that("the backup directory explains where its contents belong", {
+  root <- withr::local_tempdir()
+  layout <- stage_fixture(root, "h5")
+  place_previous(layout, "h5")
+
+  .backupExportArtifacts(layout)
+  note <- file.path(layout$backup_dir, "RECOVERY.txt")
+  expect_true(file.exists(note))
+  text <- paste(readLines(note), collapse = "\n")
+  ## it has to name the real destination, not just say "somewhere"
+  expect_true(grepl(layout$target_crb, text, fixed = TRUE))
+  expect_true(grepl(layout$target_sibling, text, fixed = TRUE))
+})
+
+test_that("restore reports what it could not put back", {
+  root <- withr::local_tempdir()
+  layout <- stage_fixture(root, "h5")
+  place_previous(layout, "h5")
+  .backupExportArtifacts(layout)
+
+  ## Make putting the .crb back impossible, and confirm the failure is
+  ## reported rather than swallowed -- the caller needs it to decide whether
+  ## the backup directory may be deleted.
+  local_mocked_bindings(
+    .moveExportArtifact = function(from, to, ...) {
+      if (grepl("[.]crb$", to)) {
+        stop("simulated: cannot restore", call. = FALSE)
+      }
+      file.rename(from, to)
+      TRUE
+    }
+  )
+  unrestored <- suppressMessages(.restoreExportArtifacts(layout))
+  expect_identical(unrestored, layout$target_crb)
+  ## the sibling did come back
+  expect_identical(readLines(layout$target_sibling), "old")
+})
+
+test_that("cleanup keeps the backup when asked", {
+  root <- withr::local_tempdir()
+  layout <- stage_fixture(root, "h5")
+  place_previous(layout, "h5")
+  .backupExportArtifacts(layout)
+
+  .cleanupExportArtifactLayout(layout, keep_backup = TRUE)
+  expect_false(dir.exists(layout$stage_dir))
+  expect_true(dir.exists(layout$backup_dir))
+  ## the previous export is still there to be recovered by hand
+  expect_identical(readLines(layout$backup_crb), "old")
+
+  .cleanupExportArtifactLayout(layout)
+  expect_false(dir.exists(layout$backup_dir))
+})
+
+test_that("restore uses a message, so warn = 2 cannot hide the real error", {
+  ## Under options(warn = 2) a warning here would be promoted to an error and
+  ## replace whatever the export actually failed on.
+  root <- withr::local_tempdir()
+  layout <- stage_fixture(root, "h5")
+  place_previous(layout, "h5")
+  .backupExportArtifacts(layout)
+  unlink(layout$backup_crb)
+
+  withr::local_options(warn = 2)
+  expect_no_error(suppressMessages(.restoreExportArtifacts(layout)))
+})
+
+test_that("a directory sibling survives the cross-filesystem copy fallback", {
+  ## file.copy(recursive = TRUE) copies a directory *into* an existing
+  ## directory rather than *to* a path, so the obvious call silently fails and
+  ## a .bpcells sibling would be lost. Force the fallback with a rename that
+  ## always refuses, the way a second filesystem would.
+  root <- withr::local_tempdir()
+  from <- file.path(root, "src.bpcells")
+  dir.create(from)
+  writeLines("payload", file.path(from, "matrix"))
+  dir.create(file.path(from, "nested"))
+  writeLines("deep", file.path(from, "nested", "inner"))
+  to <- file.path(root, "dest.bpcells")
+
+  expect_true(.moveExportArtifact(from, to, .rename = function(...) FALSE))
+  expect_true(dir.exists(to))
+  expect_identical(readLines(file.path(to, "matrix")), "payload")
+  expect_identical(readLines(file.path(to, "nested", "inner")), "deep")
+  expect_false(dir.exists(from))
+})
+
+test_that("a plain file also survives the copy fallback", {
+  root <- withr::local_tempdir()
+  from <- file.path(root, "src.h5")
+  writeLines("payload", from)
+  to <- file.path(root, "dest.h5")
+
+  expect_true(.moveExportArtifact(from, to, .rename = function(...) FALSE))
+  expect_identical(readLines(to), "payload")
+  expect_false(file.exists(from))
+})

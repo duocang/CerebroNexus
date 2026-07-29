@@ -14,10 +14,17 @@
 #' publication is a rename rather than a copy, which keeps the window in which
 #' the two entries disagree as short as the filesystem allows.
 #'
-#' The guarantee is transactional replacement at the R call boundary: ordinary
-#' errors, conditions and interrupts restore the previous artifacts. It is not
-#' atomicity against process death or power loss -- no operating system can
-#' swap a file and a sibling directory in one indivisible step.
+#' The guarantee is transactional replacement at the R call boundary: an
+#' ordinary error, condition, or a single interrupt restores the previous
+#' artifacts. It is not atomicity against process death or power loss -- no
+#' operating system can swap a file and a sibling directory in one indivisible
+#' step -- and interrupting the rollback itself will leave it half done. In
+#' that case everything still exists: the backup directory is kept, with a
+#' `RECOVERY.txt` naming where each file belongs.
+#'
+#' One writer at a time. Two exports running against the same target will
+#' interleave their backup and publish steps and the loser's output is
+#' discarded without a word.
 #'
 #' This file holds filesystem mechanics only. It knows nothing about Seurat,
 #' matrix backends, or the Cerebro object.
@@ -51,6 +58,17 @@ NULL
   ) {
     stop(
       "`mode` must be one of \"embedded\", \"h5\" or \"bpcells\".",
+      call. = FALSE
+    )
+  }
+
+  ## A directory sitting where the .crb should go used to make `saveRDS()`
+  ## refuse, leaving the directory alone. Backing it up and publishing over it
+  ## would move somebody's folder into staging and delete it on success.
+  if (dir.exists(file)) {
+    stop(
+      "`file` points at an existing directory: ",
+      file,
       call. = FALSE
     )
   }
@@ -118,26 +136,51 @@ NULL
 
 #' Move one artifact, falling back to copy when rename is refused
 #'
+#' @param .rename Injection seam. The copy fallback only runs when a rename is
+#'   refused, which needs two filesystems to reproduce; tests pass a rename
+#'   that always fails instead.
+#'
 #' @return `TRUE` when something was moved, `FALSE` when `from` did not exist.
 #'
 #' @keywords internal
 #' @noRd
-.moveExportArtifact <- function(from, to) {
+.moveExportArtifact <- function(from, to, .rename = file.rename) {
   if (is.null(from) || is.null(to) || !file.exists(from)) {
     return(FALSE)
   }
-  ok <- suppressWarnings(file.rename(from, to))
+  ok <- suppressWarnings(.rename(from, to))
   if (isTRUE(ok)) {
     return(TRUE)
   }
   ## Rename is refused across filesystems. Staging sits next to the target so
   ## this should not happen, but a copy keeps the contract rather than
   ## silently losing the artifact.
-  copied <- suppressWarnings(
-    file.copy(from, to, recursive = TRUE, copy.date = TRUE)
-  )
-  if (!isTRUE(all(copied))) {
-    stop("Could not move ", from, " to ", to, call. = FALSE)
+  ##
+  ## `file.copy(recursive = TRUE)` copies a directory *into* an existing
+  ## directory rather than *to* a path, so a bpcells sibling has to be created
+  ## first and copied entry by entry.
+  if (dir.exists(from)) {
+    dir.create(to, showWarnings = FALSE, recursive = TRUE)
+    entries <- list.files(
+      from,
+      all.files = TRUE,
+      no.. = TRUE,
+      full.names = TRUE
+    )
+    copied <- suppressWarnings(
+      file.copy(entries, to, recursive = TRUE, copy.date = TRUE)
+    )
+    complete <- isTRUE(all(copied)) &&
+      length(list.files(to, all.files = TRUE, no.. = TRUE)) == length(entries)
+    if (!complete) {
+      unlink(to, recursive = TRUE, force = TRUE)
+      stop("Could not move ", from, " to ", to, call. = FALSE)
+    }
+  } else {
+    copied <- suppressWarnings(file.copy(from, to, copy.date = TRUE))
+    if (!isTRUE(all(copied))) {
+      stop("Could not move ", from, " to ", to, call. = FALSE)
+    }
   }
   unlink(from, recursive = TRUE, force = TRUE)
   TRUE
@@ -180,6 +223,30 @@ NULL
       done[[length(done) + 1L]] <- pair
     }
   }
+
+  ## If the process is killed outright, or an interrupt lands while the
+  ## rollback is running, these files are all that is left of the previous
+  ## export -- inside a hidden directory nobody would think to look in. Say
+  ## where each one belongs.
+  if (length(done) > 0) {
+    writeLines(
+      c(
+        "This directory holds the previous CerebroNexus export.",
+        "",
+        "It was moved aside so a new export could take its place, and it is",
+        "kept because that replacement did not finish. To restore it by hand,",
+        "move each file back to the path listed next to it, then delete this",
+        "directory along with any .cerebro-export-stage-* beside it.",
+        "",
+        vapply(
+          done,
+          function(x) paste0("  ", basename(x$to), "  ->  ", x$from),
+          character(1)
+        )
+      ),
+      file.path(layout$backup_dir, "RECOVERY.txt")
+    )
+  }
   invisible(vapply(done, function(x) x$from, character(1)))
 }
 
@@ -211,9 +278,15 @@ NULL
 
 #' Undo a partial publish
 #'
-#' Removes whatever this run published, then moves the backups back. Only ever
-#' warns: it runs while another error is already travelling, and replacing that
-#' error with a filesystem one would hide the actual cause.
+#' Removes whatever this run published, then moves the backups back.
+#'
+#' Reports with `message()` rather than `warning()` on purpose. It runs while
+#' another error is already travelling, and under `options(warn = 2)` -- common
+#' in batch pipelines -- a warning here would be promoted to an error and take
+#' the place of the real cause.
+#'
+#' @return The target paths that could **not** be restored, invisibly. The
+#'   caller must keep the backup directory when this is non-empty.
 #'
 #' @keywords internal
 #' @noRd
@@ -222,6 +295,7 @@ NULL
     list(target = layout$target_crb, backup = layout$backup_crb),
     list(target = layout$target_sibling, backup = layout$backup_sibling)
   )
+  unrestored <- character()
   for (item in targets) {
     if (is.null(item$target)) {
       next
@@ -237,13 +311,13 @@ NULL
         error = function(e) e
       )
       if (inherits(restored, "condition")) {
-        warning(
-          "Could not restore the previous export artifact. ",
-          "It is still readable at: ",
+        unrestored <- c(unrestored, item$target)
+        message(
+          "Could not put the previous export artifact back. It is still ",
+          "readable at: ",
           item$backup,
           " and belongs at: ",
-          item$target,
-          call. = FALSE
+          item$target
         )
       }
     } else if (file.exists(item$target)) {
@@ -252,7 +326,7 @@ NULL
       unlink(item$target, recursive = TRUE, force = TRUE)
     }
   }
-  invisible(NULL)
+  invisible(unrestored)
 }
 
 #' Remove the staging and backup directories
@@ -260,13 +334,22 @@ NULL
 #' Idempotent: it is registered with `on.exit()` and may also be called on the
 #' success path.
 #'
+#' @param keep_backup Keep the backup directory. Set this whenever a rollback
+#'   could not put something back -- deleting the only surviving copy of the
+#'   previous export, right after saying where to find it, would turn a failed
+#'   export into lost data.
+#'
 #' @keywords internal
 #' @noRd
-.cleanupExportArtifactLayout <- function(layout) {
+.cleanupExportArtifactLayout <- function(layout, keep_backup = FALSE) {
   if (is.null(layout)) {
     return(invisible(NULL))
   }
-  for (dir in c(layout$stage_dir, layout$backup_dir)) {
+  dirs <- layout$stage_dir
+  if (!isTRUE(keep_backup)) {
+    dirs <- c(dirs, layout$backup_dir)
+  }
+  for (dir in dirs) {
     if (!is.null(dir) && dir.exists(dir)) {
       unlink(dir, recursive = TRUE, force = TRUE)
     }

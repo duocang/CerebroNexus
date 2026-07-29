@@ -12,10 +12,15 @@
   held another. Every write now goes to a hidden staging directory beside the
   target; the previous artifacts are moved aside only once the ordinary export
   work has succeeded, and are put back if publishing fails. The guarantee is
-  transactional replacement at the R call boundary: ordinary errors, conditions
-  and interrupts restore what was there before. It is not atomicity against
-  process death or power loss, which no operating system can offer across a
-  file and a sibling directory.
+  transactional replacement at the R call boundary: an ordinary error, a
+  condition, or a single interrupt restores what was there before. It is not
+  atomicity against process death or power loss, which no operating system can
+  offer across a file and a sibling directory, and interrupting the rollback
+  itself leaves it half done. Nothing is lost in that case: the previous export
+  stays in a hidden `.cerebro-export-backup-*` directory beside the target,
+  with a `RECOVERY.txt` naming the path each file belongs at. One export at a
+  time per target -- two running against the same path will discard one
+  another's output.
 
 - **A missing output directory is created for the whole path.** `dir.create()`
   ran without `recursive = TRUE`, so a multi-level output path failed on the

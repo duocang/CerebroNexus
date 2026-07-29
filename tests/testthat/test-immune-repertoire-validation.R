@@ -314,3 +314,62 @@ test_that("the bundled TCR/BCR demo passes the check", {
     )
   ))
 })
+
+test_that("no overlap at all warns once, not twice with a false second line", {
+  ## When nothing matches, every sample is empty, so the per-sample warning's
+  ## "while the other samples' are not" would be untrue. It must not fire.
+  object <- make_repertoire_seurat()
+  object@misc$immune_repertoire <- lapply(
+    make_repertoire(object),
+    function(df) {
+      df$barcode <- paste0("donorA_", df$barcode)
+      df
+    }
+  )
+
+  warnings_seen <- character()
+  withCallingHandlers(
+    export_repertoire(object),
+    warning = function(w) {
+      warnings_seen <<- c(warnings_seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_length(warnings_seen, 1)
+  expect_false(any(grepl("match no cell", warnings_seen)))
+})
+
+test_that("a repertoire with no barcodes at all says so plainly", {
+  ## The prefix and subset explanations are both wrong for an empty table.
+  object <- make_repertoire_seurat()
+  object@misc$immune_repertoire <- list(
+    s1 = data.frame(
+      barcode = character(),
+      CTgene = character(),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  msg <- tryCatch(
+    export_repertoire(object),
+    warning = function(w) conditionMessage(w)
+  )
+  expect_true(grepl("no barcodes at all", msg, fixed = TRUE))
+  expect_false(grepl("RenameCells", msg, fixed = TRUE))
+})
+
+test_that("the no-overlap message admits a suffix mismatch too", {
+  object <- make_repertoire_seurat()
+  object@misc$immune_repertoire <- lapply(
+    make_repertoire(object),
+    function(df) {
+      df$barcode <- paste0(df$barcode, "-1")
+      df
+    }
+  )
+  msg <- tryCatch(
+    export_repertoire(object),
+    warning = function(w) conditionMessage(w)
+  )
+  expect_true(grepl("-1", msg, fixed = TRUE))
+})
