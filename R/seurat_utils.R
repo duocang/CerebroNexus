@@ -51,6 +51,7 @@
   memberships,
   max_solutions = 2L,
   max_search_nodes = 100000L,
+  max_search_depth = 128L,
   max_conflict_work = 5000000
 ) {
   if (
@@ -109,6 +110,10 @@
   max_search_nodes <- validate_work_budget(
     max_search_nodes,
     "max_search_nodes"
+  )
+  max_search_depth <- validate_work_budget(
+    max_search_depth,
+    "max_search_depth"
   )
   max_conflict_work <- validate_work_budget(
     max_conflict_work,
@@ -263,6 +268,16 @@
     pivot <- which.min(choices_per_cell)
     choices <- sort(base::intersect(cell_layers[[pivot]], feasible))
 
+    if (length(chosen) >= max_search_depth) {
+      stop(
+        "Layer partition search depth budget exceeded before selecting more ",
+        "than ",
+        format(max_search_depth, scientific = FALSE),
+        " layers. Rename unrelated prefix layers or join the intended layers ",
+        "explicitly with SeuratObject::JoinLayers().",
+        call. = FALSE
+      )
+    }
     for (choice in choices) {
       next_covered <- covered
       next_covered[layer_cells[[choice]]] <- TRUE

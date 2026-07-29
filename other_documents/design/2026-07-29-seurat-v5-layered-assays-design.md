@@ -309,6 +309,7 @@ This is a pure helper:
   memberships,
   max_solutions = 2L,
   max_search_nodes = 100000L,
+  max_search_depth = 128L,
   max_conflict_work = 5000000L
 )
 ```
@@ -366,9 +367,11 @@ solutions:
 - two solutions → ambiguity error.
 
 The normal case never enters this search. Exact cover remains exponential in
-the worst case, so two deterministic budgets bound it: the number of
-cell-claim pairs used to construct conflicts and the number of recursive search
-nodes. Exceeding either budget is an actionable error, never a partial result.
+the worst case, so three deterministic budgets bound it: the number of
+cell-claim pairs used to construct conflicts, the number of visited search
+nodes, and recursion depth. The depth limit is checked before making the next
+recursive call, so it cannot be pre-empted by R's call-stack limit. Exceeding
+any budget is an actionable error, never a partial result.
 
 ### Isolated joining
 

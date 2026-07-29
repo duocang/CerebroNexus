@@ -460,10 +460,11 @@ every layer.
 
 If two solutions are found, search stops and reports ambiguity.
 
-Conflict indexing and recursive search both have deterministic work budgets.
-Pathological sets of highly overlapping prefix layers therefore stop with an
-actionable request to rename unrelated layers or join explicitly instead of
-running without a bound.
+Conflict indexing, visited search nodes, and recursion depth have independent
+deterministic budgets. The depth budget is checked before the next recursive
+call. Pathological sets of highly overlapping prefix layers therefore stop
+with an actionable request to rename unrelated layers or join explicitly
+instead of exhausting memory or R's call stack.
 
 ## What still materialises
 

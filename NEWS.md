@@ -43,9 +43,11 @@
   requested partition. A complete nested custom root such as
   `data.imputed.s1/s2` is semantically ambiguous when `data` is requested and
   now fails closed instead of becoming normalized data silently.
-- **Pathological exact-cover search has deterministic work budgets.** Highly
-  overlapping prefix noise can no longer consume unbounded memory or recursion;
-  the diagnostic asks the user to rename noise or join the intended layers.
+- **Pathological exact-cover search has deterministic resource budgets.**
+  Conflict indexing, visited nodes, and recursion depth are bounded
+  independently. Highly overlapping prefix noise now stops before exhausting
+  memory or R's call stack, and the diagnostic asks the user to rename noise or
+  join the intended layers.
   `convertSeuratToCerebro()` also hands its already validated resolution to
   `exportFromSeurat()`, avoiding a second joined matrix and the corresponding
   peak-memory duplication.
