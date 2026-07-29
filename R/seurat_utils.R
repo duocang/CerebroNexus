@@ -1,7 +1,8 @@
-## The layer names Seurat gives an assay's three semantic classes. Split layers
-## are named `<root>.<suffix>`, so these are also the prefixes that identify one.
-## Ordered longest first: `scale.data` has to be recognised before `data` could
-## claim any part of it.
+## Standard Seurat expression classes. They define deterministic compatibility
+## fallback order and legacy semantic descriptions only; request-driven split
+## resolution supports arbitrary roots and does not use this list as a gate.
+## Ordered longest first where prefix parsing is needed: `scale.data` must be
+## recognised before `data`.
 .cerebro_layer_roots <- c("scale.data", "counts", "data")
 .cerebro_fallback_roots <- c("data", "counts", "scale.data")
 
@@ -405,20 +406,25 @@
     )
   }
 
-  first_layer <- suppressWarnings(
-    SeuratObject::LayerData(
-      assay_object,
-      layer = partition$layers[[1L]]
+  ## JoinLayers must not decide whether a mixed in-memory/disk partition is
+  ## supported. Inspect every selected member in deterministic order; otherwise
+  ## behaviour depends on which sample suffix sorts first.
+  for (partition_layer in partition$layers) {
+    source_matrix <- suppressWarnings(
+      SeuratObject::LayerData(
+        assay_object,
+        layer = partition_layer
+      )
     )
-  )
-  if (!.supported_expression_matrix(first_layer)) {
-    return(list(
-      data = first_layer,
-      requested = requested_layer,
-      resolved = partition$layers[[1L]],
-      joined = FALSE,
-      candidates = candidates
-    ))
+    if (!.supported_expression_matrix(source_matrix)) {
+      return(list(
+        data = source_matrix,
+        requested = requested_layer,
+        resolved = partition_layer,
+        joined = FALSE,
+        candidates = candidates
+      ))
+    }
   }
 
   if (verbose) {
@@ -840,6 +846,11 @@
       "  Slot/Layer: ",
       slot,
       "\n",
+      if (!identical(resolved_layer, requested_layer)) {
+        paste0("  Physical source layer: ", resolved_layer, "\n")
+      } else {
+        ""
+      },
       if (disk_backed) {
         ## Convert every layer rather than the requested one. On a split assay
         ## `LayerData(layer = "counts")` reaches for a layer that is not there
@@ -955,7 +966,7 @@
 #   2. Metadata: scan meta.data columns for coordinate-like columns
 #   3. Automatic x/y column detection from 70+ common naming conventions
 #   4. Duplicate-cell summarisation (vectorised rowsum, not per-cell rbind)
-#   5. Returns list(coordinates, expression, assay, layer, image, coordinate_source)
+#   5. Returns requested and physical expression-layer names separately
 #
 #' @keywords internal
 #' @noRd
@@ -978,7 +989,8 @@
   allow_molecule_fallback = FALSE,
   warn_on_image_overlap = TRUE,
   verbose = FALSE,
-  expression_data = NULL
+  expression_data = NULL,
+  expression_layer = NULL
 ) {
   coord_source <- match.arg(coord_source)
   image_policy <- match.arg(image_policy)
@@ -992,6 +1004,17 @@
 
   if (is.null(slot)) {
     slot <- layer
+  }
+  if (is.null(expression_layer)) {
+    expression_layer <- slot
+  }
+  if (
+    !is.character(expression_layer) ||
+      length(expression_layer) != 1L ||
+      is.na(expression_layer) ||
+      !nzchar(expression_layer)
+  ) {
+    stop("`expression_layer` must be one non-empty layer name.", call. = FALSE)
   }
   if (is.null(assay)) {
     assay <- Seurat::DefaultAssay(object)
@@ -1589,7 +1612,8 @@
     coordinates = coords,
     expression = expr_data,
     assay = assay,
-    layer = slot,
+    requested_layer = slot,
+    layer = expression_layer,
     image = unique(coords$.image),
     coordinate_source = unique(coords$.coordinate_source)
   )

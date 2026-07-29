@@ -875,7 +875,13 @@ convertSeuratToCerebro <- function(
       cat("Successfully exported:", file_name, "\n")
     },
     error = function(e) {
-      cat("Error processing", source_label, ":", e$message, "\n")
+      stop(
+        "Error processing ",
+        source_label,
+        ": ",
+        conditionMessage(e),
+        call. = FALSE
+      )
     }
   )
 

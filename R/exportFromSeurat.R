@@ -1187,7 +1187,8 @@ exportFromSeurat <- function(
             image = image_name,
             layer = slot,
             assay = assay,
-            expression_data = expression_data
+            expression_data = expression_data,
+            expression_layer = expression_resolution$resolved
           )
 
           # Also add coordinates as a projection for compatibility with existing visualization functions
