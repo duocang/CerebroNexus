@@ -266,6 +266,117 @@ test_that("an unrelated partial layer does not hide a real split partition", {
   expect_equal(matrix_out, joined_data)
 })
 
+test_that("a requested custom root resolves its complete split partition", {
+  obj <- make_split_object(c("s1", "s2"))
+  joined <- SeuratObject::JoinLayers(obj[["RNA"]])
+  joined_data <- SeuratObject::LayerData(joined, layer = "data")
+
+  for (sample in c("s1", "s2")) {
+    sample_cells <- colnames(obj)[obj$sample == sample]
+    SeuratObject::LayerData(
+      obj[["RNA"]],
+      layer = paste0("ambient.", sample)
+    ) <- joined_data[, sample_cells, drop = FALSE]
+  }
+
+  expect_no_warning(
+    matrix_out <- .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "ambient",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = FALSE
+    )
+  )
+  expect_equal(matrix_out, joined_data)
+  expect_setequal(colnames(matrix_out), colnames(obj))
+})
+
+test_that("a requested custom root may itself contain a dot", {
+  obj <- make_split_object(c("s1", "s2"))
+  joined <- SeuratObject::JoinLayers(obj[["RNA"]])
+  joined_data <- SeuratObject::LayerData(joined, layer = "data")
+
+  for (sample in c("s1", "s2")) {
+    sample_cells <- colnames(obj)[obj$sample == sample]
+    SeuratObject::LayerData(
+      obj[["RNA"]],
+      layer = paste0("ambient.corrected.", sample)
+    ) <- joined_data[, sample_cells, drop = FALSE]
+  }
+
+  expect_no_warning(
+    matrix_out <- .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "ambient.corrected",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = FALSE
+    )
+  )
+  expect_equal(matrix_out, joined_data)
+})
+
+test_that("a full custom prefix is not substituted for an absent exact root", {
+  obj <- make_split_object(c("s1", "s2"))
+  obj[["RNA"]] <- SeuratObject::JoinLayers(obj[["RNA"]])
+  imputed <- SeuratObject::LayerData(obj[["RNA"]], layer = "data")
+  imputed@x <- imputed@x + 100
+  SeuratObject::LayerData(
+    obj[["RNA"]],
+    layer = "data.imputed"
+  ) <- imputed
+  suppressWarnings(
+    SeuratObject::LayerData(obj[["RNA"]], layer = "data") <- NULL
+  )
+
+  expect_error(
+    .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "data",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = FALSE
+    ),
+    "Exact layer `data` is absent",
+    fixed = TRUE
+  )
+})
+
+test_that("resolving a partition leaves every caller layer unchanged", {
+  obj <- make_split_object(c("s1", "s2"))
+  joined <- SeuratObject::JoinLayers(obj[["RNA"]])
+  joined_data <- SeuratObject::LayerData(joined, layer = "data")
+  custom_data <- joined_data
+  custom_data@x <- custom_data@x + 100
+  SeuratObject::LayerData(
+    obj[["RNA"]],
+    layer = "dataBackup"
+  ) <- custom_data
+
+  before_names <- SeuratObject::Layers(obj[["RNA"]])
+  before_custom <- SeuratObject::LayerData(
+    obj[["RNA"]],
+    layer = "dataBackup"
+  )
+
+  expect_no_error(
+    .getExpressionMatrix(
+      seurat = obj,
+      assay = "RNA",
+      slot = "data",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = FALSE
+    )
+  )
+
+  expect_identical(SeuratObject::Layers(obj[["RNA"]]), before_names)
+  expect_equal(
+    SeuratObject::LayerData(obj[["RNA"]], layer = "dataBackup"),
+    before_custom
+  )
+})
+
 ## ---------------------------------------------------------------------------
 ## Export entry point
 ## ---------------------------------------------------------------------------
