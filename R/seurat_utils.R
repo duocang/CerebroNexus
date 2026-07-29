@@ -347,7 +347,9 @@
       assay,
       "` has more than one valid cell partition: ",
       .format_layer_solutions(partition$solutions),
-      ". Refusing to choose one silently.",
+      ". Refusing to choose one silently.\n",
+      "Prefix candidates: ",
+      paste(candidates, collapse = ", "),
       call. = FALSE
     )
   }
@@ -358,6 +360,10 @@
   ]
   if (identical(partition$status, "none")) {
     if (length(partial_candidates) > 0L) {
+      covered_cells <- unique(unlist(
+        memberships[partial_candidates],
+        use.names = FALSE
+      ))
       stop(
         "Exact layer `",
         requested_layer,
@@ -366,6 +372,11 @@
         "`. No unique disjoint partition covers the assay cells.\n",
         "Prefix candidates: ",
         paste(candidates, collapse = ", "),
+        "\nThese candidates cover ",
+        length(covered_cells),
+        " of the object's ",
+        length(assay_cells),
+        " cells, so JoinLayers cannot create a complete matrix.",
         call. = FALSE
       )
     }
@@ -384,7 +395,8 @@
       requested_layer,
       "` is absent, but split layers ",
       paste(partition$layers, collapse = ", "),
-      " form a complete partition. Set `join_samples = TRUE` to merge them.",
+      " form a complete partition. Because `join_samples = FALSE`, they were ",
+      "not merged; set `join_samples = TRUE` to merge them.",
       call. = FALSE
     )
   }
