@@ -550,9 +550,17 @@ createShinyApp <- function(
   claimed = new.env(parent = emptyenv()),
   verbose = TRUE
 ) {
-  ## `.rds` inputs and pre-backend `.crb` files have no tag to read. Reading it
-  ## costs one deserialisation per data file; for the external backends this is
-  ## cheap, because those objects hold no matrix.
+  ## The backend tag lives inside the serialised object, so finding it costs
+  ## one deserialisation per data file. For an external backend that is nearly
+  ## free -- the object holds a tag, not a matrix. For an embedded one it is
+  ## not: a measured 4.9 MB `.crb` deserialises to a 17.4 MB matrix, and that
+  ## is paid here only to learn there is no sibling to copy.
+  ##
+  ## It is paid anyway. The tag cannot be read without deserialising (RDS has
+  ## no random access), and every cheaper route -- guessing `<stem>.h5`,
+  ## judging by file size -- can silently miss a sibling that a renamed `.crb`
+  ## still points at, which is the failure this whole path exists to prevent.
+  ## See tmp/backend-inspection-decision.md for the measurements.
   object <- readRDS(crb_path)
   backend <- NULL
   if (is.environment(object) || is.list(object)) {
