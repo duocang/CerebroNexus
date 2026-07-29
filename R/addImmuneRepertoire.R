@@ -223,6 +223,49 @@
 #' scRepertoire's job, and it is a job with real subtleties (chain pairing,
 #' multi-chain cells, clone definitions). Delegate rather than reimplement.
 #'
+#' Name a sample after the directory holding its contig file
+#'
+#' Cell Ranger gives every sample's file the same name, so that name never
+#' identifies a sample -- not even when there is only one file. The containing
+#' directory does. This is decided per path rather than only when names
+#' collide: a lone `filtered_contig_annotations.csv` used to become a sample
+#' literally called "filtered_contig_annotations", and scRepertoire then
+#' prefixed every barcode with it, which is a reliable way to end up with a
+#' repertoire that matches no cell.
+#'
+#' A file the user renamed keeps its own stem, since that is the only signal
+#' they gave.
+#'
+#' @param paths Contig annotation file paths.
+#'
+#' @return One sample name per path.
+#'
+#' @keywords internal
+#' @noRd
+.deriveContigSampleNames <- function(paths) {
+  standard_names <- c(
+    "filtered_contig_annotations.csv",
+    "all_contig_annotations.csv"
+  )
+  sample_names <- tools::file_path_sans_ext(basename(paths))
+  from_cellranger <- basename(paths) %in% standard_names
+  sample_names[from_cellranger] <- basename(dirname(paths[from_cellranger]))
+
+  ## Renamed files can still collide with each other; the directory is the
+  ## next best guess for all of them.
+  if (anyDuplicated(sample_names)) {
+    sample_names <- basename(dirname(paths))
+  }
+  if (anyDuplicated(sample_names)) {
+    stop(
+      "Could not derive distinct sample names from the contig file paths. ",
+      "Pass `sample_names` explicitly.",
+      call. = FALSE
+    )
+  }
+  sample_names
+}
+
 #' @keywords internal
 #' @noRd
 .combineContigAnnotations <- function(
@@ -250,20 +293,7 @@
   }
 
   if (is.null(sample_names)) {
-    sample_names <- tools::file_path_sans_ext(basename(paths))
-    ## `filtered_contig_annotations.csv` is what Cell Ranger calls every one of
-    ## them, so the file name only identifies a sample when the user renamed
-    ## it. Fall back to the containing directory, which usually is the sample.
-    if (anyDuplicated(sample_names)) {
-      sample_names <- basename(dirname(paths))
-    }
-    if (anyDuplicated(sample_names)) {
-      stop(
-        "Could not derive distinct sample names from the contig file paths. ",
-        "Pass `sample_names` explicitly.",
-        call. = FALSE
-      )
-    }
+    sample_names <- .deriveContigSampleNames(paths)
   }
   if (length(sample_names) != length(paths)) {
     stop(
@@ -518,7 +548,10 @@ addImmuneRepertoire <- function(
   .validateImmuneRepertoire(
     repertoire,
     cell_barcodes = colnames(object),
-    source_label = "the immune repertoire data"
+    source_label = "the immune repertoire data",
+    ## Handed in on purpose: data that matches no cell is a mistake worth
+    ## refusing here, where the caller can still fix it.
+    zero_overlap = "error"
   )
 
   object@misc$immune_repertoire <- repertoire

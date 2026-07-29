@@ -411,3 +411,60 @@ test_that("addImmuneRepertoire is part of the package's public surface", {
     ))
   )
 })
+
+## ---------------------------------------------------------------------------
+## Sample names derived from contig file paths
+## ---------------------------------------------------------------------------
+
+test_that("a lone Cell Ranger file is named after its directory", {
+  ## Cell Ranger calls every sample's file the same thing, so the file name
+  ## identifies nothing. Deriving it from the stem produced a sample called
+  ## "filtered_contig_annotations", which scRepertoire then prefixed onto every
+  ## barcode -- a reliable way to end up matching no cell.
+  paths <- file.path("root", "donorA", "filtered_contig_annotations.csv")
+  expect_identical(.deriveContigSampleNames(paths), "donorA")
+})
+
+test_that("several Cell Ranger files are named after their directories", {
+  paths <- file.path(
+    "root",
+    c("donorA", "donorB"),
+    "filtered_contig_annotations.csv"
+  )
+  expect_identical(.deriveContigSampleNames(paths), c("donorA", "donorB"))
+})
+
+test_that("the unfiltered Cell Ranger name is treated the same way", {
+  paths <- file.path("root", "donorA", "all_contig_annotations.csv")
+  expect_identical(.deriveContigSampleNames(paths), "donorA")
+})
+
+test_that("a renamed file keeps its own stem", {
+  ## Renaming is the only signal the user gave about what the sample is called.
+  paths <- file.path("root", "run1", "donorA_tcr.csv")
+  expect_identical(.deriveContigSampleNames(paths), "donorA_tcr")
+})
+
+test_that("renamed and standard files are decided per path, not all or none", {
+  paths <- c(
+    file.path("root", "run1", "donorA_tcr.csv"),
+    file.path("root", "donorB", "filtered_contig_annotations.csv")
+  )
+  expect_identical(.deriveContigSampleNames(paths), c("donorA_tcr", "donorB"))
+})
+
+test_that("colliding renamed files fall back to their directories", {
+  paths <- c(
+    file.path("root", "donorA", "contigs.csv"),
+    file.path("root", "donorB", "contigs.csv")
+  )
+  expect_identical(.deriveContigSampleNames(paths), c("donorA", "donorB"))
+})
+
+test_that("names that cannot be told apart ask for sample_names", {
+  paths <- c(
+    file.path("root", "same", "filtered_contig_annotations.csv"),
+    file.path("root", "same", "filtered_contig_annotations.csv")
+  )
+  expect_error(.deriveContigSampleNames(paths), "sample_names")
+})
