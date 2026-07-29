@@ -84,6 +84,22 @@ test_that("two exact covers are reported as ambiguous", {
   )))
 })
 
+test_that("ambiguous solutions are deterministic across candidate order", {
+  cells <- paste0("c", seq_len(8))
+  memberships <- list(
+    "data.sample_a" = cells[1:4],
+    "data.sample_b" = cells[5:8],
+    "data.batch_a" = cells[c(1, 2, 5, 6)],
+    "data.batch_b" = cells[c(3, 4, 7, 8)]
+  )
+
+  forward <- .find_layer_partition(cells, memberships)
+  reverse <- .find_layer_partition(cells, rev(memberships))
+
+  expect_identical(forward$status, "ambiguous")
+  expect_identical(forward, reverse)
+})
+
 test_that("partition resolution is independent of candidate order", {
   cells <- paste0("c", seq_len(12))
   memberships <- list(
@@ -98,6 +114,35 @@ test_that("partition resolution is independent of candidate order", {
   expect_identical(forward$status, reverse$status)
   expect_identical(forward$layers, reverse$layers)
   expect_identical(forward$solutions, reverse$solutions)
+})
+
+test_that("structurally invalid memberships fail rather than disappear", {
+  cells <- paste0("c", seq_len(8))
+
+  expect_error(
+    .find_layer_partition(
+      c(cells, cells[[1]]),
+      list("data.s1" = cells[1:4], "data.s2" = cells[5:8])
+    ),
+    "assay_cells"
+  )
+  expect_error(
+    .find_layer_partition(
+      cells,
+      list("data.s1" = c(cells[1:4], "outside"), "data.s2" = cells[5:8])
+    ),
+    "outside the assay"
+  )
+  expect_error(
+    .find_layer_partition(
+      cells,
+      setNames(
+        list(cells[1:4], cells[5:8]),
+        c("data", "data")
+      )
+    ),
+    "layer names"
+  )
 })
 
 test_that("the normal partition path scales to 50000 cells", {
