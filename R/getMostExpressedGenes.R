@@ -95,8 +95,23 @@ getMostExpressedGenes <- function(
     )
   }
 
-  ## get counts matrix using the Seurat API (works for both Assay and Assay5)
-  counts_matrix <- Seurat::GetAssayData(object, assay = assay, layer = "counts")
+  ## Resolve split Seurat v5 assays through the shared layer resolver. This
+  ## consumer requires raw counts and therefore never crosses semantic classes.
+  counts_resolution <- .getExpressionMatrix(
+    seurat = object,
+    assay = assay,
+    slot = "counts",
+    join_samples = TRUE,
+    allow_cross_semantic_fallback = FALSE,
+    return_resolution = TRUE
+  )
+  counts_matrix <- .validate_expression_cells(
+    expression_data = counts_resolution$data,
+    object_cells = colnames(object),
+    assay = assay,
+    requested_layer = counts_resolution$requested,
+    resolved_layer = counts_resolution$resolved
+  )
 
   ## check if `counts` matrix exist in provided assay
   if (is.null(counts_matrix) || nrow(counts_matrix) == 0) {

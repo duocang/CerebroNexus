@@ -183,11 +183,22 @@ addPercentMtRibo <- function(
         call. = FALSE
       )
     }
-    ## get counts matrix using the Seurat API (works for both Assay and Assay5)
-    counts_matrix <- Seurat::GetAssayData(
-      object,
+    ## Resolve split Seurat v5 assays through the shared layer resolver. This
+    ## consumer requires raw counts and therefore never crosses semantic classes.
+    counts_resolution <- .getExpressionMatrix(
+      seurat = object,
       assay = assay,
-      layer = "counts"
+      slot = "counts",
+      join_samples = TRUE,
+      allow_cross_semantic_fallback = FALSE,
+      return_resolution = TRUE
+    )
+    counts_matrix <- .validate_expression_cells(
+      expression_data = counts_resolution$data,
+      object_cells = colnames(object),
+      assay = assay,
+      requested_layer = counts_resolution$requested,
+      resolved_layer = counts_resolution$resolved
     )
     ## check if `counts` matrix exist in provided assay
     if (is.null(counts_matrix) || nrow(counts_matrix) == 0) {
@@ -234,11 +245,10 @@ addPercentMtRibo <- function(
         ' mitochondrial transcript(s) present in the data set...'
       )
     )
-    values_mt <- CerebroNexus::calculatePercentGenes(
-      object,
-      assay = assay,
-      list('genes_mt' = genes_mt_here)
-    )[[1]]
+    values_mt <- Matrix::colSums(
+      counts_matrix[genes_mt_here, , drop = FALSE]
+    ) /
+      Matrix::colSums(counts_matrix)
   } else {
     object@misc$gene_lists$mitochondrial_genes <- 'no_mitochondrial_genes_found'
     message(
@@ -266,11 +276,10 @@ addPercentMtRibo <- function(
         ' ribosomal transcript(s) present in the data set...'
       )
     )
-    values_ribo <- CerebroNexus::calculatePercentGenes(
-      object,
-      assay = assay,
-      list('genes_ribo' = genes_ribo_here)
-    )[[1]]
+    values_ribo <- Matrix::colSums(
+      counts_matrix[genes_ribo_here, , drop = FALSE]
+    ) /
+      Matrix::colSums(counts_matrix)
   } else {
     object@misc$gene_lists$ribosomal_genes <- 'no_ribosomal_genes_found'
     message(
