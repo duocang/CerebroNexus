@@ -1,3 +1,56 @@
+# CerebroNexus 3.0.6
+
+## Export
+
+- **A failed re-export no longer damages the export it was replacing.** With an
+  external expression backend, `exportFromSeurat()` deleted and rewrote the
+  sibling matrix (`<stem>.h5` or `<stem>.bpcells/`) early, before the rest of
+  the data had been collected. Any failure after that point left the previous
+  `.crb` in place next to a matrix belonging to the run that had just failed.
+  The pair still looked complete, opened without complaint, and described two
+  different data sets -- the `.crb` reporting one cell count while its matrix
+  held another. Every write now goes to a hidden staging directory beside the
+  target; the previous artifacts are moved aside only once the ordinary export
+  work has succeeded, and are put back if publishing fails. The guarantee is
+  transactional replacement at the R call boundary: ordinary errors, conditions
+  and interrupts restore what was there before. It is not atomicity against
+  process death or power loss, which no operating system can offer across a
+  file and a sibling directory.
+
+- **A missing output directory is created for the whole path.** `dir.create()`
+  ran without `recursive = TRUE`, so a multi-level output path failed on the
+  final `saveRDS()` -- after the entire export had been computed. The path is
+  now prepared before any work starts, which also means a missing or unwritable
+  `file` argument fails in the first second rather than the last.
+
+## Immune repertoire
+
+- **A repertoire that matches no cell is refused when you hand it in, and only
+  warned about when the export finds it.** `addImmuneRepertoire()` still stops:
+  data supplied on purpose that matches nothing is a mistake worth catching
+  while the caller can fix it. `exportFromSeurat()` now warns instead, because
+  it did not ask for the data -- it found it on the object. Subsetting a Seurat
+  object keeps `@misc`, so the ordinary "run TCR, then keep one compartment"
+  workflow arrives with a stale slot, and refusing it would block an export
+  that previously succeeded with an empty repertoire page. The repertoire is
+  kept rather than silently dropped. Shape problems the app cannot read at all
+  remain fatal on every path, including the legacy `bcr_data` / `tcr_data`
+  slots.
+
+- **The message no longer blames one cause.** It said the barcodes had been
+  prefixed by `combineTCR(samples = )` without a matching `RenameCells()`,
+  which sent anyone whose object had simply been subset looking for a problem
+  they did not have. Both explanations are now named.
+
+- **A single Cell Ranger contig file is named after its directory.** Cell
+  Ranger calls every sample's file `filtered_contig_annotations.csv`, so the
+  file name identifies nothing; the directory does. The name was only derived
+  from the directory once two files collided, so one file became a sample
+  called `filtered_contig_annotations`, which scRepertoire then prefixed onto
+  every barcode -- a reliable way to produce a repertoire matching no cell.
+  The choice is now made per path, so a file you renamed still keeps its own
+  name. `all_contig_annotations.csv` is treated the same way.
+
 # CerebroNexus 3.0.5
 
 ## Export
