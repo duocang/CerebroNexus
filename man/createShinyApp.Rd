@@ -56,7 +56,10 @@ createShinyApp(
 \item{cerebro_options}{Extra entries merged into \code{Cerebro.options} in
 the generated app.}
 
-\item{overwrite}{If \code{TRUE} (default), wipe \code{result_dir} first.}
+\item{overwrite}{If \code{TRUE} (default), replace \code{result_dir} only
+after a complete staged build succeeds. If \code{FALSE},
+\code{result_dir} must be absent or empty; a non-empty directory is
+rejected before any files are written.}
 
 \item{verbose}{Print progress messages; defaults to TRUE.}
 
@@ -117,4 +120,7 @@ addition to the embedded mode. The backend descriptor stored in each
 the same relative location in the bundle. Missing, invalid, or conflicting
 targets stop the build rather than producing an incomplete app. A configured
 runtime matrix override keeps its existing precedence and skips this copy.
+All inputs and bundle targets are validated before the app is assembled in a
+private sibling directory. The completed stage replaces \code{result_dir}
+only after every copy and configuration write succeeds.
 }

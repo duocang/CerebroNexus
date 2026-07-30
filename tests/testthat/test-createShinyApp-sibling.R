@@ -169,6 +169,7 @@ test_that("inputs inside result_dir survive until the staged copy completes", {
   build_test_app(c("Dataset" = crb), app, overwrite = TRUE)
 
   expect_true(file.exists(file.path(app, "data", "dataset.crb")))
+  expect_false(dir.exists(file.path(app, "inputs")))
 })
 
 test_that("a configured runtime override skips the tagged backend copy", {
@@ -253,6 +254,17 @@ test_that("different sources cannot write the same bundle target", {
     "same bundle target"
   )
 
+  upper_backend <- list(type = "h5", location = "MATRIX.H5")
+  upper <- write_bundle_crb(second_dir, "upper.crb", upper_backend)
+  write_backend_artifact(second_dir, upper_backend, "UPPER")
+  expect_error(
+    build_test_app(
+      c("First" = first, "Upper" = upper),
+      file.path(root, "case-app")
+    ),
+    "same bundle target"
+  )
+
   cross_backend <- list(type = "h5", location = "second.crb")
   cross_first <- write_bundle_crb(first_dir, "cross-first.crb", cross_backend)
   write_backend_artifact(first_dir, cross_backend)
@@ -316,6 +328,23 @@ test_that("backend paths cannot resolve through symbolic links", {
     build_test_app(c("Dataset" = crb), file.path(root, "app")),
     "symbolic link"
   )
+
+  app <- file.path(root, "existing-app")
+  dir.create(app)
+  destination_linked <- file.symlink(outside, file.path(app, "data"))
+  if (!isTRUE(destination_linked)) {
+    skip("Destination symbolic links are not available on this platform")
+  }
+  embedded <- write_bundle_crb(file.path(root, "embedded"))
+
+  build_test_app(c("Dataset" = embedded), app, overwrite = TRUE)
+
+  expect_identical(
+    readLines(file.path(outside, "matrix.h5")),
+    "OUTSIDE"
+  )
+  expect_false(.pathIsSymbolicLink(file.path(app, "data")))
+  expect_true(file.exists(file.path(app, "data", "dataset.crb")))
 })
 
 test_that("embedded and legacy CRBs do not require sibling files", {
