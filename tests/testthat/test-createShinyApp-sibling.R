@@ -138,6 +138,39 @@ test_that("a missing tagged backend stops the build", {
   )
 })
 
+test_that("failed preflight leaves an existing deployment untouched", {
+  root <- withr::local_tempdir()
+  app <- file.path(root, "app")
+  dir.create(app)
+  sentinel <- file.path(app, "sentinel.txt")
+  writeLines("KEEP", sentinel)
+  crb <- write_bundle_crb(
+    file.path(root, "source"),
+    backend = list(type = "h5", location = "missing.h5")
+  )
+
+  expect_error(
+    build_test_app(c("Dataset" = crb), app, overwrite = TRUE),
+    "missing.h5"
+  )
+  expect_true(file.exists(sentinel))
+  if (file.exists(sentinel)) {
+    expect_identical(readLines(sentinel), "KEEP")
+  }
+  expect_false(dir.exists(file.path(app, "shiny")))
+})
+
+test_that("inputs inside result_dir survive until the staged copy completes", {
+  root <- withr::local_tempdir()
+  app <- file.path(root, "app")
+  input_dir <- file.path(app, "inputs")
+  crb <- write_bundle_crb(input_dir)
+
+  build_test_app(c("Dataset" = crb), app, overwrite = TRUE)
+
+  expect_true(file.exists(file.path(app, "data", "dataset.crb")))
+})
+
 test_that("a configured runtime override skips the tagged backend copy", {
   root <- withr::local_tempdir()
   backend <- list(type = "h5", location = "missing.h5")
@@ -155,6 +188,51 @@ test_that("a configured runtime override skips the tagged backend copy", {
   config <- readRDS(file.path(app, "cerebro_config.rds"))
   expect_identical(config$expression_matrix_h5, override)
   expect_false(file.exists(file.path(app, "data", backend$location)))
+})
+
+test_that("one global override cannot serve multiple Cerebro data files", {
+  root <- withr::local_tempdir()
+  override <- file.path(root, "host-matrix.h5")
+  writeLines("HOST", override)
+  tagged_backend <- list(type = "h5", location = "missing.h5")
+  first <- write_bundle_crb(
+    file.path(root, "first"),
+    "first.crb",
+    tagged_backend
+  )
+  second <- write_bundle_crb(
+    file.path(root, "second"),
+    "second.crb",
+    tagged_backend
+  )
+
+  expect_error(
+    build_test_app(
+      c("First" = first, "Second" = second),
+      file.path(root, "tagged-app"),
+      cerebro_options = list(expression_matrix_h5 = override)
+    ),
+    "same expression matrix"
+  )
+
+  legacy_first <- write_bundle_crb(
+    file.path(root, "legacy-first"),
+    "legacy-first.crb",
+    legacy = TRUE
+  )
+  legacy_second <- write_bundle_crb(
+    file.path(root, "legacy-second"),
+    "legacy-second.crb",
+    legacy = TRUE
+  )
+  expect_error(
+    build_test_app(
+      c("First" = legacy_first, "Second" = legacy_second),
+      file.path(root, "legacy-app"),
+      cerebro_options = list(expression_matrix_h5 = override)
+    ),
+    "same expression matrix"
+  )
 })
 
 test_that("different sources cannot write the same bundle target", {
@@ -198,6 +276,48 @@ test_that("different sources cannot write the same bundle target", {
   )
 })
 
+test_that("parent and child bundle targets conflict before copying", {
+  root <- withr::local_tempdir()
+  tree_backend <- list(type = "bpcells", location = "tree")
+  nested_backend <- list(type = "h5", location = "tree/injected.h5")
+  first_dir <- file.path(root, "first")
+  second_dir <- file.path(root, "second")
+  first <- write_bundle_crb(first_dir, "first.crb", tree_backend)
+  second <- write_bundle_crb(second_dir, "second.crb", nested_backend)
+  write_backend_artifact(first_dir, tree_backend, "FIRST")
+  write_backend_artifact(second_dir, nested_backend, "SECOND")
+
+  expect_error(
+    build_test_app(
+      c("First" = first, "Second" = second),
+      file.path(root, "app")
+    ),
+    "parent or child"
+  )
+})
+
+test_that("backend paths cannot resolve through symbolic links", {
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  outside <- file.path(root, "outside")
+  dir.create(source)
+  dir.create(outside)
+  writeLines("OUTSIDE", file.path(outside, "matrix.h5"))
+  linked <- file.symlink(outside, file.path(source, "alias"))
+  if (!isTRUE(linked)) {
+    skip("Symbolic links are not available on this platform")
+  }
+  crb <- write_bundle_crb(
+    source,
+    backend = list(type = "h5", location = "alias/matrix.h5")
+  )
+
+  expect_error(
+    build_test_app(c("Dataset" = crb), file.path(root, "app")),
+    "symbolic link"
+  )
+})
+
 test_that("embedded and legacy CRBs do not require sibling files", {
   root <- withr::local_tempdir()
   embedded <- write_bundle_crb(
@@ -218,6 +338,39 @@ test_that("embedded and legacy CRBs do not require sibling files", {
 
   expect_true(file.exists(file.path(app, "data", "embedded.crb")))
   expect_true(file.exists(file.path(app, "data", "legacy.crb")))
+})
+
+test_that("overwrite FALSE rejects a non-empty destination without mutation", {
+  root <- withr::local_tempdir()
+  app <- file.path(root, "app")
+  dir.create(app)
+  sentinel <- file.path(app, "sentinel.txt")
+  writeLines("KEEP", sentinel)
+  crb <- write_bundle_crb(file.path(root, "source"))
+
+  expect_error(
+    build_test_app(
+      c("Dataset" = crb),
+      app,
+      overwrite = FALSE
+    ),
+    "non-empty"
+  )
+  expect_identical(
+    list.files(app, all.files = TRUE, no.. = TRUE),
+    "sentinel.txt"
+  )
+  expect_identical(readLines(sentinel), "KEEP")
+})
+
+test_that("named lists of scalar paths are accepted", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  app <- file.path(root, "app")
+
+  build_test_app(list("Dataset" = crb), app)
+
+  expect_true(file.exists(file.path(app, "data", "dataset.crb")))
 })
 
 test_that("at least one Cerebro data set is required", {
