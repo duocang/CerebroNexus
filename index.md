@@ -117,12 +117,11 @@ createShinyApp(
 
 `cerebro_data` is required and must be a *named* vector / list of `.crb`
 (or `.rds`) paths — names become the dataset labels users switch between
-in the app. `result_dir` is optional. External matrix locations are read
-from each `.crb` backend descriptor and copied into the bundle
-automatically (see §2.3), so renaming a `.crb` does not lose its matrix.
-Other knobs available: `colors`, `cerebro_options`,
-`crb_pick_smallest_file`, `show_upload_ui`, `point_size`,
-`variable_to_compare` — run
+in the app. `result_dir` is optional. Sibling `<stem>.bpcells/` and
+`<stem>.h5` artefacts produced by the external backends are detected and
+copied into the bundle automatically (see §2.3). Other knobs available:
+`colors`, `cerebro_options`, `crb_pick_smallest_file`, `show_upload_ui`,
+`point_size`, `variable_to_compare` — run
 [`?createShinyApp`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
 for the full list.
 
@@ -197,14 +196,10 @@ RSS, and ~0.45 s queries — i.e. lazy-h5 is the same backend with attach
 faster**.
 
 [`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
-reads `getExpressionBackend()$location` and copies that exact file or
-directory to the same relative location beside the bundled `.crb`; it
-does not guess from the current `.crb` filename. Invalid or missing
-locations, and two inputs that resolve to the same bundle target, stop
-the build with an error. The Shiny runtime resolves the same descriptor
-relative to the `.crb`, so the bundle stays portable. A corresponding
-global runtime override retains its existing precedence and skips the
-sidecar copy.
+already knows about both `<stem>.bpcells/` and `<stem>.h5` and copies
+them next to the bundled `.crb`. The Shiny runtime re-resolves the
+sibling location on load via `getExpressionBackend()$location` relative
+to the `.crb`’s parent directory, so the bundle stays portable.
 
 ### 2.4 Analysis modules
 

@@ -12,7 +12,7 @@
 ## Citation
 
 Source:
-[`inst/CITATION`](https://github.com/mihem/CerebroNexus/blob/ci/102-sibling-simplified/inst/CITATION)
+[`inst/CITATION`](https://github.com/mihem/CerebroNexus/blob/ci/103-immune-simplify-red/inst/CITATION)
 
 Hillje, R., Pelicci, P.G. & Luzi, L. Cerebro: Interactive visualization
 of scRNA-seq data. Bioinformatics (2019).
