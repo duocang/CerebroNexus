@@ -4,91 +4,36 @@
 
 ### Documentation
 
-- **A new data-integrity guide connects the complete export path.** It
-  explains how membership-proven Seurat layer resolution, staged export
-  replacement, and globally unique repertoire rows apply the same
-  resolve/validate/stage pattern. A new colour diagram covers repertoire
-  identity, alongside the layered-assay guide’s four diagrams.
+- A new data-integrity guide explains the shared resolve/validate/stage
+  pattern used for layered assays, export replacement, and
+  immune-repertoire identity.
 
 ### Export
 
-- **[`addImmuneRepertoire()`](https://mihem.github.io/CerebroNexus/reference/addImmuneRepertoire.md)
-  puts TCR/BCR data into a Seurat object.** The logic that builds
-  `@misc$immune_repertoire` already existed, but only inside
+- [`addImmuneRepertoire()`](https://mihem.github.io/CerebroNexus/reference/addImmuneRepertoire.md)
+  now accepts scRepertoire lists, one `.rds`, explicitly named Cell
+  Ranger CSVs, or existing scRepertoire metadata.
   [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md)
-  and only reachable by running that whole pipeline. Anyone using
-  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md)
-  directly was told, in a vignette, to assign the slot by hand — a
-  convention with no function behind it. The new function takes what
-  [`scRepertoire::combineTCR()`](https://www.borch.dev/uploads/scRepertoire/reference/combineTCR.html)
-  /
-  [`combineBCR()`](https://www.borch.dev/uploads/scRepertoire/reference/combineBCR.html)
-  return, the path to an `.rds` holding that, or Cell Ranger
-  `filtered_contig_annotations.csv` files (assembled with scRepertoire);
-  with no arguments it reads the repertoire out of scRepertoire’s
-  `meta.data` columns.
-  [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md)
-  now goes through the same function, so both routes build the slot
-  identically. TCR and BCR data for the same sample are row-bound into
-  one table rather than concatenated into two entries with the same name
-  — a name identifies one biological sample, and `x[["donorA"]]` returns
-  only the first match, so one receptor type would have silently
-  disappeared.
-
-- **The shape of a repertoire is checked on the way out.** A flat
-  data.frame satisfies [`is.list()`](https://rdrr.io/r/base/list.html),
-  and its [`length()`](https://rdrr.io/r/base/length.html) is its column
-  count, so the old guard waved one through and its column names became
-  the sample names. The file exported intact and came apart only in the
-  running app, where the sample selector lists `barcode`, `CTgene`,
-  `CTaa` and every panel is empty. Data that cannot be read at all — not
-  a named list, a duplicated sample name, an entry that is not a
-  data.frame, a missing standard clone-call column, or barcodes matching
-  no cell at all — now stops the export and says which entry and what to
-  do about it. The last of those is what `combineTCR(samples = )`
-  prefixing produces when the cell names were not renamed to match, and
-  it leaves every receptor orphaned, which is not a degraded page but no
-  page. A single sample whose barcodes match no cell while its
-  neighbours do warns instead of going silently empty. A partial match
-  is left alone, since filtering cells after combining a repertoire is
-  ordinary. The legacy `bcr_data` / `tcr_data` slots are each held to
-  the same shape, since `getImmuneRepertoire()` falls back to them.
-  **This is a behaviour change**: an export that previously produced an
-  unusable `.crb` in silence now fails.
-
-  When only the legacy `bcr_data` / `tcr_data` slots are present, the
-  exporter now also row-binds them by sample into the unified slot while
-  retaining the originals for `getBCR()` / `getTCR()`. This prevents the
-  serialized `getImmuneRepertoire()` from returning duplicate sample
-  names and hiding one receptor type. R6 methods travel inside a `.crb`,
-  so existing files retain their old getter and need to be re-exported
-  to receive this correction.
-
-- **The repertoire contract is now one globally unique cell barcode per
-  row.** Missing/empty barcodes, duplicate rows within a sample, the
-  same barcode in several samples, and a cell present in both TCR and
-  BCR inputs are refused before they can inflate clone sizes. Empty
-  sample tables are treated as no repertoire. Metadata extraction also
-  refuses repertoire-bearing cells whose sample identity is missing
-  instead of dropping them during
-  [`split()`](https://rdrr.io/r/base/split.html). `barcode`, `CTgene`,
-  `CTnt`, `CTaa`, and `CTstrict` are required because the app exposes
-  all four clone-call modes. Cell Ranger CSV inputs require a named path
-  vector or explicit `sample_names`; biological sample identities are
-  never guessed from file-system layout.
-
-- **The unified repertoire slot is authoritative.** Valid
-  `@misc$immune_repertoire` data no longer gets blocked by stale legacy
-  `tcr_data` / `bcr_data`; those slots are validated and migrated only
-  when the unified slot is absent.
-
-- CRBs and external H5/BPCells sidecars are built in a private sibling
-  stage, so late validation errors leave an existing export unchanged.
-  Ordinary R errors during final replacement trigger a best-effort
-  restore; this is not an atomic guarantee across two paths and does not
-  cover process termination or concurrent writers. BPCells is reopened
-  at its final path before serialisation, and external modes require a
-  distinct `.crb` output name.
+  delegates to the same API users can call before
+  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md).
+  TCR and BCR rows are merged by sample rather than leaving duplicate
+  names that hide one receptor type.
+- Export now validates one named data.frame per sample, the five
+  required scRepertoire columns, globally unique non-empty barcodes, and
+  barcode overlap with the Seurat cells. Complete mismatch and ambiguous
+  identity are errors; one unmatched sample warns, while ordinary
+  partial overlap remains valid. CSV sample identities must be explicit.
+- A valid unified repertoire takes precedence over legacy `tcr_data` and
+  `bcr_data`. When only legacy slots exist, they are validated and
+  merged into the unified field while remaining available through
+  `getTCR()` / `getBCR()`. Existing serialized CRBs must be re-exported
+  to receive this migration.
+- CRBs and external H5/BPCells sidecars are staged before publication,
+  so late validation errors leave an existing export unchanged.
+  Replacement uses best-effort rollback for ordinary R errors; it is not
+  an atomic guarantee for process termination or concurrent writers.
+  External modes require a `.crb` output name so the metadata and
+  sidecar cannot resolve to the same path.
 
 ## CerebroNexus 3.0.3
 
