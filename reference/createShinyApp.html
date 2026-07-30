@@ -15,7 +15,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.3</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.4</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -37,6 +37,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
     <li><a class="dropdown-item" href="../articles/release_notes_v1.3.html">Release notes: Cerebro/cerebroApp v1.3</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>How-to</h6></li>
+    <li><a class="dropdown-item" href="../articles/seurat_v5_layered_assays.html">Seurat v5 layered assays: complete and safe expression matrices</a></li>
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Create expression matrix in h5 format</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
@@ -76,7 +77,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Create a self-contained Shiny app folder for Cerebro v1.4</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/test/v5-custom-layer-review/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-sibling-simplified/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
       <div class="d-none name"><code>createShinyApp.Rd</code></div>
     </div>
 
@@ -125,8 +126,8 @@ run with <code>shiny::runApp(result_dir)</code>.</p>
 
 
 <dl><dt id="arg-cerebro-data">cerebro_data<a class="anchor" aria-label="anchor" href="#arg-cerebro-data"></a></dt>
-<dd><p>Named character vector or list of <code>.crb</code> (or
-<code>.rds</code>) file paths. Names are used as dataset labels.</p></dd>
+<dd><p>Non-empty named character vector or list of <code>.crb</code>
+(or <code>.rds</code>) file paths. Names are used as dataset labels.</p></dd>
 
 
 <dt id="arg-result-dir">result_dir<a class="anchor" aria-label="anchor" href="#arg-result-dir"></a></dt>
@@ -249,10 +250,11 @@ applied to spatial cell coordinates. Names must match <code>cerebro_data</code>.
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>Supports external expression backends (<code>bpcells</code>, <code>h5</code>) in
-addition to the embedded mode. When <code>cerebro_data</code> points to a
-<code>.crb</code> with an external backend, the sibling <code>.bpcells/</code>
-directory or <code>.h5</code> file is detected and copied into the bundle
-alongside the <code>.crb</code>.</p>
+addition to the embedded mode. The backend descriptor stored in each
+<code>.crb</code> names a portable relative file or directory, which is copied to
+the same relative location in the bundle. Missing, invalid, or conflicting
+targets stop the build rather than producing an incomplete app. A configured
+runtime matrix override keeps its existing precedence and skips this copy.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

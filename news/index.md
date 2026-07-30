@@ -1,44 +1,82 @@
 # Changelog
 
+## CerebroNexus 3.0.4
+
+### Export
+
+- **[`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
+  now follows each `.crb` backend descriptor.** H5 files and BPCells
+  directories are copied from the recorded relative location rather than
+  guessed from the current `.crb` name, so renamed data files remain
+  portable. Missing, non-portable, or conflicting targets now stop the
+  build instead of producing an app that fails at runtime unless the
+  corresponding global runtime override is configured. An empty
+  `cerebro_data` no longer launches the packaged example.
+
 ## CerebroNexus 3.0.3
 
 ### Export
 
 - **Split Seurat v5 objects no longer export a single sample.**
   [`split()`](https://rdrr.io/r/base/split.html) names an assay’s layers
-  `<root>.<level>`, and the level is whatever the splitting factor holds
-  — sample names (`counts.pbmc_1`) at least as often as integers
-  (`counts.1`). Layer resolution recognised only the integer form, so an
-  object split by sample was never joined and
-  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md)
-  read the first layer alone. In `embedded` mode that surfaced as an
-  error about the meta data not matching the expression matrix, which
-  pointed at the wrong thing; in `h5` and `bpcells` mode nothing
-  compared the two at all and the export succeeded, writing a `.crb`
-  that described every cell next to a matrix holding one sample’s.
-  Layers are now matched by semantic root, and
-  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md)
-  joins them the way
-  [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md)
-  always has. `scale.data` keeps its own root rather than being read as
-  a variant of `data`. A layer asked for by name (`slot = "data.s2"`) is
-  left alone: joining would consume it, and the substitution would be
-  invisible, since the joined `data` satisfies the request’s own
-  semantic root.
-- **An expression matrix that does not cover every cell is refused.**
-  The check runs once, before the storage modes diverge, so `embedded`,
-  `h5` and `bpcells` fail identically and name the likely cause instead
-  of leaving the external-matrix modes to write a file whose two halves
-  disagree. The matrix is also ordered to match the cells the meta data
-  is built from.
+  `<root>.<level>`, but the old fallback accepted the first readable
+  layer and could pair one sample’s matrix with every sample’s metadata.
+  Resolution is now driven by the requested layer: an exact physical
+  name remains authoritative, otherwise candidate cell memberships must
+  prove one unique complete partition before CerebroNexus joins it on a
+  local copy. This works for sample names and arbitrary roots, ignores
+  unrelated overlapping layers, protects every custom layer matched by
+  Seurat’s own prefix search, and reports ambiguous or incomplete covers
+  instead of guessing. Incomplete requested-prefix noise is returned as
+  a structured resolution failure, so it cannot short-circuit an
+  explicitly enabled, complete compatibility fallback.
+- **Every complete-matrix consumer shares the same coverage contract.**
+  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md),
+  [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md),
+  [`calculatePercentGenes()`](https://mihem.github.io/CerebroNexus/reference/calculatePercentGenes.md),
+  [`getMostExpressedGenes()`](https://mihem.github.io/CerebroNexus/reference/getMostExpressedGenes.md),
+  [`addPercentMtRibo()`](https://mihem.github.io/CerebroNexus/reference/addPercentMtRibo.md),
+  and
+  [`performGeneSetEnrichmentAnalysis()`](https://mihem.github.io/CerebroNexus/reference/performGeneSetEnrichmentAnalysis.md)
+  now resolve layered assays through one gateway. The resulting matrix
+  must contain exactly the object’s cells and is reordered once before
+  analysis or storage. `embedded`, `h5`, and `bpcells` therefore fail
+  identically on partial data, and conversion errors are propagated
+  rather than printed and swallowed.
+- **Spatial export reuses the validated expression resolution.** Each
+  image intersects coordinates with the already-resolved matrix instead
+  of resolving and joining the assay again. Spatial payloads keep the
+  requested and physical layer names separately, so a warned `data` to
+  `counts` compatibility fallback cannot serialize counts while
+  labelling them as normalized data.
 - **A disk-backed source assay says so when it is refused.** Reading a
   Seurat object whose layers are BPCells or DelayedArray matrices is
-  still not supported, but the refusal used to read
-  `Received: RenameDims` and nothing more. It now says the data lives on
-  disk, shows how to bring a layer into memory, and points out that this
-  is unrelated to `expression_matrix_mode`, which controls how the
-  exported `.crb` stores its matrix rather than how the source object
-  holds it.
+  still not supported. Every selected partition member is inspected, the
+  refusal names the disk-backed layer, shows how to bring every layer
+  into memory, and points out that this is unrelated to
+  `expression_matrix_mode`, which controls how the exported `.crb`
+  stores its matrix rather than how the source object holds it.
+- **A new layered-assay vignette documents the full contract.** It
+  includes troubleshooting, storage guidance, custom-root examples, and
+  four colour diagrams covering the original failure, membership-based
+  partition proof, resolver decisions, and public entry points.
+- **Prefix protection and partition proof are separate.** Seurat’s broad
+  `Layers(search = "^root")` result remains the authority for everything
+  [`JoinLayers()`](https://satijalab.github.io/seurat-object/reference/SplitLayers.html)
+  might consume, but only `<root>.*` layers may prove the requested
+  partition. A complete nested custom root such as `data.imputed.s1/s2`
+  is semantically ambiguous when `data` is requested and now fails
+  closed instead of becoming normalized data silently.
+- **Pathological exact-cover search has deterministic resource
+  budgets.** Conflict indexing, visited nodes, and recursion depth are
+  bounded independently. Highly overlapping prefix noise now stops
+  before exhausting memory or R’s call stack, and the diagnostic asks
+  the user to rename noise or join the intended layers.
+  [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md)
+  also hands its already validated resolution to
+  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md),
+  avoiding a second joined matrix and the corresponding peak-memory
+  duplication.
 
 ## CerebroNexus 3.0.2
 
