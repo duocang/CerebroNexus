@@ -19,16 +19,34 @@ if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
   inst_dir <- testthat::test_path("../../inst")
 }
 
+## All three tests below run against the same default data set, and booting the
+## app costs far more than the assertions do, so they share one driver created on
+## first use and stopped when the file finishes.
+##
+## Each test navigates to the tab it asserts on instead of inheriting whatever
+## tab a previous test left active, so the tests stay order-independent. A test
+## that needs a pristine app (e.g. asserting something has NOT loaded yet) must
+## create its own AppDriver rather than call shared_app().
+shared_driver <- NULL
+shared_driver_env <- environment()
+shared_app <- function() {
+  if (is.null(shared_driver)) {
+    local_app_support(inst_dir, envir = shared_driver_env)
+    shared_driver <<- AppDriver$new(
+      inst_dir,
+      name = "trajectory_shared",
+      height = 950,
+      width = 1619,
+      load_timeout = 60000
+    )
+    withr::defer(shared_driver$stop(), envir = shared_driver_env)
+    shared_driver$wait_for_idle(timeout = 20000)
+  }
+  shared_driver
+}
+
 test_that("Trajectory tab is present on the default (full T+B) data set", {
-  app <- AppDriver$new(
-    inst_dir,
-    name = "trajectory_visible",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  on.exit(app$stop(), add = TRUE)
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   # Default data set now carries trajectory data -> tab present immediately.
   tab_present <- app$get_js(
@@ -38,15 +56,12 @@ test_that("Trajectory tab is present on the default (full T+B) data set", {
 })
 
 test_that("trajectory module loads without breaking the main app", {
-  app <- AppDriver$new(
-    inst_dir,
-    name = "trajectory_load",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  on.exit(app$stop(), add = TRUE)
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
+
+  # Read the Data info tab explicitly rather than assuming the app is still on
+  # its landing tab, so this assertion does not depend on test order.
+  app$set_inputs(sidebar = "loadData")
+  app$wait_for_idle(timeout = 10000)
 
   # Default data set (1,476 cells) now carries the trajectory; confirm the
   # Data info tab still renders its cell count normally alongside it.
@@ -55,16 +70,7 @@ test_that("trajectory module loads without breaking the main app", {
 })
 
 test_that("trajectory projection fits the viewport with selectors in parameters", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "trajectory_viewport",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  on.exit(app$stop(), add = TRUE)
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   app$click(selector = 'a[href="#shiny-tab-trajectory"]')
   app$wait_for_idle(timeout = 20000)
