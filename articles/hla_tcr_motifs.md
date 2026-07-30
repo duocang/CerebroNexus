@@ -607,20 +607,7 @@ contig_list <- lapply(sample_dirs, function(d) {
 })
 combined <- combineTCR(contig_list, samples = donor_ids) # a list named by donor
 
-seurat <- addImmuneRepertoire(seurat, tcr = combined)
-```
-
-[`addImmuneRepertoire()`](https://mihem.github.io/CerebroNexus/reference/addImmuneRepertoire.md)
-also takes the contig files directly, doing the
-[`combineTCR()`](https://www.borch.dev/uploads/scRepertoire/reference/combineTCR.html)
-step for you:
-
-``` r
-seurat <- addImmuneRepertoire(
-  seurat,
-  tcr = file.path(sample_dirs, "filtered_contig_annotations.csv"),
-  sample_names = donor_ids
-)
+seurat@misc$immune_repertoire <- combined
 ```
 
 The page reads two things out of each row: the V gene (the first

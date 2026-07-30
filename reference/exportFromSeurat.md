@@ -44,8 +44,7 @@ exportFromSeurat(
 
 - file:
 
-  Where to save the output. External backends require a `.crb` filename
-  because their sidecar is derived from the stem.
+  Where to save the output.
 
 - experiment_name:
 
@@ -130,11 +129,6 @@ exportFromSeurat(
     never materialised on attach, so RAM stays close to the `.crb`
     metadata size. Requires the HDF5Array package.
 
-  The CRB and any sidecar are built and validated in a private sibling
-  stage. Ordinary R errors during final replacement trigger a
-  best-effort restoration of the previous export; this is not an atomic
-  multi-path transaction.
-
 - verbose:
 
   Set this to `TRUE` if you want additional log messages; defaults to
@@ -154,11 +148,10 @@ No data returned.
 ## Immune Repertoire
 
 If `object@misc$immune_repertoire` contains a named list of data.frames
-(one per sample, with `barcode`, `CTgene`, `CTnt`, `CTaa`, and
-`CTstrict`), it will be automatically exported into the Cerebro object
-via
-[`addImmuneRepertoire()`](https://mihem.github.io/CerebroNexus/reference/addImmuneRepertoire.md).
-Legacy `bcr_data` / `tcr_data` slots are also supported as a fallback.
+(one per sample, with scRepertoire columns such as CTgene, CTnt, CTaa,
+CTstrict), it will be automatically exported into the Cerebro object via
+`addImmuneRepertoire()`. Legacy `bcr_data` / `tcr_data` slots are also
+supported as a fallback.
 
 ## HLA typing
 
@@ -187,16 +180,16 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [13:26:16] Initializing Cerebro object...
-#> [13:26:16] Adding expression data (embedded)...
-#> [13:26:16] Collecting available meta data...
-#> [13:26:16] Extracting all meta data columns...
-#> [13:26:16] Extracting dimensional reductions...
-#> [13:26:16] Will export the following dimensional reductions: umap
-#> [13:26:16] Extracting marker genes table...
-#> [13:26:16] No trajectories to extract...
-#> [13:26:16] Checking for spatial data...
-#> [13:26:16] Overview of Cerebro object:
+#> [15:13:42] Initializing Cerebro object...
+#> [15:13:42] Adding expression data (embedded)...
+#> [15:13:42] Collecting available meta data...
+#> [15:13:42] Extracting all meta data columns...
+#> [15:13:42] Extracting dimensional reductions...
+#> [15:13:42] Will export the following dimensional reductions: umap
+#> [15:13:42] Extracting marker genes table...
+#> [15:13:42] No trajectories to extract...
+#> [15:13:42] Checking for spatial data...
+#> [15:13:42] Overview of Cerebro object:
 #> class: Cerebro_v1.3
 #> cerebroApp version: 3.0.4
 #> experiment name: PBMC
@@ -218,6 +211,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [13:26:16] Saving Cerebro object to: /tmp/nix-shell-4225-611671528/RtmpJ1jgyC/pbmc_Seurat.crb
-#> [13:26:16] Done!
+#> [15:13:42] Saving Cerebro object to: /tmp/nix-shell-4230-2688073518/RtmpgOsgmR/pbmc_Seurat.crb
+#> [15:13:42] Done!
 ```

@@ -29,10 +29,9 @@
     <li><a class="dropdown-item" href="../articles/release_notes_v1.3.html">Release notes: Cerebro/cerebroApp v1.3</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>How-to</h6></li>
-    <li><a class="dropdown-item" href="../articles/data_integrity_contracts.html">Data integrity from Seurat to a self-contained Cerebro app</a></li>
     <li><a class="dropdown-item" href="../articles/seurat_v5_layered_assays.html">Seurat v5 layered assays: complete and safe expression matrices</a></li>
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
-    <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Create expression matrix in h5 format</a></li>
+    <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -70,22 +69,17 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/103-immune-simplify-red/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-sibling-simplified/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="3.0.4" id="cerebronexus-304">CerebroNexus 3.0.4<a class="anchor" aria-label="anchor" href="#cerebronexus-304"></a></h2>
 <div class="section level3">
-<h3 id="documentation-3-0-4">Documentation<a class="anchor" aria-label="anchor" href="#documentation-3-0-4"></a></h3>
-<ul><li>A new data-integrity guide explains the shared resolve/validate/stage pattern used for layered assays, export replacement, and immune-repertoire identity.</li>
-</ul></div>
-<div class="section level3">
 <h3 id="export-3-0-4">Export<a class="anchor" aria-label="anchor" href="#export-3-0-4"></a></h3>
 <ul><li>
-<code><a href="../reference/addImmuneRepertoire.html">addImmuneRepertoire()</a></code> now accepts scRepertoire lists, one <code>.rds</code>, explicitly named Cell Ranger CSVs, or existing scRepertoire metadata. <code><a href="../reference/convertSeuratToCerebro.html">convertSeuratToCerebro()</a></code> delegates to the same API users can call before <code><a href="../reference/exportFromSeurat.html">exportFromSeurat()</a></code>. TCR and BCR rows are merged by sample rather than leaving duplicate names that hide one receptor type.</li>
-<li>Export now validates one named data.frame per sample, the five required scRepertoire columns, globally unique non-empty barcodes, and barcode overlap with the Seurat cells. Complete mismatch and ambiguous identity are errors; one unmatched sample warns, while ordinary partial overlap remains valid. CSV sample identities must be explicit.</li>
-<li>A valid unified repertoire takes precedence over legacy <code>tcr_data</code> and <code>bcr_data</code>. When only legacy slots exist, they are validated and merged into the unified field while remaining available through <code>getTCR()</code> / <code>getBCR()</code>. Existing serialized CRBs must be re-exported to receive this migration.</li>
-<li>CRBs and external H5/BPCells sidecars are staged before publication, so late validation errors leave an existing export unchanged. Replacement uses best-effort rollback for ordinary R errors; it is not an atomic guarantee for process termination or concurrent writers. External modes require a <code>.crb</code> output name so the metadata and sidecar cannot resolve to the same path.</li>
+<strong><code><a href="../reference/createShinyApp.html">createShinyApp()</a></code> now follows each <code>.crb</code> backend descriptor.</strong> H5 files and BPCells directories are copied from the recorded relative location rather than guessed from the current <code>.crb</code> name, so renamed data files remain portable. Missing, non-portable, or conflicting targets now stop the build instead of producing an app that fails at runtime unless the corresponding global runtime override is configured. An empty <code>cerebro_data</code> no longer launches the packaged example.</li>
+<li>
+<strong>The H5 guide now starts with the one-step export workflow.</strong> <code>exportFromSeurat(..., expression_matrix_mode = "h5")</code> creates the <code>.crb</code> and its H5 sidecar together; the previous manual conversion remains documented for legacy embedded <code>.crb</code> files.</li>
 </ul></div>
 </div>
     <div class="section level2">

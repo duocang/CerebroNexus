@@ -43,8 +43,8 @@ createShinyApp(
 
 - cerebro_data:
 
-  Named character vector or list of `.crb` (or `.rds`) file paths. Names
-  are used as dataset labels.
+  Non-empty named character vector or list of `.crb` (or `.rds`) file
+  paths. Names are used as dataset labels.
 
 - result_dir:
 
@@ -166,6 +166,9 @@ Invisibly returns `result_dir`.
 ## Details
 
 Supports external expression backends (`bpcells`, `h5`) in addition to
-the embedded mode. When `cerebro_data` points to a `.crb` with an
-external backend, the sibling `.bpcells/` directory or `.h5` file is
-detected and copied into the bundle alongside the `.crb`.
+the embedded mode. The backend descriptor stored in each `.crb` names a
+portable relative file or directory, which is copied to the same
+relative location in the bundle. Missing, invalid, or conflicting
+targets stop the build rather than producing an incomplete app. A
+configured runtime matrix override keeps its existing precedence and
+skips this copy.

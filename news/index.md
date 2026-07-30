@@ -2,38 +2,20 @@
 
 ## CerebroNexus 3.0.4
 
-### Documentation
-
-- A new data-integrity guide explains the shared resolve/validate/stage
-  pattern used for layered assays, export replacement, and
-  immune-repertoire identity.
-
 ### Export
 
-- [`addImmuneRepertoire()`](https://mihem.github.io/CerebroNexus/reference/addImmuneRepertoire.md)
-  now accepts scRepertoire lists, one `.rds`, explicitly named Cell
-  Ranger CSVs, or existing scRepertoire metadata.
-  [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md)
-  delegates to the same API users can call before
-  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md).
-  TCR and BCR rows are merged by sample rather than leaving duplicate
-  names that hide one receptor type.
-- Export now validates one named data.frame per sample, the five
-  required scRepertoire columns, globally unique non-empty barcodes, and
-  barcode overlap with the Seurat cells. Complete mismatch and ambiguous
-  identity are errors; one unmatched sample warns, while ordinary
-  partial overlap remains valid. CSV sample identities must be explicit.
-- A valid unified repertoire takes precedence over legacy `tcr_data` and
-  `bcr_data`. When only legacy slots exist, they are validated and
-  merged into the unified field while remaining available through
-  `getTCR()` / `getBCR()`. Existing serialized CRBs must be re-exported
-  to receive this migration.
-- CRBs and external H5/BPCells sidecars are staged before publication,
-  so late validation errors leave an existing export unchanged.
-  Replacement uses best-effort rollback for ordinary R errors; it is not
-  an atomic guarantee for process termination or concurrent writers.
-  External modes require a `.crb` output name so the metadata and
-  sidecar cannot resolve to the same path.
+- **[`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
+  now follows each `.crb` backend descriptor.** H5 files and BPCells
+  directories are copied from the recorded relative location rather than
+  guessed from the current `.crb` name, so renamed data files remain
+  portable. Missing, non-portable, or conflicting targets now stop the
+  build instead of producing an app that fails at runtime unless the
+  corresponding global runtime override is configured. An empty
+  `cerebro_data` no longer launches the packaged example.
+- **The H5 guide now starts with the one-step export workflow.**
+  `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the
+  `.crb` and its H5 sidecar together; the previous manual conversion
+  remains documented for legacy embedded `.crb` files.
 
 ## CerebroNexus 3.0.3
 
