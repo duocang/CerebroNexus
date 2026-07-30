@@ -9,6 +9,10 @@
   instead of producing an app that fails at runtime unless the corresponding
   global runtime override is configured. An empty `cerebro_data` no longer
   launches the packaged example.
+- **The H5 guide now starts with the one-step export workflow.**
+  `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the `.crb`
+  and its H5 sidecar together; the previous manual conversion remains
+  documented for legacy embedded `.crb` files.
 
 # CerebroNexus 3.0.3
 
