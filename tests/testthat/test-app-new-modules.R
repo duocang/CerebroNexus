@@ -7,15 +7,34 @@ if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
   inst_dir <- testthat::test_path("../../inst")
 }
 
+## Booting the app dominates these recordings: every test below only reads from
+## the DOM of the same freshly-loaded example.crb, so a driver per test spent
+## almost all its time on startup. They share one driver instead, created on
+## first use and stopped when the file finishes.
+##
+## Sharing is safe here because each test navigates to the tab it asserts on
+## rather than relying on where a previous test left the app. Keep that property
+## when adding a test: if a new test needs a pristine app (e.g. asserting that
+## something has NOT been loaded yet), give it its own AppDriver instead.
+shared_driver <- NULL
+shared_driver_env <- environment()
+shared_app <- function() {
+  if (is.null(shared_driver)) {
+    local_app_support(inst_dir, envir = shared_driver_env)
+    shared_driver <<- AppDriver$new(
+      inst_dir,
+      name = "new_modules_shared",
+      height = 950,
+      width = 1619
+    )
+    withr::defer(shared_driver$stop(), envir = shared_driver_env)
+    shared_driver$wait_for_idle(timeout = 20000)
+  }
+  shared_driver
+}
+
 test_that("most_expressed_genes tab navigates and renders table", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "most_expressed_genes",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   # Most expressed genes is now a conditionally + asynchronously inserted sidebar
   # item (insertConditionalTab). Wait for its menu link to appear, then click it,
@@ -38,60 +57,33 @@ test_that("most_expressed_genes tab navigates and renders table", {
   # Table renders without error
   table_html <- app$get_value(output = "most_expressed_genes_table_UI")$html
   expect_false(grepl("no.*available|not.*found|error", tolower(table_html)))
-
-  app$stop()
 })
 
 
 test_that("enriched_pathways tab content exists in DOM", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "enriched_pathways",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   # Output container exists in the DOM
   has_div <- app$get_js(
     'document.getElementById("enriched_pathways_select_method_and_table_UI") !== null;'
   )
   expect_true(has_div)
-
-  app$stop()
 })
 
 
 test_that("extra_material tab content exists in DOM", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "extra_material",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   # Output container exists in the DOM
   has_div <- app$get_js(
     'document.getElementById("extra_material_select_category_and_content_UI") !== null;'
   )
   expect_true(has_div)
-
-  app$stop()
 })
 
 
 test_that("all three new tabs are visible in sidebar after data load", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "new_tabs_sidebar",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   most_expressed <- app$get_js(
     'document.querySelector(\'a[href="#shiny-tab-mostExpressedGenes"]\') !== null;'
@@ -107,8 +99,6 @@ test_that("all three new tabs are visible in sidebar after data load", {
     'document.querySelector(\'a[href="#shiny-tab-extra_material"]\') !== null;'
   )
   expect_true(extra_mat)
-
-  app$stop()
 })
 
 test_that("insertConditionalTab is defined and wired to conditional tabs", {
