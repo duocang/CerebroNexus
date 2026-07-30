@@ -47,6 +47,214 @@ dedent <- function(string) {
   paste(lines, collapse = "\n")
 }
 
+.portableBundlePath <- function(path, subject) {
+  valid <- is.character(path) &&
+    length(path) == 1L &&
+    !is.na(path) &&
+    nzchar(path) &&
+    !grepl("\\\\", path) &&
+    !grepl("^(/|~|[A-Za-z]:)", path)
+  parts <- if (valid) {
+    strsplit(path, "/", fixed = TRUE)[[1L]]
+  } else {
+    character()
+  }
+  windows_invalid <- length(parts) > 0L &&
+    any(
+      grepl("[[:cntrl:]<>:\"|?*]", parts) |
+        grepl("[. ]$", parts) |
+        grepl(
+          "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])($|\\.)",
+          parts,
+          ignore.case = TRUE
+        )
+    )
+  if (
+    !valid ||
+      length(parts) == 0L ||
+      any(!nzchar(parts)) ||
+      any(parts %in% c(".", "..")) ||
+      windows_invalid
+  ) {
+    stop(
+      subject,
+      " must be one portable relative path using forward slashes, without ",
+      "empty, '.', '..', or Windows-incompatible segments.",
+      call. = FALSE
+    )
+  }
+  paste(parts, collapse = "/")
+}
+
+.readBundleBackend <- function(crb_path) {
+  object <- readRDS(crb_path)
+  recognized <- is.environment(object) &&
+    "Cerebro_v1.3" %in% class(object)
+  if (!recognized) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' does not contain a recognized Cerebro object.",
+      call. = FALSE
+    )
+  }
+  getter <- if (is.environment(object) || is.list(object)) {
+    object[["getExpressionBackend"]]
+  } else {
+    NULL
+  }
+  if (is.null(getter)) {
+    return(list(type = "embedded", location = NULL, legacy = TRUE))
+  }
+  if (!is.function(getter)) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' has an unsupported expression-backend descriptor.",
+      call. = FALSE
+    )
+  }
+  backend <- getter()
+  if (is.null(backend)) {
+    return(list(type = "embedded", location = NULL, legacy = FALSE))
+  }
+  valid_type <- is.list(backend) &&
+    is.character(backend$type) &&
+    length(backend$type) == 1L &&
+    !is.na(backend$type) &&
+    backend$type %in% c("embedded", "h5", "bpcells")
+  valid_location <- valid_type &&
+    if (identical(backend$type, "embedded")) {
+      is.null(backend$location)
+    } else {
+      is.character(backend$location) &&
+        length(backend$location) == 1L &&
+        !is.na(backend$location) &&
+        nzchar(backend$location)
+    }
+  if (!valid_type || !valid_location) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' has an unsupported expression-backend descriptor.",
+      call. = FALSE
+    )
+  }
+  backend$legacy <- FALSE
+  backend
+}
+
+.pathIsSymbolicLink <- function(path) {
+  link <- Sys.readlink(path)
+  !is.na(link) && nzchar(link)
+}
+
+.backendPathContainsSymbolicLink <- function(root, parts, source) {
+  cursor <- root
+  for (part in parts) {
+    cursor <- file.path(cursor, part)
+    if (.pathIsSymbolicLink(cursor)) {
+      return(TRUE)
+    }
+  }
+  if (!dir.exists(source)) {
+    return(FALSE)
+  }
+
+  pending <- source
+  while (length(pending) > 0L) {
+    current <- pending[[1L]]
+    pending <- pending[-1L]
+    children <- list.files(
+      current,
+      all.files = TRUE,
+      full.names = TRUE,
+      no.. = TRUE
+    )
+    if (length(children) == 0L) {
+      next
+    }
+    linked <- vapply(children, .pathIsSymbolicLink, logical(1))
+    if (any(linked)) {
+      return(TRUE)
+    }
+    pending <- c(pending, children[!linked & dir.exists(children)])
+  }
+  FALSE
+}
+
+.publishBundleStage <- function(stage, result_dir, overwrite, publish_mode) {
+  backup <- NULL
+  published <- FALSE
+  on.exit(
+    {
+      if (!published && !is.null(backup) && dir.exists(backup)) {
+        if (dir.exists(result_dir)) {
+          unlink(result_dir, recursive = TRUE, force = TRUE)
+        }
+        if (!file.rename(backup, result_dir)) {
+          warning(
+            "App publication rollback could not restore the previous bundle ",
+            "from: ",
+            backup,
+            call. = FALSE
+          )
+        }
+      }
+    },
+    add = TRUE
+  )
+
+  if (file.exists(result_dir) && !dir.exists(result_dir)) {
+    stop("'result_dir' exists and is not a directory.", call. = FALSE)
+  }
+  if (.pathIsSymbolicLink(result_dir)) {
+    stop("'result_dir' must not be a symbolic link.", call. = FALSE)
+  }
+  if (
+    !overwrite &&
+      dir.exists(result_dir) &&
+      length(list.files(result_dir, all.files = TRUE, no.. = TRUE)) > 0L
+  ) {
+    stop(
+      "overwrite = FALSE rejects a non-empty result_dir; use an absent or ",
+      "empty directory.",
+      call. = FALSE
+    )
+  }
+  if (dir.exists(result_dir)) {
+    backup <- tempfile(
+      pattern = paste0(".", basename(result_dir), "-backup-"),
+      tmpdir = dirname(result_dir)
+    )
+    if (!file.rename(result_dir, backup)) {
+      stop("Failed to stage the existing app for replacement.", call. = FALSE)
+    }
+  }
+  if (!isTRUE(Sys.chmod(stage, mode = publish_mode))) {
+    stop(
+      "Failed to apply deployment permissions to the staged app.",
+      call. = FALSE
+    )
+  }
+  if (!file.rename(stage, result_dir)) {
+    stop("Failed to publish the staged app bundle.", call. = FALSE)
+  }
+  published <- TRUE
+
+  if (!is.null(backup) && dir.exists(backup)) {
+    status <- unlink(backup, recursive = TRUE, force = TRUE)
+    if (!identical(status, 0L)) {
+      warning(
+        "The new app was published, but an old backup remains at: ",
+        backup,
+        call. = FALSE
+      )
+    }
+  }
+  invisible(result_dir)
+}
+
 #' Create a self-contained Shiny app folder for Cerebro v1.4
 #'
 #' Bundles a Cerebro v1.4 Shiny app into \code{result_dir}, copying the
@@ -56,13 +264,25 @@ dedent <- function(string) {
 #' run with \code{shiny::runApp(result_dir)}.
 #'
 #' Supports external expression backends (\code{bpcells}, \code{h5}) in
-#' addition to the embedded mode. When \code{cerebro_data} points to a
-#' \code{.crb} with an external backend, the sibling \code{.bpcells/}
-#' directory or \code{.h5} file is detected and copied into the bundle
-#' alongside the \code{.crb}.
+#' addition to the embedded mode. The backend descriptor stored in each
+#' \code{.crb} names a portable relative file or directory, which is copied to
+#' the same relative location in the bundle. Missing or invalid descriptor-backed
+#' sidecars and conflicting planned bundle targets stop the build rather than
+#' producing an incomplete app. A configured runtime matrix override keeps its
+#' existing precedence, is not copied or checked for existence at build time,
+#' and skips the descriptor-backed sidecar copy. Required Cerebro files,
+#' descriptor-backed sidecars, and planned bundle targets are validated before
+#' the app is assembled in a private sibling directory. The completed stage
+#' replaces \code{result_dir} only after every copy and configuration write
+#' succeeds. On POSIX systems, the stage is mode \code{0700} while data is
+#' copied, and replacement retains the existing deployment root's permission
+#' bits. Platform-specific ACLs, ownership changes, and security labels remain
+#' the deployment system's responsibility. Inputs must not be modified while
+#' the build is running.
 #'
-#' @param cerebro_data Named character vector or list of \code{.crb} (or
-#'   \code{.rds}) file paths. Names are used as dataset labels.
+#' @param cerebro_data Non-empty named character vector or list of \code{.crb}
+#'   (or \code{.rds}) file paths. Names must be non-missing and unique and are
+#'   used as dataset labels.
 #' @param result_dir Output directory.
 #' @param max_request_size Max upload size in MB; defaults to 8000.
 #' @param port Port the generated app listens on; defaults to 1337.
@@ -73,7 +293,10 @@ dedent <- function(string) {
 #' @param colors Optional named list of colour palettes per dataset.
 #' @param cerebro_options Extra entries merged into \code{Cerebro.options} in
 #'   the generated app.
-#' @param overwrite If \code{TRUE} (default), wipe \code{result_dir} first.
+#' @param overwrite If \code{TRUE} (default), replace \code{result_dir} only
+#'   after a complete staged build succeeds. If \code{FALSE},
+#'   \code{result_dir} must be absent or empty; a non-empty directory is
+#'   rejected before any files are written.
 #' @param verbose Print progress messages; defaults to TRUE.
 #' @param crb_pick_smallest_file Forwarded to \code{Cerebro.options}.
 #' @param show_upload_ui Forwarded to \code{Cerebro.options}.
@@ -83,7 +306,8 @@ dedent <- function(string) {
 #' @param variable_to_compare Forwarded to \code{Cerebro.options}.
 #' @param spatial_images Named list/vector of paths to spatial background images
 #'   (e.g. tissue histology) shown behind the Spatial tab projection. Names must
-#'   match \code{cerebro_data}. Images are copied into the app bundle.
+#'   match \code{cerebro_data}. Existing images are copied into the app bundle;
+#'   missing images are omitted with a warning.
 #' @param spatial_images_flip_x Named list/vector; whether to flip the spatial
 #'   background image horizontally. Names must match \code{cerebro_data}.
 #' @param spatial_images_flip_y Named list/vector; whether to flip the spatial
@@ -137,6 +361,36 @@ createShinyApp <- function(
   ...
 ) {
   # Validate inputs ----------------------------------------------------------##
+  if (is.list(cerebro_data)) {
+    valid_entries <- vapply(
+      cerebro_data,
+      function(path) {
+        is.character(path) &&
+          length(path) == 1L &&
+          !is.na(path) &&
+          nzchar(path)
+      },
+      logical(1)
+    )
+    if (!all(valid_entries)) {
+      stop(
+        "Every cerebro_data list entry must be one non-empty file path.",
+        call. = FALSE
+      )
+    }
+    data_names <- names(cerebro_data)
+    cerebro_data <- vapply(cerebro_data, `[[`, character(1), 1L)
+    names(cerebro_data) <- data_names
+  }
+  if (!is.character(cerebro_data)) {
+    stop(
+      "cerebro_data must be a named character vector or list of file paths.",
+      call. = FALSE
+    )
+  }
+  if (length(cerebro_data) == 0L) {
+    stop("cerebro_data must contain at least one data set.", call. = FALSE)
+  }
   if (!all(file.exists(cerebro_data))) {
     missing <- cerebro_data[!file.exists(cerebro_data)]
     stop(
@@ -152,9 +406,50 @@ createShinyApp <- function(
     )
   }
 
-  if (is.null(names(cerebro_data)) || any(names(cerebro_data) == "")) {
+  data_labels <- names(cerebro_data)
+  if (
+    is.null(data_labels) ||
+      anyNA(data_labels) ||
+      any(data_labels == "")
+  ) {
     stop(
-      "cerebro_data must be a named list or vector, and every element must have a name.",
+      "cerebro_data labels must be non-empty and non-missing.",
+      call. = FALSE
+    )
+  }
+  if (anyDuplicated(data_labels)) {
+    stop("cerebro_data labels must be unique.", call. = FALSE)
+  }
+  if (
+    !is.logical(overwrite) ||
+      length(overwrite) != 1L ||
+      is.na(overwrite)
+  ) {
+    stop("'overwrite' must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (
+    is.null(result_dir) ||
+      !is.character(result_dir) ||
+      length(result_dir) != 1L ||
+      is.na(result_dir) ||
+      !nzchar(result_dir)
+  ) {
+    stop("'result_dir' must be provided.", call. = FALSE)
+  }
+  if (file.exists(result_dir) && !dir.exists(result_dir)) {
+    stop("'result_dir' exists and is not a directory.", call. = FALSE)
+  }
+  if (.pathIsSymbolicLink(result_dir)) {
+    stop("'result_dir' must not be a symbolic link.", call. = FALSE)
+  }
+  if (
+    !overwrite &&
+      dir.exists(result_dir) &&
+      length(list.files(result_dir, all.files = TRUE, no.. = TRUE)) > 0L
+  ) {
+    stop(
+      "overwrite = FALSE rejects a non-empty result_dir; use an absent or ",
+      "empty directory.",
       call. = FALSE
     )
   }
@@ -202,7 +497,7 @@ createShinyApp <- function(
     if (is.null(x)) {
       return(NULL)
     }
-    if (is.null(names(x)) || any(names(x) == "")) {
+    if (is.null(names(x)) || anyNA(names(x)) || any(names(x) == "")) {
       warning(
         arg_name,
         " must be a named list or vector. Ignoring.",
@@ -210,7 +505,8 @@ createShinyApp <- function(
       )
       return(NULL)
     }
-    if (length(intersect(names(x), names(cerebro_data))) == 0) {
+    matching <- names(x) %in% names(cerebro_data)
+    if (!any(matching)) {
       warning(
         "No matching names found between ",
         arg_name,
@@ -219,7 +515,16 @@ createShinyApp <- function(
       )
       return(NULL)
     }
-    x
+    if (!all(matching)) {
+      warning(
+        "Some ",
+        arg_name,
+        " entries do not match cerebro_data and will be ignored: ",
+        paste(unique(names(x)[!matching]), collapse = ", "),
+        call. = FALSE
+      )
+    }
+    x[matching]
   }
   spatial_images <- validate_named_against_data(
     spatial_images,
@@ -260,121 +565,12 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
-
-  if (is.null(result_dir)) {
-    stop("'result_dir' must be provided.", call. = FALSE)
-  }
-
-  # Setup directories --------------------------------------------------------##
-  data_dir <- file.path(result_dir, "data")
-  app_file <- file.path(result_dir, "app.R")
-
-  if (overwrite && dir.exists(result_dir)) {
-    if (verbose) {
-      cat("Removing existing directory:", result_dir, "\n")
-    }
-    unlink(result_dir, recursive = TRUE, force = TRUE)
-  }
-
-  if (verbose) {
-    cat("Creating directory structure...\n")
-  }
-  dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
-
-  # Copy Shiny source --------------------------------------------------------##
   shiny_source <- system.file("shiny", package = "CerebroNexus")
   if (!dir.exists(shiny_source)) {
     stop(
       "Shiny source files not found in CerebroNexus package.",
       call. = FALSE
     )
-  }
-
-  if (verbose) {
-    cat("Copying Shiny source files...\n")
-  }
-  if (!file.copy(shiny_source, result_dir, recursive = TRUE)) {
-    stop("Failed to copy Shiny source files.", call. = FALSE)
-  }
-
-  # Copy Cerebro data file(s) -----------------------------------------------##
-  if (verbose) {
-    cat("Copying Cerebro data file(s)...\n")
-  }
-  for (file in cerebro_data) {
-    if (verbose) {
-      cat("  -", basename(file), "\n")
-    }
-    if (!file.copy(file, data_dir, recursive = TRUE)) {
-      stop("Failed to copy Cerebro data file: ", basename(file), call. = FALSE)
-    }
-    ## External-backend crbs store only metadata; the expression matrix
-    ## lives in a sibling file/dir resolved relative to the crb at runtime.
-    ## Copy the sibling alongside so the bundle stays portable.
-    crb_stem <- tools::file_path_sans_ext(basename(file))
-    bpc_src <- file.path(dirname(file), paste0(crb_stem, ".bpcells"))
-    if (dir.exists(bpc_src)) {
-      if (verbose) {
-        cat("  -", basename(bpc_src), "(bpcells sibling)\n")
-      }
-      if (!file.copy(bpc_src, data_dir, recursive = TRUE)) {
-        stop(
-          "Failed to copy bpcells sibling directory: ",
-          basename(bpc_src),
-          call. = FALSE
-        )
-      }
-    }
-    h5_src <- file.path(dirname(file), paste0(crb_stem, ".h5"))
-    if (file.exists(h5_src)) {
-      if (verbose) {
-        cat("  -", basename(h5_src), "(h5 sibling)\n")
-      }
-      if (!file.copy(h5_src, data_dir, overwrite = TRUE)) {
-        stop(
-          "Failed to copy h5 sibling file: ",
-          basename(h5_src),
-          call. = FALSE
-        )
-      }
-    }
-  }
-
-  # Copy spatial images ------------------------------------------------------##
-  ## Side-copy each background image into data_dir and rewrite the stored path
-  ## to the bundle-relative "data/<file>" so the generated app is portable.
-  if (!is.null(spatial_images) && length(spatial_images) > 0) {
-    if (verbose) {
-      cat("Copying spatial images...\n")
-    }
-    for (nm in names(spatial_images)) {
-      img_paths <- spatial_images[[nm]]
-      copied_paths <- character(0)
-      for (img in img_paths) {
-        if (file.exists(img)) {
-          dest <- file.path(data_dir, basename(img))
-          if (!file.copy(img, dest, overwrite = TRUE)) {
-            warning("Failed to copy spatial image: ", img, call. = FALSE)
-            copied_paths <- c(copied_paths, img)
-          } else {
-            if (verbose) {
-              cat("  -", basename(img), "\n")
-            }
-            copied_paths <- c(copied_paths, file.path("data", basename(img)))
-          }
-        } else {
-          warning("Spatial image not found: ", img, call. = FALSE)
-          copied_paths <- c(copied_paths, img)
-        }
-      }
-      spatial_images[[nm]] <- copied_paths
-    }
-  }
-
-  # Copy extdata -------------------------------------------------------------##
-  if (verbose) {
-    cat("Copying extdata files...\n")
   }
   extdata_source <- system.file("extdata", package = "CerebroNexus")
   if (!dir.exists(extdata_source)) {
@@ -383,7 +579,338 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
-  if (!file.copy(extdata_source, result_dir, recursive = TRUE)) {
+
+  # Preflight data inputs ----------------------------------------------------##
+  backends <- lapply(cerebro_data, .readBundleBackend)
+  copy_plan <- list()
+  claimed_targets <- character()
+  claimed_keys <- character()
+  claimed_sources <- character()
+  claimed_artifacts <- character()
+  claimed_directories <- logical()
+  claim_target <- function(target, source, artifact, directory = FALSE) {
+    target <- .portableBundlePath(
+      target,
+      paste0("The ", artifact, " bundle target '", target, "'")
+    )
+    key <- tolower(target)
+    for (claim_index in seq_along(claimed_keys)) {
+      existing <- claimed_targets[[claim_index]]
+      existing_key <- claimed_keys[[claim_index]]
+      if (identical(key, existing_key)) {
+        duplicate <- identical(target, existing) &&
+          identical(source, claimed_sources[[claim_index]]) &&
+          identical(artifact, claimed_artifacts[[claim_index]]) &&
+          identical(isTRUE(directory), claimed_directories[[claim_index]])
+        if (duplicate) {
+          return(invisible(FALSE))
+        }
+        stop(
+          "Different inputs resolve to the same bundle target '",
+          target,
+          "'. Rename one input before building the app.",
+          call. = FALSE
+        )
+      }
+      if (
+        startsWith(key, paste0(existing_key, "/")) ||
+          startsWith(existing_key, paste0(key, "/"))
+      ) {
+        stop(
+          "Bundle target '",
+          target,
+          "' conflicts with parent or child target '",
+          existing,
+          "'. Rename one backend before building the app.",
+          call. = FALSE
+        )
+      }
+    }
+    claimed_targets <<- c(claimed_targets, target)
+    claimed_keys <<- c(claimed_keys, key)
+    claimed_sources <<- c(claimed_sources, source)
+    claimed_artifacts <<- c(claimed_artifacts, artifact)
+    claimed_directories <<- c(claimed_directories, isTRUE(directory))
+    copy_plan[[length(copy_plan) + 1L]] <<- list(
+      target = target,
+      source = source,
+      artifact = artifact,
+      directory = directory
+    )
+  }
+
+  resolved_crb_sources <- vapply(
+    cerebro_data,
+    normalizePath,
+    character(1),
+    winslash = "/",
+    mustWork = TRUE
+  )
+  for (index in seq_along(cerebro_data)) {
+    claim_target(
+      basename(cerebro_data[[index]]),
+      resolved_crb_sources[[index]],
+      "Cerebro data file"
+    )
+  }
+
+  override_keys <- c("expression_matrix_h5", "expression_matrix_BPCells")
+  for (key in override_keys) {
+    override <- cerebro_options[[key]]
+    if (
+      !is.null(override) &&
+        (!is.character(override) ||
+          length(override) != 1L ||
+          is.na(override) ||
+          !nzchar(override))
+    ) {
+      stop(
+        "cerebro_options[['",
+        key,
+        "']] must be one non-empty path.",
+        call. = FALSE
+      )
+    }
+  }
+
+  override_users <- list(
+    expression_matrix_h5 = character(),
+    expression_matrix_BPCells = character()
+  )
+  for (index in seq_along(backends)) {
+    backend <- backends[[index]]
+    override_key <- NULL
+    if (isTRUE(backend$legacy)) {
+      if (!is.null(cerebro_options[["expression_matrix_h5"]])) {
+        override_key <- "expression_matrix_h5"
+      } else if (!is.null(cerebro_options[["expression_matrix_BPCells"]])) {
+        override_key <- "expression_matrix_BPCells"
+      }
+    } else if (!identical(backend$type, "embedded")) {
+      candidate <- switch(
+        backend$type,
+        h5 = "expression_matrix_h5",
+        bpcells = "expression_matrix_BPCells"
+      )
+      if (!is.null(cerebro_options[[candidate]])) {
+        override_key <- candidate
+      }
+    }
+    if (!is.null(override_key)) {
+      override_users[[override_key]] <- c(
+        override_users[[override_key]],
+        resolved_crb_sources[[index]]
+      )
+    }
+  }
+  distinct_override_users <- vapply(
+    override_users,
+    function(paths) length(unique(paths)),
+    integer(1)
+  )
+  unsafe_override <- names(override_users)[distinct_override_users > 1L]
+  if (length(unsafe_override) > 0L) {
+    stop(
+      "The global override cerebro_options[['",
+      unsafe_override[[1L]],
+      "']] would bind multiple Cerebro data files to the same expression ",
+      "matrix. Use each .crb's own backend or build separate apps.",
+      call. = FALSE
+    )
+  }
+
+  for (index in seq_along(cerebro_data)) {
+    file <- cerebro_data[[index]]
+    backend <- backends[[index]]
+    if (identical(backend$type, "embedded")) {
+      next
+    }
+    override_key <- switch(
+      backend$type,
+      h5 = "expression_matrix_h5",
+      bpcells = "expression_matrix_BPCells"
+    )
+    if (!is.null(cerebro_options[[override_key]])) {
+      next
+    }
+
+    location <- .portableBundlePath(
+      backend$location,
+      paste0(
+        "The ",
+        backend$type,
+        " backend location in '",
+        basename(file),
+        "'"
+      )
+    )
+    parts <- strsplit(location, "/", fixed = TRUE)[[1L]]
+    source_root <- dirname(file)
+    source <- file.path(source_root, location)
+    is_directory <- identical(backend$type, "bpcells")
+    source_exists <- if (is_directory) {
+      dir.exists(source)
+    } else {
+      file.exists(source) && !dir.exists(source)
+    }
+    if (!source_exists) {
+      stop(
+        "Expected the ",
+        backend$type,
+        " backend at '",
+        source,
+        "' recorded by '",
+        basename(file),
+        "', but it was not found.",
+        call. = FALSE
+      )
+    }
+
+    resolved_root <- normalizePath(
+      source_root,
+      winslash = "/",
+      mustWork = TRUE
+    )
+    resolved_source <- normalizePath(
+      source,
+      winslash = "/",
+      mustWork = TRUE
+    )
+    root_prefix <- if (identical(resolved_root, "/")) {
+      "/"
+    } else {
+      paste0(sub("/+$", "", resolved_root), "/")
+    }
+    if (
+      !startsWith(resolved_source, root_prefix) ||
+        .backendPathContainsSymbolicLink(source_root, parts, source)
+    ) {
+      stop(
+        "The ",
+        backend$type,
+        " backend location '",
+        location,
+        "' in '",
+        basename(file),
+        "' resolves through a symbolic link. Copy the real backend beside ",
+        "the .crb before building the app.",
+        call. = FALSE
+      )
+    }
+    claim_target(
+      location,
+      resolved_source,
+      paste0(backend$type, " backend"),
+      directory = is_directory
+    )
+  }
+
+  ## Spatial background images share the same target namespace as CRBs and
+  ## external backends, so all collisions are rejected before any copy starts.
+  if (!is.null(spatial_images) && length(spatial_images) > 0L) {
+    bundled_spatial_images <- list()
+    for (index in seq_along(spatial_images)) {
+      dataset <- names(spatial_images)[[index]]
+      copied_paths <- character()
+      for (image in spatial_images[[index]]) {
+        if (!file.exists(image)) {
+          warning("Spatial image not found: ", image, call. = FALSE)
+          next
+        }
+        target <- basename(image)
+        claim_target(
+          target,
+          normalizePath(image, winslash = "/", mustWork = TRUE),
+          "spatial image"
+        )
+        copied_paths <- c(copied_paths, file.path("data", target))
+      }
+      if (length(copied_paths) > 0L) {
+        bundled_spatial_images[[length(bundled_spatial_images) + 1L]] <-
+          copied_paths
+        names(bundled_spatial_images)[[length(bundled_spatial_images)]] <-
+          dataset
+      }
+    }
+    spatial_images <- if (length(bundled_spatial_images) > 0L) {
+      bundled_spatial_images
+    } else {
+      NULL
+    }
+  }
+
+  # Assemble a private sibling stage ----------------------------------------##
+  publish_mode <- if (dir.exists(result_dir)) {
+    file.info(result_dir)$mode[[1L]]
+  } else {
+    current_umask <- strtoi(as.character(Sys.umask(NA)), base = 8L)
+    as.octmode(bitwAnd(strtoi("777", base = 8L), bitwNot(current_umask)))
+  }
+  result_parent <- dirname(result_dir)
+  if (!dir.exists(result_parent)) {
+    dir.create(result_parent, recursive = TRUE, showWarnings = FALSE)
+  }
+  stage_result_dir <- tempfile(
+    pattern = paste0(".", basename(result_dir), "-stage-"),
+    tmpdir = result_parent
+  )
+  if (!dir.create(stage_result_dir, mode = "0700", showWarnings = FALSE)) {
+    stop("Failed to create a private app staging directory.", call. = FALSE)
+  }
+  on.exit(
+    unlink(stage_result_dir, recursive = TRUE, force = TRUE),
+    add = TRUE
+  )
+  data_dir <- file.path(stage_result_dir, "data")
+  app_file <- file.path(stage_result_dir, "app.R")
+
+  if (verbose) {
+    cat("Creating staged directory structure...\n")
+  }
+  dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (verbose) {
+    cat("Copying Shiny source files...\n")
+  }
+  if (!file.copy(shiny_source, stage_result_dir, recursive = TRUE)) {
+    stop("Failed to copy Shiny source files.", call. = FALSE)
+  }
+
+  if (verbose) {
+    cat("Copying data artifacts...\n")
+  }
+  for (entry in copy_plan) {
+    target <- file.path(data_dir, entry$target)
+    dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+    copied <- if (isTRUE(entry$directory)) {
+      file.copy(entry$source, dirname(target), recursive = TRUE)
+    } else {
+      file.copy(entry$source, target, overwrite = FALSE)
+    }
+    copied_target_exists <- if (isTRUE(entry$directory)) {
+      dir.exists(target)
+    } else {
+      file.exists(target) && !dir.exists(target)
+    }
+    if (!isTRUE(copied) || !copied_target_exists) {
+      stop(
+        "Failed to copy ",
+        entry$artifact,
+        ": ",
+        entry$target,
+        call. = FALSE
+      )
+    }
+    if (verbose) {
+      cat("  -", entry$target, paste0("(", entry$artifact, ")\n"))
+    }
+  }
+
+  # Copy extdata -------------------------------------------------------------##
+  if (verbose) {
+    cat("Copying extdata files...\n")
+  }
+  if (!file.copy(extdata_source, stage_result_dir, recursive = TRUE)) {
     stop("Failed to copy extdata files.", call. = FALSE)
   }
 
@@ -449,7 +976,7 @@ createShinyApp <- function(
     cerebro_options[["spatial_plot_rotation"]] <- spatial_plot_rotation
   }
 
-  saveRDS(cerebro_options, file.path(result_dir, "cerebro_config.rds"))
+  saveRDS(cerebro_options, file.path(stage_result_dir, "cerebro_config.rds"))
 
   # Generate app.R -----------------------------------------------------------##
   app_content <- glue::glue(
@@ -497,6 +1024,12 @@ createShinyApp <- function(
   )
 
   writeLines(dedent(app_content), app_file)
+  .publishBundleStage(
+    stage_result_dir,
+    result_dir,
+    overwrite,
+    publish_mode
+  )
 
   # Summary ------------------------------------------------------------------##
   if (verbose) {

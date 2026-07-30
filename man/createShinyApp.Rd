@@ -34,8 +34,9 @@ createShinyApp(
 )
 }
 \arguments{
-\item{cerebro_data}{Named character vector or list of \code{.crb} (or
-\code{.rds}) file paths. Names are used as dataset labels.}
+\item{cerebro_data}{Non-empty named character vector or list of \code{.crb}
+(or \code{.rds}) file paths. Names must be non-missing and unique and are
+used as dataset labels.}
 
 \item{result_dir}{Output directory.}
 
@@ -56,7 +57,10 @@ createShinyApp(
 \item{cerebro_options}{Extra entries merged into \code{Cerebro.options} in
 the generated app.}
 
-\item{overwrite}{If \code{TRUE} (default), wipe \code{result_dir} first.}
+\item{overwrite}{If \code{TRUE} (default), replace \code{result_dir} only
+after a complete staged build succeeds. If \code{FALSE},
+\code{result_dir} must be absent or empty; a non-empty directory is
+rejected before any files are written.}
 
 \item{verbose}{Print progress messages; defaults to TRUE.}
 
@@ -73,7 +77,8 @@ the generated app.}
 
 \item{spatial_images}{Named list/vector of paths to spatial background images
 (e.g. tissue histology) shown behind the Spatial tab projection. Names must
-match \code{cerebro_data}. Images are copied into the app bundle.}
+match \code{cerebro_data}. Existing images are copied into the app bundle;
+missing images are omitted with a warning.}
 
 \item{spatial_images_flip_x}{Named list/vector; whether to flip the spatial
 background image horizontally. Names must match \code{cerebro_data}.}
@@ -112,8 +117,19 @@ run with \code{shiny::runApp(result_dir)}.
 }
 \details{
 Supports external expression backends (\code{bpcells}, \code{h5}) in
-addition to the embedded mode. When \code{cerebro_data} points to a
-\code{.crb} with an external backend, the sibling \code{.bpcells/}
-directory or \code{.h5} file is detected and copied into the bundle
-alongside the \code{.crb}.
+addition to the embedded mode. The backend descriptor stored in each
+\code{.crb} names a portable relative file or directory, which is copied to
+the same relative location in the bundle. Missing or invalid descriptor-backed
+sidecars and conflicting planned bundle targets stop the build rather than
+producing an incomplete app. A configured runtime matrix override keeps its
+existing precedence, is not copied or checked for existence at build time,
+and skips the descriptor-backed sidecar copy. Required Cerebro files,
+descriptor-backed sidecars, and planned bundle targets are validated before
+the app is assembled in a private sibling directory. The completed stage
+replaces \code{result_dir} only after every copy and configuration write
+succeeds. On POSIX systems, the stage is mode \code{0700} while data is
+copied, and replacement retains the existing deployment root's permission
+bits. Platform-specific ACLs, ownership changes, and security labels remain
+the deployment system's responsibility. Inputs must not be modified while
+the build is running.
 }
