@@ -11,7 +11,13 @@
   portable. Missing, non-portable, or conflicting targets now stop the
   build instead of producing an app that fails at runtime unless the
   corresponding global runtime override is configured. An empty
-  `cerebro_data` no longer launches the packaged example.
+  `cerebro_data` no longer launches the packaged example. Exact and
+  parent/child target collisions, symbolic-link-backed sources, and
+  global overrides shared by multiple data sets are rejected during
+  preflight. The app is assembled in a private sibling stage and
+  replaces the destination only after a complete build; with
+  `overwrite = FALSE`, a non-empty destination is rejected without
+  mutation.
 - **The H5 guide now starts with the one-step export workflow.**
   `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the
   `.crb` and its H5 sidecar together; the previous manual conversion

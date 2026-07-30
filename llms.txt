@@ -117,8 +117,8 @@ createShinyApp(
 
 `cerebro_data` is required and must be a *named* vector / list of `.crb`
 (or `.rds`) paths — names become the dataset labels users switch between
-in the app. `result_dir` is optional. External matrix locations are read
-from each `.crb` backend descriptor and copied into the bundle
+in the app. `result_dir` is also required. External matrix locations are
+read from each `.crb` backend descriptor and copied into the bundle
 automatically (see §2.3), so renaming a `.crb` does not lose its matrix.
 Other knobs available: `colors`, `cerebro_options`,
 `crb_pick_smallest_file`, `show_upload_ui`, `point_size`,
@@ -204,7 +204,15 @@ locations, and two inputs that resolve to the same bundle target, stop
 the build with an error. The Shiny runtime resolves the same descriptor
 relative to the `.crb`, so the bundle stays portable. A corresponding
 global runtime override retains its existing precedence and skips the
-sidecar copy.
+sidecar copy, but one global override cannot serve several CRBs in the
+same app.
+
+All CRBs, external backends and bundle destinations are checked before
+copying starts. The app is then built in a private sibling directory and
+replaces `result_dir` only after the complete build succeeds, so a
+missing backend cannot destroy a working deployment. With
+`overwrite = FALSE`, `result_dir` must be absent or empty; non-empty
+destinations are rejected before any files are written.
 
 ### 2.4 Analysis modules
 

@@ -65,7 +65,7 @@ shiny::runApp(out_dir)
 |----|----|
 | `cerebro_data` | named vector/list of `.crb` (or `.rds`) paths |
 | `result_dir` | output directory (required) |
-| `overwrite` | wipe `result_dir` first; defaults to `TRUE` |
+| `overwrite` | replace `result_dir` after a complete staged build; with `FALSE`, the destination must be absent or empty |
 | `max_request_size` | upload size cap in MB; defaults to `8000` |
 | `port`, `host` | binding for the generated `app.R`; defaults to `8080` / `127.0.0.1` |
 | `launch_browser`, `quiet`, `display_mode` | forwarded to [`shiny::runApp()`](https://rdrr.io/pkg/shiny/man/runApp.html) in `app.R` |
@@ -115,7 +115,20 @@ copies the tagged file or directory to the same relative location under
 missing backends and conflicting bundle targets are errors rather than
 silent overwrites. A corresponding global runtime override retains its
 existing precedence; when configured, the sidecar is not copied and the
-deployed app depends on that host path.
+deployed app depends on that host path. Because the override is global,
+it may serve only one effective CRB consumer in a multi-dataset app.
+
+Before copying,
+[`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
+resolves every CRB descriptor and sidecar, and plans every existing
+spatial image and destination path together. It rejects exact and
+parent/child target collisions as well as backend paths that resolve
+through symbolic links. The complete app is assembled in a private
+sibling directory and published only after all writes succeed.
+Consequently, a failed rebuild leaves the previous deployment untouched.
+`overwrite = FALSE` is intentionally conservative: a non-empty
+destination is rejected before the build starts rather than merged with
+a partially known old app.
 
 ## Forwarding extra Cerebro options
 

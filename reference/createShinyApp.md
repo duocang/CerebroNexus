@@ -87,7 +87,9 @@ createShinyApp(
 
 - overwrite:
 
-  If `TRUE` (default), wipe `result_dir` first.
+  If `TRUE` (default), replace `result_dir` only after a complete staged
+  build succeeds. If `FALSE`, `result_dir` must be absent or empty; a
+  non-empty directory is rejected before any files are written.
 
 - verbose:
 
@@ -171,4 +173,7 @@ portable relative file or directory, which is copied to the same
 relative location in the bundle. Missing, invalid, or conflicting
 targets stop the build rather than producing an incomplete app. A
 configured runtime matrix override keeps its existing precedence and
-skips this copy.
+skips this copy. All inputs and bundle targets are validated before the
+app is assembled in a private sibling directory. The completed stage
+replaces `result_dir` only after every copy and configuration write
+succeeds.

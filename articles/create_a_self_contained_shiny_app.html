@@ -99,7 +99,7 @@ Wang</h4>
             
             <h4 data-toc-skip class="date">30 July, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-sibling-simplified/vignettes/create_a_self_contained_shiny_app.Rmd" class="external-link"><code>vignettes/create_a_self_contained_shiny_app.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-review-green/vignettes/create_a_self_contained_shiny_app.Rmd" class="external-link"><code>vignettes/create_a_self_contained_shiny_app.Rmd</code></a></small>
       <div class="d-none name"><code>create_a_self_contained_shiny_app.Rmd</code></div>
     </div>
 
@@ -186,9 +186,8 @@ paths</td>
 </tr>
 <tr class="odd">
 <td><code>overwrite</code></td>
-<td>wipe <code>result_dir</code> first; defaults to
-<code>TRUE</code>
-</td>
+<td>replace <code>result_dir</code> after a complete staged build; with
+<code>FALSE</code>, the destination must be absent or empty</td>
 </tr>
 <tr class="even">
 <td><code>max_request_size</code></td>
@@ -281,7 +280,18 @@ location must be a portable relative path; missing backends and
 conflicting bundle targets are errors rather than silent overwrites. A
 corresponding global runtime override retains its existing precedence;
 when configured, the sidecar is not copied and the deployed app depends
-on that host path.</p>
+on that host path. Because the override is global, it may serve only one
+effective CRB consumer in a multi-dataset app.</p>
+<p>Before copying, <code><a href="../reference/createShinyApp.html">createShinyApp()</a></code> resolves every CRB
+descriptor and sidecar, and plans every existing spatial image and
+destination path together. It rejects exact and parent/child target
+collisions as well as backend paths that resolve through symbolic links.
+The complete app is assembled in a private sibling directory and
+published only after all writes succeed. Consequently, a failed rebuild
+leaves the previous deployment untouched. <code>overwrite = FALSE</code>
+is intentionally conservative: a non-empty destination is rejected
+before the build starts rather than merged with a partially known old
+app.</p>
 </div>
 <div class="section level2">
 <h2 id="forwarding-extra-cerebro-options">Forwarding extra Cerebro options<a class="anchor" aria-label="anchor" href="#forwarding-extra-cerebro-options"></a>
