@@ -1,3 +1,15 @@
+# CerebroNexus 3.0.4
+
+## Export
+
+- **`createShinyApp()` now follows each `.crb` backend descriptor.** H5 files
+  and BPCells directories are copied from the recorded relative location rather
+  than guessed from the current `.crb` name, so renamed data files remain
+  portable. Missing, non-portable, or conflicting targets now stop the build
+  instead of producing an app that fails at runtime unless the corresponding
+  global runtime override is configured. An empty `cerebro_data` no longer
+  launches the packaged example.
+
 # CerebroNexus 3.0.3
 
 ## Export

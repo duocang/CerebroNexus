@@ -34,8 +34,8 @@ createShinyApp(
 )
 }
 \arguments{
-\item{cerebro_data}{Named character vector or list of \code{.crb} (or
-\code{.rds}) file paths. Names are used as dataset labels.}
+\item{cerebro_data}{Non-empty named character vector or list of \code{.crb}
+(or \code{.rds}) file paths. Names are used as dataset labels.}
 
 \item{result_dir}{Output directory.}
 
@@ -112,8 +112,9 @@ run with \code{shiny::runApp(result_dir)}.
 }
 \details{
 Supports external expression backends (\code{bpcells}, \code{h5}) in
-addition to the embedded mode. When \code{cerebro_data} points to a
-\code{.crb} with an external backend, the sibling \code{.bpcells/}
-directory or \code{.h5} file is detected and copied into the bundle
-alongside the \code{.crb}.
+addition to the embedded mode. The backend descriptor stored in each
+\code{.crb} names a portable relative file or directory, which is copied to
+the same relative location in the bundle. Missing, invalid, or conflicting
+targets stop the build rather than producing an incomplete app. A configured
+runtime matrix override keeps its existing precedence and skips this copy.
 }

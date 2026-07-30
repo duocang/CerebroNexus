@@ -1395,10 +1395,10 @@ get_or_load_crb <- function(path) {
         call. = FALSE
       )
     }
-    if (!file.exists(loc_abs)) {
+    if (!file.exists(loc_abs) || dir.exists(loc_abs)) {
       stop(
         sprintf(
-          "Expected h5 file at '%s' (derived from crb '%s' + backend location '%s'), but the file does not exist. ",
+          "Expected h5 file at '%s' (derived from crb '%s' + backend location '%s'), but it is missing or not a file. ",
           loc_abs,
           crb_path,
           be$location

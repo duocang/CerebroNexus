@@ -1,0 +1,287 @@
+write_bundle_crb <- function(
+  directory,
+  name = "dataset.crb",
+  backend = list(type = "embedded", location = NULL),
+  legacy = FALSE
+) {
+  dir.create(directory, recursive = TRUE, showWarnings = FALSE)
+  path <- file.path(directory, name)
+  payload <- new.env(parent = emptyenv())
+  payload$marker <- name
+  if (!legacy) {
+    payload$getExpressionBackend <- base::local({
+      value <- backend
+      function() value
+    })
+  }
+  saveRDS(payload, path)
+  path
+}
+
+write_backend_artifact <- function(directory, backend, contents = "MATRIX") {
+  path <- file.path(directory, backend$location)
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  if (identical(backend$type, "bpcells")) {
+    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    writeLines(contents, file.path(path, "payload"))
+  } else {
+    writeLines(contents, path)
+  }
+  path
+}
+
+build_test_app <- function(cerebro_data, result_dir, ...) {
+  createShinyApp(
+    cerebro_data = cerebro_data,
+    result_dir = result_dir,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    ...
+  )
+}
+
+test_that("tagged H5 and BPCells backends are copied to their exact paths", {
+  root <- withr::local_tempdir()
+  backends <- list(
+    list(type = "h5", location = "matrices/original-name.h5"),
+    list(type = "bpcells", location = "matrices/expression.bpcells")
+  )
+
+  for (index in seq_along(backends)) {
+    source <- file.path(root, paste0("source-", index))
+    backend <- backends[[index]]
+    crb <- write_bundle_crb(
+      source,
+      name = "renamed-dataset.crb",
+      backend = backend
+    )
+    write_backend_artifact(source, backend)
+    app <- file.path(root, paste0("app-", index))
+
+    build_test_app(c("Dataset" = crb), app)
+
+    target <- file.path(app, "data", backend$location)
+    if (identical(backend$type, "bpcells")) {
+      expect_true(dir.exists(target))
+      expect_identical(
+        readLines(file.path(target, "payload")),
+        "MATRIX"
+      )
+    } else {
+      expect_true(file.exists(target))
+      expect_identical(readLines(target), "MATRIX")
+    }
+    expect_false(file.exists(file.path(app, "data", "renamed-dataset.h5")))
+  }
+})
+
+test_that("backend locations must be portable relative paths", {
+  root <- withr::local_tempdir()
+  invalid <- c(
+    "../matrix.h5",
+    "./matrix.h5",
+    "/tmp/matrix.h5",
+    "C:/matrix.h5",
+    "nested//matrix.h5",
+    "nested\\matrix.h5"
+  )
+
+  for (index in seq_along(invalid)) {
+    source <- file.path(root, paste0("source-", index))
+    crb <- write_bundle_crb(
+      source,
+      backend = list(type = "h5", location = invalid[[index]])
+    )
+    expect_error(
+      build_test_app(
+        c("Dataset" = crb),
+        file.path(root, paste0("app-", index))
+      ),
+      "portable relative path"
+    )
+  }
+})
+
+test_that("malformed backend descriptors are rejected", {
+  root <- withr::local_tempdir()
+  broken <- new.env(parent = emptyenv())
+  broken$getExpressionBackend <- "not a function"
+  broken_path <- file.path(root, "broken.crb")
+  saveRDS(broken, broken_path)
+  inconsistent <- write_bundle_crb(
+    root,
+    "inconsistent.crb",
+    list(type = "embedded", location = "matrix.h5")
+  )
+
+  expect_error(
+    build_test_app(c("Broken" = broken_path), file.path(root, "broken-app")),
+    "unsupported expression-backend descriptor"
+  )
+  expect_error(
+    build_test_app(
+      c("Inconsistent" = inconsistent),
+      file.path(root, "inconsistent-app")
+    ),
+    "unsupported expression-backend descriptor"
+  )
+})
+
+test_that("a missing tagged backend stops the build", {
+  root <- withr::local_tempdir()
+  backend <- list(type = "h5", location = "matrix.h5")
+  crb <- write_bundle_crb(root, backend = backend)
+
+  expect_error(
+    build_test_app(c("Dataset" = crb), file.path(root, "app")),
+    "matrix.h5"
+  )
+})
+
+test_that("a configured runtime override skips the tagged backend copy", {
+  root <- withr::local_tempdir()
+  backend <- list(type = "h5", location = "missing.h5")
+  crb <- write_bundle_crb(root, backend = backend)
+  override <- file.path(root, "host-matrix.h5")
+  writeLines("HOST", override)
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("Dataset" = crb),
+    app,
+    cerebro_options = list(expression_matrix_h5 = override)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(config$expression_matrix_h5, override)
+  expect_false(file.exists(file.path(app, "data", backend$location)))
+})
+
+test_that("different sources cannot write the same bundle target", {
+  root <- withr::local_tempdir()
+  backend <- list(type = "h5", location = "matrix.h5")
+  first_dir <- file.path(root, "first")
+  second_dir <- file.path(root, "second")
+  first <- write_bundle_crb(first_dir, "first.crb", backend)
+  second <- write_bundle_crb(second_dir, "second.crb", backend)
+  write_backend_artifact(first_dir, backend, "FIRST")
+  write_backend_artifact(second_dir, backend, "SECOND")
+
+  expect_error(
+    build_test_app(
+      c("First" = first, "Second" = second),
+      file.path(root, "app")
+    ),
+    "same bundle target"
+  )
+
+  cross_backend <- list(type = "h5", location = "second.crb")
+  cross_first <- write_bundle_crb(first_dir, "cross-first.crb", cross_backend)
+  write_backend_artifact(first_dir, cross_backend)
+  expect_error(
+    build_test_app(
+      c("First" = cross_first, "Second" = second),
+      file.path(root, "cross-app")
+    ),
+    "same bundle target"
+  )
+
+  image <- file.path(root, "first.crb")
+  writeLines("IMAGE", image)
+  expect_error(
+    build_test_app(
+      c("First" = first),
+      file.path(root, "image-app"),
+      spatial_images = list("First" = image)
+    ),
+    "same bundle target"
+  )
+})
+
+test_that("embedded and legacy CRBs do not require sibling files", {
+  root <- withr::local_tempdir()
+  embedded <- write_bundle_crb(
+    file.path(root, "embedded"),
+    "embedded.crb"
+  )
+  legacy <- write_bundle_crb(
+    file.path(root, "legacy"),
+    "legacy.crb",
+    legacy = TRUE
+  )
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("Embedded" = embedded, "Legacy" = legacy),
+    app
+  )
+
+  expect_true(file.exists(file.path(app, "data", "embedded.crb")))
+  expect_true(file.exists(file.path(app, "data", "legacy.crb")))
+})
+
+test_that("at least one Cerebro data set is required", {
+  root <- withr::local_tempdir()
+
+  expect_error(
+    build_test_app(
+      setNames(character(), character()),
+      file.path(root, "app")
+    ),
+    "at least one"
+  )
+})
+
+test_that("the runtime rejects an H5 backend that is a directory", {
+  skip_if_not_installed("HDF5Array")
+  runtime <- new.env(parent = globalenv())
+  source_path <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "shiny",
+    "v1.4",
+    "utility_functions.R"
+  )
+  if (!file.exists(source_path)) {
+    source_path <- system.file(
+      "shiny",
+      "v1.4",
+      "utility_functions.R",
+      package = "CerebroNexus"
+    )
+  }
+  expect_true(file.exists(source_path))
+  sys.source(source_path, envir = runtime)
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "matrix.h5"))
+  object <- new.env(parent = emptyenv())
+  class(object) <- "Cerebro"
+  object$getExpressionBackend <- function() {
+    list(type = "h5", location = "matrix.h5")
+  }
+  had_options <- exists(
+    "Cerebro.options",
+    envir = .GlobalEnv,
+    inherits = FALSE
+  )
+  if (had_options) {
+    old_options <- get("Cerebro.options", envir = .GlobalEnv)
+  }
+  withr::defer(
+    if (had_options) {
+      assign("Cerebro.options", old_options, envir = .GlobalEnv)
+    } else {
+      rm(list = "Cerebro.options", envir = .GlobalEnv)
+    }
+  )
+  assign("Cerebro.options", list(), envir = .GlobalEnv)
+
+  expect_error(
+    runtime$.attachExternalExpression(
+      object,
+      file.path(root, "dataset.crb")
+    ),
+    "missing or not a file"
+  )
+})
