@@ -59,11 +59,22 @@ dedent <- function(string) {
   } else {
     character()
   }
+  windows_invalid <- length(parts) > 0L &&
+    any(
+      grepl("[[:cntrl:]<>:\"|?*]", parts) |
+        grepl("[. ]$", parts) |
+        grepl(
+          "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])($|\\.)",
+          parts,
+          ignore.case = TRUE
+        )
+    )
   if (
     !valid ||
       length(parts) == 0L ||
       any(!nzchar(parts)) ||
-      any(parts %in% c(".", ".."))
+      any(parts %in% c(".", "..")) ||
+      windows_invalid
   ) {
     stop(
       "The ",
@@ -71,7 +82,7 @@ dedent <- function(string) {
       " backend location in '",
       basename(crb_path),
       "' must be one portable relative path using forward slashes, without ",
-      "empty, '.', or '..' segments.",
+      "empty, '.', '..', or Windows-incompatible segments.",
       call. = FALSE
     )
   }
@@ -80,6 +91,15 @@ dedent <- function(string) {
 
 .readBundleBackend <- function(crb_path) {
   object <- readRDS(crb_path)
+  recognized <- any(grepl("^Cerebro($|_)", class(object)))
+  if (!recognized) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' does not contain a recognized Cerebro object.",
+      call. = FALSE
+    )
+  }
   getter <- if (is.environment(object) || is.list(object)) {
     object[["getExpressionBackend"]]
   } else {
@@ -165,7 +185,7 @@ dedent <- function(string) {
   FALSE
 }
 
-.publishBundleStage <- function(stage, result_dir, overwrite) {
+.publishBundleStage <- function(stage, result_dir, overwrite, publish_mode) {
   backup <- NULL
   published <- FALSE
   on.exit(
@@ -213,6 +233,12 @@ dedent <- function(string) {
       stop("Failed to stage the existing app for replacement.", call. = FALSE)
     }
   }
+  if (!isTRUE(Sys.chmod(stage, mode = publish_mode))) {
+    stop(
+      "Failed to apply deployment permissions to the staged app.",
+      call. = FALSE
+    )
+  }
   if (!file.rename(stage, result_dir)) {
     stop("Failed to publish the staged app bundle.", call. = FALSE)
   }
@@ -247,7 +273,11 @@ dedent <- function(string) {
 #' runtime matrix override keeps its existing precedence and skips this copy.
 #' All inputs and bundle targets are validated before the app is assembled in a
 #' private sibling directory. The completed stage replaces \code{result_dir}
-#' only after every copy and configuration write succeeds.
+#' only after every copy and configuration write succeeds. On POSIX systems,
+#' the stage is mode code{0700} while data is copied, and replacement retains
+#' the existing deployment root's permission bits. Platform-specific ACLs,
+#' ownership changes, and security labels remain the deployment system's
+#' responsibility. Inputs must not be modified while the build is running.
 #'
 #' @param cerebro_data Non-empty named character vector or list of \code{.crb}
 #'   (or \code{.rds}) file paths. Names are used as dataset labels.
@@ -534,12 +564,22 @@ createShinyApp <- function(
   copy_plan <- list()
   claimed_targets <- character()
   claimed_keys <- character()
+  claimed_sources <- character()
+  claimed_artifacts <- character()
+  claimed_directories <- logical()
   claim_target <- function(target, source, artifact, directory = FALSE) {
     key <- tolower(target)
     for (claim_index in seq_along(claimed_keys)) {
       existing <- claimed_targets[[claim_index]]
       existing_key <- claimed_keys[[claim_index]]
       if (identical(key, existing_key)) {
+        duplicate <- identical(target, existing) &&
+          identical(source, claimed_sources[[claim_index]]) &&
+          identical(artifact, claimed_artifacts[[claim_index]]) &&
+          identical(isTRUE(directory), claimed_directories[[claim_index]])
+        if (duplicate) {
+          return(invisible(FALSE))
+        }
         stop(
           "Different inputs resolve to the same bundle target '",
           target,
@@ -563,6 +603,9 @@ createShinyApp <- function(
     }
     claimed_targets <<- c(claimed_targets, target)
     claimed_keys <<- c(claimed_keys, key)
+    claimed_sources <<- c(claimed_sources, source)
+    claimed_artifacts <<- c(claimed_artifacts, artifact)
+    claimed_directories <<- c(claimed_directories, isTRUE(directory))
     copy_plan[[length(copy_plan) + 1L]] <<- list(
       target = target,
       source = source,
@@ -751,6 +794,12 @@ createShinyApp <- function(
   }
 
   # Assemble a private sibling stage ----------------------------------------##
+  publish_mode <- if (dir.exists(result_dir)) {
+    file.info(result_dir)$mode[[1L]]
+  } else {
+    current_umask <- strtoi(as.character(Sys.umask(NA)), base = 8L)
+    as.octmode(bitwAnd(strtoi("777", base = 8L), bitwNot(current_umask)))
+  }
   result_parent <- dirname(result_dir)
   if (!dir.exists(result_parent)) {
     dir.create(result_parent, recursive = TRUE, showWarnings = FALSE)
@@ -759,7 +808,7 @@ createShinyApp <- function(
     pattern = paste0(".", basename(result_dir), "-stage-"),
     tmpdir = result_parent
   )
-  if (!dir.create(stage_result_dir, showWarnings = FALSE)) {
+  if (!dir.create(stage_result_dir, mode = "0700", showWarnings = FALSE)) {
     stop("Failed to create a private app staging directory.", call. = FALSE)
   }
   on.exit(
@@ -929,7 +978,12 @@ createShinyApp <- function(
   )
 
   writeLines(dedent(app_content), app_file)
-  .publishBundleStage(stage_result_dir, result_dir, overwrite)
+  .publishBundleStage(
+    stage_result_dir,
+    result_dir,
+    overwrite,
+    publish_mode
+  )
 
   # Summary ------------------------------------------------------------------##
   if (verbose) {

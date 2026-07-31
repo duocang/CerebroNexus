@@ -126,6 +126,12 @@ failed rebuild leaves the previous deployment untouched. `overwrite = FALSE`
 is intentionally conservative: a non-empty destination is rejected before the
 build starts rather than merged with a partially known old app.
 
+On POSIX systems, the staging directory is mode `0700` while data is copied.
+Replacing an existing app retains its root permission bits; platform-specific
+ACLs, ownership changes and security labels remain the deployment system's
+responsibility. Inputs are validated and then copied without immutable
+snapshots, so do not modify a CRB or backend while `createShinyApp()` is running.
+
 # Forwarding extra Cerebro options
 
 Anything you want to surface in `Cerebro.options` that isn't already a top-level argument can go through `cerebro_options`.

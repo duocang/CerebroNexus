@@ -141,7 +141,11 @@ starts. The app is then built in a private sibling directory and replaces
 `result_dir` only after the complete build succeeds, so a missing backend
 cannot destroy a working deployment. With `overwrite = FALSE`, `result_dir`
 must be absent or empty; non-empty destinations are rejected before any files
-are written.
+are written. On POSIX systems, the stage is mode `0700` while data is copied,
+and replacement retains the existing deployment root's permission bits.
+Platform-specific ACLs, ownership changes and security labels remain the
+deployment system's responsibility. Do not modify input CRBs or backends while
+a build is running.
 
 ### 2.4 Analysis modules
 

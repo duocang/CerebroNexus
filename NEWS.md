@@ -13,7 +13,9 @@
   shared by multiple data sets are rejected during preflight. The app is
   assembled in a private sibling stage and replaces the destination only after
   a complete build; with `overwrite = FALSE`, a non-empty destination is
-  rejected without mutation.
+  rejected without mutation. Repeated references to the same spatial image are
+  copied once, replacement keeps the deployment root's permission bits, and
+  non-Cerebro RDS files or Windows-incompatible backend paths are rejected.
 - **The H5 guide now starts with the one-step export workflow.**
   `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the `.crb`
   and its H5 sidecar together; the previous manual conversion remains

@@ -122,5 +122,9 @@ targets stop the build rather than producing an incomplete app. A configured
 runtime matrix override keeps its existing precedence and skips this copy.
 All inputs and bundle targets are validated before the app is assembled in a
 private sibling directory. The completed stage replaces \code{result_dir}
-only after every copy and configuration write succeeds.
+only after every copy and configuration write succeeds. On POSIX systems,
+the stage is mode \code{0700} while data is copied, and replacement retains
+the existing deployment root's permission bits. Platform-specific ACLs,
+ownership changes, and security labels remain the deployment system's
+responsibility. Inputs must not be modified while the build is running.
 }
