@@ -77,7 +77,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Create a self-contained Shiny app folder for Cerebro v1.4</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-review-green/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-review4-green/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
       <div class="d-none name"><code>createShinyApp.Rd</code></div>
     </div>
 
@@ -260,7 +260,11 @@ targets stop the build rather than producing an incomplete app. A configured
 runtime matrix override keeps its existing precedence and skips this copy.
 All inputs and bundle targets are validated before the app is assembled in a
 private sibling directory. The completed stage replaces <code>result_dir</code>
-only after every copy and configuration write succeeds.</p>
+only after every copy and configuration write succeeds. On POSIX systems,
+the stage is mode <code>0700</code> while data is copied, and replacement retains
+the existing deployment root's permission bits. Platform-specific ACLs,
+ownership changes, and security labels remain the deployment system's
+responsibility. Inputs must not be modified while the build is running.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

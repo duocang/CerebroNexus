@@ -69,7 +69,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-review-green/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-review4-green/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
@@ -77,7 +77,7 @@
 <div class="section level3">
 <h3 id="export-3-0-4">Export<a class="anchor" aria-label="anchor" href="#export-3-0-4"></a></h3>
 <ul><li>
-<strong><code><a href="../reference/createShinyApp.html">createShinyApp()</a></code> now follows each <code>.crb</code> backend descriptor.</strong> H5 files and BPCells directories are copied from the recorded relative location rather than guessed from the current <code>.crb</code> name, so renamed data files remain portable. Missing, non-portable, or conflicting targets now stop the build instead of producing an app that fails at runtime unless the corresponding global runtime override is configured. An empty <code>cerebro_data</code> no longer launches the packaged example. Exact and parent/child target collisions, backend paths that resolve through symbolic links, and global overrides shared by multiple data sets are rejected during preflight. The app is assembled in a private sibling stage and replaces the destination only after a complete build; with <code>overwrite = FALSE</code>, a non-empty destination is rejected without mutation.</li>
+<strong><code><a href="../reference/createShinyApp.html">createShinyApp()</a></code> now follows each <code>.crb</code> backend descriptor.</strong> H5 files and BPCells directories are copied from the recorded relative location rather than guessed from the current <code>.crb</code> name, so renamed data files remain portable. Missing, non-portable, or conflicting targets now stop the build instead of producing an app that fails at runtime unless the corresponding global runtime override is configured. An empty <code>cerebro_data</code> no longer launches the packaged example. Exact and parent/child target collisions, backend paths that resolve through symbolic links, and global overrides shared by multiple data sets are rejected during preflight. The app is assembled in a private sibling stage and replaces the destination only after a complete build; with <code>overwrite = FALSE</code>, a non-empty destination is rejected without mutation. Repeated references to the same spatial image are copied once, replacement keeps the deployment root’s permission bits, and non-Cerebro RDS files or Windows-incompatible backend paths are rejected.</li>
 <li>
 <strong>The H5 guide now starts with the one-step export workflow.</strong> <code>exportFromSeurat(..., expression_matrix_mode = "h5")</code> creates the <code>.crb</code> and its H5 sidecar together; the previous manual conversion remains documented for legacy embedded <code>.crb</code> files.</li>
 </ul></div>

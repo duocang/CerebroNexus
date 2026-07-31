@@ -97,9 +97,9 @@
                         <h4 data-toc-skip class="author">Xuesong
 Wang</h4>
             
-            <h4 data-toc-skip class="date">30 July, 2026</h4>
+            <h4 data-toc-skip class="date">31 July, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-review-green/vignettes/create_a_self_contained_shiny_app.Rmd" class="external-link"><code>vignettes/create_a_self_contained_shiny_app.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-review4-green/vignettes/create_a_self_contained_shiny_app.Rmd" class="external-link"><code>vignettes/create_a_self_contained_shiny_app.Rmd</code></a></small>
       <div class="d-none name"><code>create_a_self_contained_shiny_app.Rmd</code></div>
     </div>
 
@@ -292,6 +292,12 @@ leaves the previous deployment untouched. <code>overwrite = FALSE</code>
 is intentionally conservative: a non-empty destination is rejected
 before the build starts rather than merged with a partially known old
 app.</p>
+<p>On POSIX systems, the staging directory is mode <code>0700</code>
+while data is copied. Replacing an existing app retains its root
+permission bits; platform-specific ACLs, ownership changes and security
+labels remain the deployment system’s responsibility. Inputs are
+validated and then copied without immutable snapshots, so do not modify
+a CRB or backend while <code><a href="../reference/createShinyApp.html">createShinyApp()</a></code> is running.</p>
 </div>
 <div class="section level2">
 <h2 id="forwarding-extra-cerebro-options">Forwarding extra Cerebro options<a class="anchor" aria-label="anchor" href="#forwarding-extra-cerebro-options"></a>

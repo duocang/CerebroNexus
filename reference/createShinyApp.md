@@ -176,4 +176,8 @@ configured runtime matrix override keeps its existing precedence and
 skips this copy. All inputs and bundle targets are validated before the
 app is assembled in a private sibling directory. The completed stage
 replaces `result_dir` only after every copy and configuration write
-succeeds.
+succeeds. On POSIX systems, the stage is mode `0700` while data is
+copied, and replacement retains the existing deployment root's
+permission bits. Platform-specific ACLs, ownership changes, and security
+labels remain the deployment system's responsibility. Inputs must not be
+modified while the build is running.
