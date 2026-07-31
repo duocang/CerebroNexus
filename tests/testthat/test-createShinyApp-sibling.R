@@ -7,6 +7,7 @@ write_bundle_crb <- function(
   dir.create(directory, recursive = TRUE, showWarnings = FALSE)
   path <- file.path(directory, name)
   payload <- new.env(parent = emptyenv())
+  class(payload) <- c("Cerebro_v1.3", "R6")
   payload$marker <- name
   if (!legacy) {
     payload$getExpressionBackend <- base::local({
@@ -83,7 +84,13 @@ test_that("backend locations must be portable relative paths", {
     "/tmp/matrix.h5",
     "C:/matrix.h5",
     "nested//matrix.h5",
-    "nested\\matrix.h5"
+    "nested\\matrix.h5",
+    "matrix?.h5",
+    "nested/a:b.h5",
+    "NUL",
+    "nested/COM1.bin",
+    "nested/name.",
+    "nested/name "
   )
 
   for (index in seq_along(invalid)) {
@@ -105,6 +112,7 @@ test_that("backend locations must be portable relative paths", {
 test_that("malformed backend descriptors are rejected", {
   root <- withr::local_tempdir()
   broken <- new.env(parent = emptyenv())
+  class(broken) <- c("Cerebro_v1.3", "R6")
   broken$getExpressionBackend <- "not a function"
   broken_path <- file.path(root, "broken.crb")
   saveRDS(broken, broken_path)
@@ -125,6 +133,18 @@ test_that("malformed backend descriptors are rejected", {
     ),
     "unsupported expression-backend descriptor"
   )
+})
+
+test_that("arbitrary RDS objects are not accepted as Cerebro data", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, "number.rds")
+  saveRDS(42, path)
+
+  expect_error(
+    build_test_app(c("Number" = path), file.path(root, "app")),
+    "recognized Cerebro"
+  )
+  expect_false(dir.exists(file.path(root, "app")))
 })
 
 test_that("a missing tagged backend stops the build", {
@@ -288,6 +308,31 @@ test_that("different sources cannot write the same bundle target", {
   )
 })
 
+test_that("one spatial image can be shared by multiple data sets", {
+  root <- withr::local_tempdir()
+  first <- write_bundle_crb(file.path(root, "first"), "first.crb")
+  second <- write_bundle_crb(file.path(root, "second"), "second.crb")
+  image <- file.path(root, "histology.png")
+  writeLines("IMAGE", image)
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("First" = first, "Second" = second),
+    app,
+    spatial_images = list("First" = image, "Second" = image)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(
+    unname(unlist(config$spatial_images, use.names = FALSE)),
+    rep(file.path("data", "histology.png"), 2L)
+  )
+  expect_identical(
+    readLines(file.path(app, "data", "histology.png")),
+    "IMAGE"
+  )
+})
+
 test_that("parent and child bundle targets conflict before copying", {
   root <- withr::local_tempdir()
   tree_backend <- list(type = "bpcells", location = "tree")
@@ -390,6 +435,20 @@ test_that("overwrite FALSE rejects a non-empty destination without mutation", {
     "sentinel.txt"
   )
   expect_identical(readLines(sentinel), "KEEP")
+})
+
+test_that("staged replacement preserves deployment root permissions", {
+  skip_on_os("windows")
+  root <- withr::local_tempdir()
+  app <- file.path(root, "app")
+  dir.create(app)
+  Sys.chmod(app, mode = "0750")
+  expect_identical(as.character(file.info(app)$mode), "750")
+  crb <- write_bundle_crb(file.path(root, "source"))
+
+  build_test_app(c("Dataset" = crb), app, overwrite = TRUE)
+
+  expect_identical(as.character(file.info(app)$mode), "750")
 })
 
 test_that("named lists of scalar paths are accepted", {
