@@ -569,6 +569,31 @@ test_that("named lists of scalar paths are accepted", {
   expect_true(file.exists(file.path(app, "data", "dataset.crb")))
 })
 
+test_that("Cerebro data labels cannot be missing", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  app <- file.path(root, "app")
+
+  expect_error(
+    build_test_app(setNames(crb, NA_character_), app),
+    "labels must be non-empty and non-missing"
+  )
+  expect_false(dir.exists(app))
+})
+
+test_that("Cerebro data labels must be unique", {
+  root <- withr::local_tempdir()
+  first <- write_bundle_crb(file.path(root, "first"), "first.crb")
+  second <- write_bundle_crb(file.path(root, "second"), "second.crb")
+  app <- file.path(root, "app")
+
+  expect_error(
+    build_test_app(c("Dataset" = first, "Dataset" = second), app),
+    "labels must be unique"
+  )
+  expect_false(dir.exists(app))
+})
+
 test_that("at least one Cerebro data set is required", {
   root <- withr::local_tempdir()
 
