@@ -566,7 +566,6 @@ test_that("Main parameters info button opens a help dialog", {
   app$set_inputs(ir_tabs = "Diversity", wait_ = FALSE)
   app$wait_for_idle(timeout = 45000)
   app$run_js("document.querySelector('#ir_main_parameters_info').click();")
-  app$wait_for_idle(timeout = 10000)
   app$wait_for_js(
     "(function(){var m=document.querySelector('.modal-body');return !!m && /ir-help-card/.test(m.innerHTML);})()",
     timeout = 45000
