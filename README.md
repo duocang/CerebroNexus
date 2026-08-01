@@ -94,7 +94,7 @@ createShinyApp(
 # → run with shiny::runApp("my_app/") or deploy to Shiny Server
 ```
 
-`cerebro_data` is required and must be a *named* vector / list of `.crb` (or `.rds`) paths — names become the dataset labels users switch between in the app. `result_dir` is also required. External matrix locations are read from each `.crb` backend descriptor and copied into the bundle automatically (see §2.3), so renaming a `.crb` does not lose its matrix. Other knobs available: `colors`, `cerebro_options`, `crb_pick_smallest_file`, `show_upload_ui`, `point_size`, `variable_to_compare` — run `?createShinyApp` for the full list.
+`cerebro_data` is required and must be a *named* vector / list of `.crb` (or `.rds`) paths — names must be non-missing and unique because they become the dataset labels users switch between in the app. `result_dir` is also required. External matrix locations are read from each `.crb` backend descriptor and copied into the bundle automatically (see §2.3), so renaming a `.crb` does not lose its matrix. Other knobs available: `colors`, `cerebro_options`, `crb_pick_smallest_file`, `show_upload_ui`, `point_size`, `variable_to_compare` — run `?createShinyApp` for the full list.
 
 ### 2.3 Choosing an expression backend
 

@@ -5,17 +5,19 @@
 - **`createShinyApp()` now follows each `.crb` backend descriptor.** H5 files
   and BPCells directories are copied from the recorded relative location rather
   than guessed from the current `.crb` name, so renamed data files remain
-  portable. Missing, non-portable, or conflicting targets now stop the build
-  instead of producing an app that fails at runtime unless the corresponding
-  global runtime override is configured. An empty `cerebro_data` no longer
-  launches the packaged example. Exact and parent/child target collisions,
-  backend paths that resolve through symbolic links, and global overrides
-  shared by multiple data sets are rejected during preflight. The app is
-  assembled in a private sibling stage and replaces the destination only after
-  a complete build; with `overwrite = FALSE`, a non-empty destination is
-  rejected without mutation. Repeated references to the same spatial image are
-  copied once, replacement keeps the deployment root's permission bits, and
-  non-Cerebro RDS files or Windows-incompatible bundle targets are rejected.
+  portable. Missing or non-portable descriptor backends now stop the build
+  instead of producing an app that fails at runtime, unless the corresponding
+  global runtime override is configured. Conflicting bundle targets also stop
+  during preflight. An empty `cerebro_data` no longer launches the packaged
+  example, and dataset labels must be non-missing and unique. Exact and
+  parent/child target collisions, backend paths that resolve through symbolic
+  links, and global overrides shared by multiple data sets are rejected during
+  preflight. The app is assembled in a private sibling stage and replaces the
+  destination only after a complete build; with `overwrite = FALSE`, a non-empty
+  destination is rejected without mutation. Missing optional spatial images are
+  omitted with a warning, repeated references to the same image are copied once,
+  replacement keeps the deployment root's permission bits, and non-Cerebro RDS
+  files or Windows-incompatible bundle targets are rejected.
 - **The H5 guide now starts with the one-step export workflow.**
   `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the `.crb`
   and its H5 sidecar together; the previous manual conversion remains

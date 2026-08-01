@@ -266,19 +266,23 @@ dedent <- function(string) {
 #' Supports external expression backends (\code{bpcells}, \code{h5}) in
 #' addition to the embedded mode. The backend descriptor stored in each
 #' \code{.crb} names a portable relative file or directory, which is copied to
-#' the same relative location in the bundle. Missing, invalid, or conflicting
-#' targets stop the build rather than producing an incomplete app. A configured
-#' runtime matrix override keeps its existing precedence and skips this copy.
-#' All inputs and bundle targets are validated before the app is assembled in a
-#' private sibling directory. The completed stage replaces \code{result_dir}
-#' only after every copy and configuration write succeeds. On POSIX systems,
-#' the stage is mode code{0700} while data is copied, and replacement retains
-#' the existing deployment root's permission bits. Platform-specific ACLs,
-#' ownership changes, and security labels remain the deployment system's
-#' responsibility. Inputs must not be modified while the build is running.
+#' the same relative location in the bundle. Missing or invalid descriptor-backed
+#' sidecars and conflicting planned bundle targets stop the build rather than
+#' producing an incomplete app. A configured runtime matrix override keeps its
+#' existing precedence, is not copied or checked for existence at build time,
+#' and skips the descriptor-backed sidecar copy. Required Cerebro files,
+#' descriptor-backed sidecars, and planned bundle targets are validated before
+#' the app is assembled in a private sibling directory. The completed stage
+#' replaces \code{result_dir} only after every copy and configuration write
+#' succeeds. On POSIX systems, the stage is mode \code{0700} while data is
+#' copied, and replacement retains the existing deployment root's permission
+#' bits. Platform-specific ACLs, ownership changes, and security labels remain
+#' the deployment system's responsibility. Inputs must not be modified while
+#' the build is running.
 #'
 #' @param cerebro_data Non-empty named character vector or list of \code{.crb}
-#'   (or \code{.rds}) file paths. Names are used as dataset labels.
+#'   (or \code{.rds}) file paths. Names must be non-missing and unique and are
+#'   used as dataset labels.
 #' @param result_dir Output directory.
 #' @param max_request_size Max upload size in MB; defaults to 8000.
 #' @param port Port the generated app listens on; defaults to 1337.
@@ -302,7 +306,8 @@ dedent <- function(string) {
 #' @param variable_to_compare Forwarded to \code{Cerebro.options}.
 #' @param spatial_images Named list/vector of paths to spatial background images
 #'   (e.g. tissue histology) shown behind the Spatial tab projection. Names must
-#'   match \code{cerebro_data}. Images are copied into the app bundle.
+#'   match \code{cerebro_data}. Existing images are copied into the app bundle;
+#'   missing images are omitted with a warning.
 #' @param spatial_images_flip_x Named list/vector; whether to flip the spatial
 #'   background image horizontally. Names must match \code{cerebro_data}.
 #' @param spatial_images_flip_y Named list/vector; whether to flip the spatial
@@ -401,11 +406,19 @@ createShinyApp <- function(
     )
   }
 
-  if (is.null(names(cerebro_data)) || any(names(cerebro_data) == "")) {
+  data_labels <- names(cerebro_data)
+  if (
+    is.null(data_labels) ||
+      anyNA(data_labels) ||
+      any(data_labels == "")
+  ) {
     stop(
-      "cerebro_data must be a named list or vector, and every element must have a name.",
+      "cerebro_data labels must be non-empty and non-missing.",
       call. = FALSE
     )
+  }
+  if (anyDuplicated(data_labels)) {
+    stop("cerebro_data labels must be unique.", call. = FALSE)
   }
   if (
     !is.logical(overwrite) ||
