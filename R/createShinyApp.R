@@ -47,15 +47,15 @@ dedent <- function(string) {
   paste(lines, collapse = "\n")
 }
 
-.portableBackendLocation <- function(location, crb_path, backend_type) {
-  valid <- is.character(location) &&
-    length(location) == 1L &&
-    !is.na(location) &&
-    nzchar(location) &&
-    !grepl("\\\\", location) &&
-    !grepl("^(/|~|[A-Za-z]:)", location)
+.portableBundlePath <- function(path, subject) {
+  valid <- is.character(path) &&
+    length(path) == 1L &&
+    !is.na(path) &&
+    nzchar(path) &&
+    !grepl("\\\\", path) &&
+    !grepl("^(/|~|[A-Za-z]:)", path)
   parts <- if (valid) {
-    strsplit(location, "/", fixed = TRUE)[[1L]]
+    strsplit(path, "/", fixed = TRUE)[[1L]]
   } else {
     character()
   }
@@ -77,11 +77,8 @@ dedent <- function(string) {
       windows_invalid
   ) {
     stop(
-      "The ",
-      backend_type,
-      " backend location in '",
-      basename(crb_path),
-      "' must be one portable relative path using forward slashes, without ",
+      subject,
+      " must be one portable relative path using forward slashes, without ",
       "empty, '.', '..', or Windows-incompatible segments.",
       call. = FALSE
     )
@@ -91,7 +88,8 @@ dedent <- function(string) {
 
 .readBundleBackend <- function(crb_path) {
   object <- readRDS(crb_path)
-  recognized <- any(grepl("^Cerebro($|_)", class(object)))
+  recognized <- is.environment(object) &&
+    "Cerebro_v1.3" %in% class(object)
   if (!recognized) {
     stop(
       "The Cerebro data file '",
@@ -486,7 +484,7 @@ createShinyApp <- function(
     if (is.null(x)) {
       return(NULL)
     }
-    if (is.null(names(x)) || any(names(x) == "")) {
+    if (is.null(names(x)) || anyNA(names(x)) || any(names(x) == "")) {
       warning(
         arg_name,
         " must be a named list or vector. Ignoring.",
@@ -494,7 +492,8 @@ createShinyApp <- function(
       )
       return(NULL)
     }
-    if (length(intersect(names(x), names(cerebro_data))) == 0) {
+    matching <- names(x) %in% names(cerebro_data)
+    if (!any(matching)) {
       warning(
         "No matching names found between ",
         arg_name,
@@ -503,7 +502,16 @@ createShinyApp <- function(
       )
       return(NULL)
     }
-    x
+    if (!all(matching)) {
+      warning(
+        "Some ",
+        arg_name,
+        " entries do not match cerebro_data and will be ignored: ",
+        paste(unique(names(x)[!matching]), collapse = ", "),
+        call. = FALSE
+      )
+    }
+    x[matching]
   }
   spatial_images <- validate_named_against_data(
     spatial_images,
@@ -568,6 +576,10 @@ createShinyApp <- function(
   claimed_artifacts <- character()
   claimed_directories <- logical()
   claim_target <- function(target, source, artifact, directory = FALSE) {
+    target <- .portableBundlePath(
+      target,
+      paste0("The ", artifact, " bundle target '", target, "'")
+    )
     key <- tolower(target)
     for (claim_index in seq_along(claimed_keys)) {
       existing <- claimed_targets[[claim_index]]
@@ -649,8 +661,8 @@ createShinyApp <- function(
   }
 
   override_users <- list(
-    expression_matrix_h5 = integer(),
-    expression_matrix_BPCells = integer()
+    expression_matrix_h5 = character(),
+    expression_matrix_BPCells = character()
   )
   for (index in seq_along(backends)) {
     backend <- backends[[index]]
@@ -674,11 +686,16 @@ createShinyApp <- function(
     if (!is.null(override_key)) {
       override_users[[override_key]] <- c(
         override_users[[override_key]],
-        index
+        resolved_crb_sources[[index]]
       )
     }
   }
-  unsafe_override <- names(override_users)[lengths(override_users) > 1L]
+  distinct_override_users <- vapply(
+    override_users,
+    function(paths) length(unique(paths)),
+    integer(1)
+  )
+  unsafe_override <- names(override_users)[distinct_override_users > 1L]
   if (length(unsafe_override) > 0L) {
     stop(
       "The global override cerebro_options[['",
@@ -704,10 +721,15 @@ createShinyApp <- function(
       next
     }
 
-    location <- .portableBackendLocation(
+    location <- .portableBundlePath(
       backend$location,
-      file,
-      backend$type
+      paste0(
+        "The ",
+        backend$type,
+        " backend location in '",
+        basename(file),
+        "'"
+      )
     )
     parts <- strsplit(location, "/", fixed = TRUE)[[1L]]
     source_root <- dirname(file)
@@ -773,12 +795,13 @@ createShinyApp <- function(
   ## Spatial background images share the same target namespace as CRBs and
   ## external backends, so all collisions are rejected before any copy starts.
   if (!is.null(spatial_images) && length(spatial_images) > 0L) {
-    for (dataset in names(spatial_images)) {
+    bundled_spatial_images <- list()
+    for (index in seq_along(spatial_images)) {
+      dataset <- names(spatial_images)[[index]]
       copied_paths <- character()
-      for (image in spatial_images[[dataset]]) {
+      for (image in spatial_images[[index]]) {
         if (!file.exists(image)) {
           warning("Spatial image not found: ", image, call. = FALSE)
-          copied_paths <- c(copied_paths, image)
           next
         }
         target <- basename(image)
@@ -789,7 +812,17 @@ createShinyApp <- function(
         )
         copied_paths <- c(copied_paths, file.path("data", target))
       }
-      spatial_images[[dataset]] <- copied_paths
+      if (length(copied_paths) > 0L) {
+        bundled_spatial_images[[length(bundled_spatial_images) + 1L]] <-
+          copied_paths
+        names(bundled_spatial_images)[[length(bundled_spatial_images)]] <-
+          dataset
+      }
+    }
+    spatial_images <- if (length(bundled_spatial_images) > 0L) {
+      bundled_spatial_images
+    } else {
+      NULL
     }
   }
 
