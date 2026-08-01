@@ -19,7 +19,7 @@
   `overwrite = FALSE`, a non-empty destination is rejected without
   mutation. Repeated references to the same spatial image are copied
   once, replacement keeps the deployment root’s permission bits, and
-  non-Cerebro RDS files or Windows-incompatible backend paths are
+  non-Cerebro RDS files or Windows-incompatible bundle targets are
   rejected.
 - **The H5 guide now starts with the one-step export workflow.**
   `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the
