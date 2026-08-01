@@ -109,6 +109,32 @@ test_that("backend locations must be portable relative paths", {
   }
 })
 
+test_that("every copied artifact has a portable bundle target", {
+  skip_on_os("windows")
+  root <- withr::local_tempdir()
+  reserved_crb <- write_bundle_crb(root, "NUL.crb")
+
+  expect_error(
+    build_test_app(
+      c("Dataset" = reserved_crb),
+      file.path(root, "reserved-crb-app")
+    ),
+    "portable relative path"
+  )
+
+  crb <- write_bundle_crb(file.path(root, "source"))
+  reserved_image <- file.path(root, "AUX.png")
+  writeLines("IMAGE", reserved_image)
+  expect_error(
+    build_test_app(
+      c("Dataset" = crb),
+      file.path(root, "reserved-image-app"),
+      spatial_images = list("Dataset" = reserved_image)
+    ),
+    "portable relative path"
+  )
+})
+
 test_that("malformed backend descriptors are rejected", {
   root <- withr::local_tempdir()
   broken <- new.env(parent = emptyenv())
@@ -142,6 +168,18 @@ test_that("arbitrary RDS objects are not accepted as Cerebro data", {
 
   expect_error(
     build_test_app(c("Number" = path), file.path(root, "app")),
+    "recognized Cerebro"
+  )
+  expect_false(dir.exists(file.path(root, "app")))
+})
+
+test_that("a Cerebro class label alone is not a valid Cerebro object", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, "impostor.rds")
+  saveRDS(structure(42, class = "Cerebro_v1.3"), path)
+
+  expect_error(
+    build_test_app(c("Impostor" = path), file.path(root, "app")),
     "recognized Cerebro"
   )
   expect_false(dir.exists(file.path(root, "app")))
@@ -256,6 +294,30 @@ test_that("one global override cannot serve multiple Cerebro data files", {
   )
 })
 
+test_that("one CRB reused under two labels remains one override consumer", {
+  root <- withr::local_tempdir()
+  override <- file.path(root, "host-matrix.h5")
+  writeLines("HOST", override)
+  crb <- write_bundle_crb(
+    file.path(root, "source"),
+    backend = list(type = "h5", location = "missing.h5")
+  )
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("First label" = crb, "Second label" = crb),
+    app,
+    cerebro_options = list(expression_matrix_h5 = override)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(
+    unname(config$crb_file_to_load),
+    rep(file.path("data", "dataset.crb"), 2L)
+  )
+  expect_identical(config$expression_matrix_h5, override)
+})
+
 test_that("different sources cannot write the same bundle target", {
   root <- withr::local_tempdir()
   backend <- list(type = "h5", location = "matrix.h5")
@@ -331,6 +393,52 @@ test_that("one spatial image can be shared by multiple data sets", {
     readLines(file.path(app, "data", "histology.png")),
     "IMAGE"
   )
+})
+
+test_that("partially unmatched spatial images are not bundled", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  matched <- file.path(root, "matched.png")
+  unmatched <- file.path(root, "unmatched.png")
+  writeLines("MATCHED", matched)
+  writeLines("UNMATCHED", unmatched)
+  app <- file.path(root, "app")
+
+  expect_warning(
+    build_test_app(
+      c("Dataset" = crb),
+      app,
+      spatial_images = list("Dataset" = matched, "Typo" = unmatched)
+    ),
+    "do not match cerebro_data"
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(names(config$spatial_images), "Dataset")
+  expect_identical(
+    config$spatial_images[["Dataset"]],
+    file.path("data", "matched.png")
+  )
+  expect_false(file.exists(file.path(app, "data", "unmatched.png")))
+})
+
+test_that("missing spatial images are omitted from the bundle config", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  missing <- file.path(root, "missing.png")
+  app <- file.path(root, "app")
+
+  expect_warning(
+    build_test_app(
+      c("Dataset" = crb),
+      app,
+      spatial_images = list("Dataset" = missing)
+    ),
+    "Spatial image not found"
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_null(config$spatial_images)
 })
 
 test_that("parent and child bundle targets conflict before copying", {
