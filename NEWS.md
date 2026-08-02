@@ -3,25 +3,58 @@
 ## Export
 
 - **`createShinyApp()` now follows each `.crb` backend descriptor.** H5 files
-  and BPCells directories are copied from the recorded relative location rather
-  than guessed from the current `.crb` name, so renamed data files remain
-  portable. Missing or non-portable descriptor backends now stop the build
-  instead of producing an app that fails at runtime, unless the corresponding
-  global runtime override is configured. Conflicting bundle targets also stop
-  during preflight. An empty `cerebro_data` no longer launches the packaged
-  example, and dataset labels must be non-missing and unique. Exact and
-  parent/child target collisions, backend paths that resolve through symbolic
-  links, and global overrides shared by multiple data sets are rejected during
-  preflight. The app is assembled in a private sibling stage and replaces the
-  destination only after a complete build; with `overwrite = FALSE`, a non-empty
-  destination is rejected without mutation. Missing optional spatial images are
-  omitted with a warning, repeated references to the same image are copied once,
-  replacement keeps the deployment root's permission bits, and non-Cerebro RDS
-  files or Windows-incompatible bundle targets are rejected.
+  and BPCells directories are copied from the recorded portable relative
+  location rather than guessed from the current `.crb` name, so renamed data
+  files remain portable. Missing sidecars, trailing-slash H5 locations, symbolic
+  links, case-folded or parent/child target collisions, duplicate labels or
+  data sources that resolve to the same canonical CRB, unsupported serialized
+  objects and unsafe multi-dataset overrides now fail during preflight.
+  Validation requires the minimum stable runtime API on a locked R6 structure
+  without invoking serialized methods, getter, active or lazy bindings;
+  `.crb`/`.rds` inputs nevertheless remain trusted serialized R objects, not
+  sandboxed content.
+- **Configured CRBs now use the exact backend decision validated at build
+  time.** `createShinyApp()` derives a versioned per-CRB attachment plan from the
+  ordinary `expression_backend` field and the deployment override, then stores
+  it in the generated configuration. The standalone runtime consumes that plan
+  instead of calling a serialized getter. Direct launches and uploads likewise
+  read and validate the ordinary field without invoking the getter; partially
+  upgraded objects that contain only the field or only the getter fail closed.
+- **Bundle publication now has an explicit private/public boundary and recovery
+  protocol.** Raw `.crb`, H5 and BPCells artifacts stay in the non-HTTP
+  `private-data/` tree; the historical `data/` name is not reused because a
+  still-running older app may retain its former `/data` HTTP mapping. Only files
+  explicitly supplied through `spatial_images` enter the public
+  `spatial-assets/` resource path and must be trusted browser-safe images. Each
+  canonical target has one atomic build lock covering
+  preflight through cleanup. Builds use a private sibling stage, retain the
+  existing root mode, fail closed on unreadable destinations, never delete a
+  foreign target, restore a previous app after a failed final rename when
+  possible, and retain the exact backup path when restoration fails.
+  CRBs, sidecars, spatial images and their source-path ancestors must remain
+  unchanged during a build. Abrupt process death is not crash-atomic; recovery
+  requires verifying and restoring the previous backup before stale stage/lock
+  cleanup.
+- **Generated app launch settings now fail closed before publication.** Upload
+  size, port, host, browser, quiet and display-mode values are strictly
+  validated and frozen in a typed configuration rather than interpolated into
+  R source. The staged `app.R` is parsed before it can replace an existing app.
+  The upload limit now actually applies through
+  `shiny.maxRequestSize` for the app lifetime and restores the process option
+  when the app stops; previous bundles documented this limit but did not apply
+  it.
+- **Host-managed matrix overrides are explicit exceptions to self-contained
+  bundles.** They must be absolute and serve only one effective CRB consumer.
+  Native paths are resolved component by component and rejected inside
+  `result_dir`; unresolved filesystem entries, unsafe Windows aliases, and
+  device namespaces fail closed. Non-native paths for another host are
+  preserved lexically and cannot be compared with the local app tree.
+  Overrides are not copied, and absent ordinary targets are not rejected, so
+  the deployment host must provide them.
 - **The H5 guide now starts with the one-step export workflow.**
   `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the `.crb`
-  and its H5 sidecar together; the previous manual conversion remains
-  documented for legacy embedded `.crb` files.
+  and its H5 sidecar together. The manual conversion now writes an H5 backend
+  descriptor before saving, producing the same portable, self-describing pair.
 
 # CerebroNexus 3.0.3
 

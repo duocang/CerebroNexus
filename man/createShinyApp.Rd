@@ -36,31 +36,45 @@ createShinyApp(
 \arguments{
 \item{cerebro_data}{Non-empty named character vector or list of \code{.crb}
 (or \code{.rds}) file paths. Names must be non-missing and unique and are
-used as dataset labels.}
+used as dataset labels. Every path must resolve to a distinct canonical
+source file.}
 
-\item{result_dir}{Output directory.}
+\item{result_dir}{Output directory. Its basename must be portable, its path
+must not use the reserved build-lock namespace, and its final target must
+not be a symbolic link or unresolved filesystem entry.}
 
-\item{max_request_size}{Max upload size in MB; defaults to 8000.}
+\item{max_request_size}{One finite positive numeric upload limit in MB;
+defaults to 8000.}
 
-\item{port}{Port the generated app listens on; defaults to 1337.}
+\item{port}{One whole-number port from 1 through 65535; defaults to 8080.}
 
-\item{host}{Host the generated app binds to; defaults to "127.0.0.1".}
+\item{host}{One non-empty character value that the generated app binds to;
+defaults to "127.0.0.1".}
 
-\item{launch_browser}{Whether to launch a browser; defaults to TRUE.}
+\item{launch_browser}{One non-missing logical controlling whether to launch a
+browser; defaults to TRUE.}
 
-\item{quiet}{Passed to \code{shiny::runApp}; defaults to FALSE.}
+\item{quiet}{One non-missing logical passed to \code{shiny::runApp}; defaults
+to FALSE.}
 
-\item{display_mode}{\code{shiny::runApp} display mode; defaults to "normal".}
+\item{display_mode}{Exactly one of \code{"auto"}, \code{"normal"}, or
+\code{"showcase"}; defaults to \code{"normal"}.}
 
 \item{colors}{Optional named list of colour palettes per dataset.}
 
 \item{cerebro_options}{Extra entries merged into \code{Cerebro.options} in
-the generated app.}
+the generated app. Matrix overrides must be absolute host paths and make
+the resulting app host-dependent. Native paths must resolve outside
+\code{result_dir}; non-native paths cannot be compared with the local app
+tree during the build. Duplicate internal entries are removed, and the
+keys \code{.bundle_backend_plan} and \code{.bundle_run_options} are written
+by the function.}
 
 \item{overwrite}{If \code{TRUE} (default), replace \code{result_dir} only
-after a complete staged build succeeds. If \code{FALSE},
-\code{result_dir} must be absent or empty; a non-empty directory is
-rejected before any files are written.}
+after a complete staged build succeeds. Publication failures attempt to
+restore the previous app and preserve its backup if restoration fails. If
+\code{FALSE}, \code{result_dir} must be absent or empty; a non-empty
+directory is rejected before any files are written.}
 
 \item{verbose}{Print progress messages; defaults to TRUE.}
 
@@ -77,8 +91,10 @@ rejected before any files are written.}
 
 \item{spatial_images}{Named list/vector of paths to spatial background images
 (e.g. tissue histology) shown behind the Spatial tab projection. Names must
-match \code{cerebro_data}. Existing images are copied into the app bundle;
-missing images are omitted with a warning.}
+match \code{cerebro_data}. Supplied files are copied verbatim into the
+app's public \code{spatial-assets/} resource directory; callers must
+provide trusted, browser-safe images. Missing files are omitted with a
+warning.}
 
 \item{spatial_images_flip_x}{Named list/vector; whether to flip the spatial
 background image horizontally. Names must match \code{cerebro_data}.}
@@ -106,7 +122,8 @@ applied to spatial cell coordinates. Names must match \code{cerebro_data}.}
 \item{...}{Currently unused; reserved for future arguments.}
 }
 \value{
-Invisibly returns \code{result_dir}.
+Invisibly returns \code{result_dir}. If that path changes resolution
+  during the build, warns and returns the frozen absolute publication path.
 }
 \description{
 Bundles a Cerebro v1.4 Shiny app into \code{result_dir}, copying the
@@ -117,19 +134,61 @@ run with \code{shiny::runApp(result_dir)}.
 }
 \details{
 Supports external expression backends (\code{bpcells}, \code{h5}) in
-addition to the embedded mode. The backend descriptor stored in each
-\code{.crb} names a portable relative file or directory, which is copied to
-the same relative location in the bundle. Missing or invalid descriptor-backed
-sidecars and conflicting planned bundle targets stop the build rather than
-producing an incomplete app. A configured runtime matrix override keeps its
-existing precedence, is not copied or checked for existence at build time,
-and skips the descriptor-backed sidecar copy. Required Cerebro files,
-descriptor-backed sidecars, and planned bundle targets are validated before
-the app is assembled in a private sibling directory. The completed stage
-replaces \code{result_dir} only after every copy and configuration write
-succeeds. On POSIX systems, the stage is mode \code{0700} while data is
-copied, and replacement retains the existing deployment root's permission
-bits. Platform-specific ACLs, ownership changes, and security labels remain
-the deployment system's responsibility. Inputs must not be modified while
-the build is running.
+addition to the embedded mode. Each \code{.crb} descriptor names a portable
+relative file or directory, which is copied to the same private location
+under \code{private-data/}. The historical \code{data/} name is deliberately
+not reused: a still-running older generated app may retain its former
+\code{/data} HTTP resource mapping during an in-place replacement. Raw
+\code{.crb}, H5, and BPCells artifacts are not registered as HTTP resources.
+Spatial background images are the deliberate exception: files explicitly
+supplied through \code{spatial_images} are copied verbatim under
+\code{spatial-assets/} and made available to the browser. Callers must
+provide trusted, browser-safe image files. Preflight requires a minimum
+stable runtime API and reads the ordinary \code{expression_backend} field
+without invoking serialized methods or its getter. The generated
+configuration stores the effective per-CRB attachment plan after applying
+any deployment override, and configured CRBs consume that exact plan at
+runtime. Direct launches and uploads also read and validate the ordinary
+field without invoking the getter. A historical CRB may omit both field and
+getter; an object containing only one is rejected as an unsupported mixed
+format.
+Dataset labels and canonical CRB sources are both unique: two labels cannot
+select the same resolved input file.
+
+Launch settings are validated and frozen in a typed internal manifest before
+target preparation. The generated \code{app.R} reads that manifest instead of
+interpolating user values into source, and the staged source is parsed before
+publication. The upload limit is installed as
+\code{shiny.maxRequestSize} while the app is running and the previous process
+option is restored when the app stops.
+
+A configured runtime matrix override keeps its existing precedence and skips
+the descriptor sidecar copy. It must be an absolute path. Native paths are
+resolved component by component and rejected if they resolve inside
+\code{result_dir}. Unresolved filesystem entries, unsafe Windows aliases,
+and Windows device namespaces fail closed; a truly absent ordinary target is
+allowed for later provisioning. Non-native absolute paths intended for
+another host are preserved lexically and cannot be compared with that host's
+app tree. Such a bundle depends on that host-managed path and is therefore
+not self-contained. Treat
+input \code{.crb}/\code{.rds} files as trusted serialized R objects;
+structural validation is not a sandbox for untrusted RDS input.
+
+One atomic sibling lock directory, \code{.<basename>-build.lock}, serializes
+builds for each target. An existing lock stops the build and is never removed
+automatically as "stale". Required inputs and targets are validated before
+the app is assembled in a private sibling stage. Preflight and stage-build
+failures leave an existing deployment in place. Publication first renames the
+old app to a unique backup; if the final rename fails, restoration is
+attempted. A failed restoration keeps the backup and reports its exact path.
+Abrupt process death between the two publication renames is not recovered
+automatically and can leave \code{result_dir} temporarily absent. After
+confirming that the lock owner is no longer running, verify and restore the
+correct backup before removing any leftover stage and lock.
+On POSIX systems, the stage is mode \code{0700} while data is copied, and
+replacement retains the existing deployment root's permission bits.
+Platform-specific ACLs, ownership changes, and security labels remain the
+deployment system's responsibility. All CRBs, descriptor sidecars, spatial
+images and their source-path ancestors must remain trusted and unchanged
+while the build is running; the target build lock does not protect inputs.
 }

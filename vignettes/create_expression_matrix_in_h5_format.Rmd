@@ -127,7 +127,8 @@ launchCerebro(
 
 For deployment, pass the `.crb` to `createShinyApp()`. It reads the same
 descriptor and copies the referenced H5 sidecar into the self-contained app
-bundle.
+bundle. The H5 file is stored under the app's private `private-data/` tree and
+is not registered as a browser-downloadable HTTP resource.
 
 ```{r bundle, eval=FALSE}
 createShinyApp(
@@ -169,28 +170,34 @@ HDF5Array::writeTENxMatrix(
 )
 ```
 
-Remove the embedded matrix before saving the smaller `.crb`; otherwise the
-original matrix will still be loaded into memory.
+Remove the embedded matrix and record the sibling filename before saving the
+smaller `.crb`; otherwise the original matrix will still be loaded into memory,
+or the saved object will not know where its external matrix lives.
 
 ```{r legacy-save}
 crb$expression <- NULL
+crb$setExpressionBackend(
+  type = "h5",
+  location = basename(h5_output)
+)
 crb_output <- file.path(legacy_dir, "example.crb")
 saveRDS(crb, crb_output)
 ```
 
-Legacy `.crb` files do not contain the new backend descriptor, so provide the
-H5 path explicitly when launching them:
+The converted `.crb` is now self-describing. Keep it beside `example.h5` and
+launch it without a host-specific override:
 
 ```{r legacy-launch, eval=FALSE}
 launchCerebro(
-  crb_file_to_load = crb_output,
-  expression_matrix_h5 = h5_output
+  crb_file_to_load = crb_output
 )
 ```
 
-This explicit override is a compatibility path. If the original Seurat object
-is available, re-exporting it with `expression_matrix_mode = "h5"` produces the
-portable, self-describing pair and is less error-prone.
+If an older serialized object does not provide `setExpressionBackend()`, do not
+clear and resave it with no descriptor. Re-export it with a current
+CerebroNexus version instead. When the original Seurat object is available,
+`exportFromSeurat(..., expression_matrix_mode = "h5")` remains the preferred,
+less error-prone route.
 
 # See also
 
