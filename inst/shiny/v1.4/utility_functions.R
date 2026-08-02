@@ -1264,24 +1264,215 @@ read_cerebro_file <- function(file) {
 }
 
 ##----------------------------------------------------------------------------##
-## Process-level cache for loaded .crb files (B8).
+## Session-scoped cache for loaded .crb files (B8).
 ##
-## Cerebro objects are treated as READ-ONLY across sessions. Cache is keyed by
-## file path; overwriting a .crb in place is NOT detected -- restart the R
-## process to pick up new content.
+## Cerebro objects are treated as READ-ONLY within a session. Cache is keyed by
+## file path and backend configuration. Changing the backend configuration for
+## an already loaded path fails closed; overwriting a .crb in place is NOT
+## detected -- start a new app session to pick up either change.
 ##----------------------------------------------------------------------------##
 .crb_cache <- new.env(parent = emptyenv())
 
-get_or_load_crb <- function(path) {
-  if (is.null(.crb_cache[[path]])) {
-    print(glue::glue("[{Sys.time()}] CRB cache miss, loading: {path}"))
-    obj <- read_cerebro_file(path)
-    obj <- .attachExternalExpression(obj, path)
-    .crb_cache[[path]] <- obj
+.runtimeBackendPlanError <- function(message, crb_path = NULL) {
+  suffix <- if (is.null(crb_path)) {
+    ""
   } else {
-    print(glue::glue("[{Sys.time()}] CRB cache hit: {path}"))
+    paste0(" for CRB '", crb_path, "'")
   }
-  .crb_cache[[path]]
+  stop("The backend plan ", message, suffix, ".", call. = FALSE)
+}
+
+.runtimeWindowsPathSegmentInvalid <- function(parts) {
+  grepl("[[:cntrl:]<>:\"|?*]", parts) |
+    grepl("[. ]$", parts) |
+    grepl(
+      "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])($|\\.)",
+      parts,
+      ignore.case = TRUE
+    )
+}
+
+.runtimePortableBackendPath <- function(path, context) {
+  valid <- is.character(path) &&
+    length(path) == 1L &&
+    !is.na(path) &&
+    nzchar(path) &&
+    !grepl("/$", path) &&
+    !grepl("\\\\", path) &&
+    !grepl("^(/|~|[A-Za-z]:)", path)
+  parts <- if (valid) {
+    strsplit(path, "/", fixed = TRUE)[[1L]]
+  } else {
+    character()
+  }
+  windows_invalid <- length(parts) > 0L &&
+    any(.runtimeWindowsPathSegmentInvalid(parts))
+  if (
+    !valid ||
+      length(parts) == 0L ||
+      any(!nzchar(parts)) ||
+      any(parts %in% c(".", "..")) ||
+      windows_invalid
+  ) {
+    stop(context, " must be a portable relative path.", call. = FALSE)
+  }
+  paste(parts, collapse = "/")
+}
+
+.runtimeAbsoluteBackendPath <- function(path) {
+  if (
+    !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path) ||
+      !nzchar(path)
+  ) {
+    return(FALSE)
+  }
+  normalized <- gsub("\\\\", "/", path)
+  startsWith(normalized, "/") || grepl("^[A-Za-z]:/", normalized)
+}
+
+.validateRuntimeBackendEntry <- function(entry, crb_path) {
+  entry_names <- names(entry)
+  valid_shape <- is.list(entry) &&
+    !is.data.frame(entry) &&
+    length(entry) == 3L &&
+    !is.null(entry_names) &&
+    !anyDuplicated(entry_names) &&
+    setequal(entry_names, c("type", "mode", "location"))
+  if (!valid_shape) {
+    .runtimeBackendPlanError("entry is malformed", crb_path)
+  }
+  valid_type <- is.character(entry$type) &&
+    length(entry$type) == 1L &&
+    !is.na(entry$type) &&
+    entry$type %in% c("embedded", "h5", "bpcells")
+  valid_mode <- is.character(entry$mode) &&
+    length(entry$mode) == 1L &&
+    !is.na(entry$mode) &&
+    entry$mode %in% c("embedded", "bundled", "host_override")
+  if (!valid_type || !valid_mode) {
+    .runtimeBackendPlanError("entry has an unsupported type or mode", crb_path)
+  }
+  if (identical(entry$mode, "embedded")) {
+    if (!identical(entry$type, "embedded") || !is.null(entry$location)) {
+      .runtimeBackendPlanError("embedded entry is inconsistent", crb_path)
+    }
+  } else if (identical(entry$mode, "bundled")) {
+    if (identical(entry$type, "embedded")) {
+      .runtimeBackendPlanError("bundled entry is inconsistent", crb_path)
+    }
+    entry$location <- .runtimePortableBackendPath(
+      entry$location,
+      "The backend plan bundled backend location"
+    )
+  } else {
+    if (
+      identical(entry$type, "embedded") ||
+        !.runtimeAbsoluteBackendPath(entry$location)
+    ) {
+      .runtimeBackendPlanError("host override entry is inconsistent", crb_path)
+    }
+  }
+  list(type = entry$type, mode = entry$mode, location = entry$location)
+}
+
+.configuredRuntimeBackendPlan <- function(
+  path,
+  backend_plan = NULL,
+  configured_paths = character()
+) {
+  if (is.null(backend_plan)) {
+    return(NULL)
+  }
+  if (!is.character(configured_paths) || anyNA(configured_paths)) {
+    .runtimeBackendPlanError("has invalid configured CRB paths")
+  }
+  if (!path %in% configured_paths) {
+    return(NULL)
+  }
+  plan_names <- names(backend_plan)
+  valid_plan <- is.list(backend_plan) &&
+    !is.data.frame(backend_plan) &&
+    length(backend_plan) == 2L &&
+    !is.null(plan_names) &&
+    !anyDuplicated(plan_names) &&
+    setequal(plan_names, c("schema_version", "entries")) &&
+    identical(backend_plan$schema_version, 1L) &&
+    is.list(backend_plan$entries) &&
+    !is.data.frame(backend_plan$entries)
+  if (!valid_plan) {
+    .runtimeBackendPlanError("is malformed")
+  }
+  entry_names <- names(backend_plan$entries)
+  if (
+    length(backend_plan$entries) > 0L &&
+      (is.null(entry_names) ||
+        anyNA(entry_names) ||
+        any(!nzchar(entry_names)) ||
+        anyDuplicated(entry_names))
+  ) {
+    .runtimeBackendPlanError("entries must have unique CRB paths")
+  }
+  validated <- lapply(seq_along(backend_plan$entries), function(index) {
+    .validateRuntimeBackendEntry(
+      backend_plan$entries[[index]],
+      entry_names[[index]]
+    )
+  })
+  names(validated) <- entry_names
+  entry <- validated[[path]]
+  if (is.null(entry)) {
+    .runtimeBackendPlanError("has no entry for configured CRB", path)
+  }
+  entry
+}
+
+.runtimeBackendCacheIdentity <- function(effective_backend) {
+  if (!is.null(effective_backend)) {
+    return(list(source = "configured", backend = effective_backend))
+  }
+  options <- .runtimeCerebroOptions()
+  list(
+    source = "fallback",
+    expression_matrix_h5 = options[["expression_matrix_h5"]],
+    expression_matrix_BPCells = options[["expression_matrix_BPCells"]]
+  )
+}
+
+get_or_load_crb <- function(
+  path,
+  backend_plan = NULL,
+  configured_paths = character()
+) {
+  effective_backend <- .configuredRuntimeBackendPlan(
+    path,
+    backend_plan,
+    configured_paths
+  )
+  cache_identity <- .runtimeBackendCacheIdentity(effective_backend)
+  cached <- .crb_cache[[path]]
+  if (!is.null(cached)) {
+    if (!identical(cached$backend_identity, cache_identity)) {
+      stop(
+        "The cached CRB '",
+        path,
+        "' backend configuration changed after it was loaded. Start a new ",
+        "app session before using the new configuration.",
+        call. = FALSE
+      )
+    }
+    print(glue::glue("[{Sys.time()}] CRB cache hit: {path}"))
+    return(cached$object)
+  }
+  print(glue::glue("[{Sys.time()}] CRB cache miss, loading: {path}"))
+  obj <- read_cerebro_file(path)
+  obj <- .attachExternalExpression(obj, path, effective_backend)
+  .crb_cache[[path]] <- list(
+    object = obj,
+    backend_identity = cache_identity
+  )
+  obj
 }
 
 ##----------------------------------------------------------------------------##
@@ -1292,76 +1483,203 @@ get_or_load_crb <- function(path) {
 ## breaks once the crb is moved. This helper rebuilds the handle from a path
 ## rooted at the caller's view of the filesystem.
 ##
-## Path priority:
-##   1. Cerebro.options[["expression_matrix_BPCells"]] absolute override
-##   2. dirname(crb_path) + getExpressionBackend()$location  (default)
+## Configured bundle CRBs receive the build-validated effective backend entry.
+## Direct launches and uploads read only the ordinary expression_backend field;
+## serialized getter code is never invoked by this internal loading path.
 ##----------------------------------------------------------------------------##
-.attachExternalExpression <- function(obj, crb_path) {
+.readRuntimeBackendDescriptor <- function(obj, crb_path) {
+  if (!is.environment(obj)) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' has an unsupported expression-backend descriptor.",
+      call. = FALSE
+    )
+  }
+  getter_name <- "getExpressionBackend"
+  field_name <- "expression_backend"
+  getter_exists <- exists(getter_name, envir = obj, inherits = FALSE)
+  field_exists <- exists(field_name, envir = obj, inherits = FALSE)
+  getter_active <- getter_exists && bindingIsActive(getter_name, obj)
+  field_active <- field_exists && bindingIsActive(field_name, obj)
+  getter_lazy <- getter_exists &&
+    !getter_active &&
+    isTRUE(rlang::env_binding_are_lazy(obj, getter_name))
+  field_lazy <- field_exists &&
+    !field_active &&
+    isTRUE(rlang::env_binding_are_lazy(obj, field_name))
+  invalid <- getter_active ||
+    field_active ||
+    getter_lazy ||
+    field_lazy ||
+    xor(getter_exists, field_exists)
+  if (invalid) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' has an unsupported expression-backend descriptor.",
+      call. = FALSE
+    )
+  }
+  if (!getter_exists && !field_exists) {
+    return(list(type = "embedded", location = NULL, legacy = TRUE))
+  }
+  getter <- get(getter_name, envir = obj, inherits = FALSE)
+  if (!is.function(getter)) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' has an unsupported expression-backend descriptor.",
+      call. = FALSE
+    )
+  }
+  backend <- get(field_name, envir = obj, inherits = FALSE)
+  if (is.null(backend)) {
+    return(list(type = "embedded", location = NULL, legacy = FALSE))
+  }
+  valid_type <- is.list(backend) &&
+    is.character(backend$type) &&
+    length(backend$type) == 1L &&
+    !is.na(backend$type) &&
+    backend$type %in% c("embedded", "h5", "bpcells")
+  valid_location <- valid_type &&
+    if (identical(backend$type, "embedded")) {
+      is.null(backend$location)
+    } else {
+      is.character(backend$location) &&
+        length(backend$location) == 1L &&
+        !is.na(backend$location) &&
+        nzchar(backend$location)
+    }
+  if (!valid_type || !valid_location) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' has an unsupported expression-backend descriptor.",
+      call. = FALSE
+    )
+  }
+  if (!identical(backend$type, "embedded")) {
+    backend$location <- .runtimePortableBackendPath(
+      backend$location,
+      paste0("The ", backend$type, " backend location")
+    )
+  }
+  list(type = backend$type, location = backend$location, legacy = FALSE)
+}
+
+.runtimeCerebroOptions <- function() {
+  if (!exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)) {
+    return(list())
+  }
+  options <- get("Cerebro.options", envir = .GlobalEnv)
+  if (!is.list(options)) {
+    stop("Cerebro.options must be a list.", call. = FALSE)
+  }
+  options
+}
+
+.normalizeRuntimeOverride <- function(path, key) {
+  if (
+    !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path) ||
+      !nzchar(path)
+  ) {
+    stop("Cerebro.options[['", key, "']] must be a path.", call. = FALSE)
+  }
+  normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
+}
+
+.fallbackRuntimeBackendPlan <- function(obj, crb_path) {
+  backend <- .readRuntimeBackendDescriptor(obj, crb_path)
+  options <- .runtimeCerebroOptions()
+  override_key <- NULL
+  if (isTRUE(backend$legacy)) {
+    if (!is.null(options[["expression_matrix_h5"]])) {
+      override_key <- "expression_matrix_h5"
+      backend$type <- "h5"
+    } else if (!is.null(options[["expression_matrix_BPCells"]])) {
+      override_key <- "expression_matrix_BPCells"
+      backend$type <- "bpcells"
+    }
+  } else if (!identical(backend$type, "embedded")) {
+    candidate <- switch(
+      backend$type,
+      h5 = "expression_matrix_h5",
+      bpcells = "expression_matrix_BPCells"
+    )
+    if (!is.null(options[[candidate]])) {
+      override_key <- candidate
+    }
+  }
+  if (!is.null(override_key)) {
+    return(list(
+      type = backend$type,
+      mode = "host_override",
+      location = .normalizeRuntimeOverride(
+        options[[override_key]],
+        override_key
+      )
+    ))
+  }
+  if (isTRUE(backend$legacy) || identical(backend$type, "embedded")) {
+    return(list(type = "embedded", mode = "embedded", location = NULL))
+  }
+  list(type = backend$type, mode = "bundled", location = backend$location)
+}
+
+.runtimeBackendRecoveryAdvice <- function(backend, configured) {
+  key <- switch(
+    backend$type,
+    h5 = "expression_matrix_h5",
+    bpcells = "expression_matrix_BPCells"
+  )
+  if (identical(backend$mode, "host_override")) {
+    if (configured) {
+      return(paste0(
+        "Rebuild the app with a valid cerebro_options[['",
+        key,
+        "']] host override."
+      ))
+    }
+    return(paste0(
+      "Set Cerebro.options[['",
+      key,
+      "']] to a valid host path before loading the CRB."
+    ))
+  }
+  paste0(
+    "Did the .",
+    if (identical(backend$type, "h5")) "h5" else "bpcells/",
+    " sibling get moved or dropped when the CRB was copied?"
+  )
+}
+
+.attachExternalExpression <- function(
+  obj,
+  crb_path,
+  effective_backend = NULL
+) {
   if (!any(grepl("Cerebro", class(obj)))) {
     return(obj)
   }
-  if (!is.function(obj$getExpressionBackend)) {
-    ## Legacy crb without an expression_backend field. If the host app has
-    ## configured an external matrix override, synthesise the backend tag
-    ## from it so the runtime can still attach an h5 / bpcells sibling.
-    ## Otherwise fall back to embedded (returned early below).
-    opts <- if (
-      exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
-    ) {
-      get("Cerebro.options", envir = .GlobalEnv)
-    } else {
-      list()
-    }
-    if (!is.null(opts[["expression_matrix_h5"]])) {
-      be <- list(
-        type = "h5",
-        location = basename(opts[["expression_matrix_h5"]])
-      )
-    } else if (!is.null(opts[["expression_matrix_BPCells"]])) {
-      be <- list(
-        type = "bpcells",
-        location = basename(opts[["expression_matrix_BPCells"]])
-      )
-    } else {
-      be <- list(type = "embedded", location = NULL)
-    }
+  configured <- !is.null(effective_backend)
+  if (!configured) {
+    be <- .fallbackRuntimeBackendPlan(obj, crb_path)
   } else {
-    be <- obj$getExpressionBackend()
+    be <- .validateRuntimeBackendEntry(effective_backend, crb_path)
   }
 
-  if (is.null(be) || identical(be$type, "embedded")) {
+  if (identical(be$mode, "embedded")) {
     return(obj)
   }
 
-  override <- NULL
-  if (exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)) {
-    opts <- get("Cerebro.options", envir = .GlobalEnv)
-    override_key <- switch(
-      be$type,
-      bpcells = "expression_matrix_BPCells",
-      h5 = "expression_matrix_h5",
-      NULL
-    )
-    if (!is.null(override_key) && !is.null(opts[[override_key]])) {
-      override <- opts[[override_key]]
-    }
-  }
-
-  if (!is.null(override)) {
-    loc_abs <- override
-  } else if (!is.null(be$location)) {
+  if (identical(be$mode, "host_override")) {
+    loc_abs <- be$location
+  } else {
     crb_dir <- dirname(normalizePath(crb_path, mustWork = FALSE))
     loc_abs <- file.path(crb_dir, be$location)
-  } else {
-    stop(
-      sprintf(
-        "External expression backend '%s' for crb '%s' has no location tag; ",
-        be$type,
-        crb_path
-      ),
-      "cannot attach. This crb may have been generated by a buggy exporter.",
-      call. = FALSE
-    )
   }
 
   if (be$type == "bpcells") {
@@ -1374,14 +1692,15 @@ get_or_load_crb <- function(path) {
     if (!dir.exists(loc_abs)) {
       stop(
         sprintf(
-          "Expected BPCells matrix directory at '%s' (derived from crb '%s' + backend location '%s'), but the directory does not exist. ",
+          paste0(
+            "Expected BPCells matrix directory at '%s' for crb '%s' ",
+            "(backend location '%s'), but the directory does not exist. "
+          ),
           loc_abs,
           crb_path,
           be$location
         ),
-        "Did the .bpcells/ sibling get moved or dropped when the crb was copied? ",
-        "You can also point at a different absolute location via ",
-        "Cerebro.options[['expression_matrix_BPCells']].",
+        .runtimeBackendRecoveryAdvice(be, configured),
         call. = FALSE
       )
     }
@@ -1398,14 +1717,15 @@ get_or_load_crb <- function(path) {
     if (!file.exists(loc_abs) || dir.exists(loc_abs)) {
       stop(
         sprintf(
-          "Expected h5 file at '%s' (derived from crb '%s' + backend location '%s'), but it is missing or not a file. ",
+          paste0(
+            "Expected h5 file at '%s' for crb '%s' ",
+            "(backend location '%s'), but it is missing or not a file. "
+          ),
           loc_abs,
           crb_path,
           be$location
         ),
-        "Did the .h5 sibling get moved or dropped when the crb was copied? ",
-        "You can also point at a different absolute location via ",
-        "Cerebro.options[['expression_matrix_h5']].",
+        .runtimeBackendRecoveryAdvice(be, configured),
         call. = FALSE
       )
     }
