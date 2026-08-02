@@ -1,3 +1,30 @@
+copy_cerebro_fixture_bindings <- function(exclude = character()) {
+  source <- Cerebro_v1.3$new()
+  payload <- new.env(parent = emptyenv())
+  bindings <- setdiff(ls(source, all.names = TRUE), exclude)
+  for (binding in bindings) {
+    payload[[binding]] <- source[[binding]]
+  }
+  class(payload) <- class(source)
+  payload
+}
+
+add_lazy_cerebro_binding <- function(payload, binding, value, sentinel) {
+  evaluation <- new.env(parent = baseenv())
+  evaluation$value <- value
+  evaluation$sentinel <- sentinel
+  delayedAssign(
+    binding,
+    {
+      writeLines("FORCED", sentinel)
+      value
+    },
+    eval.env = evaluation,
+    assign.env = payload
+  )
+  invisible(payload)
+}
+
 write_bundle_crb <- function(
   directory,
   name = "dataset.crb",
@@ -6,14 +33,21 @@ write_bundle_crb <- function(
 ) {
   dir.create(directory, recursive = TRUE, showWarnings = FALSE)
   path <- file.path(directory, name)
-  payload <- new.env(parent = emptyenv())
-  class(payload) <- c("Cerebro_v1.3", "R6")
-  payload$marker <- name
-  if (!legacy) {
-    payload$getExpressionBackend <- base::local({
-      value <- backend
-      function() value
-    })
+  if (legacy) {
+    payload <- copy_cerebro_fixture_bindings(
+      c("getExpressionBackend", "expression_backend")
+    )
+    ## Match an R6 object: the object environment is locked against new
+    ## members, while mutable data fields such as expression remain writable.
+    lockEnvironment(payload, bindings = FALSE)
+  } else {
+    payload <- Cerebro_v1.3$new()
+    if (!is.null(backend)) {
+      payload$setExpressionBackend(
+        type = backend$type,
+        location = backend$location
+      )
+    }
   }
   saveRDS(payload, path)
   path
@@ -41,6 +75,246 @@ build_test_app <- function(cerebro_data, result_dir, ...) {
   )
 }
 
+source_bundle_runtime <- function(app = NULL) {
+  utility <- if (is.null(app)) {
+    testthat::test_path("../../inst/shiny/v1.4/utility_functions.R")
+  } else {
+    file.path(app, "shiny", "v1.4", "utility_functions.R")
+  }
+  if (!file.exists(utility)) {
+    utility <- system.file(
+      "shiny",
+      "v1.4",
+      "utility_functions.R",
+      package = "CerebroNexus"
+    )
+  }
+  stopifnot(file.exists(utility))
+  runtime <- new.env(parent = globalenv())
+  sys.source(utility, envir = runtime)
+  runtime
+}
+
+capture_backend_contract <- function(operation) {
+  tryCatch(
+    list(accepted = TRUE, value = operation()),
+    error = function(error) list(accepted = FALSE, value = NULL)
+  )
+}
+
+canonical_backend_descriptor <- function(backend) {
+  list(
+    type = backend$type,
+    location = backend$location,
+    legacy = isTRUE(backend$legacy)
+  )
+}
+
+new_backend_contract_object <- function(backend = NULL, legacy = FALSE) {
+  if (legacy) {
+    object <- copy_cerebro_fixture_bindings(
+      c("getExpressionBackend", "expression_backend")
+    )
+    lockEnvironment(object, bindings = TRUE)
+    return(object)
+  }
+  object <- Cerebro_v1.3$new()
+  object$expression_backend <- backend
+  object
+}
+
+local_cerebro_options <- function(options, .local_envir = parent.frame()) {
+  had_options <- exists(
+    "Cerebro.options",
+    envir = .GlobalEnv,
+    inherits = FALSE
+  )
+  if (had_options) {
+    old_options <- get("Cerebro.options", envir = .GlobalEnv)
+  }
+  withr::defer(
+    if (had_options) {
+      assign("Cerebro.options", old_options, envir = .GlobalEnv)
+    } else if (
+      exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
+    ) {
+      rm(list = "Cerebro.options", envir = .GlobalEnv)
+    },
+    envir = .local_envir
+  )
+  assign("Cerebro.options", options, envir = .GlobalEnv)
+  invisible(options)
+}
+
+expect_bundle_backend_entry <- function(config, path, expected) {
+  manifest <- config[[".bundle_backend_plan"]]
+  expect_identical(manifest$schema_version, 1L)
+  expect_true(path %in% names(manifest$entries))
+  expect_identical(manifest$entries[[path]], expected)
+}
+
+write_divergent_backend_crb <- function(
+  directory,
+  field_backend,
+  getter_backend,
+  sentinel,
+  name = "dataset.crb"
+) {
+  dir.create(directory, recursive = TRUE, showWarnings = FALSE)
+  payload <- copy_cerebro_fixture_bindings(
+    c("getExpressionBackend", "expression_backend")
+  )
+  payload$expression_backend <- field_backend
+  payload$getExpressionBackend <- base::local({
+    marker <- sentinel
+    backend <- getter_backend
+    function() {
+      writeLines("EXECUTED", marker)
+      backend
+    }
+  })
+  lockEnvironment(payload, bindings = TRUE)
+  path <- file.path(directory, name)
+  saveRDS(payload, path)
+  path
+}
+
+override_backend_cases <- function() {
+  list(
+    h5 = list(
+      key = "expression_matrix_h5",
+      type = "h5",
+      leaf = "host-matrix.h5"
+    ),
+    bpcells = list(
+      key = "expression_matrix_BPCells",
+      type = "bpcells",
+      leaf = "host-matrix.bpcells"
+    )
+  )
+}
+
+override_options <- function(key, path) {
+  stats::setNames(list(path), key)
+}
+
+write_override_artifact <- function(path, type, contents = "HOST") {
+  if (identical(type, "bpcells")) {
+    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    writeLines(contents, file.path(path, "payload"))
+  } else {
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    writeLines(contents, path)
+  }
+  path
+}
+
+read_override_artifact <- function(path, type) {
+  if (identical(type, "bpcells")) {
+    readLines(file.path(path, "payload"))
+  } else {
+    readLines(path)
+  }
+}
+
+write_real_h5_matrix <- function(path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  expected <- matrix(
+    c(0, 1, 4, 2, 0, 5, 3, 6, 0, 7, 8, 9),
+    nrow = 3L,
+    dimnames = list(
+      c("GeneA", "GeneB", "GeneC"),
+      c("Cell1", "Cell2", "Cell3", "Cell4")
+    )
+  )
+  sparse <- methods::as(
+    Matrix::Matrix(expected, sparse = TRUE),
+    "CsparseMatrix"
+  )
+  HDF5Array::writeTENxMatrix(
+    methods::as(Matrix::t(sparse), "CsparseMatrix"),
+    path,
+    group = "expression"
+  )
+  expected
+}
+
+expect_attached_matrix <- function(object, expected) {
+  realized <- as.matrix(object$expression)
+  expect_identical(dim(realized), dim(expected))
+  expect_identical(dimnames(realized), dimnames(expected))
+  expect_equal(unname(realized), unname(expected), tolerance = 0)
+}
+
+expect_real_backend_bundle_roundtrip <- function(type) {
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  dir.create(source)
+  location <- if (identical(type, "h5")) {
+    "expression.h5"
+  } else {
+    "expression.bpcells"
+  }
+  backend_path <- file.path(source, location)
+  object <- Cerebro_v1.3$new()
+  object$setMetaData(data.frame(
+    group = c("A", "A", "B", "B"),
+    row.names = c("Cell1", "Cell2", "Cell3", "Cell4")
+  ))
+
+  if (identical(type, "h5")) {
+    expected <- write_real_h5_matrix(backend_path)
+  } else {
+    expected <- matrix(
+      c(0, 1, 4, 2, 0, 5, 3, 6, 0, 7, 8, 9),
+      nrow = 3L,
+      dimnames = list(
+        c("GeneA", "GeneB", "GeneC"),
+        c("Cell1", "Cell2", "Cell3", "Cell4")
+      )
+    )
+    sparse <- methods::as(
+      Matrix::Matrix(expected, sparse = TRUE),
+      "CsparseMatrix"
+    )
+    BPCells::write_matrix_dir(
+      mat = methods::as(sparse, "IterableMatrix"),
+      dir = backend_path
+    )
+    object$setExpression(
+      BPCells::open_matrix_dir(dir = backend_path),
+      backend = "external"
+    )
+  }
+  object$setExpressionBackend(type = type, location = location)
+  crb <- file.path(source, "dataset.crb")
+  saveRDS(object, crb)
+  app <- file.path(root, "app")
+
+  build_test_app(c("Dataset" = crb), app)
+  unlink(source, recursive = TRUE, force = TRUE)
+
+  bundled_crb <- file.path(app, "data", "dataset.crb")
+  expect_true(file.exists(bundled_crb))
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured_path <- unname(config$crb_file_to_load[[1L]])
+  expect_bundle_backend_entry(
+    config,
+    configured_path,
+    list(type = type, mode = "bundled", location = location)
+  )
+  runtime <- source_bundle_runtime(app)
+  local_cerebro_options(config)
+  withr::local_dir(app)
+
+  attached <- runtime$get_or_load_crb(
+    configured_path,
+    config[[".bundle_backend_plan"]],
+    unname(config$crb_file_to_load)
+  )
+  expect_attached_matrix(attached, expected)
+}
+
 test_that("tagged H5 and BPCells backends are copied to their exact paths", {
   root <- withr::local_tempdir()
   backends <- list(
@@ -61,6 +335,7 @@ test_that("tagged H5 and BPCells backends are copied to their exact paths", {
 
     build_test_app(c("Dataset" = crb), app)
 
+    expect_true(file.exists(file.path(app, "data", "renamed-dataset.crb")))
     target <- file.path(app, "data", backend$location)
     if (identical(backend$type, "bpcells")) {
       expect_true(dir.exists(target))
@@ -72,7 +347,292 @@ test_that("tagged H5 and BPCells backends are copied to their exact paths", {
       expect_true(file.exists(target))
       expect_identical(readLines(target), "MATRIX")
     }
+    config <- readRDS(file.path(app, "cerebro_config.rds"))
+    expect_bundle_backend_entry(
+      config,
+      "data/renamed-dataset.crb",
+      list(
+        type = backend$type,
+        mode = "bundled",
+        location = backend$location
+      )
+    )
     expect_false(file.exists(file.path(app, "data", "renamed-dataset.h5")))
+  }
+})
+
+test_that("build and runtime share the portable backend path contract", {
+  runtime <- source_bundle_runtime()
+  valid <- list(
+    root = "matrix.h5",
+    nested = "matrices/expression.h5",
+    punctuation = "nested/a.b-c_1.h5"
+  )
+  invalid <- list(
+    null = NULL,
+    zero_length = character(),
+    missing = NA_character_,
+    multiple = c("first.h5", "second.h5"),
+    non_character = 1L,
+    empty = "",
+    current = "./matrix.h5",
+    nested_current = "nested/./matrix.h5",
+    parent = "../matrix.h5",
+    nested_parent = "nested/../matrix.h5",
+    unix_absolute = "/tmp/matrix.h5",
+    home = "~/matrix.h5",
+    drive = "C:/matrix.h5",
+    unc = "//server/share/matrix.h5",
+    empty_segment = "nested//matrix.h5",
+    backslash = "nested\\matrix.h5",
+    trailing_separator = "matrix.h5/",
+    reserved = "nested/COM1.bin",
+    nested_reserved = "nested/NUL/matrix.h5",
+    trailing_dot = "nested/name.",
+    nested_trailing_dot = "nested/name./matrix.h5",
+    trailing_space = "nested/name ",
+    nested_trailing_space = "nested/name /matrix.h5",
+    invalid_character = "nested/a:b.h5",
+    control_character = paste0("nested/", intToUtf8(1L), "matrix.h5")
+  )
+  cases <- c(
+    lapply(valid, function(path) list(path = path, accepted = TRUE)),
+    lapply(invalid, function(path) list(path = path, accepted = FALSE))
+  )
+
+  for (case_name in names(cases)) {
+    case <- cases[[case_name]]
+    build <- capture_backend_contract(function() {
+      .portableBundlePath(case$path, "The backend location")
+    })
+    app_runtime <- capture_backend_contract(function() {
+      runtime$.runtimePortableBackendPath(
+        case$path,
+        "The backend location"
+      )
+    })
+
+    expect_identical(build$accepted, case$accepted, info = case_name)
+    expect_identical(app_runtime$accepted, build$accepted, info = case_name)
+    if (build$accepted) {
+      expect_identical(app_runtime$value, build$value, info = case_name)
+    }
+  }
+})
+
+test_that("build and runtime share the backend descriptor contract", {
+  root <- withr::local_tempdir()
+  runtime <- source_bundle_runtime()
+  getter_sentinel <- file.path(root, "getter-was-called")
+  guarded <- copy_cerebro_fixture_bindings(
+    c("getExpressionBackend", "expression_backend")
+  )
+  guarded$expression_backend <- list(
+    type = "h5",
+    location = "matrices/expression.h5"
+  )
+  guarded$getExpressionBackend <- base::local({
+    marker <- getter_sentinel
+    function() {
+      writeLines("CALLED", marker)
+      list(type = "embedded", location = NULL)
+    }
+  })
+  lockEnvironment(guarded, bindings = TRUE)
+
+  field_only <- copy_cerebro_fixture_bindings("getExpressionBackend")
+  field_only$expression_backend <- list(type = "embedded", location = NULL)
+  lockEnvironment(field_only, bindings = TRUE)
+  getter_only <- copy_cerebro_fixture_bindings("expression_backend")
+  lockEnvironment(getter_only, bindings = TRUE)
+  broken_getter <- copy_cerebro_fixture_bindings(
+    c("getExpressionBackend", "expression_backend")
+  )
+  broken_getter$getExpressionBackend <- "not a function"
+  broken_getter$expression_backend <- list(
+    type = "embedded",
+    location = NULL
+  )
+  lockEnvironment(broken_getter, bindings = TRUE)
+
+  active_sentinel <- file.path(root, "active-binding-was-called")
+  active <- copy_cerebro_fixture_bindings("getExpressionBackend")
+  makeActiveBinding(
+    "getExpressionBackend",
+    base::local({
+      marker <- active_sentinel
+      function(replacement) {
+        if (!missing(replacement)) {
+          stop("fixture binding is read-only")
+        }
+        writeLines("CALLED", marker)
+        function() list(type = "embedded", location = NULL)
+      }
+    }),
+    active
+  )
+  lockEnvironment(active, bindings = TRUE)
+
+  lazy_sentinel <- file.path(root, "lazy-binding-was-called")
+  lazy <- copy_cerebro_fixture_bindings("expression_backend")
+  add_lazy_cerebro_binding(
+    lazy,
+    "expression_backend",
+    list(type = "embedded", location = NULL),
+    lazy_sentinel
+  )
+  lockEnvironment(lazy, bindings = TRUE)
+
+  # Compare only the descriptor semantics shared by both paths. The build's
+  # object identity checks and the runtime class gate are tested separately.
+  # The inverse active/lazy binding pairs have focused build and runtime tests
+  # below; one of each kind is sufficient for this direct parity contract.
+  cases <- list(
+    legacy = list(
+      object = new_backend_contract_object(legacy = TRUE),
+      accepted = TRUE
+    ),
+    null = list(
+      object = new_backend_contract_object(NULL),
+      accepted = TRUE
+    ),
+    embedded = list(
+      object = new_backend_contract_object(
+        list(type = "embedded", location = NULL)
+      ),
+      accepted = TRUE
+    ),
+    h5 = list(
+      object = new_backend_contract_object(
+        list(type = "h5", location = "matrix.h5")
+      ),
+      accepted = TRUE
+    ),
+    bpcells = list(
+      object = new_backend_contract_object(
+        list(type = "bpcells", location = "matrix.bpcells")
+      ),
+      accepted = TRUE
+    ),
+    guarded_getter = list(object = guarded, accepted = TRUE),
+    field_only = list(object = field_only, accepted = FALSE),
+    getter_only = list(object = getter_only, accepted = FALSE),
+    broken_getter = list(object = broken_getter, accepted = FALSE),
+    invalid_type = list(
+      object = new_backend_contract_object(
+        list(type = "unknown", location = "matrix.h5")
+      ),
+      accepted = FALSE
+    ),
+    inconsistent_embedded = list(
+      object = new_backend_contract_object(
+        list(type = "embedded", location = "matrix.h5")
+      ),
+      accepted = FALSE
+    ),
+    non_portable = list(
+      object = new_backend_contract_object(
+        list(type = "h5", location = "nested//matrix.h5")
+      ),
+      accepted = FALSE
+    ),
+    active = list(object = active, accepted = FALSE),
+    lazy = list(object = lazy, accepted = FALSE)
+  )
+
+  for (case_name in names(cases)) {
+    case <- cases[[case_name]]
+    path <- file.path(root, paste0(case_name, ".crb"))
+    saveRDS(case$object, path)
+    build <- capture_backend_contract(function() {
+      backend <- .readBundleBackend(path)
+      if (!identical(backend$type, "embedded")) {
+        backend$location <- .portableBundlePath(
+          backend$location,
+          "The backend location"
+        )
+      }
+      canonical_backend_descriptor(backend)
+    })
+    app_runtime <- capture_backend_contract(function() {
+      canonical_backend_descriptor(
+        runtime$.readRuntimeBackendDescriptor(readRDS(path), path)
+      )
+    })
+
+    expect_identical(build$accepted, case$accepted, info = case_name)
+    expect_identical(app_runtime$accepted, build$accepted, info = case_name)
+    if (build$accepted) {
+      expect_identical(app_runtime$value, build$value, info = case_name)
+    }
+  }
+  expect_false(file.exists(getter_sentinel))
+  expect_false(file.exists(active_sentinel))
+  expect_false(file.exists(lazy_sentinel))
+})
+
+test_that("build and runtime share the backend override decision contract", {
+  root <- normalizePath(
+    withr::local_tempdir(),
+    winslash = "/",
+    mustWork = TRUE
+  )
+  h5_override <- file.path(root, "host-matrix.h5")
+  bpcells_override <- file.path(root, "host-matrix.bpcells")
+  writeLines("HOST", h5_override)
+  dir.create(bpcells_override)
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+  embedded <- list(type = "embedded", location = NULL, legacy = FALSE)
+  h5 <- list(type = "h5", location = "matrix.h5", legacy = FALSE)
+  bpcells <- list(
+    type = "bpcells",
+    location = "matrix.bpcells",
+    legacy = FALSE
+  )
+  legacy <- list(type = "embedded", location = NULL, legacy = TRUE)
+  h5_options <- list(expression_matrix_h5 = h5_override)
+  bpcells_options <- list(expression_matrix_BPCells = bpcells_override)
+  both_options <- c(h5_options, bpcells_options)
+  cases <- list(
+    embedded = list(backend = embedded, options = list()),
+    embedded_ignores_override = list(
+      backend = embedded,
+      options = h5_options
+    ),
+    h5_bundled = list(backend = h5, options = list()),
+    h5_override = list(backend = h5, options = h5_options),
+    h5_ignores_bpcells = list(backend = h5, options = bpcells_options),
+    bpcells_bundled = list(backend = bpcells, options = list()),
+    bpcells_override = list(
+      backend = bpcells,
+      options = bpcells_options
+    ),
+    bpcells_ignores_h5 = list(backend = bpcells, options = h5_options),
+    legacy_embedded = list(backend = legacy, options = list()),
+    legacy_h5 = list(backend = legacy, options = h5_options),
+    legacy_bpcells = list(backend = legacy, options = bpcells_options),
+    legacy_prefers_h5 = list(backend = legacy, options = both_options)
+  )
+
+  for (case_name in names(cases)) {
+    case <- cases[[case_name]]
+    object <- new_backend_contract_object(
+      case$backend[c("type", "location")],
+      legacy = isTRUE(case$backend$legacy)
+    )
+    build <- .effectiveBundleBackendPlan(case$backend, case$options)
+    assign("Cerebro.options", case$options, envir = .GlobalEnv)
+    app_runtime <- runtime$.fallbackRuntimeBackendPlan(
+      object,
+      file.path(root, paste0(case_name, ".crb"))
+    )
+
+    expect_identical(
+      app_runtime[c("type", "mode")],
+      build[c("type", "mode")],
+      info = case_name
+    )
   }
 })
 
@@ -109,6 +669,54 @@ test_that("backend locations must be portable relative paths", {
   }
 })
 
+test_that("backend locations reject a trailing separator before staging", {
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source")
+  crb <- write_bundle_crb(
+    source,
+    backend = list(type = "h5", location = "matrix.h5/")
+  )
+  writeLines("MATRIX", file.path(source, "matrix.h5"))
+  app <- file.path(root, "app")
+
+  expect_error(
+    build_test_app(c("Dataset" = crb), app),
+    "portable relative path"
+  )
+  expect_false(dir.exists(app))
+})
+
+test_that("runtime overrides do not bypass backend path validation", {
+  root <- withr::local_tempdir()
+
+  for (case_name in names(override_backend_cases())) {
+    case <- override_backend_cases()[[case_name]]
+    case_root <- file.path(root, case_name)
+    crb <- write_bundle_crb(
+      file.path(case_root, "source"),
+      backend = list(
+        type = case$type,
+        location = paste0(case$leaf, "/")
+      )
+    )
+    override <- write_override_artifact(
+      file.path(case_root, "external", case$leaf),
+      case$type
+    )
+    app <- file.path(case_root, "app")
+
+    expect_error(
+      build_test_app(
+        c("Dataset" = crb),
+        app,
+        cerebro_options = override_options(case$key, override)
+      ),
+      "portable relative path"
+    )
+    expect_false(dir.exists(app))
+  }
+})
+
 test_that("every copied artifact has a portable bundle target", {
   skip_on_os("windows")
   root <- withr::local_tempdir()
@@ -137,16 +745,21 @@ test_that("every copied artifact has a portable bundle target", {
 
 test_that("malformed backend descriptors are rejected", {
   root <- withr::local_tempdir()
-  broken <- new.env(parent = emptyenv())
-  class(broken) <- c("Cerebro_v1.3", "R6")
+  broken <- copy_cerebro_fixture_bindings(
+    c("getExpressionBackend", "expression_backend")
+  )
   broken$getExpressionBackend <- "not a function"
+  broken$expression_backend <- list(type = "embedded", location = NULL)
+  lockEnvironment(broken, bindings = TRUE)
   broken_path <- file.path(root, "broken.crb")
   saveRDS(broken, broken_path)
-  inconsistent <- write_bundle_crb(
-    root,
-    "inconsistent.crb",
-    list(type = "embedded", location = "matrix.h5")
+  inconsistent <- Cerebro_v1.3$new()
+  inconsistent$expression_backend <- list(
+    type = "embedded",
+    location = "matrix.h5"
   )
+  inconsistent_path <- file.path(root, "inconsistent.crb")
+  saveRDS(inconsistent, inconsistent_path)
 
   expect_error(
     build_test_app(c("Broken" = broken_path), file.path(root, "broken-app")),
@@ -154,7 +767,7 @@ test_that("malformed backend descriptors are rejected", {
   )
   expect_error(
     build_test_app(
-      c("Inconsistent" = inconsistent),
+      c("Inconsistent" = inconsistent_path),
       file.path(root, "inconsistent-app")
     ),
     "unsupported expression-backend descriptor"
@@ -183,6 +796,586 @@ test_that("a Cerebro class label alone is not a valid Cerebro object", {
     "recognized Cerebro"
   )
   expect_false(dir.exists(file.path(root, "app")))
+})
+
+test_that("an empty classed environment is not a Cerebro object", {
+  root <- withr::local_tempdir()
+  empty <- new.env(parent = emptyenv())
+  class(empty) <- c("Cerebro_v1.3", "R6")
+  path <- file.path(root, "empty.crb")
+  saveRDS(empty, path)
+
+  expect_error(
+    build_test_app(c("Empty" = path), file.path(root, "app")),
+    "recognized Cerebro"
+  )
+  expect_false(dir.exists(file.path(root, "app")))
+})
+
+test_that("preflight never invokes a serialized backend getter", {
+  root <- withr::local_tempdir()
+  sentinel <- file.path(root, "getter-was-run")
+  malicious <- copy_cerebro_fixture_bindings(
+    c("getExpressionBackend", "expression_backend")
+  )
+  malicious$getExpressionBackend <- base::local({
+    marker <- sentinel
+    function() {
+      writeLines("EXECUTED", marker)
+      list(type = "embedded", location = "matrix.h5")
+    }
+  })
+  malicious$expression_backend <- list(
+    type = "embedded",
+    location = "matrix.h5"
+  )
+  lockEnvironment(malicious, bindings = TRUE)
+  path <- file.path(root, "malicious.crb")
+  saveRDS(malicious, path)
+
+  expect_error(
+    build_test_app(c("Malicious" = path), file.path(root, "app")),
+    "unsupported expression-backend descriptor"
+  )
+  expect_false(file.exists(sentinel))
+  expect_false(dir.exists(file.path(root, "app")))
+})
+
+test_that("bundle config freezes the validated field backend", {
+  root <- withr::local_tempdir()
+  sentinel <- file.path(root, "getter-was-run")
+  crb <- write_divergent_backend_crb(
+    file.path(root, "source"),
+    field_backend = list(type = "embedded", location = NULL),
+    getter_backend = list(type = "h5", location = "../../escaped.h5"),
+    sentinel = sentinel
+  )
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("Dataset" = crb),
+    app,
+    cerebro_options = list(
+      .bundle_backend_plan = list(
+        schema_version = 999L,
+        entries = list(fake = "caller-controlled")
+      )
+    )
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  manifest <- config[[".bundle_backend_plan"]]
+  expect_identical(manifest$schema_version, 1L)
+  expect_named(manifest$entries, "data/dataset.crb")
+  expect_identical(
+    manifest$entries[["data/dataset.crb"]],
+    list(type = "embedded", mode = "embedded", location = NULL)
+  )
+  expect_false(file.exists(sentinel))
+})
+
+test_that("configured runtime consumes the frozen plan without calling getter", {
+  root <- withr::local_tempdir()
+  sentinel <- file.path(root, "runtime-getter-was-run")
+  crb <- write_divergent_backend_crb(
+    file.path(root, "source"),
+    field_backend = list(type = "embedded", location = NULL),
+    getter_backend = list(type = "h5", location = "../../escaped.h5"),
+    sentinel = sentinel
+  )
+  app <- file.path(root, "app")
+  build_test_app(c("Dataset" = crb), app)
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured_path <- unname(config$crb_file_to_load[[1L]])
+  runtime <- source_bundle_runtime(app)
+  local_cerebro_options(config)
+  withr::local_dir(app)
+
+  loaded <- runtime$get_or_load_crb(
+    configured_path,
+    config[[".bundle_backend_plan"]],
+    unname(config$crb_file_to_load)
+  )
+
+  expect_true(is.environment(loaded))
+  expect_false(file.exists(sentinel))
+})
+
+test_that("cached CRBs reject a different effective backend plan", {
+  root <- withr::local_tempdir()
+  path <- write_bundle_crb(root)
+  embedded <- list(
+    schema_version = 1L,
+    entries = stats::setNames(
+      list(list(type = "embedded", mode = "embedded", location = NULL)),
+      path
+    )
+  )
+  changed <- list(
+    schema_version = 1L,
+    entries = stats::setNames(
+      list(list(
+        type = "h5",
+        mode = "host_override",
+        location = file.path(root, "missing.h5")
+      )),
+      path
+    )
+  )
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+
+  first <- runtime$get_or_load_crb(path, embedded, path)
+  expect_identical(runtime$get_or_load_crb(path, embedded, path), first)
+  expect_error(
+    runtime$get_or_load_crb(path, changed, path),
+    "cached CRB.*backend configuration changed"
+  )
+})
+
+test_that("configured runtime fails closed when its plan entry is missing", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  app <- file.path(root, "app")
+  build_test_app(c("Dataset" = crb), app)
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured_path <- unname(config$crb_file_to_load[[1L]])
+  config[[".bundle_backend_plan"]] <- list(
+    schema_version = 1L,
+    entries = list()
+  )
+  runtime <- source_bundle_runtime(app)
+  local_cerebro_options(config)
+  withr::local_dir(app)
+
+  expect_error(
+    runtime$get_or_load_crb(
+      configured_path,
+      config[[".bundle_backend_plan"]],
+      unname(config$crb_file_to_load)
+    ),
+    "backend plan.*configured CRB"
+  )
+})
+
+test_that("configured runtime rejects malformed backend manifests", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  app <- file.path(root, "app")
+  build_test_app(c("Dataset" = crb), app)
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured_path <- unname(config$crb_file_to_load[[1L]])
+  valid_entry <- list(type = "embedded", mode = "embedded", location = NULL)
+  malformed <- list(
+    list(schema_version = 2L, entries = config$.bundle_backend_plan$entries),
+    list(schema_version = 1L, entries = list(valid_entry)),
+    list(
+      schema_version = 1L,
+      entries = stats::setNames(
+        list(valid_entry, valid_entry),
+        rep(configured_path, 2L)
+      )
+    ),
+    list(
+      schema_version = 1L,
+      entries = stats::setNames(
+        list(list(type = "unknown", mode = "embedded", location = NULL)),
+        configured_path
+      )
+    ),
+    list(
+      schema_version = 1L,
+      entries = stats::setNames(
+        list(list(type = "h5", mode = "unknown", location = "matrix.h5")),
+        configured_path
+      )
+    ),
+    list(
+      schema_version = 1L,
+      entries = stats::setNames(
+        list(list(type = "h5", mode = "bundled", location = "../matrix.h5")),
+        configured_path
+      )
+    ),
+    list(
+      schema_version = 1L,
+      entries = stats::setNames(
+        list(list(
+          type = "h5",
+          mode = "host_override",
+          location = "relative/matrix.h5"
+        )),
+        configured_path
+      )
+    ),
+    list(
+      schema_version = 1L,
+      entries = stats::setNames(
+        list(list(
+          type = "embedded",
+          mode = "embedded",
+          location = "matrix.h5"
+        )),
+        configured_path
+      )
+    )
+  )
+
+  for (index in seq_along(malformed)) {
+    runtime <- source_bundle_runtime(app)
+    local_cerebro_options(config)
+    withr::local_dir(app)
+    expect_error(
+      runtime$get_or_load_crb(
+        configured_path,
+        malformed[[index]],
+        unname(config$crb_file_to_load)
+      ),
+      "backend plan",
+      info = paste("malformed manifest", index)
+    )
+  }
+})
+
+test_that("runtime field fallback never invokes a serialized getter", {
+  root <- withr::local_tempdir()
+  sentinel <- file.path(root, "fallback-getter-was-run")
+  path <- write_divergent_backend_crb(
+    root,
+    field_backend = list(type = "embedded", location = NULL),
+    getter_backend = list(type = "embedded", location = NULL),
+    sentinel = sentinel
+  )
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+  object <- readRDS(path)
+
+  attached <- runtime$.attachExternalExpression(object, path)
+
+  expect_true(is.environment(attached))
+  expect_false(file.exists(sentinel))
+})
+
+test_that("uploaded CRBs use field fallback even when a manifest exists", {
+  root <- withr::local_tempdir()
+  sentinel <- file.path(root, "upload-getter-was-run")
+  upload <- write_divergent_backend_crb(
+    root,
+    field_backend = list(type = "embedded", location = NULL),
+    getter_backend = list(type = "h5", location = "../../escaped.h5"),
+    sentinel = sentinel,
+    name = "upload.crb"
+  )
+  configured_path <- "data/configured.crb"
+  manifest <- list(
+    schema_version = 1L,
+    entries = stats::setNames(
+      list(list(type = "embedded", mode = "embedded", location = NULL)),
+      configured_path
+    )
+  )
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+
+  loaded <- runtime$get_or_load_crb(upload, manifest, configured_path)
+
+  expect_true(is.environment(loaded))
+  expect_false(file.exists(sentinel))
+})
+
+test_that("uploaded CRBs ignore an unrelated malformed manifest", {
+  root <- withr::local_tempdir()
+  sentinel <- file.path(root, "upload-getter-was-run")
+  upload <- write_divergent_backend_crb(
+    root,
+    field_backend = list(type = "embedded", location = NULL),
+    getter_backend = list(type = "h5", location = "../../escaped.h5"),
+    sentinel = sentinel,
+    name = "upload.crb"
+  )
+  malformed <- list(schema_version = 999L, entries = list())
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+
+  loaded <- runtime$get_or_load_crb(
+    upload,
+    malformed,
+    "data/configured.crb"
+  )
+
+  expect_true(is.environment(loaded))
+  expect_false(file.exists(sentinel))
+})
+
+test_that("runtime field fallback rejects non-portable backend locations", {
+  root <- withr::local_tempdir()
+  invalid <- c(
+    "../../escaped.h5",
+    "./matrix.h5",
+    "/tmp/matrix.h5",
+    "~/matrix.h5",
+    "C:/matrix.h5",
+    "nested//matrix.h5",
+    "nested\\matrix.h5",
+    "matrix?.h5",
+    "nested/a:b.h5",
+    "NUL",
+    "nested/COM1.bin",
+    "nested/name.",
+    "nested/name "
+  )
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+
+  for (index in seq_along(invalid)) {
+    sentinel <- file.path(root, paste0("fallback-getter-was-run-", index))
+    path <- write_divergent_backend_crb(
+      file.path(root, paste0("case-", index)),
+      field_backend = list(type = "h5", location = invalid[[index]]),
+      getter_backend = list(type = "embedded", location = NULL),
+      sentinel = sentinel
+    )
+    object <- readRDS(path)
+
+    expect_error(
+      runtime$.attachExternalExpression(object, path),
+      "portable relative path",
+      info = invalid[[index]]
+    )
+    expect_false(file.exists(sentinel))
+  }
+})
+
+test_that("preflight rejects field-only modern backend state", {
+  root <- withr::local_tempdir()
+  payload <- copy_cerebro_fixture_bindings("getExpressionBackend")
+  payload$expression_backend <- list(type = "embedded", location = NULL)
+  lockEnvironment(payload, bindings = TRUE)
+  path <- file.path(root, "field-only.crb")
+  saveRDS(payload, path)
+
+  expect_error(
+    build_test_app(c("Field only" = path), file.path(root, "app")),
+    "unsupported expression-backend descriptor"
+  )
+})
+
+test_that("preflight rejects getter-only modern backend state", {
+  root <- withr::local_tempdir()
+  payload <- copy_cerebro_fixture_bindings("expression_backend")
+  lockEnvironment(payload, bindings = TRUE)
+  path <- file.path(root, "getter-only.crb")
+  saveRDS(payload, path)
+
+  expect_error(
+    build_test_app(c("Getter only" = path), file.path(root, "app")),
+    "unsupported expression-backend descriptor"
+  )
+})
+
+test_that("runtime fallback rejects mixed backend binding states", {
+  root <- withr::local_tempdir()
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+  cases <- list(
+    copy_cerebro_fixture_bindings("getExpressionBackend"),
+    copy_cerebro_fixture_bindings("expression_backend")
+  )
+  cases[[1L]]$expression_backend <- list(type = "embedded", location = NULL)
+  cases[[2L]]$getExpressionBackend <- function() {
+    list(type = "embedded", location = NULL)
+  }
+
+  for (index in seq_along(cases)) {
+    lockEnvironment(cases[[index]], bindings = TRUE)
+    expect_error(
+      runtime$.attachExternalExpression(
+        cases[[index]],
+        file.path(root, paste0("mixed-", index, ".crb"))
+      ),
+      "unsupported expression-backend descriptor"
+    )
+  }
+})
+
+test_that("runtime fallback rejects active and lazy bindings without forcing", {
+  root <- withr::local_tempdir()
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+  cases <- expand.grid(
+    binding = c("getExpressionBackend", "expression_backend"),
+    kind = c("active", "lazy"),
+    stringsAsFactors = FALSE
+  )
+
+  for (index in seq_len(nrow(cases))) {
+    binding <- cases$binding[[index]]
+    kind <- cases$kind[[index]]
+    sentinel <- file.path(root, paste(binding, kind, "was-forced", sep = "-"))
+    payload <- copy_cerebro_fixture_bindings(binding)
+    value <- if (identical(binding, "getExpressionBackend")) {
+      function() list(type = "embedded", location = NULL)
+    } else {
+      list(type = "embedded", location = NULL)
+    }
+    if (identical(kind, "active")) {
+      makeActiveBinding(
+        binding,
+        base::local({
+          marker <- sentinel
+          binding_value <- value
+          function(replacement) {
+            if (!missing(replacement)) {
+              stop("fixture binding is read-only")
+            }
+            writeLines("FORCED", marker)
+            binding_value
+          }
+        }),
+        payload
+      )
+    } else {
+      add_lazy_cerebro_binding(payload, binding, value, sentinel)
+    }
+    lockEnvironment(payload, bindings = TRUE)
+
+    expect_error(
+      runtime$.attachExternalExpression(
+        payload,
+        file.path(root, paste0(binding, "-", kind, ".crb"))
+      ),
+      "unsupported expression-backend descriptor"
+    )
+    expect_false(file.exists(sentinel))
+  }
+})
+
+test_that("preflight rejects active backend bindings without reading them", {
+  root <- withr::local_tempdir()
+
+  for (binding in c("getExpressionBackend", "expression_backend")) {
+    sentinel <- file.path(root, paste0(binding, "-was-read"))
+    payload <- copy_cerebro_fixture_bindings(
+      c("getExpressionBackend", "expression_backend")
+    )
+    if (identical(binding, "getExpressionBackend")) {
+      payload$expression_backend <- list(
+        type = "embedded",
+        location = NULL
+      )
+    } else {
+      payload$getExpressionBackend <- function() {
+        list(type = "embedded", location = NULL)
+      }
+    }
+    makeActiveBinding(
+      binding,
+      base::local({
+        marker <- sentinel
+        value <- if (identical(binding, "getExpressionBackend")) {
+          function() list(type = "embedded", location = NULL)
+        } else {
+          list(type = "embedded", location = NULL)
+        }
+        function(replacement) {
+          if (!missing(replacement)) {
+            stop("fixture binding is read-only")
+          }
+          writeLines("READ", marker)
+          value
+        }
+      }),
+      payload
+    )
+    lockEnvironment(payload, bindings = TRUE)
+    path <- file.path(root, paste0(binding, ".crb"))
+    saveRDS(payload, path)
+
+    expect_error(
+      build_test_app(
+        c("Active" = path),
+        file.path(root, paste0(binding, "-app"))
+      ),
+      "unsupported expression-backend descriptor"
+    )
+    expect_false(file.exists(sentinel))
+  }
+})
+
+test_that("legacy detection rejects an active backend field", {
+  root <- withr::local_tempdir()
+  sentinel <- file.path(root, "legacy-field-was-read")
+  payload <- copy_cerebro_fixture_bindings(
+    c("getExpressionBackend", "expression_backend")
+  )
+  makeActiveBinding(
+    "expression_backend",
+    base::local({
+      marker <- sentinel
+      function(replacement) {
+        if (!missing(replacement)) {
+          stop("fixture binding is read-only")
+        }
+        writeLines("READ", marker)
+        list(type = "embedded", location = NULL)
+      }
+    }),
+    payload
+  )
+  lockEnvironment(payload, bindings = TRUE)
+  path <- file.path(root, "active-legacy-field.crb")
+  saveRDS(payload, path)
+
+  expect_error(
+    build_test_app(c("Active legacy" = path), file.path(root, "app")),
+    "unsupported expression-backend descriptor"
+  )
+  expect_false(file.exists(sentinel))
+})
+
+test_that("preflight rejects lazy CRB bindings without forcing them", {
+  root <- withr::local_tempdir()
+  cases <- list(
+    list(
+      binding = "getVersion",
+      value = function() NULL,
+      error = "recognized Cerebro"
+    ),
+    list(
+      binding = "getExpressionBackend",
+      value = function() list(type = "embedded", location = NULL),
+      error = "unsupported expression-backend descriptor"
+    ),
+    list(
+      binding = "expression_backend",
+      value = list(type = "embedded", location = NULL),
+      error = "unsupported expression-backend descriptor"
+    )
+  )
+
+  for (case in cases) {
+    binding <- case$binding
+    sentinel <- file.path(root, paste0(binding, "-was-forced"))
+    payload <- copy_cerebro_fixture_bindings(binding)
+    add_lazy_cerebro_binding(
+      payload,
+      binding,
+      case$value,
+      sentinel
+    )
+    lockEnvironment(payload, bindings = TRUE)
+    path <- file.path(root, paste0("lazy-", binding, ".crb"))
+    saveRDS(payload, path)
+
+    expect_error(
+      build_test_app(
+        c("Lazy" = path),
+        file.path(root, paste0(binding, "-app"))
+      ),
+      case$error
+    )
+    expect_false(file.exists(sentinel))
+  }
 })
 
 test_that("a missing tagged backend stops the build", {
@@ -230,6 +1423,438 @@ test_that("inputs inside result_dir survive until the staged copy completes", {
   expect_false(dir.exists(file.path(app, "inputs")))
 })
 
+test_that("runtime override paths must be absolute for both backends", {
+  root <- withr::local_tempdir()
+
+  for (case_name in names(override_backend_cases())) {
+    case <- override_backend_cases()[[case_name]]
+    source <- file.path(root, case_name, "source")
+    crb <- write_bundle_crb(
+      source,
+      backend = list(type = case$type, location = "missing-backend")
+    )
+    app <- file.path(root, case_name, "app")
+
+    expect_error(
+      build_test_app(
+        c("Dataset" = crb),
+        app,
+        cerebro_options = override_options(case$key, case$leaf)
+      ),
+      "absolute path"
+    )
+    expect_false(dir.exists(app))
+  }
+})
+
+test_that("forward-slash UNC overrides are rejected outside Windows", {
+  skip_on_os("windows")
+  root <- withr::local_tempdir()
+  cases <- override_backend_cases()
+  unc_paths <- c(
+    "//server/share/matrix.h5",
+    "//tmp/share/matrix.h5"
+  )
+
+  for (index in seq_along(cases)) {
+    case <- cases[[index]]
+    case_root <- file.path(root, names(cases)[[index]])
+    crb <- write_bundle_crb(
+      file.path(case_root, "source"),
+      backend = list(type = case$type, location = "missing-backend")
+    )
+    app <- file.path(case_root, "app")
+
+    expect_error(
+      build_test_app(
+        c("Dataset" = crb),
+        app,
+        cerebro_options = override_options(case$key, unc_paths[[index]])
+      ),
+      "Forward-slash UNC.*Windows"
+    )
+    expect_false(dir.exists(app))
+  }
+
+  backslash <- intToUtf8(92L)
+  backslash_unc <- paste0(
+    backslash,
+    backslash,
+    "server",
+    backslash,
+    "share",
+    backslash,
+    "matrix.h5"
+  )
+  drive <- "C:/host-managed/matrix.h5"
+  expect_identical(
+    .normalizeOverridePath(backslash_unc, "expression_matrix_h5"),
+    backslash_unc
+  )
+  expect_identical(
+    .normalizeOverridePath(drive, "expression_matrix_h5"),
+    drive
+  )
+})
+
+test_that("runtime overrides cannot target the result tree before publishing", {
+  root <- withr::local_tempdir()
+  withr::local_dir(root)
+
+  for (case_name in names(override_backend_cases())) {
+    case <- override_backend_cases()[[case_name]]
+    for (relation in c("equal", "descendant")) {
+      case_root <- file.path(case_name, relation)
+      source <- file.path(root, case_root, "source")
+      crb <- write_bundle_crb(
+        source,
+        backend = list(type = case$type, location = "missing-backend")
+      )
+      app <- file.path(case_root, "app")
+      dir.create(app, recursive = TRUE)
+      app_abs <- normalizePath(app, winslash = "/", mustWork = TRUE)
+      sentinel <- file.path(app_abs, "sentinel.txt")
+      writeLines("KEEP", sentinel)
+      override <- if (identical(relation, "equal")) {
+        app_abs
+      } else {
+        write_override_artifact(
+          file.path(app_abs, case$leaf),
+          case$type,
+          contents = paste(case_name, relation, sep = "-")
+        )
+      }
+
+      expect_error(
+        build_test_app(
+          c("Dataset" = crb),
+          app,
+          overwrite = TRUE,
+          cerebro_options = override_options(case$key, override)
+        ),
+        "outside 'result_dir'"
+      )
+      expect_true(file.exists(sentinel))
+      if (file.exists(sentinel)) {
+        expect_identical(readLines(sentinel), "KEEP")
+      }
+      if (identical(relation, "descendant")) {
+        artifact_exists <- if (identical(case$type, "bpcells")) {
+          dir.exists(override)
+        } else {
+          file.exists(override)
+        }
+        expect_true(artifact_exists)
+        if (artifact_exists) {
+          expect_identical(
+            read_override_artifact(override, case$type),
+            paste(case_name, relation, sep = "-")
+          )
+        }
+      }
+    }
+  }
+})
+
+test_that("runtime override symlinks cannot resolve into the result tree", {
+  root <- withr::local_tempdir()
+
+  for (case_name in names(override_backend_cases())) {
+    case <- override_backend_cases()[[case_name]]
+    case_root <- file.path(root, case_name)
+    source <- file.path(case_root, "source")
+    crb <- write_bundle_crb(
+      source,
+      backend = list(type = case$type, location = "missing-backend")
+    )
+    app <- file.path(case_root, "app")
+    dir.create(app, recursive = TRUE)
+    sentinel <- file.path(app, "sentinel.txt")
+    writeLines("KEEP", sentinel)
+    target <- write_override_artifact(
+      file.path(app, case$leaf),
+      case$type,
+      contents = case_name
+    )
+    override <- file.path(case_root, paste0(case_name, "-override"))
+    linked <- file.symlink(target, override)
+    if (!isTRUE(linked)) {
+      skip("Symbolic links are not available on this platform")
+    }
+
+    expect_error(
+      build_test_app(
+        c("Dataset" = crb),
+        app,
+        overwrite = TRUE,
+        cerebro_options = override_options(case$key, override)
+      ),
+      "outside 'result_dir'"
+    )
+    expect_true(file.exists(sentinel))
+    if (file.exists(sentinel)) {
+      expect_identical(readLines(sentinel), "KEEP")
+    }
+    target_exists <- if (identical(case$type, "bpcells")) {
+      dir.exists(target)
+    } else {
+      file.exists(target)
+    }
+    expect_true(target_exists)
+    if (target_exists) {
+      expect_identical(read_override_artifact(target, case$type), case_name)
+    }
+  }
+})
+
+test_that("broken override symlinks cannot become result-tree paths", {
+  root <- withr::local_tempdir()
+
+  for (case_name in names(override_backend_cases())) {
+    case <- override_backend_cases()[[case_name]]
+    for (link_kind in c("absolute", "relative")) {
+      case_root <- file.path(root, case_name, link_kind)
+      crb <- write_bundle_crb(
+        file.path(case_root, "source"),
+        backend = list(type = case$type, location = "missing-backend")
+      )
+      app <- file.path(case_root, "app")
+      linked_parent <- file.path(case_root, "host-link")
+      link_target <- if (identical(link_kind, "absolute")) {
+        file.path(app, "data")
+      } else {
+        file.path("app", "data")
+      }
+      linked <- file.symlink(link_target, linked_parent)
+      if (!isTRUE(linked)) {
+        skip("Symbolic links are not available on this platform")
+      }
+      override <- file.path(linked_parent, case$leaf)
+      expect_false(file.exists(override))
+
+      expect_error(
+        build_test_app(
+          c("Dataset" = crb),
+          app,
+          cerebro_options = override_options(case$key, override)
+        ),
+        "outside 'result_dir'"
+      )
+      expect_false(dir.exists(app))
+    }
+  }
+})
+
+test_that("broken external override symlinks remain valid host paths", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(
+    file.path(root, "source"),
+    backend = list(type = "h5", location = "missing.h5")
+  )
+  external <- file.path(root, "host", "future")
+  linked_parent <- file.path(root, "host-link")
+  linked <- file.symlink(external, linked_parent)
+  if (!isTRUE(linked)) {
+    skip("Symbolic links are not available on this platform")
+  }
+  override <- file.path(linked_parent, "matrix.h5")
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("Dataset" = crb),
+    app,
+    cerebro_options = list(expression_matrix_h5 = override)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expected <- file.path(
+    normalizePath(root, winslash = "/", mustWork = TRUE),
+    "host",
+    "future",
+    "matrix.h5"
+  )
+  expect_identical(
+    config$expression_matrix_h5,
+    expected
+  )
+  expect_false(file.exists(config$expression_matrix_h5))
+})
+
+test_that("override symlink cycles fail instead of hanging", {
+  root <- withr::local_tempdir()
+  first <- file.path(root, "first")
+  second <- file.path(root, "second")
+  linked <- file.symlink("second", first) && file.symlink("first", second)
+  if (!isTRUE(linked)) {
+    skip("Symbolic links are not available on this platform")
+  }
+
+  expect_error(
+    .normalizeOverridePath(
+      file.path(first, "matrix.h5"),
+      "expression_matrix_h5"
+    ),
+    "too many symbolic links"
+  )
+})
+
+test_that("native resolver canonicalizes reparse prefixes without readlink", {
+  path_exists <- function(path) {
+    path %in% c("C:/work", "C:/work/host-link")
+  }
+  normalize_existing <- function(path) {
+    if (identical(path, "C:/work/host-link")) {
+      return("D:/published")
+    }
+    path
+  }
+
+  resolved <- .resolveNativeSymbolicLinks(
+    "C:/work/host-link/app/data/../matrix.h5",
+    style = "drive",
+    os_type = "windows",
+    read_link = function(path) "",
+    path_exists = path_exists,
+    normalize_existing = normalize_existing,
+    entry_exists = function(path) FALSE
+  )
+
+  expect_identical(resolved, "D:/published/app/matrix.h5")
+})
+
+test_that("native resolver rejects opaque broken filesystem entries", {
+  path_exists <- function(path) identical(path, "C:/work")
+  entry_exists <- function(path) identical(path, "C:/work/host-link")
+
+  expect_error(
+    .resolveNativeSymbolicLinks(
+      "C:/work/host-link/app/data/matrix.h5",
+      style = "drive",
+      os_type = "windows",
+      read_link = function(path) "",
+      path_exists = path_exists,
+      normalize_existing = identity,
+      entry_exists = entry_exists
+    ),
+    "cannot be resolved safely"
+  )
+})
+
+test_that("override canonicalization resolves symlinks before dot segments", {
+  root <- withr::local_tempdir()
+  outside <- file.path(root, "outside")
+  app <- file.path(root, "app")
+  target <- file.path(app, "subdir")
+  dir.create(outside)
+  dir.create(target, recursive = TRUE)
+  sentinel <- file.path(app, "sentinel.txt")
+  writeLines("KEEP", sentinel)
+  link <- file.path(outside, "link")
+  linked <- file.symlink(target, link)
+  if (!isTRUE(linked)) {
+    skip("Symbolic links are not available on this platform")
+  }
+  override <- file.path(link, "..", "future.h5")
+  expect_false(file.exists(override))
+  crb <- write_bundle_crb(
+    file.path(root, "source"),
+    backend = list(type = "h5", location = "missing.h5")
+  )
+
+  expect_error(
+    build_test_app(
+      c("Dataset" = crb),
+      app,
+      overwrite = TRUE,
+      cerebro_options = list(expression_matrix_h5 = override)
+    ),
+    "outside 'result_dir'"
+  )
+  expect_true(file.exists(sentinel))
+  if (file.exists(sentinel)) {
+    expect_identical(readLines(sentinel), "KEEP")
+  }
+})
+
+test_that("external absolute runtime overrides are normalized and preserved", {
+  root <- withr::local_tempdir()
+
+  for (case_name in names(override_backend_cases())) {
+    case <- override_backend_cases()[[case_name]]
+    case_root <- file.path(root, case_name)
+    source <- file.path(case_root, "source")
+    crb <- write_bundle_crb(
+      source,
+      backend = list(type = case$type, location = "missing-backend")
+    )
+    external <- file.path(case_root, "app2")
+    dir.create(file.path(external, "lexical"), recursive = TRUE)
+    target <- write_override_artifact(
+      file.path(external, case$leaf),
+      case$type,
+      contents = case_name
+    )
+    override <- file.path(external, "lexical", "..", case$leaf)
+    app <- file.path(case_root, "app")
+
+    build_test_app(
+      c("Dataset" = crb),
+      app,
+      cerebro_options = override_options(case$key, override)
+    )
+
+    config <- readRDS(file.path(app, "cerebro_config.rds"))
+    expect_identical(
+      config[[case$key]],
+      normalizePath(target, winslash = "/", mustWork = TRUE)
+    )
+    expect_bundle_backend_entry(
+      config,
+      "data/dataset.crb",
+      list(
+        type = case$type,
+        mode = "host_override",
+        location = normalizePath(target, winslash = "/", mustWork = TRUE)
+      )
+    )
+    expect_identical(read_override_artifact(target, case$type), case_name)
+  }
+})
+
+test_that("non-existing absolute host-managed overrides remain supported", {
+  root <- normalizePath(
+    withr::local_tempdir(),
+    winslash = "/",
+    mustWork = TRUE
+  )
+
+  for (case_name in names(override_backend_cases())) {
+    case <- override_backend_cases()[[case_name]]
+    source <- file.path(root, case_name, "source")
+    crb <- write_bundle_crb(
+      source,
+      backend = list(type = case$type, location = "missing-backend")
+    )
+    override <- file.path(root, case_name, "host-managed", case$leaf)
+    app <- file.path(root, case_name, "app")
+
+    build_test_app(
+      c("Dataset" = crb),
+      app,
+      cerebro_options = override_options(case$key, override)
+    )
+
+    config <- readRDS(file.path(app, "cerebro_config.rds"))
+    expect_identical(config[[case$key]], override)
+    expect_bundle_backend_entry(
+      config,
+      "data/dataset.crb",
+      list(type = case$type, mode = "host_override", location = override)
+    )
+    expect_false(file.exists(override))
+  }
+})
+
 test_that("a configured runtime override skips the tagged backend copy", {
   root <- withr::local_tempdir()
   backend <- list(type = "h5", location = "missing.h5")
@@ -245,8 +1870,51 @@ test_that("a configured runtime override skips the tagged backend copy", {
   )
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
-  expect_identical(config$expression_matrix_h5, override)
+  expect_identical(
+    config$expression_matrix_h5,
+    normalizePath(override, winslash = "/", mustWork = TRUE)
+  )
+  expect_bundle_backend_entry(
+    config,
+    "data/dataset.crb",
+    list(
+      type = "h5",
+      mode = "host_override",
+      location = normalizePath(override, winslash = "/", mustWork = TRUE)
+    )
+  )
   expect_false(file.exists(file.path(app, "data", backend$location)))
+})
+
+test_that("a configured host override attaches the generated H5 plan", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  override <- file.path(root, "host", "matrix.h5")
+  expected <- write_real_h5_matrix(override)
+  crb <- write_bundle_crb(
+    file.path(root, "source"),
+    backend = list(type = "h5", location = "missing.h5")
+  )
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("Dataset" = crb),
+    app,
+    cerebro_options = list(expression_matrix_h5 = override)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  configured_path <- unname(config$crb_file_to_load[[1L]])
+  runtime <- source_bundle_runtime(app)
+  local_cerebro_options(config)
+  withr::local_dir(app)
+  attached <- runtime$get_or_load_crb(
+    configured_path,
+    config$.bundle_backend_plan,
+    unname(config$crb_file_to_load)
+  )
+
+  expect_attached_matrix(attached, expected)
 })
 
 test_that("one global override cannot serve multiple Cerebro data files", {
@@ -294,7 +1962,7 @@ test_that("one global override cannot serve multiple Cerebro data files", {
   )
 })
 
-test_that("one CRB reused under two labels remains one override consumer", {
+test_that("one CRB cannot be reused under two labels", {
   root <- withr::local_tempdir()
   override <- file.path(root, "host-matrix.h5")
   writeLines("HOST", override)
@@ -302,23 +1970,55 @@ test_that("one CRB reused under two labels remains one override consumer", {
     file.path(root, "source"),
     backend = list(type = "h5", location = "missing.h5")
   )
-  app <- file.path(root, "app")
-
-  build_test_app(
-    c("First label" = crb, "Second label" = crb),
-    app,
-    cerebro_options = list(expression_matrix_h5 = override)
+  duplicate_paths <- list(
+    identical = crb,
+    lexical_alias = file.path(dirname(crb), ".", basename(crb))
   )
 
-  config <- readRDS(file.path(app, "cerebro_config.rds"))
-  expect_identical(
-    unname(config$crb_file_to_load),
-    rep(file.path("data", "dataset.crb"), 2L)
-  )
-  expect_identical(config$expression_matrix_h5, override)
+  for (case_name in names(duplicate_paths)) {
+    app <- file.path(root, paste0("app-", case_name))
+    dir.create(app)
+    marker <- file.path(app, "marker.txt")
+    writeLines("KEEP", marker)
+
+    expect_error(
+      build_test_app(
+        c(
+          "First label" = crb,
+          "Second label" = duplicate_paths[[case_name]]
+        ),
+        app,
+        cerebro_options = list(expression_matrix_h5 = override)
+      ),
+      "resolve to the same Cerebro data file"
+    )
+
+    expect_identical(
+      list.files(app, all.files = TRUE, no.. = TRUE),
+      "marker.txt"
+    )
+    marker_exists <- file.exists(marker)
+    expect_true(marker_exists)
+    if (marker_exists) {
+      expect_identical(readLines(marker), "KEEP")
+    }
+    expect_length(
+      list.files(
+        root,
+        all.files = TRUE,
+        no.. = TRUE,
+        pattern = paste0(
+          "^\\.",
+          basename(app),
+          "-(build\\.lock|stage-)"
+        )
+      ),
+      0L
+    )
+  }
 })
 
-test_that("different sources cannot write the same bundle target", {
+test_that("different sources cannot write the same private bundle target", {
   root <- withr::local_tempdir()
   backend <- list(type = "h5", location = "matrix.h5")
   first_dir <- file.path(root, "first")
@@ -357,16 +2057,76 @@ test_that("different sources cannot write the same bundle target", {
     ),
     "same bundle target"
   )
+})
 
-  image <- file.path(root, "first.crb")
+test_that("private and spatial targets may share a basename", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"), "first.crb")
+  image <- file.path(root, "image", "first.crb")
+  dir.create(dirname(image))
   writeLines("IMAGE", image)
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("First" = crb),
+    app,
+    spatial_images = list("First" = image)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_true(file.exists(file.path(app, "data", "first.crb")))
+  expect_identical(
+    config$spatial_images[["First"]],
+    file.path("spatial-assets", "first.crb")
+  )
+  expect_identical(
+    readLines(file.path(app, "spatial-assets", "first.crb")),
+    "IMAGE"
+  )
+})
+
+test_that("different spatial sources cannot share a spatial target", {
+  root <- withr::local_tempdir()
+  first_crb <- write_bundle_crb(
+    file.path(root, "first-crb"),
+    "first.crb"
+  )
+  second_crb <- write_bundle_crb(
+    file.path(root, "second-crb"),
+    "second.crb"
+  )
+  first <- file.path(root, "first", "histology.png")
+  second <- file.path(root, "second", "histology.png")
+  dir.create(dirname(first))
+  dir.create(dirname(second))
+  writeLines("FIRST", first)
+  writeLines("SECOND", second)
+
   expect_error(
     build_test_app(
-      c("First" = first),
-      file.path(root, "image-app"),
-      spatial_images = list("First" = image)
+      c("First" = first_crb, "Second" = second_crb),
+      file.path(root, "app"),
+      spatial_images = list("First" = first, "Second" = second)
     ),
     "same bundle target"
+  )
+})
+
+test_that("duplicate spatial image data set names are rejected", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  first <- file.path(root, "first.png")
+  second <- file.path(root, "second.png")
+  writeLines("FIRST", first)
+  writeLines("SECOND", second)
+
+  expect_error(
+    build_test_app(
+      c("Dataset" = crb),
+      file.path(root, "app"),
+      spatial_images = list("Dataset" = first, "Dataset" = second)
+    ),
+    "spatial_images names must be unique"
   )
 })
 
@@ -387,10 +2147,10 @@ test_that("one spatial image can be shared by multiple data sets", {
   config <- readRDS(file.path(app, "cerebro_config.rds"))
   expect_identical(
     unname(unlist(config$spatial_images, use.names = FALSE)),
-    rep(file.path("data", "histology.png"), 2L)
+    rep(file.path("spatial-assets", "histology.png"), 2L)
   )
   expect_identical(
-    readLines(file.path(app, "data", "histology.png")),
+    readLines(file.path(app, "spatial-assets", "histology.png")),
     "IMAGE"
   )
 })
@@ -417,9 +2177,11 @@ test_that("partially unmatched spatial images are not bundled", {
   expect_identical(names(config$spatial_images), "Dataset")
   expect_identical(
     config$spatial_images[["Dataset"]],
-    file.path("data", "matched.png")
+    file.path("spatial-assets", "matched.png")
   )
-  expect_false(file.exists(file.path(app, "data", "unmatched.png")))
+  expect_false(
+    file.exists(file.path(app, "spatial-assets", "unmatched.png"))
+  )
 })
 
 test_that("missing spatial images are omitted from the bundle config", {
@@ -511,15 +2273,95 @@ test_that("embedded and legacy CRBs do not require sibling files", {
     "legacy.crb",
     legacy = TRUE
   )
+  current_null <- write_bundle_crb(
+    file.path(root, "current-null"),
+    "current-null.crb",
+    backend = NULL
+  )
   app <- file.path(root, "app")
 
   build_test_app(
-    c("Embedded" = embedded, "Legacy" = legacy),
+    c(
+      "Embedded" = embedded,
+      "Legacy" = legacy,
+      "Current NULL" = current_null
+    ),
     app
   )
 
   expect_true(file.exists(file.path(app, "data", "embedded.crb")))
   expect_true(file.exists(file.path(app, "data", "legacy.crb")))
+  expect_true(file.exists(file.path(app, "data", "current-null.crb")))
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  for (path in c(
+    "data/embedded.crb",
+    "data/legacy.crb",
+    "data/current-null.crb"
+  )) {
+    expect_bundle_backend_entry(
+      config,
+      path,
+      list(type = "embedded", mode = "embedded", location = NULL)
+    )
+  }
+})
+
+test_that("legacy CRBs freeze the selected global override", {
+  root <- withr::local_tempdir()
+  legacy <- write_bundle_crb(
+    file.path(root, "source"),
+    "legacy.crb",
+    legacy = TRUE
+  )
+  override <- file.path(root, "host", "matrix.h5")
+  dir.create(dirname(override), recursive = TRUE)
+  writeLines("HOST", override)
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("Legacy" = legacy),
+    app,
+    cerebro_options = list(expression_matrix_h5 = override)
+  )
+
+  normalized <- normalizePath(override, winslash = "/", mustWork = TRUE)
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_bundle_backend_entry(
+    config,
+    "data/legacy.crb",
+    list(type = "h5", mode = "host_override", location = normalized)
+  )
+})
+
+test_that("old configs and legacy overrides attach through field fallback", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  modern_source <- file.path(root, "modern")
+  expected <- write_real_h5_matrix(
+    file.path(modern_source, "matrix.h5")
+  )
+  modern <- write_bundle_crb(
+    modern_source,
+    "modern.crb",
+    backend = list(type = "h5", location = "matrix.h5")
+  )
+  runtime <- source_bundle_runtime()
+  local_cerebro_options(list())
+
+  modern_attached <- runtime$get_or_load_crb(modern, NULL, modern)
+  expect_attached_matrix(modern_attached, expected)
+
+  override <- file.path(root, "host", "matrix.h5")
+  expected_override <- write_real_h5_matrix(override)
+  legacy <- write_bundle_crb(
+    file.path(root, "legacy"),
+    "legacy.crb",
+    legacy = TRUE
+  )
+  local_cerebro_options(list(expression_matrix_h5 = override))
+
+  legacy_attached <- runtime$get_or_load_crb(legacy, NULL, legacy)
+  expect_attached_matrix(legacy_attached, expected_override)
 })
 
 test_that("overwrite FALSE rejects a non-empty destination without mutation", {
@@ -606,6 +2448,20 @@ test_that("at least one Cerebro data set is required", {
   )
 })
 
+test_that("a bundled real H5 backend attaches with exact data", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("Matrix")
+
+  expect_real_backend_bundle_roundtrip("h5")
+})
+
+test_that("a bundled real BPCells backend attaches with exact data", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("Matrix")
+
+  expect_real_backend_bundle_roundtrip("bpcells")
+})
+
 test_that("the runtime rejects an H5 backend that is a directory", {
   skip_if_not_installed("HDF5Array")
   runtime <- new.env(parent = globalenv())
@@ -631,6 +2487,7 @@ test_that("the runtime rejects an H5 backend that is a directory", {
   dir.create(file.path(root, "matrix.h5"))
   object <- new.env(parent = emptyenv())
   class(object) <- "Cerebro"
+  object$expression_backend <- list(type = "h5", location = "matrix.h5")
   object$getExpressionBackend <- function() {
     list(type = "h5", location = "matrix.h5")
   }

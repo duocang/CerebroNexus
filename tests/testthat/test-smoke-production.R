@@ -68,15 +68,13 @@ test_that("createShinyApp bundles the app directory and config", {
   expect_true(file.exists(file.path(app$app_dir, "app.R")))
   expect_true(file.exists(file.path(app$app_dir, "cerebro_config.rds")))
 
-  ## Both crbs and both background images copied into the bundle.
-  bundled <- list.files(
-    file.path(app$app_dir, "data"),
-    pattern = "\\.(crb|png)$"
-  )
-  expect_true(any(grepl("Synthetic_A\\.crb$", bundled)))
-  expect_true(any(grepl("Synthetic_B\\.crb$", bundled)))
-  expect_true(any(grepl("bg_a\\.png$", bundled)))
-  expect_true(any(grepl("bg_b\\.png$", bundled)))
+  ## Raw crbs remain private; only background images enter the public namespace.
+  private_data <- list.files(file.path(app$app_dir, "data"))
+  public_spatial <- list.files(file.path(app$app_dir, "spatial-assets"))
+  expect_true(any(grepl("Synthetic_A\\.crb$", private_data)))
+  expect_true(any(grepl("Synthetic_B\\.crb$", private_data)))
+  expect_false(any(grepl("\\.png$", private_data)))
+  expect_setequal(public_spatial, c("bg_a.png", "bg_b.png"))
 })
 
 test_that("multi-crb config lists both datasets by name", {
@@ -93,6 +91,25 @@ test_that("multi-crb config lists both datasets by name", {
   )
   expect_match(cfg[["crb_file_to_load"]][["Dataset A"]], "Synthetic_A\\.crb$")
   expect_match(cfg[["crb_file_to_load"]][["Dataset B"]], "Synthetic_B\\.crb$")
+  manifest <- cfg[[".bundle_backend_plan"]]
+  expect_identical(manifest$schema_version, 1L)
+  configured_crbs <- unique(unname(cfg[["crb_file_to_load"]]))
+  expect_length(manifest$entries, length(configured_crbs))
+  expect_identical(anyDuplicated(names(manifest$entries)), 0L)
+  expect_setequal(
+    names(manifest$entries),
+    configured_crbs
+  )
+  expect_true(all(vapply(
+    manifest$entries,
+    function(entry) {
+      identical(
+        entry,
+        list(type = "embedded", mode = "embedded", location = NULL)
+      )
+    },
+    logical(1)
+  )))
 })
 
 test_that("each dataset keeps its own background image + alignment params", {
@@ -100,8 +117,14 @@ test_that("each dataset keeps its own background image + alignment params", {
   cfg <- readRDS(file.path(app$app_dir, "cerebro_config.rds"))
 
   ## Background image path is per-dataset, not shared.
-  expect_match(cfg[["spatial_images"]][["Dataset A"]], "bg_a\\.png$")
-  expect_match(cfg[["spatial_images"]][["Dataset B"]], "bg_b\\.png$")
+  expect_identical(
+    cfg[["spatial_images"]][["Dataset A"]],
+    file.path("spatial-assets", "bg_a.png")
+  )
+  expect_identical(
+    cfg[["spatial_images"]][["Dataset B"]],
+    file.path("spatial-assets", "bg_b.png")
+  )
 
   ## Offset / flip resolve independently per dataset name — the isolation that
   ## a single shared value would silently break.
@@ -269,13 +292,68 @@ test_that("the generated multi-crb app boots and switches datasets", {
   driver$wait_for_idle(timeout = 30000)
 
   ## Both datasets are offered in the loader's dataset selector.
+  config <- readRDS(file.path(app_info$app_dir, "cerebro_config.rds"))
+  configured_crbs <- config[["crb_file_to_load"]]
+  configured_values <- unname(configured_crbs)
+  ## Selectize keeps only the selected item in its hidden source <select>.
+  ## Open its rendered dropdown and inspect the public option DOM instead.
+  driver$wait_for_js(
+    paste0(
+      "(function() {",
+      "var selector = document.querySelector('#crb_file_selector');",
+      "if (!selector || !selector.selectize) return false;",
+      "selector.selectize.open();",
+      "return selector.parentElement.querySelectorAll(",
+      "'.selectize-dropdown-content .option[data-value]'",
+      ").length === ",
+      length(configured_values),
+      ";",
+      "})()"
+    ),
+    timeout = 30000
+  )
   selector <- driver$get_value(input = "crb_file_selector")
   expect_true(!is.null(selector))
+  option_labels <- unlist(
+    driver$get_js(
+      paste0(
+        "(function() {",
+        "var selector = document.querySelector('#crb_file_selector');",
+        "var options = selector.parentElement.querySelectorAll(",
+        "'.selectize-dropdown-content .option[data-value]'",
+        ");",
+        "return Array.from(options).map(function(option) {",
+        "return option.textContent.trim();",
+        "});",
+        "})()"
+      )
+    ),
+    use.names = FALSE
+  )
+  option_values <- unlist(
+    driver$get_js(
+      paste0(
+        "(function() {",
+        "var selector = document.querySelector('#crb_file_selector');",
+        "var options = selector.parentElement.querySelectorAll(",
+        "'.selectize-dropdown-content .option[data-value]'",
+        ");",
+        "return Array.from(options).map(function(option) {",
+        "return option.getAttribute('data-value');",
+        "});",
+        "})()"
+      )
+    ),
+    use.names = FALSE
+  )
+  expect_identical(option_labels, names(configured_crbs))
+  expect_identical(option_values, configured_values)
+  expect_identical(anyDuplicated(option_values), 0L)
 
   ## Load the first dataset and confirm the Spatial tab appears (it is only
   ## inserted when the active dataset carries spatial data).
   driver$set_inputs(
-    crb_file_selector = app_info$crb_a,
+    crb_file_selector = configured_values[[1L]],
     wait_ = FALSE
   )
   driver$wait_for_idle(timeout = 30000)
@@ -287,10 +365,14 @@ test_that("the generated multi-crb app boots and switches datasets", {
   ## Switch to the second dataset; the Spatial tab must still be present, proving
   ## multi-crb switching keeps the spatial module wired for each dataset.
   driver$set_inputs(
-    crb_file_selector = app_info$crb_b,
+    crb_file_selector = configured_values[[2L]],
     wait_ = FALSE
   )
   driver$wait_for_idle(timeout = 30000)
+  expect_identical(
+    driver$get_value(input = "crb_file_selector"),
+    configured_values[[2L]]
+  )
   spatial_tab_b <- driver$get_js(
     "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;"
   )
@@ -335,12 +417,25 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
   skip_if_not(linked_any, "could not build a hermetic library via symlinks")
 
   result <- callr::r(
-    function(crb) {
+    function(app_dir) {
       ## Prove the package really is unreachable before we rely on the result.
       if (requireNamespace("CerebroNexus", quietly = TRUE)) {
         stop("CerebroNexus is reachable; the library is not hermetic")
       }
-      obj <- readRDS(crb)
+      setwd(app_dir)
+      config <- readRDS("cerebro_config.rds")
+      assign("Cerebro.options", config, envir = .GlobalEnv)
+      runtime <- new.env(parent = globalenv())
+      sys.source(
+        file.path("shiny", "v1.4", "utility_functions.R"),
+        envir = runtime
+      )
+      crb <- unname(config$crb_file_to_load[[1L]])
+      obj <- runtime$get_or_load_crb(
+        crb,
+        config$.bundle_backend_plan,
+        unname(config$crb_file_to_load)
+      )
       list(
         classes = class(obj),
         version = as.character(obj$getVersion()),
@@ -349,7 +444,7 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
         n_projections = length(obj$availableProjections())
       )
     },
-    args = list(crb = first_crb),
+    args = list(app_dir = app$app_dir),
     libpath = hermetic_lib
   )
 

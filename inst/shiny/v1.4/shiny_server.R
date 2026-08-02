@@ -328,13 +328,28 @@ server <- function(input, output, session) {
       ))
       data <- get(dataset_to_load)
     } else {
-      ## Route through the process-level cache defined in utility_functions.R.
-      ## get_or_load_crb() loads via read_cerebro_file() (qs/rds dispatch) and
-      ## then re-attaches external expression backends (bpcells / h5) using
-      ## paths rooted at the crb's parent directory. Cerebro.options can still
-      ## override the matrix path via expression_matrix_BPCells /
-      ## expression_matrix_h5 -- the helper picks that up internally.
-      data <- get_or_load_crb(dataset_to_load)
+      ## Route through the session cache defined in utility_functions.R.
+      ## Configured bundle CRBs consume the exact backend plan validated during
+      ## createShinyApp(). Uploads and older configurations fall back to the
+      ## ordinary expression_backend field; serialized getters are not called.
+      backend_plan <- if (exists("Cerebro.options")) {
+        Cerebro.options[[".bundle_backend_plan"]]
+      } else {
+        NULL
+      }
+      configured_paths <- if (
+        exists("Cerebro.options") &&
+          !is.null(Cerebro.options[["crb_file_to_load"]])
+      ) {
+        unname(Cerebro.options[["crb_file_to_load"]])
+      } else {
+        character()
+      }
+      data <- get_or_load_crb(
+        dataset_to_load,
+        backend_plan,
+        configured_paths
+      )
     }
     ## log message
     message(data$print())
