@@ -1649,6 +1649,22 @@ dedent <- function(string) {
 #' exception: files explicitly supplied through \code{spatial_images} are
 #' copied verbatim under \code{spatial-assets/} and made available to the
 #' browser. Callers must provide trusted, browser-safe image files.
+#' Preflight reads the ordinary \code{expression_backend} field without invoking
+#' its serialized getter. The generated configuration stores the effective
+#' per-CRB attachment plan after applying any deployment override, and configured
+#' CRBs consume that exact plan at runtime. Direct launches and uploads also read
+#' and validate the ordinary field without invoking the getter. A historical
+#' CRB may omit both field and getter; an object containing only one is rejected
+#' as an unsupported mixed format.
+#' Dataset labels and canonical CRB sources are both unique: two labels cannot
+#' select the same resolved input file.
+#'
+#' Launch settings are validated and frozen in a typed internal manifest before
+#' target preparation. The generated \code{app.R} reads that manifest instead of
+#' interpolating user values into source, and the staged source is parsed before
+#' publication. The upload limit is installed as
+#' \code{shiny.maxRequestSize} while the app is running and the previous process
+#' option is restored when the app stops.
 #'
 #' A configured runtime matrix override keeps its existing precedence and skips
 #' the descriptor sidecar copy. It must be an absolute path. Native paths are
@@ -1677,23 +1693,35 @@ dedent <- function(string) {
 #'
 #' @param cerebro_data Non-empty named character vector or list of \code{.crb}
 #'   (or \code{.rds}) file paths. Names must be non-missing and unique and are
-#'   used as dataset labels.
+#'   used as dataset labels. Every path must resolve to a distinct canonical
+#'   source file.
 #' @param result_dir Output directory. Its basename must be portable, its path
 #'   must not use the reserved build-lock namespace, and its final target must
 #'   not be a symbolic link or unresolved filesystem entry.
-#' @param max_request_size Max upload size in MB; defaults to 8000.
-#' @param port Port the generated app listens on; defaults to 1337.
-#' @param host Host the generated app binds to; defaults to "127.0.0.1".
-#' @param launch_browser Whether to launch a browser; defaults to TRUE.
-#' @param quiet Passed to \code{shiny::runApp}; defaults to FALSE.
-#' @param display_mode \code{shiny::runApp} display mode; defaults to "normal".
+#' @param max_request_size One finite positive numeric upload limit in MB;
+#'   defaults to 8000.
+#' @param port One whole-number port from 1 through 65535; defaults to 8080.
+#' @param host One non-empty character value that the generated app binds to;
+#'   defaults to "127.0.0.1".
+#' @param launch_browser One non-missing logical controlling whether to launch a
+#'   browser; defaults to TRUE.
+#' @param quiet One non-missing logical passed to \code{shiny::runApp}; defaults
+#'   to FALSE.
+#' @param display_mode Exactly one of \code{"auto"}, \code{"normal"}, or
+#'   \code{"showcase"}; defaults to \code{"normal"}.
 #' @param colors Optional named list of colour palettes per dataset.
 #' @param cerebro_options Extra entries merged into \code{Cerebro.options} in
-#'   the generated app.
+#'   the generated app. Matrix overrides must be absolute host paths and make
+#'   the resulting app host-dependent. Native paths must resolve outside
+#'   \code{result_dir}; non-native paths cannot be compared with the local app
+#'   tree during the build. Duplicate internal entries are removed, and the
+#'   keys \code{.bundle_backend_plan} and \code{.bundle_run_options} are written
+#'   by the function.
 #' @param overwrite If \code{TRUE} (default), replace \code{result_dir} only
-#'   after a complete staged build succeeds. If \code{FALSE},
-#'   \code{result_dir} must be absent or empty; a non-empty directory is
-#'   rejected before any files are written.
+#'   after a complete staged build succeeds. Publication failures attempt to
+#'   restore the previous app and preserve its backup if restoration fails. If
+#'   \code{FALSE}, \code{result_dir} must be absent or empty; a non-empty
+#'   directory is rejected before any files are written.
 #' @param verbose Print progress messages; defaults to TRUE.
 #' @param crb_pick_smallest_file Forwarded to \code{Cerebro.options}.
 #' @param show_upload_ui Forwarded to \code{Cerebro.options}.
@@ -1703,8 +1731,10 @@ dedent <- function(string) {
 #' @param variable_to_compare Forwarded to \code{Cerebro.options}.
 #' @param spatial_images Named list/vector of paths to spatial background images
 #'   (e.g. tissue histology) shown behind the Spatial tab projection. Names must
-#'   match \code{cerebro_data}. Existing images are copied into the app bundle;
-#'   missing images are omitted with a warning.
+#'   match \code{cerebro_data}. Supplied files are copied verbatim into the
+#'   app's public \code{spatial-assets/} resource directory; callers must
+#'   provide trusted, browser-safe images. Missing files are omitted with a
+#'   warning.
 #' @param spatial_images_flip_x Named list/vector; whether to flip the spatial
 #'   background image horizontally. Names must match \code{cerebro_data}.
 #' @param spatial_images_flip_y Named list/vector; whether to flip the spatial
@@ -1723,7 +1753,8 @@ dedent <- function(string) {
 #'   applied to spatial cell coordinates. Names must match \code{cerebro_data}.
 #' @param ... Currently unused; reserved for future arguments.
 #'
-#' @return Invisibly returns \code{result_dir}.
+#' @return Invisibly returns \code{result_dir}. If that path changes resolution
+#'   during the build, warns and returns the frozen absolute publication path.
 #' @importFrom later later
 #' @importFrom stats setNames
 #' @export

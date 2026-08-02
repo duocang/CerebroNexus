@@ -127,14 +127,15 @@ Picking one:
 
 For reference, before the 1.7.0 lazy h5 refactor, h5 attach was eager (`rhdf5::h5read` + full `dgCMatrix` reconstruction), giving ~33 s open-URL time, ~11 GB RSS, and ~0.45 s queries — i.e. lazy-h5 is the same backend with attach **~263× faster, RAM ~10× smaller, queries ~45× faster, web load ~4× faster**.
 
-`createShinyApp()` reads `getExpressionBackend()$location` and copies that exact
-file or directory to the same relative location beside the bundled `.crb`; it
-does not guess from the current `.crb` filename. Invalid or missing locations,
-and two inputs that resolve to the same bundle target, stop the build with an
-error. The Shiny runtime resolves the same descriptor relative to the `.crb`,
-so the bundle stays portable. A corresponding global runtime override retains
-its existing precedence and skips the sidecar copy, but one global override
-cannot serve several CRBs in the same app.
+`createShinyApp()` reads the ordinary `expression_backend` field and copies its
+exact file or directory to the same relative location beside the bundled
+`.crb`; it does not guess from the current `.crb` filename or execute the
+serialized getter. Invalid or missing locations, and two inputs that resolve to
+the same bundle target, stop the build with an error. The generated
+configuration freezes the resulting per-CRB attachment plan, including any
+host override, and the Shiny runtime consumes that plan directly. A global
+runtime override therefore retains its existing precedence and skips the
+sidecar copy, but one global override cannot serve several CRBs in the same app.
 
 All CRBs, external backends and bundle destinations are checked before copying
 starts. The app is then built in a private sibling directory and replaces
@@ -143,6 +144,8 @@ cannot destroy a working deployment. With `overwrite = FALSE`, `result_dir`
 must be absent or empty; non-empty destinations are rejected before any files
 are written. On POSIX systems, the stage is mode `0700` while data is copied,
 and replacement retains the existing deployment root's permission bits.
+Target ancestors are resolved before the sibling lock and stage are created;
+the final target cannot be a symbolic link or unresolved filesystem entry.
 Platform-specific ACLs, ownership changes and security labels remain the
 deployment system's responsibility. Do not modify input CRBs or backends while
 a build is running.
