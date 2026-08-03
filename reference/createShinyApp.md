@@ -43,8 +43,8 @@ createShinyApp(
 
 - cerebro_data:
 
-  Non-empty named character vector or list of `.crb` (or `.rds`) file
-  paths. Names are used as dataset labels.
+  Named character vector or list of `.crb` (or `.rds`) file paths. Names
+  are used as dataset labels.
 
 - result_dir:
 
@@ -87,9 +87,7 @@ createShinyApp(
 
 - overwrite:
 
-  If `TRUE` (default), replace `result_dir` only after a complete staged
-  build succeeds. If `FALSE`, `result_dir` must be absent or empty; a
-  non-empty directory is rejected before any files are written.
+  If `TRUE` (default), wipe `result_dir` first.
 
 - verbose:
 
@@ -168,16 +166,6 @@ Invisibly returns `result_dir`.
 ## Details
 
 Supports external expression backends (`bpcells`, `h5`) in addition to
-the embedded mode. The backend descriptor stored in each `.crb` names a
-portable relative file or directory, which is copied to the same
-relative location in the bundle. Missing, invalid, or conflicting
-targets stop the build rather than producing an incomplete app. A
-configured runtime matrix override keeps its existing precedence and
-skips this copy. All inputs and bundle targets are validated before the
-app is assembled in a private sibling directory. The completed stage
-replaces `result_dir` only after every copy and configuration write
-succeeds. On POSIX systems, the stage is mode `0700` while data is
-copied, and replacement retains the existing deployment root's
-permission bits. Platform-specific ACLs, ownership changes, and security
-labels remain the deployment system's responsibility. Inputs must not be
-modified while the build is running.
+the embedded mode. When `cerebro_data` points to a `.crb` with an
+external backend, the sibling `.bpcells/` directory or `.h5` file is
+detected and copied into the bundle alongside the `.crb`.

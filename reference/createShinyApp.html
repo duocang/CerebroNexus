@@ -15,7 +15,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.4</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.6</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -39,7 +39,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
     <li><h6 class="dropdown-header" data-toc-skip>How-to</h6></li>
     <li><a class="dropdown-item" href="../articles/seurat_v5_layered_assays.html">Seurat v5 layered assays: complete and safe expression matrices</a></li>
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
-    <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
+    <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Create expression matrix in h5 format</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -77,7 +77,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Create a self-contained Shiny app folder for Cerebro v1.4</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/102-review5-green/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/shinytest2-appdriver-reuse/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
       <div class="d-none name"><code>createShinyApp.Rd</code></div>
     </div>
 
@@ -126,8 +126,8 @@ run with <code>shiny::runApp(result_dir)</code>.</p>
 
 
 <dl><dt id="arg-cerebro-data">cerebro_data<a class="anchor" aria-label="anchor" href="#arg-cerebro-data"></a></dt>
-<dd><p>Non-empty named character vector or list of <code>.crb</code>
-(or <code>.rds</code>) file paths. Names are used as dataset labels.</p></dd>
+<dd><p>Named character vector or list of <code>.crb</code> (or
+<code>.rds</code>) file paths. Names are used as dataset labels.</p></dd>
 
 
 <dt id="arg-result-dir">result_dir<a class="anchor" aria-label="anchor" href="#arg-result-dir"></a></dt>
@@ -168,10 +168,7 @@ the generated app.</p></dd>
 
 
 <dt id="arg-overwrite">overwrite<a class="anchor" aria-label="anchor" href="#arg-overwrite"></a></dt>
-<dd><p>If <code>TRUE</code> (default), replace <code>result_dir</code> only
-after a complete staged build succeeds. If <code>FALSE</code>,
-<code>result_dir</code> must be absent or empty; a non-empty directory is
-rejected before any files are written.</p></dd>
+<dd><p>If <code>TRUE</code> (default), wipe <code>result_dir</code> first.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -253,18 +250,10 @@ applied to spatial cell coordinates. Names must match <code>cerebro_data</code>.
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>Supports external expression backends (<code>bpcells</code>, <code>h5</code>) in
-addition to the embedded mode. The backend descriptor stored in each
-<code>.crb</code> names a portable relative file or directory, which is copied to
-the same relative location in the bundle. Missing, invalid, or conflicting
-targets stop the build rather than producing an incomplete app. A configured
-runtime matrix override keeps its existing precedence and skips this copy.
-All inputs and bundle targets are validated before the app is assembled in a
-private sibling directory. The completed stage replaces <code>result_dir</code>
-only after every copy and configuration write succeeds. On POSIX systems,
-the stage is mode <code>0700</code> while data is copied, and replacement retains
-the existing deployment root's permission bits. Platform-specific ACLs,
-ownership changes, and security labels remain the deployment system's
-responsibility. Inputs must not be modified while the build is running.</p>
+addition to the embedded mode. When <code>cerebro_data</code> points to a
+<code>.crb</code> with an external backend, the sibling <code>.bpcells/</code>
+directory or <code>.h5</code> file is detected and copied into the bundle
+alongside the <code>.crb</code>.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

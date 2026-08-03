@@ -21,8 +21,8 @@ R interactively (`shinyapps.io`, Docker images, etc.).
 
 ## Setup
 
-The package ships an example `.crb` in `inst/extdata/v1.4/`, which we
-use throughout this vignette.
+The package ships an example `.crb` (and its sibling `.h5`) in
+`inst/extdata/v1.4/`, which we use throughout this vignette.
 
 ``` r
 library(CerebroNexus)
@@ -65,7 +65,7 @@ shiny::runApp(out_dir)
 |----|----|
 | `cerebro_data` | named vector/list of `.crb` (or `.rds`) paths |
 | `result_dir` | output directory (required) |
-| `overwrite` | replace `result_dir` after a complete staged build; with `FALSE`, the destination must be absent or empty |
+| `overwrite` | wipe `result_dir` first; defaults to `TRUE` |
 | `max_request_size` | upload size cap in MB; defaults to `8000` |
 | `port`, `host` | binding for the generated `app.R`; defaults to `8080` / `127.0.0.1` |
 | `launch_browser`, `quiet`, `display_mode` | forwarded to [`shiny::runApp()`](https://rdrr.io/pkg/shiny/man/runApp.html) in `app.R` |
@@ -104,39 +104,22 @@ createShinyApp(
 If your `.crb` was exported with an external expression backend
 (`expression_matrix_mode = "bpcells"` or `"h5"` in
 [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md)),
-its descriptor records the matrix location relative to the `.crb`. Fresh
-exports normally use a sibling `<stem>.bpcells/` directory or
-`<stem>.h5` file, but the descriptor remains authoritative if the `.crb`
-is renamed.
+the actual expression matrix lives in a sibling file or directory next
+to the `.crb`. The bpcells backend writes a `<stem>.bpcells/` directory;
+the h5 backend writes a 10X-style sparse CSC `<stem>.h5` file.
 
 [`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
-copies the tagged file or directory to the same relative location under
-`result_dir/data/`. The location must be a portable relative path;
-missing backends and conflicting bundle targets are errors rather than
-silent overwrites. A corresponding global runtime override retains its
-existing precedence; when configured, the sidecar is not copied and the
-deployed app depends on that host path. Because the override is global,
-it may serve only one effective CRB consumer in a multi-dataset app.
+detects siblings automatically and copies them into `result_dir/data/`
+alongside the `.crb`, so the bundle stays portable. You don’t need to
+pass anything extra — just keep the sibling next to the `.crb` on disk
+before calling the function.
 
-Before copying,
-[`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
-resolves every CRB descriptor and sidecar, and plans every existing
-spatial image and destination path together. It rejects exact and
-parent/child target collisions as well as backend paths that resolve
-through symbolic links. The complete app is assembled in a private
-sibling directory and published only after all writes succeed.
-Consequently, a failed rebuild leaves the previous deployment untouched.
-`overwrite = FALSE` is intentionally conservative: a non-empty
-destination is rejected before the build starts rather than merged with
-a partially known old app.
-
-On POSIX systems, the staging directory is mode `0700` while data is
-copied. Replacing an existing app retains its root permission bits;
-platform-specific ACLs, ownership changes and security labels remain the
-deployment system’s responsibility. Inputs are validated and then copied
-without immutable snapshots, so do not modify a CRB or backend while
-[`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
-is running.
+``` r
+# example.crb ships with example.h5 in the same folder; both are bundled
+crb <- system.file("extdata/v1.4/example.crb", package = "CerebroNexus")
+file.exists(file.path(dirname(crb), "example.h5"))
+#> [1] TRUE
+```
 
 ## Forwarding extra Cerebro options
 
@@ -148,7 +131,9 @@ createShinyApp(
   cerebro_data = c("PBMC example" = crb),
   result_dir   = file.path(tempdir(), "cerebro_app_opts"),
   cerebro_options = list(
-    exclude_trivial_metadata = TRUE
+    exclude_trivial_metadata = TRUE,
+    # enable the h5 path when the data was written that way
+    expression_matrix_h5     = TRUE
   ),
   launch_browser = FALSE
 )

@@ -1,30 +1,28 @@
 # Changelog
 
-## CerebroNexus 3.0.4
+## CerebroNexus 3.0.6
 
-### Export
+### Testing / CI
 
-- **[`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
-  now follows each `.crb` backend descriptor.** H5 files and BPCells
-  directories are copied from the recorded relative location rather than
-  guessed from the current `.crb` name, so renamed data files remain
-  portable. Missing, non-portable, or conflicting targets now stop the
-  build instead of producing an app that fails at runtime unless the
-  corresponding global runtime override is configured. An empty
-  `cerebro_data` no longer launches the packaged example. Exact and
-  parent/child target collisions, backend paths that resolve through
-  symbolic links, and global overrides shared by multiple data sets are
-  rejected during preflight. The app is assembled in a private sibling
-  stage and replaces the destination only after a complete build; with
-  `overwrite = FALSE`, a non-empty destination is rejected without
-  mutation. Repeated references to the same spatial image are copied
-  once, replacement keeps the deployment root’s permission bits, and
-  non-Cerebro RDS files or Windows-incompatible bundle targets are
-  rejected.
-- **The H5 guide now starts with the one-step export workflow.**
-  `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the
-  `.crb` and its H5 sidecar together; the previous manual conversion
-  remains documented for legacy embedded `.crb` files.
+- **The app tests reuse one Shiny process where booting a fresh one buys
+  nothing.** Every `shinytest2` recording started its own app, and
+  starting the app cost far more than the assertions did: on a CI runner
+  roughly 88% of the suite’s wall clock went to cold starts rather than
+  to its ~8,600 assertions. Recordings that only navigate the plot
+  tabset and read the DOM now share one `AppDriver` per file without
+  changing a single assertion. Local timings estimate that this can save
+  about 1.5 minutes per CI run. The immune-repertoire file takes this
+  furthest: eleven of its sixteen tests share one driver, cutting that
+  file’s local runtime from roughly 170 seconds to 90–120 seconds across
+  measured runs.
+- Sharing is applied only where a reused app is still a fair test. These
+  keep their own driver deliberately: the `app$expect_values()`
+  snapshots, whose files are named after the driver; the scRepertoire
+  lazy-loading contracts and others that assert what a pristine app has
+  *not* loaded; tests that read an input’s initial value; and the one
+  that leaves a modal open. Tests that navigate the dashboard sidebar
+  and then read that tab’s output keep their own driver where the reused
+  output remains suspended and reads back `NULL`.
 
 ## CerebroNexus 3.0.3
 
