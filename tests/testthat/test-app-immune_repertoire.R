@@ -27,19 +27,23 @@ wait_for_ir_sidebar <- function(app, timeout = 60000) {
   )
 }
 
-activate_ir_tab <- function(app, timeout = 60000) {
+open_ir_tab <- function(app, timeout = 60000) {
   wait_for_ir_sidebar(app, timeout = timeout)
   app$run_js(
     sprintf("document.querySelector('%s').click();", ir_sidebar_selector)
   )
-  ## Every caller below assumes it starts on the default Clonal UMAP plot tab.
-  ## On a freshly booted app that is already true, but on the shared driver a
-  ## previous test may have left another plot tab active, so put the tabset back
-  ## explicitly once it is bound. Selecting the tab it is already on is a no-op.
   app$wait_for_js(
     "document.querySelector('#ir_tabs.shiny-bound-input') !== null",
     timeout = timeout
   )
+}
+
+activate_ir_tab <- function(app, timeout = 60000) {
+  open_ir_tab(app, timeout = timeout)
+  ## Every caller below assumes it starts on the default Clonal UMAP plot tab.
+  ## On a freshly booted app that is already true, but on the shared driver a
+  ## previous test may have left another plot tab active, so put the tabset back
+  ## explicitly once it is bound. Selecting the tab it is already on is a no-op.
   app$set_inputs(ir_tabs = "Clonal UMAP", wait_ = FALSE)
   app$wait_for_js(
     paste0(
@@ -58,15 +62,15 @@ activate_ir_tab <- function(app, timeout = 60000) {
 ## The tests in this file each booted their own app, and booting dominates their
 ## runtime. The ones that only navigate the plot tabset and read the DOM now
 ## share a single driver, created on first use and stopped when the file ends.
-## Eleven of the sixteen tests use the shared driver; the other five keep their
+## Ten of the sixteen tests use the shared driver; the other six keep their
 ## own boot (below). Measured locally this takes the file from ~170s to ~120s.
 ##
 ## Sharing is deliberately NOT applied to a test that would be weakened by a
 ## reused app. Keep giving these their own AppDriver:
 ##   * the lazy-loading boundary test — it asserts what a PRISTINE app has not
 ##     loaded, and the shared driver has scRepertoire warm from other tests;
-##   * tests that assert an input's INITIAL value ("Group by" empty, Clonal UMAP
-##     ungrouped) — a reused app carries the previous test's selection;
+##   * tests that assert INITIAL state (the active landing tab, "Group by"
+##     empty, Clonal UMAP ungrouped) — a reused app carries prior selections;
 ##   * the info-dialog test — it leaves a modal open over the page;
 ##   * the "does not break the main app" test — it reads the Data info tab of an
 ##     app that has never opened the repertoire page.
@@ -87,27 +91,40 @@ shared_app <- function() {
   shared_driver
 }
 
+test_that("first IR plot tab is Clonal UMAP", {
+  # The default/landing tab should be the Clonal UMAP overview, so the first
+  # thing shown is where expanded clones sit on the cell projection.
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "ir_default_tab",
+    height = 950,
+    width = 1619,
+    load_timeout = 60000
+  )
+  withr::defer(app$stop())
+  open_ir_tab(app)
+
+  active_tab <- app$get_js(
+    paste0(
+      "(function(){",
+      "var active=document.querySelector('#ir_tabs li.active a');",
+      "return active?active.getAttribute('data-value'):null;",
+      "})()"
+    )
+  )
+  expect_identical(active_tab, "Clonal UMAP")
+})
+
 test_that("immune_repertoire tab is present with example data (has TCR)", {
   app <- shared_app()
-  wait_for_ir_sidebar(app)
+  activate_ir_tab(app)
 
   # example.crb carries real TCR data — the conditional tab should appear
   tab_present <- app$get_js(
     'document.querySelector(\'a[href="#shiny-tab-immune_repertoire"]\') !== null;'
   )
   expect_true(tab_present)
-})
-
-test_that("first IR plot tab is Clonal UMAP", {
-  # The default/landing tab should be the Clonal UMAP overview, so the first
-  # thing shown is where expanded clones sit on the cell projection.
-  app <- shared_app()
-  activate_ir_tab(app)
-
-  first_tab <- app$get_js(
-    "document.querySelector('#ir_tabs > li > a').textContent.trim();"
-  )
-  expect_identical(first_tab, "Clonal UMAP")
 })
 
 test_that("Group by is visible on plots whose grouping it drives", {
