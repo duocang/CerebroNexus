@@ -23,6 +23,11 @@
   that leaves a modal open. Tests that navigate the dashboard sidebar
   and then read that tab’s output keep their own driver where the reused
   output remains suspended and reads back `NULL`.
+- Production smoke tests now build each synthetic and real-data app
+  bundle once per test file instead of rebuilding identical artifacts
+  for every assertion. Consumers remain read-only and browser checks
+  still use independent Shiny sessions; locally this reduced the smoke
+  file from about 38 to 29 seconds.
 
 ## CerebroNexus 3.0.3
 
