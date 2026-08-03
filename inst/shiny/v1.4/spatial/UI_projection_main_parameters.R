@@ -60,32 +60,17 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
   if (
     exists("Cerebro.options") && !is.null(Cerebro.options[["spatial_images"]])
   ) {
-    si <- Cerebro.options[["spatial_images"]]
     have_selection <-
       exists("available_crb_files") && !is.null(available_crb_files$selected)
-    if (have_selection) {
-      ## Multi-dataset app: only offer the external image configured for the
-      ## CURRENTLY selected dataset. Do NOT fall back to another dataset's image
-      ## when this one has no entry — that would show, e.g., the Visium H&E behind
-      ## the Xenium cells.
-      selected <- available_crb_files$selected
-      match_idx <- which(available_crb_files$files == selected)
-      if (length(match_idx) > 0) {
-        nm <- names(available_crb_files$files)[match_idx[1]]
-        if (is.null(nm) || is.na(nm)) {
-          nm <- available_crb_files$names[match_idx[1]]
-        }
-        if (!is.null(nm) && !is.na(nm) && nm %in% names(si)) {
-          img_paths <- si[[nm]]
-          background_choices <- c(
-            background_choices,
-            setNames(img_paths, basename(img_paths))
-          )
-        }
-      }
-    } else if (length(si) > 0) {
-      ## Single-dataset app with no selection context: use the sole/first image.
-      img_paths <- si[[1]]
+    ## Multi-dataset apps only offer images configured for the CURRENT dataset;
+    ## single-dataset apps use the sole/first configured entry.
+    img_paths <- configured_spatial_images(
+      Cerebro.options,
+      if (have_selection) available_crb_files$files else NULL,
+      if (have_selection) available_crb_files$selected else NULL,
+      if (have_selection) available_crb_files$names else NULL
+    )
+    if (length(img_paths) > 0L) {
       background_choices <- c(
         background_choices,
         setNames(img_paths, basename(img_paths))

@@ -75,6 +75,102 @@ build_test_app <- function(cerebro_data, result_dir, ...) {
   )
 }
 
+render_bundle_spatial_background <- function(
+  app,
+  config,
+  background_image,
+  background_image_allowlist
+) {
+  renderer <- new.env(parent = globalenv())
+  renderer$Cerebro.options <- config
+  sys.source(
+    file.path(
+      app,
+      "shiny",
+      "v1.4",
+      "spatial",
+      "func_projection_update_plot.R"
+    ),
+    envir = renderer
+  )
+
+  js <- get("js", envir = asNamespace("shinyjs"))
+  binding_names <- c(
+    "getContainerDimensions",
+    "updatePlot2DContinuousSpatial"
+  )
+  binding_existed <- vapply(
+    binding_names,
+    exists,
+    logical(1),
+    envir = js,
+    inherits = FALSE
+  )
+  previous_bindings <- lapply(binding_names, function(name) {
+    if (exists(name, envir = js, inherits = FALSE)) {
+      get(name, envir = js, inherits = FALSE)
+    } else {
+      NULL
+    }
+  })
+  on.exit(
+    for (index in seq_along(binding_names)) {
+      name <- binding_names[[index]]
+      if (binding_existed[[index]]) {
+        assign(name, previous_bindings[[index]], envir = js)
+      } else if (exists(name, envir = js, inherits = FALSE)) {
+        rm(list = name, envir = js)
+      }
+    },
+    add = TRUE
+  )
+
+  rendered_meta <- NULL
+  assign(
+    "getContainerDimensions",
+    function() list(width = 800, height = 600),
+    envir = js
+  )
+  assign(
+    "updatePlot2DContinuousSpatial",
+    function(meta, ...) rendered_meta <<- meta,
+    envir = js
+  )
+
+  withr::with_dir(
+    app,
+    renderer$spatial_projection_update_plot(list(
+      cells_df = data.frame(score = c(1, 2)),
+      coordinates = data.frame(x = c(1, 2), y = c(3, 4)),
+      reset_axes = TRUE,
+      color_assignments = character(),
+      hover_info = c("first", "second"),
+      plot_parameters = list(
+        color_variable = "score",
+        background_image = background_image,
+        background_image_allowlist = background_image_allowlist,
+        n_dimensions = 2,
+        x_range = NULL,
+        y_range = NULL,
+        background_flip_x = FALSE,
+        background_flip_y = FALSE,
+        background_scale_x = 1,
+        background_scale_y = 1,
+        background_offset_x = 0,
+        background_offset_y = 0,
+        background_opacity = 1,
+        plot_type = "Feature plot",
+        point_size = 5,
+        point_opacity = 1,
+        draw_border = FALSE,
+        hover_info = FALSE
+      )
+    ))
+  )
+
+  rendered_meta
+}
+
 source_bundle_runtime <- function(app = NULL) {
   utility <- if (is.null(app)) {
     testthat::test_path("../../inst/shiny/v1.4/utility_functions.R")
@@ -2234,75 +2330,72 @@ test_that("external spatial images render from disk without an HTTP mapping", {
   app_source <- paste(readLines(file.path(app, "app.R")), collapse = "\n")
   expect_false(grepl("addResourcePath", app_source, fixed = TRUE))
 
-  renderer <- new.env(parent = globalenv())
-  renderer$Cerebro.options <- config
-  sys.source(
-    file.path(
-      app,
-      "shiny",
-      "v1.4",
-      "spatial",
-      "func_projection_update_plot.R"
-    ),
-    envir = renderer
+  rendered_meta <- render_bundle_spatial_background(
+    app,
+    config,
+    stored,
+    stored
   )
-
-  js <- get("js", envir = asNamespace("shinyjs"))
-  local_js_binding <- function(name, value) {
-    existed <- exists(name, envir = js, inherits = FALSE)
-    if (existed) {
-      previous <- get(name, envir = js, inherits = FALSE)
-    }
-    withr::defer(
-      if (existed) {
-        assign(name, previous, envir = js)
-      } else if (exists(name, envir = js, inherits = FALSE)) {
-        rm(list = name, envir = js)
-      },
-      envir = parent.frame()
-    )
-    assign(name, value, envir = js)
-  }
-  rendered_meta <- NULL
-  local_js_binding(
-    "getContainerDimensions",
-    function() list(width = 800, height = 600)
-  )
-  local_js_binding(
-    "updatePlot2DContinuousSpatial",
-    function(meta, ...) rendered_meta <<- meta
-  )
-
-  withr::local_dir(app)
-  renderer$spatial_projection_update_plot(list(
-    cells_df = data.frame(score = c(1, 2)),
-    coordinates = data.frame(x = c(1, 2), y = c(3, 4)),
-    reset_axes = TRUE,
-    color_assignments = character(),
-    hover_info = c("first", "second"),
-    plot_parameters = list(
-      color_variable = "score",
-      background_image = stored,
-      n_dimensions = 2,
-      x_range = NULL,
-      y_range = NULL,
-      background_flip_x = FALSE,
-      background_flip_y = FALSE,
-      background_scale_x = 1,
-      background_scale_y = 1,
-      background_offset_x = 0,
-      background_offset_y = 0,
-      background_opacity = 1,
-      plot_type = "Feature plot",
-      point_size = 5,
-      point_opacity = 1,
-      draw_border = FALSE,
-      hover_info = FALSE
-    )
-  ))
 
   expect_match(rendered_meta$background_image, "^data:image/png;base64,")
   expect_gt(nchar(rendered_meta$background_image), 22L)
+})
+
+test_that("forged spatial backgrounds cannot read unconfigured files", {
+  skip_if_not_installed("base64enc")
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  image <- file.path(root, "histology.png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("Dataset" = crb),
+    app,
+    spatial_images = list("Dataset" = image)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  allowed <- config$spatial_images[["Dataset"]]
+  outside <- file.path(root, "outside-secret.png")
+  unconfigured <- file.path(app, "spatial-assets", "unconfigured.png")
+  writeLines("OUTSIDE-PRIVATE-SENTINEL", outside)
+  writeLines("UNCONFIGURED-PRIVATE-SENTINEL", unconfigured)
+
+  attacks <- list(
+    "private-data/dataset.crb" = c(
+      allowed,
+      "private-data/dataset.crb"
+    ),
+    "../outside-secret.png" = c(allowed, "../outside-secret.png"),
+    "spatial-assets/unconfigured.png" = allowed
+  )
+  for (attack in names(attacks)) {
+    rendered_meta <- render_bundle_spatial_background(
+      app,
+      config,
+      attack,
+      attacks[[attack]]
+    )
+    expect_null(
+      rendered_meta$background_image,
+      info = paste("forged background was returned:", attack)
+    )
+  }
+
+  linked <- file.path(app, "spatial-assets", "linked.png")
+  if (isTRUE(file.symlink(outside, linked))) {
+    rendered_meta <- render_bundle_spatial_background(
+      app,
+      config,
+      "spatial-assets/linked.png",
+      c(allowed, "spatial-assets/linked.png")
+    )
+    expect_null(
+      rendered_meta$background_image,
+      info = "configured symlink escaped the public spatial-assets directory"
+    )
+  }
 })
 
 test_that("partially unmatched spatial images are not bundled", {

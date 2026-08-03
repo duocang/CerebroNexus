@@ -40,6 +40,74 @@ resolve_spatial_image_preset <- function(
   if (is.null(val) || length(val) != 1 || is.na(val)) fallback else val
 }
 
+## Resolve the server-side allowlist for the selected dataset. Browser-provided
+## selectInput values are never an authority for which files may be read.
+configured_spatial_images <- function(
+  options,
+  crb_files = NULL,
+  selected = NULL,
+  crb_names = NULL
+) {
+  if (is.null(options) || is.null(options[["spatial_images"]])) {
+    return(character())
+  }
+
+  spatial_images <- options[["spatial_images"]]
+  if (length(spatial_images) == 0L) {
+    return(character())
+  }
+
+  if (!is.null(crb_files) && !is.null(selected)) {
+    index <- which(crb_files == selected)
+    if (length(index) == 0L) {
+      return(character())
+    }
+    dataset <- names(crb_files)[index[[1L]]]
+    if (
+      (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) &&
+        length(crb_names) >= index[[1L]]
+    ) {
+      dataset <- crb_names[[index[[1L]]]]
+    }
+    if (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) {
+      return(character())
+    }
+    configured <- which(names(spatial_images) == dataset)
+    if (length(configured) == 0L) {
+      return(character())
+    }
+    images <- unlist(spatial_images[configured], use.names = FALSE)
+  } else {
+    images <- unlist(spatial_images[1L], use.names = FALSE)
+  }
+
+  if (!is.character(images)) {
+    return(character())
+  }
+  unique(images[!is.na(images) & nzchar(images)])
+}
+
+normalize_spatial_background_choice <- function(
+  background_image,
+  configured_images,
+  has_embedded_image = FALSE
+) {
+  allowed <- c(
+    "No Background",
+    configured_images,
+    if (isTRUE(has_embedded_image)) "__embedded__"
+  )
+  if (
+    !is.character(background_image) ||
+      length(background_image) != 1L ||
+      is.na(background_image) ||
+      !(background_image %in% allowed)
+  ) {
+    return("No Background")
+  }
+  background_image
+}
+
 format_spatial_preset_code <- function(
   label,
   offset_x,

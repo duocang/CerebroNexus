@@ -26,7 +26,9 @@
   still-running older app may retain its former `/data` HTTP mapping. Files
   explicitly supplied through `spatial_images` are copied to `spatial-assets/`,
   read by the server-side renderer and embedded as data URIs; the directory is
-  not registered as an HTTP resource. Each
+  not registered as an HTTP resource. Client-selected backgrounds must match
+  the current dataset's configured allowlist and resolve canonically inside
+  `spatial-assets/` before the renderer reads them. Each
   canonical target has one atomic build lock covering
   preflight through cleanup. Builds use a private sibling stage, retain the
   existing root mode, fail closed on unreadable destinations, never delete a

@@ -1,6 +1,54 @@
 ##----------------------------------------------------------------------------##
 ## Function that updates projections.
 ##----------------------------------------------------------------------------##
+## Defense in depth at the file-read boundary: require both an exact allowlist
+## match and canonical containment, including after resolving symbolic links.
+authorized_spatial_image_path <- function(
+  background_image,
+  allowlist,
+  cerebro_root
+) {
+  if (
+    !is.character(background_image) ||
+      length(background_image) != 1L ||
+      is.na(background_image) ||
+      !is.character(allowlist) ||
+      !(background_image %in% allowlist) ||
+      !is.character(cerebro_root) ||
+      length(cerebro_root) != 1L ||
+      is.na(cerebro_root)
+  ) {
+    return(NULL)
+  }
+
+  canonicalize <- function(path) {
+    tryCatch(
+      suppressWarnings(
+        normalizePath(path, winslash = "/", mustWork = TRUE)
+      ),
+      error = function(error) NULL
+    )
+  }
+  assets_root <- canonicalize(file.path(cerebro_root, "spatial-assets"))
+  image_path <- canonicalize(file.path(cerebro_root, background_image))
+  if (is.null(assets_root) || is.null(image_path)) {
+    return(NULL)
+  }
+
+  if (.Platform$OS.type == "windows") {
+    assets_root <- tolower(assets_root)
+    image_path_comparison <- tolower(image_path)
+  } else {
+    image_path_comparison <- image_path
+  }
+  assets_prefix <- paste0(sub("/+$", "", assets_root), "/")
+  if (!startsWith(image_path_comparison, assets_prefix)) {
+    return(NULL)
+  }
+
+  image_path
+}
+
 spatial_projection_update_plot <- function(input) {
   ## assign input data to new variables
   metadata <- input[['cells_df']]
@@ -41,9 +89,10 @@ spatial_projection_update_plot <- function(input) {
   ## Case 1: the real histology image embedded in the .crb. Its base64 data URI
   ## and coordinate-space bounds travel with the data, so it renders directly and
   ## aligns automatically — no file lookup, no manual flip/scale.
+  selected_background <- plot_parameters[["background_image"]]
   if (
-    !is.null(plot_parameters[['background_image']]) &&
-      identical(plot_parameters[['background_image']], "__embedded__") &&
+    !is.null(selected_background) &&
+      identical(selected_background, "__embedded__") &&
       !is.null(plot_parameters[['embedded_image']])
   ) {
     background_image_data <- plot_parameters[['embedded_image']]
@@ -69,28 +118,30 @@ spatial_projection_update_plot <- function(input) {
     )
     message("[spatial] using embedded histology image from .crb")
   } else if (
-    !is.null(plot_parameters[['background_image']]) &&
-      plot_parameters[['background_image']] != "No Background"
+    !is.null(selected_background) &&
+      !identical(selected_background, "No Background")
   ) {
-    img_path <- file.path(
-      Cerebro.options[["cerebro_root"]],
-      plot_parameters[['background_image']]
+    img_path <- authorized_spatial_image_path(
+      selected_background,
+      plot_parameters[["background_image_allowlist"]],
+      Cerebro.options[["cerebro_root"]]
     )
+    if (is.null(img_path)) {
+      message("[spatial] rejected unauthorized background image")
+    } else {
+      message(
+        "[spatial] background_image = ",
+        plot_parameters[['background_image']]
+      )
+      message("[spatial] resolved path  = ", img_path)
+      message("[spatial] file.exists    = ", file.exists(img_path))
+      message("[spatial] cerebro_root   = ", Cerebro.options[["cerebro_root"]])
 
-    message(
-      "[spatial] background_image = ",
-      plot_parameters[['background_image']]
-    )
-    message("[spatial] resolved path  = ", img_path)
-    message("[spatial] file.exists    = ", file.exists(img_path))
-    message("[spatial] cerebro_root   = ", Cerebro.options[["cerebro_root"]])
+      # Calculate bounds from coordinates
+      x_rng <- range(coordinates[[1]], na.rm = TRUE)
+      y_rng <- range(coordinates[[2]], na.rm = TRUE)
+      ext <- tolower(tools::file_ext(img_path))
 
-    # Calculate bounds from coordinates
-    x_rng <- range(coordinates[[1]], na.rm = TRUE)
-    y_rng <- range(coordinates[[2]], na.rm = TRUE)
-    ext <- tolower(tools::file_ext(img_path))
-
-    if (file.exists(img_path)) {
       # Read JPEG dimensions from header without decompressing
       img_dims <- NULL
       tryCatch(
@@ -203,8 +254,6 @@ spatial_projection_update_plot <- function(input) {
           warning("[spatial] Failed to encode background image: ", e$message)
         }
       )
-    } else {
-      warning("[spatial] Background image file not found: ", img_path)
     }
   }
 
