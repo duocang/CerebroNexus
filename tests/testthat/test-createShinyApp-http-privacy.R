@@ -152,7 +152,7 @@ privacy_write_legacy_app <- function(app_dir) {
   )
 }
 
-test_that("generated apps expose only bundled spatial images over HTTP", {
+test_that("generated apps expose no bundled artifacts over HTTP", {
   skip_if_not_installed("callr")
   skip_if_not_installed("httpuv")
 
@@ -179,8 +179,8 @@ test_that("generated apps expose only bundled spatial images over HTTP", {
   )
   expect_true(all(file.exists(private_paths)))
   expect_false(dir.exists(file.path(app_dir, "data")))
-  public_image <- file.path(app_dir, "spatial-assets", "histology.png")
-  expect_true(file.exists(public_image))
+  spatial_image <- file.path(app_dir, "spatial-assets", "histology.png")
+  expect_true(file.exists(spatial_image))
 
   app <- privacy_start_app(app_dir, port, root)
   on.exit(privacy_stop_app(app), add = TRUE)
@@ -194,7 +194,8 @@ test_that("generated apps expose only bundled spatial images over HTTP", {
     "/private-data/h5-data.crb",
     "/private-data/bpcells-data.crb",
     "/private-data/matrix.h5",
-    "/private-data/matrix.bpcells/payload"
+    "/private-data/matrix.bpcells/payload",
+    "/spatial-assets/histology.png"
   )
   statuses <- vapply(
     private_urls,
@@ -202,13 +203,6 @@ test_that("generated apps expose only bundled spatial images over HTTP", {
     integer(1)
   )
   expect_identical(unname(statuses), rep(404L, length(statuses)))
-
-  image_response <- privacy_get_from_app(app, "/spatial-assets/histology.png")
-  expect_identical(httr::status_code(image_response), 200L)
-  expect_identical(
-    httr::content(image_response, as = "raw"),
-    sources$image_bytes
-  )
 })
 
 test_that("a running legacy data mapping cannot expose replacement data", {

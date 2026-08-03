@@ -239,7 +239,7 @@ test_that("createShinyApp accepts the spatial_images parameters", {
 test_that("createShinyApp bundles a spatial image and writes the option", {
   # End-to-end exercise of the new side-copy + option-write path: a matched
   # spatial image must be copied into the bundle and its stored path rewritten
-  # to the public spatial-assets/<file> form inside cerebro_config.rds.
+  # to the spatial-assets/<file> form inside cerebro_config.rds.
   skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   # 1x1 transparent PNG is enough; the copy path does not decode the image.
@@ -332,7 +332,7 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
   expect_true(file.exists(cfg_path))
   cfg <- readRDS(cfg_path)
   expect_true(!is.null(cfg[["spatial_images"]]))
-  # path rewritten to the bundle-relative public spatial namespace
+  # path rewritten to the bundle-relative spatial asset directory
   stored <- cfg[["spatial_images"]][["Xenium demo"]]
   expect_match(stored, "^spatial-assets/", perl = TRUE)
   # and the image really landed in the bundle

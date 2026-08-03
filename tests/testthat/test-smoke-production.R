@@ -68,13 +68,13 @@ test_that("createShinyApp bundles the app directory and config", {
   expect_true(file.exists(file.path(app$app_dir, "app.R")))
   expect_true(file.exists(file.path(app$app_dir, "cerebro_config.rds")))
 
-  ## Raw crbs remain private; only background images enter the public namespace.
+  ## Raw CRBs and background images remain in their separate bundle directories.
   private_data <- list.files(file.path(app$app_dir, "private-data"))
-  public_spatial <- list.files(file.path(app$app_dir, "spatial-assets"))
+  spatial_assets <- list.files(file.path(app$app_dir, "spatial-assets"))
   expect_true(any(grepl("Synthetic_A\\.crb$", private_data)))
   expect_true(any(grepl("Synthetic_B\\.crb$", private_data)))
   expect_false(any(grepl("\\.png$", private_data)))
-  expect_setequal(public_spatial, c("bg_a.png", "bg_b.png"))
+  expect_setequal(spatial_assets, c("bg_a.png", "bg_b.png"))
 })
 
 test_that("multi-crb config lists both datasets by name", {

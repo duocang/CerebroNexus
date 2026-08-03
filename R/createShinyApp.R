@@ -723,26 +723,42 @@ dedent <- function(string) {
 
 # Backend descriptors and frozen plans ------------------------------------
 
+.bundleRequiredCerebroMethods <- c(
+  "print",
+  "getVersion",
+  "getExperiment",
+  "getParameters",
+  "getTechnicalInfo",
+  "getMetaData",
+  "getCellNames",
+  "getCellCycle",
+  "getGroups",
+  "getGroupLevels",
+  "getGeneLists",
+  "getGeneNames",
+  "availableProjections",
+  "getProjection",
+  "getExpressionMatrix",
+  "getMethodsForMarkerGenes",
+  "getGroupsWithMarkerGenes",
+  "getMarkerGenes",
+  "getGroupsWithMostExpressedGenes",
+  "getMethodsForEnrichedPathways",
+  "getExtraMaterialCategories",
+  "getMethodsForTrajectories",
+  "getNamesOfTrajectories",
+  "getTrajectory"
+)
+
 ## Treat the ordinary field as data. The getter binding is checked only as a
 ## format marker and is never invoked during preflight.
 .readBundleBackend <- function(crb_path) {
   object <- readRDS(crb_path)
-  core_methods <- c(
-    "print",
-    "getVersion",
-    "getMetaData",
-    "getCellNames",
-    "getGroups",
-    "getGeneNames",
-    "availableProjections",
-    "getProjection",
-    "getExpressionMatrix"
-  )
   recognized <- is.environment(object) &&
     all(c("Cerebro_v1.3", "R6") %in% class(object)) &&
     environmentIsLocked(object)
   if (recognized) {
-    for (method in core_methods) {
+    for (method in .bundleRequiredCerebroMethods) {
       if (
         !exists(method, envir = object, inherits = FALSE) ||
           bindingIsActive(method, object) ||
@@ -1660,8 +1676,9 @@ dedent <- function(string) {
 #' \code{.crb}, H5, and BPCells artifacts are not registered as HTTP resources.
 #' Spatial background images are the deliberate exception: files explicitly
 #' supplied through \code{spatial_images} are copied verbatim under
-#' \code{spatial-assets/} and made available to the browser. Callers must
-#' provide trusted, browser-safe image files. Preflight requires a minimum
+#' \code{spatial-assets/}. The server-side renderer reads these files and embeds
+#' them as data URIs; the directory is not registered as an HTTP resource.
+#' Callers must provide trusted image files. Preflight requires a minimum
 #' stable runtime API and reads the ordinary \code{expression_backend} field
 #' without invoking serialized methods or its getter. The generated
 #' configuration stores the effective per-CRB attachment plan after applying
@@ -1672,6 +1689,9 @@ dedent <- function(string) {
 #' format.
 #' Dataset labels and canonical CRB sources are both unique: two labels cannot
 #' select the same resolved input file.
+#' Generated bundles follow the standard deployment model of one app per R
+#' process; process-global \code{Cerebro.options} does not provide same-process
+#' isolation between separately sourced apps.
 #'
 #' Launch settings are validated and frozen in a typed internal manifest before
 #' target preparation. The generated \code{app.R} reads that manifest instead of
@@ -1751,9 +1771,8 @@ dedent <- function(string) {
 #' @param spatial_images Named list/vector of paths to spatial background images
 #'   (e.g. tissue histology) shown behind the Spatial tab projection. Names must
 #'   match \code{cerebro_data}. Supplied files are copied verbatim into the
-#'   app's public \code{spatial-assets/} resource directory; callers must
-#'   provide trusted, browser-safe images. Missing files are omitted with a
-#'   warning.
+#'   app's \code{spatial-assets/} directory. The server-side renderer reads and
+#'   embeds them as data URIs. Missing files are omitted with a warning.
 #' @param spatial_images_flip_x Named list/vector; whether to flip the spatial
 #'   background image horizontally. Names must match \code{cerebro_data}.
 #' @param spatial_images_flip_y Named list/vector; whether to flip the spatial
@@ -2502,13 +2521,6 @@ createShinyApp <- function(
 
     bundle_run_options <- Cerebro.options$.bundle_run_options
     shiny_options <- bundle_run_options$shiny_app_options
-
-    if (dir.exists(file.path(cerebro_root, "spatial-assets"))) {
-      shiny::addResourcePath(
-        "spatial-assets",
-        file.path(cerebro_root, "spatial-assets")
-      )
-    }
 
     source(file.path(cerebro_root, "shiny/v1.4/shiny_UI.R"))
     source(file.path(cerebro_root, "shiny/v1.4/shiny_server.R"))

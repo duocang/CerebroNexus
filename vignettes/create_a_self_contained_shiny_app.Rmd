@@ -130,14 +130,14 @@ validate the ordinary field at load time. A historical CRB may omit both the
 field and getter; an object containing only one of them is an unsupported mixed
 format and fails closed.
 
-## Private data and public spatial assets
+## Private data and spatial assets
 
-Among user-supplied artifacts, the generated app deliberately exposes only
-files explicitly passed through `spatial_images`, under the `spatial-assets/`
-HTTP resource namespace. They are copied verbatim because the browser must
-fetch them; the caller is responsible for supplying trusted, browser-safe image
-files. Raw `.crb`, H5 and BPCells artifacts stay under `private-data/`, which is
-never registered with `addResourcePath()`. The historical `data/` directory
+Files explicitly passed through `spatial_images` are copied under
+`spatial-assets/`. The server-side renderer reads them from disk and embeds them
+as data URIs when drawing the plot; the directory is not registered as an HTTP
+resource. Raw `.crb`, H5 and BPCells artifacts stay under `private-data/`, which
+is likewise never registered with `addResourcePath()`. The historical `data/`
+directory
 name is deliberately not reused: a still-running older generated app can retain
 its former `/data` resource mapping while the bundle directory is replaced.
 
@@ -145,6 +145,10 @@ This boundary prevents ordinary HTTP download through the generated Shiny app;
 it is not encryption or an operating-system access-control boundary. Anyone
 with filesystem access to the deployment account can still read the files.
 Missing optional spatial images are omitted with a warning.
+
+Generated bundles follow the standard Shiny deployment model of one app per R
+process. They use process-global `Cerebro.options` and do not claim isolation
+between separately sourced apps in the same process.
 
 ## Host-managed matrix overrides
 

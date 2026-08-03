@@ -841,6 +841,32 @@ test_that("the minimum runtime Cerebro API is required before publication", {
   expect_identical(readLines(file.path(app, "marker.txt")), "KEEP")
 })
 
+test_that("every mandatory runtime Cerebro method is checked", {
+  expect_true(exists(".bundleRequiredCerebroMethods", mode = "character"))
+  expect_true(all(
+    c(
+      "getGroupsWithMostExpressedGenes",
+      "getMethodsForEnrichedPathways",
+      "getExtraMaterialCategories"
+    ) %in%
+      .bundleRequiredCerebroMethods
+  ))
+
+  root <- withr::local_tempdir()
+  for (method in .bundleRequiredCerebroMethods) {
+    payload <- copy_cerebro_fixture_bindings(method)
+    lockEnvironment(payload, bindings = TRUE)
+    path <- file.path(root, paste0(method, ".crb"))
+    saveRDS(payload, path)
+
+    expect_error(
+      .readBundleBackend(path),
+      "recognized Cerebro",
+      info = method
+    )
+  }
+})
+
 test_that("preflight never invokes a serialized backend getter", {
   root <- withr::local_tempdir()
   sentinel <- file.path(root, "getter-was-run")
@@ -2186,6 +2212,97 @@ test_that("one spatial image can be shared by multiple data sets", {
     readLines(file.path(app, "spatial-assets", "histology.png")),
     "IMAGE"
   )
+})
+
+test_that("external spatial images render from disk without an HTTP mapping", {
+  skip_if_not_installed("base64enc")
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  image <- file.path(root, "histology.png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c("Dataset" = crb),
+    app,
+    spatial_images = list("Dataset" = image)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  stored <- config$spatial_images[["Dataset"]]
+  expect_identical(stored, file.path("spatial-assets", "histology.png"))
+  app_source <- paste(readLines(file.path(app, "app.R")), collapse = "\n")
+  expect_false(grepl("addResourcePath", app_source, fixed = TRUE))
+
+  renderer <- new.env(parent = globalenv())
+  renderer$Cerebro.options <- config
+  sys.source(
+    file.path(
+      app,
+      "shiny",
+      "v1.4",
+      "spatial",
+      "func_projection_update_plot.R"
+    ),
+    envir = renderer
+  )
+
+  js <- get("js", envir = asNamespace("shinyjs"))
+  local_js_binding <- function(name, value) {
+    existed <- exists(name, envir = js, inherits = FALSE)
+    if (existed) {
+      previous <- get(name, envir = js, inherits = FALSE)
+    }
+    withr::defer(
+      if (existed) {
+        assign(name, previous, envir = js)
+      } else if (exists(name, envir = js, inherits = FALSE)) {
+        rm(list = name, envir = js)
+      },
+      envir = parent.frame()
+    )
+    assign(name, value, envir = js)
+  }
+  rendered_meta <- NULL
+  local_js_binding(
+    "getContainerDimensions",
+    function() list(width = 800, height = 600)
+  )
+  local_js_binding(
+    "updatePlot2DContinuousSpatial",
+    function(meta, ...) rendered_meta <<- meta
+  )
+
+  withr::local_dir(app)
+  renderer$spatial_projection_update_plot(list(
+    cells_df = data.frame(score = c(1, 2)),
+    coordinates = data.frame(x = c(1, 2), y = c(3, 4)),
+    reset_axes = TRUE,
+    color_assignments = character(),
+    hover_info = c("first", "second"),
+    plot_parameters = list(
+      color_variable = "score",
+      background_image = stored,
+      n_dimensions = 2,
+      x_range = NULL,
+      y_range = NULL,
+      background_flip_x = FALSE,
+      background_flip_y = FALSE,
+      background_scale_x = 1,
+      background_scale_y = 1,
+      background_offset_x = 0,
+      background_offset_y = 0,
+      background_opacity = 1,
+      plot_type = "Feature plot",
+      point_size = 5,
+      point_opacity = 1,
+      draw_border = FALSE,
+      hover_info = FALSE
+    )
+  ))
+
+  expect_match(rendered_meta$background_image, "^data:image/png;base64,")
+  expect_gt(nchar(rendered_meta$background_image), 22L)
 })
 
 test_that("partially unmatched spatial images are not bundled", {

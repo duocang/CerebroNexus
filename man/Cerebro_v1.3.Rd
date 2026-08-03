@@ -532,7 +532,8 @@ runtime attach) will produce objects tagged \code{"h5"} or
 useful.}
 
 \item{\code{location}}{Optional character path (absolute or relative to the
-generated app \code{data/} directory) where the external matrix lives.
+parent directory of the serialized Cerebro object) where the external
+matrix lives.
 \code{NULL} when \code{type == "embedded"}.}
 }
 \if{html}{\out{</div>}}

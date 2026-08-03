@@ -23,9 +23,10 @@
 - **Bundle publication now has an explicit private/public boundary and recovery
   protocol.** Raw `.crb`, H5 and BPCells artifacts stay in the non-HTTP
   `private-data/` tree; the historical `data/` name is not reused because a
-  still-running older app may retain its former `/data` HTTP mapping. Only files
-  explicitly supplied through `spatial_images` enter the public
-  `spatial-assets/` resource path and must be trusted browser-safe images. Each
+  still-running older app may retain its former `/data` HTTP mapping. Files
+  explicitly supplied through `spatial_images` are copied to `spatial-assets/`,
+  read by the server-side renderer and embedded as data URIs; the directory is
+  not registered as an HTTP resource. Each
   canonical target has one atomic build lock covering
   preflight through cleanup. Builds use a private sibling stage, retain the
   existing root mode, fail closed on unreadable destinations, never delete a
