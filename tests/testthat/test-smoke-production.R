@@ -11,10 +11,15 @@
 skip_if_not_installed("Seurat")
 skip_if_not_installed("SeuratObject")
 
+shared_fixture_env <- environment()
+shared_smoke_app <- NULL
+shared_real_app <- NULL
+shared_real_app_initialized <- FALSE
+
 ## Shared fixture: convert two synthetic spatial datasets and build one app that
 ## bundles both, each with its own background image and alignment defaults.
-build_smoke_app <- function() {
-  root <- withr::local_tempdir(.local_envir = parent.frame())
+build_smoke_app <- function(envir = parent.frame()) {
+  root <- withr::local_tempdir(.local_envir = envir)
 
   crb_a <- convert_synthetic_to_crb(
     make_synthetic_spatial_seurat(seed = 1, shift = 0),
@@ -45,6 +50,16 @@ build_smoke_app <- function() {
   list(root = root, app_dir = app_dir, crb_a = crb_a, crb_b = crb_b)
 }
 
+## Building this bundle is substantially more expensive than inspecting it.
+## Every consumer below is read-only, so build it once for this file. The
+## browser test still creates its own AppDriver and therefore its own session.
+get_smoke_app <- function() {
+  if (is.null(shared_smoke_app)) {
+    shared_smoke_app <<- build_smoke_app(envir = shared_fixture_env)
+  }
+  shared_smoke_app
+}
+
 test_that("convertSeuratToCerebro produces a .crb carrying spatial data", {
   root <- withr::local_tempdir()
   crb_path <- convert_synthetic_to_crb(
@@ -62,7 +77,7 @@ test_that("convertSeuratToCerebro produces a .crb carrying spatial data", {
 })
 
 test_that("createShinyApp bundles the app directory and config", {
-  app <- build_smoke_app()
+  app <- get_smoke_app()
 
   expect_true(dir.exists(app$app_dir))
   expect_true(file.exists(file.path(app$app_dir, "app.R")))
@@ -78,7 +93,7 @@ test_that("createShinyApp bundles the app directory and config", {
 })
 
 test_that("multi-crb config lists both datasets by name", {
-  app <- build_smoke_app()
+  app <- get_smoke_app()
   cfg <- readRDS(file.path(app$app_dir, "cerebro_config.rds"))
 
   expect_identical(
@@ -113,7 +128,7 @@ test_that("multi-crb config lists both datasets by name", {
 })
 
 test_that("each dataset keeps its own background image + alignment params", {
-  app <- build_smoke_app()
+  app <- get_smoke_app()
   cfg <- readRDS(file.path(app$app_dir, "cerebro_config.rds"))
 
   ## Background image path is per-dataset, not shared.
@@ -140,7 +155,7 @@ test_that("each dataset keeps its own background image + alignment params", {
 ## package (no convert step — these are already .crb) so the app is exercised
 ## against real coordinate spaces and both background-image paths: Visium with
 ## an EXTERNAL H&E png, Xenium with an EMBEDDED histology image.
-build_real_app <- function() {
+build_real_app <- function(envir = parent.frame()) {
   visium_crb <- system.file(
     "extdata/v1.4/demo_spatial_visium.crb",
     package = "CerebroNexus"
@@ -157,7 +172,7 @@ build_real_app <- function() {
     return(NULL)
   }
 
-  root <- withr::local_tempdir(.local_envir = parent.frame())
+  root <- withr::local_tempdir(.local_envir = envir)
   app_dir <- file.path(root, "app")
   createShinyApp(
     cerebro_data = c("Visium" = visium_crb, "Xenium" = xenium_crb),
@@ -177,8 +192,18 @@ build_real_app <- function() {
   )
 }
 
+## Keep the real-data bundle separate from the synthetic fixture. Its consumers
+## are also read-only, and its browser test creates an independent AppDriver.
+get_real_app <- function() {
+  if (!shared_real_app_initialized) {
+    shared_real_app <<- build_real_app(envir = shared_fixture_env)
+    shared_real_app_initialized <<- TRUE
+  }
+  shared_real_app
+}
+
 test_that("createShinyApp bundles real spatial demos with mixed image paths", {
-  app <- build_real_app()
+  app <- get_real_app()
   skip_if(is.null(app), "bundled real spatial demos not available")
 
   expect_true(dir.exists(app$app_dir))
@@ -205,7 +230,7 @@ test_that("createShinyApp bundles real spatial demos with mixed image paths", {
 })
 
 test_that("the generated app remains self-contained at runtime", {
-  app <- build_real_app()
+  app <- get_real_app()
   skip_if(is.null(app), "bundled real spatial demos not available")
 
   app_source <- paste(
@@ -259,7 +284,7 @@ test_that("the generated real-data app boots with the Spatial tab", {
   skip_if_not_installed("shinytest2")
   skip_on_cran()
 
-  app_info <- build_real_app()
+  app_info <- get_real_app()
   skip_if(is.null(app_info), "bundled real spatial demos not available")
   shinytest2::local_app_support(app_info$app_dir)
 
@@ -283,7 +308,7 @@ test_that("the generated multi-crb app boots and switches datasets", {
   skip_if_not_installed("shinytest2")
   skip_on_cran()
 
-  app_info <- build_smoke_app()
+  app_info <- get_smoke_app()
   shinytest2::local_app_support(app_info$app_dir)
 
   driver <- shinytest2::AppDriver$new(
@@ -393,7 +418,7 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
   skip_on_cran()
   skip_on_os("windows") # the hermetic library is built with symlinks
 
-  app <- build_smoke_app()
+  app <- get_smoke_app()
   cfg <- readRDS(file.path(app$app_dir, "cerebro_config.rds"))
   first_crb <- file.path(app$app_dir, cfg[["crb_file_to_load"]][[1]])
   expect_true(file.exists(first_crb))
@@ -478,7 +503,7 @@ test_that("an exported bundle resolves the HLA core with no CerebroNexus install
   skip_on_cran()
   skip_on_os("windows") # the hermetic library is built with symlinks
 
-  app <- build_smoke_app()
+  app <- get_smoke_app()
   shim <- file.path(app$app_dir, "shiny/v1.4/hla_tcr_motifs/core_shim.R")
   skip_if_not(file.exists(shim), "HLA module not present in bundle")
 

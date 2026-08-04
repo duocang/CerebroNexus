@@ -27,11 +27,24 @@ wait_for_ir_sidebar <- function(app, timeout = 60000) {
   )
 }
 
-activate_ir_tab <- function(app, timeout = 60000) {
+open_ir_tab <- function(app, timeout = 60000) {
   wait_for_ir_sidebar(app, timeout = timeout)
   app$run_js(
     sprintf("document.querySelector('%s').click();", ir_sidebar_selector)
   )
+  app$wait_for_js(
+    "document.querySelector('#ir_tabs.shiny-bound-input') !== null",
+    timeout = timeout
+  )
+}
+
+activate_ir_tab <- function(app, timeout = 60000) {
+  open_ir_tab(app, timeout = timeout)
+  ## Every caller below assumes it starts on the default Clonal UMAP plot tab.
+  ## On a freshly booted app that is already true, but on the shared driver a
+  ## previous test may have left another plot tab active, so put the tabset back
+  ## explicitly once it is bound. Selecting the tab it is already on is a no-op.
+  app$set_inputs(ir_tabs = "Clonal UMAP", wait_ = FALSE)
   app$wait_for_js(
     paste0(
       "(function(){",
@@ -46,24 +59,37 @@ activate_ir_tab <- function(app, timeout = 60000) {
   )
 }
 
-test_that("immune_repertoire tab is present with example data (has TCR)", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_present",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
-  wait_for_ir_sidebar(app)
-
-  # example.crb carries real TCR data — the conditional tab should appear
-  tab_present <- app$get_js(
-    'document.querySelector(\'a[href="#shiny-tab-immune_repertoire"]\') !== null;'
-  )
-  expect_true(tab_present)
-})
+## The tests in this file each booted their own app, and booting dominates their
+## runtime. The ones that only navigate the plot tabset and read the DOM now
+## share a single driver, created on first use and stopped when the file ends.
+## Ten of the sixteen tests use the shared driver; the other six keep their
+## own boot (below). Measured locally this takes the file from ~170s to ~120s.
+##
+## Sharing is deliberately NOT applied to a test that would be weakened by a
+## reused app. Keep giving these their own AppDriver:
+##   * the lazy-loading boundary test — it asserts what a PRISTINE app has not
+##     loaded, and the shared driver has scRepertoire warm from other tests;
+##   * tests that assert INITIAL state (the active landing tab, "Group by"
+##     empty, Clonal UMAP ungrouped) — a reused app carries prior selections;
+##   * the info-dialog test — it leaves a modal open over the page;
+##   * the "does not break the main app" test — it reads the Data info tab of an
+##     app that has never opened the repertoire page.
+shared_driver <- NULL
+shared_driver_env <- environment()
+shared_app <- function() {
+  if (is.null(shared_driver)) {
+    local_app_support(inst_dir, envir = shared_driver_env)
+    shared_driver <<- AppDriver$new(
+      inst_dir,
+      name = "ir_shared",
+      height = 950,
+      width = 1619,
+      load_timeout = 60000
+    )
+    withr::defer(shared_driver$stop(), envir = shared_driver_env)
+  }
+  shared_driver
+}
 
 test_that("first IR plot tab is Clonal UMAP", {
   # The default/landing tab should be the Clonal UMAP overview, so the first
@@ -71,18 +97,34 @@ test_that("first IR plot tab is Clonal UMAP", {
   local_app_support(inst_dir)
   app <- AppDriver$new(
     inst_dir,
-    name = "ir_first_tab",
+    name = "ir_default_tab",
     height = 950,
     width = 1619,
     load_timeout = 60000
   )
   withr::defer(app$stop())
+  open_ir_tab(app)
+
+  active_tab <- app$get_js(
+    paste0(
+      "(function(){",
+      "var active=document.querySelector('#ir_tabs li.active a');",
+      "return active?active.getAttribute('data-value'):null;",
+      "})()"
+    )
+  )
+  expect_identical(active_tab, "Clonal UMAP")
+})
+
+test_that("immune_repertoire tab is present with example data (has TCR)", {
+  app <- shared_app()
   activate_ir_tab(app)
 
-  first_tab <- app$get_js(
-    "document.querySelector('#ir_tabs > li > a').textContent.trim();"
+  # example.crb carries real TCR data — the conditional tab should appear
+  tab_present <- app$get_js(
+    'document.querySelector(\'a[href="#shiny-tab-immune_repertoire"]\') !== null;'
   )
-  expect_identical(first_tab, "Clonal UMAP")
+  expect_true(tab_present)
 })
 
 test_that("Group by is visible on plots whose grouping it drives", {
@@ -163,15 +205,7 @@ test_that("Group by is visible on plots whose grouping it drives", {
 })
 
 test_that("Chain is visible on plots whose scRepertoire API accepts it", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_chain_scope",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   chain_visible <- function() {
@@ -194,15 +228,7 @@ test_that("Chain is visible on plots whose scRepertoire API accepts it", {
 test_that("changing 'Group by' keeps the current plot tab", {
   # Changing the grouping must not reset the visualization tabset back to the
   # first tab (Abundance).
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_group_keep_tab",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   active_tab <- function() {
@@ -211,10 +237,23 @@ test_that("changing 'Group by' keeps the current plot tab", {
     )
   }
 
-  # move off the default (Abundance) tab
+  # Move off the default (Abundance) tab.
   app$set_inputs(ir_tabs = "Diversity", wait_ = FALSE)
   app$wait_for_idle(timeout = 45000)
   expect_identical(active_tab(), "Diversity")
+
+  # Establish the transition's starting state explicitly: a reused driver may
+  # otherwise already carry cell_type from an earlier test.
+  app$wait_for_js(
+    "document.querySelector('#ir_groupBy') !== null",
+    timeout = 20000
+  )
+  app$set_inputs(ir_groupBy = "", wait_ = FALSE)
+  app$wait_for_idle(timeout = 20000)
+  app$wait_for_js(
+    "(function(){var e=document.querySelector('#ir_groupBy');return !!e && e.value === '';})()",
+    timeout = 20000
+  )
 
   # change grouping; the tab should stay on Diversity, not reset to Abundance
   app$set_inputs(ir_groupBy = "cell_type", wait_ = FALSE)
@@ -227,15 +266,7 @@ test_that("settings dropdowns render all their options (not just selected)", {
   # all but the selected <option>. We use selectize = FALSE so users can
   # actually choose other values. Assert the real <option> counts here — note
   # set_inputs() bypasses the DOM, so it cannot catch this regression.
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_dropdown_options",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   n_options <- function(id) {
@@ -266,15 +297,7 @@ test_that("settings dropdowns render all their options (not just selected)", {
 })
 
 test_that("immune_repertoire tab can be opened and renders settings", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_open",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   # Chain is hidden on the default Clonal UMAP tab; move to one that shows it.
@@ -310,15 +333,7 @@ test_that("immune_repertoire module loads without breaking main app", {
 })
 
 test_that("Clonal UMAP tab renders with receptor + projection selectors", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_clonal_umap",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   # The Clonal UMAP tab should exist among the visualization tabs.
@@ -367,15 +382,7 @@ test_that("Clonal UMAP tab renders with receptor + projection selectors", {
 })
 
 test_that("Display options panel exposes scatter params on scatter-type tabs", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_display_opts",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   control_exists <- function(id) {
@@ -407,15 +414,7 @@ test_that("Display options panel exposes scatter params on scatter-type tabs", {
 })
 
 test_that("IR page uses the Main-tab layout (Main/Additional/Group boxes)", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_layout",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   # The three left-column parameter boxes (by their info buttons) and the
@@ -430,15 +429,7 @@ test_that("IR page uses the Main-tab layout (Main/Additional/Group boxes)", {
 })
 
 test_that("Clonal UMAP has Show-all toggle and group filters", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_umap_filters",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   exists_el <- function(sel) {
@@ -522,15 +513,7 @@ test_that("Clonal UMAP switches to static facets only when grouped", {
 })
 
 test_that("Clone call is hidden on the Clonal UMAP tab", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_umap_no_clonecall",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- shared_app()
   activate_ir_tab(app)
 
   exists_el <- function(sel) {
