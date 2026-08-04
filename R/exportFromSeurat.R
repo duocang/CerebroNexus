@@ -1,3 +1,414 @@
+.pathIsSymbolicLink <- function(path) {
+  link <- Sys.readlink(path)
+  !is.na(link) & nzchar(link)
+}
+
+.setExportArtifactMode <- function(path, mode, label) {
+  if (identical(.Platform$OS.type, "windows")) {
+    return(invisible(TRUE))
+  }
+  expected <- bitwAnd(as.integer(as.octmode(mode)), 511L)
+  changed <- suppressWarnings(Sys.chmod(path, mode = as.octmode(expected)))
+  actual <- bitwAnd(as.integer(file.info(path)$mode), 511L)
+  if (!isTRUE(changed) || is.na(actual) || actual != expected) {
+    stop(
+      "Failed to set private permissions on ",
+      label,
+      ": ",
+      path,
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+.createPrivateExportStage <- function(final_file) {
+  final_dir <- dirname(final_file)
+  if (!dir.exists(final_dir)) {
+    dir.create(final_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  if (!dir.exists(final_dir)) {
+    stop("Failed to create output directory: ", final_dir, call. = FALSE)
+  }
+
+  stage <- tempfile(
+    pattern = paste0(".", basename(final_file), "-stage-"),
+    tmpdir = final_dir
+  )
+  if (!dir.create(stage, mode = "0700", showWarnings = FALSE)) {
+    stop("Failed to create the export staging directory.", call. = FALSE)
+  }
+  tryCatch(
+    .setExportArtifactMode(stage, "0700", "the export staging directory"),
+    error = function(error) {
+      unlink(stage, recursive = TRUE, force = TRUE)
+      stop(error)
+    }
+  )
+  stage
+}
+
+.exportSidecarName <- function(final_file, expression_matrix_mode) {
+  suffix <- switch(
+    expression_matrix_mode,
+    h5 = ".h5",
+    bpcells = ".bpcells",
+    stop("Only external backends have a sidecar name.", call. = FALSE)
+  )
+  stem <- tools::file_path_sans_ext(basename(final_file))
+  paste0(stem, suffix)
+}
+
+.validatePortableExportBasename <- function(final_file) {
+  name <- basename(final_file)
+  stem <- tools::file_path_sans_ext(name)
+  windows_stem <- toupper(trimws(
+    sub("\\..*$", "", name),
+    which = "right"
+  ))
+  invalid_windows_name <-
+    windows_stem %in%
+    c("CON", "PRN", "AUX", "NUL") ||
+    grepl("^(COM|LPT)[1-9]$", windows_stem)
+  if (
+    !nzchar(stem) ||
+      name %in% c(".", "..") ||
+      grepl("[[:cntrl:]<>:\"/\\\\|?*]", name) ||
+      grepl("[. ]$", name) ||
+      invalid_windows_name
+  ) {
+    stop(
+      "External exports require a portable file name; reserved names, an empty ",
+      "stem, control characters, and Windows-invalid punctuation are not ",
+      "allowed: ",
+      name,
+      call. = FALSE
+    )
+  }
+  invisible(name)
+}
+
+.validateExportSidecarName <- function(location) {
+  if (
+    !is.character(location) ||
+      length(location) != 1L ||
+      is.na(location) ||
+      !nzchar(location) ||
+      location %in% c(".", "..") ||
+      grepl("[/\\\\]", location)
+  ) {
+    stop(
+      "The expression sidecar location must be one relative file name.",
+      call. = FALSE
+    )
+  }
+  invisible(location)
+}
+
+.readPublishedExportBackend <- function(final_file) {
+  if (!file.exists(final_file) || dir.exists(final_file)) {
+    return(NULL)
+  }
+  object <- tryCatch(readRDS(final_file), error = function(error) NULL)
+  if (
+    !is.environment(object) ||
+      !any(grepl("^Cerebro", class(object))) ||
+      !exists("expression_backend", envir = object, inherits = FALSE) ||
+      bindingIsActive("expression_backend", object) ||
+      isTRUE(rlang::env_binding_are_lazy(object, "expression_backend"))
+  ) {
+    return(NULL)
+  }
+
+  backend <- object[["expression_backend"]]
+  if (
+    !is.list(backend) ||
+      !is.character(backend$type) ||
+      length(backend$type) != 1L ||
+      is.na(backend$type) ||
+      !(backend$type %in% c("embedded", "h5", "bpcells"))
+  ) {
+    return(NULL)
+  }
+  if (identical(backend$type, "embedded")) {
+    return(list(type = "embedded", location = NULL))
+  }
+  invalid_location <- tryCatch(
+    {
+      .validateExportSidecarName(backend$location)
+      FALSE
+    },
+    error = function(error) TRUE
+  )
+  if (invalid_location) {
+    return(NULL)
+  }
+  list(type = backend$type, location = backend$location)
+}
+
+.publishCerebroExport <- function(
+  export,
+  final_file,
+  stage_dir,
+  expression_matrix_mode
+) {
+  final_dir <- dirname(final_file)
+  if (!dir.exists(final_dir)) {
+    dir.create(final_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  if (!dir.exists(final_dir)) {
+    stop("Failed to create output directory: ", final_dir, call. = FALSE)
+  }
+
+  stage_crb <- file.path(stage_dir, basename(final_file))
+  backend <- export$getExpressionBackend()
+  if (
+    !is.list(backend) ||
+      !is.character(backend$type) ||
+      length(backend$type) != 1L ||
+      is.na(backend$type) ||
+      !identical(backend$type, expression_matrix_mode)
+  ) {
+    stop(
+      "The staged expression backend does not match expression_matrix_mode.",
+      call. = FALSE
+    )
+  }
+  previous_backend <- .readPublishedExportBackend(final_file)
+  stage_sidecar <- NULL
+  final_sidecar <- NULL
+  if (!identical(backend$type, "embedded")) {
+    .validateExportSidecarName(backend$location)
+    expected_location <- .exportSidecarName(final_file, backend$type)
+    if (!identical(backend$location, expected_location)) {
+      stop(
+        "The staged expression backend must use the fixed sidecar name `",
+        expected_location,
+        "`.",
+        call. = FALSE
+      )
+    }
+    stage_sidecar <- file.path(stage_dir, backend$location)
+    final_sidecar <- file.path(final_dir, backend$location)
+    if (
+      .pathIsSymbolicLink(final_sidecar) ||
+        .pathIsSymbolicLink(final_file)
+    ) {
+      stop(
+        "Refusing to replace a symbolic-link export target.",
+        call. = FALSE
+      )
+    }
+  } else if (.pathIsSymbolicLink(final_file)) {
+    stop(
+      "Refusing to replace a symbolic-link export target.",
+      call. = FALSE
+    )
+  }
+
+  old_crb_backup <- NULL
+  old_sidecar_backup <- NULL
+  retired_sidecar <- NULL
+  if (
+    !is.null(previous_backend) &&
+      previous_backend$type %in% c("h5", "bpcells") &&
+      (identical(backend$type, "embedded") ||
+        !identical(previous_backend$location, backend$location)) &&
+      identical(
+        previous_backend$location,
+        .exportSidecarName(final_file, previous_backend$type)
+      )
+  ) {
+    retired_sidecar <- file.path(final_dir, previous_backend$location)
+  }
+  old_crb_mode <- if (file.exists(final_file)) {
+    as.octmode(bitwAnd(as.integer(file.info(final_file)$mode), 511L))
+  } else {
+    as.octmode("0600")
+  }
+  installed_crb <- FALSE
+  installed_sidecar <- FALSE
+  committed <- FALSE
+  on.exit(
+    {
+      if (!committed) {
+        if (installed_crb && file.exists(final_file)) {
+          unlink(final_file, force = TRUE)
+        }
+        if (!is.null(old_crb_backup) && file.exists(old_crb_backup)) {
+          if (!file.rename(old_crb_backup, final_file)) {
+            warning(
+              "Export rollback could not restore the previous .crb from: ",
+              old_crb_backup,
+              call. = FALSE
+            )
+          }
+        }
+        if (
+          installed_sidecar &&
+            (file.exists(final_sidecar) || dir.exists(final_sidecar))
+        ) {
+          unlink(final_sidecar, recursive = TRUE, force = TRUE)
+        }
+        if (
+          !is.null(old_sidecar_backup) &&
+            (file.exists(old_sidecar_backup) ||
+              dir.exists(old_sidecar_backup))
+        ) {
+          if (!file.rename(old_sidecar_backup, final_sidecar)) {
+            warning(
+              "Export rollback could not restore the previous expression ",
+              "sidecar from: ",
+              old_sidecar_backup,
+              call. = FALSE
+            )
+          }
+        }
+      }
+    },
+    add = TRUE
+  )
+
+  if (!is.null(stage_sidecar)) {
+    if (.pathIsSymbolicLink(stage_sidecar)) {
+      stop(
+        "Refusing to publish a symbolic-link staged expression sidecar: ",
+        stage_sidecar,
+        call. = FALSE
+      )
+    }
+    if (!(file.exists(stage_sidecar) || dir.exists(stage_sidecar))) {
+      stop(
+        "The staged ",
+        backend$type,
+        " expression matrix is missing.",
+        call. = FALSE
+      )
+    }
+    if (identical(backend$type, "h5") && dir.exists(stage_sidecar)) {
+      stop("The staged h5 sidecar must be a regular file.", call. = FALSE)
+    }
+    if (identical(backend$type, "bpcells") && !dir.exists(stage_sidecar)) {
+      stop("The staged bpcells sidecar must be a directory.", call. = FALSE)
+    }
+    if (.pathIsSymbolicLink(final_sidecar)) {
+      stop(
+        "Refusing to replace a symbolic-link expression sidecar: ",
+        final_sidecar,
+        call. = FALSE
+      )
+    }
+    if (file.exists(final_sidecar) || dir.exists(final_sidecar)) {
+      owns_target <-
+        !is.null(previous_backend) &&
+        identical(previous_backend$type, backend$type) &&
+        identical(previous_backend$location, backend$location)
+      if (!owns_target) {
+        stop(
+          "Refusing to replace an existing expression sidecar that is not ",
+          "owned by the published CRB: ",
+          final_sidecar,
+          call. = FALSE
+        )
+      }
+      old_sidecar_backup <- tempfile(
+        pattern = paste0(".", basename(final_sidecar), "-backup-"),
+        tmpdir = final_dir
+      )
+      if (!file.rename(final_sidecar, old_sidecar_backup)) {
+        stop(
+          "Failed to preserve the previous expression sidecar.",
+          call. = FALSE
+        )
+      }
+    }
+    sidecar_mode <- if (dir.exists(stage_sidecar)) "0700" else "0600"
+    .setExportArtifactMode(
+      stage_sidecar,
+      sidecar_mode,
+      "the staged expression sidecar"
+    )
+    if (!file.rename(stage_sidecar, final_sidecar)) {
+      stop("Failed to install the staged expression sidecar.", call. = FALSE)
+    }
+    installed_sidecar <- TRUE
+
+    ## A BPCells handle serialises its absolute directory. Reopen it only after
+    ## the staged directory has reached its published path, then serialise the
+    ## CRB. H5 stores no live handle and needs no equivalent step.
+    if (identical(expression_matrix_mode, "bpcells")) {
+      export$setExpression(
+        BPCells::open_matrix_dir(dir = final_sidecar),
+        backend = "external"
+      )
+    }
+  }
+
+  saveRDS(export, stage_crb)
+  if (!file.exists(stage_crb)) {
+    stop("Failed to serialise the staged Cerebro object.", call. = FALSE)
+  }
+  .setExportArtifactMode(stage_crb, old_crb_mode, "the staged Cerebro object")
+
+  if (file.exists(final_file)) {
+    old_crb_backup <- tempfile(
+      pattern = paste0(".", basename(final_file), "-backup-"),
+      tmpdir = final_dir
+    )
+    if (!file.rename(final_file, old_crb_backup)) {
+      stop("Failed to preserve the previous .crb file.", call. = FALSE)
+    }
+  }
+  if (!file.rename(stage_crb, final_file)) {
+    stop("Failed to publish the staged .crb file.", call. = FALSE)
+  }
+  installed_crb <- TRUE
+  .setExportArtifactMode(
+    final_file,
+    old_crb_mode,
+    "the published Cerebro object"
+  )
+  committed <- TRUE
+
+  for (backup in c(old_crb_backup, old_sidecar_backup)) {
+    if (
+      !is.null(backup) &&
+        (file.exists(backup) || dir.exists(backup))
+    ) {
+      status <- unlink(backup, recursive = TRUE, force = TRUE)
+      if (!identical(status, 0L)) {
+        warning(
+          "The new export was published, but an old backup remains at: ",
+          backup,
+          call. = FALSE
+        )
+      }
+    }
+  }
+  if (
+    !is.null(retired_sidecar) &&
+      (file.exists(retired_sidecar) || dir.exists(retired_sidecar))
+  ) {
+    if (.pathIsSymbolicLink(retired_sidecar)) {
+      warning(
+        "The previous sidecar is a symbolic link and was not removed: ",
+        retired_sidecar,
+        call. = FALSE
+      )
+    } else {
+      status <- unlink(retired_sidecar, recursive = TRUE, force = TRUE)
+      if (!identical(status, 0L)) {
+        warning(
+          "The new export was published, but the previous sidecar remains at: ",
+          retired_sidecar,
+          call. = FALSE
+        )
+      }
+    }
+  }
+  invisible(final_file)
+}
+
 #' @title
 #' Export Seurat object to Cerebro.
 #'
@@ -10,7 +421,9 @@
 #' is recommended to use sparse data (such as log-transformed or raw counts)
 #' instead of dense data (such as the \code{scaled} slot) to avoid performance
 #' bottlenecks in the Cerebro interface.
-#' @param file Where to save the output.
+#' @param file Where to save the output. External backends require a
+#'   \code{.crb} filename and store the matrix under a sibling name derived
+#'   from the stem.
 #' @param experiment_name Experiment name.
 #' @param organism Organism, e.g. \code{hg} (human), \code{mm} (mouse), etc.
 #' @param groups Names of grouping variables in meta data
@@ -63,6 +476,18 @@
 #'   close to the \code{.crb} metadata size. Requires the \pkg{HDF5Array}
 #'   package.
 #' }
+#' The CRB and any sidecar are built and validated in a private sibling stage.
+#' On POSIX systems, new stages and external matrices are owner-only; replacing
+#' a CRB preserves its existing mode. An existing sidecar is replaced only when
+#' the current CRB identifies that exact path as its backend; backend changes
+#' remove the previous owned sidecar after the new CRB is committed. Stop all
+#' readers before replacing an existing export, because a reader can otherwise
+#' observe the two-path replacement between steps.
+#' Ordinary R errors trigger best-effort restoration. Process termination and
+#' concurrent writers remain outside this multi-path transaction guarantee.
+#' Only POSIX mode bits are set or preserved; ownership, ACLs, extended
+#' attributes, and security labels remain the deployment system's
+#' responsibility on every platform.
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
 #' defaults to \code{FALSE}.
 #' @param .expression_resolution Internal handoff used by
@@ -71,9 +496,10 @@
 #'
 #' @section Immune Repertoire:
 #' If \code{object@misc$immune_repertoire} contains a named list of
-#' data.frames (one per sample, with scRepertoire columns such as CTgene,
-#' CTnt, CTaa, CTstrict), it will be automatically exported into the Cerebro
-#' object via \code{addImmuneRepertoire()}.  Legacy \code{bcr_data} /
+#' data.frames (one per sample, with \code{barcode}, \code{CTgene},
+#' \code{CTnt}, \code{CTaa}, and \code{CTstrict}), it will be automatically
+#' exported into the Cerebro object via \code{addImmuneRepertoire()}. Legacy
+#' \code{bcr_data} /
 #' \code{tcr_data} slots are also supported as a fallback.
 #'
 #' @section HLA typing:
@@ -133,6 +559,28 @@ exportFromSeurat <- function(
   ##--------------------------------------------------------------------------##
 
   expression_matrix_mode <- match.arg(expression_matrix_mode)
+  if (
+    !is.character(file) ||
+      length(file) != 1L ||
+      is.na(file) ||
+      !nzchar(file)
+  ) {
+    stop("`file` must be one non-empty output path.", call. = FALSE)
+  }
+  if (dir.exists(file)) {
+    stop("`file` points to a directory, not a .crb path: ", file, call. = FALSE)
+  }
+  if (!identical(expression_matrix_mode, "embedded")) {
+    if (!identical(tolower(tools::file_ext(file)), "crb")) {
+      stop(
+        "External expression backends require `file` to end in .crb so the ",
+        "Cerebro object and its sidecar have distinct portable names. Received: ",
+        file,
+        call. = FALSE
+      )
+    }
+    .validatePortableExportBasename(file)
+  }
   if (
     expression_matrix_mode == "h5" &&
       !requireNamespace("HDF5Array", quietly = TRUE)
@@ -289,6 +737,23 @@ exportFromSeurat <- function(
     )
   }
 
+  ## Stage every output artefact beside the final destination. External
+  ## matrices can be expensive to write, but no published .crb or sidecar is
+  ## touched until the complete object has passed every later validation.
+  final_file <- file
+  final_dir <- dirname(final_file)
+  if (!dir.exists(final_dir)) {
+    dir.create(final_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  if (!dir.exists(final_dir)) {
+    stop("Failed to create output directory: ", final_dir, call. = FALSE)
+  }
+  export_stage_dir <- .createPrivateExportStage(final_file)
+  on.exit(
+    unlink(export_stage_dir, recursive = TRUE, force = TRUE),
+    add = TRUE
+  )
+
   ##--------------------------------------------------------------------------##
   ## initialize Cerebro object
   ##--------------------------------------------------------------------------##
@@ -423,12 +888,8 @@ exportFromSeurat <- function(
     ## machine, same paths) can use it immediately. Step 7.3's runtime attach
     ## will additionally re-resolve the relative location when the crb has
     ## been moved to a different machine or layout.
-    crb_dir <- dirname(file)
-    if (!nzchar(crb_dir) || crb_dir == "") {
-      crb_dir <- "."
-    }
-    crb_stem <- tools::file_path_sans_ext(basename(file))
-    bpc_dirname <- paste0(crb_stem, ".bpcells")
+    crb_dir <- export_stage_dir
+    bpc_dirname <- .exportSidecarName(final_file, expression_matrix_mode)
     bpc_abs <- file.path(crb_dir, bpc_dirname)
 
     ## BPCells writes an error if the directory already exists; clean first
@@ -494,12 +955,8 @@ exportFromSeurat <- function(
     ## that Cerebro does at runtime become single-column lookups. Cerebro's
     ## internal layout is genes x cells, so the runtime attach lazily
     ## transposes the TENxMatrix seed back via DelayedArray::t() (free).
-    crb_dir <- dirname(file)
-    if (!nzchar(crb_dir) || crb_dir == "") {
-      crb_dir <- "."
-    }
-    crb_stem <- tools::file_path_sans_ext(basename(file))
-    h5_filename <- paste0(crb_stem, ".h5")
+    crb_dir <- export_stage_dir
+    h5_filename <- .exportSidecarName(final_file, expression_matrix_mode)
     h5_abs <- file.path(crb_dir, h5_filename)
 
     if (!inherits(expression_data, "dgCMatrix")) {
@@ -899,23 +1356,32 @@ exportFromSeurat <- function(
   ##--------------------------------------------------------------------------##
   ## Immune repertoire data (unified)
   ##--------------------------------------------------------------------------##
-  if (
-    !is.null(object@misc$immune_repertoire) &&
-      is.list(object@misc$immune_repertoire) &&
-      length(object@misc$immune_repertoire) > 0
-  ) {
+  ## `is.list()` was the whole guard, and a data.frame passes it -- its columns
+  ## became the sample names and the wrong shape reached the .crb intact.
+  unified_repertoire <- .dropEmptyRepertoireSamples(
+    object@misc$immune_repertoire
+  )
+  has_unified_repertoire <-
+    !is.null(unified_repertoire) &&
+    length(unified_repertoire) > 0
+  if (has_unified_repertoire) {
+    unified_repertoire <- .normalizeImmuneRepertoire(
+      unified_repertoire,
+      cell_barcodes = Seurat::Cells(object),
+      source_label = "`@misc$immune_repertoire`"
+    )
     if (verbose) {
       message(
         paste0(
           '[',
           format(Sys.time(), '%H:%M:%S'),
           '] Extracting immune repertoire data (',
-          length(object@misc$immune_repertoire),
+          length(unified_repertoire),
           ' samples)...'
         )
       )
     }
-    export$addImmuneRepertoire(object@misc$immune_repertoire)
+    export$addImmuneRepertoire(unified_repertoire)
   }
 
   ##--------------------------------------------------------------------------##
@@ -950,14 +1416,16 @@ exportFromSeurat <- function(
   ##--------------------------------------------------------------------------##
   ## BCR data (legacy)
   ##--------------------------------------------------------------------------##
-  if (!is.null(object@misc$bcr_data)) {
-    ## check if it's a list
-    if (!is.list(object@misc$bcr_data)) {
-      stop(
-        '`object@misc$bcr_data` is not a list.',
-        call. = FALSE
-      )
-    }
+  if (!has_unified_repertoire && !is.null(object@misc$bcr_data)) {
+    bcr_data <- .dropEmptyRepertoireSamples(object@misc$bcr_data)
+    ## Same check as the unified slot: `getImmuneRepertoire()` falls back to
+    ## merging the legacy slots, so leaving them unchecked would just move the
+    ## way around it rather than close it.
+    bcr_data <- .normalizeImmuneRepertoire(
+      bcr_data,
+      cell_barcodes = Seurat::Cells(object),
+      source_label = "`@misc$bcr_data`"
+    )
     if (verbose) {
       message(
         paste0(
@@ -967,20 +1435,21 @@ exportFromSeurat <- function(
         )
       )
     }
-    export$addBCRData(object@misc$bcr_data)
+    if (length(bcr_data) > 0L) {
+      export$addBCRData(bcr_data)
+    }
   }
 
   ##--------------------------------------------------------------------------##
   ## TCR data (legacy)
   ##--------------------------------------------------------------------------##
-  if (!is.null(object@misc$tcr_data)) {
-    ## check if it's a list
-    if (!is.list(object@misc$tcr_data)) {
-      stop(
-        '`object@misc$tcr_data` is not a list.',
-        call. = FALSE
-      )
-    }
+  if (!has_unified_repertoire && !is.null(object@misc$tcr_data)) {
+    tcr_data <- .dropEmptyRepertoireSamples(object@misc$tcr_data)
+    tcr_data <- .normalizeImmuneRepertoire(
+      tcr_data,
+      cell_barcodes = Seurat::Cells(object),
+      source_label = "`@misc$tcr_data`"
+    )
     if (verbose) {
       message(
         paste0(
@@ -990,7 +1459,24 @@ exportFromSeurat <- function(
         )
       )
     }
-    export$addTCRData(object@misc$tcr_data)
+    if (length(tcr_data) > 0L) {
+      export$addTCRData(tcr_data)
+    }
+  }
+
+  ## R6 methods are serialized into the .crb, so changing the class getter does
+  ## not repair files that were already written. For new exports that only use
+  ## the two legacy slots, populate the unified field that the serialized getter
+  ## already prefers. Keep the legacy fields above for getBCR()/getTCR().
+  if (!has_unified_repertoire) {
+    legacy_repertoire <- .mergeRepertoiresBySample(
+      if (exists("tcr_data", inherits = FALSE)) tcr_data else NULL,
+      if (exists("bcr_data", inherits = FALSE)) bcr_data else NULL
+    )
+    legacy_repertoire <- .dropEmptyRepertoireSamples(legacy_repertoire)
+    if (!is.null(legacy_repertoire) && length(legacy_repertoire) > 0) {
+      export$addImmuneRepertoire(legacy_repertoire)
+    }
   }
 
   ##--------------------------------------------------------------------------##
@@ -1307,34 +1793,27 @@ exportFromSeurat <- function(
   ## save Cerebro object to disk
   ##--------------------------------------------------------------------------##
 
-  ## check if output directory exists and create it if not
-  if (!file.exists(dirname(file))) {
-    message(
-      paste0(
-        '[',
-        format(Sys.time(), '%H:%M:%S'),
-        '] Creating output directory...'
-      )
-    )
-    dir.create(dirname(file), showWarnings = FALSE)
-  }
-
   ## log message
   message(
     paste0(
       '[',
       format(Sys.time(), '%H:%M:%S'),
       '] Saving Cerebro object to: ',
-      file
+      final_file
     )
   )
 
-  ## save file
-  saveRDS(export, file)
+  ## Replace the sidecar and .crb with best-effort rollback on ordinary errors.
+  .publishCerebroExport(
+    export = export,
+    final_file = final_file,
+    stage_dir = export_stage_dir,
+    expression_matrix_mode = expression_matrix_mode
+  )
 
   ## log message
   ## ... writing to file was successful
-  if (file.exists(file)) {
+  if (file.exists(final_file)) {
     message(
       paste0(
         '[',
