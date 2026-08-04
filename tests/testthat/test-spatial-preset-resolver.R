@@ -126,13 +126,31 @@ test_that("background allowlist has fail-closed selection fallbacks", {
 
   expect_identical(
     configured_spatial_images(image_options),
-    "spatial-assets/visium.png"
+    character()
   )
   expect_identical(
     configured_spatial_images(image_options, unname(crb_files), "visium.crb"),
     character()
   )
   expect_identical(configured_spatial_images(NULL), character())
+})
+
+test_that("uploaded data cannot inherit a configured spatial image", {
+  image_options <- list(
+    crb_file_to_load = crb_files,
+    spatial_images = list(
+      "Mouse brain (Visium)" = "spatial-assets/visium.png"
+    )
+  )
+
+  expect_identical(
+    configured_spatial_images(
+      image_options,
+      image_options$crb_file_to_load,
+      tempfile(fileext = ".crb")
+    ),
+    character()
+  )
 })
 
 test_that("submitted backgrounds are normalized against the allowlist", {

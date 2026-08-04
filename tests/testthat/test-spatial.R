@@ -398,6 +398,25 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
   )
   expect_match(app_src, "spatial_images", fixed = TRUE)
   expect_match(app_src, "demo_spatial_visium_he\\.png", perl = TRUE)
+
+  renderer <- new.env(parent = globalenv())
+  sys.source(
+    file.path(
+      system.file("shiny/v1.4", package = "CerebroNexus"),
+      "spatial",
+      "func_projection_update_plot.R"
+    ),
+    envir = renderer
+  )
+  configured_image <- "extdata/v1.4/demo_spatial_visium_he.png"
+  expect_identical(
+    renderer$authorized_spatial_image_path(
+      configured_image,
+      configured_image,
+      system.file(package = "CerebroNexus")
+    ),
+    normalizePath(png, winslash = "/", mustWork = TRUE)
+  )
 })
 
 test_that("bundled real demos embed a genuine tissue image in the .crb", {

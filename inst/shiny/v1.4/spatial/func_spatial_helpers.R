@@ -57,29 +57,35 @@ configured_spatial_images <- function(
     return(character())
   }
 
-  if (!is.null(crb_files) && !is.null(selected)) {
-    index <- which(crb_files == selected)
-    if (length(index) == 0L) {
-      return(character())
-    }
-    dataset <- names(crb_files)[index[[1L]]]
-    if (
-      (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) &&
-        length(crb_names) >= index[[1L]]
-    ) {
-      dataset <- crb_names[[index[[1L]]]]
-    }
-    if (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) {
-      return(character())
-    }
-    configured <- which(names(spatial_images) == dataset)
-    if (length(configured) == 0L) {
-      return(character())
-    }
-    images <- unlist(spatial_images[configured], use.names = FALSE)
-  } else {
-    images <- unlist(spatial_images[1L], use.names = FALSE)
+  if (is.null(crb_files) || is.null(selected)) {
+    return(character())
   }
+  index <- which(crb_files == selected)
+  if (length(index) == 0L) {
+    return(character())
+  }
+  dataset <- names(crb_files)[index[[1L]]]
+  if (
+    (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) &&
+      length(crb_names) >= index[[1L]]
+  ) {
+    dataset <- crb_names[[index[[1L]]]]
+  }
+  if (
+    (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) &&
+      length(crb_files) == 1L &&
+      length(spatial_images) == 1L
+  ) {
+    dataset <- names(spatial_images)[[1L]]
+  }
+  if (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) {
+    return(character())
+  }
+  configured <- which(names(spatial_images) == dataset)
+  if (length(configured) == 0L) {
+    return(character())
+  }
+  images <- unlist(spatial_images[configured], use.names = FALSE)
 
   if (!is.character(images)) {
     return(character())

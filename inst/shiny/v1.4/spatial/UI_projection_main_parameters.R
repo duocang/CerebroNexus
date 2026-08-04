@@ -60,15 +60,19 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
   if (
     exists("Cerebro.options") && !is.null(Cerebro.options[["spatial_images"]])
   ) {
-    have_selection <-
-      exists("available_crb_files") && !is.null(available_crb_files$selected)
-    ## Multi-dataset apps only offer images configured for the CURRENT dataset;
-    ## single-dataset apps use the sole/first configured entry.
+    configured_crb_files <- Cerebro.options[["crb_file_to_load"]]
+    selected_crb <- if (exists("available_crb_files")) {
+      available_crb_files$selected
+    } else {
+      NULL
+    }
+    ## Resolve against configured CRBs, not the switcher state: uploads clear
+    ## that state and must not inherit a configured dataset's image.
     img_paths <- configured_spatial_images(
       Cerebro.options,
-      if (have_selection) available_crb_files$files else NULL,
-      if (have_selection) available_crb_files$selected else NULL,
-      if (have_selection) available_crb_files$names else NULL
+      configured_crb_files,
+      selected_crb,
+      names(configured_crb_files)
     )
     if (length(img_paths) > 0L) {
       background_choices <- c(

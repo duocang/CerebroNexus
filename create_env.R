@@ -62,6 +62,7 @@ rix(
 
     "SeuratObject",
     # runtime deps (CRAN)
+    "base64enc",
     "biomaRt",
     "colourpicker",
     "dplyr",

@@ -27,6 +27,7 @@ biocViews:
   Transcriptomics,
   Visualization
 Imports:
+  base64enc,
   biomaRt (>= 2.38.0),
   colourpicker (>= 1.0),
   dplyr (>= 1.0.0),

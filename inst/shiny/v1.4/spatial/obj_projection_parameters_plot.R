@@ -208,13 +208,21 @@ spatial_projection_parameters_plot_raw <- reactive({
   ## at an image this dataset does not have, wedging the plot update. Fall back to
   ## no background whenever the embedded image is absent.
   background_image <- input[["spatial_projection_background_image"]]
-  have_selection <-
-    exists("available_crb_files") && !is.null(available_crb_files$selected)
+  configured_crb_files <- if (exists("Cerebro.options")) {
+    Cerebro.options[["crb_file_to_load"]]
+  } else {
+    NULL
+  }
+  selected_crb <- if (exists("available_crb_files")) {
+    available_crb_files$selected
+  } else {
+    NULL
+  }
   configured_background_images <- configured_spatial_images(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
-    if (have_selection) available_crb_files$files else NULL,
-    if (have_selection) available_crb_files$selected else NULL,
-    if (have_selection) available_crb_files$names else NULL
+    configured_crb_files,
+    selected_crb,
+    names(configured_crb_files)
   )
   background_image <- normalize_spatial_background_choice(
     background_image,

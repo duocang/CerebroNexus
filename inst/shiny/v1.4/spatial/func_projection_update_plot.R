@@ -29,20 +29,33 @@ authorized_spatial_image_path <- function(
       error = function(error) NULL
     )
   }
-  assets_root <- canonicalize(file.path(cerebro_root, "spatial-assets"))
   image_path <- canonicalize(file.path(cerebro_root, background_image))
-  if (is.null(assets_root) || is.null(image_path)) {
+  trusted_roots <- lapply(
+    c("spatial-assets", "extdata"),
+    function(root) canonicalize(file.path(cerebro_root, root))
+  )
+  trusted_roots <- Filter(Negate(is.null), trusted_roots)
+  if (length(trusted_roots) == 0L || is.null(image_path)) {
     return(NULL)
   }
 
   if (.Platform$OS.type == "windows") {
-    assets_root <- tolower(assets_root)
+    trusted_roots <- lapply(trusted_roots, tolower)
     image_path_comparison <- tolower(image_path)
   } else {
     image_path_comparison <- image_path
   }
-  assets_prefix <- paste0(sub("/+$", "", assets_root), "/")
-  if (!startsWith(image_path_comparison, assets_prefix)) {
+  inside_trusted_root <- any(vapply(
+    trusted_roots,
+    function(root) {
+      startsWith(
+        image_path_comparison,
+        paste0(sub("/+$", "", root), "/")
+      )
+    },
+    logical(1)
+  ))
+  if (!inside_trusted_root) {
     return(NULL)
   }
 
