@@ -1,6 +1,6 @@
 Package: CerebroNexus
 Title: Interactive visualization of single cell transcriptomics
-Version: 3.0.3
+Version: 3.0.4
 Authors@R: c(
   person("Michael", "Heming", email = "mihem@mailbox.org", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-9568-2790")),
   person("Roman", "Hillje", email = "roman.hillje@googlemail.com", role = c("aut")),
@@ -27,10 +27,12 @@ biocViews:
   Transcriptomics,
   Visualization
 Imports:
+  base64enc,
   biomaRt (>= 2.38.0),
   colourpicker (>= 1.0),
   dplyr (>= 1.0.0),
   DT (>= 0.14.0),
+  fs,
   future.apply (>= 1.1.0),
   ggplot2 (>= 3.2.1),
   glue (>= 1.4.0),
@@ -70,6 +72,7 @@ Suggests:
   formattable (>= 0.2.0.1),
   ggtree,
   HDF5Array (>= 1.18.1),
+  httpuv,
   jsonlite,
   knitr,
   monocle,

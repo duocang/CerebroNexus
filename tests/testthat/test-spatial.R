@@ -239,7 +239,7 @@ test_that("createShinyApp accepts the spatial_images parameters", {
 test_that("createShinyApp bundles a spatial image and writes the option", {
   # End-to-end exercise of the new side-copy + option-write path: a matched
   # spatial image must be copied into the bundle and its stored path rewritten
-  # to the portable data/<file> form inside cerebro_config.rds.
+  # to the spatial-assets/<file> form inside cerebro_config.rds.
   skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   # 1x1 transparent PNG is enough; the copy path does not decode the image.
@@ -332,9 +332,9 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
   expect_true(file.exists(cfg_path))
   cfg <- readRDS(cfg_path)
   expect_true(!is.null(cfg[["spatial_images"]]))
-  # path rewritten to bundle-relative data/<file>
+  # path rewritten to the bundle-relative spatial asset directory
   stored <- cfg[["spatial_images"]][["Xenium demo"]]
-  expect_match(stored, "^data/", perl = TRUE)
+  expect_match(stored, "^spatial-assets/", perl = TRUE)
   # and the image really landed in the bundle
   expect_true(file.exists(file.path(out_dir, stored)))
 })
@@ -398,6 +398,25 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
   )
   expect_match(app_src, "spatial_images", fixed = TRUE)
   expect_match(app_src, "demo_spatial_visium_he\\.png", perl = TRUE)
+
+  renderer <- new.env(parent = globalenv())
+  sys.source(
+    file.path(
+      system.file("shiny/v1.4", package = "CerebroNexus"),
+      "spatial",
+      "func_projection_update_plot.R"
+    ),
+    envir = renderer
+  )
+  configured_image <- "extdata/v1.4/demo_spatial_visium_he.png"
+  expect_identical(
+    renderer$authorized_spatial_image_path(
+      configured_image,
+      configured_image,
+      system.file(package = "CerebroNexus")
+    ),
+    normalizePath(png, winslash = "/", mustWork = TRUE)
+  )
 })
 
 test_that("bundled real demos embed a genuine tissue image in the .crb", {

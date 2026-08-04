@@ -89,3 +89,91 @@ test_that("returns the fallback when options is NULL", {
     0
   )
 })
+
+test_that("background allowlist follows the currently selected dataset", {
+  image_options <- list(
+    spatial_images = list(
+      "Mouse brain (Visium)" = "spatial-assets/visium.png",
+      "Mouse ileum (MERFISH)" = "spatial-assets/merfish.png"
+    )
+  )
+
+  expect_identical(
+    configured_spatial_images(
+      image_options,
+      crb_files,
+      "merfish.crb"
+    ),
+    "spatial-assets/merfish.png"
+  )
+  expect_identical(
+    configured_spatial_images(
+      image_options,
+      crb_files,
+      "unknown.crb"
+    ),
+    character()
+  )
+})
+
+test_that("background allowlist has fail-closed selection fallbacks", {
+  image_options <- list(
+    spatial_images = c(
+      "Mouse brain (Visium)" = "spatial-assets/visium.png",
+      "Mouse ileum (MERFISH)" = "spatial-assets/merfish.png"
+    )
+  )
+
+  expect_identical(
+    configured_spatial_images(image_options),
+    character()
+  )
+  expect_identical(
+    configured_spatial_images(image_options, unname(crb_files), "visium.crb"),
+    character()
+  )
+  expect_identical(configured_spatial_images(NULL), character())
+})
+
+test_that("uploaded data cannot inherit a configured spatial image", {
+  image_options <- list(
+    crb_file_to_load = crb_files,
+    spatial_images = list(
+      "Mouse brain (Visium)" = "spatial-assets/visium.png"
+    )
+  )
+
+  expect_identical(
+    configured_spatial_images(
+      image_options,
+      image_options$crb_file_to_load,
+      tempfile(fileext = ".crb")
+    ),
+    character()
+  )
+})
+
+test_that("submitted backgrounds are normalized against the allowlist", {
+  configured <- "spatial-assets/visium.png"
+
+  expect_identical(
+    normalize_spatial_background_choice(configured, configured),
+    configured
+  )
+  expect_identical(
+    normalize_spatial_background_choice("private-data/dataset.crb", configured),
+    "No Background"
+  )
+  expect_identical(
+    normalize_spatial_background_choice("../outside.png", configured),
+    "No Background"
+  )
+  expect_identical(
+    normalize_spatial_background_choice("__embedded__", configured, FALSE),
+    "No Background"
+  )
+  expect_identical(
+    normalize_spatial_background_choice("__embedded__", configured, TRUE),
+    "__embedded__"
+  )
+})

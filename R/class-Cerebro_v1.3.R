@@ -390,7 +390,8 @@ Cerebro_v1.3 <- R6::R6Class(
     #' 7.2 can set them) but will still need step-7.3 runtime attach to be
     #' useful.
     #' @param location Optional character path (absolute or relative to the
-    #' generated app \code{data/} directory) where the external matrix lives.
+    #' parent directory of the serialized Cerebro object) where the external
+    #' matrix lives.
     #' \code{NULL} when \code{type == "embedded"}.
     setExpressionBackend = function(type = "embedded", location = NULL) {
       allowed <- c("embedded", "h5", "bpcells")
