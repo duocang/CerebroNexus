@@ -100,6 +100,8 @@
 #' @param seurat A Seurat object with scRepertoire columns in meta.data.
 #' @param groups Character vector of group column names to include in output.
 #' @param sample_col Column name to split samples by; defaults to "orig.ident".
+#'   An explicit name must exist; use \code{NULL} to auto-detect a standard
+#'   sample column.
 #' @param verbose Logical; print progress messages.
 #' @return A named list of data.frames (one per sample), or NULL if no
 #'   repertoire data is found.
@@ -168,10 +170,33 @@
 
   # Determine sample column for splitting
   actual_sample_col <- NULL
-  for (col in c(sample_col, "orig.ident", "sample", "Sample")) {
-    if (col %in% meta_names) {
-      actual_sample_col <- col
-      break
+  if (!is.null(sample_col)) {
+    if (
+      !is.character(sample_col) ||
+        length(sample_col) != 1L ||
+        is.na(sample_col) ||
+        !nzchar(sample_col)
+    ) {
+      stop(
+        "`sample_col` must be NULL or one non-empty column name.",
+        call. = FALSE
+      )
+    }
+    if (!(sample_col %in% meta_names)) {
+      stop(
+        "`sample_col` `",
+        sample_col,
+        "` is not present in the Seurat metadata.",
+        call. = FALSE
+      )
+    }
+    actual_sample_col <- sample_col
+  } else {
+    for (col in c("orig.ident", "sample", "Sample")) {
+      if (col %in% meta_names) {
+        actual_sample_col <- col
+        break
+      }
     }
   }
 
@@ -179,6 +204,22 @@
     rep_df$.sample_id <- as.character(
       seurat@meta.data[[actual_sample_col]][has_data]
     )
+    invalid_sample <- is.na(rep_df$.sample_id) | !nzchar(rep_df$.sample_id)
+    if (any(invalid_sample)) {
+      stop(
+        "Metadata column `",
+        actual_sample_col,
+        "` has missing or empty sample identities for ",
+        sum(invalid_sample),
+        " cell(s) with repertoire data. Example barcode(s): ",
+        paste(
+          utils::head(rep_df$barcode[invalid_sample], 5L),
+          collapse = ", "
+        ),
+        ". Fill the sample identities or choose a complete `sample_col`.",
+        call. = FALSE
+      )
+    }
   } else {
     rep_df$.sample_id <- "Sample_1"
   }
@@ -511,6 +552,10 @@ convertSeuratToCerebro <- function(
     }
   }
 
+  # Metadata repertoire extraction defaults to orig.ident. Keep that identity
+  # tied to the column when groups_naming renames it below.
+  repertoire_sample_col <- "orig.ident"
+
   # Rename group columns according to groups_naming
   if (!is.null(groups_naming) && length(groups_naming) > 0) {
     # Validate groups_naming structure
@@ -558,6 +603,9 @@ convertSeuratToCerebro <- function(
       idx <- which(groups == old_name)
       if (length(idx) > 0) {
         groups[idx] <- new_name
+      }
+      if (identical(old_name, repertoire_sample_col)) {
+        repertoire_sample_col <- new_name
       }
     }
   }
@@ -819,30 +867,32 @@ convertSeuratToCerebro <- function(
   # Priority: external files (bcr_file/tcr_file) > metadata extraction
   # All data is stored in the unified immune_repertoire slot.
 
-  bcr_data <- .loadImmuneRepertoireData(bcr_file, "BCR", verbose)
-  tcr_data <- .loadImmuneRepertoireData(tcr_file, "TCR", verbose)
+  ## Same entry point a user calling exportFromSeurat() directly would use, so
+  ## both routes build the slot the same way and get the same shape check.
+  ## Priority is unchanged: given files replace whatever is in the slot, and
+  ## the meta.data columns are read only when there is nothing else.
+  has_repertoire_file <- (!is.null(bcr_file) && nzchar(bcr_file)) ||
+    (!is.null(tcr_file) && nzchar(tcr_file))
 
-  if (!is.null(bcr_data) || !is.null(tcr_data)) {
-    # External files provided — merge into immune_repertoire
-    seurat@misc$immune_repertoire <- c(
-      if (!is.null(bcr_data)) bcr_data else list(),
-      if (!is.null(tcr_data)) tcr_data else list()
+  if (has_repertoire_file) {
+    seurat <- addImmuneRepertoire(
+      seurat,
+      bcr = bcr_file,
+      tcr = tcr_file,
+      groups = groups,
+      from_metadata = FALSE,
+      verbose = verbose
     )
-  }
-
-  # Fallback: extract from Seurat metadata (scRepertoire columns)
-  if (
+  } else if (
     is.null(seurat@misc$immune_repertoire) ||
       length(seurat@misc$immune_repertoire) == 0
   ) {
-    rep_data <- .extractRepertoireFromMetadata(
+    seurat <- addImmuneRepertoire(
       seurat,
       groups = groups,
+      sample_col = repertoire_sample_col,
       verbose = verbose
     )
-    if (!is.null(rep_data) && length(rep_data) > 0) {
-      seurat@misc$immune_repertoire <- rep_data
-    }
   }
 
   # Get the base name for the file

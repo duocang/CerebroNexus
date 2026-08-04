@@ -157,7 +157,6 @@ test_that("exportFromSeurat: h5 mode writes a TENxMatrix-compatible sibling
   out_dir <- file.path(tempdir(), paste0("h5_rt_", as.integer(Sys.time())))
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   outf <- file.path(out_dir, "trip.crb")
-  h5_path <- file.path(out_dir, "trip.h5")
 
   args <- valid_args
   args$file <- outf
@@ -166,7 +165,6 @@ test_that("exportFromSeurat: h5 mode writes a TENxMatrix-compatible sibling
 
   expect_no_error(do.call(exportFromSeurat, args))
   expect_true(file.exists(outf))
-  expect_true(file.exists(h5_path))
 
   ## crb side: expression stays NULL (no in-memory dgCMatrix payload, so
   ## saveRDS does not embed the matrix and the .crb stays small) and the
@@ -178,7 +176,9 @@ test_that("exportFromSeurat: h5 mode writes a TENxMatrix-compatible sibling
   )
   be <- cerebro$getExpressionBackend()
   expect_equal(be$type, "h5")
-  expect_equal(be$location, "trip.h5")
+  expect_identical(be$location, "trip.h5")
+  h5_path <- file.path(out_dir, be$location)
+  expect_true(file.exists(h5_path))
 
   ## h5 side: TENxMatrix-readable. No direct rhdf5 dependency.
   m <- HDF5Array::TENxMatrix(h5_path, group = "expression")

@@ -33,7 +33,9 @@ is recommended to use sparse data (such as log-transformed or raw counts)
 instead of dense data (such as the \code{scaled} slot) to avoid performance
 bottlenecks in the Cerebro interface.}
 
-\item{file}{Where to save the output.}
+\item{file}{Where to save the output. External backends require a
+\code{.crb} filename and store the matrix under a sibling name derived
+from the stem.}
 
 \item{experiment_name}{Experiment name.}
 
@@ -95,7 +97,19 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
   in-memory \code{dgCMatrix} is never materialised on attach, so RAM stays
   close to the \code{.crb} metadata size. Requires the \pkg{HDF5Array}
   package.
-}}
+}
+The CRB and any sidecar are built and validated in a private sibling stage.
+On POSIX systems, new stages and external matrices are owner-only; replacing
+a CRB preserves its existing mode. An existing sidecar is replaced only when
+the current CRB identifies that exact path as its backend; backend changes
+remove the previous owned sidecar after the new CRB is committed. Stop all
+readers before replacing an existing export, because a reader can otherwise
+observe the two-path replacement between steps.
+Ordinary R errors trigger best-effort restoration. Process termination and
+concurrent writers remain outside this multi-path transaction guarantee.
+Only POSIX mode bits are set or preserved; ownership, ACLs, extended
+attributes, and security labels remain the deployment system's
+responsibility on every platform.}
 
 \item{verbose}{Set this to \code{TRUE} if you want additional log messages;
 defaults to \code{FALSE}.}
@@ -113,10 +127,10 @@ This function allows to export a Seurat object to visualize in Cerebro.
 \section{Immune Repertoire}{
 
 If \code{object@misc$immune_repertoire} contains a named list of
-data.frames (one per sample, with scRepertoire columns such as CTgene,
-CTnt, CTaa, CTstrict), it will be automatically exported into the Cerebro
-object via \code{addImmuneRepertoire()}.  Legacy \code{bcr_data} /
-\code{tcr_data} slots are also supported as a fallback.
+data.frames (one per sample, with \code{barcode}, \code{CTgene},
+\code{CTnt}, \code{CTaa}, and \code{CTstrict}), it will be automatically
+exported into the Cerebro object via \code{addImmuneRepertoire()}. Legacy
+\code{bcr_data} / \code{tcr_data} slots are also supported as a fallback.
 }
 
 \section{HLA typing}{
