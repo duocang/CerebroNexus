@@ -1,0 +1,263 @@
+bench_root <- normalizePath(
+  file.path("..", "bench"),
+  mustWork = FALSE
+)
+
+skip_unless_bench_cli <- function() {
+  testthat::skip_if_not(
+    dir.exists(bench_root),
+    "benchmark tree not present (expected when checking a built package)"
+  )
+}
+
+test_that("sweep cleanup cannot run twice through signal and exit traps", {
+  skip_unless_bench_cli()
+  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
+  cleanup <- sweep[seq(
+    grep("^cleanup\\(\\)", sweep),
+    grep("^trap cleanup", sweep) - 1L
+  )]
+
+  expect_true(any(grepl("trap - EXIT INT TERM", cleanup, fixed = TRUE)))
+})
+
+test_that("sweep stages use plain names in a safe publication order", {
+  skip_unless_bench_cli()
+  expected <- c(
+    "01_inspect_data.R",
+    "02_record_environment.R",
+    "03_plan_runs.R",
+    "04_check_resources.R",
+    "10_export_backend.R",
+    "20_measure_backend.R",
+    "30_check_measurements.R",
+    "40_write_report.R",
+    "41_draw_figures.R",
+    "50_check_outputs.R",
+    "60_publish_results.R"
+  )
+  expect_true(all(file.exists(file.path(bench_root, "src", expected))))
+
+  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
+  positions <- vapply(
+    expected,
+    function(name) {
+      hit <- grep(name, sweep, fixed = TRUE)
+      if (length(hit)) hit[1] else Inf
+    },
+    numeric(1)
+  )
+  expect_true(all(is.finite(positions)))
+  expect_true(all(diff(positions) > 0))
+})
+
+run_bench_rscript <- function(script, args = character(), env = character()) {
+  out <- tempfile("bench-cli-stdout-")
+  err <- tempfile("bench-cli-stderr-")
+  on.exit(unlink(c(out, err)), add = TRUE)
+  status <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(file.path(bench_root, "src", script), args),
+    stdout = out,
+    stderr = err,
+    env = c(paste0("BENCH_ROOT=", bench_root), env)
+  )
+  list(
+    status = status,
+    stdout = readLines(out, warn = FALSE),
+    stderr = readLines(err, warn = FALSE)
+  )
+}
+
+test_that("schedule CLI emits a complete quick-profile grid", {
+  skip_unless_bench_cli()
+  result <- tempfile(fileext = ".csv")
+  on.exit(unlink(result), add = TRUE)
+
+  run <- run_bench_rscript(
+    "03_plan_runs.R",
+    result,
+    env = "BENCH_PROFILE=quick"
+  )
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+  schedule <- utils::read.csv(result, stringsAsFactors = FALSE)
+  expect_named(
+    schedule,
+    c(
+      "profile",
+      "source",
+      "n_cells",
+      "comparison",
+      "export_repeat",
+      "order_position",
+      "backend",
+      "access_repeats"
+    )
+  )
+  expect_equal(nrow(schedule), 6L)
+  expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5"))
+})
+
+test_that("manifest CLI records source revision and runtime", {
+  skip_unless_bench_cli()
+  result <- tempfile(fileext = ".csv")
+  on.exit(unlink(result), add = TRUE)
+
+  run <- run_bench_rscript(
+    "02_record_environment.R",
+    result,
+    env = c("BENCH_PROFILE=quick", "BENCH_RUN_ID=test-run")
+  )
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+  manifest <- utils::read.csv(result, stringsAsFactors = FALSE)
+  values <- stats::setNames(manifest$value, manifest$key)
+  expect_equal(values[["run_id"]], "test-run")
+  expect_equal(values[["profile"]], "quick")
+  expect_match(values[["git_sha"]], "^[0-9a-f]{40}$")
+  expect_match(values[["r_version"]], "^R version")
+  expect_true(nzchar(values[["cpu"]]))
+})
+
+test_that("validator CLI accepts complete results and rejects drift", {
+  skip_unless_bench_cli()
+  stage <- tempfile("bench-stage-")
+  dir.create(stage)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+
+  source(file.path(bench_root, "lib", "protocol.R"), local = TRUE)
+  specs <- list(fixture = list(tiers = 1000, comparison_tiers = 1000))
+  schedule <- bench_schedule(specs, "quick", "fixture")
+  exports <- transform(schedule, status = "OK", run_id = "run-1")
+  access <- do.call(
+    rbind,
+    lapply(seq_len(nrow(schedule)), function(i) {
+      data.frame(
+        run_id = "run-1",
+        profile = "quick",
+        source = schedule$source[i],
+        n_cells = schedule$n_cells[i],
+        backend = schedule$backend[i],
+        export_repeat = schedule$export_repeat[i],
+        access_repeat = 1L,
+        correctness = "OK",
+        row_fingerprint = "row",
+        reference_row_fingerprint = "row",
+        block_fingerprint = "block",
+        reference_block_fingerprint = "block",
+        stringsAsFactors = FALSE
+      )
+    })
+  )
+  utils::write.csv(
+    schedule,
+    file.path(stage, "05_schedule.csv"),
+    row.names = FALSE
+  )
+  utils::write.csv(
+    exports,
+    file.path(stage, "10_export.csv"),
+    row.names = FALSE
+  )
+  utils::write.csv(access, file.path(stage, "20_access.csv"), row.names = FALSE)
+  utils::write.csv(
+    data.frame(
+      key = c("run_id", "profile", "git_sha"),
+      value = c("run-1", "quick", paste(rep("a", 40), collapse = ""))
+    ),
+    file.path(stage, "run_manifest.csv"),
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(
+      source = "fixture",
+      n_cells = 1000,
+      safe = TRUE,
+      reason = "safe"
+    ),
+    file.path(stage, "resource_check.csv"),
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(
+      run_id = "run-1",
+      source = "fixture",
+      url = "https://example.test/fixture.h5",
+      bytes = 123,
+      sha256 = paste(rep("b", 64), collapse = ""),
+      stringsAsFactors = FALSE
+    ),
+    file.path(stage, "source_manifest.csv"),
+    row.names = FALSE
+  )
+  utils::write.csv(
+    data.frame(
+      source = character(),
+      n_cells = numeric(),
+      backend = character(),
+      export_repeat = integer(),
+      stage = character(),
+      exit_code = integer()
+    ),
+    file.path(stage, "crashes.csv"),
+    row.names = FALSE
+  )
+
+  ok <- run_bench_rscript(
+    "30_check_measurements.R",
+    stage,
+    env = "BENCH_PROFILE=quick"
+  )
+  expect_equal(ok$status, 0L, info = paste(ok$stderr, collapse = "\n"))
+
+  unlink(file.path(stage, "resource_check.csv"))
+  missing_resources <- run_bench_rscript(
+    "30_check_measurements.R",
+    stage,
+    env = "BENCH_PROFILE=quick"
+  )
+  expect_false(identical(missing_resources$status, 0L))
+  expect_match(
+    paste(missing_resources$stderr, collapse = "\n"),
+    "resource_check.csv"
+  )
+  utils::write.csv(
+    data.frame(
+      source = "fixture",
+      n_cells = 1000,
+      safe = TRUE,
+      reason = "safe"
+    ),
+    file.path(stage, "resource_check.csv"),
+    row.names = FALSE
+  )
+
+  access$row_fingerprint[1] <- "wrong"
+  utils::write.csv(access, file.path(stage, "20_access.csv"), row.names = FALSE)
+  bad <- run_bench_rscript(
+    "30_check_measurements.R",
+    stage,
+    env = "BENCH_PROFILE=quick"
+  )
+  expect_false(identical(bad$status, 0L))
+  expect_match(paste(bad$stderr, collapse = "\n"), "fingerprint mismatch")
+
+  access$row_fingerprint[1] <- "row"
+  utils::write.csv(access, file.path(stage, "20_access.csv"), row.names = FALSE)
+  source_manifest <- utils::read.csv(
+    file.path(stage, "source_manifest.csv"),
+    stringsAsFactors = FALSE
+  )
+  source_manifest$sha256 <- "not-a-checksum"
+  utils::write.csv(
+    source_manifest,
+    file.path(stage, "source_manifest.csv"),
+    row.names = FALSE
+  )
+  bad_source <- run_bench_rscript(
+    "30_check_measurements.R",
+    stage,
+    env = "BENCH_PROFILE=quick"
+  )
+  expect_false(identical(bad_source$status, 0L))
+  expect_match(paste(bad_source$stderr, collapse = "\n"), "source SHA-256")
+})
