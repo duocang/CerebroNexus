@@ -50,7 +50,9 @@ required_manifest <- c(
   "profile",
   "git_sha",
   "dependency_environment",
-  "dependency_environment_git_blob"
+  "dependency_environment_git_blob",
+  "repository_version",
+  "package_CerebroNexus"
 )
 if (!all(required_manifest %in% names(manifest_values))) {
   stop(
@@ -74,6 +76,18 @@ if (
 ) {
   stop(
     "run manifest has invalid dependency environment provenance",
+    call. = FALSE
+  )
+}
+if (
+  !nzchar(manifest_values[["package_CerebroNexus"]]) ||
+    !identical(
+      manifest_values[["package_CerebroNexus"]],
+      manifest_values[["repository_version"]]
+    )
+) {
+  stop(
+    "installed CerebroNexus version does not match repository version",
     call. = FALSE
   )
 }
@@ -108,6 +122,33 @@ if (
     any(source_manifest$run_id != run_id)
 ) {
   stop("result rows do not share the manifest run id", call. = FALSE)
+}
+
+required_block_metrics <- c(
+  "block_prepare_secs",
+  "block_materialize_secs",
+  "block_ready_secs"
+)
+if (!all(required_block_metrics %in% names(access))) {
+  stop(
+    "access results are missing the materialized block timing contract",
+    call. = FALSE
+  )
+}
+block_values <- access[required_block_metrics]
+if (
+  any(!is.finite(as.matrix(block_values))) ||
+    any(as.matrix(block_values) < 0) ||
+    any(
+      abs(
+        access$block_ready_secs -
+          access$block_prepare_secs -
+          access$block_materialize_secs
+      ) >
+        1e-9
+    )
+) {
+  stop("invalid materialized block timing values", call. = FALSE)
 }
 
 bench_validate_results(schedule, exports, access, crashes, profile)

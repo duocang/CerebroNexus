@@ -22,7 +22,9 @@ Values such as `2.4 [2.2-2.9], n=6` mean median 2.4, observed range 2.2 to 2.9, 
 | `rss_mb` | resident memory after load and attach | same host only |
 | `first_query_secs` | first getter call in a fresh process | not cold disk |
 | `hot_p50_secs` / `hot_p95_secs` | warmed single-gene query distribution | same query plan |
-| `block_secs` | deterministic 12-gene block request | same query plan |
+| `block_prepare_secs` | construct a backend-native 12-gene block view | diagnostic only |
+| `block_materialize_secs` | convert that view to a dense R matrix | same query plan |
+| `block_ready_secs` | preparation plus materialization | comparable block-read metric |
 
 Do not rank backends from one metric alone. Export time, stored size, startup, resident memory, single-gene access, and block access describe different user costs.
 
@@ -45,12 +47,12 @@ Every successful access row must say `correctness = OK` and match both source fi
 | `source_manifest.csv` | downloaded bytes and SHA-256 |
 | `crashes.csv` | child-process failures |
 | `summary.md` | validated aggregate report |
-| `figures/` | publication-profile plots |
+| `figures/` | six publication plots in SVG, PDF, and 600 dpi PNG |
 
 ## Claims that are not supported
 
 - “cold disk” latency: the operating-system cache is not controlled;
-- an observed stopping boundary from a fitted line: the capacity figure is a host-specific estimate;
+- a stopping boundary from successful runs alone: the scaling figure is descriptive and never estimates capacity;
 - full-source support: both default complete sources exceed `dgCMatrix`'s 32-bit non-zero index limit;
 - biological performance: grouping and embeddings are synthetic fixtures;
 - academic peer review: `publication` is an internal evidence gate.

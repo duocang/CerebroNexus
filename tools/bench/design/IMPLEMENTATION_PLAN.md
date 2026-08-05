@@ -1,51 +1,84 @@
-# Benchmark safety and organization implementation plan
+# Benchmark measurement and figure revision plan
 
-> **For AI workers:** Execute each task with test-driven development. Keep structural changes separate from resource-policy behavior changes.
+> **For AI workers:** Execute each task with test-driven development. Use
+> `superpowers:executing-plans` and keep existing published result directories
+> immutable. Steps use checkboxes so progress is explicit.
 
-**Goal:** Make the benchmark understandable, resource-aware, reproducible, and safe to run on a 32 GiB Mac while retaining every design and historical record.
+**Goal:** Correct the lazy-block timing contract and produce a richer,
+Nature-style publication figure set without overstating host capacity.
 
-**Architecture:** Plain-language numbered scripts form a staged pipeline. Resource planning is a pure R library used by a small command-line checker. Measurement data, reports, and figures are all validated before immutable publication.
+**Architecture:** Measurement helpers return separate native-view preparation
+and dense-materialization timings. Reporting helpers normalize old and new
+result schemas, while a dedicated figure library builds article and
+supplementary panels from raw independent-process rows. Publication validation
+requires every vector and print figure plus finalized provenance.
 
-**Technical stack:** base R, Matrix, rhdf5, Seurat, Bash, testthat.
+**Technical stack:** base R, Matrix, ggplot2, patchwork, Bash, testthat.
 
 ---
 
-### Task 1: Organize stages and documentation
+### Task 1: Measure the materialized block fairly
 
-**Files:** `tests/bench/src/*.R`, `tests/bench/run_sweep.sh`, `tests/bench/README.md`, `tests/bench/METHODOLOGY.md`, `tests/bench/RESULTS.md`, `tests/testthat/test-bench-cli-contract.R`.
+**Files:** `tools/bench/lib/access_metrics.R`,
+`tools/bench/src/20_measure_backend.R`,
+`tools/bench/tests/testthat/test-bench-access-metrics.R`.
 
-- [ ] Add a failing contract test for the plain-language script names and required orchestration order.
-- [ ] Rename scripts and update every code/document reference.
-- [ ] Split operation, methodology, and result-reading documentation.
-- [ ] Move pilot CSVs to `result/archive/pilot-2026-07-30/` and label them as superseded evidence.
-- [ ] Run focused contract and reporting tests, then commit the structural change without behavior changes.
+- [x] Add a lazy block fixture whose `as.matrix()` method fails unless invoked
+  inside the injected timer; assert separate preparation, materialization, and
+  combined timings.
+- [x] Run the focused test and confirm it fails because the existing
+  fingerprint materializes outside the timer.
+- [x] Time `getExpressionBlock()`, then time `as.matrix()` separately; compute
+  `block_ready_secs` and fingerprint the materialized value.
+- [x] Extend the access CSV row with `block_prepare_secs`,
+  `block_materialize_secs`, and `block_ready_secs`; remove the ambiguous
+  `block_secs` claim from new rows.
+- [x] Run the focused access tests and confirm they pass.
 
-### Task 2: Reject unsafe plans before data transfer
+### Task 2: Make provenance and source identity fail closed
 
-**Files:** `tests/bench/lib/resource_planning.R`, `tests/bench/src/04_check_resources.R`, `tests/bench/lib/protocol.R`, `tests/bench/config/sources.R`, `tests/bench/run_sweep.sh`, `tests/testthat/test-bench-resources.R`.
+**Files:** `tools/bench/src/02_record_environment.R`,
+`tools/bench/src/30_check_measurements.R`, `tools/bench/config/sources.R`,
+`tools/bench/run_sweep.sh`,
+`tools/bench/tests/testthat/test-bench-cli-contract.R`.
 
-- [ ] Write failing pure-function tests for memory, sparse-index, and disk rejection and for actionable safe/unsafe rows.
-- [ ] Write a failing CLI test proving an unsafe plan exits non-zero before a source download is attempted.
-- [ ] Implement conservative estimates with injectable host limits.
-- [ ] Add `stress`; remove large boundary tiers from normal profiles and move human 150k out of the default repeated comparison set.
-- [ ] Write `resource_check.csv` and require an explicit override for unsafe schedules.
-- [ ] Run the resource and protocol tests, then commit the behavior change.
+- [x] Add failing tests requiring an unambiguous `repository_version` key and,
+  for publication, a matching non-empty `package_CerebroNexus` value.
+- [x] Add failing source-registry contracts for exact byte counts and SHA-256.
+- [x] Remove the accidental `.Version` suffix by un-naming DESCRIPTION values;
+  re-record the manifest after the isolated package installation.
+- [x] Pin all three observed source hashes, refresh MSSM bytes, and reject a
+  downloaded file before measurement when bytes or SHA-256 differ.
+- [x] Run CLI/source contract tests and confirm they pass.
 
-### Task 3: Validate complete evidence before publication
+### Task 3: Replace capacity claims with observed scaling
 
-**Files:** `tests/bench/src/40_write_report.R`, `tests/bench/src/41_draw_figures.R`, `tests/bench/src/50_check_outputs.R`, `tests/bench/src/60_publish_results.R`, `tests/bench/run_sweep.sh`, `tests/testthat/test-bench-publication.R`.
+**Files:** `tools/bench/lib/reporting.R`,
+`tools/bench/src/40_write_report.R`,
+`tools/bench/tests/testthat/test-bench-reporting.R`.
 
-- [ ] Add a failing publication test for a missing report or required figure.
-- [ ] Generate report and publication figures inside the staged tree.
-- [ ] Validate staged artifacts after measurement validation.
-- [ ] Publish only after both validation phases pass; update `CURRENT` last.
-- [ ] Fault-inject report, artifact-check, and pre-pointer failures and prove the previous run remains current.
+- [x] Add a failing report test proving an infinite R vector limit cannot be
+  replaced with `1.1 * max(observed)` or described as capacity.
+- [x] Add a schema normalizer that marks legacy `block_secs` as preparation-only
+  and excludes it from materialized-read claims.
+- [x] Report observed bytes/non-zero descriptively and state that no maximum
+  capacity is inferred without a stress failure boundary.
+- [x] Run reporting tests and confirm they pass.
 
-### Task 4: Verify and record
+### Task 4: Build the publication figure family
 
-**Files:** benchmark documentation, `NEWS.md`, branch review records.
+**Files:** `tools/bench/lib/figures.R`,
+`tools/bench/src/41_draw_figures.R`,
+`tools/bench/src/50_check_outputs.R`,
+`tools/bench/tests/testthat/test-bench-reporting.R`,
+`tools/bench/tests/testthat/test-bench-publication.R`.
 
-- [ ] Run all benchmark tests and deliberate resource/fingerprint mutations.
-- [ ] Run `R CMD INSTALL .`, the full test suite, `scripts/precheck.sh`, documentation checks, formatting checks, and `git diff --check`.
-- [ ] Update the branch dossier and adversarial-review record.
-- [ ] Review the final diff and commit history. Do not push or notify upstream.
+- [x] Add failing output tests requiring six named figures in SVG, PDF, and PNG.
+- [x] Implement a shared Nature-style theme, stable colour/shape mappings,
+  raw-point plus median/range layers, and safe legacy-block labelling.
+- [x] Generate the six figures: article overview, observed scaling, repeat/order,
+  query latency, memory/storage Pareto, and correctness audit.
+- [x] Render a preview from the immutable current run into a temporary
+  directory and inspect representative PNG/SVG outputs.
+- [x] Run every benchmark contract test, shell syntax checks, and
+  `git diff --check`. Do not commit or push in this side conversation.

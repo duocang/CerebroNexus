@@ -200,6 +200,52 @@ test_that("manifest CLI records source revision and runtime", {
   )
   expect_match(values[["r_version"]], "^R version")
   expect_true(nzchar(values[["cpu"]]))
+  description <- read.dcf(file.path(bench_root, "..", "..", "DESCRIPTION"))
+  expect_equal(
+    values[["repository_version"]],
+    unname(description[1, "Version"])
+  )
+  expect_false("package_version.Version" %in% manifest$key)
+})
+
+test_that("sweep finalizes installed-package provenance after installation", {
+  skip_unless_bench_cli()
+  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
+  manifest_calls <- grep("02_record_environment.R", sweep, fixed = TRUE)
+  install_call <- grep("R CMD INSTALL", sweep, fixed = TRUE)
+
+  expect_equal(length(manifest_calls), 2L)
+  expect_equal(length(install_call), 1L)
+  expect_lt(manifest_calls[1], install_call)
+  expect_gt(manifest_calls[2], install_call)
+})
+
+test_that("source registry pins bytes and SHA-256 for every public file", {
+  skip_unless_bench_cli()
+  source(file.path(bench_root, "config", "sources.R"), local = TRUE)
+
+  expect_true(all(vapply(
+    BENCH_SOURCES,
+    function(spec) {
+      is.numeric(spec$expected_bytes) &&
+        length(spec$expected_bytes) == 1L &&
+        is.finite(spec$expected_bytes)
+    },
+    logical(1)
+  )))
+  expect_true(all(vapply(
+    BENCH_SOURCES,
+    function(spec) {
+      is.character(spec$expected_sha256) &&
+        length(spec$expected_sha256) == 1L &&
+        grepl("^[0-9a-f]{64}$", spec$expected_sha256)
+    },
+    logical(1)
+  )))
+  expect_equal(BENCH_SOURCES$human_pfc_mssm$expected_bytes, 36092176654)
+
+  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
+  expect_true(any(grepl("source identity mismatch", sweep, fixed = TRUE)))
 })
 
 test_that("validator CLI accepts complete results and rejects drift", {
@@ -228,6 +274,9 @@ test_that("validator CLI accepts complete results and rejects drift", {
         reference_row_fingerprint = "row",
         block_fingerprint = "block",
         reference_block_fingerprint = "block",
+        block_prepare_secs = 0.1,
+        block_materialize_secs = 0.2,
+        block_ready_secs = 0.3,
         stringsAsFactors = FALSE
       )
     })
@@ -250,14 +299,18 @@ test_that("validator CLI accepts complete results and rejects drift", {
         "profile",
         "git_sha",
         "dependency_environment",
-        "dependency_environment_git_blob"
+        "dependency_environment_git_blob",
+        "repository_version",
+        "package_CerebroNexus"
       ),
       value = c(
         "run-1",
         "quick",
         paste(rep("a", 40), collapse = ""),
         "default.nix",
-        paste(rep("c", 40), collapse = "")
+        paste(rep("c", 40), collapse = ""),
+        "3.2.0",
+        "3.2.0"
       )
     ),
     file.path(stage, "run_manifest.csv"),
@@ -305,6 +358,27 @@ test_that("validator CLI accepts complete results and rejects drift", {
   )
   expect_equal(ok$status, 0L, info = paste(ok$stderr, collapse = "\n"))
 
+  utils::write.csv(
+    access[names(access) != "block_materialize_secs"],
+    file.path(stage, "20_access.csv"),
+    row.names = FALSE
+  )
+  missing_block_materialization <- run_bench_rscript(
+    "30_check_measurements.R",
+    stage,
+    env = "BENCH_PROFILE=quick"
+  )
+  expect_false(identical(missing_block_materialization$status, 0L))
+  expect_match(
+    paste(missing_block_materialization$stderr, collapse = "\n"),
+    "materialized block timing"
+  )
+  utils::write.csv(
+    access,
+    file.path(stage, "20_access.csv"),
+    row.names = FALSE
+  )
+
   manifest <- utils::read.csv(
     file.path(stage, "run_manifest.csv"),
     stringsAsFactors = FALSE
@@ -323,6 +397,31 @@ test_that("validator CLI accepts complete results and rejects drift", {
   expect_match(
     paste(missing_environment$stderr, collapse = "\n"),
     "dependency environment provenance"
+  )
+  utils::write.csv(
+    manifest,
+    file.path(stage, "run_manifest.csv"),
+    row.names = FALSE
+  )
+
+  mismatched_package <- manifest
+  mismatched_package$value[
+    mismatched_package$key == "package_CerebroNexus"
+  ] <- "3.1.9"
+  utils::write.csv(
+    mismatched_package,
+    file.path(stage, "run_manifest.csv"),
+    row.names = FALSE
+  )
+  package_drift <- run_bench_rscript(
+    "30_check_measurements.R",
+    stage,
+    env = "BENCH_PROFILE=quick"
+  )
+  expect_false(identical(package_drift$status, 0L))
+  expect_match(
+    paste(package_drift$stderr, collapse = "\n"),
+    "installed CerebroNexus version"
   )
   utils::write.csv(
     manifest,

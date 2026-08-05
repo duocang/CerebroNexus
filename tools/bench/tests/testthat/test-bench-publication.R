@@ -111,21 +111,40 @@ test_that("output checker requires report and publication figures", {
 
   writeLines("report", file.path(stage, "summary.md"))
   dir.create(file.path(stage, "figures"))
-  writeLines(
-    "png",
-    file.path(
-      stage,
-      "figures",
-      "expression_backend_benchmark_overview.png"
-    )
+  stems <- c(
+    "expression_backend_benchmark_overview",
+    "expression_backend_benchmark_observed_scaling",
+    "expression_backend_benchmark_repeats",
+    "expression_backend_benchmark_query_latency",
+    "expression_backend_benchmark_pareto",
+    "expression_backend_benchmark_correctness"
   )
+  expected_figures <- as.vector(outer(
+    stems,
+    c("png", "pdf", "svg"),
+    paste,
+    sep = "."
+  ))
+  for (name in expected_figures[-length(expected_figures)]) {
+    writeLines("figure", file.path(stage, "figures", name))
+  }
+  incomplete <- suppressWarnings(system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(checker, stage),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = paste0("BENCH_ROOT=", bench_root)
+  ))
+  expect_false(is.null(attr(incomplete, "status")))
+  expect_match(
+    paste(incomplete, collapse = "\n"),
+    expected_figures[length(expected_figures)],
+    fixed = TRUE
+  )
+
   writeLines(
-    "png",
-    file.path(
-      stage,
-      "figures",
-      "expression_backend_benchmark_capacity_estimate.png"
-    )
+    "figure",
+    file.path(stage, "figures", expected_figures[length(expected_figures)])
   )
   complete <- system2(
     file.path(R.home("bin"), "Rscript"),

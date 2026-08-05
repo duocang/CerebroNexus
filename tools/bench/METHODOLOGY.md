@@ -2,7 +2,7 @@
 
 ## Research question
 
-For the same Cerebro expression matrix and the same public source cells, how do the `embedded`, `bpcells`, and `h5` backends differ in export cost, stored size, fresh-process startup, process memory, single-gene access, and a 12-gene block read? A separate exploratory sweep asks where the current in-memory Seurat export path stops working as the non-zero count grows.
+For the same Cerebro expression matrix and the same public source cells, how do the `embedded`, `bpcells`, and `h5` backends differ in export cost, stored size, fresh-process startup, process memory, single-gene access, and a fully materialized 12-gene block read? A separate exploratory sweep asks where the current in-memory Seurat export path stops working as the non-zero count grows.
 
 The benchmark does not compare biological methods, remote-network throughput, or true cold-disk behaviour.
 
@@ -49,6 +49,13 @@ The export process counts non-zero entries per gene and deterministically picks 
 
 The plan and its reference fingerprints are written before the CRB is loaded in an access process. Consequently, the first backend getter call is the timed first query. It is called a **fresh-process first query**, not a cold-disk query: the benchmark cannot evict the operating-system page cache without privileged, platform-specific operations. After the first query, every hot-panel gene is warmed once and then measured in deterministic repeated passes. Publication runs make three observations per warmed gene (33 warmed observations per process). The independent process, not each within-process query, is the statistical unit.
 
+The block measurement separates backend-native view construction from dense
+materialization. `getExpressionBlock()` is timed first as preparation; then
+`as.matrix()` is timed around the returned block. Their sum is the comparable
+time-to-materialized-block metric. This distinction matters because H5 and
+BPCells can return lazy objects while the embedded backend returns an eager
+subset.
+
 ## Correctness gate
 
 Speed is not accepted without value equality. The source matrix supplies an XDR serialized fingerprint for the first row and for the full 12-gene block. Every access process recomputes both fingerprints outside the timed expressions. A mismatch marks the process as failed, and validation refuses to publish the run.
@@ -66,7 +73,9 @@ Speed is not accepted without value equality. The source matrix supplies an XDR 
 | `rss_mb` | process RSS immediately after load and attach |
 | `first_query_secs` | first backend getter call in that R process |
 | `hot_p50_secs`, `hot_p95_secs` | within-process warmed single-gene distribution |
-| `block_secs` | one 12-gene by all-cell block request |
+| `block_prepare_secs` | construct the backend-native 12-gene block view |
+| `block_materialize_secs` | convert that view to a dense ordinary R matrix |
+| `block_ready_secs` | preparation plus materialization; the comparable block-read metric |
 
 Reports show median, minimum, maximum, and the number of independent processes. They retain raw per-process rows in the CSVs rather than treating within-process queries as independent samples.
 
@@ -74,7 +83,11 @@ The report also derives two server-side readiness proxies. `backend ready` is `l
 
 ## Provenance and publication
 
-`run_manifest.csv` records the run ID, profile, exact Git SHA and dirty state, the `default.nix` Git blob identity, package version, R and dependency versions, operating system, CPU, logical cores, RAM, and R vector-memory limit. The exact clean Git SHA therefore pins both the CerebroNexus code and its dependency-environment definition. A publication-profile run is rejected when the Git worktree is dirty.
+`run_manifest.csv` records the run ID, profile, exact Git SHA and dirty state, the `default.nix` Git blob identity, repository and installed package versions, R and dependency versions, operating system, CPU, logical cores, RAM, and R vector-memory limit. The manifest is finalized after installing the branch into the isolated library, and validation requires the repository and installed CerebroNexus versions to match. The exact clean Git SHA therefore pins both the CerebroNexus code and its dependency-environment definition. A publication-profile run is rejected when the Git worktree is dirty.
+
+Every source registry entry pins both byte size and SHA-256. A changed download
+is rejected before any backend measurement rather than being silently compared
+with an older run.
 
 All files are written to scratch. Measurements are validated before report and figure generation; the complete staged package is checked again before it is copied into `result/runs/<run-id>/`. `result/CURRENT` is replaced last. A crash before that pointer update leaves the previous evidence current and keeps every older immutable run available.
 
@@ -82,7 +95,7 @@ All files are written to scratch. Measurements are validated before report and f
 
 - Runtime comparisons apply to the recorded host, dependencies, data hashes, cell tiers, and query panel. They are not cross-platform confidence intervals.
 - The first-query metric does not control the operating-system disk cache.
-- The host-specific capacity figure extrapolates from successful source/tier points. It is an estimate, not an observed stopping boundary. Observed boundaries require a stress run with recorded failures.
+- The observed-scaling figure connects successful source/tier points only. It does not estimate capacity. An observed stopping boundary requires a stress run with recorded failures.
 - A full source exceeding the `Matrix::dgCMatrix` 32-bit non-zero limit cannot enter the current Seurat exporter, but that statement does not apply to every sparse representation available in R.
 - A profile named `publication` is an internal evidence gate, not a claim of academic peer review.
 

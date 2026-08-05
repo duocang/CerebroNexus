@@ -71,6 +71,49 @@ bench_evidence_notice <- function(profile) {
   }
 }
 
+bench_normalize_access_metrics <- function(x) {
+  required <- c(
+    "block_prepare_secs",
+    "block_materialize_secs",
+    "block_ready_secs"
+  )
+  has_current <- all(required %in% names(x))
+  if (has_current) {
+    x$block_timing_contract <- "materialized_v2"
+    return(x)
+  }
+
+  if ("block_secs" %in% names(x)) {
+    x$block_prepare_secs <- x$block_secs
+  } else {
+    x$block_prepare_secs <- NA_real_
+  }
+  x$block_materialize_secs <- NA_real_
+  x$block_ready_secs <- NA_real_
+  x$block_timing_contract <- "legacy_prepare_only"
+  x
+}
+
+bench_publication_figure_stems <- function() {
+  c(
+    "expression_backend_benchmark_overview",
+    "expression_backend_benchmark_observed_scaling",
+    "expression_backend_benchmark_repeats",
+    "expression_backend_benchmark_query_latency",
+    "expression_backend_benchmark_pareto",
+    "expression_backend_benchmark_correctness"
+  )
+}
+
+bench_publication_figure_files <- function() {
+  as.vector(outer(
+    bench_publication_figure_stems(),
+    c("png", "pdf", "svg"),
+    paste,
+    sep = "."
+  ))
+}
+
 bench_current_result_dir <- function(result_root) {
   result_root <- normalizePath(result_root, mustWork = TRUE)
   pointer <- file.path(result_root, "CURRENT")

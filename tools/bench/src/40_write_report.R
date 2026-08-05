@@ -157,6 +157,7 @@ if (!is.null(exports) && nrow(exports)) {
 }
 
 if (!is.null(access) && nrow(access)) {
+  access <- bench_normalize_access_metrics(access)
   access$backend_ready_secs <- access$load_secs + access$attach_secs
   access$first_gene_ready_secs <-
     access$backend_ready_secs + access$first_query_secs
@@ -170,7 +171,8 @@ if (!is.null(access) && nrow(access)) {
       "first_query_secs",
       "hot_p50_secs",
       "hot_p95_secs",
-      "block_secs"
+      "block_prepare_secs",
+      "block_ready_secs"
     )
   )
   access_summary <- access_summary[
@@ -192,16 +194,30 @@ if (!is.null(access) && nrow(access)) {
       "readiness proxy excludes the Shiny handshake and browser rendering. The ",
       "operating-system file cache is uncontrolled, so it is not a cold-disk measurement."
     ),
-    "",
-    "| source | cells | backend | backend ready s | first gene ready s | RSS MB | first query s | warmed p50 s | warmed p95 s | 12-gene block s |",
-    "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|"
+    ""
+  )
+  if (any(access$block_timing_contract == "legacy_prepare_only")) {
+    out <- c(
+      out,
+      paste0(
+        "Legacy preparation-only block timings are excluded from ",
+        "materialized-read conclusions. Re-run the publication profile to ",
+        "populate the materialized 12-gene metric."
+      ),
+      ""
+    )
+  }
+  out <- c(
+    out,
+    "| source | cells | backend | backend ready s | first gene ready s | RSS MB | first query s | warmed p50 s | warmed p95 s | block prepare s | materialized block ready s |",
+    "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|"
   )
   for (i in seq_len(nrow(access_summary))) {
     row <- access_summary[i, , drop = FALSE]
     out <- c(
       out,
       sprintf(
-        "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |",
+        "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |",
         row$source,
         format(row$n_cells, big.mark = ","),
         row$backend,
@@ -211,7 +227,8 @@ if (!is.null(access) && nrow(access)) {
         interval(row, "first_query_secs", 4L),
         interval(row, "hot_p50_secs", 4L),
         interval(row, "hot_p95_secs", 4L),
-        interval(row, "block_secs", 3L)
+        interval(row, "block_prepare_secs", 3L),
+        interval(row, "block_ready_secs", 3L)
       )
     )
   }
@@ -244,18 +261,24 @@ if (!is.null(exports) && nrow(exports)) {
     estimate <- stats::median(ceiling_points$bytes_per_nnz)
     out <- c(
       out,
-      "## Host-specific scale-limit estimate",
+      "## Observed export memory scaling",
       "",
       sprintf(
         paste0(
           "Across %d distinct source/tier points, the median observed peak was ",
           "%.1f bytes per non-zero (range %.1f-%.1f). This is a descriptive ",
-          "estimate for this exporter and host, not a universal memory law."
+          "relationship for this exporter and host, not a universal memory law."
         ),
         nrow(ceiling_points),
         estimate,
         min(ceiling_points$bytes_per_nnz),
         max(ceiling_points$bytes_per_nnz)
+      ),
+      paste0(
+        "No maximum capacity is inferred from successful runs. A stopping ",
+        "boundary requires a separately recorded stress profile with observed ",
+        "failures; physical RAM, the R vector limit, and the `dgCMatrix` ",
+        "32-bit index limit remain separate constraints."
       ),
       ""
     )
@@ -292,7 +315,8 @@ provenance_keys <- c(
   "generated_at",
   "git_branch",
   "git_dirty",
-  "package_version",
+  "repository_version",
+  "package_CerebroNexus",
   "r_version",
   "os",
   "cpu",
