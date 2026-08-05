@@ -22,6 +22,23 @@ test_that("the real-data benchmark has a repository-only package boundary", {
   expect_false("rhdf5" %in% suggests)
 })
 
+test_that("the pinned development shell includes benchmark dependencies", {
+  repo <- normalizePath(file.path("..", "..", "..", ".."))
+  nix <- readLines(file.path(repo, "default.nix"), warn = FALSE)
+
+  expect_true(any(grepl("^[[:space:]]+rhdf5$", nix)))
+  expect_true(any(grepl(
+    "buildInputs = [ BPCells ] ++ rpkgs ++ system_packages;",
+    nix,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "buildInputs = [ BPCells rpkgs system_packages ];",
+    nix,
+    fixed = TRUE
+  )))
+})
+
 test_that("the package vignette guides users without citing pilot rankings", {
   repo <- normalizePath(file.path("..", "..", "..", ".."))
   article <- readLines(
