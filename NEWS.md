@@ -2,15 +2,14 @@
 
 ## Documentation
 
-- **Draft article: "Expression backend benchmark".** Introduces a protocol for comparing `embedded`, `bpcells`, and `h5` on two real public million-cell matrices. It reports independent-process medians and ranges, distinguishes a fresh-process first query from uncontrolled cold-disk access, and limits scale conclusions to the recorded host and source/tier points. A complete publication-profile run has not yet been performed on this development head.
-- **A complete methodology accompanies the results.** It defines the experimental unit, balanced backend order, expression-density-stratified query panel, run profiles, correctness fingerprints, provenance, failure handling, and interpretation boundaries.
+- **A new "Choosing an expression backend" guide explains the stable packaging, dependency, memory, and deployment trade-offs among `embedded`, `bpcells`, and `h5`.** It deliberately withholds pilot-derived rankings until a validated immutable publication run exists.
+- **A complete repository benchmark methodology accompanies the guide.** It defines the experimental unit, balanced backend order, expression-density-stratified query panel, run profiles, correctness fingerprints, exact code and dependency-environment provenance, failure handling, and interpretation boundaries.
 
 ## Internal
 
-- **A reproducible benchmark harness now lives in `tests/bench/`.** It reads public HDF5 cell blocks through the `rhdf5` ROS3 driver, rotates backend order across repeated exports, validates row and block values against the source matrix, and records Git, dependency, host, and SHA-256 source provenance.
+- **A reproducible benchmark harness now lives under repository-only `tools/bench/`.** Its remote readers, dedicated contract tests, `rhdf5` dependency, design records, and archived evidence remain in CerebroNexus but are excluded from the installed R package.
 - **Benchmark result publication is failure-safe.** Runs are staged and validated before entering an immutable result directory; the `CURRENT` pointer changes last, so an interruption cannot erase the previous evidence.
-- **Benchmark plans are checked against the host before bulk transfer.** The harness reports estimated peak memory, R's vector limit, sparse-index capacity, and free-disk budget for every source/tier. Normal comparison profiles exclude deliberate memory-boundary tiers; those are isolated in the explicit `stress` profile.
-- `rhdf5` is now listed in `Suggests` for the benchmark harness and its reader contract test.
+- **Benchmark validation now requires the exact scheduled access-repeat identities, uses each source's declared expression slot, and rejects unsafe overrides outside `stress`.** Standard and publication comparisons exclude deliberate boundary tiers; capacity plots are labelled as host-specific estimates rather than observed stopping points.
 
 # CerebroNexus 3.1.0
 
