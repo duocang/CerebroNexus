@@ -5,15 +5,14 @@ trekker_helpers_file <- file.path(
   "..",
   "..",
   "inst",
-  "shiny",
-  "v1.4",
+  "viewer",
   "trekker",
   "helpers.R"
 )
 
 if (!file.exists(trekker_helpers_file)) {
   trekker_helpers_file <- system.file(
-    "shiny/v1.4/trekker/helpers.R",
+    "viewer/trekker/helpers.R",
     package = "CerebroNexus"
   )
 }

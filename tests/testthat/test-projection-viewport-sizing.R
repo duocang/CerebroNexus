@@ -23,8 +23,7 @@ test_that("projection height is calculated from measured viewport geometry", {
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "projection_scatter.js"
   )
@@ -60,8 +59,7 @@ test_that("generic fill sizing skips elements outside layout", {
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "fill_height.js"
   )
@@ -99,8 +97,7 @@ test_that("generic fill observes only its content ancestry", {
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "fill_height.js"
   )
@@ -141,8 +138,7 @@ test_that("content below is stable when the fill itself changes height", {
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "fill_height.js"
   )
@@ -189,8 +185,7 @@ test_that("generic fill reveals only after the height settles across two frames"
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "fill_height.js"
   )
@@ -227,7 +222,7 @@ test_that("generic fill reveals only after the height settles across two frames"
 
 test_that("generic fill reveal has no height or opacity transition", {
   css <- paste(
-    readLines(repo_file("inst", "shiny", "v1.4", "www", "custom.css")),
+    readLines(repo_file("inst", "viewer", "www", "custom.css")),
     collapse = "\n"
   )
 
@@ -249,7 +244,7 @@ test_that("generic fill reveal has no height or opacity transition", {
 
 test_that("content wrapper prefers dynamic viewport units with a fallback", {
   css <- paste(
-    readLines(repo_file("inst", "shiny", "v1.4", "www", "custom.css")),
+    readLines(repo_file("inst", "viewer", "www", "custom.css")),
     collapse = "\n"
   )
 
@@ -259,7 +254,7 @@ test_that("content wrapper prefers dynamic viewport units with a fallback", {
 
 test_that("generic fill wrappers do not clip widget controls", {
   css <- paste(
-    readLines(repo_file("inst", "shiny", "v1.4", "www", "custom.css")),
+    readLines(repo_file("inst", "viewer", "www", "custom.css")),
     collapse = "\n"
   )
   fill_rule <- regmatches(
@@ -273,10 +268,10 @@ test_that("generic fill wrappers do not clip widget controls", {
 
 test_that("all projection tabs delegate live height to the shared controller", {
   ui_paths <- c(
-    repo_file("inst", "shiny", "v1.4", "overview", "UI_projection.R"),
-    repo_file("inst", "shiny", "v1.4", "gene_expression", "UI_projection.R"),
-    repo_file("inst", "shiny", "v1.4", "spatial", "UI_projection.R"),
-    repo_file("inst", "shiny", "v1.4", "trajectory", "projection.R")
+    repo_file("inst", "viewer", "overview", "UI_projection.R"),
+    repo_file("inst", "viewer", "gene_expression", "UI_projection.R"),
+    repo_file("inst", "viewer", "spatial", "UI_projection.R"),
+    repo_file("inst", "viewer", "trajectory", "projection.R")
   )
   ui_source <- paste(unlist(lapply(ui_paths, readLines)), collapse = "\n")
 
@@ -296,8 +291,7 @@ test_that("projection sizing isolates Plotly from surrounding box content", {
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "projection_scatter.js"
   )
@@ -331,14 +325,13 @@ test_that("projection sizing isolates Plotly from surrounding box content", {
 
 test_that("trajectory selectors live inside Main parameters", {
   tab_source <- paste(
-    readLines(repo_file("inst", "shiny", "v1.4", "trajectory", "UI.R")),
+    readLines(repo_file("inst", "viewer", "trajectory", "UI.R")),
     collapse = "\n"
   )
   projection_source <- paste(
     readLines(repo_file(
       "inst",
-      "shiny",
-      "v1.4",
+      "viewer",
       "trajectory",
       "projection.R"
     )),
@@ -370,8 +363,7 @@ test_that("shared controller observes wrapped legends and resizes Plotly", {
   source <- paste(
     readLines(repo_file(
       "inst",
-      "shiny",
-      "v1.4",
+      "viewer",
       "www",
       "projection_scatter.js"
     )),
@@ -389,8 +381,7 @@ test_that("reveal waits for two equal measurements so the first frame is settled
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "projection_scatter.js"
   )
@@ -427,8 +418,7 @@ test_that("reveal marks the gate wrapper sized, not the plot itself", {
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "projection_scatter.js"
   )
@@ -474,15 +464,14 @@ test_that("CSS hides projection outputs until the resize path reveals them", {
   js_source <- paste(
     readLines(repo_file(
       "inst",
-      "shiny",
-      "v1.4",
+      "viewer",
       "www",
       "projection_scatter.js"
     )),
     collapse = "\n"
   )
   css_source <- paste(
-    readLines(repo_file("inst", "shiny", "v1.4", "www", "custom.css")),
+    readLines(repo_file("inst", "viewer", "www", "custom.css")),
     collapse = "\n"
   )
 
@@ -546,8 +535,7 @@ test_that("Spatial background remains registered to Plotly data axes", {
   source <- paste(
     readLines(repo_file(
       "inst",
-      "shiny",
-      "v1.4",
+      "viewer",
       "spatial",
       "js_spatial_background.js"
     )),

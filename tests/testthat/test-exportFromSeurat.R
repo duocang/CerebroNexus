@@ -1,6 +1,6 @@
 ## Tests for exportFromSeurat()
 ##
-## Uses the bundled example Seurat object (inst/extdata/v1.4/pbmc_seurat.rds).
+## Uses the bundled example Seurat object (inst/extdata/examples/pbmc_seurat.rds).
 ## All tests require Seurat; skipped gracefully when it is not installed.
 
 skip_if_not_installed("Seurat")
@@ -10,11 +10,13 @@ skip_if_not_installed("Seurat")
 ## ---------------------------------------------------------------------------
 
 pbmc_path <- system.file(
-  "extdata/v1.4/pbmc_seurat.rds",
+  "extdata/examples/pbmc_seurat.rds",
   package = "CerebroNexus"
 )
 if (!nzchar(pbmc_path)) {
-  pbmc_path <- testthat::test_path("../../inst/extdata/v1.4/pbmc_seurat.rds")
+  pbmc_path <- testthat::test_path(
+    "../../inst/extdata/examples/pbmc_seurat.rds"
+  )
 }
 obj_raw <- readRDS(pbmc_path)
 
@@ -213,12 +215,12 @@ test_that("h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
   ## source the runtime attach helper from inst/ — it's a Shiny utility,
   ## not part of the package namespace
   inst_util <- system.file(
-    "shiny/v1.4/utility_functions.R",
+    "viewer/utility_functions.R",
     package = "CerebroNexus"
   )
   if (!nzchar(inst_util)) {
     inst_util <- testthat::test_path(
-      "../../inst/shiny/v1.4/utility_functions.R"
+      "../../inst/viewer/utility_functions.R"
     )
   }
   ## load only the symbol we need into a fresh env to avoid namespace pollution

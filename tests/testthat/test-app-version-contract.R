@@ -8,7 +8,7 @@ repo_file <- function(...) {
 
 test_that("About renders the version supplied by app configuration", {
   about_source <- paste(
-    readLines(repo_file("shiny", "v1.4", "about", "server.R"), warn = FALSE),
+    readLines(repo_file("viewer", "about", "server.R"), warn = FALSE),
     collapse = "\n"
   )
 

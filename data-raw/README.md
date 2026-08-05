@@ -1,6 +1,6 @@
 # data-raw — reproducible demo data
 
-This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/v1.4/`. It is excluded from the built package via `.Rbuildignore`; it stays in the repository for reproducibility only. The built `.crb` files are what ships.
+This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/examples/`. It is excluded from the built package via `.Rbuildignore`; it stays in the repository for reproducibility only. The built `.crb` files are what ships.
 
 ## Where to look
 

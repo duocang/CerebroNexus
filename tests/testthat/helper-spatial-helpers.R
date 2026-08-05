@@ -2,15 +2,14 @@ spatial_helpers_file <- file.path(
   "..",
   "..",
   "inst",
-  "shiny",
-  "v1.4",
+  "viewer",
   "spatial",
   "func_spatial_helpers.R"
 )
 
 if (!file.exists(spatial_helpers_file)) {
   spatial_helpers_file <- system.file(
-    "shiny/v1.4/spatial/func_spatial_helpers.R",
+    "viewer/spatial/func_spatial_helpers.R",
     package = "CerebroNexus"
   )
 }

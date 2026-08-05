@@ -264,7 +264,7 @@ Build + size (measured):
 
 ```
 TREKKER_OUTPUT_DIR=/path/to/.../output Rscript data-raw/build_trekker_demo.R
-# → inst/extdata/v1.4/demo_trekker.crb  (4.70 MB, 2532 nuclei × 21374 genes, 50 evidence imgs)
+# → inst/extdata/examples/demo_trekker.crb  (4.70 MB, 2532 nuclei × 21374 genes, 50 evidence imgs)
 ```
 
 `magick` and `base64enc` are **build-time only** (data-raw is `.Rbuildignore`d);

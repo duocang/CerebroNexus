@@ -30,7 +30,7 @@ repo_file <- function(...) {
 
 read_all <- function(dir) {
   files <- list.files(
-    repo_file("inst", "shiny", "v1.4", dir),
+    repo_file("inst", "viewer", dir),
     full.names = TRUE,
     recursive = TRUE
   )

@@ -8,7 +8,7 @@
 # that exercises the loose-vs-strict carrier distinction. data-raw/ is
 # .Rbuildignore'd, so this costs the installed package nothing.
 # ============================================================================
-# Build the real-HLA TCR demo (.crb)  ->  inst/extdata/v1.4/demo_hla_tcr_bulk.crb
+# Build the real-HLA TCR demo (.crb)  ->  inst/extdata/examples/demo_hla_tcr_bulk.crb
 # ============================================================================
 # EVERYTHING in this demo is real measured data. Nothing is synthesised.
 #
@@ -65,7 +65,10 @@ suppressMessages(library(CerebroNexus))
 set.seed(42)
 
 raw_dir <- Sys.getenv("PUBTCRS_DIR", unset = "data-raw/pubtcrs")
-out <- Sys.getenv("OUT_CRB", unset = "inst/extdata/v1.4/demo_hla_tcr_bulk.crb")
+out <- Sys.getenv(
+  "OUT_CRB",
+  unset = "inst/extdata/examples/demo_hla_tcr_bulk.crb"
+)
 
 ## Alleles to build the demo around: a Class I + Class II mix, each with enough
 ## associated TCRs AND enough carriers/non-carriers among the donors for the

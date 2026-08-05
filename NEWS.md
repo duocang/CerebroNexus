@@ -1,3 +1,14 @@
+# CerebroNexus 3.2.1
+
+## Internal
+
+- Viewer runtime sources now live under `inst/viewer/`, and bundled examples
+  live under `inst/extdata/examples/`. Removing the historical Viewer version
+  from internal paths does not change the application or data formats.
+- `launchCerebro()` is now the single application launcher. The obsolete
+  version selector and the version-named launcher exports were removed because
+  CerebroNexus ships one Viewer implementation.
+
 # CerebroNexus 3.2.0
 
 ## Documentation
@@ -194,7 +205,7 @@
   SVG built from `<text>` elements carrying a `font-family` list, so the browser
   substituted whatever font it happened to have and the mark changed width and
   weight from one machine to the next. It is now vector outlines (Fredoka, SIL
-  OFL) kept in `inst/shiny/v1.4/www/cerebronexus.svg`, so it no longer depends on
+  OFL) kept in `inst/viewer/www/cerebronexus.svg`, so it no longer depends on
   any installed font. The `Nexus` half also moves from the old Bootstrap blue to
   the amber accent used throughout the rest of the interface.
 - **The README documents the analysis modules.** Its feature section previously
@@ -517,7 +528,7 @@
   original cerebroApp v1.3 (projection coloured by state/pseudotime, states by
   group, expression metrics along pseudotime, per-state gene/transcript counts).
   The code is Roman Hillje's original implementation, restructured into the
-  v1.4 sub-file layout with no functional change.
+  Viewer sub-file layout with no functional change.
 - **Conditional tab**: the Trajectory tab is inserted dynamically
   (`insertConditionalTab`) only for data sets whose `.crb` carries trajectory
   data — the same content-driven sidebar mechanism used by the Immune
@@ -540,7 +551,7 @@
   the name given in `cerebro_data` or by file basename — either as a query
   string (`?dataset=TCR`) or as the last path segment (`/TCR`).
 - **Demo data sets**: three genuinely distinct demo `.crb` files ship in
-  `inst/extdata/v1.4/` — `demo_full_tcr_bcr.crb` (all cells, TCR + BCR),
+  `inst/extdata/examples/` — `demo_full_tcr_bcr.crb` (all cells, TCR + BCR),
   `demo_healthy_t.crb` (T + monocytes, TCR) and `demo_bcell_rich.crb` (B-cell
   rich, BCR). They differ in cell composition, so the UMAP and cell-type mix
   change as you switch, and clonotypes are assigned by lineage (TCR to T cells,
@@ -689,7 +700,7 @@ previous releases and refreshes documentation for the current codebase.
 - External HDF5 expression backend, symmetric to the bpcells backend: `exportFromSeurat()` with `expression_matrix_mode = "h5"` writes the matrix via `HDF5Array::writeTENxMatrix()` to a TENx-format `.h5` next to the `.crb`. The runtime attach loads it back as a lazy `HDF5Array::TENxMatrix` seed and transposes via `DelayedArray::t()` (free); the in-memory `dgCMatrix` is never materialised, so RAM stays close to the `.crb` metadata size and attach is effectively instant
 - Introduced `createShinyApp()` for bundling a self-contained Shiny app from one or more `.crb` files
 - `createShinyApp()` now copies the `<stem>.h5` sibling alongside the `.crb` during app bundling, mirroring the existing `.bpcells/` handling
-- Legacy `.crb` files (predating the `expression_backend` field) are auto-tagged as `h5` when the host app sets `Cerebro.options[["expression_matrix_h5"]]`, finally giving `inst/extdata/v1.4/example.h5` a runtime consumer
+- Legacy `.crb` files (predating the `expression_backend` field) are auto-tagged as `h5` when the host app sets `Cerebro.options[["expression_matrix_h5"]]`, finally giving `inst/extdata/examples/example.h5` a runtime consumer
 - `convertSeuratToCerebro()` accepts an in-memory Seurat object alongside the `.rds` path; output basename derives from `experiment_name` when no path is given
 - `createShinyApp()` opens a `...` passthrough so callers can forward extra options without signature churn
 - `exportFromSeurat()` with `expression_matrix_mode = "bpcells"` now auto-detects losslessly-integer values and calls `BPCells::convert_matrix_type("uint32_t")` before `write_matrix_dir()`, which triggers BPCells's bit-packed integer storage on the typical scRNA-seq counts case. Shrinks the bpcells sibling ~5× on integer counts (e.g. 50k cells × 20k genes: 440 MB raw double → 78 MB bit-packed; PBMC All Samples 38,606 × 147,756: 2.6 GB → 549 MB), and queries get ~1.5-1.7× faster as a side effect (smaller payload to read). Normalised float values (`slot = "data"`/`"scale.data"`) fall back to raw double to avoid silent precision loss

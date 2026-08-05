@@ -10,12 +10,11 @@
 # mergeTrajectoryWithMetaData() lives in the Shiny app's utility_functions.R
 # (sourced at app runtime, not exported). Source that file into a scratch env
 # that stubs the app globals the helper needs.
-util_file <- testthat::test_path("../../inst/shiny/v1.4/utility_functions.R")
+util_file <- testthat::test_path("../../inst/viewer/utility_functions.R")
 if (!file.exists(util_file)) {
   util_file <- file.path(
     system.file(package = "CerebroNexus"),
-    "shiny",
-    "v1.4",
+    "viewer",
     "utility_functions.R"
   )
 }

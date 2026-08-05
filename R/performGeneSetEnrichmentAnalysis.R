@@ -28,7 +28,7 @@
 #' stored in object@misc$enriched_pathways$<name>
 #'
 #' @examples
-#' pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
+#' pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
 #'   package = "CerebroNexus"))
 #' example_gene_set <- system.file("extdata/example_gene_set.gmt",
 #'   package = "CerebroNexus")

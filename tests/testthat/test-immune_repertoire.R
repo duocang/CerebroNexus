@@ -12,15 +12,15 @@ inst_candidates <- c(
 )
 local_inst <- inst_candidates[file.exists(file.path(
   inst_candidates,
-  "shiny/v1.4"
+  "viewer"
 ))][1]
 if (!is.na(local_inst)) {
-  shiny_root <- file.path(local_inst, "shiny/v1.4")
-  example_crb <- file.path(local_inst, "extdata/v1.4/example.crb")
+  shiny_root <- file.path(local_inst, "viewer")
+  example_crb <- file.path(local_inst, "extdata/examples/example.crb")
 } else {
-  shiny_root <- system.file("shiny/v1.4", package = "CerebroNexus")
+  shiny_root <- system.file("viewer", package = "CerebroNexus")
   example_crb <- system.file(
-    "extdata/v1.4/example.crb",
+    "extdata/examples/example.crb",
     package = "CerebroNexus"
   )
 }

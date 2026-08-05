@@ -15,7 +15,7 @@
 #' gene list.
 #'
 #' @examples
-#' pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
+#' pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
 #'   package = "CerebroNexus"))
 #' pbmc <- calculatePercentGenes(
 #'   object = pbmc,

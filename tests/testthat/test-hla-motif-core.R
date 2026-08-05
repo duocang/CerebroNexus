@@ -611,7 +611,7 @@ test_that("no user-facing string calls the max mismatch a diameter", {
   viz <- paste(
     readLines(
       system.file(
-        "shiny/v1.4/hla_tcr_motifs/visualizations.R",
+        "viewer/hla_tcr_motifs/visualizations.R",
         package = "CerebroNexus"
       ),
       warn = FALSE

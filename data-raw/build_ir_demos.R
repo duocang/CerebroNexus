@@ -28,12 +28,21 @@ suppressMessages({
 })
 
 ## ---- Paths (override via env for a tmp dry-run) ---------------------------
-src_crb <- Sys.getenv("SRC_CRB", "inst/extdata/v1.4/example.crb")
+src_crb <- Sys.getenv("SRC_CRB", "inst/extdata/examples/example.crb")
 t_csv <- Sys.getenv("T_CSV", "data-raw/vdj_10x/pbmc3_t_contig.csv")
 b_csv <- Sys.getenv("B_CSV", "data-raw/vdj_10x/pbmc3_b_contig.csv")
-out_healthy <- Sys.getenv("OUT_HEALTHY", "inst/extdata/v1.4/demo_healthy_t.crb")
-out_bcell <- Sys.getenv("OUT_BCELL", "inst/extdata/v1.4/demo_bcell_rich.crb")
-out_full <- Sys.getenv("OUT_FULL", "inst/extdata/v1.4/demo_full_tcr_bcr.crb")
+out_healthy <- Sys.getenv(
+  "OUT_HEALTHY",
+  "inst/extdata/examples/demo_healthy_t.crb"
+)
+out_bcell <- Sys.getenv(
+  "OUT_BCELL",
+  "inst/extdata/examples/demo_bcell_rich.crb"
+)
+out_full <- Sys.getenv(
+  "OUT_FULL",
+  "inst/extdata/examples/demo_full_tcr_bcr.crb"
+)
 
 ct_cols <- c("barcode", "CTgene", "CTnt", "CTaa", "CTstrict")
 

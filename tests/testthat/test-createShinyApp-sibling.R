@@ -86,8 +86,7 @@ render_bundle_spatial_background <- function(
   sys.source(
     file.path(
       app,
-      "shiny",
-      "v1.4",
+      "viewer",
       "spatial",
       "func_projection_update_plot.R"
     ),
@@ -173,14 +172,13 @@ render_bundle_spatial_background <- function(
 
 source_bundle_runtime <- function(app = NULL) {
   utility <- if (is.null(app)) {
-    testthat::test_path("../../inst/shiny/v1.4/utility_functions.R")
+    testthat::test_path("../../inst/viewer/utility_functions.R")
   } else {
-    file.path(app, "shiny", "v1.4", "utility_functions.R")
+    file.path(app, "viewer", "utility_functions.R")
   }
   if (!file.exists(utility)) {
     utility <- system.file(
-      "shiny",
-      "v1.4",
+      "viewer",
       "utility_functions.R",
       package = "CerebroNexus"
     )
@@ -2723,14 +2721,12 @@ test_that("the runtime rejects an H5 backend that is a directory", {
     "..",
     "..",
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "utility_functions.R"
   )
   if (!file.exists(source_path)) {
     source_path <- system.file(
-      "shiny",
-      "v1.4",
+      "viewer",
       "utility_functions.R",
       package = "CerebroNexus"
     )

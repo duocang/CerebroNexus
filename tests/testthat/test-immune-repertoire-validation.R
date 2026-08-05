@@ -268,12 +268,12 @@ test_that("merged legacy slots reject one barcode assigned to two samples", {
 
 test_that("the bundled TCR/BCR demo passes the check", {
   crb_path <- system.file(
-    "extdata/v1.4/demo_full_tcr_bcr.crb",
+    "extdata/examples/demo_full_tcr_bcr.crb",
     package = "CerebroNexus"
   )
   if (!nzchar(crb_path)) {
     crb_path <- testthat::test_path(
-      "../../inst/extdata/v1.4/demo_full_tcr_bcr.crb"
+      "../../inst/extdata/examples/demo_full_tcr_bcr.crb"
     )
   }
   skip_if_not(file.exists(crb_path), "demo_full_tcr_bcr.crb not available")

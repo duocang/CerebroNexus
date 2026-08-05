@@ -2,7 +2,7 @@
 ## build_trekker_demo.R
 ##
 ## Reproducible build of the Trekker single-cell spatial-mapping demo `.crb`
-## shipped in inst/extdata/v1.4/ for the **Trekker** tab.
+## shipped in inst/extdata/examples/ for the **Trekker** tab.
 ##
 ## WHAT TREKKER IS
 ##   Trekker (Curio Bioscience / Takara Bio, "Trekker Single-Cell Spatial
@@ -23,7 +23,7 @@
 ##   The bundle is gitignored; only the derived, down-sampled .crb ships.
 ##
 ## WHAT THIS SCRIPT PRODUCES
-##   inst/extdata/v1.4/demo_trekker.crb  (target: <= 5 MB, self-contained)
+##   inst/extdata/examples/demo_trekker.crb  (target: <= 5 MB, self-contained)
 ##   A proper Cerebro_v1.3 object (whole-transcriptome expression + UMAP +
 ##   cell-type / cluster groups) PLUS a `trekker` slot carrying the Trekker
 ##   page's content: three measured coordinate orientations, positioning QC in
@@ -74,7 +74,7 @@ BASE <- Sys.getenv(
     "output"
   )
 )
-OUT_DIR <- "inst/extdata/v1.4"
+OUT_DIR <- "inst/extdata/examples"
 CRB <- file.path(OUT_DIR, "demo_trekker.crb")
 
 N_CELLS <- 2500L # down-sampled nucleus count (whole transcriptome kept)

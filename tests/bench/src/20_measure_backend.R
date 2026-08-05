@@ -46,8 +46,7 @@ suppressPackageStartupMessages({
 # .attachExternalExpression() is app-side code, not exported by the package.
 utils_path <- file.path(
   system.file(package = "CerebroNexus"),
-  "shiny",
-  "v1.4",
+  "viewer",
   "utility_functions.R"
 )
 if (!file.exists(utils_path)) {

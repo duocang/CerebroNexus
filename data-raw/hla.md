@@ -50,7 +50,7 @@ earns its place only while nothing better exists:
 Both **build scripts are kept and still run** (sections 5 and 6) — they are the
 reproducibility record, and `data-raw/` is `.Rbuildignore`d, so they add nothing
 to the installed package. What changed is only what ships in
-`inst/extdata/v1.4/`.
+`inst/extdata/examples/`.
 
 What the surviving demo does not cover, stated plainly: it is sorted CD8+ T
 cells, so **Class I only**. The Class I x Class II pair scope is gated on
@@ -92,7 +92,7 @@ The control is the predecessor — a real-sequence demo built from an *unselecte
 > *A framework for highly multiplexed dextramer mapping and prediction of T cell receptor sequences to antigen specificity.*
 > **Science Advances** 7(20):eabf5835 (2021). <https://doi.org/10.1126/sciadv.abf5835>
 
-Licence **CC BY 4.0**; the attribution ships beside the data as `inst/extdata/v1.4/demo_hla_tcr_dextramer.ATTRIBUTION.md`.
+Licence **CC BY 4.0**; the attribution ships beside the data as `inst/extdata/examples/demo_hla_tcr_dextramer.ATTRIBUTION.md`.
 
 CD8+ T cells from four HLA-typed healthy donors were stained with a pool of dCODE dextramers — 98 reagents over 8 HLA alleles, the same panel for every donor — **sorted for dextramer binding**, then run on 10x 5′ Single Cell Immune Profiling.
 Each cell therefore carries a paired αβ TCR, a transcriptome, a TotalSeq-C surface-protein panel, and the identity of the dextramer it bound. ~190,000 cells before filtering.
@@ -486,7 +486,7 @@ Current output, and what the shipped object contains:
    TRA: 3189 unique CDR3 -> 396 nodes in 141 motifs
    HLA: 4 donors, 12 alleles, source_type=genotyped
    binder calls vs genotype: 6654 off-genotype, 75 undecidable, of 12000 cells
-   PUBLISHED inst/extdata/v1.4/demo_hla_tcr_dextramer.crb (5.2 MB)
+   PUBLISHED inst/extdata/examples/demo_hla_tcr_dextramer.crb (5.2 MB)
 
    groups:   sample, cell_type, dextramer_antigen, dextramer_allele,
              restriction_in_genotype
@@ -578,7 +578,7 @@ The motif families and their HLA associations are **designed in**, because an un
 # 7. Rebuilding everything
 
 Only the first line rebuilds something the package ships. The other two write
-`.crb` files into `inst/extdata/v1.4/` that are **not** tracked or installed — if
+`.crb` files into `inst/extdata/examples/` that are **not** tracked or installed — if
 you run them, `git status` will show untracked files you probably want to delete
 again.
 

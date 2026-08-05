@@ -28,8 +28,7 @@ run_node <- function(body) {
   testthat::skip_if(Sys.which("node") == "", "node not on PATH")
   js_path <- repo_file(
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "www",
     "projection_scatter.js"
   )
@@ -165,8 +164,7 @@ test_that("zooming clears the native editable selection and reset restores it", 
   src <- paste(
     readLines(repo_file(
       "inst",
-      "shiny",
-      "v1.4",
+      "viewer",
       "www",
       "projection_scatter.js"
     )),

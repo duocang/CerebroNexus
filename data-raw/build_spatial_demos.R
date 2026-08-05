@@ -2,7 +2,7 @@
 ## build_spatial_demos.R
 ##
 ## Reproducible build of the REAL, public spatial-transcriptomics demo `.crb`
-## files shipped in inst/extdata/v1.4/ for the Spatial tab.
+## files shipped in inst/extdata/examples/ for the Spatial tab.
 ##
 ## Unlike demo_spatial.crb (which is fully SYNTHETIC), the datasets produced here
 ## are down-sampled subsets of genuinely measured, citeable public data. Each one
@@ -57,7 +57,7 @@ suppressPackageStartupMessages({
 pkgload::load_all(".", quiet = TRUE)
 
 set.seed(42)
-out_dir <- "inst/extdata/v1.4"
+out_dir <- "inst/extdata/examples"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 ## Cap cells per demo so the shipped .crb stays small and the Spatial tab renders

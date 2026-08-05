@@ -393,7 +393,10 @@ test_that("{shinytest2} recording: about", {
 })
 
 test_that("createShinyApp bundles a working app", {
-  example <- system.file("extdata/v1.4/example.crb", package = "CerebroNexus")
+  example <- system.file(
+    "extdata/examples/example.crb",
+    package = "CerebroNexus"
+  )
   skip_if_not(nzchar(example), "example.crb not found")
 
   tmp <- file.path(tempdir(), "demo.crb")

@@ -25,7 +25,7 @@ hla_params_ready_src <- function(data_src) {
 test_that("HLA Associations is wired to a frozen motif feature", {
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/associations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -44,7 +44,7 @@ test_that("Associations takes its features from the allele-independent graph", {
   # is a Shiny reactive: the unit suite cannot see which graph it reads.
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/associations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -68,7 +68,7 @@ test_that("the allele scope cache key carries the carrier set, not just a name",
   # the first one's carriers while every caption around it updates.
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/data.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -84,7 +84,7 @@ test_that("the allele scope cache key carries the carrier set, not just a name",
 test_that("Data and QC exposes normalized and donor mapping previews", {
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/data_qc.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/data_qc.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -98,14 +98,14 @@ test_that("Data and QC exposes normalized and donor mapping previews", {
 test_that("motif network exposes a stable selected-node detail panel", {
   ui <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/UI.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/UI.R"),
       warn = FALSE
     ),
     collapse = "\n"
   )
   viz <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/visualizations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -129,7 +129,7 @@ test_that("core shim binds locally without polluting globalenv", {
   }
 
   source(
-    hla_inst_file("shiny/v1.4/hla_tcr_motifs/core_shim.R"),
+    hla_inst_file("viewer/hla_tcr_motifs/core_shim.R"),
     local = local_env
   )
 
@@ -156,7 +156,7 @@ test_that("bundled core shim resolves without an installed package", {
   app_root <- file.path(repo_root, "inst")
   shim_path <- file.path(
     app_root,
-    "shiny/v1.4/hla_tcr_motifs/core_shim.R"
+    "viewer/hla_tcr_motifs/core_shim.R"
   )
   # The shim sources its bundled core/ copies with no package on the search
   # path -- the exact condition of a createShinyApp bundle. Run it in a --vanilla
@@ -202,7 +202,7 @@ test_that("bundled core shim resolves without an installed package", {
 ## carrier contrast remains on screen.
 
 hla_sc_demo <- function() {
-  path <- hla_inst_file("extdata/v1.4/demo_hla_tcr_dextramer.crb")
+  path <- hla_inst_file("extdata/examples/demo_hla_tcr_dextramer.crb")
   testthat::skip_if_not(file.exists(path), "single-cell demo not built")
   readRDS(path)
 }
@@ -371,7 +371,7 @@ test_that("the shipped demo's selection is a caveat the page can actually show",
   crb <- hla_sc_demo()
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/data.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -395,7 +395,7 @@ test_that("the shipped demo ships its CC-BY attribution beside the data", {
   # data-raw/DATASETS.md holds the provenance but is .Rbuildignore'd, so an
   # installed user would otherwise receive the CC-BY data with no licensing
   # record. The attribution file lives in extdata so it installs with the demo.
-  att <- hla_inst_file("extdata/v1.4/demo_hla_tcr_dextramer.ATTRIBUTION.md")
+  att <- hla_inst_file("extdata/examples/demo_hla_tcr_dextramer.ATTRIBUTION.md")
   expect_true(file.exists(att))
   txt <- paste(readLines(att, warn = FALSE), collapse = "\n")
   expect_match(txt, "CC-BY", fixed = TRUE)
@@ -413,7 +413,7 @@ test_that("motif network nodes carry no group column", {
   # every level.
   viz <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/visualizations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -447,7 +447,7 @@ test_that("motif network nodes carry no group column", {
 test_that("core_shim sources every R/hla_*.R core file", {
   shim <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/core_shim.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/core_shim.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -470,7 +470,7 @@ test_that("core_shim sources every R/hla_*.R core file", {
 
 test_that("bundled HLA core/ is byte-identical to the R/ source", {
   r_dir <- testthat::test_path("../../R")
-  core_dir <- hla_inst_file("shiny/v1.4/hla_tcr_motifs/core")
+  core_dir <- hla_inst_file("viewer/hla_tcr_motifs/core")
   # The shim sources these copies at runtime; they exist only so the module is
   # self-contained in a createShinyApp bundle (no R/, no package). If they drift
   # from R/, the bundle silently runs stale core code. This guard needs the
@@ -499,7 +499,7 @@ test_that("bundled HLA core/ is byte-identical to the R/ source", {
       readLines(inst_copy, warn = FALSE),
       readLines(r_src, warn = FALSE),
       info = paste0(
-        "inst/shiny/v1.4/hla_tcr_motifs/core/",
+        "inst/viewer/hla_tcr_motifs/core/",
         f,
         " drifted from R/",
         f,
@@ -516,19 +516,19 @@ test_that("the panel info button is wired to a sourced guide", {
   # server never sources is invisible to unit tests and only fails in a running
   # app. Pin button -> handler -> source.
   ui <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/UI.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
     collapse = "\n"
   )
   server <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/server.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/server.R"),
       warn = FALSE
     ),
     collapse = "\n"
   )
   guide <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/help_guide.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -542,12 +542,12 @@ test_that("the guide covers every tab the page actually shows", {
   # A page tab with no guide entry is how a guide rots: the tab ships, the guide
   # silently does not mention it.
   ui <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/UI.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
     collapse = "\n"
   )
   guide <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/help_guide.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -568,7 +568,7 @@ test_that("the guide states the page's evidence ceiling", {
   # ever loses that, it starts teaching the opposite of the UI's own subtitle.
   guide <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/help_guide.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -587,7 +587,7 @@ test_that("guide schematics are self-contained inline SVG", {
   # A strict-CSP page and an offline .crb viewer both break on external assets.
   guide <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/help_guide.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -609,7 +609,7 @@ test_that("the renderer sets node size itself, never via vis `value`", {
   # hla_node_radius() instead, and `scaling` must not reappear alongside it.
   viz <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/visualizations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -639,7 +639,7 @@ test_that("the network caption states area encoding and the cap", {
   # compare areas proportionally past the cap, where that is false.
   viz <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/visualizations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -657,8 +657,8 @@ test_that("guide palette constants match the renderer's scales", {
   read_src <- function(f) {
     paste(readLines(hla_inst_file(f), warn = FALSE), collapse = "\n")
   }
-  viz <- read_src("shiny/v1.4/hla_tcr_motifs/visualizations.R")
-  guide <- read_src("shiny/v1.4/hla_tcr_motifs/help_guide.R")
+  viz <- read_src("viewer/hla_tcr_motifs/visualizations.R")
+  guide <- read_src("viewer/hla_tcr_motifs/help_guide.R")
 
   hex <- function(src, name) {
     m <- regmatches(
@@ -700,7 +700,7 @@ test_that("the guide draws no unnamed colour", {
   # chrome (backgrounds, rules, arrows), not data levels.
   guide <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/help_guide.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/help_guide.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -735,7 +735,7 @@ test_that("the carrier and MHC-context scales share no hue but grey", {
   # thing on both.
   viz <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/visualizations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -761,7 +761,7 @@ test_that("MHC context is a fixed scale, not a data-order palette", {
   # blue on one data set and red on the next.
   viz <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/visualizations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -793,7 +793,7 @@ test_that("the page's nav gate scans every sample, like the core does", {
   expect_setequal(hla_detect_chains(late), c("TRA", "TRB"))
 
   src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/shiny_server.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/shiny_server.R"), warn = FALSE),
     collapse = "\n"
   )
   expect_match(
@@ -812,7 +812,7 @@ test_that("node colouring is offered from the declared groupings", {
   # second opinion.
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/data.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -846,7 +846,7 @@ test_that("the lineage column is found by its labels, not by its name", {
   # those -- it is hla_lineage_context() plus the exclusion of labels that name
   # an experimental condition ("anti-CD4"), which is unit-tested in the core.
   src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -881,7 +881,7 @@ test_that("every scrolling table keeps its cells on one line", {
   for (f in c("associations.R", "data_qc.R")) {
     src <- paste(
       readLines(
-        hla_inst_file(file.path("shiny/v1.4/hla_tcr_motifs", f)),
+        hla_inst_file(file.path("viewer/hla_tcr_motifs", f)),
         warn = FALSE
       ),
       collapse = "\n"
@@ -908,12 +908,12 @@ test_that("scope guards test for 'all', never for one scope's name", {
   # scope is added -- and then the new one silently walks past both: its graph
   # goes back to nominating features, with no notice that it did.
   data_src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
   assoc_src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/associations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -953,7 +953,7 @@ test_that("the parameter gate stays OUTSIDE the cached graph reactives", {
   # stop instead of building. Structural, and silent when broken: the page would
   # simply go blank for whichever parameters were live when it first opened.
   data_src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
   # Each cached reactive is bindCache'd and must not gate. Both the expensive raw
@@ -1012,13 +1012,13 @@ test_that("the parameter panel renders once, then updates in place", {
   # discipline the allele pickers already follow.
   settings_src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/settings.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/settings.R"),
       warn = FALSE
     ),
     collapse = "\n"
   )
   data_src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -1069,19 +1069,19 @@ test_that("the page's allele lives outside both pickers", {
   # picker later seeded itself from choices[1] and dragged Associations back.
   # Measured before this fix: HLA-B*07:02 replaced by HLA-A*02:01, silently.
   data_src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
   assoc_src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/associations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/associations.R"),
       warn = FALSE
     ),
     collapse = "\n"
   )
   settings_src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/settings.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/settings.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1140,7 +1140,7 @@ test_that("the parameter gate covers the conditional allele pickers", {
   # This is the third place the same shape of bug appeared (first open, allele
   # scope, pair scope), which is why it is pinned rather than just fixed.
   data_src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
   gate <- hla_params_ready_src(data_src)
@@ -1159,7 +1159,7 @@ test_that("the parameter gate covers the conditional allele pickers", {
 
 test_that("the pair scope is offered only when both classes can be picked", {
   src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
   # A pair with no lineage to sort cells by is undefined, not narrower.
@@ -1177,7 +1177,7 @@ test_that("the pair scope is offered only when both classes can be picked", {
 
 test_that("the Network data tab exposes grain radio, table and download", {
   ui_src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/UI.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/UI.R"), warn = FALSE),
     collapse = "\n"
   )
   expect_match(ui_src, "tabPanel\\([\\s\\S]{0,40}\"Network data\"", perl = TRUE)
@@ -1191,7 +1191,7 @@ test_that("the Network data tab exposes grain radio, table and download", {
   )
   tbl_src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/network_table.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1220,7 +1220,7 @@ test_that("the Network data tab exposes grain radio, table and download", {
 test_that("the network table reads the graph and the segments, not the render cap", {
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/network_table.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1242,7 +1242,7 @@ test_that("the network table reads the graph and the segments, not the render ca
   # sourced into the module
   server_src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/server.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/server.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1259,7 +1259,7 @@ test_that("the network table carries the data set's own annotations", {
   # no edit here.
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/network_table.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1301,7 +1301,7 @@ test_that("the network table carries the data set's own annotations", {
 test_that("the network table renders and downloads the current view", {
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/network_table.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1327,13 +1327,13 @@ test_that("the network table renders and downloads the current view", {
 test_that("the motif network cannot zoom out below its initial fit", {
   vis_src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/visualizations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
   )
   js_src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/www/hla_motifs.js"), warn = FALSE),
+    readLines(hla_inst_file("viewer/www/hla_motifs.js"), warn = FALSE),
     collapse = "\n"
   )
   # zoom is button-only -- scroll/pinch zoom is off, so nothing shrinks the
@@ -1351,12 +1351,12 @@ test_that("the motif network cannot zoom out below its initial fit", {
 
 test_that("a colour change recolours in place, without re-rendering", {
   data_src <- paste(
-    readLines(hla_inst_file("shiny/v1.4/hla_tcr_motifs/data.R"), warn = FALSE),
+    readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
   vis_src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/visualizations.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/visualizations.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1383,7 +1383,7 @@ test_that("a colour change recolours in place, without re-rendering", {
 test_that("the network table is nowrap-scrollable and truncates samples on hover", {
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/network_table.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -1406,7 +1406,7 @@ test_that("the samples column cannot inject HTML", {
   # let the browser escape both the text and the title attribute.
   src <- paste(
     readLines(
-      hla_inst_file("shiny/v1.4/hla_tcr_motifs/network_table.R"),
+      hla_inst_file("viewer/hla_tcr_motifs/network_table.R"),
       warn = FALSE
     ),
     collapse = "\n"

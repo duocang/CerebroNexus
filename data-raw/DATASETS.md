@@ -1,6 +1,6 @@
 # Demo dataset registry
 
-Single source of truth for every demo `.crb` shipped in `inst/extdata/v1.4/`.
+Single source of truth for every demo `.crb` shipped in `inst/extdata/examples/`.
 Whatever the data type — immune repertoire, spatial, trajectory — each dataset is recorded here with the **same fields** so provenance is complete and reproducible.
 
 `data-raw/` is excluded from the built package via `.Rbuildignore`; it stays in the repo for reproducibility only. The built `.crb` files are what ship.
@@ -56,7 +56,7 @@ When adding a dataset (spatial, trajectory, or otherwise), **copy the template a
 - **embedded image**:
 - **license**:
 - **build**: `data-raw/<script>.R` → `<function>()`
-- **output**: `inst/extdata/v1.4/demo_<type>_<name>.crb` (~X MB)
+- **output**: `inst/extdata/examples/demo_<type>_<name>.crb` (~X MB)
 ```
 
 ---
@@ -82,10 +82,10 @@ Built by `data-raw/build_spatial_demos.R` (see [`spatial.md`](spatial.md) for de
 - **object type**: Seurat v5, image class `VisiumV2` (auto-upgraded on load)
 - **sampling**: `set.seed(42)`; ≤ 5,000 spots stratified by Louvain cluster (here 2,696 spots, the full anterior1 section); expression trimmed to 1,200 genes (variable features + top-expressed) to keep the `.crb` small.
 - **cell-type field**: `cluster` (Louvain, `FindClusters(resolution = 0.5)`, since the source ships no cell-type labels)
-- **embedded image**: **none — uses an EXTERNAL image instead.** The real low-res H&E (`slot(image, "image")`, 599×600×3) is written to a standalone PNG, `inst/extdata/v1.4/demo_spatial_visium_he.png`, and loaded via `spatial_images` in `inst/app.R` rather than embedded in the `.crb`. This is the deliberate live example of the external-image path (the other image demos embed); it also keeps the Visium `.crb` smaller. Displayed with `spatial_images_flip_y = TRUE` (ground-truth verified against Seurat's `SpatialPlot`).
+- **embedded image**: **none — uses an EXTERNAL image instead.** The real low-res H&E (`slot(image, "image")`, 599×600×3) is written to a standalone PNG, `inst/extdata/examples/demo_spatial_visium_he.png`, and loaded via `spatial_images` in `inst/app.R` rather than embedded in the `.crb`. This is the deliberate live example of the external-image path (the other image demos embed); it also keeps the Visium `.crb` smaller. Displayed with `spatial_images_flip_y = TRUE` (ground-truth verified against Seurat's `SpatialPlot`).
 - **license**: 10x Genomics public dataset terms (freely redistributable).
 - **build**: `data-raw/build_spatial_demos.R` → `build_visium()` (writes both the `.crb` and `demo_spatial_visium_he.png`)
-- **output**: `inst/extdata/v1.4/demo_spatial_visium.crb` (~6.1 MB) + `demo_spatial_visium_he.png` (~0.5 MB)
+- **output**: `inst/extdata/examples/demo_spatial_visium.crb` (~6.1 MB) + `demo_spatial_visium_he.png` (~0.5 MB)
 
 ### demo_spatial_slideseq.crb
 - **type**: spatial
@@ -105,7 +105,7 @@ Built by `data-raw/build_spatial_demos.R` (see [`spatial.md`](spatial.md) for de
 - **embedded image**: **none — and this is correct, not an omission.** The `SlideSeq` S4 class has only a `coordinates` slot; it structurally carries no tissue raster (unlike `VisiumV2`/`FOV`). Slide-seq images beads to recover positions but the public object stores only bead coordinates, no H&E/DAPI photo. The scatter of beads is therefore the complete spatial view.
 - **license**: distributed under the SeuratData terms; original data CC-BY (Broad Institute / Macosko lab).
 - **build**: `data-raw/build_spatial_demos.R` → `build_slideseq()`
-- **output**: `inst/extdata/v1.4/demo_spatial_slideseq.crb` (~1.6 MB)
+- **output**: `inst/extdata/examples/demo_spatial_slideseq.crb` (~1.6 MB)
 
 ### demo_spatial_merfish.crb
 - **type**: spatial
@@ -124,7 +124,7 @@ Built by `data-raw/build_spatial_demos.R` (see [`spatial.md`](spatial.md) for de
 - **embedded image**: **real DAPI mosaic** (`imgRaster(getImg(spe, "dapi"))`, 9392×5721), stored as `histology_image` with `histology_image_bounds = [0, W] × [0, H]` (cells already sit in DAPI pixel space). **Vertically flipped on encode** (`flip_y = TRUE`): `imgRaster` returns rows in the opposite order to the cell-coordinate y (verified by the brightness test in spatial.md — this is the opposite of Xenium, which is not flipped).
 - **license**: Bioconductor `MerfishData` / original Petukhov et al. terms (public reference data).
 - **build**: `data-raw/build_spatial_demos.R` → `build_merfish()`
-- **output**: `inst/extdata/v1.4/demo_spatial_merfish.crb` (~2.0 MB)
+- **output**: `inst/extdata/examples/demo_spatial_merfish.crb` (~2.0 MB)
 
 ### demo_spatial_xenium.crb
 - **type**: spatial
@@ -146,7 +146,7 @@ Built by `data-raw/build_spatial_demos.R` (see [`spatial.md`](spatial.md) for de
 - **embedded image**: **real DAPI morphology** (first channel of `morphology_focus.ome.tif`, contrast-stretched to a greyscale PNG), stored as `histology_image` with `histology_image_bounds = [0, W·px] × [0, H·px]` where `px = pixel_size` (0.2125 µm/px from `experiment.xenium`) converts the full-resolution pixel raster into the micron coordinate space `GetTissueCoordinates` reports. The OME-TIFF is JPEG2000-compressed, which R's `tiff`/`EBImage` cannot decode, so it is read with the Bioconductor package `RBioFormats` (a pure-R wrapper over the Java Bio-Formats library, no Python); if `RBioFormats` is missing, the demo ships coordinates without the image. **Not vertically flipped** — the RBioFormats raster and the cell centroids share the same top-down frame (verified by the brightness test, see spatial.md); this is the opposite of MERFISH.
 - **license**: 10x Genomics public dataset terms (freely redistributable).
 - **build**: `data-raw/build_spatial_demos.R` → `build_xenium()`
-- **output**: `inst/extdata/v1.4/demo_spatial_xenium.crb` (~3.4 MB)
+- **output**: `inst/extdata/examples/demo_spatial_xenium.crb` (~3.4 MB)
 
 ### Spatial — evaluated, not yet shipped
 
@@ -204,12 +204,12 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
 - **embedded image**: none (n/a for immune repertoire)
 - **license**: 10x Genomics public dataset terms
 - **build**: `data-raw/build_ir_demos.R` (also carries the monocle2 trajectory — see the Trajectory section)
-- **output**: `inst/extdata/v1.4/demo_full_tcr_bcr.crb` (~1.0 MB)
+- **output**: `inst/extdata/examples/demo_full_tcr_bcr.crb` (~1.0 MB)
 
 > `build_ir_demos.R` can also emit two narrower subsets — `demo_healthy_t.crb` (T + Mono, TCR only) and `demo_bcell_rich.crb` (B + few T, BCR only) — as a multi-sample switcher demo. They are **not shipped** by default; the Full set is their superset.
 
 ### demo_hla_tcr_synthetic.crb  — REMOVED 2026-07-21, no longer shipped
-> Removed from `inst/extdata/v1.4/`: CerebroNexus is a single-cell application and this fixture was fabricated end to end. It existed only because real repertoires were thought too sparse to draw a network; `demo_hla_tcr_dextramer.crb` disproves that on measured sequences. The build script is kept and still runs — `data-raw/` is `.Rbuildignore`d, so it adds nothing to the installed package. Entry retained for provenance.
+> Removed from `inst/extdata/examples/`: CerebroNexus is a single-cell application and this fixture was fabricated end to end. It existed only because real repertoires were thought too sparse to draw a network; `demo_hla_tcr_dextramer.crb` disproves that on measured sequences. The build script is kept and still runs — `data-raw/` is `.Rbuildignore`d, so it adds nothing to the installed package. Entry retained for provenance.
 
 - **type**: immune_repertoire
 - **technology**: none — **fully synthetic**; simulates a 5' V(D)J + scRNA-seq cohort, measures nothing
@@ -227,10 +227,10 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
 - **declared contracts**: `observation_unit = "cell"`, `receptor_key = "v_gene+cdr3"`, `tcr_selection = "synthetic"` — the page's hardest disclosure. It is strictly stronger than the bulk demo's `association-conditioned`: a positive control has real sequences and real genotypes and only its *selection* is circular, whereas here the sequences AND the association are constructed. Any carrier/non-carrier contrast this data set shows was put there on purpose and is not evidence.
 - **license**: none applicable — no third-party data is embedded.
 - **build**: `data-raw/build_hla_tcr_demo.R` (self-verifying: it asserts the recovered motif sizes match the design exactly, that the allele picker opens on the anchor, and that whole islands score "Carrier" — a build that drifts fails rather than shipping)
-- **output**: `inst/extdata/v1.4/demo_hla_tcr_synthetic.crb` (~4.0 MB)
+- **output**: `inst/extdata/examples/demo_hla_tcr_synthetic.crb` (~4.0 MB)
 
 ### demo_hla_tcr_bulk.crb  — REMOVED 2026-07-21, no longer shipped
-> Removed from `inst/extdata/v1.4/`: real data, but bulk — no cells, no transcriptome — in a single-cell application. Its workflow now lives in the *HLA Associations on bulk TCRβ* vignette as a bring-your-own-cohort guide, and the build script is kept and still runs. Entry retained for provenance.
+> Removed from `inst/extdata/examples/`: real data, but bulk — no cells, no transcriptome — in a single-cell application. Its workflow now lives in the *HLA Associations on bulk TCRβ* vignette as a bring-your-own-cohort guide, and the build script is kept and still runs. Entry retained for provenance.
 
 - **type**: immune_repertoire
 - **technology**: bulk TCR-beta immunosequencing (Adaptive immunoSEQ). **Not single cell** — see *sampling*.
@@ -258,7 +258,7 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
 - **HLA typing**: **real**, stored with `source_type = "genotyped"` in the `hla_typing` slot. Genuine donor genotypes, and single-copy calls — which makes this the only build that exercises the loose-vs-strict carrier distinction.
 - **license**: CC-BY 4.0 (Zenodo record 1248193)
 - **build**: `data-raw/build_hla_tcr_bulk_demo.R` (caches the 11M-line occurrence scan to `data-raw/pubtcrs/tcr_donors_cache.rds`)
-- **output**: `inst/extdata/v1.4/demo_hla_tcr_bulk.crb`
+- **output**: `inst/extdata/examples/demo_hla_tcr_bulk.crb`
 
 ### demo_hla_tcr_dextramer.crb
 - **type**: immune_repertoire
@@ -293,7 +293,7 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
 - **declared contracts**: `observation_unit = "cell"`, `receptor_key = "v_gene+cdr3"`, `tcr_selection = "antigen-selected"`, `lineage_column = "cell_type"`.
 - **license**: CC BY 4.0 (10x Genomics datasets)
 - **build**: `data-raw/build_hla_tcr_dextramer_demo.R`. The verification block is a **gate, not a report**: the object is written to a staging path, re-read, re-measured with the package's own motif core, and every number asserted (donor balance, all-paired, sparse block, projection alignment, motif thresholds, genotypes equal to table S1, provenance, and the honesty columns) before `file.rename()` publishes it. A drifted input therefore stops the script and leaves the shipped `.crb` untouched, instead of replacing it and exiting 0.
-- **output**: `inst/extdata/v1.4/demo_hla_tcr_dextramer.crb` (~5.2 MB; it was 7.9 MB before the expression block was kept sparse)
+- **output**: `inst/extdata/examples/demo_hla_tcr_dextramer.crb` (~5.2 MB; it was 7.9 MB before the expression block was kept sparse)
 - **walkthrough**: `vignettes/hla_tcr_antigen_selected.Rmd` records the download, every processing step, and what changes at each one — with the TCR and HLA transformations spelled out.
 
 > **One HLA demo ships**: `demo_hla_tcr_dextramer.crb` — real single cells, real paired TCR, real published genotypes, and a motif network that is legible because the repertoire is antigen-selected. That selection is also its limitation: the reagent panel decided which receptors are present, and every cell is a sorted CD8+ T cell, so the typing is Class I only and the Class I × Class II pair scope stays hidden (`hla_pair_available()` gates it). Two earlier demos were removed rather than kept for coverage — a fabricated fixture and a real bulk cohort — because neither is both real and single-cell; their build scripts remain in `data-raw/`. A data set with real paired single-cell VDJ, independently measured donor HLA **and** an unselected repertoire spanning both MHC classes would supersede what ships today; none is currently public (the pan-disease scTCR reference's HLA is in controlled-access sub-studies).
@@ -320,7 +320,7 @@ Built by `data-raw/build_trajectory_demo.R` (see [`trajectory.md`](trajectory.md
 - **embedded image**: none (n/a for trajectory)
 - **license**: 10x Genomics public dataset terms (inherited from the IR demo)
 - **build**: `data-raw/build_trajectory_demo.R` (needs `monocle` from Bioconductor; build-time-only, not a runtime dependency)
-- **output**: no new file — overwrites the trajectory slot inside `inst/extdata/v1.4/demo_full_tcr_bcr.crb`
+- **output**: no new file — overwrites the trajectory slot inside `inst/extdata/examples/demo_full_tcr_bcr.crb`
 
 **Honest scope**: these are peripheral-blood B cells, not a bone-marrow developmental lineage — the trajectory is **illustrative** of the pseudotime feature, not a biological claim about B-cell ontogeny.
 
@@ -355,6 +355,6 @@ download → extract → subsample → build walk-through).
 - **embedded image**: **none — Trekker carries no matched histology image** (positions come from bead barcodes, not a tissue photo). Instead the `.crb` embeds, in its `trekker` slot, the 50 official per-nucleus positioning-evidence JPEGs + 3 excluded-class example JPEGs as base64 `data:` URIs (down-scaled to 620 px, quality 68), so the whole demo — expression + evidence — is self-contained in one file.
 - **license**: Curio/Takara example data, access-gated (registration). Raw bundle **not redistributable**; the shipped `.crb` is a small derived subset for demonstration.
 - **build**: `data-raw/build_trekker_demo.R` (needs `magick` + `base64enc` at build time only, not a package Import)
-- **output**: `inst/extdata/v1.4/demo_trekker.crb` (~4.7 MB, self-contained incl. evidence images)
+- **output**: `inst/extdata/examples/demo_trekker.crb` (~4.7 MB, self-contained incl. evidence images)
 
 **Honest scope**: `ConfPositioned` ≠ "exactly one location" — 264 of the 7,420 (3.56%) are vendor-salvaged multi-location nuclei, and the RDS's `number_clusters` is all `1` (the salvage trace is erased), so the page labels the set `vendor_confidently_positioned`. The vendor's own 2+-location rate (22.56%) exceeds its own manual's `<20%` guideline; the page shows "below vendor reference range" and does **not** adjudicate sample usability. Moran's I is the **upstream** vendor value (`..._variable_features_spatial_moransi.txt`), computed differently from Cerebro's own — labelled `Upstream` and never mixed.

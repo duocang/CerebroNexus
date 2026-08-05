@@ -1,8 +1,8 @@
 # test-most_expressed_genes.R — Tests for most expressed genes module
 
-shiny_root <- system.file("shiny/v1.4", package = "CerebroNexus")
+shiny_root <- system.file("viewer", package = "CerebroNexus")
 example_crb <- system.file(
-  "extdata/v1.4/example.crb",
+  "extdata/examples/example.crb",
   package = "CerebroNexus"
 )
 
@@ -34,7 +34,7 @@ test_that("example.crb most expressed genes class methods work", {
   expect_true("gene" %in% colnames(result))
 })
 
-test_that("utility wrappers in inst/shiny/v1.4 parse without error", {
+test_that("utility wrappers in inst/viewer parse without error", {
   util_file <- file.path(shiny_root, "utility_functions.R")
   skip_if_not(file.exists(util_file))
   expect_no_error(parse(file = util_file))

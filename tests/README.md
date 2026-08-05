@@ -127,7 +127,7 @@ If you edit `inst/` and want the change reflected:
   devtools::install(".", quick = TRUE, upgrade = "never")
   ```
 
-### Stale `inst/extdata/v1.4/example.crb` after R6 class changes
+### Stale `inst/extdata/examples/example.crb` after R6 class changes
 
 `example.crb` is a serialized `Cerebro_v1.3` R6 object. R6 method tables are baked into the object at serialization time. If a method is added or renamed on the class definition under `R/`, an older `example.crb` will not have that method, and calling it from the Shiny app yields:
 
@@ -137,7 +137,7 @@ Error in <fn>: attempt to apply non-function
 
 The Shiny session never reaches idle, and shinytest2 reports `Shiny app did not become stable in 15000ms` (often with a misleading sidekick `the fixed layout requires the slimscroll plugin!` JS warning — that one is harmless AdminLTE noise).
 
-Whenever you add or rename methods on `Cerebro_v1.3`, regenerate the example fixture by re-exporting from `inst/extdata/v1.4/pbmc_seurat.rds` with `exportFromSeurat()`, then commit the new `example.crb`.
+Whenever you add or rename methods on `Cerebro_v1.3`, regenerate the example fixture by re-exporting from `inst/extdata/examples/pbmc_seurat.rds` with `exportFromSeurat()`, then commit the new `example.crb`.
 
 ### shinytest2 needs `NOT_CRAN=true`
 

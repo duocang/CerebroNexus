@@ -157,15 +157,15 @@ test_that("each dataset keeps its own background image + alignment params", {
 ## an EXTERNAL H&E png, Xenium with an EMBEDDED histology image.
 build_real_app <- function(envir = parent.frame()) {
   visium_crb <- system.file(
-    "extdata/v1.4/demo_spatial_visium.crb",
+    "extdata/examples/demo_spatial_visium.crb",
     package = "CerebroNexus"
   )
   xenium_crb <- system.file(
-    "extdata/v1.4/demo_spatial_xenium.crb",
+    "extdata/examples/demo_spatial_xenium.crb",
     package = "CerebroNexus"
   )
   visium_png <- system.file(
-    "extdata/v1.4/demo_spatial_visium_he.png",
+    "extdata/examples/demo_spatial_visium_he.png",
     package = "CerebroNexus"
   )
   if (!all(nzchar(c(visium_crb, xenium_crb, visium_png)))) {
@@ -455,7 +455,7 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
       assign("Cerebro.options", config, envir = .GlobalEnv)
       runtime <- new.env(parent = globalenv())
       sys.source(
-        file.path("shiny", "v1.4", "utility_functions.R"),
+        file.path("viewer", "utility_functions.R"),
         envir = runtime
       )
       crb <- unname(config$crb_file_to_load[[1L]])
@@ -504,7 +504,7 @@ test_that("an exported bundle resolves the HLA core with no CerebroNexus install
   skip_on_os("windows") # the hermetic library is built with symlinks
 
   app <- get_smoke_app()
-  shim <- file.path(app$app_dir, "shiny/v1.4/hla_tcr_motifs/core_shim.R")
+  shim <- file.path(app$app_dir, "viewer/hla_tcr_motifs/core_shim.R")
   skip_if_not(file.exists(shim), "HLA module not present in bundle")
 
   ## Exclude the package so it cannot conceal a namespace dependency in a
@@ -539,7 +539,7 @@ test_that("an exported bundle resolves the HLA core with no CerebroNexus install
       e <- new.env(parent = globalenv())
       e$Cerebro.options <- list(cerebro_root = app_dir)
       sys.source(
-        file.path(app_dir, "shiny/v1.4/hla_tcr_motifs/core_shim.R"),
+        file.path(app_dir, "viewer/hla_tcr_motifs/core_shim.R"),
         envir = e
       )
       ## One representative function per core file, so a whole file dropping off

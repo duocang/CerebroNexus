@@ -182,7 +182,7 @@ test_that("Cerebro_v1.3: version can be set and retrieved", {
 ## ---------------------------------------------------------------------------
 
 test_that("example.crb loads successfully and has correct structure", {
-  path <- system.file("extdata/v1.4/example.crb", package = "CerebroNexus")
+  path <- system.file("extdata/examples/example.crb", package = "CerebroNexus")
   expect_true(file.exists(path))
 
   data <- readRDS(path)
@@ -202,7 +202,7 @@ test_that("example.crb loads successfully and has correct structure", {
 })
 
 test_that("example.crb contains expected groups and projections", {
-  path <- system.file("extdata/v1.4/example.crb", package = "CerebroNexus")
+  path <- system.file("extdata/examples/example.crb", package = "CerebroNexus")
   data <- readRDS(path)
 
   expect_true("sample" %in% data$getGroups())
@@ -213,7 +213,7 @@ test_that("example.crb contains expected groups and projections", {
 })
 
 test_that("example.crb sample levels are as expected", {
-  path <- system.file("extdata/v1.4/example.crb", package = "CerebroNexus")
+  path <- system.file("extdata/examples/example.crb", package = "CerebroNexus")
   data <- readRDS(path)
 
   lvls <- data$getGroupLevels("sample")
@@ -223,7 +223,7 @@ test_that("example.crb sample levels are as expected", {
 })
 
 test_that("example.h5 file exists and is non-empty", {
-  path <- system.file("extdata/v1.4/example.h5", package = "CerebroNexus")
+  path <- system.file("extdata/examples/example.h5", package = "CerebroNexus")
   expect_true(file.exists(path))
   expect_gt(file.size(path), 0)
 })
@@ -274,41 +274,70 @@ test_that("addPercentMtRibo rejects unsupported gene_nomenclature", {
 })
 
 ## ---------------------------------------------------------------------------
-## launchCerebroV1.4 parameter validation
+## launchCerebro parameter validation
 ## ---------------------------------------------------------------------------
 
-test_that("launchCerebroV1.4 rejects invalid mode", {
+test_that("launchCerebro rejects invalid mode", {
   expect_error(
-    launchCerebroV1.4(mode = "readonly"),
+    launchCerebro(mode = "readonly"),
     regexp = "'mode' parameter must be set to either 'open' or 'closed'"
   )
 })
 
-test_that("launchCerebroV1.4 rejects out-of-range point size", {
+test_that("launchCerebro rejects out-of-range point size", {
   expect_error(
-    launchCerebroV1.4(overview_default_point_size = 50),
+    launchCerebro(overview_default_point_size = 50),
     regexp = "overview_default_point_size"
   )
 })
 
-test_that("launchCerebroV1.4 rejects out-of-range opacity", {
+test_that("launchCerebro rejects out-of-range opacity", {
   expect_error(
-    launchCerebroV1.4(gene_expression_default_point_opacity = 2),
+    launchCerebro(gene_expression_default_point_opacity = 2),
     regexp = "gene_expression_default_point_opacity"
   )
 })
 
-test_that("launchCerebroV1.4 rejects out-of-range percentage", {
+test_that("launchCerebro rejects out-of-range percentage", {
   expect_error(
-    launchCerebroV1.4(gene_expression_default_percentage_cells_to_show = 150),
+    launchCerebro(gene_expression_default_percentage_cells_to_show = 150),
     regexp = "gene_expression_default_percentage_cells_to_show"
   )
 })
 
-test_that("launchCerebroV1.4 rejects non-logical projections_show_hover_info", {
+test_that("launchCerebro rejects non-logical projections_show_hover_info", {
   expect_error(
-    launchCerebroV1.4(projections_show_hover_info = "yes"),
+    launchCerebro(projections_show_hover_info = "yes"),
     regexp = "projections_show_hover_info"
+  )
+})
+
+test_that("launchCerebro loads the installed Viewer", {
+  had_options <- exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
+  previous_options <- if (had_options) {
+    get("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
+  } else {
+    NULL
+  }
+  on.exit(
+    {
+      if (had_options) {
+        assign("Cerebro.options", previous_options, envir = .GlobalEnv)
+      } else if (
+        exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
+      ) {
+        rm("Cerebro.options", envir = .GlobalEnv)
+      }
+    },
+    add = TRUE
+  )
+
+  app <- launchCerebro(mode = "closed")
+
+  expect_s3_class(app, "shiny.appobj")
+  expect_identical(
+    get("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)$mode,
+    "closed"
   )
 })
 

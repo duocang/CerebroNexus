@@ -1,14 +1,14 @@
 #!/usr/bin/env Rscript
 # ============================================================================
 # Build the REAL single-cell antigen-selected TCR demo (.crb)
-#   -> inst/extdata/v1.4/demo_hla_tcr_dextramer.crb
+#   -> inst/extdata/examples/demo_hla_tcr_dextramer.crb
 # ============================================================================
 # This is the ONLY HLA demo the package ships. It replaced two earlier ones
 # (2026-07-21): a fully fabricated fixture and a real BULK TCRb cohort. Neither
 # was both real and single-cell, and CerebroNexus is a single-cell app. Their
 # build scripts are kept in data-raw/ as the reproducibility record --
 # build_hla_tcr_demo.R and build_hla_tcr_bulk_demo.R -- but what they write into
-# inst/extdata/v1.4/ is no longer tracked or installed. See data-raw/hla.md S1.
+# inst/extdata/examples/ is no longer tracked or installed. See data-raw/hla.md S1.
 #
 # Because this demo is sorted CD8+ T cells, its typing is CLASS I ONLY, so the
 # Class I x Class II pair scope stays hidden on it (hla_pair_available() gates
@@ -114,7 +114,7 @@ set.seed(20260721)
 ## ---- Configuration ------------------------------------------------------ ##
 DONORS <- 1:4
 CACHE <- "data-raw/vdj_10x_dextramer"
-OUT <- "inst/extdata/v1.4/demo_hla_tcr_dextramer.crb"
+OUT <- "inst/extdata/examples/demo_hla_tcr_dextramer.crb"
 BASE <- "https://cf.10xgenomics.com/samples/cell-vdj/3.0.2"
 
 ## The donors' REAL genotypes: table S1 ("HLA haplotypes of the healthy donors")

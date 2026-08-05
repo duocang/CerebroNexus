@@ -1,10 +1,10 @@
 # test-trajectory.R — Tests for trajectory module
 
-shiny_root <- system.file("shiny/v1.4", package = "CerebroNexus")
+shiny_root <- system.file("viewer", package = "CerebroNexus")
 # The full T+B demo now carries the monocle2 B-cell trajectory (the former
 # standalone trajectory-only demo was consolidated into it).
 trajectory_crb <- system.file(
-  "extdata/v1.4/demo_full_tcr_bcr.crb",
+  "extdata/examples/demo_full_tcr_bcr.crb",
   package = "CerebroNexus"
 )
 
