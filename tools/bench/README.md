@@ -29,10 +29,12 @@ BENCH_SOURCES_ONLY=mouse_brain_e18 \
   BENCH_PROFILE=quick tools/bench/run_sweep.sh
 ```
 
-Run the repository-only contract suite without downloading source data:
+Run the repository-only contract suite without downloading source data. The
+launcher ignores personal R libraries and startup files while retaining the
+pinned environment's site configuration:
 
 ```bash
-Rscript tools/bench/run_contract_tests.R
+bash tools/bench/run_contract_tests.sh
 ```
 
 The benchmark uses the dependency environment in the repository's `default.nix`; a run records both the exact CerebroNexus commit and the Git blob identity of that environment. `rhdf5` is a benchmark dependency, not a package `Suggests` dependency.

@@ -13,6 +13,13 @@
 
 set -uo pipefail
 
+# Keep personal R libraries and startup files from overriding the pinned Nix
+# environment. Site-level configuration remains available to expose the Nix
+# package closure, including transitive Bioconductor dependencies.
+unset R_LIBS R_LIBS_USER
+export R_ENVIRON_USER=/dev/null
+export R_PROFILE_USER=/dev/null
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export BENCH_ROOT="$REPO/tools/bench"
 RESULT_ROOT="$BENCH_ROOT/result"
