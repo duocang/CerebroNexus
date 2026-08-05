@@ -9,8 +9,6 @@ skip_unless_bench <- function() {
     file.exists(bench_lib),
     "benchmark source tree is incomplete"
   )
-  testthat::skip_if_not_installed("rhdf5")
-  testthat::skip_if_not_installed("Matrix")
 }
 
 test_that("chunk plans cover the requested cells without overlapping", {

@@ -52,6 +52,39 @@ test_that("benchmark launchers isolate user R configuration", {
   expect_false(any(grepl("--vanilla", contract_launcher, fixed = TRUE)))
 })
 
+test_that("contract runner fails closed on benchmark dependencies", {
+  skip_unless_bench_cli()
+  runner <- readLines(
+    file.path(bench_root, "run_contract_tests.R"),
+    warn = FALSE
+  )
+  remote_tests <- readLines(
+    file.path(
+      bench_root,
+      "tests",
+      "testthat",
+      "test-bench-remote-reader.R"
+    ),
+    warn = FALSE
+  )
+
+  runner_text <- paste(runner, collapse = "\n")
+  rhdf5 <- regexpr('"rhdf5"', runner_text, fixed = TRUE)[1]
+  testthat <- regexpr('"testthat"', runner_text, fixed = TRUE)[1]
+  expect_true(rhdf5 > 0 && testthat > 0)
+  expect_lt(rhdf5, testthat)
+  expect_true(any(grepl(
+    "benchmark contract dependency cannot be loaded",
+    runner,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "skip_if_not_installed",
+    remote_tests,
+    fixed = TRUE
+  )))
+})
+
 test_that("sweep stages use plain names in a safe publication order", {
   skip_unless_bench_cli()
   expected <- c(
