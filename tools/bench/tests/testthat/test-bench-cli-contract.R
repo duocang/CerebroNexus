@@ -21,6 +21,37 @@ test_that("sweep cleanup cannot run twice through signal and exit traps", {
   expect_true(any(grepl("trap - EXIT INT TERM", cleanup, fixed = TRUE)))
 })
 
+test_that("benchmark launchers isolate user R configuration", {
+  skip_unless_bench_cli()
+  launchers <- c("run_sweep.sh", "run_contract_tests.sh")
+  expect_true(all(file.exists(file.path(bench_root, launchers))))
+  if (!all(file.exists(file.path(bench_root, launchers)))) {
+    return(invisible())
+  }
+
+  for (launcher in launchers) {
+    lines <- readLines(file.path(bench_root, launcher), warn = FALSE)
+    expect_true(
+      any(grepl("unset R_LIBS R_LIBS_USER", lines, fixed = TRUE)),
+      info = launcher
+    )
+    expect_true(
+      any(grepl("export R_ENVIRON_USER=/dev/null", lines, fixed = TRUE)),
+      info = launcher
+    )
+    expect_true(
+      any(grepl("export R_PROFILE_USER=/dev/null", lines, fixed = TRUE)),
+      info = launcher
+    )
+  }
+
+  contract_launcher <- readLines(
+    file.path(bench_root, "run_contract_tests.sh"),
+    warn = FALSE
+  )
+  expect_false(any(grepl("--vanilla", contract_launcher, fixed = TRUE)))
+})
+
 test_that("sweep stages use plain names in a safe publication order", {
   skip_unless_bench_cli()
   expected <- c(

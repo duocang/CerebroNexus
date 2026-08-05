@@ -95,7 +95,7 @@ BENCH_PROFILE=publication tools/bench/run_sweep.sh
 BENCH_PROFILE=stress tools/bench/run_sweep.sh
 
 # Run repository-only contracts without downloading real data.
-Rscript tools/bench/run_contract_tests.R
+bash tools/bench/run_contract_tests.sh
 ```
 
 Set `BENCH_KEEP=1` to retain the unique scratch directory for diagnosis. Set `BENCH_SOURCES_EXTRA=human_pfc_mssm` to include the opt-in 4.1-million-cell source, or `BENCH_SOURCES_ONLY=mouse_brain_e18` to limit a diagnostic run to one configured source. `BENCH_SCRATCH_PARENT` selects a parent directory; the harness always creates and deletes its own marked child rather than deleting a caller-provided path.
