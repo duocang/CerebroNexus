@@ -30,18 +30,24 @@ test_that("runtime and example directories do not encode a product version", {
 })
 
 test_that("the package exposes one versionless launcher", {
-  namespace_file <- testthat::test_path("..", "..", "NAMESPACE")
-  namespace <- readLines(namespace_file, warn = FALSE)
-  r_files <- basename(list.files(testthat::test_path("..", "..", "R")))
+  exports <- getNamespaceExports("CerebroNexus")
+  r_dir <- testthat::test_path("..", "..", "R")
 
-  expect_true("export(launchCerebro)" %in% namespace)
-  expect_false(any(grepl("^export\\(launchCerebroV[0-9]", namespace)))
-  expect_false(any(grepl("^launchCerebroV[0-9].*[.]R$", r_files)))
+  expect_true("launchCerebro" %in% exports)
+  expect_false(any(grepl("^launchCerebroV[0-9]", exports)))
+  if (dir.exists(r_dir)) {
+    r_files <- basename(list.files(r_dir))
+    expect_false(any(grepl("^launchCerebroV[0-9].*[.]R$", r_files)))
+  }
 })
 
 test_that("current code and documentation do not describe a legacy viewer version", {
   root <- normalizePath(testthat::test_path("..", ".."), mustWork = TRUE)
   roots <- file.path(root, c("R", "man", "vignettes", "tests"))
+  testthat::skip_if_not(
+    all(dir.exists(roots)),
+    "current source tree is not present in the installed-package layout"
+  )
   files <- unlist(lapply(
     roots,
     list.files,
