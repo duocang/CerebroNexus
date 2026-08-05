@@ -4,7 +4,12 @@ This directory compares the `embedded`, `bpcells`, and `h5` backends on public s
 
 The harness is repository-only research infrastructure. It stays in the CerebroNexus repository because it measures CerebroNexus export and runtime behaviour, but `.Rbuildignore` keeps its remote readers, large-data workflow, dedicated dependencies, tests, and archived evidence out of the installed package.
 
-> **Current status:** the harness is ready for code review, but no complete `publication` run has been performed on this branch. The archived pilot is retained for provenance only and must not be cited as final evidence.
+> **Current status:** a complete immutable `publication` run exists for the
+> export, storage, startup, memory, and single-gene metrics. Its historical
+> `block_secs` field measured lazy-view preparation and is now explicitly
+> excluded from materialized-read claims. Re-run `publication` after this
+> revision to populate the corrected 12-gene panel and finalized package
+> provenance.
 
 ## Quick start
 
@@ -79,7 +84,7 @@ The 2026-07-30 single-run pilot is retained under `result/archive/pilot-2026-07-
 | `20_measure_backend.R` | measure and correctness-check one backend |
 | `30_check_measurements.R` | reject incomplete or incorrect measurements |
 | `40_write_report.R` | generate the Markdown result report |
-| `41_draw_figures.R` | generate publication figures |
+| `41_draw_figures.R` | generate six SVG/PDF/600 dpi PNG publication figures |
 | `50_check_outputs.R` | ensure the report package is complete |
 | `60_publish_results.R` | publish immutably and update `CURRENT` last |
 

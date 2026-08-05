@@ -71,7 +71,9 @@ row <- data.frame(
   first_query_secs = NA_real_,
   hot_p50_secs = NA_real_,
   hot_p95_secs = NA_real_,
-  block_secs = NA_real_,
+  block_prepare_secs = NA_real_,
+  block_materialize_secs = NA_real_,
+  block_ready_secs = NA_real_,
   n_hot = NA_integer_,
   correctness = NA_character_,
   row_fingerprint = NA_character_,
@@ -118,7 +120,9 @@ metrics <- tryCatch(
 row$first_query_secs <- metrics$first_query_secs
 row$hot_p50_secs <- metrics$hot_p50_secs
 row$hot_p95_secs <- metrics$hot_p95_secs
-row$block_secs <- metrics$block_secs
+row$block_prepare_secs <- metrics$block_prepare_secs
+row$block_materialize_secs <- metrics$block_materialize_secs
+row$block_ready_secs <- metrics$block_ready_secs
 row$n_hot <- metrics$n_hot
 row$correctness <- metrics$correctness
 row$row_fingerprint <- metrics$row_fingerprint

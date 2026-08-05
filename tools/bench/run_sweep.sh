@@ -101,6 +101,11 @@ R CMD INSTALL --no-docs --no-byte-compile --library="$BENCH_LIB" "$REPO" \
   exit 1
 }
 
+# Finalize provenance only after the exact branch under test is installed into
+# the isolated library. The earlier manifest is needed for resource preflight.
+Rscript "$BENCH_ROOT/src/02_record_environment.R" \
+  "$STAGE/run_manifest.csv" || exit 1
+
 SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "config", "sources.R")); cat(bench_active_sources(), sep="\n")')
 
 for src in $SOURCES; do
@@ -116,6 +121,15 @@ for src in $SOURCES; do
   mv "$part" "$file"
   bytes=$(wc -c < "$file" | tr -d '[:space:]')
   sha256=$(sha256_file "$file") || exit 1
+  expected_bytes=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(format(BENCH_SOURCES[['$src']]\$expected_bytes, scientific=FALSE, trim=TRUE))")
+  expected_sha256=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$expected_sha256)")
+  if [ "$bytes" != "$expected_bytes" ] || [ "$sha256" != "$expected_sha256" ]; then
+    echo "!! source identity mismatch for $src" >&2
+    echo "   expected: $expected_bytes bytes, sha256 $expected_sha256" >&2
+    echo "   observed: $bytes bytes, sha256 $sha256" >&2
+    rm -f -- "$file"
+    exit 1
+  fi
   printf '"%s","%s","%s",%s,"%s"\n' \
     "$BENCH_RUN_ID" "$src" "$url" "$bytes" "$sha256" >> "$SOURCE_MANIFEST"
   echo "    local copy: $bytes bytes, sha256 ${sha256:0:12}..."

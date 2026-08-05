@@ -82,7 +82,7 @@ manifest <- c(
     "rev-parse",
     "HEAD:default.nix"
   ),
-  package_version = description[1, "Version"],
+  repository_version = unname(description[1, "Version"]),
   r_version = R.version.string,
   r_platform = R.version$platform,
   os = paste(Sys.info()[c("sysname", "release", "version")], collapse = " "),

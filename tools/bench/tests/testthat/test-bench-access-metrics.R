@@ -143,3 +143,71 @@ test_that("fingerprints materialize BPCells blocks canonically", {
     bench_numeric_fingerprint(as.matrix(block))
   )
 })
+
+test_that("block readiness times native preparation and materialization", {
+  skip_unless_bench_access()
+  source(bench_protocol, local = TRUE)
+  source(bench_access_metrics, local = TRUE)
+
+  timer_active <- FALSE
+  materialization <- new.env(parent = emptyenv())
+  materialization$count <- 0L
+  as.matrix.bench_lazy_block <- function(x, ...) {
+    if (!isTRUE(x$timer_active())) {
+      stop("lazy block materialized outside the benchmark timer")
+    }
+    x$materialization$count <- x$materialization$count + 1L
+    x$value
+  }
+  dim.bench_lazy_block <- function(x) dim(x$value)
+
+  values <- list(
+    first = c(0, 2, 0, 4),
+    hot = c(1, 0, 3, 0)
+  )
+  block_values <- rbind(values$first, values$hot)
+  lazy_block <- structure(
+    list(
+      value = block_values,
+      materialization = materialization,
+      timer_active = function() timer_active
+    ),
+    class = "bench_lazy_block"
+  )
+  obj <- new.env(parent = emptyenv())
+  obj$getExpressionRow <- function(gene) values[[gene]]
+  obj$getExpressionBlock <- function(genes) lazy_block
+  panel <- data.frame(
+    gene = c("first", "hot"),
+    nnz = c(2, 2),
+    role = c("first", "hot"),
+    stringsAsFactors = FALSE
+  )
+  plan <- list(
+    schema_version = 1L,
+    panel = panel,
+    reference_row_fingerprint = bench_numeric_fingerprint(values$first),
+    reference_block_fingerprint = bench_numeric_fingerprint(block_values),
+    query_plan_fingerprint = "plan"
+  )
+  timer_call <- 0L
+  timer <- function(fn) {
+    timer_call <<- timer_call + 1L
+    timer_active <<- TRUE
+    on.exit(timer_active <<- FALSE, add = TRUE)
+    value <- fn()
+    timer_active <<- FALSE
+    list(seconds = timer_call / 100, value = value)
+  }
+
+  got <- bench_measure_backend(obj, plan, hot_iterations = 1L, timer = timer)
+
+  expect_equal(materialization$count, 1L)
+  expect_true(is.finite(got$block_prepare_secs))
+  expect_true(is.finite(got$block_materialize_secs))
+  expect_equal(
+    got$block_ready_secs,
+    got$block_prepare_secs + got$block_materialize_secs
+  )
+  expect_identical(got$block_fingerprint, plan$reference_block_fingerprint)
+})

@@ -20,6 +20,11 @@ test_that("the real-data benchmark has a repository-only package boundary", {
   description <- read.dcf(file.path(repo, "DESCRIPTION"))
   suggests <- trimws(strsplit(description[1, "Suggests"], ",")[[1]])
   expect_false("rhdf5" %in% suggests)
+
+  gitignore <- readLines(file.path(repo, ".gitignore"), warn = FALSE)
+  expect_true("!tools/bench/result/runs/**/figures/*.png" %in% gitignore)
+  expect_true("!tools/bench/result/runs/**/figures/*.pdf" %in% gitignore)
+  expect_true("!tools/bench/result/runs/**/figures/*.svg" %in% gitignore)
 })
 
 test_that("the pinned development shell includes benchmark dependencies", {

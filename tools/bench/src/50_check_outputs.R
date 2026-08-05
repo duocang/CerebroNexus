@@ -7,6 +7,11 @@ if (length(args) < 1L) {
   stop("need <stage_dir>", call. = FALSE)
 }
 stage <- normalizePath(args[1], mustWork = TRUE)
+here <- Sys.getenv("BENCH_ROOT", "")
+if (!nzchar(here)) {
+  here <- normalizePath("tools/bench")
+}
+source(file.path(here, "lib", "reporting.R"))
 manifest_path <- file.path(stage, "run_manifest.csv")
 if (!file.exists(manifest_path)) {
   stop("missing staged output: run_manifest.csv", call. = FALSE)
@@ -18,11 +23,7 @@ required <- "summary.md"
 if (identical(profile, "publication")) {
   required <- c(
     required,
-    file.path("figures", "expression_backend_benchmark_overview.png"),
-    file.path(
-      "figures",
-      "expression_backend_benchmark_capacity_estimate.png"
-    )
+    file.path("figures", bench_publication_figure_files())
   )
 }
 paths <- file.path(stage, required)

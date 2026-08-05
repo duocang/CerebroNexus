@@ -45,6 +45,8 @@ tools/bench/result/logs/
 !tools/bench/result/runs/**/*.csv
 !tools/bench/result/runs/**/summary.md
 !tools/bench/result/runs/**/figures/*.png
+!tools/bench/result/runs/**/figures/*.pdf
+!tools/bench/result/runs/**/figures/*.svg
 tools/bench/result/runs/**/logs/
 !tools/bench/result/archive/
 !tools/bench/result/archive/**/
@@ -52,4 +54,6 @@ tools/bench/result/runs/**/logs/
 !tools/bench/result/archive/**/summary.md
 !tools/bench/result/archive/**/README.md
 !tools/bench/result/archive/**/figures/*.png
+!tools/bench/result/archive/**/figures/*.pdf
+!tools/bench/result/archive/**/figures/*.svg
 tools/bench/scratch/

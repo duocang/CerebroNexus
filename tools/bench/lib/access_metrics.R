@@ -65,7 +65,8 @@ bench_measure_backend <- function(
   )
 
   block <- timer(function() obj$getExpressionBlock(panel$gene))
-  block_fingerprint <- bench_numeric_fingerprint(block$value)
+  materialized_block <- timer(function() as.matrix(block$value))
+  block_fingerprint <- bench_numeric_fingerprint(materialized_block$value)
   if (!identical(block_fingerprint, plan$reference_block_fingerprint)) {
     stop("block fingerprint mismatch", call. = FALSE)
   }
@@ -74,7 +75,9 @@ bench_measure_backend <- function(
     first_query_secs = first$seconds,
     hot_p50_secs = stats::quantile(hot_secs, 0.5, names = FALSE),
     hot_p95_secs = stats::quantile(hot_secs, 0.95, names = FALSE),
-    block_secs = block$seconds,
+    block_prepare_secs = block$seconds,
+    block_materialize_secs = materialized_block$seconds,
+    block_ready_secs = block$seconds + materialized_block$seconds,
     n_hot = length(hot_secs),
     correctness = "OK",
     row_fingerprint = row_fingerprint,

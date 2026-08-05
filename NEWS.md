@@ -9,7 +9,8 @@
 
 - **A reproducible benchmark harness now lives under repository-only `tools/bench/`.** Its remote readers, dedicated contract tests, `rhdf5` dependency, design records, and archived evidence remain in CerebroNexus but are excluded from the installed R package.
 - **Benchmark result publication is failure-safe.** Runs are staged and validated before entering an immutable result directory; the `CURRENT` pointer changes last, so an interruption cannot erase the previous evidence.
-- **Benchmark validation now requires the exact scheduled access-repeat identities, uses each source's declared expression slot, and rejects unsafe overrides outside `stress`.** Standard and publication comparisons exclude deliberate boundary tiers; capacity plots are labelled as host-specific estimates rather than observed stopping points.
+- **Benchmark validation now requires the exact scheduled access-repeat identities, uses each source's declared expression slot, and rejects unsafe overrides outside `stress`.** Standard and publication comparisons exclude deliberate boundary tiers. The 12-gene benchmark separately times native-view preparation and dense materialization, so lazy H5/BPCells views are not compared with eager embedded reads. Source bytes and SHA-256 are pinned, and installed-package provenance must match the repository version.
+- **Publication figures now use a colour-blind-safe six-figure system with raw process repeats and median/range overlays.** Editable SVG, print PDF, and 600 dpi PNG outputs cover the main backend trade-offs, observed memory scaling, order balance, query latency, storage-memory Pareto behaviour, and correctness. Successful runs are never extrapolated into a claimed host capacity without a separately observed stress boundary.
 
 # CerebroNexus 3.1.0
 

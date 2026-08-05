@@ -48,9 +48,38 @@ Large tiers are isolated in `stress`; publication evidence measures backends on 
 - Source SHA-256, Git state, versions, CPU, memory, and operating system travel with every published run.
 - The operating-system cache is uncontrolled, so no metric is called cold disk.
 
+The 12-gene block has two deliberately separate timings. `block_prepare_secs`
+measures construction of the backend-native block view. `block_materialize_secs`
+measures conversion of that view to an ordinary dense R matrix. Scientific
+backend comparisons use `block_ready_secs`, the sum of the two. This avoids
+comparing lazy H5/BPCells view construction with eager embedded-matrix reading.
+
+## Figure system
+
+Publication runs produce one article figure, one observed-scaling figure, and
+four supplementary figures. They use a restrained colour-blind-safe palette,
+raw process points, median/range overlays, direct units, and lower-case panel
+letters. Every figure is emitted as editable SVG, print PDF, and 600 dpi PNG.
+
+The article figure answers six questions: export time, stored size, backend
+readiness, resident memory, warmed single-gene latency, and materialized
+12-gene latency. The supplementary figures expose independent repeats and
+backend order, first-versus-warmed latency, memory/storage trade-offs, and the
+correctness audit rather than hiding these controls in CSV files.
+
+The scaling figure is descriptive. It plots only observed peak-heap points and
+an observed-range trend. It never invents a capacity boundary from the largest
+successful run. Physical memory, R's vector limit, and the `dgCMatrix` 32-bit
+index limit remain separate operational constraints in the report.
+
 ## Publication contract
 
 Measurement validation precedes report generation. Reports and figures are then checked as part of the staged package. Only that complete package is copied into `result/runs/<run-id>/`; `result/CURRENT` changes last. A failed or interrupted run cannot replace current evidence.
+
+The environment manifest is finalized after the branch is installed into the
+isolated benchmark library. A publication result is rejected unless the
+installed CerebroNexus version is present and equals the repository version.
+Downloaded sources must match both the registry byte count and pinned SHA-256.
 
 ## Documentation retention
 

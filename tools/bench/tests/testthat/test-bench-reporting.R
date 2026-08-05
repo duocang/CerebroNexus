@@ -100,6 +100,31 @@ test_that("current result resolution is safe and backward compatible", {
   expect_error(bench_current_result_dir(root), "unsafe CURRENT")
 })
 
+test_that("legacy block timings cannot masquerade as materialized reads", {
+  skip_unless_bench_reporting()
+  source(bench_reporting, local = TRUE)
+
+  legacy <- data.frame(block_secs = c(0.1, 0.2))
+  normalized <- bench_normalize_access_metrics(legacy)
+
+  expect_equal(normalized$block_prepare_secs, legacy$block_secs)
+  expect_true(all(is.na(normalized$block_materialize_secs)))
+  expect_true(all(is.na(normalized$block_ready_secs)))
+  expect_true(all(normalized$block_timing_contract == "legacy_prepare_only"))
+
+  current <- data.frame(
+    block_prepare_secs = 0.1,
+    block_materialize_secs = 0.4,
+    block_ready_secs = 0.5
+  )
+  normalized_current <- bench_normalize_access_metrics(current)
+  expect_equal(normalized_current$block_ready_secs, 0.5)
+  expect_equal(
+    normalized_current$block_timing_contract,
+    "materialized_v2"
+  )
+})
+
 test_that("report and plots consume repeated publication rows", {
   skip_unless_bench_reporting()
   testthat::skip_if_not_installed("ggplot2")
@@ -208,7 +233,8 @@ test_that("report and plots consume repeated publication rows", {
     generated_at = "2026-08-04",
     git_branch = "test",
     git_dirty = "false",
-    package_version = "3.2.0",
+    repository_version = "3.2.0",
+    package_CerebroNexus = "3.2.0",
     r_version = R.version.string,
     os = "test",
     cpu = "test",
@@ -233,7 +259,7 @@ test_that("report and plots consume repeated publication rows", {
     row.names = FALSE
   )
 
-  env <- paste0("BENCH_ROOT=", bench_root)
+  env <- c(paste0("BENCH_ROOT=", bench_root), "BENCH_FIGURE_DPI=72")
   report_status <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(
@@ -258,6 +284,22 @@ test_that("report and plots consume repeated publication rows", {
     report,
     fixed = TRUE
   )))
+  expect_true(any(grepl(
+    "Legacy preparation-only block timings are excluded",
+    report,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "Observed export memory scaling",
+    report,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "No maximum capacity is inferred",
+    report,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl("scale-limit estimate", report, fixed = TRUE)))
 
   plot_status <- system2(
     file.path(R.home("bin"), "Rscript"),
@@ -274,12 +316,20 @@ test_that("report and plots consume repeated publication rows", {
     attr(plot_status, "status"),
     info = paste(plot_status, collapse = "\n")
   )
-  expect_true(file.exists(file.path(
-    out_dir,
-    "expression_backend_benchmark_overview.png"
-  )))
-  expect_true(file.exists(file.path(
-    out_dir,
-    "expression_backend_benchmark_capacity_estimate.png"
-  )))
+  stems <- c(
+    "expression_backend_benchmark_overview",
+    "expression_backend_benchmark_observed_scaling",
+    "expression_backend_benchmark_repeats",
+    "expression_backend_benchmark_query_latency",
+    "expression_backend_benchmark_pareto",
+    "expression_backend_benchmark_correctness"
+  )
+  expected_figures <- as.vector(outer(
+    stems,
+    c("png", "pdf", "svg"),
+    paste,
+    sep = "."
+  ))
+  expect_true(all(file.exists(file.path(out_dir, expected_figures))))
+  expect_true(all(file.info(file.path(out_dir, expected_figures))$size > 0))
 })
