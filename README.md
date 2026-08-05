@@ -14,8 +14,6 @@ Interactive visualization of single-cell RNA-seq data, built on [Shiny](https://
 
 [Try the live demo](https://osmzhlab.uni-muenster.de/shiny/demo/).
 
-For the original feature set and data preparation workflows, refer to the upstream cerebroApp documentation at <https://romanhaa.github.io/cerebroApp/> — everything described there works the same way here.
-
 *CerebroNexus began as a fork of [cerebroApp](https://github.com/romanhaa/cerebroApp) by Roman Hillje and has since evolved with substantial new features and active development by [mihem](https://github.com/mihem) and [Xuesong Wang](https://github.com/duocang).*
 
 Automated tests run in a reproducible Nix environment.
@@ -47,4 +45,4 @@ createShinyApp(
 
 ## License
 
-MIT, see [LICENSE.md](LICENSE.md). Original cerebroApp copyright Roman Hillje.
+MIT, see [LICENSE.md](LICENSE.md). 
