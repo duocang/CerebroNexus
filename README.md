@@ -43,6 +43,21 @@ createShinyApp(
 )
 ```
 
+## 3. Expression backend benchmark
+
+CerebroNexus includes a reproducible real-data benchmark for choosing among
+the `embedded`, `bpcells`, and `h5` expression backends. On the recorded host
+and workloads, BPCells exported fastest and reached the lowest ready-state RSS,
+H5 produced the smallest bundles and lowest single-gene latency, and embedded
+storage traded higher startup memory for a single self-contained CRB.
+
+Read the illustrated
+[Choosing an expression backend](vignettes/expression_backend_benchmark.Rmd)
+guide for the complete tables, all six figures, deployment guidance, and
+interpretation limits. The underlying immutable evidence is retained in the
+[`20260805T214336Z-02ff3f0a971e-publication`](tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/summary.md)
+run.
+
 ## License
 
 MIT, see [LICENSE.md](LICENSE.md). 

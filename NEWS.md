@@ -16,7 +16,7 @@
 
 ## Documentation
 
-- **A new "Choosing an expression backend" guide explains the stable packaging, dependency, memory, and deployment trade-offs among `embedded`, `bpcells`, and `h5`.** It links a validated immutable publication run and reports its host- and workload-specific observations without presenting them as universal backend rankings.
+- **A new illustrated "Choosing an expression backend" guide explains the stable packaging, dependency, memory, and deployment trade-offs among `embedded`, `bpcells`, and `h5`.** Its compact all-metric table and six publication figures link back to a validated immutable run and report host- and workload-specific observations without presenting them as universal backend rankings.
 - **A complete repository benchmark methodology accompanies the guide.** It defines the experimental unit, balanced backend order, expression-density-stratified query panel, run profiles, correctness fingerprints, exact code and dependency-environment provenance, failure handling, and interpretation boundaries.
 
 ## Internal

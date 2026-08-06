@@ -57,4 +57,85 @@ test_that("the package vignette guides users without citing pilot rankings", {
   expect_false(grepl("105x", text, fixed = TRUE))
   expect_false(grepl("tests/bench/run_sweep.sh", text, fixed = TRUE))
   expect_match(text, "validated immutable publication run")
+
+  recommendation <- regexpr(
+    "Short answer: start with `h5`",
+    text,
+    fixed = TRUE
+  )[1]
+  overview <- regexpr("# Overview", text, fixed = TRUE)[1]
+  expect_gt(recommendation, 0L)
+  expect_lt(recommendation, overview)
+  expect_match(
+    text,
+    "Use `embedded` when you need one portable file",
+    fixed = TRUE
+  )
+  expect_match(text, "Use `bpcells` when export speed", fixed = TRUE)
+})
+
+test_that("the complete package guide mirrors current publication figures", {
+  repo <- normalizePath(file.path("..", "..", "..", ".."))
+  result_root <- file.path(repo, "tools", "bench", "result")
+  run_id <- readLines(file.path(result_root, "CURRENT"), warn = FALSE)
+  expect_length(run_id, 1L)
+
+  figures <- paste0(
+    "expression_backend_benchmark_",
+    c(
+      "overview",
+      "observed_scaling",
+      "repeats",
+      "query_latency",
+      "pareto",
+      "correctness"
+    ),
+    ".png"
+  )
+  evidence <- file.path(result_root, "runs", run_id, "figures", figures)
+  vignette <- file.path(
+    repo,
+    "vignettes",
+    "figures",
+    "expression_backend_benchmark",
+    figures
+  )
+
+  expect_true(all(file.exists(evidence)))
+  expect_true(all(file.exists(vignette)))
+  expect_identical(
+    unname(tools::md5sum(vignette)),
+    unname(tools::md5sum(evidence))
+  )
+
+  article <- paste(
+    readLines(
+      file.path(repo, "vignettes", "expression_backend_benchmark.Rmd"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expected_references <- paste(
+    "figures",
+    "expression_backend_benchmark",
+    figures,
+    sep = "/"
+  )
+  expect_match(article, run_id, fixed = TRUE)
+  expect_true(all(vapply(
+    expected_references,
+    grepl,
+    logical(1),
+    x = article,
+    fixed = TRUE
+  )))
+
+  readme <- paste(
+    readLines(file.path(repo, "README.md"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(readme, "expression_backend_benchmark")
+
+  gitignore <- readLines(file.path(repo, ".gitignore"), warn = FALSE)
+  expect_true("/.superpowers/" %in% gitignore)
 })

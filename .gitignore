@@ -13,6 +13,7 @@ docs
 *.Rproj
 tests/smoke/
 .playwright-mcp/
+/.superpowers/
 tmp/
 
 # local per-project memory (Loci brain) — personal, never tracked
