@@ -25,7 +25,10 @@ suppressMessages({
   library(Matrix)
 })
 
-crb_path <- Sys.getenv("FULL_CRB", "inst/extdata/v1.4/demo_full_tcr_bcr.crb")
+crb_path <- Sys.getenv(
+  "FULL_CRB",
+  "inst/extdata/examples/demo_full_tcr_bcr.crb"
+)
 
 message("Reading ", crb_path)
 crb <- readRDS(crb_path)

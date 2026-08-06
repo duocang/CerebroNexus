@@ -34,7 +34,7 @@ repo_file <- function(...) {
 load_filter <- function() {
   env <- new.env()
   sys.source(
-    repo_file("inst", "shiny", "v1.4", "utility_functions.R"),
+    repo_file("inst", "viewer", "utility_functions.R"),
     envir = env
   )
   env[["filterSelectionByHiddenGroups"]]

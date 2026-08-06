@@ -7,14 +7,14 @@ inst_candidates <- c(
 )
 local_inst <- inst_candidates[file.exists(file.path(
   inst_candidates,
-  "shiny/v1.4"
+  "viewer"
 ))][1]
 if (is.na(local_inst)) {
   local_inst <- system.file(package = "CerebroNexus")
 }
 help_demo_file <- file.path(
   local_inst,
-  "shiny/v1.4/immune_repertoire/help_demo_helpers.R"
+  "viewer/immune_repertoire/help_demo_helpers.R"
 )
 help_demo_exists <- file.exists(help_demo_file)
 
@@ -112,7 +112,7 @@ test_that("local seeding restores an initially absent RNG state", {
 test_that("backed help examples keep an explicit load boundary", {
   help_file <- file.path(
     local_inst,
-    "shiny/v1.4/immune_repertoire/help.R"
+    "viewer/immune_repertoire/help.R"
   )
   source <- paste(readLines(help_file, warn = FALSE), collapse = "\n")
   renderer <- regmatches(

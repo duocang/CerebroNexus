@@ -15,7 +15,7 @@
 #' specified groups stored in \code{object@misc$most_expressed_genes}.
 #'
 #' @examples
-#' pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
+#' pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
 #'   package = "CerebroNexus"))
 #' pbmc <- getMostExpressedGenes(
 #'   object = pbmc,

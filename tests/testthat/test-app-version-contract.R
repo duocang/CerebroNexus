@@ -8,7 +8,7 @@ repo_file <- function(...) {
 
 test_that("About renders the version supplied by app configuration", {
   about_source <- paste(
-    readLines(repo_file("shiny", "v1.4", "about", "server.R"), warn = FALSE),
+    readLines(repo_file("viewer", "about", "server.R"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -34,4 +34,24 @@ test_that("the source demo supplies its version without a package lookup", {
     fixed = TRUE
   )
   expect_false(grepl("packageVersion", app_source, fixed = TRUE))
+})
+
+test_that("CerebroNexus releases use major.minor versions", {
+  description_path <- system.file("DESCRIPTION", package = "CerebroNexus")
+  if (!nzchar(description_path)) {
+    description_path <- testthat::test_path("..", "..", "DESCRIPTION")
+  }
+  news_path <- system.file("NEWS.md", package = "CerebroNexus")
+  if (!nzchar(news_path)) {
+    news_path <- testthat::test_path("..", "..", "NEWS.md")
+  }
+  package_version <- read.dcf(description_path, fields = "Version")[[1]]
+  app_source <- readLines(repo_file("app.R"), warn = FALSE)
+  news <- readLines(news_path, warn = FALSE)
+
+  expect_match(package_version, "^[0-9]+[.][0-9]+$")
+  expect_true(
+    paste0('  "cerebro_version" = "', package_version, '",') %in% app_source
+  )
+  expect_identical(news[[1]], paste0("# CerebroNexus ", package_version))
 })

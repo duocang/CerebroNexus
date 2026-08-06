@@ -1,8 +1,8 @@
 # test-extra_material.R — Tests for extra material module
 
-shiny_root <- system.file("shiny/v1.4", package = "CerebroNexus")
+shiny_root <- system.file("viewer", package = "CerebroNexus")
 example_crb <- system.file(
-  "extdata/v1.4/example.crb",
+  "extdata/examples/example.crb",
   package = "CerebroNexus"
 )
 

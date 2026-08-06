@@ -66,7 +66,7 @@ curl -fL -o data-raw/vdj_10x/pbmc3_b_contig.csv \
 
 Source: 10x Genomics public dataset `vdj_v1_hs_pbmc3` (human PBMC, 5′ VDJ), Cell Ranger 3.1.0. A few MB each — no resume logic needed, unlike the dextramer matrices.
 
-The other input, `inst/extdata/v1.4/example.crb`, is already in the repository.
+The other input, `inst/extdata/examples/example.crb`, is already in the repository.
 
 ## 3.2 Run the build
 
@@ -208,7 +208,7 @@ Worth stating because "too many datasets" comes up periodically: the objection i
 library(CerebroNexus)
 createShinyApp(
   cerebro_data = c(
-    "PBMC - Full (T+B)" = system.file("extdata/v1.4/demo_full_tcr_bcr.crb",
+    "PBMC - Full (T+B)" = system.file("extdata/examples/demo_full_tcr_bcr.crb",
                                       package = "CerebroNexus")
   )
 )

@@ -1659,10 +1659,10 @@ dedent <- function(string) {
 
 # Public API ---------------------------------------------------------------
 
-#' Create a self-contained Shiny app folder for Cerebro v1.4
+#' Create a self-contained CerebroNexus Shiny app folder
 #'
-#' Bundles a Cerebro v1.4 Shiny app into \code{result_dir}, copying the
-#' \code{inst/shiny/v1.4/} sources, the requested \code{.crb} data file(s),
+#' Bundles a CerebroNexus Shiny app into \code{result_dir}, copying the
+#' \code{inst/viewer/} sources, the requested \code{.crb} data file(s),
 #' and \code{extdata/}, and writes an \code{app.R} that sources the bundled
 #' UI/server. The output directory can be served directly by shiny-server or
 #' run with \code{shiny::runApp(result_dir)}.
@@ -2085,7 +2085,7 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
-  shiny_source <- system.file("shiny", package = "CerebroNexus")
+  shiny_source <- system.file("viewer", package = "CerebroNexus")
   if (!dir.exists(shiny_source)) {
     stop(
       "Shiny source files not found in CerebroNexus package.",
@@ -2522,8 +2522,8 @@ createShinyApp <- function(
     bundle_run_options <- Cerebro.options$.bundle_run_options
     shiny_options <- bundle_run_options$shiny_app_options
 
-    source(file.path(cerebro_root, "shiny/v1.4/shiny_UI.R"))
-    source(file.path(cerebro_root, "shiny/v1.4/shiny_server.R"))
+    source(file.path(cerebro_root, "viewer/shiny_UI.R"))
+    source(file.path(cerebro_root, "viewer/shiny_server.R"))
 
     shiny::shinyApp(
       ui = ui,

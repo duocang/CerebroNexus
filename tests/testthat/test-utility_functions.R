@@ -1,5 +1,5 @@
 ## Unit tests for helper functions defined in
-## inst/shiny/v1.4/utility_functions.R.
+## inst/viewer/utility_functions.R.
 ##
 ## These functions live in the Shiny app tree (not the package R/ namespace),
 ## so they are loaded by sourcing the file into a throw-away environment. They
@@ -14,8 +14,7 @@
 ## falling back to the source tree when running against an uninstalled
 ## checkout (e.g. devtools::load_all()).
 utils_file <- system.file(
-  "shiny",
-  "v1.4",
+  "viewer",
   "utility_functions.R",
   package = "CerebroNexus"
 )
@@ -24,8 +23,7 @@ if (!nzchar(utils_file) || !file.exists(utils_file)) {
     "..",
     "..",
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "utility_functions.R"
   )
 }

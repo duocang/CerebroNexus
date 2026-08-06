@@ -7,11 +7,10 @@
 # Prefer the source tree copy (always current); fall back to the installed
 # package location when tests run against an installed build.
 ir_utils_candidates <- c(
-  testthat::test_path("../../inst/shiny/v1.4/utility_functions.R"),
+  testthat::test_path("../../inst/viewer/utility_functions.R"),
   file.path(
     system.file(package = "CerebroNexus"),
-    "shiny",
-    "v1.4",
+    "viewer",
     "utility_functions.R"
   )
 )

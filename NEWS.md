@@ -1,3 +1,17 @@
+# CerebroNexus 4.0
+
+## Breaking changes
+
+- `launchCerebro()` is now the single application launcher. The obsolete
+  version selector and version-named `launchCerebroV1.x()` exports were removed
+  because CerebroNexus ships one Viewer implementation.
+
+## Internal
+
+- Viewer runtime sources now live under `inst/viewer/`, and bundled examples
+  live under `inst/extdata/examples/`. Removing the historical Viewer version
+  from internal paths does not change the application or data formats.
+
 # CerebroNexus 3.2.0
 
 ## Documentation

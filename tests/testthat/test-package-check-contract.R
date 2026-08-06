@@ -73,7 +73,7 @@ test_that("later remains declared because bundled runtime code uses it", {
   description <- read.dcf(source_file("DESCRIPTION"), fields = "Imports")[[1]]
   namespace <- readLines(source_file("NAMESPACE"), warn = FALSE)
   runtime_source <- paste(
-    readLines(source_file("inst", "shiny", "v1.4", "utility_functions.R")),
+    readLines(source_file("inst", "viewer", "utility_functions.R")),
     collapse = "\n"
   )
 

@@ -460,7 +460,7 @@
 #'   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
 #'   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
 #'   \code{<stem>.h5}) and tags the backend with that relative location. The
-#'   on-disk layout matches \code{inst/extdata/v1.4/example.h5}: a single
+#'   on-disk layout matches \code{inst/extdata/examples/example.h5}: a single
 #'   \code{/expression} group with \code{data}, \code{indices}, \code{indptr},
 #'   \code{shape}, \code{genes}, and \code{barcodes} datasets. The matrix is
 #'   stored cells x genes (TENx column-favoured, optimised for per-gene
@@ -511,7 +511,7 @@
 #' No data returned.
 #'
 #' @examples
-#' pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
+#' pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
 #'   package = "CerebroNexus"))
 #' exportFromSeurat(
 #'   object = pbmc,

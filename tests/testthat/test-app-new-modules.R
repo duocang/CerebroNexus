@@ -102,7 +102,7 @@ test_that("all three new tabs are visible in sidebar after data load", {
 })
 
 test_that("insertConditionalTab is defined and wired to conditional tabs", {
-  server_file <- file.path(inst_dir, "shiny/v1.4/shiny_server.R")
+  server_file <- file.path(inst_dir, "viewer/shiny_server.R")
   skip_if_not(file.exists(server_file))
   content <- paste(readLines(server_file), collapse = "\n")
 
@@ -127,7 +127,7 @@ test_that("insertConditionalTab is defined and wired to conditional tabs", {
 })
 
 test_that("conditional tab placeholders exist in UI source", {
-  ui_file <- file.path(inst_dir, "shiny/v1.4/shiny_UI.R")
+  ui_file <- file.path(inst_dir, "viewer/shiny_UI.R")
   skip_if_not(file.exists(ui_file))
   content <- paste(readLines(ui_file), collapse = "\n")
 

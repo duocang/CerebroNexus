@@ -9,7 +9,7 @@
 # ============================================================================
 # Build the HLA & TCR Motifs demo (.crb) — A FULLY SYNTHETIC FIXTURE
 # ============================================================================
-# Produces `inst/extdata/v1.4/demo_hla_tcr_synthetic.crb`.
+# Produces `inst/extdata/examples/demo_hla_tcr_synthetic.crb`.
 #
 # WHAT THIS IS
 # ------------
@@ -66,13 +66,13 @@ set.seed(20260715)
 
 out <- Sys.getenv(
   "OUT_CRB",
-  unset = "inst/extdata/v1.4/demo_hla_tcr_synthetic.crb"
+  unset = "inst/extdata/examples/demo_hla_tcr_synthetic.crb"
 )
 ## Gene-symbol vocabulary is borrowed from the base PBMC object rather than this
 ## script's own output, so re-running the build is never self-referential.
 symbol_src <- Sys.getenv(
   "SYMBOL_CRB",
-  unset = "inst/extdata/v1.4/demo_full_tcr_bcr.crb"
+  unset = "inst/extdata/examples/demo_full_tcr_bcr.crb"
 )
 
 ## ---- Cohort shape ------------------------------------------------------ ##

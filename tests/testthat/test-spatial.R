@@ -4,11 +4,11 @@
 # tab wiring (Session B). Backend contract tests come first; the module-parse
 # and UI/server wiring guards follow.
 
-shiny_root <- system.file("shiny/v1.4", package = "CerebroNexus")
+shiny_root <- system.file("viewer", package = "CerebroNexus")
 # demo_spatial.crb is the synthetic Xenium demo that carries spatial data;
 # the other bundled demos (PBMC sets, trajectory) have no spatial field.
 spatial_crb <- system.file(
-  "extdata/v1.4/demo_spatial.crb",
+  "extdata/examples/demo_spatial.crb",
   package = "CerebroNexus"
 )
 
@@ -373,14 +373,14 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
   # image (unlike MERFISH/Xenium). This keeps the .crb small and exercises the
   # spatial_images code path as a live example.
   png <- system.file(
-    "extdata/v1.4/demo_spatial_visium_he.png",
+    "extdata/examples/demo_spatial_visium_he.png",
     package = "CerebroNexus"
   )
   skip_if(png == "" || !file.exists(png), message = "visium H&E png missing")
   expect_gt(file.info(png)$size, 0)
 
   crb_path <- system.file(
-    "extdata/v1.4/demo_spatial_visium.crb",
+    "extdata/examples/demo_spatial_visium.crb",
     package = "CerebroNexus"
   )
   skip_if(
@@ -402,13 +402,13 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
   renderer <- new.env(parent = globalenv())
   sys.source(
     file.path(
-      system.file("shiny/v1.4", package = "CerebroNexus"),
+      system.file("viewer", package = "CerebroNexus"),
       "spatial",
       "func_projection_update_plot.R"
     ),
     envir = renderer
   )
-  configured_image <- "extdata/v1.4/demo_spatial_visium_he.png"
+  configured_image <- "extdata/examples/demo_spatial_visium_he.png"
   expect_identical(
     renderer$authorized_spatial_image_path(
       configured_image,
@@ -429,7 +429,7 @@ test_that("bundled real demos embed a genuine tissue image in the .crb", {
     "demo_spatial_xenium"
   )) {
     path <- system.file(
-      file.path("extdata/v1.4", paste0(f, ".crb")),
+      file.path("extdata/examples", paste0(f, ".crb")),
       package = "CerebroNexus"
     )
     skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
@@ -461,10 +461,10 @@ test_that("bundled real demos embed a genuine tissue image in the .crb", {
 ##----------------------------------------------------------------------------##
 
 real_spatial_demos <- c(
-  visium = "extdata/v1.4/demo_spatial_visium.crb",
-  slideseq = "extdata/v1.4/demo_spatial_slideseq.crb",
-  merfish = "extdata/v1.4/demo_spatial_merfish.crb",
-  xenium = "extdata/v1.4/demo_spatial_xenium.crb"
+  visium = "extdata/examples/demo_spatial_visium.crb",
+  slideseq = "extdata/examples/demo_spatial_slideseq.crb",
+  merfish = "extdata/examples/demo_spatial_merfish.crb",
+  xenium = "extdata/examples/demo_spatial_xenium.crb"
 )
 
 test_that("each real spatial demo exposes coordinates with x/y", {
@@ -518,7 +518,7 @@ test_that("image-free demo (Slide-seq) carries no histology image", {
   # absence of `histology_image` is the CORRECT state, not a build regression.
   for (f in c("demo_spatial_slideseq")) {
     path <- system.file(
-      file.path("extdata/v1.4", paste0(f, ".crb")),
+      file.path("extdata/examples", paste0(f, ".crb")),
       package = "CerebroNexus"
     )
     skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
@@ -534,7 +534,7 @@ test_that("embedded image demos store the image natively with no flip flag", {
   # Guard that the image is present and no stale flip flag lingers.
   for (f in c("demo_spatial_xenium", "demo_spatial_merfish")) {
     path <- system.file(
-      file.path("extdata/v1.4", paste0(f, ".crb")),
+      file.path("extdata/examples", paste0(f, ".crb")),
       package = "CerebroNexus"
     )
     skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))

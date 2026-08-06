@@ -1,0 +1,17 @@
+##----------------------------------------------------------------------------##
+## Tab: Most expressed genes
+##----------------------------------------------------------------------------##
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/viewer/most_expressed_genes/select_group.R"
+  ),
+  local = TRUE
+)
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/viewer/most_expressed_genes/table.R"
+  ),
+  local = TRUE
+)

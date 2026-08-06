@@ -7,7 +7,7 @@ read_bundled_source <- function(...) {
 }
 
 test_that("launchers do not replace the process-wide Shiny error handler", {
-  launcher <- paste(deparse(body(launchCerebroV1.4)), collapse = "\n")
+  launcher <- paste(deparse(body(launchCerebro)), collapse = "\n")
   bundled_app <- read_bundled_source("app.R")
 
   expect_false(grepl("options(shiny.error", launcher, fixed = TRUE))
@@ -17,7 +17,7 @@ test_that("launchers do not replace the process-wide Shiny error handler", {
 })
 
 test_that("server startup and dataset loading fail with the original error", {
-  server <- read_bundled_source("shiny", "v1.4", "shiny_server.R")
+  server <- read_bundled_source("viewer", "shiny_server.R")
 
   expect_false(grepl("try_source <-", server, fixed = TRUE))
   expect_false(grepl("tab module failed to load", server, fixed = TRUE))

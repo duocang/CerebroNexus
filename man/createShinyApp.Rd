@@ -2,7 +2,7 @@
 % Please edit documentation in R/createShinyApp.R
 \name{createShinyApp}
 \alias{createShinyApp}
-\title{Create a self-contained Shiny app folder for Cerebro v1.4}
+\title{Create a self-contained CerebroNexus Shiny app folder}
 \usage{
 createShinyApp(
   cerebro_data,
@@ -125,8 +125,8 @@ Invisibly returns \code{result_dir}. If that path changes resolution
   during the build, warns and returns the frozen absolute publication path.
 }
 \description{
-Bundles a Cerebro v1.4 Shiny app into \code{result_dir}, copying the
-\code{inst/shiny/v1.4/} sources, the requested \code{.crb} data file(s),
+Bundles a CerebroNexus Shiny app into \code{result_dir}, copying the
+\code{inst/viewer/} sources, the requested \code{.crb} data file(s),
 and \code{extdata/}, and writes an \code{app.R} that sources the bundled
 UI/server. The output directory can be served directly by shiny-server or
 run with \code{shiny::runApp(result_dir)}.

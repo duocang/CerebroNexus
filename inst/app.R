@@ -18,7 +18,7 @@ Cerebro.options <<- list(
   ## Keep the source demo runnable directly from inst/ without requiring an
   ## installed CerebroNexus package. Exported apps receive this value in
   ## cerebro_config.rds when createShinyApp() builds them.
-  "cerebro_version" = "3.2.0",
+  "cerebro_version" = "4.0",
   ## This bundled app ships several distinct demo data sets so the sidebar
   ## "Select dataset:" switcher is visible out of the box: switching changes
   ## the UMAP, the cell-type composition, and the conditional tabs (Immune
@@ -29,7 +29,7 @@ Cerebro.options <<- list(
   ## B-cell trajectory, so it surfaces both the Immune Repertoire and Trajectory
   ## tabs (dynamically inserted by insertConditionalTab).
   "crb_file_to_load" = c(
-    "PBMC - Full (T+B)" = "extdata/v1.4/demo_full_tcr_bcr.crb",
+    "PBMC - Full (T+B)" = "extdata/examples/demo_full_tcr_bcr.crb",
     ## REAL public spatial data, one per technology (down-sampled). The bracketed
     ## label states the platform. All four flow through the same platform-
     ## agnostic .getSpatialData extraction, spanning spot / bead / in-situ-imaging
@@ -41,10 +41,10 @@ Cerebro.options <<- list(
     ## example of that path, which also keeps the Visium .crb smaller. Slide-seq
     ## has no tissue photo by design (bead scatter is the complete spatial view).
     ## Rebuild with data-raw/build_spatial_demos.R.
-    "Mouse brain (Visium)" = "extdata/v1.4/demo_spatial_visium.crb",
-    "Mouse hippocampus (Slide-seq v2)" = "extdata/v1.4/demo_spatial_slideseq.crb",
-    "Mouse ileum (MERFISH)" = "extdata/v1.4/demo_spatial_merfish.crb",
-    "Mouse brain (Xenium)" = "extdata/v1.4/demo_spatial_xenium.crb",
+    "Mouse brain (Visium)" = "extdata/examples/demo_spatial_visium.crb",
+    "Mouse hippocampus (Slide-seq v2)" = "extdata/examples/demo_spatial_slideseq.crb",
+    "Mouse ileum (MERFISH)" = "extdata/examples/demo_spatial_merfish.crb",
+    "Mouse brain (Xenium)" = "extdata/examples/demo_spatial_xenium.crb",
     ## REAL Trekker single-cell spatial-mapping output (Curio / Takara), down-
     ## sampled from the smallest official bundle (Mouse_Brain_TrekkerU_C). Unlike
     ## the spatial demos above it drives the bespoke **Trekker** tab, not the
@@ -53,7 +53,7 @@ Cerebro.options <<- list(
     ## `trekker` slot (three coordinate orientations, positioning QC, upstream
     ## Moran's I, embedded per-nucleus positioning-evidence images).
     ## Rebuild with data-raw/build_trekker_demo.R (see data-raw/trekker.md).
-    "Mouse brain (Trekker)" = "extdata/v1.4/demo_trekker.crb",
+    "Mouse brain (Trekker)" = "extdata/examples/demo_trekker.crb",
     ## The HLA & TCR demo: REAL single cells with REAL paired TCR, from 10x's
     ## dextramer cohort. The repertoire is ANTIGEN-SELECTED (cells were sorted
     ## for binding a pMHC dextramer), which is precisely why its motif network is
@@ -70,7 +70,7 @@ Cerebro.options <<- list(
     ## here, which is what the restriction_in_genotype column makes visible.
     ## Nothing on the Associations tab uses them.
     ## Rebuild with data-raw/build_hla_tcr_dextramer_demo.R.
-    "HLA & TCR" = "extdata/v1.4/demo_hla_tcr_dextramer.crb"
+    "HLA & TCR" = "extdata/examples/demo_hla_tcr_dextramer.crb"
   ),
   "crb_pick_smallest_file" = FALSE,
   ## Visium loads its real H&E background from an EXTERNAL image file (rather than
@@ -81,7 +81,7 @@ Cerebro.options <<- list(
   ## checkboxes let the user align it if a given dataset needs it (for this Visium
   ## H&E that is a vertical flip, matching Seurat's own SpatialPlot).
   "spatial_images" = c(
-    "Mouse brain (Visium)" = "extdata/v1.4/demo_spatial_visium_he.png"
+    "Mouse brain (Visium)" = "extdata/examples/demo_spatial_visium_he.png"
   ),
   ## Default alignment of the Visium H&E overlay, found by eye in the Spatial
   ## tab and captured here so the demo opens pre-aligned. The user can still
@@ -117,8 +117,8 @@ options(shiny.maxRequestSize = 800 * 1024^2)
 ##----------------------------------------------------------------------------##
 ## load server and UI functions
 ##----------------------------------------------------------------------------##
-source("shiny/v1.4/shiny_UI.R", local = TRUE)
-source("shiny/v1.4/shiny_server.R", local = TRUE)
+source("viewer/shiny_UI.R", local = TRUE)
+source("viewer/shiny_server.R", local = TRUE)
 
 ##----------------------------------------------------------------------------##
 ## launch app

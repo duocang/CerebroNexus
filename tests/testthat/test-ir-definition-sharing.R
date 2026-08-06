@@ -11,7 +11,7 @@
 # package (R CMD check runs from a temp install, where the inst/ candidates do
 # not exist — there we fall back to system.file). Skip if neither resolves, so
 # a missing path can never produce an "NA/shiny/..." error.
-rel_data_r <- "shiny/v1.4/immune_repertoire/data.R"
+rel_data_r <- "viewer/immune_repertoire/data.R"
 inst_candidates <- c(
   normalizePath("inst", mustWork = FALSE),
   normalizePath("../../inst", mustWork = FALSE),

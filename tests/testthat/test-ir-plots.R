@@ -14,12 +14,12 @@ inst_candidates <- c(
   normalizePath(testthat::test_path("../../inst"), mustWork = FALSE)
 )
 local_inst <- inst_candidates[
-  file.exists(file.path(inst_candidates, "extdata/v1.4/example.crb"))
+  file.exists(file.path(inst_candidates, "extdata/examples/example.crb"))
 ][1]
 example_crb <- if (!is.na(local_inst)) {
-  file.path(local_inst, "extdata/v1.4/example.crb")
+  file.path(local_inst, "extdata/examples/example.crb")
 } else {
-  system.file("extdata/v1.4/example.crb", package = "CerebroNexus")
+  system.file("extdata/examples/example.crb", package = "CerebroNexus")
 }
 
 # Annotate the IR list with cell metadata by barcode (mirrors ir_data_annotated
@@ -77,11 +77,11 @@ expect_nonempty_ggplot <- function(p, label) {
 # Source the (reactive-free) length helper so its pure plot builder is testable.
 length_helpers <- file.path(
   local_inst,
-  "shiny/v1.4/immune_repertoire/length_helpers.R"
+  "viewer/immune_repertoire/length_helpers.R"
 )
 if (is.na(local_inst)) {
   length_helpers <- system.file(
-    "shiny/v1.4/immune_repertoire/length_helpers.R",
+    "viewer/immune_repertoire/length_helpers.R",
     package = "CerebroNexus"
   )
 }
@@ -335,9 +335,9 @@ test_that("gene-usage and CDR3 plots render on example.crb", {
 test_that("BCR isotype/SHM helpers produce a plot for the bundled BCR data", {
   skip_if_not(file.exists(example_crb))
   shiny_root <- if (!is.na(local_inst)) {
-    file.path(local_inst, "shiny/v1.4")
+    file.path(local_inst, "viewer")
   } else {
-    system.file("shiny/v1.4", package = "CerebroNexus")
+    system.file("viewer", package = "CerebroNexus")
   }
   # source the BCR helpers in an environment with the needed deps
   helper_src <- file.path(shiny_root, "immune_repertoire", "server.R")

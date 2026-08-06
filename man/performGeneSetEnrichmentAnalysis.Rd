@@ -50,7 +50,7 @@ labels to cell clusters from single-cell RNA-sequencing data", Diaz-Mejia et
 al., F1000Research (2019).
 }
 \examples{
-pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
+pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
   package = "CerebroNexus"))
 example_gene_set <- system.file("extdata/example_gene_set.gmt",
   package = "CerebroNexus")
