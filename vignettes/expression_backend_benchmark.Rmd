@@ -95,13 +95,13 @@ A single-gene lookup, a multi-gene marker table, initial CRB loading, and repeat
 
 # Benchmark evidence
 
-CerebroNexus keeps its real-data benchmark in the same source repository under [`tools/bench/`](https://github.com/mihem/CerebroNexus/tree/master/tools/bench). It is repository-only research infrastructure rather than installed package code, so it can carry remote readers, multi-gigabyte source definitions, resource planning, failure records, and dedicated tests without adding those dependencies to the user package.
+CerebroNexus keeps its real-data benchmark in the same source repository under [`tools/bench/`](https://github.com/duocang/CerebroNexus/tree/benchmark-evidence-20260805-02ff3f0/tools/bench). It is repository-only research infrastructure rather than installed package code, so it can carry remote readers, multi-gigabyte source definitions, resource planning, failure records, and dedicated tests without adding those dependencies to the user package.
 
 The benchmark compares all three backends on public count and normalized matrices. It records export, load, attach, memory, disk, single-gene, and block-read measurements in independent processes, and it rejects results whose expression fingerprints differ from the source.
 
 ## Qualifying publication run
 
-> **Evidence status.** The complete immutable [`20260805T214336Z-02ff3f0a971e-publication`](https://github.com/mihem/CerebroNexus/tree/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication) run passed all 36 export checks and all 72 source-matrix fingerprint checks, with no recorded child-process crashes. The archived pilot remains available for provenance but does not support package recommendations.
+> **Evidence status.** The complete immutable [`20260805T214336Z-02ff3f0a971e-publication`](https://github.com/duocang/CerebroNexus/tree/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication) run passed all 36 export checks and all 72 source-matrix fingerprint checks, with no recorded child-process crashes. The archived pilot remains available for provenance but does not support package recommendations.
 
 A numerical result may enter this guide only when it comes from a validated immutable publication run that records the exact CerebroNexus Git SHA, dependency-environment revision, source checksums, host, schedule, raw measurements, generated tables, and generated figures. The package documentation must link to that named run or a tagged benchmark release.
 
@@ -115,17 +115,17 @@ The run used one public raw-count matrix and two public normalized matrices. Com
 | Human PFC cross-disorder, HBCC | normalized floating point | 1,486,324 | 34,176 | 6.112 billion | 50k |
 | Human PFC cross-disorder, MSSM | normalized floating point | 4,140,453 | 34,176 | 15.60 billion | 50k |
 
-Measurements ran on Linux with an Intel Core i7-14700, 28 logical cores, 128 GB RAM, R 4.6.1, and CerebroNexus 3.2.0. Source files totalled 54.5 GB and are pinned by SHA-256 in the run's [`source_manifest.csv`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/source_manifest.csv).
+Measurements ran on Linux with an Intel Core i7-14700, 28 logical cores, 128 GB RAM, R 4.6.1, and CerebroNexus 3.2.0. This is the historical measurement environment recorded by the immutable evidence tag; version 4.1 packages the guide and harness without relabelling those results. Source files totalled 54.5 GB and are pinned by SHA-256 in the run's [`source_manifest.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/source_manifest.csv).
 
 ## How to read the measurements
 
 Each export value below is the median of three independent export processes. Each runtime value is the median of six fresh access processes: two access repeats for each exported artifact. Backend order rotates across export repeats. "Ready" is CRB load plus external-backend attachment; it excludes the Shiny handshake and browser rendering. "Warmed gene" is the per-process median of repeated single-gene reads. "12-gene block" includes native-view preparation and dense materialization.
 
-![Six complementary views of export, storage, startup, memory, single-gene access, and materialized block access. Points show medians; the generated report retains observed ranges.](figures/expression_backend_benchmark/expression_backend_benchmark_overview.png)
+![Six complementary views of export, storage, startup, memory, single-gene access, and materialized block access. Points show medians; the generated report retains observed ranges.](figures/backend/overview.svg)
 
 ## Complete measured comparison
 
-This compact table keeps all four tested source/tier points and all three backends together. The immutable [`summary.md`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/summary.md) additionally reports the observed minimum and maximum for every median.
+This compact table keeps all four tested source/tier points and all three backends together. The immutable [`summary.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/summary.md) additionally reports the observed minimum and maximum for every median.
 
 | Data point | Backend | Export s | Stored MB | Ready s | RSS MB | Warmed gene s | 12-gene block s |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -156,43 +156,43 @@ These observations describe this exporter, host, source set, cell tiers, and que
 
 Every backend occupied each order position once per source/tier. The light paths connect the three independent repeats; they make the deliberately rotated order visible rather than hiding it behind an aggregate.
 
-![Order-balanced export repeats. Each grey path is one repeat and the backend order rotates.](figures/expression_backend_benchmark/expression_backend_benchmark_repeats.png)
+![Order-balanced export repeats. Each grey path is one repeat and the backend order rotates.](figures/backend/repeats.svg)
 
 ### Interactive query shapes
 
 The query panel separates first-gene, warmed-gene, and fully materialized 12-gene access. H5 was fastest for the tested gene queries, while BPCells' main advantages in this run were export time and ready-state RSS. These are server-side matrix timings, not whole-page Shiny latency.
 
-![Fresh-process and warmed query latency, including dense materialization for the 12-gene block.](figures/expression_backend_benchmark/expression_backend_benchmark_query_latency.png)
+![Fresh-process and warmed query latency, including dense materialization for the 12-gene block.](figures/backend/query-latency.svg)
 
 ### Storage and runtime memory
 
 Stored footprint and ready-state RSS are separate deployment costs. H5 occupied the left side of every panel because it produced the smallest bundle, while BPCells occupied the lower side because it used the least ready-state RSS. Embedded storage was larger on both axes at these points but retained the operational benefit of one CRB without a matrix sidecar.
 
-![Storage-memory Pareto view. Lower-left combines smaller bundles with lower runtime RSS.](figures/expression_backend_benchmark/expression_backend_benchmark_pareto.png)
+![Storage-memory Pareto view. Lower-left combines smaller bundles with lower runtime RSS.](figures/backend/pareto.svg)
 
 ### Observed export-memory scaling
 
 Across the four distinct source/tier points, the median observed export peak was 36.9 bytes per non-zero value, with a 35.0-42.0 range. Lines connect measured medians only. They do not estimate a safe capacity or failure boundary.
 
-![Observed export-memory scaling for successful runs. The lines do not extrapolate a capacity boundary.](figures/expression_backend_benchmark/expression_backend_benchmark_observed_scaling.png)
+![Observed export-memory scaling for successful runs. The lines do not extrapolate a capacity boundary.](figures/backend/observed-scaling.svg)
 
 ### Correctness and completeness
 
 Speed is accepted only after value identity. Every fresh access process reproduced both its single-row and 12-row source fingerprints. The resulting 72/72 grid is a correctness audit, not a performance score.
 
-![Correctness audit: all six access processes for every source, tier, and backend matched both source fingerprints.](figures/expression_backend_benchmark/expression_backend_benchmark_correctness.png)
+![Correctness audit: all six access processes for every source, tier, and backend matched both source fingerprints.](figures/backend/correctness.svg)
 
 # Raw evidence and reproduction
 
 The named run retains the complete schedule and machine-fit decision, all raw process rows, environment and source manifests, generated report, and figures:
 
-- [`05_schedule.csv`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/05_schedule.csv): requested source, tier, backend, repeat, and order position;
-- [`resource_check.csv`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/resource_check.csv): pre-download memory, index, and disk gate;
-- [`10_export.csv`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/10_export.csv): 36 raw export-process rows;
-- [`20_access.csv`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/20_access.csv): 72 raw access-process rows and fingerprints;
-- [`run_manifest.csv`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/run_manifest.csv): exact Git, dependency-environment, package, R, OS, CPU, and memory provenance.
+- [`05_schedule.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/05_schedule.csv): requested source, tier, backend, repeat, and order position;
+- [`resource_check.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/resource_check.csv): pre-download memory, index, and disk gate;
+- [`10_export.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/10_export.csv): 36 raw export-process rows;
+- [`20_access.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/20_access.csv): 72 raw access-process rows and fingerprints;
+- [`run_manifest.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/run_manifest.csv): exact Git, dependency-environment, package, R, OS, CPU, and memory provenance.
 
-To reproduce or adapt the protocol, start with the repository-only [`tools/bench/README.md`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/README.md) and [`METHODOLOGY.md`](https://github.com/mihem/CerebroNexus/blob/master/tools/bench/METHODOLOGY.md). The harness performs resource preflight before downloading complete matrices and publishes a run only after measurement, report, and figure validation.
+To reproduce or adapt the protocol, start with the repository-only [`tools/bench/README.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/README.md) and [`METHODOLOGY.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/METHODOLOGY.md). The harness performs resource preflight before downloading complete matrices and publishes a run only after measurement, report, and figure validation.
 
 # Interpreting results
 

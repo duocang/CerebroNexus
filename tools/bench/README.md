@@ -9,6 +9,8 @@ The harness is repository-only research infrastructure. It stays in the CerebroN
 > run provides validated export, storage, startup, memory, single-gene, and
 > 12-gene materialization evidence. It records final package provenance and
 > keeps native-view preparation separate from dense block materialization.
+> The evidence records a CerebroNexus 3.2.0 measurement environment; release
+> 4.1 publishes this harness and its documentation without changing that fact.
 
 ## Quick start
 

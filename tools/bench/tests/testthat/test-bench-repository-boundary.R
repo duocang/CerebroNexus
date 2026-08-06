@@ -80,7 +80,15 @@ test_that("the complete package guide mirrors current publication figures", {
   run_id <- readLines(file.path(result_root, "CURRENT"), warn = FALSE)
   expect_length(run_id, 1L)
 
-  figures <- paste0(
+  figure_names <- c(
+    "overview",
+    "observed-scaling",
+    "repeats",
+    "query-latency",
+    "pareto",
+    "correctness"
+  )
+  evidence_figures <- paste0(
     "expression_backend_benchmark_",
     c(
       "overview",
@@ -90,15 +98,21 @@ test_that("the complete package guide mirrors current publication figures", {
       "pareto",
       "correctness"
     ),
-    ".png"
+    ".svg"
   )
-  evidence <- file.path(result_root, "runs", run_id, "figures", figures)
+  evidence <- file.path(
+    result_root,
+    "runs",
+    run_id,
+    "figures",
+    evidence_figures
+  )
   vignette <- file.path(
     repo,
     "vignettes",
     "figures",
-    "expression_backend_benchmark",
-    figures
+    "backend",
+    paste0(figure_names, ".svg")
   )
 
   expect_true(all(file.exists(evidence)))
@@ -117,11 +131,16 @@ test_that("the complete package guide mirrors current publication figures", {
   )
   expected_references <- paste(
     "figures",
-    "expression_backend_benchmark",
-    figures,
+    "backend",
+    paste0(figure_names, ".svg"),
     sep = "/"
   )
   expect_match(article, run_id, fixed = TRUE)
+  expect_match(article, "benchmark-evidence-20260805-02ff3f0", fixed = TRUE)
+  expect_false(grepl(
+    "mihem/CerebroNexus/(tree|blob)/master/tools/bench",
+    article
+  ))
   expect_true(all(vapply(
     expected_references,
     grepl,
@@ -138,4 +157,27 @@ test_that("the complete package guide mirrors current publication figures", {
 
   gitignore <- readLines(file.path(repo, ".gitignore"), warn = FALSE)
   expect_true("/.superpowers/" %in% gitignore)
+})
+
+test_that("the benchmark is positioned as the 4.1 release", {
+  repo <- normalizePath(file.path("..", "..", "..", ".."))
+  description <- read.dcf(file.path(repo, "DESCRIPTION"))
+  expect_identical(unname(description[1, "Version"]), "4.1")
+  expect_match(description[1, "Description"], "SingleCellExperiment")
+  expect_match(description[1, "Description"], "HDF5Array")
+  expect_match(description[1, "Description"], "BPCells")
+
+  news <- readLines(file.path(repo, "NEWS.md"), warn = FALSE)
+  expect_identical(news[1], "# CerebroNexus 4.1")
+  release_32 <- news[
+    seq.int(
+      match("# CerebroNexus 3.2.0", news),
+      match("# CerebroNexus 3.1.0", news) - 1L
+    )
+  ]
+  expect_false(any(grepl(
+    "20260805T214336Z|validated immutable publication run|six publication figures",
+    release_32,
+    ignore.case = TRUE
+  )))
 })
