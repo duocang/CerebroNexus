@@ -16,7 +16,7 @@
 
 ## Documentation
 
-- **A new "Choosing an expression backend" guide explains the stable packaging, dependency, memory, and deployment trade-offs among `embedded`, `bpcells`, and `h5`.** It deliberately withholds pilot-derived rankings until a validated immutable publication run exists.
+- **A new "Choosing an expression backend" guide explains the stable packaging, dependency, memory, and deployment trade-offs among `embedded`, `bpcells`, and `h5`.** It links a validated immutable publication run and reports its host- and workload-specific observations without presenting them as universal backend rankings.
 - **A complete repository benchmark methodology accompanies the guide.** It defines the experimental unit, balanced backend order, expression-density-stratified query panel, run profiles, correctness fingerprints, exact code and dependency-environment provenance, failure handling, and interpretation boundaries.
 
 ## Internal
@@ -25,6 +25,7 @@
 - **Benchmark result publication is failure-safe.** Runs are staged and validated before entering an immutable result directory; the `CURRENT` pointer changes last, so an interruption cannot erase the previous evidence.
 - **Benchmark validation now requires the exact scheduled access-repeat identities, uses each source's declared expression slot, and rejects unsafe overrides outside `stress`.** Standard and publication comparisons exclude deliberate boundary tiers. The 12-gene benchmark separately times native-view preparation and dense materialization, so lazy H5/BPCells views are not compared with eager embedded reads. Source bytes and SHA-256 are pinned, and installed-package provenance must match the repository version.
 - **Publication figures now use a colour-blind-safe six-figure system with raw process repeats and median/range overlays.** Editable SVG, print PDF, and 600 dpi PNG outputs cover the main backend trade-offs, observed memory scaling, order balance, query latency, storage-memory Pareto behaviour, and correctness. Successful runs are never extrapolated into a claimed host capacity without a separately observed stress boundary.
+- **The first complete publication run records 36 successful exports, 72 fingerprint-verified access processes, no child-process crashes, exact source checksums, and final package/dependency provenance.** Its immutable raw measurements, report, and six figures are retained under the named run directory selected by `tools/bench/result/CURRENT`.
 
 # CerebroNexus 3.1.0
 

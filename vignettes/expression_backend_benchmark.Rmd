@@ -26,7 +26,7 @@ knitr::opts_chunk$set(
 
 `exportFromSeurat()` and `convertSeuratToCerebro()` can store the expression matrix as `"embedded"`, `"bpcells"`, or `"h5"`. The three modes expose the same Cerebro expression interface, but they differ in packaging, runtime dependencies, and when matrix values enter memory.
 
-There is no universal fastest backend. Query shape, matrix density, storage, operating-system cache, package versions, and deployment hardware can all change the result. This guide therefore starts from stable format properties. Numerical recommendations will be added only after a validated immutable publication run is available.
+There is no universal fastest backend. Query shape, matrix density, storage, operating-system cache, package versions, and deployment hardware can all change the result. This guide therefore starts from stable format properties and uses one validated immutable publication run only as conditional evidence for a recorded host and workload.
 
 # Decision table
 
@@ -94,11 +94,21 @@ CerebroNexus keeps its real-data benchmark in the same source repository under [
 
 The benchmark compares all three backends on public count and normalized matrices. It records export, load, attach, memory, disk, single-gene, and block-read measurements in independent processes, and it rejects results whose expression fingerprints differ from the source.
 
-> **Evidence status.** No complete qualifying run has yet been published for the current protocol. The archived pilot remains available for provenance, but it does not support package recommendations. This article intentionally contains no pilot-derived ranking or performance multiplier.
+> **Evidence status.** The complete immutable [`20260805T214336Z-02ff3f0a971e-publication`](https://github.com/mihem/CerebroNexus/tree/master/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication) run passed all 36 export checks and all 72 source-matrix fingerprint checks, with no recorded child-process crashes. The archived pilot remains available for provenance but does not support package recommendations.
 
 A numerical result may enter this guide only when it comes from a validated immutable publication run that records the exact CerebroNexus Git SHA, dependency-environment revision, source checksums, host, schedule, raw measurements, generated tables, and generated figures. The package documentation must link to that named run or a tagged benchmark release.
 
-# Interpreting future results
+## Observed trade-offs
+
+The publication run tested three public matrices at 50,000 cells and the mouse-brain matrix at 150,000 cells on an Intel Core i7-14700 host with 128 GB RAM and R 4.6.1. Within those four source/tier points:
+
+- BPCells had the shortest export times (4.1-11.1 seconds) and the lowest resident memory after backend readiness (416-470 MB).
+- H5 produced the smallest CRB-plus-sidecar totals (117.3-350.3 MB) and the lowest warmed single-gene medians (0.005-0.013 seconds).
+- Embedded storage kept the expression matrix in one CRB, but its measured backend-ready time (3.36-9.65 seconds) and resident memory (1,444-3,755 MB) were higher than both external backends at every tested point.
+
+These observations describe this exporter, host, source set, cell tiers, and query plan. They are not universal backend rankings. In particular, the operating-system file cache was uncontrolled, so the latency values are not cold-disk measurements. The successful tiers also do not establish a maximum supported capacity.
+
+# Interpreting results
 
 Treat performance claims as conditional on the source, tier, density, access pattern, software environment, and host. A publication profile compares backends on tiers expected to complete. A separate stress profile may measure an observed failure boundary. A capacity calculated from successful points is an estimate, not an observed stopping boundary.
 

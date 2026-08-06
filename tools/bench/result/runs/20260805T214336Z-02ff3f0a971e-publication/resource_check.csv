@@ -1,0 +1,5 @@
+"source","n_cells","estimated_nnz","estimated_peak_mb","memory_budget_mb","source_bytes","disk_budget_bytes","memory_ok","index_ok","disk_ok","safe","reason"
+"mouse_brain_e18",50000,100480000,7157,89904,4216018749,2009899397939.2,TRUE,TRUE,TRUE,TRUE,"safe"
+"mouse_brain_e18",150000,301440000,19422,89904,4216018749,2009899397939.2,TRUE,TRUE,TRUE,TRUE,"safe"
+"human_pfc_hbcc",50000,205600000,13573,89904,14150526668,2009899397939.2,TRUE,TRUE,TRUE,TRUE,"safe"
+"human_pfc_mssm",50000,188370000,12521,89904,36092176654,2009899397939.2,TRUE,TRUE,TRUE,TRUE,"safe"

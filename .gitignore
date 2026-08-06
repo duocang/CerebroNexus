@@ -7,6 +7,8 @@ CerebroNexus_*.tar.gz
 result
 vignettes/*.crb
 docs
+/other_documents/design/
+/other_documents/plans/
 .Rproj.user
 *.Rproj
 tests/smoke/

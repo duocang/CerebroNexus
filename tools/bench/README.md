@@ -4,12 +4,11 @@ This directory compares the `embedded`, `bpcells`, and `h5` backends on public s
 
 The harness is repository-only research infrastructure. It stays in the CerebroNexus repository because it measures CerebroNexus export and runtime behaviour, but `.Rbuildignore` keeps its remote readers, large-data workflow, dedicated dependencies, tests, and archived evidence out of the installed package.
 
-> **Current status:** a complete immutable `publication` run exists for the
-> export, storage, startup, memory, and single-gene metrics. Its historical
-> `block_secs` field measured lazy-view preparation and is now explicitly
-> excluded from materialized-read claims. Re-run `publication` after this
-> revision to populate the corrected 12-gene panel and finalized package
-> provenance.
+> **Current status:** the complete immutable
+> [`20260805T214336Z-02ff3f0a971e-publication`](result/runs/20260805T214336Z-02ff3f0a971e-publication/summary.md)
+> run provides validated export, storage, startup, memory, single-gene, and
+> 12-gene materialization evidence. It records final package provenance and
+> keeps native-view preparation separate from dense block materialization.
 
 ## Quick start
 
