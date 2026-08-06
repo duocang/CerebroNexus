@@ -194,6 +194,9 @@ if [ "$BENCH_PROFILE" = "publication" ]; then
     tail -20 "$LOG_DIR/figures.log"
     exit 1
   }
+  echo "==> writing article comparison fragment"
+  Rscript "$BENCH_ROOT/src/42_write_article_fragment.R" \
+    "$STAGE" "$STAGE/article-comparison.md" || exit 1
 fi
 
 echo "==> checking report and figures"

@@ -146,6 +146,21 @@ test_that("output checker requires report and publication figures", {
     "figure",
     file.path(stage, "figures", expected_figures[length(expected_figures)])
   )
+  still_incomplete <- suppressWarnings(system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(checker, stage),
+    stdout = TRUE,
+    stderr = TRUE,
+    env = paste0("BENCH_ROOT=", bench_root)
+  ))
+  expect_false(is.null(attr(still_incomplete, "status")))
+  expect_match(
+    paste(still_incomplete, collapse = "\n"),
+    "article-comparison.md",
+    fixed = TRUE
+  )
+
+  writeLines("article table", file.path(stage, "article-comparison.md"))
   complete <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(checker, stage),

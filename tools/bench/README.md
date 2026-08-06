@@ -86,6 +86,7 @@ The 2026-07-30 single-run pilot is retained under `result/archive/pilot-2026-07-
 | `30_check_measurements.R` | reject incomplete or incorrect measurements |
 | `40_write_report.R` | generate the Markdown result report |
 | `41_draw_figures.R` | generate six SVG/PDF/600 dpi PNG publication figures |
+| `42_write_article_fragment.R` | render the compact article table from raw publication rows |
 | `50_check_outputs.R` | ensure the report package is complete |
 | `60_publish_results.R` | publish immutably and update `CURRENT` last |
 

@@ -94,6 +94,99 @@ bench_normalize_access_metrics <- function(x) {
   x
 }
 
+bench_article_comparison_lines <- function(exports, access) {
+  required_exports <- c(
+    "source",
+    "n_cells",
+    "backend",
+    "status",
+    "export_secs",
+    "total_mb"
+  )
+  required_access <- c(
+    "source",
+    "n_cells",
+    "backend",
+    "status",
+    "load_secs",
+    "attach_secs",
+    "rss_mb",
+    "hot_p50_secs",
+    "block_ready_secs"
+  )
+  missing_exports <- setdiff(required_exports, names(exports))
+  missing_access <- setdiff(required_access, names(access))
+  if (length(missing_exports) || length(missing_access)) {
+    stop(
+      "benchmark rows cannot render the article comparison table",
+      call. = FALSE
+    )
+  }
+
+  exports <- exports[exports$status == "OK", , drop = FALSE]
+  access <- access[access$status == "OK", , drop = FALSE]
+  access$ready_secs <- access$load_secs + access$attach_secs
+  key <- c("source", "n_cells", "backend")
+  export_summary <- bench_summarise_metrics(
+    exports,
+    group = key,
+    metrics = c("export_secs", "total_mb")
+  )
+  access_summary <- bench_summarise_metrics(
+    access,
+    group = key,
+    metrics = c("ready_secs", "rss_mb", "hot_p50_secs", "block_ready_secs")
+  )
+  summary <- merge(export_summary, access_summary, by = key, all = FALSE)
+  labels <- c(
+    human_pfc_hbcc = "Human PFC · HBCC",
+    human_pfc_mssm = "Human PFC · MSSM",
+    mouse_brain_e18 = "Mouse E18"
+  )
+  source_order <- names(labels)
+  backend_order <- c("embedded", "bpcells", "h5")
+  summary <- summary[
+    order(
+      match(summary$source, source_order),
+      summary$n_cells,
+      match(summary$backend, backend_order)
+    ),
+    ,
+    drop = FALSE
+  ]
+  format_value <- function(value, digits, big.mark = "") {
+    format(
+      round(value, digits),
+      nsmall = digits,
+      trim = TRUE,
+      big.mark = big.mark
+    )
+  }
+  c(
+    "| Data point | Backend | Export s | Stored MB | Ready s | RSS MB | Warmed gene s | 12-gene block s |",
+    "|---|---|---:|---:|---:|---:|---:|---:|",
+    vapply(
+      seq_len(nrow(summary)),
+      function(i) {
+        row <- summary[i, , drop = FALSE]
+        sprintf(
+          "| %s · %sk | `%s` | %s | %s | %s | %s | %s | %s |",
+          unname(labels[[row$source]]),
+          format_value(row$n_cells / 1000, 0),
+          row$backend,
+          format_value(row$export_secs_median, 1),
+          format_value(row$total_mb_median, 1),
+          format_value(row$ready_secs_median, 2),
+          format_value(row$rss_mb_median, 0, big.mark = ","),
+          format_value(row$hot_p50_secs_median, 3),
+          format_value(row$block_ready_secs_median, 3)
+        )
+      },
+      character(1)
+    )
+  )
+}
+
 bench_publication_figure_stems <- function() {
   c(
     "expression_backend_benchmark_overview",

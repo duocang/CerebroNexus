@@ -5,6 +5,11 @@ test_that("the real-data benchmark has a repository-only package boundary", {
   expect_true(dir.exists(bench))
   expect_true(file.exists(file.path(bench, "run_sweep.sh")))
   expect_true(file.exists(file.path(bench, "run_contract_tests.R")))
+  expect_true(file.exists(file.path(
+    bench,
+    "src",
+    "42_write_article_fragment.R"
+  )))
   expect_true(dir.exists(file.path(bench, "tests", "testthat")))
 
   package_tests <- list.files(
@@ -157,6 +162,52 @@ test_that("the complete package guide mirrors current publication figures", {
 
   gitignore <- readLines(file.path(repo, ".gitignore"), warn = FALSE)
   expect_true("/.superpowers/" %in% gitignore)
+})
+
+test_that("the complete package guide mirrors its frozen comparison table", {
+  repo <- normalizePath(file.path("..", "..", "..", ".."))
+  result_root <- file.path(repo, "tools", "bench", "result")
+  run_id <- readLines(file.path(result_root, "CURRENT"), warn = FALSE)
+  run_dir <- file.path(result_root, "runs", run_id)
+
+  source(file.path(repo, "tools", "bench", "lib", "reporting.R"), local = TRUE)
+  expected <- bench_article_comparison_lines(
+    utils::read.csv(
+      file.path(run_dir, "10_export.csv"),
+      stringsAsFactors = FALSE
+    ),
+    utils::read.csv(
+      file.path(run_dir, "20_access.csv"),
+      stringsAsFactors = FALSE
+    )
+  )
+  fragment <- file.path(
+    repo,
+    "vignettes",
+    "figures",
+    "backend",
+    "complete-comparison.md"
+  )
+  expect_true(file.exists(fragment))
+  expect_identical(readLines(fragment, warn = FALSE), expected)
+
+  article <- paste(
+    readLines(
+      file.path(repo, "vignettes", "expression_backend_benchmark.Rmd"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    article,
+    "child='figures/backend/complete-comparison.md'",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "| Human PFC · HBCC · 50k | `embedded` |",
+    article,
+    fixed = TRUE
+  ))
 })
 
 test_that("the benchmark is positioned as the 4.1 release", {

@@ -23,7 +23,8 @@ required <- "summary.md"
 if (identical(profile, "publication")) {
   required <- c(
     required,
-    file.path("figures", bench_publication_figure_files())
+    file.path("figures", bench_publication_figure_files()),
+    "article-comparison.md"
   )
 }
 paths <- file.path(stage, required)
