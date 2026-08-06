@@ -55,7 +55,7 @@ Read the illustrated
 [Choosing an expression backend](vignettes/expression_backend_benchmark.Rmd)
 guide for the complete tables, all six figures, deployment guidance, and
 interpretation limits. The underlying immutable evidence is retained in the
-[`20260805T214336Z-02ff3f0a971e-publication`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/summary.md)
+[`20260805T214336Z-02ff3f0a971e-publication`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/summary.md)
 run, measured with CerebroNexus 3.2.0 and retained without relabelling its
 historical environment.
 

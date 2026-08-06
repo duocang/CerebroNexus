@@ -95,13 +95,13 @@ A single-gene lookup, a multi-gene marker table, initial CRB loading, and repeat
 
 # Benchmark evidence
 
-CerebroNexus keeps its real-data benchmark in the same source repository under [`tools/bench/`](https://github.com/duocang/CerebroNexus/tree/benchmark-evidence-20260805-02ff3f0/tools/bench). It is repository-only research infrastructure rather than installed package code, so it can carry remote readers, multi-gigabyte source definitions, resource planning, failure records, and dedicated tests without adding those dependencies to the user package.
+CerebroNexus keeps its real-data benchmark in the same source repository under [`tools/bench/`](https://github.com/duocang/CerebroNexus/tree/benchmark-evidence-20260805-02ff3f0-v2/tools/bench). It is repository-only research infrastructure rather than installed package code, so it can carry remote readers, multi-gigabyte source definitions, resource planning, failure records, and dedicated tests without adding those dependencies to the user package.
 
 The benchmark compares all three backends on public count and normalized matrices. It records export, load, attach, memory, disk, single-gene, and block-read measurements in independent processes, and it rejects results whose expression fingerprints differ from the source.
 
 ## Qualifying publication run
 
-> **Evidence status.** The complete immutable [`20260805T214336Z-02ff3f0a971e-publication`](https://github.com/duocang/CerebroNexus/tree/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication) run passed all 36 export checks and all 72 source-matrix fingerprint checks, with no recorded child-process crashes. The archived pilot remains available for provenance but does not support package recommendations.
+> **Evidence status.** The complete immutable [`20260805T214336Z-02ff3f0a971e-publication`](https://github.com/duocang/CerebroNexus/tree/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication) run passed all 36 export checks and all 72 source-matrix fingerprint checks, with no recorded child-process crashes. The archived pilot remains available for provenance but does not support package recommendations.
 
 A numerical result may enter this guide only when it comes from a validated immutable publication run that records the exact CerebroNexus Git SHA, dependency-environment revision, source checksums, host, schedule, raw measurements, generated tables, and generated figures. The package documentation must link to that named run or a tagged benchmark release.
 
@@ -115,7 +115,7 @@ The run used one public raw-count matrix and two public normalized matrices. Com
 | Human PFC cross-disorder, HBCC | normalized floating point | 1,486,324 | 34,176 | 6.112 billion | 50k |
 | Human PFC cross-disorder, MSSM | normalized floating point | 4,140,453 | 34,176 | 15.60 billion | 50k |
 
-Measurements ran on Linux with an Intel Core i7-14700, 28 logical cores, 128 GB RAM, R 4.6.1, and CerebroNexus 3.2.0. This is the historical measurement environment recorded by the immutable evidence tag; version 4.1 packages the guide and harness without relabelling those results. Source files totalled 54.5 GB and are pinned by SHA-256 in the run's [`source_manifest.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/source_manifest.csv).
+Measurements ran on Linux with an Intel Core i7-14700, 28 logical cores, 128 GB RAM, R 4.6.1, and CerebroNexus 3.2.0. This is the historical measurement environment recorded by the immutable evidence tag; version 4.1 packages the guide and harness without relabelling those results. Source files totalled 54.5 GB and are pinned by SHA-256 in the run's [`source_manifest.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/source_manifest.csv).
 
 ## How to read the measurements
 
@@ -125,7 +125,7 @@ Each export value below is the median of three independent export processes. Eac
 
 ## Complete measured comparison
 
-This compact table keeps all four tested source/tier points and all three backends together. The immutable [`summary.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/summary.md) additionally reports the observed minimum and maximum for every median.
+This compact table keeps all four tested source/tier points and all three backends together. The immutable [`summary.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/summary.md) additionally reports the observed minimum and maximum for every median.
 
 ```{r child='figures/backend/complete-comparison.md'}
 ```
@@ -174,13 +174,13 @@ Speed is accepted only after value identity. Every fresh access process reproduc
 
 The named run retains the complete schedule and machine-fit decision, all raw process rows, environment and source manifests, generated report, and figures:
 
-- [`05_schedule.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/05_schedule.csv): requested source, tier, backend, repeat, and order position;
-- [`resource_check.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/resource_check.csv): pre-download memory, index, and disk gate;
-- [`10_export.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/10_export.csv): 36 raw export-process rows;
-- [`20_access.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/20_access.csv): 72 raw access-process rows and fingerprints;
-- [`run_manifest.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/run_manifest.csv): exact Git, dependency-environment, package, R, OS, CPU, and memory provenance.
+- [`05_schedule.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/05_schedule.csv): requested source, tier, backend, repeat, and order position;
+- [`resource_check.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/resource_check.csv): pre-download memory, index, and disk gate;
+- [`10_export.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/10_export.csv): 36 raw export-process rows;
+- [`20_access.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/20_access.csv): 72 raw access-process rows and fingerprints;
+- [`run_manifest.csv`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/result/runs/20260805T214336Z-02ff3f0a971e-publication/run_manifest.csv): exact Git, dependency-environment, package, R, OS, CPU, and memory provenance.
 
-To reproduce or adapt the protocol, start with the repository-only [`tools/bench/README.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/README.md) and [`METHODOLOGY.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0/tools/bench/METHODOLOGY.md). The harness performs resource preflight before downloading complete matrices and publishes a run only after measurement, report, and figure validation.
+To reproduce or adapt the protocol, start with the repository-only [`tools/bench/README.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/README.md) and [`METHODOLOGY.md`](https://github.com/duocang/CerebroNexus/blob/benchmark-evidence-20260805-02ff3f0-v2/tools/bench/METHODOLOGY.md). The harness performs resource preflight before downloading complete matrices and publishes a run only after measurement, report, and figure validation.
 
 # Interpreting results
 

@@ -141,7 +141,11 @@ test_that("the complete package guide mirrors current publication figures", {
     sep = "/"
   )
   expect_match(article, run_id, fixed = TRUE)
-  expect_match(article, "benchmark-evidence-20260805-02ff3f0", fixed = TRUE)
+  expect_match(
+    article,
+    "benchmark-evidence-20260805-02ff3f0-v2",
+    fixed = TRUE
+  )
   expect_false(grepl(
     "mihem/CerebroNexus/(tree|blob)/master/tools/bench",
     article
@@ -188,8 +192,14 @@ test_that("the complete package guide mirrors its frozen comparison table", {
     "backend",
     "complete-comparison.md"
   )
+  evidence_fragment <- file.path(run_dir, "article-comparison.md")
   expect_true(file.exists(fragment))
+  expect_true(file.exists(evidence_fragment))
   expect_identical(readLines(fragment, warn = FALSE), expected)
+  expect_identical(
+    readLines(evidence_fragment, warn = FALSE),
+    expected
+  )
 
   article <- paste(
     readLines(
