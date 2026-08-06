@@ -222,12 +222,6 @@ test_that("example.crb sample levels are as expected", {
   expect_true(is.character(lvls))
 })
 
-test_that("example.h5 file exists and is non-empty", {
-  path <- system.file("extdata/v1.4/example.h5", package = "CerebroNexus")
-  expect_true(file.exists(path))
-  expect_gt(file.size(path), 0)
-})
-
 ## ---------------------------------------------------------------------------
 ## calculatePercentGenes input validation (without Seurat)
 ## ---------------------------------------------------------------------------

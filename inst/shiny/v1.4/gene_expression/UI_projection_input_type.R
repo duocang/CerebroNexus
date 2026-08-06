@@ -20,7 +20,12 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
       'expression_select_gene_set',
       label = 'Gene set',
       choices = data.table::as.data.table(
-        data.frame("Gene sets" = c("-", msigdbr:::msigdbr_genesets$gs_name))
+        data.frame(
+          "Gene sets" = c(
+            "-",
+            sort(unique(getMsigdbGeneSets("Homo sapiens")$gs_name))
+          )
+        )
       ),
       multiple = FALSE
     )

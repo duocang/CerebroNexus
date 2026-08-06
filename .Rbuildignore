@@ -24,3 +24,14 @@ TODO.md
 ^tmp/
 Rplots\.pdf$
 ^tests/bench$
+^AGENTS\.md$
+^CLAUDE\.md$
+^CONTRIBUTING\.md$
+^nix$
+^scripts$
+^tmp_refactor$
+^[^/]*\.png$
+^inst/shiny/v1\.4/www/tutorials$
+^vignettes$
+^man/figures/featured\.png$
+^CRAN-SUBMISSION\.md$

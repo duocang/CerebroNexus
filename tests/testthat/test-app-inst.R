@@ -1,4 +1,5 @@
 library(shinytest2)
+skip_on_cran()
 
 ## Locate inst/ whether running via devtools::test() or R CMD check
 inst_dir <- system.file(package = "CerebroNexus")

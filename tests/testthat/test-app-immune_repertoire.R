@@ -4,6 +4,7 @@
 # tab is present by default and its UI can be exercised directly.
 
 library(shinytest2)
+skip_on_cran()
 
 inst_candidates <- c(
   normalizePath("inst", mustWork = FALSE),

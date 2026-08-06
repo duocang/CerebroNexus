@@ -460,8 +460,8 @@
 #'   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
 #'   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
 #'   \code{<stem>.h5}) and tags the backend with that relative location. The
-#'   on-disk layout matches \code{inst/extdata/v1.4/example.h5}: a single
-#'   \code{/expression} group with \code{data}, \code{indices}, \code{indptr},
+#'   on-disk layout contains a single \code{/expression} group with
+#'   \code{data}, \code{indices}, \code{indptr},
 #'   \code{shape}, \code{genes}, and \code{barcodes} datasets. The matrix is
 #'   stored cells x genes (TENx column-favoured, optimised for per-gene
 #'   reads); the Shiny runtime attach reads it back as a lazy

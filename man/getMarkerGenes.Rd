@@ -60,6 +60,7 @@ This function gets marker genes for one or multiple grouping variables in
 the meta data of the provided Seurat object.
 }
 \examples{
+\donttest{
 pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
   package = "CerebroNexus"))
 pbmc <- getMarkerGenes(
@@ -75,5 +76,6 @@ pbmc <- getMarkerGenes(
   test = 'wilcox',
   verbose = TRUE
 )
+}
 
 }

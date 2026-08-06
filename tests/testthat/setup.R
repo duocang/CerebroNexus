@@ -1,6 +1,3 @@
-## testthat setup: run as if not on CRAN so shinytest2 tests are not skipped
-Sys.setenv(NOT_CRAN = "true")
-
 ## Booting the full cerebro app to idle can exceed shinytest2's 15s default
 ## load_timeout under R CMD check (the app starts from the installed/checked
 ## copy after the whole build+check+vignette pipeline has loaded the runner),

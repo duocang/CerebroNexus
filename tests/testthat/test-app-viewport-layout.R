@@ -1,4 +1,5 @@
 library(shinytest2)
+skip_on_cran()
 
 inst_candidates <- c(
   normalizePath("inst", mustWork = FALSE),

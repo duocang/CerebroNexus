@@ -5,6 +5,7 @@
 # Trajectory tab is present from the start.
 
 library(shinytest2)
+skip_on_cran()
 
 inst_candidates <- c(
   normalizePath("inst", mustWork = FALSE),
@@ -18,6 +19,16 @@ if (is.na(inst_dir)) {
 if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
   inst_dir <- testthat::test_path("../../inst")
 }
+
+skip_if_not(
+  file.exists(file.path(
+    inst_dir,
+    "extdata",
+    "v1.4",
+    "demo_full_tcr_bcr.crb"
+  )),
+  "external trajectory demo is not bundled in the CRAN package"
+)
 
 ## All three tests below run against the same default data set, and booting the
 ## app costs far more than the assertions do, so they share one driver created on

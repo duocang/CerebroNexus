@@ -30,6 +30,7 @@
 #' stored in \code{object@misc$marker_genes}.
 #'
 #' @examples
+#' \donttest{
 #' pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
 #'   package = "CerebroNexus"))
 #' pbmc <- getMarkerGenes(
@@ -45,6 +46,7 @@
 #'   test = 'wilcox',
 #'   verbose = TRUE
 #' )
+#' }
 #'
 #' @import dplyr
 #' @importFrom rlang .data :=

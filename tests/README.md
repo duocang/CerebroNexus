@@ -8,7 +8,7 @@ This directory holds the package's automated tests. `R CMD check` and CI (`.gith
 tests/
 ├── testthat.R             # entry point picked up by R CMD check
 ├── testthat/              # actual unit + shinytest2 suite (committed)
-│   ├── setup.R            # sets NOT_CRAN=true so shinytest2 tests are not skipped
+│   ├── setup.R            # shared shinytest2 helpers and timeout configuration
 │   ├── test-app-inst.R    # shinytest2 end-to-end smoke tests against inst/
 │   ├── test-exportFromSeurat.R
 │   ├── test-r-functions.R
@@ -78,7 +78,7 @@ Rscript -e 'testthat::test_dir("tests/testthat")'
 
 Why the extra bits in that first shell one-liner:
 
-- `Sys.setenv(NOT_CRAN="true")` — tells `skip_on_cran()` we are not on CRAN, so shinytest2 tests do not get skipped. `tests/testthat/setup.R` sets the same thing inside the R session, but some hooks fire earlier than setup; setting it at the shell level is the safe belt-and-braces.
+- `Sys.setenv(NOT_CRAN="true")` — tells `skip_on_cran()` this is an explicit local browser-test run. The test setup deliberately does not override this value, so CRAN can skip browser tests normally.
 - `filter="app-inst"` — only run `tests/testthat/test-app-inst.R`. Skips the non-shinytest2 files. Useful when debugging the Shiny end-to-end suite.
 - `reporter="summary"` — one line per `test_that()` plus full diff on failure. Other useful options: `"minimal"` (compact `.EFWS` stream), `"progress"` (default), `"check"` (matches `R CMD check`).
 
@@ -166,4 +166,3 @@ testthat::snapshot_accept()   # only after you've confirmed the new output is co
 ```
 
 ---
-

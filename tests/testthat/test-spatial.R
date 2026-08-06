@@ -492,25 +492,20 @@ test_that("each real spatial demo exposes coordinates with x/y", {
   }
 })
 
-test_that("real spatial demos are wired into the bundled dropdown", {
-  # The three technology-labelled demos must appear in app.R's crb_file_to_load
-  # so the switcher offers them. Cross-line-tolerant per project convention.
+test_that("the CRAN app uses only the compact bundled example", {
   app_src <- paste(
     readLines(system.file("app.R", package = "CerebroNexus")),
     collapse = "\n"
   )
+
+  expect_match(app_src, "extdata/v1.4/example\\.crb")
   for (f in real_spatial_demos) {
-    expect_match(
+    expect_no_match(
       app_src,
       gsub(".", "\\.", basename(f), fixed = TRUE),
       perl = TRUE
     )
   }
-  # the labels must name the technology in brackets
-  expect_match(app_src, "Visium")
-  expect_match(app_src, "Slide-seq")
-  expect_match(app_src, "MERFISH")
-  expect_match(app_src, "Xenium")
 })
 
 test_that("image-free demo (Slide-seq) carries no histology image", {
@@ -546,6 +541,12 @@ test_that("embedded image demos store the image natively with no flip flag", {
 })
 
 test_that("app.R ships the Visium H&E overlay pre-aligned", {
+  visium_image <- system.file(
+    "extdata/v1.4/demo_spatial_visium_he.png",
+    package = "CerebroNexus"
+  )
+  skip_if_not(file.exists(visium_image), "external Visium demo is not bundled")
+
   # The bundled Visium demo opens with its H&E overlay already aligned to the
   # points, so users see a correct overlay without nudging it. app.R therefore
   # sets the per-dataset alignment presets (move + scale + a vertical flip that

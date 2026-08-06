@@ -65,12 +65,10 @@ launchCerebroV1.0 <- function(
   ##--------------------------------------------------------------------------##
   ## define path to export plots to
   ##--------------------------------------------------------------------------##
-  if (grepl(tolower(Sys.info()["sysname"]), pattern = "^win")) {
-    plot_export_path <- paste0(Sys.getenv("USERPROFILE"), "\\Desktop\\")
-  } else if ("DOCKER" %in% names(Sys.getenv())) {
+  if ("DOCKER" %in% names(Sys.getenv())) {
     plot_export_path <- "/plots"
-  } else if (grepl(tolower(Sys.info()["sysname"]), pattern = "darwin")) {
-    plot_export_path <- "~/Desktop/"
+  } else {
+    plot_export_path <- tempdir()
   }
 
   ##--------------------------------------------------------------------------##

@@ -66,6 +66,7 @@ test_that("full T+B demo trajectory data is accessible and complete", {
 })
 
 test_that("utility wrappers for trajectory exist", {
+  skip_if_not(file.exists(trajectory_crb))
   crb <- readRDS(trajectory_crb)
   expect_true(is.function(crb$getMethodsForTrajectories))
   expect_true(is.function(crb$getNamesOfTrajectories))

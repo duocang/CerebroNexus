@@ -137,7 +137,7 @@ ir_apply_display <- function(p, params = NULL) {
 
 ## ---- Muffle known-harmless upstream warnings -------------------------- ##
 ## scRepertoire::clonalRarefaction delegates bootstrapping to iNEXT, whose
-## internals (iNEXT:::invChat -> matrix(apply(Abun.Mat, 2, ...))) emit
+## internals (the private iNEXT invChat helper) emit
 ## "data length [N] is not a sub-multiple or multiple of the number of rows"
 ## whenever bootstrap resamples yield unequal qD vector lengths. This is benign
 ## iNEXT noise we cannot fix at source, and it floods the console. Muffle ONLY
