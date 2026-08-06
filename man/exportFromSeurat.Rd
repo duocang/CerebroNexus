@@ -130,7 +130,8 @@ If \code{object@misc$immune_repertoire} contains a named list of
 data.frames (one per sample, with \code{barcode}, \code{CTgene},
 \code{CTnt}, \code{CTaa}, and \code{CTstrict}), it will be automatically
 exported into the Cerebro object via \code{addImmuneRepertoire()}. Legacy
-\code{bcr_data} / \code{tcr_data} slots are also supported as a fallback.
+\code{bcr_data} /
+\code{tcr_data} slots are also supported as a fallback.
 }
 
 \section{HLA typing}{

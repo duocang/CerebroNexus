@@ -51,7 +51,7 @@
 #' cells to show in gene expression. This value can be changed in the UI; defaults
 #' to 100.
 #' @param projections_show_hover_info Show hover infos in projections. This
-#" setting can be changed in the UI; defaults to TRUE.
+#' setting can be changed in the UI; defaults to TRUE.
 #' @param ... Further parameters that are used by \code{shiny::runApp}, e.g.
 #' \code{host} or \code{port}.
 #'
@@ -68,13 +68,11 @@
 #'
 #' @importFrom colourpicker colourInput
 #' @import dplyr
-#' @importFrom DT datatable formatPercentage formatRound formatSignif
-#' formatStyle styleColorBar styleEqual styleInterval
+#' @importFrom DT datatable formatPercentage formatRound formatSignif formatStyle styleColorBar styleEqual styleInterval
 #' @import ggplot2
 #' @importFrom grDevices col2rgb rgb
 #' @importFrom msigdbr msigdbr
-#' @importFrom plotly add_lines add_trace event_data layout plot_ly plotlyOutput
-#' renderPlotly toWebGL
+#' @importFrom plotly add_lines add_trace event_data layout plot_ly plotlyOutput renderPlotly toWebGL
 #' @importFrom stringr str_length
 #' @importFrom tidyr pivot_longer pivot_wider
 #' @import scales
@@ -83,8 +81,7 @@
 #' @import shinydashboard
 #' @importFrom shinyFiles getVolumes parseSavePath shinyFileSave shinySaveButton
 #' @importFrom shinyjs inlineCSS
-#' @importFrom shinyWidgets awesomeCheckbox dropdownButton materialSwitch
-#' radioGroupButtons sendSweetAlert
+#' @importFrom shinyWidgets awesomeCheckbox dropdownButton materialSwitch radioGroupButtons sendSweetAlert
 #'
 #' @export
 #'

@@ -82,7 +82,8 @@ to 100.}
 cells to show in gene expression. This value can be changed in the UI; defaults
 to 100.}
 
-\item{projections_show_hover_info}{Show hover infos in projections. This}
+\item{projections_show_hover_info}{Show hover infos in projections. This
+setting can be changed in the UI; defaults to TRUE.}
 
 \item{...}{Further parameters that are used by \code{shiny::runApp}, e.g.
 \code{host} or \code{port}.}

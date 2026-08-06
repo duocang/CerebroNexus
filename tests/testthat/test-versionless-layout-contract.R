@@ -73,3 +73,35 @@ test_that("current code and documentation do not describe a legacy viewer versio
     info = paste(files[occurrences], collapse = "\n")
   )
 })
+
+test_that("current launcher documentation stays versionless", {
+  root <- normalizePath(testthat::test_path("..", ".."), mustWork = TRUE)
+  testthat::skip_if_not(
+    dir.exists(file.path(root, "vignettes")),
+    "current source tree is not present in the installed-package layout"
+  )
+
+  current_guides <- file.path(
+    root,
+    "vignettes",
+    c(
+      "launch_cerebro_with_pre-loaded_data_set.Rmd",
+      "host_cerebro_on_shinyapps.Rmd"
+    )
+  )
+  guide_text <- paste(
+    unlist(lapply(current_guides, readLines, warn = FALSE)),
+    collapse = "\n"
+  )
+
+  expect_false(grepl("launchCerebroV[0-9]", guide_text))
+  expect_false(grepl("version\\s*=\\s*['\"]v[0-9]", guide_text))
+  expect_false(grepl("(?:shiny|extdata)/v[0-9]", guide_text))
+  expect_false(file.exists(file.path(root, "pkgdown", "_pkgdown.yml")))
+
+  launcher_source <- readLines(
+    file.path(root, "R", "launchCerebro.R"),
+    warn = FALSE
+  )
+  expect_false(any(startsWith(launcher_source, "#\"")))
+})
