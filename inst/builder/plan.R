@@ -975,6 +975,7 @@ builder_has_text <- function(value) {
           c(
             "show_upload_ui",
             "initial_dataset",
+            "initial_page",
             "welcome_message",
             "point_size",
             "variable_to_compare",
@@ -1001,6 +1002,14 @@ builder_has_text <- function(value) {
   initial_dataset_supplied <- "initial_dataset" %in% option_names
   initial_dataset <- app_options$initial_dataset
   if (initial_dataset_supplied && !builder_has_text(initial_dataset)) {
+    return(FALSE)
+  }
+  if (
+    "initial_page" %in%
+      option_names &&
+      (!builder_has_text(app_options$initial_page) ||
+        !app_options$initial_page %in% builder_viewer_known_page_ids())
+  ) {
     return(FALSE)
   }
   if (
@@ -1746,6 +1755,7 @@ builder_freeze_plan <- function(
     show_upload_ui = FALSE,
     initial_dataset = dataset_order[[1L]],
     initial_dataset_mode = "automatic",
+    initial_page = "data_info",
     welcome_message = "Welcome to CerebroNexus!",
     point_size = list(overview_projection_point_size = initial_point_size),
     variable_to_compare = FALSE,
@@ -1774,6 +1784,28 @@ builder_freeze_plan <- function(
       "The generated-app initial dataset is not part of BuildPlan.",
       "invalid_app_options"
     ))
+  }
+  if (isTRUE(make_app)) {
+    initial_expectations <- items[[
+      frozen_app_options$initial_dataset
+    ]]$viewer_page_expectations %||%
+      list()
+    always <- initial_expectations$always
+    always_ids <- if (is.data.frame(always) && "id" %in% names(always)) {
+      always$id
+    } else {
+      builder_viewer_page_catalog()$always$id
+    }
+    available_pages <- unique(c(
+      always_ids,
+      initial_expectations$visible_conditional %||% character()
+    ))
+    if (!frozen_app_options$initial_page %in% available_pages) {
+      return(builder_plan_error(
+        "The starting Viewer page is not available for the initial dataset.",
+        "invalid_app_options"
+      ))
+    }
   }
   output_release <- list(
     directory = out_dir,

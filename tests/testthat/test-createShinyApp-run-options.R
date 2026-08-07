@@ -11,7 +11,10 @@ test_that("initial_dataset preserves historical positional arguments", {
   arguments <- names(formals(createShinyApp))
 
   expect_identical(arguments[[15L]], "welcome_message")
-  expect_identical(tail(arguments, 2L), c("initial_dataset", "..."))
+  expect_identical(
+    tail(arguments, 3L),
+    c("initial_dataset", "initial_page", "...")
+  )
 })
 
 run_options_build_app <- function(fixture, result_name = "app", ...) {
@@ -398,6 +401,34 @@ test_that("explicit initial dataset preserves configured selector order", {
   expect_identical(config$initial_dataset, "B")
 })
 
+test_that("initial page is validated and frozen through its argument", {
+  fixture <- run_options_test_fixture()
+  app <- run_options_build_app(
+    fixture,
+    result_name = "app-initial-page",
+    initial_page = "projection"
+  )
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(config$initial_page, "projection")
+
+  injected <- run_options_build_app(
+    fixture,
+    result_name = "app-injected-page",
+    cerebro_options = list(initial_page = "groups")
+  )
+  expect_null(readRDS(file.path(injected, "cerebro_config.rds"))$initial_page)
+
+  expect_error(
+    run_options_build_app(
+      fixture,
+      result_name = "app-invalid-page",
+      initial_page = "missing"
+    ),
+    "initial_page",
+    fixed = TRUE
+  )
+})
+
 test_that("generated Apps retain per-dataset Viewer defaults", {
   fixture <- run_options_test_fixture()
   second <- file.path(dirname(fixture$crb), "dataset-b.crb")
@@ -495,6 +526,32 @@ test_that("runtime initial selection keeps URL and session precedence", {
   expect_match(
     source,
     "unname(file_to_load[[configured_initial_dataset]])",
+    fixed = TRUE
+  )
+})
+
+test_that("runtime starting page is mapped and applied only to the first load", {
+  server_file <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "viewer",
+    "shiny_server.R"
+  )
+  source <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    source,
+    "/viewer/core/viewer_content_contract.R",
+    fixed = TRUE
+  )
+  expect_match(source, "configured_initial_page", fixed = TRUE)
+  expect_match(source, "initial_navigation$applied", fixed = TRUE)
+  expect_match(source, "same_initial_file()", fixed = TRUE)
+  expect_match(source, "maybe_open_initial_page(tab_name)", fixed = TRUE)
+  expect_match(
+    source,
+    "updateTabItems(session, \"sidebar\", selected = tab_name)",
     fixed = TRUE
   )
 })

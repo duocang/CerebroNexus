@@ -386,8 +386,9 @@ builder_verify_crb <- function(path, item) {
   if (!methods::is(object, "Seurat")) {
     return(object)
   }
-  record <- item$manifest[["immune_repertoire"]]
-  if (is.null(record)) {
+  immune_record <- item$manifest[["immune_repertoire"]]
+  motif_record <- item$manifest[["hla_tcr_motifs"]]
+  if (is.null(immune_record) && is.null(motif_record)) {
     return(object)
   }
   clear_sources <- function(value) {
@@ -396,10 +397,102 @@ builder_verify_crb <- function(path, item) {
     value@misc$tcr_data <- NULL
     value
   }
-  if (record$disposition %in% c("filtered", "stored_only")) {
+  included_selection <- function(record) {
+    if (
+      !is.list(record) ||
+        !(record$disposition %||% "") %in%
+          c("preserved", "converted", "attached")
+    ) {
+      return(character())
+    }
+    record$evidence$selected_sources %||% character()
+  }
+  hidden <- function(record) {
+    is.list(record) &&
+      (record$disposition %||% "") %in% c("filtered", "stored_only")
+  }
+  selected_candidates <- function(record, selected) {
+    candidates <- record$evidence$selected_candidates %||% list()
+    if (!is.list(candidates)) {
+      return(list())
+    }
+    candidates[intersect(selected, names(candidates))]
+  }
+  candidate_flag <- function(record, selected, flag) {
+    candidates <- selected_candidates(record, selected)
+    if (!length(selected) || length(candidates) != length(selected)) {
+      return(NA)
+    }
+    flags <- vapply(
+      candidates,
+      function(candidate) isTRUE(candidate[[flag]]),
+      logical(1)
+    )
+    any(flags)
+  }
+  full_selected <- included_selection(immune_record)
+  motif_selected <- included_selection(motif_record)
+  if (
+    length(full_selected) &&
+      length(motif_selected) &&
+      !all(motif_selected %in% full_selected)
+  ) {
+    stop(
+      "The frozen immune sources cannot be realized by one frozen immune payload.",
+      call. = FALSE
+    )
+  }
+  motif_exportable <- candidate_flag(
+    motif_record,
+    motif_selected,
+    "full_ir_ready"
+  )
+  if (length(motif_selected) && !isTRUE(motif_exportable)) {
+    stop(
+      "The frozen motif source cannot be exported as one immune payload.",
+      call. = FALSE
+    )
+  }
+  if (length(motif_selected) && !length(full_selected)) {
+    stop(
+      "The frozen immune payload cannot hide only one Viewer page.",
+      call. = FALSE
+    )
+  }
+  if (
+    length(motif_selected) &&
+      hidden(immune_record)
+  ) {
+    stop(
+      "The frozen immune payload cannot hide only one Viewer page.",
+      call. = FALSE
+    )
+  }
+  if (length(full_selected) && hidden(motif_record)) {
+    full_has_motif <- candidate_flag(
+      immune_record,
+      full_selected,
+      "hla_tcr_ready"
+    )
+    if (is.na(full_has_motif) || isTRUE(full_has_motif)) {
+      stop(
+        "The frozen immune payload cannot hide only one Viewer page.",
+        call. = FALSE
+      )
+    }
+  }
+  selected <- if (length(full_selected)) full_selected else motif_selected
+  selected_record <- if (length(full_selected)) immune_record else motif_record
+  filtered <- vapply(
+    Filter(Negate(is.null), list(immune_record, motif_record)),
+    function(record) {
+      (record$disposition %||% "") %in% c("filtered", "stored_only")
+    },
+    logical(1)
+  )
+  if (!length(selected) && length(filtered) && any(filtered)) {
     return(clear_sources(object))
   }
-  selected <- record$evidence$selected_sources %||% character()
   if (!length(selected)) {
     return(object)
   }
@@ -409,7 +502,7 @@ builder_verify_crb <- function(path, item) {
     return(object)
   }
   if (identical(selected, "metadata")) {
-    candidate <- record$evidence$selected_candidates[["metadata"]]
+    candidate <- selected_record$evidence$selected_candidates[["metadata"]]
     sample_column <- candidate$normalized$sample_column %||% NULL
     object <- clear_sources(object)
     return(CerebroNexus::addImmuneRepertoire(

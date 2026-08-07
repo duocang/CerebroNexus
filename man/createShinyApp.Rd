@@ -31,6 +31,7 @@ createShinyApp(
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
   initial_dataset = NULL,
+  initial_page = NULL,
   ...
 )
 }
@@ -129,6 +130,10 @@ applied to spatial cell coordinates. Names must match \code{cerebro_data}.}
 \item{initial_dataset}{Optional exact data set label to load initially. This
 does not change the order of \code{cerebro_data}. URL selection and a
 session's current selection take precedence.}
+
+\item{initial_page}{Optional stable Viewer page identifier to open after the
+initial data set loads. Defaults to the existing Data info start page when
+omitted and is applied only once per Viewer session.}
 
 \item{...}{Currently unused; reserved for future arguments.}
 }

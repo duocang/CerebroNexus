@@ -534,6 +534,310 @@ test_that("immune identity problems use a short actionable message", {
   expect_false(grepl("internal_immune_code", html, fixed = TRUE))
 })
 
+builder_ui_immune_candidate <- function(
+  source_kind,
+  full_ir_ready = TRUE,
+  hla_tcr_ready = FALSE,
+  n_rows = 20L,
+  n_samples = 1L
+) {
+  list(
+    detected = TRUE,
+    source_kind = source_kind,
+    full_ir_ready = isTRUE(full_ir_ready),
+    hla_tcr_ready = isTRUE(hla_tcr_ready),
+    normalized = list(
+      n_rows = as.integer(n_rows),
+      n_samples = as.integer(n_samples),
+      chains = if (isTRUE(hla_tcr_ready)) "TRB" else "IGH",
+      dataset_overlap_fraction = 1,
+      barcode_preview = "cell-id-must-stay-hidden"
+    )
+  )
+}
+
+test_that("ambiguous immune sources get one compact actionable selector", {
+  fact <- list(
+    candidates = list(
+      unified_misc = builder_ui_immune_candidate(
+        "unified_misc",
+        hla_tcr_ready = TRUE,
+        n_rows = 120L,
+        n_samples = 2L
+      ),
+      metadata = builder_ui_immune_candidate(
+        "metadata",
+        hla_tcr_ready = TRUE,
+        n_rows = 118L,
+        n_samples = 2L
+      )
+    ),
+    full_source_overlaps = list(list(
+      left = "unified_misc",
+      right = "metadata",
+      n_overlap = 20L,
+      n_divergent = 2L,
+      equivalent = FALSE
+    )),
+    motif_source_overlaps = list(list(
+      left = "unified_misc",
+      right = "metadata",
+      n_overlap = 20L,
+      n_divergent = 2L,
+      equivalent = FALSE
+    ))
+  )
+  manifest <- list(
+    immune_repertoire = list(
+      status = "blocking",
+      disposition = "rejected",
+      pages = character(),
+      evidence = list(
+        detected = TRUE,
+        valid = FALSE,
+        diagnostics = c(
+          "divergent_source_overlap",
+          "internal_source_code"
+        ),
+        normalized = list(n_rows = 120L, n_samples = 2L, chains = "TRB")
+      )
+    ),
+    hla_tcr_motifs = list(
+      status = "blocking",
+      disposition = "rejected",
+      pages = character(),
+      evidence = list(
+        detected = TRUE,
+        valid = FALSE,
+        diagnostics = "divergent_source_overlap",
+        normalized = list(chains = "TRB")
+      )
+    )
+  )
+
+  model <- builder_specialized_content_model(list(
+    content_manifest = manifest,
+    immune_source_fact = fact,
+    content_sources = list()
+  ))
+  html <- htmltools::renderTags(
+    builder_specialized_content_ui(model, "core")
+  )$html
+
+  expect_length(model$immune_source_selectors, 1L)
+  expect_identical(
+    model$immune_source_selectors[[1L]]$capability,
+    "immune_repertoire"
+  )
+  expect_identical(
+    model$immune_source_selectors[[1L]]$targets,
+    c("immune_repertoire", "hla_tcr_motifs")
+  )
+  expect_identical(
+    names(model$immune_source_selectors[[1L]]$choices),
+    c("Unified immune repertoire", "Metadata annotations")
+  )
+  expect_match(html, "core-immune_source_immune_repertoire", fixed = TRUE)
+  expect_match(html, "Choose which detected source to use", fixed = TRUE)
+  expect_match(html, "Unified immune repertoire", fixed = TRUE)
+  expect_match(html, "Metadata annotations", fixed = TRUE)
+  expect_false(grepl("divergent_source_overlap", html, fixed = TRUE))
+  expect_false(grepl("internal_source_code", html, fixed = TRUE))
+  expect_false(grepl("cell-id-must-stay-hidden", html, fixed = TRUE))
+
+  resolved_manifest <- manifest
+  for (id in names(resolved_manifest)) {
+    resolved_manifest[[id]]$status <- "valid"
+    resolved_manifest[[id]]$disposition <- "preserved"
+    resolved_manifest[[id]]$evidence$diagnostics <- character()
+  }
+  resolved <- builder_specialized_content_model(list(
+    content_manifest = resolved_manifest,
+    immune_source_fact = fact,
+    content_sources = list(
+      immune_repertoire = "metadata",
+      hla_tcr_motifs = "metadata"
+    )
+  ))
+  resolved_html <- htmltools::renderTags(
+    builder_specialized_content_ui(resolved, "core")
+  )$html
+  expect_length(resolved$immune_source_selectors, 1L)
+  expect_true(resolved$immune_source_selectors[[1L]]$resolved)
+  expect_identical(resolved$immune_source_selectors[[1L]]$selected, "metadata")
+  expect_match(resolved_html, "is-resolved", fixed = TRUE)
+  expect_false(grepl("Choose a source", resolved_html, fixed = TRUE))
+})
+
+test_that("equivalent immune sources stay automatic despite old overrides", {
+  fact <- list(
+    candidates = list(
+      unified_misc = builder_ui_immune_candidate("unified_misc"),
+      metadata = builder_ui_immune_candidate("metadata")
+    ),
+    full_source_overlaps = list(list(
+      left = "unified_misc",
+      right = "metadata",
+      n_overlap = 20L,
+      n_divergent = 0L,
+      equivalent = TRUE
+    ))
+  )
+  manifest <- list(
+    immune_repertoire = list(
+      status = "valid",
+      disposition = "preserved",
+      pages = "immune_repertoire",
+      evidence = list(
+        detected = TRUE,
+        valid = TRUE,
+        diagnostics = character(),
+        selected_source = "unified_misc",
+        normalized = list(n_rows = 20L, n_samples = 1L, chains = "IGH")
+      )
+    )
+  )
+
+  automatic <- builder_specialized_content_model(list(
+    content_manifest = manifest,
+    immune_source_fact = fact,
+    content_sources = list()
+  ))
+  explicit <- builder_specialized_content_model(list(
+    content_manifest = manifest,
+    immune_source_fact = fact,
+    content_sources = list(immune_repertoire = "metadata")
+  ))
+
+  expect_length(automatic$immune_source_selectors, 0L)
+  expect_length(explicit$immune_source_selectors, 0L)
+})
+
+test_that("non-exportable motif-only sources do not offer a false selector", {
+  fact <- list(
+    candidates = list(
+      unified_misc = builder_ui_immune_candidate(
+        "unified_misc",
+        full_ir_ready = FALSE,
+        hla_tcr_ready = TRUE
+      ),
+      legacy_tcr = builder_ui_immune_candidate(
+        "legacy_tcr",
+        full_ir_ready = FALSE,
+        hla_tcr_ready = TRUE
+      )
+    )
+  )
+  manifest <- list(
+    immune_repertoire = list(
+      status = "not_applicable",
+      disposition = NA_character_,
+      pages = character(),
+      evidence = list(
+        detected = TRUE,
+        valid = TRUE,
+        diagnostics = character(),
+        normalized = list(chains = "TRB")
+      )
+    ),
+    hla_tcr_motifs = list(
+      status = "blocking",
+      disposition = "rejected",
+      pages = character(),
+      evidence = list(
+        detected = TRUE,
+        valid = FALSE,
+        diagnostics = "motif_source_not_exportable",
+        normalized = list(chains = "TRB")
+      )
+    )
+  )
+
+  model <- builder_specialized_content_model(list(
+    content_manifest = manifest,
+    immune_source_fact = fact,
+    content_sources = list()
+  ))
+
+  html <- htmltools::renderTags(builder_specialized_content_ui(model))$html
+  expect_length(model$immune_source_selectors, 0L)
+  expect_match(
+    html,
+    "Add the complete repertoire columns or exclude this content.",
+    fixed = TRUE
+  )
+  expect_false(grepl("motif_source_not_exportable", html, fixed = TRUE))
+})
+
+test_that("complementary legacy BCR and TCR sources stay automatic", {
+  fact <- list(
+    candidates = list(
+      legacy_bcr = builder_ui_immune_candidate(
+        "legacy_bcr",
+        full_ir_ready = TRUE,
+        hla_tcr_ready = FALSE
+      ),
+      legacy_tcr = builder_ui_immune_candidate(
+        "legacy_tcr",
+        full_ir_ready = TRUE,
+        hla_tcr_ready = TRUE
+      )
+    )
+  )
+  manifest <- list(
+    immune_repertoire = list(
+      status = "valid",
+      disposition = "converted",
+      pages = "immune_repertoire",
+      evidence = list(detected = TRUE, diagnostics = character())
+    ),
+    hla_tcr_motifs = list(
+      status = "valid",
+      disposition = "converted",
+      pages = "hla_tcr_motifs",
+      evidence = list(detected = TRUE, diagnostics = character())
+    )
+  )
+
+  model <- builder_specialized_content_model(list(
+    content_manifest = manifest,
+    immune_source_fact = fact,
+    content_sources = list()
+  ))
+
+  expect_length(model$immune_source_selectors, 0L)
+})
+
+test_that("immune source updates accept only the current resolution choices", {
+  entry <- list(
+    settings = list(
+      content_sources = list(extra_capability = "keep-me")
+    )
+  )
+  selector <- list(
+    targets = c("immune_repertoire", "hla_tcr_motifs"),
+    choices = c(
+      "Unified immune repertoire" = "unified_misc",
+      "Metadata annotations" = "metadata"
+    )
+  )
+
+  unchanged <- builder_apply_immune_source_choice(entry, NULL, "metadata")
+  rejected <- builder_apply_immune_source_choice(entry, selector, "legacy_tcr")
+  selected <- builder_apply_immune_source_choice(entry, selector, "metadata")
+
+  expect_identical(unchanged, entry)
+  expect_identical(rejected, entry)
+  expect_identical(
+    selected$settings$content_sources,
+    list(
+      extra_capability = "keep-me",
+      immune_repertoire = "metadata",
+      hla_tcr_motifs = "metadata"
+    )
+  )
+})
+
 test_that("specialized content distinguishes included and unavailable pages", {
   detected <- function(normalized = list()) {
     list(detected = TRUE, valid = TRUE, normalized = normalized)

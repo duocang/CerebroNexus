@@ -1253,6 +1253,224 @@ builder_trajectory_catalog_ui <- function(id, model) {
   )
 }
 
+builder_immune_source_choices_model <- function(model, manifest) {
+  fact <- model$immune_source_fact %||% list()
+  candidates <- fact$candidates %||% list()
+  if (!is.list(candidates) || !length(candidates)) {
+    return(list())
+  }
+  candidate_ids <- names(candidates)
+  if (
+    is.null(candidate_ids) ||
+      anyNA(candidate_ids) ||
+      any(!nzchar(candidate_ids)) ||
+      anyDuplicated(candidate_ids)
+  ) {
+    return(list())
+  }
+  selected_sources <- model$content_sources %||% list()
+  if (!is.list(selected_sources) || is.object(selected_sources)) {
+    selected_sources <- list()
+  }
+  labels <- c(
+    unified_misc = "Unified immune repertoire",
+    metadata = "Metadata annotations",
+    legacy_bcr = "Legacy BCR data",
+    legacy_tcr = "Legacy TCR data"
+  )
+  friendly_label <- function(id) {
+    label <- unname(labels[id])
+    if (length(label) == 1L && !is.na(label)) {
+      return(label)
+    }
+    value <- gsub("[_.]+", " ", id)
+    paste0(toupper(substr(value, 1L, 1L)), substr(value, 2L, nchar(value)))
+  }
+  ambiguity_codes <- c(
+    "divergent_source_overlap",
+    "incomplete_source_equivalence",
+    "unverified_source_equivalence",
+    "incompatible_immune_source_selection"
+  )
+  pair_key <- function(left, right) {
+    paste(sort(c(left, right), method = "radix"), collapse = "\u001f")
+  }
+  raw_ambiguity <- function(capability, eligible) {
+    if (length(eligible) < 2L) {
+      return(FALSE)
+    }
+    if (
+      identical(capability, "immune_repertoire") &&
+        setequal(eligible, c("legacy_bcr", "legacy_tcr"))
+    ) {
+      return(FALSE)
+    }
+    overlaps <- if (identical(capability, "immune_repertoire")) {
+      fact$full_source_overlaps %||% fact$source_overlaps %||% list()
+    } else {
+      fact$motif_source_overlaps %||% list()
+    }
+    overlaps <- Filter(
+      function(overlap) {
+        is.list(overlap) &&
+          overlap$left %in% eligible &&
+          overlap$right %in% eligible
+      },
+      overlaps
+    )
+    if (
+      any(vapply(
+        overlaps,
+        function(overlap) (overlap$n_divergent %||% 0L) > 0L,
+        logical(1)
+      ))
+    ) {
+      return(TRUE)
+    }
+    expected <- utils::combn(
+      sort(eligible, method = "radix"),
+      2L,
+      simplify = FALSE
+    )
+    expected <- vapply(
+      expected,
+      function(pair) pair_key(pair[[1L]], pair[[2L]]),
+      character(1)
+    )
+    observed <- unique(vapply(
+      overlaps,
+      function(overlap) pair_key(overlap$left, overlap$right),
+      character(1)
+    ))
+    !setequal(expected, observed) ||
+      !all(vapply(
+        overlaps,
+        function(overlap) isTRUE(overlap$equivalent),
+        logical(1)
+      ))
+  }
+  specs <- list(
+    immune_repertoire = list(
+      gate = "full_ir_ready",
+      title = "Immune repertoire source"
+    ),
+    hla_tcr_motifs = list(
+      gate = "hla_tcr_ready",
+      title = "HLA & TCR motif source"
+    )
+  )
+  capability_models <- lapply(names(specs), function(capability) {
+    spec <- specs[[capability]]
+    eligible <- candidate_ids[vapply(
+      candidates,
+      function(candidate) {
+        is.list(candidate) &&
+          isTRUE(candidate$detected) &&
+          isTRUE(candidate[[spec$gate]]) &&
+          (!identical(capability, "hla_tcr_motifs") ||
+            isTRUE(candidate$full_ir_ready))
+      },
+      logical(1)
+    )]
+    record <- manifest[[capability]] %||% list()
+    diagnostics <- record$evidence$diagnostics %||% character()
+    list(
+      capability = capability,
+      eligible = eligible,
+      needed = length(eligible) > 0L &&
+        !identical(record$status %||% "", "not_applicable") &&
+        !(record$disposition %||% "") %in% c("filtered", "stored_only"),
+      ambiguous = raw_ambiguity(capability, eligible) ||
+        any(ambiguity_codes %in% diagnostics)
+    )
+  })
+  names(capability_models) <- names(specs)
+  needed <- names(capability_models)[vapply(
+    capability_models,
+    `[[`,
+    logical(1),
+    "needed"
+  )]
+  ambiguous <- needed[vapply(
+    capability_models[needed],
+    `[[`,
+    logical(1),
+    "ambiguous"
+  )]
+  if (!length(ambiguous)) {
+    return(list())
+  }
+  targets <- if (all(c("immune_repertoire", "hla_tcr_motifs") %in% needed)) {
+    c("immune_repertoire", "hla_tcr_motifs")
+  } else {
+    ambiguous[[1L]]
+  }
+  eligible <- Reduce(
+    intersect,
+    lapply(targets, function(capability) {
+      capability_models[[capability]]$eligible
+    })
+  )
+  if (!length(eligible)) {
+    return(list())
+  }
+  explicit <- unname(unlist(selected_sources[targets], use.names = FALSE))
+  explicit <- explicit[
+    is.character(explicit) & !is.na(explicit) & nzchar(explicit)
+  ]
+  selected <- if (
+    length(explicit) == length(targets) &&
+      length(unique(explicit)) == 1L &&
+      explicit[[1L]] %in% eligible
+  ) {
+    explicit[[1L]]
+  } else {
+    ""
+  }
+  title <- if (length(targets) > 1L) {
+    "Immune data source"
+  } else {
+    specs[[targets[[1L]]]]$title
+  }
+  choice_labels <- vapply(eligible, friendly_label, character(1))
+  list(list(
+    capability = targets[[1L]],
+    targets = targets,
+    title = title,
+    choices = stats::setNames(eligible, choice_labels),
+    selected = selected,
+    resolved = nzchar(selected)
+  ))
+}
+
+builder_apply_immune_source_choice <- function(entry, selector, value) {
+  if (
+    !is.list(entry) ||
+      !is.list(entry$settings) ||
+      !is.list(selector) ||
+      !is.character(selector$targets) ||
+      !length(selector$targets) ||
+      anyNA(selector$targets) ||
+      any(!nzchar(selector$targets)) ||
+      anyDuplicated(selector$targets) ||
+      !is.character(value) ||
+      length(value) != 1L ||
+      is.na(value) ||
+      !value %in% unname(selector$choices %||% character())
+  ) {
+    return(entry)
+  }
+  sources <- entry$settings$content_sources %||% list()
+  if (!is.list(sources) || is.object(sources)) {
+    sources <- list()
+  }
+  for (target in selector$targets) {
+    sources[[target]] <- value
+  }
+  entry$settings$content_sources <- sources
+  entry
+}
+
 builder_specialized_content_model <- function(model) {
   manifest <- model$content_manifest %||%
     model$analysis_manifest %||%
@@ -1297,7 +1515,7 @@ builder_specialized_content_model <- function(model) {
     }
     if (
       !acknowledged &&
-        (record$status %in%
+        ((record$status %||% "") %in%
           c("attention", "blocking") ||
           identical(disposition, "rejected"))
     ) {
@@ -1317,9 +1535,10 @@ builder_specialized_content_model <- function(model) {
     metrics,
     message,
     directory = character(),
-    attention_message = NULL
+    attention_message = NULL,
+    record_override = NULL
   ) {
-    record <- manifest[[id]]
+    record <- record_override %||% manifest[[id]]
     if (!is.list(record)) {
       return(NULL)
     }
@@ -1395,6 +1614,8 @@ builder_specialized_content_model <- function(model) {
   )
 
   immune_record <- manifest$immune_repertoire %||% list()
+  motif_record <- manifest$hla_tcr_motifs %||% list()
+  motif_evidence <- motif_record$evidence %||% list()
   immune_evidence <- immune_record$evidence %||% list()
   immune <- immune_evidence$normalized %||% list()
   selected_immune <- immune_evidence$selected_candidate$normalized %||%
@@ -1402,7 +1623,9 @@ builder_specialized_content_model <- function(model) {
   chains <- selected_immune$chains %||% immune$chains %||% character()
   immune_diagnostics <- unique(c(
     immune_evidence$diagnostics %||% character(),
-    immune_evidence$selected_candidate$diagnostics %||% character()
+    immune_evidence$selected_candidate$diagnostics %||% character(),
+    motif_evidence$diagnostics %||% character(),
+    motif_evidence$selected_candidate$diagnostics %||% character()
   ))
   immune_attention_message <- if (
     "no_dataset_barcode_overlap" %in% immune_diagnostics
@@ -1418,6 +1641,21 @@ builder_specialized_content_model <- function(model) {
     )
   } else if ("duplicate_barcodes" %in% immune_diagnostics) {
     "Immune cell barcodes are duplicated. Make them unique before building."
+  } else if ("motif_source_not_exportable" %in% immune_diagnostics) {
+    paste(
+      "TCR motif data was detected, but its repertoire is incomplete.",
+      "Add the complete repertoire columns or exclude this content."
+    )
+  } else if ("incompatible_immune_page_disposition" %in% immune_diagnostics) {
+    paste(
+      "Immune repertoire and HLA & TCR motifs share one data payload.",
+      "Include or exclude the two pages together."
+    )
+  } else if ("incompatible_immune_source_selection" %in% immune_diagnostics) {
+    paste(
+      "The detected immune sources cannot support both Viewer pages together.",
+      "Keep one compatible source or reconcile the source data."
+    )
   } else if (
     any(
       c(
@@ -1444,10 +1682,23 @@ builder_specialized_content_model <- function(model) {
     plural(length(unique(as.character(chains))), "chain")
   )
 
+  immune_display_record <- immune_record
+  if (
+    identical(record_state(motif_record), "needs_attention") &&
+      !identical(record_state(immune_record), "needs_attention")
+  ) {
+    immune_display_record$status <- motif_record$status
+    immune_display_record$disposition <- motif_record$disposition
+    immune_display_record$required_action <- motif_record$required_action
+    immune_display_record$evidence <- immune_evidence
+    immune_display_record$evidence$detected <- isTRUE(
+      immune_evidence$detected
+    ) ||
+      isTRUE(motif_evidence$detected)
+  }
+
   hla_record <- manifest$hla %||% list()
   hla <- hla_record$evidence$normalized %||% list()
-  motif_record <- manifest$hla_tcr_motifs %||% list()
-  motif_evidence <- motif_record$evidence %||% list()
   motif_ready <- isTRUE(motif_evidence$detected) &&
     identical(record_state(motif_record), "included") &&
     "hla_tcr_motifs" %in% (motif_record$pages %||% character())
@@ -1504,7 +1755,8 @@ builder_specialized_content_model <- function(model) {
         "Immune repertoire",
         immune_metrics,
         "Available on the Immune repertoire page.",
-        attention_message = immune_attention_message
+        attention_message = immune_attention_message,
+        record_override = immune_display_record
       ),
       content_item(
         "hla",
@@ -1559,11 +1811,16 @@ builder_specialized_content_model <- function(model) {
     included_count = included_count,
     attention_count = attention_count,
     excluded_count = excluded_count,
-    summary = paste(summary, collapse = " · ")
+    summary = paste(summary, collapse = " · "),
+    immune_source_selectors = builder_immune_source_choices_model(
+      model,
+      manifest
+    )
   )
 }
 
-builder_specialized_content_ui <- function(model) {
+builder_specialized_content_ui <- function(model, id = NULL) {
+  ns <- if (is.null(id)) identity else NS(id)
   badge <- function(state) {
     switch(
       state,
@@ -1594,6 +1851,30 @@ builder_specialized_content_ui <- function(model) {
           p(class = "viewer-specialized-directory", line)
         }),
         p(class = "viewer-specialized-page", item$message)
+      )
+    }),
+    lapply(model$immune_source_selectors %||% list(), function(selector) {
+      tags$article(
+        class = paste(
+          "viewer-immune-source-selector",
+          if (isTRUE(selector$resolved)) "is-resolved" else ""
+        ),
+        h4(selector$title),
+        p(
+          class = "viewer-immune-source-copy",
+          "Choose which detected source to use in the generated app."
+        ),
+        selectInput(
+          ns(paste0("immune_source_", selector$capability)),
+          "Use this source",
+          choices = if (isTRUE(selector$resolved)) {
+            selector$choices
+          } else {
+            c("Choose a source…" = "", selector$choices)
+          },
+          selected = selector$selected,
+          width = "100%"
+        )
       )
     })
   )
@@ -1849,13 +2130,18 @@ builder_core_stage_ui <- function(id, model) {
       ),
       div(
         class = "builder-field builder-field--organism",
+        `data-builder-creatable-select` = "true",
+        `data-builder-create-input-label` = "Custom organism",
+        `data-builder-create-placeholder` = "Type another organism",
+        `data-builder-create-action-label` = "Add custom organism",
+        `data-builder-create-maxlength` = "80",
         selectizeInput(
           ns("organism"),
           "Organism",
           choices = organism_choices,
           selected = organism,
           options = list(
-            create = TRUE,
+            create = FALSE,
             persist = TRUE,
             maxItems = 1L
           )
@@ -1988,7 +2274,7 @@ builder_core_stage_ui <- function(id, model) {
           ),
           div(
             class = "builder-viewer-card-body",
-            builder_specialized_content_ui(specialized_content)
+            builder_specialized_content_ui(specialized_content, id)
           )
         )
       }

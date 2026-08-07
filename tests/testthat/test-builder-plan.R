@@ -923,6 +923,7 @@ test_that("frozen plans own every reviewed value", {
       FALSE
     )
     expect_identical(automatic$app_options$initial_dataset, "dataset-a")
+    expect_identical(automatic$app_options$initial_page, "data_info")
     expect_identical(
       automatic$app_options$initial_dataset_mode,
       "automatic"
@@ -969,6 +970,7 @@ test_that("Review App options are typed, range checked, and frozen", {
     options <- list(
       show_upload_ui = TRUE,
       initial_dataset = "dataset-a",
+      initial_page = "data_info",
       welcome_message = "Welcome, team!",
       point_size = list(overview_projection_point_size = 6),
       variable_to_compare = FALSE,
@@ -1020,7 +1022,8 @@ test_that("Review App options are typed, range checked, and frozen", {
       port = list(0, 65536, 1.5, NA, "8080"),
       max_request_size = list(0, Inf, NA, "8000"),
       display_mode = list("fullscreen", NA_character_, c("auto", "normal")),
-      launch_browser = list(NA, c(TRUE, FALSE), 1)
+      launch_browser = list(NA, c(TRUE, FALSE), 1),
+      initial_page = list("missing", NA_character_, c("data_info", "groups"))
     )
     for (field in names(invalid)) {
       for (value in invalid[[field]]) {
@@ -1045,6 +1048,36 @@ test_that("Review App options are typed, range checked, and frozen", {
       app_options = list(hidden_future_option = TRUE)
     )
     expect_identical(unknown$error_code, "invalid_app_options")
+  })
+})
+
+test_that("Starting page must exist on the initial dataset", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    conditional <- builder_task6_entry(
+      full_ir_ready = TRUE,
+      hla_tcr_ready = FALSE
+    )
+    allowed <- builder_freeze_plan(
+      list(conditional),
+      tempdir(),
+      make_app = TRUE,
+      app_options = list(initial_page = "immune_repertoire")
+    )
+    expect_null(allowed$error)
+    expect_identical(allowed$app_options$initial_page, "immune_repertoire")
+
+    unavailable <- builder_freeze_plan(
+      list(builder_task6_entry()),
+      tempdir(),
+      make_app = TRUE,
+      app_options = list(initial_page = "immune_repertoire")
+    )
+    expect_identical(unavailable$error_code, "invalid_app_options")
+    expect_match(unavailable$error, "starting Viewer page", fixed = TRUE)
   })
 })
 
@@ -1157,7 +1190,7 @@ test_that("release manifests select a coherent visible dataset entry", {
   })
 })
 
-test_that("immune repertoire and motif readiness compile independently", {
+test_that("immune pages require one exportable canonical payload", {
   local({
     builder_repo_source("preview.R")
     builder_repo_source("recommend.R")
@@ -1168,20 +1201,25 @@ test_that("immune repertoire and motif readiness compile independently", {
       hla_tcr_ready = TRUE,
       aggregate_valid = TRUE
     )
+    motif_state <- builder_dataset_state(motif_only)
     motif_plan <- builder_freeze_plan(list(motif_only), tempdir(), FALSE)
-    expect_null(motif_plan$error)
+    expect_identical(motif_state$readiness, "blocked")
+    expect_identical(
+      motif_state$manifest[["hla_tcr_motifs"]]$status,
+      "blocking"
+    )
+    expect_identical(
+      motif_state$manifest[["hla_tcr_motifs"]]$disposition,
+      "rejected"
+    )
     expect_false(
-      motif_plan$manifest[["immune_repertoire"]]$page_visible
+      motif_state$manifest[["hla_tcr_motifs"]]$page_visible
     )
     expect_true(
-      motif_plan$manifest[["hla_tcr_motifs"]]$page_visible
+      "motif_source_not_exportable" %in%
+        motif_state$manifest[["hla_tcr_motifs"]]$evidence$diagnostics
     )
-    expect_false(
-      motif_plan$manifest[["immune_repertoire"]]$evidence$full_ir_ready
-    )
-    expect_true(
-      motif_plan$manifest[["hla_tcr_motifs"]]$evidence$hla_tcr_ready
-    )
+    expect_identical(motif_plan$error_code, "blocking_capability")
 
     bcr_only <- builder_task6_entry(
       full_ir_ready = TRUE,
@@ -1243,12 +1281,85 @@ test_that("immune repertoire and motif readiness compile independently", {
       tempdir(),
       FALSE
     )
+    expect_null(filtered_motif_plan$error)
     expect_identical(
       filtered_motif_plan$manifest[["hla_tcr_motifs"]]$disposition,
       "filtered"
     )
     expect_false(
       filtered_motif_plan$manifest[["hla_tcr_motifs"]]$page_visible
+    )
+  })
+})
+
+test_that("immune page dispositions cannot contradict their shared payload", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    conflict_cases <- list(
+      list(immune_repertoire = "preserved", hla_tcr_motifs = "filtered"),
+      list(immune_repertoire = "filtered", hla_tcr_motifs = "preserved")
+    )
+    for (choices in conflict_cases) {
+      entry <- builder_task6_entry(
+        full_ir_ready = TRUE,
+        hla_tcr_ready = TRUE
+      )
+      entry$settings$content_dispositions <- choices
+      state <- builder_dataset_state(entry)
+      plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
+
+      expect_identical(state$readiness, "blocked")
+      expect_setequal(
+        state$blocking_ids,
+        c("immune_repertoire", "hla_tcr_motifs")
+      )
+      expect_true(all(vapply(
+        state$manifest[c("immune_repertoire", "hla_tcr_motifs")],
+        function(record) {
+          "incompatible_immune_page_disposition" %in%
+            record$evidence$diagnostics
+        },
+        logical(1)
+      )))
+      expect_identical(plan$error_code, "blocking_capability")
+    }
+
+    hidden <- builder_task6_entry(
+      full_ir_ready = TRUE,
+      hla_tcr_ready = TRUE
+    )
+    hidden$settings$content_dispositions <- list(
+      immune_repertoire = "filtered",
+      hla_tcr_motifs = "stored_only"
+    )
+    hidden_plan <- builder_freeze_plan(list(hidden), tempdir(), FALSE)
+    expect_null(hidden_plan$error)
+    expect_false(any(vapply(
+      hidden_plan$items[[1L]]$manifest[
+        c("immune_repertoire", "hla_tcr_motifs")
+      ],
+      `[[`,
+      logical(1),
+      "page_visible"
+    )))
+
+    bcr <- builder_task6_entry(
+      full_ir_ready = TRUE,
+      hla_tcr_ready = FALSE
+    )
+    bcr$settings$content_dispositions <- list(
+      hla_tcr_motifs = "filtered"
+    )
+    bcr_plan <- builder_freeze_plan(list(bcr), tempdir(), FALSE)
+    expect_null(bcr_plan$error)
+    expect_true(
+      bcr_plan$items[[1L]]$manifest[["immune_repertoire"]]$page_visible
+    )
+    expect_false(
+      bcr_plan$items[[1L]]$manifest[["hla_tcr_motifs"]]$page_visible
     )
   })
 })
@@ -2104,28 +2215,18 @@ test_that("immune source and gate decisions remain truthful", {
           hla_tcr_ready = FALSE
         )
       ))
+    mixed_state <- builder_dataset_state(mixed)
     mixed_plan <- builder_freeze_plan(list(mixed), tempdir(), FALSE)
-    expect_null(mixed_plan$error)
+    expect_identical(mixed_state$readiness, "blocked")
     expect_identical(
-      mixed_plan$items[[1L]]$manifest[[
-        "immune_repertoire"
-      ]]$evidence$selected_source,
-      "metadata"
+      mixed_state$blocking_ids,
+      "hla_tcr_motifs"
     )
-    expect_identical(
-      mixed_plan$items[[1L]]$manifest[["immune_repertoire"]]$disposition,
-      "converted"
+    expect_true(
+      "motif_source_not_exportable" %in%
+        mixed_state$manifest[["hla_tcr_motifs"]]$evidence$diagnostics
     )
-    expect_identical(
-      mixed_plan$items[[1L]]$manifest[[
-        "hla_tcr_motifs"
-      ]]$evidence$selected_source,
-      "unified_misc"
-    )
-    expect_identical(
-      mixed_plan$items[[1L]]$manifest[["hla_tcr_motifs"]]$disposition,
-      "preserved"
-    )
+    expect_identical(mixed_plan$error_code, "blocking_capability")
 
     motif_only <- builder_task6_entry(immune_detected = FALSE)
     motif_only$dataset_profile$content$immune_repertoire <-
@@ -2141,7 +2242,11 @@ test_that("immune source and gate decisions remain truthful", {
       state$manifest[["immune_repertoire"]]$status,
       "not_applicable"
     )
-    expect_true(state$manifest[["hla_tcr_motifs"]]$page_visible)
+    expect_identical(
+      state$manifest[["hla_tcr_motifs"]]$status,
+      "blocking"
+    )
+    expect_false(state$manifest[["hla_tcr_motifs"]]$page_visible)
 
     motif_only$settings$content_dispositions <- list(
       immune_repertoire = "preserved"
@@ -2373,6 +2478,9 @@ test_that("legacy BCR and TCR freeze as one conversion source set", {
           hla_tcr_ready = TRUE
         )
       ))
+    entry$settings$content_sources <- list(
+      immune_repertoire = "legacy_tcr"
+    )
 
     plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
     expect_null(plan$error)
@@ -2650,7 +2758,7 @@ test_that("equivalent full-IR sources auto-select by priority", {
   })
 })
 
-test_that("production motif-only sources need equivalence or selection", {
+test_that("production motif-only sources cannot bypass exportability", {
   skip_if_not_installed("SeuratObject")
 
   local({
@@ -2700,13 +2808,7 @@ test_that("production motif-only sources need equivalence or selection", {
       hla_tcr_motifs = "unified_misc"
     )
     selected <- builder_freeze_plan(list(entry), tempdir(), FALSE)
-    expect_null(selected$error)
-    expect_identical(
-      selected$items[[1L]]$manifest[[
-        "hla_tcr_motifs"
-      ]]$evidence$selected_source,
-      "unified_misc"
-    )
+    expect_identical(selected$error_code, "blocking_capability")
 
     disjoint <- builder_immune_fixture_object()
     disjoint$orig.ident <- "sample_a"
@@ -2737,12 +2839,9 @@ test_that("production motif-only sources need equivalence or selection", {
     disjoint_entry$settings$content_sources <- list(
       hla_tcr_motifs = "metadata"
     )
-    expect_null(
-      builder_freeze_plan(
-        list(disjoint_entry),
-        tempdir(),
-        FALSE
-      )$error
+    expect_identical(
+      builder_freeze_plan(list(disjoint_entry), tempdir(), FALSE)$error_code,
+      "blocking_capability"
     )
   })
 })

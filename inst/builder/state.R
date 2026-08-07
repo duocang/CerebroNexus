@@ -1546,125 +1546,107 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     function(candidate) {
       is.list(candidate) &&
         isTRUE(.subset2(candidate, "detected")) &&
-        isTRUE(.subset2(candidate, gate))
+        isTRUE(.subset2(candidate, gate)) &&
+        (!identical(id, "hla_tcr_motifs") ||
+          isTRUE(.subset2(candidate, "full_ir_ready")))
     },
     logical(1)
   )]
-  if (!is.null(requested)) {
-    if (!requested %in% eligible) {
-      return(structure(
-        list(reason = "selected_source_is_not_ready"),
-        class = "builder_invalid_immune_source"
-      ))
-    }
-    selected <- requested
+  if (!is.null(requested) && !requested %in% eligible) {
+    return(structure(
+      list(reason = "selected_source_is_not_ready"),
+      class = "builder_invalid_immune_source"
+    ))
+  }
+  overlaps <- if (identical(gate, "full_ir_ready")) {
+    .builder_state_or(
+      .subset2(fact, "full_source_overlaps"),
+      .builder_state_or(.subset2(fact, "source_overlaps"), list())
+    )
   } else {
-    overlaps <- if (identical(gate, "full_ir_ready")) {
-      .builder_state_or(
-        .subset2(fact, "full_source_overlaps"),
-        .builder_state_or(.subset2(fact, "source_overlaps"), list())
-      )
-    } else {
-      .builder_state_or(.subset2(fact, "motif_source_overlaps"), list())
-    }
-    divergent <- any(vapply(
+    .builder_state_or(.subset2(fact, "motif_source_overlaps"), list())
+  }
+  divergent <- any(vapply(
+    overlaps,
+    function(overlap) {
+      is.list(overlap) &&
+        .subset2(overlap, "left") %in% eligible &&
+        .subset2(overlap, "right") %in% eligible &&
+        .subset2(overlap, "n_divergent") > 0
+    },
+    logical(1)
+  ))
+  incomplete_overlap <- identical(gate, "full_ir_ready") &&
+    any(vapply(
       overlaps,
       function(overlap) {
         is.list(overlap) &&
           .subset2(overlap, "left") %in% eligible &&
           .subset2(overlap, "right") %in% eligible &&
-          .subset2(overlap, "n_divergent") > 0
+          .subset2(overlap, "n_overlap") > 0L &&
+          !isTRUE(.subset2(overlap, "equivalent"))
       },
       logical(1)
     ))
-    if (divergent) {
-      return(structure(
-        list(reason = "divergent_source_overlap"),
-        class = "builder_invalid_immune_source"
-      ))
+  sources_equivalent <- function() {
+    eligible_overlaps <- Filter(
+      function(overlap) {
+        is.list(overlap) &&
+          .subset2(overlap, "left") %in% eligible &&
+          .subset2(overlap, "right") %in% eligible
+      },
+      overlaps
+    )
+    expected_pairs <- utils::combn(
+      sort(eligible, method = "radix"),
+      2L,
+      simplify = FALSE
+    )
+    pair_key <- function(pair) {
+      paste(sort(pair, method = "radix"), collapse = "\u001f")
     }
-    if (identical(gate, "full_ir_ready")) {
-      incomplete_overlap <- any(vapply(
-        overlaps,
-        function(overlap) {
-          is.list(overlap) &&
-            .subset2(overlap, "left") %in% eligible &&
-            .subset2(overlap, "right") %in% eligible &&
-            .subset2(overlap, "n_overlap") > 0L &&
-            !isTRUE(.subset2(overlap, "equivalent"))
-        },
+    observed_pairs <- unique(vapply(
+      eligible_overlaps,
+      function(overlap) {
+        pair_key(c(
+          .subset2(overlap, "left"),
+          .subset2(overlap, "right")
+        ))
+      },
+      character(1)
+    ))
+    expected_pair_keys <- vapply(expected_pairs, pair_key, character(1))
+    length(observed_pairs) == length(expected_pair_keys) &&
+      setequal(observed_pairs, expected_pair_keys) &&
+      all(vapply(
+        eligible_overlaps,
+        function(overlap) isTRUE(.subset2(overlap, "equivalent")),
         logical(1)
       ))
-      if (incomplete_overlap) {
-        return(structure(
-          list(reason = "incomplete_source_equivalence"),
-          class = "builder_invalid_immune_source"
-        ))
-      }
-    }
-    sources_equivalent <- function() {
-      eligible_overlaps <- Filter(
-        function(overlap) {
-          is.list(overlap) &&
-            .subset2(overlap, "left") %in% eligible &&
-            .subset2(overlap, "right") %in% eligible
-        },
-        overlaps
-      )
-      expected_pairs <- utils::combn(
-        sort(eligible, method = "radix"),
-        2L,
-        simplify = FALSE
-      )
-      pair_key <- function(pair) {
-        paste(sort(pair, method = "radix"), collapse = "\u001f")
-      }
-      observed_pairs <- unique(vapply(
-        eligible_overlaps,
-        function(overlap) {
-          pair_key(c(
-            .subset2(overlap, "left"),
-            .subset2(overlap, "right")
-          ))
-        },
-        character(1)
-      ))
-      expected_pair_keys <- vapply(
-        expected_pairs,
-        pair_key,
-        character(1)
-      )
-      equivalent <- length(observed_pairs) == length(expected_pair_keys) &&
-        setequal(observed_pairs, expected_pair_keys) &&
-        all(vapply(
-          eligible_overlaps,
-          function(overlap) isTRUE(.subset2(overlap, "equivalent")),
-          logical(1)
-        ))
-      equivalent
-    }
-    if (identical(gate, "full_ir_ready") && length(eligible) > 1L) {
-      complementary_legacy <- setequal(
-        eligible,
-        c("legacy_bcr", "legacy_tcr")
-      )
-      if (!complementary_legacy && !sources_equivalent()) {
-        return(structure(
-          list(reason = "unverified_source_equivalence"),
-          class = "builder_invalid_immune_source"
-        ))
-      }
-    }
-    if (
-      identical(gate, "hla_tcr_ready") &&
-        length(eligible) > 1L &&
-        !sources_equivalent()
-    ) {
-      return(structure(
-        list(reason = "unverified_source_equivalence"),
-        class = "builder_invalid_immune_source"
-      ))
-    }
+  }
+  complementary_legacy <- identical(gate, "full_ir_ready") &&
+    setequal(eligible, c("legacy_bcr", "legacy_tcr"))
+  unverified <- length(eligible) > 1L &&
+    !complementary_legacy &&
+    !sources_equivalent()
+  decision_reason <- if (divergent) {
+    "divergent_source_overlap"
+  } else if (incomplete_overlap) {
+    "incomplete_source_equivalence"
+  } else if (unverified) {
+    "unverified_source_equivalence"
+  } else {
+    NULL
+  }
+  if (!is.null(decision_reason) && is.null(requested)) {
+    return(structure(
+      list(reason = decision_reason),
+      class = "builder_invalid_immune_source"
+    ))
+  }
+  if (!is.null(decision_reason)) {
+    selected <- requested
+  } else {
     priority <- c(
       "attachment",
       "unified_misc",
@@ -1807,11 +1789,82 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   immune_choice <- .builder_state_content_choice(entry, "immune_repertoire")
   immune_filtered <- !is.null(immune_choice) &&
     immune_choice %in% c("filtered", "stored_only")
+  motif_choice <- .builder_state_content_choice(entry, "hla_tcr_motifs")
+  motif_filtered <- !is.null(motif_choice) &&
+    motif_choice %in% c("filtered", "stored_only")
+  candidates <- .builder_state_or(.subset2(fact, "candidates"), list())
+  raw_motif_ready <- any(vapply(
+    candidates,
+    function(candidate) {
+      is.list(candidate) &&
+        isTRUE(.subset2(candidate, "detected")) &&
+        isTRUE(.subset2(candidate, "hla_tcr_ready"))
+    },
+    logical(1)
+  ))
   invalid_full_source <- inherits(
     full_selection,
     "builder_invalid_immune_source"
   )
   has_full_source <- !is.null(full_selection) && !invalid_full_source
+  invalid_motif_source <- inherits(
+    motif_selection,
+    "builder_invalid_immune_source"
+  )
+  has_motif_source <- !is.null(motif_selection) && !invalid_motif_source
+  motif_source_not_exportable <- raw_motif_ready &&
+    !has_motif_source &&
+    !invalid_motif_source
+  if (motif_source_not_exportable) {
+    motif_evidence$diagnostics <- unique(c(
+      motif_evidence$diagnostics,
+      "motif_source_not_exportable"
+    ))
+    if (!motif_filtered) {
+      invalid_motif_source <- TRUE
+    }
+  }
+  incompatible_sources <- has_full_source &&
+    has_motif_source &&
+    !immune_filtered &&
+    !motif_filtered &&
+    !all(motif_selection$names %in% full_selection$names)
+  if (incompatible_sources) {
+    immune_evidence$diagnostics <- unique(c(
+      immune_evidence$diagnostics,
+      "incompatible_immune_source_selection"
+    ))
+    motif_evidence$diagnostics <- unique(c(
+      motif_evidence$diagnostics,
+      "incompatible_immune_source_selection"
+    ))
+    invalid_full_source <- TRUE
+    invalid_motif_source <- TRUE
+  }
+  full_payload_has_motif <- has_full_source &&
+    any(vapply(
+      full_selection$candidates,
+      function(candidate) isTRUE(.subset2(candidate, "hla_tcr_ready")),
+      logical(1)
+    ))
+  incompatible_pages <- (!immune_filtered &&
+    motif_filtered &&
+    full_payload_has_motif) ||
+    (immune_filtered &&
+      !motif_filtered &&
+      has_motif_source)
+  if (incompatible_pages) {
+    immune_evidence$diagnostics <- unique(c(
+      immune_evidence$diagnostics,
+      "incompatible_immune_page_disposition"
+    ))
+    motif_evidence$diagnostics <- unique(c(
+      motif_evidence$diagnostics,
+      "incompatible_immune_page_disposition"
+    ))
+    invalid_full_source <- TRUE
+    invalid_motif_source <- TRUE
+  }
   immune_attention <- has_full_source &&
     isTRUE(immune_evidence$attention) &&
     !immune_filtered
@@ -1824,7 +1877,7 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     "blocking"
   } else if (has_full_source || immune_filtered) {
     if (immune_attention) "attention" else "valid"
-  } else if (!immune_evidence$detected || motif_evidence$hla_tcr_ready) {
+  } else if (!immune_evidence$detected || raw_motif_ready) {
     "not_applicable"
   } else {
     "blocking"
@@ -1845,14 +1898,6 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     c("valid", "attention") &&
     immune_disposition %in% c("preserved", "converted", "attached")
 
-  motif_choice <- .builder_state_content_choice(entry, "hla_tcr_motifs")
-  motif_filtered <- !is.null(motif_choice) &&
-    motif_choice %in% c("filtered", "stored_only")
-  invalid_motif_source <- inherits(
-    motif_selection,
-    "builder_invalid_immune_source"
-  )
-  has_motif_source <- !is.null(motif_selection) && !invalid_motif_source
   motif_attention <- has_motif_source &&
     isTRUE(motif_evidence$attention) &&
     !motif_filtered

@@ -193,6 +193,71 @@ builder_next_unreviewed <- function(entries, current_id = NULL) {
   if (length(pending)) pending[[1L]] else NULL
 }
 
+builder_compact_dataset_review_ui <- function(entries, index, progress) {
+  ids <- vapply(entries, `[[`, character(1), "id")
+  shiny::tags$nav(
+    class = "dataset-compact-review",
+    `aria-label` = "Compact dataset review navigation",
+    `aria-hidden` = "true",
+    shiny::tags$button(
+      id = "review_compact_previous_dataset",
+      type = "button",
+      class = "dataset-compact-step dataset-compact-previous action-button",
+      disabled = if (index == 1L) "disabled" else NULL,
+      `aria-label` = "Previous dataset",
+      "Previous"
+    ),
+    shiny::div(
+      class = "dataset-compact-track",
+      lapply(seq_along(entries), function(i) {
+        entry <- entries[[i]]
+        shiny::tags$button(
+          type = "button",
+          class = paste(
+            c(
+              "dataset-compact-segment",
+              if (i == index) "is-current",
+              if (builder_dataset_is_reviewed(entry)) {
+                "is-reviewed"
+              } else {
+                "is-pending"
+              }
+            ),
+            collapse = " "
+          ),
+          `data-dataset-id` = entry$id,
+          `aria-current` = if (i == index) "step" else NULL,
+          `aria-label` = paste0(
+            "Dataset ",
+            i,
+            " of ",
+            length(ids),
+            ", ",
+            .builder_rail_or(entry$settings$name, entry$id)
+          ),
+          shiny::span(class = "dataset-compact-index", i),
+          shiny::span(
+            class = "dataset-compact-name",
+            .builder_rail_or(entry$settings$name, entry$id)
+          )
+        )
+      })
+    ),
+    shiny::tags$button(
+      id = "review_compact_next_dataset",
+      type = "button",
+      class = "dataset-compact-step dataset-compact-next action-button",
+      disabled = if (index == length(ids)) "disabled" else NULL,
+      `aria-label` = "Next dataset",
+      "Next"
+    ),
+    shiny::span(
+      class = "dataset-compact-summary",
+      paste(progress$reviewed, "of", progress$total, "reviewed")
+    )
+  )
+}
+
 builder_dataset_context_ui <- function(state, current = state$current_dataset) {
   ids <- vapply(state$datasets, `[[`, character(1), "id")
   index <- match(current, ids)
@@ -207,7 +272,7 @@ builder_dataset_context_ui <- function(state, current = state$current_dataset) {
     entry$profile$n_genes,
     .builder_rail_or(entry$profile$n_features, 0L)
   )
-  shiny::div(
+  context <- shiny::div(
     class = paste("dataset-context", if (multiple) "is-multiple" else ""),
     tabindex = "-1",
     shiny::div(
@@ -259,18 +324,29 @@ builder_dataset_context_ui <- function(state, current = state$current_dataset) {
     if (multiple) {
       shiny::div(
         class = "dataset-context-navigation",
-        shiny::actionButton(
-          "review_previous_dataset",
-          "Previous",
-          disabled = if (index == 1L) "disabled" else NULL
+        shiny::tags$button(
+          id = "review_previous_dataset",
+          type = "button",
+          class = "btn btn-default action-button",
+          disabled = if (index == 1L) "disabled" else NULL,
+          "Previous"
         ),
-        shiny::actionButton(
-          "review_next_dataset",
-          "Next",
-          disabled = if (index == length(ids)) "disabled" else NULL
+        shiny::tags$button(
+          id = "review_next_dataset",
+          type = "button",
+          class = "btn btn-default action-button",
+          disabled = if (index == length(ids)) "disabled" else NULL,
+          "Next"
         )
       )
     }
+  )
+  if (!multiple) {
+    return(context)
+  }
+  shiny::tagList(
+    context,
+    builder_compact_dataset_review_ui(state$datasets, index, progress)
   )
 }
 
@@ -664,6 +740,7 @@ builder_import_rail_ui <- function(entries, current = NULL) {
       stopifnot(inherits(entry, "builder_import_entry"))
       active <- identical(entry$id, current)
       failed <- identical(entry$load_state, "error")
+      importing <- !failed
       detail <- Filter(
         function(value) {
           is.character(value) && length(value) == 1L && nzchar(value)
@@ -672,16 +749,25 @@ builder_import_rail_ui <- function(entries, current = NULL) {
       )
       shiny::div(
         class = paste(
-          "ds ds--import",
-          if (active) "is-active" else NULL,
-          if (failed) "is-error" else NULL
+          c(
+            "ds ds--import",
+            if (active) "is-active",
+            if (importing) "is-importing",
+            if (failed) "is-error"
+          ),
+          collapse = " "
         ),
         `data-import-id` = entry$id,
+        `data-load-state` = entry$load_state,
         shiny::tags$button(
           type = "button",
           class = "ds-pick builder-pick-import",
           `data-import-id` = entry$id,
-          `aria-label` = paste("Open loading dataset", entry$label),
+          `aria-label` = if (failed) {
+            paste("Open failed import", entry$label)
+          } else {
+            paste("Open loading dataset", entry$label)
+          },
           `aria-current` = if (active) "true" else NULL,
           shiny::span(class = "ds-state-dot", `aria-hidden` = "true"),
           shiny::span(
@@ -714,8 +800,13 @@ builder_import_rail_ui <- function(entries, current = NULL) {
           },
           shiny::tags$button(
             type = "button",
-            class = "ds-del builder-remove-import",
+            class = "ds-del btn-remove-soft builder-remove-import",
             `data-import-id` = entry$id,
+            `aria-label` = if (failed) {
+              paste("Remove failed import", entry$label)
+            } else {
+              paste("Cancel loading", entry$label)
+            },
             "Remove"
           )
         )
@@ -743,10 +834,7 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
       review_status <- builder_dataset_review_status(entry, active)
 
       shiny::div(
-        class = paste(
-          "ds",
-          if (active) "is-active" else ""
-        ),
+        class = paste(c("ds", if (active) "is-active"), collapse = " "),
         `data-ds` = entry$id,
         shiny::tags$button(
           class = "ds-pick builder-pick",
@@ -800,7 +888,7 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
             shiny::span(class = "ds-action-label", "Move down")
           ),
           shiny::tags$button(
-            class = "ds-del builder-drop",
+            class = "ds-del btn-remove-soft builder-drop",
             title = "Remove this dataset",
             `aria-label` = paste0("Remove ", label),
             `data-ds` = entry$id,

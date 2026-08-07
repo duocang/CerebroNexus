@@ -6,6 +6,7 @@
 
 builder_review_options <- function(
   welcome_message = "Welcome to CerebroNexus!",
+  initial_page = "data_info",
   point_size = 5,
   variable_to_compare = FALSE,
   host = "127.0.0.1",
@@ -29,6 +30,8 @@ builder_review_options <- function(
   }
   if (
     !builder_stage_has_text(welcome_message) ||
+      !builder_stage_has_text(initial_page) ||
+      !initial_page %in% builder_viewer_known_page_ids() ||
       !valid_number(point_size, 0, 20) ||
       !valid_flag(variable_to_compare) ||
       !builder_stage_has_text(host) ||
@@ -46,6 +49,7 @@ builder_review_options <- function(
   structure(
     list(
       welcome_message = welcome_message,
+      initial_page = initial_page,
       point_size = as.double(point_size),
       variable_to_compare = variable_to_compare,
       host = host,
@@ -72,6 +76,7 @@ builder_review_options_for_plan <- function(options, initial_dataset = NULL) {
     list(show_upload_ui = options$show_upload_ui),
     initial,
     list(
+      initial_page = options$initial_page,
       welcome_message = options$welcome_message,
       variable_to_compare = options$variable_to_compare,
       host = options$host,
@@ -83,12 +88,44 @@ builder_review_options_for_plan <- function(options, initial_dataset = NULL) {
   )
 }
 
-builder_review_controls_ui <- function(id, options) {
+builder_review_initial_page_choices <- function(page_expectations = list()) {
+  catalog <- builder_viewer_page_catalog()
+  pages <- rbind(catalog$always, catalog$conditional)
+  always <- page_expectations$always
+  always_ids <- if (is.data.frame(always) && "id" %in% names(always)) {
+    always$id
+  } else {
+    catalog$always$id
+  }
+  allowed <- unique(c(
+    always_ids,
+    page_expectations$visible_conditional %||% character()
+  ))
+  pages <- pages[pages$id %in% allowed, , drop = FALSE]
+  stats::setNames(pages$id, pages$label)
+}
+
+builder_review_controls_ui <- function(
+  id,
+  options,
+  initial_page_choices = c("Data info" = "data_info")
+) {
   stopifnot(inherits(options, "builder_review_options"))
   ns <- NS(id)
+  selected_page <- if (options$initial_page %in% initial_page_choices) {
+    options$initial_page
+  } else {
+    "data_info"
+  }
   tags$details(
     class = "review-app-options builder-card builder-section",
     tags$summary("App options"),
+    selectInput(
+      ns("initial_page"),
+      "Starting page",
+      choices = initial_page_choices,
+      selected = selected_page
+    ),
     textInput(
       ns("welcome_message"),
       "Welcome message",
@@ -301,6 +338,17 @@ builder_review_model <- function(plan, verification = NULL) {
   } else {
     "Not selected"
   }
+  page_catalog <- do.call(
+    rbind,
+    unname(builder_viewer_page_catalog())
+  )
+  initial_page_id <- app_options$initial_page %||% "data_info"
+  initial_page_index <- match(initial_page_id, page_catalog$id)
+  initial_page_name <- if (!is.na(initial_page_index)) {
+    page_catalog$label[[initial_page_index]]
+  } else {
+    "Data info"
+  }
   review_dataset <- function(item) {
     group_values <- item$included_groups %||% item$groups %||% character()
     group_levels <- item$artifact_identity$group_levels %||% list()
@@ -478,6 +526,7 @@ builder_review_model <- function(plan, verification = NULL) {
     app = list(
       enabled = isTRUE(plan$make_app),
       initial_dataset = initial_name,
+      initial_page = initial_page_name,
       dataset_order = ordered_names,
       uploads_enabled = isTRUE(app_options$show_upload_ui),
       welcome_message = app_options$welcome_message %||%
@@ -1104,7 +1153,8 @@ builder_review_stage_ui <- function(id, model) {
           class = "review-app-grid",
           tags$dl(
             class = "review-fields",
-            field("Opens with", model$app$initial_dataset),
+            field("Starting dataset", model$app$initial_dataset),
+            field("Starting page", model$app$initial_page),
             field(
               "Visitor uploads",
               if (isTRUE(model$app$uploads_enabled)) "On" else "Off"

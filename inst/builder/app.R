@@ -119,7 +119,12 @@ builder_trajectory_preview_contract <- function(entry, trajectories) {
 }
 
 builder_preview_revision_independent <- function(kind) {
-  kind %in% c("projection_previews", "trajectory_previews")
+  kind %in%
+    c(
+      "projection_previews",
+      "trajectory_previews",
+      "spatial_preview"
+    )
 }
 
 app_capability <- builder_app_capability()
@@ -174,6 +179,25 @@ asset_stamp <- function(file) {
     return("")
   }
   paste0("?v=", as.integer(as.numeric(mt)))
+}
+
+builder_stylesheet_files <- c(
+  "builder.tokens.css",
+  "builder.base.css",
+  "builder.layout.css",
+  "builder.components.css",
+  "builder.features.css"
+)
+
+builder_stylesheet_tags <- function(
+  files = builder_stylesheet_files
+) {
+  tagList(lapply(files, function(file) {
+    tags$link(
+      rel = "stylesheet",
+      href = paste0(file, asset_stamp(file.path("www", file)))
+    )
+  }))
 }
 
 builder_example_buttons_ui <- function(examples = builder_example_directory()) {
@@ -268,10 +292,7 @@ builder_app_settle_release <- function(
 
 ui <- tagList(
   tags$head(
-    tags$link(
-      rel = "stylesheet",
-      href = paste0("builder.css", asset_stamp("www/builder.css"))
-    ),
+    builder_stylesheet_tags(),
     tags$script(src = paste0("icons.js", asset_stamp("www/icons.js"))),
     tags$script(src = paste0("stats.js", asset_stamp("www/stats.js"))),
     tags$script(src = paste0("builder.js", asset_stamp("www/builder.js"))),
@@ -310,6 +331,7 @@ ui <- tagList(
       ),
       div(
         id = "ds_list",
+        class = "ds-picker",
         div(
           id = "ds_ready_list",
           class = "shiny-html-output",
@@ -359,6 +381,7 @@ ui <- tagList(
       div(
         id = "workbench",
         class = "shiny-html-output",
+        tabindex = "-1",
         builder_empty_workbench_ui()
       ),
       uiOutput("result_card")
@@ -487,7 +510,11 @@ server <- function(input, output, session) {
   enhance_contract <- reactiveVal(list(
     id = NULL,
     organism = NULL,
-    analyses = character()
+    analysis_dependencies = character()
+  ))
+  review_page_contract <- reactiveVal(list(
+    dataset = NULL,
+    choices = c("Data info" = "data_info")
   ))
   seq_id <- reactiveVal(0L)
   add_error <- reactiveVal(NULL)
@@ -518,10 +545,37 @@ server <- function(input, output, session) {
     next_contract <- list(
       id = id,
       organism = entry$settings$organism %||% NULL,
-      analyses = unname(entry$settings$analyses %||% character())
+      analysis_dependencies = intersect(
+        unname(entry$settings$analyses %||% character()),
+        "marker_genes"
+      )
     )
     if (!identical(next_contract, isolate(enhance_contract()))) {
       enhance_contract(next_contract)
+    }
+  })
+
+  observe({
+    entries <- store()$datasets %||% list()
+    entry <- if (length(entries)) entries[[1L]] else NULL
+    state <- if (is.null(entry)) {
+      NULL
+    } else {
+      try(builder_dataset_state(entry), silent = TRUE)
+    }
+    choices <- builder_review_initial_page_choices(
+      if (is.null(state) || inherits(state, "try-error")) {
+        list()
+      } else {
+        state$page_expectations %||% list()
+      }
+    )
+    next_contract <- list(
+      dataset = entry$id %||% NULL,
+      choices = choices
+    )
+    if (!identical(next_contract, isolate(review_page_contract()))) {
+      review_page_contract(next_contract)
     }
   })
 
@@ -2295,6 +2349,58 @@ server <- function(input, output, session) {
     )
   }
 
+  lapply(
+    c("immune_repertoire", "hla_tcr_motifs"),
+    function(capability) {
+      observeEvent(
+        input[[paste0("core-immune_source_", capability)]],
+        {
+          id <- current()
+          value <- input[[paste0("core-immune_source_", capability)]]
+          if (
+            is.null(id) ||
+              !identical(input[["core-rendered_for"]], id) ||
+              !builder_stage_has_text(value %||% "")
+          ) {
+            return()
+          }
+          entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+          req(entry)
+          fact <- entry$dataset_profile$content$immune_repertoire %||%
+            entry$profile$content$immune_repertoire %||%
+            list()
+          state <- try(builder_dataset_state(entry), silent = TRUE)
+          if (inherits(state, "try-error")) {
+            return()
+          }
+          selectors <- builder_immune_source_choices_model(
+            list(
+              immune_source_fact = fact,
+              content_sources = entry$settings$content_sources %||% list()
+            ),
+            state$manifest %||% list()
+          )
+          matching <- Filter(
+            function(selector) identical(selector$capability, capability),
+            selectors
+          )
+          if (length(matching) != 1L) {
+            return()
+          }
+          updated <- builder_apply_immune_source_choice(
+            entry,
+            matching[[1L]],
+            value
+          )
+          if (!identical(updated$settings, entry$settings)) {
+            replace_entry(updated)
+          }
+        },
+        ignoreInit = TRUE
+      )
+    }
+  )
+
   observeEvent(
     input[["core-projection_action"]],
     {
@@ -2974,6 +3080,7 @@ server <- function(input, output, session) {
     current_options <- isolate(review_options())
     values <- list(
       welcome_message = input[["review-welcome_message"]],
+      initial_page = input[["review-initial_page"]],
       point_size = input[["review-point_size"]] %||% 5,
       variable_to_compare = input[["review-variable_to_compare"]],
       host = current_options$host,
@@ -3091,7 +3198,7 @@ server <- function(input, output, session) {
         entry$profile,
         list(
           organism = contract$organism,
-          analyses = contract$analyses
+          analyses = entry$settings$analyses %||% character()
         )
       )
     )
@@ -3148,6 +3255,77 @@ server <- function(input, output, session) {
     )
   })
 
+  output[["dataset_context"]] <- renderUI({
+    state <- store()
+    id <- current()
+    req(id)
+    builder_dataset_context_ui(state, id)
+  })
+
+  output[["inspect_stage"]] <- renderUI({
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    state <- try(builder_dataset_state(entry), silent = TRUE)
+    attention <- if (inherits(state, "try-error")) {
+      character()
+    } else {
+      state$attention_ids
+    }
+    blockers <- if (inherits(state, "try-error")) {
+      "Dataset state could not be validated."
+    } else {
+      state$blocking_ids
+    }
+    builder_inspect_stage_ui(
+      "inspect",
+      builder_inspect_model(
+        profile = entry$profile,
+        state = if (inherits(state, "try-error")) {
+          list(
+            attention_ids = attention,
+            blocking_ids = blockers,
+            manifest = list()
+          )
+        } else {
+          state
+        },
+        format = entry$format,
+        dataset_id = entry$id,
+        settings = entry$settings
+      )
+    )
+  })
+
+  output[["review_app_options"]] <- renderUI({
+    contract <- review_page_contract()
+    req(contract$dataset)
+    builder_review_controls_ui(
+      "review",
+      isolate(review_options()),
+      contract$choices
+    )
+  })
+
+  output[["dataset_review_footer"]] <- renderUI({
+    entries <- sets()
+    id <- current()
+    req(id, length(entries))
+    div(
+      class = "dataset-review-footer",
+      actionButton(
+        "review_current_dataset",
+        if (is.null(builder_next_unreviewed(entries, id))) {
+          "Looks good — finish review"
+        } else {
+          "Looks good — review next dataset"
+        },
+        class = "btn btn-action dataset-review-confirm"
+      )
+    )
+  })
+
   output$workbench <- renderUI({
     loading_id <- active_import_id()
     loading_entry <- if (is.null(loading_id)) {
@@ -3174,21 +3352,6 @@ server <- function(input, output, session) {
     } else {
       state$blocking_ids
     }
-    inspect_model <- builder_inspect_model(
-      profile = entry$profile,
-      state = if (inherits(state, "try-error")) {
-        list(
-          attention_ids = attention,
-          blocking_ids = blockers,
-          manifest = list()
-        )
-      } else {
-        state
-      },
-      format = entry$format,
-      dataset_id = entry$id,
-      settings = entry$settings
-    )
     if (!inherits(state, "try-error")) {
       entry <- state$entry
     }
@@ -3247,6 +3410,10 @@ server <- function(input, output, session) {
         } else {
           state$manifest %||% list()
         },
+        immune_source_fact = entry$dataset_profile$content$immune_repertoire %||%
+          entry$profile$content$immune_repertoire %||%
+          list(),
+        content_sources = settings$content_sources %||% list(),
         analysis_acknowledgements = if (inherits(state, "try-error")) {
           character()
         } else {
@@ -3274,8 +3441,8 @@ server <- function(input, output, session) {
       )
     )
     tagList(
-      builder_dataset_context_ui(store(), current()),
-      builder_inspect_stage_ui("inspect", inspect_model),
+      uiOutput("dataset_context"),
+      uiOutput("inspect_stage"),
       builder_core_stage_ui("core", core_model),
       builder_enhance_stage_ui(
         "enhance",
@@ -3291,25 +3458,30 @@ server <- function(input, output, session) {
       uiOutput("review_stage"),
       conditionalPanel(
         condition = "input.make_app === true",
-        builder_review_controls_ui("review", isolate(review_options()))
+        uiOutput("review_app_options")
       ),
-      div(
-        class = "dataset-review-footer",
-        actionButton(
-          "review_current_dataset",
-          if (is.null(builder_next_unreviewed(sets(), current()))) {
-            "Looks good — finish review"
-          } else {
-            "Looks good — review next dataset"
-          },
-          class = "btn btn-action dataset-review-confirm"
-        )
-      )
+      uiOutput("dataset_review_footer")
     )
   })
 
   focus_dataset_settings <- function(message = NULL) {
     session$sendCustomMessage("builder_focus_dataset", list(message = message))
+  }
+
+  select_dataset <- function(target_id) {
+    entries <- isolate(sets())
+    ids <- vapply(entries, `[[`, character(1), "id")
+    if (
+      length(target_id) != 1L ||
+        is.na(target_id) ||
+        !target_id %in% ids ||
+        identical(target_id, isolate(current()))
+    ) {
+      return(invisible(FALSE))
+    }
+    current(target_id)
+    session$onFlushed(function() focus_dataset_settings(), once = TRUE)
+    invisible(TRUE)
   }
 
   select_dataset_index <- function(offset) {
@@ -3318,13 +3490,35 @@ server <- function(input, output, session) {
     index <- match(isolate(current()), ids)
     target <- index + offset
     if (!is.na(index) && target >= 1L && target <= length(ids)) {
-      current(ids[[target]])
-      focus_dataset_settings()
+      select_dataset(ids[[target]])
     }
   }
 
   observeEvent(input$review_previous_dataset, select_dataset_index(-1L))
   observeEvent(input$review_next_dataset, select_dataset_index(1L))
+  observeEvent(
+    input$review_compact_previous_dataset,
+    select_dataset_index(-1L)
+  )
+  observeEvent(input$review_compact_next_dataset, select_dataset_index(1L))
+  observeEvent(
+    input$review_compact_dataset,
+    {
+      event <- input$review_compact_dataset
+      if (
+        !is.list(event) ||
+          is.object(event) ||
+          !is.character(event$id) ||
+          length(event$id) != 1L ||
+          is.na(event$id) ||
+          !is.null(attributes(event$id))
+      ) {
+        return()
+      }
+      select_dataset(event$id)
+    },
+    ignoreInit = TRUE
+  )
 
   observeEvent(input$review_current_dataset, {
     id <- isolate(current())
@@ -3502,32 +3696,34 @@ server <- function(input, output, session) {
   }
 
   prepare_selected_output <- function(path, overwrite = FALSE) {
-    plan <- isolate(freeze_plan_for_output(path, overwrite = overwrite))
-    if (
-      !inherits(plan, "builder_build_plan") ||
-        !identical(plan$readiness, "ready")
-    ) {
-      build_flow(list(stage = "idle", plan = NULL))
-      showNotification(
-        plan$error %||% "The selected folder cannot be used.",
-        type = "error",
-        duration = 6
-      )
-      return(invisible(FALSE))
-    }
-    if (length(plan$existing_targets) && !isTRUE(overwrite)) {
-      build_flow(list(stage = "conflict", plan = plan))
-      session$sendCustomMessage(
-        "builder_build_dialog",
-        list(
-          type = "conflict",
-          title = "Files already exist",
-          files = basename(plan$existing_targets)
+    isolate({
+      plan <- freeze_plan_for_output(path, overwrite = overwrite)
+      if (
+        !inherits(plan, "builder_build_plan") ||
+          !identical(plan$readiness, "ready")
+      ) {
+        build_flow(list(stage = "idle", plan = NULL))
+        showNotification(
+          plan$error %||% "The selected folder cannot be used.",
+          type = "error",
+          duration = 6
         )
-      )
-      return(invisible(FALSE))
-    }
-    enqueue_build_plan(plan)
+        return(invisible(FALSE))
+      }
+      if (length(plan$existing_targets) && !isTRUE(overwrite)) {
+        build_flow(list(stage = "conflict", plan = plan))
+        session$sendCustomMessage(
+          "builder_build_dialog",
+          list(
+            type = "conflict",
+            title = "Files already exist",
+            files = basename(plan$existing_targets)
+          )
+        )
+        return(invisible(FALSE))
+      }
+      enqueue_build_plan(plan)
+    })
   }
 
   choose_build_folder <- function() {

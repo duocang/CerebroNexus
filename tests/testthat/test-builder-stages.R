@@ -155,7 +155,31 @@ test_that("Core keeps technical controls advanced and metadata visible", {
   )
   expect_match(html, 'value="dataset-a"', fixed = TRUE)
   expect_match(html, 'id="core-organism"', fixed = TRUE)
-  expect_match(html, '"create":true', fixed = TRUE)
+  expect_match(html, '"create":false', fixed = TRUE)
+  expect_match(html, 'data-builder-creatable-select="true"', fixed = TRUE)
+  expect_match(
+    html,
+    'data-builder-create-input-label="Custom organism"',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'data-builder-create-placeholder="Type another organism"',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'data-builder-create-action-label="Add custom organism"',
+    fixed = TRUE
+  )
+  expect_match(html, 'data-builder-create-maxlength="80"', fixed = TRUE)
+  expect_equal(
+    lengths(regmatches(
+      html,
+      gregexpr('data-builder-creatable-select="true"', html, fixed = TRUE)
+    )),
+    1L
+  )
   expect_false(grepl('open="open"', html, fixed = TRUE))
 })
 
@@ -1628,6 +1652,7 @@ test_that("result actions execute through injected platform boundaries", {
 test_that("typed Review controls expose only accepted App options", {
   options <- builder_review_options(
     welcome_message = "Welcome, team!",
+    initial_page = "projection",
     point_size = 5,
     variable_to_compare = TRUE,
     host = "127.0.0.1",
@@ -1648,6 +1673,7 @@ test_that("typed Review controls expose only accepted App options", {
     c(
       "show_upload_ui",
       "initial_dataset",
+      "initial_page",
       "welcome_message",
       "variable_to_compare",
       "host",
@@ -1658,16 +1684,34 @@ test_that("typed Review controls expose only accepted App options", {
     )
   )
   expect_null(frozen$point_size)
+  expect_identical(frozen$initial_page, "projection")
   expect_error(builder_review_options(port = 0), "Review options")
+  expect_error(
+    builder_review_options(initial_page = "missing"),
+    "Review options"
+  )
 
-  html <- builder_stage_html(builder_review_controls_ui("review", options))
+  page_choices <- builder_review_initial_page_choices(list(
+    always = builder_viewer_page_catalog()$always,
+    visible_conditional = "trajectory"
+  ))
+  html <- builder_stage_html(builder_review_controls_ui(
+    "review",
+    options,
+    page_choices
+  ))
   for (label in c(
+    "Starting page",
     "Welcome message",
     "Variable to compare",
     "Allow uploads"
   )) {
     expect_match(html, label, fixed = TRUE)
   }
+  expect_match(html, "review-initial_page", fixed = TRUE)
+  expect_match(html, "Projection", fixed = TRUE)
+  expect_match(html, "Trajectory", fixed = TRUE)
+  expect_false(grepl("Spatial", html, fixed = TRUE))
   for (label in c(
     "Point size",
     "Host",
@@ -1770,7 +1814,6 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this state-only test.")
   }
-
   shiny::testServer(app_env$server, {
     invalid <- list(
       welcome_message = "Welcome",
@@ -1812,6 +1855,10 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
     "output$review_stage <- renderUI({",
     "output$actionbar <- renderUI({"
   )
+  review_app_options <- app_block(
+    'output[["review_app_options"]] <- renderUI({',
+    'output[["dataset_review_footer"]] <- renderUI({'
+  )
   actionbar <- app_block(
     "output$actionbar <- renderUI({",
     "output$review_action_summary <- renderUI({"
@@ -1819,7 +1866,13 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
   expect_match(workbench, "entry <- isolate(entry_of(id))", fixed = TRUE)
   expect_false(grepl("frozen_review_plan()", workbench, fixed = TRUE))
   expect_match(workbench, 'uiOutput("review_stage")', fixed = TRUE)
-  expect_match(workbench, "builder_review_controls_ui", fixed = TRUE)
+  expect_match(workbench, 'uiOutput("review_app_options")', fixed = TRUE)
+  expect_false(grepl("builder_review_controls_ui", workbench, fixed = TRUE))
+  expect_match(
+    review_app_options,
+    "builder_review_controls_ui",
+    fixed = TRUE
+  )
   expect_match(review_stage, "frozen_review_plan()", fixed = TRUE)
   expect_false(grepl("builder_review_controls_ui", review_stage, fixed = TRUE))
   expect_match(actionbar, 'uiOutput("review_action_summary"', fixed = TRUE)
@@ -1835,7 +1888,6 @@ test_that("workbench identity ignores settings writes but tracks selection", {
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this state-only test.")
   }
-
   shiny::testServer(app_env$server, {
     entry <- function(id) {
       list(
@@ -1873,7 +1925,7 @@ test_that("workbench identity ignores settings writes but tracks selection", {
   })
 })
 
-test_that("Viewer preview contracts ignore settings-only revisions", {
+test_that("Viewer and spatial preview contracts ignore settings-only revisions", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   app_env <- new.env(parent = globalenv())
@@ -1920,6 +1972,9 @@ test_that("Viewer preview contracts ignore settings-only revisions", {
   ))
   expect_true(app_env$builder_preview_revision_independent(
     "trajectory_previews"
+  ))
+  expect_true(app_env$builder_preview_revision_independent(
+    "spatial_preview"
   ))
   expect_false(app_env$builder_preview_revision_independent("preview"))
 
@@ -2023,6 +2078,24 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this state-only test.")
   }
+  original_enhance_stage_ui <- app_env$builder_enhance_stage_ui
+  enhance_stage_renders <- 0L
+  app_env$builder_enhance_stage_ui <- function(...) {
+    enhance_stage_renders <<- enhance_stage_renders + 1L
+    original_enhance_stage_ui(...)
+  }
+  original_enhance_modules_ui <- app_env$builder_enhance_modules_ui
+  enhance_module_renders <- 0L
+  app_env$builder_enhance_modules_ui <- function(...) {
+    enhance_module_renders <<- enhance_module_renders + 1L
+    original_enhance_modules_ui(...)
+  }
+  original_inspect_stage_ui <- app_env$builder_inspect_stage_ui
+  inspect_stage_renders <- 0L
+  app_env$builder_inspect_stage_ui <- function(...) {
+    inspect_stage_renders <<- inspect_stage_renders + 1L
+    original_inspect_stage_ui(...)
+  }
   select_updates <- list()
   retain_updates <- list()
   app_env$updateSelectInput <- function(
@@ -2063,6 +2136,8 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
         object_md5 = strrep("a", 32L)
       ),
       profile = list(
+        n_cells = 80L,
+        n_genes = 230L,
         organism_guess = "hg",
         assays = c("RNA", "SCT"),
         layers = c("data", "counts"),
@@ -2091,6 +2166,16 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
         images = character(),
         group_candidates = c(cluster = "cluster", sample = "sample"),
         group_preselect = "cluster",
+        group_counts = list(
+          cluster = c(A = 50L, B = 30L),
+          sample = c(one = 40L, two = 40L)
+        ),
+        qc_values = list(
+          nCount_RNA = c(100, 200),
+          nFeature_RNA = c(20, 40),
+          nCount_SCT = c(90, 180),
+          nFeature_SCT = c(18, 36)
+        ),
         reductions = c("umap", "pca"),
         viewer_content = list(
           projections = list(
@@ -2166,6 +2251,11 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     )
     use_state_only_fixture(list(entry))
     session$flushReact()
+    invisible(output$workbench)
+    invisible(output[["enhance-analysis_modules"]])
+    invisible(output[["inspect_stage"]])
+    session$flushReact()
+    baseline_enhance_stage_renders <- enhance_stage_renders
 
     top_level_runs <- 0L
     tracker <- observe({
@@ -2385,6 +2475,30 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
       collapse = ""
     )
     expect_match(blocked_html, "Select Marker genes first", fixed = TRUE)
+    before_most_expressed_module_renders <- enhance_module_renders
+    before_most_expressed_inspect_renders <- inspect_stage_renders
+    session$setInputs(
+      `enhance-rendered_for` = "dataset-a",
+      `enhance-analysis_most_expressed` = TRUE
+    )
+    session$flushReact()
+    expect_true(
+      "most_expressed" %in% sets()[[1L]]$settings$analyses
+    )
+    expect_identical(
+      enhance_stage_renders,
+      baseline_enhance_stage_renders
+    )
+    expect_identical(
+      enhance_module_renders,
+      before_most_expressed_module_renders
+    )
+    invisible(output[["inspect_stage"]])
+    expect_lte(
+      inspect_stage_renders,
+      before_most_expressed_inspect_renders + 1L
+    )
+
     session$setInputs(
       `enhance-rendered_for` = "dataset-a",
       `enhance-analysis_marker_genes` = TRUE

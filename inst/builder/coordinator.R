@@ -170,6 +170,7 @@
     filenames = filenames,
     initial_dataset = labels[[initial_index]],
     initial_dataset_mode = options$initial_dataset_mode,
+    initial_page = options$initial_page,
     show_upload_ui = options$show_upload_ui,
     welcome_message = options$welcome_message,
     point_size = options$point_size,
@@ -275,6 +276,7 @@
   identical(request$contract_version, expectation$contract_version) &&
     identical(request$selector_order, expectation$labels) &&
     identical(request$initial_dataset, expectation$initial_dataset) &&
+    identical(request$initial_page, expectation$initial_page) &&
     identical(
       request$initial_dataset_mode,
       expectation$initial_dataset_mode

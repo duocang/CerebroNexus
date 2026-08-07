@@ -13,6 +13,7 @@
   "selector_order",
   "initial_dataset",
   "initial_dataset_mode",
+  "initial_page",
   "show_upload_ui",
   "welcome_message",
   "point_size",
@@ -76,6 +77,7 @@
     "show_upload_ui",
     "initial_dataset",
     "initial_dataset_mode",
+    "initial_page",
     "welcome_message",
     "point_size",
     "variable_to_compare",
@@ -108,6 +110,10 @@
     options$initial_dataset_mode %in% c("automatic", "explicit") &&
     (!identical(options$initial_dataset_mode, "automatic") ||
       identical(options$initial_dataset, dataset_order[[1L]])) &&
+    is.character(options$initial_page) &&
+    length(options$initial_page) == 1L &&
+    !is.na(options$initial_page) &&
+    options$initial_page %in% builder_viewer_known_page_ids() &&
     is.character(options$welcome_message) &&
     length(options$welcome_message) == 1L &&
     !is.na(options$welcome_message) &&
@@ -1025,6 +1031,10 @@
           plain$initial_dataset,
           plain$selector_order[[1L]]
         )) ||
+      !is.character(plain$initial_page) ||
+      length(plain$initial_page) != 1L ||
+      is.na(plain$initial_page) ||
+      !plain$initial_page %in% builder_viewer_known_page_ids() ||
       !is.logical(plain$show_upload_ui) ||
       length(plain$show_upload_ui) != 1L ||
       is.na(plain$show_upload_ui) ||
@@ -1397,6 +1407,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
       selector_order = item_labels,
       initial_dataset = item_labels[[initial_index]],
       initial_dataset_mode = options$initial_dataset_mode,
+      initial_page = options$initial_page,
       show_upload_ui = options$show_upload_ui,
       welcome_message = options$welcome_message,
       point_size = options$point_size,
@@ -2065,6 +2076,7 @@ builder_build_app <- function(
     crb_pick_smallest_file = FALSE,
     show_upload_ui = request$show_upload_ui,
     initial_dataset = request$initial_dataset,
+    initial_page = request$initial_page,
     welcome_message = request$welcome_message,
     point_size = request$point_size,
     variable_to_compare = request$variable_to_compare,
@@ -2168,6 +2180,9 @@ builder_verify_app <- function(
   }
   if (!identical(config[["initial_dataset"]], request$initial_dataset)) {
     stop("The staged App initial dataset differs from request.", call. = FALSE)
+  }
+  if (!identical(config[["initial_page"]], request$initial_page)) {
+    stop("The staged App starting page differs from request.", call. = FALSE)
   }
   if (!identical(config[["show_upload_ui"]], request$show_upload_ui)) {
     stop("The staged App upload policy differs from request.", call. = FALSE)

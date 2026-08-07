@@ -546,6 +546,8 @@ if (builder_rail_api_available) {
     html <- as.character(builder_dataset_rail_ui(state, current = "a"))
 
     expect_match(html, "Dataset A", fixed = TRUE)
+    expect_match(html, "ds is-active", fixed = TRUE)
+    expect_match(html, 'aria-current="true"', fixed = TRUE)
     expect_match(html, "12 cells", fixed = TRUE)
     expect_match(html, "Reviewing", fixed = TRUE)
     expect_match(html, "data-direction=\"up\"", fixed = TRUE)
@@ -602,6 +604,62 @@ if (builder_rail_api_available) {
     expect_match(context, "Previous", fixed = TRUE)
     expect_match(context, "Next", fixed = TRUE)
     expect_match(context, 'aria-valuenow="1"', fixed = TRUE)
+  })
+
+  test_that("compact review navigation is server-authored for multiple datasets", {
+    entries <- lapply(letters[1:6], function(id) {
+      builder_rail_entry(id, paste("Dataset", toupper(id)))
+    })
+    state <- builder_state(entries, current_dataset = "d")
+    html <- as.character(builder_dataset_context_ui(state, "d"))
+
+    expect_match(html, "dataset-compact-review", fixed = TRUE)
+    expect_match(html, "Dataset 4 of 6", fixed = TRUE)
+    expect_length(
+      regmatches(
+        html,
+        gregexpr("dataset-compact-segment", html, fixed = TRUE)
+      )[[1L]],
+      6L
+    )
+    expect_match(html, 'aria-current="step"', fixed = TRUE)
+    expect_match(html, 'data-dataset-id="d"', fixed = TRUE)
+    expect_match(html, 'aria-label="Dataset 4 of 6, Dataset D"', fixed = TRUE)
+    expect_match(html, 'id="review_compact_previous_dataset"', fixed = TRUE)
+    expect_match(html, 'id="review_compact_next_dataset"', fixed = TRUE)
+
+    single <- builder_state(list(entries[[1L]]), current_dataset = "a")
+    single_html <- as.character(builder_dataset_context_ui(single, "a"))
+    expect_false(grepl("dataset-compact-review", single_html, fixed = TRUE))
+  })
+
+  test_that("full and compact review controls preserve server boundaries", {
+    entries <- lapply(letters[1:2], builder_rail_entry)
+    first <- as.character(builder_dataset_context_ui(
+      builder_state(entries, current_dataset = "a"),
+      "a"
+    ))
+    last <- as.character(builder_dataset_context_ui(
+      builder_state(entries, current_dataset = "b"),
+      "b"
+    ))
+
+    expect_match(
+      first,
+      'id="review_previous_dataset"[^>]*disabled',
+      perl = TRUE
+    )
+    expect_match(
+      first,
+      'id="review_compact_previous_dataset"[^>]*disabled',
+      perl = TRUE
+    )
+    expect_match(last, 'id="review_next_dataset"[^>]*disabled', perl = TRUE)
+    expect_match(
+      last,
+      'id="review_compact_next_dataset"[^>]*disabled',
+      perl = TRUE
+    )
   })
 
   test_that("review navigation starts with the first pending dataset", {

@@ -1,0 +1,100 @@
+/* CerebroNexus Builder: design tokens and semantic role variables. */
+
+:root {
+  /* Shared Builder/Viewer primitives. */
+  --c-white: #ffffff;
+  --c-bg: #f7f7f8;
+  --c-surface: #ffffff;
+  --c-surface-2: #f4f4f5;
+  --c-surface-3: #ecebeb;
+  --c-border: #ececec;
+  --c-border-2: #e0e0e0;
+  --c-text: #1c1c1e;
+  --c-text-2: #6b6b70;
+  --c-text-3: #9a9aa0;
+
+  --c-blue-50: #eef4fb;
+  --c-blue-100: #d7e6f7;
+  --c-blue-300: #7bb0e8;
+  --c-blue: #2f6fd6;
+  --c-blue-600: #2560bd;
+  --c-blue-700: #1d4ea0;
+
+  --c-amber-50: #fff4ec;
+  --c-amber-100: #ffe4d1;
+  --c-amber-300: #ffb27a;
+  --c-amber: #f97316;
+  --c-amber-600: #ea6a0f;
+  --c-amber-700: #c85a0e;
+
+  --c-success: #16a34a;
+  --c-warning: #d97706;
+  --c-error: #dc2626;
+
+  --shadow-1: 0 1px 2px rgba(17,17,26,0.04), 0 1px 3px rgba(17,17,26,0.05);
+  --shadow-2: 0 2px 4px rgba(17,17,26,0.04), 0 4px 12px rgba(17,17,26,0.06);
+  --shadow-3: 0 4px 8px rgba(17,17,26,0.05), 0 12px 28px rgba(17,17,26,0.09);
+  --shadow-4: 0 8px 20px rgba(17,17,26,0.08), 0 24px 56px rgba(17,17,26,0.14);
+
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur: 0.16s;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+
+  /* Builder-only semantic roles. */
+  --builder-action: #c9500b;
+  --builder-action-hover: #9a3412;
+  --builder-action-active: #7c2d12;
+  --builder-accent-strong: #65230f;
+  --builder-selection-bg: var(--builder-action);
+  --builder-selection-fg: var(--c-white);
+  --builder-text-muted: #525257;
+  --builder-text-subtle: #6b6b70;
+  --builder-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+                       "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+                       "Helvetica Neue", Arial, sans-serif;
+  --builder-measure-copy: 48rem;
+  --builder-measure-form: 56rem;
+  --builder-measure-data: none;
+  --builder-page-gutter: 26px;
+  --builder-stage-padding: var(--space-6);
+  --builder-section-gap: var(--space-6);
+
+  /* Compatibility aliases for existing Builder components. */
+  --c-surface-muted: var(--c-surface-2);
+  --c-surface-subtle: var(--c-surface-3);
+  --c-border-strong: var(--c-border-2);
+  --c-text-muted: var(--builder-text-muted);
+  --c-text-subtle: var(--builder-text-subtle);
+  --c-error-50: #fff1f2;
+  --c-error-100: #ffe4e6;
+  --c-error50: var(--c-error-50);
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
+  --shadow-dialog: var(--shadow-4);
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-pill: var(--r-pill);
+  --ease-standard: var(--ease);
+  --duration-fast: 140ms;
+  --duration-normal: 180ms;
+  --duration-base: var(--duration-normal);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
