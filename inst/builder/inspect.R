@@ -12,55 +12,43 @@
 #' subset of cells, and passing one of them to the exporter silently truncates
 #' the data set. Offer the logical name only when its physical layers form a
 #' complete, non-overlapping partition.
-builder_layer_choices <- function(assay, n_cells) {
-  layers <- tryCatch(
-    SeuratObject::Layers(assay),
-    error = function(e) character()
+builder_layer_choices <- function(
+  assay,
+  expected_cells,
+  layer_api = .builder_profile_layer_api()
+) {
+  profile <- builder_profile_assay(
+    assay,
+    expected_cells,
+    expected_features = NULL,
+    layer_api = layer_api
   )
-  if (!length(layers)) {
-    return(character())
-  }
-
-  layer_cells <- function(layer) {
-    mat <- tryCatch(
-      suppressWarnings(SeuratObject::LayerData(assay, layer = layer)),
-      error = function(e) NULL
-    )
-    if (is.null(mat)) character() else colnames(mat)
-  }
-  cells <- lapply(layers, layer_cells)
-  names(cells) <- layers
-
-  full <- layers[vapply(
-    cells,
-    function(x) length(x) == n_cells && !anyDuplicated(x),
-    logical(1)
-  )]
-
-  layer_root <- function(layer) {
-    if (startsWith(layer, "scale.data.")) {
-      "scale.data"
-    } else {
-      sub("[.].*$", "", layer)
-    }
-  }
-  roots <- unique(vapply(layers, layer_root, character(1)))
-  joined <- Filter(
-    function(root) {
-      members <- layers[startsWith(layers, paste0(root, "."))]
-      if (length(members) < 2L) {
-        return(FALSE)
-      }
-      all_cells <- unlist(cells[members], use.names = FALSE)
-      length(all_cells) == n_cells &&
-        length(unique(all_cells)) == n_cells
-    },
-    roots
-  )
-
-  choices <- unique(c(full, joined))
+  choices <- profile$exportable_layers
   preferred <- c("data", "counts", "scale.data")
   c(intersect(preferred, choices), setdiff(choices, preferred))
+}
+
+builder_validate_joined_layer <- function(
+  data,
+  expected_cells,
+  expected_features
+) {
+  if (length(dim(data)) != 2L) {
+    stop("Joined layer is not a two-dimensional expression matrix.")
+  }
+  cells <- builder_identity_profile(colnames(data), expected_cells)
+  if (!cells$valid) {
+    stop("Joined layer cell identity does not match the profiled partition.")
+  }
+  features <- builder_identity_profile(rownames(data), expected_features)
+  if (!features$valid) {
+    stop("Joined layer feature identity does not match the profiled partition.")
+  }
+  data[
+    features$reorder_index,
+    cells$reorder_index,
+    drop = FALSE
+  ]
 }
 
 #' Join a safe logical split layer before export.
@@ -68,11 +56,24 @@ builder_layer_choices <- function(assay, n_cells) {
 #' Exact full-cell layers are returned unchanged. A logical split layer is
 #' materialized only after `builder_layer_choices()` has proved that its
 #' physical members cover every cell exactly once.
-builder_prepare_export_layer <- function(object, assay, layer) {
+builder_prepare_export_layer <- function(
+  object,
+  assay,
+  layer,
+  layer_api = .builder_profile_layer_api()
+) {
   if (!assay %in% names(object@assays)) {
     stop("Assay `", assay, "` is not present in the object.")
   }
-  choices <- builder_layer_choices(object[[assay]], ncol(object))
+  expected_cells <- SeuratObject::Cells(object)
+  assay_profile <- builder_profile_assay(
+    object[[assay]],
+    expected_cells,
+    name = assay,
+    expected_features = NULL,
+    layer_api = layer_api
+  )
+  choices <- assay_profile$exportable_layers
   if (!layer %in% choices) {
     stop(
       "Layer `",
@@ -83,25 +84,49 @@ builder_prepare_export_layer <- function(object, assay, layer) {
     )
   }
 
-  physical <- tryCatch(
-    SeuratObject::Layers(object[[assay]]),
-    error = function(e) character()
-  )
-  if (layer %in% physical) {
-    matrix <- suppressWarnings(
-      SeuratObject::LayerData(object[[assay]], layer = layer)
-    )
-    if (ncol(matrix) == ncol(object)) {
-      return(object)
-    }
+  selected <- assay_profile$layers[[layer]]
+  if (identical(selected$kind, "physical")) {
+    return(object)
   }
 
-  object[[assay]] <- SeuratObject::JoinLayers(
-    object[[assay]],
-    layers = layer,
+  local_object <- object
+  physical <- .builder_profile_layer_names(object[[assay]], layer_api)
+  protected <- physical[startsWith(physical, layer)]
+  for (candidate in setdiff(protected, selected$members)) {
+    suppressWarnings(
+      SeuratObject::LayerData(
+        local_object[[assay]],
+        layer = candidate
+      ) <- NULL
+    )
+  }
+  escaped <- gsub(
+    "([\\^$.|?*+()\\[\\]{}\\\\\\-])",
+    "\\\\\\1",
+    layer,
+    perl = TRUE
+  )
+  local_object <- SeuratObject::JoinLayers(
+    local_object,
+    assay = assay,
+    layers = paste0("^", escaped),
     new = layer
   )
-  object
+  joined <- suppressWarnings(
+    SeuratObject::LayerData(local_object[[assay]], layer = layer)
+  )
+  joined <- builder_validate_joined_layer(
+    joined,
+    expected_cells,
+    selected$features$ids
+  )
+  suppressWarnings(
+    SeuratObject::LayerData(
+      local_object[[assay]],
+      layer = layer
+    ) <- joined
+  )
+  local_object
 }
 
 #' Describe a Seurat object in the terms the exporter cares about.
@@ -137,7 +162,10 @@ describe_seurat <- function(object) {
   }
 
   assay_profiles <- lapply(assays, function(assay) {
-    layers <- builder_layer_choices(object[[assay]], n_cells)
+    layers <- builder_layer_choices(
+      object[[assay]],
+      expected_cells = SeuratObject::Cells(object)
+    )
     umi <- qc_choices(assay, "umi")
     genes <- qc_choices(assay, "gene")
     list(
@@ -212,16 +240,21 @@ describe_seurat <- function(object) {
     preselect <- if (length(candidates)) unname(candidates)[1] else character()
   }
 
-  ## The exporter drops every reduction whose name contains "pca", so
-  ## preselecting them would promise something it will not deliver.
+  ## Non-PCA projections take precedence. The exporter keeps one lone PCA as
+  ## a warned fallback, but filters PCA whenever another projection is present.
   reductions <- names(object@reductions)
   reduction_preselect <- reductions[
     !grepl("pca", reductions, ignore.case = TRUE)
   ]
+  if (!length(reduction_preselect) && length(reductions) == 1L) {
+    reduction_preselect <- reductions
+  }
 
   ## Gene name shape is the only cheap signal for species.
   genes <- utils::head(rownames(object), 200)
-  organism_guess <- if (mean(genes == toupper(genes)) > 0.8) {
+  organism_guess <- if (!length(genes)) {
+    "other"
+  } else if (mean(genes == toupper(genes)) > 0.8) {
     "hg"
   } else if (mean(grepl("^[A-Z][a-z]", genes)) > 0.6) {
     "mm"

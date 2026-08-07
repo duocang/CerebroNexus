@@ -19,12 +19,75 @@ BUILDER_SWATCH_MAX <- 40L
 
 ## runApp() sets the working directory to the app directory.
 source("io.R", local = TRUE)
+source(
+  file.path(
+    "..",
+    "shiny",
+    "v1.4",
+    "core",
+    "viewer_content_contract.R"
+  ),
+  local = TRUE
+)
+source(
+  file.path(
+    "..",
+    "shiny",
+    "v1.4",
+    "core",
+    "spatial_coordinate_contract.R"
+  ),
+  local = TRUE
+)
+source(
+  file.path(
+    "..",
+    "shiny",
+    "v1.4",
+    "hla_tcr_motifs",
+    "core",
+    "hla_typing.R"
+  ),
+  local = TRUE
+)
+source(
+  file.path(
+    "..",
+    "shiny",
+    "v1.4",
+    "hla_tcr_motifs",
+    "core",
+    "hla_motif_core.R"
+  ),
+  local = TRUE
+)
+source(
+  file.path(
+    "..",
+    "shiny",
+    "v1.4",
+    "hla_tcr_motifs",
+    "core",
+    "hla_association_core.R"
+  ),
+  local = TRUE
+)
+source("manifest.R", local = TRUE)
+source("content_tables.R", local = TRUE)
+source("content_immune.R", local = TRUE)
+source("content_spatial.R", local = TRUE)
+source("content.R", local = TRUE)
+source("profile.R", local = TRUE)
 source("inspect.R", local = TRUE)
+source("adapters.R", local = TRUE)
 source("preview.R", local = TRUE)
 source("extras.R", local = TRUE)
 source("analysis.R", local = TRUE)
+source("prerequisite.R", local = TRUE)
 source("plan.R", local = TRUE)
 source("session.R", local = TRUE)
+
+app_capability <- builder_app_capability()
 
 ## Inline icons: an icon set would be another dependency, and emoji are not
 ## icons.
@@ -513,6 +576,7 @@ server <- function(input, output, session) {
         example = p$example,
         format = value$format,
         profile = profile,
+        dataset_profile = value$dataset_profile,
         ## Level names per grouping variable, in the order the exporter will
         ## produce them -- the keys a configured palette has to match.
         levels = value$levels %||% list(),
@@ -1635,7 +1699,10 @@ server <- function(input, output, session) {
             ),
             p(
               class = "hint",
-              "PCA-named reductions are omitted by the exporter, so they start unselected."
+              paste(
+                "Exactly one PCA alone is exported as a warned fallback.",
+                "When a non-PCA reduction is selected, PCA is omitted."
+              )
             )
           )
         } else {
@@ -1967,6 +2034,10 @@ server <- function(input, output, session) {
       return(NULL)
     }
     rep <- ready_report()
+    make_app_control <- builder_app_control(
+      app_capability,
+      current_value = isolate(input$make_app)
+    )
     div(
       class = "actionbar",
       div(
@@ -1987,12 +2058,7 @@ server <- function(input, output, session) {
           )
         ),
         div(class = "summary", rep$msg),
-        checkboxInput(
-          "make_app",
-          "Bundle a Shiny app",
-          value = TRUE,
-          width = "auto"
-        ),
+        make_app_control,
         checkboxInput(
           "overwrite",
           "Replace existing outputs",

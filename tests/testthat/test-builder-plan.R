@@ -6,13 +6,8 @@
 ## edge cases without starting Shiny.
 ## -------------------------------------------------------------------------
 
-builder_repo_source <- function(file, local = parent.frame()) {
-  path <- testthat::test_path("..", "..", "inst", "builder", file)
-  if (!file.exists(path)) {
-    path <- system.file(file.path("builder", file), package = "CerebroNexus")
-  }
-  source(path, local = local)
-}
+builder_profile_source_runtime()
+builder_repo_source("prerequisite.R")
 
 test_that("profiles expose safe layer choices for every assay", {
   skip_if_not_installed("SeuratObject")
@@ -57,7 +52,7 @@ test_that("profiles expose safe layer choices for every assay", {
   })
 })
 
-test_that("partial split layers are not offered as full expression matrices", {
+test_that("layer choices require exact cell identities", {
   skip_if_not_installed("SeuratObject")
 
   local({
@@ -80,15 +75,33 @@ test_that("partial split layers are not offered as full expression matrices", {
       f = rep(c("sample1", "sample2"), each = 4)
     )
 
-    choices <- builder_layer_choices(object[["RNA"]], n_cells = ncol(object))
+    choices <- builder_layer_choices(
+      object[["RNA"]],
+      expected_cells = SeuratObject::Cells(object)
+    )
 
     expect_identical(choices, "counts")
     expect_false(any(grepl("^counts[.]", choices)))
+    expect_error(
+      builder_layer_choices(object[["RNA"]]),
+      "expected_cells"
+    )
+
+    wrong <- builder_profile_wrong_assay()
+    expect_identical(
+      builder_layer_choices(
+        wrong$assay,
+        expected_cells = wrong$expected
+      ),
+      character()
+    )
   })
 })
 
 test_that("build plans use collision-proof filenames and resolved colours", {
   local({
+    builder_repo_source("prerequisite.R")
+    builder_installed_app_contract_version <- function(namespace = NULL) 1L
     builder_repo_source("preview.R")
     builder_repo_source("plan.R")
 
@@ -135,7 +148,11 @@ test_that("build plans use collision-proof filenames and resolved colours", {
       )
     )
 
-    plan <- builder_make_plan(entries, tempdir(), make_app = TRUE)
+    plan <- builder_make_plan(
+      entries,
+      tempdir(),
+      make_app = TRUE
+    )
 
     expect_null(plan$error)
     expect_length(unique(vapply(plan$items, `[[`, "", "filename")), 2)

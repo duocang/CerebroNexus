@@ -43,14 +43,76 @@ builder_session_start <- function(builder_dir) {
         library(CerebroNexus)
       })
       source(file.path(dir, "io.R"))
+      source(file.path(
+        dir,
+        "..",
+        "shiny",
+        "v1.4",
+        "core",
+        "viewer_content_contract.R"
+      ))
+      source(file.path(
+        dir,
+        "..",
+        "shiny",
+        "v1.4",
+        "core",
+        "spatial_coordinate_contract.R"
+      ))
+      source(file.path(
+        dir,
+        "..",
+        "shiny",
+        "v1.4",
+        "hla_tcr_motifs",
+        "core",
+        "hla_typing.R"
+      ))
+      source(file.path(
+        dir,
+        "..",
+        "shiny",
+        "v1.4",
+        "hla_tcr_motifs",
+        "core",
+        "hla_motif_core.R"
+      ))
+      source(file.path(
+        dir,
+        "..",
+        "shiny",
+        "v1.4",
+        "hla_tcr_motifs",
+        "core",
+        "hla_association_core.R"
+      ))
+      source(file.path(dir, "manifest.R"))
+      source(file.path(dir, "content_tables.R"))
+      source(file.path(dir, "content_immune.R"))
+      source(file.path(dir, "content_spatial.R"))
+      source(file.path(dir, "content.R"))
+      source(file.path(dir, "profile.R"))
       source(file.path(dir, "inspect.R"))
+      source(file.path(dir, "adapters.R"))
       source(file.path(dir, "preview.R"))
       source(file.path(dir, "extras.R"))
       source(file.path(dir, "analysis.R"))
+      source(file.path(dir, "prerequisite.R"))
       source(file.path(dir, "plan.R"))
       source(file.path(dir, "publish.R"))
       .builder_objects <- new.env(parent = emptyenv())
+      .builder_snapshots <- new.env(parent = emptyenv())
+      .builder_snapshot_root <- tempfile("cerebro-builder-session-")
+      if (!dir.create(.builder_snapshot_root, mode = "0700")) {
+        stop("Could not create the private Builder session directory.")
+      }
       assign(".builder_objects", .builder_objects, envir = globalenv())
+      assign(".builder_snapshots", .builder_snapshots, envir = globalenv())
+      assign(
+        ".builder_snapshot_root",
+        .builder_snapshot_root,
+        envir = globalenv()
+      )
       TRUE
     },
     args = list(dir = builder_dir)
@@ -73,18 +135,12 @@ builder_session_example <- function(rs, id, example_id) {
       if (!is.null(made$error)) {
         return(list(error = made$error))
       }
-      assign(
-        id,
-        made$object,
-        envir = get(".builder_objects", envir = globalenv())
-      )
-      list(
-        profile = describe_seurat(made$object),
-        format = made$format,
-        levels = builder_group_levels_for(
-          made$object,
-          describe_seurat(made$object)$group_candidates
-        )
+      tryCatch(
+        .builder_register_adapter(
+          builder_example_adapter(example_id, made$object),
+          id
+        ),
+        error = function(error) list(error = conditionMessage(error))
       )
     },
     args = list(id = id, example_id = example_id)
@@ -97,22 +153,9 @@ builder_session_example <- function(rs, id, example_id) {
 builder_session_load <- function(rs, id, path) {
   rs$call(
     function(id, path) {
-      read <- builder_read_object(path)
-      if (!is.null(read$error)) {
-        return(list(error = read$error))
-      }
-      assign(
-        id,
-        read$object,
-        envir = get(".builder_objects", envir = globalenv())
-      )
-      list(
-        profile = describe_seurat(read$object),
-        format = read$format,
-        levels = builder_group_levels_for(
-          read$object,
-          describe_seurat(read$object)$group_candidates
-        )
+      tryCatch(
+        .builder_register_adapter(builder_seurat_file_adapter(path), id),
+        error = function(error) list(error = conditionMessage(error))
       )
     },
     args = list(id = id, path = path)
@@ -229,6 +272,17 @@ builder_session_section_bounds <- function(
 builder_session_build <- function(rs, plan) {
   rs$call(
     function(plan) {
+      if (isTRUE(plan$make_app)) {
+        current_capability <- builder_app_capability(
+          builder_installed_app_contract_version()
+        )
+        if (
+          !identical(plan$app_contract_version, 1L) ||
+            !isTRUE(current_capability$available)
+        ) {
+          return(list(error = builder_app_capability(0L)$reason))
+        }
+      }
       out <- list(
         built = character(),
         labels = character(),
@@ -254,10 +308,50 @@ builder_session_build <- function(rs, plan) {
         return(list(error = "Cannot create a staging directory."))
       }
       on.exit(unlink(stage_dir, recursive = TRUE, force = TRUE), add = TRUE)
-      store <- get(".builder_objects", envir = globalenv())
+      snapshots <- get(".builder_snapshots", envir = globalenv())
+
+      missing_snapshots <- vapply(
+        plan$items,
+        function(item) {
+          !exists(
+            item$id,
+            envir = snapshots,
+            inherits = FALSE
+          )
+        },
+        logical(1)
+      )
+      if (any(missing_snapshots)) {
+        return(list(
+          error = paste0(
+            "A dataset snapshot is missing for: ",
+            paste(
+              vapply(
+                plan$items[missing_snapshots],
+                function(item) item$name,
+                character(1)
+              ),
+              collapse = ", "
+            ),
+            ". Remove and add that dataset again."
+          )
+        ))
+      }
 
       for (item in plan$items) {
-        obj <- get(item$id, envir = store)
+        snapshot <- get(item$id, envir = snapshots, inherits = FALSE)
+        obj <- try(builder_open_snapshot(snapshot), silent = TRUE)
+        if (inherits(obj, "try-error")) {
+          out$failures <- c(
+            out$failures,
+            paste0(
+              item$name,
+              ": ",
+              conditionMessage(attr(obj, "condition"))
+            )
+          )
+          next
+        }
         obj@reductions <- obj@reductions[item$reductions]
         prepared <- try(
           builder_prepare_export_layer(obj, item$assay, item$layer),
@@ -421,8 +515,24 @@ builder_session_drop <- function(rs, id) {
   rs$call(
     function(id) {
       store <- get(".builder_objects", envir = globalenv())
+      snapshots <- get(".builder_snapshots", envir = globalenv())
       if (exists(id, envir = store)) {
         rm(list = id, envir = store)
+        gc(FALSE)
+      }
+      if (exists(id, envir = snapshots, inherits = FALSE)) {
+        snapshot <- get(id, envir = snapshots, inherits = FALSE)
+        if (!.builder_snapshot_release(snapshot)) {
+          stop(
+            paste0(
+              "The private snapshot for ",
+              id,
+              " could not be released safely."
+            ),
+            call. = FALSE
+          )
+        }
+        rm(list = id, envir = snapshots)
       }
       gc(FALSE)
       TRUE
