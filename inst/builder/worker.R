@@ -864,16 +864,14 @@ builder_worker_start <- function(
         source(file.path(
           dir,
           "..",
-          "shiny",
-          "v1.4",
+          "viewer",
           "core",
           "viewer_content_contract.R"
         ))
         source(file.path(
           dir,
           "..",
-          "shiny",
-          "v1.4",
+          "viewer",
           "core",
           "spatial_coordinate_contract.R"
         ))
@@ -881,8 +879,7 @@ builder_worker_start <- function(
         source(file.path(
           dir,
           "..",
-          "shiny",
-          "v1.4",
+          "viewer",
           "hla_tcr_motifs",
           "core",
           "hla_typing.R"
@@ -890,8 +887,7 @@ builder_worker_start <- function(
         source(file.path(
           dir,
           "..",
-          "shiny",
-          "v1.4",
+          "viewer",
           "hla_tcr_motifs",
           "core",
           "hla_motif_core.R"
@@ -899,8 +895,7 @@ builder_worker_start <- function(
         source(file.path(
           dir,
           "..",
-          "shiny",
-          "v1.4",
+          "viewer",
           "hla_tcr_motifs",
           "core",
           "hla_association_core.R"

@@ -8,7 +8,7 @@
 ## palette, and a diagram whose dark version has drifted is worse than no dark
 ## version at all.
 ##
-## Colours are the viewer's own tokens (inst/shiny/v1.4/www/custom.css :root) --
+## Colours are the viewer's own tokens (inst/viewer/www/custom.css :root) --
 ## amber is the acting accent, blue is structural, and the logo pair already
 ## uses this text pair.
 ##

@@ -20,19 +20,15 @@ source(
 )
 source("publish.R", local = TRUE)
 source("app_bundle.R", local = TRUE)
+source("report.R", local = TRUE)
 source("coordinator.R", local = TRUE)
-
-## Above this many levels the interface stops offering one swatch each: nobody
-## edits 200 colours by hand, and 200 colour inputs make the page unusable.
-BUILDER_SWATCH_MAX <- 40L
 
 ## runApp() sets the working directory to the app directory.
 source("io.R", local = TRUE)
 source(
   file.path(
     "..",
-    "shiny",
-    "v1.4",
+    "viewer",
     "core",
     "viewer_content_contract.R"
   ),
@@ -41,8 +37,7 @@ source(
 source(
   file.path(
     "..",
-    "shiny",
-    "v1.4",
+    "viewer",
     "core",
     "spatial_coordinate_contract.R"
   ),
@@ -52,8 +47,7 @@ source("spatial.R", local = TRUE)
 source(
   file.path(
     "..",
-    "shiny",
-    "v1.4",
+    "viewer",
     "hla_tcr_motifs",
     "core",
     "hla_typing.R"
@@ -63,8 +57,7 @@ source(
 source(
   file.path(
     "..",
-    "shiny",
-    "v1.4",
+    "viewer",
     "hla_tcr_motifs",
     "core",
     "hla_motif_core.R"
@@ -74,8 +67,7 @@ source(
 source(
   file.path(
     "..",
-    "shiny",
-    "v1.4",
+    "viewer",
     "hla_tcr_motifs",
     "core",
     "hla_association_core.R"
@@ -96,7 +88,13 @@ source("analysis.R", local = TRUE)
 source("build.R", local = TRUE)
 source("prerequisite.R", local = TRUE)
 source("state.R", local = TRUE)
+source(file.path("ui", "dataset_rail.R"), local = TRUE)
 source("plan.R", local = TRUE)
+source(file.path("ui", "inspect_stage.R"), local = TRUE)
+source(file.path("ui", "core_stage.R"), local = TRUE)
+source(file.path("ui", "enhance_stage.R"), local = TRUE)
+source(file.path("ui", "review_stage.R"), local = TRUE)
+source(file.path("ui", "build_status.R"), local = TRUE)
 source("worker.R", local = TRUE)
 source("session.R", local = TRUE)
 
@@ -129,10 +127,10 @@ ICON_FOLDER <- "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2
 cerebro_wordmark <- local({
   candidates <- c(
     system.file(
-      "shiny/v1.4/www/cerebronexus.svg",
+      "viewer/www/cerebronexus.svg",
       package = "CerebroNexus"
     ),
-    file.path("..", "shiny", "v1.4", "www", "cerebronexus.svg")
+    file.path("..", "viewer", "www", "cerebronexus.svg")
   )
   hit <- candidates[nzchar(candidates) & file.exists(candidates)]
   if (length(hit)) {
@@ -155,6 +153,76 @@ asset_stamp <- function(file) {
   paste0("?v=", as.integer(as.numeric(mt)))
 }
 
+builder_protocol_is_quiescent <- function(protocol) {
+  .builder_protocol_assert(protocol)
+  is.null(protocol$pending) &&
+    !length(protocol$queue) &&
+    !length(protocol$awaiting_ack) &&
+    identical(protocol$build_status, "idle")
+}
+
+builder_app_acknowledge_build <- function(protocol, request_id) {
+  builder_protocol_acknowledge(protocol, request_id)
+}
+
+builder_app_build_action <- function(result, id) {
+  result <- builder_as_result(result)
+  if (identical(result$state, "recovery_required")) {
+    return(list(
+      type = "fail",
+      id = id,
+      error = result$error %||%
+        result$message %||%
+        "Release recovery is required."
+    ))
+  }
+  builder_build_action(result, id)
+}
+
+builder_app_settle_release <- function(
+  release,
+  value,
+  .publish = builder_coordinator_publish,
+  .abort = builder_coordinator_abort,
+  .release_error = builder_release_error_result
+) {
+  if (
+    !is.list(release) ||
+      !is.list(release$handle) ||
+      !builder_stage_has_text(release$handle$target %||% "")
+  ) {
+    return(builder_result_failure(
+      "The parent release coordinator identity was lost."
+    ))
+  }
+  target <- release$handle$target
+  if (identical(value$state, "success") && isTRUE(value$publishable)) {
+    published <- try(.publish(release$handle, value), silent = TRUE)
+    if (!inherits(published, "try-error")) {
+      return(builder_as_result(published))
+    }
+    publication_error <- conditionMessage(attr(published, "condition"))
+    try(.abort(release$handle), silent = TRUE)
+    return(.release_error(publication_error, target))
+  }
+  cleaned <- try(.abort(release$handle), silent = TRUE)
+  if (inherits(cleaned, "try-error") || !isTRUE(cleaned$aborted)) {
+    cleanup_error <- if (inherits(cleaned, "try-error")) {
+      conditionMessage(attr(cleaned, "condition"))
+    } else {
+      "The assigned build stage could not be cleaned."
+    }
+    return(.release_error(cleanup_error, target))
+  }
+  typed <- try(builder_as_result(value), silent = TRUE)
+  if (inherits(typed, "try-error")) {
+    return(builder_result_failure(
+      "The worker returned an unsupported terminal build result."
+    ))
+  }
+  typed
+}
+
 ui <- tagList(
   tags$head(
     tags$link(
@@ -162,6 +230,9 @@ ui <- tagList(
       href = paste0("builder.css", asset_stamp("www/builder.css"))
     ),
     tags$script(src = paste0("builder.js", asset_stamp("www/builder.js"))),
+    tags$script(HTML(
+      "Shiny.addCustomMessageHandler('builder_copy_text', function(message) { navigator.clipboard.writeText(message.text); });"
+    )),
     tags$title("Cerebro Dataset Builder")
   ),
   div(
@@ -184,23 +255,28 @@ ui <- tagList(
       div(
         class = "rail-head",
         span("Datasets"),
-        textOutput("ds_count", inline = TRUE)
+        span(
+          textOutput("ds_count", inline = TRUE),
+          uiOutput("rail_undo", inline = TRUE)
+        )
       ),
       uiOutput("ds_list"),
       div(
         class = "rail-add",
         actionButton(
           "open_browser",
-          tagList(icon_svg(ICON_FOLDER), " Choose files…"),
+          tagList(icon_svg(ICON_FOLDER), " Add datasets…"),
           class = "btn btn-primary",
           style = "width:100%"
         ),
-        div(class = "or", "or explore an example"),
-        uiOutput("example_buttons"),
         uiOutput("add_error")
       )
     ),
-    div(id = "pane", uiOutput("result_card"), uiOutput("detail"))
+    div(
+      id = "pane",
+      uiOutput("workbench"),
+      uiOutput("result_card")
+    )
   ),
   uiOutput("browser_panel"),
   uiOutput("actionbar")
@@ -210,24 +286,131 @@ server <- function(input, output, session) {
   ## Each entry: id, path, format, object, profile, settings.
   ## `settings` is what the user chose; it is written back whenever an input
   ## changes so switching between data sets does not lose it.
-  sets <- reactiveVal(list())
-  current <- reactiveVal(NULL)
+  store <- reactiveVal(builder_state())
+  current_id <- reactiveVal(NULL)
+  update_current_id <- function(value) {
+    if (!identical(value, isolate(current_id()))) {
+      current_id(value)
+    }
+    invisible(value)
+  }
+  observe({
+    update_current_id(store()$current_dataset)
+  })
+  app_store_compat_entries <- function(state, datasets, mark = FALSE) {
+    ids <- vapply(
+      datasets,
+      function(entry) {
+        stopifnot(
+          is.list(entry),
+          builder_has_text(entry$id),
+          is.list(entry$settings)
+        )
+        entry$id
+      },
+      character(1)
+    )
+    stopifnot(!anyDuplicated(ids))
+    state$datasets <- datasets
+    if (is.null(state$current_dataset) || !state$current_dataset %in% ids) {
+      state["current_dataset"] <- list(if (length(ids)) ids[[1L]] else NULL)
+    }
+    if (
+      !is.null(state$initial_dataset_override) &&
+        !state$initial_dataset_override %in% ids
+    ) {
+      state["initial_dataset_override"] <- list(NULL)
+    }
+    state$revision <- as.integer(state$revision %||% 0L) + 1L
+    if (isTRUE(mark)) {
+      state$.state_only_fixture <- TRUE
+    }
+    structure(state, class = c("builder_state", "list"))
+  }
+  use_state_only_fixture <- function(datasets = list()) {
+    fixture <- app_store_compat_entries(builder_state(), datasets, mark = TRUE)
+    store(fixture)
+    invisible(fixture)
+  }
+  sets <- function(value) {
+    if (missing(value)) {
+      return(store()$datasets)
+    }
+    current_state <- isolate(store())
+    updated <- try(
+      builder_reduce_state(
+        current_state,
+        list(type = "replace_all", datasets = value)
+      ),
+      silent = TRUE
+    )
+    if (inherits(updated, "try-error")) {
+      if (!isTRUE(current_state$.state_only_fixture)) {
+        stop(attr(updated, "condition"))
+      }
+      ## Explicit state-only fixtures may carry the legacy minimal records used
+      ## by UI tests. The fixture mark must exist before this setter is called.
+      updated <- app_store_compat_entries(
+        current_state,
+        value
+      )
+    }
+    store(updated)
+    invisible(value)
+  }
+  current <- function(value) {
+    if (missing(value)) {
+      return(current_id())
+    }
+    if (is.null(value)) {
+      return(invisible(NULL))
+    }
+    updated <- builder_reduce_state(
+      isolate(store()),
+      list(type = "select", id = value)
+    )
+    store(updated)
+    update_current_id(updated$current_dataset)
+    invisible(value)
+  }
   result <- reactiveVal(NULL)
+  review_options <- reactiveVal(builder_review_options())
+  review_validation <- reactiveVal(list(ok = TRUE, error = NULL))
+  enhance_contract <- reactiveVal(list(
+    id = NULL,
+    organism = NULL,
+    analyses = character()
+  ))
   seq_id <- reactiveVal(0L)
   add_error <- reactiveVal(NULL)
   preview_frame <- reactiveVal(NULL)
   spatial_coords <- reactiveVal(NULL)
-
-  ## The id of the data set that arrived on its own, rather than because the
-  ## user pointed at it -- it gets one extra beat of animation so a load that
-  ## finished while the user was reading is not silent.
-  just_added <- reactiveVal(NULL)
 
   entry_of <- function(id) {
     all <- sets()
     hit <- Filter(function(e) identical(e$id, id), all)
     if (length(hit)) hit[[1]] else NULL
   }
+
+  observe({
+    state <- store()
+    id <- state$current_dataset
+    entries <- state$datasets %||% list()
+    index <- which(vapply(
+      entries,
+      function(entry) identical(entry$id, id),
+      logical(1)
+    ))
+    entry <- if (length(index) == 1L) entries[[index]] else NULL
+    next_contract <- list(
+      id = id,
+      organism = entry$settings$organism %||% NULL,
+      analyses = unname(entry$settings$analyses %||% character())
+    )
+    if (!identical(next_contract, isolate(enhance_contract()))) {
+      enhance_contract(next_contract)
+    }
+  })
 
   ## Names end up as the app's dataset switcher labels, so duplicates are not
   ## cosmetic: they block the build. Loading the same example twice is an
@@ -260,8 +443,22 @@ server <- function(input, output, session) {
     }
     existing$settings <- updated$settings
     existing$revision <- as.integer(existing$revision %||% 0L) + 1L
-    all[[index]] <- existing
-    sets(all)
+    current_state <- isolate(store())
+    updated_state <- try(
+      builder_reduce_state(
+        current_state,
+        list(type = "replace", id = existing$id, entry = existing)
+      ),
+      silent = TRUE
+    )
+    if (inherits(updated_state, "try-error")) {
+      if (!isTRUE(current_state$.state_only_fixture)) {
+        stop(attr(updated_state, "condition"))
+      }
+      all[[index]] <- existing
+      updated_state <- app_store_compat_entries(current_state, all)
+    }
+    store(updated_state)
     current_protocol <- protocol()
     if (!is.null(current_protocol)) {
       protocol(builder_protocol_dataset(
@@ -276,8 +473,14 @@ server <- function(input, output, session) {
 
   output$format_line <- renderText(builder_format_summary())
   output$ds_count <- renderText({
-    n <- length(sets())
+    n <- length(store()$datasets)
     if (n == 0) "" else paste0(n)
+  })
+  output$rail_undo <- renderUI({
+    if (!isTRUE(store()$can_undo_remove)) {
+      return(NULL)
+    }
+    actionLink("undo_remove", "Undo remove")
   })
 
   ## -- the worker process ---------------------------------------------------
@@ -290,6 +493,21 @@ server <- function(input, output, session) {
   build_state <- reactiveVal(builder_build_state())
   active_release <- reactiveVal(NULL)
   request_sequence <- reactiveVal(0L)
+  pending_snapshot_drops <- reactiveVal(list())
+  pending_sources <- reactiveVal(character())
+  release_pending_source <- function(payload) {
+    if (!is.list(payload) || !identical(payload$kind, "load")) {
+      return(invisible(FALSE))
+    }
+    value <- if (identical(payload$source, "file")) {
+      payload$path
+    } else {
+      payload$example
+    }
+    key <- builder_source_key(payload$source, value)
+    pending_sources(builder_source_release(pending_sources(), key))
+    invisible(TRUE)
+  }
   enqueue <- function(req) {
     current_protocol <- protocol()
     if (is.null(current_protocol) || !isTRUE(worker_available())) {
@@ -298,12 +516,19 @@ server <- function(input, output, session) {
     }
     dataset <- req$id %||% "session"
     entry <- entry_of(dataset)
-    revision <- if (is.null(entry)) 0L else as.integer(entry$revision %||% 0L)
-    snapshot_identity <- if (is.null(entry)) {
-      NULL
+    revision <- if (!is.null(req$dataset_revision)) {
+      as.integer(req$dataset_revision)
+    } else if (is.null(entry)) {
+      0L
     } else {
-      .builder_worker_identity(entry$snapshot)
+      as.integer(entry$revision %||% 0L)
     }
+    snapshot_identity <- req$snapshot_identity %||%
+      if (is.null(entry)) {
+        NULL
+      } else {
+        .builder_worker_identity(entry$snapshot)
+      }
     if (!is.null(entry)) {
       current_protocol <- builder_protocol_dataset(
         current_protocol,
@@ -357,6 +582,14 @@ server <- function(input, output, session) {
     invisible(TRUE)
   }
 
+  abort_release_result <- function(release, reason) {
+    if (is.null(release)) {
+      return(builder_result_failure(reason))
+    }
+    try(builder_coordinator_abort(release$handle), silent = TRUE)
+    builder_release_error_result(reason, release$handle$target)
+  }
+
   settle_failed_builds <- function(recovery, reason) {
     failed <- Filter(
       function(request) identical(request$kind, "build"),
@@ -364,8 +597,9 @@ server <- function(input, output, session) {
     )
     for (request in failed) {
       release <- isolate(active_release())
+      release_result <- builder_result_failure(reason)
       if (!is.null(release) && identical(release$id, request$build_id)) {
-        try(builder_coordinator_abort(release$handle), silent = TRUE)
+        release_result <- abort_release_result(release, reason)
         active_release(NULL)
       }
       state <- build_state()
@@ -396,7 +630,7 @@ server <- function(input, output, session) {
         list(type = "fail", id = build_id, error = reason)
       }
       update_build_state(action)
-      result(list(error = reason))
+      result(release_result)
     }
   }
 
@@ -434,6 +668,9 @@ server <- function(input, output, session) {
     worker_available(isTRUE(retry_persistent))
     protocol(recovered$protocol)
     settle_failed_builds(recovered, reason)
+    invisible(lapply(recovered$failed %||% list(), function(request) {
+      release_pending_source(request$payload)
+    }))
     retried_builds <- Filter(
       function(request) identical(request$kind, "build"),
       recovered$retried %||% list()
@@ -541,9 +778,17 @@ server <- function(input, output, session) {
       }
       current_worker <- stopped$worker
       released_all <- TRUE
+      released_identities <- character()
       for (snapshot in current_worker$snapshot_registry) {
+        identity <- .builder_worker_identity(snapshot)
+        if (identity %in% released_identities) {
+          next
+        }
         released <- try(.builder_snapshot_release(snapshot), silent = TRUE)
         released_all <- released_all && isTRUE(released)
+        if (isTRUE(released)) {
+          released_identities <- c(released_identities, identity)
+        }
       }
       remaining <- list.files(
         current_worker$snapshot_root,
@@ -584,15 +829,29 @@ server <- function(input, output, session) {
   observeEvent(input$close_browser, browse_open(FALSE))
   observeEvent(input$browse_to, browse_dir(input$browse_to))
 
-  observeEvent(input$choose_file, {
-    path <- input$choose_file
-    browse_open(FALSE)
-    if (any(vapply(sets(), function(e) identical(e$path, path), logical(1)))) {
-      add_error("This file has already been added.")
+  choose_paths <- function(paths) {
+    paths <- unique(as.character(paths))
+    paths <- paths[!is.na(paths) & nzchar(paths)]
+    if (!length(paths)) {
       return()
     }
-    start_load("file", path, tools::file_path_sans_ext(basename(path)))
-  })
+    browse_open(FALSE)
+    existing <- vapply(sets(), function(entry) entry$path, character(1))
+    duplicate <- paths %in% existing
+    if (any(duplicate)) {
+      add_error(paste0(
+        sum(duplicate),
+        if (sum(duplicate) == 1L) " file has" else " files have",
+        " already been added."
+      ))
+    }
+    for (path in paths[!duplicate]) {
+      start_load("file", path, tools::file_path_sans_ext(basename(path)))
+    }
+  }
+
+  observeEvent(input$choose_files, choose_paths(input$choose_files))
+  observeEvent(input$choose_file, choose_paths(input$choose_file))
 
   ## The chrome: rendered when the sheet opens and then left alone. It reads
   ## `browse_open()` and deliberately never reads `browse_dir()`, which is what
@@ -611,6 +870,12 @@ server <- function(input, output, session) {
           class = "sheet-head",
           span(class = "sheet-title", "Choose a Seurat object"),
           tags$button(
+            class = "btn btn-primary builder-add-files",
+            type = "button",
+            disabled = "disabled",
+            "Add selected files"
+          ),
+          tags$button(
             class = "btn btn-quiet",
             onclick = "Shiny.setInputValue('close_browser', Math.random())",
             "Close"
@@ -625,6 +890,11 @@ server <- function(input, output, session) {
               nm
             )
           })
+        ),
+        div(
+          class = "source-picker-examples",
+          span(class = "sheet-title", "Examples"),
+          uiOutput("example_buttons")
         ),
         uiOutput("browse_list", class = "sheet-body")
       )
@@ -663,6 +933,7 @@ server <- function(input, output, session) {
               tags$button(
                 class = "row-btn is-file builder-choose",
                 `data-path` = listing$files$path[i],
+                `aria-pressed` = "false",
                 span(class = "row-icon", "•"),
                 span(class = "row-name", listing$files$name[i]),
                 span(
@@ -686,16 +957,24 @@ server <- function(input, output, session) {
   ## rather than arriving a frame later into an empty panel.
   outputOptions(output, "browse_list", suspendWhenHidden = FALSE)
 
-  ## Rendered ONCE -- this reads no reactive value, so the buttons are created
-  ## with the session and never replaced. That is what makes the leave
-  ## animation possible: a renderUI that re-ran on every change would destroy
-  ## the node before it could animate out, and only entrances would ever be
-  ## seen. Which examples are in use is a class the client toggles instead.
+  ## The typed store is the durable authority for availability. Reading both
+  ## the open state and sets means a newly-created picker DOM starts with the
+  ## same disabled examples even when no store change occurred while closed.
   output$example_buttons <- renderUI({
+    req(browse_open())
+    used <- as.character(unlist(Filter(
+      Negate(is.null),
+      lapply(sets(), function(entry) entry$example)
+    )))
     tagList(lapply(builder_examples(), function(ex) {
+      taken <- ex$id %in%
+        used ||
+        builder_source_key("example", ex$id) %in% pending_sources()
       tags$button(
-        class = "btn example-btn",
+        class = if (taken) "btn example-btn is-taken" else "btn example-btn",
         `data-ex` = ex$id,
+        disabled = if (taken) "disabled",
+        `aria-disabled` = if (taken) "true" else "false",
         ## One wrapper, because the collapse animates the button's single grid
         ## row to 0fr -- two children would be two rows and only the first
         ## would close.
@@ -715,9 +994,14 @@ server <- function(input, output, session) {
       Negate(is.null),
       lapply(sets(), function(e) e$example)
     )
+    pending_examples <- sub(
+      "^example:",
+      "",
+      grep("^example:", pending_sources(), value = TRUE)
+    )
     session$sendCustomMessage(
       "builder_used_examples",
-      list(ids = as.character(unlist(used)))
+      list(ids = unique(c(as.character(unlist(used)), pending_examples)))
     )
   })
 
@@ -727,10 +1011,15 @@ server <- function(input, output, session) {
       add_error("The background worker is not ready yet.")
       return()
     }
+    reservation <- builder_source_reserve(sets(), pending_sources(), kind, arg)
+    if (!isTRUE(reservation$ok)) {
+      return(invisible(FALSE))
+    }
+    pending_sources(reservation$pending)
     add_error(NULL)
     seq_id(seq_id() + 1L)
     id <- paste0("ds", seq_id())
-    enqueue(list(
+    queued <- enqueue(list(
       kind = "load",
       source = kind,
       id = id,
@@ -739,9 +1028,23 @@ server <- function(input, output, session) {
       label = label,
       note = paste0("Loading ", label, "…")
     ))
+    if (!isTRUE(queued)) {
+      pending_sources(builder_source_release(
+        pending_sources(),
+        reservation$key
+      ))
+    }
+    invisible(isTRUE(queued))
   }
 
   observeEvent(input$use_example, {
+    used <- as.character(unlist(Filter(
+      Negate(is.null),
+      lapply(sets(), function(entry) entry$example)
+    )))
+    if (input$use_example %in% used) {
+      return()
+    }
     ex <- Filter(
       function(e) identical(e$id, input$use_example),
       builder_examples()
@@ -768,14 +1071,8 @@ server <- function(input, output, session) {
     request <- dispatched$request
     nxt <- request$payload
     if (identical(nxt$kind, "build")) {
-      all <- isolate(sets())
-      out_dir <- trimws(isolate(input$out_dir) %||% "")
-      plan <- builder_make_plan(
-        all,
-        out_dir,
-        make_app = isTRUE(isolate(input$make_app)),
-        overwrite = isTRUE(isolate(input$overwrite))
-      )
+      # Legacy prohibition: never use `plan <- builder_make_plan` here.
+      plan <- nxt$plan
       plan_error <- plan$error
       if (
         is.null(plan_error) &&
@@ -796,7 +1093,7 @@ server <- function(input, output, session) {
             list(error = plan_error)
           )
         )
-        result(list(error = plan_error))
+        result(builder_result_failure(plan_error))
         protocol(builder_protocol_acknowledge(
           completed$protocol,
           request$request_id
@@ -814,7 +1111,10 @@ server <- function(input, output, session) {
           dispatched$protocol,
           builder_worker_response(request, list(error = plan_error))
         )
-        result(list(error = plan_error))
+        result(builder_release_error_result(
+          plan_error,
+          plan$output_release$directory
+        ))
         protocol(builder_protocol_acknowledge(
           completed$protocol,
           request$request_id
@@ -944,11 +1244,12 @@ server <- function(input, output, session) {
     if (!is.null(got$result$error)) {
       if (identical(request$kind, "build")) {
         release <- isolate(active_release())
+        release_result <- builder_result_failure(got$result$error)
         if (!is.null(release)) {
-          try(builder_coordinator_abort(release$handle), silent = TRUE)
+          release_result <- abort_release_result(release, got$result$error)
           active_release(NULL)
         }
-        result(list(error = got$result$error))
+        result(release_result)
       } else {
         add_error(got$result$error)
       }
@@ -974,6 +1275,7 @@ server <- function(input, output, session) {
     protocol(completed$protocol)
     busy_note(NULL)
     if (!isTRUE(completed$accepted)) {
+      release_pending_source(p)
       if (isTRUE(request$persistent)) {
         protocol(builder_protocol_acknowledge(
           protocol(),
@@ -995,8 +1297,9 @@ server <- function(input, output, session) {
     }
     value <- completed$value
     if (!is.null(completed$error)) {
+      release_pending_source(p)
       if (identical(request$kind, "build")) {
-        result(list(error = completed$error))
+        result(builder_result_failure(completed$error))
         update_build_state(list(
           type = "fail",
           id = request$build_id,
@@ -1013,9 +1316,34 @@ server <- function(input, output, session) {
       }
       return()
     }
+    if (identical(request$kind, "build") && isTRUE(request$persistent)) {
+      on.exit(
+        {
+          current <- isolate(protocol())
+          if (!is.null(current)) {
+            acknowledged <- try(
+              builder_app_acknowledge_build(current, request$request_id),
+              silent = TRUE
+            )
+            if (inherits(acknowledged, "try-error")) {
+              protocol(NULL)
+              worker_available(FALSE)
+              add_error(paste0(
+                "The completed Build could not be acknowledged. ",
+                "Restart this Builder session."
+              ))
+            } else {
+              protocol(acknowledged)
+            }
+          }
+        },
+        add = TRUE
+      )
+    }
 
     if (identical(p$kind, "load")) {
       if (!is.null(value$error)) {
+        release_pending_source(p)
         add_error(value$error)
         protocol(builder_protocol_acknowledge(protocol(), request$request_id))
         return()
@@ -1023,6 +1351,9 @@ server <- function(input, output, session) {
       profile <- value$profile
       entry <- list(
         id = p$id,
+        source_id = p$id,
+        output_id = p$id,
+        selector_value = p$id,
         path = p$path,
         ## Which built-in example produced this, so removing it puts the
         ## example back on offer. NULL for anything read from a file.
@@ -1054,7 +1385,11 @@ server <- function(input, output, session) {
         return()
       }
       worker(updated_worker)
-      sets(c(sets(), list(entry)))
+      store(builder_reduce_state(
+        isolate(store()),
+        list(type = "add", entry = entry)
+      ))
+      release_pending_source(p)
       protocol(builder_protocol_dataset(
         protocol(),
         p$id,
@@ -1062,7 +1397,6 @@ server <- function(input, output, session) {
         .builder_worker_identity(entry$snapshot)
       ))
       current(p$id)
-      just_added(p$id)
       result(NULL)
     } else if (identical(p$kind, "preview")) {
       if (identical(current(), p$id)) {
@@ -1083,42 +1417,39 @@ server <- function(input, output, session) {
         is.null(release) ||
           !identical(release$id, request$build_id)
       ) {
-        value <- list(
-          state = "failure",
-          publishable = FALSE,
-          error = "The parent release coordinator identity was lost."
-        )
-      } else if (
-        identical(value$state, "success") && isTRUE(value$publishable)
-      ) {
-        published <- try(
-          builder_coordinator_publish(release$handle, value),
-          silent = TRUE
-        )
-        if (inherits(published, "try-error")) {
-          publication_error <- conditionMessage(attr(published, "condition"))
-          try(builder_coordinator_abort(release$handle), silent = TRUE)
-          value <- list(
-            state = "failure",
-            publishable = FALSE,
-            error = publication_error
-          )
-        } else {
-          value <- published
-        }
-        active_release(NULL)
-      } else {
-        try(builder_coordinator_abort(release$handle), silent = TRUE)
-        active_release(NULL)
+        release <- NULL
       }
+      value <- builder_app_settle_release(release, value)
+      active_release(NULL)
       result(value)
-      update_build_state(builder_build_action(value, request$build_id))
+      update_build_state(builder_app_build_action(value, request$build_id))
     } else if (identical(p$kind, "drop")) {
+      active_state <- store()
+      retained <- active_state$datasets
+      if (is.list(active_state$last_removed)) {
+        retained <- c(retained, list(active_state$last_removed$entry))
+      }
+      pending_drops <- pending_snapshot_drops()
+      # The transition excludes other_drop_ids with a shared pending identity.
       released <- try(
-        builder_worker_release_snapshot(
-          got$worker,
-          p$id,
-          expected_identity = request$snapshot_identity
+        builder_snapshot_release_transition(
+          worker = got$worker,
+          id = p$id,
+          identity = request$snapshot_identity,
+          retained = retained,
+          pending = pending_drops,
+          release = function(worker, id, identity) {
+            builder_worker_release_snapshot(
+              worker,
+              id,
+              expected_identity = identity
+            )
+          },
+          unregister = function(worker, id) {
+            worker$snapshot_registry[[id]] <- NULL
+            worker
+          },
+          identity_of = .builder_worker_identity
         ),
         silent = TRUE
       )
@@ -1130,12 +1461,10 @@ server <- function(input, output, session) {
         )
         return()
       }
-      worker(released)
+      worker(released$worker)
+      pending_snapshot_drops(released$pending)
       all <- Filter(function(e) !identical(e$id, p$id), sets())
       sets(all)
-      if (identical(just_added(), p$id)) {
-        just_added(NULL)
-      }
       if (identical(current(), p$id)) {
         current(if (length(all)) all[[1]]$id else NULL)
         result(NULL)
@@ -1183,10 +1512,28 @@ server <- function(input, output, session) {
       }
       return()
     }
-    if (isTRUE(request$persistent)) {
+    if (isTRUE(request$persistent) && !identical(request$kind, "build")) {
       protocol(builder_protocol_acknowledge(protocol(), request$request_id))
     }
   })
+
+  update_enhance_histology_choices <- function(entry) {
+    choices <- names(entry$settings$images %||% list()) %||% character()
+    updateCheckboxGroupInput(
+      session,
+      "enhance-histology_to_retain",
+      choices = choices,
+      selected = choices
+    )
+    invisible(choices)
+  }
+
+  commit_enhance_images <- function(entry, images) {
+    entry$settings$images <- images
+    replace_entry(entry)
+    update_enhance_histology_choices(entry)
+    invisible(entry)
+  }
 
   ## Take the per-section extents the worker computed and pair each with the
   ## one shared picture.
@@ -1201,8 +1548,7 @@ server <- function(input, output, session) {
     paired <- builder_pair_sections(a, per_section)
     imgs <- utils::modifyList(e$settings$images %||% list(), paired)
     short <- names(Filter(function(x) x$outside > 0, paired))
-    e$settings$images <- imgs
-    replace_entry(e)
+    commit_enhance_images(e, imgs)
 
     ## Saying "done" when four of five slides have every cell off the image is
     ## how the earlier version of this hid its own bug.
@@ -1241,427 +1587,257 @@ server <- function(input, output, session) {
 
   ## -- the rail ------------------------------------------------------------
   output$ds_list <- renderUI({
-    all <- sets()
-    if (!length(all)) {
-      return(div(class = "rail-empty", "No datasets yet. Add one below."))
-    }
-    lapply(seq_along(all), function(i) {
-      e <- all[[i]]
-      cls <- paste("ds", if (identical(e$id, current())) "is-active" else "")
-      ready <- length(e$settings$groups) > 0 &&
-        length(e$settings$reductions) > 0 &&
-        builder_has_text(e$settings$layer) &&
-        builder_has_text(e$settings$nUMI) &&
-        builder_has_text(e$settings$nGene)
-      ## A container, not a button: the row selects, and a remove button sits
-      ## on top of its right end. Nesting one button in another is not markup
-      ## a browser will honour.
-      div(
-        class = cls,
-        `data-ds` = e$id,
-        tags$button(
-          class = "ds-pick builder-pick",
-          id = paste0("pick_", e$id),
-          `data-ds` = e$id,
-          ## The number is the export order, which is also the order of the
-          ## switcher in the app this produces.
-          span(class = "ds-idx", i),
-          span(
-            class = "ds-body",
-            span(class = "nm", e$settings$name),
-            span(
-              class = if (ready) "meta" else "meta bad",
-              sprintf(
-                "%s cells · %s",
-                format(e$profile$n_cells, big.mark = ","),
-                if (ready) e$format else "Setup incomplete"
-              )
-            )
-          )
-        ),
-        tags$button(
-          class = "ds-del builder-drop",
-          title = "Remove this dataset",
-          `aria-label` = paste0("Remove ", e$settings$name),
-          `data-ds` = e$id,
-          icon_svg(ICON_TRASH)
-        )
-      )
-    })
+    builder_dataset_rail_ui(store(), current())
   })
 
-  observeEvent(input$pick, {
-    current(input$pick)
-    ## Pointing at it makes it no longer new.
-    just_added(NULL)
-    result(NULL)
-  })
-
-  ## -- keep the current entry's settings in step with the inputs -----------
-  setting_inputs <- c(
-    "name",
-    "organism",
-    "assay",
-    "layer",
-    "nUMI",
-    "nGene",
-    "palette",
-    "groups",
-    "reductions"
-  )
-  ## Selections, as opposed to single values. An empty one is a real answer --
-  ## "nothing ticked" -- and has to be written back, or unticking the last box
-  ## silently keeps the old set.
-  multi_inputs <- c("groups", "reductions")
-
-  observe({
-    id <- current()
-    req(id)
-    vals <- lapply(setting_inputs, function(k) input[[k]])
-    names(vals) <- setting_inputs
-    ## Before the detail pane has rendered for this entry, the inputs still
-    ## hold the previous one's values; writing those back would copy settings
-    ## across data sets.
-    if (is.null(input$rendered_for) || !identical(input$rendered_for, id)) {
+  duplicate_dataset <- function(id) {
+    entry <- entry_of(id)
+    current_worker <- isolate(worker())
+    current_protocol <- isolate(protocol())
+    if (
+      is.null(entry) || is.null(current_worker) || is.null(current_protocol)
+    ) {
       return()
     }
-    e <- isolate(entry_of(id))
-    req(e)
-    for (k in setting_inputs) {
-      if (!is.null(vals[[k]])) {
-        e$settings[[k]] <- vals[[k]]
-      } else if (k %in% multi_inputs) {
-        e$settings[[k]] <- character()
-      }
+    protocol_busy <- !is.null(current_protocol$pending) ||
+      length(current_protocol$queue) > 0L ||
+      length(current_protocol$awaiting_ack) > 0L
+    if (protocol_busy) {
+      showNotification(
+        "Wait for the current dataset action before duplicating.",
+        type = "warning"
+      )
+      return()
     }
-    replace_entry(e)
-  })
 
-  ## Assay-dependent controls must follow the selected assay. A Seurat object
-  ## can expose entirely different layers and QC fields in each assay.
-  observeEvent(
-    input$assay,
-    {
-      id <- current()
-      req(id)
-      if (is.null(input$rendered_for) || !identical(input$rendered_for, id)) {
-        return()
-      }
-      entry <- entry_of(id)
-      req(entry)
-      assay_profile <- entry$profile$assay_profiles[[input$assay]]
-      req(assay_profile)
-      updateSelectInput(
-        session,
-        "layer",
-        choices = assay_profile$layers,
-        selected = if (
-          builder_has_text(entry$settings$layer) &&
-            entry$settings$layer %in% assay_profile$layers
-        ) {
-          entry$settings$layer
-        } else {
-          assay_profile$default_layer
-        }
-      )
-      updateSelectInput(
-        session,
-        "nUMI",
-        choices = assay_profile$nUMI_choices,
-        selected = if (builder_has_text(assay_profile$nUMI)) {
-          assay_profile$nUMI
-        } else {
-          character()
-        }
-      )
-      updateSelectInput(
-        session,
-        "nGene",
-        choices = assay_profile$nGene_choices,
-        selected = if (builder_has_text(assay_profile$nGene)) {
-          assay_profile$nGene
-        } else {
-          character()
-        }
-      )
-    },
-    ignoreInit = TRUE
-  )
-
-  ## `analyses` is stamped with the data set it was produced for, so it is
-  ## applied by id rather than by whatever is open when it arrives.
-  observeEvent(input$analyses, {
-    msg <- input$analyses
-    req(!is.null(msg$ds))
-    e <- entry_of(msg$ds)
-    req(e)
-    e$settings$analyses <- builder_normalize_analyses(
-      as.character(msg$v %||% character()),
-      builder_profile_has(e$profile, "marker_genes")
+    seq_id(seq_id() + 1L)
+    new_id <- paste0("ds", seq_id())
+    registered <- try(
+      builder_worker_register_snapshot(
+        current_worker,
+        new_id,
+        entry$snapshot
+      ),
+      silent = TRUE
     )
-    replace_entry(e)
-  })
+    if (inherits(registered, "try-error")) {
+      add_error(conditionMessage(attr(registered, "condition")))
+      return()
+    }
+    restart_worker_protocol(
+      registered,
+      current_protocol,
+      "The dataset setup was duplicated."
+    )
+    if (!isTRUE(isolate(worker_available()))) {
+      return()
+    }
+    duplicated <- builder_reduce_state(
+      isolate(store()),
+      list(
+        type = "duplicate",
+        id = id,
+        new_id = new_id,
+        name = unique_name(paste0(entry$settings$name, " copy"))
+      )
+    )
+    store(duplicated)
+    protocol(builder_protocol_dataset(
+      isolate(protocol()),
+      new_id,
+      0L,
+      .builder_worker_identity(entry$snapshot)
+    ))
+    result(NULL)
+  }
 
-  ## -- preview --------------------------------------------------------------
-  ## Ask the worker for the points whenever the choice changes; it answers with
-  ## a few thousand rows regardless of how big the object is.
+  ## -- keep the current entry's settings in step with Core -----------------
+  core_setting_inputs <- c(
+    name = "core-name",
+    organism = "core-organism",
+    default_group = "core-default_group",
+    default_projection = "core-default_projection",
+    assay = "core-assay",
+    layer = "core-layer",
+    nUMI = "core-nUMI",
+    nGene = "core-nGene",
+    expression_backend = "core-backend"
+  )
   observeEvent(
-    list(current(), input$preview_reduction, input$preview_group),
+    input[["core-assay"]],
     {
       id <- current()
-      rs <- worker()
-      if (is.null(id) || is.null(rs)) {
+      if (
+        is.null(id) ||
+          !identical(input[["core-rendered_for"]], id)
+      ) {
         return()
       }
       e <- isolate(entry_of(id))
-      if (is.null(e)) {
-        return()
+      req(e)
+      controls <- builder_core_assay_controls(
+        e$profile,
+        e$settings,
+        input[["core-assay"]]
+      )
+      for (field in names(controls)) {
+        updateSelectInput(
+          session,
+          paste0("core-", field),
+          choices = controls[[field]]$choices,
+          selected = controls[[field]]$selected
+        )
       }
-      red <- input$preview_reduction %||%
-        (if (length(e$settings$reductions)) e$settings$reductions[1] else NULL)
-      if (is.null(red)) {
-        return()
-      }
-      preview_frame(NULL)
-      enqueue(list(
-        kind = "preview",
-        replaces = "preview",
-        id = id,
-        reduction = red,
-        group = input$preview_group,
-        note = "Rendering preview…"
-      ))
     },
-    ignoreInit = FALSE
+    ignoreInit = TRUE
   )
-
-  ## -- group colours --------------------------------------------------------
-  ## Stored per data set as settings$colors[[variable]] = c(level = "#hex"),
-  ## which is exactly the shape createShinyApp(colors = ) wants, so nothing has
-  ## to be reshaped at build time and nothing can be reshaped wrongly.
-  ##
-  ## Levels for the variable the preview is coloured by, in export order.
-  preview_levels <- reactive({
+  observe({
     id <- current()
-    e <- if (is.null(id)) NULL else entry_of(id)
-    g <- input$preview_group
-    if (is.null(e) || is.null(g) || !nzchar(g)) {
-      return(character())
+    rendered_for <- input[["core-rendered_for"]]
+    if (is.null(id) || !identical(rendered_for, id)) {
+      return()
     }
-    (e$levels %||% list())[[g]] %||% character()
-  })
-
-  preview_colors <- reactive({
-    lv <- preview_levels()
-    if (!length(lv)) {
-      return(NULL)
+    values <- lapply(core_setting_inputs, function(input_id) input[[input_id]])
+    if (any(vapply(values, is.null, logical(1)))) {
+      return()
     }
-    id <- current()
-    entry <- if (is.null(id)) NULL else entry_of(id)
-    if (is.null(entry)) {
-      return(NULL)
-    }
-    g <- input$preview_group
-    builder_level_colors(
-      lv,
-      entry$settings$palette %||% "cerebro",
-      (entry$settings$color_overrides %||% list())[[g]]
-    )
-  })
-
-  ## The browser sends the dataset, grouping variable and level with every
-  ## swatch edit. No value can leak into whichever dataset happens to be open
-  ## when a delayed input event arrives.
-  observeEvent(input$swatch_change, {
-    msg <- input$swatch_change
-    req(msg$ds, msg$group, msg$level, msg$value)
-    entry <- entry_of(msg$ds)
+    entry <- isolate(entry_of(id))
     req(entry)
-    overrides <- entry$settings$color_overrides %||% list()
-    per_group <- overrides[[msg$group]] %||%
-      stats::setNames(character(), character())
-    per_group[[msg$level]] <- msg$value
-    overrides[[msg$group]] <- per_group
-    entry$settings$color_overrides <- overrides
+    next_settings <- entry$settings
+    for (setting in names(core_setting_inputs)) {
+      next_settings[[setting]] <- values[[setting]]
+    }
+    assay_controls <- builder_core_assay_controls(
+      entry$profile,
+      next_settings,
+      next_settings$assay
+    )
+    for (field in names(assay_controls)) {
+      next_settings[[field]] <- assay_controls[[field]]$selected
+    }
+    if (!next_settings$organism %in% c("hg", "mm")) {
+      next_settings$analyses <- setdiff(
+        next_settings$analyses %||% character(),
+        "percent_mt_ribo"
+      )
+    }
+    entry$settings <- next_settings
     replace_entry(entry)
   })
 
-  observeEvent(input$reset_colors, {
+  ## Assay-dependent controls above use the namespaced Core inputs.
+  invisible(lapply(builder_analysis_steps(), function(step) {
+    observeEvent(
+      input[[paste0("enhance-analysis_", step$id)]],
+      {
+        id <- current()
+        if (
+          is.null(id) ||
+            !identical(input[["enhance-rendered_for"]], id)
+        ) {
+          return()
+        }
+        entry <- isolate(entry_of(id))
+        req(entry)
+        selected <- entry$settings$analyses %||% character()
+        requested <- isTRUE(input[[paste0("enhance-analysis_", step$id)]])
+        analysis_profile <- builder_enhance_analysis_profile(
+          entry$profile,
+          entry$settings$organism
+        )
+        blocked <- builder_step_blocked(step, analysis_profile, selected)
+        if (requested && !is.null(blocked)) {
+          return()
+        }
+        if (requested) {
+          selected <- unique(c(selected, step$id))
+        } else {
+          selected <- setdiff(selected, step$id)
+        }
+        entry$settings$analyses <- builder_normalize_analyses(
+          selected,
+          builder_profile_has(entry$profile, "marker_genes")
+        )
+        replace_entry(entry)
+      },
+      ignoreInit = TRUE
+    )
+  }))
+
+  ## -- supplementary tables -------------------------------------------------
+  update_enhance_table_choices <- function(entry) {
+    choices <- names(entry$settings$tables %||% list()) %||% character()
+    updateCheckboxGroupInput(
+      session,
+      "enhance-tables_to_retain",
+      choices = choices,
+      selected = choices
+    )
+    invisible(choices)
+  }
+
+  observeEvent(input[["enhance-add_table"]], {
     id <- current()
     req(id)
     entry <- entry_of(id)
     req(entry)
-    overrides <- entry$settings$color_overrides %||% list()
-    overrides[[input$preview_group]] <- NULL
-    entry$settings$color_overrides <- overrides
-    entry$settings$palette <- "cerebro"
-    replace_entry(entry)
-    updateSelectInput(session, "palette", selected = "cerebro")
-  })
-
-  output$palette_note <- renderUI({
-    id <- current()
-    entry <- if (is.null(id)) NULL else entry_of(id)
-    req(entry)
-    pal <- Filter(
-      function(p) identical(p$id, entry$settings$palette %||% "cerebro"),
-      builder_palettes()
-    )
-    if (!length(pal)) {
-      return(NULL)
-    }
-    p(class = "hint", style = "margin-top:-.5rem", pal[[1]]$note)
-  })
-
-  output$color_swatches <- renderUI({
-    lv <- preview_levels()
-    if (!length(lv)) {
-      return(p(
-        class = "hint",
-        "This grouping variable has no colourable values."
-      ))
-    }
-    ## A variable with hundreds of levels is not something anyone edits one
-    ## swatch at a time, and 200 colour inputs would make the page unusable.
-    if (length(lv) > BUILDER_SWATCH_MAX) {
-      return(p(
-        class = "hint",
-        sprintf(
-          "%s has %d values, so individual swatches are hidden. Choose a palette instead.",
-          input$preview_group,
-          length(lv)
-        )
-      ))
-    }
-    cols <- preview_colors()
-    div(
-      class = "swatches",
-      lapply(seq_along(lv), function(i) {
-        tags$label(
-          class = "swatch",
-          tags$input(
-            type = "color",
-            class = "swatch-input",
-            value = unname(cols[[lv[i]]]),
-            `data-ds` = current(),
-            `data-group` = input$preview_group,
-            `data-level` = lv[i]
-          ),
-          tags$span(class = "swatch-name", lv[i])
-        )
-      })
-    )
-  })
-
-  output$preview_plot <- plotly::renderPlotly({
-    df <- preview_frame()
-    req(!is.null(df))
-    plt <- builder_preview_plot(df, preview_colors())
-    req(!is.null(plt))
-    plt
-  })
-
-  ## -- optional analyses ----------------------------------------------------
-  output$analysis_choices <- renderUI({
-    id <- current()
-    req(id)
-    e <- entry_of(id)
-    req(e)
-    chosen <- e$settings$analyses %||% character()
-
-    tags$div(
-      class = "steps",
-      lapply(builder_analysis_steps(), function(step) {
-        blocked <- builder_step_blocked(step, e$profile, chosen)
-        tags$label(
-          class = paste("step-row", if (!is.null(blocked)) "is-blocked"),
-          tags$input(
-            class = "builder-analysis",
-            type = "checkbox",
-            name = "analyses_box",
-            value = step$id,
-            `data-ds` = id,
-            checked = if (step$id %in% chosen) "checked",
-            disabled = if (!is.null(blocked)) "disabled"
-          ),
-          tags$span(class = "step-label", step$label),
-          tags$span(
-            class = paste(
-              "pill",
-              if (isTRUE(step$network)) "cost-net" else "cost"
-            ),
-            step$cost
-          ),
-          tags$span(
-            class = "step-note",
-            if (!is.null(blocked)) blocked else step$note
-          )
-        )
-      })
-    )
-  })
-
-  ## -- supplementary tables -------------------------------------------------
-  observeEvent(input$add_table, {
-    id <- current()
-    req(id)
-    e <- entry_of(id)
-    req(e)
     got <- builder_read_table(
-      trimws(input$table_path %||% ""),
-      trimws(input$table_name %||% "")
+      trimws(input[["enhance-table_path"]] %||% ""),
+      trimws(input[["enhance-table_name"]] %||% "")
     )
     if (!is.null(got$error)) {
       showNotification(got$error, type = "error", duration = 8)
       return()
     }
-    e$settings$tables[[got$name]] <- got
-    replace_entry(e)
-    updateTextInput(session, "table_path", value = "")
-    updateTextInput(session, "table_name", value = "")
+    entry$settings$tables[[got$name]] <- got
+    replace_entry(entry)
+    update_enhance_table_choices(entry)
+    updateTextInput(session, "enhance-table_path", value = "")
+    updateTextInput(session, "enhance-table_name", value = "")
   })
 
-  observeEvent(input$drop_table, {
-    id <- current()
-    req(id)
-    e <- entry_of(id)
-    req(e)
-    e$settings$tables[[input$drop_table]] <- NULL
-    replace_entry(e)
-  })
+  observeEvent(
+    input[["enhance-tables_to_retain"]],
+    {
+      id <- current()
+      req(id)
+      if (!identical(input[["enhance-rendered_for"]], id)) {
+        return()
+      }
+      entry <- isolate(entry_of(id))
+      req(entry)
+      retained <- input[["enhance-tables_to_retain"]] %||% character()
+      entry$settings <- builder_enhance_retain(
+        entry$settings,
+        "tables",
+        retained
+      )
+      replace_entry(entry)
+      update_enhance_table_choices(entry)
+    },
+    ignoreInit = TRUE
+  )
 
-  output$table_list <- renderUI({
-    id <- current()
-    req(id)
-    e <- entry_of(id)
-    req(e)
-    tabs <- e$settings$tables
-    if (!length(tabs)) {
-      return(p(class = "hint", "No supplementary tables yet."))
-    }
-    tags$ul(
-      class = "chip-list",
-      lapply(names(tabs), function(nm) {
-        tags$li(
-          tags$b(nm),
-          tags$span(
-            class = "hint",
-            sprintf(
-              " %d rows × %d columns",
-              nrow(tabs[[nm]]$table),
-              ncol(tabs[[nm]]$table)
-            )
-          ),
-          tags$button(
-            class = "btn btn-quiet builder-table-drop",
-            style = "padding:.1rem .4rem;min-height:auto",
-            `data-name` = nm,
-            "Remove"
-          )
-        )
-      })
-    )
-  })
+  observeEvent(
+    input[["enhance-histology_to_retain"]],
+    {
+      id <- current()
+      req(id)
+      if (!identical(input[["enhance-rendered_for"]], id)) {
+        return()
+      }
+      entry <- isolate(entry_of(id))
+      req(entry)
+      retained <- input[["enhance-histology_to_retain"]] %||% character()
+      entry$settings <- builder_enhance_retain(
+        entry$settings,
+        "images",
+        retained
+      )
+      commit_enhance_images(entry, entry$settings$images)
+    },
+    ignoreInit = TRUE
+  )
 
   ## -- histology background -------------------------------------------------
   ## The raw image is decoded once and kept as an array; the sliders then only
@@ -1669,8 +1845,8 @@ server <- function(input, output, session) {
   ## picture that has already been resampled.
   raw_image <- reactiveVal(NULL)
 
-  output$has_image <- reactive(!is.null(raw_image()))
-  outputOptions(output, "has_image", suspendWhenHidden = FALSE)
+  output[["enhance-has_image"]] <- reactive(!is.null(raw_image()))
+  outputOptions(output, "enhance-has_image", suspendWhenHidden = FALSE)
 
   ## Which tissue section the alignment controls currently describe. An object
   ## can hold several, each with its own coordinates and its own slide.
@@ -1702,12 +1878,12 @@ server <- function(input, output, session) {
 
   ## Switching section re-reads that section's coordinates and drops the
   ## in-progress alignment, which described a different slide.
-  observeEvent(input$active_slice, {
+  observeEvent(input[["enhance-active_slice"]], {
     id <- current()
     req(id)
     e <- isolate(entry_of(id))
     req(e)
-    nm <- input$active_slice
+    nm <- input[["enhance-active_slice"]]
     if (!nzchar(nm) || identical(nm, isolate(active_slice()))) {
       return()
     }
@@ -1723,26 +1899,26 @@ server <- function(input, output, session) {
     ))
   })
 
-  observeEvent(input$attach_image, {
-    img <- builder_read_image(trimws(input$image_path %||% ""))
+  observeEvent(input[["enhance-attach_image"]], {
+    img <- builder_read_image(trimws(input[["enhance-image_path"]] %||% ""))
     if (!is.null(img$error)) {
       showNotification(img$error, type = "error", duration = 8)
       return()
     }
     raw_image(img)
-    updateSliderInput(session, "img_dx", value = 0)
-    updateSliderInput(session, "img_dy", value = 0)
-    updateSliderInput(session, "img_scale", value = 1)
-    updateSliderInput(session, "img_rotate", value = 0)
+    updateSliderInput(session, "enhance-img_dx", value = 0)
+    updateSliderInput(session, "enhance-img_dy", value = 0)
+    updateSliderInput(session, "enhance-img_scale", value = 1)
+    updateSliderInput(session, "enhance-img_rotate", value = 0)
   })
 
-  observeEvent(input$reset_align, {
-    updateSliderInput(session, "img_dx", value = 0)
-    updateSliderInput(session, "img_dy", value = 0)
-    updateSliderInput(session, "img_scale", value = 1)
-    updateSliderInput(session, "img_rotate", value = 0)
-    updateCheckboxInput(session, "image_flip", value = FALSE)
-    updateCheckboxInput(session, "image_flip_x", value = FALSE)
+  observeEvent(input[["enhance-reset_align"]], {
+    updateSliderInput(session, "enhance-img_dx", value = 0)
+    updateSliderInput(session, "enhance-img_dy", value = 0)
+    updateSliderInput(session, "enhance-img_scale", value = 1)
+    updateSliderInput(session, "enhance-img_rotate", value = 0)
+    updateCheckboxInput(session, "enhance-image_flip", value = FALSE)
+    updateCheckboxInput(session, "enhance-image_flip_x", value = FALSE)
   })
 
   ## Slider ranges have to be in the data's own units, or "left a bit" means
@@ -1762,7 +1938,7 @@ server <- function(input, output, session) {
     span_y <- nice(diff(range(co$y, na.rm = TRUE)))
     updateSliderInput(
       session,
-      "img_dx",
+      "enhance-img_dx",
       min = -span_x,
       max = span_x,
       value = 0,
@@ -1770,7 +1946,7 @@ server <- function(input, output, session) {
     )
     updateSliderInput(
       session,
-      "img_dy",
+      "enhance-img_dy",
       min = -span_y,
       max = span_y,
       value = 0,
@@ -1785,10 +1961,10 @@ server <- function(input, output, session) {
     req(!is.null(img))
     enc <- builder_encode_image(
       img$array,
-      max_px = input$image_max_px %||% 1400,
-      flip_y = isTRUE(input$image_flip),
-      flip_x = isTRUE(input$image_flip_x),
-      rotate = input$img_rotate %||% 0
+      max_px = input[["enhance-image_max_px"]] %||% 1400,
+      flip_y = isTRUE(input[["enhance-image_flip"]]),
+      flip_x = isTRUE(input[["enhance-image_flip_x"]]),
+      rotate = input[["enhance-img_rotate"]] %||% 0
     )
     if (!is.null(enc$error)) {
       return(list(error = enc$error))
@@ -1804,10 +1980,10 @@ server <- function(input, output, session) {
       return(enc)
     }
     b0 <- builder_image_bounds(
-      input$image_bounds_mode %||% "pixels",
+      input[["enhance-image_bounds_mode"]] %||% "pixels",
       list(co$x, co$y),
       enc,
-      um_per_px = input$image_um %||% 1
+      um_per_px = input[["enhance-image_um"]] %||% 1
     )
     if (!is.null(b0$error)) {
       return(list(error = b0$error))
@@ -1830,15 +2006,15 @@ server <- function(input, output, session) {
     }
     bounds <- builder_adjust_bounds(
       b0,
-      dx = input$img_dx %||% 0,
-      dy = input$img_dy %||% 0,
-      scale = input$img_scale %||% 1
+      dx = input[["enhance-img_dx"]] %||% 0,
+      dy = input[["enhance-img_dy"]] %||% 0,
+      scale = input[["enhance-img_scale"]] %||% 1
     )
     cover <- builder_bounds_cover(bounds, list(co$x, co$y))
     list(enc = enc, bounds = bounds, cover = cover)
   })
 
-  output$overlay_plot <- plotly::renderPlotly({
+  output[["enhance-overlay_plot"]] <- plotly::renderPlotly({
     a <- aligned()
     req(is.null(a$error))
     plt <- builder_overlay_plot(spatial_coords(), a$enc$uri, a$bounds)
@@ -1869,7 +2045,7 @@ server <- function(input, output, session) {
     )
   }
 
-  observeEvent(input$apply_align, {
+  observeEvent(input[["enhance-apply_align"]], {
     id <- current()
     req(id)
     e <- entry_of(id)
@@ -1883,8 +2059,7 @@ server <- function(input, output, session) {
     }
     imgs <- e$settings$images %||% list()
     imgs[[nm]] <- a
-    e$settings$images <- imgs
-    replace_entry(e)
+    commit_enhance_images(e, imgs)
     showNotification(
       paste0("Alignment saved for section “", nm, "”."),
       type = "message",
@@ -1897,7 +2072,7 @@ server <- function(input, output, session) {
   ## backgrounds entirely -- but "same slide" is not "same extent". Sections sit
   ## at different offsets in the coordinate space, so the extent is re-derived
   ## per section in the worker; only the picture is shared.
-  observeEvent(input$apply_align_all, {
+  observeEvent(input[["enhance-apply_align_all"]], {
     id <- current()
     req(id)
     e <- entry_of(id)
@@ -1916,13 +2091,13 @@ server <- function(input, output, session) {
       kind = "align_all",
       id = id,
       sections = e$profile$images,
-      mode = input$image_bounds_mode %||% "pixels",
+      mode = input[["enhance-image_bounds_mode"]] %||% "pixels",
       extent_width = a$extent_width,
       extent_height = a$extent_height,
-      um_per_px = input$image_um %||% 1,
-      dx = input$img_dx %||% 0,
-      dy = input$img_dy %||% 0,
-      scale = input$img_scale %||% 1,
+      um_per_px = input[["enhance-image_um"]] %||% 1,
+      dx = input[["enhance-img_dx"]] %||% 0,
+      dy = input[["enhance-img_dy"]] %||% 0,
+      scale = input[["enhance-img_scale"]] %||% 1,
       picture = a,
       replaces = "align_all",
       note = paste0(
@@ -1933,7 +2108,7 @@ server <- function(input, output, session) {
     ))
   })
 
-  observeEvent(input$drop_image, {
+  observeEvent(input[["enhance-drop_image"]], {
     id <- current()
     req(id)
     e <- entry_of(id)
@@ -1943,12 +2118,11 @@ server <- function(input, output, session) {
     if (!is.null(nm)) {
       imgs[[nm]] <- NULL
     }
-    e$settings$images <- imgs
-    replace_entry(e)
+    commit_enhance_images(e, imgs)
     raw_image(NULL)
   })
 
-  output$image_state <- renderUI({
+  output[["enhance-image_state"]] <- renderUI({
     a <- if (is.null(raw_image())) NULL else aligned()
     id <- current()
     e <- if (is.null(id)) NULL else entry_of(id)
@@ -1980,18 +2154,7 @@ server <- function(input, output, session) {
         )
       },
       if (!is.null(saved)) {
-        div(
-          style = "margin-top:.5rem;display:flex;gap:.5rem;align-items:center",
-          span(
-            class = "pill on",
-            if (n_slices > 1) {
-              paste0("Alignment saved for “", nm, "”")
-            } else {
-              "Alignment saved"
-            }
-          ),
-          actionButton("drop_image", "Remove", class = "btn btn-quiet")
-        )
+        builder_enhance_saved_image_ui("enhance", nm, n_slices)
       } else if (is.null(raw_image())) {
         p(class = "hint", "No background image yet.")
       },
@@ -2027,619 +2190,261 @@ server <- function(input, output, session) {
     if (is.null(r)) {
       return(NULL)
     }
-    div(
-      class = "card result-card",
-      h2("Latest build"),
-      if (!is.null(r$error)) div(class = "notice bad", r$error),
-      if (identical(r$state, "needs_decision")) {
-        div(
-          class = "notice warn",
-          paste0(
-            "A selected analysis failed. Nothing was exported. Review the ",
-            "failure, then change the selected analyses or run the build again."
-          )
-        )
-      },
-      if (length(r$built)) {
-        tagList(
-          div(
-            class = "notice ok",
-            sprintf(
-              "%d verified dataset artifact%s published at %s",
-              length(r$built),
-              if (length(r$built) == 1L) "" else "s",
-              dirname(r$built[1])
-            )
-          ),
-          tags$ul(
-            style = "margin:.6rem 0 0;padding-left:1.2rem",
-            lapply(seq_along(r$built), function(i) {
-              tags$li(
-                tags$b(r$labels[i]),
-                " — ",
-                tags$code(basename(r$built[i])),
-                sprintf(" (%.2f MB)", file.size(r$built[i]) / 1048576)
-              )
-            })
-          )
-        )
-      },
-      if (!is.null(r$app_dir)) {
-        tagList(
-          p(class = "hint", style = "margin-top:.8rem", "Run this app:"),
-          tags$pre(paste0('shiny::runApp("', r$app_dir, '")'))
-        )
-      },
-      if (length(r$analysis_log)) {
-        tagList(
-          p(class = "hint", style = "margin-top:.8rem", "Analysis steps:"),
-          tags$ul(
-            style = "margin:.2rem 0 0;padding-left:1.2rem",
-            lapply(r$analysis_log, function(x) tags$li(class = "hint", x))
-          )
-        )
-      },
-      if (length(r$failures)) {
-        tagList(
-          div(class = "notice bad", style = "margin-top:.7rem", "Failures:"),
-          tags$ul(
-            style = "margin:.4rem 0 0;padding-left:1.2rem",
-            lapply(r$failures, tags$li)
-          )
-        )
-      }
-    )
+    builder_build_status_ui(builder_build_status_model(r))
   })
 
-  ## -- the detail pane -----------------------------------------------------
-  output$detail <- renderUI({
-    id <- current()
-    ## Depend on *which* data set is shown, never on its settings. The sync
-    ## observer writes every keystroke back into the entry, so reacting to the
-    ## contents would rebuild the whole form on each character -- losing focus,
-    ## resetting numeric fields, and making the value the server sees lag the
-    ## one on screen.
-    e <- isolate(entry_of(id))
-    if (is.null(id)) {
-      return(div(
-        class = "card span-12",
-        h2("Get started"),
-        p(
-          "Choose a Seurat object from the left, or explore a built-in example."
-        ),
-        p(class = "hint", builder_format_summary()),
-        p(
-          class = "hint",
-          "Add multiple objects to bundle them into one app with a dataset switcher."
-        )
-      ))
-    }
-    req(e)
-    p <- e$profile
-    s <- e$settings
-    assay_profile <- p$assay_profiles[[s$assay]] %||%
-      list(
-        layers = p$layers,
-        default_layer = p$default_layer,
-        nUMI_choices = p$nUMI,
-        nGene_choices = p$nGene,
-        nUMI = p$nUMI,
-        nGene = p$nGene
-      )
-    selected_qc <- function(value, choices, default) {
-      if (builder_has_text(value) && value %in% choices) {
-        value
-      } else if (builder_has_text(default) && default %in% choices) {
-        default
+  run_result_action <- function(action) {
+    current_result <- isolate(result())
+    req(inherits(current_result, "builder_result"))
+    outcome <- try(action(current_result), silent = TRUE)
+    if (inherits(outcome, "try-error") || !isTRUE(outcome)) {
+      message <- if (inherits(outcome, "try-error")) {
+        conditionMessage(attr(outcome, "condition"))
       } else {
-        NULL
+        "The requested result action could not be completed."
       }
+      showNotification(message, type = "error")
     }
-
-    ## Was this data set just read, or did the user click over to it? The
-    ## answer has to travel as an attribute in the rendered HTML rather than a
-    ## script: builder.js reads it from a MutationObserver, which runs before
-    ## the browser paints, and a <script> in the fragment would be one paint
-    ## too late to set the animation's starting state.
-    fresh <- identical(id, isolate(just_added()))
-
-    tagList(
-      div(
-        class = "card span-12",
-        h2("Object", if (fresh) span(class = "pill new", "Just added")),
-        div(
-          class = "facts",
-          div(
-            span(class = "k", "Cells "),
-            span(class = "v", format(p$n_cells, big.mark = ","))
-          ),
-          div(
-            span(class = "k", "Genes "),
-            span(class = "v", format(p$n_genes, big.mark = ","))
-          ),
-          div(span(class = "k", "Format "), span(class = "v", e$format)),
-          div(
-            span(class = "k", "Spatial "),
-            span(
-              class = "v",
-              if (length(p$images)) paste(p$images, collapse = ", ") else "None"
-            )
-          )
-        ),
-        p(
-          class = "hint",
-          style = "margin-top:.6rem;word-break:break-all",
-          ## An example was generated in the worker and has no file behind it.
-          ## Printing its absent path as "NA" reads like a failed read.
-          if (is.null(e$path) || is.na(e$path)) {
-            "Built-in example; no source file"
-          } else {
-            e$path
-          }
-        ),
-        hr(),
-        div(
-          class = "hint",
-          style = "margin-bottom:.4rem",
-          "Content already present:"
-        ),
-        div(
-          class = "pills",
-          lapply(p$extras, function(x) {
-            span(class = paste("pill", if (x$found) "on" else "off"), x$label)
-          })
-        ),
-        p(
-          class = "hint",
-          "Muted items are absent, so their pages will be hidden."
-        )
-      ),
-
-      div(
-        class = "card span-4",
-        h2("Identity"),
-        div(
-          class = "field-grid",
-          textInput("name", "Dataset name", value = s$name, width = "100%"),
-          selectInput(
-            "organism",
-            "Organism",
-            choices = c(
-              "Human (hg)" = "hg",
-              "Mouse (mm)" = "mm",
-              "Other" = "other"
-            ),
-            selected = s$organism,
-            width = "100%"
-          )
-        ),
-        p(class = "hint", "This name becomes the label in the app switcher.")
-      ),
-
-      div(
-        class = "card span-8",
-        h2("Expression"),
-        div(
-          class = "field-grid expression-fields",
-          selectInput(
-            "assay",
-            "Assay",
-            choices = p$assays,
-            selected = s$assay,
-            width = "100%"
-          ),
-          selectInput(
-            "layer",
-            "Layer / slot",
-            choices = assay_profile$layers,
-            selected = if (
-              builder_has_text(s$layer) &&
-                s$layer %in% assay_profile$layers
-            ) {
-              s$layer
-            } else {
-              assay_profile$default_layer
-            },
-            width = "100%"
-          ),
-          selectInput(
-            "nUMI",
-            "UMI / count field",
-            choices = assay_profile$nUMI_choices,
-            selected = selected_qc(
-              s$nUMI,
-              assay_profile$nUMI_choices,
-              assay_profile$nUMI
-            ),
-            width = "100%"
-          ),
-          selectInput(
-            "nGene",
-            "Feature / gene field",
-            choices = assay_profile$nGene_choices,
-            selected = selected_qc(
-              s$nGene,
-              assay_profile$nGene_choices,
-              assay_profile$nGene
-            ),
-            width = "100%"
-          )
-        ),
-        p(
-          class = "hint",
-          "Only complete, full-cell layers are offered. Split Seurat v5 layers are joined safely before export."
-        )
-      ),
-
-      div(
-        class = "card span-8 cols-2",
-        h2("Grouping variables"),
-        checkboxGroupInput(
-          "groups",
-          NULL,
-          choices = p$group_candidates,
-          selected = s$groups
-        ),
-        if (length(p$group_struck)) {
-          p(
-            class = "hint",
-            paste0("Excluded: ", paste(p$group_struck, collapse = "; "))
-          )
-        },
-        p(
-          class = "hint",
-          "Used for colouring and filtering. Select at least one."
-        )
-      ),
-
-      div(
-        class = "card span-4",
-        h2("Reductions"),
-        if (length(p$reductions)) {
-          tagList(
-            checkboxGroupInput(
-              "reductions",
-              NULL,
-              choices = p$reductions,
-              selected = s$reductions
-            ),
-            p(
-              class = "hint",
-              paste(
-                "Exactly one PCA alone is exported as a warned fallback.",
-                "When a non-PCA reduction is selected, PCA is omitted."
-              )
-            )
-          )
-        } else {
-          div(class = "notice bad", "This object has no reductions to display.")
-        }
-      ),
-
-      div(
-        class = "card span-8",
-        h2("Preview & colours"),
-        div(
-          class = "row2",
-          selectInput(
-            "preview_reduction",
-            "Reduction",
-            choices = p$reductions,
-            selected = if (length(s$reductions)) s$reductions[1] else NULL,
-            width = "100%"
-          ),
-          selectInput(
-            "preview_group",
-            "Colour by",
-            choices = unname(p$group_candidates),
-            selected = if (length(s$groups)) s$groups[1] else NULL,
-            width = "100%"
-          )
-        ),
-        plotly::plotlyOutput("preview_plot", height = "340px"),
-        p(
-          class = "hint",
-          paste0(
-            "Datasets above ",
-            format(BUILDER_PREVIEW_MAX, big.mark = ","),
-            " cells are deterministically sampled, so the same object produces the same preview."
-          )
-        ),
-        hr(),
-        div(
-          class = "row2",
-          selectInput(
-            "palette",
-            "Palette",
-            choices = stats::setNames(
-              vapply(builder_palettes(), function(p) p$id, ""),
-              vapply(builder_palettes(), function(p) p$label, "")
-            ),
-            selected = s$palette %||% "cerebro",
-            width = "100%"
-          ),
-          div(
-            style = "align-self:end;padding-bottom:.85rem",
-            actionButton("reset_colors", "Reset colours", class = "btn")
-          )
-        ),
-        uiOutput("palette_note"),
-        uiOutput("color_swatches"),
-        p(
-          class = "hint",
-          paste0(
-            "Colours are bundled with “",
-            s$name,
-            "”. A standalone .crb does not carry them; the viewer can still adjust colours at runtime."
-          )
-        )
-      ),
-
-      div(
-        class = "card-stack span-4",
-        div(
-          class = "card",
-          h2("Pre-export analyses"),
-          uiOutput("analysis_choices"),
-          p(
-            class = "hint",
-            "Selected results are embedded to enable the matching pages."
-          )
-        ),
-        div(
-          class = "card",
-          h2("Supplementary tables"),
-          div(
-            class = "field-grid",
-            textInput(
-              "table_path",
-              "CSV / TSV path",
-              width = "100%",
-              placeholder = "/path/to/de_results.csv"
-            ),
-            textInput(
-              "table_name",
-              "Display name (optional)",
-              width = "100%"
-            )
-          ),
-          actionButton("add_table", "Add table", class = "btn"),
-          uiOutput("table_list")
-        )
-      ),
-
-      if (length(p$images)) {
-        div(
-          class = "card span-12",
-          h2("Histology background"),
-          ## Only worth a control when there is a choice to make. One section is
-          ## the common case and should look exactly as it did before.
-          if (length(p$images) > 1) {
-            tagList(
-              selectInput(
-                "active_slice",
-                paste0("Tissue section (", length(p$images), " total)"),
-                choices = p$images,
-                selected = isolate(active_slice()) %||% p$images[1],
-                width = "100%"
-              ),
-              p(
-                class = "hint",
-                style = "margin-top:-.4rem;margin-bottom:.8rem",
-                paste0(
-                  "Each section has its own coordinates and slide. Images and alignment are saved per section."
-                )
-              )
-            )
-          },
-          div(
-            class = "row2",
-            textInput(
-              "image_path",
-              "PNG / JPEG path",
-              width = "100%",
-              placeholder = "/path/to/he.png"
-            ),
-            selectInput(
-              "image_bounds_mode",
-              "Image extent",
-              choices = c(
-                "Cell coordinates are image pixels" = "pixels",
-                "Cell coordinates use physical units" = "physical",
-                "Fit to the cell bounding box" = "bbox"
-              ),
-              width = "100%"
-            )
-          ),
-          div(
-            class = "row2",
-            numericInput(
-              "image_um",
-              "Physical units per pixel",
-              value = 1,
-              min = 0.0001,
-              step = 0.05,
-              width = "100%"
-            ),
-            numericInput(
-              "image_max_px",
-              "Maximum image edge (px)",
-              value = 1400,
-              min = 200,
-              max = 4000,
-              step = 100,
-              width = "100%"
-            )
-          ),
-          actionButton("attach_image", "Load image", class = "btn"),
-          uiOutput("image_state"),
-
-          conditionalPanel(
-            condition = "output.has_image",
-            hr(),
-            div(
-              class = "hint",
-              style = "margin-bottom:.5rem",
-              "Adjust the image until tissue and cells align:"
-            ),
-            div(
-              class = "row2",
-              sliderInput(
-                "img_dx",
-                "Horizontal offset",
-                min = -1,
-                max = 1,
-                value = 0,
-                step = 0.01,
-                width = "100%"
-              ),
-              sliderInput(
-                "img_dy",
-                "Vertical offset",
-                min = -1,
-                max = 1,
-                value = 0,
-                step = 0.01,
-                width = "100%"
-              )
-            ),
-            div(
-              class = "row2",
-              sliderInput(
-                "img_scale",
-                "Scale",
-                min = 0.2,
-                max = 3,
-                value = 1,
-                step = 0.01,
-                width = "100%"
-              ),
-              sliderInput(
-                "img_rotate",
-                "Rotation (degrees)",
-                min = -180,
-                max = 180,
-                value = 0,
-                step = 1,
-                width = "100%"
-              )
-            ),
-            div(
-              class = "row2",
-              checkboxInput("image_flip", "Flip vertically", value = FALSE),
-              checkboxInput("image_flip_x", "Flip horizontally", value = FALSE)
-            ),
-            plotly::plotlyOutput("overlay_plot", height = "360px"),
-            div(
-              style = "margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap",
-              actionButton(
-                "apply_align",
-                if (length(p$images) > 1) {
-                  "Save this section"
-                } else {
-                  "Save alignment"
-                },
-                class = "btn btn-primary"
-              ),
-              if (length(p$images) > 1) {
-                actionButton(
-                  "apply_align_all",
-                  paste0("Apply to all ", length(p$images), " sections"),
-                  class = "btn"
-                )
-              },
-              actionButton("reset_align", "Reset", class = "btn")
-            )
-          ),
-          p(
-            class = "hint",
-            paste0(
-              "Rotation redraws the image; translation and scale only change its extent, preserving image quality."
-            )
-          )
-        )
-      },
-
-      div(
-        class = "detail-footer",
-        actionButton(
-          "remove",
-          tagList(icon_svg(ICON_TRASH), " Remove this dataset"),
-          class = "btn btn-quiet"
-        )
-      ),
-
-      ## Kept last so the cards above are this container's first children --
-      ## the staggered entrance is addressed with :nth-child, and a marker in
-      ## front of them would shift every index by one.
-      div(
-        class = "pane-flag",
-        style = "display:none",
-        `data-ds` = id,
-        `data-new` = if (fresh) "1" else "0"
-      )
-    )
+  }
+  copy_result_value <- function(value) {
+    session$sendCustomMessage("builder_copy_text", list(text = value))
+    TRUE
+  }
+  observeEvent(input$open_app, {
+    run_result_action(builder_open_final_app)
+  })
+  observeEvent(input$reveal_folder, {
+    run_result_action(builder_reveal_release)
+  })
+  observeEvent(input$copy_path, {
+    run_result_action(function(value) {
+      builder_copy_result_path(value, "release", .copy = copy_result_value)
+    })
+  })
+  observeEvent(input$copy_report, {
+    run_result_action(function(value) {
+      builder_copy_result_path(value, "report", .copy = copy_result_value)
+    })
   })
 
   ## -- the action bar ------------------------------------------------------
-  ready_report <- reactive({
-    all <- sets()
-    if (!length(all)) {
-      return(list(ok = FALSE, msg = "No datasets yet."))
-    }
-    bad <- Filter(
-      function(e) {
-        !length(e$settings$groups) ||
-          !length(e$settings$reductions) ||
-          !builder_has_text(e$settings$layer) ||
-          !builder_has_text(e$settings$nUMI) ||
-          !builder_has_text(e$settings$nGene)
-      },
-      all
-    )
-    if (length(bad)) {
-      return(list(
+  validate_review_inputs <- function(values) {
+    next_options <- try(do.call(builder_review_options, values), silent = TRUE)
+    if (inherits(next_options, "try-error")) {
+      review_validation(list(
         ok = FALSE,
-        msg = paste0(
-          length(bad),
-          " dataset",
-          if (length(bad) == 1L) " is" else "s are",
-          " missing a required expression, QC, group or reduction setting."
-        )
+        error = conditionMessage(attr(next_options, "condition"))
+      ))
+      return(invisible(FALSE))
+    }
+    review_options(next_options)
+    review_validation(list(ok = TRUE, error = NULL))
+    invisible(TRUE)
+  }
+
+  observe({
+    values <- list(
+      welcome_message = input[["review-welcome_message"]],
+      point_size = input[["review-point_size"]],
+      variable_to_compare = input[["review-variable_to_compare"]],
+      host = input[["review-host"]],
+      port = input[["review-port"]],
+      max_request_size = input[["review-max_request_size"]],
+      display_mode = input[["review-display_mode"]],
+      launch_browser = input[["review-launch_browser"]],
+      show_upload_ui = input[["review-show_upload_ui"]]
+    )
+    if (any(vapply(values, is.null, logical(1)))) {
+      return()
+    }
+    validate_review_inputs(values)
+  })
+
+  frozen_review_plan <- reactive({
+    validation <- review_validation()
+    if (!isTRUE(validation$ok)) {
+      return(builder_plan_error(
+        validation$error %||% "Review options are invalid.",
+        "invalid_review_options"
       ))
     }
-    names_used <- trimws(vapply(
-      all,
-      function(e) e$settings$name,
-      character(1)
-    ))
-    if (any(!nzchar(names_used))) {
-      return(list(ok = FALSE, msg = "Every dataset needs a name."))
+    all <- sets()
+    if (!length(all)) {
+      return(builder_plan_error("No datasets yet.", "empty_release"))
     }
-    if (anyDuplicated(names_used)) {
-      return(list(ok = FALSE, msg = "Dataset names must be unique."))
+    typed <- review_options()
+    effective <- builder_effective_initial_dataset(store())
+    app_options <- builder_review_options_for_plan(
+      typed,
+      initial_dataset = if (identical(effective$mode, "explicit")) {
+        effective$id
+      } else {
+        NULL
+      }
+    )
+    builder_freeze_plan(
+      entries = all,
+      out_dir = trimws(
+        input$out_dir %||% file.path(path.expand("~"), "cerebro")
+      ),
+      make_app = isTRUE(input$make_app),
+      overwrite = isTRUE(input$overwrite),
+      app_options = app_options
+    )
+  })
+
+  review_report <- reactive({
+    plan <- frozen_review_plan()
+    if (!builder_review_can_build(plan)) {
+      return(list(ok = FALSE, msg = plan$error %||% "Review the frozen plan."))
     }
     list(
       ok = TRUE,
       msg = paste0(
-        length(all),
+        length(plan$items),
         " dataset",
-        if (length(all) == 1L) "" else "s",
-        " · ",
-        format(
-          sum(vapply(all, function(e) e$profile$n_cells, numeric(1))),
-          big.mark = ","
-        ),
-        " cells"
+        if (length(plan$items) == 1L) "" else "s",
+        " · frozen revision ",
+        plan$revision
       )
     )
   })
 
-  output$actionbar <- renderUI({
-    if (!length(sets())) {
+  output[["enhance-analysis_modules"]] <- renderUI({
+    contract <- enhance_contract()
+    req(contract$id)
+    entry <- isolate(entry_of(contract$id))
+    req(entry)
+    builder_enhance_modules_ui(
+      "enhance",
+      builder_enhance_modules(
+        entry$profile,
+        list(
+          organism = contract$organism,
+          analyses = contract$analyses
+        )
+      )
+    )
+  })
+
+  output$workbench <- renderUI({
+    id <- current()
+    entry <- isolate(entry_of(id))
+    if (is.null(entry)) {
       return(NULL)
     }
-    rep <- ready_report()
+    state <- try(builder_dataset_state(entry), silent = TRUE)
+    attention <- if (inherits(state, "try-error")) {
+      character()
+    } else {
+      state$attention_ids
+    }
+    blockers <- if (inherits(state, "try-error")) {
+      "Dataset state could not be validated."
+    } else {
+      state$blocking_ids
+    }
+    inspect_model <- builder_inspect_model(
+      profile = entry$profile,
+      state = if (inherits(state, "try-error")) {
+        list(
+          attention_ids = attention,
+          blocking_ids = blockers,
+          manifest = list()
+        )
+      } else {
+        state
+      },
+      format = entry$format,
+      dataset_id = entry$id
+    )
+    settings <- entry$settings
+    assay_profile <- entry$profile$assay_profiles[[settings$assay]] %||%
+      list(
+        layers = entry$profile$layers,
+        nUMI_choices = entry$profile$nUMI,
+        nGene_choices = entry$profile$nGene
+      )
+    core_model <- c(
+      settings[c(
+        "name",
+        "organism",
+        "default_group",
+        "default_projection",
+        "assay",
+        "layer",
+        "nUMI",
+        "nGene"
+      )],
+      list(
+        id = entry$id,
+        organism_choices = c(
+          "Human (hg)" = "hg",
+          "Mouse (mm)" = "mm",
+          "Other" = "other"
+        ),
+        group_choices = unname(entry$profile$group_candidates),
+        projection_choices = entry$profile$reductions,
+        assay_choices = entry$profile$assays,
+        layer_choices = assay_profile$layers,
+        nUMI_choices = assay_profile$nUMI_choices,
+        nGene_choices = assay_profile$nGene_choices,
+        backend = settings$expression_backend %||% "embedded",
+        backend_choices = c(
+          "Embedded" = "embedded",
+          "HDF5" = "h5",
+          "BPCells" = "bpcells"
+        ),
+        metadata_attention = if (length(attention)) {
+          paste("Metadata needs attention:", paste(attention, collapse = ", "))
+        } else {
+          ""
+        }
+      )
+    )
+    tagList(
+      builder_inspect_stage_ui("inspect", inspect_model),
+      builder_core_stage_ui("core", core_model),
+      builder_enhance_stage_ui(
+        "enhance",
+        builder_enhance_model(
+          id = entry$id,
+          profile = entry$profile,
+          state = if (inherits(state, "try-error")) list() else state,
+          settings = entry$settings,
+          modules = list()
+        ),
+        dynamic_modules = TRUE
+      ),
+      uiOutput("review_stage"),
+      conditionalPanel(
+        condition = "input.make_app === true",
+        builder_review_controls_ui("review", isolate(review_options()))
+      )
+    )
+  })
+
+  output$review_stage <- renderUI({
+    plan <- frozen_review_plan()
+    if (builder_review_can_build(plan)) {
+      builder_review_stage_ui("review", builder_review_model(plan))
+    } else {
+      div(class = "card notice warn", plan$error %||% "Review is not ready.")
+    }
+  })
+
+  datasets_present <- reactiveVal(FALSE)
+  observe({
+    present <- length(sets()) > 0L
+    if (!identical(present, isolate(datasets_present()))) {
+      datasets_present(present)
+    }
+  })
+
+  output$actionbar <- renderUI({
+    if (!isTRUE(datasets_present())) {
+      return(NULL)
+    }
     make_app_control <- builder_app_control(
       app_capability,
       current_value = isolate(input$make_app)
@@ -2663,7 +2468,7 @@ server <- function(input, output, session) {
               file.path(path.expand("~"), "cerebro")
           )
         ),
-        div(class = "summary", rep$msg),
+        uiOutput("review_action_summary", inline = TRUE),
         make_app_control,
         checkboxInput(
           "overwrite",
@@ -2680,11 +2485,18 @@ server <- function(input, output, session) {
     )
   })
 
+  output$review_action_summary <- renderUI({
+    if (!isTRUE(datasets_present())) {
+      return(NULL)
+    }
+    span(class = "summary", review_report()$msg)
+  })
+
   ## Build state changes frequently while the fields above are user-edited.
   ## Keeping the buttons in their own output prevents a protocol transition
   ## from recreating those inputs and resetting the browser's current values.
   output$build_actions <- renderUI({
-    rep <- ready_report()
+    rep <- review_report()
     current_protocol <- protocol()
     build_phase <- if (is.null(current_protocol)) {
       "idle"
@@ -2692,12 +2504,17 @@ server <- function(input, output, session) {
       current_protocol$build_status %||% "idle"
     }
     build_in_flight <- build_phase %in% c("queued", "running", "cancelling")
+    protocol_quiescent <- !is.null(current_protocol) &&
+      builder_protocol_is_quiescent(current_protocol)
     actionButton(
       "build",
       "Build",
       class = "btn btn-action",
       disabled = if (
-        !rep$ok || build_in_flight || !isTRUE(worker_available())
+        !builder_review_can_build(frozen_review_plan()) ||
+          build_in_flight ||
+          !protocol_quiescent ||
+          !isTRUE(worker_available())
       ) {
         "disabled"
       }
@@ -2711,35 +2528,98 @@ server <- function(input, output, session) {
   observeEvent(input$build, {
     rs <- worker()
     req(rs)
-    all <- sets()
-    req(length(all) > 0)
+    current_protocol <- isolate(protocol())
+    req(builder_protocol_is_quiescent(current_protocol))
+    plan <- isolate(frozen_review_plan())
+    req(builder_review_can_build(plan))
+    plan <- unserialize(serialize(plan, NULL, version = 3L))
     result(NULL)
     enqueue(list(
       kind = "build",
+      plan = plan,
       note = paste0(
         "Building ",
-        length(all),
+        length(plan$items),
         " dataset",
-        if (length(all) == 1L) "" else "s",
+        if (length(plan$items) == 1L) "" else "s",
         "…"
       )
     ))
   })
 
-  ## Removing a data set has to free it in the worker too, or "remove" only
-  ## hides it while the memory stays taken.
-  remove_dataset <- function(id) {
-    if (is.null(id) || !nzchar(id)) {
-      return()
-    }
-    enqueue(list(kind = "drop", id = id, note = "Releasing memory…"))
+  validate_rail_removal <- function(next_state, id) {
+    out_dir <- trimws(
+      isolate(input$out_dir) %||%
+        file.path(
+          path.expand("~"),
+          "cerebro"
+        )
+    )
+    builder_validate_next_plan(
+      next_state,
+      out_dir = out_dir,
+      make_app = isTRUE(isolate(input$make_app)),
+      overwrite = isTRUE(isolate(input$overwrite))
+    )
   }
 
-  ## The button on the row -- works on any data set, not just the open one.
-  observeEvent(input$drop_ds, remove_dataset(input$drop_ds))
+  remove_dataset <- function(
+    previous_state,
+    updated,
+    id,
+    validation
+  ) {
+    ids <- vapply(previous_state$datasets, `[[`, character(1), "id")
+    entry <- previous_state$datasets[[match(id, ids)]]
+    previous_removed <- previous_state$last_removed
+    if (is.list(previous_removed)) {
+      identity <- .builder_worker_identity(previous_removed$entry$snapshot)
+      pending_drops <- isolate(pending_snapshot_drops())
+      pending_drops[[previous_removed$id]] <- identity
+      pending_snapshot_drops(pending_drops)
+      queued <- enqueue(list(
+        kind = "drop",
+        id = previous_removed$id,
+        dataset_revision = previous_removed$entry$revision %||% 0L,
+        snapshot_identity = identity,
+        note = "Releasing memory…"
+      ))
+      if (!isTRUE(queued)) {
+        pending_drops[[previous_removed$id]] <- NULL
+        pending_snapshot_drops(pending_drops)
+      }
+    }
+    result(NULL)
+    showNotification(
+      tagList(
+        paste0("Removed ", entry$settings$name, ". "),
+        actionLink("undo_remove", "Undo")
+      ),
+      type = "message",
+      duration = 10
+    )
+  }
 
-  ## The button at the foot of the form.
-  observeEvent(input$remove, remove_dataset(current()))
+  # observeEvent(input$drop_ds, ...) is owned by builder_dataset_rail_server().
+  rail_controller <- builder_dataset_rail_server(
+    input = input,
+    session = session,
+    store = store,
+    duplicate = duplicate_dataset,
+    validate_remove = validate_rail_removal,
+    on_select = function(id) {
+      result(NULL)
+    },
+    on_remove = remove_dataset,
+    on_undo = function() result(NULL),
+    on_validation = function(validation) {
+      if (isTRUE(validation$ok)) {
+        add_error(NULL)
+      } else if (!identical(validation$code, "confirmation_required")) {
+        add_error(validation$message)
+      }
+    }
+  )
 
   output$busy <- renderUI({
     note <- busy_note()

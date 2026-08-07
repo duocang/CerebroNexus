@@ -90,10 +90,6 @@ directory is rejected before any files are written.}
 
 \item{show_upload_ui}{Forwarded to \code{Cerebro.options}.}
 
-\item{initial_dataset}{Optional exact data set label to load initially. This
-does not change the order of \code{cerebro_data}. URL selection and a
-session's current selection take precedence.}
-
 \item{welcome_message}{Welcome message shown in the Load Data tab.}
 
 \item{point_size}{Named list with \code{overview_projection_point_size}
@@ -129,6 +125,10 @@ units) applied to move the spatial background image. Names must match
 
 \item{spatial_plot_rotation}{Named list/vector; initial rotation (degrees)
 applied to spatial cell coordinates. Names must match \code{cerebro_data}.}
+
+\item{initial_dataset}{Optional exact data set label to load initially. This
+does not change the order of \code{cerebro_data}. URL selection and a
+session's current selection take precedence.}
 
 \item{...}{Currently unused; reserved for future arguments.}
 }

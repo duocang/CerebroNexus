@@ -14,6 +14,14 @@
   "initial_dataset",
   "initial_dataset_mode",
   "show_upload_ui",
+  "welcome_message",
+  "point_size",
+  "variable_to_compare",
+  "host",
+  "port",
+  "max_request_size",
+  "display_mode",
+  "launch_browser",
   "colors",
   "crb_pick_smallest_file",
   "backend_plan",
@@ -61,19 +69,98 @@
 .builder_app_inert_max_elements <- 100000
 .builder_app_inert_max_bytes <- 16 * 1024^2
 
+.builder_app_options_valid <- function(options, dataset_order) {
+  expected <- c(
+    "enabled",
+    "show_upload_ui",
+    "initial_dataset",
+    "initial_dataset_mode",
+    "welcome_message",
+    "point_size",
+    "variable_to_compare",
+    "host",
+    "port",
+    "max_request_size",
+    "display_mode",
+    "launch_browser"
+  )
+  point_size <- if (is.list(options)) options$point_size else NULL
+  point_value <- if (is.list(point_size)) {
+    point_size$overview_projection_point_size
+  } else {
+    NULL
+  }
+  is.list(options) &&
+    !is.object(options) &&
+    identical(sort(names(options)), sort(expected)) &&
+    isTRUE(options$enabled) &&
+    is.logical(options$show_upload_ui) &&
+    length(options$show_upload_ui) == 1L &&
+    !is.na(options$show_upload_ui) &&
+    is.character(options$initial_dataset) &&
+    length(options$initial_dataset) == 1L &&
+    !is.na(options$initial_dataset) &&
+    options$initial_dataset %in% dataset_order &&
+    is.character(options$initial_dataset_mode) &&
+    length(options$initial_dataset_mode) == 1L &&
+    !is.na(options$initial_dataset_mode) &&
+    options$initial_dataset_mode %in% c("automatic", "explicit") &&
+    (!identical(options$initial_dataset_mode, "automatic") ||
+      identical(options$initial_dataset, dataset_order[[1L]])) &&
+    is.character(options$welcome_message) &&
+    length(options$welcome_message) == 1L &&
+    !is.na(options$welcome_message) &&
+    nzchar(trimws(options$welcome_message)) &&
+    is.list(point_size) &&
+    !is.object(point_size) &&
+    identical(names(point_size), "overview_projection_point_size") &&
+    is.numeric(point_value) &&
+    length(point_value) == 1L &&
+    !is.na(point_value) &&
+    is.finite(point_value) &&
+    point_value >= 0 &&
+    point_value <= 20 &&
+    is.logical(options$variable_to_compare) &&
+    length(options$variable_to_compare) == 1L &&
+    !is.na(options$variable_to_compare) &&
+    is.character(options$host) &&
+    length(options$host) == 1L &&
+    !is.na(options$host) &&
+    nzchar(options$host) &&
+    is.numeric(options$port) &&
+    length(options$port) == 1L &&
+    !is.na(options$port) &&
+    is.finite(options$port) &&
+    options$port == floor(options$port) &&
+    options$port >= 1 &&
+    options$port <= 65535 &&
+    is.numeric(options$max_request_size) &&
+    length(options$max_request_size) == 1L &&
+    !is.na(options$max_request_size) &&
+    is.finite(options$max_request_size) &&
+    options$max_request_size > 0 &&
+    is.character(options$display_mode) &&
+    length(options$display_mode) == 1L &&
+    !is.na(options$display_mode) &&
+    options$display_mode %in% c("auto", "normal", "showcase") &&
+    is.logical(options$launch_browser) &&
+    length(options$launch_browser) == 1L &&
+    !is.na(options$launch_browser)
+}
+
 .builder_app_demo_data <- c(
-  "extdata/v1.4/demo_full_tcr_bcr.crb" = "1cba0b06e2fa6d3753fa106d07a54c06",
-  "extdata/v1.4/demo_hla_tcr_dextramer.crb" = "33f485ee36c28556e79c273a8b39f03e",
-  "extdata/v1.4/demo_spatial_merfish.crb" = "f79806e5df9e746e96609b3ede3e7d38",
-  "extdata/v1.4/demo_spatial_slideseq.crb" = "ec2c6e97cfec73857f3b36e022954ad6",
-  "extdata/v1.4/demo_spatial_visium.crb" = "37ea7dd49363c341efa755346b6c0e80",
-  "extdata/v1.4/demo_spatial_xenium.crb" = "8ed897dbf1b8be9aac099181ac6b5171",
-  "extdata/v1.4/demo_spatial.crb" = "543f1b3323d199f31de854b95807c21a",
-  "extdata/v1.4/demo_trekker.crb" = "081f8b377425cceee154684fc1bf5dea",
-  "extdata/v1.4/example.crb" = "abe7e1c9102569cf9374460010686a22",
-  "extdata/v1.4/example.h5" = "42ea78375ebdf742db55baa6ba12aabf",
-  "extdata/v1.4/pbmc_SCE.rds" = "7b388677c44186cc8a6c13036065e1cb",
-  "extdata/v1.4/pbmc_seurat.rds" = "7c0515903aa08f9aead17f190e4d328e"
+  "extdata/examples/demo_full_tcr_bcr.crb" = "1cba0b06e2fa6d3753fa106d07a54c06",
+  "extdata/examples/demo_hla_tcr_dextramer.crb" = "33f485ee36c28556e79c273a8b39f03e",
+  "extdata/examples/demo_spatial_merfish.crb" = "f79806e5df9e746e96609b3ede3e7d38",
+  "extdata/examples/demo_spatial_slideseq.crb" = "ec2c6e97cfec73857f3b36e022954ad6",
+  "extdata/examples/demo_spatial_visium.crb" = "37ea7dd49363c341efa755346b6c0e80",
+  "extdata/examples/demo_spatial_xenium.crb" = "8ed897dbf1b8be9aac099181ac6b5171",
+  "extdata/examples/demo_spatial.crb" = "543f1b3323d199f31de854b95807c21a",
+  "extdata/examples/demo_trekker.crb" = "081f8b377425cceee154684fc1bf5dea",
+  "extdata/examples/example.crb" = "abe7e1c9102569cf9374460010686a22",
+  "extdata/examples/example.h5" = "42ea78375ebdf742db55baa6ba12aabf",
+  "extdata/examples/pbmc_SCE.rds" = "7b388677c44186cc8a6c13036065e1cb",
+  "extdata/examples/pbmc_seurat.rds" = "7c0515903aa08f9aead17f190e4d328e"
 )
 
 .builder_app_value_bytes <- function(value, kind = typeof(value)) {
@@ -826,6 +913,44 @@
       !is.logical(plain$show_upload_ui) ||
       length(plain$show_upload_ui) != 1L ||
       is.na(plain$show_upload_ui) ||
+      !is.character(plain$welcome_message) ||
+      length(plain$welcome_message) != 1L ||
+      is.na(plain$welcome_message) ||
+      !nzchar(trimws(plain$welcome_message)) ||
+      !is.list(plain$point_size) ||
+      !identical(names(plain$point_size), "overview_projection_point_size") ||
+      !is.numeric(plain$point_size$overview_projection_point_size) ||
+      length(plain$point_size$overview_projection_point_size) != 1L ||
+      is.na(plain$point_size$overview_projection_point_size) ||
+      !is.finite(plain$point_size$overview_projection_point_size) ||
+      plain$point_size$overview_projection_point_size < 0 ||
+      plain$point_size$overview_projection_point_size > 20 ||
+      !is.logical(plain$variable_to_compare) ||
+      length(plain$variable_to_compare) != 1L ||
+      is.na(plain$variable_to_compare) ||
+      !is.character(plain$host) ||
+      length(plain$host) != 1L ||
+      is.na(plain$host) ||
+      !nzchar(plain$host) ||
+      !is.numeric(plain$port) ||
+      length(plain$port) != 1L ||
+      is.na(plain$port) ||
+      !is.finite(plain$port) ||
+      plain$port != floor(plain$port) ||
+      plain$port < 1 ||
+      plain$port > 65535 ||
+      !is.numeric(plain$max_request_size) ||
+      length(plain$max_request_size) != 1L ||
+      is.na(plain$max_request_size) ||
+      !is.finite(plain$max_request_size) ||
+      plain$max_request_size <= 0 ||
+      !is.character(plain$display_mode) ||
+      length(plain$display_mode) != 1L ||
+      is.na(plain$display_mode) ||
+      !plain$display_mode %in% c("auto", "normal", "showcase") ||
+      !is.logical(plain$launch_browser) ||
+      length(plain$launch_browser) != 1L ||
+      is.na(plain$launch_browser) ||
       !.builder_app_colors_valid(plain$colors, plain$selector_order) ||
       !identical(plain$crb_pick_smallest_file, FALSE) ||
       !.builder_app_backend_plan_valid(
@@ -1082,28 +1207,18 @@ builder_app_bundle_request <- function(plan, built, labels) {
   }
   options <- plan$app_options
   if (
-    !is.list(options) ||
-      .builder_app_has_reference(options) ||
-      !identical(
-        sort(names(options)),
-        sort(c(
-          "enabled",
-          "show_upload_ui",
-          "initial_dataset",
-          "initial_dataset_mode"
-        ))
-      ) ||
-      !isTRUE(options$enabled) ||
-      !is.logical(options$show_upload_ui) ||
-      length(options$show_upload_ui) != 1L ||
-      is.na(options$show_upload_ui) ||
-      !is.character(options$initial_dataset) ||
-      length(options$initial_dataset) != 1L ||
-      !options$initial_dataset %in% order ||
-      !identical(
-        options$initial_dataset_mode %in% c("automatic", "explicit"),
-        TRUE
-      )
+    is.list(options) &&
+      identical(options$initial_dataset_mode, "automatic") &&
+      !identical(options$initial_dataset, order[[1L]])
+  ) {
+    stop(
+      "An automatic initial dataset must be the first ordered dataset.",
+      call. = FALSE
+    )
+  }
+  if (
+    .builder_app_has_reference(options) ||
+      !.builder_app_options_valid(options, order)
   ) {
     stop("Frozen generated-App options are invalid.", call. = FALSE)
   }
@@ -1156,6 +1271,14 @@ builder_app_bundle_request <- function(plan, built, labels) {
       initial_dataset = item_labels[[initial_index]],
       initial_dataset_mode = options$initial_dataset_mode,
       show_upload_ui = options$show_upload_ui,
+      welcome_message = options$welcome_message,
+      point_size = options$point_size,
+      variable_to_compare = options$variable_to_compare,
+      host = options$host,
+      port = as.integer(options$port),
+      max_request_size = options$max_request_size,
+      display_mode = options$display_mode,
+      launch_browser = options$launch_browser,
       colors = colors,
       crb_pick_smallest_file = FALSE,
       backend_plan = backend_plan,
@@ -1543,7 +1666,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
     "cerebro_config.rds" = "file",
     "extdata" = "directory",
     "private-data" = "directory",
-    "shiny" = "directory"
+    "viewer" = "directory"
   )
   actual <- vapply(
     identity$entries[root_paths],
@@ -1562,8 +1685,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
 
 .builder_app_assert_trusted_templates <- function(identity) {
   app_template <- .builder_app_package_path(
-    "shiny",
-    "v1.4",
+    "viewer",
     "_bundle_app.R"
   )
   expected_app <- .builder_app_capture_file_identity(app_template)
@@ -1588,7 +1710,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
   }
 
   trusted_roots <- list(
-    "shiny/v1.4" = .builder_app_package_path("shiny", "v1.4"),
+    "viewer" = .builder_app_package_path("viewer"),
     extdata = .builder_app_package_path("extdata")
   )
   for (relative_root in names(trusted_roots)) {
@@ -1806,12 +1928,19 @@ builder_build_app <- function(
     result_dir = app_dir,
     colors = request$colors,
     overwrite = FALSE,
-    launch_browser = FALSE,
     quiet = TRUE,
     verbose = FALSE,
     crb_pick_smallest_file = FALSE,
     show_upload_ui = request$show_upload_ui,
-    initial_dataset = request$initial_dataset
+    initial_dataset = request$initial_dataset,
+    welcome_message = request$welcome_message,
+    point_size = request$point_size,
+    variable_to_compare = request$variable_to_compare,
+    host = request$host,
+    port = request$port,
+    max_request_size = request$max_request_size,
+    display_mode = request$display_mode,
+    launch_browser = request$launch_browser
   )
   .builder_app_assert_input_identities(request)
   if (
@@ -1910,6 +2039,34 @@ builder_verify_app <- function(
   }
   if (!identical(config[["show_upload_ui"]], request$show_upload_ui)) {
     stop("The staged App upload policy differs from request.", call. = FALSE)
+  }
+  if (!identical(config[["welcome_message"]], request$welcome_message)) {
+    stop("The staged App welcome message differs from request.", call. = FALSE)
+  }
+  if (!identical(config[["point_size"]], request$point_size)) {
+    stop("The staged App point sizes differ from request.", call. = FALSE)
+  }
+  if (
+    !identical(config[["variable_to_compare"]], request$variable_to_compare)
+  ) {
+    stop(
+      "The staged App comparison option differs from request.",
+      call. = FALSE
+    )
+  }
+  expected_run_options <- list(
+    schema_version = 1L,
+    max_request_size_bytes = as.double(request$max_request_size * 1024^2),
+    shiny_app_options = list(
+      port = as.integer(request$port),
+      host = request$host,
+      launch.browser = request$launch_browser,
+      quiet = TRUE,
+      display.mode = request$display_mode
+    )
+  )
+  if (!identical(config[[".bundle_run_options"]], expected_run_options)) {
+    stop("The staged App launch options differ from request.", call. = FALSE)
   }
   if (!identical(config[["colors"]], request$colors)) {
     stop("The staged App palettes differ from request.", call. = FALSE)

@@ -10,8 +10,7 @@ builder_content_spatial_inst_path <- function(...) {
 builder_content_spatial_source_runtime <- function(local = parent.frame()) {
   files <- c(
     builder_content_spatial_inst_path(
-      "shiny",
-      "v1.4",
+      "viewer",
       "core",
       "spatial_coordinate_contract.R"
     ),
@@ -96,7 +95,7 @@ builder_content_spatial_context <- function(object) {
     }
     path <- builder_content_spatial_inst_path(
       "extdata",
-      "v1.4",
+      "examples",
       "demo_trekker.crb"
     )
     object <- readRDS(path)

@@ -39,7 +39,15 @@ builder_app_bundle_fixture <- function(
         enabled = TRUE,
         show_upload_ui = FALSE,
         initial_dataset = initial_dataset,
-        initial_dataset_mode = initial_dataset_mode
+        initial_dataset_mode = initial_dataset_mode,
+        welcome_message = "Welcome, team!",
+        point_size = list(overview_projection_point_size = 6),
+        variable_to_compare = FALSE,
+        host = "127.0.0.1",
+        port = 4242L,
+        max_request_size = 512,
+        display_mode = "showcase",
+        launch_browser = FALSE
       )
     ),
     class = c("builder_build_plan", "list")
@@ -74,7 +82,7 @@ builder_app_backend_fixture <- function(
 builder_fake_app <- function(request, app_dir) {
   dir.create(app_dir)
   expect_true(file.copy(
-    builder_profile_inst_path("shiny"),
+    builder_profile_inst_path("viewer"),
     app_dir,
     recursive = TRUE
   ))
@@ -92,7 +100,7 @@ builder_fake_app <- function(request, app_dir) {
     )
   }
   expect_true(file.copy(
-    builder_profile_inst_path("shiny", "v1.4", "_bundle_app.R"),
+    builder_profile_inst_path("viewer", "_bundle_app.R"),
     file.path(app_dir, "app.R")
   ))
   saveRDS(
@@ -100,6 +108,20 @@ builder_fake_app <- function(request, app_dir) {
       crb_file_to_load = stats::setNames(targets, request$selector_order),
       initial_dataset = request$initial_dataset,
       show_upload_ui = request$show_upload_ui,
+      welcome_message = request$welcome_message,
+      point_size = request$point_size,
+      variable_to_compare = request$variable_to_compare,
+      .bundle_run_options = list(
+        schema_version = 1L,
+        max_request_size_bytes = request$max_request_size * 1024^2,
+        shiny_app_options = list(
+          port = as.integer(request$port),
+          host = request$host,
+          launch.browser = request$launch_browser,
+          quiet = TRUE,
+          display.mode = request$display_mode
+        )
+      ),
       colors = request$colors,
       crb_pick_smallest_file = request$crb_pick_smallest_file,
       .bundle_backend_plan = request$backend_plan
@@ -163,6 +185,14 @@ test_that("App arguments come only from the frozen plan", {
       "initial_dataset",
       "initial_dataset_mode",
       "show_upload_ui",
+      "welcome_message",
+      "point_size",
+      "variable_to_compare",
+      "host",
+      "port",
+      "max_request_size",
+      "display_mode",
+      "launch_browser",
       "colors",
       "crb_pick_smallest_file",
       "backend_plan",
@@ -607,7 +637,7 @@ test_that("App identities reject files with external hard-link aliases", {
     request,
     file.path(app_fixture$stage, "cerebro_app")
   )
-  public <- file.path(app_dir, "shiny", "v1.4", "www")
+  public <- file.path(app_dir, "viewer", "www")
   dir.create(public, recursive = TRUE, showWarnings = FALSE)
   expect_true(file.link(
     file.path(app_dir, "private-data", "dataset-a.crb"),
@@ -974,6 +1004,60 @@ test_that("App assembly calls only the accepted staged interface", {
   expect_false(observed$crb_pick_smallest_file)
   expect_identical(observed$show_upload_ui, request$show_upload_ui)
   expect_identical(observed$initial_dataset, request$initial_dataset)
+  expect_identical(observed$welcome_message, request$welcome_message)
+  expect_identical(observed$point_size, request$point_size)
+  expect_identical(observed$variable_to_compare, request$variable_to_compare)
+  expect_identical(observed$host, request$host)
+  expect_identical(observed$port, request$port)
+  expect_identical(observed$max_request_size, request$max_request_size)
+  expect_identical(observed$display_mode, request$display_mode)
+  expect_identical(observed$launch_browser, request$launch_browser)
+})
+
+test_that("App request and config read-back preserve every Review option", {
+  fixture <- builder_app_bundle_fixture()
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  app_dir <- builder_fake_app(
+    request,
+    file.path(fixture$stage, "cerebro_app")
+  )
+  verification <- builder_verify_app(app_dir, request)
+
+  expect_true(verification$valid)
+  expect_identical(request$welcome_message, "Welcome, team!")
+  expect_identical(request$point_size, list(overview_projection_point_size = 6))
+  expect_false(request$variable_to_compare)
+  expect_identical(request$host, "127.0.0.1")
+  expect_identical(request$port, 4242L)
+  expect_identical(request$max_request_size, 512)
+  expect_identical(request$display_mode, "showcase")
+  expect_false(request$launch_browser)
+
+  config_file <- file.path(app_dir, "cerebro_config.rds")
+  config <- readRDS(config_file)
+  config$welcome_message <- "drifted"
+  saveRDS(config, config_file)
+  expect_error(builder_verify_app(app_dir, request), "welcome message")
+})
+
+test_that("App bundle rejects NULL rendered scalar options", {
+  fixture <- builder_app_bundle_fixture()
+  for (field in c("point_size", "variable_to_compare")) {
+    plan <- fixture$plan
+    if (identical(field, "point_size")) {
+      plan$app_options$point_size$overview_projection_point_size <- NULL
+    } else {
+      plan$app_options$variable_to_compare <- NULL
+    }
+    expect_error(
+      builder_app_bundle_request(plan, fixture$paths, fixture$labels),
+      "options are invalid"
+    )
+  }
 })
 
 test_that("real createShinyApp output round trips the frozen request", {
@@ -996,12 +1080,11 @@ test_that("real createShinyApp output round trips the frozen request", {
 
 test_that("installed layout carries the exact App entrypoint template", {
   installed <- system.file(
-    "shiny",
-    "v1.4",
+    "viewer",
     "_bundle_app.R",
     package = "CerebroNexus"
   )
-  source <- builder_profile_inst_path("shiny", "v1.4", "_bundle_app.R")
+  source <- builder_profile_inst_path("viewer", "_bundle_app.R")
 
   expect_true(nzchar(installed))
   expect_true(file.exists(installed))
@@ -1108,11 +1191,11 @@ test_that("App verification binds executable code to package templates", {
     )
   )
   assert_code_rejected(
-    "shiny/v1.4/shiny_UI.R",
+    "viewer/shiny_UI.R",
     "ui <- shiny::fluidPage('evil')"
   )
-  assert_code_rejected("shiny/v1.4/www/evil.js", "window.evil = true;")
-  assert_code_rejected("shiny/v1.4/www/evil.css", "body { display: none; }")
+  assert_code_rejected("viewer/www/evil.js", "window.evil = true;")
+  assert_code_rejected("viewer/www/evil.css", "body { display: none; }")
   assert_code_rejected("extdata/example_gene_set.gmt", "evil\tna\tGENE")
 })
 
@@ -1434,7 +1517,7 @@ test_that("App verification rejects symlinks anywhere in the bundle", {
     request,
     file.path(fixture$stage, "cerebro_app")
   )
-  public_root <- file.path(app_dir, "shiny", "v1.4", "www")
+  public_root <- file.path(app_dir, "viewer", "www")
   dir.create(public_root, recursive = TRUE, showWarnings = FALSE)
   expect_true(file.symlink(
     file.path(app_dir, "private-data", "dataset-a.crb"),
@@ -1470,9 +1553,9 @@ test_that("App verification rejects private data outside exact allowed roots", {
   assert_rejected("misc/rogue.h5")
   assert_rejected("misc/rogue.bpcells", directory = TRUE)
   assert_rejected("misc/leak.rds")
-  assert_rejected("extdata/v1.4/rogue.crb")
-  assert_rejected("shiny/v1.4/www/leak.crb")
-  assert_rejected("shiny/v1.4/www/leak.rds")
+  assert_rejected("extdata/examples/rogue.crb")
+  assert_rejected("viewer/www/leak.crb")
+  assert_rejected("viewer/www/leak.rds")
   case_alias <- list(
     entries = list(list(
       path = "PRIVATE-DATA/rogue.crb",
@@ -1516,17 +1599,17 @@ test_that("App verification rejects private data outside exact allowed roots", {
     request,
     file.path(fixture$stage, "cerebro_app")
   )
-  demo <- file.path(app_dir, "extdata", "v1.4", "example.crb")
+  demo <- file.path(app_dir, "extdata", "examples", "example.crb")
   trusted_demo <- builder_profile_inst_path(
     "extdata",
-    "v1.4",
+    "examples",
     "example.crb"
   )
   expect_true(nzchar(trusted_demo))
-  rds_demo <- file.path(app_dir, "extdata", "v1.4", "pbmc_SCE.rds")
+  rds_demo <- file.path(app_dir, "extdata", "examples", "pbmc_SCE.rds")
   trusted_rds_demo <- builder_profile_inst_path(
     "extdata",
-    "v1.4",
+    "examples",
     "pbmc_SCE.rds"
   )
   expect_true(nzchar(trusted_rds_demo))

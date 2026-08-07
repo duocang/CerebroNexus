@@ -16,8 +16,7 @@ builder_manifest_source_if_present <- function(file, local = parent.frame()) {
 
 builder_contract_source_if_present <- function(local = parent.frame()) {
   path <- builder_inst_asset_path(
-    "shiny",
-    "v1.4",
+    "viewer",
     "core",
     "viewer_content_contract.R"
   )
@@ -323,8 +322,7 @@ test_that("choose and provide resolve only after their entry becomes valid", {
 test_that("manifest sources without package or app helper functions", {
   isolated <- new.env(parent = baseenv())
   core_path <- builder_inst_asset_path(
-    "shiny",
-    "v1.4",
+    "viewer",
     "core",
     "viewer_content_contract.R"
   )

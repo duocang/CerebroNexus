@@ -140,6 +140,24 @@ test_that("Builder app selection keeps initial URL and user priority", {
     timeout = 30000
   )
   initial$get_js(
+    "document.querySelector('a[href=\"#shiny-tab-overview\"]').click();"
+  )
+  initial$wait_for_js(
+    paste0(
+      "document.getElementById('overview_projection_to_display') !== null && ",
+      "document.getElementById('overview_projection_point_color') !== null"
+    ),
+    timeout = 30000
+  )
+  expect_identical(
+    initial$get_value(input = "overview_projection_to_display"),
+    "tsne"
+  )
+  expect_identical(
+    initial$get_value(input = "overview_projection_point_color"),
+    "condition"
+  )
+  initial$get_js(
     "document.querySelector('a[href=\"#shiny-tab-spatial\"]').click();"
   )
   initial$wait_for_js(
@@ -205,6 +223,37 @@ test_that("Builder app selection keeps initial URL and user priority", {
   expect_identical(
     initial$get_value(input = "crb_file_selector"),
     values[[1L]]
+  )
+  initial$wait_for_js(
+    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') === null;",
+    timeout = 30000
+  )
+  initial$wait_for_js(
+    paste0(
+      "document.getElementById('overview_projection_to_display').value === ",
+      "'umap' && ",
+      "document.getElementById('overview_projection_point_color').value === ",
+      "'seurat_clusters'"
+    ),
+    timeout = 30000
+  )
+  expect_identical(
+    initial$get_js(
+      "document.getElementById('overview_projection_to_display').value"
+    ),
+    "umap"
+  )
+  expect_identical(
+    initial$get_js(
+      "document.getElementById('overview_projection_point_color').value"
+    ),
+    "seurat_clusters"
+  )
+  initial$set_inputs(crb_file_selector = values[[2L]], wait_ = FALSE)
+  initial$wait_for_idle(timeout = 30000)
+  initial$wait_for_js(
+    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;",
+    timeout = 30000
   )
 
   url <- shinytest2::AppDriver$new(

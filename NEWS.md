@@ -1,3 +1,12 @@
+# CerebroNexus 5.0
+
+## Builder
+
+- The guided Builder now ships a reproducible example matrix, private App
+  bundles, immutable release plans, and isolated runtime acceptance coverage.
+- Builder-generated Apps and package-owned Viewer/example resources now use the
+  versionless 5.0 layout and the single `launchCerebro()` entry point.
+
 # CerebroNexus 4.0
 
 ## Breaking changes
@@ -18,6 +27,25 @@
 
 - **Draft article: "Expression backend benchmark".** Introduces a protocol for comparing `embedded`, `bpcells`, and `h5` on two real public million-cell matrices. It reports independent-process medians and ranges, distinguishes a fresh-process first query from uncontrolled cold-disk access, and limits scale conclusions to the recorded host and source/tier points. A complete publication-profile run has not yet been performed on this development head.
 - **A complete methodology accompanies the results.** It defines the experimental unit, balanced backend order, expression-density-stratified query panel, run profiles, correctness fingerprints, provenance, failure handling, and interpretation boundaries.
+
+## Builder
+
+- The guided Builder workbench now keeps its primary action in normal page
+  flow, turns the dataset rail into a compact modal manager on narrow screens,
+  and provides keyboard-trapped dialogs, focus restoration, live status,
+  reduced-motion support, and text equivalents for previews and colour inputs.
+- **The final four-stage workflow is backed by a shipped example gallery.**
+  Import and Inspect, Core, Enhance, and Review expose real PBMC plus compact
+  synthetic spatial, immune/HLA, legacy-conversion, and all-content inputs.
+  Distinct example and file adapters join the shared inspection, immutable-
+  snapshot, frozen-plan, CRB, and optional generated-App pipeline.
+- **Review and publication now describe the complete release boundary.** Review
+  distinguishes CRB-only output from a private generated App, reports planned
+  payload targets and a snapshot-based disk estimate, and identifies private
+  runtime assets. Publication adds the build report and ownership record before
+  transactionally replacing the release; it preserves foreign occupants,
+  supports retry and conservative recovery, and surfaces selected-analysis
+  failures as decisions instead of successful skips.
 
 ## Internal
 

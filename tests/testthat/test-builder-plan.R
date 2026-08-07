@@ -551,6 +551,17 @@ test_that("rail Review and BuildPlan share manifest readiness", {
     builder_repo_source("recommend.R")
     builder_repo_source("plan.R")
 
+    defaults <- builder_freeze_plan(
+      list(builder_task6_entry()),
+      tempdir(),
+      make_app = TRUE
+    )
+    expect_identical(
+      defaults$app_options$point_size,
+      list(overview_projection_point_size = 5)
+    )
+    expect_identical(defaults$app_options$variable_to_compare, FALSE)
+
     blocking <- builder_task6_entry(status = "blocking")
     state <- builder_dataset_state(blocking)
     failed <- builder_make_plan(list(blocking), tempdir(), make_app = FALSE)
@@ -852,6 +863,94 @@ test_that("frozen plans own every reviewed value", {
       expected_prior_identity = attributed_reference
     )
     expect_identical(unsafe_attribute$error_code, "unsafe_reference")
+  })
+})
+
+test_that("Review App options are typed, range checked, and frozen", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    options <- list(
+      show_upload_ui = TRUE,
+      initial_dataset = "dataset-a",
+      welcome_message = "Welcome, team!",
+      point_size = list(overview_projection_point_size = 6),
+      variable_to_compare = FALSE,
+      host = "0.0.0.0",
+      port = 4242L,
+      max_request_size = 512,
+      display_mode = "showcase",
+      launch_browser = FALSE
+    )
+    plan <- builder_freeze_plan(
+      list(builder_task6_entry()),
+      tempdir(),
+      make_app = TRUE,
+      app_options = options
+    )
+
+    expect_null(plan$error)
+    expect_identical(
+      plan$app_options[names(options)],
+      options
+    )
+    options$welcome_message <- "mutated"
+    options$point_size$overview_projection_point_size <- 20
+    expect_identical(plan$app_options$welcome_message, "Welcome, team!")
+    expect_identical(
+      plan$app_options$point_size$overview_projection_point_size,
+      6
+    )
+    wrapped <- builder_make_plan(
+      list(builder_task6_entry()),
+      tempdir(),
+      make_app = TRUE,
+      app_options = options
+    )
+    expect_null(wrapped$error)
+    expect_identical(wrapped$app_options$welcome_message, "mutated")
+
+    invalid <- list(
+      welcome_message = list(NA_character_, c("a", "b"), 1),
+      point_size = list(
+        list(overview_projection_point_size = -1),
+        list(overview_projection_point_size = 21),
+        list(overview_projection_point_size = NULL),
+        list(hidden = 4),
+        4
+      ),
+      variable_to_compare = list(NULL, NA, c(TRUE, FALSE), "cluster"),
+      host = list("", NA_character_, c("a", "b"), 1),
+      port = list(0, 65536, 1.5, NA, "8080"),
+      max_request_size = list(0, Inf, NA, "8000"),
+      display_mode = list("fullscreen", NA_character_, c("auto", "normal")),
+      launch_browser = list(NA, c(TRUE, FALSE), 1)
+    )
+    for (field in names(invalid)) {
+      for (value in invalid[[field]]) {
+        failure <- builder_freeze_plan(
+          list(builder_task6_entry()),
+          tempdir(),
+          make_app = TRUE,
+          app_options = stats::setNames(list(value), field)
+        )
+        expect_identical(
+          failure$error_code,
+          "invalid_app_options",
+          info = field
+        )
+      }
+    }
+
+    unknown <- builder_freeze_plan(
+      list(builder_task6_entry()),
+      tempdir(),
+      make_app = TRUE,
+      app_options = list(hidden_future_option = TRUE)
+    )
+    expect_identical(unknown$error_code, "invalid_app_options")
   })
 })
 

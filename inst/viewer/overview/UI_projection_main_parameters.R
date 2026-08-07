@@ -18,6 +18,15 @@ output[["overview_projection_main_parameters_UI"]] <- renderUI({
   )
 })
 
+## Keep dataset-dependent choices current even when another tab is active.
+## Otherwise Shiny suspends this hidden output and a dataset switch can leave
+## stale projection and metadata defaults in the overview controls.
+outputOptions(
+  output,
+  "overview_projection_main_parameters_UI",
+  suspendWhenHidden = FALSE
+)
+
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##

@@ -13,280 +13,213 @@ vignette: >
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 resource_files:
-  - img/builder_start.png
-  - img/builder_file_browser.png
-  - img/builder_loaded.png
-  - img/builder_colours.png
-  - img/builder_alignment.png
-  - img/builder_overlay.png
+  - img/builder_source_gallery.png
+  - img/builder_core_preview.png
+  - img/builder_enhance_spatial.png
+  - img/builder_review.png
+  - img/builder_success.png
 ---
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
 ```
 
-# What this is
+# What the Builder does
 
-The usual route into CerebroNexus is a call to `exportFromSeurat()` followed by
-`createShinyApp()`. That is fifteen arguments to get right, and getting one
-wrong — an `assay` that does not exist, a grouping variable that turns out to be
-a batch label — is only discovered after the file is written.
+The Dataset Builder turns trusted Seurat objects into a reviewed CerebroNexus
+release without requiring you to assemble a long export call. It uses the same
+export and app-generation code as the R API, but presents the choices as four
+guided stages:
 
-The builder is the same pipeline with the arguments turned into a page. You
-point at objects, tick what should be in them, look at the projection before
-anything is written, and get a runnable app out.
+1. **Import and Inspect** the source and its supported content.
+2. Complete the **Core setup** for identity, expression, metadata, and Viewer
+   defaults.
+3. **Enhance content** with opt-in analyses and supported attachments.
+4. **Review and Build** an exact frozen release plan.
 
-# Running it
+The Builder is a local authoring tool. It can deserialize executable R objects,
+so use only files you trust and do not deploy it as an upload service for
+untrusted users.
+
+# Launch the installed Builder
 
 ```{r}
 library(CerebroNexus)
 launchCerebroBuilder()
 ```
 
-That opens a browser on a free port. `launchCerebroBuilder(port = 7799)` pins
-one; `launch_browser = FALSE` leaves it closed. From a shell, in one line:
+The launcher opens a browser on a free local port. Use
+`launchCerebroBuilder(port = 7799)` to choose a port or
+`launchCerebroBuilder(launch_browser = FALSE)` when another process will open
+the page.
 
-```sh
-Rscript -e 'CerebroNexus::launchCerebroBuilder()'
+The launcher always runs the Builder shipped inside the installed package. If
+you are developing CerebroNexus itself, reinstall the package before checking
+the final user experience.
+
+# 1. Import and Inspect
+
+Choose **Add datasets…** to select one or more local objects or start from the
+example gallery. Phase one accepts Seurat objects stored as `.rds`, `.qs2`, and
+`.qs` when the corresponding reader is installed. The browser offers only
+formats it can read.
+
+![The installed Builder source sheet and its shipped example gallery.](img/builder_source_gallery.png)
+
+The gallery covers the basic PBMC workflow, multi-section spatial data, immune
+and HLA combinations, metadata and legacy conversion, and an all-content
+example. Gallery and file inputs use **distinct source adapters**, then join the
+**shared import pipeline** for inspection, recommendations, snapshots, Review,
+and Build.
+
+After loading, **Import & Inspect** reports cells, genes, detected content,
+attention items, and blockers. A dataset is registered only after the worker
+has loaded it, profiled it, and created an immutable session-private snapshot.
+File-backed storage needed by the object is copied into that snapshot as well.
+
+This isolation makes retry and worker restart repeatable, but it is not free:
+the **snapshot disk cost** can approach the size of the object plus its backing
+files. Snapshots have owner-only permissions and are cleaned when the session
+releases them. If the complete storage closure cannot be frozen safely, import
+stops before the dataset becomes Ready.
+
+The dataset rail controls ordering, the initial dataset, duplication, and
+removal. On a narrow screen it becomes a Dataset Manager dialog without changing
+the stored order or readiness state.
+
+# 2. Core setup
+
+Core contains the small set of choices every export needs:
+
+- dataset name and organism;
+- default metadata group and default projection;
+- assay and logical layer;
+- UMI and feature-count columns;
+- embedded, HDF5, or BPCells expression storage.
+
+Only choices proven valid by inspection are offered. Advanced technical
+settings remain available under a disclosure, while the recommended novice
+path stays visible. The chosen group and projection become the generated
+Viewer's actual startup defaults and remain members of the frozen included
+sets.
+
+![Core settings for an installed-package example, with the configured dataset ready for Review.](img/builder_core_preview.png)
+
+Colour palettes belong to the generated App configuration, not to the CRB
+format. A CRB opened elsewhere therefore uses Viewer defaults, while the App
+starts with the per-dataset and per-group colours frozen by the Builder.
+
+# 3. Enhance content
+
+Enhance separates optional work from content already present on the object.
+The Builder can opt in to mitochondrial/ribosomal percentages, most-expressed
+genes, marker genes, and Enrichr enrichment from an explicitly selected marker
+method. Every analysis states its dependencies, estimated cost, network use,
+and replacement policy before it enters the plan.
+
+Valid existing marker tables, enrichment, `monocle2` trajectories, immune
+repertoire, HLA typing, spatial content, Trekker content, extra tables, and
+extra plots are preserved or normalized according to the manifest. Supplementary
+CSV/TSV/TXT tables and PNG/JPEG histology images can be attached through their
+explicit controls.
+
+![Enhance for the spatial example, including auto-retained content and per-section histology controls.](img/builder_enhance_spatial.png)
+
+For spatial data, each tissue section has its own image and bounds. The
+alignment view overlays cells on a PNG or JPEG and can save one section or apply
+the image to all sections while recomputing each section's extent. TIFF and
+OME-TIFF require conversion before import.
+
+Selected analysis failures are never presented as successful partial work. The
+result becomes **Needs decision**: retry the failed item with its dependency
+closure, or remove it explicitly, return to Review, and freeze a new plan.
+
+# 4. Review and Build
+
+Review is an exact, immutable description of the frozen plan that Build will
+execute. It shows the plan revision, dataset order, output filenames, expression
+backends, analysis dependencies, content dispositions, expected Viewer pages,
+App settings, planned payload targets, replacement policy, and estimated runtime
+and disk. Publication later adds `build-report.json` and
+`.cerebro-builder-release-v1`, matching the final release tree below.
+
+![The frozen Review identifies the plan revision, artifact mode, dataset identity, and generated-App contract.](img/builder_review.png)
+
+Choose one artifact mode:
+
+- **CRB-only** plans the CRBs and any HDF5/BPCells sidecars as payload targets.
+- **generated private App** plans the same payload targets plus `cerebro_app/`.
+
+Review's disk estimate counts the source **snapshot payload once** per dataset;
+it is not a prediction of the complete release size. A generated App may copy
+CRBs and sidecars into private runtime storage, and the report and ownership
+record add further release-visible files.
+
+Pressing Build creates a single-flight request from the frozen snapshot. Draft
+controls cannot change that request. Cancellation is available while the worker
+is preparing artifacts; once the short final publication transaction begins,
+it runs to a safe terminal state instead of being interrupted between renames.
+
+## Private storage is not a public URL
+
+The generated App keeps CRBs and HDF5/BPCells sidecars under `private-data/`.
+That directory is not registered as a Shiny static resource. The
+`viewer_bundle_assets` list records private runtime inputs that are eligible to
+be copied into the bundle; membership is not HTTP exposure. Spatial images are
+read by the server and embedded as data URIs. Direct requests for CRBs,
+sidecars, private data, build reports, and spatial source files return no file.
+
+This is a packaging boundary, not a substitute for host authentication. Deploy
+the generated App only on infrastructure whose access policy matches the data.
+
+# Results, replacement, and recovery
+
+A successful result names the published artifacts. Every published release
+offers **Reveal Folder**, **Copy Path**, and **Copy Report**; **Open App is
+available only for a generated App** that passed final verification. The report
+is portable and redacted; it describes artifact-visible datasets, methods, and
+metadata columns without source paths, host/PID data, lock paths, or raw values.
+
+![A completed installed-package build with the four result actions.](img/builder_success.png)
+
+One release is published as a transaction:
+
+```text
+<output-parent>/<release-name>/
+├── 01-<dataset>.crb
+├── expression sidecars when requested
+├── cerebro_app/                 # optional
+├── build-report.json
+└── .cerebro-builder-release-v1  # ownership record
 ```
 
-> **If you are editing the builder**, note that `launchCerebroBuilder()` runs
-> the copy inside the *installed* package — `system.file("builder", ...)` — not
-> your working tree. Changes under `inst/builder/` need `R CMD INSTALL .`
-> before they appear, and the same applies to anything `createShinyApp()`
-> bundles. To skip the reinstall while developing, run the source directly:
->
-> ```sh
-> Rscript -e 'options(shiny.autoreload = TRUE); shiny::runApp("inst/builder")'
-> ```
->
-> Saving an `.R` file then reloads the page by itself. Stylesheet and script
-> URLs carry the file's own modification time, so CSS and JS changes are not
-> served from cache either.
+The coordinator writes into a private same-filesystem stage, validates the
+whole payload, moves the prior release to a backup, renames the stage into
+place, verifies the final location, and only then retires the backup. Ordinary
+failures use rollback and leave the previous release intact. If process death
+interrupts the two-rename window, conservative recovery restores or preserves
+the old release rather than claiming zero downtime.
 
-![The builder on startup. Nothing is loaded; the three examples on the left need no files of your own.](img/builder_start.png)
+The ownership record lists every Builder-owned release member. A later build
+can safely remove an old App or dataset only when that record proves ownership;
+foreign or symbolic entries block replacement and remain untouched. For
+**ownership migration**, a legacy release without a record can be replaced only
+when its complete topology remains in the new plan. Shrinking it requires a
+record-bearing publication first or explicit manual resolution.
 
-It runs on your own machine. Objects are read in a **separate R process**, so a
-multi-gigabyte `readRDS` does not freeze the page — measured on a 15 000-cell
-object, the Shiny process grew by 1 MB while the worker took the 97 MB, and the
-interface answered throughout.
+# Phase-one limits
 
-# Getting objects in
+- Input adapters cover trusted Seurat files and shipped examples. SCE, CRB,
+  h5ad, h5Seurat, loom, and remote-upload adapters are not implemented.
+- The Builder does not generate trajectories, GSEA, Trekker mappings, or extra
+  plots. It preserves supported existing forms and diagnoses unsupported ones.
+- Only `monocle2` trajectories are exported. Other methods are reported as
+  filtered rather than disappearing silently.
+- Histology attachment accepts PNG/JPEG; TIFF and OME-TIFF need conversion.
+- Colours and Viewer launch options belong to a generated App, not a bare CRB.
+- Publication protects the prior release and supports recovery, but it does not
+  promise uninterrupted service through process death during final replacement.
 
-## The file browser
-
-`.rds`, `.qs2`, and `.qs` (the last needs the `qs` package). The browser lists
-only files it can actually read, with their sizes, so a directory of mixed
-material does not have to be filtered by eye.
-
-![Browsing a directory. CSVs and PNGs are present on disk but not offered — only readable objects are listed.](img/builder_file_browser.png)
-
-> `.qd` is **not** offered and cannot be. qs2's `qdata` format does not
-> serialise S4 at all: `qd_save()` on a Seurat object warns *"Objects of type S4
-> are not supported in qdata format"*, writes a 38-byte container, and reads
-> back as `NULL`. A `.qd` file cannot hold a Seurat object.
-
-## Several objects at once
-
-Add as many as you like. Each becomes its own `.crb` and they are bundled into
-one app behind a dataset switcher — one link, every sample behind a dropdown,
-which is usually how a lab wants to hand a project over.
-
-The number on each row is the export order, which is also the order of that
-switcher. Duplicate names are suffixed automatically, because duplicates do not
-merely look untidy: they block the build outright.
-
-![An object with five tissue sections loaded. The dataset rail stays visible while the responsive card grid uses the available workspace.](img/builder_loaded.png)
-
-## Examples, if you have nothing to hand
-
-Three, needing no files: `pbmc_small` from SeuratObject, the PBMC object shipped
-in this package, and a small synthetic spatial object for trying the background
-alignment.
-
-An example withdraws from the list once it is on the data set list, and returns
-when you remove that data set. An example already loaded is not an offer, and
-leaving it there invites loading it twice — which is not merely untidy, because
-duplicate names block the build until they are suffixed apart.
-
-# What goes into the data set
-
-Each card is one decision.
-
-**Identity.** The name becomes the switcher label. **Expression matrix.** Only
-the layers that really exist in the object are listed. **Grouping variables.**
-QC columns are filtered out of the candidates — `nFeature_RNA` is a number, not
-a grouping. **Reductions.** Anything with `pca` in its name is unticked by
-default, because the export drops it.
-
-# Looking before writing
-
-The preview draws the projection with the palette the app will use. An object
-can pass every structural check and still be the wrong object, or be coloured by
-something that turns out to be a batch label; one look settles it before a file
-exists.
-
-Above 12 000 cells the preview downsamples **deterministically** — the same
-object always previews the same way, so a difference on screen is a difference
-in the data, not in the sampling.
-
-# Colours
-
-![The preview and its palette controls. Four presets; one swatch per level; the note states plainly where the choice ends up.](img/builder_colours.png)
-
-Four palettes, two of them colour-blind-safe (Okabe–Ito and Paul Tol Bright).
-Each level also gets its own swatch, and a hand-picked colour **survives a
-change of preset** — switching palette re-colours the levels you have not
-touched and leaves the ones you have.
-
-Above 40 levels the swatch grid is replaced by a note. Nobody edits 200 colours
-one at a time, and 200 colour inputs make the page unusable.
-
-## Where the colours end up, and where they do not
-
-The palette is written into the **generated app's** configuration, via
-`createShinyApp(colors = )`. Colours are not part of the `.crb` format — the
-class has no colour field and the viewer computes them at runtime — so:
-
-- Open the app the builder produced, and your palette is there.
-- Hand someone the bare `.crb`, and they get the default palette.
-
-The viewer's *Color management* tab can still change any colour for that
-session; what the builder sets is the starting point, and it is the only part
-that persists.
-
-# Spatial: one background per tissue section
-
-An object can hold several tissue sections. Each has its own coordinates and
-its own slide, and the `.crb` has always carried a separate histology image and
-extent per section — so the builder treats them separately too.
-
-With one section the card looks as it always did. With several, a picker
-appears.
-
-![Five sections across three donors. The picker names the section; the preview below draws that section's cells.](img/builder_alignment.png)
-
-Switching section re-reads **that section's** coordinates and clears the
-in-progress alignment, which described a different slide. A line under the
-controls says how many sections still have no image — worth stating, because a
-section without one loses the background picker entirely in the viewer.
-
-## Aligning
-
-Pan, scale, rotate, flip, with the cells drawn over the image in the same
-coordinate space the viewer will use. Numbers cannot answer "is this aligned";
-only the picture can.
-
-![Cells over the background, in coordinate space. The x axis reads ~1450–1650 because this is the fourth section, not the first.](img/builder_overlay.png)
-
-Rotation **redraws the raster**; pan and scale only change the extent it covers
-— so moving it back and forth costs no image quality.
-
-Sections cut from one block often share a slide scan, hence *apply to all*;
-doing it by hand for twelve sections is the kind of chore that makes people skip
-backgrounds entirely. Note what it does and does not share: the **picture** is
-copied to every section, the **extent is recomputed for each one** from that
-section's own coordinates. Sections sit at different offsets, so copying the
-first section's extent would put every other slide hundreds or thousands of
-units from its cells — selectable in the viewer and blank on screen. If a
-section still has cells outside its image afterwards, it is named in the
-notification.
-
-## Choosing the extent
-
-Three ways to say where the image sits:
-
-| Mode | Use when |
-|---|---|
-| coordinates are image pixels | cell coordinates are literally pixel positions in that image |
-| coordinates are physical units | you know the µm per pixel |
-| bounding box of the cells | you only know it covers the tissue |
-
-> **On a multi-section object, prefer the bounding box.** In pixel mode every
-> section gets `[0, image width]` regardless of where its cells sit, so every
-> section but the one near the origin lands completely outside its image. The
-> coverage warning reports it per section, but it is easy to walk past.
-
-# Immune repertoire, HLA typing, Trekker
-
-These are not builder controls. They are already on the object when you point at
-it, and the builder's job is to carry them through without being asked. What it
-shows you is whether they are there: the *what this object already carries* row
-lights up the ones it found, and the greyed-out ones are the pages that will not
-appear in the finished app.
-
-| On the object | Reaches the `.crb` by |
-|---|---|
-| `@misc$immune_repertoire`, or legacy `@misc$tcr_data` / `@misc$bcr_data` | `exportFromSeurat()`, on its own |
-| `@misc$hla_typing` (+ `@misc$hla_typing_source_type`) | `exportFromSeurat()`, on its own |
-| `@misc$trekker` | the builder, written in after the export |
-
-The last row is the odd one out and worth knowing about. `exportFromSeurat()`
-never looks at `@misc$trekker`, so an object carrying a Trekker map used to
-export without one — and a missing page says nothing about why it is missing.
-The builder writes it into the staged `.crb` afterwards, in the same atomic
-read-modify-write as any configured histology images. The completed CRBs and
-optional app are then published together. This is the same read-modify-write it
-uses for the histology background.
-
-Two things follow from the table. A `.crb` produced by a hand-written
-`exportFromSeurat()` call will not have Trekker even though the object did; and
-which pages appear is decided by what the object carries, not by anything you
-tick here.
-
-> Tab visibility has its own logic worth knowing: **HLA & TCR Motifs** appears
-> when the data set has a TCR, *not* when it has HLA typing. The motif network
-> works without typing, and the page has to be reachable before you can add any.
-
-`data-raw/build_builder_fixtures.R` writes `all_modalities.rds` carrying all
-three, if you want to see the three pages light up without hunting for real
-data.
-
-# Optional extras
-
-**Analyses before export**, each labelled with what it really costs: percent
-mito/ribo and most-expressed genes take seconds, marker genes take minutes, and
-Enrichr needs the network (measured: ~4 s for a single database). A step that
-fails is logged and skipped — it must not cost you the export.
-
-**Supplementary tables.** Point at a CSV or TSV and it becomes a browsable table
-in the Extra material page. Two lines of work, one more page lit up.
-
-# Building
-
-Give an output directory and press the button. Every expensive step — the
-analyses, the matrix write, the bundle — happens in the worker, so the page
-keeps answering while marker genes take their minutes.
-
-What comes back names each file, its size, how long each analysis took, and
-anything that failed. Then:
-
-```{r}
-shiny::runApp("~/cerebro/cerebro_app")
-```
-
-# Fixtures for trying all of this
-
-The repository carries a generator for a synthetic fixture set that exercises
-every path above — no spatial data, one section, three sections from one donor,
-five sections across three donors, pixel-exact coordinates, an object arriving
-with marker genes, a CSV, and a 15 000-cell object big enough to watch the
-worker work:
-
-```sh
-Rscript data-raw/build_builder_fixtures.R
-```
-
-It builds offline in under a minute. See `data-raw/builder_fixtures.md`.
-
-# Limits worth knowing
-
-- **Local only.** Objects are read from paths on the machine running the app.
-  This is a tool for your own machine or your own RStudio Server session, not
-  something to deploy for other people.
-- **A palette follows the app, not the `.crb`.** See above.
-- **Per-section geometry is the extent, and only the extent.** Rotation, flip
-  and offset are not stored per section anywhere in the format, which is why
-  rotation is baked into the raster and position is expressed as bounds.
-- **No cancel button.** A long analysis has to finish; the page stays responsive
-  but the work cannot be called back.
+These boundaries keep Review truthful: content is described as configured,
+generated, attached, converted, preserved, stored only, filtered, or blocked
+according to what the current exporter and Viewer can actually support.

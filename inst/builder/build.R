@@ -158,7 +158,12 @@
     !is.null(value) && length(value) > 0L
   }
   extra <- .builder_build_field(object, "extra_material")
-  c(
+  immune <- .builder_build_field(object, "immune_repertoire")
+  tcr_chains <- tryCatch(
+    hla_detect_chains(immune),
+    error = function(error) character()
+  )
+  pages <- c(
     if (present("marker_genes")) "marker_genes",
     if (present("most_expressed_genes")) "most_expressed_genes",
     if (present("enriched_pathways")) "enriched_pathways",
@@ -167,10 +172,11 @@
     if (present("trajectories")) "trajectory",
     if (present("spatial")) "spatial",
     if (present("trekker")) "trekker",
-    if (present("hla_typing") && present("immune_repertoire")) {
+    if (any(tcr_chains %in% c("TRA", "TRB"))) {
       "hla_tcr_motifs"
     }
   )
+  as.character(pages)
 }
 
 #' Reopen and compare one staged CRB with its frozen expectation.
@@ -479,10 +485,10 @@ builder_execute_plan <- function(
   snapshots,
   hooks = builder_build_hooks()
 ) {
-  stage <- .builder_build_stage(stage)
   if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
     stop("Build execution requires a frozen BuildPlan.", call. = FALSE)
   }
+  stage <- .builder_build_stage(stage)
   if (isTRUE(plan$make_app) && !identical(plan$app_contract_version, 1L)) {
     return(.builder_build_failure(
       "Generated-app execution requires frozen contract version 1."

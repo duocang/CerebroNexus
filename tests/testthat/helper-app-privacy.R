@@ -109,6 +109,7 @@ privacy_source_builder_runtime <- function(contract_version = 1L) {
   runtime <- new.env(parent = globalenv())
   builder_profile_source_runtime(runtime)
   builder_dir <- builder_profile_inst_path("builder")
+  package_inst <- dirname(builder_dir)
   sys.source(
     file.path(builder_dir, "core", "bundle_path_contract.R"),
     envir = runtime
@@ -116,6 +117,7 @@ privacy_source_builder_runtime <- function(contract_version = 1L) {
   for (file in c(
     "publish.R",
     "app_bundle.R",
+    "report.R",
     "coordinator.R",
     "io.R",
     "spatial.R",
@@ -138,6 +140,17 @@ privacy_source_builder_runtime <- function(contract_version = 1L) {
     "session.R"
   )) {
     sys.source(file.path(builder_dir, file), envir = runtime)
+  }
+  ## The worker below is deliberately sourced from this checkout's explicit
+  ## inst/ tree. Keep the parent verifier on that same trusted root: earlier
+  ## tests may change which installed/load_all package system.file() resolves,
+  ## and mixing those roots produces a false template-identity failure.
+  runtime$.builder_app_package_path <- function(...) {
+    path <- file.path(package_inst, ...)
+    if (!nzchar(path) || !runtime$.builder_app_path_exists(path)) {
+      stop("A package-owned trusted template is missing.", call. = FALSE)
+    }
+    path
   }
   actual <- runtime$builder_installed_app_contract_version()
   if (!is.null(contract_version)) {
@@ -194,6 +207,58 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     stop(worker$error)
   }
   on.exit(try(runtime$builder_worker_stop(worker), silent = TRUE), add = TRUE)
+  worker$process$run(
+    function(package_inst) {
+      .builder_app_package_path <<- local({
+        trusted_root <- package_inst
+        function(...) {
+          path <- file.path(trusted_root, ...)
+          if (!nzchar(path) || (!file.exists(path) && !dir.exists(path))) {
+            stop("A package-owned trusted template is missing.", call. = FALSE)
+          }
+          path
+        }
+      })
+      trusted_create_app <- CerebroNexus::createShinyApp
+      lookup <- new.env(parent = environment(trusted_create_app))
+      lookup$system.file <- local({
+        trusted_root <- package_inst
+        function(
+          ...,
+          package = "base",
+          lib.loc = NULL,
+          mustWork = FALSE
+        ) {
+          if (identical(package, "CerebroNexus")) {
+            path <- file.path(trusted_root, ...)
+            if (
+              isTRUE(mustWork) &&
+                (!file.exists(path) && !dir.exists(path))
+            ) {
+              stop("No file found", call. = FALSE)
+            }
+            return(path)
+          }
+          base::system.file(
+            ...,
+            package = package,
+            lib.loc = lib.loc,
+            mustWork = mustWork
+          )
+        }
+      })
+      environment(trusted_create_app) <- lookup
+      builder_build_app <<- local({
+        build_app <- builder_build_app
+        trusted_app <- trusted_create_app
+        function(request, stage, create_app = trusted_app) {
+          build_app(request, stage, create_app = create_app)
+        }
+      })
+      invisible(TRUE)
+    },
+    args = list(package_inst = dirname(builder_profile_inst_path("builder")))
+  )
 
   load_example <- function(id, example) {
     runtime$builder_session_example(worker, id, example)
@@ -209,17 +274,21 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     )
     loaded
   }
-  first <- load_example("dataset-a", "pbmc_small")
-  second <- load_example("dataset-b", "spatial_synthetic")
+  first <- load_example("dataset-a", "basic_pbmc")
+  second <- load_example("dataset-b", "spatial_multi_section")
   entries <- list(
     privacy_builder_entry(runtime, "dataset-a", "Dataset A", first),
     privacy_builder_entry(runtime, "dataset-b", "Dataset B", second)
   )
-  entries[[1L]]$settings$groups <- "groups"
-  entries[[1L]]$settings$reductions <- "tsne"
+  entries[[1L]]$settings$groups <- c("sample", "seurat_clusters")
+  entries[[1L]]$settings$default_group <- "seurat_clusters"
+  entries[[1L]]$settings$reductions <- "umap"
+  entries[[1L]]$settings$default_projection <- "umap"
   entries[[1L]]$settings$expression_backend <- "h5"
-  entries[[2L]]$settings$groups <- "seurat_clusters"
-  entries[[2L]]$settings$reductions <- "umap"
+  entries[[2L]]$settings$groups <- c("cell_type", "condition")
+  entries[[2L]]$settings$default_group <- "condition"
+  entries[[2L]]$settings$reductions <- c("umap", "tsne")
+  entries[[2L]]$settings$default_projection <- "tsne"
   section <- entries[[2L]]$dataset_profile$spatial$sections[[1L]]
   image_file <- write_dummy_png(file.path(root, "builder-histology.png"))
   encoded <- paste0(

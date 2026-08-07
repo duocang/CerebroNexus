@@ -22,7 +22,7 @@ source(
 source(
   paste0(
     Cerebro.options[["cerebro_root"]],
-    "/shiny/v1.4/color_config.R"
+    "/viewer/color_config.R"
   ),
   local = TRUE
 )

@@ -8,8 +8,7 @@ spatial_contract_inst_path <- function(...) {
 }
 
 spatial_contract_core_path <- spatial_contract_inst_path(
-  "shiny",
-  "v1.4",
+  "viewer",
   "core",
   "spatial_coordinate_contract.R"
 )

@@ -722,7 +722,7 @@ test_that("the current Trekker demo defines a valid small Viewer payload", {
 test_that("the complete current Trekker demo stays valid and profiles small", {
   path <- builder_content_spatial_inst_path(
     "extdata",
-    "v1.4",
+    "examples",
     "demo_trekker.crb"
   )
   payload <- readRDS(path)$getTrekker()

@@ -18,8 +18,7 @@ builder_spatial_test_source <- function(file, local = parent.frame()) {
 
 sys.source(
   builder_spatial_test_inst_path(
-    "shiny",
-    "v1.4",
+    "viewer",
     "core",
     "spatial_coordinate_contract.R"
   ),

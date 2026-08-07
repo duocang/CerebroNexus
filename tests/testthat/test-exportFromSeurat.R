@@ -62,7 +62,7 @@ test_that("export spatial projections use shared x and y axis semantics", {
   expect_null(.spx_export_projection_coordinates(data.frame(foo = 1, bar = 2)))
 
   core_path <- system.file(
-    "shiny/v1.4/core/spatial_coordinate_contract.R",
+    "viewer/core/spatial_coordinate_contract.R",
     package = "CerebroNexus"
   )
   builder_path <- system.file("builder/spatial.R", package = "CerebroNexus")
@@ -71,8 +71,7 @@ test_that("export spatial projections use shared x and y axis semantics", {
       "..",
       "..",
       "inst",
-      "shiny",
-      "v1.4",
+      "viewer",
       "core",
       "spatial_coordinate_contract.R"
     )

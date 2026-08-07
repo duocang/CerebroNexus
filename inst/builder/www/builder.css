@@ -3,7 +3,7 @@
 /*                                                                            */
 /* The builder and the viewer are one product, so they share one design       */
 /* language: the "Console" tokens below are a mirror of the `:root` block in   */
-/* inst/shiny/v1.4/www/custom.css -- warm paper neutrals, a structural         */
+/* inst/viewer/www/custom.css -- warm paper neutrals, a structural         */
 /* slate-blue, a warm amber reserved for emphasis and action. Keep the two in  */
 /* sync; the viewer's block is the source of truth.                           */
 /*                                                                            */
@@ -22,8 +22,8 @@
   --c-border:    #ececec;
   --c-border-2:  #e0e0e0;
   --c-text:      #1c1c1e;
-  --c-text-2:    #6b6b70;
-  --c-text-3:    #9a9aa0;
+  --c-text-2:    #525257;
+  --c-text-3:    #6b6b70;
 
   /* --- Brand: calm slate-blue for structure ---------------------------- */
   --c-blue-50:  #eef4fb;
@@ -36,9 +36,9 @@
   --c-amber-50:  #fff4ec;
   --c-amber-100: #ffe4d1;
   --c-amber-300: #ffb27a;
-  --c-amber:     #f97316;
-  --c-amber-600: #ea6a0f;
-  --c-amber-700: #c85a0e;
+  --c-amber:     #c2410c;
+  --c-amber-600: #9a3412;
+  --c-amber-700: #7c2d12;
 
   --c-success: #16a34a;
   --c-warning: #d97706;
@@ -56,7 +56,7 @@
   --r-pill: 999px;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur:  0.16s;
+  --dur:  0.18s;
 
   /* The viewer's stack, plus CJK faces so Chinese labels are not left to a
      Windows default. Latin still resolves to the system face first. */
@@ -122,26 +122,53 @@ body {
   gap: 1.35rem;
   max-width: 112rem;
   margin: 0 auto;
-  padding: 1.4rem 1.5rem 6rem;
+  padding: 1.4rem 1.5rem;
   align-items: start;
   position: relative;
 }
 /* Grid items refuse to shrink below their content by default, so one long
    path in a <pre> would push the whole column past the viewport. */
 .shell > * { min-width: 0; }
-.card, .row2 > *, .field-grid > * { min-width: 0; }
+.card,
+#workbench,
+.builder-stage,
+.review-app-options,
+.shiny-panel-conditional,
+.row2 > *,
+.field-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
 .rail, #pane { position: relative; z-index: 1; }
 
-#detail {
+#workbench {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
-#detail > .card { grid-column: span 12; }
-#detail > .span-4 { grid-column: span 4; }
-#detail > .span-8 { grid-column: span 8; }
-#detail > .span-12 { grid-column: 1 / -1; }
+#workbench > * { min-width: 0; }
+.builder-stage,
+.review-app-options {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+  padding: 1.15rem 1.3rem;
+}
+.builder-stage {
+  overflow-wrap: anywhere;
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+.builder-stage ul { max-width: 100%; padding-left: 1.35rem; }
+.builder-stage li { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.builder-stage[aria-current="stage"] {
+  border-color: var(--c-amber-300);
+  box-shadow: var(--shadow-2);
+}
+.builder-stage > h2,
+.review-app-options > h2 { margin-top: 0; }
 .card-stack {
   display: grid;
   gap: 1rem;
@@ -152,6 +179,45 @@ body {
 .result-card { margin-bottom: 1rem; }
 
 /* ---- dataset rail ------------------------------------------------------ */
+
+.rail-summary,
+.rail-manager-backdrop,
+.rail-manager-close { display: none; }
+
+.rail-summary {
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .7rem .85rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  color: var(--c-text);
+  box-shadow: var(--shadow-1);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.rail-summary:focus-visible {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 2px;
+}
+.rail-summary-copy { min-width: 0; display: grid; }
+.rail-summary-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.rail-summary-state { color: var(--c-text-2); font-size: .78rem; }
+.rail-summary-action {
+  flex: 0 0 auto;
+  color: var(--c-blue-700);
+  font-size: .8rem;
+  font-weight: 600;
+}
 
 .rail {
   background: var(--c-surface);
@@ -172,6 +238,7 @@ body {
   color: var(--c-text-3);
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 .rail-empty { padding: 1.1rem .95rem; color: var(--c-text-3); font-size: .875rem; }
 
@@ -224,7 +291,6 @@ body {
   line-height: 1.5rem;
   text-align: center;
   color: var(--c-text-3);
-  transition: color var(--dur) var(--ease);
 }
 .ds-idx::before, .ds-idx::after {
   content: "";
@@ -252,8 +318,7 @@ body {
 }
 .ds .meta.bad { color: var(--c-warning); }
 
-/* Revealed on hover or keyboard focus. Always visible where there is no
-   hover to reveal it with. */
+/* Destructive actions remain visible without relying on pointer hover. */
 .ds-del {
   position: absolute;
   right: .5rem;
@@ -266,21 +331,37 @@ body {
   background: transparent;
   color: var(--c-text-3);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease),
-              background var(--dur) var(--ease),
-              color var(--dur) var(--ease);
+  opacity: 1;
 }
-.ds:hover .ds-del,
-.ds:focus-within .ds-del,
-.ds-del:focus-visible { opacity: 1; }
 .ds-del:hover { background: #fdecec; color: var(--c-error); }
 .ds-del:focus-visible { outline: 2px solid var(--c-error); outline-offset: 1px; }
 .ds-del .icon { width: .95rem; height: .95rem; }
-@media (hover: none) {
-  .ds-del { opacity: 1; }
+.ds-move,
+.ds-initial,
+.ds-copy {
+  min-width: 1.8rem;
+  min-height: 1.8rem;
+  margin: 0 .15rem .55rem 0;
+  padding: .15rem .35rem;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+  color: var(--c-text-2);
+  cursor: pointer;
 }
-
+.ds-pick + .ds-move { margin-left: .8rem; }
+.ds-move:focus-visible,
+.ds-initial:focus-visible,
+.ds-copy:focus-visible {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 1px;
+}
+.ds-initial[aria-pressed="true"] {
+  border-color: var(--c-amber-300);
+  color: var(--c-amber-700);
+  background: var(--c-amber-50);
+}
+.ds-move[disabled] { opacity: .4; cursor: not-allowed; }
 .rail-add { padding: .85rem .95rem; }
 
 /* ---- cards ------------------------------------------------------------- */
@@ -293,12 +374,10 @@ body {
   padding: 1.15rem 1.3rem;
   margin-bottom: 0;
   box-shadow: var(--shadow-1);
-  transition: box-shadow var(--dur) var(--ease);
   /* Deliberately NOT `overflow: hidden`, however much the rounded corners want
      it: a card holds selectize inputs, and clipping the card clips their
      dropdowns. The accent bar below is inset instead of being clipped. */
 }
-.card:hover { box-shadow: var(--shadow-2); }
 .card > h2 {
   font-size: .72rem;
   font-family: var(--font-mono);
@@ -371,8 +450,6 @@ label, .control-label {
   color: var(--c-text) !important;
   background: var(--c-surface) !important;
   min-height: 2.3rem;
-  transition: border-color var(--dur) var(--ease),
-              box-shadow var(--dur) var(--ease);
 }
 .form-control:focus, .selectize-input.focus {
   border-color: var(--c-blue) !important;
@@ -390,7 +467,6 @@ label, .control-label {
   font-weight: 400; font-size: .875rem; padding: .22rem 0 .22rem 1.5rem;
   display: block; cursor: pointer; color: var(--c-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  transition: color var(--dur) var(--ease);
 }
 .shiny-options-group .checkbox input { cursor: pointer; accent-color: var(--c-amber); }
 .shiny-options-group .checkbox label:hover { color: var(--c-blue); }
@@ -413,10 +489,6 @@ input[type="checkbox"] { accent-color: var(--c-amber); }
   padding: .45rem .95rem;
   cursor: pointer;
   min-height: 2.3rem;
-  transition: background var(--dur) var(--ease),
-              border-color var(--dur) var(--ease),
-              color var(--dur) var(--ease),
-              box-shadow var(--dur) var(--ease);
 }
 .btn:hover { background: var(--c-surface-2); }
 .btn:active { background: var(--c-surface-3); }
@@ -468,11 +540,14 @@ input[type="checkbox"] { accent-color: var(--c-amber); }
 /* ---- action bar -------------------------------------------------------- */
 
 .actionbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  position: static;
   background: var(--c-surface);
-  border-top: 1px solid var(--c-border);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
   padding: .75rem 1.5rem;
-  box-shadow: 0 -2px 14px rgba(17, 17, 26, .06);
+  box-shadow: var(--shadow-1);
+  max-width: calc(112rem - 3rem);
+  margin: 0 auto 1.5rem;
 }
 .actionbar .inner {
   max-width: 112rem; margin: 0 auto;
@@ -510,8 +585,6 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
 .expression-fields {
   grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
 }
-#detail > .card.span-4 > .field-grid { grid-template-columns: 1fr; }
-
 /* ---- optional analysis steps ------------------------------------------- */
 
 .steps { display: flex; flex-direction: column; gap: .1rem; }
@@ -525,7 +598,6 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   border-radius: var(--r-sm);
   cursor: pointer;
   font-weight: 400;
-  transition: background var(--dur) var(--ease);
 }
 .step-row:hover { background: var(--c-surface-2); }
 .step-row.is-blocked { opacity: .55; cursor: not-allowed; }
@@ -561,90 +633,23 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   text-align: center; font-size: .76rem; color: var(--c-text-3);
   margin: .9rem 0 .55rem;
 }
-/* An example withdraws from the list once it is on it, and returns when the
-   data set is removed.
-
-   The height animates through `grid-template-rows: 1fr -> 0fr`, which is the
-   one way to transition to a content-derived height without hard-coding one:
-   a max-height guess either clips a long label or spends the tail of the
-   duration animating nothing. The button is the grid, its contents the single
-   row, and the row is what collapses.
-
-   Padding, margin and border collapse alongside it, or the list would keep a
-   gap where the example used to be. */
-/* Two phases, in opposite orders depending on direction -- which is what makes
-   it read as a bubble rather than an accordion.
-
-   Leaving: the button swells a touch and pops (scale + fade), and only then
-   does the row close. Returning: the row opens first, then the button bubbles
-   up through an overshoot. Doing both at once is the collapsing-drawer look
-   this replaces.
-
-   Only the row height touches layout; the swell and the pop are transform and
-   opacity, so the part the eye follows never costs a reflow. */
-/* The button is a bare grid whose single row collapses; everything that can be
-   seen -- border, background, padding -- lives inside that row.
-
-   That split is what makes it smooth. Animating padding, margin, border-width
-   and the row height together meant four layout properties on four slightly
-   different curves, and the seams between them were the jerk. Inside the row,
-   padding and border are clipped by the collapse itself and need no transition
-   at all, leaving exactly two layout properties in motion. */
 .example-btn {
-  display: grid;
-  /* minmax(0, …), not a bare fr: a bare `0fr` track is `minmax(auto, 0fr)`,
-     and that `auto` floor is the item's min-content -- which, now that the
-     padding lives inside the row, never gets below ~18 px. An explicit zero
-     minimum is what lets it actually close. */
-  grid-template-rows: minmax(0, 1fr);
+  display: block;
   width: 100%; text-align: left;
   margin-bottom: .35rem;
   padding: 0;
   border: 0;
   background: none;
   min-height: auto;
-  transform-origin: 50% 50%;
-  /* Returning: the row opens, and the bubble rises through it -- overlapping,
-     not queued behind it. The previous version waited for one to finish before
-     starting the other, which is the dead beat in the middle. */
-  transition:
-    grid-template-rows .3s var(--ease) var(--ex-delay, 0ms),
-    margin-bottom .3s var(--ease) var(--ex-delay, 0ms),
-    transform .42s cubic-bezier(.34, 1.4, .64, 1)
-      calc(var(--ex-delay, 0ms) + 80ms),
-    opacity .2s ease-out calc(var(--ex-delay, 0ms) + 60ms);
 }
-
-/* The row that collapses. `min-height: 0` is what lets a grid item shrink
-   below its content at all; without it the row refuses to close. */
 .ex-inner {
-  min-height: 0;
-  overflow: hidden;
+  display: block;
   padding: .5rem .65rem;
   border: 1px solid var(--c-border-2);
   border-radius: var(--r-sm);
   background: var(--c-surface);
-  transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
 }
-
-.example-btn.is-taken {
-  grid-template-rows: minmax(0, 0fr);
-  margin-bottom: 0;
-  opacity: 0;
-  /* Shrinks away toward the rail the data set just joined. */
-  transform: scale(.86) translateY(-8px);
-  pointer-events: none;
-  /* Leaving: the pop leads and the row follows into it, overlapping from 80 ms
-     so the two never read as separate events. */
-  transition:
-    transform .26s cubic-bezier(.36, 0, .66, -0.2),
-    opacity .17s ease-in,
-    grid-template-rows .28s var(--ease) 80ms,
-    margin-bottom .28s var(--ease) 80ms;
-}
-
+.example-btn.is-taken { display: none; }
 .example-btn:hover .ex-inner {
   border-color: var(--c-blue-100);
   background: var(--c-blue-50);
@@ -659,21 +664,7 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   display: block; font-weight: 400; font-size: .75rem; color: var(--c-text-3);
   white-space: normal; line-height: 1.35;
 }
-
-/* Every example taken: the invitation has nothing left to point at. */
-.rail-add .or {
-  transition: opacity .3s var(--ease), margin .42s var(--ease),
-              max-height .42s var(--ease);
-  max-height: 3rem; overflow: hidden;
-}
-.rail-add.no-examples .or {
-  opacity: 0; max-height: 0; margin-top: 0; margin-bottom: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .example-btn, .rail-add .or { transition: none; }
-  .example-btn.is-taken { display: none; }
-}
+.rail-add.no-examples .or { display: none; }
 
 .busy {
   display: inline-flex; align-items: center; gap: .45rem;
@@ -719,6 +710,7 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   display: flex; align-items: center; justify-content: center;
   padding: 2rem 1rem;
 }
+.builder-dialog-open { overflow: hidden; }
 .sheet {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -728,6 +720,51 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   display: flex; flex-direction: column;
   box-shadow: var(--shadow-4);
 }
+
+.builder-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(17, 17, 26, .42);
+}
+.builder-confirm-dialog {
+  width: min(28rem, 100%);
+  padding: 1.2rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-4);
+}
+.builder-confirm-dialog h2 { margin: 0 0 .5rem; font-size: 1.05rem; }
+.builder-confirm-dialog p { margin: 0 0 1rem; color: var(--c-text-2); }
+.builder-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+
+.builder-preview-summary {
+  margin-top: .6rem;
+  color: var(--c-text-2);
+  font-size: .82rem;
+}
+.builder-preview-summary table {
+  width: 100%;
+  margin-top: .45rem;
+  border-collapse: collapse;
+}
+.builder-preview-summary th,
+.builder-preview-summary td {
+  padding: .3rem .45rem;
+  border-bottom: 1px solid var(--c-border);
+  text-align: left;
+}
+.js-plotly-plot { transition: opacity var(--dur) var(--ease); }
+.js-plotly-plot.is-updating { opacity: .72; }
 .sheet-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: .85rem 1.1rem; border-bottom: 1px solid var(--c-border);
@@ -742,8 +779,6 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   border-radius: var(--r-pill); padding: .22rem .75rem;
   font-size: .78rem; color: var(--c-text-2); cursor: pointer;
   font-family: inherit;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
-              border-color var(--dur) var(--ease);
 }
 .chip-btn:hover {
   background: var(--c-blue-50); color: var(--c-blue-700);
@@ -775,7 +810,6 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   padding: .45rem 1.1rem; border: none; background: transparent;
   text-align: left; cursor: pointer; font-size: .875rem; color: var(--c-text);
   font-family: inherit;
-  transition: background var(--dur) var(--ease);
 }
 .row-btn:hover { background: var(--c-surface-2); }
 .row-btn:focus-visible { outline: 2px solid var(--c-blue); outline-offset: -2px; }
@@ -790,28 +824,71 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
 
 /* ---- responsive layout -------------------------------------------------- */
 
-@media (max-width: 78rem) {
-  #detail > .span-4 { grid-column: span 6; }
-  #detail > .span-8 { grid-column: 1 / -1; }
-  #detail > .card-stack.span-4 {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+@media (max-width: 56.25rem) {
+  .shell { grid-template-columns: 13.5rem minmax(0, 1fr); gap: 1rem; }
+  .cols-2 .shiny-options-group { grid-template-columns: 1fr; }
+  .actionbar .inner { align-items: flex-end; }
 }
 
-@media (max-width: 62rem) {
-  .shell { grid-template-columns: 1fr; gap: 1.1rem; }
-  .rail { position: static; }
-  .cols-2 .shiny-options-group { grid-template-columns: 1fr; }
-}
-@media (max-width: 46rem) {
+@media (max-width: 42.5rem) {
   .topbar { padding-inline: 1rem; }
   .topbar .formats { width: 100%; margin-left: 0; }
-  .shell { padding-inline: .8rem; }
-  #detail > .span-4,
-  #detail > .span-8 { grid-column: 1 / -1; }
-  #detail > .card-stack.span-4 { grid-template-columns: 1fr; }
-  .actionbar { padding-inline: .8rem; }
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: .8rem;
+    padding: .9rem .8rem;
+  }
+  .rail-summary { display: flex; }
+  .rail-manager-backdrop.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 69;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgba(17, 17, 26, .42);
+    cursor: default;
+  }
+  .rail {
+    display: none;
+    position: fixed;
+    inset: max(1rem, env(safe-area-inset-top)) 1rem
+      max(1rem, env(safe-area-inset-bottom));
+    top: max(1rem, env(safe-area-inset-top));
+    z-index: 70;
+    width: auto;
+    max-height: none;
+    overflow-y: auto;
+  }
+  .rail.is-manager-open { display: flex; flex-direction: column; }
+  .rail-manager-close {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    padding: .25rem .55rem;
+    border: 1px solid var(--c-border-2);
+    border-radius: var(--r-xs);
+    background: var(--c-surface);
+    color: var(--c-text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .rail-add { margin-top: auto; }
+  .actionbar {
+    margin: 0 .8rem .9rem;
+    padding: .8rem;
+  }
+  .actionbar .inner { align-items: stretch; gap: .7rem; }
+  .actionbar .grow { flex-basis: 100%; }
+  .actionbar .summary { width: 100%; }
+  .builder-stage,
+  .review-app-options,
+  .card { padding: 1rem; }
+  .sheet-backdrop { padding: .5rem; }
+  .sheet { max-height: calc(100dvh - 1rem); }
+  pre, code, .notice, .privacy { overflow-wrap: anywhere; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -854,7 +931,6 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   border-radius: var(--r-xs);
   background: none;
   cursor: pointer;
-  transition: box-shadow var(--dur) var(--ease);
 }
 .swatch-input::-webkit-color-swatch-wrapper { padding: 2px; }
 .swatch-input::-webkit-color-swatch {

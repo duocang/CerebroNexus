@@ -353,7 +353,7 @@ test_that("unchanged settings do not write state or advance revisions", {
       profile = list(marker = "current"),
       settings = list(name = "Dataset A")
     )
-    sets(list(entry))
+    use_state_only_fixture(list(entry))
 
     expect_false(replace_entry(entry))
     expect_identical(sets()[[1L]]$revision, 0L)
@@ -550,7 +550,12 @@ test_that("worker failures recover or terminate every protocol barrier", {
   release_failure <- builder_app_block(
     builder_app_lines(),
     "if (inherits(released, \"try-error\"))",
-    "worker(released)"
+    "worker(released$worker)"
+  )
+  expect_match(
+    app,
+    "builder_snapshot_release_transition(",
+    fixed = TRUE
   )
   expect_match(register_failure, "restart_worker_protocol(", fixed = TRUE)
   expect_match(release_failure, "restart_worker_protocol(", fixed = TRUE)

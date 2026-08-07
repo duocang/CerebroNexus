@@ -1,0 +1,1084 @@
+builder_profile_source_runtime(globalenv())
+
+builder_rail_source <- function(file) {
+  path <- builder_profile_inst_path("builder", file)
+  if (nzchar(path) && file.exists(path)) {
+    sys.source(path, envir = globalenv())
+  }
+}
+
+test_that("the source picker panel includes files and examples together", {
+  app <- readLines(
+    builder_profile_inst_path("builder", "app.R"),
+    warn = FALSE
+  )
+  picker_start <- grep("output\\$browser_panel <- renderUI", app)[1L]
+  picker_end <- grep("output\\$browse_list <- renderUI", app)[1L] - 1L
+  picker <- paste(app[picker_start:picker_end], collapse = "\n")
+  rail <- paste(
+    app[seq_len(grep("server <- function", app)[1L] - 1L)],
+    collapse = "\n"
+  )
+
+  expect_match(picker, "builder-add-files", fixed = TRUE)
+  expect_match(picker, 'uiOutput("example_buttons")', fixed = TRUE)
+  expect_false(grepl('uiOutput("example_buttons")', rail, fixed = TRUE))
+})
+
+builder_rail_source("state.R")
+builder_rail_source(file.path("ui", "dataset_rail.R"))
+
+builder_rail_api <- c(
+  "builder_state",
+  "builder_reduce_state",
+  "builder_effective_initial_dataset",
+  "builder_app_options_for_plan",
+  "builder_dataset_rail_ui",
+  "builder_dataset_rail_server",
+  "builder_validate_next_plan"
+)
+builder_rail_api_available <- all(vapply(
+  builder_rail_api,
+  exists,
+  logical(1),
+  mode = "function",
+  inherits = TRUE
+))
+
+builder_rail_entry <- function(id, label = toupper(id), source_id = id) {
+  list(
+    id = id,
+    source_id = source_id,
+    output_id = id,
+    selector_value = id,
+    snapshot = list(identity = paste0("snapshot-", source_id)),
+    format = "RDS",
+    profile = list(
+      n_cells = 12L,
+      nUMI = "nCount_RNA",
+      nGene = "nFeature_RNA"
+    ),
+    settings = list(
+      name = label,
+      groups = "cluster",
+      reductions = "umap",
+      layer = "data",
+      nUMI = "nCount_RNA",
+      nGene = "nFeature_RNA",
+      palette = list(cluster = c(one = "#111111")),
+      analyses = character()
+    )
+  )
+}
+
+test_that("the persistent dataset rail API is available", {
+  expect_true(builder_rail_api_available)
+})
+
+if (builder_rail_api_available) {
+  test_that("duplicate source rows keep independent output identity and settings", {
+    state <- builder_state(list(builder_rail_entry("a")))
+    duplicated <- builder_reduce_state(
+      state,
+      list(type = "duplicate", id = "a", new_id = "a-copy", name = "A copy")
+    )
+
+    expect_identical(
+      vapply(duplicated$datasets, `[[`, character(1), "id"),
+      c("a", "a-copy")
+    )
+    expect_identical(duplicated$datasets[[1]]$source_id, "a")
+    expect_identical(duplicated$datasets[[2]]$source_id, "a")
+    expect_identical(
+      duplicated$datasets[[1]]$snapshot,
+      duplicated$datasets[[2]]$snapshot
+    )
+    expect_false(identical(
+      duplicated$datasets[[1]]$output_id,
+      duplicated$datasets[[2]]$output_id
+    ))
+    expect_false(identical(
+      duplicated$datasets[[1]]$selector_value,
+      duplicated$datasets[[2]]$selector_value
+    ))
+
+    changed <- duplicated$datasets[[2]]
+    changed$settings$name <- "Independent copy"
+    changed$settings$palette$cluster[[1]] <- "#abcdef"
+    replaced <- builder_reduce_state(
+      duplicated,
+      list(type = "replace", id = "a-copy", entry = changed)
+    )
+
+    expect_identical(replaced$datasets[[1]]$settings$name, "A")
+    expect_identical(
+      replaced$datasets[[1]]$settings$palette$cluster[[1]],
+      "#111111"
+    )
+    expect_identical(replaced$datasets[[2]]$settings$name, "Independent copy")
+  })
+
+  test_that("typed rail state rejects hostile entries and forged undo records", {
+    base <- builder_state(list(builder_rail_entry("a")))
+
+    numeric_groups <- builder_rail_entry("b")
+    numeric_groups$settings$groups <- 1
+    expect_error(
+      builder_reduce_state(base, list(type = "add", entry = numeric_groups)),
+      class = "builder_state_error"
+    )
+
+    language_reductions <- builder_rail_entry("a")
+    language_reductions$settings$reductions <- quote(umap)
+    expect_error(
+      builder_reduce_state(
+        base,
+        list(
+          type = "replace",
+          id = "a",
+          entry = language_reductions
+        )
+      ),
+      class = "builder_state_error"
+    )
+
+    referenced <- builder_rail_entry("b")
+    referenced$settings$palette$hostile <- new.env(parent = emptyenv())
+    expect_error(
+      builder_reduce_state(base, list(type = "add", entry = referenced)),
+      class = "builder_state_error"
+    )
+
+    forged <- base
+    forged$can_undo_remove <- TRUE
+    forged$last_removed <- list(
+      id = "ghost",
+      entry = list(id = "ghost", settings = list()),
+      index = 1L
+    )
+    expect_error(
+      builder_reduce_state(forged, list(type = "undo_remove")),
+      class = "builder_state_error"
+    )
+
+    top_level_reference <- base
+    top_level_reference$intruder <- new.env(parent = emptyenv())
+    expect_error(
+      builder_reduce_state(
+        top_level_reference,
+        list(type = "select", id = "a")
+      ),
+      class = "builder_state_error"
+    )
+
+    forged_anchor <- builder_reduce_state(base, list(type = "remove", id = "a"))
+    forged_anchor$last_removed$before_id <- "ghost-anchor"
+    expect_error(
+      builder_datasets_for_plan(forged_anchor),
+      class = "builder_state_error"
+    )
+    forged_tombstone_field <- builder_reduce_state(
+      base,
+      list(type = "remove", id = "a")
+    )
+    forged_tombstone_field$last_removed$intruder <- "unexpected"
+    expect_error(
+      builder_datasets_for_plan(forged_tombstone_field),
+      class = "builder_state_error"
+    )
+  })
+
+  test_that("builder_state validates selector overrides as plain scalar text", {
+    entries <- list(builder_rail_entry("a"))
+    invalid <- list(
+      character(),
+      c("a", "a"),
+      NA_character_,
+      " ",
+      structure("a", marker = TRUE),
+      factor("a"),
+      1
+    )
+    for (value in invalid) {
+      expect_error(
+        builder_state(entries, current_dataset = value),
+        class = "builder_state_error"
+      )
+      expect_error(
+        builder_state(entries, initial_dataset_override = value),
+        class = "builder_state_error"
+      )
+    }
+    state <- builder_state(
+      entries,
+      current_dataset = "a",
+      initial_dataset_override = "a"
+    )
+    expect_identical(.builder_store_assert(state), "a")
+  })
+
+  test_that("stable dataset and action ids are plain scalar text", {
+    attributed <- structure("b", marker = TRUE)
+    hostile <- builder_rail_entry("b")
+    hostile$id <- attributed
+    expect_error(builder_state(list(hostile)), class = "builder_state_error")
+
+    base <- builder_state(list(builder_rail_entry("a")))
+    expect_error(
+      builder_reduce_state(base, list(type = "add", entry = hostile)),
+      class = "builder_state_error"
+    )
+    expect_error(
+      builder_reduce_state(
+        base,
+        list(type = "replace_all", datasets = list(hostile))
+      ),
+      class = "builder_state_error"
+    )
+
+    for (type in c("select", "select_initial", "remove", "move")) {
+      action <- list(type = type, id = structure("a", marker = TRUE))
+      if (identical(type, "move")) {
+        action$direction <- "up"
+      }
+      expect_error(
+        builder_reduce_state(base, action),
+        class = "builder_state_error"
+      )
+    }
+    expect_error(
+      builder_reduce_state(
+        base,
+        list(
+          type = "duplicate",
+          id = "a",
+          new_id = structure("copy", marker = TRUE)
+        )
+      ),
+      class = "builder_state_error"
+    )
+
+    hostile_source <- builder_rail_entry("b")
+    hostile_source$source_id <- structure("source-b", marker = TRUE)
+    expect_error(
+      builder_reduce_state(base, list(type = "add", entry = hostile_source)),
+      class = "builder_state_error"
+    )
+    hostile_output <- builder_rail_entry("b")
+    hostile_output$output_id <- structure("output-b", marker = TRUE)
+    expect_error(
+      builder_reduce_state(base, list(type = "add", entry = hostile_output)),
+      class = "builder_state_error"
+    )
+  })
+
+  test_that("move accepts only exact scalar plain directions", {
+    state <- builder_state(lapply(c("a", "b"), builder_rail_entry))
+    invalid <- list(
+      "u",
+      c("up", "down"),
+      NA_character_,
+      structure("up", marker = TRUE),
+      list("up")
+    )
+    for (direction in invalid) {
+      expect_error(
+        builder_reduce_state(
+          state,
+          list(
+            type = "move",
+            id = "b",
+            direction = direction
+          )
+        ),
+        class = "builder_state_error"
+      )
+    }
+  })
+
+  test_that("pending sources reject repeats and release only after failure", {
+    pending <- character()
+    first <- builder_source_reserve(list(), pending, "example", "pbmc_small")
+    expect_true(first$ok)
+    repeated <- builder_source_reserve(
+      list(),
+      first$pending,
+      "example",
+      "pbmc_small"
+    )
+    expect_false(repeated$ok)
+
+    path <- file.path(tempdir(), "source", "..", "dataset.rds")
+    file_first <- builder_source_reserve(list(), pending, "file", path)
+    file_repeat <- builder_source_reserve(
+      list(),
+      file_first$pending,
+      "file",
+      file.path(tempdir(), "dataset.rds")
+    )
+    expect_false(file_repeat$ok)
+
+    retry_pending <- builder_source_release(first$pending, first$key)
+    retry <- builder_source_reserve(
+      list(),
+      retry_pending,
+      "example",
+      "pbmc_small"
+    )
+    expect_true(retry$ok)
+
+    successful <- builder_rail_entry("loaded")
+    successful$example <- "pbmc_small"
+    handed_off <- builder_source_reserve(
+      list(successful),
+      builder_source_release(retry$pending, retry$key),
+      "example",
+      "pbmc_small"
+    )
+    expect_false(handed_off$ok)
+    expect_identical(handed_off$code, "source_in_store")
+  })
+
+  test_that("snapshot lifecycle releases aliases and identities exactly once", {
+    released <- character()
+    unregistered <- character()
+    release <- function(worker, id, expected_identity) {
+      released <<- c(released, expected_identity)
+      worker$registry[[id]] <- NULL
+      worker
+    }
+    unregister <- function(worker, id) {
+      unregistered <<- c(unregistered, id)
+      worker$registry[[id]] <- NULL
+      worker
+    }
+    worker <- list(registry = list(a = "shared", copy = "shared"))
+    retained_copy <- builder_rail_entry("copy")
+    retained_copy$snapshot$identity <- "shared"
+    alias <- builder_snapshot_release_transition(
+      worker,
+      id = "a",
+      identity = "shared",
+      retained = list(retained_copy),
+      pending = list(a = "shared"),
+      release = release,
+      unregister = unregister
+    )
+    expect_identical(unregistered, "a")
+    expect_length(released, 0L)
+    expect_null(alias$pending$a)
+
+    last <- builder_snapshot_release_transition(
+      alias$worker,
+      id = "copy",
+      identity = "shared",
+      retained = list(),
+      pending = list(copy = "shared"),
+      release = release,
+      unregister = unregister
+    )
+    expect_identical(released, "shared")
+    expect_length(last$worker$registry, 0L)
+
+    worker <- list(registry = list(x = "identity-x", y = "identity-y"))
+    x <- builder_snapshot_release_transition(
+      worker,
+      "x",
+      "identity-x",
+      list(),
+      list(x = "identity-x"),
+      release,
+      unregister
+    )
+    y <- builder_snapshot_release_transition(
+      x$worker,
+      "y",
+      "identity-y",
+      list(),
+      list(y = "identity-y"),
+      release,
+      unregister
+    )
+    expect_identical(released, c("shared", "identity-x", "identity-y"))
+    expect_length(y$worker$registry, 0L)
+
+    failed_worker <- list(registry = list(z = "identity-z"))
+    failed_pending <- list(z = "identity-z")
+    expect_error(
+      builder_snapshot_release_transition(
+        failed_worker,
+        "z",
+        "identity-z",
+        list(),
+        failed_pending,
+        function(...) stop("drop failed"),
+        unregister
+      ),
+      "drop failed",
+      fixed = TRUE
+    )
+    expect_identical(failed_worker$registry$z, "identity-z")
+    expect_identical(failed_pending$z, "identity-z")
+    retried <- builder_snapshot_release_transition(
+      failed_worker,
+      "z",
+      "identity-z",
+      list(),
+      failed_pending,
+      release,
+      unregister
+    )
+    expect_null(retried$pending$z)
+    expect_identical(tail(released, 1L), "identity-z")
+  })
+
+  test_that("remove offers undo and restores the original order", {
+    state <- builder_state(lapply(c("a", "b", "c"), builder_rail_entry))
+    removed <- builder_reduce_state(
+      state,
+      list(type = "remove", id = "b")
+    )
+
+    expect_identical(
+      vapply(removed$datasets, `[[`, character(1), "id"),
+      c("a", "c")
+    )
+    expect_true(removed$can_undo_remove)
+    expect_identical(removed$last_removed$id, "b")
+    expect_identical(removed$last_removed$index, 2L)
+    expect_identical(
+      vapply(builder_datasets_for_plan(removed), `[[`, character(1), "id"),
+      c("a", "c")
+    )
+
+    restored <- builder_reduce_state(removed, list(type = "undo_remove"))
+    expect_identical(
+      vapply(restored$datasets, `[[`, character(1), "id"),
+      c("a", "b", "c")
+    )
+    expect_false(restored$can_undo_remove)
+  })
+
+  test_that("undo preserves later selection and follows original neighbors", {
+    state <- builder_state(lapply(c("a", "b", "c"), builder_rail_entry))
+    state <- builder_reduce_state(
+      state,
+      list(type = "select_initial", id = "b")
+    )
+    state <- builder_reduce_state(state, list(type = "select", id = "b"))
+    removed <- builder_reduce_state(state, list(type = "remove", id = "b"))
+    changed <- builder_reduce_state(removed, list(type = "select", id = "a"))
+    changed <- builder_reduce_state(changed, list(type = "select", id = "c"))
+    changed <- builder_reduce_state(
+      changed,
+      list(type = "select_initial", id = "c")
+    )
+    changed <- builder_reduce_state(
+      changed,
+      list(type = "reorder", order = c("c", "a"))
+    )
+
+    restored <- builder_reduce_state(changed, list(type = "undo_remove"))
+    expect_identical(
+      vapply(restored$datasets, `[[`, character(1), "id"),
+      c("c", "a", "b")
+    )
+    expect_identical(restored$current_dataset, "c")
+    expect_identical(restored$initial_dataset_override, "c")
+  })
+
+  test_that("typed rail readiness includes required output setup", {
+    entry <- builder_rail_entry("a")
+    entry$settings$groups <- character()
+    state <- builder_state(list(entry))
+    html <- as.character(builder_dataset_rail_ui(state))
+
+    expect_match(html, "Blocked", fixed = TRUE)
+    expect_match(html, "1 issue", fixed = TRUE)
+  })
+
+  test_that("typed store rejects unrecognized dataset profiles", {
+    invalid <- list(
+      id = "invalid",
+      profile = list(marker = "not-a-profile"),
+      settings = list(name = "Invalid")
+    )
+
+    expect_error(builder_state(list(invalid)), class = "builder_state_error")
+  })
+
+  test_that("rail order and explicit initial App selection stay distinct", {
+    state <- builder_state(lapply(c("a", "b", "c"), builder_rail_entry))
+    automatic <- builder_reduce_state(
+      state,
+      list(type = "reorder", order = c("c", "a", "b"))
+    )
+
+    expect_identical(
+      builder_effective_initial_dataset(automatic),
+      list(id = "c", mode = "automatic")
+    )
+    expect_false(
+      "initial_dataset" %in%
+        names(
+          builder_app_options_for_plan(automatic)
+        )
+    )
+    expect_false("initial_dataset_mode" %in% names(unclass(automatic)))
+
+    pinned <- builder_reduce_state(
+      automatic,
+      list(type = "select_initial", id = "c")
+    )
+    pinned <- builder_reduce_state(
+      pinned,
+      list(type = "reorder", order = c("a", "b", "c"))
+    )
+    expect_identical(
+      builder_effective_initial_dataset(pinned),
+      list(id = "c", mode = "explicit")
+    )
+    expect_identical(
+      builder_app_options_for_plan(pinned)$initial_dataset,
+      "c"
+    )
+
+    fallback <- builder_reduce_state(
+      pinned,
+      list(type = "remove", id = "c")
+    )
+    expect_null(fallback$initial_dataset_override)
+    expect_identical(
+      builder_effective_initial_dataset(fallback),
+      list(id = "a", mode = "automatic")
+    )
+    expect_false(
+      "initial_dataset" %in%
+        names(
+          builder_app_options_for_plan(fallback)
+        )
+    )
+  })
+
+  test_that("pinning the current first row remains explicit after reorder", {
+    state <- builder_state(lapply(c("a", "b"), builder_rail_entry))
+    pinned <- builder_reduce_state(
+      state,
+      list(type = "select_initial", id = "a")
+    )
+    reordered <- builder_reduce_state(
+      pinned,
+      list(type = "reorder", order = c("b", "a"))
+    )
+
+    expect_identical(
+      builder_effective_initial_dataset(reordered),
+      list(id = "a", mode = "explicit")
+    )
+  })
+
+  test_that("rail UI reports canonical state and exposes semantic controls", {
+    state <- builder_state(list(builder_rail_entry("a", "Dataset A")))
+    html <- as.character(builder_dataset_rail_ui(state, current = "a"))
+
+    expect_match(html, "Dataset A", fixed = TRUE)
+    expect_match(html, "12 cells", fixed = TRUE)
+    expect_match(html, "Ready", fixed = TRUE)
+    expect_match(html, "0 issues", fixed = TRUE)
+    expect_match(html, "builder-duplicate", fixed = TRUE)
+    expect_match(html, "data-direction=\"up\"", fixed = TRUE)
+    expect_match(html, "data-direction=\"down\"", fixed = TRUE)
+    expect_match(html, "builder-select-initial", fixed = TRUE)
+    expect_match(html, "data-confirm=\"true\"", fixed = TRUE)
+  })
+
+  test_that("client events preserve confirmed removal and source-picker semantics", {
+    js <- paste(
+      readLines(
+        builder_profile_inst_path("builder", "www", "builder.js"),
+        warn = FALSE
+      ),
+      collapse = "\n"
+    )
+
+    expect_false(grepl("window.confirm", js, fixed = TRUE))
+    expect_match(js, "showRemoveConfirmation", fixed = TRUE)
+    expect_match(js, 'setAttribute("aria-modal", "true")', fixed = TRUE)
+    expect_match(js, "choose_files", fixed = TRUE)
+    expect_match(js, "event.altKey", fixed = TRUE)
+    expect_match(js, "reorder_ds", fixed = TRUE)
+    expect_false(grepl(
+      'example.classList.add("is-taken")',
+      js,
+      fixed = TRUE
+    ))
+
+    app <- paste(
+      readLines(
+        builder_profile_inst_path("builder", "app.R"),
+        warn = FALSE
+      ),
+      collapse = "\n"
+    )
+    expect_match(app, "pending_snapshot_drops", fixed = TRUE)
+    expect_match(app, "other_drop_ids", fixed = TRUE)
+  })
+
+  test_that("one source picker owns multi-file and example entry", {
+    app <- readLines(
+      builder_profile_inst_path("builder", "app.R"),
+      warn = FALSE
+    )
+    text <- paste(app, collapse = "\n")
+    picker_start <- grep("output\\$browser_panel <- renderUI", app)[1L]
+    picker_end <- grep("output\\$browse_list <- renderUI", app)[1L] - 1L
+    picker <- paste(app[picker_start:picker_end], collapse = "\n")
+    rail <- sub(
+      "server <- function.*",
+      "",
+      text
+    )
+
+    expect_match(picker, "builder-add-files", fixed = TRUE)
+    expect_match(picker, 'uiOutput("example_buttons")', fixed = TRUE)
+    expect_false(grepl('uiOutput("example_buttons")', rail, fixed = TRUE))
+    expect_false(grepl(
+      'example.classList.add("is-taken")',
+      paste(
+        readLines(
+          builder_profile_inst_path("builder", "www", "builder.js"),
+          warn = FALSE
+        ),
+        collapse = "\n"
+      ),
+      fixed = TRUE
+    ))
+  })
+
+  test_that("removal validation freezes exact next-plan membership", {
+    state <- builder_state(lapply(c("a", "b", "c"), builder_rail_entry))
+    next_state <- builder_reduce_state(state, list(type = "remove", id = "b"))
+    calls <- list()
+    freeze <- function(
+      entries,
+      out_dir,
+      make_app,
+      overwrite,
+      app_options
+    ) {
+      calls <<- list(
+        ids = vapply(entries, `[[`, character(1), "id"),
+        out_dir = out_dir,
+        app_options = app_options
+      )
+      list(
+        error = NULL,
+        dataset_order = calls$ids,
+        output_release = list(
+          targets = file.path(out_dir, paste0(calls$ids, ".crb"))
+        )
+      )
+    }
+
+    validation <- builder_validate_next_plan(
+      next_state,
+      out_dir = file.path(tempdir(), "rail-output"),
+      make_app = TRUE,
+      overwrite = FALSE,
+      freeze_plan = freeze
+    )
+
+    expect_s3_class(validation, "builder_rail_validation")
+    expect_true(validation$ok)
+    expect_identical(calls$ids, c("a", "c"))
+    expect_identical(validation$dataset_ids, c("a", "c"))
+    expect_identical(
+      basename(validation$expected_members),
+      c("a.crb", "c.crb")
+    )
+
+    missing <- builder_validate_next_plan(
+      next_state,
+      out_dir = "",
+      freeze_plan = freeze
+    )
+    expect_false(missing$ok)
+    expect_identical(missing$code, "missing_output_target")
+    expect_null(missing$plan)
+
+    malformed <- builder_validate_next_plan(
+      next_state,
+      out_dir = tempdir(),
+      freeze_plan = function(...) "not-a-plan"
+    )
+    expect_false(malformed$ok)
+    expect_identical(malformed$code, "invalid_next_plan")
+
+    expect_error(
+      builder_validate_next_plan(
+        next_state,
+        out_dir = tempdir(),
+        freeze_plan = function(...) stop("unexpected freeze failure")
+      ),
+      "unexpected freeze failure",
+      fixed = TRUE
+    )
+  })
+
+  test_that("real Shiny rail wiring dispatches every persistent action", {
+    skip_if_not_installed("shiny")
+    initial <- builder_state(lapply(c("a", "b", "c"), builder_rail_entry))
+
+    shiny::testServer(
+      function(input, output, session) {
+        rail_store <- shiny::reactiveVal(initial)
+        validation_calls <- shiny::reactiveVal(list())
+        duplicate_sequence <- shiny::reactiveVal(0L)
+        duplicate <- function(id) {
+          duplicate_sequence(duplicate_sequence() + 1L)
+          rail_store(builder_reduce_state(
+            rail_store(),
+            list(
+              type = "duplicate",
+              id = id,
+              new_id = paste0(id, "-copy"),
+              name = paste0(toupper(id), " copy")
+            )
+          ))
+        }
+        validate_remove <- function(next_state, id) {
+          validation_calls(c(
+            validation_calls(),
+            list(list(
+              id = id,
+              dataset_ids = vapply(
+                next_state$datasets,
+                `[[`,
+                character(1),
+                "id"
+              ),
+              app_options = builder_app_options_for_plan(next_state)
+            ))
+          ))
+          structure(
+            list(
+              ok = TRUE,
+              code = NULL,
+              dataset_ids = validation_calls()[[length(validation_calls())]]$dataset_ids,
+              expected_members = paste0(
+                validation_calls()[[length(validation_calls())]]$dataset_ids,
+                ".crb"
+              ),
+              plan = list(error = NULL)
+            ),
+            class = c("builder_rail_validation", "list")
+          )
+        }
+        rail <- builder_dataset_rail_server(
+          input = input,
+          session = session,
+          store = rail_store,
+          duplicate = duplicate,
+          validate_remove = validate_remove
+        )
+      },
+      {
+        untouched <- rail$state()
+        session$setInputs(pick = c("a", "b"))
+        session$setInputs(pick = structure("a", marker = TRUE))
+        session$setInputs(pick = " ")
+        session$setInputs(pick = NA_character_)
+        session$setInputs(pick = "stale")
+        session$setInputs(select_initial = c("a", "b"))
+        session$setInputs(select_initial = structure("a", marker = TRUE))
+        session$setInputs(select_initial = "stale")
+        session$setInputs(duplicate_ds = c("a", "b"))
+        session$setInputs(duplicate_ds = factor("a"))
+        session$setInputs(duplicate_ds = "stale")
+        session$setInputs(
+          drop_ds = list(
+            id = c("a", "b"),
+            confirmed = TRUE
+          )
+        )
+        session$setInputs(
+          drop_ds = list(
+            id = structure("a", marker = TRUE),
+            confirmed = TRUE
+          )
+        )
+        session$setInputs(
+          drop_ds = structure(
+            list(id = "a", confirmed = TRUE),
+            class = "forged_drop"
+          )
+        )
+        session$setInputs(drop_ds = list(id = "stale", confirmed = TRUE))
+        expect_identical(rail$state(), untouched)
+        expect_identical(duplicate_sequence(), 0L)
+
+        session$setInputs(pick = "b")
+        expect_identical(rail$state()$current_dataset, "b")
+
+        session$setInputs(duplicate_ds = "b")
+        expect_identical(
+          vapply(rail$state()$datasets, `[[`, character(1), "id"),
+          c("a", "b", "b-copy", "c")
+        )
+
+        session$setInputs(reorder_ds = list(id = "c", direction = "up"))
+        expect_identical(
+          vapply(rail$state()$datasets, `[[`, character(1), "id"),
+          c("a", "b", "c", "b-copy")
+        )
+
+        stable <- rail$state()
+        session$setInputs(reorder_ds = list(id = "c", direction = "u"))
+        session$setInputs(reorder_ds = list(id = "stale", direction = "up"))
+        session$setInputs(
+          reorder_ds = list(
+            id = "c",
+            direction = c("up", "down")
+          )
+        )
+        expect_identical(rail$state(), stable)
+
+        session$setInputs(select_initial = "c")
+        expect_identical(
+          builder_app_options_for_plan(rail$state())$initial_dataset,
+          "c"
+        )
+
+        session$setInputs(drop_ds = list(id = "b", confirmed = FALSE))
+        expect_identical(rail$validation()$code, "confirmation_required")
+        expect_true(
+          "b" %in%
+            vapply(
+              rail$state()$datasets,
+              `[[`,
+              character(1),
+              "id"
+            )
+        )
+
+        session$setInputs(drop_ds = list(id = "b", confirmed = TRUE))
+        expect_false(
+          "b" %in%
+            vapply(
+              rail$state()$datasets,
+              `[[`,
+              character(1),
+              "id"
+            )
+        )
+        expect_identical(
+          validation_calls()[[1L]]$dataset_ids,
+          c(
+            "a",
+            "c",
+            "b-copy"
+          )
+        )
+
+        session$setInputs(undo_remove = 1L)
+        expect_identical(
+          vapply(rail$state()$datasets, `[[`, character(1), "id"),
+          c("a", "b", "c", "b-copy")
+        )
+      }
+    )
+  })
+
+  test_that("used examples stay disabled when the source picker is rebuilt", {
+    skip_if_not_installed("shiny")
+    skip_if_not_installed("plotly")
+    app_env <- new.env(parent = globalenv())
+    withr::local_dir(builder_profile_inst_path("builder"))
+    sys.source("app.R", envir = app_env)
+    app_env$builder_session_start <- function(...) {
+      list(error = "Worker startup is disabled in this picker-state test.")
+    }
+
+    shiny::testServer(app_env$server, {
+      used <- builder_rail_entry("used-example")
+      used$example <- "basic_pbmc"
+      sets(list(used))
+
+      session$setInputs(open_browser = 1L)
+      first_html <- output$example_buttons$html
+      expect_match(
+        first_html,
+        'class="btn example-btn is-taken" data-ex="basic_pbmc"',
+        fixed = TRUE
+      )
+
+      expect_match(first_html, 'disabled="disabled"', fixed = TRUE)
+      expect_match(
+        first_html,
+        paste0(
+          'class="btn example-btn" data-ex="spatial_multi_section" ',
+          'aria-disabled="false"'
+        ),
+        fixed = TRUE
+      )
+
+      session$setInputs(close_browser = 1L)
+      session$setInputs(open_browser = 2L)
+      rebuilt_html <- output$example_buttons$html
+      expect_match(
+        rebuilt_html,
+        'class="btn example-btn is-taken" data-ex="basic_pbmc"',
+        fixed = TRUE
+      )
+      expect_match(rebuilt_html, 'disabled="disabled"', fixed = TRUE)
+
+      add_error(NULL)
+      session$setInputs(use_example = "basic_pbmc")
+      expect_null(add_error())
+
+      session$setInputs(use_example = "not-an-example")
+      expect_null(add_error())
+
+      session$setInputs(use_example = "spatial_multi_section")
+      expect_identical(
+        add_error(),
+        "The background worker is not ready yet."
+      )
+    })
+  })
+
+  test_that("production store replacement never downgrades typed errors", {
+    skip_if_not_installed("shiny")
+    skip_if_not_installed("plotly")
+    app_env <- new.env(parent = globalenv())
+    withr::local_dir(builder_profile_inst_path("builder"))
+    sys.source("app.R", envir = app_env)
+    app_env$builder_session_start <- function(...) {
+      list(error = "Worker startup is disabled in this store-seam test.")
+    }
+
+    shiny::testServer(app_env$server, {
+      before <- store()
+      hostile <- builder_rail_entry("hostile")
+      hostile$settings$groups <- 1
+      expect_error(sets(list(hostile)), class = "builder_state_error")
+      expect_identical(store(), before)
+      expect_null(store()$.state_only_fixture)
+    })
+  })
+
+  test_that("the live picker reserves queued sources and permits failure retry", {
+    skip_if_not_installed("shiny")
+    skip_if_not_installed("plotly")
+    app_env <- new.env(parent = globalenv())
+    withr::local_dir(builder_profile_inst_path("builder"))
+    sys.source("app.R", envir = app_env)
+    app_env$builder_session_start <- function(...) {
+      list(error = "Worker startup is disabled in this reservation test.")
+    }
+
+    shiny::testServer(app_env$server, {
+      worker(list(epoch = "worker-reservation"))
+      worker_available(TRUE)
+      protocol(app_env$builder_request_protocol("worker-reservation"))
+
+      expect_true(start_load("example", "basic_pbmc", "PBMC"))
+      expect_false(start_load("example", "basic_pbmc", "PBMC"))
+      expect_length(pending_sources(), 1L)
+      pending_sources(builder_source_key("example", "basic_pbmc"))
+      worker(NULL)
+      worker_available(FALSE)
+      session$setInputs(open_browser = 1L)
+      expect_match(
+        output$example_buttons$html,
+        'data-ex="basic_pbmc" disabled="disabled"',
+        fixed = TRUE
+      )
+
+      release_pending_source(list(
+        kind = "load",
+        source = "example",
+        example = "basic_pbmc"
+      ))
+      worker(list(epoch = "worker-reservation-retry"))
+      worker_available(TRUE)
+      protocol(app_env$builder_request_protocol("worker-reservation-retry"))
+      expect_true(start_load("example", "basic_pbmc", "PBMC"))
+
+      release_pending_source(list(
+        kind = "load",
+        source = "example",
+        example = "basic_pbmc"
+      ))
+      loaded <- builder_rail_entry("loaded")
+      loaded$example <- "basic_pbmc"
+      sets(list(loaded))
+      expect_false(start_load("example", "basic_pbmc", "PBMC"))
+    })
+  })
+
+  test_that("protocol recovery retains retried and releases failed load reservations", {
+    skip_if_not_installed("shiny")
+    skip_if_not_installed("plotly")
+    app_env <- new.env(parent = globalenv())
+    withr::local_dir(builder_profile_inst_path("builder"))
+    sys.source("app.R", envir = app_env)
+    app_env$builder_session_start <- function(...) {
+      list(error = "Worker startup is disabled in this recovery test.")
+    }
+
+    shiny::testServer(app_env$server, {
+      worker(list(epoch = "worker-before-recovery"))
+      worker_available(TRUE)
+      protocol(app_env$builder_request_protocol("worker-before-recovery"))
+      expect_true(start_load("example", "basic_pbmc", "PBMC"))
+      reserved <- pending_sources()
+
+      expect_true(apply_protocol_recovery(
+        protocol(),
+        list(epoch = "worker-after-retry"),
+        "retryable worker error",
+        retry_persistent = TRUE
+      ))
+      expect_identical(pending_sources(), reserved)
+
+      expect_false(apply_protocol_recovery(
+        protocol(),
+        list(epoch = "worker-terminal"),
+        "terminal worker error",
+        retry_persistent = FALSE,
+        error = "worker could not restart"
+      ))
+      expect_length(pending_sources(), 0L)
+
+      worker(list(epoch = "worker-retry"))
+      worker_available(TRUE)
+      protocol(app_env$builder_request_protocol("worker-retry"))
+      expect_true(start_load("example", "basic_pbmc", "PBMC"))
+    })
+  })
+
+  test_that("an explicitly marked state-only fixture has limited compatibility", {
+    skip_if_not_installed("shiny")
+    skip_if_not_installed("plotly")
+    app_env <- new.env(parent = globalenv())
+    withr::local_dir(builder_profile_inst_path("builder"))
+    sys.source("app.R", envir = app_env)
+    app_env$builder_session_start <- function(...) {
+      list(error = "Worker startup is disabled in this fixture test.")
+    }
+
+    shiny::testServer(app_env$server, {
+      minimal <- list(
+        id = "fixture",
+        profile = list(marker = "fixture-only"),
+        settings = list(name = "Fixture")
+      )
+      use_state_only_fixture(list(minimal))
+      minimal$settings$name <- "Fixture renamed"
+      sets(list(minimal))
+      expect_true(store()$.state_only_fixture)
+      expect_identical(store()$datasets[[1L]]$settings$name, "Fixture renamed")
+    })
+  })
+}

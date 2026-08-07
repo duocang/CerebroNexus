@@ -35,6 +35,13 @@ builder_profile_has <- function(profile, key) {
   ))
 }
 
+builder_default_first <- function(values, default) {
+  if (is.null(default) || !length(default) || !default %in% values) {
+    return(values)
+  }
+  c(default, values[values != default])
+}
+
 builder_normalize_analyses <- function(selected, has_marker_genes = FALSE) {
   if (
     !exists(
@@ -822,6 +829,21 @@ builder_has_text <- function(value) {
     ))
   }
 
+  included_groups <- Map(
+    function(values, entry) {
+      builder_default_first(values, entry$settings$default_group)
+    },
+    included_groups,
+    entries
+  )
+  included_projections <- Map(
+    function(values, entry) {
+      builder_default_first(values, entry$settings$default_projection)
+    },
+    included_projections,
+    entries
+  )
+
   list(
     labels = labels,
     included_groups = included_groups,
@@ -842,7 +864,18 @@ builder_has_text <- function(value) {
         anyDuplicated(option_names) ||
         length(setdiff(
           option_names,
-          c("show_upload_ui", "initial_dataset")
+          c(
+            "show_upload_ui",
+            "initial_dataset",
+            "welcome_message",
+            "point_size",
+            "variable_to_compare",
+            "host",
+            "port",
+            "max_request_size",
+            "display_mode",
+            "launch_browser"
+          )
         )))
   ) {
     return(FALSE)
@@ -861,6 +894,88 @@ builder_has_text <- function(value) {
   initial_dataset <- app_options$initial_dataset
   if (initial_dataset_supplied && !builder_has_text(initial_dataset)) {
     return(FALSE)
+  }
+  if (
+    "welcome_message" %in%
+      option_names &&
+      !builder_has_text(app_options$welcome_message)
+  ) {
+    return(FALSE)
+  }
+  if ("point_size" %in% option_names) {
+    point_size <- app_options$point_size
+    point_names <- if (is.list(point_size)) names(point_size) else NULL
+    if (
+      !is.list(point_size) ||
+        is.object(point_size) ||
+        is.null(point_names) ||
+        !identical(point_names, "overview_projection_point_size")
+    ) {
+      return(FALSE)
+    }
+    value <- point_size$overview_projection_point_size
+    if (
+      !is.numeric(value) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        !is.finite(value) ||
+        value < 0 ||
+        value > 20
+    ) {
+      return(FALSE)
+    }
+  }
+  if ("variable_to_compare" %in% option_names) {
+    value <- app_options$variable_to_compare
+    if (!is.logical(value) || length(value) != 1L || is.na(value)) {
+      return(FALSE)
+    }
+  }
+  if ("host" %in% option_names && !builder_has_text(app_options$host)) {
+    return(FALSE)
+  }
+  if ("port" %in% option_names) {
+    value <- app_options$port
+    if (
+      !is.numeric(value) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        !is.finite(value) ||
+        value != floor(value) ||
+        value < 1 ||
+        value > 65535
+    ) {
+      return(FALSE)
+    }
+  }
+  if ("max_request_size" %in% option_names) {
+    value <- app_options$max_request_size
+    if (
+      !is.numeric(value) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        !is.finite(value) ||
+        value <= 0 ||
+        !is.finite(value * 1024^2)
+    ) {
+      return(FALSE)
+    }
+  }
+  if (
+    "display_mode" %in%
+      option_names &&
+      (!is.character(app_options$display_mode) ||
+        length(app_options$display_mode) != 1L ||
+        is.na(app_options$display_mode) ||
+        !app_options$display_mode %in% c("auto", "normal", "showcase"))
+  ) {
+    return(FALSE)
+  }
+  if ("launch_browser" %in% option_names) {
+    value <- app_options$launch_browser
+    if (!is.logical(value) || length(value) != 1L || is.na(value)) {
+      return(FALSE)
+    }
   }
   TRUE
 }
@@ -1276,6 +1391,25 @@ builder_freeze_plan <- function(
         "marker_genes"
       )
       analyses <- states[[index]]$analyses
+      analysis_dependency_graph <- .builder_plan_analysis_graph(
+        analyses,
+        has_marker_genes
+      )
+      artifact_identity <- .builder_plan_artifact_identity(
+        entry,
+        included_groups[[index]],
+        included_projections[[index]],
+        analyses
+      )
+      source_snapshot_identity <- .builder_plan_source_snapshot_identity(entry)
+      image_sections <- names(settings$images %||% list()) %||% character()
+      spatial_sections <- artifact_identity$spatial_sections %||% character()
+      runtime_costs <- c(
+        percent_mt_ribo = "seconds",
+        most_expressed = "seconds",
+        marker_genes = "minutes",
+        enriched_pathways = "network-dependent"
+      )
       item <- list(
         id = entry$id,
         name = labels[index],
@@ -1288,15 +1422,28 @@ builder_freeze_plan <- function(
         reductions = settings$reductions,
         included_projections = included_projections[[index]],
         analyses = analyses,
-        analysis_dependency_graph = .builder_plan_analysis_graph(
-          analyses,
-          has_marker_genes
+        analysis_dependency_graph = analysis_dependency_graph,
+        artifact_identity = artifact_identity,
+        cell_count = as.integer(
+          entry$profile$n_cells %||%
+            length(artifact_identity$cells %||% character())
         ),
-        artifact_identity = .builder_plan_artifact_identity(
-          entry,
-          included_groups[[index]],
-          included_projections[[index]],
-          analyses
+        gene_count = as.integer(
+          entry$profile$n_genes %||%
+            length(artifact_identity$features %||% character())
+        ),
+        histology_coverage = list(
+          sections = spatial_sections,
+          with_histology = intersect(spatial_sections, image_sections),
+          missing_histology = setdiff(spatial_sections, image_sections)
+        ),
+        estimated_runtime = if (length(analyses)) {
+          paste(unique(unname(runtime_costs[analyses])), collapse = ", ")
+        } else {
+          "no optional analysis runtime"
+        },
+        estimated_disk_bytes = as.double(
+          source_snapshot_identity$closure_bytes %||% 0
         ),
         tables = settings$tables %||% list(),
         images = settings$images %||% list(),
@@ -1319,9 +1466,7 @@ builder_freeze_plan <- function(
         nomenclature = settings$nomenclature,
         expression_backend = backends[[index]]$mode,
         sidecars = backends[[index]]$sidecars,
-        source_snapshot_identity = .builder_plan_source_snapshot_identity(
-          entry
-        ),
+        source_snapshot_identity = source_snapshot_identity,
         readiness = states[[index]]$readiness,
         manifest = states[[index]]$manifest,
         viewer_page_expectations = states[[index]]$page_expectations,
@@ -1415,7 +1560,15 @@ builder_freeze_plan <- function(
     enabled = isTRUE(make_app),
     show_upload_ui = FALSE,
     initial_dataset = dataset_order[[1L]],
-    initial_dataset_mode = "automatic"
+    initial_dataset_mode = "automatic",
+    welcome_message = "Welcome to CerebroNexus!",
+    point_size = list(overview_projection_point_size = 5),
+    variable_to_compare = FALSE,
+    host = "127.0.0.1",
+    port = 8080L,
+    max_request_size = 8000,
+    display_mode = "normal",
+    launch_browser = TRUE
   )
   frozen_app_options <- utils::modifyList(
     default_app_options,
@@ -1440,6 +1593,21 @@ builder_freeze_plan <- function(
   output_release <- list(
     directory = out_dir,
     overwrite = isTRUE(overwrite),
+    replacement_policy = if (isTRUE(overwrite)) {
+      "replace_existing_atomically"
+    } else {
+      "preserve_existing"
+    },
+    estimated_runtime = paste(
+      unique(vapply(items, `[[`, character(1), "estimated_runtime")),
+      collapse = "; "
+    ),
+    estimated_disk_bytes = sum(vapply(
+      items,
+      `[[`,
+      numeric(1),
+      "estimated_disk_bytes"
+    )),
     targets = targets
   )
 
@@ -1490,12 +1658,14 @@ builder_make_plan <- function(
   entries,
   out_dir,
   make_app = FALSE,
-  overwrite = FALSE
+  overwrite = FALSE,
+  app_options = list()
 ) {
   builder_freeze_plan(
     entries = entries,
     out_dir = out_dir,
     make_app = make_app,
-    overwrite = overwrite
+    overwrite = overwrite,
+    app_options = app_options
   )
 }
