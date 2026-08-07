@@ -1,4 +1,5 @@
 builder_repo_source("prerequisite.R")
+builder_repo_source("state.R")
 
 test_that("the app privacy marker must be the exact integer contract", {
   namespace <- new.env(parent = emptyenv())

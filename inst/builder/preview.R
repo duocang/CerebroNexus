@@ -35,14 +35,58 @@ builder_preview_frame <- function(
   if (is.null(emb) || ncol(emb) < 2) {
     return(NULL)
   }
+  cells <- SeuratObject::Cells(object)
+  embedding_match <- builder_match_cells(
+    rownames(emb),
+    cells,
+    mode = "exact"
+  )
+  metadata_match <- builder_match_cells(
+    rownames(object@meta.data),
+    cells,
+    mode = "exact"
+  )
+  assert_preview_identity <- function(match, component) {
+    if (isTRUE(match$valid)) {
+      return(invisible(match))
+    }
+    if (length(match$duplicates) || length(match$expected_duplicates)) {
+      stop(
+        component,
+        " preview identity contains duplicate cell barcodes.",
+        call. = FALSE
+      )
+    }
+    if (length(match$blanks) || length(match$expected_blanks)) {
+      stop(
+        component,
+        " preview identity contains blank cell barcodes.",
+        call. = FALSE
+      )
+    }
+    stop(
+      component,
+      " preview identity does not match the dataset.",
+      call. = FALSE
+    )
+  }
+  assert_preview_identity(embedding_match, "Projection")
+  assert_preview_identity(metadata_match, "Metadata")
+  emb <- emb[embedding_match$reorder_index, , drop = FALSE]
+  metadata <- object@meta.data[
+    metadata_match$reorder_index,
+    ,
+    drop = FALSE
+  ]
 
   df <- data.frame(
+    cell_barcode = cells,
     x = as.numeric(emb[, 1]),
     y = as.numeric(emb[, 2]),
     stringsAsFactors = FALSE
   )
-  if (!is.null(group) && group %in% colnames(object@meta.data)) {
-    df$group <- as.character(object@meta.data[[group]])
+  if (!is.null(group) && group %in% colnames(metadata)) {
+    df$group <- as.character(metadata[[group]])
     df$group[is.na(df$group)] <- "N/A"
   } else {
     df$group <- "cells"

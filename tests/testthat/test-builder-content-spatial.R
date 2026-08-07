@@ -270,6 +270,180 @@ test_that("section identity and coordinates fail closed", {
   expect_true("incompatible_assay" %in% wrong_assay_profile$diagnostics)
 })
 
+test_that("spatial profiles consume only matched coordinate rows", {
+  context <- list(
+    cells = c("a", "b", "c"),
+    assays = list(
+      RNA = list(exportable_layers = c("data", "counts"), exportable = TRUE)
+    )
+  )
+  outside_non_finite <- data.frame(
+    x = c(20, NA_real_, 10),
+    y = c(200, Inf, 100),
+    row.names = c("b", "outside", "a")
+  )
+
+  profile <- .builder_profile_spatial_coordinate_record(
+    "section",
+    outside_non_finite,
+    "RNA",
+    context
+  )
+  expect_true(profile$valid)
+  expect_true(profile$coordinates$finite)
+  expect_identical(profile$barcodes$outside_count, 1L)
+  expect_true("outside_canonical_barcodes" %in% profile$diagnostics)
+  expect_false("non_finite_coordinates" %in% profile$diagnostics)
+  expect_identical(
+    profile$coordinate_bounds,
+    list(xmin = 10, xmax = 20, ymin = 100, ymax = 200)
+  )
+
+  outside_extreme <- outside_non_finite
+  outside_extreme["outside", ] <- c(1e12, -1e12)
+  extreme_profile <- .builder_profile_spatial_coordinate_record(
+    "section",
+    outside_extreme,
+    "RNA",
+    context
+  )
+  expect_true(extreme_profile$valid)
+  expect_identical(
+    extreme_profile$coordinate_bounds,
+    list(xmin = 10, xmax = 20, ymin = 100, ymax = 200)
+  )
+})
+
+test_that("spatial profiles reject classed numeric coordinate columns", {
+  context <- list(
+    cells = c("a", "b"),
+    assays = list(
+      RNA = list(exportable_layers = c("data", "counts"), exportable = TRUE)
+    )
+  )
+  coordinates <- data.frame(
+    x = structure(c(1, 2), class = "builder_profile_coordinate_trap"),
+    y = c(3, 4),
+    row.names = context$cells
+  )
+
+  profile <- .builder_profile_spatial_coordinate_record(
+    "section",
+    coordinates,
+    "RNA",
+    context
+  )
+  expect_false(profile$valid)
+  expect_true("non_numeric_coordinates" %in% profile$diagnostics)
+})
+
+test_that("spatial profiles reject classed coordinate table containers", {
+  touched <- FALSE
+  method_names <- paste0(
+    c("as.data.frame.", "dim.", "dimnames.", "row.names."),
+    "builder_profile_table_trap"
+  )
+  for (method_name in method_names) {
+    assign(
+      method_name,
+      function(value, ...) {
+        touched <<- TRUE
+        stop("untrusted profile coordinate table method executed")
+      },
+      envir = .GlobalEnv
+    )
+  }
+  on.exit(rm(list = method_names, envir = .GlobalEnv), add = TRUE)
+
+  context <- list(
+    cells = c("a", "b"),
+    assays = list(
+      RNA = list(exportable_layers = c("data", "counts"), exportable = TRUE)
+    )
+  )
+  matrix_table <- matrix(
+    c(1, 2, 3, 4),
+    nrow = 2L,
+    dimnames = list(context$cells, c("x", "y"))
+  )
+  class(matrix_table) <- "builder_profile_table_trap"
+  data_frame_table <- data.frame(
+    x = c(1, 2),
+    y = c(3, 4),
+    row.names = context$cells
+  )
+  class(data_frame_table) <- c(
+    "builder_profile_table_trap",
+    "data.frame"
+  )
+
+  for (kind in c("matrix", "data_frame")) {
+    touched <- FALSE
+    coordinate_table <- if (identical(kind, "matrix")) {
+      matrix_table
+    } else {
+      data_frame_table
+    }
+    profile <- NULL
+    expect_no_error(
+      profile <- .builder_profile_spatial_coordinate_record(
+        "section",
+        coordinate_table,
+        "RNA",
+        context
+      )
+    )
+    if (is.null(profile)) {
+      next
+    }
+    expect_false(profile$valid, info = kind)
+    expect_true(
+      "invalid_coordinate_table" %in% profile$diagnostics,
+      info = kind
+    )
+    expect_false(touched, info = kind)
+  }
+})
+
+test_that("misaligned spatial barcodes fail closed without indexing errors", {
+  context <- list(
+    cells = paste0("cell", seq_len(4L)),
+    assays = list(
+      RNA = list(exportable_layers = c("data", "counts"), exportable = TRUE)
+    )
+  )
+  coordinates <- data.frame(
+    x = c(1, 2),
+    y = c(3, 4),
+    row.names = context$cells[1:2]
+  )
+  barcode_cases <- list(
+    more = context$cells[c(1L, 2L, 4L)],
+    fewer = context$cells[[1L]]
+  )
+
+  for (direction in names(barcode_cases)) {
+    profile <- NULL
+    expect_no_error(
+      profile <- .builder_profile_spatial_coordinate_record(
+        "section",
+        coordinates,
+        "RNA",
+        context,
+        barcode_ids = barcode_cases[[direction]]
+      )
+    )
+    if (is.null(profile)) {
+      next
+    }
+    expect_false(profile$valid, info = direction)
+    expect_true(
+      "misaligned_barcodes" %in% profile$diagnostics,
+      info = direction
+    )
+  }
+})
+
 test_that("oversized Spatial assay identifiers fail closed with previews", {
   expected <- paste0("cell", seq_len(4L))
   coordinates <- data.frame(

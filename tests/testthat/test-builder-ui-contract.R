@@ -25,6 +25,7 @@ test_that("builder UI copy is English-only", {
     "app.R",
     "adapters.R",
     "io.R",
+    "spatial.R",
     "inspect.R",
     "preview.R",
     "extras.R",

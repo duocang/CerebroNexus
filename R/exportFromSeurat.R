@@ -404,6 +404,22 @@
   invisible(final_file)
 }
 
+.spx_export_projection_coordinates <- function(coordinates) {
+  if (!is.data.frame(coordinates)) {
+    return(NULL)
+  }
+  coordinate_columns <- .spx_find_coordinate_columns(coordinates)
+  if (is.null(coordinate_columns)) {
+    return(NULL)
+  }
+  projection <- coordinates[,
+    c(coordinate_columns$x, coordinate_columns$y),
+    drop = FALSE
+  ]
+  names(projection) <- c("x", "y")
+  projection
+}
+
 #' @title
 #' Export Seurat object to Cerebro.
 #'
@@ -1709,22 +1725,9 @@ exportFromSeurat <- function(
           # Also add coordinates as a projection for compatibility with existing visualization functions
           coords_df <- spatial_data$coordinates
 
-          # Identify coordinate columns to use for projection (2D)
-          proj_cols <- character(0)
-
-          # Standard Visium
-          if (all(c("imagerow", "imagecol") %in% colnames(coords_df))) {
-            proj_cols <- c("imagerow", "imagecol")
-          } else if (all(c("x", "y") %in% colnames(coords_df))) {
-            # Standard FOV/Xenium/Other
-            proj_cols <- c("x", "y")
-          } else if (ncol(coords_df) >= 2) {
-            # Fallback: use first two columns
-            proj_cols <- colnames(coords_df)[1:2]
-          }
-
-          if (length(proj_cols) == 2) {
-            coords_df <- coords_df[, proj_cols, drop = FALSE]
+          projection <- .spx_export_projection_coordinates(coords_df)
+          if (!is.null(projection)) {
+            coords_df <- projection
             if (verbose) {
               message(paste0(
                 '[',

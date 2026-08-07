@@ -106,44 +106,20 @@ builder_profile_source <- function(source) {
 }
 
 builder_identity_profile <- function(ids, expected = ids) {
-  ids <- .builder_profile_ids(ids)
-  expected <- .builder_profile_ids(expected)
-  blanks <- unique(ids[is.na(ids) | !nzchar(ids)])
-  expected_blanks <- unique(expected[is.na(expected) | !nzchar(expected)])
-  usable <- ids[!is.na(ids) & nzchar(ids)]
-  expected_usable <- expected[!is.na(expected) & nzchar(expected)]
-  duplicates <- unique(usable[duplicated(usable)])
-  expected_duplicates <- unique(
-    expected_usable[duplicated(expected_usable)]
-  )
-  missing <- setdiff(unique(expected_usable), unique(usable))
-  extra <- setdiff(unique(usable), unique(expected_usable))
-  denominator <- length(unique(expected_usable))
-  coverage <- if (!denominator) {
-    1
-  } else {
-    length(intersect(unique(usable), unique(expected_usable))) / denominator
-  }
-  valid <- !length(blanks) &&
-    !length(expected_blanks) &&
-    !length(duplicates) &&
-    !length(expected_duplicates) &&
-    !length(missing) &&
-    !length(extra) &&
-    length(ids) == length(expected)
+  match <- builder_match_cells(ids, expected, mode = "exact")
 
   list(
-    ids = ids,
-    count = length(ids),
-    valid = valid,
-    duplicates = duplicates,
-    blanks = blanks,
-    missing = missing,
-    extra = extra,
-    order_matches = identical(ids, expected),
-    coverage = coverage,
-    canonical_ids = expected,
-    reorder_index = match(expected, ids)
+    ids = match$ids,
+    count = match$count,
+    valid = match$valid,
+    duplicates = match$duplicates,
+    blanks = match$blanks,
+    missing = match$missing,
+    extra = match$extra,
+    order_matches = match$order_matches,
+    coverage = match$coverage,
+    canonical_ids = match$canonical_ids,
+    reorder_index = match$reorder_index
   )
 }
 
@@ -654,6 +630,8 @@ builder_profile_assays <- function(object, expected_cells) {
     missing = sum(is.na(values)),
     blanks = sum(!is.na(as_text) & !nzchar(as_text)),
     unique = length(unique(values)),
+    non_missing = sum(!is.na(values)),
+    unique_non_missing = length(unique(values[!is.na(values)])),
     supported = is.atomic(values) && !is.list(values)
   )
 }

@@ -39,6 +39,7 @@ source(
   ),
   local = TRUE
 )
+source("spatial.R", local = TRUE)
 source(
   file.path(
     "..",
@@ -84,6 +85,7 @@ source("preview.R", local = TRUE)
 source("extras.R", local = TRUE)
 source("analysis.R", local = TRUE)
 source("prerequisite.R", local = TRUE)
+source("state.R", local = TRUE)
 source("plan.R", local = TRUE)
 source("session.R", local = TRUE)
 
@@ -511,8 +513,8 @@ server <- function(input, output, session) {
         nxt$id,
         nxt$sections,
         nxt$mode,
-        nxt$width,
-        nxt$height,
+        nxt$extent_width,
+        nxt$extent_height,
         nxt$um_per_px,
         nxt$dx,
         nxt$dy,
@@ -1267,6 +1269,12 @@ server <- function(input, output, session) {
       bytes = a$enc$bytes,
       width = a$enc$width,
       height = a$enc$height,
+      source_width = a$enc$source_width,
+      source_height = a$enc$source_height,
+      extent_width = a$enc$extent_width,
+      extent_height = a$enc$extent_height,
+      display_width = a$enc$display_width,
+      display_height = a$enc$display_height,
       outside = a$cover$outside,
       total = a$cover$total
     )
@@ -1320,8 +1328,8 @@ server <- function(input, output, session) {
       id = id,
       sections = e$profile$images,
       mode = input$image_bounds_mode %||% "pixels",
-      width = a$width,
-      height = a$height,
+      extent_width = a$extent_width,
+      extent_height = a$extent_height,
       um_per_px = input$image_um %||% 1,
       dx = input$img_dx %||% 0,
       dy = input$img_dy %||% 0,

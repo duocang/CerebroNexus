@@ -1,4 +1,20 @@
 ##----------------------------------------------------------------------------##
+
+builder_multisection_source_extras <- function(local = parent.frame()) {
+  relative <- file.path(
+    "shiny",
+    "v1.4",
+    "core",
+    "spatial_coordinate_contract.R"
+  )
+  core <- testthat::test_path("..", "..", "inst", relative)
+  if (!file.exists(core)) {
+    core <- system.file(relative, package = "CerebroNexus")
+  }
+  sys.source(core, envir = local)
+  builder_repo_source("spatial.R", local = local)
+  builder_repo_source("extras.R", local = local)
+}
 ## Objects holding several tissue sections.
 ##
 ## Every shipped demo `.crb` has exactly one spatial entry, and every other
@@ -59,10 +75,8 @@ test_that("histology is attached per section, not once for all of them", {
   skip_if_not_installed("png")
   skip_if_not_installed("base64enc")
 
-  extras <- system.file("builder/extras.R", package = "CerebroNexus")
-  skip_if(!nzchar(extras) || !file.exists(extras), "builder not installed")
   local({
-    source(extras, local = TRUE)
+    builder_multisection_source_extras(environment())
 
     obj <- make_synthetic_multisection_seurat()
     dir <- withr::local_tempdir()
@@ -133,10 +147,8 @@ test_that("attaching to some sections leaves the others without an image", {
   skip_if_not_installed("png")
   skip_if_not_installed("base64enc")
 
-  extras <- system.file("builder/extras.R", package = "CerebroNexus")
-  skip_if(!nzchar(extras) || !file.exists(extras), "builder not installed")
   local({
-    source(extras, local = TRUE)
+    builder_multisection_source_extras(environment())
 
     obj <- make_synthetic_multisection_seurat()
     dir <- withr::local_tempdir()
@@ -167,10 +179,8 @@ test_that("attaching to some sections leaves the others without an image", {
 test_that("attaching nothing, or to a section that is absent, is handled", {
   skip_if_not_installed("Seurat")
 
-  extras <- system.file("builder/extras.R", package = "CerebroNexus")
-  skip_if(!nzchar(extras) || !file.exists(extras), "builder not installed")
   local({
-    source(extras, local = TRUE)
+    builder_multisection_source_extras(environment())
 
     obj <- make_synthetic_multisection_seurat()
     dir <- withr::local_tempdir()

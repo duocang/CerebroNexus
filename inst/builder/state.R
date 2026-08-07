@@ -1,0 +1,2187 @@
+##----------------------------------------------------------------------------##
+## Pure Builder dataset and build state.
+##
+## Readiness is always derived from the typed manifest. Callers may keep this
+## state for a rail or Review screen, but they cannot set readiness directly.
+##----------------------------------------------------------------------------##
+
+.builder_state_or <- function(value, fallback) {
+  if (is.null(value)) fallback else value
+}
+
+.builder_state_abort <- function(code, message) {
+  condition <- structure(
+    list(message = message, call = NULL, code = code),
+    class = c("builder_state_error", "error", "condition")
+  )
+  stop(condition)
+}
+
+.builder_state_text <- function(value) {
+  is.character(value) &&
+    length(value) == 1L &&
+    !is.na(value) &&
+    nzchar(trimws(value))
+}
+
+.builder_state_has_reference <- function(value, depth = 0L) {
+  if (depth > 50L) {
+    return(TRUE)
+  }
+  if (
+    is.environment(value) ||
+      is.function(value) ||
+      isS4(value) ||
+      is.language(value) ||
+      is.symbol(value) ||
+      typeof(value) %in% c("externalptr", "weakref") ||
+      inherits(value, "connection")
+  ) {
+    return(TRUE)
+  }
+  value_attributes <- attributes(value)
+  if (
+    !is.null(value_attributes) &&
+      any(vapply(
+        value_attributes,
+        .builder_state_has_reference,
+        logical(1),
+        depth = depth + 1L
+      ))
+  ) {
+    return(TRUE)
+  }
+  if (is.list(value) || is.pairlist(value)) {
+    return(any(vapply(
+      value,
+      .builder_state_has_reference,
+      logical(1),
+      depth = depth + 1L
+    )))
+  }
+  FALSE
+}
+
+.builder_state_plain_record <- function(value, recursive = TRUE) {
+  if (!is.list(value) || is.object(value)) {
+    return(FALSE)
+  }
+  value_attributes <- attributes(value)
+  plain_attributes <- is.null(value_attributes) ||
+    identical(names(value_attributes), "names")
+  unsafe_reference <- if (isTRUE(recursive)) {
+    .builder_state_has_reference(value)
+  } else {
+    !is.null(value_attributes) &&
+      any(vapply(
+        value_attributes,
+        .builder_state_has_reference,
+        logical(1)
+      ))
+  }
+  if (
+    !plain_attributes ||
+      unsafe_reference
+  ) {
+    return(FALSE)
+  }
+  value_names <- attr(value, "names", exact = TRUE)
+  !length(value) ||
+    (is.character(value_names) &&
+      length(value_names) == length(value) &&
+      !anyNA(value_names) &&
+      all(nzchar(value_names)) &&
+      !anyDuplicated(value_names))
+}
+
+.builder_state_plain_list <- function(value) {
+  if (!is.list(value) || is.object(value)) {
+    return(FALSE)
+  }
+  value_attributes <- attributes(value)
+  if (
+    (!is.null(value_attributes) &&
+      !identical(names(value_attributes), "names")) ||
+      .builder_state_has_reference(value)
+  ) {
+    return(FALSE)
+  }
+  value_names <- attr(value, "names", exact = TRUE)
+  is.null(value_names) ||
+    (is.character(value_names) &&
+      length(value_names) == length(value) &&
+      !anyNA(value_names) &&
+      all(nzchar(value_names)) &&
+      !anyDuplicated(value_names))
+}
+
+.builder_state_validate_entry <- function(entry) {
+  if (!is.list(entry) || is.object(entry)) {
+    .builder_state_abort(
+      "invalid_dataset_entry",
+      "Dataset state requires one inert dataset entry."
+    )
+  }
+  modern_profile <- .subset2(entry, "dataset_profile")
+  legacy_profile <- .subset2(entry, "profile")
+  invalid_profile <-
+    (!is.null(modern_profile) && !is.list(modern_profile)) ||
+    (!is.null(legacy_profile) && !is.list(legacy_profile))
+  modern <- is.list(modern_profile) &&
+    any(
+      c(
+        "schema_version",
+        "identity",
+        "metadata",
+        "manifest",
+        "content"
+      ) %in%
+        names(modern_profile)
+    )
+  typed_modern <- inherits(legacy_profile, "builder_dataset_profile")
+  legacy <- is.list(legacy_profile) &&
+    any(
+      c(
+        "default_assay",
+        "assay_profiles",
+        "nUMI",
+        "nGene",
+        "extras"
+      ) %in%
+        names(legacy_profile)
+    )
+  if (invalid_profile || !(modern || typed_modern || legacy)) {
+    .builder_state_abort(
+      "invalid_dataset_entry",
+      "Dataset state requires a recognized modern or legacy profile."
+    )
+  }
+  settings <- .subset2(entry, "settings")
+  if (!.builder_state_plain_record(settings, recursive = FALSE)) {
+    .builder_state_abort(
+      "invalid_dataset_settings",
+      "Dataset settings must be a plain inert record."
+    )
+  }
+  invisible(entry)
+}
+
+.builder_state_validate_recommendations <- function(entry) {
+  settings <- .subset2(entry, "settings")
+  recommendations <- .subset2(settings, "recommendations")
+  if (is.null(recommendations)) {
+    return(invisible(NULL))
+  }
+  if (!.builder_state_plain_record(recommendations)) {
+    .builder_state_abort(
+      "invalid_recommendations",
+      "Dataset recommendations must be a plain inert record."
+    )
+  }
+  for (id in c("groups", "projections")) {
+    record <- .subset2(recommendations, id)
+    if (is.null(record)) {
+      next
+    }
+    if (!.builder_state_plain_record(record)) {
+      .builder_state_abort(
+        "invalid_recommendations",
+        paste("The", id, "recommendation must be a plain inert record.")
+      )
+    }
+    included <- .subset2(record, "included")
+    if (
+      !is.null(included) &&
+        (!is.character(included) ||
+          anyNA(included) ||
+          any(!nzchar(trimws(included))) ||
+          anyDuplicated(included))
+    ) {
+      .builder_state_abort(
+        "invalid_recommendations",
+        paste("The", id, "included set is invalid.")
+      )
+    }
+  }
+  invisible(recommendations)
+}
+
+.builder_state_revision <- function(value, default = 0L) {
+  if (is.null(value)) {
+    return(as.integer(default))
+  }
+  if (
+    !is.numeric(value) ||
+      length(value) != 1L ||
+      is.na(value) ||
+      !is.finite(value) ||
+      value < 0 ||
+      value > .Machine$integer.max ||
+      value != floor(value)
+  ) {
+    .builder_state_abort(
+      "invalid_revision",
+      "Builder revisions must be non-negative integers."
+    )
+  }
+  as.integer(value)
+}
+
+.builder_state_profile <- function(entry) {
+  profile <- entry$dataset_profile
+  if (is.null(profile) && inherits(entry$profile, "builder_dataset_profile")) {
+    profile <- entry$profile
+  }
+  profile
+}
+
+.builder_state_content_available <- function(entry, id) {
+  profile <- .builder_state_profile(entry)
+  if (is.list(profile)) {
+    content <- .subset2(profile, "content")
+    fact <- if (is.list(content)) .subset2(content, id) else NULL
+    return(
+      is.list(fact) &&
+        isTRUE(.subset2(fact, "detected")) &&
+        isTRUE(.subset2(fact, "valid"))
+    )
+  }
+  any(vapply(
+    .builder_state_or(entry$profile$extras, list()),
+    function(value) {
+      is.list(value) &&
+        identical(value$key, id) &&
+        isTRUE(value$found)
+    },
+    logical(1)
+  ))
+}
+
+.builder_state_source <- function(entry, profile) {
+  source <- .builder_state_or(profile$source, entry$source)
+  if (
+    !is.list(source) ||
+      !.builder_state_text(source$type) ||
+      !.builder_state_text(source$location)
+  ) {
+    return(list(
+      type = "builder",
+      location = .builder_state_or(entry$id, "dataset")
+    ))
+  }
+  list(type = source$type, location = source$location)
+}
+
+.builder_state_acknowledgements <- function(entry) {
+  acknowledgements <- .builder_state_or(
+    entry$acknowledgements,
+    .builder_state_or(entry$settings$acknowledgements, character())
+  )
+  if (!is.character(acknowledgements) || anyNA(acknowledgements)) {
+    .builder_state_abort(
+      "invalid_acknowledgements",
+      "Dataset acknowledgements must be character tokens."
+    )
+  }
+  unique(acknowledgements)
+}
+
+.builder_state_fact_logical <- function(value) {
+  is.logical(value) &&
+    length(value) == 1L &&
+    !is.na(value) &&
+    is.null(attributes(value))
+}
+
+.builder_state_fact_text <- function(value) {
+  .builder_state_text(value) &&
+    !is.object(value) &&
+    is.null(attributes(value))
+}
+
+.builder_state_fact_text_vector <- function(value) {
+  is.character(value) &&
+    !is.object(value) &&
+    !anyNA(value) &&
+    is.null(attributes(value))
+}
+
+.builder_state_fact_count <- function(value) {
+  is.numeric(value) &&
+    !is.object(value) &&
+    length(value) == 1L &&
+    !is.na(value) &&
+    is.finite(value) &&
+    value >= 0 &&
+    value == floor(value) &&
+    is.null(attributes(value))
+}
+
+.builder_state_validate_fact_record <- function(fact, id, code) {
+  required <- c(
+    "detected",
+    "valid",
+    "normalized",
+    "diagnostics",
+    "requirements",
+    "page_candidates"
+  )
+  if (
+    !.builder_state_plain_record(fact) ||
+      !all(required %in% names(fact))
+  ) {
+    .builder_state_abort(
+      code,
+      paste("Optional content evidence for", id, "must be an inert record.")
+    )
+  }
+  for (field in c("detected", "valid")) {
+    if (!.builder_state_fact_logical(.subset2(fact, field))) {
+      .builder_state_abort(
+        code,
+        paste(
+          "Optional content evidence for",
+          id,
+          "has an invalid",
+          field,
+          "flag."
+        )
+      )
+    }
+  }
+  normalized <- .subset2(fact, "normalized")
+  if (!is.null(normalized) && !.builder_state_plain_list(normalized)) {
+    .builder_state_abort(
+      code,
+      paste("Optional content evidence for", id, "has invalid normalized data.")
+    )
+  }
+  for (field in c("diagnostics", "requirements", "page_candidates")) {
+    if (!.builder_state_fact_text_vector(.subset2(fact, field))) {
+      .builder_state_abort(
+        code,
+        paste(
+          "Optional content evidence for",
+          id,
+          "has invalid",
+          field,
+          "values."
+        )
+      )
+    }
+  }
+  attention <- .subset2(fact, "attention")
+  if (!is.null(attention) && !.builder_state_fact_logical(attention)) {
+    .builder_state_abort(
+      code,
+      paste(
+        "Optional content evidence for",
+        id,
+        "has an invalid attention flag."
+      )
+    )
+  }
+  invisible(fact)
+}
+
+.builder_state_validate_immune_candidates <- function(fact) {
+  candidates <- .subset2(fact, "candidates")
+  if (!.builder_state_plain_record(candidates)) {
+    .builder_state_abort(
+      "invalid_immune_candidates",
+      "Immune-repertoire candidates must be inert named records."
+    )
+  }
+  for (name in names(candidates)) {
+    candidate <- .subset2(candidates, name)
+    .builder_state_validate_fact_record(
+      candidate,
+      paste("immune candidate", name),
+      "invalid_immune_candidates"
+    )
+    for (field in c("full_ir_ready", "hla_tcr_ready")) {
+      if (!.builder_state_fact_logical(.subset2(candidate, field))) {
+        .builder_state_abort(
+          "invalid_immune_candidates",
+          paste("Immune candidate", name, "has an invalid", field, "flag.")
+        )
+      }
+    }
+    source_kind <- .subset2(candidate, "source_kind")
+    if (!is.null(source_kind) && !.builder_state_fact_text(source_kind)) {
+      .builder_state_abort(
+        "invalid_immune_candidates",
+        paste("Immune candidate", name, "has an invalid source kind.")
+      )
+    }
+  }
+  invisible(candidates)
+}
+
+.builder_state_validate_immune_overlaps <- function(fact, candidate_names) {
+  for (field in c(
+    "source_overlaps",
+    "full_source_overlaps",
+    "motif_source_overlaps"
+  )) {
+    overlaps <- .subset2(fact, field)
+    if (is.null(overlaps)) {
+      next
+    }
+    if (!.builder_state_plain_list(overlaps)) {
+      .builder_state_abort(
+        "invalid_immune_overlaps",
+        "Immune source overlaps must be inert record lists."
+      )
+    }
+    for (overlap in overlaps) {
+      if (!.builder_state_plain_record(overlap)) {
+        .builder_state_abort(
+          "invalid_immune_overlaps",
+          "Each immune source overlap must be an inert record."
+        )
+      }
+      left <- .subset2(overlap, "left")
+      right <- .subset2(overlap, "right")
+      if (
+        !.builder_state_fact_text(left) ||
+          !.builder_state_fact_text(right) ||
+          identical(left, right) ||
+          !left %in% candidate_names ||
+          !right %in% candidate_names
+      ) {
+        .builder_state_abort(
+          "invalid_immune_overlaps",
+          "Immune source overlaps must identify two known sources."
+        )
+      }
+      for (count in c("n_overlap", "n_divergent")) {
+        if (!.builder_state_fact_count(.subset2(overlap, count))) {
+          .builder_state_abort(
+            "invalid_immune_overlaps",
+            paste("Immune source overlap has an invalid", count, "count.")
+          )
+        }
+      }
+      equivalent <- .subset2(overlap, "equivalent")
+      if (!is.null(equivalent) && !.builder_state_fact_logical(equivalent)) {
+        .builder_state_abort(
+          "invalid_immune_overlaps",
+          "Immune source overlap has an invalid equivalent flag."
+        )
+      }
+    }
+  }
+  invisible(fact)
+}
+
+.builder_state_validate_content_fact <- function(id, fact) {
+  .builder_state_validate_fact_record(
+    fact,
+    id,
+    "invalid_content_evidence"
+  )
+  if (identical(id, "immune_repertoire")) {
+    candidates <- .builder_state_validate_immune_candidates(fact)
+    .builder_state_validate_immune_overlaps(fact, names(candidates))
+  }
+  invisible(fact)
+}
+
+.builder_state_optional_evidence <- function(fact) {
+  list(
+    detected = isTRUE(.subset2(fact, "detected")),
+    valid = isTRUE(.subset2(fact, "valid")),
+    attention = isTRUE(.subset2(fact, "attention")),
+    normalized = .builder_state_or(
+      .subset2(fact, "normalized"),
+      list()
+    ),
+    diagnostics = .builder_state_or(
+      .subset2(fact, "diagnostics"),
+      character()
+    ),
+    requirements = .builder_state_or(
+      .subset2(fact, "requirements"),
+      character()
+    ),
+    page_candidates = .builder_state_or(
+      .subset2(fact, "page_candidates"),
+      character()
+    )
+  )
+}
+
+.builder_state_optional_setting_record <- function(
+  entry,
+  field,
+  code,
+  label
+) {
+  settings <- .subset2(entry, "settings")
+  record <- .subset2(settings, field)
+  if (is.null(record)) {
+    return(NULL)
+  }
+  if (!.builder_state_plain_record(record)) {
+    .builder_state_abort(
+      code,
+      paste("Optional-content", label, "must be a plain inert record.")
+    )
+  }
+  record
+}
+
+.builder_state_content_choice <- function(entry, id) {
+  choices <- .builder_state_optional_setting_record(
+    entry,
+    "content_dispositions",
+    "invalid_content_dispositions",
+    "dispositions"
+  )
+  if (is.null(choices)) {
+    return(NULL)
+  }
+  choice_names <- attr(choices, "names", exact = TRUE)
+  if (
+    is.null(choice_names) ||
+      length(choice_names) != length(choices) ||
+      anyNA(choice_names) ||
+      any(!nzchar(choice_names)) ||
+      anyDuplicated(choice_names)
+  ) {
+    .builder_state_abort(
+      "invalid_content_dispositions",
+      "Optional-content dispositions must have unique non-empty names."
+    )
+  }
+  choice <- .subset2(choices, id)
+  if (is.null(choice)) {
+    return(NULL)
+  }
+  if (
+    !.builder_state_fact_text(choice) ||
+      !choice %in%
+        c(
+          "preserved",
+          "generated",
+          "converted",
+          "attached",
+          "filtered",
+          "stored_only"
+        )
+  ) {
+    .builder_state_abort(
+      "invalid_content_disposition",
+      "A selected content disposition is not supported."
+    )
+  }
+  choice
+}
+
+.builder_state_validate_content_dispositions <- function(entry) {
+  choices <- .builder_state_optional_setting_record(
+    entry,
+    "content_dispositions",
+    "invalid_content_dispositions",
+    "dispositions"
+  )
+  if (is.null(choices)) {
+    return(invisible(NULL))
+  }
+  choice_ids <- attr(choices, "names", exact = TRUE)
+  if (
+    is.null(choice_ids) ||
+      length(choice_ids) != length(choices) ||
+      anyNA(choice_ids) ||
+      any(!nzchar(choice_ids)) ||
+      anyDuplicated(choice_ids) ||
+      any(
+        !choice_ids %in%
+          c(
+            .builder_profile_content_ids(),
+            "hla_tcr_motifs"
+          )
+      )
+  ) {
+    .builder_state_abort(
+      "invalid_content_dispositions",
+      paste0(
+        "Optional-content dispositions must have unique known ",
+        "capability names."
+      )
+    )
+  }
+  for (id in choice_ids) {
+    .builder_state_content_choice(entry, id)
+  }
+  invisible(choices)
+}
+
+.builder_state_analysis_ids <- function() {
+  c(
+    "percent_mt_ribo",
+    "most_expressed",
+    "marker_genes",
+    "enriched_pathways"
+  )
+}
+
+.builder_state_validate_analyses <- function(selected) {
+  if (is.null(selected)) {
+    return(character())
+  }
+  if (
+    !is.character(selected) ||
+      anyNA(selected) ||
+      any(!nzchar(selected)) ||
+      anyDuplicated(selected) ||
+      any(!selected %in% .builder_state_analysis_ids())
+  ) {
+    .builder_state_abort(
+      "invalid_analyses",
+      "Selected analyses must be unique supported analysis ids."
+    )
+  }
+  selected
+}
+
+.builder_state_normalize_analyses <- function(
+  selected,
+  has_marker_genes = FALSE
+) {
+  order <- .builder_state_analysis_ids()
+  selected <- intersect(order, .builder_state_validate_analyses(selected))
+  if (
+    "enriched_pathways" %in%
+      selected &&
+      !"marker_genes" %in% selected &&
+      !isTRUE(has_marker_genes)
+  ) {
+    selected <- setdiff(selected, "enriched_pathways")
+  }
+  selected
+}
+
+.builder_state_included_groups <- function(entry) {
+  settings <- entry$settings
+  recommendations <- settings$recommendations
+  group_recommendation <- if (
+    is.list(recommendations) &&
+      !is.object(recommendations) &&
+      is.list(recommendations$groups) &&
+      !is.object(recommendations$groups)
+  ) {
+    recommendations$groups$included
+  } else {
+    NULL
+  }
+  .builder_state_or(
+    settings$included_groups,
+    .builder_state_or(group_recommendation, settings$groups)
+  )
+}
+
+.builder_state_selected_analyses <- function(entry) {
+  .builder_state_normalize_analyses(
+    entry$settings$analyses,
+    has_marker_genes = .builder_state_content_available(
+      entry,
+      "marker_genes"
+    )
+  )
+}
+
+.builder_state_generated_content <- function(entry) {
+  selected <- .builder_state_selected_analyses(entry)
+  map <- c(
+    most_expressed = "most_expressed_genes",
+    marker_genes = "marker_genes",
+    enriched_pathways = "enriched_pathways"
+  )
+  unique(unname(map[intersect(names(map), selected)]))
+}
+
+.builder_state_validate_analysis_dispositions <- function(entry) {
+  generated_content <- .builder_state_generated_content(entry)
+  generation_capabilities <- c(
+    "most_expressed_genes",
+    "marker_genes",
+    "enriched_pathways"
+  )
+  choices <- .builder_state_optional_setting_record(
+    entry,
+    "content_dispositions",
+    "invalid_content_dispositions",
+    "dispositions"
+  )
+  choice_ids <- if (is.null(choices)) {
+    character()
+  } else {
+    attr(choices, "names", exact = TRUE)
+  }
+  for (id in union(generation_capabilities, choice_ids)) {
+    choice <- .builder_state_content_choice(entry, id)
+    generated <- id %in% generated_content
+    if (
+      !is.null(choice) &&
+        (id %in% generation_capabilities || identical(choice, "generated")) &&
+        !identical(generated, identical(choice, "generated"))
+    ) {
+      .builder_state_abort(
+        "analysis_disposition_conflict",
+        paste0(
+          "Analysis execution and the ",
+          id,
+          " content disposition disagree."
+        )
+      )
+    }
+  }
+  invisible(generated_content)
+}
+
+.builder_state_generated_page <- function(id) {
+  pages <- c(
+    most_expressed_genes = "most_expressed_genes",
+    marker_genes = "marker_genes",
+    enriched_pathways = "enriched_pathways"
+  )
+  unname(.builder_state_or(pages[[id]], character()))
+}
+
+.builder_state_attention_action <- function(id, evidence) {
+  signals <- sort(
+    unique(c(
+      .builder_state_or(evidence$diagnostics, character()),
+      .builder_state_or(evidence$attention_items, character())
+    )),
+    method = "radix"
+  )
+  signals <- signals[!is.na(signals) & nzchar(signals)]
+  if (!length(signals)) {
+    signals <- "review"
+  }
+  list(
+    type = "acknowledge",
+    token = paste(c("builder", id, "attention-v1", signals), collapse = ":")
+  )
+}
+
+.builder_state_manifest_record <- function(
+  id,
+  source,
+  status,
+  disposition,
+  pages,
+  evidence,
+  artifact_scope = "both",
+  required_action = NULL,
+  verifier = NULL
+) {
+  entry <- builder_manifest_entry(
+    id = id,
+    source = source,
+    status = status,
+    disposition = disposition,
+    artifact_scope = artifact_scope,
+    summary = paste("BuildPlan decision for", id),
+    diagnostics = list(
+      codes = evidence$diagnostics,
+      requirements = evidence$requirements,
+      normalized = evidence$normalized
+    ),
+    compatibility = list(
+      viewer = identical(status, "valid") &&
+        disposition %in% c("preserved", "generated", "converted", "attached")
+    ),
+    pages = pages,
+    required_action = required_action,
+    verifier = verifier
+  )
+  entry$evidence <- evidence
+  entry
+}
+
+.builder_state_generic_content_entry <- function(entry, id, fact, source) {
+  evidence <- .builder_state_optional_evidence(fact)
+  choice <- .builder_state_content_choice(entry, id)
+  generated <- id %in% .builder_state_generated_content(entry)
+
+  if (!evidence$detected && !generated && is.null(choice)) {
+    return(.builder_state_manifest_record(
+      id,
+      source,
+      "not_applicable",
+      NA_character_,
+      character(),
+      evidence,
+      verifier = paste0("verify_", id)
+    ))
+  }
+
+  disposition <- if (!is.null(choice)) {
+    choice
+  } else if (generated) {
+    "generated"
+  } else {
+    "preserved"
+  }
+  filtered <- disposition %in% c("filtered", "stored_only")
+  valid <- (evidence$detected && evidence$valid) || generated || filtered
+  attention <- evidence$detected &&
+    evidence$valid &&
+    evidence$attention &&
+    !filtered
+  status <- if (attention) {
+    "attention"
+  } else if (valid) {
+    "valid"
+  } else {
+    "blocking"
+  }
+  if (!valid) {
+    disposition <- "rejected"
+  }
+  pages <- if (
+    identical(status, "valid") &&
+      disposition %in% c("preserved", "generated", "converted", "attached")
+  ) {
+    if (generated) {
+      .builder_state_generated_page(id)
+    } else {
+      evidence$page_candidates
+    }
+  } else {
+    character()
+  }
+
+  .builder_state_manifest_record(
+    id,
+    source,
+    status,
+    disposition,
+    pages,
+    evidence,
+    required_action = if (attention) {
+      .builder_state_attention_action(id, evidence)
+    } else {
+      NULL
+    },
+    verifier = paste0("verify_", id)
+  )
+}
+
+.builder_state_immune_source <- function(names, candidates, fallback) {
+  kinds <- vapply(
+    seq_along(candidates),
+    function(index) {
+      .builder_state_or(
+        .subset2(.subset2(candidates, index), "source_kind"),
+        names[[index]]
+      )
+    },
+    character(1)
+  )
+  records <- list(
+    unified_misc = list(
+      source = list(type = "seurat_slot", location = "@misc$immune_repertoire"),
+      disposition = "preserved"
+    ),
+    metadata = list(
+      source = list(type = "seurat_metadata", location = "@meta.data"),
+      disposition = "converted"
+    ),
+    legacy_bcr = list(
+      source = list(type = "seurat_slot", location = "@misc$bcr_data"),
+      disposition = "converted"
+    ),
+    legacy_tcr = list(
+      source = list(type = "seurat_slot", location = "@misc$tcr_data"),
+      disposition = "converted"
+    )
+  )
+  selected <- lapply(kinds, function(kind) {
+    .builder_state_or(
+      records[[kind]],
+      list(source = fallback, disposition = "converted")
+    )
+  })
+  locations <- unique(vapply(
+    selected,
+    function(record) record$source$location,
+    character(1)
+  ))
+  source <- if (length(selected) == 1L) {
+    selected[[1L]]$source
+  } else {
+    list(
+      type = "seurat_slots",
+      location = paste(locations, collapse = " + ")
+    )
+  }
+  dispositions <- unique(vapply(
+    selected,
+    `[[`,
+    character(1),
+    "disposition"
+  ))
+  list(
+    name = if (length(names) == 1L) names[[1L]] else NULL,
+    names = names,
+    kind = if (length(kinds) == 1L) kinds[[1L]] else kinds,
+    candidate = if (length(candidates) == 1L) candidates[[1L]] else NULL,
+    candidates = candidates,
+    source = source,
+    disposition = if (length(dispositions) == 1L) {
+      dispositions[[1L]]
+    } else {
+      "converted"
+    }
+  )
+}
+
+.builder_state_immune_requested_source <- function(entry, id) {
+  sources <- .builder_state_optional_setting_record(
+    entry,
+    "content_sources",
+    "invalid_content_sources",
+    "sources"
+  )
+  if (is.null(sources)) {
+    return(NULL)
+  }
+  source <- .subset2(sources, id)
+  if (is.null(source)) {
+    return(NULL)
+  }
+  if (!.builder_state_fact_text(source)) {
+    .builder_state_abort(
+      "invalid_content_source",
+      "A selected optional-content source is invalid."
+    )
+  }
+  source
+}
+
+.builder_state_validate_content_sources <- function(entry) {
+  sources <- .builder_state_optional_setting_record(
+    entry,
+    "content_sources",
+    "invalid_content_sources",
+    "sources"
+  )
+  if (is.null(sources)) {
+    return(invisible(NULL))
+  }
+  source_ids <- attr(sources, "names", exact = TRUE)
+  allowed_ids <- c("immune_repertoire", "hla_tcr_motifs")
+  if (
+    is.null(source_ids) ||
+      length(source_ids) != length(sources) ||
+      anyNA(source_ids) ||
+      any(!nzchar(source_ids)) ||
+      anyDuplicated(source_ids) ||
+      any(!source_ids %in% allowed_ids)
+  ) {
+    .builder_state_abort(
+      "invalid_content_sources",
+      paste0(
+        "Optional-content sources must be a named list of known ",
+        "capabilities."
+      )
+    )
+  }
+  valid_values <- vapply(
+    sources,
+    .builder_state_fact_text,
+    logical(1)
+  )
+  if (!all(valid_values)) {
+    .builder_state_abort(
+      "invalid_content_source",
+      "A selected optional-content source is invalid."
+    )
+  }
+  invisible(sources)
+}
+
+.builder_state_immune_selection <- function(entry, fact, gate, id, fallback) {
+  candidates <- .subset2(fact, "candidates")
+  requested <- .builder_state_immune_requested_source(entry, id)
+  if (!is.list(candidates) || !length(candidates)) {
+    if (!is.null(requested)) {
+      return(structure(
+        list(reason = "selected_source_is_not_ready"),
+        class = "builder_invalid_immune_source"
+      ))
+    }
+    return(NULL)
+  }
+  candidate_names <- names(candidates)
+  if (
+    is.null(candidate_names) ||
+      anyNA(candidate_names) ||
+      any(!nzchar(candidate_names)) ||
+      anyDuplicated(candidate_names)
+  ) {
+    .builder_state_abort(
+      "invalid_immune_candidates",
+      "Immune-repertoire candidates must have stable source names."
+    )
+  }
+  eligible <- candidate_names[vapply(
+    candidates,
+    function(candidate) {
+      is.list(candidate) &&
+        isTRUE(.subset2(candidate, "detected")) &&
+        isTRUE(.subset2(candidate, gate))
+    },
+    logical(1)
+  )]
+  if (!is.null(requested)) {
+    if (!requested %in% eligible) {
+      return(structure(
+        list(reason = "selected_source_is_not_ready"),
+        class = "builder_invalid_immune_source"
+      ))
+    }
+    selected <- requested
+  } else {
+    overlaps <- if (identical(gate, "full_ir_ready")) {
+      .builder_state_or(
+        .subset2(fact, "full_source_overlaps"),
+        .builder_state_or(.subset2(fact, "source_overlaps"), list())
+      )
+    } else {
+      .builder_state_or(.subset2(fact, "motif_source_overlaps"), list())
+    }
+    divergent <- any(vapply(
+      overlaps,
+      function(overlap) {
+        is.list(overlap) &&
+          .subset2(overlap, "left") %in% eligible &&
+          .subset2(overlap, "right") %in% eligible &&
+          .subset2(overlap, "n_divergent") > 0
+      },
+      logical(1)
+    ))
+    if (divergent) {
+      return(structure(
+        list(reason = "divergent_source_overlap"),
+        class = "builder_invalid_immune_source"
+      ))
+    }
+    if (identical(gate, "full_ir_ready")) {
+      incomplete_overlap <- any(vapply(
+        overlaps,
+        function(overlap) {
+          is.list(overlap) &&
+            .subset2(overlap, "left") %in% eligible &&
+            .subset2(overlap, "right") %in% eligible &&
+            .subset2(overlap, "n_overlap") > 0L &&
+            !isTRUE(.subset2(overlap, "equivalent"))
+        },
+        logical(1)
+      ))
+      if (incomplete_overlap) {
+        return(structure(
+          list(reason = "incomplete_source_equivalence"),
+          class = "builder_invalid_immune_source"
+        ))
+      }
+    }
+    sources_equivalent <- function() {
+      eligible_overlaps <- Filter(
+        function(overlap) {
+          is.list(overlap) &&
+            .subset2(overlap, "left") %in% eligible &&
+            .subset2(overlap, "right") %in% eligible
+        },
+        overlaps
+      )
+      expected_pairs <- utils::combn(
+        sort(eligible, method = "radix"),
+        2L,
+        simplify = FALSE
+      )
+      pair_key <- function(pair) {
+        paste(sort(pair, method = "radix"), collapse = "\u001f")
+      }
+      observed_pairs <- unique(vapply(
+        eligible_overlaps,
+        function(overlap) {
+          pair_key(c(
+            .subset2(overlap, "left"),
+            .subset2(overlap, "right")
+          ))
+        },
+        character(1)
+      ))
+      expected_pair_keys <- vapply(
+        expected_pairs,
+        pair_key,
+        character(1)
+      )
+      equivalent <- length(observed_pairs) == length(expected_pair_keys) &&
+        setequal(observed_pairs, expected_pair_keys) &&
+        all(vapply(
+          eligible_overlaps,
+          function(overlap) isTRUE(.subset2(overlap, "equivalent")),
+          logical(1)
+        ))
+      equivalent
+    }
+    if (identical(gate, "full_ir_ready") && length(eligible) > 1L) {
+      complementary_legacy <- setequal(
+        eligible,
+        c("legacy_bcr", "legacy_tcr")
+      )
+      if (!complementary_legacy && !sources_equivalent()) {
+        return(structure(
+          list(reason = "unverified_source_equivalence"),
+          class = "builder_invalid_immune_source"
+        ))
+      }
+    }
+    if (
+      identical(gate, "hla_tcr_ready") &&
+        length(eligible) > 1L &&
+        !sources_equivalent()
+    ) {
+      return(structure(
+        list(reason = "unverified_source_equivalence"),
+        class = "builder_invalid_immune_source"
+      ))
+    }
+    priority <- c(
+      "attachment",
+      "unified_misc",
+      "metadata",
+      "legacy_bcr",
+      "legacy_tcr"
+    )
+    selected <- intersect(priority[seq_len(3L)], eligible)
+    if (length(selected)) {
+      selected <- selected[[1L]]
+    } else {
+      selected <- intersect(priority[4:5], eligible)
+    }
+    if (!length(selected) && length(eligible)) {
+      selected <- eligible[[1L]]
+    }
+    if (!length(selected)) {
+      return(NULL)
+    }
+  }
+  .builder_state_immune_source(
+    selected,
+    candidates[selected],
+    fallback
+  )
+}
+
+.builder_state_immune_disposition <- function(choice, selection) {
+  if (is.null(selection)) {
+    return(NULL)
+  }
+  if (inherits(selection, "builder_invalid_immune_source")) {
+    return("rejected")
+  }
+  if (is.null(choice)) {
+    return(selection$disposition)
+  }
+  if (choice %in% c("filtered", "stored_only")) {
+    return(choice)
+  }
+  if (identical(choice, selection$disposition)) {
+    return(choice)
+  }
+  "rejected"
+}
+
+.builder_state_immune_evidence <- function(
+  fact,
+  selection,
+  full_selection,
+  motif_selection
+) {
+  evidence <- .builder_state_optional_evidence(fact)
+  evidence$full_ir_ready <- !is.null(full_selection) &&
+    !inherits(full_selection, "builder_invalid_immune_source")
+  evidence$hla_tcr_ready <- !is.null(motif_selection) &&
+    !inherits(motif_selection, "builder_invalid_immune_source")
+  evidence$selected_sources <- if (
+    is.null(selection) ||
+      inherits(selection, "builder_invalid_immune_source")
+  ) {
+    character()
+  } else {
+    selection$names
+  }
+  evidence["selected_source"] <- list(
+    if (length(evidence$selected_sources) == 1L) {
+      evidence$selected_sources[[1L]]
+    } else {
+      NULL
+    }
+  )
+  evidence$selected_candidates <- if (!length(evidence$selected_sources)) {
+    list()
+  } else {
+    selection$candidates
+  }
+  evidence["selected_candidate"] <- list(
+    if (length(evidence$selected_sources) == 1L) {
+      evidence$selected_candidates[[1L]]
+    } else {
+      NULL
+    }
+  )
+  if (inherits(selection, "builder_invalid_immune_source")) {
+    evidence$diagnostics <- unique(c(
+      evidence$diagnostics,
+      selection$reason
+    ))
+  }
+  evidence
+}
+
+.builder_state_immune_entries <- function(entry, fact, source) {
+  full_selection <- .builder_state_immune_selection(
+    entry,
+    fact,
+    "full_ir_ready",
+    "immune_repertoire",
+    source
+  )
+  motif_selection <- .builder_state_immune_selection(
+    entry,
+    fact,
+    "hla_tcr_ready",
+    "hla_tcr_motifs",
+    source
+  )
+  immune_evidence <- .builder_state_immune_evidence(
+    fact,
+    full_selection,
+    full_selection,
+    motif_selection
+  )
+  motif_evidence <- .builder_state_immune_evidence(
+    fact,
+    motif_selection,
+    full_selection,
+    motif_selection
+  )
+
+  immune_choice <- .builder_state_content_choice(entry, "immune_repertoire")
+  immune_filtered <- !is.null(immune_choice) &&
+    immune_choice %in% c("filtered", "stored_only")
+  invalid_full_source <- inherits(
+    full_selection,
+    "builder_invalid_immune_source"
+  )
+  has_full_source <- !is.null(full_selection) && !invalid_full_source
+  visible_immune_choice <- !is.null(immune_choice) && !immune_filtered
+  immune_status <- if (
+    invalid_full_source ||
+      visible_immune_choice &&
+        !has_full_source
+  ) {
+    "blocking"
+  } else if (has_full_source || immune_filtered) {
+    "valid"
+  } else if (!immune_evidence$detected || motif_evidence$hla_tcr_ready) {
+    "not_applicable"
+  } else {
+    "blocking"
+  }
+  immune_disposition <- if (identical(immune_status, "not_applicable")) {
+    NA_character_
+  } else if (identical(immune_status, "blocking")) {
+    "rejected"
+  } else if (immune_filtered) {
+    immune_choice
+  } else {
+    .builder_state_immune_disposition(immune_choice, full_selection)
+  }
+  if (identical(immune_disposition, "rejected")) {
+    immune_status <- "blocking"
+  }
+  immune_visible <- identical(immune_status, "valid") &&
+    immune_disposition %in% c("preserved", "converted", "attached")
+
+  motif_choice <- .builder_state_content_choice(entry, "hla_tcr_motifs")
+  motif_filtered <- !is.null(motif_choice) &&
+    motif_choice %in% c("filtered", "stored_only")
+  invalid_motif_source <- inherits(
+    motif_selection,
+    "builder_invalid_immune_source"
+  )
+  has_motif_source <- !is.null(motif_selection) && !invalid_motif_source
+  visible_motif_choice <- !is.null(motif_choice) && !motif_filtered
+  motif_status <- if (
+    invalid_motif_source ||
+      visible_motif_choice &&
+        !has_motif_source
+  ) {
+    "blocking"
+  } else if (has_motif_source || motif_filtered) {
+    "valid"
+  } else {
+    "not_applicable"
+  }
+  motif_disposition <- if (identical(motif_status, "not_applicable")) {
+    NA_character_
+  } else if (identical(motif_status, "blocking")) {
+    "rejected"
+  } else if (motif_filtered) {
+    motif_choice
+  } else {
+    .builder_state_immune_disposition(motif_choice, motif_selection)
+  }
+  if (identical(motif_disposition, "rejected")) {
+    motif_status <- "blocking"
+  }
+  motif_visible <- identical(motif_status, "valid") &&
+    motif_disposition %in% c("preserved", "converted", "attached")
+
+  list(
+    .builder_state_manifest_record(
+      "immune_repertoire",
+      if (has_full_source) full_selection$source else source,
+      immune_status,
+      immune_disposition,
+      if (immune_visible) "immune_repertoire" else character(),
+      immune_evidence,
+      verifier = "verify_immune_repertoire"
+    ),
+    .builder_state_manifest_record(
+      "hla_tcr_motifs",
+      if (has_motif_source) motif_selection$source else source,
+      motif_status,
+      motif_disposition,
+      if (motif_visible) "hla_tcr_motifs" else character(),
+      motif_evidence,
+      verifier = "verify_hla_tcr_motifs"
+    )
+  )
+}
+
+.builder_state_metadata_policy_abort <- function(message) {
+  .builder_state_abort("invalid_metadata_policy", message)
+}
+
+.builder_state_metadata_policy_ids <- function(value, label) {
+  if (
+    !is.character(value) ||
+      anyNA(value) ||
+      any(!nzchar(value)) ||
+      anyDuplicated(value)
+  ) {
+    .builder_state_metadata_policy_abort(
+      paste(label, "must contain unique non-empty column names.")
+    )
+  }
+  value
+}
+
+.builder_state_missing_metadata_sentinel <- function(record, id) {
+  zero_count <- function(value) {
+    is.numeric(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      is.finite(value) &&
+      identical(as.numeric(value), 0)
+  }
+  is.list(record) &&
+    !is.object(record) &&
+    !.builder_state_has_reference(record) &&
+    identical(record$name, id) &&
+    identical(record$class, "missing") &&
+    isTRUE(record$required) &&
+    identical(record$disposition, "blocking") &&
+    identical(record$value, "blocking") &&
+    identical(record$effective_included, FALSE) &&
+    identical(record$requires_confirmation, TRUE) &&
+    zero_count(record$non_missing) &&
+    zero_count(record$unique_non_missing)
+}
+
+.builder_state_metadata_record_dependencies <- function(record) {
+  dependencies <- record$dependency_ids
+  if (is.null(dependencies)) {
+    return(character())
+  }
+  if (
+    !is.character(dependencies) ||
+      anyNA(dependencies) ||
+      any(!nzchar(dependencies)) ||
+      anyDuplicated(dependencies)
+  ) {
+    .builder_state_metadata_policy_abort(
+      "Metadata dependency ids must be unique non-empty strings."
+    )
+  }
+  dependencies
+}
+
+.builder_state_metadata_required_columns <- function(
+  entry,
+  policy,
+  recommendation
+) {
+  settings <- entry$settings
+  legacy_profile <- if (is.list(entry$profile)) entry$profile else list()
+  selected <- unlist(
+    Filter(
+      is.character,
+      list(
+        settings$groups,
+        .builder_state_included_groups(entry),
+        settings$default_group,
+        .builder_state_or(settings$nUMI, legacy_profile$nUMI),
+        .builder_state_or(settings$nGene, legacy_profile$nGene)
+      )
+    ),
+    use.names = FALSE
+  )
+  selected <- selected[!is.na(selected) & nzchar(selected)]
+  dependent <- character()
+  for (source in list(policy, recommendation)) {
+    columns <- source$columns
+    if (!is.list(columns)) {
+      next
+    }
+    ids <- names(columns)
+    if (is.null(ids)) {
+      next
+    }
+    for (id in ids) {
+      record <- columns[[id]]
+      if (
+        is.list(record) &&
+          (isTRUE(record$required) ||
+            length(.builder_state_metadata_record_dependencies(record)))
+      ) {
+        dependent <- c(dependent, id)
+      }
+    }
+  }
+  unique(c(selected, dependent))
+}
+
+.builder_state_validate_metadata_dependencies <- function(
+  entry,
+  policy,
+  recommendation
+) {
+  required <- .builder_state_metadata_required_columns(
+    entry,
+    policy,
+    recommendation
+  )
+  missing <- required[
+    !vapply(
+      required,
+      function(id) {
+        record <- policy$columns[[id]]
+        is.list(record) &&
+          (isTRUE(record$effective_included) ||
+            identical(record$disposition, "blocking"))
+      },
+      logical(1)
+    )
+  ]
+  if (length(missing)) {
+    .builder_state_abort(
+      "metadata_dependency_conflict",
+      paste0(
+        "Final metadata must include selected or dependency-bearing columns: ",
+        paste(missing, collapse = ", "),
+        "."
+      )
+    )
+  }
+  invisible(required)
+}
+
+.builder_state_validate_metadata_policy <- function(
+  policy,
+  profile,
+  entry,
+  recommendation = NULL,
+  validate_dependencies = TRUE
+) {
+  if (
+    !is.list(policy) ||
+      is.object(policy) ||
+      .builder_state_has_reference(policy) ||
+      !is.list(policy$columns) ||
+      is.object(policy$columns)
+  ) {
+    .builder_state_metadata_policy_abort(
+      "The final metadata policy must be an inert record."
+    )
+  }
+
+  column_ids <- names(policy$columns)
+  if (is.null(column_ids)) {
+    column_ids <- character()
+  }
+  column_ids <- .builder_state_metadata_policy_ids(
+    column_ids,
+    "Final metadata policy columns"
+  )
+
+  if (
+    !is.list(profile) ||
+      !is.list(profile$metadata) ||
+      !is.list(profile$metadata$columns)
+  ) {
+    .builder_state_metadata_policy_abort(
+      "The final metadata policy requires profiled metadata columns."
+    )
+  }
+  source_columns <- profile$metadata$columns
+  source_ids <- names(source_columns)
+  if (is.null(source_ids)) {
+    source_ids <- character()
+  }
+  source_ids <- .builder_state_metadata_policy_ids(
+    source_ids,
+    "Profiled metadata columns"
+  )
+  expected_ids <- unique(c(
+    "cell_barcode",
+    setdiff(source_ids, "cell_barcode")
+  ))
+  missing_ids <- setdiff(expected_ids, column_ids)
+  extra_ids <- setdiff(column_ids, expected_ids)
+  valid_extra_ids <- extra_ids[vapply(
+    extra_ids,
+    function(id) {
+      .builder_state_missing_metadata_sentinel(
+        policy$columns[[id]],
+        id
+      )
+    },
+    logical(1)
+  )]
+  if (
+    length(missing_ids) ||
+      !setequal(extra_ids, valid_extra_ids)
+  ) {
+    .builder_state_metadata_policy_abort(
+      "The final metadata policy does not match the profiled column set."
+    )
+  }
+
+  bucket_names <- c("included", "attention", "excluded", "blocking")
+  buckets <- lapply(bucket_names, function(name) {
+    .builder_state_metadata_policy_ids(
+      policy[[name]],
+      paste("Final metadata policy", name)
+    )
+  })
+  names(buckets) <- bucket_names
+  if (length(intersect(buckets$included, buckets$excluded))) {
+    .builder_state_metadata_policy_abort(
+      "Included metadata columns cannot also be excluded."
+    )
+  }
+
+  dispositions <- character(length(column_ids))
+  effective <- logical(length(column_ids))
+  names(dispositions) <- column_ids
+  names(effective) <- column_ids
+  allowed <- c("included", "attention", "excluded", "blocking")
+  for (id in column_ids) {
+    record <- policy$columns[[id]]
+    if (
+      !is.list(record) ||
+        is.object(record) ||
+        .builder_state_has_reference(record) ||
+        !identical(record$name, id) ||
+        !.builder_state_text(record$disposition) ||
+        !record$disposition %in% allowed ||
+        !identical(record$value, record$disposition) ||
+        !is.logical(record$effective_included) ||
+        length(record$effective_included) != 1L ||
+        is.na(record$effective_included) ||
+        !is.logical(record$requires_confirmation) ||
+        length(record$requires_confirmation) != 1L ||
+        is.na(record$requires_confirmation)
+    ) {
+      .builder_state_metadata_policy_abort(
+        paste("Final metadata policy column", id, "is malformed.")
+      )
+    }
+    .builder_state_metadata_record_dependencies(record)
+    expected_confirmation <- record$disposition %in%
+      c("attention", "blocking")
+    invalid_effective <-
+      (identical(record$disposition, "included") &&
+        !isTRUE(record$effective_included)) ||
+      (identical(record$disposition, "excluded") &&
+        isTRUE(record$effective_included))
+    if (
+      invalid_effective ||
+        !identical(
+          record$requires_confirmation,
+          expected_confirmation
+        )
+    ) {
+      .builder_state_metadata_policy_abort(
+        paste("Final metadata policy column", id, "is inconsistent.")
+      )
+    }
+    dispositions[[id]] <- record$disposition
+    effective[[id]] <- record$effective_included
+  }
+
+  derived <- list(
+    included = column_ids[effective],
+    attention = column_ids[dispositions == "attention"],
+    excluded = column_ids[dispositions == "excluded"],
+    blocking = column_ids[dispositions == "blocking"]
+  )
+  if (
+    !all(vapply(
+      bucket_names,
+      function(name) {
+        identical(buckets[[name]], derived[[name]])
+      },
+      logical(1)
+    ))
+  ) {
+    .builder_state_metadata_policy_abort(
+      "Final metadata policy buckets do not match their column records."
+    )
+  }
+  if (!identical(policy$value, buckets$included)) {
+    .builder_state_metadata_policy_abort(
+      "Final metadata policy value must equal its included columns."
+    )
+  }
+  expected_confirmation <- length(buckets$attention) > 0L ||
+    length(buckets$blocking) > 0L
+  if (
+    !is.logical(policy$requires_confirmation) ||
+      length(policy$requires_confirmation) != 1L ||
+      is.na(policy$requires_confirmation) ||
+      !identical(
+        policy$requires_confirmation,
+        expected_confirmation
+      )
+  ) {
+    .builder_state_metadata_policy_abort(
+      "Final metadata policy confirmation state is inconsistent."
+    )
+  }
+
+  barcode <- policy$columns$cell_barcode
+  if (
+    !is.list(barcode) ||
+      !isTRUE(barcode$required) ||
+      identical(barcode$disposition, "excluded") ||
+      !isTRUE(barcode$effective_included) ||
+      !"cell_barcode" %in% buckets$included
+  ) {
+    .builder_state_metadata_policy_abort(
+      "The final metadata policy must include required cell barcodes."
+    )
+  }
+  if (
+    "cell_barcode" %in%
+      source_ids &&
+      !identical(barcode$disposition, "blocking")
+  ) {
+    .builder_state_metadata_policy_abort(
+      "A reserved cell_barcode source collision cannot be downgraded."
+    )
+  }
+  unsafe_included <- source_ids[vapply(
+    source_ids,
+    function(id) {
+      fact <- source_columns[[id]]
+      record <- policy$columns[[id]]
+      classes <- if (is.list(fact)) fact$class else NULL
+      unsafe <- !is.list(fact) ||
+        !isTRUE(fact$supported) ||
+        !is.character(classes) ||
+        any(classes %in% c("list", "data.frame"))
+      unsafe && isTRUE(record$effective_included)
+    },
+    logical(1)
+  )]
+  if (length(unsafe_included)) {
+    .builder_state_metadata_policy_abort(
+      paste0(
+        "Unsupported metadata columns cannot be included: ",
+        paste(unsafe_included, collapse = ", "),
+        "."
+      )
+    )
+  }
+  if (isTRUE(validate_dependencies)) {
+    .builder_state_validate_metadata_dependencies(
+      entry,
+      policy,
+      recommendation
+    )
+  }
+  invisible(policy)
+}
+
+.builder_state_effective_metadata_policy <- function(entry, profile) {
+  recommendations <- entry$settings$recommendations
+  if (
+    !is.null(recommendations) &&
+      (!is.list(recommendations) ||
+        is.object(recommendations) ||
+        .builder_state_has_reference(recommendations))
+  ) {
+    .builder_state_metadata_policy_abort(
+      "Metadata recommendations must be an inert record."
+    )
+  }
+  recommendation <- if (is.list(recommendations)) {
+    recommendations$metadata
+  } else {
+    NULL
+  }
+  policy <- entry$settings$metadata_policy
+  effective <- .builder_state_or(policy, recommendation)
+  for (candidate in list(recommendation, policy)) {
+    if (
+      !is.null(candidate) &&
+        (!is.list(candidate) ||
+          is.object(candidate) ||
+          .builder_state_has_reference(candidate))
+    ) {
+      .builder_state_metadata_policy_abort(
+        "Metadata policy values must be inert records."
+      )
+    }
+  }
+  if (is.list(profile)) {
+    if (!is.null(recommendation)) {
+      .builder_state_validate_metadata_policy(
+        recommendation,
+        profile,
+        entry,
+        validate_dependencies = is.null(policy)
+      )
+    }
+    if (!is.null(policy)) {
+      .builder_state_validate_metadata_policy(
+        policy,
+        profile,
+        entry,
+        recommendation = recommendation
+      )
+    }
+  }
+  effective
+}
+
+.builder_state_metadata_entry <- function(policy, source) {
+  recommendation <- policy
+  if (is.null(recommendation)) {
+    return(NULL)
+  }
+  if (
+    !is.list(recommendation) ||
+      !is.list(recommendation$columns) ||
+      !is.character(recommendation$attention) ||
+      anyNA(recommendation$attention) ||
+      !is.character(recommendation$blocking) ||
+      anyNA(recommendation$blocking) ||
+      !is.logical(recommendation$requires_confirmation) ||
+      length(recommendation$requires_confirmation) != 1L ||
+      is.na(recommendation$requires_confirmation)
+  ) {
+    .builder_state_abort(
+      "invalid_metadata_recommendation",
+      "Metadata recommendations must use the production recommendation shape."
+    )
+  }
+  attention <- sort(unique(recommendation$attention), method = "radix")
+  blocking <- sort(unique(recommendation$blocking), method = "radix")
+  included <- .builder_state_or(recommendation$included, character())
+  excluded <- .builder_state_or(recommendation$excluded, character())
+  if (
+    !is.character(included) ||
+      anyNA(included) ||
+      !is.character(excluded) ||
+      anyNA(excluded)
+  ) {
+    .builder_state_abort(
+      "invalid_metadata_recommendation",
+      "Metadata recommendations contain invalid included or excluded names."
+    )
+  }
+  evidence <- list(
+    detected = TRUE,
+    valid = !length(blocking),
+    attention = length(attention) > 0L &&
+      isTRUE(recommendation$requires_confirmation),
+    attention_items = c(
+      paste0("review=", attention),
+      paste0("include=", sort(unique(included), method = "radix")),
+      paste0("exclude=", sort(unique(excluded), method = "radix"))
+    ),
+    normalized = list(
+      included = included,
+      excluded = excluded,
+      attention = attention,
+      blocking = blocking
+    ),
+    diagnostics = c(
+      paste0("attention:", attention),
+      paste0("blocking:", blocking)
+    ),
+    requirements = if (length(attention)) {
+      "acknowledge_metadata_attention"
+    } else {
+      character()
+    },
+    page_candidates = character()
+  )
+  status <- if (length(blocking)) {
+    "blocking"
+  } else if (evidence$attention) {
+    "attention"
+  } else {
+    "valid"
+  }
+  .builder_state_manifest_record(
+    "metadata_policy",
+    source,
+    status,
+    if (identical(status, "blocking")) "rejected" else "preserved",
+    character(),
+    evidence,
+    required_action = if (identical(status, "attention")) {
+      .builder_state_attention_action("metadata_policy", evidence)
+    } else {
+      NULL
+    },
+    verifier = "verify_metadata_policy"
+  )
+}
+
+.builder_state_compile_manifest <- function(
+  entry,
+  profile,
+  manifest,
+  metadata_policy
+) {
+  content <- .subset2(profile, "content")
+  source <- .builder_state_source(entry, profile)
+  additions <- list()
+  if (!is.null(content) && !is.list(content)) {
+    .builder_state_abort(
+      "invalid_content_evidence",
+      "Optional content evidence must be a list of inert records."
+    )
+  }
+  if (is.list(content) && length(content)) {
+    content_ids <- attr(content, "names", exact = TRUE)
+    if (
+      is.null(content_ids) ||
+        length(content_ids) != length(content) ||
+        anyNA(content_ids) ||
+        any(!nzchar(content_ids)) ||
+        anyDuplicated(content_ids) ||
+        any(!content_ids %in% .builder_profile_content_ids())
+    ) {
+      .builder_state_abort(
+        "invalid_content_id",
+        "Optional content evidence contains an unexpected capability."
+      )
+    }
+    for (id in content_ids) {
+      fact <- .subset2(content, id)
+      .builder_state_validate_content_fact(id, fact)
+      if (identical(id, "immune_repertoire")) {
+        additions <- c(
+          additions,
+          .builder_state_immune_entries(entry, fact, source)
+        )
+        next
+      }
+      additions[[length(additions) + 1L]] <-
+        .builder_state_generic_content_entry(entry, id, fact, source)
+    }
+  }
+  metadata <- .builder_state_metadata_entry(metadata_policy, source)
+  if (!is.null(metadata)) {
+    additions[[length(additions) + 1L]] <- metadata
+  }
+
+  existing <- unname(manifest)
+  addition_ids <- vapply(
+    additions,
+    function(value) value$id,
+    character(1)
+  )
+  existing <- Filter(
+    function(value) !value$id %in% addition_ids,
+    existing
+  )
+  compiled <- builder_content_manifest(c(existing, additions))
+  contract <- builder_viewer_page_contract(compiled)
+  always <- contract$always$id
+  for (id in names(compiled)) {
+    pages <- compiled[[id]]$pages
+    compiled[[id]]$page_visible <- any(pages %in% always) ||
+      any(pages %in% contract$visible_conditional)
+  }
+  compiled
+}
+
+.builder_state_load_state <- function(entry) {
+  state <- .builder_state_or(entry$load_state, "loaded")
+  if (!.builder_state_text(state)) {
+    .builder_state_abort("invalid_load_state", "Dataset load state is invalid.")
+  }
+  state
+}
+
+#' Derive one dataset's rail and Review readiness from its manifest.
+builder_dataset_state <- function(entry) {
+  .builder_state_validate_entry(entry)
+  .builder_state_validate_recommendations(entry)
+  load_state <- .builder_state_load_state(entry)
+  revision <- .builder_state_revision(entry$revision)
+  base <- list(
+    id = .builder_state_or(entry$id, NULL),
+    revision = revision,
+    load_state = load_state,
+    entry = entry,
+    manifest = NULL,
+    readiness = load_state,
+    blocking_ids = character(),
+    attention_ids = character(),
+    checking_ids = character(),
+    issue_count = 0L,
+    analyses = character(),
+    metadata_policy = NULL,
+    acknowledgements = .builder_state_acknowledgements(entry),
+    page_expectations = NULL,
+    error_code = NULL
+  )
+  if (load_state %in% c("loading", "reload_required")) {
+    return(structure(base, class = c("builder_dataset_state", "list")))
+  }
+  if (!identical(load_state, "loaded")) {
+    .builder_state_abort(
+      "invalid_load_state",
+      "Dataset load state is not supported."
+    )
+  }
+
+  base$analyses <- .builder_state_selected_analyses(entry)
+  .builder_state_validate_content_dispositions(entry)
+  .builder_state_validate_analysis_dispositions(entry)
+  .builder_state_validate_content_sources(entry)
+  profile <- .builder_state_profile(entry)
+  base$metadata_policy <- .builder_state_effective_metadata_policy(
+    entry,
+    profile
+  )
+  manifest <- entry$manifest
+  if (is.null(manifest) && is.list(profile)) {
+    manifest <- profile$manifest
+  }
+  modern <- is.list(profile)
+  if (is.null(manifest) && modern) {
+    base$readiness <- "blocked"
+    base$blocking_ids <- "manifest"
+    base$issue_count <- 1L
+    base$error_code <- "missing_manifest"
+    return(structure(base, class = c("builder_dataset_state", "list")))
+  }
+  if (is.null(manifest)) {
+    base$readiness <- "ready"
+    return(structure(base, class = c("builder_dataset_state", "list")))
+  }
+
+  manifest <- .builder_state_compile_manifest(
+    entry,
+    profile,
+    manifest,
+    base$metadata_policy
+  )
+  readiness <- builder_manifest_readiness(
+    manifest,
+    acknowledgements = base$acknowledgements
+  )
+  base$manifest <- manifest
+  base$readiness <- readiness$state
+  base$blocking_ids <- readiness$blocking_ids
+  base$attention_ids <- readiness$attention_ids
+  base$checking_ids <- readiness$checking_ids
+  base$issue_count <- as.integer(sum(c(
+    length(readiness$blocking_ids),
+    length(readiness$attention_ids),
+    length(readiness$checking_ids)
+  )))
+  base$page_expectations <- builder_viewer_page_contract(manifest)
+  structure(base, class = c("builder_dataset_state", "list"))
+}
+
+#' Apply a typed event to one pure dataset state.
+builder_reduce_dataset <- function(state, action) {
+  if (!inherits(state, "builder_dataset_state") || !is.list(state)) {
+    .builder_state_abort(
+      "invalid_dataset_state",
+      "Expected a Builder dataset state."
+    )
+  }
+  if (!is.list(action) || !.builder_state_text(action$type)) {
+    .builder_state_abort(
+      "invalid_dataset_action",
+      "Dataset actions require a type."
+    )
+  }
+  next_revision <- .builder_state_revision(state$revision) + 1L
+  entry <- state$entry
+
+  if (identical(action$type, "replace_manifest")) {
+    entry$manifest <- action$manifest
+    entry$revision <- next_revision
+    return(builder_dataset_state(entry))
+  }
+  if (identical(action$type, "replace_entry")) {
+    if (!is.list(action$entry)) {
+      .builder_state_abort(
+        "invalid_dataset_entry",
+        "A replacement dataset entry is required."
+      )
+    }
+    entry <- action$entry
+    entry$revision <- next_revision
+    return(builder_dataset_state(entry))
+  }
+  if (identical(action$type, "set_acknowledgements")) {
+    entry$acknowledgements <- action$acknowledgements
+    entry$revision <- next_revision
+    return(builder_dataset_state(entry))
+  }
+  if (identical(action$type, "loading")) {
+    entry$load_state <- "loading"
+    entry$revision <- next_revision
+    return(builder_dataset_state(entry))
+  }
+  if (identical(action$type, "reload_required")) {
+    entry$load_state <- "reload_required"
+    entry$revision <- next_revision
+    return(builder_dataset_state(entry))
+  }
+  if (identical(action$type, "loaded")) {
+    if (!is.list(action$entry)) {
+      .builder_state_abort(
+        "invalid_dataset_entry",
+        "A loaded dataset entry is required."
+      )
+    }
+    entry <- action$entry
+    entry$load_state <- "loaded"
+    entry$revision <- next_revision
+    return(builder_dataset_state(entry))
+  }
+  .builder_state_abort(
+    "unknown_dataset_action",
+    "Dataset action type is not supported."
+  )
+}
+
+#' Create the initial single-flight build state.
+builder_build_state <- function() {
+  structure(
+    list(
+      status = "idle",
+      id = NULL,
+      plan_revision = NULL,
+      result = NULL,
+      error = NULL,
+      revision = 0L
+    ),
+    class = c("builder_build_state", "list")
+  )
+}
+
+#' Apply a typed event to the pure single-flight build state.
+builder_reduce_build <- function(state, action) {
+  if (!inherits(state, "builder_build_state") || !is.list(state)) {
+    .builder_state_abort(
+      "invalid_build_state",
+      "Expected a Builder build state."
+    )
+  }
+  if (!is.list(action) || !.builder_state_text(action$type)) {
+    .builder_state_abort(
+      "invalid_build_action",
+      "Build actions require a type."
+    )
+  }
+  revision <- .builder_state_revision(state$revision) + 1L
+
+  if (identical(action$type, "start")) {
+    if (state$status %in% c("running", "cancelling")) {
+      .builder_state_abort(
+        "build_in_flight",
+        "A Builder build is already in flight."
+      )
+    }
+    if (!.builder_state_text(action$id)) {
+      .builder_state_abort("invalid_build_id", "A build id is required.")
+    }
+    state$status <- "running"
+    state$id <- action$id
+    state$plan_revision <- .builder_state_revision(action$revision)
+    state$result <- NULL
+    state$error <- NULL
+  } else if (identical(action$type, "succeed")) {
+    if (!state$status %in% c("running", "cancelling")) {
+      .builder_state_abort("invalid_build_transition", "No build is running.")
+    }
+    state$status <- "success"
+    state$result <- action$result
+  } else if (identical(action$type, "fail")) {
+    if (!state$status %in% c("running", "cancelling")) {
+      .builder_state_abort("invalid_build_transition", "No build is running.")
+    }
+    state$status <- "failed"
+    state$error <- action$error
+  } else if (identical(action$type, "cancel")) {
+    if (!identical(state$status, "running")) {
+      .builder_state_abort(
+        "invalid_build_transition",
+        "No build can be cancelled."
+      )
+    }
+    state$status <- "cancelling"
+  } else if (identical(action$type, "cancelled")) {
+    if (!identical(state$status, "cancelling")) {
+      .builder_state_abort(
+        "invalid_build_transition",
+        "Build is not cancelling."
+      )
+    }
+    state$status <- "cancelled"
+  } else if (identical(action$type, "reset")) {
+    state <- builder_build_state()
+  } else {
+    .builder_state_abort(
+      "unknown_build_action",
+      "Build action type is not supported."
+    )
+  }
+  state$revision <- revision
+  structure(state, class = c("builder_build_state", "list"))
+}
