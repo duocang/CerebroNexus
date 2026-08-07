@@ -292,6 +292,156 @@ builder_preview_frame <- function(
   df
 }
 
+#' Build every projection thumbnail in one bounded worker pass.
+#'
+#' Only the existing two-dimensional embeddings and one metadata column are
+#' touched. Expression assays are deliberately outside this contract.
+builder_projection_preview_catalog <- function(
+  object,
+  projections,
+  group = NULL,
+  max_cells = 600L
+) {
+  projections <- unique(as.character(projections %||% character()))
+  projections <- projections[
+    !is.na(projections) &
+      nzchar(projections) &
+      projections %in% names(object@reductions)
+  ]
+  if (!length(projections)) {
+    return(list())
+  }
+  max_cells <- suppressWarnings(as.integer(max_cells))
+  if (is.na(max_cells) || max_cells < 1L) {
+    max_cells <- 600L
+  }
+  previews <- lapply(projections, function(projection) {
+    builder_preview_frame(
+      object,
+      reduction = projection,
+      group = group,
+      max_cells = max_cells
+    )
+  })
+  names(previews) <- projections
+  Filter(Negate(is.null), previews)
+}
+
+.builder_trajectory_preview_key <- function(method, name) {
+  paste0(method, "::", name)
+}
+
+#' Build bounded trajectory thumbnails without consulting expression assays.
+builder_trajectory_preview_catalog <- function(
+  object,
+  trajectories,
+  max_cells = 600L,
+  max_edges = 250L
+) {
+  if (!is.list(trajectories) || !length(trajectories)) {
+    return(list())
+  }
+  source <- tryCatch(object@misc$trajectories, error = function(error) NULL)
+  if (!is.list(source) || !length(source)) {
+    return(list())
+  }
+  max_cells <- suppressWarnings(as.integer(max_cells))
+  max_edges <- suppressWarnings(as.integer(max_edges))
+  if (is.na(max_cells) || max_cells < 1L) {
+    max_cells <- 600L
+  }
+  if (is.na(max_edges) || max_edges < 1L) {
+    max_edges <- 250L
+  }
+
+  previews <- list()
+  for (method in intersect(names(trajectories), names(source))) {
+    names_for_method <- unique(as.character(
+      trajectories[[method]] %||% character()
+    ))
+    available <- source[[method]]
+    if (!is.list(available)) {
+      next
+    }
+    for (name in intersect(names_for_method, names(available))) {
+      payload <- available[[name]]
+      if (!is.list(payload)) {
+        next
+      }
+      meta <- payload$meta
+      edges <- payload$edges
+      if (
+        !is.data.frame(meta) ||
+          !all(c("DR_1", "DR_2", "pseudotime", "state") %in% names(meta))
+      ) {
+        next
+      }
+      x <- suppressWarnings(as.numeric(meta$DR_1))
+      y <- suppressWarnings(as.numeric(meta$DR_2))
+      pseudotime <- suppressWarnings(as.numeric(meta$pseudotime))
+      cells <- rownames(meta)
+      valid <- is.finite(x) &
+        is.finite(y) &
+        is.finite(pseudotime) &
+        !is.na(cells) &
+        nzchar(cells)
+      if (!any(valid)) {
+        next
+      }
+      points <- data.frame(
+        cell_barcode = cells[valid],
+        x = x[valid],
+        y = y[valid],
+        group = as.character(meta$state[valid]),
+        pseudotime = pseudotime[valid],
+        stringsAsFactors = FALSE
+      )
+      points$group[is.na(points$group) | !nzchar(points$group)] <- "N/A"
+      keep <- .builder_alignment_sample(nrow(points), max_cells)
+      points <- points[keep, , drop = FALSE]
+
+      edge_frame <- data.frame(
+        x = numeric(),
+        y = numeric(),
+        xend = numeric(),
+        yend = numeric()
+      )
+      edge_columns <- c(
+        "source_dim_1",
+        "source_dim_2",
+        "target_dim_1",
+        "target_dim_2"
+      )
+      if (is.data.frame(edges) && all(edge_columns %in% names(edges))) {
+        edge_frame <- data.frame(
+          x = suppressWarnings(as.numeric(edges$source_dim_1)),
+          y = suppressWarnings(as.numeric(edges$source_dim_2)),
+          xend = suppressWarnings(as.numeric(edges$target_dim_1)),
+          yend = suppressWarnings(as.numeric(edges$target_dim_2))
+        )
+        edge_frame <- edge_frame[
+          apply(is.finite(as.matrix(edge_frame)), 1L, all),
+          ,
+          drop = FALSE
+        ]
+        if (nrow(edge_frame) > max_edges) {
+          set.seed(43L)
+          edge_frame <- edge_frame[
+            sort(sample.int(nrow(edge_frame), max_edges)),
+            ,
+            drop = FALSE
+          ]
+        }
+      }
+      previews[[.builder_trajectory_preview_key(method, name)]] <- list(
+        points = points,
+        edges = edge_frame
+      )
+    }
+  }
+  previews
+}
+
 #' Draw the frame the worker sent back.
 builder_preview_plot <- function(df, colors = NULL) {
   if (is.null(df) || !nrow(df)) {
@@ -708,12 +858,15 @@ builder_settings_color_overrides <- function(settings) {
     )
   }
   legacy <- settings$colors %||% list()
-  canonical <- settings$color_overrides %||% list()
-  groups <- unique(c(names(legacy), names(canonical)))
+  previous <- settings$color_overrides %||% list()
+  canonical <- settings$group_color_overrides %||% list()
+  groups <- unique(c(names(legacy), names(previous), names(canonical)))
   out <- list()
   for (group in groups) {
     source <- if (group %in% names(canonical)) {
       canonical[[group]]
+    } else if (group %in% names(previous)) {
+      previous[[group]]
     } else {
       legacy[[group]]
     }

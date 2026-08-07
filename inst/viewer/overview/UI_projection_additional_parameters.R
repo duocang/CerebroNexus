@@ -4,9 +4,22 @@
 output[["overview_projection_additional_parameters_UI"]] <- renderUI({
   ## Respect an explicit generated-App setting. Otherwise derive the default
   ## from cell count and canvas size, with the legacy fixed value as fallback.
-  configured_point_size <- preferences[["overview_plot_point_size"]][[
-    "configured"
-  ]]
+  viewer_defaults <- configuredViewerContent(
+    Cerebro.options[["viewer_content"]],
+    available_crb_files$selected,
+    available_crb_files$files
+  )
+  configured_point_size <- viewer_defaults$overview_point_size
+  if (
+    !is.numeric(configured_point_size) ||
+      length(configured_point_size) != 1L ||
+      is.na(configured_point_size) ||
+      !is.finite(configured_point_size)
+  ) {
+    configured_point_size <- preferences[["overview_plot_point_size"]][[
+      "configured"
+    ]]
+  }
   point_size_default <- if (!is.null(configured_point_size)) {
     configured_point_size
   } else {

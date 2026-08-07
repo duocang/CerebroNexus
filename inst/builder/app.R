@@ -101,6 +101,27 @@ source("worker.R", local = TRUE)
 source("session.R", local = TRUE)
 source("spatial_alignment_server.R", local = TRUE)
 
+builder_projection_preview_contract <- function(entry, projections) {
+  list(
+    dataset = entry$id,
+    snapshot_identity = .builder_worker_identity(entry$snapshot),
+    group = entry$settings$default_group %||% NULL,
+    projections = projections
+  )
+}
+
+builder_trajectory_preview_contract <- function(entry, trajectories) {
+  list(
+    dataset = entry$id,
+    snapshot_identity = .builder_worker_identity(entry$snapshot),
+    trajectories = trajectories
+  )
+}
+
+builder_preview_revision_independent <- function(kind) {
+  kind %in% c("projection_previews", "trajectory_previews")
+}
+
 app_capability <- builder_app_capability()
 
 ## Inline icons: an icon set would be another dependency, and emoji are not
@@ -471,6 +492,10 @@ server <- function(input, output, session) {
   seq_id <- reactiveVal(0L)
   add_error <- reactiveVal(NULL)
   preview_frame <- reactiveVal(NULL)
+  projection_previews <- reactiveVal(list(dataset = NULL, frames = list()))
+  trajectory_previews <- reactiveVal(list(dataset = NULL, frames = list()))
+  projection_preview_contract <- reactiveVal(NULL)
+  trajectory_preview_contract <- reactiveVal(NULL)
   spatial_coords <- reactiveVal(NULL)
   alignment_preview <- reactiveVal(NULL)
 
@@ -669,9 +694,19 @@ server <- function(input, output, session) {
         snapshot_identity
       )
     }
-    replaceable <- req$kind %in% c("preview", "coords", "spatial_preview")
+    replaceable <- req$kind %in%
+      c(
+        "preview",
+        "projection_previews",
+        "trajectory_previews",
+        "coords",
+        "spatial_preview"
+      )
     if (replaceable) {
       request_sequence(request_sequence() + 1L)
+      if (builder_preview_revision_independent(req$kind)) {
+        req$revision_independent <- TRUE
+      }
       request <- builder_query(
         kind = req$kind,
         dataset = dataset,
@@ -1435,6 +1470,21 @@ server <- function(input, output, session) {
           BUILDER_PREVIEW_MAX,
           request
         ),
+        projection_previews = builder_session_projection_previews(
+          current_worker,
+          nxt$id,
+          nxt$projections,
+          nxt$group,
+          nxt$max_cells %||% 600L,
+          request
+        ),
+        trajectory_previews = builder_session_trajectory_previews(
+          current_worker,
+          nxt$id,
+          nxt$trajectories,
+          nxt$max_cells %||% 600L,
+          request
+        ),
         coords = builder_session_coords(
           current_worker,
           nxt$id,
@@ -1784,7 +1834,11 @@ server <- function(input, output, session) {
         ## Level names per grouping variable, in the order the exporter will
         ## produce them -- the keys a configured palette has to match.
         levels = value$levels %||% list(),
-        settings = builder_default_settings(profile, unique_name(p$label))
+        settings = builder_default_settings(
+          profile,
+          unique_name(p$label),
+          dataset_profile = value$dataset_profile
+        )
       )
       updated_worker <- try(
         builder_worker_register_snapshot(
@@ -1839,6 +1893,14 @@ server <- function(input, output, session) {
     } else if (identical(p$kind, "preview")) {
       if (identical(current(), p$id)) {
         preview_frame(value)
+      }
+    } else if (identical(p$kind, "projection_previews")) {
+      if (identical(current(), p$id)) {
+        projection_previews(list(dataset = p$id, frames = value %||% list()))
+      }
+    } else if (identical(p$kind, "trajectory_previews")) {
+      if (identical(current(), p$id)) {
+        trajectory_previews(list(dataset = p$id, frames = value %||% list()))
       }
     } else if (identical(p$kind, "coords")) {
       if (
@@ -2046,8 +2108,6 @@ server <- function(input, output, session) {
   core_setting_inputs <- c(
     name = "core-name",
     organism = "core-organism",
-    default_group = "core-default_group",
-    default_projection = "core-default_projection",
     assay = "core-assay",
     layer = "core-layer",
     nUMI = "core-nUMI",
@@ -2092,7 +2152,7 @@ server <- function(input, output, session) {
     if (any(vapply(values, is.null, logical(1)))) {
       return()
     }
-    entry <- isolate(entry_of(id))
+    entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
     req(entry)
     next_settings <- entry$settings
     for (setting in names(core_setting_inputs)) {
@@ -2116,17 +2176,446 @@ server <- function(input, output, session) {
     replace_entry(entry)
   })
 
+  group_catalog_for_entry <- function(entry) {
+    builder_group_catalog_model(list(
+      metadata_catalog = entry$dataset_profile$viewer_content$metadata %||%
+        entry$profile$viewer_content$metadata %||%
+        list(),
+      group_choices = unname(entry$profile$group_candidates %||% character()),
+      included_groups = entry$settings$included_groups %||%
+        entry$settings$groups %||%
+        character(),
+      default_group = entry$settings$default_group %||% NULL,
+      suggested_groups = entry$profile$group_preselect %||%
+        entry$settings$included_groups %||%
+        character(),
+      metadata_policy = entry$settings$metadata_policy %||%
+        entry$settings$recommendations$metadata %||%
+        list(),
+      levels = entry$levels %||% list()
+    ))
+  }
+
+  send_group_state <- function(entry, message = NULL) {
+    session$sendCustomMessage(
+      "builder_group_state",
+      list(
+        dataset = entry$id,
+        included = unname(entry$settings$included_groups %||% character()),
+        default = entry$settings$default_group %||% NULL,
+        message = message
+      )
+    )
+  }
+
+  group_focus_value <- function(value) {
+    if (is.list(value)) value$group %||% NULL else value
+  }
+
+  projection_catalog_for_entry <- function(entry) {
+    catalog <- entry$dataset_profile$viewer_content$projections %||%
+      entry$profile$viewer_content$projections %||%
+      list()
+    if (is.list(catalog) && length(catalog)) {
+      return(catalog)
+    }
+    ids <- unname(as.character(entry$profile$reductions %||% character()))
+    fallback <- lapply(ids, function(id) {
+      list(
+        id = id,
+        name = id,
+        kind = if (grepl("pca", id, ignore.case = TRUE)) "pca" else "other",
+        dimensions = 2L,
+        cell_count = entry$profile$n_cells %||% 0L,
+        available = TRUE
+      )
+    })
+    names(fallback) <- ids
+    fallback
+  }
+
+  trajectory_catalog_for_entry <- function(entry) {
+    entry$dataset_profile$viewer_content$trajectories %||%
+      entry$profile$viewer_content$trajectories %||%
+      list()
+  }
+
+  selectable_trajectory_selection <- function(catalog) {
+    selected <- list()
+    for (record in catalog %||% list()) {
+      if (
+        !is.list(record) ||
+          !isTRUE(record$selectable) ||
+          !builder_stage_has_text(record$method %||% "") ||
+          !builder_stage_has_text(record$name %||% "")
+      ) {
+        next
+      }
+      selected[[record$method]] <- unique(c(
+        selected[[record$method]],
+        record$name
+      ))
+    }
+    selected
+  }
+
+  send_projection_state <- function(entry, message = NULL) {
+    session$sendCustomMessage(
+      "builder_projection_state",
+      list(
+        dataset = entry$id,
+        included = unname(
+          entry$settings$included_projections %||% character()
+        ),
+        default = entry$settings$default_projection %||% NULL,
+        point_size = entry$settings$overview_point_size %||% 5,
+        message = message
+      )
+    )
+  }
+
+  send_trajectory_state <- function(entry, message = NULL) {
+    included <- list()
+    for (method in names(entry$settings$included_trajectories %||% list())) {
+      for (name in entry$settings$included_trajectories[[method]]) {
+        included[[length(included) + 1L]] <- list(
+          method = method,
+          name = name
+        )
+      }
+    }
+    session$sendCustomMessage(
+      "builder_trajectory_state",
+      list(
+        dataset = entry$id,
+        included = included,
+        default = entry$settings$default_trajectory %||% NULL,
+        message = message
+      )
+    )
+  }
+
+  observeEvent(
+    input[["core-projection_action"]],
+    {
+      id <- current()
+      action <- input[["core-projection_action"]]
+      if (
+        is.null(id) ||
+          !identical(input[["core-rendered_for"]], id) ||
+          !is.list(action) ||
+          !identical(action$action, "set")
+      ) {
+        return()
+      }
+      entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+      req(entry)
+      catalog <- projection_catalog_for_entry(entry)
+      available <- names(catalog)[vapply(
+        catalog,
+        function(item) is.list(item) && isTRUE(item$available),
+        logical(1)
+      )]
+      included <- unique(as.character(unlist(
+        action$included %||% character(),
+        use.names = FALSE
+      )))
+      included <- available[available %in% included]
+      if (!length(included)) {
+        send_projection_state(
+          entry,
+          "Keep at least one projection selected."
+        )
+        return()
+      }
+      default <- action$default
+      if (!builder_stage_has_text(default %||% "") || !default %in% included) {
+        default <- included[[1L]]
+      }
+      entry$settings$included_projections <- included
+      entry$settings$reductions <- included
+      entry$settings$default_projection <- default
+      if (isTRUE(replace_entry(entry))) {
+        send_projection_state(entry)
+      }
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    input[["core-point_size"]],
+    {
+      id <- current()
+      value <- suppressWarnings(as.numeric(input[["core-point_size"]]))
+      if (
+        is.null(id) ||
+          !identical(input[["core-rendered_for"]], id) ||
+          length(value) != 1L ||
+          is.na(value) ||
+          !is.finite(value) ||
+          value < 0 ||
+          value > 20
+      ) {
+        return()
+      }
+      entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+      req(entry)
+      entry$settings$overview_point_size <- value
+      if (isTRUE(replace_entry(entry))) {
+        send_projection_state(entry)
+      }
+    },
+    ignoreInit = TRUE
+  )
+
+  parse_trajectory_action <- function(value, selectable) {
+    records <- value %||% list()
+    if (!is.list(records)) {
+      return(list())
+    }
+    selected <- list()
+    for (record in records) {
+      if (
+        !is.list(record) ||
+          !builder_stage_has_text(record$method %||% "") ||
+          !builder_stage_has_text(record$name %||% "") ||
+          !record$method %in% names(selectable) ||
+          !record$name %in% selectable[[record$method]]
+      ) {
+        next
+      }
+      selected[[record$method]] <- unique(c(
+        selected[[record$method]],
+        record$name
+      ))
+    }
+    selected
+  }
+
+  observeEvent(
+    input[["core-trajectory_action"]],
+    {
+      id <- current()
+      action <- input[["core-trajectory_action"]]
+      if (
+        is.null(id) ||
+          !identical(input[["core-rendered_for"]], id) ||
+          !is.list(action) ||
+          !identical(action$action, "set")
+      ) {
+        return()
+      }
+      entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+      req(entry)
+      selectable <- selectable_trajectory_selection(
+        trajectory_catalog_for_entry(entry)
+      )
+      included <- parse_trajectory_action(action$included, selectable)
+      default <- action$default
+      if (
+        !is.list(default) ||
+          !builder_stage_has_text(default$method %||% "") ||
+          !builder_stage_has_text(default$name %||% "") ||
+          !default$method %in% names(included) ||
+          !default$name %in% included[[default$method]]
+      ) {
+        default <- .builder_state_first_trajectory(included)
+      } else {
+        default <- list(method = default$method, name = default$name)
+      }
+      entry$settings$included_trajectories <- included
+      entry$settings["default_trajectory"] <- list(default)
+      if (isTRUE(replace_entry(entry))) {
+        send_trajectory_state(entry)
+      }
+    },
+    ignoreInit = TRUE
+  )
+
+  observe({
+    req(isTRUE(worker_available()))
+    id <- current()
+    req(id)
+    entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+    req(entry)
+    catalog <- projection_catalog_for_entry(entry)
+    ids <- names(catalog)[vapply(
+      catalog,
+      function(item) is.list(item) && isTRUE(item$available),
+      logical(1)
+    )]
+    contract <- builder_projection_preview_contract(entry, ids)
+    if (identical(contract, isolate(projection_preview_contract()))) {
+      return()
+    }
+    projection_previews(list(dataset = id, frames = list()))
+    if (!length(ids)) {
+      projection_preview_contract(contract)
+      return()
+    }
+    queued <- enqueue(list(
+      kind = "projection_previews",
+      id = id,
+      dataset_revision = entry$revision,
+      projections = ids,
+      group = entry$settings$default_group %||% NULL,
+      max_cells = 600L,
+      replaces = "viewer-projection-gallery"
+    ))
+    if (isTRUE(queued)) projection_preview_contract(contract)
+  })
+
+  observe({
+    req(isTRUE(worker_available()))
+    id <- current()
+    req(id)
+    entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+    req(entry)
+    trajectories <- selectable_trajectory_selection(
+      trajectory_catalog_for_entry(entry)
+    )
+    contract <- builder_trajectory_preview_contract(entry, trajectories)
+    if (identical(contract, isolate(trajectory_preview_contract()))) {
+      return()
+    }
+    trajectory_previews(list(dataset = id, frames = list()))
+    if (!length(trajectories)) {
+      trajectory_preview_contract(contract)
+      return()
+    }
+    queued <- enqueue(list(
+      kind = "trajectory_previews",
+      id = id,
+      dataset_revision = entry$revision,
+      trajectories = trajectories,
+      max_cells = 600L,
+      replaces = "viewer-trajectory-gallery"
+    ))
+    if (isTRUE(queued)) trajectory_preview_contract(contract)
+  })
+
+  observeEvent(
+    input[["core-group_action"]],
+    {
+      id <- current()
+      action <- input[["core-group_action"]]
+      if (
+        is.null(id) ||
+          !identical(input[["core-rendered_for"]], id) ||
+          !is.list(action) ||
+          !identical(action$action, "set")
+      ) {
+        return()
+      }
+      entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+      req(entry)
+      catalog <- group_catalog_for_entry(entry)
+      eligible <- vapply(
+        Filter(function(item) isTRUE(item$eligible), catalog$items),
+        `[[`,
+        character(1),
+        "id"
+      )
+      included <- unique(as.character(unlist(
+        action$included %||% character(),
+        use.names = FALSE
+      )))
+      included <- eligible[eligible %in% included]
+      if (!length(included)) {
+        send_group_state(
+          entry,
+          "Keep at least one Viewer Group selected."
+        )
+        return()
+      }
+      default <- action$default
+      if (!builder_stage_has_text(default %||% "") || !default %in% included) {
+        default <- included[[1L]]
+      }
+      current_included <- entry$settings$included_groups %||% character()
+      removed <- setdiff(current_included, included)
+      next_overrides <- builder_settings_color_overrides(entry$settings)
+      for (group in removed) {
+        next_overrides[[group]] <- NULL
+      }
+      entry$settings$included_groups <- included
+      entry$settings$groups <- included
+      entry$settings$default_group <- default
+      entry$settings$group_color_overrides <- next_overrides
+      changed <- replace_entry(entry)
+      if (isTRUE(changed)) {
+        send_group_state(entry)
+      }
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    input[["core-cell_cycle"]],
+    {
+      id <- current()
+      if (
+        is.null(id) ||
+          !identical(input[["core-rendered_for"]], id)
+      ) {
+        return()
+      }
+      entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+      req(entry)
+      metadata <- entry$dataset_profile$viewer_content$metadata %||%
+        entry$profile$viewer_content$metadata %||%
+        list()
+      available <- builder_cell_cycle_candidate_ids(metadata)
+      selected <- unname(as.character(
+        input[["core-cell_cycle"]] %||% character()
+      ))
+      selected <- available[available %in% selected]
+      if (
+        identical(selected, entry$settings$cell_cycle_columns %||% character())
+      ) {
+        return()
+      }
+      entry$settings$cell_cycle_columns <- selected
+      replace_entry(entry)
+    },
+    ignoreInit = TRUE,
+    ignoreNULL = FALSE
+  )
+
+  output[["core-group_detail"]] <- renderUI({
+    id <- current()
+    rendered_for <- input[["core-rendered_for"]]
+    if (is.null(id) || !identical(rendered_for, id)) {
+      return(NULL)
+    }
+    entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+    req(entry)
+    catalog <- group_catalog_for_entry(entry)
+    focus <- group_focus_value(input[["core-group_focus"]]) %||%
+      entry$settings$default_group %||%
+      catalog$focus
+    builder_group_detail_ui(
+      "core",
+      builder_group_detail_model(catalog, focus)
+    )
+  })
+
   output[["core-group_colors"]] <- renderUI({
     id <- current()
     rendered_for <- input[["core-rendered_for"]]
     if (is.null(id) || !identical(rendered_for, id)) {
       return(NULL)
     }
-    entry <- entry_of(id)
+    entry <- builder_upgrade_viewer_content_entry(entry_of(id))
     req(entry)
-    group <- input[["core-default_group"]] %||%
+    catalog <- group_catalog_for_entry(entry)
+    group <- group_focus_value(input[["core-group_focus"]]) %||%
       entry$settings$default_group %||%
+      catalog$focus %||%
       ""
+    if (!group %in% (entry$settings$included_groups %||% character())) {
+      return(NULL)
+    }
     levels <- entry$levels[[group]] %||% character()
     model <- builder_group_colors_model(
       group,
@@ -2135,6 +2624,58 @@ server <- function(input, output, session) {
       builder_settings_color_overrides(entry$settings)
     )
     builder_group_colors_ui("core", model)
+  })
+
+  output[["core-projection_gallery"]] <- renderUI({
+    id <- current()
+    rendered_for <- input[["core-rendered_for"]]
+    if (is.null(id) || !identical(rendered_for, id)) {
+      return(NULL)
+    }
+    entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+    req(entry)
+    preview <- projection_previews()
+    frames <- if (identical(preview$dataset, id)) preview$frames else list()
+    group <- entry$settings$default_group %||% ""
+    levels <- entry$levels[[group]] %||% character()
+    colors <- if (length(levels)) {
+      builder_level_colors(
+        levels,
+        entry$settings$palette %||% "cerebro",
+        builder_settings_color_overrides(entry$settings)[[group]] %||%
+          character()
+      )
+    } else {
+      character()
+    }
+    model <- builder_projection_catalog_model(list(
+      projection_catalog = projection_catalog_for_entry(entry),
+      included_projections = entry$settings$included_projections,
+      default_projection = entry$settings$default_projection,
+      overview_point_size = entry$settings$overview_point_size,
+      projection_previews = frames,
+      preview_colors = colors
+    ))
+    builder_projection_catalog_ui("core", model)
+  })
+
+  output[["core-trajectory_gallery"]] <- renderUI({
+    id <- current()
+    rendered_for <- input[["core-rendered_for"]]
+    if (is.null(id) || !identical(rendered_for, id)) {
+      return(NULL)
+    }
+    entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+    req(entry)
+    preview <- trajectory_previews()
+    frames <- if (identical(preview$dataset, id)) preview$frames else list()
+    model <- builder_trajectory_catalog_model(list(
+      trajectory_catalog = trajectory_catalog_for_entry(entry),
+      included_trajectories = entry$settings$included_trajectories,
+      default_trajectory = entry$settings$default_trajectory,
+      trajectory_previews = frames
+    ))
+    builder_trajectory_catalog_ui("core", model)
   })
 
   observeEvent(
@@ -2151,12 +2692,12 @@ server <- function(input, output, session) {
       ) {
         return()
       }
-      entry <- isolate(entry_of(id))
+      entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
       req(entry)
       group <- as.character(change$group)
       level <- as.character(change$level)
       if (
-        !identical(group, entry$settings$default_group) ||
+        !group %in% (entry$settings$included_groups %||% character()) ||
           !level %in% (entry$levels[[group]] %||% character())
       ) {
         return()
@@ -2171,7 +2712,7 @@ server <- function(input, output, session) {
       if (identical(next_overrides, current_overrides)) {
         return()
       }
-      entry$settings$color_overrides <- next_overrides
+      entry$settings$group_color_overrides <- next_overrides
       entry$settings$colors <- NULL
       replace_entry(entry)
     },
@@ -2188,15 +2729,20 @@ server <- function(input, output, session) {
       ) {
         return()
       }
-      entry <- isolate(entry_of(id))
+      entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
       req(entry)
-      group <- entry$settings$default_group %||% ""
+      group <- group_focus_value(input[["core-group_focus"]]) %||%
+        entry$settings$default_group %||%
+        ""
+      if (!group %in% (entry$settings$included_groups %||% character())) {
+        return()
+      }
       current_overrides <- builder_settings_color_overrides(entry$settings)
       next_overrides <- builder_reset_color_overrides(current_overrides, group)
       if (identical(next_overrides, current_overrides)) {
         return()
       }
-      entry$settings$color_overrides <- next_overrides
+      entry$settings$group_color_overrides <- next_overrides
       entry$settings$colors <- NULL
       replace_entry(entry)
     },
@@ -2428,7 +2974,7 @@ server <- function(input, output, session) {
     current_options <- isolate(review_options())
     values <- list(
       welcome_message = input[["review-welcome_message"]],
-      point_size = input[["review-point_size"]],
+      point_size = input[["review-point_size"]] %||% 5,
       variable_to_compare = input[["review-variable_to_compare"]],
       host = current_options$host,
       port = current_options$port,
@@ -2643,6 +3189,9 @@ server <- function(input, output, session) {
       dataset_id = entry$id,
       settings = entry$settings
     )
+    if (!inherits(state, "try-error")) {
+      entry <- state$entry
+    }
     settings <- entry$settings
     assay_profile <- entry$profile$assay_profiles[[settings$assay]] %||%
       list(
@@ -2654,8 +3203,14 @@ server <- function(input, output, session) {
       settings[c(
         "name",
         "organism",
+        "included_groups",
         "default_group",
+        "cell_cycle_columns",
+        "included_projections",
         "default_projection",
+        "overview_point_size",
+        "included_trajectories",
+        "default_trajectory",
         "assay",
         "layer",
         "nUMI",
@@ -2669,6 +3224,37 @@ server <- function(input, output, session) {
           "Other" = "other"
         ),
         group_choices = unname(entry$profile$group_candidates),
+        suggested_groups = entry$profile$group_preselect %||%
+          settings$included_groups %||%
+          character(),
+        metadata_catalog = entry$dataset_profile$viewer_content$metadata %||%
+          entry$profile$viewer_content$metadata %||%
+          list(),
+        metadata_policy = if (inherits(state, "try-error")) {
+          entry$settings$metadata_policy %||%
+            entry$settings$recommendations$metadata %||%
+            list()
+        } else {
+          state$metadata_policy %||% list()
+        },
+        analysis_manifest = if (inherits(state, "try-error")) {
+          list()
+        } else {
+          state$manifest %||% list()
+        },
+        content_manifest = if (inherits(state, "try-error")) {
+          list()
+        } else {
+          state$manifest %||% list()
+        },
+        analysis_acknowledgements = if (inherits(state, "try-error")) {
+          character()
+        } else {
+          state$acknowledgements %||% character()
+        },
+        projection_catalog = projection_catalog_for_entry(entry),
+        trajectory_catalog = trajectory_catalog_for_entry(entry),
+        levels = entry$levels %||% list(),
         projection_choices = entry$profile$reductions,
         assay_choices = entry$profile$assays,
         layer_choices = assay_profile$layers,

@@ -16,6 +16,7 @@
   "show_upload_ui",
   "welcome_message",
   "point_size",
+  "viewer_content",
   "variable_to_compare",
   "host",
   "port",
@@ -146,6 +147,120 @@
     is.logical(options$launch_browser) &&
     length(options$launch_browser) == 1L &&
     !is.na(options$launch_browser)
+}
+
+.builder_app_viewer_content_valid <- function(value, selector_order) {
+  if (
+    !is.list(value) ||
+      is.object(value) ||
+      !identical(names(value), selector_order)
+  ) {
+    return(FALSE)
+  }
+  all(vapply(
+    value,
+    function(item) {
+      if (
+        !is.list(item) ||
+          is.object(item) ||
+          !identical(
+            names(item),
+            c(
+              "default_projection",
+              "default_trajectory",
+              "overview_point_size"
+            )
+          )
+      ) {
+        return(FALSE)
+      }
+      projection <- item$default_projection
+      trajectory <- item$default_trajectory
+      point_size <- item$overview_point_size
+      projection_valid <- is.null(projection) ||
+        (is.character(projection) &&
+          length(projection) == 1L &&
+          !is.na(projection) &&
+          nzchar(projection))
+      trajectory_valid <- is.null(trajectory) ||
+        (is.list(trajectory) &&
+          !is.object(trajectory) &&
+          identical(names(trajectory), c("method", "name")) &&
+          all(vapply(
+            trajectory,
+            function(field) {
+              is.character(field) &&
+                length(field) == 1L &&
+                !is.na(field) &&
+                nzchar(field)
+            },
+            logical(1)
+          )))
+      projection_valid &&
+        trajectory_valid &&
+        is.numeric(point_size) &&
+        length(point_size) == 1L &&
+        !is.na(point_size) &&
+        is.finite(point_size) &&
+        point_size >= 0 &&
+        point_size <= 20
+    },
+    logical(1)
+  ))
+}
+
+.builder_app_viewer_content <- function(items, labels, fallback_point_size) {
+  fallback <- fallback_point_size$overview_projection_point_size
+  values <- lapply(items, function(item) {
+    point_size <- item$overview_point_size
+    if (
+      !is.numeric(point_size) ||
+        length(point_size) != 1L ||
+        is.na(point_size) ||
+        !is.finite(point_size) ||
+        point_size < 0 ||
+        point_size > 20
+    ) {
+      point_size <- fallback
+    }
+    projection <- item$default_projection
+    if (
+      !is.character(projection) ||
+        length(projection) != 1L ||
+        is.na(projection) ||
+        !nzchar(projection)
+    ) {
+      projection <- NULL
+    }
+    trajectory <- item$default_trajectory
+    if (
+      !is.list(trajectory) ||
+        is.object(trajectory) ||
+        !identical(names(trajectory), c("method", "name")) ||
+        any(vapply(
+          trajectory,
+          function(field) {
+            !is.character(field) ||
+              length(field) != 1L ||
+              is.na(field) ||
+              !nzchar(field)
+          },
+          logical(1)
+        ))
+    ) {
+      trajectory <- NULL
+    }
+    list(
+      default_projection = projection,
+      default_trajectory = trajectory,
+      overview_point_size = as.double(point_size)
+    )
+  })
+  names(values) <- labels
+  if (!.builder_app_viewer_content_valid(values, labels)) {
+    stop("Frozen Viewer-content defaults are invalid.", call. = FALSE)
+  }
+  values
 }
 
 .builder_app_demo_data <- c(
@@ -925,6 +1040,10 @@
       !is.finite(plain$point_size$overview_projection_point_size) ||
       plain$point_size$overview_projection_point_size < 0 ||
       plain$point_size$overview_projection_point_size > 20 ||
+      !.builder_app_viewer_content_valid(
+        plain$viewer_content,
+        plain$selector_order
+      ) ||
       !is.logical(plain$variable_to_compare) ||
       length(plain$variable_to_compare) != 1L ||
       is.na(plain$variable_to_compare) ||
@@ -1109,6 +1228,9 @@
       name = .subset2(item, "name"),
       filename = .subset2(item, "filename"),
       colors = .subset2(item, "colors"),
+      default_projection = .subset2(item, "default_projection"),
+      default_trajectory = .subset2(item, "default_trajectory"),
+      overview_point_size = .subset2(item, "overview_point_size"),
       expression_backend = .subset2(item, "expression_backend"),
       sidecars = .subset2(item, "sidecars")
     )
@@ -1234,6 +1356,11 @@ builder_app_bundle_request <- function(plan, built, labels) {
   initial_index <- match(options$initial_dataset, order)
   colors <- lapply(items, `[[`, "colors")
   names(colors) <- item_labels
+  viewer_content <- .builder_app_viewer_content(
+    items,
+    item_labels,
+    options$point_size
+  )
   backend_entries <- lapply(items, .builder_app_backend_entry)
   names(backend_entries) <- paste0("private-data/", filenames)
   crb_identities <- lapply(
@@ -1273,6 +1400,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
       show_upload_ui = options$show_upload_ui,
       welcome_message = options$welcome_message,
       point_size = options$point_size,
+      viewer_content = viewer_content,
       variable_to_compare = options$variable_to_compare,
       host = options$host,
       port = as.integer(options$port),
@@ -1927,6 +2055,10 @@ builder_build_app <- function(
     cerebro_data = request$cerebro_data,
     result_dir = app_dir,
     colors = request$colors,
+    cerebro_options = list(
+      exclude_trivial_metadata = TRUE,
+      viewer_content = request$viewer_content
+    ),
     overwrite = FALSE,
     quiet = TRUE,
     verbose = FALSE,
@@ -2045,6 +2177,9 @@ builder_verify_app <- function(
   }
   if (!identical(config[["point_size"]], request$point_size)) {
     stop("The staged App point sizes differ from request.", call. = FALSE)
+  }
+  if (!identical(config[["viewer_content"]], request$viewer_content)) {
+    stop("The staged App Viewer defaults differ from request.", call. = FALSE)
   }
   if (
     !identical(config[["variable_to_compare"]], request$variable_to_compare)

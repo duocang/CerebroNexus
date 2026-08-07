@@ -398,6 +398,39 @@ test_that("explicit initial dataset preserves configured selector order", {
   expect_identical(config$initial_dataset, "B")
 })
 
+test_that("generated Apps retain per-dataset Viewer defaults", {
+  fixture <- run_options_test_fixture()
+  second <- file.path(dirname(fixture$crb), "dataset-b.crb")
+  saveRDS(Cerebro_v1.3$new(), second)
+  app <- file.path(fixture$root, "app-viewer-content")
+  viewer_content <- list(
+    A = list(
+      default_projection = "umap",
+      default_trajectory = NULL,
+      overview_point_size = 4
+    ),
+    B = list(
+      default_projection = "pca",
+      default_trajectory = list(method = "monocle2", name = "lineage"),
+      overview_point_size = 8
+    )
+  )
+
+  createShinyApp(
+    cerebro_data = c(A = fixture$crb, B = second),
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    cerebro_options = list(
+      exclude_trivial_metadata = TRUE,
+      viewer_content = viewer_content
+    )
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(config$viewer_content, viewer_content)
+})
+
 test_that("initial dataset is reserved and validated through its argument", {
   fixture <- run_options_test_fixture()
   second <- file.path(dirname(fixture$crb), "dataset-b.crb")

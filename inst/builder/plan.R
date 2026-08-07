@@ -42,6 +42,30 @@ builder_default_first <- function(values, default) {
   c(default, values[values != default])
 }
 
+builder_trajectory_default_first <- function(values, default) {
+  if (!is.list(values) || !length(values)) {
+    return(values)
+  }
+  if (
+    !is.list(default) ||
+      !builder_has_text(default$method) ||
+      !builder_has_text(default$name) ||
+      !default$method %in% names(values) ||
+      !default$name %in% values[[default$method]]
+  ) {
+    return(values)
+  }
+  method <- default$method
+  ordered <- c(
+    stats::setNames(
+      list(builder_default_first(values[[method]], default$name)),
+      method
+    ),
+    values[names(values) != method]
+  )
+  ordered
+}
+
 builder_normalize_analyses <- function(selected, has_marker_genes = FALSE) {
   if (
     !exists(
@@ -56,7 +80,7 @@ builder_normalize_analyses <- function(selected, has_marker_genes = FALSE) {
 }
 
 builder_resolve_colors <- function(settings, levels) {
-  groups <- settings$groups %||% character()
+  groups <- settings$included_groups %||% settings$groups %||% character()
   palette <- settings$palette %||% "cerebro"
   overrides <- builder_settings_color_overrides(settings)
   out <- list()
@@ -94,7 +118,12 @@ builder_resolve_colors <- function(settings, levels) {
   )
 }
 
-builder_default_settings <- function(profile, name, recommendations = NULL) {
+builder_default_settings <- function(
+  profile,
+  name,
+  recommendations = NULL,
+  dataset_profile = NULL
+) {
   assay <- profile$default_assay
   assay_profile <- profile$assay_profiles[[assay]] %||%
     list(
@@ -115,21 +144,26 @@ builder_default_settings <- function(profile, name, recommendations = NULL) {
     tables = list(),
     images = list(),
     palette = "cerebro",
-    color_overrides = list()
+    color_overrides = list(),
+    group_color_overrides = list()
   )
-  if (is.null(recommendations)) {
-    return(settings)
+  if (!is.null(recommendations)) {
+    settings$organism <- recommendations$organism$value
+    settings$groups <- recommendations$groups$included %||% character()
+    settings$reductions <- recommendations$projections$included %||% character()
+    settings$default_group <- recommendations$groups$value
+    settings$default_projection <- recommendations$projections$value
+    settings$metadata_policy <- recommendations$metadata
+    settings$nomenclature <- recommendations$nomenclature$value
+    settings$expression_backend <- recommendations$backend$value
+    settings$recommendations <- recommendations
   }
-  settings$organism <- recommendations$organism$value
-  settings$groups <- recommendations$groups$included %||% character()
-  settings$reductions <- recommendations$projections$included %||% character()
-  settings$default_group <- recommendations$groups$value
-  settings$default_projection <- recommendations$projections$value
-  settings$metadata_policy <- recommendations$metadata
-  settings$nomenclature <- recommendations$nomenclature$value
-  settings$expression_backend <- recommendations$backend$value
-  settings$recommendations <- recommendations
-  settings
+  entry <- builder_upgrade_viewer_content_entry(list(
+    profile = profile,
+    dataset_profile = dataset_profile,
+    settings = settings
+  ))
+  entry$settings
 }
 
 builder_plan_error <- function(
@@ -534,7 +568,9 @@ builder_has_text <- function(value) {
   entry,
   included_groups,
   included_projections,
-  analyses = character()
+  analyses = character(),
+  included_trajectories = list(),
+  cell_cycle = character()
 ) {
   profile <- if (is.list(entry$dataset_profile)) {
     entry$dataset_profile
@@ -570,7 +606,7 @@ builder_has_text <- function(value) {
   nGene <- settings$nGene %||% entry$profile$nGene
   additional_metadata <- setdiff(
     source_metadata,
-    c("cell_barcode", included_groups, nUMI, nGene)
+    c("cell_barcode", included_groups, cell_cycle, nUMI, nGene)
   )
   generated_metadata <- if ("percent_mt_ribo" %in% analyses) {
     c("percent_mt", "percent_ribo")
@@ -580,6 +616,7 @@ builder_has_text <- function(value) {
   metadata <- make.unique(c(
     "cell_barcode",
     included_groups,
+    cell_cycle,
     "nUMI",
     "nGene",
     additional_metadata,
@@ -596,6 +633,7 @@ builder_has_text <- function(value) {
     features = axis_ids("features"),
     group_levels = group_levels,
     projections = unname(included_projections),
+    trajectories = included_trajectories,
     source_metadata = unname(source_metadata),
     metadata = unname(metadata),
     spatial_sections = unname(spatial_sections)
@@ -776,6 +814,16 @@ builder_has_text <- function(value) {
       recommendations$projections$included %||%
       settings$reductions
   })
+  included_trajectories <- lapply(entries, function(entry) {
+    if ("included_trajectories" %in% names(entry$settings)) {
+      entry$settings$included_trajectories
+    } else {
+      NULL
+    }
+  })
+  cell_cycle <- lapply(entries, function(entry) {
+    entry$settings$cell_cycle_columns %||% character()
+  })
   if (
     !all(vapply(
       included_groups,
@@ -786,6 +834,12 @@ builder_has_text <- function(value) {
     return(builder_plan_error(
       "The final included group set is invalid.",
       "invalid_included_groups"
+    ))
+  }
+  if (!all(vapply(cell_cycle, .builder_plan_character_set, logical(1)))) {
+    return(builder_plan_error(
+      "The selected cell-cycle annotation set is invalid.",
+      "invalid_cell_cycle_selection"
     ))
   }
   if (
@@ -885,11 +939,23 @@ builder_has_text <- function(value) {
     included_projections,
     entries
   )
+  included_trajectories <- Map(
+    function(values, entry) {
+      builder_trajectory_default_first(
+        values,
+        entry$settings$default_trajectory
+      )
+    },
+    included_trajectories,
+    entries
+  )
 
   list(
     labels = labels,
     included_groups = included_groups,
-    included_projections = included_projections
+    included_projections = included_projections,
+    included_trajectories = included_trajectories,
+    cell_cycle = cell_cycle
   )
 }
 
@@ -1285,6 +1351,8 @@ builder_freeze_plan <- function(
   labels <- preflight$labels
   included_groups <- preflight$included_groups
   included_projections <- preflight$included_projections
+  included_trajectories <- preflight$included_trajectories
+  cell_cycle <- preflight$cell_cycle
   invalid_nomenclature <- vapply(
     entries,
     function(entry) {
@@ -1441,7 +1509,9 @@ builder_freeze_plan <- function(
         entry,
         included_groups[[index]],
         included_projections[[index]],
-        analyses
+        analyses,
+        included_trajectories[[index]],
+        cell_cycle[[index]]
       )
       source_snapshot_identity <- .builder_plan_source_snapshot_identity(entry)
       alignments <- .builder_plan_partition_alignments(
@@ -1475,20 +1545,28 @@ builder_freeze_plan <- function(
         if (!is.null(alignments$trekker)) "trekker" else character()
       ))
       default_group <- settings$default_group %||% settings$groups[[1L]]
-      default_group_levels <- entry$levels[[default_group]] %||% character()
-      default_group_overrides <- builder_settings_color_overrides(settings)[[
-        default_group
-      ]] %||%
-        character()
-      custom_color_levels <- intersect(
-        default_group_levels,
-        names(default_group_overrides)
+      all_color_overrides <- builder_settings_color_overrides(settings)
+      selected_color_overrides <- lapply(
+        included_groups[[index]],
+        function(group) {
+          group_levels <- entry$levels[[group]] %||% character()
+          values <- all_color_overrides[[group]] %||% character()
+          kept <- intersect(group_levels, names(values))
+          kept <- kept[vapply(
+            values[kept],
+            function(value) !is.null(builder_normalize_hex_color(value)),
+            logical(1)
+          )]
+          values[kept]
+        }
       )
-      custom_color_levels <- custom_color_levels[vapply(
-        default_group_overrides[custom_color_levels],
-        function(value) !is.null(builder_normalize_hex_color(value)),
-        logical(1)
-      )]
+      names(selected_color_overrides) <- included_groups[[index]]
+      selected_color_overrides <- Filter(length, selected_color_overrides)
+      custom_color_count <- sum(vapply(
+        selected_color_overrides,
+        length,
+        integer(1)
+      ))
       runtime_costs <- c(
         percent_mt_ribo = "seconds",
         most_expressed = "seconds",
@@ -1504,8 +1582,10 @@ builder_freeze_plan <- function(
         layer = settings$layer,
         groups = settings$groups,
         included_groups = included_groups[[index]],
+        cell_cycle = cell_cycle[[index]],
         reductions = settings$reductions,
         included_projections = included_projections[[index]],
+        included_trajectories = included_trajectories[[index]],
         analyses = analyses,
         analysis_dependency_graph = analysis_dependency_graph,
         artifact_identity = artifact_identity,
@@ -1540,17 +1620,21 @@ builder_freeze_plan <- function(
         images = alignments$spatial,
         trekker_alignment = alignments$trekker,
         colors = builder_resolve_colors(settings, entry$levels %||% list()),
-        color_custom_count = as.integer(length(custom_color_levels)),
+        group_color_overrides = selected_color_overrides,
+        color_custom_count = as.integer(custom_color_count),
         nUMI = settings$nUMI %||% entry$profile$nUMI,
         nGene = settings$nGene %||% entry$profile$nGene,
         default_group = default_group,
         default_projection = settings$default_projection %||%
           settings$reductions[[1L]],
+        default_trajectory = settings$default_trajectory %||% NULL,
+        overview_point_size = settings$overview_point_size %||% 5,
         metadata_policy = states[[index]]$metadata_policy %||%
           list(
             included = unique(c(
               "cell_barcode",
               included_groups[[index]],
+              cell_cycle[[index]],
               settings$nUMI %||% entry$profile$nUMI,
               settings$nGene %||% entry$profile$nGene
             )),
@@ -1649,13 +1733,21 @@ builder_freeze_plan <- function(
     "target"
   )
   initial_dataset_supplied <- "initial_dataset" %in% names(app_options)
+  initial_dataset_for_defaults <- app_options$initial_dataset %||%
+    dataset_order[[1L]]
+  if (!initial_dataset_for_defaults %in% dataset_order) {
+    initial_dataset_for_defaults <- dataset_order[[1L]]
+  }
+  initial_point_size <- items[[initial_dataset_for_defaults]][[
+    "overview_point_size"
+  ]]
   default_app_options <- list(
     enabled = isTRUE(make_app),
     show_upload_ui = FALSE,
     initial_dataset = dataset_order[[1L]],
     initial_dataset_mode = "automatic",
     welcome_message = "Welcome to CerebroNexus!",
-    point_size = list(overview_projection_point_size = 5),
+    point_size = list(overview_projection_point_size = initial_point_size),
     variable_to_compare = FALSE,
     host = "127.0.0.1",
     port = 8080L,

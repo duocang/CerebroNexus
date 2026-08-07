@@ -10,7 +10,11 @@
   var firstRunKey = "cerebro-builder-first-run-v1";
   var exampleMessageHandlerRegistered = false;
   var buildDialogHandlerRegistered = false;
+  var viewerGroupHandlerRegistered = false;
+  var viewerProjectionHandlerRegistered = false;
+  var viewerTrajectoryHandlerRegistered = false;
   var clientUploadSequence = 0;
+  var viewerDisclosureState = new Map();
 
   function send(name, value) {
     if (window.Shiny) {
@@ -780,6 +784,360 @@
     editor.querySelector('[data-action="show-fewer"]').hidden = !showAll;
   }
 
+  function viewerGroupRows(root) {
+    return Array.from(root.querySelectorAll(".viewer-group-row"));
+  }
+
+  function updateDefaultCopy(root, selector) {
+    root.querySelectorAll(selector).forEach(function (input) {
+      var label = input.closest("label");
+      var copy = label && label.querySelector(".viewer-default-copy");
+      if (copy) copy.textContent = input.checked ? "Default" : "Set default";
+    });
+  }
+
+  function updateViewerGroupCount(root) {
+    var count = root.querySelectorAll(".viewer-group-include:checked").length;
+    var card = root.closest(".builder-viewer-card");
+    var output = card && card.querySelector("[data-viewer-group-count]");
+    var selected = root.querySelector(".viewer-group-default:checked");
+    var row = selected && selected.closest(".viewer-group-row");
+    var label = row && row.querySelector(".viewer-group-name");
+    if (output) {
+      output.textContent = count + " included · Default: " +
+        (label ? label.textContent.trim() : "None");
+    }
+  }
+
+  function updateViewerGroupSelection(root, emit) {
+    if (!root) return;
+    var rows = viewerGroupRows(root);
+    var included = rows
+      .filter(function (row) {
+        var checkbox = row.querySelector(".viewer-group-include");
+        return checkbox && checkbox.checked && !checkbox.disabled;
+      })
+      .map(function (row) { return row.dataset.group; });
+    if (!included.length) {
+      var first = rows.find(function (row) {
+        return row.dataset.eligible === "true";
+      });
+      var firstCheckbox = first && first.querySelector(".viewer-group-include");
+      if (firstCheckbox) {
+        firstCheckbox.checked = true;
+        included = [first.dataset.group];
+      }
+    }
+    var currentDefault = root.querySelector(".viewer-group-default:checked");
+    var defaultGroup = currentDefault && included.includes(currentDefault.value)
+      ? currentDefault.value
+      : included[0] || null;
+    rows.forEach(function (row) {
+      var checkbox = row.querySelector(".viewer-group-include");
+      var radio = row.querySelector(".viewer-group-default");
+      var isIncluded = Boolean(checkbox && checkbox.checked && !checkbox.disabled);
+      row.classList.toggle("is-included", isIncluded);
+      if (radio) {
+        radio.disabled = !isIncluded;
+        radio.checked = isIncluded && row.dataset.group === defaultGroup;
+      }
+    });
+    updateDefaultCopy(root, ".viewer-group-default");
+    updateViewerGroupCount(root);
+    if (emit && root.dataset.inputId) {
+      send(root.dataset.inputId, {
+        action: "set",
+        included: included,
+        default: defaultGroup,
+        nonce: Date.now(),
+      });
+    }
+  }
+
+  function focusViewerGroup(button) {
+    var root = button.closest(".viewer-group-workspace");
+    if (!root) return;
+    viewerGroupRows(root).forEach(function (row) {
+      var focus = row.querySelector(".viewer-group-focus");
+      var selected = row.dataset.group === button.dataset.group;
+      row.classList.toggle("is-focused", selected);
+      if (focus) focus.setAttribute("aria-pressed", selected ? "true" : "false");
+    });
+    if (root.dataset.focusInputId) {
+      send(root.dataset.focusInputId, {
+        group: button.dataset.group,
+        nonce: Date.now(),
+      });
+    }
+  }
+
+  function filterViewerGroups(search) {
+    var root = search.closest(".viewer-group-workspace");
+    if (!root) return;
+    var query = search.value.trim().toLowerCase();
+    viewerGroupRows(root).forEach(function (row) {
+      row.hidden = query.length > 0 && !row.dataset.search.includes(query);
+    });
+  }
+
+  function selectViewerGroups(button) {
+    var root = button.closest(".viewer-group-workspace");
+    if (!root) return;
+    var action = button.dataset.action;
+    viewerGroupRows(root).forEach(function (row) {
+      var checkbox = row.querySelector(".viewer-group-include");
+      if (!checkbox || checkbox.disabled) return;
+      checkbox.checked = action === "all" || row.dataset.suggested === "true";
+    });
+    updateViewerGroupSelection(root, true);
+  }
+
+  function setupViewerGroupCatalogs() {
+    document.querySelectorAll(".viewer-group-workspace").forEach(function (root) {
+      if (root.dataset.builderGroups === "true") return;
+      root.dataset.builderGroups = "true";
+      updateViewerGroupSelection(root, false);
+      var initial = root.querySelector(".viewer-group-default:checked");
+      var row = initial && initial.closest(".viewer-group-row");
+      var focus = row && row.querySelector(".viewer-group-focus");
+      if (focus) {
+        row.classList.add("is-focused");
+        focus.setAttribute("aria-pressed", "true");
+      }
+    });
+  }
+
+  function applyViewerGroupState(message) {
+    var root = document.querySelector(".viewer-group-workspace");
+    if (!root) return;
+    var included = new Set(messageValues(message && message.included));
+    viewerGroupRows(root).forEach(function (row) {
+      var checkbox = row.querySelector(".viewer-group-include");
+      var radio = row.querySelector(".viewer-group-default");
+      if (checkbox && !checkbox.disabled) checkbox.checked = included.has(row.dataset.group);
+      if (radio) radio.checked = row.dataset.group === (message && message.default);
+    });
+    updateViewerGroupSelection(root, false);
+    var status = root.querySelector(".viewer-group-status");
+    if (status && message && message.message) status.textContent = message.message;
+  }
+
+  function projectionCards(root) {
+    return Array.from(root.querySelectorAll(".viewer-projection-card"));
+  }
+
+  function updateProjectionSelection(root, emit) {
+    if (!root) return;
+    var cards = projectionCards(root);
+    var included = cards
+      .filter(function (card) {
+        var checkbox = card.querySelector(".viewer-projection-include");
+        return checkbox && checkbox.checked && !checkbox.disabled;
+      })
+      .map(function (card) { return card.dataset.projection; });
+    if (!included.length) {
+      var first = cards.find(function (card) {
+        var checkbox = card.querySelector(".viewer-projection-include");
+        return checkbox && !checkbox.disabled;
+      });
+      var firstCheckbox = first && first.querySelector(".viewer-projection-include");
+      if (firstCheckbox) {
+        firstCheckbox.checked = true;
+        included = [first.dataset.projection];
+      }
+    }
+    var selectedDefault = root.querySelector(".viewer-projection-default:checked");
+    var defaultProjection = selectedDefault && included.includes(selectedDefault.value)
+      ? selectedDefault.value
+      : included[0] || null;
+    cards.forEach(function (card) {
+      var checkbox = card.querySelector(".viewer-projection-include");
+      var radio = card.querySelector(".viewer-projection-default");
+      var selected = Boolean(checkbox && checkbox.checked && !checkbox.disabled);
+      card.classList.toggle("is-included", selected);
+      if (radio) {
+        radio.disabled = !selected;
+        radio.checked = selected && card.dataset.projection === defaultProjection;
+      }
+    });
+    updateDefaultCopy(root, ".viewer-projection-default");
+    var summary = root.closest(".builder-viewer-card");
+    var countOutput = summary && summary.querySelector("[data-viewer-projection-count]");
+    var defaultCard = cards.find(function (card) {
+      return card.dataset.projection === defaultProjection;
+    });
+    var defaultLabel = defaultCard && defaultCard.querySelector("h4");
+    if (countOutput) {
+      countOutput.textContent = included.length + " included · Default: " +
+        (defaultLabel ? defaultLabel.textContent.trim() : "None");
+    }
+    if (emit && root.dataset.inputId) {
+      send(root.dataset.inputId, {
+        action: "set",
+        included: included,
+        default: defaultProjection,
+        nonce: Date.now(),
+      });
+    }
+  }
+
+  function updateProjectionPointSize(input, emit) {
+    var root = input.closest(".viewer-projection-workspace");
+    if (!root) return;
+    var value = Number(input.value);
+    if (!Number.isFinite(value)) return;
+    var radius = Math.max(0, Math.min(4.5, value * 0.34));
+    var output = root.querySelector(".viewer-point-size-value");
+    if (output) output.textContent = String(value);
+    root.querySelectorAll(".viewer-projection-preview").forEach(function (svg) {
+      svg.dataset.pointSize = String(value);
+      svg.querySelectorAll(".viewer-scatter-point").forEach(function (point) {
+        point.setAttribute("r", radius.toFixed(2));
+      });
+    });
+    if (emit && input.dataset.inputId) send(input.dataset.inputId, value);
+  }
+
+  function trajectoryCards(root) {
+    return Array.from(root.querySelectorAll(".viewer-trajectory-card"));
+  }
+
+  function trajectoryRecord(card) {
+    return { method: card.dataset.method, name: card.dataset.trajectory };
+  }
+
+  function updateTrajectorySelection(root, emit) {
+    if (!root) return;
+    var cards = trajectoryCards(root);
+    var includedCards = cards.filter(function (card) {
+      var checkbox = card.querySelector(".viewer-trajectory-include");
+      return checkbox && checkbox.checked && !checkbox.disabled;
+    });
+    var selectedDefault = root.querySelector(".viewer-trajectory-default:checked");
+    var defaultCard = selectedDefault && selectedDefault.closest(".viewer-trajectory-card");
+    if (!defaultCard || !includedCards.includes(defaultCard)) {
+      defaultCard = includedCards[0] || null;
+    }
+    cards.forEach(function (card) {
+      var checkbox = card.querySelector(".viewer-trajectory-include");
+      var radio = card.querySelector(".viewer-trajectory-default");
+      var selected = Boolean(checkbox && checkbox.checked && !checkbox.disabled);
+      card.classList.toggle("is-included", selected);
+      if (radio) {
+        radio.disabled = !selected;
+        radio.checked = selected && card === defaultCard;
+      }
+    });
+    updateDefaultCopy(root, ".viewer-trajectory-default");
+    var summary = root.closest(".builder-viewer-card");
+    var countOutput = summary && summary.querySelector("[data-viewer-trajectory-count]");
+    var defaultLabel = defaultCard && defaultCard.querySelector("h4");
+    if (countOutput) {
+      countOutput.textContent = includedCards.length + " included" +
+        (defaultLabel ? " · Default: " + defaultLabel.textContent.trim() : "");
+    }
+    if (emit && root.dataset.inputId) {
+      send(root.dataset.inputId, {
+        action: "set",
+        included: includedCards.map(trajectoryRecord),
+        default: defaultCard ? trajectoryRecord(defaultCard) : null,
+        nonce: Date.now(),
+      });
+    }
+  }
+
+  function setupViewerContentCatalogs() {
+    document.querySelectorAll(".viewer-projection-workspace").forEach(function (root) {
+      if (root.dataset.builderProjections === "true") return;
+      root.dataset.builderProjections = "true";
+      updateProjectionSelection(root, false);
+      var pointSize = root.querySelector(".viewer-point-size-input");
+      if (pointSize) updateProjectionPointSize(pointSize, false);
+    });
+    document.querySelectorAll(".viewer-trajectory-workspace").forEach(function (root) {
+      if (root.dataset.builderTrajectories === "true") return;
+      root.dataset.builderTrajectories = "true";
+      updateTrajectorySelection(root, false);
+    });
+  }
+
+  function disclosureStateKey(details) {
+    var stage = details.closest(".builder-stage-core");
+    var dataset = stage && stage.querySelector(".builder-rendered-for-input");
+    var datasetId = dataset && dataset.value ? dataset.value : "builder";
+    return datasetId + "::" + details.dataset.disclosureKey;
+  }
+
+  function setupPersistentDisclosures() {
+    document.querySelectorAll("details[data-disclosure-key]").forEach(function (details) {
+      if (details.dataset.builderDisclosure === "true") return;
+      var key = disclosureStateKey(details);
+      if (viewerDisclosureState.has(key)) {
+        details.open = viewerDisclosureState.get(key);
+      }
+      details.dataset.builderDisclosure = "true";
+      details.addEventListener("toggle", function () {
+        viewerDisclosureState.set(key, details.open);
+      });
+    });
+  }
+
+  function setupViewerContentAccordions() {
+    document.querySelectorAll(".builder-viewer-content").forEach(function (root) {
+      if (root.dataset.builderAccordion === "true") return;
+      root.dataset.builderAccordion = "true";
+      var cards = Array.from(root.querySelectorAll(".builder-viewer-card"));
+      cards.forEach(function (card) {
+        card.addEventListener("toggle", function () {
+          if (!card.open) return;
+          cards.forEach(function (sibling) {
+            if (sibling !== card) sibling.open = false;
+          });
+        });
+      });
+    });
+  }
+
+  function applyViewerProjectionState(message) {
+    var root = document.querySelector(".viewer-projection-workspace");
+    if (!root) return;
+    var included = new Set(messageValues(message && message.included));
+    projectionCards(root).forEach(function (card) {
+      var checkbox = card.querySelector(".viewer-projection-include");
+      var radio = card.querySelector(".viewer-projection-default");
+      if (checkbox && !checkbox.disabled) checkbox.checked = included.has(card.dataset.projection);
+      if (radio) radio.checked = card.dataset.projection === (message && message.default);
+    });
+    var pointSize = root.querySelector(".viewer-point-size-input");
+    if (pointSize && message && Number.isFinite(Number(message.point_size))) {
+      pointSize.value = String(message.point_size);
+      updateProjectionPointSize(pointSize, false);
+    }
+    updateProjectionSelection(root, false);
+    var status = root.querySelector(".viewer-projection-status");
+    if (status && message && message.message) status.textContent = message.message;
+  }
+
+  function applyViewerTrajectoryState(message) {
+    var root = document.querySelector(".viewer-trajectory-workspace");
+    if (!root) return;
+    var included = new Set(messageValues(message && message.included).map(function (record) {
+      return record.method + "::" + record.name;
+    }));
+    var defaultKey = message && message.default
+      ? message.default.method + "::" + message.default.name
+      : null;
+    trajectoryCards(root).forEach(function (card) {
+      var checkbox = card.querySelector(".viewer-trajectory-include");
+      var radio = card.querySelector(".viewer-trajectory-default");
+      if (checkbox && !checkbox.disabled) checkbox.checked = included.has(card.dataset.trajectoryKey);
+      if (radio) radio.checked = card.dataset.trajectoryKey === defaultKey;
+    });
+    updateTrajectorySelection(root, false);
+    var status = root.querySelector(".viewer-trajectory-status");
+    if (status && message && message.message) status.textContent = message.message;
+  }
+
   function enhanceDynamicContent() {
     if (window.BuilderIcons) window.BuilderIcons.decorate(document);
     setupRail();
@@ -795,6 +1153,10 @@
       try { window.localStorage.setItem(firstRunKey, "dismissed"); } catch (error) {}
     }
     updateDialogLock();
+    setupPersistentDisclosures();
+    setupViewerContentAccordions();
+    setupViewerGroupCatalogs();
+    setupViewerContentCatalogs();
     document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
     document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
   }
@@ -805,6 +1167,18 @@
     if (groupColorToggle) {
       event.preventDefault();
       toggleGroupColors(groupColorToggle);
+      return;
+    }
+    var viewerGroupFocus = target.closest(".viewer-group-focus");
+    if (viewerGroupFocus) {
+      event.preventDefault();
+      focusViewerGroup(viewerGroupFocus);
+      return;
+    }
+    var viewerGroupSelect = target.closest(".viewer-group-select");
+    if (viewerGroupSelect) {
+      event.preventDefault();
+      selectViewerGroups(viewerGroupSelect);
       return;
     }
     var removeTable = target.closest(".enhance-table-remove");
@@ -977,6 +1351,14 @@
   });
 
   document.addEventListener("input", function (event) {
+    if (event.target.matches(".viewer-point-size-input")) {
+      updateProjectionPointSize(event.target, false);
+      return;
+    }
+    if (event.target.matches(".viewer-group-search")) {
+      filterViewerGroups(event.target);
+      return;
+    }
     if (event.target.matches(".group-color-search")) {
       filterGroupColors(event.target);
       return;
@@ -989,6 +1371,38 @@
   document.addEventListener("change", function (event) {
     if (event.target.matches("#dataset_files")) {
       beginClientDatasetUpload(event.target);
+      return;
+    }
+    if (event.target.matches(".viewer-group-include")) {
+      updateViewerGroupSelection(
+        event.target.closest(".viewer-group-workspace"),
+        true
+      );
+      return;
+    }
+    if (event.target.matches(".viewer-group-default")) {
+      updateViewerGroupSelection(
+        event.target.closest(".viewer-group-workspace"),
+        true
+      );
+      return;
+    }
+    if (event.target.matches(".viewer-projection-include, .viewer-projection-default")) {
+      updateProjectionSelection(
+        event.target.closest(".viewer-projection-workspace"),
+        true
+      );
+      return;
+    }
+    if (event.target.matches(".viewer-point-size-input")) {
+      updateProjectionPointSize(event.target, true);
+      return;
+    }
+    if (event.target.matches(".viewer-trajectory-include, .viewer-trajectory-default")) {
+      updateTrajectorySelection(
+        event.target.closest(".viewer-trajectory-workspace"),
+        true
+      );
       return;
     }
     if (event.target.matches(".group-color-input")) {
@@ -1064,19 +1478,52 @@
     buildDialogHandlerRegistered = true;
   }
 
+  function registerViewerGroupHandler() {
+    if (viewerGroupHandlerRegistered || !window.Shiny) return;
+    window.Shiny.addCustomMessageHandler(
+      "builder_group_state",
+      applyViewerGroupState
+    );
+    viewerGroupHandlerRegistered = true;
+  }
+
+  function registerViewerContentHandlers() {
+    if (!window.Shiny) return;
+    if (!viewerProjectionHandlerRegistered) {
+      window.Shiny.addCustomMessageHandler(
+        "builder_projection_state",
+        applyViewerProjectionState
+      );
+      viewerProjectionHandlerRegistered = true;
+    }
+    if (!viewerTrajectoryHandlerRegistered) {
+      window.Shiny.addCustomMessageHandler(
+        "builder_trajectory_state",
+        applyViewerTrajectoryState
+      );
+      viewerTrajectoryHandlerRegistered = true;
+    }
+  }
+
   document.addEventListener("shiny:connected", function () {
     registerExampleMessageHandler();
     registerBuildDialogHandler();
+    registerViewerGroupHandler();
+    registerViewerContentHandlers();
     if (document.body) enhanceDynamicContent();
   });
   document.addEventListener("shiny:sessioninitialized", function () {
     registerExampleMessageHandler();
     registerBuildDialogHandler();
+    registerViewerGroupHandler();
+    registerViewerContentHandlers();
   });
 
   function initializeBuilder() {
     registerExampleMessageHandler();
     registerBuildDialogHandler();
+    registerViewerGroupHandler();
+    registerViewerContentHandlers();
 
     new MutationObserver(enhanceDynamicContent).observe(document.documentElement, {
       childList: true,

@@ -52,6 +52,51 @@ builder_state_entry <- function(status = "valid") {
   )
 }
 
+builder_viewer_settings_entry <- function(id = "dataset-a") {
+  entry <- builder_minimal_entry(id = id, name = paste("Dataset", id))
+  entry$profile$group_candidates <- c(
+    "Cluster (3 groups)" = "cluster",
+    "Sample (2 groups)" = "sample"
+  )
+  entry$profile$reductions <- c("umap", "pca")
+  entry$profile$viewer_content <- list(
+    metadata = list(
+      cluster = list(group_eligible = TRUE),
+      sample = list(group_eligible = TRUE),
+      Phase = list(
+        name = "Phase",
+        classification = "categorical",
+        group_eligible = TRUE,
+        distinct_count = 3L,
+        sample_values = c("G1", "S", "G2M")
+      ),
+      score = list(group_eligible = FALSE)
+    ),
+    projections = list(
+      umap = list(available = TRUE),
+      pca = list(available = TRUE)
+    ),
+    trajectories = list(
+      list(
+        method = "monocle2",
+        name = "lineage",
+        selectable = TRUE
+      ),
+      list(
+        method = "slingshot",
+        name = "curve",
+        selectable = FALSE
+      )
+    )
+  )
+  entry$settings$groups <- c("cluster", "sample")
+  entry$settings$reductions <- "umap"
+  entry$settings$color_overrides <- list(
+    cluster = c(A = "#112233")
+  )
+  entry
+}
+
 capture_builder_state_error <- function(expr) {
   tryCatch(
     {
@@ -68,6 +113,115 @@ test_that("the pure Builder state API is available", {
 })
 
 if (builder_state_api_available) {
+  test_that("legacy settings upgrade to one canonical Viewer content shape", {
+    upgraded <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry()
+    )
+    settings <- upgraded$settings
+
+    expect_identical(settings$viewer_content_schema_version, 1L)
+    expect_identical(settings$included_groups, c("cluster", "sample"))
+    expect_identical(settings$default_group, "cluster")
+    expect_identical(
+      settings$group_color_overrides$cluster[["A"]],
+      "#112233"
+    )
+    expect_identical(settings$included_projections, "umap")
+    expect_identical(settings$default_projection, "umap")
+    expect_identical(settings$overview_point_size, 5)
+    expect_identical(settings$cell_cycle_columns, "Phase")
+    expect_identical(
+      settings$included_trajectories,
+      list(monocle2 = "lineage")
+    )
+    expect_identical(
+      settings$default_trajectory,
+      list(method = "monocle2", name = "lineage")
+    )
+  })
+
+  test_that("cell-cycle settings reject fields outside the detected catalog", {
+    entry <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry()
+    )
+    entry$settings$cell_cycle_columns <- "sample"
+
+    expect_error(
+      builder_dataset_state(entry),
+      class = "builder_state_error"
+    )
+  })
+
+  test_that("canonical Viewer defaults must belong to included content", {
+    entry <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry()
+    )
+    entry$settings$default_group <- "score"
+    expect_error(
+      builder_dataset_state(entry),
+      class = "builder_state_error"
+    )
+
+    entry <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry()
+    )
+    entry$settings$default_projection <- "pca"
+    expect_error(
+      builder_dataset_state(entry),
+      class = "builder_state_error"
+    )
+
+    entry <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry()
+    )
+    entry$settings$default_trajectory <- list(
+      method = "monocle2",
+      name = "missing"
+    )
+    expect_error(
+      builder_dataset_state(entry),
+      class = "builder_state_error"
+    )
+  })
+
+  test_that("Viewer content settings stay with their dataset across rail edits", {
+    a <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry("a")
+    )
+    b <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry("b")
+    )
+    a$settings$default_group <- "cluster"
+    b$settings$default_group <- "sample"
+    b$settings$group_color_overrides <- list(
+      sample = c(one = "#AABBCC")
+    )
+
+    state <- builder_state(list(a, b))
+    moved <- builder_reduce_state(
+      state,
+      list(type = "reorder", order = c("b", "a"))
+    )
+    expect_identical(moved$datasets[[1L]]$id, "b")
+    expect_identical(moved$datasets[[1L]]$settings$default_group, "sample")
+    expect_identical(
+      moved$datasets[[1L]]$settings$group_color_overrides$sample[["one"]],
+      "#AABBCC"
+    )
+    expect_identical(moved$datasets[[2L]]$id, "a")
+    expect_identical(moved$datasets[[2L]]$settings$default_group, "cluster")
+
+    removed <- builder_reduce_state(
+      moved,
+      list(type = "remove", id = "b")
+    )
+    expect_identical(
+      vapply(removed$datasets, `[[`, character(1), "id"),
+      "a"
+    )
+    expect_identical(removed$datasets[[1L]]$settings$default_group, "cluster")
+  })
+
   test_that("dataset state requires a recognized entry and inert settings", {
     legacy <- list(
       id = "legacy-a",

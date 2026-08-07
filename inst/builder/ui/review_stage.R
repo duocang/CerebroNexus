@@ -73,9 +73,6 @@ builder_review_options_for_plan <- function(options, initial_dataset = NULL) {
     initial,
     list(
       welcome_message = options$welcome_message,
-      point_size = list(
-        overview_projection_point_size = options$point_size
-      ),
       variable_to_compare = options$variable_to_compare,
       host = options$host,
       port = options$port,
@@ -96,13 +93,6 @@ builder_review_controls_ui <- function(id, options) {
       ns("welcome_message"),
       "Welcome message",
       options$welcome_message
-    ),
-    numericInput(
-      ns("point_size"),
-      "Point size",
-      options$point_size,
-      min = 0,
-      max = 20
     ),
     checkboxInput(
       ns("variable_to_compare"),
@@ -162,6 +152,128 @@ builder_review_page_labels <- function(items, plan_contract = list()) {
   unique(labels[!is.na(labels) & nzchar(labels)])
 }
 
+builder_review_group_label <- function(value) {
+  value <- gsub("[_.]+", " ", as.character(value %||% ""))
+  value <- trimws(value)
+  if (!nzchar(value)) {
+    return("Not selected")
+  }
+  paste0(toupper(substr(value, 1L, 1L)), substr(value, 2L, nchar(value)))
+}
+
+builder_review_projection_label <- function(value) {
+  value <- as.character(value %||% "")
+  known <- c(
+    umap = "UMAP",
+    tsne = "t-SNE",
+    `t-sne` = "t-SNE",
+    pca = "PCA"
+  )
+  key <- tolower(value)
+  labels <- unname(known[key])
+  labels[is.na(labels)] <- value[is.na(labels)]
+  labels
+}
+
+builder_review_trajectory_model <- function(included, default = NULL) {
+  if (!is.list(included) || !length(included)) {
+    return(NULL)
+  }
+  trajectory_names <- unname(unlist(included, use.names = FALSE))
+  trajectory_names <- trajectory_names[
+    !is.na(trajectory_names) &
+      nzchar(trajectory_names)
+  ]
+  if (!length(trajectory_names)) {
+    return(NULL)
+  }
+  default_name <- if (
+    is.list(default) && builder_stage_has_text(default$name %||% "")
+  ) {
+    default$name
+  } else if (builder_stage_has_text(default %||% "")) {
+    default
+  } else {
+    trajectory_names[[1L]]
+  }
+  list(
+    included_count = as.integer(length(trajectory_names)),
+    included = trajectory_names,
+    default = as.character(default_name)
+  )
+}
+
+builder_review_metadata_model <- function(
+  policy,
+  manifest = list(),
+  acknowledgements = character()
+) {
+  if (!is.list(policy)) {
+    return(list(
+      total_count = 0L,
+      kept_count = 0L,
+      excluded_count = 0L,
+      attention_count = 0L
+    ))
+  }
+  columns <- policy$columns
+  if (is.list(columns) && length(columns)) {
+    ids <- setdiff(names(columns) %||% character(), "cell_barcode")
+    records <- columns[ids]
+    effective_included <- vapply(
+      records,
+      function(record) {
+        value <- if (is.list(record)) record$effective_included else NULL
+        if (is.logical(value) && length(value) == 1L && !is.na(value)) {
+          value
+        } else {
+          NA
+        }
+      },
+      logical(1),
+      USE.NAMES = FALSE
+    )
+    retained <- !is.na(effective_included) & effective_included
+    dispositions <- vapply(
+      records,
+      function(record) {
+        if (is.list(record)) record$disposition %||% "unknown" else "unknown"
+      },
+      character(1)
+    )
+    attention_count <- as.integer(sum(
+      dispositions %in% c("attention", "blocking")
+    ))
+    metadata_entry <- manifest$metadata_policy %||% list()
+    action <- metadata_entry$required_action %||% list()
+    acknowledged <- identical(metadata_entry$status %||% "", "attention") &&
+      identical(action$type %||% "", "acknowledge") &&
+      builder_stage_has_text(action$token %||% "") &&
+      (action$token %||% "") %in% acknowledgements
+    if (identical(metadata_entry$status %||% "", "valid") || acknowledged) {
+      attention_count <- 0L
+    }
+    return(list(
+      total_count = as.integer(length(records)),
+      kept_count = as.integer(sum(retained)),
+      excluded_count = as.integer(sum(
+        dispositions == "excluded" |
+          (!is.na(effective_included) & !effective_included)
+      )),
+      attention_count = attention_count
+    ))
+  }
+  included <- setdiff(policy$included %||% character(), "cell_barcode")
+  excluded <- setdiff(policy$excluded %||% character(), "cell_barcode")
+  attention <- setdiff(policy$attention %||% character(), "cell_barcode")
+  list(
+    total_count = as.integer(length(unique(c(included, excluded, attention)))),
+    kept_count = as.integer(length(unique(included))),
+    excluded_count = as.integer(length(unique(excluded))),
+    attention_count = as.integer(length(unique(attention)))
+  )
+}
+
 builder_review_model <- function(plan, verification = NULL) {
   if (
     !inherits(plan, "builder_build_plan") ||
@@ -209,6 +321,29 @@ builder_review_model <- function(plan, verification = NULL) {
     projection_values <- item$included_projections %||%
       item$reductions %||%
       character()
+    color_overrides <- item$group_color_overrides %||% list()
+    custom_color_count <- if (
+      is.list(color_overrides) && length(color_overrides)
+    ) {
+      as.integer(sum(vapply(color_overrides, length, integer(1))))
+    } else {
+      color_custom_count
+    }
+    point_size <- item$overview_point_size %||%
+      app_options$point_size$overview_projection_point_size %||%
+      5
+    trajectory_model <- builder_review_trajectory_model(
+      item$included_trajectories %||% list(),
+      item$default_trajectory %||% NULL
+    )
+    analysis_results <- builder_analysis_results_model(list(
+      analysis_manifest = item$manifest %||% list(),
+      analysis_acknowledgements = item$acknowledgements %||% character()
+    ))
+    specialized_content <- builder_specialized_content_model(list(
+      content_manifest = item$manifest %||% list(),
+      content_acknowledgements = item$acknowledgements %||% character()
+    ))
     list(
       name = item$name %||% "Dataset",
       cells = as.integer(item$cell_count %||% 0L),
@@ -222,10 +357,43 @@ builder_review_model <- function(plan, verification = NULL) {
       ),
       projection_count = as.integer(length(projection_values)),
       default_group = item$default_group %||% "Not selected",
+      viewer_content = list(
+        metadata = builder_review_metadata_model(
+          item$metadata_policy,
+          item$manifest %||% list(),
+          item$acknowledgements %||% character()
+        ),
+        groups = list(
+          included_count = as.integer(length(group_values)),
+          included = unname(group_values),
+          default = builder_review_group_label(item$default_group %||% ""),
+          custom_color_count = custom_color_count
+        ),
+        cell_cycle = if (length(item$cell_cycle %||% character())) {
+          list(included = unname(item$cell_cycle))
+        } else {
+          NULL
+        },
+        projections = list(
+          included_count = as.integer(length(projection_values)),
+          included = builder_review_projection_label(projection_values),
+          default = if (
+            builder_stage_has_text(item$default_projection %||% "")
+          ) {
+            builder_review_projection_label(item$default_projection)
+          } else {
+            "Not selected"
+          },
+          point_size = as.numeric(point_size)
+        ),
+        trajectories = trajectory_model,
+        analysis_results = analysis_results,
+        specialized = specialized_content
+      ),
       group_colors = list(
         group = default_group,
         count = as.integer(length(group_colors)),
-        custom_count = color_custom_count,
+        custom_count = custom_color_count,
         preview = color_preview,
         remaining = as.integer(max(
           0L,
@@ -720,6 +888,7 @@ builder_review_stage_ui <- function(id, model) {
       div(
         class = "review-dataset-grid",
         lapply(model$datasets, function(dataset) {
+          viewer_content <- dataset$viewer_content
           div(
             class = "review-dataset-card",
             h4(dataset$name),
@@ -732,63 +901,156 @@ builder_review_stage_ui <- function(id, model) {
                 " genes"
               )
             ),
-            p(
-              class = "review-dataset-shape",
-              paste0(
-                plural(dataset$group_count, "group"),
-                " · ",
-                plural(dataset$projection_count, "projection")
-              )
-            ),
-            tags$dl(
-              class = "review-dataset-defaults",
-              field("Opens with", dataset$default_projection),
-              field("Grouped by", dataset$default_group),
-              field("Organism", dataset$organism),
-              field("Expression storage", dataset$expression_storage)
-            ),
-            if (length(dataset$group_colors$preview)) {
-              div(
-                class = "review-group-colors",
-                span(class = "review-group-colors-label", "Group colors"),
-                span(
-                  class = "review-group-colors-summary",
-                  paste0(
-                    dataset$group_colors$group,
-                    " · ",
-                    if (dataset$group_colors$custom_count > 0L) {
+            div(
+              class = "review-viewer-content",
+              if (viewer_content$metadata$total_count > 0L) {
+                div(
+                  class = "review-viewer-content-item review-viewer-metadata",
+                  h5("Metadata"),
+                  p(paste0(
+                    viewer_content$metadata$kept_count,
+                    " kept · ",
+                    viewer_content$metadata$excluded_count,
+                    " excluded"
+                  )),
+                  if (viewer_content$metadata$attention_count > 0L) {
+                    p(
+                      class = "hint",
                       paste(
-                        dataset$group_colors$custom_count,
-                        "custom",
-                        if (dataset$group_colors$custom_count == 1L) {
-                          "color"
-                        } else {
-                          "colors"
-                        }
+                        viewer_content$metadata$attention_count,
+                        "needs attention"
                       )
-                    } else {
-                      "Using default colors"
-                    }
-                  )
-                ),
-                span(
-                  class = "review-group-color-preview",
-                  `aria-hidden` = "true",
-                  lapply(dataset$group_colors$preview, function(color) {
-                    span(
-                      class = "review-group-color-dot",
-                      style = paste0("background-color:", color)
-                    )
-                  }),
-                  if (dataset$group_colors$remaining > 0L) {
-                    span(
-                      class = "review-group-color-more",
-                      paste0("+", dataset$group_colors$remaining)
                     )
                   }
                 )
-              )
-            },
+              },
+              div(
+                class = "review-viewer-content-item review-viewer-groups",
+                h5("Groups"),
+                p(paste0(
+                  viewer_content$groups$included_count,
+                  " included · Default: ",
+                  viewer_content$groups$default
+                )),
+                p(
+                  class = "hint",
+                  paste(
+                    viewer_content$groups$custom_color_count,
+                    "colors customized"
+                  )
+                )
+              ),
+              if (!is.null(viewer_content$cell_cycle)) {
+                div(
+                  class = "review-viewer-content-item review-viewer-cell-cycle",
+                  h5("Cell cycle"),
+                  p(paste(viewer_content$cell_cycle$included, collapse = ", "))
+                )
+              },
+              div(
+                class = "review-viewer-content-item review-viewer-projections",
+                h5("Projections"),
+                p(paste(
+                  viewer_content$projections$included,
+                  collapse = ", "
+                )),
+                p(paste0(
+                  "Default: ",
+                  viewer_content$projections$default
+                )),
+                p(
+                  class = "hint",
+                  paste("Point size", viewer_content$projections$point_size)
+                )
+              ),
+              if (!is.null(viewer_content$trajectories)) {
+                div(
+                  class = "review-viewer-content-item review-viewer-trajectories",
+                  h5("Trajectories"),
+                  p(paste0(
+                    viewer_content$trajectories$included_count,
+                    " included · Default: ",
+                    viewer_content$trajectories$default
+                  ))
+                )
+              },
+              if (viewer_content$analysis_results$total_count > 0L) {
+                div(
+                  class = paste(
+                    "review-viewer-content-item",
+                    "review-viewer-analysis-results"
+                  ),
+                  h5("Analysis results"),
+                  p(paste(
+                    c(
+                      if (viewer_content$analysis_results$existing_count > 0L) {
+                        paste(
+                          viewer_content$analysis_results$existing_count,
+                          "existing"
+                        )
+                      },
+                      if (
+                        viewer_content$analysis_results$generated_count > 0L
+                      ) {
+                        paste(
+                          viewer_content$analysis_results$generated_count,
+                          "will be generated"
+                        )
+                      },
+                      if (
+                        viewer_content$analysis_results$attention_count > 0L
+                      ) {
+                        paste(
+                          viewer_content$analysis_results$attention_count,
+                          "needs attention"
+                        )
+                      },
+                      if (viewer_content$analysis_results$excluded_count > 0L) {
+                        paste(
+                          viewer_content$analysis_results$excluded_count,
+                          "not included"
+                        )
+                      }
+                    ),
+                    collapse = " · "
+                  )),
+                  p(
+                    class = "hint",
+                    paste(
+                      vapply(
+                        viewer_content$analysis_results$items,
+                        `[[`,
+                        character(1),
+                        "label"
+                      ),
+                      collapse = ", "
+                    )
+                  )
+                )
+              },
+              if (viewer_content$specialized$total_count > 0L) {
+                div(
+                  class = paste(
+                    "review-viewer-content-item",
+                    "review-viewer-specialized-content"
+                  ),
+                  h5("Specialized content"),
+                  p(viewer_content$specialized$summary),
+                  p(
+                    class = "hint",
+                    paste(
+                      vapply(
+                        viewer_content$specialized$items,
+                        `[[`,
+                        character(1),
+                        "label"
+                      ),
+                      collapse = ", "
+                    )
+                  )
+                )
+              }
+            ),
             if (
               !is.null(dataset$spatial_alignment) &&
                 dataset$spatial_alignment$section_count > 0L
@@ -848,7 +1110,6 @@ builder_review_stage_ui <- function(id, model) {
               if (isTRUE(model$app$uploads_enabled)) "On" else "Off"
             ),
             field("Welcome message", model$app$welcome_message),
-            field("Point size", model$app$point_size),
             field(
               "Variable comparison",
               if (isTRUE(model$app$variable_comparison)) "On" else "Off"

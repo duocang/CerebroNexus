@@ -614,6 +614,153 @@ builder_profile_assays <- function(object, expected_cells) {
 
 # Metadata ----
 
+BUILDER_METADATA_SAMPLE_MAX <- 5L
+BUILDER_METADATA_LEVEL_MAX <- 12L
+BUILDER_METADATA_TEXT_MAX_BYTES <- 120L
+
+.builder_profile_bounded_text <- function(
+  value,
+  max_bytes = BUILDER_METADATA_TEXT_MAX_BYTES
+) {
+  if (is.null(value) || !length(value)) {
+    value <- ""
+  } else {
+    value <- value[[1L]]
+  }
+  value <- enc2utf8(as.character(value))
+  attributes(value) <- NULL
+  if (nchar(value, type = "bytes") <= max_bytes) {
+    return(value)
+  }
+  suffix <- "..."
+  keep <- max(1L, min(nchar(value), max_bytes - nchar(suffix)))
+  candidate <- substr(value, 1L, keep)
+  while (
+    keep > 1L &&
+      nchar(candidate, type = "bytes") + nchar(suffix) > max_bytes
+  ) {
+    keep <- keep - 1L
+    candidate <- substr(value, 1L, keep)
+  }
+  paste0(candidate, suffix)
+}
+
+.builder_profile_sample_values <- function(values) {
+  values <- utils::head(values, BUILDER_METADATA_SAMPLE_MAX)
+  text <- if (is.factor(values) || is.atomic(values)) {
+    as.character(values)
+  } else {
+    rep(NA_character_, length(values))
+  }
+  text[is.na(text)] <- "N/A"
+  text[!nzchar(text)] <- "(blank)"
+  unname(vapply(
+    text,
+    .builder_profile_bounded_text,
+    character(1)
+  ))
+}
+
+.builder_profile_metadata_classification <- function(values, distinct) {
+  if (!is.atomic(values) || is.list(values)) {
+    return("unsupported")
+  }
+  if (is.factor(values) || is.character(values) || is.logical(values)) {
+    return("categorical")
+  }
+  if (is.integer(values) && distinct <= 100L) {
+    return("categorical")
+  }
+  if (is.numeric(values) || inherits(values, c("Date", "POSIXt"))) {
+    return("continuous")
+  }
+  "other"
+}
+
+.builder_profile_level_counts <- function(values) {
+  text <- if (is.factor(values) || is.atomic(values)) {
+    as.character(values)
+  } else {
+    rep(NA_character_, length(values))
+  }
+  text[is.na(text)] <- "N/A"
+  text[!nzchar(text)] <- "(blank)"
+  counts <- sort(table(text, useNA = "no"), decreasing = TRUE)
+  total <- length(counts)
+  shown <- utils::head(counts, BUILDER_METADATA_LEVEL_MAX)
+  items <- lapply(seq_along(shown), function(index) {
+    list(
+      value = .builder_profile_bounded_text(names(shown)[[index]]),
+      count = as.integer(shown[[index]])
+    )
+  })
+  list(
+    items = items,
+    total = as.integer(total),
+    truncated = total > length(shown),
+    remaining_count = if (total > length(shown)) {
+      as.integer(sum(counts[-seq_along(shown)]))
+    } else {
+      0L
+    }
+  )
+}
+
+.builder_profile_group_reason_label <- function(reason, distinct) {
+  if (is.null(reason)) {
+    return(NULL)
+  }
+  if (identical(reason, "QC metric, not a group")) {
+    return("Continuous quality-control values are kept as metadata.")
+  }
+  if (identical(reason, "only one value")) {
+    return("Only one value was detected.")
+  }
+  if (identical(reason, "one value per cell")) {
+    return("Nearly every cell has a different value.")
+  }
+  if (grepl("values; too many$", reason)) {
+    return(paste0(
+      "Too many distinct values (",
+      distinct,
+      ") for a Viewer group."
+    ))
+  }
+  if (identical(reason, "continuous numeric metadata requires review")) {
+    return("Continuous numeric values remain available as metadata.")
+  }
+  if (identical(reason, "unsupported metadata type")) {
+    return("This metadata type cannot be used as a Viewer group.")
+  }
+  if (identical(reason, "metadata column name is missing or duplicated")) {
+    return("This column needs a unique name before it can be a Viewer group.")
+  }
+  "This column remains available as metadata but cannot be a Viewer group."
+}
+
+.builder_profile_metadata_catalog_entry <- function(values, name, reason) {
+  distinct <- length(unique(values[!is.na(values)]))
+  list(
+    name = .builder_profile_bounded_text(name),
+    classification = .builder_profile_metadata_classification(
+      values,
+      distinct
+    ),
+    group_eligible = is.null(reason),
+    group_reason = .builder_profile_group_reason_label(reason, distinct),
+    count = as.integer(length(values)),
+    distinct_count = as.integer(distinct),
+    missing_count = as.integer(sum(is.na(values))),
+    missing_percentage = if (length(values)) {
+      100 * sum(is.na(values)) / length(values)
+    } else {
+      0
+    },
+    sample_values = .builder_profile_sample_values(values),
+    level_counts = .builder_profile_level_counts(values)
+  )
+}
+
 .builder_profile_metadata_column <- function(values, name) {
   as_text <- if (is.factor(values)) {
     as.character(values)
@@ -680,6 +827,7 @@ builder_profile_metadata <- function(meta, expected_cells) {
   candidates <- character()
   conversions <- character()
   rejected <- character()
+  catalog <- list()
   if (!column_identity$valid) {
     keys <- column_names
     invalid_key <- is.na(keys) | !nzchar(keys)
@@ -689,6 +837,14 @@ builder_profile_metadata <- function(meta, expected_cells) {
       rep("metadata column name is missing or duplicated", length(keys)),
       keys
     )
+    catalog <- lapply(seq_along(column_names), function(index) {
+      .builder_profile_metadata_catalog_entry(
+        meta[[index]],
+        keys[[index]],
+        "metadata column name is missing or duplicated"
+      )
+    })
+    names(catalog) <- keys
   } else {
     for (index in seq_along(column_names)) {
       name <- column_names[[index]]
@@ -697,6 +853,11 @@ builder_profile_metadata <- function(meta, expected_cells) {
         values,
         name,
         length(expected_cells)
+      )
+      catalog[[name]] <- .builder_profile_metadata_catalog_entry(
+        values,
+        name,
+        reason
       )
       if (!is.null(reason)) {
         rejected[[name]] <- reason
@@ -713,12 +874,49 @@ builder_profile_metadata <- function(meta, expected_cells) {
     identity = identity,
     column_identity = column_identity,
     columns = columns,
+    catalog = catalog,
     groups = list(
       candidates = candidates,
       conversions = conversions,
       rejected = rejected
     )
   )
+}
+
+#' Find metadata columns that can safely act as Viewer cell-cycle annotations.
+#'
+#' Cell-cycle scores are continuous measurements, not phase annotations. Keep
+#' this deliberately conservative: a candidate must already be a valid
+#' categorical Group and have an explicit phase/cell-cycle name.
+builder_cell_cycle_candidate_ids <- function(metadata_catalog) {
+  if (!is.list(metadata_catalog) || !length(metadata_catalog)) {
+    return(character())
+  }
+  ids <- names(metadata_catalog)
+  if (is.null(ids)) {
+    return(character())
+  }
+  ids[vapply(
+    seq_along(ids),
+    function(index) {
+      id <- ids[[index]]
+      column <- metadata_catalog[[index]]
+      if (!is.list(column) || !isTRUE(column$group_eligible)) {
+        return(FALSE)
+      }
+      label <- column$name %||% id
+      is.character(label) &&
+        length(label) == 1L &&
+        !is.na(label) &&
+        grepl(
+          "(^|[._ -])(cell[._ -]?cycle|phase)([._ -]|$)",
+          label,
+          ignore.case = TRUE,
+          perl = TRUE
+        )
+    },
+    logical(1)
+  )]
 }
 
 # Reductions ----
@@ -780,6 +978,60 @@ builder_profile_reductions <- function(object, expected_cells) {
   })
   names(profiles) <- reduction_names
   profiles
+}
+
+builder_profile_projection_catalog <- function(reductions) {
+  if (!is.list(reductions) || !length(reductions)) {
+    return(list())
+  }
+  catalog <- lapply(seq_along(reductions), function(index) {
+    reduction <- reductions[[index]]
+    name <- names(reductions)[[index]]
+    lower <- tolower(name)
+    kind <- if (grepl("umap", lower, fixed = TRUE)) {
+      "umap"
+    } else if (
+      grepl("tsne", lower, fixed = TRUE) ||
+        grepl("t-sne", lower, fixed = TRUE)
+    ) {
+      "tsne"
+    } else if (
+      isTRUE(reduction$is_pca) ||
+        grepl("pca", lower, fixed = TRUE)
+    ) {
+      "pca"
+    } else {
+      "other"
+    }
+    available <- isTRUE(reduction$exportable) &&
+      is.numeric(reduction$dimensions) &&
+      length(reduction$dimensions) == 1L &&
+      reduction$dimensions >= 2L
+    dimensions <- reduction$dimensions
+    if (is.null(dimensions) || !length(dimensions)) {
+      dimensions <- 0L
+    }
+    cell_count <- reduction$cells$count
+    if (is.null(cell_count) || !length(cell_count)) {
+      cell_count <- 0L
+    }
+    list(
+      id = name,
+      name = name,
+      kind = kind,
+      dimensions = as.integer(dimensions[[1L]]),
+      cell_count = as.integer(cell_count[[1L]]),
+      available = available,
+      is_pca = isTRUE(reduction$is_pca),
+      reason = if (available) {
+        NULL
+      } else {
+        "This reduction is not a complete two-dimensional Viewer projection."
+      }
+    )
+  })
+  names(catalog) <- names(reductions)
+  catalog
 }
 
 builder_profile_organism <- function(features) {
@@ -1048,11 +1300,17 @@ builder_dataset_profile <- function(object, source) {
       metadata = list(
         identity = metadata$identity,
         column_identity = metadata$column_identity,
-        columns = metadata$columns
+        columns = metadata$columns,
+        catalog = metadata$catalog
       ),
       groups = metadata$groups,
       reductions = reductions,
       content = content,
+      viewer_content = list(
+        metadata = metadata$catalog,
+        projections = builder_profile_projection_catalog(reductions),
+        trajectories = builder_trajectory_catalog(content$trajectory)
+      ),
       spatial = spatial_summary,
       organism = builder_profile_organism(features),
       manifest = manifest

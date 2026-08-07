@@ -194,6 +194,89 @@ builder_session_preview <- function(
   )
 }
 
+#' Ask the worker for all bounded projection thumbnails in one pass.
+builder_session_projection_previews <- function(
+  worker,
+  id,
+  projections,
+  group,
+  max_cells = 600L,
+  request = NULL
+) {
+  rs <- .builder_session_process(worker)
+  rs$call(
+    function(id, projections, group, max_cells, request) {
+      tryCatch(
+        {
+          object <- get(
+            id,
+            envir = get(".builder_objects", envir = globalenv())
+          )
+          builder_worker_response(
+            request,
+            builder_projection_preview_catalog(
+              object,
+              projections = projections,
+              group = group,
+              max_cells = max_cells
+            )
+          )
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
+        }
+      )
+    },
+    args = list(
+      id = id,
+      projections = projections,
+      group = group,
+      max_cells = max_cells,
+      request = request
+    )
+  )
+}
+
+#' Ask the worker for bounded trajectory coordinates and edges.
+builder_session_trajectory_previews <- function(
+  worker,
+  id,
+  trajectories,
+  max_cells = 600L,
+  request = NULL
+) {
+  rs <- .builder_session_process(worker)
+  rs$call(
+    function(id, trajectories, max_cells, request) {
+      tryCatch(
+        {
+          object <- get(
+            id,
+            envir = get(".builder_objects", envir = globalenv())
+          )
+          builder_worker_response(
+            request,
+            builder_trajectory_preview_catalog(
+              object,
+              trajectories = trajectories,
+              max_cells = max_cells
+            )
+          )
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
+        }
+      )
+    },
+    args = list(
+      id = id,
+      trajectories = trajectories,
+      max_cells = max_cells,
+      request = request
+    )
+  )
+}
+
 #' Spatial coordinates, for deciding where a background image sits.
 builder_session_coords <- function(worker, id, image = NULL, request = NULL) {
   rs <- .builder_session_process(worker)

@@ -96,9 +96,59 @@ test_that("builder exposes one compact responsive component system", {
   )) {
     expect_match(css, component, fixed = TRUE)
   }
-  expect_match(css, "max-width: 82.5rem", fixed = TRUE)
+  expect_match(css, "--builder-page-gutter: 26px", fixed = TRUE)
+  expect_false(grepl(
+    "\\.shell,\\s*\\.builder-shell \\{[^}]*82\\.5rem",
+    css,
+    perl = TRUE
+  ))
+  expect_false(grepl(
+    "\\.actionbar \\{[^}]*82\\.5rem",
+    css,
+    perl = TRUE
+  ))
+  expect_false(grepl(
+    "\\.actionbar \\.inner \\{[^}]*82\\.5rem",
+    css,
+    perl = TRUE
+  ))
+  expect_match(
+    css,
+    paste0(
+      "\\.shell,\\s*\\.builder-shell \\{[^}]*width: 100%;",
+      "[^}]*max-width: none;[^}]*padding: var\\(--space-6\\) ",
+      "var\\(--builder-page-gutter\\);"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.actionbar \\{[^}]*max-width: none;[^}]*margin: 0 ",
+      "var\\(--builder-page-gutter\\) 1\\.5rem;"
+    ),
+    perl = TRUE
+  )
   expect_match(css, "@media (max-width: 68.75rem)", fixed = TRUE)
   expect_match(css, "@media (max-width: 43.75rem)", fixed = TRUE)
+  tablet_start <- regexpr(
+    "@media (max-width: 68.75rem)",
+    css,
+    fixed = TRUE
+  )[[1L]]
+  mobile_start <- regexpr(
+    "@media (max-width: 43.75rem)",
+    css,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(tablet_start, 0L)
+  expect_gt(mobile_start, tablet_start)
+  tablet_css <- substr(css, tablet_start, mobile_start - 1L)
+  expect_match(
+    tablet_css,
+    ".actionbar { margin-inline: var(--space-6); }",
+    fixed = TRUE
+  )
   expect_match(css, "@media (prefers-reduced-motion: reduce)", fixed = TRUE)
   expect_match(css, ".builder-file-picker--sidebar", fixed = TRUE)
   expect_match(css, ".builder-file-picker--content", fixed = TRUE)
@@ -115,6 +165,21 @@ test_that("builder exposes one compact responsive component system", {
     css,
     perl = TRUE
   ))
+})
+
+test_that("Viewer Group catalog interactions use stable names and client search", {
+  js <- builder_asset_text("www", "builder.js")
+  css <- builder_asset_text("www", "builder.css")
+  core <- builder_asset_text("ui", "core_stage.R")
+
+  expect_match(core, "viewer-group-include", fixed = TRUE)
+  expect_match(core, "viewer-group-default", fixed = TRUE)
+  expect_match(core, "Find metadata", fixed = TRUE)
+  expect_match(js, "filterViewerGroups", fixed = TRUE)
+  expect_match(js, "updateViewerGroupSelection", fixed = TRUE)
+  expect_match(js, "viewer-group-focus", fixed = TRUE)
+  expect_match(css, ".builder-viewer-content", fixed = TRUE)
+  expect_match(css, ".viewer-group-row", fixed = TRUE)
 })
 
 test_that("dataset uploads use an amber trigger without replacing the native chooser", {
@@ -276,6 +341,20 @@ test_that("group colors use native bounded controls without projection palettes"
   expect_match(css, ".group-color-item:hover", fixed = TRUE)
   expect_match(css, ".group-color-input:focus-visible", fixed = TRUE)
   expect_false(grepl("umap_palette|pca_palette|tsne_palette", core))
+})
+
+test_that("Viewer content cards preserve disclosure state across Shiny redraws", {
+  core <- builder_asset_text("ui", "core_stage.R")
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_false(grepl('open = "open"', core, fixed = TRUE))
+  expect_match(core, "data-disclosure-key", fixed = TRUE)
+  expect_match(js, "viewerDisclosureState", fixed = TRUE)
+  expect_match(js, "setupPersistentDisclosures", fixed = TRUE)
+  expect_match(js, 'details[data-disclosure-key]', fixed = TRUE)
+  expect_match(js, "setupViewerContentAccordions", fixed = TRUE)
+  expect_match(js, 'addEventListener("toggle"', fixed = TRUE)
+  expect_match(js, "sibling.open = false", fixed = TRUE)
 })
 
 test_that("Review uses a compact responsive user-facing layout", {

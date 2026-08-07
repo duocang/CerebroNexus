@@ -948,6 +948,17 @@
   diagnostics <- c(diagnostics, identity$diagnostics)
   meta_columns <- .builder_table_column_summary(meta)
   edge_columns <- .builder_table_column_summary(edges)
+  state_counts <- if (!is.null(state)) {
+    sort(table(state, useNA = "no"), decreasing = TRUE)
+  } else {
+    integer()
+  }
+  state_items <- lapply(seq_along(state_counts), function(index) {
+    list(
+      value = names(state_counts)[[index]],
+      count = as.integer(state_counts[[index]])
+    )
+  })
   list(
     supported = TRUE,
     valid = !length(diagnostics),
@@ -959,6 +970,10 @@
     ),
     meta = c(list(rows = meta$rows), meta_columns),
     edges = c(list(rows = edges$rows), edge_columns),
+    states = list(
+      count = as.integer(length(state_counts)),
+      items = state_items
+    ),
     diagnostics = unique(diagnostics)
   )
 }
@@ -1059,6 +1074,54 @@
     requirements = requirements,
     page_candidates = if (usable) "trajectory" else character()
   )
+}
+
+builder_trajectory_catalog <- function(trajectory) {
+  scalar_or <- function(value, fallback) {
+    if (is.null(value) || !length(value)) fallback else value[[1L]]
+  }
+  normalized <- if (is.list(trajectory)) {
+    trajectory$normalized
+  } else {
+    NULL
+  }
+  if (!is.list(normalized) || !length(normalized)) {
+    return(list())
+  }
+  catalog <- list()
+  for (method_index in seq_along(normalized)) {
+    method <- names(normalized)[[method_index]]
+    entries <- normalized[[method_index]]
+    if (!is.list(entries) || !length(entries)) {
+      next
+    }
+    for (entry_index in seq_along(entries)) {
+      name <- names(entries)[[entry_index]]
+      summary <- entries[[entry_index]]
+      supported <- isTRUE(summary$supported) && identical(method, "monocle2")
+      valid <- isTRUE(summary$valid)
+      selectable <- supported && valid
+      catalog[[length(catalog) + 1L]] <- list(
+        method = method,
+        name = name,
+        supported = supported,
+        valid = valid,
+        selectable = selectable,
+        cell_count = as.integer(scalar_or(summary$cells$count, 0L)),
+        coverage = as.numeric(scalar_or(summary$cells$coverage, 0)),
+        state_count = as.integer(scalar_or(summary$states$count, 0L)),
+        edge_count = as.integer(scalar_or(summary$edges$rows, 0L)),
+        reason = if (selectable) {
+          NULL
+        } else if (!supported) {
+          "Not supported by this Viewer version."
+        } else {
+          "This trajectory did not pass Viewer compatibility checks."
+        }
+      )
+    }
+  }
+  catalog
 }
 
 # Extra material ----

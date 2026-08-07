@@ -284,6 +284,50 @@ test_that("metadata column names are unique non-empty identities", {
   expect_identical(blank_profile$groups$candidates, character())
 })
 
+test_that("metadata catalog is complete, friendly, and bounded", {
+  cells <- paste0("cell-", seq_len(8L))
+  metadata <- data.frame(
+    cluster = factor(c("A", "A", "B", "B", "C", "C", NA, "A")),
+    continuous_score = seq_len(8L) + 0.25,
+    cell_identifier = cells,
+    nCount_RNA = seq_len(8L) * 100L,
+    notes = c(rep(strrep("x", 500L), 5L), "short", "shorter", "last"),
+    row.names = cells,
+    check.names = FALSE
+  )
+
+  profiled <- builder_profile_metadata(metadata, cells)
+  catalog <- profiled$catalog
+
+  expect_named(catalog, colnames(metadata), ignore.order = FALSE)
+  expect_true(catalog$cluster$group_eligible)
+  expect_identical(catalog$cluster$classification, "categorical")
+  expect_equal(catalog$cluster$missing_percentage, 12.5)
+  expect_identical(catalog$cluster$distinct_count, 3L)
+  expect_lte(length(catalog$cluster$level_counts$items), 12L)
+  expect_identical(catalog$cluster$level_counts$total, 4L)
+
+  expect_false(catalog$continuous_score$group_eligible)
+  expect_identical(catalog$continuous_score$classification, "continuous")
+  expect_match(catalog$continuous_score$group_reason, "Continuous")
+  expect_false(catalog$cell_identifier$group_eligible)
+  expect_match(catalog$cell_identifier$group_reason, "different value")
+  expect_false(catalog$nCount_RNA$group_eligible)
+  expect_match(catalog$nCount_RNA$group_reason, "quality-control")
+
+  expect_true(all(vapply(
+    catalog,
+    function(column) length(column$sample_values) <= 5L,
+    logical(1)
+  )))
+  expect_lte(max(nchar(catalog$notes$sample_values, type = "bytes")), 120L)
+  expect_false(any(vapply(
+    catalog,
+    function(column) is.data.frame(column$sample_values),
+    logical(1)
+  )))
+})
+
 test_that("assay layers use exact barcodes rather than equal counts", {
   skip_if_not_installed("SeuratObject")
   fixture <- builder_profile_wrong_assay()
@@ -630,6 +674,25 @@ test_that("PCA remains a stable fallback fact rather than a frozen selection", {
     app,
     fixed = TRUE
   )))
+})
+
+test_that("Viewer projection catalog includes every exportable 2-D reduction", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_profile_reduction_object(c("pca", "umap", "tsne"))
+  profile <- builder_dataset_profile(
+    object,
+    builder_profile_source_fixture()
+  )
+  catalog <- profile$viewer_content$projections
+
+  expect_named(catalog, c("pca", "umap", "tsne"), ignore.order = FALSE)
+  expect_true(all(vapply(catalog, `[[`, logical(1), "available")))
+  expect_identical(catalog$pca$kind, "pca")
+  expect_identical(catalog$umap$kind, "umap")
+  expect_identical(catalog$tsne$kind, "tsne")
+  expect_true(catalog$pca$is_pca)
+  expect_identical(catalog$pca$name, "pca")
+  expect_identical(catalog$umap$name, "umap")
 })
 
 test_that("empty feature identities yield a finite organism inference", {
@@ -983,12 +1046,14 @@ test_that("legacy describe_seurat fields remain available", {
       "default_layer",
       "group_candidates",
       "group_preselect",
+      "group_counts",
       "group_struck",
       "reductions",
       "reduction_preselect",
       "images",
       "nUMI",
       "nGene",
+      "qc_values",
       "organism_guess",
       "extras",
       "suggested_dir"

@@ -192,6 +192,21 @@ test_that("legacy resolved colors migrate only where canonical overrides are abs
   })
 })
 
+test_that("Viewer-content group colors take precedence over older settings", {
+  local({
+    source(builder_src("preview.R"), local = TRUE)
+
+    settings <- list(
+      colors = list(cluster = c(A = "#111111")),
+      color_overrides = list(cluster = c(A = "#222222")),
+      group_color_overrides = list(cluster = c(A = "#abcdef"))
+    )
+    resolved <- builder_settings_color_overrides(settings)
+
+    expect_identical(resolved$cluster[["A"]], "#ABCDEF")
+  })
+})
+
 test_that("every offered palette returns one usable colour per level", {
   local({
     source(builder_src("preview.R"), local = TRUE)

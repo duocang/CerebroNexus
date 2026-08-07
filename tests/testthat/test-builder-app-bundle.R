@@ -23,6 +23,9 @@ builder_app_bundle_fixture <- function(
           name = labels[[1L]],
           filename = basename(paths[[1L]]),
           colors = list(cluster = c(A = "#000000")),
+          default_projection = "umap",
+          default_trajectory = NULL,
+          overview_point_size = 4,
           expression_backend = "embedded",
           sidecars = character()
         ),
@@ -31,6 +34,9 @@ builder_app_bundle_fixture <- function(
           name = labels[[2L]],
           filename = basename(paths[[2L]]),
           colors = list(cluster = c(B = "#ffffff")),
+          default_projection = "pca",
+          default_trajectory = list(method = "monocle2", name = "lineage"),
+          overview_point_size = 7,
           expression_backend = "embedded",
           sidecars = character()
         )
@@ -110,6 +116,7 @@ builder_fake_app <- function(request, app_dir) {
       show_upload_ui = request$show_upload_ui,
       welcome_message = request$welcome_message,
       point_size = request$point_size,
+      viewer_content = request$viewer_content,
       variable_to_compare = request$variable_to_compare,
       .bundle_run_options = list(
         schema_version = 1L,
@@ -173,6 +180,15 @@ test_that("App arguments come only from the frozen plan", {
   expect_false(request$show_upload_ui)
   expect_identical(request$contract_version, 1L)
   expect_identical(names(request$colors), fixture$labels)
+  expect_identical(names(request$viewer_content), fixture$labels)
+  expect_identical(
+    request$viewer_content[["Dataset B"]],
+    list(
+      default_projection = "pca",
+      default_trajectory = list(method = "monocle2", name = "lineage"),
+      overview_point_size = 7
+    )
+  )
   expect_false(request$crb_pick_smallest_file)
   expect_identical(
     names(request),
@@ -187,6 +203,7 @@ test_that("App arguments come only from the frozen plan", {
       "show_upload_ui",
       "welcome_message",
       "point_size",
+      "viewer_content",
       "variable_to_compare",
       "host",
       "port",

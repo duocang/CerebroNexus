@@ -1,3 +1,4 @@
+builder_repo_source("profile.R")
 builder_repo_source("ui/inspect_stage.R")
 builder_repo_source("preview.R")
 builder_repo_source("ui/core_stage.R")
@@ -126,8 +127,9 @@ test_that("Core keeps technical controls advanced and metadata visible", {
 
   expect_match(html, "Dataset name", fixed = TRUE)
   expect_match(html, "Organism", fixed = TRUE)
-  expect_match(html, "Default group", fixed = TRUE)
-  expect_match(html, "Default projection", fixed = TRUE)
+  expect_match(html, "Groups", fixed = TRUE)
+  expect_match(html, "Projections", fixed = TRUE)
+  expect_match(html, 'id="core-projection_gallery"', fixed = TRUE)
   expect_match(html, model$metadata_attention, fixed = TRUE)
   expect_match(html, 'class="builder-form-grid"', fixed = TRUE)
   expect_equal(
@@ -135,21 +137,377 @@ test_that("Core keeps technical controls advanced and metadata visible", {
       html,
       gregexpr('class="builder-field[^\"]*"', html, perl = TRUE)
     )),
-    4L
+    2L
   )
-  expect_match(html, 'class="builder-group-colors-slot"', fixed = TRUE)
+  expect_match(html, 'id="core-group_detail"', fixed = TRUE)
+  expect_match(html, 'class="visually-hidden"', fixed = TRUE)
+  expect_false(grepl('class="sr-only', html, fixed = TRUE))
   expect_match(html, 'class="builder-disclosure"', fixed = TRUE)
   expect_match(html, "Advanced settings", fixed = TRUE)
   expect_false(grepl("Advanced technical settings", html, fixed = TRUE))
   expect_match(html, "Assay", fixed = TRUE)
   expect_match(html, "Expression backend", fixed = TRUE)
   expect_match(html, 'id="core-rendered_for"', fixed = TRUE)
+  expect_match(
+    html,
+    '<input id="core-rendered_for" type="text"[^>]*hidden="hidden"',
+    perl = TRUE
+  )
   expect_match(html, 'value="dataset-a"', fixed = TRUE)
   expect_match(html, 'id="core-organism"', fixed = TRUE)
   expect_match(html, '"create":true', fixed = TRUE)
+  expect_false(grepl('open="open"', html, fixed = TRUE))
 })
 
-test_that("Core restores accessible group colors after Default group", {
+test_that("Core exposes a bounded metadata catalog for Viewer Groups", {
+  metadata_catalog <- list(
+    cluster = list(
+      name = "cluster",
+      classification = "categorical",
+      group_eligible = TRUE,
+      group_reason = NULL,
+      count = 80L,
+      distinct_count = 3L,
+      missing_count = 1L,
+      missing_percentage = 1.25,
+      sample_values = c("A", "A", "B", "C", "N/A"),
+      level_counts = list(
+        items = list(
+          list(value = "A", count = 40L),
+          list(value = "B", count = 25L),
+          list(value = "C", count = 14L),
+          list(value = "N/A", count = 1L)
+        ),
+        total = 4L,
+        truncated = FALSE,
+        remaining_count = 0L
+      )
+    ),
+    score = list(
+      name = "score",
+      classification = "continuous",
+      group_eligible = FALSE,
+      group_reason = "Continuous numeric values remain available as metadata.",
+      count = 80L,
+      distinct_count = 80L,
+      missing_count = 0L,
+      missing_percentage = 0,
+      sample_values = as.character(seq_len(5L)),
+      level_counts = list(
+        items = list(),
+        total = 80L,
+        truncated = TRUE,
+        remaining_count = 75L
+      )
+    )
+  )
+  model <- list(
+    id = "dataset-a",
+    name = "PBMC",
+    organism = "hg",
+    organism_choices = c("hg", "mm"),
+    included_groups = "cluster",
+    default_group = "cluster",
+    suggested_groups = "cluster",
+    metadata_catalog = metadata_catalog,
+    default_projection = "umap",
+    projection_choices = c("umap", "pca"),
+    assay = "RNA",
+    assay_choices = "RNA",
+    layer = "data",
+    layer_choices = "data",
+    nUMI = "nCount_RNA",
+    nUMI_choices = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    nGene_choices = "nFeature_RNA",
+    backend = "embedded",
+    backend_choices = "embedded"
+  )
+
+  html <- builder_stage_html(builder_core_stage_ui("core", model))
+  catalog <- builder_group_catalog_model(model)
+  detail <- builder_stage_html(builder_group_detail_ui(
+    "core",
+    builder_group_detail_model(catalog, "cluster")
+  ))
+
+  expect_match(html, "Viewer content", fixed = TRUE)
+  expect_match(
+    html,
+    "Choose what the generated app includes and how it opens.",
+    fixed = TRUE
+  )
+  expect_match(html, "Groups", fixed = TRUE)
+  expect_match(html, "Find metadata", fixed = TRUE)
+  expect_match(html, "Select suggested", fixed = TRUE)
+  expect_match(html, "Select all eligible", fixed = TRUE)
+  expect_match(html, 'class="viewer-group-include"', fixed = TRUE)
+  expect_match(html, 'type="radio"', fixed = TRUE)
+  expect_match(html, "Default", fixed = TRUE)
+  expect_false(grepl("Opens first", html, fixed = TRUE))
+  expect_false(grepl("Include score", html, fixed = TRUE))
+  expect_match(html, "Not a Group", fixed = TRUE)
+  expect_match(
+    html,
+    'data-disclosure-key="viewer-groups"',
+    fixed = TRUE
+  )
+  expect_match(html, "score", fixed = TRUE)
+  expect_match(
+    html,
+    "Continuous numeric values remain available as metadata.",
+    fixed = TRUE
+  )
+  expect_false(grepl('id="core-default_group"', html, fixed = TRUE))
+
+  expect_match(detail, "4 categories", fixed = TRUE)
+  expect_match(detail, "1.25% missing", fixed = TRUE)
+  expect_match(detail, "Categorical", fixed = TRUE)
+  expect_match(detail, "79 non-missing", fixed = TRUE)
+  expect_match(detail, "Preview metadata", fixed = TRUE)
+  expect_match(
+    detail,
+    'class="viewer-metadata-preview-disclosure"',
+    fixed = TRUE
+  )
+  expect_match(detail, '<th scope="col">cluster</th>', fixed = TRUE)
+  expect_match(detail, '<th scope="col">score</th>', fixed = TRUE)
+  expect_match(detail, 'class="viewer-metadata-preview-table"', fixed = TRUE)
+  expect_lte(
+    lengths(regmatches(
+      detail,
+      gregexpr('class="viewer-metadata-preview-row"', detail, fixed = TRUE)
+    )),
+    5L
+  )
+  expect_match(detail, "A", fixed = TRUE)
+  expect_match(detail, "Distribution", fixed = TRUE)
+  expect_lte(length(catalog$items[[1L]]$sample_values), 5L)
+})
+
+test_that("Core offers cell-cycle annotations only for credible metadata", {
+  metadata_catalog <- list(
+    Phase = list(
+      name = "Phase",
+      classification = "categorical",
+      group_eligible = TRUE,
+      count = 80L,
+      distinct_count = 3L,
+      missing_count = 0L,
+      missing_percentage = 0,
+      sample_values = c("G1", "S", "G2M"),
+      level_counts = list(
+        items = list(
+          list(value = "G1", count = 30L),
+          list(value = "S", count = 25L),
+          list(value = "G2M", count = 25L)
+        ),
+        total = 3L,
+        truncated = FALSE,
+        remaining_count = 0L
+      )
+    ),
+    sample = list(
+      name = "sample",
+      classification = "categorical",
+      group_eligible = TRUE,
+      distinct_count = 2L
+    ),
+    S.Score = list(
+      name = "S.Score",
+      classification = "continuous",
+      group_eligible = FALSE,
+      distinct_count = 80L
+    )
+  )
+  model <- list(
+    id = "dataset-a",
+    name = "PBMC",
+    organism = "hg",
+    organism_choices = c("hg", "mm"),
+    included_groups = "sample",
+    default_group = "sample",
+    metadata_catalog = metadata_catalog,
+    metadata_policy = list(included = c("Phase", "sample")),
+    cell_cycle_columns = "Phase",
+    default_projection = "umap",
+    projection_choices = "umap",
+    assay = "RNA",
+    assay_choices = "RNA",
+    layer = "data",
+    layer_choices = "data",
+    nUMI = "nCount_RNA",
+    nUMI_choices = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    nGene_choices = "nFeature_RNA",
+    backend = "embedded",
+    backend_choices = "embedded"
+  )
+
+  catalog <- builder_cell_cycle_catalog_model(model)
+  cell_cycle_html <- builder_stage_html(
+    builder_cell_cycle_catalog_ui("core", catalog)
+  )
+  html <- builder_stage_html(builder_core_stage_ui("core", model))
+
+  expect_identical(
+    vapply(catalog$items, `[[`, character(1), "id"),
+    "Phase"
+  )
+  expect_identical(catalog$included, "Phase")
+  expect_match(html, "Cell cycle", fixed = TRUE)
+  expect_match(html, "1 included", fixed = TRUE)
+  expect_match(html, 'id="core-cell_cycle"', fixed = TRUE)
+  expect_match(html, "Phase · 3 phases", fixed = TRUE)
+  expect_false(grepl("S.Score", cell_cycle_html, fixed = TRUE))
+
+  model$metadata_catalog$Phase <- NULL
+  html_without_candidate <- builder_stage_html(
+    builder_core_stage_ui("core", model)
+  )
+  expect_false(grepl("Cell cycle", html_without_candidate, fixed = TRUE))
+})
+
+test_that("Group details describe the effective metadata policy truthfully", {
+  metadata_catalog <- list(
+    score = list(
+      name = "score",
+      classification = "continuous",
+      group_eligible = FALSE,
+      group_reason = "Continuous values are not suitable Viewer Groups.",
+      count = 80L,
+      distinct_count = 80L,
+      missing_count = 0L,
+      missing_percentage = 0,
+      sample_values = as.character(seq_len(5L)),
+      level_counts = list(
+        items = list(),
+        total = 80L,
+        truncated = TRUE,
+        remaining_count = 75L
+      )
+    )
+  )
+  cases <- list(
+    included = list(
+      retained = TRUE,
+      expected = "Kept as ordinary metadata."
+    ),
+    excluded = list(
+      retained = FALSE,
+      expected = "Not included in the generated app."
+    ),
+    attention = list(
+      retained = FALSE,
+      expected = "Not included in the generated app."
+    )
+  )
+
+  for (disposition in names(cases)) {
+    case <- cases[[disposition]]
+    policy <- list(
+      columns = list(
+        score = list(
+          name = "score",
+          value = disposition,
+          disposition = disposition,
+          effective_included = case$retained,
+          requires_confirmation = disposition %in% c("attention", "blocking")
+        )
+      )
+    )
+    catalog <- builder_group_catalog_model(list(
+      metadata_catalog = metadata_catalog,
+      metadata_policy = policy
+    ))
+    detail <- builder_stage_html(builder_group_detail_ui(
+      "core",
+      builder_group_detail_model(catalog, "score")
+    ))
+
+    expect_identical(
+      catalog$items[[1L]]$metadata_retained,
+      case$retained,
+      info = disposition
+    )
+    expect_identical(
+      catalog$items[[1L]]$metadata_disposition,
+      disposition,
+      info = disposition
+    )
+    expect_match(detail, "Not a Group", fixed = TRUE, info = disposition)
+    expect_match(detail, case$expected, fixed = TRUE, info = disposition)
+    expect_false(
+      grepl("Needs attention before build.", detail, fixed = TRUE),
+      info = disposition
+    )
+  }
+
+  legacy <- builder_group_catalog_model(list(
+    metadata_catalog = metadata_catalog,
+    metadata_policy = list()
+  ))
+  legacy_detail <- builder_stage_html(builder_group_detail_ui(
+    "core",
+    builder_group_detail_model(legacy, "score")
+  ))
+
+  expect_true(is.na(legacy$items[[1L]]$metadata_retained))
+  expect_false(grepl("Kept as ordinary metadata.", legacy_detail, fixed = TRUE))
+  expect_false(grepl(
+    "Not included in the generated app.",
+    legacy_detail,
+    fixed = TRUE
+  ))
+})
+
+test_that("Group colors stay behind a secondary closed Edit colors entry", {
+  model <- list(
+    metadata_catalog = list(
+      cluster = list(
+        name = "cluster",
+        classification = "categorical",
+        group_eligible = TRUE,
+        count = 4L,
+        distinct_count = 2L,
+        missing_count = 0L,
+        missing_percentage = 0,
+        sample_values = c("A", "B", "A", "B"),
+        level_counts = list(
+          items = list(
+            list(value = "A", count = 2L),
+            list(value = "B", count = 2L)
+          ),
+          total = 2L,
+          truncated = FALSE,
+          remaining_count = 0L
+        )
+      )
+    ),
+    included_groups = "cluster",
+    default_group = "cluster"
+  )
+  catalog <- builder_group_catalog_model(model)
+  html <- builder_stage_html(builder_group_detail_ui(
+    "core",
+    builder_group_detail_model(catalog, "cluster")
+  ))
+
+  expect_match(html, "Edit colors", fixed = TRUE)
+  expect_match(
+    html,
+    'class="viewer-group-colors-disclosure"',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'data-disclosure-key="group-colors:cluster"',
+    fixed = TRUE
+  )
+  expect_false(grepl('open="open"', html, fixed = TRUE))
+})
+
+test_that("Core keeps accessible group colors inside the Groups workspace", {
   model <- list(
     id = "dataset-a",
     name = "PBMC",
@@ -181,12 +539,8 @@ test_that("Core restores accessible group colors after Default group", {
   html <- builder_stage_html(builder_group_colors_ui("core", colors))
 
   expect_lt(
-    regexpr("core-default_group", core, fixed = TRUE)[[1L]],
-    regexpr("core-group_colors", core, fixed = TRUE)[[1L]]
-  )
-  expect_lt(
-    regexpr("core-group_colors", core, fixed = TRUE)[[1L]],
-    regexpr("core-default_projection", core, fixed = TRUE)[[1L]]
+    regexpr("core-group_detail", core, fixed = TRUE)[[1L]],
+    regexpr("core-projection_gallery", core, fixed = TRUE)[[1L]]
   )
   expect_match(html, "Group colors", fixed = TRUE)
   expect_match(html, "Coloring by:", fixed = TRUE)
@@ -230,7 +584,7 @@ test_that("Group colors has a short empty state for invalid groups", {
 
   expect_match(
     html,
-    "Choose a categorical default group to set initial colors.",
+    "Select a Viewer Group to set its initial colors.",
     fixed = TRUE
   )
   expect_false(grepl('type="color"', html, fixed = TRUE))
@@ -435,6 +789,11 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
     fixed = TRUE
   ))
   expect_false(grepl("BuildPlan decision for", html, fixed = TRUE))
+  expect_match(
+    html,
+    '<input id="enhance-rendered_for" type="text"[^>]*hidden="hidden"',
+    perl = TRUE
+  )
   expect_match(html, 'id="enhance-table_files"', fixed = TRUE)
   expect_match(html, 'type="file"', fixed = TRUE)
   expect_match(html, 'multiple="multiple"', fixed = TRUE)
@@ -895,11 +1254,10 @@ test_that("Review presents datasets, App experience, pages, and output", {
   expect_match(html, "Datasets", fixed = TRUE)
   expect_match(html, "Dataset B", fixed = TRUE)
   expect_match(html, "2 cells · 3 genes", fixed = TRUE)
-  expect_match(html, "2 groups · 1 projection", fixed = TRUE)
-  expect_match(html, "Opens with", fixed = TRUE)
+  expect_match(html, "Groups", fixed = TRUE)
+  expect_match(html, "2 included · Default: Cluster", fixed = TRUE)
+  expect_match(html, "Projections", fixed = TRUE)
   expect_match(html, "UMAP", fixed = TRUE)
-  expect_match(html, "Grouped by", fixed = TRUE)
-  expect_match(html, "cluster", fixed = TRUE)
   expect_match(html, "Output file:", fixed = TRUE)
   expect_match(html, "01-dataset-b.crb", fixed = TRUE)
   expect_match(html, "App experience", fixed = TRUE)
@@ -995,10 +1353,9 @@ test_that("Review keeps group colors compact and distinguishes custom colors", {
   expect_identical(model$datasets[[1L]]$group_colors$group, "cluster")
   expect_identical(model$datasets[[1L]]$group_colors$custom_count, 3L)
   expect_lte(length(model$datasets[[1L]]$group_colors$preview), 5L)
-  expect_match(html, "Group colors", fixed = TRUE)
-  expect_match(html, "cluster · 3 custom colors", fixed = TRUE)
-  expect_match(html, "cell_type · Using default colors", fixed = TRUE)
-  expect_match(html, "+3", fixed = TRUE)
+  expect_match(html, "3 colors customized", fixed = TRUE)
+  expect_match(html, "0 colors customized", fixed = TRUE)
+  expect_false(grepl("review-group-color-dot", html, fixed = TRUE))
   expect_false(grepl(">#111111<", html, fixed = TRUE))
   expect_false(grepl("palettes are frozen", html, ignore.case = TRUE))
 })
@@ -1292,7 +1649,6 @@ test_that("typed Review controls expose only accepted App options", {
       "show_upload_ui",
       "initial_dataset",
       "welcome_message",
-      "point_size",
       "variable_to_compare",
       "host",
       "port",
@@ -1301,22 +1657,19 @@ test_that("typed Review controls expose only accepted App options", {
       "launch_browser"
     )
   )
-  expect_identical(
-    frozen$point_size,
-    list(overview_projection_point_size = 5)
-  )
+  expect_null(frozen$point_size)
   expect_error(builder_review_options(port = 0), "Review options")
 
   html <- builder_stage_html(builder_review_controls_ui("review", options))
   for (label in c(
     "Welcome message",
-    "Point size",
     "Variable to compare",
     "Allow uploads"
   )) {
     expect_match(html, label, fixed = TRUE)
   }
   for (label in c(
+    "Point size",
     "Host",
     "Port",
     "Request size",
@@ -1520,6 +1873,147 @@ test_that("workbench identity ignores settings writes but tracks selection", {
   })
 })
 
+test_that("Viewer preview contracts ignore settings-only revisions", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+
+  expect_true(exists(
+    "builder_projection_preview_contract",
+    envir = app_env,
+    inherits = FALSE
+  ))
+  expect_true(exists(
+    "builder_trajectory_preview_contract",
+    envir = app_env,
+    inherits = FALSE
+  ))
+  expect_true(exists(
+    "builder_preview_revision_independent",
+    envir = app_env,
+    inherits = FALSE
+  ))
+  if (
+    !exists(
+      "builder_projection_preview_contract",
+      envir = app_env,
+      inherits = FALSE
+    ) ||
+      !exists(
+        "builder_trajectory_preview_contract",
+        envir = app_env,
+        inherits = FALSE
+      ) ||
+      !exists(
+        "builder_preview_revision_independent",
+        envir = app_env,
+        inherits = FALSE
+      )
+  ) {
+    return(invisible(NULL))
+  }
+
+  expect_true(app_env$builder_preview_revision_independent(
+    "projection_previews"
+  ))
+  expect_true(app_env$builder_preview_revision_independent(
+    "trajectory_previews"
+  ))
+  expect_false(app_env$builder_preview_revision_independent("preview"))
+
+  entry <- list(
+    id = "dataset-a",
+    revision = 1L,
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    settings = list(
+      default_group = "cluster",
+      overview_point_size = 5,
+      included_projections = "umap",
+      default_projection = "umap",
+      included_trajectories = list(monocle2 = "lineage_a"),
+      default_trajectory = list(method = "monocle2", name = "lineage_a"),
+      group_color_overrides = list()
+    )
+  )
+  projections <- c("umap", "pca")
+  trajectories <- list(monocle2 = c("lineage_a", "lineage_b"))
+  projection_contract <- app_env$builder_projection_preview_contract(
+    entry,
+    projections
+  )
+  trajectory_contract <- app_env$builder_trajectory_preview_contract(
+    entry,
+    trajectories
+  )
+
+  settings_only <- entry
+  settings_only$revision <- 9L
+  settings_only$settings$overview_point_size <- 12
+  settings_only$settings$included_projections <- c("umap", "pca")
+  settings_only$settings$default_projection <- "pca"
+  settings_only$settings$included_trajectories <- list(
+    monocle2 = "lineage_b"
+  )
+  settings_only$settings$default_trajectory <- list(
+    method = "monocle2",
+    name = "lineage_b"
+  )
+  settings_only$settings$group_color_overrides <- list(
+    cluster = c(A = "#123456")
+  )
+
+  expect_identical(
+    app_env$builder_projection_preview_contract(settings_only, projections),
+    projection_contract
+  )
+  expect_identical(
+    app_env$builder_trajectory_preview_contract(settings_only, trajectories),
+    trajectory_contract
+  )
+
+  regrouped <- settings_only
+  regrouped$settings$default_group <- "sample"
+  expect_false(identical(
+    app_env$builder_projection_preview_contract(regrouped, projections),
+    projection_contract
+  ))
+  expect_identical(
+    app_env$builder_trajectory_preview_contract(regrouped, trajectories),
+    trajectory_contract
+  )
+
+  resnapshotted <- settings_only
+  resnapshotted$snapshot$object_md5 <- strrep("b", 32L)
+  expect_false(identical(
+    app_env$builder_projection_preview_contract(resnapshotted, projections),
+    projection_contract
+  ))
+  expect_false(identical(
+    app_env$builder_trajectory_preview_contract(resnapshotted, trajectories),
+    trajectory_contract
+  ))
+  expect_false(identical(
+    app_env$builder_projection_preview_contract(
+      settings_only,
+      c(projections, "tsne")
+    ),
+    projection_contract
+  ))
+  expect_false(identical(
+    app_env$builder_trajectory_preview_contract(
+      settings_only,
+      list(monocle2 = c("lineage_a", "lineage_b", "lineage_c"))
+    ),
+    trajectory_contract
+  ))
+})
+
 test_that("dynamic Core and Enhance contracts update only their owned controls", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
@@ -1594,14 +2088,70 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
           )
         ),
         extras = list(),
-        images = character()
+        images = character(),
+        group_candidates = c(cluster = "cluster", sample = "sample"),
+        group_preselect = "cluster",
+        reductions = c("umap", "pca"),
+        viewer_content = list(
+          projections = list(
+            umap = list(
+              id = "umap",
+              name = "umap",
+              kind = "umap",
+              dimensions = 2L,
+              cell_count = 80L,
+              available = TRUE
+            ),
+            pca = list(
+              id = "pca",
+              name = "pca",
+              kind = "pca",
+              dimensions = 20L,
+              cell_count = 80L,
+              available = TRUE
+            )
+          ),
+          trajectories = list(
+            list(
+              method = "monocle2",
+              name = "lineage_a",
+              selectable = TRUE,
+              cell_count = 60L,
+              coverage = .75,
+              state_count = 3L,
+              edge_count = 2L
+            ),
+            list(
+              method = "monocle2",
+              name = "lineage_b",
+              selectable = TRUE,
+              cell_count = 50L,
+              coverage = .625,
+              state_count = 2L,
+              edge_count = 1L
+            )
+          )
+        )
       ),
       levels = list(cluster = c("A", "B"), sample = c("one", "two")),
       settings = list(
         name = "Dataset A",
         organism = "hg",
+        viewer_content_schema_version = 1L,
+        groups = c("cluster", "sample"),
+        included_groups = c("cluster", "sample"),
         default_group = "cluster",
+        reductions = "umap",
+        included_projections = "umap",
         default_projection = "umap",
+        overview_point_size = 5,
+        included_trajectories = list(
+          monocle2 = c("lineage_a", "lineage_b")
+        ),
+        default_trajectory = list(
+          method = "monocle2",
+          name = "lineage_a"
+        ),
         assay = "RNA",
         layer = "data",
         nUMI = "nCount_RNA",
@@ -1611,7 +2161,7 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
         tables = list(),
         images = list(),
         palette = "cerebro",
-        color_overrides = list(sample = c(one = "#123456"))
+        group_color_overrides = list(sample = c(one = "#123456"))
       )
     )
     use_state_only_fixture(list(entry))
@@ -1665,6 +2215,122 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(sets()[[1L]]$settings$nUMI, "nCount_SCT")
     expect_identical(sets()[[1L]]$settings$nGene, "nFeature_SCT")
 
+    before_groups <- sets()[[1L]]$revision
+    reviewed <- isolate(store())
+    reviewed$datasets[[1L]]$reviewed_revision <- before_groups
+    store(reviewed)
+    session$setInputs(
+      `core-group_action` = list(
+        action = "set",
+        included = c("cluster", "sample"),
+        default = "sample",
+        nonce = 1
+      )
+    )
+    session$flushReact()
+    grouped <- sets()[[1L]]
+    expect_identical(grouped$settings$included_groups, c("cluster", "sample"))
+    expect_identical(grouped$settings$default_group, "sample")
+    expect_gt(grouped$revision, before_groups)
+    expect_false(identical(grouped$reviewed_revision, grouped$revision))
+
+    session$setInputs(
+      `core-group_action` = list(
+        action = "set",
+        included = c("cluster", "sample"),
+        default = "cluster",
+        nonce = 2
+      )
+    )
+    session$flushReact()
+    restored_group <- sets()[[1L]]
+    expect_identical(restored_group$settings$default_group, "cluster")
+    before_focus <- restored_group$revision
+    session$setInputs(
+      `core-group_focus` = list(group = "sample", nonce = 1)
+    )
+    session$flushReact()
+    expect_identical(sets()[[1L]]$revision, before_focus)
+    session$setInputs(
+      `core-group_focus` = list(group = "cluster", nonce = 2)
+    )
+    session$flushReact()
+    expect_identical(sets()[[1L]]$revision, before_focus)
+
+    before_projection <- sets()[[1L]]$revision
+    reviewed <- isolate(store())
+    reviewed$datasets[[1L]]$reviewed_revision <- before_projection
+    store(reviewed)
+    session$setInputs(
+      `core-projection_action` = list(
+        action = "set",
+        included = c("umap", "pca"),
+        default = "pca",
+        nonce = 1
+      )
+    )
+    session$flushReact()
+    projected <- sets()[[1L]]
+    expect_identical(projected$settings$included_projections, c("umap", "pca"))
+    expect_identical(projected$settings$default_projection, "pca")
+    expect_gt(projected$revision, before_projection)
+    expect_false(identical(projected$reviewed_revision, projected$revision))
+
+    before_point_size <- projected$revision
+    reviewed <- isolate(store())
+    reviewed$datasets[[1L]]$reviewed_revision <- before_point_size
+    store(reviewed)
+    session$setInputs(`core-point_size` = 8)
+    session$flushReact()
+    resized <- sets()[[1L]]
+    expect_identical(resized$settings$overview_point_size, 8)
+    expect_gt(resized$revision, before_point_size)
+    expect_false(identical(resized$reviewed_revision, resized$revision))
+
+    before_trajectory <- resized$revision
+    reviewed <- isolate(store())
+    reviewed$datasets[[1L]]$reviewed_revision <- before_trajectory
+    store(reviewed)
+    session$setInputs(
+      `core-trajectory_action` = list(
+        action = "set",
+        included = list(
+          list(method = "monocle2", name = "lineage_a"),
+          list(method = "monocle2", name = "lineage_b")
+        ),
+        default = list(method = "monocle2", name = "lineage_b"),
+        nonce = 1
+      )
+    )
+    session$flushReact()
+    trajectory <- sets()[[1L]]
+    expect_identical(
+      trajectory$settings$included_trajectories,
+      list(monocle2 = c("lineage_a", "lineage_b"))
+    )
+    expect_identical(
+      trajectory$settings$default_trajectory,
+      list(method = "monocle2", name = "lineage_b")
+    )
+    expect_gt(trajectory$revision, before_trajectory)
+    expect_false(identical(trajectory$reviewed_revision, trajectory$revision))
+
+    before_gallery_view <- trajectory$revision
+    invisible(output[["core-projection_gallery"]])
+    invisible(output[["core-trajectory_gallery"]])
+    session$flushReact()
+    expect_identical(sets()[[1L]]$revision, before_gallery_view)
+
+    session$setInputs(
+      `core-projection_action` = list(
+        action = "set",
+        included = c("umap", "pca"),
+        default = "umap",
+        nonce = 2
+      )
+    )
+    session$flushReact()
+
     before_color <- sets()[[1L]]$revision
     marked <- isolate(store())
     marked$datasets[[1L]]$reviewed_revision <- before_color
@@ -1680,11 +2346,11 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     session$flushReact()
     colored <- sets()[[1L]]
     expect_identical(
-      colored$settings$color_overrides$cluster[["B"]],
+      colored$settings$group_color_overrides$cluster[["B"]],
       "#E76F51"
     )
     expect_identical(
-      colored$settings$color_overrides$sample[["one"]],
+      colored$settings$group_color_overrides$sample[["one"]],
       "#123456"
     )
     expect_identical(colored$settings$default_projection, "umap")
@@ -1695,8 +2361,11 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     session$setInputs(`core-reset_colors` = 1L)
     session$flushReact()
     reset <- sets()[[1L]]
-    expect_null(reset$settings$color_overrides$cluster)
-    expect_identical(reset$settings$color_overrides$sample[["one"]], "#123456")
+    expect_null(reset$settings$group_color_overrides$cluster)
+    expect_identical(
+      reset$settings$group_color_overrides$sample[["one"]],
+      "#123456"
+    )
     expect_gt(reset$revision, before_reset)
     expect_identical(top_level_runs, baseline)
 

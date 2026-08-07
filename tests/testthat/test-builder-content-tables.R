@@ -233,6 +233,19 @@ test_that("trajectory facts validate supported monocle2 identity and shape", {
   expect_false(trajectory$normalized$slingshot$lineage$supported)
   expect_contains(trajectory$diagnostics, "unsupported_method")
 
+  catalog <- builder_trajectory_catalog(trajectory)
+  expect_length(catalog, 2L)
+  expect_true(catalog[[1L]]$selectable)
+  expect_identical(catalog[[1L]]$method, "monocle2")
+  expect_identical(catalog[[1L]]$name, "lineage")
+  expect_equal(catalog[[1L]]$coverage, 0.5)
+  expect_identical(catalog[[1L]]$state_count, 2L)
+  expect_false(catalog[[2L]]$selectable)
+  expect_identical(
+    catalog[[2L]]$reason,
+    "Not supported by this Viewer version."
+  )
+
   bad <- builder_table_trajectory(c("cell1", "ghost"))
   bad$meta$DR_1[[1L]] <- NaN
   bad$edges$weight[[1L]] <- Inf

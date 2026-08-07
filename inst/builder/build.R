@@ -252,6 +252,16 @@ builder_verify_crb <- function(path, item) {
   if (!identical(projections, expectation$projections)) {
     stop("The staged CRB projections differ from BuildPlan.", call. = FALSE)
   }
+  if (!is.null(expectation$trajectories)) {
+    trajectories <- .builder_build_field(object, "trajectories")
+    trajectory_identity <- lapply(trajectories %||% list(), names)
+    if (!identical(trajectory_identity, expectation$trajectories)) {
+      stop(
+        "The staged CRB trajectories differ from BuildPlan.",
+        call. = FALSE
+      )
+    }
+  }
   metadata <- colnames(.builder_build_field(object, "meta_data"))
   if (!identical(metadata, expectation$metadata)) {
     stop("The staged CRB metadata differs from BuildPlan.", call. = FALSE)
@@ -429,9 +439,61 @@ builder_verify_crb <- function(path, item) {
   )
 }
 
+.builder_build_select_trajectories <- function(
+  trajectories,
+  included,
+  default = NULL
+) {
+  # A missing field identifies a legacy BuildPlan. Preserve its historical
+  # payload; an explicit empty list means the user chose no trajectories.
+  if (is.null(included)) {
+    return(trajectories)
+  }
+  if (!is.list(trajectories) || !is.list(included)) {
+    stop("The frozen trajectory selection is invalid.", call. = FALSE)
+  }
+  missing_methods <- setdiff(names(included), names(trajectories))
+  missing_names <- unlist(
+    lapply(names(included), function(method) {
+      setdiff(included[[method]], names(trajectories[[method]]))
+    }),
+    use.names = FALSE
+  )
+  if (length(missing_methods) || length(missing_names)) {
+    stop(
+      "A frozen included trajectory is missing from the built object.",
+      call. = FALSE
+    )
+  }
+  if (
+    is.list(default) &&
+      .builder_build_text(default$method) &&
+      .builder_build_text(default$name) &&
+      default$method %in% names(included) &&
+      default$name %in% included[[default$method]]
+  ) {
+    method <- default$method
+    included[[method]] <- c(
+      default$name,
+      included[[method]][included[[method]] != default$name]
+    )
+    included <- c(included[method], included[names(included) != method])
+  }
+  selected <- lapply(names(included), function(method) {
+    trajectories[[method]][included[[method]]]
+  })
+  names(selected) <- names(included)
+  selected
+}
+
 .builder_build_prepare <- function(object, item) {
   if (methods::is(object, "Seurat")) {
     object@reductions <- object@reductions[item$included_projections]
+    object@misc$trajectories <- .builder_build_select_trajectories(
+      object@misc$trajectories %||% list(),
+      item$included_trajectories,
+      item$default_trajectory
+    )
     object <- builder_prepare_export_layer(object, item$assay, item$layer)
     object <- .builder_build_prepare_immune(object, item)
     for (group in names(item$artifact_identity$group_levels)) {
@@ -480,9 +542,11 @@ builder_verify_crb <- function(path, item) {
     organism = item$organism,
     groups = item$included_groups,
     main_group = item$default_group,
+    cell_cycle = item$cell_cycle %||% NULL,
     nUMI = item$nUMI,
     nGene = item$nGene,
     add_all_meta_data = TRUE,
+    projections = item$included_projections,
     expression_matrix_mode = item$expression_backend,
     verbose = FALSE
   )

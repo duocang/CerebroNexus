@@ -376,9 +376,11 @@ builder_protocol_complete <- function(protocol, response) {
     request$request_id
   )
   current <- protocol$datasets[[request$dataset]]
+  revision_independent <- isTRUE(request$payload$revision_independent)
   current_matches <- is.null(current) ||
-    (identical(current$revision, request$dataset_revision) &&
-      identical(current$snapshot_identity, request$snapshot_identity))
+    (identical(current$snapshot_identity, request$snapshot_identity) &&
+      (revision_independent ||
+        identical(current$revision, request$dataset_revision)))
   latest_matches <- isTRUE(request$persistent) ||
     identical(
       protocol$latest_generation[[request$replace_key]],

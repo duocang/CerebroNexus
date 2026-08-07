@@ -341,6 +341,42 @@ if (builder_protocol_api_available) {
     )
   })
 
+  test_that("snapshot-bound previews survive settings-only revision changes", {
+    protocol <- builder_protocol_dataset(
+      builder_request_protocol(epoch = "worker-1"),
+      "a",
+      revision = 1L,
+      snapshot_identity = "snapshot-a"
+    )
+    protocol <- builder_enqueue(
+      protocol,
+      builder_query(
+        "projection_previews",
+        "a",
+        1L,
+        slot = "viewer-projection-gallery",
+        payload = list(revision_independent = TRUE),
+        revision = 1L,
+        snapshot_identity = "snapshot-a"
+      )
+    )
+    dispatched <- builder_protocol_dispatch(protocol)
+    revised <- builder_protocol_dataset(
+      dispatched$protocol,
+      "a",
+      revision = 2L,
+      snapshot_identity = "snapshot-a"
+    )
+
+    completed <- builder_protocol_complete(
+      revised,
+      builder_worker_response(dispatched$request, list(umap = "preview"))
+    )
+
+    expect_true(completed$accepted)
+    expect_identical(completed$value, list(umap = "preview"))
+  })
+
   test_that("persistent dispatch rebinds the latest dataset identity in FIFO order", {
     protocol <- builder_protocol_dataset(
       builder_request_protocol(epoch = "worker-1"),
@@ -1463,7 +1499,12 @@ test_that("alignment is persistent and Build freezes only after its barrier", {
   freeze <- grep("plan <- builder_make_plan", app, fixed = TRUE)
   build_call <- grep("builder_session_build", app, fixed = TRUE)[1L]
 
-  expect_match(app[replaceable], 'c("preview", "coords")', fixed = TRUE)
+  replaceable_block <- paste(
+    app[replaceable:(replaceable + 8L)],
+    collapse = "\n"
+  )
+  expect_match(replaceable_block, '"preview"', fixed = TRUE)
+  expect_match(replaceable_block, '"coords"', fixed = TRUE)
   expect_length(freeze, 1L)
   expect_true(dispatch < freeze)
   expect_true(freeze < build_call)
