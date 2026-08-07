@@ -43,6 +43,12 @@ createShinyApp(
 )
 ```
 
+## 3. Optional Viewer Login
+
+`launchCerebro()` and `createShinyApp()` support optional login through the
+`auth` argument. Leaving `auth` unset keeps the existing unauthenticated
+behavior. See the [Viewer access-control guide](https://mihem.github.io/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html).
+
 ## License
 
 MIT, see [LICENSE.md](LICENSE.md). 

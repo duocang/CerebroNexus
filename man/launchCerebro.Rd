@@ -19,6 +19,7 @@ launchCerebro(
   overview_default_percentage_cells_to_show = 100,
   gene_expression_default_percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
+  auth = NULL,
   ...
 )
 }
@@ -85,11 +86,32 @@ to 100.}
 \item{projections_show_hover_info}{Show hover infos in projections. This
 setting can be changed in the UI; defaults to TRUE.}
 
-\item{...}{Further parameters that are used by \code{shiny::runApp}, e.g.
-\code{host} or \code{port}.}
+\item{auth}{Optional strict authentication descriptor. \code{NULL}, the
+default, leaves the Viewer unauthenticated. The only supported named-list
+shape has \code{provider = "shinymanager"}; \code{credentials} must be an
+absolute path to a readable encrypted shinymanager SQLite database; and
+\code{passphrase_env} must name an environment variable containing at least
+32 bytes of high-entropy secret material. The optional whole-number
+\code{timeout_minutes} is from 1 through 1440; \code{timeout_minutes} defaults
+to 15.
+The environment-held passphrase is read only for validation and provider
+setup; it is never stored in \code{Cerebro.options} or returned artifacts.
+Authentication gates access to the Viewer but does not provide transport
+security, rate limiting, SSO, MFA, centralized identity-provider revocation,
+or network policy. For \code{launchCerebro()}, the host credentials database
+must be a regular readable/writable file outside every Shiny HTTP resource
+directory. Its containing directory must be writable and searchable for
+encrypted logs and SQLite journals, and all other parent directories must be
+searchable. The database, provider, and passphrase are validated before the
+app is returned.}
+
+\item{...}{Forwarded to the \code{shiny::shinyApp} constructor, for example
+\code{onStart}, \code{options}, or \code{uiPattern}; these are not
+\code{shiny::runApp} host or port arguments.}
 }
 \value{
-Shiny application.
+A Shiny application object. Authentication descriptor and database errors
+occur before the app is returned.
 }
 \description{
 Launch the CerebroNexus Shiny application.

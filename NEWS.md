@@ -1,3 +1,23 @@
+# CerebroNexus 4.1
+
+## Viewer
+
+- Viewer authentication is now an opt-in supported interface for both direct
+  `launchCerebro(..., auth = auth)` sessions and apps generated with
+  `createShinyApp(..., auth = auth)`. Authentication uses a strict
+  `shinymanager` descriptor and an encrypted credentials database whose
+  passphrase remains in a deployment-managed environment variable. Existing
+  launches that omit `auth`, or set it to `NULL`, remain unauthenticated and
+  otherwise unchanged.
+
+## Documentation
+
+- The access-control guide now documents the supported encrypted-database
+  workflow, secret and filesystem boundaries, direct and generated deployment,
+  session behavior, process topology, TLS, and the limits of the built-in login
+  provider. The former hand-edited login example and archived custom verifier
+  are explicitly unsupported.
+
 # CerebroNexus 4.0
 
 ## Breaking changes

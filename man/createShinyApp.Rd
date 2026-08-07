@@ -30,6 +30,7 @@ createShinyApp(
   spatial_images_offset_x = NULL,
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
+  auth = NULL,
   ...
 )
 }
@@ -118,11 +119,32 @@ units) applied to move the spatial background image. Names must match
 \item{spatial_plot_rotation}{Named list/vector; initial rotation (degrees)
 applied to spatial cell coordinates. Names must match \code{cerebro_data}.}
 
-\item{...}{Currently unused; reserved for future arguments.}
+\item{auth}{Optional strict authentication descriptor. \code{NULL}, the
+default, leaves the Viewer unauthenticated. The only supported named-list
+shape has \code{provider = "shinymanager"}; \code{credentials} must be an
+absolute path to a readable encrypted shinymanager SQLite database; and
+\code{passphrase_env} must name an environment variable containing at least
+32 bytes of high-entropy secret material. The optional whole-number
+\code{timeout_minutes} is from 1 through 1440; \code{timeout_minutes} defaults
+to 15.
+The environment-held passphrase is read only for validation and provider
+setup; it is never stored in \code{Cerebro.options} or returned artifacts.
+Authentication gates access to the Viewer but does not provide transport
+security, rate limiting, SSO, MFA, centralized identity-provider revocation,
+or network policy. For \code{createShinyApp()}, the source credentials
+database need only be a regular readable file. It is validated before target
+mutation, and only the encrypted database is copied into the generated app.
+At runtime, the deployed private copy must be readable/writable and its
+containing directory writable/searchable for encrypted logs and SQLite
+journals; all other parent directories must be searchable.}
+
+\item{...}{Accepted for compatibility but currently unused; named or unnamed
+values do not alter the generated app.}
 }
 \value{
 Invisibly returns \code{result_dir}. If that path changes resolution
   during the build, warns and returns the frozen absolute publication path.
+  Authentication descriptor and database errors occur before target mutation.
 }
 \description{
 Bundles a CerebroNexus Shiny app into \code{result_dir}, copying the
