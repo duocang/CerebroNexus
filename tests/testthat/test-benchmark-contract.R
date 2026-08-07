@@ -90,7 +90,7 @@ make_tiny_h5ad <- function(path) {
     path,
     "X/data",
     c(6),
-    maxdims = c(Inf),
+    maxdims = c(6),
     storage.mode = "double",
     chunk = 6
   )
@@ -98,7 +98,7 @@ make_tiny_h5ad <- function(path) {
     path,
     "X/indices",
     c(6),
-    maxdims = c(Inf),
+    maxdims = c(6),
     storage.mode = "integer",
     chunk = 6
   )
@@ -106,7 +106,7 @@ make_tiny_h5ad <- function(path) {
     path,
     "X/indptr",
     c(6),
-    maxdims = c(Inf),
+    maxdims = c(6),
     storage.mode = "double",
     chunk = 6
   )
