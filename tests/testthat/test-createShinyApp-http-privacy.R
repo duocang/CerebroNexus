@@ -35,11 +35,17 @@ privacy_test_sources <- function(root) {
   )
 }
 
-privacy_start_app <- function(app_dir, port, root) {
+privacy_start_app <- function(app_dir, port, root, env = character()) {
+  stopifnot(
+    is.character(env),
+    length(env) == 0L ||
+      (!is.null(names(env)) && all(nzchar(names(env))))
+  )
   stdout <- file.path(root, paste0("app-", port, ".stdout"))
   stderr <- file.path(root, paste0("app-", port, ".stderr"))
   process <- callr::r_bg(
     function(app_dir, port) {
+      message("viewer-auth-http-child-started")
       shiny::runApp(
         appDir = app_dir,
         port = port,
@@ -51,7 +57,8 @@ privacy_start_app <- function(app_dir, port, root) {
     args = list(app_dir = app_dir, port = port),
     stdout = stdout,
     stderr = stderr,
-    supervise = TRUE
+    supervise = TRUE,
+    env = env
   )
 
   list(
@@ -155,9 +162,11 @@ privacy_write_legacy_app <- function(app_dir) {
 test_that("generated apps expose no bundled artifacts over HTTP", {
   skip_if_not_installed("callr")
   skip_if_not_installed("httpuv")
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
 
   root <- withr::local_tempdir()
   sources <- privacy_test_sources(root)
+  auth <- viewer_auth_fixture(envir = environment())
   port <- httpuv::randomPort(host = "127.0.0.1")
   app_dir <- file.path(root, "app")
   createShinyApp(
@@ -168,6 +177,7 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
     launch_browser = FALSE,
     quiet = TRUE,
     spatial_images = list("H5" = sources$image),
+    auth = auth$descriptor,
     verbose = FALSE
   )
 
@@ -182,9 +192,17 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
   spatial_image <- file.path(app_dir, "spatial-assets", "histology.png")
   expect_true(file.exists(spatial_image))
 
-  app <- privacy_start_app(app_dir, port, root)
+  child_env <- stats::setNames(auth$passphrase, auth$env_name)
+  app <- privacy_start_app(app_dir, port, root, env = child_env)
   on.exit(privacy_stop_app(app), add = TRUE)
   privacy_wait_for_app(app)
+
+  home <- privacy_get_from_app(app, "/")
+  home_html <- httr::content(home, as = "text", encoding = "UTF-8")
+  expect_identical(httr::status_code(home), 200L)
+  expect_match(home_html, "Please authenticate", fixed = TRUE)
+  expect_false(grepl("main-sidebar", home_html, fixed = TRUE))
+  expect_false(grepl(auth$passphrase, home_html, fixed = TRUE))
 
   private_urls <- c(
     "/data/h5-data.crb",
@@ -195,6 +213,9 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
     "/private-data/bpcells-data.crb",
     "/private-data/matrix.h5",
     "/private-data/matrix.bpcells/payload",
+    "/private-data/auth/credentials.sqlite",
+    "/data/auth/credentials.sqlite",
+    "/data/credentials.sqlite",
     "/spatial-assets/histology.png"
   )
   statuses <- vapply(
@@ -203,6 +224,10 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
     integer(1)
   )
   expect_identical(unname(statuses), rep(404L, length(statuses)))
+
+  app_logs <- privacy_app_logs(app)
+  expect_match(app_logs, "viewer-auth-http-child-started", fixed = TRUE)
+  expect_false(grepl(auth$passphrase, app_logs, fixed = TRUE))
 })
 
 test_that("a running legacy data mapping cannot expose replacement data", {

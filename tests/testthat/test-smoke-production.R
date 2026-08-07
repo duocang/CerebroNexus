@@ -15,6 +15,7 @@ shared_fixture_env <- environment()
 shared_smoke_app <- NULL
 shared_real_app <- NULL
 shared_real_app_initialized <- FALSE
+shared_auth_app <- NULL
 
 ## Shared fixture: convert two synthetic spatial datasets and build one app that
 ## bundles both, each with its own background image and alignment defaults.
@@ -201,6 +202,209 @@ get_real_app <- function() {
   }
   shared_real_app
 }
+
+build_auth_app <- function(envir = parent.frame()) {
+  fixture <- viewer_auth_fixture(envir = envir)
+  crb <- system.file(
+    "extdata/examples/example.crb",
+    package = "CerebroNexus"
+  )
+  if (!nzchar(crb)) {
+    return(NULL)
+  }
+  app_dir <- file.path(fixture$root, "auth-app")
+  createShinyApp(
+    cerebro_data = c("Example" = crb),
+    result_dir = app_dir,
+    auth = fixture$descriptor,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+  c(fixture, list(app_dir = app_dir))
+}
+
+get_auth_app <- function() {
+  if (is.null(shared_auth_app)) {
+    shared_auth_app <<- build_auth_app(envir = shared_fixture_env)
+  }
+  shared_auth_app
+}
+
+smoke_hermetic_library <- function(envir = parent.frame()) {
+  hermetic_lib <- withr::local_tempdir(.local_envir = envir)
+  linked_any <- FALSE
+  for (lib in .libPaths()) {
+    for (pkg in list.dirs(lib, recursive = FALSE, full.names = FALSE)) {
+      if (identical(pkg, "CerebroNexus")) {
+        next
+      }
+      dest <- file.path(hermetic_lib, pkg)
+      if (!file.exists(dest)) {
+        ok <- tryCatch(
+          file.symlink(file.path(lib, pkg), dest),
+          error = function(e) FALSE
+        )
+        linked_any <- linked_any || isTRUE(ok)
+      }
+    }
+  }
+  if (!linked_any) {
+    return(NULL)
+  }
+  hermetic_lib
+}
+
+smoke_child_log_paths <- function(root, label) {
+  list(
+    stdout = file.path(root, paste0(label, ".stdout")),
+    stderr = file.path(root, paste0(label, ".stderr")),
+    marker = paste0("viewer-auth-", label, "-child-started")
+  )
+}
+
+smoke_read_child_logs <- function(logs) {
+  read_log <- function(path) {
+    if (file.exists(path)) {
+      readLines(path, warn = FALSE)
+    } else {
+      character()
+    }
+  }
+  paste(c(read_log(logs$stdout), read_log(logs$stderr)), collapse = "\n")
+}
+
+expect_smoke_child_logs_safe <- function(logs, passphrase) {
+  combined <- smoke_read_child_logs(logs)
+  expect_match(combined, logs$marker, fixed = TRUE)
+  expect_false(grepl(passphrase, combined, fixed = TRUE))
+  invisible(combined)
+}
+
+test_that("authenticated production bundles boot hermetically and fail closed", {
+  skip_if_not_installed("callr")
+  skip_on_cran()
+  skip_on_os("windows")
+
+  app <- get_auth_app()
+  skip_if(is.null(app), "bundled example.crb not available")
+  hermetic_lib <- smoke_hermetic_library(envir = environment())
+  skip_if(
+    is.null(hermetic_lib),
+    "could not build a hermetic library via symlinks"
+  )
+  child_env <- stats::setNames(app$passphrase, app$env_name)
+  boot_logs <- smoke_child_log_paths(app$root, "hermetic-success")
+
+  boot <- callr::r(
+    function(app_dir, marker) {
+      message(marker)
+      if (requireNamespace("CerebroNexus", quietly = TRUE)) {
+        stop("CerebroNexus is reachable; the library is not hermetic")
+      }
+      if (
+        !requireNamespace("shinymanager", quietly = TRUE) ||
+          utils::packageVersion("shinymanager") < "1.1.0"
+      ) {
+        stop("shinymanager >= 1.1.0 is unavailable")
+      }
+      setwd(app_dir)
+      runtime <- new.env(parent = globalenv())
+      value <- source("app.R", local = runtime)$value
+      list(
+        is_app = inherits(value, "shiny.appobj"),
+        package_loaded = "CerebroNexus" %in% loadedNamespaces()
+      )
+    },
+    args = list(app_dir = app$app_dir, marker = boot_logs$marker),
+    libpath = hermetic_lib,
+    env = child_env,
+    stdout = boot_logs$stdout,
+    stderr = boot_logs$stderr
+  )
+  expect_true(boot$is_app)
+  expect_false(boot$package_loaded)
+  expect_smoke_child_logs_safe(boot_logs, app$passphrase)
+
+  missing_db_logs <- smoke_child_log_paths(app$root, "missing-db")
+  missing_db <- callr::r(
+    function(app_dir, marker) {
+      message(marker)
+      setwd(app_dir)
+      config <- readRDS("cerebro_config.rds")
+      credentials <- config$.viewer_auth$credentials_path
+      held <- paste0(credentials, ".held")
+      if (!file.rename(credentials, held)) {
+        stop("could not hold authentication database")
+      }
+      on.exit(file.rename(held, credentials), add = TRUE)
+      runtime <- new.env(parent = globalenv())
+      tryCatch(
+        list(
+          error = NULL,
+          is_app = inherits(
+            source("app.R", local = runtime)$value,
+            "shiny.appobj"
+          )
+        ),
+        error = function(condition) {
+          list(
+            error = conditionMessage(condition),
+            is_app = FALSE
+          )
+        }
+      )
+    },
+    args = list(app_dir = app$app_dir, marker = missing_db_logs$marker),
+    libpath = hermetic_lib,
+    env = child_env,
+    stdout = missing_db_logs$stdout,
+    stderr = missing_db_logs$stderr
+  )
+  expect_false(missing_db$is_app)
+  expect_match(
+    missing_db$error,
+    "Invalid viewer authentication credentials path.",
+    fixed = TRUE
+  )
+  expect_false(grepl(app$passphrase, missing_db$error, fixed = TRUE))
+  expect_smoke_child_logs_safe(missing_db_logs, app$passphrase)
+
+  missing_secret_logs <- smoke_child_log_paths(app$root, "missing-secret")
+  missing_secret <- callr::r(
+    function(app_dir, marker) {
+      message(marker)
+      setwd(app_dir)
+      runtime <- new.env(parent = globalenv())
+      tryCatch(
+        list(
+          error = NULL,
+          is_app = inherits(
+            source("app.R", local = runtime)$value,
+            "shiny.appobj"
+          )
+        ),
+        error = function(condition) {
+          list(
+            error = conditionMessage(condition),
+            is_app = FALSE
+          )
+        }
+      )
+    },
+    args = list(
+      app_dir = app$app_dir,
+      marker = missing_secret_logs$marker
+    ),
+    libpath = hermetic_lib,
+    env = stats::setNames(NA_character_, app$env_name),
+    stdout = missing_secret_logs$stdout,
+    stderr = missing_secret_logs$stderr
+  )
+  expect_false(missing_secret$is_app)
+  expect_match(missing_secret$error, app$env_name, fixed = TRUE)
+  expect_false(grepl(app$passphrase, missing_secret$error, fixed = TRUE))
+  expect_smoke_child_logs_safe(missing_secret_logs, app$passphrase)
+})
 
 test_that("createShinyApp bundles real spatial demos with mixed image paths", {
   app <- get_real_app()
