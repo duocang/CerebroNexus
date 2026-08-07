@@ -1,8 +1,10 @@
 builder_repo_source("ui/inspect_stage.R")
+builder_repo_source("preview.R")
 builder_repo_source("ui/core_stage.R")
 builder_repo_source("ui/enhance_stage.R")
 builder_repo_source("ui/review_stage.R")
 builder_repo_source("ui/build_status.R")
+builder_repo_source("extras.R")
 
 builder_stage_html <- function(value) {
   htmltools::renderTags(value)$html
@@ -76,6 +78,27 @@ test_that("Inspect detected content comes from manifest readiness", {
   expect_false(grepl("internal_cache", html, fixed = TRUE))
 })
 
+test_that("Inspect content tags use readable colour families instead of a gray catch-all", {
+  ids <- c(
+    "marker_genes",
+    "trajectory",
+    "immune_repertoire",
+    "extra_material"
+  )
+  tones <- vapply(
+    ids,
+    function(id) {
+      builder_inspect_content_tag(list(id = id, status = "valid"))$tone
+    },
+    character(1)
+  )
+
+  expect_identical(
+    unname(tones),
+    c("analysis", "trajectory", "immune", "extra")
+  )
+})
+
 test_that("Core keeps technical controls advanced and metadata visible", {
   model <- list(
     id = "dataset-a",
@@ -106,13 +129,111 @@ test_that("Core keeps technical controls advanced and metadata visible", {
   expect_match(html, "Default group", fixed = TRUE)
   expect_match(html, "Default projection", fixed = TRUE)
   expect_match(html, model$metadata_attention, fixed = TRUE)
-  expect_match(html, "Advanced technical settings", fixed = TRUE)
+  expect_match(html, 'class="builder-form-grid"', fixed = TRUE)
+  expect_equal(
+    lengths(regmatches(
+      html,
+      gregexpr('class="builder-field[^\"]*"', html, perl = TRUE)
+    )),
+    4L
+  )
+  expect_match(html, 'class="builder-group-colors-slot"', fixed = TRUE)
+  expect_match(html, 'class="builder-disclosure"', fixed = TRUE)
+  expect_match(html, "Advanced settings", fixed = TRUE)
+  expect_false(grepl("Advanced technical settings", html, fixed = TRUE))
   expect_match(html, "Assay", fixed = TRUE)
   expect_match(html, "Expression backend", fixed = TRUE)
   expect_match(html, 'id="core-rendered_for"', fixed = TRUE)
   expect_match(html, 'value="dataset-a"', fixed = TRUE)
   expect_match(html, 'id="core-organism"', fixed = TRUE)
   expect_match(html, '"create":true', fixed = TRUE)
+})
+
+test_that("Core restores accessible group colors after Default group", {
+  model <- list(
+    id = "dataset-a",
+    name = "PBMC",
+    organism = "hg",
+    organism_choices = c("hg", "mm"),
+    default_group = "cluster",
+    group_choices = c("cluster", "sample"),
+    default_projection = "umap",
+    projection_choices = c("umap", "pca"),
+    assay = "RNA",
+    assay_choices = "RNA",
+    layer = "data",
+    layer_choices = "data",
+    nUMI = "nCount_RNA",
+    nUMI_choices = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    nGene_choices = "nFeature_RNA",
+    backend = "embedded",
+    backend_choices = "embedded"
+  )
+  colors <- builder_group_colors_model(
+    model$default_group,
+    c("0", "1", "N/A"),
+    "cerebro",
+    list(cluster = c(`1` = "#e76f51"))
+  )
+
+  core <- builder_stage_html(builder_core_stage_ui("core", model))
+  html <- builder_stage_html(builder_group_colors_ui("core", colors))
+
+  expect_lt(
+    regexpr("core-default_group", core, fixed = TRUE)[[1L]],
+    regexpr("core-group_colors", core, fixed = TRUE)[[1L]]
+  )
+  expect_lt(
+    regexpr("core-group_colors", core, fixed = TRUE)[[1L]],
+    regexpr("core-default_projection", core, fixed = TRUE)[[1L]]
+  )
+  expect_match(html, "Group colors", fixed = TRUE)
+  expect_match(html, "Coloring by:", fixed = TRUE)
+  expect_match(html, "cluster", fixed = TRUE)
+  expect_match(html, 'type="color"', fixed = TRUE)
+  expect_match(html, 'aria-label="Color for cluster 0"', fixed = TRUE)
+  expect_match(html, "Missing", fixed = TRUE)
+  expect_match(html, "#E76F51", fixed = TRUE)
+  expect_match(html, "Reset colors", fixed = TRUE)
+  expect_false(grepl("UMAP colors|PCA colors", html))
+})
+
+test_that("Group colors bounds large groups and exposes local search", {
+  twenty <- builder_group_colors_model(
+    "cluster",
+    sprintf("value-%02d", seq_len(20L)),
+    "cerebro",
+    list()
+  )
+  fifty <- builder_group_colors_model(
+    "cluster",
+    sprintf("long-category-name-%02d", seq_len(50L)),
+    "cerebro",
+    list()
+  )
+  twenty_html <- builder_stage_html(builder_group_colors_ui("core", twenty))
+  fifty_html <- builder_stage_html(builder_group_colors_ui("core", fifty))
+
+  expect_match(twenty_html, "Show all 20 colors", fixed = TRUE)
+  expect_match(twenty_html, "Show fewer", fixed = TRUE)
+  expect_match(twenty_html, 'data-visible-limit="12"', fixed = TRUE)
+  expect_false(grepl("Find a group value", twenty_html, fixed = TRUE))
+  expect_match(fifty_html, "Find a group value", fixed = TRUE)
+  expect_match(fifty_html, "Show all 50 colors", fixed = TRUE)
+  expect_match(fifty_html, 'title="long-category-name-50"', fixed = TRUE)
+})
+
+test_that("Group colors has a short empty state for invalid groups", {
+  model <- builder_group_colors_model("", character(), "cerebro", list())
+  html <- builder_stage_html(builder_group_colors_ui("core", model))
+
+  expect_match(
+    html,
+    "Choose a categorical default group to set initial colors.",
+    fixed = TRUE
+  )
+  expect_false(grepl('type="color"', html, fixed = TRUE))
 })
 
 test_that("Inspect does not repeat the verified cell and gene summary", {
@@ -172,7 +293,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
         label = "Marker genes",
         relevant = TRUE,
         blocked = FALSE,
-        selected = FALSE,
+        selected = TRUE,
         enabled_pages = "marker genes",
         replacement_policy = "Replace the existing marker result.",
         skip_consequence = "The marker page stays unavailable.",
@@ -209,7 +330,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
         skip_consequence = "Skipped tables will not appear in Extra material."
       ),
       histology = list(
-        label = "Histology images",
+        label = "Spatial alignment",
         enabled_pages = "spatial",
         relevant = TRUE,
         cost = "Image encoding and alignment.",
@@ -236,29 +357,152 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
 
   expect_match(html, "Marker genes", fixed = TRUE)
   expect_match(html, "Adds ranked marker tables", fixed = TRUE)
-  expect_match(html, "several minutes", fixed = TRUE)
-  expect_match(html, "No network access", fixed = TRUE)
-  expect_match(html, "Requires a supported", fixed = TRUE)
-  expect_match(html, "Enabled page: marker genes", fixed = TRUE)
-  expect_match(html, "Replace the existing marker result", fixed = TRUE)
-  expect_match(html, "The marker page stays unavailable", fixed = TRUE)
+  expect_match(html, 'class="enhance-module-select"', fixed = TRUE)
+  expect_match(
+    html,
+    'class="enhance-module-checkbox visually-hidden shiny-input-checkbox"',
+    fixed = TRUE
+  )
+  expect_match(html, 'class="enhance-module-title"', fixed = TRUE)
+  expect_match(html, 'id="enhance-analysis_marker_genes"', fixed = TRUE)
+  expect_match(html, 'checked="checked"', fixed = TRUE)
+  expect_match(html, 'class="enhance-info-button"', fixed = TRUE)
+  expect_match(
+    html,
+    '</label>\\s*<button type="button" class="enhance-info-button"',
+    perl = TRUE
+  )
+  expect_match(
+    html,
+    'aria-label="More information about Marker genes"',
+    fixed = TRUE
+  )
+  expect_match(html, 'data-title="Marker genes"', fixed = TRUE)
+  expect_match(
+    html,
+    'data-description="Adds ranked marker tables to the Viewer."',
+    fixed = TRUE
+  )
+  expect_match(html, 'data-pages="marker genes"', fixed = TRUE)
+  expect_match(
+    html,
+    'data-cost="Can take several minutes and increases release size."',
+    fixed = TRUE
+  )
+  expect_match(html, 'data-network="No network access."', fixed = TRUE)
+  expect_match(
+    html,
+    'data-prerequisite="Requires a supported differential-expression method."',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'data-replacement="Replace the existing marker result."',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'data-skip="The marker page stays unavailable."',
+    fixed = TRUE
+  )
+  expect_false(grepl("What this changes", html, fixed = TRUE))
+  expect_false(grepl("Enabled page: marker genes", html, fixed = TRUE))
   expect_match(html, "Select Marker genes first", fixed = TRUE)
   expect_match(html, "disabled", fixed = TRUE)
+  expect_match(html, "enhance-module is-blocked", fixed = TRUE)
   expect_match(html, "Optional attachments", fixed = TRUE)
-  expect_match(html, "Supplementary tables", fixed = TRUE)
-  expect_match(html, "Histology images", fixed = TRUE)
-  expect_match(html, "Enabled page: extra material", fixed = TRUE)
-  expect_match(html, "Enabled page: spatial", fixed = TRUE)
-  expect_match(html, "Replacement policy", fixed = TRUE)
-  expect_match(html, "Skipped tables will not appear", fixed = TRUE)
-  expect_match(html, "Auto-retained content", fixed = TRUE)
-  expect_match(html, "Immune repertoire", fixed = TRUE)
-  expect_match(html, 'id="enhance-table_path"', fixed = TRUE)
-  expect_match(html, 'id="enhance-add_table"', fixed = TRUE)
-  expect_match(html, 'id="enhance-tables_to_retain"', fixed = TRUE)
-  expect_match(html, 'id="enhance-active_slice"', fixed = TRUE)
-  expect_match(html, 'id="enhance-attach_image"', fixed = TRUE)
-  expect_match(html, 'id="enhance-histology_to_retain"', fixed = TRUE)
+  expect_match(html, "Tables for Extra material", fixed = TRUE)
+  expect_match(
+    html,
+    "Add optional CSV or TSV tables to the generated app’s Extra material page.",
+    fixed = TRUE
+  )
+  expect_match(html, "Spatial alignment", fixed = TRUE)
+  expect_match(
+    html,
+    "Compare transcriptome and physical space, then align an optional tissue image.",
+    fixed = TRUE
+  )
+  expect_false(grepl("Enabled page: extra material", html, fixed = TRUE))
+  expect_false(grepl("Enabled page: spatial", html, fixed = TRUE))
+  expect_false(grepl("Replacement policy", html, fixed = TRUE))
+  expect_false(grepl("Skipped tables will not appear", html, fixed = TRUE))
+  expect_false(grepl("Auto-retained content", html, fixed = TRUE))
+  expect_false(grepl("Tables to retain", html, fixed = TRUE))
+  expect_false(grepl(
+    "Dataset cell and feature identities were checked",
+    html,
+    fixed = TRUE
+  ))
+  expect_false(grepl("BuildPlan decision for", html, fixed = TRUE))
+  expect_match(html, 'id="enhance-table_files"', fixed = TRUE)
+  expect_match(html, 'type="file"', fixed = TRUE)
+  expect_match(html, 'multiple="multiple"', fixed = TRUE)
+  expect_match(html, 'accept=".csv,.tsv,.txt"', fixed = TRUE)
+  expect_match(
+    html,
+    'class="enhance-table-file-control builder-file-picker builder-file-picker--content"',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'class="enhance-table-file-button builder-file-trigger"',
+    fixed = TRUE
+  )
+  expect_match(html, "+ Add tables…", fixed = TRUE)
+  expect_false(grepl('id="enhance-table_path"', html, fixed = TRUE))
+  expect_false(grepl('id="enhance-table_name"', html, fixed = TRUE))
+  expect_false(grepl('id="enhance-add_table"', html, fixed = TRUE))
+  expect_false(grepl('id="enhance-tables_to_retain"', html, fixed = TRUE))
+  expect_match(html, 'id="enhance-active_section"', fixed = TRUE)
+  expect_match(html, 'id="enhance-tissue_image_file"', fixed = TRUE)
+  expect_match(html, 'accept=".png,.jpg,.jpeg"', fixed = TRUE)
+  expect_match(
+    html,
+    'class="enhance-tissue-file-control builder-file-picker builder-file-picker--compact"',
+    fixed = TRUE
+  )
+  expect_match(html, "+ Add tissue image…", fixed = TRUE)
+  expect_false(grepl('id="enhance-image_path"', html, fixed = TRUE))
+  expect_false(grepl('id="enhance-attach_image"', html, fixed = TRUE))
+  expect_false(grepl('id="enhance-histology_to_retain"', html, fixed = TRUE))
+  expect_match(html, "Transcriptome space", fixed = TRUE)
+  expect_match(html, "Spatial space", fixed = TRUE)
+  expect_match(html, 'id="enhance-alignment_transcriptome_plot"', fixed = TRUE)
+  expect_match(html, 'id="enhance-alignment_spatial_plot"', fixed = TRUE)
+  expect_match(html, 'id="enhance-alignment_legend"', fixed = TRUE)
+  expect_match(html, 'aria-label="Transcriptome-space cell plot"', fixed = TRUE)
+  expect_match(html, 'aria-label="Spatial-space cell plot"', fixed = TRUE)
+  expect_match(html, "Position", fixed = TRUE)
+  expect_match(html, "Scale &amp; orientation", fixed = TRUE)
+  expect_match(html, "Appearance", fixed = TRUE)
+  expect_match(html, "Image opacity", fixed = TRUE)
+  expect_match(html, "Point opacity", fixed = TRUE)
+  expect_match(html, 'data-postfix="%"', fixed = TRUE)
+  expect_match(html, "has_image", fixed = TRUE)
+  expect_match(html, 'data-ns-prefix="enhance-"', fixed = TRUE)
+  expect_match(html, "Point size", fixed = TRUE)
+  expect_match(html, "Save alignment", fixed = TRUE)
+  expect_match(html, "Apply transform to all sections", fixed = TRUE)
+  expect_match(html, "Reset alignment", fixed = TRUE)
+  expect_match(html, 'id="enhance-alignment_status"', fixed = TRUE)
+  expect_false(grepl("Remove image", html, fixed = TRUE))
+  expect_match(html, 'class="spatial-alignment-layout"', fixed = TRUE)
+  expect_match(
+    html,
+    'class="spatial-alignment-sidebar builder-controls-grid"',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'class="spatial-alignment-plots builder-preview-grid"',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'class="spatial-alignment-actions builder-action-row"',
+    fixed = TRUE
+  )
 })
 
 test_that("Enhance model derives attachments and retained content from state", {
@@ -332,10 +576,55 @@ test_that("Enhance model derives attachments and retained content from state", {
   )
   expect_false(no_spatial$attachments$histology$relevant)
   expect_false(grepl(
-    "Histology images",
+    "Spatial alignment",
     builder_stage_html(builder_enhance_stage_ui("enhance", no_spatial)),
     fixed = TRUE
   ))
+
+  trekker <- builder_enhance_model(
+    id = "dataset-trekker",
+    profile = list(
+      images = character(),
+      extras = list(list(
+        key = "trekker",
+        label = "Trekker spatial mapping",
+        found = TRUE
+      ))
+    ),
+    state = list(manifest = list()),
+    settings = list(tables = list(), images = list()),
+    modules = list()
+  )
+  expect_true(trekker$attachments$histology$relevant)
+  expect_identical(trekker$attachments$histology$sections, "trekker")
+  expect_match(
+    builder_stage_html(builder_enhance_stage_ui("enhance", trekker)),
+    "Spatial alignment",
+    fixed = TRUE
+  )
+})
+
+test_that("table uploads derive a display name from the client filename", {
+  expect_identical(
+    builder_table_default_name("clinical-results.CSV"),
+    "clinical-results"
+  )
+  expect_identical(builder_table_default_name("nested.name.tsv"), "nested.name")
+})
+
+test_that("table read failures never expose a server-side upload path", {
+  directory <- withr::local_tempdir()
+
+  got <- builder_read_table(
+    directory,
+    filename = "supplement.csv"
+  )
+
+  expect_identical(
+    got$error,
+    "Could not read this table. Check that it is a valid CSV, TSV or TXT file."
+  )
+  expect_false(grepl(directory, got$error, fixed = TRUE))
 })
 
 test_that("Enhance distinguishes intrinsic absence from dependency blocking", {
@@ -390,28 +679,57 @@ test_that("Enhance distinguishes intrinsic absence from dependency blocking", {
   expect_match(html, "disabled", fixed = TRUE)
 })
 
-test_that("saved histology Remove targets the mounted Enhance observer", {
-  html <- builder_stage_html(builder_enhance_saved_image_ui(
+test_that("tissue image metadata and Remove share the bounded file-list UI", {
+  html <- builder_stage_html(builder_tissue_image_file_ui(
     "enhance",
-    "section-a",
-    2L
+    list(
+      source = list(
+        name = "/private/upload/section-a.png",
+        type = "image/png",
+        size = 2048
+      ),
+      saved = TRUE
+    )
   ))
+  expect_match(html, "builder-file-list", fixed = TRUE)
+  expect_match(html, "builder-file-item", fixed = TRUE)
+  expect_match(html, "section-a.png", fixed = TRUE)
+  expect_match(html, "PNG · 2 KB", fixed = TRUE)
+  expect_match(html, "Ready", fixed = TRUE)
+  expect_false(grepl("/private/upload", html, fixed = TRUE))
   expect_match(html, 'id="enhance-drop_image"', fixed = TRUE)
+  expect_match(html, "btn-remove-soft", fixed = TRUE)
 
-  app <- readLines(
-    builder_profile_inst_path("builder", "app.R"),
+  server <- readLines(
+    builder_profile_inst_path("builder", "spatial_alignment_server.R"),
     warn = FALSE
   )
   expect_true(any(grepl(
     'observeEvent(input[["enhance-drop_image"]]',
-    app,
+    server,
     fixed = TRUE
   )))
   expect_false(any(grepl(
     'actionButton("drop_image"',
-    app,
+    server,
     fixed = TRUE
   )))
+})
+
+test_that("Apply to all sections requires an explicit confirmation", {
+  server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "spatial_alignment_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(server, "enhance-confirm_apply_align_all", fixed = TRUE)
+  expect_match(
+    server,
+    "Apply transform to all image-bearing sections?",
+    fixed = TRUE
+  )
 })
 
 builder_stage_frozen_plan <- function(make_app = TRUE) {
@@ -442,6 +760,7 @@ builder_stage_frozen_plan <- function(make_app = TRUE) {
             schema_version = 2L,
             cells = c("cell-a", "cell-b"),
             features = c("gene-a", "gene-b", "gene-c"),
+            group_levels = list(cluster = c("A", "B")),
             spatial_sections = "section-a"
           ),
           cell_count = 2L,
@@ -456,10 +775,17 @@ builder_stage_frozen_plan <- function(make_app = TRUE) {
           tables = list(differential_expression = list()),
           images = list(section_a = list()),
           colors = list(cluster = c(A = "#111111")),
+          color_custom_count = 1L,
           nUMI = "nCount_RNA",
           nGene = "nFeature_RNA",
           default_group = "cluster",
           default_projection = "umap",
+          viewer_page_expectations = list(
+            always = builder_viewer_page_catalog()$always,
+            conditional = builder_viewer_page_catalog()$conditional,
+            visible_conditional = c("marker_genes", "extra_material"),
+            hidden_conditional = c("spatial", "trajectory")
+          ),
           expression_backend = "h5",
           sidecars = "01-dataset-b.h5",
           metadata_policy = list(
@@ -524,75 +850,231 @@ builder_stage_frozen_plan <- function(make_app = TRUE) {
   )
 }
 
-test_that("Review model is an exact frozen-plan projection", {
+test_that("Review model translates a frozen plan into user language", {
   plan <- builder_stage_frozen_plan()
   model <- builder_review_model(plan)
 
-  expect_identical(model$revision, plan$revision)
-  expect_identical(model$private_assets, plan$private_assets)
-  expect_identical(model$viewer_bundle_assets, plan$viewer_bundle_assets)
-  expect_identical(model$dataset_order, plan$dataset_order)
-  expect_identical(model$release_members, basename(plan$output_release$targets))
-
-  plan$revision <- 99L
-  plan$private_assets <- "changed"
-  expect_identical(model$revision, 17L)
-  expect_identical(model$private_assets, "private-data/01-dataset-b.crb")
+  expect_null(model$revision)
+  expect_null(model$contract)
+  expect_null(model$manifest)
+  expect_null(model$app$host)
+  expect_null(model$app$port)
+  expect_null(model$app$max_request_size)
+  expect_identical(model$dataset_count, 2L)
+  expect_identical(model$output_label, "CRB files + private App")
+  expect_identical(model$datasets[[1L]]$name, "Dataset B")
+  expect_identical(model$datasets[[1L]]$group_count, 2L)
+  expect_identical(model$datasets[[1L]]$projection_count, 1L)
+  expect_identical(model$app$initial_dataset, "Dataset B")
+  expect_identical(model$app$dataset_order, c("Dataset B", "Dataset A"))
+  expect_identical(model$output$existing_files, "Keep existing files")
+  expect_identical(model$output$estimated_size, "8 KB")
+  expect_identical(model$output$estimated_time, "A few minutes")
+  expect_true(all(
+    c("Data info", "Projection", "Marker genes") %in% model$pages
+  ))
+  expect_false(any(c("marker_genes", "spatial") %in% model$pages))
+  expect_length(model$warnings, 0L)
+  expect_true(model$can_build)
 })
 
-test_that("Review distinguishes CRBs from private App contract", {
+test_that("Review presents datasets, App experience, pages, and output", {
   crbs <- builder_review_model(builder_stage_frozen_plan(FALSE))
-  expect_identical(crbs$artifact_mode, "crbs_only")
+  expect_identical(crbs$output_label, "CRB files")
 
   app <- builder_review_model(builder_stage_frozen_plan(TRUE))
   html <- builder_stage_html(builder_review_stage_ui("review", app))
 
-  expect_identical(app$artifact_mode, "crbs_and_private_app")
-  expect_match(html, "App contract 1", fixed = TRUE)
-  expect_match(html, "Dataset B → Dataset A", fixed = TRUE)
+  expect_match(
+    html,
+    "Check your datasets and output before building.",
+    fixed = TRUE
+  )
+  expect_match(html, "2 datasets", fixed = TRUE)
+  expect_match(html, "Creates CRB files + private App", fixed = TRUE)
+  expect_match(html, "Datasets", fixed = TRUE)
   expect_match(html, "Dataset B", fixed = TRUE)
-  expect_match(html, "automatic", fixed = TRUE)
-  expect_match(html, "Uploads disabled", fixed = TRUE)
-  expect_match(html, "Palettes", fixed = TRUE)
-  expect_match(html, "Welcome, lab team!", fixed = TRUE)
-  expect_match(html, "Point size: 4", fixed = TRUE)
-  expect_match(html, "Variable comparison: enabled", fixed = TRUE)
-  expect_match(html, "Host: 127.0.0.1", fixed = TRUE)
-  expect_match(html, "Port: 8080", fixed = TRUE)
-  expect_match(html, "Request limit: 8000 MB", fixed = TRUE)
-  expect_match(html, "Display mode: normal", fixed = TRUE)
-  expect_match(html, "Launch browser: enabled", fixed = TRUE)
-  expect_match(html, "Planned payload members", fixed = TRUE)
-  expect_no_match(html, "Exact release members", fixed = TRUE)
+  expect_match(html, "2 cells · 3 genes", fixed = TRUE)
+  expect_match(html, "2 groups · 1 projection", fixed = TRUE)
+  expect_match(html, "Opens with", fixed = TRUE)
+  expect_match(html, "UMAP", fixed = TRUE)
+  expect_match(html, "Grouped by", fixed = TRUE)
+  expect_match(html, "cluster", fixed = TRUE)
+  expect_match(html, "Output file:", fixed = TRUE)
   expect_match(html, "01-dataset-b.crb", fixed = TRUE)
-  expect_match(html, "01-dataset-b.h5", fixed = TRUE)
-  expect_match(html, "immune_repertoire", fixed = TRUE)
-  expect_match(html, "overview", fixed = TRUE)
-  expect_match(html, "#111111", fixed = TRUE)
-  expect_match(html, "assay: RNA", fixed = TRUE)
-  expect_match(html, "layer: data", fixed = TRUE)
-  expect_match(html, "default_group: cluster", fixed = TRUE)
-  expect_match(html, "default_projection: umap", fixed = TRUE)
-  expect_match(html, "nUMI: nCount_RNA", fixed = TRUE)
-  expect_match(html, "nGene: nFeature_RNA", fixed = TRUE)
-  expect_match(html, "metadata_policy / excluded: patient_name", fixed = TRUE)
-  expect_match(html, "analyses: marker_genes", fixed = TRUE)
-  expect_match(html, "2\\s+cells", perl = TRUE)
-  expect_match(html, "3\\s+genes", perl = TRUE)
-  expect_match(html, "Analysis dependency graph", fixed = TRUE)
-  expect_match(html, "Artifact identity", fixed = TRUE)
-  expect_match(html, "Histology coverage", fixed = TRUE)
-  expect_match(html, "Output directory: /private/host/output", fixed = TRUE)
-  expect_match(html, "Replacement policy: preserve_existing", fixed = TRUE)
-  expect_match(html, "Estimated runtime: minutes", fixed = TRUE)
-  expect_match(html, "Estimated disk: 4096 bytes", fixed = TRUE)
-  expect_match(html, "Acknowledged warnings", fixed = TRUE)
-  expect_match(html, "Marker genes replace the existing method", fixed = TRUE)
-  expect_match(html, "spatial-assets/image.png", fixed = TRUE)
-  expect_match(html, "not directly downloadable", fixed = TRUE)
-  expect_match(html, "duplicated", ignore.case = TRUE)
-  expect_match(html, "not directly downloadable", fixed = TRUE)
-  expect_match(html, "no HTTP-public asset class", fixed = TRUE)
+  expect_match(html, "App experience", fixed = TRUE)
+  expect_match(html, "Dataset order", fixed = TRUE)
+  expect_match(html, "Visitor uploads", fixed = TRUE)
+  expect_match(html, "Off", fixed = TRUE)
+  expect_match(html, "Welcome, lab team!", fixed = TRUE)
+  expect_match(html, "Point size", fixed = TRUE)
+  expect_match(html, "Variable comparison", fixed = TRUE)
+  expect_match(html, "Pages in the App", fixed = TRUE)
+  expect_match(html, "Data info", fixed = TRUE)
+  expect_match(html, "Marker genes", fixed = TRUE)
+  expect_match(html, "Output", fixed = TRUE)
+  expect_match(html, "Folder", fixed = TRUE)
+  expect_match(html, "/private/host/output", fixed = TRUE)
+  expect_false(grepl("Existing files", html, fixed = TRUE))
+  expect_false(grepl("Keep existing files", html, fixed = TRUE))
+  expect_match(html, "8 KB", fixed = TRUE)
+  expect_match(html, "A few minutes", fixed = TRUE)
+  expect_match(html, "Private App", fixed = TRUE)
+  expect_match(html, "not offered as public downloads", fixed = TRUE)
+  forbidden <- c(
+    "Plan revision",
+    "App contract",
+    "Artifact mode",
+    "automatic",
+    "Planned payload members",
+    "Replacement policy",
+    "Technical plan details",
+    "Viewer page expectations",
+    "Expected after build",
+    "Private assets",
+    "BuildPlan",
+    "manifest",
+    "Host:",
+    "Port:",
+    "Request limit",
+    "Display mode",
+    "Launch browser",
+    "sidecars",
+    "HTTP-public",
+    "barcode",
+    "backend"
+  )
+  expect_false(any(vapply(
+    forbidden,
+    grepl,
+    logical(1),
+    x = html,
+    fixed = TRUE
+  )))
+  expect_false(grepl("Needs attention", html, fixed = TRUE))
+})
+
+test_that("Review summarizes saved and points-only spatial sections", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$items[[1L]]$spatial_alignment <- list(
+    section_count = 2L,
+    image_count = 1L,
+    saved_count = 1L,
+    points_only = "section-b"
+  )
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_identical(model$datasets[[1L]]$spatial_alignment$saved_count, 1L)
+  expect_match(html, "Spatial alignment", fixed = TRUE)
+  expect_match(html, "1 of 2 sections has a saved tissue image", fixed = TRUE)
+  expect_match(html, "1 section remains points-only", fixed = TRUE)
+  expect_false(grepl("section-b", html, fixed = TRUE))
+  expect_false(grepl("histology_image_bounds", html, fixed = TRUE))
+})
+
+test_that("Review keeps group colors compact and distinguishes custom colors", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$items[[1L]]$colors$cluster <- c(
+    A = "#111111",
+    B = "#222222",
+    C = "#333333",
+    D = "#444444",
+    E = "#555555",
+    F = "#666666",
+    G = "#777777",
+    H = "#888888"
+  )
+  plan$items[[1L]]$color_custom_count <- 3L
+  plan$items[[2L]]$default_group <- "cell_type"
+  plan$items[[2L]]$color_custom_count <- 0L
+
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_identical(model$datasets[[1L]]$group_colors$group, "cluster")
+  expect_identical(model$datasets[[1L]]$group_colors$custom_count, 3L)
+  expect_lte(length(model$datasets[[1L]]$group_colors$preview), 5L)
+  expect_match(html, "Group colors", fixed = TRUE)
+  expect_match(html, "cluster · 3 custom colors", fixed = TRUE)
+  expect_match(html, "cell_type · Using default colors", fixed = TRUE)
+  expect_match(html, "+3", fixed = TRUE)
+  expect_false(grepl(">#111111<", html, fixed = TRUE))
+  expect_false(grepl("palettes are frozen", html, ignore.case = TRUE))
+})
+
+test_that("Review translates policies, bounds pages, and names actionable issues", {
+  expect_identical(
+    vapply(
+      c("preserve_existing", "overwrite", "error_if_exists"),
+      builder_review_existing_files,
+      character(1)
+    ),
+    c(
+      preserve_existing = "Keep existing files",
+      overwrite = "Replace existing files",
+      error_if_exists = "Stop if files already exist"
+    )
+  )
+  expect_match(builder_review_human_size(514285), "KB", fixed = TRUE)
+  expect_match(builder_review_human_size(5 * 1024^2), "MB", fixed = TRUE)
+
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$existing_targets <- "/private/host/output/01-dataset-b.crb"
+  plan$overwrite <- FALSE
+  plan$required_settings <- "dataset-b: choose a different output folder."
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_false(model$can_build)
+  expect_match(model$warnings[[1L]], "Dataset B", fixed = TRUE)
+  expect_false(grepl("dataset-b:", model$warnings[[1L]], fixed = TRUE))
+  expect_match(html, "Needs attention", fixed = TRUE)
+  expect_match(html, "Show 1 more", fixed = TRUE)
+})
+
+test_that("Review translates network-dependent runtime into user language", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$output_release$estimated_runtime <- "network-dependent"
+
+  expect_identical(
+    builder_review_model(plan)$output$estimated_time,
+    "Depends on network response"
+  )
+})
+
+test_that("Review gives a useful next step when the plan is not ready", {
+  html <- builder_stage_html(builder_review_blocked_ui(
+    "review",
+    "Choose a valid output folder."
+  ))
+
+  expect_match(html, "Review", fixed = TRUE)
+  expect_match(html, "Needs attention", fixed = TRUE)
+  expect_match(html, "Choose a valid output folder.", fixed = TRUE)
+  expect_match(html, "Correct the highlighted settings", fixed = TRUE)
+  expect_false(grepl(
+    "Choose the required dataset settings before building.",
+    html,
+    fixed = TRUE
+  ))
+})
+
+test_that("Review handles one dataset and long output folders", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$items <- plan$items[1L]
+  plan$dataset_order <- "dataset-b"
+  plan$output_release$directory <- paste0(
+    "/private/host/",
+    paste(rep("long-folder-name", 8L), collapse = "/")
+  )
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_match(html, "1 dataset", fixed = TRUE)
+  expect_false(grepl("1 datasets", html, fixed = TRUE))
+  expect_match(html, plan$output_release$directory, fixed = TRUE)
+  expect_identical(model$app$dataset_order, "Dataset B")
 })
 
 test_that("Build status has four top-level types and warning Success variant", {
@@ -830,14 +1312,18 @@ test_that("typed Review controls expose only accepted App options", {
     "Welcome message",
     "Point size",
     "Variable to compare",
+    "Allow uploads"
+  )) {
+    expect_match(html, label, fixed = TRUE)
+  }
+  for (label in c(
     "Host",
     "Port",
     "Request size",
     "Display mode",
-    "Launch browser",
-    "Allow uploads"
+    "Launch browser"
   )) {
-    expect_match(html, label, fixed = TRUE)
+    expect_false(grepl(label, html, fixed = TRUE))
   }
 })
 
@@ -1013,7 +1499,6 @@ test_that("workbench identity ignores settings writes but tracks selection", {
     }
     use_state_only_fixture(list(entry("dataset-a"), entry("dataset-b")))
     session$flushReact()
-
     renders <- 0L
     tracker <- observe({
       current()
@@ -1071,7 +1556,7 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
       selected = selected
     )
   }
-  table_path <- withr::local_tempfile(fileext = ".csv")
+  table_path <- withr::local_tempfile()
   writeLines(c("sample,value", "a,1"), table_path)
 
   shiny::testServer(app_env$server, {
@@ -1111,6 +1596,7 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
         extras = list(),
         images = character()
       ),
+      levels = list(cluster = c("A", "B"), sample = c("one", "two")),
       settings = list(
         name = "Dataset A",
         organism = "hg",
@@ -1123,7 +1609,9 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
         expression_backend = "embedded",
         analyses = character(),
         tables = list(),
-        images = list()
+        images = list(),
+        palette = "cerebro",
+        color_overrides = list(sample = c(one = "#123456"))
       )
     )
     use_state_only_fixture(list(entry))
@@ -1177,6 +1665,41 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(sets()[[1L]]$settings$nUMI, "nCount_SCT")
     expect_identical(sets()[[1L]]$settings$nGene, "nFeature_SCT")
 
+    before_color <- sets()[[1L]]$revision
+    marked <- isolate(store())
+    marked$datasets[[1L]]$reviewed_revision <- before_color
+    store(marked)
+    session$setInputs(
+      `core-group_color` = list(
+        group = "cluster",
+        level = "B",
+        color = "#e76f51",
+        nonce = 1
+      )
+    )
+    session$flushReact()
+    colored <- sets()[[1L]]
+    expect_identical(
+      colored$settings$color_overrides$cluster[["B"]],
+      "#E76F51"
+    )
+    expect_identical(
+      colored$settings$color_overrides$sample[["one"]],
+      "#123456"
+    )
+    expect_identical(colored$settings$default_projection, "umap")
+    expect_gt(colored$revision, before_color)
+    expect_false(identical(colored$reviewed_revision, colored$revision))
+
+    before_reset <- colored$revision
+    session$setInputs(`core-reset_colors` = 1L)
+    session$flushReact()
+    reset <- sets()[[1L]]
+    expect_null(reset$settings$color_overrides$cluster)
+    expect_identical(reset$settings$color_overrides$sample[["one"]], "#123456")
+    expect_gt(reset$revision, before_reset)
+    expect_identical(top_level_runs, baseline)
+
     session$setInputs(`core-organism` = "other")
     session$flushReact()
     other_html <- paste(
@@ -1210,28 +1733,58 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(top_level_runs, baseline)
 
     session$setInputs(
-      `enhance-table_path` = table_path,
-      `enhance-table_name` = "Clinical",
-      `enhance-add_table` = 1L
+      `enhance-table_files` = data.frame(
+        name = "clinical-results.csv",
+        size = file.info(table_path)$size,
+        type = "text/csv",
+        datapath = table_path,
+        stringsAsFactors = FALSE
+      )
     )
     session$flushReact()
-    expect_identical(
-      retain_updates[["enhance-tables_to_retain"]]$choices,
-      "Clinical"
+    table_list_html <- paste(
+      as.character(output[["enhance-table_list"]]),
+      collapse = ""
     )
-    expect_identical(
-      retain_updates[["enhance-tables_to_retain"]]$selected,
-      "Clinical"
+    expect_match(table_list_html, "Added tables", fixed = TRUE)
+    expect_match(table_list_html, "Table name", fixed = TRUE)
+    expect_match(table_list_html, "CSV", fixed = TRUE)
+    expect_match(table_list_html, "bytes", fixed = TRUE)
+    expect_match(table_list_html, "Ready", fixed = TRUE)
+    expect_match(table_list_html, "builder-file-list", fixed = TRUE)
+    expect_match(table_list_html, "builder-file-item", fixed = TRUE)
+    expect_false(grepl(table_path, table_list_html, fixed = TRUE))
+    expect_false(grepl("fakepath", table_list_html, fixed = TRUE))
+    expect_false(grepl("Tables to retain", table_list_html, fixed = TRUE))
+    session$setInputs(
+      `enhance-table_action` = list(
+        action = "rename",
+        key = "clinical-results",
+        name = "Clinical results",
+        nonce = 1
+      )
     )
+    session$flushReact()
+    expect_identical(names(sets()[[1L]]$settings$tables), "Clinical results")
+    expect_identical(
+      sets()[[1L]]$settings$tables[[1L]]$file_name,
+      "clinical-results.csv"
+    )
+    session$setInputs(
+      `enhance-table_action` = list(
+        action = "remove",
+        key = "Clinical results",
+        nonce = 2
+      )
+    )
+    session$flushReact()
+    expect_length(sets()[[1L]]$settings$tables, 0L)
     expect_identical(top_level_runs, baseline)
 
     alignment <- list(uri = "data:image/png;base64,AA==")
     saved <- sets()[[1L]]
     commit_enhance_images(saved, list(`section-a` = alignment))
-    expect_identical(
-      retain_updates[["enhance-histology_to_retain"]],
-      list(choices = "section-a", selected = "section-a")
-    )
+    expect_null(retain_updates[["enhance-histology_to_retain"]])
     expect_identical(
       names(sets()[[1L]]$settings$images),
       "section-a"
@@ -1261,13 +1814,7 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
       )
     )
     apply_section_bounds("dataset-a", per_section, picture)
-    expect_identical(
-      retain_updates[["enhance-histology_to_retain"]],
-      list(
-        choices = c("section-a", "section-b"),
-        selected = c("section-a", "section-b")
-      )
-    )
+    expect_null(retain_updates[["enhance-histology_to_retain"]])
     expect_identical(
       names(sets()[[1L]]$settings$images),
       c("section-a", "section-b")
@@ -1277,10 +1824,7 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     active_slice("section-a")
     session$setInputs(`enhance-drop_image` = 1L)
     session$flushReact()
-    expect_identical(
-      retain_updates[["enhance-histology_to_retain"]],
-      list(choices = "section-b", selected = "section-b")
-    )
+    expect_null(retain_updates[["enhance-histology_to_retain"]])
     expect_identical(
       names(sets()[[1L]]$settings$images),
       "section-b"
@@ -1288,23 +1832,26 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(top_level_runs, baseline)
   })
 
-  app <- paste(
-    readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
+  server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "spatial_alignment_server.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(
-    app,
-    "imgs[[nm]] <- a\n    commit_enhance_images(e, imgs)",
+    server,
+    "commit_section(entry, section, record)",
     fixed = TRUE
   )
   expect_match(
-    app,
-    "paired <- builder_pair_sections(a, per_section)",
+    server,
+    "builder_alignment_apply_transform_to_all",
     fixed = TRUE
   )
   expect_match(
-    app,
-    "imgs[[nm]] <- NULL\n    }\n    commit_enhance_images(e, imgs)",
+    server,
+    "commit_section(entry, section, NULL)",
     fixed = TRUE
   )
 })
@@ -1338,18 +1885,20 @@ test_that("app composes stage modules in deterministic order", {
     app,
     fixed = TRUE
   )))
-  expect_true(any(grepl('input[["enhance-add_table"]]', app, fixed = TRUE)))
-  expect_true(any(grepl(
+  expect_true(any(grepl('input[["enhance-table_files"]]', app, fixed = TRUE)))
+  expect_false(any(grepl('input[["enhance-add_table"]]', app, fixed = TRUE)))
+  expect_false(any(grepl('input[["enhance-table_path"]]', app, fixed = TRUE)))
+  expect_false(any(grepl(
     'input[["enhance-tables_to_retain"]]',
     app,
     fixed = TRUE
   )))
-  expect_true(any(grepl(
+  expect_false(any(grepl(
     'input[["enhance-histology_to_retain"]]',
     app,
     fixed = TRUE
   )))
-  expect_true(sum(grepl("builder_enhance_retain", app, fixed = TRUE)) >= 2L)
+  expect_false(any(grepl("builder_enhance_retain", app, fixed = TRUE)))
   expect_true(any(grepl(
     "builder_enhance_analysis_profile",
     app,

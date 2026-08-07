@@ -202,8 +202,7 @@ builder_e2e_validate_all_content <- function(
     enriched_pathways = "enriched_pathways",
     trajectories = "trajectories",
     extra_material = "extra_material",
-    immune_repertoire = "immune_repertoire",
-    trekker = "trekker"
+    immune_repertoire = "immune_repertoire"
   )
   for (name in names(direct)) {
     check(
@@ -211,6 +210,48 @@ builder_e2e_validate_all_content <- function(
       paste(name, "round trip")
     )
   }
+
+  source_trekker <- source@misc$trekker
+  output_trekker <- field("trekker")
+  builder_fields <- c(
+    "builder_group",
+    "builder_colors",
+    "builder_group_values"
+  )
+  check(
+    identical(names(output_trekker), c(names(source_trekker), builder_fields)),
+    "trekker source and Builder field order"
+  )
+  check(
+    same(source_trekker, output_trekker[names(source_trekker)]),
+    "trekker source fields round trip"
+  )
+  check(
+    identical(output_trekker$builder_group, settings$default_group),
+    "trekker Builder group"
+  )
+  expected_group_values <- as.character(
+    source@meta.data[
+      source_trekker$barcodes,
+      settings$default_group,
+      drop = TRUE
+    ]
+  )
+  check(
+    identical(output_trekker$builder_group_values, expected_group_values),
+    "trekker Builder group values"
+  )
+  expected_levels <- levels(source@meta.data[[settings$default_group]])
+  expected_colors <- c(
+    Astrocyte = "#FFC312",
+    Microglia = "#C4E538",
+    Neuron = "#12CBC4"
+  )
+  check(
+    identical(names(output_trekker$builder_colors), expected_levels) &&
+      identical(output_trekker$builder_colors, expected_colors),
+    "trekker Builder colors"
+  )
 
   source_hla <- source@misc$hla_typing
   output_hla <- field("hla_typing")

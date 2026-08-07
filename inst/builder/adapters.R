@@ -314,10 +314,11 @@ builder_example_adapter <- function(id, object) {
 }
 
 #' Load and inspect either a file or example adapter through one path.
-builder_adapter_inspect <- function(adapter) {
+builder_adapter_inspect <- function(adapter, progress = NULL) {
   if (!inherits(adapter, "builder_source_adapter")) {
     .builder_adapter_abort("Expected a Builder source adapter.")
   }
+  .builder_import_report(progress, "reading")
   object <- .builder_adapter_load(adapter)
   source <- list(
     type = adapter$type,
@@ -325,7 +326,9 @@ builder_adapter_inspect <- function(adapter) {
     fingerprint = adapter$fingerprint,
     format = adapter$format
   )
+  .builder_import_report(progress, "inspecting")
   profile <- builder_dataset_profile(object, source)
+  .builder_import_report(progress, "validating")
   legacy <- describe_seurat(object)
   list(
     object = object,
@@ -1585,14 +1588,15 @@ builder_snapshot_cleanup <- function(registry, now = Sys.time()) {
 
 ## -- Worker registration ----------------------------------------------------
 
-.builder_register_adapter <- function(adapter, id) {
+.builder_register_adapter <- function(adapter, id, progress = NULL) {
   if (!.builder_adapter_scalar_text(id)) {
     .builder_adapter_abort("A dataset registration requires a non-empty id.")
   }
   objects <- get(".builder_objects", envir = globalenv())
   snapshots <- get(".builder_snapshots", envir = globalenv())
   snapshot_root <- get(".builder_snapshot_root", envir = globalenv())
-  inspected <- builder_adapter_inspect(adapter)
+  inspected <- builder_adapter_inspect(adapter, progress = progress)
+  .builder_import_report(progress, "preparing")
   target <- tempfile(
     paste0("dataset-", gsub("[^A-Za-z0-9_-]", "-", id), "-"),
     tmpdir = snapshot_root

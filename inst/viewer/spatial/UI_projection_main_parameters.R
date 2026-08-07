@@ -50,6 +50,13 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     error = function(e) NULL
   )
   has_embedded <- !is.null(current_sd) && !is.null(current_sd$histology_image)
+  builder_alignment_background_default <- if (
+    has_embedded && is.list(current_sd$histology_alignment)
+  ) {
+    "__embedded__"
+  } else {
+    "No Background"
+  }
   if (has_embedded) {
     background_choices <- c(
       background_choices,
@@ -188,7 +195,7 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
         selected = keep(
           "spatial_projection_background_image",
           background_choices,
-          "No Background"
+          builder_alignment_background_default
         )
       )
     }

@@ -60,15 +60,16 @@ builder_inspect_content_tag <- function(entry) {
         "marker_genes",
         "most_expressed_genes",
         "mean_expression",
-        "enriched_pathways",
-        "trajectory",
-        "extra_material",
-        "immune_repertoire",
-        "hla_tcr_motifs",
-        "hla"
+        "enriched_pathways"
       )
   ) {
-    "optional"
+    "analysis"
+  } else if (identical(id, "trajectory")) {
+    "trajectory"
+  } else if (id %in% c("immune_repertoire", "hla_tcr_motifs", "hla")) {
+    "immune"
+  } else if (identical(id, "extra_material")) {
+    "extra"
   } else {
     "core"
   }
@@ -114,7 +115,7 @@ builder_inspect_stage_ui <- function(id, model) {
   blockers <- as.character(model$blockers %||% character())
   div(
     id = ns("stage"),
-    class = "builder-stage builder-stage-inspect",
+    class = "builder-stage builder-stage-inspect builder-card builder-section",
     h2("Import & Inspect"),
     div(
       class = "facts",

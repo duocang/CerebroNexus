@@ -2,12 +2,15 @@
 (function () {
   "use strict";
 
-  var narrowManager = window.matchMedia("(max-width: 42.5rem)");
+  var narrowManager = window.matchMedia("(max-width: 43.75rem)");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   var statusTimer = null;
   var lastAnnouncement = "";
   var observedPrimaryAction = null;
   var firstRunKey = "cerebro-builder-first-run-v1";
+  var exampleMessageHandlerRegistered = false;
+  var buildDialogHandlerRegistered = false;
+  var clientUploadSequence = 0;
 
   function send(name, value) {
     if (window.Shiny) {
@@ -89,6 +92,85 @@
     if (dismissed) guide.hidden = true;
   }
 
+  function clientLoadingStage(label, status) {
+    var section = document.createElement("section");
+    section.className = "builder-stage builder-loading-stage is-client";
+    section.setAttribute("aria-live", "polite");
+    section.setAttribute("aria-atomic", "true");
+    var copy = document.createElement("div");
+    copy.className = "builder-loading-copy";
+    var kicker = document.createElement("span");
+    kicker.className = "builder-loading-kicker";
+    kicker.textContent = "Dataset import";
+    var title = document.createElement("h2");
+    title.textContent = "Loading dataset";
+    var name = document.createElement("p");
+    name.className = "builder-loading-name";
+    name.textContent = label;
+    var state = document.createElement("p");
+    state.className = "builder-loading-status";
+    state.textContent = status;
+    copy.appendChild(kicker);
+    copy.appendChild(title);
+    copy.appendChild(name);
+    copy.appendChild(state);
+    var progress = document.createElement("div");
+    progress.className = "builder-loading-progress";
+    progress.setAttribute("role", "progressbar");
+    progress.setAttribute("aria-label", status);
+    progress.setAttribute("aria-valuetext", status);
+    progress.appendChild(document.createElement("span"));
+    section.appendChild(copy);
+    section.appendChild(progress);
+    return section;
+  }
+
+  function showClientLoadingWorkbench(label, status) {
+    var workbench = document.getElementById("workbench");
+    var list = document.getElementById("ds_list");
+    if (!workbench || !list) return;
+    var hasReadyDataset = list.querySelector(".ds:not(.ds--import)");
+    if (hasReadyDataset && !workbench.querySelector(".builder-empty-state")) return;
+    workbench.replaceChildren(clientLoadingStage(label, status));
+  }
+
+  function beginClientDatasetUpload(input) {
+    var files = Array.from(input.files || []);
+    var list = document.getElementById("ds_list");
+    var importList = document.getElementById("ds_import_list");
+    if (!files.length || !list || !importList) return;
+    var empty = list.querySelector(".rail-empty");
+    if (empty) empty.remove();
+    files.forEach(function (file, index) {
+      clientUploadSequence += 1;
+      var label = file && file.name ? file.name : "Selected dataset";
+      var row = document.createElement("div");
+      row.className = "ds ds--import ds--client-upload";
+      row.dataset.clientUpload = String(clientUploadSequence);
+      row.setAttribute("role", "status");
+      row.setAttribute("aria-label", label + ". Uploading.");
+      var body = document.createElement("span");
+      body.className = "ds-body";
+      var name = document.createElement("span");
+      name.className = "nm";
+      name.textContent = label;
+      var status = document.createElement("span");
+      status.className = "builder-import-status is-reading";
+      status.textContent = "Uploading…";
+      body.appendChild(name);
+      body.appendChild(status);
+      row.appendChild(body);
+      importList.appendChild(row);
+      if (index === 0) {
+        showClientLoadingWorkbench(label, "Uploading the selected file…");
+      }
+    });
+    scheduleStatusAnnouncement(
+      files.length === 1 ? "Uploading selected dataset." :
+        "Uploading " + files.length + " selected datasets."
+    );
+  }
+
   function updateDialogLock() {
     document.body.classList.toggle(
       "builder-dialog-open",
@@ -109,12 +191,10 @@
     if (!summary || !rail) return;
     var current = rail.querySelector(".ds.is-active");
     var name = current && current.querySelector(".nm");
-    var readiness = current && current.querySelector(".rail-readiness");
-    var issues = current && current.querySelector(".rail-issues");
+    var reviewStatus = current && current.querySelector(".rail-review-status");
     var nextName = name ? name.textContent.trim() : "No dataset selected";
     var nextState = [
-      readiness ? readiness.textContent.trim() : "",
-      issues ? issues.textContent.trim() : "",
+      reviewStatus ? reviewStatus.textContent.trim() : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -122,6 +202,7 @@
     var stateOutput = summary.querySelector(".rail-summary-state");
     if (nameOutput.textContent !== nextName) nameOutput.textContent = nextName;
     if (stateOutput.textContent !== nextState) stateOutput.textContent = nextState;
+    if (nextState) scheduleStatusAnnouncement(nextName + ". " + nextState + ".");
   }
 
   function closeDatasetManager() {
@@ -217,14 +298,14 @@
     var backdrop = document.createElement("div");
     backdrop.className = "builder-confirm-backdrop";
     var dialog = document.createElement("div");
-    dialog.className = "builder-confirm-dialog";
+    dialog.className = "builder-dialog builder-confirm-dialog";
     var title = document.createElement("h2");
     title.id = "builder-remove-title";
     title.textContent = "Remove dataset setup?";
     var message = document.createElement("p");
     message.textContent = "You can undo the most recent removal in this session.";
     var actions = document.createElement("div");
-    actions.className = "builder-confirm-actions";
+    actions.className = "builder-dialog-actions builder-confirm-actions";
     var cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "btn";
@@ -256,6 +337,185 @@
       if (event.target === backdrop) close();
     });
     prepareDialog(dialog, removeDataset, close);
+  }
+
+  function showAnalysisInfo(infoButton) {
+    if (document.querySelector(".builder-analysis-info-backdrop")) return;
+
+    var backdrop = document.createElement("div");
+    backdrop.className = "builder-analysis-info-backdrop";
+    var dialog = document.createElement("div");
+    dialog.className = "builder-dialog builder-analysis-info-dialog";
+    var header = document.createElement("div");
+    header.className = "builder-analysis-info-header";
+    var title = document.createElement("h2");
+    title.id = "builder-analysis-info-title";
+    title.textContent = infoButton.dataset.title || "Analysis details";
+    var closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "builder-analysis-info-close";
+    closeButton.setAttribute("aria-label", "Close analysis information");
+    closeButton.textContent = "Close";
+    header.appendChild(title);
+    header.appendChild(closeButton);
+
+    var description = document.createElement("p");
+    description.id = "builder-analysis-info-description";
+    description.className = "builder-analysis-info-description";
+    description.textContent = infoButton.dataset.description || "";
+
+    var facts = document.createElement("dl");
+    facts.className = "builder-analysis-info-facts";
+    [
+      { label: "Available in", value: infoButton.dataset.pages },
+      { label: "Typical time", value: infoButton.dataset.cost },
+      { label: "Requires", value: infoButton.dataset.prerequisite },
+      { label: "Network", value: infoButton.dataset.network },
+      {
+        label: "If already present",
+        value: infoButton.dataset.replacement,
+        wide: true,
+      },
+      { label: "If skipped", value: infoButton.dataset.skip, wide: true },
+    ].forEach(function (fact) {
+      var item = document.createElement("div");
+      item.className = "builder-analysis-info-fact" +
+        (fact.wide ? " is-wide" : "");
+      var label = document.createElement("dt");
+      label.textContent = fact.label;
+      var value = document.createElement("dd");
+      value.textContent = fact.value || "Not specified.";
+      item.appendChild(label);
+      item.appendChild(value);
+      facts.appendChild(item);
+    });
+
+    dialog.appendChild(header);
+    dialog.appendChild(description);
+    dialog.appendChild(facts);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    dialog.setAttribute("aria-labelledby", title.id);
+    dialog.setAttribute("aria-describedby", description.id);
+
+    function close() {
+      backdrop.remove();
+      updateDialogLock();
+      restoreFocus(dialog);
+    }
+    closeButton.addEventListener("click", close);
+    backdrop.addEventListener("click", function (event) {
+      if (event.target === backdrop) close();
+    });
+    prepareDialog(dialog, infoButton, close);
+  }
+
+  function showBuildDialog(message) {
+    if (document.querySelector(".builder-build-dialog-backdrop")) return;
+    var trigger = document.getElementById("build");
+    var backdrop = document.createElement("div");
+    backdrop.className = "builder-confirm-backdrop builder-build-dialog-backdrop";
+    var dialog = document.createElement("div");
+    dialog.className = "builder-dialog builder-confirm-dialog builder-build-dialog";
+    var title = document.createElement("h2");
+    title.id = "builder-build-dialog-title";
+    var defaultTitles = {
+      conflict: "Files already exist",
+      unreviewed: "Some datasets have not been reviewed",
+      needs_attention: "Some datasets still need attention",
+      datasets: "Ready to build all datasets?",
+    };
+    title.textContent = message.title || defaultTitles[message.type] ||
+      "Ready to build all datasets?";
+    dialog.appendChild(title);
+
+    var description = document.createElement("p");
+    if (message.type === "conflict") {
+      description.textContent = "Some outputs already exist in this folder:";
+    } else if (message.type === "unreviewed") {
+      description.textContent = "Review every dataset before building.";
+    } else if (message.type === "needs_attention") {
+      description.textContent = "Resolve the highlighted issues before building.";
+    } else {
+      description.textContent = "All " + message.count +
+        " datasets have been reviewed.";
+    }
+    dialog.appendChild(description);
+
+    var list = document.createElement(message.type === "datasets" ? "ol" : "ul");
+    list.className = "builder-build-dialog-list";
+    var values = message.type === "conflict" ? message.files : message.names;
+    var shown = values.slice(0, 4);
+    shown.forEach(function (name) {
+      var item = document.createElement("li");
+      item.textContent = name;
+      list.appendChild(item);
+    });
+    if (values.length > shown.length) {
+      var more = document.createElement("li");
+      more.textContent = "…and " + (values.length - shown.length) + " more";
+      list.appendChild(more);
+    }
+    dialog.appendChild(list);
+    if (message.type === "conflict") {
+      var question = document.createElement("p");
+      question.textContent = "What would you like to do?";
+      dialog.appendChild(question);
+    }
+
+    var actions = document.createElement("div");
+    actions.className = "builder-dialog-actions builder-confirm-actions builder-build-dialog-actions";
+    var buttons;
+    if (message.type === "conflict") {
+      buttons = [
+        { label: "Cancel", action: "cancel", className: "btn" },
+        { label: "Replace existing files", action: "replace", className: "btn btn-replace" },
+        { label: "Choose another folder", action: "choose_another", className: "btn btn-action" },
+      ];
+    } else if (message.type === "unreviewed") {
+      buttons = [
+        { label: "Cancel", action: "cancel", className: "btn" },
+        { label: "Review now", action: "review_now", className: "btn btn-action" },
+      ];
+    } else if (message.type === "needs_attention") {
+      buttons = [
+        { label: "Cancel", action: "cancel", className: "btn" },
+        { label: "Fix issues", action: "fix_issues", className: "btn btn-action" },
+      ];
+    } else {
+      buttons = [
+        { label: "Back to review", action: "cancel", className: "btn" },
+        { label: "Continue", action: "continue", className: "btn btn-action" },
+      ];
+    }
+    var closed = false;
+    function close(action) {
+      if (closed) return;
+      closed = true;
+      backdrop.remove();
+      updateDialogLock();
+      restoreFocus(dialog);
+      send("builder_build_dialog", {
+        action: action || "cancel",
+        nonce: Date.now(),
+      });
+    }
+    buttons.forEach(function (definition) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = definition.className;
+      button.textContent = definition.label;
+      button.addEventListener("click", function () { close(definition.action); });
+      actions.appendChild(button);
+    });
+    dialog.appendChild(actions);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    dialog.setAttribute("aria-labelledby", title.id);
+    backdrop.addEventListener("click", function (event) {
+      if (event.target === backdrop) close("cancel");
+    });
+    prepareDialog(dialog, trigger, close);
   }
 
   function setCurrentStage(stage) {
@@ -471,7 +731,53 @@
   }
 
   function enhanceColour(input) {
-    input.setAttribute("aria-label", colourLabel(input));
+    if (!input.hasAttribute("aria-label")) {
+      input.setAttribute("aria-label", colourLabel(input));
+    }
+  }
+
+  function updateGroupColor(input) {
+    var item = input.closest(".group-color-item");
+    var editor = input.closest(".builder-group-colors");
+    var normalized = input.value.toUpperCase();
+    var hex = item && item.querySelector(".group-color-hex");
+    var status = editor && editor.querySelector(".group-color-status");
+    var label = item && item.querySelector(".group-color-name");
+    if (hex) hex.textContent = normalized;
+    if (status) {
+      status.textContent = "Color for " +
+        (label ? label.textContent.trim() : input.dataset.level) +
+        " changed to " + normalized + ".";
+    }
+    send(input.dataset.inputId, {
+      group: input.dataset.group,
+      level: input.dataset.level,
+      color: normalized,
+      nonce: Date.now(),
+    });
+  }
+
+  function filterGroupColors(search) {
+    var editor = search.closest(".builder-group-colors");
+    if (!editor) return;
+    var grid = editor.querySelector(".group-color-grid");
+    var query = search.value.trim().toLowerCase();
+    grid.classList.toggle("is-searching", query.length > 0);
+    grid.querySelectorAll(".group-color-item").forEach(function (item) {
+      item.hidden = query.length > 0 &&
+        !item.dataset.search.includes(query);
+    });
+  }
+
+  function toggleGroupColors(button) {
+    var editor = button.closest(".builder-group-colors");
+    if (!editor) return;
+    var grid = editor.querySelector(".group-color-grid");
+    var showAll = button.dataset.action === "show-all";
+    grid.classList.toggle("is-expanded", showAll);
+    grid.classList.toggle("is-collapsed", !showAll);
+    editor.querySelector('[data-action="show-all"]').hidden = showAll;
+    editor.querySelector('[data-action="show-fewer"]').hidden = !showAll;
   }
 
   function enhanceDynamicContent() {
@@ -495,6 +801,29 @@
 
   document.addEventListener("click", function (event) {
     var target = event.target;
+    var groupColorToggle = target.closest(".group-color-toggle");
+    if (groupColorToggle) {
+      event.preventDefault();
+      toggleGroupColors(groupColorToggle);
+      return;
+    }
+    var removeTable = target.closest(".enhance-table-remove");
+    if (removeTable) {
+      event.preventDefault();
+      send("enhance-table_action", {
+        action: "remove",
+        key: removeTable.dataset.tableKey,
+        nonce: Date.now(),
+      });
+      return;
+    }
+    var infoButton = target.closest(".enhance-info-button");
+    if (infoButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      showAnalysisInfo(infoButton);
+      return;
+    }
     var dismissGuide = target.closest(".builder-first-run-dismiss");
     if (dismissGuide) {
       dismissGuide.closest(".builder-first-run").hidden = true;
@@ -526,6 +855,49 @@
       return;
     }
 
+    var removePendingUpload = target.closest(".pending-upload-remove");
+    if (removePendingUpload) {
+      event.preventDefault();
+      event.stopPropagation();
+      send("cancel_pending_upload", {
+        id: removePendingUpload.dataset.uploadId,
+        nonce: Date.now(),
+      });
+      return;
+    }
+
+    var pickImport = target.closest(".builder-pick-import");
+    if (pickImport) {
+      send("pick_import", {
+        id: pickImport.dataset.importId,
+        nonce: Date.now(),
+      });
+      if (narrowManager.matches) closeDatasetManager();
+      return;
+    }
+
+    var retryImport = target.closest(".builder-retry-import");
+    if (retryImport) {
+      event.preventDefault();
+      event.stopPropagation();
+      send("retry_import", {
+        id: retryImport.dataset.importId,
+        nonce: Date.now(),
+      });
+      return;
+    }
+
+    var removeImport = target.closest(".builder-remove-import");
+    if (removeImport) {
+      event.preventDefault();
+      event.stopPropagation();
+      send("remove_import", {
+        id: removeImport.dataset.importId,
+        nonce: Date.now(),
+      });
+      return;
+    }
+
     var reorderDataset = target.closest(".builder-reorder");
     if (reorderDataset) {
       send("reorder_ds", {
@@ -542,11 +914,35 @@
     }
     var example = target.closest(".example-btn");
     if (example) {
+      showClientLoadingWorkbench(
+        example.dataset.label || "Selected example",
+        "Waiting to load…"
+      );
       send("use_example", example.dataset.ex);
     }
   });
 
   document.addEventListener("keydown", function (event) {
+    var fileTrigger = event.target.closest(".builder-file-trigger");
+    if (
+      fileTrigger &&
+      (event.key === "Enter" || event.key === " ")
+    ) {
+      event.preventDefault();
+      var fileInput = document.getElementById(fileTrigger.getAttribute("for"));
+      if (fileInput) fileInput.click();
+      return;
+    }
+    var enhanceCheckbox = event.target.closest(".enhance-module-checkbox");
+    if (
+      enhanceCheckbox &&
+      event.key === "Enter" &&
+      !enhanceCheckbox.disabled
+    ) {
+      event.preventDefault();
+      enhanceCheckbox.click();
+      return;
+    }
     if (!isTextInput(event.target)) {
       var modifier = event.ctrlKey || event.metaKey;
       if (modifier && event.key === "Enter") {
@@ -581,41 +977,128 @@
   });
 
   document.addEventListener("input", function (event) {
+    if (event.target.matches(".group-color-search")) {
+      filterGroupColors(event.target);
+      return;
+    }
     if (event.target.matches('input[type="color"]')) {
       enhanceColour(event.target);
     }
   });
 
-  document.addEventListener("shiny:connected", enhanceDynamicContent);
-  document.addEventListener("shiny:sessioninitialized", function () {
+  document.addEventListener("change", function (event) {
+    if (event.target.matches("#dataset_files")) {
+      beginClientDatasetUpload(event.target);
+      return;
+    }
+    if (event.target.matches(".group-color-input")) {
+      updateGroupColor(event.target);
+      return;
+    }
+    if (!event.target.matches(".enhance-table-display-name")) return;
+    send("enhance-table_action", {
+      action: "rename",
+      key: event.target.dataset.tableKey,
+      name: event.target.value,
+      nonce: Date.now(),
+    });
+  });
+
+  function messageValues(value) {
+    if (value === null || typeof value === "undefined" || value === "") return [];
+    return Array.isArray(value) ? value : [value];
+  }
+
+  function updateExampleDirectory(message) {
+    var used = new Set(messageValues(message && message.ids));
+    var loading = new Set(messageValues(message && message.loading));
+    document.querySelectorAll(".example-btn[data-ex]").forEach(function (el) {
+      var id = el.dataset.ex;
+      var isLoading = loading.has(id);
+      var taken = used.has(id) && !isLoading;
+      var label = el.querySelector(".ex-label");
+      el.classList.toggle("is-loading", isLoading);
+      el.classList.toggle("is-taken", taken);
+      el.disabled = taken || isLoading;
+      el.setAttribute("aria-disabled", taken || isLoading ? "true" : "false");
+      if (label) label.textContent = isLoading ? "Loading…" : el.dataset.label;
+    });
+  }
+
+  function registerExampleMessageHandler() {
+    if (exampleMessageHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler(
       "builder_used_examples",
-      function (message) {
-        var used = new Set((message && message.ids) || []);
-        document.querySelectorAll(".example-btn[data-ex]").forEach(function (el) {
-          var taken = used.has(el.dataset.ex);
-          el.classList.toggle("is-taken", taken);
-          el.disabled = taken;
-          el.setAttribute("aria-disabled", taken ? "true" : "false");
-        });
-      }
+      updateExampleDirectory
     );
-  });
-
-  new MutationObserver(enhanceDynamicContent).observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
-
-  if (narrowManager.addEventListener) {
-    narrowManager.addEventListener("change", applyRailMode);
-    reducedMotion.addEventListener("change", updateMotionDuration);
-  } else {
-    narrowManager.addListener(applyRailMode);
-    reducedMotion.addListener(updateMotionDuration);
+    exampleMessageHandlerRegistered = true;
   }
-  updateMotionDuration();
-  ensureLiveRegion();
-  enhanceDynamicContent();
+
+  function registerBuildDialogHandler() {
+    if (buildDialogHandlerRegistered || !window.Shiny) return;
+    window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
+    window.Shiny.addCustomMessageHandler("builder_focus_dataset", function (message) {
+      var context = document.querySelector(".dataset-context");
+      if (!context) return;
+      context.scrollIntoView({
+        block: "start",
+        behavior: reducedMotion.matches ? "auto" : "smooth",
+      });
+      context.focus();
+      if (message && message.message) scheduleStatusAnnouncement(message.message);
+    });
+    window.Shiny.addCustomMessageHandler("builder_focus_review", function (message) {
+      var review = document.getElementById("review-stage");
+      if (!review) return;
+      review.setAttribute("tabindex", "-1");
+      review.scrollIntoView({
+        block: "start",
+        behavior: reducedMotion.matches ? "auto" : "smooth",
+      });
+      review.focus();
+      if (message && message.message) scheduleStatusAnnouncement(message.message);
+    });
+    window.Shiny.addCustomMessageHandler("builder_import_status", function (message) {
+      if (message && message.text) scheduleStatusAnnouncement(message.text);
+    });
+    buildDialogHandlerRegistered = true;
+  }
+
+  document.addEventListener("shiny:connected", function () {
+    registerExampleMessageHandler();
+    registerBuildDialogHandler();
+    if (document.body) enhanceDynamicContent();
+  });
+  document.addEventListener("shiny:sessioninitialized", function () {
+    registerExampleMessageHandler();
+    registerBuildDialogHandler();
+  });
+
+  function initializeBuilder() {
+    registerExampleMessageHandler();
+    registerBuildDialogHandler();
+
+    new MutationObserver(enhanceDynamicContent).observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    if (narrowManager.addEventListener) {
+      narrowManager.addEventListener("change", applyRailMode);
+      reducedMotion.addEventListener("change", updateMotionDuration);
+    } else {
+      narrowManager.addListener(applyRailMode);
+      reducedMotion.addListener(updateMotionDuration);
+    }
+    updateMotionDuration();
+    ensureLiveRegion();
+    enhanceDynamicContent();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeBuilder, { once: true });
+  } else {
+    initializeBuilder();
+  }
 })();

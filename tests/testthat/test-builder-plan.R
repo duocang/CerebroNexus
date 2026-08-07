@@ -163,7 +163,7 @@ test_that("build plans use collision-proof filenames and resolved colours", {
     expect_match(plan$items[[2]]$filename, "^02-a-b-[a-z0-9]+[.]crb$")
     expect_identical(
       unname(plan$items[[1]]$colors$cluster[["B"]]),
-      "#ff00aa"
+      "#FF00AA"
     )
 
     sys.source(
@@ -182,6 +182,29 @@ test_that("build plans use collision-proof filenames and resolved colours", {
       builder_app_bundle_request(plan, built, labels),
       "builder_app_bundle_request"
     )
+  })
+})
+
+test_that("resolved group colors are shared by every projection", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("plan.R")
+
+    settings <- list(
+      groups = c("cluster", "sample"),
+      palette = "cerebro",
+      color_overrides = list(cluster = c(B = "#e76f51")),
+      default_projection = "umap"
+    )
+    levels <- list(cluster = c("A", "B"), sample = c("one", "two"))
+    umap <- builder_resolve_colors(settings, levels)
+    settings$default_projection <- "pca"
+    pca <- builder_resolve_colors(settings, levels)
+
+    expect_identical(umap, pca)
+    expect_identical(umap$cluster[["B"]], "#E76F51")
+    expect_setequal(names(umap), c("cluster", "sample"))
+    expect_false(any(c("umap", "pca", "tsne") %in% names(umap)))
   })
 })
 
@@ -577,6 +600,29 @@ test_that("rail Review and BuildPlan share manifest readiness", {
     expect_null(plan$error)
     expect_identical(plan$items[[1L]]$readiness, ready_state$readiness)
     expect_identical(plan$readiness, ready_state$readiness)
+  })
+})
+
+test_that("an uploaded image with unsaved alignment blocks freezing", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    entry$settings$images$fov <- list(
+      uri = "data:image/png;base64,AAAA",
+      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      saved = FALSE
+    )
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    expect_identical(blocked$error_code, "unsaved_spatial_alignment")
+    expect_match(blocked$error, "fov")
+    expect_match(blocked$error, "no saved alignment")
+
+    entry$settings$images$fov$saved <- TRUE
+    ready <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    expect_null(ready$error)
   })
 })
 

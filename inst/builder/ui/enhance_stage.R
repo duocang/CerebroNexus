@@ -25,12 +25,24 @@ builder_enhance_model <- function(id, profile, state, settings, modules) {
       skip_consequence = "Not optional: frozen valid content stays in the CRB."
     )
   })
+  extras <- profile$extras %||% list()
+  has_trekker <- any(vapply(
+    extras,
+    function(entry) {
+      identical(entry$key %||% "", "trekker") && isTRUE(entry$found)
+    },
+    logical(1)
+  ))
+  spatial_sections <- unique(c(
+    profile$images %||% character(),
+    if (has_trekker) "trekker" else character()
+  ))
   list(
     id = id,
     modules = modules,
     attachments = list(
       tables = list(
-        label = "Supplementary tables",
+        label = "Tables for Extra material",
         enabled_pages = "extra material",
         relevant = TRUE,
         cost = "Reads and validates one bounded delimited file.",
@@ -46,9 +58,9 @@ builder_enhance_model <- function(id, profile, state, settings, modules) {
         )
       ),
       histology = list(
-        label = "Histology images",
+        label = "Spatial alignment",
         enabled_pages = "spatial",
-        relevant = length(profile$images %||% character()) > 0L ||
+        relevant = length(spatial_sections) > 0L ||
           any(vapply(
             manifest,
             function(entry) {
@@ -61,7 +73,7 @@ builder_enhance_model <- function(id, profile, state, settings, modules) {
         cost = "Image decoding, encoding, and alignment.",
         network = "No network access.",
         prerequisite = "Requires spatial sections and coordinates.",
-        sections = profile$images %||% character(),
+        sections = spatial_sections,
         selected = names(settings$images %||% list()) %||% character(),
         replacement_policy = "One saved image per tissue section.",
         skip_consequence = paste(
@@ -167,40 +179,6 @@ builder_enhance_modules <- function(profile, settings) {
   })
 }
 
-.builder_enhance_disclosure_notes <- function(item) {
-  tags$details(
-    class = "enhance-details",
-    tags$summary("What this changes"),
-    p(
-      class = "pages",
-      paste0(
-        "Enabled page: ",
-        paste(
-          item$enabled_pages %||% item$pages %||% character(),
-          collapse = ", "
-        )
-      )
-    ),
-    p(
-      class = "replacement",
-      paste0("Replacement policy: ", item$replacement_policy %||% "")
-    ),
-    p(
-      class = "skip",
-      paste0("Skip consequence: ", item$skip_consequence %||% "")
-    ),
-    p(class = "cost", paste0("Cost: ", item$cost %||% "not applicable")),
-    p(class = "network", item$network %||% "No network access."),
-    p(
-      class = "prerequisite",
-      paste0(
-        "Prerequisite: ",
-        item$prerequisite %||% item$dependency %||% "none"
-      )
-    )
-  )
-}
-
 builder_enhance_modules_ui <- function(id, modules) {
   ns <- NS(id)
   modules <- Filter(function(module) isTRUE(module$relevant), modules)
@@ -209,52 +187,279 @@ builder_enhance_modules_ui <- function(id, modules) {
   }
   tagList(lapply(modules, function(module) {
     div(
-      class = paste(
-        "enhance-module",
-        if (isTRUE(module$blocked)) "is-blocked" else NULL
-      ),
+      class = if (isTRUE(module$blocked)) {
+        "enhance-module is-blocked"
+      } else {
+        "enhance-module"
+      },
       tags$label(
+        class = "enhance-module-select",
         tags$input(
           id = ns(paste0("analysis_", module$id)),
           type = "checkbox",
-          class = "shiny-input-checkbox",
+          class = "enhance-module-checkbox visually-hidden shiny-input-checkbox",
           checked = if (isTRUE(module$selected)) "checked",
           disabled = if (isTRUE(module$blocked)) "disabled"
         ),
-        tags$span(module$label)
+        tags$span(class = "enhance-module-title", module$label),
+        p(class = "consequence", module$consequence %||% ""),
+        if (isTRUE(module$blocked)) {
+          p(class = "blocked", module$blocked_reason %||% "Unavailable")
+        }
       ),
-      if (isTRUE(module$blocked)) {
-        p(class = "blocked", module$blocked_reason %||% "Unavailable")
-      },
-      p(class = "consequence", module$consequence %||% ""),
-      .builder_enhance_disclosure_notes(module)
+      tags$button(
+        type = "button",
+        class = "enhance-info-button",
+        `aria-label` = paste("More information about", module$label),
+        `data-title` = module$label %||% "",
+        `data-description` = module$consequence %||% "",
+        `data-pages` = module$enabled_pages %||% "",
+        `data-cost` = module$cost %||% "",
+        `data-network` = module$network %||% "",
+        `data-prerequisite` = module$prerequisite %||% "",
+        `data-replacement` = module$replacement_policy %||% "",
+        `data-skip` = module$skip_consequence %||% "",
+        "i"
+      )
     )
   }))
 }
 
-builder_enhance_saved_image_ui <- function(id, section, section_count) {
+builder_tissue_image_file_ui <- function(id, record) {
   ns <- NS(id)
+  source <- record$source %||% list()
+  filename <- builder_safe_file_name(source$name, "Tissue image")
+  detail <- paste(
+    builder_file_type_label(filename, source$type),
+    builder_file_human_size(source$size %||% NA_real_),
+    sep = " · "
+  )
+  saved <- isTRUE(record$saved)
   div(
-    style = "margin-top:.5rem;display:flex;gap:.5rem;align-items:center",
-    span(
-      class = "pill on",
-      if (section_count > 1L) {
-        paste0("Alignment saved for “", section, "”")
-      } else {
-        "Alignment saved"
-      }
+    class = "builder-file-list builder-file-list--single",
+    div(
+      class = "builder-file-item enhance-tissue-file-item",
+      div(
+        class = "enhance-tissue-file-meta",
+        strong(filename),
+        span(class = "hint", detail)
+      ),
+      div(
+        class = "builder-action-row",
+        span(
+          class = paste(
+            "builder-status",
+            if (saved) "builder-status--ready" else "builder-status--attention"
+          ),
+          if (saved) "Ready" else "Needs saving"
+        ),
+        actionButton(
+          ns("drop_image"),
+          "Remove",
+          class = "btn btn-remove-soft"
+        )
+      )
+    )
+  )
+}
+
+builder_alignment_plot_output <- function(id, label) {
+  div(
+    class = "spatial-alignment-plot-output",
+    `aria-label` = label,
+    role = "img",
+    plotly::plotlyOutput(id, height = "360px")
+  )
+}
+
+builder_spatial_alignment_ui <- function(id, model) {
+  ns <- NS(id)
+  sections <- as.character(model$sections %||% character())
+  section_labels <- sections
+  section_labels[sections == "trekker"] <- "Trekker physical space"
+  choices <- stats::setNames(sections, section_labels)
+  tagList(
+    h4(model$label %||% "Spatial alignment"),
+    p(
+      class = "enhance-attachment-description",
+      "Compare transcriptome and physical space, then align an optional tissue image."
     ),
-    actionButton(ns("drop_image"), "Remove", class = "btn btn-quiet")
+    if (length(sections)) {
+      div(
+        class = "spatial-alignment-layout",
+        div(
+          class = "spatial-alignment-sidebar builder-controls-grid",
+          selectInput(
+            ns("active_section"),
+            "Tissue section",
+            choices = choices,
+            selected = sections[[1L]]
+          ),
+          div(
+            class = "builder-status spatial-alignment-status",
+            `aria-live` = "polite",
+            uiOutput(ns("alignment_status"))
+          ),
+          div(
+            class = "enhance-tissue-file-control builder-file-picker builder-file-picker--compact",
+            tags$input(
+              id = ns("tissue_image_file"),
+              name = ns("tissue_image_file"),
+              class = "shiny-input-file enhance-tissue-file-input builder-file-input",
+              type = "file",
+              accept = ".png,.jpg,.jpeg",
+              `tabindex` = "-1"
+            ),
+            tags$label(
+              `for` = ns("tissue_image_file"),
+              class = "enhance-tissue-file-button builder-file-trigger",
+              `tabindex` = "0",
+              role = "button",
+              span("+ Add tissue image…")
+            )
+          ),
+          conditionalPanel(
+            condition = "output['has_image']",
+            div(
+              class = "spatial-alignment-controls builder-controls-grid builder-controls-grid--sliders",
+              tags$fieldset(
+                class = "spatial-alignment-control-group",
+                tags$legend("Position"),
+                sliderInput(
+                  ns("img_dx"),
+                  "Horizontal offset",
+                  -1,
+                  1,
+                  0,
+                  ticks = FALSE
+                ),
+                sliderInput(
+                  ns("img_dy"),
+                  "Vertical offset",
+                  -1,
+                  1,
+                  0,
+                  ticks = FALSE
+                )
+              ),
+              tags$fieldset(
+                class = "spatial-alignment-control-group",
+                tags$legend("Scale & orientation"),
+                sliderInput(
+                  ns("img_scale"),
+                  "Scale",
+                  0.2,
+                  3,
+                  1,
+                  step = 0.02,
+                  ticks = FALSE
+                ),
+                sliderInput(
+                  ns("img_rotate"),
+                  "Rotation (degrees)",
+                  -180,
+                  180,
+                  0,
+                  ticks = FALSE
+                ),
+                checkboxInput(ns("image_flip_x"), "Flip horizontally", FALSE),
+                checkboxInput(ns("image_flip_y"), "Flip vertically", FALSE)
+              ),
+              tags$fieldset(
+                class = "spatial-alignment-control-group",
+                tags$legend("Appearance"),
+                sliderInput(
+                  ns("image_opacity"),
+                  "Image opacity",
+                  0,
+                  100,
+                  80,
+                  step = 5,
+                  post = "%",
+                  ticks = FALSE
+                ),
+                sliderInput(
+                  ns("point_opacity"),
+                  "Point opacity",
+                  0,
+                  100,
+                  85,
+                  step = 5,
+                  post = "%",
+                  ticks = FALSE
+                ),
+                sliderInput(
+                  ns("point_size"),
+                  "Point size",
+                  1,
+                  12,
+                  5,
+                  step = 1,
+                  ticks = FALSE
+                )
+              )
+            ),
+            div(
+              class = "spatial-alignment-actions builder-action-row",
+              actionButton(
+                ns("apply_align"),
+                "Save alignment",
+                class = "btn btn-action"
+              ),
+              actionButton(
+                ns("apply_align_all"),
+                "Apply transform to all sections",
+                class = "btn btn-quiet"
+              ),
+              actionButton(
+                ns("reset_align"),
+                "Reset alignment",
+                class = "btn btn-quiet"
+              )
+            ),
+            ns = ns
+          )
+        ),
+        div(
+          class = "spatial-alignment-main",
+          div(
+            class = "spatial-alignment-plots builder-preview-grid",
+            tags$section(
+              class = "spatial-alignment-plot-card builder-subcard",
+              h5("Transcriptome space"),
+              uiOutput(ns("alignment_projection_label"), inline = TRUE),
+              builder_alignment_plot_output(
+                ns("alignment_transcriptome_plot"),
+                "Transcriptome-space cell plot"
+              )
+            ),
+            tags$section(
+              class = "spatial-alignment-plot-card builder-subcard",
+              h5("Spatial space"),
+              uiOutput(ns("alignment_spatial_label"), inline = TRUE),
+              builder_alignment_plot_output(
+                ns("alignment_spatial_plot"),
+                "Spatial-space cell plot"
+              )
+            )
+          ),
+          div(
+            class = "spatial-alignment-legend-wrap",
+            h5("Groups"),
+            uiOutput(ns("alignment_legend"))
+          )
+        )
+      )
+    }
   )
 }
 
 builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
   ns <- NS(id)
-  tables <- model$attachments$tables %||% list()
   histology <- model$attachments$histology %||% list()
   div(
     id = ns("stage"),
-    class = "builder-stage builder-stage-enhance",
+    class = "builder-stage builder-stage-enhance builder-card builder-section",
     h2("Enhance"),
     p(
       class = "stage-intro",
@@ -276,76 +481,38 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
     ),
     h3("Optional attachments"),
     div(
-      class = "enhance-attachment",
-      h4(tables$label %||% "Supplementary tables"),
-      .builder_enhance_disclosure_notes(tables),
-      textInput(ns("table_path"), "CSV / TSV path"),
-      textInput(ns("table_name"), "Display name (optional)"),
-      actionButton(ns("add_table"), "Add table", class = "btn"),
-      checkboxGroupInput(
-        ns("tables_to_retain"),
-        "Tables to retain",
-        choices = tables$selected %||% character(),
-        selected = tables$selected %||% character()
-      )
+      class = "enhance-attachment builder-subcard",
+      h4("Tables for Extra material"),
+      p(
+        class = "enhance-attachment-description",
+        "Add optional CSV or TSV tables to the generated app’s Extra material page."
+      ),
+      div(
+        class = "enhance-table-file-control builder-file-picker builder-file-picker--content",
+        tags$input(
+          id = ns("table_files"),
+          name = ns("table_files"),
+          class = "shiny-input-file enhance-table-file-input builder-file-input",
+          type = "file",
+          multiple = "multiple",
+          accept = ".csv,.tsv,.txt",
+          `tabindex` = "-1"
+        ),
+        tags$label(
+          `for` = ns("table_files"),
+          class = "enhance-table-file-button builder-file-trigger",
+          `tabindex` = "0",
+          role = "button",
+          span("+ Add tables…")
+        )
+      ),
+      uiOutput(ns("table_list"))
     ),
     if (isTRUE(histology$relevant)) {
       div(
-        class = "enhance-attachment",
-        h4(histology$label %||% "Histology images"),
-        .builder_enhance_disclosure_notes(histology),
-        checkboxGroupInput(
-          ns("histology_to_retain"),
-          "Saved histology to retain",
-          choices = histology$selected %||% character(),
-          selected = histology$selected %||% character()
-        ),
-        if (length(histology$sections %||% character())) {
-          tagList(
-            selectInput(
-              ns("active_slice"),
-              "Tissue section",
-              choices = histology$sections,
-              selected = histology$sections[[1L]]
-            ),
-            textInput(ns("image_path"), "PNG / JPEG path"),
-            selectInput(
-              ns("image_bounds_mode"),
-              "Image extent",
-              choices = c(
-                "Cell coordinates are image pixels" = "pixels",
-                "Cell coordinates use physical units" = "physical",
-                "Fit to the cell bounding box" = "bbox"
-              )
-            ),
-            numericInput(ns("image_um"), "Physical units per pixel", 1),
-            numericInput(ns("image_max_px"), "Maximum image edge (px)", 1400),
-            actionButton(ns("attach_image"), "Load image", class = "btn"),
-            uiOutput(ns("image_state")),
-            sliderInput(ns("img_dx"), "Horizontal offset", -1, 1, 0),
-            sliderInput(ns("img_dy"), "Vertical offset", -1, 1, 0),
-            sliderInput(ns("img_scale"), "Scale", 0.2, 3, 1),
-            sliderInput(ns("img_rotate"), "Rotation (degrees)", -180, 180, 0),
-            checkboxInput(ns("image_flip"), "Flip vertically", FALSE),
-            checkboxInput(ns("image_flip_x"), "Flip horizontally", FALSE),
-            plotly::plotlyOutput(ns("overlay_plot"), height = "360px"),
-            actionButton(ns("apply_align"), "Save for this section"),
-            actionButton(ns("apply_align_all"), "Apply to all sections"),
-            actionButton(ns("reset_align"), "Reset alignment")
-          )
-        }
+        class = "enhance-attachment spatial-alignment-workbench builder-subcard",
+        builder_spatial_alignment_ui(id, histology)
       )
-    },
-    h3("Auto-retained content"),
-    if (!length(model$auto_retained %||% list())) {
-      p(class = "hint", "No validated optional content is auto-retained.")
-    },
-    lapply(model$auto_retained %||% list(), function(content) {
-      div(
-        class = "enhance-retained",
-        h4(content$label),
-        .builder_enhance_disclosure_notes(content)
-      )
-    })
+    }
   )
 }

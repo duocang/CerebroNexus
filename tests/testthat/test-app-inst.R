@@ -373,6 +373,31 @@ test_that("{shinytest2} recording: color_management", {
 
   ui_val <- retry_get_value(app, output = "color_assignments_UI")
   expect_false(is.null(ui_val))
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll(",
+      "'[id^=\"color_assignments_info_group_\"]').length > 0"
+    ),
+    timeout = 20000
+  )
+  info_ids <- app$get_js(paste0(
+    "Array.from(document.querySelectorAll(",
+    "'[id^=\"color_assignments_info_group_\"]')).map(function(button){",
+    "return button.id;})"
+  ))
+  info_ids <- as.character(unlist(info_ids, use.names = FALSE))
+  expect_gt(length(info_ids), 0L)
+  expect_identical(length(unique(info_ids)), length(info_ids))
+  app$run_js(
+    "document.querySelector('[id^=\"color_assignments_info_group_\"]').click()"
+  )
+  app$wait_for_js(
+    paste0(
+      "(function(){var title=document.querySelector('.modal-title');return !!(",
+      "title && title.textContent.indexOf('Colors for groups')!==-1);})()"
+    ),
+    timeout = 20000
+  )
 
   app$stop()
 })

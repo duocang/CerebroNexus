@@ -12,6 +12,81 @@
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
+#' Choose a local output directory with the operating system's picker.
+#'
+#' The optional selector keeps platform UI outside the Build flow and makes
+#' cancellation and path normalization directly testable.
+builder_choose_output_directory <- function(.select = NULL) {
+  select <- .select %||%
+    function() {
+      system <- Sys.info()[["sysname"]] %||% ""
+      if (identical(system, "Windows")) {
+        return(utils::choose.dir(
+          caption = "Choose where to save the CRB files and App folder."
+        ))
+      }
+      if (identical(system, "Darwin")) {
+        script <- paste(
+          "POSIX path of (choose folder with prompt",
+          '"Choose where to save the CRB files and App folder.")'
+        )
+        return(system2("osascript", c("-e", shQuote(script)), stdout = TRUE))
+      }
+      zenity <- Sys.which("zenity")
+      if (nzchar(zenity)) {
+        return(system2(
+          zenity,
+          c(
+            "--file-selection",
+            "--directory",
+            shQuote(
+              "--title=Choose where to save the CRB files and App folder."
+            )
+          ),
+          stdout = TRUE,
+          stderr = FALSE
+        ))
+      }
+      kdialog <- Sys.which("kdialog")
+      if (nzchar(kdialog)) {
+        return(system2(
+          kdialog,
+          c("--getexistingdirectory", shQuote(path.expand("~"))),
+          stdout = TRUE,
+          stderr = FALSE
+        ))
+      }
+      stop("No system folder picker is available.", call. = FALSE)
+    }
+  chosen <- tryCatch(select(), error = identity)
+  if (inherits(chosen, "error")) {
+    return(list(
+      status = "error",
+      path = NULL,
+      error = conditionMessage(chosen)
+    ))
+  }
+  if (!length(chosen) || is.na(chosen[[1L]]) || !nzchar(trimws(chosen[[1L]]))) {
+    return(list(status = "cancelled", path = NULL))
+  }
+  path <- tryCatch(
+    normalizePath(
+      path.expand(trimws(chosen[[1L]])),
+      winslash = "/",
+      mustWork = TRUE
+    ),
+    error = identity
+  )
+  if (inherits(path, "error") || !dir.exists(path)) {
+    return(list(
+      status = "error",
+      path = NULL,
+      error = "The selected folder is not available."
+    ))
+  }
+  list(status = "selected", path = path)
+}
+
 ## Resource lookup must stay in the same immutable inst/ tree as this file.
 ## `system.file()` is deliberately only a fallback for runtimes where io.R was
 ## not sourced from a verifiable <inst>/builder/io.R path (for example, a
@@ -987,6 +1062,68 @@ builder_example_catalog <- function() {
   names(records) <- vapply(records, `[[`, character(1), "id")
   records
 }
+
+#' Static first-paint directory for the example picker.
+builder_example_directory <- local({
+  directory <- list(
+    list(
+      id = "basic_pbmc",
+      label = "Basic PBMC",
+      detail = "A compact real PBMC object for the core expression workflow",
+      source = "extdata/examples/pbmc_seurat.rds"
+    ),
+    list(
+      id = "spatial_multi_section",
+      label = "Spatial multi-section",
+      detail = "Two synthetic tissue sections with independent image alignment",
+      source = "builder/fixtures/spatial_multi_section.rds"
+    ),
+    list(
+      id = "immune_tcr_hla",
+      label = "Immune: TCR + HLA",
+      detail = "T-cell receptor data with donor HLA typing",
+      source = "builder/fixtures/immune_tcr_hla.rds"
+    ),
+    list(
+      id = "immune_tcr_only",
+      label = "Immune: TCR only",
+      detail = "T-cell receptor data without HLA typing",
+      source = "builder/fixtures/immune_tcr_only.rds"
+    ),
+    list(
+      id = "immune_hla_only",
+      label = "Immune: HLA only",
+      detail = "HLA typing without an immune repertoire",
+      source = "builder/fixtures/immune_hla_only.rds"
+    ),
+    list(
+      id = "immune_bcr_only",
+      label = "Immune: BCR only",
+      detail = "B-cell receptor data without TCR chains",
+      source = "builder/fixtures/immune_bcr_only.rds"
+    ),
+    list(
+      id = "immune_metadata_tcr",
+      label = "Immune: metadata TCR",
+      detail = "TCR fields in metadata for Builder conversion",
+      source = "builder/fixtures/immune_metadata_tcr.rds"
+    ),
+    list(
+      id = "immune_legacy_tcr",
+      label = "Immune: legacy TCR",
+      detail = "Legacy TCR payload for Builder conversion",
+      source = "builder/fixtures/immune_legacy_tcr.rds"
+    ),
+    list(
+      id = "all_content",
+      label = "All content",
+      detail = "Expression, immune, HLA, spatial, Trekker, and supporting content",
+      source = "builder/fixtures/all_content.rds"
+    )
+  )
+  names(directory) <- vapply(directory, `[[`, character(1), "id")
+  function() directory
+})
 
 #' Gallery projection of the stable example catalog.
 builder_examples <- function() {

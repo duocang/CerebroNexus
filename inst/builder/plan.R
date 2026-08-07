@@ -58,7 +58,7 @@ builder_normalize_analyses <- function(selected, has_marker_genes = FALSE) {
 builder_resolve_colors <- function(settings, levels) {
   groups <- settings$groups %||% character()
   palette <- settings$palette %||% "cerebro"
-  overrides <- settings$color_overrides %||% list()
+  overrides <- builder_settings_color_overrides(settings)
   out <- list()
   for (group in groups) {
     group_levels <- levels[[group]] %||% character()
@@ -71,6 +71,27 @@ builder_resolve_colors <- function(settings, levels) {
     }
   }
   out
+}
+
+.builder_plan_partition_alignments <- function(images) {
+  if (
+    exists("builder_partition_alignments", mode = "function", inherits = TRUE)
+  ) {
+    return(builder_partition_alignments(images %||% list()))
+  }
+  images <- images %||% list()
+  is_trekker <- vapply(
+    names(images),
+    function(name) {
+      identical(name, "trekker") ||
+        identical(images[[name]]$section_kind %||% "", "trekker")
+    },
+    logical(1)
+  )
+  list(
+    spatial = images[!is_trekker],
+    trekker = if (any(is_trekker)) images[[which(is_trekker)[[1L]]]] else NULL
+  )
 }
 
 builder_default_settings <- function(profile, name, recommendations = NULL) {
@@ -640,6 +661,27 @@ builder_has_text <- function(value) {
         state_error$code
       }
       return(builder_plan_error(conditionMessage(state_error), code))
+    }
+  }
+
+  for (entry in entries) {
+    images <- entry$settings$images %||% list()
+    unsaved <- names(images)[vapply(
+      images,
+      function(record) {
+        is.list(record) && identical(record$saved, FALSE)
+      },
+      logical(1)
+    )]
+    if (length(unsaved)) {
+      return(builder_plan_error(
+        paste0(
+          "Section “",
+          unsaved[[1L]],
+          "” has an image but no saved alignment. Save or remove it before building."
+        ),
+        "unsaved_spatial_alignment"
+      ))
     }
   }
 
@@ -1402,8 +1444,51 @@ builder_freeze_plan <- function(
         analyses
       )
       source_snapshot_identity <- .builder_plan_source_snapshot_identity(entry)
-      image_sections <- names(settings$images %||% list()) %||% character()
+      alignments <- .builder_plan_partition_alignments(
+        settings$images %||% list()
+      )
       spatial_sections <- artifact_identity$spatial_sections %||% character()
+      profile_extras <- entry$profile$extras %||% list()
+      has_trekker <- any(vapply(
+        profile_extras,
+        function(extra) {
+          identical(extra$key %||% "", "trekker") && isTRUE(extra$found)
+        },
+        logical(1)
+      )) ||
+        isTRUE(
+          entry$dataset_profile$content$trekker$detected %||% FALSE
+        )
+      alignment_sections <- unique(c(
+        spatial_sections,
+        if (has_trekker) "trekker" else character()
+      ))
+      alignments$spatial <- alignments$spatial[
+        intersect(names(alignments$spatial), spatial_sections)
+      ]
+      if (!has_trekker) {
+        alignments$trekker <- NULL
+      }
+      image_sections <- names(alignments$spatial) %||% character()
+      aligned_sections <- unique(c(
+        image_sections,
+        if (!is.null(alignments$trekker)) "trekker" else character()
+      ))
+      default_group <- settings$default_group %||% settings$groups[[1L]]
+      default_group_levels <- entry$levels[[default_group]] %||% character()
+      default_group_overrides <- builder_settings_color_overrides(settings)[[
+        default_group
+      ]] %||%
+        character()
+      custom_color_levels <- intersect(
+        default_group_levels,
+        names(default_group_overrides)
+      )
+      custom_color_levels <- custom_color_levels[vapply(
+        default_group_overrides[custom_color_levels],
+        function(value) !is.null(builder_normalize_hex_color(value)),
+        logical(1)
+      )]
       runtime_costs <- c(
         percent_mt_ribo = "seconds",
         most_expressed = "seconds",
@@ -1437,6 +1522,12 @@ builder_freeze_plan <- function(
           with_histology = intersect(spatial_sections, image_sections),
           missing_histology = setdiff(spatial_sections, image_sections)
         ),
+        spatial_alignment = list(
+          section_count = as.integer(length(alignment_sections)),
+          image_count = as.integer(length(aligned_sections)),
+          saved_count = as.integer(length(aligned_sections)),
+          points_only = setdiff(alignment_sections, aligned_sections)
+        ),
         estimated_runtime = if (length(analyses)) {
           paste(unique(unname(runtime_costs[analyses])), collapse = ", ")
         } else {
@@ -1446,11 +1537,13 @@ builder_freeze_plan <- function(
           source_snapshot_identity$closure_bytes %||% 0
         ),
         tables = settings$tables %||% list(),
-        images = settings$images %||% list(),
+        images = alignments$spatial,
+        trekker_alignment = alignments$trekker,
         colors = builder_resolve_colors(settings, entry$levels %||% list()),
+        color_custom_count = as.integer(length(custom_color_levels)),
         nUMI = settings$nUMI %||% entry$profile$nUMI,
         nGene = settings$nGene %||% entry$profile$nGene,
-        default_group = settings$default_group %||% settings$groups[[1L]],
+        default_group = default_group,
         default_projection = settings$default_projection %||%
           settings$reductions[[1L]],
         metadata_policy = states[[index]]$metadata_policy %||%

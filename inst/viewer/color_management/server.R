@@ -11,11 +11,19 @@ output[["color_assignments_UI"]] <- renderUI({
   fluidRow(
     tagList({
       group_list <- list()
-      for (group_name in getGroups()) {
+      groups <- getGroups()
+      for (group_index in seq_along(groups)) {
+        group_name <- groups[[group_index]]
         group_list[[group_name]] <- box(
           title = tagList(
             boxTitle(group_name),
-            cerebroInfoButton("color_assignments_info")
+            cerebroInfoButton(
+              paste0("color_assignments_info_group_", group_index),
+              onclick = paste0(
+                "Shiny.setInputValue('color_assignments_info', this.id, ",
+                "{priority: 'event'});"
+              )
+            )
           ),
           status = "primary",
           solidHeader = TRUE,
@@ -43,11 +51,19 @@ output[["color_assignments_UI"]] <- renderUI({
       ## if there are columns with cell cycle info, add color selection elements
       ## also for those
       if (length(getCellCycle()) > 0) {
-        for (column in getCellCycle()) {
+        cell_cycle_columns <- getCellCycle()
+        for (column_index in seq_along(cell_cycle_columns)) {
+          column <- cell_cycle_columns[[column_index]]
           group_list[[column]] <- box(
             title = tagList(
               boxTitle(column),
-              cerebroInfoButton("color_assignments_info")
+              cerebroInfoButton(
+                paste0("color_assignments_info_cycle_", column_index),
+                onclick = paste0(
+                  "Shiny.setInputValue('color_assignments_info', this.id, ",
+                  "{priority: 'event'});"
+                )
+              )
             ),
             status = "primary",
             solidHeader = TRUE,

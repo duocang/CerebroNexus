@@ -89,6 +89,7 @@ source("analysis.R", local = TRUE)
 source("build.R", local = TRUE)
 source("prerequisite.R", local = TRUE)
 source("state.R", local = TRUE)
+source("loading.R", local = TRUE)
 source(file.path("ui", "dataset_rail.R"), local = TRUE)
 source("plan.R", local = TRUE)
 source(file.path("ui", "inspect_stage.R"), local = TRUE)
@@ -98,6 +99,7 @@ source(file.path("ui", "review_stage.R"), local = TRUE)
 source(file.path("ui", "build_status.R"), local = TRUE)
 source("worker.R", local = TRUE)
 source("session.R", local = TRUE)
+source("spatial_alignment_server.R", local = TRUE)
 
 app_capability <- builder_app_capability()
 
@@ -151,6 +153,26 @@ asset_stamp <- function(file) {
     return("")
   }
   paste0("?v=", as.integer(as.numeric(mt)))
+}
+
+builder_example_buttons_ui <- function(examples = builder_example_directory()) {
+  div(
+    class = "builder-example-directory",
+    lapply(examples, function(ex) {
+      tags$button(
+        class = "btn example-btn",
+        type = "button",
+        `data-ex` = ex$id,
+        `data-label` = ex$label,
+        `aria-disabled` = "false",
+        tags$span(
+          class = "ex-inner",
+          tags$span(class = "ex-label", ex$label),
+          tags$span(class = "ex-detail", ex$detail)
+        )
+      )
+    })
+  )
 }
 
 builder_protocol_is_quiescent <- function(protocol) {
@@ -254,7 +276,7 @@ ui <- tagList(
     span(class = "formats", textOutput("format_line", inline = TRUE))
   ),
   div(
-    class = "shell",
+    class = "shell builder-shell",
     div(
       class = "rail",
       div(
@@ -265,15 +287,26 @@ ui <- tagList(
           uiOutput("rail_undo", inline = TRUE)
         )
       ),
-      uiOutput("ds_list"),
+      div(
+        id = "ds_list",
+        div(
+          id = "ds_ready_list",
+          class = "shiny-html-output",
+          builder_dataset_rail_ui(builder_state())
+        ),
+        div(
+          id = "ds_import_list",
+          class = "shiny-html-output"
+        )
+      ),
       div(
         class = "rail-add",
         div(
-          class = "dataset-file-control",
+          class = "dataset-file-control builder-file-picker builder-file-picker--sidebar",
           tags$input(
             id = "dataset_files",
             name = "dataset_files",
-            class = "shiny-input-file dataset-file-input",
+            class = "shiny-input-file dataset-file-input builder-file-input",
             type = "file",
             multiple = "multiple",
             accept = paste(
@@ -282,27 +315,42 @@ ui <- tagList(
                 unique(unlist(lapply(builder_formats, `[[`, "extensions")))
               ),
               collapse = ","
-            )
+            ),
+            `tabindex` = "-1"
           ),
           tags$label(
             `for` = "dataset_files",
-            class = "dataset-file-button",
+            class = "dataset-file-button builder-file-trigger",
+            `tabindex` = "0",
+            role = "button",
             icon_svg(ICON_PLUS),
             span("Add datasets…")
           )
         ),
         div(class = "or", "or try an example"),
-        uiOutput("example_buttons"),
+        builder_example_buttons_ui(),
         uiOutput("add_error")
       )
     ),
     div(
       id = "pane",
-      uiOutput("workbench"),
+      class = "builder-content",
+      div(
+        id = "workbench",
+        class = "shiny-html-output",
+        builder_empty_workbench_ui()
+      ),
       uiOutput("result_card")
     )
   ),
   uiOutput("actionbar"),
+  div(
+    id = "builder-live-status",
+    class = "visually-hidden",
+    role = "status",
+    `aria-live` = "polite",
+    `aria-atomic` = "true"
+  ),
   div(
     class = "builder-first-run",
     `data-first-run` = "true",
@@ -327,6 +375,9 @@ server <- function(input, output, session) {
   ## `settings` is what the user chose; it is written back whenever an input
   ## changes so switching between data sets does not lose it.
   store <- reactiveVal(builder_state())
+  imports <- reactiveVal(builder_import_queue(max_active = 1L))
+  active_import_id <- reactiveVal(NULL)
+  example_directory_sent <- reactiveVal(NULL)
   current_id <- reactiveVal(NULL)
   update_current_id <- function(value) {
     if (!identical(value, isolate(current_id()))) {
@@ -404,10 +455,12 @@ server <- function(input, output, session) {
       list(type = "select", id = value)
     )
     store(updated)
+    active_import_id(NULL)
     update_current_id(updated$current_dataset)
     invisible(value)
   }
   result <- reactiveVal(NULL)
+  build_flow <- reactiveVal(list(stage = "idle", plan = NULL))
   review_options <- reactiveVal(builder_review_options())
   review_validation <- reactiveVal(list(ok = TRUE, error = NULL))
   enhance_contract <- reactiveVal(list(
@@ -419,6 +472,7 @@ server <- function(input, output, session) {
   add_error <- reactiveVal(NULL)
   preview_frame <- reactiveVal(NULL)
   spatial_coords <- reactiveVal(NULL)
+  alignment_preview <- reactiveVal(NULL)
 
   entry_of <- function(id) {
     all <- sets()
@@ -507,7 +561,7 @@ server <- function(input, output, session) {
 
   output$format_line <- renderText(builder_format_summary())
   output$ds_count <- renderText({
-    n <- length(store()$datasets)
+    n <- length(store()$datasets) + length(imports()$entries)
     if (n == 0) "" else paste0(n)
   })
   output$rail_undo <- renderUI({
@@ -529,7 +583,40 @@ server <- function(input, output, session) {
   request_sequence <- reactiveVal(0L)
   pending_snapshot_drops <- reactiveVal(list())
   pending_sources <- reactiveVal(character())
-  release_pending_source <- function(payload) {
+  pending_uploads <- reactiveVal(list())
+  cancelled_loads <- reactiveVal(character())
+  import_of <- function(id) {
+    builder_import_find(imports(), id)
+  }
+  set_import_state <- function(id, state, generation, error = NULL) {
+    updated <- try(
+      builder_import_transition(
+        isolate(imports()),
+        id,
+        state,
+        generation,
+        error = error
+      ),
+      silent = TRUE
+    )
+    if (inherits(updated, "try-error")) {
+      return(invisible(FALSE))
+    }
+    imports(updated)
+    invisible(TRUE)
+  }
+  forget_import <- function(id) {
+    current_imports <- isolate(imports())
+    if (is.null(builder_import_find(current_imports, id))) {
+      return(invisible(FALSE))
+    }
+    imports(builder_import_remove(current_imports, id))
+    if (identical(isolate(active_import_id()), id)) {
+      active_import_id(NULL)
+    }
+    invisible(TRUE)
+  }
+  release_pending_source <- function(payload, drop_import = TRUE) {
     if (!is.list(payload) || !identical(payload$kind, "load")) {
       return(invisible(FALSE))
     }
@@ -540,6 +627,17 @@ server <- function(input, output, session) {
     }
     key <- builder_source_key(payload$source, value)
     pending_sources(builder_source_release(pending_sources(), key))
+    id <- as.character(payload$id %||% character())
+    if (length(id) == 1L && !is.na(id) && nzchar(id)) {
+      if (isTRUE(drop_import)) {
+        forget_import(id)
+      }
+      builder_import_progress_remove(payload$progress_path %||% "")
+      uploads <- pending_uploads()
+      uploads[[id]] <- NULL
+      pending_uploads(uploads)
+      cancelled_loads(setdiff(cancelled_loads(), id))
+    }
     invisible(TRUE)
   }
   enqueue <- function(req) {
@@ -571,7 +669,7 @@ server <- function(input, output, session) {
         snapshot_identity
       )
     }
-    replaceable <- req$kind %in% c("preview", "coords")
+    replaceable <- req$kind %in% c("preview", "coords", "spatial_preview")
     if (replaceable) {
       request_sequence(request_sequence() + 1L)
       request <- builder_query(
@@ -702,8 +800,23 @@ server <- function(input, output, session) {
     worker_available(isTRUE(retry_persistent))
     protocol(recovered$protocol)
     settle_failed_builds(recovered, reason)
-    invisible(lapply(recovered$failed %||% list(), function(request) {
-      release_pending_source(request$payload)
+    failed_requests <- recovered$failed %||% list()
+    invisible(lapply(failed_requests, function(request) {
+      payload <- request$payload
+      if (identical(payload$kind, "load")) {
+        entry <- isolate(import_of(payload$id))
+        if (!is.null(entry)) {
+          set_import_state(
+            payload$id,
+            "error",
+            payload$import_generation %||% entry$generation,
+            reason
+          )
+          release_pending_source(payload, drop_import = FALSE)
+          return(invisible(TRUE))
+        }
+      }
+      release_pending_source(payload)
     }))
     retried_builds <- Filter(
       function(request) identical(request$kind, "build"),
@@ -718,8 +831,18 @@ server <- function(input, output, session) {
     }
 
     if (!is.null(error)) {
+      has_failed_load <- any(vapply(
+        failed_requests,
+        function(request) identical(request$payload$kind, "load"),
+        logical(1)
+      ))
+      public_error <- if (has_failed_load) {
+        builder_import_public_error(error)
+      } else {
+        error
+      }
       add_error(paste0(
-        error,
+        public_error,
         " No queued action was left pending; restart this Builder session."
       ))
       return(invisible(FALSE))
@@ -824,6 +947,7 @@ server <- function(input, output, session) {
           released_identities <- c(released_identities, identity)
         }
       }
+      builder_import_progress_cleanup(current_worker$snapshot_root)
       remaining <- list.files(
         current_worker$snapshot_root,
         all.files = TRUE,
@@ -845,52 +969,21 @@ server <- function(input, output, session) {
   })
 
   ## -- native file picker and examples --------------------------------------
-  ## The typed store is the durable authority for example availability.
-  output$example_buttons <- renderUI({
-    used <- as.character(unlist(Filter(
-      Negate(is.null),
-      lapply(sets(), function(entry) entry$example)
-    )))
-    tagList(lapply(builder_examples(), function(ex) {
-      taken <- ex$id %in%
-        used ||
-        builder_source_key("example", ex$id) %in% pending_sources()
-      tags$button(
-        class = if (taken) "btn example-btn is-taken" else "btn example-btn",
-        `data-ex` = ex$id,
-        disabled = if (taken) "disabled",
-        `aria-disabled` = if (taken) "true" else "false",
-        ## One wrapper, because the collapse animates the button's single grid
-        ## row to 0fr -- two children would be two rows and only the first
-        ## would close.
-        tags$span(
-          class = "ex-inner",
-          tags$span(class = "ex-label", ex$label),
-          tags$span(class = "ex-detail", ex$detail)
-        )
-      )
-    }))
-  })
-
   ## An example already on the list is not an offer any more. Which ones are
   ## taken is derived state, so it is pushed rather than re-rendered.
   observe({
-    used <- Filter(
-      Negate(is.null),
-      lapply(sets(), function(e) e$example)
-    )
-    pending_examples <- sub(
-      "^example:",
-      "",
-      grep("^example:", pending_sources(), value = TRUE)
-    )
+    directory <- builder_example_directory_state(sets(), imports())
+    if (identical(directory, isolate(example_directory_sent()))) {
+      return()
+    }
+    example_directory_sent(directory)
     session$sendCustomMessage(
       "builder_used_examples",
-      list(ids = unique(c(as.character(unlist(used)), pending_examples)))
+      directory
     )
   })
 
-  start_load <- function(kind, arg, label) {
+  start_load <- function(kind, arg, label, file_meta = NULL) {
     rs <- worker()
     if (is.null(rs)) {
       add_error("The background worker is not ready yet.")
@@ -904,6 +997,67 @@ server <- function(input, output, session) {
     add_error(NULL)
     seq_id(seq_id() + 1L)
     id <- paste0("ds", seq_id())
+    filename <- NULL
+    file_type <- NULL
+    file_size <- NA_real_
+    if (identical(kind, "file") && is.list(file_meta)) {
+      uploads <- pending_uploads()
+      filename <- builder_safe_file_name(file_meta$name, paste0(label, ".rds"))
+      file_type <- builder_file_type_label(filename, file_meta$type)
+      file_size <- suppressWarnings(as.numeric(file_meta$size %||% NA_real_))
+      uploads[[id]] <- list(
+        id = id,
+        filename = filename,
+        type = file_type,
+        size = file_size,
+        visible = TRUE
+      )
+      pending_uploads(uploads)
+    }
+    generation <- 1L
+    progress_path <- NULL
+    snapshot_root <- rs$snapshot_root %||% NULL
+    if (
+      is.character(snapshot_root) &&
+        length(snapshot_root) == 1L &&
+        !is.na(snapshot_root) &&
+        dir.exists(snapshot_root)
+    ) {
+      candidate <- try(
+        builder_import_progress_path(snapshot_root, id, generation),
+        silent = TRUE
+      )
+      if (!inherits(candidate, "try-error")) {
+        progress_path <- candidate
+      }
+    }
+    source_descriptor <- list(
+      kind = kind,
+      staged_path = if (identical(kind, "file")) arg else NULL,
+      example = if (identical(kind, "example")) arg else NULL,
+      reservation_key = reservation$key,
+      fingerprint = if (identical(kind, "example")) {
+        paste0("example:", arg, ":builder-profile-v1")
+      } else {
+        info <- suppressWarnings(file.info(arg))
+        paste(
+          suppressWarnings(as.numeric(info$size[[1L]] %||% file_size)),
+          suppressWarnings(as.numeric(info$mtime[[1L]] %||% NA_real_)),
+          sep = ":"
+        )
+      }
+    )
+    pending_entry <- builder_import_entry(
+      id = id,
+      label = label,
+      source = source_descriptor,
+      filename = filename,
+      file_type = file_type,
+      size = file_size,
+      generation = generation
+    )
+    imports(builder_import_add(isolate(imports()), pending_entry))
+    active_import_id(id)
     queued <- enqueue(list(
       kind = "load",
       source = kind,
@@ -911,6 +1065,8 @@ server <- function(input, output, session) {
       path = if (identical(kind, "file")) arg else NA_character_,
       example = if (identical(kind, "example")) arg else NULL,
       label = label,
+      import_generation = generation,
+      progress_path = progress_path,
       note = paste0("Loading ", label, "…")
     ))
     if (!isTRUE(queued)) {
@@ -918,6 +1074,11 @@ server <- function(input, output, session) {
         pending_sources(),
         reservation$key
       ))
+      uploads <- pending_uploads()
+      uploads[[id]] <- NULL
+      pending_uploads(uploads)
+      forget_import(id)
+      builder_import_progress_remove(progress_path %||% "")
     }
     invisible(isTRUE(queued))
   }
@@ -933,9 +1094,21 @@ server <- function(input, output, session) {
     }
     paths <- as.character(uploads$datapath)
     labels <- as.character(uploads$name)
+    sizes <- if ("size" %in% names(uploads)) {
+      suppressWarnings(as.numeric(uploads$size))
+    } else {
+      rep(NA_real_, nrow(uploads))
+    }
+    types <- if ("type" %in% names(uploads)) {
+      as.character(uploads$type)
+    } else {
+      rep("", nrow(uploads))
+    }
     valid <- !is.na(paths) & nzchar(paths) & !is.na(labels) & nzchar(labels)
     paths <- paths[valid]
     labels <- labels[valid]
+    sizes <- sizes[valid]
+    types <- types[valid]
     duplicate <- duplicated(paths) |
       paths %in%
         vapply(
@@ -947,7 +1120,12 @@ server <- function(input, output, session) {
       start_load(
         "file",
         paths[[i]],
-        tools::file_path_sans_ext(basename(labels[[i]]))
+        tools::file_path_sans_ext(basename(labels[[i]])),
+        file_meta = list(
+          name = labels[[i]],
+          type = types[[i]],
+          size = sizes[[i]]
+        )
       )
     }
     if (any(duplicate)) {
@@ -977,6 +1155,169 @@ server <- function(input, output, session) {
     start_load("example", ex[[1]]$id, ex[[1]]$label)
   })
 
+  remove_pending_import <- function(id) {
+    entry <- isolate(import_of(id))
+    if (
+      !is.character(id) ||
+        length(id) != 1L ||
+        is.na(id) ||
+        !nzchar(id) ||
+        is.null(entry)
+    ) {
+      return(invisible(FALSE))
+    }
+    current_protocol <- isolate(protocol())
+    if (is.null(current_protocol)) {
+      return(invisible(FALSE))
+    }
+    belongs <- function(request) {
+      !is.null(request) &&
+        identical(request$dataset, id) &&
+        identical(request$kind, "load")
+    }
+    running <- belongs(current_protocol$pending) ||
+      any(vapply(current_protocol$awaiting_ack, belongs, logical(1)))
+    if (running) {
+      uploads <- isolate(pending_uploads())
+      if (!is.null(uploads[[id]])) {
+        uploads[[id]]$visible <- FALSE
+        pending_uploads(uploads)
+      }
+      cancelled_loads(unique(c(cancelled_loads(), id)))
+      forget_import(id)
+      return(invisible(TRUE))
+    }
+    if (identical(entry$load_state, "error")) {
+      release_pending_source(list(
+        kind = "load",
+        source = entry$source$kind,
+        id = entry$id,
+        path = entry$source$staged_path,
+        example = entry$source$example
+      ))
+      return(invisible(TRUE))
+    }
+    forgotten <- try(
+      builder_protocol_forget_dataset(
+        current_protocol,
+        id,
+        reason = "upload_cancelled"
+      ),
+      silent = TRUE
+    )
+    if (inherits(forgotten, "try-error")) {
+      add_error("This file could not be removed while it was loading.")
+      return(invisible(FALSE))
+    }
+    removed <- c(forgotten$failed, forgotten$discarded)
+    if (!length(removed)) {
+      return(invisible(FALSE))
+    }
+    protocol(forgotten$protocol)
+    invisible(lapply(removed, function(request) {
+      release_pending_source(request$payload)
+    }))
+    invisible(TRUE)
+  }
+
+  observeEvent(input$cancel_pending_upload, {
+    event <- input$cancel_pending_upload
+    id <- if (is.list(event) && !is.object(event)) {
+      .subset2(event, "id")
+    } else {
+      NULL
+    }
+    remove_pending_import(id)
+  })
+
+  observeEvent(input$remove_import, {
+    event <- input$remove_import
+    id <- if (is.list(event) && !is.object(event)) {
+      .subset2(event, "id")
+    } else {
+      NULL
+    }
+    remove_pending_import(id)
+  })
+
+  observeEvent(input$pick_import, {
+    event <- input$pick_import
+    id <- if (is.list(event) && !is.object(event)) {
+      .subset2(event, "id")
+    } else {
+      event
+    }
+    if (
+      is.character(id) &&
+        length(id) == 1L &&
+        !is.na(id) &&
+        !is.null(isolate(import_of(id)))
+    ) {
+      active_import_id(id)
+    }
+  })
+
+  observeEvent(input$retry_import, {
+    event <- input$retry_import
+    id <- if (is.list(event) && !is.object(event)) {
+      .subset2(event, "id")
+    } else {
+      NULL
+    }
+    entry <- if (is.character(id) && length(id) == 1L) {
+      isolate(import_of(id))
+    } else {
+      NULL
+    }
+    if (is.null(entry) || !identical(entry$load_state, "error")) {
+      return()
+    }
+    next_queue <- builder_import_retry(isolate(imports()), id)
+    entry <- builder_import_find(next_queue, id)
+    current_worker <- isolate(worker())
+    progress_path <- NULL
+    if (
+      is.list(current_worker) &&
+        is.character(current_worker$snapshot_root) &&
+        length(current_worker$snapshot_root) == 1L &&
+        dir.exists(current_worker$snapshot_root)
+    ) {
+      candidate <- try(
+        builder_import_progress_path(
+          current_worker$snapshot_root,
+          id,
+          entry$generation
+        ),
+        silent = TRUE
+      )
+      if (!inherits(candidate, "try-error")) {
+        progress_path <- candidate
+      }
+    }
+    imports(next_queue)
+    active_import_id(id)
+    cancelled_loads(setdiff(cancelled_loads(), id))
+    queued <- enqueue(list(
+      kind = "load",
+      source = entry$source$kind,
+      id = entry$id,
+      path = entry$source$staged_path,
+      example = entry$source$example,
+      label = entry$label,
+      import_generation = entry$generation,
+      progress_path = progress_path,
+      note = paste0("Loading ", entry$label, "…")
+    ))
+    if (!isTRUE(queued)) {
+      set_import_state(
+        id,
+        "error",
+        entry$generation,
+        "The background worker is not ready yet."
+      )
+    }
+  })
+
   ## -- dispatcher: send the next request when the worker is free ----------
   observe({
     current_protocol <- protocol()
@@ -992,6 +1333,13 @@ server <- function(input, output, session) {
     protocol(dispatched$protocol)
     request <- dispatched$request
     nxt <- request$payload
+    if (identical(nxt$kind, "load")) {
+      set_import_state(
+        nxt$id,
+        "reading",
+        nxt$import_generation %||% 1L
+      )
+    }
     if (identical(nxt$kind, "build")) {
       # Legacy prohibition: never use `plan <- builder_make_plan` here.
       plan <- nxt$plan
@@ -1004,7 +1352,7 @@ server <- function(input, output, session) {
         plan_error <- paste0(
           "These outputs already exist: ",
           paste(basename(plan$existing_targets), collapse = ", "),
-          ". Enable “Replace existing outputs” to publish atomically over them."
+          ". Choose another folder or replace the matching files."
         )
       }
       if (!is.null(plan_error)) {
@@ -1061,9 +1409,23 @@ server <- function(input, output, session) {
       switch(
         nxt$kind,
         load = if (identical(nxt$source, "file")) {
-          builder_session_load(current_worker, nxt$id, nxt$path, request)
+          builder_session_load(
+            current_worker,
+            nxt$id,
+            nxt$path,
+            request,
+            progress_path = nxt$progress_path,
+            import_generation = nxt$import_generation %||% 1L
+          )
         } else {
-          builder_session_example(current_worker, nxt$id, nxt$example, request)
+          builder_session_example(
+            current_worker,
+            nxt$id,
+            nxt$example,
+            request,
+            progress_path = nxt$progress_path,
+            import_generation = nxt$import_generation %||% 1L
+          )
         },
         preview = builder_session_preview(
           current_worker,
@@ -1077,6 +1439,15 @@ server <- function(input, output, session) {
           current_worker,
           nxt$id,
           nxt$image,
+          request
+        ),
+        spatial_preview = builder_session_spatial_preview(
+          current_worker,
+          nxt$id,
+          nxt$default_projection,
+          nxt$group,
+          nxt$section,
+          4000L,
           request
         ),
         align_all = builder_session_section_bounds(
@@ -1110,10 +1481,17 @@ server <- function(input, output, session) {
           active_release(NULL)
         }
       }
+      dispatch_error <- conditionMessage(attr(started_call, "condition"))
+      if (identical(nxt$kind, "load")) {
+        dispatch_error <- builder_import_public_error(
+          dispatch_error,
+          nxt$path %||% character()
+        )
+      }
       restart_worker_protocol(
         current_worker,
         dispatched$protocol,
-        conditionMessage(attr(started_call, "condition"))
+        dispatch_error
       )
       return()
     }
@@ -1131,10 +1509,18 @@ server <- function(input, output, session) {
     invalidateLater(100, session)
     got <- try(builder_session_poll(current_worker), silent = TRUE)
     if (inherits(got, "try-error")) {
+      poll_error <- conditionMessage(attr(got, "condition"))
+      pending_payload <- current_protocol$pending$payload
+      if (identical(pending_payload$kind, "load")) {
+        poll_error <- builder_import_public_error(
+          poll_error,
+          pending_payload$path %||% character()
+        )
+      }
       restart_worker_protocol(
         current_worker,
         current_protocol,
-        conditionMessage(attr(got, "condition"))
+        poll_error
       )
       return()
     }
@@ -1158,27 +1544,48 @@ server <- function(input, output, session) {
       )
       return()
     }
-    if (is.null(got$result)) {
-      return()
-    }
     request <- current_protocol$pending
     p <- request$payload
+    if (is.null(got$result)) {
+      if (identical(p$kind, "load") && !is.null(p$progress_path)) {
+        progress <- builder_import_progress_read(
+          p$progress_path,
+          p$import_generation %||% 1L
+        )
+        if (!is.null(progress)) {
+          set_import_state(
+            p$id,
+            progress$stage,
+            progress$generation
+          )
+        }
+      }
+      return()
+    }
     if (!is.null(got$result$error)) {
+      worker_error <- if (identical(p$kind, "load")) {
+        builder_import_public_error(
+          got$result$error,
+          p$path %||% character()
+        )
+      } else {
+        got$result$error
+      }
       if (identical(request$kind, "build")) {
         release <- isolate(active_release())
-        release_result <- builder_result_failure(got$result$error)
+        release_result <- builder_result_failure(worker_error)
         if (!is.null(release)) {
-          release_result <- abort_release_result(release, got$result$error)
+          release_result <- abort_release_result(release, worker_error)
           active_release(NULL)
         }
         result(release_result)
       } else {
-        add_error(got$result$error)
+        add_error(worker_error)
       }
       restart_worker_protocol(
         got$worker,
         current_protocol,
-        got$result$error
+        worker_error
       )
       return()
     }
@@ -1219,7 +1626,7 @@ server <- function(input, output, session) {
     }
     value <- completed$value
     if (!is.null(completed$error)) {
-      release_pending_source(p)
+      cancelled <- identical(p$kind, "load") && p$id %in% cancelled_loads()
       if (identical(request$kind, "build")) {
         result(builder_result_failure(completed$error))
         update_build_state(list(
@@ -1227,8 +1634,20 @@ server <- function(input, output, session) {
           id = request$build_id,
           error = completed$error
         ))
-      } else {
+      } else if (identical(p$kind, "load") && !cancelled) {
+        set_import_state(
+          p$id,
+          "error",
+          p$import_generation %||% 1L,
+          completed$error
+        )
+        builder_import_progress_remove(p$progress_path %||% "")
+        add_error(NULL)
+      } else if (!cancelled) {
         add_error(completed$error)
+      }
+      if (cancelled) {
+        release_pending_source(p)
       }
       if (isTRUE(request$persistent)) {
         protocol(builder_protocol_acknowledge(
@@ -1264,13 +1683,89 @@ server <- function(input, output, session) {
     }
 
     if (identical(p$kind, "load")) {
+      cancelled <- p$id %in% cancelled_loads()
       if (!is.null(value$error)) {
-        release_pending_source(p)
-        add_error(value$error)
+        if (!cancelled) {
+          set_import_state(
+            p$id,
+            "error",
+            p$import_generation %||% 1L,
+            value$error
+          )
+          builder_import_progress_remove(p$progress_path %||% "")
+          add_error(NULL)
+        } else {
+          release_pending_source(p)
+        }
         protocol(builder_protocol_acknowledge(protocol(), request$request_id))
         return()
       }
+      pending_entry <- isolate(import_of(p$id))
+      if (
+        is.null(pending_entry) ||
+          !identical(
+            pending_entry$generation,
+            as.integer(p$import_generation %||% 1L)
+          )
+      ) {
+        cancelled <- TRUE
+      }
+      if (cancelled) {
+        updated_worker <- try(
+          builder_worker_register_snapshot(got$worker, p$id, value$snapshot),
+          silent = TRUE
+        )
+        if (inherits(updated_worker, "try-error")) {
+          restart_worker_protocol(
+            got$worker,
+            protocol(),
+            conditionMessage(attr(updated_worker, "condition"))
+          )
+          return()
+        }
+        worker(updated_worker)
+        identity <- .builder_worker_identity(value$snapshot)
+        accepted <- builder_protocol_dataset(protocol(), p$id, 1L, identity)
+        acknowledged <- try(
+          builder_protocol_acknowledge(accepted, request$request_id),
+          silent = TRUE
+        )
+        if (inherits(acknowledged, "try-error")) {
+          protocol(NULL)
+          worker_available(FALSE)
+          add_error(paste0(
+            "The cancelled upload could not be released safely. ",
+            "Restart this Builder session."
+          ))
+          return()
+        }
+        protocol(acknowledged)
+        pending_drops <- pending_snapshot_drops()
+        pending_drops[[p$id]] <- identity
+        pending_snapshot_drops(pending_drops)
+        release_pending_source(p)
+        queued <- enqueue(list(
+          kind = "drop",
+          id = p$id,
+          dataset_revision = 1L,
+          snapshot_identity = identity,
+          note = "Releasing cancelled upload…"
+        ))
+        if (!isTRUE(queued)) {
+          pending_drops[[p$id]] <- NULL
+          pending_snapshot_drops(pending_drops)
+          add_error(
+            "The cancelled upload will be released when this session closes."
+          )
+        }
+        return()
+      }
       profile <- value$profile
+      set_import_state(
+        p$id,
+        "preparing",
+        p$import_generation %||% 1L
+      )
       entry <- list(
         id = p$id,
         source_id = p$id,
@@ -1284,7 +1779,8 @@ server <- function(input, output, session) {
         profile = profile,
         dataset_profile = value$dataset_profile,
         snapshot = value$snapshot,
-        revision = 0L,
+        revision = 1L,
+        reviewed_revision = NULL,
         ## Level names per grouping variable, in the order the exporter will
         ## produce them -- the keys a configured palette has to match.
         levels = value$levels %||% list(),
@@ -1307,18 +1803,38 @@ server <- function(input, output, session) {
         return()
       }
       worker(updated_worker)
-      store(builder_reduce_state(
+      next_state <- builder_reduce_state(
         isolate(store()),
         list(type = "add", entry = entry)
-      ))
-      release_pending_source(p)
+      )
+      store(next_state)
       protocol(builder_protocol_dataset(
         protocol(),
         p$id,
         entry$revision,
         .builder_worker_identity(entry$snapshot)
       ))
-      current(p$id)
+      first_unreviewed <- builder_next_unreviewed(next_state$datasets)
+      watched <- identical(isolate(active_import_id()), p$id)
+      next_current <- builder_import_ready_target(
+        watched = watched,
+        current_id = isolate(current()),
+        loaded_id = p$id,
+        first_unreviewed = first_unreviewed
+      )
+      if (!identical(next_current, isolate(current()))) {
+        current(next_current)
+      }
+      session$sendCustomMessage(
+        "builder_import_status",
+        list(text = paste0(entry$settings$name, " is ready."))
+      )
+      set_import_state(
+        p$id,
+        "ready",
+        p$import_generation %||% 1L
+      )
+      release_pending_source(p)
       result(NULL)
     } else if (identical(p$kind, "preview")) {
       if (identical(current(), p$id)) {
@@ -1330,6 +1846,21 @@ server <- function(input, output, session) {
           identical(active_slice(), p$image)
       ) {
         spatial_coords(value)
+      }
+    } else if (identical(p$kind, "spatial_preview")) {
+      if (
+        identical(current(), p$id) &&
+          identical(active_slice(), p$section)
+      ) {
+        alignment_preview(value)
+        if (isTRUE(value$available)) {
+          spatial_coords(list(
+            x = value$spatial$x,
+            y = value$spatial$y,
+            sx = value$spatial$x,
+            sy = value$spatial$y
+          ))
+        }
       }
     } else if (identical(p$kind, "align_all")) {
       apply_section_bounds(p$id, value, p$picture)
@@ -1388,7 +1919,8 @@ server <- function(input, output, session) {
       all <- Filter(function(e) !identical(e$id, p$id), sets())
       sets(all)
       if (identical(current(), p$id)) {
-        current(if (length(all)) all[[1]]$id else NULL)
+        next_id <- builder_next_unreviewed(all)
+        current(if (length(all)) next_id %||% all[[1]]$id else NULL)
         result(NULL)
       }
       acknowledged <- try(
@@ -1441,12 +1973,6 @@ server <- function(input, output, session) {
 
   update_enhance_histology_choices <- function(entry) {
     choices <- names(entry$settings$images %||% list()) %||% character()
-    updateCheckboxGroupInput(
-      session,
-      "enhance-histology_to_retain",
-      choices = choices,
-      selected = choices
-    )
     invisible(choices)
   }
 
@@ -1508,8 +2034,12 @@ server <- function(input, output, session) {
   })
 
   ## -- the rail ------------------------------------------------------------
-  output$ds_list <- renderUI({
+  output$ds_ready_list <- renderUI({
     builder_dataset_rail_ui(store(), current())
+  })
+
+  output$ds_import_list <- renderUI({
+    builder_import_rail_ui(imports()$entries, active_import_id())
   })
 
   ## -- keep the current entry's settings in step with Core -----------------
@@ -1586,6 +2116,93 @@ server <- function(input, output, session) {
     replace_entry(entry)
   })
 
+  output[["core-group_colors"]] <- renderUI({
+    id <- current()
+    rendered_for <- input[["core-rendered_for"]]
+    if (is.null(id) || !identical(rendered_for, id)) {
+      return(NULL)
+    }
+    entry <- entry_of(id)
+    req(entry)
+    group <- input[["core-default_group"]] %||%
+      entry$settings$default_group %||%
+      ""
+    levels <- entry$levels[[group]] %||% character()
+    model <- builder_group_colors_model(
+      group,
+      levels,
+      entry$settings$palette %||% "cerebro",
+      builder_settings_color_overrides(entry$settings)
+    )
+    builder_group_colors_ui("core", model)
+  })
+
+  observeEvent(
+    input[["core-group_color"]],
+    {
+      id <- current()
+      change <- input[["core-group_color"]]
+      if (
+        is.null(id) ||
+          !identical(input[["core-rendered_for"]], id) ||
+          !is.list(change) ||
+          !builder_stage_has_text(change$group %||% "") ||
+          !builder_stage_has_text(change$level %||% "")
+      ) {
+        return()
+      }
+      entry <- isolate(entry_of(id))
+      req(entry)
+      group <- as.character(change$group)
+      level <- as.character(change$level)
+      if (
+        !identical(group, entry$settings$default_group) ||
+          !level %in% (entry$levels[[group]] %||% character())
+      ) {
+        return()
+      }
+      current_overrides <- builder_settings_color_overrides(entry$settings)
+      next_overrides <- builder_update_color_override(
+        current_overrides,
+        group,
+        level,
+        change$color
+      )
+      if (identical(next_overrides, current_overrides)) {
+        return()
+      }
+      entry$settings$color_overrides <- next_overrides
+      entry$settings$colors <- NULL
+      replace_entry(entry)
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    input[["core-reset_colors"]],
+    {
+      id <- current()
+      if (
+        is.null(id) ||
+          !identical(input[["core-rendered_for"]], id)
+      ) {
+        return()
+      }
+      entry <- isolate(entry_of(id))
+      req(entry)
+      group <- entry$settings$default_group %||% ""
+      current_overrides <- builder_settings_color_overrides(entry$settings)
+      next_overrides <- builder_reset_color_overrides(current_overrides, group)
+      if (identical(next_overrides, current_overrides)) {
+        return()
+      }
+      entry$settings$color_overrides <- next_overrides
+      entry$settings$colors <- NULL
+      replace_entry(entry)
+    },
+    ignoreInit = TRUE
+  )
+
   ## Assay-dependent controls above use the namespaced Core inputs.
   invisible(lapply(builder_analysis_steps(), function(step) {
     observeEvent(
@@ -1626,424 +2243,94 @@ server <- function(input, output, session) {
   }))
 
   ## -- supplementary tables -------------------------------------------------
-  update_enhance_table_choices <- function(entry) {
-    choices <- names(entry$settings$tables %||% list()) %||% character()
-    updateCheckboxGroupInput(
-      session,
-      "enhance-tables_to_retain",
-      choices = choices,
-      selected = choices
-    )
-    invisible(choices)
-  }
-
-  observeEvent(input[["enhance-add_table"]], {
+  observeEvent(input[["enhance-table_files"]], {
     id <- current()
     req(id)
     entry <- entry_of(id)
     req(entry)
-    got <- builder_read_table(
-      trimws(input[["enhance-table_path"]] %||% ""),
-      trimws(input[["enhance-table_name"]] %||% "")
-    )
-    if (!is.null(got$error)) {
-      showNotification(got$error, type = "error", duration = 8)
-      return()
+    uploads <- input[["enhance-table_files"]]
+    req(is.data.frame(uploads), nrow(uploads) > 0L)
+    for (index in seq_len(nrow(uploads))) {
+      filename <- basename(uploads$name[[index]])
+      display_name <- builder_table_unique_name(
+        builder_table_default_name(filename),
+        names(entry$settings$tables %||% list()) %||% character()
+      )
+      got <- builder_read_table(
+        uploads$datapath[[index]],
+        display_name,
+        filename = filename
+      )
+      if (!is.null(got$error)) {
+        showNotification(
+          paste0(filename, ": ", got$error),
+          type = "error",
+          duration = 8
+        )
+        next
+      }
+      got$file_name <- filename
+      got$file_type <- toupper(tools::file_ext(filename))
+      got$file_size <- suppressWarnings(as.numeric(uploads$size[[index]]))
+      entry$settings$tables[[got$name]] <- got
     }
-    entry$settings$tables[[got$name]] <- got
     replace_entry(entry)
-    update_enhance_table_choices(entry)
-    updateTextInput(session, "enhance-table_path", value = "")
-    updateTextInput(session, "enhance-table_name", value = "")
   })
 
   observeEvent(
-    input[["enhance-tables_to_retain"]],
+    input[["enhance-table_action"]],
     {
       id <- current()
       req(id)
-      if (!identical(input[["enhance-rendered_for"]], id)) {
+      action <- input[["enhance-table_action"]]
+      req(is.list(action), is.character(action$key), nzchar(action$key))
+      entry <- entry_of(id)
+      req(entry)
+      tables <- entry$settings$tables %||% list()
+      if (!action$key %in% names(tables)) {
         return()
       }
-      entry <- isolate(entry_of(id))
-      req(entry)
-      retained <- input[["enhance-tables_to_retain"]] %||% character()
-      entry$settings <- builder_enhance_retain(
-        entry$settings,
-        "tables",
-        retained
-      )
-      replace_entry(entry)
-      update_enhance_table_choices(entry)
-    },
-    ignoreInit = TRUE
-  )
-
-  observeEvent(
-    input[["enhance-histology_to_retain"]],
-    {
-      id <- current()
-      req(id)
-      if (!identical(input[["enhance-rendered_for"]], id)) {
-        return()
-      }
-      entry <- isolate(entry_of(id))
-      req(entry)
-      retained <- input[["enhance-histology_to_retain"]] %||% character()
-      entry$settings <- builder_enhance_retain(
-        entry$settings,
-        "images",
-        retained
-      )
-      commit_enhance_images(entry, entry$settings$images)
-    },
-    ignoreInit = TRUE
-  )
-
-  ## -- histology background -------------------------------------------------
-  ## The raw image is decoded once and kept as an array; the sliders then only
-  ## re-encode it, so dragging is cheap and never loses quality by re-reading a
-  ## picture that has already been resampled.
-  raw_image <- reactiveVal(NULL)
-
-  output[["enhance-has_image"]] <- reactive(!is.null(raw_image()))
-  outputOptions(output, "enhance-has_image", suspendWhenHidden = FALSE)
-
-  ## Which tissue section the alignment controls currently describe. An object
-  ## can hold several, each with its own coordinates and its own slide.
-  active_slice <- reactiveVal(NULL)
-
-  observeEvent(current(), {
-    raw_image(NULL)
-    spatial_coords(NULL)
-    id <- current()
-    rs <- worker()
-    e <- isolate(entry_of(id))
-    if (is.null(id) || is.null(rs) || is.null(e)) {
-      active_slice(NULL)
-      return()
-    }
-    if (!length(e$profile$images)) {
-      active_slice(NULL)
-      return()
-    }
-    active_slice(e$profile$images[1])
-    enqueue(list(
-      kind = "coords",
-      id = id,
-      image = e$profile$images[1],
-      replaces = "coords",
-      note = "Loading spatial coordinates…"
-    ))
-  })
-
-  ## Switching section re-reads that section's coordinates and drops the
-  ## in-progress alignment, which described a different slide.
-  observeEvent(input[["enhance-active_slice"]], {
-    id <- current()
-    req(id)
-    e <- isolate(entry_of(id))
-    req(e)
-    nm <- input[["enhance-active_slice"]]
-    if (!nzchar(nm) || identical(nm, isolate(active_slice()))) {
-      return()
-    }
-    active_slice(nm)
-    raw_image(NULL)
-    spatial_coords(NULL)
-    enqueue(list(
-      kind = "coords",
-      id = id,
-      image = nm,
-      replaces = "coords",
-      note = paste0("Loading coordinates for ", nm, "…")
-    ))
-  })
-
-  observeEvent(input[["enhance-attach_image"]], {
-    img <- builder_read_image(trimws(input[["enhance-image_path"]] %||% ""))
-    if (!is.null(img$error)) {
-      showNotification(img$error, type = "error", duration = 8)
-      return()
-    }
-    raw_image(img)
-    updateSliderInput(session, "enhance-img_dx", value = 0)
-    updateSliderInput(session, "enhance-img_dy", value = 0)
-    updateSliderInput(session, "enhance-img_scale", value = 1)
-    updateSliderInput(session, "enhance-img_rotate", value = 0)
-  })
-
-  observeEvent(input[["enhance-reset_align"]], {
-    updateSliderInput(session, "enhance-img_dx", value = 0)
-    updateSliderInput(session, "enhance-img_dy", value = 0)
-    updateSliderInput(session, "enhance-img_scale", value = 1)
-    updateSliderInput(session, "enhance-img_rotate", value = 0)
-    updateCheckboxInput(session, "enhance-image_flip", value = FALSE)
-    updateCheckboxInput(session, "enhance-image_flip_x", value = FALSE)
-  })
-
-  ## Slider ranges have to be in the data's own units, or "left a bit" means
-  ## nothing on an object whose coordinates run to 20,000.
-  observeEvent(spatial_coords(), {
-    co <- spatial_coords()
-    req(!is.null(co))
-    ## Round to something a person can read: coordinate spans are arbitrary
-    ## reals and an unrounded slider shows -93.3687755886931 as its label.
-    nice <- function(v) {
-      if (!is.finite(v) || v <= 0) {
-        return(1)
-      }
-      signif(v, 2)
-    }
-    span_x <- nice(diff(range(co$x, na.rm = TRUE)))
-    span_y <- nice(diff(range(co$y, na.rm = TRUE)))
-    updateSliderInput(
-      session,
-      "enhance-img_dx",
-      min = -span_x,
-      max = span_x,
-      value = 0,
-      step = nice(span_x / 200)
-    )
-    updateSliderInput(
-      session,
-      "enhance-img_dy",
-      min = -span_y,
-      max = span_y,
-      value = 0,
-      step = nice(span_y / 200)
-    )
-  })
-
-  ## Encoding is the expensive part. Translation and scale only alter the
-  ## extent, so they must not decode, rotate and base64-encode the image again.
-  encoded_image <- reactive({
-    img <- raw_image()
-    req(!is.null(img))
-    enc <- builder_encode_image(
-      img$array,
-      max_px = input[["enhance-image_max_px"]] %||% 1400,
-      flip_y = isTRUE(input[["enhance-image_flip"]]),
-      flip_x = isTRUE(input[["enhance-image_flip_x"]]),
-      rotate = input[["enhance-img_rotate"]] %||% 0
-    )
-    if (!is.null(enc$error)) {
-      return(list(error = enc$error))
-    }
-    enc
-  })
-
-  image_base_bounds <- reactive({
-    enc <- encoded_image()
-    co <- spatial_coords()
-    req(!is.null(co))
-    if (!is.null(enc$error)) {
-      return(enc)
-    }
-    b0 <- builder_image_bounds(
-      input[["enhance-image_bounds_mode"]] %||% "pixels",
-      list(co$x, co$y),
-      enc,
-      um_per_px = input[["enhance-image_um"]] %||% 1
-    )
-    if (!is.null(b0$error)) {
-      return(list(error = b0$error))
-    }
-    b0
-  })
-
-  ## What the sliders currently describe: a cached encoded picture and a
-  ## lightweight extent adjustment.
-  aligned <- reactive({
-    enc <- encoded_image()
-    b0 <- image_base_bounds()
-    co <- spatial_coords()
-    req(!is.null(co))
-    if (!is.null(enc$error)) {
-      return(enc)
-    }
-    if (!is.null(b0$error)) {
-      return(b0)
-    }
-    bounds <- builder_adjust_bounds(
-      b0,
-      dx = input[["enhance-img_dx"]] %||% 0,
-      dy = input[["enhance-img_dy"]] %||% 0,
-      scale = input[["enhance-img_scale"]] %||% 1
-    )
-    cover <- builder_bounds_cover(bounds, list(co$x, co$y))
-    list(enc = enc, bounds = bounds, cover = cover)
-  })
-
-  output[["enhance-overlay_plot"]] <- plotly::renderPlotly({
-    a <- aligned()
-    req(is.null(a$error))
-    plt <- builder_overlay_plot(spatial_coords(), a$enc$uri, a$bounds)
-    req(!is.null(plt))
-    plt
-  })
-
-  ## What the sliders currently describe, as one section's stored entry.
-  current_alignment <- function() {
-    a <- aligned()
-    if (is.null(a) || !is.null(a$error)) {
-      return(a)
-    }
-    list(
-      uri = a$enc$uri,
-      bounds = a$bounds,
-      bytes = a$enc$bytes,
-      width = a$enc$width,
-      height = a$enc$height,
-      source_width = a$enc$source_width,
-      source_height = a$enc$source_height,
-      extent_width = a$enc$extent_width,
-      extent_height = a$enc$extent_height,
-      display_width = a$enc$display_width,
-      display_height = a$enc$display_height,
-      outside = a$cover$outside,
-      total = a$cover$total
-    )
-  }
-
-  observeEvent(input[["enhance-apply_align"]], {
-    id <- current()
-    req(id)
-    e <- entry_of(id)
-    req(e)
-    nm <- active_slice()
-    req(!is.null(nm))
-    a <- current_alignment()
-    if (!is.null(a$error)) {
-      showNotification(a$error, type = "error", duration = 8)
-      return()
-    }
-    imgs <- e$settings$images %||% list()
-    imgs[[nm]] <- a
-    commit_enhance_images(e, imgs)
-    showNotification(
-      paste0("Alignment saved for section “", nm, "”."),
-      type = "message",
-      duration = 4
-    )
-  })
-
-  ## Sections cut from one block often share a slide scan. Doing the alignment
-  ## by hand for twelve sections is the kind of chore that makes people skip
-  ## backgrounds entirely -- but "same slide" is not "same extent". Sections sit
-  ## at different offsets in the coordinate space, so the extent is re-derived
-  ## per section in the worker; only the picture is shared.
-  observeEvent(input[["enhance-apply_align_all"]], {
-    id <- current()
-    req(id)
-    e <- entry_of(id)
-    req(e)
-    a <- current_alignment()
-    if (is.null(a)) {
-      return()
-    }
-    if (!is.null(a$error)) {
-      showNotification(a$error, type = "error", duration = 8)
-      return()
-    }
-    ## The encoded picture is kept here; sending 50 kB of base64 to the worker
-    ## and back once per section would be pure waste.
-    enqueue(list(
-      kind = "align_all",
-      id = id,
-      sections = e$profile$images,
-      mode = input[["enhance-image_bounds_mode"]] %||% "pixels",
-      extent_width = a$extent_width,
-      extent_height = a$extent_height,
-      um_per_px = input[["enhance-image_um"]] %||% 1,
-      dx = input[["enhance-img_dx"]] %||% 0,
-      dy = input[["enhance-img_dy"]] %||% 0,
-      scale = input[["enhance-img_scale"]] %||% 1,
-      picture = a,
-      replaces = "align_all",
-      note = paste0(
-        "Fitting the image to ",
-        length(e$profile$images),
-        " sections…"
-      )
-    ))
-  })
-
-  observeEvent(input[["enhance-drop_image"]], {
-    id <- current()
-    req(id)
-    e <- entry_of(id)
-    req(e)
-    nm <- active_slice()
-    imgs <- e$settings$images %||% list()
-    if (!is.null(nm)) {
-      imgs[[nm]] <- NULL
-    }
-    commit_enhance_images(e, imgs)
-    raw_image(NULL)
-  })
-
-  output[["enhance-image_state"]] <- renderUI({
-    a <- if (is.null(raw_image())) NULL else aligned()
-    id <- current()
-    e <- if (is.null(id)) NULL else entry_of(id)
-    nm <- active_slice()
-    stored <- if (is.null(e)) list() else (e$settings$images %||% list())
-    saved <- if (is.null(nm)) NULL else stored[[nm]]
-    n_slices <- if (is.null(e)) 0L else length(e$profile$images)
-
-    tagList(
-      if (!is.null(a) && !is.null(a$error)) div(class = "notice bad", a$error),
-      if (!is.null(a) && is.null(a$error)) {
-        div(
-          class = if (a$cover$outside > 0) "notice warn" else "notice ok",
-          sprintf(
-            "%d × %d px, %.2f MB. %s",
-            a$enc$width,
-            a$enc$height,
-            a$enc$bytes / 1048576,
-            if (a$cover$outside > 0) {
-              sprintf(
-                "%d/%d cells fall outside the image.",
-                a$cover$outside,
-                a$cover$total
-              )
-            } else {
-              "All cells fall inside the image."
-            }
+      if (identical(action$action, "remove")) {
+        tables[[action$key]] <- NULL
+      } else if (identical(action$action, "rename")) {
+        new_name <- trimws(as.character(action$name %||% ""))
+        if (
+          !nzchar(new_name) ||
+            (new_name %in% names(tables) && !identical(new_name, action$key))
+        ) {
+          showNotification(
+            "Table names must be non-empty and unique.",
+            type = "error",
+            duration = 5
           )
-        )
-      },
-      if (!is.null(saved)) {
-        builder_enhance_saved_image_ui("enhance", nm, n_slices)
-      } else if (is.null(raw_image())) {
-        p(class = "hint", "No background image yet.")
-      },
-      ## With several sections it is not otherwise visible which of them are
-      ## still bare -- and a section with no image loses the whole background
-      ## picker in the viewer, so the controls appear and disappear as the user
-      ## switches. Worth stating rather than discovering.
-      if (n_slices > 1) {
-        done <- intersect(e$profile$images, names(stored))
-        missing <- setdiff(e$profile$images, names(stored))
-        div(
-          class = "hint",
-          style = "margin-top:.5rem",
-          if (length(missing)) {
-            paste0(
-              length(done),
-              "/",
-              n_slices,
-              " sections have images. Missing: ",
-              paste(missing, collapse = ", ")
-            )
-          } else {
-            paste0("All ", n_slices, " sections have background images.")
-          }
-        )
+          return()
+        }
+        table <- tables[[action$key]]
+        table$name <- new_name
+        tables[[action$key]] <- NULL
+        tables[[new_name]] <- table
+      } else {
+        return()
       }
-    )
-  })
+      entry$settings$tables <- tables
+      replace_entry(entry)
+    },
+    ignoreInit = TRUE
+  )
+
+  alignment_server <- builder_spatial_alignment_server(
+    input = input,
+    output = output,
+    session = session,
+    current = current,
+    entry_of = entry_of,
+    worker = worker,
+    enqueue = enqueue,
+    commit_images = commit_enhance_images,
+    alignment_preview = alignment_preview,
+    spatial_coords = spatial_coords
+  )
+  active_slice <- alignment_server$active_section
 
   ## -- what the last build produced ---------------------------------------
   output$result_card <- renderUI({
@@ -2138,15 +2425,16 @@ server <- function(input, output, session) {
   }
 
   observe({
+    current_options <- isolate(review_options())
     values <- list(
       welcome_message = input[["review-welcome_message"]],
       point_size = input[["review-point_size"]],
       variable_to_compare = input[["review-variable_to_compare"]],
-      host = input[["review-host"]],
-      port = input[["review-port"]],
-      max_request_size = input[["review-max_request_size"]],
-      display_mode = input[["review-display_mode"]],
-      launch_browser = input[["review-launch_browser"]],
+      host = current_options$host,
+      port = current_options$port,
+      max_request_size = current_options$max_request_size,
+      display_mode = current_options$display_mode,
+      launch_browser = current_options$launch_browser,
       show_upload_ui = input[["review-show_upload_ui"]]
     )
     if (any(vapply(values, is.null, logical(1)))) {
@@ -2155,7 +2443,17 @@ server <- function(input, output, session) {
     validate_review_inputs(values)
   })
 
-  frozen_review_plan <- reactive({
+  freeze_plan_for_output <- function(out_dir, overwrite = FALSE) {
+    pending <- imports()$entries
+    if (length(pending)) {
+      states <- vapply(pending, `[[`, character(1), "load_state")
+      message <- if (any(states == "error")) {
+        "Retry or remove datasets that could not load."
+      } else {
+        "Wait for all datasets to finish loading before building."
+      }
+      return(builder_plan_error(message, "imports_pending"))
+    }
     validation <- review_validation()
     if (!isTRUE(validation$ok)) {
       return(builder_plan_error(
@@ -2171,19 +2469,59 @@ server <- function(input, output, session) {
     app_options <- builder_review_options_for_plan(typed)
     builder_freeze_plan(
       entries = all,
-      out_dir = trimws(
-        input$out_dir %||% file.path(path.expand("~"), "cerebro")
-      ),
+      out_dir = out_dir,
       make_app = isTRUE(input$make_app),
-      overwrite = isTRUE(input$overwrite),
+      overwrite = isTRUE(overwrite),
       app_options = app_options
     )
+  }
+
+  frozen_review_plan <- reactive({
+    plan <- freeze_plan_for_output(
+      file.path(tempdir(), "cerebro-builder-output-preview"),
+      overwrite = FALSE
+    )
+    if (inherits(plan, "builder_build_plan")) {
+      plan$output_pending <- TRUE
+    }
+    plan
   })
 
   review_report <- reactive({
+    pending <- imports()$entries
+    if (length(pending)) {
+      states <- vapply(pending, `[[`, character(1), "load_state")
+      if (any(states == "error")) {
+        return(list(
+          ok = FALSE,
+          msg = "Retry or remove datasets that could not load."
+        ))
+      }
+      return(list(
+        ok = FALSE,
+        msg = "Wait for all datasets to finish loading before building."
+      ))
+    }
     plan <- frozen_review_plan()
     if (!builder_review_can_build(plan)) {
-      return(list(ok = FALSE, msg = plan$error %||% "Review the frozen plan."))
+      issue_count <- if (
+        inherits(plan, "builder_build_plan") &&
+          identical(plan$readiness, "ready")
+      ) {
+        max(1L, length(builder_review_model(plan)$warnings))
+      } else {
+        1L
+      }
+      return(list(
+        ok = FALSE,
+        msg = paste0(
+          "Resolve ",
+          issue_count,
+          " required setting",
+          if (issue_count == 1L) "" else "s",
+          " before building."
+        )
+      ))
     }
     list(
       ok = TRUE,
@@ -2191,8 +2529,7 @@ server <- function(input, output, session) {
         length(plan$items),
         " dataset",
         if (length(plan$items) == 1L) "" else "s",
-        " · frozen revision ",
-        plan$revision
+        " ready"
       )
     )
   })
@@ -2214,11 +2551,71 @@ server <- function(input, output, session) {
     )
   })
 
+  output[["enhance-table_list"]] <- renderUI({
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    tables <- entry$settings$tables %||% list()
+    if (!length(tables)) {
+      return(NULL)
+    }
+    div(
+      class = "enhance-table-list builder-file-list",
+      h5("Added tables"),
+      lapply(names(tables), function(key) {
+        table <- tables[[key]]
+        filename <- table$file_name %||% paste0(key, ".csv")
+        file_type <- table$file_type %||% toupper(tools::file_ext(filename))
+        file_size <- builder_review_human_size(table$file_size %||% NA_real_)
+        file_summary <- paste(file_type, file_size, sep = " · ")
+        div(
+          class = "enhance-table-item builder-file-item",
+          div(
+            class = "enhance-table-file-meta",
+            span(class = "enhance-table-filename", filename),
+            span(class = "enhance-table-type", file_summary),
+            span(
+              class = "builder-status builder-status--ready",
+              "Ready"
+            )
+          ),
+          tags$label(
+            class = "enhance-table-name-field",
+            span("Table name"),
+            tags$input(
+              type = "text",
+              class = "enhance-table-display-name",
+              value = key,
+              `data-table-key` = key,
+              `aria-label` = paste("Display name for", filename)
+            )
+          ),
+          tags$button(
+            type = "button",
+            class = "enhance-table-remove",
+            `data-table-key` = key,
+            "Remove"
+          )
+        )
+      })
+    )
+  })
+
   output$workbench <- renderUI({
+    loading_id <- active_import_id()
+    loading_entry <- if (is.null(loading_id)) {
+      NULL
+    } else {
+      builder_import_find(imports(), loading_id)
+    }
+    if (!is.null(loading_entry)) {
+      return(builder_loading_workbench_ui(loading_entry))
+    }
     id <- current()
     entry <- isolate(entry_of(id))
     if (is.null(entry)) {
-      return(NULL)
+      return(builder_empty_workbench_ui())
     }
     state <- try(builder_dataset_state(entry), silent = TRUE)
     attention <- if (inherits(state, "try-error")) {
@@ -2291,6 +2688,7 @@ server <- function(input, output, session) {
       )
     )
     tagList(
+      builder_dataset_context_ui(store(), current()),
       builder_inspect_stage_ui("inspect", inspect_model),
       builder_core_stage_ui("core", core_model),
       builder_enhance_stage_ui(
@@ -2308,22 +2706,103 @@ server <- function(input, output, session) {
       conditionalPanel(
         condition = "input.make_app === true",
         builder_review_controls_ui("review", isolate(review_options()))
+      ),
+      div(
+        class = "dataset-review-footer",
+        actionButton(
+          "review_current_dataset",
+          if (is.null(builder_next_unreviewed(sets(), current()))) {
+            "Looks good — finish review"
+          } else {
+            "Looks good — review next dataset"
+          },
+          class = "btn btn-action dataset-review-confirm"
+        )
       )
     )
   })
 
+  focus_dataset_settings <- function(message = NULL) {
+    session$sendCustomMessage("builder_focus_dataset", list(message = message))
+  }
+
+  select_dataset_index <- function(offset) {
+    entries <- isolate(sets())
+    ids <- vapply(entries, `[[`, character(1), "id")
+    index <- match(isolate(current()), ids)
+    target <- index + offset
+    if (!is.na(index) && target >= 1L && target <= length(ids)) {
+      current(ids[[target]])
+      focus_dataset_settings()
+    }
+  }
+
+  observeEvent(input$review_previous_dataset, select_dataset_index(-1L))
+  observeEvent(input$review_next_dataset, select_dataset_index(1L))
+
+  observeEvent(input$review_current_dataset, {
+    id <- isolate(current())
+    entries <- isolate(sets())
+    index <- match(id, vapply(entries, `[[`, character(1), "id"))
+    req(!is.na(index))
+    entry <- entries[[index]]
+    status <- builder_dataset_review_status(entry, TRUE)
+    if (identical(status$id, "needs-attention")) {
+      showNotification(
+        "Resolve this dataset’s highlighted issues before marking it reviewed.",
+        type = "warning",
+        duration = 5
+      )
+      return()
+    }
+    entry$reviewed_revision <- as.integer(entry$revision %||% 0L)
+    next_state <- builder_reduce_state(
+      isolate(store()),
+      list(type = "replace", id = id, entry = entry)
+    )
+    store(next_state)
+    next_unreviewed <- builder_next_unreviewed(next_state$datasets, id)
+    if (!is.null(next_unreviewed)) {
+      next_entry <- next_state$datasets[[match(
+        next_unreviewed,
+        vapply(next_state$datasets, `[[`, character(1), "id")
+      )]]
+      current(next_unreviewed)
+      focus_dataset_settings(paste0(
+        entry$settings$name,
+        " marked as reviewed. Opening ",
+        next_entry$settings$name,
+        "."
+      ))
+    } else {
+      session$sendCustomMessage(
+        "builder_focus_review",
+        list(
+          message = paste0(entry$settings$name, " marked as reviewed.")
+        )
+      )
+    }
+  })
+
   output$review_stage <- renderUI({
     plan <- frozen_review_plan()
-    if (builder_review_can_build(plan)) {
+    if (
+      inherits(plan, "builder_build_plan") &&
+        is.list(plan) &&
+        identical(plan$readiness, "ready")
+    ) {
       builder_review_stage_ui("review", builder_review_model(plan, result()))
     } else {
-      div(class = "card notice warn", plan$error %||% "Review is not ready.")
+      builder_review_blocked_ui(
+        "review",
+        if (is.list(plan)) plan$error %||% NULL else NULL
+      )
     }
   })
 
   datasets_present <- reactiveVal(FALSE)
   observe({
-    present <- length(sets()) > 0L
+    present <- length(sets()) > 0L || length(imports()$entries) > 0L
     if (!identical(present, isolate(datasets_present()))) {
       datasets_present(present)
     }
@@ -2341,33 +2820,16 @@ server <- function(input, output, session) {
       class = "actionbar",
       div(
         class = "inner",
-        div(
-          class = "grow output-field",
-          tags$label(
-            class = "visually-hidden",
-            `for` = "out_dir",
-            "Output directory"
-          ),
-          textInput(
-            "out_dir",
-            NULL,
-            width = "100%",
-            value = isolate(input$out_dir) %||%
-              file.path(path.expand("~"), "cerebro")
-          )
+        span(
+          class = "grow actionbar-output-note",
+          "Choose where to save the CRB files and App folder."
         ),
         uiOutput("review_action_summary", inline = TRUE),
         make_app_control,
-        checkboxInput(
-          "overwrite",
-          "Replace existing outputs",
-          value = isTRUE(isolate(input$overwrite)),
-          width = "auto"
-        ),
         uiOutput(
           "build_actions",
           inline = TRUE,
-          style = "display:inline-flex;align-items:center;gap:1rem"
+          class = "builder-action-row"
         )
       )
     )
@@ -2385,6 +2847,7 @@ server <- function(input, output, session) {
   ## from recreating those inputs and resetting the browser's current values.
   output$build_actions <- renderUI({
     rep <- review_report()
+    flow <- build_flow()
     current_protocol <- protocol()
     build_phase <- if (is.null(current_protocol)) {
       "idle"
@@ -2396,33 +2859,45 @@ server <- function(input, output, session) {
       builder_protocol_is_quiescent(current_protocol)
     actionButton(
       "build",
-      "Build",
+      switch(
+        flow$stage,
+        choosing_folder = "Choose a folder…",
+        building = "Building…",
+        "Build"
+      ),
       class = "btn btn-action",
-      disabled = if (
-        !builder_review_can_build(frozen_review_plan()) ||
-          build_in_flight ||
-          !protocol_quiescent ||
-          !isTRUE(worker_available())
-      ) {
-        "disabled"
-      }
+      disabled = !isTRUE(rep$ok) ||
+        !identical(flow$stage, "idle") ||
+        build_in_flight ||
+        !protocol_quiescent ||
+        !isTRUE(worker_available())
     )
+  })
+
+  observe({
+    current_flow <- build_flow()
+    current_protocol <- protocol()
+    if (
+      identical(current_flow$stage, "building") &&
+        !is.null(current_protocol) &&
+        builder_protocol_is_quiescent(current_protocol)
+    ) {
+      build_flow(list(stage = "idle", plan = NULL))
+    }
   })
 
   ## -- build ---------------------------------------------------------------
   ## The whole export runs in the worker: analyses, matrix write, bundle. This
   ## process only sends a plan and waits for the report, so the page keeps
   ## answering while a marker-gene run takes its minutes.
-  observeEvent(input$build, {
+  enqueue_build_plan <- function(plan) {
     rs <- worker()
     req(rs)
     current_protocol <- isolate(protocol())
     req(builder_protocol_is_quiescent(current_protocol))
-    plan <- isolate(frozen_review_plan())
-    req(builder_review_can_build(plan))
     plan <- unserialize(serialize(plan, NULL, version = 3L))
     result(NULL)
-    enqueue(list(
+    queued <- enqueue(list(
       kind = "build",
       plan = plan,
       note = paste0(
@@ -2433,21 +2908,195 @@ server <- function(input, output, session) {
         "…"
       )
     ))
+    build_flow(list(
+      stage = if (isTRUE(queued)) "building" else "idle",
+      plan = NULL
+    ))
+    invisible(isTRUE(queued))
+  }
+
+  prepare_selected_output <- function(path, overwrite = FALSE) {
+    plan <- isolate(freeze_plan_for_output(path, overwrite = overwrite))
+    if (
+      !inherits(plan, "builder_build_plan") ||
+        !identical(plan$readiness, "ready")
+    ) {
+      build_flow(list(stage = "idle", plan = NULL))
+      showNotification(
+        plan$error %||% "The selected folder cannot be used.",
+        type = "error",
+        duration = 6
+      )
+      return(invisible(FALSE))
+    }
+    if (length(plan$existing_targets) && !isTRUE(overwrite)) {
+      build_flow(list(stage = "conflict", plan = plan))
+      session$sendCustomMessage(
+        "builder_build_dialog",
+        list(
+          type = "conflict",
+          title = "Files already exist",
+          files = basename(plan$existing_targets)
+        )
+      )
+      return(invisible(FALSE))
+    }
+    enqueue_build_plan(plan)
+  }
+
+  choose_build_folder <- function() {
+    build_flow(list(stage = "choosing_folder", plan = NULL))
+    session$onFlushed(
+      function() {
+        choice <- builder_choose_output_directory()
+        if (identical(choice$status, "cancelled")) {
+          build_flow(list(stage = "idle", plan = NULL))
+          return()
+        }
+        if (!identical(choice$status, "selected")) {
+          build_flow(list(stage = "idle", plan = NULL))
+          showNotification(
+            choice$error %||% "The folder picker could not be opened.",
+            type = "error",
+            duration = 6
+          )
+          return()
+        }
+        prepare_selected_output(choice$path)
+      },
+      once = TRUE
+    )
+  }
+
+  observeEvent(input$build, {
+    req(identical(isolate(build_flow())$stage, "idle"))
+    plan <- isolate(frozen_review_plan())
+    datasets <- isolate(sets())
+    review_statuses <- lapply(
+      datasets,
+      builder_dataset_review_status,
+      active = FALSE
+    )
+    attention <- which(vapply(
+      review_statuses,
+      function(status) identical(status$id, "needs-attention"),
+      logical(1)
+    ))
+    unreviewed <- which(
+      !vapply(datasets, builder_dataset_is_reviewed, logical(1))
+    )
+    if (length(attention)) {
+      target <- datasets[[attention[[1L]]]]$id
+      build_flow(list(
+        stage = "attention_required",
+        plan = NULL,
+        target = target
+      ))
+      session$sendCustomMessage(
+        "builder_build_dialog",
+        list(
+          type = "needs_attention",
+          title = "Some datasets still need attention",
+          names = vapply(
+            datasets[attention],
+            function(entry) {
+              paste0(
+                entry$settings$name,
+                " — Resolve the highlighted settings."
+              )
+            },
+            character(1)
+          )
+        )
+      )
+      return()
+    }
+    if (length(unreviewed)) {
+      target <- datasets[[unreviewed[[1L]]]]$id
+      build_flow(list(stage = "review_required", plan = NULL, target = target))
+      session$sendCustomMessage(
+        "builder_build_dialog",
+        list(
+          type = "unreviewed",
+          title = "Some datasets have not been reviewed",
+          names = vapply(
+            datasets[unreviewed],
+            function(entry) entry$settings$name,
+            character(1)
+          )
+        )
+      )
+      return()
+    }
+    if (!builder_review_can_build(plan)) {
+      showNotification(
+        plan$error %||% "Resolve the highlighted settings before building.",
+        type = "warning",
+        duration = 6
+      )
+      return()
+    }
+    if (length(datasets) >= 2L) {
+      build_flow(list(stage = "confirming", plan = NULL))
+      session$sendCustomMessage(
+        "builder_build_dialog",
+        list(
+          type = "datasets",
+          title = "Ready to build all datasets?",
+          count = length(datasets),
+          names = vapply(
+            datasets,
+            function(entry) entry$settings$name %||% "Dataset",
+            character(1)
+          )
+        )
+      )
+      return()
+    }
+    choose_build_folder()
+  })
+
+  observeEvent(input$builder_build_dialog, {
+    action <- input$builder_build_dialog$action %||% "cancel"
+    flow <- isolate(build_flow())
+    if (identical(action, "continue") && identical(flow$stage, "confirming")) {
+      choose_build_folder()
+    } else if (
+      identical(action, "replace") &&
+        identical(flow$stage, "conflict") &&
+        inherits(flow$plan, "builder_build_plan")
+    ) {
+      prepare_selected_output(flow$plan$out_dir, overwrite = TRUE)
+    } else if (
+      identical(action, "choose_another") &&
+        identical(flow$stage, "conflict")
+    ) {
+      choose_build_folder()
+    } else if (
+      identical(action, "review_now") &&
+        identical(flow$stage, "review_required")
+    ) {
+      current(flow$target)
+      build_flow(list(stage = "idle", plan = NULL))
+      focus_dataset_settings()
+    } else if (
+      identical(action, "fix_issues") &&
+        identical(flow$stage, "attention_required")
+    ) {
+      current(flow$target)
+      build_flow(list(stage = "idle", plan = NULL))
+      focus_dataset_settings()
+    } else {
+      build_flow(list(stage = "idle", plan = NULL))
+    }
   })
 
   validate_rail_removal <- function(next_state, id) {
-    out_dir <- trimws(
-      isolate(input$out_dir) %||%
-        file.path(
-          path.expand("~"),
-          "cerebro"
-        )
-    )
     builder_validate_next_plan(
       next_state,
-      out_dir = out_dir,
+      out_dir = file.path(tempdir(), "cerebro-builder-output-preview"),
       make_app = isTRUE(isolate(input$make_app)),
-      overwrite = isTRUE(isolate(input$overwrite))
+      overwrite = FALSE
     )
   }
 
@@ -2495,6 +3144,7 @@ server <- function(input, output, session) {
     store = store,
     validate_remove = validate_rail_removal,
     on_select = function(id) {
+      active_import_id(NULL)
       result(NULL)
     },
     on_remove = remove_dataset,

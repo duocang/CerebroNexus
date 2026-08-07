@@ -50,7 +50,71 @@ test_that("builder uses a responsive card grid", {
   expect_match(css, "#workbench \\{")
   expect_match(css, "\\.builder-stage,")
   expect_match(css, "grid-template-columns: 19.5rem")
-  expect_match(css, "@media \\(max-width: 42.5rem\\)")
+  expect_match(css, "@media \\(max-width: 43.75rem\\)")
+})
+
+test_that("builder exposes one compact responsive component system", {
+  css <- builder_asset_text("www", "builder.css")
+
+  for (token in c(
+    "--c-surface-muted",
+    "--c-border-strong",
+    "--c-text-muted",
+    "--c-text-subtle",
+    "--space-5",
+    "--radius-sm",
+    "--radius-md",
+    "--radius-lg",
+    "--radius-pill",
+    "--shadow-sm",
+    "--shadow-md",
+    "--shadow-dialog",
+    "--duration-fast",
+    "--duration-normal"
+  )) {
+    expect_match(css, token, fixed = TRUE)
+  }
+  for (component in c(
+    ".builder-shell",
+    ".builder-content",
+    ".builder-card",
+    ".builder-section",
+    ".builder-subcard",
+    ".builder-form-grid",
+    ".builder-field",
+    ".builder-action-row",
+    ".builder-disclosure",
+    ".builder-file-picker",
+    ".builder-file-list",
+    ".builder-file-item",
+    ".builder-empty-state",
+    ".builder-status",
+    ".builder-controls-grid",
+    ".builder-preview-grid",
+    ".builder-dialog",
+    ".builder-dialog-actions"
+  )) {
+    expect_match(css, component, fixed = TRUE)
+  }
+  expect_match(css, "max-width: 82.5rem", fixed = TRUE)
+  expect_match(css, "@media (max-width: 68.75rem)", fixed = TRUE)
+  expect_match(css, "@media (max-width: 43.75rem)", fixed = TRUE)
+  expect_match(css, "@media (prefers-reduced-motion: reduce)", fixed = TRUE)
+  expect_match(css, ".builder-file-picker--sidebar", fixed = TRUE)
+  expect_match(css, ".builder-file-picker--content", fixed = TRUE)
+  expect_match(css, "width: fit-content", fixed = TRUE)
+  expect_false(grepl(
+    "\\.builder-action-row\\s*\\{[^}]*margin-top\\s*:\\s*auto",
+    css,
+    perl = TRUE
+  ))
+  expect_match(css, "--duration-base: var(--duration-normal)", fixed = TRUE)
+  expect_match(css, ".btn-quiet:hover", fixed = TRUE)
+  expect_false(grepl(
+    "\\.btn-quiet:hover\\s*\\{[^}]*var\\(--c-error\\)",
+    css,
+    perl = TRUE
+  ))
 })
 
 test_that("dataset uploads use an amber trigger without replacing the native chooser", {
@@ -60,12 +124,96 @@ test_that("dataset uploads use an amber trigger without replacing the native cho
   expect_match(app, 'tags$input(', fixed = TRUE)
   expect_match(app, 'type = "file"', fixed = TRUE)
   expect_match(app, 'id = "dataset_files"', fixed = TRUE)
-  expect_match(app, 'class = "dataset-file-button"', fixed = TRUE)
+  expect_match(
+    app,
+    'class = "dataset-file-control builder-file-picker builder-file-picker--sidebar"',
+    fixed = TRUE
+  )
+  expect_match(app, "builder-file-input", fixed = TRUE)
+  expect_match(app, "builder-file-trigger", fixed = TRUE)
+  expect_match(
+    app,
+    'class = "dataset-file-button builder-file-trigger"',
+    fixed = TRUE
+  )
   expect_match(app, '"Add datasets…"', fixed = TRUE)
   expect_false(grepl('fileInput(', app, fixed = TRUE))
   expect_false(grepl('dataset_files.*class = "btn', app, perl = TRUE))
   expect_match(css, ".dataset-file-button", fixed = TRUE)
   expect_match(css, "background: var(--c-amber)", fixed = TRUE)
+})
+
+test_that("supplementary tables use an amber native multi-file chooser", {
+  stage <- builder_asset_text("ui", "enhance_stage.R")
+  css <- builder_asset_text("www", "builder.css")
+
+  expect_match(
+    stage,
+    'class = "shiny-input-file enhance-table-file-input builder-file-input"',
+    fixed = TRUE
+  )
+  expect_match(stage, 'multiple = "multiple"', fixed = TRUE)
+  expect_match(stage, 'accept = ".csv,.tsv,.txt"', fixed = TRUE)
+  expect_match(
+    stage,
+    'class = "enhance-table-file-control builder-file-picker builder-file-picker--content"',
+    fixed = TRUE
+  )
+  expect_match(
+    stage,
+    'class = "enhance-table-file-button builder-file-trigger"',
+    fixed = TRUE
+  )
+  expect_match(stage, '`tabindex` = "0"', fixed = TRUE)
+  expect_match(stage, 'role = "button"', fixed = TRUE)
+  expect_match(stage, 'span("+ Add tables…")', fixed = TRUE)
+  expect_match(
+    app <- builder_asset_text("app.R"),
+    'span("Table name")',
+    fixed = TRUE
+  )
+  expect_match(app, 'class = "enhance-table-display-name"', fixed = TRUE)
+  expect_false(grepl('textInput(ns("table_path")', stage, fixed = TRUE))
+  expect_false(grepl('textInput(ns("table_name")', stage, fixed = TRUE))
+  expect_false(grepl('actionButton(ns("add_table")', stage, fixed = TRUE))
+  expect_match(css, ".enhance-table-file-button", fixed = TRUE)
+  expect_match(css, ".enhance-table-file-control:hover", fixed = TRUE)
+  expect_match(css, ".enhance-table-file-input:focus-visible", fixed = TRUE)
+})
+
+test_that("all local attachments use accessible native file inputs", {
+  app <- builder_asset_text("app.R")
+  stage <- builder_asset_text("ui", "enhance_stage.R")
+  js <- builder_asset_text("www", "builder.js")
+  css <- builder_asset_text("www", "builder.css")
+
+  expect_match(app, 'accept = paste(', fixed = TRUE)
+  expect_match(app, 'multiple = "multiple"', fixed = TRUE)
+  expect_match(stage, 'accept = ".csv,.tsv,.txt"', fixed = TRUE)
+  expect_match(stage, 'multiple = "multiple"', fixed = TRUE)
+  expect_match(stage, 'accept = ".png,.jpg,.jpeg"', fixed = TRUE)
+  expect_match(
+    stage,
+    'class = "enhance-tissue-file-control builder-file-picker builder-file-picker--compact"',
+    fixed = TRUE
+  )
+  expect_match(js, 'closest(".builder-file-trigger")', fixed = TRUE)
+  expect_match(js, 'event.key === "Enter" || event.key === " "', fixed = TRUE)
+  expect_match(
+    css,
+    ".builder-file-input:focus-visible + .builder-file-trigger",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "\\.builder-file-input\\s*\\{[^}]*display\\s*:\\s*none",
+    css,
+    perl = TRUE
+  ))
+  expect_false(grepl(
+    "CSV / TSV path|PNG / JPEG path|fakepath",
+    paste(app, stage)
+  ))
+  expect_false(grepl("browser_panel|browse_open|browse_dir", paste(app, stage)))
 })
 
 test_that("dataset removal remains a soft red text action", {
@@ -113,6 +261,75 @@ test_that("builder interaction states follow the amber theme", {
   ))
 })
 
+test_that("group colors use native bounded controls without projection palettes", {
+  core <- builder_asset_text("ui", "core_stage.R")
+  js <- builder_asset_text("www", "builder.js")
+  css <- builder_asset_text("www", "builder.css")
+
+  expect_match(core, 'type = "color"', fixed = TRUE)
+  expect_match(core, 'paste("Show all", model$total, "colors")', fixed = TRUE)
+  expect_match(core, '"Show fewer"', fixed = TRUE)
+  expect_match(core, '"Find a group value"', fixed = TRUE)
+  expect_match(js, "group-color-toggle", fixed = TRUE)
+  expect_match(js, "group-color-search", fixed = TRUE)
+  expect_match(css, ".group-color-grid", fixed = TRUE)
+  expect_match(css, ".group-color-item:hover", fixed = TRUE)
+  expect_match(css, ".group-color-input:focus-visible", fixed = TRUE)
+  expect_false(grepl("umap_palette|pca_palette|tsne_palette", core))
+})
+
+test_that("Review uses a compact responsive user-facing layout", {
+  css <- builder_asset_text("www", "builder.css")
+  app <- builder_asset_text("app.R")
+
+  expect_match(css, ".review-app-grid", fixed = TRUE)
+  expect_match(css, ".review-page-tags", fixed = TRUE)
+  expect_match(css, ".review-output-fields", fixed = TRUE)
+  expect_match(css, ".review-needs-attention", fixed = TRUE)
+  expect_match(
+    css,
+    "grid-template-columns: repeat(2, minmax(0, 1fr))",
+    fixed = TRUE
+  )
+  expect_match(css, "overflow-wrap: anywhere", fixed = TRUE)
+  expect_match(app, '"Build"', fixed = TRUE)
+  expect_match(app, '"Choose a folder…"', fixed = TRUE)
+  expect_match(app, '"Building…"', fixed = TRUE)
+  expect_false(grepl(
+    'actionButton(\n      "build",\n      "Build",',
+    app,
+    fixed = TRUE
+  ))
+})
+
+test_that("Build dialogs use accessible modal semantics and plain language", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, "showBuildDialog", fixed = TRUE)
+  expect_match(js, 'dialog.setAttribute("role", "dialog")', fixed = TRUE)
+  expect_match(js, 'dialog.setAttribute("aria-modal", "true")', fixed = TRUE)
+  expect_match(
+    js,
+    'dialog.setAttribute("aria-labelledby", title.id)',
+    fixed = TRUE
+  )
+  expect_match(js, "trapDialogKeydown", fixed = TRUE)
+  expect_match(js, "restoreFocus(dialog)", fixed = TRUE)
+  expect_match(js, "Ready to build all datasets?", fixed = TRUE)
+  expect_match(js, "Back to review", fixed = TRUE)
+  expect_match(js, "Continue", fixed = TRUE)
+  expect_match(js, "Choose another folder", fixed = TRUE)
+  expect_match(js, "Replace existing files", fixed = TRUE)
+  expect_match(js, "Some datasets have not been reviewed", fixed = TRUE)
+  expect_match(js, "Review every dataset before building.", fixed = TRUE)
+  expect_match(js, "Review now", fixed = TRUE)
+  expect_match(js, "Some datasets still need attention", fixed = TRUE)
+  expect_match(js, "Fix issues", fixed = TRUE)
+  expect_match(js, "All ", fixed = TRUE)
+  expect_match(js, " datasets have been reviewed.", fixed = TRUE)
+  expect_false(grepl("window.confirm", js, fixed = TRUE))
+})
+
 test_that("builder client avoids layout-measurement animation loops", {
   js <- builder_asset_text("www", "builder.js")
 
@@ -133,8 +350,8 @@ test_that("builder keeps primary actions in flow and exposes a narrow manager", 
     css,
     perl = TRUE
   ))
-  expect_match(css, "@media (max-width: 56.25rem)", fixed = TRUE)
-  expect_match(css, "@media (max-width: 42.5rem)", fixed = TRUE)
+  expect_match(css, "@media (max-width: 68.75rem)", fixed = TRUE)
+  expect_match(css, "@media (max-width: 43.75rem)", fixed = TRUE)
   expect_match(css, ".rail-summary", fixed = TRUE)
   expect_match(css, ".rail.is-manager-open", fixed = TRUE)
   expect_match(css, ".builder-stage[aria-current=\"stage\"]", fixed = TRUE)
@@ -169,6 +386,49 @@ test_that("builder client owns accessible dialog and live-state semantics", {
   )
 })
 
+test_that("static example cards show loading without hiding the directory", {
+  js <- builder_asset_text("www", "builder.js")
+  css <- builder_asset_text("www", "builder.css")
+
+  expect_match(js, "function messageValues(value)", fixed = TRUE)
+  expect_match(
+    js,
+    "return Array.isArray(value) ? value : [value];",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "new Set(messageValues(message && message.ids))",
+    fixed = TRUE
+  )
+  expect_match(js, "message.loading", fixed = TRUE)
+  expect_match(js, 'classList.toggle("is-loading"', fixed = TRUE)
+  expect_match(js, 'textContent = isLoading ? "Loading…"', fixed = TRUE)
+  expect_match(js, 'classList.toggle("is-taken"', fixed = TRUE)
+  expect_match(css, ".example-btn.is-loading", fixed = TRUE)
+  expect_match(css, ".example-btn.is-taken { display: none; }", fixed = TRUE)
+  expect_match(js, "function registerExampleMessageHandler", fixed = TRUE)
+  expect_match(
+    js,
+    'document.addEventListener("shiny:connected", function ()',
+    fixed = TRUE
+  )
+  expect_match(js, "registerExampleMessageHandler();", fixed = TRUE)
+})
+
+test_that("Builder JavaScript waits for a usable document before initialization", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, "function initializeBuilder()", fixed = TRUE)
+  expect_match(
+    js,
+    'document.addEventListener("DOMContentLoaded", initializeBuilder',
+    fixed = TRUE
+  )
+  expect_match(js, 'document.readyState === "loading"', fixed = TRUE)
+  expect_match(js, "new MutationObserver(enhanceDynamicContent)", fixed = TRUE)
+})
+
 test_that("builder previews and colour controls have text equivalents", {
   js <- builder_asset_text("www", "builder.js")
 
@@ -188,6 +448,11 @@ test_that("Inspect shows compact detected-content tags instead of audit output",
 
   expect_match(inspect, "builder-content-tags", fixed = TRUE)
   expect_false(grepl("Verified profile", inspect, fixed = TRUE))
+  css <- builder_asset_text("www", "builder.css")
+  for (tone in c("analysis", "trajectory", "immune", "extra")) {
+    expect_match(css, paste0(".builder-content-tag.is-", tone), fixed = TRUE)
+  }
+  expect_false(grepl(".builder-content-tag.is-optional", css, fixed = TRUE))
   expect_false(grepl("View all detected content", inspect, fixed = TRUE))
   expect_false(grepl("QC preview uses", inspect, fixed = TRUE))
   expect_false(grepl("projection(s) and", inspect, fixed = TRUE))
@@ -294,7 +559,7 @@ test_that("dense stages default to plain summaries and bounded details", {
   css <- builder_asset_text("www", "builder.css")
 
   expect_match(enhance, "Optional analyses", fixed = TRUE)
-  expect_match(enhance, "What this changes", fixed = TRUE)
+  expect_false(grepl("What this changes", enhance, fixed = TRUE))
   expect_match(review, "Technical plan details", fixed = TRUE)
   expect_match(review, "Detailed manifest", fixed = TRUE)
   expect_match(review, "builder_review_bounded_lines", fixed = TRUE)
@@ -305,6 +570,105 @@ test_that("dense stages default to plain summaries and bounded details", {
   expect_match(css, ".ds-actions", fixed = TRUE)
   expect_false(grepl("builder-select-initial", rail, fixed = TRUE))
   expect_false(grepl("builder-duplicate", rail, fixed = TRUE))
+})
+
+test_that("Enhance analyses use amber selectable cards with quiet info controls", {
+  css <- builder_asset_text("www", "builder.css")
+
+  expect_match(css, ".enhance-module-select", fixed = TRUE)
+  expect_match(css, ".enhance-module-title", fixed = TRUE)
+  expect_match(css, ".enhance-info-button", fixed = TRUE)
+  expect_match(css, ".enhance-module:hover", fixed = TRUE)
+  expect_match(css, "background: var(--c-amber-50)", fixed = TRUE)
+  expect_match(css, ".enhance-module:focus-within", fixed = TRUE)
+  expect_match(
+    css,
+    "\\.enhance-module:focus-within \\{[\\s\\S]*?background: var\\(--c-surface\\);",
+    perl = TRUE
+  )
+  expect_false(grepl(
+    ".enhance-module:hover,\n.enhance-module:focus-within",
+    css,
+    fixed = TRUE
+  ))
+  expect_match(css, ".enhance-module:has(input:checked)", fixed = TRUE)
+  expect_match(css, "background: var(--c-amber);", fixed = TRUE)
+  expect_match(css, ".enhance-module.is-blocked", fixed = TRUE)
+  expect_match(
+    css,
+    '.enhance-module:has(input:checked):hover',
+    fixed = TRUE
+  )
+  expect_match(css, "@media (prefers-reduced-motion: reduce)", fixed = TRUE)
+  expect_match(
+    css,
+    ".enhance-module { transform: none; }",
+    fixed = TRUE
+  )
+})
+
+test_that("Enhance info opens a transient accessible facts dialog", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, '.enhance-info-button', fixed = TRUE)
+  expect_match(js, "showAnalysisInfo", fixed = TRUE)
+  expect_match(js, "builder-analysis-info-backdrop", fixed = TRUE)
+  expect_match(js, "builder-analysis-info-dialog", fixed = TRUE)
+  expect_match(js, 'event.preventDefault()', fixed = TRUE)
+  expect_match(js, 'event.stopPropagation()', fixed = TRUE)
+  expect_match(js, "prepareDialog(dialog, infoButton, close)", fixed = TRUE)
+  expect_match(js, "restoreFocus(dialog)", fixed = TRUE)
+  expect_match(js, "updateDialogLock()", fixed = TRUE)
+  expect_match(
+    js,
+    'dialog.setAttribute("aria-labelledby", title.id)',
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    'dialog.setAttribute("aria-describedby", description.id)',
+    fixed = TRUE
+  )
+  expect_match(js, 'if (event.target === backdrop) close()', fixed = TRUE)
+  expect_match(
+    js,
+    'event.target.closest(".enhance-module-checkbox")',
+    fixed = TRUE
+  )
+  expect_match(js, 'event.key === "Enter"', fixed = TRUE)
+  expect_match(js, "enhanceCheckbox.click()", fixed = TRUE)
+  for (label in c(
+    "Available in",
+    "Typical time",
+    "Requires",
+    "Network",
+    "If already present",
+    "If skipped"
+  )) {
+    expect_match(js, label, fixed = TRUE)
+  }
+  expect_match(
+    js,
+    "title.textContent = infoButton.dataset.title",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "description.textContent = infoButton.dataset.description",
+    fixed = TRUE
+  )
+  expect_match(js, "value.textContent = fact.value", fixed = TRUE)
+
+  css <- builder_asset_text("www", "builder.css")
+  expect_match(css, ".builder-analysis-info-backdrop", fixed = TRUE)
+  expect_match(css, ".builder-analysis-info-dialog", fixed = TRUE)
+  expect_match(css, ".builder-analysis-info-facts", fixed = TRUE)
+  expect_match(
+    css,
+    "grid-template-columns: repeat(2, minmax(0, 1fr))",
+    fixed = TRUE
+  )
+  expect_match(css, ".is-wide", fixed = TRUE)
 })
 
 test_that("result actions remain native keyboard controls", {
@@ -321,11 +685,14 @@ test_that("result actions remain native keyboard controls", {
 })
 
 test_that("spatial translation does not invalidate image encoding", {
-  lines <- readLines(builder_asset_path("app.R"), warn = FALSE)
-  start <- grep("encoded_image <- reactive", lines, fixed = TRUE)
-  finish <- grep("image_base_bounds <- reactive", lines, fixed = TRUE)
+  lines <- readLines(
+    builder_asset_path("spatial_alignment_server.R"),
+    warn = FALSE
+  )
+  start <- grep("encoded <- shiny::reactive", lines, fixed = TRUE)
+  finish <- grep("current_record <- shiny::reactive", lines, fixed = TRUE)
   encoded <- paste(lines[start:(finish - 1L)], collapse = "\n")
 
-  expect_false(grepl("img_dx|img_dy|img_scale", encoded))
-  expect_match(encoded, "img_rotate", fixed = TRUE)
+  expect_false(grepl("img_dx|img_dy|img_scale|opacity|point_size", encoded))
+  expect_match(encoded, "orientation()", fixed = TRUE)
 })

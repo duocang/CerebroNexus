@@ -97,9 +97,98 @@ test_that("hand-picked colours survive a change of palette", {
     two <- builder_level_colors(lv, "okabe_ito", override)
 
     ## The touched level keeps its colour; the untouched ones follow the preset.
-    expect_identical(unname(one[["b"]]), "#ff00aa")
-    expect_identical(unname(two[["b"]]), "#ff00aa")
+    expect_identical(unname(one[["b"]]), "#FF00AA")
+    expect_identical(unname(two[["b"]]), "#FF00AA")
     expect_false(identical(unname(one[["a"]]), unname(two[["a"]])))
+  })
+})
+
+test_that("builder color edits normalize valid hex values and reject invalid ones", {
+  local({
+    source(builder_src("preview.R"), local = TRUE)
+
+    overrides <- list(
+      cluster = c(A = "#112233"),
+      sample = c(donor_1 = "#445566")
+    )
+    changed <- builder_update_color_override(
+      overrides,
+      "cluster",
+      "B",
+      "#e76f51"
+    )
+
+    expect_identical(changed$cluster, c(A = "#112233", B = "#E76F51"))
+    expect_identical(changed$sample, overrides$sample)
+    expect_identical(
+      builder_update_color_override(changed, "cluster", "A", "red"),
+      changed
+    )
+    expect_identical(
+      builder_update_color_override(changed, "cluster", "A", ""),
+      changed
+    )
+  })
+})
+
+test_that("group palettes stay isolated and reset only the requested group", {
+  local({
+    source(builder_src("preview.R"), local = TRUE)
+
+    dataset_a <- list(
+      cluster = c(A = "#111111"),
+      sample = c(one = "#222222")
+    )
+    dataset_b <- list(cluster = c(A = "#333333"))
+
+    next_a <- builder_update_color_override(
+      dataset_a,
+      "cluster",
+      "A",
+      "#abcdef"
+    )
+    expect_identical(next_a$cluster[["A"]], "#ABCDEF")
+    expect_identical(next_a$sample, dataset_a$sample)
+    expect_identical(dataset_b$cluster[["A"]], "#333333")
+
+    reset <- builder_reset_color_overrides(next_a, "cluster")
+    expect_null(reset$cluster)
+    expect_identical(reset$sample, dataset_a$sample)
+  })
+})
+
+test_that("existing palette values survive while new levels get stable defaults", {
+  local({
+    source(builder_src("preview.R"), local = TRUE)
+
+    existing <- c(A = "#E76F51")
+    one <- builder_level_colors(c("A", "B", "N/A"), "cerebro", existing)
+    two <- builder_level_colors(c("A", "B", "N/A"), "cerebro", existing)
+
+    expect_identical(one, two)
+    expect_identical(one[["A"]], "#E76F51")
+    expect_match(one[["B"]], "^#[0-9A-F]{6}$")
+    expect_identical(one[["N/A"]], "#898989")
+    expect_identical(builder_group_level_label("N/A"), "Missing")
+  })
+})
+
+test_that("legacy resolved colors migrate only where canonical overrides are absent", {
+  local({
+    source(builder_src("preview.R"), local = TRUE)
+
+    settings <- list(
+      colors = list(
+        cluster = c(A = "#111111"),
+        sample = c(one = "#222222")
+      ),
+      color_overrides = list(cluster = c(A = "#abcdef"))
+    )
+    migrated <- builder_settings_color_overrides(settings)
+
+    expect_identical(migrated$cluster[["A"]], "#ABCDEF")
+    expect_identical(migrated$sample[["one"]], "#222222")
+    expect_null(settings$color_overrides$sample)
   })
 })
 
@@ -159,7 +248,7 @@ test_that("the palette reaches the generated app keyed by its dataset label", {
     expect_identical(names(cfg$colors), label)
     expect_identical(
       unname(cfg$colors[[label]]$seurat_clusters[["C1"]]),
-      "#ff00aa"
+      "#FF00AA"
     )
   })
 })

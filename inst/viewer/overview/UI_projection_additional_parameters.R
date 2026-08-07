@@ -2,22 +2,33 @@
 ## UI elements to set additional parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["overview_projection_additional_parameters_UI"]] <- renderUI({
-  ## Dynamic default point size from cell count + canvas size, falling back to
-  ## the configured fixed default if either is unavailable.
-  point_size_default <- tryCatch(
-    dynamicPointSize(
-      n_points = nrow(getMetaData()),
-      plot_width_px = session$clientData[["output_overview_projection_width"]],
-      plot_height_px = session$clientData[[
-        "output_overview_projection_height"
-      ]],
-      min = preferences[["overview_plot_point_size"]][["min"]],
-      max = preferences[["overview_plot_point_size"]][["max"]],
-      step = preferences[["overview_plot_point_size"]][["step"]],
-      fallback = preferences[["overview_plot_point_size"]][["default"]]
-    ),
-    error = function(e) preferences[["overview_plot_point_size"]][["default"]]
-  )
+  ## Respect an explicit generated-App setting. Otherwise derive the default
+  ## from cell count and canvas size, with the legacy fixed value as fallback.
+  configured_point_size <- preferences[["overview_plot_point_size"]][[
+    "configured"
+  ]]
+  point_size_default <- if (!is.null(configured_point_size)) {
+    configured_point_size
+  } else {
+    tryCatch(
+      dynamicPointSize(
+        n_points = nrow(getMetaData()),
+        plot_width_px = session$clientData[[
+          "output_overview_projection_width"
+        ]],
+        plot_height_px = session$clientData[[
+          "output_overview_projection_height"
+        ]],
+        min = preferences[["overview_plot_point_size"]][["min"]],
+        max = preferences[["overview_plot_point_size"]][["max"]],
+        step = preferences[["overview_plot_point_size"]][["step"]],
+        fallback = preferences[["overview_plot_point_size"]][["default"]]
+      ),
+      error = function(e) {
+        preferences[["overview_plot_point_size"]][["default"]]
+      }
+    )
+  }
 
   tagList(
     sliderInput(
