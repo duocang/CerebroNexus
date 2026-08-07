@@ -21,6 +21,7 @@ builder_profile_source_runtime <- function(local = parent.frame()) {
       "core",
       "spatial_coordinate_contract.R"
     ),
+    builder_profile_inst_path("builder", "spatial.R"),
     builder_profile_inst_path(
       "shiny",
       "v1.4",

@@ -326,34 +326,29 @@
   expected,
   allow_outside = FALSE
 ) {
-  ids <- as.character(ids)
-  expected <- as.character(expected)
-  blanks <- is.na(ids) | !nzchar(ids)
-  usable <- ids[!blanks]
-  duplicates <- duplicated(usable) | duplicated(usable, fromLast = TRUE)
-  outside <- !usable %in% expected
-  overlap_count <- length(intersect(unique(usable), unique(expected)))
-  relation <- if (any(blanks) || any(duplicates) || !length(usable)) {
-    "invalid"
-  } else if (!overlap_count) {
-    "zero"
+  match <- builder_match_cells(ids, expected, mode = "subset")
+  blanks <- is.na(match$ids) | !nzchar(match$ids)
+  usable <- match$ids[!blanks]
+  duplicate_rows <- duplicated(usable) |
+    duplicated(usable, fromLast = TRUE)
+  outside <- !usable %in% match$expected
+  overlap_count <- length(match$matched_ids)
+  relation <- match$relation
+  if (!overlap_count && !any(blanks) && !any(duplicate_rows)) {
+    relation <- "zero"
   } else if (any(outside) && !isTRUE(allow_outside)) {
-    "invalid"
-  } else if (length(usable) == length(expected) && setequal(usable, expected)) {
-    "full"
-  } else {
-    "partial"
+    relation <- "invalid"
   }
 
   list(
-    count = length(ids),
+    count = match$count,
     unique_count = length(unique(usable)),
     blank_count = sum(blanks),
-    duplicate_count = sum(duplicates),
+    duplicate_count = sum(duplicate_rows),
     outside_count = sum(outside),
     overlap_count = overlap_count,
-    dataset_count = length(expected),
-    coverage = if (length(expected)) overlap_count / length(expected) else 0,
+    dataset_count = length(match$expected),
+    coverage = if (length(match$expected)) match$coverage else 0,
     relation = relation,
     valid = relation %in% c("partial", "full")
   )
@@ -450,16 +445,17 @@
 ) {
   name_summary <- .builder_content_spatial_bound_text(as.character(name))
   assay_facts <- .builder_profile_spatial_assay_layer_facts(assay, context)
-  matrix_like <- is.matrix(coordinates) || is.data.frame(coordinates)
+  coordinate_table <- builder_spatial_coordinate_table(coordinates)
+  matrix_like <- isTRUE(coordinate_table$valid)
+  if (matrix_like) {
+    coordinates <- coordinate_table$data
+  }
   ids <- if (!is.null(barcode_ids)) {
     barcode_ids
   } else if (matrix_like) {
     rownames(coordinates)
   } else {
     character()
-  }
-  if (is.matrix(coordinates)) {
-    coordinates <- as.data.frame(coordinates, stringsAsFactors = FALSE)
   }
   coordinate_match <- if (matrix_like) {
     .spx_find_coordinate_columns(coordinates)
@@ -472,20 +468,24 @@
     unname(unlist(coordinate_match, use.names = FALSE))
   }
   dimensions <- length(coordinate_columns)
-  coordinates_numeric <- dimensions == 2L &&
-    all(vapply(
-      coordinates[, coordinate_columns, drop = FALSE],
-      is.numeric,
-      logical(1)
-    ))
-  coordinate_values <- if (coordinates_numeric) {
-    as.matrix(coordinates[, coordinate_columns, drop = FALSE])
+  cell_match <- builder_match_cells(ids, context$cells, mode = "subset")
+  barcodes_aligned <- matrix_like && length(ids) == nrow(coordinates)
+  coordinate_values <- if (dimensions == 2L) {
+    builder_spatial_coordinate_values(
+      coordinates,
+      coordinate_columns,
+      rows = if (barcodes_aligned) cell_match$input_index else NULL
+    )
   } else {
-    matrix(numeric(), nrow = 0L, ncol = 0L)
+    list(
+      valid = FALSE,
+      finite = FALSE,
+      values = matrix(numeric(), nrow = 0L, ncol = 0L)
+    )
   }
-  finite <- coordinates_numeric &&
-    !anyNA(coordinate_values) &&
-    all(is.finite(coordinate_values))
+  coordinates_numeric <- dimensions == 2L && coordinate_values$valid
+  matched_coordinate_values <- coordinate_values$values
+  finite <- coordinates_numeric && coordinate_values$finite
   barcodes <- .builder_profile_spatial_barcode_summary(
     ids,
     context$cells,
@@ -493,12 +493,16 @@
   )
 
   raster_profile <- .builder_profile_spatial_raster(raster)
-  bounds <- if (dimensions >= 2L && finite && nrow(coordinate_values)) {
+  bounds <- if (
+    dimensions >= 2L &&
+      finite &&
+      nrow(matched_coordinate_values)
+  ) {
     list(
-      xmin = unname(min(coordinate_values[, 1L])),
-      xmax = unname(max(coordinate_values[, 1L])),
-      ymin = unname(min(coordinate_values[, 2L])),
-      ymax = unname(max(coordinate_values[, 2L]))
+      xmin = unname(min(matched_coordinate_values[, 1L])),
+      xmax = unname(max(matched_coordinate_values[, 1L])),
+      ymin = unname(min(matched_coordinate_values[, 2L])),
+      ymax = unname(max(matched_coordinate_values[, 2L]))
     )
   } else {
     NULL
@@ -603,10 +607,12 @@
     SeuratObject::GetTissueCoordinates(image),
     error = function(error) NULL
   )
-  if (is.matrix(coordinates)) {
-    coordinates <- as.data.frame(coordinates, stringsAsFactors = FALSE)
+  coordinate_table <- builder_spatial_coordinate_table(coordinates)
+  if (!coordinate_table$valid) {
+    return(list(coordinates = NULL, source = NA_character_))
   }
-  if (!is.data.frame(coordinates) || !nrow(coordinates)) {
+  coordinates <- coordinate_table$data
+  if (!nrow(coordinates)) {
     return(list(coordinates = NULL, source = NA_character_))
   }
 

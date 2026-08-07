@@ -17,6 +17,10 @@ builder_content_spatial_source_runtime <- function(local = parent.frame()) {
     ),
     builder_content_spatial_inst_path(
       "builder",
+      "spatial.R"
+    ),
+    builder_content_spatial_inst_path(
+      "builder",
       "content_spatial.R"
     )
   )

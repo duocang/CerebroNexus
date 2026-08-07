@@ -504,7 +504,7 @@ test_that("partial metadata repertoire is detected but is not convertible", {
   )
 })
 
-test_that("overlapping immune sources are compared without being merged", {
+test_that("immune comparisons separate exact and complementary chains", {
   skip_if_not_installed("SeuratObject")
   object <- builder_immune_fixture_object()
   cells <- SeuratObject::Cells(object)
@@ -538,13 +538,15 @@ test_that("overlapping immune sources are compared without being merged", {
   expect_identical(exact$n_overlap, 2L)
   expect_identical(exact$n_exact, 2L)
   expect_identical(exact$n_divergent, 0L)
-  expect_identical(divergent$n_overlap, 1L)
+  expect_true(exact$equivalent)
+  expect_identical(divergent$n_overlap, 0L)
   expect_identical(divergent$n_exact, 0L)
-  expect_identical(divergent$n_divergent, 1L)
+  expect_identical(divergent$n_divergent, 0L)
+  expect_false(divergent$equivalent)
   expect_identical(ir$selected_source, NULL)
 })
 
-test_that("source overlap treats sample reassignment as divergent", {
+test_that("source overlap treats reassigned samples as divergence", {
   skip_if_not_installed("SeuratObject")
   object <- builder_immune_fixture_object()
   cells <- SeuratObject::Cells(object)
@@ -567,6 +569,7 @@ test_that("source overlap treats sample reassignment as divergent", {
   expect_identical(comparison$n_overlap, 1L)
   expect_identical(comparison$n_exact, 0L)
   expect_identical(comparison$n_divergent, 1L)
+  expect_false(comparison$equivalent)
   expect_identical(comparison$divergent_preview, cells[[1L]])
 })
 

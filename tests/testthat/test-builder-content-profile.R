@@ -94,6 +94,11 @@ test_that("application and worker load content contracts before profiles", {
     "spatial_coordinate_contract[.]R",
     app
   )[1L]
+  app_builder_spatial <- grep(
+    'source("spatial.R"',
+    app,
+    fixed = TRUE
+  )[1L]
   app_tables <- grep('source("content_tables.R"', app, fixed = TRUE)[1L]
   app_immune <- grep('source("content_immune.R"', app, fixed = TRUE)[1L]
   app_spatial <- grep('source("content_spatial.R"', app, fixed = TRUE)[1L]
@@ -102,7 +107,8 @@ test_that("application and worker load content contracts before profiles", {
   expect_true(
     app_hla < app_hla_motif &&
       app_hla_motif < app_hla_association &&
-      app_spatial_contract < app_spatial &&
+      app_spatial_contract < app_builder_spatial &&
+      app_builder_spatial < app_spatial &&
       app_hla_association < app_tables &&
       app_tables < app_immune &&
       app_immune < app_spatial &&
@@ -116,6 +122,11 @@ test_that("application and worker load content contracts before profiles", {
   worker_spatial_contract <- grep(
     "spatial_coordinate_contract[.]R",
     session
+  )[1L]
+  worker_builder_spatial <- grep(
+    'source(file.path(dir, "spatial.R"',
+    session,
+    fixed = TRUE
   )[1L]
   worker_tables <- grep(
     'source(file.path(dir, "content_tables.R"',
@@ -145,7 +156,8 @@ test_that("application and worker load content contracts before profiles", {
   expect_true(
     worker_hla < worker_hla_motif &&
       worker_hla_motif < worker_hla_association &&
-      worker_spatial_contract < worker_spatial &&
+      worker_spatial_contract < worker_builder_spatial &&
+      worker_builder_spatial < worker_spatial &&
       worker_hla_association < worker_tables &&
       worker_tables < worker_immune &&
       worker_immune < worker_spatial &&

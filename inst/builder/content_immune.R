@@ -239,6 +239,8 @@
     missing_columns = character(),
     expected_chains = character(),
     unexpected_chains = character(),
+    .full_records = character(),
+    .motif_records = character(),
     .records = character(),
     .sample_names = character()
   )
@@ -311,17 +313,44 @@
   )
 }
 
-.builder_immune_table_signature <- function(table, sample_name) {
-  values <- lapply(
-    .builder_immune_required_columns,
-    function(column) {
-      value <- table[[column]]
-      value[is.na(value)] <- "<NA>"
-      value
+.builder_immune_comparison_records <- function(
+  table,
+  sample_name,
+  columns
+) {
+  out <- character()
+  if (
+    !is.character(sample_name) ||
+      length(sample_name) != 1L ||
+      is.na(sample_name) ||
+      !nzchar(sample_name)
+  ) {
+    return(out)
+  }
+  for (row in seq_len(nrow(table))) {
+    barcode <- table$barcode[[row]]
+    if (is.na(barcode) || !nzchar(barcode)) {
+      next
     }
-  )
-  values <- c(list(rep(sample_name, nrow(table))), values)
-  do.call(paste, c(values, sep = "\u001f"))
+    chains <- .builder_immune_detect_chains(table$CTgene[[row]])
+    if (!length(chains)) {
+      next
+    }
+    values <- vapply(
+      columns,
+      function(column) {
+        value <- table[[column]][[row]]
+        if (is.na(value)) "<NA>" else value
+      },
+      character(1)
+    )
+    signature <- paste(c(sample_name, values), collapse = "\u001f")
+    keys <- paste(chains, barcode, sep = "\u001f")
+    records <- rep(signature, length(keys))
+    names(records) <- keys
+    out <- c(out, records)
+  }
+  out
 }
 
 .builder_immune_candidate_from_tables <- function(
@@ -366,6 +395,8 @@
       missing_columns = .builder_immune_required_columns,
       expected_chains = expected_chains,
       unexpected_chains = character(),
+      .full_records = character(),
+      .motif_records = character(),
       .records = character(),
       .sample_names = character()
     ))
@@ -390,8 +421,8 @@
 
   all_barcodes <- character()
   all_chains <- character()
-  record_barcodes <- character()
-  record_signatures <- character()
+  full_records <- character()
+  motif_records <- character()
   motif_payload <- list()
   n_rows <- 0L
 
@@ -493,6 +524,14 @@
       )
       motif_payload[[length(motif_payload) + 1L]] <- motif_table
       names(motif_payload)[[length(motif_payload)]] <- sample_names[[index]]
+      motif_records <- c(
+        motif_records,
+        .builder_immune_comparison_records(
+          motif_table,
+          sample_names[[index]],
+          motif_columns
+        )
+      )
     }
 
     if (length(missing)) {
@@ -511,13 +550,13 @@
       diagnostics <- c(diagnostics, "empty_required_column")
     }
     n_rows <- n_rows + nrow(normalized)
-    record_barcodes <- c(record_barcodes, usable_barcodes)
-    record_signatures <- c(
-      record_signatures,
-      .builder_immune_table_signature(
+    full_records <- c(
+      full_records,
+      .builder_immune_comparison_records(
         normalized,
-        sample_names[[index]]
-      )[!is.na(barcodes) & nzchar(barcodes)]
+        sample_names[[index]],
+        .builder_immune_required_columns
+      )
     )
   }
 
@@ -600,9 +639,8 @@
     !length(intersect(unique(diagnostics), shared_invalid_reasons))
   denominator <- length(unique(all_barcodes))
   overlap_fraction <- if (denominator) length(overlap) / denominator else 0
-  records <- record_signatures
-  names(records) <- record_barcodes
-  records <- records[!duplicated(names(records))]
+  full_records <- full_records[!duplicated(names(full_records))]
+  motif_records <- motif_records[!duplicated(names(motif_records))]
   sample_preview <- .builder_immune_preview_info(nonblank_samples)
   barcode_preview <- .builder_immune_preview_info(all_barcodes)
   outside_preview <- .builder_immune_preview_info(outside)
@@ -646,7 +684,9 @@
     missing_columns = unique(missing_columns),
     expected_chains = expected_chains,
     unexpected_chains = unexpected_chains,
-    .records = records,
+    .full_records = full_records,
+    .motif_records = motif_records,
+    .records = full_records,
     .sample_names = unique(nonblank_samples)
   )
 }
@@ -790,6 +830,8 @@
       unexpected_chains = character(),
       sample_columns = sample_columns,
       sample_column = sample_column,
+      .full_records = character(),
+      .motif_records = character(),
       .records = character(),
       .sample_names = character()
     ))
@@ -841,12 +883,16 @@
   profile
 }
 
-.builder_immune_pair_overlaps <- function(candidates) {
+.builder_immune_pair_overlaps <- function(
+  candidates,
+  record_field = ".records",
+  capability = "full_ir"
+) {
   active <- names(candidates)[vapply(
     candidates,
     function(candidate) {
       isTRUE(candidate$detected) &&
-        length(candidate$.records) > 0L
+        length(candidate[[record_field]]) > 0L
     },
     logical(1)
   )]
@@ -855,19 +901,32 @@
   }
   pairs <- utils::combn(active, 2L, simplify = FALSE)
   lapply(pairs, function(pair) {
-    left <- candidates[[pair[[1L]]]]$.records
-    right <- candidates[[pair[[2L]]]]$.records
+    left <- candidates[[pair[[1L]]]][[record_field]]
+    right <- candidates[[pair[[2L]]]][[record_field]]
     overlap <- intersect(names(left), names(right))
     exact <- overlap[left[overlap] == right[overlap]]
     divergent <- setdiff(overlap, exact)
-    overlap_preview <- .builder_immune_preview_info(overlap)
-    divergent_preview <- .builder_immune_preview_info(divergent)
+    preview_barcodes <- function(keys) {
+      sub("^.*\u001f", "", keys)
+    }
+    overlap_preview <- .builder_immune_preview_info(
+      preview_barcodes(overlap)
+    )
+    divergent_preview <- .builder_immune_preview_info(
+      preview_barcodes(divergent)
+    )
     list(
       left = pair[[1L]],
       right = pair[[2L]],
+      capability = capability,
+      n_left = as.integer(length(left)),
+      n_right = as.integer(length(right)),
       n_overlap = as.integer(length(overlap)),
       n_exact = as.integer(length(exact)),
       n_divergent = as.integer(length(divergent)),
+      equivalent = length(divergent) == 0L &&
+        length(exact) == length(left) &&
+        length(exact) == length(right),
       overlap_preview = overlap_preview$value,
       divergent_preview = divergent_preview$value,
       preview_truncated_count = as.integer(
@@ -904,7 +963,16 @@
     legacy_bcr = legacy_bcr,
     legacy_tcr = legacy_tcr
   )
-  source_overlaps <- .builder_immune_pair_overlaps(candidates)
+  full_source_overlaps <- .builder_immune_pair_overlaps(
+    candidates,
+    ".full_records",
+    "full_ir"
+  )
+  motif_source_overlaps <- .builder_immune_pair_overlaps(
+    candidates,
+    ".motif_records",
+    "hla_tcr_motifs"
+  )
   detected <- any(vapply(candidates, `[[`, logical(1), "detected"))
   valid_sources <- names(candidates)[vapply(
     candidates,
@@ -972,7 +1040,7 @@
     integer(1)
   )) +
     sum(vapply(
-      source_overlaps,
+      c(full_source_overlaps, motif_source_overlaps),
       function(overlap) overlap$preview_truncated_count,
       integer(1)
     ))
@@ -987,7 +1055,9 @@
     ),
     page_candidates = page_candidates,
     candidates = candidates,
-    source_overlaps = source_overlaps,
+    source_overlaps = full_source_overlaps,
+    full_source_overlaps = full_source_overlaps,
+    motif_source_overlaps = motif_source_overlaps,
     available_sources = valid_sources,
     available_tcr_sources = tcr_sources,
     parseable_tcr_chains = parseable_tcr_chains,
@@ -1436,6 +1506,8 @@
 }
 
 .builder_immune_strip_private <- function(record) {
+  record$.full_records <- NULL
+  record$.motif_records <- NULL
   record$.records <- NULL
   record$.sample_names <- NULL
   record

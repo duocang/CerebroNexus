@@ -102,6 +102,13 @@ builder_read_image <- function(path) {
       ))
     }
     arr <- try(jpeg::readJPEG(path), silent = TRUE)
+  } else if (ext %in% c("tif", "tiff")) {
+    return(list(
+      error = paste0(
+        "TIFF and OME-TIFF images are not decoded by the Builder; ",
+        "convert the image to PNG or JPEG first."
+      )
+    ))
   } else {
     return(list(
       error = paste0(
@@ -122,6 +129,114 @@ builder_read_image <- function(path) {
   list(array = arr, width = dim(arr)[2], height = dim(arr)[1])
 }
 
+.builder_rotation_quarter_turn <- function(degrees) {
+  normalized_degrees <- degrees %% 360
+  quarter_turn <- round(normalized_degrees / 90)
+  if (
+    isTRUE(
+      abs(normalized_degrees - quarter_turn * 90) < sqrt(.Machine$double.eps)
+    )
+  ) {
+    return(quarter_turn %% 4L)
+  }
+  NA_integer_
+}
+
+builder_rotation_extent <- function(width, height, degrees) {
+  valid_dimensions <- is.numeric(width) &&
+    length(width) == 1L &&
+    !is.na(width) &&
+    is.finite(width) &&
+    width >= 1 &&
+    width <= .Machine$integer.max &&
+    is.numeric(height) &&
+    length(height) == 1L &&
+    !is.na(height) &&
+    is.finite(height) &&
+    height >= 1 &&
+    height <= .Machine$integer.max
+  valid_rotation <- is.numeric(degrees) &&
+    length(degrees) == 1L &&
+    !is.na(degrees) &&
+    is.finite(degrees)
+  if (!valid_dimensions || !valid_rotation) {
+    stop(
+      "Rotation geometry requires finite positive dimensions.",
+      call. = FALSE
+    )
+  }
+  width <- as.integer(floor(width))
+  height <- as.integer(floor(height))
+  turn <- .builder_rotation_quarter_turn(degrees)
+  if (!is.na(turn)) {
+    if (turn %in% c(1L, 3L)) {
+      return(c(width = height, height = width))
+    }
+    return(c(width = width, height = height))
+  }
+
+  theta <- degrees * pi / 180
+  extent <- c(
+    width = ceiling(abs(width * cos(theta)) + abs(height * sin(theta))),
+    height = ceiling(abs(height * cos(theta)) + abs(width * sin(theta)))
+  )
+  if (any(extent > .Machine$integer.max)) {
+    stop("Rotated image extent is too large.", call. = FALSE)
+  }
+  as.integer(extent) |>
+    stats::setNames(c("width", "height"))
+}
+
+builder_rotation_plan <- function(width, height, degrees, max_edge) {
+  valid_limit <- is.numeric(max_edge) &&
+    length(max_edge) == 1L &&
+    !is.na(max_edge) &&
+    is.finite(max_edge) &&
+    max_edge >= 1 &&
+    max_edge <= .Machine$integer.max
+  if (!valid_limit) {
+    stop("Maximum rotation edge must be positive and finite.", call. = FALSE)
+  }
+  width <- as.integer(width)
+  height <- as.integer(height)
+  max_edge <- as.integer(floor(max_edge))
+  full_extent <- builder_rotation_extent(width, height, degrees)
+  scale <- min(1, max_edge / max(full_extent))
+  input_dimensions <- pmax(
+    1L,
+    as.integer(floor(c(width = width, height = height) * scale))
+  )
+  names(input_dimensions) <- c("width", "height")
+  output_dimensions <- builder_rotation_extent(
+    input_dimensions[["width"]],
+    input_dimensions[["height"]],
+    degrees
+  )
+  while (
+    max(output_dimensions) > max_edge &&
+      any(input_dimensions > 1L)
+  ) {
+    input_dimensions[] <- pmax(1L, input_dimensions - 1L)
+    output_dimensions <- builder_rotation_extent(
+      input_dimensions[["width"]],
+      input_dimensions[["height"]],
+      degrees
+    )
+  }
+  if (max(output_dimensions) > max_edge) {
+    output_dimensions[] <- max_edge
+  }
+
+  list(
+    source_dimensions = c(width = width, height = height),
+    full_extent_dimensions = full_extent,
+    input_max_edge = max(input_dimensions),
+    input_dimensions = input_dimensions,
+    output_dimensions = output_dimensions,
+    prescaled = any(input_dimensions < c(width = width, height = height))
+  )
+}
+
 #' Downscale and encode an image array as a data URI.
 #'
 #' The image is the single biggest thing in a spatial `.crb` -- a
@@ -140,27 +255,71 @@ builder_encode_image <- function(
   if (!requireNamespace("base64enc", quietly = TRUE)) {
     return(list(error = "Embedding images requires the base64enc package."))
   }
-  if (length(dim(arr)) == 2) {
-    arr <- array(arr, dim = c(dim(arr), 1L))
+  valid_rotation <- is.numeric(rotate) &&
+    length(rotate) == 1L &&
+    !is.na(rotate) &&
+    is.finite(rotate)
+  if (!valid_rotation) {
+    return(list(error = "Image rotation must be one finite number."))
   }
-  h <- dim(arr)[1]
-  w <- dim(arr)[2]
-
-  scale <- min(1, max_px / max(h, w))
-  if (scale < 1) {
-    rows <- unique(round(seq(1, h, length.out = max(1, floor(h * scale)))))
-    cols <- unique(round(seq(1, w, length.out = max(1, floor(w * scale)))))
-    arr <- arr[rows, cols, , drop = FALSE]
+  dimensions <- dim(arr)
+  valid_dimensions <- length(dimensions) %in%
+    c(2L, 3L) &&
+    all(!is.na(dimensions)) &&
+    all(dimensions > 0L)
+  rotation_plan <- if (valid_dimensions) {
+    tryCatch(
+      builder_rotation_plan(
+        dimensions[[2L]],
+        dimensions[[1L]],
+        rotate,
+        max_px
+      ),
+      error = function(error) NULL
+    )
+  } else {
+    NULL
   }
-  if (isTRUE(flip_y)) {
-    arr <- arr[rev(seq_len(dim(arr)[1])), , , drop = FALSE]
+  normalization_edge <- if (is.null(rotation_plan)) {
+    max_px
+  } else {
+    rotation_plan$input_max_edge
   }
-  if (isTRUE(flip_x)) {
-    arr <- arr[, rev(seq_len(dim(arr)[2])), , drop = FALSE]
+  normalized <- builder_normalize_image(
+    arr,
+    max_display_px = normalization_edge,
+    display_dimensions = if (is.null(rotation_plan)) {
+      NULL
+    } else {
+      rotation_plan$input_dimensions
+    }
+  )
+  if (!is.null(normalized$error)) {
+    return(normalized)
   }
-  if (is.numeric(rotate) && abs(rotate %% 360) > 0.01) {
-    arr <- builder_rotate_array(arr, rotate)
+  arr <- normalized$array
+  normalized$array <- NULL
+  if (is.null(rotation_plan)) {
+    return(list(error = "Image rotation geometry is invalid."))
   }
+  if (isTRUE(flip_y) || isTRUE(flip_x)) {
+    rows <- if (isTRUE(flip_y)) {
+      rev(seq_len(dim(arr)[1L]))
+    } else {
+      seq_len(dim(arr)[1L])
+    }
+    columns <- if (isTRUE(flip_x)) {
+      rev(seq_len(dim(arr)[2L]))
+    } else {
+      seq_len(dim(arr)[2L])
+    }
+    arr <- arr[rows, columns, , drop = FALSE]
+  }
+  arr <- .builder_rotate_rgba(
+    arr,
+    rotate,
+    rotation_plan$output_dimensions
+  )
 
   tmp <- tempfile(fileext = ".png")
   on.exit(unlink(tmp), add = TRUE)
@@ -173,14 +332,33 @@ builder_encode_image <- function(
       )
     ))
   }
+  display_dimensions <- c(
+    width = as.integer(dim(arr)[2L]),
+    height = as.integer(dim(arr)[1L])
+  )
+  extent_dimensions <- rotation_plan$full_extent_dimensions
   list(
     uri = paste0(
       "data:image/png;base64,",
       base64enc::base64encode(tmp)
     ),
     bytes = file.size(tmp),
-    width = dim(arr)[2],
-    height = dim(arr)[1]
+    width = display_dimensions[["width"]],
+    height = display_dimensions[["height"]],
+    source_width = normalized$source_width,
+    source_height = normalized$source_height,
+    extent_width = extent_dimensions[["width"]],
+    extent_height = extent_dimensions[["height"]],
+    display_width = display_dimensions[["width"]],
+    display_height = display_dimensions[["height"]],
+    source_dimensions = normalized$source_dimensions,
+    extent_dimensions = extent_dimensions,
+    display_dimensions = display_dimensions,
+    source_channels = normalized$source_channels,
+    source_channel_kind = normalized$source_channel_kind,
+    display_channels = 4L,
+    display_channel_kind = "rgba",
+    channel_kind = "rgba"
   )
 }
 
@@ -192,8 +370,22 @@ builder_encode_image <- function(
 builder_image_bounds <- function(mode, coords, image, um_per_px = 1) {
   x <- coords[[1]]
   y <- coords[[2]]
+  image_width <- if (!is.null(image$extent_width)) {
+    image$extent_width
+  } else if (!is.null(image$source_width)) {
+    image$source_width
+  } else {
+    image$width
+  }
+  image_height <- if (!is.null(image$extent_height)) {
+    image$extent_height
+  } else if (!is.null(image$source_height)) {
+    image$source_height
+  } else {
+    image$height
+  }
   if (identical(mode, "pixels")) {
-    return(list(xmin = 0, xmax = image$width, ymin = 0, ymax = image$height))
+    return(list(xmin = 0, xmax = image_width, ymin = 0, ymax = image_height))
   }
   if (identical(mode, "physical")) {
     if (!is.finite(um_per_px) || um_per_px <= 0) {
@@ -201,9 +393,9 @@ builder_image_bounds <- function(mode, coords, image, um_per_px = 1) {
     }
     return(list(
       xmin = 0,
-      xmax = image$width * um_per_px,
+      xmax = image_width * um_per_px,
       ymin = 0,
-      ymax = image$height * um_per_px
+      ymax = image_height * um_per_px
     ))
   }
   ## Last resort: the cells' own bounding box. Usually wrong -- a slide is
@@ -288,6 +480,12 @@ builder_pair_sections <- function(picture, per_section) {
       bytes = picture$bytes,
       width = picture$width,
       height = picture$height,
+      source_width = picture$source_width,
+      source_height = picture$source_height,
+      extent_width = picture$extent_width,
+      extent_height = picture$extent_height,
+      display_width = picture$display_width,
+      display_height = picture$display_height,
       outside = got$cover$outside,
       total = got$cover$total
     )
@@ -432,18 +630,76 @@ builder_spatial_coords <- function(object, image = NULL) {
   if (is.null(image) || !(image %in% images)) {
     image <- images[1]
   }
-  co <- tryCatch(
-    SeuratObject::GetTissueCoordinates(object[[image]]),
-    error = function(e) NULL
-  )
-  if (is.null(co) || ncol(co) < 2) {
-    return(NULL)
+  contract <- builder_spatial_contract(object, image = image)
+  list(contract$coordinates$x, contract$coordinates$y)
+}
+
+## Rotate an already-normalized RGBA array without another full-size copy.
+.builder_rotate_rgba <- function(arr, degrees, output_dimensions) {
+  turn <- .builder_rotation_quarter_turn(degrees)
+  if (!is.na(turn)) {
+    if (turn == 0L) {
+      return(arr)
+    }
+    h <- dim(arr)[1L]
+    w <- dim(arr)[2L]
+    nh <- output_dimensions[["height"]]
+    nw <- output_dimensions[["width"]]
+    out <- array(0, dim = c(nh, nw, 4L))
+    source_plane_size <- h * w
+    columns <- seq_len(nw)
+    reverse_columns <- rev(columns)
+    for (row in seq_len(nh)) {
+      source_index <- if (turn == 1L) {
+        columns + (w - row) * h
+      } else if (turn == 2L) {
+        (h - row + 1L) + (reverse_columns - 1L) * h
+      } else {
+        reverse_columns + (row - 1L) * h
+      }
+      for (channel in seq_len(4L)) {
+        out[row, columns, channel] <- arr[
+          source_index + (channel - 1L) * source_plane_size
+        ]
+      }
+    }
+    return(out)
   }
-  numeric_cols <- which(vapply(co, is.numeric, logical(1)))
-  if (length(numeric_cols) < 2) {
-    return(NULL)
+  h <- dim(arr)[1]
+  w <- dim(arr)[2]
+  theta <- degrees * pi / 180
+  nh <- output_dimensions[["height"]]
+  nw <- output_dimensions[["width"]]
+
+  ## Alpha channel, so the corners the source does not cover are transparent
+  ## rather than black.
+  out <- array(0, dim = c(nh, nw, 4L))
+  continuous_width <- abs(w * cos(theta)) + abs(h * sin(theta))
+  continuous_height <- abs(h * cos(theta)) + abs(w * sin(theta))
+  dx <- ((seq_len(nw) - 0.5) / nw - 0.5) * continuous_width
+  source_plane_size <- h * w
+  for (row in seq_len(nh)) {
+    dy <- ((row - 0.5) / nh - 0.5) * continuous_height
+    source_x <- dx * cos(theta) - dy * sin(theta)
+    source_y <- dx * sin(theta) + dy * cos(theta)
+    inside <- source_x >= -w / 2 &
+      source_x < w / 2 &
+      source_y >= -h / 2 &
+      source_y < h / 2
+    if (!any(inside)) {
+      next
+    }
+    columns <- which(inside)
+    sx <- pmin(w, pmax(1L, floor(source_x[inside] + w / 2) + 1L))
+    sy <- pmin(h, pmax(1L, floor(source_y[inside] + h / 2) + 1L))
+    source_index <- (sx - 1L) * h + sy
+    for (channel in seq_len(4L)) {
+      out[row, columns, channel] <- arr[
+        source_index + (channel - 1L) * source_plane_size
+      ]
+    }
   }
-  list(co[[numeric_cols[1]]], co[[numeric_cols[2]]])
+  out
 }
 
 #' Rotate an image array by an arbitrary angle.
@@ -452,49 +708,28 @@ builder_spatial_coords <- function(object, image = NULL) {
 #' is pulling in an imaging package for a picture nobody will zoom into.
 #' The canvas grows so nothing is cropped, and the new corners are transparent
 #' where the source does not reach.
-builder_rotate_array <- function(arr, degrees) {
-  theta <- degrees * pi / 180
-  h <- dim(arr)[1]
-  w <- dim(arr)[2]
-  ch <- dim(arr)[3]
-
-  ## Big enough for the rotated rectangle at any angle.
-  nh <- ceiling(abs(h * cos(theta)) + abs(w * sin(theta)))
-  nw <- ceiling(abs(w * cos(theta)) + abs(h * sin(theta)))
-
-  ## Alpha channel, so the corners the source does not cover are transparent
-  ## rather than black.
-  out <- array(0, dim = c(nh, nw, 4L))
-  cy0 <- (h + 1) / 2
-  cx0 <- (w + 1) / 2
-  cy1 <- (nh + 1) / 2
-  cx1 <- (nw + 1) / 2
-
-  yy <- matrix(seq_len(nh), nrow = nh, ncol = nw)
-  xx <- matrix(seq_len(nw), nrow = nh, ncol = nw, byrow = TRUE)
-  dy <- yy - cy1
-  dx <- xx - cx1
-  ## Rotate the *sample* point backwards to find where it came from.
-  sy <- round(cy0 + dy * cos(theta) + dx * sin(theta))
-  sx <- round(cx0 - dy * sin(theta) + dx * cos(theta))
-  inside <- sy >= 1 & sy <= h & sx >= 1 & sx <= w
-
-  src_index <- ifelse(inside, (sx - 1) * h + sy, NA_integer_)
-  for (k in seq_len(min(ch, 3L))) {
-    plane <- arr[,, k]
-    out[,, k][inside] <- plane[src_index[inside]]
+builder_rotate_array <- function(
+  arr,
+  degrees,
+  max_edge = max(dim(arr)[1:2])
+) {
+  plan <- builder_rotation_plan(
+    width = dim(arr)[2L],
+    height = dim(arr)[1L],
+    degrees = degrees,
+    max_edge = max_edge
+  )
+  normalized <- builder_normalize_image(
+    arr,
+    max_display_px = plan$input_max_edge,
+    display_dimensions = plan$input_dimensions
+  )
+  if (!is.null(normalized$error)) {
+    stop(normalized$error, call. = FALSE)
   }
-  if (ch >= 4L) {
-    plane <- arr[,, 4L]
-    out[,, 4L][inside] <- plane[src_index[inside]]
-  } else {
-    out[,, 4L][inside] <- 1
-  }
-  if (ch == 1L) {
-    out[,, 2L] <- out[,, 1L]
-    out[,, 3L] <- out[,, 1L]
-  }
-  out
+  arr <- normalized$array
+  normalized$array <- NULL
+  .builder_rotate_rgba(arr, degrees, plan$output_dimensions)
 }
 
 #' Shift and scale the image extent, the way a user nudges an overlay.

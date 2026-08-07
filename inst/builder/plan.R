@@ -36,22 +36,16 @@ builder_profile_has <- function(profile, key) {
 }
 
 builder_normalize_analyses <- function(selected, has_marker_genes = FALSE) {
-  order <- c(
-    "percent_mt_ribo",
-    "most_expressed",
-    "marker_genes",
-    "enriched_pathways"
-  )
-  selected <- intersect(order, unique(as.character(selected %||% character())))
   if (
-    "enriched_pathways" %in%
-      selected &&
-      !"marker_genes" %in% selected &&
-      !isTRUE(has_marker_genes)
+    !exists(
+      ".builder_state_normalize_analyses",
+      mode = "function",
+      inherits = TRUE
+    )
   ) {
-    selected <- setdiff(selected, "enriched_pathways")
+    stop("state_authority_unavailable", call. = FALSE)
   }
-  selected
+  .builder_state_normalize_analyses(selected, has_marker_genes)
 }
 
 builder_resolve_colors <- function(settings, levels) {
@@ -72,7 +66,7 @@ builder_resolve_colors <- function(settings, levels) {
   out
 }
 
-builder_default_settings <- function(profile, name) {
+builder_default_settings <- function(profile, name, recommendations = NULL) {
   assay <- profile$default_assay
   assay_profile <- profile$assay_profiles[[assay]] %||%
     list(
@@ -80,7 +74,7 @@ builder_default_settings <- function(profile, name) {
       nUMI = profile$nUMI,
       nGene = profile$nGene
     )
-  list(
+  settings <- list(
     name = name,
     organism = profile$organism_guess,
     assay = assay,
@@ -95,10 +89,30 @@ builder_default_settings <- function(profile, name) {
     palette = "cerebro",
     color_overrides = list()
   )
+  if (is.null(recommendations)) {
+    return(settings)
+  }
+  settings$organism <- recommendations$organism$value
+  settings$groups <- recommendations$groups$included %||% character()
+  settings$reductions <- recommendations$projections$included %||% character()
+  settings$default_group <- recommendations$groups$value
+  settings$default_projection <- recommendations$projections$value
+  settings$metadata_policy <- recommendations$metadata
+  settings$nomenclature <- recommendations$nomenclature$value
+  settings$expression_backend <- recommendations$backend$value
+  settings$recommendations <- recommendations
+  settings
 }
 
-builder_plan_error <- function(message) {
-  list(error = message)
+builder_plan_error <- function(
+  message,
+  code = "invalid_plan",
+  details = list()
+) {
+  structure(
+    list(error = message, error_code = code, details = details),
+    class = c("builder_plan_failure", "list")
+  )
 }
 
 builder_has_text <- function(value) {
@@ -108,18 +122,794 @@ builder_has_text <- function(value) {
     nzchar(trimws(value))
 }
 
-builder_make_plan <- function(
+.builder_plan_has_reference <- function(value, depth = 0L) {
+  if (depth > 50L) {
+    return(TRUE)
+  }
+  if (
+    is.environment(value) ||
+      is.function(value) ||
+      isS4(value) ||
+      is.language(value) ||
+      is.symbol(value) ||
+      typeof(value) %in% c("externalptr", "weakref") ||
+      inherits(value, "connection")
+  ) {
+    return(TRUE)
+  }
+  value_attributes <- attributes(value)
+  if (
+    !is.null(value_attributes) &&
+      any(vapply(
+        value_attributes,
+        .builder_plan_has_reference,
+        logical(1),
+        depth = depth + 1L
+      ))
+  ) {
+    return(TRUE)
+  }
+  if (is.list(value) || is.pairlist(value)) {
+    return(any(vapply(
+      value,
+      .builder_plan_has_reference,
+      logical(1),
+      depth = depth + 1L
+    )))
+  }
+  FALSE
+}
+
+.builder_plan_deep_copy <- function(value) {
+  if (.builder_plan_has_reference(value)) {
+    stop("unsafe_reference", call. = FALSE)
+  }
+  unserialize(serialize(value, NULL, version = 3L))
+}
+
+.builder_plan_revision <- function(revision, entries) {
+  if (is.null(revision)) {
+    entry_revisions <- vapply(
+      entries,
+      function(entry) {
+        value <- entry$revision
+        if (
+          is.numeric(value) &&
+            length(value) == 1L &&
+            !is.na(value) &&
+            is.finite(value) &&
+            value >= 0 &&
+            value <= .Machine$integer.max &&
+            value == floor(value)
+        ) {
+          as.integer(value)
+        } else {
+          0L
+        }
+      },
+      integer(1)
+    )
+    return(max(c(1L, entry_revisions)))
+  }
+  if (
+    !is.numeric(revision) ||
+      length(revision) != 1L ||
+      is.na(revision) ||
+      !is.finite(revision) ||
+      revision < 1 ||
+      revision > .Machine$integer.max ||
+      revision != floor(revision)
+  ) {
+    return(NULL)
+  }
+  as.integer(revision)
+}
+
+.builder_plan_character_set <- function(value) {
+  is.character(value) &&
+    !anyNA(value) &&
+    all(nzchar(trimws(value))) &&
+    !anyDuplicated(value)
+}
+
+.builder_plan_entry_source_identity <- function(entry) {
+  profile <- entry$dataset_profile
+  if (is.null(profile) && inherits(entry$profile, "builder_dataset_profile")) {
+    profile <- entry$profile
+  }
+  source <- profile$source %||% entry$source
+  if (is.list(source)) {
+    source[c("type", "location", "fingerprint", "format")]
+  } else {
+    NULL
+  }
+}
+
+.builder_plan_asset_claim <- function(source, target, artifact) {
+  structure(
+    list(
+      source = source,
+      target = target,
+      artifact = artifact
+    ),
+    class = c("builder_asset_claim", "list")
+  )
+}
+
+.builder_plan_normalize_asset_claim <- function(claim) {
+  fields <- c("source", "target", "artifact")
+  if (
+    !inherits(claim, "builder_asset_claim") ||
+      !is.list(claim) ||
+      length(claim) != length(fields) ||
+      .builder_plan_has_reference(claim)
+  ) {
+    return(NULL)
+  }
+  claim_names <- attr(claim, "names", exact = TRUE)
+  if (
+    !is.character(claim_names) ||
+      length(claim_names) != length(fields) ||
+      anyNA(claim_names) ||
+      any(!nzchar(claim_names)) ||
+      anyDuplicated(claim_names) ||
+      !setequal(claim_names, fields)
+  ) {
+    return(NULL)
+  }
+  plain_claim <- claim
+  attributes(plain_claim) <- list(names = claim_names)
+  values <- plain_claim[fields]
+  values <- lapply(values, function(value) {
+    if (
+      !is.character(value) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        .builder_plan_has_reference(value)
+    ) {
+      return(NULL)
+    }
+    attributes(value) <- NULL
+    if (!nzchar(trimws(value))) {
+      return(NULL)
+    }
+    value
+  })
+  if (any(vapply(values, is.null, logical(1)))) {
+    return(NULL)
+  }
+  .builder_plan_asset_claim(
+    values$source,
+    values$target,
+    values$artifact
+  )
+}
+
+.builder_plan_asset_claim_valid <- function(claim) {
+  !is.null(.builder_plan_normalize_asset_claim(claim))
+}
+
+.builder_plan_asset_set <- function(value) {
+  if (is.null(value)) {
+    value <- character()
+  }
+  if (is.character(value)) {
+    valid <- .builder_plan_character_set(value)
+    claims <- if (valid) {
+      .builder_plan_legacy_asset_claims(value)
+    } else {
+      list()
+    }
+    return(list(valid = valid, targets = value, claims = claims))
+  }
+  if (inherits(value, "builder_asset_claim")) {
+    value <- list(value)
+  }
+  if (!is.list(value)) {
+    return(list(valid = FALSE, targets = character(), claims = list()))
+  }
+  if (!length(value)) {
+    return(list(valid = TRUE, targets = character(), claims = list()))
+  }
+  claims <- lapply(value, .builder_plan_normalize_asset_claim)
+  valid <- !any(vapply(claims, is.null, logical(1)))
+  if (!valid) {
+    return(list(valid = FALSE, targets = character(), claims = list()))
+  }
+  if (length(.builder_plan_dedupe_claims(claims)) != length(claims)) {
+    return(list(valid = FALSE, targets = character(), claims = list()))
+  }
+  list(
+    valid = TRUE,
+    targets = vapply(claims, `[[`, character(1), "target"),
+    claims = claims
+  )
+}
+
+.builder_plan_internal_asset_claims <- function(paths, entry) {
+  lapply(paths, function(path) {
+    .builder_plan_asset_claim(
+      paste0("builder_dataset:", entry$id),
+      path,
+      path
+    )
+  })
+}
+
+.builder_plan_legacy_asset_claims <- function(paths) {
+  lapply(paths, function(path) {
+    structure(
+      list(
+        source = NULL,
+        target = path,
+        artifact = NULL
+      ),
+      class = c("builder_asset_claim", "list")
+    )
+  })
+}
+
+.builder_plan_dedupe_claims <- function(claims) {
+  out <- list()
+  for (claim in claims) {
+    duplicate <- any(vapply(out, identical, logical(1), y = claim))
+    if (!duplicate) {
+      out[[length(out) + 1L]] <- claim
+    }
+  }
+  out
+}
+
+.builder_plan_claim_target_conflict <- function(claims) {
+  targets <- vapply(claims, `[[`, character(1), "target")
+  any(vapply(
+    unique(targets),
+    function(target) {
+      matching <- claims[targets == target]
+      if (length(matching) < 2L) {
+        return(FALSE)
+      }
+      incomplete <- any(vapply(
+        matching,
+        function(claim) {
+          !builder_has_text(claim$source) ||
+            !builder_has_text(claim$artifact)
+        },
+        logical(1)
+      ))
+      incomplete ||
+        any(!vapply(matching[-1L], identical, logical(1), y = matching[[1L]]))
+    },
+    logical(1)
+  ))
+}
+
+.builder_plan_source_snapshot_identity <- function(entry) {
+  source_identity <- .builder_plan_entry_source_identity(entry)
+  candidates <- Filter(
+    Negate(is.null),
+    list(entry$snapshot, entry$snapshot_identity)
+  )
+  owned_available <- exists(
+    ".builder_snapshot_owned",
+    mode = "function",
+    inherits = TRUE
+  )
+  if (owned_available) {
+    for (snapshot in candidates) {
+      valid_time <- is.list(snapshot) &&
+        inherits(snapshot$created_at, "POSIXt") &&
+        length(snapshot$created_at) == 1L &&
+        !is.na(snapshot$created_at) &&
+        is.finite(as.numeric(snapshot$created_at))
+      valid_bytes <- is.list(snapshot) &&
+        is.numeric(snapshot$closure_bytes) &&
+        length(snapshot$closure_bytes) == 1L &&
+        !is.na(snapshot$closure_bytes) &&
+        is.finite(snapshot$closure_bytes) &&
+        snapshot$closure_bytes >= 0
+      valid_md5 <- is.list(snapshot) &&
+        builder_has_text(snapshot$object_md5 %||% "") &&
+        grepl("^[[:xdigit:]]{32}$", snapshot$object_md5)
+      valid_shape <- is.list(snapshot) &&
+        is.null(attr(snapshot, "class", exact = TRUE)) &&
+        builder_has_text(snapshot$path %||% "") &&
+        builder_has_text(snapshot$object_file %||% "") &&
+        identical(
+          snapshot$object_file,
+          file.path(snapshot$path, "object.rds")
+        ) &&
+        builder_has_text(snapshot$owner_token %||% "") &&
+        valid_time &&
+        valid_md5 &&
+        valid_bytes &&
+        !.builder_plan_has_reference(snapshot)
+      owned <- valid_shape &&
+        isTRUE(tryCatch(
+          .builder_snapshot_owned(snapshot),
+          error = function(error) FALSE
+        ))
+      if (owned) {
+        frozen <- .builder_plan_deep_copy(snapshot)
+        return(c(
+          list(
+            available = TRUE,
+            snapshot = frozen,
+            source = source_identity
+          ),
+          frozen
+        ))
+      }
+    }
+  }
+  list(
+    available = FALSE,
+    snapshot = NULL,
+    source = source_identity,
+    reason = paste0(
+      "No Builder-owned snapshot with a matching owner marker and MD5 ",
+      "was available to planning."
+    )
+  )
+}
+
+.builder_plan_backend <- function(settings, filename) {
+  recommendations <- settings$recommendations
+  backend <- settings$expression_backend
+  if (is.null(backend) && is.null(recommendations)) {
+    backend <- "embedded"
+  }
+  if (
+    !builder_has_text(backend %||% "") ||
+      !backend %in% c("embedded", "h5", "bpcells")
+  ) {
+    return(list(valid = FALSE, error_code = "invalid_expression_backend"))
+  }
+  stem <- tools::file_path_sans_ext(basename(filename))
+  sidecars <- switch(
+    backend,
+    embedded = character(),
+    h5 = paste0(stem, ".h5"),
+    bpcells = paste0(stem, ".bpcells")
+  )
+  supplied <- settings$sidecars
+  if (!is.null(supplied) && !identical(supplied, sidecars)) {
+    return(list(valid = FALSE, error_code = "invalid_backend_sidecars"))
+  }
+  list(
+    valid = TRUE,
+    error_code = NULL,
+    mode = backend,
+    sidecars = sidecars,
+    dataset_file = filename
+  )
+}
+
+.builder_plan_analysis_graph <- function(analyses, has_marker_genes) {
+  nodes <- lapply(analyses, function(id) {
+    dependencies <- if (identical(id, "enriched_pathways")) {
+      if ("marker_genes" %in% analyses || isTRUE(has_marker_genes)) {
+        "marker_genes"
+      } else {
+        character()
+      }
+    } else {
+      character()
+    }
+    list(id = id, dependencies = dependencies)
+  })
+  names(nodes) <- analyses
+  nodes
+}
+
+.builder_plan_release_manifest <- function(manifests) {
+  ids <- unique(unlist(lapply(manifests, names), use.names = FALSE))
+  out <- lapply(ids, function(id) {
+    entries <- lapply(manifests, function(manifest) manifest[[id]])
+    present <- !vapply(entries, is.null, logical(1))
+    entries <- entries[present]
+    dataset_ids <- names(manifests)[present]
+    visible <- vapply(
+      entries,
+      function(entry) isTRUE(entry$page_visible),
+      logical(1)
+    )
+    candidates <- if (any(visible)) which(visible) else seq_along(entries)
+    rank <- c(
+      blocking = 5L,
+      checking = 4L,
+      attention = 3L,
+      valid = 2L,
+      not_applicable = 1L
+    )
+    statuses <- vapply(entries, `[[`, "", "status")
+    exemplar <- candidates[[which.max(unname(rank[statuses[candidates]]))]]
+    record <- .builder_plan_deep_copy(entries[[exemplar]])
+    record$page_visible <- any(visible)
+    record$dataset_ids <- dataset_ids
+    record$dataset_entries <- entries
+    if (length(entries) > 1L) {
+      record$evidence <- lapply(entries, `[[`, "evidence")
+      names(record$evidence) <- dataset_ids
+    }
+    record
+  })
+  names(out) <- ids
+  out
+}
+
+.builder_plan_preflight_entries <- function(entries) {
+  for (entry in entries) {
+    state_error <- tryCatch(
+      {
+        .builder_state_validate_entry(entry)
+        .builder_state_validate_recommendations(entry)
+        NULL
+      },
+      builder_state_error = function(error) error
+    )
+    if (!is.null(state_error)) {
+      code <- if (
+        state_error$code %in%
+          c(
+            "invalid_dataset_entry",
+            "invalid_dataset_settings"
+          )
+      ) {
+        "invalid_entries"
+      } else {
+        state_error$code
+      }
+      return(builder_plan_error(conditionMessage(state_error), code))
+    }
+  }
+
+  valid_names <- vapply(
+    entries,
+    function(entry) {
+      builder_has_text(entry$settings$name)
+    },
+    logical(1)
+  )
+  if (!all(valid_names)) {
+    return(builder_plan_error(
+      "Every dataset needs a non-empty scalar name.",
+      "invalid_dataset_name"
+    ))
+  }
+  labels <- trimws(vapply(
+    entries,
+    function(entry) entry$settings$name,
+    character(1)
+  ))
+  if (anyDuplicated(labels)) {
+    return(builder_plan_error(
+      "Dataset names must be unique.",
+      "duplicate_dataset_name"
+    ))
+  }
+
+  valid_analyses <- vapply(
+    entries,
+    function(entry) {
+      analyses <- entry$settings$analyses
+      isTRUE(tryCatch(
+        {
+          .builder_state_validate_analyses(analyses)
+          TRUE
+        },
+        builder_state_error = function(error) FALSE
+      ))
+    },
+    logical(1)
+  )
+  if (!all(valid_analyses)) {
+    return(builder_plan_error(
+      "Selected analyses must be unique supported analysis ids.",
+      "invalid_analyses"
+    ))
+  }
+
+  valid_core <- vapply(
+    entries,
+    function(entry) {
+      settings <- entry$settings
+      .builder_plan_character_set(settings$groups) &&
+        length(settings$groups) > 0L &&
+        .builder_plan_character_set(settings$reductions) &&
+        length(settings$reductions) > 0L &&
+        builder_has_text(settings$assay) &&
+        builder_has_text(settings$layer)
+    },
+    logical(1)
+  )
+  if (!all(valid_core)) {
+    return(builder_plan_error(
+      "Every dataset needs an assay, layer, grouping variable and reduction.",
+      "missing_core_selection"
+    ))
+  }
+
+  valid_qc <- vapply(
+    entries,
+    function(entry) {
+      settings <- entry$settings
+      profile <- if (is.list(entry$profile)) entry$profile else list()
+      builder_has_text(settings$nUMI %||% profile$nUMI) &&
+        builder_has_text(settings$nGene %||% profile$nGene)
+    },
+    logical(1)
+  )
+  if (!all(valid_qc)) {
+    return(builder_plan_error(
+      "Every dataset needs explicit UMI/count and feature/gene fields.",
+      "missing_qc_selection"
+    ))
+  }
+
+  included_groups <- lapply(entries, .builder_state_included_groups)
+  included_projections <- lapply(entries, function(entry) {
+    settings <- entry$settings
+    recommendations <- settings$recommendations
+    settings$included_projections %||%
+      recommendations$projections$included %||%
+      settings$reductions
+  })
+  if (
+    !all(vapply(
+      included_groups,
+      .builder_plan_character_set,
+      logical(1)
+    ))
+  ) {
+    return(builder_plan_error(
+      "The final included group set is invalid.",
+      "invalid_included_groups"
+    ))
+  }
+  if (
+    !all(vapply(
+      included_projections,
+      .builder_plan_character_set,
+      logical(1)
+    ))
+  ) {
+    return(builder_plan_error(
+      "The final included projection set is invalid.",
+      "invalid_included_projections"
+    ))
+  }
+
+  invalid_group_selection <- vapply(
+    seq_along(entries),
+    function(index) {
+      !all(entries[[index]]$settings$groups %in% included_groups[[index]])
+    },
+    logical(1)
+  )
+  if (any(invalid_group_selection)) {
+    return(builder_plan_error(
+      "Selected groups must remain inside the final included group set.",
+      "invalid_group_selection"
+    ))
+  }
+  invalid_projection_selection <- vapply(
+    seq_along(entries),
+    function(index) {
+      !all(
+        entries[[index]]$settings$reductions %in%
+          included_projections[[index]]
+      )
+    },
+    logical(1)
+  )
+  if (any(invalid_projection_selection)) {
+    return(builder_plan_error(
+      paste0(
+        "Selected projections must remain inside the final included ",
+        "projection set."
+      ),
+      "invalid_projection_selection"
+    ))
+  }
+
+  invalid_default_group <- vapply(
+    entries,
+    function(entry) {
+      settings <- entry$settings
+      value <- settings$default_group
+      if (is.null(settings$recommendations) && is.null(value)) {
+        return(FALSE)
+      }
+      !builder_has_text(value) || !value %in% settings$groups
+    },
+    logical(1)
+  )
+  if (any(invalid_default_group)) {
+    return(builder_plan_error(
+      "Every recommended dataset needs a valid selected default group.",
+      "invalid_default_group"
+    ))
+  }
+  invalid_default_projection <- vapply(
+    entries,
+    function(entry) {
+      settings <- entry$settings
+      value <- settings$default_projection
+      if (is.null(settings$recommendations) && is.null(value)) {
+        return(FALSE)
+      }
+      !builder_has_text(value) || !value %in% settings$reductions
+    },
+    logical(1)
+  )
+  if (any(invalid_default_projection)) {
+    return(builder_plan_error(
+      "Every recommended dataset needs a valid selected default projection.",
+      "invalid_default_projection"
+    ))
+  }
+
+  list(
+    labels = labels,
+    included_groups = included_groups,
+    included_projections = included_projections
+  )
+}
+
+.builder_plan_app_options_valid <- function(app_options) {
+  if (!is.list(app_options) || is.object(app_options)) {
+    return(FALSE)
+  }
+  option_names <- names(app_options)
+  if (
+    length(app_options) &&
+      (is.null(option_names) ||
+        anyNA(option_names) ||
+        any(!nzchar(option_names)) ||
+        anyDuplicated(option_names))
+  ) {
+    return(FALSE)
+  }
+  show_upload_ui_supplied <- "show_upload_ui" %in% option_names
+  show_upload_ui <- app_options$show_upload_ui
+  if (
+    show_upload_ui_supplied &&
+      (!is.logical(show_upload_ui) ||
+        length(show_upload_ui) != 1L ||
+        is.na(show_upload_ui))
+  ) {
+    return(FALSE)
+  }
+  initial_dataset_supplied <- "initial_dataset" %in% option_names
+  initial_dataset <- app_options$initial_dataset
+  if (initial_dataset_supplied && !builder_has_text(initial_dataset)) {
+    return(FALSE)
+  }
+  TRUE
+}
+
+builder_freeze_plan <- function(
   entries,
   out_dir,
   make_app = FALSE,
-  overwrite = FALSE
+  overwrite = FALSE,
+  revision = NULL,
+  app_options = list(),
+  expected_prior_identity = NULL
 ) {
-  out_dir <- trimws(out_dir %||% "")
+  if (
+    !exists(
+      "builder_dataset_state",
+      mode = "function",
+      inherits = TRUE
+    )
+  ) {
+    return(builder_plan_error(
+      "The Builder dataset-state authority is unavailable.",
+      "state_authority_unavailable"
+    ))
+  }
+  if (!is.list(entries)) {
+    return(builder_plan_error(
+      "Datasets must be supplied as a list.",
+      "invalid_entries"
+    ))
+  }
+  if (
+    !is.logical(make_app) ||
+      length(make_app) != 1L ||
+      is.na(make_app)
+  ) {
+    return(builder_plan_error(
+      "Generated-app selection must be one non-missing logical value.",
+      "invalid_make_app"
+    ))
+  }
+  if (
+    !is.logical(overwrite) ||
+      length(overwrite) != 1L ||
+      is.na(overwrite)
+  ) {
+    return(builder_plan_error(
+      "Overwrite selection must be one non-missing logical value.",
+      "invalid_overwrite"
+    ))
+  }
+  if (!.builder_plan_app_options_valid(app_options)) {
+    return(builder_plan_error(
+      "Generated-app options must be an inert list.",
+      "invalid_app_options"
+    ))
+  }
+  if (
+    !is.null(expected_prior_identity) &&
+      (!is.list(expected_prior_identity) ||
+        is.object(expected_prior_identity))
+  ) {
+    return(builder_plan_error(
+      "Expected prior identity must be an inert list.",
+      "invalid_expected_prior_identity"
+    ))
+  }
+  if (
+    .builder_plan_has_reference(app_options) ||
+      .builder_plan_has_reference(expected_prior_identity)
+  ) {
+    return(builder_plan_error(
+      "BuildPlan values cannot contain mutable reference objects.",
+      "unsafe_reference"
+    ))
+  }
+  preflight <- .builder_plan_preflight_entries(entries)
+  if (inherits(preflight, "builder_plan_failure")) {
+    return(preflight)
+  }
+  plan_revision <- .builder_plan_revision(revision, entries)
+  if (is.null(plan_revision)) {
+    return(builder_plan_error(
+      "Choose a valid positive BuildPlan revision.",
+      "invalid_revision"
+    ))
+  }
+  if (is.null(out_dir)) {
+    return(builder_plan_error(
+      "Choose an output directory.",
+      "missing_output_directory"
+    ))
+  }
+  if (
+    !is.character(out_dir) ||
+      length(out_dir) != 1L ||
+      is.na(out_dir)
+  ) {
+    return(builder_plan_error(
+      "The output directory must be one non-missing string.",
+      "invalid_output_directory"
+    ))
+  }
+  out_dir <- trimws(out_dir)
   if (!nzchar(out_dir)) {
-    return(builder_plan_error("Choose an output directory."))
+    return(builder_plan_error(
+      "Choose an output directory.",
+      "missing_output_directory"
+    ))
+  }
+  out_dir <- tryCatch(
+    as.character(fs::path_norm(fs::path_abs(fs::path_expand(out_dir)))),
+    error = function(error) NULL
+  )
+  if (is.null(out_dir)) {
+    return(builder_plan_error(
+      "The output directory could not be normalized.",
+      "invalid_output_directory"
+    ))
   }
   if (!length(entries)) {
-    return(builder_plan_error("Add at least one dataset."))
+    return(builder_plan_error(
+      "Add at least one dataset.",
+      "missing_dataset"
+    ))
   }
 
   app_capability <- builder_app_capability()
@@ -143,95 +933,443 @@ builder_make_plan <- function(
     } else {
       builder_app_capability(0L)$reason
     }
-    return(builder_plan_error(reason))
+    return(builder_plan_error(reason, "app_capability_unavailable"))
   }
 
-  labels <- trimws(vapply(
+  dataset_order <- vapply(
     entries,
-    function(entry) entry$settings$name %||% "",
+    function(entry) {
+      if (is.list(entry) && builder_has_text(entry$id %||% "")) {
+        entry$id
+      } else {
+        ""
+      }
+    },
     character(1)
-  ))
-  if (any(is.na(labels) | !nzchar(labels))) {
-    return(builder_plan_error("Every dataset needs a non-empty name."))
-  }
-  if (anyDuplicated(labels)) {
-    return(builder_plan_error("Dataset names must be unique."))
-  }
-
-  invalid <- vapply(
-    entries,
-    function(entry) {
-      settings <- entry$settings
-      !length(settings$groups %||% character()) ||
-        !length(settings$reductions %||% character()) ||
-        !builder_has_text(settings$assay %||% "") ||
-        !builder_has_text(settings$layer %||% "")
-    },
-    logical(1)
   )
-  if (any(invalid)) {
+  if (any(!nzchar(dataset_order)) || anyDuplicated(dataset_order)) {
     return(builder_plan_error(
-      "Every dataset needs an assay, layer, grouping variable and reduction."
-    ))
-  }
-  invalid_qc <- vapply(
-    entries,
-    function(entry) {
-      settings <- entry$settings
-      !builder_has_text(settings$nUMI %||% entry$profile$nUMI) ||
-        !builder_has_text(settings$nGene %||% entry$profile$nGene)
-    },
-    logical(1)
-  )
-  if (any(invalid_qc)) {
-    return(builder_plan_error(
-      "Every dataset needs explicit UMI/count and feature/gene fields."
+      "Every dataset needs a unique stable id.",
+      "invalid_dataset_order"
     ))
   }
 
-  items <- lapply(seq_along(entries), function(index) {
-    entry <- entries[[index]]
-    settings <- entry$settings
-    filename <- builder_item_filename(entry, index, length(entries))
-    list(
-      id = entry$id,
-      name = labels[index],
-      filename = filename,
-      organism = settings$organism,
-      assay = settings$assay,
-      layer = settings$layer,
-      groups = settings$groups,
-      reductions = settings$reductions,
-      analyses = builder_normalize_analyses(
-        settings$analyses,
-        builder_profile_has(entry$profile, "marker_genes")
-      ),
-      tables = settings$tables %||% list(),
-      images = settings$images %||% list(),
-      colors = builder_resolve_colors(settings, entry$levels %||% list()),
-      nUMI = settings$nUMI %||% entry$profile$nUMI,
-      nGene = settings$nGene %||% entry$profile$nGene
+  states <- lapply(entries, function(entry) {
+    tryCatch(
+      builder_dataset_state(entry),
+      builder_state_error = function(error) error,
+      builder_manifest_error = function(error) error
     )
   })
+  state_errors <- vapply(states, inherits, logical(1), "condition")
+  if (any(state_errors)) {
+    error <- states[[which(state_errors)[[1L]]]]
+    return(builder_plan_error(
+      conditionMessage(error),
+      error$code %||% "invalid_dataset_state"
+    ))
+  }
+  names(states) <- dataset_order
+
+  load_states <- vapply(states, `[[`, "", "load_state")
+  if (any(load_states == "loading")) {
+    return(builder_plan_error(
+      "A dataset is still loading and cannot enter BuildPlan.",
+      "dataset_loading"
+    ))
+  }
+  if (any(load_states == "reload_required")) {
+    return(builder_plan_error(
+      "A dataset must be reloaded before BuildPlan can be frozen.",
+      "dataset_reload_required"
+    ))
+  }
+  missing_manifest <- vapply(
+    states,
+    function(state) identical(state$error_code, "missing_manifest"),
+    logical(1)
+  )
+  if (any(missing_manifest)) {
+    return(builder_plan_error(
+      "A profiled dataset is missing its typed content manifest.",
+      "missing_manifest"
+    ))
+  }
+  readiness <- vapply(states, `[[`, "", "readiness")
+  if (any(readiness == "blocked")) {
+    index <- which(readiness == "blocked")[[1L]]
+    ids <- states[[index]]$blocking_ids
+    return(builder_plan_error(
+      paste0(
+        "Dataset ",
+        dataset_order[[index]],
+        " has a blocking capability",
+        if (length(ids)) paste0(": ", paste(ids, collapse = ", ")) else "",
+        "."
+      ),
+      "blocking_capability",
+      list(dataset_id = dataset_order[[index]], capability_ids = ids)
+    ))
+  }
+  if (any(readiness == "checking")) {
+    return(builder_plan_error(
+      "A dataset capability is still being checked.",
+      "checking_capability"
+    ))
+  }
+  if (any(readiness == "needs_attention")) {
+    return(builder_plan_error(
+      "A dataset capability still needs attention.",
+      "attention_capability"
+    ))
+  }
+
+  labels <- preflight$labels
+  included_groups <- preflight$included_groups
+  included_projections <- preflight$included_projections
+  invalid_nomenclature <- vapply(
+    entries,
+    function(entry) {
+      settings <- entry$settings
+      if (
+        is.null(settings$recommendations) ||
+          is.null(settings$nomenclature)
+      ) {
+        return(FALSE)
+      }
+      tryCatch(
+        {
+          builder_validate_nomenclature(
+            settings$organism,
+            settings$nomenclature
+          )
+          FALSE
+        },
+        error = function(error) TRUE
+      )
+    },
+    logical(1)
+  )
+  if (any(invalid_nomenclature)) {
+    return(builder_plan_error(
+      "The selected nomenclature is invalid for the dataset organism.",
+      "invalid_nomenclature"
+    ))
+  }
+
+  planned_filenames <- vapply(
+    seq_along(entries),
+    function(index) {
+      builder_item_filename(entries[[index]], index, length(entries))
+    },
+    character(1)
+  )
+  backends <- lapply(seq_along(entries), function(index) {
+    .builder_plan_backend(entries[[index]]$settings, planned_filenames[[index]])
+  })
+  invalid_backends <- !vapply(backends, `[[`, logical(1), "valid")
+  if (any(invalid_backends)) {
+    error_code <- backends[[which(invalid_backends)[[1L]]]]$error_code
+    return(builder_plan_error(
+      "Every dataset needs a supported expression backend and sidecar plan.",
+      error_code %||% "invalid_expression_backend"
+    ))
+  }
+  sidecar_claims <- unlist(
+    lapply(backends, `[[`, "sidecars"),
+    use.names = FALSE
+  )
+  if (
+    anyDuplicated(sidecar_claims) ||
+      any(sidecar_claims %in% planned_filenames)
+  ) {
+    return(builder_plan_error(
+      "Backend sidecar targets cannot be claimed by another dataset.",
+      "backend_sidecar_conflict"
+    ))
+  }
+
+  public_asset_records <- lapply(entries, function(entry) {
+    .builder_plan_asset_set(entry$settings$public_assets)
+  })
+  private_user_asset_records <- lapply(entries, function(entry) {
+    .builder_plan_asset_set(entry$settings$private_assets)
+  })
+  valid_asset_sets <- all(vapply(
+    c(public_asset_records, private_user_asset_records),
+    `[[`,
+    logical(1),
+    "valid"
+  ))
+  if (!valid_asset_sets) {
+    return(builder_plan_error(
+      paste0(
+        "Asset manifests must use unique non-empty legacy targets or ",
+        "typed source/target/artifact claims."
+      ),
+      "invalid_asset_manifest"
+    ))
+  }
+  public_asset_sets <- lapply(public_asset_records, `[[`, "targets")
+  private_asset_sets <- lapply(seq_along(entries), function(index) {
+    c(
+      planned_filenames[[index]],
+      backends[[index]]$sidecars,
+      private_user_asset_records[[index]]$targets
+    )
+  })
+  public_asset_targets <- unlist(public_asset_sets, use.names = FALSE)
+  private_asset_targets <- unlist(private_asset_sets, use.names = FALSE)
+  public_asset_claim_sets <- lapply(seq_along(entries), function(index) {
+    public_asset_records[[index]]$claims
+  })
+  private_asset_claim_sets <- lapply(seq_along(entries), function(index) {
+    c(
+      .builder_plan_internal_asset_claims(
+        c(planned_filenames[[index]], backends[[index]]$sidecars),
+        entries[[index]]
+      ),
+      private_user_asset_records[[index]]$claims
+    )
+  })
+  all_public_asset_claims <- unlist(
+    public_asset_claim_sets,
+    recursive = FALSE,
+    use.names = FALSE
+  )
+  all_private_asset_claims <- unlist(
+    private_asset_claim_sets,
+    recursive = FALSE,
+    use.names = FALSE
+  )
+  if (
+    .builder_plan_claim_target_conflict(all_public_asset_claims) ||
+      .builder_plan_claim_target_conflict(all_private_asset_claims)
+  ) {
+    return(builder_plan_error(
+      "One asset target is claimed by different sources or artifacts.",
+      "asset_target_conflict"
+    ))
+  }
+  if (length(intersect(public_asset_targets, private_asset_targets))) {
+    return(builder_plan_error(
+      "An asset cannot be both public and private.",
+      "asset_scope_conflict"
+    ))
+  }
+
+  items <- tryCatch(
+    lapply(seq_along(entries), function(index) {
+      entry <- entries[[index]]
+      settings <- entry$settings
+      filename <- planned_filenames[[index]]
+      has_marker_genes <- .builder_state_content_available(
+        entry,
+        "marker_genes"
+      )
+      analyses <- states[[index]]$analyses
+      item <- list(
+        id = entry$id,
+        name = labels[index],
+        filename = filename,
+        organism = settings$organism,
+        assay = settings$assay,
+        layer = settings$layer,
+        groups = settings$groups,
+        included_groups = included_groups[[index]],
+        reductions = settings$reductions,
+        included_projections = included_projections[[index]],
+        analyses = analyses,
+        analysis_dependency_graph = .builder_plan_analysis_graph(
+          analyses,
+          has_marker_genes
+        ),
+        tables = settings$tables %||% list(),
+        images = settings$images %||% list(),
+        colors = builder_resolve_colors(settings, entry$levels %||% list()),
+        nUMI = settings$nUMI %||% entry$profile$nUMI,
+        nGene = settings$nGene %||% entry$profile$nGene,
+        default_group = settings$default_group %||% settings$groups[[1L]],
+        default_projection = settings$default_projection %||%
+          settings$reductions[[1L]],
+        metadata_policy = states[[index]]$metadata_policy %||%
+          list(
+            included = character(),
+            excluded = character()
+          ),
+        nomenclature = settings$nomenclature,
+        expression_backend = backends[[index]]$mode,
+        sidecars = backends[[index]]$sidecars,
+        source_snapshot_identity = .builder_plan_source_snapshot_identity(
+          entry
+        ),
+        readiness = states[[index]]$readiness,
+        manifest = states[[index]]$manifest,
+        viewer_page_expectations = states[[index]]$page_expectations,
+        acknowledgements = states[[index]]$acknowledgements,
+        public_assets = public_asset_sets[[index]],
+        private_assets = private_asset_sets[[index]],
+        public_asset_claims = public_asset_claim_sets[[index]],
+        private_asset_claims = private_asset_claim_sets[[index]]
+      )
+      if (!is.null(settings$recommendations)) {
+        item$recommendations <- settings$recommendations
+      }
+      .builder_plan_deep_copy(item)
+    }),
+    error = function(error) error
+  )
+  if (inherits(items, "condition")) {
+    code <- switch(
+      conditionMessage(items),
+      unsafe_reference = "unsafe_reference",
+      invalid_snapshot_identity = "invalid_snapshot_identity",
+      "invalid_frozen_value"
+    )
+    return(builder_plan_error(
+      "BuildPlan values could not be frozen safely.",
+      code
+    ))
+  }
 
   filenames <- vapply(items, `[[`, "", "filename")
   if (anyDuplicated(filenames)) {
-    return(builder_plan_error("Generated dataset filenames must be unique."))
+    return(builder_plan_error(
+      "Generated dataset filenames must be unique.",
+      "duplicate_dataset_filename"
+    ))
   }
 
-  targets <- file.path(out_dir, filenames)
+  target_names <- unlist(
+    lapply(items, function(item) {
+      c(item$filename, item$sidecars)
+    }),
+    use.names = FALSE
+  )
+  targets <- file.path(out_dir, target_names)
   if (isTRUE(make_app)) {
     targets <- c(targets, file.path(out_dir, "cerebro_app"))
   }
 
-  list(
+  names(items) <- dataset_order
+  manifests <- lapply(items, `[[`, "manifest")
+  source_snapshot_identities <- lapply(
+    items,
+    `[[`,
+    "source_snapshot_identity"
+  )
+  metadata_policy <- lapply(items, `[[`, "metadata_policy")
+  backend_sidecars <- lapply(items, function(item) {
+    list(mode = item$expression_backend, sidecars = item$sidecars)
+  })
+  analysis_dependency_graph <- lapply(
+    items,
+    `[[`,
+    "analysis_dependency_graph"
+  )
+  viewer_page_expectations <- lapply(
+    items,
+    `[[`,
+    "viewer_page_expectations"
+  )
+  acknowledgements <- lapply(items, `[[`, "acknowledgements")
+  public_asset_claims <- .builder_plan_dedupe_claims(
+    all_public_asset_claims
+  )
+  private_asset_claims <- .builder_plan_dedupe_claims(
+    all_private_asset_claims
+  )
+  public_assets <- vapply(
+    public_asset_claims,
+    `[[`,
+    character(1),
+    "target"
+  )
+  private_assets <- vapply(
+    private_asset_claims,
+    `[[`,
+    character(1),
+    "target"
+  )
+  default_app_options <- list(
+    enabled = isTRUE(make_app),
+    show_upload_ui = FALSE,
+    initial_dataset = dataset_order[[1L]]
+  )
+  frozen_app_options <- utils::modifyList(
+    default_app_options,
+    app_options,
+    keep.null = TRUE
+  )
+  frozen_app_options$enabled <- isTRUE(make_app)
+  if (
+    !builder_has_text(frozen_app_options$initial_dataset %||% "") ||
+      !frozen_app_options$initial_dataset %in% dataset_order
+  ) {
+    return(builder_plan_error(
+      "The generated-app initial dataset is not part of BuildPlan.",
+      "invalid_initial_dataset"
+    ))
+  }
+  output_release <- list(
+    directory = out_dir,
+    overwrite = isTRUE(overwrite),
+    targets = targets
+  )
+
+  plan <- list(
     error = NULL,
-    out_dir = normalizePath(out_dir, mustWork = FALSE),
+    error_code = NULL,
+    details = list(),
+    revision = plan_revision,
+    readiness = "ready",
+    dataset_order = dataset_order,
+    out_dir = out_dir,
     make_app = isTRUE(make_app),
     app_contract_version = app_contract_version,
     overwrite = isTRUE(overwrite),
-    items = items,
+    items = unname(items),
     targets = targets,
-    existing_targets = targets[file.exists(targets) | dir.exists(targets)]
+    existing_targets = targets[file.exists(targets) | dir.exists(targets)],
+    manifests = manifests,
+    manifest = .builder_plan_release_manifest(manifests),
+    source_snapshot_identities = source_snapshot_identities,
+    metadata_policy = metadata_policy,
+    backend_sidecars = backend_sidecars,
+    analysis_dependency_graph = analysis_dependency_graph,
+    viewer_page_expectations = viewer_page_expectations,
+    public_assets = public_assets,
+    private_assets = private_assets,
+    public_asset_claims = public_asset_claims,
+    private_asset_claims = private_asset_claims,
+    acknowledgements = acknowledgements,
+    app_options = frozen_app_options,
+    output_release = output_release,
+    expected_prior_identity = expected_prior_identity
+  )
+  frozen <- tryCatch(
+    .builder_plan_deep_copy(plan),
+    error = function(error) error
+  )
+  if (inherits(frozen, "condition")) {
+    return(builder_plan_error(
+      "BuildPlan values could not be frozen safely.",
+      "unsafe_reference"
+    ))
+  }
+  structure(frozen, class = c("builder_build_plan", "list"))
+}
+
+builder_make_plan <- function(
+  entries,
+  out_dir,
+  make_app = FALSE,
+  overwrite = FALSE
+) {
+  builder_freeze_plan(
+    entries = entries,
+    out_dir = out_dir,
+    make_app = make_app,
+    overwrite = overwrite
   )
 }

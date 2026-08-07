@@ -59,6 +59,7 @@ builder_session_start <- function(builder_dir) {
         "core",
         "spatial_coordinate_contract.R"
       ))
+      source(file.path(dir, "spatial.R"))
       source(file.path(
         dir,
         "..",
@@ -98,6 +99,7 @@ builder_session_start <- function(builder_dir) {
       source(file.path(dir, "extras.R"))
       source(file.path(dir, "analysis.R"))
       source(file.path(dir, "prerequisite.R"))
+      source(file.path(dir, "state.R"))
       source(file.path(dir, "plan.R"))
       source(file.path(dir, "publish.R"))
       .builder_objects <- new.env(parent = emptyenv())
@@ -218,15 +220,25 @@ builder_session_section_bounds <- function(
   id,
   sections,
   mode,
-  width,
-  height,
+  extent_width,
+  extent_height,
   um_per_px = 1,
   dx = 0,
   dy = 0,
   scale = 1
 ) {
   rs$call(
-    function(id, sections, mode, width, height, um_per_px, dx, dy, scale) {
+    function(
+      id,
+      sections,
+      mode,
+      extent_width,
+      extent_height,
+      um_per_px,
+      dx,
+      dy,
+      scale
+    ) {
       obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
       out <- list()
       for (nm in sections) {
@@ -237,7 +249,10 @@ builder_session_section_bounds <- function(
         b0 <- builder_image_bounds(
           mode,
           co,
-          list(width = width, height = height),
+          list(
+            extent_width = extent_width,
+            extent_height = extent_height
+          ),
           um_per_px = um_per_px
         )
         if (!is.null(b0$error)) {
@@ -255,8 +270,8 @@ builder_session_section_bounds <- function(
       id = id,
       sections = sections,
       mode = mode,
-      width = width,
-      height = height,
+      extent_width = extent_width,
+      extent_height = extent_height,
       um_per_px = um_per_px,
       dx = dx,
       dy = dy,
