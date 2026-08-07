@@ -1879,12 +1879,12 @@ test_that("a panel can take the grid without losing the selection", {
 test_that("the card reports what is known about a position", {
   local_app_support(inst_dir)
   skip_if_not(nzchar(inst_dir))
-  trekker_crb <- file.path(inst_dir, "extdata/v1.4/demo_trekker.crb")
+  trekker_crb <- file.path(inst_dir, "extdata/examples/demo_trekker.crb")
   skip_if_not(file.exists(trekker_crb))
 
   ## Build the bundle exactly as the app does, then hand the client that.
-  bundle_file <- file.path(inst_dir, "shiny/v1.4/coordinated_views/bundle.R")
-  contract_file <- file.path(inst_dir, "shiny/v1.4/clone_contract.R")
+  bundle_file <- file.path(inst_dir, "viewer/coordinated_views/bundle.R")
+  contract_file <- file.path(inst_dir, "viewer/clone_contract.R")
   skip_if_not(file.exists(bundle_file) && file.exists(contract_file))
   benv <- new.env()
   sys.source(contract_file, envir = benv)
