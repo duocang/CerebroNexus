@@ -6,6 +6,7 @@ builder_build_source_runtime <- function(local = parent.frame()) {
     "analysis.R",
     "extras.R",
     "state.R",
+    "app_bundle.R",
     "build.R"
   )) {
     path <- testthat::test_path("..", "..", "inst", "builder", file)
@@ -54,13 +55,25 @@ builder_build_test_plan <- function(analyses = character()) {
     ),
     expression_backend = "embedded",
     sidecars = character(),
+    colors = list(cluster = c(B = "#ffffff", A = "#000000")),
     viewer_page_expectations = list(
       visible_conditional = character(),
       hidden_conditional = character()
     )
   )
   structure(
-    list(items = list(item), make_app = FALSE),
+    list(
+      items = list(item),
+      dataset_order = "dataset-a",
+      make_app = FALSE,
+      app_contract_version = 0L,
+      app_options = list(
+        enabled = FALSE,
+        show_upload_ui = FALSE,
+        initial_dataset = "dataset-a",
+        initial_dataset_mode = "automatic"
+      )
+    ),
     class = c("builder_build_plan", "list")
   )
 }
@@ -224,6 +237,118 @@ test_that("only an existing assigned stage can receive artifacts", {
   expect_false(file.exists(escaped))
 })
 
+test_that("contract-v1 execution assembles App only after CRB verification", {
+  stage <- tempfile("builder-stage-")
+  dir.create(stage)
+  on.exit(unlink(stage, recursive = TRUE, force = TRUE), add = TRUE)
+  plan <- builder_build_test_plan()
+  plan$make_app <- TRUE
+  plan$app_contract_version <- 1L
+  plan$app_options$enabled <- TRUE
+  calls <- character()
+  hooks <- builder_build_test_hooks()
+  hooks$verify <- function(path, item) {
+    calls <<- c(calls, "verify_crb")
+    list(valid = TRUE, path = path)
+  }
+  hooks$build_app <- function(request, stage) {
+    calls <<- c(calls, "build_app")
+    expect_true(all(file.exists(request$cerebro_data)))
+    app_dir <- file.path(stage, "cerebro_app")
+    dir.create(app_dir)
+    app_dir
+  }
+  hooks$verify_app <- function(app_dir, request) {
+    calls <<- c(calls, "verify_app")
+    structure(
+      list(valid = TRUE, app_dir = app_dir),
+      class = c("builder_app_verification", "list")
+    )
+  }
+
+  result <- builder_execute_plan(
+    plan,
+    stage,
+    snapshots = list(`dataset-a` = list()),
+    hooks = hooks
+  )
+
+  expect_identical(calls, c("verify_crb", "build_app", "verify_app"))
+  expect_identical(result$state, "success")
+  expect_true(result$publishable)
+  expect_named(result$built, "Dataset A")
+  expect_identical(
+    result$app_dir,
+    file.path(normalizePath(stage, winslash = "/"), "cerebro_app")
+  )
+  expect_s3_class(result$app_verification, "builder_app_verification")
+})
+
+test_that("App execution rejects non-inert or non-exact verification evidence", {
+  evidence <- list(
+    structure(
+      list(valid = TRUE, mutable = new.env(parent = emptyenv())),
+      class = c("builder_app_verification", "list")
+    ),
+    structure(
+      list(valid = TRUE, callback = function() TRUE),
+      class = c("builder_app_verification", "list")
+    ),
+    structure(
+      list(valid = TRUE),
+      class = c("builder_app_verification", "spoofed", "list")
+    )
+  )
+
+  for (value in evidence) {
+    stage <- tempfile("builder-stage-")
+    dir.create(stage)
+    withr::defer(unlink(stage, recursive = TRUE, force = TRUE))
+    plan <- builder_build_test_plan()
+    plan$make_app <- TRUE
+    plan$app_contract_version <- 1L
+    plan$app_options$enabled <- TRUE
+    hooks <- builder_build_test_hooks()
+    hooks$build_app <- function(request, stage) {
+      app_dir <- file.path(stage, "cerebro_app")
+      dir.create(app_dir)
+      app_dir
+    }
+    hooks$verify_app <- function(app_dir, request) value
+
+    result <- builder_execute_plan(
+      plan,
+      stage,
+      snapshots = list(`dataset-a` = list()),
+      hooks = hooks
+    )
+
+    expect_identical(result$state, "failure")
+    expect_match(result$error, "inert evidence")
+    expect_null(result$app_verification)
+  }
+})
+
+test_that("generated App execution remains closed without contract v1", {
+  stage <- tempfile("builder-stage-")
+  dir.create(stage)
+  on.exit(unlink(stage, recursive = TRUE, force = TRUE), add = TRUE)
+  plan <- builder_build_test_plan()
+  plan$make_app <- TRUE
+  plan$app_options$enabled <- TRUE
+
+  result <- builder_execute_plan(
+    plan,
+    stage,
+    snapshots = list(`dataset-a` = list()),
+    hooks = builder_build_test_hooks()
+  )
+
+  expect_identical(result$state, "failure")
+  expect_match(result$error, "contract")
+  expect_null(result$app_dir)
+})
+
 test_that("CRB read-back matches exact frozen artifact identity", {
   crb <- tempfile(fileext = ".crb")
   on.exit(unlink(crb), add = TRUE)
@@ -292,6 +417,8 @@ test_that("CRB read-back matches exact frozen artifact identity", {
 })
 
 test_that("read-back verifies frozen H5 and BPCells sidecars", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("Matrix")
   root <- tempfile("builder-sidecars-")
   dir.create(root)
   on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
@@ -338,7 +465,22 @@ test_that("read-back verifies frozen H5 and BPCells sidecars", {
     crb <- file.path(root, paste0(mode, ".crb"))
     sidecar <- file.path(root, location)
     if (mode == "h5") {
-      writeBin(as.raw(c(1, 2, 3)), sidecar)
+      matrix <- Matrix::Matrix(
+        matrix(
+          seq_len(4L),
+          nrow = 2L,
+          dimnames = list(
+            item$artifact_identity$features,
+            item$artifact_identity$cells
+          )
+        ),
+        sparse = TRUE
+      )
+      HDF5Array::writeTENxMatrix(
+        methods::as(Matrix::t(matrix), "CsparseMatrix"),
+        sidecar,
+        group = "expression"
+      )
     } else {
       dir.create(sidecar)
     }
@@ -347,6 +489,137 @@ test_that("read-back verifies frozen H5 and BPCells sidecars", {
     expect_true(observed$valid)
     expect_identical(observed$backend$type, mode)
   }
+})
+
+test_that("H5 sidecar identity is independent of CRB fallback fields", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("Matrix")
+  root <- withr::local_tempdir()
+  item <- builder_build_test_plan()$items[[1L]]
+  item$expression_backend <- "h5"
+  item$sidecars <- "dataset-a.h5"
+  object <- new.env(parent = emptyenv())
+  object$expression <- NULL
+  object$meta_data <- data.frame(
+    cell_barcode = item$artifact_identity$cells,
+    cluster = c("B", "A"),
+    row.names = item$artifact_identity$cells
+  )
+  object$gene_data <- data.frame(row.names = item$artifact_identity$features)
+  object$groups <- list(cluster = c("B", "A"))
+  object$projections <- list(
+    umap = data.frame(
+      x = c(1, 2),
+      y = c(3, 4),
+      row.names = item$artifact_identity$cells
+    )
+  )
+  for (field in c(
+    "marker_genes",
+    "most_expressed_genes",
+    "enriched_pathways",
+    "extra_material",
+    "immune_repertoire",
+    "trajectories",
+    "spatial"
+  )) {
+    object[[field]] <- list()
+  }
+  object$trekker <- NULL
+  object$hla_typing <- NULL
+  object$expression_backend <- list(type = "h5", location = item$sidecars)
+  class(object) <- c("Cerebro_v1.3", "R6")
+  crb <- file.path(root, "dataset-a.crb")
+  saveRDS(object, crb)
+
+  write_h5 <- function(cells, features, path = file.path(root, item$sidecars)) {
+    if (file.exists(path)) {
+      unlink(path)
+    }
+    matrix <- Matrix::Matrix(
+      matrix(
+        seq_len(length(cells) * length(features)),
+        nrow = length(features),
+        dimnames = list(features, cells)
+      ),
+      sparse = TRUE
+    )
+    HDF5Array::writeTENxMatrix(
+      methods::as(Matrix::t(matrix), "CsparseMatrix"),
+      path,
+      group = "expression"
+    )
+  }
+
+  write_h5(item$artifact_identity$cells, item$artifact_identity$features)
+  expect_true(builder_verify_crb(crb, item)$valid)
+
+  write_h5(rev(item$artifact_identity$cells), item$artifact_identity$features)
+  expect_error(builder_verify_crb(crb, item), "H5 sidecar cell identity")
+
+  write_h5(item$artifact_identity$cells, rev(item$artifact_identity$features))
+  expect_error(builder_verify_crb(crb, item), "H5 sidecar feature identity")
+})
+
+test_that("H5 sidecars reject links and escapes before opening", {
+  skip_if_not_installed("HDF5Array")
+  skip_on_os("windows")
+  root <- withr::local_tempdir()
+  item <- builder_build_test_plan()$items[[1L]]
+  item$expression_backend <- "h5"
+  item$sidecars <- "dataset-a.h5"
+  object <- new.env(parent = emptyenv())
+  object$expression <- matrix(
+    seq_len(4L),
+    nrow = 2L,
+    dimnames = list(
+      item$artifact_identity$features,
+      item$artifact_identity$cells
+    )
+  )
+  object$meta_data <- data.frame(
+    cell_barcode = item$artifact_identity$cells,
+    cluster = c("B", "A"),
+    row.names = item$artifact_identity$cells
+  )
+  object$gene_data <- data.frame(row.names = item$artifact_identity$features)
+  object$groups <- list(cluster = c("B", "A"))
+  object$projections <- list(
+    umap = data.frame(
+      x = c(1, 2),
+      y = c(3, 4),
+      row.names = item$artifact_identity$cells
+    )
+  )
+  for (field in c(
+    "marker_genes",
+    "most_expressed_genes",
+    "enriched_pathways",
+    "extra_material",
+    "immune_repertoire",
+    "trajectories",
+    "spatial"
+  )) {
+    object[[field]] <- list()
+  }
+  object$trekker <- NULL
+  object$hla_typing <- NULL
+  object$expression_backend <- list(type = "h5", location = item$sidecars)
+  class(object) <- c("Cerebro_v1.3", "R6")
+  crb <- file.path(root, "dataset-a.crb")
+  saveRDS(object, crb)
+
+  outside <- tempfile(fileext = ".h5")
+  on.exit(unlink(outside), add = TRUE)
+  writeBin(as.raw(c(1, 2, 3)), outside)
+  expect_true(file.symlink(outside, file.path(root, item$sidecars)))
+  expect_error(builder_verify_crb(crb, item), "sidecar does not match")
+
+  unlink(file.path(root, item$sidecars))
+  item$sidecars <- file.path("..", basename(outside))
+  object$expression_backend$location <- item$sidecars
+  saveRDS(object, crb)
+  expect_error(builder_verify_crb(crb, item), "sidecar does not match")
 })
 
 test_that("read-back rejects a Viewer page-gate mismatch", {

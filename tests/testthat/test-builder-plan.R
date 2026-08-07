@@ -150,9 +150,10 @@ test_that("build plans use collision-proof filenames and resolved colours", {
       )
     )
 
+    out_dir <- withr::local_tempdir()
     plan <- builder_make_plan(
       entries,
-      tempdir(),
+      out_dir,
       make_app = TRUE
     )
 
@@ -163,6 +164,23 @@ test_that("build plans use collision-proof filenames and resolved colours", {
     expect_identical(
       unname(plan$items[[1]]$colors$cluster[["B"]]),
       "#ff00aa"
+    )
+
+    sys.source(
+      builder_profile_inst_path("builder", "app_bundle.R"),
+      envir = environment()
+    )
+    built <- file.path(
+      out_dir,
+      vapply(plan$items, `[[`, character(1), "filename")
+    )
+    lapply(built, function(path) saveRDS(list(valid = TRUE), path))
+    labels <- vapply(plan$items, `[[`, character(1), "name")
+    names(built) <- labels
+
+    expect_s3_class(
+      builder_app_bundle_request(plan, built, labels),
+      "builder_app_bundle_request"
     )
   })
 })
@@ -695,7 +713,7 @@ test_that("frozen plans own every reviewed value", {
     builder_repo_source("plan.R")
 
     draft <- builder_task6_entry()
-    app_options <- list(show_upload_ui = FALSE, welcome = list(text = "Hello"))
+    app_options <- list(show_upload_ui = FALSE)
     prior <- list(entries = list(list(path = "old.crb", md5 = "old-md5")))
     plan <- builder_freeze_plan(
       list(draft),
@@ -717,9 +735,9 @@ test_that("frozen plans own every reviewed value", {
         "backend_sidecars",
         "analysis_dependency_graph",
         "viewer_page_expectations",
-        "public_assets",
+        "viewer_bundle_assets",
         "private_assets",
-        "public_asset_claims",
+        "viewer_bundle_asset_claims",
         "private_asset_claims",
         "acknowledgements",
         "app_options",
@@ -736,12 +754,13 @@ test_that("frozen plans own every reviewed value", {
     frozen_snapshot_decision <-
       plan$source_snapshot_identities[["dataset-a"]]
     expect_true(plan$items[[1L]]$filename %in% plan$private_assets)
-    expect_false(plan$items[[1L]]$filename %in% plan$public_assets)
+    expect_false(
+      plan$items[[1L]]$filename %in% plan$viewer_bundle_assets
+    )
 
     draft$settings$name <- "Changed"
     draft$settings$metadata_policy$included <- "changed"
     draft$snapshot_identity <- builder_task6_snapshot_identity()
-    app_options$welcome$text <- "Changed"
     prior$entries[[1L]]$md5 <- "changed"
 
     expect_identical(plan$items[[1L]]$name, "Dataset A")
@@ -758,7 +777,6 @@ test_that("frozen plans own every reviewed value", {
       plan$source_snapshot_identities[["dataset-a"]],
       frozen_snapshot_decision
     )
-    expect_identical(plan$app_options$welcome$text, "Hello")
     expect_identical(
       plan$expected_prior_identity$entries[[1L]]$md5,
       "old-md5"
@@ -774,8 +792,14 @@ test_that("frozen plans own every reviewed value", {
       FALSE,
       app_options = list(enabled = TRUE)
     )
-    expect_null(spoofed_app$error)
-    expect_false(spoofed_app$app_options$enabled)
+    expect_identical(spoofed_app$error_code, "invalid_app_options")
+    inert_welcome <- builder_freeze_plan(
+      list(builder_task6_entry()),
+      tempdir(),
+      FALSE,
+      app_options = list(welcome = "Hello")
+    )
+    expect_identical(inert_welcome$error_code, "invalid_app_options")
 
     invalid_initial_dataset <- builder_freeze_plan(
       list(builder_task6_entry()),
@@ -785,7 +809,28 @@ test_that("frozen plans own every reviewed value", {
     )
     expect_identical(
       invalid_initial_dataset$error_code,
-      "invalid_initial_dataset"
+      "invalid_app_options"
+    )
+
+    automatic <- builder_freeze_plan(
+      list(builder_task6_entry()),
+      tempdir(),
+      FALSE
+    )
+    expect_identical(automatic$app_options$initial_dataset, "dataset-a")
+    expect_identical(
+      automatic$app_options$initial_dataset_mode,
+      "automatic"
+    )
+    explicit_first <- builder_freeze_plan(
+      list(builder_task6_entry()),
+      tempdir(),
+      FALSE,
+      app_options = list(initial_dataset = "dataset-a")
+    )
+    expect_identical(
+      explicit_first$app_options$initial_dataset_mode,
+      "explicit"
     )
 
     unsafe <- builder_freeze_plan(
@@ -3134,11 +3179,20 @@ test_that("asset manifests encode dedupe and target conflicts", {
     builder_repo_source("plan.R")
 
     duplicate <- builder_task6_entry()
-    duplicate$settings$public_assets <- c("readme.html", "readme.html")
+    duplicate$settings$viewer_bundle_assets <- c("readme.html", "readme.html")
     expect_identical(
       builder_freeze_plan(list(duplicate), tempdir(), FALSE)$error_code,
       "invalid_asset_manifest"
     )
+
+    for (legacy_key in c("public_assets", "public_asset_claims")) {
+      legacy <- builder_task6_entry()
+      legacy$settings[[legacy_key]] <- "legacy.html"
+      expect_identical(
+        builder_freeze_plan(list(legacy), tempdir(), FALSE)$error_code,
+        "invalid_entries"
+      )
+    }
 
     malformed <- builder_task6_entry()
     malformed$settings$private_assets <- c("", NA_character_)
@@ -3148,7 +3202,7 @@ test_that("asset manifests encode dedupe and target conflicts", {
     )
 
     generated_public <- builder_task6_entry()
-    generated_public$settings$public_assets <- builder_item_filename(
+    generated_public$settings$viewer_bundle_assets <- builder_item_filename(
       generated_public,
       1L,
       1L
@@ -3159,12 +3213,16 @@ test_that("asset manifests encode dedupe and target conflicts", {
     )
 
     intersection <- builder_task6_entry()
-    intersection$settings$public_assets <- "shared.txt"
+    intersection$settings$viewer_bundle_assets <- "shared.txt"
     intersection$settings$private_assets <- "shared.txt"
-    expect_identical(
-      builder_freeze_plan(list(intersection), tempdir(), FALSE)$error_code,
-      "asset_scope_conflict"
+    scope_conflict <- builder_freeze_plan(
+      list(intersection),
+      tempdir(),
+      FALSE
     )
+    expect_identical(scope_conflict$error_code, "asset_scope_conflict")
+    expect_match(scope_conflict$error, "Viewer-bundle")
+    expect_false(grepl("public", scope_conflict$error, fixed = TRUE))
 
     shared_claim <- builder_task6_asset_claim(
       source = "/source/histology.png",
@@ -3172,32 +3230,32 @@ test_that("asset manifests encode dedupe and target conflicts", {
       artifact = "spatial_image"
     )
     first <- builder_task6_entry()
-    first$settings$public_assets <- list(shared_claim)
+    first$settings$viewer_bundle_assets <- list(shared_claim)
     second <- builder_task6_entry()
     second$id <- "dataset-b"
     second$settings$name <- "Dataset B"
     second$dataset_profile$source$location <- "another-dataset"
     second$dataset_profile$source$fingerprint <- "another-dataset:v1"
-    second$settings$public_assets <- list(shared_claim)
+    second$settings$viewer_bundle_assets <- list(shared_claim)
     shared <- builder_freeze_plan(list(first, second), tempdir(), FALSE)
     expect_null(shared$error)
-    expect_identical(shared$public_assets, "shared.css")
-    expect_length(shared$public_asset_claims, 1L)
+    expect_identical(shared$viewer_bundle_assets, "shared.css")
+    expect_length(shared$viewer_bundle_asset_claims, 1L)
     expect_identical(
-      shared$public_asset_claims[[1L]]$source,
+      shared$viewer_bundle_asset_claims[[1L]]$source,
       "/source/histology.png"
     )
     expect_identical(
-      shared$public_asset_claims[[1L]]$target,
+      shared$viewer_bundle_asset_claims[[1L]]$target,
       "shared.css"
     )
     expect_identical(
-      shared$public_asset_claims[[1L]]$artifact,
+      shared$viewer_bundle_asset_claims[[1L]]$artifact,
       "spatial_image"
     )
 
     conflicting <- second
-    conflicting$settings$public_assets <- list(builder_task6_asset_claim(
+    conflicting$settings$viewer_bundle_assets <- list(builder_task6_asset_claim(
       source = "/other/histology.png",
       target = "shared.css",
       artifact = "spatial_image"
@@ -3212,7 +3270,7 @@ test_that("asset manifests encode dedupe and target conflicts", {
     )
 
     within_dataset <- builder_task6_entry()
-    within_dataset$settings$public_assets <- list(
+    within_dataset$settings$viewer_bundle_assets <- list(
       shared_claim,
       builder_task6_asset_claim(
         source = "/other/histology.png",
@@ -3230,11 +3288,11 @@ test_that("asset manifests encode dedupe and target conflicts", {
     )
 
     legacy_first <- builder_task6_entry()
-    legacy_first$settings$public_assets <- "legacy.css"
+    legacy_first$settings$viewer_bundle_assets <- "legacy.css"
     legacy_second <- builder_task6_entry()
     legacy_second$id <- "dataset-b"
     legacy_second$settings$name <- "Dataset B"
-    legacy_second$settings$public_assets <- "legacy.css"
+    legacy_second$settings$viewer_bundle_assets <- "legacy.css"
     expect_identical(
       builder_freeze_plan(
         list(legacy_first, legacy_second),
@@ -3245,18 +3303,28 @@ test_that("asset manifests encode dedupe and target conflicts", {
     )
 
     valid <- builder_task6_entry()
-    valid$settings$public_assets <- "readme.html"
+    valid$settings$viewer_bundle_assets <- "readme.html"
     valid$settings$private_assets <- "audit.json"
     plan <- builder_freeze_plan(list(valid), tempdir(), FALSE)
     expect_null(plan$error)
-    expect_identical(plan$public_assets, "readme.html")
-    expect_length(plan$public_asset_claims, 1L)
+    expect_identical(plan$viewer_bundle_assets, "readme.html")
+    expect_length(plan$viewer_bundle_asset_claims, 1L)
     expect_true(length(plan$private_asset_claims) >= 2L)
     expect_true(all(
       c("audit.json", plan$items[[1L]]$filename) %in%
         plan$private_assets
     ))
-    expect_length(intersect(plan$public_assets, plan$private_assets), 0L)
+    expect_length(intersect(plan$viewer_bundle_assets, plan$private_assets), 0L)
+
+    recursive_names <- function(value) {
+      if (!is.list(value)) {
+        return(character())
+      }
+      c(names(value), unlist(lapply(value, recursive_names), use.names = FALSE))
+    }
+    expect_false(any(
+      c("public_assets", "public_asset_claims") %in% recursive_names(plan)
+    ))
   })
 })
 
@@ -3289,24 +3357,24 @@ test_that("typed asset claims normalize before comparison", {
     )
 
     first <- builder_task6_entry()
-    first$settings$public_assets <- list(canonical)
+    first$settings$viewer_bundle_assets <- list(canonical)
     second <- builder_task6_entry()
     second$id <- "dataset-b"
     second$settings$name <- "Dataset B"
     second$dataset_profile$source$location <- "another-dataset"
     second$dataset_profile$source$fingerprint <- "another-dataset:v1"
-    second$settings$public_assets <- list(reordered)
+    second$settings$viewer_bundle_assets <- list(reordered)
 
     plan <- builder_freeze_plan(list(first, second), tempdir(), FALSE)
     expect_null(plan$error)
-    expect_identical(plan$public_assets, "shared.css")
-    expect_length(plan$public_asset_claims, 1L)
-    expect_identical(plan$public_asset_claims[[1L]], canonical)
+    expect_identical(plan$viewer_bundle_assets, "shared.css")
+    expect_length(plan$viewer_bundle_asset_claims, 1L)
+    expect_identical(plan$viewer_bundle_asset_claims[[1L]], canonical)
 
     unsafe <- builder_task6_entry()
     unsafe_claim <- canonical
     attr(unsafe_claim, "mutable") <- new.env(parent = emptyenv())
-    unsafe$settings$public_assets <- list(unsafe_claim)
+    unsafe$settings$viewer_bundle_assets <- list(unsafe_claim)
     expect_identical(
       builder_freeze_plan(list(unsafe), tempdir(), FALSE)$error_code,
       "invalid_asset_manifest"
@@ -3315,7 +3383,7 @@ test_that("typed asset claims normalize before comparison", {
     extra <- builder_task6_entry()
     extra_claim <- canonical
     extra_claim$note <- "unexpected"
-    extra$settings$public_assets <- list(extra_claim)
+    extra$settings$viewer_bundle_assets <- list(extra_claim)
     expect_identical(
       builder_freeze_plan(list(extra), tempdir(), FALSE)$error_code,
       "invalid_asset_manifest"

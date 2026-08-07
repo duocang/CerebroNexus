@@ -19,6 +19,7 @@ source(
   local = TRUE
 )
 source("publish.R", local = TRUE)
+source("app_bundle.R", local = TRUE)
 source("coordinator.R", local = TRUE)
 
 ## Above this many levels the interface stops offering one swatch each: nobody

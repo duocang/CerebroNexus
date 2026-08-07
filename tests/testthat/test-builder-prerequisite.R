@@ -9,11 +9,27 @@ test_that("the app privacy marker must be the exact integer contract", {
   assign(".cerebro_bundle_privacy_contract_version", 1, namespace)
   expect_identical(builder_installed_app_contract_version(namespace), 0L)
 
+  namespace <- new.env(parent = emptyenv())
   assign(".cerebro_bundle_privacy_contract_version", 1L, namespace)
+  expect_identical(builder_installed_app_contract_version(namespace), 0L)
+  lockBinding(".cerebro_bundle_privacy_contract_version", namespace)
   expect_identical(builder_installed_app_contract_version(namespace), 1L)
 
+  namespace <- new.env(parent = emptyenv())
   assign(".cerebro_bundle_privacy_contract_version", c(1L, 1L), namespace)
+  lockBinding(".cerebro_bundle_privacy_contract_version", namespace)
   expect_identical(builder_installed_app_contract_version(namespace), 0L)
+})
+
+test_that("installed privacy contract v1 is eager and locked", {
+  namespace <- asNamespace("CerebroNexus")
+  marker <- ".cerebro_bundle_privacy_contract_version"
+
+  expect_true(exists(marker, namespace, inherits = FALSE))
+  expect_false(bindingIsActive(marker, namespace))
+  expect_false(rlang::env_binding_are_lazy(namespace, marker))
+  expect_true(bindingIsLocked(marker, namespace))
+  expect_identical(get(marker, namespace, inherits = FALSE), 1L)
 })
 
 test_that("a function-valued app privacy marker is never executed", {
@@ -24,6 +40,7 @@ test_that("a function-valued app privacy marker is never executed", {
     1L
   }
   assign(".cerebro_bundle_privacy_contract_version", marker, namespace)
+  lockBinding(".cerebro_bundle_privacy_contract_version", namespace)
 
   expect_identical(builder_installed_app_contract_version(namespace), 0L)
   expect_false(called)
@@ -40,6 +57,7 @@ test_that("an active app privacy marker is never executed", {
     },
     namespace
   )
+  lockBinding(".cerebro_bundle_privacy_contract_version", namespace)
 
   expect_identical(builder_installed_app_contract_version(namespace), 0L)
   expect_false(called)
@@ -56,6 +74,7 @@ test_that("a delayed app privacy marker is never forced", {
     },
     assign.env = namespace
   )
+  lockBinding(".cerebro_bundle_privacy_contract_version", namespace)
 
   expect_identical(builder_installed_app_contract_version(namespace), 0L)
   expect_false(forced)
@@ -280,5 +299,34 @@ test_that("worker rechecks the current installed app contract", {
 
     expect_match(result$error, "private app publication", ignore.case = TRUE)
     expect_false(create_called)
+  })
+})
+
+test_that("session binds successful App results to the dispatched build id", {
+  local({
+    builder_repo_source("session.R")
+    builder_installed_app_contract_version <- function(namespace = NULL) 1L
+    builder_execute_plan <- function(plan, stage, registry) {
+      list(state = "success", publishable = TRUE, stage = stage)
+    }
+    builder_worker_response <- function(request, value = NULL, error = NULL) {
+      if (!is.null(error)) list(error = error) else value
+    }
+    rs <- list(call = function(fun, args) do.call(fun, args))
+    plan <- list(
+      out_dir = withr::local_tempdir(),
+      items = list(),
+      make_app = TRUE,
+      app_contract_version = 1L,
+      overwrite = FALSE
+    )
+
+    result <- builder_session_build(
+      rs,
+      plan,
+      request = list(build_id = "build-session")
+    )
+
+    expect_identical(result$build_id, "build-session")
   })
 })

@@ -1184,6 +1184,9 @@ dedent <- function(string) {
 #' @param verbose Print progress messages; defaults to TRUE.
 #' @param crb_pick_smallest_file Forwarded to \code{Cerebro.options}.
 #' @param show_upload_ui Forwarded to \code{Cerebro.options}.
+#' @param initial_dataset Optional exact data set label to load initially. This
+#'   does not change the order of \code{cerebro_data}. URL selection and a
+#'   session's current selection take precedence.
 #' @param welcome_message Welcome message shown in the Load Data tab.
 #' @param point_size Named list with \code{overview_projection_point_size}
 #'   (and optionally other keys) forwarded to \code{Cerebro.options}.
@@ -1244,6 +1247,7 @@ createShinyApp <- function(
   spatial_images_offset_x = NULL,
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
+  initial_dataset = NULL,
   ...
 ) {
   # Validate inputs ----------------------------------------------------------##
@@ -1305,6 +1309,18 @@ createShinyApp <- function(
   }
   if (anyDuplicated(data_labels)) {
     stop("cerebro_data labels must be unique.", call. = FALSE)
+  }
+  if (
+    !is.null(initial_dataset) &&
+      (!is.character(initial_dataset) ||
+        length(initial_dataset) != 1L ||
+        is.na(initial_dataset) ||
+        !initial_dataset %in% data_labels)
+  ) {
+    stop(
+      "'initial_dataset' must be NULL or exactly one cerebro_data label.",
+      call. = FALSE
+    )
   }
   if (
     !is.logical(overwrite) ||
@@ -1577,6 +1593,17 @@ createShinyApp <- function(
   if (!dir.exists(extdata_source)) {
     stop(
       "extdata source files not found in CerebroNexus package.",
+      call. = FALSE
+    )
+  }
+  app_template_source <- system.file(
+    "viewer",
+    "_bundle_app.R",
+    package = "CerebroNexus"
+  )
+  if (!file.exists(app_template_source)) {
+    stop(
+      "The package-owned App entrypoint template is missing.",
       call. = FALSE
     )
   }
@@ -1917,7 +1944,8 @@ createShinyApp <- function(
   cerebro_options[["cerebro_root"]] <- "."
   internal_option_names <- c(
     ".bundle_backend_plan",
-    ".bundle_run_options"
+    ".bundle_run_options",
+    "initial_dataset"
   )
   option_names <- names(cerebro_options)
   if (!is.null(option_names)) {
@@ -1935,6 +1963,9 @@ createShinyApp <- function(
   }
   if (!is.null(show_upload_ui)) {
     cerebro_options[["show_upload_ui"]] <- show_upload_ui
+  }
+  if (!is.null(initial_dataset)) {
+    cerebro_options[["initial_dataset"]] <- initial_dataset
   }
   if (!is.null(point_size)) {
     cerebro_options[["point_size"]] <- point_size
@@ -1979,50 +2010,9 @@ createShinyApp <- function(
   )
 
   # Generate app.R -----------------------------------------------------------##
-  app_content <- dedent(
-    '
-    library(dplyr)
-    library(DT)
-    library(plotly)
-    library(shiny)
-    library(shinydashboard)
-    library(shinyWidgets)
-
-    cerebro_root <- "."
-
-    if (file.exists("cerebro_config.rds")) {
-      Cerebro.options <<- readRDS("cerebro_config.rds")
-    } else {
-      stop("cerebro_config.rds not found!")
-    }
-
-    if (!is.null(Cerebro.options$colors)) {
-      colors <- Cerebro.options$colors
-    }
-
-    bundle_run_options <- Cerebro.options$.bundle_run_options
-    shiny_options <- bundle_run_options$shiny_app_options
-
-    source(file.path(cerebro_root, "viewer/shiny_UI.R"))
-    source(file.path(cerebro_root, "viewer/shiny_server.R"))
-
-    shiny::shinyApp(
-      ui = ui,
-      server = server,
-      onStart = function() {
-        previous <- options(
-          shiny.maxRequestSize = bundle_run_options$max_request_size_bytes
-        )
-        shiny::onStop(function() {
-          options(previous)
-        })
-      },
-      options = shiny_options
-    )
-  '
-  )
-
-  build_ops$write_lines(app_content, app_file)
+  if (!build_ops$copy(app_template_source, app_file, overwrite = FALSE)) {
+    stop("Failed to copy the App entrypoint template.", call. = FALSE)
+  }
   tryCatch(
     parse(file = app_file, keep.source = FALSE),
     error = function(error_condition) {

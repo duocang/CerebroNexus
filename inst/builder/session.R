@@ -447,6 +447,13 @@ builder_session_build <- function(
             }
           }
           value <- builder_execute_plan(plan, stage, registry)
+          if (
+            isTRUE(plan$make_app) &&
+              is.list(value) &&
+              is.list(request)
+          ) {
+            value$build_id <- request$build_id
+          }
           builder_worker_response(request, value = value)
         },
         error = function(error) {

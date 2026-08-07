@@ -185,7 +185,11 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
         "spatial_projection_background_image",
         label = "Background image",
         choices = background_choices,
-        selected = "No Background"
+        selected = keep(
+          "spatial_projection_background_image",
+          background_choices,
+          "No Background"
+        )
       )
     }
   )

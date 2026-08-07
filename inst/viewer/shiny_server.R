@@ -224,12 +224,19 @@ server <- function(input, output, session) {
           }
         }
 
-        ## if not chosen via URL: keep current selection, else pick default.
+        ## if not chosen via URL: keep current selection, then use an explicit
+        ## configured label, else pick the size/order fallback.
         ## crb_pick_smallest_file TRUE/NULL -> smallest file; FALSE -> first.
         if (path_to_load != '') {
           ## already set by URL logic
         } else if (!is.null(available_crb_files$selected)) {
           path_to_load <- available_crb_files$selected
+        } else if (
+          !is.null(Cerebro.options[["initial_dataset"]]) &&
+            Cerebro.options[["initial_dataset"]] %in% names(file_to_load)
+        ) {
+          configured_initial_dataset <- Cerebro.options[["initial_dataset"]]
+          path_to_load <- unname(file_to_load[[configured_initial_dataset]])
         } else {
           pick_smallest <- TRUE
           if (!is.null(Cerebro.options[["crb_pick_smallest_file"]])) {

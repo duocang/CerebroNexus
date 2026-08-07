@@ -839,7 +839,11 @@ builder_has_text <- function(value) {
       (is.null(option_names) ||
         anyNA(option_names) ||
         any(!nzchar(option_names)) ||
-        anyDuplicated(option_names))
+        anyDuplicated(option_names) ||
+        length(setdiff(
+          option_names,
+          c("show_upload_ui", "initial_dataset")
+        )))
   ) {
     return(FALSE)
   }
@@ -888,6 +892,23 @@ builder_freeze_plan <- function(
       "invalid_entries"
     ))
   }
+  legacy_asset_key <- vapply(
+    entries,
+    function(entry) {
+      settings <- if (is.list(entry)) entry$settings else NULL
+      is.list(settings) &&
+        any(
+          c("public_assets", "public_asset_claims") %in% names(settings)
+        )
+    },
+    logical(1)
+  )
+  if (any(legacy_asset_key)) {
+    return(builder_plan_error(
+      "Dataset settings use a retired asset field.",
+      "invalid_entries"
+    ))
+  }
   if (
     !is.logical(make_app) ||
       length(make_app) != 1L ||
@@ -906,6 +927,12 @@ builder_freeze_plan <- function(
     return(builder_plan_error(
       "Overwrite selection must be one non-missing logical value.",
       "invalid_overwrite"
+    ))
+  }
+  if (.builder_plan_has_reference(app_options)) {
+    return(builder_plan_error(
+      "BuildPlan values cannot contain mutable reference objects.",
+      "unsafe_reference"
     ))
   }
   if (!.builder_plan_app_options_valid(app_options)) {
@@ -986,7 +1013,9 @@ builder_freeze_plan <- function(
 
   app_capability <- builder_app_capability()
   app_contract_version <- if (
-    is.list(app_capability) && identical(app_capability$version, 1L)
+    isTRUE(make_app) &&
+      is.list(app_capability) &&
+      identical(app_capability$version, 1L)
   ) {
     1L
   } else {
@@ -1161,14 +1190,14 @@ builder_freeze_plan <- function(
     ))
   }
 
-  public_asset_records <- lapply(entries, function(entry) {
-    .builder_plan_asset_set(entry$settings$public_assets)
+  viewer_bundle_asset_records <- lapply(entries, function(entry) {
+    .builder_plan_asset_set(entry$settings$viewer_bundle_assets)
   })
   private_user_asset_records <- lapply(entries, function(entry) {
     .builder_plan_asset_set(entry$settings$private_assets)
   })
   valid_asset_sets <- all(vapply(
-    c(public_asset_records, private_user_asset_records),
+    c(viewer_bundle_asset_records, private_user_asset_records),
     `[[`,
     logical(1),
     "valid"
@@ -1182,7 +1211,11 @@ builder_freeze_plan <- function(
       "invalid_asset_manifest"
     ))
   }
-  public_asset_sets <- lapply(public_asset_records, `[[`, "targets")
+  viewer_bundle_asset_sets <- lapply(
+    viewer_bundle_asset_records,
+    `[[`,
+    "targets"
+  )
   private_asset_sets <- lapply(seq_along(entries), function(index) {
     c(
       planned_filenames[[index]],
@@ -1190,10 +1223,13 @@ builder_freeze_plan <- function(
       private_user_asset_records[[index]]$targets
     )
   })
-  public_asset_targets <- unlist(public_asset_sets, use.names = FALSE)
+  viewer_bundle_asset_targets <- unlist(
+    viewer_bundle_asset_sets,
+    use.names = FALSE
+  )
   private_asset_targets <- unlist(private_asset_sets, use.names = FALSE)
-  public_asset_claim_sets <- lapply(seq_along(entries), function(index) {
-    public_asset_records[[index]]$claims
+  viewer_bundle_asset_claim_sets <- lapply(seq_along(entries), function(index) {
+    viewer_bundle_asset_records[[index]]$claims
   })
   private_asset_claim_sets <- lapply(seq_along(entries), function(index) {
     c(
@@ -1204,8 +1240,8 @@ builder_freeze_plan <- function(
       private_user_asset_records[[index]]$claims
     )
   })
-  all_public_asset_claims <- unlist(
-    public_asset_claim_sets,
+  all_viewer_bundle_asset_claims <- unlist(
+    viewer_bundle_asset_claim_sets,
     recursive = FALSE,
     use.names = FALSE
   )
@@ -1215,7 +1251,7 @@ builder_freeze_plan <- function(
     use.names = FALSE
   )
   if (
-    .builder_plan_claim_target_conflict(all_public_asset_claims) ||
+    .builder_plan_claim_target_conflict(all_viewer_bundle_asset_claims) ||
       .builder_plan_claim_target_conflict(all_private_asset_claims)
   ) {
     return(builder_plan_error(
@@ -1223,9 +1259,9 @@ builder_freeze_plan <- function(
       "asset_target_conflict"
     ))
   }
-  if (length(intersect(public_asset_targets, private_asset_targets))) {
+  if (length(intersect(viewer_bundle_asset_targets, private_asset_targets))) {
     return(builder_plan_error(
-      "An asset cannot be both public and private.",
+      "An asset cannot be both Viewer-bundle eligible and private.",
       "asset_scope_conflict"
     ))
   }
@@ -1272,7 +1308,12 @@ builder_freeze_plan <- function(
           settings$reductions[[1L]],
         metadata_policy = states[[index]]$metadata_policy %||%
           list(
-            included = character(),
+            included = unique(c(
+              "cell_barcode",
+              included_groups[[index]],
+              settings$nUMI %||% entry$profile$nUMI,
+              settings$nGene %||% entry$profile$nGene
+            )),
             excluded = character()
           ),
         nomenclature = settings$nomenclature,
@@ -1285,9 +1326,9 @@ builder_freeze_plan <- function(
         manifest = states[[index]]$manifest,
         viewer_page_expectations = states[[index]]$page_expectations,
         acknowledgements = states[[index]]$acknowledgements,
-        public_assets = public_asset_sets[[index]],
+        viewer_bundle_assets = viewer_bundle_asset_sets[[index]],
         private_assets = private_asset_sets[[index]],
-        public_asset_claims = public_asset_claim_sets[[index]],
+        viewer_bundle_asset_claims = viewer_bundle_asset_claim_sets[[index]],
         private_asset_claims = private_asset_claim_sets[[index]]
       )
       if (!is.null(settings$recommendations)) {
@@ -1351,14 +1392,14 @@ builder_freeze_plan <- function(
     "viewer_page_expectations"
   )
   acknowledgements <- lapply(items, `[[`, "acknowledgements")
-  public_asset_claims <- .builder_plan_dedupe_claims(
-    all_public_asset_claims
+  viewer_bundle_asset_claims <- .builder_plan_dedupe_claims(
+    all_viewer_bundle_asset_claims
   )
   private_asset_claims <- .builder_plan_dedupe_claims(
     all_private_asset_claims
   )
-  public_assets <- vapply(
-    public_asset_claims,
+  viewer_bundle_assets <- vapply(
+    viewer_bundle_asset_claims,
     `[[`,
     character(1),
     "target"
@@ -1369,10 +1410,12 @@ builder_freeze_plan <- function(
     character(1),
     "target"
   )
+  initial_dataset_supplied <- "initial_dataset" %in% names(app_options)
   default_app_options <- list(
     enabled = isTRUE(make_app),
     show_upload_ui = FALSE,
-    initial_dataset = dataset_order[[1L]]
+    initial_dataset = dataset_order[[1L]],
+    initial_dataset_mode = "automatic"
   )
   frozen_app_options <- utils::modifyList(
     default_app_options,
@@ -1380,13 +1423,18 @@ builder_freeze_plan <- function(
     keep.null = TRUE
   )
   frozen_app_options$enabled <- isTRUE(make_app)
+  frozen_app_options$initial_dataset_mode <- if (initial_dataset_supplied) {
+    "explicit"
+  } else {
+    "automatic"
+  }
   if (
     !builder_has_text(frozen_app_options$initial_dataset %||% "") ||
       !frozen_app_options$initial_dataset %in% dataset_order
   ) {
     return(builder_plan_error(
       "The generated-app initial dataset is not part of BuildPlan.",
-      "invalid_initial_dataset"
+      "invalid_app_options"
     ))
   }
   output_release <- list(
@@ -1416,9 +1464,9 @@ builder_freeze_plan <- function(
     backend_sidecars = backend_sidecars,
     analysis_dependency_graph = analysis_dependency_graph,
     viewer_page_expectations = viewer_page_expectations,
-    public_assets = public_assets,
+    viewer_bundle_assets = viewer_bundle_assets,
     private_assets = private_assets,
-    public_asset_claims = public_asset_claims,
+    viewer_bundle_asset_claims = viewer_bundle_asset_claims,
     private_asset_claims = private_asset_claims,
     acknowledgements = acknowledgements,
     app_options = frozen_app_options,

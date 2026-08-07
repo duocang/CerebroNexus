@@ -30,6 +30,7 @@ createShinyApp(
   spatial_images_offset_x = NULL,
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
+  initial_dataset = NULL,
   ...
 )
 }
@@ -88,6 +89,10 @@ directory is rejected before any files are written.}
 \item{crb_pick_smallest_file}{Forwarded to \code{Cerebro.options}.}
 
 \item{show_upload_ui}{Forwarded to \code{Cerebro.options}.}
+
+\item{initial_dataset}{Optional exact data set label to load initially. This
+does not change the order of \code{cerebro_data}. URL selection and a
+session's current selection take precedence.}
 
 \item{welcome_message}{Welcome message shown in the Load Data tab.}
 

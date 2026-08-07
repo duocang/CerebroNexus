@@ -1,0 +1,38 @@
+library(dplyr)
+library(DT)
+library(plotly)
+library(shiny)
+library(shinydashboard)
+library(shinyWidgets)
+
+cerebro_root <- "."
+
+if (file.exists("cerebro_config.rds")) {
+  Cerebro.options <<- readRDS("cerebro_config.rds")
+} else {
+  stop("cerebro_config.rds not found!")
+}
+
+if (!is.null(Cerebro.options$colors)) {
+  colors <- Cerebro.options$colors
+}
+
+bundle_run_options <- Cerebro.options$.bundle_run_options
+shiny_options <- bundle_run_options$shiny_app_options
+
+source(file.path(cerebro_root, "viewer/shiny_UI.R"))
+source(file.path(cerebro_root, "viewer/shiny_server.R"))
+
+shiny::shinyApp(
+  ui = ui,
+  server = server,
+  onStart = function() {
+    previous <- options(
+      shiny.maxRequestSize = bundle_run_options$max_request_size_bytes
+    )
+    shiny::onStop(function() {
+      options(previous)
+    })
+  },
+  options = shiny_options
+)
