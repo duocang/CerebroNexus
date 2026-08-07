@@ -283,6 +283,47 @@ builder_verify_crb <- function(path, item) {
         call. = FALSE
       )
     }
+    has_canonical_alignment <- any(
+      c("dx", "rotation", "image_opacity", "point_opacity") %in%
+        names(expected_image)
+    )
+    if (
+      has_canonical_alignment &&
+        !identical(
+          observed_image$histology_alignment,
+          builder_alignment_payload(expected_image)
+        )
+    ) {
+      stop(
+        "The staged CRB spatial alignment differs from BuildPlan: ",
+        section,
+        call. = FALSE
+      )
+    }
+  }
+  expected_trekker_alignment <- item$trekker_alignment %||% NULL
+  if (!is.null(expected_trekker_alignment)) {
+    observed_trekker <- .builder_build_field(object, "trekker")
+    if (
+      !is.list(observed_trekker) ||
+        !identical(
+          observed_trekker$histology_image,
+          expected_trekker_alignment$uri
+        ) ||
+        !identical(
+          observed_trekker$histology_image_bounds,
+          expected_trekker_alignment$bounds
+        ) ||
+        !identical(
+          observed_trekker$histology_alignment,
+          builder_alignment_payload(expected_trekker_alignment)
+        )
+    ) {
+      stop(
+        "The staged CRB Trekker alignment differs from BuildPlan.",
+        call. = FALSE
+      )
+    }
   }
   backend <- .builder_build_field(object, "expression_backend")
   backend_type <- if (is.null(backend)) "embedded" else backend$type
@@ -454,7 +495,28 @@ builder_verify_crb <- function(path, item) {
   } else {
     NULL
   }
-  result <- builder_attach_crb_extras(path, item$images %||% list(), trekker)
+  if (!is.null(trekker) && length(trekker)) {
+    trekker$builder_group <- item$default_group %||% NULL
+    trekker$builder_colors <- item$colors[[item$default_group]] %||% NULL
+    group <- item$default_group %||% NULL
+    barcodes <- as.character(trekker$barcodes %||% character())
+    if (
+      !is.null(group) &&
+        length(barcodes) &&
+        group %in% colnames(object@meta.data) &&
+        all(barcodes %in% rownames(object@meta.data))
+    ) {
+      trekker$builder_group_values <- as.character(
+        object@meta.data[barcodes, group, drop = TRUE]
+      )
+    }
+  }
+  result <- builder_attach_crb_extras(
+    path,
+    item$images %||% list(),
+    trekker,
+    item$trekker_alignment %||% NULL
+  )
   if (!is.null(result$error)) {
     stop(result$error, call. = FALSE)
   }

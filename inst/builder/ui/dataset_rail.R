@@ -154,6 +154,126 @@ builder_snapshot_release_transition <- function(
   )
 }
 
+builder_dataset_is_reviewed <- function(entry) {
+  revision <- as.integer(.builder_rail_or(entry$revision, 0L))
+  reviewed <- entry$reviewed_revision
+  is.numeric(reviewed) &&
+    length(reviewed) == 1L &&
+    !is.na(reviewed) &&
+    identical(as.integer(reviewed), revision)
+}
+
+builder_dataset_review_status <- function(entry, active = FALSE) {
+  dataset_state <- builder_dataset_state(entry)
+  if (!identical(dataset_state$readiness, "ready")) {
+    return(list(id = "needs-attention", label = "Needs attention"))
+  }
+  if (builder_dataset_is_reviewed(entry)) {
+    return(list(id = "reviewed", label = "Reviewed"))
+  }
+  if (isTRUE(active)) {
+    return(list(id = "reviewing", label = "Reviewing"))
+  }
+  list(id = "not-reviewed", label = "Not reviewed")
+}
+
+builder_review_progress <- function(entries) {
+  reviewed <- vapply(entries, builder_dataset_is_reviewed, logical(1))
+  list(
+    reviewed = sum(reviewed),
+    total = length(entries),
+    complete = all(reviewed)
+  )
+}
+
+builder_next_unreviewed <- function(entries, current_id = NULL) {
+  ids <- vapply(entries, `[[`, character(1), "id")
+  pending <- ids[!vapply(entries, builder_dataset_is_reviewed, logical(1))]
+  pending <- setdiff(pending, .builder_rail_or(current_id, character()))
+  if (length(pending)) pending[[1L]] else NULL
+}
+
+builder_dataset_context_ui <- function(state, current = state$current_dataset) {
+  ids <- vapply(state$datasets, `[[`, character(1), "id")
+  index <- match(current, ids)
+  if (is.na(index)) {
+    return(NULL)
+  }
+  entry <- state$datasets[[index]]
+  progress <- builder_review_progress(state$datasets)
+  multiple <- length(ids) > 1L
+  cells <- .builder_rail_or(entry$profile$n_cells, 0L)
+  genes <- .builder_rail_or(
+    entry$profile$n_genes,
+    .builder_rail_or(entry$profile$n_features, 0L)
+  )
+  shiny::div(
+    class = paste("dataset-context", if (multiple) "is-multiple" else ""),
+    tabindex = "-1",
+    shiny::div(
+      class = "dataset-context-copy",
+      if (multiple) {
+        shiny::span(
+          class = "dataset-context-position",
+          paste("Dataset", index, "of", length(ids))
+        )
+      },
+      shiny::h2(class = "dataset-context-title", entry$settings$name),
+      shiny::span(
+        class = "dataset-context-counts",
+        paste0(
+          format(cells, big.mark = ","),
+          " cells · ",
+          format(genes, big.mark = ","),
+          " genes"
+        )
+      )
+    ),
+    if (multiple) {
+      shiny::div(
+        class = "dataset-review-progress",
+        shiny::span(
+          paste(progress$reviewed, "of", progress$total, "datasets reviewed")
+        ),
+        shiny::div(
+          class = "dataset-review-progress-track",
+          role = "progressbar",
+          `aria-label` = "Datasets reviewed",
+          `aria-valuemin` = "0",
+          `aria-valuemax` = progress$total,
+          `aria-valuenow` = progress$reviewed,
+          shiny::span(
+            style = paste0(
+              "width:",
+              if (progress$total) {
+                100 * progress$reviewed / progress$total
+              } else {
+                0
+              },
+              "%"
+            )
+          )
+        )
+      )
+    },
+    if (multiple) {
+      shiny::div(
+        class = "dataset-context-navigation",
+        shiny::actionButton(
+          "review_previous_dataset",
+          "Previous",
+          disabled = if (index == 1L) "disabled" else NULL
+        ),
+        shiny::actionButton(
+          "review_next_dataset",
+          "Next",
+          disabled = if (index == length(ids)) "disabled" else NULL
+        )
+      )
+    }
+  )
+}
+
 builder_dataset_remove_requires_confirmation <- function(entry) {
   settings <- entry$settings
   spatial <- .builder_rail_or(entry$spatial_drafts, list())
@@ -428,6 +548,182 @@ builder_dataset_rail_server <- function(
   )
 }
 
+builder_pending_dataset_files_ui <- function(files) {
+  files <- Filter(function(file) isTRUE(file$visible %||% TRUE), files)
+  if (!length(files)) {
+    return(NULL)
+  }
+  shiny::div(
+    class = "builder-file-list rail-pending-files",
+    `aria-label` = "Files being added",
+    `aria-live` = "polite",
+    lapply(files, function(file) {
+      filename <- builder_safe_file_name(file$filename, "Dataset file")
+      detail <- paste(
+        builder_file_type_label(filename, file$type),
+        builder_file_human_size(file$size %||% NA_real_),
+        sep = " · "
+      )
+      shiny::div(
+        class = "builder-file-item rail-pending-file",
+        shiny::div(
+          class = "rail-pending-file-meta",
+          shiny::strong(filename),
+          shiny::span(class = "hint", detail)
+        ),
+        shiny::div(
+          class = "builder-action-row",
+          shiny::span(
+            class = "builder-status builder-status--reading",
+            "Reading…"
+          ),
+          shiny::tags$button(
+            type = "button",
+            class = "btn btn-remove-soft pending-upload-remove",
+            `data-upload-id` = file$id,
+            `aria-label` = paste("Cancel adding", filename),
+            "Remove"
+          )
+        )
+      )
+    })
+  )
+}
+
+builder_empty_workbench_ui <- function() {
+  shiny::tags$section(
+    class = "builder-stage builder-empty-state",
+    `aria-labelledby` = "builder-empty-title",
+    shiny::h2(id = "builder-empty-title", "Add a dataset to begin"),
+    shiny::p(
+      "Choose a local Seurat object or try one of the examples in the sidebar."
+    )
+  )
+}
+
+builder_loading_workbench_ui <- function(entry) {
+  stopifnot(inherits(entry, "builder_import_entry"))
+  failed <- identical(entry$load_state, "error")
+  shiny::tags$section(
+    class = paste(
+      "builder-stage builder-loading-stage",
+      if (failed) "is-error" else NULL
+    ),
+    `aria-live` = "polite",
+    `aria-atomic` = "true",
+    shiny::div(
+      class = "builder-loading-copy",
+      shiny::span(
+        class = "builder-loading-kicker",
+        if (failed) "Import stopped" else "Dataset import"
+      ),
+      shiny::h2(if (failed) "Could not load dataset" else "Loading dataset"),
+      shiny::p(class = "builder-loading-name", entry$label),
+      shiny::p(
+        class = "builder-loading-status",
+        if (failed) entry$error else entry$progress_label
+      )
+    ),
+    if (!failed) {
+      shiny::div(
+        class = "builder-loading-progress",
+        role = "progressbar",
+        `aria-label` = entry$progress_label,
+        `aria-valuetext` = entry$progress_label,
+        shiny::span()
+      )
+    },
+    shiny::div(
+      class = "builder-action-row builder-loading-actions",
+      if (failed) {
+        shiny::tags$button(
+          type = "button",
+          class = "btn builder-retry-import",
+          `data-import-id` = entry$id,
+          "Retry"
+        )
+      },
+      shiny::tags$button(
+        type = "button",
+        class = "btn btn-remove-soft builder-remove-import",
+        `data-import-id` = entry$id,
+        if (failed) "Remove dataset" else "Remove"
+      )
+    )
+  )
+}
+
+builder_import_rail_ui <- function(entries, current = NULL) {
+  if (!length(entries)) {
+    return(NULL)
+  }
+  shiny::div(
+    class = "builder-import-list",
+    `aria-label` = "Datasets being added",
+    lapply(entries, function(entry) {
+      stopifnot(inherits(entry, "builder_import_entry"))
+      active <- identical(entry$id, current)
+      failed <- identical(entry$load_state, "error")
+      detail <- Filter(
+        function(value) {
+          is.character(value) && length(value) == 1L && nzchar(value)
+        },
+        list(entry$filename, entry$file_type)
+      )
+      shiny::div(
+        class = paste(
+          "ds ds--import",
+          if (active) "is-active" else NULL,
+          if (failed) "is-error" else NULL
+        ),
+        `data-import-id` = entry$id,
+        shiny::tags$button(
+          type = "button",
+          class = "ds-pick builder-pick-import",
+          `data-import-id` = entry$id,
+          `aria-label` = paste("Open loading dataset", entry$label),
+          `aria-current` = if (active) "true" else NULL,
+          shiny::span(class = "ds-state-dot", `aria-hidden` = "true"),
+          shiny::span(
+            class = "ds-body",
+            shiny::span(class = "nm", entry$label),
+            if (length(detail)) {
+              shiny::span(
+                class = "meta",
+                paste(unlist(detail), collapse = " · ")
+              )
+            },
+            shiny::span(
+              class = paste(
+                "builder-import-status",
+                paste0("is-", entry$load_state)
+              ),
+              entry$progress_label
+            )
+          )
+        ),
+        shiny::div(
+          class = "ds-actions",
+          if (failed) {
+            shiny::tags$button(
+              type = "button",
+              class = "ds-move builder-retry-import",
+              `data-import-id` = entry$id,
+              "Retry"
+            )
+          },
+          shiny::tags$button(
+            type = "button",
+            class = "ds-del builder-remove-import",
+            `data-import-id` = entry$id,
+            "Remove"
+          )
+        )
+      )
+    })
+  )
+}
+
 builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
   ids <- .builder_store_assert(state)
   if (!length(ids)) {
@@ -440,13 +736,11 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
   shiny::tagList(
     lapply(seq_along(state$datasets), function(index) {
       entry <- state$datasets[[index]]
-      dataset_state <- builder_dataset_state(entry)
-      readiness <- .builder_rail_readiness(dataset_state)
       label <- .builder_rail_or(entry$settings$name, entry$id)
       cells <- .builder_rail_or(entry$profile$n_cells, 0L)
-      issue_count <- dataset_state$issue_count
       confirm <- builder_dataset_remove_requires_confirmation(entry)
       active <- identical(entry$id, current)
+      review_status <- builder_dataset_review_status(entry, active)
 
       shiny::div(
         class = paste(
@@ -465,10 +759,10 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
             class = "ds-body",
             shiny::span(class = "nm", label),
             shiny::span(
-              class = if (identical(dataset_state$readiness, "ready")) {
-                "meta"
-              } else {
+              class = if (identical(review_status$id, "needs-attention")) {
                 "meta bad"
+              } else {
+                "meta"
               },
               sprintf(
                 "%s cells \u00b7 %s",
@@ -476,13 +770,9 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
                 entry$format
               ),
               shiny::span(
-                class = "rail-readiness",
-                `data-readiness` = dataset_state$readiness,
-                paste(readiness$icon, readiness$label)
-              ),
-              shiny::span(
-                class = "rail-issues",
-                paste(issue_count, if (issue_count == 1L) "issue" else "issues")
+                class = paste("rail-review-status", review_status$id),
+                `data-review-status` = review_status$id,
+                review_status$label
               )
             )
           )

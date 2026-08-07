@@ -11,6 +11,195 @@
 ## Above this many cells the plot stops being informative and starts being slow.
 BUILDER_PREVIEW_MAX <- 12000L
 
+.builder_alignment_sample <- function(rows, max_cells) {
+  max_cells <- suppressWarnings(as.integer(max_cells %||% BUILDER_PREVIEW_MAX))
+  if (is.na(max_cells) || max_cells < 1L) {
+    max_cells <- BUILDER_PREVIEW_MAX
+  }
+  if (rows <= max_cells) {
+    return(seq_len(rows))
+  }
+  set.seed(42L)
+  sort(sample.int(rows, max_cells))
+}
+
+.builder_alignment_bounds <- function(frame) {
+  if (is.null(frame) || !nrow(frame)) {
+    return(NULL)
+  }
+  xr <- range(frame$x, finite = TRUE)
+  yr <- range(frame$y, finite = TRUE)
+  if (length(xr) != 2L || length(yr) != 2L || !all(is.finite(c(xr, yr)))) {
+    return(NULL)
+  }
+  list(xmin = xr[[1L]], xmax = xr[[2L]], ymin = yr[[1L]], ymax = yr[[2L]])
+}
+
+.builder_alignment_unavailable <- function(sections = list(), message) {
+  list(
+    available = FALSE,
+    message = message,
+    sections = sections,
+    section = NULL,
+    projection_name = NULL,
+    transcriptome = NULL,
+    spatial = NULL,
+    bounds = NULL,
+    capped = FALSE
+  )
+}
+
+#' A bounded pair of transcriptome and physical coordinates for alignment.
+#'
+#' Both frames are sampled with one shared index after joining by canonical
+#' cell barcode. That makes linked selection exact and prevents row-order drift.
+#' Full-data physical bounds are retained for deterministic image fitting.
+builder_alignment_preview_model <- function(
+  object,
+  default_projection = NULL,
+  group = NULL,
+  section_id = NULL,
+  max_cells = BUILDER_PREVIEW_MAX
+) {
+  sections <- builder_spatial_alignment_sections(object)
+  if (!length(sections)) {
+    return(.builder_alignment_unavailable(
+      sections,
+      "Spatial or Trekker coordinates are not available for this dataset."
+    ))
+  }
+  section_ids <- vapply(sections, `[[`, character(1), "id")
+  if (is.null(section_id) || !section_id %in% section_ids) {
+    section_id <- section_ids[[1L]]
+  }
+  section <- sections[[match(section_id, section_ids)]]
+
+  if (identical(section$kind, "trekker")) {
+    payload <- tryCatch(object@misc$trekker, error = function(error) NULL)
+    required <- c("barcodes", "x", "y", "ux", "uy")
+    lengths <- vapply(
+      required,
+      function(name) {
+        length(payload[[name]] %||% NULL)
+      },
+      integer(1)
+    )
+    valid <- is.list(payload) &&
+      length(unique(lengths)) == 1L &&
+      lengths[[1L]] > 0L &&
+      !anyNA(payload$barcodes) &&
+      all(nzchar(as.character(payload$barcodes))) &&
+      all(vapply(
+        c("x", "y", "ux", "uy"),
+        function(name) {
+          values <- payload[[name]]
+          is.numeric(values) &&
+            !is.object(values) &&
+            !anyNA(values) &&
+            all(is.finite(values))
+        },
+        logical(1)
+      ))
+    if (!valid) {
+      return(.builder_alignment_unavailable(
+        sections,
+        "Trekker does not contain a valid paired physical projection."
+      ))
+    }
+    groups <- as.character(payload$clusters %||% rep("cells", lengths[[1L]]))
+    if (length(groups) != lengths[[1L]]) {
+      groups <- rep("cells", lengths[[1L]])
+    }
+    groups[is.na(groups) | !nzchar(groups)] <- "N/A"
+    transcriptome_full <- data.frame(
+      cell_barcode = as.character(payload$barcodes),
+      x = as.numeric(payload$ux),
+      y = as.numeric(payload$uy),
+      group = groups,
+      stringsAsFactors = FALSE
+    )
+    spatial_full <- data.frame(
+      cell_barcode = as.character(payload$barcodes),
+      x = as.numeric(payload$x),
+      y = as.numeric(payload$y),
+      group = groups,
+      stringsAsFactors = FALSE
+    )
+    keep <- .builder_alignment_sample(nrow(spatial_full), max_cells)
+    return(list(
+      available = TRUE,
+      message = NULL,
+      sections = sections,
+      section = section,
+      projection_name = "Trekker UMAP",
+      transcriptome = transcriptome_full[keep, , drop = FALSE],
+      spatial = spatial_full[keep, , drop = FALSE],
+      bounds = .builder_alignment_bounds(spatial_full),
+      capped = nrow(spatial_full) > length(keep)
+    ))
+  }
+
+  reduction <- builder_alignment_projection(
+    tryCatch(names(object@reductions), error = function(error) character()),
+    default_projection
+  )
+  if (is.null(reduction)) {
+    return(.builder_alignment_unavailable(
+      sections,
+      "No UMAP, current projection, or PCA is available for transcriptome space."
+    ))
+  }
+  transcriptome_full <- builder_preview_frame(
+    object,
+    reduction,
+    group,
+    max_cells = .Machine$integer.max
+  )
+  physical <- tryCatch(
+    builder_spatial_contract(object, image = section$source_id)$coordinates,
+    error = function(error) NULL
+  )
+  if (is.null(transcriptome_full) || is.null(physical) || !nrow(physical)) {
+    return(.builder_alignment_unavailable(
+      sections,
+      "The selected section has no safe paired spatial coordinates."
+    ))
+  }
+  common <- intersect(
+    transcriptome_full$cell_barcode,
+    physical$cell_barcode
+  )
+  if (!length(common)) {
+    return(.builder_alignment_unavailable(
+      sections,
+      "The transcriptome and spatial views share no cell identities."
+    ))
+  }
+  transcriptome_full <- transcriptome_full[
+    match(common, transcriptome_full$cell_barcode),
+    c("cell_barcode", "x", "y", "group"),
+    drop = FALSE
+  ]
+  spatial_full <- physical[
+    match(common, physical$cell_barcode),
+    c("cell_barcode", "x", "y"),
+    drop = FALSE
+  ]
+  spatial_full$group <- transcriptome_full$group
+  keep <- .builder_alignment_sample(nrow(spatial_full), max_cells)
+  list(
+    available = TRUE,
+    message = NULL,
+    sections = sections,
+    section = section,
+    projection_name = reduction,
+    transcriptome = transcriptome_full[keep, , drop = FALSE],
+    spatial = spatial_full[keep, , drop = FALSE],
+    bounds = .builder_alignment_bounds(spatial_full),
+    capped = nrow(spatial_full) > length(keep)
+  )
+}
+
 #' The points to draw: three short columns, whatever the object's size.
 #'
 #' This runs in the worker process, so what crosses back to the page is a
@@ -281,6 +470,138 @@ builder_overlay_plot <- function(coords, uri = NULL, bounds = NULL) {
     plotly::config(displayModeBar = FALSE)
 }
 
+#' Draw either half of the linked alignment workbench.
+builder_alignment_plot <- function(
+  frame,
+  colors = NULL,
+  source = "alignment",
+  selected_cells = character(),
+  image_uri = NULL,
+  image_bounds = NULL,
+  image_opacity = 0.8,
+  point_opacity = 0.85,
+  point_size = 5
+) {
+  if (is.null(frame) || !nrow(frame)) {
+    return(NULL)
+  }
+  levels <- unique(as.character(frame$group))
+  fallback <- builder_level_colors(levels)
+  if (length(colors)) {
+    shared <- intersect(levels, names(colors))
+    fallback[shared] <- colors[shared]
+  }
+  selected <- frame$cell_barcode %in% as.character(selected_cells)
+  counts <- table(frame$group)
+  hover <- paste0(
+    frame$cell_barcode,
+    "<br>",
+    frame$group,
+    " · ",
+    unname(counts[frame$group]),
+    " cells"
+  )
+  plot <- plotly::plot_ly(
+    data = frame,
+    x = ~x,
+    y = ~y,
+    customdata = ~cell_barcode,
+    source = source,
+    type = "scattergl",
+    mode = "markers",
+    marker = list(
+      color = unname(fallback[frame$group]),
+      size = ifelse(selected, point_size + 3, point_size),
+      opacity = point_opacity,
+      line = list(
+        width = ifelse(selected, 2, 0),
+        color = ifelse(selected, "#20170f", "rgba(0,0,0,0)")
+      )
+    ),
+    text = hover,
+    hoverinfo = "text",
+    showlegend = FALSE
+  )
+  images <- list()
+  if (!is.null(image_uri) && .builder_alignment_valid_bounds(image_bounds)) {
+    images <- list(list(
+      source = image_uri,
+      xref = "x",
+      yref = "y",
+      x = image_bounds$xmin,
+      y = image_bounds$ymax,
+      sizex = image_bounds$xmax - image_bounds$xmin,
+      sizey = image_bounds$ymax - image_bounds$ymin,
+      sizing = "stretch",
+      opacity = image_opacity,
+      layer = "below"
+    ))
+  }
+  plot <- plotly::layout(
+    plot,
+    images = images,
+    dragmode = "select",
+    xaxis = list(title = "", zeroline = FALSE, showgrid = FALSE),
+    yaxis = list(
+      title = "",
+      zeroline = FALSE,
+      showgrid = FALSE,
+      scaleanchor = if (length(images)) "x" else NULL
+    ),
+    margin = list(l = 20, r = 10, t = 10, b = 20),
+    showlegend = FALSE,
+    paper_bgcolor = "rgba(0,0,0,0)",
+    plot_bgcolor = "#fbfaf8"
+  ) |>
+    plotly::event_register("plotly_click") |>
+    plotly::event_register("plotly_selected") |>
+    plotly::event_register("plotly_deselect") |>
+    plotly::config(
+      displaylogo = FALSE,
+      modeBarButtonsToRemove = c(
+        "zoom2d",
+        "pan2d",
+        "zoomIn2d",
+        "zoomOut2d",
+        "autoScale2d",
+        "toggleSpikelines",
+        "hoverClosestCartesian",
+        "hoverCompareCartesian"
+      )
+    )
+  plot
+}
+
+#' One bounded legend shared by both alignment plots.
+builder_alignment_legend_ui <- function(frame, colors = NULL) {
+  if (is.null(frame) || !nrow(frame)) {
+    return(NULL)
+  }
+  counts <- sort(table(as.character(frame$group)), decreasing = TRUE)
+  levels <- names(counts)
+  palette <- builder_level_colors(levels)
+  if (length(colors)) {
+    shared <- intersect(levels, names(colors))
+    palette[shared] <- colors[shared]
+  }
+  htmltools::tags$div(
+    class = "spatial-alignment-legend",
+    role = "list",
+    lapply(levels, function(level) {
+      htmltools::tags$span(
+        class = "spatial-alignment-legend-item",
+        role = "listitem",
+        htmltools::tags$i(
+          class = "spatial-alignment-legend-swatch",
+          style = paste0("background:", palette[[level]])
+        ),
+        htmltools::tags$span(level),
+        htmltools::tags$small(format(unname(counts[[level]]), big.mark = ","))
+      )
+    })
+  )
+}
+
 ## ---------------------------------------------------------------------------
 ## Palettes
 ## ---------------------------------------------------------------------------
@@ -358,6 +679,88 @@ builder_ramp <- function(base, n) {
   grDevices::colorRampPalette(base)(n)
 }
 
+builder_normalize_hex_color <- function(value) {
+  if (
+    !is.character(value) ||
+      length(value) != 1L ||
+      is.na(value) ||
+      !grepl("^#[0-9A-Fa-f]{6}$", value)
+  ) {
+    return(NULL)
+  }
+  toupper(value)
+}
+
+builder_group_level_label <- function(level) {
+  if (identical(as.character(level), "N/A")) "Missing" else as.character(level)
+}
+
+builder_settings_color_overrides <- function(settings) {
+  normalize_group <- function(values) {
+    if (!is.atomic(values) || is.null(names(values))) {
+      return(stats::setNames(character(), character()))
+    }
+    normalized <- lapply(as.character(values), builder_normalize_hex_color)
+    valid <- !vapply(normalized, is.null, logical(1)) & nzchar(names(values))
+    stats::setNames(
+      unlist(normalized[valid], use.names = FALSE),
+      names(values)[valid]
+    )
+  }
+  legacy <- settings$colors %||% list()
+  canonical <- settings$color_overrides %||% list()
+  groups <- unique(c(names(legacy), names(canonical)))
+  out <- list()
+  for (group in groups) {
+    source <- if (group %in% names(canonical)) {
+      canonical[[group]]
+    } else {
+      legacy[[group]]
+    }
+    normalized <- normalize_group(source)
+    if (length(normalized)) {
+      out[[group]] <- normalized
+    }
+  }
+  out
+}
+
+builder_update_color_override <- function(overrides, group, level, value) {
+  normalized <- builder_normalize_hex_color(value)
+  if (
+    is.null(normalized) ||
+      !is.character(group) ||
+      length(group) != 1L ||
+      is.na(group) ||
+      !nzchar(group) ||
+      !is.character(level) ||
+      length(level) != 1L ||
+      is.na(level) ||
+      !nzchar(level)
+  ) {
+    return(overrides %||% list())
+  }
+  next_overrides <- overrides %||% list()
+  group_overrides <- next_overrides[[group]] %||%
+    stats::setNames(character(), character())
+  group_overrides[[level]] <- normalized
+  next_overrides[[group]] <- group_overrides
+  next_overrides
+}
+
+builder_reset_color_overrides <- function(overrides, group) {
+  next_overrides <- overrides %||% list()
+  if (
+    is.character(group) &&
+      length(group) == 1L &&
+      !is.na(group) &&
+      nzchar(group)
+  ) {
+    next_overrides[[group]] <- NULL
+  }
+  next_overrides
+}
+
 #' A level -> hex vector for one grouping variable.
 #'
 #' `overrides` are the swatches the user has actually touched; everything else
@@ -373,7 +776,7 @@ builder_level_colors <- function(
   }
   pal <- Filter(function(p) identical(p$id, palette_id), builder_palettes())
   fn <- if (length(pal)) pal[[1]]$colors else builder_palettes()[[1]]$colors
-  out <- fn(length(levels))
+  out <- toupper(fn(length(levels)))
   names(out) <- levels
   ## The viewer forces N/A to grey; matching it keeps the preview honest.
   if ("N/A" %in% levels) {
@@ -382,7 +785,11 @@ builder_level_colors <- function(
   if (length(overrides)) {
     shared <- intersect(levels, names(overrides))
     if (length(shared)) {
-      out[shared] <- as.character(overrides[shared])
+      normalized <- lapply(overrides[shared], builder_normalize_hex_color)
+      valid <- !vapply(normalized, is.null, logical(1))
+      if (any(valid)) {
+        out[shared[valid]] <- unlist(normalized[valid], use.names = FALSE)
+      }
     }
   }
   out

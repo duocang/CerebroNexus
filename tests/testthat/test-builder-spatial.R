@@ -28,6 +28,338 @@ builder_spatial_test_source("spatial.R")
 builder_spatial_test_source("preview.R")
 builder_spatial_test_source("extras.R")
 
+test_that("alignment capability is limited to Spatial and Trekker datasets", {
+  skip_if_not_installed("SeuratObject")
+  spatial <- builder_content_spatial_example_object(c("section-a", "section-b"))
+  plain <- spatial
+  methods::slot(plain, "images", check = FALSE) <- list()
+  plain@misc$trekker <- NULL
+  trekker <- plain
+  trekker@misc$trekker <- .builder_content_spatial_demo_payload()
+
+  expect_length(builder_spatial_alignment_sections(plain), 0L)
+
+  spatial_sections <- builder_spatial_alignment_sections(spatial)
+  expect_identical(
+    vapply(spatial_sections, `[[`, character(1), "id"),
+    c("section-a", "section-b")
+  )
+  expect_true(all(vapply(
+    spatial_sections,
+    function(section) identical(section$kind, "spatial"),
+    logical(1)
+  )))
+
+  trekker_sections <- builder_spatial_alignment_sections(trekker)
+  expect_length(trekker_sections, 1L)
+  expect_identical(trekker_sections[[1L]]$id, "trekker")
+  expect_identical(trekker_sections[[1L]]$kind, "trekker")
+  expect_match(trekker_sections[[1L]]$unit, "physical", ignore.case = TRUE)
+})
+
+test_that("alignment projection prefers UMAP then the current default then PCA", {
+  expect_identical(
+    builder_alignment_projection(c("pca", "umap"), "pca"),
+    "umap"
+  )
+  expect_identical(
+    builder_alignment_projection(c("pca", "tsne"), "tsne"),
+    "tsne"
+  )
+  expect_identical(
+    builder_alignment_projection(c("pca", "tsne"), "missing"),
+    "pca"
+  )
+  expect_null(builder_alignment_projection("tsne", "missing"))
+})
+
+test_that("alignment Plotly events expose canonical selected cell ids", {
+  event <- data.frame(
+    customdata = c("cell-b", "cell-a", "cell-b", NA_character_, ""),
+    stringsAsFactors = FALSE
+  )
+
+  expect_identical(
+    builder_alignment_event_cells(event),
+    c("cell-b", "cell-a")
+  )
+  expect_identical(builder_alignment_event_cells(NULL), character())
+  expect_identical(
+    builder_alignment_event_cells(data.frame(x = 1)),
+    character()
+  )
+})
+
+test_that("alignment server subscribes through Plotly's registered event API", {
+  server <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "spatial_alignment_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(server, "plotly::event_data(", fixed = TRUE)
+  expect_match(server, "builder_alignment_event_cells", fixed = TRUE)
+  expect_match(server, "session$onFlushed(", fixed = TRUE)
+  expect_false(grepl(".clientValue-", server, fixed = TRUE))
+})
+
+test_that("alignment preview joins both spaces by cell identity", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object("section-a")
+  group <- colnames(object@meta.data)[[1L]]
+
+  model <- builder_alignment_preview_model(
+    object,
+    default_projection = "pca",
+    group = group,
+    section_id = "section-a",
+    max_cells = 12L
+  )
+
+  expect_true(model$available)
+  expect_identical(model$section$id, "section-a")
+  expect_lte(nrow(model$transcriptome), 12L)
+  expect_identical(
+    model$transcriptome$cell_barcode,
+    model$spatial$cell_barcode
+  )
+  expect_identical(model$transcriptome$group, model$spatial$group)
+  expect_named(model$bounds, c("xmin", "xmax", "ymin", "ymax"))
+  expect_true(all(is.finite(unlist(model$bounds))))
+})
+
+test_that("Trekker alignment preview uses its physical and transcriptome spaces", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object()
+  methods::slot(object, "images", check = FALSE) <- list()
+  payload <- .builder_content_spatial_demo_payload()
+  object@misc$trekker <- payload
+
+  model <- builder_alignment_preview_model(
+    object,
+    default_projection = "pca",
+    section_id = "trekker",
+    max_cells = 4L
+  )
+
+  expect_true(model$available)
+  expect_identical(model$projection_name, "Trekker UMAP")
+  expect_identical(model$section$kind, "trekker")
+  expect_identical(
+    model$transcriptome$cell_barcode,
+    model$spatial$cell_barcode
+  )
+  expect_lte(nrow(model$spatial), 4L)
+  expect_false(anyNA(model$spatial[, c("x", "y", "group")]))
+})
+
+test_that("alignment preview fails safely when no paired spaces exist", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object()
+  methods::slot(object, "images", check = FALSE) <- list()
+  object@misc$trekker <- NULL
+
+  model <- builder_alignment_preview_model(object, default_projection = "pca")
+  expect_false(model$available)
+  expect_match(model$message, "Spatial or Trekker", fixed = TRUE)
+})
+
+test_that("default image fit preserves aspect ratio inside physical bounds", {
+  fitted <- builder_alignment_fit_bounds(
+    list(xmin = 0, xmax = 100, ymin = 0, ymax = 100),
+    c(width = 200, height = 100)
+  )
+  expect_equal(fitted, list(xmin = 0, xmax = 100, ymin = 25, ymax = 75))
+  expect_equal(
+    (fitted$xmax - fitted$xmin) / (fitted$ymax - fitted$ymin),
+    2
+  )
+})
+
+test_that("canonical alignment transform is deterministic and complete", {
+  original <- list(xmin = 0, xmax = 100, ymin = 25, ymax = 75)
+  parameters <- list(
+    dx = 10,
+    dy = -5,
+    scale = 1.5,
+    rotation = 30,
+    flip_x = TRUE,
+    flip_y = FALSE,
+    image_opacity = 0.7,
+    point_opacity = 0.9,
+    point_size = 6
+  )
+  record <- builder_alignment_record(
+    source = list(name = "section-a.png", type = "image/png"),
+    source_uri = "data:image/png;base64,AAAA",
+    uri = "data:image/png;base64,BBBB",
+    base_bounds = original,
+    parameters = parameters,
+    saved = FALSE,
+    section = list(id = "section-a", kind = "spatial")
+  )
+
+  expect_named(
+    record,
+    c(
+      "source",
+      "source_uri",
+      "uri",
+      "base_bounds",
+      "bounds",
+      "dx",
+      "dy",
+      "scale",
+      "rotation",
+      "flip_x",
+      "flip_y",
+      "image_opacity",
+      "point_opacity",
+      "point_size",
+      "saved",
+      "section_id",
+      "section_kind"
+    ),
+    ignore.order = TRUE
+  )
+  expect_false(record$saved)
+  expect_equal(
+    record$bounds,
+    list(xmin = -15, xmax = 135, ymin = 7.5, ymax = 82.5)
+  )
+  expect_identical(
+    builder_alignment_transform_bounds(original, parameters),
+    record$bounds
+  )
+  expect_identical(
+    builder_alignment_transform_bounds(original, parameters),
+    builder_alignment_transform_bounds(original, parameters)
+  )
+})
+
+test_that("reset and apply-to-all preserve each section image identity", {
+  defaults <- builder_alignment_defaults()
+  first <- builder_alignment_record(
+    source = list(name = "first.png", type = "image/png"),
+    source_uri = "data:image/png;base64,FIRST",
+    uri = "data:image/png;base64,FIRST",
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    parameters = modifyList(
+      defaults,
+      list(
+        dx = 4,
+        rotation = 20,
+        flip_x = TRUE,
+        image_opacity = 0.4,
+        point_opacity = 0.5,
+        point_size = 7
+      )
+    ),
+    saved = TRUE,
+    section = list(id = "first", kind = "spatial")
+  )
+  second <- builder_alignment_record(
+    source = list(name = "second.png", type = "image/png"),
+    source_uri = "data:image/png;base64,SECOND",
+    uri = "data:image/png;base64,SECOND",
+    base_bounds = list(xmin = 100, xmax = 130, ymin = 50, ymax = 70),
+    parameters = defaults,
+    saved = TRUE,
+    section = list(id = "second", kind = "spatial")
+  )
+
+  copied <- builder_alignment_apply_transform_to_all(
+    list(first = first, second = second),
+    "first"
+  )
+  expect_identical(copied$second$source_uri, second$source_uri)
+  expect_identical(copied$second$source$name, "second.png")
+  expect_identical(copied$second$rotation, first$rotation)
+  expect_identical(copied$second$flip_x, first$flip_x)
+  expect_identical(copied$second$dx, first$dx)
+  expect_identical(copied$second$image_opacity, first$image_opacity)
+  expect_identical(copied$second$point_opacity, first$point_opacity)
+  expect_identical(copied$second$point_size, first$point_size)
+  expect_false(identical(copied$second$bounds, first$bounds))
+
+  reset <- builder_alignment_reset(first)
+  expect_identical(reset$source_uri, first$source_uri)
+  expect_identical(reset$base_bounds, first$base_bounds)
+  expect_identical(reset$dx, 0)
+  expect_identical(reset$rotation, 0)
+  expect_identical(reset$bounds, first$base_bounds)
+  expect_false(reset$saved)
+})
+
+test_that("legacy image records remain saved and gain canonical defaults", {
+  legacy <- list(
+    uri = "data:image/png;base64,AAAA",
+    bounds = list(xmin = 0, xmax = 4, ymin = 0, ymax = 3)
+  )
+  normalized <- builder_alignment_normalize(legacy, section_id = "fov")
+  expect_true(normalized$saved)
+  expect_identical(normalized$base_bounds, legacy$bounds)
+  expect_identical(normalized$section_id, "fov")
+  expect_identical(normalized$point_size, 5)
+})
+
+test_that("serialized alignment payload excludes editing bytes and local paths", {
+  record <- builder_alignment_record(
+    source = list(name = "tissue.png", type = "image/png"),
+    source_uri = "data:image/png;base64,SOURCE",
+    uri = "data:image/png;base64,DISPLAY",
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 5),
+    parameters = list(dx = 2, rotation = 15, point_size = 7),
+    saved = TRUE,
+    section = list(id = "fov", kind = "spatial")
+  )
+  record$datapath <- "/private/tmp/upload.png"
+  payload <- builder_alignment_payload(record)
+
+  expect_named(
+    payload,
+    c(
+      "source",
+      "dx",
+      "dy",
+      "scale",
+      "rotation",
+      "flip_x",
+      "flip_y",
+      "image_opacity",
+      "point_opacity",
+      "point_size"
+    )
+  )
+  expect_identical(payload$source, "tissue.png")
+  expect_false(any(grepl("/private/tmp", unlist(payload), fixed = TRUE)))
+  expect_false("source_uri" %in% names(payload))
+  expect_false("datapath" %in% names(payload))
+})
+
+test_that("Spatial and Trekker alignments are partitioned without collision", {
+  spatial <- list(
+    fov = list(
+      uri = "data:image/png;base64,SPATIAL",
+      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      saved = TRUE,
+      section_kind = "spatial"
+    ),
+    trekker = list(
+      uri = "data:image/png;base64,TREKKER",
+      bounds = list(xmin = 20, xmax = 30, ymin = 40, ymax = 50),
+      saved = TRUE,
+      section_kind = "trekker"
+    )
+  )
+  split <- builder_partition_alignments(spatial)
+  expect_identical(names(split$spatial), "fov")
+  expect_identical(split$trekker$uri, spatial$trekker$uri)
+  expect_false("trekker" %in% names(split$spatial))
+})
+
 test_that("real Seurat image coordinates normalize by barcode", {
   skip_if_not_installed("SeuratObject")
   object <- builder_content_spatial_example_object()
@@ -419,6 +751,20 @@ test_that("PNG and JPEG read while TIFF variants give conversion guidance", {
   }
 })
 
+test_that("image read failures never expose a server-side upload path", {
+  skip_if_not_installed("png")
+  path <- withr::local_tempfile(fileext = ".png")
+  writeBin(charToRaw("not a png"), path)
+
+  got <- builder_read_image(path, filename = "tissue.png")
+
+  expect_identical(
+    got$error,
+    "Could not read this image. Check that it is a valid PNG or JPEG file."
+  )
+  expect_false(grepl(path, got$error, fixed = TRUE))
+})
+
 test_that("encoding round-trips grayscale alpha through RGBA", {
   skip_if_not_installed("png")
   skip_if_not_installed("base64enc")
@@ -799,6 +1145,16 @@ test_that("alignment records propagate transformed extent facts", {
     ),
     collapse = "\n"
   )
+  alignment_server <- paste(
+    readLines(
+      builder_spatial_test_inst_path(
+        "builder",
+        "spatial_alignment_server.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
   session <- paste(
     readLines(
       builder_spatial_test_inst_path("builder", "session.R"),
@@ -806,10 +1162,10 @@ test_that("alignment records propagate transformed extent facts", {
     ),
     collapse = "\n"
   )
-  expect_match(app, "extent_width = a\\$enc\\$extent_width")
-  expect_match(app, "extent_height = a\\$enc\\$extent_height")
-  expect_match(app, "extent_width = a\\$extent_width")
-  expect_match(app, "extent_height = a\\$extent_height")
+  expect_match(alignment_server, '"extent_width"', fixed = TRUE)
+  expect_match(alignment_server, '"extent_height"', fixed = TRUE)
+  expect_match(alignment_server, "builder_alignment_record", fixed = TRUE)
+  expect_match(alignment_server, "builder_encode_image", fixed = TRUE)
   expect_match(app, "nxt\\$extent_width")
   expect_match(app, "nxt\\$extent_height")
   expect_match(session, "extent_width")
@@ -848,4 +1204,26 @@ test_that("one slide applied to every section keeps each section's own extent", 
     vapply(got, function(x) x$outside, integer(1)),
     c(A = 0L, B = 0L, C = 7L)
   )
+})
+
+test_that("Spatial Viewer seeds appearance from saved alignment", {
+  path <- builder_spatial_test_inst_path(
+    "viewer",
+    "spatial",
+    "UI_projection_additional_parameters.R"
+  )
+  ui <- paste(readLines(path, warn = FALSE), collapse = "\n")
+
+  expect_match(ui, "histology_alignment", fixed = TRUE)
+  expect_match(ui, "alignment_point_opacity", fixed = TRUE)
+  expect_match(ui, "alignment_image_opacity", fixed = TRUE)
+
+  main_path <- builder_spatial_test_inst_path(
+    "viewer",
+    "spatial",
+    "UI_projection_main_parameters.R"
+  )
+  main_ui <- paste(readLines(main_path, warn = FALSE), collapse = "\n")
+  expect_match(main_ui, "builder_alignment_background_default", fixed = TRUE)
+  expect_match(main_ui, "histology_alignment", fixed = TRUE)
 })

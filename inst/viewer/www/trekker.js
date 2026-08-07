@@ -17,13 +17,15 @@
 
   var D = null, N = 0;
   var view = "pair", src = "csv", mode = "celltype", gene = null, tool = "box";
-  var ps = 2.2, nr = 250, showEv = true, morphT = 0;
+  var ps = 2.2, pointOpacity = 0.85, nr = 250, showEv = true, morphT = 0;
   var sel = null, pick = null, hover = null;
   var confThresh = -1; // >=0 when the confidence dissolve filter is active
   var hidden = new Set();
   var gfCT = null, gfCL = null; // group filters: allowed cell types / clusters (null = all)
   var U_SP = null, U_UM = null;
   var P = null;
+  var tissueImage = null;
+  var dataGeneration = 0;
 
   var fmt = function (n) {
     return n == null || isNaN(n) ? "—" : Number(n).toLocaleString("en-US");
@@ -74,7 +76,7 @@
     var ox = (1 - dw * k) / 2, oy = (1 - dh * k) / 2;
     var nx = new Float32Array(N), ny = new Float32Array(N);
     for (i = 0; i < N; i++) { nx[i] = (xs[i] - x0) * k + ox; ny[i] = (ys[i] - y0) * k + oy; }
-    return { nx: nx, ny: ny };
+    return { nx: nx, ny: ny, x0: x0, y0: y0, k: k, ox: ox, oy: oy };
   }
   function rebuildSpatialUnit() { U_SP = unit(SRC[src].x, SRC[src].y); }
 
@@ -173,6 +175,14 @@
     var s = Array.prototype.slice.call(arr).sort(function (a, b) { return a - b; });
     confThresh = s[Math.floor(pct / 100 * (s.length - 1))];
   }
+  function cellTypeColor(value) {
+    return (D && D.builder_colors && D.builder_colors[value]) ||
+      CT_COL[value] || "#9a9aa0";
+  }
+  function clusterColor(value) {
+    return (D && D.builder_colors && D.builder_colors[String(value)]) ||
+      PAL[value % PAL.length];
+  }
   function baseColor(i) {
     if (isCont()) {
       var g = curField();
@@ -180,8 +190,10 @@
       var c = viridis(g.v[i] / 255);
       return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
     }
-    if (mode === "celltype") return CT_COL[CT[i]] || "#9a9aa0";
-    return PAL[D.clusters[i] % PAL.length];
+    if (mode === "celltype") {
+      return cellTypeColor(CT[i]);
+    }
+    return clusterColor(D.clusters[i]);
   }
   function visible(i) {
     // Group filters (always applied): the pickerInputs in the "Group filters"
@@ -209,9 +221,39 @@
     }
     renderLegend(); drawAll();
   }
+  function drawTissueImage(p) {
+    if (
+      !tissueImage || !tissueImage.complete || p.kind !== "sp" ||
+      view === "morph" || !D.histology_image_bounds
+    ) return;
+    var b = D.histology_image_bounds, u = U_SP;
+    var values = [b.xmin, b.xmax, b.ymin, b.ymax].map(Number);
+    if (!values.every(Number.isFinite) || values[1] <= values[0] || values[3] <= values[2]) return;
+    var pad = 14, S = Math.min(p.W, p.H) - 2 * pad;
+    var ox = (p.W - S) / 2, oy = (p.H - S) / 2;
+    var screen = function (x, y) {
+      var nx = (x - u.x0) * u.k + u.ox;
+      var ny = (y - u.y0) * u.k + u.oy;
+      return [(ox + nx * S) * p.k + p.tx, (oy + S - ny * S) * p.k + p.ty];
+    };
+    var topLeft = screen(values[0], values[3]);
+    var bottomRight = screen(values[1], values[2]);
+    var alignment = D.histology_alignment || {};
+    p.ctx.globalAlpha = Number.isFinite(+alignment.image_opacity)
+      ? Math.max(0, Math.min(1, +alignment.image_opacity)) : 0.75;
+    p.ctx.drawImage(
+      tissueImage,
+      topLeft[0],
+      topLeft[1],
+      bottomRight[0] - topLeft[0],
+      bottomRight[1] - topLeft[1]
+    );
+    p.ctx.globalAlpha = 1;
+  }
   function draw(p) {
     if (!p.sx || !p.W) return; // not projected yet (e.g. tab still hidden)
     var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
+    drawTissueImage(p);
     var order = null, j, i, pass;
     var cf = confThresh >= 0 ? cfVals() : null; // confidence dissolve filter
     if (isCont() && curField()) {
@@ -225,7 +267,7 @@
         if (!visible(i)) continue;
         var inSel = !sel || sel.has(i);
         if (pass === 0 ? inSel : !inSel) continue;
-        var a = sel ? (inSel ? 0.95 : 0.06) : 0.85;
+        var a = sel ? (inSel ? Math.max(pointOpacity, 0.9) : 0.06) : pointOpacity;
         if (cf && cf[i] < confThresh) a *= 0.05; // dissolve low-confidence nuclei
         c.globalAlpha = a;
         c.fillStyle = baseColor(i);
@@ -442,9 +484,9 @@
     var mx = rows.length ? rows[0][1] : 1;
     var bars = rows.length ? rows.map(function (e) {
       var k = e[0], v = e[1];
-      return "<div class=\"tk-bar\"><span class=\"tk-nm\" style=\"color:" + (CT_COL[k] || "#666") +
+      return "<div class=\"tk-bar\"><span class=\"tk-nm\" style=\"color:" + cellTypeColor(k) +
         "\">" + esc(k) + "</span><span class=\"tk-tr\"><span class=\"tk-fl\" style=\"width:" +
-        (v / mx * 100) + "%;background:" + (CT_COL[k] || "#999") + "\"></span></span>" +
+        (v / mx * 100) + "%;background:" + cellTypeColor(k) + "\"></span></span>" +
         "<span class=\"tk-ct\">" + v + "</span></div>";
     }).join("") : "<div class=\"tk-hint\">No other nuclei within this radius — increase the niche radius.</div>";
 
@@ -469,7 +511,7 @@
       : "";
     el.innerHTML = "<div class=\"tk-insp\"><div>" +
       "<h4 class=\"tk-sub-h\">Identity</h4>" +
-      "<dl class=\"tk-kv\"><dt>Cell type</dt><dd style=\"color:" + (CT_COL[CT[i]] || "#666") + "\">" + esc(CT[i]) + "</dd>" +
+      "<dl class=\"tk-kv\"><dt>Cell type</dt><dd style=\"color:" + cellTypeColor(CT[i]) + "\">" + esc(CT[i]) + "</dd>" +
       "<dt>Cluster</dt><dd>" + esc(D.clusters[i]) + "</dd>" +
       "<dt>x</dt><dd>" + D.x[i].toFixed(0) + " µm</dd>" +
       "<dt>y</dt><dd>" + D.y[i].toFixed(0) + " µm</dd>" +
@@ -497,9 +539,9 @@
       var mx = Math.max.apply(null, f.by_type.map(function (b) { return b.median; })) || 1;
       var rows = f.by_type.slice().sort(function (a, b) { return b.median - a.median; })
         .map(function (b) {
-          return "<div class=\"tk-bar\"><span class=\"tk-nm\" style=\"color:" + (CT_COL[b.type] || "#666") +
+          return "<div class=\"tk-bar\"><span class=\"tk-nm\" style=\"color:" + cellTypeColor(b.type) +
             "\">" + esc(b.type) + "</span><span class=\"tk-tr\"><span class=\"tk-fl\" style=\"width:" +
-            (b.median / mx * 100) + "%;background:" + (CT_COL[b.type] || "#999") + "\"></span></span>" +
+            (b.median / mx * 100) + "%;background:" + cellTypeColor(b.type) + "\"></span></span>" +
             "<span class=\"tk-ct\">" + b.median.toFixed(2) + "</span></div>";
         }).join("");
       html += "<div class=\"tk-sub-h\" style=\"margin-top:10px\">Median by cell type — who forms domains, who disperses</div>" +
@@ -540,7 +582,7 @@
     var cnt = {};
     (mode === "celltype" ? CT : D.clusters).forEach(function (k) { cnt[k] = (cnt[k] || 0) + 1; });
     keys.forEach(function (k) {
-      var col = mode === "celltype" ? (CT_COL[k] || "#999") : PAL[k % PAL.length];
+      var col = mode === "celltype" ? cellTypeColor(k) : clusterColor(k);
       var d = document.createElement("div");
       d.className = "tk-lg" + (hidden.has(k) ? " off" : "");
       d.innerHTML = "<span class=\"tk-dot\" style=\"background:" + col + "\"></span>" + esc(k) +
@@ -752,9 +794,35 @@
 
   /* ---- init on data arrival ---------------------------------------------- */
   function initFromData(data) {
+    var generation = ++dataGeneration;
     D = data;
     if (!D.genes) D.genes = {};
     N = D.x.length;
+    ps = 2.2;
+    var alignment = D.histology_alignment || {};
+    if (Number.isFinite(+alignment.point_size) && +alignment.point_size > 0) {
+      ps = +alignment.point_size;
+    }
+    if (Number.isFinite(+alignment.point_opacity)) {
+      pointOpacity = Math.max(0, Math.min(1, +alignment.point_opacity));
+    } else {
+      pointOpacity = 0.85;
+    }
+    tissueImage = null;
+    if (typeof D.histology_image === "string" && D.histology_image.indexOf("data:image/") === 0) {
+      var image = new Image();
+      image.onload = function () {
+        if (generation !== dataGeneration) return;
+        tissueImage = image;
+        drawAll();
+      };
+      image.onerror = function () {
+        if (generation !== dataGeneration) return;
+        tissueImage = null;
+        drawAll();
+      };
+      image.src = D.histology_image;
+    }
     rebuildSources();
     U_UM = unit(D.ux, D.uy);
     rebuildSpatialUnit();

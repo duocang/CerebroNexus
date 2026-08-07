@@ -296,21 +296,76 @@ test_that("Build actions rerender without rebuilding persistent output inputs", 
   )
 
   expect_match(actionbar, '"build_actions"', fixed = TRUE)
-  expect_match(actionbar, "display:inline-flex", fixed = TRUE)
   expect_false(grepl("protocol()", actionbar, fixed = TRUE))
   expect_false(grepl(
-    'actionButton(\n          "build"',
+    'textInput(\n          "out_dir"',
     actionbar,
     fixed = TRUE
   ))
-  expect_match(
-    actionbar,
-    "value = isTRUE(isolate(input$overwrite))",
-    fixed = TRUE
-  )
+  expect_false(grepl('"Replace existing outputs"', actionbar, fixed = TRUE))
+  expect_false(grepl("input$out_dir", actionbar, fixed = TRUE))
+  expect_false(grepl("input$overwrite", actionbar, fixed = TRUE))
   expect_match(actions, "protocol()", fixed = TRUE)
   expect_match(actions, '"build"', fixed = TRUE)
+  expect_match(actions, '"Choose a folder…"', fixed = TRUE)
+  expect_match(actions, '"Building…"', fixed = TRUE)
   expect_false(grepl('"cancel_build"', actions, fixed = TRUE))
+})
+
+test_that("native output directory selection normalizes selection and preserves cancellation", {
+  root <- withr::local_tempdir()
+  nested <- file.path(root, "nested", "..", "output")
+  dir.create(file.path(root, "nested"))
+  dir.create(file.path(root, "output"))
+
+  selected <- builder_choose_output_directory(.select = function() nested)
+  cancelled <- builder_choose_output_directory(.select = function() NULL)
+  failed <- builder_choose_output_directory(.select = function() {
+    stop("picker unavailable")
+  })
+
+  expect_identical(selected$status, "selected")
+  expect_identical(selected$path, normalizePath(file.path(root, "output")))
+  expect_identical(cancelled, list(status = "cancelled", path = NULL))
+  expect_identical(failed$status, "error")
+  expect_match(failed$error, "picker unavailable", fixed = TRUE)
+})
+
+test_that("Build flow confirms multiple datasets and handles real conflicts", {
+  app <- paste(builder_app_lines(), collapse = "\n")
+
+  expect_match(app, '"builder_build_dialog"', fixed = TRUE)
+  expect_match(app, '"Ready to build all datasets?"', fixed = TRUE)
+  expect_match(app, '"Files already exist"', fixed = TRUE)
+  expect_match(app, 'identical(action, "replace")', fixed = TRUE)
+  expect_match(app, 'identical(action, "choose_another")', fixed = TRUE)
+  expect_match(app, "builder_choose_output_directory()", fixed = TRUE)
+  expect_false(grepl("isolate(input$out_dir)", app, fixed = TRUE))
+  expect_false(grepl("isolate(input$overwrite)", app, fixed = TRUE))
+})
+
+test_that("Build flow requires current review revisions before final confirmation", {
+  app <- paste(builder_app_lines(), collapse = "\n")
+
+  expect_match(app, "reviewed_revision", fixed = TRUE)
+  expect_match(app, '"Some datasets have not been reviewed"', fixed = TRUE)
+  expect_match(app, '"Some datasets still need attention"', fixed = TRUE)
+  expect_match(app, 'identical(action, "review_now")', fixed = TRUE)
+  expect_match(app, 'identical(action, "fix_issues")', fixed = TRUE)
+  expect_match(app, 'input$review_current_dataset', fixed = TRUE)
+  expect_match(app, "next_unreviewed", fixed = TRUE)
+  expect_match(app, '"builder_focus_review"', fixed = TRUE)
+})
+
+test_that("group color changes use the existing settings revision path", {
+  app <- paste(builder_app_lines(), collapse = "\n")
+
+  expect_match(app, 'input[["core-group_color"]]', fixed = TRUE)
+  expect_match(app, "builder_update_color_override", fixed = TRUE)
+  expect_match(app, 'input[["core-reset_colors"]]', fixed = TRUE)
+  expect_match(app, "builder_reset_color_overrides", fixed = TRUE)
+  expect_match(app, "replace_entry(entry)", fixed = TRUE)
+  expect_false(grepl("umap_palette|pca_palette|tsne_palette", app))
 })
 
 test_that("the App describes object isolation accurately", {
@@ -589,7 +644,7 @@ test_that("session shutdown stops the worker before releasing snapshots", {
   shutdown <- builder_app_block(
     lines,
     "session$onSessionEnded(function() {",
-    "## -- file browser"
+    "## -- native file picker and examples"
   )
   stopped <- regexpr("builder_worker_stop", shutdown, fixed = TRUE)[1L]
   confirmed <- regexpr("isTRUE(stopped$stopped)", shutdown, fixed = TRUE)[1L]

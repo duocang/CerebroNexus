@@ -56,6 +56,47 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
     }
   }
 
+  ## Builder-authored alignment is persisted beside the embedded image. The
+  ## image transform itself is already baked into its URI and coordinate bounds;
+  ## only seed the appearance controls here, avoiding any double transform.
+  saved_alignment <- tryCatch(
+    getSpatialData(
+      input[["spatial_projection_to_display"]]
+    )$histology_alignment,
+    error = function(e) NULL
+  )
+  alignment_point_opacity <- 1
+  alignment_image_opacity <- 0.6
+  if (is.list(saved_alignment)) {
+    if (
+      is.numeric(saved_alignment$point_size) &&
+        length(saved_alignment$point_size) == 1L &&
+        is.finite(saved_alignment$point_size)
+    ) {
+      default_point_size <- saved_alignment$point_size
+    }
+    if (
+      is.numeric(saved_alignment$point_opacity) &&
+        length(saved_alignment$point_opacity) == 1L &&
+        is.finite(saved_alignment$point_opacity)
+    ) {
+      alignment_point_opacity <- max(
+        0,
+        min(1, saved_alignment$point_opacity)
+      )
+    }
+    if (
+      is.numeric(saved_alignment$image_opacity) &&
+        length(saved_alignment$image_opacity) == 1L &&
+        is.finite(saved_alignment$image_opacity)
+    ) {
+      alignment_image_opacity <- max(
+        0,
+        min(1, saved_alignment$image_opacity)
+      )
+    }
+  }
+
   ## Offset sliders move the background image in DATA units, so their range is
   ## sized to the current dataset's coordinate span (± the larger of x/y span).
   ## That keeps one range usable whether the coordinates run 0–5k (Xenium) or
@@ -142,7 +183,7 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
       step = preferences[["gene_expression_plot_point_opacity"]][["step"]],
       ## Spatial-specific default: fully opaque points (cells sit over a tissue
       ## image, where translucent points read as washed out).
-      value = 1
+      value = alignment_point_opacity
     ),
     sliderInput(
       "spatial_projection_percentage_cells_to_show",
@@ -182,7 +223,7 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
         label = "Image opacity",
         min = 0,
         max = 1,
-        value = 0.6,
+        value = alignment_image_opacity,
         step = 0.05
       ),
       ## Move: slider for coarse dragging + numeric box for exact keyboard entry

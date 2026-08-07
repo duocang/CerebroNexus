@@ -41,12 +41,35 @@ builder_session_start <- function(
 }
 
 #' Load one of the built-in examples, without a file.
-builder_session_example <- function(worker, id, example_id, request = NULL) {
+builder_session_example <- function(
+  worker,
+  id,
+  example_id,
+  request = NULL,
+  progress_path = NULL,
+  import_generation = 1L,
+  .importer = NULL
+) {
   rs <- .builder_session_process(worker)
   rs$call(
-    function(id, example_id, request) {
+    function(
+      id,
+      example_id,
+      request,
+      progress_path,
+      import_generation,
+      importer
+    ) {
+      progress <- .builder_import_progress_callback(
+        progress_path,
+        import_generation
+      )
       tryCatch(
         {
+          if (is.function(importer)) {
+            value <- importer(id, example_id, progress)
+            return(builder_worker_response(request, value))
+          }
           ex <- Filter(
             function(e) identical(e$id, example_id),
             builder_examples()
@@ -60,7 +83,8 @@ builder_session_example <- function(worker, id, example_id, request = NULL) {
           }
           value <- .builder_register_adapter(
             builder_example_adapter(example_id, made$object),
-            id
+            id,
+            progress = progress
           )
           builder_worker_response(request, value)
         },
@@ -69,22 +93,53 @@ builder_session_example <- function(worker, id, example_id, request = NULL) {
         }
       )
     },
-    args = list(id = id, example_id = example_id, request = request)
+    args = list(
+      id = id,
+      example_id = example_id,
+      request = request,
+      progress_path = progress_path,
+      import_generation = import_generation,
+      importer = .importer
+    )
   )
 }
 
 #' Ask the worker to load a file and describe it.
 #'
 #' The object stays there; what comes back is a profile of a few kilobytes.
-builder_session_load <- function(worker, id, path, request = NULL) {
+builder_session_load <- function(
+  worker,
+  id,
+  path,
+  request = NULL,
+  progress_path = NULL,
+  import_generation = 1L,
+  .importer = NULL
+) {
   rs <- .builder_session_process(worker)
   rs$call(
-    function(id, path, request) {
+    function(
+      id,
+      path,
+      request,
+      progress_path,
+      import_generation,
+      importer
+    ) {
+      progress <- .builder_import_progress_callback(
+        progress_path,
+        import_generation
+      )
       tryCatch(
         {
+          if (is.function(importer)) {
+            value <- importer(id, path, progress)
+            return(builder_worker_response(request, value))
+          }
           value <- .builder_register_adapter(
             builder_seurat_file_adapter(path),
-            id
+            id,
+            progress = progress
           )
           builder_worker_response(request, value)
         },
@@ -93,7 +148,14 @@ builder_session_load <- function(worker, id, path, request = NULL) {
         }
       )
     },
-    args = list(id = id, path = path, request = request)
+    args = list(
+      id = id,
+      path = path,
+      request = request,
+      progress_path = progress_path,
+      import_generation = import_generation,
+      importer = .importer
+    )
   )
 }
 
@@ -168,6 +230,59 @@ builder_session_coords <- function(worker, id, image = NULL, request = NULL) {
       )
     },
     args = list(id = id, image = image, request = request)
+  )
+}
+
+#' Paired transcriptome and physical coordinates for the alignment workbench.
+builder_session_spatial_preview <- function(
+  worker,
+  id,
+  default_projection = NULL,
+  group = NULL,
+  section_id = NULL,
+  max_cells = 4000L,
+  request = NULL
+) {
+  rs <- .builder_session_process(worker)
+  rs$call(
+    function(
+      id,
+      default_projection,
+      group,
+      section_id,
+      max_cells,
+      request
+    ) {
+      tryCatch(
+        {
+          object <- get(
+            id,
+            envir = get(".builder_objects", envir = globalenv())
+          )
+          builder_worker_response(
+            request,
+            builder_alignment_preview_model(
+              object,
+              default_projection = default_projection,
+              group = group,
+              section_id = section_id,
+              max_cells = max_cells
+            )
+          )
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
+        }
+      )
+    },
+    args = list(
+      id = id,
+      default_projection = default_projection,
+      group = group,
+      section_id = section_id,
+      max_cells = max_cells,
+      request = request
+    )
   )
 }
 

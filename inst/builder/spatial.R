@@ -84,6 +84,89 @@ builder_match_cells <- function(ids, expected, mode = c("exact", "subset")) {
   stop(message, call. = FALSE)
 }
 
+#' Sections that can participate in the Builder alignment workbench.
+#'
+#' Seurat image names remain the stable section identifiers used by the
+#' existing CRB spatial payload. Trekker has one physical coordinate space and
+#' therefore receives one explicit pseudo-section. This function only inspects
+#' lightweight object structure; it never reads an image or changes coordinates.
+builder_spatial_alignment_sections <- function(object) {
+  if (!isS4(object) || !methods::is(object, "Seurat")) {
+    return(list())
+  }
+  image_names <- tryCatch(
+    names(methods::slot(object, "images")),
+    error = function(error) character()
+  )
+  image_names <- image_names[!is.na(image_names) & nzchar(image_names)]
+  sections <- lapply(image_names, function(name) {
+    list(
+      id = name,
+      label = name,
+      kind = "spatial",
+      source_id = name,
+      unit = "Spatial coordinate units"
+    )
+  })
+
+  trekker <- tryCatch(object@misc$trekker, error = function(error) NULL)
+  has_trekker_coordinates <- is.list(trekker) &&
+    length(trekker$barcodes %||% character()) > 0L &&
+    length(trekker$x %||% numeric()) > 0L &&
+    length(trekker$y %||% numeric()) > 0L
+  if (has_trekker_coordinates) {
+    sections[[length(sections) + 1L]] <- list(
+      id = "trekker",
+      label = "Trekker physical space",
+      kind = "trekker",
+      source_id = "trekker",
+      unit = "Physical coordinate units"
+    )
+  }
+  sections
+}
+
+#' Pick the transcriptome projection shown beside physical space.
+#'
+#' UMAP is the most familiar view and wins whenever present. Otherwise the
+#' user's current projection is honoured, with PCA as the final honest fallback.
+builder_alignment_projection <- function(reductions, current = NULL) {
+  reductions <- as.character(reductions %||% character())
+  reductions <- reductions[!is.na(reductions) & nzchar(reductions)]
+  if (!length(reductions)) {
+    return(NULL)
+  }
+  find_named <- function(name) {
+    match <- which(tolower(reductions) == tolower(name))
+    if (length(match)) reductions[[match[[1L]]]] else NULL
+  }
+  umap <- find_named("umap")
+  if (!is.null(umap)) {
+    return(umap)
+  }
+  current <- as.character(current %||% character())
+  if (length(current) && !is.na(current[[1L]]) && nzchar(current[[1L]])) {
+    selected <- find_named(current[[1L]])
+    if (!is.null(selected)) {
+      return(selected)
+    }
+  }
+  find_named("pca")
+}
+
+#' Return stable cell identities from one Plotly selection event.
+#'
+#' Plotly returns `NULL` for deselection and a data-frame-like payload for
+#' click/box/lasso selection. Keeping the extraction pure makes both panes use
+#' the same barcode contract and lets deselection clear the linked highlight.
+builder_alignment_event_cells <- function(event) {
+  if (is.null(event) || !is.list(event) || is.null(event$customdata)) {
+    return(character())
+  }
+  ids <- unique(as.character(event$customdata))
+  ids[!is.na(ids) & nzchar(ids)]
+}
+
 .builder_spatial_assert_match <- function(match) {
   if (isTRUE(match$valid)) {
     return(invisible(match))

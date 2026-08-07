@@ -424,6 +424,80 @@ test_that("CRB read-back matches exact frozen artifact identity", {
   expect_error(builder_verify_crb(crb, item), "cell identity")
 })
 
+test_that("Spatial and Trekker alignments persist without upload paths", {
+  crb_path <- tempfile(fileext = ".crb")
+  on.exit(unlink(crb_path), add = TRUE)
+
+  crb <- new.env(parent = emptyenv())
+  crb$spatial <- list(`slice-a` = list(coordinates = data.frame(x = 1, y = 2)))
+  crb$trekker <- NULL
+  crb$availableSpatial <- function() names(crb$spatial)
+  crb$getSpatialData <- function(name) crb$spatial[[name]]
+  crb$addSpatialData <- function(name, value) {
+    crb$spatial[[name]] <- value
+    invisible(value)
+  }
+  crb$addTrekker <- function(value) {
+    crb$trekker <- value
+    invisible(value)
+  }
+  class(crb) <- c("Cerebro_v1.3", "R6")
+  saveRDS(crb, crb_path)
+
+  make_alignment <- function(section_id, section_kind) {
+    builder_alignment_record(
+      source = list(
+        name = "/private/tmp/shiny-upload/tissue.png",
+        type = "image/png"
+      ),
+      source_uri = "data:image/png;base64,AA==",
+      uri = "data:image/png;base64,BB==",
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
+      parameters = list(
+        dx = 2,
+        dy = -1,
+        scale = 1.25,
+        rotation = 90,
+        flip_x = TRUE,
+        flip_y = FALSE,
+        image_opacity = 0.7,
+        point_opacity = 0.8,
+        point_size = 3
+      ),
+      saved = TRUE,
+      section = list(id = section_id, kind = section_kind)
+    )
+  }
+  spatial_alignment <- make_alignment("slice-a", "spatial")
+  trekker_alignment <- make_alignment("trekker", "trekker")
+  trekker <- list(x = 1, y = 2, clusters = 0L)
+
+  result <- builder_attach_crb_extras(
+    crb_path,
+    images = list(`slice-a` = spatial_alignment),
+    trekker = trekker,
+    trekker_alignment = trekker_alignment
+  )
+
+  expect_null(result$error)
+  observed <- readRDS(crb_path)
+  expect_identical(
+    observed$spatial[["slice-a"]]$histology_alignment,
+    builder_alignment_payload(spatial_alignment)
+  )
+  expect_identical(
+    observed$trekker$histology_alignment,
+    builder_alignment_payload(trekker_alignment)
+  )
+  expect_identical(
+    observed$trekker$histology_image,
+    trekker_alignment$uri
+  )
+  serialized <- paste(capture.output(str(observed)), collapse = "\n")
+  expect_false(grepl("/private/tmp/shiny-upload", serialized, fixed = TRUE))
+  expect_false(grepl("source_uri", serialized, fixed = TRUE))
+})
+
 test_that("read-back verifies frozen H5 and BPCells sidecars", {
   skip_if_not_installed("HDF5Array")
   skip_if_not_installed("Matrix")

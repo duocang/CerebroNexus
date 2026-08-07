@@ -48,9 +48,22 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   preferences <- reactiveValues(
     overview_plot_point_size = list(
-      min = 1,
+      min = 0,
       max = 20,
       step = 1,
+      configured = if (
+        exists("Cerebro.options") &&
+          !is.null(Cerebro.options[["point_size"]]) &&
+          !is.null(Cerebro.options[["point_size"]][[
+            "overview_projection_point_size"
+          ]])
+      ) {
+        Cerebro.options[["point_size"]][[
+          "overview_projection_point_size"
+        ]]
+      } else {
+        NULL
+      },
       default = ifelse(
         exists('Cerebro.options') &&
           !is.null(Cerebro.options[['overview_default_point_size']]),
@@ -578,7 +591,6 @@ server <- function(input, output, session) {
               where = "afterEnd",
               ui = tags$li(
                 id = item_id,
-                class = "treeview",
                 menuItem(
                   tab_label,
                   tabName = tab_name,

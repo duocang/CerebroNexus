@@ -861,6 +861,7 @@ builder_worker_start <- function(
       function(dir, root, registry) {
         suppressMessages(library(CerebroNexus))
         source(file.path(dir, "io.R"))
+        source(file.path(dir, "loading.R"))
         source(file.path(
           dir,
           "..",

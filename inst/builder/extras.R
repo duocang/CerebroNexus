@@ -13,17 +13,39 @@
 ## Supplementary tables -> @misc$extra_material$tables
 ## ---------------------------------------------------------------------------
 
+builder_table_default_name <- function(filename) {
+  name <- tools::file_path_sans_ext(basename(as.character(filename %||% "")))
+  name <- trimws(name)
+  if (nzchar(name)) name else "Table"
+}
+
+builder_table_unique_name <- function(name, existing = character()) {
+  if (!name %in% existing) {
+    return(name)
+  }
+  suffix <- 2L
+  repeat {
+    candidate <- paste0(name, " ", suffix)
+    if (!candidate %in% existing) {
+      return(candidate)
+    }
+    suffix <- suffix + 1L
+  }
+}
+
 #' Read a delimited file into a data.frame for the Extra material page.
 #'
 #' @param path File to read.
 #' @param name What to call it in the interface.
+#' @param filename Original client filename, used to identify the format when
+#'   an uploaded temporary path has no extension.
 #'
 #' @return A list with `name` and `table`, or `error`.
-builder_read_table <- function(path, name = NULL) {
+builder_read_table <- function(path, name = NULL, filename = path) {
   if (!file.exists(path)) {
     return(list(error = "File not found."))
   }
-  ext <- tolower(tools::file_ext(path))
+  ext <- tolower(tools::file_ext(filename))
   sep <- switch(ext, csv = ",", tsv = "\t", txt = "\t", NULL)
   if (is.null(sep)) {
     return(list(
@@ -34,7 +56,7 @@ builder_read_table <- function(path, name = NULL) {
       )
     ))
   }
-  df <- try(
+  df <- suppressWarnings(try(
     utils::read.delim(
       path,
       sep = sep,
@@ -42,12 +64,12 @@ builder_read_table <- function(path, name = NULL) {
       check.names = FALSE
     ),
     silent = TRUE
-  )
+  ))
   if (inherits(df, "try-error")) {
     return(list(
       error = paste0(
-        "Could not read the table: ",
-        conditionMessage(attr(df, "condition"))
+        "Could not read this table. Check that it is a valid ",
+        "CSV, TSV or TXT file."
       )
     ))
   }
@@ -56,12 +78,53 @@ builder_read_table <- function(path, name = NULL) {
   }
   list(
     name = if (is.null(name) || !nzchar(name)) {
-      tools::file_path_sans_ext(basename(path))
+      builder_table_default_name(path)
     } else {
       name
     },
     table = df
   )
+}
+
+#' Safe client-side file metadata for compact Builder file lists.
+builder_safe_file_name <- function(name, fallback = "File") {
+  name <- as.character(name %||% character())
+  if (length(name) != 1L || is.na(name) || !nzchar(name)) {
+    return(fallback)
+  }
+  name <- basename(gsub("\\", "/", name, fixed = TRUE))
+  if (nzchar(name)) name else fallback
+}
+
+builder_file_type_label <- function(name, type = NULL) {
+  extension <- toupper(tools::file_ext(builder_safe_file_name(name, "")))
+  if (nzchar(extension)) {
+    return(extension)
+  }
+  type <- as.character(type %||% character())
+  if (length(type) == 1L && !is.na(type) && nzchar(type)) {
+    return(toupper(sub("^.*/", "", type)))
+  }
+  "FILE"
+}
+
+builder_file_human_size <- function(bytes) {
+  bytes <- suppressWarnings(as.numeric(bytes %||% 0))
+  if (length(bytes) != 1L || is.na(bytes) || !is.finite(bytes) || bytes < 0) {
+    return("Size unavailable")
+  }
+  units <- c("bytes", "KB", "MB", "GB", "TB")
+  unit <- 1L
+  while (bytes >= 1024 && unit < length(units)) {
+    bytes <- bytes / 1024
+    unit <- unit + 1L
+  }
+  value <- if (unit == 1L) {
+    round(bytes)
+  } else {
+    round(bytes, if (bytes < 10) 1L else 0L)
+  }
+  paste(format(value, trim = TRUE, scientific = FALSE), units[[unit]])
 }
 
 #' Put the collected tables on the object, where exportFromSeurat looks.
@@ -84,9 +147,307 @@ builder_attach_tables <- function(object, tables) {
 ## Histology background -> the spatial slot of the written .crb
 ## ---------------------------------------------------------------------------
 
+builder_alignment_defaults <- function() {
+  list(
+    dx = 0,
+    dy = 0,
+    scale = 1,
+    rotation = 0,
+    flip_x = FALSE,
+    flip_y = FALSE,
+    image_opacity = 0.8,
+    point_opacity = 0.85,
+    point_size = 5
+  )
+}
+
+.builder_alignment_valid_bounds <- function(bounds) {
+  is.list(bounds) &&
+    all(c("xmin", "xmax", "ymin", "ymax") %in% names(bounds)) &&
+    all(is.finite(as.numeric(unlist(bounds[c(
+      "xmin",
+      "xmax",
+      "ymin",
+      "ymax"
+    )])))) &&
+    bounds$xmax > bounds$xmin &&
+    bounds$ymax > bounds$ymin
+}
+
+#' Fit the original image into the full physical coordinate range.
+#'
+#' The image is centred and aspect-preserving. It is a stable starting point,
+#' not an edit to cell coordinates, and every later transform starts here.
+builder_alignment_fit_bounds <- function(bounds, image_dimensions) {
+  if (!.builder_alignment_valid_bounds(bounds)) {
+    stop("Alignment requires finite, non-empty physical bounds.", call. = FALSE)
+  }
+  image_dimensions <- as.numeric(image_dimensions)
+  if (
+    length(image_dimensions) != 2L ||
+      anyNA(image_dimensions) ||
+      !all(is.finite(image_dimensions)) ||
+      any(image_dimensions <= 0)
+  ) {
+    stop("Alignment requires positive image dimensions.", call. = FALSE)
+  }
+  image_ratio <- image_dimensions[[1L]] / image_dimensions[[2L]]
+  available_width <- bounds$xmax - bounds$xmin
+  available_height <- bounds$ymax - bounds$ymin
+  available_ratio <- available_width / available_height
+  if (image_ratio >= available_ratio) {
+    width <- available_width
+    height <- width / image_ratio
+  } else {
+    height <- available_height
+    width <- height * image_ratio
+  }
+  centre_x <- (bounds$xmin + bounds$xmax) / 2
+  centre_y <- (bounds$ymin + bounds$ymax) / 2
+  list(
+    xmin = centre_x - width / 2,
+    xmax = centre_x + width / 2,
+    ymin = centre_y - height / 2,
+    ymax = centre_y + height / 2
+  )
+}
+
+.builder_alignment_parameters <- function(parameters = list()) {
+  supplied <- parameters %||% list()
+  parameters <- builder_alignment_defaults()
+  shared <- intersect(names(parameters), names(supplied))
+  parameters[shared] <- supplied[shared]
+  numeric_fields <- c(
+    "dx",
+    "dy",
+    "scale",
+    "rotation",
+    "image_opacity",
+    "point_opacity",
+    "point_size"
+  )
+  for (name in numeric_fields) {
+    value <- suppressWarnings(as.numeric(parameters[[name]]))
+    if (length(value) != 1L || is.na(value) || !is.finite(value)) {
+      stop("Alignment parameters must be finite.", call. = FALSE)
+    }
+    parameters[[name]] <- value
+  }
+  if (
+    parameters$scale <= 0 ||
+      parameters$point_size <= 0 ||
+      parameters$image_opacity < 0 ||
+      parameters$image_opacity > 1 ||
+      parameters$point_opacity < 0 ||
+      parameters$point_opacity > 1
+  ) {
+    stop(
+      "Alignment scale, opacity, or point size is outside its range.",
+      call. = FALSE
+    )
+  }
+  parameters$flip_x <- isTRUE(parameters$flip_x)
+  parameters$flip_y <- isTRUE(parameters$flip_y)
+  parameters
+}
+
+#' Apply translation and scale to the immutable default-fit bounds.
+builder_alignment_transform_bounds <- function(
+  base_bounds,
+  parameters = list()
+) {
+  if (!.builder_alignment_valid_bounds(base_bounds)) {
+    stop("Alignment base bounds are invalid.", call. = FALSE)
+  }
+  parameters <- .builder_alignment_parameters(parameters)
+  builder_adjust_bounds(
+    base_bounds,
+    dx = parameters$dx,
+    dy = parameters$dy,
+    scale = parameters$scale
+  )
+}
+
+#' Create the canonical per-section alignment record.
+builder_alignment_record <- function(
+  source,
+  source_uri,
+  uri,
+  base_bounds,
+  parameters = list(),
+  saved = FALSE,
+  section = list()
+) {
+  parameters <- .builder_alignment_parameters(parameters)
+  c(
+    list(
+      source = source,
+      source_uri = source_uri,
+      uri = uri,
+      base_bounds = base_bounds,
+      bounds = builder_alignment_transform_bounds(base_bounds, parameters)
+    ),
+    parameters,
+    list(
+      saved = isTRUE(saved),
+      section_id = as.character(section$id %||% "")[[1L]],
+      section_kind = as.character(section$kind %||% "spatial")[[1L]]
+    )
+  )
+}
+
+#' Upgrade an older URI/bounds record without invalidating existing projects.
+builder_alignment_normalize <- function(
+  record,
+  section_id = NULL,
+  section_kind = NULL
+) {
+  if (!is.list(record) || is.null(record$uri) || is.null(record$bounds)) {
+    return(NULL)
+  }
+  parameters <- .builder_alignment_parameters(record)
+  base_bounds <- record$base_bounds %||% record$bounds
+  normalized <- builder_alignment_record(
+    source = record$source %||%
+      list(name = "Embedded tissue image", type = "image/png"),
+    source_uri = record$source_uri %||% record$uri,
+    uri = record$uri,
+    base_bounds = base_bounds,
+    parameters = parameters,
+    saved = if (is.null(record$saved)) TRUE else isTRUE(record$saved),
+    section = list(
+      id = section_id %||% record$section_id %||% "",
+      kind = section_kind %||% record$section_kind %||% "spatial"
+    )
+  )
+  carried <- setdiff(names(record), names(normalized))
+  normalized[carried] <- record[carried]
+  normalized
+}
+
+#' Reset one section to its deterministic default fit and appearance.
+builder_alignment_reset <- function(record) {
+  normalized <- builder_alignment_normalize(record)
+  if (is.null(normalized)) {
+    return(NULL)
+  }
+  reset <- builder_alignment_record(
+    source = normalized$source,
+    source_uri = normalized$source_uri,
+    uri = normalized$source_uri,
+    base_bounds = normalized$base_bounds,
+    parameters = builder_alignment_defaults(),
+    saved = FALSE,
+    section = list(
+      id = normalized$section_id,
+      kind = normalized$section_kind
+    )
+  )
+  carried <- intersect(
+    c(
+      "bytes",
+      "width",
+      "height",
+      "source_width",
+      "source_height",
+      "extent_width",
+      "extent_height",
+      "display_width",
+      "display_height",
+      "outside",
+      "total"
+    ),
+    names(normalized)
+  )
+  reset[carried] <- normalized[carried]
+  reset
+}
+
+#' Copy only transform parameters to sections that already own an image.
+builder_alignment_apply_transform_to_all <- function(images, source_section) {
+  if (!is.list(images) || !source_section %in% names(images)) {
+    return(images)
+  }
+  source <- builder_alignment_normalize(
+    images[[source_section]],
+    source_section
+  )
+  if (is.null(source)) {
+    return(images)
+  }
+  fields <- c(
+    "dx",
+    "dy",
+    "scale",
+    "rotation",
+    "flip_x",
+    "flip_y",
+    "image_opacity",
+    "point_opacity",
+    "point_size"
+  )
+  for (name in setdiff(names(images), source_section)) {
+    target <- builder_alignment_normalize(images[[name]], name)
+    if (is.null(target)) {
+      next
+    }
+    for (field in fields) {
+      target[[field]] <- source[[field]]
+    }
+    target$bounds <- builder_alignment_transform_bounds(
+      target$base_bounds,
+      target
+    )
+    target$saved <- FALSE
+    images[[name]] <- target
+  }
+  images[[source_section]] <- source
+  images
+}
+
+#' The small alignment contract written to a generated Viewer payload.
+builder_alignment_payload <- function(record) {
+  normalized <- builder_alignment_normalize(record)
+  if (is.null(normalized)) {
+    return(NULL)
+  }
+  list(
+    source = basename(as.character(normalized$source$name %||% "Tissue image")),
+    dx = normalized$dx,
+    dy = normalized$dy,
+    scale = normalized$scale,
+    rotation = normalized$rotation,
+    flip_x = normalized$flip_x,
+    flip_y = normalized$flip_y,
+    image_opacity = normalized$image_opacity,
+    point_opacity = normalized$point_opacity,
+    point_size = normalized$point_size
+  )
+}
+
+#' Keep Trekker's physical image out of Seurat spatial section matching.
+builder_partition_alignments <- function(images) {
+  spatial <- list()
+  trekker <- NULL
+  for (name in names(images %||% list())) {
+    record <- builder_alignment_normalize(images[[name]], section_id = name)
+    if (is.null(record)) {
+      next
+    }
+    if (
+      identical(record$section_kind, "trekker") || identical(name, "trekker")
+    ) {
+      trekker <- record
+    } else {
+      spatial[[name]] <- record
+    }
+  }
+  list(spatial = spatial, trekker = trekker)
+}
+
 #' Read an image file into an array png::writePNG can write back out.
-builder_read_image <- function(path) {
-  ext <- tolower(tools::file_ext(path))
+builder_read_image <- function(path, filename = path) {
+  ext <- tolower(tools::file_ext(filename))
   if (ext %in% c("png")) {
     if (!requireNamespace("png", quietly = TRUE)) {
       return(list(error = "Reading PNG images requires the png package."))
@@ -121,12 +482,45 @@ builder_read_image <- function(path) {
   if (inherits(arr, "try-error")) {
     return(list(
       error = paste0(
-        "Could not read the image: ",
-        conditionMessage(attr(arr, "condition"))
+        "Could not read this image. Check that it is a valid ",
+        "PNG or JPEG file."
       )
     ))
   }
   list(array = arr, width = dim(arr)[2], height = dim(arr)[1])
+}
+
+#' Decode the bounded PNG data URI retained in Builder state.
+builder_read_image_uri <- function(uri) {
+  prefix <- "data:image/png;base64,"
+  if (
+    !is.character(uri) ||
+      length(uri) != 1L ||
+      is.na(uri) ||
+      !startsWith(uri, prefix)
+  ) {
+    return(list(
+      error = "The saved tissue image is not a supported PNG payload."
+    ))
+  }
+  if (
+    !requireNamespace("base64enc", quietly = TRUE) ||
+      !requireNamespace("png", quietly = TRUE)
+  ) {
+    return(list(error = "Reopening tissue images requires png and base64enc."))
+  }
+  decoded <- try(
+    base64enc::base64decode(substring(uri, nchar(prefix) + 1L)),
+    silent = TRUE
+  )
+  if (inherits(decoded, "try-error")) {
+    return(list(error = "The saved tissue image could not be decoded."))
+  }
+  image <- try(png::readPNG(decoded), silent = TRUE)
+  if (inherits(image, "try-error")) {
+    return(list(error = "The saved tissue image could not be reopened."))
+  }
+  list(array = image, width = dim(image)[2L], height = dim(image)[1L])
 }
 
 .builder_rotation_quarter_turn <- function(degrees) {
@@ -522,6 +916,7 @@ builder_attach_histology <- function(crb_path, images) {
     sd <- crb$getSpatialData(nm)
     sd$histology_image <- images[[nm]]$uri
     sd$histology_image_bounds <- images[[nm]]$bounds
+    sd$histology_alignment <- builder_alignment_payload(images[[nm]])
     crb$addSpatialData(nm, sd)
   }
   saveRDS(crb, crb_path, compress = "xz")
@@ -538,7 +933,8 @@ builder_attach_histology <- function(crb_path, images) {
 builder_attach_crb_extras <- function(
   crb_path,
   images = list(),
-  trekker = NULL
+  trekker = NULL,
+  trekker_alignment = NULL
 ) {
   if (!length(images) && (is.null(trekker) || !length(trekker))) {
     return(list(applied = character(), trekker = FALSE))
@@ -568,12 +964,23 @@ builder_attach_crb_extras <- function(
       spatial <- crb$getSpatialData(name)
       spatial$histology_image <- images[[name]]$uri
       spatial$histology_image_bounds <- images[[name]]$bounds
+      spatial$histology_alignment <- builder_alignment_payload(images[[name]])
       crb$addSpatialData(name, spatial)
     }
   }
 
   trekker_applied <- FALSE
   if (!is.null(trekker) && length(trekker)) {
+    alignment <- builder_alignment_normalize(
+      trekker_alignment,
+      section_id = "trekker",
+      section_kind = "trekker"
+    )
+    if (!is.null(alignment)) {
+      trekker$histology_image <- alignment$uri
+      trekker$histology_image_bounds <- alignment$bounds
+      trekker$histology_alignment <- builder_alignment_payload(alignment)
+    }
     added <- try(crb$addTrekker(trekker), silent = TRUE)
     if (inherits(added, "try-error")) {
       return(list(

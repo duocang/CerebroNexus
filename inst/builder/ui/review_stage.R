@@ -90,7 +90,7 @@ builder_review_controls_ui <- function(id, options) {
   stopifnot(inherits(options, "builder_review_options"))
   ns <- NS(id)
   tags$details(
-    class = "review-app-options",
+    class = "review-app-options builder-card builder-section",
     tags$summary("App options"),
     textInput(
       ns("welcome_message"),
@@ -109,25 +109,6 @@ builder_review_controls_ui <- function(id, options) {
       "Variable to compare",
       options$variable_to_compare
     ),
-    textInput(ns("host"), "Host", options$host),
-    numericInput(ns("port"), "Port", options$port, min = 1, max = 65535),
-    numericInput(
-      ns("max_request_size"),
-      "Request size (MB)",
-      options$max_request_size,
-      min = 1
-    ),
-    selectInput(
-      ns("display_mode"),
-      "Display mode",
-      choices = c("auto", "normal", "showcase"),
-      selected = options$display_mode
-    ),
-    checkboxInput(
-      ns("launch_browser"),
-      "Launch browser",
-      options$launch_browser
-    ),
     checkboxInput(ns("show_upload_ui"), "Allow uploads", options$show_upload_ui)
   )
 }
@@ -140,6 +121,47 @@ builder_review_can_build <- function(plan) {
     (!length(plan$existing_targets) || isTRUE(plan$overwrite))
 }
 
+builder_review_human_size <- function(bytes) {
+  builder_file_human_size(bytes)
+}
+
+builder_review_existing_files <- function(policy, overwrite = FALSE) {
+  policy <- as.character(policy %||% "")
+  switch(
+    policy,
+    preserve_existing = "Keep existing files",
+    overwrite = "Replace existing files",
+    error_if_exists = "Stop if files already exist",
+    if (isTRUE(overwrite)) "Replace existing files" else "Keep existing files"
+  )
+}
+
+builder_review_page_labels <- function(items, plan_contract = list()) {
+  catalog <- builder_viewer_page_catalog()
+  visible_ids <- unique(unlist(
+    lapply(items, function(item) {
+      item$viewer_page_expectations$visible_conditional %||% character()
+    }),
+    use.names = FALSE
+  ))
+  if (!length(visible_ids)) {
+    visible_ids <- unique(unlist(
+      lapply(plan_contract, function(contract) {
+        contract$visible_conditional %||% character()
+      }),
+      use.names = FALSE
+    ))
+  }
+  labels <- c(
+    catalog$always$label,
+    catalog$conditional$label[match(
+      intersect(catalog$conditional$id, visible_ids),
+      catalog$conditional$id
+    )]
+  )
+  unique(labels[!is.na(labels) & nzchar(labels)])
+}
+
 builder_review_model <- function(plan, verification = NULL) {
   if (
     !inherits(plan, "builder_build_plan") ||
@@ -148,85 +170,197 @@ builder_review_model <- function(plan, verification = NULL) {
   ) {
     stop("Review requires a ready frozen BuildPlan.", call. = FALSE)
   }
-  items <- plan$items
-  release_targets <- plan$output_release$targets %||%
-    plan$targets %||%
-    character()
+  items <- plan$items %||% list()
   app_options <- plan$app_options %||% list(enabled = FALSE)
-  review_dataset <- function(item) {
-    fields <- c(
-      "id",
-      "name",
-      "filename",
-      "organism",
-      "assay",
-      "layer",
-      "groups",
-      "included_groups",
-      "reductions",
-      "included_projections",
-      "analyses",
-      "analysis_dependency_graph",
-      "artifact_identity",
-      "cell_count",
-      "gene_count",
-      "histology_coverage",
-      "estimated_runtime",
-      "estimated_disk_bytes",
-      "colors",
-      "nUMI",
-      "nGene",
-      "default_group",
-      "default_projection",
-      "metadata_policy",
-      "nomenclature",
-      "expression_backend",
-      "sidecars",
-      "readiness",
-      "manifest",
-      "viewer_page_expectations",
-      "acknowledgements",
-      "viewer_bundle_assets",
-      "private_assets",
-      "recommendations"
-    )
-    dataset <- item[intersect(fields, names(item))]
-    if (length(item$tables)) {
-      dataset$table_members <- names(item$tables) %||% character()
-    }
-    if (length(item$images)) {
-      dataset$image_sections <- names(item$images) %||% character()
-    }
-    dataset
-  }
-  verified_pages <- lapply(
-    verification$verifications %||% list(),
-    function(item) {
-      item$page_contract %||% list()
-    }
+  names_by_id <- stats::setNames(
+    vapply(items, function(item) item$name %||% "Dataset", character(1)),
+    vapply(items, function(item) item$id %||% "", character(1))
   )
-  model <- list(
-    revision = plan$revision,
-    artifact_mode = if (isTRUE(plan$make_app)) {
-      "crbs_and_private_app"
+  order_ids <- plan$dataset_order %||% names(names_by_id)
+  ordered_names <- unname(names_by_id[order_ids])
+  ordered_names <- ordered_names[!is.na(ordered_names)]
+  initial_id <- app_options$initial_dataset %||% ""
+  initial_name <- if (
+    nzchar(initial_id) && initial_id %in% names(names_by_id)
+  ) {
+    names_by_id[[initial_id]]
+  } else if (length(ordered_names)) {
+    ordered_names[[1L]]
+  } else {
+    "Not selected"
+  }
+  review_dataset <- function(item) {
+    group_values <- item$included_groups %||% item$groups %||% character()
+    group_levels <- item$artifact_identity$group_levels %||% list()
+    default_group <- item$default_group %||% ""
+    selected_group_levels <- if (
+      is.list(group_levels) &&
+        nzchar(default_group) &&
+        default_group %in% names(group_levels)
+    ) {
+      group_levels[[default_group]] %||% character()
     } else {
-      "crbs_only"
+      character()
+    }
+    group_colors <- item$colors[[default_group]] %||% character()
+    color_preview_limit <- 5L
+    color_preview <- head(unname(group_colors), color_preview_limit)
+    color_custom_count <- as.integer(item$color_custom_count %||% 0L)
+    projection_values <- item$included_projections %||%
+      item$reductions %||%
+      character()
+    list(
+      name = item$name %||% "Dataset",
+      cells = as.integer(item$cell_count %||% 0L),
+      genes = as.integer(item$gene_count %||% 0L),
+      group_count = as.integer(
+        if (length(selected_group_levels)) {
+          length(selected_group_levels)
+        } else {
+          length(group_values)
+        }
+      ),
+      projection_count = as.integer(length(projection_values)),
+      default_group = item$default_group %||% "Not selected",
+      group_colors = list(
+        group = default_group,
+        count = as.integer(length(group_colors)),
+        custom_count = color_custom_count,
+        preview = color_preview,
+        remaining = as.integer(max(
+          0L,
+          length(group_colors) - color_preview_limit
+        ))
+      ),
+      default_projection = if (
+        builder_stage_has_text(item$default_projection %||% "")
+      ) {
+        toupper(item$default_projection)
+      } else {
+        "Not selected"
+      },
+      organism = switch(
+        item$organism %||% "",
+        hg = "Human",
+        mm = "Mouse",
+        item$organism %||% "Not specified"
+      ),
+      expression_storage = switch(
+        item$expression_backend %||% "embedded",
+        embedded = "Embedded",
+        h5 = "HDF5",
+        bpcells = "BPCells",
+        item$expression_backend %||% "Embedded"
+      ),
+      spatial_alignment = item$spatial_alignment %||% NULL,
+      output_file = basename(item$filename %||% "dataset.crb")
+    )
+  }
+  runtime_values <- tolower(as.character(c(
+    plan$output_release$estimated_runtime %||% character(),
+    unlist(
+      lapply(items, function(item) {
+        item$estimated_runtime %||% character()
+      }),
+      use.names = FALSE
+    )
+  )))
+  runtime <- if (any(grepl("network", runtime_values, fixed = TRUE))) {
+    "Depends on network response"
+  } else if (any(grepl("minute", runtime_values, fixed = TRUE))) {
+    "A few minutes"
+  } else {
+    "Less than a minute"
+  }
+  warning_values <- plan$required_settings %||%
+    plan$user_warnings %||%
+    character()
+  warning_values <- as.character(unlist(warning_values, use.names = FALSE))
+  warning_values <- warning_values[nzchar(trimws(warning_values))]
+  if (
+    length(plan$existing_targets %||% character()) &&
+      !isTRUE(plan$overwrite)
+  ) {
+    warning_values <- unique(c(
+      warning_values,
+      paste(
+        "Files already exist in the output folder.",
+        "Choose another folder or replace the matching files."
+      )
+    ))
+  }
+  if (length(warning_values)) {
+    for (dataset_id in names(names_by_id)) {
+      warning_values <- gsub(
+        dataset_id,
+        names_by_id[[dataset_id]],
+        warning_values,
+        fixed = TRUE
+      )
+    }
+  }
+  model <- list(
+    dataset_count = as.integer(length(items)),
+    output_label = if (isTRUE(plan$make_app)) {
+      "CRB files + private App"
+    } else {
+      "CRB files"
     },
-    app_contract_version = plan$app_contract_version,
-    dataset_order = plan$dataset_order,
     datasets = lapply(items, review_dataset),
-    manifest = plan$manifest,
-    viewer_page_expectations = plan$viewer_page_expectations,
-    viewer_bundle_assets = plan$viewer_bundle_assets,
-    private_assets = plan$private_assets,
-    acknowledgements = plan$acknowledgements,
-    output_release = plan$output_release,
-    app_options = app_options,
-    release_members = basename(release_targets),
-    duplicated_storage = isTRUE(plan$make_app),
-    verified_page_expectations = verified_pages
+    app = list(
+      enabled = isTRUE(plan$make_app),
+      initial_dataset = initial_name,
+      dataset_order = ordered_names,
+      uploads_enabled = isTRUE(app_options$show_upload_ui),
+      welcome_message = app_options$welcome_message %||%
+        "Welcome to CerebroNexus!",
+      point_size = app_options$point_size$overview_projection_point_size %||% 5,
+      variable_comparison = isTRUE(app_options$variable_to_compare)
+    ),
+    pages = builder_review_page_labels(items, plan$viewer_page_expectations),
+    output = list(
+      directory = if (isTRUE(plan$output_pending)) {
+        "Choose when you build"
+      } else {
+        plan$output_release$directory %||% ""
+      },
+      crb_count = as.integer(length(items)),
+      private_app = isTRUE(plan$make_app),
+      existing_files = builder_review_existing_files(
+        plan$output_release$replacement_policy,
+        plan$output_release$overwrite
+      ),
+      estimated_size = builder_review_human_size(
+        (plan$output_release$estimated_disk_bytes %||% 0) *
+          if (isTRUE(plan$make_app)) 2 else 1
+      ),
+      estimated_time = runtime
+    ),
+    warnings = warning_values,
+    can_build = builder_review_can_build(plan)
   )
   .builder_review_copy(model)
+}
+
+builder_review_blocked_ui <- function(id, message = NULL) {
+  ns <- NS(id)
+  issue <- if (builder_stage_has_text(message %||% "")) {
+    message
+  } else {
+    "Review the highlighted settings before building."
+  }
+  div(
+    id = ns("stage"),
+    class = "builder-stage builder-stage-review builder-card builder-section",
+    h2("Review"),
+    p(class = "stage-intro", "Check your datasets and output before building."),
+    tags$section(
+      class = "review-section review-needs-attention",
+      h3("Needs attention"),
+      p(issue),
+      p("Correct the highlighted settings, then return here to build.")
+    )
+  )
 }
 
 builder_review_value_lines <- function(value, prefix = NULL) {
@@ -333,7 +467,7 @@ builder_review_stage_ui <- function(id, model) {
   initial <- names_by_id[[options$initial_dataset]] %||% options$initial_dataset
   div(
     id = ns("stage"),
-    class = "builder-stage builder-stage-review",
+    class = "builder-stage builder-stage-review builder-card builder-section",
     h2("Review"),
     span(
       class = "visually-hidden",
@@ -530,6 +664,247 @@ builder_review_stage_ui <- function(id, model) {
       tagList(
         h3("Private assets"),
         builder_stage_text_items(model$private_assets)
+      )
+    }
+  )
+}
+
+## The Review surface consumes only the user-facing projection above. The
+## frozen BuildPlan remains intact for execution and reporting.
+builder_review_stage_ui <- function(id, model) {
+  ns <- NS(id)
+  plural <- function(value, singular, plural = paste0(singular, "s")) {
+    paste(value, if (identical(as.integer(value), 1L)) singular else plural)
+  }
+  field <- function(label, value, class = NULL) {
+    div(
+      class = paste("review-field", class),
+      tags$dt(label),
+      tags$dd(value)
+    )
+  }
+  page_limit <- 8L
+  shown_pages <- utils::head(model$pages %||% character(), page_limit)
+  more_pages <- utils::tail(
+    model$pages %||% character(),
+    max(0L, length(model$pages %||% character()) - page_limit)
+  )
+  page_tags <- function(pages) {
+    div(
+      class = "review-page-tags",
+      lapply(seq_along(pages), function(index) {
+        span(
+          class = paste0("review-page-tag tone-", ((index - 1L) %% 5L) + 1L),
+          pages[[index]]
+        )
+      })
+    )
+  }
+
+  div(
+    id = ns("stage"),
+    class = "builder-stage builder-stage-review builder-card builder-section",
+    h2("Review"),
+    p(
+      class = "stage-intro",
+      "Check your datasets and output before building."
+    ),
+    div(
+      class = "review-summary-strip",
+      span(plural(model$dataset_count, "dataset")),
+      span(paste("Creates", model$output_label))
+    ),
+    tags$section(
+      class = "review-section review-datasets",
+      h3("Datasets"),
+      div(
+        class = "review-dataset-grid",
+        lapply(model$datasets, function(dataset) {
+          div(
+            class = "review-dataset-card",
+            h4(dataset$name),
+            p(
+              class = "review-dataset-counts",
+              paste0(
+                format(dataset$cells, big.mark = ","),
+                " cells · ",
+                format(dataset$genes, big.mark = ","),
+                " genes"
+              )
+            ),
+            p(
+              class = "review-dataset-shape",
+              paste0(
+                plural(dataset$group_count, "group"),
+                " · ",
+                plural(dataset$projection_count, "projection")
+              )
+            ),
+            tags$dl(
+              class = "review-dataset-defaults",
+              field("Opens with", dataset$default_projection),
+              field("Grouped by", dataset$default_group),
+              field("Organism", dataset$organism),
+              field("Expression storage", dataset$expression_storage)
+            ),
+            if (length(dataset$group_colors$preview)) {
+              div(
+                class = "review-group-colors",
+                span(class = "review-group-colors-label", "Group colors"),
+                span(
+                  class = "review-group-colors-summary",
+                  paste0(
+                    dataset$group_colors$group,
+                    " · ",
+                    if (dataset$group_colors$custom_count > 0L) {
+                      paste(
+                        dataset$group_colors$custom_count,
+                        "custom",
+                        if (dataset$group_colors$custom_count == 1L) {
+                          "color"
+                        } else {
+                          "colors"
+                        }
+                      )
+                    } else {
+                      "Using default colors"
+                    }
+                  )
+                ),
+                span(
+                  class = "review-group-color-preview",
+                  `aria-hidden` = "true",
+                  lapply(dataset$group_colors$preview, function(color) {
+                    span(
+                      class = "review-group-color-dot",
+                      style = paste0("background-color:", color)
+                    )
+                  }),
+                  if (dataset$group_colors$remaining > 0L) {
+                    span(
+                      class = "review-group-color-more",
+                      paste0("+", dataset$group_colors$remaining)
+                    )
+                  }
+                )
+              )
+            },
+            if (
+              !is.null(dataset$spatial_alignment) &&
+                dataset$spatial_alignment$section_count > 0L
+            ) {
+              div(
+                class = "review-spatial-alignment",
+                tags$b("Spatial alignment"),
+                p(paste0(
+                  dataset$spatial_alignment$saved_count,
+                  " of ",
+                  dataset$spatial_alignment$section_count,
+                  if (identical(dataset$spatial_alignment$section_count, 1L)) {
+                    " section has a saved tissue image."
+                  } else if (
+                    identical(dataset$spatial_alignment$saved_count, 1L)
+                  ) {
+                    " sections has a saved tissue image."
+                  } else {
+                    " sections have saved tissue images."
+                  }
+                )),
+                if (length(dataset$spatial_alignment$points_only)) {
+                  p(
+                    class = "hint",
+                    paste0(
+                      length(dataset$spatial_alignment$points_only),
+                      if (length(dataset$spatial_alignment$points_only) == 1L) {
+                        " section remains points-only."
+                      } else {
+                        " sections remain points-only."
+                      }
+                    )
+                  )
+                }
+              )
+            },
+            p(
+              class = "review-dataset-file",
+              span("Output file: "),
+              tags$code(dataset$output_file)
+            )
+          )
+        })
+      )
+    ),
+    if (isTRUE(model$app$enabled)) {
+      tags$section(
+        class = "review-section review-app-experience",
+        h3("App experience"),
+        div(
+          class = "review-app-grid",
+          tags$dl(
+            class = "review-fields",
+            field("Opens with", model$app$initial_dataset),
+            field(
+              "Visitor uploads",
+              if (isTRUE(model$app$uploads_enabled)) "On" else "Off"
+            ),
+            field("Welcome message", model$app$welcome_message),
+            field("Point size", model$app$point_size),
+            field(
+              "Variable comparison",
+              if (isTRUE(model$app$variable_comparison)) "On" else "Off"
+            )
+          ),
+          div(
+            class = "review-order",
+            h4("Dataset order"),
+            tags$ol(lapply(model$app$dataset_order, tags$li))
+          )
+        )
+      )
+    },
+    tags$section(
+      class = "review-section review-pages",
+      h3("Pages in the App"),
+      page_tags(shown_pages),
+      if (length(more_pages)) {
+        tags$details(
+          class = "review-pages-more",
+          tags$summary(paste("Show", length(more_pages), "more")),
+          page_tags(more_pages)
+        )
+      }
+    ),
+    tags$section(
+      class = "review-section review-output",
+      h3("Output"),
+      tags$dl(
+        class = "review-fields review-output-fields",
+        field("Folder", model$output$directory, "is-path"),
+        field(
+          "Creates",
+          paste(
+            plural(model$output$crb_count, "CRB file"),
+            if (isTRUE(model$output$private_app)) "+ 1 private App" else NULL
+          )
+        ),
+        field("Estimated size", model$output$estimated_size),
+        field("Estimated build time", model$output$estimated_time)
+      )
+    ),
+    if (isTRUE(model$output$private_app)) {
+      tags$section(
+        class = "review-section review-privacy",
+        h3("Private App"),
+        p(
+          "Dataset files are bundled privately with the App and are not offered as public downloads."
+        )
+      )
+    },
+    if (length(model$warnings %||% character())) {
+      tags$section(
+        class = "review-section review-needs-attention",
+        h3("Needs attention"),
+        tags$ul(lapply(model$warnings, tags$li))
       )
     }
   )

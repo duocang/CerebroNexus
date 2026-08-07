@@ -21,16 +21,86 @@ test_that("the dataset rail presents a themed trigger for the native picker", {
   expect_match(rail, 'id = "dataset_files"', fixed = TRUE)
   expect_match(rail, 'type = "file"', fixed = TRUE)
   expect_match(rail, 'multiple = "multiple"', fixed = TRUE)
-  expect_match(rail, 'class = "dataset-file-control"', fixed = TRUE)
-  expect_match(rail, 'class = "dataset-file-button"', fixed = TRUE)
+  expect_match(
+    rail,
+    'class = "dataset-file-control builder-file-picker builder-file-picker--sidebar"',
+    fixed = TRUE
+  )
+  expect_match(rail, "builder-file-input", fixed = TRUE)
+  expect_match(rail, "builder-file-trigger", fixed = TRUE)
   expect_match(rail, '"Add datasets…"', fixed = TRUE)
   expect_false(grepl('fileInput(', rail, fixed = TRUE))
-  expect_match(rail, 'uiOutput("example_buttons")', fixed = TRUE)
+  expect_match(rail, 'builder_example_buttons_ui(', fixed = TRUE)
+  expect_false(grepl('uiOutput("example_buttons")', rail, fixed = TRUE))
   expect_false(grepl('uiOutput("browser_panel")', rail, fixed = TRUE))
 })
 
+test_that("example directory is static and does not load objects for first paint", {
+  app <- readLines(
+    builder_profile_inst_path("builder", "app.R"),
+    warn = FALSE
+  )
+  pre_server <- paste(
+    app[seq_len(grep("server <- function", app)[1L] - 1L)],
+    collapse = "\n"
+  )
+
+  expect_match(pre_server, "builder_example_directory()", fixed = TRUE)
+  expect_match(pre_server, "builder_example_buttons_ui", fixed = TRUE)
+  expect_false(grepl("renderUI\\(.*example", pre_server, perl = TRUE))
+  expect_false(grepl("readRDS|read\\.rds|builder_adapter_inspect", pre_server))
+  io <- paste(
+    readLines(builder_profile_inst_path("builder", "io.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(io, "builder_example_directory <- local", fixed = TRUE)
+})
+
+test_that("static example cards carry stable IDs and loading metadata", {
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  html <- htmltools::renderTags(app_env$builder_example_buttons_ui())$html
+
+  expect_match(html, 'data-ex="basic_pbmc"', fixed = TRUE)
+  expect_match(html, 'data-label="Basic PBMC"', fixed = TRUE)
+  expect_match(html, 'class="btn example-btn"', fixed = TRUE)
+  expect_match(html, "builder-example-directory", fixed = TRUE)
+})
+
 builder_rail_source("state.R")
+builder_rail_source("extras.R")
 builder_rail_source(file.path("ui", "dataset_rail.R"))
+
+test_that("pending dataset files render safe bounded Reading rows", {
+  html <- htmltools::renderTags(builder_pending_dataset_files_ui(list(
+    ds1 = list(
+      id = "ds1",
+      filename = "/private/shiny-upload/alpha.rds",
+      type = "RDS",
+      size = 2048,
+      visible = TRUE
+    ),
+    ds2 = list(
+      id = "ds2",
+      filename = "C:\\fakepath\\beta.qs2",
+      type = "QS2",
+      size = 4096,
+      visible = TRUE
+    )
+  )))$html
+
+  expect_match(html, "builder-file-list", fixed = TRUE)
+  expect_match(html, "builder-file-item", fixed = TRUE)
+  expect_match(html, "alpha.rds", fixed = TRUE)
+  expect_match(html, "beta.qs2", fixed = TRUE)
+  expect_match(html, "RDS · 2 KB", fixed = TRUE)
+  expect_match(html, "QS2 · 4 KB", fixed = TRUE)
+  expect_match(html, "Reading…", fixed = TRUE)
+  expect_match(html, "pending-upload-remove", fixed = TRUE)
+  expect_false(grepl("/private/shiny-upload", html, fixed = TRUE))
+  expect_false(grepl("fakepath", html, fixed = TRUE))
+})
 
 test_that("the Builder launcher bounds uploads without leaking process options", {
   launcher <- paste(
@@ -458,8 +528,7 @@ if (builder_rail_api_available) {
     state <- builder_state(list(entry))
     html <- as.character(builder_dataset_rail_ui(state))
 
-    expect_match(html, "Blocked", fixed = TRUE)
-    expect_match(html, "1 issue", fixed = TRUE)
+    expect_match(html, "Needs attention", fixed = TRUE)
   })
 
   test_that("typed store rejects unrecognized dataset profiles", {
@@ -478,8 +547,7 @@ if (builder_rail_api_available) {
 
     expect_match(html, "Dataset A", fixed = TRUE)
     expect_match(html, "12 cells", fixed = TRUE)
-    expect_match(html, "Ready", fixed = TRUE)
-    expect_match(html, "0 issues", fixed = TRUE)
+    expect_match(html, "Reviewing", fixed = TRUE)
     expect_match(html, "data-direction=\"up\"", fixed = TRUE)
     expect_match(html, "data-direction=\"down\"", fixed = TRUE)
     expect_match(html, ">Remove<", fixed = TRUE)
@@ -487,6 +555,68 @@ if (builder_rail_api_available) {
     expect_false(grepl("builder-select-initial", html, fixed = TRUE))
     expect_false(grepl("builder-duplicate", html, fixed = TRUE))
     expect_match(html, "data-confirm=\"true\"", fixed = TRUE)
+  })
+
+  test_that("review status follows the reviewed settings revision", {
+    entry <- builder_rail_entry("a", "Dataset A")
+    entry$revision <- 2L
+
+    expect_identical(
+      builder_dataset_review_status(entry, FALSE)$label,
+      "Not reviewed"
+    )
+    expect_identical(
+      builder_dataset_review_status(entry, TRUE)$label,
+      "Reviewing"
+    )
+
+    entry$reviewed_revision <- 2L
+    expect_identical(
+      builder_dataset_review_status(entry, FALSE)$label,
+      "Reviewed"
+    )
+
+    entry$revision <- 3L
+    expect_identical(
+      builder_dataset_review_status(entry, FALSE)$label,
+      "Not reviewed"
+    )
+  })
+
+  test_that("rail and context show textual review progress", {
+    first <- builder_rail_entry("a", "Dataset A")
+    second <- builder_rail_entry("b", "Dataset B")
+    first$revision <- 1L
+    first$reviewed_revision <- 1L
+    second$revision <- 1L
+    state <- builder_state(list(first, second), current_dataset = "b")
+
+    rail <- as.character(builder_dataset_rail_ui(state, current = "b"))
+    context <- as.character(builder_dataset_context_ui(state, current = "b"))
+
+    expect_match(rail, "Reviewed", fixed = TRUE)
+    expect_match(rail, "Reviewing", fixed = TRUE)
+    expect_match(context, "Dataset 2 of 2", fixed = TRUE)
+    expect_match(context, "Dataset B", fixed = TRUE)
+    expect_match(context, "1 of 2 datasets reviewed", fixed = TRUE)
+    expect_match(context, "Previous", fixed = TRUE)
+    expect_match(context, "Next", fixed = TRUE)
+    expect_match(context, 'aria-valuenow="1"', fixed = TRUE)
+  })
+
+  test_that("review navigation starts with the first pending dataset", {
+    entries <- lapply(c("a", "b", "c"), builder_rail_entry)
+    entries[[1L]]$revision <- 1L
+    entries[[1L]]$reviewed_revision <- 1L
+    entries[[2L]]$revision <- 1L
+    entries[[3L]]$revision <- 1L
+
+    expect_identical(builder_next_unreviewed(entries), "b")
+
+    single <- builder_state(list(entries[[2L]]), current_dataset = "b")
+    context <- as.character(builder_dataset_context_ui(single, "b"))
+    expect_false(grepl("Dataset 1 of 1", context, fixed = TRUE))
+    expect_false(grepl("datasets reviewed", context, fixed = TRUE))
   })
 
   test_that("client events preserve confirmed removal and native-picker semantics", {
@@ -538,7 +668,7 @@ if (builder_rail_api_available) {
     expect_match(rail, 'tags$input(', fixed = TRUE)
     expect_match(rail, 'type = "file"', fixed = TRUE)
     expect_match(rail, 'multiple = "multiple"', fixed = TRUE)
-    expect_match(rail, 'uiOutput("example_buttons")', fixed = TRUE)
+    expect_match(rail, "builder_example_buttons_ui()", fixed = TRUE)
     expect_false(grepl("browse_open", text, fixed = TRUE))
     expect_false(grepl("browse_dir", text, fixed = TRUE))
     expect_false(grepl("browser_panel", text, fixed = TRUE))
@@ -777,37 +907,17 @@ if (builder_rail_api_available) {
       used$example <- "basic_pbmc"
       sets(list(used))
 
-      first_html <- output$example_buttons$html
-      expect_match(
-        first_html,
-        'class="btn example-btn is-taken" data-ex="basic_pbmc"',
-        fixed = TRUE
-      )
-
-      expect_match(first_html, 'disabled="disabled"', fixed = TRUE)
-      expect_match(
-        first_html,
-        paste0(
-          'class="btn example-btn" data-ex="spatial_multi_section" ',
-          'aria-disabled="false"'
-        ),
-        fixed = TRUE
-      )
-
-      rebuilt_html <- output$example_buttons$html
-      expect_match(
-        rebuilt_html,
-        'class="btn example-btn is-taken" data-ex="basic_pbmc"',
-        fixed = TRUE
-      )
-      expect_match(rebuilt_html, 'disabled="disabled"', fixed = TRUE)
-
-      add_error(NULL)
       session$setInputs(use_example = "basic_pbmc")
-      expect_null(add_error())
+      expect_identical(
+        add_error(),
+        "Worker startup is disabled in this picker-state test."
+      )
 
       session$setInputs(use_example = "not-an-example")
-      expect_null(add_error())
+      expect_identical(
+        add_error(),
+        "Worker startup is disabled in this picker-state test."
+      )
 
       session$setInputs(use_example = "spatial_multi_section")
       expect_identical(
@@ -858,12 +968,6 @@ if (builder_rail_api_available) {
       pending_sources(builder_source_key("example", "basic_pbmc"))
       worker(NULL)
       worker_available(FALSE)
-      expect_match(
-        output$example_buttons$html,
-        'data-ex="basic_pbmc" disabled="disabled"',
-        fixed = TRUE
-      )
-
       release_pending_source(list(
         kind = "load",
         source = "example",
@@ -927,8 +1031,47 @@ if (builder_rail_api_available) {
         vapply(requests, function(request) request$payload$label, character(1)),
         c("alpha", "beta")
       )
+      expect_identical(names(pending_uploads()), c("ds1", "ds2"))
+      expect_identical(
+        unname(vapply(pending_uploads(), `[[`, character(1), "filename")),
+        c("alpha.rds", "beta.qs2")
+      )
+      expect_identical(
+        unname(vapply(pending_uploads(), `[[`, character(1), "type")),
+        c("RDS", "QS2")
+      )
+      expect_false(any(vapply(
+        pending_uploads(),
+        function(file) any(grepl("/tmp/upload", unlist(file), fixed = TRUE)),
+        logical(1)
+      )))
       expect_identical(add_error(), "1 file has already been added.")
+
+      session$setInputs(cancel_pending_upload = list(id = "ds2", nonce = 1))
+      expect_null(pending_uploads()[["ds2"]])
+      expect_false(any(vapply(
+        c(list(protocol()$pending), protocol()$queue),
+        function(request) identical(request$dataset, "ds2"),
+        logical(1)
+      )))
+
+      session$setInputs(cancel_pending_upload = list(id = "ds1", nonce = 2))
+      expect_false(isTRUE(pending_uploads()[["ds1"]]$visible))
+      expect_identical(cancelled_loads(), "ds1")
     })
+  })
+
+  test_that("pending dataset Remove is delegated through one Shiny event", {
+    client <- paste(
+      readLines(
+        builder_profile_inst_path("builder", "www", "builder.js"),
+        warn = FALSE
+      ),
+      collapse = "\n"
+    )
+
+    expect_match(client, ".pending-upload-remove", fixed = TRUE)
+    expect_match(client, 'send("cancel_pending_upload"', fixed = TRUE)
   })
 
   test_that("protocol recovery retains retried and releases failed load reservations", {
@@ -939,6 +1082,10 @@ if (builder_rail_api_available) {
     sys.source("app.R", envir = app_env)
     app_env$builder_session_start <- function(...) {
       list(error = "Worker startup is disabled in this recovery test.")
+    }
+    app_env$builder_session_example <- function(...) invisible(TRUE)
+    app_env$builder_session_poll <- function(worker, ...) {
+      list(worker = worker, event = NULL, result = NULL)
     }
 
     shiny::testServer(app_env$server, {
@@ -964,11 +1111,20 @@ if (builder_rail_api_available) {
         error = "worker could not restart"
       ))
       expect_length(pending_sources(), 0L)
+      failed <- app_env$builder_import_find(imports(), "ds1")
+      expect_s3_class(failed, "builder_import_entry")
+      expect_identical(failed$load_state, "error")
+      expect_match(failed$error, "terminal worker error", fixed = TRUE)
 
       worker(list(epoch = "worker-retry"))
       worker_available(TRUE)
       protocol(app_env$builder_request_protocol("worker-retry"))
-      expect_true(start_load("example", "basic_pbmc", "PBMC"))
+      session$setInputs(retry_import = list(id = "ds1", nonce = 1))
+      expect_identical(
+        app_env$builder_import_find(imports(), "ds1")$generation,
+        2L
+      )
+      expect_identical(protocol()$pending$dataset, "ds1")
     })
   })
 
