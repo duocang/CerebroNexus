@@ -274,43 +274,60 @@ test_that("application and worker source adapters after profile contracts", {
     builder_profile_inst_path("builder", "session.R"),
     warn = FALSE
   )
+  worker <- readLines(
+    builder_profile_inst_path("builder", "worker.R"),
+    warn = FALSE
+  )
   app_profile <- grep('source("profile.R"', app, fixed = TRUE)[1L]
   app_adapters <- grep('source("adapters.R"', app, fixed = TRUE)[1L]
   worker_profile <- grep(
     'source(file.path(dir, "profile.R"',
-    session,
+    worker,
     fixed = TRUE
   )[1L]
   worker_adapters <- grep(
     'source(file.path(dir, "adapters.R"',
-    session,
+    worker,
     fixed = TRUE
   )[1L]
 
   expect_true(app_profile < app_adapters)
   expect_true(worker_profile < worker_adapters)
 
-  expect_match(
+  expect_true(grepl(
+    paste0(
+      "\\.builder_register_adapter\\s*\\(\\s*",
+      "builder_seurat_file_adapter\\s*\\("
+    ),
     paste(session, collapse = "\n"),
-    ".builder_register_adapter(builder_seurat_file_adapter",
-    fixed = TRUE
-  )
+    perl = TRUE
+  ))
   expect_match(
     paste(session, collapse = "\n"),
     ".builder_register_adapter(",
     fixed = TRUE
   )
   expect_match(paste(session, collapse = "\n"), ".builder_snapshots")
-  expect_match(paste(session, collapse = "\n"), "builder_open_snapshot")
-  expect_match(paste(session, collapse = "\n"), ".builder_snapshot_release")
+  expect_match(paste(session, collapse = "\n"), "builder_execute_plan")
+  expect_false(grepl(
+    ".builder_snapshot_release",
+    paste(session, collapse = "\n"),
+    fixed = TRUE
+  ))
+  expect_match(
+    paste(worker, collapse = "\n"),
+    "builder_worker_release_snapshot",
+    fixed = TRUE
+  )
 })
 
-.builder_wait_for_worker <- function(rs, timeout = 30) {
+.builder_wait_for_worker <- function(worker, timeout = 30) {
   deadline <- Sys.time() + timeout
   repeat {
-    result <- builder_session_poll(rs, timeout = 100)
-    if (!is.null(result)) {
-      return(result)
+    polled <- builder_session_poll(worker, timeout = 100)
+    worker <- polled$worker
+    if (!is.null(polled$result)) {
+      return(list(worker = worker, result = polled$result))
     }
     if (Sys.time() >= deadline) {
       stop("Timed out waiting for the Builder worker.")
@@ -320,6 +337,7 @@ test_that("application and worker source adapters after profile contracts", {
 
 test_that("real worker loads, fresh-builds and drops an owned snapshot", {
   skip_if_not_installed("callr")
+  builder_repo_source("worker.R", local = globalenv())
   builder_repo_source("session.R", local = globalenv())
   root <- withr::local_tempdir()
   source <- file.path(root, "pbmc.rds")
@@ -328,17 +346,20 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
     builder_profile_inst_path("builder")
   )
   expect_null(started$error)
-  rs <- started$session
-  on.exit(try(rs$close(), silent = TRUE), add = TRUE)
+  worker <- started$worker
+  on.exit(try(worker$process$close(), silent = TRUE), add = TRUE)
 
-  builder_session_load(rs, "ds1", source)
-  loaded <- .builder_wait_for_worker(rs)
-  expect_true(loaded$done)
-  expect_null(loaded$value$error)
+  builder_session_load(worker, "ds1", source)
+  loaded <- .builder_wait_for_worker(worker)
+  worker <- loaded$worker
+  expect_true(loaded$result$done)
+  expect_null(loaded$result$value$error)
+  snapshot <- loaded$result$value$snapshot
+  worker <- builder_worker_register_snapshot(worker, "ds1", snapshot)
   unlink(source)
   expect_false(file.exists(source))
 
-  rs$run(function() {
+  worker$process$run(function() {
     assign(
       "ds1",
       list(poisoned_live_object = TRUE),
@@ -348,38 +369,93 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
   })
   out <- file.path(root, "out")
   dir.create(out)
-  plan <- list(
-    out_dir = out,
-    make_app = FALSE,
-    app_contract_version = 0L,
-    overwrite = FALSE,
-    items = list(list(
-      id = "ds1",
-      name = "PBMC",
-      filename = "pbmc.crb",
-      organism = "hg",
-      assay = "RNA",
-      layer = "data",
-      groups = "groups",
-      reductions = "tsne",
-      analyses = character(),
-      tables = list(),
-      images = list(),
-      colors = list(),
-      nUMI = "nCount_RNA",
-      nGene = "nFeature_RNA"
-    ))
+  source_snapshot_identity <- c(
+    list(available = TRUE, snapshot = snapshot, source = list()),
+    snapshot
   )
-  builder_session_build(rs, plan)
-  built <- .builder_wait_for_worker(rs, timeout = 60)
-  expect_true(built$done)
-  expect_null(built$value$error)
-  expect_true(file.exists(file.path(out, "pbmc.crb")))
+  object <- SeuratObject::pbmc_small
+  plan <- structure(
+    list(
+      make_app = FALSE,
+      app_contract_version = 0L,
+      items = list(list(
+        id = "ds1",
+        name = "PBMC",
+        filename = "pbmc.crb",
+        organism = "hg",
+        assay = "RNA",
+        layer = "data",
+        included_groups = "groups",
+        included_projections = "tsne",
+        analyses = character(),
+        analysis_dependency_graph = list(),
+        artifact_identity = list(
+          schema_version = 2L,
+          cells = SeuratObject::Cells(object),
+          features = rownames(object[["RNA"]]),
+          group_levels = list(
+            groups = sort(unique(as.character(object$groups)))
+          ),
+          projections = "tsne",
+          source_metadata = c(
+            "cell_barcode",
+            "groups",
+            "nCount_RNA",
+            "nFeature_RNA"
+          ),
+          metadata = c("cell_barcode", "groups", "nUMI", "nGene"),
+          spatial_sections = character()
+        ),
+        tables = list(),
+        images = list(),
+        nUMI = "nCount_RNA",
+        nGene = "nFeature_RNA",
+        default_group = "groups",
+        metadata_policy = list(
+          included = c(
+            "cell_barcode",
+            "groups",
+            "nCount_RNA",
+            "nFeature_RNA"
+          )
+        ),
+        expression_backend = "embedded",
+        sidecars = character(),
+        manifest = list(),
+        viewer_page_expectations = list(
+          visible_conditional = character(),
+          hidden_conditional = character()
+        ),
+        source_snapshot_identity = source_snapshot_identity
+      ))
+    ),
+    class = c("builder_build_plan", "list")
+  )
+  builder_session_build(worker, plan)
+  built <- .builder_wait_for_worker(worker, timeout = 60)
+  worker <- built$worker
+  expect_true(built$result$done)
+  expect_null(built$result$value$error)
+  expect_true(built$result$value$publishable)
+  expect_length(built$result$value$built, 1L)
+  expect_true(file.exists(built$result$value$built[[1L]]))
+  expect_true(startsWith(
+    built$result$value$built[[1L]],
+    normalizePath(worker$snapshot_root)
+  ))
+  expect_false(file.exists(file.path(out, "pbmc.crb")))
 
-  builder_session_drop(rs, "ds1")
-  dropped <- .builder_wait_for_worker(rs)
-  expect_identical(dropped$value, TRUE)
-  state <- rs$run(function() {
+  builder_session_drop(worker, "ds1")
+  dropped <- .builder_wait_for_worker(worker)
+  worker <- dropped$worker
+  expect_identical(dropped$result$value, TRUE)
+  expect_true(.builder_snapshot_owned(snapshot))
+  worker <- builder_worker_release_snapshot(
+    worker,
+    "ds1",
+    .builder_worker_identity(snapshot)
+  )
+  state <- worker$process$run(function() {
     snapshots <- get(".builder_snapshots", envir = globalenv())
     root <- get(".builder_snapshot_root", envir = globalenv())
     list(
@@ -388,5 +464,6 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
     )
   })
   expect_false(state$registered)
-  expect_length(state$remaining, 0L)
+  expect_true(any(startsWith(state$remaining, "builder-build-stage-")))
+  expect_length(worker$snapshot_registry, 0L)
 })

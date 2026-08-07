@@ -196,6 +196,44 @@ test_that("malformed repertoire candidates fail closed with precise reasons", {
   }
 })
 
+test_that("repertoire profiling follows upstream row filtering semantics", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_immune_fixture_object()
+  cells <- SeuratObject::Cells(object)
+  empty_sample <- builder_immune_fixture_table(cells[[1L]], "TRB")[0, ]
+  object@misc$immune_repertoire <- list(
+    empty_sample = empty_sample,
+    sample_a = builder_immune_fixture_table(
+      c(cells[[1L]], "outside-cell"),
+      "TRB",
+      "partial"
+    )
+  )
+
+  candidate <- builder_profile_immune_content(
+    object,
+    builder_immune_fixture_context(object)
+  )$immune_repertoire$candidates$unified_misc
+
+  expect_true(candidate$valid)
+  expect_true(candidate$full_ir_ready)
+  expect_true(candidate$attention)
+  expect_contains(candidate$diagnostics, "empty_sample_table")
+  expect_contains(candidate$diagnostics, "barcodes_outside_dataset")
+  expect_identical(candidate$normalized$dataset_overlap_count, 1L)
+  expect_identical(candidate$normalized$outside_barcode_count, 1L)
+
+  normalized <- expect_warning(
+    CerebroNexus::addImmuneRepertoire(object, verbose = FALSE),
+    "removed 1 repertoire row"
+  )
+  expect_identical(names(normalized@misc$immune_repertoire), "sample_a")
+  expect_identical(
+    normalized@misc$immune_repertoire$sample_a$barcode,
+    cells[[1L]]
+  )
+})
+
 test_that("serialized custom classes never dispatch during content profiling", {
   skip_if_not_installed("SeuratObject")
   touched <- character()

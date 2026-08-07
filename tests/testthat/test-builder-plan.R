@@ -663,7 +663,7 @@ test_that("Builder runtimes load dataset state before planning", {
     warn = FALSE
   )
   session <- readLines(
-    builder_profile_inst_path("builder", "session.R"),
+    builder_profile_inst_path("builder", "worker.R"),
     warn = FALSE
   )
 
@@ -807,6 +807,62 @@ test_that("frozen plans own every reviewed value", {
       expected_prior_identity = attributed_reference
     )
     expect_identical(unsafe_attribute$error_code, "unsafe_reference")
+  })
+})
+
+test_that("BuildPlan freezes exact artifact identities for read-back", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    entry$dataset_profile$identity <- list(
+      cells = list(
+        ids = c("cell-b", "cell-a"),
+        canonical_ids = c("cell-b", "cell-a"),
+        count = 2L
+      ),
+      features = list(
+        ids = c("Gene2", "Gene1"),
+        canonical_ids = c("Gene2", "Gene1"),
+        count = 2L
+      )
+    )
+    entry$levels$cluster <- c("B", "A")
+    entry$settings$analyses <- "percent_mt_ribo"
+    entry$dataset_profile$spatial <- list(
+      section_count = 2L,
+      sections = c("slice-b", "slice-a"),
+      sections_truncated = FALSE,
+      section_names_truncated = FALSE
+    )
+
+    plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
+    expect_null(plan$error)
+    expectation <- plan$items[[1L]]$artifact_identity
+    expect_identical(expectation$schema_version, 2L)
+    expect_identical(expectation$cells, c("cell-b", "cell-a"))
+    expect_identical(expectation$features, c("Gene2", "Gene1"))
+    expect_identical(expectation$group_levels$cluster, c("B", "A"))
+    expect_identical(expectation$projections, "umap")
+    expect_identical(
+      expectation$metadata,
+      c(
+        "cell_barcode",
+        "cluster",
+        "nUMI",
+        "nGene",
+        "percent_mt",
+        "percent_ribo"
+      )
+    )
+    expect_identical(expectation$spatial_sections, c("slice-b", "slice-a"))
+
+    entry$dataset_profile$identity$cells$canonical_ids[[1L]] <- "changed"
+    entry$levels$cluster[[1L]] <- "changed"
+    expect_identical(expectation$cells, c("cell-b", "cell-a"))
+    expect_identical(expectation$group_levels$cluster, c("B", "A"))
   })
 })
 
@@ -1993,6 +2049,68 @@ test_that("divergent immune sources require an explicit source choice", {
         "immune_repertoire"
       ]]$evidence$selected_source,
       "unified_misc"
+    )
+  })
+})
+
+test_that("selected immune filtering requires a stable acknowledgement", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry(immune_detected = FALSE)
+    candidate <- builder_task6_immune_candidate(
+      "unified_misc",
+      full_ir_ready = TRUE,
+      hla_tcr_ready = TRUE
+    )
+    candidate$attention <- TRUE
+    candidate$diagnostics <- c(
+      "empty_sample_table",
+      "barcodes_outside_dataset"
+    )
+    entry$dataset_profile$content$immune_repertoire <-
+      builder_task6_immune_fact(list(unified_misc = candidate))
+
+    state <- builder_dataset_state(entry)
+    expect_identical(state$readiness, "needs_attention")
+    expect_identical(
+      state$attention_ids,
+      c("immune_repertoire", "hla_tcr_motifs")
+    )
+    actions <- lapply(
+      state$manifest[state$attention_ids],
+      `[[`,
+      "required_action"
+    )
+    expect_true(all(vapply(
+      actions,
+      function(action) identical(action$type, "acknowledge"),
+      logical(1)
+    )))
+
+    blocked <- builder_freeze_plan(list(entry), tempdir(), FALSE)
+    expect_identical(blocked$error_code, "attention_capability")
+
+    entry$settings$acknowledgements <- unique(vapply(
+      actions,
+      `[[`,
+      character(1),
+      "token"
+    ))
+    plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
+    expect_null(plan$error)
+    expect_setequal(
+      plan$items[[1L]]$acknowledgements,
+      entry$settings$acknowledgements
+    )
+    expect_setequal(
+      intersect(
+        plan$items[[1L]]$viewer_page_expectations$visible_conditional,
+        c("immune_repertoire", "hla_tcr_motifs")
+      ),
+      c("immune_repertoire", "hla_tcr_motifs")
     )
   })
 })

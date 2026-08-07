@@ -792,7 +792,8 @@
       normalized = evidence$normalized
     ),
     compatibility = list(
-      viewer = identical(status, "valid") &&
+      viewer = status %in%
+        c("valid", "attention") &&
         disposition %in% c("preserved", "generated", "converted", "attached")
     ),
     pages = pages,
@@ -844,7 +845,8 @@
     disposition <- "rejected"
   }
   pages <- if (
-    identical(status, "valid") &&
+    status %in%
+      c("valid", "attention") &&
       disposition %in% c("preserved", "generated", "converted", "attached")
   ) {
     if (generated) {
@@ -1231,6 +1233,24 @@
   } else {
     selection$candidates
   }
+  selected_attention <- vapply(
+    evidence$selected_candidates,
+    function(candidate) isTRUE(.subset2(candidate, "attention")),
+    logical(1)
+  )
+  evidence$attention <- any(selected_attention)
+  evidence$attention_items <- unique(unlist(
+    lapply(
+      evidence$selected_candidates[selected_attention],
+      function(candidate) {
+        .builder_state_or(
+          .subset2(candidate, "diagnostics"),
+          character()
+        )
+      }
+    ),
+    use.names = FALSE
+  ))
   evidence["selected_candidate"] <- list(
     if (length(evidence$selected_sources) == 1L) {
       evidence$selected_candidates[[1L]]
@@ -1283,6 +1303,9 @@
     "builder_invalid_immune_source"
   )
   has_full_source <- !is.null(full_selection) && !invalid_full_source
+  immune_attention <- has_full_source &&
+    isTRUE(immune_evidence$attention) &&
+    !immune_filtered
   visible_immune_choice <- !is.null(immune_choice) && !immune_filtered
   immune_status <- if (
     invalid_full_source ||
@@ -1291,7 +1314,7 @@
   ) {
     "blocking"
   } else if (has_full_source || immune_filtered) {
-    "valid"
+    if (immune_attention) "attention" else "valid"
   } else if (!immune_evidence$detected || motif_evidence$hla_tcr_ready) {
     "not_applicable"
   } else {
@@ -1309,7 +1332,8 @@
   if (identical(immune_disposition, "rejected")) {
     immune_status <- "blocking"
   }
-  immune_visible <- identical(immune_status, "valid") &&
+  immune_visible <- immune_status %in%
+    c("valid", "attention") &&
     immune_disposition %in% c("preserved", "converted", "attached")
 
   motif_choice <- .builder_state_content_choice(entry, "hla_tcr_motifs")
@@ -1320,6 +1344,9 @@
     "builder_invalid_immune_source"
   )
   has_motif_source <- !is.null(motif_selection) && !invalid_motif_source
+  motif_attention <- has_motif_source &&
+    isTRUE(motif_evidence$attention) &&
+    !motif_filtered
   visible_motif_choice <- !is.null(motif_choice) && !motif_filtered
   motif_status <- if (
     invalid_motif_source ||
@@ -1328,7 +1355,7 @@
   ) {
     "blocking"
   } else if (has_motif_source || motif_filtered) {
-    "valid"
+    if (motif_attention) "attention" else "valid"
   } else {
     "not_applicable"
   }
@@ -1344,7 +1371,8 @@
   if (identical(motif_disposition, "rejected")) {
     motif_status <- "blocking"
   }
-  motif_visible <- identical(motif_status, "valid") &&
+  motif_visible <- motif_status %in%
+    c("valid", "attention") &&
     motif_disposition %in% c("preserved", "converted", "attached")
 
   list(
@@ -1355,6 +1383,11 @@
       immune_disposition,
       if (immune_visible) "immune_repertoire" else character(),
       immune_evidence,
+      required_action = if (immune_attention) {
+        .builder_state_attention_action("immune_repertoire", immune_evidence)
+      } else {
+        NULL
+      },
       verifier = "verify_immune_repertoire"
     ),
     .builder_state_manifest_record(
@@ -1364,6 +1397,11 @@
       motif_disposition,
       if (motif_visible) "hla_tcr_motifs" else character(),
       motif_evidence,
+      required_action = if (motif_attention) {
+        .builder_state_attention_action("hla_tcr_motifs", motif_evidence)
+      } else {
+        NULL
+      },
       verifier = "verify_hla_tcr_motifs"
     )
   )
@@ -1951,6 +1989,21 @@
   state
 }
 
+.builder_state_page_manifest <- function(manifest, acknowledgements) {
+  entries <- lapply(unname(manifest), function(entry) {
+    action <- entry$required_action
+    acknowledged <- identical(entry$status, "attention") &&
+      is.list(action) &&
+      identical(action$type, "acknowledge") &&
+      action$token %in% acknowledgements
+    if (acknowledged) {
+      entry$status <- "valid"
+    }
+    entry
+  })
+  builder_content_manifest(entries)
+}
+
 #' Derive one dataset's rail and Review readiness from its manifest.
 builder_dataset_state <- function(entry) {
   .builder_state_validate_entry(entry)
@@ -2030,7 +2083,9 @@ builder_dataset_state <- function(entry) {
     length(readiness$attention_ids),
     length(readiness$checking_ids)
   )))
-  base$page_expectations <- builder_viewer_page_contract(manifest)
+  base$page_expectations <- builder_viewer_page_contract(
+    .builder_state_page_manifest(manifest, base$acknowledgements)
+  )
   structure(base, class = c("builder_dataset_state", "list"))
 }
 
@@ -2115,6 +2170,39 @@ builder_build_state <- function() {
   )
 }
 
+#' Translate a staged worker result into one explicit state transition.
+builder_build_action <- function(result, id) {
+  if (!is.list(result) || !.builder_state_text(result$state)) {
+    .builder_state_abort(
+      "invalid_build_result",
+      "The worker returned an invalid build result."
+    )
+  }
+  if (identical(result$state, "success")) {
+    if (!isTRUE(result$publishable) && !isTRUE(result$published)) {
+      .builder_state_abort(
+        "invalid_build_result",
+        "A successful build result must be publishable or already published."
+      )
+    }
+    return(list(type = "succeed", id = id, result = result))
+  }
+  if (identical(result$state, "needs_decision")) {
+    return(list(type = "needs_decision", id = id, result = result))
+  }
+  if (identical(result$state, "failure")) {
+    error <- result$error
+    if (!.builder_state_text(error)) {
+      error <- "The staged build failed."
+    }
+    return(list(type = "fail", id = id, error = error))
+  }
+  .builder_state_abort(
+    "invalid_build_result",
+    "The worker returned an unknown build state."
+  )
+}
+
 #' Apply a typed event to the pure single-flight build state.
 builder_reduce_build <- function(state, action) {
   if (!inherits(state, "builder_build_state") || !is.list(state)) {
@@ -2130,6 +2218,18 @@ builder_reduce_build <- function(state, action) {
     )
   }
   revision <- .builder_state_revision(state$revision) + 1L
+
+  require_current_build <- function() {
+    if (
+      !.builder_state_text(action$id) ||
+        !identical(action$id, state$id)
+    ) {
+      .builder_state_abort(
+        "stale_build_event",
+        "The build event does not match the active build."
+      )
+    }
+  }
 
   if (identical(action$type, "start")) {
     if (state$status %in% c("running", "cancelling")) {
@@ -2150,14 +2250,24 @@ builder_reduce_build <- function(state, action) {
     if (!state$status %in% c("running", "cancelling")) {
       .builder_state_abort("invalid_build_transition", "No build is running.")
     }
+    require_current_build()
     state$status <- "success"
     state$result <- action$result
   } else if (identical(action$type, "fail")) {
     if (!state$status %in% c("running", "cancelling")) {
       .builder_state_abort("invalid_build_transition", "No build is running.")
     }
+    require_current_build()
     state$status <- "failed"
     state$error <- action$error
+  } else if (identical(action$type, "needs_decision")) {
+    if (!state$status %in% c("running", "cancelling")) {
+      .builder_state_abort("invalid_build_transition", "No build is running.")
+    }
+    require_current_build()
+    state$status <- "needs_decision"
+    state$result <- action$result
+    state$error <- NULL
   } else if (identical(action$type, "cancel")) {
     if (!identical(state$status, "running")) {
       .builder_state_abort(
@@ -2165,6 +2275,7 @@ builder_reduce_build <- function(state, action) {
         "No build can be cancelled."
       )
     }
+    require_current_build()
     state$status <- "cancelling"
   } else if (identical(action$type, "cancelled")) {
     if (!identical(state$status, "cancelling")) {
@@ -2173,8 +2284,18 @@ builder_reduce_build <- function(state, action) {
         "Build is not cancelling."
       )
     }
+    require_current_build()
     state$status <- "cancelled"
   } else if (identical(action$type, "reset")) {
+    if (state$status %in% c("running", "cancelling")) {
+      .builder_state_abort(
+        "build_in_flight",
+        "A running build cannot be reset."
+      )
+    }
+    if (!identical(state$status, "idle")) {
+      require_current_build()
+    }
     state <- builder_build_state()
   } else {
     .builder_state_abort(

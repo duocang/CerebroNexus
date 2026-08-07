@@ -361,7 +361,7 @@ test_that("manifest sources without package or app helper functions", {
 
 test_that("builder and worker source shared pages before the manifest", {
   app_path <- builder_inst_asset_path("builder", "app.R")
-  session_path <- builder_inst_asset_path("builder", "session.R")
+  session_path <- builder_inst_asset_path("builder", "worker.R")
   expect_true(nzchar(app_path) && file.exists(app_path))
   expect_true(nzchar(session_path) && file.exists(session_path))
   app_lines <- readLines(app_path, warn = FALSE)

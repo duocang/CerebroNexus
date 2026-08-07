@@ -502,6 +502,78 @@ builder_has_text <- function(value) {
   nodes
 }
 
+.builder_plan_artifact_identity <- function(
+  entry,
+  included_groups,
+  included_projections,
+  analyses = character()
+) {
+  profile <- if (is.list(entry$dataset_profile)) {
+    entry$dataset_profile
+  } else {
+    list()
+  }
+  identity <- if (is.list(profile$identity)) profile$identity else list()
+  axis_ids <- function(axis) {
+    record <- identity[[axis]]
+    if (!is.list(record)) {
+      return(character())
+    }
+    values <- record$canonical_ids %||% record$ids %||% character()
+    if (!is.character(values) || anyNA(values)) {
+      return(character())
+    }
+    unname(values)
+  }
+  levels <- if (is.list(entry$levels)) entry$levels else list()
+  group_levels <- lapply(included_groups, function(group) {
+    values <- levels[[group]] %||% character()
+    if (!is.character(values) || anyNA(values)) character() else unname(values)
+  })
+  names(group_levels) <- included_groups
+  settings <- if (is.list(entry$settings)) entry$settings else list()
+  policy <- settings$metadata_policy
+  source_metadata <- if (is.list(policy)) {
+    policy$included %||% character()
+  } else {
+    character()
+  }
+  nUMI <- settings$nUMI %||% entry$profile$nUMI
+  nGene <- settings$nGene %||% entry$profile$nGene
+  additional_metadata <- setdiff(
+    source_metadata,
+    c("cell_barcode", included_groups, nUMI, nGene)
+  )
+  generated_metadata <- if ("percent_mt_ribo" %in% analyses) {
+    c("percent_mt", "percent_ribo")
+  } else {
+    character()
+  }
+  metadata <- make.unique(c(
+    "cell_barcode",
+    included_groups,
+    "nUMI",
+    "nGene",
+    additional_metadata,
+    setdiff(generated_metadata, source_metadata)
+  ))
+  spatial <- if (is.list(profile$spatial)) profile$spatial else list()
+  spatial_sections <- spatial$sections %||% character()
+  if (!is.character(spatial_sections) || anyNA(spatial_sections)) {
+    spatial_sections <- character()
+  }
+  list(
+    schema_version = 2L,
+    cells = axis_ids("cells"),
+    features = axis_ids("features"),
+    group_levels = group_levels,
+    projections = unname(included_projections),
+    source_metadata = unname(source_metadata),
+    metadata = unname(metadata),
+    spatial_sections = unname(spatial_sections)
+  )
+}
+
 .builder_plan_release_manifest <- function(manifests) {
   ids <- unique(unlist(lapply(manifests, names), use.names = FALSE))
   out <- lapply(ids, function(id) {
@@ -1183,6 +1255,12 @@ builder_freeze_plan <- function(
         analysis_dependency_graph = .builder_plan_analysis_graph(
           analyses,
           has_marker_genes
+        ),
+        artifact_identity = .builder_plan_artifact_identity(
+          entry,
+          included_groups[[index]],
+          included_projections[[index]],
+          analyses
         ),
         tables = settings$tables %||% list(),
         images = settings$images %||% list(),

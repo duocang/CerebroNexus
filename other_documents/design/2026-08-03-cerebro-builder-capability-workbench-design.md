@@ -1,9 +1,11 @@
 # Cerebro Builder Capability Workbench Design
 
-- **Status:** Approved for implementation planning
+- **Status:** Approved; amended for private generated-app integration
 - **Date:** 2026-08-03
+- **Amended:** 2026-08-05 after upstream PR #102 and Builder Task 9
 - **Target branch:** `feat/cerebro-builder`
 - **Current branch head when designed:** `a539cba5`
+- **Current branch head when amended:** `a236e0a9`
 - **Primary user:** A first-time Cerebro user who should not need to write R
 - **Scope:** Complete Seurat-to-Cerebro coverage first; keep the input boundary
   extensible for later SCE and CRB adapters
@@ -50,6 +52,21 @@ is therefore: privacy prerequisite, manifest contract, worker and publication
 state machines, recommendation logic, UI restructuring, then motion and visual
 refinement.
 
+### 2026-08-05 implementation amendment
+
+Tasks 0-9 are complete on a branch rebased onto upstream `c192a6a0`. Upstream
+PR #102, merged at `18dcef0f`, now supplies the private `createShinyApp()`
+publication contract that Task 0 was waiting for. Task 9 additionally supplies
+the parent-owned whole-release transaction and recovery boundary. The original
+reason for omitting Task 10 therefore no longer applies.
+
+Task 10 is restored as the separately approved activation step. It declares an
+exact installed privacy-contract marker only after the real Builder-to-App path
+passes, assembles the App inside the coordinator-assigned stage through the
+accepted `createShinyApp()` implementation, verifies it before publication,
+and leaves final publication exclusively to the parent coordinator. Old or
+unmarked package installations remain fail-closed and CRB-only.
+
 ## Confirmed product decisions
 
 | Decision | Approved outcome |
@@ -64,10 +81,10 @@ refinement.
 | Expression backend | Show a plain-language recommendation; expose H5/BPCells/embedded names only in advanced settings |
 | Example data | First-class, offline, repeatable inputs that use the same downstream inspection/build path as user files |
 | Motion | Use motion only to explain a real state or location change; support reduced motion completely |
-| Generated app privacy | Keep app publication disabled on the current baseline; this branch does not import unpublished privacy work |
+| Generated app privacy | Enable App output only for exact installed privacy contract v1; reuse the accepted upstream `createShinyApp()` implementation and keep old or unmarked installations CRB-only |
 | Optional analyses | Always opt-in; a recommendation badge never adds work to the frozen plan by itself |
 
-## Why the current implementation is insufficient
+## Original baseline findings
 
 The design was informed by direct source inspection, live use of both basic and
 spatial examples, Viewer page inspection, and adversarial base-R
@@ -86,7 +103,7 @@ reproductions.
 | Worker failure | There is no explicit crashed/restarting state | A dead worker can leave the page permanently unusable |
 | Batch publication | There is no cross-session destination lock | Two successful builds can produce a mixed batch containing files from each |
 | Rollback | Restoration results are not checked before backup cleanup | Recovery can fail, delete the only backup, and still claim success |
-| App privacy | The current baseline does not provide a verified private-data publication capability | Builder app publication remains unavailable instead of exposing raw CRB or matrix sidecars |
+| App privacy | The original baseline did not provide a verified private-data publication capability | Task 0 correctly kept Builder App output unavailable until upstream PR #102 landed; Task 10 now performs the separately approved activation |
 
 ## Goals
 
@@ -256,7 +273,8 @@ dataset and for the complete release:
 - Viewer pages expected to appear;
 - spatial sections and histology coverage;
 - app-only colour configuration;
-- public versus private assets;
+- private-data artifacts versus Viewer-bundle assets, with an explicit
+  statement that neither label creates an HTTP-public URL;
 - estimated runtime and disk size;
 - acknowledged warnings;
 - output release directory and replacement policy.
@@ -828,10 +846,10 @@ release directory rather than several unrelated top-level targets:
 
 ```text
 <parent>/<release-name>/
-├── exports/
-│   ├── 01-<dataset>.crb
-│   └── expression sidecars when requested
+├── 01-<dataset>.crb
+├── expression sidecars when requested
 ├── cerebro_app/                 # optional
+├── .cerebro-builder-release-v1 # parent-written ownership record
 └── build-report.json
 ```
 
@@ -842,23 +860,44 @@ estimated duplication when both raw exports and an app are requested.
 HTTP resource by the generated app. It is a portable, redacted report: it may
 name artifact-visible datasets, methods, and metadata columns, but it excludes
 source absolute paths, host/PID, lock/backup paths, raw values, and private
-diagnostics. Operational diagnostics remain owner-only inside the sibling
-control directory and are not copied into the release.
+diagnostics. The parent derives, atomically writes, rereads, and validates it
+from the frozen plan plus verified result before the ownership record is
+written. Operational diagnostics remain owner-only inside the sibling control
+directory and are not copied into the release.
+
+The hidden ownership record is smaller and stricter than the user-facing
+report. The parent writes it only after verifying the complete stage. Its first
+line is exactly `CEREBRO_BUILDER_RELEASE_V1`; subsequent sorted lines use
+`F<TAB>path` or `D<TAB>path` for every recursively owned payload entry. The
+record file itself is an implicit fixed member and is not self-listed. Its
+bytes and parsed member set are part of the captured prior-release identity and
+are checked again under the publication lock. On a later build it allows an old
+optional App or removed dataset to be retired without treating it as foreign.
+Any unlisted entry anywhere under the release, malformed record, symbolic link,
+or otherwise unverifiable occupant blocks replacement and remains untouched. A
+legacy release without this record may be replaced in place only when its
+complete existing topology remains in the new plan; shrinking it requires a
+prior record-bearing publication or explicit manual resolution.
 
 ### Transaction sequence
 
 ```text
 drain persistent commands and freeze plan + expected prior-release identity
-  -> coordinator registers build ID and same-filesystem private stage
+  -> acquire the canonical release owner-token lock
+  -> coordinator registers build ID, same-filesystem private stage, and durable prepared record
   -> worker builds and validates artifacts in that stage
-  -> read back and verify every artifact
-  -> acquire canonical release owner-token lock
+  -> parent rereads CRBs and independently reverifies any generated App
+  -> validate the exact worker-payload target set
+  -> parent writes and rereads any portable build report
+  -> parent writes and rereads the exact release-ownership record
+  -> validate the exact final target set and recursive stage identity
   -> compare-and-swap the actual prior-release identity
   -> atomically write durable transaction phase record
   -> move prior release to a unique backup
   -> rename stage to final release
   -> verify final location
   -> retire backup and transaction record
+  -> release the owner-token lock
 ```
 
 One lock covers the whole canonical release target. Two sessions cannot publish
@@ -889,22 +928,30 @@ interrupted publication when the user reselects the same parent/release target;
 the application does not scan arbitrary filesystem locations. Recovery either
 restores the recorded backup or offers a precise, non-destructive manual action.
 If an unrelated process has occupied the final path, recovery stops without
-deleting it. Unknown files are always preserved.
+deleting it. Unknown files block replacement and remain untouched.
 
 Canonical-target, containment, symbolic-link, case-folding, Windows device-name,
 and alias rules must be implemented and verified against the current branch.
 Unpublished pull-request code is outside this design's implementation scope.
 Time elapsed alone never proves that a lock is stale.
 
-### Generated app privacy prerequisite
+### Generated app privacy contract and activation
 
-App generation remains unavailable on the current baseline. This Builder branch
-does not port or anticipate an unmerged private-publication implementation. If a
-verified private-data capability later lands on the upstream baseline, enabling
-app output is a separate follow-up decision. Any such capability must:
+The private-data capability has landed upstream through PR #102, and Task 10 is
+the approved activation step. It must not infer safety from a package version,
+file presence, UI value, or BuildPlan claim. The installed package namespace
+must expose one exact eager, locked, non-active integer marker with value `1L`.
+The marker is declared only in the final activation commit, after the dormant
+Builder App path and its real integration tests pass. Missing, lazy, active,
+function-valued, unlocked, or differently valued markers keep App output
+disabled.
+
+Privacy contract v1 must:
 
 - keep CRB, H5, and BPCells content outside HTTP resource mappings;
-- expose only explicitly approved spatial assets;
+- keep `spatial-assets/` outside generic HTTP resource mappings; configured
+  images are read through the validated server-side allowlist and rendered
+  without making their files directly downloadable;
 - avoid the legacy `/data` path so an older still-running app cannot map the
   new private files after an in-place upgrade;
 - preserve the frozen backend descriptor contract;
@@ -914,22 +961,40 @@ app output is a separate follow-up decision. Any such capability must:
 The Builder release lock and `createShinyApp()`'s internal app lock protect
 different boundaries and both remain necessary.
 
+The disposable worker may call `createShinyApp()` only with already verified
+CRBs and `result_dir = <assigned-stage>/cerebro_app`. That is stage assembly,
+not final publication. It uses `overwrite = FALSE`, returns typed diagnostic
+evidence, and never receives authority to move the release into the user
+target. The coordinator freezes the App expectation before dispatch, then the
+parent independently rereads and verifies the current staged App rather than
+trusting worker evidence. Only after that does it add parent-authored files,
+write the ownership record, perform the Task 9 transaction, and remap
+`app_dir` to the final release path.
+
 Generated-app options are part of Review rather than invisible defaults:
 
 - `show_upload_ui` defaults to `FALSE` for a fixed, manifest-verified release;
   enabling it is advanced and makes clear that guarantees cover bundled
   datasets only;
-- the initial dataset follows the approved rail order or an explicit initial
-  selection; `crb_pick_smallest_file` cannot silently override that choice;
+- the initial dataset follows the approved rail order or an explicit pinned
+  selection; the frozen state distinguishes automatic from explicit even when
+  both currently name the first row, and `crb_pick_smallest_file` cannot
+  silently override either choice;
 - trivial-metadata exclusion agrees with the Builder metadata policy;
 - welcome message, point size, and `variable_to_compare` are app-appearance
   settings with validated defaults and advanced controls;
 - host, port, request size, display mode, and launch behavior remain deployment
   settings and are serialized safely.
 
-The manifest and Review report CRB capabilities and generated-app configuration
-as separate artifact scopes. Colours, public spatial assets, upload controls,
-and Viewer defaults cannot be presented as embedded CRB content.
+The unpublished internal fields formerly called `public_assets` and
+`public_asset_claims` become `viewer_bundle_assets` and
+`viewer_bundle_asset_claims` before App activation. They describe eligibility
+for inclusion in a Viewer bundle, not HTTP exposure. Contract v1 has no
+user-configurable HTTP-public asset class, and these fields can never create a
+resource mapping. The manifest and Review report CRB capabilities and
+generated-app configuration as separate artifact scopes. Colours, configured
+spatial images, upload controls, and Viewer defaults cannot be presented as
+embedded CRB content unless they actually are embedded in the CRB.
 
 ## Result states and error language
 
@@ -1030,11 +1095,14 @@ the owner of all state and markup. Proposed responsibility boundaries are:
 ```text
 inst/builder/
 ├── adapters.R          # source contracts and phase-one adapters
+├── prerequisite.R      # installed private-App contract gate
 ├── manifest.R          # DatasetProfile and ContentManifest rules
 ├── recommend.R         # deterministic novice defaults
 ├── plan.R              # immutable BuildPlan and full revalidation
 ├── worker.R            # worker lifecycle and request protocol
 ├── build.R             # analysis/export/post-build verification
+├── app_bundle.R        # frozen createShinyApp arguments and App read-back
+├── report.R            # portable redacted plan/result report
 ├── coordinator.R       # parent-owned build/stage/publication orchestration
 ├── publish.R           # release lock, journal, replacement, recovery
 ├── spatial.R           # shared coordinate and image-transform contracts
@@ -1154,7 +1222,11 @@ Use multiple real R processes where concurrency matters. Cover:
 Build and boot a hermetic app without CerebroNexus installed. Verify:
 
 - CRB/H5/BPCells requests are not served;
-- approved spatial assets are served byte-identically;
+- Builder-normalized histology remains embedded in the CRB, keeps its
+  transforms, renders, and has no HTTP file URL;
+- direct `createShinyApp()` external spatial files remain byte-identical inside
+  the bundle, render through the server-side allowlist, and are not directly
+  downloadable;
 - a still-running legacy app `/data` mapping cannot reach a newly published
   private directory;
 - frozen backend plans match staged files;
@@ -1191,9 +1263,8 @@ and success states.
 
 This is sequencing guidance, not the task-by-task implementation plan.
 
-1. **Enforce the current prerequisite boundary.** Keep Builder app generation
-   disabled while the baseline lacks a verified private-publication capability;
-   do not import unpublished pull-request code into this branch.
+1. **Enforce the prerequisite boundary.** Task 0 keeps Builder App generation
+   disabled unless the installed package exposes exact privacy contract v1.
 2. **Introduce the manifest contract.** Add adapters, profile/manifest data
    structures, Viewer page gates, and all-content fixtures while retaining the
    existing UI temporarily.
@@ -1206,10 +1277,15 @@ This is sequencing guidance, not the task-by-task implementation plan.
 5. **Add recommendations and review.** Implement metadata classification,
    backend recommendation, QC derivation, default group/projection, and exact
    pre/post-build reports.
-6. **Restructure the UI.** Implement the dataset rail and four stage modules,
+6. **Activate private generated Apps.** After the accepted upstream contract
+   and parent transaction are both present, add staged App assembly/read-back,
+   the release ownership record, and real privacy integration as Task 10; add
+   the installed marker only after that dormant path passes. Do not rewrite
+   `createShinyApp()` or give the worker final publish authority.
+7. **Restructure the UI.** Implement the dataset rail and four stage modules,
    then add unified pickers, responsive behavior, accessibility, and
    state-bearing motion.
-7. **Complete end-to-end verification and documentation.** Run the complete
+8. **Complete end-to-end verification and documentation.** Run the complete
    precheck, browser flows, privacy upgrade scenario, pkgdown build, and an
    adversarial review before any push.
 
@@ -1263,16 +1339,21 @@ The redesign is complete only when all of the following are true:
     indeterminate publication enters `Recovery required` without destructive
     cleanup.
 14. The generated app exposes no CRB, H5, or BPCells data over HTTP and exposes
-    only approved spatial assets.
-15. Example, basic, spatial, immune/HLA, all-content, invalid-content,
+    no direct spatial-asset file URL; Builder-normalized embedded histology and
+    direct `createShinyApp()` external images each render through their
+    validated path, with external image bytes preserved.
+15. Switching App output off or removing a dataset retires only members proven
+    Builder-owned by the prior release record; every foreign occupant at any
+    depth blocks replacement and remains untouched.
+16. Example, basic, spatial, immune/HLA, all-content, invalid-content,
     concurrency, crash, and browser fixtures all pass.
-16. Every phase-one content type has the documented preserve/generate/attach/
+17. Every phase-one content type has the documented preserve/generate/attach/
     convert/diagnose behavior and artifact scope.
-17. Wide, medium, 390-pixel, 320-pixel, and 400%-zoom layouts keep every action
+18. Wide, medium, 390-pixel, 320-pixel, and 400%-zoom layouts keep every action
     reachable without a fixed bar covering content.
-18. Keyboard, focus, status announcement, contrast, and reduced-motion checks
+19. Keyboard, focus, status announcement, contrast, and reduced-motion checks
     pass.
-19. Success provides click-based Open App, Reveal Folder, and Copy Path/Report
+20. Success provides click-based Open App, Reveal Folder, and Copy Path/Report
     actions without requiring an R command.
-20. `scripts/precheck.sh`, package tests, R CMD check, and pkgdown complete with
+21. `scripts/precheck.sh`, package tests, R CMD check, and pkgdown complete with
     no new error or warning.

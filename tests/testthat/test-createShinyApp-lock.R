@@ -642,10 +642,23 @@ test_that("the bundle lock excludes a second R process", {
     "R",
     "createShinyApp.R"
   )
+  path_contract_source <- test_path(
+    "..",
+    "..",
+    "R",
+    "bundle_path_contract.R"
+  )
   worker <- callr::r_bg(
-    function(implementation_source, result, ready, release) {
+    function(
+      implementation_source,
+      path_contract_source,
+      result,
+      ready,
+      release
+    ) {
       implementation <- if (file.exists(implementation_source)) {
         environment <- new.env(parent = globalenv())
+        sys.source(path_contract_source, envir = environment)
         sys.source(implementation_source, envir = environment)
         environment
       } else {
@@ -665,7 +678,13 @@ test_that("the bundle lock excludes a second R process", {
       }
       invisible(TRUE)
     },
-    args = list(implementation_source, result, ready, release),
+    args = list(
+      implementation_source,
+      path_contract_source,
+      result,
+      ready,
+      release
+    ),
     libpath = .libPaths(),
     supervise = TRUE
   )

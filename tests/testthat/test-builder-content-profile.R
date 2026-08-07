@@ -83,7 +83,7 @@ test_that("application and worker load content contracts before profiles", {
     warn = FALSE
   )
   session <- readLines(
-    builder_profile_inst_path("builder", "session.R"),
+    builder_profile_inst_path("builder", "worker.R"),
     warn = FALSE
   )
 
