@@ -21,11 +21,22 @@
   version selector and version-named `launchCerebroV1.x()` exports were removed
   because CerebroNexus ships one Viewer implementation.
 
+## Documentation
+
+- **The expression-backend article now documents the rebuilt MSSM protocol and
+  its evidence limits.** It separates the controlled three-backend comparison
+  from BPCells scaling through the complete 4,140,453-cell source. Reviewed
+  full-scale results have not yet been committed.
+
 ## Internal
 
 - Viewer runtime sources now live under `inst/viewer/`, and bundled examples
   live under `inst/extdata/examples/`. Removing the historical Viewer version
   from internal paths does not change the application or data formats.
+- **`exportFromSeurat()` can stream one complete BPCells-backed Seurat `data`
+  layer through its public BPCells mode.** The rebuilt real-data harness uses
+  one pinned local MSSM H5AD, exact nested sampling, isolated paired workers,
+  correctness fingerprints, and fail-closed Panel A to Panel B linkage.
 
 # CerebroNexus 3.2.0
 

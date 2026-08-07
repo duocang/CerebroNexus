@@ -452,7 +452,12 @@
 #'   before. Compatible with all existing \code{.crb} readers.
 #'   \item \code{"bpcells"} writes the matrix to a BPCells on-disk directory
 #'   next to the \code{.crb} and keeps only a lightweight handle in the
-#'   serialised object. Recommended for large sparse matrices. The resulting
+#'   serialised object. A complete BPCells-backed Seurat layer is streamed
+#'   directly without first materialising it in memory. Split disk-backed
+#'   layers must be joined upstream with a representation-aware operation;
+#'   the exporter will not silently choose one physical layer or materialise
+#'   the split representation. Recommended for large sparse matrices. The
+#'   resulting
 #'   \code{.crb} is portable as long as the sibling \code{.bpcells/} directory
 #'   travels with it; the Shiny runtime re-resolves paths via
 #'   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
@@ -806,6 +811,7 @@ exportFromSeurat <- function(
       slot = slot,
       join_samples = TRUE,
       allow_cross_semantic_fallback = TRUE,
+      allow_iterable_matrix = identical(expression_matrix_mode, "bpcells"),
       verbose = verbose,
       return_resolution = TRUE
     )
@@ -896,7 +902,8 @@ exportFromSeurat <- function(
     ## Sparse dgCMatrix is BPCells' native input; dense matrices have to be
     ## coerced once. Everything else (RleMatrix, DelayedMatrix) is rare enough
     ## here that we cover it defensively.
-    if (!inherits(expression_data, "dgCMatrix")) {
+    source_is_bpcells <- inherits(expression_data, "IterableMatrix")
+    if (!inherits(expression_data, "dgCMatrix") && !source_is_bpcells) {
       if (inherits(expression_data, "matrix")) {
         expression_data <- methods::as(expression_data, "CsparseMatrix")
       } else if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
@@ -915,12 +922,19 @@ exportFromSeurat <- function(
     ## sibling ~5x on integer counts (e.g. 50k cells x 20k genes: 440 MB
     ## raw double -> 78 MB bit-packed). Normalised data (slot = "data" or
     ## "scale.data") stays as double — bit-packing would silently truncate.
-    nnz_int_ok <- length(expression_data@x) > 0L &&
+    nnz_int_ok <- !source_is_bpcells &&
+      length(expression_data@x) > 0L &&
       all(expression_data@x >= 0) &&
       all(expression_data@x == as.integer(expression_data@x)) &&
       all(expression_data@x <= .Machine$integer.max)
-    bpc_iter <- methods::as(expression_data, "IterableMatrix")
-    if (nnz_int_ok) {
+    bpc_iter <- if (source_is_bpcells) {
+      expression_data
+    } else {
+      methods::as(expression_data, "IterableMatrix")
+    }
+    if (source_is_bpcells) {
+      bpc_storage_msg <- "source storage type (unchanged)"
+    } else if (nnz_int_ok) {
       bpc_iter <- BPCells::convert_matrix_type(bpc_iter, type = "uint32_t")
       bpc_storage_msg <- "uint32_t (bit-packed)"
     } else {

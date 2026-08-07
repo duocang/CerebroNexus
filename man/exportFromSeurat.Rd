@@ -79,7 +79,12 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
   before. Compatible with all existing \code{.crb} readers.
   \item \code{"bpcells"} writes the matrix to a BPCells on-disk directory
   next to the \code{.crb} and keeps only a lightweight handle in the
-  serialised object. Recommended for large sparse matrices. The resulting
+  serialised object. A complete BPCells-backed Seurat layer is streamed
+  directly without first materialising it in memory. Split disk-backed
+  layers must be joined upstream with a representation-aware operation;
+  the exporter will not silently choose one physical layer or materialise
+  the split representation. Recommended for large sparse matrices. The
+  resulting
   \code{.crb} is portable as long as the sibling \code{.bpcells/} directory
   travels with it; the Shiny runtime re-resolves paths via
   \code{getExpressionBackend()$location} relative to the \code{.crb}'s

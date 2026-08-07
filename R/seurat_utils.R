@@ -635,13 +635,41 @@
   ## JoinLayers must not decide whether a mixed in-memory/disk partition is
   ## supported. Inspect every selected member in deterministic order; otherwise
   ## behaviour depends on which sample suffix sorts first.
-  for (partition_layer in partition$layers) {
-    source_matrix <- suppressWarnings(
-      SeuratObject::LayerData(
-        assay_object,
-        layer = partition_layer
+  partition_sources <- lapply(
+    partition$layers,
+    function(partition_layer) {
+      suppressWarnings(
+        SeuratObject::LayerData(
+          assay_object,
+          layer = partition_layer
+        )
       )
+    }
+  )
+  names(partition_sources) <- partition$layers
+  bpcells_layers <- names(partition_sources)[vapply(
+    partition_sources,
+    inherits,
+    logical(1),
+    what = "IterableMatrix"
+  )]
+  if (length(bpcells_layers) > 0L) {
+    stop(
+      "Requested root layer `",
+      requested_layer,
+      "` resolves to a split partition containing BPCells layer(s). ",
+      "Selected layers: ",
+      paste(partition$layers, collapse = ", "),
+      "; BPCells members: ",
+      paste(bpcells_layers, collapse = ", "),
+      ". Refusing to silently select one physical layer, and refusing to ",
+      "automatically materialise disk-backed data. Join the split layers ",
+      "upstream with a representation-aware operation before exporting.",
+      call. = FALSE
     )
+  }
+  for (partition_layer in names(partition_sources)) {
+    source_matrix <- partition_sources[[partition_layer]]
     if (!.supported_expression_matrix(source_matrix)) {
       return(list(
         data = source_matrix,
@@ -832,9 +860,17 @@
   slot = "data",
   join_samples = TRUE,
   allow_cross_semantic_fallback = FALSE,
+  allow_iterable_matrix = FALSE,
   verbose = FALSE,
   return_resolution = FALSE
 ) {
+  if (
+    !is.logical(allow_iterable_matrix) ||
+      length(allow_iterable_matrix) != 1L ||
+      is.na(allow_iterable_matrix)
+  ) {
+    stop("`allow_iterable_matrix` must be TRUE or FALSE.", call. = FALSE)
+  }
   if (
     !is.logical(return_resolution) ||
       length(return_resolution) != 1L ||
@@ -1039,7 +1075,12 @@
     )
   }
 
-  if (is.matrix(expr_matrix) || inherits(expr_matrix, "dgCMatrix")) {
+  iterable_allowed <- isTRUE(allow_iterable_matrix) &&
+    inherits(expr_matrix, "IterableMatrix")
+  supported_expression <- is.matrix(expr_matrix) ||
+    inherits(expr_matrix, "dgCMatrix") ||
+    iterable_allowed
+  if (supported_expression) {
     if (nrow(expr_matrix) == 0 || ncol(expr_matrix) == 0) {
       stop(
         "Expression matrix is empty (0 rows or 0 columns).\n",

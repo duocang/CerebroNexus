@@ -30,6 +30,64 @@ valid_args <- list(
   nGene = "nFeature_RNA"
 )
 
+make_bpcells_source_object <- function(root) {
+  expression <- Matrix::sparseMatrix(
+    i = c(1L, 3L, 2L, 1L, 4L, 2L),
+    j = c(1L, 1L, 2L, 3L, 4L, 5L),
+    x = c(1.5, 2.5, 3.5, 4.5, 5.5, 6.5),
+    dims = c(4L, 5L),
+    dimnames = list(
+      paste0("gene", seq_len(4L)),
+      paste0("cell", seq_len(5L))
+    )
+  )
+  matrix_dir <- file.path(root, "source.bpcells")
+  suppressWarnings(suppressMessages(BPCells::write_matrix_dir(
+    methods::as(expression, "IterableMatrix"),
+    dir = matrix_dir
+  )))
+  assay <- SeuratObject::CreateAssay5Object(
+    data = BPCells::open_matrix_dir(dir = matrix_dir)
+  )
+  object <- suppressWarnings(
+    Seurat::CreateSeuratObject(counts = assay, assay = "RNA")
+  )
+  object$sample <- factor(c("s1", "s1", "s2", "s2", "s3"))
+  object$nUMI <- 0
+  object$nGene <- 0
+  object[["umap"]] <- SeuratObject::CreateDimReducObject(
+    embeddings = matrix(
+      seq_len(10L) / 10,
+      nrow = 5L,
+      dimnames = list(colnames(object), c("UMAP_1", "UMAP_2"))
+    ),
+    key = "UMAP_",
+    assay = "RNA"
+  )
+
+  list(object = object, expression = expression)
+}
+
+expect_disk_source_rejected <- function(mode, fixture, root) {
+  expect_error(
+    exportFromSeurat(
+      object = fixture$object,
+      file = file.path(root, paste0("unsupported-", mode, ".crb")),
+      experiment_name = "BPCells source rejection",
+      assay = "RNA",
+      slot = "data",
+      organism = "hg",
+      groups = "sample",
+      nUMI = "nUMI",
+      nGene = "nGene",
+      add_all_meta_data = FALSE,
+      expression_matrix_mode = mode,
+      verbose = FALSE
+    ),
+    regexp = "disk-backed|IterableMatrix"
+  )
+}
+
 ## ---------------------------------------------------------------------------
 ## Input validation
 ## ---------------------------------------------------------------------------
@@ -261,4 +319,97 @@ test_that("h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
   expect_equal(ncol(attached$expression), ncol(orig))
   expect_setequal(rownames(attached$expression), rownames(orig))
   expect_setequal(colnames(attached$expression), colnames(orig))
+})
+
+test_that("public bpcells export streams a BPCells-backed Seurat layer and
+          remains portable when the crb and sibling sidecar move together", {
+  skip_if_not_installed("BPCells")
+
+  root <- withr::local_tempdir()
+  fixture <- make_bpcells_source_object(root)
+  export_dir <- file.path(root, "export")
+  moved_dir <- file.path(root, "moved")
+  dir.create(export_dir)
+  dir.create(moved_dir)
+  crb <- file.path(export_dir, "streamed.crb")
+
+  export_ok <- FALSE
+  expect_no_error({
+    exportFromSeurat(
+      object = fixture$object,
+      file = crb,
+      experiment_name = "BPCells source streaming",
+      assay = "RNA",
+      slot = "data",
+      organism = "hg",
+      groups = "sample",
+      nUMI = "nUMI",
+      nGene = "nGene",
+      add_all_meta_data = FALSE,
+      expression_matrix_mode = "bpcells",
+      verbose = FALSE
+    )
+    export_ok <- TRUE
+  })
+  if (!export_ok) {
+    return(invisible(NULL))
+  }
+
+  crb_exists <- file.exists(crb)
+  expect_true(crb_exists)
+  if (!crb_exists) {
+    return(invisible(NULL))
+  }
+
+  cerebro <- readRDS(crb)
+  expect_identical(
+    cerebro$getExpressionBackend(),
+    list(type = "bpcells", location = "streamed.bpcells")
+  )
+
+  sidecar <- file.path(export_dir, "streamed.bpcells")
+  moved_crb <- file.path(moved_dir, "streamed.crb")
+  moved_sidecar <- file.path(moved_dir, "streamed.bpcells")
+  crb_moved <- file.rename(crb, moved_crb)
+  sidecar_moved <- file.rename(sidecar, moved_sidecar)
+  expect_true(crb_moved)
+  expect_true(sidecar_moved)
+  if (!crb_moved || !sidecar_moved) {
+    return(invisible(NULL))
+  }
+
+  inst_util <- system.file(
+    "viewer/utility_functions.R",
+    package = "CerebroNexus"
+  )
+  if (!nzchar(inst_util)) {
+    inst_util <- testthat::test_path(
+      "../../inst/viewer/utility_functions.R"
+    )
+  }
+  attach_env <- new.env(parent = globalenv())
+  source(inst_util, local = attach_env, echo = FALSE)
+  attached <- attach_env$.attachExternalExpression(
+    readRDS(moved_crb),
+    moved_crb
+  )
+
+  expect_equal(as.matrix(attached$expression), as.matrix(fixture$expression))
+})
+
+test_that("embedded export rejects a BPCells-backed Seurat source clearly", {
+  skip_if_not_installed("BPCells")
+
+  root <- withr::local_tempdir()
+  fixture <- make_bpcells_source_object(root)
+  expect_disk_source_rejected("embedded", fixture, root)
+})
+
+test_that("h5 export rejects a BPCells-backed Seurat source clearly", {
+  skip_if_not_installed("BPCells")
+  skip_if_not_installed("HDF5Array")
+
+  root <- withr::local_tempdir()
+  fixture <- make_bpcells_source_object(root)
+  expect_disk_source_rejected("h5", fixture, root)
 })
