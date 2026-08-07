@@ -38,12 +38,15 @@ jobs:
         run: nix-shell default.nix --run "echo 'R package dependencies installed'"
 
       - name: Install CerebroNexus for subprocess tests
-        run: nix-shell default.nix --run "R CMD INSTALL --no-docs --no-byte-compile ."
+        run: |
+          mkdir -p "$RUNNER_TEMP/Rlib"
+          R_LIBS_USER="$RUNNER_TEMP/Rlib" nix-shell default.nix --run \
+            "R CMD INSTALL -l '$RUNNER_TEMP/Rlib' --no-docs --no-byte-compile ."
 
       ## Run all tests — load package from source, then run every test_*.R.
       - name: Run all unit/integration tests
         run: |
-          nix-shell default.nix --run "Rscript -e \"
+          R_LIBS_USER="$RUNNER_TEMP/Rlib" nix-shell default.nix --run "Rscript -e \"
             devtools::load_all('.')
             testthat::test_dir(
               path = 'tests/testthat',
