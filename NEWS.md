@@ -1,4 +1,4 @@
-# CerebroNexus 4.1
+# CerebroNexus 4.2
 
 ## Viewer
 
@@ -12,6 +12,16 @@
   and forced-password-change pages cannot start the protected Viewer server.
 - Authentication preflight validates the complete shinymanager database,
   requires a non-trivial database passphrase, and verifies private POSIX modes.
+
+## Benchmark
+
+- The real-data expression-backend benchmark is finalized as a flat harness
+  with a controlled three-backend Panel A and a separate BPCells full-scale
+  Panel B through all 4,140,453 cells. The harness records raw evidence and
+  does not include validated full-scale results in this release.
+- The benchmark operator guide now documents the pinned source, exact nested
+  sampling, paired worker schedules, evidence schemas, and the Panel A to
+  Panel B validation boundary.
 
 # CerebroNexus 4.0
 

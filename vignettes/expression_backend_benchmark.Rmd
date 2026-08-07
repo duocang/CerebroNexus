@@ -20,7 +20,9 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 
 # Status
 
-The real-data benchmark protocol and harness are available for review. No validated full-scale result is currently committed, so this article makes no performance ranking or capacity claim.
+The CerebroNexus 4.2 real-data benchmark protocol and harness are available
+for review. No validated full-scale result is currently committed, so this
+article makes no performance ranking or capacity claim.
 
 # Protocol
 

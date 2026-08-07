@@ -5,7 +5,9 @@ This directory contains the operator-facing harness for one pinned real source. 
 - **Panel A (`comparison`)** compares `embedded`, `bpcells`, and `h5` after all three receive the same materialized `dgCMatrix` at 125,000 cells, 250,000 cells, and the frozen `common_target_actual` (the largest legal nested tier at or below 500,000 cells).
 - **Panel B (`full_scale`)** measures only the public BPCells streaming path at `common_target_actual`, 1,000,000 cells, 2,000,000 cells, and all 4,140,453 cells. Its common-tier job starts from the H5AD-backed `IterableMatrix`, so it is a bridge observation rather than another Panel A replicate.
 
-No reviewed full-scale results are currently committed. The harness produces raw evidence; interpretation and publication are separate, manual review steps.
+This harness is included in CerebroNexus 4.2. No reviewed full-scale results
+are currently committed. It produces raw evidence; interpretation and
+publication are separate, manual review steps.
 
 ## Pinned source
 

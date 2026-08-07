@@ -2835,11 +2835,11 @@ test_that("clean Git state is explicit in environment and manifest evidence", {
       paste(rep("b", 64), collapse = ""),
       paste(rep("c", 64), collapse = "")
     )),
-    package_version = "4.0.0",
+    package_version = "4.2",
     package_path = "/tmp/run/CerebroNexus",
     runtime = data.frame(
       package = "CerebroNexus",
-      version = "4.0.0",
+      version = "4.2",
       package_path = "/tmp/run/CerebroNexus"
     )
   )
@@ -2938,7 +2938,7 @@ test_that("Panel A static evidence and linkage reject every frozen control mutat
     rep("1.0", length(runtime_packages)),
     runtime_packages
   )
-  runtime_versions[["CerebroNexus"]] <- "4.0.0"
+  runtime_versions[["CerebroNexus"]] <- "4.2"
   runtime_paths <- setNames(
     file.path("/tmp/run-library", runtime_packages),
     runtime_packages
@@ -2979,7 +2979,7 @@ test_that("Panel A static evidence and linkage reject every frozen control mutat
       bench_sha256_object(BENCH_CONFIG),
       runtime_sha256,
       "4",
-      "4.0.0",
+      "4.2",
       "/tmp/run-library/CerebroNexus",
       "fixture-R",
       "fixture-platform",

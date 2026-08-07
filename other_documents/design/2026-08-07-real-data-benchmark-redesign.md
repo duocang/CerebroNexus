@@ -1,6 +1,6 @@
 # Simplified real-data expression-backend benchmark design
 
-**Status:** approved direction, implementation not started
+**Status:** implemented in CerebroNexus 4.2; validated full-scale evidence pending
 
 **Date:** 2026-08-07
 
