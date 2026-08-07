@@ -916,6 +916,7 @@ builder_worker_start <- function(
         source(file.path(dir, "preview.R"))
         source(file.path(dir, "extras.R"))
         source(file.path(dir, "analysis.R"))
+        source(file.path(dir, "app_bundle.R"))
         source(file.path(dir, "build.R"))
         source(file.path(dir, "prerequisite.R"))
         source(file.path(dir, "state.R"))

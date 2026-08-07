@@ -7,6 +7,13 @@ run_options_test_fixture <- function() {
   list(root = root, crb = crb)
 }
 
+test_that("initial_dataset preserves historical positional arguments", {
+  arguments <- names(formals(createShinyApp))
+
+  expect_identical(arguments[[15L]], "welcome_message")
+  expect_identical(tail(arguments, 2L), c("initial_dataset", "..."))
+})
+
 run_options_build_app <- function(fixture, result_name = "app", ...) {
   result <- file.path(fixture$root, result_name)
   createShinyApp(
@@ -152,6 +159,16 @@ test_that("createShinyApp validates run options before target preparation", {
       "AUTO",
       1,
       factor("auto")
+    ),
+    initial_dataset = list(
+      character(),
+      c("Dataset", "Other"),
+      NA_character_,
+      "",
+      "Other",
+      1,
+      TRUE,
+      factor("Dataset")
     )
   )
 
@@ -265,6 +282,16 @@ test_that("createShinyApp freezes typed run options into config", {
 
   app_file <- file.path(app, "app.R")
   app_source <- paste(readLines(app_file, warn = FALSE), collapse = "\n")
+  app_template <- builder_profile_inst_path(
+    "shiny",
+    "v1.4",
+    "_bundle_app.R"
+  )
+  expect_true(nzchar(app_template))
+  expect_identical(
+    readBin(app_file, "raw", n = file.info(app_file)$size),
+    readBin(app_template, "raw", n = file.info(app_template)$size)
+  )
   expect_silent(parse(file = app_file, keep.source = FALSE))
   expect_false(grepl(host, app_source, fixed = TRUE))
   expect_false(grepl(as.character(port), app_source, fixed = TRUE))
@@ -350,4 +377,94 @@ test_that("createShinyApp accepts boundary and whole-valued ports", {
       as.integer(ports[[index]])
     )
   }
+})
+
+test_that("explicit initial dataset preserves configured selector order", {
+  fixture <- run_options_test_fixture()
+  second <- file.path(dirname(fixture$crb), "dataset-b.crb")
+  saveRDS(Cerebro_v1.3$new(), second)
+  app <- file.path(fixture$root, "app-initial")
+
+  createShinyApp(
+    cerebro_data = c(A = fixture$crb, B = second),
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    crb_pick_smallest_file = TRUE,
+    initial_dataset = "B"
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(names(config$crb_file_to_load), c("A", "B"))
+  expect_identical(config$initial_dataset, "B")
+})
+
+test_that("initial dataset is reserved and validated through its argument", {
+  fixture <- run_options_test_fixture()
+  second <- file.path(dirname(fixture$crb), "dataset-b.crb")
+  saveRDS(Cerebro_v1.3$new(), second)
+
+  injected <- file.path(fixture$root, "app-injected")
+  createShinyApp(
+    cerebro_data = c(A = fixture$crb, B = second),
+    result_dir = injected,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    cerebro_options = list(initial_dataset = "B")
+  )
+  expect_null(
+    readRDS(file.path(injected, "cerebro_config.rds"))$initial_dataset
+  )
+
+  expect_error(
+    createShinyApp(
+      cerebro_data = c(A = fixture$crb, B = second),
+      result_dir = file.path(fixture$root, "app-invalid"),
+      launch_browser = FALSE,
+      verbose = FALSE,
+      initial_dataset = "missing"
+    ),
+    "initial_dataset"
+  )
+})
+
+test_that("runtime initial selection keeps URL and session precedence", {
+  server_file <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "shiny",
+    "v1.4",
+    "shiny_server.R"
+  )
+  if (!file.exists(server_file)) {
+    server_file <- system.file(
+      "shiny",
+      "v1.4",
+      "shiny_server.R",
+      package = "CerebroNexus"
+    )
+  }
+  expect_true(file.exists(server_file))
+  source <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+  url <- regexpr("match_dataset_by_url(", source, fixed = TRUE)[1L]
+  current <- regexpr("available_crb_files$selected", source, fixed = TRUE)[1L]
+  configured <- regexpr("initial_dataset", source, fixed = TRUE)[1L]
+  fallback <- regexpr("which.min(file_sizes)", source, fixed = TRUE)[1L]
+  manual <- regexpr(
+    "observeEvent(input[['crb_file_selector']]",
+    source,
+    fixed = TRUE
+  )[1L]
+
+  expect_gt(url, 0L)
+  expect_gt(current, url)
+  expect_gt(configured, current)
+  expect_gt(fallback, configured)
+  expect_gt(manual, fallback)
+  expect_match(
+    source,
+    "unname(file_to_load[[configured_initial_dataset]])",
+    fixed = TRUE
+  )
 })

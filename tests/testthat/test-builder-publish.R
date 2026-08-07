@@ -7,6 +7,450 @@ builder_publish_source <- function(local = parent.frame()) {
   source(file.path(root, "publish.R"), local = local)
 }
 
+write_builder_release_record_fixture <- function(root, members) {
+  lines <- c(
+    "CEREBRO_BUILDER_RELEASE_V1",
+    vapply(
+      members,
+      function(member) {
+        paste(member$type, member$path, sep = "\t")
+      },
+      ""
+    )
+  )
+  writeLines(
+    lines,
+    file.path(root, ".cerebro-builder-release-v1"),
+    useBytes = TRUE
+  )
+}
+
+test_that("release existence includes dangling lexical entries", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "dangling")
+    outside <- file.path(root, "missing")
+    linked <- tryCatch(
+      file.symlink(outside, target),
+      error = function(error) FALSE
+    )
+    skip_if_not(isTRUE(linked), "Symbolic links are unavailable")
+
+    expect_true(.builder_release_exists(target))
+    expect_identical(Sys.readlink(target), outside)
+    expect_false(file.exists(outside))
+  })
+})
+
+test_that("release ownership records require canonical recursive members", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(file.path(release, "cerebro_app", "www"), recursive = TRUE)
+    writeLines("crb", file.path(release, "01-a.crb"))
+    writeLines("app", file.path(release, "cerebro_app", "app.R"))
+    writeLines("asset", file.path(release, "cerebro_app", "www", "asset.txt"))
+    members <- list(
+      list(type = "D", path = "cerebro_app"),
+      list(type = "D", path = "cerebro_app/www"),
+      list(type = "F", path = "01-a.crb"),
+      list(type = "F", path = "cerebro_app/app.R"),
+      list(type = "F", path = "cerebro_app/www/asset.txt")
+    )
+    write_builder_release_record_fixture(release, members)
+
+    record <- .builder_release_read_record(release)
+
+    expect_identical(record$members, members)
+    expect_type(record$bytes, "raw")
+    expect_identical(record$identity, builder_release_identity(release))
+  })
+})
+
+test_that("ownership records round-trip sorted UTF-8 paths", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    paths <- enc2utf8(c("a.crb", "é.crb", "中文.crb"))
+    for (path in paths) {
+      writeLines(path, file.path(release, path), useBytes = TRUE)
+    }
+    identity <- builder_release_identity(release)
+
+    record <- .builder_release_write_record(
+      release,
+      identity,
+      token = "utf8-round-trip"
+    )
+
+    expected_lines <- sort(enc2utf8(paste0("F\t", paths)), method = "radix")
+    expected_paths <- sub("^F\t", "", expected_lines)
+    record_paths <- vapply(record$members, `[[`, character(1), "path")
+    expect_identical(record_paths, expected_paths)
+    expect_true(all(validUTF8(record_paths)))
+    non_ascii <- grepl("[^ -~]", record_paths)
+    expect_true(all(Encoding(record_paths[non_ascii]) == "UTF-8"))
+    expect_identical(
+      vapply(.builder_release_read_record(release)$members, `[[`, "", "path"),
+      expected_paths
+    )
+  })
+})
+
+test_that("malformed ownership records fail closed", {
+  local({
+    builder_publish_source()
+    cases <- list(
+      header = c("CEREBRO_BUILDER_RELEASE_V2", "F\tdataset.crb"),
+      blank = c("CEREBRO_BUILDER_RELEASE_V1", ""),
+      tag = c("CEREBRO_BUILDER_RELEASE_V1", "X\tdataset.crb"),
+      delimiter = c("CEREBRO_BUILDER_RELEASE_V1", "F dataset.crb"),
+      dot = c("CEREBRO_BUILDER_RELEASE_V1", "F\t./dataset.crb"),
+      parent = c("CEREBRO_BUILDER_RELEASE_V1", "F\ta/../dataset.crb"),
+      duplicate = c(
+        "CEREBRO_BUILDER_RELEASE_V1",
+        "F\tdataset.crb",
+        "F\tdataset.crb"
+      ),
+      absolute = c("CEREBRO_BUILDER_RELEASE_V1", "F\t/tmp/dataset.crb"),
+      device = c("CEREBRO_BUILDER_RELEASE_V1", "F\tCON"),
+      control = c("CEREBRO_BUILDER_RELEASE_V1", "F\tbad\001name")
+    )
+    for (case in cases) {
+      root <- withr::local_tempdir()
+      release <- file.path(root, "release")
+      dir.create(release)
+      writeLines("crb", file.path(release, "dataset.crb"))
+      writeLines(
+        case,
+        file.path(release, ".cerebro-builder-release-v1"),
+        useBytes = TRUE
+      )
+      expect_error(
+        .builder_release_read_record(release),
+        "ownership record",
+        info = paste(case, collapse = " | ")
+      )
+    }
+  })
+})
+
+test_that("ownership records reject extra blank lines", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeBin(
+      charToRaw("CEREBRO_BUILDER_RELEASE_V1\n\n"),
+      file.path(release, ".cerebro-builder-release-v1")
+    )
+
+    expect_error(
+      .builder_release_read_record(release),
+      "blank member"
+    )
+  })
+})
+
+test_that("ownership records reject trailing member delimiters", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("crb", file.path(release, "dataset.crb"))
+    writeBin(
+      charToRaw(
+        "CEREBRO_BUILDER_RELEASE_V1\nF\tdataset.crb\t\n"
+      ),
+      file.path(release, ".cerebro-builder-release-v1")
+    )
+
+    expect_error(
+      .builder_release_read_record(release),
+      "malformed member"
+    )
+  })
+})
+
+test_that("ownership records reject identity mismatches and links", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+
+    missing <- file.path(root, "missing")
+    dir.create(missing)
+    write_builder_release_record_fixture(
+      missing,
+      list(list(type = "F", path = "missing.crb"))
+    )
+    expect_error(.builder_release_read_record(missing), "ownership record")
+
+    wrong_type <- file.path(root, "wrong-type")
+    dir.create(file.path(wrong_type, "dataset.crb"), recursive = TRUE)
+    write_builder_release_record_fixture(
+      wrong_type,
+      list(list(type = "F", path = "dataset.crb"))
+    )
+    expect_error(.builder_release_read_record(wrong_type), "ownership record")
+
+    hidden <- file.path(root, "hidden")
+    dir.create(hidden)
+    writeLines("crb", file.path(hidden, "dataset.crb"))
+    writeLines("foreign", file.path(hidden, ".unknown"))
+    write_builder_release_record_fixture(
+      hidden,
+      list(list(type = "F", path = "dataset.crb"))
+    )
+    expect_error(.builder_release_read_record(hidden), "ownership record")
+
+    linked <- file.path(root, "linked")
+    dir.create(linked)
+    writeLines("crb", file.path(linked, "dataset.crb"))
+    link_ok <- tryCatch(
+      file.symlink("dataset.crb", file.path(linked, "alias.crb")),
+      error = function(error) FALSE
+    )
+    if (isTRUE(link_ok)) {
+      write_builder_release_record_fixture(
+        linked,
+        list(
+          list(type = "F", path = "alias.crb"),
+          list(type = "F", path = "dataset.crb")
+        )
+      )
+      expect_error(.builder_release_read_record(linked), "symbolic link")
+    }
+  })
+})
+
+test_that("ownership record replacement is atomic", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("crb", file.path(release, "dataset.crb"))
+    identity <- builder_release_identity(release)
+
+    expect_error(
+      .builder_release_write_record(
+        release,
+        identity,
+        token = "atomic-test",
+        .move = function(from, to) FALSE
+      ),
+      "atomically"
+    )
+    expect_false(file.exists(file.path(
+      release,
+      ".cerebro-builder-release-v1"
+    )))
+    expect_identical(readLines(file.path(release, "dataset.crb")), "crb")
+    expect_length(list.files(release, all.files = TRUE, no.. = TRUE), 1L)
+  })
+})
+
+test_that("record temp creation never follows a dangling symlink", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("crb", file.path(release, "dataset.crb"))
+    identity <- builder_release_identity(release)
+    token <- "dangling-test"
+    temporary <- file.path(
+      release,
+      paste0("..cerebro-builder-release-v1.", token, ".tmp")
+    )
+    outside <- file.path(root, "outside.txt")
+    link_ok <- tryCatch(
+      file.symlink(outside, temporary),
+      error = function(error) FALSE
+    )
+    skip_if_not(isTRUE(link_ok))
+
+    expect_error(
+      .builder_release_write_record(release, identity, token),
+      "temporary"
+    )
+    expect_false(file.exists(outside))
+    expect_true(.builder_release_link(temporary))
+  })
+})
+
+test_that("record temp replacement cannot write through an outside link", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("crb", file.path(release, "dataset.crb"))
+    identity <- builder_release_identity(release)
+    outside <- file.path(root, "outside.txt")
+    writeLines("keep me", outside)
+    replaced <- FALSE
+
+    expect_error(
+      .builder_release_write_record(
+        release,
+        identity,
+        token = "replacement-test",
+        .after_create = function(temporary) {
+          unlink(temporary, force = TRUE)
+          replaced <<- isTRUE(file.symlink(outside, temporary))
+        }
+      ),
+      "temporary.*unsafe"
+    )
+    expect_true(replaced)
+    expect_identical(readLines(outside), "keep me")
+  })
+})
+
+test_that("record publication rejects a hard-link swap during rename", {
+  skip_if(identical(.Platform$OS.type, "windows"))
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("crb", file.path(release, "dataset.crb"))
+    identity <- builder_release_identity(release)
+    outside <- file.path(root, "outside-record")
+
+    expect_error(
+      .builder_release_write_record(
+        release,
+        identity,
+        token = "hard-link-swap",
+        .move = function(from, to) {
+          file.copy(from, outside)
+          unlink(from, force = TRUE)
+          linked <- file.link(outside, from)
+          isTRUE(linked) && file.rename(from, to)
+        }
+      ),
+      "changed during publication"
+    )
+    expect_false(file.exists(file.path(
+      release,
+      ".cerebro-builder-release-v1"
+    )))
+    expect_true(file.exists(outside))
+  })
+})
+
+test_that("record publication rejects a hard-link swap during final parsing", {
+  skip_if(identical(.Platform$OS.type, "windows"))
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("crb", file.path(release, "dataset.crb"))
+    identity <- builder_release_identity(release)
+    outside <- file.path(root, "outside-record")
+    original_identity <- builder_release_identity
+    swapped <- FALSE
+    builder_release_identity <- function(target, ...) {
+      record <- file.path(target, ".cerebro-builder-release-v1")
+      if (!swapped && file.exists(record)) {
+        file.copy(record, outside)
+        unlink(record, force = TRUE)
+        swapped <<- isTRUE(file.link(outside, record))
+      }
+      original_identity(target, ...)
+    }
+
+    expect_error(
+      .builder_release_write_record(
+        release,
+        identity,
+        token = "hard-link-final-parse"
+      ),
+      "changed during publication"
+    )
+    expect_true(swapped)
+    expect_false(file.exists(file.path(
+      release,
+      ".cerebro-builder-release-v1"
+    )))
+    expect_true(file.exists(outside))
+  })
+})
+
+test_that("failed final record parsing removes the unpublished record", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("crb", file.path(release, "dataset.crb"))
+    identity <- builder_release_identity(release)
+    original_identity <- builder_release_identity
+    corrupted <- FALSE
+    builder_release_identity <- function(target, ...) {
+      record <- file.path(target, ".cerebro-builder-release-v1")
+      if (!corrupted && file.exists(record)) {
+        writeLines("bad", record)
+        corrupted <<- TRUE
+      }
+      original_identity(target, ...)
+    }
+
+    expect_error(
+      .builder_release_write_record(
+        release,
+        identity,
+        token = "failed-final-parse"
+      ),
+      "ownership record|changed during publication"
+    )
+    expect_true(corrupted)
+    expect_false(file.exists(file.path(
+      release,
+      ".cerebro-builder-release-v1"
+    )))
+  })
+})
+
+test_that("ownership records remain owner-only under a permissive umask", {
+  skip_if(identical(.Platform$OS.type, "windows"))
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("crb", file.path(release, "dataset.crb"))
+    identity <- builder_release_identity(release)
+    old_umask <- Sys.umask("0000")
+    withr::defer(Sys.umask(old_umask))
+
+    .builder_release_write_record(
+      release,
+      identity,
+      token = "owner-only"
+    )
+
+    expect_identical(
+      as.octmode(
+        file.info(file.path(
+          release,
+          ".cerebro-builder-release-v1"
+        ))$mode
+      ),
+      as.octmode("600")
+    )
+  })
+})
+
 test_that("release identity is complete, stable, and rejects links", {
   local({
     builder_publish_source()
@@ -36,6 +480,214 @@ test_that("release identity is complete, stable, and rejects links", {
     if (isTRUE(linked_ok)) {
       expect_error(builder_release_identity(target), "symbolic link")
     }
+  })
+})
+
+test_that("release identity rejects a file replaced by a directory", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    slot <- file.path(target, "slot")
+    hidden <- file.path(slot, "hidden.txt")
+    dir.create(target)
+    writeLines("ordinary file", slot)
+    calls <- 0L
+    swap_after_first_list <- function(path) {
+      calls <<- calls + 1L
+      if (identical(calls, 2L)) {
+        unlink(slot)
+        dir.create(slot)
+        writeLines("hidden", hidden)
+      }
+      .builder_release_list_directory(path)
+    }
+
+    attempt <- tryCatch(
+      builder_release_identity(
+        target,
+        .list_directory = swap_after_first_list
+      ),
+      error = function(error) error
+    )
+    if (!inherits(attempt, "error")) {
+      paths <- vapply(attempt$entries, `[[`, character(1), "path")
+      expect_identical(paths, "slot")
+      expect_false("slot/hidden.txt" %in% paths)
+    }
+    expect_s3_class(attempt, "error")
+    if (inherits(attempt, "error")) {
+      expect_match(conditionMessage(attempt), "changed after enumeration")
+    }
+    expect_true(file.exists(hidden))
+  })
+})
+
+test_that("release identity rejects a same-name directory replacement", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    slot <- file.path(target, "slot")
+    hidden <- file.path(slot, "hidden.txt")
+    replacement <- file.path(root, "replacement")
+    replacement_hidden <- file.path(replacement, "hidden.txt")
+    dir.create(slot, recursive = TRUE)
+    writeLines("old", hidden)
+    original <- fs::file_info(slot, follow = FALSE)
+    dir.create(replacement)
+    writeLines("new", replacement_hidden)
+    replacement_info <- fs::file_info(replacement, follow = FALSE)
+    expect_false(identical(
+      as.double(original$inode),
+      as.double(replacement_info$inode)
+    ))
+    calls <- 0L
+    replace_before_confirmation <- function(path) {
+      calls <<- calls + 1L
+      if (identical(calls, 3L)) {
+        unlink(slot, recursive = TRUE)
+        if (!file.rename(replacement, slot)) {
+          stop("The replacement fixture could not be moved.")
+        }
+      }
+      .builder_release_list_directory(path)
+    }
+
+    attempt <- tryCatch(
+      builder_release_identity(
+        target,
+        .list_directory = replace_before_confirmation
+      ),
+      error = function(error) error
+    )
+    if (!inherits(attempt, "error")) {
+      paths <- vapply(attempt$entries, `[[`, character(1), "path")
+      expect_identical(paths, c("slot", "slot/hidden.txt"))
+    }
+    expect_s3_class(attempt, "error")
+    if (inherits(attempt, "error")) {
+      expect_match(conditionMessage(attempt), "changed after enumeration")
+    }
+    expect_identical(readLines(hidden), "new")
+  })
+})
+
+test_that("release identity rejects special filesystem nodes without blocking", {
+  skip_if_not_installed("callr")
+  skip_if(Sys.which("mkfifo") == "")
+  local({
+    builder_root <- testthat::test_path("..", "..", "inst", "builder")
+    if (!dir.exists(builder_root)) {
+      builder_root <- system.file("builder", package = "CerebroNexus")
+    }
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    expect_identical(
+      system2("mkfifo", file.path(target, ".cerebro-builder-release-v1")),
+      0L
+    )
+    process <- callr::r_bg(
+      function(builder_root, target) {
+        source(file.path(builder_root, "core", "bundle_path_contract.R"))
+        source(file.path(builder_root, "publish.R"))
+        tryCatch(
+          builder_release_state(target),
+          error = function(error) conditionMessage(error)
+        )
+      },
+      list(builder_root, target)
+    )
+    on.exit(if (process$is_alive()) process$kill(), add = TRUE)
+    process$wait(timeout = 1500)
+    finished <- !process$is_alive()
+    if (!finished) {
+      process$kill()
+    }
+
+    expect_true(finished, info = "release identity blocked on a FIFO")
+    if (finished) {
+      expect_match(process$get_result(), "unsupported filesystem entry")
+    }
+  })
+})
+
+test_that("release identity rejects an unreadable release root", {
+  skip_if(identical(.Platform$OS.type, "windows"))
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("foreign", file.path(release, "foreign.txt"))
+    Sys.chmod(release, mode = "0000")
+    withr::defer(Sys.chmod(release, mode = "0700"))
+    skip_if(file.access(release, mode = 5L) == 0L)
+
+    expect_error(
+      builder_release_identity(release),
+      "enumerate"
+    )
+  })
+})
+
+test_that("release identity rejects unreadable nested directories", {
+  skip_if(identical(.Platform$OS.type, "windows"))
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    secret <- file.path(release, "secret")
+    dir.create(secret, recursive = TRUE)
+    writeLines("foreign", file.path(secret, "foreign.txt"))
+    Sys.chmod(secret, mode = "0000")
+    withr::defer(Sys.chmod(secret, mode = "0700"))
+    skip_if(file.access(secret, mode = 5L) == 0L)
+
+    expect_error(
+      builder_release_identity(release),
+      "enumerate"
+    )
+  })
+})
+
+test_that("release identity rejects an invalid payload hash", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    dir.create(release)
+    writeLines("payload", file.path(release, "dataset.crb"))
+
+    expect_error(
+      builder_release_identity(
+        release,
+        .hash_file = function(path) NA_character_
+      ),
+      "read safely"
+    )
+  })
+})
+
+test_that("release identity rejects payload changes during hashing", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    payload <- file.path(release, "dataset.crb")
+    dir.create(release)
+    writeLines("before", payload)
+    mutate_while_hashing <- function(path) {
+      md5 <- .builder_release_payload_md5(path)
+      writeLines("changed after hashing", path)
+      md5
+    }
+
+    expect_error(
+      builder_release_identity(release, .hash_file = mutate_while_hashing),
+      "changed while its identity was read"
+    )
   })
 })
 

@@ -62,7 +62,8 @@
     analysis_log = character(),
     failed_analyses = character(),
     retry_closure = character(),
-    app_dir = NULL
+    app_dir = NULL,
+    app_verification = NULL
   )
 }
 
@@ -87,11 +88,68 @@
     return(as.character(ids))
   }
   fallback <- if (identical(axis, "cells")) {
-    rownames(.builder_build_field(object, "meta_data"))
+    metadata <- .builder_build_field(object, "meta_data")
+    if (
+      is.data.frame(metadata) &&
+        "cell_barcode" %in% colnames(metadata)
+    ) {
+      metadata[["cell_barcode"]]
+    } else {
+      rownames(metadata)
+    }
   } else {
     rownames(.builder_build_field(object, "gene_data"))
   }
   as.character(fallback %||% character())
+}
+
+.builder_build_sidecar_path <- function(path, item, expected_type) {
+  if (
+    length(item$sidecars) != 1L ||
+      !.builder_build_safe_relative(item$sidecars[[1L]]) ||
+      !expected_type %in% c("file", "directory")
+  ) {
+    stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
+  }
+  root <- normalizePath(dirname(path), winslash = "/", mustWork = TRUE)
+  sidecar <- file.path(dirname(path), item$sidecars[[1L]])
+  info <- tryCatch(
+    fs::file_info(sidecar, fail = TRUE, follow = FALSE),
+    error = function(error) NULL
+  )
+  if (
+    nzchar(Sys.readlink(sidecar)) ||
+      is.null(info) ||
+      !identical(as.character(info$type), expected_type) ||
+      !.builder_build_path_within(sidecar, root, must_exist = TRUE)
+  ) {
+    stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
+  }
+  normalizePath(sidecar, winslash = "/", mustWork = TRUE)
+}
+
+.builder_build_h5_identities <- function(path, item) {
+  if (!identical(item$expression_backend, "h5")) {
+    return(NULL)
+  }
+  if (!requireNamespace("HDF5Array", quietly = TRUE)) {
+    stop(
+      "HDF5Array is required to verify the staged H5 sidecar.",
+      call. = FALSE
+    )
+  }
+  sidecar <- .builder_build_sidecar_path(path, item, "file")
+  matrix <- tryCatch(
+    DelayedArray::t(HDF5Array::TENxMatrix(sidecar, group = "expression")),
+    error = function(error) NULL
+  )
+  if (is.null(matrix)) {
+    stop("The staged H5 sidecar cannot be reopened.", call. = FALSE)
+  }
+  list(
+    cells = as.character(colnames(matrix) %||% character()),
+    features = as.character(rownames(matrix) %||% character())
+  )
 }
 
 .builder_crb_visible_pages <- function(object) {
@@ -131,6 +189,27 @@ builder_verify_crb <- function(path, item) {
   expectation <- item$artifact_identity
   cells <- .builder_build_identity(object, "cells")
   features <- .builder_build_identity(object, "features")
+  h5_identity <- .builder_build_h5_identities(path, item)
+  if (!is.null(h5_identity)) {
+    if (!identical(h5_identity$cells, expectation$cells)) {
+      stop(
+        "The staged H5 sidecar cell identity differs from BuildPlan.",
+        call. = FALSE
+      )
+    }
+    if (!identical(h5_identity$features, expectation$features)) {
+      stop(
+        "The staged H5 sidecar feature identity differs from BuildPlan.",
+        call. = FALSE
+      )
+    }
+  }
+  if (!length(cells)) {
+    cells <- h5_identity$cells %||% character()
+  }
+  if (!length(features)) {
+    features <- h5_identity$features %||% character()
+  }
   if (!identical(cells, expectation$cells)) {
     stop("The staged CRB cell identity differs from BuildPlan.", call. = FALSE)
   }
@@ -215,15 +294,12 @@ builder_verify_crb <- function(path, item) {
         call. = FALSE
       )
     }
-    sidecar <- file.path(dirname(path), expected_location)
     expected_directory <- identical(item$expression_backend, "bpcells")
-    if (
-      nzchar(Sys.readlink(sidecar)) ||
-        expected_directory && !dir.exists(sidecar) ||
-        !expected_directory && (!file.exists(sidecar) || dir.exists(sidecar))
-    ) {
-      stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
-    }
+    .builder_build_sidecar_path(
+      path,
+      item,
+      if (expected_directory) "directory" else "file"
+    )
   }
   visible <- .builder_crb_visible_pages(object)
   expected_visible <- item$viewer_page_expectations$visible_conditional %||%
@@ -390,7 +466,9 @@ builder_build_hooks <- function() {
     },
     export = .builder_build_export,
     attach_extras = .builder_build_attach_extras,
-    verify = builder_verify_crb
+    verify = builder_verify_crb,
+    build_app = builder_build_app,
+    verify_app = builder_verify_app
   )
 }
 
@@ -405,9 +483,9 @@ builder_execute_plan <- function(
   if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
     stop("Build execution requires a frozen BuildPlan.", call. = FALSE)
   }
-  if (isTRUE(plan$make_app)) {
+  if (isTRUE(plan$make_app) && !identical(plan$app_contract_version, 1L)) {
     return(.builder_build_failure(
-      "Generated-app output is not enabled for staged Builder execution."
+      "Generated-app execution requires frozen contract version 1."
     ))
   }
   if (!is.list(snapshots)) {
@@ -437,6 +515,7 @@ builder_execute_plan <- function(
     failed_analyses = character(),
     retry_closure = character(),
     app_dir = NULL,
+    app_verification = NULL,
     stage = stage
   )
   for (item in plan$items) {
@@ -547,9 +626,61 @@ builder_execute_plan <- function(
       }
       return(.builder_build_failure(paste0(item$name, ": ", message)))
     }
-    result$built <- c(result$built, exported)
+    result$built <- c(result$built, stats::setNames(exported, item$name))
     result$labels <- c(result$labels, item$name)
     result$verifications[[item$id]] <- verified
+  }
+  if (isTRUE(plan$make_app)) {
+    app_hooks <- c("build_app", "verify_app")
+    if (!all(vapply(hooks[app_hooks], is.function, logical(1)))) {
+      return(.builder_build_failure(
+        "Generated-App build hooks are incomplete."
+      ))
+    }
+    request <- tryCatch(
+      builder_app_bundle_request(plan, result$built, result$labels),
+      error = function(error) error
+    )
+    if (inherits(request, "condition")) {
+      return(.builder_build_failure(conditionMessage(request)))
+    }
+    app_dir <- tryCatch(
+      hooks$build_app(request, stage),
+      error = function(error) error
+    )
+    if (inherits(app_dir, "condition")) {
+      return(.builder_build_failure(conditionMessage(app_dir)))
+    }
+    app_verification <- tryCatch(
+      hooks$verify_app(app_dir, request),
+      error = function(error) error
+    )
+    valid_app_verification <-
+      !inherits(app_verification, "condition") &&
+      identical(typeof(app_verification), "list") &&
+      identical(
+        attr(app_verification, "class", exact = TRUE),
+        c("builder_app_verification", "list")
+      ) &&
+      !.builder_app_has_reference(app_verification)
+    plain_app_verification <- if (valid_app_verification) {
+      .builder_app_plain_value(app_verification)
+    } else {
+      NULL
+    }
+    if (
+      !valid_app_verification ||
+        !isTRUE(plain_app_verification[["valid"]])
+    ) {
+      message <- if (inherits(app_verification, "condition")) {
+        conditionMessage(app_verification)
+      } else {
+        "App verification did not return valid inert evidence."
+      }
+      return(.builder_build_failure(message))
+    }
+    result$app_dir <- app_dir
+    result$app_verification <- app_verification
   }
   result$publishable <- length(result$built) == length(plan$items)
   result

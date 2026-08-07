@@ -27,6 +27,9 @@ builder_installed_app_contract_version <- function(namespace = NULL) {
   if (is_lazy) {
     return(0L)
   }
+  if (!bindingIsLocked(marker, namespace)) {
+    return(0L)
+  }
   version <- tryCatch(
     get(marker, envir = namespace, inherits = FALSE),
     error = function(e) NULL

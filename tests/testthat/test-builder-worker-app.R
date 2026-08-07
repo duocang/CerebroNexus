@@ -36,6 +36,48 @@ builder_app_block <- function(lines, start, finish) {
   paste(lines[first:(last - 1L)], collapse = "\n")
 }
 
+test_that("parent and worker load App assembly before build authorities", {
+  app <- paste(builder_app_lines(), collapse = "\n")
+  worker <- paste(
+    readLines(builder_app_worker_path, warn = FALSE),
+    collapse = "\n"
+  )
+  app_bundle_parent <- regexpr(
+    'source("app_bundle.R", local = TRUE)',
+    app,
+    fixed = TRUE
+  )[1L]
+  coordinator_parent <- regexpr(
+    'source("coordinator.R", local = TRUE)',
+    app,
+    fixed = TRUE
+  )[1L]
+  build_parent <- regexpr('source("build.R", local = TRUE)', app, fixed = TRUE)[
+    1L
+  ]
+  app_bundle_worker <- regexpr(
+    'source(file.path(dir, "app_bundle.R"))',
+    worker,
+    fixed = TRUE
+  )[1L]
+  build_worker <- regexpr(
+    'source(file.path(dir, "build.R"))',
+    worker,
+    fixed = TRUE
+  )[1L]
+
+  expect_gt(app_bundle_parent, 0L)
+  expect_lt(app_bundle_parent, coordinator_parent)
+  expect_lt(app_bundle_parent, build_parent)
+  expect_gt(app_bundle_worker, 0L)
+  expect_lt(app_bundle_worker, build_worker)
+  expect_false(grepl(
+    'source(file.path(dir, "publish.R"))',
+    worker,
+    fixed = TRUE
+  ))
+})
+
 test_that("preview and coordinates apply only to the visible dataset section", {
   lines <- builder_app_lines()
   preview <- builder_app_block(
