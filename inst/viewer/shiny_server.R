@@ -17,6 +17,15 @@ source(
   ),
   local = TRUE
 )
+## color_config.R is pure as well: it resolves the palette configured at bundle
+## creation, which reactive_colors() then lays over the defaults.
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/shiny/v1.4/color_config.R"
+  ),
+  local = TRUE
+)
 
 server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
@@ -739,6 +748,17 @@ server <- function(input, output, session) {
   ## Export reactive values for testing (shinytest2).
   ##--------------------------------------------------------------------------##
   exportTestValues(
+    ## The palette actually in force, after the default colorset, the
+    ## configuration from createShinyApp(colors = ) and the Color management
+    ## pickers have been laid over each other. Without this, "the configured
+    ## palette reaches the running app" can only be checked by reading pixels.
+    group_colors = {
+      if (is.null(data_set())) {
+        NULL
+      } else {
+        reactive_colors()
+      }
+    },
     overview_cells_to_show = {
       if (is.null(data_set())) {
         NULL

@@ -43,6 +43,7 @@ articles:
   - title: "Workflows"
     navbar: Workflows
     contents:
+      - build_a_data_set_by_pointing
       - cerebroApp_workflow_Seurat
       - export_a_data_set_in_SCE_format
   - title: "Cerebro interface"

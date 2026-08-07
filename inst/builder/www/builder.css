@@ -1,0 +1,878 @@
+/* ------------------------------------------------------------------------ */
+/* Cerebro dataset builder                                                    */
+/*                                                                            */
+/* The builder and the viewer are one product, so they share one design       */
+/* language: the "Console" tokens below are a mirror of the `:root` block in   */
+/* inst/shiny/v1.4/www/custom.css -- warm paper neutrals, a structural         */
+/* slate-blue, a warm amber reserved for emphasis and action. Keep the two in  */
+/* sync; the viewer's block is the source of truth.                           */
+/*                                                                            */
+/* The builder cannot simply link that stylesheet: custom.css is 62 kB of      */
+/* AdminLTE overrides written against shinydashboard's markup, and this page   */
+/* deliberately loads no Bootstrap at all.                                     */
+/* ------------------------------------------------------------------------ */
+
+:root {
+  /* --- Neutrals (warm gray paper, not blue-gray) ------------------------ */
+  --c-white:     #ffffff;
+  --c-bg:        #f7f7f8;
+  --c-surface:   #ffffff;
+  --c-surface-2: #f4f4f5;
+  --c-surface-3: #ecebeb;
+  --c-border:    #ececec;
+  --c-border-2:  #e0e0e0;
+  --c-text:      #1c1c1e;
+  --c-text-2:    #6b6b70;
+  --c-text-3:    #9a9aa0;
+
+  /* --- Brand: calm slate-blue for structure ---------------------------- */
+  --c-blue-50:  #eef4fb;
+  --c-blue-100: #d7e6f7;
+  --c-blue:     #2f6fd6;
+  --c-blue-600: #2560bd;
+  --c-blue-700: #1d4ea0;
+
+  /* --- Accent: warm amber for emphasis, active state, the write action -- */
+  --c-amber-50:  #fff4ec;
+  --c-amber-100: #ffe4d1;
+  --c-amber-300: #ffb27a;
+  --c-amber:     #f97316;
+  --c-amber-600: #ea6a0f;
+  --c-amber-700: #c85a0e;
+
+  --c-success: #16a34a;
+  --c-warning: #d97706;
+  --c-error:   #dc2626;
+
+  --shadow-1: 0 1px 2px rgba(17,17,26,0.04), 0 1px 3px rgba(17,17,26,0.05);
+  --shadow-2: 0 2px 4px rgba(17,17,26,0.04), 0 4px 12px rgba(17,17,26,0.06);
+  --shadow-3: 0 4px 8px rgba(17,17,26,0.05), 0 12px 28px rgba(17,17,26,0.09);
+  --shadow-4: 0 8px 20px rgba(17,17,26,0.08), 0 24px 56px rgba(17,17,26,0.14);
+
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur:  0.16s;
+
+  /* The viewer's stack, plus CJK faces so Chinese labels are not left to a
+     Windows default. Latin still resolves to the system face first. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+               "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- shell ------------------------------------------------------------- */
+
+.topbar {
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  padding: .8rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.topbar .wordmark { display: flex; align-items: center; gap: .7rem; }
+.topbar .wordmark svg { height: 17px; width: auto; display: block; }
+.topbar .divider {
+  width: 1px; height: 18px; background: var(--c-border-2);
+}
+.topbar h1 {
+  font-size: .95rem; font-weight: 600; margin: 0; letter-spacing: -.01em;
+}
+.topbar .formats {
+  font-size: .76rem; color: var(--c-text-3); font-family: var(--font-mono);
+  margin-left: auto;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 16.5rem minmax(0, 1fr);
+  gap: 1.35rem;
+  max-width: 112rem;
+  margin: 0 auto;
+  padding: 1.4rem 1.5rem 6rem;
+  align-items: start;
+  position: relative;
+}
+/* Grid items refuse to shrink below their content by default, so one long
+   path in a <pre> would push the whole column past the viewport. */
+.shell > * { min-width: 0; }
+.card, .row2 > *, .field-grid > * { min-width: 0; }
+.rail, #pane { position: relative; z-index: 1; }
+
+#detail {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+#detail > .card { grid-column: span 12; }
+#detail > .span-4 { grid-column: span 4; }
+#detail > .span-8 { grid-column: span 8; }
+#detail > .span-12 { grid-column: 1 / -1; }
+.card-stack {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+.card-stack > .card { margin: 0; }
+.detail-footer { grid-column: 1 / -1; }
+.result-card { margin-bottom: 1rem; }
+
+/* ---- dataset rail ------------------------------------------------------ */
+
+.rail {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  position: sticky;
+  top: 4.2rem;
+  box-shadow: var(--shadow-1);
+}
+.rail-head {
+  padding: .75rem .95rem;
+  border-bottom: 1px solid var(--c-border);
+  font-size: .7rem;
+  font-family: var(--font-mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+  display: flex;
+  justify-content: space-between;
+}
+.rail-empty { padding: 1.1rem .95rem; color: var(--c-text-3); font-size: .875rem; }
+
+/* One data set row.
+   The row is a container, not a button, because it holds two targets: the
+   whole row selects, and a remove button sits on top of its right end. */
+.ds {
+  position: relative;
+  border-bottom: 1px solid var(--c-border);
+  transition: background var(--dur) var(--ease);
+}
+.ds:hover { background: var(--c-surface-2); }
+.ds.is-active { background: var(--c-amber-50); }
+/* The active marker slides between rows rather than blinking on and off. */
+.ds::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--c-amber);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform .22s var(--ease);
+}
+.ds.is-active::before { transform: scaleY(1); }
+
+.ds-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  width: 100%;
+  /* Room on the right so a long name never runs under the remove button. */
+  padding: .6rem 2.5rem .6rem .8rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.ds-pick:focus-visible { outline: 2px solid var(--c-amber); outline-offset: -2px; }
+
+/* The index is information, not decoration: data sets are written in this
+   order and appear in this order in the generated app's switcher. The hairline
+   between numerals is what makes that reading obvious. */
+.ds-idx {
+  position: relative;
+  flex: 0 0 1.35rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: .72rem;
+  line-height: 1.5rem;
+  text-align: center;
+  color: var(--c-text-3);
+  transition: color var(--dur) var(--ease);
+}
+.ds-idx::before, .ds-idx::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 1px;
+  background: var(--c-border-2);
+  transform: translateX(-50%);
+}
+.ds-idx::before { top: -.6rem; height: .35rem; }
+.ds-idx::after  { top: 1.65rem; bottom: -.6rem; }
+.ds:first-child .ds-idx::before,
+.ds:last-child  .ds-idx::after { display: none; }
+.ds.is-active .ds-idx { color: var(--c-amber); font-weight: 600; }
+
+.ds-body { min-width: 0; flex: 1; }
+.ds .nm {
+  display: block; font-weight: 600; font-size: .9rem; line-height: 1.5;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ds .meta {
+  display: block; font-family: var(--font-mono); font-size: .71rem;
+  color: var(--c-text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ds .meta.bad { color: var(--c-warning); }
+
+/* Revealed on hover or keyboard focus. Always visible where there is no
+   hover to reveal it with. */
+.ds-del {
+  position: absolute;
+  right: .5rem;
+  top: .55rem;
+  display: flex; align-items: center; justify-content: center;
+  width: 1.7rem; height: 1.7rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--c-text-3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease),
+              background var(--dur) var(--ease),
+              color var(--dur) var(--ease);
+}
+.ds:hover .ds-del,
+.ds:focus-within .ds-del,
+.ds-del:focus-visible { opacity: 1; }
+.ds-del:hover { background: #fdecec; color: var(--c-error); }
+.ds-del:focus-visible { outline: 2px solid var(--c-error); outline-offset: 1px; }
+.ds-del .icon { width: .95rem; height: .95rem; }
+@media (hover: none) {
+  .ds-del { opacity: 1; }
+}
+
+.rail-add { padding: .85rem .95rem; }
+
+/* ---- cards ------------------------------------------------------------- */
+
+.card {
+  position: relative;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  padding: 1.15rem 1.3rem;
+  margin-bottom: 0;
+  box-shadow: var(--shadow-1);
+  transition: box-shadow var(--dur) var(--ease);
+  /* Deliberately NOT `overflow: hidden`, however much the rounded corners want
+     it: a card holds selectize inputs, and clipping the card clips their
+     dropdowns. The accent bar below is inset instead of being clipped. */
+}
+.card:hover { box-shadow: var(--shadow-2); }
+.card > h2 {
+  font-size: .72rem;
+  font-family: var(--font-mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+  font-weight: 500;
+  margin: 0 0 .9rem;
+  padding-bottom: .55rem;
+  border-bottom: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.hint { color: var(--c-text-3); font-size: .82rem; margin: .35rem 0 0; }
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: .1rem 1.2rem;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+}
+.facts div { padding: .15rem 0; }
+.facts .k { color: var(--c-text-3); }
+.facts .v { color: var(--c-text); font-variant-numeric: tabular-nums; }
+
+/* ---- pills ------------------------------------------------------------- */
+
+.pills { display: flex; flex-wrap: wrap; gap: .35rem; }
+.pill {
+  font-family: var(--font-mono); font-size: .71rem;
+  padding: .18em .6em; border-radius: var(--r-xs);
+  border: 1px solid var(--c-border-2); color: var(--c-text-3);
+  background: var(--c-surface-2);
+}
+/* "The object already has this" is a structural fact, not a success event, so
+   it takes the structural blue. Green would be a third colour that means
+   nothing the theme defines, and amber is spent on action -- the build button,
+   the selected data set, the ribbon -- so lending it to a dozen pills would
+   flatten exactly the signal it exists to carry. */
+.pill.on {
+  color: var(--c-blue-700);
+  border-color: var(--c-blue-100);
+  background: var(--c-blue-50);
+}
+.pill.off { opacity: .55; }
+.pill.new {
+  color: var(--c-amber-700); border-color: var(--c-amber-300);
+  background: var(--c-amber-50);
+  text-transform: none; letter-spacing: 0;
+  margin-left: auto;
+}
+
+/* ---- forms ------------------------------------------------------------- */
+
+.form-group { margin-bottom: .85rem; }
+label, .control-label {
+  display: block;
+  font-size: .82rem; font-weight: 600; color: var(--c-text-2);
+  margin-bottom: .25rem;
+}
+.form-control, .selectize-input {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--c-border-2) !important;
+  border-radius: var(--r-sm) !important;
+  box-shadow: none !important;
+  font-size: .875rem !important;
+  color: var(--c-text) !important;
+  background: var(--c-surface) !important;
+  min-height: 2.3rem;
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+.form-control:focus, .selectize-input.focus {
+  border-color: var(--c-blue) !important;
+  box-shadow: 0 0 0 3px var(--c-blue-50) !important;
+}
+.form-control[readonly] { background: var(--c-surface-2) !important; }
+.selectize-dropdown .active { background: var(--c-blue-50) !important; }
+
+/* Checkbox groups read as a scannable list, not a wall. Two columns when there
+   are enough entries to be worth it -- laid out with a grid rather than CSS
+   columns, which split a checkbox from its label mid-item. */
+.shiny-options-group { display: grid; gap: 0; }
+.shiny-options-group .checkbox { margin: 0; min-width: 0; }
+.shiny-options-group .checkbox label {
+  font-weight: 400; font-size: .875rem; padding: .22rem 0 .22rem 1.5rem;
+  display: block; cursor: pointer; color: var(--c-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color var(--dur) var(--ease);
+}
+.shiny-options-group .checkbox input { cursor: pointer; accent-color: var(--c-amber); }
+.shiny-options-group .checkbox label:hover { color: var(--c-blue); }
+.cols-2 .shiny-options-group {
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  column-gap: 1.5rem;
+}
+input[type="checkbox"] { accent-color: var(--c-amber); }
+
+/* ---- buttons ----------------------------------------------------------- */
+
+.btn {
+  border-radius: var(--r-sm);
+  font-size: .85rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid var(--c-border-2);
+  background: var(--c-surface);
+  color: var(--c-text);
+  padding: .45rem .95rem;
+  cursor: pointer;
+  min-height: 2.3rem;
+  transition: background var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+.btn:hover { background: var(--c-surface-2); }
+.btn:active { background: var(--c-surface-3); }
+.btn:focus-visible { outline: 2px solid var(--c-amber); outline-offset: 2px; }
+
+/* Structural blue: navigation and input, the things that gather material. */
+.btn-primary, .btn-primary:focus {
+  background: var(--c-blue) !important;
+  border-color: var(--c-blue) !important;
+  color: var(--c-white) !important;
+}
+.btn-primary:hover {
+  background: var(--c-blue-600) !important;
+  border-color: var(--c-blue-600) !important;
+  box-shadow: var(--shadow-1);
+}
+.btn-primary:active { background: var(--c-blue-700) !important; }
+
+/* Amber is spent on exactly one thing: the button that writes to disk. */
+.btn-action, .btn-action:focus {
+  background: var(--c-amber) !important;
+  border-color: var(--c-amber) !important;
+  color: var(--c-white) !important;
+}
+.btn-action:hover {
+  background: var(--c-amber-600) !important;
+  border-color: var(--c-amber-600) !important;
+  box-shadow: var(--shadow-1);
+}
+.btn-action:active { background: var(--c-amber-700) !important; }
+
+.btn-quiet {
+  color: var(--c-text-2); border-color: transparent; background: transparent;
+}
+.btn-quiet:hover { color: var(--c-error); background: #fdecec; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ---- notices ----------------------------------------------------------- */
+
+.notice {
+  border-radius: var(--r-sm); padding: .65rem .85rem; font-size: .85rem;
+  border-left: 3px solid var(--c-text-3); background: var(--c-surface-2);
+  margin-top: .7rem;
+}
+.notice.bad  { border-left-color: var(--c-error);   background: #fdecec; color: #8f1d1d; }
+.notice.warn { border-left-color: var(--c-warning); background: #fdf3e3; color: #85510a; }
+.notice.ok   { border-left-color: var(--c-success); background: #eefbf2; color: #14653a; }
+
+/* ---- action bar -------------------------------------------------------- */
+
+.actionbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  background: var(--c-surface);
+  border-top: 1px solid var(--c-border);
+  padding: .75rem 1.5rem;
+  box-shadow: 0 -2px 14px rgba(17, 17, 26, .06);
+}
+.actionbar .inner {
+  max-width: 112rem; margin: 0 auto;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.actionbar .grow { flex: 1 1 14rem; }
+.actionbar .summary { font-size: .85rem; color: var(--c-text-2); }
+
+/* ---- misc -------------------------------------------------------------- */
+
+pre, code { font-family: var(--font-mono); font-size: .8rem; }
+pre {
+  background: var(--c-surface-2); border: 1px solid var(--c-border);
+  border-radius: var(--r-sm); padding: .6rem .8rem; overflow-x: auto;
+  margin: .5rem 0 0; color: var(--c-text-2);
+}
+hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
+.icon { width: 1rem; height: 1rem; vertical-align: -2px; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--c-border-2); border-radius: var(--r-pill);
+  border: 2px solid var(--c-bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--c-text-3); }
+
+/* Field groups wrap only when a field would become too narrow to read. */
+.row2,
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: 0 1rem;
+}
+.expression-fields {
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+}
+#detail > .card.span-4 > .field-grid { grid-template-columns: 1fr; }
+
+/* ---- optional analysis steps ------------------------------------------- */
+
+.steps { display: flex; flex-direction: column; gap: .1rem; }
+.step-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: .5rem;
+  padding: .4rem .5rem;
+  margin: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-weight: 400;
+  transition: background var(--dur) var(--ease);
+}
+.step-row:hover { background: var(--c-surface-2); }
+.step-row.is-blocked { opacity: .55; cursor: not-allowed; }
+.step-row input { cursor: inherit; margin: 0; }
+.step-label { font-weight: 600; font-size: .875rem; color: var(--c-text); }
+.step-note {
+  grid-column: 2 / -1;
+  color: var(--c-text-3);
+  font-size: .8rem;
+  min-width: 0;
+}
+.pill.cost { color: var(--c-text-3); }
+.pill.cost-net {
+  color: var(--c-warning); background: #fdf3e3; border-color: #f0dcb6;
+}
+
+/* ---- attached tables ---------------------------------------------------- */
+
+.chip-list { list-style: none; margin: .7rem 0 0; padding: 0; }
+.chip-list li {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .4rem .6rem;
+  border: 1px solid var(--c-border); border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+  margin-bottom: .3rem;
+  font-size: .875rem;
+}
+.chip-list li .hint { margin: 0; flex: 1; }
+
+/* ---- example data + busy state ----------------------------------------- */
+
+.or {
+  text-align: center; font-size: .76rem; color: var(--c-text-3);
+  margin: .9rem 0 .55rem;
+}
+/* An example withdraws from the list once it is on it, and returns when the
+   data set is removed.
+
+   The height animates through `grid-template-rows: 1fr -> 0fr`, which is the
+   one way to transition to a content-derived height without hard-coding one:
+   a max-height guess either clips a long label or spends the tail of the
+   duration animating nothing. The button is the grid, its contents the single
+   row, and the row is what collapses.
+
+   Padding, margin and border collapse alongside it, or the list would keep a
+   gap where the example used to be. */
+/* Two phases, in opposite orders depending on direction -- which is what makes
+   it read as a bubble rather than an accordion.
+
+   Leaving: the button swells a touch and pops (scale + fade), and only then
+   does the row close. Returning: the row opens first, then the button bubbles
+   up through an overshoot. Doing both at once is the collapsing-drawer look
+   this replaces.
+
+   Only the row height touches layout; the swell and the pop are transform and
+   opacity, so the part the eye follows never costs a reflow. */
+/* The button is a bare grid whose single row collapses; everything that can be
+   seen -- border, background, padding -- lives inside that row.
+
+   That split is what makes it smooth. Animating padding, margin, border-width
+   and the row height together meant four layout properties on four slightly
+   different curves, and the seams between them were the jerk. Inside the row,
+   padding and border are clipped by the collapse itself and need no transition
+   at all, leaving exactly two layout properties in motion. */
+.example-btn {
+  display: grid;
+  /* minmax(0, …), not a bare fr: a bare `0fr` track is `minmax(auto, 0fr)`,
+     and that `auto` floor is the item's min-content -- which, now that the
+     padding lives inside the row, never gets below ~18 px. An explicit zero
+     minimum is what lets it actually close. */
+  grid-template-rows: minmax(0, 1fr);
+  width: 100%; text-align: left;
+  margin-bottom: .35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  min-height: auto;
+  transform-origin: 50% 50%;
+  /* Returning: the row opens, and the bubble rises through it -- overlapping,
+     not queued behind it. The previous version waited for one to finish before
+     starting the other, which is the dead beat in the middle. */
+  transition:
+    grid-template-rows .3s var(--ease) var(--ex-delay, 0ms),
+    margin-bottom .3s var(--ease) var(--ex-delay, 0ms),
+    transform .42s cubic-bezier(.34, 1.4, .64, 1)
+      calc(var(--ex-delay, 0ms) + 80ms),
+    opacity .2s ease-out calc(var(--ex-delay, 0ms) + 60ms);
+}
+
+/* The row that collapses. `min-height: 0` is what lets a grid item shrink
+   below its content at all; without it the row refuses to close. */
+.ex-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding: .5rem .65rem;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.example-btn.is-taken {
+  grid-template-rows: minmax(0, 0fr);
+  margin-bottom: 0;
+  opacity: 0;
+  /* Shrinks away toward the rail the data set just joined. */
+  transform: scale(.86) translateY(-8px);
+  pointer-events: none;
+  /* Leaving: the pop leads and the row follows into it, overlapping from 80 ms
+     so the two never read as separate events. */
+  transition:
+    transform .26s cubic-bezier(.36, 0, .66, -0.2),
+    opacity .17s ease-in,
+    grid-template-rows .28s var(--ease) 80ms,
+    margin-bottom .28s var(--ease) 80ms;
+}
+
+.example-btn:hover .ex-inner {
+  border-color: var(--c-blue-100);
+  background: var(--c-blue-50);
+}
+.example-btn:focus-visible { outline: none; }
+.example-btn:focus-visible .ex-inner {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 1px;
+}
+.ex-label { display: block; font-weight: 600; font-size: .84rem; }
+.ex-detail {
+  display: block; font-weight: 400; font-size: .75rem; color: var(--c-text-3);
+  white-space: normal; line-height: 1.35;
+}
+
+/* Every example taken: the invitation has nothing left to point at. */
+.rail-add .or {
+  transition: opacity .3s var(--ease), margin .42s var(--ease),
+              max-height .42s var(--ease);
+  max-height: 3rem; overflow: hidden;
+}
+.rail-add.no-examples .or {
+  opacity: 0; max-height: 0; margin-top: 0; margin-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .example-btn, .rail-add .or { transition: none; }
+  .example-btn.is-taken { display: none; }
+}
+
+.busy {
+  display: inline-flex; align-items: center; gap: .45rem;
+  font-size: .8rem; color: var(--c-amber-700);
+  background: var(--c-amber-50); border-radius: var(--r-pill);
+  padding: .18rem .75rem;
+}
+.spinner {
+  width: .7rem; height: .7rem; border-radius: 50%;
+  border: 2px solid var(--c-amber); border-top-color: transparent;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Sliders sit in a two-column grid; keep them from touching. */
+.irs { margin-bottom: .4rem; }
+.irs--shiny .irs-bar {
+  background: var(--c-amber) !important; border-color: var(--c-amber) !important;
+}
+.irs--shiny .irs-handle {
+  border: 2px solid var(--c-amber) !important;
+  background: var(--c-white) !important;
+  box-shadow: var(--shadow-1) !important;
+}
+.irs--shiny .irs-from, .irs--shiny .irs-to, .irs--shiny .irs-single {
+  background: var(--c-amber) !important;
+  color: var(--c-white) !important;
+  border-radius: var(--r-xs);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+}
+.irs--shiny .irs-line { background: var(--c-surface-3) !important; }
+.irs--shiny .irs-min, .irs--shiny .irs-max {
+  background: transparent !important; color: var(--c-text-3) !important;
+  font-family: var(--font-mono); font-size: 10.5px;
+}
+
+/* ---- file browser sheet ------------------------------------------------- */
+
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(17, 17, 26, .32);
+  display: flex; align-items: center; justify-content: center;
+  padding: 2rem 1rem;
+}
+.sheet {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  width: min(44rem, 100%);
+  max-height: 80vh;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-4);
+}
+.sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .85rem 1.1rem; border-bottom: 1px solid var(--c-border);
+}
+.sheet-title { font-weight: 600; font-size: .95rem; }
+.sheet-roots {
+  display: flex; flex-wrap: wrap; gap: .35rem;
+  padding: .75rem 1.1rem .55rem;
+}
+.chip-btn {
+  border: 1px solid var(--c-border-2); background: var(--c-surface-2);
+  border-radius: var(--r-pill); padding: .22rem .75rem;
+  font-size: .78rem; color: var(--c-text-2); cursor: pointer;
+  font-family: inherit;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease);
+}
+.chip-btn:hover {
+  background: var(--c-blue-50); color: var(--c-blue-700);
+  border-color: var(--c-blue-100);
+}
+/* The listing renders separately from the sheet around it, so it is its own
+   flex child and has to carry the height chain the scroller needs:
+   min-height: 0 on every link, or `overflow-y: auto` below has nothing to
+   scroll within and the sheet grows past its own max-height instead. */
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* Shiny dims a recomputing output to 0.3 after a 500 ms delay. Fast enough
+   for a local directory that it never shows; on a slow network mount it
+   should read as "working", not as the panel going out. */
+.sheet-body.recalculating { --shiny-fade-opacity: 0.6; }
+
+.sheet-path {
+  padding: 0 1.1rem .6rem; font-family: var(--font-mono); font-size: .74rem;
+  color: var(--c-text-3); word-break: break-all;
+  border-bottom: 1px solid var(--c-border);
+}
+.sheet-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: .35rem 0; }
+.row-btn {
+  display: flex; align-items: center; gap: .6rem; width: 100%;
+  padding: .45rem 1.1rem; border: none; background: transparent;
+  text-align: left; cursor: pointer; font-size: .875rem; color: var(--c-text);
+  font-family: inherit;
+  transition: background var(--dur) var(--ease);
+}
+.row-btn:hover { background: var(--c-surface-2); }
+.row-btn:focus-visible { outline: 2px solid var(--c-blue); outline-offset: -2px; }
+.row-icon { color: var(--c-text-3); width: 1rem; text-align: center; }
+.row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-size {
+  font-family: var(--font-mono); font-size: .75rem; color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.row-btn.is-file .row-icon { color: var(--c-blue); }
+.row-btn.is-file:hover { background: var(--c-blue-50); }
+
+/* ---- responsive layout -------------------------------------------------- */
+
+@media (max-width: 78rem) {
+  #detail > .span-4 { grid-column: span 6; }
+  #detail > .span-8 { grid-column: 1 / -1; }
+  #detail > .card-stack.span-4 {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 62rem) {
+  .shell { grid-template-columns: 1fr; gap: 1.1rem; }
+  .rail { position: static; }
+  .cols-2 .shiny-options-group { grid-template-columns: 1fr; }
+}
+@media (max-width: 46rem) {
+  .topbar { padding-inline: 1rem; }
+  .topbar .formats { width: 100%; margin-left: 0; }
+  .shell { padding-inline: .8rem; }
+  #detail > .span-4,
+  #detail > .span-8 { grid-column: 1 / -1; }
+  #detail > .card-stack.span-4 { grid-template-columns: 1fr; }
+  .actionbar { padding-inline: .8rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+  .spinner { border-top-color: var(--c-amber); opacity: .5; }
+  .ds.is-active::before, .ds::before { transform: scaleY(1); }
+  .ds:not(.is-active)::before { display: none; }
+}
+
+/* ---- group colours ------------------------------------------------------ */
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem .8rem;
+  margin: .5rem 0 .2rem;
+}
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .82rem;
+  font-weight: 400;
+  color: var(--c-text);
+  cursor: pointer;
+  margin: 0;
+}
+/* A native colour input, restyled to a swatch. colourpicker would be the
+   obvious widget and is already a dependency, but it renders Bootstrap markup
+   and this page loads no Bootstrap -- the trap that made shinyFiles' dialog
+   arrive unstyled. The native control also brings the OS picker for free,
+   including the eyedropper. */
+.swatch-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-xs);
+  background: none;
+  cursor: pointer;
+  transition: box-shadow var(--dur) var(--ease);
+}
+.swatch-input::-webkit-color-swatch-wrapper { padding: 2px; }
+.swatch-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+.swatch-input::-moz-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+.swatch-input:hover { box-shadow: var(--shadow-1); }
+.swatch-input:focus-visible {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 2px;
+}
+.swatch-name {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

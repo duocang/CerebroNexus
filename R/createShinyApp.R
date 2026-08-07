@@ -1748,7 +1748,14 @@ dedent <- function(string) {
 #'   to FALSE.
 #' @param display_mode Exactly one of \code{"auto"}, \code{"normal"}, or
 #'   \code{"showcase"}; defaults to \code{"normal"}.
-#' @param colors Optional named list of colour palettes per dataset.
+#' @param colors Optional colour palettes, keyed by data set label, then by
+#'   grouping variable, then by group level:
+#'   \code{list("PBMC example" = list(sample = c(sample_1 = "#1f77b4")))}.
+#'   The level names have to be the ones in the data. A palette may cover only
+#'   some levels; the rest keep their default colour. Anything R cannot read as
+#'   a colour, or a label that is not in \code{cerebro_data}, is reported here
+#'   rather than ignored at runtime. Users can still override a colour in the
+#'   Color management tab, which wins for that session.
 #' @param cerebro_options Extra entries merged into \code{Cerebro.options} in
 #'   the generated app. Matrix overrides must be absolute host paths and make
 #'   the resulting app host-dependent. Native paths must resolve outside
@@ -1966,15 +1973,76 @@ createShinyApp <- function(
   .bundleDestinationState(result_dir, overwrite)
 
   if (!is.null(colors)) {
+    ## The shape the app reads is
+    ##   list("<data set label>" = list(<grouping variable> = c(level = hex)))
+    ## Checking it here is worth some noise: a palette that is silently wrong
+    ## looks identical to no palette at all once the app is running, and the
+    ## generated bundle is usually built once and shipped.
     if (is.null(names(colors)) || any(names(colors) == "")) {
       stop("colors must be a named list or vector.", call. = FALSE)
     }
-    if (length(intersect(names(colors), names(cerebro_data))) == 0) {
+    unknown <- setdiff(names(colors), names(cerebro_data))
+    if (length(unknown) == length(colors)) {
       warning(
         "Colors and cerebro_data do not match, random colors will be used.",
         call. = FALSE
       )
       colors <- NULL
+    } else if (length(unknown) > 0) {
+      warning(
+        "No data set named ",
+        paste(sQuote(unknown), collapse = ", "),
+        "; those palettes will not be used.",
+        call. = FALSE
+      )
+    }
+  }
+  if (!is.null(colors)) {
+    for (dataset in names(colors)) {
+      palettes <- colors[[dataset]]
+      if (!is.list(palettes) || is.null(names(palettes))) {
+        stop(
+          "colors[[",
+          sQuote(dataset),
+          "]] must be a named list, one entry per grouping variable, e.g. ",
+          "list(sample = c(pbmc_1 = \"#1f77b4\")).",
+          call. = FALSE
+        )
+      }
+      for (variable in names(palettes)) {
+        palette <- palettes[[variable]]
+        if (!is.character(palette) || is.null(names(palette))) {
+          stop(
+            "colors[[",
+            sQuote(dataset),
+            "]][[",
+            sQuote(variable),
+            "]] must be a character vector named by group level.",
+            call. = FALSE
+          )
+        }
+        ## A partial palette is fine -- the defaults fill the rest -- but an
+        ## unusable colour is not, and it would only show up as an error deep
+        ## inside a plot at runtime.
+        invalid <- vapply(
+          palette,
+          function(x) {
+            inherits(try(grDevices::col2rgb(x), silent = TRUE), "try-error")
+          },
+          logical(1)
+        )
+        if (any(invalid)) {
+          stop(
+            "colors[[",
+            sQuote(dataset),
+            "]][[",
+            sQuote(variable),
+            "]] has values R cannot read as colours: ",
+            paste(palette[invalid], collapse = ", "),
+            call. = FALSE
+          )
+        }
+      }
     }
   }
 

@@ -60,7 +60,14 @@ to FALSE.}
 \item{display_mode}{Exactly one of \code{"auto"}, \code{"normal"}, or
 \code{"showcase"}; defaults to \code{"normal"}.}
 
-\item{colors}{Optional named list of colour palettes per dataset.}
+\item{colors}{Optional colour palettes, keyed by data set label, then by
+grouping variable, then by group level:
+\code{list("PBMC example" = list(sample = c(sample_1 = "#1f77b4")))}.
+The level names have to be the ones in the data. A palette may cover only
+some levels; the rest keep their default colour. Anything R cannot read as
+a colour, or a label that is not in \code{cerebro_data}, is reported here
+rather than ignored at runtime. Users can still override a colour in the
+Color management tab, which wins for that session.}
 
 \item{cerebro_options}{Extra entries merged into \code{Cerebro.options} in
 the generated app. Matrix overrides must be absolute host paths and make
