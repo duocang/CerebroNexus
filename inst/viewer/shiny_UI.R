@@ -360,6 +360,8 @@ ui <- dashboardPage(
       tab_color_management,
       tab_about
     ),
-    tags$script(inactivity)
+    if (is.null(Cerebro.options[[".viewer_auth"]])) {
+      tags$script(inactivity)
+    }
   )
 )

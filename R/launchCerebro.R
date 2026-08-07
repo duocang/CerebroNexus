@@ -52,11 +52,31 @@
 #' to 100.
 #' @param projections_show_hover_info Show hover infos in projections. This
 #' setting can be changed in the UI; defaults to TRUE.
-#' @param ... Further parameters that are used by \code{shiny::runApp}, e.g.
-#' \code{host} or \code{port}.
+#' @param auth Optional strict authentication descriptor. \code{NULL}, the
+#' default, leaves the Viewer unauthenticated. The only supported named-list
+#' shape has \code{provider = "shinymanager"}; \code{credentials} must be an
+#' absolute path to a readable encrypted shinymanager SQLite database; and
+#' \code{passphrase_env} must name an environment variable containing at least
+#' 32 bytes of high-entropy secret material. The optional whole-number
+#' \code{timeout_minutes} is from 1 through 1440; \code{timeout_minutes} defaults
+#' to 15.
+#' The environment-held passphrase is read only for validation and provider
+#' setup; it is never stored in \code{Cerebro.options} or returned artifacts.
+#' Authentication gates access to the Viewer but does not provide transport
+#' security, rate limiting, SSO, MFA, centralized identity-provider revocation,
+#' or network policy. For \code{launchCerebro()}, the host credentials database
+#' must be a regular readable/writable file outside every Shiny HTTP resource
+#' directory. Its containing directory must be writable and searchable for
+#' encrypted logs and SQLite journals, and all other parent directories must be
+#' searchable. The database, provider, and passphrase are validated before the
+#' app is returned.
+#' @param ... Forwarded to the \code{shiny::shinyApp} constructor, for example
+#' \code{onStart}, \code{options}, or \code{uiPattern}; these are not
+#' \code{shiny::runApp} host or port arguments.
 #'
 #' @return
-#' Shiny application.
+#' A Shiny application object. Authentication descriptor and database errors
+#' occur before the app is returned.
 #'
 #' @examples
 #' if ( interactive() ) {
@@ -100,6 +120,7 @@ launchCerebro <- function(
   overview_default_percentage_cells_to_show = 100,
   gene_expression_default_percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
+  auth = NULL,
   ...
 ) {
   ##--------------------------------------------------------------------------##
@@ -145,6 +166,13 @@ launchCerebro <- function(
     )
   }
 
+  cerebro_root <- system.file(package = "CerebroNexus")
+  viewer_auth <- .compileViewerAuth(
+    auth,
+    "host",
+    cerebro_root = cerebro_root
+  )
+
   ## --------------------------------------------------------------------------##
   ## Create global variable with options that need to be available inside the
   ## Shiny app.
@@ -159,7 +187,7 @@ launchCerebro <- function(
     "expression_matrix_h5" = expression_matrix_h5,
     "expression_matrix_BPCells" = expression_matrix_BPCells,
     "welcome_message" = welcome_message,
-    "cerebro_root" = system.file(package = "CerebroNexus"),
+    "cerebro_root" = cerebro_root,
     "overview_default_point_size" = overview_default_point_size,
     "overview_default_point_opacity" = overview_default_point_opacity,
     "overview_default_percentage_cells_to_show" = overview_default_percentage_cells_to_show,
@@ -167,6 +195,60 @@ launchCerebro <- function(
     "gene_expression_default_point_opacity" = gene_expression_default_point_opacity,
     "gene_expression_default_percentage_cells_to_show" = gene_expression_default_percentage_cells_to_show,
     "projections_show_hover_info" = projections_show_hover_info
+  )
+  if (!is.null(viewer_auth$config)) {
+    cerebro_options[[".viewer_auth"]] <- viewer_auth$config
+  }
+
+  had_cerebro_options <- exists(
+    "Cerebro.options",
+    envir = .GlobalEnv,
+    inherits = FALSE
+  )
+  previous_cerebro_options <- if (had_cerebro_options) {
+    get("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)
+  } else {
+    NULL
+  }
+  had_request_size <- "shiny.maxRequestSize" %in% names(options())
+  previous_request_size <- getOption("shiny.maxRequestSize")
+  launch_committed <- FALSE
+  on.exit(
+    {
+      if (!launch_committed) {
+        tryCatch(
+          {
+            if (had_cerebro_options) {
+              assign(
+                "Cerebro.options",
+                previous_cerebro_options,
+                envir = .GlobalEnv
+              )
+            } else if (
+              exists(
+                "Cerebro.options",
+                envir = .GlobalEnv,
+                inherits = FALSE
+              )
+            ) {
+              rm("Cerebro.options", envir = .GlobalEnv)
+            }
+          },
+          error = function(condition) NULL
+        )
+        tryCatch(
+          {
+            if (had_request_size) {
+              options(shiny.maxRequestSize = previous_request_size)
+            } else {
+              options(shiny.maxRequestSize = NULL)
+            }
+          },
+          error = function(condition) NULL
+        )
+      }
+    },
+    add = TRUE
   )
   assign("Cerebro.options", cerebro_options, envir = .GlobalEnv)
 
@@ -192,6 +274,19 @@ launchCerebro <- function(
     ),
     local = TRUE
   )
+  source(
+    system.file(
+      paste0("viewer/auth.R"),
+      package = "CerebroNexus"
+    ),
+    local = TRUE
+  )
+  viewer_app <- viewer_auth_apply(
+    ui,
+    server,
+    config = Cerebro.options[[".viewer_auth"]],
+    cerebro_root = Cerebro.options[["cerebro_root"]]
+  )
 
   ##--------------------------------------------------------------------------##
   ## Launch Cerebro.
@@ -203,9 +298,17 @@ launchCerebro <- function(
       '##---------------------------------------------------------------------------##'
     )
   )
-  shiny::shinyApp(
-    ui = ui,
-    server = server,
+  app <- shiny::shinyApp(
+    ui = viewer_app$ui,
+    server = viewer_app$server,
     ...
   )
+  launch_committed <- TRUE
+  rm(
+    had_cerebro_options,
+    previous_cerebro_options,
+    had_request_size,
+    previous_request_size
+  )
+  app
 }

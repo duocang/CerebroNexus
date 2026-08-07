@@ -1,0 +1,86 @@
+.panel-auth {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2em 1em;
+  background: #f5f7fa;
+}
+
+.panel-auth > .row {
+  width: 100%;
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.panel-auth .panel {
+  width: min(100%, 28em);
+  margin: 0 auto;
+  border: 0;
+  border-radius: 0.75em;
+  box-shadow: 0 1em 3em rgba(20, 35, 55, 0.16);
+}
+
+.panel-auth .panel-body {
+  padding: 2em;
+}
+
+.cerebro-auth-brand {
+  width: 100%;
+  margin: 0 auto 1.5em;
+  color: #24364b;
+  text-align: center;
+}
+
+.cerebro-auth-brand svg {
+  display: inline-block;
+  width: min(100%, 18em);
+  height: auto;
+}
+
+.cerebro-auth-brand.cerebro-auth-brand-bottom {
+  margin: 1.25em auto 0;
+  color: #647386;
+  font-size: 0.875em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.panel-auth .form-control:focus-visible,
+.panel-auth .btn:focus-visible,
+.panel-auth a:focus-visible {
+  outline: 3px solid #1677b8;
+  outline-offset: 2px;
+}
+
+.panel-auth .btn {
+  min-height: 2.75em;
+  border-radius: 0.4em;
+  font-weight: 650;
+}
+
+.panel-auth .btn-primary {
+  border-color: #176fa6;
+  background: #176fa6;
+}
+
+.panel-auth .alert {
+  border-radius: 0.4em;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 576px) {
+  .panel-auth {
+    align-items: flex-start;
+    padding: 1em 0.75em;
+  }
+
+  .panel-auth .panel-body {
+    padding: 1.25em;
+  }
+
+  .cerebro-auth-brand svg {
+    width: min(100%, 15em);
+  }
+}

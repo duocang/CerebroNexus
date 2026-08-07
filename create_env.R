@@ -53,6 +53,7 @@ rix(
     "pkgdown",
     "shinytest2",
     "callr",
+    "chromote",
     "png",
     "withr",
     "formattable",
@@ -90,6 +91,7 @@ rix(
     "shinydashboard",
     "shinyFiles",
     "shinyjs",
+    "shinymanager",
     "shinyWidgets",
     "tibble",
     "tidyr",
@@ -97,10 +99,7 @@ rix(
     "stringdist",
     "visNetwork"
   ),
-  system_pkgs = c(
-    "chromium", # headless browser for shinytest2
-    "pandoc" # required for building vignettes
-  ),
+  system_pkgs = "pandoc", # required for building vignettes
   git_pkgs = list(
     # BPCells is not on CRAN, install from GitHub
     list(
@@ -169,9 +168,70 @@ if (length(bp_start) == 1 && !is.na(bp_end)) {
     nix_lines[propagatedBuildInputs:bp_end],
     nix_lines[(bp_end + 1):length(nix_lines)]
   )
-
-  writeLines(nix_lines, nix_file)
 }
+
+rewrite_system_packages <- function(nix_lines) {
+  system_packages_start <- grep(
+    "^  system_packages = builtins.attrValues",
+    nix_lines
+  )
+  if (length(system_packages_start) != 1L) {
+    stop("Expected exactly one system_packages block start")
+  }
+
+  shell_start <- grep("^  shell = pkgs.mkShell", nix_lines)
+  system_packages_ends <- grep("^  };[[:space:]]*$", nix_lines)
+  if (length(shell_start) != 1L || shell_start <= system_packages_start) {
+    stop("Expected exactly one system_packages block end after its start")
+  }
+  system_packages_end <- system_packages_ends[
+    system_packages_ends > system_packages_start &
+      system_packages_ends < shell_start
+  ]
+  if (length(system_packages_end) != 1L) {
+    stop("Expected exactly one system_packages block end after its start")
+  }
+
+  system_packages_block <- c(
+    "  system_packages = builtins.attrValues (",
+    "    {",
+    "      inherit (pkgs) glibcLocales nix pandoc R;",
+    "    }",
+    "    // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {",
+    "      inherit (pkgs) chromium;",
+    "    }",
+    "  );"
+  )
+  nix_lines <- c(
+    nix_lines[1:(system_packages_start - 1)],
+    system_packages_block,
+    nix_lines[(system_packages_end + 1):length(nix_lines)]
+  )
+
+  rewritten_start <- grep(
+    "^  system_packages = builtins.attrValues \\($",
+    nix_lines
+  )
+  rewrite_is_valid <- length(rewritten_start) == 1L &&
+    rewritten_start + length(system_packages_block) - 1L <= length(nix_lines) &&
+    identical(
+      nix_lines[
+        rewritten_start:(rewritten_start + length(system_packages_block) - 1L)
+      ],
+      system_packages_block
+    ) &&
+    sum(grepl("inherit (pkgs) chromium;", nix_lines, fixed = TRUE)) == 1L
+  if (!rewrite_is_valid) {
+    stop("Generated system_packages block failed postcondition")
+  }
+
+  nix_lines
+}
+
+# Keep the headless browser available for shinytest2 on Linux without making
+# the generated shell unevaluable on Apple Silicon.
+nix_lines <- rewrite_system_packages(nix_lines)
+writeLines(nix_lines, nix_file)
 
 cat(
   "###################################################################################################\n"

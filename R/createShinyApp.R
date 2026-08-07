@@ -1017,9 +1017,56 @@ dedent <- function(string) {
 .bundleBuildOps <- function() {
   list(
     copy = function(from, to, ...) file.copy(from, to, ...),
+    chmod = function(path, mode) Sys.chmod(path, mode = mode),
     save_rds = function(object, file) saveRDS(object, file),
     write_lines = function(text, connection) writeLines(text, connection)
   )
+}
+
+.hardenBundleAuthentication <- function(path, passphrase_env, ops) {
+  stable_error <- function(message) {
+    stop(message, call. = FALSE)
+  }
+  regular <- isTRUE(file.exists(path)) &&
+    !isTRUE(dir.exists(path)) &&
+    isTRUE(utils::file_test("-f", path)) &&
+    !isTRUE(.pathIsSymbolicLink(path))
+  if (!regular) {
+    stable_error("Failed to harden the authentication database.")
+  }
+
+  if (.Platform$OS.type != "windows") {
+    auth_dir <- dirname(path)
+    directory_attempt <- .attemptBundleOperation(function() {
+      ops$chmod(auth_dir, as.octmode("0700"))
+    })
+    file_attempt <- .attemptBundleOperation(function() {
+      ops$chmod(path, as.octmode("0600"))
+    })
+    modes <- file.info(c(auth_dir, path))$mode
+    expected <- c(strtoi("700", base = 8L), strtoi("600", base = 8L))
+    modes_valid <- length(modes) == 2L &&
+      !anyNA(modes) &&
+      identical(bitwAnd(as.integer(modes), 511L), expected)
+    if (
+      !.bundleOperationSucceeded(directory_attempt) ||
+        !.bundleOperationSucceeded(file_attempt) ||
+        !modes_valid
+    ) {
+      stable_error("Failed to harden the authentication database.")
+    }
+  }
+
+  if (!isTRUE(file.access(path, mode = 6L) == 0L)) {
+    stable_error("Failed to harden the authentication database.")
+  }
+  tryCatch(
+    .viewerAuthPreflightDatabase(path, passphrase_env),
+    error = function(condition) {
+      stable_error("Failed to validate the staged authentication database.")
+    }
+  )
+  invisible(path)
 }
 
 .attemptBundleOperation <- function(operation) {
@@ -1789,10 +1836,30 @@ dedent <- function(string) {
 #'   \code{cerebro_data}.
 #' @param spatial_plot_rotation Named list/vector; initial rotation (degrees)
 #'   applied to spatial cell coordinates. Names must match \code{cerebro_data}.
-#' @param ... Currently unused; reserved for future arguments.
+#' @param auth Optional strict authentication descriptor. \code{NULL}, the
+#' default, leaves the Viewer unauthenticated. The only supported named-list
+#' shape has \code{provider = "shinymanager"}; \code{credentials} must be an
+#' absolute path to a readable encrypted shinymanager SQLite database; and
+#' \code{passphrase_env} must name an environment variable containing at least
+#' 32 bytes of high-entropy secret material. The optional whole-number
+#' \code{timeout_minutes} is from 1 through 1440; \code{timeout_minutes} defaults
+#' to 15.
+#' The environment-held passphrase is read only for validation and provider
+#' setup; it is never stored in \code{Cerebro.options} or returned artifacts.
+#' Authentication gates access to the Viewer but does not provide transport
+#' security, rate limiting, SSO, MFA, centralized identity-provider revocation,
+#' or network policy. For \code{createShinyApp()}, the source credentials
+#' database need only be a regular readable file. It is validated before target
+#' mutation, and only the encrypted database is copied into the generated app.
+#' At runtime, the deployed private copy must be readable/writable and its
+#' containing directory writable/searchable for encrypted logs and SQLite
+#' journals; all other parent directories must be searchable.
+#' @param ... Accepted for compatibility but currently unused; named or unnamed
+#' values do not alter the generated app.
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
 #'   during the build, warns and returns the frozen absolute publication path.
+#'   Authentication descriptor and database errors occur before target mutation.
 #' @importFrom later later
 #' @importFrom stats setNames
 #' @export
@@ -1824,6 +1891,7 @@ createShinyApp <- function(
   spatial_images_offset_x = NULL,
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
+  auth = NULL,
   ...
 ) {
   # Validate inputs ----------------------------------------------------------##
@@ -1937,6 +2005,7 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
+  viewer_auth <- .compileViewerAuth(auth, scope = "bundle")
   requested_result_dir <- result_dir
   prepared_result <- .prepareBundleResultTarget(result_dir)
   result_dir <- prepared_result$target
@@ -2158,6 +2227,14 @@ createShinyApp <- function(
       source = source,
       artifact = artifact,
       directory = directory
+    )
+  }
+
+  if (!is.null(viewer_auth$config)) {
+    claim_target(
+      "private-data/auth/credentials.sqlite",
+      viewer_auth$source,
+      "authentication database"
     )
   }
 
@@ -2407,6 +2484,19 @@ createShinyApp <- function(
     }
   }
 
+  if (!is.null(viewer_auth$config)) {
+    .hardenBundleAuthentication(
+      file.path(
+        stage_result_dir,
+        "private-data",
+        "auth",
+        "credentials.sqlite"
+      ),
+      viewer_auth$config$passphrase_env,
+      build_ops
+    )
+  }
+
   # Copy extdata -------------------------------------------------------------##
   if (verbose) {
     cat("Copying extdata files...\n")
@@ -2436,7 +2526,8 @@ createShinyApp <- function(
   cerebro_options[["cerebro_root"]] <- "."
   internal_option_names <- c(
     ".bundle_backend_plan",
-    ".bundle_run_options"
+    ".bundle_run_options",
+    ".viewer_auth"
   )
   option_names <- names(cerebro_options)
   if (!is.null(option_names)) {
@@ -2449,6 +2540,9 @@ createShinyApp <- function(
     entries = effective_backend_entries
   )
   cerebro_options[[".bundle_run_options"]] <- bundle_run_options
+  if (!is.null(viewer_auth$config)) {
+    cerebro_options[[".viewer_auth"]] <- viewer_auth$config
+  }
   if (!is.null(crb_pick_smallest_file)) {
     cerebro_options[["crb_pick_smallest_file"]] <- crb_pick_smallest_file
   }
@@ -2524,10 +2618,18 @@ createShinyApp <- function(
 
     source(file.path(cerebro_root, "viewer/shiny_UI.R"))
     source(file.path(cerebro_root, "viewer/shiny_server.R"))
+    source(file.path(cerebro_root, "viewer/auth.R"), local = TRUE)
+
+    viewer_app <- viewer_auth_apply(
+      ui,
+      server,
+      config = Cerebro.options[[".viewer_auth"]],
+      cerebro_root = Cerebro.options[["cerebro_root"]]
+    )
 
     shiny::shinyApp(
-      ui = ui,
-      server = server,
+      ui = viewer_app$ui,
+      server = viewer_app$server,
       onStart = function() {
         previous <- options(
           shiny.maxRequestSize = bundle_run_options$max_request_size_bytes

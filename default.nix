@@ -6,6 +6,7 @@
 #  > "pkgdown",
 #  > "shinytest2",
 #  > "callr",
+#  > "chromote",
 #  > "png",
 #  > "withr",
 #  > "formattable",
@@ -41,14 +42,14 @@
 #  > "shinydashboard",
 #  > "shinyFiles",
 #  > "shinyjs",
+#  > "shinymanager",
 #  > "shinyWidgets",
 #  >      "tibble",
 #  > "tidyr",
 #  > "tidyselect",
 #  > "stringdist",
 #  > "visNetwork"),
-#  > system_pkgs = c("chromium",
-#  > "pandoc"),
+#  > system_pkgs = "pandoc",
 #  > git_pkgs = list(list(package_name = "BPCells",
 #  > repo_url = "https://github.com/bnprks/BPCells/r",
 #  > commit = bpcells_sha)),
@@ -68,6 +69,7 @@ let
       base64enc
       biomaRt
       callr
+      chromote
       colourpicker
       devtools
       dplyr
@@ -100,6 +102,7 @@ let
       shinydashboard
       shinyFiles
       shinyjs
+      shinymanager
       shinytest2
       shinyvalidate
       shinyWidgets
@@ -148,14 +151,14 @@ let
       };
     });
       
-  system_packages = builtins.attrValues {
-    inherit (pkgs) 
-      chromium
-      glibcLocales
-      nix
-      pandoc
-      R;
-  };
+  system_packages = builtins.attrValues (
+    {
+      inherit (pkgs) glibcLocales nix pandoc R;
+    }
+    // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+      inherit (pkgs) chromium;
+    }
+  );
   
   shell = pkgs.mkShell {
     LOCALE_ARCHIVE = if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then "${pkgs.glibcLocales}/lib/locale/locale-archive" else "";
