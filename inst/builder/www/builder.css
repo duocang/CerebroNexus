@@ -3,9 +3,9 @@
 /*                                                                            */
 /* The builder and the viewer are one product, so they share one design       */
 /* language: the "Console" tokens below are a mirror of the `:root` block in   */
-/* inst/viewer/www/custom.css -- warm paper neutrals, a structural         */
-/* slate-blue, a warm amber reserved for emphasis and action. Keep the two in  */
-/* sync; the viewer's block is the source of truth.                           */
+/* inst/viewer/www/custom.css -- warm paper neutrals, with amber carrying      */
+/* focus, hover, and primary actions. Keep the two in sync; the viewer's block */
+/* is the source of truth.                                                     */
 /*                                                                            */
 /* The builder cannot simply link that stylesheet: custom.css is 62 kB of      */
 /* AdminLTE overrides written against shinydashboard's markup, and this page   */
@@ -25,7 +25,7 @@
   --c-text-2:    #525257;
   --c-text-3:    #6b6b70;
 
-  /* --- Brand: calm slate-blue for structure ---------------------------- */
+  /* --- Brand: calm slate-blue for semantic status ---------------------- */
   --c-blue-50:  #eef4fb;
   --c-blue-100: #d7e6f7;
   --c-blue:     #2f6fd6;
@@ -42,6 +42,8 @@
 
   --c-success: #16a34a;
   --c-warning: #d97706;
+  --c-error-50: #fff1f2;
+  --c-error-100: #ffe4e6;
   --c-error:   #dc2626;
 
   --shadow-1: 0 1px 2px rgba(17,17,26,0.04), 0 1px 3px rgba(17,17,26,0.05);
@@ -57,6 +59,13 @@
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --dur:  0.18s;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
 
   /* The viewer's stack, plus CJK faces so Chinese labels are not left to a
      Windows default. Latin still resolves to the system face first. */
@@ -118,7 +127,7 @@ body {
 
 .shell {
   display: grid;
-  grid-template-columns: 16.5rem minmax(0, 1fr);
+  grid-template-columns: 19.5rem minmax(0, 1fr);
   gap: 1.35rem;
   max-width: 112rem;
   margin: 0 auto;
@@ -214,7 +223,7 @@ body {
 .rail-summary-state { color: var(--c-text-2); font-size: .78rem; }
 .rail-summary-action {
   flex: 0 0 auto;
-  color: var(--c-blue-700);
+  color: var(--c-amber-700);
   font-size: .8rem;
   font-weight: 600;
 }
@@ -323,25 +332,30 @@ body {
   position: absolute;
   right: .5rem;
   top: .55rem;
-  display: flex; align-items: center; justify-content: center;
-  width: 1.7rem; height: 1.7rem;
-  padding: 0;
-  border: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 1.8rem;
+  padding: .3rem .5rem;
+  border: 1px solid transparent;
   border-radius: var(--r-xs);
-  background: transparent;
-  color: var(--c-text-3);
+  background: var(--c-error-50);
+  color: var(--c-error);
+  font-weight: 700;
   cursor: pointer;
   opacity: 1;
 }
-.ds-del:hover { background: #fdecec; color: var(--c-error); }
+.ds-del:hover { background: var(--c-error-100); color: var(--c-error); }
 .ds-del:focus-visible { outline: 2px solid var(--c-error); outline-offset: 1px; }
-.ds-del .icon { width: .95rem; height: .95rem; }
-.ds-move,
-.ds-initial,
-.ds-copy {
+.ds-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+  padding: 0 .8rem .55rem;
+}
+.ds-move {
   min-width: 1.8rem;
   min-height: 1.8rem;
-  margin: 0 .15rem .55rem 0;
+  margin: 0;
   padding: .15rem .35rem;
   border: 1px solid var(--c-border-2);
   border-radius: var(--r-xs);
@@ -349,20 +363,79 @@ body {
   color: var(--c-text-2);
   cursor: pointer;
 }
-.ds-pick + .ds-move { margin-left: .8rem; }
-.ds-move:focus-visible,
-.ds-initial:focus-visible,
-.ds-copy:focus-visible {
+.ds-move,
+.ds-del {
+  align-items: center;
+  gap: .3rem;
+  font: inherit;
+  font-size: .7rem;
+  line-height: 1;
+}
+.ds-move { display: inline-flex; width: auto; }
+.ds-action-label { white-space: nowrap; }
+.ds-del {
+  position: static;
+  width: auto;
+  padding: .35rem .55rem;
+}
+.ds-move:focus-visible {
   outline: 2px solid var(--c-amber);
   outline-offset: 1px;
 }
-.ds-initial[aria-pressed="true"] {
-  border-color: var(--c-amber-300);
-  color: var(--c-amber-700);
-  background: var(--c-amber-50);
-}
 .ds-move[disabled] { opacity: .4; cursor: not-allowed; }
 .rail-add { padding: .85rem .95rem; }
+.dataset-file-control {
+  position: relative;
+  width: 100%;
+}
+.dataset-file-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.dataset-file-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  width: 100%;
+  min-height: 2.55rem;
+  padding: .55rem .95rem;
+  border: 1px solid var(--c-amber);
+  border-radius: var(--r-sm);
+  background: var(--c-amber);
+  color: var(--c-white);
+  box-shadow: var(--shadow-1);
+  font-size: .84rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.dataset-file-button .icon { width: 1rem; height: 1rem; }
+.dataset-file-control:hover .dataset-file-button {
+  background: var(--c-amber-600);
+  border-color: var(--c-amber-600);
+  box-shadow: var(--shadow-2);
+}
+.dataset-file-control:active .dataset-file-button {
+  background: var(--c-amber-700);
+  border-color: var(--c-amber-700);
+  transform: translateY(1px);
+}
+.dataset-file-input:focus-visible + .dataset-file-button {
+  outline: 2px solid var(--c-amber-300);
+  outline-offset: 2px;
+}
 
 /* ---- cards ------------------------------------------------------------- */
 
@@ -452,11 +525,19 @@ label, .control-label {
   min-height: 2.3rem;
 }
 .form-control:focus, .selectize-input.focus {
-  border-color: var(--c-blue) !important;
-  box-shadow: 0 0 0 3px var(--c-blue-50) !important;
+  border-color: var(--c-amber) !important;
+  box-shadow: 0 0 0 3px var(--c-amber-50) !important;
 }
 .form-control[readonly] { background: var(--c-surface-2) !important; }
-.selectize-dropdown .active { background: var(--c-blue-50) !important; }
+.selectize-dropdown .option.active,
+.selectize-dropdown .option.selected,
+.selectize-dropdown .active {
+  background: var(--c-amber-50) !important;
+  color: var(--c-text) !important;
+}
+.selectize-dropdown .option.active:hover {
+  background: var(--c-amber-100) !important;
+}
 
 /* Checkbox groups read as a scannable list, not a wall. Two columns when there
    are enough entries to be worth it -- laid out with a grid rather than CSS
@@ -469,7 +550,7 @@ label, .control-label {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .shiny-options-group .checkbox input { cursor: pointer; accent-color: var(--c-amber); }
-.shiny-options-group .checkbox label:hover { color: var(--c-blue); }
+.shiny-options-group .checkbox label:hover { color: var(--c-amber-700); }
 .cols-2 .shiny-options-group {
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
   column-gap: 1.5rem;
@@ -494,20 +575,20 @@ input[type="checkbox"] { accent-color: var(--c-amber); }
 .btn:active { background: var(--c-surface-3); }
 .btn:focus-visible { outline: 2px solid var(--c-amber); outline-offset: 2px; }
 
-/* Structural blue: navigation and input, the things that gather material. */
+/* Amber is the shared interaction accent: focus, hover, and primary actions. */
 .btn-primary, .btn-primary:focus {
-  background: var(--c-blue) !important;
-  border-color: var(--c-blue) !important;
+  background: var(--c-amber) !important;
+  border-color: var(--c-amber) !important;
   color: var(--c-white) !important;
 }
 .btn-primary:hover {
-  background: var(--c-blue-600) !important;
-  border-color: var(--c-blue-600) !important;
+  background: var(--c-amber-600) !important;
+  border-color: var(--c-amber-600) !important;
   box-shadow: var(--shadow-1);
 }
-.btn-primary:active { background: var(--c-blue-700) !important; }
+.btn-primary:active { background: var(--c-amber-700) !important; }
 
-/* Amber is spent on exactly one thing: the button that writes to disk. */
+/* The write action keeps the same accent with a stronger affordance. */
 .btn-action, .btn-action:focus {
   background: var(--c-amber) !important;
   border-color: var(--c-amber) !important;
@@ -566,6 +647,143 @@ pre {
 }
 hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
 .icon { width: 1rem; height: 1rem; vertical-align: -2px; }
+.builder-icon-slot { display: inline-flex; flex: 0 0 auto; }
+.builder-icon { width: 1rem; height: 1rem; display: block; }
+
+.builder-detected-content { margin-top: var(--space-4); }
+.builder-detected-content h3 { margin: 0 0 var(--space-2); font-size: .9rem; }
+.builder-content-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.builder-content-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: .25rem .6rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.builder-content-tag.is-core {
+  border-color: var(--c-blue-100);
+  background: var(--c-blue-50);
+  color: var(--c-blue-700);
+}
+.builder-content-tag.is-metadata {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+.builder-content-tag.is-projection {
+  border-color: var(--c-amber-100);
+  background: var(--c-amber-50);
+  color: var(--c-amber-700);
+}
+.builder-content-tag.is-spatial {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+.builder-content-tag.is-optional {
+  border-color: var(--c-border-2);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+}
+
+/* ---- Task 15 visual states and progressive disclosure ----------------- */
+.stage-intro {
+  max-width: 52rem;
+  margin: -.25rem 0 var(--space-6);
+  color: var(--c-text-2);
+}
+.enhance-module-grid > div,
+.enhance-module-grid > .shiny-html-output > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
+  gap: var(--space-3);
+}
+.enhance-module {
+  padding: var(--space-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+}
+.enhance-module > label { font-size: .9rem; color: var(--c-text); }
+.enhance-module .consequence { color: var(--c-text-2); margin: .35rem 0; }
+.enhance-details,
+.review-technical-details,
+.review-dataset-card details {
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--c-border);
+  padding-top: var(--space-2);
+}
+details > summary {
+  width: fit-content;
+  color: var(--c-amber-700);
+  font-weight: 600;
+  cursor: pointer;
+}
+details > summary:focus-visible { outline: 2px solid var(--c-amber); outline-offset: 2px; }
+.review-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.review-summary-strip > span,
+.review-counts > span {
+  padding: .3rem .65rem;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+}
+.review-dataset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(21rem, 100%), 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.review-dataset-card {
+  padding: var(--space-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+}
+.review-dataset-file { margin: .15rem 0 .55rem; color: var(--c-text-3); font-family: var(--font-mono); }
+.review-counts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.builder-build-pipeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-4);
+}
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  min-width: 0;
+  color: var(--c-text-3);
+  font-size: .75rem;
+}
+.pipeline-light { width: .65rem; height: .65rem; flex: 0 0 auto; border: 2px solid currentColor; border-radius: 50%; }
+.pipeline-step.is-complete { color: var(--c-success); }
+.pipeline-step.is-complete .pipeline-light { background: currentColor; }
+.pipeline-step.is-current { color: var(--c-amber-700); font-weight: 700; }
+.pipeline-step.is-current .pipeline-light { box-shadow: 0 0 0 3px var(--c-amber-100); }
+
+.is-empty { border-style: dashed; }
+.is-loading { background: linear-gradient(90deg, var(--c-surface-2), var(--c-surface), var(--c-surface-2)); }
+.is-ready { border-left: 3px solid var(--c-success); }
+.is-attention { border-left: 3px solid var(--c-warning); }
+.is-blocking { border-left: 3px solid var(--c-error); background: #fff8f8; }
+.is-building { border-left: 3px solid var(--c-blue); }
+.is-decision-required,
+.is-needs_decision { border-left: 3px solid var(--c-warning); background: #fffaf2; }
+.is-failure { border-left: 3px solid var(--c-error); background: #fff8f8; }
+.is-recovery { border-left: 3px double var(--c-error); background: #fff8f8; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -644,6 +862,8 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
 }
 .ex-inner {
   display: block;
+  height: 4.65rem;
+  overflow: hidden;
   padding: .5rem .65rem;
   border: 1px solid var(--c-border-2);
   border-radius: var(--r-sm);
@@ -651,8 +871,8 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
 }
 .example-btn.is-taken { display: none; }
 .example-btn:hover .ex-inner {
-  border-color: var(--c-blue-100);
-  background: var(--c-blue-50);
+  border-color: var(--c-amber-100);
+  background: var(--c-amber-50);
 }
 .example-btn:focus-visible { outline: none; }
 .example-btn:focus-visible .ex-inner {
@@ -702,24 +922,7 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   font-family: var(--font-mono); font-size: 10.5px;
 }
 
-/* ---- file browser sheet ------------------------------------------------- */
-
-.sheet-backdrop {
-  position: fixed; inset: 0; z-index: 60;
-  background: rgba(17, 17, 26, .32);
-  display: flex; align-items: center; justify-content: center;
-  padding: 2rem 1rem;
-}
 .builder-dialog-open { overflow: hidden; }
-.sheet {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  width: min(44rem, 100%);
-  max-height: 80vh;
-  display: flex; flex-direction: column;
-  box-shadow: var(--shadow-4);
-}
 
 .builder-confirm-backdrop {
   position: fixed;
@@ -765,67 +968,10 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
 }
 .js-plotly-plot { transition: opacity var(--dur) var(--ease); }
 .js-plotly-plot.is-updating { opacity: .72; }
-.sheet-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .85rem 1.1rem; border-bottom: 1px solid var(--c-border);
-}
-.sheet-title { font-weight: 600; font-size: .95rem; }
-.sheet-roots {
-  display: flex; flex-wrap: wrap; gap: .35rem;
-  padding: .75rem 1.1rem .55rem;
-}
-.chip-btn {
-  border: 1px solid var(--c-border-2); background: var(--c-surface-2);
-  border-radius: var(--r-pill); padding: .22rem .75rem;
-  font-size: .78rem; color: var(--c-text-2); cursor: pointer;
-  font-family: inherit;
-}
-.chip-btn:hover {
-  background: var(--c-blue-50); color: var(--c-blue-700);
-  border-color: var(--c-blue-100);
-}
-/* The listing renders separately from the sheet around it, so it is its own
-   flex child and has to carry the height chain the scroller needs:
-   min-height: 0 on every link, or `overflow-y: auto` below has nothing to
-   scroll within and the sheet grows past its own max-height instead. */
-.sheet-body {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-/* Shiny dims a recomputing output to 0.3 after a 500 ms delay. Fast enough
-   for a local directory that it never shows; on a slow network mount it
-   should read as "working", not as the panel going out. */
-.sheet-body.recalculating { --shiny-fade-opacity: 0.6; }
-
-.sheet-path {
-  padding: 0 1.1rem .6rem; font-family: var(--font-mono); font-size: .74rem;
-  color: var(--c-text-3); word-break: break-all;
-  border-bottom: 1px solid var(--c-border);
-}
-.sheet-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: .35rem 0; }
-.row-btn {
-  display: flex; align-items: center; gap: .6rem; width: 100%;
-  padding: .45rem 1.1rem; border: none; background: transparent;
-  text-align: left; cursor: pointer; font-size: .875rem; color: var(--c-text);
-  font-family: inherit;
-}
-.row-btn:hover { background: var(--c-surface-2); }
-.row-btn:focus-visible { outline: 2px solid var(--c-blue); outline-offset: -2px; }
-.row-icon { color: var(--c-text-3); width: 1rem; text-align: center; }
-.row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-size {
-  font-family: var(--font-mono); font-size: .75rem; color: var(--c-text-3);
-  font-variant-numeric: tabular-nums;
-}
-.row-btn.is-file .row-icon { color: var(--c-blue); }
-.row-btn.is-file:hover { background: var(--c-blue-50); }
-
 /* ---- responsive layout -------------------------------------------------- */
 
 @media (max-width: 56.25rem) {
-  .shell { grid-template-columns: 13.5rem minmax(0, 1fr); gap: 1rem; }
+  .shell { grid-template-columns: 17.75rem minmax(0, 1fr); gap: 1rem; }
   .cols-2 .shiny-options-group { grid-template-columns: 1fr; }
   .actionbar .inner { align-items: flex-end; }
 }
@@ -886,8 +1032,6 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   .builder-stage,
   .review-app-options,
   .card { padding: 1rem; }
-  .sheet-backdrop { padding: .5rem; }
-  .sheet { max-height: calc(100dvh - 1rem); }
   pre, code, .notice, .privacy { overflow-wrap: anywhere; }
 }
 
@@ -951,4 +1095,30 @@ hr { border: none; border-top: 1px solid var(--c-border); margin: 1rem 0; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---- first-run guidance -------------------------------------------------- */
+.builder-first-run {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 30;
+  width: min(25rem, calc(100vw - 2rem));
+  padding: 1rem;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-3);
+}
+.builder-first-run h2 { margin-top: 0; font-size: 1.05rem; }
+.builder-first-run[hidden] { display: none; }
+.builder-recovery-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  padding: .75rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
 }

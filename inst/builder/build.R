@@ -578,6 +578,7 @@ builder_execute_plan <- function(
       }
       result$state <- "needs_decision"
       result$failed_analyses <- failed
+      result$failed_dataset_id <- item$id
       result$retry_closure <- builder_retry_closure(graph, failed)
       result$failures <- paste0(item$name, ": analysis `", failed, "` failed.")
       return(result)

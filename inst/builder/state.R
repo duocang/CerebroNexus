@@ -2285,8 +2285,7 @@ builder_reduce_dataset <- function(state, action) {
 #' Create the typed top-level state for the persistent dataset rail.
 builder_state <- function(
   datasets = list(),
-  current_dataset = NULL,
-  initial_dataset_override = NULL
+  current_dataset = NULL
 ) {
   ids <- .builder_store_ids(datasets)
   if (
@@ -2298,16 +2297,6 @@ builder_state <- function(
       "The current dataset must be present in the rail."
     )
   }
-  if (
-    !is.null(initial_dataset_override) &&
-      (!.builder_state_fact_text(initial_dataset_override) ||
-        !initial_dataset_override %in% ids)
-  ) {
-    .builder_state_abort(
-      "invalid_initial_dataset",
-      "The explicit initial dataset must be present in the rail."
-    )
-  }
   state <- structure(
     list(
       datasets = datasets,
@@ -2316,7 +2305,6 @@ builder_state <- function(
       } else {
         NULL
       },
-      initial_dataset_override = initial_dataset_override,
       last_removed = NULL,
       can_undo_remove = FALSE,
       revision = 0L
@@ -2331,7 +2319,6 @@ builder_state <- function(
   required_fields <- c(
     "datasets",
     "current_dataset",
-    "initial_dataset_override",
     "last_removed",
     "can_undo_remove",
     "revision"
@@ -2358,16 +2345,6 @@ builder_state <- function(
     .builder_state_abort(
       "invalid_current_dataset",
       "The current dataset must be present in the rail."
-    )
-  }
-  if (
-    !is.null(state$initial_dataset_override) &&
-      (!.builder_state_fact_text(state$initial_dataset_override) ||
-        !state$initial_dataset_override %in% ids)
-  ) {
-    .builder_state_abort(
-      "invalid_initial_dataset",
-      "The explicit initial dataset must be present in the rail."
     )
   }
   if (
@@ -2402,9 +2379,7 @@ builder_state <- function(
       "before_id",
       "after_id",
       "restore_current",
-      "restore_initial",
-      "fallback_current",
-      "fallback_initial"
+      "fallback_current"
     )
     scalar_flag <- function(value) {
       is.logical(value) && length(value) == 1L && !is.na(value)
@@ -2434,9 +2409,7 @@ builder_state <- function(
         (!is.null(removed$before_id) &&
           identical(removed$before_id, removed$after_id)) ||
         !retained_id(removed$fallback_current) ||
-        !retained_id(removed$fallback_initial) ||
-        !scalar_flag(removed$restore_current) ||
-        !scalar_flag(removed$restore_initial)
+        !scalar_flag(removed$restore_current)
     ) {
       .builder_state_abort(
         "invalid_builder_state",
@@ -2448,24 +2421,18 @@ builder_state <- function(
   ids
 }
 
-#' Derive the generated App's initial dataset without storing a mode flag.
+#' Derive the generated App's initial dataset from dataset order.
 builder_effective_initial_dataset <- function(state) {
   ids <- .builder_store_assert(state)
   if (!length(ids)) {
     return(list(id = NULL, mode = "automatic"))
-  }
-  if (!is.null(state$initial_dataset_override)) {
-    return(list(id = state$initial_dataset_override, mode = "explicit"))
   }
   list(id = ids[[1L]], mode = "automatic")
 }
 
 #' Adapt mutable Builder state to the frozen plan's App options.
 builder_app_options_for_plan <- function(state) {
-  effective <- builder_effective_initial_dataset(state)
-  if (identical(effective$mode, "explicit")) {
-    return(list(initial_dataset = effective$id))
-  }
+  .builder_store_assert(state)
   list()
 }
 
@@ -2542,66 +2509,22 @@ builder_reduce_state <- function(state, action) {
         }
       )
     }
-    if (
-      !is.null(next_state$initial_dataset_override) &&
-        !next_state$initial_dataset_override %in% replacement_ids
-    ) {
-      next_state["initial_dataset_override"] <- list(NULL)
-    }
   } else if (identical(type, "select")) {
     require_id(action$id)
     next_state$current_dataset <- action$id
     if (is.list(next_state$last_removed)) {
       next_state$last_removed$restore_current <- FALSE
     }
-  } else if (identical(type, "select_initial")) {
-    require_id(action$id)
-    next_state$initial_dataset_override <- action$id
-    if (is.list(next_state$last_removed)) {
-      next_state$last_removed$restore_initial <- FALSE
-    }
-  } else if (identical(type, "duplicate")) {
-    index <- require_id(action$id)
-    if (!.builder_state_fact_text(action$new_id) || action$new_id %in% ids) {
-      .builder_state_abort(
-        "duplicate_dataset_id",
-        "A duplicate requires a new unique dataset id."
-      )
-    }
-    duplicate <- .builder_store_copy(next_state$datasets[[index]])
-    duplicate$source_id <- .builder_state_or(
-      duplicate$source_id,
-      duplicate$id
-    )
-    duplicate$id <- action$new_id
-    duplicate$output_id <- action$new_id
-    duplicate$selector_value <- action$new_id
-    duplicate$revision <- 0L
-    if (.builder_state_text(action$name)) {
-      duplicate$settings$name <- action$name
-    }
-    .builder_store_validate_entry(duplicate)
-    next_state$datasets <- append(
-      next_state$datasets,
-      list(duplicate),
-      after = index
-    )
-    next_state$current_dataset <- action$new_id
   } else if (identical(type, "remove")) {
     index <- require_id(action$id)
     restore_current <- identical(next_state$current_dataset, action$id)
-    restore_initial <- identical(
-      next_state$initial_dataset_override,
-      action$id
-    )
     next_state$last_removed <- list(
       id = action$id,
       entry = next_state$datasets[[index]],
       index = as.integer(index),
       before_id = if (index > 1L) ids[[index - 1L]] else NULL,
       after_id = if (index < length(ids)) ids[[index + 1L]] else NULL,
-      restore_current = restore_current,
-      restore_initial = restore_initial
+      restore_current = restore_current
     )
     next_state$datasets <- next_state$datasets[-index]
     remaining <- ids[-index]
@@ -2614,14 +2537,9 @@ builder_reduce_state <- function(state, action) {
         }
       )
     }
-    if (identical(next_state$initial_dataset_override, action$id)) {
-      next_state["initial_dataset_override"] <- list(NULL)
-    }
     next_state$can_undo_remove <- TRUE
     next_state$last_removed["fallback_current"] <-
       list(next_state$current_dataset)
-    next_state$last_removed["fallback_initial"] <-
-      list(next_state$initial_dataset_override)
   } else if (identical(type, "undo_remove")) {
     removed <- next_state$last_removed
     if (!isTRUE(next_state$can_undo_remove) || !is.list(removed)) {
@@ -2658,15 +2576,6 @@ builder_reduce_state <- function(state, action) {
         identical(next_state$current_dataset, removed$fallback_current)
     ) {
       next_state$current_dataset <- removed$id
-    }
-    if (
-      isTRUE(removed$restore_initial) &&
-        identical(
-          next_state$initial_dataset_override,
-          removed$fallback_initial
-        )
-    ) {
-      next_state$initial_dataset_override <- removed$id
     }
     next_state["last_removed"] <- list(NULL)
     next_state$can_undo_remove <- FALSE

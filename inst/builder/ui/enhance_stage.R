@@ -168,7 +168,9 @@ builder_enhance_modules <- function(profile, settings) {
 }
 
 .builder_enhance_disclosure_notes <- function(item) {
-  tagList(
+  tags$details(
+    class = "enhance-details",
+    tags$summary("What this changes"),
     p(
       class = "pages",
       paste0(
@@ -254,16 +256,24 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
     id = ns("stage"),
     class = "builder-stage builder-stage-enhance",
     h2("Enhance"),
+    p(
+      class = "stage-intro",
+      "Optional: add analysis pages or attach supporting files. You can skip this stage."
+    ),
     tags$input(
       id = ns("rendered_for"),
       type = "hidden",
       value = model$id
     ),
-    if (isTRUE(dynamic_modules)) {
-      uiOutput(ns("analysis_modules"))
-    } else {
-      builder_enhance_modules_ui(id, model$modules %||% list())
-    },
+    h3("Optional analyses"),
+    div(
+      class = "enhance-module-grid",
+      if (isTRUE(dynamic_modules)) {
+        uiOutput(ns("analysis_modules"))
+      } else {
+        builder_enhance_modules_ui(id, model$modules %||% list())
+      }
+    ),
     h3("Optional attachments"),
     div(
       class = "enhance-attachment",

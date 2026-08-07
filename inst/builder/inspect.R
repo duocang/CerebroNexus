@@ -239,6 +239,25 @@ describe_seurat <- function(object) {
   if (!length(preselect)) {
     preselect <- if (length(candidates)) unname(candidates)[1] else character()
   }
+  group_counts <- lapply(unname(candidates), function(column) {
+    values <- as.character(meta[[column]])
+    values[is.na(values)] <- "N/A"
+    sort(table(values), decreasing = TRUE)
+  })
+  names(group_counts) <- unname(candidates)
+  qc_values <- lapply(numeric_cols, function(column) {
+    values <- as.numeric(meta[[column]])
+    values <- values[is.finite(values)]
+    if (length(values) > 1000L) {
+      values <- values[unique(round(seq(
+        1,
+        length(values),
+        length.out = 1000L
+      )))]
+    }
+    values
+  })
+  names(qc_values) <- numeric_cols
 
   ## Non-PCA projections take precedence. The exporter keeps one lone PCA as
   ## a warned fallback, but filters PCA whenever another projection is present.
@@ -273,12 +292,14 @@ describe_seurat <- function(object) {
     default_layer = default_profile$default_layer,
     group_candidates = candidates,
     group_preselect = preselect,
+    group_counts = group_counts,
     group_struck = struck,
     reductions = reductions,
     reduction_preselect = reduction_preselect,
     images = tryCatch(names(object@images), error = function(e) character()),
     nUMI = default_profile$nUMI,
     nGene = default_profile$nGene,
+    qc_values = qc_values,
     organism_guess = organism_guess,
     ## What the object already carries that Cerebro can show. Worth surfacing:
     ## these light up whole pages, and their absence is the usual reason a

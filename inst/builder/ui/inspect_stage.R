@@ -18,26 +18,83 @@ builder_stage_text_items <- function(values, class = NULL) {
   )
 }
 
-builder_inspect_model <- function(profile, state, format, dataset_id) {
-  manifest <- state$manifest %||% list()
-  detected <- unlist(
-    lapply(manifest, function(entry) {
-      status <- switch(
-        entry$status %||% "unknown",
-        valid = "ready",
-        not_applicable = "not applicable",
-        checking = "checking",
-        attention = "needs attention",
-        blocking = "blocked",
-        entry$status %||% "unknown"
-      )
-      c(
-        paste0(entry$id, " — ", status),
-        if (builder_stage_has_text(entry$summary %||% "")) entry$summary
-      )
-    }),
-    use.names = FALSE
+builder_inspect_content_tag <- function(entry) {
+  id <- entry$id %||% ""
+  if (
+    !identical(entry$status %||% "", "valid") ||
+      id %in% c("dataset_identity", "projection")
+  ) {
+    return(NULL)
+  }
+  label <- switch(
+    id,
+    expression = "Expression",
+    metadata = "Metadata",
+    groups = "Groups",
+    spatial = "Spatial",
+    trekker = "Trekker",
+    marker_genes = "Marker genes",
+    most_expressed_genes = "Most expressed genes",
+    mean_expression = "Mean expression",
+    enriched_pathways = "Enriched pathways",
+    trajectory = "Trajectory",
+    extra_material = "Extra material",
+    immune_repertoire = "Immune repertoire",
+    hla_tcr_motifs = "HLA & TCR motifs",
+    hla = "HLA",
+    if (startsWith(id, "reduction:")) {
+      toupper(sub("^reduction:", "", id))
+    } else {
+      tools::toTitleCase(gsub("_", " ", id))
+    }
   )
+  tone <- if (startsWith(id, "reduction:")) {
+    "projection"
+  } else if (id %in% c("metadata", "groups")) {
+    "metadata"
+  } else if (id %in% c("spatial", "trekker")) {
+    "spatial"
+  } else if (
+    id %in%
+      c(
+        "marker_genes",
+        "most_expressed_genes",
+        "mean_expression",
+        "enriched_pathways",
+        "trajectory",
+        "extra_material",
+        "immune_repertoire",
+        "hla_tcr_motifs",
+        "hla"
+      )
+  ) {
+    "optional"
+  } else {
+    "core"
+  }
+  list(label = label, tone = tone)
+}
+
+builder_inspect_model <- function(
+  profile,
+  state,
+  format,
+  dataset_id,
+  settings = list()
+) {
+  manifest <- state$manifest %||% list()
+  content_tags <- Filter(
+    Negate(is.null),
+    lapply(manifest, builder_inspect_content_tag)
+  )
+  statistics <- if (exists("builder_stats_frame", mode = "function")) {
+    builder_stats_frame(profile, settings)
+  } else {
+    list(
+      cells = as.integer(profile$n_cells %||% 0L),
+      genes = as.integer(profile$n_genes %||% 0L)
+    )
+  }
   list(
     summary = c(
       paste(format(profile$n_cells, big.mark = ","), "cells"),
@@ -45,7 +102,8 @@ builder_inspect_model <- function(profile, state, format, dataset_id) {
     ),
     attention = state$attention_ids %||% character(),
     blockers = state$blocking_ids %||% character(),
-    detected = detected,
+    content_tags = content_tags,
+    statistics = statistics,
     diagnostics = c(paste("Format", format), paste("Dataset id", dataset_id))
   )
 }
@@ -71,13 +129,20 @@ builder_inspect_stage_ui <- function(id, model) {
         builder_stage_text_items(c(attention, blockers))
       )
     },
-    tags$details(
-      tags$summary("View all detected content"),
-      builder_stage_text_items(model$detected)
-    ),
-    tags$details(
-      tags$summary("Technical diagnostics"),
-      builder_stage_text_items(model$diagnostics, "technical-diagnostics")
-    )
+    if (length(model$content_tags %||% list())) {
+      div(
+        class = "builder-detected-content",
+        h3("Detected content"),
+        div(
+          class = "builder-content-tags",
+          lapply(model$content_tags, function(tag) {
+            span(
+              class = paste("builder-content-tag", paste0("is-", tag$tone)),
+              tag$label
+            )
+          })
+        )
+      )
+    }
   )
 }

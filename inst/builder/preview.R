@@ -99,6 +99,7 @@ builder_preview_frame <- function(
     df <- df[sort(sample.int(nrow(df), max_cells)), , drop = FALSE]
   }
   attr(df, "reduction") <- reduction
+  attr(df, "capped") <- nrow(emb) > max_cells
   df
 }
 
@@ -125,6 +126,18 @@ builder_preview_plot <- function(df, colors = NULL) {
     }
   }
 
+  group_counts <- table(df$group)
+  df$hover <- paste0(
+    df$group,
+    " (",
+    unname(group_counts[df$group]),
+    " cells)",
+    "<br>x: ",
+    signif(df$x, 4),
+    " · y: ",
+    signif(df$y, 4)
+  )
+  opacity <- if (nrow(df) > 5000L) 0.42 else 0.75
   plotly::plot_ly(
     data = df,
     x = ~x,
@@ -133,9 +146,9 @@ builder_preview_plot <- function(df, colors = NULL) {
     colors = palette,
     type = "scattergl",
     mode = "markers",
-    marker = list(size = 4, opacity = 0.75, line = list(width = 0)),
+    marker = list(size = 4, opacity = opacity, line = list(width = 0)),
     hoverinfo = "text",
-    text = ~group
+    text = ~hover
   ) |>
     plotly::layout(
       xaxis = list(

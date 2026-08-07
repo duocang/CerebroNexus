@@ -309,7 +309,6 @@ builder_dataset_rail_server <- function(
   input,
   session,
   store,
-  duplicate,
   validate_remove,
   on_select = function(...) invisible(NULL),
   on_remove = function(...) invisible(NULL),
@@ -318,7 +317,6 @@ builder_dataset_rail_server <- function(
 ) {
   stopifnot(
     is.function(store),
-    is.function(duplicate),
     is.function(validate_remove),
     is.function(on_select),
     is.function(on_remove),
@@ -344,15 +342,6 @@ builder_dataset_rail_server <- function(
     ))
     on_select(id)
   })
-  shiny::observeEvent(input$duplicate_ds, {
-    state <- shiny::isolate(store())
-    ids <- vapply(state$datasets, `[[`, character(1), "id")
-    id <- .builder_rail_dataset_id(input$duplicate_ds, ids)
-    if (is.null(id)) {
-      return()
-    }
-    duplicate(id)
-  })
   shiny::observeEvent(input$reorder_ds, {
     event <- input$reorder_ds
     state <- shiny::isolate(store())
@@ -377,18 +366,6 @@ builder_dataset_rail_server <- function(
     store(builder_reduce_state(
       state,
       list(type = "move", id = event$id, direction = event$direction)
-    ))
-  })
-  shiny::observeEvent(input$select_initial, {
-    state <- shiny::isolate(store())
-    ids <- vapply(state$datasets, `[[`, character(1), "id")
-    id <- .builder_rail_dataset_id(input$select_initial, ids)
-    if (is.null(id)) {
-      return()
-    }
-    store(builder_reduce_state(
-      state,
-      list(type = "select_initial", id = id)
     ))
   })
   shiny::observeEvent(input$drop_ds, {
@@ -460,98 +437,88 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
     ))
   }
 
-  shiny::tagList(lapply(seq_along(state$datasets), function(index) {
-    entry <- state$datasets[[index]]
-    dataset_state <- builder_dataset_state(entry)
-    readiness <- .builder_rail_readiness(dataset_state)
-    label <- .builder_rail_or(entry$settings$name, entry$id)
-    cells <- .builder_rail_or(entry$profile$n_cells, 0L)
-    issue_count <- dataset_state$issue_count
-    confirm <- builder_dataset_remove_requires_confirmation(entry)
-    active <- identical(entry$id, current)
-    explicit <- identical(entry$id, state$initial_dataset_override)
+  shiny::tagList(
+    lapply(seq_along(state$datasets), function(index) {
+      entry <- state$datasets[[index]]
+      dataset_state <- builder_dataset_state(entry)
+      readiness <- .builder_rail_readiness(dataset_state)
+      label <- .builder_rail_or(entry$settings$name, entry$id)
+      cells <- .builder_rail_or(entry$profile$n_cells, 0L)
+      issue_count <- dataset_state$issue_count
+      confirm <- builder_dataset_remove_requires_confirmation(entry)
+      active <- identical(entry$id, current)
 
-    shiny::div(
-      class = paste(
-        "ds",
-        if (active) "is-active" else "",
-        if (explicit) "is-initial" else ""
-      ),
-      `data-ds` = entry$id,
-      shiny::tags$button(
-        class = "ds-pick builder-pick",
-        id = paste0("pick_", entry$id),
+      shiny::div(
+        class = paste(
+          "ds",
+          if (active) "is-active" else ""
+        ),
         `data-ds` = entry$id,
-        `aria-label` = paste0("Open ", label),
-        `aria-current` = if (active) "true" else NULL,
-        shiny::span(class = "ds-idx", index),
-        shiny::span(
-          class = "ds-body",
-          shiny::span(class = "nm", label),
+        shiny::tags$button(
+          class = "ds-pick builder-pick",
+          id = paste0("pick_", entry$id),
+          `data-ds` = entry$id,
+          `aria-label` = paste0("Open ", label),
+          `aria-current` = if (active) "true" else NULL,
+          shiny::span(class = "ds-idx", index),
           shiny::span(
-            class = if (identical(dataset_state$readiness, "ready")) {
-              "meta"
-            } else {
-              "meta bad"
-            },
-            sprintf(
-              "%s cells \u00b7 %s",
-              format(cells, big.mark = ","),
-              entry$format
-            ),
+            class = "ds-body",
+            shiny::span(class = "nm", label),
             shiny::span(
-              class = "rail-readiness",
-              `data-readiness` = dataset_state$readiness,
-              paste(readiness$icon, readiness$label)
-            ),
-            shiny::span(
-              class = "rail-issues",
-              paste(issue_count, if (issue_count == 1L) "issue" else "issues")
+              class = if (identical(dataset_state$readiness, "ready")) {
+                "meta"
+              } else {
+                "meta bad"
+              },
+              sprintf(
+                "%s cells \u00b7 %s",
+                format(cells, big.mark = ","),
+                entry$format
+              ),
+              shiny::span(
+                class = "rail-readiness",
+                `data-readiness` = dataset_state$readiness,
+                paste(readiness$icon, readiness$label)
+              ),
+              shiny::span(
+                class = "rail-issues",
+                paste(issue_count, if (issue_count == 1L) "issue" else "issues")
+              )
             )
           )
+        ),
+        shiny::div(
+          class = "ds-actions",
+          shiny::tags$button(
+            class = "ds-move builder-reorder",
+            title = "Move dataset up",
+            `aria-label` = paste0("Move ", label, " up"),
+            `data-ds` = entry$id,
+            `data-direction` = "up",
+            `data-icon` = "up",
+            disabled = if (index == 1L) "disabled" else NULL,
+            shiny::span(class = "ds-action-label", "Move up")
+          ),
+          shiny::tags$button(
+            class = "ds-move builder-reorder",
+            title = "Move dataset down",
+            `aria-label` = paste0("Move ", label, " down"),
+            `data-ds` = entry$id,
+            `data-direction` = "down",
+            `data-icon` = "down",
+            disabled = if (index == length(ids)) "disabled" else NULL,
+            shiny::span(class = "ds-action-label", "Move down")
+          ),
+          shiny::tags$button(
+            class = "ds-del builder-drop",
+            title = "Remove this dataset",
+            `aria-label` = paste0("Remove ", label),
+            `data-ds` = entry$id,
+            `data-confirm` = if (confirm) "true" else "false",
+            shiny::span(class = "ds-action-label", "Remove")
+          )
         )
-      ),
-      shiny::tags$button(
-        class = "ds-move builder-reorder",
-        title = "Move dataset up",
-        `aria-label` = paste0("Move ", label, " up"),
-        `data-ds` = entry$id,
-        `data-direction` = "up",
-        disabled = if (index == 1L) "disabled" else NULL,
-        "\u2191"
-      ),
-      shiny::tags$button(
-        class = "ds-move builder-reorder",
-        title = "Move dataset down",
-        `aria-label` = paste0("Move ", label, " down"),
-        `data-ds` = entry$id,
-        `data-direction` = "down",
-        disabled = if (index == length(ids)) "disabled" else NULL,
-        "\u2193"
-      ),
-      shiny::tags$button(
-        class = "ds-initial builder-select-initial",
-        title = "Use as the App's initial dataset",
-        `aria-label` = paste0("Use ", label, " as the App's initial dataset"),
-        `aria-pressed` = if (explicit) "true" else "false",
-        `data-ds` = entry$id,
-        "\u25c9"
-      ),
-      shiny::tags$button(
-        class = "ds-copy builder-duplicate",
-        title = "Duplicate this dataset setup",
-        `aria-label` = paste0("Duplicate ", label),
-        `data-ds` = entry$id,
-        "\u29c9"
-      ),
-      shiny::tags$button(
-        class = "ds-del builder-drop",
-        title = "Remove this dataset",
-        `aria-label` = paste0("Remove ", label),
-        `data-ds` = entry$id,
-        `data-confirm` = if (confirm) "true" else "false",
-        "\u00d7"
       )
-    )
-  }))
+    })
+  )
 }

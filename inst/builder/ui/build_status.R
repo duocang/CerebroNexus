@@ -141,7 +141,11 @@ builder_build_status_model <- function(result) {
     } else {
       NULL
     },
-    report_path = result$report_path %||% NULL
+    report_path = result$report_path %||% NULL,
+    retry_closure = result$retry_closure %||% character(),
+    failed_dataset_id = result$failed_dataset_id %||% NULL,
+    restartable_worker = isTRUE(result$restartable_worker),
+    recovery = result$recovery %||% NULL
   )
   structure(model, class = c("builder_build_status", "list"))
 }
@@ -209,6 +213,35 @@ builder_copy_result_path <- function(result, kind, .copy) {
   isTRUE(.copy(value))
 }
 
+builder_build_pipeline_ui <- function(state) {
+  states <- c(
+    queued = "Queued",
+    building = "Building",
+    complete = "Complete",
+    failure = "Failed"
+  )
+  if (
+    !is.character(state) ||
+      length(state) != 1L ||
+      !state %in% names(states)
+  ) {
+    stop("A server-known build pipeline state is required.", call. = FALSE)
+  }
+  div(
+    class = "builder-build-pipeline pipeline",
+    `data-pipeline-state` = state,
+    `aria-label` = paste("Build status:", states[[state]]),
+    lapply(names(states), function(step) {
+      div(
+        class = "pipeline-step",
+        `data-step` = step,
+        span(class = "pipeline-light", `aria-hidden` = "true"),
+        span(states[[step]])
+      )
+    })
+  )
+}
+
 builder_build_status_ui <- function(model) {
   if (inherits(model, "builder_result")) {
     model <- builder_build_status_model(model)
@@ -221,10 +254,79 @@ builder_build_status_ui <- function(model) {
     failure = "Build failed",
     recovery_required = "Release recovery required"
   )
+  icon <- switch(
+    model$type,
+    success = "check",
+    needs_decision = "question",
+    failure = "error",
+    recovery_required = "recovery"
+  )
+  pipeline_state <- switch(
+    model$type,
+    success = "complete",
+    failure = "failure",
+    recovery_required = "failure",
+    NULL
+  )
   div(
-    class = paste("card result-card", model$type, model$variant),
-    h2(title),
+    class = paste(
+      "card result-card",
+      model$type,
+      model$variant,
+      paste0(
+        "is-",
+        if (identical(model$type, "recovery_required")) {
+          "recovery"
+        } else {
+          model$type
+        }
+      )
+    ),
+    h2(`data-icon` = icon, title),
+    if (!is.null(pipeline_state)) builder_build_pipeline_ui(pipeline_state),
     if (!is.null(model$message)) p(model$message),
+    if (identical(model$type, "needs_decision")) {
+      div(
+        class = "builder-recovery-action",
+        p(
+          "Retry the failed optional work, or remove it and rebuild without it."
+        ),
+        actionButton(
+          "retry_failed_analysis",
+          "Retry optional work",
+          class = "btn btn-primary"
+        ),
+        if (builder_stage_has_text(model$failed_dataset_id %||% "")) {
+          actionButton(
+            "remove_failed_analysis",
+            "Remove and rebuild",
+            class = "btn btn-quiet"
+          )
+        }
+      )
+    },
+    if (identical(model$type, "failure") && isTRUE(model$restartable_worker)) {
+      div(
+        class = "builder-recovery-action",
+        p(
+          "Your settings are safe. Restart the worker from its saved snapshots, then retry."
+        ),
+        actionButton(
+          "restart_worker",
+          "Restart worker",
+          class = "btn btn-primary"
+        )
+      )
+    },
+    if (identical(model$type, "recovery_required")) {
+      div(
+        class = "builder-recovery-action",
+        h3("Manual recovery steps"),
+        p(
+          "Keep the preserved backup, close other processes using the output, and restore the backup named above before building again."
+        )
+      )
+    },
     builder_stage_text_items(model$warnings),
     if (length(model$built)) builder_stage_text_items(basename(model$built)),
     if (!is.null(model$app_dir)) {

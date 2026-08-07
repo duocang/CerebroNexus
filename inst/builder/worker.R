@@ -909,6 +909,7 @@ builder_worker_start <- function(
         source(file.path(dir, "inspect.R"))
         source(file.path(dir, "adapters.R"))
         source(file.path(dir, "preview.R"))
+        source(file.path(dir, "stats.R"))
         source(file.path(dir, "extras.R"))
         source(file.path(dir, "analysis.R"))
         source(file.path(dir, "app_bundle.R"))

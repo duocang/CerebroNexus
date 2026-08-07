@@ -83,6 +83,7 @@ source("profile.R", local = TRUE)
 source("inspect.R", local = TRUE)
 source("adapters.R", local = TRUE)
 source("preview.R", local = TRUE)
+source("stats.R", local = TRUE)
 source("extras.R", local = TRUE)
 source("analysis.R", local = TRUE)
 source("build.R", local = TRUE)
@@ -119,7 +120,6 @@ icon_svg <- function(path, label = NULL) {
 }
 ICON_PLUS <- "M12 5v14M5 12h14"
 ICON_TRASH <- "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"
-ICON_FOLDER <- "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
 
 ## The viewer's wordmark, inlined. The builder and the viewer are one product
 ## and should look like it; inlining avoids a resource path that would have to
@@ -229,9 +229,14 @@ ui <- tagList(
       rel = "stylesheet",
       href = paste0("builder.css", asset_stamp("www/builder.css"))
     ),
+    tags$script(src = paste0("icons.js", asset_stamp("www/icons.js"))),
+    tags$script(src = paste0("stats.js", asset_stamp("www/stats.js"))),
     tags$script(src = paste0("builder.js", asset_stamp("www/builder.js"))),
     tags$script(HTML(
-      "Shiny.addCustomMessageHandler('builder_copy_text', function(message) { navigator.clipboard.writeText(message.text); });"
+      paste0(
+        "Shiny.addCustomMessageHandler('builder_copy_text', function(message) { navigator.clipboard.writeText(message.text); });",
+        "Shiny.addCustomMessageHandler('builder_click', function(message) { var el = document.getElementById(message.id); if (el && !el.disabled) el.click(); });"
+      )
     )),
     tags$title("Cerebro Dataset Builder")
   ),
@@ -263,12 +268,31 @@ ui <- tagList(
       uiOutput("ds_list"),
       div(
         class = "rail-add",
-        actionButton(
-          "open_browser",
-          tagList(icon_svg(ICON_FOLDER), " Add datasets…"),
-          class = "btn btn-primary",
-          style = "width:100%"
+        div(
+          class = "dataset-file-control",
+          tags$input(
+            id = "dataset_files",
+            name = "dataset_files",
+            class = "shiny-input-file dataset-file-input",
+            type = "file",
+            multiple = "multiple",
+            accept = paste(
+              paste0(
+                ".",
+                unique(unlist(lapply(builder_formats, `[[`, "extensions")))
+              ),
+              collapse = ","
+            )
+          ),
+          tags$label(
+            `for` = "dataset_files",
+            class = "dataset-file-button",
+            icon_svg(ICON_PLUS),
+            span("Add datasets…")
+          )
         ),
+        div(class = "or", "or try an example"),
+        uiOutput("example_buttons"),
         uiOutput("add_error")
       )
     ),
@@ -278,8 +302,24 @@ ui <- tagList(
       uiOutput("result_card")
     )
   ),
-  uiOutput("browser_panel"),
-  uiOutput("actionbar")
+  uiOutput("actionbar"),
+  div(
+    class = "builder-first-run",
+    `data-first-run` = "true",
+    role = "region",
+    `aria-label` = "Getting started",
+    h2("Build your first Viewer in three steps"),
+    tags$ol(
+      tags$li("Add a dataset or choose a bundled example."),
+      tags$li("Check what was found and adjust the defaults."),
+      tags$li("Review the exact output, then build.")
+    ),
+    tags$button(
+      type = "button",
+      class = "btn btn-primary builder-first-run-dismiss",
+      "Got it"
+    )
+  )
 )
 
 server <- function(input, output, session) {
@@ -314,12 +354,6 @@ server <- function(input, output, session) {
     state$datasets <- datasets
     if (is.null(state$current_dataset) || !state$current_dataset %in% ids) {
       state["current_dataset"] <- list(if (length(ids)) ids[[1L]] else NULL)
-    }
-    if (
-      !is.null(state$initial_dataset_override) &&
-        !state$initial_dataset_override %in% ids
-    ) {
-      state["initial_dataset_override"] <- list(NULL)
     }
     state$revision <- as.integer(state$revision %||% 0L) + 1L
     if (isTRUE(mark)) {
@@ -810,158 +844,9 @@ server <- function(input, output, session) {
     }
   })
 
-  ## -- file browser and examples --------------------------------------------
-  ## A browser of our own rather than shinyFiles: its dialog is a Bootstrap
-  ## modal, and this page deliberately does not load Bootstrap, so the dialog
-  ## arrives unstyled. Ours is ~40 lines and matches everything else.
-  ##
-  ## Whether the sheet is open and which directory it shows are two separate
-  ## pieces of state on purpose. Folding them into one -- a directory that is
-  ## NULL when closed -- meant the whole overlay was one render keyed on the
-  ## directory, so every folder click rebuilt the backdrop and replayed its
-  ## entrance fade: measured, the overlay dropped to opacity 0 and climbed back
-  ## over ~130 ms on each navigation. Split this way, navigating replaces only
-  ## the listing and the backdrop node survives untouched.
-  browse_open <- reactiveVal(FALSE)
-  browse_dir <- reactiveVal(path.expand("~"))
-
-  observeEvent(input$open_browser, browse_open(TRUE))
-  observeEvent(input$close_browser, browse_open(FALSE))
-  observeEvent(input$browse_to, browse_dir(input$browse_to))
-
-  choose_paths <- function(paths) {
-    paths <- unique(as.character(paths))
-    paths <- paths[!is.na(paths) & nzchar(paths)]
-    if (!length(paths)) {
-      return()
-    }
-    browse_open(FALSE)
-    existing <- vapply(sets(), function(entry) entry$path, character(1))
-    duplicate <- paths %in% existing
-    if (any(duplicate)) {
-      add_error(paste0(
-        sum(duplicate),
-        if (sum(duplicate) == 1L) " file has" else " files have",
-        " already been added."
-      ))
-    }
-    for (path in paths[!duplicate]) {
-      start_load("file", path, tools::file_path_sans_ext(basename(path)))
-    }
-  }
-
-  observeEvent(input$choose_files, choose_paths(input$choose_files))
-  observeEvent(input$choose_file, choose_paths(input$choose_file))
-
-  ## The chrome: rendered when the sheet opens and then left alone. It reads
-  ## `browse_open()` and deliberately never reads `browse_dir()`, which is what
-  ## keeps navigation from touching it.
-  output$browser_panel <- renderUI({
-    if (!browse_open()) {
-      return(NULL)
-    }
-    roots <- builder_browse_roots()
-    div(
-      class = "sheet-backdrop",
-      onclick = "if (event.target === this) Shiny.setInputValue('close_browser', Math.random())",
-      div(
-        class = "sheet",
-        div(
-          class = "sheet-head",
-          span(class = "sheet-title", "Choose a Seurat object"),
-          tags$button(
-            class = "btn btn-primary builder-add-files",
-            type = "button",
-            disabled = "disabled",
-            "Add selected files"
-          ),
-          tags$button(
-            class = "btn btn-quiet",
-            onclick = "Shiny.setInputValue('close_browser', Math.random())",
-            "Close"
-          )
-        ),
-        div(
-          class = "sheet-roots",
-          lapply(names(roots), function(nm) {
-            tags$button(
-              class = "chip-btn builder-browse",
-              `data-path` = unname(roots[[nm]]),
-              nm
-            )
-          })
-        ),
-        div(
-          class = "source-picker-examples",
-          span(class = "sheet-title", "Examples"),
-          uiOutput("example_buttons")
-        ),
-        uiOutput("browse_list", class = "sheet-body")
-      )
-    )
-  })
-
-  ## The part that actually changes when you navigate.
-  output$browse_list <- renderUI({
-    dir <- browse_dir()
-    listing <- builder_browse(dir)
-    tagList(
-      div(class = "sheet-path", listing$dir %||% dir),
-      if (!is.null(listing$error)) {
-        div(class = "notice bad", listing$error)
-      } else {
-        div(
-          class = "sheet-list",
-          if (!identical(listing$dir, listing$parent)) {
-            tags$button(
-              class = "row-btn builder-browse",
-              `data-path` = listing$parent,
-              span(class = "row-icon", "↑"),
-              span(class = "row-name", "Parent folder")
-            )
-          },
-          lapply(listing$dirs, function(d) {
-            tags$button(
-              class = "row-btn builder-browse",
-              `data-path` = file.path(listing$dir, d),
-              span(class = "row-icon", "▸"),
-              span(class = "row-name", d)
-            )
-          }),
-          if (nrow(listing$files)) {
-            lapply(seq_len(nrow(listing$files)), function(i) {
-              tags$button(
-                class = "row-btn is-file builder-choose",
-                `data-path` = listing$files$path[i],
-                `aria-pressed` = "false",
-                span(class = "row-icon", "•"),
-                span(class = "row-name", listing$files$name[i]),
-                span(
-                  class = "row-size",
-                  sprintf("%.1f MB", listing$files$size[i] / 1048576)
-                )
-              )
-            })
-          } else {
-            div(
-              class = "hint",
-              style = "padding:.8rem",
-              "No supported object files were found in this folder."
-            )
-          }
-        )
-      }
-    )
-  })
-  ## Always computed, so the listing is ready the instant the sheet opens
-  ## rather than arriving a frame later into an empty panel.
-  outputOptions(output, "browse_list", suspendWhenHidden = FALSE)
-
-  ## The typed store is the durable authority for availability. Reading both
-  ## the open state and sets means a newly-created picker DOM starts with the
-  ## same disabled examples even when no store change occurred while closed.
+  ## -- native file picker and examples --------------------------------------
+  ## The typed store is the durable authority for example availability.
   output$example_buttons <- renderUI({
-    req(browse_open())
     used <- as.character(unlist(Filter(
       Negate(is.null),
       lapply(sets(), function(entry) entry$example)
@@ -1036,6 +921,43 @@ server <- function(input, output, session) {
     }
     invisible(isTRUE(queued))
   }
+
+  observeEvent(input$dataset_files, {
+    uploads <- input$dataset_files
+    if (
+      !is.data.frame(uploads) ||
+        !all(c("name", "datapath") %in% names(uploads)) ||
+        !nrow(uploads)
+    ) {
+      return()
+    }
+    paths <- as.character(uploads$datapath)
+    labels <- as.character(uploads$name)
+    valid <- !is.na(paths) & nzchar(paths) & !is.na(labels) & nzchar(labels)
+    paths <- paths[valid]
+    labels <- labels[valid]
+    duplicate <- duplicated(paths) |
+      paths %in%
+        vapply(
+          sets(),
+          function(entry) entry$path,
+          character(1)
+        )
+    for (i in which(!duplicate)) {
+      start_load(
+        "file",
+        paths[[i]],
+        tools::file_path_sans_ext(basename(labels[[i]]))
+      )
+    }
+    if (any(duplicate)) {
+      add_error(paste0(
+        sum(duplicate),
+        if (sum(duplicate) == 1L) " file has" else " files have",
+        " already been added."
+      ))
+    }
+  })
 
   observeEvent(input$use_example, {
     used <- as.character(unlist(Filter(
@@ -1589,67 +1511,6 @@ server <- function(input, output, session) {
   output$ds_list <- renderUI({
     builder_dataset_rail_ui(store(), current())
   })
-
-  duplicate_dataset <- function(id) {
-    entry <- entry_of(id)
-    current_worker <- isolate(worker())
-    current_protocol <- isolate(protocol())
-    if (
-      is.null(entry) || is.null(current_worker) || is.null(current_protocol)
-    ) {
-      return()
-    }
-    protocol_busy <- !is.null(current_protocol$pending) ||
-      length(current_protocol$queue) > 0L ||
-      length(current_protocol$awaiting_ack) > 0L
-    if (protocol_busy) {
-      showNotification(
-        "Wait for the current dataset action before duplicating.",
-        type = "warning"
-      )
-      return()
-    }
-
-    seq_id(seq_id() + 1L)
-    new_id <- paste0("ds", seq_id())
-    registered <- try(
-      builder_worker_register_snapshot(
-        current_worker,
-        new_id,
-        entry$snapshot
-      ),
-      silent = TRUE
-    )
-    if (inherits(registered, "try-error")) {
-      add_error(conditionMessage(attr(registered, "condition")))
-      return()
-    }
-    restart_worker_protocol(
-      registered,
-      current_protocol,
-      "The dataset setup was duplicated."
-    )
-    if (!isTRUE(isolate(worker_available()))) {
-      return()
-    }
-    duplicated <- builder_reduce_state(
-      isolate(store()),
-      list(
-        type = "duplicate",
-        id = id,
-        new_id = new_id,
-        name = unique_name(paste0(entry$settings$name, " copy"))
-      )
-    )
-    store(duplicated)
-    protocol(builder_protocol_dataset(
-      isolate(protocol()),
-      new_id,
-      0L,
-      .builder_worker_identity(entry$snapshot)
-    ))
-    result(NULL)
-  }
 
   ## -- keep the current entry's settings in step with Core -----------------
   core_setting_inputs <- c(
@@ -2226,6 +2087,40 @@ server <- function(input, output, session) {
       builder_copy_result_path(value, "report", .copy = copy_result_value)
     })
   })
+  observeEvent(input$retry_failed_analysis, {
+    session$sendCustomMessage("builder_click", list(id = "build"))
+  })
+  observeEvent(input$remove_failed_analysis, {
+    current_result <- isolate(result())
+    dataset_id <- current_result$failed_dataset_id %||% NULL
+    req(builder_stage_has_text(dataset_id %||% ""))
+    failed <- current_result$retry_closure %||% character()
+    entry <- isolate(entry_of(dataset_id))
+    req(entry)
+    if (length(intersect(entry$settings$analyses %||% character(), failed))) {
+      entry$settings$analyses <- setdiff(entry$settings$analyses, failed)
+      replace_entry(entry)
+    }
+    session$onFlushed(
+      function() {
+        session$sendCustomMessage("builder_click", list(id = "build"))
+      },
+      once = TRUE
+    )
+  })
+  observeEvent(input$restart_worker, {
+    current_result <- isolate(result())
+    req(inherits(current_result, "builder_result"))
+    req(isTRUE(current_result$restartable_worker))
+    current_worker <- isolate(worker())
+    current_protocol <- isolate(protocol())
+    req(current_worker, current_protocol)
+    restart_worker_protocol(
+      current_worker,
+      current_protocol,
+      "The worker was restarted from saved snapshots."
+    )
+  })
 
   ## -- the action bar ------------------------------------------------------
   validate_review_inputs <- function(values) {
@@ -2273,15 +2168,7 @@ server <- function(input, output, session) {
       return(builder_plan_error("No datasets yet.", "empty_release"))
     }
     typed <- review_options()
-    effective <- builder_effective_initial_dataset(store())
-    app_options <- builder_review_options_for_plan(
-      typed,
-      initial_dataset = if (identical(effective$mode, "explicit")) {
-        effective$id
-      } else {
-        NULL
-      }
-    )
+    app_options <- builder_review_options_for_plan(typed)
     builder_freeze_plan(
       entries = all,
       out_dir = trimws(
@@ -2356,7 +2243,8 @@ server <- function(input, output, session) {
         state
       },
       format = entry$format,
-      dataset_id = entry$id
+      dataset_id = entry$id,
+      settings = entry$settings
     )
     settings <- entry$settings
     assay_profile <- entry$profile$assay_profiles[[settings$assay]] %||%
@@ -2427,7 +2315,7 @@ server <- function(input, output, session) {
   output$review_stage <- renderUI({
     plan <- frozen_review_plan()
     if (builder_review_can_build(plan)) {
-      builder_review_stage_ui("review", builder_review_model(plan))
+      builder_review_stage_ui("review", builder_review_model(plan, result()))
     } else {
       div(class = "card notice warn", plan$error %||% "Review is not ready.")
     }
@@ -2605,7 +2493,6 @@ server <- function(input, output, session) {
     input = input,
     session = session,
     store = store,
-    duplicate = duplicate_dataset,
     validate_remove = validate_rail_removal,
     on_select = function(id) {
       result(NULL)
@@ -2626,7 +2513,21 @@ server <- function(input, output, session) {
     if (is.null(note)) {
       return(NULL)
     }
-    div(class = "busy", span(class = "spinner"), note)
+    current_protocol <- protocol()
+    build_phase <- current_protocol$build_status %||% "idle"
+    pipeline <- if (identical(build_phase, "queued")) {
+      builder_build_pipeline_ui("queued")
+    } else if (identical(build_phase, "running")) {
+      builder_build_pipeline_ui("building")
+    } else {
+      NULL
+    }
+    div(
+      class = paste("busy", if (is.null(pipeline)) NULL else "is-building"),
+      if (is.null(pipeline)) span(class = "spinner"),
+      pipeline,
+      span(note)
+    )
   })
 }
 

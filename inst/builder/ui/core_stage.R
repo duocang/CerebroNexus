@@ -45,6 +45,14 @@ builder_core_assay_controls <- function(profile, settings, assay) {
 
 builder_core_stage_ui <- function(id, model) {
   ns <- NS(id)
+  organism_choices <- model$organism_choices %||% character()
+  organism <- model$organism %||% ""
+  if (
+    builder_stage_has_text(organism) &&
+      !organism %in% unname(organism_choices)
+  ) {
+    organism_choices <- c(organism_choices, organism)
+  }
   div(
     id = ns("stage"),
     class = "builder-stage builder-stage-core",
@@ -55,11 +63,16 @@ builder_core_stage_ui <- function(id, model) {
       value = model$id
     ),
     textInput(ns("name"), "Dataset name", value = model$name %||% ""),
-    selectInput(
+    selectizeInput(
       ns("organism"),
       "Organism",
-      choices = model$organism_choices,
-      selected = model$organism
+      choices = organism_choices,
+      selected = organism,
+      options = list(
+        create = TRUE,
+        persist = TRUE,
+        maxItems = 1L
+      )
     ),
     selectInput(
       ns("default_group"),

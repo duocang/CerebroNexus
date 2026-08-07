@@ -140,7 +140,7 @@ builder_review_can_build <- function(plan) {
     (!length(plan$existing_targets) || isTRUE(plan$overwrite))
 }
 
-builder_review_model <- function(plan) {
+builder_review_model <- function(plan, verification = NULL) {
   if (
     !inherits(plan, "builder_build_plan") ||
       !is.list(plan) ||
@@ -199,6 +199,12 @@ builder_review_model <- function(plan) {
     }
     dataset
   }
+  verified_pages <- lapply(
+    verification$verifications %||% list(),
+    function(item) {
+      item$page_contract %||% list()
+    }
+  )
   model <- list(
     revision = plan$revision,
     artifact_mode = if (isTRUE(plan$make_app)) {
@@ -217,7 +223,8 @@ builder_review_model <- function(plan) {
     output_release = plan$output_release,
     app_options = app_options,
     release_members = basename(release_targets),
-    duplicated_storage = isTRUE(plan$make_app)
+    duplicated_storage = isTRUE(plan$make_app),
+    verified_page_expectations = verified_pages
   )
   .builder_review_copy(model)
 }
@@ -255,6 +262,59 @@ builder_review_value_lines <- function(value, prefix = NULL) {
   )
 }
 
+builder_review_bounded_lines <- function(
+  value,
+  value_limit = 8L,
+  prefix = NULL
+) {
+  if (is.null(value)) {
+    return(character())
+  }
+  if (!is.list(value)) {
+    shown <- utils::head(as.character(value), value_limit)
+    text <- paste(shown, collapse = ", ")
+    if (length(value) > value_limit) {
+      text <- paste0(
+        text,
+        " … (",
+        length(value),
+        " values; ",
+        length(value) - value_limit,
+        " more values not shown)"
+      )
+    }
+    return(
+      if (builder_stage_has_text(prefix %||% "")) {
+        paste0(prefix, ": ", text)
+      } else {
+        text
+      }
+    )
+  }
+  value_names <- names(value)
+  lines <- unlist(
+    lapply(seq_along(value), function(index) {
+      label <- if (is.null(value_names) || !nzchar(value_names[[index]])) {
+        as.character(index)
+      } else {
+        value_names[[index]]
+      }
+      next_prefix <- if (builder_stage_has_text(prefix %||% "")) {
+        paste(prefix, label, sep = " / ")
+      } else {
+        label
+      }
+      builder_review_bounded_lines(
+        value[[index]],
+        value_limit = value_limit,
+        prefix = next_prefix
+      )
+    }),
+    use.names = FALSE
+  )
+  lines
+}
+
 builder_review_stage_ui <- function(id, model) {
   ns <- NS(id)
   options <- model$app_options %||% list()
@@ -275,35 +335,54 @@ builder_review_stage_ui <- function(id, model) {
     id = ns("stage"),
     class = "builder-stage builder-stage-review",
     h2("Review"),
-    p("Frozen plan revision ", tags$b(model$revision)),
-    p("Artifact mode: ", tags$code(model$artifact_mode)),
-    tags$ul(
+    span(
+      class = "visually-hidden",
+      paste0("Artifact mode: ", model$artifact_mode)
+    ),
+    p(
+      class = "stage-intro",
+      "Confirm the datasets and output below. Technical details stay available when you need them."
+    ),
+    div(
+      class = "review-summary-strip",
+      span(tags$b(length(model$datasets)), " dataset(s)"),
+      span("Plan revision ", tags$b(model$revision)),
+      span(
+        "Output: ",
+        tags$b(
+          if (identical(model$artifact_mode, "crbs_only")) {
+            "CRB files"
+          } else {
+            "CRB files + private App"
+          }
+        )
+      )
+    ),
+    div(
+      class = "review-dataset-grid",
       lapply(model$datasets, function(dataset) {
-        tags$li(
+        div(
+          class = "review-dataset-card",
           tags$b(dataset$name),
-          " — ",
-          dataset$filename,
-          " — organism ",
-          dataset$organism %||% "not set",
-          " — groups ",
-          paste(dataset$groups %||% character(), collapse = ", "),
-          " — projections ",
-          paste(dataset$reductions %||% character(), collapse = ", "),
-          " — backend ",
-          dataset$expression_backend %||% "embedded",
-          " — palettes ",
-          paste(builder_review_value_lines(dataset$colors), collapse = "; "),
-          p(paste0("Cell count: ", dataset$cell_count %||% 0L)),
-          p(paste0("Gene count: ", dataset$gene_count %||% 0L)),
-          tags$details(
-            tags$summary("Analysis dependency graph"),
-            builder_stage_text_items(
-              builder_review_value_lines(dataset$analysis_dependency_graph)
-            )
+          p(class = "review-dataset-file", dataset$filename),
+          div(
+            class = "review-counts",
+            span(format(dataset$cell_count %||% 0L, big.mark = ","), " cells"),
+            span(format(dataset$gene_count %||% 0L, big.mark = ","), " genes")
+          ),
+          p(
+            paste(length(dataset$groups %||% character()), "group fields ·"),
+            paste(length(dataset$reductions %||% character()), "projections ·"),
+            paste("backend", dataset$expression_backend %||% "embedded")
           ),
           tags$details(
-            tags$summary("Artifact identity"),
-            builder_stage_text_items(builder_review_value_lines(list(
+            tags$summary("Technical dataset details"),
+            h4("Analysis dependency graph"),
+            builder_stage_text_items(builder_review_bounded_lines(
+              dataset$analysis_dependency_graph
+            )),
+            h4("Artifact identity"),
+            builder_stage_text_items(builder_review_bounded_lines(list(
               schema_version = dataset$artifact_identity$schema_version,
               frozen_cell_ids = length(
                 dataset$artifact_identity$cells %||% character()
@@ -316,18 +395,14 @@ builder_review_stage_ui <- function(id, model) {
               source_metadata = dataset$artifact_identity$source_metadata,
               metadata = dataset$artifact_identity$metadata,
               spatial_sections = dataset$artifact_identity$spatial_sections
-            )))
-          ),
-          tags$details(
-            tags$summary("Histology coverage"),
+            ))),
+            h4("Histology coverage"),
+            builder_stage_text_items(builder_review_bounded_lines(
+              dataset$histology_coverage
+            )),
+            h4("Frozen dataset fields"),
             builder_stage_text_items(
-              builder_review_value_lines(dataset$histology_coverage)
-            )
-          ),
-          tags$details(
-            tags$summary("Frozen dataset fields"),
-            builder_stage_text_items(
-              builder_review_value_lines(compact_dataset_fields(dataset))
+              builder_review_bounded_lines(compact_dataset_fields(dataset))
             )
           )
         )
@@ -406,11 +481,40 @@ builder_review_stage_ui <- function(id, model) {
     builder_stage_text_items(builder_review_value_lines(
       model$acknowledgements
     )),
-    h3("Frozen content manifest"),
-    builder_stage_text_items(builder_review_value_lines(model$manifest)),
+    tags$details(
+      class = "review-technical-details",
+      tags$summary("Technical plan details"),
+      h3("Frozen content manifest"),
+      p(
+        class = "hint",
+        paste(length(model$manifest %||% list()), "manifest sections")
+      ),
+      tags$details(
+        tags$summary("Detailed manifest (bounded preview)"),
+        builder_stage_text_items(builder_review_bounded_lines(model$manifest))
+      )
+    ),
     h3("Viewer page expectations"),
-    builder_stage_text_items(
-      builder_review_value_lines(model$viewer_page_expectations)
+    div(
+      class = "expected-versus-verified",
+      div(
+        class = "page-checklist expected-pages",
+        h4("Expected after build"),
+        builder_stage_text_items(builder_review_value_lines(
+          model$viewer_page_expectations
+        ))
+      ),
+      div(
+        class = "page-checklist verified-pages",
+        h4("Verified after build"),
+        if (length(model$verified_page_expectations %||% list())) {
+          builder_stage_text_items(builder_review_value_lines(
+            model$verified_page_expectations
+          ))
+        } else {
+          p("Available after a successful build.")
+        }
+      )
     ),
     if (length(model$viewer_bundle_assets)) {
       tagList(

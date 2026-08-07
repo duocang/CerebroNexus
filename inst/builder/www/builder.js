@@ -4,11 +4,10 @@
 
   var narrowManager = window.matchMedia("(max-width: 42.5rem)");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  var lastFileDialogTrigger = null;
-  var activeFileDialog = null;
   var statusTimer = null;
   var lastAnnouncement = "";
   var observedPrimaryAction = null;
+  var firstRunKey = "cerebro-builder-first-run-v1";
 
   function send(name, value) {
     if (window.Shiny) {
@@ -75,36 +74,26 @@
     }, 0);
   }
 
+  function isTextInput(target) {
+    return Boolean(target && target.closest(
+      "input, textarea, select, [contenteditable='true'], .selectize-input"
+    ));
+  }
+
+  function setupFirstRun() {
+    var guide = document.querySelector(".builder-first-run[data-first-run]");
+    if (!guide || guide.dataset.ready === "true") return;
+    guide.dataset.ready = "true";
+    var dismissed = false;
+    try { dismissed = window.localStorage.getItem(firstRunKey) === "dismissed"; } catch (error) {}
+    if (dismissed) guide.hidden = true;
+  }
+
   function updateDialogLock() {
     document.body.classList.toggle(
       "builder-dialog-open",
-      document.querySelector('[aria-modal="true"]') !== null
+      document.querySelector('[aria-modal="true"]:not([hidden])') !== null
     );
-  }
-
-  function closeFileDialog(sheet) {
-    send("close_browser", Date.now());
-    var trigger = sheet.__builderRestoreFocus;
-    window.setTimeout(function () {
-      updateDialogLock();
-      if (trigger && document.contains(trigger)) trigger.focus();
-    }, 50);
-  }
-
-  function enhanceFileDialog(sheet) {
-    if (!sheet || sheet.dataset.builderDialog === "true") return;
-    sheet.dataset.builderDialog = "true";
-    activeFileDialog = sheet;
-    var title = sheet.querySelector(".sheet-title");
-    if (title) {
-      title.id = title.id || "builder-file-dialog-title";
-      sheet.setAttribute("aria-labelledby", title.id);
-    } else {
-      sheet.setAttribute("aria-label", "Choose datasets");
-    }
-    prepareDialog(sheet, lastFileDialogTrigger, function () {
-      closeFileDialog(sheet);
-    });
   }
 
   function setRailDesktopSemantics(rail) {
@@ -352,6 +341,26 @@
     scheduleStatusAnnouncement(status);
   }
 
+  function updatePipelines() {
+    var order = ["queued", "building", "complete"];
+    document.querySelectorAll(".pipeline[data-pipeline-state]").forEach(function (pipeline) {
+      var state = pipeline.dataset.pipelineState;
+      var activeIndex = order.indexOf(state);
+      pipeline.querySelectorAll(".pipeline-step").forEach(function (step) {
+        var index = order.indexOf(step.dataset.step);
+        var current = step.dataset.step === state;
+        var complete = state !== "failure" && index >= 0 && index < activeIndex;
+        step.classList.toggle("is-complete", complete);
+        step.classList.toggle("is-current", current);
+        if (current) {
+          step.setAttribute("aria-current", "step");
+        } else {
+          step.removeAttribute("aria-current");
+        }
+      });
+    });
+  }
+
   var primaryObserver = new IntersectionObserver(
     function (entries) {
       entries.forEach(function (entry) {
@@ -466,41 +475,32 @@
   }
 
   function enhanceDynamicContent() {
+    if (window.BuilderIcons) window.BuilderIcons.decorate(document);
     setupRail();
     updateRailSummary();
     registerStages();
     registerPrimaryAction();
     updateStatusSemantics();
-    var sheet = document.querySelector(".sheet");
-    if (sheet) {
-      enhanceFileDialog(sheet);
-    } else if (activeFileDialog) {
-      var closedFileDialog = activeFileDialog;
-      activeFileDialog = null;
-      updateDialogLock();
-      restoreFocus(closedFileDialog);
+    updatePipelines();
+    setupFirstRun();
+    if (document.querySelector(".result-card.success")) {
+      var guide = document.querySelector(".builder-first-run");
+      if (guide) guide.hidden = true;
+      try { window.localStorage.setItem(firstRunKey, "dismissed"); } catch (error) {}
     }
+    updateDialogLock();
     document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
     document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
   }
 
   document.addEventListener("click", function (event) {
     var target = event.target;
-    var openBrowser = target.closest("#open_browser");
-    if (openBrowser) lastFileDialogTrigger = openBrowser;
-
-    var fileClose = target.closest(".sheet [onclick*='close_browser']");
-    if (fileClose) {
-      event.preventDefault();
-      event.stopPropagation();
-      closeFileDialog(fileClose.closest(".sheet"));
+    var dismissGuide = target.closest(".builder-first-run-dismiss");
+    if (dismissGuide) {
+      dismissGuide.closest(".builder-first-run").hidden = true;
+      try { window.localStorage.setItem(firstRunKey, "dismissed"); } catch (error) {}
       return;
     }
-    if (target.classList.contains("sheet-backdrop")) {
-      closeFileDialog(target.querySelector(".sheet"));
-      return;
-    }
-
     var managerSummary = target.closest(".rail-summary");
     if (managerSummary) {
       openDatasetManager();
@@ -526,16 +526,6 @@
       return;
     }
 
-    var duplicateDataset = target.closest(".builder-duplicate");
-    if (duplicateDataset) {
-      send("duplicate_ds", duplicateDataset.dataset.ds);
-      return;
-    }
-    var initialDataset = target.closest(".builder-select-initial");
-    if (initialDataset) {
-      send("select_initial", initialDataset.dataset.ds);
-      return;
-    }
     var reorderDataset = target.closest(".builder-reorder");
     if (reorderDataset) {
       send("reorder_ds", {
@@ -550,43 +540,36 @@
       if (narrowManager.matches) closeDatasetManager();
       return;
     }
-    var browse = target.closest(".builder-browse");
-    if (browse) {
-      send("browse_to", browse.dataset.path);
-      return;
-    }
-    var choose = target.closest(".builder-choose");
-    if (choose) {
-      event.preventDefault();
-      choose.classList.toggle("is-selected");
-      choose.setAttribute(
-        "aria-pressed",
-        choose.classList.contains("is-selected") ? "true" : "false"
-      );
-      var addFiles = document.querySelector(".builder-add-files");
-      if (addFiles) {
-        addFiles.disabled = !document.querySelector(".builder-choose.is-selected");
-      }
-      return;
-    }
-    var addFiles = target.closest(".builder-add-files");
-    if (addFiles) {
-      var paths = Array.from(
-        document.querySelectorAll(".builder-choose.is-selected")
-      ).map(function (file) {
-        return file.dataset.path;
-      });
-      if (paths.length) send("choose_files", paths);
-      return;
-    }
     var example = target.closest(".example-btn");
     if (example) {
       send("use_example", example.dataset.ex);
-      closeFileDialog(example.closest(".sheet"));
     }
   });
 
   document.addEventListener("keydown", function (event) {
+    if (!isTextInput(event.target)) {
+      var modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.key === "Enter") {
+        event.preventDefault();
+        var build = document.getElementById("build");
+        if (build && !build.disabled) build.click();
+        return;
+      }
+      if (modifier && event.code === "KeyO") {
+        event.preventDefault();
+        var add = document.getElementById("dataset_files");
+        if (add) add.click();
+        return;
+      }
+      if (modifier && event.code === "KeyZ") {
+        var undo = document.getElementById("undo_remove");
+        if (undo) {
+          event.preventDefault();
+          undo.click();
+        }
+        return;
+      }
+    }
     var pick = event.target.closest(".builder-pick");
     if (!pick || !event.altKey) return;
     var direction = null;

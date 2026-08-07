@@ -8,12 +8,27 @@ builder_stage_html <- function(value) {
   htmltools::renderTags(value)$html
 }
 
-test_that("Inspect leads with attention and hides complete diagnostics", {
+test_that("Review bounds large atomic identifier vectors without leaking tails", {
+  ids <- sprintf("CELL-%05d", seq_len(1000L))
+  lines <- builder_review_bounded_lines(list(cells = list(ids = ids)))
+  text <- paste(lines, collapse = "\n")
+
+  expect_match(text, "CELL-00001", fixed = TRUE)
+  expect_match(text, "1000 values", fixed = TRUE)
+  expect_match(text, "more values not shown", fixed = TRUE)
+  expect_false(grepl("CELL-01000", text, fixed = TRUE))
+  expect_lt(max(nchar(lines)), 240L)
+})
+
+test_that("Inspect leads with attention and compact detected-content tags", {
   model <- list(
     summary = c("1,200 cells", "4,500 genes"),
     attention = c("Metadata column sample has missing values"),
     blockers = c("Projection coordinates are incomplete"),
-    detected = c("RNA assay", "UMAP projection"),
+    content_tags = list(
+      list(label = "Expression", tone = "core"),
+      list(label = "UMAP", tone = "projection")
+    ),
     diagnostics = c("source fingerprint abc123")
   )
 
@@ -22,9 +37,12 @@ test_that("Inspect leads with attention and hides complete diagnostics", {
   expect_match(html, "Needs attention", fixed = TRUE)
   expect_match(html, model$attention[[1L]], fixed = TRUE)
   expect_match(html, model$blockers[[1L]], fixed = TRUE)
-  expect_match(html, "View all detected content", fixed = TRUE)
-  expect_match(html, "Technical diagnostics", fixed = TRUE)
-  expect_match(html, "<details", fixed = TRUE)
+  expect_match(html, "Detected content", fixed = TRUE)
+  expect_match(html, "Expression", fixed = TRUE)
+  expect_match(html, "UMAP", fixed = TRUE)
+  expect_match(html, "builder-content-tag", fixed = TRUE)
+  expect_false(grepl("View all detected content", html, fixed = TRUE))
+  expect_false(grepl("Technical diagnostics", html, fixed = TRUE))
   expect_false(grepl("export|Build App", html, ignore.case = TRUE))
 })
 
@@ -52,9 +70,9 @@ test_that("Inspect detected content comes from manifest readiness", {
   )
   html <- builder_stage_html(builder_inspect_stage_ui("inspect", model))
 
-  expect_match(html, "expression — ready", fixed = TRUE)
-  expect_match(html, "spatial — not applicable", fixed = TRUE)
-  expect_match(html, "No spatial sections were detected", fixed = TRUE)
+  expect_match(html, "Expression", fixed = TRUE)
+  expect_false(grepl("spatial", html, fixed = TRUE))
+  expect_false(grepl("No spatial sections were detected", html, fixed = TRUE))
   expect_false(grepl("internal_cache", html, fixed = TRUE))
 })
 
@@ -93,6 +111,56 @@ test_that("Core keeps technical controls advanced and metadata visible", {
   expect_match(html, "Expression backend", fixed = TRUE)
   expect_match(html, 'id="core-rendered_for"', fixed = TRUE)
   expect_match(html, 'value="dataset-a"', fixed = TRUE)
+  expect_match(html, 'id="core-organism"', fixed = TRUE)
+  expect_match(html, '"create":true', fixed = TRUE)
+})
+
+test_that("Inspect does not repeat the verified cell and gene summary", {
+  model <- list(
+    summary = c("24 cells", "40 genes"),
+    statistics = list(cells = 24L, genes = 40L),
+    attention = character(),
+    blockers = character(),
+    content_tags = list()
+  )
+
+  html <- builder_stage_html(builder_inspect_stage_ui("inspect", model))
+
+  expect_match(html, "24 cells", fixed = TRUE)
+  expect_match(html, "40 genes", fixed = TRUE)
+  expect_false(grepl("Verified profile", html, fixed = TRUE))
+  expect_false(grepl("were verified", html, fixed = TRUE))
+})
+
+test_that("Organism keeps a custom current value in the editable choices", {
+  model <- list(
+    id = "dataset-a",
+    name = "PBMC",
+    organism = "danio_rerio",
+    organism_choices = c(
+      "Human (hg)" = "hg",
+      "Mouse (mm)" = "mm",
+      Other = "other"
+    ),
+    default_group = "cluster",
+    group_choices = "cluster",
+    default_projection = "umap",
+    projection_choices = "umap",
+    assay = "RNA",
+    assay_choices = "RNA",
+    layer = "data",
+    layer_choices = "data",
+    nUMI = "nCount_RNA",
+    nUMI_choices = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    nGene_choices = "nFeature_RNA",
+    backend = "embedded",
+    backend_choices = c(Embedded = "embedded")
+  )
+
+  html <- builder_stage_html(builder_core_stage_ui("core", model))
+
+  expect_match(html, 'value="danio_rerio" selected', fixed = TRUE)
 })
 
 test_that("Enhance renders only relevant opt-in modules and consequences", {
@@ -509,8 +577,8 @@ test_that("Review distinguishes CRBs from private App contract", {
   expect_match(html, "nGene: nFeature_RNA", fixed = TRUE)
   expect_match(html, "metadata_policy / excluded: patient_name", fixed = TRUE)
   expect_match(html, "analyses: marker_genes", fixed = TRUE)
-  expect_match(html, "Cell count: 2", fixed = TRUE)
-  expect_match(html, "Gene count: 3", fixed = TRUE)
+  expect_match(html, "2\\s+cells", perl = TRUE)
+  expect_match(html, "3\\s+genes", perl = TRUE)
   expect_match(html, "Analysis dependency graph", fixed = TRUE)
   expect_match(html, "Artifact identity", fixed = TRUE)
   expect_match(html, "Histology coverage", fixed = TRUE)
@@ -553,6 +621,24 @@ test_that("Build status has four top-level types and warning Success variant", {
   expect_error(builder_build_status_model(list(error = "legacy")), "typed")
 })
 
+test_that("build pipeline only renders server-known states", {
+  queued <- builder_stage_html(builder_build_pipeline_ui("queued"))
+  building <- builder_stage_html(builder_build_pipeline_ui("building"))
+  complete <- builder_stage_html(builder_build_pipeline_ui("complete"))
+  failure <- builder_stage_html(builder_build_pipeline_ui("failure"))
+
+  expect_match(queued, 'data-pipeline-state="queued"', fixed = TRUE)
+  expect_match(building, 'data-pipeline-state="building"', fixed = TRUE)
+  expect_match(complete, 'data-pipeline-state="complete"', fixed = TRUE)
+  expect_match(failure, 'data-pipeline-state="failure"', fixed = TRUE)
+  expect_false(grepl("Verify", paste(queued, building, failure)))
+
+  decision <- builder_stage_html(
+    builder_build_status_ui(builder_result_needs_decision("Choose one."))
+  )
+  expect_false(grepl("builder-build-pipeline", decision, fixed = TRUE))
+})
+
 test_that("release recovery evidence produces a recovery-required result", {
   recovery <- list(
     state = "recovery_required",
@@ -577,6 +663,31 @@ test_that("release recovery evidence produces a recovery-required result", {
   expect_identical(mapped$state, "recovery_required")
   expect_identical(mapped$recovery, recovery)
   expect_s3_class(ordinary, "builder_result_failure")
+})
+
+test_that("recovery actions require explicit typed evidence", {
+  undecidable <- builder_stage_html(builder_build_status_ui(
+    builder_result_needs_decision("Choose one.", retry_closure = "marker_genes")
+  ))
+  targeted <- builder_stage_html(builder_build_status_ui(
+    builder_result_needs_decision(
+      "Choose one.",
+      retry_closure = "marker_genes",
+      failed_dataset_id = "ds1"
+    )
+  ))
+  ordinary_failure <- builder_stage_html(builder_build_status_ui(
+    builder_result_failure("Export failed.")
+  ))
+  worker_failure <- builder_stage_html(builder_build_status_ui(
+    builder_result_failure("Worker stopped.", restartable_worker = TRUE)
+  ))
+
+  expect_match(undecidable, "Retry optional work", fixed = TRUE)
+  expect_false(grepl("Remove and rebuild", undecidable, fixed = TRUE))
+  expect_match(targeted, "Remove and rebuild", fixed = TRUE)
+  expect_false(grepl("Restart worker", ordinary_failure, fixed = TRUE))
+  expect_match(worker_failure, "Restart worker", fixed = TRUE)
 })
 
 test_that("a real publish restore failure maps to recovery required", {

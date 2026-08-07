@@ -4,7 +4,12 @@
 \alias{launchCerebroBuilder}
 \title{Build a Cerebro data set from a Seurat object, by pointing and clicking.}
 \usage{
-launchCerebroBuilder(host = "127.0.0.1", port = NULL, launch_browser = TRUE)
+launchCerebroBuilder(
+  host = "127.0.0.1",
+  port = NULL,
+  launch_browser = TRUE,
+  max_file_size = 8000
+)
 }
 \arguments{
 \item{host}{Address to bind; defaults to \code{127.0.0.1}, i.e. this machine
@@ -13,6 +18,10 @@ only.}
 \item{port}{Port to bind; defaults to a free one chosen by Shiny.}
 
 \item{launch_browser}{Open a browser; defaults to \code{TRUE}.}
+
+\item{max_file_size}{Maximum size in MB for each local upload; defaults to
+8000. The corresponding Shiny process option is restored when the Builder
+stops.}
 }
 \value{
 Does not return; runs until the app is stopped.

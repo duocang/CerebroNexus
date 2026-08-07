@@ -38,25 +38,11 @@ test_that("builder interaction reflows and preserves accessible state", {
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
 
-  app$click("open_browser")
-  app$wait_for_js(
-    "document.querySelector('.sheet[role=dialog][aria-modal=true]') !== null",
-    timeout = 10000
-  )
-  expect_true(app$get_js(
-    "document.querySelector('.sheet').contains(document.activeElement)"
-  ))
-  builder_browser_escape(app)
-  app$wait_for_js("document.querySelector('.sheet') === null", timeout = 10000)
-  expect_identical(app$get_js("document.activeElement.id"), "open_browser")
-
-  app$click("open_browser")
   app$wait_for_js(
     "document.querySelector('.example-btn[data-ex=basic_pbmc]') !== null",
     timeout = 10000
   )
   app$click(selector = ".example-btn[data-ex=basic_pbmc]")
-  app$wait_for_js("document.querySelector('.sheet') === null", timeout = 10000)
   app$wait_for_js(
     paste0(
       "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
@@ -66,6 +52,24 @@ test_that("builder interaction reflows and preserves accessible state", {
     timeout = 60000
   )
   app$wait_for_idle(timeout = 30000)
+  expect_false(app$get_js(
+    "getComputedStyle(document.body).overflowY === 'hidden'"
+  ))
+
+  expect_false(app$get_js(
+    "document.querySelector('.builder-select-initial') !== null"
+  ))
+  expect_false(app$get_js(
+    "document.querySelector('.builder-duplicate') !== null"
+  ))
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.enhance-module details'))",
+    ".every(node => node.open === false)"
+  )))
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.builder-stage-review details'))",
+    ".every(node => node.open === false)"
+  )))
 
   app$set_inputs(make_app = FALSE)
   app$wait_for_js(
@@ -256,13 +260,11 @@ test_that("builder explains a mocked old privacy contract exactly", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
-  app$click("open_browser")
   app$wait_for_js(
     "document.querySelector('.example-btn[data-ex=basic_pbmc]') !== null",
     timeout = 10000
   )
   app$click(selector = ".example-btn[data-ex=basic_pbmc]")
-  app$wait_for_js("document.querySelector('.sheet') === null", timeout = 10000)
   app$wait_for_js(
     "document.querySelector('.app-capability-reason') !== null",
     timeout = 60000
