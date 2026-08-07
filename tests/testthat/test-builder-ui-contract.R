@@ -23,6 +23,7 @@ builder_asset_text <- function(...) {
 test_that("builder UI copy is English-only", {
   files <- c(
     "app.R",
+    "adapters.R",
     "io.R",
     "inspect.R",
     "preview.R",

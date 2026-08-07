@@ -111,7 +111,7 @@ builder_has_text <- function(value) {
 builder_make_plan <- function(
   entries,
   out_dir,
-  make_app = TRUE,
+  make_app = FALSE,
   overwrite = FALSE
 ) {
   out_dir <- trimws(out_dir %||% "")
@@ -120,6 +120,30 @@ builder_make_plan <- function(
   }
   if (!length(entries)) {
     return(builder_plan_error("Add at least one dataset."))
+  }
+
+  app_capability <- builder_app_capability()
+  app_contract_version <- if (
+    is.list(app_capability) && identical(app_capability$version, 1L)
+  ) {
+    1L
+  } else {
+    0L
+  }
+  if (
+    isTRUE(make_app) &&
+      !(is.list(app_capability) &&
+        isTRUE(app_capability$available) &&
+        identical(app_contract_version, 1L))
+  ) {
+    reason <- if (
+      is.list(app_capability) && builder_has_text(app_capability$reason)
+    ) {
+      app_capability$reason
+    } else {
+      builder_app_capability(0L)$reason
+    }
+    return(builder_plan_error(reason))
   }
 
   labels <- trimws(vapply(
@@ -204,6 +228,7 @@ builder_make_plan <- function(
     error = NULL,
     out_dir = normalizePath(out_dir, mustWork = FALSE),
     make_app = isTRUE(make_app),
+    app_contract_version = app_contract_version,
     overwrite = isTRUE(overwrite),
     items = items,
     targets = targets,
