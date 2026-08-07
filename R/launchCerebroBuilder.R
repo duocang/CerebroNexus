@@ -1,0 +1,64 @@
+#' @title
+#' Build a Cerebro data set from a Seurat object, by pointing and clicking.
+#'
+#' @description
+#' Opens a local page that reads a Seurat `.rds`, works out what it contains,
+#' and lets you choose what the resulting data set should show: which metadata
+#' columns are the grouping variables, which dimensional reductions to carry,
+#' which assay and layer the expression comes from. It then writes the `.crb`
+#' and, if asked, packages it into a standalone Shiny app.
+#'
+#' It does the same work as calling \code{\link{exportFromSeurat}} yourself. The
+#' difference is that it reads the object first and only offers what is actually
+#' there -- the layers that exist, the columns that can serve as groups, the
+#' reductions that will survive the export -- so the choices that quietly go
+#' wrong in a hand-written call are visible before anything is written.
+#'
+#' @section What this is not:
+#' The object is read into this R process, so run it on your own machine or in
+#' your own RStudio Server session. It is not meant to be deployed for other
+#' people to upload data to: it reads whatever path it is given, and reading an
+#' `.rds` runs whatever code is inside it.
+#'
+#' @param host Address to bind; defaults to \code{127.0.0.1}, i.e. this machine
+#'   only.
+#' @param port Port to bind; defaults to a free one chosen by Shiny.
+#' @param launch_browser Open a browser; defaults to \code{TRUE}.
+#'
+#' @return Does not return; runs until the app is stopped.
+#'
+#' @examples
+#' \dontrun{
+#' launchCerebroBuilder()
+#' }
+#'
+#' @export
+#'
+launchCerebroBuilder <- function(
+  host = "127.0.0.1",
+  port = NULL,
+  launch_browser = TRUE
+) {
+  if (!requireNamespace("Seurat", quietly = TRUE)) {
+    stop(
+      "Building a data set from a Seurat object needs the Seurat package. ",
+      "Install it and try again.",
+      call. = FALSE
+    )
+  }
+
+  app_dir <- system.file("builder", package = "CerebroNexus")
+  if (!nzchar(app_dir) || !file.exists(file.path(app_dir, "app.R"))) {
+    stop(
+      "Could not find the builder app inside the installed package.",
+      call. = FALSE
+    )
+  }
+
+  shiny::runApp(
+    appDir = app_dir,
+    host = host,
+    port = port,
+    launch.browser = launch_browser
+  )
+}

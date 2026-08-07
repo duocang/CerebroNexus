@@ -82,24 +82,46 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     }
   }
 
+  ## Every selectInput below has to be told what is already selected.
+  ##
+  ## This block reads `spatial_projection_to_display` (above) *and* emits it,
+  ## so picking a section invalidates the block and re-emits the control. With
+  ## no `selected=`, a selectInput falls back to its first choice -- so choosing
+  ## the second section snapped straight back to the first and no section but
+  ## the first was ever reachable. The same re-render also resets the two
+  ## controls after it, which only became visible once switching worked at all.
+  keep <- function(id, choices, fallback = NULL) {
+    value <- isolate(input[[id]])
+    if (is.null(value) || !(value %in% choices)) {
+      value <- if (is.null(fallback)) choices[1] else fallback
+    }
+    value
+  }
+
   tagList(
     selectInput(
       "spatial_projection_to_display",
       label = "Spatial data",
-      choices = availableSpatial()
+      choices = availableSpatial(),
+      selected = current_spatial
     ),
     selectInput(
       "spatial_projection_plot_type",
       label = "Plot type",
       choices = c("ImageDimPlot", "ImageFeaturePlot", "Co-expression (RGB)"),
-      selected = "ImageDimPlot"
+      selected = keep(
+        "spatial_projection_plot_type",
+        c("ImageDimPlot", "ImageFeaturePlot", "Co-expression (RGB)"),
+        "ImageDimPlot"
+      )
     ),
     conditionalPanel(
       condition = "input.spatial_projection_plot_type == 'ImageDimPlot'",
       selectInput(
         "spatial_projection_point_color",
         label = "Color cells by",
-        choices = metadata_cols
+        choices = metadata_cols,
+        selected = keep("spatial_projection_point_color", metadata_cols)
       )
     ),
     conditionalPanel(
