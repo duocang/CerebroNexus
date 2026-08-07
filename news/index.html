@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.4</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -29,9 +29,11 @@
     <li><a class="dropdown-item" href="../articles/release_notes_v1.3.html">Release notes: Cerebro/cerebroApp v1.3</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>How-to</h6></li>
+    <li><a class="dropdown-item" href="../articles/data_integrity_contracts.html">Data integrity from Seurat to a self-contained Cerebro app</a></li>
     <li><a class="dropdown-item" href="../articles/seurat_v5_layered_assays.html">Seurat v5 layered assays: complete and safe expression matrices</a></li>
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
+    <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -69,9 +71,82 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/real-data-benchmark/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="4.2" id="cerebronexus-42">CerebroNexus 4.2<a class="anchor" aria-label="anchor" href="#cerebronexus-42"></a></h2>
+<div class="section level3">
+<h3 id="benchmark-4-2">Benchmark<a class="anchor" aria-label="anchor" href="#benchmark-4-2"></a></h3>
+<ul><li>The real-data expression-backend benchmark is finalized as a flat harness with a controlled three-backend Panel A and a separate BPCells full-scale Panel B through all 4,140,453 cells. The harness records raw evidence and does not include validated full-scale results in this release.</li>
+<li>The benchmark operator guide now documents the pinned source, exact nested sampling, paired worker schedules, evidence schemas, and the Panel A to Panel B validation boundary.</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="4.0" id="cerebronexus-40">CerebroNexus 4.0<a class="anchor" aria-label="anchor" href="#cerebronexus-40"></a></h2>
+<div class="section level3">
+<h3 id="breaking-changes-4-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-4-0"></a></h3>
+<ul><li>
+<code><a href="../reference/launchCerebro.html">launchCerebro()</a></code> is now the single application launcher. The obsolete version selector and version-named <code>launchCerebroV1.x()</code> exports were removed because CerebroNexus ships one Viewer implementation.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="documentation-4-0">Documentation<a class="anchor" aria-label="anchor" href="#documentation-4-0"></a></h3>
+<ul><li>
+<strong>The expression-backend article now documents the rebuilt MSSM protocol and its evidence limits.</strong> It separates the controlled three-backend comparison from BPCells scaling through the complete 4,140,453-cell source. Reviewed full-scale results have not yet been committed.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="internal-4-0">Internal<a class="anchor" aria-label="anchor" href="#internal-4-0"></a></h3>
+<ul><li>Viewer runtime sources now live under <code>inst/viewer/</code>, and bundled examples live under <code>inst/extdata/examples/</code>. Removing the historical Viewer version from internal paths does not change the application or data formats.</li>
+<li>
+<strong><code><a href="../reference/exportFromSeurat.html">exportFromSeurat()</a></code> can stream one complete BPCells-backed Seurat <code>data</code> layer through its public BPCells mode.</strong> The rebuilt real-data harness uses one pinned local MSSM H5AD, exact nested sampling, isolated paired workers, correctness fingerprints, and fail-closed Panel A to Panel B linkage.</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="3.2.0" id="cerebronexus-320">CerebroNexus 3.2.0<a class="anchor" aria-label="anchor" href="#cerebronexus-320"></a></h2>
+<div class="section level3">
+<h3 id="documentation-3-2-0">Documentation<a class="anchor" aria-label="anchor" href="#documentation-3-2-0"></a></h3>
+<ul><li>
+<strong>Draft article: “Expression backend benchmark”.</strong> Introduces a protocol for comparing <code>embedded</code>, <code>bpcells</code>, and <code>h5</code> on two real public million-cell matrices. It reports independent-process medians and ranges, distinguishes a fresh-process first query from uncontrolled cold-disk access, and limits scale conclusions to the recorded host and source/tier points. A complete publication-profile run has not yet been performed on this development head.</li>
+<li>
+<strong>A complete methodology accompanies the results.</strong> It defines the experimental unit, balanced backend order, expression-density-stratified query panel, run profiles, correctness fingerprints, provenance, failure handling, and interpretation boundaries.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="internal-3-2-0">Internal<a class="anchor" aria-label="anchor" href="#internal-3-2-0"></a></h3>
+<ul><li>
+<strong>A reproducible benchmark harness now lives in <code>tests/bench/</code>.</strong> It reads public HDF5 cell blocks through the <code>rhdf5</code> ROS3 driver, rotates backend order across repeated exports, validates row and block values against the source matrix, and records Git, dependency, host, and SHA-256 source provenance.</li>
+<li>
+<strong>Benchmark result publication is failure-safe.</strong> Runs are staged and validated before entering an immutable result directory; the <code>CURRENT</code> pointer changes last, so an interruption cannot erase the previous evidence.</li>
+<li>
+<strong>Benchmark plans are checked against the host before bulk transfer.</strong> The harness reports estimated peak memory, R’s vector limit, sparse-index capacity, and free-disk budget for every source/tier. Normal comparison profiles exclude deliberate memory-boundary tiers; those are isolated in the explicit <code>stress</code> profile.</li>
+<li>
+<code>rhdf5</code> is now listed in <code>Suggests</code> for the benchmark harness and its reader contract test.</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="3.1.0" id="cerebronexus-310">CerebroNexus 3.1.0<a class="anchor" aria-label="anchor" href="#cerebronexus-310"></a></h2>
+<div class="section level3">
+<h3 id="documentation-3-1-0">Documentation<a class="anchor" aria-label="anchor" href="#documentation-3-1-0"></a></h3>
+<ul><li>A new data-integrity guide explains the shared resolve/validate/stage pattern used for layered assays, export replacement, and immune-repertoire identity.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="export-3-1-0">Export<a class="anchor" aria-label="anchor" href="#export-3-1-0"></a></h3>
+<ul><li>
+<code><a href="../reference/addImmuneRepertoire.html">addImmuneRepertoire()</a></code> now accepts scRepertoire lists, one <code>.rds</code>, explicitly named Cell Ranger CSVs, or existing scRepertoire metadata. <code><a href="../reference/convertSeuratToCerebro.html">convertSeuratToCerebro()</a></code> delegates to the same API users can call before <code><a href="../reference/exportFromSeurat.html">exportFromSeurat()</a></code>. TCR and BCR rows are merged by sample rather than leaving duplicate names that hide one receptor type.</li>
+<li>Export now validates one named data.frame per sample, the five required scRepertoire columns as one-dimensional row vectors, globally unique non-empty barcodes, and barcode overlap with the Seurat cells. Complete mismatch and ambiguous identity are errors. Valid partial overlap is normalized before storage: orphan rows and samples are removed with a warning, so they cannot inflate clone statistics. CSV sample identities must be explicit, and an explicit <code>sample_col</code> no longer falls back silently when misspelled.</li>
+<li>A valid unified repertoire takes precedence over legacy <code>tcr_data</code> and <code>bcr_data</code>. When only legacy slots exist, they are validated and merged into the unified field while remaining available through <code>getTCR()</code> / <code>getBCR()</code>. Existing serialized CRBs must be re-exported to receive this migration.</li>
+<li>CRBs and external H5/BPCells sidecars are staged with owner-only POSIX modes, so late validation errors leave an existing export unchanged and replacement preserves an existing CRB’s mode. An existing sidecar is replaced only when the published CRB identifies it as its own backend; otherwise the export stops without touching either file. Backend switches remove the previous owned sidecar after commit. Ordinary R errors use best-effort rollback. Readers must be stopped before replacement; process termination and concurrent writers remain outside the transaction guarantee.</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="3.0.5" id="cerebronexus-305">CerebroNexus 3.0.5<a class="anchor" aria-label="anchor" href="#cerebronexus-305"></a></h2>
+<div class="section level3">
+<h3 id="testing--ci-3-0-5">Testing / CI<a class="anchor" aria-label="anchor" href="#testing--ci-3-0-5"></a></h3>
+<ul><li>
+<strong>The app tests reuse one Shiny process where booting a fresh one buys nothing.</strong> Every <code>shinytest2</code> recording started its own app, and starting the app cost far more than the assertions did: on a CI runner roughly 88% of the suite’s wall clock went to cold starts rather than to its ~8,600 assertions. Recordings that only navigate the plot tabset and read the DOM now share one <code>AppDriver</code> per file without changing a single assertion. Local timings estimate that this can save about 1.5 minutes per CI run. The immune-repertoire file takes this furthest: eleven of its sixteen tests share one driver, cutting that file’s local runtime from roughly 170 seconds to 90–120 seconds across measured runs.</li>
+<li>Sharing is applied only where a reused app is still a fair test. These keep their own driver deliberately: the <code>app$expect_values()</code> snapshots, whose files are named after the driver; the scRepertoire lazy-loading contracts and others that assert what a pristine app has <em>not</em> loaded; tests that read an input’s initial value; and the one that leaves a modal open. Tests that navigate the dashboard sidebar and then read that tab’s output keep their own driver where the reused output remains suspended and reads back <code>NULL</code>.</li>
+<li>Production smoke tests now build each synthetic and real-data app bundle once per test file instead of rebuilding identical artifacts for every assertion. Consumers remain read-only and browser checks still use independent Shiny sessions; locally this reduced the smoke file from about 38 to 29 seconds.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="3.0.4" id="cerebronexus-304">CerebroNexus 3.0.4<a class="anchor" aria-label="anchor" href="#cerebronexus-304"></a></h2>
 <div class="section level3">
@@ -87,13 +162,10 @@
 <li>
 <strong>Host-managed matrix overrides are explicit exceptions to self-contained bundles.</strong> They must be absolute and serve only one effective CRB consumer. Native paths are resolved component by component and rejected inside <code>result_dir</code>; unresolved filesystem entries, unsafe Windows aliases, and device namespaces fail closed. Non-native paths for another host are preserved lexically and cannot be compared with the local app tree. Overrides are not copied, and absent ordinary targets are not rejected, so the deployment host must provide them.</li>
 <li>
-<strong>The H5 guide now starts with the one-step export workflow.</strong> <code>exportFromSeurat(..., expression_matrix_mode = "h5")</code> creates the <code>.crb</code> and its H5 sidecar together. The manual conversion now writes an H5 backend descriptor before saving, producing the same portable, self-describing pair.</li>
+<strong>The H5 guide now starts with the one-step export workflow.</strong> <code>exportFromSeurat(..., expression_matrix_mode = "h5")</code> creates the <code>.crb</code> and its H5 sidecar together. The manual conversion now writes an H5 backend descriptor before saving, producing the same portable, self-describing pair. # CerebroNexus 3.0.3</li>
 </ul></div>
-</div>
-    <div class="section level2">
-<h2 class="pkg-version" data-toc-text="3.0.3" id="cerebronexus-303">CerebroNexus 3.0.3<a class="anchor" aria-label="anchor" href="#cerebronexus-303"></a></h2>
 <div class="section level3">
-<h3 id="export-3-0-3">Export<a class="anchor" aria-label="anchor" href="#export-3-0-3"></a></h3>
+<h3 id="export-3-0-4-1">Export<a class="anchor" aria-label="anchor" href="#export-3-0-4-1"></a></h3>
 <ul><li>
 <strong>Split Seurat v5 objects no longer export a single sample.</strong> <code><a href="https://rdrr.io/r/base/split.html" class="external-link">split()</a></code> names an assay’s layers <code>&lt;root&gt;.&lt;level&gt;</code>, but the old fallback accepted the first readable layer and could pair one sample’s matrix with every sample’s metadata. Resolution is now driven by the requested layer: an exact physical name remains authoritative, otherwise candidate cell memberships must prove one unique complete partition before CerebroNexus joins it on a local copy. This works for sample names and arbitrary roots, ignores unrelated overlapping layers, protects every custom layer matched by Seurat’s own prefix search, and reports ambiguous or incomplete covers instead of guessing. Incomplete requested-prefix noise is returned as a structured resolution failure, so it cannot short-circuit an explicitly enabled, complete compatibility fallback.</li>
 <li>
@@ -406,7 +478,7 @@
 <ul><li>Fixed <code><a href="../reference/exportFromSCE.html">exportFromSCE()</a></code> projections: <code>reducedDims()</code> output is now coerced to <code>data.frame</code> before <code>addProjection()</code>, matching the Seurat path and clearing a latent runtime error for SCE inputs with non-PCA reductions</li>
 <li>Fixed <code>.attachExternalExpression</code> crashing on legacy <code>.crb</code> objects that predate the <code>getExpressionBackend()</code> method; such objects are now treated as embedded backend and skip the attach step</li>
 <li>Fixed “method not found” errors on the trajectory tab by renaming the corresponding <code>Cerebro_v1.3</code> methods to the names the Shiny server already calls (<code>getMethodsForTrajectories</code>, <code>getNamesOfTrajectories</code>)</li>
-<li>Fixed gene_expression plot chain freezing on gene picker changes: removed a stale <code><a href="https://rdrr.io/pkg/shiny/man/isolate.html" class="external-link">isolate()</a></code> wrapper and a reference to a non-existent <code>expression_projection_update_button</code> input; the existing 250 ms debounce on the data-to-plot reactive still throttles bursts</li>
+<li>Fixed gene_expression plot chain freezing on gene picker changes: removed a stale <code>isolate()</code> wrapper and a reference to a non-existent <code>expression_projection_update_button</code> input; the existing 250 ms debounce on the data-to-plot reactive still throttles bursts</li>
 </ul></div>
 <div class="section level3">
 <h3 id="testing-1-7-0">Testing<a class="anchor" aria-label="anchor" href="#testing-1-7-0"></a></h3>

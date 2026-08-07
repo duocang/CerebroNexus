@@ -70,7 +70,7 @@ stored in object@misc\$enriched_pathways\$\<name\>
 ## Examples
 
 ``` r
-pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
+pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
   package = "CerebroNexus"))
 example_gene_set <- system.file("extdata/example_gene_set.gmt",
   package = "CerebroNexus")
@@ -81,10 +81,10 @@ pbmc <- performGeneSetEnrichmentAnalysis(
   thresh_p_val = 0.05,
   thresh_q_val = 0.1
 )
-#> [11:26:35] Loading gene sets...
-#> [11:26:35] Loaded 2 gene sets from GMT file.
-#> [11:26:35] Extracting transcript counts from `data` slot of `RNA` assay...
-#> [11:26:35] Performing analysis for 2 subgroups of group `sample`...
+#> [21:54:38] Loading gene sets...
+#> [21:54:38] Loaded 2 gene sets from GMT file.
+#> [21:54:38] Extracting transcript counts from `data` slot of `RNA` assay...
+#> [21:54:38] Performing analysis for 2 subgroups of group `sample`...
 #> ℹ GSVA version 2.6.3
 #> ℹ Searching for rows with constant values
 #> ℹ Calculating GSVA ranks
@@ -96,8 +96,8 @@ pbmc <- performGeneSetEnrichmentAnalysis(
 #> ℹ GSVA dense (classical) algorithm
 #> ℹ Calculating GSVA scores for 2 gene sets
 #> ✔ Calculations finished
-#> [11:26:35] 0 gene sets passed the thresholds across all subgroups of group `sample`.
-#> [11:26:35] Performing analysis for 2 subgroups of group `seurat_clusters`...
+#> [21:54:38] 0 gene sets passed the thresholds across all subgroups of group `sample`.
+#> [21:54:38] Performing analysis for 2 subgroups of group `seurat_clusters`...
 #> ℹ GSVA version 2.6.3
 #> ℹ Searching for rows with constant values
 #> ℹ Calculating GSVA ranks
@@ -109,5 +109,5 @@ pbmc <- performGeneSetEnrichmentAnalysis(
 #> ℹ GSVA dense (classical) algorithm
 #> ℹ Calculating GSVA scores for 2 gene sets
 #> ✔ Calculations finished
-#> [11:26:35] 0 gene sets passed the thresholds across all subgroups of group `seurat_clusters`.
+#> [21:54:38] 0 gene sets passed the thresholds across all subgroups of group `seurat_clusters`.
 ```

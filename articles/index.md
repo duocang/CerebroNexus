@@ -18,12 +18,16 @@
 
 ### How-to guides
 
+- [Data integrity from Seurat to a self-contained Cerebro
+  app](https://mihem.github.io/CerebroNexus/articles/data_integrity_contracts.md):
 - [Seurat v5 layered assays: complete and safe expression
   matrices](https://mihem.github.io/CerebroNexus/articles/seurat_v5_layered_assays.md):
 - [Create a self-contained Shiny app from a Cerebro data
   file](https://mihem.github.io/CerebroNexus/articles/create_a_self_contained_shiny_app.md):
 - [Store the expression matrix in H5
   format](https://mihem.github.io/CerebroNexus/articles/create_expression_matrix_in_h5_format.md):
+- [Expression backend benchmark: embedded vs bpcells vs h5 at
+  scale](https://mihem.github.io/CerebroNexus/articles/expression_backend_benchmark.md):
 - [Launch Cerebro with pre-loaded data
   set](https://mihem.github.io/CerebroNexus/articles/launch_cerebro_with_pre-loaded_data_set.md):
 - [Loading multiple data sets (multi-crb) with a dataset

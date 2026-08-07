@@ -86,7 +86,7 @@ variables stored in `object@misc$marker_genes`.
 ## Examples
 
 ``` r
-pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
+pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
   package = "CerebroNexus"))
 pbmc <- getMarkerGenes(
   object = pbmc,
@@ -101,7 +101,7 @@ pbmc <- getMarkerGenes(
   test = 'wilcox',
   verbose = TRUE
 )
-#> [11:26:25] Get marker genes for 2 groups in `sample`...
+#> [21:54:31] Get marker genes for 2 groups in `sample`...
 #> Calculating cluster pbmc_1
 #> For a (much!) faster implementation of the Wilcoxon Rank Sum Test,
 #> (default method for FindMarkers) please install the presto package
@@ -113,7 +113,7 @@ pbmc <- getMarkerGenes(
 #> efficient implementation (no further action necessary).
 #> This message will be shown once per session
 #> Calculating cluster pbmc_2
-#> [11:26:25] Get marker genes for 2 groups in `seurat_clusters`...
+#> [21:54:31] Get marker genes for 2 groups in `seurat_clusters`...
 #> Calculating cluster 0
 #> Calculating cluster 1
 ```

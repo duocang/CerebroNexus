@@ -9,7 +9,7 @@ grouping variables in the meta data of the provided Seurat object."><meta proper
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.4</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,9 +31,11 @@ grouping variables in the meta data of the provided Seurat object."><meta proper
     <li><a class="dropdown-item" href="../articles/release_notes_v1.3.html">Release notes: Cerebro/cerebroApp v1.3</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>How-to</h6></li>
+    <li><a class="dropdown-item" href="../articles/data_integrity_contracts.html">Data integrity from Seurat to a self-contained Cerebro app</a></li>
     <li><a class="dropdown-item" href="../articles/seurat_v5_layered_assays.html">Seurat v5 layered assays: complete and safe expression matrices</a></li>
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
+    <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -71,7 +73,7 @@ grouping variables in the meta data of the provided Seurat object."><meta proper
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Get most expressed genes for specified grouping variables in Seurat object.</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/R/getMostExpressedGenes.R" class="external-link"><code>R/getMostExpressedGenes.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/real-data-benchmark/R/getMostExpressedGenes.R" class="external-link"><code>R/getMostExpressedGenes.R</code></a></small>
       <div class="d-none name"><code>getMostExpressedGenes.Rd</code></div>
     </div>
 
@@ -110,15 +112,15 @@ specified groups stored in <code>object@misc$most_expressed_genes</code>.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">pbmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata/v1.4/pbmc_seurat.rds"</span>,</span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">pbmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata/examples/pbmc_seurat.rds"</span>,</span></span>
 <span class="r-in"><span>  package <span class="op">=</span> <span class="st">"CerebroNexus"</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">pbmc</span> <span class="op">&lt;-</span> <span class="fu">getMostExpressedGenes</span><span class="op">(</span></span></span>
 <span class="r-in"><span>  object <span class="op">=</span> <span class="va">pbmc</span>,</span></span>
 <span class="r-in"><span>  assay <span class="op">=</span> <span class="st">'RNA'</span>,</span></span>
 <span class="r-in"><span>  groups <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">'sample'</span>,<span class="st">'seurat_clusters'</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:26:26] Get most expressed genes for 2 groups in `sample`...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:26:26] Get most expressed genes for 2 groups in `seurat_clusters`...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [21:54:31] Get most expressed genes for 2 groups in `sample`...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [21:54:31] Get most expressed genes for 2 groups in `seurat_clusters`...</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

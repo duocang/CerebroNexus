@@ -1,5 +1,153 @@
 # Changelog
 
+## CerebroNexus 4.2
+
+### Benchmark
+
+- The real-data expression-backend benchmark is finalized as a flat
+  harness with a controlled three-backend Panel A and a separate BPCells
+  full-scale Panel B through all 4,140,453 cells. The harness records
+  raw evidence and does not include validated full-scale results in this
+  release.
+- The benchmark operator guide now documents the pinned source, exact
+  nested sampling, paired worker schedules, evidence schemas, and the
+  Panel A to Panel B validation boundary.
+
+## CerebroNexus 4.0
+
+### Breaking changes
+
+- [`launchCerebro()`](https://mihem.github.io/CerebroNexus/reference/launchCerebro.md)
+  is now the single application launcher. The obsolete version selector
+  and version-named `launchCerebroV1.x()` exports were removed because
+  CerebroNexus ships one Viewer implementation.
+
+### Documentation
+
+- **The expression-backend article now documents the rebuilt MSSM
+  protocol and its evidence limits.** It separates the controlled
+  three-backend comparison from BPCells scaling through the complete
+  4,140,453-cell source. Reviewed full-scale results have not yet been
+  committed.
+
+### Internal
+
+- Viewer runtime sources now live under `inst/viewer/`, and bundled
+  examples live under `inst/extdata/examples/`. Removing the historical
+  Viewer version from internal paths does not change the application or
+  data formats.
+- **[`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md)
+  can stream one complete BPCells-backed Seurat `data` layer through its
+  public BPCells mode.** The rebuilt real-data harness uses one pinned
+  local MSSM H5AD, exact nested sampling, isolated paired workers,
+  correctness fingerprints, and fail-closed Panel A to Panel B linkage.
+
+## CerebroNexus 3.2.0
+
+### Documentation
+
+- **Draft article: “Expression backend benchmark”.** Introduces a
+  protocol for comparing `embedded`, `bpcells`, and `h5` on two real
+  public million-cell matrices. It reports independent-process medians
+  and ranges, distinguishes a fresh-process first query from
+  uncontrolled cold-disk access, and limits scale conclusions to the
+  recorded host and source/tier points. A complete publication-profile
+  run has not yet been performed on this development head.
+- **A complete methodology accompanies the results.** It defines the
+  experimental unit, balanced backend order,
+  expression-density-stratified query panel, run profiles, correctness
+  fingerprints, provenance, failure handling, and interpretation
+  boundaries.
+
+### Internal
+
+- **A reproducible benchmark harness now lives in `tests/bench/`.** It
+  reads public HDF5 cell blocks through the `rhdf5` ROS3 driver, rotates
+  backend order across repeated exports, validates row and block values
+  against the source matrix, and records Git, dependency, host, and
+  SHA-256 source provenance.
+- **Benchmark result publication is failure-safe.** Runs are staged and
+  validated before entering an immutable result directory; the `CURRENT`
+  pointer changes last, so an interruption cannot erase the previous
+  evidence.
+- **Benchmark plans are checked against the host before bulk transfer.**
+  The harness reports estimated peak memory, R’s vector limit,
+  sparse-index capacity, and free-disk budget for every source/tier.
+  Normal comparison profiles exclude deliberate memory-boundary tiers;
+  those are isolated in the explicit `stress` profile.
+- `rhdf5` is now listed in `Suggests` for the benchmark harness and its
+  reader contract test.
+
+## CerebroNexus 3.1.0
+
+### Documentation
+
+- A new data-integrity guide explains the shared resolve/validate/stage
+  pattern used for layered assays, export replacement, and
+  immune-repertoire identity.
+
+### Export
+
+- [`addImmuneRepertoire()`](https://mihem.github.io/CerebroNexus/reference/addImmuneRepertoire.md)
+  now accepts scRepertoire lists, one `.rds`, explicitly named Cell
+  Ranger CSVs, or existing scRepertoire metadata.
+  [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md)
+  delegates to the same API users can call before
+  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md).
+  TCR and BCR rows are merged by sample rather than leaving duplicate
+  names that hide one receptor type.
+- Export now validates one named data.frame per sample, the five
+  required scRepertoire columns as one-dimensional row vectors, globally
+  unique non-empty barcodes, and barcode overlap with the Seurat cells.
+  Complete mismatch and ambiguous identity are errors. Valid partial
+  overlap is normalized before storage: orphan rows and samples are
+  removed with a warning, so they cannot inflate clone statistics. CSV
+  sample identities must be explicit, and an explicit `sample_col` no
+  longer falls back silently when misspelled.
+- A valid unified repertoire takes precedence over legacy `tcr_data` and
+  `bcr_data`. When only legacy slots exist, they are validated and
+  merged into the unified field while remaining available through
+  `getTCR()` / `getBCR()`. Existing serialized CRBs must be re-exported
+  to receive this migration.
+- CRBs and external H5/BPCells sidecars are staged with owner-only POSIX
+  modes, so late validation errors leave an existing export unchanged
+  and replacement preserves an existing CRB’s mode. An existing sidecar
+  is replaced only when the published CRB identifies it as its own
+  backend; otherwise the export stops without touching either file.
+  Backend switches remove the previous owned sidecar after commit.
+  Ordinary R errors use best-effort rollback. Readers must be stopped
+  before replacement; process termination and concurrent writers remain
+  outside the transaction guarantee.
+
+## CerebroNexus 3.0.5
+
+### Testing / CI
+
+- **The app tests reuse one Shiny process where booting a fresh one buys
+  nothing.** Every `shinytest2` recording started its own app, and
+  starting the app cost far more than the assertions did: on a CI runner
+  roughly 88% of the suite’s wall clock went to cold starts rather than
+  to its ~8,600 assertions. Recordings that only navigate the plot
+  tabset and read the DOM now share one `AppDriver` per file without
+  changing a single assertion. Local timings estimate that this can save
+  about 1.5 minutes per CI run. The immune-repertoire file takes this
+  furthest: eleven of its sixteen tests share one driver, cutting that
+  file’s local runtime from roughly 170 seconds to 90–120 seconds across
+  measured runs.
+- Sharing is applied only where a reused app is still a fair test. These
+  keep their own driver deliberately: the `app$expect_values()`
+  snapshots, whose files are named after the driver; the scRepertoire
+  lazy-loading contracts and others that assert what a pristine app has
+  *not* loaded; tests that read an input’s initial value; and the one
+  that leaves a modal open. Tests that navigate the dashboard sidebar
+  and then read that tab’s output keep their own driver where the reused
+  output remains suspended and reads back `NULL`.
+- Production smoke tests now build each synthetic and real-data app
+  bundle once per test file instead of rebuilding identical artifacts
+  for every assertion. Consumers remain read-only and browser checks
+  still use independent Shiny sessions; locally this reduced the smoke
+  file from about 38 to 29 seconds.
+
 ## CerebroNexus 3.0.4
 
 ### Export
@@ -67,9 +215,7 @@
   `exportFromSeurat(..., expression_matrix_mode = "h5")` creates the
   `.crb` and its H5 sidecar together. The manual conversion now writes
   an H5 backend descriptor before saving, producing the same portable,
-  self-describing pair.
-
-## CerebroNexus 3.0.3
+  self-describing pair. \# CerebroNexus 3.0.3
 
 ### Export
 
@@ -760,11 +906,9 @@ previous releases and refreshes documentation for the current codebase.
   corresponding `Cerebro_v1.3` methods to the names the Shiny server
   already calls (`getMethodsForTrajectories`, `getNamesOfTrajectories`)
 - Fixed gene_expression plot chain freezing on gene picker changes:
-  removed a stale
-  [`isolate()`](https://rdrr.io/pkg/shiny/man/isolate.html) wrapper and
-  a reference to a non-existent `expression_projection_update_button`
-  input; the existing 250 ms debounce on the data-to-plot reactive still
-  throttles bursts
+  removed a stale `isolate()` wrapper and a reference to a non-existent
+  `expression_projection_update_button` input; the existing 250 ms
+  debounce on the data-to-plot reactive still throttles bursts
 
 ### Testing
 

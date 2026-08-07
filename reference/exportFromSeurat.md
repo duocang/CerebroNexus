@@ -44,7 +44,8 @@ exportFromSeurat(
 
 - file:
 
-  Where to save the output.
+  Where to save the output. External backends require a `.crb` filename
+  and store the matrix under a sibling name derived from the stem.
 
 - experiment_name:
 
@@ -108,9 +109,13 @@ exportFromSeurat(
 
   - `"bpcells"` writes the matrix to a BPCells on-disk directory next to
     the `.crb` and keeps only a lightweight handle in the serialised
-    object. Recommended for large sparse matrices. The resulting `.crb`
-    is portable as long as the sibling `.bpcells/` directory travels
-    with it; the Shiny runtime re-resolves paths via
+    object. A complete BPCells-backed Seurat layer is streamed directly
+    without first materialising it in memory. Split disk-backed layers
+    must be joined upstream with a representation-aware operation; the
+    exporter will not silently choose one physical layer or materialise
+    the split representation. Recommended for large sparse matrices. The
+    resulting `.crb` is portable as long as the sibling `.bpcells/`
+    directory travels with it; the Shiny runtime re-resolves paths via
     `getExpressionBackend()$location` relative to the `.crb`'s parent
     directory (step 7.3 runtime attach).
 
@@ -118,7 +123,7 @@ exportFromSeurat(
     [`HDF5Array::writeTENxMatrix()`](https://rdrr.io/pkg/HDF5Array/man/writeTENxMatrix.html)
     to a TENx-format sparse HDF5 file next to the `.crb` (sibling
     `<stem>.h5`) and tags the backend with that relative location. The
-    on-disk layout matches `inst/extdata/v1.4/example.h5`: a single
+    on-disk layout matches `inst/extdata/examples/example.h5`: a single
     `/expression` group with `data`, `indices`, `indptr`, `shape`,
     `genes`, and `barcodes` datasets. The matrix is stored cells x genes
     (TENx column-favoured, optimised for per-gene reads); the Shiny
@@ -128,6 +133,19 @@ exportFromSeurat(
     layout via `DelayedArray::t()` (free). The in-memory `dgCMatrix` is
     never materialised on attach, so RAM stays close to the `.crb`
     metadata size. Requires the HDF5Array package.
+
+  The CRB and any sidecar are built and validated in a private sibling
+  stage. On POSIX systems, new stages and external matrices are
+  owner-only; replacing a CRB preserves its existing mode. An existing
+  sidecar is replaced only when the current CRB identifies that exact
+  path as its backend; backend changes remove the previous owned sidecar
+  after the new CRB is committed. Stop all readers before replacing an
+  existing export, because a reader can otherwise observe the two-path
+  replacement between steps. Ordinary R errors trigger best-effort
+  restoration. Process termination and concurrent writers remain outside
+  this multi-path transaction guarantee. Only POSIX mode bits are set or
+  preserved; ownership, ACLs, extended attributes, and security labels
+  remain the deployment system's responsibility on every platform.
 
 - verbose:
 
@@ -148,10 +166,11 @@ No data returned.
 ## Immune Repertoire
 
 If `object@misc$immune_repertoire` contains a named list of data.frames
-(one per sample, with scRepertoire columns such as CTgene, CTnt, CTaa,
-CTstrict), it will be automatically exported into the Cerebro object via
-`addImmuneRepertoire()`. Legacy `bcr_data` / `tcr_data` slots are also
-supported as a fallback.
+(one per sample, with `barcode`, `CTgene`, `CTnt`, `CTaa`, and
+`CTstrict`), it will be automatically exported into the Cerebro object
+via
+[`addImmuneRepertoire()`](https://mihem.github.io/CerebroNexus/reference/addImmuneRepertoire.md).
+Legacy `bcr_data` / `tcr_data` slots are also supported as a fallback.
 
 ## HLA typing
 
@@ -167,7 +186,7 @@ typed one.
 ## Examples
 
 ``` r
-pbmc <- readRDS(system.file("extdata/v1.4/pbmc_seurat.rds",
+pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
   package = "CerebroNexus"))
 exportFromSeurat(
   object = pbmc,
@@ -180,22 +199,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [11:25:53] Initializing Cerebro object...
-#> [11:25:53] Adding expression data (embedded)...
-#> [11:25:53] Collecting available meta data...
-#> [11:25:53] Extracting all meta data columns...
-#> [11:25:53] Extracting dimensional reductions...
-#> [11:25:53] Will export the following dimensional reductions: umap
-#> [11:25:53] Extracting marker genes table...
-#> [11:25:53] No trajectories to extract...
-#> [11:25:53] Checking for spatial data...
-#> [11:25:53] Overview of Cerebro object:
+#> [21:54:25] Initializing Cerebro object...
+#> [21:54:25] Adding expression data (embedded)...
+#> [21:54:25] Collecting available meta data...
+#> [21:54:25] Extracting all meta data columns...
+#> [21:54:25] Extracting dimensional reductions...
+#> [21:54:25] Will export the following dimensional reductions: umap
+#> [21:54:25] Extracting marker genes table...
+#> [21:54:25] No trajectories to extract...
+#> [21:54:25] Checking for spatial data...
+#> [21:54:25] Overview of Cerebro object:
 #> class: Cerebro_v1.3
-#> cerebroApp version: 3.0.4
+#> cerebroApp version: 4.2
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-08-04
+#> date of export: 2026-08-07
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -211,6 +230,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [11:25:53] Saving Cerebro object to: /tmp/nix-shell-4141-148047766/RtmpaKX883/pbmc_Seurat.crb
-#> [11:25:53] Done!
+#> [21:54:25] Saving Cerebro object to: /tmp/nix-shell-4138-2221110158/RtmpUTYcyt/pbmc_Seurat.crb
+#> [21:54:25] Done!
 ```
