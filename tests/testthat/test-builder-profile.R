@@ -1031,7 +1031,7 @@ test_that("application and worker source the profile after its dependencies", {
     warn = FALSE
   )
   session <- readLines(
-    builder_profile_inst_path("builder", "session.R"),
+    builder_profile_inst_path("builder", "worker.R"),
     warn = FALSE
   )
 

@@ -1643,19 +1643,13 @@ builder_snapshot_cleanup <- function(registry, now = Sys.time()) {
     }
   )
   registered <- TRUE
-  if (
-    !is.null(previous_snapshot) && !.builder_snapshot_release(previous_snapshot)
-  ) {
-    warning(
-      "The replaced private snapshot could not be released safely.",
-      call. = FALSE
-    )
-  }
   list(
     profile = inspected$legacy_profile,
     dataset_profile = inspected$profile,
     format = inspected$format,
     levels = inspected$levels,
-    source = inspected$source
+    source = inspected$source,
+    snapshot = snapshot,
+    previous_snapshot = previous_snapshot
   )
 }

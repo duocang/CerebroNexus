@@ -5,13 +5,21 @@
 ## one app with the data set switcher, which is how a lab usually wants to hand
 ## a project over -- one link, every sample behind a dropdown.
 ##
-## Objects are read into this process, so this is a tool for your own machine
-## or your own RStudio Server session, not something to deploy for others.
+## Objects are opened only in an isolated worker process. This is still a tool
+## for your own machine or RStudio Server session, not a service to deploy for
+## untrusted users.
 ##----------------------------------------------------------------------------##
 
 library(shiny)
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
+
+source(
+  file.path("core", "bundle_path_contract.R"),
+  local = TRUE
+)
+source("publish.R", local = TRUE)
+source("coordinator.R", local = TRUE)
 
 ## Above this many levels the interface stops offering one swatch each: nobody
 ## edits 200 colours by hand, and 200 colour inputs make the page unusable.
@@ -84,9 +92,11 @@ source("adapters.R", local = TRUE)
 source("preview.R", local = TRUE)
 source("extras.R", local = TRUE)
 source("analysis.R", local = TRUE)
+source("build.R", local = TRUE)
 source("prerequisite.R", local = TRUE)
 source("state.R", local = TRUE)
 source("plan.R", local = TRUE)
+source("worker.R", local = TRUE)
 source("session.R", local = TRUE)
 
 app_capability <- builder_app_capability()
@@ -234,11 +244,33 @@ server <- function(input, output, session) {
   }
 
   replace_entry <- function(updated) {
-    all <- sets()
-    for (i in seq_along(all)) {
-      if (identical(all[[i]]$id, updated$id)) all[[i]] <- updated
+    all <- isolate(sets())
+    index <- which(vapply(
+      all,
+      function(entry) identical(entry$id, updated$id),
+      logical(1)
+    ))
+    if (length(index) != 1L) {
+      return(invisible(FALSE))
     }
+    existing <- all[[index]]
+    if (identical(existing$settings, updated$settings)) {
+      return(invisible(FALSE))
+    }
+    existing$settings <- updated$settings
+    existing$revision <- as.integer(existing$revision %||% 0L) + 1L
+    all[[index]] <- existing
     sets(all)
+    current_protocol <- protocol()
+    if (!is.null(current_protocol)) {
+      protocol(builder_protocol_dataset(
+        current_protocol,
+        existing$id,
+        existing$revision,
+        .builder_worker_identity(existing$snapshot)
+      ))
+    }
+    invisible(TRUE)
   }
 
   output$format_line <- renderText(builder_format_summary())
@@ -248,34 +280,236 @@ server <- function(input, output, session) {
   })
 
   ## -- the worker process ---------------------------------------------------
-  ## Objects live there, never here. `pending` names the call we are waiting
-  ## for; the poller below turns its answer into state.
+  ## Objects live there, never here. The protocol owns queue order, request
+  ## identity and acknowledgement barriers; the poller only applies a result
+  ## after that identity has been validated.
   worker <- reactiveVal(NULL)
-  pending <- reactiveVal(NULL)
-  ## A queue rather than a single slot: requests arrive while the worker is
-  ## busy (picking a data set fires both a preview and a coordinate fetch),
-  ## and dropping the second one silently is how a panel ends up permanently
-  ## empty.
-  queue <- reactiveVal(list())
+  worker_available <- reactiveVal(FALSE)
+  protocol <- reactiveVal(NULL)
+  build_state <- reactiveVal(builder_build_state())
+  active_release <- reactiveVal(NULL)
   request_sequence <- reactiveVal(0L)
-  latest_request <- reactiveVal(list())
   enqueue <- function(req) {
-    q <- queue()
-    ## One outstanding request per kind: the newest slider position is the
-    ## only one worth answering.
-    if (!is.null(req$replaces)) {
-      q <- Filter(function(x) !identical(x$kind, req$replaces), q)
-      request_sequence(request_sequence() + 1L)
-      key <- req$replaces
-      latest <- latest_request()
-      latest[[key]] <- request_sequence()
-      latest_request(latest)
-      req$request_key <- key
-      req$request_generation <- request_sequence()
+    current_protocol <- protocol()
+    if (is.null(current_protocol) || !isTRUE(worker_available())) {
+      add_error("The background worker is not ready yet.")
+      return(invisible(FALSE))
     }
-    queue(c(q, list(req)))
+    dataset <- req$id %||% "session"
+    entry <- entry_of(dataset)
+    revision <- if (is.null(entry)) 0L else as.integer(entry$revision %||% 0L)
+    snapshot_identity <- if (is.null(entry)) {
+      NULL
+    } else {
+      .builder_worker_identity(entry$snapshot)
+    }
+    if (!is.null(entry)) {
+      current_protocol <- builder_protocol_dataset(
+        current_protocol,
+        dataset,
+        revision,
+        snapshot_identity
+      )
+    }
+    replaceable <- req$kind %in% c("preview", "coords")
+    if (replaceable) {
+      request_sequence(request_sequence() + 1L)
+      request <- builder_query(
+        kind = req$kind,
+        dataset = dataset,
+        generation = request_sequence(),
+        slot = req$replaces %||% req$kind,
+        payload = req,
+        revision = revision,
+        snapshot_identity = snapshot_identity
+      )
+    } else {
+      if (identical(req$kind, "build") && is.null(req$id)) {
+        request_sequence(request_sequence() + 1L)
+        req$id <- paste0("build-", request_sequence())
+      }
+      request <- builder_command(
+        kind = req$kind,
+        dataset = dataset,
+        payload = req,
+        revision = revision,
+        snapshot_identity = snapshot_identity
+      )
+    }
+    queued <- try(builder_enqueue(current_protocol, request), silent = TRUE)
+    if (inherits(queued, "try-error")) {
+      add_error(conditionMessage(attr(queued, "condition")))
+      return(invisible(FALSE))
+    }
+    protocol(queued)
+    invisible(TRUE)
   }
   busy_note <- reactiveVal(NULL)
+
+  update_build_state <- function(action) {
+    updated <- try(builder_reduce_build(build_state(), action), silent = TRUE)
+    if (inherits(updated, "try-error")) {
+      add_error(conditionMessage(attr(updated, "condition")))
+      return(invisible(FALSE))
+    }
+    build_state(updated)
+    invisible(TRUE)
+  }
+
+  settle_failed_builds <- function(recovery, reason) {
+    failed <- Filter(
+      function(request) identical(request$kind, "build"),
+      recovery$failed %||% list()
+    )
+    for (request in failed) {
+      release <- isolate(active_release())
+      if (!is.null(release) && identical(release$id, request$build_id)) {
+        try(builder_coordinator_abort(release$handle), silent = TRUE)
+        active_release(NULL)
+      }
+      state <- build_state()
+      build_id <- request$build_id
+      if (is.null(build_id) || !nzchar(build_id)) {
+        next
+      }
+      if (
+        !state$status %in% c("running", "cancelling") ||
+          !identical(state$id, build_id)
+      ) {
+        started <- try(
+          builder_reduce_build(
+            state,
+            list(type = "start", id = build_id, revision = 0L)
+          ),
+          silent = TRUE
+        )
+        if (inherits(started, "try-error")) {
+          next
+        }
+        build_state(started)
+        state <- started
+      }
+      action <- if (identical(state$status, "cancelling")) {
+        list(type = "cancelled", id = build_id)
+      } else {
+        list(type = "fail", id = build_id, error = reason)
+      }
+      update_build_state(action)
+      result(list(error = reason))
+    }
+  }
+
+  apply_protocol_recovery <- function(
+    current_protocol,
+    recovered_worker,
+    reason,
+    retry_persistent,
+    error = NULL
+  ) {
+    recovered <- try(
+      builder_protocol_recover(
+        current_protocol,
+        epoch = if (isTRUE(retry_persistent)) {
+          recovered_worker$epoch
+        } else {
+          .builder_worker_epoch()
+        },
+        reason = reason,
+        retry_persistent = retry_persistent
+      ),
+      silent = TRUE
+    )
+    busy_note(NULL)
+    if (inherits(recovered, "try-error")) {
+      protocol(NULL)
+      worker_available(FALSE)
+      add_error(paste0(
+        "The worker protocol could not be recovered. Restart this Builder session. ",
+        conditionMessage(attr(recovered, "condition"))
+      ))
+      return(invisible(FALSE))
+    }
+    worker(recovered_worker)
+    worker_available(isTRUE(retry_persistent))
+    protocol(recovered$protocol)
+    settle_failed_builds(recovered, reason)
+    retried_builds <- Filter(
+      function(request) identical(request$kind, "build"),
+      recovered$retried %||% list()
+    )
+    if (length(retried_builds)) {
+      release <- isolate(active_release())
+      if (!is.null(release)) {
+        try(builder_coordinator_abort(release$handle), silent = TRUE)
+        active_release(NULL)
+      }
+    }
+
+    if (!is.null(error)) {
+      add_error(paste0(
+        error,
+        " No queued action was left pending; restart this Builder session."
+      ))
+      return(invisible(FALSE))
+    }
+    retried <- length(recovered$retried %||% list())
+    failed <- length(recovered$failed %||% list())
+    discarded <- length(recovered$discarded %||% list())
+    detail <- c(
+      if (retried) paste(retried, "persistent action(s) will resume"),
+      if (failed) paste(failed, "action(s), including any Build, were stopped"),
+      if (discarded) {
+        paste(discarded, "obsolete preview request(s) were discarded")
+      }
+    )
+    add_error(paste0(
+      "The background worker restarted from immutable snapshots.",
+      if (length(detail)) {
+        paste0(" ", paste(detail, collapse = "; "), ".")
+      } else {
+        ""
+      }
+    ))
+    invisible(TRUE)
+  }
+
+  restart_worker_protocol <- function(
+    current_worker,
+    current_protocol,
+    reason
+  ) {
+    restarted <- try(builder_worker_restart(current_worker), silent = TRUE)
+    typed_failure <- inherits(restarted, "builder_worker_restart_failed") ||
+      (is.list(restarted) && identical(restarted$event, "restart_failed"))
+    if (inherits(restarted, "try-error") || typed_failure) {
+      failed_worker <- if (
+        is.list(restarted) &&
+          inherits(restarted$worker, "builder_worker")
+      ) {
+        restarted$worker
+      } else {
+        current_worker
+      }
+      restart_error <- if (inherits(restarted, "try-error")) {
+        conditionMessage(attr(restarted, "condition"))
+      } else {
+        restarted$error %||% "The background worker could not restart."
+      }
+      return(apply_protocol_recovery(
+        current_protocol,
+        failed_worker,
+        reason,
+        retry_persistent = FALSE,
+        error = restart_error
+      ))
+    }
+    apply_protocol_recovery(
+      current_protocol,
+      restarted,
+      reason,
+      retry_persistent = TRUE
+    )
+  }
 
   observe({
     if (!is.null(worker())) {
@@ -286,13 +520,47 @@ server <- function(input, output, session) {
       add_error(started$error)
       return()
     }
-    worker(started$session)
+    worker(started$worker)
+    worker_available(TRUE)
+    protocol(builder_request_protocol(started$worker$epoch))
   })
 
   session$onSessionEnded(function() {
-    rs <- isolate(worker())
-    if (!is.null(rs)) {
-      try(rs$close(), silent = TRUE)
+    current_worker <- isolate(worker())
+    if (!is.null(current_worker)) {
+      stopped <- try(
+        builder_worker_stop(current_worker, grace_ms = 5000L),
+        silent = TRUE
+      )
+      if (inherits(stopped, "try-error") || !isTRUE(stopped$stopped)) {
+        return()
+      }
+      if (!isTRUE(stopped$worker$cleanup_safe)) {
+        return()
+      }
+      current_worker <- stopped$worker
+      released_all <- TRUE
+      for (snapshot in current_worker$snapshot_registry) {
+        released <- try(.builder_snapshot_release(snapshot), silent = TRUE)
+        released_all <- released_all && isTRUE(released)
+      }
+      remaining <- list.files(
+        current_worker$snapshot_root,
+        all.files = TRUE,
+        no.. = TRUE
+      )
+      if (
+        isTRUE(current_worker$owns_root) &&
+          released_all &&
+          !length(remaining)
+      ) {
+        unlink(current_worker$snapshot_root, recursive = TRUE, force = TRUE)
+      }
+    }
+    release <- isolate(active_release())
+    if (!is.null(release)) {
+      try(builder_coordinator_abort(release$handle), silent = TRUE)
+      active_release(NULL)
     }
   })
 
@@ -485,88 +753,270 @@ server <- function(input, output, session) {
 
   ## -- dispatcher: send the next request when the worker is free ----------
   observe({
-    q <- queue()
-    if (!length(q) || !is.null(pending())) {
+    current_protocol <- protocol()
+    if (is.null(current_protocol)) {
       return()
     }
-    rs <- worker()
-    req(rs)
-    nxt <- q[[1]]
-    queue(q[-1])
-    switch(
-      nxt$kind,
-      load = if (identical(nxt$source, "file")) {
-        builder_session_load(rs, nxt$id, nxt$path)
-      } else {
-        builder_session_example(rs, nxt$id, nxt$example)
-      },
-      preview = builder_session_preview(
-        rs,
-        nxt$id,
-        nxt$reduction,
-        nxt$group,
-        BUILDER_PREVIEW_MAX
+    dispatched <- builder_protocol_dispatch(current_protocol)
+    if (is.null(dispatched$request)) {
+      return()
+    }
+    current_worker <- worker()
+    req(current_worker)
+    protocol(dispatched$protocol)
+    request <- dispatched$request
+    nxt <- request$payload
+    if (identical(nxt$kind, "build")) {
+      all <- isolate(sets())
+      out_dir <- trimws(isolate(input$out_dir) %||% "")
+      plan <- builder_make_plan(
+        all,
+        out_dir,
+        make_app = isTRUE(isolate(input$make_app)),
+        overwrite = isTRUE(isolate(input$overwrite))
+      )
+      plan_error <- plan$error
+      if (
+        is.null(plan_error) &&
+          length(plan$existing_targets) &&
+          !isTRUE(plan$overwrite)
+      ) {
+        plan_error <- paste0(
+          "These outputs already exist: ",
+          paste(basename(plan$existing_targets), collapse = ", "),
+          ". Enable “Replace existing outputs” to publish atomically over them."
+        )
+      }
+      if (!is.null(plan_error)) {
+        completed <- builder_protocol_complete(
+          dispatched$protocol,
+          builder_worker_response(
+            request,
+            list(error = plan_error)
+          )
+        )
+        result(list(error = plan_error))
+        protocol(builder_protocol_acknowledge(
+          completed$protocol,
+          request$request_id
+        ))
+        busy_note(NULL)
+        return()
+      }
+      coordinator <- try(
+        builder_coordinator_prepare(plan, request$build_id),
+        silent = TRUE
+      )
+      if (inherits(coordinator, "try-error")) {
+        plan_error <- conditionMessage(attr(coordinator, "condition"))
+        completed <- builder_protocol_complete(
+          dispatched$protocol,
+          builder_worker_response(request, list(error = plan_error))
+        )
+        result(list(error = plan_error))
+        protocol(builder_protocol_acknowledge(
+          completed$protocol,
+          request$request_id
+        ))
+        busy_note(NULL)
+        return()
+      }
+      nxt$plan <- plan
+      nxt$coordinator <- coordinator
+      active_release(list(
+        id = request$build_id,
+        handle = coordinator,
+        plan = plan
+      ))
+      update_build_state(list(
+        type = "start",
+        id = request$build_id,
+        revision = plan$revision
+      ))
+    }
+    started_call <- try(
+      switch(
+        nxt$kind,
+        load = if (identical(nxt$source, "file")) {
+          builder_session_load(current_worker, nxt$id, nxt$path, request)
+        } else {
+          builder_session_example(current_worker, nxt$id, nxt$example, request)
+        },
+        preview = builder_session_preview(
+          current_worker,
+          nxt$id,
+          nxt$reduction,
+          nxt$group,
+          BUILDER_PREVIEW_MAX,
+          request
+        ),
+        coords = builder_session_coords(
+          current_worker,
+          nxt$id,
+          nxt$image,
+          request
+        ),
+        align_all = builder_session_section_bounds(
+          current_worker,
+          nxt$id,
+          nxt$sections,
+          nxt$mode,
+          nxt$extent_width,
+          nxt$extent_height,
+          nxt$um_per_px,
+          nxt$dx,
+          nxt$dy,
+          nxt$scale,
+          request
+        ),
+        build = builder_session_build(
+          current_worker,
+          nxt$plan,
+          request,
+          coordinator = nxt$coordinator
+        ),
+        drop = builder_session_drop(current_worker, nxt$id, request)
       ),
-      coords = builder_session_coords(rs, nxt$id, nxt$image),
-      align_all = builder_session_section_bounds(
-        rs,
-        nxt$id,
-        nxt$sections,
-        nxt$mode,
-        nxt$extent_width,
-        nxt$extent_height,
-        nxt$um_per_px,
-        nxt$dx,
-        nxt$dy,
-        nxt$scale
-      ),
-      build = builder_session_build(rs, nxt$plan),
-      drop = builder_session_drop(rs, nxt$id)
+      silent = TRUE
     )
+    if (inherits(started_call, "try-error")) {
+      if (identical(nxt$kind, "build")) {
+        release <- isolate(active_release())
+        if (!is.null(release)) {
+          try(builder_coordinator_abort(release$handle), silent = TRUE)
+          active_release(NULL)
+        }
+      }
+      restart_worker_protocol(
+        current_worker,
+        dispatched$protocol,
+        conditionMessage(attr(started_call, "condition"))
+      )
+      return()
+    }
     busy_note(nxt$note)
-    pending(nxt)
   })
 
   ## -- one poller drains whatever the worker was asked to do ---------------
   observe({
-    p <- pending()
-    if (is.null(p)) {
+    current_protocol <- protocol()
+    if (is.null(current_protocol) || is.null(current_protocol$pending)) {
       return()
     }
-    rs <- worker()
-    req(rs)
-    invalidateLater(300, session)
-    got <- builder_session_poll(rs)
-    if (is.null(got)) {
+    current_worker <- worker()
+    req(current_worker)
+    invalidateLater(100, session)
+    got <- try(builder_session_poll(current_worker), silent = TRUE)
+    if (inherits(got, "try-error")) {
+      restart_worker_protocol(
+        current_worker,
+        current_protocol,
+        conditionMessage(attr(got, "condition"))
+      )
       return()
     }
-    pending(NULL)
-    busy_note(NULL)
-
-    if (!is.null(got$error)) {
-      if (identical(p$kind, "build")) {
-        result(list(error = got$error))
+    worker(got$worker)
+    if (identical(got$event, "restarted")) {
+      apply_protocol_recovery(
+        current_protocol,
+        got$worker,
+        "The background worker stopped before returning its result.",
+        retry_persistent = TRUE
+      )
+      return()
+    }
+    if (identical(got$event, "restart_failed")) {
+      apply_protocol_recovery(
+        current_protocol,
+        got$worker,
+        "The background worker stopped and could not be restored.",
+        retry_persistent = FALSE,
+        error = got$error %||% "The background worker could not restart."
+      )
+      return()
+    }
+    if (is.null(got$result)) {
+      return()
+    }
+    request <- current_protocol$pending
+    p <- request$payload
+    if (!is.null(got$result$error)) {
+      if (identical(request$kind, "build")) {
+        release <- isolate(active_release())
+        if (!is.null(release)) {
+          try(builder_coordinator_abort(release$handle), silent = TRUE)
+          active_release(NULL)
+        }
+        result(list(error = got$result$error))
       } else {
-        add_error(got$error)
+        add_error(got$result$error)
+      }
+      restart_worker_protocol(
+        got$worker,
+        current_protocol,
+        got$result$error
+      )
+      return()
+    }
+    completed <- builder_protocol_complete(
+      current_protocol,
+      got$result$value
+    )
+    if (!is.null(completed$protocol$pending)) {
+      restart_worker_protocol(
+        got$worker,
+        current_protocol,
+        "A worker response did not match the pending request."
+      )
+      return()
+    }
+    protocol(completed$protocol)
+    busy_note(NULL)
+    if (!isTRUE(completed$accepted)) {
+      if (isTRUE(request$persistent)) {
+        protocol(builder_protocol_acknowledge(
+          protocol(),
+          request$request_id
+        ))
+        if (identical(request$kind, "drop")) {
+          restart_worker_protocol(
+            got$worker,
+            protocol(),
+            "A stale dataset release result was rejected."
+          )
+          return()
+        }
+        add_error(
+          "A stale persistent worker result was discarded. Retry the action."
+        )
       }
       return()
     }
-    value <- got$value
-    if (!is.null(p$request_key)) {
-      latest <- isolate(latest_request())
-      if (
-        !identical(
-          p$request_generation,
-          latest[[p$request_key]]
-        )
-      ) {
-        return()
+    value <- completed$value
+    if (!is.null(completed$error)) {
+      if (identical(request$kind, "build")) {
+        result(list(error = completed$error))
+        update_build_state(list(
+          type = "fail",
+          id = request$build_id,
+          error = completed$error
+        ))
+      } else {
+        add_error(completed$error)
       }
+      if (isTRUE(request$persistent)) {
+        protocol(builder_protocol_acknowledge(
+          protocol(),
+          request$request_id
+        ))
+      }
+      return()
     }
 
     if (identical(p$kind, "load")) {
       if (!is.null(value$error)) {
         add_error(value$error)
+        protocol(builder_protocol_acknowledge(protocol(), request$request_id))
         return()
       }
       profile <- value$profile
@@ -579,23 +1029,161 @@ server <- function(input, output, session) {
         format = value$format,
         profile = profile,
         dataset_profile = value$dataset_profile,
+        snapshot = value$snapshot,
+        revision = 0L,
         ## Level names per grouping variable, in the order the exporter will
         ## produce them -- the keys a configured palette has to match.
         levels = value$levels %||% list(),
         settings = builder_default_settings(profile, unique_name(p$label))
       )
+      updated_worker <- try(
+        builder_worker_register_snapshot(
+          got$worker,
+          p$id,
+          value$snapshot
+        ),
+        silent = TRUE
+      )
+      if (inherits(updated_worker, "try-error")) {
+        restart_worker_protocol(
+          got$worker,
+          protocol(),
+          conditionMessage(attr(updated_worker, "condition"))
+        )
+        return()
+      }
+      worker(updated_worker)
       sets(c(sets(), list(entry)))
+      protocol(builder_protocol_dataset(
+        protocol(),
+        p$id,
+        entry$revision,
+        .builder_worker_identity(entry$snapshot)
+      ))
       current(p$id)
       just_added(p$id)
       result(NULL)
     } else if (identical(p$kind, "preview")) {
-      preview_frame(value)
+      if (identical(current(), p$id)) {
+        preview_frame(value)
+      }
     } else if (identical(p$kind, "coords")) {
-      spatial_coords(value)
+      if (
+        identical(current(), p$id) &&
+          identical(active_slice(), p$image)
+      ) {
+        spatial_coords(value)
+      }
     } else if (identical(p$kind, "align_all")) {
       apply_section_bounds(p$id, value, p$picture)
     } else if (identical(p$kind, "build")) {
+      release <- isolate(active_release())
+      if (
+        is.null(release) ||
+          !identical(release$id, request$build_id)
+      ) {
+        value <- list(
+          state = "failure",
+          publishable = FALSE,
+          error = "The parent release coordinator identity was lost."
+        )
+      } else if (
+        identical(value$state, "success") && isTRUE(value$publishable)
+      ) {
+        published <- try(
+          builder_coordinator_publish(release$handle, value),
+          silent = TRUE
+        )
+        if (inherits(published, "try-error")) {
+          publication_error <- conditionMessage(attr(published, "condition"))
+          try(builder_coordinator_abort(release$handle), silent = TRUE)
+          value <- list(
+            state = "failure",
+            publishable = FALSE,
+            error = publication_error
+          )
+        } else {
+          value <- published
+        }
+        active_release(NULL)
+      } else {
+        try(builder_coordinator_abort(release$handle), silent = TRUE)
+        active_release(NULL)
+      }
       result(value)
+      update_build_state(builder_build_action(value, request$build_id))
+    } else if (identical(p$kind, "drop")) {
+      released <- try(
+        builder_worker_release_snapshot(
+          got$worker,
+          p$id,
+          expected_identity = request$snapshot_identity
+        ),
+        silent = TRUE
+      )
+      if (inherits(released, "try-error")) {
+        restart_worker_protocol(
+          got$worker,
+          protocol(),
+          conditionMessage(attr(released, "condition"))
+        )
+        return()
+      }
+      worker(released)
+      all <- Filter(function(e) !identical(e$id, p$id), sets())
+      sets(all)
+      if (identical(just_added(), p$id)) {
+        just_added(NULL)
+      }
+      if (identical(current(), p$id)) {
+        current(if (length(all)) all[[1]]$id else NULL)
+        result(NULL)
+      }
+      acknowledged <- try(
+        builder_protocol_acknowledge(protocol(), request$request_id),
+        silent = TRUE
+      )
+      if (inherits(acknowledged, "try-error")) {
+        protocol(NULL)
+        worker_available(FALSE)
+        add_error(paste0(
+          "The dataset was removed, but its protocol acknowledgement failed. ",
+          "Restart this Builder session."
+        ))
+        return()
+      }
+      forgotten <- try(
+        builder_protocol_forget_dataset(acknowledged, p$id),
+        silent = TRUE
+      )
+      if (inherits(forgotten, "try-error")) {
+        protocol(NULL)
+        worker_available(FALSE)
+        add_error(paste0(
+          "The dataset was removed, but its queued actions could not be ",
+          "cleared. Restart this Builder session."
+        ))
+        return()
+      }
+      protocol(forgotten$protocol)
+      cancelled <- length(forgotten$failed) + length(forgotten$discarded)
+      if (cancelled) {
+        showNotification(
+          paste0(
+            "Dataset removed; ",
+            cancelled,
+            " obsolete queued action",
+            if (cancelled == 1L) " was" else "s were",
+            " cancelled."
+          ),
+          type = "message",
+          duration = 5
+        )
+      }
+      return()
+    }
+    if (isTRUE(request$persistent)) {
+      protocol(builder_protocol_acknowledge(protocol(), request$request_id))
     }
   })
 
@@ -605,7 +1193,7 @@ server <- function(input, output, session) {
     if (is.null(a) || !length(per_section)) {
       return()
     }
-    e <- entry_of(id)
+    e <- isolate(entry_of(id))
     if (is.null(e)) {
       return()
     }
@@ -736,7 +1324,7 @@ server <- function(input, output, session) {
     if (is.null(input$rendered_for) || !identical(input$rendered_for, id)) {
       return()
     }
-    e <- entry_of(id)
+    e <- isolate(entry_of(id))
     req(e)
     for (k in setting_inputs) {
       if (!is.null(vals[[k]])) {
@@ -1442,12 +2030,21 @@ server <- function(input, output, session) {
       class = "card result-card",
       h2("Latest build"),
       if (!is.null(r$error)) div(class = "notice bad", r$error),
+      if (identical(r$state, "needs_decision")) {
+        div(
+          class = "notice warn",
+          paste0(
+            "A selected analysis failed. Nothing was exported. Review the ",
+            "failure, then change the selected analyses or run the build again."
+          )
+        )
+      },
       if (length(r$built)) {
         tagList(
           div(
             class = "notice ok",
             sprintf(
-              "%d dataset%s published to %s",
+              "%d verified dataset artifact%s published at %s",
               length(r$built),
               if (length(r$built) == 1L) "" else "s",
               dirname(r$built[1])
@@ -2070,16 +2667,39 @@ server <- function(input, output, session) {
         checkboxInput(
           "overwrite",
           "Replace existing outputs",
-          value = FALSE,
+          value = isTRUE(isolate(input$overwrite)),
           width = "auto"
         ),
-        actionButton(
-          "build",
-          "Build",
-          class = "btn btn-action",
-          disabled = if (!rep$ok) "disabled"
+        uiOutput(
+          "build_actions",
+          inline = TRUE,
+          style = "display:inline-flex;align-items:center;gap:1rem"
         )
       )
+    )
+  })
+
+  ## Build state changes frequently while the fields above are user-edited.
+  ## Keeping the buttons in their own output prevents a protocol transition
+  ## from recreating those inputs and resetting the browser's current values.
+  output$build_actions <- renderUI({
+    rep <- ready_report()
+    current_protocol <- protocol()
+    build_phase <- if (is.null(current_protocol)) {
+      "idle"
+    } else {
+      current_protocol$build_status %||% "idle"
+    }
+    build_in_flight <- build_phase %in% c("queued", "running", "cancelling")
+    actionButton(
+      "build",
+      "Build",
+      class = "btn btn-action",
+      disabled = if (
+        !rep$ok || build_in_flight || !isTRUE(worker_available())
+      ) {
+        "disabled"
+      }
     )
   })
 
@@ -2092,32 +2712,9 @@ server <- function(input, output, session) {
     req(rs)
     all <- sets()
     req(length(all) > 0)
-    out_dir <- trimws(input$out_dir %||% "")
     result(NULL)
-
-    plan <- builder_make_plan(
-      all,
-      out_dir,
-      make_app = isTRUE(input$make_app),
-      overwrite = isTRUE(input$overwrite)
-    )
-    if (!is.null(plan$error)) {
-      result(list(error = plan$error))
-      return()
-    }
-    if (length(plan$existing_targets) && !isTRUE(plan$overwrite)) {
-      result(list(
-        error = paste0(
-          "These outputs already exist: ",
-          paste(basename(plan$existing_targets), collapse = ", "),
-          ". Enable “Replace existing outputs” to publish atomically over them."
-        )
-      ))
-      return()
-    }
     enqueue(list(
       kind = "build",
-      plan = plan,
       note = paste0(
         "Building ",
         length(all),
@@ -2135,17 +2732,6 @@ server <- function(input, output, session) {
       return()
     }
     enqueue(list(kind = "drop", id = id, note = "Releasing memory…"))
-    all <- Filter(function(e) !identical(e$id, id), sets())
-    sets(all)
-    if (identical(just_added(), id)) {
-      just_added(NULL)
-    }
-    ## Only move the form if the data set it was describing is the one that
-    ## went away; removing some other row should leave the user where they are.
-    if (identical(current(), id)) {
-      current(if (length(all)) all[[1]]$id else NULL)
-      result(NULL)
-    }
   }
 
   ## The button on the row -- works on any data set, not just the open one.

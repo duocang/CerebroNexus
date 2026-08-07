@@ -78,6 +78,8 @@ Suggests:
   knitr,
   monocle,
   png,
+  processx,
+  ps,
   qs,
   qs2,
   reshape2,

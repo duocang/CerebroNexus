@@ -17,189 +17,157 @@
 ##----------------------------------------------------------------------------##
 
 #' Start the worker, or explain why it cannot start.
-builder_session_start <- function(builder_dir) {
-  if (!requireNamespace("callr", quietly = TRUE)) {
-    return(list(
-      error = paste0(
-        "The callr package is required for background processing ",
-        "(install.packages(\"callr\"))."
-      )
-    ))
-  }
-  rs <- try(callr::r_session$new(), silent = TRUE)
-  if (inherits(rs, "try-error")) {
-    return(list(
-      error = paste0(
-        "Could not start the background worker: ",
-        conditionMessage(attr(rs, "condition"))
-      )
-    ))
-  }
-  ## Give the worker the same helpers the page uses, so "what the object looks
-  ## like" is decided by one piece of code rather than two that drift.
-  setup <- rs$run(
-    function(dir) {
-      suppressMessages({
-        library(CerebroNexus)
-      })
-      source(file.path(dir, "io.R"))
-      source(file.path(
-        dir,
-        "..",
-        "shiny",
-        "v1.4",
-        "core",
-        "viewer_content_contract.R"
-      ))
-      source(file.path(
-        dir,
-        "..",
-        "shiny",
-        "v1.4",
-        "core",
-        "spatial_coordinate_contract.R"
-      ))
-      source(file.path(dir, "spatial.R"))
-      source(file.path(
-        dir,
-        "..",
-        "shiny",
-        "v1.4",
-        "hla_tcr_motifs",
-        "core",
-        "hla_typing.R"
-      ))
-      source(file.path(
-        dir,
-        "..",
-        "shiny",
-        "v1.4",
-        "hla_tcr_motifs",
-        "core",
-        "hla_motif_core.R"
-      ))
-      source(file.path(
-        dir,
-        "..",
-        "shiny",
-        "v1.4",
-        "hla_tcr_motifs",
-        "core",
-        "hla_association_core.R"
-      ))
-      source(file.path(dir, "manifest.R"))
-      source(file.path(dir, "content_tables.R"))
-      source(file.path(dir, "content_immune.R"))
-      source(file.path(dir, "content_spatial.R"))
-      source(file.path(dir, "content.R"))
-      source(file.path(dir, "profile.R"))
-      source(file.path(dir, "inspect.R"))
-      source(file.path(dir, "adapters.R"))
-      source(file.path(dir, "preview.R"))
-      source(file.path(dir, "extras.R"))
-      source(file.path(dir, "analysis.R"))
-      source(file.path(dir, "prerequisite.R"))
-      source(file.path(dir, "state.R"))
-      source(file.path(dir, "plan.R"))
-      source(file.path(dir, "publish.R"))
-      .builder_objects <- new.env(parent = emptyenv())
-      .builder_snapshots <- new.env(parent = emptyenv())
-      .builder_snapshot_root <- tempfile("cerebro-builder-session-")
-      if (!dir.create(.builder_snapshot_root, mode = "0700")) {
-        stop("Could not create the private Builder session directory.")
-      }
-      assign(".builder_objects", .builder_objects, envir = globalenv())
-      assign(".builder_snapshots", .builder_snapshots, envir = globalenv())
-      assign(
-        ".builder_snapshot_root",
-        .builder_snapshot_root,
-        envir = globalenv()
-      )
-      TRUE
-    },
-    args = list(dir = builder_dir)
+builder_session_start <- function(
+  builder_dir,
+  snapshot_root = NULL,
+  snapshot_registry = list()
+) {
+  worker <- builder_worker_start(
+    builder_dir = builder_dir,
+    snapshot_root = snapshot_root,
+    snapshot_registry = snapshot_registry
   )
-  if (!isTRUE(setup)) {
-    return(list(error = "The background worker could not be initialized."))
+  if (!is.null(worker$error)) {
+    return(list(error = worker$error))
   }
-  list(session = rs)
+  list(worker = worker, session = worker$process)
+}
+
+.builder_session_process <- function(worker) {
+  if (inherits(worker, "builder_worker")) {
+    return(worker$process)
+  }
+  worker
 }
 
 #' Load one of the built-in examples, without a file.
-builder_session_example <- function(rs, id, example_id) {
+builder_session_example <- function(worker, id, example_id, request = NULL) {
+  rs <- .builder_session_process(worker)
   rs$call(
-    function(id, example_id) {
-      ex <- Filter(function(e) identical(e$id, example_id), builder_examples())
-      if (!length(ex)) {
-        return(list(error = "This example does not exist."))
-      }
-      made <- ex[[1]]$make()
-      if (!is.null(made$error)) {
-        return(list(error = made$error))
-      }
+    function(id, example_id, request) {
       tryCatch(
-        .builder_register_adapter(
-          builder_example_adapter(example_id, made$object),
-          id
-        ),
-        error = function(error) list(error = conditionMessage(error))
+        {
+          ex <- Filter(
+            function(e) identical(e$id, example_id),
+            builder_examples()
+          )
+          if (!length(ex)) {
+            stop("This example does not exist.", call. = FALSE)
+          }
+          made <- ex[[1]]$make()
+          if (!is.null(made$error)) {
+            stop(made$error, call. = FALSE)
+          }
+          value <- .builder_register_adapter(
+            builder_example_adapter(example_id, made$object),
+            id
+          )
+          builder_worker_response(request, value)
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
+        }
       )
     },
-    args = list(id = id, example_id = example_id)
+    args = list(id = id, example_id = example_id, request = request)
   )
 }
 
 #' Ask the worker to load a file and describe it.
 #'
 #' The object stays there; what comes back is a profile of a few kilobytes.
-builder_session_load <- function(rs, id, path) {
+builder_session_load <- function(worker, id, path, request = NULL) {
+  rs <- .builder_session_process(worker)
   rs$call(
-    function(id, path) {
+    function(id, path, request) {
       tryCatch(
-        .builder_register_adapter(builder_seurat_file_adapter(path), id),
-        error = function(error) list(error = conditionMessage(error))
+        {
+          value <- .builder_register_adapter(
+            builder_seurat_file_adapter(path),
+            id
+          )
+          builder_worker_response(request, value)
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
+        }
       )
     },
-    args = list(id = id, path = path)
+    args = list(id = id, path = path, request = request)
   )
 }
 
 #' Coordinates for the projection preview: two columns and a label, sampled.
-builder_session_preview <- function(rs, id, reduction, group, max_cells) {
+builder_session_preview <- function(
+  worker,
+  id,
+  reduction,
+  group,
+  max_cells,
+  request = NULL
+) {
+  rs <- .builder_session_process(worker)
   rs$call(
-    function(id, reduction, group, max_cells) {
-      obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
-      builder_preview_frame(obj, reduction, group, max_cells)
+    function(id, reduction, group, max_cells, request) {
+      tryCatch(
+        {
+          obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
+          builder_worker_response(
+            request,
+            builder_preview_frame(obj, reduction, group, max_cells)
+          )
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
+        }
+      )
     },
     args = list(
       id = id,
       reduction = reduction,
       group = group,
-      max_cells = max_cells
+      max_cells = max_cells,
+      request = request
     )
   )
 }
 
 #' Spatial coordinates, for deciding where a background image sits.
-builder_session_coords <- function(rs, id, image = NULL) {
+builder_session_coords <- function(worker, id, image = NULL, request = NULL) {
+  rs <- .builder_session_process(worker)
   rs$call(
-    function(id, image) {
-      obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
-      co <- builder_spatial_coords(obj, image)
-      if (is.null(co)) {
-        return(NULL)
-      }
-      ## Sampled: the alignment preview needs a shape, not every cell.
-      n <- length(co[[1]])
-      keep <- if (n > 4000) {
-        set.seed(7)
-        sort(sample.int(n, 4000))
-      } else {
-        seq_len(n)
-      }
-      list(x = co[[1]], y = co[[2]], sx = co[[1]][keep], sy = co[[2]][keep])
+    function(id, image, request) {
+      tryCatch(
+        {
+          obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
+          co <- builder_spatial_coords(obj, image)
+          if (is.null(co)) {
+            return(builder_worker_response(request, NULL))
+          }
+          ## Sampled: the alignment preview needs a shape, not every cell.
+          n <- length(co[[1]])
+          keep <- if (n > 4000) {
+            set.seed(7)
+            sort(sample.int(n, 4000))
+          } else {
+            seq_len(n)
+          }
+          builder_worker_response(
+            request,
+            list(
+              x = co[[1]],
+              y = co[[2]],
+              sx = co[[1]][keep],
+              sy = co[[2]][keep]
+            )
+          )
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
+        }
+      )
     },
-    args = list(id = id, image = image)
+    args = list(id = id, image = image, request = request)
   )
 }
 
@@ -216,7 +184,7 @@ builder_session_coords <- function(rs, id, image = NULL) {
 #' @return A named list, one entry per section, each `list(bounds =, outside =,
 #'   total =)`.
 builder_session_section_bounds <- function(
-  rs,
+  worker,
   id,
   sections,
   mode,
@@ -225,8 +193,10 @@ builder_session_section_bounds <- function(
   um_per_px = 1,
   dx = 0,
   dy = 0,
-  scale = 1
+  scale = 1,
+  request = NULL
 ) {
+  rs <- .builder_session_process(worker)
   rs$call(
     function(
       id,
@@ -237,34 +207,42 @@ builder_session_section_bounds <- function(
       um_per_px,
       dx,
       dy,
-      scale
+      scale,
+      request
     ) {
-      obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
-      out <- list()
-      for (nm in sections) {
-        co <- builder_spatial_coords(obj, nm)
-        if (is.null(co)) {
-          next
+      tryCatch(
+        {
+          obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
+          out <- list()
+          for (nm in sections) {
+            co <- builder_spatial_coords(obj, nm)
+            if (is.null(co)) {
+              next
+            }
+            b0 <- builder_image_bounds(
+              mode,
+              co,
+              list(
+                extent_width = extent_width,
+                extent_height = extent_height
+              ),
+              um_per_px = um_per_px
+            )
+            if (!is.null(b0$error)) {
+              next
+            }
+            bounds <- builder_adjust_bounds(b0, dx = dx, dy = dy, scale = scale)
+            out[[nm]] <- list(
+              bounds = bounds,
+              cover = builder_bounds_cover(bounds, co)
+            )
+          }
+          builder_worker_response(request, out)
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
         }
-        b0 <- builder_image_bounds(
-          mode,
-          co,
-          list(
-            extent_width = extent_width,
-            extent_height = extent_height
-          ),
-          um_per_px = um_per_px
-        )
-        if (!is.null(b0$error)) {
-          next
-        }
-        bounds <- builder_adjust_bounds(b0, dx = dx, dy = dy, scale = scale)
-        out[[nm]] <- list(
-          bounds = bounds,
-          cover = builder_bounds_cover(bounds, co)
-        )
-      }
-      out
+      )
     },
     args = list(
       id = id,
@@ -275,284 +253,242 @@ builder_session_section_bounds <- function(
       um_per_px = um_per_px,
       dx = dx,
       dy = dy,
-      scale = scale
+      scale = scale,
+      request = request
     )
   )
 }
 
-#' Run the whole export in the worker.
-#'
-#' Everything expensive happens there: the optional analyses, the matrix
-#' write, the bundle. What comes back is a report.
-builder_session_build <- function(rs, plan) {
-  rs$call(
-    function(plan) {
-      if (isTRUE(plan$make_app)) {
-        current_capability <- builder_app_capability(
-          builder_installed_app_contract_version()
-        )
-        if (
-          !identical(plan$app_contract_version, 1L) ||
-            !isTRUE(current_capability$available)
-        ) {
-          return(list(error = builder_app_capability(0L)$reason))
-        }
-      }
-      out <- list(
-        built = character(),
-        labels = character(),
-        failures = character(),
-        analysis_log = character(),
-        carried = character(),
-        colors = list(),
-        app_dir = NULL
-      )
-      if (
-        !dir.exists(plan$out_dir) &&
-          !dir.create(plan$out_dir, showWarnings = FALSE, recursive = TRUE)
-      ) {
-        return(list(
-          error = paste0(
-            "Cannot create the output directory: ",
-            plan$out_dir
-          )
-        ))
-      }
-      stage_dir <- tempfile(".cerebro-builder-", tmpdir = plan$out_dir)
-      if (!dir.create(stage_dir)) {
-        return(list(error = "Cannot create a staging directory."))
-      }
-      on.exit(unlink(stage_dir, recursive = TRUE, force = TRUE), add = TRUE)
-      snapshots <- get(".builder_snapshots", envir = globalenv())
+.builder_session_plan_snapshot_error <- function(plan, snapshot_registry) {
+  if (!is.list(plan) || !is.list(plan$items) || !length(plan$items)) {
+    return("BuildPlan does not contain any frozen dataset snapshots.")
+  }
+  if (!is.list(snapshot_registry)) {
+    return("The worker snapshot registry is unavailable.")
+  }
+  for (item in plan$items) {
+    id <- item$id
+    label <- item$name
+    if (
+      !is.character(id) ||
+        length(id) != 1L ||
+        is.na(id) ||
+        !nzchar(id)
+    ) {
+      return("BuildPlan contains a dataset without a stable id.")
+    }
+    if (!is.character(label) || length(label) != 1L || is.na(label)) {
+      label <- id
+    }
+    snapshot <- snapshot_registry[[id]]
+    if (is.null(snapshot)) {
+      return(paste0("The frozen snapshot is missing for ", label, "."))
+    }
+    identity <- item$source_snapshot_identity
+    expected <- if (is.list(identity)) identity$snapshot else NULL
+    if (
+      !is.list(identity) ||
+        !isTRUE(identity$available) ||
+        !is.list(expected)
+    ) {
+      return(paste0(
+        "BuildPlan does not contain an owned frozen snapshot for ",
+        label,
+        "."
+      ))
+    }
+    mirrored <- all(vapply(
+      names(expected),
+      function(field) identical(identity[[field]], expected[[field]]),
+      logical(1)
+    ))
+    if (!identical(snapshot, expected) || !mirrored) {
+      return(paste0(
+        "The worker snapshot for ",
+        label,
+        " does not match the frozen BuildPlan. Rebuild the plan and retry."
+      ))
+    }
+  }
+  NULL
+}
 
-      missing_snapshots <- vapply(
-        plan$items,
-        function(item) {
-          !exists(
-            item$id,
-            envir = snapshots,
-            inherits = FALSE
+#' Execute a frozen plan inside a coordinator-assigned private stage.
+builder_session_build <- function(
+  worker,
+  plan,
+  request = NULL,
+  coordinator = NULL
+) {
+  rs <- .builder_session_process(worker)
+  validate_snapshots <- inherits(worker, "builder_worker")
+  snapshots <- if (validate_snapshots) worker$snapshot_registry else list()
+  if (isTRUE(plan$make_app)) {
+    current_contract <- builder_installed_app_contract_version()
+    if (
+      !identical(plan$app_contract_version, 1L) ||
+        !identical(current_contract, 1L)
+    ) {
+      return(rs$call(
+        function(request) {
+          error <- paste0(
+            "Private app publication contract v1 is not available. ",
+            "Build CRB-only output for now."
           )
+          if (is.null(request)) {
+            return(list(error = error))
+          }
+          builder_worker_response(request, error = error)
         },
-        logical(1)
+        args = list(request = request)
+      ))
+    }
+  }
+  if (validate_snapshots) {
+    snapshot_error <- .builder_session_plan_snapshot_error(plan, snapshots)
+    if (!is.null(snapshot_error)) {
+      rs$call(
+        function(request, error) {
+          builder_worker_response(request, error = error)
+        },
+        args = list(request = request, error = snapshot_error)
       )
-      if (any(missing_snapshots)) {
-        return(list(
-          error = paste0(
-            "A dataset snapshot is missing for: ",
-            paste(
-              vapply(
-                plan$items[missing_snapshots],
-                function(item) item$name,
-                character(1)
-              ),
-              collapse = ", "
-            ),
-            ". Remove and add that dataset again."
-          )
-        ))
-      }
+      return(invisible(NULL))
+    }
+  }
 
-      for (item in plan$items) {
-        snapshot <- get(item$id, envir = snapshots, inherits = FALSE)
-        obj <- try(builder_open_snapshot(snapshot), silent = TRUE)
-        if (inherits(obj, "try-error")) {
-          out$failures <- c(
-            out$failures,
-            paste0(
-              item$name,
-              ": ",
-              conditionMessage(attr(obj, "condition"))
-            )
-          )
-          next
-        }
-        obj@reductions <- obj@reductions[item$reductions]
-        prepared <- try(
-          builder_prepare_export_layer(obj, item$assay, item$layer),
-          silent = TRUE
-        )
-        if (inherits(prepared, "try-error")) {
-          out$failures <- c(
-            out$failures,
-            paste0(
-              item$name,
-              ": ",
-              conditionMessage(attr(prepared, "condition"))
-            )
-          )
-          next
-        }
-        obj <- prepared
-
-        ran <- builder_run_analyses(obj, item$analyses, item)
-        obj <- ran$object
-        if (length(ran$log)) {
-          out$analysis_log <- c(
-            out$analysis_log,
-            paste0(item$name, ": ", ran$log)
-          )
-        }
-        obj <- builder_attach_tables(obj, item$tables)
-
-        crb <- file.path(stage_dir, item$filename)
-        res <- try(
-          CerebroNexus::exportFromSeurat(
-            object = obj,
-            assay = item$assay,
-            slot = item$layer,
-            file = crb,
-            experiment_name = item$name,
-            organism = item$organism,
-            groups = item$groups,
-            nUMI = item$nUMI,
-            nGene = item$nGene,
-            verbose = FALSE
-          ),
-          silent = TRUE
-        )
-        if (inherits(res, "try-error")) {
-          out$failures <- c(
-            out$failures,
-            paste0(
-              item$name,
-              ": ",
-              conditionMessage(attr(res, "condition"))
-            )
-          )
-          next
-        }
-        out$built <- c(out$built, crb)
-        out$labels <- c(out$labels, item$name)
-        if (length(item$colors)) {
-          ## Keyed by the SAME label passed as the dataset name below. The
-          ## viewer maps configuration to data set by exact string comparison,
-          ## so a label that differs by one character drops the whole palette.
-          out$colors[[item$name]] <- item$colors
-        }
-
-        trek <- tryCatch(obj@misc$trekker, error = function(e) NULL)
-        attached <- builder_attach_crb_extras(crb, item$images, trek)
-        if (!is.null(attached$error)) {
-          out$failures <- c(
-            out$failures,
-            paste0(item$name, ": ", attached$error)
-          )
-          next
-        }
-        if (isTRUE(attached$trekker)) {
-          out$carried <- c(out$carried, paste0(item$name, ": Trekker"))
-        }
-      }
-
-      if (length(out$failures) || length(out$built) != length(plan$items)) {
-        out$error <- paste0(
-          "Nothing was published because ",
-          length(out$failures),
-          " dataset build",
-          if (length(out$failures) == 1L) "" else "s",
-          " failed."
-        )
-        out$built <- character()
-        out$labels <- character()
-        return(out)
-      }
-
-      staged_targets <- out$built
-      final_targets <- file.path(
-        plan$out_dir,
-        vapply(plan$items, `[[`, "", "filename")
+  assigned_stage <- !is.null(coordinator)
+  if (assigned_stage) {
+    coordinator <- tryCatch(
+      .builder_coordinator_handle(coordinator),
+      error = function(error) error
+    )
+    if (
+      inherits(coordinator, "condition") ||
+        !dir.exists(coordinator$stage) ||
+        !.pathWithin(coordinator$stage, coordinator$control)
+    ) {
+      stop(
+        "The parent release coordinator assigned an invalid stage.",
+        call. = FALSE
       )
-
-      if (isTRUE(plan$make_app)) {
-        app_dir <- file.path(stage_dir, "cerebro_app")
-        made <- try(
-          CerebroNexus::createShinyApp(
-            cerebro_data = stats::setNames(out$built, out$labels),
-            result_dir = app_dir,
-            colors = if (length(out$colors)) out$colors else NULL,
-            launch_browser = FALSE,
-            verbose = FALSE
-          ),
-          silent = TRUE
+    }
+    stage <- coordinator$stage
+  } else {
+    stage_root <- if (validate_snapshots) worker$snapshot_root else tempdir()
+    stage <- tempfile("builder-build-stage-", tmpdir = stage_root)
+  }
+  if (
+    !assigned_stage &&
+      !dir.create(stage, mode = "0700", showWarnings = FALSE)
+  ) {
+    rs$call(
+      function(request) {
+        builder_worker_response(
+          request,
+          error = "The coordinator could not create the assigned build stage."
         )
-        if (inherits(made, "try-error")) {
-          out$failures <- c(
-            out$failures,
-            paste0(
-              "App bundle: ",
-              conditionMessage(attr(made, "condition"))
-            )
-          )
-        } else {
-          out$app_dir <- app_dir
-          staged_targets <- c(staged_targets, app_dir)
-          final_targets <- c(
-            final_targets,
-            file.path(plan$out_dir, "cerebro_app")
-          )
-        }
-      }
-
-      if (length(out$failures)) {
-        out$error <- "Nothing was published because app bundling failed."
-        out$built <- character()
-        out$labels <- character()
-        out$app_dir <- NULL
-        return(out)
-      }
-
-      published <- builder_publish_batch(
-        staged_targets,
-        final_targets,
-        overwrite = isTRUE(plan$overwrite)
+      },
+      args = list(request = request)
+    )
+    return(invisible(NULL))
+  }
+  if (validate_snapshots && !assigned_stage) {
+    owner <- tryCatch(.builder_stage_owner(stage), error = function(error) {
+      error
+    })
+    if (inherits(owner, "condition")) {
+      unlink(stage, recursive = TRUE, force = TRUE)
+      rs$call(
+        function(request, error) {
+          builder_worker_response(request, error = error)
+        },
+        args = list(request = request, error = conditionMessage(owner))
       )
-      if (!is.null(published$error)) {
-        out$error <- published$error
-        out$built <- character()
-        out$labels <- character()
-        out$app_dir <- NULL
-        return(out)
-      }
+      return(invisible(NULL))
+    }
+  }
 
-      out$built <- final_targets[seq_along(plan$items)]
-      if (isTRUE(plan$make_app)) {
-        out$app_dir <- final_targets[length(final_targets)]
-      }
-      out
+  rs$call(
+    function(
+      plan,
+      stage,
+      request,
+      validate_snapshots,
+      snapshot_validator
+    ) {
+      tryCatch(
+        {
+          registry <- if (isTRUE(validate_snapshots)) {
+            snapshot_environment <- get(
+              ".builder_snapshots",
+              envir = globalenv()
+            )
+            ids <- ls(snapshot_environment, all.names = TRUE)
+            if (length(ids)) {
+              mget(
+                ids,
+                envir = snapshot_environment,
+                inherits = FALSE
+              )
+            } else {
+              list()
+            }
+          } else {
+            list()
+          }
+          if (isTRUE(validate_snapshots)) {
+            snapshot_error <- snapshot_validator(plan, registry)
+            if (!is.null(snapshot_error)) {
+              return(builder_worker_response(
+                request,
+                error = snapshot_error
+              ))
+            }
+          }
+          value <- builder_execute_plan(plan, stage, registry)
+          builder_worker_response(request, value = value)
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
+        }
+      )
     },
-    args = list(plan = plan)
+    args = list(
+      plan = plan,
+      stage = stage,
+      request = request,
+      validate_snapshots = validate_snapshots,
+      snapshot_validator = .builder_session_plan_snapshot_error
+    )
   )
 }
 
 #' Forget one object, so removing a data set actually frees its memory.
-builder_session_drop <- function(rs, id) {
+builder_session_drop <- function(worker, id, request = NULL) {
+  rs <- .builder_session_process(worker)
   rs$call(
-    function(id) {
-      store <- get(".builder_objects", envir = globalenv())
-      snapshots <- get(".builder_snapshots", envir = globalenv())
-      if (exists(id, envir = store)) {
-        rm(list = id, envir = store)
-        gc(FALSE)
-      }
-      if (exists(id, envir = snapshots, inherits = FALSE)) {
-        snapshot <- get(id, envir = snapshots, inherits = FALSE)
-        if (!.builder_snapshot_release(snapshot)) {
-          stop(
-            paste0(
-              "The private snapshot for ",
-              id,
-              " could not be released safely."
-            ),
-            call. = FALSE
-          )
+    function(id, request) {
+      tryCatch(
+        {
+          store <- get(".builder_objects", envir = globalenv())
+          snapshots <- get(".builder_snapshots", envir = globalenv())
+          if (exists(id, envir = store)) {
+            rm(list = id, envir = store)
+            gc(FALSE)
+          }
+          if (exists(id, envir = snapshots, inherits = FALSE)) {
+            rm(list = id, envir = snapshots)
+          }
+          gc(FALSE)
+          builder_worker_response(request, TRUE)
+        },
+        error = function(error) {
+          builder_worker_response(request, error = conditionMessage(error))
         }
-        rm(list = id, envir = snapshots)
-      }
-      gc(FALSE)
-      TRUE
+      )
     },
-    args = list(id = id)
+    args = list(id = id, request = request)
   )
 }
 
@@ -562,34 +498,10 @@ builder_session_drop <- function(rs, id) {
 #' before the one carrying the result. Treating those as the answer is how a
 #' panel ends up permanently empty while the worker has in fact finished, so
 #' only the completion code counts.
-builder_session_poll <- function(rs, timeout = 0) {
-  state <- rs$poll_process(timeout)
-  if (!identical(as.character(state)[1], "ready")) {
-    return(NULL)
-  }
-  msg <- rs$read()
-  if (is.null(msg)) {
-    return(NULL)
-  }
-  code <- msg$code
-  if (is.null(code)) {
-    code <- 200L
-  }
-  if (code == 200L) {
-    if (!is.null(msg$error)) {
-      return(list(error = conditionMessage(msg$error)))
-    }
-    return(list(value = msg$result, done = TRUE))
-  }
-  if (code >= 500L) {
-    return(list(
-      error = paste0(
-        "Background worker error (code ",
-        code,
-        ")."
-      )
-    ))
-  }
-  ## 301 and friends: the worker wrote something. Keep waiting.
-  NULL
+builder_session_poll <- function(
+  worker,
+  timeout = 0,
+  now = Sys.time()
+) {
+  builder_worker_poll(worker, timeout = timeout, now = now)
 }

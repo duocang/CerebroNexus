@@ -30,6 +30,7 @@ test_that("builder UI copy is English-only", {
     "preview.R",
     "extras.R",
     "analysis.R",
+    "worker.R",
     "session.R"
   )
   text <- paste(

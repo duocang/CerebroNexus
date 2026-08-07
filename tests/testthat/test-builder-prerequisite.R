@@ -202,11 +202,11 @@ test_that("worker setup loads the app prerequisite before planning", {
     "..",
     "inst",
     "builder",
-    "session.R"
+    "worker.R"
   )
   if (!file.exists(session_path)) {
     session_path <- system.file(
-      file.path("builder", "session.R"),
+      file.path("builder", "worker.R"),
       package = "CerebroNexus"
     )
   }

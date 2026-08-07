@@ -50,6 +50,64 @@ builder_analysis_steps <- function() {
   )
 }
 
+#' Freeze the selected analysis dependency graph.
+builder_analysis_graph <- function(selected) {
+  selected <- unique(as.character(selected))
+  steps <- builder_analysis_steps()
+  known <- vapply(steps, `[[`, character(1), "id")
+  unknown <- setdiff(selected, known)
+  if (length(unknown)) {
+    stop("Unknown Builder analysis: ", unknown[[1L]], call. = FALSE)
+  }
+  graph <- lapply(selected, function(id) {
+    step <- steps[[match(id, known)]]
+    needs <- if (is.null(step$needs)) character() else step$needs
+    dependencies <- intersect(needs, selected)
+    list(id = id, dependencies = dependencies)
+  })
+  names(graph) <- selected
+  graph
+}
+
+#' Analyses that must be recomputed after one selected step fails.
+builder_retry_closure <- function(graph, failed) {
+  if (!is.list(graph) || !is.character(failed) || length(failed) != 1L) {
+    stop(
+      "Retry closure requires a dependency graph and failed id.",
+      call. = FALSE
+    )
+  }
+  ids <- names(graph)
+  if (is.null(ids) || !failed %in% ids) {
+    stop(
+      "The failed analysis is absent from the dependency graph.",
+      call. = FALSE
+    )
+  }
+  closure <- failed
+  repeat {
+    dependencies <- unique(unlist(
+      lapply(graph[closure], function(node) {
+        node$dependencies
+      }),
+      use.names = FALSE
+    ))
+    dependants <- ids[vapply(
+      graph,
+      function(node) {
+        any(node$dependencies %in% closure)
+      },
+      logical(1)
+    )]
+    expanded <- unique(c(closure, dependencies, dependants))
+    if (identical(expanded, closure)) {
+      break
+    }
+    closure <- expanded
+  }
+  ids[ids %in% closure]
+}
+
 #' Is a step currently selectable, and if not, why.
 builder_step_blocked <- function(step, profile, selected) {
   if (identical(step$id, "percent_mt_ribo")) {
@@ -81,8 +139,14 @@ builder_run_analyses <- function(
   on_progress = function(...) NULL
 ) {
   log <- character()
+  completed <- character()
   if (!length(selected)) {
-    return(list(object = object, log = log))
+    return(list(
+      object = object,
+      log = log,
+      completed = completed,
+      failed = character()
+    ))
   }
 
   for (step in builder_analysis_steps()) {
@@ -121,8 +185,6 @@ builder_run_analyses <- function(
 
     took <- round(as.numeric(difftime(Sys.time(), started, units = "secs")), 1)
     if (inherits(res, "try-error")) {
-      ## A failed optional step must not lose the export: the data set is still
-      ## worth having without that page.
       log <- c(
         log,
         paste0(
@@ -132,10 +194,22 @@ builder_run_analyses <- function(
           conditionMessage(attr(res, "condition"))
         )
       )
+      return(list(
+        object = object,
+        log = log,
+        completed = completed,
+        failed = step$id
+      ))
     } else {
       object <- res
+      completed <- c(completed, step$id)
       log <- c(log, paste0("✓ ", step$label, " (", took, " s)"))
     }
   }
-  list(object = object, log = log)
+  list(
+    object = object,
+    log = log,
+    completed = completed,
+    failed = character()
+  )
 }

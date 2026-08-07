@@ -612,7 +612,6 @@
     "unsafe_sample_table_class",
     "unsafe_column_names",
     "unsafe_row_names",
-    "empty_sample_table",
     "invalid_column_names",
     "invalid_text_column_length",
     "unsafe_column_class",
@@ -620,7 +619,6 @@
     "unsafe_factor_levels",
     "blank_barcodes",
     "duplicate_barcodes",
-    "barcodes_outside_dataset",
     "no_dataset_barcode_overlap",
     "chain_family_mismatch",
     "unexpected_chain_family"
@@ -675,6 +673,13 @@
     diagnostics = diagnostics,
     requirements = requirements,
     page_candidates = page_candidates,
+    attention = any(
+      c(
+        "empty_sample_table",
+        "barcodes_outside_dataset"
+      ) %in%
+        diagnostics
+    ),
     source_kind = source_kind,
     full_ir_ready = full_ir_ready,
     hla_tcr_ready = hla_tcr_ready,
