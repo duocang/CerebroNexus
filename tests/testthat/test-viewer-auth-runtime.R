@@ -55,23 +55,25 @@ test_that("Viewer server starts once after authentication", {
   root <- withr::local_tempdir()
   database <- file.path(root, "private-data", "auth", "credentials.sqlite")
   dir.create(dirname(database), recursive = TRUE)
-  writeBin(as.raw(c(0x53, 0x51, 0x4c)), database)
   passphrase <- "runtime test passphrase"
+  shinymanager::create_db(
+    credentials_data = data.frame(
+      user = "alice",
+      password = "alice-login-password",
+      stringsAsFactors = FALSE
+    ),
+    sqlite_path = database,
+    passphrase = passphrase
+  )
   withr::local_envvar(CEREBRO_AUTH_TEST_KEY = passphrase)
   auth_state <- shiny::reactiveValues(user = NULL)
-  checker_calls <- 0L
+  captured_checker <- NULL
   testthat::local_mocked_bindings(
-    check_credentials = function(db, passphrase) {
-      checker_calls <<- checker_calls + 1L
-      expect_identical(
-        db,
-        normalizePath(database, winslash = "/", mustWork = TRUE)
-      )
-      expect_identical(passphrase, "runtime test passphrase")
-      function(user, password) list(result = TRUE)
-    },
     secure_app = function(ui, ...) structure(ui, viewer_auth_secured = TRUE),
-    secure_server = function(...) auth_state,
+    secure_server = function(check_credentials, ...) {
+      captured_checker <<- check_credentials
+      auth_state
+    },
     .package = "shinymanager"
   )
   starts <- 0L
@@ -87,9 +89,11 @@ test_that("Viewer server starts once after authentication", {
   )
 
   expect_identical(attr(app$ui, "viewer_auth_secured"), TRUE)
-  expect_identical(checker_calls, 1L)
   shiny::testServer(app$server, {
     session$flushReact()
+    expect_true(is.function(captured_checker))
+    expect_true(captured_checker("alice", "alice-login-password")$result)
+    expect_false(captured_checker("alice", "wrong-password")$result)
     expect_identical(starts, 0L)
     auth_state$user <- "alice"
     session$flushReact()

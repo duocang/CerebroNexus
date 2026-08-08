@@ -48,15 +48,27 @@ Create a small environment file outside the App directory. Replace the example
 value with a long random secret and restrict the file to its owner.
 
 ```{r eval=FALSE}
-secret_file <- "my_app.auth.env"
-writeLines(
-  "CEREBRO_AUTH_PASSPHRASE=replace-with-a-long-random-secret",
-  secret_file
+secret_file <- "my_app.env"
+stopifnot(!file.exists(secret_file))
+old_umask <- Sys.umask("077")
+tryCatch(
+  {
+    stopifnot(file.create(secret_file))
+    writeLines(
+      "CEREBRO_AUTH_PASSPHRASE=replace-with-a-long-random-secret",
+      secret_file
+    )
+  },
+  finally = Sys.umask(old_umask)
 )
 Sys.chmod(secret_file, mode = "0600")
 readRenviron(secret_file)
 stopifnot(nzchar(Sys.getenv("CEREBRO_AUTH_PASSPHRASE")))
 ```
+
+On Windows, POSIX file modes are not an access-control boundary. Store the
+environment file in a location protected by the account's Windows ACLs, or use
+the deployment platform's secret manager.
 
 Create any number of users in one data frame. `shinymanager::create_db()` hashes
 the login passwords and encrypts the credentials tables with the passphrase.
@@ -78,8 +90,10 @@ shinymanager::create_db(
 rm(accounts)
 ```
 
-The plaintext login passwords exist only in the R process during this command.
-They are not written to the generated App.
+`create_db()` hashes the passwords before storing them, and plaintext passwords
+are not written to the generated App. During database creation they still exist
+in the R data frame. Do not put real passwords in a committed script or retain
+them in command history.
 
 # Generate the App
 
@@ -105,11 +119,11 @@ A new R process does not inherit variables that were set in an earlier R
 process. Load the environment file before starting the App:
 
 ```{r eval=FALSE}
-readRenviron("my_app.auth.env")
+readRenviron("my_app.env")
 shiny::runApp("my_app")
 ```
 
-Keep `my_app.auth.env` outside `my_app`. Do not commit it or upload it with the
+Keep `my_app.env` outside `my_app`. Do not commit it or upload it with the
 App directory.
 
 # Shiny Server and systemd
@@ -121,7 +135,7 @@ the secret in a root-managed file:
 sudo install -d -m 0755 /srv/shiny-server/my_app
 sudo cp -R my_app/. /srv/shiny-server/my_app/
 sudo install -d -m 0750 /etc/cerebronexus
-sudo install -o root -g shiny -m 0640 my_app.auth.env /etc/cerebronexus/my_app.env
+sudo install -o root -g shiny -m 0640 my_app.env /etc/cerebronexus/my_app.env
 sudo chown -R shiny:shiny /srv/shiny-server/my_app/private-data/auth
 sudo chmod 0700 /srv/shiny-server/my_app/private-data/auth
 sudo chmod 0600 /srv/shiny-server/my_app/private-data/auth/credentials.sqlite
@@ -166,12 +180,12 @@ services:
   cerebro:
     build: .
     env_file:
-      - ./my_app.auth.env
+      - ./my_app.env
     ports:
       - "3838:3838"
 ```
 
-Keep `my_app.auth.env` out of the Docker build context or exclude it in
+Keep `my_app.env` out of the Docker build context or exclude it in
 `.dockerignore`.
 
 # Run on another machine
@@ -181,7 +195,7 @@ On another machine, restore the same variable name and value before running the
 App:
 
 ```{r eval=FALSE}
-readRenviron("/protected/path/my_app.auth.env")
+readRenviron("/protected/path/my_app.env")
 shiny::runApp("/srv/cerebronexus/my_app")
 ```
 

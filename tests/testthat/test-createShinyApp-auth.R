@@ -122,6 +122,34 @@ test_that("authentication reports unavailable provider and invalid database", {
   )
 })
 
+test_that("database preflight decrypts without creating a credential checker", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  path <- auth_test_database()
+  credentials <- data.frame(
+    user = "alice",
+    password = "hashed-password",
+    is_hashed_password = TRUE,
+    stringsAsFactors = FALSE
+  )
+  testthat::local_mocked_bindings(
+    read_db_decrypt = function(conn, name, passphrase) {
+      expect_identical(conn, path)
+      expect_identical(name, "credentials")
+      expect_identical(passphrase, "test database passphrase")
+      credentials
+    },
+    check_credentials = function(...) {
+      stop("preflight must not create a credential checker", call. = FALSE)
+    },
+    .package = "shinymanager"
+  )
+
+  expect_invisible(CerebroNexus:::.viewerAuthValidateDatabase(
+    path,
+    "test database passphrase"
+  ))
+})
+
 auth_test_build_fixture <- function() {
   root <- withr::local_tempdir(.local_envir = parent.frame())
   crb <- file.path(root, "dataset.crb")
@@ -205,6 +233,41 @@ test_that("createShinyApp bundles only encrypted authentication configuration", 
     logical(1),
     value = normalizePath(fixture$credentials, winslash = "/")
   )))
+})
+
+test_that("createShinyApp makes the bundled database writable at runtime", {
+  skip_on_os("windows")
+  fixture <- auth_test_build_fixture()
+  Sys.chmod(fixture$credentials, mode = "0400")
+  app <- file.path(fixture$root, "writable-auth-app")
+  testthat::local_mocked_bindings(
+    .compileViewerAuth = function(auth) {
+      auth_test_compiled_config(auth$credentials)
+    },
+    .package = "CerebroNexus"
+  )
+
+  createShinyApp(
+    cerebro_data = c(Dataset = fixture$crb),
+    result_dir = app,
+    auth = list(
+      credentials = fixture$credentials,
+      passphrase_env = "CEREBRO_AUTH_TEST_KEY"
+    ),
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  bundled <- file.path(
+    app,
+    "private-data",
+    "auth",
+    "credentials.sqlite"
+  )
+  expect_identical(unname(file.access(bundled, mode = 6L)), 0L)
+  expect_identical(unname(file.access(dirname(bundled), mode = 3L)), 0L)
+  expect_identical(as.integer(file.info(bundled)$mode), 384L)
+  expect_identical(as.integer(file.info(dirname(bundled))$mode), 448L)
 })
 
 test_that("createShinyApp keeps unauthenticated output unchanged", {
@@ -297,6 +360,19 @@ test_that("a real encrypted multi-user database survives app generation", {
   expect_true(checker("alice", "alice-login-password")$result)
   expect_true(checker("bob", "bob-login-password")$result)
   expect_false(checker("alice", "wrong-password")$result)
+  artifacts <- list.files(app, recursive = TRUE, full.names = TRUE)
+  for (secret in c(
+    passphrase,
+    "alice-login-password",
+    "bob-login-password"
+  )) {
+    expect_false(any(vapply(
+      artifacts,
+      auth_test_file_contains,
+      logical(1),
+      value = secret
+    )))
+  }
 })
 
 auth_test_package_file <- function(path) {
@@ -307,13 +383,15 @@ auth_test_package_file <- function(path) {
 }
 
 test_that("authentication deployment documentation is runnable and credited", {
-  vignette <- readLines(
-    auth_test_package_file(file.path(
-      "vignettes",
-      "control_access_to_cerebro_with_a_login_page.Rmd"
-    )),
-    warn = FALSE
+  vignette_path <- auth_test_package_file(file.path(
+    "vignettes",
+    "control_access_to_cerebro_with_a_login_page.Rmd"
+  ))
+  skip_if_not(
+    file.exists(vignette_path),
+    "static source-tree documentation contract"
   )
+  vignette <- readLines(vignette_path, warn = FALSE)
   required <- c(
     "Roman Hillje",
     "Xuesong Wang",
@@ -328,6 +406,12 @@ test_that("authentication deployment documentation is runnable and credited", {
   for (term in required) {
     expect_true(any(grepl(term, vignette, fixed = TRUE)), info = term)
   }
+  expect_true(any(grepl('Sys.umask("077")', vignette, fixed = TRUE)))
+  expect_false(any(grepl(
+    "file.create(secret_file, mode",
+    vignette,
+    fixed = TRUE
+  )))
 
   description <- read.dcf(auth_test_package_file("DESCRIPTION"))
   expect_identical(description[[1L, "Version"]], "4.1")

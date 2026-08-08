@@ -2423,6 +2423,26 @@ createShinyApp <- function(
     }
   }
 
+  if (!is.null(viewer_auth)) {
+    auth_database <- file.path(
+      stage_result_dir,
+      viewer_auth$credentials_path
+    )
+    auth_directory <- dirname(auth_database)
+    if (!identical(.Platform$OS.type, "windows")) {
+      Sys.chmod(auth_directory, mode = "0700")
+      Sys.chmod(auth_database, mode = "0600")
+    }
+    accessible <- file.access(auth_database, mode = 6L) == 0L &&
+      file.access(auth_directory, mode = 3L) == 0L
+    if (!isTRUE(accessible)) {
+      stop(
+        "Failed to prepare the authentication database for runtime.",
+        call. = FALSE
+      )
+    }
+  }
+
   # Copy extdata -------------------------------------------------------------##
   if (verbose) {
     cat("Copying extdata files...\n")

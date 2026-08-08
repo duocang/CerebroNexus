@@ -18,14 +18,20 @@
 }
 
 .viewerAuthValidateDatabase <- function(path, passphrase) {
-  checker <- suppressWarnings(suppressMessages(tryCatch(
-    shinymanager::check_credentials(
-      db = path,
+  credentials <- suppressWarnings(suppressMessages(tryCatch(
+    shinymanager::read_db_decrypt(
+      conn = path,
+      name = "credentials",
       passphrase = passphrase
     ),
     error = function(condition) NULL
   )))
-  if (!is.function(checker)) {
+  required <- c("user", "password", "is_hashed_password")
+  valid <- is.data.frame(credentials) &&
+    nrow(credentials) > 0L &&
+    all(required %in% names(credentials)) &&
+    all(credentials$is_hashed_password %in% TRUE)
+  if (!valid) {
     stop(
       "auth$credentials and its passphrase do not match.",
       call. = FALSE
