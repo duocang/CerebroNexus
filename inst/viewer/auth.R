@@ -139,17 +139,72 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
       session = session
     )
     started <- shiny::reactiveVal(FALSE)
+    revoked <- shiny::reactiveVal(FALSE)
+    subject <- shiny::reactiveVal(NULL)
+    last_activity <- shiny::reactiveVal(NULL)
+    timeout_ms <- config$timeout_minutes * 60 * 1000
+    now_ms <- function() {
+      if (is.function(session$.now)) {
+        return(as.numeric(session$.now()))
+      }
+      as.numeric(Sys.time()) * 1000
+    }
+    revoke <- function() {
+      if (started() && !revoked()) {
+        revoked(TRUE)
+        session$reload()
+        session$onFlushed(function() session$close(), once = TRUE)
+      }
+      invisible(NULL)
+    }
     shiny::observe({
       user <- auth$user
-      shiny::req(
-        is.character(user),
-        length(user) == 1L,
-        !is.na(user),
-        nzchar(user)
-      )
-      if (!started()) {
+      authorized <- is.character(user) &&
+        length(user) == 1L &&
+        !is.na(user) &&
+        nzchar(user) &&
+        identical(input$shinymanager_where, "application")
+      if (authorized && !started()) {
         started(TRUE)
+        subject(user)
+        last_activity(now_ms())
         server(input, output, session)
+      } else if (
+        started() &&
+          (!authorized || !identical(user, subject()))
+      ) {
+        revoke()
+      }
+    })
+    shiny::observeEvent(
+      input$.shinymanager_logout,
+      {
+        revoke()
+      },
+      ignoreInit = TRUE
+    )
+    shiny::observeEvent(
+      input$.shinymanager_timeout,
+      {
+        if (started() && !revoked()) {
+          current <- now_ms()
+          if (current - last_activity() > timeout_ms) {
+            revoke()
+          } else {
+            last_activity(current)
+          }
+        }
+      },
+      ignoreInit = TRUE
+    )
+    shiny::observe({
+      last <- last_activity()
+      shiny::req(!is.null(last), started(), !revoked())
+      remaining <- timeout_ms - (now_ms() - last)
+      if (remaining < 0) {
+        revoke()
+      } else {
+        shiny::invalidateLater(as.integer(remaining) + 1L, session)
       }
     })
     invisible(auth)

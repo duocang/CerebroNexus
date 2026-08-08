@@ -128,7 +128,7 @@ test_that("Viewer authentication fails closed when branding is incomplete", {
   )
 })
 
-test_that("Viewer server starts once after authentication", {
+test_that("Viewer starts only on the authorized application page", {
   skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
   runtime <- viewer_auth_runtime_environment()
   root <- withr::local_tempdir()
@@ -157,6 +157,7 @@ test_that("Viewer server starts once after authentication", {
     .package = "shinymanager"
   )
   starts <- 0L
+  reloaded <- FALSE
   viewer_server <- function(input, output, session) {
     starts <<- starts + 1L
   }
@@ -175,11 +176,113 @@ test_that("Viewer server starts once after authentication", {
     expect_true(captured_checker("alice", "alice-login-password")$result)
     expect_false(captured_checker("alice", "wrong-password")$result)
     expect_identical(starts, 0L)
+    session$setInputs(shinymanager_where = "password")
+    auth_state$user <- "alice"
+    session$flushReact()
+    expect_identical(starts, 0L)
+    session$setInputs(shinymanager_where = "application")
+    session$flushReact()
+    expect_identical(starts, 1L)
+    session$reload <- function() {
+      reloaded <<- TRUE
+    }
+    do.call(
+      session$setInputs,
+      setNames(list(1L), ".shinymanager_logout")
+    )
+    session$flushReact()
+    expect_true(reloaded)
+    expect_true(session$isClosed())
+  })
+})
+
+test_that("Viewer session closes when the authenticated user changes", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  runtime <- viewer_auth_runtime_environment()
+  root <- withr::local_tempdir()
+  database <- file.path(root, "private-data", "auth", "credentials.sqlite")
+  dir.create(dirname(database), recursive = TRUE)
+  viewer_auth_runtime_brand_assets(root)
+  passphrase <- "runtime test passphrase"
+  shinymanager::create_db(
+    credentials_data = data.frame(
+      user = c("alice", "bob"),
+      password = c("alice-login-password", "bob-login-password"),
+      stringsAsFactors = FALSE
+    ),
+    sqlite_path = database,
+    passphrase = passphrase
+  )
+  withr::local_envvar(CEREBRO_AUTH_TEST_KEY = passphrase)
+  auth_state <- shiny::reactiveValues(user = NULL)
+  testthat::local_mocked_bindings(
+    secure_app = function(ui, ...) ui,
+    secure_server = function(...) auth_state,
+    .package = "shinymanager"
+  )
+  app <- runtime$viewer_auth_apply(
+    shiny::fluidPage("viewer"),
+    function(input, output, session) NULL,
+    viewer_auth_runtime_config(),
+    root
+  )
+
+  shiny::testServer(app$server, {
+    session$setInputs(shinymanager_where = "application")
+    auth_state$user <- "alice"
+    session$flushReact()
+    expect_false(session$isClosed())
+    auth_state$user <- "bob"
+    session$flushReact()
+    expect_true(session$isClosed())
+  })
+})
+
+test_that("Viewer session closes when authentication times out", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  runtime <- viewer_auth_runtime_environment()
+  root <- withr::local_tempdir()
+  database <- file.path(root, "private-data", "auth", "credentials.sqlite")
+  dir.create(dirname(database), recursive = TRUE)
+  viewer_auth_runtime_brand_assets(root)
+  passphrase <- "runtime test passphrase"
+  shinymanager::create_db(
+    credentials_data = data.frame(
+      user = "alice",
+      password = "alice-login-password",
+      stringsAsFactors = FALSE
+    ),
+    sqlite_path = database,
+    passphrase = passphrase
+  )
+  withr::local_envvar(CEREBRO_AUTH_TEST_KEY = passphrase)
+  auth_state <- shiny::reactiveValues(user = NULL)
+  testthat::local_mocked_bindings(
+    secure_app = function(ui, ...) ui,
+    secure_server = function(...) auth_state,
+    .package = "shinymanager"
+  )
+  starts <- 0L
+  app <- runtime$viewer_auth_apply(
+    shiny::fluidPage("viewer"),
+    function(input, output, session) {
+      starts <<- starts + 1L
+    },
+    utils::modifyList(
+      viewer_auth_runtime_config(),
+      list(timeout_minutes = 1L)
+    ),
+    root
+  )
+
+  shiny::testServer(app$server, {
+    session$setInputs(shinymanager_where = "application")
     auth_state$user <- "alice"
     session$flushReact()
     expect_identical(starts, 1L)
-    auth_state$user <- "bob"
+    expect_false(session$isClosed())
+    session$elapse(60001)
     session$flushReact()
-    expect_identical(starts, 1L)
+    expect_true(session$isClosed())
   })
 })
