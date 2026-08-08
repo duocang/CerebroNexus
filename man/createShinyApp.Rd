@@ -119,19 +119,24 @@ units) applied to move the spatial background image. Names must match
 \item{spatial_plot_rotation}{Named list/vector; initial rotation (degrees)
 applied to spatial cell coordinates. Names must match \code{cerebro_data}.}
 
-\item{auth}{Optional strict authentication descriptor. \code{NULL}, the
-default, leaves the Viewer unauthenticated. The only supported named-list
-shape has \code{provider = "shinymanager"}; \code{credentials} must be an
-absolute path to a readable encrypted shinymanager SQLite database; and
-\code{passphrase_env} must name an environment variable containing at least
-32 bytes of high-entropy secret material. The optional whole-number
-\code{timeout_minutes} is from 1 through 1440; \code{timeout_minutes} defaults
-to 15.
-The environment-held passphrase is read only for validation and provider
-setup; it is never stored in \code{Cerebro.options} or returned artifacts.
+\item{auth}{Authentication mode. \code{NULL}, the default, leaves the Viewer
+unauthenticated. In an interactive R session, \code{TRUE} prompts for one or
+more accounts, creates an encrypted SQLite database inside the generated
+app, writes its high-entropy passphrase to a sibling \code{.auth.env} file,
+and installs that variable in the current process. A named advanced
+descriptor instead requires \code{provider = "shinymanager"}, an absolute
+readable encrypted SQLite \code{credentials} path, and a
+\code{passphrase_env} containing at least 32 bytes. Its optional whole-number
+\code{timeout_minutes} is from 1 through 1440 and defaults to 15. Explicit
+\code{FALSE} is invalid; use \code{NULL} to disable authentication.
+For an advanced descriptor, the environment-held passphrase is read only for
+validation and provider setup and is never stored in \code{Cerebro.options}
+or copied into the app. In simple \code{TRUE} mode, the sibling
+\code{.auth.env} file is the deliberate deployment artifact; its value is
+never stored in the generated app or printed.
 Authentication gates access to the Viewer but does not provide transport
 security, rate limiting, SSO, MFA, centralized identity-provider revocation,
-or network policy. For \code{createShinyApp()}, the source credentials
+or network policy. For an advanced descriptor, the source credentials
 database need only be a regular readable file. It is validated before target
 mutation, and only the encrypted database is copied into the generated app.
 At runtime, the deployed private copy must be readable/writable and its
@@ -144,7 +149,9 @@ values do not alter the generated app.}
 \value{
 Invisibly returns \code{result_dir}. If that path changes resolution
   during the build, warns and returns the frozen absolute publication path.
-  Authentication descriptor and database errors occur before target mutation.
+  Advanced authentication descriptor and database errors occur before target
+  mutation. Interactive setup is transactional and preserves the previously
+  published app on pre-commit failure.
 }
 \description{
 Bundles a CerebroNexus Shiny app into \code{result_dir}, copying the

@@ -127,6 +127,7 @@ test_that("setup operations expose the production dependency seam", {
       "read_input",
       "read_password",
       "random_bytes",
+      "create_db",
       "namespace_available",
       "fs_info",
       "base_info",

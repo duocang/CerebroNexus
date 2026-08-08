@@ -4,6 +4,13 @@
     read_input = function(prompt) base::readline(prompt),
     read_password = function(prompt) askpass::askpass(prompt),
     random_bytes = function(size) openssl::rand_bytes(size),
+    create_db = function(credentials_data, sqlite_path, passphrase) {
+      suppressMessages(shinymanager::create_db(
+        credentials_data = credentials_data,
+        sqlite_path = sqlite_path,
+        passphrase = passphrase
+      ))
+    },
     namespace_available = function(package) {
       requireNamespace(package, quietly = TRUE)
     },
@@ -720,6 +727,138 @@
     )
   }
   invisible(state)
+}
+
+.viewerAuthCreateStagedDatabase <- function(state, database_path) {
+  fail <- function(message) stop(message, call. = FALSE)
+  ops <- state$ops
+  auth_dir <- dirname(database_path)
+  accounts_valid <- is.data.frame(state$accounts) &&
+    identical(names(state$accounts), c("user", "password", "admin")) &&
+    nrow(state$accounts) > 0L
+  if (
+    !isTRUE(accounts_valid) ||
+      !is.character(state$passphrase) ||
+      length(state$passphrase) != 1L ||
+      is.na(state$passphrase)
+  ) {
+    fail("Authentication accounts are not prepared.")
+  }
+  if (
+    !identical(.viewerAuthCall(ops$entry_exists(auth_dir)), FALSE) ||
+      !identical(.viewerAuthCall(ops$entry_exists(database_path)), FALSE)
+  ) {
+    fail("Failed to prepare the staged authentication directory.")
+  }
+  if (!isTRUE(.viewerAuthCall(ops$claim_dir(auth_dir, "0700")))) {
+    fail("Failed to prepare the staged authentication directory.")
+  }
+  if (!isTRUE(.viewerAuthCall(ops$chmod(auth_dir, "0700", FALSE)))) {
+    fail("Failed to harden the staged authentication database.")
+  }
+  auth_dir_snapshot <- tryCatch(
+    .viewerAuthReadDirectoryIdentity(auth_dir, "0700", ops),
+    error = function(condition) NULL
+  )
+  if (is.null(auth_dir_snapshot)) {
+    fail("Failed to harden the staged authentication database.")
+  }
+
+  created <- .viewerAuthCall(ops$create_db(
+    state$accounts,
+    database_path,
+    state$passphrase
+  ))
+  if (!isTRUE(created)) {
+    fail("Failed to create the staged authentication database.")
+  }
+  if (!isTRUE(.viewerAuthCall(ops$chmod(database_path, "0600", FALSE)))) {
+    fail("Failed to harden the staged authentication database.")
+  }
+  database_snapshot <- tryCatch(
+    .viewerAuthReadFileIdentity(database_path, "0600", ops),
+    error = function(condition) NULL
+  )
+  if (is.null(database_snapshot)) {
+    fail("Failed to harden the staged authentication database.")
+  }
+
+  validated <- tryCatch(
+    {
+      .viewerAuthValidateDatabase(
+        database_path,
+        state$passphrase,
+        state$env_name
+      )
+      TRUE
+    },
+    error = function(condition) FALSE
+  )
+  database_after_validation <- tryCatch(
+    .viewerAuthReadFileIdentity(database_path, "0600", ops),
+    error = function(condition) NULL
+  )
+  auth_dir_after_validation <- tryCatch(
+    .viewerAuthReadDirectoryIdentity(auth_dir, "0700", ops),
+    error = function(condition) NULL
+  )
+  if (
+    !isTRUE(validated) ||
+      !.viewerAuthSameFileIdentity(
+        database_snapshot,
+        database_after_validation
+      ) ||
+      !.viewerAuthSameDirectory(
+        auth_dir_snapshot,
+        auth_dir_after_validation
+      )
+  ) {
+    fail("Failed to validate the staged authentication database.")
+  }
+
+  sidecars <- paste0(database_path, c("-journal", "-wal", "-shm"))
+  for (sidecar in sidecars) {
+    exists <- .viewerAuthCall(ops$entry_exists(sidecar))
+    if (identical(exists, FALSE)) {
+      next
+    }
+    sidecar_snapshot <- tryCatch(
+      .viewerAuthReadFileIdentity(
+        sidecar,
+        "0600",
+        ops,
+        exact_mode = FALSE
+      ),
+      error = function(condition) NULL
+    )
+    if (
+      !isTRUE(exists) ||
+        is.null(sidecar_snapshot) ||
+        !isTRUE(.viewerAuthCall(ops$unlink_file(sidecar)))
+    ) {
+      fail("Failed to finalize the staged authentication database.")
+    }
+  }
+  if (any(vapply(sidecars, ops$entry_exists, logical(1)))) {
+    fail("Failed to finalize the staged authentication database.")
+  }
+
+  final_database <- tryCatch(
+    .viewerAuthReadFileIdentity(database_path, "0600", ops),
+    error = function(condition) NULL
+  )
+  final_auth_dir <- tryCatch(
+    .viewerAuthReadDirectoryIdentity(auth_dir, "0700", ops),
+    error = function(condition) NULL
+  )
+  if (
+    !.viewerAuthSameFileIdentity(database_snapshot, final_database) ||
+      !.viewerAuthSameDirectory(auth_dir_snapshot, final_auth_dir)
+  ) {
+    fail("Failed to finalize the staged authentication database.")
+  }
+  state$accounts <- NULL
+  invisible(database_path)
 }
 
 .viewerAuthRevalidateParent <- function(state) {

@@ -1002,6 +1002,7 @@ dedent <- function(string) {
 
 .bundlePublicationOps <- function() {
   list(
+    fs_info = function(path) fs::file_info(path, follow = FALSE),
     access = function(path, mode) file.access(path, mode = mode),
     list_dir = function(path) {
       list.files(path, all.files = TRUE, no.. = TRUE)
@@ -1012,6 +1013,54 @@ dedent <- function(string) {
       unlink(path, recursive = recursive, force = force)
     }
   )
+}
+
+.bundleDirectoryIdentity <- function(path, ops) {
+  attempt <- .attemptBundleOperation(function() ops$fs_info(path))
+  info <- attempt$value
+  identity_fields <- if (
+    is.data.frame(info) &&
+      nrow(info) == 1L &&
+      all(c("device_id", "inode") %in% names(info))
+  ) {
+    c(info$device_id[[1L]], info$inode[[1L]])
+  } else {
+    NULL
+  }
+  if (
+    !is.null(attempt$condition) ||
+      !is.data.frame(info) ||
+      nrow(info) != 1L ||
+      !all(c("type", "device_id", "inode") %in% names(info)) ||
+      !identical(as.character(info$type[[1L]]), "directory") ||
+      !is.numeric(identity_fields) ||
+      length(identity_fields) != 2L ||
+      anyNA(identity_fields) ||
+      !all(is.finite(identity_fields)) ||
+      any(identity_fields < 0) ||
+      .pathIsSymbolicLink(path)
+  ) {
+    return(NULL)
+  }
+  canonical <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(condition) NULL
+  )
+  if (is.null(canonical)) {
+    return(NULL)
+  }
+  list(
+    path = canonical,
+    device_id = info$device_id[[1L]],
+    inode = info$inode[[1L]]
+  )
+}
+
+.sameBundleDirectoryIdentity <- function(left, right) {
+  !is.null(left) &&
+    !is.null(right) &&
+    identical(left$device_id, right$device_id) &&
+    identical(left$inode, right$inode)
 }
 
 .bundleBuildOps <- function() {
@@ -1104,6 +1153,25 @@ dedent <- function(string) {
 
 .removeBundleStage <- function(stage) {
   unlink(stage, recursive = TRUE, force = TRUE)
+}
+
+.finishBundleBuild <- function(bundle_cleanup, bundle_lock) {
+  tryCatch(
+    {
+      stage <- bundle_cleanup$stage
+      if (!is.null(stage) && .bundlePathExists(stage)) {
+        .removeBundleStage(stage)
+        if (.bundlePathExists(stage)) {
+          warning(
+            "Failed to remove the private app staging directory: ",
+            stage,
+            call. = FALSE
+          )
+        }
+      }
+    },
+    finally = .releaseBundleLock(bundle_lock)
+  )
 }
 
 .isolateBundleLock <- function(from, to) {
@@ -1575,9 +1643,25 @@ dedent <- function(string) {
       call. = FALSE
     )
   }
+  stage_identity <- .bundleDirectoryIdentity(stage, ops)
+  if (is.null(stage_identity)) {
+    stop("Failed to verify the staged app identity.", call. = FALSE)
+  }
 
   backup <- NULL
+  backup_identity <- NULL
+  backup_is_owned <- function() {
+    !is.null(backup) &&
+      .sameBundleDirectoryIdentity(
+        backup_identity,
+        .bundleDirectoryIdentity(backup, ops)
+      )
+  }
   if (isTRUE(destination$exists)) {
+    backup_identity <- .bundleDirectoryIdentity(result_dir, ops)
+    if (is.null(backup_identity)) {
+      stop("Failed to verify the existing app identity.", call. = FALSE)
+    }
     backup <- tempfile(
       pattern = paste0(".", basename(result_dir), "-backup-"),
       tmpdir = dirname(result_dir)
@@ -1586,7 +1670,9 @@ dedent <- function(string) {
     backup_attempt <- .attemptBundleOperation(function() {
       ops$rename(result_dir, backup)
     })
-    backup_ready <- dir.exists(backup) && !.bundlePathExists(result_dir)
+    backup_ready <- dir.exists(backup) &&
+      !.bundlePathExists(result_dir) &&
+      backup_is_owned()
     if (!.bundleOperationSucceeded(backup_attempt) || !backup_ready) {
       if (dir.exists(backup)) {
         if (.bundlePathExists(result_dir)) {
@@ -1601,10 +1687,24 @@ dedent <- function(string) {
             call. = FALSE
           )
         }
+        if (!backup_is_owned()) {
+          stop(
+            "Failed to stage the existing app because its backup identity ",
+            "changed. The path was preserved at '",
+            backup,
+            "'.",
+            call. = FALSE
+          )
+        }
         restore_attempt <- .attemptBundleOperation(function() {
           ops$rename(backup, result_dir)
         })
-        restored <- dir.exists(result_dir) && !.bundlePathExists(backup)
+        restored <- dir.exists(result_dir) &&
+          !.bundlePathExists(backup) &&
+          .sameBundleDirectoryIdentity(
+            backup_identity,
+            .bundleDirectoryIdentity(result_dir, ops)
+          )
         if (restored) {
           stop(
             "Failed to stage the existing app for replacement; the previous ",
@@ -1633,9 +1733,11 @@ dedent <- function(string) {
   publish_attempt <- .attemptBundleOperation(function() {
     ops$rename(stage, result_dir)
   })
+  published_identity <- .bundleDirectoryIdentity(result_dir, ops)
   published <- .bundleOperationSucceeded(publish_attempt) &&
     dir.exists(result_dir) &&
-    !.bundlePathExists(stage)
+    !.bundlePathExists(stage) &&
+    .sameBundleDirectoryIdentity(stage_identity, published_identity)
   if (!published) {
     if (!is.null(backup) && dir.exists(backup)) {
       unexpected_destination <- .bundlePathExists(result_dir)
@@ -1651,10 +1753,24 @@ dedent <- function(string) {
           call. = FALSE
         )
       }
+      if (!backup_is_owned()) {
+        stop(
+          "Failed to publish the staged app bundle because the previous ",
+          "bundle identity changed. The path was preserved at '",
+          backup,
+          "'.",
+          call. = FALSE
+        )
+      }
       restore_attempt <- .attemptBundleOperation(function() {
         ops$rename(backup, result_dir)
       })
-      restored <- dir.exists(result_dir) && !.bundlePathExists(backup)
+      restored <- dir.exists(result_dir) &&
+        !.bundlePathExists(backup) &&
+        .sameBundleDirectoryIdentity(
+          backup_identity,
+          .bundleDirectoryIdentity(result_dir, ops)
+        )
       if (restored) {
         stop(
           "Failed to publish the staged app bundle; the previous bundle was ",
@@ -1689,12 +1805,96 @@ dedent <- function(string) {
     )
   }
 
-  on_commit()
+  commit_error <- tryCatch(
+    {
+      on_commit()
+      NULL
+    },
+    error = identity
+  )
+  if (!is.null(commit_error)) {
+    current_identity <- .bundleDirectoryIdentity(result_dir, ops)
+    if (!.sameBundleDirectoryIdentity(stage_identity, current_identity)) {
+      detail <- if (!is.null(backup) && dir.exists(backup)) {
+        paste0(" The previous bundle remains recoverable at '", backup, "'.")
+      } else {
+        ""
+      }
+      stop(
+        "App publication commit failed after the destination identity changed.",
+        detail,
+        call. = FALSE
+      )
+    }
+
+    withdraw_attempt <- .attemptBundleOperation(function() {
+      ops$rename(result_dir, stage)
+    })
+    withdrawn_identity <- .bundleDirectoryIdentity(stage, ops)
+    withdrawn <- .sameBundleDirectoryIdentity(
+      stage_identity,
+      withdrawn_identity
+    ) &&
+      !.bundlePathExists(result_dir)
+    if (!withdrawn) {
+      detail <- if (!is.null(backup) && dir.exists(backup)) {
+        paste0(" The previous bundle remains recoverable at '", backup, "'.")
+      } else {
+        ""
+      }
+      stop(
+        "App publication commit failed and the new bundle could not be ",
+        "withdrawn.",
+        detail,
+        .bundleOperationDetail(withdraw_attempt),
+        call. = FALSE
+      )
+    }
+
+    if (!is.null(backup) && dir.exists(backup)) {
+      if (!backup_is_owned()) {
+        stop(
+          "App publication commit failed because the previous bundle ",
+          "identity changed. The path was preserved at '",
+          backup,
+          "'.",
+          call. = FALSE
+        )
+      }
+      restore_attempt <- .attemptBundleOperation(function() {
+        ops$rename(backup, result_dir)
+      })
+      restored <- dir.exists(result_dir) &&
+        !.bundlePathExists(backup) &&
+        .sameBundleDirectoryIdentity(
+          backup_identity,
+          .bundleDirectoryIdentity(result_dir, ops)
+        )
+      if (!restored) {
+        stop(
+          "App publication commit failed and the previous bundle could not ",
+          "be restored. It remains recoverable at '",
+          backup,
+          "'.",
+          .bundleOperationDetail(restore_attempt),
+          call. = FALSE
+        )
+      }
+    }
+    stop(commit_error)
+  }
 
   if (!is.null(backup) && dir.exists(backup)) {
-    cleanup_attempt <- .attemptBundleOperation(function() {
-      ops$unlink(backup, recursive = TRUE, force = TRUE)
-    })
+    cleanup_attempt <- if (backup_is_owned()) {
+      .attemptBundleOperation(function() {
+        ops$unlink(backup, recursive = TRUE, force = TRUE)
+      })
+    } else {
+      list(
+        value = NULL,
+        condition = "the backup identity changed before cleanup"
+      )
+    }
     if (.bundlePathExists(backup)) {
       warning(
         "The new app was published, but an old backup remains at: ",
@@ -1839,19 +2039,24 @@ dedent <- function(string) {
 #'   \code{cerebro_data}.
 #' @param spatial_plot_rotation Named list/vector; initial rotation (degrees)
 #'   applied to spatial cell coordinates. Names must match \code{cerebro_data}.
-#' @param auth Optional strict authentication descriptor. \code{NULL}, the
-#' default, leaves the Viewer unauthenticated. The only supported named-list
-#' shape has \code{provider = "shinymanager"}; \code{credentials} must be an
-#' absolute path to a readable encrypted shinymanager SQLite database; and
-#' \code{passphrase_env} must name an environment variable containing at least
-#' 32 bytes of high-entropy secret material. The optional whole-number
-#' \code{timeout_minutes} is from 1 through 1440; \code{timeout_minutes} defaults
-#' to 15.
-#' The environment-held passphrase is read only for validation and provider
-#' setup; it is never stored in \code{Cerebro.options} or returned artifacts.
+#' @param auth Authentication mode. \code{NULL}, the default, leaves the Viewer
+#' unauthenticated. In an interactive R session, \code{TRUE} prompts for one or
+#' more accounts, creates an encrypted SQLite database inside the generated
+#' app, writes its high-entropy passphrase to a sibling \code{.auth.env} file,
+#' and installs that variable in the current process. A named advanced
+#' descriptor instead requires \code{provider = "shinymanager"}, an absolute
+#' readable encrypted SQLite \code{credentials} path, and a
+#' \code{passphrase_env} containing at least 32 bytes. Its optional whole-number
+#' \code{timeout_minutes} is from 1 through 1440 and defaults to 15. Explicit
+#' \code{FALSE} is invalid; use \code{NULL} to disable authentication.
+#' For an advanced descriptor, the environment-held passphrase is read only for
+#' validation and provider setup and is never stored in \code{Cerebro.options}
+#' or copied into the app. In simple \code{TRUE} mode, the sibling
+#' \code{.auth.env} file is the deliberate deployment artifact; its value is
+#' never stored in the generated app or printed.
 #' Authentication gates access to the Viewer but does not provide transport
 #' security, rate limiting, SSO, MFA, centralized identity-provider revocation,
-#' or network policy. For \code{createShinyApp()}, the source credentials
+#' or network policy. For an advanced descriptor, the source credentials
 #' database need only be a regular readable file. It is validated before target
 #' mutation, and only the encrypted database is copied into the generated app.
 #' At runtime, the deployed private copy must be readable/writable and its
@@ -1862,7 +2067,9 @@ dedent <- function(string) {
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
 #'   during the build, warns and returns the frozen absolute publication path.
-#'   Authentication descriptor and database errors occur before target mutation.
+#'   Advanced authentication descriptor and database errors occur before target
+#'   mutation. Interactive setup is transactional and preserves the previously
+#'   published app on pre-commit failure.
 #' @importFrom later later
 #' @importFrom stats setNames
 #' @export
@@ -2008,34 +2215,31 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
-  viewer_auth <- .compileViewerAuth(auth, scope = "bundle")
   requested_result_dir <- result_dir
-  prepared_result <- .prepareBundleResultTarget(result_dir)
-  result_dir <- prepared_result$target
-  result_parent <- prepared_result$parent
-  bundle_lock <- .acquireBundleLock(result_dir)
-  bundle_cleanup <- new.env(parent = emptyenv())
-  bundle_cleanup$stage <- NULL
-  on.exit(
-    tryCatch(
-      {
-        stage <- bundle_cleanup$stage
-        if (!is.null(stage) && .bundlePathExists(stage)) {
-          .removeBundleStage(stage)
-          if (.bundlePathExists(stage)) {
-            warning(
-              "Failed to remove the private app staging directory: ",
-              stage,
-              call. = FALSE
-            )
-          }
-        }
-      },
-      finally = .releaseBundleLock(bundle_lock)
-    ),
-    add = TRUE
-  )
-  .bundleDestinationState(result_dir, overwrite)
+  simple_auth_user_count <- NULL
+  simple_auth <- if (identical(auth, TRUE)) {
+    .viewerAuthPreflightSimple(result_dir)
+  } else {
+    NULL
+  }
+  if (!is.null(simple_auth)) {
+    on.exit(.viewerAuthFinishSimple(simple_auth), add = TRUE)
+    result_dir <- simple_auth$result_target
+    result_parent <- simple_auth$result_parent
+    viewer_auth <- list(config = NULL, source = NULL)
+    bundle_lock <- NULL
+    bundle_cleanup <- NULL
+  } else {
+    viewer_auth <- .compileViewerAuth(auth, scope = "bundle")
+    prepared_result <- .prepareBundleResultTarget(result_dir)
+    result_dir <- prepared_result$target
+    result_parent <- prepared_result$parent
+    bundle_lock <- .acquireBundleLock(result_dir)
+    bundle_cleanup <- new.env(parent = emptyenv())
+    bundle_cleanup$stage <- NULL
+    on.exit(.finishBundleBuild(bundle_cleanup, bundle_lock), add = TRUE)
+    .bundleDestinationState(result_dir, overwrite)
+  }
 
   if (!is.null(colors)) {
     if (is.null(names(colors)) || any(names(colors) == "")) {
@@ -2179,10 +2383,17 @@ createShinyApp <- function(
   copy_plan <- list()
   claimed_targets <- character()
   claimed_keys <- character()
-  claimed_sources <- character()
+  claimed_sources <- list()
   claimed_artifacts <- character()
   claimed_directories <- logical()
-  claim_target <- function(target, source, artifact, directory = FALSE) {
+  claimed_copies <- logical()
+  claim_target <- function(
+    target,
+    source,
+    artifact,
+    directory = FALSE,
+    copy = TRUE
+  ) {
     target <- .portableBundlePath(
       target,
       paste0("The ", artifact, " bundle target '", target, "'")
@@ -2195,7 +2406,8 @@ createShinyApp <- function(
         duplicate <- identical(target, existing) &&
           identical(source, claimed_sources[[claim_index]]) &&
           identical(artifact, claimed_artifacts[[claim_index]]) &&
-          identical(isTRUE(directory), claimed_directories[[claim_index]])
+          identical(isTRUE(directory), claimed_directories[[claim_index]]) &&
+          identical(isTRUE(copy), claimed_copies[[claim_index]])
         if (duplicate) {
           return(invisible(FALSE))
         }
@@ -2222,18 +2434,28 @@ createShinyApp <- function(
     }
     claimed_targets <<- c(claimed_targets, target)
     claimed_keys <<- c(claimed_keys, key)
-    claimed_sources <<- c(claimed_sources, source)
+    claimed_sources[length(claimed_sources) + 1L] <<- list(source)
     claimed_artifacts <<- c(claimed_artifacts, artifact)
     claimed_directories <<- c(claimed_directories, isTRUE(directory))
-    copy_plan[[length(copy_plan) + 1L]] <<- list(
-      target = target,
-      source = source,
-      artifact = artifact,
-      directory = directory
-    )
+    claimed_copies <<- c(claimed_copies, isTRUE(copy))
+    if (isTRUE(copy)) {
+      copy_plan[[length(copy_plan) + 1L]] <<- list(
+        target = target,
+        source = source,
+        artifact = artifact,
+        directory = directory
+      )
+    }
   }
 
-  if (!is.null(viewer_auth$config)) {
+  if (!is.null(simple_auth)) {
+    claim_target(
+      "private-data/auth/credentials.sqlite",
+      NULL,
+      "authentication database",
+      copy = FALSE
+    )
+  } else if (!is.null(viewer_auth$config)) {
     claim_target(
       "private-data/auth/credentials.sqlite",
       viewer_auth$source,
@@ -2426,6 +2648,37 @@ createShinyApp <- function(
     }
   }
 
+  if (!is.null(simple_auth)) {
+    .bundleDestinationState(result_dir, overwrite)
+    .viewerAuthRevalidateInitialSecret(simple_auth)
+    .viewerAuthCompleteSimple(simple_auth)
+    simple_auth_user_count <- nrow(simple_auth$accounts)
+    prepared_result <- .prepareBundleResultTarget(simple_auth$result_target)
+    if (
+      !identical(prepared_result$target, simple_auth$result_target) ||
+        !identical(prepared_result$parent, simple_auth$result_parent)
+    ) {
+      stop(
+        "The result target changed before authentication setup.",
+        call. = FALSE
+      )
+    }
+    result_dir <- simple_auth$result_target
+    result_parent <- prepared_result$parent
+    bundle_lock <- .acquireBundleLock(result_dir)
+    bundle_cleanup <- new.env(parent = emptyenv())
+    bundle_cleanup$stage <- NULL
+    on.exit(.finishBundleBuild(bundle_cleanup, bundle_lock), add = TRUE)
+    .bundleDestinationState(result_dir, overwrite)
+    .viewerAuthRevalidateInitialSecret(simple_auth)
+    viewer_auth$config <- .viewerAuthManifest(
+      scope = "bundle",
+      credentials_path = "private-data/auth/credentials.sqlite",
+      passphrase_env = simple_auth$env_name,
+      timeout_minutes = 15L
+    )
+  }
+
   # Assemble a private sibling stage ----------------------------------------##
   publish_mode <- if (dir.exists(result_dir)) {
     file.info(result_dir)$mode[[1L]]
@@ -2449,6 +2702,22 @@ createShinyApp <- function(
     cat("Creating staged directory structure...\n")
   }
   dir.create(private_data_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (!is.null(simple_auth)) {
+    .viewerAuthRevalidateInitialSecret(simple_auth)
+    if (is.null(simple_auth$existing_snapshot)) {
+      .viewerAuthCreateSecretCandidate(simple_auth)
+    }
+    .viewerAuthCreateStagedDatabase(
+      simple_auth,
+      file.path(
+        stage_result_dir,
+        "private-data",
+        "auth",
+        "credentials.sqlite"
+      )
+    )
+  }
 
   if (verbose) {
     cat("Copying Shiny source files...\n")
@@ -2487,7 +2756,7 @@ createShinyApp <- function(
     }
   }
 
-  if (!is.null(viewer_auth$config)) {
+  if (is.null(simple_auth) && !is.null(viewer_auth$config)) {
     .hardenBundleAuthentication(
       file.path(
         stage_result_dir,
@@ -2657,11 +2926,24 @@ createShinyApp <- function(
       )
     }
   )
+  if (!is.null(simple_auth)) {
+    .viewerAuthPublishSecret(simple_auth)
+    .viewerAuthInstallEnvironment(simple_auth)
+    .viewerAuthRevalidatePublishedSecret(simple_auth)
+  }
   .publishBundleStage(
     stage_result_dir,
     result_dir,
     overwrite,
-    publish_mode
+    publish_mode,
+    on_commit = if (is.null(simple_auth)) {
+      function() invisible(NULL)
+    } else {
+      function() {
+        .viewerAuthRevalidatePublishedSecret(simple_auth)
+        .viewerAuthCommitSimple(simple_auth)
+      }
+    }
   )
 
   # Summary ------------------------------------------------------------------##
@@ -2683,9 +2965,36 @@ createShinyApp <- function(
     cat("Port:", port, "\n")
     cat("Host:", host, "\n")
     cat("Launch browser:", launch_browser, "\n")
-    cat("\nTo launch the app, run:\n")
-    cat("  setwd('", result_dir, "')\n", sep = "")
-    cat("  shiny::runApp('app.R')\n")
+    if (is.null(simple_auth)) {
+      cat("\nTo launch the app, run:\n")
+      cat("  setwd('", result_dir, "')\n", sep = "")
+      cat("  shiny::runApp('app.R')\n")
+    } else {
+      app_literal <- encodeString(result_dir, quote = '"')
+      secret_literal <- encodeString(simple_auth$secret_path, quote = '"')
+      cat(
+        "\nAuthentication enabled for ",
+        simple_auth_user_count,
+        " users.\n",
+        sep = ""
+      )
+      cat(
+        "Authentication secret file: ",
+        simple_auth$secret_path,
+        "\n",
+        sep = ""
+      )
+      cat("Current R process:\n")
+      cat("  shiny::runApp(", app_literal, ")\n", sep = "")
+      cat("New R process:\n")
+      cat("  readRenviron(", secret_literal, ")\n", sep = "")
+      cat("  shiny::runApp(", app_literal, ")\n", sep = "")
+      cat(
+        "For Shiny Server or Docker, transfer the secret file separately; ",
+        "do not commit it or place it inside the app directory.\n",
+        sep = ""
+      )
+    }
     cat("========================================\n")
   }
 

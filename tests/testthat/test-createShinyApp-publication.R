@@ -1,6 +1,7 @@
 publication_test_ops <- function(...) {
   overrides <- list(...)
   defaults <- list(
+    fs_info = function(path) fs::file_info(path, follow = FALSE),
     access = function(path, mode) file.access(path, mode = mode),
     list_dir = function(path) {
       list.files(path, all.files = TRUE, no.. = TRUE)
@@ -501,6 +502,100 @@ test_that("replacement commits before removing the old backup", {
   )
   expect_identical(commit_calls, 1L)
   expect_length(publication_test_backups(root), 0L)
+})
+
+test_that("callback errors withdraw the new app and restore the old app", {
+  for (has_previous in c(FALSE, TRUE)) {
+    root <- withr::local_tempdir()
+    stage <- file.path(root, "stage")
+    result <- file.path(root, "app")
+    dir.create(stage)
+    writeLines("NEW", file.path(stage, "marker.txt"))
+    if (has_previous) {
+      dir.create(result)
+      writeLines("OLD", file.path(result, "marker.txt"))
+    }
+
+    expect_error(
+      .publishBundleStage(
+        stage,
+        result,
+        overwrite = TRUE,
+        publish_mode = as.octmode("0750"),
+        on_commit = function() stop("commit rejected", call. = FALSE)
+      ),
+      "commit rejected",
+      fixed = TRUE
+    )
+    expect_true(dir.exists(stage))
+    expect_identical(readLines(file.path(stage, "marker.txt")), "NEW")
+    if (has_previous) {
+      expect_identical(readLines(file.path(result, "marker.txt")), "OLD")
+    } else {
+      expect_false(.bundlePathExists(result))
+    }
+    expect_length(publication_test_backups(root), 0L)
+  }
+})
+
+test_that("callback rollback never restores a replacement backup", {
+  root <- withr::local_tempdir()
+  tree <- publication_test_tree(root)
+  displaced <- file.path(root, "owned-old-app")
+
+  error <- tryCatch(
+    .publishBundleStage(
+      tree$stage,
+      tree$result,
+      overwrite = TRUE,
+      publish_mode = as.octmode("0750"),
+      on_commit = function() {
+        backup <- publication_test_backups(root)
+        stopifnot(length(backup) == 1L, file.rename(backup, displaced))
+        dir.create(backup)
+        writeLines("FOREIGN", file.path(backup, "marker.txt"))
+        stop("commit rejected", call. = FALSE)
+      }
+    ),
+    error = identity
+  )
+
+  expect_s3_class(error, "error")
+  expect_false(.bundlePathExists(tree$result))
+  expect_identical(readLines(file.path(tree$stage, "marker.txt")), "NEW")
+  expect_identical(readLines(file.path(displaced, "marker.txt")), "OLD")
+  backups <- publication_test_backups(root)
+  expect_length(backups, 1L)
+  expect_identical(readLines(file.path(backups, "marker.txt")), "FOREIGN")
+})
+
+test_that("backup cleanup never deletes a replacement directory", {
+  root <- withr::local_tempdir()
+  tree <- publication_test_tree(root)
+  displaced <- file.path(root, "owned-old-app")
+
+  expect_warning(
+    .publishBundleStage(
+      tree$stage,
+      tree$result,
+      overwrite = TRUE,
+      publish_mode = as.octmode("0750"),
+      on_commit = function() {
+        backup <- publication_test_backups(root)
+        stopifnot(length(backup) == 1L, file.rename(backup, displaced))
+        dir.create(backup)
+        writeLines("FOREIGN", file.path(backup, "marker.txt"))
+      }
+    ),
+    "backup remains",
+    fixed = TRUE
+  )
+
+  expect_identical(readLines(file.path(tree$result, "marker.txt")), "NEW")
+  expect_identical(readLines(file.path(displaced, "marker.txt")), "OLD")
+  backups <- publication_test_backups(root)
+  expect_length(backups, 1L)
+  expect_identical(readLines(file.path(backups, "marker.txt")), "FOREIGN")
 })
 
 test_that("publication commits before backup cleanup warnings become errors", {
