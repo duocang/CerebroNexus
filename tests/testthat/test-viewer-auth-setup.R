@@ -819,13 +819,17 @@ test_that("candidate hard-link failure has no rename or copy fallback", {
     fixed = TRUE
   )
   .viewerAuthFinishSimple(state)
-  source <- readLines(testthat::test_path(
-    "..",
-    "..",
-    "R",
-    "viewer-auth-setup.R"
-  ))
-  expect_false(any(grepl("file.rename|file.copy", source)))
+  namespace <- asNamespace("CerebroNexus")
+  auth_functions <- ls(
+    namespace,
+    pattern = "^\\.viewerAuth",
+    all.names = TRUE
+  )
+  implementation <- unlist(lapply(auth_functions, function(name) {
+    value <- get(name, envir = namespace, inherits = FALSE)
+    if (is.function(value)) deparse(value) else character()
+  }))
+  expect_false(any(grepl("file.rename|file.copy", implementation)))
 })
 
 test_that("production hard links suppress an occupied-target warning", {

@@ -5,4 +5,13 @@
 ## - `.` is used in magrittr/dplyr pipe expressions.
 ## - `Cerebro.options` is assigned in .GlobalEnv intentionally (global option
 ##   store used by the sourced Viewer modules).
-utils::globalVariables(c("ui", "server", "group", ".", "Cerebro.options"))
+## - `viewer_auth_apply` is provided by the sourced Viewer authentication
+##   runtime before either app entry point calls it.
+utils::globalVariables(c(
+  "ui",
+  "server",
+  "group",
+  ".",
+  "Cerebro.options",
+  "viewer_auth_apply"
+))
