@@ -60,7 +60,7 @@ createShinyApp(
 )
 ```
 
-See [Control access with a login page](https://mihem.github.io/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html)
+See [Control access with a login page](https://www.mheming.com/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html)
 for multi-user setup and deployment examples.
 
 ## License

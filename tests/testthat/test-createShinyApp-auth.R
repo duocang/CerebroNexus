@@ -79,6 +79,12 @@ test_that("authentication validates path and environment before provider", {
     CerebroNexus:::.compileViewerAuth(auth_test_descriptor(path)),
     "CEREBRO_AUTH_TEST_KEY is not set"
   )
+
+  withr::local_envvar(CEREBRO_AUTH_TEST_KEY = "too-short")
+  expect_error(
+    CerebroNexus:::.compileViewerAuth(auth_test_descriptor(path)),
+    "at least 16 characters"
+  )
 })
 
 test_that("authentication timeout is a whole minute in range", {
@@ -440,6 +446,44 @@ test_that("createShinyApp makes the bundled database writable at runtime", {
   expect_identical(as.integer(file.info(dirname(bundled))$mode), 448L)
 })
 
+test_that("createShinyApp fails when private authentication modes do not stick", {
+  skip_on_os("windows")
+  fixture <- auth_test_build_fixture()
+  withr::local_envvar(CEREBRO_AUTH_TEST_KEY = "test database passphrase")
+  testthat::local_mocked_bindings(
+    .compileViewerAuth = function(auth) {
+      auth_test_compiled_config(auth$credentials)
+    },
+    .package = "CerebroNexus"
+  )
+
+  for (failure in c("chmod", "mode")) {
+    build_ops <- CerebroNexus:::.bundleBuildOps()
+    build_ops$chmod <- function(path, mode) failure != "chmod"
+    build_ops$mode <- function(path) {
+      if (failure == "mode") 420L else as.integer(file.info(path)$mode)
+    }
+    testthat::local_mocked_bindings(
+      .bundleBuildOps = function() build_ops,
+      .package = "CerebroNexus",
+      .env = environment()
+    )
+    expect_error(
+      createShinyApp(
+        cerebro_data = c(Dataset = fixture$crb),
+        result_dir = file.path(fixture$root, paste0("app-", failure)),
+        auth = list(
+          credentials = fixture$credentials,
+          passphrase_env = "CEREBRO_AUTH_TEST_KEY"
+        ),
+        launch_browser = FALSE,
+        verbose = FALSE
+      ),
+      "Failed to prepare the authentication database"
+    )
+  }
+})
+
 test_that("createShinyApp keeps unauthenticated output unchanged", {
   fixture <- auth_test_build_fixture()
   app <- file.path(fixture$root, "public-app")
@@ -599,6 +643,9 @@ test_that("authentication deployment documentation is runnable and credited", {
     "shinymanager::create_db",
     "createShinyApp(",
     "readRenviron(",
+    "openssl rand -base64 32",
+    "shinymanager.pwd_failure_limit",
+    "rate limiting",
     "Shiny Server",
     "systemd",
     "Docker Compose",
@@ -623,5 +670,15 @@ test_that("authentication deployment documentation is runnable and credited", {
   readme <- readLines(auth_test_package_file("README.md"), warn = FALSE)
   news <- readLines(auth_test_package_file("NEWS.md"), warn = FALSE)
   expect_true(any(grepl("auth = list", readme, fixed = TRUE)))
+  expect_true(any(grepl(
+    "https://www.mheming.com/CerebroNexus/articles/",
+    readme,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "https://mihem.github.io/CerebroNexus/articles/",
+    readme,
+    fixed = TRUE
+  )))
   expect_true(any(grepl("encrypted shinymanager", news, fixed = TRUE)))
 })

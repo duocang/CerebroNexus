@@ -1016,7 +1016,10 @@ dedent <- function(string) {
 
 .bundleBuildOps <- function() {
   list(
+    access = function(path, mode) file.access(path, mode = mode),
+    chmod = function(path, mode) Sys.chmod(path, mode = mode),
     copy = function(from, to, ...) file.copy(from, to, ...),
+    mode = function(path) as.integer(file.info(path)$mode),
     save_rds = function(object, file) saveRDS(object, file),
     write_lines = function(text, connection) writeLines(text, connection)
   )
@@ -2429,13 +2432,17 @@ createShinyApp <- function(
       viewer_auth$credentials_path
     )
     auth_directory <- dirname(auth_database)
+    private_modes <- TRUE
     if (!identical(.Platform$OS.type, "windows")) {
-      Sys.chmod(auth_directory, mode = "0700")
-      Sys.chmod(auth_database, mode = "0600")
+      changed <- isTRUE(build_ops$chmod(auth_directory, mode = "0700")) &&
+        isTRUE(build_ops$chmod(auth_database, mode = "0600"))
+      private_modes <- changed &&
+        identical(build_ops$mode(auth_directory), 448L) &&
+        identical(build_ops$mode(auth_database), 384L)
     }
-    accessible <- file.access(auth_database, mode = 6L) == 0L &&
-      file.access(auth_directory, mode = 3L) == 0L
-    if (!isTRUE(accessible)) {
+    accessible <- build_ops$access(auth_database, mode = 6L) == 0L &&
+      build_ops$access(auth_directory, mode = 3L) == 0L
+    if (!isTRUE(private_modes) || !isTRUE(accessible)) {
       stop(
         "Failed to prepare the authentication database for runtime.",
         call. = FALSE

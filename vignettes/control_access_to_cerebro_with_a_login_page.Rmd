@@ -47,6 +47,16 @@ library(CerebroNexus)
 Create a small environment file outside the App directory. Replace the example
 value with a long random secret and restrict the file to its owner.
 
+For example, OpenSSL can generate a 32-byte random value:
+
+```bash
+openssl rand -base64 32
+```
+
+Paste that output after `CEREBRO_AUTH_PASSPHRASE=` below. CerebroNexus rejects
+passphrases shorter than 16 characters, but length alone is not a substitute
+for randomness.
+
 ```{r eval=FALSE}
 secret_file <- "my_app.env"
 stopifnot(!file.exists(secret_file))
@@ -125,6 +135,27 @@ shiny::runApp("my_app")
 
 Keep `my_app.env` outside `my_app`. Do not commit it or upload it with the
 App directory.
+
+# Limit failed sign-ins
+
+Set a finite shinymanager failure policy in the R process that runs the App:
+
+```{r eval=FALSE}
+options("shinymanager.pwd_failure_limit" = 10L)
+readRenviron("my_app.env")
+shiny::runApp("my_app")
+```
+
+For Shiny Server, put the option in an `.Rprofile` read by its service account.
+For a container, set it in the R command before `shiny::runApp()`. The counter
+is stored in the encrypted database and locks an account after the configured
+number of consecutive failures.
+
+Account locking is defense in depth, not the only control: an attacker can use
+it for targeted denial of service. Configure rate limiting at the reverse proxy
+or ingress as well, preferably per source address, and monitor repeated failures.
+Tune the proxy rule for Shiny's HTTP and WebSocket traffic rather than applying
+an aggressive blanket limit to every Viewer request.
 
 # Shiny Server and systemd
 

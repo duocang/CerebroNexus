@@ -8,6 +8,10 @@
   plaintext login passwords are not. Apps remain public when `auth` is omitted.
 - Authenticated Viewers use a responsive CerebroNexus login page with accessible
   controls and mobile-friendly spacing.
+- Viewer sessions now close server-side on logout or authentication timeout,
+  and forced-password-change pages cannot start the protected Viewer server.
+- Authentication preflight validates the complete shinymanager database,
+  requires a non-trivial database passphrase, and verifies private POSIX modes.
 
 # CerebroNexus 4.0
 

@@ -185,6 +185,13 @@
   ) {
     stop(passphrase_env, " is not set.", call. = FALSE)
   }
+  if (nchar(passphrase, type = "bytes") < 16L) {
+    stop(
+      passphrase_env,
+      " must contain at least 16 characters.",
+      call. = FALSE
+    )
+  }
 
   timeout_minutes <- if ("timeout_minutes" %in% auth_names) {
     auth$timeout_minutes
