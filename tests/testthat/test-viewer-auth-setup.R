@@ -240,6 +240,34 @@ test_that("secret parser rejects dangling symlink entries", {
   )
 })
 
+test_that("preflight rejects a dangling sibling before prompting", {
+  skip_on_os("windows")
+  root <- withr::local_tempdir()
+  result <- file.path(root, "app")
+  secret <- paste0(result, ".auth.env")
+  missing <- file.path(root, "missing.env")
+  expect_true(file.symlink(missing, secret))
+  prompts <- 0L
+  ops <- auth_setup_ops()
+  ops$read_input <- function(prompt) {
+    prompts <<- prompts + 1L
+    "should-not-be-read"
+  }
+  ops$read_password <- function(prompt) {
+    prompts <<- prompts + 1L
+    "should-not-be-read"
+  }
+
+  expect_error(
+    .viewerAuthPreflightSimple(result, ops),
+    "invalid or unsafe",
+    fixed = TRUE
+  )
+  expect_identical(prompts, 0L)
+  expect_true(.bundlePathExists(secret))
+  expect_identical(Sys.readlink(secret), missing)
+})
+
 test_that("hex encoding is deterministic and honors requested case", {
   bytes <- as.raw(c(0L, 1L, 15L, 16L, 127L, 128L, 255L))
   expect_identical(.viewerAuthHex(bytes, FALSE), "00010f107f80ff")
@@ -473,6 +501,42 @@ test_that("secret identity rejects wrong owner nonregular and access failure", {
   )
 })
 
+test_that("filesystem identity rejects non-finite and non-scalar metadata", {
+  root <- withr::local_tempdir()
+  path <- write_auth_secret(file.path(root, "app.auth.env"))
+  original <- .viewerAuthSetupOps()
+
+  for (field in c("device_id", "inode", "size")) {
+    for (invalid in list(NA_real_, Inf, -1)) {
+      ops <- original
+      ops$fs_info <- function(candidate) {
+        info <- original$fs_info(candidate)
+        info[[field]][[1L]] <- invalid
+        info
+      }
+      expect_error(
+        .viewerAuthReadFileIdentity(path, "0600", ops),
+        "invalid or unsafe",
+        fixed = TRUE,
+        info = paste(field, invalid)
+      )
+    }
+
+    ops <- original
+    ops$fs_info <- function(candidate) {
+      info <- original$fs_info(candidate)
+      info[[field]] <- list(c(1, 2))
+      info
+    }
+    expect_error(
+      .viewerAuthReadFileIdentity(path, "0600", ops),
+      "invalid or unsafe",
+      fixed = TRUE,
+      info = paste(field, "non-scalar")
+    )
+  }
+})
+
 test_that("secret parser detects replacement during raw read", {
   root <- withr::local_tempdir()
   path <- write_auth_secret(file.path(root, "app.auth.env"))
@@ -531,6 +595,25 @@ test_that("preflight records a nearest existing anchor for missing parents", {
     normalizePath(root, winslash = "/")
   )
   expect_false(is.null(state$parent_anchor_snapshot))
+})
+
+test_that("missing parent revalidation transitions to a frozen identity", {
+  root <- withr::local_tempdir()
+  result <- file.path(root, "missing", "nested", "app")
+  state <- .viewerAuthPreflightSimple(result, auth_setup_ops())
+
+  expect_invisible(.viewerAuthRevalidateParent(state))
+  expect_null(state$result_parent_snapshot)
+
+  expect_true(dir.create(state$result_parent, recursive = TRUE, mode = "0700"))
+  if (.Platform$OS.type != "windows") {
+    Sys.chmod(state$result_parent, "0700", use_umask = FALSE)
+  }
+  expect_invisible(.viewerAuthRevalidateParent(state))
+  expect_false(is.null(state$result_parent_snapshot))
+  frozen <- state$result_parent_snapshot
+  expect_invisible(.viewerAuthRevalidateParent(state))
+  expect_true(.viewerAuthSameDirectory(frozen, state$result_parent_snapshot))
 })
 
 test_that("environment names and passphrases use independent exact byte counts", {
@@ -601,6 +684,78 @@ test_that("existing secret values are reused without random generation", {
   )
   expect_identical(state$passphrase, strrep("a", 64L))
   expect_null(state$candidate_path)
+})
+
+test_that("partial write failures remove the owned payload and scratch", {
+  for (failure in c("false", "throw")) {
+    root <- withr::local_tempdir()
+    ops <- auth_setup_ops(
+      c("fixture-user", "n"),
+      list("fixture-password", "fixture-password")
+    )
+    ops$write_raw <- function(bytes, path) {
+      writeBin(bytes[seq_len(17L)], path, useBytes = TRUE)
+      if (identical(failure, "throw")) {
+        stop("partial write fault")
+      }
+      FALSE
+    }
+    state <- .viewerAuthPreflightSimple(file.path(root, "app"), ops)
+    .viewerAuthCompleteSimple(state)
+
+    expect_error(
+      .viewerAuthCreateSecretCandidate(state),
+      "scratch payload",
+      fixed = TRUE,
+      info = failure
+    )
+    payload <- state$scratch_payload
+    scratch <- state$scratch_dir
+    expect_false(is.null(state$scratch_payload_snapshot), info = failure)
+    expect_null(state$scratch_payload_snapshot$raw, info = failure)
+    expect_gt(file.info(payload)$size[[1L]], 0)
+
+    captured <- capture_all_auth_conditions(.viewerAuthFinishSimple(state))
+    expect_false(.bundlePathExists(payload), info = failure)
+    expect_false(.bundlePathExists(scratch), info = failure)
+    expect_length(c(captured$warnings, captured$messages), 0L)
+  }
+})
+
+test_that("partial write cleanup preserves a same-content foreign inode", {
+  root <- withr::local_tempdir()
+  ops <- auth_setup_ops(
+    c("fixture-user", "n"),
+    list("fixture-password", "fixture-password")
+  )
+  ops$write_raw <- function(bytes, path) {
+    writeBin(bytes, path, useBytes = TRUE)
+    FALSE
+  }
+  state <- .viewerAuthPreflightSimple(file.path(root, "app"), ops)
+  .viewerAuthCompleteSimple(state)
+  expect_error(.viewerAuthCreateSecretCandidate(state), "scratch payload")
+  payload <- state$scratch_payload
+  expected_inode <- state$scratch_payload_snapshot$inode
+  bytes <- readBin(payload, "raw", n = 107L)
+
+  foreign <- file.path(state$scratch_dir, "foreign")
+  writeBin(bytes, foreign, useBytes = TRUE)
+  if (.Platform$OS.type != "windows") {
+    Sys.chmod(foreign, "0600", use_umask = FALSE)
+  }
+  foreign_inode <- as.numeric(fs::file_info(
+    foreign,
+    follow = FALSE
+  )$inode[[1L]])
+  expect_false(identical(expected_inode, foreign_inode))
+  expect_true(unlink(payload, recursive = FALSE, force = FALSE) == 0L)
+  expect_true(file.rename(foreign, payload))
+
+  captured <- capture_all_auth_conditions(.viewerAuthFinishSimple(state))
+  expect_true(.bundlePathExists(payload))
+  residue <- c(captured$warnings, captured$messages)
+  expect_true(any(grepl(payload, residue, fixed = TRUE)))
 })
 
 test_that("candidate preparation uses hard links and leaves an exact artifact", {
@@ -698,13 +853,20 @@ test_that("candidate provisional snapshot survives an immediate read failure", {
   )
   original_link <- ops$link
   original_read <- ops$read_raw
+  linked_source <- NULL
   linked_candidate <- NULL
+  candidate_read_fault_reached <- FALSE
   ops$link <- function(from, to) {
-    linked_candidate <<- to
-    original_link(from, to)
+    linked <- original_link(from, to)
+    if (isTRUE(linked)) {
+      linked_source <<- from
+      linked_candidate <<- to
+    }
+    linked
   }
   ops$read_raw <- function(path) {
     if (!is.null(linked_candidate) && identical(path, linked_candidate)) {
+      candidate_read_fault_reached <<- TRUE
       stop("candidate read fault")
     }
     original_read(path)
@@ -719,6 +881,18 @@ test_that("candidate provisional snapshot survives an immediate read failure", {
   )
   expect_identical(state$candidate_path, linked_candidate)
   expect_false(is.null(state$candidate_snapshot))
+  expect_true(candidate_read_fault_reached)
+  expect_true(.bundlePathExists(linked_candidate))
+  source_info <- fs::file_info(linked_source, follow = FALSE)
+  target_info <- fs::file_info(linked_candidate, follow = FALSE)
+  expect_identical(
+    as.numeric(source_info$device_id[[1L]]),
+    as.numeric(target_info$device_id[[1L]])
+  )
+  expect_identical(
+    as.numeric(source_info$inode[[1L]]),
+    as.numeric(target_info$inode[[1L]])
+  )
   state$ops$read_raw <- original_read
   .viewerAuthFinishSimple(state)
   expect_false(.bundlePathExists(linked_candidate))
@@ -768,8 +942,28 @@ test_that("published provisional snapshot survives an immediate read failure", {
   state <- viewer_auth_setup_fixture()
   candidate <- state$candidate_path
   original_read <- state$ops$read_raw
+  original_link <- state$ops$link
+  final_link_created <- FALSE
+  final_link_identity <- NULL
+  final_read_fault_reached <- FALSE
+  state$ops$link <- function(from, to) {
+    linked <- original_link(from, to)
+    if (isTRUE(linked) && identical(to, state$secret_path)) {
+      source_info <- fs::file_info(from, follow = FALSE)
+      target_info <- fs::file_info(to, follow = FALSE)
+      final_link_created <<- TRUE
+      final_link_identity <<- list(
+        source_device = as.numeric(source_info$device_id[[1L]]),
+        source_inode = as.numeric(source_info$inode[[1L]]),
+        target_device = as.numeric(target_info$device_id[[1L]]),
+        target_inode = as.numeric(target_info$inode[[1L]])
+      )
+    }
+    linked
+  }
   state$ops$read_raw <- function(path) {
     if (identical(path, state$secret_path)) {
+      final_read_fault_reached <<- TRUE
       stop("final read fault")
     }
     original_read(path)
@@ -783,6 +977,16 @@ test_that("published provisional snapshot survives an immediate read failure", {
     fixed = TRUE
   )
   expect_false(is.null(state$published_snapshot))
+  expect_true(final_link_created)
+  expect_true(final_read_fault_reached)
+  expect_identical(
+    final_link_identity$source_device,
+    final_link_identity$target_device
+  )
+  expect_identical(
+    final_link_identity$source_inode,
+    final_link_identity$target_inode
+  )
   state$ops$read_raw <- original_read
   .viewerAuthFinishSimple(state)
   expect_false(.bundlePathExists(state$secret_path))
@@ -836,17 +1040,21 @@ test_that("candidate unlink refusal rolls final back before commit", {
 test_that("cleanup preserves foreign file and parent identities", {
   state <- viewer_auth_setup_fixture()
   candidate <- state$candidate_path
-  unlink(candidate)
-  write_auth_secret(
-    candidate,
-    auth_secret_raw(
-      "CEREBRO_AUTH_PASSPHRASE_FFFFFFFFFFFFFFFF",
-      strrep("b", 64L)
-    )
-  )
+  expected_inode <- state$candidate_snapshot$inode
+  bytes <- readBin(candidate, "raw", n = 107L)
+  foreign <- file.path(state$result_parent, "foreign-candidate")
+  write_auth_secret(foreign, bytes)
+  foreign_inode <- as.numeric(fs::file_info(
+    foreign,
+    follow = FALSE
+  )$inode[[1L]])
+  expect_false(identical(expected_inode, foreign_inode))
+  expect_true(unlink(candidate, recursive = FALSE, force = FALSE) == 0L)
+  expect_true(file.rename(foreign, candidate))
   captured <- capture_all_auth_conditions(.viewerAuthFinishSimple(state))
   expect_true(.bundlePathExists(candidate))
-  expect_true(length(c(captured$warnings, captured$messages)) > 0L)
+  residue <- c(captured$warnings, captured$messages)
+  expect_true(any(grepl(candidate, residue, fixed = TRUE)))
 
   root <- withr::local_tempdir()
   state <- viewer_auth_setup_fixture(envir = environment())
@@ -905,10 +1113,23 @@ test_that("environment installation rolls back false throw and readback failure"
         result
       }
     } else {
-      state$ops$getenv <- function(name) "readback-mismatch"
+      mismatch_reached <- FALSE
+      getenv_calls <- 0L
+      real_get <- state$ops$getenv
+      state$ops$getenv <- function(name, unset = NA_character_) {
+        getenv_calls <<- getenv_calls + 1L
+        if (getenv_calls == 1L) {
+          return(real_get(name, unset = unset))
+        }
+        mismatch_reached <<- TRUE
+        "readback-mismatch"
+      }
     }
 
     expect_error(.viewerAuthInstallEnvironment(state), "environment")
+    if (identical(failure, "mismatch")) {
+      expect_true(mismatch_reached)
+    }
     state$ops$getenv <- .viewerAuthSetupOps()$getenv
     .viewerAuthRollbackSimple(state)
     expect_identical(Sys.getenv(name, unset = NA_character_), "prior-value")
@@ -949,18 +1170,30 @@ test_that("cleanup under warn equals two does not mask the original error", {
     )
   )
 
-  captured <- capture_all_auth_conditions(withr::with_options(
-    list(warn = 2),
-    tryCatch(
-      stop(original),
-      error = function(condition) {
-        .viewerAuthFinishSimple(state)
-        condition
+  messages <- character()
+  stdout <- capture.output(
+    returned <- withCallingHandlers(
+      withr::with_options(
+        list(warn = 2),
+        tryCatch(
+          stop(original),
+          error = function(condition) {
+            .viewerAuthFinishSimple(state)
+            condition
+          }
+        )
+      ),
+      message = function(condition) {
+        messages <<- c(messages, conditionMessage(condition))
+        invokeRestart("muffleMessage")
       }
     )
-  ))
-  expect_identical(conditionMessage(captured$value), "original setup fault")
-  expect_true(length(c(captured$warnings, captured$messages)) > 0L)
+  )
+  expect_identical(returned, original)
+  expect_identical(conditionMessage(returned), "original setup fault")
+  expect_true(any(startsWith(messages, "Warning: ")))
+  expect_true(any(grepl(state$candidate_path, messages, fixed = TRUE)))
+  expect_length(stdout, 0L)
 })
 
 test_that("authentication setup conditions redact all supplied secrets", {

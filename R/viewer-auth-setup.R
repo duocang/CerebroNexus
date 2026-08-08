@@ -281,6 +281,23 @@
   ) {
     .viewerAuthUnsafe(path)
   }
+  valid_identity_number <- function(field) {
+    value <- info[[field]][[1L]]
+    is.numeric(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      is.finite(value) &&
+      value >= 0
+  }
+  if (
+    !all(vapply(
+      c("device_id", "inode", "size"),
+      valid_identity_number,
+      logical(1)
+    ))
+  ) {
+    .viewerAuthUnsafe(path)
+  }
   canonical <- .viewerAuthCanonicalExisting(path)
   intended <- .viewerAuthIntendedExisting(path)
   if (
@@ -408,7 +425,7 @@
   ))
 }
 
-.viewerAuthSameDirectory <- function(left, right) {
+.viewerAuthSamePathIdentity <- function(left, right) {
   if (is.null(left) || is.null(right)) {
     return(FALSE)
   }
@@ -424,6 +441,14 @@
     },
     logical(1)
   ))
+}
+
+.viewerAuthSameOwnedFile <- function(left, right) {
+  .viewerAuthSamePathIdentity(left, right)
+}
+
+.viewerAuthSameDirectory <- function(left, right) {
+  .viewerAuthSamePathIdentity(left, right)
 }
 
 .viewerAuthReadSecretFile <- function(
@@ -721,7 +746,11 @@
   if (!.viewerAuthSameDirectory(state$parent_anchor_snapshot, anchor)) {
     .viewerAuthUnsafe(state$parent_anchor_path, changed = TRUE)
   }
-  if (!isTRUE(.viewerAuthCall(state$ops$entry_exists(state$result_parent)))) {
+  parent_exists <- .viewerAuthCall(state$ops$entry_exists(state$result_parent))
+  if (identical(parent_exists, FALSE)) {
+    return(invisible(TRUE))
+  }
+  if (!isTRUE(parent_exists)) {
     .viewerAuthUnsafe(state$result_parent)
   }
   current <- .viewerAuthReadDirectoryIdentity(
@@ -1005,15 +1034,22 @@
     state[[snapshot_field]] <- NULL
     return(invisible(TRUE))
   }
+  complete_snapshot <- is.raw(snapshot$raw)
   current <- tryCatch(
-    .viewerAuthReadSecretFile(path, state$ops),
+    if (complete_snapshot) {
+      .viewerAuthReadSecretFile(path, state$ops)
+    } else {
+      .viewerAuthReadFileIdentity(path, "0600", state$ops)
+    },
     error = function(condition) NULL
   )
-  if (
-    is.null(current) ||
-      !.viewerAuthSamePath(current$path, path) ||
-      !.viewerAuthSameArtifact(snapshot, current)
-  ) {
+  same_owned_entry <- if (complete_snapshot) {
+    .viewerAuthSameArtifact(snapshot, current) &&
+      .viewerAuthSamePath(current$path, path)
+  } else {
+    .viewerAuthSameOwnedFile(snapshot, current)
+  }
+  if (is.null(current) || !isTRUE(same_owned_entry)) {
     .viewerAuthCleanupWarning(path)
     return(invisible(FALSE))
   }
