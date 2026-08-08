@@ -220,6 +220,13 @@ test_that("createShinyApp bundles only encrypted authentication configuration", 
   app_source <- readLines(file.path(app, "app.R"), warn = FALSE)
   expect_true(any(grepl("viewer/auth.R", app_source, fixed = TRUE)))
   expect_true(any(grepl("viewer_auth_apply", app_source, fixed = TRUE)))
+  expect_true(file.exists(file.path(app, "viewer", "www", "auth.css")))
+  expect_true(file.exists(file.path(
+    app,
+    "viewer",
+    "www",
+    "cerebronexus.svg"
+  )))
   artifacts <- list.files(app, recursive = TRUE, full.names = TRUE)
   expect_false(any(vapply(
     artifacts,
@@ -381,6 +388,29 @@ auth_test_package_file <- function(path) {
   }
   file.path("..", "..", path)
 }
+
+test_that("authentication stylesheet implements the balanced responsive UI", {
+  css_path <- auth_test_package_file(file.path(
+    "inst",
+    "viewer",
+    "www",
+    "auth.css"
+  ))
+  expect_true(file.exists(css_path))
+  css <- paste(readLines(css_path, warn = FALSE), collapse = "\n")
+  required <- c(
+    ".panel-auth",
+    "max-width: 448px",
+    "#ea6a0f",
+    ":focus-visible",
+    "min-height: 44px",
+    "overflow-wrap: anywhere",
+    "@media (max-width: 576px)"
+  )
+  for (term in required) {
+    expect_match(css, term, fixed = TRUE)
+  }
+})
 
 test_that("authentication deployment documentation is runnable and credited", {
   vignette_path <- auth_test_package_file(file.path(
