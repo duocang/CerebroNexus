@@ -313,12 +313,13 @@ builder_example_adapter <- function(id, object) {
   .builder_clear_saved_cache(object)
 }
 
-#' Load and inspect either a file or example adapter through one path.
-builder_adapter_inspect <- function(adapter, progress = NULL) {
+.builder_adapter_inspect <- function(adapter, progress = NULL) {
   if (!inherits(adapter, "builder_source_adapter")) {
     .builder_adapter_abort("Expected a Builder source adapter.")
   }
-  .builder_import_report(progress, "reading")
+  if (is.function(progress)) {
+    progress("reading")
+  }
   object <- .builder_adapter_load(adapter)
   source <- list(
     type = adapter$type,
@@ -326,9 +327,13 @@ builder_adapter_inspect <- function(adapter, progress = NULL) {
     fingerprint = adapter$fingerprint,
     format = adapter$format
   )
-  .builder_import_report(progress, "inspecting")
+  if (is.function(progress)) {
+    progress("inspecting")
+  }
   profile <- builder_dataset_profile(object, source)
-  .builder_import_report(progress, "validating")
+  if (is.function(progress)) {
+    progress("validating")
+  }
   legacy <- describe_seurat(object)
   list(
     object = object,
@@ -338,6 +343,11 @@ builder_adapter_inspect <- function(adapter, progress = NULL) {
     format = adapter$format,
     source = source
   )
+}
+
+#' Load and inspect either a file or example adapter through one path.
+builder_adapter_inspect <- function(adapter) {
+  .builder_adapter_inspect(adapter)
 }
 
 .builder_snapshot_now <- function() Sys.time()
@@ -1595,8 +1605,10 @@ builder_snapshot_cleanup <- function(registry, now = Sys.time()) {
   objects <- get(".builder_objects", envir = globalenv())
   snapshots <- get(".builder_snapshots", envir = globalenv())
   snapshot_root <- get(".builder_snapshot_root", envir = globalenv())
-  inspected <- builder_adapter_inspect(adapter, progress = progress)
-  .builder_import_report(progress, "preparing")
+  inspected <- .builder_adapter_inspect(adapter, progress = progress)
+  if (is.function(progress)) {
+    progress("preparing")
+  }
   target <- tempfile(
     paste0("dataset-", gsub("[^A-Za-z0-9_-]", "-", id), "-"),
     tmpdir = snapshot_root

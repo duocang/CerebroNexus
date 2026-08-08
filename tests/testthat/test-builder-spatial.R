@@ -27,6 +27,8 @@ sys.source(
 builder_spatial_test_source("spatial.R")
 builder_spatial_test_source("preview.R")
 builder_spatial_test_source("extras.R")
+builder_spatial_test_source("worker.R")
+builder_spatial_test_source("spatial_alignment_server.R")
 
 test_that("alignment capability is limited to Spatial and Trekker datasets", {
   skip_if_not_installed("SeuratObject")
@@ -103,6 +105,206 @@ test_that("alignment server subscribes through Plotly's registered event API", {
   expect_match(server, "builder_alignment_event_cells", fixed = TRUE)
   expect_match(server, "session$onFlushed(", fixed = TRUE)
   expect_false(grepl(".clientValue-", server, fixed = TRUE))
+})
+
+test_that("alignment preview requeues when its render contract changes", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "section-a", extras = list()),
+    settings = list(
+      name = "Dataset A",
+      images = list(),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(NULL)
+  spatial_coords <- shiny::reactiveVal(NULL)
+  requests <- list()
+
+  shiny::testServer(
+    function(input, output, session) {
+      builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) {
+          requests[[length(requests) + 1L]] <<- request
+          TRUE
+        },
+        commit_images = function(entry, images) NULL,
+        alignment_preview = alignment_preview,
+        spatial_coords = spatial_coords
+      )
+    },
+    {
+      session$flushReact()
+      expect_length(requests, 1L)
+
+      renamed <- current_entry()
+      renamed$settings$name <- "Dataset A renamed"
+      current_entry(renamed)
+      session$flushReact()
+      expect_length(requests, 1L)
+
+      regrouped <- current_entry()
+      regrouped$settings$default_group <- "sample"
+      current_entry(regrouped)
+      session$flushReact()
+      expect_length(requests, 2L)
+      expect_identical(requests[[2L]]$group, "sample")
+
+      replaced <- current_entry()
+      replaced$snapshot$object_md5 <- strrep("b", 32L)
+      current_entry(replaced)
+      session$flushReact()
+      expect_length(requests, 3L)
+    }
+  )
+})
+
+test_that("pending tissue image requires its matching preview and snapshot", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  skip_if_not_installed("png")
+  skip_if_not_installed("base64enc")
+
+  image_path <- tempfile(fileext = ".png")
+  on.exit(unlink(image_path), add = TRUE)
+  write_dummy_png(image_path)
+
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "section-a", extras = list()),
+    settings = list(
+      name = "Dataset A",
+      images = list(),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(NULL)
+  spatial_coords <- shiny::reactiveVal(NULL)
+  committed <- list()
+  commit_count <- 0L
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(id = "section-a", kind = "spatial", unit = "pixels"),
+    projection_name = "umap",
+    capped = FALSE,
+    transcriptome = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(-1, 1),
+      y = c(-1, 1),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    ),
+    spatial = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(entry, images) {
+          updated <- current_entry()
+          updated$settings$images <- images
+          current_entry(updated)
+          committed <<- images
+          commit_count <<- commit_count + 1L
+        },
+        alignment_preview = alignment_preview,
+        spatial_coords = spatial_coords
+      )
+    },
+    {
+      session$flushReact()
+      expect_null(alignment$draft())
+
+      session$setInputs(
+        `enhance-tissue_image_file` = data.frame(
+          name = "section-a.png",
+          size = file.info(image_path)$size,
+          type = "image/png",
+          datapath = image_path,
+          stringsAsFactors = FALSE
+        )
+      )
+      session$flushReact()
+      expect_null(alignment$draft())
+
+      alignment_preview(preview)
+      session$flushReact()
+
+      expect_identical(alignment$draft()$source$name, "section-a.png")
+      expect_false(alignment$draft()$saved)
+      expect_match(alignment$draft()$source_uri, "^data:image/png;base64,")
+      expect_named(committed, "section-a")
+      expect_identical(commit_count, 1L)
+
+      suppressWarnings(session$setInputs(`enhance-drop_image` = 1L))
+      session$flushReact()
+      expect_null(alignment$draft())
+      expect_identical(commit_count, 2L)
+
+      alignment_preview(NULL)
+      session$setInputs(
+        `enhance-tissue_image_file` = data.frame(
+          name = "stale-section-a.png",
+          size = file.info(image_path)$size,
+          type = "image/png",
+          datapath = image_path,
+          stringsAsFactors = FALSE
+        )
+      )
+      session$flushReact()
+
+      replaced <- current_entry()
+      replaced$snapshot$object_md5 <- strrep("b", 32L)
+      current_entry(replaced)
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+
+      expect_null(alignment$draft())
+      expect_identical(commit_count, 2L)
+    }
+  )
 })
 
 test_that("alignment preview joins both spaces by cell identity", {

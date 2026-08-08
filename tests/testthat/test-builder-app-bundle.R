@@ -23,6 +23,9 @@ builder_app_bundle_fixture <- function(
           name = labels[[1L]],
           filename = basename(paths[[1L]]),
           colors = list(cluster = c(A = "#000000")),
+          default_projection = "umap",
+          default_trajectory = NULL,
+          overview_point_size = 4,
           expression_backend = "embedded",
           sidecars = character()
         ),
@@ -31,6 +34,9 @@ builder_app_bundle_fixture <- function(
           name = labels[[2L]],
           filename = basename(paths[[2L]]),
           colors = list(cluster = c(B = "#ffffff")),
+          default_projection = "pca",
+          default_trajectory = list(method = "monocle2", name = "lineage"),
+          overview_point_size = 7,
           expression_backend = "embedded",
           sidecars = character()
         )
@@ -40,6 +46,7 @@ builder_app_bundle_fixture <- function(
         show_upload_ui = FALSE,
         initial_dataset = initial_dataset,
         initial_dataset_mode = initial_dataset_mode,
+        initial_page = "projection",
         welcome_message = "Welcome, team!",
         point_size = list(overview_projection_point_size = 6),
         variable_to_compare = FALSE,
@@ -107,9 +114,11 @@ builder_fake_app <- function(request, app_dir) {
     list(
       crb_file_to_load = stats::setNames(targets, request$selector_order),
       initial_dataset = request$initial_dataset,
+      initial_page = request$initial_page,
       show_upload_ui = request$show_upload_ui,
       welcome_message = request$welcome_message,
       point_size = request$point_size,
+      viewer_content = request$viewer_content,
       variable_to_compare = request$variable_to_compare,
       .bundle_run_options = list(
         schema_version = 1L,
@@ -173,6 +182,15 @@ test_that("App arguments come only from the frozen plan", {
   expect_false(request$show_upload_ui)
   expect_identical(request$contract_version, 1L)
   expect_identical(names(request$colors), fixture$labels)
+  expect_identical(names(request$viewer_content), fixture$labels)
+  expect_identical(
+    request$viewer_content[["Dataset B"]],
+    list(
+      default_projection = "pca",
+      default_trajectory = list(method = "monocle2", name = "lineage"),
+      overview_point_size = 7
+    )
+  )
   expect_false(request$crb_pick_smallest_file)
   expect_identical(
     names(request),
@@ -184,9 +202,11 @@ test_that("App arguments come only from the frozen plan", {
       "selector_order",
       "initial_dataset",
       "initial_dataset_mode",
+      "initial_page",
       "show_upload_ui",
       "welcome_message",
       "point_size",
+      "viewer_content",
       "variable_to_compare",
       "host",
       "port",
@@ -1004,6 +1024,7 @@ test_that("App assembly calls only the accepted staged interface", {
   expect_false(observed$crb_pick_smallest_file)
   expect_identical(observed$show_upload_ui, request$show_upload_ui)
   expect_identical(observed$initial_dataset, request$initial_dataset)
+  expect_identical(observed$initial_page, request$initial_page)
   expect_identical(observed$welcome_message, request$welcome_message)
   expect_identical(observed$point_size, request$point_size)
   expect_identical(observed$variable_to_compare, request$variable_to_compare)
@@ -1042,6 +1063,11 @@ test_that("App request and config read-back preserve every Review option", {
   config$welcome_message <- "drifted"
   saveRDS(config, config_file)
   expect_error(builder_verify_app(app_dir, request), "welcome message")
+
+  config$welcome_message <- request$welcome_message
+  config$initial_page <- "groups"
+  saveRDS(config, config_file)
+  expect_error(builder_verify_app(app_dir, request), "starting page")
 })
 
 test_that("App bundle rejects NULL rendered scalar options", {

@@ -35,6 +35,7 @@ prettifyTable <- utils_env$prettifyTable
 centerOfGroups <- utils_env$centerOfGroups
 cachePlot <- utils_env$cachePlot
 dynamicPointSize <- utils_env$dynamicPointSize
+configuredViewerContent <- utils_env$configuredViewerContent
 
 test_that("spatial offset ranges require finite coordinates", {
   path <- file.path(
@@ -245,4 +246,26 @@ test_that("dynamicPointSize lets a larger canvas carry larger points", {
     dynamicPointSize(200, plot_width_px = 500, plot_height_px = 400),
     dynamicPointSize(100000, plot_width_px = 1600, plot_height_px = 1100)
   )
+})
+
+test_that("configured Viewer content follows the selected dataset", {
+  files <- c(A = "/private/a.crb", B = "/private/b.crb")
+  config <- list(
+    A = list(default_projection = "umap", overview_point_size = 4),
+    B = list(
+      default_projection = "pca",
+      default_trajectory = list(method = "monocle2", name = "lineage"),
+      overview_point_size = 8
+    )
+  )
+
+  expect_identical(
+    configuredViewerContent(config, "/private/b.crb", files),
+    config$B
+  )
+  expect_identical(
+    configuredViewerContent(config, "/private/upload.crb", NULL),
+    list()
+  )
+  expect_identical(configuredViewerContent(NULL, files[[1L]], files), list())
 })

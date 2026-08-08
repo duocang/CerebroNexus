@@ -252,6 +252,16 @@ builder_verify_crb <- function(path, item) {
   if (!identical(projections, expectation$projections)) {
     stop("The staged CRB projections differ from BuildPlan.", call. = FALSE)
   }
+  if (!is.null(expectation$trajectories)) {
+    trajectories <- .builder_build_field(object, "trajectories")
+    trajectory_identity <- lapply(trajectories %||% list(), names)
+    if (!identical(trajectory_identity, expectation$trajectories)) {
+      stop(
+        "The staged CRB trajectories differ from BuildPlan.",
+        call. = FALSE
+      )
+    }
+  }
   metadata <- colnames(.builder_build_field(object, "meta_data"))
   if (!identical(metadata, expectation$metadata)) {
     stop("The staged CRB metadata differs from BuildPlan.", call. = FALSE)
@@ -376,8 +386,9 @@ builder_verify_crb <- function(path, item) {
   if (!methods::is(object, "Seurat")) {
     return(object)
   }
-  record <- item$manifest[["immune_repertoire"]]
-  if (is.null(record)) {
+  immune_record <- item$manifest[["immune_repertoire"]]
+  motif_record <- item$manifest[["hla_tcr_motifs"]]
+  if (is.null(immune_record) && is.null(motif_record)) {
     return(object)
   }
   clear_sources <- function(value) {
@@ -386,10 +397,102 @@ builder_verify_crb <- function(path, item) {
     value@misc$tcr_data <- NULL
     value
   }
-  if (record$disposition %in% c("filtered", "stored_only")) {
+  included_selection <- function(record) {
+    if (
+      !is.list(record) ||
+        !(record$disposition %||% "") %in%
+          c("preserved", "converted", "attached")
+    ) {
+      return(character())
+    }
+    record$evidence$selected_sources %||% character()
+  }
+  hidden <- function(record) {
+    is.list(record) &&
+      (record$disposition %||% "") %in% c("filtered", "stored_only")
+  }
+  selected_candidates <- function(record, selected) {
+    candidates <- record$evidence$selected_candidates %||% list()
+    if (!is.list(candidates)) {
+      return(list())
+    }
+    candidates[intersect(selected, names(candidates))]
+  }
+  candidate_flag <- function(record, selected, flag) {
+    candidates <- selected_candidates(record, selected)
+    if (!length(selected) || length(candidates) != length(selected)) {
+      return(NA)
+    }
+    flags <- vapply(
+      candidates,
+      function(candidate) isTRUE(candidate[[flag]]),
+      logical(1)
+    )
+    any(flags)
+  }
+  full_selected <- included_selection(immune_record)
+  motif_selected <- included_selection(motif_record)
+  if (
+    length(full_selected) &&
+      length(motif_selected) &&
+      !all(motif_selected %in% full_selected)
+  ) {
+    stop(
+      "The frozen immune sources cannot be realized by one frozen immune payload.",
+      call. = FALSE
+    )
+  }
+  motif_exportable <- candidate_flag(
+    motif_record,
+    motif_selected,
+    "full_ir_ready"
+  )
+  if (length(motif_selected) && !isTRUE(motif_exportable)) {
+    stop(
+      "The frozen motif source cannot be exported as one immune payload.",
+      call. = FALSE
+    )
+  }
+  if (length(motif_selected) && !length(full_selected)) {
+    stop(
+      "The frozen immune payload cannot hide only one Viewer page.",
+      call. = FALSE
+    )
+  }
+  if (
+    length(motif_selected) &&
+      hidden(immune_record)
+  ) {
+    stop(
+      "The frozen immune payload cannot hide only one Viewer page.",
+      call. = FALSE
+    )
+  }
+  if (length(full_selected) && hidden(motif_record)) {
+    full_has_motif <- candidate_flag(
+      immune_record,
+      full_selected,
+      "hla_tcr_ready"
+    )
+    if (is.na(full_has_motif) || isTRUE(full_has_motif)) {
+      stop(
+        "The frozen immune payload cannot hide only one Viewer page.",
+        call. = FALSE
+      )
+    }
+  }
+  selected <- if (length(full_selected)) full_selected else motif_selected
+  selected_record <- if (length(full_selected)) immune_record else motif_record
+  filtered <- vapply(
+    Filter(Negate(is.null), list(immune_record, motif_record)),
+    function(record) {
+      (record$disposition %||% "") %in% c("filtered", "stored_only")
+    },
+    logical(1)
+  )
+  if (!length(selected) && length(filtered) && any(filtered)) {
     return(clear_sources(object))
   }
-  selected <- record$evidence$selected_sources %||% character()
   if (!length(selected)) {
     return(object)
   }
@@ -399,7 +502,7 @@ builder_verify_crb <- function(path, item) {
     return(object)
   }
   if (identical(selected, "metadata")) {
-    candidate <- record$evidence$selected_candidates[["metadata"]]
+    candidate <- selected_record$evidence$selected_candidates[["metadata"]]
     sample_column <- candidate$normalized$sample_column %||% NULL
     object <- clear_sources(object)
     return(CerebroNexus::addImmuneRepertoire(
@@ -429,9 +532,61 @@ builder_verify_crb <- function(path, item) {
   )
 }
 
+.builder_build_select_trajectories <- function(
+  trajectories,
+  included,
+  default = NULL
+) {
+  # A missing field identifies a legacy BuildPlan. Preserve its historical
+  # payload; an explicit empty list means the user chose no trajectories.
+  if (is.null(included)) {
+    return(trajectories)
+  }
+  if (!is.list(trajectories) || !is.list(included)) {
+    stop("The frozen trajectory selection is invalid.", call. = FALSE)
+  }
+  missing_methods <- setdiff(names(included), names(trajectories))
+  missing_names <- unlist(
+    lapply(names(included), function(method) {
+      setdiff(included[[method]], names(trajectories[[method]]))
+    }),
+    use.names = FALSE
+  )
+  if (length(missing_methods) || length(missing_names)) {
+    stop(
+      "A frozen included trajectory is missing from the built object.",
+      call. = FALSE
+    )
+  }
+  if (
+    is.list(default) &&
+      .builder_build_text(default$method) &&
+      .builder_build_text(default$name) &&
+      default$method %in% names(included) &&
+      default$name %in% included[[default$method]]
+  ) {
+    method <- default$method
+    included[[method]] <- c(
+      default$name,
+      included[[method]][included[[method]] != default$name]
+    )
+    included <- c(included[method], included[names(included) != method])
+  }
+  selected <- lapply(names(included), function(method) {
+    trajectories[[method]][included[[method]]]
+  })
+  names(selected) <- names(included)
+  selected
+}
+
 .builder_build_prepare <- function(object, item) {
   if (methods::is(object, "Seurat")) {
     object@reductions <- object@reductions[item$included_projections]
+    object@misc$trajectories <- .builder_build_select_trajectories(
+      object@misc$trajectories %||% list(),
+      item$included_trajectories,
+      item$default_trajectory
+    )
     object <- builder_prepare_export_layer(object, item$assay, item$layer)
     object <- .builder_build_prepare_immune(object, item)
     for (group in names(item$artifact_identity$group_levels)) {
@@ -480,9 +635,11 @@ builder_verify_crb <- function(path, item) {
     organism = item$organism,
     groups = item$included_groups,
     main_group = item$default_group,
+    cell_cycle = item$cell_cycle %||% NULL,
     nUMI = item$nUMI,
     nGene = item$nGene,
     add_all_meta_data = TRUE,
+    projections = item$included_projections,
     expression_matrix_mode = item$expression_backend,
     verbose = FALSE
   )

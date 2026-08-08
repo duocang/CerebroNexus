@@ -19,7 +19,9 @@ builder_spatial_alignment_server <- function(
   baseline <- shiny::reactiveVal(NULL)
   active_section <- shiny::reactiveVal(NULL)
   pending_section <- shiny::reactiveVal(NULL)
+  pending_upload <- shiny::reactiveVal(NULL)
   selected_cells <- shiny::reactiveVal(character())
+  preview_contract <- shiny::reactiveVal(NULL)
 
   output[["enhance-has_image"]] <- shiny::reactive(!is.null(draft()))
   shiny::outputOptions(
@@ -50,10 +52,19 @@ builder_spatial_alignment_server <- function(
     images[[section]] <- value
     commit_images(entry, images)
   }
+  preview_contract_for <- function(entry, section) {
+    list(
+      dataset = entry$id,
+      snapshot_identity = .builder_worker_identity(entry$snapshot),
+      section = section,
+      default_projection = entry$settings$default_projection %||% NULL,
+      group = entry$settings$default_group %||% NULL
+    )
+  }
   request_preview <- function(entry, section) {
     alignment_preview(NULL)
     selected_cells(character())
-    enqueue(list(
+    queued <- enqueue(list(
       kind = "spatial_preview",
       id = entry$id,
       section = section,
@@ -62,6 +73,10 @@ builder_spatial_alignment_server <- function(
       replaces = "spatial_alignment",
       note = paste0("Loading paired views for ", section, "…")
     ))
+    if (isTRUE(queued)) {
+      preview_contract(preview_contract_for(entry, section))
+    }
+    invisible(queued)
   }
   update_controls <- function(record = NULL, bounds = NULL) {
     parameters <- if (is.null(record)) {
@@ -166,6 +181,7 @@ builder_spatial_alignment_server <- function(
     update_controls(stored, alignment_preview()$bounds %||% NULL)
   }
   switch_to <- function(entry, section) {
+    pending_upload(NULL)
     active_section(section)
     shiny::updateSelectInput(
       session,
@@ -182,6 +198,8 @@ builder_spatial_alignment_server <- function(
     baseline(NULL)
     alignment_preview(NULL)
     spatial_coords(NULL)
+    preview_contract(NULL)
+    pending_upload(NULL)
     id <- current()
     entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
     sections <- if (is.null(entry)) character() else sections_for(entry)
@@ -190,6 +208,24 @@ builder_spatial_alignment_server <- function(
       return()
     }
     switch_to(entry, sections[[1L]])
+  })
+
+  shiny::observe({
+    current_worker <- worker()
+    id <- current()
+    section <- active_section()
+    if (is.null(current_worker) || is.null(id) || is.null(section)) {
+      return()
+    }
+    entry <- entry_of(id)
+    if (is.null(entry)) {
+      return()
+    }
+    contract <- preview_contract_for(entry, section)
+    if (identical(contract, shiny::isolate(preview_contract()))) {
+      return()
+    }
+    request_preview(entry, section)
   })
 
   parameters <- shiny::reactive({
@@ -346,37 +382,17 @@ builder_spatial_alignment_server <- function(
     switch_to(entry, section)
   })
 
-  shiny::observeEvent(input[["enhance-tissue_image_file"]], {
-    upload <- input[["enhance-tissue_image_file"]]
-    if (
-      !is.data.frame(upload) ||
-        !nrow(upload) ||
-        !all(c("name", "datapath") %in% names(upload))
-    ) {
-      return()
-    }
-    preview <- alignment_preview()
-    if (
-      !isTRUE(preview$available) ||
-        !.builder_alignment_valid_bounds(preview$bounds)
-    ) {
-      shiny::showNotification(
-        "Wait for the spatial preview before adding an image.",
-        type = "warning",
-        duration = 5
-      )
-      return()
-    }
+  attach_upload <- function(upload, preview) {
     filename <- basename(as.character(upload$name[[1L]]))
     image <- builder_read_image(upload$datapath[[1L]], filename = filename)
     if (!is.null(image$error)) {
       shiny::showNotification(image$error, type = "error", duration = 8)
-      return()
+      return(invisible(FALSE))
     }
     image_encoded <- builder_encode_image(image$array, max_px = 1400)
     if (!is.null(image_encoded$error)) {
       shiny::showNotification(image_encoded$error, type = "error", duration = 8)
-      return()
+      return(invisible(FALSE))
     }
     entry <- entry_of(current())
     section <- active_section()
@@ -434,6 +450,69 @@ builder_spatial_alignment_server <- function(
     draft(record)
     update_controls(record, preview$bounds)
     commit_section(entry, section, record)
+    invisible(TRUE)
+  }
+
+  shiny::observeEvent(input[["enhance-tissue_image_file"]], {
+    upload <- input[["enhance-tissue_image_file"]]
+    if (
+      !is.data.frame(upload) ||
+        !nrow(upload) ||
+        !all(c("name", "datapath") %in% names(upload))
+    ) {
+      return()
+    }
+    entry <- entry_of(current())
+    if (is.null(entry)) {
+      return()
+    }
+    pending_upload(list(
+      upload = upload,
+      dataset = current(),
+      snapshot_identity = .builder_worker_identity(entry$snapshot),
+      section = active_section()
+    ))
+  })
+
+  shiny::observe({
+    pending <- pending_upload()
+    if (is.null(pending)) {
+      return()
+    }
+    id <- current()
+    section <- active_section()
+    entry <- if (is.null(id)) NULL else entry_of(id)
+    if (
+      is.null(entry) ||
+        !identical(pending$dataset, id) ||
+        !identical(
+          pending$snapshot_identity,
+          .builder_worker_identity(entry$snapshot)
+        ) ||
+        !identical(pending$section, section)
+    ) {
+      pending_upload(NULL)
+      return()
+    }
+    preview <- alignment_preview()
+    if (is.null(preview)) {
+      return()
+    }
+    if (
+      !isTRUE(preview$available) ||
+        !.builder_alignment_valid_bounds(preview$bounds)
+    ) {
+      pending_upload(NULL)
+      shiny::showNotification(
+        preview$message %||%
+          "The spatial preview is not available for this tissue section.",
+        type = "error",
+        duration = 8
+      )
+      return()
+    }
+    pending_upload(NULL)
+    attach_upload(pending$upload, preview)
   })
 
   shiny::observeEvent(alignment_preview(), {
@@ -559,6 +638,12 @@ builder_spatial_alignment_server <- function(
   output[["enhance-alignment_status"]] <- shiny::renderUI({
     preview <- alignment_preview()
     current_draft <- draft()
+    if (!is.null(pending_upload()) && is.null(current_draft)) {
+      return(shiny::div(
+        class = "notice",
+        "Image selected. Finishing the spatial preview…"
+      ))
+    }
     if (is.null(preview)) {
       return(shiny::div(class = "notice", "Loading paired cell views…"))
     }
@@ -759,6 +844,7 @@ builder_spatial_alignment_server <- function(
   list(
     active_section = active_section,
     draft = draft,
+    pending_upload = pending_upload,
     raw_image = raw_image,
     current_record = current_record
   )

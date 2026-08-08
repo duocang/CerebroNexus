@@ -504,6 +504,10 @@
 #' @param .expression_resolution Internal handoff used by
 #' \code{convertSeuratToCerebro()} to reuse a matrix that has already been
 #' resolved and validated. Users should leave this as \code{NULL}.
+#' @param projections Optional ordered names of dimensional reductions to
+#' export. When supplied, every named reduction is exported in that order,
+#' including PCA beside other projections. The default \code{NULL} preserves
+#' the legacy behavior that uses non-PCA reductions when they are available.
 #'
 #' @section Immune Repertoire:
 #' If \code{object@misc$immune_repertoire} contains a named list of
@@ -563,7 +567,8 @@ exportFromSeurat <- function(
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
   verbose = FALSE,
-  .expression_resolution = NULL
+  .expression_resolution = NULL,
+  projections = NULL
 ) {
   ##--------------------------------------------------------------------------##
   ## safety checks before starting to do anything
@@ -693,6 +698,21 @@ exportFromSeurat <- function(
         'Valid options are: ',
         paste(groups, collapse = ', ')
       ),
+      call. = FALSE
+    )
+  }
+
+  if (
+    !is.null(projections) &&
+      (!is.character(projections) ||
+        !length(projections) ||
+        anyNA(projections) ||
+        any(!nzchar(projections)) ||
+        anyDuplicated(projections) ||
+        any(!projections %in% names(object@reductions)))
+  ) {
+    stop(
+      "`projections` must name unique dimensional reductions in the object.",
       call. = FALSE
     )
   }
@@ -1215,8 +1235,12 @@ exportFromSeurat <- function(
       )
     )
   }
-  projections <- list()
-  projections_available <- names(object@reductions)
+  explicit_projections <- !is.null(projections)
+  projections_available <- if (explicit_projections) {
+    projections
+  } else {
+    names(object@reductions)
+  }
   projections_available_pca <- projections_available[grep(
     projections_available,
     pattern = 'pca',
@@ -1231,6 +1255,23 @@ exportFromSeurat <- function(
   )]
   if (length(projections_available) == 0) {
     stop('No dimensional reductions available.', call. = FALSE)
+  } else if (explicit_projections) {
+    if (verbose) {
+      message(
+        paste0(
+          '[',
+          format(Sys.time(), '%H:%M:%S'),
+          '] Will export the following dimensional reductions: ',
+          paste(projections_available, collapse = ', ')
+        )
+      )
+    }
+    for (projection in projections_available) {
+      export$addProjection(
+        projection,
+        as.data.frame(object@reductions[[projection]]@cell.embeddings)
+      )
+    }
   } else if (
     length(projections_available) == 1 &&
       length(projections_available_pca) == 1

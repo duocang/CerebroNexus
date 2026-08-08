@@ -20,7 +20,8 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
   verbose = FALSE,
-  .expression_resolution = NULL
+  .expression_resolution = NULL,
+  projections = NULL
 )
 }
 \arguments{
@@ -117,6 +118,11 @@ defaults to \code{FALSE}.}
 \item{.expression_resolution}{Internal handoff used by
 \code{convertSeuratToCerebro()} to reuse a matrix that has already been
 resolved and validated. Users should leave this as \code{NULL}.}
+
+\item{projections}{Optional ordered names of dimensional reductions to
+export. When supplied, every named reduction is exported in that order,
+including PCA beside other projections. The default \code{NULL} preserves
+the legacy behavior that uses non-PCA reductions when they are available.}
 }
 \value{
 No data returned.

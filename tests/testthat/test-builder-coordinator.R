@@ -71,6 +71,7 @@ builder_app_coordinator_plan_fixture <- function(
         show_upload_ui = FALSE,
         initial_dataset = "dataset-b",
         initial_dataset_mode = "explicit",
+        initial_page = "data_info",
         welcome_message = "Welcome, team!",
         point_size = list(overview_projection_point_size = 6),
         variable_to_compare = FALSE,
@@ -221,9 +222,11 @@ builder_app_coordinator_fake_app <- function(request, app_dir) {
         request$selector_order
       ),
       initial_dataset = request$initial_dataset,
+      initial_page = request$initial_page,
       show_upload_ui = request$show_upload_ui,
       welcome_message = request$welcome_message,
       point_size = request$point_size,
+      viewer_content = request$viewer_content,
       variable_to_compare = request$variable_to_compare,
       .bundle_run_options = list(
         schema_version = 1L,
@@ -1067,6 +1070,7 @@ test_that("coordinator freezes the complete App publication expectation", {
         "filenames",
         "initial_dataset",
         "initial_dataset_mode",
+        "initial_page",
         "show_upload_ui",
         "welcome_message",
         "point_size",

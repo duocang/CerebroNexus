@@ -1,0 +1,338 @@
+builder_viewer_content_source_runtime <- function(local = parent.frame()) {
+  builder_profile_source_runtime(local)
+  builder_dir <- builder_profile_inst_path("builder")
+  for (file in c(
+    "recommend.R",
+    "inspect.R",
+    "preview.R",
+    "extras.R",
+    "analysis.R",
+    "prerequisite.R",
+    "state.R",
+    "plan.R",
+    "app_bundle.R",
+    "build.R"
+  )) {
+    sys.source(file.path(builder_dir, file), envir = local)
+  }
+  invisible(local)
+}
+
+builder_viewer_content_source_runtime()
+
+builder_viewer_content_plan_entry <- function() {
+  list(
+    id = "dataset-a",
+    profile = list(
+      nUMI = "nCount_RNA",
+      nGene = "nFeature_RNA",
+      viewer_content = list(
+        metadata = list(
+          Phase = list(
+            name = "Phase",
+            classification = "categorical",
+            group_eligible = TRUE,
+            distinct_count = 3L,
+            sample_values = c("G1", "S", "G2M")
+          )
+        )
+      )
+    ),
+    levels = list(
+      sample = c("one", "two"),
+      batch = c("first", "second")
+    ),
+    settings = list(
+      name = "Dataset A",
+      organism = "hg",
+      assay = "RNA",
+      layer = "data",
+      nUMI = "nCount_RNA",
+      nGene = "nFeature_RNA",
+      groups = "sample",
+      included_groups = "sample",
+      default_group = "sample",
+      reductions = c("umap", "pca"),
+      included_projections = c("umap", "pca"),
+      default_projection = "pca",
+      included_trajectories = list(
+        monocle2 = c("lineage_a", "lineage_b")
+      ),
+      default_trajectory = list(
+        method = "monocle2",
+        name = "lineage_b"
+      ),
+      overview_point_size = 8,
+      cell_cycle_columns = "Phase",
+      analyses = character(),
+      tables = list(),
+      images = list(),
+      palette = "cerebro",
+      group_color_overrides = list(sample = c(two = "#AA5500")),
+      metadata_policy = list(
+        included = c(
+          "cell_barcode",
+          "sample",
+          "batch",
+          "Phase",
+          "nCount_RNA",
+          "nFeature_RNA"
+        ),
+        excluded = character()
+      )
+    )
+  )
+}
+
+test_that("BuildPlan freezes the complete Viewer-content selection", {
+  plan <- builder_make_plan(
+    list(builder_viewer_content_plan_entry()),
+    withr::local_tempdir(),
+    make_app = TRUE
+  )
+
+  expect_null(plan$error)
+  item <- plan$items[[1L]]
+  expect_identical(item$included_groups, "sample")
+  expect_identical(item$default_group, "sample")
+  expect_identical(item$included_projections, c("pca", "umap"))
+  expect_identical(item$default_projection, "pca")
+  expect_identical(
+    item$included_trajectories,
+    list(monocle2 = c("lineage_b", "lineage_a"))
+  )
+  expect_identical(
+    item$default_trajectory,
+    list(method = "monocle2", name = "lineage_b")
+  )
+  expect_identical(
+    item$artifact_identity$trajectories,
+    list(monocle2 = c("lineage_b", "lineage_a"))
+  )
+  expect_identical(item$overview_point_size, 8)
+  expect_identical(item$cell_cycle, "Phase")
+  expect_contains(item$artifact_identity$metadata, "Phase")
+  expect_contains(item$metadata_policy$included, "batch")
+  expect_identical(
+    item$group_color_overrides,
+    list(sample = c(two = "#AA5500"))
+  )
+  expect_identical(item$colors$sample[["two"]], "#AA5500")
+  expect_identical(
+    plan$app_options$point_size,
+    list(overview_projection_point_size = 8)
+  )
+})
+
+test_that("Builder export freezes selected cell-cycle annotations into CRB", {
+  skip_if_not_installed("SeuratObject")
+  skip_if_not_installed("Seurat")
+  object <- SeuratObject::pbmc_small
+  object$Phase <- factor(
+    rep(c("G1", "S", "G2M"), length.out = ncol(object)),
+    levels = c("G1", "S", "G2M")
+  )
+  path <- withr::local_tempfile(fileext = ".crb")
+  item <- list(
+    name = "Cell cycle",
+    organism = "hg",
+    assay = "RNA",
+    layer = "data",
+    included_groups = "groups",
+    default_group = "groups",
+    cell_cycle = "Phase",
+    nUMI = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    included_projections = names(object@reductions),
+    expression_backend = "embedded",
+    analyses = character(),
+    metadata_policy = list(
+      included = c(
+        "cell_barcode",
+        "groups",
+        "Phase",
+        "nCount_RNA",
+        "nFeature_RNA"
+      )
+    )
+  )
+
+  expect_no_error(.builder_build_export(object, item, path))
+
+  exported <- readRDS(path)
+  expect_identical(exported$getCellCycle(), "Phase")
+  expect_contains(colnames(exported$getMetaData()), "Phase")
+})
+
+test_that("generated-App content freezes defaults for every dataset", {
+  item <- builder_make_plan(
+    list(builder_viewer_content_plan_entry()),
+    withr::local_tempdir(),
+    make_app = TRUE
+  )$items[[1L]]
+
+  frozen <- .builder_app_viewer_content(
+    list(item),
+    "Dataset A",
+    list(overview_projection_point_size = 5)
+  )
+
+  expect_identical(
+    frozen,
+    list(
+      `Dataset A` = list(
+        default_projection = "pca",
+        default_trajectory = list(
+          method = "monocle2",
+          name = "lineage_b"
+        ),
+        overview_point_size = 8
+      )
+    )
+  )
+})
+
+test_that("an explicit legacy App point-size option still wins", {
+  plan <- builder_make_plan(
+    list(builder_viewer_content_plan_entry()),
+    withr::local_tempdir(),
+    make_app = TRUE,
+    app_options = list(
+      point_size = list(overview_projection_point_size = 6)
+    )
+  )
+
+  expect_null(plan$error)
+  expect_identical(
+    plan$app_options$point_size,
+    list(overview_projection_point_size = 6)
+  )
+})
+
+test_that("normal Review options keep the dataset point-size default", {
+  builder_dir <- builder_profile_inst_path("builder")
+  sys.source(
+    file.path(builder_dir, "ui", "inspect_stage.R"),
+    envir = environment()
+  )
+  sys.source(
+    file.path(builder_dir, "ui", "review_stage.R"),
+    envir = environment()
+  )
+  app_options <- builder_review_options_for_plan(
+    builder_review_options(point_size = 3)
+  )
+
+  plan <- builder_make_plan(
+    list(builder_viewer_content_plan_entry()),
+    withr::local_tempdir(),
+    make_app = TRUE,
+    app_options = app_options
+  )
+
+  expect_null(plan$error)
+  expect_identical(
+    plan$app_options$point_size,
+    list(overview_projection_point_size = 8)
+  )
+})
+
+test_that("legacy plan callers without trajectory settings preserve payloads", {
+  entry <- builder_viewer_content_plan_entry()
+  entry$settings$included_trajectories <- NULL
+  entry$settings$default_trajectory <- NULL
+
+  plan <- builder_make_plan(
+    list(entry),
+    withr::local_tempdir(),
+    make_app = FALSE
+  )
+
+  expect_null(plan$error)
+  expect_null(plan$items[[1L]]$included_trajectories)
+  expect_null(plan$items[[1L]]$artifact_identity$trajectories)
+})
+
+test_that("build preparation prunes and default-orders Viewer content", {
+  skip_if_not_installed("SeuratObject")
+  object <- SeuratObject::pbmc_small
+  object@misc$trajectories <- list(
+    monocle2 = list(
+      lineage_a = list(meta = data.frame(a = 1), edges = data.frame(a = 1)),
+      lineage_b = list(meta = data.frame(b = 1), edges = data.frame(b = 1))
+    ),
+    unsupported = list(other = list(raw = TRUE))
+  )
+  item <- list(
+    included_projections = c("pca", "tsne"),
+    included_trajectories = list(monocle2 = "lineage_b"),
+    default_trajectory = list(method = "monocle2", name = "lineage_b"),
+    assay = "RNA",
+    layer = "data",
+    manifest = list(),
+    artifact_identity = list(
+      group_levels = list(groups = sort(unique(as.character(object$groups))))
+    ),
+    tables = list()
+  )
+
+  prepared <- .builder_build_prepare(object, item)
+
+  expect_identical(names(prepared@reductions), c("pca", "tsne"))
+  expect_identical(names(prepared@misc$trajectories), "monocle2")
+  expect_identical(
+    names(prepared@misc$trajectories$monocle2),
+    "lineage_b"
+  )
+})
+
+test_that("ordinary safe metadata survives when it is not a formal Group", {
+  skip_if_not_installed("SeuratObject")
+  object <- SeuratObject::pbmc_small
+  object$batch <- rep(c("first", "second"), length.out = ncol(object))
+  item <- list(
+    analyses = character(),
+    metadata_policy = list(
+      included = c(
+        "cell_barcode",
+        "groups",
+        "batch",
+        "nCount_RNA",
+        "nFeature_RNA"
+      )
+    )
+  )
+
+  prepared <- .builder_build_apply_metadata_policy(object, item)
+
+  expect_contains(colnames(prepared@meta.data), "batch")
+  expect_identical(colnames(prepared@meta.data)[[1L]], "groups")
+})
+
+test_that("exportFromSeurat preserves Builder-selected PCA beside UMAP", {
+  skip_if_not_installed("SeuratObject")
+  skip_if_not_installed("Seurat")
+  object <- SeuratObject::pbmc_small
+  object@reductions <- object@reductions[c("pca", "tsne")]
+  names(object@reductions)[[2L]] <- "umap"
+  path <- withr::local_tempfile(fileext = ".crb")
+
+  expect_no_error(exportFromSeurat(
+    object = object,
+    assay = "RNA",
+    slot = "data",
+    file = path,
+    experiment_name = "PCA and UMAP",
+    organism = "hg",
+    groups = "groups",
+    main_group = "groups",
+    nUMI = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    add_all_meta_data = TRUE,
+    projections = c("pca", "umap"),
+    verbose = FALSE
+  ))
+
+  exported <- readRDS(path)
+  expect_identical(names(exported$projections), c("pca", "umap"))
+})

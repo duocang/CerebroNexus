@@ -115,6 +115,473 @@
       !anyDuplicated(value_names))
 }
 
+.builder_state_viewer_ids <- function(value) {
+  if (!is.character(value) || is.object(value)) {
+    return(character())
+  }
+  value <- as.character(value)
+  attributes(value) <- NULL
+  unique(value[!is.na(value) & nzchar(trimws(value))])
+}
+
+.builder_state_viewer_catalog <- function(entry) {
+  modern <- if (is.list(entry$dataset_profile)) {
+    entry$dataset_profile
+  } else if (inherits(entry$profile, "builder_dataset_profile")) {
+    entry$profile
+  } else {
+    list()
+  }
+  legacy <- if (is.list(entry$profile)) entry$profile else list()
+  viewer <- modern$viewer_content
+  if (!is.list(viewer)) {
+    viewer <- legacy$viewer_content
+  }
+  if (!is.list(viewer)) {
+    viewer <- list()
+  }
+
+  metadata <- viewer$metadata
+  groups <- if (is.list(metadata) && length(metadata)) {
+    ids <- names(metadata)
+    ids[vapply(
+      metadata,
+      function(column) is.list(column) && isTRUE(column$group_eligible),
+      logical(1)
+    )]
+  } else {
+    unname(legacy$group_candidates)
+  }
+  groups <- .builder_state_viewer_ids(groups)
+  cell_cycle <- builder_cell_cycle_candidate_ids(metadata)
+
+  projection_catalog <- viewer$projections
+  projections <- if (
+    is.list(projection_catalog) && length(projection_catalog)
+  ) {
+    ids <- names(projection_catalog)
+    ids[vapply(
+      projection_catalog,
+      function(projection) {
+        is.list(projection) && isTRUE(projection$available)
+      },
+      logical(1)
+    )]
+  } else {
+    legacy$reductions
+  }
+  projections <- .builder_state_viewer_ids(projections)
+
+  trajectory_catalog <- viewer$trajectories
+  trajectories <- list()
+  if (is.list(trajectory_catalog) && length(trajectory_catalog)) {
+    for (record in trajectory_catalog) {
+      if (
+        !is.list(record) ||
+          !isTRUE(record$selectable) ||
+          !.builder_state_text(record$method) ||
+          !.builder_state_text(record$name)
+      ) {
+        next
+      }
+      method <- as.character(record$method)
+      name <- as.character(record$name)
+      trajectories[[method]] <- unique(c(trajectories[[method]], name))
+    }
+  }
+  list(
+    groups = groups,
+    cell_cycle = cell_cycle,
+    projections = projections,
+    trajectories = trajectories
+  )
+}
+
+.builder_state_trajectory_selection <- function(value) {
+  if (is.null(value) || !length(value)) {
+    return(list())
+  }
+  if (!is.list(value) || is.object(value)) {
+    return(list())
+  }
+  methods <- names(value)
+  if (
+    is.null(methods) ||
+      anyNA(methods) ||
+      any(!nzchar(methods)) ||
+      anyDuplicated(methods)
+  ) {
+    return(list())
+  }
+  out <- list()
+  for (method in methods) {
+    names_for_method <- .builder_state_viewer_ids(value[[method]])
+    if (length(names_for_method)) {
+      out[[method]] <- names_for_method
+    }
+  }
+  out
+}
+
+.builder_state_filter_trajectories <- function(selected, available) {
+  if (!length(available)) {
+    return(list())
+  }
+  selected <- .builder_state_trajectory_selection(selected)
+  out <- list()
+  for (method in names(available)) {
+    kept <- intersect(
+      .builder_state_viewer_ids(available[[method]]),
+      .builder_state_viewer_ids(selected[[method]])
+    )
+    if (length(kept)) {
+      out[[method]] <- kept
+    }
+  }
+  out
+}
+
+.builder_state_first_trajectory <- function(included) {
+  if (!length(included)) {
+    return(NULL)
+  }
+  method <- names(included)[[1L]]
+  names_for_method <- included[[method]]
+  if (!length(names_for_method)) {
+    return(NULL)
+  }
+  list(method = method, name = names_for_method[[1L]])
+}
+
+.builder_state_trajectory_included <- function(value, included) {
+  is.list(value) &&
+    identical(names(value), c("method", "name")) &&
+    .builder_state_text(value$method) &&
+    .builder_state_text(value$name) &&
+    value$method %in% names(included) &&
+    value$name %in% included[[value$method]]
+}
+
+#' Upgrade one dataset to the canonical Viewer-content settings shape.
+#'
+#' This is deliberately an import/restore boundary operation: it does not
+#' increment the dataset revision, and current-schema settings are never
+#' silently repaired after a user edit.
+builder_upgrade_viewer_content_entry <- function(entry) {
+  if (!is.list(entry) || !is.list(entry$settings)) {
+    return(entry)
+  }
+  settings <- entry$settings
+  if (identical(settings$viewer_content_schema_version, 1L)) {
+    return(entry)
+  }
+  catalog <- .builder_state_viewer_catalog(entry)
+  recommendations <- settings$recommendations
+  group_recommendation <- if (
+    is.list(recommendations) && is.list(recommendations$groups)
+  ) {
+    recommendations$groups
+  } else {
+    list()
+  }
+  projection_recommendation <- if (
+    is.list(recommendations) && is.list(recommendations$projections)
+  ) {
+    recommendations$projections
+  } else {
+    list()
+  }
+
+  groups <- settings$included_groups
+  if (is.null(groups)) {
+    groups <- group_recommendation$included
+  }
+  if (is.null(groups)) {
+    groups <- settings$groups
+  }
+  if (is.null(groups)) {
+    groups <- catalog$groups
+  }
+  groups <- .builder_state_viewer_ids(groups)
+  if (length(catalog$groups)) {
+    groups <- intersect(catalog$groups, groups)
+  }
+  if (!length(groups) && length(catalog$groups)) {
+    suggested <- group_recommendation$value
+    groups <- if (
+      .builder_state_text(suggested) && suggested %in% catalog$groups
+    ) {
+      suggested
+    } else {
+      catalog$groups[[1L]]
+    }
+  }
+  default_group <- settings$default_group
+  if (!.builder_state_text(default_group) || !default_group %in% groups) {
+    suggested <- group_recommendation$value
+    default_group <- if (
+      .builder_state_text(suggested) && suggested %in% groups
+    ) {
+      suggested
+    } else if (length(groups)) {
+      groups[[1L]]
+    } else {
+      NULL
+    }
+  }
+
+  cell_cycle <- settings$cell_cycle_columns
+  if (is.null(cell_cycle)) {
+    cell_cycle <- catalog$cell_cycle
+  }
+  cell_cycle <- intersect(
+    catalog$cell_cycle,
+    .builder_state_viewer_ids(cell_cycle)
+  )
+
+  projections <- settings$included_projections
+  if (is.null(projections)) {
+    projections <- projection_recommendation$included
+  }
+  if (is.null(projections)) {
+    projections <- settings$reductions
+  }
+  if (is.null(projections)) {
+    projections <- catalog$projections
+  }
+  projections <- .builder_state_viewer_ids(projections)
+  if (length(catalog$projections)) {
+    projections <- intersect(catalog$projections, projections)
+  }
+  if (!length(projections) && length(catalog$projections)) {
+    suggested <- projection_recommendation$value
+    projections <- if (
+      .builder_state_text(suggested) && suggested %in% catalog$projections
+    ) {
+      suggested
+    } else {
+      catalog$projections[[1L]]
+    }
+  }
+  default_projection <- settings$default_projection
+  if (
+    !.builder_state_text(default_projection) ||
+      !default_projection %in% projections
+  ) {
+    suggested <- projection_recommendation$value
+    default_projection <- if (
+      .builder_state_text(suggested) && suggested %in% projections
+    ) {
+      suggested
+    } else if (length(projections)) {
+      projections[[1L]]
+    } else {
+      NULL
+    }
+  }
+
+  included_trajectories <- if ("included_trajectories" %in% names(settings)) {
+    .builder_state_filter_trajectories(
+      settings$included_trajectories,
+      catalog$trajectories
+    )
+  } else {
+    catalog$trajectories
+  }
+  default_trajectory <- settings$default_trajectory
+  if (
+    !.builder_state_trajectory_included(
+      default_trajectory,
+      included_trajectories
+    )
+  ) {
+    default_trajectory <- .builder_state_first_trajectory(
+      included_trajectories
+    )
+  }
+
+  overrides <- settings$group_color_overrides
+  if (is.null(overrides)) {
+    overrides <- settings$color_overrides
+  }
+  if (is.null(overrides)) {
+    overrides <- settings$colors
+  }
+  if (!is.list(overrides) || is.object(overrides)) {
+    overrides <- list()
+  }
+  point_size <- settings$overview_point_size
+  if (
+    !is.numeric(point_size) ||
+      length(point_size) != 1L ||
+      is.na(point_size) ||
+      !is.finite(point_size) ||
+      point_size < 0 ||
+      point_size > 20
+  ) {
+    point_size <- 5
+  }
+
+  settings$viewer_content_schema_version <- 1L
+  settings$included_groups <- groups
+  settings["default_group"] <- list(default_group)
+  settings$cell_cycle_columns <- cell_cycle
+  settings$group_color_overrides <- overrides
+  settings$included_projections <- projections
+  settings["default_projection"] <- list(default_projection)
+  settings$overview_point_size <- as.numeric(point_size)
+  settings$included_trajectories <- included_trajectories
+  settings["default_trajectory"] <- list(default_trajectory)
+  # Keep the two legacy aliases synchronized while older planning code is
+  # upgraded to consume the canonical fields.
+  settings$groups <- groups
+  settings$reductions <- projections
+  entry$settings <- settings
+  entry
+}
+
+.builder_state_validate_viewer_content_settings <- function(entry) {
+  settings <- entry$settings
+  if (!identical(settings$viewer_content_schema_version, 1L)) {
+    .builder_state_abort(
+      "invalid_viewer_content_settings",
+      "Viewer content settings require schema version 1."
+    )
+  }
+  validate_ids <- function(value, label) {
+    if (
+      !is.character(value) ||
+        is.object(value) ||
+        anyNA(value) ||
+        any(!nzchar(trimws(value))) ||
+        anyDuplicated(value)
+    ) {
+      .builder_state_abort(
+        "invalid_viewer_content_settings",
+        paste(label, "must contain unique stable names.")
+      )
+    }
+    value
+  }
+  groups <- validate_ids(settings$included_groups, "Included groups")
+  cell_cycle <- validate_ids(
+    settings$cell_cycle_columns %||% character(),
+    "Cell-cycle annotations"
+  )
+  available_cell_cycle <- .builder_state_viewer_catalog(entry)$cell_cycle
+  if (length(setdiff(cell_cycle, available_cell_cycle))) {
+    .builder_state_abort(
+      "invalid_viewer_content_settings",
+      "Cell-cycle annotations must belong to the detected phase catalog."
+    )
+  }
+  projections <- validate_ids(
+    settings$included_projections,
+    "Included projections"
+  )
+  validate_default <- function(value, included, label) {
+    if (!length(included)) {
+      if (!is.null(value)) {
+        .builder_state_abort(
+          "invalid_viewer_content_default",
+          paste(label, "must be empty when nothing is included.")
+        )
+      }
+      return(invisible(NULL))
+    }
+    if (!.builder_state_fact_text(value) || !value %in% included) {
+      .builder_state_abort(
+        "invalid_viewer_content_default",
+        paste(label, "must belong to its included set.")
+      )
+    }
+    invisible(value)
+  }
+  validate_default(settings$default_group, groups, "Default group")
+  validate_default(
+    settings$default_projection,
+    projections,
+    "Default projection"
+  )
+  overrides <- settings$group_color_overrides
+  if (!.builder_state_plain_list(overrides)) {
+    .builder_state_abort(
+      "invalid_viewer_content_settings",
+      "Group color overrides must be an inert named list."
+    )
+  }
+  for (group in names(overrides)) {
+    values <- overrides[[group]]
+    if (
+      !is.character(values) ||
+        is.null(names(values)) ||
+        anyNA(names(values)) ||
+        any(!nzchar(names(values))) ||
+        anyDuplicated(names(values))
+    ) {
+      .builder_state_abort(
+        "invalid_viewer_content_settings",
+        "Each group color override requires stable level names."
+      )
+    }
+  }
+  point_size <- settings$overview_point_size
+  if (
+    !is.numeric(point_size) ||
+      length(point_size) != 1L ||
+      is.na(point_size) ||
+      !is.finite(point_size) ||
+      point_size < 0 ||
+      point_size > 20
+  ) {
+    .builder_state_abort(
+      "invalid_viewer_content_settings",
+      "Initial point size must be between 0 and 20."
+    )
+  }
+
+  trajectories <- settings$included_trajectories
+  if (!.builder_state_plain_list(trajectories)) {
+    .builder_state_abort(
+      "invalid_viewer_content_settings",
+      "Included trajectories must be an inert method catalog."
+    )
+  }
+  methods <- names(trajectories)
+  if (
+    length(trajectories) &&
+      (is.null(methods) ||
+        anyNA(methods) ||
+        any(!nzchar(methods)) ||
+        anyDuplicated(methods))
+  ) {
+    .builder_state_abort(
+      "invalid_viewer_content_settings",
+      "Included trajectories require unique method names."
+    )
+  }
+  invisible(lapply(
+    trajectories,
+    validate_ids,
+    label = "Included trajectory names"
+  ))
+  default_trajectory <- settings$default_trajectory
+  if (length(trajectories)) {
+    if (!.builder_state_trajectory_included(default_trajectory, trajectories)) {
+      .builder_state_abort(
+        "invalid_viewer_content_default",
+        "Default trajectory must belong to the included trajectories."
+      )
+    }
+  } else if (!is.null(default_trajectory)) {
+    .builder_state_abort(
+      "invalid_viewer_content_default",
+      "Default trajectory must be empty when no trajectory is included."
+    )
+  }
+  invisible(entry)
+}
+
 .builder_state_validate_entry <- function(entry) {
   if (!is.list(entry) || is.object(entry)) {
     .builder_state_abort(
@@ -1079,125 +1546,107 @@
     function(candidate) {
       is.list(candidate) &&
         isTRUE(.subset2(candidate, "detected")) &&
-        isTRUE(.subset2(candidate, gate))
+        isTRUE(.subset2(candidate, gate)) &&
+        (!identical(id, "hla_tcr_motifs") ||
+          isTRUE(.subset2(candidate, "full_ir_ready")))
     },
     logical(1)
   )]
-  if (!is.null(requested)) {
-    if (!requested %in% eligible) {
-      return(structure(
-        list(reason = "selected_source_is_not_ready"),
-        class = "builder_invalid_immune_source"
-      ))
-    }
-    selected <- requested
+  if (!is.null(requested) && !requested %in% eligible) {
+    return(structure(
+      list(reason = "selected_source_is_not_ready"),
+      class = "builder_invalid_immune_source"
+    ))
+  }
+  overlaps <- if (identical(gate, "full_ir_ready")) {
+    .builder_state_or(
+      .subset2(fact, "full_source_overlaps"),
+      .builder_state_or(.subset2(fact, "source_overlaps"), list())
+    )
   } else {
-    overlaps <- if (identical(gate, "full_ir_ready")) {
-      .builder_state_or(
-        .subset2(fact, "full_source_overlaps"),
-        .builder_state_or(.subset2(fact, "source_overlaps"), list())
-      )
-    } else {
-      .builder_state_or(.subset2(fact, "motif_source_overlaps"), list())
-    }
-    divergent <- any(vapply(
+    .builder_state_or(.subset2(fact, "motif_source_overlaps"), list())
+  }
+  divergent <- any(vapply(
+    overlaps,
+    function(overlap) {
+      is.list(overlap) &&
+        .subset2(overlap, "left") %in% eligible &&
+        .subset2(overlap, "right") %in% eligible &&
+        .subset2(overlap, "n_divergent") > 0
+    },
+    logical(1)
+  ))
+  incomplete_overlap <- identical(gate, "full_ir_ready") &&
+    any(vapply(
       overlaps,
       function(overlap) {
         is.list(overlap) &&
           .subset2(overlap, "left") %in% eligible &&
           .subset2(overlap, "right") %in% eligible &&
-          .subset2(overlap, "n_divergent") > 0
+          .subset2(overlap, "n_overlap") > 0L &&
+          !isTRUE(.subset2(overlap, "equivalent"))
       },
       logical(1)
     ))
-    if (divergent) {
-      return(structure(
-        list(reason = "divergent_source_overlap"),
-        class = "builder_invalid_immune_source"
-      ))
+  sources_equivalent <- function() {
+    eligible_overlaps <- Filter(
+      function(overlap) {
+        is.list(overlap) &&
+          .subset2(overlap, "left") %in% eligible &&
+          .subset2(overlap, "right") %in% eligible
+      },
+      overlaps
+    )
+    expected_pairs <- utils::combn(
+      sort(eligible, method = "radix"),
+      2L,
+      simplify = FALSE
+    )
+    pair_key <- function(pair) {
+      paste(sort(pair, method = "radix"), collapse = "\u001f")
     }
-    if (identical(gate, "full_ir_ready")) {
-      incomplete_overlap <- any(vapply(
-        overlaps,
-        function(overlap) {
-          is.list(overlap) &&
-            .subset2(overlap, "left") %in% eligible &&
-            .subset2(overlap, "right") %in% eligible &&
-            .subset2(overlap, "n_overlap") > 0L &&
-            !isTRUE(.subset2(overlap, "equivalent"))
-        },
+    observed_pairs <- unique(vapply(
+      eligible_overlaps,
+      function(overlap) {
+        pair_key(c(
+          .subset2(overlap, "left"),
+          .subset2(overlap, "right")
+        ))
+      },
+      character(1)
+    ))
+    expected_pair_keys <- vapply(expected_pairs, pair_key, character(1))
+    length(observed_pairs) == length(expected_pair_keys) &&
+      setequal(observed_pairs, expected_pair_keys) &&
+      all(vapply(
+        eligible_overlaps,
+        function(overlap) isTRUE(.subset2(overlap, "equivalent")),
         logical(1)
       ))
-      if (incomplete_overlap) {
-        return(structure(
-          list(reason = "incomplete_source_equivalence"),
-          class = "builder_invalid_immune_source"
-        ))
-      }
-    }
-    sources_equivalent <- function() {
-      eligible_overlaps <- Filter(
-        function(overlap) {
-          is.list(overlap) &&
-            .subset2(overlap, "left") %in% eligible &&
-            .subset2(overlap, "right") %in% eligible
-        },
-        overlaps
-      )
-      expected_pairs <- utils::combn(
-        sort(eligible, method = "radix"),
-        2L,
-        simplify = FALSE
-      )
-      pair_key <- function(pair) {
-        paste(sort(pair, method = "radix"), collapse = "\u001f")
-      }
-      observed_pairs <- unique(vapply(
-        eligible_overlaps,
-        function(overlap) {
-          pair_key(c(
-            .subset2(overlap, "left"),
-            .subset2(overlap, "right")
-          ))
-        },
-        character(1)
-      ))
-      expected_pair_keys <- vapply(
-        expected_pairs,
-        pair_key,
-        character(1)
-      )
-      equivalent <- length(observed_pairs) == length(expected_pair_keys) &&
-        setequal(observed_pairs, expected_pair_keys) &&
-        all(vapply(
-          eligible_overlaps,
-          function(overlap) isTRUE(.subset2(overlap, "equivalent")),
-          logical(1)
-        ))
-      equivalent
-    }
-    if (identical(gate, "full_ir_ready") && length(eligible) > 1L) {
-      complementary_legacy <- setequal(
-        eligible,
-        c("legacy_bcr", "legacy_tcr")
-      )
-      if (!complementary_legacy && !sources_equivalent()) {
-        return(structure(
-          list(reason = "unverified_source_equivalence"),
-          class = "builder_invalid_immune_source"
-        ))
-      }
-    }
-    if (
-      identical(gate, "hla_tcr_ready") &&
-        length(eligible) > 1L &&
-        !sources_equivalent()
-    ) {
-      return(structure(
-        list(reason = "unverified_source_equivalence"),
-        class = "builder_invalid_immune_source"
-      ))
-    }
+  }
+  complementary_legacy <- identical(gate, "full_ir_ready") &&
+    setequal(eligible, c("legacy_bcr", "legacy_tcr"))
+  unverified <- length(eligible) > 1L &&
+    !complementary_legacy &&
+    !sources_equivalent()
+  decision_reason <- if (divergent) {
+    "divergent_source_overlap"
+  } else if (incomplete_overlap) {
+    "incomplete_source_equivalence"
+  } else if (unverified) {
+    "unverified_source_equivalence"
+  } else {
+    NULL
+  }
+  if (!is.null(decision_reason) && is.null(requested)) {
+    return(structure(
+      list(reason = decision_reason),
+      class = "builder_invalid_immune_source"
+    ))
+  }
+  if (!is.null(decision_reason)) {
+    selected <- requested
+  } else {
     priority <- c(
       "attachment",
       "unified_misc",
@@ -1340,11 +1789,82 @@
   immune_choice <- .builder_state_content_choice(entry, "immune_repertoire")
   immune_filtered <- !is.null(immune_choice) &&
     immune_choice %in% c("filtered", "stored_only")
+  motif_choice <- .builder_state_content_choice(entry, "hla_tcr_motifs")
+  motif_filtered <- !is.null(motif_choice) &&
+    motif_choice %in% c("filtered", "stored_only")
+  candidates <- .builder_state_or(.subset2(fact, "candidates"), list())
+  raw_motif_ready <- any(vapply(
+    candidates,
+    function(candidate) {
+      is.list(candidate) &&
+        isTRUE(.subset2(candidate, "detected")) &&
+        isTRUE(.subset2(candidate, "hla_tcr_ready"))
+    },
+    logical(1)
+  ))
   invalid_full_source <- inherits(
     full_selection,
     "builder_invalid_immune_source"
   )
   has_full_source <- !is.null(full_selection) && !invalid_full_source
+  invalid_motif_source <- inherits(
+    motif_selection,
+    "builder_invalid_immune_source"
+  )
+  has_motif_source <- !is.null(motif_selection) && !invalid_motif_source
+  motif_source_not_exportable <- raw_motif_ready &&
+    !has_motif_source &&
+    !invalid_motif_source
+  if (motif_source_not_exportable) {
+    motif_evidence$diagnostics <- unique(c(
+      motif_evidence$diagnostics,
+      "motif_source_not_exportable"
+    ))
+    if (!motif_filtered) {
+      invalid_motif_source <- TRUE
+    }
+  }
+  incompatible_sources <- has_full_source &&
+    has_motif_source &&
+    !immune_filtered &&
+    !motif_filtered &&
+    !all(motif_selection$names %in% full_selection$names)
+  if (incompatible_sources) {
+    immune_evidence$diagnostics <- unique(c(
+      immune_evidence$diagnostics,
+      "incompatible_immune_source_selection"
+    ))
+    motif_evidence$diagnostics <- unique(c(
+      motif_evidence$diagnostics,
+      "incompatible_immune_source_selection"
+    ))
+    invalid_full_source <- TRUE
+    invalid_motif_source <- TRUE
+  }
+  full_payload_has_motif <- has_full_source &&
+    any(vapply(
+      full_selection$candidates,
+      function(candidate) isTRUE(.subset2(candidate, "hla_tcr_ready")),
+      logical(1)
+    ))
+  incompatible_pages <- (!immune_filtered &&
+    motif_filtered &&
+    full_payload_has_motif) ||
+    (immune_filtered &&
+      !motif_filtered &&
+      has_motif_source)
+  if (incompatible_pages) {
+    immune_evidence$diagnostics <- unique(c(
+      immune_evidence$diagnostics,
+      "incompatible_immune_page_disposition"
+    ))
+    motif_evidence$diagnostics <- unique(c(
+      motif_evidence$diagnostics,
+      "incompatible_immune_page_disposition"
+    ))
+    invalid_full_source <- TRUE
+    invalid_motif_source <- TRUE
+  }
   immune_attention <- has_full_source &&
     isTRUE(immune_evidence$attention) &&
     !immune_filtered
@@ -1357,7 +1877,7 @@
     "blocking"
   } else if (has_full_source || immune_filtered) {
     if (immune_attention) "attention" else "valid"
-  } else if (!immune_evidence$detected || motif_evidence$hla_tcr_ready) {
+  } else if (!immune_evidence$detected || raw_motif_ready) {
     "not_applicable"
   } else {
     "blocking"
@@ -1378,14 +1898,6 @@
     c("valid", "attention") &&
     immune_disposition %in% c("preserved", "converted", "attached")
 
-  motif_choice <- .builder_state_content_choice(entry, "hla_tcr_motifs")
-  motif_filtered <- !is.null(motif_choice) &&
-    motif_choice %in% c("filtered", "stored_only")
-  invalid_motif_source <- inherits(
-    motif_selection,
-    "builder_invalid_immune_source"
-  )
-  has_motif_source <- !is.null(motif_selection) && !invalid_motif_source
   motif_attention <- has_motif_source &&
     isTRUE(motif_evidence$attention) &&
     !motif_filtered
@@ -1521,6 +2033,7 @@
         settings$groups,
         .builder_state_included_groups(entry),
         settings$default_group,
+        settings$cell_cycle_columns,
         .builder_state_or(settings$nUMI, legacy_profile$nUMI),
         .builder_state_or(settings$nGene, legacy_profile$nGene)
       )
@@ -2077,6 +2590,9 @@
 #' Derive one dataset's rail and Review readiness from its manifest.
 builder_dataset_state <- function(entry) {
   .builder_state_validate_entry(entry)
+  entry <- builder_upgrade_viewer_content_entry(entry)
+  .builder_state_validate_entry(entry)
+  .builder_state_validate_viewer_content_settings(entry)
   .builder_state_validate_recommendations(entry)
   load_state <- .builder_state_load_state(entry)
   revision <- .builder_state_revision(entry$revision)
@@ -2287,6 +2803,10 @@ builder_state <- function(
   datasets = list(),
   current_dataset = NULL
 ) {
+  # Validate the untrusted shape before upgrading it; upgrade is compatibility
+  # logic, not a sanitizer for hostile values.
+  invisible(.builder_store_ids(datasets))
+  datasets <- lapply(datasets, builder_upgrade_viewer_content_entry)
   ids <- .builder_store_ids(datasets)
   if (
     !is.null(current_dataset) &&
@@ -2465,7 +2985,8 @@ builder_reduce_state <- function(state, action) {
   }
 
   if (identical(type, "add")) {
-    entry <- action$entry
+    .builder_store_validate_entry(action$entry)
+    entry <- builder_upgrade_viewer_content_entry(action$entry)
     if (!is.list(entry) || !.builder_state_fact_text(entry$id)) {
       .builder_state_abort(
         "invalid_dataset_entry",
@@ -2485,7 +3006,8 @@ builder_reduce_state <- function(state, action) {
     }
   } else if (identical(type, "replace")) {
     index <- require_id(action$id)
-    entry <- action$entry
+    .builder_store_validate_entry(action$entry)
+    entry <- builder_upgrade_viewer_content_entry(action$entry)
     if (!is.list(entry) || !identical(entry$id, action$id)) {
       .builder_state_abort(
         "invalid_dataset_entry",
@@ -2495,8 +3017,13 @@ builder_reduce_state <- function(state, action) {
     .builder_store_validate_entry(entry)
     next_state$datasets[[index]] <- entry
   } else if (identical(type, "replace_all")) {
-    replacement_ids <- .builder_store_ids(action$datasets)
-    next_state$datasets <- action$datasets
+    invisible(.builder_store_ids(action$datasets))
+    replacement <- lapply(
+      action$datasets,
+      builder_upgrade_viewer_content_entry
+    )
+    replacement_ids <- .builder_store_ids(replacement)
+    next_state$datasets <- replacement
     if (
       is.null(next_state$current_dataset) ||
         !next_state$current_dataset %in% replacement_ids

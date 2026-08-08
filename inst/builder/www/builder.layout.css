@@ -1,0 +1,433 @@
+/* CerebroNexus Builder: page, shell, and responsive layout styles. */
+
+.topbar {
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  padding: .8rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.topbar .wordmark { display: flex; align-items: center; gap: .7rem; }
+.topbar .wordmark svg { height: 17px; width: auto; display: block; }
+.topbar .divider {
+  width: 1px; height: 18px; background: var(--c-border-2);
+}
+.topbar h1 {
+  font-size: .95rem; font-weight: 600; margin: 0; letter-spacing: -.01em;
+}
+.topbar .formats {
+  font-size: .76rem; color: var(--c-text-subtle); font-family: var(--font-mono);
+  margin-left: auto;
+}
+
+.shell,
+.builder-shell {
+  display: grid;
+  grid-template-columns: 19.5rem minmax(0, 1fr);
+  gap: var(--builder-section-gap);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: var(--space-6) var(--builder-page-gutter);
+  align-items: start;
+  position: relative;
+}
+/* Grid items refuse to shrink below their content by default, so one long
+   path in a <pre> would push the whole column past the viewport. */
+.shell > * { min-width: 0; }
+#workbench,
+.builder-stage,
+.review-app-options,
+.row2 > *,
+.field-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.rail, #pane { position: relative; z-index: 1; }
+.builder-content {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+#workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--builder-section-gap);
+  align-items: start;
+}
+#workbench > * { min-width: 0; }
+.builder-stage,
+.review-app-options {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+  padding: var(--builder-stage-padding);
+}
+.builder-stage {
+  height: auto;
+  min-width: 0;
+  align-self: start;
+  overflow-wrap: anywhere;
+  transition: border-color var(--duration-base) var(--ease),
+              box-shadow var(--duration-base) var(--ease);
+}
+.builder-stage ul { max-width: 100%; padding-left: 1.35rem; }
+.builder-stage li { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.builder-stage[aria-current="stage"] {
+  border-color: var(--c-amber-300);
+  box-shadow: var(--shadow-2);
+}
+.builder-stage > h2,
+.review-app-options > h2 { margin-top: 0; }
+
+/* ---- dataset rail ------------------------------------------------------ */
+
+.rail-summary,
+.rail-manager-backdrop,
+.rail-manager-close { display: none; }
+
+.rail-summary {
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .7rem .85rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  color: var(--c-text);
+  box-shadow: var(--shadow-1);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.rail-summary:focus-visible {
+  outline: 2px solid var(--builder-action);
+  outline-offset: 2px;
+}
+.rail-summary-copy { min-width: 0; display: grid; }
+.rail-summary-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.rail-summary-state { color: var(--c-text-muted); font-size: .78rem; }
+.rail-summary-action {
+  flex: 0 0 auto;
+  color: var(--builder-action-active);
+  font-size: .8rem;
+  font-weight: 600;
+}
+
+.rail {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  position: sticky;
+  top: 4.2rem;
+  box-shadow: var(--shadow-1);
+}
+.rail-head {
+  padding: .75rem .95rem;
+  border-bottom: 1px solid var(--c-border);
+  font-size: .7rem;
+  font-family: var(--font-mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--c-text-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.rail-empty { padding: 1.1rem .95rem; color: var(--c-text-subtle); font-size: .875rem; }
+
+/* One data set row.
+   The row is a container, not a button, because it holds two targets: the
+   whole row selects, and a remove button sits on top of its right end. */
+.ds {
+  position: relative;
+  border-bottom: 1px solid var(--c-border);
+  transition: background var(--duration-base) var(--ease);
+}
+.ds-picker .ds:not(.is-active):has(.ds-pick:hover) {
+  background: var(--c-amber-50);
+}
+.ds.is-active {
+  background: var(--builder-selection-bg);
+  color: var(--builder-selection-fg);
+}
+/* The active marker slides between rows rather than blinking on and off. */
+.ds::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--builder-action);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform .22s var(--ease);
+}
+.ds.is-active::before {
+  background: var(--builder-selection-fg);
+  transform: scaleY(1);
+}
+
+.ds-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  width: 100%;
+  /* Room on the right so a long name never runs under the remove button. */
+  padding: .6rem 2.5rem .6rem .8rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.ds-pick:focus-visible { outline: 2px solid var(--builder-action); outline-offset: -2px; }
+
+/* The index is information, not decoration: data sets are written in this
+   order and appear in this order in the generated app's switcher. The hairline
+   between numerals is what makes that reading obvious. */
+.ds-idx {
+  position: relative;
+  flex: 0 0 1.35rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: .72rem;
+  line-height: 1.5rem;
+  text-align: center;
+  color: var(--c-text-subtle);
+}
+.ds-idx::before, .ds-idx::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 1px;
+  background: var(--c-border-2);
+  transform: translateX(-50%);
+}
+.ds-idx::before { top: -.6rem; height: .35rem; }
+.ds-idx::after  { top: 1.65rem; bottom: -.6rem; }
+.ds:first-child .ds-idx::before,
+.ds:last-child  .ds-idx::after { display: none; }
+.ds.is-active .ds-idx { color: var(--builder-selection-fg); font-weight: 600; }
+
+.ds-body { min-width: 0; flex: 1; }
+.ds .nm {
+  display: block; font-weight: 600; font-size: .9rem; line-height: 1.5;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ds .meta {
+  display: block; font-family: var(--font-mono); font-size: .71rem;
+  color: var(--c-text-subtle);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ds .meta.bad { color: var(--c-warning); }
+.ds.is-active .meta,
+.ds.is-active .meta.bad,
+.ds.is-active .builder-import-status { color: rgb(255 247 237); }
+
+/* Destructive actions remain visible without relying on pointer hover. */
+.ds-del {
+  position: absolute;
+  right: .5rem;
+  top: .55rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 1.8rem;
+  padding: .3rem .5rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: var(--c-error-50);
+  color: var(--c-error);
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 1;
+}
+.ds-del:hover { background: var(--c-error-100); color: var(--c-error); }
+.ds-del:focus-visible { outline: 2px solid var(--c-error); outline-offset: 1px; }
+.ds-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+  padding: 0 .8rem .55rem;
+}
+.ds-move {
+  min-width: 1.8rem;
+  min-height: 1.8rem;
+  margin: 0;
+  padding: .15rem .35rem;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+.ds-move,
+.ds-del {
+  align-items: center;
+  gap: .3rem;
+  font: inherit;
+  font-size: .7rem;
+  line-height: 1;
+}
+.ds-move { display: inline-flex; width: auto; }
+.ds-action-label { white-space: nowrap; }
+.ds-del {
+  position: static;
+  width: auto;
+  padding: .35rem .55rem;
+}
+.ds-move:focus-visible {
+  outline: 2px solid var(--builder-action);
+  outline-offset: 1px;
+}
+.ds-move[disabled] { opacity: .4; cursor: not-allowed; }
+.ds.is-active .ds-move {
+  border-color: rgb(255 255 255 / .48);
+  background: rgb(255 255 255 / .12);
+  color: var(--builder-selection-fg);
+}
+.rail-add { padding: .85rem .95rem; }
+
+.builder-stage-core { max-width: none; overflow: visible; }
+
+/* ---- action bar -------------------------------------------------------- */
+
+.actionbar {
+  position: static;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  padding: .75rem 1.5rem;
+  box-shadow: var(--shadow-1);
+  max-width: none;
+  margin: 0 var(--builder-page-gutter) 1.5rem;
+}
+.actionbar .inner {
+  max-width: none; margin: 0;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+.actionbar .grow { flex: 1 1 14rem; }
+.actionbar .summary { font-size: .85rem; color: var(--c-text-muted); }
+.actionbar .builder-action-row { display: inline-flex; margin-top: 0; }
+.actionbar-output-note {
+  min-width: 14rem;
+  color: var(--c-text-muted);
+  font-size: .88rem;
+}
+
+/* Field groups wrap only when a field would become too narrow to read. */
+.row2,
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: 0 1rem;
+}
+
+@media (max-width: 68.75rem) {
+  .shell,
+  .builder-shell {
+    grid-template-columns: 17.75rem minmax(0, 1fr);
+    gap: var(--space-4);
+    padding-inline: var(--space-6);
+  }
+  .actionbar { margin-inline: var(--space-6); }
+  .actionbar .inner { align-items: flex-end; }
+}
+
+@media (max-width: 58rem) {
+  .shell,
+  .builder-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--builder-section-gap);
+    padding-inline: var(--builder-page-gutter);
+  }
+  .rail-summary { display: flex; }
+  .rail-manager-backdrop.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 69;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgba(17, 17, 26, .42);
+    opacity: 0;
+    cursor: default;
+    transition: opacity var(--duration-normal) var(--ease-standard);
+  }
+  .rail-manager-backdrop.is-visible { opacity: 1; }
+  .rail {
+    display: none;
+    position: fixed;
+    inset: max(1rem, env(safe-area-inset-top)) 1rem
+      max(1rem, env(safe-area-inset-bottom));
+    top: max(1rem, env(safe-area-inset-top));
+    z-index: 70;
+    width: auto;
+    max-height: none;
+    overflow-y: auto;
+  }
+  .rail.is-manager-open {
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(.35rem);
+    transition: opacity var(--duration-normal) var(--ease-standard),
+      transform var(--duration-normal) var(--ease-standard);
+  }
+  .rail.is-manager-visible { opacity: 1; transform: none; }
+  .rail-manager-close {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    padding: .25rem .55rem;
+    border: 1px solid var(--c-border-2);
+    border-radius: var(--r-xs);
+    background: var(--c-surface);
+    color: var(--c-text);
+    font: inherit;
+    cursor: pointer;
+  }
+}
+
+@media (max-width: 40rem) {
+  :root {
+    --builder-page-gutter: var(--space-4);
+    --builder-stage-padding: var(--space-4);
+    --builder-section-gap: var(--space-3);
+  }
+  .topbar { padding-inline: var(--space-4); }
+  .topbar .formats { width: 100%; margin-left: 0; }
+  .shell,
+  .builder-shell { padding-block: var(--space-4); }
+  .actionbar {
+    margin: 0 var(--builder-page-gutter) var(--space-4);
+    padding: .8rem;
+  }
+  .actionbar .inner { align-items: stretch; gap: .7rem; }
+  .actionbar .grow { flex-basis: 100%; }
+  .actionbar .summary { width: 100%; }
+  .actionbar .btn { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds.is-active::before,
+  .ds::before { transform: scaleY(1); }
+  .ds:not(.is-active)::before { display: none; }
+  .rail.is-manager-open,
+  .rail.is-manager-visible { transform: none !important; }
+}

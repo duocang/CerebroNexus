@@ -72,6 +72,7 @@ builder_build_test_plan <- function(analyses = character()) {
         show_upload_ui = FALSE,
         initial_dataset = "dataset-a",
         initial_dataset_mode = "automatic",
+        initial_page = "data_info",
         welcome_message = "Welcome to CerebroNexus!",
         point_size = list(overview_projection_point_size = 5),
         variable_to_compare = FALSE,
@@ -821,6 +822,131 @@ test_that("build preparation follows the frozen immune source", {
     cells[[2L]]
   )
   expect_null(legacy@misc$tcr_data)
+
+  motif_only_item <- list(
+    manifest = list(
+      immune_repertoire = list(
+        disposition = NA_character_,
+        evidence = list(selected_sources = character())
+      ),
+      hla_tcr_motifs = list(
+        disposition = "converted",
+        evidence = list(
+          selected_sources = "legacy_tcr",
+          selected_candidates = list(
+            legacy_tcr = list(
+              full_ir_ready = TRUE,
+              hla_tcr_ready = TRUE
+            )
+          )
+        )
+      )
+    )
+  )
+  expect_error(
+    .builder_build_prepare_immune(object, motif_only_item),
+    "cannot hide only one Viewer page",
+    fixed = TRUE
+  )
+
+  incompatible_item <- list(
+    included_groups = "groups",
+    manifest = list(
+      immune_repertoire = list(
+        disposition = "converted",
+        evidence = list(
+          selected_sources = "metadata",
+          selected_candidates = list(metadata = list(normalized = list()))
+        )
+      ),
+      hla_tcr_motifs = list(
+        disposition = "preserved",
+        evidence = list(
+          selected_sources = "unified_misc",
+          selected_candidates = list(unified_misc = list())
+        )
+      )
+    )
+  )
+  expect_error(
+    .builder_build_prepare_immune(object, incompatible_item),
+    "cannot be realized by one frozen immune payload",
+    fixed = TRUE
+  )
+
+  partial_motif_item <- list(
+    manifest = list(
+      hla_tcr_motifs = list(
+        disposition = "preserved",
+        evidence = list(
+          selected_sources = "unified_misc",
+          selected_candidates = list(
+            unified_misc = list(
+              full_ir_ready = FALSE,
+              hla_tcr_ready = TRUE
+            )
+          )
+        )
+      )
+    )
+  )
+  expect_error(
+    .builder_build_prepare_immune(object, partial_motif_item),
+    "cannot be exported as one immune payload",
+    fixed = TRUE
+  )
+
+  coupled_item <- list(
+    manifest = list(
+      immune_repertoire = list(
+        disposition = "preserved",
+        evidence = list(
+          selected_sources = "unified_misc",
+          selected_candidates = list(
+            unified_misc = list(
+              full_ir_ready = TRUE,
+              hla_tcr_ready = TRUE
+            )
+          )
+        )
+      ),
+      hla_tcr_motifs = list(
+        disposition = "filtered",
+        evidence = list(selected_sources = character())
+      )
+    )
+  )
+  expect_error(
+    .builder_build_prepare_immune(object, coupled_item),
+    "cannot hide only one Viewer page",
+    fixed = TRUE
+  )
+
+  reverse_coupled_item <- list(
+    manifest = list(
+      immune_repertoire = list(
+        disposition = "filtered",
+        evidence = list(selected_sources = character())
+      ),
+      hla_tcr_motifs = list(
+        disposition = "preserved",
+        evidence = list(
+          selected_sources = "unified_misc",
+          selected_candidates = list(
+            unified_misc = list(
+              full_ir_ready = TRUE,
+              hla_tcr_ready = TRUE
+            )
+          )
+        )
+      )
+    )
+  )
+  expect_error(
+    .builder_build_prepare_immune(object, reverse_coupled_item),
+    "cannot hide only one Viewer page",
+    fixed = TRUE
+  )
 
   item$manifest$immune_repertoire$disposition <- "filtered"
   filtered <- .builder_build_prepare_immune(object, item)

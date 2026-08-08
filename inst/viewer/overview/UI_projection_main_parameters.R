@@ -2,11 +2,27 @@
 ## UI elements to set main parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["overview_projection_main_parameters_UI"]] <- renderUI({
+  projections <- availableProjections()
+  viewer_defaults <- configuredViewerContent(
+    Cerebro.options[["viewer_content"]],
+    available_crb_files$selected,
+    available_crb_files$files
+  )
+  default_projection <- viewer_defaults$default_projection
+  if (
+    !is.character(default_projection) ||
+      length(default_projection) != 1L ||
+      is.na(default_projection) ||
+      !default_projection %in% projections
+  ) {
+    default_projection <- if (length(projections)) projections[[1L]] else NULL
+  }
   tagList(
     selectInput(
       "overview_projection_to_display",
       label = "Projection",
-      choices = availableProjections()
+      choices = projections,
+      selected = default_projection
     ),
     selectInput(
       "overview_projection_point_color",

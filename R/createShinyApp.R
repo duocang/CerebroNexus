@@ -1190,6 +1190,9 @@ dedent <- function(string) {
 #' @param initial_dataset Optional exact data set label to load initially. This
 #'   does not change the order of \code{cerebro_data}. URL selection and a
 #'   session's current selection take precedence.
+#' @param initial_page Optional stable Viewer page identifier to open after the
+#'   initial data set loads. Defaults to the existing Data info start page when
+#'   omitted and is applied only once per Viewer session.
 #' @param welcome_message Welcome message shown in the Load Data tab.
 #' @param point_size Named list with \code{overview_projection_point_size}
 #'   (and optionally other keys) forwarded to \code{Cerebro.options}.
@@ -1257,6 +1260,7 @@ createShinyApp <- function(
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
   initial_dataset = NULL,
+  initial_page = NULL,
   auth = NULL,
   ...
 ) {
@@ -1329,6 +1333,21 @@ createShinyApp <- function(
   ) {
     stop(
       "'initial_dataset' must be NULL or exactly one cerebro_data label.",
+      call. = FALSE
+    )
+  }
+  if (
+    !is.null(initial_page) &&
+      (!is.character(initial_page) ||
+        length(initial_page) != 1L ||
+        is.na(initial_page) ||
+        !initial_page %in% builder_viewer_known_page_ids())
+  ) {
+    stop(
+      paste0(
+        "'initial_page' must be NULL or exactly one known Viewer page ",
+        "identifier."
+      ),
       call. = FALSE
     )
   }
@@ -1989,7 +2008,8 @@ createShinyApp <- function(
     ".bundle_backend_plan",
     ".bundle_run_options",
     ".viewer_auth",
-    "initial_dataset"
+    "initial_dataset",
+    "initial_page"
   )
   option_names <- names(cerebro_options)
   if (!is.null(option_names)) {
@@ -2017,6 +2037,9 @@ createShinyApp <- function(
   }
   if (!is.null(initial_dataset)) {
     cerebro_options[["initial_dataset"]] <- initial_dataset
+  }
+  if (!is.null(initial_page)) {
+    cerebro_options[["initial_page"]] <- initial_page
   }
   if (!is.null(point_size)) {
     cerebro_options[["point_size"]] <- point_size

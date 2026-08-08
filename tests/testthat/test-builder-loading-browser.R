@@ -7,12 +7,17 @@ test_that("Builder stays visible while a dataset loads", {
   app <- AppDriver$new(
     app_dir,
     name = "builder_loading_non_blank",
-    width = 1280,
+    width = 1920,
     height = 850,
     load_timeout = 60000
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
+  app$get_chromote_session()$set_viewport_size(width = 1920, height = 850)
+  app$wait_for_js(
+    "window.innerWidth === 1920 && window.innerHeight === 850",
+    timeout = 10000
+  )
 
   expect_true(app$get_js(paste0(
     "document.querySelector('.builder-shell') !== null && ",
@@ -21,21 +26,38 @@ test_that("Builder stays visible while a dataset loads", {
     "document.getElementById('workbench').textContent.trim().length > 0"
   )))
 
+  geometry <- app$get_js(paste0(
+    "(() => {",
+    "const rail = document.querySelector('.rail').getBoundingClientRect();",
+    "const pane = document.getElementById('pane').getBoundingClientRect();",
+    "const viewport = document.documentElement.clientWidth;",
+    "return {",
+    "left: rail.left, right: viewport - pane.right, ",
+    "paneWidth: pane.width, viewport: viewport, ",
+    "documentWidth: document.documentElement.scrollWidth",
+    "};",
+    "})()"
+  ))
+  expect_lte(abs(geometry$left - 26), 2)
+  expect_lte(abs(geometry$right - 26), 2)
+  expect_gt(geometry$paneWidth, 1200)
+  expect_lte(geometry$documentWidth, geometry$viewport + 1)
+
   app$click(selector = ".example-btn[data-ex=basic_pbmc]")
   app$wait_for_js(
     paste0(
       "document.querySelector('.builder-loading-stage') !== null && ",
-      "document.querySelector('.ds--import') !== null"
+      "document.querySelector('.ds--import') !== null && ",
+      "document.querySelector('.builder-shell').getClientRects().length > 0 && ",
+      "document.getElementById('workbench').textContent.trim().length > 0 && ",
+      "document.querySelector('.builder-loading-status')",
+      ".textContent.trim().length > 0 && ",
+      "document.documentElement.scrollHeight > ",
+      "document.documentElement.clientHeight && ",
+      "document.getElementById('build').disabled === true"
     ),
     timeout = 10000
   )
-  expect_true(app$get_js(paste0(
-    "document.querySelector('.builder-shell').getClientRects().length > 0 && ",
-    "document.getElementById('workbench').textContent.trim().length > 0 && ",
-    "document.querySelector('.builder-loading-status').textContent.trim().length > 0 && ",
-    "document.documentElement.scrollHeight > document.documentElement.clientHeight && ",
-    "document.getElementById('build').disabled === true"
-  )))
 
   app$wait_for_js(
     paste0(
@@ -52,6 +74,46 @@ test_that("Builder stays visible while a dataset loads", {
     "document.getElementById('workbench').textContent.trim().length > 0 && ",
     "window.Shiny.shinyapp.$socket.readyState === WebSocket.OPEN"
   )))
+
+  for (layout in list(
+    list(width = 1920L, height = 850L, gutter = 26),
+    list(width = 768L, height = 800L, gutter = 24),
+    list(width = 390L, height = 844L, gutter = 16)
+  )) {
+    app$get_chromote_session()$set_viewport_size(
+      width = layout$width,
+      height = layout$height
+    )
+    app$wait_for_js(
+      sprintf(
+        "window.innerWidth === %d && window.innerHeight === %d",
+        layout$width,
+        layout$height
+      ),
+      timeout = 10000
+    )
+    aligned <- app$get_js(paste0(
+      "(() => {",
+      "const shell = document.querySelector('.builder-shell');",
+      "const actionbar = document.querySelector('.actionbar')",
+      ".getBoundingClientRect();",
+      "const viewport = document.documentElement.clientWidth;",
+      "const shellStyle = getComputedStyle(shell);",
+      "return {",
+      "left: actionbar.left, right: viewport - actionbar.right, ",
+      "shellLeft: parseFloat(shellStyle.paddingLeft), ",
+      "shellRight: parseFloat(shellStyle.paddingRight), ",
+      "viewport: viewport, ",
+      "documentWidth: document.documentElement.scrollWidth",
+      "};",
+      "})()"
+    ))
+    expect_lte(abs(aligned$left - layout$gutter), 2)
+    expect_lte(abs(aligned$right - layout$gutter), 2)
+    expect_equal(aligned$shellLeft, layout$gutter)
+    expect_equal(aligned$shellRight, layout$gutter)
+    expect_lte(aligned$documentWidth, aligned$viewport + 1)
+  }
 
   logs <- app$get_logs()
   browser_failures <- logs[

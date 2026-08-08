@@ -467,8 +467,12 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
     ),
     tags$input(
       id = ns("rendered_for"),
-      type = "hidden",
-      value = model$id
+      type = "text",
+      class = "builder-rendered-for-input",
+      value = model$id,
+      hidden = "hidden",
+      tabindex = "-1",
+      `aria-hidden` = "true"
     ),
     h3("Optional analyses"),
     div(

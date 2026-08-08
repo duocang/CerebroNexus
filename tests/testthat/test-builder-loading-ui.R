@@ -7,6 +7,37 @@ if (file.exists(rail_path)) {
   sys.source(rail_path, envir = globalenv())
 }
 
+builder_loading_stylesheet_files <- c(
+  "builder.tokens.css",
+  "builder.base.css",
+  "builder.layout.css",
+  "builder.components.css",
+  "builder.features.css"
+)
+
+test_that("loading UI uses the final five-file stylesheet manifest", {
+  app <- paste(
+    readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  manifest <- regmatches(
+    app,
+    regexpr(
+      "builder_stylesheet_files <- c\\([^)]+\\)",
+      app,
+      perl = TRUE
+    )
+  )
+  files <- regmatches(
+    manifest,
+    gregexpr('"builder(?:\\.[^."]+)*\\.css"', manifest, perl = TRUE)
+  )[[1L]]
+  files <- gsub('"', "", files, fixed = TRUE)
+
+  expect_identical(files, builder_loading_stylesheet_files)
+  expect_false("builder.css" %in% files)
+})
+
 test_that("the Builder initial HTML contains a stable non-empty shell", {
   app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
   pre_server <- paste(
@@ -83,6 +114,11 @@ test_that("loading rail rows expose safe status and real actions", {
   expect_match(html, "Waiting to load", fixed = TRUE)
   expect_match(html, "builder-pick-import", fixed = TRUE)
   expect_match(html, "builder-remove-import", fixed = TRUE)
+  expect_match(html, "ds ds--import is-active is-importing", fixed = TRUE)
+  expect_match(html, 'data-load-state="queued"', fixed = TRUE)
+  expect_match(html, 'aria-current="true"', fixed = TRUE)
+  expect_match(html, 'aria-label="Cancel loading patient-one"', fixed = TRUE)
+  expect_match(html, "ds-state-dot", fixed = TRUE)
   expect_false(grepl("/private/session", html, fixed = TRUE))
 })
 
@@ -111,6 +147,9 @@ test_that("error rows offer Retry and Remove without internal details", {
   expect_match(html, "Could not load dataset", fixed = TRUE)
   expect_match(html, "builder-retry-import", fixed = TRUE)
   expect_match(html, "builder-remove-import", fixed = TRUE)
+  expect_match(html, 'data-load-state="error"', fixed = TRUE)
+  expect_match(html, "is-error", fixed = TRUE)
+  expect_match(html, 'aria-label="Remove failed import broken"', fixed = TRUE)
   expect_false(grepl("/private/session", html, fixed = TRUE))
   expect_false(grepl("stack", html, ignore.case = TRUE))
 })
@@ -124,9 +163,18 @@ test_that("client upload feedback precedes the Shiny file transfer", {
     collapse = "\n"
   )
   css <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "www", "builder.css"),
-      warn = FALSE
+    vapply(
+      builder_loading_stylesheet_files,
+      function(file) {
+        paste(
+          readLines(
+            builder_profile_inst_path("builder", "www", file),
+            warn = FALSE
+          ),
+          collapse = "\n"
+        )
+      },
+      character(1)
     ),
     collapse = "\n"
   )
@@ -139,6 +187,9 @@ test_that("client upload feedback precedes the Shiny file transfer", {
   expect_match(client, ".builder-pick-import", fixed = TRUE)
   expect_match(client, ".builder-retry-import", fixed = TRUE)
   expect_match(client, ".builder-remove-import", fixed = TRUE)
+  expect_match(client, "is-importing", fixed = TRUE)
+  expect_match(client, "is-active", fixed = TRUE)
+  expect_match(client, 'setAttribute("aria-current", "true")', fixed = TRUE)
   expect_match(css, ".builder-loading-stage", fixed = TRUE)
   expect_match(css, ".builder-loading-progress", fixed = TRUE)
   expect_match(css, "prefers-reduced-motion: reduce", fixed = TRUE)
