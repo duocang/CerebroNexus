@@ -453,6 +453,126 @@ test_that("rollback never deletes a foreign destination", {
   )
 })
 
+test_that("publication commits a new destination after the stage swap", {
+  root <- withr::local_tempdir()
+  stage <- file.path(root, "stage")
+  result <- file.path(root, "app")
+  dir.create(stage)
+  writeLines("NEW", file.path(stage, "marker.txt"))
+  commit_calls <- 0L
+
+  expect_identical(
+    .publishBundleStage(
+      stage,
+      result,
+      overwrite = TRUE,
+      publish_mode = as.octmode("0750"),
+      on_commit = function() {
+        commit_calls <<- commit_calls + 1L
+        expect_false(dir.exists(stage))
+        expect_identical(readLines(file.path(result, "marker.txt")), "NEW")
+      }
+    ),
+    result
+  )
+  expect_identical(commit_calls, 1L)
+})
+
+test_that("replacement commits before removing the old backup", {
+  root <- withr::local_tempdir()
+  tree <- publication_test_tree(root)
+  commit_calls <- 0L
+
+  expect_identical(
+    .publishBundleStage(
+      tree$stage,
+      tree$result,
+      overwrite = TRUE,
+      publish_mode = as.octmode("0750"),
+      on_commit = function() {
+        commit_calls <<- commit_calls + 1L
+        backups <- publication_test_backups(root)
+        expect_identical(readLines(file.path(tree$result, "marker.txt")), "NEW")
+        expect_length(backups, 1L)
+        expect_identical(readLines(file.path(backups, "marker.txt")), "OLD")
+      }
+    ),
+    tree$result
+  )
+  expect_identical(commit_calls, 1L)
+  expect_length(publication_test_backups(root), 0L)
+})
+
+test_that("publication commits before backup cleanup warnings become errors", {
+  root <- withr::local_tempdir()
+  tree <- publication_test_tree(root)
+  commit_calls <- 0L
+  ops <- publication_test_ops(
+    unlink = function(path, recursive = TRUE, force = TRUE) 1L
+  )
+  withr::local_options(warn = 2L)
+
+  expect_error(
+    .publishBundleStage(
+      tree$stage,
+      tree$result,
+      overwrite = TRUE,
+      publish_mode = as.octmode("0750"),
+      ops = ops,
+      on_commit = function() commit_calls <<- commit_calls + 1L
+    ),
+    "old backup remains"
+  )
+  expect_identical(commit_calls, 1L)
+  expect_identical(readLines(file.path(tree$result, "marker.txt")), "NEW")
+  backups <- publication_test_backups(root)
+  expect_length(backups, 1L)
+  expect_identical(readLines(file.path(backups, "marker.txt")), "OLD")
+})
+
+test_that("rename failures never invoke the publication callback", {
+  root <- withr::local_tempdir()
+  tree <- publication_test_tree(root)
+  commit_calls <- 0L
+  backup_failure_ops <- publication_test_ops(
+    rename = function(from, to) FALSE
+  )
+
+  expect_error(
+    .publishBundleStage(
+      tree$stage,
+      tree$result,
+      overwrite = TRUE,
+      publish_mode = as.octmode("0750"),
+      ops = backup_failure_ops,
+      on_commit = function() commit_calls <<- commit_calls + 1L
+    ),
+    "stage the existing app"
+  )
+  expect_identical(commit_calls, 0L)
+
+  publish_calls <- 0L
+  publish_failure_ops <- publication_test_ops(rename = function(from, to) {
+    publish_calls <<- publish_calls + 1L
+    if (identical(publish_calls, 2L)) {
+      return(FALSE)
+    }
+    file.rename(from, to)
+  })
+  expect_error(
+    .publishBundleStage(
+      tree$stage,
+      tree$result,
+      overwrite = TRUE,
+      publish_mode = as.octmode("0750"),
+      ops = publish_failure_ops,
+      on_commit = function() commit_calls <<- commit_calls + 1L
+    ),
+    "previous bundle was restored"
+  )
+  expect_identical(commit_calls, 0L)
+})
+
 test_that("successful publication removes the previous backup", {
   root <- withr::local_tempdir()
   tree <- publication_test_tree(root)

@@ -1561,7 +1561,8 @@ dedent <- function(string) {
   result_dir,
   overwrite,
   publish_mode,
-  ops = .bundlePublicationOps()
+  ops = .bundlePublicationOps(),
+  on_commit = function() invisible(NULL)
 ) {
   destination <- .bundleDestinationState(result_dir, overwrite, ops)
   chmod_attempt <- .attemptBundleOperation(function() {
@@ -1687,6 +1688,8 @@ dedent <- function(string) {
       call. = FALSE
     )
   }
+
+  on_commit()
 
   if (!is.null(backup) && dir.exists(backup)) {
     cleanup_attempt <- .attemptBundleOperation(function() {
