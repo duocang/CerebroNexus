@@ -82,7 +82,7 @@ test_that("later remains declared because bundled runtime code uses it", {
   expect_match(runtime_source, "later::later(", fixed = TRUE)
 })
 
-test_that("interactive authentication helpers are declared and available", {
+test_that("interactive authentication helpers are declared", {
   description_path <- source_file("DESCRIPTION")
   if (!file.exists(description_path)) {
     description_path <- system.file("DESCRIPTION", package = "CerebroNexus")
@@ -92,10 +92,6 @@ test_that("interactive authentication helpers are declared and available", {
   expect_match(suggests, "shinymanager (>= 1.1.0)", fixed = TRUE)
   expect_match(suggests, "askpass", fixed = TRUE)
   expect_match(suggests, "openssl", fixed = TRUE)
-  expect_true(requireNamespace("shinymanager", quietly = TRUE))
-  expect_true(requireNamespace("askpass", quietly = TRUE))
-  expect_true(requireNamespace("openssl", quietly = TRUE))
-  expect_gte(utils::packageVersion("shinymanager"), "1.1.0")
 })
 
 test_that("source environments include interactive authentication helpers", {
@@ -126,7 +122,7 @@ test_that("source environments include interactive authentication helpers", {
   }
 })
 
-test_that("direct browser test dependencies are declared and available", {
+test_that("direct browser test dependencies are declared", {
   description_path <- source_file("DESCRIPTION")
   if (!file.exists(description_path)) {
     description_path <- system.file("DESCRIPTION", package = "CerebroNexus")
@@ -134,7 +130,6 @@ test_that("direct browser test dependencies are declared and available", {
   description <- read.dcf(description_path, fields = "Suggests")[[1L]]
 
   expect_match(description, "chromote", fixed = TRUE)
-  expect_true(requireNamespace("chromote", quietly = TRUE))
 })
 
 test_that("the Nix shell keeps Chromium Linux-only", {

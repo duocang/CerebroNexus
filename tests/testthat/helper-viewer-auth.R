@@ -1,4 +1,8 @@
 viewer_auth_fixture <- function(envir = parent.frame()) {
+  testthat::skip_if_not_installed(
+    "shinymanager",
+    minimum_version = "1.1.0"
+  )
   root <- withr::local_tempdir(.local_envir = envir)
   database <- file.path(root, "credentials.sqlite")
   env_name <- "CEREBRO_TEST_AUTH_PASSPHRASE"

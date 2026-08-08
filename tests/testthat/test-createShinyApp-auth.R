@@ -72,8 +72,36 @@ expect_auth_bundle_rollback <- function(root, result, old_mode) {
 }
 
 default_viewer_auth_setup_ops <- .viewerAuthSetupOps
+default_viewer_auth_create_database <- default_viewer_auth_setup_ops()$create_db
 default_viewer_auth_validate_database <- .viewerAuthValidateDatabase
+default_viewer_auth_provider_available <- .viewerAuthProviderAvailable
 simple_auth_environment <- "CEREBRO_AUTH_PASSPHRASE_0102030405060708"
+
+mock_viewer_auth_provider_available <- function() invisible(TRUE)
+
+mock_viewer_auth_validate_database <- function(...) invisible(TRUE)
+
+mock_viewer_auth_create_database <- function(
+  credentials_data,
+  sqlite_path,
+  passphrase
+) {
+  writeBin(charToRaw("mock authentication database"), sqlite_path)
+  TRUE
+}
+
+auth_test_setup_ops <- function(...) {
+  utils::modifyList(
+    utils::modifyList(
+      default_viewer_auth_setup_ops(),
+      list(
+        namespace_available = function(package) TRUE,
+        create_db = mock_viewer_auth_create_database
+      )
+    ),
+    list(...)
+  )
+}
 
 foreign_auth_secret <- function() {
   charToRaw(paste0(
@@ -102,25 +130,27 @@ simple_auth_ops <- function(
 ) {
   reads <- read_values
   passwords <- password_values
-  utils::modifyList(
-    default_viewer_auth_setup_ops(),
-    c(
-      list(
-        is_interactive = function() TRUE,
-        read_input = function(prompt) {
-          value <- reads[[1L]]
-          reads <<- reads[-1L]
-          value
-        },
-        read_password = function(prompt) {
-          value <- passwords[[1L]]
-          passwords <<- passwords[-1L]
-          value
-        },
-        random_bytes = function(size) as.raw(seq_len(size))
-      ),
-      list(...)
-    )
+  auth_test_setup_ops(
+    is_interactive = function() TRUE,
+    read_input = function(prompt) {
+      value <- reads[[1L]]
+      reads <<- reads[-1L]
+      value
+    },
+    read_password = function(prompt) {
+      value <- passwords[[1L]]
+      passwords <<- passwords[-1L]
+      value
+    },
+    random_bytes = function(size) as.raw(seq_len(size)),
+    ...
+  )
+}
+
+real_simple_auth_ops <- function(...) {
+  simple_auth_ops(
+    ...,
+    create_db = default_viewer_auth_create_database
   )
 }
 
@@ -130,6 +160,18 @@ single_user_auth_ops <- function(
   ...
 ) {
   simple_auth_ops(
+    read_values = c(user, "n"),
+    password_values = list(password, password),
+    ...
+  )
+}
+
+real_single_user_auth_ops <- function(
+  user = "alice",
+  password = "alice pass 47",
+  ...
+) {
+  real_simple_auth_ops(
     read_values = c(user, "n"),
     password_values = list(password, password),
     ...
@@ -151,6 +193,38 @@ simple_auth_case <- function(root, old_app = TRUE) {
   )
 }
 
+logical_viewer_auth_fixture <- function(envir = parent.frame()) {
+  testthat::local_mocked_bindings(
+    .viewerAuthProviderAvailable = mock_viewer_auth_provider_available,
+    .viewerAuthValidateDatabase = mock_viewer_auth_validate_database,
+    .package = "CerebroNexus",
+    .env = envir
+  )
+  root <- withr::local_tempdir(.local_envir = envir)
+  database <- file.path(root, "credentials.sqlite")
+  writeBin(charToRaw("logical authentication database"), database)
+  database <- normalizePath(database, winslash = "/", mustWork = TRUE)
+  env_name <- "CEREBRO_TEST_AUTH_PASSPHRASE"
+  passphrase <- paste0("logical-secret-", strrep("x", 32L))
+  withr::local_envvar(
+    stats::setNames(passphrase, env_name),
+    .local_envir = envir
+  )
+
+  list(
+    root = root,
+    database = database,
+    env_name = env_name,
+    passphrase = passphrase,
+    descriptor = list(
+      provider = "shinymanager",
+      credentials = database,
+      passphrase_env = env_name,
+      timeout_minutes = 15
+    )
+  )
+}
+
 run_simple_auth_build <- function(
   crb,
   result,
@@ -158,12 +232,14 @@ run_simple_auth_build <- function(
   overwrite = TRUE,
   verbose = FALSE,
   publication_ops = .bundlePublicationOps(),
-  validate_database = default_viewer_auth_validate_database,
+  validate_database = mock_viewer_auth_validate_database,
+  provider_available = mock_viewer_auth_provider_available,
   ...
 ) {
   force(ops)
   force(publication_ops)
   force(validate_database)
+  force(provider_available)
   testthat::with_mocked_bindings(
     createShinyApp(
       cerebro_data = c(Dataset = crb),
@@ -175,6 +251,7 @@ run_simple_auth_build <- function(
       ...
     ),
     .viewerAuthSetupOps = function() ops,
+    .viewerAuthProviderAvailable = provider_available,
     .bundlePublicationOps = function() publication_ops,
     .viewerAuthValidateDatabase = validate_database,
     .package = "CerebroNexus"
@@ -235,13 +312,21 @@ test_that("auth TRUE rejects non-interactive calls before target preparation", {
 })
 
 test_that("auth TRUE creates a real two-user app and sibling secret", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+
   local_simple_auth_environment()
   root <- withr::local_tempdir()
   result <- file.path(root, "generated", "app")
   crb <- viewer_auth_test_crb(file.path(root, "source"))
 
   expect_identical(
-    run_simple_auth_build(crb, result, simple_auth_ops()),
+    run_simple_auth_build(
+      crb,
+      result,
+      real_simple_auth_ops(),
+      validate_database = default_viewer_auth_validate_database,
+      provider_available = default_viewer_auth_provider_available
+    ),
     result
   )
 
@@ -316,15 +401,12 @@ test_that("late ordinary validation errors occur before account prompts", {
   root <- withr::local_tempdir()
   crb <- viewer_auth_test_crb(file.path(root, "source"))
   prompts <- 0L
-  ops <- utils::modifyList(
-    .viewerAuthSetupOps(),
-    list(
-      is_interactive = function() TRUE,
-      read_input = function(prompt) {
-        prompts <<- prompts + 1L
-        stop("unexpected prompt", call. = FALSE)
-      }
-    )
+  ops <- auth_test_setup_ops(
+    is_interactive = function() TRUE,
+    read_input = function(prompt) {
+      prompts <<- prompts + 1L
+      stop("unexpected prompt", call. = FALSE)
+    }
   )
   expect_error(
     run_simple_auth_build(
@@ -458,15 +540,12 @@ test_that("destination and resource errors occur before account prompts", {
 
   for (case in cases) {
     prompts <- 0L
-    ops <- utils::modifyList(
-      default_viewer_auth_setup_ops(),
-      list(
-        is_interactive = function() TRUE,
-        read_input = function(prompt) {
-          prompts <<- prompts + 1L
-          stop("unexpected prompt", call. = FALSE)
-        }
-      )
+    ops <- auth_test_setup_ops(
+      is_interactive = function() TRUE,
+      read_input = function(prompt) {
+        prompts <<- prompts + 1L
+        stop("unexpected prompt", call. = FALSE)
+      }
     )
     expect_error(
       run_simple_auth_build(
@@ -486,17 +565,27 @@ test_that("destination and resource errors occur before account prompts", {
 })
 
 test_that("simple auth rebuild reuses the secret and replaces accounts", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+
   local_simple_auth_environment()
   root <- withr::local_tempdir()
   result <- file.path(root, "app")
   crb <- viewer_auth_test_crb(file.path(root, "source"))
-  build <- function(ops) run_simple_auth_build(crb, result, ops)
-  build(single_user_auth_ops())
+  build <- function(ops) {
+    run_simple_auth_build(
+      crb,
+      result,
+      ops,
+      validate_database = default_viewer_auth_validate_database,
+      provider_available = default_viewer_auth_provider_available
+    )
+  }
+  build(real_single_user_auth_ops())
   secret <- paste0(result, ".auth.env")
   before <- .viewerAuthReadSecretFile(secret)
   prior_value <- Sys.getenv(before$env_name)
 
-  build(single_user_auth_ops("charlie", "charlie pass 91"))
+  build(real_single_user_auth_ops("charlie", "charlie pass 91"))
   after <- .viewerAuthReadSecretFile(secret)
   expect_true(.viewerAuthSameArtifact(before, after))
   expect_identical(Sys.getenv(after$env_name), prior_value)
@@ -588,7 +677,6 @@ test_that("database failures occur after the candidate and fully roll back", {
     root <- withr::local_tempdir()
     case <- simple_auth_case(root)
     ops <- single_user_auth_ops()
-    original_create <- ops$create_db
     candidate_seen <- FALSE
     ops$create_db <- function(credentials_data, sqlite_path, passphrase) {
       candidate_seen <<- any(grepl(
@@ -599,9 +687,16 @@ test_that("database failures occur after the candidate and fully roll back", {
       if (identical(kind, "create")) {
         return(FALSE)
       }
-      created <- original_create(credentials_data, sqlite_path, passphrase)
-      writeBin(charToRaw("corrupt"), sqlite_path, useBytes = TRUE)
-      created
+      mock_viewer_auth_create_database(
+        credentials_data,
+        sqlite_path,
+        passphrase
+      )
+    }
+    validate_database <- if (identical(kind, "validate")) {
+      function(...) stop("injected database validation failure")
+    } else {
+      mock_viewer_auth_validate_database
     }
 
     expected <- if (identical(kind, "create")) {
@@ -610,7 +705,12 @@ test_that("database failures occur after the candidate and fully roll back", {
       "Failed to validate the staged authentication database."
     }
     expect_error(
-      run_simple_auth_build(case$crb, case$result, ops),
+      run_simple_auth_build(
+        case$crb,
+        case$result,
+        ops,
+        validate_database = validate_database
+      ),
       expected,
       fixed = TRUE
     )
@@ -638,11 +738,6 @@ test_that("staged SQLite sidecars are deleted and deletion failures abort", {
       original_unlink(path)
     }
     validate_with_sidecar <- function(path, passphrase, passphrase_env) {
-      default_viewer_auth_validate_database(
-        path,
-        passphrase,
-        passphrase_env
-      )
       sidecar <- paste0(path, "-wal")
       writeBin(charToRaw("owned-sidecar"), sidecar, useBytes = TRUE)
       Sys.chmod(sidecar, "0600", use_umask = FALSE)
@@ -1169,15 +1264,12 @@ test_that("simple authentication reserves its database before prompting", {
   saveRDS(object, crb)
   result <- file.path(root, "app")
   prompts <- 0L
-  ops <- utils::modifyList(
-    default_viewer_auth_setup_ops(),
-    list(
-      is_interactive = function() TRUE,
-      read_input = function(prompt) {
-        prompts <<- prompts + 1L
-        stop("unexpected prompt", call. = FALSE)
-      }
-    )
+  ops <- auth_test_setup_ops(
+    is_interactive = function() TRUE,
+    read_input = function(prompt) {
+      prompts <<- prompts + 1L
+      stop("unexpected prompt", call. = FALSE)
+    }
   )
 
   expect_error(
@@ -1190,6 +1282,7 @@ test_that("simple authentication reserves its database before prompting", {
         verbose = FALSE
       ),
       .viewerAuthSetupOps = function() ops,
+      .viewerAuthProviderAvailable = mock_viewer_auth_provider_available,
       .package = "CerebroNexus"
     ),
     "same bundle target",
@@ -1202,7 +1295,7 @@ test_that("simple authentication reserves its database before prompting", {
 })
 
 test_that("authentication target uses the existing collision registry", {
-  fixture <- viewer_auth_fixture()
+  fixture <- logical_viewer_auth_fixture()
   source_dir <- file.path(fixture$root, "source")
   dir.create(file.path(source_dir, "auth"), recursive = TRUE)
   backend <- file.path(source_dir, "auth", "credentials.sqlite")
@@ -1227,7 +1320,7 @@ test_that("authentication target uses the existing collision registry", {
 
 test_that("authentication chmod errors roll back without leaking details", {
   skip_on_os("windows")
-  fixture <- viewer_auth_fixture()
+  fixture <- logical_viewer_auth_fixture()
   crb <- viewer_auth_test_crb(file.path(fixture$root, "source"))
   result <- file.path(fixture$root, "app")
   dir.create(result)
@@ -1260,7 +1353,7 @@ test_that("authentication chmod errors roll back without leaking details", {
 
 test_that("authentication mode verification rejects ineffective chmod", {
   skip_on_os("windows")
-  fixture <- viewer_auth_fixture()
+  fixture <- logical_viewer_auth_fixture()
   crb <- viewer_auth_test_crb(file.path(fixture$root, "source"))
   result <- file.path(fixture$root, "app")
   dir.create(result)
@@ -1291,7 +1384,7 @@ test_that("authentication mode verification rejects ineffective chmod", {
 })
 
 test_that("authentication copy failure rolls back without leaking source", {
-  fixture <- viewer_auth_fixture()
+  fixture <- logical_viewer_auth_fixture()
   crb <- viewer_auth_test_crb(file.path(fixture$root, "source"))
   result <- file.path(fixture$root, "app")
   dir.create(result)

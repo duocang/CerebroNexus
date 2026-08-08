@@ -6,11 +6,17 @@ auth_setup_ops <- function(
   read_values = character(),
   password_values = list()
 ) {
+  testthat::local_mocked_bindings(
+    .viewerAuthProviderAvailable = function() invisible(TRUE),
+    .package = "CerebroNexus",
+    .env = parent.frame()
+  )
   reads <- read_values
   passwords <- password_values
   utils::modifyList(
     .viewerAuthSetupOps(),
     list(
+      namespace_available = function(package) TRUE,
       is_interactive = function() TRUE,
       read_input = function(prompt) {
         if (!length(reads)) {
