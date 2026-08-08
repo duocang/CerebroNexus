@@ -28,7 +28,7 @@ article makes no performance ranking or capacity claim.
 
 The benchmark uses one pinned local H5AD from the MSSM human prefrontal cortex atlas. Its sparse `/X` matrix supplies normalized floating-point expression (`data`), not raw counts. Source bytes and SHA-256 are verified before setup, and download time is outside the benchmark.
 
-Panel A compares `embedded`, `bpcells`, and `h5` using the same materialized `dgCMatrix` at 125,000 cells, 250,000 cells, and a predeclared common target capped at 500,000 cells. Exact sparse-index counts may reduce only that common target. Three fresh-process technical pairs per condition produce 27 export/access pairs and 54 measured workers.
+Panel A compares `embedded`, `bpcells`, and `h5` using the same materialized `dgCMatrix` at 1,000, 5,000, 10,000, 25,000, 100,000, and 250,000 cells, plus a predeclared common target capped at 500,000 cells. Exact sparse-index counts may reduce only that common target. Three fresh-process technical pairs per condition produce 63 export/access pairs and 126 measured workers.
 
 Panel B measures the public BPCells streaming export path at the frozen common tier, 1 million cells, 2 million cells, and all 4,140,453 cells. Four fresh-process pairs per tier produce 16 pairs and 32 measured workers. Panel B starts only after strict validation of Panel A's frozen source, sampling, runtime, shell, cell-identity, and five-gene query manifests.
 

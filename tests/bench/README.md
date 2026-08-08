@@ -2,7 +2,7 @@
 
 This directory contains the operator-facing harness for one pinned real source. It has two deliberately separate panels:
 
-- **Panel A (`comparison`)** compares `embedded`, `bpcells`, and `h5` after all three receive the same materialized `dgCMatrix` at 125,000 cells, 250,000 cells, and the frozen `common_target_actual` (the largest legal nested tier at or below 500,000 cells).
+- **Panel A (`comparison`)** compares `embedded`, `bpcells`, and `h5` after all three receive the same materialized `dgCMatrix` at 1,000, 5,000, 10,000, 25,000, 100,000, 250,000 cells, and the frozen `common_target_actual` (the largest legal nested tier at or below 500,000 cells).
 - **Panel B (`full_scale`)** measures only the public BPCells streaming path at `common_target_actual`, 1,000,000 cells, 2,000,000 cells, and all 4,140,453 cells. Its common-tier job starts from the H5AD-backed `IterableMatrix`, so it is a bridge observation rather than another Panel A replicate.
 
 This harness is included in CerebroNexus 4.2. No reviewed full-scale results
@@ -36,7 +36,7 @@ The setup worker resolves the source to one canonical regular-file path, checks 
 
 Each real run requires a new output path that does not already exist. Its nearest existing parent must be outside the Git worktree. The runner creates a marked `scratch/` child and a run-local R library on that same filesystem, so the output path is also the operator's filesystem-capacity choice.
 
-There is no automatic RAM or free-disk gate and no tier reduction after the schedule is frozen. An out-of-memory or disk-full event is recorded as a failed job. Per-repeat batching bounds complete live artifacts at nine in Panel A and four in Panel B: each repeat completes all exports, then all accesses in the separately frozen access order, then removes the marked artifacts after preserving outcomes and logs.
+There is no automatic RAM or free-disk gate and no tier reduction after the schedule is frozen. An out-of-memory or disk-full event is recorded as a failed job. Per-repeat batching bounds complete live artifacts at 21 in Panel A and four in Panel B: each repeat completes all exports, then all accesses in the separately frozen access order, then removes the marked artifacts after preserving outcomes and logs.
 
 After the clean-worktree gate, the runner copies `config.R` and `helpers.R` into the marked scratch directory. The original pre-copy hashes, frozen-copy hashes, and original post-copy hashes must agree. Setup and measured subprocesses load only that frozen harness and verify both files directly before and after sourcing; the parent verifies it before and after every worker. The final Git clean state and `HEAD` must still match the initial manifest.
 
@@ -62,25 +62,25 @@ Rscript --vanilla tests/bench/run_full_scale.R \
   /bench-output/cerebronexus-panel-b-<git-sha>
 ```
 
-Panel B refuses to start measured work unless Panel A has exactly 27 unique `OK` exports, 27 unique `OK` accesses, one final `VALID` gate, and exact matching source, Git, schema/config, frozen-harness, runtime, common-tier, sampling, shell, cell-identity, and query-plan fingerprints.
+Panel B refuses to start measured work unless Panel A has exactly 63 unique `OK` exports, 63 unique `OK` accesses, one final `VALID` gate, and exact matching source, Git, schema/config, frozen-harness, runtime, common-tier, sampling, shell, cell-identity, and query-plan fingerprints.
 
 ## Fixed schedules
 
-Panel A has three tiers × three backends × three repeats: 27 technical export/access pairs and 54 measured fresh processes. The export rotations are:
+Panel A has seven tiers × three backends × three repeats: 63 technical export/access pairs and 126 measured fresh processes. The export rotations are:
 
 | repeat | tier order | backend order within each tier |
 |---:|---|---|
-| 1 | 125k, 250k, common | embedded, bpcells, h5 |
-| 2 | 250k, common, 125k | bpcells, h5, embedded |
-| 3 | common, 125k, 250k | h5, embedded, bpcells |
+| 1 | 1k, 5k, 10k, 25k, 100k, 250k, common | embedded, bpcells, h5 |
+| 2 | 5k, 10k, 25k, 100k, 250k, common, 1k | bpcells, h5, embedded |
+| 3 | 10k, 25k, 100k, 250k, common, 1k, 5k | h5, embedded, bpcells |
 
 Its access rotations deliberately differ:
 
 | repeat | tier order | backend order within each tier |
 |---:|---|---|
-| 1 | 250k, common, 125k | h5, embedded, bpcells |
-| 2 | common, 125k, 250k | embedded, bpcells, h5 |
-| 3 | 125k, 250k, common | bpcells, h5, embedded |
+| 1 | 5k, 10k, 25k, 100k, 250k, common, 1k | h5, embedded, bpcells |
+| 2 | 10k, 25k, 100k, 250k, common, 1k, 5k | embedded, bpcells, h5 |
+| 3 | 25k, 100k, 250k, common, 1k, 5k, 10k | bpcells, h5, embedded |
 
 Panel B has four tiers × four repeats: 16 technical pairs and 32 measured fresh processes. Its tier rotations are:
 
@@ -91,13 +91,13 @@ Panel B has four tiers × four repeats: 16 technical pairs and 32 measured fresh
 | 3 | 2M, full, common, 1M | common, 1M, 2M, full |
 | 4 | full, common, 1M, 2M | 1M, 2M, full, common |
 
-The centered four-stratum source samples are deterministic, source ordered, and nested. Exact `/X/indptr` counts decide whether the target common tier must be reduced below 500,000; 125k and 250k remain fixed, and `common_target_actual <= 250000` aborts the protocol. Hardware capacity never changes a tier.
+The centered four-stratum source samples are deterministic, source ordered, and nested. Exact `/X/indptr` counts decide whether the target common tier must be reduced below 500,000; 1k through 250k remain fixed, and `common_target_actual <= 250000` aborts the protocol. Hardware capacity never changes a tier.
 
 ## Fixture and measurement meaning
 
 Every tier uses the same synthetic-shell generator. The real attributes in scope are normalized expression values, dimensions, and sparsity. `sample` (eight deterministic groups), `cluster` (32 deterministic groups), zero `nUMI`/`nGene`, and sine/cosine UMAP coordinates are synthetic functions of the selected source indices. They are not MSSM metadata, biological groups, QC measurements, or a biological projection.
 
-Each access process times CRB loading, external attachment where applicable, one fully materialized first-gene query, five warmed calls of that same median-density gene, five-gene block preparation, and explicit block materialization. Correctness fingerprints are checked outside timed expressions. The five-gene panel is selected once from 125k and frozen across both panels.
+Each access process times CRB loading, external attachment where applicable, one fully materialized first-gene query, five warmed calls of that same median-density gene, five-gene block preparation, and explicit block materialization. Correctness fingerprints are checked outside timed expressions. The five-gene panel is selected once from 1k and frozen across both panels.
 
 For storage, `total_bytes` is the complete synthetic-shell artifact. BPCells and H5 report an external `sidecar_bytes`; embedded storage has no separable sidecar, so `sidecar_bytes` is `NA`, `sidecar_bytes_applicable` is false, and the reason is `embedded_has_no_sidecar`. Zero never represents structural non-applicability. Panel B's CRB and total size describe real expression in a synthetic shell, not the size of a complete original MSSM application.
 

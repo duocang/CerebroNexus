@@ -226,7 +226,14 @@ test_that("benchmark config is the sole top-level object and has exact protocol 
         organism = "hg38",
         slot = "data"
       ),
-      comparison_fixed_tiers = c(tier_125k = 125000L, tier_250k = 250000L),
+      comparison_fixed_tiers = c(
+        tier_1k = 1000L,
+        tier_5k = 5000L,
+        tier_10k = 10000L,
+        tier_25k = 25000L,
+        tier_100k = 100000L,
+        tier_250k = 250000L
+      ),
       common_target = 500000L,
       common_min_exclusive = 250000L,
       full_scale_fixed_tiers = c(
@@ -411,7 +418,15 @@ test_that("comparison schedule exactly encodes both counterbalanced execution or
   skip_unless_bench_tree()
   load_benchmark_contract()
 
-  tiers <- c(tier_125k = 125000L, tier_250k = 250000L, common = 499997L)
+  tiers <- c(
+    tier_1k = 1000L,
+    tier_5k = 5000L,
+    tier_10k = 10000L,
+    tier_25k = 25000L,
+    tier_100k = 100000L,
+    tier_250k = 250000L,
+    common = 499997L
+  )
   backends <- c("embedded", "bpcells", "h5")
   schedule <- bench_comparison_schedule(tiers, backends, repeats = 3L)
   expect_identical(
@@ -427,19 +442,19 @@ test_that("comparison schedule exactly encodes both counterbalanced execution or
       "access_order"
     )
   )
-  expect_equal(nrow(schedule), 27L)
-  expect_equal(nrow(schedule) * 2L, 54L)
-  expect_identical(as.integer(table(schedule$tier_label)), rep(9L, 3L))
+  expect_equal(nrow(schedule), 63L)
+  expect_equal(nrow(schedule) * 2L, 126L)
+  expect_identical(as.integer(table(schedule$tier_label)), rep(9L, 7L))
 
   export_tiers <- list(
-    c("tier_125k", "tier_250k", "common"),
-    c("tier_250k", "common", "tier_125k"),
-    c("common", "tier_125k", "tier_250k")
+    names(tiers),
+    c(names(tiers)[-1L], names(tiers)[1L]),
+    c(names(tiers)[-(1:2)], names(tiers)[1:2])
   )
   access_tiers <- list(
-    c("tier_250k", "common", "tier_125k"),
-    c("common", "tier_125k", "tier_250k"),
-    c("tier_125k", "tier_250k", "common")
+    c(names(tiers)[-1L], names(tiers)[1L]),
+    c(names(tiers)[-(1:2)], names(tiers)[1:2]),
+    c(names(tiers)[-(1:3)], names(tiers)[1:3])
   )
   export_backends <- list(
     c("embedded", "bpcells", "h5"),
@@ -452,13 +467,15 @@ test_that("comparison schedule exactly encodes both counterbalanced execution or
     c("bpcells", "h5", "embedded")
   )
   expected_ids <- function(repeat_id, tier_order, backend_order) {
-    as.vector(vapply(
-      tier_order,
-      function(tier) {
-        paste("comparison", repeat_id, tier, backend_order, sep = ":")
-      },
-      character(3L)
-    ))
+    unlist(
+      lapply(
+        tier_order,
+        function(tier) {
+          paste("comparison", repeat_id, tier, backend_order, sep = ":")
+        }
+      ),
+      use.names = FALSE
+    )
   }
   export_ids <- unlist(
     Map(expected_ids, 1:3, export_tiers, export_backends),
@@ -491,7 +508,7 @@ test_that("comparison schedule exactly encodes both counterbalanced execution or
       )
     }
   }
-  expect_silent(bench_validate_schedule(schedule, 27L))
+  expect_silent(bench_validate_schedule(schedule, 63L))
 })
 
 test_that("full-scale schedule exactly encodes execution orders and four full pairs", {
@@ -2458,7 +2475,7 @@ test_that("benchmark entry points expose only qualified positional CLIs and iner
   }
   a <- run(comparison, "--dry-run")
   expect_identical(a$status, 0L)
-  expect_match(a$output, "27 technical pairs / 54 workers")
+  expect_match(a$output, "63 technical pairs / 126 workers")
   expect_match(a$output, "UNQUALIFIED")
   b <- run(full, "--dry-run")
   expect_identical(b$status, 0L)

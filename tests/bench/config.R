@@ -16,7 +16,14 @@ BENCH_CONFIG <- list(
     organism = "hg38",
     slot = "data"
   ),
-  comparison_fixed_tiers = c(tier_125k = 125000L, tier_250k = 250000L),
+  comparison_fixed_tiers = c(
+    tier_1k = 1000L,
+    tier_5k = 5000L,
+    tier_10k = 10000L,
+    tier_25k = 25000L,
+    tier_100k = 100000L,
+    tier_250k = 250000L
+  ),
   common_target = 500000L,
   common_min_exclusive = 250000L,
   full_scale_fixed_tiers = c(

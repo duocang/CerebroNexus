@@ -22,6 +22,8 @@
 - The benchmark operator guide now documents the pinned source, exact nested
   sampling, paired worker schedules, evidence schemas, and the Panel A to
   Panel B validation boundary.
+- Panel A now covers 1k, 5k, 10k, 25k, and 100k-cell user-scale tiers before
+  its existing 250k and common comparison tiers.
 
 # CerebroNexus 4.0
 

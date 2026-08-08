@@ -31,14 +31,15 @@ of installed RAM.
   cortex H5AD.
 - Use deterministic, nested cell subsets. Dataset identity must not be
   confounded with cell count.
-- Compare all three backends at 125k, 250k, and a predeclared comparison
-  target capped at 500k cells. Freeze `common_target_actual` only after the
-  selected cells' exact nnz has been measured.
+- Compare all three backends at 1k, 5k, 10k, 25k, 100k, 250k, and a
+  predeclared comparison target capped at 500k cells. Freeze
+  `common_target_actual` only after the selected cells' exact nnz has been
+  measured.
 - Extend BPCells through 1M, 2M, and all 4,140,453 cells. The frozen
   `common_target_actual` appears in both panels as a linkage point, but the two
   BPCells observations use different input routes and are not pooled.
 - Run three fresh-process technical export/access pairs per Panel A
-  `(tier, backend)` cell and four per Panel B tier. This is 27 pairs / 54 worker
+  `(tier, backend)` cell and four per Panel B tier. This is 63 pairs / 126 worker
   processes in Panel A and 16 pairs / 32 worker processes in Panel B.
 - Use fixed, separately rotated export and access orders. Process repeats are
   consistency observations on one host and source, not statistically
@@ -75,7 +76,7 @@ a benchmark metric.
 The pre-freeze target ladder is:
 
 ```text
-125,000 ⊂ 250,000 ⊂ 500,000 ⊂ 1,000,000 ⊂ 2,000,000 ⊂ 4,140,453
+1,000 ⊂ 5,000 ⊂ 10,000 ⊂ 25,000 ⊂ 100,000 ⊂ 250,000 ⊂ 500,000 ⊂ 1,000,000 ⊂ 2,000,000 ⊂ 4,140,453
 ```
 
 The measured ladder replaces 500,000 with `common_target_actual <= 500000`.
@@ -143,7 +144,8 @@ fingerprint of the ordered source-index vector in `sampling.csv`.
 
 ### 5.1 Matrix contract
 
-For 125k, 250k, and the frozen `common_target_actual` at or below 500k:
+For 1k, 5k, 10k, 25k, 100k, 250k, and the frozen
+`common_target_actual` at or below 500k:
 
 1. From the pinned local H5AD, read only `/X/indptr` with 64-bit values retained
    as exact doubles. Require CSR encoding, length `n_cells + 1`, finite
@@ -158,7 +160,7 @@ For 125k, 250k, and the frozen `common_target_actual` at or below 500k:
    tier at or below the predeclared 500k target, not a claim about the largest
    matrix possible under another sampling design.
 3. Abort the protocol before any measured export/access worker starts if
-   `common_target_actual <= 250000`, if 125k or 250k is not legal, or if any
+   `common_target_actual <= 250000`, if any fixed comparison tier is not legal, or if any
    scheduled Panel A tier's exact nnz exceeds `.Machine$integer.max`. Never
    reduce a tier after the schedule is frozen, including after a memory or disk
    failure.
@@ -182,29 +184,29 @@ per tier. Export order is fixed as follows:
 
 | repeat | export tier order | export backend order within each tier |
 |---:|---|---|
-| 1 | 125k → 250k → common | embedded → bpcells → h5 |
-| 2 | 250k → common → 125k | bpcells → h5 → embedded |
-| 3 | common → 125k → 250k | h5 → embedded → bpcells |
+| 1 | 1k → 5k → 10k → 25k → 100k → 250k → common | embedded → bpcells → h5 |
+| 2 | 5k → 10k → 25k → 100k → 250k → common → 1k | bpcells → h5 → embedded |
+| 3 | 10k → 25k → 100k → 250k → common → 1k → 5k | h5 → embedded → bpcells |
 
 Access order deliberately differs from the matching export order:
 
 | repeat | access tier order | access backend order within each tier |
 |---:|---|---|
-| 1 | 250k → common → 125k | h5 → embedded → bpcells |
-| 2 | common → 125k → 250k | embedded → bpcells → h5 |
-| 3 | 125k → 250k → common | bpcells → h5 → embedded |
+| 1 | 5k → 10k → 25k → 100k → 250k → common → 1k | h5 → embedded → bpcells |
+| 2 | 10k → 25k → 100k → 250k → common → 1k → 5k | embedded → bpcells → h5 |
+| 3 | 25k → 100k → 250k → common → 1k → 5k → 10k | bpcells → h5 → embedded |
 
 An export process is the experimental unit for source preparation, export
 time, stored bytes, R heap, and peak sampled RSS. A fresh access process tied
 to one export is the experimental unit for loading, attaching, and queries.
 Repeated warmed calls inside an access process are not replicates.
 
-Panel A therefore contains 27 export workers and 27 access workers: 54 worker
-processes forming 27 technical pairs. Execution is batched by repeat. Within a
-repeat, all nine exports finish, then those nine artifacts are accessed in the
+Panel A therefore contains 63 export workers and 63 access workers: 126 worker
+processes forming 63 technical pairs. Execution is batched by repeat. Within a
+repeat, all 21 exports finish, then those 21 artifacts are accessed in the
 separate access order, then every marked artifact is safely removed after its
 outcome and log are preserved. This avoids a
-same-job immediate read-after-write pattern without retaining all 27 exports
+same-job immediate read-after-write pattern without retaining all 63 exports
 at once. `schedule.csv` has separate integer `export_order` and `access_order`
 columns, and validation proves that the order vectors differ within every
 repeat. OS page cache remains uncontrolled and is recorded as a limitation.
@@ -269,10 +271,10 @@ jobs or zero measurements.
 
 ## 7. Query-panel correctness protocol
 
-Build the gene panel once from the 125k source selection, outside timed jobs and
+Build the gene panel once from the 1k source selection, outside timed jobs and
 before either measured schedule is executed:
 
-- Compute per-gene non-zero counts in one streaming pass over 125k.
+- Compute per-gene non-zero counts in one streaming pass over 1k.
 - Select five expressed genes spanning the observed non-zero distribution,
   breaking density ties by source row index.
 - Put the gene nearest the median density first.
@@ -399,7 +401,7 @@ that library first, user/system profiles disabled, and the same dependency
 library path validates the source, freezes sampling, selects/imports the gene
 panel, and produces source query/shell fingerprints. Its loaded package
 versions form a runtime fingerprint in `manifest.csv`. Setup and validation
-workers are protocol preparation and are not included in the 54/32 measured
+workers are protocol preparation and are not included in the 126/32 measured
 worker counts.
 
 The runtime fingerprint hashes R version/platform plus sorted
@@ -427,7 +429,7 @@ valid core result.
 
 Each job writes into a marked scratch child owned by the run. Only that exact
 child may be recursively removed. Per-repeat export/access batching caps live
-complete artifacts at nine for Panel A and four for Panel B. Failed partial
+complete artifacts at 21 for Panel A and four for Panel B. Failed partial
 artifacts are removed immediately after their outcome and log are preserved;
 successful exports are removed after their access attempt, whether that access
 succeeds or fails. Scratch is a marked child of the new output directory, so
@@ -462,7 +464,8 @@ Before any Panel B worker starts, it strictly matches source SHA, Git SHA,
 schema/config version, `common_target_actual`, sampling/index hash, synthetic
 shell fingerprint, common query-plan hash, and runtime fingerprint to Panel A.
 It also requires a well-formed Panel A `validation.csv` with exactly one final
-`VALID` row, 27 expected `OK` exports, 27 expected `OK` accesses, and no failed,
+`VALID` row, one expected `OK` export and access for every scheduled Panel A
+condition, and no failed,
 not-run, missing, duplicate, unscheduled, or fingerprint-mismatched gate.
 After installing its run-local tree, Panel B recomputes the common source,
 sampling, shell, cell-identity, and query hashes with a setup worker before any
@@ -612,7 +615,7 @@ Implementation is accepted only when:
 2. Small synthetic contract tests prove exact tier sizes and actual set
    inclusion for arbitrary sizes under the fixed four-stratum protocol and
    full 4,140,453 coverage, four-block boundaries,
-   the exact export/access rotations, 27 Panel A pairs / 54 workers, 16 Panel B
+   the exact export/access rotations, 63 Panel A pairs / 126 workers, 16 Panel B
    pairs / 32 workers, and four scheduled full-data pairs.
 3. Exact nnz freezes the largest admissible integer tier at or below 500k.
    `common_target_actual <= 250000` or any illegal scheduled Panel A tier
@@ -633,7 +636,7 @@ Implementation is accepted only when:
    exports/accesses, and all provenance/fingerprint mismatches, retains raw
    failure rows, and makes the runner exit non-zero.
 9. Panel B refuses a Panel A directory unless it has one final `VALID` gate,
-   all 27 expected exports and accesses are `OK`, and source, Git revision,
+   all 63 expected exports and accesses are `OK`, and source, Git revision,
    config/schema, runtime, common tier, sampling, shell, cell-identity, and
    common query-plan hashes all match a post-install local recomputation.
 10. Checkout-level `devtools::test()` runs the full repository harness
@@ -648,7 +651,7 @@ Implementation is accepted only when:
 
 ### 14.2 Evidence acceptance
 
-Real evidence is publishable only when Panel A has 27 `OK` export rows and 27
+Real evidence is publishable only when Panel A has 63 `OK` export rows and 63
 `OK` access rows, Panel B has 16 of each, all required fingerprints match, both
 panels are `VALID`, and all four 4,140,453-cell technical pairs pass. Reported
 trends are descriptive observations for this pinned normalized MSSM expression

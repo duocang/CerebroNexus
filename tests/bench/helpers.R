@@ -38,6 +38,24 @@ bench_assert_tiers <- function(tiers, expected_names) {
   invisible(tiers)
 }
 
+bench_assert_comparison_tiers <- function(tiers) {
+  bench_assert_tiers(tiers, names(tiers))
+  fixed_names <- head(names(tiers), -1L)
+  if (
+    length(fixed_names) < 1L ||
+      tail(names(tiers), 1L) != "common" ||
+      anyDuplicated(names(tiers)) ||
+      any(!grepl("^tier_[0-9]+[km]$", fixed_names)) ||
+      any(diff(as.double(tiers)) <= 0)
+  ) {
+    stop(
+      "comparison tiers must be increasing named tiers followed by common",
+      call. = FALSE
+    )
+  }
+  invisible(tiers)
+}
+
 bench_stratified_blocks <- function(n_total, n_take) {
   bench_assert_integer_scalar(n_total, "n_total", 1, .Machine$integer.max)
   bench_assert_integer_scalar(n_take, "n_take", 1, n_total)
@@ -1575,7 +1593,7 @@ bench_schedule_frame <- function(
 }
 
 bench_comparison_schedule <- function(tiers, backends, repeats = 3L) {
-  bench_assert_tiers(tiers, c("tier_125k", "tier_250k", "common"))
+  bench_assert_comparison_tiers(tiers)
   if (!identical(backends, c("embedded", "bpcells", "h5"))) {
     stop("backends must be c('embedded', 'bpcells', 'h5')", call. = FALSE)
   }
@@ -1686,7 +1704,14 @@ bench_validate_schedule <- function(schedule, expected_rows) {
     )
   }
   expected_tiers <- if (panels == "comparison") {
-    c("tier_125k", "tier_250k", "common")
+    labels <- unique(schedule$tier_label)
+    sizes <- vapply(
+      labels,
+      function(label) unique(schedule$n_cells[schedule$tier_label == label]),
+      numeric(1L)
+    )
+    bench_assert_comparison_tiers(stats::setNames(sizes, labels))
+    labels
   } else {
     c("common", "tier_1m", "tier_2m", "full")
   }
@@ -1837,11 +1862,15 @@ bench_eligibility <- function(panel, tiers, exact_nnz, limit) {
     stop("panel must be 'comparison' or 'full_scale'", call. = FALSE)
   }
   expected_names <- if (panel == "comparison") {
-    c("tier_125k", "tier_250k", "common")
+    names(tiers)
   } else {
     c("common", "tier_1m", "tier_2m", "full")
   }
-  bench_assert_tiers(tiers, expected_names)
+  if (panel == "comparison") {
+    bench_assert_comparison_tiers(tiers)
+  } else {
+    bench_assert_tiers(tiers, expected_names)
+  }
   if (
     !is.numeric(exact_nnz) ||
       !identical(names(exact_nnz), names(tiers)) ||
@@ -4559,13 +4588,10 @@ bench_validate_panel <- function(
   if (length(panel) != 1L) {
     stop("schedule panel is invalid", call. = FALSE)
   }
-  expected_rows <- if (identical(panel, "comparison")) {
-    27L
-  } else if (identical(panel, "full_scale")) {
-    16L
-  } else {
+  if (!panel %in% c("comparison", "full_scale")) {
     stop("schedule panel is invalid", call. = FALSE)
   }
+  expected_rows <- nrow(schedule)
   bench_validate_schedule(schedule, expected_rows)
   if (
     !is.data.frame(eligibility) ||
@@ -5235,7 +5261,7 @@ bench_validate_panel <- function(
   })
   run_check("frozen_query_plan_contract", "query_plan", {
     expected_tiers <- if (panel == "comparison") {
-      c("tier_125k", "tier_250k", "common")
+      c(names(config$comparison_fixed_tiers), "common")
     } else {
       c("common", "tier_1m", "tier_2m", "full")
     }
@@ -5427,9 +5453,7 @@ bench_validate_panel <- function(
     )
     if (
       !.bench_frame_values_equal(eligibility, expected) ||
-        (panel == "comparison" &&
-          (nrow(eligibility) != 9L ||
-            any(eligibility$status != "SCHEDULED"))) ||
+        (panel == "comparison" && any(eligibility$status != "SCHEDULED")) ||
         (panel == "full_scale" &&
           (nrow(eligibility) != 12L ||
             sum(eligibility$status == "SCHEDULED") != 4L))
@@ -5439,7 +5463,7 @@ bench_validate_panel <- function(
   })
   run_check("frozen_schedule_contract", "schedule", {
     if (!is.null(schedule)) {
-      expected_rows <- if (panel == "comparison") 27L else 16L
+      expected_rows <- nrow(schedule)
       bench_validate_schedule(schedule, expected_rows)
       sizes <- setNames(
         vapply(
@@ -5458,7 +5482,7 @@ bench_validate_panel <- function(
     if (!is.null(exports) || !is.null(access)) {
       expected_path <- .bench_manifest_value(manifest, "package_path")
       paths <- c(exports$package_path, access$package_path)
-      expected_count <- 2L * (if (panel == "comparison") 27L else 16L)
+      expected_count <- 2L * nrow(schedule)
       if (
         length(paths) != expected_count ||
           anyNA(paths) ||
@@ -5548,7 +5572,8 @@ bench_validate_panel_a_evidence <- function(panel_a_dir) {
   schedule$n_cells <- as.integer(schedule$n_cells)
   schedule$export_order <- as.integer(schedule$export_order)
   schedule$access_order <- as.integer(schedule$access_order)
-  bench_validate_schedule(schedule, 27L)
+  expected_pairs <- nrow(schedule)
+  bench_validate_schedule(schedule, expected_pairs)
   if (!identical(unique(schedule$panel), "comparison")) {
     stop("Panel A schedule panel is invalid", call. = FALSE)
   }
@@ -5561,8 +5586,8 @@ bench_validate_panel_a_evidence <- function(panel_a_dir) {
     stop("Panel A raw outcome schema is invalid", call. = FALSE)
   }
   if (
-    nrow(exports) != 27L ||
-      nrow(accesses) != 27L ||
+    nrow(exports) != expected_pairs ||
+      nrow(accesses) != expected_pairs ||
       anyDuplicated(exports$pair_id) ||
       anyDuplicated(accesses$pair_id) ||
       !setequal(exports$pair_id, schedule$pair_id) ||
@@ -5572,7 +5597,7 @@ bench_validate_panel_a_evidence <- function(panel_a_dir) {
       any(accesses$correctness != "PASS")
   ) {
     stop(
-      "Panel A requires exactly 27 unique successful export/access pairs",
+      "Panel A requires one successful export/access pair for every scheduled condition",
       call. = FALSE
     )
   }
