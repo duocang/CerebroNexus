@@ -105,11 +105,11 @@ test_that("Viewer authentication supplies bundled CerebroNexus branding", {
   )
 
   expect_identical(captured$enable_admin, FALSE)
-  rendered <- htmltools::renderTags(htmltools::tagList(
+  rendered <- as.character(shiny::tagList(
     captured$head,
     captured$top,
     captured$bottom
-  ))$html
+  ))
   expect_match(rendered, "min-height: 100vh", fixed = TRUE)
   expect_match(rendered, "cerebro-auth-brand", fixed = TRUE)
   expect_match(rendered, "CerebroNexus", fixed = TRUE)

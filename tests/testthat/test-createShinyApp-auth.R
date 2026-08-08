@@ -390,12 +390,20 @@ auth_test_package_file <- function(path) {
 }
 
 test_that("authentication stylesheet implements the balanced responsive UI", {
-  css_path <- auth_test_package_file(file.path(
-    "inst",
+  css_path <- system.file(
     "viewer",
     "www",
-    "auth.css"
-  ))
+    "auth.css",
+    package = "CerebroNexus"
+  )
+  if (!nzchar(css_path)) {
+    css_path <- auth_test_package_file(file.path(
+      "inst",
+      "viewer",
+      "www",
+      "auth.css"
+    ))
+  }
   expect_true(file.exists(css_path))
   css <- paste(readLines(css_path, warn = FALSE), collapse = "\n")
   required <- c(
