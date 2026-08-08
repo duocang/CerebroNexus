@@ -138,7 +138,7 @@ test_that("setup operations expose the production dependency seam", {
       "fs_info",
       "base_info",
       "effective_uid",
-      "read_raw",
+      "read_pinned",
       "write_raw",
       "link",
       "unlink_file",
@@ -171,6 +171,59 @@ write_auth_secret <- function(path, bytes = auth_secret_raw()) {
   }
   invisible(path)
 }
+
+test_that("native secret reads return stable self-contained snapshots", {
+  root <- withr::local_tempdir()
+  path <- write_auth_secret(file.path(root, "app.auth.env"))
+  ops <- .viewerAuthSetupOps()
+  first <- ops$read_pinned(path)
+  second <- ops$read_pinned(path)
+
+  expect_identical(first, second)
+  expect_identical(first$raw, auth_secret_raw())
+  if (.Platform$OS.type != "windows") {
+    expect_identical(first$mode, as.integer(as.octmode("0600")))
+    expect_identical(first$uid, as.numeric(ops$effective_uid()))
+  }
+})
+
+test_that("secret reads do not use reusable path identity as a generation", {
+  root <- withr::local_tempdir()
+  path <- write_auth_secret(file.path(root, "app.auth.env"))
+  ops <- .viewerAuthSetupOps()
+  original_fs_info <- ops$fs_info
+  ops$fs_info <- function(candidate) {
+    if (.viewerAuthSamePath(candidate, path)) {
+      stop("leaf identity must not be observed outside the pinned read")
+    }
+    original_fs_info(candidate)
+  }
+
+  snapshot <- .viewerAuthReadSecretFile(path, ops)
+  expect_identical(snapshot$raw, auth_secret_raw())
+})
+
+test_that("initial secret read returns the generation opened by native code", {
+  skip_on_os("windows")
+  root <- withr::local_tempdir()
+  path <- write_auth_secret(file.path(root, "app.auth.env"))
+  held <- file.path(root, "held.env")
+  foreign_raw <- auth_secret_raw(
+    "CEREBRO_AUTH_PASSPHRASE_FFFFFFFFFFFFFFFF",
+    strrep("b", 64L)
+  )
+  foreign <- write_auth_secret(file.path(root, "foreign.env"), foreign_raw)
+  ops <- .viewerAuthSetupOps()
+  original_read <- ops$read_pinned
+  ops$read_pinned <- function(candidate) {
+    expect_true(file.rename(candidate, held))
+    expect_true(file.rename(foreign, candidate))
+    original_read(candidate)
+  }
+
+  snapshot <- .viewerAuthReadSecretFile(path, ops)
+  expect_identical(snapshot$raw, foreign_raw)
+})
 
 test_that("secret parser accepts only the exact generated grammar", {
   root <- withr::local_tempdir()
@@ -219,6 +272,7 @@ test_that("secret parser rejects symlinks and permissive POSIX modes", {
   link <- file.path(root, "app.auth.env")
 
   expect_true(file.symlink(target, link))
+  expect_null(.viewerAuthSetupOps()$read_pinned(link))
   expect_error(
     .viewerAuthReadSecretFile(link, .viewerAuthSetupOps()),
     "invalid or unsafe",
@@ -476,25 +530,15 @@ capture_all_auth_conditions <- function(expr) {
   list(value = value, messages = messages, warnings = warnings, stdout = stdout)
 }
 
-test_that("secret identity rejects wrong owner nonregular and access failure", {
+test_that("secret reads fail closed for native faults and nonregular paths", {
   root <- withr::local_tempdir()
   path <- write_auth_secret(file.path(root, "app.auth.env"))
   ops <- .viewerAuthSetupOps()
 
-  if (.Platform$OS.type != "windows") {
-    wrong_owner <- ops
-    wrong_owner$effective_uid <- function() ops$effective_uid() + 1
-    expect_error(
-      .viewerAuthReadSecretFile(path, wrong_owner),
-      "invalid or unsafe",
-      fixed = TRUE
-    )
-  }
-
-  denied <- ops
-  denied$access <- function(path, mode) FALSE
+  failed <- ops
+  failed$read_pinned <- function(path) NULL
   expect_error(
-    .viewerAuthReadSecretFile(path, denied),
+    .viewerAuthReadSecretFile(path, failed),
     "invalid or unsafe",
     fixed = TRUE
   )
@@ -544,26 +588,76 @@ test_that("filesystem identity rejects non-finite and non-scalar metadata", {
   }
 })
 
-test_that("secret parser detects replacement during raw read", {
+test_that("revalidation detects replacement after a pinned read", {
   root <- withr::local_tempdir()
   path <- write_auth_secret(file.path(root, "app.auth.env"))
   ops <- .viewerAuthSetupOps()
-  original_read <- ops$read_raw
-  ops$read_raw <- function(candidate) {
-    bytes <- original_read(candidate)
-    unlink(candidate)
-    write_auth_secret(
-      candidate,
-      auth_secret_raw(
-        "CEREBRO_AUTH_PASSPHRASE_FFFFFFFFFFFFFFFF",
-        strrep("b", 64L)
-      )
+  snapshot <- .viewerAuthReadSecretFile(path, ops)
+  unlink(path)
+  write_auth_secret(
+    path,
+    auth_secret_raw(
+      "CEREBRO_AUTH_PASSPHRASE_FFFFFFFFFFFFFFFF",
+      strrep("b", 64L)
     )
-    bytes
+  )
+
+  expect_error(
+    .viewerAuthRevalidateSecretFile(snapshot, ops),
+    "changed",
+    fixed = TRUE
+  )
+})
+
+test_that("revalidation compares raw bytes when identity is reused", {
+  root <- withr::local_tempdir()
+  path <- write_auth_secret(file.path(root, "app.auth.env"))
+  ops <- .viewerAuthSetupOps()
+  snapshot <- .viewerAuthReadSecretFile(path, ops)
+  original_read <- ops$read_pinned
+  foreign_raw <- auth_secret_raw(
+    "CEREBRO_AUTH_PASSPHRASE_FFFFFFFFFFFFFFFF",
+    strrep("b", 64L)
+  )
+  ops$read_pinned <- function(candidate) {
+    reused <- original_read(candidate)
+    reused$raw <- foreign_raw
+    reused
   }
 
   expect_error(
-    .viewerAuthReadSecretFile(path, ops),
+    .viewerAuthRevalidateSecretFile(snapshot, ops),
+    "changed",
+    fixed = TRUE
+  )
+})
+
+test_that("revalidation rejects a generation restored after its pinned read", {
+  skip_on_os("windows")
+  root <- withr::local_tempdir()
+  path <- write_auth_secret(file.path(root, "app.auth.env"))
+  baseline <- .viewerAuthReadSecretFile(path, .viewerAuthSetupOps())
+  foreign <- write_auth_secret(
+    file.path(root, "foreign.env"),
+    auth_secret_raw(
+      "CEREBRO_AUTH_PASSPHRASE_FFFFFFFFFFFFFFFF",
+      strrep("b", 64L)
+    )
+  )
+  held <- file.path(root, "held.env")
+  ops <- .viewerAuthSetupOps()
+  original_read <- ops$read_pinned
+  ops$read_pinned <- function(candidate) {
+    expect_true(file.rename(candidate, held))
+    expect_true(file.rename(foreign, candidate))
+    snapshot <- original_read(candidate)
+    expect_identical(unlink(candidate), 0L)
+    expect_true(file.rename(held, candidate))
+    snapshot
+  }
+
+  expect_error(
+    .viewerAuthRevalidateSecretFile(baseline, ops),
     "changed",
     fixed = TRUE
   )
@@ -886,7 +980,7 @@ test_that("candidate provisional snapshot survives an immediate read failure", {
     list("fixture-password", "fixture-password")
   )
   original_link <- ops$link
-  original_read <- ops$read_raw
+  original_read <- ops$read_pinned
   linked_source <- NULL
   linked_candidate <- NULL
   candidate_read_fault_reached <- FALSE
@@ -898,12 +992,15 @@ test_that("candidate provisional snapshot survives an immediate read failure", {
     }
     linked
   }
-  ops$read_raw <- function(path) {
-    if (!is.null(linked_candidate) && identical(path, linked_candidate)) {
+  ops$read_pinned <- function(candidate) {
+    if (
+      !is.null(linked_candidate) &&
+        identical(candidate, linked_candidate)
+    ) {
       candidate_read_fault_reached <<- TRUE
       stop("candidate read fault")
     }
-    original_read(path)
+    original_read(candidate)
   }
   state <- .viewerAuthPreflightSimple(file.path(root, "app"), ops)
   .viewerAuthCompleteSimple(state)
@@ -927,7 +1024,7 @@ test_that("candidate provisional snapshot survives an immediate read failure", {
     as.numeric(source_info$inode[[1L]]),
     as.numeric(target_info$inode[[1L]])
   )
-  state$ops$read_raw <- original_read
+  state$ops$read_pinned <- original_read
   .viewerAuthFinishSimple(state)
   expect_false(.bundlePathExists(linked_candidate))
 })
@@ -975,7 +1072,7 @@ test_that("final hard-link race preserves the competing entry", {
 test_that("published provisional snapshot survives an immediate read failure", {
   state <- viewer_auth_setup_fixture()
   candidate <- state$candidate_path
-  original_read <- state$ops$read_raw
+  original_read <- state$ops$read_pinned
   original_link <- state$ops$link
   final_link_created <- FALSE
   final_link_identity <- NULL
@@ -995,12 +1092,12 @@ test_that("published provisional snapshot survives an immediate read failure", {
     }
     linked
   }
-  state$ops$read_raw <- function(path) {
-    if (identical(path, state$secret_path)) {
+  state$ops$read_pinned <- function(candidate) {
+    if (identical(candidate, state$secret_path)) {
       final_read_fault_reached <<- TRUE
       stop("final read fault")
     }
-    original_read(path)
+    original_read(candidate)
   }
 
   captured <- capture_all_auth_conditions(.viewerAuthPublishSecret(state))
@@ -1021,7 +1118,7 @@ test_that("published provisional snapshot survives an immediate read failure", {
     final_link_identity$source_inode,
     final_link_identity$target_inode
   )
-  state$ops$read_raw <- original_read
+  state$ops$read_pinned <- original_read
   .viewerAuthFinishSimple(state)
   expect_false(.bundlePathExists(state$secret_path))
   expect_false(.bundlePathExists(candidate))
@@ -1235,7 +1332,7 @@ test_that("authentication setup conditions redact all supplied secrets", {
   root <- withr::local_tempdir()
   path <- write_auth_secret(file.path(root, "app.auth.env"))
   ops <- .viewerAuthSetupOps()
-  ops$read_raw <- function(path) stop("raw read fault")
+  ops$read_pinned <- function(path) stop("raw read fault")
   captured <- capture_all_auth_conditions(.viewerAuthReadSecretFile(path, ops))
   channels <- c(
     if (inherits(captured$value, "error")) {

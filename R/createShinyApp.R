@@ -2072,6 +2072,7 @@ dedent <- function(string) {
 #'   published app on pre-commit failure.
 #' @importFrom later later
 #' @importFrom stats setNames
+#' @useDynLib CerebroNexus, .registration = TRUE
 #' @export
 createShinyApp <- function(
   cerebro_data,

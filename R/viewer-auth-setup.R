@@ -36,7 +36,9 @@
       }
       uid
     },
-    read_raw = function(path) readBin(path, what = "raw", n = 107L),
+    read_pinned = function(path) {
+      .Call(C_cerebro_read_pinned_secret, path)
+    },
     write_raw = function(bytes, path) {
       writeBin(bytes, path, useBytes = TRUE)
       TRUE
@@ -462,15 +464,41 @@
   path,
   ops = .viewerAuthSetupOps()
 ) {
-  before <- .viewerAuthReadFileIdentity(path, "0600", ops)
-  bytes <- .viewerAuthCall(ops$read_raw(path))
+  intended <- .viewerAuthIntendedExisting(path)
+  if (is.na(intended)) {
+    .viewerAuthUnsafe(path)
+  }
+  opened <- .viewerAuthCall(ops$read_pinned(intended))
+  required <- c("raw", "device_id", "inode", "size", "mode", "uid")
+  if (!is.list(opened) || !identical(names(opened), required)) {
+    .viewerAuthUnsafe(path)
+  }
+  bytes <- opened$raw
   if (!is.raw(bytes)) {
     .viewerAuthUnsafe(path)
   }
-  after <- .viewerAuthReadFileIdentity(path, "0600", ops)
-  if (!.viewerAuthSameFileIdentity(before, after)) {
-    .viewerAuthUnsafe(path, changed = TRUE)
+  for (field in c("device_id", "inode", "size", "uid")) {
+    value <- opened[[field]]
+    if (
+      !is.numeric(value) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        !is.finite(value) ||
+        value < 0
+    ) {
+      .viewerAuthUnsafe(path)
+    }
   }
+  if (
+    !is.integer(opened$mode) ||
+      length(opened$mode) != 1L ||
+      is.na(opened$mode) ||
+      opened$mode < 0L
+  ) {
+    .viewerAuthUnsafe(path)
+  }
+  opened$path <- intended
+  opened <- opened[c("path", required[-1L], "raw")]
   if (length(bytes) != 106L || any(bytes == as.raw(0L))) {
     .viewerAuthUnsafe(path)
   }
@@ -487,10 +515,10 @@
     .viewerAuthUnsafe(path)
   }
   separator <- regexpr("=", value, fixed = TRUE, useBytes = TRUE)[[1L]]
-  before$raw <- bytes
-  before$env_name <- substr(value, 1L, separator - 1L)
-  before$passphrase <- substr(value, separator + 1L, nchar(value) - 1L)
-  before
+  opened$raw <- bytes
+  opened$env_name <- substr(value, 1L, separator - 1L)
+  opened$passphrase <- substr(value, separator + 1L, nchar(value) - 1L)
+  opened
 }
 
 .viewerAuthRevalidateSecretFile <- function(snapshot, ops) {
