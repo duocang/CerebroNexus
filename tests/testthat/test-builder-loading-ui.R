@@ -58,10 +58,7 @@ test_that("the Builder initial HTML contains a stable non-empty shell", {
 })
 
 test_that("ready and importing rail regions update independently", {
-  app <- paste(
-    readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
-    collapse = "\n"
-  )
+  app <- builder_app_source_text()
 
   expect_match(app, "output$ds_ready_list <- renderUI({", fixed = TRUE)
   expect_match(app, "output$ds_import_list <- renderUI({", fixed = TRUE)

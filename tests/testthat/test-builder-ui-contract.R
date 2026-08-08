@@ -300,7 +300,7 @@ test_that("builder exposes one compact responsive component system", {
 test_that("Viewer Group catalog interactions use stable names and client search", {
   js <- builder_asset_text("www", "builder.js")
   css <- builder_stylesheet_text()
-  core <- builder_asset_text("ui", "core_stage.R")
+  core <- builder_core_stage_source_text()
 
   expect_match(core, "viewer-group-include", fixed = TRUE)
   expect_match(core, "viewer-group-default", fixed = TRUE)
@@ -363,7 +363,7 @@ test_that("supplementary tables use an amber native multi-file chooser", {
   expect_match(stage, 'role = "button"', fixed = TRUE)
   expect_match(stage, 'span("+ Add tables…")', fixed = TRUE)
   expect_match(
-    app <- builder_asset_text("app.R"),
+    app <- builder_app_source_text(),
     'span("Table name")',
     fixed = TRUE
   )
@@ -461,7 +461,7 @@ test_that("builder interaction states follow the amber theme", {
 })
 
 test_that("group colors use native bounded controls without projection palettes", {
-  core <- builder_asset_text("ui", "core_stage.R")
+  core <- builder_core_stage_source_text()
   js <- builder_asset_text("www", "builder.js")
   css <- builder_stylesheet_text()
 
@@ -478,7 +478,7 @@ test_that("group colors use native bounded controls without projection palettes"
 })
 
 test_that("Viewer content cards preserve disclosure state across Shiny redraws", {
-  core <- builder_asset_text("ui", "core_stage.R")
+  core <- builder_core_stage_source_text()
   js <- builder_asset_text("www", "builder.js")
 
   expect_false(grepl('open = "open"', core, fixed = TRUE))
@@ -493,7 +493,7 @@ test_that("Viewer content cards preserve disclosure state across Shiny redraws",
 
 test_that("Review uses a compact responsive user-facing layout", {
   css <- builder_stylesheet_text()
-  app <- builder_asset_text("app.R")
+  app <- builder_app_source_text()
 
   expect_match(css, ".review-app-grid", fixed = TRUE)
   expect_match(css, ".review-page-tags", fixed = TRUE)
@@ -649,7 +649,7 @@ test_that("dataset focus compensates for the sticky Builder topbar", {
 })
 
 test_that("compact review selection is resolved against the latest server state", {
-  app <- builder_asset_text("app.R")
+  app <- builder_app_source_text()
 
   expect_match(app, "select_dataset <- function(target_id)", fixed = TRUE)
   expect_match(app, "target_id %in% ids", fixed = TRUE)
@@ -905,13 +905,13 @@ test_that("pipeline visualization reflects the current step", {
   expect_match(status, "Complete", fixed = TRUE)
   expect_false(grepl('pipeline_state.*"verify"', status))
   expect_match(
-    builder_asset_text("app.R"),
+    builder_app_source_text(),
     'builder_build_pipeline_ui("building")',
     fixed = TRUE
   )
   expect_false(grepl(
     'build_phase %in% c("running", "cancelling")',
-    builder_asset_text("app.R"),
+    builder_app_source_text(),
     fixed = TRUE
   ))
 })

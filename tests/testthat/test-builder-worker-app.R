@@ -14,10 +14,7 @@ if (nzchar(builder_app_worker_path) && file.exists(builder_app_worker_path)) {
 builder_repo_source("session.R", local = globalenv())
 
 builder_app_lines <- function() {
-  readLines(
-    builder_profile_inst_path("builder", "app.R"),
-    warn = FALSE
-  )
+  builder_app_source_lines()
 }
 
 builder_session_lines <- function() {

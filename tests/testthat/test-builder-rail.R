@@ -700,13 +700,7 @@ if (builder_rail_api_available) {
       fixed = TRUE
     ))
 
-    app <- paste(
-      readLines(
-        builder_profile_inst_path("builder", "app.R"),
-        warn = FALSE
-      ),
-      collapse = "\n"
-    )
+    app <- builder_app_source_text()
     expect_match(app, "pending_snapshot_drops", fixed = TRUE)
     expect_match(app, "other_drop_ids", fixed = TRUE)
   })

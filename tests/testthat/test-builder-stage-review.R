@@ -1,0 +1,492 @@
+builder_stage_contract_source_runtime(environment())
+
+test_that("Review model translates a frozen plan into user language", {
+  plan <- builder_stage_frozen_plan()
+  model <- builder_review_model(plan)
+
+  expect_null(model$revision)
+  expect_null(model$contract)
+  expect_null(model$manifest)
+  expect_null(model$app$host)
+  expect_null(model$app$port)
+  expect_null(model$app$max_request_size)
+  expect_identical(model$dataset_count, 2L)
+  expect_identical(model$output_label, "CRB files + private App")
+  expect_identical(model$datasets[[1L]]$name, "Dataset B")
+  expect_identical(model$datasets[[1L]]$group_count, 2L)
+  expect_identical(model$datasets[[1L]]$projection_count, 1L)
+  expect_identical(model$app$initial_dataset, "Dataset B")
+  expect_identical(model$app$dataset_order, c("Dataset B", "Dataset A"))
+  expect_identical(model$output$existing_files, "Keep existing files")
+  expect_identical(model$output$estimated_size, "8 KB")
+  expect_identical(model$output$estimated_time, "A few minutes")
+  expect_true(all(
+    c("Data info", "Projection", "Marker genes") %in% model$pages
+  ))
+  expect_false(any(c("marker_genes", "spatial") %in% model$pages))
+  expect_length(model$warnings, 0L)
+  expect_true(model$can_build)
+})
+
+test_that("Review presents datasets, App experience, pages, and output", {
+  crbs <- builder_review_model(builder_stage_frozen_plan(FALSE))
+  expect_identical(crbs$output_label, "CRB files")
+
+  app <- builder_review_model(builder_stage_frozen_plan(TRUE))
+  html <- builder_stage_html(builder_review_stage_ui("review", app))
+
+  expect_match(
+    html,
+    "Check your datasets and output before building.",
+    fixed = TRUE
+  )
+  expect_match(html, "2 datasets", fixed = TRUE)
+  expect_match(html, "Creates CRB files + private App", fixed = TRUE)
+  expect_match(html, "Datasets", fixed = TRUE)
+  expect_match(html, "Dataset B", fixed = TRUE)
+  expect_match(html, "2 cells · 3 genes", fixed = TRUE)
+  expect_match(html, "Groups", fixed = TRUE)
+  expect_match(html, "2 included · Default: Cluster", fixed = TRUE)
+  expect_match(html, "Projections", fixed = TRUE)
+  expect_match(html, "UMAP", fixed = TRUE)
+  expect_match(html, "Output file:", fixed = TRUE)
+  expect_match(html, "01-dataset-b.crb", fixed = TRUE)
+  expect_match(html, "App experience", fixed = TRUE)
+  expect_match(html, "Dataset order", fixed = TRUE)
+  expect_match(html, "Visitor uploads", fixed = TRUE)
+  expect_match(html, "Off", fixed = TRUE)
+  expect_match(html, "Welcome, lab team!", fixed = TRUE)
+  expect_match(html, "Point size", fixed = TRUE)
+  expect_match(html, "Variable comparison", fixed = TRUE)
+  expect_match(html, "Pages in the App", fixed = TRUE)
+  expect_match(html, "Data info", fixed = TRUE)
+  expect_match(html, "Marker genes", fixed = TRUE)
+  expect_match(html, "Output", fixed = TRUE)
+  expect_match(html, "Folder", fixed = TRUE)
+  expect_match(html, "/private/host/output", fixed = TRUE)
+  expect_false(grepl("Existing files", html, fixed = TRUE))
+  expect_false(grepl("Keep existing files", html, fixed = TRUE))
+  expect_match(html, "8 KB", fixed = TRUE)
+  expect_match(html, "A few minutes", fixed = TRUE)
+  expect_match(html, "Private App", fixed = TRUE)
+  expect_match(html, "not offered as public downloads", fixed = TRUE)
+  forbidden <- c(
+    "Plan revision",
+    "App contract",
+    "Artifact mode",
+    "automatic",
+    "Planned payload members",
+    "Replacement policy",
+    "Technical plan details",
+    "Viewer page expectations",
+    "Expected after build",
+    "Private assets",
+    "BuildPlan",
+    "manifest",
+    "Host:",
+    "Port:",
+    "Request limit",
+    "Display mode",
+    "Launch browser",
+    "sidecars",
+    "HTTP-public",
+    "barcode",
+    "backend"
+  )
+  expect_false(any(vapply(
+    forbidden,
+    grepl,
+    logical(1),
+    x = html,
+    fixed = TRUE
+  )))
+  expect_false(grepl("Needs attention", html, fixed = TRUE))
+})
+
+test_that("Review summarizes saved and points-only spatial sections", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$items[[1L]]$spatial_alignment <- list(
+    section_count = 2L,
+    image_count = 1L,
+    saved_count = 1L,
+    points_only = "section-b"
+  )
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_identical(model$datasets[[1L]]$spatial_alignment$saved_count, 1L)
+  expect_match(html, "Spatial alignment", fixed = TRUE)
+  expect_match(html, "1 of 2 sections has a saved tissue image", fixed = TRUE)
+  expect_match(html, "1 section remains points-only", fixed = TRUE)
+  expect_false(grepl("section-b", html, fixed = TRUE))
+  expect_false(grepl("histology_image_bounds", html, fixed = TRUE))
+})
+
+test_that("Review keeps group colors compact and distinguishes custom colors", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$items[[1L]]$colors$cluster <- c(
+    A = "#111111",
+    B = "#222222",
+    C = "#333333",
+    D = "#444444",
+    E = "#555555",
+    F = "#666666",
+    G = "#777777",
+    H = "#888888"
+  )
+  plan$items[[1L]]$color_custom_count <- 3L
+  plan$items[[2L]]$default_group <- "cell_type"
+  plan$items[[2L]]$color_custom_count <- 0L
+
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_identical(model$datasets[[1L]]$group_colors$group, "cluster")
+  expect_identical(model$datasets[[1L]]$group_colors$custom_count, 3L)
+  expect_lte(length(model$datasets[[1L]]$group_colors$preview), 5L)
+  expect_match(html, "3 colors customized", fixed = TRUE)
+  expect_match(html, "0 colors customized", fixed = TRUE)
+  expect_false(grepl("review-group-color-dot", html, fixed = TRUE))
+  expect_false(grepl(">#111111<", html, fixed = TRUE))
+  expect_false(grepl("palettes are frozen", html, ignore.case = TRUE))
+})
+
+test_that("Review translates policies, bounds pages, and names actionable issues", {
+  expect_identical(
+    vapply(
+      c("preserve_existing", "overwrite", "error_if_exists"),
+      builder_review_existing_files,
+      character(1)
+    ),
+    c(
+      preserve_existing = "Keep existing files",
+      overwrite = "Replace existing files",
+      error_if_exists = "Stop if files already exist"
+    )
+  )
+  expect_match(builder_review_human_size(514285), "KB", fixed = TRUE)
+  expect_match(builder_review_human_size(5 * 1024^2), "MB", fixed = TRUE)
+
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$existing_targets <- "/private/host/output/01-dataset-b.crb"
+  plan$overwrite <- FALSE
+  plan$required_settings <- "dataset-b: choose a different output folder."
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_false(model$can_build)
+  expect_match(model$warnings[[1L]], "Dataset B", fixed = TRUE)
+  expect_false(grepl("dataset-b:", model$warnings[[1L]], fixed = TRUE))
+  expect_match(html, "Needs attention", fixed = TRUE)
+  expect_match(html, "Show 1 more", fixed = TRUE)
+})
+
+test_that("Review translates network-dependent runtime into user language", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$output_release$estimated_runtime <- "network-dependent"
+
+  expect_identical(
+    builder_review_model(plan)$output$estimated_time,
+    "Depends on network response"
+  )
+})
+
+test_that("Review gives a useful next step when the plan is not ready", {
+  html <- builder_stage_html(builder_review_blocked_ui(
+    "review",
+    "Choose a valid output folder."
+  ))
+
+  expect_match(html, "Review", fixed = TRUE)
+  expect_match(html, "Needs attention", fixed = TRUE)
+  expect_match(html, "Choose a valid output folder.", fixed = TRUE)
+  expect_match(html, "Correct the highlighted settings", fixed = TRUE)
+  expect_false(grepl(
+    "Choose the required dataset settings before building.",
+    html,
+    fixed = TRUE
+  ))
+})
+
+test_that("Review handles one dataset and long output folders", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$items <- plan$items[1L]
+  plan$dataset_order <- "dataset-b"
+  plan$output_release$directory <- paste0(
+    "/private/host/",
+    paste(rep("long-folder-name", 8L), collapse = "/")
+  )
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_match(html, "1 dataset", fixed = TRUE)
+  expect_false(grepl("1 datasets", html, fixed = TRUE))
+  expect_match(html, plan$output_release$directory, fixed = TRUE)
+  expect_identical(model$app$dataset_order, "Dataset B")
+})
+
+test_that("Build status has four top-level types and warning Success variant", {
+  success_result <- builder_result_success(
+    published = TRUE,
+    built = "/release/dataset.crb",
+    warnings = "One optional analysis was skipped"
+  )
+  decision_result <- builder_result_needs_decision("Choose whether to retry.")
+  failure_result <- builder_result_failure("failed")
+  recovery_result <- builder_result_recovery_required(
+    "Restore the backup manually."
+  )
+  success <- builder_build_status_model(success_result)
+  decision <- builder_build_status_model(decision_result)
+  failure <- builder_build_status_model(failure_result)
+  recovery <- builder_build_status_model(recovery_result)
+
+  expect_s3_class(success_result, "builder_result_success")
+  expect_identical(success_result$state, "success")
+  expect_identical(success$type, "success")
+  expect_identical(success$variant, "warnings")
+  expect_identical(decision$type, "needs_decision")
+  expect_identical(failure$type, "failure")
+  expect_identical(recovery$type, "recovery_required")
+  expect_error(builder_build_status_model(list(error = "legacy")), "typed")
+})
+
+test_that("build pipeline only renders server-known states", {
+  queued <- builder_stage_html(builder_build_pipeline_ui("queued"))
+  building <- builder_stage_html(builder_build_pipeline_ui("building"))
+  complete <- builder_stage_html(builder_build_pipeline_ui("complete"))
+  failure <- builder_stage_html(builder_build_pipeline_ui("failure"))
+
+  expect_match(queued, 'data-pipeline-state="queued"', fixed = TRUE)
+  expect_match(building, 'data-pipeline-state="building"', fixed = TRUE)
+  expect_match(complete, 'data-pipeline-state="complete"', fixed = TRUE)
+  expect_match(failure, 'data-pipeline-state="failure"', fixed = TRUE)
+  expect_false(grepl("Verify", paste(queued, building, failure)))
+
+  decision <- builder_stage_html(
+    builder_build_status_ui(builder_result_needs_decision("Choose one."))
+  )
+  expect_false(grepl("builder-build-pipeline", decision, fixed = TRUE))
+})
+
+test_that("release recovery evidence produces a recovery-required result", {
+  recovery <- list(
+    state = "recovery_required",
+    message = "Restore the preserved backup before retrying.",
+    backup = "release.backup"
+  )
+  mapped <- builder_release_error_result(
+    "Publishing failed.",
+    "/release",
+    .recovery = function(target) {
+      expect_identical(target, "/release")
+      recovery
+    }
+  )
+  ordinary <- builder_release_error_result(
+    "Validation failed.",
+    "/release",
+    .recovery = function(target) list(state = "ready")
+  )
+
+  expect_s3_class(mapped, "builder_result_recovery_required")
+  expect_identical(mapped$state, "recovery_required")
+  expect_identical(mapped$recovery, recovery)
+  expect_s3_class(ordinary, "builder_result_failure")
+})
+
+test_that("recovery actions require explicit typed evidence", {
+  undecidable <- builder_stage_html(builder_build_status_ui(
+    builder_result_needs_decision("Choose one.", retry_closure = "marker_genes")
+  ))
+  targeted <- builder_stage_html(builder_build_status_ui(
+    builder_result_needs_decision(
+      "Choose one.",
+      retry_closure = "marker_genes",
+      failed_dataset_id = "ds1"
+    )
+  ))
+  ordinary_failure <- builder_stage_html(builder_build_status_ui(
+    builder_result_failure("Export failed.")
+  ))
+  worker_failure <- builder_stage_html(builder_build_status_ui(
+    builder_result_failure("Worker stopped.", restartable_worker = TRUE)
+  ))
+
+  expect_match(undecidable, "Retry optional work", fixed = TRUE)
+  expect_false(grepl("Remove and rebuild", undecidable, fixed = TRUE))
+  expect_match(targeted, "Remove and rebuild", fixed = TRUE)
+  expect_false(grepl("Restart worker", ordinary_failure, fixed = TRUE))
+  expect_match(worker_failure, "Restart worker", fixed = TRUE)
+})
+
+test_that("a real publish restore failure maps to recovery required", {
+  local({
+    builder_repo_source("publish.R")
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    writeLines("old", file.path(target, "dataset.crb"))
+    handle <- builder_prepare_release(
+      target,
+      "build-result-recovery",
+      builder_release_identity(target)
+    )
+    writeLines("new", file.path(handle$stage, "dataset.crb"))
+    moves <- 0L
+    fail_publish_and_restore <- function(from, to) {
+      moves <<- moves + 1L
+      if (moves %in% c(2L, 3L)) {
+        return(FALSE)
+      }
+      file.rename(from, to)
+    }
+    failure <- tryCatch(
+      builder_publish_release(handle, .move = fail_publish_and_restore),
+      error = function(error) error
+    )
+
+    mapped <- builder_release_error_result(
+      conditionMessage(failure),
+      target,
+      .recovery = builder_discover_recovery
+    )
+
+    expect_s3_class(mapped, "builder_result_recovery_required")
+    expect_identical(mapped$recovery$state, "recovery_required")
+    expect_true(dir.exists(mapped$recovery$backup))
+  })
+})
+
+test_that("Open App requires a verified published final App directory", {
+  no_app <- builder_build_status_ui(builder_result_success(
+    published = TRUE,
+    built = "/release/dataset.crb"
+  ))
+  verified_app <- builder_build_status_ui(builder_result_success(
+    published = TRUE,
+    built = "/release/dataset.crb",
+    app_dir = "/release/cerebro_app",
+    app_verified = TRUE,
+    report_path = "/release/build-report.json"
+  ))
+
+  expect_false(grepl("Open App", builder_stage_html(no_app), fixed = TRUE))
+  verified_html <- builder_stage_html(verified_app)
+  expect_match(verified_html, "Open App", fixed = TRUE)
+  expect_match(verified_html, "Reveal Folder", fixed = TRUE)
+  expect_match(verified_html, "Copy Path", fixed = TRUE)
+  expect_match(verified_html, "Copy Report", fixed = TRUE)
+  expect_match(verified_html, 'data-path="/release/cerebro_app"', fixed = TRUE)
+  expect_match(
+    verified_html,
+    'data-report="/release/build-report.json"',
+    fixed = TRUE
+  )
+})
+
+test_that("result actions execute through injected platform boundaries", {
+  opened <- revealed <- copied <- character()
+  app <- builder_result_success(
+    published = TRUE,
+    built = "/release/dataset.crb",
+    app_dir = "/release/cerebro_app",
+    app_verified = TRUE,
+    report_path = "/release/build-report.json"
+  )
+
+  expect_true(builder_open_final_app(app, .open = function(path) {
+    opened <<- path
+    TRUE
+  }))
+  expect_true(builder_reveal_release(app, .reveal = function(path) {
+    revealed <<- path
+    TRUE
+  }))
+  expect_true(builder_copy_result_path(app, "release", .copy = function(value) {
+    copied <<- value
+    TRUE
+  }))
+  expect_identical(opened, "/release/cerebro_app")
+  expect_identical(revealed, "/release")
+  expect_identical(copied, "/release")
+  expect_error(
+    builder_open_final_app(builder_result_success(published = TRUE)),
+    "verified final App"
+  )
+})
+
+test_that("typed Review controls expose only accepted App options", {
+  options <- builder_review_options(
+    welcome_message = "Welcome, team!",
+    initial_page = "projection",
+    point_size = 5,
+    variable_to_compare = TRUE,
+    host = "127.0.0.1",
+    port = 4242L,
+    max_request_size = 512,
+    display_mode = "normal",
+    launch_browser = FALSE,
+    show_upload_ui = FALSE
+  )
+
+  expect_s3_class(options, "builder_review_options")
+  frozen <- builder_review_options_for_plan(
+    options,
+    initial_dataset = "dataset-a"
+  )
+  expect_identical(
+    names(frozen),
+    c(
+      "show_upload_ui",
+      "initial_dataset",
+      "initial_page",
+      "welcome_message",
+      "variable_to_compare",
+      "host",
+      "port",
+      "max_request_size",
+      "display_mode",
+      "launch_browser"
+    )
+  )
+  expect_null(frozen$point_size)
+  expect_identical(frozen$initial_page, "projection")
+  expect_error(builder_review_options(port = 0), "Review options")
+  expect_error(
+    builder_review_options(initial_page = "missing"),
+    "Review options"
+  )
+
+  page_choices <- builder_review_initial_page_choices(list(
+    always = builder_viewer_page_catalog()$always,
+    visible_conditional = "trajectory"
+  ))
+  html <- builder_stage_html(builder_review_controls_ui(
+    "review",
+    options,
+    page_choices
+  ))
+  for (label in c(
+    "Starting page",
+    "Welcome message",
+    "Variable to compare",
+    "Allow uploads"
+  )) {
+    expect_match(html, label, fixed = TRUE)
+  }
+  expect_match(html, "review-initial_page", fixed = TRUE)
+  expect_match(html, "Projection", fixed = TRUE)
+  expect_match(html, "Trajectory", fixed = TRUE)
+  expect_false(grepl("Spatial", html, fixed = TRUE))
+  for (label in c(
+    "Point size",
+    "Host",
+    "Port",
+    "Request size",
+    "Display mode",
+    "Launch browser"
+  )) {
+    expect_false(grepl(label, html, fixed = TRUE))
+  }
+})

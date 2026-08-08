@@ -622,7 +622,7 @@ test_that("publication stays in the parent and uses the registered stage", {
   if (!dir.exists(root)) {
     root <- system.file("builder", package = "CerebroNexus")
   }
-  app <- readLines(file.path(root, "app.R"), warn = FALSE)
+  app <- builder_app_source_lines()
   worker <- readLines(file.path(root, "worker.R"), warn = FALSE)
   session <- readLines(file.path(root, "session.R"), warn = FALSE)
 

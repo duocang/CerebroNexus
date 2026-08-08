@@ -1,4 +1,5 @@
 builder_repo_source("prerequisite.R")
+builder_repo_source("profile.R")
 builder_repo_source("state.R")
 
 test_that("the app privacy marker must be the exact integer contract", {
@@ -188,14 +189,7 @@ test_that("available app control defaults checked and preserves current state", 
 })
 
 test_that("builder UI loads the prerequisite before its plan", {
-  app_path <- testthat::test_path("..", "..", "inst", "builder", "app.R")
-  if (!file.exists(app_path)) {
-    app_path <- system.file(
-      file.path("builder", "app.R"),
-      package = "CerebroNexus"
-    )
-  }
-  lines <- readLines(app_path, warn = FALSE)
+  lines <- builder_app_source_lines()
   text <- paste(lines, collapse = "\n")
   prerequisite_source <- grep(
     'source("prerequisite.R", local = TRUE)',

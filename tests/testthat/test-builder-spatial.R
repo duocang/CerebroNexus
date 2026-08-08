@@ -1340,13 +1340,7 @@ test_that("alignment records propagate transformed extent facts", {
     expect_identical(paired[[field]], picture[[field]], info = field)
   }
 
-  app <- paste(
-    readLines(
-      builder_spatial_test_inst_path("builder", "app.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
+  app <- builder_app_source_text()
   alignment_server <- paste(
     readLines(
       builder_spatial_test_inst_path(

@@ -120,10 +120,7 @@ test_that("ten queued sources stay lightweight and single-flight", {
 })
 
 test_that("loading datasets block Build with a user-facing reason", {
-  app <- paste(
-    readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
-    collapse = "\n"
-  )
+  app <- builder_app_source_text()
 
   expect_match(
     app,
