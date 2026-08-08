@@ -18,22 +18,92 @@
 }
 
 .viewerAuthValidateDatabase <- function(path, passphrase) {
-  credentials <- suppressWarnings(suppressMessages(tryCatch(
-    shinymanager::read_db_decrypt(
-      conn = path,
-      name = "credentials",
-      passphrase = passphrase
+  table_names <- c("credentials", "pwd_mngt", "logs")
+  tables <- setNames(
+    lapply(table_names, function(name) {
+      suppressWarnings(suppressMessages(tryCatch(
+        shinymanager::read_db_decrypt(
+          conn = path,
+          name = name,
+          passphrase = passphrase
+        ),
+        error = function(condition) NULL
+      )))
+    }),
+    table_names
+  )
+  credentials <- tables$credentials
+  pwd_mngt <- tables$pwd_mngt
+  logs <- tables$logs
+  required <- list(
+    credentials = c(
+      "user",
+      "password",
+      "start",
+      "expire",
+      "admin",
+      "is_hashed_password"
     ),
-    error = function(condition) NULL
-  )))
-  required <- c("user", "password", "is_hashed_password")
-  valid <- is.data.frame(credentials) &&
-    nrow(credentials) > 0L &&
-    all(required %in% names(credentials)) &&
-    all(credentials$is_hashed_password %in% TRUE)
+    pwd_mngt = c(
+      "user",
+      "must_change",
+      "have_changed",
+      "date_change",
+      "n_wrong_pwd"
+    ),
+    logs = c("user", "server_connected", "token", "logout", "app")
+  )
+  valid_tables <- all(vapply(
+    table_names,
+    function(name) {
+      table <- tables[[name]]
+      is.data.frame(table) && all(required[[name]] %in% names(table))
+    },
+    logical(1)
+  ))
+  valid <- valid_tables && nrow(credentials) > 0L
+  if (valid) {
+    credential_users <- credentials$user
+    password_rows <- pwd_mngt$user
+    wrong_passwords <- pwd_mngt$n_wrong_pwd
+    change_dates <- pwd_mngt$date_change
+    valid_change_dates <- is.character(change_dates) &&
+      {
+        populated_dates <- !is.na(change_dates) & nzchar(change_dates)
+        all(!is.na(suppressWarnings(as.Date(change_dates[populated_dates]))))
+      }
+    valid <- is.character(credential_users) &&
+      !anyNA(credential_users) &&
+      all(nzchar(credential_users)) &&
+      !anyDuplicated(credential_users) &&
+      is.character(credentials$password) &&
+      !anyNA(credentials$password) &&
+      all(nzchar(credentials$password)) &&
+      is.logical(credentials$is_hashed_password) &&
+      all(credentials$is_hashed_password %in% TRUE) &&
+      is.character(password_rows) &&
+      !anyNA(password_rows) &&
+      all(nzchar(password_rows)) &&
+      !anyDuplicated(password_rows) &&
+      setequal(password_rows, credential_users) &&
+      length(password_rows) == length(credential_users) &&
+      is.character(pwd_mngt$must_change) &&
+      all(pwd_mngt$must_change %in% c("TRUE", "FALSE")) &&
+      is.character(pwd_mngt$have_changed) &&
+      all(pwd_mngt$have_changed %in% c("TRUE", "FALSE")) &&
+      valid_change_dates &&
+      is.numeric(wrong_passwords) &&
+      !is.object(wrong_passwords) &&
+      all(is.finite(wrong_passwords)) &&
+      all(wrong_passwords >= 0) &&
+      all(wrong_passwords == floor(wrong_passwords))
+  }
   if (!valid) {
     stop(
-      "auth$credentials and its passphrase do not match.",
+      paste0(
+        "auth$credentials is not a complete compatible shinymanager ",
+        "database, or its passphrase does not match."
+      ),
       call. = FALSE
     )
   }

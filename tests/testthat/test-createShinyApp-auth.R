@@ -128,15 +128,40 @@ test_that("database preflight decrypts without creating a credential checker", {
   credentials <- data.frame(
     user = "alice",
     password = "hashed-password",
+    start = NA_character_,
+    expire = NA_character_,
+    admin = "FALSE",
     is_hashed_password = TRUE,
     stringsAsFactors = FALSE
   )
+  pwd_mngt <- data.frame(
+    user = "alice",
+    must_change = "FALSE",
+    have_changed = "FALSE",
+    date_change = "",
+    n_wrong_pwd = 0,
+    stringsAsFactors = FALSE
+  )
+  logs <- data.frame(
+    user = character(),
+    server_connected = character(),
+    token = character(),
+    logout = character(),
+    app = character(),
+    stringsAsFactors = FALSE
+  )
+  tables <- list(
+    credentials = credentials,
+    pwd_mngt = pwd_mngt,
+    logs = logs
+  )
+  names_read <- character()
   testthat::local_mocked_bindings(
     read_db_decrypt = function(conn, name, passphrase) {
       expect_identical(conn, path)
-      expect_identical(name, "credentials")
       expect_identical(passphrase, "test database passphrase")
-      credentials
+      names_read <<- c(names_read, name)
+      tables[[name]]
     },
     check_credentials = function(...) {
       stop("preflight must not create a credential checker", call. = FALSE)
@@ -148,6 +173,144 @@ test_that("database preflight decrypts without creating a credential checker", {
     path,
     "test database passphrase"
   ))
+  expect_identical(names_read, c("credentials", "pwd_mngt", "logs"))
+})
+
+test_that("database preflight rejects incompatible password policy types", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  path <- auth_test_database()
+  credentials <- data.frame(
+    user = "alice",
+    password = "hashed-password",
+    start = NA_character_,
+    expire = NA_character_,
+    admin = "FALSE",
+    is_hashed_password = TRUE,
+    stringsAsFactors = FALSE
+  )
+  pwd_mngt <- data.frame(
+    user = "alice",
+    must_change = "FALSE",
+    have_changed = "FALSE",
+    date_change = "",
+    n_wrong_pwd = 0,
+    stringsAsFactors = FALSE
+  )
+  logs <- data.frame(
+    user = character(),
+    server_connected = character(),
+    token = character(),
+    logout = character(),
+    app = character(),
+    stringsAsFactors = FALSE
+  )
+  testthat::local_mocked_bindings(
+    read_db_decrypt = function(conn, name, passphrase) {
+      switch(name, credentials = credentials, pwd_mngt = pwd_mngt, logs = logs)
+    },
+    .package = "shinymanager"
+  )
+
+  pwd_mngt$must_change <- TRUE
+  expect_error(
+    CerebroNexus:::.viewerAuthValidateDatabase(
+      path,
+      "test database passphrase"
+    ),
+    "complete compatible shinymanager database"
+  )
+
+  pwd_mngt$must_change <- "FALSE"
+  pwd_mngt$n_wrong_pwd <- factor("0")
+  expect_error(
+    CerebroNexus:::.viewerAuthValidateDatabase(
+      path,
+      "test database passphrase"
+    ),
+    "complete compatible shinymanager database"
+  )
+})
+
+test_that("database preflight rejects missing authentication tables", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  path <- auth_test_database()
+  credentials <- data.frame(
+    user = "alice",
+    password = "hashed-password",
+    start = NA_character_,
+    expire = NA_character_,
+    admin = "FALSE",
+    is_hashed_password = TRUE,
+    stringsAsFactors = FALSE
+  )
+  testthat::local_mocked_bindings(
+    read_db_decrypt = function(conn, name, passphrase) {
+      if (identical(name, "credentials")) credentials else NULL
+    },
+    .package = "shinymanager"
+  )
+
+  expect_error(
+    CerebroNexus:::.viewerAuthValidateDatabase(
+      path,
+      "test database passphrase"
+    ),
+    "complete compatible shinymanager database"
+  )
+})
+
+test_that("database preflight rejects corrupt auxiliary tables", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  path <- withr::local_tempfile(fileext = ".sqlite")
+  passphrase <- "test database passphrase"
+  shinymanager::create_db(
+    credentials_data = data.frame(
+      user = c("alice", "bob"),
+      password = c("alice-password", "bob-password"),
+      stringsAsFactors = FALSE
+    ),
+    sqlite_path = path,
+    passphrase = passphrase
+  )
+  shinymanager::write_db_encrypt(
+    conn = path,
+    value = data.frame(
+      user = "alice",
+      must_change = "FALSE",
+      have_changed = "FALSE",
+      date_change = as.character(Sys.Date()),
+      n_wrong_pwd = 0,
+      stringsAsFactors = FALSE
+    ),
+    name = "pwd_mngt",
+    passphrase = passphrase
+  )
+
+  expect_error(
+    CerebroNexus:::.viewerAuthValidateDatabase(path, passphrase),
+    "complete compatible shinymanager database"
+  )
+
+  shinymanager::create_db(
+    credentials_data = data.frame(
+      user = c("alice", "bob"),
+      password = c("alice-password", "bob-password"),
+      stringsAsFactors = FALSE
+    ),
+    sqlite_path = path,
+    passphrase = passphrase
+  )
+  shinymanager::write_db_encrypt(
+    conn = path,
+    value = data.frame(user = character()),
+    name = "logs",
+    passphrase = passphrase
+  )
+
+  expect_error(
+    CerebroNexus:::.viewerAuthValidateDatabase(path, passphrase),
+    "complete compatible shinymanager database"
+  )
 })
 
 auth_test_build_fixture <- function() {
