@@ -30,6 +30,7 @@ createShinyApp(
   spatial_images_offset_x = NULL,
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
+  auth = NULL,
   ...
 )
 }
@@ -117,6 +118,13 @@ units) applied to move the spatial background image. Names must match
 
 \item{spatial_plot_rotation}{Named list/vector; initial rotation (degrees)
 applied to spatial cell coordinates. Names must match \code{cerebro_data}.}
+
+\item{auth}{Optional authentication settings. \code{NULL}, the default,
+leaves the generated Viewer public. To require a login, provide a named
+list with \code{credentials}, the path to an encrypted SQLite database
+created by \code{shinymanager::create_db()}, and \code{passphrase_env},
+the name of the environment variable containing its passphrase. Optional
+\code{timeout_minutes} defaults to 15.}
 
 \item{...}{Currently unused; reserved for future arguments.}
 }

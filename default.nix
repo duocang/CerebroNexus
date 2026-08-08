@@ -41,6 +41,7 @@
 #  > "shinydashboard",
 #  > "shinyFiles",
 #  > "shinyjs",
+#  > "shinymanager",
 #  > "shinyWidgets",
 #  >      "tibble",
 #  > "tidyr",
@@ -100,6 +101,7 @@ let
       shinydashboard
       shinyFiles
       shinyjs
+      shinymanager
       shinytest2
       shinyvalidate
       shinyWidgets

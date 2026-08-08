@@ -1,0 +1,124 @@
+.panel-auth {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: linear-gradient(145deg, #f8fafb 0%, #eef2f4 100%);
+}
+
+.panel-auth > br,
+.panel-auth > div[style*="height: 70px"] {
+  display: none;
+}
+
+.panel-auth > .row {
+  width: 100%;
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.panel-auth > .row > [class*="col-"] {
+  width: 100%;
+  margin-left: 0;
+}
+
+.panel-auth .panel {
+  width: 100%;
+  max-width: 448px;
+  margin: 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 14px;
+  box-shadow: 0 22px 55px rgba(24, 35, 46, 0.13);
+}
+
+.panel-auth .panel-body {
+  padding: 36px 32px 30px;
+}
+
+.cerebro-auth-brand {
+  margin: 0 auto 8px;
+  color: #222b33;
+  text-align: center;
+}
+
+.cerebro-auth-brand svg {
+  display: inline-block;
+  width: min(100%, 262px);
+  height: auto;
+}
+
+.cerebro-auth-eyebrow {
+  margin-top: 16px;
+  color: #ea6a0f;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.panel-auth h3 {
+  margin-top: 8px;
+  color: #222b33;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.panel-auth .form-control {
+  min-height: 44px;
+  border-color: #cdd6de;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.panel-auth .form-control:focus {
+  border-color: #176fa6;
+  box-shadow: 0 0 0 3px rgba(23, 111, 166, 0.15);
+}
+
+.panel-auth .form-control:focus-visible,
+.panel-auth .btn:focus-visible,
+.panel-auth a:focus-visible {
+  outline: 3px solid #176fa6;
+  outline-offset: 2px;
+}
+
+.panel-auth .btn {
+  min-height: 44px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.panel-auth .btn-primary {
+  border-color: #222b33;
+  background: #222b33;
+  box-shadow: 0 8px 18px rgba(34, 43, 51, 0.18);
+}
+
+.panel-auth .alert {
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.cerebro-auth-footer {
+  color: #7c8894;
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+}
+
+@media (max-width: 576px) {
+  .panel-auth {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .panel-auth .panel-body {
+    padding: 26px 21px 23px;
+  }
+
+  .cerebro-auth-brand svg {
+    width: min(100%, 230px);
+  }
+}

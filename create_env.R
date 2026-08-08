@@ -90,6 +90,7 @@ rix(
     "shinydashboard",
     "shinyFiles",
     "shinyjs",
+    "shinymanager",
     "shinyWidgets",
     "tibble",
     "tidyr",

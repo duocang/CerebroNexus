@@ -1016,7 +1016,10 @@ dedent <- function(string) {
 
 .bundleBuildOps <- function() {
   list(
+    access = function(path, mode) file.access(path, mode = mode),
+    chmod = function(path, mode) Sys.chmod(path, mode = mode),
     copy = function(from, to, ...) file.copy(from, to, ...),
+    mode = function(path) as.integer(file.info(path)$mode),
     save_rds = function(object, file) saveRDS(object, file),
     write_lines = function(text, connection) writeLines(text, connection)
   )
@@ -1789,6 +1792,12 @@ dedent <- function(string) {
 #'   \code{cerebro_data}.
 #' @param spatial_plot_rotation Named list/vector; initial rotation (degrees)
 #'   applied to spatial cell coordinates. Names must match \code{cerebro_data}.
+#' @param auth Optional authentication settings. \code{NULL}, the default,
+#'   leaves the generated Viewer public. To require a login, provide a named
+#'   list with \code{credentials}, the path to an encrypted SQLite database
+#'   created by \code{shinymanager::create_db()}, and \code{passphrase_env},
+#'   the name of the environment variable containing its passphrase. Optional
+#'   \code{timeout_minutes} defaults to 15.
 #' @param ... Currently unused; reserved for future arguments.
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
@@ -1824,6 +1833,7 @@ createShinyApp <- function(
   spatial_images_offset_x = NULL,
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
+  auth = NULL,
   ...
 ) {
   # Validate inputs ----------------------------------------------------------##
@@ -1937,6 +1947,7 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
+  viewer_auth <- .compileViewerAuth(auth)
   requested_result_dir <- result_dir
   prepared_result <- .prepareBundleResultTarget(result_dir)
   result_dir <- prepared_result$target
@@ -2158,6 +2169,14 @@ createShinyApp <- function(
       source = source,
       artifact = artifact,
       directory = directory
+    )
+  }
+
+  if (!is.null(viewer_auth)) {
+    claim_target(
+      viewer_auth$credentials_path,
+      viewer_auth$source,
+      "authentication database"
     )
   }
 
@@ -2407,6 +2426,30 @@ createShinyApp <- function(
     }
   }
 
+  if (!is.null(viewer_auth)) {
+    auth_database <- file.path(
+      stage_result_dir,
+      viewer_auth$credentials_path
+    )
+    auth_directory <- dirname(auth_database)
+    private_modes <- TRUE
+    if (!identical(.Platform$OS.type, "windows")) {
+      changed <- isTRUE(build_ops$chmod(auth_directory, mode = "0700")) &&
+        isTRUE(build_ops$chmod(auth_database, mode = "0600"))
+      private_modes <- changed &&
+        identical(build_ops$mode(auth_directory), 448L) &&
+        identical(build_ops$mode(auth_database), 384L)
+    }
+    accessible <- build_ops$access(auth_database, mode = 6L) == 0L &&
+      build_ops$access(auth_directory, mode = 3L) == 0L
+    if (!isTRUE(private_modes) || !isTRUE(accessible)) {
+      stop(
+        "Failed to prepare the authentication database for runtime.",
+        call. = FALSE
+      )
+    }
+  }
+
   # Copy extdata -------------------------------------------------------------##
   if (verbose) {
     cat("Copying extdata files...\n")
@@ -2436,7 +2479,8 @@ createShinyApp <- function(
   cerebro_options[["cerebro_root"]] <- "."
   internal_option_names <- c(
     ".bundle_backend_plan",
-    ".bundle_run_options"
+    ".bundle_run_options",
+    ".viewer_auth"
   )
   option_names <- names(cerebro_options)
   if (!is.null(option_names)) {
@@ -2449,6 +2493,13 @@ createShinyApp <- function(
     entries = effective_backend_entries
   )
   cerebro_options[[".bundle_run_options"]] <- bundle_run_options
+  if (!is.null(viewer_auth)) {
+    cerebro_options[[".viewer_auth"]] <- viewer_auth[c(
+      "credentials_path",
+      "passphrase_env",
+      "timeout_minutes"
+    )]
+  }
   if (!is.null(crb_pick_smallest_file)) {
     cerebro_options[["crb_pick_smallest_file"]] <- crb_pick_smallest_file
   }
@@ -2524,10 +2575,18 @@ createShinyApp <- function(
 
     source(file.path(cerebro_root, "viewer/shiny_UI.R"))
     source(file.path(cerebro_root, "viewer/shiny_server.R"))
+    source(file.path(cerebro_root, "viewer/auth.R"), local = TRUE)
+
+    viewer_app <- viewer_auth_apply(
+      ui,
+      server,
+      Cerebro.options[[".viewer_auth"]],
+      Cerebro.options[["cerebro_root"]]
+    )
 
     shiny::shinyApp(
-      ui = ui,
-      server = server,
+      ui = viewer_app$ui,
+      server = viewer_app$server,
       onStart = function() {
         previous <- options(
           shiny.maxRequestSize = bundle_run_options$max_request_size_bytes
