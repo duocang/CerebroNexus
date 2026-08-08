@@ -66,6 +66,7 @@ Imports:
   utils,
   visNetwork
 Suggests:
+  askpass,
   BPCells,
   callr,
   chromote,
@@ -77,6 +78,7 @@ Suggests:
   jsonlite,
   knitr,
   monocle,
+  openssl,
   png,
   reshape2,
   rhdf5,

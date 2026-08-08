@@ -63,18 +63,24 @@
   passphrase
 }
 
-.viewerAuthPreflightDatabase <- function(path, passphrase_env) {
-  .viewerAuthProviderAvailable()
-  passphrase <- .viewerAuthReadSecret(passphrase_env)
+.viewerAuthValidateDatabase <- function(path, passphrase, passphrase_env) {
   credentials <- NULL
   pwd_mngt <- NULL
   logs <- NULL
+  tables <- NULL
+  credential_users <- NULL
+  pwd_mngt_users <- NULL
+  hashed <- NULL
   on.exit(
     {
       passphrase <- NULL
       credentials <- NULL
       pwd_mngt <- NULL
       logs <- NULL
+      tables <- NULL
+      credential_users <- NULL
+      pwd_mngt_users <- NULL
+      hashed <- NULL
     },
     add = TRUE
   )
@@ -171,6 +177,29 @@
     .viewerAuthDatabaseError(passphrase_env)
   }
   invisible(TRUE)
+}
+
+.viewerAuthPreflightDatabase <- function(path, passphrase_env) {
+  .viewerAuthProviderAvailable()
+  passphrase <- .viewerAuthReadSecret(passphrase_env)
+  on.exit(passphrase <- NULL, add = TRUE)
+  .viewerAuthValidateDatabase(path, passphrase, passphrase_env)
+}
+
+.viewerAuthManifest <- function(
+  scope,
+  credentials_path,
+  passphrase_env,
+  timeout_minutes = 15L
+) {
+  list(
+    schema_version = 1L,
+    provider = "shinymanager",
+    credentials_scope = scope,
+    credentials_path = credentials_path,
+    passphrase_env = passphrase_env,
+    timeout_minutes = as.integer(timeout_minutes)
+  )
 }
 
 .viewerAuthPathWithin <- function(path, root) {
@@ -358,13 +387,11 @@
     credentials
   }
   list(
-    config = list(
-      schema_version = 1L,
-      provider = provider,
-      credentials_scope = scope,
+    config = .viewerAuthManifest(
+      scope = scope,
       credentials_path = runtime_credentials,
       passphrase_env = passphrase_env,
-      timeout_minutes = as.integer(timeout_minutes)
+      timeout_minutes = timeout_minutes
     ),
     source = credentials
   )

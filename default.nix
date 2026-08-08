@@ -14,6 +14,7 @@
 #  > "shinyvalidate",
 #  > "Seurat",
 #  > "SeuratObject",
+#  > "askpass",
 #  > "base64enc",
 #  > "biomaRt",
 #  > "colourpicker",
@@ -30,6 +31,7 @@
 #  > "later",
 #  > "Matrix",
 #  > "msigdbr",
+#  > "openssl",
 #  > "pbapply",
 #  > "plotly",
 #  > "qvalue",
@@ -66,6 +68,7 @@ let
  
   rpkgs = builtins.attrValues {
     inherit (pkgs.rPackages) 
+      askpass
       base64enc
       biomaRt
       callr
@@ -86,6 +89,7 @@ let
       later
       Matrix
       msigdbr
+      openssl
       pbapply
       pkgdown
       plotly

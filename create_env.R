@@ -63,6 +63,7 @@ rix(
 
     "SeuratObject",
     # runtime deps (CRAN)
+    "askpass",
     "base64enc",
     "biomaRt",
     "colourpicker",
@@ -79,6 +80,7 @@ rix(
     "later",
     "Matrix",
     "msigdbr",
+    "openssl",
     "pbapply",
     "plotly",
     "qvalue",

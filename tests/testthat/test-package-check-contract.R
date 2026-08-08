@@ -82,15 +82,48 @@ test_that("later remains declared because bundled runtime code uses it", {
   expect_match(runtime_source, "later::later(", fixed = TRUE)
 })
 
-test_that("the authentication provider is declared and available", {
+test_that("interactive authentication helpers are declared and available", {
   description_path <- source_file("DESCRIPTION")
   if (!file.exists(description_path)) {
     description_path <- system.file("DESCRIPTION", package = "CerebroNexus")
   }
-  description <- read.dcf(description_path, fields = "Suggests")[[1L]]
-  expect_match(description, "shinymanager (>= 1.1.0)", fixed = TRUE)
+  suggests <- read.dcf(description_path, fields = "Suggests")[[1L]]
+
+  expect_match(suggests, "shinymanager (>= 1.1.0)", fixed = TRUE)
+  expect_match(suggests, "askpass", fixed = TRUE)
+  expect_match(suggests, "openssl", fixed = TRUE)
   expect_true(requireNamespace("shinymanager", quietly = TRUE))
+  expect_true(requireNamespace("askpass", quietly = TRUE))
+  expect_true(requireNamespace("openssl", quietly = TRUE))
   expect_gte(utils::packageVersion("shinymanager"), "1.1.0")
+})
+
+test_that("source environments include interactive authentication helpers", {
+  skip_if_not_source_tree()
+  generator <- readLines(source_file("create_env.R"), warn = FALSE)
+  nix <- readLines(source_file("default.nix"), warn = FALSE)
+
+  generator_start <- grep("^  r_pkgs = c\\($", generator)
+  generator_end <- grep("^  system_pkgs =", generator)
+  expect_length(generator_start, 1L)
+  expect_length(generator_end, 1L)
+  generator_packages <- trimws(
+    generator[(generator_start + 1L):(generator_end - 1L)]
+  )
+
+  nix_start <- grep("^  rpkgs = builtins.attrValues \\{$", nix)
+  expect_length(nix_start, 1L)
+  nix_end <- nix_start -
+    1L +
+    which(
+      nix[nix_start:length(nix)] == "  };"
+    )[[1L]]
+  nix_packages <- trimws(nix[(nix_start + 1L):(nix_end - 1L)])
+
+  for (package in c("askpass", "openssl")) {
+    expect_true(paste0('"', package, '",') %in% generator_packages)
+    expect_true(package %in% nix_packages)
+  }
 })
 
 test_that("direct browser test dependencies are declared and available", {
