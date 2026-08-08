@@ -46,6 +46,33 @@
   }
 }
 
+.viewer_auth_brand <- function(cerebro_root) {
+  www <- file.path(cerebro_root, "viewer", "www")
+  css <- file.path(www, "auth.css")
+  logo <- file.path(www, "cerebronexus.svg")
+  available <- isTRUE(utils::file_test("-f", css)) &&
+    isTRUE(utils::file_test("-f", logo))
+  if (!available) {
+    .viewer_auth_error("Authentication branding assets are unavailable.")
+  }
+  svg <- paste(readLines(logo, warn = FALSE), collapse = "\n")
+  list(
+    head = shiny::includeCSS(css),
+    top = shiny::tags$div(
+      class = "cerebro-auth-brand",
+      shiny::HTML(svg),
+      shiny::tags$div(
+        class = "cerebro-auth-eyebrow",
+        "Secure viewer"
+      )
+    ),
+    bottom = shiny::tags$div(
+      class = "cerebro-auth-footer",
+      "Protected access"
+    )
+  )
+}
+
 viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
   if (is.null(config)) {
     return(list(ui = ui, server = server))
@@ -102,6 +129,7 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
       "Authentication database or passphrase is invalid."
     )
   }
+  brand <- .viewer_auth_brand(root)
 
   secured_server <- function(input, output, session) {
     auth <- shinymanager::secure_server(
@@ -128,7 +156,13 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
   }
 
   list(
-    ui = shinymanager::secure_app(ui, enable_admin = FALSE),
+    ui = shinymanager::secure_app(
+      ui,
+      enable_admin = FALSE,
+      head_auth = brand$head,
+      tags_top = brand$top,
+      tags_bottom = brand$bottom
+    ),
     server = secured_server
   )
 }

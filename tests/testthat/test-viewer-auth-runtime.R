@@ -19,6 +19,22 @@ viewer_auth_runtime_config <- function() {
   )
 }
 
+viewer_auth_runtime_brand_assets <- function(root) {
+  www <- file.path(root, "viewer", "www")
+  dir.create(www, recursive = TRUE)
+  writeLines(
+    ".panel-auth { min-height: 100vh; }",
+    file.path(www, "auth.css")
+  )
+  writeLines(
+    paste0(
+      '<svg xmlns="http://www.w3.org/2000/svg">',
+      "<title>CerebroNexus</title></svg>"
+    ),
+    file.path(www, "cerebronexus.svg")
+  )
+}
+
 test_that("Viewer authentication runtime is a no-op when disabled", {
   runtime <- viewer_auth_runtime_environment()
   ui <- shiny::fluidPage("viewer")
@@ -49,12 +65,76 @@ test_that("Viewer authentication runtime requires its deployed secret", {
   )
 })
 
+test_that("Viewer authentication supplies bundled CerebroNexus branding", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  runtime <- viewer_auth_runtime_environment()
+  root <- withr::local_tempdir()
+  database <- file.path(root, "private-data", "auth", "credentials.sqlite")
+  dir.create(dirname(database), recursive = TRUE)
+  writeBin(as.raw(c(0x53, 0x51, 0x4c)), database)
+  viewer_auth_runtime_brand_assets(root)
+  withr::local_envvar(CEREBRO_AUTH_TEST_KEY = "runtime test passphrase")
+  captured <- NULL
+  testthat::local_mocked_bindings(
+    check_credentials = function(...) {
+      function(user, password) list(result = TRUE)
+    },
+    secure_app = function(
+      ui,
+      enable_admin,
+      head_auth,
+      tags_top,
+      tags_bottom
+    ) {
+      captured <<- list(
+        enable_admin = enable_admin,
+        head = head_auth,
+        top = tags_top,
+        bottom = tags_bottom
+      )
+      ui
+    },
+    .package = "shinymanager"
+  )
+
+  runtime$viewer_auth_apply(
+    shiny::fluidPage("viewer"),
+    function(input, output, session) NULL,
+    viewer_auth_runtime_config(),
+    root
+  )
+
+  expect_identical(captured$enable_admin, FALSE)
+  rendered <- htmltools::renderTags(htmltools::tagList(
+    captured$head,
+    captured$top,
+    captured$bottom
+  ))$html
+  expect_match(rendered, "min-height: 100vh", fixed = TRUE)
+  expect_match(rendered, "cerebro-auth-brand", fixed = TRUE)
+  expect_match(rendered, "CerebroNexus", fixed = TRUE)
+  expect_match(rendered, "Secure viewer", fixed = TRUE)
+  expect_match(rendered, "Protected access", fixed = TRUE)
+})
+
+test_that("Viewer authentication fails closed when branding is incomplete", {
+  runtime <- viewer_auth_runtime_environment()
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "viewer", "www"), recursive = TRUE)
+
+  expect_error(
+    runtime$.viewer_auth_brand(root),
+    "Authentication branding assets are unavailable"
+  )
+})
+
 test_that("Viewer server starts once after authentication", {
   skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
   runtime <- viewer_auth_runtime_environment()
   root <- withr::local_tempdir()
   database <- file.path(root, "private-data", "auth", "credentials.sqlite")
   dir.create(dirname(database), recursive = TRUE)
+  viewer_auth_runtime_brand_assets(root)
   passphrase <- "runtime test passphrase"
   shinymanager::create_db(
     credentials_data = data.frame(
