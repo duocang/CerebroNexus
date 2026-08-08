@@ -73,6 +73,67 @@
   )
 }
 
+.viewer_auth_password_change_required <- function(
+  database,
+  passphrase_env,
+  user
+) {
+  passphrase <- Sys.getenv(passphrase_env, unset = NA_character_)
+  on.exit(passphrase <- NULL, add = TRUE)
+  policy <- if (
+    is.character(passphrase) &&
+      length(passphrase) == 1L &&
+      !is.na(passphrase) &&
+      nzchar(passphrase)
+  ) {
+    suppressWarnings(suppressMessages(tryCatch(
+      shinymanager::read_db_decrypt(
+        conn = database,
+        name = "pwd_mngt",
+        passphrase = passphrase
+      ),
+      error = function(condition) NULL
+    )))
+  } else {
+    NULL
+  }
+  passphrase <- NULL
+  row <- if (
+    is.data.frame(policy) &&
+      all(c("user", "must_change", "date_change") %in% names(policy)) &&
+      is.character(policy$user) &&
+      is.character(policy$must_change) &&
+      is.character(policy$date_change)
+  ) {
+    which(policy$user == user)
+  } else {
+    integer()
+  }
+  if (length(row) != 1L) {
+    return(TRUE)
+  }
+  if (!identical(policy$must_change[[row]], "FALSE")) {
+    return(TRUE)
+  }
+
+  validity <- suppressWarnings(as.numeric(
+    getOption("shinymanager.pwd_validity", Inf)
+  ))
+  if (length(validity) != 1L || is.na(validity)) {
+    return(TRUE)
+  }
+  if (identical(validity, Inf)) {
+    return(FALSE)
+  }
+  if (!is.finite(validity)) {
+    return(TRUE)
+  }
+  changed <- suppressWarnings(as.Date(policy$date_change[[row]]))
+  length(changed) != 1L ||
+    is.na(changed) ||
+    as.numeric(Sys.Date() - changed) > validity
+}
+
 viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
   if (is.null(config)) {
     return(list(ui = ui, server = server))
@@ -163,7 +224,11 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
         length(user) == 1L &&
         !is.na(user) &&
         nzchar(user) &&
-        identical(input$shinymanager_where, "application")
+        !.viewer_auth_password_change_required(
+          database,
+          config$passphrase_env,
+          user
+        )
       if (authorized && !started()) {
         started(TRUE)
         subject(user)

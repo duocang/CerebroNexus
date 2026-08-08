@@ -128,7 +128,7 @@ test_that("Viewer authentication fails closed when branding is incomplete", {
   )
 })
 
-test_that("Viewer starts only on the authorized application page", {
+test_that("Viewer starts after server-authoritative authentication", {
   skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
   runtime <- viewer_auth_runtime_environment()
   root <- withr::local_tempdir()
@@ -176,11 +176,7 @@ test_that("Viewer starts only on the authorized application page", {
     expect_true(captured_checker("alice", "alice-login-password")$result)
     expect_false(captured_checker("alice", "wrong-password")$result)
     expect_identical(starts, 0L)
-    session$setInputs(shinymanager_where = "password")
     auth_state$user <- "alice"
-    session$flushReact()
-    expect_identical(starts, 0L)
-    session$setInputs(shinymanager_where = "application")
     session$flushReact()
     expect_identical(starts, 1L)
     session$reload <- function() {
@@ -193,6 +189,75 @@ test_that("Viewer starts only on the authorized application page", {
     session$flushReact()
     expect_true(reloaded)
     expect_true(session$isClosed())
+  })
+})
+
+test_that("client input cannot bypass a required password change", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  runtime <- viewer_auth_runtime_environment()
+  root <- withr::local_tempdir()
+  database <- file.path(root, "private-data", "auth", "credentials.sqlite")
+  dir.create(dirname(database), recursive = TRUE)
+  viewer_auth_runtime_brand_assets(root)
+  passphrase <- "runtime test passphrase"
+  shinymanager::create_db(
+    credentials_data = data.frame(
+      user = "alice",
+      password = "alice-login-password",
+      stringsAsFactors = FALSE
+    ),
+    sqlite_path = database,
+    passphrase = passphrase
+  )
+  policy <- shinymanager::read_db_decrypt(
+    database,
+    name = "pwd_mngt",
+    passphrase = passphrase
+  )
+  policy$must_change <- "TRUE"
+  shinymanager::write_db_encrypt(
+    database,
+    value = policy,
+    name = "pwd_mngt",
+    passphrase = passphrase
+  )
+  withr::local_envvar(CEREBRO_AUTH_TEST_KEY = passphrase)
+  auth_state <- shiny::reactiveValues(user = NULL)
+  testthat::local_mocked_bindings(
+    secure_app = function(ui, ...) ui,
+    secure_server = function(...) auth_state,
+    .package = "shinymanager"
+  )
+  starts <- 0L
+  app <- runtime$viewer_auth_apply(
+    shiny::fluidPage("viewer"),
+    function(input, output, session) {
+      starts <<- starts + 1L
+    },
+    viewer_auth_runtime_config(),
+    root
+  )
+
+  shiny::testServer(app$server, {
+    session$setInputs(shinymanager_where = "application")
+    auth_state$user <- "alice"
+    session$flushReact()
+    expect_identical(starts, 0L)
+
+    policy$must_change <- "FALSE"
+    policy$have_changed <- "TRUE"
+    policy$date_change <- as.character(Sys.Date())
+    shinymanager::write_db_encrypt(
+      database,
+      value = policy,
+      name = "pwd_mngt",
+      passphrase = passphrase
+    )
+    auth_state$user <- NULL
+    session$flushReact()
+    auth_state$user <- "alice"
+    session$flushReact()
+    expect_identical(starts, 1L)
   })
 })
 
