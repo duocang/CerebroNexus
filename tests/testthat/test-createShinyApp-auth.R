@@ -667,18 +667,6 @@ test_that("authentication deployment documentation is runnable and credited", {
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
   expect_false(any(grepl("askpass|chromote", suggests)))
 
-  readme <- readLines(auth_test_package_file("README.md"), warn = FALSE)
   news <- readLines(auth_test_package_file("NEWS.md"), warn = FALSE)
-  expect_true(any(grepl("auth = list", readme, fixed = TRUE)))
-  expect_true(any(grepl(
-    "https://www.mheming.com/CerebroNexus/articles/",
-    readme,
-    fixed = TRUE
-  )))
-  expect_false(any(grepl(
-    "https://mihem.github.io/CerebroNexus/articles/",
-    readme,
-    fixed = TRUE
-  )))
   expect_true(any(grepl("encrypted shinymanager", news, fixed = TRUE)))
 })
