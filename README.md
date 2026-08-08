@@ -43,26 +43,6 @@ createShinyApp(
 )
 ```
 
-### Optional login
-
-To require a login, first create an encrypted database with
-`shinymanager::create_db()`, set its passphrase in an environment variable, and
-pass the database to `createShinyApp()`:
-
-```r
-createShinyApp(
-  cerebro_data = c("My dataset" = "output/cerebro_my_seurat.crb"),
-  result_dir = "my_app",
-  auth = list(
-    credentials = "credentials.sqlite",
-    passphrase_env = "CEREBRO_AUTH_PASSPHRASE"
-  )
-)
-```
-
-See [Control access with a login page](https://www.mheming.com/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html)
-for multi-user setup and deployment examples.
-
 ## License
 
 MIT, see [LICENSE.md](LICENSE.md). 
