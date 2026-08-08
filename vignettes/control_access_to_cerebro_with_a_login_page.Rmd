@@ -21,583 +21,389 @@ knitr::opts_chunk$set(
 )
 ```
 
-# Security model
+# Overview
 
-CerebroNexus supports opt-in Viewer authentication through `shinymanager`
-(>= 1.1.0). Install that optional package before preparing credentials. When
-`auth` is omitted or `NULL`, existing launches remain unauthenticated.
+`createShinyApp(auth = TRUE)` is the shortest supported way to build a
+multi-user CerebroNexus Viewer. In one interactive call it:
 
-```{r install-provider, eval=FALSE}
-install.packages("shinymanager")
+1. asks for one or more usernames and hidden login passwords;
+2. creates a real encrypted `shinymanager` SQLite database inside the generated
+   app;
+3. writes the independent database passphrase to an owner-only sibling
+   `.auth.env` file; and
+4. installs that passphrase in the current R process so the app can run
+   immediately.
+
+This workflow requires `shinymanager` (>= 1.1.0), `askpass`, and `openssl`.
+Install them in the trusted administration environment that builds the app:
+
+```{r install-auth-dependencies, eval=FALSE, purl=FALSE}
+install.packages(c("shinymanager", "askpass", "openssl"))
 ```
 
-The supported provider uses an encrypted SQLite credentials database.
-`shinymanager` uses scrypt to protect each account password hash. Database
-encryption is different: its key is derived directly as SHA-256(passphrase), so
-a human-chosen password is unsuitable as the database passphrase. Generate at
-least 32 bytes of high-entropy secret material with a cryptographically secure
-random-number generator. Never print, paste into source, commit, or log that
-value.
+The setup is intentionally interactive. It fails before prompting or creating
+output when the dependencies, inputs, destination, or authentication paths are
+invalid. Package builds do not run the interactive examples below.
 
-Authentication is only an application login gate. TLS/HTTPS is mandatory from
-each browser to the deployment entry point and across every untrusted network
-hop. The deployment platform or reverse proxy may terminate TLS, provided every
-untrusted hop remains protected. The provider's login attempts are unlimited by
-default. Put an Internet-facing app behind a reverse proxy or WAF for rate
-limiting and request controls. Use an OIDC-capable access layer when
-organizational SSO, MFA, centralized identity-provider revocation, or
-public-access policy is required; the built-in provider does not supply those
-controls.
+# Interactive quick start
 
-# Create the credentials database
+Run this code from a clean working directory in an interactive R or RStudio
+session. The example `.crb` is installed with CerebroNexus.
 
-Create the database outside the source repository and outside every directory
-served by Shiny or registered with `shiny::addResourcePath()`. The following
-setup is deliberately non-evaluating: it must run only in a trusted interactive
-administration session. It obtains the initial account name and password
-interactively and contains no credential literals. The example uses `openssl`
-for cryptographically secure random bytes and `askpass` for a non-echoing
-password prompt; install those administration helpers if they are unavailable.
-
-```{r install-admin-helpers, eval=FALSE}
-install.packages(c("openssl", "askpass"))
-```
-
-```{r create-database, eval=FALSE}
-create_initial_auth_database <- function(private_state_dir) {
-  report_warning <- function(text) {
-    tryCatch(
-      warning(text, call. = FALSE),
-      error = function(...) message("Warning: ", text)
-    )
-    invisible(NULL)
-  }
-  candidate <- NULL
-  created_auth_dir <- FALSE
-  published <- FALSE
-  auth_dir <- NULL
-  intended_auth_dir <- NULL
-  created_auth_owner <- NA_integer_
-  account_password <- NULL
-  credentials <- NULL
-  db_passphrase <- NULL
-  candidate_tables <- NULL
-  secret_name <- "CEREBRO_AUTH_PASSPHRASE"
-  prior_secret <- Sys.getenv(secret_name, unset = NA_character_)
-  prior_secret_was_set <- !is.na(prior_secret)
-  secret_installed <- FALSE
-  on.exit(
-    {
-      account_password <- NULL
-      credentials <- NULL
-      db_passphrase <- NULL
-      candidate_tables <- NULL
-      cleanup_incomplete <- FALSE
-      if (
-        is.character(candidate) &&
-          length(candidate) == 1L &&
-          !is.na(candidate)
-      ) {
-        candidate_artifacts <- c(
-          candidate,
-          paste0(candidate, c("-journal", "-wal", "-shm"))
-        )
-        existing_artifacts <- candidate_artifacts[
-          file.exists(candidate_artifacts) |
-            dir.exists(candidate_artifacts)
-        ]
-        removable_artifacts <- existing_artifacts[
-          !dir.exists(existing_artifacts)
-        ]
-        cleanup_status <- if (length(removable_artifacts)) {
-          vapply(
-            removable_artifacts,
-            unlink,
-            integer(1),
-            recursive = FALSE
-          )
-        } else {
-          integer()
-        }
-        if (
-          any(cleanup_status != 0L) ||
-            any(
-              file.exists(candidate_artifacts) |
-                dir.exists(candidate_artifacts)
-            )
-        ) {
-          cleanup_incomplete <- TRUE
-        }
-      }
-      if (created_auth_dir && !published) {
-        auth_link <- if (
-          is.character(auth_dir) &&
-            length(auth_dir) == 1L &&
-            !is.na(auth_dir)
-        ) {
-          Sys.readlink(auth_dir)
-        } else {
-          NA_character_
-        }
-        auth_exists <- is.character(auth_dir) &&
-          length(auth_dir) == 1L &&
-          !is.na(auth_dir) &&
-          (file.exists(auth_dir) || dir.exists(auth_dir))
-        auth_is_link <- !is.na(auth_link) && nzchar(auth_link)
-        if (auth_exists || auth_is_link) {
-          resolved_cleanup_dir <- if (dir.exists(auth_dir) && !auth_is_link) {
-            tryCatch(
-              normalizePath(auth_dir, winslash = "/", mustWork = TRUE),
-              error = function(...) NA_character_
-            )
-          } else {
-            NA_character_
-          }
-          cleanup_dir_safe <- !auth_is_link &&
-            !is.na(resolved_cleanup_dir) &&
-            identical(resolved_cleanup_dir, intended_auth_dir)
-          if (cleanup_dir_safe && .Platform$OS.type == "unix") {
-            cleanup_owner <- file.info(auth_dir)$uid[[1L]]
-            cleanup_dir_safe <- !is.na(cleanup_owner) &&
-              !is.na(created_auth_owner) &&
-              cleanup_owner == created_auth_owner
-          }
-          auth_contents <- if (cleanup_dir_safe) {
-            tryCatch(
-              list.files(
-                auth_dir,
-                all.files = TRUE,
-                no.. = TRUE,
-                recursive = FALSE
-              ),
-              error = function(...) NA_character_
-            )
-          } else {
-            NA_character_
-          }
-          if (
-            cleanup_dir_safe &&
-              !anyNA(auth_contents) &&
-              !length(auth_contents)
-          ) {
-            directory_removed <- suppressWarnings(file.remove(auth_dir))
-            if (
-              !isTRUE(directory_removed) ||
-                file.exists(auth_dir) ||
-                dir.exists(auth_dir)
-            ) {
-              cleanup_incomplete <- TRUE
-            }
-          } else {
-            cleanup_incomplete <- TRUE
-          }
-        }
-      }
-      if (cleanup_incomplete) {
-        report_warning(
-          paste(
-            "Unpublished authentication database cleanup was incomplete;",
-            "manual recovery is required."
-          )
-        )
-      }
-      if (!published && secret_installed) {
-        if (prior_secret_was_set) {
-          do.call(
-            Sys.setenv,
-            stats::setNames(list(prior_secret), secret_name)
-          )
-        } else {
-          Sys.unsetenv(secret_name)
-        }
-        restored_secret <- Sys.getenv(secret_name, unset = NA_character_)
-        if (
-          (prior_secret_was_set && !identical(restored_secret, prior_secret)) ||
-            (!prior_secret_was_set && !is.na(restored_secret))
-        ) {
-          report_warning(
-            "Authentication passphrase environment restoration failed; manual recovery is required."
-          )
-        }
-      }
-      prior_secret <- NULL
-    },
-    add = TRUE
-  )
-
-  if (
-    !is.character(private_state_dir) ||
-      length(private_state_dir) != 1L ||
-      is.na(private_state_dir) ||
-      !nzchar(private_state_dir)
-  ) {
-    stop("Private state directory must be one existing path.")
-  }
-  private_state_dir <- normalizePath(
-    private_state_dir,
-    winslash = "/",
-    mustWork = TRUE
-  )
-  private_owner <- if (.Platform$OS.type == "unix") {
-    file.info(private_state_dir)$uid[[1L]]
-  } else {
-    NA_integer_
-  }
-  auth_dir <- file.path(private_state_dir, "cerebro-auth")
-  auth_link <- Sys.readlink(auth_dir)
-  if (!is.na(auth_link) && nzchar(auth_link)) {
-    stop("Authentication state directory must not be a symbolic link.")
-  }
-  if (file.exists(auth_dir) || dir.exists(auth_dir)) {
-    stop("Authentication state directory must not already exist.")
-  }
-  if (!dir.create(auth_dir, mode = "0700")) {
-    stop("Could not create the authentication state directory.")
-  }
-  created_auth_dir <- TRUE
-  if (.Platform$OS.type == "unix") {
-    created_auth_owner <- file.info(auth_dir)$uid[[1L]]
-  }
-  intended_auth_dir <- file.path(private_state_dir, "cerebro-auth")
-  resolved_auth_dir <- normalizePath(
-    auth_dir,
-    winslash = "/",
-    mustWork = TRUE
-  )
-  auth_link <- Sys.readlink(auth_dir)
-  if (
-    (!is.na(auth_link) && nzchar(auth_link)) ||
-      !identical(resolved_auth_dir, intended_auth_dir)
-  ) {
-    stop("Authentication state directory resolved outside its intended location.")
-  }
-  auth_dir <- resolved_auth_dir
-  if (.Platform$OS.type == "unix") {
-    Sys.chmod(auth_dir, mode = "0700")
-    auth_mode <- file.info(auth_dir)$mode[[1L]]
-    auth_owner <- file.info(auth_dir)$uid[[1L]]
-    if (
-      is.na(auth_mode) ||
-        as.integer(auth_mode) != as.integer(as.octmode("0700")) ||
-        is.na(auth_owner) ||
-        is.na(private_owner) ||
-        auth_owner != private_owner
-    ) {
-      stop("Authentication state directory owner or mode could not be verified.")
-    }
-  }
-
-  rechecked_auth_dir <- normalizePath(
-    auth_dir,
-    winslash = "/",
-    mustWork = TRUE
-  )
-  auth_link <- Sys.readlink(auth_dir)
-  if (
-    (!is.na(auth_link) && nzchar(auth_link)) ||
-      !identical(rechecked_auth_dir, intended_auth_dir)
-  ) {
-    stop("Authentication state directory changed before database creation.")
-  }
-  if (.Platform$OS.type == "unix") {
-    rechecked_info <- file.info(auth_dir)
-    if (
-      is.na(rechecked_info$uid[[1L]]) ||
-        rechecked_info$uid[[1L]] != auth_owner ||
-        is.na(rechecked_info$mode[[1L]]) ||
-        as.integer(rechecked_info$mode[[1L]]) !=
-          as.integer(as.octmode("0700"))
-    ) {
-      stop("Authentication state directory changed before database creation.")
-    }
-  }
-
-  credentials_path <- file.path(auth_dir, "credentials.sqlite")
-  if (file.exists(credentials_path) || dir.exists(credentials_path)) {
-    stop("The final credentials database already exists; refusing to overwrite it.")
-  }
-  repeat {
-    candidate <- tempfile(
-      pattern = ".credentials-",
-      tmpdir = auth_dir,
-      fileext = ".sqlite"
-    )
-    if (!file.exists(candidate) && !dir.exists(candidate)) {
-      break
-    }
-  }
-
-  account_name <- readline("Initial account name: ")
-  if (
-    !is.character(account_name) ||
-      length(account_name) != 1L ||
-      is.na(account_name) ||
-      !nzchar(trimws(account_name))
-  ) {
-    stop("Initial account name must be non-empty.")
-  }
-  account_name <- trimws(account_name)
-  account_password <- askpass::askpass("Initial account password")
-  if (is.null(account_password)) {
-    stop("Initial account password entry was cancelled.")
-  }
-  if (
-    !is.character(account_password) ||
-      length(account_password) != 1L ||
-      is.na(account_password) ||
-      !nzchar(account_password)
-  ) {
-    stop("Initial account password must be non-empty.")
-  }
-  db_passphrase <- openssl::base64_encode(openssl::rand_bytes(32))
-
-  credentials <- data.frame(
-    user = account_name,
-    password = account_password,
-    admin = FALSE,
-    stringsAsFactors = FALSE
-  )
-  shinymanager::create_db(
-    credentials_data = credentials,
-    sqlite_path = candidate,
-    passphrase = db_passphrase
-  )
-
-  candidate_tables <- list(
-    credentials = shinymanager::read_db_decrypt(
-      candidate,
-      "credentials",
-      db_passphrase
-    ),
-    pwd_mngt = shinymanager::read_db_decrypt(
-      candidate,
-      "pwd_mngt",
-      db_passphrase
-    ),
-    logs = shinymanager::read_db_decrypt(
-      candidate,
-      "logs",
-      db_passphrase
-    )
-  )
-  required_columns <- list(
-    credentials = c(
-      "user",
-      "password",
-      "start",
-      "expire",
-      "admin",
-      "is_hashed_password"
-    ),
-    pwd_mngt = c(
-      "user",
-      "must_change",
-      "have_changed",
-      "date_change",
-      "n_wrong_pwd"
-    ),
-    logs = c("user", "server_connected", "token", "logout", "app")
-  )
-  tables_valid <- vapply(
-    names(required_columns),
-    function(name) {
-      table <- candidate_tables[[name]]
-      is.data.frame(table) &&
-        !anyDuplicated(names(table)) &&
-        all(required_columns[[name]] %in% names(table))
-    },
-    logical(1)
-  )
-  hashes <- candidate_tables$credentials$is_hashed_password
-  if (
-    !all(tables_valid) ||
-      nrow(candidate_tables$credentials) != 1L ||
-      length(hashes) != 1L ||
-      is.na(hashes) ||
-      hashes != 1
-  ) {
-    stop("Candidate credentials database validation failed.")
-  }
-
-  if (.Platform$OS.type == "unix") {
-    Sys.chmod(candidate, mode = "0600")
-    candidate_mode <- file.info(candidate)$mode[[1L]]
-    candidate_owner <- file.info(candidate)$uid[[1L]]
-    if (
-      is.na(candidate_mode) ||
-        as.integer(candidate_mode) != as.integer(as.octmode("0600")) ||
-        is.na(candidate_owner) ||
-        candidate_owner != auth_owner
-    ) {
-      stop("Candidate credentials database owner or mode is unsafe.")
-    }
-  }
-  if (file.access(candidate, mode = 6L) != 0L) {
-    stop("Candidate credentials database is not readable/writable.")
-  }
-  candidate_sidecars <- paste0(candidate, c("-journal", "-wal", "-shm"))
-  if (any(file.exists(candidate_sidecars) | dir.exists(candidate_sidecars))) {
-    stop("The candidate database still has active SQLite sidecars.")
-  }
-  if (file.exists(credentials_path) || dir.exists(credentials_path)) {
-    stop("The final credentials database appeared during setup; refusing to overwrite it.")
-  }
-  secret_installed <- TRUE
-  do.call(
-    Sys.setenv,
-    stats::setNames(list(db_passphrase), secret_name)
-  )
-  if (!identical(Sys.getenv(secret_name, unset = NA_character_), db_passphrase)) {
-    stop("Could not install the authentication passphrase environment variable.")
-  }
-  if (!suppressWarnings(file.link(candidate, credentials_path))) {
-    stop(
-      paste(
-        "The filesystem must support same-directory hard links for atomic",
-        "no-clobber publication; use a platform atomic no-clobber mechanism.",
-        "No rename fallback was attempted."
-      )
-    )
-  }
-  published <- TRUE
-  if (
-    unlink(candidate, recursive = FALSE) != 0L ||
-      file.exists(candidate) ||
-      dir.exists(candidate)
-  ) {
-    report_warning(
-      sprintf(
-        paste(
-          "The database was published, but the published candidate remains at",
-          "%s; remove that hard-link name manually."
-        ),
-        candidate
-      )
-    )
-  }
-  candidate <- NULL
-  invisible(credentials_path)
-}
-
-credentials_path <- create_initial_auth_database(
-  Sys.getenv("CEREBRO_PRIVATE_STATE_DIR")
+```{r interactive-quick-start, eval=FALSE, purl=FALSE}
+example_crb <- system.file(
+  "extdata/examples/example.crb",
+  package = "CerebroNexus",
+  mustWork = TRUE
+)
+CerebroNexus::createShinyApp(
+  cerebro_data = c(example = example_crb),
+  result_dir = "my_app",
+  auth = TRUE
 )
 ```
 
-The example enforces non-empty input as its minimum. Apply the organization's
-password length, breach-list, and rotation policy before production use. The
-function refuses to overwrite an existing final database. It publishes only a
-validated owner-only sibling using a same-directory atomic no-clobber hard link,
-then removes the candidate name. The deployment filesystem must support
-same-directory hard links; an unsupported link or a raced target fails closed,
-with no fallback to an overwriting rename. Use a deployment-platform atomic
-no-clobber mechanism where hard links are unavailable. On failure the function
-attempts to remove the candidate and its SQLite sidecars, then removes the
-directory it created only after revalidating its path and owner and proving it
-is empty. Cleanup is non-recursive, and any residue produces a manual-recovery
-warning without hiding the original error. Before publication, the function
-installs the new passphrase in `CEREBRO_AUTH_PASSPHRASE`; if publication fails,
-it restores the exact prior value or unsets a previously absent variable. Once
-the hard link succeeds, the database and matching environment secret are kept.
-A failure to remove the now-redundant candidate name produces a warning with its
-recovery path but does not turn the usable publication into an error. The
-function drops its local references to secret-bearing objects on exit and
-returns only the final database path.
+The prompts look like this; passwords are collected through `askpass` and are
+not echoed:
 
-For deployed services, inject `CEREBRO_AUTH_PASSPHRASE` with the platform's
-secret manager. Never place it in an app configuration file, R source, a shell
-command committed with the deployment, or logs. The application reads the
-named environment variable when validating and opening the database; the
-descriptor contains only the variable's name.
+```text
+Username: alice
+Password: [hidden]
+Confirm password: [hidden]
+Add another user? [y/N]: y
+Username: bob
+Password: [hidden]
+Confirm password: [hidden]
+Add another user? [y/N]: n
+```
 
-Protect the database file and every parent directory. The runtime identity needs
-read/write permission on the file, write/search permission on its containing
-directory to create SQLite journal files, and search permission on the remaining
-parents. On POSIX systems, prefer an owner-only directory (`0700`) and
-owner-readable/writable database (`0600`), owned by the service account.
-Equivalent ACL and ownership controls are the deployment platform's
-responsibility. Do not make either path web-readable to solve a permissions
-error.
+Usernames are trimmed and must be unique. A duplicate username is requested
+again. Empty or mismatched passwords are requested again for the same user.
+Answer `y` or `yes` to add another account; `n`, `no`, or an empty answer
+finishes. An empty username or a cancelled password prompt cancels the complete
+build instead of publishing a zero-user app.
 
-# Configure authentication
+The account passwords are hashed by `shinymanager`; they are not the database
+passphrase. CerebroNexus generates the database passphrase independently from
+32 cryptographically random bytes and never prints it.
 
-Both public entry points accept the same exact descriptor. `credentials` is an
-absolute path, `passphrase_env` is the name of the injected environment
-variable, and `timeout_minutes` is an optional whole number from 1 through 1440
-(default 15). For a direct launch, the host database must be a regular
-readable/writable file outside HTTP resources; its containing directory must be
-writable/searchable for encrypted logs and SQLite journals, and other parents
-must be searchable. During bundle creation, the source database need only be a
-regular readable file. On the deployment host, the generated private copy must
-be readable/writable and its containing directory writable/searchable.
+# Generated files
 
-```{r descriptor, eval=FALSE}
-auth <- list(
-  provider = "shinymanager",
-  credentials = credentials_path,
-  passphrase_env = "CEREBRO_AUTH_PASSPHRASE",
-  timeout_minutes = 15
+After a successful quick start, the relevant layout is:
+
+```text
+my_app/
+├── app.R
+├── cerebro_config.rds
+└── private-data/
+    └── auth/
+        └── credentials.sqlite
+
+my_app.auth.env
+```
+
+The app config stores only the generated environment-variable name. The
+sibling file contains the matching assignment and one final newline:
+
+```text
+CEREBRO_AUTH_PASSPHRASE_<16 uppercase hexadecimal characters>=<64 lowercase hexadecimal characters>
+```
+
+On POSIX systems, `my_app.auth.env` and `credentials.sqlite` are mode `0600`,
+the `auth/` directory is `0700`, and all are owned by the account that built
+them. The secret deliberately lives outside `my_app/`: do not move it into the
+app, an HTTP resource directory, source control, or a container image.
+
+The SQLite database is encrypted, but it remains writable at runtime because
+`shinymanager` records encrypted logs and SQLite may create journals. The
+runtime service account therefore needs read/write access to the database and
+read/write/search access to its containing directory.
+
+# Run locally
+
+## Current R process
+
+The process that successfully called `createShinyApp()` already has the
+generated environment variable, so it can launch the app immediately:
+
+```{r local-run-now, eval=FALSE, purl=FALSE}
+shiny::runApp("my_app")
+```
+
+## A later R process
+
+A new R or RStudio process must load the durable sibling file first:
+
+```{r local-run-later, eval=FALSE, purl=FALSE}
+readRenviron("my_app.auth.env")
+shiny::runApp("my_app")
+```
+
+`createShinyApp()` does not edit `~/.Renviron`. Loading the deployment-specific
+file explicitly avoids leaking its secret to unrelated R sessions.
+
+# Build from your own Cerebro data
+
+`cerebro_data` must be a named vector or list. The names become labels in the
+Viewer; each value is a `.crb` or `.rds` path. External H5 or BPCells artifacts
+recorded by a `.crb` are copied according to the normal `createShinyApp()`
+rules.
+
+```{r own-crb, eval=FALSE, purl=FALSE}
+CerebroNexus::createShinyApp(
+  cerebro_data = c("My dataset" = "output/cerebro_my_seurat.crb"),
+  result_dir = "my_app",
+  auth = TRUE
 )
 ```
 
-For a direct Viewer, pass the descriptor without changing CerebroNexus source:
+# Copy to another machine
 
-```{r direct-launch, eval=FALSE}
-CerebroNexus::launchCerebro(mode = "closed", auth = auth)
+Treat the generated app and secret as a matched deployment pair, but transfer
+them separately. This example keeps the secret beside, rather than inside, the
+remote app directory. Adapt the host and root to your deployment account:
+
+```{bash copy-to-another-machine, eval=FALSE, purl=FALSE}
+set -euo pipefail
+ssh deploy@example.org 'install -d -m 0700 "$HOME/cerebronexus"'
+rsync -a --delete my_app/ \
+  deploy@example.org:cerebronexus/my_app/
+rsync -a --chmod=F600 my_app.auth.env \
+  deploy@example.org:cerebronexus/my_app.auth.env
 ```
 
-For generated bundle deployment, use the same descriptor:
+Load `~/cerebronexus/my_app.auth.env` before starting the remote R process.
+Copying only `my_app/` is insufficient: a new process cannot decrypt the
+database without the matching assignment. Copying only a different or newly
+generated env file is also insufficient because its value will not match the
+database.
 
-```{r generated-bundle, eval=FALSE}
-CerebroNexus::createShinyApp(cerebro_data, result_dir, auth = auth)
+# Shiny Server with systemd
+
+The following commands illustrate a common Linux installation with the
+`shiny` service account, `shiny:shiny` ownership, the `shiny-server` unit, and
+apps under `/srv/shiny-server`. Confirm these distribution-specific values
+before running the commands.
+
+Stop the service before replacing the deployment. Install the app and secret
+to separate locations, then make systemd load the generated assignment before
+R starts:
+
+```{bash shiny-server-systemd, eval=FALSE, purl=FALSE}
+set -euo pipefail
+sudo systemctl stop shiny-server
+sudo install -d -m 0755 /srv/shiny-server/my_app
+sudo rsync -a --delete my_app/ /srv/shiny-server/my_app/
+sudo chown -R shiny:shiny /srv/shiny-server/my_app
+sudo chmod 0700 /srv/shiny-server/my_app/private-data/auth
+sudo chmod 0600 /srv/shiny-server/my_app/private-data/auth/credentials.sqlite
+sudo install -d -m 0700 -o shiny -g shiny /etc/cerebronexus
+sudo install -m 0600 -o shiny -g shiny \
+  my_app.auth.env /etc/cerebronexus/my_app.auth.env
+sudo install -d -m 0755 /etc/systemd/system/shiny-server.service.d
+printf '%s\n' \
+  '[Service]' \
+  'EnvironmentFile=/etc/cerebronexus/my_app.auth.env' |
+  sudo tee \
+    /etc/systemd/system/shiny-server.service.d/cerebronexus-auth.conf \
+    >/dev/null
+sudo systemctl daemon-reload
+sudo systemctl start shiny-server
+sudo systemctl status --no-pager shiny-server
 ```
 
-The generated bundle copies the validated database to the fixed private path
-`private-data/auth/credentials.sqlite`; the passphrase is not copied. Configure
-the same named secret on the deployment host. The host must preserve a writable
-database file and a writable/searchable parent directory for SQLite journals.
-The generated path is not registered as a Shiny resource, but filesystem
-permissions remain mandatory.
+The generated assignment uses syntax accepted by both `readRenviron()` and a
+systemd `EnvironmentFile`. If local policy prefers an R startup file, the same
+owner-only file can instead be selected with an `R_ENVIRON` setting in the
+service unit. Do not copy an administrator's personal `~/.Renviron` to the
+service account, and do not configure both routes with different values.
 
-# Login lifecycle and account changes
+After deployment, confirm that the service account can search the app's parent
+directories and can read/write `private-data/auth/credentials.sqlite`. Examine
+`journalctl -u shiny-server` for the package's redacted authentication error;
+do not add commands that print the environment variable itself.
 
-The Viewer server starts for a browser session only after the provider accepts
-an active account from the database. `timeout_minutes` controls the provider's
-session timeout. Selecting logout returns the user to the login page, and login
-tokens are not persisted across sessions. Provider login logs are stored in the
-same encrypted database, which is why runtime write access is required.
+# Docker
 
-The in-app `shinymanager` administration UI is disabled. To add, remove, expire,
-or reset accounts, prepare the complete replacement credentials data in a
-trusted administration session and collect any new passwords interactively.
-Stop the affected app instance and back up the encrypted database. Run
-`shinymanager::create_db()` with the same deployment-managed passphrase but set
-`sqlite_path` to a fresh sibling path in the database directory, not the live
-path. Decrypt and validate that candidate, apply owner-only permissions, then
-use the deployment platform's atomic replace operation to move the sibling over
-the live path without a copy/delete window. Restart only after the replacement
-succeeds. For a generated app, rebuild and redeploy the bundle so the fixed
-private copy is updated; editing the source database does not modify an already
-generated bundle.
+Build or use an image that contains `my_app/`, all runtime R packages, and a
+Shiny Server or equivalent process listening on port 3838. Exclude the sibling
+secret from the build context and every image layer. A `.dockerignore` should
+at least contain:
 
-# Process and deployment topology
+```text
+*.auth.env
+my_app.auth.env
+```
 
-Run one secured Viewer per R process. `shinymanager` and CerebroNexus maintain
-process-global state that does not isolate two separately sourced secured apps
-inside one process. In a multi-worker deployment, use sticky routing so a
-browser session continues to reach the worker that owns its Shiny session. Each
-worker must receive the same secret-manager binding and filesystem access.
+Pass the file only when starting the container. Replace the image name with
+your tested image:
 
-# Migration from historical examples
+```{bash docker-run, eval=FALSE, purl=FALSE}
+set -euo pipefail
+IMAGE=ghcr.io/your-org/cerebronexus-my-app:latest
+docker run --rm --name cerebro-my-app \
+  --env-file /secure/my_app.auth.env \
+  -p 3838:3838 \
+  "$IMAGE"
+```
 
-The old hand-edited `secure_app()` workflow is unsupported: do not patch
-`app.R`, `shiny_UI.R`, or `shiny_server.R`, and do not embed a credentials data
-frame in source. The archived custom SHA-256 verifier is unsupported as well;
-it lacks the maintained database, password-hashing, session, and validation
-contract of the public `auth` interface. Migrate both approaches to the strict
-descriptor shown above.
+Docker reads the assignment and injects the variable named by
+`cerebro_config.rds`; the env file does not need to be mounted inside the
+container. Ensure that the container's runtime user can write the bundled
+authentication directory and database.
+
+Docker Compose uses the same separately managed file through `env_file`. This
+shell chunk creates a valid Compose file and starts it:
+
+```{bash docker-compose, eval=FALSE, purl=FALSE}
+set -euo pipefail
+cat > compose.yaml <<'YAML'
+services:
+  cerebro:
+    image: ${CEREBRO_IMAGE}
+    ports:
+      - "3838:3838"
+    env_file:
+      - /secure/my_app.auth.env
+    restart: unless-stopped
+YAML
+CEREBRO_IMAGE=ghcr.io/your-org/cerebronexus-my-app:latest \
+  docker compose up -d
+```
+
+Do not replace `env_file` with a literal passphrase in `compose.yaml`. For an
+orchestrated production deployment, its native secret manager may inject the
+same dynamically named variable instead.
+
+# Rebuild accounts and rotate the database key
+
+## Rebuild while keeping the existing secret
+
+Run `createShinyApp(auth = TRUE)` again with the same `result_dir` to replace
+the accounts. If `my_app.auth.env` is still a valid owner-only sibling file,
+CerebroNexus reuses its exact variable name and passphrase and builds a new
+database containing only the newly entered accounts:
+
+```{r rebuild-accounts, eval=FALSE, purl=FALSE}
+CerebroNexus::createShinyApp(
+  cerebro_data = c("My dataset" = "output/cerebro_my_seurat.crb"),
+  result_dir = "my_app",
+  auth = TRUE
+)
+```
+
+The rebuild is staged. Prompt cancellation or another pre-commit failure keeps
+the previous app, sibling secret, and process environment. Back up the current
+matched app/secret pair before any production account change.
+
+## Intentional key rotation
+
+Rotation creates a new secret and a new database; changing only one makes the
+deployment unusable. Use this sequence during a maintenance window:
+
+1. Stop the deployed app.
+2. Create a uniquely named protected backup containing both the app directory
+   and sibling secret.
+3. Move the sibling secret into that backup so its generated path is absent.
+4. Run the same `createShinyApp(auth = TRUE)` call and enter the replacement
+   accounts. With the final path absent, the call generates a new key and env
+   file.
+5. Deploy and start the new app and new secret together. If the build fails,
+   restore the old secret before restarting the unchanged old app.
+
+```{bash prepare-key-rotation, eval=FALSE, purl=FALSE}
+set -euo pipefail
+test -d my_app
+test ! -L my_app
+test -f my_app.auth.env
+test ! -L my_app.auth.env
+backup_dir="$(mktemp -d './my_app-key-rotation.XXXXXX')"
+chmod 0700 "$backup_dir"
+cp -a my_app "$backup_dir/my_app"
+mv my_app.auth.env "$backup_dir/my_app.auth.env"
+printf 'Protected backup: %s\n' "$backup_dir"
+```
+
+Keep backups encrypted and access-controlled. Anyone who obtains both the
+database and its env file can attempt offline decryption.
+
+# Advanced descriptor mode
+
+Existing deployments may continue to supply an operator-created encrypted
+`shinymanager` database. Load its passphrase from a protected file, then pass an
+absolute database path and the variable name. This mode validates and copies
+the encrypted database but does not create or export a sibling env file:
+
+```{r advanced-descriptor, eval=FALSE, purl=FALSE}
+readRenviron("/secure/cerebro-auth.env")
+credentials_db <- normalizePath(
+  "/secure/credentials.sqlite",
+  winslash = "/",
+  mustWork = TRUE
+)
+CerebroNexus::createShinyApp(
+  cerebro_data = c("My dataset" = "output/cerebro_my_seurat.crb"),
+  result_dir = "my_app",
+  auth = list(
+    provider = "shinymanager",
+    credentials = credentials_db,
+    passphrase_env = "CEREBRO_AUTH_PASSPHRASE",
+    timeout_minutes = 15L
+  )
+)
+```
+
+The named environment variable must already contain at least 32 bytes of
+high-entropy secret material and must match the database. `auth = NULL` leaves
+the generated Viewer unauthenticated. Explicit `auth = FALSE` is invalid; use
+`NULL` when authentication is intentionally disabled.
+
+# Troubleshooting
+
+Inspect the configured variable name without printing its value:
+
+```{r inspect-auth-environment, eval=FALSE, purl=FALSE}
+config <- readRDS("my_app/cerebro_config.rds")
+env_name <- config$.viewer_auth$passphrase_env
+is.na(Sys.getenv(env_name, unset = NA_character_))
+```
+
+| Symptom | Likely cause | Safe action |
+|---|---|---|
+| The app reports a redacted credentials/passphrase error at startup | The configured variable is absent or does not match the database | Stop the app, load the env file paired with this exact app, and restart. Do not print the value while diagnosing it. |
+| `readRenviron()` returns `FALSE` or warns | The env file path is missing, unreadable, or malformed | Restore the owner-only sibling file from the matched backup and verify its path. |
+| Rebuilding fails before the account prompts | The sibling secret is a symlink, malformed, not owned by the builder, has unsafe POSIX mode, or is under an HTTP resource root | Preserve it for inspection; use a regular owner-owned mode-`0600` file in the frozen parent. Never let the build silently replace it. |
+| Authentication works for the builder but not under Shiny Server | The service did not receive the variable or cannot write the SQLite directory/database | Check the unit's `EnvironmentFile`, service account, parent search permissions, auth directory mode/owner, and database mode/owner. Restart after correcting them. |
+| A known login password is rejected after a rebuild | Rebuilds replace, rather than merge, the account database | Rebuild again and enter every account that should exist. Login passwords cannot repair a mismatched database passphrase. |
+| The sibling env file was lost | The encrypted database key is not recoverable from the database | Restore the matched protected backup, or perform intentional rotation and create a new account database. |
+
+Do not “fix” a wrong key by editing the generated env assignment: the random
+value must remain exactly the one used to encrypt the database. A forgotten
+user login password and a lost database passphrase are different incidents.
+
+# Security and operational boundaries
+
+The built-in login page is an application access gate, not a complete security
+perimeter:
+
+* Terminate TLS/HTTPS at the app or a trusted reverse proxy, and protect every
+  untrusted network hop.
+* Add rate limiting and request controls at a reverse proxy or WAF; the built-in
+  provider does not impose a login-attempt limit by default.
+* Use an OIDC/SSO-capable access layer when you require MFA, centralized
+  revocation, organization policy, or single sign-on. `shinymanager` does not
+  provide those controls.
+* Restrict host access. Authentication does not protect files from users who can
+  read the deployment account's filesystem.
+* Back up the app/database and env file as a matched, encrypted,
+  access-controlled pair, and test restoration. Never commit the env file or
+  bake it into an image.
+* Stop the service or use the documented staged deployment procedure when
+  replacing credentials. Do not mix an old app/database with a newly generated
+  secret.
 
 # See also
 
-* [Launch Cerebro with a pre-loaded data set](launch_cerebro_with_pre-loaded_data_set.html)
+* [Create a self-contained Shiny app from a Cerebro data file](create_a_self_contained_shiny_app.html)
 * [Host Cerebro on shinyapps.io](host_cerebro_on_shinyapps.html)
+* [Launch Cerebro with a pre-loaded data set](launch_cerebro_with_pre-loaded_data_set.html)
