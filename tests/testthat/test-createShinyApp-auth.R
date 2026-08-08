@@ -255,3 +255,88 @@ test_that("authentication preflight fails before output mutation", {
   expect_identical(readLines(marker), "KEEP")
   expect_setequal(list.files(app), "marker.txt")
 })
+
+test_that("a real encrypted multi-user database survives app generation", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  fixture <- auth_test_build_fixture()
+  database <- file.path(fixture$root, "real-credentials.sqlite")
+  passphrase <- "independent database passphrase"
+  withr::local_envvar(CEREBRO_AUTH_TEST_KEY = passphrase)
+  shinymanager::create_db(
+    credentials_data = data.frame(
+      user = c("alice", "bob"),
+      password = c("alice-login-password", "bob-login-password"),
+      stringsAsFactors = FALSE
+    ),
+    sqlite_path = database,
+    passphrase = passphrase
+  )
+  app <- file.path(fixture$root, "real-auth-app")
+
+  createShinyApp(
+    cerebro_data = c(Dataset = fixture$crb),
+    result_dir = app,
+    auth = list(
+      credentials = database,
+      passphrase_env = "CEREBRO_AUTH_TEST_KEY"
+    ),
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  bundled <- file.path(
+    app,
+    "private-data",
+    "auth",
+    "credentials.sqlite"
+  )
+  checker <- shinymanager::check_credentials(
+    db = bundled,
+    passphrase = passphrase
+  )
+  expect_true(checker("alice", "alice-login-password")$result)
+  expect_true(checker("bob", "bob-login-password")$result)
+  expect_false(checker("alice", "wrong-password")$result)
+})
+
+auth_test_package_file <- function(path) {
+  if (file.exists(path)) {
+    return(path)
+  }
+  file.path("..", "..", path)
+}
+
+test_that("authentication deployment documentation is runnable and credited", {
+  vignette <- readLines(
+    auth_test_package_file(file.path(
+      "vignettes",
+      "control_access_to_cerebro_with_a_login_page.Rmd"
+    )),
+    warn = FALSE
+  )
+  required <- c(
+    "Roman Hillje",
+    "Xuesong Wang",
+    "shinymanager::create_db",
+    "createShinyApp(",
+    "readRenviron(",
+    "Shiny Server",
+    "systemd",
+    "Docker Compose",
+    "another machine"
+  )
+  for (term in required) {
+    expect_true(any(grepl(term, vignette, fixed = TRUE)), info = term)
+  }
+
+  description <- read.dcf(auth_test_package_file("DESCRIPTION"))
+  expect_identical(description[[1L, "Version"]], "4.1")
+  suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
+  expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
+  expect_false(any(grepl("askpass|chromote", suggests)))
+
+  readme <- readLines(auth_test_package_file("README.md"), warn = FALSE)
+  news <- readLines(auth_test_package_file("NEWS.md"), warn = FALSE)
+  expect_true(any(grepl("auth = list", readme, fixed = TRUE)))
+  expect_true(any(grepl("encrypted shinymanager", news, fixed = TRUE)))
+})
