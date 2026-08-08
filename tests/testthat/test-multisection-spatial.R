@@ -2,8 +2,7 @@
 
 builder_multisection_source_extras <- function(local = parent.frame()) {
   relative <- file.path(
-    "shiny",
-    "v1.4",
+    "viewer",
     "core",
     "spatial_coordinate_contract.R"
   )

@@ -71,7 +71,15 @@ builder_build_test_plan <- function(analyses = character()) {
         enabled = FALSE,
         show_upload_ui = FALSE,
         initial_dataset = "dataset-a",
-        initial_dataset_mode = "automatic"
+        initial_dataset_mode = "automatic",
+        welcome_message = "Welcome to CerebroNexus!",
+        point_size = list(overview_projection_point_size = 5),
+        variable_to_compare = FALSE,
+        host = "127.0.0.1",
+        port = 8080L,
+        max_request_size = 8000,
+        display_mode = "normal",
+        launch_browser = TRUE
       )
     ),
     class = c("builder_build_plan", "list")

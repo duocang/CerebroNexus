@@ -283,8 +283,7 @@ test_that("createShinyApp freezes typed run options into config", {
   app_file <- file.path(app, "app.R")
   app_source <- paste(readLines(app_file, warn = FALSE), collapse = "\n")
   app_template <- builder_profile_inst_path(
-    "shiny",
-    "v1.4",
+    "viewer",
     "_bundle_app.R"
   )
   expect_true(nzchar(app_template))
@@ -433,14 +432,12 @@ test_that("runtime initial selection keeps URL and session precedence", {
     "..",
     "..",
     "inst",
-    "shiny",
-    "v1.4",
+    "viewer",
     "shiny_server.R"
   )
   if (!file.exists(server_file)) {
     server_file <- system.file(
-      "shiny",
-      "v1.4",
+      "viewer",
       "shiny_server.R",
       package = "CerebroNexus"
     )

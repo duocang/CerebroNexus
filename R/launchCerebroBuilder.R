@@ -24,6 +24,9 @@
 #'   only.
 #' @param port Port to bind; defaults to a free one chosen by Shiny.
 #' @param launch_browser Open a browser; defaults to \code{TRUE}.
+#' @param max_file_size Maximum size in MB for each local upload; defaults to
+#'   8000. The corresponding Shiny process option is restored when the Builder
+#'   stops.
 #'
 #' @return Does not return; runs until the app is stopped.
 #'
@@ -37,8 +40,17 @@
 launchCerebroBuilder <- function(
   host = "127.0.0.1",
   port = NULL,
-  launch_browser = TRUE
+  launch_browser = TRUE,
+  max_file_size = 8000
 ) {
+  if (
+    length(max_file_size) != 1L ||
+      !is.numeric(max_file_size) ||
+      !is.finite(max_file_size) ||
+      max_file_size <= 0
+  ) {
+    stop("'max_file_size' must be one positive finite number.", call. = FALSE)
+  }
   if (!requireNamespace("Seurat", quietly = TRUE)) {
     stop(
       "Building a data set from a Seurat object needs the Seurat package. ",
@@ -54,6 +66,10 @@ launchCerebroBuilder <- function(
       call. = FALSE
     )
   }
+
+  old_request_size <- getOption("shiny.maxRequestSize")
+  on.exit(options(shiny.maxRequestSize = old_request_size), add = TRUE)
+  options(shiny.maxRequestSize = max_file_size * 1024^2)
 
   shiny::runApp(
     appDir = app_dir,

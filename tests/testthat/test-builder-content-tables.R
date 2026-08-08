@@ -614,7 +614,7 @@ test_that("the tracked marker example satisfies the same contract", {
   skip_if_not_installed("SeuratObject")
   file <- builder_table_inst_path(
     "extdata",
-    "v1.4",
+    "examples",
     "pbmc_seurat.rds"
   )
   expect_true(file.exists(file))
@@ -634,7 +634,7 @@ test_that("the repository monocle2 example satisfies the same contract", {
   skip_if_not_installed("SeuratObject")
   file <- builder_table_inst_path(
     "extdata",
-    "v1.4",
+    "examples",
     "demo_full_tcr_bcr.crb"
   )
   skip_if_not(file.exists(file))

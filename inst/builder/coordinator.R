@@ -17,6 +17,57 @@
   )
 }
 
+.builder_coordinator_report_plan <- function(plan) {
+  items <- lapply(plan$items, function(item) {
+    list(
+      id = item$id,
+      name = item$name,
+      filename = item$filename,
+      organism = item$organism %||% NULL,
+      analyses = item$analyses %||% character(),
+      included_groups = item$included_groups %||% character(),
+      included_projections = item$included_projections %||% character(),
+      metadata_policy = list(
+        included = item$metadata_policy$included %||% character()
+      ),
+      expression_backend = item$expression_backend,
+      sidecars = item$sidecars %||% character(),
+      viewer_page_expectations = list(
+        visible_conditional = item$viewer_page_expectations$visible_conditional %||%
+          character()
+      )
+    )
+  })
+  manifest <- lapply(plan$manifest %||% list(), function(entry) {
+    list(
+      status = entry$status %||% NULL,
+      disposition = entry$disposition %||% NULL,
+      pages = entry$pages %||% character()
+    )
+  })
+  projected <- structure(
+    list(
+      revision = plan$revision,
+      readiness = plan$readiness,
+      out_dir = plan$out_dir,
+      make_app = plan$make_app,
+      dataset_order = plan$dataset_order,
+      items = items,
+      manifest = manifest,
+      acknowledgements = as.character(unique(.builder_report_strings(
+        plan$acknowledgements %||% list()
+      ))),
+      viewer_bundle_assets = plan$viewer_bundle_assets %||% character(),
+      private_assets = plan$private_assets %||% character(),
+      output_release = list(
+        targets = plan$output_release$targets %||% plan$targets %||% character()
+      )
+    ),
+    class = c("builder_build_plan", "list")
+  )
+  .builder_coordinator_freeze(projected)
+}
+
 .builder_coordinator_app_contract <- function(plan) {
   plan_class <- attr(plan, "class", exact = TRUE)
   if (
@@ -82,30 +133,8 @@
       any(!nzchar(filenames)) ||
       anyDuplicated(filenames) ||
       !.builder_app_colors_valid(colors, labels) ||
-      !is.list(options) ||
-      !identical(
-        sort(names(options)),
-        sort(c(
-          "enabled",
-          "show_upload_ui",
-          "initial_dataset",
-          "initial_dataset_mode"
-        ))
-      ) ||
-      !isTRUE(options$enabled) ||
-      !is.logical(options$show_upload_ui) ||
-      length(options$show_upload_ui) != 1L ||
-      is.na(options$show_upload_ui) ||
-      !is.character(options$initial_dataset) ||
-      length(options$initial_dataset) != 1L ||
-      is.na(options$initial_dataset) ||
-      !options$initial_dataset %in% dataset_ids ||
-      !is.character(options$initial_dataset_mode) ||
-      length(options$initial_dataset_mode) != 1L ||
-      is.na(options$initial_dataset_mode) ||
-      !options$initial_dataset_mode %in% c("automatic", "explicit") ||
-      (identical(options$initial_dataset_mode, "automatic") &&
-        !identical(options$initial_dataset, dataset_ids[[1L]]))
+      .builder_app_has_reference(options) ||
+      !.builder_app_options_valid(options, dataset_ids)
   ) {
     stop("The App publication expectation is invalid.", call. = FALSE)
   }
@@ -142,6 +171,14 @@
     initial_dataset = labels[[initial_index]],
     initial_dataset_mode = options$initial_dataset_mode,
     show_upload_ui = options$show_upload_ui,
+    welcome_message = options$welcome_message,
+    point_size = options$point_size,
+    variable_to_compare = options$variable_to_compare,
+    host = options$host,
+    port = as.integer(options$port),
+    max_request_size = options$max_request_size,
+    display_mode = options$display_mode,
+    launch_browser = options$launch_browser,
     colors = colors,
     backend_plan = list(schema_version = 1L, entries = backend_entries),
     app_dir = NULL
@@ -243,6 +280,14 @@
       expectation$initial_dataset_mode
     ) &&
     identical(request$show_upload_ui, expectation$show_upload_ui) &&
+    identical(request$welcome_message, expectation$welcome_message) &&
+    identical(request$point_size, expectation$point_size) &&
+    identical(request$variable_to_compare, expectation$variable_to_compare) &&
+    identical(request$host, expectation$host) &&
+    identical(request$port, expectation$port) &&
+    identical(request$max_request_size, expectation$max_request_size) &&
+    identical(request$display_mode, expectation$display_mode) &&
+    identical(request$launch_browser, expectation$launch_browser) &&
     identical(request$colors, expectation$colors) &&
     identical(request$backend_plan, expectation$backend_plan)
 }
@@ -368,6 +413,7 @@ builder_coordinator_prepare <- function(plan, build_id) {
     NULL
   }
   handle$app_plan <- app_contract$plan
+  handle$report_plan <- .builder_coordinator_report_plan(plan)
   handle$app_expectation <- .builder_coordinator_freeze(
     app_contract$expectation
   )
@@ -422,7 +468,9 @@ builder_coordinator_prepare <- function(plan, build_id) {
 builder_coordinator_publish <- function(
   handle,
   build_result,
-  .record_move = file.rename
+  .record_move = file.rename,
+  .verify_app = builder_verify_app,
+  .write_report = builder_write_build_report
 ) {
   handle <- .builder_coordinator_handle(handle)
   if (
@@ -513,7 +561,7 @@ builder_coordinator_publish <- function(
       )
     }
     parent_verification <- tryCatch(
-      builder_verify_app(
+      .verify_app(
         build_result$app_dir,
         parent_request,
         .retain_tree_identity = TRUE
@@ -615,6 +663,32 @@ builder_coordinator_publish <- function(
       )
     }
   }
+  report_result <- build_result
+  if (app_expected) {
+    report_result$app_verification <- parent_verification
+  }
+  report <- builder_build_report(handle$report_plan, report_result)
+  report_path <- .write_report(handle$stage, report)
+  expected_report_path <- file.path(handle$stage, "build-report.json")
+  if (
+    !identical(
+      normalizePath(report_path, winslash = "/", mustWork = TRUE),
+      normalizePath(expected_report_path, winslash = "/", mustWork = TRUE)
+    )
+  ) {
+    stop(
+      "The build report was not written to the assigned stage.",
+      call. = FALSE
+    )
+  }
+  handle$expected_payload_targets <- sort(
+    unique(c(
+      handle$expected_payload_targets,
+      "build-report.json"
+    )),
+    method = "radix"
+  )
+  payload_identity <- .builder_coordinator_stage_identity(handle)
   handle$expected_payload_targets <- vapply(
     payload_identity$entries,
     `[[`,
@@ -711,6 +785,8 @@ builder_coordinator_publish <- function(
     )
   }
   build_result$app_verification <- NULL
+  build_result$app_verified <- app_expected
+  build_result$report_path <- file.path(published$target, "build-report.json")
   build_result$stage <- NULL
   build_result$published <- TRUE
   build_result$publishable <- FALSE

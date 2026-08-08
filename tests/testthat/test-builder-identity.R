@@ -13,7 +13,7 @@ builder_task5_source <- function(file, local = parent.frame()) {
 
 builder_task5_source_runtime <- function(local = parent.frame()) {
   files <- c(
-    file.path("shiny", "v1.4", "core", "spatial_coordinate_contract.R"),
+    file.path("viewer", "core", "spatial_coordinate_contract.R"),
     file.path("builder", "spatial.R"),
     file.path("builder", "profile.R"),
     file.path("builder", "preview.R")

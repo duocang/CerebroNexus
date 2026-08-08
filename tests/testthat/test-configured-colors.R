@@ -12,12 +12,12 @@
 
 color_config_env <- new.env(parent = globalenv())
 color_config_path <- system.file(
-  "shiny/v1.4/color_config.R",
+  "viewer/color_config.R",
   package = "CerebroNexus"
 )
 if (!nzchar(color_config_path)) {
   color_config_path <- testthat::test_path(
-    "../../inst/shiny/v1.4/color_config.R"
+    "../../inst/viewer/color_config.R"
   )
 }
 source(color_config_path, local = color_config_env)
@@ -119,9 +119,9 @@ test_that("an empty or unnamed palette changes nothing", {
 ## ---------------------------------------------------------------------------
 
 demo_crb <- function() {
-  path <- system.file("extdata/v1.4/example.crb", package = "CerebroNexus")
+  path <- system.file("extdata/examples/example.crb", package = "CerebroNexus")
   if (!nzchar(path)) {
-    path <- testthat::test_path("../../inst/extdata/v1.4/example.crb")
+    path <- testthat::test_path("../../inst/extdata/examples/example.crb")
   }
   c("PBMC example" = path)
 }
@@ -206,7 +206,7 @@ test_that("the configuration reaches the generated app unchanged", {
   config <- readRDS(file.path(out, "cerebro_config.rds"))
   expect_identical(config[["colors"]], palette)
   ## and the resolver that reads it travels with the bundle
-  expect_true(file.exists(file.path(out, "shiny/v1.4/color_config.R")))
+  expect_true(file.exists(file.path(out, "viewer/color_config.R")))
 })
 
 ## ---------------------------------------------------------------------------

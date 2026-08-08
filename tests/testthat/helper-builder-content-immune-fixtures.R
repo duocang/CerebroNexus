@@ -12,8 +12,7 @@ builder_content_immune_source_runtime <- function(local = parent.frame()) {
     c("hla_typing.R", "hla_motif_core.R", "hla_association_core.R"),
     function(file) {
       builder_content_immune_inst_path(
-        "shiny",
-        "v1.4",
+        "viewer",
         "hla_tcr_motifs",
         "core",
         file
@@ -138,7 +137,7 @@ builder_immune_fixture_all_modalities <- function() {
 builder_immune_fixture_viewer_demo <- function() {
   path <- builder_content_immune_inst_path(
     "extdata",
-    "v1.4",
+    "examples",
     "demo_hla_tcr_dextramer.crb"
   )
   if (!file.exists(path)) {

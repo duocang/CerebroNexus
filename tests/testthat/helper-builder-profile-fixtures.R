@@ -10,35 +10,30 @@ builder_profile_inst_path <- function(...) {
 builder_profile_source_runtime <- function(local = parent.frame()) {
   files <- c(
     builder_profile_inst_path(
-      "shiny",
-      "v1.4",
+      "viewer",
       "core",
       "viewer_content_contract.R"
     ),
     builder_profile_inst_path(
-      "shiny",
-      "v1.4",
+      "viewer",
       "core",
       "spatial_coordinate_contract.R"
     ),
     builder_profile_inst_path("builder", "spatial.R"),
     builder_profile_inst_path(
-      "shiny",
-      "v1.4",
+      "viewer",
       "hla_tcr_motifs",
       "core",
       "hla_typing.R"
     ),
     builder_profile_inst_path(
-      "shiny",
-      "v1.4",
+      "viewer",
       "hla_tcr_motifs",
       "core",
       "hla_motif_core.R"
     ),
     builder_profile_inst_path(
-      "shiny",
-      "v1.4",
+      "viewer",
       "hla_tcr_motifs",
       "core",
       "hla_association_core.R"

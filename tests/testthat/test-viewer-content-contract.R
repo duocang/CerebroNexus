@@ -9,8 +9,7 @@ viewer_contract_path <- function(root = c("R", "core")) {
     ))
   }
   relative <- file.path(
-    "shiny",
-    "v1.4",
+    "viewer",
     "core",
     "viewer_content_contract.R"
   )

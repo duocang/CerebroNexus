@@ -6,6 +6,7 @@ builder_task9_source <- function(local = parent.frame()) {
   source(file.path(root, "core", "bundle_path_contract.R"), local = local)
   source(file.path(root, "publish.R"), local = local)
   source(file.path(root, "app_bundle.R"), local = local)
+  source(file.path(root, "report.R"), local = local)
   source(file.path(root, "coordinator.R"), local = local)
   invisible(root)
 }
@@ -51,6 +52,8 @@ builder_app_coordinator_plan_fixture <- function(
   }
   structure(
     list(
+      revision = 1L,
+      readiness = "ready",
       out_dir = target,
       overwrite = FALSE,
       targets = targets,
@@ -59,14 +62,88 @@ builder_app_coordinator_plan_fixture <- function(
       app_contract_version = if (isTRUE(make_app)) 1L else 0L,
       dataset_order = c("dataset-a", "dataset-b"),
       items = items,
+      manifest = list(),
+      acknowledgements = list(),
+      viewer_bundle_assets = character(),
+      private_assets = filenames,
       app_options = list(
         enabled = isTRUE(make_app),
         show_upload_ui = FALSE,
         initial_dataset = "dataset-b",
-        initial_dataset_mode = "explicit"
+        initial_dataset_mode = "explicit",
+        welcome_message = "Welcome, team!",
+        point_size = list(overview_projection_point_size = 6),
+        variable_to_compare = FALSE,
+        host = "127.0.0.1",
+        port = 4242L,
+        max_request_size = 512,
+        display_mode = "showcase",
+        launch_browser = FALSE
       )
     ),
     class = c("builder_build_plan", "list")
+  )
+}
+
+builder_crb_coordinator_plan <- function(
+  target,
+  filenames,
+  overwrite = FALSE,
+  expected_prior_identity = NULL
+) {
+  items <- lapply(seq_along(filenames), function(index) {
+    list(
+      id = paste0("dataset-", index),
+      name = paste0("Dataset ", index),
+      filename = filenames[[index]],
+      organism = "hg",
+      analyses = character(),
+      included_groups = character(),
+      included_projections = character(),
+      metadata_policy = list(included = character()),
+      expression_backend = "embedded",
+      sidecars = character(),
+      viewer_page_expectations = list(visible_conditional = character())
+    )
+  })
+  targets <- file.path(target, filenames)
+  structure(
+    list(
+      revision = 1L,
+      readiness = "ready",
+      out_dir = target,
+      overwrite = overwrite,
+      targets = targets,
+      output_release = list(targets = targets),
+      expected_prior_identity = expected_prior_identity,
+      make_app = FALSE,
+      dataset_order = vapply(items, `[[`, character(1), "id"),
+      items = items,
+      manifest = list(),
+      acknowledgements = list(),
+      viewer_bundle_assets = character(),
+      private_assets = filenames,
+      app_options = list(enabled = FALSE)
+    ),
+    class = c("builder_build_plan", "list")
+  )
+}
+
+builder_crb_coordinator_result <- function(handle, artifacts, labels = NULL) {
+  if (is.null(labels)) {
+    labels <- paste0("Dataset ", seq_along(artifacts))
+  }
+  list(
+    state = "success",
+    publishable = TRUE,
+    stage = handle$stage,
+    built = artifacts,
+    labels = labels,
+    verifications = lapply(artifacts, function(path) {
+      list(valid = TRUE, path = path, metadata = character())
+    }),
+    app_dir = NULL,
+    app_verification = NULL
   )
 }
 
@@ -91,7 +168,7 @@ test_that("coordinator contract inspection never dispatches plan methods", {
 builder_app_coordinator_fake_app <- function(request, app_dir) {
   dir.create(app_dir)
   file.copy(
-    builder_profile_inst_path("shiny"),
+    builder_profile_inst_path("viewer"),
     app_dir,
     recursive = TRUE
   )
@@ -134,7 +211,7 @@ builder_app_coordinator_fake_app <- function(request, app_dir) {
     }
   }
   file.copy(
-    builder_profile_inst_path("shiny", "v1.4", "_bundle_app.R"),
+    builder_profile_inst_path("viewer", "_bundle_app.R"),
     file.path(app_dir, "app.R")
   )
   saveRDS(
@@ -145,6 +222,20 @@ builder_app_coordinator_fake_app <- function(request, app_dir) {
       ),
       initial_dataset = request$initial_dataset,
       show_upload_ui = request$show_upload_ui,
+      welcome_message = request$welcome_message,
+      point_size = request$point_size,
+      variable_to_compare = request$variable_to_compare,
+      .bundle_run_options = list(
+        schema_version = 1L,
+        max_request_size_bytes = request$max_request_size * 1024^2,
+        shiny_app_options = list(
+          port = as.integer(request$port),
+          host = request$host,
+          launch.browser = request$launch_browser,
+          quiet = TRUE,
+          display.mode = request$display_mode
+        )
+      ),
       colors = request$colors,
       crb_pick_smallest_file = request$crb_pick_smallest_file,
       .bundle_backend_plan = request$backend_plan
@@ -157,14 +248,23 @@ builder_app_coordinator_fake_app <- function(request, app_dir) {
 builder_app_coordinator_fixture <- function(
   make_app = TRUE,
   backend = "embedded",
+  root = NULL,
+  target = NULL,
+  plan = NULL,
   .local_envir = parent.frame(),
   coordinator_prepare,
   bundle_request,
   verify_app
 ) {
-  root <- withr::local_tempdir(.local_envir = .local_envir)
-  target <- file.path(root, "release")
-  plan <- builder_app_coordinator_plan_fixture(target, make_app, backend)
+  if (is.null(root)) {
+    root <- withr::local_tempdir(.local_envir = .local_envir)
+  }
+  if (is.null(target)) {
+    target <- file.path(root, "release")
+  }
+  if (is.null(plan)) {
+    plan <- builder_app_coordinator_plan_fixture(target, make_app, backend)
+  }
   handle <- coordinator_prepare(plan, "build-app")
   built <- file.path(
     handle$stage,
@@ -395,16 +495,46 @@ test_that("only one process can coordinate one release", {
       source(file.path(builder_root, "core", "bundle_path_contract.R"))
       source(file.path(builder_root, "publish.R"))
       source(file.path(builder_root, "app_bundle.R"))
+      source(file.path(builder_root, "report.R"))
       source(file.path(builder_root, "coordinator.R"))
       while (!file.exists(barrier)) {
         Sys.sleep(0.01)
       }
       tryCatch(
         {
-          handle <- builder_coordinator_prepare(
-            list(out_dir = target, expected_prior_identity = NULL),
-            build_id = id
+          item <- list(
+            id = "dataset-1",
+            name = id,
+            filename = "dataset.crb",
+            analyses = character(),
+            included_groups = character(),
+            included_projections = character(),
+            metadata_policy = list(included = character()),
+            expression_backend = "embedded",
+            sidecars = character(),
+            viewer_page_expectations = list(visible_conditional = character())
           )
+          plan <- structure(
+            list(
+              revision = 1L,
+              readiness = "ready",
+              out_dir = target,
+              overwrite = FALSE,
+              targets = file.path(target, "dataset.crb"),
+              output_release = list(targets = file.path(target, "dataset.crb")),
+              expected_prior_identity = NULL,
+              make_app = FALSE,
+              dataset_order = "dataset-1",
+              items = list(item),
+              manifest = list(),
+              acknowledgements = list(),
+              viewer_bundle_assets = character(),
+              private_assets = "dataset.crb",
+              app_options = list(enabled = FALSE)
+            ),
+            class = c("builder_build_plan", "list")
+          )
+          handle <- builder_coordinator_prepare(plan, build_id = id)
           writeLines(id, file.path(handle$stage, "dataset.crb"))
           Sys.sleep(0.25)
           result <- builder_coordinator_publish(
@@ -414,7 +544,14 @@ test_that("only one process can coordinate one release", {
               publishable = TRUE,
               stage = handle$stage,
               built = file.path(handle$stage, "dataset.crb"),
-              labels = id
+              labels = id,
+              verifications = list(list(
+                valid = TRUE,
+                path = file.path(handle$stage, "dataset.crb"),
+                metadata = character()
+              )),
+              app_dir = NULL,
+              app_verification = NULL
             )
           )
           list(published = isTRUE(result$published), error = result$error)
@@ -433,7 +570,11 @@ test_that("only one process can coordinate one release", {
 
     expect_identical(
       sum(vapply(results, `[[`, logical(1), "published")),
-      1L
+      1L,
+      info = paste(
+        vapply(results, function(value) value$error %||% "", ""),
+        collapse = " | "
+      )
     )
     expect_true(file.exists(file.path(target, "dataset.crb")))
   })
@@ -528,14 +669,9 @@ test_that("parent ownership permits safe release shrinkage", {
         list(type = "F", path = "cerebro_app/app.R")
       )
     )
-    planned <- file.path(target, "01-a.crb")
+    plan <- builder_crb_coordinator_plan(target, "01-a.crb", overwrite = TRUE)
     handle <- builder_coordinator_prepare(
-      list(
-        out_dir = target,
-        overwrite = TRUE,
-        targets = planned,
-        output_release = list(targets = planned)
-      ),
+      plan,
       "build-shrink"
     )
     artifact <- file.path(handle$stage, "01-a.crb")
@@ -543,13 +679,7 @@ test_that("parent ownership permits safe release shrinkage", {
 
     result <- builder_coordinator_publish(
       handle,
-      list(
-        state = "success",
-        publishable = TRUE,
-        stage = handle$stage,
-        built = artifact,
-        labels = "A"
-      )
+      builder_crb_coordinator_result(handle, artifact, "Dataset 1")
     )
 
     expect_true(result$published)
@@ -688,14 +818,13 @@ test_that("legacy releases cannot silently shrink", {
     )
     expect_identical(readLines(file.path(target, "02-b.crb")), "old-b")
 
-    expected <- file.path(target, c("01-a.crb", "02-b.crb"))
+    plan <- builder_crb_coordinator_plan(
+      target,
+      c("01-a.crb", "02-b.crb"),
+      overwrite = TRUE
+    )
     handle <- builder_coordinator_prepare(
-      list(
-        out_dir = target,
-        overwrite = TRUE,
-        targets = expected,
-        output_release = list(targets = expected)
-      ),
+      plan,
       "build-legacy-same-topology"
     )
     staged <- file.path(handle$stage, c("01-a.crb", "02-b.crb"))
@@ -703,13 +832,7 @@ test_that("legacy releases cannot silently shrink", {
     writeLines("new-b", staged[[2L]])
     result <- builder_coordinator_publish(
       handle,
-      list(
-        state = "success",
-        publishable = TRUE,
-        stage = handle$stage,
-        built = staged,
-        labels = c("A", "B")
-      )
+      builder_crb_coordinator_result(handle, staged)
     )
     expect_true(result$published)
     expect_true(file.exists(file.path(
@@ -766,14 +889,9 @@ test_that("record write failure leaves the verified stage unpublished", {
     builder_task9_source()
     root <- withr::local_tempdir()
     target <- file.path(root, "release")
-    planned <- file.path(target, "dataset.crb")
+    plan <- builder_crb_coordinator_plan(target, "dataset.crb")
     handle <- builder_coordinator_prepare(
-      list(
-        out_dir = target,
-        overwrite = FALSE,
-        targets = planned,
-        output_release = list(targets = planned)
-      ),
+      plan,
       "build-record-failure"
     )
     artifact <- file.path(handle$stage, "dataset.crb")
@@ -782,13 +900,7 @@ test_that("record write failure leaves the verified stage unpublished", {
     expect_error(
       builder_coordinator_publish(
         handle,
-        list(
-          state = "success",
-          publishable = TRUE,
-          stage = handle$stage,
-          built = artifact,
-          labels = "Dataset"
-        ),
+        builder_crb_coordinator_result(handle, artifact),
         .record_move = function(from, to) FALSE
       ),
       "atomically"
@@ -808,14 +920,9 @@ test_that("payload changes during record commit cannot be published", {
     builder_task9_source()
     root <- withr::local_tempdir()
     target <- file.path(root, "release")
-    planned <- file.path(target, "dataset.crb")
+    plan <- builder_crb_coordinator_plan(target, "dataset.crb")
     handle <- builder_coordinator_prepare(
-      list(
-        out_dir = target,
-        overwrite = FALSE,
-        targets = planned,
-        output_release = list(targets = planned)
-      ),
+      plan,
       "build-record-race"
     )
     artifact <- file.path(handle$stage, "dataset.crb")
@@ -824,13 +931,7 @@ test_that("payload changes during record commit cannot be published", {
     result <- tryCatch(
       builder_coordinator_publish(
         handle,
-        list(
-          state = "success",
-          publishable = TRUE,
-          stage = handle$stage,
-          built = artifact,
-          labels = "Dataset"
-        ),
+        builder_crb_coordinator_result(handle, artifact),
         .record_move = function(from, to) {
           writeLines("tampered", artifact)
           file.rename(from, to)
@@ -967,6 +1068,14 @@ test_that("coordinator freezes the complete App publication expectation", {
         "initial_dataset",
         "initial_dataset_mode",
         "show_upload_ui",
+        "welcome_message",
+        "point_size",
+        "variable_to_compare",
+        "host",
+        "port",
+        "max_request_size",
+        "display_mode",
+        "launch_browser",
         "colors",
         "backend_plan",
         "app_dir"
@@ -1374,6 +1483,7 @@ test_that("verified Apps publish with final paths and parent ownership", {
     )
 
     expect_true(published$published)
+    expect_true(file.exists(published$report_path))
     expect_identical(
       published$app_dir,
       file.path(published$release$target, "cerebro_app")
@@ -1405,6 +1515,7 @@ test_that("verified Apps publish with final paths and parent ownership", {
     member_paths <- vapply(record$members, `[[`, character(1), "path")
     expect_true(all(
       c(
+        "build-report.json",
         "cerebro_app",
         "cerebro_app/app.R",
         "cerebro_app/private-data/dataset-a.crb",
@@ -1412,5 +1523,96 @@ test_that("verified Apps publish with final paths and parent ownership", {
       ) %in%
         member_paths
     ))
+  })
+})
+
+test_that("coordinator reports after App verification and before ownership", {
+  local({
+    builder_task9_source()
+    fixture <- builder_app_coordinator_fixture(
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    events <- character()
+
+    published <- builder_coordinator_publish(
+      fixture$handle,
+      fixture$result,
+      .verify_app = function(...) {
+        events <<- c(events, "app_verify")
+        builder_verify_app(...)
+      },
+      .write_report = function(stage, report) {
+        events <<- c(events, "report")
+        builder_write_build_report(stage, report)
+      },
+      .record_move = function(from, to) {
+        events <<- c(events, "ownership")
+        file.rename(from, to)
+      }
+    )
+
+    expect_identical(events, c("app_verify", "report", "ownership"))
+    expect_true(published$published)
+    expect_true(file.exists(published$report_path))
+  })
+})
+
+test_that("coordinator freezes only the portable report-plan projection", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
+    plan$runtime_only <- new.env(parent = emptyenv())
+
+    handle <- builder_coordinator_prepare(plan, "portable-report-plan")
+
+    expect_s3_class(handle$report_plan, "builder_build_plan")
+    expect_false(.builder_app_has_reference(handle$report_plan))
+    expect_false("runtime_only" %in% names(handle$report_plan))
+    expect_identical(handle$report_plan$dataset_order, plan$dataset_order)
+    expect_identical(
+      handle$report_plan$output_release$targets,
+      plan$output_release$targets
+    )
+    expect_true(builder_coordinator_abort(handle)$aborted)
+  })
+})
+
+test_that("report failure preserves the prior release unpublished", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    saveRDS("prior", file.path(target, "dataset-a.crb"))
+    prior <- builder_release_identity(target)
+    plan <- builder_app_coordinator_plan_fixture(target, make_app = FALSE)
+    plan$overwrite <- TRUE
+    plan$expected_prior_identity <- prior
+    fixture <- builder_app_coordinator_fixture(
+      root = root,
+      target = target,
+      make_app = FALSE,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app,
+      plan = plan
+    )
+
+    expect_error(
+      builder_coordinator_publish(
+        fixture$handle,
+        fixture$result,
+        .write_report = function(...) stop("injected report failure")
+      ),
+      "report failure"
+    )
+    expect_identical(readRDS(file.path(target, "dataset-a.crb")), "prior")
+    expect_false(file.exists(file.path(target, "build-report.json")))
+    expect_true(dir.exists(fixture$handle$stage))
   })
 })

@@ -10,9 +10,11 @@ background images that go *in*.
 Rscript data-raw/build_builder_fixtures.R
 ```
 
-Everything is synthetic and builds offline in under a minute. Output lands in
-`data-raw/builder_fixtures/` and is gitignored — regenerate it, never commit it.
-Point the builder's file browser at that directory.
+The generator runs offline and preserves the caller's random-number state. Its
+larger manual/stress fixtures land in `data-raw/builder_fixtures/`, which is
+gitignored. The compact product examples below land in
+`inst/builder/fixtures/` and are committed so the Builder gallery works from an
+installed package. Re-run the generator whenever either set needs rebuilding.
 
 ## What each one is for
 
@@ -28,6 +30,29 @@ Point the builder's file browser at that directory.
 | `all_modalities.rds` | immune repertoire + HLA typing + Trekker on one object — the three pages that come from `@misc` rather than from a builder control |
 | `de_results.csv` | a table to attach as supplementary material |
 | `big.rds` (15 000 cells, ~11 MB) | large enough to watch the worker process work and confirm the page still answers |
+
+## Committed example gallery
+
+The public catalog has nine stable IDs. `basic_pbmc` reuses the shipped PBMC
+example at `inst/extdata/examples/pbmc_seurat.rds`; the other eight RDS files and
+the two spatial backgrounds are generated under `inst/builder/fixtures/`.
+
+| Example ID | Exercises |
+|---|---|
+| `basic_pbmc` | compact non-spatial baseline |
+| `spatial_multi_section` | two sections, two embedded backgrounds, and multiple projections/groups |
+| `immune_tcr_hla` | T-cell repertoire plus HLA typing |
+| `immune_tcr_only` | T-cell repertoire without HLA |
+| `immune_hla_only` | HLA typing without repertoire data |
+| `immune_bcr_only` | B-cell repertoire, which must not enable TCR motif analysis |
+| `immune_metadata_tcr` | repertoire recovered from metadata columns |
+| `immune_legacy_tcr` | legacy repertoire payload normalization |
+| `all_content` | every conditional page: spatial, expression analyses, trajectory, supplementary material, immune/HLA, and Trekker |
+
+The catalog in `inst/builder/io.R` is the source of truth for labels,
+provenance, expected manifests, dispositions, visible pages, and supporting
+content. End-to-end tests compare those declarations with real inspection and
+build output rather than maintaining a second expectation table here.
 
 ## Notes worth keeping
 
