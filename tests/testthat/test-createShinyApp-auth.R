@@ -189,6 +189,9 @@ test_that("createShinyApp bundles only encrypted authentication configuration", 
       timeout_minutes = 15L
     )
   )
+  app_source <- readLines(file.path(app, "app.R"), warn = FALSE)
+  expect_true(any(grepl("viewer/auth.R", app_source, fixed = TRUE)))
+  expect_true(any(grepl("viewer_auth_apply", app_source, fixed = TRUE)))
   artifacts <- list.files(app, recursive = TRUE, full.names = TRUE)
   expect_false(any(vapply(
     artifacts,

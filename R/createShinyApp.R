@@ -2548,10 +2548,18 @@ createShinyApp <- function(
 
     source(file.path(cerebro_root, "viewer/shiny_UI.R"))
     source(file.path(cerebro_root, "viewer/shiny_server.R"))
+    source(file.path(cerebro_root, "viewer/auth.R"), local = TRUE)
+
+    viewer_app <- viewer_auth_apply(
+      ui,
+      server,
+      Cerebro.options[[".viewer_auth"]],
+      Cerebro.options[["cerebro_root"]]
+    )
 
     shiny::shinyApp(
-      ui = ui,
-      server = server,
+      ui = viewer_app$ui,
+      server = viewer_app$server,
       onStart = function() {
         previous <- options(
           shiny.maxRequestSize = bundle_run_options$max_request_size_bytes
