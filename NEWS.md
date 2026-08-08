@@ -2,21 +2,27 @@
 
 ## Viewer
 
-- Viewer authentication is now an opt-in supported interface for both direct
-  `launchCerebro(..., auth = auth)` sessions and apps generated with
-  `createShinyApp(..., auth = auth)`. Authentication uses a strict
-  `shinymanager` descriptor and an encrypted credentials database whose
-  passphrase remains in a deployment-managed environment variable. Existing
-  launches that omit `auth`, or set it to `NULL`, remain unauthenticated and
-  otherwise unchanged.
+- `createShinyApp(..., auth = TRUE)` now collects one or more accounts
+  interactively, creates a real encrypted `shinymanager` database inside the
+  generated app, and writes the independent database key to an owner-only
+  sibling `.auth.env` file. Rebuilding the same app reuses that key while
+  replacing the account set.
+- App, database, sibling secret, and process-environment publication are one
+  rollback-safe operation. Pre-commit failures preserve the previous app and
+  secret, and generated authentication files receive owner-only permissions on
+  POSIX systems.
+- Direct `launchCerebro()` sessions and advanced `createShinyApp()` deployments
+  continue to accept a strict named authentication descriptor. Calls that omit
+  `auth`, or set it to `NULL`, remain unauthenticated and otherwise unchanged.
 
 ## Documentation
 
-- The access-control guide now documents the supported encrypted-database
-  workflow, secret and filesystem boundaries, direct and generated deployment,
-  session behavior, process topology, TLS, and the limits of the built-in login
-  provider. The former hand-edited login example and archived custom verifier
-  are explicitly unsupported.
+- The access-control guide now starts with runnable `auth = TRUE` code and
+  includes tested instructions for a later R process, another machine, Shiny
+  Server with systemd, Docker, Docker Compose, account rebuilds, and safe key
+  rotation. It also explains secret and filesystem boundaries, TLS, rate
+  limiting, backups, SSO, and the limits of the built-in login provider. The
+  former hand-written credential recipe has been removed.
 
 # CerebroNexus 4.0
 

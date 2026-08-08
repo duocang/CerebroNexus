@@ -45,9 +45,24 @@ createShinyApp(
 
 ## 3. Optional Viewer Login
 
-`launchCerebro()` and `createShinyApp()` support optional login through the
-`auth` argument. Leaving `auth` unset keeps the existing unauthenticated
-behavior. See the [Viewer access-control guide](https://mihem.github.io/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html).
+For a generated app, set `auth = TRUE`. CerebroNexus interactively collects one
+or more accounts, creates the encrypted credentials database inside the app,
+and writes its database key to a protected sibling file such as
+`my_app.auth.env`:
+
+```r
+createShinyApp(
+  cerebro_data = c("My dataset" = "output/cerebro_my_seurat.crb"),
+  result_dir = "my_app",
+  auth = TRUE
+)
+```
+
+The same R process can run the app immediately. A new process or deployment
+must load the sibling env file separately; do not put it inside the app or
+source control. `launchCerebro()` and advanced deployments also accept a named
+`shinymanager` descriptor. Leaving `auth` unset keeps the existing
+unauthenticated behavior. See the [Viewer access-control guide](https://mihem.github.io/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html).
 
 ## License
 
