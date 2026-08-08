@@ -1789,6 +1789,12 @@ dedent <- function(string) {
 #'   \code{cerebro_data}.
 #' @param spatial_plot_rotation Named list/vector; initial rotation (degrees)
 #'   applied to spatial cell coordinates. Names must match \code{cerebro_data}.
+#' @param auth Optional authentication settings. \code{NULL}, the default,
+#'   leaves the generated Viewer public. To require a login, provide a named
+#'   list with \code{credentials}, the path to an encrypted SQLite database
+#'   created by \code{shinymanager::create_db()}, and \code{passphrase_env},
+#'   the name of the environment variable containing its passphrase. Optional
+#'   \code{timeout_minutes} defaults to 15.
 #' @param ... Currently unused; reserved for future arguments.
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
@@ -1824,6 +1830,7 @@ createShinyApp <- function(
   spatial_images_offset_x = NULL,
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
+  auth = NULL,
   ...
 ) {
   # Validate inputs ----------------------------------------------------------##
@@ -1937,6 +1944,7 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
+  viewer_auth <- .compileViewerAuth(auth)
   requested_result_dir <- result_dir
   prepared_result <- .prepareBundleResultTarget(result_dir)
   result_dir <- prepared_result$target
@@ -2158,6 +2166,14 @@ createShinyApp <- function(
       source = source,
       artifact = artifact,
       directory = directory
+    )
+  }
+
+  if (!is.null(viewer_auth)) {
+    claim_target(
+      viewer_auth$credentials_path,
+      viewer_auth$source,
+      "authentication database"
     )
   }
 
@@ -2436,7 +2452,8 @@ createShinyApp <- function(
   cerebro_options[["cerebro_root"]] <- "."
   internal_option_names <- c(
     ".bundle_backend_plan",
-    ".bundle_run_options"
+    ".bundle_run_options",
+    ".viewer_auth"
   )
   option_names <- names(cerebro_options)
   if (!is.null(option_names)) {
@@ -2449,6 +2466,13 @@ createShinyApp <- function(
     entries = effective_backend_entries
   )
   cerebro_options[[".bundle_run_options"]] <- bundle_run_options
+  if (!is.null(viewer_auth)) {
+    cerebro_options[[".viewer_auth"]] <- viewer_auth[c(
+      "credentials_path",
+      "passphrase_env",
+      "timeout_minutes"
+    )]
+  }
   if (!is.null(crb_pick_smallest_file)) {
     cerebro_options[["crb_pick_smallest_file"]] <- crb_pick_smallest_file
   }
