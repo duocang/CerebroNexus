@@ -748,6 +748,17 @@
   }
   parent_exists <- .viewerAuthCall(state$ops$entry_exists(state$result_parent))
   if (identical(parent_exists, FALSE)) {
+    current_target <- tryCatch(
+      .stableBundleTarget(state$result_target),
+      error = function(condition) NULL
+    )
+    if (
+      is.null(current_target) ||
+        !.viewerAuthSamePath(current_target, state$result_target) ||
+        !.viewerAuthSamePath(dirname(current_target), state$result_parent)
+    ) {
+      .viewerAuthUnsafe(state$result_target, changed = TRUE)
+    }
     return(invisible(TRUE))
   }
   if (!isTRUE(parent_exists)) {

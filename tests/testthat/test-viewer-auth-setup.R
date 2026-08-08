@@ -616,6 +616,29 @@ test_that("missing parent revalidation transitions to a frozen identity", {
   expect_true(.viewerAuthSameDirectory(frozen, state$result_parent_snapshot))
 })
 
+test_that("missing parent revalidation rejects intermediate symlink races", {
+  skip_on_os("windows")
+  for (kind in c("resolved", "dangling")) {
+    root <- withr::local_tempdir()
+    result <- file.path(root, "missing", "nested", "app")
+    state <- .viewerAuthPreflightSimple(result, auth_setup_ops())
+    target <- if (identical(kind, "resolved")) {
+      outside <- file.path(root, "outside")
+      expect_true(dir.create(outside))
+      outside
+    } else {
+      file.path(root, "absent-target")
+    }
+    expect_true(file.symlink(target, file.path(root, "missing")))
+
+    expect_error(
+      .viewerAuthRevalidateInitialSecret(state),
+      "changed|invalid or unsafe"
+    )
+    expect_true(.pathIsSymbolicLink(file.path(root, "missing")))
+  }
+})
+
 test_that("environment names and passphrases use independent exact byte counts", {
   requested <- integer()
   calls <- 0L
