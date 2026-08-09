@@ -27,12 +27,12 @@ builder_freeze_plan <- function(
   overwrite = FALSE,
   revision = NULL,
   app_options = list(),
+  expected_prior_identity = NULL,
   app_auth = list(
     enabled = FALSE,
     account_count = 0L,
     timeout_minutes = 15L
-  ),
-  expected_prior_identity = NULL
+  )
 ) {
   if (
     !exists(

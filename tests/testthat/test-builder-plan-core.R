@@ -36,6 +36,32 @@ test_that("login summary is impossible without App output", {
   })
 })
 
+test_that("legacy seventh positional argument remains prior identity", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("plan.R")
+    builder_repo_source("publish.R")
+    out_dir <- withr::local_tempdir()
+    prior <- builder_release_identity(out_dir)
+    plan <- builder_freeze_plan(
+      list(builder_task6_entry()),
+      out_dir,
+      FALSE,
+      FALSE,
+      NULL,
+      list(),
+      prior
+    )
+
+    expect_s3_class(plan, "builder_build_plan")
+    expect_identical(plan$expected_prior_identity, prior)
+    expect_identical(
+      plan$app_auth,
+      list(enabled = FALSE, account_count = 0L, timeout_minutes = 15L)
+    )
+  })
+})
+
 test_that("profiles expose safe layer choices for every assay", {
   skip_if_not_installed("SeuratObject")
 

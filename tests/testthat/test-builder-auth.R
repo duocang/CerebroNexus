@@ -82,7 +82,7 @@ test_that("Builder auth rejects incomplete or duplicate accounts safely", {
 })
 
 test_that("Builder auth accepts only the strict account payload boundary", {
-  valid_password <- "password"
+  valid_password <- "auth-password-boundary-91c4"
   cases <- list(
     invalid_enabled = list(
       enabled = NA,
@@ -111,6 +111,23 @@ test_that("Builder auth accepts only the strict account payload boundary", {
         )
       )
     ),
+    invalid_row_id = list(
+      enabled = TRUE,
+      accounts = list(list(
+        id = "auth-row-sentinel-91c4",
+        username = "auth-user-row-91c4",
+        password = valid_password
+      ))
+    ),
+    extra_field = list(
+      enabled = TRUE,
+      accounts = list(list(
+        id = "auth-account-1",
+        username = "auth-user-extra-91c4",
+        password = valid_password,
+        secret_note = "auth-extra-sentinel-91c4"
+      ))
+    ),
     too_many = list(
       enabled = TRUE,
       accounts = lapply(seq_len(51L), function(i) {
@@ -130,6 +147,27 @@ test_that("Builder auth accepts only the strict account payload boundary", {
     )
     expect_false(parsed$ok, info = name)
     expect_null(parsed$accounts, info = name)
+    expect_identical(
+      names(parsed),
+      c("ok", "error", "accounts"),
+      info = name
+    )
+    expect_false(
+      any(vapply(
+        c(
+          "auth-row-sentinel-91c4",
+          "auth-user-row-91c4",
+          "auth-password-boundary-91c4",
+          "auth-user-extra-91c4",
+          "auth-extra-sentinel-91c4"
+        ),
+        grepl,
+        logical(1),
+        x = parsed$error,
+        fixed = TRUE
+      )),
+      info = name
+    )
   }
 })
 

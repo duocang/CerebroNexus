@@ -17,11 +17,6 @@ builder_app_bundle_fixture <- function(
       app_contract_version = 1L,
       dataset_order = c("dataset-a", "dataset-b"),
       make_app = TRUE,
-      app_auth = list(
-        enabled = TRUE,
-        account_count = 2L,
-        timeout_minutes = 15L
-      ),
       items = list(
         list(
           id = "dataset-a",
@@ -60,6 +55,11 @@ builder_app_bundle_fixture <- function(
         max_request_size = 512,
         display_mode = "showcase",
         launch_browser = FALSE
+      ),
+      app_auth = list(
+        enabled = TRUE,
+        account_count = 2L,
+        timeout_minutes = 15L
       )
     ),
     class = c("builder_build_plan", "list")

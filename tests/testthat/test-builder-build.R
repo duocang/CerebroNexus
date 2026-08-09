@@ -81,6 +81,11 @@ builder_build_test_plan <- function(analyses = character()) {
         max_request_size = 8000,
         display_mode = "normal",
         launch_browser = TRUE
+      ),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
       )
     ),
     class = c("builder_build_plan", "list")
@@ -1009,7 +1014,16 @@ test_that("a real example is exported and verified only inside its stage", {
     )
   )
   plan <- structure(
-    list(items = list(item), make_app = FALSE),
+    list(
+      items = list(item),
+      make_app = FALSE,
+      app_options = list(enabled = FALSE),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      )
+    ),
     class = c("builder_build_plan", "list")
   )
   stage <- tempfile("builder-real-stage-")

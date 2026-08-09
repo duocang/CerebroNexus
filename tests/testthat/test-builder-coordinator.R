@@ -11,6 +11,24 @@ builder_task9_source <- function(local = parent.frame()) {
   invisible(root)
 }
 
+builder_serialized_contains <- function(value, sentinel) {
+  serialized <- serialize(value, NULL, version = 3L)
+  needle <- charToRaw(sentinel)
+  if (length(serialized) < length(needle)) {
+    return(FALSE)
+  }
+  any(vapply(
+    seq_len(length(serialized) - length(needle) + 1L),
+    function(index) {
+      identical(
+        serialized[index:(index + length(needle) - 1L)],
+        needle
+      )
+    },
+    logical(1)
+  ))
+}
+
 builder_app_coordinator_plan_fixture <- function(
   target,
   make_app = TRUE,
@@ -60,11 +78,6 @@ builder_app_coordinator_plan_fixture <- function(
       output_release = list(targets = targets),
       make_app = isTRUE(make_app),
       app_contract_version = if (isTRUE(make_app)) 1L else 0L,
-      app_auth = list(
-        enabled = isTRUE(make_app),
-        account_count = if (isTRUE(make_app)) 2L else 0L,
-        timeout_minutes = 15L
-      ),
       dataset_order = c("dataset-a", "dataset-b"),
       items = items,
       manifest = list(),
@@ -85,6 +98,11 @@ builder_app_coordinator_plan_fixture <- function(
         max_request_size = 512,
         display_mode = "showcase",
         launch_browser = FALSE
+      ),
+      app_auth = list(
+        enabled = isTRUE(make_app),
+        account_count = if (isTRUE(make_app)) 2L else 0L,
+        timeout_minutes = 15L
       )
     ),
     class = c("builder_build_plan", "list")
@@ -129,7 +147,12 @@ builder_crb_coordinator_plan <- function(
       acknowledgements = list(),
       viewer_bundle_assets = character(),
       private_assets = filenames,
-      app_options = list(enabled = FALSE)
+      app_options = list(enabled = FALSE),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      )
     ),
     class = c("builder_build_plan", "list")
   )
@@ -343,7 +366,15 @@ test_that("the coordinator preregisters an owner-only assigned stage", {
     target <- file.path(root, "release")
 
     handle <- builder_coordinator_prepare(
-      list(out_dir = target, expected_prior_identity = NULL),
+      list(
+        out_dir = target,
+        expected_prior_identity = NULL,
+        app_auth = list(
+          enabled = FALSE,
+          account_count = 0L,
+          timeout_minutes = 15L
+        )
+      ),
       build_id = "build-1"
     )
 
@@ -384,7 +415,12 @@ test_that("coordinator rejects a dangling release-root link before prepare", {
         list(
           out_dir = target,
           overwrite = TRUE,
-          targets = file.path(target, "dataset.crb")
+          targets = file.path(target, "dataset.crb"),
+          app_auth = list(
+            enabled = FALSE,
+            account_count = 0L,
+            timeout_minutes = 15L
+          )
         ),
         "build-dangling-root"
       ),
@@ -431,7 +467,12 @@ test_that("coordinator rejects an existing release-root link", {
         list(
           out_dir = target,
           overwrite = TRUE,
-          targets = file.path(target, "dataset.crb")
+          targets = file.path(target, "dataset.crb"),
+          app_auth = list(
+            enabled = FALSE,
+            account_count = 0L,
+            timeout_minutes = 15L
+          )
         ),
         "build-existing-root-link"
       ),
@@ -461,7 +502,12 @@ test_that("coordinator rejects an unreadable prior payload", {
           out_dir = target,
           overwrite = TRUE,
           targets = payload,
-          output_release = list(targets = payload)
+          output_release = list(targets = payload),
+          app_auth = list(
+            enabled = FALSE,
+            account_count = 0L,
+            timeout_minutes = 15L
+          )
         ),
         "build-unreadable-prior"
       ),
@@ -538,7 +584,12 @@ test_that("only one process can coordinate one release", {
               acknowledgements = list(),
               viewer_bundle_assets = character(),
               private_assets = "dataset.crb",
-              app_options = list(enabled = FALSE)
+              app_options = list(enabled = FALSE),
+              app_auth = list(
+                enabled = FALSE,
+                account_count = 0L,
+                timeout_minutes = 15L
+              )
             ),
             class = c("builder_build_plan", "list")
           )
@@ -593,7 +644,14 @@ test_that("coordinator publishes only its verified assigned stage", {
     builder_task9_source()
     root <- withr::local_tempdir()
     handle <- builder_coordinator_prepare(
-      list(out_dir = file.path(root, "release")),
+      list(
+        out_dir = file.path(root, "release"),
+        app_auth = list(
+          enabled = FALSE,
+          account_count = 0L,
+          timeout_minutes = 15L
+        )
+      ),
       "build-verified"
     )
     writeLines("new", file.path(handle$stage, "dataset.crb"))
@@ -726,7 +784,12 @@ test_that("unrecorded nested release members remain foreign and untouched", {
           out_dir = target,
           overwrite = TRUE,
           targets = planned,
-          output_release = list(targets = planned)
+          output_release = list(targets = planned),
+          app_auth = list(
+            enabled = FALSE,
+            account_count = 0L,
+            timeout_minutes = 15L
+          )
         ),
         "build-nested-foreign"
       ),
@@ -777,7 +840,12 @@ test_that("one prior snapshot prevents record ABA from claiming foreign files", 
             overwrite = TRUE,
             targets = planned,
             output_release = list(targets = planned),
-            expected_prior_identity = expected_prior
+            expected_prior_identity = expected_prior,
+            app_auth = list(
+              enabled = FALSE,
+              account_count = 0L,
+              timeout_minutes = 15L
+            )
           ),
           "build-record-aba"
         )
@@ -818,7 +886,12 @@ test_that("legacy releases cannot silently shrink", {
           out_dir = target,
           overwrite = TRUE,
           targets = file.path(target, "01-a.crb"),
-          output_release = list(targets = file.path(target, "01-a.crb"))
+          output_release = list(targets = file.path(target, "01-a.crb")),
+          app_auth = list(
+            enabled = FALSE,
+            account_count = 0L,
+            timeout_minutes = 15L
+          )
         ),
         "build-legacy-shrink"
       ),
@@ -865,7 +938,12 @@ test_that("legacy nested topology cannot silently shrink", {
         out_dir = target,
         overwrite = TRUE,
         targets = planned,
-        output_release = list(targets = planned)
+        output_release = list(targets = planned),
+        app_auth = list(
+          enabled = FALSE,
+          account_count = 0L,
+          timeout_minutes = 15L
+        )
       ),
       "build-legacy-nested-shrink"
     )
@@ -985,7 +1063,12 @@ test_that("whole-release publication preserves foreign output occupants", {
       out_dir = target,
       overwrite = TRUE,
       targets = file.path(target, "dataset.crb"),
-      output_release = list(targets = file.path(target, "dataset.crb"))
+      output_release = list(targets = file.path(target, "dataset.crb")),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      )
     )
 
     expect_error(
@@ -1008,7 +1091,12 @@ test_that("known prior outputs still require explicit replacement", {
       out_dir = target,
       overwrite = FALSE,
       targets = file.path(target, "dataset.crb"),
-      output_release = list(targets = file.path(target, "dataset.crb"))
+      output_release = list(targets = file.path(target, "dataset.crb")),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      )
     )
 
     expect_error(
@@ -1030,7 +1118,12 @@ test_that("unplanned staged artifacts cannot enter the release", {
         out_dir = target,
         overwrite = FALSE,
         targets = planned,
-        output_release = list(targets = planned)
+        output_release = list(targets = planned),
+        app_auth = list(
+          enabled = FALSE,
+          account_count = 0L,
+          timeout_minutes = 15L
+        )
       ),
       "build-unplanned"
     )
@@ -1588,6 +1681,87 @@ test_that("coordinator freezes only the portable report-plan projection", {
       plan$output_release$targets
     )
     expect_true(builder_coordinator_abort(handle)$aborted)
+  })
+})
+
+test_that("coordinator report projection rebuilds only safe auth fields", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    plan <- builder_crb_coordinator_plan(
+      file.path(root, "release"),
+      "dataset-a.crb"
+    )
+    plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L,
+      accounts = "auth-report-account-sentinel-91c4",
+      passphrase = "auth-report-passphrase-sentinel-91c4"
+    )
+
+    report_plan <- .builder_coordinator_report_plan(plan)
+
+    expect_identical(
+      report_plan$app_auth,
+      list(enabled = FALSE, account_count = 0L, timeout_minutes = 15L)
+    )
+    expect_false(builder_serialized_contains(
+      report_plan,
+      "auth-report-account-sentinel-91c4"
+    ))
+    expect_false(builder_serialized_contains(
+      report_plan,
+      "auth-report-passphrase-sentinel-91c4"
+    ))
+  })
+})
+
+test_that("coordinator rejects forged auth on CRB-only plans", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    plan <- builder_crb_coordinator_plan(
+      file.path(root, "release"),
+      "dataset-a.crb"
+    )
+    cases <- list(
+      extra_fields = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L,
+        accounts = "auth-forged-account-sentinel-91c4",
+        passphrase = "auth-forged-passphrase-sentinel-91c4"
+      ),
+      login_without_app = list(
+        enabled = TRUE,
+        account_count = 1L,
+        timeout_minutes = 15L
+      )
+    )
+    for (name in names(cases)) {
+      plan$app_auth <- cases[[name]]
+      error <- tryCatch(
+        builder_coordinator_prepare(plan, paste0("forged-crb-auth-", name)),
+        error = identity
+      )
+
+      expect_s3_class(error, "error")
+      expect_match(
+        conditionMessage(error),
+        "invalid",
+        ignore.case = TRUE,
+        info = name
+      )
+      expect_false(builder_serialized_contains(
+        error,
+        "auth-forged-account-sentinel-91c4"
+      ))
+      expect_false(builder_serialized_contains(
+        error,
+        "auth-forged-passphrase-sentinel-91c4"
+      ))
+    }
   })
 })
 

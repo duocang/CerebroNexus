@@ -309,6 +309,11 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     app_options = list(
       initial_dataset = "dataset-b",
       show_upload_ui = FALSE
+    ),
+    app_auth = list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
     )
   )
   if (!is.null(plan$error)) {

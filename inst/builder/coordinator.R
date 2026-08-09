@@ -18,6 +18,7 @@
 }
 
 .builder_coordinator_report_plan <- function(plan) {
+  app_auth <- .subset2(plan, "app_auth")
   items <- lapply(plan$items, function(item) {
     list(
       id = item$id,
@@ -52,12 +53,11 @@
       out_dir = plan$out_dir,
       make_app = plan$make_app,
       dataset_order = plan$dataset_order,
-      app_auth = plan$app_auth %||%
-        list(
-          enabled = FALSE,
-          account_count = 0L,
-          timeout_minutes = 15L
-        ),
+      app_auth = list(
+        enabled = isTRUE(.subset2(app_auth, "enabled")),
+        account_count = as.integer(.subset2(app_auth, "account_count")),
+        timeout_minutes = 15L
+      ),
       items = items,
       manifest = manifest,
       acknowledgements = as.character(unique(.builder_report_strings(
@@ -85,6 +85,14 @@
       "App publication requires an inert contract-v1 BuildPlan.",
       call. = FALSE
     )
+  }
+  app_auth <- .subset2(plan, "app_auth")
+  if (
+    !.builder_app_auth_summary_valid(app_auth) ||
+      (!isTRUE(.subset2(plan, "make_app")) &&
+        isTRUE(.subset2(app_auth, "enabled")))
+  ) {
+    stop("The App publication expectation is invalid.", call. = FALSE)
   }
   if (!isTRUE(.subset2(plan, "make_app"))) {
     return(list(

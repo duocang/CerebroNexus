@@ -32,6 +32,11 @@ builder_report_fixture <- function(
       viewer_bundle_assets = character(),
       private_assets = "dataset-a.crb",
       app_options = list(enabled = FALSE),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      ),
       output_release = list(
         directory = "/Users/private/source/release",
         targets = "/Users/private/source/release/dataset-a.crb"

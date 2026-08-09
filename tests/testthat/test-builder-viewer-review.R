@@ -50,6 +50,11 @@ builder_viewer_review_plan <- function(with_trajectory = TRUE) {
         point_size = list(overview_projection_point_size = 4),
         variable_to_compare = FALSE
       ),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      ),
       output_release = list(
         directory = "/tmp/output",
         replacement_policy = "preserve_existing",

@@ -119,6 +119,11 @@ builder_stage_frozen_plan <- function(make_app = TRUE) {
         display_mode = "normal",
         launch_browser = TRUE
       ),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      ),
       output_release = list(
         directory = "/private/host/output",
         overwrite = FALSE,

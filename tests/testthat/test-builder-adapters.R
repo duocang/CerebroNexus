@@ -378,6 +378,12 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
     list(
       make_app = FALSE,
       app_contract_version = 0L,
+      app_options = list(enabled = FALSE),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      ),
       items = list(list(
         id = "ds1",
         name = "PBMC",

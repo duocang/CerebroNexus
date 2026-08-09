@@ -268,7 +268,12 @@ generated_app_e2e_stop <- function() {
     unname(entries),
     release,
     make_app = TRUE,
-    app_options = c(app_settings, list(launch_browser = FALSE))
+    app_options = c(app_settings, list(launch_browser = FALSE)),
+    app_auth = list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
   )
   if (!is.null(plan$error)) {
     stop(
