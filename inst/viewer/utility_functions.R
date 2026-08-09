@@ -790,11 +790,24 @@ assignColorsToGroups <- function(table, grouping_variable) {
 ## Build hover info for projections.
 ##----------------------------------------------------------------------------##
 buildHoverInfoForProjections <- function(table) {
+  transcript_column <- intersect(c("nUMI", "nCount_RNA"), colnames(table))
+  gene_column <- intersect(c("nGene", "nFeature_RNA"), colnames(table))
+  transcript_count <- if (length(transcript_column)) {
+    table[[transcript_column[[1]]]]
+  } else {
+    rep(NA_real_, nrow(table))
+  }
+  expressed_genes <- if (length(gene_column)) {
+    table[[gene_column[[1]]]]
+  } else {
+    rep(NA_real_, nrow(table))
+  }
+
   ## put together cell ID, number of transcripts and number of expressed genes
   hover_info <- glue::glue(
     "<b>Cell</b>: {table[[ 'cell_barcode' ]]}<br>",
-    "<b>Transcripts</b>: {formatC(table[[ 'nUMI' ]], format = 'f', big.mark = ',', digits = 0)}<br>",
-    "<b>Expressed genes</b>: {formatC(table[[ 'nGene' ]], format = 'f', big.mark = ',', digits = 0)}"
+    "<b>Transcripts</b>: {formatC(transcript_count, format = 'f', big.mark = ',', digits = 0)}<br>",
+    "<b>Expressed genes</b>: {formatC(expressed_genes, format = 'f', big.mark = ',', digits = 0)}"
   )
   ## add info for known grouping variables
   for (group in getGroups()) {

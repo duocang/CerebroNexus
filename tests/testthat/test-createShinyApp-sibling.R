@@ -95,7 +95,7 @@ render_bundle_spatial_background <- function(
 
   js <- get("js", envir = asNamespace("shinyjs"))
   binding_names <- c(
-    "getContainerDimensions",
+    "getSpatialContainerDimensions",
     "updatePlot2DContinuousSpatial"
   )
   binding_existed <- vapply(
@@ -126,8 +126,8 @@ render_bundle_spatial_background <- function(
 
   rendered_meta <- NULL
   assign(
-    "getContainerDimensions",
-    function() list(width = 800, height = 600),
+    "getSpatialContainerDimensions",
+    function(plot_id) list(width = 800, height = 600),
     envir = js
   )
   assign(

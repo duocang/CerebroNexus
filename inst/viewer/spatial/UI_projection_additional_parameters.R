@@ -2,6 +2,8 @@
 ## UI elements to set additional parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
+  projection_to_display <- spatial_projection_primary_descriptor()$name
+
   ## Start from a dynamic default sized to the spot count + canvas, falling back
   ## to the fixed default if that can't be computed. A dataset-specific preset
   ## (below) still takes precedence over this when one is configured.
@@ -9,7 +11,7 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
     dynamicPointSize(
       n_points = tryCatch(
         nrow(
-          getSpatialData(input[["spatial_projection_to_display"]])$coordinates
+          getSpatialData(projection_to_display)$coordinates
         ),
         error = function(e) nrow(getMetaData())
       ),
@@ -67,10 +69,9 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
   tryCatch(
     {
       req(
-        !is.null(input[["spatial_projection_to_display"]]),
-        input[["spatial_projection_to_display"]] %in% availableSpatial()
+        projection_to_display %in% availableSpatial()
       )
-      sp <- getSpatialData(input[["spatial_projection_to_display"]])
+      sp <- getSpatialData(projection_to_display)
       co <- sp$coordinates
       x <- co[[1]][is.finite(co[[1]])]
       y <- co[[2]][is.finite(co[[2]])]

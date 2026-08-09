@@ -536,7 +536,7 @@ spatial_layout <- function(i, reg, nn) {
   }
   data.frame(x = round(x * 1000, 2), y = round(y * 1000, 2))
 }
-he_png_donor <- function(i, w = 320L, h = 320L) {
+he_png_donor <- function(i, w = 320L, h = 320L, palette = "rose") {
   set.seed(700 + i)
   tmp <- tempfile(fileext = ".png")
   grDevices::png(tmp, width = w, height = h, bg = "#ffffff")
@@ -545,11 +545,13 @@ he_png_donor <- function(i, w = 320L, h = 320L) {
   graphics::plot.window(c(0, 1), c(0, 1))
   if (i == 1) {
     ## rosy disc
+    tissue_color <- if (identical(palette, "blue")) "#c8e3f5" else "#f3c9de"
+    nucleus_color <- if (identical(palette, "blue")) "#245b8a" else "#6a2c74"
     th <- seq(0, 2 * pi, length.out = 90)
     graphics::polygon(
       0.5 + 0.47 * cos(th),
       0.5 + 0.47 * sin(th),
-      col = "#f3c9de",
+      col = tissue_color,
       border = NA
     )
     nn <- 520
@@ -560,7 +562,7 @@ he_png_donor <- function(i, w = 320L, h = 320L) {
       0.5 + r * sin(ang),
       pch = 19,
       cex = runif(nn, 0.4, 1.2),
-      col = grDevices::adjustcolor("#6a2c74", 0.5)
+      col = grDevices::adjustcolor(nucleus_color, 0.5)
     )
   } else if (i == 2) {
     ## purple layered strip — horizontal bands of tint + dense nuclei
@@ -626,10 +628,11 @@ for (dn in SAMPLES) {
   rownames(co) <- barcodes[ix]
   xr <- range(co$x)
   yr <- range(co$y)
-  spatial_bank[[dn]] <- list(
+  embedded_image <- he_png_donor(i)
+  spatial_entry <- list(
     coordinates = co,
     expression = expression[, ix, drop = FALSE],
-    histology_image = he_png_donor(i),
+    histology_image = embedded_image,
     histology_image_bounds = list(
       xmin = xr[1],
       xmax = xr[2],
@@ -637,6 +640,13 @@ for (dn in SAMPLES) {
       ymax = yr[2]
     )
   )
+  if (i == 1L) {
+    spatial_entry$histology_images <- list(
+      "Rose H&E" = embedded_image,
+      "Blue H&E" = he_png_donor(i, palette = "blue")
+    )
+  }
+  spatial_bank[[dn]] <- spatial_entry
 }
 
 ## ---- 9. Trekker: positioned single-cell subset --------------------------- ##
@@ -911,6 +921,12 @@ for (nm in check$availableSpatial()) {
     )
   )
 }
+stopifnot(
+  "donorA should expose two embedded background variants" = length(
+    check$getSpatialData("donorA tissue")$histology_images
+  ) ==
+    2L
+)
 ## the three-state restriction column must actually show all three states
 stopifnot(
   "restriction_in_genotype must be yes/no/unknown" = all(

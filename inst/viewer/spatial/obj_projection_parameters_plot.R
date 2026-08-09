@@ -1,21 +1,22 @@
 ##----------------------------------------------------------------------------##
 ## Collect parameters for projection plot.
 ##----------------------------------------------------------------------------##
-spatial_projection_parameters_plot_raw <- reactive({
+spatial_projection_parameters_for <- function(spatial_name, background_id) {
   req(
-    input[["spatial_projection_to_display"]] %in% availableSpatial(),
+    spatial_name %in% availableSpatial(),
     input[["spatial_projection_plot_type"]],
     input[["spatial_projection_point_size"]],
     input[["spatial_projection_point_opacity"]],
     !is.null(input[["spatial_projection_point_border"]]),
+    !is.null(input[["spatial_projection_fit_visible_cells"]]),
     input[["spatial_projection_scale_x_manual_range"]],
     input[["spatial_projection_scale_y_manual_range"]],
     !is.null(preferences[["use_webgl"]]),
     !is.null(preferences[["show_hover_info_in_projections"]])
   )
   message(
-    '[spatial] params reactive triggered, background = ',
-    input[["spatial_projection_background_image"]]
+    '[spatial] params reactive triggered, background mode = ',
+    input[["spatial_projection_background_mode"]] %||% "auto"
   )
 
   plot_type <- input[["spatial_projection_plot_type"]]
@@ -191,15 +192,15 @@ spatial_projection_parameters_plot_raw <- reactive({
     }
   }
 
-  spatial_data <- getSpatialData(input[["spatial_projection_to_display"]])
+  spatial_data <- getSpatialData(spatial_name)
   n_dimensions <- ncol(spatial_data$coordinates)
 
   ## A .crb built from real data may embed the genuine histology image (base64
   ## data: URI) plus its extent in coordinate space. When present it is offered
   ## as a background choice ("__embedded__") and rendered directly, aligned via
   ## its stored bounds — no external file, no manual flip/scale.
-  embedded_image <- spatial_data$histology_image
-  embedded_bounds <- spatial_data$histology_image_bounds
+  embedded_backgrounds <- spatial_embedded_backgrounds(spatial_data)
+  embedded_ids <- names(embedded_backgrounds)
 
   ## Normalise the background choice against the CURRENT dataset. When the user
   ## switches from an image-bearing demo (where they picked "__embedded__") to
@@ -207,7 +208,7 @@ spatial_projection_parameters_plot_raw <- reactive({
   ## "__embedded__" input value would otherwise leave `background_image` pointing
   ## at an image this dataset does not have, wedging the plot update. Fall back to
   ## no background whenever the embedded image is absent.
-  background_image <- input[["spatial_projection_background_image"]]
+  background_image <- input[[background_id]]
   configured_crb_files <- if (exists("Cerebro.options")) {
     Cerebro.options[["crb_file_to_load"]]
   } else {
@@ -224,14 +225,18 @@ spatial_projection_parameters_plot_raw <- reactive({
     selected_crb,
     names(configured_crb_files)
   )
-  background_image <- normalize_spatial_background_choice(
+  background_image <- resolve_spatial_background_mode(
     background_image,
+    input[["spatial_projection_background_mode"]] %||% "auto",
     configured_background_images,
-    !is.null(embedded_image)
+    embedded_ids
   )
+  selected_embedded <- embedded_backgrounds[[background_image]]
+  embedded_image <- selected_embedded$image %||% NULL
+  embedded_bounds <- selected_embedded$bounds %||% NULL
 
   parameters <- list(
-    projection = input[["spatial_projection_to_display"]],
+    projection = spatial_name,
     n_dimensions = n_dimensions,
     color_variable = color_variable,
     plot_type = plot_type,
@@ -246,12 +251,16 @@ spatial_projection_parameters_plot_raw <- reactive({
     show_region_outlines = isTRUE(
       input[["spatial_projection_show_region_outlines"]]
     ),
+    fit_visible_cells = isTRUE(
+      input[["spatial_projection_fit_visible_cells"]]
+    ),
     x_range = input[["spatial_projection_scale_x_manual_range"]],
     y_range = input[["spatial_projection_scale_y_manual_range"]],
     background_image = background_image,
     background_image_allowlist = configured_background_images,
     embedded_image = embedded_image,
     embedded_bounds = embedded_bounds,
+    embedded_image_ids = embedded_ids,
     background_flip_x = background_flip_x,
     background_flip_y = background_flip_y,
     background_scale_x = background_scale_x,
@@ -264,6 +273,35 @@ spatial_projection_parameters_plot_raw <- reactive({
   )
   # message(str(parameters))
   return(parameters)
+}
+
+spatial_projection_primary_descriptor <- reactive({
+  spatial_names <- availableSpatial()
+  selected <- normalize_spatial_panel_selection(
+    input[["spatial_projection_to_display"]],
+    spatial_names
+  )
+  req(length(selected) > 0L)
+  descriptors <- spatial_panel_descriptors(spatial_names)
+  selected_descriptors <- descriptors[match(selected, spatial_names)]
+  active_key <- if (exists("spatial_projection_active_panel_key")) {
+    spatial_projection_active_panel_key()
+  } else {
+    NULL
+  }
+  active_index <- match(
+    active_key,
+    vapply(selected_descriptors, `[[`, character(1), "key")
+  )
+  if (is.na(active_index)) {
+    active_index <- 1L
+  }
+  selected_descriptors[[active_index]]
+})
+
+spatial_projection_parameters_plot_raw <- reactive({
+  panel <- spatial_projection_primary_descriptor()
+  spatial_projection_parameters_for(panel$name, panel$background_id)
 })
 
 spatial_projection_parameters_plot <- debounce(

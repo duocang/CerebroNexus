@@ -2828,6 +2828,15 @@ var focusPanel = null;
   function spatialImages(sp) {
     if (!sp) return [];
     if (sp.images && sp.images.length) return sp.images;
+    // Multi-section bundles keep the large image payload on each sample rather
+    // than duplicating the opening sample's base64 data at the space level.
+    // Before the picker has changed section, `_sampleName` is unset and the
+    // opening sample is the active one.
+    var samples = sp.samples || [];
+    var name = sp._sampleName || (samples[0] && samples[0].name);
+    var sample = samples.filter(function (s) { return s.name === name; })[0];
+    if (sample && sample.images && sample.images.length) return sample.images;
+    if (sample && sample.image && sample.image.uri) return [sample.image];
     // `image` is a reference to the default, without the pixels -- it names an
     // entry of `images`. Only a bundle predating that carries a usable one.
     return (sp.image && sp.image.uri) ? [sp.image] : [];

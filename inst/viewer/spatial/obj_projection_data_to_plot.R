@@ -1,21 +1,28 @@
 ##----------------------------------------------------------------------------##
 ## Collect data required to update projection.
 ##----------------------------------------------------------------------------##
-spatial_projection_data_to_plot_raw <- reactive({
-  req(
-    spatial_projection_metadata(),
-    spatial_projection_coordinates(),
-    spatial_projection_parameters_plot(),
-    reactive_colors(),
-    spatial_projection_hover_info(),
-    nrow(spatial_projection_metadata()) ==
-      length(spatial_projection_hover_info()) ||
-      spatial_projection_hover_info() == "none"
+build_spatial_projection_data <- function(
+  metadata,
+  coordinates,
+  plot_parameters,
+  hover_info,
+  reset_axes = FALSE
+) {
+  metadata <- as.data.frame(metadata)
+
+  ## The metadata, coordinates and hover payload are aligned before this helper
+  ## is called. Keeping the builder explicit lets every Spatial panel reuse the
+  ## same rendering path without rebinding the global input object.
+  stopifnot(
+    nrow(metadata) == nrow(coordinates),
+    length(hover_info) == nrow(metadata) || identical(hover_info, "none")
   )
-  metadata <- spatial_projection_metadata()
-  plot_parameters <- spatial_projection_parameters_plot()
 
   ## Handle ImageFeaturePlot (add gene expression data)
+  ##
+  ## Expression retrieval remains here rather than in each panel: every panel
+  ## receives the same filtered cell order, so the data-set method returns the
+  ## same aligned vector for all coordinate systems.
   if (
     plot_parameters$plot_type == 'ImageFeaturePlot' &&
       !is.null(plot_parameters$feature_to_display)
@@ -130,13 +137,24 @@ spatial_projection_data_to_plot_raw <- reactive({
   }
 
   ## Apply rotation to the displayed (subset) coordinates.
-  coordinates <- rotate_coords(spatial_projection_coordinates())
+  coordinates <- rotate_coords(coordinates)
 
-  ## Pin the axes to the FULL cell extent, not the currently displayed subset.
-  ## Otherwise, changing "Show % of cells" rescales the axes to whatever subset
-  ## is plotted and the plot visibly jitters. We compute the range over ALL cells
-  ## (in the same rotated frame) and pass it as an explicit x/y range, unless the
-  ## user has set a manual range. A small margin keeps edge points off the frame.
+  ## By default each panel frames the cells that actually remain after the
+  ## shared filters and "Show % of cells" setting. This is intentionally
+  ## panel-local: different tissues can occupy very different coordinate spans.
+  ## Turning visible fitting off restores the shared manual X/Y controls.
+  axis_ranges <- spatial_projection_axis_ranges(
+    coordinates,
+    fit_visible = plot_parameters[["fit_visible_cells"]],
+    x_range = plot_parameters[["x_range"]],
+    y_range = plot_parameters[["y_range"]]
+  )
+  plot_parameters[["x_range"]] <- axis_ranges$x
+  plot_parameters[["y_range"]] <- axis_ranges$y
+
+  ## Legacy/manual fallback: if visible fitting is disabled but the range inputs
+  ## are not ready yet, use the full cell extent rather than sending an invalid
+  ## viewport. A small margin keeps edge points off the frame.
   if (
     is.null(plot_parameters[["x_range"]]) ||
       length(plot_parameters[["x_range"]]) < 2 ||
@@ -162,11 +180,9 @@ spatial_projection_data_to_plot_raw <- reactive({
     }
   }
 
-  ## With an explicit full-extent range we must NOT let the JS autorange (which
-  ## would refit to the subset). reset_axes is meant to snap back to the full
-  ## view on a dataset switch — that is exactly the full-extent range we set, so
-  ## honour a manual range but otherwise keep the fixed range.
-  reset_axes <- isolate(spatial_projection_parameters_other[['reset_axes']])
+  ## Every valid path now supplies an explicit range: either the visible-cell
+  ## fit, the user's manual values, or the full-extent fallback above. Keep that
+  ## range instead of asking Plotly to autorange a second time.
   if (
     length(plot_parameters[["x_range"]]) >= 2 &&
       length(plot_parameters[["y_range"]]) >= 2
@@ -181,10 +197,32 @@ spatial_projection_data_to_plot_raw <- reactive({
     reset_axes = reset_axes,
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
-    hover_info = spatial_projection_hover_info()
+    hover_info = hover_info
   )
 
-  return(to_return)
+  to_return
+}
+
+spatial_projection_data_to_plot_raw <- reactive({
+  req(
+    spatial_projection_metadata(),
+    spatial_projection_coordinates(),
+    spatial_projection_parameters_plot(),
+    reactive_colors(),
+    spatial_projection_hover_info(),
+    nrow(spatial_projection_metadata()) ==
+      length(spatial_projection_hover_info()) ||
+      spatial_projection_hover_info() == "none"
+  )
+  build_spatial_projection_data(
+    metadata = spatial_projection_metadata(),
+    coordinates = spatial_projection_coordinates(),
+    plot_parameters = spatial_projection_parameters_plot(),
+    hover_info = spatial_projection_hover_info(),
+    reset_axes = isolate(
+      spatial_projection_parameters_other[['reset_axes']]
+    )
+  )
 })
 
 spatial_projection_data_to_plot <- debounce(

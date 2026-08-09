@@ -30,69 +30,26 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     ]
   }
 
-  ## prepare background image choices
-  background_choices <- c("No Background")
-
-  ## Real .crb data may carry a genuine histology image embedded in the spatial
-  ## slot. Offer it ONLY when the CURRENTLY DISPLAYED spatial entry has one — not
-  ## when any dataset does. Otherwise a bead-only platform (Slide-seq, no image
-  ## by design) would list "__embedded__" and show a neighbouring dataset's
-  ## tissue image behind its cells.
-  current_spatial <- input[["spatial_projection_to_display"]]
-  if (
-    is.null(current_spatial) ||
-      !(current_spatial %in% availableSpatial())
-  ) {
-    current_spatial <- availableSpatial()[1]
-  }
-  current_sd <- tryCatch(
-    getSpatialData(current_spatial),
-    error = function(e) NULL
+  spatial_names <- availableSpatial()
+  selected_spatial <- normalize_spatial_panel_selection(
+    isolate(input[["spatial_projection_to_display"]]),
+    spatial_names
   )
-  has_embedded <- !is.null(current_sd) && !is.null(current_sd$histology_image)
-  if (has_embedded) {
-    background_choices <- c(
-      background_choices,
-      "Tissue background (H&E / DAPI)" = "__embedded__"
-    )
-  }
-
-  if (
-    exists("Cerebro.options") && !is.null(Cerebro.options[["spatial_images"]])
-  ) {
-    configured_crb_files <- Cerebro.options[["crb_file_to_load"]]
-    selected_crb <- if (exists("available_crb_files")) {
-      available_crb_files$selected
-    } else {
-      NULL
-    }
-    ## Resolve against configured CRBs, not the switcher state: uploads clear
-    ## that state and must not inherit a configured dataset's image.
-    img_paths <- configured_spatial_images(
-      Cerebro.options,
-      configured_crb_files,
-      selected_crb,
-      names(configured_crb_files)
-    )
-    if (length(img_paths) > 0L) {
-      background_choices <- c(
-        background_choices,
-        setNames(img_paths, basename(img_paths))
-      )
-    }
+  if (!length(selected_spatial)) {
+    selected_spatial <- spatial_names[[1L]]
   }
 
   tagList(
-    selectInput(
+    selectizeInput(
       "spatial_projection_to_display",
       label = "Spatial data",
-      choices = availableSpatial(),
-      ## This renderUI depends on the input above (via current_spatial, for the
-      ## background-image options), so it re-runs whenever you pick a sample.
-      ## Without `selected`, the rebuilt control would snap back to the first
-      ## choice — pin it to the current selection so multi-sample data sets stay
-      ## on the sample you chose.
-      selected = current_spatial
+      choices = spatial_names,
+      selected = selected_spatial,
+      multiple = TRUE,
+      options = list(
+        plugins = list("remove_button"),
+        placeholder = "Select one or more spatial data sets"
+      )
     ),
     selectInput(
       "spatial_projection_plot_type",
@@ -161,17 +118,172 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
         )
       )
     ),
-    if (length(background_choices) > 1) {
-      ## Only the image PICKER lives in Main parameters. All the appearance
-      ## adjustments (opacity, move, flip, scale, rotate) live in Additional
-      ## parameters and are decoupled from the scatter plot.
-      selectInput(
-        "spatial_projection_background_image",
-        label = "Background image",
-        choices = background_choices,
-        selected = "No Background"
+    uiOutput("spatial_projection_background_controls_UI")
+  )
+})
+
+## Background choices live in their own dynamic output. Keeping them separate
+## from the Spatial-data selectize prevents a selection change from destroying
+## and recreating the selector that triggered it.
+output[["spatial_projection_background_controls_UI"]] <- renderUI({
+  spatial_names <- availableSpatial()
+  selected_spatial <- normalize_spatial_panel_selection(
+    input[["spatial_projection_to_display"]],
+    spatial_names
+  )
+  req(length(selected_spatial) > 0L)
+  panel_descriptors <- spatial_panel_descriptors(spatial_names)
+
+  ## Configured external images are data-set-level choices. Embedded images are
+  ## resolved per spatial entry so each panel only offers its own image.
+  configured_background_images <- character()
+  if (
+    exists("Cerebro.options") && !is.null(Cerebro.options[["spatial_images"]])
+  ) {
+    configured_crb_files <- Cerebro.options[["crb_file_to_load"]]
+    selected_crb <- if (exists("available_crb_files")) {
+      available_crb_files$selected
+    } else {
+      NULL
+    }
+    configured_background_images <- configured_spatial_images(
+      Cerebro.options,
+      configured_crb_files,
+      selected_crb,
+      names(configured_crb_files)
+    )
+  }
+
+  background_controls <- lapply(selected_spatial, function(spatial_name) {
+    panel <- panel_descriptors[[match(spatial_name, spatial_names)]]
+    spatial_data <- tryCatch(
+      getSpatialData(spatial_name),
+      error = function(error) NULL
+    )
+    embedded_backgrounds <- spatial_embedded_backgrounds(spatial_data)
+    embedded_ids <- names(embedded_backgrounds)
+    choices <- character()
+    if (length(embedded_backgrounds)) {
+      embedded_labels <- vapply(
+        embedded_backgrounds,
+        `[[`,
+        character(1),
+        "label"
+      )
+      choices <- c(choices, stats::setNames(embedded_ids, embedded_labels))
+    }
+    if (length(configured_background_images)) {
+      choices <- c(
+        choices,
+        setNames(
+          configured_background_images,
+          basename(configured_background_images)
+        )
       )
     }
+    raw_background <- isolate(input[[panel$background_id]])
+    selected_background <- resolve_spatial_background_mode(
+      raw_background,
+      "custom",
+      configured_background_images,
+      embedded_ids
+    )
+    image_count <- length(choices)
+    control <- if (!image_count) {
+      tags$span(class = "spatial-background-unavailable", "No image available")
+    } else if (image_count == 1L) {
+      tags$div(
+        class = "spatial-background-single",
+        tags$div(
+          class = "spatial-background-single-copy",
+          tags$span(
+            class = "spatial-background-image-icon",
+            `aria-hidden` = "true"
+          ),
+          tags$span(
+            class = "spatial-background-single-name",
+            names(choices)[[1L]]
+          )
+        ),
+        shinyWidgets::materialSwitch(
+          panel$background_id,
+          label = NULL,
+          value = !identical(selected_background, "No Background"),
+          status = "warning",
+          inline = TRUE
+        )
+      )
+    } else {
+      tags$div(
+        class = "spatial-background-multiple",
+        selectInput(
+          panel$background_id,
+          label = NULL,
+          choices = c("None" = "No Background", choices),
+          selected = selected_background
+        )
+      )
+    }
+    tags$div(
+      class = "spatial-background-row",
+      tags$div(
+        class = "spatial-background-row-heading",
+        tags$span(class = "spatial-background-row-label", spatial_name),
+        tags$span(
+          class = "spatial-background-count",
+          if (image_count == 1L) "1 image" else paste(image_count, "images")
+        )
+      ),
+      control
+    )
+  })
+
+  current_mode <- isolate(input[["spatial_projection_background_mode"]]) %||%
+    "auto"
+  mode_button <- function(mode, label) {
+    tags$button(
+      type = "button",
+      class = paste(
+        "btn btn-default spatial-background-mode-option",
+        if (identical(mode, current_mode)) "is-active" else ""
+      ),
+      `data-spatial-background-mode` = mode,
+      onclick = paste0(
+        "spatialSetBackgroundMode(this, '",
+        mode,
+        "');"
+      ),
+      label
+    )
+  }
+  customize <- shinyWidgets::dropdownButton(
+    tags$div(class = "spatial-background-customize-list", background_controls),
+    inputId = "spatial_projection_background_customize",
+    label = "Customize…",
+    circle = FALSE,
+    inline = TRUE,
+    width = "390px",
+    margin = "0"
+  )
+  customize <- shiny::tagAppendAttributes(
+    customize,
+    class = paste(
+      "spatial-background-customize",
+      if (identical(current_mode, "custom")) "is-active" else ""
+    ),
+    `data-spatial-background-mode` = "custom",
+    onclick = "spatialSetBackgroundMode(this, 'custom');"
+  )
+
+  tags$div(
+    class = "spatial-background-controls",
+    tags$label(class = "control-label", "Background image"),
+    tags$div(
+      class = "spatial-background-mode btn-group",
+      mode_button("auto", "Auto"),
+      mode_button("none", "None"),
+      customize
+    )
   )
 })
 
@@ -212,6 +324,11 @@ lapply(
 outputOptions(
   output,
   "spatial_projection_main_parameters_UI",
+  suspendWhenHidden = FALSE
+)
+outputOptions(
+  output,
+  "spatial_projection_background_controls_UI",
   suspendWhenHidden = FALSE
 )
 

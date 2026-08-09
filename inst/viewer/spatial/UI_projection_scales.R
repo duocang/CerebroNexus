@@ -8,15 +8,7 @@ output[["spatial_projection_scales_UI"]] <- renderUI({
   ## below is empty, and range() warns ("no non-missing arguments to min/max")
   ## then feeds Inf / -Inf into the axis sliders.
   req(availableSpatial())
-  if (
-    is.null(input[["spatial_projection_to_display"]]) ||
-      is.na(input[["spatial_projection_to_display"]]) ||
-      input[["spatial_projection_to_display"]] %in% availableSpatial() == FALSE
-  ) {
-    projection_to_display <- availableSpatial()[1]
-  } else {
-    projection_to_display <- input[["spatial_projection_to_display"]]
-  }
+  projection_to_display <- spatial_projection_primary_descriptor()$name
   ##
   spatial_data <- getSpatialData(projection_to_display)
   co <- spatial_data$coordinates
@@ -39,19 +31,27 @@ output[["spatial_projection_scales_UI"]] <- renderUI({
   y_hi <- round(y_rng[2] + y_mar)
   ##
   tagList(
-    sliderInput(
-      "spatial_projection_scale_x_manual_range",
-      label = "Range of X axis",
-      min = round(x_rng[1] - diff(x_rng) * 0.2),
-      max = round(x_rng[2] + diff(x_rng) * 0.2),
-      value = c(x_lo, x_hi)
+    checkboxInput(
+      "spatial_projection_fit_visible_cells",
+      label = "Fit axes to visible cells",
+      value = TRUE
     ),
-    sliderInput(
-      "spatial_projection_scale_y_manual_range",
-      label = "Range of Y axis",
-      min = round(y_rng[1] - diff(y_rng) * 0.2),
-      max = round(y_rng[2] + diff(y_rng) * 0.2),
-      value = c(y_lo, y_hi)
+    conditionalPanel(
+      condition = "!input.spatial_projection_fit_visible_cells",
+      sliderInput(
+        "spatial_projection_scale_x_manual_range",
+        label = "Range of X axis",
+        min = round(x_rng[1] - diff(x_rng) * 0.2),
+        max = round(x_rng[2] + diff(x_rng) * 0.2),
+        value = c(x_lo, x_hi)
+      ),
+      sliderInput(
+        "spatial_projection_scale_y_manual_range",
+        label = "Range of Y axis",
+        min = round(y_rng[1] - diff(y_rng) * 0.2),
+        max = round(y_rng[2] + diff(y_rng) * 0.2),
+        value = c(y_lo, y_hi)
+      )
     )
   )
 })

@@ -62,7 +62,10 @@ authorized_spatial_image_path <- function(
   image_path
 }
 
-spatial_projection_update_plot <- function(input) {
+spatial_projection_update_plot <- function(
+  input,
+  plot_id = "spatial_projection"
+) {
   ## assign input data to new variables
   metadata <- input[['cells_df']]
   coordinates <- input[['coordinates']]
@@ -89,7 +92,7 @@ spatial_projection_update_plot <- function(input) {
   color_input <- metadata[[color_variable]]
 
   ## get container dimensions
-  container_dimensions <- shinyjs::js$getContainerDimensions()
+  container_dimensions <- shinyjs::js$getSpatialContainerDimensions(plot_id)
   container_info <- list(
     width = container_dimensions[['width']],
     height = container_dimensions[['height']]
@@ -103,9 +106,11 @@ spatial_projection_update_plot <- function(input) {
   ## and coordinate-space bounds travel with the data, so it renders directly and
   ## aligns automatically — no file lookup, no manual flip/scale.
   selected_background <- plot_parameters[["background_image"]]
+  embedded_image_ids <- plot_parameters[["embedded_image_ids"]] %||%
+    "__embedded__"
   if (
     !is.null(selected_background) &&
-      identical(selected_background, "__embedded__") &&
+      selected_background %in% embedded_image_ids &&
       !is.null(plot_parameters[['embedded_image']])
   ) {
     background_image_data <- plot_parameters[['embedded_image']]
@@ -281,7 +286,8 @@ spatial_projection_update_plot <- function(input) {
   x_range_out <- plot_parameters[["x_range"]]
   y_range_out <- plot_parameters[["y_range"]]
   using_embedded <-
-    identical(plot_parameters[["background_image"]], "__embedded__") &&
+    plot_parameters[["background_image"]] %in%
+    embedded_image_ids &&
     !is.null(plot_parameters[["embedded_image"]]) &&
     length(image_bounds) > 0
   ## Images render in their native orientation by default. If a dataset needs a
@@ -333,6 +339,7 @@ spatial_projection_update_plot <- function(input) {
       if (nzchar(plot_parameters[["coexpr_b"]] %||% "")) "rgb(0,0,255)"
     )
     output_meta <- list(
+      plot_id = plot_id,
       is_spatial = TRUE,
       color_type = "coexpression",
       traces = as.list(coexpr_labels),
@@ -384,6 +391,7 @@ spatial_projection_update_plot <- function(input) {
   if (is.numeric(color_input)) {
     ## put together meta data
     output_meta <- list(
+      plot_id = plot_id,
       is_spatial = TRUE,
       color_type = 'continuous',
       traces = plot_parameters[['color_variable']],
@@ -449,6 +457,7 @@ spatial_projection_update_plot <- function(input) {
   } else {
     ## put together meta data
     output_meta <- list(
+      plot_id = plot_id,
       is_spatial = TRUE,
       color_type = 'categorical',
       traces = list(),

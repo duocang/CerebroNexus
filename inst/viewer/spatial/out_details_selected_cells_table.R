@@ -4,8 +4,7 @@
 output[["spatial_details_selected_cells_table"]] <- DT::renderDataTable({
   ## don't proceed without these inputs
   req(
-    input[["spatial_projection_to_display"]],
-    input[["spatial_projection_to_display"]] %in% availableSpatial(),
+    spatial_projection_primary_descriptor(),
     spatial_projection_data_to_plot()
   )
   meta_data <- getMetaData()

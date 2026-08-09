@@ -10,6 +10,79 @@
 ## only the host packages need to be installed, not CerebroNexus itself.
 ##----------------------------------------------------------------------------##
 
+spatial_panel_descriptors <- function(spatial_names) {
+  spatial_names <- as.character(spatial_names)
+  lapply(seq_along(spatial_names), function(index) {
+    key <- sprintf("spatial_panel_%03d", index)
+    plot_id <- if (index == 1L) {
+      "spatial_projection"
+    } else {
+      paste0("spatial_projection_", sprintf("%03d", index))
+    }
+    list(
+      name = spatial_names[[index]],
+      key = key,
+      plot_id = plot_id,
+      background_id = if (index == 1L) {
+        "spatial_projection_background_image"
+      } else {
+        paste0(plot_id, "_background_image")
+      },
+      morans_id = paste0(plot_id, "_morans_i"),
+      count_id = paste0(plot_id, "_selected_count"),
+      zoom_id = paste0(plot_id, "_zoom_to_selection"),
+      clear_id = paste0(plot_id, "_clear_selection")
+    )
+  })
+}
+
+normalize_spatial_panel_selection <- function(selected, available) {
+  if (is.null(selected) || !length(selected)) {
+    return(character())
+  }
+  selected <- as.character(selected)
+  available <- as.character(available)
+  unique(selected[!is.na(selected) & selected %in% available])
+}
+
+spatial_projection_axis_ranges <- function(
+  coordinates,
+  fit_visible = TRUE,
+  x_range = NULL,
+  y_range = NULL,
+  margin_fraction = 0.02
+) {
+  manual_ranges <- list(x = x_range, y = y_range)
+  if (
+    !isTRUE(fit_visible) || NROW(coordinates) == 0L || NCOL(coordinates) < 2L
+  ) {
+    return(manual_ranges)
+  }
+
+  x <- suppressWarnings(as.numeric(coordinates[, 1L]))
+  y <- suppressWarnings(as.numeric(coordinates[, 2L]))
+  keep <- is.finite(x) & is.finite(y)
+  if (!any(keep)) {
+    return(manual_ranges)
+  }
+
+  padded_range <- function(values) {
+    extent <- range(values, na.rm = TRUE)
+    span <- diff(extent)
+    margin <- if (is.finite(span) && span > 0) {
+      span * margin_fraction
+    } else {
+      max(abs(extent), 1) * margin_fraction
+    }
+    c(extent[[1L]] - margin, extent[[2L]] + margin)
+  }
+
+  list(
+    x = padded_range(x[keep]),
+    y = padded_range(y[keep])
+  )
+}
+
 resolve_spatial_image_preset <- function(
   option_name,
   fallback,
@@ -98,10 +171,19 @@ normalize_spatial_background_choice <- function(
   configured_images,
   has_embedded_image = FALSE
 ) {
+  embedded_ids <- if (isTRUE(has_embedded_image)) {
+    "__embedded__"
+  } else if (is.character(has_embedded_image)) {
+    unique(has_embedded_image[
+      !is.na(has_embedded_image) & nzchar(has_embedded_image)
+    ])
+  } else {
+    character()
+  }
   allowed <- c(
     "No Background",
     configured_images,
-    if (isTRUE(has_embedded_image)) "__embedded__"
+    embedded_ids
   )
   if (
     !is.character(background_image) ||
@@ -112,6 +194,108 @@ normalize_spatial_background_choice <- function(
     return("No Background")
   }
   background_image
+}
+
+resolve_spatial_background_mode <- function(
+  background_image,
+  mode = "auto",
+  configured_images = character(),
+  has_embedded_image = FALSE
+) {
+  embedded_ids <- if (isTRUE(has_embedded_image)) {
+    "__embedded__"
+  } else if (is.character(has_embedded_image)) {
+    unique(has_embedded_image[
+      !is.na(has_embedded_image) & nzchar(has_embedded_image)
+    ])
+  } else {
+    character()
+  }
+  default_image <- if (length(embedded_ids)) {
+    embedded_ids[[1L]]
+  } else if (length(configured_images)) {
+    configured_images[[1L]]
+  } else {
+    "No Background"
+  }
+  mode <- if (
+    is.character(mode) &&
+      length(mode) == 1L &&
+      !is.na(mode) &&
+      mode %in% c("auto", "none", "custom")
+  ) {
+    mode
+  } else {
+    "auto"
+  }
+  if (identical(mode, "auto")) {
+    return(default_image)
+  }
+  if (identical(mode, "none")) {
+    return("No Background")
+  }
+  if (is.logical(background_image) && length(background_image) == 1L) {
+    return(if (isTRUE(background_image)) default_image else "No Background")
+  }
+  if (is.null(background_image)) {
+    return(default_image)
+  }
+  normalize_spatial_background_choice(
+    background_image,
+    configured_images,
+    has_embedded_image
+  )
+}
+
+spatial_embedded_backgrounds <- function(spatial_data) {
+  if (is.null(spatial_data) || !is.list(spatial_data)) {
+    return(list())
+  }
+  shared_bounds <- spatial_data$histology_image_bounds
+  images <- spatial_data$histology_images
+  if (is.null(images) || !length(images)) {
+    images <- if (!is.null(spatial_data$histology_image)) {
+      list("Embedded histology" = spatial_data$histology_image)
+    } else {
+      list()
+    }
+  }
+  output <- list()
+  for (index in seq_along(images)) {
+    entry <- images[[index]]
+    entry_name <- names(images)[[index]] %||% ""
+    if (is.list(entry)) {
+      image <- entry$image %||% entry$uri %||% entry$data
+      bounds <- entry$bounds %||% shared_bounds
+      label <- entry$label %||% entry_name
+    } else {
+      image <- entry
+      bounds <- shared_bounds
+      label <- entry_name
+    }
+    if (
+      !is.character(image) ||
+        length(image) != 1L ||
+        is.na(image) ||
+        !nzchar(image)
+    ) {
+      next
+    }
+    if (!nzchar(label)) {
+      label <- if (length(images) == 1L) {
+        "Embedded histology"
+      } else {
+        paste("Background", index)
+      }
+    }
+    id <- if (length(output) == 0L) {
+      "__embedded__"
+    } else {
+      paste0("__embedded__", length(output) + 1L)
+    }
+    output[[id]] <- list(label = label, image = image, bounds = bounds)
+  }
+  output
 }
 
 format_spatial_preset_code <- function(

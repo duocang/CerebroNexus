@@ -15,9 +15,18 @@
 
 const SPATIAL_PLOT_ID = 'spatial_projection';
 
-// Register this plot so the shared Delete/Esc key handler clears its selection.
-if (window.cerebroProjection) {
-  window.cerebroProjection.registerPlot(SPATIAL_PLOT_ID);
+function spatialPlotId(meta) {
+  const plotId = meta.plot_id || SPATIAL_PLOT_ID;
+  meta.plot_id = plotId;
+  if (window.cerebroProjection) {
+    window.cerebroProjection.registerPlot(plotId);
+  }
+  return plotId;
+}
+
+function spatialPlotIdParam(params) {
+  if (Array.isArray(params)) return params[0] || SPATIAL_PLOT_ID;
+  return params || SPATIAL_PLOT_ID;
 }
 
 // The R side calls js$fn(meta, data, hover, group_centers, container[, hulls]).
@@ -26,7 +35,7 @@ if (window.cerebroProjection) {
 // hull payload rides in `extra`.
 shinyjs.updatePlot2DContinuousSpatial = function (params) {
   const [meta, data, hover, group_centers, container] = params;
-  meta.plot_id = SPATIAL_PLOT_ID;
+  spatialPlotId(meta);
   window.cerebroProjection.render2DContinuous(meta, data, hover, group_centers, container, {
     coexpr_colors: meta.coexpr_colors,
   });
@@ -34,13 +43,13 @@ shinyjs.updatePlot2DContinuousSpatial = function (params) {
 
 shinyjs.updatePlot3DContinuousSpatial = function (params) {
   const [meta, data, hover, group_centers, container] = params;
-  meta.plot_id = SPATIAL_PLOT_ID;
+  spatialPlotId(meta);
   window.cerebroProjection.render3DContinuous(meta, data, hover, group_centers, container, {});
 };
 
 shinyjs.updatePlot2DCategoricalSpatial = function (params) {
   const [meta, data, hover, group_centers, container, group_hulls] = params;
-  meta.plot_id = SPATIAL_PLOT_ID;
+  spatialPlotId(meta);
   window.cerebroProjection.render2DCategorical(meta, data, hover, group_centers, container, {
     group_hulls: group_hulls,
   });
@@ -48,23 +57,25 @@ shinyjs.updatePlot2DCategoricalSpatial = function (params) {
 
 shinyjs.updatePlot3DCategoricalSpatial = function (params) {
   const [meta, data, hover, group_centers, container] = params;
-  meta.plot_id = SPATIAL_PLOT_ID;
+  spatialPlotId(meta);
   window.cerebroProjection.render3DCategorical(meta, data, hover, group_centers, container, {});
 };
 
 // R calls this before assembling a render to size the plot to its container.
-shinyjs.getContainerDimensions = function () {
-  return window.cerebroProjection.getContainerDimensions(SPATIAL_PLOT_ID);
+shinyjs.getSpatialContainerDimensions = function (params) {
+  return window.cerebroProjection.getContainerDimensions(
+    spatialPlotIdParam(params)
+  );
 };
 
 // Clear-selection button / Esc / Delete.
-shinyjs.spatialClearSelection = function () {
-  window.cerebroProjection.clearSelection(SPATIAL_PLOT_ID);
+shinyjs.spatialClearSelection = function (params) {
+  window.cerebroProjection.clearSelection(spatialPlotIdParam(params));
 };
 
 // Zoom-to-selection button: frame the selection at the true data aspect ratio.
-shinyjs.spatialZoomToSelection = function () {
-  window.cerebroProjection.zoomToSelection(SPATIAL_PLOT_ID);
+shinyjs.spatialZoomToSelection = function (params) {
+  window.cerebroProjection.zoomToSelection(spatialPlotIdParam(params));
 };
 
 // =============================================================================
@@ -135,6 +146,25 @@ shinyjs.hideScrollDownIndicator = function () {
         indicator.remove();
       }
     }, 400);
+  }
+};
+
+// One compact Background control owns the common Auto/None path. Per-section
+// inputs live in its Customize popover and only become authoritative in custom
+// mode. Keeping the mode client-side avoids rebuilding the popover as it opens.
+window.spatialSetBackgroundMode = function (control, mode) {
+  const group = control && control.closest('.spatial-background-mode');
+  if (!group) return;
+  group.querySelectorAll('[data-spatial-background-mode]').forEach((item) => {
+    item.classList.remove('is-active');
+  });
+  control.classList.add('is-active');
+  if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+    window.Shiny.setInputValue(
+      'spatial_projection_background_mode',
+      mode,
+      { priority: 'event' }
+    );
   }
 };
 

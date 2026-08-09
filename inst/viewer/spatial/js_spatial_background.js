@@ -21,13 +21,12 @@
 // cell coordinates alone; the image is a passenger placed via l2p (data→pixel).
 // An image larger than the spot bbox simply overflows the plot area and is
 // clipped by the wrapper's overflow:hidden — the points never move.
-function spatialBgRectFromBounds(plotContainer) {
+function spatialBgRectFromBounds(plotContainer, bg) {
   const fl = plotContainer._fullLayout;
   if (!fl || !fl._size || !fl.xaxis || !fl.yaxis) return null;
   if (typeof fl.xaxis.l2p !== 'function' || typeof fl.yaxis.l2p !== 'function') {
     return null;
   }
-  const bg = document.getElementById('spatial_projection_background');
   const xmin = parseFloat(bg.dataset.boundsXmin);
   const xmax = parseFloat(bg.dataset.boundsXmax);
   const ymin = parseFloat(bg.dataset.boundsYmin);
@@ -47,9 +46,10 @@ function spatialBgRectFromBounds(plotContainer) {
   return { left, top, width: right - left, height: bottom - top };
 }
 
-shinyjs.applySpatialBackground = function () {
-  const plotContainer = document.getElementById('spatial_projection');
-  const bg = document.getElementById('spatial_projection_background');
+shinyjs.applySpatialBackground = function (params) {
+  const plotId = spatialPlotIdParam(params);
+  const plotContainer = document.getElementById(plotId);
+  const bg = document.getElementById(plotId + '_background');
   if (!plotContainer || !bg) return;
 
   const backgroundImage = bg.dataset.backgroundImage;
@@ -57,10 +57,10 @@ shinyjs.applySpatialBackground = function () {
   // overflow:hidden and would cut it off). bg.parentElement becomes the clip
   // layer after the first placement, so resolve the wrapper explicitly.
   const parent =
-    document.getElementById('spatial_projection_wrapper') || bg.parentElement;
+    document.getElementById(plotId + '_wrapper') || bg.parentElement;
 
   // Get or create the label element
-  let label = document.getElementById('spatial_background_label');
+  let label = document.getElementById(plotId + '_background_label');
 
   if (backgroundImage) {
     bg.style.display = 'block';
@@ -96,7 +96,7 @@ shinyjs.applySpatialBackground = function () {
         : null;
     // Primary path: place the image by mapping its data-space bounds to pixels,
     // so it aligns to the cells in their own (unchanged) coordinate system.
-    const rect = size ? spatialBgRectFromBounds(plotContainer) : null;
+    const rect = size ? spatialBgRectFromBounds(plotContainer, bg) : null;
 
     if (rect) {
       // Clip layer: a box sized to exactly the plot DRAWING AREA (inside the
@@ -106,10 +106,10 @@ shinyjs.applySpatialBackground = function () {
       // visible. This layer carries no transform of its own, so the image's CSS
       // transform can't drag the clip box around.
       const size2 = plotContainer._fullLayout._size;
-      let clip = document.getElementById('spatial_projection_clip');
+      let clip = document.getElementById(plotId + '_clip');
       if (!clip) {
         clip = document.createElement('div');
-        clip.id = 'spatial_projection_clip';
+        clip.id = plotId + '_clip';
         clip.style.position = 'absolute';
         clip.style.overflow = 'hidden';
         clip.style.pointerEvents = 'none';
@@ -197,7 +197,7 @@ shinyjs.applySpatialBackground = function () {
 
       if (!label) {
         label = document.createElement('div');
-        label.id = 'spatial_background_label';
+        label.id = plotId + '_background_label';
         label.innerText = 'Towards brain';
         parent.appendChild(label);
       }
@@ -231,7 +231,7 @@ shinyjs.applySpatialBackground = function () {
 
       if (!label) {
         label = document.createElement('div');
-        label.id = 'spatial_background_label';
+        label.id = plotId + '_background_label';
         label.innerText = 'Towards brain';
         parent.appendChild(label);
       }
@@ -254,14 +254,14 @@ shinyjs.applySpatialBackground = function () {
   }
 };
 
-shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX, scaleY, opacity, imageBounds, offsetX, offsetY) {
-  const plotContainer = document.getElementById('spatial_projection');
+shinyjs.syncSpatialBackground = function (plotId, backgroundImage, flipX, flipY, scaleX, scaleY, opacity, imageBounds, offsetX, offsetY) {
+  const plotContainer = document.getElementById(plotId);
   if (!plotContainer) return;
   let parent = plotContainer.parentElement;
-  let wrapper = parent && parent.id === 'spatial_projection_wrapper' ? parent : null;
+  let wrapper = parent && parent.id === plotId + '_wrapper' ? parent : null;
   if (!wrapper) {
     wrapper = document.createElement('div');
-    wrapper.id = 'spatial_projection_wrapper';
+    wrapper.id = plotId + '_wrapper';
     wrapper.style.position = 'relative';
     wrapper.style.width = '100%';
     wrapper.style.height = '100%';
@@ -270,10 +270,12 @@ shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX,
     wrapper.appendChild(plotContainer);
   }
   parent = wrapper;
-  let bg = document.getElementById('spatial_projection_background');
+  let bg = document.getElementById(plotId + '_background');
   if (!bg) {
     bg = document.createElement('div');
-    bg.id = 'spatial_projection_background';
+    bg.id = plotId + '_background';
+    bg.className = 'spatial-projection-background';
+    bg.dataset.plotId = plotId;
     bg.style.transition = 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease';
     parent.insertBefore(bg, plotContainer);
   }
@@ -366,7 +368,7 @@ shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX,
     }
   }
 
-  shinyjs.applySpatialBackground();
+  shinyjs.applySpatialBackground(plotId);
   // Picking/seeding a background only re-styles the div; it does NOT trigger a
   // Plotly redraw, so plotly_afterplot won't fire and the axis mapping (l2p) may
   // not be settled yet on this first pass — the move offset would resolve to 0
@@ -375,7 +377,7 @@ shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX,
   // geometry is ready, so the offset lands correctly on first show.
   if (typeof requestAnimationFrame === 'function') {
     requestAnimationFrame(function () {
-      shinyjs.applySpatialBackground();
+      shinyjs.applySpatialBackground(plotId);
     });
   }
 
@@ -383,7 +385,9 @@ shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX,
   plotContainer.style.zIndex = '1';
 
   if (!plotContainer.dataset.bgListenerAttached && typeof plotContainer.on === 'function') {
-    plotContainer.on('plotly_afterplot', shinyjs.applySpatialBackground);
+    plotContainer.on('plotly_afterplot', function () {
+      shinyjs.applySpatialBackground(plotId);
+    });
     plotContainer.dataset.bgListenerAttached = 'true';
   }
 };
@@ -410,30 +414,27 @@ shinyjs.updateSpatialBackgroundAppearance = function (params) {
     scaleY: null,
     rotate: null,
   });
-  const bg = document.getElementById('spatial_projection_background');
-  // No background div yet (no image chosen) → nothing to style. When an image is
-  // later selected, syncSpatialBackground seeds the div and applies current data.
-  if (!bg) return;
-  if (params.opacity !== undefined && params.opacity !== null) {
-    bg.dataset.opacity = String(params.opacity);
-  }
-  if (params.offsetX !== undefined && params.offsetX !== null) {
-    bg.dataset.offsetX = String(params.offsetX);
-  }
-  if (params.offsetY !== undefined && params.offsetY !== null) {
-    bg.dataset.offsetY = String(params.offsetY);
-  }
-  if (params.flipX !== undefined) bg.dataset.flipX = String(params.flipX);
-  if (params.flipY !== undefined) bg.dataset.flipY = String(params.flipY);
-  if (params.scaleX !== undefined && params.scaleX !== null) {
-    bg.dataset.scaleX = String(params.scaleX || 1);
-  }
-  if (params.scaleY !== undefined && params.scaleY !== null) {
-    bg.dataset.scaleY = String(params.scaleY || 1);
-  }
-  if (params.rotate !== undefined && params.rotate !== null) {
-    bg.dataset.rotate = String(params.rotate);
-  }
-  // Re-style the div only. Plotly is never touched here.
-  shinyjs.applySpatialBackground();
+  document.querySelectorAll('.spatial-projection-background').forEach((bg) => {
+    if (params.opacity !== undefined && params.opacity !== null) {
+      bg.dataset.opacity = String(params.opacity);
+    }
+    if (params.offsetX !== undefined && params.offsetX !== null) {
+      bg.dataset.offsetX = String(params.offsetX);
+    }
+    if (params.offsetY !== undefined && params.offsetY !== null) {
+      bg.dataset.offsetY = String(params.offsetY);
+    }
+    if (params.flipX !== undefined) bg.dataset.flipX = String(params.flipX);
+    if (params.flipY !== undefined) bg.dataset.flipY = String(params.flipY);
+    if (params.scaleX !== undefined && params.scaleX !== null) {
+      bg.dataset.scaleX = String(params.scaleX || 1);
+    }
+    if (params.scaleY !== undefined && params.scaleY !== null) {
+      bg.dataset.scaleY = String(params.scaleY || 1);
+    }
+    if (params.rotate !== undefined && params.rotate !== null) {
+      bg.dataset.rotate = String(params.rotate);
+    }
+    shinyjs.applySpatialBackground(bg.dataset.plotId);
+  });
 };

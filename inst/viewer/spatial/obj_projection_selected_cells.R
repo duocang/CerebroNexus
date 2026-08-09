@@ -14,8 +14,11 @@ spatial_projection_selected_cells <- reactive({
   ## stay. The identifier is built the same way the table keys cells (paste0 with
   ## '-'), so downstream filtering is unchanged.
   ## The shared renderer pushes the persistent selection under
-  ## <plot_id>_persistent_selection; the spatial plot id is 'spatial_projection'.
-  sel <- input[["spatial_projection_persistent_selection"]]
+  ## <plot_id>_persistent_selection. Multi-panel Spatial details follow the
+  ## most recently interacted visible card.
+  active_payload <- spatial_projection_active_payload()
+  plot_id <- active_payload$panel$plot_id
+  sel <- input[[paste0(plot_id, "_persistent_selection")]]
   if (is.null(sel) || is.null(sel[["x"]]) || length(sel[["x"]]) == 0) {
     return(NULL)
   }
@@ -30,7 +33,7 @@ spatial_projection_selected_cells <- reactive({
   ## the selected-cells panels reflect only visible groups (shared helper in
   ## utility_functions.R). The plotted coordinates come from
   ## spatial_projection_data_to_plot(), keyed the same way as the selection.
-  hidden_groups <- input[["spatial_projection_hidden_groups"]]
+  hidden_groups <- input[[paste0(plot_id, "_hidden_groups")]]
   if (length(hidden_groups) > 0) {
     color_variable <- input[["spatial_projection_point_color"]]
     plot_data <- spatial_projection_data_to_plot()

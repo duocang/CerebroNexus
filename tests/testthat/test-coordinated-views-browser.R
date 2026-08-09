@@ -2457,6 +2457,77 @@ test_that("each section and background keeps its own alignment", {
 })
 
 
+## Multi-section bundles keep the large image payloads on each sample instead
+## of duplicating the opening sample's base64 data at the top level. The opening
+## section must nevertheless expose its backgrounds before the user changes the
+## Spatial data picker once.
+test_that("the opening spatial sample exposes its nested backgrounds", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_img_nested_initial")
+
+  png1 <- paste0(
+    "data:image/png;base64,",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8",
+    "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  )
+  image <- function(id, with_uri = TRUE) {
+    paste0(
+      "{ id: '",
+      id,
+      "', label: 'Embedded histology'",
+      if (with_uri) paste0(", uri: '", png1, "'") else "",
+      ", coord_span: [400, 400],",
+      " preset: { scaleX: 1, scaleY: 1, opacity: 0.6 } }"
+    )
+  }
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },\n",
+      "  { id: 'spatial', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "    image: ",
+      image("embedded", FALSE),
+      ",\n",
+      "    samples: [\n",
+      "      { name: 'A', label: 'A (spatial)', x: blob(0), y: blob(0),\n",
+      "        image: ",
+      image("embedded", FALSE),
+      ",\n",
+      "        images: [",
+      image("embedded"),
+      "] },\n",
+      "      { name: 'B', label: 'B (spatial)', x: blob(0), y: blob(0),\n",
+      "        image: ",
+      image("embedded", FALSE),
+      ",\n",
+      "        images: [",
+      image("embedded"),
+      "] }] }] }"
+    )
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-img-pick').options.length > 0",
+    timeout = 15000
+  )
+
+  expect_equal(
+    app$get_js(
+      paste0(
+        "Array.from(document.getElementById('cv-img-pick').options)",
+        ".map(function (o) { return o.value; })"
+      )
+    ),
+    list("__none__", "embedded")
+  )
+  expect_false(app$get_js("document.getElementById('cv-img-pick').disabled"))
+  expect_equal(
+    app$get_js("document.getElementById('cv-img-pick').value"),
+    "embedded"
+  )
+
+  app$stop()
+})
+
+
 ## The picker used to hide itself when a section had fewer than two backgrounds,
 ## which is exactly when a reader wonders where the control went -- and left no
 ## way to turn a single image off from the same place it is chosen. "None" is a

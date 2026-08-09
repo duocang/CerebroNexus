@@ -38,6 +38,23 @@ dynamicPointSize <- utils_env$dynamicPointSize
 nProjectionDimensions <- utils_env$nProjectionDimensions
 capProjectionDimensions <- utils_env$capProjectionDimensions
 
+test_that("projection hover info accepts standard Seurat QC columns", {
+  utils_env$getGroups <- function() "sample"
+  metadata <- data.frame(
+    cell_barcode = c("cell-1", "cell-2"),
+    nCount_RNA = c(1234, 567),
+    nFeature_RNA = c(321, 210),
+    sample = c("donorA", "donorB")
+  )
+
+  hover <- utils_env$buildHoverInfoForProjections(metadata)
+
+  expect_length(hover, 2L)
+  expect_match(hover[[1]], "Transcripts</b>: 1,234", fixed = TRUE)
+  expect_match(hover[[1]], "Expressed genes</b>: 321", fixed = TRUE)
+  expect_match(hover[[2]], "sample</b>: donorB", fixed = TRUE)
+})
+
 test_that("spatial offset ranges require finite coordinates", {
   path <- file.path(
     dirname(utils_file),
