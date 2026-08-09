@@ -10,7 +10,7 @@ provision_accounts <- function(
   )
 }
 
-test_that("account normalisation has the required plain-data-frame contract", {
+test_that("accounts normalize to one strict provider table", {
   accounts <- provision_accounts(user = " alice ")
   got <- CerebroNexus:::.viewerAuthNormalizeAccounts(accounts)
   expect_identical(class(got), "data.frame")
@@ -155,7 +155,7 @@ test_that("environment name generation is fail closed", {
   }
 })
 
-test_that("recovery metadata has exact schemas", {
+test_that("recovery metadata has one exact schema", {
   operation_id <- paste(rep("a", 32L), collapse = "")
   owner <- CerebroNexus:::.viewerAuthOwnerManifest(
     operation_id,
@@ -180,7 +180,7 @@ test_that("recovery metadata has exact schemas", {
   expect_false(CerebroNexus:::.viewerAuthValidProvisionManifest(provision))
 })
 
-test_that("transaction state is private and has exact fields", {
+test_that("transaction state is a private environment with exact fields", {
   state <- CerebroNexus:::.viewerAuthNewProvisionState(
     provision_accounts(),
     list(
@@ -201,7 +201,7 @@ test_that("transaction state is private and has exact fields", {
   expect_false(state$committed)
 })
 
-test_that("accounts reject every ASCII control and enforce byte limits", {
+test_that("account scalar, row-count, and byte limits are exact", {
   for (control in c(1:31, 127)) {
     for (field in c("user", "password")) {
       if (identical(field, "user") && control %in% c(9L, 10L, 11L, 12L, 13L)) {
@@ -270,7 +270,7 @@ test_that("accounts reject every ASCII control and enforce byte limits", {
   )
 })
 
-test_that("options accept only their specified scalar forms", {
+test_that("provision options normalize to a secret-free exact list", {
   got <- CerebroNexus:::.viewerAuthNormalizeProvisionOptions(
     "/tmp/a",
     NULL,
@@ -305,7 +305,7 @@ test_that("options accept only their specified scalar forms", {
   }
 })
 
-test_that("conditions and results have safe stable contracts", {
+test_that("provision conditions expose stable machine fields", {
   err <- CerebroNexus:::.viewerAuthProvisionCondition(
     "cleanup_incomplete",
     "cleanup",
@@ -362,6 +362,29 @@ test_that("conditions and results have safe stable contracts", {
     ignore.case = TRUE
   )))
   expect_true(any(grepl("AUTH_SECRET", output, fixed = TRUE)))
+})
+
+test_that("UTF-8 and ASCII-control boundaries are exact", {
+  expect_provision_error(
+    CerebroNexus:::.viewerAuthNormalizeAccounts(provision_accounts(
+      user = paste0("alice", rawToChar(as.raw(1L)))
+    )),
+    "invalid_accounts",
+    "input"
+  )
+  expect_s3_class(
+    CerebroNexus:::.viewerAuthNormalizeAccounts(provision_accounts(
+      user = paste(rep("é", 64L), collapse = "")
+    )),
+    "data.frame"
+  )
+  expect_provision_error(
+    CerebroNexus:::.viewerAuthNormalizeAccounts(provision_accounts(
+      user = rawToChar(as.raw(c(0xc3, 0x28)))
+    )),
+    "invalid_accounts",
+    "input"
+  )
 })
 
 test_that("provision error and warning factories preserve condition semantics", {

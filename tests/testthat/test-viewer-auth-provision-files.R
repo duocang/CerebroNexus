@@ -40,7 +40,7 @@ test_that("preflight freezes one private native parent without writing", {
   )
 })
 
-test_that("preflight adversarial paths and parent proofs fail without claims", {
+test_that("preflight rejects unsafe path classes and parent proof", {
   fixture <- viewer_auth_provision_test_state()
   parent <- dirname(fixture$options$target_dir)
   invalid_utf8 <- rawToChar(as.raw(c(0x61, 0xff)))
@@ -237,7 +237,7 @@ test_that("every allowed owner location manifest transition is explicit", {
   expect_true(CerebroNexus:::.viewerAuthLayoutMatchesOwnerState(state))
 })
 
-test_that("cleanup never removes unknown or mismatched files", {
+test_that("cleanup never removes unknown or operation-mismatched files", {
   state <- viewer_auth_provision_prepared_state()
   CerebroNexus:::.viewerAuthAcquireProvisionLock(state)
   CerebroNexus:::.viewerAuthCreateProvisionStage(state)
@@ -249,7 +249,7 @@ test_that("cleanup never removes unknown or mismatched files", {
   expect_true(dir.exists(state$paths$lock))
 })
 
-test_that("lock release failure retains a valid recovery receipt", {
+test_that("lock release failure keeps valid operation recovery metadata", {
   state <- viewer_auth_provision_prepared_state()
   CerebroNexus:::.viewerAuthAcquireProvisionLock(state)
   real_remove <- state$ops$remove_dir
@@ -266,7 +266,7 @@ test_that("lock release failure retains a valid recovery receipt", {
   expect_null(state$recovery_path)
 })
 
-test_that("receipt housekeeping after lock absence is nonfatal", {
+test_that("post-commit receipt housekeeping cannot create a false recovery error", {
   state <- viewer_auth_provision_prepared_state()
   CerebroNexus:::.viewerAuthAcquireProvisionLock(state)
   real_remove <- state$ops$remove_file
@@ -500,7 +500,7 @@ test_that("receipt housekeeping remains nonfatal for false throw and delete then
   }
 })
 
-test_that("ownerless lock deletion exceptions commit only when absence is observable", {
+test_that("ownerless lock deletion exceptions retain or commit valid proof", {
   for (mode in c("observable", "unobservable")) {
     local({
       selected <- mode

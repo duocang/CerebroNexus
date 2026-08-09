@@ -71,7 +71,7 @@ test_that("public provisioning returns a strict secret-free result", {
   expect_false(provision$environment_installed)
 })
 
-test_that("partial environment installs and malformed readback are rolled back", {
+test_that("partial setenv failures are rolled back", {
   for (mode in c("throw", "false", "wrong_readback")) {
     env_name <- paste0("CEREBRO_AUTH_PARTIAL_", toupper(mode))
     Sys.unsetenv(env_name)
@@ -153,7 +153,43 @@ test_that("partial environment installs and malformed readback are rolled back",
   }
 })
 
-test_that("finalizers prioritize cleanup and retain recovery when required", {
+test_that("throwing or malformed environment readback is rolled back", {
+  env_name <- "CEREBRO_AUTH_MALFORMED_READBACK_NAMED"
+  Sys.unsetenv(env_name)
+  fixture <- viewer_auth_provision_public_fixture(env_name)
+  real <- fixture$ops$getenv
+  pending <- FALSE
+  fixture$ops$setenv <- function(name, value) {
+    do.call(Sys.setenv, stats::setNames(list(value), name))
+    pending <<- TRUE
+    TRUE
+  }
+  fixture$ops$getenv <- function(name) {
+    if (pending) {
+      pending <<- FALSE
+      stop("sentinel", call. = FALSE)
+    }
+    real(name)
+  }
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .package = "CerebroNexus"
+  )
+  condition <- tryCatch(
+    provisionViewerAuthentication(
+      fixture$accounts,
+      fixture$target,
+      passphrase_env = env_name,
+      install_env = TRUE
+    ),
+    error = identity
+  )
+  expect_identical(condition$code, "environment_install_failed")
+  expect_false(grepl("sentinel", conditionMessage(condition), fixed = TRUE))
+  expect_true(is.na(Sys.getenv(env_name, unset = NA_character_)))
+})
+
+test_that("unset failure is cleanup_incomplete and keeps recovery lock", {
   fixture <- viewer_auth_provision_public_fixture()
   fixture$ops$create_db <- function(...) stop("primary sentinel", call. = FALSE)
   testthat::local_mocked_bindings(
@@ -193,7 +229,7 @@ test_that("finalizers prioritize cleanup and retain recovery when required", {
   expect_true(dir.exists(condition$recovery_path))
 })
 
-test_that("post-publish release failure restores only an owned environment", {
+test_that("a downstream lock-release failure restores only the owned env", {
   env_name <- "CEREBRO_AUTH_RELEASE_FAILURE"
   other_name <- "CEREBRO_AUTH_UNRELATED"
   Sys.unsetenv(env_name)
@@ -230,7 +266,7 @@ test_that("post-publish release failure restores only an owned environment", {
   expect_identical(receipt$operation_id, fixture$operation_id)
 })
 
-test_that("cleanup and finish hook exceptions retain stable redacted outcomes", {
+test_that("cleanup and finish-hook exceptions never replace stable outcomes", {
   fixture <- viewer_auth_provision_public_fixture()
   fixture$ops$create_db <- function(...) stop("primary sentinel", call. = FALSE)
   fixture$ops$list_files <- function(...) {
@@ -304,7 +340,7 @@ test_that("opt-in environment installation has ownership and rollback", {
   expect_true(provision$environment_installed)
 })
 
-test_that("occupied environment variables are never overwritten", {
+test_that("an explicitly occupied empty environment variable is never overwritten", {
   env_name <- "CEREBRO_AUTH_OCCUPIED_EMPTY"
   withr::local_envvar(.new = stats::setNames("", env_name))
   fixture <- viewer_auth_provision_public_fixture(env_name)
@@ -325,7 +361,7 @@ test_that("occupied environment variables are never overwritten", {
   expect_identical(Sys.getenv(env_name, unset = NA_character_), "")
 })
 
-test_that("successful providers also redact all R channels and restore sinks", {
+test_that("successful provider calls also redact channels and restore sinks", {
   sentinel <- "PROVIDER-SUCCESS-SENTINEL"
   state <- viewer_auth_provision_staged_state()
   provider <- function() {
@@ -377,7 +413,7 @@ test_that("dependency failure precedes every filesystem claim", {
   )
 })
 
-test_that("database creation validates and scrubs accounts", {
+test_that("database creation clears accounts and validates one private file", {
   seen <- new.env(parent = emptyenv())
   state <- viewer_auth_provision_staged_state(
     create_db = function(credentials_data, sqlite_path, passphrase) {
@@ -433,7 +469,7 @@ test_that("database providers must return literal TRUE", {
   }
 })
 
-test_that("secret artifact is strict private and clears in-memory passphrase", {
+test_that("secret artifact is strict, private, and clears in-memory passphrase", {
   state <- viewer_auth_provision_staged_state()
   CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
   expected <- paste0(state$identity$passphrase_env, "=", state$passphrase, "\n")
@@ -620,7 +656,7 @@ test_that("sidecar identity inspection exceptions do not escape publish", {
   ))
 })
 
-test_that("artifact fault matrix has stable conditions and scrubs secrets", {
+test_that("artifact fault matrix is stable and scrubs all held secrets", {
   faults <- list(
     provider = list(
       setup = function(s) {
