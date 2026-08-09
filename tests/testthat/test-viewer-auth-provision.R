@@ -725,3 +725,104 @@ test_that("artifact fault matrix has stable conditions and scrubs secrets", {
     expect_null(state$secret_bytes)
   }
 })
+test_that("4.2 metadata and deployment handoff stay synchronized", {
+  description <- read.dcf(test_path("..", "..", "DESCRIPTION"))
+  expect_identical(unname(description[1L, "Version"]), "4.2")
+  suggests <- trimws(strsplit(description[1L, "Suggests"], ",")[[1L]])
+  expect_true(any(grepl("^openssl($| \\()", suggests)))
+
+  news <- readLines(test_path("..", "..", "NEWS.md"), warn = FALSE)
+  expect_identical(news[[1L]], "# CerebroNexus 4.2")
+  app <- readLines(test_path("..", "..", "inst", "app.R"), warn = FALSE)
+  expect_true(any(grepl('"cerebro_version" = "4.2"', app, fixed = TRUE)))
+
+  vignette <- paste(
+    readLines(
+      test_path(
+        "..",
+        "..",
+        "vignettes",
+        "control_access_to_cerebro_with_a_login_page.Rmd"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  required <- c(
+    "provisionViewerAuthentication",
+    "readRenviron",
+    "EnvironmentFile=/absolute/private/viewer-auth.env",
+    "--env-file /absolute/private/viewer-auth.env",
+    "Sys.unsetenv",
+    "rollback window",
+    "secret store",
+    "outside the App tree"
+  )
+  for (token in required) {
+    expect_true(grepl(token, vignette, fixed = TRUE))
+  }
+})
+
+test_that("real provisioning builds a lite-compatible authenticated App", {
+  skip_on_os("windows")
+  skip_if_not_installed("openssl")
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  root <- withr::local_tempdir()
+  Sys.chmod(root, "0700")
+  env_name <- "CEREBRO_AUTH_REAL_PROVISION_TEST"
+  Sys.unsetenv(env_name)
+  on.exit(Sys.unsetenv(env_name), add = TRUE)
+  provision <- provisionViewerAuthentication(
+    accounts = data.frame(
+      user = c("alice", "bob"),
+      password = c("alice-password", "bob-password-12"),
+      admin = c(TRUE, FALSE),
+      stringsAsFactors = FALSE
+    ),
+    target_dir = file.path(root, "viewer-auth"),
+    passphrase_env = env_name,
+    install_env = TRUE
+  )
+  crb <- file.path(root, "dataset.crb")
+  saveRDS(Cerebro_v1.3$new(), crb)
+  app <- file.path(root, "app")
+  createShinyApp(
+    cerebro_data = c(Dataset = crb),
+    result_dir = app,
+    auth = provision$auth,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+  config <- readRDS(file.path(app, "cerebro_config.rds"))$.viewer_auth
+  expect_identical(config$passphrase_env, env_name)
+  bundled <- file.path(app, "private-data", "auth", "credentials.sqlite")
+  expect_true(file.exists(bundled))
+  expect_false(any(
+    basename(list.files(
+      app,
+      recursive = TRUE,
+      all.files = TRUE
+    )) ==
+      "viewer-auth.env"
+  ))
+  secret <- sub("^[^=]+=", "", readLines(provision$secret_file, warn = FALSE))
+  checker <- shinymanager::check_credentials(
+    db = bundled,
+    passphrase = secret
+  )
+  expect_true(checker("alice", "alice-password")$result)
+  expect_true(checker("bob", "bob-password-12")$result)
+  expect_false(checker("alice", "wrong-password")$result)
+  for (path in list.files(
+    app,
+    recursive = TRUE,
+    full.names = TRUE,
+    all.files = TRUE
+  )) {
+    if (!dir.exists(path)) {
+      for (sensitive in c(secret, "alice-password", "bob-password-12")) {
+        expect_false(viewer_auth_file_contains(path, sensitive))
+      }
+    }
+  }
+})

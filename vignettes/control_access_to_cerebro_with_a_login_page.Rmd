@@ -44,6 +44,44 @@ library(CerebroNexus)
 
 # Create a multi-user database
 
+For new deployments, use `provisionViewerAuthentication()` to create the
+encrypted database, its one-line environment file, and the strict descriptor
+consumed by `createShinyApp()`. This provisioning flow supports POSIX only and
+fails closed on Windows. The handoff directory must be outside the App tree,
+source control, web roots, sync folders, and ordinary backups. Plaintext login
+passwords exist while this R call runs, so do not put real values in a committed
+script or command history.
+
+```{r eval=FALSE}
+accounts <- data.frame(
+  user = c("alice", "bob"),
+  password = c("alice-login-password", "bob-login-password"),
+  admin = c(TRUE, FALSE),
+  stringsAsFactors = FALSE
+)
+
+local({
+  provision <- provisionViewerAuthentication(
+    accounts = accounts,
+    target_dir = "/srv/cerebro/private/viewer-auth"
+  )
+  readRenviron(provision$secret_file)
+  on.exit(Sys.unsetenv(provision$auth$passphrase_env), add = TRUE)
+  createShinyApp(
+    cerebro_data = c(dataset = "dataset.crb"),
+    result_dir = "/srv/cerebro/apps/viewer",
+    auth = provision$auth
+  )
+})
+```
+
+The generated App contains only the encrypted database. Its separate
+`viewer-auth.env` contains the passphrase and must remain outside the App tree.
+Provisioning is deliberately local: it does not configure a server, container,
+remote host, or secret store.
+
+## Manual database creation (legacy)
+
 Create a small environment file outside the App directory. Replace the example
 value with a long random secret and restrict the file to its owner.
 
@@ -129,12 +167,16 @@ A new R process does not inherit variables that were set in an earlier R
 process. Load the environment file before starting the App:
 
 ```{r eval=FALSE}
-readRenviron("my_app.env")
+readRenviron("/absolute/private/viewer-auth.env")
 shiny::runApp("my_app")
 ```
 
-Keep `my_app.env` outside `my_app`. Do not commit it or upload it with the
-App directory.
+Keep `viewer-auth.env` outside the App tree. Do not commit it or upload it with
+the App directory. Unset the current-process secret when it is no longer needed:
+
+```{r eval=FALSE}
+Sys.unsetenv("CEREBRO_AUTH_PASSPHRASE")
+```
 
 # Limit failed sign-ins
 
@@ -142,7 +184,7 @@ Set a finite shinymanager failure policy in the R process that runs the App:
 
 ```{r eval=FALSE}
 options("shinymanager.pwd_failure_limit" = 10L)
-readRenviron("my_app.env")
+readRenviron("/absolute/private/viewer-auth.env")
 shiny::runApp("my_app")
 ```
 
@@ -157,81 +199,36 @@ or ingress as well, preferably per source address, and monitor repeated failures
 Tune the proxy rule for Shiny's HTTP and WebSocket traffic rather than applying
 an aggressive blanket limit to every Viewer request.
 
-# Shiny Server and systemd
+## Shiny Server or another R service
 
-Install the generated App under the Shiny Server application directory and put
-the secret in a root-managed file:
+Load the file explicitly in the service bootstrap with
+`readRenviron("/absolute/private/viewer-auth.env")` before the App starts.
+Deploy only the generated App tree; keep the environment file outside the App
+tree with service-account-only access. Provisioning does not change the service
+configuration or deploy either controlled release member.
 
-```bash
-sudo install -d -m 0755 /srv/shiny-server/my_app
-sudo cp -R my_app/. /srv/shiny-server/my_app/
-sudo install -d -m 0750 /etc/cerebronexus
-sudo install -o root -g shiny -m 0640 my_app.env /etc/cerebronexus/my_app.env
-sudo chown -R shiny:shiny /srv/shiny-server/my_app/private-data/auth
-sudo chmod 0700 /srv/shiny-server/my_app/private-data/auth
-sudo chmod 0600 /srv/shiny-server/my_app/private-data/auth/credentials.sqlite
-```
+## systemd
 
-If Shiny Server is managed by systemd, add a service drop-in with
-`sudo systemctl edit shiny-server`:
+Add `EnvironmentFile=/absolute/private/viewer-auth.env` to a separately
+reviewed unit override, then restart through the operator's normal change
+process. This package does not edit or reload the unit. The generated App tree
+and its external secret handoff remain separate controlled release members.
 
-```ini
-[Service]
-EnvironmentFile=/etc/cerebronexus/my_app.env
-```
+## Docker
 
-Then restart the service:
+Pass `--env-file /absolute/private/viewer-auth.env` through the deployment
+system. Do not COPY the file into the image or mount it below the App tree.
+Provisioning does not build, alter, or publish the container; review both the
+App tree and external secret handoff as separate release members.
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart shiny-server
-```
+## Remote host or secret store
 
-The service account needs read/write access to the bundled SQLite database and
-its containing directory because shinymanager writes login logs and SQLite
-journal files.
-
-# Docker Compose
-
-A minimal image installs the runtime packages and copies the generated App:
-
-```dockerfile
-FROM rocker/shiny:latest
-RUN R -q -e 'install.packages("remotes"); remotes::install_github("mihem/CerebroNexus", dependencies=TRUE); install.packages("shinymanager")'
-COPY my_app /srv/shiny-server/my_app
-RUN chown -R shiny:shiny /srv/shiny-server/my_app
-USER shiny
-CMD ["R", "-q", "-e", "shiny::runApp('/srv/shiny-server/my_app', host='0.0.0.0', port=3838)"]
-```
-
-Docker Compose can load the key without baking it into the image:
-
-```yaml
-services:
-  cerebro:
-    build: .
-    env_file:
-      - ./my_app.env
-    ports:
-      - "3838:3838"
-```
-
-Keep `my_app.env` out of the Docker build context or exclude it in
-`.dockerignore`.
-
-# Run on another machine
-
-Copy the `my_app` directory and the secret through separate protected channels.
-On another machine, restore the same variable name and value before running the
-App:
-
-```{r eval=FALSE}
-readRenviron("/protected/path/my_app.env")
-shiny::runApp("/srv/cerebronexus/my_app")
-```
-
-If the environment value does not match the database, the App stops instead of
-starting with an unusable login page.
+Transfer the handoff package over the organization's approved encrypted
+channel, or import the one-line environment value into its secret store. Remove
+the local handoff copy only after the service has been validated. Retain the old
+release secret only for the approved rollback window, then revoke it and its
+controlled backups. Provisioning does not contact remote hosts or secret stores;
+the App tree and secret handoff remain separately controlled.
 
 # Add or remove users
 

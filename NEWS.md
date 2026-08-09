@@ -1,3 +1,13 @@
+# CerebroNexus 4.2
+
+- Add `provisionViewerAuthentication()` for non-interactive creation of a
+  `shinymanager` credentials database and the existing strict Viewer auth
+  descriptor.
+- Keep the generated `viewer-auth.env` outside the App bundle and make
+  installation into the current process an explicit opt-in.
+- Document local and service handoff boundaries; this release does not modify
+  Shiny Server, systemd, Docker, Posit Connect, or remote hosts.
+
 # CerebroNexus 4.1
 
 ## Viewer
