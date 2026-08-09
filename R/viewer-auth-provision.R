@@ -245,3 +245,208 @@
   state$passphrase <- .viewerAuthProvisionHex(secret)
   invisible(state)
 }
+
+# Provider output may include credentials or passphrases.  Deliberately discard
+# every R-level channel and only return an opaque success value.
+.viewerAuthRunProvider <- function(state, provider) {
+  provider_output <- character()
+  provider_message <- character()
+  output_connection <- textConnection("provider_output", "w", local = TRUE)
+  message_connection <- textConnection("provider_message", "w", local = TRUE)
+  output_level <- sink.number(type = "output")
+  message_level <- sink.number(type = "message")
+  on.exit(
+    {
+      tryCatch(
+        while (sink.number(type = "message") > message_level) {
+          sink(type = "message")
+        },
+        error = function(e) NULL
+      )
+      tryCatch(
+        while (sink.number(type = "output") > output_level) {
+          sink(type = "output")
+        },
+        error = function(e) NULL
+      )
+      tryCatch(close(message_connection), error = function(e) NULL)
+      tryCatch(close(output_connection), error = function(e) NULL)
+      provider_output <- NULL
+      provider_message <- NULL
+      state$provider_capture <- list(output = NULL, message = NULL)
+    },
+    add = TRUE
+  )
+  sink(output_connection, type = "output")
+  sink(message_connection, type = "message")
+  value <- tryCatch(
+    withCallingHandlers(
+      provider(),
+      warning = function(condition) invokeRestart("muffleWarning"),
+      message = function(condition) invokeRestart("muffleMessage")
+    ),
+    error = function(condition) {
+      structure(list(), class = "viewer_auth_provider_failure")
+    }
+  )
+  list(
+    ok = !inherits(value, "viewer_auth_provider_failure"),
+    value = if (inherits(value, "viewer_auth_provider_failure")) NULL else value
+  )
+}
+
+.viewerAuthRequireProvisionDependencies <- function(state) {
+  openssl_ok <- isTRUE(state$ops$namespace_available("openssl"))
+  shinymanager_ok <- isTRUE(state$ops$namespace_available("shinymanager")) &&
+    tryCatch(
+      state$ops$package_version("shinymanager") >= numeric_version("1.1.0"),
+      error = function(e) FALSE
+    )
+  if (!openssl_ok || !shinymanager_ok) {
+    missing <- c(
+      if (!openssl_ok) "openssl",
+      if (!shinymanager_ok) "shinymanager"
+    )
+    .viewerAuthProvisionAbort(
+      "missing_dependency",
+      "dependency",
+      paste0(
+        "Authentication provisioning requires: ",
+        paste(missing, collapse = ", "),
+        "."
+      )
+    )
+  }
+  invisible(state)
+}
+
+.viewerAuthCreateProvisionDatabase <- function(state) {
+  accounts <- state$accounts
+  on.exit(
+    {
+      accounts <- NULL
+      state$accounts <- NULL
+    },
+    add = TRUE
+  )
+  created <- .viewerAuthRunProvider(state, function() {
+    state$ops$create_db(accounts, state$paths$credentials, state$passphrase)
+  })
+  if (!isTRUE(created$ok) || !isTRUE(created$value)) {
+    .viewerAuthProvisionAbort(
+      "database_create_failed",
+      "database",
+      "Could not create the authentication database."
+    )
+  }
+  mode_ok <- tryCatch(
+    isTRUE(state$ops$chmod(state$paths$credentials, "0600")),
+    error = function(e) FALSE
+  )
+  if (!mode_ok) {
+    .viewerAuthProvisionAbort(
+      "database_create_failed",
+      "database",
+      "Could not secure the authentication database."
+    )
+  }
+  .viewerAuthFreezeProvisionPath(
+    state,
+    "credentials",
+    state$paths$credentials,
+    "file",
+    "rw-------",
+    "database_create_failed",
+    "database"
+  )
+  validated <- .viewerAuthRunProvider(state, function() {
+    state$ops$validate_db(state$paths$credentials, state$passphrase)
+  })
+  if (!isTRUE(validated$ok) || !isTRUE(validated$value)) {
+    .viewerAuthProvisionAbort(
+      "database_validation_failed",
+      "database",
+      "The authentication database failed compatibility validation."
+    )
+  }
+  invisible(state)
+}
+
+.viewerAuthSecretBytes <- function(name, passphrase) {
+  charToRaw(paste0(name, "=", passphrase, "\n"))
+}
+
+.viewerAuthWriteProvisionSecret <- function(state) {
+  state$secret_bytes <- .viewerAuthSecretBytes(
+    state$identity$passphrase_env,
+    state$passphrase
+  )
+  on.exit(state$secret_bytes <- NULL, add = TRUE)
+  write_ok <- tryCatch(
+    isTRUE(state$ops$write_raw(state$secret_bytes, state$paths$secret_tmp)),
+    error = function(e) FALSE
+  )
+  temp_info <- tryCatch(
+    state$ops$inspect_path(state$paths$secret_tmp),
+    error = function(e) NULL
+  )
+  if (is.list(temp_info) && isTRUE(temp_info$exists)) {
+    .viewerAuthFreezeProvisionPath(
+      state,
+      "secret_tmp",
+      state$paths$secret_tmp,
+      "file",
+      code = "artifact_publish_failed",
+      stage = "artifact_stage"
+    )
+  }
+  chmod_ok <- isTRUE(write_ok) &&
+    tryCatch(
+      isTRUE(state$ops$chmod(state$paths$secret_tmp, "0600")),
+      error = function(e) FALSE
+    )
+  if (!isTRUE(write_ok) || !isTRUE(chmod_ok)) {
+    .viewerAuthProvisionAbort(
+      "artifact_publish_failed",
+      "artifact_stage",
+      "Could not write the private authentication secret."
+    )
+  }
+  .viewerAuthFreezeProvisionPath(
+    state,
+    "secret_tmp",
+    state$paths$secret_tmp,
+    "file",
+    "rw-------"
+  )
+  .viewerAuthControlledRenameRebind(
+    state,
+    "secret_tmp",
+    state$paths$secret_tmp,
+    "secret",
+    state$paths$secret,
+    "file",
+    "rw-------",
+    "artifact_publish_failed",
+    "artifact_stage"
+  )
+  state$passphrase <- NULL
+  invisible(state)
+}
+
+.viewerAuthReadProvisionSecret <- function(state, root) {
+  bytes <- tryCatch(
+    state$ops$read_raw(file.path(root, "viewer-auth.env"), 4097L),
+    error = function(e) raw()
+  )
+  text <- tryCatch(rawToChar(bytes), error = function(e) NA_character_)
+  pattern <- paste0("^", state$identity$passphrase_env, "=([0-9a-f]{64})\\n$")
+  if (!.viewerAuthScalarString(text) || !grepl(pattern, text)) {
+    .viewerAuthProvisionAbort(
+      "artifact_publish_failed",
+      "publish",
+      "The private authentication secret failed validation."
+    )
+  }
+  sub(pattern, "\\1", text)
+}

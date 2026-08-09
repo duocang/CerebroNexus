@@ -69,3 +69,24 @@ viewer_auth_provision_prepared_state <- function(
   CerebroNexus:::.viewerAuthPrepareProvisionPaths(state)
   state
 }
+
+viewer_auth_provision_staged_state <- function(
+  ...,
+  .local_envir = parent.frame()
+) {
+  overrides <- list(...)
+  if (is.null(overrides$create_db)) {
+    overrides$create_db <- function(credentials_data, sqlite_path, passphrase) {
+      writeBin(as.raw(c(0x53, 0x51, 0x4c)), sqlite_path)
+      TRUE
+    }
+  }
+  if (is.null(overrides$validate_db)) {
+    overrides$validate_db <- function(path, passphrase) TRUE
+  }
+  overrides$.local_envir <- .local_envir
+  state <- do.call(viewer_auth_provision_prepared_state, overrides)
+  CerebroNexus:::.viewerAuthAcquireProvisionLock(state)
+  CerebroNexus:::.viewerAuthCreateProvisionStage(state)
+  state
+}

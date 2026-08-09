@@ -1,0 +1,434 @@
+test_that("provider R channels are redacted and all sinks are restored", {
+  sentinel <- "PROVIDER-SECRET-SENTINEL"
+  state <- viewer_auth_provision_staged_state()
+  provider <- function() {
+    message(sentinel)
+    warning(sentinel, call. = FALSE)
+    cat(sentinel, "\n", sep = "")
+    cat(sentinel, "\n", sep = "", file = stderr())
+    stop(sentinel, call. = FALSE)
+  }
+  output_before <- sink.number(type = "output")
+  message_before <- sink.number(type = "message")
+  outer_output <- capture.output(
+    {
+      outer_message <- capture.output(
+        {
+          result <- CerebroNexus:::.viewerAuthRunProvider(state, provider)
+        },
+        type = "message"
+      )
+    },
+    type = "output"
+  )
+  expect_false(result$ok)
+  expect_null(result$value)
+  expect_false(any(grepl(
+    sentinel,
+    c(outer_output, outer_message),
+    fixed = TRUE
+  )))
+  expect_identical(sink.number(type = "output"), output_before)
+  expect_identical(sink.number(type = "message"), message_before)
+})
+
+test_that("successful providers also redact all R channels and restore sinks", {
+  sentinel <- "PROVIDER-SUCCESS-SENTINEL"
+  state <- viewer_auth_provision_staged_state()
+  provider <- function() {
+    message(sentinel)
+    warning(sentinel, call. = FALSE)
+    cat(sentinel, "\n", sep = "")
+    cat(sentinel, "\n", sep = "", file = stderr())
+    TRUE
+  }
+  output_before <- sink.number(type = "output")
+  message_before <- sink.number(type = "message")
+  outer_output <- capture.output(
+    {
+      outer_message <- capture.output(
+        {
+          result <- CerebroNexus:::.viewerAuthRunProvider(state, provider)
+        },
+        type = "message"
+      )
+    },
+    type = "output"
+  )
+  expect_true(result$ok)
+  expect_true(result$value)
+  expect_false(any(grepl(
+    sentinel,
+    c(outer_output, outer_message),
+    fixed = TRUE
+  )))
+  expect_identical(sink.number(type = "output"), output_before)
+  expect_identical(sink.number(type = "message"), message_before)
+})
+
+test_that("dependency failure precedes every filesystem claim", {
+  state <- viewer_auth_provision_test_state(namespace_available = function(
+    package
+  ) {
+    FALSE
+  })
+  before <- list.files(dirname(state$options$target_dir), all.files = TRUE)
+  expect_provision_error(
+    CerebroNexus:::.viewerAuthRequireProvisionDependencies(state),
+    "missing_dependency",
+    "dependency"
+  )
+  expect_identical(
+    list.files(dirname(state$options$target_dir), all.files = TRUE),
+    before
+  )
+})
+
+test_that("database creation validates and scrubs accounts", {
+  seen <- new.env(parent = emptyenv())
+  state <- viewer_auth_provision_staged_state(
+    create_db = function(credentials_data, sqlite_path, passphrase) {
+      seen$names <- names(credentials_data)
+      seen$passphrase_length <- nchar(passphrase)
+      writeBin(as.raw(c(0x53, 0x51, 0x4c)), sqlite_path)
+      TRUE
+    },
+    validate_db = function(path, passphrase) {
+      expect_true(file.exists(path))
+      expect_identical(nchar(passphrase), 64L)
+      TRUE
+    }
+  )
+  CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+  expect_identical(seen$names, c("user", "password", "admin"))
+  expect_identical(seen$passphrase_length, 64L)
+  expect_null(state$accounts)
+  expect_true(CerebroNexus:::.viewerAuthIdentityMatches(
+    state,
+    "credentials",
+    state$paths$credentials
+  ))
+})
+
+test_that("database providers must return literal TRUE", {
+  for (value in list(FALSE, NULL, "TRUE", 1L)) {
+    create_state <- viewer_auth_provision_staged_state(create_db = function(
+      ...
+    ) {
+      writeBin(as.raw(1L), list(...)[[2L]])
+      value
+    })
+    expect_identical(
+      tryCatch(
+        CerebroNexus:::.viewerAuthCreateProvisionDatabase(create_state),
+        error = identity
+      )$code,
+      "database_create_failed"
+    )
+    validate_state <- viewer_auth_provision_staged_state(validate_db = function(
+      ...
+    ) {
+      value
+    })
+    expect_identical(
+      tryCatch(
+        CerebroNexus:::.viewerAuthCreateProvisionDatabase(validate_state),
+        error = identity
+      )$code,
+      "database_validation_failed"
+    )
+  }
+})
+
+test_that("secret artifact is strict private and clears in-memory passphrase", {
+  state <- viewer_auth_provision_staged_state()
+  CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+  expected <- paste0(state$identity$passphrase_env, "=", state$passphrase, "\n")
+  CerebroNexus:::.viewerAuthWriteProvisionSecret(state)
+  expect_identical(
+    rawToChar(readBin(state$paths$secret, "raw", n = 4097L)),
+    expected
+  )
+  expect_null(state$passphrase)
+  expect_null(state$secret_bytes)
+  expect_false(dir.exists(file.path(state$paths$stage, "www")))
+})
+
+test_that("failed secret writes remain owned and are removable during cleanup", {
+  for (fault in c("partial", "chmod")) {
+    state <- viewer_auth_provision_staged_state()
+    CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+    if (identical(fault, "partial")) {
+      state$ops$write_raw <- function(bytes, path) {
+        writeBin(bytes[1L], path)
+        FALSE
+      }
+    } else {
+      chmod <- state$ops$chmod
+      state$ops$chmod <- function(...) FALSE
+    }
+    expect_provision_error(
+      CerebroNexus:::.viewerAuthWriteProvisionSecret(state),
+      "artifact_publish_failed",
+      "artifact_stage"
+    )
+    expect_true(CerebroNexus:::.viewerAuthIdentityMatches(
+      state,
+      "secret_tmp",
+      state$paths$secret_tmp
+    ))
+    if (identical(fault, "chmod")) {
+      state$ops$chmod <- chmod
+    }
+    expect_true(CerebroNexus:::.viewerAuthCleanupProvision(state))
+    expect_true(CerebroNexus:::.viewerAuthReleaseProvisionLock(state))
+  }
+})
+
+test_that("secret rename only rebinds the frozen temporary generation", {
+  state <- viewer_auth_provision_staged_state()
+  CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+  inspect <- state$ops$inspect_path
+  state$ops$inspect_path <- function(path) {
+    info <- inspect(path)
+    if (identical(path, state$paths$secret) && isTRUE(info$exists)) {
+      info$inode <- "foreign-inode"
+    }
+    info
+  }
+  expect_provision_error(
+    CerebroNexus:::.viewerAuthWriteProvisionSecret(state),
+    "artifact_publish_failed",
+    "artifact_stage"
+  )
+  expect_false(CerebroNexus:::.viewerAuthIdentityMatches(
+    state,
+    "secret",
+    state$paths$secret
+  ))
+  expect_false(is.null(state$identities$secret_tmp))
+})
+
+test_that("owner uses publishing around rename and published after validation", {
+  state <- viewer_auth_provision_staged_state()
+  CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+  CerebroNexus:::.viewerAuthWriteProvisionSecret(state)
+  real_rename <- state$ops$rename
+  state$ops$rename <- function(from, to) {
+    if (identical(from, state$paths$stage)) {
+      expect_identical(readRDS(state$paths$owner)$state, "publishing")
+      expect_false(file.exists(state$paths$target))
+    }
+    real_rename(from, to)
+  }
+  CerebroNexus:::.viewerAuthPublishProvision(state)
+  expect_false(dir.exists(state$paths$stage))
+  expect_true(dir.exists(state$paths$target))
+  expect_identical(readRDS(state$paths$owner)$state, "published")
+})
+
+test_that("postvalidation rejects replaced published artifacts before DB access", {
+  calls <- 0L
+  state <- viewer_auth_provision_staged_state(
+    validate_db = function(...) {
+      calls <<- calls + 1L
+      TRUE
+    }
+  )
+  CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+  CerebroNexus:::.viewerAuthWriteProvisionSecret(state)
+  calls <- 0L
+  rename <- state$ops$rename
+  state$ops$rename <- function(from, to) {
+    ok <- rename(from, to)
+    if (ok && identical(from, state$paths$stage)) {
+      credentials <- file.path(state$paths$target, "credentials.sqlite")
+      unlink(credentials)
+      writeBin(as.raw(c(0x66, 0x61, 0x6b, 0x65)), credentials)
+      Sys.chmod(credentials, "0600")
+    }
+    ok
+  }
+  expect_provision_error(
+    CerebroNexus:::.viewerAuthPublishProvision(state),
+    "artifact_publish_failed",
+    "publish"
+  )
+  expect_identical(calls, 0L)
+})
+
+test_that("stage publication only rebinds the frozen stage generation", {
+  state <- viewer_auth_provision_staged_state()
+  CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+  CerebroNexus:::.viewerAuthWriteProvisionSecret(state)
+  rename <- state$ops$rename
+  state$ops$rename <- function(from, to) {
+    ok <- rename(from, to)
+    if (ok && identical(from, state$paths$stage)) {
+      unlink(to, recursive = TRUE)
+      dir.create(to, mode = "0700")
+    }
+    ok
+  }
+  expect_provision_error(
+    CerebroNexus:::.viewerAuthPublishProvision(state),
+    "artifact_publish_failed",
+    "publish"
+  )
+  expect_null(state$identities$target)
+  expect_false(is.null(state$identities$stage))
+})
+
+test_that("publish-side inspection failures are redacted to stable conditions", {
+  state <- viewer_auth_provision_staged_state()
+  CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+  CerebroNexus:::.viewerAuthWriteProvisionSecret(state)
+  state$ops$list_files <- function(...) stop("INSPECT-SENTINEL", call. = FALSE)
+  condition <- tryCatch(
+    CerebroNexus:::.viewerAuthPublishProvision(state),
+    error = identity
+  )
+  expect_s3_class(condition, "cerebro_viewer_auth_provision_error")
+  expect_identical(condition$code, "artifact_publish_failed")
+  expect_identical(condition$stage, "publish")
+  expect_false(grepl(
+    "INSPECT-SENTINEL",
+    conditionMessage(condition),
+    fixed = TRUE
+  ))
+})
+
+test_that("sidecar identity inspection exceptions do not escape publish", {
+  state <- viewer_auth_provision_staged_state()
+  CerebroNexus:::.viewerAuthCreateProvisionDatabase(state)
+  CerebroNexus:::.viewerAuthWriteProvisionSecret(state)
+  sidecar <- paste0(state$paths$credentials, "-wal")
+  writeBin(as.raw(1L), sidecar)
+  inspect <- state$ops$inspect_path
+  calls <- 0L
+  state$ops$inspect_path <- function(path) {
+    if (identical(path, sidecar)) {
+      calls <<- calls + 1L
+      if (calls >= 3L) stop("SIDECAR-SENTINEL", call. = FALSE)
+    }
+    inspect(path)
+  }
+  condition <- tryCatch(
+    CerebroNexus:::.viewerAuthPublishProvision(state),
+    error = identity
+  )
+  expect_s3_class(condition, "cerebro_viewer_auth_provision_error")
+  expect_identical(condition$code, "artifact_publish_failed")
+  expect_identical(condition$stage, "publish")
+  expect_false(grepl(
+    "SIDECAR-SENTINEL",
+    conditionMessage(condition),
+    fixed = TRUE
+  ))
+})
+
+test_that("artifact fault matrix has stable conditions and scrubs secrets", {
+  faults <- list(
+    provider = list(
+      setup = function(s) {
+        s$ops$create_db <- function(...) stop("sentinel", call. = FALSE)
+      },
+      action = CerebroNexus:::.viewerAuthCreateProvisionDatabase,
+      code = "database_create_failed",
+      stage = "database"
+    ),
+    validator = list(
+      setup = function(s) {
+        s$ops$validate_db <- function(...) stop("sentinel", call. = FALSE)
+      },
+      action = CerebroNexus:::.viewerAuthCreateProvisionDatabase,
+      code = "database_validation_failed",
+      stage = "database"
+    ),
+    secret = list(
+      setup = function(s) {
+        CerebroNexus:::.viewerAuthCreateProvisionDatabase(s)
+        s$ops$write_raw <- function(bytes, path) FALSE
+      },
+      action = CerebroNexus:::.viewerAuthWriteProvisionSecret,
+      code = "artifact_publish_failed",
+      stage = "artifact_stage"
+    ),
+    secret_chmod = list(
+      setup = function(s) {
+        CerebroNexus:::.viewerAuthCreateProvisionDatabase(s)
+        s$ops$chmod <- function(...) FALSE
+      },
+      action = CerebroNexus:::.viewerAuthWriteProvisionSecret,
+      code = "artifact_publish_failed",
+      stage = "artifact_stage"
+    ),
+    ready_manifest = list(
+      setup = function(s) {
+        CerebroNexus:::.viewerAuthCreateProvisionDatabase(s)
+        CerebroNexus:::.viewerAuthWriteProvisionSecret(s)
+        s$ops$save_rds <- function(...) FALSE
+      },
+      action = CerebroNexus:::.viewerAuthPublishProvision,
+      code = "artifact_publish_failed",
+      stage = "manifest"
+    ),
+    final_rename = list(
+      setup = function(s) {
+        CerebroNexus:::.viewerAuthCreateProvisionDatabase(s)
+        CerebroNexus:::.viewerAuthWriteProvisionSecret(s)
+        rename <- s$ops$rename
+        s$ops$rename <- function(from, to) {
+          if (identical(from, s$paths$stage)) FALSE else rename(from, to)
+        }
+      },
+      action = CerebroNexus:::.viewerAuthPublishProvision,
+      code = "artifact_publish_failed",
+      stage = "publish"
+    ),
+    postvalidation = list(
+      setup = function(s) {
+        CerebroNexus:::.viewerAuthCreateProvisionDatabase(s)
+        CerebroNexus:::.viewerAuthWriteProvisionSecret(s)
+        s$ops$read_raw <- function(...) stop("sentinel", call. = FALSE)
+      },
+      action = CerebroNexus:::.viewerAuthPublishProvision,
+      code = "artifact_publish_failed",
+      stage = "publish"
+    ),
+    sqlite_sidecar = list(
+      setup = function(s) {
+        CerebroNexus:::.viewerAuthCreateProvisionDatabase(s)
+        CerebroNexus:::.viewerAuthWriteProvisionSecret(s)
+        sidecar <- paste0(s$paths$credentials, "-wal")
+        writeBin(as.raw(1L), sidecar)
+        remove <- s$ops$remove_file
+        s$ops$remove_file <- function(path) {
+          if (identical(path, sidecar)) FALSE else remove(path)
+        }
+      },
+      action = CerebroNexus:::.viewerAuthPublishProvision,
+      code = "artifact_publish_failed",
+      stage = "publish"
+    )
+  )
+  for (name in names(faults)) {
+    fault <- faults[[name]]
+    state <- viewer_auth_provision_staged_state()
+    fault$setup(state)
+    condition <- tryCatch(fault$action(state), error = identity)
+    expect_identical(condition$code, fault$code)
+    expect_identical(condition$stage, fault$stage)
+    expect_false(grepl("sentinel", conditionMessage(condition), fixed = TRUE))
+    if (name %in% c("final_rename", "postvalidation")) {
+      # A rename failure retains staging; a postvalidation failure retains the
+      # published directory under its still-publishing owner receipt.
+      expect_identical(readRDS(state$paths$owner)$state, "publishing")
+    }
+    CerebroNexus:::.viewerAuthScrubProvisionState(state)
+    expect_null(state$accounts)
+    expect_null(state$passphrase)
+    expect_null(state$provider_capture)
+    expect_null(state$secret_bytes)
+  }
+})

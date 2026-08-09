@@ -181,6 +181,79 @@
     identical(actual[c("type", "device_id", "inode")], expected)
 }
 
+# A successful rename is not proof that the destination still names our
+# generation: an attacker may replace it before the next inspection.  Bind a
+# destination identity only after proving it is the frozen source and that the
+# source name has disappeared.
+.viewerAuthControlledRenameRebind <- function(
+  state,
+  source_key,
+  source_path,
+  final_key,
+  final_path,
+  final_type,
+  permissions,
+  code,
+  stage
+) {
+  source_identity <- state$identities[[source_key]]
+  source_ok <- !is.null(source_identity) &&
+    isTRUE(tryCatch(
+      .viewerAuthIdentityMatches(state, source_key, source_path),
+      error = function(e) FALSE
+    ))
+  final_before <- tryCatch(
+    state$ops$inspect_path(final_path),
+    error = function(e) NULL
+  )
+  if (
+    !source_ok ||
+      !is.list(final_before) ||
+      isTRUE(final_before$exists) ||
+      !is.null(state$identities[[final_key]])
+  ) {
+    .viewerAuthProvisionAbort(
+      code,
+      stage,
+      "Private artifact changed before publish."
+    )
+  }
+  renamed <- tryCatch(
+    isTRUE(state$ops$rename(source_path, final_path)),
+    error = function(e) FALSE
+  )
+  final_after <- tryCatch(
+    state$ops$inspect_path(final_path),
+    error = function(e) NULL
+  )
+  source_after <- tryCatch(
+    state$ops$inspect_path(source_path),
+    error = function(e) NULL
+  )
+  committed <- renamed &&
+    is.list(final_after) &&
+    isTRUE(final_after$exists) &&
+    identical(final_after$type, final_type) &&
+    !isTRUE(final_after$is_link) &&
+    (is.null(permissions) || identical(final_after$permissions, permissions)) &&
+    identical(final_after[c("type", "device_id", "inode")], source_identity) &&
+    is.list(source_after) &&
+    !isTRUE(source_after$exists)
+  if (!committed) {
+    # The destination was not proved to be our frozen generation; never leave
+    # an identity claim that could authorize later cleanup of it.
+    state$identities[[final_key]] <- NULL
+    .viewerAuthProvisionAbort(
+      code,
+      stage,
+      "Could not publish the private artifact."
+    )
+  }
+  state$identities[[final_key]] <- source_identity
+  state$identities[[source_key]] <- NULL
+  invisible(state)
+}
+
 .viewerAuthAtomicSaveRds <- function(
   state,
   value,
@@ -917,4 +990,194 @@
     },
     error = function(e) FALSE
   )
+}
+
+.viewerAuthRemoveSqliteSidecars <- function(state) {
+  suffixes <- c("-journal", "-wal", "-shm")
+  for (suffix in suffixes) {
+    path <- paste0(state$paths$credentials, suffix)
+    info <- tryCatch(state$ops$inspect_path(path), error = function(e) NULL)
+    if (!is.list(info)) {
+      .viewerAuthProvisionAbort(
+        "artifact_publish_failed",
+        "publish",
+        "Could not inspect a database sidecar."
+      )
+    }
+    key <- paste0("credentials", sub("^-", "_", suffix))
+    if (isTRUE(info$exists)) {
+      .viewerAuthFreezeProvisionPath(
+        state,
+        key,
+        path,
+        "file",
+        NULL,
+        "artifact_publish_failed",
+        "publish"
+      )
+    }
+    if (
+      isTRUE(info$exists) &&
+        (!isTRUE(tryCatch(
+          .viewerAuthIdentityMatches(state, key, path),
+          error = function(e) FALSE
+        )) ||
+          !isTRUE(tryCatch(
+            state$ops$remove_file(path),
+            error = function(e) FALSE
+          )))
+    ) {
+      .viewerAuthProvisionAbort(
+        "artifact_publish_failed",
+        "publish",
+        "Could not remove a database sidecar."
+      )
+    }
+  }
+  invisible(state)
+}
+
+.viewerAuthWriteReadyManifest <- function(state) {
+  previous <- tryCatch(
+    state$ops$read_rds(state$paths$manifest),
+    error = function(e) NULL
+  )
+  manifest <- .viewerAuthProvisionManifest(
+    operation_id = state$identity$operation_id,
+    state = "ready",
+    created_at = state$ops$now(),
+    passphrase_env = state$identity$passphrase_env,
+    timeout_minutes = state$options$timeout_minutes,
+    user_count = if (.viewerAuthValidProvisionManifest(previous)) {
+      previous$user_count
+    } else {
+      NA_integer_
+    }
+  )
+  .viewerAuthAtomicSaveRds(
+    state,
+    manifest,
+    state$paths$manifest,
+    state$paths$manifest_tmp,
+    "manifest",
+    .viewerAuthValidProvisionManifest,
+    "artifact_publish_failed",
+    "manifest"
+  )
+  state$manifest_state <- "ready"
+  invisible(state)
+}
+
+.viewerAuthPostvalidateProvision <- function(state) {
+  root <- state$paths$target
+  expected <- c("credentials.sqlite", "viewer-auth.env", "provision.rds")
+  children <- tryCatch(state$ops$list_files(root), error = function(e) NULL)
+  if (!is.character(children) || !identical(sort(children), sort(expected))) {
+    .viewerAuthProvisionAbort(
+      "artifact_publish_failed",
+      "publish",
+      "The published authentication layout is invalid."
+    )
+  }
+  manifest <- tryCatch(
+    state$ops$read_rds(file.path(root, "provision.rds")),
+    error = function(e) NULL
+  )
+  if (
+    !.viewerAuthValidProvisionManifest(manifest) ||
+      !identical(manifest$state, "ready") ||
+      !identical(manifest$operation_id, state$identity$operation_id)
+  ) {
+    .viewerAuthProvisionAbort(
+      "artifact_publish_failed",
+      "publish",
+      "The published authentication manifest is invalid."
+    )
+  }
+  identity_keys <- c(
+    "credentials.sqlite" = "credentials",
+    "viewer-auth.env" = "secret",
+    "provision.rds" = "manifest"
+  )
+  for (name in expected) {
+    info <- tryCatch(
+      state$ops$inspect_path(file.path(root, name)),
+      error = function(e) NULL
+    )
+    key <- unname(identity_keys[[name]])
+    if (
+      !isTRUE(info$exists) ||
+        !identical(info$type, "file") ||
+        isTRUE(info$is_link) ||
+        !identical(info$permissions, "rw-------") ||
+        is.null(state$identities[[key]]) ||
+        !identical(
+          info[c("type", "device_id", "inode")],
+          state$identities[[key]]
+        )
+    ) {
+      .viewerAuthProvisionAbort(
+        "artifact_publish_failed",
+        "publish",
+        "A published authentication file failed identity validation."
+      )
+    }
+  }
+  passphrase <- .viewerAuthReadProvisionSecret(state, root)
+  on.exit(passphrase <- NULL, add = TRUE)
+  validated <- .viewerAuthRunProvider(state, function() {
+    state$ops$validate_db(file.path(root, "credentials.sqlite"), passphrase)
+  })
+  if (!isTRUE(validated$ok) || !isTRUE(validated$value)) {
+    .viewerAuthProvisionAbort(
+      "database_validation_failed",
+      "publish",
+      "The published authentication database failed validation."
+    )
+  }
+  manifest
+}
+
+.viewerAuthPublishProvision <- function(state) {
+  if (!.viewerAuthParentStillFrozen(state)) {
+    .viewerAuthUnsafeParent()
+  }
+  .viewerAuthRemoveSqliteSidecars(state)
+  .viewerAuthWriteReadyManifest(state)
+  .viewerAuthWriteOwnerState(state, "publishing")
+  target_info <- tryCatch(
+    state$ops$inspect_path(state$paths$target),
+    error = function(e) NULL
+  )
+  if (!is.list(target_info)) {
+    .viewerAuthProvisionAbort(
+      "artifact_publish_failed",
+      "publish",
+      "Could not inspect the publication target."
+    )
+  }
+  if (isTRUE(target_info$exists)) {
+    .viewerAuthProvisionAbort(
+      "target_exists",
+      "publish",
+      "target_dir appeared before publication."
+    )
+  }
+  .viewerAuthControlledRenameRebind(
+    state,
+    "stage",
+    state$paths$stage,
+    "target",
+    state$paths$target,
+    "directory",
+    "rwx------",
+    "artifact_publish_failed",
+    "publish"
+  )
+  state$stage_created <- FALSE
+  state$target_published <- TRUE
+  .viewerAuthPostvalidateProvision(state)
+  state$manifest_state <- "ready"
+  .viewerAuthWriteOwnerState(state, "published")
+  invisible(state)
 }
