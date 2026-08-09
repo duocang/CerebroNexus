@@ -24,6 +24,7 @@
   "max_request_size",
   "display_mode",
   "launch_browser",
+  "auth",
   "colors",
   "crb_pick_smallest_file",
   "backend_plan",
@@ -153,6 +154,76 @@
     is.logical(options$launch_browser) &&
     length(options$launch_browser) == 1L &&
     !is.na(options$launch_browser)
+}
+
+.builder_app_auth_request_valid <- function(value) {
+  expected <- c(
+    "enabled",
+    "account_count",
+    "timeout_minutes",
+    "passphrase_env"
+  )
+  is.list(value) &&
+    !is.object(value) &&
+    identical(names(value), expected) &&
+    is.logical(value$enabled) &&
+    length(value$enabled) == 1L &&
+    !is.na(value$enabled) &&
+    is.integer(value$account_count) &&
+    length(value$account_count) == 1L &&
+    !is.na(value$account_count) &&
+    value$account_count >= 0L &&
+    value$account_count <= .builder_auth_max_accounts &&
+    identical(value$timeout_minutes, .builder_auth_timeout_minutes) &&
+    identical(
+      value$passphrase_env,
+      if (isTRUE(value$enabled)) .builder_auth_env_name else NULL
+    ) &&
+    if (isTRUE(value$enabled)) {
+      value$account_count >= 1L
+    } else {
+      identical(value$account_count, 0L)
+    }
+}
+
+.builder_app_auth_summary_valid <- function(value) {
+  is.list(value) &&
+    !is.object(value) &&
+    identical(
+      names(value),
+      c(
+        "enabled",
+        "account_count",
+        "timeout_minutes"
+      )
+    ) &&
+    is.logical(value$enabled) &&
+    length(value$enabled) == 1L &&
+    !is.na(value$enabled) &&
+    is.integer(value$account_count) &&
+    length(value$account_count) == 1L &&
+    !is.na(value$account_count) &&
+    value$account_count >= 0L &&
+    value$account_count <= .builder_auth_max_accounts &&
+    identical(value$timeout_minutes, .builder_auth_timeout_minutes) &&
+    if (isTRUE(value$enabled)) {
+      value$account_count >= 1L
+    } else {
+      identical(value$account_count, 0L)
+    }
+}
+
+.builder_app_auth_request <- function(app_auth) {
+  list(
+    enabled = isTRUE(app_auth$enabled),
+    account_count = as.integer(app_auth$account_count),
+    timeout_minutes = .builder_auth_timeout_minutes,
+    passphrase_env = if (isTRUE(app_auth$enabled)) {
+      .builder_auth_env_name
+    } else {
+      NULL
+    }
+  )
 }
 
 .builder_app_viewer_content_valid <- function(value, selector_order) {

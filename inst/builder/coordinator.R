@@ -52,6 +52,12 @@
       out_dir = plan$out_dir,
       make_app = plan$make_app,
       dataset_order = plan$dataset_order,
+      app_auth = plan$app_auth %||%
+        list(
+          enabled = FALSE,
+          account_count = 0L,
+          timeout_minutes = 15L
+        ),
       items = items,
       manifest = manifest,
       acknowledgements = as.character(unique(.builder_report_strings(
@@ -134,7 +140,8 @@
       anyDuplicated(filenames) ||
       !.builder_app_colors_valid(colors, labels) ||
       .builder_app_has_reference(options) ||
-      !.builder_app_options_valid(options, dataset_ids)
+      !.builder_app_options_valid(options, dataset_ids) ||
+      !.builder_app_auth_summary_valid(plan$app_auth)
   ) {
     stop("The App publication expectation is invalid.", call. = FALSE)
   }
@@ -157,7 +164,8 @@
       dataset_order = dataset_ids,
       make_app = TRUE,
       items = request_items,
-      app_options = options
+      app_options = options,
+      app_auth = plan$app_auth
     ),
     class = c("builder_build_plan", "list")
   )
@@ -180,6 +188,7 @@
     max_request_size = options$max_request_size,
     display_mode = options$display_mode,
     launch_browser = options$launch_browser,
+    auth = .builder_app_auth_request(plan$app_auth),
     colors = colors,
     backend_plan = list(schema_version = 1L, entries = backend_entries),
     app_dir = NULL
@@ -290,6 +299,7 @@
     identical(request$max_request_size, expectation$max_request_size) &&
     identical(request$display_mode, expectation$display_mode) &&
     identical(request$launch_browser, expectation$launch_browser) &&
+    identical(request$auth, expectation$auth) &&
     identical(request$colors, expectation$colors) &&
     identical(request$backend_plan, expectation$backend_plan)
 }

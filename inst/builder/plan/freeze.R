@@ -1,3 +1,25 @@
+.builder_plan_app_auth_valid <- function(value, make_app) {
+  expected <- c("enabled", "account_count", "timeout_minutes")
+  is.list(value) &&
+    !is.object(value) &&
+    identical(names(value), expected) &&
+    is.logical(value$enabled) &&
+    length(value$enabled) == 1L &&
+    !is.na(value$enabled) &&
+    is.integer(value$account_count) &&
+    length(value$account_count) == 1L &&
+    !is.na(value$account_count) &&
+    value$account_count >= 0L &&
+    value$account_count <= 50L &&
+    identical(value$timeout_minutes, 15L) &&
+    (!isTRUE(value$enabled) || isTRUE(make_app)) &&
+    if (isTRUE(value$enabled)) {
+      value$account_count >= 1L
+    } else {
+      identical(value$account_count, 0L)
+    }
+}
+
 builder_freeze_plan <- function(
   entries,
   out_dir,
@@ -5,6 +27,11 @@ builder_freeze_plan <- function(
   overwrite = FALSE,
   revision = NULL,
   app_options = list(),
+  app_auth = list(
+    enabled = FALSE,
+    account_count = 0L,
+    timeout_minutes = 15L
+  ),
   expected_prior_identity = NULL
 ) {
   if (
@@ -72,6 +99,28 @@ builder_freeze_plan <- function(
     return(builder_plan_error(
       "Generated-app options must be an inert list.",
       "invalid_app_options"
+    ))
+  }
+  if (!.builder_plan_app_auth_valid(app_auth, make_app)) {
+    login_requires_app <- is.list(app_auth) &&
+      !is.object(app_auth) &&
+      identical(
+        names(app_auth),
+        c(
+          "enabled",
+          "account_count",
+          "timeout_minutes"
+        )
+      ) &&
+      isTRUE(app_auth$enabled) &&
+      !isTRUE(make_app)
+    return(builder_plan_error(
+      if (login_requires_app) {
+        "Generated-App login requires App output."
+      } else {
+        "The generated-App login settings are invalid."
+      },
+      "invalid_app_auth"
     ))
   }
   if (
@@ -756,6 +805,7 @@ builder_freeze_plan <- function(
     private_asset_claims = private_asset_claims,
     acknowledgements = acknowledgements,
     app_options = frozen_app_options,
+    app_auth = .builder_plan_deep_copy(app_auth),
     output_release = output_release,
     expected_prior_identity = expected_prior_identity
   )
@@ -777,13 +827,19 @@ builder_make_plan <- function(
   out_dir,
   make_app = FALSE,
   overwrite = FALSE,
-  app_options = list()
+  app_options = list(),
+  app_auth = list(
+    enabled = FALSE,
+    account_count = 0L,
+    timeout_minutes = 15L
+  )
 ) {
   builder_freeze_plan(
     entries = entries,
     out_dir = out_dir,
     make_app = make_app,
     overwrite = overwrite,
-    app_options = app_options
+    app_options = app_options,
+    app_auth = app_auth
   )
 }

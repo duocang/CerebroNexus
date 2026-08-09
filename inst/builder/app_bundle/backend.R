@@ -448,6 +448,7 @@
       !is.logical(plain$launch_browser) ||
       length(plain$launch_browser) != 1L ||
       is.na(plain$launch_browser) ||
+      !.builder_app_auth_request_valid(plain$auth) ||
       !.builder_app_colors_valid(plain$colors, plain$selector_order) ||
       !identical(plain$crb_pick_smallest_file, FALSE) ||
       !.builder_app_backend_plan_valid(

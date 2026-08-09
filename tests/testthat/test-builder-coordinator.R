@@ -60,6 +60,11 @@ builder_app_coordinator_plan_fixture <- function(
       output_release = list(targets = targets),
       make_app = isTRUE(make_app),
       app_contract_version = if (isTRUE(make_app)) 1L else 0L,
+      app_auth = list(
+        enabled = isTRUE(make_app),
+        account_count = if (isTRUE(make_app)) 2L else 0L,
+        timeout_minutes = 15L
+      ),
       dataset_order = c("dataset-a", "dataset-b"),
       items = items,
       manifest = list(),
@@ -1080,6 +1085,7 @@ test_that("coordinator freezes the complete App publication expectation", {
         "max_request_size",
         "display_mode",
         "launch_browser",
+        "auth",
         "colors",
         "backend_plan",
         "app_dir"

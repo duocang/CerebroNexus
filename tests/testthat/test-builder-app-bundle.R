@@ -17,6 +17,11 @@ builder_app_bundle_fixture <- function(
       app_contract_version = 1L,
       dataset_order = c("dataset-a", "dataset-b"),
       make_app = TRUE,
+      app_auth = list(
+        enabled = TRUE,
+        account_count = 2L,
+        timeout_minutes = 15L
+      ),
       items = list(
         list(
           id = "dataset-a",
@@ -61,6 +66,59 @@ builder_app_bundle_fixture <- function(
   )
   list(stage = stage, paths = paths, labels = labels, plan = plan)
 }
+
+test_that("App request carries only the fixed safe login summary", {
+  fixture <- builder_app_bundle_fixture()
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+
+  expect_identical(
+    request$auth,
+    list(
+      enabled = TRUE,
+      account_count = 2L,
+      timeout_minutes = 15L,
+      passphrase_env = "CEREBRO_AUTH_PASSPHRASE"
+    )
+  )
+  expect_false("accounts" %in% names(request))
+  expect_false("passphrase" %in% names(request$auth))
+  expect_false(builder_auth_value_contains(request, "auth-user-a-7f31"))
+  expect_false(builder_auth_value_contains(request, "auth-password-a-7f31"))
+})
+
+test_that("App request rejects altered login summary fields", {
+  fixture <- builder_app_bundle_fixture()
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  mutations <- list(
+    enabled = FALSE,
+    account_count = 0L,
+    timeout_minutes = 30L,
+    passphrase_env = "NOT_CEREBRO_AUTH_PASSPHRASE",
+    extra_field = "unexpected"
+  )
+
+  for (field in names(mutations)) {
+    altered <- request
+    if (identical(field, "extra_field")) {
+      altered$auth[[field]] <- mutations[[field]]
+    } else {
+      altered$auth[[field]] <- mutations[[field]]
+    }
+    expect_error(
+      .builder_app_validate_request(altered),
+      "generated-App request contract is invalid",
+      info = field
+    )
+  }
+})
 
 builder_app_backend_fixture <- function(
   mode,
@@ -213,6 +271,7 @@ test_that("App arguments come only from the frozen plan", {
       "max_request_size",
       "display_mode",
       "launch_browser",
+      "auth",
       "colors",
       "crb_pick_smallest_file",
       "backend_plan",

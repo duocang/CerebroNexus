@@ -49,7 +49,8 @@
     make_app = .subset2(plan, "make_app"),
     dataset_order = .subset2(plan, "dataset_order"),
     items = app_items,
-    app_options = .subset2(plan, "app_options")
+    app_options = .subset2(plan, "app_options"),
+    app_auth = .subset2(plan, "app_auth")
   )
   if (.builder_app_has_reference(plan)) {
     invalid()
@@ -137,6 +138,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
     )
   }
   options <- plan$app_options
+  app_auth <- plan$app_auth
   if (
     is.list(options) &&
       identical(options$initial_dataset_mode, "automatic") &&
@@ -152,6 +154,9 @@ builder_app_bundle_request <- function(plan, built, labels) {
       !.builder_app_options_valid(options, order)
   ) {
     stop("Frozen generated-App options are invalid.", call. = FALSE)
+  }
+  if (!.builder_app_auth_summary_valid(app_auth)) {
+    stop("Frozen generated-App login settings are invalid.", call. = FALSE)
   }
   if (
     identical(options$initial_dataset_mode, "automatic") &&
@@ -217,6 +222,7 @@ builder_app_bundle_request <- function(plan, built, labels) {
       max_request_size = options$max_request_size,
       display_mode = options$display_mode,
       launch_browser = options$launch_browser,
+      auth = .builder_app_auth_request(app_auth),
       colors = colors,
       crb_pick_smallest_file = FALSE,
       backend_plan = backend_plan,

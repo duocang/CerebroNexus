@@ -1,5 +1,41 @@
 builder_plan_contract_source_runtime(environment())
 
+test_that("BuildPlan freezes only a safe login summary", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("plan.R")
+    entry <- builder_task6_entry()
+    auth <- list(enabled = TRUE, account_count = 2L, timeout_minutes = 15L)
+    plan <- builder_freeze_plan(
+      entries = list(entry),
+      out_dir = withr::local_tempdir(),
+      make_app = TRUE,
+      app_auth = auth
+    )
+
+    expect_s3_class(plan, "builder_build_plan")
+    expect_identical(plan$app_auth, auth)
+    expect_false(builder_auth_value_contains(plan, "auth-user-a-7f31"))
+    expect_false(builder_auth_value_contains(plan, "auth-password-a-7f31"))
+  })
+})
+
+test_that("login summary is impossible without App output", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("plan.R")
+    plan <- builder_freeze_plan(
+      entries = list(builder_task6_entry()),
+      out_dir = withr::local_tempdir(),
+      make_app = FALSE,
+      app_auth = list(enabled = TRUE, account_count = 1L, timeout_minutes = 15L)
+    )
+
+    expect_identical(plan$error_code, "invalid_app_auth")
+    expect_match(plan$error, "requires App output", fixed = TRUE)
+  })
+})
+
 test_that("profiles expose safe layer choices for every assay", {
   skip_if_not_installed("SeuratObject")
 
