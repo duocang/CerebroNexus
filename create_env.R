@@ -59,7 +59,6 @@ rix(
     "stringr",
     "shinyvalidate",
     "Seurat",
-
     "SeuratObject",
     # runtime deps (CRAN)
     "base64enc",
