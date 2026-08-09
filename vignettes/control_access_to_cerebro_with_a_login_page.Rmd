@@ -214,7 +214,7 @@ reviewed unit override, then restart through the operator's normal change
 process. This package does not edit or reload the unit. The generated App tree
 and its external secret handoff remain separate controlled release members.
 
-## Docker
+## Docker or Docker Compose
 
 Pass `--env-file /absolute/private/viewer-auth.env` through the deployment
 system. Do not COPY the file into the image or mount it below the App tree.
@@ -223,7 +223,7 @@ App tree and external secret handoff as separate release members.
 
 ## Remote host or secret store
 
-Transfer the handoff package over the organization's approved encrypted
+Transfer the handoff package to another machine over the organization's approved encrypted
 channel, or import the one-line environment value into its secret store. Remove
 the local handoff copy only after the service has been validated. Retain the old
 release secret only for the approved rollback window, then revoke it and its
