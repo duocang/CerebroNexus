@@ -814,11 +814,14 @@ test_that("4.2 metadata and deployment handoff stay synchronized", {
     "provisionViewerAuthentication",
     "# One-minute setup",
     "# What provisioning creates",
-    "# How this maps to Builder",
     "# Troubleshooting",
     "readRenviron",
     "EnvironmentFile=/absolute/private/viewer-auth.env",
     "--env-file /absolute/private/viewer-auth.env",
+    "systemctl status shiny-server",
+    "journalctl -u shiny-server -f",
+    "docker logs -f cerebro",
+    "docker stop cerebro",
     "Sys.unsetenv",
     "rollback window",
     "secret store",
@@ -827,26 +830,56 @@ test_that("4.2 metadata and deployment handoff stay synchronized", {
   for (token in required) {
     expect_true(grepl(token, vignette, fixed = TRUE))
   }
-  expect_true(grepl(
-    "Builder passes only `provision$auth` to `createShinyApp()`",
-    vignette,
-    fixed = TRUE
-  ))
-  expect_true(grepl(
-    "Builder must never persist `accounts`, login passwords, or the generated passphrase",
-    vignette,
-    fixed = TRUE
-  ))
+  expect_true(grepl("toc: true", vignette, fixed = TRUE))
+  expect_true(grepl("number_sections: true", vignette, fixed = TRUE))
+  expect_true(grepl("max-width: none", vignette, fixed = TRUE))
+  expect_true(grepl("overflow-x: auto", vignette, fixed = TRUE))
   diagrams <- c(
-    "img/auth-provisioning-validation.png",
-    "img/auth-builder-boundary.png",
-    "img/auth-deployment-boundary.png"
+    "img/auth-provisioning-validation.svg",
+    "img/auth-deployment-boundary.svg"
   )
   for (diagram in diagrams) {
     expect_true(grepl(diagram, vignette, fixed = TRUE), info = diagram)
     expect_true(
       file.exists(test_path("..", "..", "vignettes", diagram)),
       info = diagram
+    )
+  }
+  expect_false(grepl(".png", vignette, fixed = TRUE))
+
+  vignette_lines <- strsplit(vignette, "\n", fixed = TRUE)[[1L]]
+  for (label in c(
+    "**Run this as:**",
+    "**Run it on:**",
+    "**What happens:**",
+    "**Verify:**"
+  )) {
+    expect_true(
+      sum(grepl(label, vignette_lines, fixed = TRUE)) >= 5L,
+      info = label
+    )
+  }
+  script_starts <- grep(
+    "^```(\\{r eval=FALSE\\}|bash|ini|dockerfile|yaml)$",
+    vignette_lines
+  )
+  expect_gt(length(script_starts), 8L)
+  for (line in script_starts) {
+    block_type <- vignette_lines[[line]]
+    expected_prefix <- if (identical(block_type, "```{r eval=FALSE}")) {
+      c("# R console —", "# R startup file —")
+    } else if (identical(block_type, "```bash")) {
+      "# Terminal —"
+    } else if (identical(block_type, "```dockerfile")) {
+      "# Dockerfile —"
+    } else if (identical(block_type, "```yaml")) {
+      "# compose.yaml —"
+    } else {
+      "# systemd override —"
+    }
+    expect_true(
+      any(startsWith(vignette_lines[[line + 1L]], expected_prefix)),
+      info = paste(block_type, paste(expected_prefix, collapse = " | "))
     )
   }
 })
