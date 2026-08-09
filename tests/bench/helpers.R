@@ -252,8 +252,6 @@ bench_numeric_fingerprint <- function(values, gene_ids, cell_ids) {
     is.na(info$isdir) ||
       info$isdir ||
       is.na(info$size) ||
-      is.na(info$mtime) ||
-      is.na(info$ctime) ||
       is.na(info$mode)
   ) {
     stop("source identity requires one existing regular file", call. = FALSE)
@@ -261,8 +259,6 @@ bench_numeric_fingerprint <- function(values, gene_ids, cell_ids) {
   list(
     path = path,
     bytes = as.double(info$size),
-    mtime = as.double(info$mtime),
-    ctime = as.double(info$ctime),
     mode = as.integer(info$mode)
   )
 }
@@ -354,7 +350,7 @@ bench_validate_source_file <- function(path, source_spec) {
       !is.list(snapshot$identity) ||
       !identical(
         names(snapshot$identity),
-        c("path", "bytes", "mtime", "ctime", "mode")
+        c("path", "bytes", "mode")
       ) ||
       !identical(snapshot$path, snapshot$identity$path) ||
       !identical(as.double(snapshot$bytes), snapshot$identity$bytes) ||
@@ -387,7 +383,7 @@ bench_validate_source_file <- function(path, source_spec) {
 
 .bench_h5_dataset_dims <- function(path, dataset) {
   .bench_require_namespace("rhdf5")
-  file_id <- rhdf5::H5Fopen(path)
+  file_id <- rhdf5::H5Fopen(path, flags = "H5F_ACC_RDONLY")
   on.exit(rhdf5::H5Fclose(file_id))
   dataset_id <- rhdf5::H5Dopen(file_id, paste0("/", sub("^/", "", dataset)))
   on.exit(rhdf5::H5Dclose(dataset_id), add = TRUE)
@@ -2457,12 +2453,12 @@ bench_empty_outcome <- function(phase, pair_id) {
       !isTRUE(all.equal(
         row$warmed_median_secs,
         stats::median(warmed),
-        tolerance = 0
+        tolerance = 1e-9
       )) ||
         !isTRUE(all.equal(
           row$block_ready_secs,
           row$block_prepare_secs + row$block_materialize_secs,
-          tolerance = 0
+          tolerance = 1e-9
         ))
     ) {
       stop("access derived timings are inconsistent", call. = FALSE)
@@ -4182,8 +4178,7 @@ bench_install_tree <- function(repo, library, log) {
       "CMD",
       "INSTALL",
       "--no-multiarch",
-      "--library",
-      shQuote(library),
+      paste0("--library=", shQuote(library)),
       shQuote(repo)
     ),
     stdout = log,
@@ -5030,7 +5025,7 @@ bench_validate_panel <- function(
           isTRUE(all.equal(
             as.double(x[!is.na(y)]),
             as.double(y[!is.na(y)]),
-            tolerance = 0,
+            tolerance = 1e-9,
             check.attributes = FALSE
           ))
       } else if (is.logical(y)) {
@@ -5738,7 +5733,9 @@ bench_validate_panel_a_evidence <- function(panel_a_dir) {
       )
     ) ||
       any(eligibility$panel != "comparison") ||
-      nrow(eligibility) != 9L ||
+      nrow(eligibility) !=
+        length(unique(schedule$tier_label)) *
+          length(unique(schedule$backend)) ||
       any(eligibility$status != "SCHEDULED")
   ) {
     stop("Panel A eligibility schema or gates are invalid", call. = FALSE)

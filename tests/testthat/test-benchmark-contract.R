@@ -763,6 +763,43 @@ test_that("source identity fails closed before BPCells is opened", {
   ))
 })
 
+test_that("source identity ignores timestamp-only HDF5 reader changes", {
+  skip_unless_bench_tree()
+  load_benchmark_contract()
+
+  path <- tempfile(fileext = ".h5ad")
+  writeBin(as.raw(1:8), path)
+  before <- .bench_source_identity(path)
+  Sys.setFileTime(path, Sys.time() + 60)
+  expect_identical(.bench_source_identity(path), before)
+})
+
+test_that("evidence validation tolerates CSV-scale floating-point roundoff", {
+  skip_unless_bench_tree()
+  load_benchmark_contract()
+
+  actual <- data.frame(density = 0.1 + 0.2)
+  expected <- data.frame(density = 0.3)
+  expect_true(.bench_frame_values_equal(actual, expected))
+  expect_false(.bench_frame_values_equal(
+    data.frame(density = 0.3 + 1e-6),
+    expected
+  ))
+
+  row <- make_valid_benchmark_outcome(
+    "access",
+    "comparison:1:tier_1k:embedded",
+    bench_empty_outcome
+  )
+  row$warmed_median_secs <- row$warmed_median_secs + 1e-12
+  row$block_ready_secs <- row$block_ready_secs + 1e-12
+  expect_silent(.bench_validate_outcome_row(
+    row,
+    bench_access_schema(),
+    row$pair_id
+  ))
+})
+
 test_that("H5AD CSR inventory is exact, oriented, and opens only after validation", {
   skip_unless_bench_tree()
   skip_if_not_installed("digest")
@@ -2539,11 +2576,8 @@ test_that("source snapshots separate lightweight identity checks from the final 
   expect_silent(.bench_assert_source_snapshot(snapshot))
 
   writeBin(charToRaw("BBBB"), source)
-  expect_error(.bench_assert_source_identity(snapshot), "identity")
-  identity_only_match <- snapshot
-  identity_only_match$identity <- .bench_source_identity(source)
-  expect_silent(.bench_assert_source_identity(identity_only_match))
-  expect_error(.bench_assert_source_snapshot(identity_only_match), "SHA-256")
+  expect_silent(.bench_assert_source_identity(snapshot))
+  expect_error(.bench_assert_source_snapshot(snapshot), "SHA-256")
 
   link <- file.path(root, "source-link.h5ad")
   expect_true(file.symlink(source, link))
@@ -2872,7 +2906,7 @@ test_that("Panel A static evidence and linkage reject every frozen control mutat
   load_benchmark_contract()
   root <- withr::local_tempdir()
   schedule <- bench_comparison_schedule(
-    c(tier_125k = 2L, tier_250k = 3L, common = 4L),
+    c(tier_1k = 1L, tier_5k = 2L, tier_10k = 3L, common = 4L),
     c("embedded", "bpcells", "h5"),
     3L
   )
@@ -2916,8 +2950,9 @@ test_that("Panel A static evidence and linkage reject every frozen control mutat
     plan
   }
   plans <- list(
-    tier_125k = make_plan(2L),
-    tier_250k = make_plan(3L),
+    tier_1k = make_plan(1L),
+    tier_5k = make_plan(2L),
+    tier_10k = make_plan(3L),
     common = make_plan(4L)
   )
   common <- plans$common
@@ -2937,7 +2972,11 @@ test_that("Panel A static evidence and linkage reject every frozen control mutat
   BENCH_CONFIG$source$expected_bytes <- source$expected_bytes
   BENCH_CONFIG$source$expected_sha256 <- source$expected_sha256
   BENCH_CONFIG$source$n_cells <- source$n_cells
-  BENCH_CONFIG$comparison_fixed_tiers <- c(tier_125k = 2L, tier_250k = 3L)
+  BENCH_CONFIG$comparison_fixed_tiers <- c(
+    tier_1k = 1L,
+    tier_5k = 2L,
+    tier_10k = 3L
+  )
   BENCH_CONFIG$common_target <- 4L
   BENCH_CONFIG$common_min_exclusive <- 3L
   runtime_packages <- sort(c(
@@ -3008,7 +3047,7 @@ test_that("Panel A static evidence and linkage reject every frozen control mutat
       paste(runtime_versions, runtime_paths, sep = "|")
     )
   )
-  tier_values <- c(tier_125k = 2L, tier_250k = 3L, common = 4L)
+  tier_values <- c(tier_1k = 1L, tier_5k = 2L, tier_10k = 3L, common = 4L)
   sampling <- do.call(
     rbind,
     lapply(names(tier_values), function(tier) {
@@ -3037,11 +3076,11 @@ test_that("Panel A static evidence and linkage reject every frozen control mutat
     ),
     n_genes = 5L,
     n_cells = rep(tier_values, each = 5),
-    gene = rep(paste0("g", 1:5), 3),
-    role = rep(c("first", rep("block", 4)), 3),
+    gene = rep(paste0("g", 1:5), length(tier_values)),
+    role = rep(c("first", rep("block", 4)), length(tier_values)),
     density = .5,
-    source_row = rep(1:5, 3),
-    tie_break_rank = rep(1:5, 3),
+    source_row = rep(1:5, length(tier_values)),
+    tie_break_rank = rep(1:5, length(tier_values)),
     ordered_indices_sha256 = rep(
       unlist(lapply(plans, `[[`, "ordered_indices_sha256"), use.names = FALSE),
       each = 5
@@ -3109,7 +3148,7 @@ test_that("Panel A static evidence and linkage reject every frozen control mutat
     plans,
     evidence = frozen_evidence
   )
-  expect_identical(length(unique(queries$query_plan_sha256)), 3L)
+  expect_identical(length(unique(queries$query_plan_sha256)), 4L)
   bad_evidence <- frozen_evidence
   bad_evidence$queries$density[[1L]] <- 0.25
   invalid <- bench_validate_panel(
