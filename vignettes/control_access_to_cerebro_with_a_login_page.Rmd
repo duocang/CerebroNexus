@@ -81,6 +81,16 @@ Generate a database passphrase on a trusted machine:
 openssl rand -base64 32
 ```
 
+Prepare the private and App directories first. Run this once as the server
+operator; it makes the release account the owner so the subsequent R commands
+can write under `/srv` without elevated privileges:
+
+```bash
+# Terminal — run this once on the trusted build or deployment machine.
+sudo install -d -m 0700 -o "$USER" -g "$(id -g)" /srv/cerebro/private
+sudo install -d -m 0755 -o "$USER" -g "$(id -g)" /srv/cerebro/apps
+```
+
 Create the environment file outside the App directory:
 
 ```{r eval=FALSE}
@@ -129,6 +139,7 @@ Build the protected Viewer:
 createShinyApp(
   cerebro_data = c("My dataset" = "output/cerebro_my_dataset.crb"),
   result_dir = "/srv/cerebro/apps/my_app",
+  port = 3838,
   auth = list(
     credentials = "/srv/cerebro/private/credentials.sqlite",
     passphrase_env = "CEREBRO_AUTH_PASSPHRASE",
@@ -223,6 +234,11 @@ sudo cp -R /srv/cerebro/apps/my_app /srv/shiny-server/
 sudo chown -R shiny:shiny /srv/shiny-server/my_app/private-data/auth
 sudo chmod 0700 /srv/shiny-server/my_app/private-data/auth
 sudo chmod 0600 /srv/shiny-server/my_app/private-data/auth/credentials.sqlite
+
+# Install the external secret at the exact path used by the systemd override.
+sudo install -d -m 0750 /etc/cerebronexus
+sudo install -m 0600 /srv/cerebro/private/viewer-auth.env /etc/cerebronexus/my_app.env
+sudo chown root:root /etc/cerebronexus/my_app.env
 ```
 
 Load the secret through a reviewed systemd override:
@@ -291,12 +307,14 @@ services:
     env_file:
       - /absolute/private/viewer-auth.env
     ports:
-      - "3838:3838"
+      - "127.0.0.1:3838:3838"
 ```
 
 `env_file` is an absolute path on the host that runs Docker Compose. The file
 stays outside `my-deployment/`; Compose reads it and passes the assignment into
-the container environment without copying the file into the image.
+the container environment without copying the file into the image. The port is
+bound only to loopback: place a TLS-terminating reverse proxy in front of it
+before exposing the Viewer to other machines.
 
 Start the service from the deployment directory:
 
