@@ -69,6 +69,138 @@ test_that("account normalisation has the required plain-data-frame contract", {
   )
 })
 
+test_that("provision identifiers are deterministic under injected randomness", {
+  ops <- viewer_auth_provision_test_ops(
+    random_values = list(as.raw(0:15), as.raw(16:47), as.raw(48:55))
+  )
+  state <- CerebroNexus:::.viewerAuthNewProvisionState(
+    accounts = provision_accounts(),
+    options = list(
+      target_dir = "/private/auth",
+      passphrase_env = NULL,
+      timeout_minutes = 15L,
+      install_env = FALSE
+    ),
+    ops = ops
+  )
+  state$preflight <- list(target_path = "/private/auth")
+  CerebroNexus:::.viewerAuthPrepareProvisionIdentity(state)
+  expect_identical(
+    state$identity$operation_id,
+    paste(sprintf("%02x", 0:15), collapse = "")
+  )
+  expect_identical(
+    state$identity$passphrase_env,
+    "CEREBRO_AUTH_PASSPHRASE_3031323334353637"
+  )
+  expect_identical(nchar(state$passphrase), 64L)
+})
+
+test_that("every random draw has one exact raw length", {
+  cases <- list(
+    character(8L),
+    as.raw(1:7),
+    as.raw(1:9),
+    character(16L),
+    as.raw(1:15),
+    as.raw(c(1:16, 17)),
+    character(32L),
+    as.raw(1:31)
+  )
+  sizes <- c(8L, 8L, 8L, 16L, 16L, 16L, 32L, 32L)
+  for (i in seq_along(cases)) {
+    expect_provision_error(
+      CerebroNexus:::.viewerAuthRandomRaw(
+        viewer_auth_provision_test_ops(random_bytes = function(size) {
+          cases[[i]]
+        }),
+        sizes[[i]],
+        "test"
+      ),
+      "secret_generation_failed",
+      "preflight"
+    )
+  }
+})
+
+test_that("environment name generation is fail closed", {
+  calls <- 0L
+  ops <- viewer_auth_provision_test_ops(
+    random_bytes = function(size) {
+      calls <<- calls + 1L
+      as.raw(rep(calls %% 255L, size))
+    },
+    getenv = function(name) ""
+  )
+  expect_provision_error(
+    CerebroNexus:::.viewerAuthResolveEnvironmentName(NULL, ops),
+    "environment_conflict",
+    "environment"
+  )
+  expect_identical(calls, 100L)
+  for (reader in list(
+    function(name) stop("sentinel", call. = FALSE),
+    function(name) character(),
+    function(name) FALSE
+  )) {
+    condition <- expect_provision_error(
+      CerebroNexus:::.viewerAuthResolveEnvironmentName(
+        "CEREBRO_AUTH_KEY",
+        viewer_auth_provision_test_ops(getenv = reader)
+      ),
+      "environment_conflict",
+      "environment"
+    )
+    expect_false(grepl("sentinel", conditionMessage(condition), fixed = TRUE))
+  }
+})
+
+test_that("recovery metadata has exact schemas", {
+  operation_id <- paste(rep("a", 32L), collapse = "")
+  owner <- CerebroNexus:::.viewerAuthOwnerManifest(
+    operation_id,
+    "/private/auth",
+    paste0(".cerebro-auth-0123456789abcdef-", operation_id, ".stage"),
+    "2026-08-08T21:50:46Z",
+    "claimed"
+  )
+  expect_true(CerebroNexus:::.viewerAuthValidOwnerManifest(owner))
+  owner$extra <- TRUE
+  expect_false(CerebroNexus:::.viewerAuthValidOwnerManifest(owner))
+  provision <- CerebroNexus:::.viewerAuthProvisionManifest(
+    operation_id,
+    "ready",
+    "2026-08-08T21:50:46Z",
+    "CEREBRO_AUTH_KEY",
+    15L,
+    2L
+  )
+  expect_true(CerebroNexus:::.viewerAuthValidProvisionManifest(provision))
+  provision$artifacts[["secret"]] <- "/absolute/viewer-auth.env"
+  expect_false(CerebroNexus:::.viewerAuthValidProvisionManifest(provision))
+})
+
+test_that("transaction state is private and has exact fields", {
+  state <- CerebroNexus:::.viewerAuthNewProvisionState(
+    provision_accounts(),
+    list(
+      target_dir = "/private/auth",
+      passphrase_env = NULL,
+      timeout_minutes = 15L,
+      install_env = FALSE
+    ),
+    viewer_auth_provision_test_ops()
+  )
+  expect_true(is.environment(state))
+  expect_identical(parent.env(state), emptyenv())
+  expect_identical(
+    sort(ls(state, all.names = TRUE)),
+    sort(CerebroNexus:::.viewerAuthProvisionStateFields)
+  )
+  expect_false(state$lock_claimed)
+  expect_false(state$committed)
+})
+
 test_that("accounts reject every ASCII control and enforce byte limits", {
   for (control in c(1:31, 127)) {
     for (field in c("user", "password")) {

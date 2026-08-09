@@ -76,6 +76,7 @@ Suggests:
   jsonlite,
   knitr,
   monocle,
+  openssl,
   png,
   reshape2,
   rhdf5,

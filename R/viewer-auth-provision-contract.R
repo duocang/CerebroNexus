@@ -356,3 +356,179 @@ print.cerebro_viewer_auth_provision <- function(x, ...) {
   cat("  environment installed:", x$environment_installed, "\n")
   invisible(x)
 }
+
+.viewerAuthProvisionStateFields <- c(
+  "accounts",
+  "options",
+  "ops",
+  "identity",
+  "passphrase",
+  "preflight",
+  "paths",
+  "owner_state",
+  "manifest_state",
+  "identities",
+  "lock_claimed",
+  "stage_created",
+  "target_published",
+  "env_owned",
+  "environment_installed",
+  "committed",
+  "provider_capture",
+  "secret_bytes",
+  "primary_condition",
+  "recovery_path"
+)
+
+.viewerAuthNewProvisionState <- function(accounts, options, ops) {
+  if (!identical(names(ops), .viewerAuthProvisionOpNames)) {
+    stop("Invalid provisioning operations.", call. = FALSE)
+  }
+  state <- new.env(parent = emptyenv())
+  values <- list(
+    accounts = accounts,
+    options = options,
+    ops = ops,
+    identity = NULL,
+    passphrase = NULL,
+    preflight = NULL,
+    paths = NULL,
+    owner_state = NULL,
+    manifest_state = NULL,
+    identities = list(),
+    lock_claimed = FALSE,
+    stage_created = FALSE,
+    target_published = FALSE,
+    env_owned = FALSE,
+    environment_installed = FALSE,
+    committed = FALSE,
+    provider_capture = list(output = NULL, message = NULL),
+    secret_bytes = NULL,
+    primary_condition = NULL,
+    recovery_path = NULL
+  )
+  for (name in .viewerAuthProvisionStateFields) {
+    state[[name]] <- values[[name]]
+  }
+  state
+}
+
+.viewerAuthScrubProvisionState <- function(state) {
+  state$accounts <- NULL
+  state$passphrase <- NULL
+  state$provider_capture <- NULL
+  state$secret_bytes <- NULL
+  invisible(NULL)
+}
+
+.viewerAuthUtcTimestamp <- function(value) {
+  .viewerAuthProvisionScalarString(value) &&
+    grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", value)
+}
+
+.viewerAuthOwnerManifest <- function(
+  operation_id,
+  target_path,
+  stage_basename,
+  created_at,
+  state
+) {
+  list(
+    schema_version = 1L,
+    operation_id = operation_id,
+    state = state,
+    target_path = target_path,
+    stage_basename = stage_basename,
+    created_at = created_at
+  )
+}
+
+.viewerAuthProvisionManifest <- function(
+  operation_id,
+  state,
+  created_at,
+  passphrase_env,
+  timeout_minutes,
+  user_count
+) {
+  list(
+    schema_version = 1L,
+    operation_id = operation_id,
+    state = state,
+    created_at = created_at,
+    passphrase_env = passphrase_env,
+    timeout_minutes = as.integer(timeout_minutes),
+    user_count = as.integer(user_count),
+    artifacts = c(
+      credentials = "credentials.sqlite",
+      secret = "viewer-auth.env",
+      manifest = "provision.rds"
+    )
+  )
+}
+
+.viewerAuthValidOwnerManifest <- function(value) {
+  expected <- c(
+    "schema_version",
+    "operation_id",
+    "state",
+    "target_path",
+    "stage_basename",
+    "created_at"
+  )
+  identical(class(value), "list") &&
+    identical(names(value), expected) &&
+    identical(value$schema_version, 1L) &&
+    .viewerAuthProvisionScalarString(value$operation_id) &&
+    grepl("^[0-9a-f]{32}$", value$operation_id) &&
+    .viewerAuthProvisionScalarString(value$state) &&
+    value$state %in% c("claimed", "staging", "publishing", "published") &&
+    .viewerAuthProvisionScalarString(value$target_path) &&
+    isTRUE(.nativeAbsolutePath(value$target_path)) &&
+    !.viewerAuthProvisionHasControl(value$target_path) &&
+    .viewerAuthProvisionScalarString(value$stage_basename) &&
+    grepl(
+      "^\\.cerebro-auth-[0-9a-f]{16}-[0-9a-f]{32}\\.stage$",
+      value$stage_basename
+    ) &&
+    .viewerAuthUtcTimestamp(value$created_at)
+}
+
+.viewerAuthValidProvisionManifest <- function(value) {
+  expected <- c(
+    "schema_version",
+    "operation_id",
+    "state",
+    "created_at",
+    "passphrase_env",
+    "timeout_minutes",
+    "user_count",
+    "artifacts"
+  )
+  artifacts <- c(
+    credentials = "credentials.sqlite",
+    secret = "viewer-auth.env",
+    manifest = "provision.rds"
+  )
+  identical(class(value), "list") &&
+    identical(names(value), expected) &&
+    identical(value$schema_version, 1L) &&
+    .viewerAuthProvisionScalarString(value$operation_id) &&
+    grepl("^[0-9a-f]{32}$", value$operation_id) &&
+    .viewerAuthProvisionScalarString(value$state) &&
+    value$state %in% c("staging", "ready") &&
+    .viewerAuthUtcTimestamp(value$created_at) &&
+    .viewerAuthProvisionScalarString(value$passphrase_env) &&
+    grepl("^[A-Za-z_][A-Za-z0-9_]*$", value$passphrase_env) &&
+    is.integer(value$timeout_minutes) &&
+    length(value$timeout_minutes) == 1L &&
+    !is.na(value$timeout_minutes) &&
+    value$timeout_minutes >= 1L &&
+    value$timeout_minutes <= 1440L &&
+    is.integer(value$user_count) &&
+    length(value$user_count) == 1L &&
+    !is.na(value$user_count) &&
+    value$user_count >= 1L &&
+    value$user_count <= 1000L &&
+    identical(value$artifacts, artifacts)
+}
