@@ -837,6 +837,18 @@ test_that("4.2 metadata and deployment handoff stay synchronized", {
     vignette,
     fixed = TRUE
   ))
+  diagrams <- c(
+    "img/auth-provisioning-validation.png",
+    "img/auth-builder-boundary.png",
+    "img/auth-deployment-boundary.png"
+  )
+  for (diagram in diagrams) {
+    expect_true(grepl(diagram, vignette, fixed = TRUE), info = diagram)
+    expect_true(
+      file.exists(test_path("..", "..", "vignettes", diagram)),
+      info = diagram
+    )
+  }
 })
 
 test_that("real provisioning builds a lite-compatible authenticated App", {

@@ -48,6 +48,10 @@ The security boundary is easy to remember:
 > `provision$auth` to `createShinyApp()`, then deploy the App and env file as two
 > separately controlled release members.
 
+![Provisioning validates inputs and dependencies, proves the private parent,
+stages operation-owned files, atomically publishes them, and fails closed when
+cleanup cannot be proven.](img/auth-provisioning-validation.png)
+
 # One-minute setup
 
 Install the optional providers and load CerebroNexus:
@@ -156,6 +160,10 @@ backups.
 
 The provisioning API and Builder have different responsibilities:
 
+![Builder passes one-time account input to a short-lived trusted worker, keeps
+only secret-free handoff data, and sends the external secret through a separate
+deployment channel.](img/auth-builder-boundary.png)
+
 - Builder may collect a one-time `accounts` table and provisioning options in a
   trusted worker.
 - Builder calls `provisionViewerAuthentication()` exactly once for the job.
@@ -263,6 +271,9 @@ shiny::runApp("/srv/cerebro/apps/viewer")
 Use a private/incognito browser window to verify that the login page appears,
 correct credentials succeed, and a wrong password fails. Test the real HTTPS
 deployment URL as well as localhost.
+
+![The generated App tree and external environment secret remain separate across
+local, systemd, container, and remote deployments.](img/auth-deployment-boundary.png)
 
 # Deploy with Shiny Server or another R service
 
