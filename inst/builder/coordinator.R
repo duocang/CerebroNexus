@@ -19,40 +19,48 @@
 
 .builder_coordinator_report_plan <- function(plan) {
   app_auth <- .subset2(plan, "app_auth")
-  items <- lapply(plan$items, function(item) {
+  items <- lapply(.subset2(plan, "items"), function(item) {
     list(
-      id = item$id,
-      name = item$name,
-      filename = item$filename,
-      organism = item$organism %||% NULL,
-      analyses = item$analyses %||% character(),
-      included_groups = item$included_groups %||% character(),
-      included_projections = item$included_projections %||% character(),
+      id = .subset2(item, "id"),
+      name = .subset2(item, "name"),
+      filename = .subset2(item, "filename"),
+      organism = .subset2(item, "organism") %||% NULL,
+      analyses = .subset2(item, "analyses") %||% character(),
+      included_groups = .subset2(item, "included_groups") %||% character(),
+      included_projections = .subset2(item, "included_projections") %||%
+        character(),
       metadata_policy = list(
-        included = item$metadata_policy$included %||% character()
+        included = .subset2(
+          .subset2(item, "metadata_policy") %||% list(),
+          "included"
+        ) %||%
+          character()
       ),
-      expression_backend = item$expression_backend,
-      sidecars = item$sidecars %||% character(),
+      expression_backend = .subset2(item, "expression_backend"),
+      sidecars = .subset2(item, "sidecars") %||% character(),
       viewer_page_expectations = list(
-        visible_conditional = item$viewer_page_expectations$visible_conditional %||%
+        visible_conditional = .subset2(
+          .subset2(item, "viewer_page_expectations") %||% list(),
+          "visible_conditional"
+        ) %||%
           character()
       )
     )
   })
-  manifest <- lapply(plan$manifest %||% list(), function(entry) {
+  manifest <- lapply(.subset2(plan, "manifest") %||% list(), function(entry) {
     list(
-      status = entry$status %||% NULL,
-      disposition = entry$disposition %||% NULL,
-      pages = entry$pages %||% character()
+      status = .subset2(entry, "status") %||% NULL,
+      disposition = .subset2(entry, "disposition") %||% NULL,
+      pages = .subset2(entry, "pages") %||% character()
     )
   })
   projected <- structure(
     list(
-      revision = plan$revision,
-      readiness = plan$readiness,
-      out_dir = plan$out_dir,
-      make_app = plan$make_app,
-      dataset_order = plan$dataset_order,
+      revision = .subset2(plan, "revision"),
+      readiness = .subset2(plan, "readiness"),
+      out_dir = .subset2(plan, "out_dir"),
+      make_app = .subset2(plan, "make_app"),
+      dataset_order = .subset2(plan, "dataset_order"),
       app_auth = list(
         enabled = isTRUE(.subset2(app_auth, "enabled")),
         account_count = as.integer(.subset2(app_auth, "account_count")),
@@ -61,12 +69,18 @@
       items = items,
       manifest = manifest,
       acknowledgements = as.character(unique(.builder_report_strings(
-        plan$acknowledgements %||% list()
+        .subset2(plan, "acknowledgements") %||% list()
       ))),
-      viewer_bundle_assets = plan$viewer_bundle_assets %||% character(),
-      private_assets = plan$private_assets %||% character(),
+      viewer_bundle_assets = .subset2(plan, "viewer_bundle_assets") %||%
+        character(),
+      private_assets = .subset2(plan, "private_assets") %||% character(),
       output_release = list(
-        targets = plan$output_release$targets %||% plan$targets %||% character()
+        targets = .subset2(
+          .subset2(plan, "output_release") %||% list(),
+          "targets"
+        ) %||%
+          .subset2(plan, "targets") %||%
+          character()
       )
     ),
     class = c("builder_build_plan", "list")
@@ -355,34 +369,43 @@
 }
 
 builder_coordinator_prepare <- function(plan, build_id) {
+  plan_class <- attr(plan, "class", exact = TRUE)
   if (
-    !is.list(plan) ||
-      !.builder_release_text(.builder_release_or(plan$out_dir, NULL))
+    !identical(typeof(plan), "list") ||
+      (!is.null(plan_class) &&
+        !identical(plan_class, c("builder_build_plan", "list")))
   ) {
     stop("A frozen plan with an output release is required.", call. = FALSE)
   }
+  out_dir <- .subset2(plan, "out_dir")
+  if (!.builder_release_text(.builder_release_or(out_dir, NULL))) {
+    stop("A frozen plan with an output release is required.", call. = FALSE)
+  }
   app_contract <- .builder_coordinator_app_contract(plan)
-  output_release <- .builder_release_or(plan$output_release, list())
+  output_release <- .builder_release_or(
+    .subset2(plan, "output_release"),
+    list()
+  )
   expected <- .builder_release_or(
-    output_release$targets,
-    .builder_release_or(plan$targets, character())
+    .subset2(output_release, "targets"),
+    .builder_release_or(.subset2(plan, "targets"), character())
   )
   relative <- vapply(
     expected,
     function(path) {
-      .builder_release_relative(path, plan$out_dir)
+      .builder_release_relative(path, out_dir)
     },
     ""
   )
   expected <- sort(unique(relative), method = "radix")
   prior <- .builder_release_or(
-    plan$expected_prior_identity,
-    builder_release_identity(plan$out_dir)
+    .subset2(plan, "expected_prior_identity"),
+    builder_release_identity(out_dir)
   )
   if (!.builder_release_identity_valid(prior)) {
     stop("The expected prior release identity is invalid.", call. = FALSE)
   }
-  prior_state <- builder_release_state(plan$out_dir, exact_record = FALSE)
+  prior_state <- builder_release_state(out_dir, exact_record = FALSE)
   if (!identical(prior_state$identity, prior)) {
     stop(
       "The release changed after Review; nothing was published.",
@@ -406,14 +429,14 @@ builder_coordinator_prepare <- function(plan, build_id) {
       call. = FALSE
     )
   }
-  if (length(prior_paths) && !isTRUE(plan$overwrite)) {
+  if (length(prior_paths) && !isTRUE(.subset2(plan, "overwrite"))) {
     stop(
       "Known outputs already exist. Enable Replace existing outputs.",
       call. = FALSE
     )
   }
   handle <- builder_prepare_release(
-    plan$out_dir,
+    out_dir,
     build_id,
     expected_prior = prior,
     expected_prior_state = prior_state

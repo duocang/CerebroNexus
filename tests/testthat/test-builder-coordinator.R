@@ -11,24 +11,6 @@ builder_task9_source <- function(local = parent.frame()) {
   invisible(root)
 }
 
-builder_serialized_contains <- function(value, sentinel) {
-  serialized <- serialize(value, NULL, version = 3L)
-  needle <- charToRaw(sentinel)
-  if (length(serialized) < length(needle)) {
-    return(FALSE)
-  }
-  any(vapply(
-    seq_len(length(serialized) - length(needle) + 1L),
-    function(index) {
-      identical(
-        serialized[index:(index + length(needle) - 1L)],
-        needle
-      )
-    },
-    logical(1)
-  ))
-}
-
 builder_app_coordinator_plan_fixture <- function(
   target,
   make_app = TRUE,
@@ -191,6 +173,55 @@ test_that("coordinator contract inspection never dispatches plan methods", {
 
     expect_true(contract$expectation$expected)
     expect_identical(calls, 0L)
+  })
+})
+
+test_that("coordinator prepare never dispatches hostile plan methods", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    calls <- character()
+    `$.builder_build_plan` <- function(value, name) {
+      calls <<- c(calls, name)
+      if (identical(name, "out_dir")) {
+        return(target)
+      }
+      stop("hostile-plan-method-sentinel-5e82")
+    }
+    plan <- structure(
+      list(
+        out_dir = target,
+        make_app = FALSE,
+        app_auth = list(
+          enabled = FALSE,
+          account_count = 0L,
+          timeout_minutes = 15L,
+          accounts = "forged-auth-sentinel-5e82"
+        )
+      ),
+      class = c("builder_build_plan", "list")
+    )
+
+    error <- tryCatch(
+      builder_coordinator_prepare(plan, "hostile-plan"),
+      error = identity
+    )
+
+    expect_s3_class(error, "error")
+    expect_identical(
+      conditionMessage(error),
+      "The App publication expectation is invalid."
+    )
+    expect_identical(calls, character())
+    expect_false(builder_auth_value_contains(
+      error,
+      "hostile-plan-method-sentinel-5e82"
+    ))
+    expect_false(builder_auth_value_contains(
+      error,
+      "forged-auth-sentinel-5e82"
+    ))
   })
 })
 
@@ -1706,11 +1737,11 @@ test_that("coordinator report projection rebuilds only safe auth fields", {
       report_plan$app_auth,
       list(enabled = FALSE, account_count = 0L, timeout_minutes = 15L)
     )
-    expect_false(builder_serialized_contains(
+    expect_false(builder_auth_value_contains(
       report_plan,
       "auth-report-account-sentinel-91c4"
     ))
-    expect_false(builder_serialized_contains(
+    expect_false(builder_auth_value_contains(
       report_plan,
       "auth-report-passphrase-sentinel-91c4"
     ))
@@ -1753,11 +1784,11 @@ test_that("coordinator rejects forged auth on CRB-only plans", {
         ignore.case = TRUE,
         info = name
       )
-      expect_false(builder_serialized_contains(
+      expect_false(builder_auth_value_contains(
         error,
         "auth-forged-account-sentinel-91c4"
       ))
-      expect_false(builder_serialized_contains(
+      expect_false(builder_auth_value_contains(
         error,
         "auth-forged-passphrase-sentinel-91c4"
       ))
