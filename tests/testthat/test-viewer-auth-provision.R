@@ -812,6 +812,10 @@ test_that("4.2 metadata and deployment handoff stay synchronized", {
   )
   required <- c(
     "provisionViewerAuthentication",
+    "# One-minute setup",
+    "# What provisioning creates",
+    "# How this maps to Builder",
+    "# Troubleshooting",
     "readRenviron",
     "EnvironmentFile=/absolute/private/viewer-auth.env",
     "--env-file /absolute/private/viewer-auth.env",
@@ -823,6 +827,16 @@ test_that("4.2 metadata and deployment handoff stay synchronized", {
   for (token in required) {
     expect_true(grepl(token, vignette, fixed = TRUE))
   }
+  expect_true(grepl(
+    "Builder passes only `provision$auth` to `createShinyApp()`",
+    vignette,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "Builder must never persist `accounts`, login passwords, or the generated passphrase",
+    vignette,
+    fixed = TRUE
+  ))
 })
 
 test_that("real provisioning builds a lite-compatible authenticated App", {
