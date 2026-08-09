@@ -625,10 +625,12 @@ builder_review_model <- function(plan, verification = NULL) {
   }
   model <- list(
     dataset_count = as.integer(length(items)),
-    output_label = if (isTRUE(plan$make_app)) {
-      "CRB files + private App"
-    } else {
+    output_label = if (!isTRUE(plan$make_app)) {
       "CRB files"
+    } else if (isTRUE(plan$app_auth$enabled)) {
+      "Login-protected Shiny App"
+    } else {
+      "Shiny App"
     },
     datasets = lapply(items, review_dataset),
     app = list(
@@ -656,13 +658,14 @@ builder_review_model <- function(plan, verification = NULL) {
       },
       crb_count = as.integer(length(items)),
       private_app = isTRUE(plan$make_app),
+      authenticated_app = isTRUE(plan$make_app) &&
+        isTRUE(plan$app_auth$enabled),
       existing_files = builder_review_existing_files(
         plan$output_release$replacement_policy,
         plan$output_release$overwrite
       ),
       estimated_size = builder_review_human_size(
-        (plan$output_release$estimated_disk_bytes %||% 0) *
-          if (isTRUE(plan$make_app)) 2 else 1
+        plan$output_release$estimated_disk_bytes %||% 0
       ),
       estimated_time = runtime
     ),
@@ -1322,11 +1325,18 @@ builder_review_stage_ui <- function(id, model) {
         field("Folder", model$output$directory, "is-path"),
         field(
           "Creates",
-          paste(
-            plural(model$output$crb_count, "CRB file"),
-            if (isTRUE(model$output$private_app)) "+ 1 private App" else NULL
-          )
+          if (isTRUE(model$output$private_app)) {
+            paste0(
+              "1 App containing ",
+              plural(model$output$crb_count, "dataset")
+            )
+          } else {
+            plural(model$output$crb_count, "CRB file")
+          }
         ),
+        if (isTRUE(model$output$authenticated_app)) {
+          field("Authentication", "1 secret env file")
+        },
         field("Estimated size", model$output$estimated_size),
         field("Estimated build time", model$output$estimated_time)
       )
@@ -1336,7 +1346,7 @@ builder_review_stage_ui <- function(id, model) {
         class = "review-section review-privacy",
         h3("Private App"),
         p(
-          "Dataset files are bundled privately with the App and are not offered as public downloads."
+          "Dataset files are bundled privately with the App and are not offered as public downloads. The estimate is approximate and includes the App data copy."
         )
       )
     },

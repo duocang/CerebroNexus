@@ -16,7 +16,7 @@ test_that("Review model translates a frozen plan into user language", {
   expect_null(model$app$port)
   expect_null(model$app$max_request_size)
   expect_identical(model$dataset_count, 2L)
-  expect_identical(model$output_label, "CRB files + private App")
+  expect_identical(model$output_label, "Login-protected Shiny App")
   expect_identical(model$datasets[[1L]]$name, "Dataset B")
   expect_identical(model$datasets[[1L]]$group_count, 2L)
   expect_identical(model$datasets[[1L]]$projection_count, 1L)
@@ -27,7 +27,7 @@ test_that("Review model translates a frozen plan into user language", {
     list(enabled = TRUE, account_count = 2L, timeout_minutes = 15L)
   )
   expect_identical(model$output$existing_files, "Keep existing files")
-  expect_identical(model$output$estimated_size, "8 KB")
+  expect_identical(model$output$estimated_size, "4 KB")
   expect_identical(model$output$estimated_time, "A few minutes")
   expect_true(all(
     c("Data info", "Projection", "Marker genes") %in% model$pages
@@ -110,7 +110,9 @@ test_that("Review presents datasets, App experience, pages, and output", {
     fixed = TRUE
   )
   expect_match(html, "2 datasets", fixed = TRUE)
-  expect_match(html, "Creates CRB files + private App", fixed = TRUE)
+  expect_match(html, "Creates Shiny App", fixed = TRUE)
+  expect_match(html, "1 App containing 2 datasets", fixed = TRUE)
+  expect_false(grepl("1 secret env file", html, fixed = TRUE))
   expect_match(html, "Datasets", fixed = TRUE)
   expect_match(html, "Dataset B", fixed = TRUE)
   expect_match(html, "2 cells · 3 genes", fixed = TRUE)
@@ -135,7 +137,7 @@ test_that("Review presents datasets, App experience, pages, and output", {
   expect_match(html, "/private/host/output", fixed = TRUE)
   expect_false(grepl("Existing files", html, fixed = TRUE))
   expect_false(grepl("Keep existing files", html, fixed = TRUE))
-  expect_match(html, "8 KB", fixed = TRUE)
+  expect_match(html, "4 KB", fixed = TRUE)
   expect_match(html, "A few minutes", fixed = TRUE)
   expect_match(html, "Private App", fixed = TRUE)
   expect_match(html, "not offered as public downloads", fixed = TRUE)
@@ -170,6 +172,41 @@ test_that("Review presents datasets, App experience, pages, and output", {
     fixed = TRUE
   )))
   expect_false(grepl("Needs attention", html, fixed = TRUE))
+})
+
+test_that("Review explains the three release modes without duplicating estimates", {
+  crb_plan <- builder_stage_frozen_plan(FALSE)
+  public_plan <- builder_stage_frozen_plan(TRUE)
+  login_plan <- builder_stage_frozen_plan(TRUE)
+  login_plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 2L,
+    timeout_minutes = 15L
+  )
+
+  crb_model <- builder_review_model(crb_plan)
+  public_model <- builder_review_model(public_plan)
+  login_model <- builder_review_model(login_plan)
+
+  expect_identical(crb_model$output_label, "CRB files")
+  expect_identical(public_model$output_label, "Shiny App")
+  expect_identical(login_model$output_label, "Login-protected Shiny App")
+  expect_identical(
+    public_model$output$estimated_size,
+    crb_model$output$estimated_size
+  )
+  public_html <- builder_stage_html(builder_review_stage_ui(
+    "review",
+    public_model
+  ))
+  login_html <- builder_stage_html(builder_review_stage_ui(
+    "review",
+    login_model
+  ))
+  expect_match(public_html, "1 App containing 2 datasets", fixed = TRUE)
+  expect_match(login_html, "Login required · 2 accounts", fixed = TRUE)
+  expect_match(login_html, "1 secret env file", fixed = TRUE)
+  expect_false(grepl("CRB files + private App", public_html, fixed = TRUE))
 })
 
 test_that("Review summarizes saved and points-only spatial sections", {

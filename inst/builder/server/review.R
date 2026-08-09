@@ -687,7 +687,7 @@ output$actionbar <- renderUI({
       class = "inner",
       span(
         class = "grow actionbar-output-note",
-        "Choose where to save the CRB files and App folder."
+        "Choose where to save the build output."
       ),
       uiOutput("review_action_summary", inline = TRUE),
       make_app_control,

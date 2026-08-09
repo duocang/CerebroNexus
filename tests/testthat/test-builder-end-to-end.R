@@ -34,7 +34,9 @@ test_that("Builder release documentation matches the guided workflow", {
 
   for (contract in c(
     "CRB-only",
-    "generated private App",
+    "Public App",
+    "Login App",
+    "viewer-auth.env",
     "private-data",
     "viewer_bundle_assets",
     "HTTP exposure",

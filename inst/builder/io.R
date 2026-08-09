@@ -22,13 +22,13 @@ builder_choose_output_directory <- function(.select = NULL) {
       system <- Sys.info()[["sysname"]] %||% ""
       if (identical(system, "Windows")) {
         return(utils::choose.dir(
-          caption = "Choose where to save the CRB files and App folder."
+          caption = "Choose where to save the build output."
         ))
       }
       if (identical(system, "Darwin")) {
         script <- paste(
           "POSIX path of (choose folder with prompt",
-          '"Choose where to save the CRB files and App folder.")'
+          '"Choose where to save the build output.")'
         )
         return(system2("osascript", c("-e", shQuote(script)), stdout = TRUE))
       }
@@ -40,7 +40,7 @@ builder_choose_output_directory <- function(.select = NULL) {
             "--file-selection",
             "--directory",
             shQuote(
-              "--title=Choose where to save the CRB files and App folder."
+              "--title=Choose where to save the build output."
             )
           ),
           stdout = TRUE,

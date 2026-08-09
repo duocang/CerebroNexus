@@ -44,6 +44,7 @@ untrusted users.
 # Launch the installed Builder
 
 ```{r}
+# Open the local point-and-click Builder.
 library(CerebroNexus)
 launchCerebroBuilder()
 ```
@@ -147,13 +148,19 @@ and disk. Publication later adds `build-report.json` and
 
 Choose one artifact mode:
 
-- **CRB-only** plans the CRBs and any HDF5/BPCells sidecars as payload targets.
-- **generated private App** plans the same payload targets plus `cerebro_app/`.
+- **CRB-only** releases the CRBs and any HDF5/BPCells sidecars.
+- **Public App** releases `cerebro_app/`; its private data directory contains
+  the CRBs and sidecars.
+- **Login App** does the same, and adds `viewer-auth.env` beside the App.
+  In Review, select **Require login**, add each local account, then Build and
+  use **Open App** to verify the local login. Keep `viewer-auth.env` with the
+  App when moving a release; never commit it to Git or place it in a
+  web-accessible directory.
 
 Review's disk estimate counts the source **snapshot payload once** per dataset;
-it is not a prediction of the complete release size. A generated App may copy
-CRBs and sidecars into private runtime storage, and the report and ownership
-record add further release-visible files.
+it is not a prediction of the complete release size. An App contains a private
+data copy, and the report and ownership record add further release-visible
+files.
 
 Pressing Build creates a single-flight request from the frozen snapshot. Draft
 controls cannot change that request. Cancellation is available while the worker
@@ -185,12 +192,25 @@ metadata columns without source paths, host/PID data, lock paths, or raw values.
 One release is published as a transaction:
 
 ```text
-<output-parent>/<release-name>/
+CRB-only release
 ├── 01-<dataset>.crb
-├── expression sidecars when requested
-├── cerebro_app/                 # optional
 ├── build-report.json
-└── .cerebro-builder-release-v1  # ownership record
+└── .cerebro-builder-release-v1
+
+Public App release
+├── cerebro_app/
+│   └── private-data/01-<dataset>.crb
+├── build-report.json
+└── .cerebro-builder-release-v1
+
+Login App release
+├── viewer-auth.env
+├── cerebro_app/
+│   └── private-data/
+│       ├── 01-<dataset>.crb
+│       └── auth/credentials.sqlite
+├── build-report.json
+└── .cerebro-builder-release-v1
 ```
 
 The coordinator writes into a private same-filesystem stage, validates the

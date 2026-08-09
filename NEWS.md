@@ -4,6 +4,9 @@
 
 - The guided Builder now ships a reproducible example matrix, private App
   bundles, immutable release plans, and isolated runtime acceptance coverage.
+- Builder-generated Apps can now require login with multiple local accounts.
+- Generated Apps no longer duplicate CRB payloads at the release root; dataset
+  files remain inside the App's private data directory.
 - Builder-generated Apps and package-owned Viewer/example resources now use the
   versionless 5.0 layout and the single `launchCerebro()` entry point.
 

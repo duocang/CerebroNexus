@@ -115,7 +115,7 @@ test_that("builder interaction reflows and preserves accessible state", {
       "document.getElementById('review-stage').textContent.includes(",
       "'Creates CRB files') && ",
       "!document.getElementById('review-stage').textContent.includes(",
-      "'Creates CRB files + private App')"
+      "'Creates Shiny App')"
     ),
     timeout = 10000
   )
@@ -123,6 +123,10 @@ test_that("builder interaction reflows and preserves accessible state", {
   app$wait_for_js(
     paste0(
       "document.getElementById('review-stage').textContent.includes(",
+      "'Creates Shiny App') && ",
+      "document.getElementById('review-stage').textContent.includes(",
+      "'1 App containing 1 dataset') && ",
+      "!document.getElementById('review-stage').textContent.includes(",
       "'Creates CRB files + private App')"
     ),
     timeout = 10000
