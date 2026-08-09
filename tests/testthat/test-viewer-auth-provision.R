@@ -490,6 +490,25 @@ test_that("secret artifact is strict, private, and clears in-memory passphrase",
   expect_false(dir.exists(file.path(state$paths$stage, "www")))
 })
 
+test_that("secret reader rejects appended text after a maximal environment name", {
+  state <- viewer_auth_provision_staged_state()
+  state$identity$passphrase_env <- paste0("A", strrep("B", 4030L))
+  passphrase <- state$passphrase
+  writeLines(
+    c(
+      paste0(state$identity$passphrase_env, "=", passphrase),
+      "INJECTED=not-a-passphrase"
+    ),
+    state$paths$secret,
+    useBytes = TRUE
+  )
+  expect_provision_error(
+    CerebroNexus:::.viewerAuthReadProvisionSecret(state, state$paths$stage),
+    "artifact_publish_failed",
+    "publish"
+  )
+})
+
 test_that("failed secret writes remain owned and are removable during cleanup", {
   for (fault in c("partial", "chmod")) {
     state <- viewer_auth_provision_staged_state()

@@ -435,20 +435,43 @@
 }
 
 .viewerAuthReadProvisionSecret <- function(state, root) {
+  path <- file.path(root, "viewer-auth.env")
+  name <- state$identity$passphrase_env
+  prefix <- charToRaw(enc2utf8(paste0(name, "=")))
+  expected_size <- length(prefix) + 65L
+  info <- tryCatch(state$ops$inspect_path(path), error = function(e) NULL)
+  valid_info <- is.list(info) &&
+    isTRUE(info$exists) &&
+    identical(info$type, "file") &&
+    !isTRUE(info$is_link) &&
+    is.numeric(info$size) &&
+    length(info$size) == 1L &&
+    !is.na(info$size) &&
+    is.finite(info$size) &&
+    identical(as.double(info$size), as.double(expected_size))
   bytes <- tryCatch(
-    state$ops$read_raw(file.path(root, "viewer-auth.env"), 4097L),
+    if (valid_info) state$ops$read_raw(path, expected_size) else raw(),
     error = function(e) raw()
   )
-  text <- tryCatch(rawToChar(bytes), error = function(e) NA_character_)
-  pattern <- paste0("^", state$identity$passphrase_env, "=([0-9a-f]{64})\\n$")
-  if (!.viewerAuthScalarString(text) || !grepl(pattern, text)) {
+  suffix <- tryCatch(
+    rawToChar(bytes[(length(prefix) + 1L):expected_size]),
+    error = function(e) NA_character_
+  )
+  if (
+    !valid_info ||
+      !is.raw(bytes) ||
+      length(bytes) != expected_size ||
+      !identical(bytes[seq_along(prefix)], prefix) ||
+      !.viewerAuthScalarString(suffix) ||
+      !grepl("^[0-9a-f]{64}\\n$", suffix)
+  ) {
     .viewerAuthProvisionAbort(
       "artifact_publish_failed",
       "publish",
       "The private authentication secret failed validation."
     )
   }
-  sub(pattern, "\\1", text)
+  substr(suffix, 1L, 64L)
 }
 
 .viewerAuthInstallProvisionEnvironment <- function(state) {
