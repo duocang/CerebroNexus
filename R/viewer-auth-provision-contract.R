@@ -349,6 +349,7 @@
   )
 }
 
+#' @export
 print.cerebro_viewer_auth_provision <- function(x, ...) {
   cat("Viewer authentication provisioning:\n")
   cat("  user count:", x$user_count, "\n")

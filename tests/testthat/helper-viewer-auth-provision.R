@@ -28,6 +28,62 @@ viewer_auth_provision_test_ops <- function(random_values = NULL, ...) {
   ops
 }
 
+viewer_auth_provision_public_fixture <- function(passphrase_env = NULL, ...) {
+  testthat::skip_on_os("windows")
+  parent <- withr::local_tempdir(.local_envir = parent.frame())
+  Sys.chmod(parent, "0700")
+  ops <- viewer_auth_provision_test_ops(
+    random_values = list(as.raw(0:15), as.raw(16:47), as.raw(48:55)),
+    sha256 = function(bytes) as.raw(0:31),
+    namespace_available = function(package) TRUE,
+    package_version = function(package) numeric_version("1.1.0"),
+    create_db = function(credentials_data, sqlite_path, passphrase) {
+      writeBin(as.raw(c(0x53, 0x51, 0x4c)), sqlite_path)
+      TRUE
+    },
+    validate_db = function(path, passphrase) TRUE,
+    ...
+  )
+  list(
+    accounts = data.frame(
+      user = c("alice", "bob"),
+      password = c("alice-password", "bob-password-12"),
+      admin = c(TRUE, FALSE),
+      stringsAsFactors = FALSE
+    ),
+    passwords = c("alice-password", "bob-password-12"),
+    operation_id = paste(sprintf("%02x", 0:15), collapse = ""),
+    target = file.path(parent, "viewer-auth"),
+    passphrase_env = passphrase_env,
+    ops = ops
+  )
+}
+
+viewer_auth_raw_contains <- function(haystack, text) {
+  needle <- charToRaw(enc2utf8(text))
+  if (!length(needle) || length(needle) > length(haystack)) {
+    return(FALSE)
+  }
+  any(vapply(
+    seq_len(length(haystack) - length(needle) + 1L),
+    function(start) {
+      identical(haystack[start:(start + length(needle) - 1L)], needle)
+    },
+    logical(1)
+  ))
+}
+
+viewer_auth_file_contains <- function(path, text) {
+  if (dir.exists(path)) {
+    return(FALSE)
+  }
+  size <- file.info(path)$size[[1L]]
+  if (is.na(size) || size < 0) {
+    return(TRUE)
+  }
+  viewer_auth_raw_contains(readBin(path, "raw", n = size), text)
+}
+
 viewer_auth_provision_test_state <- function(
   install_env = FALSE,
   .local_envir = parent.frame(),

@@ -328,6 +328,66 @@ auth_test_build_fixture <- function() {
   list(root = root, crb = crb, credentials = credentials)
 }
 
+test_that("a provision result is the existing strict auth descriptor", {
+  skip_on_os("windows")
+  build <- auth_test_build_fixture()
+  env_name <- "CEREBRO_AUTH_PROVISION_BUNDLE_KEY"
+  withr::local_envvar(.new = stats::setNames(NA_character_, env_name))
+  fixture <- viewer_auth_provision_public_fixture(passphrase_env = env_name)
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .viewerAuthRequireProvider = function() invisible(TRUE),
+    .viewerAuthValidateDatabase = function(path, passphrase) invisible(TRUE),
+    .package = "CerebroNexus"
+  )
+  provision <- provisionViewerAuthentication(
+    fixture$accounts,
+    fixture$target,
+    passphrase_env = env_name,
+    install_env = TRUE
+  )
+  expect_identical(
+    names(provision$auth),
+    c("credentials", "passphrase_env", "timeout_minutes")
+  )
+  app <- file.path(build$root, "app")
+  createShinyApp(
+    cerebro_data = c(Dataset = build$crb),
+    result_dir = app,
+    auth = provision$auth,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+  config <- readRDS(file.path(app, "cerebro_config.rds"))$.viewer_auth
+  expect_identical(
+    names(config),
+    c("credentials_path", "passphrase_env", "timeout_minutes")
+  )
+  expect_true(file.exists(file.path(
+    app,
+    "private-data",
+    "auth",
+    "credentials.sqlite"
+  )))
+  expect_false(any(
+    basename(list.files(app, recursive = TRUE, all.files = TRUE)) ==
+      "viewer-auth.env"
+  ))
+  secret <- sub("^[^=]+=", "", readLines(provision$secret_file, warn = FALSE))
+  for (path in list.files(
+    app,
+    recursive = TRUE,
+    full.names = TRUE,
+    all.files = TRUE
+  )) {
+    if (!dir.exists(path)) {
+      for (sensitive in c(secret, fixture$passwords)) {
+        expect_false(viewer_auth_file_contains(path, sensitive))
+      }
+    }
+  }
+})
+
 auth_test_compiled_config <- function(source) {
   list(
     credentials_path = "private-data/auth/credentials.sqlite",

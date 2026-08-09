@@ -32,6 +32,299 @@ test_that("provider R channels are redacted and all sinks are restored", {
   expect_identical(sink.number(type = "message"), message_before)
 })
 
+test_that("public provisioning returns a strict secret-free result", {
+  fixture <- viewer_auth_provision_public_fixture()
+  fixture$ops$setenv <- function(name, value) {
+    stop("must not install", call. = FALSE)
+  }
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .package = "CerebroNexus"
+  )
+  provision <- provisionViewerAuthentication(fixture$accounts, fixture$target)
+  expect_s3_class(provision, "cerebro_viewer_auth_provision")
+  expect_identical(
+    names(provision$auth),
+    c("credentials", "passphrase_env", "timeout_minutes")
+  )
+  secret <- sub("^[^=]+=", "", readLines(provision$secret_file, warn = FALSE))
+  result_file <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(provision, result_file)
+  for (payload in list(
+    serialize(provision, NULL),
+    readBin(result_file, "raw", n = file.info(result_file)$size),
+    serialize(readRDS(provision$manifest_file), NULL)
+  )) {
+    expect_false(viewer_auth_raw_contains(payload, secret))
+    for (password in fixture$passwords) {
+      expect_false(viewer_auth_raw_contains(payload, password))
+    }
+  }
+  rendered <- c(
+    capture.output(print(provision)),
+    capture.output(str(provision)),
+    capture.output(str(readRDS(provision$manifest_file)))
+  )
+  for (sensitive in c(secret, fixture$passwords)) {
+    expect_false(any(grepl(sensitive, rendered, fixed = TRUE)))
+  }
+  expect_false(provision$environment_installed)
+})
+
+test_that("partial environment installs and malformed readback are rolled back", {
+  for (mode in c("throw", "false", "wrong_readback")) {
+    env_name <- paste0("CEREBRO_AUTH_PARTIAL_", toupper(mode))
+    Sys.unsetenv(env_name)
+    fixture <- viewer_auth_provision_public_fixture(env_name)
+    fixture$ops$setenv <- local({
+      selected <- mode
+      function(name, value) {
+        do.call(
+          Sys.setenv,
+          stats::setNames(
+            list(if (selected == "wrong_readback") "wrong" else value),
+            name
+          )
+        )
+        if (selected == "throw") {
+          stop("sentinel", call. = FALSE)
+        }
+        selected != "false"
+      }
+    })
+    testthat::local_mocked_bindings(
+      .viewerAuthProvisionOps = function() fixture$ops,
+      .package = "CerebroNexus"
+    )
+    condition <- tryCatch(
+      provisionViewerAuthentication(
+        fixture$accounts,
+        fixture$target,
+        passphrase_env = env_name,
+        install_env = TRUE
+      ),
+      error = identity
+    )
+    expect_identical(condition$code, "environment_install_failed", info = mode)
+    expect_true(is.na(Sys.getenv(env_name, unset = NA_character_)), info = mode)
+  }
+  for (malformed in list(
+    function() stop("sentinel", call. = FALSE),
+    function() character(),
+    function() c("one", "two"),
+    function() TRUE
+  )) {
+    local({
+      env_name <- "CEREBRO_AUTH_MALFORMED_READBACK"
+      Sys.unsetenv(env_name)
+      fixture <- viewer_auth_provision_public_fixture(env_name)
+      real <- fixture$ops$getenv
+      pending <- FALSE
+      fixture$ops$setenv <- function(name, value) {
+        do.call(Sys.setenv, stats::setNames(list(value), name))
+        pending <<- TRUE
+        TRUE
+      }
+      fixture$ops$getenv <- function(name) {
+        if (pending) {
+          pending <<- FALSE
+          malformed()
+        } else {
+          real(name)
+        }
+      }
+      testthat::local_mocked_bindings(
+        .viewerAuthProvisionOps = function() fixture$ops,
+        .package = "CerebroNexus"
+      )
+      condition <- tryCatch(
+        provisionViewerAuthentication(
+          fixture$accounts,
+          fixture$target,
+          passphrase_env = env_name,
+          install_env = TRUE
+        ),
+        error = identity
+      )
+      expect_identical(condition$code, "environment_install_failed")
+      expect_false(grepl("sentinel", conditionMessage(condition), fixed = TRUE))
+      expect_true(is.na(Sys.getenv(env_name, unset = NA_character_)))
+    })
+  }
+})
+
+test_that("finalizers prioritize cleanup and retain recovery when required", {
+  fixture <- viewer_auth_provision_public_fixture()
+  fixture$ops$create_db <- function(...) stop("primary sentinel", call. = FALSE)
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .package = "CerebroNexus"
+  )
+  condition <- tryCatch(
+    provisionViewerAuthentication(fixture$accounts, fixture$target),
+    error = identity
+  )
+  expect_identical(condition$code, "database_create_failed")
+  expect_false(dir.exists(fixture$target))
+
+  env_name <- "CEREBRO_AUTH_UNSET_FAILURE"
+  withr::local_envvar(.new = stats::setNames(NA_character_, env_name))
+  fixture <- viewer_auth_provision_public_fixture(env_name)
+  fixture$ops$setenv <- function(name, value) {
+    do.call(Sys.setenv, stats::setNames(list(value), name))
+    FALSE
+  }
+  fixture$ops$unsetenv <- function(name) FALSE
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .package = "CerebroNexus"
+  )
+  condition <- tryCatch(
+    provisionViewerAuthentication(
+      fixture$accounts,
+      fixture$target,
+      passphrase_env = env_name,
+      install_env = TRUE
+    ),
+    error = identity
+  )
+  expect_identical(condition$code, "cleanup_incomplete")
+  expect_identical(condition$cause_code, "environment_install_failed")
+  expect_true(dir.exists(condition$recovery_path))
+})
+
+test_that("post-publish release failure restores only an owned environment", {
+  env_name <- "CEREBRO_AUTH_RELEASE_FAILURE"
+  other_name <- "CEREBRO_AUTH_UNRELATED"
+  Sys.unsetenv(env_name)
+  Sys.setenv(CEREBRO_AUTH_UNRELATED = "keep")
+  withr::defer({
+    Sys.unsetenv(env_name)
+    Sys.unsetenv(other_name)
+  })
+  fixture <- viewer_auth_provision_public_fixture(env_name)
+  remove_dir <- fixture$ops$remove_dir
+  fixture$ops$remove_dir <- function(path) {
+    if (grepl("\\.lock$", path)) FALSE else remove_dir(path)
+  }
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .package = "CerebroNexus"
+  )
+  condition <- tryCatch(
+    provisionViewerAuthentication(
+      fixture$accounts,
+      fixture$target,
+      passphrase_env = env_name,
+      install_env = TRUE
+    ),
+    error = identity
+  )
+  expect_identical(condition$code, "cleanup_incomplete")
+  expect_identical(condition$cause_code, "artifact_publish_failed")
+  expect_true(is.na(Sys.getenv(env_name, unset = NA_character_)))
+  expect_identical(Sys.getenv(other_name), "keep")
+  expect_true(file.exists(condition$recovery_path))
+  receipt <- readRDS(condition$recovery_path)
+  expect_true(CerebroNexus:::.viewerAuthValidOwnerManifest(receipt))
+  expect_identical(receipt$operation_id, fixture$operation_id)
+})
+
+test_that("cleanup and finish hook exceptions retain stable redacted outcomes", {
+  fixture <- viewer_auth_provision_public_fixture()
+  fixture$ops$create_db <- function(...) stop("primary sentinel", call. = FALSE)
+  fixture$ops$list_files <- function(...) {
+    stop("cleanup sentinel", call. = FALSE)
+  }
+  fixture$ops$finish_hook <- function(...) {
+    stop("finish sentinel", call. = FALSE)
+  }
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .package = "CerebroNexus"
+  )
+  condition <- tryCatch(
+    provisionViewerAuthentication(fixture$accounts, fixture$target),
+    error = identity
+  )
+  expect_identical(condition$code, "cleanup_incomplete")
+  expect_identical(condition$cause_code, "database_create_failed")
+  expect_true(file.exists(condition$recovery_path))
+  expect_false(grepl("sentinel", conditionMessage(condition), fixed = TRUE))
+})
+
+test_that("finish hook observes all state-held secrets scrubbed on both paths", {
+  observed <- list()
+  run_case <- function(fail) {
+    local({
+      fixture <- viewer_auth_provision_public_fixture()
+      if (fail) {
+        fixture$ops$create_db <- function(...) stop("sentinel", call. = FALSE)
+      }
+      fixture$ops$finish_hook <- function(state) {
+        observed[[length(observed) + 1L]] <<- c(
+          accounts = is.null(state$accounts),
+          passphrase = is.null(state$passphrase),
+          provider_capture = is.null(state$provider_capture),
+          secret_bytes = is.null(state$secret_bytes)
+        )
+        invisible(NULL)
+      }
+      testthat::local_mocked_bindings(
+        .viewerAuthProvisionOps = function() fixture$ops,
+        .package = "CerebroNexus"
+      )
+      try(
+        provisionViewerAuthentication(fixture$accounts, fixture$target),
+        silent = TRUE
+      )
+    })
+  }
+  run_case(FALSE)
+  run_case(TRUE)
+  expect_length(observed, 2L)
+  expect_true(all(vapply(observed, all, logical(1))))
+})
+
+test_that("opt-in environment installation has ownership and rollback", {
+  env_name <- "CEREBRO_AUTH_PUBLIC_TEST_KEY"
+  withr::local_envvar(.new = stats::setNames(NA_character_, env_name))
+  fixture <- viewer_auth_provision_public_fixture(env_name)
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .package = "CerebroNexus"
+  )
+  provision <- provisionViewerAuthentication(
+    fixture$accounts,
+    fixture$target,
+    passphrase_env = env_name,
+    install_env = TRUE
+  )
+  expect_true(nzchar(Sys.getenv(env_name)))
+  expect_true(provision$environment_installed)
+})
+
+test_that("occupied environment variables are never overwritten", {
+  env_name <- "CEREBRO_AUTH_OCCUPIED_EMPTY"
+  withr::local_envvar(.new = stats::setNames("", env_name))
+  fixture <- viewer_auth_provision_public_fixture(env_name)
+  testthat::local_mocked_bindings(
+    .viewerAuthProvisionOps = function() fixture$ops,
+    .package = "CerebroNexus"
+  )
+  condition <- tryCatch(
+    provisionViewerAuthentication(
+      fixture$accounts,
+      fixture$target,
+      passphrase_env = env_name,
+      install_env = TRUE
+    ),
+    error = identity
+  )
+  expect_identical(condition$code, "environment_conflict")
+  expect_identical(Sys.getenv(env_name, unset = NA_character_), "")
+})
+
 test_that("successful providers also redact all R channels and restore sinks", {
   sentinel <- "PROVIDER-SUCCESS-SENTINEL"
   state <- viewer_auth_provision_staged_state()

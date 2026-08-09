@@ -450,3 +450,273 @@
   }
   sub(pattern, "\\1", text)
 }
+
+.viewerAuthInstallProvisionEnvironment <- function(state) {
+  name <- state$identity$passphrase_env
+  before <- .viewerAuthReadEnvironmentValue(state$ops, name)
+  if (!isTRUE(before$ok)) {
+    .viewerAuthProvisionAbort(
+      "environment_install_failed",
+      "environment",
+      "Could not inspect the authentication environment variable."
+    )
+  }
+  if (!is.na(before$value)) {
+    .viewerAuthProvisionAbort(
+      "environment_conflict",
+      "environment",
+      "The passphrase environment variable became occupied."
+    )
+  }
+  passphrase <- .viewerAuthReadProvisionSecret(state, state$paths$target)
+  on.exit(passphrase <- NULL, add = TRUE)
+  state$env_owned <- TRUE
+  status <- tryCatch(
+    isTRUE(state$ops$setenv(name, passphrase)),
+    error = function(e) FALSE
+  )
+  readback <- .viewerAuthReadEnvironmentValue(state$ops, name)
+  matches <- isTRUE(readback$ok) &&
+    !is.na(readback$value) &&
+    identical(readback$value, passphrase)
+  readback$value <- NULL
+  if (!status || !matches) {
+    .viewerAuthProvisionAbort(
+      "environment_install_failed",
+      "environment",
+      "Could not install the authentication environment variable."
+    )
+  }
+  state$environment_installed <- TRUE
+  invisible(state)
+}
+
+.viewerAuthRestoreProvisionEnvironment <- function(state) {
+  if (!isTRUE(state$env_owned)) {
+    return(TRUE)
+  }
+  ok <- tryCatch(
+    isTRUE(state$ops$unsetenv(state$identity$passphrase_env)),
+    error = function(e) FALSE
+  )
+  readback <- .viewerAuthReadEnvironmentValue(
+    state$ops,
+    state$identity$passphrase_env
+  )
+  absent <- isTRUE(readback$ok) && is.na(readback$value)
+  readback$value <- NULL
+  if (ok && absent) {
+    state$env_owned <- FALSE
+    state$environment_installed <- FALSE
+    return(TRUE)
+  }
+  FALSE
+}
+
+.viewerAuthCompleteProvision <- function(state) {
+  manifest_path <- file.path(state$paths$target, "provision.rds")
+  manifest <- tryCatch(state$ops$read_rds(manifest_path), error = function(e) {
+    NULL
+  })
+  if (
+    !.viewerAuthValidProvisionManifest(manifest) ||
+      !identical(manifest$state, "ready") ||
+      !identical(manifest$operation_id, state$identity$operation_id)
+  ) {
+    .viewerAuthProvisionAbort(
+      "artifact_publish_failed",
+      "publish",
+      "Could not construct a result from the published manifest."
+    )
+  }
+  .viewerAuthProvisionResult(
+    list(
+      credentials = file.path(state$paths$target, "credentials.sqlite"),
+      passphrase_env = manifest$passphrase_env,
+      timeout_minutes = manifest$timeout_minutes
+    ),
+    file.path(state$paths$target, "viewer-auth.env"),
+    manifest_path,
+    manifest$user_count,
+    state$environment_installed
+  )
+}
+
+.viewerAuthMapUnexpectedProvisionError <- function(condition, phase) {
+  if (inherits(condition, "cerebro_viewer_auth_provision_error")) {
+    return(condition)
+  }
+  mapping <- switch(
+    phase,
+    dependency = c("missing_dependency", "dependency"),
+    preflight = c("unsafe_parent", "preflight"),
+    database = c("database_create_failed", "database"),
+    environment = c("environment_install_failed", "environment"),
+    c("artifact_publish_failed", phase)
+  )
+  .viewerAuthProvisionCondition(
+    mapping[[1L]],
+    mapping[[2L]],
+    "Authentication provisioning failed."
+  )
+}
+
+.viewerAuthFinishFailedProvision <- function(state) {
+  env_ok <- tryCatch(
+    isTRUE(.viewerAuthRestoreProvisionEnvironment(state)),
+    error = function(e) FALSE
+  )
+  if (!isTRUE(state$lock_claimed)) {
+    if (env_ok) {
+      return(NULL)
+    }
+    return(.viewerAuthProvisionCondition(
+      "cleanup_incomplete",
+      "cleanup",
+      "Authentication provisioning cleanup is incomplete.",
+      state$primary_condition$code,
+      if (!is.null(state$preflight)) {
+        state$preflight$parent
+      } else {
+        dirname(state$options$target_dir)
+      }
+    ))
+  }
+  filesystem_ok <- isTRUE(tryCatch(
+    .viewerAuthCleanupProvision(state),
+    error = function(e) FALSE
+  ))
+  lock_ok <- env_ok &&
+    filesystem_ok &&
+    isTRUE(tryCatch(
+      .viewerAuthReleaseProvisionLock(state),
+      error = function(e) FALSE
+    ))
+  if (env_ok && filesystem_ok && lock_ok) {
+    return(NULL)
+  }
+  .viewerAuthProvisionCondition(
+    "cleanup_incomplete",
+    "cleanup",
+    "Authentication provisioning cleanup is incomplete.",
+    state$primary_condition$code,
+    .viewerAuthRecoveryPath(state)
+  )
+}
+
+#' Provision Viewer authentication artifacts
+#'
+#' Creates a private encrypted credentials database, an external environment
+#' file containing its generated passphrase, and secret-free recovery metadata.
+#'
+#' @param accounts A plain data frame with character columns `user` and
+#'   `password`, plus an optional logical `admin` column.
+#' @param target_dir A new absolute directory inside a caller-owned private
+#'   POSIX parent. The target must not exist. The caller must establish that the
+#'   parent is on a trusted local filesystem without extended ACLs, sync agents,
+#'   or uncooperative writers; this function audits path, owner, mode, and
+#'   identity only.
+#' @param passphrase_env `NULL` to generate an unused environment-variable
+#'   name, or one valid unused scalar name.
+#' @param timeout_minutes One whole number from 1 through 1440, passed to the
+#'   existing Viewer authentication descriptor.
+#' @param install_env Whether to install the generated passphrase in the
+#'   current R process. It defaults to `FALSE`; successful `TRUE` callers must
+#'   unset it or terminate their worker.
+#' @return A `cerebro_viewer_auth_provision` object containing paths and a
+#'   strict `auth` descriptor, but no accounts, passwords, or passphrase.
+#' @details Version 1 supports POSIX only and fails closed on Windows. The
+#'   complete `target_dir` is sensitive: it contains the encrypted database and
+#'   `viewer-auth.env`. Keep it outside the App tree, source control, web roots,
+#'   synchronization, and unencrypted backups. This function neither proves
+#'   filesystem locality or ACL safety nor configures a remote host or service.
+#' @examples
+#' \dontrun{
+#' provision <- provisionViewerAuthentication(
+#'   accounts = data.frame(user = "alice", password = "replace-this-password", admin = TRUE),
+#'   target_dir = "/srv/cerebro/private/viewer-auth"
+#' )
+#' readRenviron(provision$secret_file)
+#' on.exit(Sys.unsetenv(provision$auth$passphrase_env), add = TRUE)
+#' createShinyApp(cerebro_data = c(dataset = "dataset.crb"),
+#'                result_dir = "/srv/cerebro/apps/viewer", auth = provision$auth)
+#' }
+#' @export
+provisionViewerAuthentication <- function(
+  accounts,
+  target_dir,
+  passphrase_env = NULL,
+  timeout_minutes = 15L,
+  install_env = FALSE
+) {
+  normalized_accounts <- .viewerAuthNormalizeAccounts(accounts)
+  options <- .viewerAuthNormalizeProvisionOptions(
+    target_dir,
+    passphrase_env,
+    timeout_minutes,
+    install_env
+  )
+  state <- .viewerAuthNewProvisionState(
+    normalized_accounts,
+    options,
+    .viewerAuthProvisionOps()
+  )
+  normalized_accounts <- NULL
+  on.exit(
+    {
+      tryCatch(.viewerAuthScrubProvisionState(state), error = function(e) NULL)
+      tryCatch(state$ops$finish_hook(state), error = function(e) NULL)
+    },
+    add = TRUE
+  )
+  phase <- "dependency"
+  primary <- NULL
+  result <- tryCatch(
+    {
+      .viewerAuthRequireProvisionDependencies(state)
+      phase <- "preflight"
+      .viewerAuthProvisionPreflight(state)
+      .viewerAuthPrepareProvisionIdentity(state)
+      .viewerAuthPrepareProvisionPaths(state)
+      phase <- "lock"
+      .viewerAuthAcquireProvisionLock(state)
+      phase <- "artifact_stage"
+      .viewerAuthCreateProvisionStage(state)
+      phase <- "database"
+      .viewerAuthCreateProvisionDatabase(state)
+      phase <- "artifact_stage"
+      .viewerAuthWriteProvisionSecret(state)
+      phase <- "publish"
+      .viewerAuthPublishProvision(state)
+      if (isTRUE(options$install_env)) {
+        phase <- "environment"
+        .viewerAuthInstallProvisionEnvironment(state)
+      }
+      phase <- "publish"
+      value <- .viewerAuthCompleteProvision(state)
+      phase <- "cleanup"
+      if (!isTRUE(.viewerAuthReleaseProvisionLock(state))) {
+        .viewerAuthProvisionAbort(
+          "artifact_publish_failed",
+          "cleanup",
+          "Could not release the authentication provisioning lock."
+        )
+      }
+      state$committed <- TRUE
+      value
+    },
+    error = function(condition) {
+      primary <<- .viewerAuthMapUnexpectedProvisionError(condition, phase)
+      NULL
+    }
+  )
+  if (!is.null(primary)) {
+    state$primary_condition <- primary
+    cleanup <- .viewerAuthFinishFailedProvision(state)
+    if (!is.null(cleanup)) {
+      stop(cleanup)
+    }
+    stop(primary)
+  }
+  result
+}
