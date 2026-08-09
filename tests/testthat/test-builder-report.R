@@ -98,6 +98,30 @@ test_that("portable reports derive redacted identity from plan and verification"
   ))
 })
 
+test_that("portable report reader accepts the strict legacy private-App topology", {
+  fixture <- builder_report_fixture()
+  report <- builder_build_report(fixture$plan, fixture$result)
+  report$artifact_mode <- "crbs_and_private_app"
+  report$output_members <- sort(
+    c(
+      report$output_members,
+      "cerebro_app"
+    ),
+    method = "radix"
+  )
+  report$identity <- .builder_report_identity(report)
+  expect_silent(.builder_report_validate(report, require_class = TRUE))
+  report$output_members <- sort(
+    c(
+      report$output_members,
+      "viewer-auth.env"
+    ),
+    method = "radix"
+  )
+  report$identity <- .builder_report_identity(report)
+  expect_error(.builder_report_validate(report, require_class = TRUE), "schema")
+})
+
 test_that("report JSON writes atomically and rereads exact schema identity", {
   fixture <- builder_report_fixture()
   report <- builder_build_report(fixture$plan, fixture$result)

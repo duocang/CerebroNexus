@@ -980,3 +980,60 @@ test_that("foreign control occupants are preserved and fail closed", {
     expect_identical(readLines(foreign), "foreign")
   })
 })
+
+test_that("payload verification requires exact TRUE and restores the prior release", {
+  local({
+    builder_publish_source()
+    for (result in list(FALSE, NULL, structure("boom", class = "error"))) {
+      root <- withr::local_tempdir()
+      target <- file.path(root, "release")
+      dir.create(target)
+      writeLines("old", file.path(target, "dataset.crb"))
+      handle <- builder_prepare_release(
+        target,
+        "guard",
+        builder_release_identity(target)
+      )
+      writeLines("new", file.path(handle$stage, "dataset.crb"))
+      callback <- if (inherits(result, "error")) {
+        function(...) stop("private callback detail")
+      } else {
+        force(result)
+        function(...) result
+      }
+      expect_error(
+        builder_publish_release(handle, .verify_payload = callback),
+        "verification failed"
+      )
+      expect_identical(readLines(file.path(target, "dataset.crb")), "old")
+      expect_true(dir.exists(handle$stage))
+    }
+  })
+})
+
+test_that("post-rename payload verification restores the old release", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    writeLines("old", file.path(target, "dataset.crb"))
+    handle <- builder_prepare_release(
+      target,
+      "post-rename-guard",
+      builder_release_identity(target)
+    )
+    writeLines("new", file.path(handle$stage, "dataset.crb"))
+    expect_error(
+      builder_publish_release(
+        handle,
+        .verify_payload = function(root, phase) {
+          if (identical(phase, "after_rename")) FALSE else TRUE
+        }
+      ),
+      "verification failed"
+    )
+    expect_identical(readLines(file.path(target, "dataset.crb")), "old")
+    expect_true(dir.exists(handle$stage))
+  })
+})

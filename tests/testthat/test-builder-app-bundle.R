@@ -57,8 +57,8 @@ builder_app_bundle_fixture <- function(
         launch_browser = FALSE
       ),
       app_auth = list(
-        enabled = TRUE,
-        account_count = 2L,
+        enabled = FALSE,
+        account_count = 0L,
         timeout_minutes = 15L
       )
     ),
@@ -69,6 +69,11 @@ builder_app_bundle_fixture <- function(
 
 test_that("App request carries only the fixed safe login summary", {
   fixture <- builder_app_bundle_fixture()
+  fixture$plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 2L,
+    timeout_minutes = 15L
+  )
   request <- builder_app_bundle_request(
     fixture$plan,
     fixture$paths,
@@ -90,8 +95,66 @@ test_that("App request carries only the fixed safe login summary", {
   expect_false(builder_auth_value_contains(request, "auth-password-a-7f31"))
 })
 
+test_that("App assembly reads authentication material without passing a secret", {
+  fixture <- builder_app_bundle_fixture()
+  fixture$plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 2L,
+    timeout_minutes = 15L
+  )
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  source_dir <- file.path(fixture$stage, ".builder-auth-source")
+  dir.create(source_dir, mode = "0700")
+  Sys.chmod(source_dir, "0700", use_umask = FALSE)
+  credentials <- file.path(source_dir, "credentials.sqlite")
+  writeBin(as.raw(1:8), credentials)
+  Sys.chmod(credentials, "0600", use_umask = FALSE)
+  env_file <- .builder_auth_write_env(
+    file.path(fixture$stage, "viewer-auth.env"),
+    strrep("d", 64L)
+  )
+  material <- list(
+    source_dir = normalizePath(source_dir, winslash = "/"),
+    credentials = normalizePath(credentials, winslash = "/"),
+    env_file = env_file,
+    descriptor = list(
+      credentials = normalizePath(credentials, winslash = "/"),
+      passphrase_env = "CEREBRO_AUTH_PASSPHRASE",
+      timeout_minutes = 15L
+    )
+  )
+  observed <- NULL
+  create_app <- function(...) {
+    observed <<- list(...)
+    dir.create(observed$result_dir)
+  }
+
+  builder_build_app(
+    request,
+    fixture$stage,
+    create_app,
+    auth_material = material
+  )
+
+  expect_identical(observed$auth, material$descriptor)
+  expect_identical(
+    Sys.getenv("CEREBRO_AUTH_PASSPHRASE", unset = NA_character_),
+    NA_character_
+  )
+  expect_false(builder_auth_value_contains(observed, strrep("d", 64L)))
+})
+
 test_that("App request rejects altered login summary fields", {
   fixture <- builder_app_bundle_fixture()
+  fixture$plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 2L,
+    timeout_minutes = 15L
+  )
   request <- builder_app_bundle_request(
     fixture$plan,
     fixture$paths,
@@ -1161,6 +1224,55 @@ test_that("real createShinyApp output round trips the frozen request", {
   expect_true(verification$valid)
   expect_identical(verification$selector_order, fixture$labels)
   expect_identical(verification$initial_dataset, "Dataset B")
+  expect_false(verification$auth_enabled)
+  expect_null(verification$auth_database)
+})
+
+test_that("real login App verifies its exact database and external env pair", {
+  fixture <- builder_app_bundle_fixture()
+  fixture$plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 2L,
+    timeout_minutes = 15L
+  )
+  saveRDS(Cerebro_v1.3$new(), fixture$paths[[1L]])
+  saveRDS(Cerebro_v1.3$new(), fixture$paths[[2L]])
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  accounts <- builder_auth_validate_payload(
+    TRUE,
+    builder_auth_test_accounts()
+  )$accounts
+  material <- builder_auth_create_material(
+    accounts,
+    fixture$stage,
+    .capability = function() list(available = TRUE, reason = NULL)
+  )
+
+  app_dir <- builder_build_app(
+    request,
+    fixture$stage,
+    auth_material = material
+  )
+  verification <- builder_verify_app(
+    app_dir,
+    request,
+    auth_env_file = material$env_file
+  )
+
+  expect_true(verification$auth_enabled)
+  expect_identical(
+    verification$auth_database,
+    file.path(app_dir, "private-data", "auth", "credentials.sqlite")
+  )
+  expect_false("auth_env_file" %in% names(verification))
+  expect_false(builder_auth_value_contains(
+    verification,
+    builder_auth_read_env_file(material$env_file)
+  ))
 })
 
 test_that("installed layout carries the exact App entrypoint template", {

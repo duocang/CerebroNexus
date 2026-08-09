@@ -4,16 +4,32 @@
 ## The whole export runs in the worker: analyses, matrix write, bundle. This
 ## process only sends a plan and waits for the report, so the page keeps
 ## answering while a marker-gene run takes its minutes.
-enqueue_build_plan <- function(plan) {
+auth_accounts_state <- auth_accounts
+
+enqueue_build_plan <- function(
+  plan,
+  auth_accounts
+) {
   rs <- worker()
   req(rs)
   current_protocol <- isolate(protocol())
   req(builder_protocol_is_quiescent(current_protocol))
   plan <- unserialize(serialize(plan, NULL, version = 3L))
+  parsed_auth <- builder_auth_validate_payload(
+    isTRUE(plan$app_auth$enabled),
+    auth_accounts
+  )
+  if (
+    !isTRUE(parsed_auth$ok) ||
+      length(parsed_auth$accounts) != plan$app_auth$account_count
+  ) {
+    return(invisible(FALSE))
+  }
   result(NULL)
   queued <- enqueue(list(
     kind = "build",
     plan = plan,
+    auth_accounts = parsed_auth$accounts,
     note = paste0(
       "Building ",
       length(plan$items),
@@ -26,6 +42,14 @@ enqueue_build_plan <- function(plan) {
     stage = if (isTRUE(queued)) "building" else "idle",
     plan = NULL
   ))
+  if (isTRUE(queued)) {
+    auth_accounts_state(builder_auth_empty_accounts())
+    auth_validation(list(
+      ok = FALSE,
+      error = "Set up login accounts again before the next build."
+    ))
+    session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
+  }
   invisible(isTRUE(queued))
 }
 
@@ -56,7 +80,7 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
       )
       return(invisible(FALSE))
     }
-    enqueue_build_plan(plan)
+    enqueue_build_plan(plan, auth_accounts = isolate(auth_accounts()))
   })
 }
 

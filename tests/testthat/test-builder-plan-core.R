@@ -36,6 +36,50 @@ test_that("login summary is impossible without App output", {
   })
 })
 
+test_that("frozen release targets are mutually exclusive by output mode", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("plan.R")
+    out_dir <- withr::local_tempdir()
+    entry <- builder_task6_entry()
+    crb <- builder_freeze_plan(list(entry), out_dir, make_app = FALSE)
+    public <- builder_freeze_plan(
+      list(entry),
+      out_dir,
+      make_app = TRUE,
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      )
+    )
+    login <- builder_freeze_plan(
+      list(entry),
+      out_dir,
+      make_app = TRUE,
+      app_auth = list(enabled = TRUE, account_count = 2L, timeout_minutes = 15L)
+    )
+    expect_setequal(
+      crb$output_release$targets,
+      file.path(
+        crb$out_dir,
+        c(crb$items[[1L]]$filename, crb$items[[1L]]$sidecars)
+      )
+    )
+    expect_identical(
+      public$output_release$targets,
+      file.path(public$out_dir, "cerebro_app")
+    )
+    expect_identical(
+      login$output_release$targets,
+      file.path(
+        login$out_dir,
+        c("cerebro_app", "viewer-auth.env")
+      )
+    )
+  })
+})
+
 test_that("legacy seventh positional argument remains prior identity", {
   local({
     builder_repo_source("preview.R")

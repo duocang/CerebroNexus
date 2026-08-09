@@ -715,6 +715,75 @@ test_that("builder client owns accessible dialog and live-state semantics", {
   )
 })
 
+test_that("Builder keeps login account editing outside the redrawn workbench", {
+  app <- builder_app_source_text()
+
+  expect_match(app, 'builder_auth_dialog_ui()', fixed = TRUE)
+  expect_match(app, 'uiOutput("actionbar")', fixed = TRUE)
+  expect_match(app, 'id = "builder-live-status"', fixed = TRUE)
+  expect_lt(
+    regexpr('uiOutput("actionbar")', app, fixed = TRUE),
+    regexpr('builder_auth_dialog_ui()', app, fixed = TRUE)
+  )
+  expect_lt(
+    regexpr('builder_auth_dialog_ui()', app, fixed = TRUE),
+    regexpr('id = "builder-live-status"', app, fixed = TRUE)
+  )
+
+  local({
+    builder_repo_source(file.path("ui", "review_stage.R"))
+    html <- builder_stage_html(builder_auth_dialog_ui())
+    expect_match(html, 'id="builder-auth-dialog"', fixed = TRUE)
+    expect_match(html, 'role="dialog"', fixed = TRUE)
+    expect_match(html, 'aria-modal="true"', fixed = TRUE)
+    expect_match(html, 'aria-labelledby="builder-auth-title"', fixed = TRUE)
+    expect_match(html, 'tabindex="-1"', fixed = TRUE)
+    expect_match(html, "Login accounts", fixed = TRUE)
+    expect_match(html, 'id="builder-auth-error"', fixed = TRUE)
+    expect_match(html, 'data-auth-rows="true"', fixed = TRUE)
+    expect_identical(
+      lengths(gregexpr('id="builder-auth-dialog"', html, fixed = TRUE)),
+      1L
+    )
+    expect_false(grepl("<input", html, fixed = TRUE))
+  })
+})
+
+test_that("Builder auth client keeps validation generic and restores redraw focus", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, '"Login accounts could not be saved."', fixed = TRUE)
+  expect_false(grepl("error.textContent = (message", js, fixed = TRUE))
+  expect_match(js, "builder-auth-open", fixed = TRUE)
+  expect_match(js, "__builderRestoreFocusFallback", fixed = TRUE)
+  expect_match(
+    js,
+    "authEditor.committed = authCopy(authEditor.snapshot);",
+    fixed = TRUE
+  )
+  expect_match(js, "function clearAuthError()", fixed = TRUE)
+  expect_match(js, "if (authEditor.saving) return;", fixed = TRUE)
+  expect_match(js, "setAuthSaving(nonce);", fixed = TRUE)
+  expect_match(js, "setAuthSaving(false);", fixed = TRUE)
+  expect_match(js, "message.nonce !== authEditor.saving", fixed = TRUE)
+  expect_match(js, 'dialog.querySelectorAll("input, button")', fixed = TRUE)
+  expect_match(js, 'send("builder_auth_accounts", null);', fixed = TRUE)
+})
+
+test_that("Builder auth modal uses motion and colour tokens accessibly", {
+  css <- builder_stylesheet_text()
+
+  expect_match(css, ".builder-auth-backdrop.is-visible", fixed = TRUE)
+  expect_match(css, "var(--duration-base)", fixed = TRUE)
+  expect_match(css, ".builder-auth-error", fixed = TRUE)
+  expect_match(css, "color: var(--c-error)", fixed = TRUE)
+  expect_match(
+    css,
+    ".builder-auth-backdrop,\n  .builder-auth-dialog { transition: none; }",
+    fixed = TRUE
+  )
+})
+
 test_that("static example cards show loading without hiding the directory", {
   js <- builder_asset_text("www", "builder.js")
   css <- builder_stylesheet_text()
@@ -1095,7 +1164,7 @@ test_that("transient layers expose state-bearing motion lifecycle", {
       js,
       gregexpr("showTransientLayer(backdrop, dialog);", js, fixed = TRUE)
     )[[1L]],
-    3L
+    4L
   )
   expect_length(
     regmatches(

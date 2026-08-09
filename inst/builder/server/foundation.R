@@ -92,6 +92,9 @@ result <- reactiveVal(NULL)
 build_flow <- reactiveVal(list(stage = "idle", plan = NULL))
 review_options <- reactiveVal(builder_review_options())
 review_validation <- reactiveVal(list(ok = TRUE, error = NULL))
+auth_enabled <- reactiveVal(FALSE)
+auth_accounts <- reactiveVal(builder_auth_empty_accounts())
+auth_validation <- reactiveVal(list(ok = TRUE, error = NULL))
 enhance_contract <- reactiveVal(list(
   id = NULL,
   organism = NULL,

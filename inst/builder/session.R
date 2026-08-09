@@ -516,8 +516,10 @@ builder_session_build <- function(
   worker,
   plan,
   request = NULL,
-  coordinator = NULL
+  coordinator = NULL,
+  auth_material = NULL
 ) {
+  on.exit(auth_material <- NULL, add = TRUE)
   rs <- .builder_session_process(worker)
   validate_snapshots <- inherits(worker, "builder_worker")
   snapshots <- if (validate_snapshots) worker$snapshot_registry else list()
@@ -606,6 +608,11 @@ builder_session_build <- function(
       return(invisible(NULL))
     }
   }
+  if (isTRUE(plan$app_auth$enabled)) {
+    auth_material <- builder_auth_validate_material(auth_material, stage)
+  } else if (!is.null(auth_material)) {
+    stop("A public build cannot use authentication material.", call. = FALSE)
+  }
 
   rs$call(
     function(
@@ -613,8 +620,10 @@ builder_session_build <- function(
       stage,
       request,
       validate_snapshots,
-      snapshot_validator
+      snapshot_validator,
+      auth_material
     ) {
+      on.exit(auth_material <- NULL, add = TRUE)
       tryCatch(
         {
           registry <- if (isTRUE(validate_snapshots)) {
@@ -644,7 +653,12 @@ builder_session_build <- function(
               ))
             }
           }
-          value <- builder_execute_plan(plan, stage, registry)
+          value <- builder_execute_plan(
+            plan,
+            stage,
+            registry,
+            auth_material = auth_material
+          )
           if (
             isTRUE(plan$make_app) &&
               is.list(value) &&
@@ -664,7 +678,8 @@ builder_session_build <- function(
       stage = stage,
       request = request,
       validate_snapshots = validate_snapshots,
-      snapshot_validator = .builder_session_plan_snapshot_error
+      snapshot_validator = .builder_session_plan_snapshot_error,
+      auth_material = auth_material
     )
   )
 }

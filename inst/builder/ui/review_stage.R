@@ -108,10 +108,27 @@ builder_review_initial_page_choices <- function(page_expectations = list()) {
 builder_review_controls_ui <- function(
   id,
   options,
-  initial_page_choices = c("Data info" = "data_info")
+  initial_page_choices = c("Data info" = "data_info"),
+  auth = list(
+    enabled = FALSE,
+    account_count = 0L,
+    error = NULL,
+    available = TRUE
+  )
 ) {
   stopifnot(inherits(options, "builder_review_options"))
   ns <- NS(id)
+  auth_available <- isTRUE(auth$available)
+  require_login <- checkboxInput(
+    ns("require_login"),
+    "Require login",
+    isTRUE(auth$enabled)
+  )
+  if (!auth_available) {
+    require_login <- htmltools::tagQuery(require_login)$find("input")$addAttrs(
+      disabled = "disabled"
+    )$allTags()
+  }
   selected_page <- if (options$initial_page %in% initial_page_choices) {
     options$initial_page
   } else {
@@ -136,7 +153,98 @@ builder_review_controls_ui <- function(
       "Variable to compare",
       options$variable_to_compare
     ),
-    checkboxInput(ns("show_upload_ui"), "Allow uploads", options$show_upload_ui)
+    checkboxInput(
+      ns("show_upload_ui"),
+      "Allow uploads",
+      options$show_upload_ui
+    ),
+    require_login,
+    if (!auth_available) {
+      div(
+        class = "hint review-auth-dependency",
+        "Login requires optional authentication packages. Install them to continue."
+      )
+    },
+    if (isTRUE(auth$enabled) && auth_available) {
+      div(
+        class = "review-auth-controls",
+        span(
+          class = "review-auth-summary",
+          if (identical(auth$account_count, 1L)) {
+            "Login required · 1 account"
+          } else if (
+            is.integer(auth$account_count) && auth$account_count > 1L
+          ) {
+            paste0("Login required · ", auth$account_count, " accounts")
+          } else {
+            "Add at least one account"
+          }
+        ),
+        tags$button(
+          type = "button",
+          class = "btn builder-auth-open",
+          if (is.integer(auth$account_count) && auth$account_count > 0L) {
+            "Edit accounts"
+          } else {
+            "Set up accounts"
+          }
+        ),
+        if (
+          is.character(auth$error) &&
+            length(auth$error) == 1L &&
+            !is.na(auth$error) &&
+            nzchar(auth$error)
+        ) {
+          div(class = "hint review-auth-error", auth$error)
+        }
+      )
+    }
+  )
+}
+
+builder_auth_dialog_ui <- function() {
+  div(
+    id = "builder-auth-backdrop",
+    class = "builder-auth-backdrop",
+    hidden = "hidden",
+    div(
+      id = "builder-auth-dialog",
+      class = "builder-auth-dialog",
+      role = "dialog",
+      `aria-modal` = "true",
+      `aria-labelledby` = "builder-auth-title",
+      tabindex = "-1",
+      h2(id = "builder-auth-title", "Login accounts"),
+      p(
+        class = "hint",
+        "Add the usernames and passwords allowed to open this Viewer."
+      ),
+      div(
+        id = "builder-auth-error",
+        class = "builder-auth-error",
+        role = "alert",
+        hidden = "hidden"
+      ),
+      div(class = "builder-auth-rows", `data-auth-rows` = "true"),
+      div(
+        class = "builder-auth-actions",
+        tags$button(
+          type = "button",
+          class = "btn builder-auth-add",
+          "Add account"
+        ),
+        tags$button(
+          type = "button",
+          class = "btn builder-auth-cancel",
+          "Cancel"
+        ),
+        tags$button(
+          type = "button",
+          class = "btn btn-primary builder-auth-save",
+          "Save accounts"
+        )
+      )
+    )
   )
 }
 
@@ -532,7 +640,12 @@ builder_review_model <- function(plan, verification = NULL) {
       welcome_message = app_options$welcome_message %||%
         "Welcome to CerebroNexus!",
       point_size = app_options$point_size$overview_projection_point_size %||% 5,
-      variable_comparison = isTRUE(app_options$variable_to_compare)
+      variable_comparison = isTRUE(app_options$variable_to_compare),
+      login = list(
+        enabled = isTRUE(plan$app_auth$enabled),
+        account_count = as.integer(plan$app_auth$account_count %||% 0L),
+        timeout_minutes = as.integer(plan$app_auth$timeout_minutes %||% 15L)
+      )
     ),
     pages = builder_review_page_labels(items, plan$viewer_page_expectations),
     output = list(
@@ -1163,6 +1276,22 @@ builder_review_stage_ui <- function(id, model) {
             field(
               "Variable comparison",
               if (isTRUE(model$app$variable_comparison)) "On" else "Off"
+            ),
+            field(
+              "Login",
+              if (isTRUE(model$app$login$enabled)) {
+                if (identical(model$app$login$account_count, 1L)) {
+                  "Login required · 1 account"
+                } else {
+                  paste0(
+                    "Login required · ",
+                    model$app$login$account_count,
+                    " accounts"
+                  )
+                }
+              } else {
+                "Off"
+              }
             )
           ),
           div(

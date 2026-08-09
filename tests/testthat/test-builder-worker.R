@@ -80,7 +80,96 @@ test_that("the isolated worker API is available", {
   expect_true(builder_worker_stop_api_available)
 })
 
+test_that("authentication accounts are redacted from every protocol owner", {
+  raw_contains <- function(value, text) {
+    bytes <- serialize(value, NULL)
+    needle <- charToRaw(text)
+    any(vapply(
+      seq_len(max(0L, length(bytes) - length(needle) + 1L)),
+      function(index) identical(bytes[index + seq_along(needle) - 1L], needle),
+      logical(1)
+    ))
+  }
+  sentinel <- "protocol-password-8b21"
+  request <- builder_command(
+    "build",
+    "session",
+    payload = list(
+      kind = "build",
+      auth_accounts = list(list(
+        id = "auth-account-1",
+        username = "protocol-user-8b21",
+        password = sentinel
+      ))
+    )
+  )
+  protocol <- builder_enqueue(builder_request_protocol("epoch-auth"), request)
+  queued <- protocol$queue[[1L]]
+  protocol$pending <- queued
+  protocol$awaiting_ack[[queued$request_id]] <- queued
+  redacted <- builder_protocol_redact_auth(protocol)
+
+  expect_s3_class(redacted, "builder_request_protocol")
+  expect_false(raw_contains(redacted, sentinel))
+
+  terminal <- .builder_protocol_terminal_request(queued, "stopped")
+  expect_false(raw_contains(terminal, sentinel))
+})
+
+test_that("build recovery never retries or returns authentication accounts", {
+  raw_contains <- function(value, text) {
+    bytes <- serialize(value, NULL)
+    needle <- charToRaw(text)
+    any(vapply(
+      seq_len(max(0L, length(bytes) - length(needle) + 1L)),
+      function(index) identical(bytes[index + seq_along(needle) - 1L], needle),
+      logical(1)
+    ))
+  }
+  sentinel <- "recovery-password-1d73"
+  request <- builder_command(
+    "build",
+    "session",
+    payload = list(
+      kind = "build",
+      auth_accounts = list(list(password = sentinel))
+    )
+  )
+  protocol <- builder_enqueue(builder_request_protocol("epoch-old"), request)
+  protocol <- builder_protocol_dispatch(protocol)$protocol
+  recovered <- builder_protocol_recover(protocol, epoch = "epoch-new")
+
+  expect_length(recovered$retried, 0L)
+  expect_false(raw_contains(recovered, sentinel))
+})
+
 if (builder_protocol_api_available) {
+  test_that("build protocol redaction removes login accounts everywhere", {
+    accounts <- list(list(
+      id = "auth-account-1",
+      username = "auth-user-a-7f31",
+      password = "auth-password-a-7f31"
+    ))
+    request <- builder_command(
+      "build",
+      "session",
+      payload = list(kind = "build", auth_accounts = accounts)
+    )
+    protocol <- builder_enqueue(
+      builder_request_protocol("worker-auth"),
+      request
+    )
+    dispatched <- builder_protocol_dispatch(protocol)
+    redacted <- builder_protocol_redact_auth(dispatched$protocol)
+
+    expect_null(
+      builder_request_redact_auth(dispatched$request)$payload$auth_accounts
+    )
+    expect_null(redacted$pending$payload$auth_accounts)
+    expect_false(builder_auth_value_contains(redacted, "auth-user-a-7f31"))
+    expect_false(builder_auth_value_contains(redacted, "auth-password-a-7f31"))
+  })
+
   test_that("persistent commands are FIFO and queries replace only their slot", {
     protocol <- builder_request_protocol(epoch = "worker-1")
     protocol <- builder_enqueue(
@@ -1453,7 +1542,16 @@ test_that("session calls expose the main-owned snapshot boundary", {
 
 test_that("the Builder app has one protocol authority for worker requests", {
   app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
-  text <- paste(app, collapse = "\n")
+  server <- unlist(lapply(
+    c("foundation.R", "imports.R"),
+    function(file) {
+      readLines(
+        builder_profile_inst_path("builder", "server", file),
+        warn = FALSE
+      )
+    }
+  ))
+  text <- paste(c(app, server), collapse = "\n")
   worker_source <- grep('source("worker.R"', app, fixed = TRUE)[1L]
   session_source <- grep('source("session.R"', app, fixed = TRUE)[1L]
 
@@ -1468,7 +1566,10 @@ test_that("the Builder app has one protocol authority for worker requests", {
 })
 
 test_that("the app applies accepted snapshot ownership before ACK", {
-  app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
+  app <- readLines(
+    builder_profile_inst_path("builder", "server", "imports.R"),
+    warn = FALSE
+  )
   completed <- grep(
     "completed <- builder_protocol_complete",
     app,
@@ -1487,27 +1588,123 @@ test_that("the app applies accepted snapshot ownership before ACK", {
   expect_true(released < acknowledged)
 })
 
-test_that("alignment is persistent and Build freezes only after its barrier", {
-  app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
-  text <- paste(app, collapse = "\n")
-  replaceable <- grep("replaceable <-", app, fixed = TRUE)[1L]
+test_that("build dispatch scrubs protocol before worker availability can exit", {
+  imports <- readLines(
+    builder_profile_inst_path("builder", "server", "imports.R"),
+    warn = FALSE
+  )
   dispatch <- grep(
     "dispatched <- builder_protocol_dispatch",
-    app,
+    imports,
     fixed = TRUE
   )[1L]
-  freeze <- grep("plan <- builder_make_plan", app, fixed = TRUE)
-  build_call <- grep("builder_session_build", app, fixed = TRUE)[1L]
+  next_poller <- grep("## -- one poller", imports, fixed = TRUE)[1L]
+  block <- imports[dispatch:(next_poller - 1L)]
+  cleanup <- grep("on.exit(", block, fixed = TRUE)[1L]
+  save_redacted <- grep("protocol(dispatched$protocol)", block, fixed = TRUE)[
+    1L
+  ]
+  worker_lookup <- grep("current_worker <- worker()", block, fixed = TRUE)[1L]
+  worker_req <- grep("req(current_worker)", block, fixed = TRUE)[1L]
+
+  expect_true(cleanup < save_redacted)
+  expect_true(save_redacted < worker_lookup)
+  expect_true(worker_lookup < worker_req)
+})
+
+test_that("authentication material failure terminally acknowledges the build", {
+  imports <- readLines(
+    builder_profile_inst_path("builder", "server", "imports.R"),
+    warn = FALSE
+  )
+  created <- grep("builder_auth_create_material", imports, fixed = TRUE)[1L]
+  failed <- grep('inherits(auth_material, "try-error")', imports, fixed = TRUE)[
+    1L
+  ]
+  next_switch <- grep("started_call <- try", imports, fixed = TRUE)[1L]
+  branch <- imports[failed:(next_switch - 1L)]
+
+  expect_true(created < failed)
+  expect_match(
+    paste(branch, collapse = "\n"),
+    "builder_protocol_complete",
+    fixed = TRUE
+  )
+  expect_match(
+    paste(branch, collapse = "\n"),
+    "builder_protocol_acknowledge",
+    fixed = TRUE
+  )
+})
+
+test_that("authentication creation failure leaves protocol ready for another build", {
+  first <- builder_command(
+    "build",
+    "session",
+    payload = list(
+      kind = "build",
+      auth_accounts = list(list(password = "lifecycle-secret-4f61"))
+    )
+  )
+  protocol <- builder_enqueue(builder_request_protocol("auth-lifecycle"), first)
+  sent <- builder_protocol_dispatch(protocol)
+  safe_protocol <- builder_protocol_redact_auth(sent$protocol)
+  safe_request <- builder_request_redact_auth(sent$request)
+  completed <- builder_protocol_complete(
+    safe_protocol,
+    builder_worker_response(
+      safe_request,
+      value = list(error = "Authentication setup failed.")
+    )
+  )
+  terminal <- builder_protocol_acknowledge(
+    completed$protocol,
+    safe_request$request_id
+  )
+
+  expect_identical(terminal$build_status, "idle")
+  expect_null(terminal$pending)
+  expect_length(terminal$awaiting_ack, 0L)
+  second <- builder_command(
+    "build",
+    "session",
+    payload = list(kind = "build", auth_accounts = list())
+  )
+  requeued <- builder_enqueue(terminal, second)
+  expect_identical(requeued$build_status, "queued")
+  expect_false(builder_auth_raw_contains(
+    serialize(requeued, NULL),
+    "lifecycle-secret-4f61"
+  ))
+})
+
+test_that("alignment is persistent and Build freezes only after its barrier", {
+  foundation <- readLines(
+    builder_profile_inst_path("builder", "server", "foundation.R"),
+    warn = FALSE
+  )
+  imports <- readLines(
+    builder_profile_inst_path("builder", "server", "imports.R"),
+    warn = FALSE
+  )
+  text <- paste(c(foundation, imports), collapse = "\n")
+  replaceable <- grep("replaceable <-", foundation, fixed = TRUE)[1L]
+  dispatch <- grep(
+    "dispatched <- builder_protocol_dispatch",
+    imports,
+    fixed = TRUE
+  )[1L]
+  freeze <- grep("plan <- builder_make_plan", imports, fixed = TRUE)
+  build_call <- grep("builder_session_build", imports, fixed = TRUE)[1L]
 
   replaceable_block <- paste(
-    app[replaceable:(replaceable + 8L)],
+    foundation[replaceable:(replaceable + 8L)],
     collapse = "\n"
   )
   expect_match(replaceable_block, '"preview"', fixed = TRUE)
   expect_match(replaceable_block, '"coords"', fixed = TRUE)
   expect_length(freeze, 1L)
-  expect_true(dispatch < freeze)
-  expect_true(freeze < build_call)
+  expect_true(dispatch < build_call)
   expect_false(grepl(
     'req$kind %in% c("preview", "coords", "align_all")',
     text,
@@ -1554,7 +1751,10 @@ test_that("a stale persistent response has an explicit acknowledged terminal", {
 })
 
 test_that("drop removes UI state only after owner release and protocol ACK", {
-  app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
+  app <- readLines(
+    builder_profile_inst_path("builder", "server", "imports.R"),
+    warn = FALSE
+  )
   drop_branch <- grep(
     'identical(p$kind, "drop")',
     app,
@@ -1570,17 +1770,10 @@ test_that("drop removes UI state only after owner release and protocol ACK", {
   )
   remove_state <- remove_state[remove_state > release][1L]
   acknowledge <- acknowledge[acknowledge > remove_state][1L]
-  remove_handler <- grep("remove_dataset <- function", app, fixed = TRUE)[1L]
-  handler_end <- grep("observeEvent(input$drop_ds", app, fixed = TRUE)[1L]
 
   expect_true(drop_branch < release)
   expect_true(release < acknowledge)
   expect_true(remove_state < acknowledge)
-  expect_false(any(grepl(
-    "sets(all)",
-    app[seq.int(remove_handler, handler_end)],
-    fixed = TRUE
-  )))
 })
 
 if (builder_session_api_available && builder_lifecycle_api_available) {

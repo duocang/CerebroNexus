@@ -241,6 +241,8 @@
     "backend_plan",
     "private_files",
     "legacy_data_absent",
+    "auth_enabled",
+    "auth_database",
     "diagnostic_tree_identity"
   )
   diagnostic <- value$diagnostic_tree_identity
@@ -281,6 +283,23 @@
       logical(1),
       parent = private_root
     ))
+  auth_valid <- identical(
+    value$auth_enabled,
+    isTRUE(expectation$auth$enabled)
+  ) &&
+    if (isTRUE(expectation$auth$enabled)) {
+      identical(
+        value$auth_database,
+        file.path(
+          expectation$app_dir,
+          "private-data",
+          "auth",
+          "credentials.sqlite"
+        )
+      )
+    } else {
+      is.null(value$auth_database)
+    }
   if (
     !identical(names(value), required) ||
       !isTRUE(value$valid) ||
@@ -292,6 +311,7 @@
       !identical(value$colors, expectation$colors) ||
       !identical(value$backend_plan, expectation$backend_plan) ||
       !isTRUE(value$legacy_data_absent) ||
+      !auth_valid ||
       !private_files_valid ||
       !diagnostic_valid
   ) {
@@ -442,6 +462,28 @@ builder_coordinator_prepare <- function(plan, build_id) {
     expected_prior_state = prior_state
   )
   handle$expected_payload_targets <- expected
+  handle$transient_app_inputs <- if (
+    isTRUE(app_contract$expectation$expected)
+  ) {
+    sort(
+      unique(unlist(
+        lapply(plan$items, function(item) {
+          c(item$filename, item$sidecars %||% character())
+        }),
+        use.names = FALSE
+      )),
+      method = "radix"
+    )
+  } else {
+    character()
+  }
+  handle$expected_build_targets <- sort(
+    unique(c(
+      handle$expected_payload_targets,
+      handle$transient_app_inputs
+    )),
+    method = "radix"
+  )
   handle$expected_final_targets <- NULL
   handle$legacy_prior_members <- if (is.null(record)) {
     .builder_release_identity_members(prior)
@@ -508,12 +550,121 @@ builder_coordinator_prepare <- function(plan, build_id) {
   identity
 }
 
+.builder_coordinator_validate_build_auth <- function(handle, build_result) {
+  expected_enabled <- isTRUE(handle$app_expectation$expected) &&
+    isTRUE(handle$app_expectation$auth$enabled)
+  expected_env_file <- if (expected_enabled) {
+    file.path(handle$stage, "viewer-auth.env")
+  } else {
+    NULL
+  }
+  if (
+    !is.list(build_result) ||
+      !identical(build_result$auth_enabled, expected_enabled) ||
+      !identical(build_result$auth_env_file, expected_env_file)
+  ) {
+    stop(
+      "The build result authentication evidence differs from the frozen plan.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+.builder_coordinator_auth_env_identity <- function(
+  handle,
+  release_root = handle$stage
+) {
+  if (
+    !isTRUE(handle$app_expectation$expected) ||
+      !isTRUE(handle$app_expectation$auth$enabled)
+  ) {
+    return(NULL)
+  }
+  env_file <- file.path(release_root, "viewer-auth.env")
+  secret <- builder_auth_read_env_file(env_file)
+  secret <- NULL
+  database <- file.path(
+    release_root,
+    "cerebro_app",
+    "private-data",
+    "auth",
+    "credentials.sqlite"
+  )
+  if (!isTRUE(builder_auth_verify_database_pair(database, env_file))) {
+    stop("The authentication database could not be verified.", call. = FALSE)
+  }
+  first <- .builder_release_payload_snapshot(env_file)
+  md5 <- .builder_release_payload_md5(env_file)
+  second <- .builder_release_payload_snapshot(env_file)
+  if (!identical(first, second)) {
+    stop(
+      "The authentication environment changed during inspection.",
+      call. = FALSE
+    )
+  }
+  c(first, list(md5 = md5))
+}
+
+.builder_coordinator_remove_app_inputs <- function(
+  handle,
+  built,
+  parent_request,
+  parent_tree_identity,
+  .unlink = unlink
+) {
+  expected <- handle$transient_app_inputs
+  built_relative <- vapply(
+    unname(built),
+    .builder_release_relative,
+    character(1),
+    root = handle$stage
+  )
+  frozen <- vapply(handle$app_plan$items, `[[`, character(1), "filename")
+  if (!setequal(built_relative, frozen)) {
+    stop("The staged App inputs differ from the frozen plan.", call. = FALSE)
+  }
+  .builder_coordinator_assert_input_closure(
+    handle,
+    built,
+    parent_request,
+    phase = "before temporary input removal"
+  )
+  for (relative in expected) {
+    path <- file.path(handle$stage, relative)
+    if (
+      !.pathWithin(path, handle$stage) ||
+        .builder_release_link(path) ||
+        !.builder_release_exists(path)
+    ) {
+      stop("A temporary App input is missing or unsafe.", call. = FALSE)
+    }
+    status <- .unlink(path, recursive = dir.exists(path), force = TRUE)
+    if (
+      !identical(as.integer(status), 0L) ||
+        .builder_release_exists(path) ||
+        .builder_release_link(path)
+    ) {
+      stop("A temporary App input could not be removed.", call. = FALSE)
+    }
+  }
+  current <- .builder_app_tree_identity(handle$app_expectation$app_dir)
+  if (!identical(current, parent_tree_identity)) {
+    stop(
+      "The staged App changed during temporary input removal.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 builder_coordinator_publish <- function(
   handle,
   build_result,
   .record_move = file.rename,
   .verify_app = builder_verify_app,
-  .write_report = builder_write_build_report
+  .write_report = builder_write_build_report,
+  .publish = builder_publish_release
 ) {
   handle <- .builder_coordinator_handle(handle)
   if (
@@ -523,6 +674,7 @@ builder_coordinator_publish <- function(
   ) {
     stop("Only a verified successful build can be published.", call. = FALSE)
   }
+  .builder_coordinator_validate_build_auth(handle, build_result)
   result_stage <- tryCatch(
     .canonicalTargetPath(build_result$stage),
     error = function(error) ""
@@ -607,6 +759,23 @@ builder_coordinator_publish <- function(
       .verify_app(
         build_result$app_dir,
         parent_request,
+        auth_env_file = if (isTRUE(handle$app_expectation$auth$enabled)) {
+          expected_env <- file.path(handle$stage, "viewer-auth.env")
+          if (!identical(build_result$auth_env_file, expected_env)) {
+            stop(
+              "The build result returned an invalid authentication environment."
+            )
+          }
+          expected_env
+        } else {
+          if (
+            !is.null(build_result$auth_env_file) ||
+              isTRUE(build_result$auth_enabled)
+          ) {
+            stop("A public build returned authentication material.")
+          }
+          NULL
+        },
         .retain_tree_identity = TRUE
       ),
       error = function(error) error
@@ -646,7 +815,10 @@ builder_coordinator_publish <- function(
       )
     }
   }
-  payload_identity <- .builder_coordinator_stage_identity(handle)
+  payload_identity <- .builder_coordinator_stage_identity(
+    handle,
+    expected = handle$expected_build_targets
+  )
   if (app_expected) {
     current_app_identity <- tryCatch(
       .builder_app_tree_identity(handle$app_expectation$app_dir),
@@ -662,6 +834,7 @@ builder_coordinator_publish <- function(
       )
     }
   }
+  parent_env_identity <- .builder_coordinator_auth_env_identity(handle)
   if (
     app_expected &&
       !identical(
@@ -724,20 +897,50 @@ builder_coordinator_publish <- function(
       call. = FALSE
     )
   }
-  handle$expected_payload_targets <- sort(
+  if (app_expected) {
+    if (
+      !identical(
+        .builder_app_tree_identity(handle$app_expectation$app_dir),
+        parent_tree_identity
+      ) ||
+        !identical(
+          .builder_coordinator_auth_env_identity(handle),
+          parent_env_identity
+        )
+    ) {
+      stop("The staged App changed after parent verification.", call. = FALSE)
+    }
+    .builder_coordinator_remove_app_inputs(
+      handle,
+      built,
+      parent_request,
+      parent_tree_identity
+    )
+    if (
+      !identical(
+        .builder_coordinator_auth_env_identity(handle),
+        parent_env_identity
+      )
+    ) {
+      stop(
+        "The authentication environment changed during temporary input removal.",
+        call. = FALSE
+      )
+    }
+  }
+  final_payload_targets <- sort(
     unique(c(
       handle$expected_payload_targets,
       "build-report.json"
     )),
     method = "radix"
   )
-  payload_identity <- .builder_coordinator_stage_identity(handle)
-  handle$expected_payload_targets <- vapply(
-    payload_identity$entries,
-    `[[`,
-    character(1),
-    "path"
+  payload_identity <- .builder_coordinator_stage_identity(
+    handle,
+    expected = final_payload_targets,
+    exact = TRUE
   )
+  handle$expected_payload_targets <- final_payload_targets
   ownership <- .builder_release_write_record(
     handle$stage,
     payload_identity,
@@ -755,12 +958,17 @@ builder_coordinator_publish <- function(
         call. = FALSE
       )
     }
-    .builder_coordinator_assert_input_closure(
-      handle,
-      built,
-      parent_request,
-      phase = "during ownership record commit"
-    )
+    if (
+      !identical(
+        .builder_coordinator_auth_env_identity(handle),
+        parent_env_identity
+      )
+    ) {
+      stop(
+        "The authentication environment changed during ownership record commit.",
+        call. = FALSE
+      )
+    }
   }
   final_payload_identity <- ownership$identity
   final_paths <- vapply(
@@ -791,22 +999,106 @@ builder_coordinator_publish <- function(
     stop("The ownership record read-back identity changed.", call. = FALSE)
   }
   handle$expected_stage_identity <- final_identity
-  published <- builder_publish_release(handle)
+  publication_guard <- function(root, phase) {
+    if (!app_expected) {
+      return(TRUE)
+    }
+    app_dir <- file.path(root, "cerebro_app")
+    current <- tryCatch(
+      .builder_app_tree_identity(app_dir),
+      error = function(error) NULL
+    )
+    current_env <- tryCatch(
+      .builder_coordinator_auth_env_identity(handle, release_root = root),
+      error = function(error) NULL
+    )
+    paired <- if (isTRUE(handle$app_expectation$auth$enabled)) {
+      database <- file.path(
+        app_dir,
+        "private-data",
+        "auth",
+        "credentials.sqlite"
+      )
+      tryCatch(
+        builder_auth_verify_database_pair(
+          database,
+          file.path(root, "viewer-auth.env")
+        ),
+        error = function(error) FALSE
+      )
+    } else {
+      is.null(current_env)
+    }
+    artifact_root <- if (app_expected) {
+      file.path(root, "cerebro_app", "private-data")
+    } else {
+      root
+    }
+    verification_relative <- vapply(
+      build_result$verifications,
+      function(value) {
+        if (
+          !is.list(value) ||
+            !.builder_release_text(value$path) ||
+            !.pathWithin(value$path, handle$stage)
+        ) {
+          return(NA_character_)
+        }
+        basename(.builder_release_relative(value$path, handle$stage))
+      },
+      character(1)
+    )
+    artifact_paths <- c(
+      file.path(artifact_root, basename(unname(built))),
+      file.path(artifact_root, verification_relative)
+    )
+    isTRUE(paired) &&
+      identical(current, parent_tree_identity) &&
+      identical(current_env, parent_env_identity) &&
+      !anyNA(artifact_paths) &&
+      all(file.exists(artifact_paths))
+  }
+  published <- .publish(
+    handle,
+    .verify_payload = publication_guard
+  )
   relative_built <- vapply(
     built,
     .builder_release_relative,
     "",
     root = handle$stage
   )
-  build_result$built <- file.path(published$target, relative_built)
+  mapped_built <- if (app_expected) {
+    file.path(
+      published$target,
+      "cerebro_app",
+      "private-data",
+      basename(unname(built))
+    )
+  } else {
+    file.path(published$target, relative_built)
+  }
+  build_result$built <- stats::setNames(mapped_built, names(built))
   if (app_expected) {
     relative_app <- .builder_release_relative(
       build_result$app_dir,
       handle$stage
     )
     build_result$app_dir <- file.path(published$target, relative_app)
+    if (isTRUE(handle$app_expectation$auth$enabled)) {
+      build_result$auth_enabled <- TRUE
+      build_result$auth_env_file <- file.path(
+        published$target,
+        "viewer-auth.env"
+      )
+    } else {
+      build_result$auth_enabled <- FALSE
+      build_result$auth_env_file <- NULL
+    }
   } else {
     build_result$app_dir <- NULL
+    build_result$auth_enabled <- FALSE
+    build_result$auth_env_file <- NULL
   }
   if (length(build_result$verifications)) {
     build_result$verifications <- lapply(
@@ -817,15 +1109,45 @@ builder_coordinator_publish <- function(
             .builder_release_text(verification$path) &&
             .pathWithin(verification$path, handle$stage)
         ) {
-          relative <- .builder_release_relative(
-            verification$path,
-            handle$stage
-          )
-          verification$path <- file.path(published$target, relative)
+          relative <- .builder_release_relative(verification$path, handle$stage)
+          verification$path <- if (app_expected) {
+            file.path(
+              published$target,
+              "cerebro_app",
+              "private-data",
+              basename(relative)
+            )
+          } else {
+            file.path(published$target, relative)
+          }
         }
         verification
       }
     )
+  }
+  verification_paths <- if (length(build_result$verifications)) {
+    vapply(
+      build_result$verifications,
+      function(verification) {
+        if (
+          !is.list(verification) || !.builder_release_text(verification$path)
+        ) {
+          return(NA_character_)
+        }
+        verification$path
+      },
+      character(1)
+    )
+  } else {
+    character()
+  }
+  mapped_paths <- c(unname(build_result$built), verification_paths)
+  if (
+    !length(mapped_paths) ||
+      anyNA(mapped_paths) ||
+      !all(file.exists(mapped_paths))
+  ) {
+    stop("Published build artifacts are missing.", call. = FALSE)
   }
   build_result$app_verification <- NULL
   build_result$app_verified <- app_expected

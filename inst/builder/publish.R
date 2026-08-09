@@ -1286,7 +1286,8 @@ builder_publish_release <- function(
   handle,
   .move = file.rename,
   .after_phase = function(phase) invisible(NULL),
-  .after_move = function(move) invisible(NULL)
+  .after_move = function(move) invisible(NULL),
+  .verify_payload = function(root, phase) TRUE
 ) {
   handle <- .builder_release_handle(handle)
   if (!identical(handle$record$phase, "prepared")) {
@@ -1334,6 +1335,24 @@ builder_publish_release <- function(
   }
   handle <- .builder_release_write_phase(handle, "old_moved")
   .after_phase("old_moved")
+  verified <- tryCatch(
+    identical(.verify_payload(handle$stage, "before_rename"), TRUE),
+    error = function(error) FALSE
+  )
+  if (!isTRUE(verified)) {
+    restored <- .builder_release_restore(
+      handle,
+      "Publication verification failed; the prior release was restored.",
+      .move = .move
+    )
+    if (!isTRUE(restored$restored)) {
+      stop("Publication verification and restoration failed.", call. = FALSE)
+    }
+    stop(
+      "Publication verification failed; the prior release was restored.",
+      call. = FALSE
+    )
+  }
   moved <- tryCatch(
     .move(handle$stage, handle$target),
     error = function(error) FALSE
@@ -1354,6 +1373,24 @@ builder_publish_release <- function(
     stop("Publication failed; the prior release was restored.", call. = FALSE)
   }
   .after_move("new_to_target")
+  verified <- tryCatch(
+    identical(.verify_payload(handle$target, "after_rename"), TRUE),
+    error = function(error) FALSE
+  )
+  if (!isTRUE(verified)) {
+    restored <- .builder_release_restore(
+      handle,
+      "Publication verification failed; the prior release was restored.",
+      .move = .move
+    )
+    if (!isTRUE(restored$restored)) {
+      stop("Publication verification and restoration failed.", call. = FALSE)
+    }
+    stop(
+      "Publication verification failed; the prior release was restored.",
+      call. = FALSE
+    )
+  }
   handle <- .builder_release_write_phase(handle, "new_published")
   .after_phase("new_published")
   handle <- .builder_release_write_phase(handle, "complete")

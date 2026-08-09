@@ -1,8 +1,11 @@
 builder_build_app <- function(
   request,
   stage,
-  create_app = CerebroNexus::createShinyApp
+  create_app = CerebroNexus::createShinyApp,
+  auth_material = NULL
 ) {
+  passphrase <- NULL
+  on.exit(passphrase <- NULL, add = TRUE)
   request <- .builder_app_validate_request(request)
   stage <- normalizePath(stage, winslash = "/", mustWork = TRUE)
   if (!identical(stage, request$stage) || .builder_app_is_link(stage)) {
@@ -13,7 +16,7 @@ builder_build_app <- function(
     stop("The staged App directory already exists.", call. = FALSE)
   }
   .builder_app_assert_input_identities(request)
-  create_app(
+  create_arguments <- list(
     cerebro_data = request$cerebro_data,
     result_dir = app_dir,
     colors = request$colors,
@@ -37,6 +40,24 @@ builder_build_app <- function(
     display_mode = request$display_mode,
     launch_browser = request$launch_browser
   )
+  if (isTRUE(request$auth$enabled)) {
+    auth_material <- builder_auth_validate_material(auth_material, stage)
+    passphrase <- builder_auth_read_env_file(auth_material$env_file)
+    create_arguments$auth <- auth_material$descriptor
+    .builder_auth_with_passphrase(
+      passphrase,
+      function() do.call(create_app, create_arguments)
+    )
+    auth_material <- NULL
+  } else {
+    if (!is.null(auth_material)) {
+      stop(
+        "Public App assembly cannot use authentication material.",
+        call. = FALSE
+      )
+    }
+    do.call(create_app, create_arguments)
+  }
   .builder_app_assert_input_identities(request)
   if (
     !dir.exists(app_dir) ||
@@ -54,6 +75,7 @@ builder_build_app <- function(
 builder_verify_app <- function(
   app_dir,
   request,
+  auth_env_file = NULL,
   .tree_identity = .builder_app_tree_identity,
   .retain_tree_identity = FALSE
 ) {
@@ -188,6 +210,57 @@ builder_verify_app <- function(
     stop("The staged App backend plan differs from request.", call. = FALSE)
   }
 
+  auth_database <- NULL
+  expected_auth_env <- file.path(request$stage, "viewer-auth.env")
+  auth_config <- config[[".viewer_auth"]]
+  if (isTRUE(request$auth$enabled)) {
+    expected_auth_config <- list(
+      credentials_path = "private-data/auth/credentials.sqlite",
+      passphrase_env = .builder_auth_env_name,
+      timeout_minutes = .builder_auth_timeout_minutes
+    )
+    auth_database <- file.path(
+      app_dir,
+      "private-data",
+      "auth",
+      "credentials.sqlite"
+    )
+    if (
+      !identical(auth_config, expected_auth_config) ||
+        !identical(auth_env_file, expected_auth_env) ||
+        !file.exists(auth_database) ||
+        dir.exists(auth_database) ||
+        .builder_app_is_link(auth_database) ||
+        !file.exists(auth_env_file) ||
+        dir.exists(auth_env_file) ||
+        .builder_app_is_link(auth_env_file) ||
+        (.Platform$OS.type != "windows" &&
+          !identical(as.integer(file.info(auth_env_file)$mode), 384L))
+    ) {
+      stop("The staged App authentication topology is invalid.", call. = FALSE)
+    }
+    builder_auth_read_env_file(auth_env_file)
+    builder_auth_verify_database_pair(auth_database, auth_env_file)
+    auth_database <- normalizePath(
+      auth_database,
+      winslash = "/",
+      mustWork = TRUE
+    )
+  } else {
+    auth_dir <- file.path(app_dir, "private-data", "auth")
+    if (
+      !is.null(auth_config) ||
+        !is.null(auth_env_file) ||
+        .builder_app_path_exists(auth_dir) ||
+        .builder_app_path_exists(expected_auth_env)
+    ) {
+      stop(
+        "The public staged App contains authentication material.",
+        call. = FALSE
+      )
+    }
+  }
+
   private_root <- file.path(app_dir, "private-data")
   if (!dir.exists(private_root) || .builder_app_is_link(private_root)) {
     stop(
@@ -300,6 +373,8 @@ builder_verify_app <- function(
       backend_plan = request$backend_plan,
       private_files = configured_files,
       legacy_data_absent = TRUE,
+      auth_enabled = isTRUE(request$auth$enabled),
+      auth_database = auth_database,
       diagnostic_tree_identity = .builder_app_tree_summary(tree_after)
     ),
     class = c("builder_app_verification", "list")

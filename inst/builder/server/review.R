@@ -35,6 +35,129 @@ observe({
   validate_review_inputs(values)
 })
 
+observeEvent(
+  input[["review-require_login"]],
+  {
+    enabled <- isTRUE(input[["review-require_login"]])
+    if (
+      enabled && (!isTRUE(input$make_app) || !isTRUE(auth_capability$available))
+    ) {
+      auth_enabled(FALSE)
+      auth_accounts(builder_auth_empty_accounts())
+      auth_validation(list(
+        ok = FALSE,
+        error = "Login is unavailable for the current App settings."
+      ))
+      session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
+      return()
+    }
+    auth_enabled(enabled)
+    if (!enabled) {
+      auth_accounts(builder_auth_empty_accounts())
+      auth_validation(list(ok = TRUE, error = NULL))
+      session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
+      return()
+    }
+    parsed <- builder_auth_validate_payload(TRUE, isolate(auth_accounts()))
+    auth_validation(list(ok = parsed$ok, error = parsed$error))
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input$builder_auth_accounts,
+  {
+    payload <- input$builder_auth_accounts
+    if (
+      is.null(payload) ||
+        !is.list(payload) ||
+        is.object(payload) ||
+        !identical(
+          sort(names(payload)),
+          c("accounts", "enabled", "nonce")
+        ) ||
+        !is.logical(payload$enabled) ||
+        length(payload$enabled) != 1L ||
+        is.na(payload$enabled) ||
+        !is.numeric(payload$nonce) ||
+        length(payload$nonce) != 1L ||
+        is.na(payload$nonce) ||
+        !is.finite(payload$nonce)
+    ) {
+      return()
+    }
+    if (
+      isTRUE(payload$enabled) &&
+        (!isTRUE(input$make_app) || !isTRUE(auth_capability$available))
+    ) {
+      auth_enabled(FALSE)
+      auth_accounts(builder_auth_empty_accounts())
+      auth_validation(list(
+        ok = FALSE,
+        error = "Login accounts could not be saved."
+      ))
+      session$sendCustomMessage(
+        "builder_auth_status",
+        list(
+          ok = FALSE,
+          message = "Login accounts could not be saved.",
+          nonce = payload$nonce
+        )
+      )
+      session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
+      return()
+    }
+    parsed <- builder_auth_validate_payload(
+      isTRUE(payload$enabled),
+      payload$accounts
+    )
+    if (!isTRUE(parsed$ok)) {
+      auth_validation(list(
+        ok = FALSE,
+        error = "Login accounts could not be saved."
+      ))
+      session$sendCustomMessage(
+        "builder_auth_status",
+        list(
+          ok = FALSE,
+          message = "Login accounts could not be saved.",
+          nonce = payload$nonce
+        )
+      )
+      return()
+    }
+    auth_validation(list(ok = TRUE, error = NULL))
+    auth_enabled(isTRUE(payload$enabled))
+    auth_accounts(parsed$accounts)
+    session$sendCustomMessage(
+      "builder_auth_status",
+      list(
+        ok = TRUE,
+        account_count = length(parsed$accounts),
+        nonce = payload$nonce
+      )
+    )
+    if (!isTRUE(payload$enabled)) {
+      session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
+    }
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input$make_app,
+  {
+    if (isTRUE(input$make_app)) {
+      return()
+    }
+    auth_enabled(FALSE)
+    auth_accounts(builder_auth_empty_accounts())
+    auth_validation(list(ok = TRUE, error = NULL))
+    session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
+  },
+  ignoreInit = TRUE
+)
+
 freeze_plan_for_output <- function(out_dir, overwrite = FALSE) {
   pending <- imports()$entries
   if (length(pending)) {
@@ -59,12 +182,29 @@ freeze_plan_for_output <- function(out_dir, overwrite = FALSE) {
   }
   typed <- review_options()
   app_options <- builder_review_options_for_plan(typed)
+  if (isTRUE(auth_enabled()) && !isTRUE(auth_capability$available)) {
+    return(builder_plan_error(
+      "Login requires optional authentication packages.",
+      "missing_auth_dependency"
+    ))
+  }
+  parsed_auth <- builder_auth_validate_payload(
+    isTRUE(auth_enabled()),
+    isolate(auth_accounts())
+  )
+  if (!isTRUE(parsed_auth$ok)) {
+    return(builder_plan_error(parsed_auth$error, "invalid_auth_accounts"))
+  }
   builder_freeze_plan(
     entries = all,
     out_dir = out_dir,
     make_app = isTRUE(input$make_app),
     overwrite = isTRUE(overwrite),
-    app_options = app_options
+    app_options = app_options,
+    app_auth = builder_auth_summary(
+      isTRUE(auth_enabled()),
+      parsed_auth$accounts
+    )
   )
 }
 
@@ -243,7 +383,13 @@ output[["review_app_options"]] <- renderUI({
   builder_review_controls_ui(
     "review",
     isolate(review_options()),
-    contract$choices
+    contract$choices,
+    auth = list(
+      enabled = isTRUE(auth_enabled()),
+      account_count = as.integer(length(auth_accounts())),
+      error = auth_validation()$error %||% NULL,
+      available = isTRUE(auth_capability$available)
+    )
   )
 })
 

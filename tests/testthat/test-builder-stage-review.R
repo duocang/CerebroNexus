@@ -2,6 +2,11 @@ builder_stage_contract_source_runtime(environment())
 
 test_that("Review model translates a frozen plan into user language", {
   plan <- builder_stage_frozen_plan()
+  plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 2L,
+    timeout_minutes = 15L
+  )
   model <- builder_review_model(plan)
 
   expect_null(model$revision)
@@ -17,6 +22,10 @@ test_that("Review model translates a frozen plan into user language", {
   expect_identical(model$datasets[[1L]]$projection_count, 1L)
   expect_identical(model$app$initial_dataset, "Dataset B")
   expect_identical(model$app$dataset_order, c("Dataset B", "Dataset A"))
+  expect_identical(
+    model$app$login,
+    list(enabled = TRUE, account_count = 2L, timeout_minutes = 15L)
+  )
   expect_identical(model$output$existing_files, "Keep existing files")
   expect_identical(model$output$estimated_size, "8 KB")
   expect_identical(model$output$estimated_time, "A few minutes")
@@ -26,6 +35,66 @@ test_that("Review model translates a frozen plan into user language", {
   expect_false(any(c("marker_genes", "spatial") %in% model$pages))
   expect_length(model$warnings, 0L)
   expect_true(model$can_build)
+})
+
+test_that("Review shows only the safe login summary", {
+  plan <- builder_stage_frozen_plan()
+  plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 2L,
+    timeout_minutes = 15L
+  )
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_match(html, "Login required · 2 accounts", fixed = TRUE)
+  expect_false(grepl("auth-user-a-7f31", html, fixed = TRUE))
+  expect_false(grepl("auth-password-a-7f31", html, fixed = TRUE))
+  expect_false(grepl('value="auth-', html, fixed = TRUE))
+})
+
+test_that("Review disables only login when optional auth is unavailable", {
+  options <- builder_review_options()
+  html <- builder_stage_html(builder_review_controls_ui(
+    "review",
+    options,
+    auth = list(
+      enabled = FALSE,
+      account_count = 0L,
+      error = NULL,
+      available = FALSE
+    )
+  ))
+
+  expect_match(
+    html,
+    'id="review-require_login"[^>]*disabled="disabled"'
+  )
+  expect_match(html, "optional authentication packages", fixed = TRUE)
+  expect_false(grepl("shinymanager", html, fixed = TRUE))
+  expect_false(grepl("openssl", html, fixed = TRUE))
+  expect_false(grepl(
+    'id="review-show_upload_ui" disabled=',
+    html,
+    fixed = TRUE
+  ))
+  expect_false(grepl('class="builder-auth-open"', html, fixed = TRUE))
+})
+
+test_that("Review auth controls consume only enabled count and error", {
+  html <- builder_stage_html(builder_review_controls_ui(
+    "review",
+    builder_review_options(),
+    auth = list(
+      enabled = TRUE,
+      account_count = 2L,
+      error = NULL,
+      available = TRUE
+    )
+  ))
+
+  expect_match(html, "Login required · 2 accounts", fixed = TRUE)
+  expect_match(html, "Edit accounts", fixed = TRUE)
 })
 
 test_that("Review presents datasets, App experience, pages, and output", {
@@ -387,16 +456,20 @@ test_that("Open App requires a verified published final App directory", {
 
 test_that("result actions execute through injected platform boundaries", {
   opened <- revealed <- copied <- character()
+  release_dir <- withr::local_tempdir()
+  app_dir <- file.path(release_dir, "cerebro_app")
+  dir.create(app_dir)
   app <- builder_result_success(
     published = TRUE,
-    built = "/release/dataset.crb",
-    app_dir = "/release/cerebro_app",
+    built = file.path(release_dir, "dataset.crb"),
+    app_dir = app_dir,
     app_verified = TRUE,
-    report_path = "/release/build-report.json"
+    report_path = file.path(release_dir, "build-report.json"),
+    release = list(target = release_dir)
   )
 
-  expect_true(builder_open_final_app(app, .open = function(path) {
-    opened <<- path
+  expect_true(builder_open_final_app(app, .open = function(path, env_file) {
+    opened <<- list(path = path, env_file = env_file)
     TRUE
   }))
   expect_true(builder_reveal_release(app, .reveal = function(path) {
@@ -407,12 +480,147 @@ test_that("result actions execute through injected platform boundaries", {
     copied <<- value
     TRUE
   }))
-  expect_identical(opened, "/release/cerebro_app")
-  expect_identical(revealed, "/release")
-  expect_identical(copied, "/release")
+  expect_identical(
+    opened,
+    list(
+      path = normalizePath(app_dir, winslash = "/", mustWork = TRUE),
+      env_file = NULL
+    )
+  )
+  expect_identical(revealed, release_dir)
+  expect_identical(copied, release_dir)
   expect_error(
     builder_open_final_app(builder_result_success(published = TRUE)),
     "verified final App"
+  )
+})
+
+test_that("result auth fields are typed and status releases point to the root", {
+  release_dir <- withr::local_tempdir()
+  app_dir <- file.path(release_dir, "cerebro_app")
+  dir.create(app_dir)
+  env_file <- file.path(release_dir, "viewer-auth.env")
+  writeLines(
+    paste0("CEREBRO_AUTH_PASSPHRASE=", strrep("a", 64L)),
+    env_file,
+    useBytes = TRUE
+  )
+  Sys.chmod(env_file, mode = "0600", use_umask = FALSE)
+
+  public <- builder_result_success(
+    published = TRUE,
+    app_dir = app_dir,
+    app_verified = TRUE,
+    auth_enabled = FALSE,
+    auth_env_file = NULL,
+    release = list(target = release_dir)
+  )
+  login <- builder_result_success(
+    published = TRUE,
+    app_dir = app_dir,
+    app_verified = TRUE,
+    auth_enabled = TRUE,
+    auth_env_file = env_file,
+    release = list(target = release_dir)
+  )
+
+  expect_identical(builder_build_status_model(public)$release_dir, release_dir)
+  expect_identical(builder_build_status_model(login)$release_dir, release_dir)
+  expect_match(
+    builder_stage_html(builder_build_status_ui(login)),
+    "Login: Required",
+    fixed = TRUE
+  )
+  opened <- NULL
+  expect_true(builder_open_final_app(
+    login,
+    .verify_auth = function(app_dir, env_file) TRUE,
+    .open = function(path, env_file) {
+      opened <<- list(path = path, env_file = env_file)
+      TRUE
+    }
+  ))
+  expect_identical(
+    opened,
+    list(
+      path = normalizePath(app_dir, winslash = "/", mustWork = TRUE),
+      env_file = normalizePath(env_file, winslash = "/", mustWork = TRUE)
+    )
+  )
+
+  expect_error(
+    builder_result_success(auth_enabled = TRUE, auth_env_file = NULL),
+    "authentication"
+  )
+  expect_error(
+    builder_as_result(list(
+      state = "success",
+      auth_enabled = FALSE,
+      auth_env_file = env_file
+    )),
+    "authentication"
+  )
+  expect_error(
+    builder_as_result(structure(
+      list(
+        state = "success",
+        auth_enabled = NA,
+        auth_env_file = NULL
+      ),
+      class = c("builder_result_success", "builder_result", "list")
+    )),
+    "authentication"
+  )
+  for (invalid in list(
+    list(auth_enabled = TRUE, auth_env_file = character()),
+    list(auth_enabled = FALSE, auth_env_file = env_file),
+    list(auth_enabled = "true", auth_env_file = NULL),
+    list(auth_enabled = c(TRUE, FALSE), auth_env_file = env_file)
+  )) {
+    expect_error(
+      do.call(builder_result_success, invalid),
+      "authentication"
+    )
+  }
+  expect_error(
+    builder_result_failure("no", auth_enabled = FALSE),
+    "Only successful"
+  )
+})
+
+test_that("Open App rejects malformed authentication files before launch", {
+  root <- withr::local_tempdir()
+  app_dir <- file.path(root, "cerebro_app")
+  dir.create(app_dir)
+  env_file <- file.path(root, "viewer-auth.env")
+  writeLines(c("CEREBRO_AUTH_PASSPHRASE=", "second=line"), env_file)
+  Sys.chmod(env_file, mode = "0600", use_umask = FALSE)
+  launched <- FALSE
+
+  expect_error(
+    .builder_open_app_child(
+      app_dir,
+      env_file,
+      "CEREBRO_AUTH_PASSPHRASE",
+      .run_app = function(...) {
+        launched <<- TRUE
+        TRUE
+      }
+    ),
+    "authentication environment is invalid"
+  )
+  expect_false(launched)
+
+  login <- builder_result_success(
+    published = TRUE,
+    app_dir = app_dir,
+    app_verified = TRUE,
+    auth_enabled = TRUE,
+    auth_env_file = env_file
+  )
+  expect_error(
+    builder_open_final_app(login, .open = function(...) TRUE),
+    "Authentication files are incomplete"
   )
 })
 

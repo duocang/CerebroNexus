@@ -501,6 +501,10 @@
       expected[[entry$path]] <- entry$type
     }
   }
+  if (isTRUE(request$auth$enabled)) {
+    expected[["private-data/auth"]] <- "directory"
+    expected[["private-data/auth/credentials.sqlite"]] <- "file"
+  }
   expected <- expected[order(names(expected), method = "radix")]
   paths <- names(identity$entries)
   private_paths <- paths[startsWith(paths, "private-data/")]

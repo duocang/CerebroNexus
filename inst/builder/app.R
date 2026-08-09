@@ -128,6 +128,7 @@ builder_preview_revision_independent <- function(kind) {
 }
 
 app_capability <- builder_app_capability()
+auth_capability <- builder_auth_capability()
 
 ## Inline icons: an icon set would be another dependency, and emoji are not
 ## icons.
@@ -388,6 +389,7 @@ ui <- tagList(
     )
   ),
   uiOutput("actionbar"),
+  builder_auth_dialog_ui(),
   div(
     id = "builder-live-status",
     class = "visually-hidden",

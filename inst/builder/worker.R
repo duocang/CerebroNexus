@@ -302,6 +302,28 @@ builder_protocol_dispatch <- function(protocol) {
   list(protocol = protocol, request = request, blocked = NULL)
 }
 
+builder_request_redact_auth <- function(request) {
+  if (
+    is.list(request) &&
+      identical(request$kind, "build") &&
+      is.list(request$payload)
+  ) {
+    request$payload$auth_accounts <- NULL
+  }
+  request
+}
+
+builder_protocol_redact_auth <- function(protocol) {
+  .builder_protocol_assert(protocol)
+  protocol$queue <- lapply(protocol$queue, builder_request_redact_auth)
+  protocol$pending <- builder_request_redact_auth(protocol$pending)
+  protocol$awaiting_ack <- lapply(
+    protocol$awaiting_ack,
+    builder_request_redact_auth
+  )
+  protocol
+}
+
 .builder_protocol_response_field <- function(response, field) {
   value <- response[[field]]
   if (identical(field, "request_id") && is.null(value)) {
@@ -339,6 +361,7 @@ builder_worker_response <- function(request, value = NULL, error = NULL) {
 #' Validate one worker response before changing protocol ownership state.
 builder_protocol_complete <- function(protocol, response) {
   .builder_protocol_assert(protocol)
+  protocol <- builder_protocol_redact_auth(protocol)
   request <- protocol$pending
   if (is.null(request) || !is.list(response)) {
     return(list(protocol = protocol, accepted = FALSE, value = NULL))
@@ -395,13 +418,14 @@ builder_protocol_complete <- function(protocol, response) {
     accepted = accepted,
     value = if (accepted) response$value else NULL,
     error = if (accepted) response$error else NULL,
-    request = request
+    request = builder_request_redact_auth(request)
   )
 }
 
 #' Acknowledge that the main process applied a persistent command result.
 builder_protocol_acknowledge <- function(protocol, token) {
   .builder_protocol_assert(protocol)
+  protocol <- builder_protocol_redact_auth(protocol)
   if (!.builder_worker_scalar_text(token)) {
     stop("An acknowledgement token is required.", call. = FALSE)
   }
@@ -426,6 +450,7 @@ builder_protocol_acknowledge <- function(protocol, token) {
 #' Mark the running Build request as cancelling without opening a new flight.
 builder_protocol_cancel <- function(protocol) {
   .builder_protocol_assert(protocol)
+  protocol <- builder_protocol_redact_auth(protocol)
   if (
     !identical(protocol$build_status, "running") ||
       is.null(protocol$pending) ||
@@ -439,6 +464,7 @@ builder_protocol_cancel <- function(protocol) {
 }
 
 .builder_protocol_terminal_request <- function(request, reason) {
+  request <- builder_request_redact_auth(request)
   request$terminal_reason <- reason
   request$terminal_status <- "failed"
   request
@@ -500,6 +526,7 @@ builder_protocol_cancel <- function(protocol) {
 #' Fail the current request without discarding later FIFO work.
 builder_protocol_fail_pending <- function(protocol, reason) {
   .builder_protocol_assert(protocol)
+  protocol <- builder_protocol_redact_auth(protocol)
   if (!.builder_worker_scalar_text(reason)) {
     stop("A pending request failure reason is required.", call. = FALSE)
   }
@@ -543,6 +570,7 @@ builder_protocol_forget_dataset <- function(
   reason = "dataset_forgotten"
 ) {
   .builder_protocol_assert(protocol)
+  protocol <- builder_protocol_redact_auth(protocol)
   if (!.builder_worker_scalar_text(id)) {
     stop("A dataset id is required for protocol cleanup.", call. = FALSE)
   }
@@ -683,6 +711,7 @@ builder_protocol_recover <- function(
   retry_persistent = TRUE
 ) {
   .builder_protocol_assert(protocol)
+  protocol <- builder_protocol_redact_auth(protocol)
   if (!.builder_worker_scalar_text(epoch)) {
     stop("A recovery worker epoch is required.", call. = FALSE)
   }

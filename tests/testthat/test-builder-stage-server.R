@@ -201,6 +201,212 @@ test_that("workbench identity ignores settings writes but tracks selection", {
   })
 })
 
+test_that("Builder auth accepts only the exact typed browser payload", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  shiny::testServer(app_env$server, {
+    valid_accounts <- list(list(
+      id = "auth-account-1",
+      username = "user-a",
+      password = "password-a"
+    ))
+    session$setInputs(
+      builder_auth_accounts = list(
+        enabled = "true",
+        accounts = valid_accounts,
+        nonce = 1
+      )
+    )
+    session$flushReact()
+    expect_false(auth_enabled())
+    expect_length(auth_accounts(), 0L)
+
+    session$setInputs(make_app = TRUE)
+    session$flushReact()
+    session$setInputs(
+      builder_auth_accounts = list(
+        enabled = TRUE,
+        accounts = valid_accounts,
+        nonce = list(1)
+      )
+    )
+    session$flushReact()
+    expect_false(auth_enabled())
+    expect_length(auth_accounts(), 0L)
+
+    session$setInputs(
+      builder_auth_accounts = list(
+        enabled = TRUE,
+        accounts = valid_accounts,
+        nonce = 2
+      )
+    )
+    session$flushReact()
+    expect_true(auth_enabled())
+    expect_s3_class(auth_accounts(), "builder_auth_accounts")
+    expect_identical(auth_accounts()[[1L]]$username, "user-a")
+
+    session$setInputs(builder_auth_accounts = NULL)
+    session$flushReact()
+    expect_true(auth_enabled())
+    expect_length(auth_accounts(), 1L)
+
+    session$setInputs(
+      builder_auth_accounts = list(
+        enabled = TRUE,
+        accounts = list(list(
+          id = "auth-account-1",
+          username = "user-a",
+          password = "short"
+        )),
+        nonce = 3
+      )
+    )
+    session$flushReact()
+    expect_true(auth_enabled())
+    expect_length(auth_accounts(), 1L)
+    expect_false(auth_validation()$ok)
+    expect_identical(
+      auth_validation()$error,
+      "Login accounts could not be saved."
+    )
+    expect_false(grepl("short", auth_validation()$error, fixed = TRUE))
+
+    session$setInputs(make_app = FALSE)
+    session$flushReact()
+    expect_false(auth_enabled())
+    expect_s3_class(auth_accounts(), "builder_auth_accounts")
+    expect_length(auth_accounts(), 0L)
+
+    session$setInputs(
+      builder_auth_accounts = list(
+        enabled = TRUE,
+        accounts = valid_accounts,
+        nonce = 4
+      )
+    )
+    session$flushReact()
+    expect_false(auth_enabled())
+    expect_length(auth_accounts(), 0L)
+    expect_false(auth_validation()$ok)
+    expect_identical(
+      auth_validation()$error,
+      "Login accounts could not be saved."
+    )
+
+    app_env$auth_capability$available <- FALSE
+    session$setInputs(make_app = TRUE)
+    session$setInputs(
+      builder_auth_accounts = list(
+        enabled = TRUE,
+        accounts = valid_accounts,
+        nonce = 5
+      )
+    )
+    session$flushReact()
+    expect_false(auth_enabled())
+    expect_length(auth_accounts(), 0L)
+    expect_false(auth_validation()$ok)
+    expect_identical(
+      auth_validation()$error,
+      "Login accounts could not be saved."
+    )
+  })
+})
+
+test_that("Build enqueue retains auth after failure and resets only after success", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  shiny::testServer(app_env$server, {
+    expect_identical(
+      names(formals(enqueue_build_plan)),
+      c("plan", "auth_accounts")
+    )
+    validate_auth <- get(
+      "builder_auth_validate_payload",
+      envir = environment(enqueue_build_plan),
+      inherits = TRUE
+    )
+    summarize_auth <- get(
+      "builder_auth_summary",
+      envir = environment(enqueue_build_plan),
+      inherits = TRUE
+    )
+    accounts <- validate_auth(
+      TRUE,
+      list(list(
+        id = "auth-account-1",
+        username = "user-a",
+        password = "password-a"
+      ))
+    )$accounts
+    plan <- builder_stage_frozen_plan()
+    plan$app_auth <- summarize_auth(TRUE, accounts)
+    fn_env <- environment(enqueue_build_plan)
+    messages <- list()
+    assign(
+      "session",
+      list(sendCustomMessage = function(type, message) {
+        messages[[length(messages) + 1L]] <<- list(
+          type = type,
+          message = message
+        )
+      }),
+      envir = fn_env
+    )
+    worker(list(alive = TRUE))
+    request_protocol <- get(
+      "builder_request_protocol",
+      envir = fn_env,
+      inherits = TRUE
+    )
+    protocol(request_protocol("worker-a"))
+    auth_enabled(TRUE)
+    auth_accounts(accounts)
+    auth_validation(list(ok = TRUE, error = NULL))
+
+    queued_payload <- NULL
+    assign(
+      "enqueue",
+      function(payload) {
+        queued_payload <<- payload
+        FALSE
+      },
+      envir = fn_env
+    )
+    expect_false(enqueue_build_plan(plan, auth_accounts = accounts))
+    expect_s3_class(queued_payload$auth_accounts, "builder_auth_accounts")
+    expect_identical(queued_payload$auth_accounts, accounts)
+    expect_identical(auth_accounts(), accounts)
+    expect_true(auth_validation()$ok)
+    expect_length(messages, 0L)
+
+    assign("enqueue", function(payload) TRUE, envir = fn_env)
+    expect_true(enqueue_build_plan(plan, auth_accounts = accounts))
+    expect_s3_class(auth_accounts(), "builder_auth_accounts")
+    expect_length(auth_accounts(), 0L)
+    expect_false(auth_validation()$ok)
+    expect_match(auth_validation()$error, "Set up", fixed = TRUE)
+    expect_identical(
+      vapply(messages, `[[`, character(1), "type"),
+      "builder_auth_reset"
+    )
+    expect_identical(messages[[1L]]$message, list(reset = TRUE))
+  })
+})
+
 test_that("Viewer and spatial preview contracts ignore settings-only revisions", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")

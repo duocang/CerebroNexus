@@ -22,11 +22,147 @@
     intersection: null, resize: null, frame: 0, focused: false,
     pendingHide: false,
   };
+  var authEditor = {
+    nextId: 1,
+    committed: [],
+    snapshot: [],
+    open: false,
+    saving: false,
+  };
 
   function send(name, value) {
     if (window.Shiny) {
       window.Shiny.setInputValue(name, value, { priority: "event" });
     }
+  }
+
+  function authCopy(accounts) {
+    return accounts.map(function (account) {
+      return { id: account.id, username: account.username, password: account.password };
+    });
+  }
+
+  function authAccountRow(account) {
+    var row = document.createElement("div");
+    row.className = "builder-auth-row";
+    row.dataset.authId = account.id;
+    [["Username", "text", "builder-auth-username", "username", account.username],
+      ["Password", "password", "builder-auth-password", "new-password", account.password]
+    ].forEach(function (spec) {
+      var label = document.createElement("label");
+      label.textContent = spec[0];
+      var input = document.createElement("input");
+      input.type = spec[1];
+      input.className = spec[2];
+      input.autocomplete = spec[3];
+      input.value = spec[4];
+      label.appendChild(input);
+      row.appendChild(label);
+    });
+    var remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn builder-auth-remove";
+    remove.textContent = "Remove";
+    row.appendChild(remove);
+    return row;
+  }
+
+  function authRows() {
+    return Array.from(document.querySelectorAll(".builder-auth-row")).map(function (row) {
+      return {
+        id: row.dataset.authId,
+        username: row.querySelector(".builder-auth-username").value,
+        password: row.querySelector(".builder-auth-password").value,
+      };
+    });
+  }
+
+  function authRender(accounts) {
+    var root = document.querySelector("[data-auth-rows]");
+    if (!root) return;
+    root.replaceChildren();
+    accounts.forEach(function (account) { root.appendChild(authAccountRow(account)); });
+  }
+
+  function authNewAccount() {
+    return { id: "auth-account-" + authEditor.nextId++, username: "", password: "" };
+  }
+
+  function clearAuthLiveInputs() {
+    document.querySelectorAll(".builder-auth-row input").forEach(function (input) {
+      input.value = "";
+    });
+  }
+
+  function clearAuthSecrets() {
+    clearAuthLiveInputs();
+    authEditor.committed = [];
+    authEditor.snapshot = [];
+  }
+
+  function clearAuthError() {
+    var error = document.getElementById("builder-auth-error");
+    if (!error) return;
+    error.textContent = "";
+    error.hidden = true;
+  }
+
+  function restoreAuthSnapshot() {
+    authEditor.committed = authCopy(authEditor.snapshot);
+    authRender(authEditor.snapshot);
+  }
+
+  function authOpenFocusFallback() {
+    var trigger = document.querySelector(".builder-auth-open");
+    var options = trigger && trigger.closest("details");
+    if (options) options.open = true;
+    return trigger;
+  }
+
+  function setAuthSaving(pendingNonce) {
+    var saving = typeof pendingNonce === "number" && Number.isFinite(pendingNonce);
+    authEditor.saving = saving ? pendingNonce : false;
+    var dialog = document.getElementById("builder-auth-dialog");
+    if (!dialog) return;
+    dialog.querySelectorAll("input, button").forEach(function (control) {
+      control.disabled = saving;
+    });
+  }
+
+  function closeAuthDialog(restore) {
+    var backdrop = document.getElementById("builder-auth-backdrop");
+    var dialog = document.getElementById("builder-auth-dialog");
+    if (!backdrop || !dialog) return;
+    authEditor.open = false;
+    backdrop.classList.remove("is-visible");
+    dialog.classList.remove("is-visible");
+    backdrop.hidden = true;
+    document.body.classList.remove("builder-dialog-open");
+    if (restore) restoreFocus(dialog);
+  }
+
+  function openAuthDialog(trigger) {
+    var backdrop = document.getElementById("builder-auth-backdrop");
+    var dialog = document.getElementById("builder-auth-dialog");
+    if (!backdrop || !dialog) return;
+    clearAuthError();
+    setAuthSaving(false);
+    authEditor.snapshot = authCopy(authEditor.committed);
+    if (!authEditor.committed.length) authRender([authNewAccount()]);
+    else authRender(authEditor.committed);
+    authEditor.open = true;
+    backdrop.hidden = false;
+    prepareDialog(
+      dialog,
+      trigger,
+      function () {
+        if (authEditor.saving) return;
+        restoreAuthSnapshot();
+        closeAuthDialog(true);
+      },
+      authOpenFocusFallback
+    );
+    showTransientLayer(backdrop, dialog);
   }
 
   function focusableElements(root) {
@@ -1561,6 +1697,64 @@
 
   document.addEventListener("click", function (event) {
     var target = event.target;
+    var authOpen = target.closest(".builder-auth-open");
+    if (authOpen) {
+      event.preventDefault();
+      openAuthDialog(authOpen);
+      return;
+    }
+    if (target.closest(".builder-auth-add")) {
+      event.preventDefault();
+      var rows = authRows();
+      rows.push(authNewAccount());
+      authRender(rows);
+      var lastUsername = document.querySelector(".builder-auth-row:last-child .builder-auth-username");
+      if (lastUsername) lastUsername.focus();
+      return;
+    }
+    var authRemove = target.closest(".builder-auth-remove");
+    if (authRemove) {
+      event.preventDefault();
+      authRemove.closest(".builder-auth-row").remove();
+      return;
+    }
+    if (target.closest(".builder-auth-cancel")) {
+      event.preventDefault();
+      if (authEditor.saving) return;
+      restoreAuthSnapshot();
+      closeAuthDialog(true);
+      return;
+    }
+    if (target.closest(".builder-auth-save")) {
+      event.preventDefault();
+      if (authEditor.saving) return;
+      var accounts = authRows();
+      var users = accounts.map(function (account) { return account.username.trim(); });
+      var valid = accounts.length && users.every(Boolean) &&
+        new Set(users).size === users.length &&
+        accounts.every(function (account) { return account.password.length >= 8; });
+      var authError = document.getElementById("builder-auth-error");
+      if (!valid) {
+        if (authError) {
+          authError.textContent = "Add unique usernames and passwords of at least 8 characters.";
+          authError.hidden = false;
+        }
+        return;
+      }
+      accounts.forEach(function (account, index) { account.username = users[index]; });
+      authEditor.committed = authCopy(accounts);
+      var nonce = Date.now();
+      setAuthSaving(nonce);
+      send("builder_auth_accounts", { enabled: true, accounts: accounts, nonce: nonce });
+      return;
+    }
+    if (target.matches("#review-require_login") && !target.checked) {
+      clearAuthSecrets();
+      authRender([]);
+      send("builder_auth_accounts", { enabled: false, accounts: [], nonce: Date.now() });
+      send("builder_auth_accounts", null);
+      return;
+    }
     var compactSegment = target.closest(".dataset-compact-segment");
     if (compactSegment) {
       event.preventDefault();
@@ -1890,6 +2084,36 @@
     });
     window.Shiny.addCustomMessageHandler("builder_import_status", function (message) {
       if (message && message.text) scheduleStatusAnnouncement(message.text);
+    });
+    function handleAuthStatus(message) {
+      if (
+        !message ||
+        typeof authEditor.saving !== "number" ||
+        message.nonce !== authEditor.saving
+      ) return;
+      var error = document.getElementById("builder-auth-error");
+      setAuthSaving(false);
+      if (message.ok) {
+        if (error) { error.textContent = ""; error.hidden = true; }
+        clearAuthLiveInputs();
+        authRender([]);
+        authEditor.snapshot = [];
+        send("builder_auth_accounts", null);
+        closeAuthDialog(true);
+      } else if (error) {
+        error.textContent = "Login accounts could not be saved.";
+        error.hidden = false;
+      }
+    }
+    window.__builderHandleAuthStatus = handleAuthStatus;
+    window.Shiny.addCustomMessageHandler("builder_auth_status", handleAuthStatus);
+    window.Shiny.addCustomMessageHandler("builder_auth_reset", function (message) {
+      if (!message || message.reset !== true) return;
+      setAuthSaving(false);
+      clearAuthSecrets();
+      clearAuthError();
+      authRender([]);
+      send("builder_auth_accounts", null);
     });
     buildDialogHandlerRegistered = true;
   }

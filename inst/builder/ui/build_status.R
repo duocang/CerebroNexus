@@ -16,6 +16,31 @@
     stop("A supported typed build result is required.", call. = FALSE)
   }
   value <- c(list(state = state, message = message), fields)
+  if (identical(state, "success")) {
+    auth_enabled <- value$auth_enabled
+    auth_env_file <- value$auth_env_file
+    valid_enabled <- is.logical(auth_enabled) &&
+      length(auth_enabled) == 1L &&
+      !is.na(auth_enabled)
+    valid_env <- is.null(auth_env_file) ||
+      (is.character(auth_env_file) &&
+        length(auth_env_file) == 1L &&
+        !is.na(auth_env_file) &&
+        nzchar(auth_env_file))
+    if (
+      !valid_enabled ||
+        !valid_env ||
+        (isTRUE(auth_enabled) && is.null(auth_env_file)) ||
+        (!isTRUE(auth_enabled) && !is.null(auth_env_file))
+    ) {
+      stop("The result authentication fields are invalid.", call. = FALSE)
+    }
+  } else if (any(c("auth_enabled", "auth_env_file") %in% names(value))) {
+    stop(
+      "Only successful results may carry authentication fields.",
+      call. = FALSE
+    )
+  }
   structure(
     value,
     class = c(paste0("builder_result_", state), "builder_result", "list")
@@ -29,6 +54,8 @@ builder_result_success <- function(
   app_dir = NULL,
   app_verified = FALSE,
   report_path = NULL,
+  auth_enabled = FALSE,
+  auth_env_file = NULL,
   ...
 ) {
   .builder_result(
@@ -40,7 +67,9 @@ builder_result_success <- function(
         warnings = as.character(warnings),
         app_dir = app_dir,
         app_verified = isTRUE(app_verified),
-        report_path = report_path
+        report_path = report_path,
+        auth_enabled = auth_enabled,
+        auth_env_file = auth_env_file
       ),
       list(...)
     )
@@ -86,9 +115,6 @@ builder_release_error_result <- function(
 }
 
 builder_as_result <- function(result) {
-  if (inherits(result, "builder_result")) {
-    return(result)
-  }
   if (
     !is.list(result) ||
       !is.character(result$state) ||
@@ -104,9 +130,7 @@ builder_as_result <- function(result) {
 }
 
 builder_build_status_model <- function(result) {
-  if (!inherits(result, "builder_result")) {
-    stop("A typed build result is required.", call. = FALSE)
-  }
+  result <- builder_as_result(result)
   type <- result$state
   if (
     !type %in% c("success", "needs_decision", "failure", "recovery_required")
@@ -134,13 +158,16 @@ builder_build_status_model <- function(result) {
     } else {
       NULL
     },
-    release_dir = if (length(result$built %||% character())) {
-      dirname(result$built[[1L]])
+    release_dir = if (builder_stage_has_text(result$release$target %||% "")) {
+      result$release$target
     } else if (builder_stage_has_text(result$app_dir %||% "")) {
       dirname(result$app_dir)
+    } else if (length(result$built %||% character())) {
+      dirname(result$built[[1L]])
     } else {
       NULL
     },
+    auth_enabled = identical(type, "success") && isTRUE(result$auth_enabled),
     report_path = result$report_path %||% NULL,
     retry_closure = result$retry_closure %||% character(),
     failed_dataset_id = result$failed_dataset_id %||% NULL,
@@ -150,17 +177,122 @@ builder_build_status_model <- function(result) {
   structure(model, class = c("builder_build_status", "list"))
 }
 
+.builder_open_app_child <- function(
+  path,
+  env_file,
+  env_name,
+  .run_app = shiny::runApp
+) {
+  if (
+    !identical(env_name, "CEREBRO_AUTH_PASSPHRASE") || !is.function(.run_app)
+  ) {
+    stop("The authentication environment is invalid.", call. = FALSE)
+  }
+  path_is_link <- function(candidate) {
+    link <- tryCatch(
+      Sys.readlink(candidate),
+      error = function(error) NA_character_
+    )
+    is.character(link) && length(link) == 1L && !is.na(link) && nzchar(link)
+  }
+  value <- NULL
+  previous <- Sys.getenv(env_name, unset = NA_character_)
+  installed <- FALSE
+  on.exit(
+    {
+      if (installed) {
+        if (is.na(previous)) {
+          Sys.unsetenv(env_name)
+        } else {
+          do.call(Sys.setenv, stats::setNames(list(previous), env_name))
+        }
+      }
+      value <- NULL
+    },
+    add = TRUE
+  )
+  if (!is.null(env_file)) {
+    valid <- tryCatch(
+      {
+        app_dir <- normalizePath(path, winslash = "/", mustWork = TRUE)
+        secret <- normalizePath(env_file, winslash = "/", mustWork = TRUE)
+        env_info <- fs::file_info(env_file, fail = TRUE, follow = FALSE)
+        if (
+          !identical(secret, file.path(dirname(app_dir), "viewer-auth.env")) ||
+            path_is_link(env_file) ||
+            !identical(as.character(env_info$type), "file") ||
+            !identical(as.double(env_info$hard_links), 1) ||
+            (.Platform$OS.type != "windows" &&
+              !identical(as.integer(file.info(env_file)$mode), 384L))
+        ) {
+          stop("invalid")
+        }
+        lines <- readLines(env_file, warn = FALSE, encoding = "UTF-8")
+        pattern <- paste0("^", env_name, "=([0-9a-f]{64})$")
+        if (length(lines) != 1L || !grepl(pattern, lines, perl = TRUE)) {
+          stop("invalid")
+        }
+        value <- sub(paste0("^", env_name, "="), "", lines)
+        database <- file.path(
+          app_dir,
+          "private-data",
+          "auth",
+          "credentials.sqlite"
+        )
+        if (
+          path_is_link(database) ||
+            !file.exists(database) ||
+            dir.exists(database) ||
+            !isTRUE(CerebroNexus:::.viewerAuthValidateDatabase(database, value))
+        ) {
+          stop("invalid")
+        }
+        TRUE
+      },
+      error = function(error) FALSE,
+      warning = function(warning) FALSE
+    )
+    if (!isTRUE(valid)) {
+      value <- NULL
+      stop("The authentication environment is invalid.", call. = FALSE)
+    }
+    do.call(Sys.setenv, stats::setNames(list(value), env_name))
+    installed <- TRUE
+  }
+  .run_app(path, launch.browser = TRUE)
+}
+
 builder_open_final_app <- function(
   result,
-  .open = function(path) {
+  .verify_auth = function(app_dir, env_file) {
+    builder_auth_verify_database_pair(
+      file.path(app_dir, "private-data", "auth", "credentials.sqlite"),
+      env_file
+    )
+  },
+  .child = .builder_open_app_child,
+  .run_app = NULL,
+  .on_open = NULL,
+  .open = function(path, env_file) {
     if (!requireNamespace("callr", quietly = TRUE)) {
       stop("The callr package is required to open the App.", call. = FALSE)
     }
-    callr::r_bg(
-      function(path) shiny::runApp(path, launch.browser = TRUE),
-      args = list(path = path),
+    args <- list(
+      path = path,
+      env_file = env_file,
+      env_name = "CEREBRO_AUTH_PASSPHRASE"
+    )
+    if (!is.null(.run_app)) {
+      args$.run_app <- .run_app
+    }
+    process <- callr::r_bg(
+      .child,
+      args = args,
       supervise = FALSE
     )
+    if (is.function(.on_open)) {
+      .on_open(process)
+    }
     TRUE
   }
 ) {
@@ -173,7 +305,32 @@ builder_open_final_app <- function(
   ) {
     stop("A verified final App directory is required.", call. = FALSE)
   }
-  isTRUE(.open(result$app_dir))
+  app_dir <- normalizePath(result$app_dir, winslash = "/", mustWork = TRUE)
+  env_file <- NULL
+  if (isTRUE(result$auth_enabled)) {
+    valid <- tryCatch(
+      {
+        env_file <- normalizePath(
+          result$auth_env_file,
+          winslash = "/",
+          mustWork = TRUE
+        )
+        identical(env_file, file.path(dirname(app_dir), "viewer-auth.env")) &&
+          isTRUE(.verify_auth(app_dir, env_file))
+      },
+      error = function(error) FALSE
+    )
+    if (!isTRUE(valid)) {
+      stop(
+        paste(
+          "Authentication files are incomplete; rebuild the App",
+          "or restore its matching viewer-auth.env."
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  isTRUE(.open(app_dir, env_file))
 }
 
 builder_reveal_release <- function(result, .reveal = NULL) {
@@ -285,6 +442,15 @@ builder_build_status_ui <- function(model) {
     h2(`data-icon` = icon, title),
     if (!is.null(pipeline_state)) builder_build_pipeline_ui(pipeline_state),
     if (!is.null(model$message)) p(model$message),
+    if (identical(model$type, "success")) {
+      p(
+        class = "builder-auth-status",
+        paste(
+          "Login:",
+          if (isTRUE(model$auth_enabled)) "Required" else "Not required"
+        )
+      )
+    },
     if (identical(model$type, "needs_decision")) {
       div(
         class = "builder-recovery-action",

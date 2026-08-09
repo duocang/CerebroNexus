@@ -640,16 +640,21 @@ builder_freeze_plan <- function(
     ))
   }
 
-  target_names <- unlist(
+  transient_input_names <- unlist(
     lapply(items, function(item) {
       c(item$filename, item$sidecars)
     }),
     use.names = FALSE
   )
-  targets <- file.path(out_dir, target_names)
-  if (isTRUE(make_app)) {
-    targets <- c(targets, file.path(out_dir, "cerebro_app"))
+  target_names <- if (isTRUE(make_app)) {
+    c(
+      "cerebro_app",
+      if (isTRUE(app_auth$enabled)) "viewer-auth.env" else character()
+    )
+  } else {
+    transient_input_names
   }
+  targets <- file.path(out_dir, target_names)
 
   names(items) <- dataset_order
   manifests <- lapply(items, `[[`, "manifest")

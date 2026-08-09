@@ -31,7 +31,7 @@ test_that("session execution stages artifacts without publishing them", {
   expect_match(session, "worker$snapshot_root", fixed = TRUE)
   expect_match(
     session,
-    "builder_execute_plan(plan, stage, registry)",
+    "auth_material = auth_material",
     fixed = TRUE
   )
   expect_false(grepl("builder_publish_batch", session, fixed = TRUE))
@@ -265,14 +265,14 @@ test_that("contract-v1 execution assembles App only after CRB verification", {
     calls <<- c(calls, "verify_crb")
     list(valid = TRUE, path = path)
   }
-  hooks$build_app <- function(request, stage) {
+  hooks$build_app <- function(request, stage, auth_material = NULL) {
     calls <<- c(calls, "build_app")
     expect_true(all(file.exists(request$cerebro_data)))
     app_dir <- file.path(stage, "cerebro_app")
     dir.create(app_dir)
     app_dir
   }
-  hooks$verify_app <- function(app_dir, request) {
+  hooks$verify_app <- function(app_dir, request, auth_env_file = NULL) {
     calls <<- c(calls, "verify_app")
     structure(
       list(valid = TRUE, app_dir = app_dir),
@@ -296,6 +296,8 @@ test_that("contract-v1 execution assembles App only after CRB verification", {
     file.path(normalizePath(stage, winslash = "/"), "cerebro_app")
   )
   expect_s3_class(result$app_verification, "builder_app_verification")
+  expect_false(result$auth_enabled)
+  expect_null(result$auth_env_file)
 })
 
 test_that("App execution rejects non-inert or non-exact verification evidence", {
@@ -323,12 +325,12 @@ test_that("App execution rejects non-inert or non-exact verification evidence", 
     plan$app_contract_version <- 1L
     plan$app_options$enabled <- TRUE
     hooks <- builder_build_test_hooks()
-    hooks$build_app <- function(request, stage) {
+    hooks$build_app <- function(request, stage, auth_material = NULL) {
       app_dir <- file.path(stage, "cerebro_app")
       dir.create(app_dir)
       app_dir
     }
-    hooks$verify_app <- function(app_dir, request) value
+    hooks$verify_app <- function(app_dir, request, auth_env_file = NULL) value
 
     result <- builder_execute_plan(
       plan,
@@ -361,6 +363,121 @@ test_that("generated App execution remains closed without contract v1", {
   expect_identical(result$state, "failure")
   expect_match(result$error, "contract")
   expect_null(result$app_dir)
+})
+
+test_that("failed login build propagates authentication cleanup failure", {
+  stage <- withr::local_tempdir()
+  plan <- builder_build_test_plan()
+  plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 1L,
+    timeout_minutes = 15L
+  )
+  source_dir <- file.path(stage, ".builder-auth-source")
+  dir.create(source_dir)
+  credentials <- file.path(source_dir, "credentials.sqlite")
+  writeBin(as.raw(1:8), credentials)
+  Sys.chmod(credentials, "0600", use_umask = FALSE)
+  env_file <- .builder_auth_write_env(
+    file.path(stage, "viewer-auth.env"),
+    strrep("a", 64L)
+  )
+  material <- list(
+    source_dir = source_dir,
+    credentials = credentials,
+    env_file = env_file,
+    descriptor = list(
+      credentials = credentials,
+      passphrase_env = "CEREBRO_AUTH_PASSPHRASE",
+      timeout_minutes = 15L
+    )
+  )
+  original_cleanup <- .builder_auth_remove_partial_material
+  assign(
+    ".builder_auth_remove_partial_material",
+    function(stage) {
+      original_cleanup(stage, .unlink = function(...) 0L)
+    },
+    envir = environment(builder_execute_plan)
+  )
+  on.exit(
+    assign(
+      ".builder_auth_remove_partial_material",
+      original_cleanup,
+      envir = environment(builder_execute_plan)
+    ),
+    add = TRUE
+  )
+
+  expect_error(
+    builder_execute_plan(
+      plan,
+      stage,
+      snapshots = list(),
+      hooks = builder_build_test_hooks()
+    ),
+    "authentication files could not be cleaned up"
+  )
+  expect_true(file.exists(credentials))
+  expect_true(file.exists(env_file))
+})
+
+test_that("successful login execution removes source and retains only safe env path", {
+  stage <- withr::local_tempdir()
+  plan <- builder_build_test_plan()
+  plan$make_app <- TRUE
+  plan$app_contract_version <- 1L
+  plan$app_options$enabled <- TRUE
+  plan$app_auth <- list(
+    enabled = TRUE,
+    account_count = 1L,
+    timeout_minutes = 15L
+  )
+  accounts <- builder_auth_validate_payload(
+    TRUE,
+    list(list(
+      id = "auth-account-1",
+      username = "execution-user-31a7",
+      password = "execution-password-31a7"
+    ))
+  )$accounts
+  material <- builder_auth_create_material(
+    accounts,
+    stage,
+    .capability = function() list(available = TRUE, reason = NULL)
+  )
+  source_dir <- material$source_dir
+  env_file <- material$env_file
+  hooks <- builder_build_test_hooks()
+  hooks$build_app <- function(request, stage, auth_material = NULL) {
+    app_dir <- file.path(stage, "cerebro_app")
+    dir.create(app_dir)
+    app_dir
+  }
+  hooks$verify_app <- function(app_dir, request, auth_env_file = NULL) {
+    expect_identical(auth_env_file, env_file)
+    structure(
+      list(valid = TRUE, app_dir = app_dir),
+      class = c("builder_app_verification", "list")
+    )
+  }
+
+  result <- builder_execute_plan(
+    plan,
+    stage,
+    snapshots = list(`dataset-a` = list()),
+    hooks = hooks,
+    auth_material = material
+  )
+
+  expect_identical(result$state, "success")
+  expect_true(result$auth_enabled)
+  expect_identical(result$auth_env_file, env_file)
+  expect_false(dir.exists(source_dir))
+  expect_true(file.exists(env_file))
+  expect_false("auth_material" %in% names(result))
+  expect_false(builder_auth_value_contains(result, "execution-user-31a7"))
+  expect_false(builder_auth_value_contains(result, "execution-password-31a7"))
 })
 
 test_that("CRB read-back matches exact frozen artifact identity", {

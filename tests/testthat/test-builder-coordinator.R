@@ -43,12 +43,11 @@ builder_app_coordinator_plan_fixture <- function(
       if (identical(backend, "h5")) ".h5" else ".bpcells"
     )
   }
-  targets <- file.path(target, filenames)
-  if (length(items[[1L]]$sidecars)) {
-    targets <- c(targets, file.path(target, items[[1L]]$sidecars))
-  }
-  if (isTRUE(make_app)) {
-    targets <- c(targets, file.path(target, "cerebro_app"))
+  targets <- if (isTRUE(make_app)) {
+    file.path(target, c("cerebro_app", "viewer-auth.env"))
+  } else {
+    values <- c(filenames, items[[1L]]$sidecars %||% character())
+    file.path(target, values)
   }
   structure(
     list(
@@ -154,7 +153,9 @@ builder_crb_coordinator_result <- function(handle, artifacts, labels = NULL) {
       list(valid = TRUE, path = path, metadata = character())
     }),
     app_dir = NULL,
-    app_verification = NULL
+    app_verification = NULL,
+    auth_enabled = FALSE,
+    auth_env_file = NULL
   )
 }
 
@@ -225,7 +226,11 @@ test_that("coordinator prepare never dispatches hostile plan methods", {
   })
 })
 
-builder_app_coordinator_fake_app <- function(request, app_dir) {
+builder_app_coordinator_fake_app <- function(
+  request,
+  app_dir,
+  auth_material = NULL
+) {
   dir.create(app_dir)
   file.copy(
     builder_profile_inst_path("viewer"),
@@ -274,36 +279,47 @@ builder_app_coordinator_fake_app <- function(request, app_dir) {
     builder_profile_inst_path("viewer", "_bundle_app.R"),
     file.path(app_dir, "app.R")
   )
-  saveRDS(
-    list(
-      crb_file_to_load = stats::setNames(
-        relative_crbs,
-        request$selector_order
-      ),
-      initial_dataset = request$initial_dataset,
-      initial_page = request$initial_page,
-      show_upload_ui = request$show_upload_ui,
-      welcome_message = request$welcome_message,
-      point_size = request$point_size,
-      viewer_content = request$viewer_content,
-      variable_to_compare = request$variable_to_compare,
-      .bundle_run_options = list(
-        schema_version = 1L,
-        max_request_size_bytes = request$max_request_size * 1024^2,
-        shiny_app_options = list(
-          port = as.integer(request$port),
-          host = request$host,
-          launch.browser = request$launch_browser,
-          quiet = TRUE,
-          display.mode = request$display_mode
-        )
-      ),
-      colors = request$colors,
-      crb_pick_smallest_file = request$crb_pick_smallest_file,
-      .bundle_backend_plan = request$backend_plan
+  config <- list(
+    crb_file_to_load = stats::setNames(
+      relative_crbs,
+      request$selector_order
     ),
-    file.path(app_dir, "cerebro_config.rds")
+    initial_dataset = request$initial_dataset,
+    initial_page = request$initial_page,
+    show_upload_ui = request$show_upload_ui,
+    welcome_message = request$welcome_message,
+    point_size = request$point_size,
+    viewer_content = request$viewer_content,
+    variable_to_compare = request$variable_to_compare,
+    .bundle_run_options = list(
+      schema_version = 1L,
+      max_request_size_bytes = request$max_request_size * 1024^2,
+      shiny_app_options = list(
+        port = as.integer(request$port),
+        host = request$host,
+        launch.browser = request$launch_browser,
+        quiet = TRUE,
+        display.mode = request$display_mode
+      )
+    ),
+    colors = request$colors,
+    crb_pick_smallest_file = request$crb_pick_smallest_file,
+    .bundle_backend_plan = request$backend_plan
   )
+  if (isTRUE(request$auth$enabled)) {
+    auth_dir <- file.path(app_dir, "private-data", "auth")
+    dir.create(auth_dir)
+    file.copy(
+      auth_material$credentials,
+      file.path(auth_dir, "credentials.sqlite")
+    )
+    config$.viewer_auth <- list(
+      credentials_path = "private-data/auth/credentials.sqlite",
+      passphrase_env = "CEREBRO_AUTH_PASSPHRASE",
+      timeout_minutes = 15L
+    )
+  }
+  saveRDS(config, file.path(app_dir, "cerebro_config.rds"))
   app_dir
 }
 
@@ -353,15 +369,62 @@ builder_app_coordinator_fixture <- function(
       list(valid = TRUE, path = unname(path))
     }),
     app_dir = NULL,
-    app_verification = NULL
+    app_verification = NULL,
+    auth_enabled = FALSE,
+    auth_env_file = NULL
   )
   if (isTRUE(make_app)) {
     request <- bundle_request(plan, built, labels)
+    auth_runtime <- environment(bundle_request)
+    auth_material <- if (isTRUE(request$auth$enabled)) {
+      get("builder_auth_create_material", envir = auth_runtime)(
+        get("builder_auth_validate_payload", envir = auth_runtime)(
+          TRUE,
+          list(
+            list(
+              id = "auth-account-1",
+              username = "fixture-a",
+              password = "fixture-password-a"
+            ),
+            list(
+              id = "auth-account-2",
+              username = "fixture-b",
+              password = "fixture-password-b"
+            )
+          )
+        )$accounts,
+        handle$stage,
+        .capability = function() list(available = TRUE, reason = NULL)
+      )
+    } else {
+      NULL
+    }
     result$app_dir <- builder_app_coordinator_fake_app(
       request,
-      file.path(handle$stage, "cerebro_app")
+      file.path(handle$stage, "cerebro_app"),
+      auth_material = auth_material
     )
-    result$app_verification <- verify_app(result$app_dir, request)
+    result$app_verification <- verify_app(
+      result$app_dir,
+      request,
+      auth_env_file = if (is.null(auth_material)) {
+        NULL
+      } else {
+        auth_material$env_file
+      }
+    )
+    if (!is.null(auth_material)) {
+      get("builder_auth_cleanup_material", envir = auth_runtime)(
+        auth_material,
+        handle$stage,
+        keep_env = TRUE
+      )
+      result$auth_enabled <- TRUE
+      result$auth_env_file <- auth_material$env_file
+    } else {
+      result$auth_enabled <- FALSE
+      result$auth_env_file <- NULL
+    }
   }
   list(
     root = root,
@@ -465,6 +528,8 @@ test_that("coordinator rejects a dangling release-root link before prepare", {
         list(
           state = "success",
           publishable = TRUE,
+          auth_enabled = FALSE,
+          auth_env_file = NULL,
           stage = attempt$stage,
           built = artifact
         )
@@ -552,6 +617,8 @@ test_that("coordinator rejects an unreadable prior payload", {
         list(
           state = "success",
           publishable = TRUE,
+          auth_enabled = FALSE,
+          auth_env_file = NULL,
           stage = attempt$stage,
           built = artifact
         )
@@ -632,6 +699,8 @@ test_that("only one process can coordinate one release", {
             list(
               state = "success",
               publishable = TRUE,
+              auth_enabled = FALSE,
+              auth_env_file = NULL,
               stage = handle$stage,
               built = file.path(handle$stage, "dataset.crb"),
               labels = id,
@@ -700,6 +769,8 @@ test_that("coordinator publishes only its verified assigned stage", {
         list(
           state = "success",
           publishable = TRUE,
+          auth_enabled = FALSE,
+          auth_env_file = NULL,
           stage = root,
           built = file.path(root, "foreign.crb")
         )
@@ -887,6 +958,8 @@ test_that("one prior snapshot prevents record ABA from claiming foreign files", 
           list(
             state = "success",
             publishable = TRUE,
+            auth_enabled = FALSE,
+            auth_env_file = NULL,
             stage = handle$stage,
             built = artifact,
             labels = "A"
@@ -988,6 +1061,8 @@ test_that("legacy nested topology cannot silently shrink", {
         list(
           state = "success",
           publishable = TRUE,
+          auth_enabled = FALSE,
+          auth_env_file = NULL,
           stage = handle$stage,
           built = staged_app,
           labels = "App"
@@ -1168,6 +1243,8 @@ test_that("unplanned staged artifacts cannot enter the release", {
         list(
           state = "success",
           publishable = TRUE,
+          auth_enabled = FALSE,
+          auth_env_file = NULL,
           stage = handle$stage,
           built = artifact,
           labels = "Dataset"
@@ -1312,6 +1389,138 @@ test_that("App publication requires exact parent-bound evidence", {
       "assigned App directory"
     )
     expect_true(builder_coordinator_abort(missing_dir$handle)$aborted)
+  })
+})
+
+test_that("coordinator requires exact scalar authentication evidence", {
+  local({
+    builder_task9_source()
+    login <- builder_app_coordinator_fixture(
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    for (value in list(NULL, NA, "TRUE", FALSE)) {
+      forged <- login$result$app_verification
+      forged["auth_enabled"] <- list(value)
+      expect_error(
+        .builder_coordinator_app_verification(
+          forged,
+          login$handle$app_expectation
+        ),
+        "differs from the frozen plan"
+      )
+    }
+    expect_true(builder_coordinator_abort(login$handle)$aborted)
+
+    root <- withr::local_tempdir()
+    plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
+    plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
+    public <- builder_app_coordinator_fixture(
+      root = root,
+      plan = plan,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    for (value in list(NULL, NA, "FALSE", TRUE)) {
+      forged <- public$result$app_verification
+      forged["auth_enabled"] <- list(value)
+      expect_error(
+        .builder_coordinator_app_verification(
+          forged,
+          public$handle$app_expectation
+        ),
+        "differs from the frozen plan"
+      )
+    }
+    expect_true(builder_coordinator_abort(public$handle)$aborted)
+  })
+})
+
+test_that("coordinator binds top-level build authentication to all plan modes", {
+  local({
+    builder_task9_source()
+    check_forged <- function(fixture, enabled, env_file) {
+      valid <- fixture$result
+      expect_silent(.builder_coordinator_validate_build_auth(
+        fixture$handle,
+        valid
+      ))
+      for (value in list(NULL, NA, "TRUE", 0, !enabled)) {
+        forged <- valid
+        forged["auth_enabled"] <- list(value)
+        expect_error(
+          .builder_coordinator_validate_build_auth(fixture$handle, forged),
+          "authentication evidence"
+        )
+      }
+      forged_env <- valid
+      forged_env["auth_env_file"] <- list(env_file)
+      expect_error(
+        .builder_coordinator_validate_build_auth(fixture$handle, forged_env),
+        "authentication evidence"
+      )
+      expect_true(builder_coordinator_abort(fixture$handle)$aborted)
+    }
+
+    login <- builder_app_coordinator_fixture(
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    check_forged(login, TRUE, file.path(login$root, "wrong.env"))
+
+    public_root <- withr::local_tempdir()
+    public_plan <- builder_app_coordinator_plan_fixture(
+      file.path(public_root, "release")
+    )
+    public_plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
+    public_plan$targets <- file.path(public_root, "release", "cerebro_app")
+    public_plan$output_release$targets <- public_plan$targets
+    public <- builder_app_coordinator_fixture(
+      root = public_root,
+      plan = public_plan,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    check_forged(
+      public,
+      FALSE,
+      file.path(public$handle$stage, "viewer-auth.env")
+    )
+
+    crb_root <- withr::local_tempdir()
+    crb_plan <- builder_crb_coordinator_plan(
+      file.path(crb_root, "release"),
+      "dataset.crb"
+    )
+    crb <- builder_coordinator_prepare(crb_plan, "crb-auth")
+    artifact <- file.path(crb$stage, "dataset.crb")
+    saveRDS(list(ok = TRUE), artifact)
+    crb_fixture <- list(
+      root = crb_root,
+      handle = crb,
+      result = builder_crb_coordinator_result(crb, artifact)
+    )
+    check_forged(
+      crb_fixture,
+      FALSE,
+      file.path(crb$stage, "viewer-auth.env")
+    )
   })
 })
 
@@ -1624,8 +1833,14 @@ test_that("verified Apps publish with final paths and parent ownership", {
     )
     expect_identical(
       unname(published$built),
-      file.path(published$release$target, basename(fixture$result$built))
+      file.path(
+        published$release$target,
+        "cerebro_app",
+        "private-data",
+        basename(fixture$result$built)
+      )
     )
+    expect_identical(names(published$built), names(fixture$result$built))
     expect_identical(
       unname(vapply(
         published$verifications,
@@ -1829,5 +2044,210 @@ test_that("report failure preserves the prior release unpublished", {
     expect_identical(readRDS(file.path(target, "dataset-a.crb")), "prior")
     expect_false(file.exists(file.path(target, "build-report.json")))
     expect_true(dir.exists(fixture$handle$stage))
+  })
+})
+
+test_that("public Apps reach publication guards without authentication material", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    plan <- builder_app_coordinator_plan_fixture(target)
+    plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
+    plan$targets <- file.path(target, "cerebro_app")
+    plan$output_release$targets <- plan$targets
+    fixture <- builder_app_coordinator_fixture(
+      root = root,
+      target = target,
+      plan = plan,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    published <- builder_coordinator_publish(fixture$handle, fixture$result)
+    expect_true(published$published)
+    expect_false(file.exists(file.path(target, "viewer-auth.env")))
+    expect_true(dir.exists(file.path(target, "cerebro_app")))
+  })
+})
+
+test_that("login publication removes only transient root inputs after reporting", {
+  local({
+    builder_task9_source()
+    fixture <- builder_app_coordinator_fixture(
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    stage <- fixture$handle$stage
+    published <- builder_coordinator_publish(fixture$handle, fixture$result)
+    target <- published$release$target
+    root_inputs <- basename(unname(fixture$result$built))
+    expect_false(any(file.exists(file.path(target, root_inputs))))
+    expect_true(all(file.exists(file.path(
+      target,
+      "cerebro_app",
+      "private-data",
+      root_inputs
+    ))))
+    expect_true(file.exists(file.path(target, "viewer-auth.env")))
+    expect_true(isTRUE(builder_auth_verify_database_pair(
+      file.path(
+        target,
+        "cerebro_app",
+        "private-data",
+        "auth",
+        "credentials.sqlite"
+      ),
+      file.path(target, "viewer-auth.env")
+    )))
+    expect_false(dir.exists(stage))
+  })
+})
+
+test_that("login publication rejects an environment changed after parent verification", {
+  local({
+    builder_task9_source()
+    fixture <- builder_app_coordinator_fixture(
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    env_file <- file.path(fixture$handle$stage, "viewer-auth.env")
+    expect_error(
+      builder_coordinator_publish(
+        fixture$handle,
+        fixture$result,
+        .write_report = function(stage, report) {
+          path <- builder_write_build_report(stage, report)
+          Sys.chmod(env_file, mode = "0644")
+          path
+        }
+      ),
+      "staged App changed after parent verification"
+    )
+    expect_true(dir.exists(fixture$handle$stage))
+    expect_false(dir.exists(fixture$handle$target))
+  })
+})
+
+test_that("publication rejects a mapped verification path that is absent", {
+  local({
+    builder_task9_source()
+    fixture <- builder_app_coordinator_fixture(
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    fixture$result$verifications[[1L]]$path <- file.path(
+      fixture$root,
+      "missing-verification.crb"
+    )
+    expect_error(
+      builder_coordinator_publish(fixture$handle, fixture$result),
+      "Publication verification failed"
+    )
+  })
+})
+
+test_that("login publication detects same-content inode and hard-link env replacement", {
+  local({
+    builder_task9_source()
+    run_case <- function(name, mutate) {
+      fixture <- builder_app_coordinator_fixture(
+        .local_envir = environment(),
+        coordinator_prepare = builder_coordinator_prepare,
+        bundle_request = builder_app_bundle_request,
+        verify_app = builder_verify_app
+      )
+      env_file <- file.path(fixture$handle$stage, "viewer-auth.env")
+      expect_error(
+        builder_coordinator_publish(
+          fixture$handle,
+          fixture$result,
+          .write_report = function(stage, report) {
+            path <- builder_write_build_report(stage, report)
+            mutate(env_file, stage)
+            path
+          }
+        ),
+        "staged App changed after parent verification",
+        info = name
+      )
+    }
+    run_case("inode", function(env_file, stage) {
+      value <- readLines(env_file, warn = FALSE)
+      unlink(env_file)
+      writeLines(value, env_file, useBytes = TRUE)
+      Sys.chmod(env_file, mode = "0600")
+    })
+    probe <- withr::local_tempfile()
+    writeLines("probe", probe)
+    skip_if_not(
+      isTRUE(file.link(probe, paste0(probe, "-link"))),
+      "Hard links are unavailable"
+    )
+    run_case("hard-link", function(env_file, stage) {
+      source <- file.path(stage, "same-content-env")
+      copied <- file.copy(env_file, source)
+      stopifnot(isTRUE(copied))
+      unlink(env_file)
+      stopifnot(isTRUE(file.link(source, env_file)))
+    })
+  })
+})
+
+test_that("login publisher guard rejects env changes in both rename windows", {
+  local({
+    builder_task9_source()
+    run_case <- function(window, mutate) {
+      fixture <- builder_app_coordinator_fixture(
+        .local_envir = environment(),
+        coordinator_prepare = builder_coordinator_prepare,
+        bundle_request = builder_app_bundle_request,
+        verify_app = builder_verify_app
+      )
+      publish <- function(handle, .verify_payload) {
+        builder_publish_release(
+          handle,
+          .verify_payload = .verify_payload,
+          .after_phase = function(phase) {
+            if (identical(window, "old_moved") && identical(phase, window)) {
+              mutate(file.path(handle$stage, "viewer-auth.env"), handle$stage)
+            }
+          },
+          .after_move = function(move) {
+            if (identical(window, "new_to_target") && identical(move, window)) {
+              mutate(file.path(handle$target, "viewer-auth.env"), handle$target)
+            }
+          }
+        )
+      }
+      expect_error(
+        builder_coordinator_publish(
+          fixture$handle,
+          fixture$result,
+          .publish = publish
+        ),
+        "Publication verification failed"
+      )
+      expect_true(dir.exists(fixture$handle$stage))
+      expect_false(dir.exists(fixture$handle$target))
+    }
+    run_case("old_moved", function(env_file, root) Sys.chmod(env_file, "0644"))
+    run_case("new_to_target", function(env_file, root) {
+      value <- readLines(env_file, warn = FALSE)
+      unlink(env_file)
+      writeLines(value, env_file, useBytes = TRUE)
+      Sys.chmod(env_file, mode = "0600")
+    })
   })
 })

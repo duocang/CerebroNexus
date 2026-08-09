@@ -702,12 +702,46 @@ builder_execute_plan <- function(
   plan,
   stage,
   snapshots,
-  hooks = builder_build_hooks()
+  hooks = builder_build_hooks(),
+  auth_material = NULL
 ) {
+  on.exit(auth_material <- NULL, add = TRUE)
   if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
     stop("Build execution requires a frozen BuildPlan.", call. = FALSE)
   }
   stage <- .builder_build_stage(stage)
+  auth_enabled <- isTRUE(plan$app_auth$enabled)
+  cleanup_complete <- !auth_enabled
+  on.exit(
+    {
+      if (!cleanup_complete && auth_enabled) {
+        cleaned <- try(
+          .builder_auth_remove_partial_material(stage),
+          silent = TRUE
+        )
+        if (inherits(cleaned, "try-error") || !isTRUE(cleaned)) {
+          stop(
+            "The authentication files could not be cleaned up.",
+            call. = FALSE
+          )
+        }
+      }
+    },
+    add = TRUE
+  )
+  if (auth_enabled) {
+    auth_material <- tryCatch(
+      builder_auth_validate_material(auth_material, stage),
+      error = function(error) error
+    )
+    if (inherits(auth_material, "condition")) {
+      return(.builder_build_failure(conditionMessage(auth_material)))
+    }
+  } else if (!is.null(auth_material)) {
+    return(.builder_build_failure(
+      "A public build cannot use authentication material."
+    ))
+  }
   if (isTRUE(plan$make_app) && !identical(plan$app_contract_version, 1L)) {
     return(.builder_build_failure(
       "Generated-app execution requires frozen contract version 1."
@@ -871,14 +905,18 @@ builder_execute_plan <- function(
       return(.builder_build_failure(conditionMessage(request)))
     }
     app_dir <- tryCatch(
-      hooks$build_app(request, stage),
+      hooks$build_app(request, stage, auth_material = auth_material),
       error = function(error) error
     )
     if (inherits(app_dir, "condition")) {
       return(.builder_build_failure(conditionMessage(app_dir)))
     }
     app_verification <- tryCatch(
-      hooks$verify_app(app_dir, request),
+      hooks$verify_app(
+        app_dir,
+        request,
+        auth_env_file = if (auth_enabled) auth_material$env_file else NULL
+      ),
       error = function(error) error
     )
     valid_app_verification <-
@@ -907,6 +945,28 @@ builder_execute_plan <- function(
     }
     result$app_dir <- app_dir
     result$app_verification <- app_verification
+  }
+  if (auth_enabled) {
+    auth_env_file <- auth_material$env_file
+    cleaned <- try(
+      builder_auth_cleanup_material(
+        auth_material,
+        stage,
+        keep_env = TRUE
+      ),
+      silent = TRUE
+    )
+    if (inherits(cleaned, "try-error")) {
+      return(.builder_build_failure(
+        "The authentication files could not be cleaned up."
+      ))
+    }
+    cleanup_complete <- TRUE
+    result$auth_enabled <- TRUE
+    result$auth_env_file <- auth_env_file
+  } else {
+    result$auth_enabled <- FALSE
+    result$auth_env_file <- NULL
   }
   result$publishable <- length(result$built) == length(plan$items)
   result

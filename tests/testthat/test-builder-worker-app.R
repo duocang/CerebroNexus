@@ -613,6 +613,140 @@ test_that("worker failures recover or terminate every protocol barrier", {
   expect_match(release_failure, "restart_worker_protocol(", fixed = TRUE)
 })
 
+test_that("serialized session build arguments contain paths but no login secrets", {
+  username <- "serialized-user-42b8"
+  password <- "serialized-password-42b8"
+  auth_runtime <- new.env(parent = globalenv())
+  builder_repo_source("app_bundle.R", local = auth_runtime)
+  validate_payload <- get(
+    "builder_auth_validate_payload",
+    envir = auth_runtime
+  )
+  create_material <- get("builder_auth_create_material", envir = auth_runtime)
+  read_env_file <- get("builder_auth_read_env_file", envir = auth_runtime)
+  validate_material <- get(
+    "builder_auth_validate_material",
+    envir = auth_runtime
+  )
+  stage <- withr::local_tempdir()
+  accounts <- validate_payload(
+    TRUE,
+    list(list(
+      id = "auth-account-1",
+      username = username,
+      password = password
+    ))
+  )$accounts
+  material <- create_material(
+    accounts,
+    stage,
+    .random_bytes = function(n) as.raw(rep(12L, n)),
+    .create_db = function(credentials_data, sqlite_path, passphrase) {
+      writeBin(as.raw(1:8), sqlite_path)
+    },
+    .capability = function() list(available = TRUE, reason = NULL)
+  )
+  passphrase <- read_env_file(material$env_file)
+  captured_args <- NULL
+  captured_callback <- NULL
+  process <- list(call = function(callback, args) {
+    captured_callback <<- callback
+    captured_args <<- args
+    invisible(TRUE)
+  })
+  plan <- list(
+    make_app = FALSE,
+    app_contract_version = 1L,
+    app_auth = list(
+      enabled = TRUE,
+      account_count = 1L,
+      timeout_minutes = 15L
+    ),
+    items = list()
+  )
+  request_with_accounts <- builder_command(
+    "build",
+    "session",
+    payload = list(kind = "build", auth_accounts = accounts)
+  )
+  expect_true(builder_auth_value_contains(request_with_accounts, username))
+  expect_true(builder_auth_value_contains(request_with_accounts, password))
+  request <- builder_request_redact_auth(request_with_accounts)
+  request$build_id <- "serialized-build"
+  coordinator <- list(stage = stage, control = dirname(stage))
+  original_handle <- get0(
+    ".builder_coordinator_handle",
+    envir = environment(builder_session_build),
+    inherits = TRUE
+  )
+  assign(
+    ".builder_coordinator_handle",
+    function(value) value,
+    envir = environment(builder_session_build)
+  )
+  original_validate <- get0(
+    "builder_auth_validate_material",
+    envir = environment(builder_session_build),
+    inherits = FALSE
+  )
+  assign(
+    "builder_auth_validate_material",
+    validate_material,
+    envir = environment(builder_session_build)
+  )
+  on.exit(
+    {
+      if (is.null(original_handle)) {
+        rm(
+          ".builder_coordinator_handle",
+          envir = environment(builder_session_build)
+        )
+      } else {
+        assign(
+          ".builder_coordinator_handle",
+          original_handle,
+          envir = environment(builder_session_build)
+        )
+      }
+      if (is.null(original_validate)) {
+        rm(
+          "builder_auth_validate_material",
+          envir = environment(builder_session_build)
+        )
+      } else {
+        assign(
+          "builder_auth_validate_material",
+          original_validate,
+          envir = environment(builder_session_build)
+        )
+      }
+    },
+    add = TRUE
+  )
+
+  builder_session_build(
+    process,
+    plan,
+    request,
+    coordinator = coordinator,
+    auth_material = material
+  )
+
+  serialized <- serialize(captured_args, NULL)
+  expect_false(builder_auth_raw_contains(serialized, username))
+  expect_false(builder_auth_raw_contains(serialized, password))
+  expect_false(builder_auth_raw_contains(serialized, passphrase))
+  expect_null(captured_args$request$payload$auth_accounts)
+  expect_false("auth_accounts" %in% names(captured_args))
+  expect_false("accounts" %in% names(captured_args$plan$app_auth))
+  expect_identical(
+    names(captured_args$auth_material),
+    c("source_dir", "credentials", "env_file", "descriptor")
+  )
+  expect_false("auth_accounts" %in% names(formals(builder_session_build)))
+  expect_false("auth_accounts" %in% names(formals(captured_callback)))
+})
+
 test_that("the App exposes one Build flight without unsafe hard cancellation", {
   lines <- builder_app_lines()
   app <- paste(lines, collapse = "\n")
@@ -678,7 +812,7 @@ test_that("session build validates frozen snapshots before execution", {
     fixed = TRUE
   )[1L]
   execute <- regexpr(
-    "builder_execute_plan(plan, stage, registry)",
+    "value <- builder_execute_plan(",
     session,
     fixed = TRUE
   )[1L]

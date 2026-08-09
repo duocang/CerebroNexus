@@ -360,11 +360,43 @@ observe({
   if (is.null(dispatched$request)) {
     return()
   }
-  current_worker <- worker()
-  req(current_worker)
-  protocol(dispatched$protocol)
   request <- dispatched$request
   nxt <- request$payload
+  coordinator <- NULL
+  auth_material <- NULL
+  build_auth_accounts <- NULL
+  handed_off <- FALSE
+  if (identical(nxt$kind, "build")) {
+    build_auth_accounts <- nxt$auth_accounts
+    nxt$auth_accounts <- NULL
+    request$payload$auth_accounts <- NULL
+    dispatched$request <- builder_request_redact_auth(dispatched$request)
+    dispatched$protocol <- builder_protocol_redact_auth(dispatched$protocol)
+    current_protocol <- builder_protocol_redact_auth(current_protocol)
+    on.exit(
+      {
+        build_auth_accounts <- NULL
+        auth_material <- NULL
+        current_protocol <- NULL
+        dispatched$request <- NULL
+        nxt$auth_accounts <- NULL
+        request$payload$auth_accounts <- NULL
+        latest_protocol <- isolate(protocol())
+        if (!is.null(latest_protocol)) {
+          protocol(builder_protocol_redact_auth(latest_protocol))
+        }
+        if (!is.null(coordinator) && !handed_off) {
+          try(builder_coordinator_abort(coordinator), silent = TRUE)
+        }
+      },
+      add = TRUE
+    )
+    protocol(dispatched$protocol)
+  } else {
+    protocol(dispatched$protocol)
+  }
+  current_worker <- worker()
+  req(current_worker)
   if (identical(nxt$kind, "load")) {
     set_import_state(
       nxt$id,
@@ -424,18 +456,33 @@ observe({
       busy_note(NULL)
       return()
     }
+    if (isTRUE(plan$app_auth$enabled)) {
+      auth_material <- try(
+        builder_auth_create_material(build_auth_accounts, coordinator$stage),
+        silent = TRUE
+      )
+      build_auth_accounts <- NULL
+      if (inherits(auth_material, "try-error")) {
+        plan_error <- conditionMessage(attr(auth_material, "condition"))
+        completed <- builder_protocol_complete(
+          dispatched$protocol,
+          builder_worker_response(request, list(error = plan_error))
+        )
+        protocol(builder_protocol_acknowledge(
+          completed$protocol,
+          request$request_id
+        ))
+        try(builder_coordinator_abort(coordinator), silent = TRUE)
+        result(builder_release_error_result(
+          plan_error,
+          plan$output_release$directory
+        ))
+        busy_note(NULL)
+        return()
+      }
+    }
+    build_auth_accounts <- NULL
     nxt$plan <- plan
-    nxt$coordinator <- coordinator
-    active_release(list(
-      id = request$build_id,
-      handle = coordinator,
-      plan = plan
-    ))
-    update_build_state(list(
-      type = "start",
-      id = request$build_id,
-      revision = plan$revision
-    ))
   }
   started_call <- try(
     switch(
@@ -514,7 +561,8 @@ observe({
         current_worker,
         nxt$plan,
         request,
-        coordinator = nxt$coordinator
+        coordinator = coordinator,
+        auth_material = auth_material
       ),
       drop = builder_session_drop(current_worker, nxt$id, request)
     ),
@@ -541,6 +589,20 @@ observe({
       dispatch_error
     )
     return()
+  }
+  if (identical(nxt$kind, "build")) {
+    handed_off <- TRUE
+    auth_material <- NULL
+    active_release(list(
+      id = request$build_id,
+      handle = coordinator,
+      plan = plan
+    ))
+    update_build_state(list(
+      type = "start",
+      id = request$build_id,
+      revision = plan$revision
+    ))
   }
   busy_note(nxt$note)
 })

@@ -319,7 +319,21 @@
     "build-report.json" %in% report$output_members &&
     identical(
       "cerebro_app" %in% report$output_members,
-      identical(report$artifact_mode, "crbs_and_private_app")
+      report$artifact_mode %in%
+        c(
+          "crbs_and_private_app",
+          "private_app",
+          "authenticated_private_app"
+        )
+    ) &&
+    identical(
+      "viewer-auth.env" %in% report$output_members,
+      identical(report$artifact_mode, "authenticated_private_app")
+    ) &&
+    identical(
+      "cerebro_app/private-data/auth/credentials.sqlite" %in%
+        report$output_members,
+      identical(report$artifact_mode, "authenticated_private_app")
     )
 }
 
@@ -352,7 +366,13 @@
       !.builder_report_count(report$plan_revision) ||
       report$plan_revision < 1 ||
       !.builder_report_text(report$artifact_mode) ||
-      !report$artifact_mode %in% c("crbs_only", "crbs_and_private_app") ||
+      !report$artifact_mode %in%
+        c(
+          "crbs_only",
+          "crbs_and_private_app",
+          "private_app",
+          "authenticated_private_app"
+        ) ||
       !.builder_report_character_vector(report$output_members, empty = FALSE) ||
       anyDuplicated(report$output_members) ||
       !all(vapply(
@@ -478,10 +498,20 @@ builder_build_report <- function(plan, result) {
     list(
       id = item$id,
       name = item$name,
-      artifact_members = unname(c(
-        item$filename,
-        item$sidecars %||% character()
-      )),
+      artifact_members = unname(
+        if (isTRUE(plan$make_app)) {
+          file.path(
+            "cerebro_app",
+            "private-data",
+            c(
+              item$filename,
+              item$sidecars %||% character()
+            )
+          )
+        } else {
+          c(item$filename, item$sidecars %||% character())
+        }
+      ),
       organism = item$organism %||% NULL,
       methods = unname(item$analyses %||% character()),
       groups = unname(item$included_groups %||% character()),
@@ -522,15 +552,39 @@ builder_build_report <- function(plan, result) {
     character(1),
     root = plan$out_dir
   )
-  members <- sort(unique(c(members, "build-report.json")), method = "radix")
+  app_members <- if (isTRUE(plan$make_app)) {
+    unlist(
+      lapply(plan$items, function(item) {
+        file.path(
+          "cerebro_app",
+          "private-data",
+          c(item$filename, item$sidecars %||% character())
+        )
+      }),
+      use.names = FALSE
+    )
+  } else {
+    character()
+  }
+  auth_members <- if (isTRUE(plan$make_app) && isTRUE(plan$app_auth$enabled)) {
+    "cerebro_app/private-data/auth/credentials.sqlite"
+  } else {
+    character()
+  }
+  members <- sort(
+    unique(c(members, app_members, auth_members, "build-report.json")),
+    method = "radix"
+  )
   report <- list(
     schema_version = 1L,
     identity = paste(rep("0", 32L), collapse = ""),
     plan_revision = as.integer(plan$revision),
-    artifact_mode = if (isTRUE(plan$make_app)) {
-      "crbs_and_private_app"
-    } else {
+    artifact_mode = if (!isTRUE(plan$make_app)) {
       "crbs_only"
+    } else if (isTRUE(plan$app_auth$enabled)) {
+      "authenticated_private_app"
+    } else {
+      "private_app"
     },
     dataset_order = unname(plan$dataset_order),
     datasets = datasets,
@@ -538,7 +592,18 @@ builder_build_report <- function(plan, result) {
     viewer_bundle_assets = unname(
       plan$viewer_bundle_assets %||% character()
     ),
-    private_assets = unname(plan$private_assets %||% character()),
+    private_assets = unname(sort(
+      unique(c(
+        if (isTRUE(plan$make_app)) {
+          character()
+        } else {
+          plan$private_assets %||% character()
+        },
+        app_members,
+        auth_members
+      )),
+      method = "radix"
+    )),
     output_members = members,
     warnings = unname(as.character(unique(.builder_report_strings(
       plan$acknowledgements %||% list()
