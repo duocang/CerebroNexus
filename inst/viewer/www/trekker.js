@@ -40,8 +40,9 @@
   var PAL = ["#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A", "#19D3F3",
     "#FF6692", "#B6E880", "#FF97FF", "#FECB52", "#2f6fd6", "#f97316", "#16a34a",
     "#9a5cd0", "#e05780", "#38b2ac", "#d97706", "#7bb0e8"];
-  var CT_COL = { ExN: "#636EFA", InN: "#EF553B", Oligo: "#00CC96", Astro: "#AB63FA",
+  var LEGACY_CT_COL = { ExN: "#636EFA", InN: "#EF553B", Oligo: "#00CC96", Astro: "#AB63FA",
     Micro: "#f97316", OPC: "#19D3F3", DG: "#FF6692", Neuron: "#9a9aa0" };
+  var CT_COL = {};
   var VIR = [[68, 1, 84], [72, 40, 120], [62, 73, 137], [49, 104, 142],
     [38, 130, 142], [31, 158, 137], [53, 183, 121], [110, 206, 88],
     [181, 222, 43], [253, 231, 37]];
@@ -62,6 +63,11 @@
     // in the vignette rather than offered as an in-app switch.)
     SRC = { csv: { x: D.x, y: D.y, t: "Location CSV" } };
     CT = D.clusters.map(function (c) { return D.celltype[c]; });
+    CT_COL = {};
+    Array.from(new Set(CT)).forEach(function (cellType, index) {
+      CT_COL[cellType] = (D.celltype_colors && D.celltype_colors[cellType]) ||
+        LEGACY_CT_COL[cellType] || PAL[index % PAL.length];
+    });
     EV = new Map(D.evidence.map(function (e) { return [e.cell, e]; }));
   }
 

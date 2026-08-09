@@ -211,6 +211,26 @@ observe({
   if (is.null(tk)) {
     return()
   }
+  ## Trekker stores one cell-type label per 0-based cluster, while the rest of
+  ## the app owns the authoritative level -> colour mapping. Send that mapping
+  ## with the payload instead of making the browser recognise a fixed set of
+  ## labels from one historical demo. Missing levels still receive the standard
+  ## app palette, so older/custom .crb files remain colourful on first render.
+  cell_types <- unique(as.character(tk$celltype))
+  configured_colors <- tryCatch(
+    reactive_colors()[["cell_type"]],
+    error = function(e) NULL
+  )
+  fallback_colors <- stats::setNames(
+    cerebro_group_colors(length(cell_types)),
+    cell_types
+  )
+  if (length(configured_colors)) {
+    matched <- configured_colors[cell_types]
+    usable <- !is.na(matched) & nzchar(matched)
+    fallback_colors[usable] <- matched[usable]
+  }
+  tk$celltype_colors <- as.list(fallback_colors)
   tk$gene_suggest <- trekker_gene_suggest(tk, trekker_gene_names())
   session$sendCustomMessage("trekker_data", tk)
 })
