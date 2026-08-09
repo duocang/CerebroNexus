@@ -2238,7 +2238,7 @@ test_that("private and spatial targets may share a basename", {
   )
 })
 
-test_that("different spatial sources cannot share a spatial target", {
+test_that("different spatial sources receive unique spatial targets", {
   root <- withr::local_tempdir()
   first_crb <- write_bundle_crb(
     file.path(root, "first-crb"),
@@ -2255,13 +2255,28 @@ test_that("different spatial sources cannot share a spatial target", {
   writeLines("FIRST", first)
   writeLines("SECOND", second)
 
-  expect_error(
-    build_test_app(
-      c("First" = first_crb, "Second" = second_crb),
-      file.path(root, "app"),
-      spatial_images = list("First" = first, "Second" = second)
-    ),
-    "same bundle target"
+  app <- file.path(root, "app")
+  build_test_app(
+    c("First" = first_crb, "Second" = second_crb),
+    app,
+    spatial_images = list("First" = first, "Second" = second)
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(
+    config$spatial_images,
+    list(
+      "First" = file.path("spatial-assets", "histology.png"),
+      "Second" = file.path("spatial-assets", "histology_2.png")
+    )
+  )
+  expect_identical(
+    readLines(file.path(app, "spatial-assets", "histology.png")),
+    "FIRST"
+  )
+  expect_identical(
+    readLines(file.path(app, "spatial-assets", "histology_2.png")),
+    "SECOND"
   )
 })
 
