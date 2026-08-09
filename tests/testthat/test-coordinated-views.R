@@ -73,6 +73,28 @@ test_that("bundle.R parses and defines the builder API", {
   }
 })
 
+test_that("the omnibus spatial bundle preserves every embedded background", {
+  skip_if_not(have_bundle)
+  skip_if_not(nzchar(omnibus_crb) && file.exists(omnibus_crb))
+
+  crb <- readRDS(omnibus_crb)
+  cells <- as.character(crb$getMetaData()$cell_barcode)
+  spatial <- cv_env$cv_build_spatial(crb, cells)
+
+  expect_length(spatial$samples, 3L)
+  expect_identical(spatial$samples[[1L]]$name, "donorA tissue")
+  expect_length(spatial$samples[[1L]]$images, 2L)
+  expect_identical(
+    unname(vapply(
+      spatial$samples[[1L]]$images,
+      `[[`,
+      character(1),
+      "label"
+    )),
+    c("Rose H&E", "Blue H&E")
+  )
+})
+
 test_that("cv_group/cv_space/cv_clone force JSON arrays even at length 1", {
   skip_if_not(have_bundle)
   skip_if_not_installed("jsonlite")

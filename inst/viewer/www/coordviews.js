@@ -52,6 +52,13 @@ var dataShown = null;
 // Guards the async decode: a fast switch could have an earlier image finish
 // loading after a later one and paint itself over the current choice.
 var imgToken = 0;
+// The visible spatial sections are independent spaces. Selection, colour and
+// filters are global; image choice/alignment stay on their own section. One of
+// them is active so the single alignment bar has an unambiguous target.
+var selectedSpatial = [];
+var activeSpatialId = null;
+var backgroundMode = 'auto';
+var spatialTemplate = null;
 // Panel key currently given the whole grid, or null for the normal layout. With
 // three or four panels each square is small enough that detail becomes guesswork;
 // this is a change of magnification only -- the selection is kept and every panel
@@ -76,18 +83,20 @@ var focusPanel = null;
   var spaceById = {};
   var resizeObserver = null;    // fires when the tab becomes visible / resizes
   var resizeTimer = null;
-  // Histology background image (embedded in the spatial entry). Aligned to the
-  // cells via the entry's data-space bounds; user transforms adjust on top.
-  var imgEl = null, imgReady = false;
-  // offsetX/offsetY are in DATA units (converted to screen via dataToScreen), so
-  // an external image's data-space preset aligns on this canvas unchanged.
-  var imgState = { show: true, opacity: 0.6, offsetX: 0, offsetY: 0,
-    scaleX: 1, scaleY: 1, flipX: false, flipY: false, rotate: 0 };
+  // Each spatial instance owns `_imgEl`, `_imgReady`, `_imgState` and its image
+  // identity. The alignment bar edits only activeSpatialId.
 
   // Categorical fallback palette (mirrors the app).
   var PAL = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3',
     '#FF6692', '#B6E880', '#FF97FF', '#FECB52', '#2f6fd6', '#f97316',
     '#16a34a', '#9a5cd0', '#e05780', '#38b2ac', '#d97706', '#7bb0e8'];
+
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(String(value));
+    }
+    return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  }
 
   // RGB co-expression: cells whose max channel is <= RGB_MIN form a light-grey
   // substrate; the rest blend FROM that grey toward their full-brightness hue by
@@ -752,7 +761,8 @@ var focusPanel = null;
   function drawImage(p) {
     var sp = spaceById[p.spaceId];
     var cimg = currentImage(sp);
-    if (!sp || !cimg || !imgEl || !imgReady || !imgState.show) return;
+    var state = sp && sp._imgState;
+    if (!sp || !cimg || !sp._imgEl || !sp._imgReady || !state || !state.show) return;
     var b = cimg.bounds;
     if (!b) return;
     var tl = dataToScreen(p, b.xmin, b.ymax);   // data ymax = top (y-up)
@@ -764,17 +774,17 @@ var focusPanel = null;
     // Convert the DATA-unit offset to screen pixels by mapping two points through
     // the same projection the cells use (handles scale + the y-axis inversion).
     var o0 = dataToScreen(p, b.xmin, b.ymin);
-    var o1 = dataToScreen(p, b.xmin + imgState.offsetX, b.ymin + imgState.offsetY);
+    var o1 = dataToScreen(p, b.xmin + state.offsetX, b.ymin + state.offsetY);
     var offSX = (o0 && o1) ? (o1[0] - o0[0]) : 0;
     var offSY = (o0 && o1) ? (o1[1] - o0[1]) : 0;
     var c = p.ctx;
     c.save();
-    c.globalAlpha = imgState.opacity;
+    c.globalAlpha = state.opacity;
     c.translate(x + w / 2 + offSX, y + h / 2 + offSY);
-    if (imgState.rotate) c.rotate(imgState.rotate * Math.PI / 180);
-    c.scale(imgState.scaleX * (imgState.flipX ? -1 : 1),
-      imgState.scaleY * (imgState.flipY ? -1 : 1));
-    c.drawImage(imgEl, -w / 2, -h / 2, w, h);
+    if (state.rotate) c.rotate(state.rotate * Math.PI / 180);
+    c.scale(state.scaleX * (state.flipX ? -1 : 1),
+      state.scaleY * (state.flipY ? -1 : 1));
+    c.drawImage(sp._imgEl, -w / 2, -h / 2, w, h);
     c.restore();
     c.globalAlpha = 1;
   }
@@ -2304,6 +2314,7 @@ var focusPanel = null;
       return [e.clientX - r.left, e.clientY - r.top];
     };
     p.canvas.addEventListener('mousedown', function (e) {
+      if (isSpatialSpace(spaceById[p.spaceId])) activateSpatial(p.spaceId);
       // A rotatable panel NAVIGATES; it does not select. Selection here is done
       // on screen coordinates, and once the cloud has depth those stop being a
       // faithful key to it: cells at different depths overlap on screen, so a
@@ -2445,26 +2456,44 @@ var focusPanel = null;
   }
 
   // ---- build panels from DOM ----------------------------------------------
+  function panelKey(index) {
+    return index < 26 ? String.fromCharCode(65 + index) : ('P' + (index + 1));
+  }
+  function ensurePanelSlots(count) {
+    var host = document.querySelector('.coordviews-page .cv-panes');
+    if (!host) return;
+    var panes = host.querySelectorAll(':scope > .cv-pane');
+    var source = panes[0];
+    if (!source) return;
+    for (var index = panes.length; index < count; index++) {
+      var key = panelKey(index), low = key.toLowerCase();
+      var clone = source.cloneNode(true);
+      clone.className = 'cv-pane cv-hidden';
+      clone.querySelectorAll('[id]').forEach(function (el) {
+        el.id = el.id.replace(/-a$/, '-' + low);
+      });
+      clone.querySelectorAll('[data-panel]').forEach(function (el) {
+        el.dataset.panel = key;
+      });
+      var title = clone.querySelector('.cv-ptitle'); if (title) title.textContent = '—';
+      var insertBefore = $('cv-card-pos');
+      host.insertBefore(clone, insertBefore || null);
+    }
+  }
+
   // The canvas elements persist across dataset switches, so panel objects and
   // their event listeners are created EXACTLY ONCE. Re-wiring on every onData
   // would stack duplicate listeners whose stale closures fire on unprojected
   // panels. Subsequent onData calls reuse these objects; project() resets their
   // per-dataset arrays.
   function buildPanels() {
-    if (panels.length) return;               // already built + wired
-    // FOUR slots: A = umap, B/C/D take whatever other spaces the data set has.
-    // layoutPanels() assigns spaces + hides the unused ones each onData.
-    var defs = [
-      { key: 'A', canvasId: 'cv-cv-a', tipId: 'cv-tip-a', miniId: 'cv-mini-a' },
-      { key: 'B', canvasId: 'cv-cv-b', tipId: 'cv-tip-b', miniId: 'cv-mini-b' },
-      { key: 'C', canvasId: 'cv-cv-c', tipId: 'cv-tip-c', miniId: 'cv-mini-c' },
-      { key: 'D', canvasId: 'cv-cv-d', tipId: 'cv-tip-d', miniId: 'cv-mini-d' }
-    ];
+    var paneEls = document.querySelectorAll('.coordviews-page .cv-panes > .cv-pane');
     var dpr = window.devicePixelRatio || 1;
-    defs.forEach(function (d) {
-      var cv = $(d.canvasId); if (!cv) return;
-      var mini = $(d.miniId);
-      var p = { key: d.key, canvas: cv, ctx: cv.getContext('2d'), tipId: d.tipId,
+    for (var index = panels.length; index < paneEls.length; index++) {
+      var key = panelKey(index), low = key.toLowerCase();
+      var cv = $('cv-cv-' + low); if (!cv) continue;
+      var mini = $('cv-mini-' + low);
+      var p = { key: key, canvas: cv, ctx: cv.getContext('2d'), tipId: 'cv-tip-' + low,
         // the canvas sits in .cv-canvas-wrap now, so the pane is two levels up
         pane: cv.closest('.cv-pane'), spaceId: null, W: 0, H: 0,
         sx: null, sy: null, ok: null, lasso: null, drag: false, moved: false,
@@ -2478,24 +2507,41 @@ var focusPanel = null;
       }
       panels.push(p);
       wireHover(p); wireBrush(p);
-    });
+      if (p.pane) {
+        p.pane.addEventListener('mousedown', function () {
+          var pane = this, found = null;
+          panels.forEach(function (candidate) {
+            if (candidate.pane === pane) found = candidate;
+          });
+          if (found && isSpatialSpace(spaceById[found.spaceId])) {
+            activateSpatial(found.spaceId);
+          }
+        });
+      }
+      if (resizeObserver && p.pane) resizeObserver.observe(p.pane);
+    }
     // Re-project + redraw whenever the panes gain/lose size — critically, when
     // the tab flips from display:none to visible (0 -> real width).
-    resizeObserver = new ResizeObserver(function () {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(function () { if (D) resizeAll(); }, 30);
-    });
-    panels.forEach(function (p) {
-      if (p.pane) resizeObserver.observe(p.pane);
-    });
+    if (!resizeObserver) {
+      resizeObserver = new ResizeObserver(function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function () { if (D) resizeAll(); }, 30);
+      });
+      panels.forEach(function (p) {
+        if (p.pane) resizeObserver.observe(p.pane);
+      });
+    }
     // Also re-fit when the CHROME above the panels changes height — the "More"
     // panel expanding/collapsing, or the histology-image / selection bars
     // animating in and out — so the squares always fill the remaining viewport
     // in real time, not only after leaving and re-entering the tab.
-    ['cv-more', 'coordviews_image_ui', 'cv-selbar'].forEach(function (id) {
-      var el = $(id);
-      if (el) resizeObserver.observe(el);
-    });
+    if (!resizeObserver._cvChromeObserved) {
+      ['cv-more', 'coordviews_image_ui', 'cv-selbar'].forEach(function (id) {
+        var el = $(id);
+        if (el) resizeObserver.observe(el);
+      });
+      resizeObserver._cvChromeObserved = true;
+    }
   }
 
   // Coordinate-source / QC / positioning / Moran's I detail for a Trekker data
@@ -2584,7 +2630,7 @@ var focusPanel = null;
     var hasClone = !!spaceById['clone'];
     // The alignment bar adjusts the image ON SCREEN, so it follows the choice
     // rather than the data set: with "None" chosen there is nothing to align.
-    var sp = spaceById['spatial'];
+    var sp = activeSpatial();
     var hasImg = !!(sp && currentImage(sp));
     revealEl($('cv-clone-layout-ctl'), hasClone);
     revealEl($('coordviews_image_ui'), hasImg);
@@ -2825,6 +2871,12 @@ var focusPanel = null;
   // The picker's value for "no background", kept out of the id space a builder
   // can produce.
   var IMG_NONE = '__none__';
+  function isSpatialSpace(sp) { return !!(sp && sp._spatialSample); }
+  function activeSpatial() {
+    if (activeSpatialId && spaceById[activeSpatialId]) return spaceById[activeSpatialId];
+    for (var id in spaceById) if (isSpatialSpace(spaceById[id])) return spaceById[id];
+    return null;
+  }
   function spatialImages(sp) {
     if (!sp) return [];
     if (sp.images && sp.images.length) return sp.images;
@@ -2842,11 +2894,14 @@ var focusPanel = null;
     return (sp.image && sp.image.uri) ? [sp.image] : [];
   }
   function currentImage(sp) {
-    if (sp && sp._imageId === IMG_NONE) return null;   // deliberately no image
     var list = spatialImages(sp);
     if (!list.length) return null;
+    if (backgroundMode === 'none') return null;
+    if (backgroundMode === 'auto') return list[0];
+    var wanted = sp && sp._customImageId;
+    if (wanted === IMG_NONE) return null;
     for (var i = 0; i < list.length; i++) {
-      if (list[i].id === sp._imageId) return list[i];
+      if (list[i].id === wanted) return list[i];
     }
     return list[0];
   }
@@ -2883,26 +2938,27 @@ var focusPanel = null;
   // Put away what the user has done to the image currently on screen, so coming
   // back to it returns their work rather than the preset. Losing it on every
   // switch would make comparing two backgrounds mean re-aligning each time.
-  function stashImgState() {
-    var sp = spaceById['spatial'];
+  function stashImgState(sp) {
+    sp = sp || activeSpatial();
     if (sp) {
       // Which background this section was showing, so returning to it returns
       // the view that was left rather than resetting to its first image.
       var nm = sp._sampleName ||
         (sp.samples && sp.samples[0] && sp.samples[0].name) || sp.id;
-      if (nm) imgChoice[nm] = sp._imageId || null;
+      if (nm) imgChoice[nm] = sp._customImageId || null;
     }
     var k = imgKey(sp, currentImage(sp));
-    if (!k) return;
+    if (!k || !sp || !sp._imgState) return;
     var copy = {};
-    for (var f in imgState) copy[f] = imgState[f];
+    for (var f in sp._imgState) copy[f] = sp._imgState[f];
     imgStates[k] = copy;
   }
   function loadSpaceImage(space) {
-    imgEl = null; imgReady = false;
+    if (!space) return;
+    space._imgEl = null; space._imgReady = false;
     // A newer request invalidates whatever is still decoding, including when
     // the newer request is "none".
-    imgToken++;
+    space._imgToken = ++imgToken;
     // A new bundle is a reason to lay out whatever the window is doing. The
     // guard below exists to stop the layout retriggering ITSELF, not to skip a
     // relayout the data asked for.
@@ -2910,17 +2966,17 @@ var focusPanel = null;
     var img = currentImage(space);
     if (!img || !img.uri) return;
     var k = imgKey(space, img);
-    imgState = (k && imgStates[k]) ? imgStates[k] : presetState(img);
+    space._imgState = (k && imgStates[k]) ? imgStates[k] : presetState(img);
     // Only the newest request may paint. Without the token a large image chosen
     // first can finish decoding after a small one chosen second and replace it.
-    var mine = imgToken;
+    var mine = space._imgToken;
     var im = new Image();
     im.onload = function () {
-      if (mine !== imgToken) return;
-      imgReady = true; drawAll();
+      if (mine !== space._imgToken) return;
+      space._imgReady = true; drawAll();
     };
     im.src = img.uri;
-    imgEl = im;
+    space._imgEl = im;
   }
 
   // The line above the panels names the spaces on screen, so it has to be
@@ -2929,10 +2985,11 @@ var focusPanel = null;
   function renderMeta() {
     var meta = $('cv-meta');
     if (!meta || !D) return;
-    var spaceLabels = D.spaces.map(function (s) {
-      return esc(s.label);
+    var ids = orderedSpaces();
+    var spaceLabels = ids.map(function (id) {
+      return esc((spaceById[id] && spaceById[id].label) || id);
     }).join(' · ');
-    meta.innerHTML = fmt(D.n) + ' cells · ' + D.spaces.length +
+    meta.innerHTML = fmt(D.n) + ' cells · ' + ids.length +
       ' linked spaces (' + spaceLabels + ')' +
       (D.clone ? ' · ' + fmt(D.clone.n_receptor) + ' receptor-bearing cells, ' +
         fmt(D.clone.n_clones) + ' clonotypes' : '');
@@ -2942,45 +2999,118 @@ var focusPanel = null;
   // and "Show" in the alignment bar is already how it is turned off, so the list
   // carries no entry duplicating that.
   function renderImagePicker() {
-    var ctl = $('cv-img-pick-ctl'), selEl = $('cv-img-pick');
-    if (!ctl || !selEl) return;
-    var sp = spaceById['spatial'];
-    if (!sp) { ctl.style.display = 'none'; return; }
-    var list = spatialImages(sp);
-    // Shown whenever there is a spatial section, even with one background or
-    // none. "None" is a real answer -- the tissue photo can be the thing in the
-    // way of seeing the cells -- and a control that vanishes when a data set has
-    // one image reads as a control that is broken. With no image at all the list
-    // says so rather than leaving the reader to wonder where it went.
-    ctl.style.display = '';
-    var opts = list.map(function (im) {
-      return '<option value="' + esc(im.id) + '">' +
-        esc(im.label || im.id) + '</option>';
+    var ctl = $('cv-img-pick-ctl'), pop = $('cv-bg-popover');
+    if (!ctl || !pop) return;
+    var spaces = selectedSpatial.map(function (name) {
+      return spaceById[spatialId(name)];
+    }).filter(Boolean);
+    ctl.style.display = spaces.length ? '' : 'none';
+    var buttons = ctl.querySelectorAll('[data-cv-bg-mode]');
+    Array.prototype.forEach.call(buttons, function (button) {
+      button.classList.toggle('is-on', button.dataset.cvBgMode === backgroundMode);
     });
-    opts.unshift('<option value="' + IMG_NONE + '">' +
-      (list.length ? 'None' : 'None (no image in this data set)') +
-      '</option>');
-    selEl.innerHTML = opts.join('');
-    selEl.disabled = !list.length;
-    var cur = sp._imageId === IMG_NONE ? null : currentImage(sp);
-    selEl.value = cur ? cur.id : IMG_NONE;
-    selEl.onchange = function () { setSpatialImage(selEl.value); };
+    pop.innerHTML = spaces.map(function (sp) {
+      var list = spatialImages(sp), count = list.length;
+      var heading = '<div class="cv-bg-row-heading"><span class="cv-bg-row-label">' +
+        esc(sp._sampleName) + '</span><span class="cv-bg-count">' + count +
+        (count === 1 ? ' image' : ' images') + '</span></div>';
+      var body;
+      if (!count) {
+        body = '<div class="cv-bg-unavailable">No image available</div>';
+      } else if (count === 1) {
+        body = '<label class="cv-bg-single"><span class="cv-bg-thumb"></span>' +
+          '<span class="cv-bg-single-name">' + esc(list[0].label || list[0].id) +
+          '</span><input type="checkbox" data-cv-bg-space="' + esc(sp.id) + '"' +
+          (sp._customImageId === IMG_NONE ? '' : ' checked') + '><span class="cv-bg-switch"></span></label>';
+      } else {
+        var opts = ['<option value="' + IMG_NONE + '">None</option>'].concat(
+          list.map(function (im) { return '<option value="' + esc(im.id) + '">' +
+            esc(im.label || im.id) + '</option>'; })
+        );
+        body = '<select data-cv-bg-space="' + esc(sp.id) + '">' + opts.join('') + '</select>';
+      }
+      return '<div class="cv-bg-row">' + heading + body + '</div>';
+    }).join('');
+    spaces.forEach(function (sp) {
+      var input = pop.querySelector('[data-cv-bg-space="' + cssEscape(sp.id) + '"]');
+      if (!input) return;
+      if (input.tagName === 'SELECT') input.value = sp._customImageId || spatialImages(sp)[0].id;
+      input.onchange = function () {
+        var id = input.type === 'checkbox'
+          ? (input.checked ? spatialImages(sp)[0].id : IMG_NONE)
+          : input.value;
+        setSpatialImage(id, sp);
+      };
+    });
+    // Kept as an invisible compatibility surface for older browser automation
+    // and extensions. The visible UI is the mode control + per-section cards.
+    var active = activeSpatial();
+    var activeImages = spatialImages(active);
+    var legacy = document.createElement('select');
+    legacy.id = 'cv-img-pick';
+    legacy.hidden = true;
+    legacy.setAttribute('aria-hidden', 'true');
+    legacy.innerHTML = ['<option value="' + IMG_NONE + '">None</option>'].concat(
+      activeImages.map(function (im) {
+        return '<option value="' + esc(im.id) + '">' + esc(im.label || im.id) + '</option>';
+      })
+    ).join('');
+    legacy.disabled = !activeImages.length;
+    legacy.value = active && active._customImageId ? active._customImageId
+      : (activeImages[0] ? activeImages[0].id : IMG_NONE);
+    legacy.onchange = function () {
+      backgroundMode = 'custom';
+      setSpatialImage(legacy.value, activeSpatial());
+      renderImagePicker();
+    };
+    pop.appendChild(legacy);
   }
 
   // Switch background. The cells have not moved -- only what is behind them --
   // so the viewport is left exactly as it is; re-fitting it here would throw
   // away the zoom the user was comparing at.
-  function setSpatialImage(id) {
-    var sp = spaceById['spatial'];
+  function setSpatialImage(id, sp) {
+    sp = sp || activeSpatial();
     if (!sp || !id) return;
-    var cur = currentImage(sp);
-    if (cur ? cur.id === id : id === IMG_NONE) return;
-    stashImgState();
-    sp._imageId = id;
-    loadSpaceImage(sp);
-    seedImgControls();
+    stashImgState(sp);
+    sp._customImageId = id;
+    imgChoice[sp._sampleName] = id;
+    if (backgroundMode === 'custom') loadSpaceImage(sp);
+    if (sp.id === activeSpatialId) seedImgControls();
     updateSpaceScopedControls();
     drawAll();
+  }
+
+  function setBackgroundMode(mode) {
+    if (['auto', 'none', 'custom'].indexOf(mode) < 0) return;
+    selectedSpatial.forEach(function (name) {
+      var sp = spaceById[spatialId(name)];
+      if (sp) stashImgState(sp);
+    });
+    backgroundMode = mode;
+    selectedSpatial.forEach(function (name) {
+      var sp = spaceById[spatialId(name)];
+      if (sp) loadSpaceImage(sp);
+    });
+    renderImagePicker();
+    updateSpaceScopedControls();
+    seedImgControls();
+    drawAll();
+  }
+
+  function activateSpatial(id) {
+    if (!id || !isSpatialSpace(spaceById[id])) {
+      id = selectedSpatial.length ? spatialId(selectedSpatial[0]) : null;
+    }
+    activeSpatialId = id;
+    panels.forEach(function (p) {
+      if (p.pane) p.pane.classList.toggle(
+        'cv-active-spatial', !!id && p.spaceId === id
+      );
+    });
+    renderImagePicker();
+    seedImgControls();
+    updateSpaceScopedControls();
   }
 
   // Back to the alignment the data set shipped with. Alignment is fiddly and
@@ -2992,9 +3122,10 @@ var focusPanel = null;
   // outside it. The slider then clamps and the alignment quietly is not the one
   // that was asked for.
   function seedImgControls(st) {
-    var sp = spaceById['spatial'];
+    var sp = activeSpatial();
+    if (!sp) return;
     var cur = currentImage(sp);
-    var v = st || imgState || presetState(cur);
+    var v = st || sp._imgState || presetState(cur);
     var set = function (id, x) { var el = $(id); if (el) el.value = String(x); };
     var tick = function (id, on) { var el = $(id); if (el) el.checked = !!on; };
     var span = (cur && cur.coord_span) || null;
@@ -3027,74 +3158,129 @@ var focusPanel = null;
     tick('cv-img-flipx', v.flipX);
     tick('cv-img-flipy', v.flipY);
     tick('cv-img-show', v.show !== false);
+    var activeLabel = $('cv-img-active-label');
+    if (activeLabel) activeLabel.textContent = sp._sampleName || '';
   }
 
   // Back to the alignment THIS (section, image) shipped with -- and only this
   // one. Alignment is fiddly and easy to lose, and the preset is the sole
   // reference point in the bar; without this the way back was reloading.
   function resetImgToPreset() {
-    var sp = spaceById['spatial'];
+    var sp = activeSpatial();
+    if (!sp) return;
     var cur = currentImage(sp);
-    imgState = presetState(cur);
+    sp._imgState = presetState(cur);
     var k = imgKey(sp, cur);
     if (k) delete imgStates[k];   // forget the adjustments, for this pair only
-    seedImgControls(imgState);
+    seedImgControls(sp._imgState);
     drawAll();
   }
 
-  // Spatial-sample picker — shown only when the data set has >1 spatial section.
-  // Each sample is its own coordinate system + image; all travel in the bundle
-  // (spaceById['spatial'].samples), so switching is client-side and instant.
+  function spatialId(name) { return 'spatial::' + name; }
+  function spatialSamples() {
+    if (!spatialTemplate) return [];
+    if (spatialTemplate.samples && spatialTemplate.samples.length) {
+      return spatialTemplate.samples;
+    }
+    return [{
+      name: spatialTemplate.label.replace(/ \(spatial\)$/, ''),
+      label: spatialTemplate.label,
+      x: spatialTemplate.x,
+      y: spatialTemplate.y,
+      image: spatialTemplate.image,
+      images: spatialTemplate.images || []
+    }];
+  }
+  function rebuildSpatialInstances() {
+    var keep = {};
+    selectedSpatial.forEach(function (name) { keep[spatialId(name)] = true; });
+    Object.keys(spaceById).forEach(function (id) {
+      if (id.indexOf('spatial::') === 0 && !keep[id]) delete spaceById[id];
+    });
+    spatialSamples().forEach(function (sample) {
+      if (selectedSpatial.indexOf(sample.name) < 0) return;
+      var id = spatialId(sample.name), old = spaceById[id];
+      if (old) return;
+      var images = sample.images || (sample.image ? [sample.image] : []);
+      var custom = Object.prototype.hasOwnProperty.call(imgChoice, sample.name)
+        ? imgChoice[sample.name]
+        : ((images[0] && images[0].id) || IMG_NONE);
+      var sp = spaceById[id] = {
+        id: id,
+        label: sample.label || (sample.name + ' (spatial)'),
+        x: sample.x,
+        y: sample.y,
+        image: sample.image || null,
+        images: images,
+        _sampleName: sample.name,
+        _spatialSample: true,
+        _customImageId: custom,
+        _unit: null
+      };
+      loadSpaceImage(sp);
+    });
+    if (!activeSpatialId || !spaceById[activeSpatialId]) {
+      activeSpatialId = selectedSpatial.length ? spatialId(selectedSpatial[0]) : null;
+    }
+  }
+
+  // Spatial multi-picker. All samples travel in the bundle; selecting one only
+  // creates a lightweight client-side space that references its arrays/images.
   function fillSpatialPicker() {
     var selEl = $('cv-pick-spatial'), ctl = $('cv-spatial-ctl');
     if (!selEl || !ctl) return;
-    var sp = spaceById['spatial'], samples = sp && sp.samples;
-    if (!samples || samples.length < 2) {
+    if (selEl.selectize) selEl.selectize.destroy();
+    var samples = spatialSamples();
+    if (!samples.length) {
       ctl.style.display = 'none'; selEl.innerHTML = ''; return;
     }
-    ctl.style.display = '';
+    ctl.style.display = samples.length > 1 ? '' : 'none';
     selEl.innerHTML = samples.map(function (s) {
       return '<option value="' + esc(s.name) + '">' + esc(s.name) + '</option>';
     }).join('');
-    selEl.value = sp._sampleName || samples[0].name;
-    selEl.onchange = function () { setSpatialSample(selEl.value); };
-  }
-  function setSpatialSample(name) {
-    var sp = spaceById['spatial']; if (!sp || !sp.samples) return;
-    var s = sp.samples.filter(function (x) { return x.name === name; })[0];
-    if (!s) return;
-    stashImgState();               // remember this section's alignment work
-    sp._sampleName = name;
-    sp.x = s.x; sp.y = s.y; sp.label = s.label;
-    sp.image = s.image || null;
-    sp.images = s.images || (s.image ? [s.image] : []);
-    // Its own last choice if it has one -- including "none", which is a choice.
-    // Otherwise its first background. Never the section being left: that was a
-    // choice about a different slide.
-    sp._imageId = Object.prototype.hasOwnProperty.call(imgChoice, name)
-      ? imgChoice[name]
-      : ((sp.images[0] && sp.images[0].id) || null);
-    sp._unit = null;
-    // Put away what was done to the section being left, so returning to it
-    // returns that work; then load the target's own state -- its remembered
-    // adjustments if it has any, otherwise its preset. NEVER the state of the
-    // section being left: that is a calibration made for a different slide.
-    loadSpaceImage(sp);            // the section's own background (or none)
-    // The controls have to follow it. They held the PREVIOUS section's numbers,
-    // so the first nudge to any of them read those back and wrote the old
-    // slide's alignment over the new one's, silently.
-    seedImgControls();
-    renderImagePicker();           // its backgrounds, not the last section's
-    updateSpaceScopedControls();   // image bar visibility follows the new sample
-    resetSpaceViews('spatial');    // a different section, so a different geometry
-    panels.forEach(function (p) {
-      if (p.spaceId !== 'spatial') return;
-      project(p);
-      var t = $('cv-title-' + p.key.toLowerCase());
-      if (t) t.textContent = sp.label;
+    Array.prototype.forEach.call(selEl.options, function (option) {
+      option.selected = selectedSpatial.indexOf(option.value) >= 0;
     });
-    renderMeta();   // the line above the panels names the section on screen
-    drawAll();
+    var changed = function (values) {
+      values = values == null ? [] : (Array.isArray(values) ? values : [values]);
+      setSelectedSpatial(values);
+    };
+    var nativeChanged = function () {
+      changed(Array.prototype.filter.call(selEl.options, function (o) {
+        return o.selected;
+      }).map(function (o) { return o.value; }));
+    };
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
+      var $sel = window.jQuery(selEl);
+      $sel.selectize({
+        plugins: ['remove_button'],
+        persist: false,
+        closeAfterSelect: false,
+        onChange: changed
+      });
+      selEl.selectize.setValue(selectedSpatial, true);
+    } else {
+      selEl.onchange = nativeChanged;
+    }
+  }
+  function setSelectedSpatial(names) {
+    var available = spatialSamples().map(function (s) { return s.name; });
+    names = names.filter(function (name, index) {
+      return available.indexOf(name) >= 0 && names.indexOf(name) === index;
+    });
+    if (!names.length && available.length) names = [available[0]];
+    selectedSpatial.forEach(function (name) {
+      var sp = spaceById[spatialId(name)]; if (sp) stashImgState(sp);
+    });
+    selectedSpatial = names;
+    rebuildSpatialInstances();
+    ensurePanelSlots(orderedSpaces().length);
+    buildPanels();
+    layoutPanels();
+    renderImagePicker();
+    activateSpatial(activeSpatialId);
+    renderMeta();
+    resizeAll();
   }
 
   // ---- group filters (client-side cell subsetting) ------------------------
@@ -3142,9 +3328,14 @@ var focusPanel = null;
     applyActiveChange();
   }
 
-  // Read the client-owned histology-image controls into imgState. Missing
+  // Read the client-owned histology-image controls into the active section's
+  // image state. Missing
   // controls (before render / no image) leave the current value unchanged.
   function syncImgControls(changed) {
+    var sp = activeSpatial();
+    if (!sp || !currentImage(sp)) return;
+    if (!sp._imgState) sp._imgState = presetState(currentImage(sp));
+    var imgState = sp._imgState;
     var num = function (id, cur) { var el = $(id); return el ? parseFloat(el.value) : cur; };
     var chk = function (id, cur) { var el = $(id); return el ? el.checked : cur; };
     imgState.show = chk('cv-img-show', imgState.show);
@@ -3176,15 +3367,23 @@ var focusPanel = null;
     // the authority. Recording only on a switch left the work in flight: a
     // bundle re-sent while the user was still adjusting reloaded from the preset
     // and undid it.
-    stashImgState();
+    stashImgState(sp);
   }
 
   // Spaces in panel order: umap first, then spatial / trekker / clone (present
   // ones), then anything else. Panel A gets order[0] (umap), B/C/D the rest.
   function orderedSpaces() {
-    var pref = ['umap', 'spatial', 'trekker', 'clone'], out = [];
-    pref.forEach(function (id) { if (spaceById[id]) out.push(id); });
-    D.spaces.forEach(function (s) { if (out.indexOf(s.id) < 0) out.push(s.id); });
+    var out = [];
+    if (spaceById.umap) out.push('umap');
+    selectedSpatial.forEach(function (name) {
+      var id = spatialId(name); if (spaceById[id]) out.push(id);
+    });
+    ['trekker', 'clone'].forEach(function (id) {
+      if (spaceById[id]) out.push(id);
+    });
+    D.spaces.forEach(function (s) {
+      if (s.id !== 'spatial' && out.indexOf(s.id) < 0) out.push(s.id);
+    });
     return out;
   }
   // Assign each present space to a panel; hide the unused slots; surface the
@@ -3217,6 +3416,9 @@ var focusPanel = null;
           p.pane.classList.remove('cv-hidden');
           if (reappearing) fadeInPane(p.pane);
         }
+        var title = $('cv-title-' + p.key.toLowerCase());
+        var shownSpace = spaceById[p.spaceId];
+        if (title) title.textContent = shownSpace ? shownSpace.label : p.spaceId;
       } else {
         p.spaceId = null;
         if (p.pane) p.pane.classList.add('cv-hidden');
@@ -3230,12 +3432,12 @@ var focusPanel = null;
     });
     updateFocusButtons();
     syncOrbitButtons();
+    // A panel may now point at a different section while its box dimensions are
+    // unchanged. Force the next resize pass to project the new coordinates.
+    _layoutKey = null;
   }
-  // Size ALL visible panels to equal squares that fill the width AND height in a
-  // single viewport, so every linked panel is on screen at once. The grid is 1x2
-  // (two spaces), a rotated "品" (three: one centred square left + two stacked
-  // right) or 2x2 (four). Falls back to a single column when two comfortable
-  // columns cannot fit the width.
+  // Size visible panels from the available width. Each canvas remains at least
+  // 300px wide when possible and extra spaces flow onto later rows.
   //
   // Two floors, and the difference matters. PREF_SIDE is the size below which a
   // panel stops being comfortable, and it decides the column count. MIN_SIDE is
@@ -3245,7 +3447,7 @@ var focusPanel = null;
   // viewport has, the floor refused to go under 300, and the last row simply
   // fell off the bottom -- on the one layout that most needs to be seen at once.
   var PREF_SIDE = 300;
-  var MIN_SIDE = 150;
+  var MIN_SIDE = 300;
   // The square's size is computed from the pane header's height, and the header
   // grows when the pane is narrow enough for its toolbar to wrap. That is a
   // positive feedback loop: a smaller square makes a taller header makes a
@@ -3302,32 +3504,22 @@ var focusPanel = null;
       _layoutPass = 1;
     }
     var gap = 14;
-    // Per-pane non-canvas overhead (title row + the pane's padding/border/margin),
-    // measured so the square maths accounts for it rather than guessing.
-    var headEl = vis[0].pane.querySelector('.cv-pane-head');
-    var overhead = (headEl ? headEl.offsetHeight : 26) + 34;
-    // Available height: from the panels' top to the viewport bottom, minus the
-    // legend (or colourbar) so it is never pushed off-screen, minus a small gap.
-    var top = panes.getBoundingClientRect().top;
-    var legend = $('cv-legend'), cbar = $('cv-cbar');
-    var legendH = (legend ? legend.offsetHeight : 0);
-    if (cbar && cbar.style.display !== 'none') legendH += cbar.offsetHeight;
-    var availH = window.innerHeight - top - legendH - 20;
     // Each pane is border-box with 12px padding + 1px border, so its CONTENT (the
     // square canvas) is 26px narrower than its column track. Subtract that so the
     // canvas fits its pane exactly (never overflows), and make the track = square
     // + chrome. `overhead` already carries the vertical equivalent.
     var chromeX = 26;
-    // Layout: two columns unless a single column is forced by a narrow viewport.
-    var single = availW < ((PREF_SIDE + chromeX) * 2 + gap);
-    var cols = single ? 1 : 2;
-    var rows = single ? k : (k <= 2 ? 1 : 2);
+    // Width-driven wrapping, matching the Spatial page: use as many columns as
+    // can keep every canvas at least 300px wide, then flow additional linked
+    // spaces onto the next row. Height is deliberately not a constraint; with
+    // five or six modalities, shrinking everything to keep one viewport made
+    // the panels unreadable.
+    var cols = Math.max(1, Math.min(k,
+      Math.floor((availW + gap) / (PREF_SIDE + chromeX + gap))));
+    var single = cols === 1;
     var colW = (availW - (cols - 1) * gap) / cols;
-    var rowCanvasH = (availH - rows * overhead - (rows - 1) * gap) / rows;
-    var side = Math.max(
-      MIN_SIDE,
-      Math.floor(Math.min(colW - chromeX, rowCanvasH))
-    );
+    var side = Math.max(MIN_SIDE, Math.floor(colW - chromeX));
+    if (single && side + chromeX > availW) side = Math.max(150, availW - chromeX);
     // Explicit column tracks (px) so cells hug the squares and the grid centres in
     // availW; rows stay auto (each pane = head + square), so the "品" span works.
     panes.classList.remove('cv-n2', 'cv-n3', 'cv-n4', 'cv-single');
@@ -3401,14 +3593,36 @@ var focusPanel = null;
     // arrives. Bundles are re-sent for reasons that are not a change of data
     // set: returning to the tab, recolouring a group. Clearing on every push
     // meant a user's alignment work survived only until they looked away.
-    if (D.dataset_id !== dataShown) {
+    var dataChanged = D.dataset_id !== dataShown;
+    var previousSelected = selectedSpatial.slice();
+    var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
+    if (dataChanged) {
       imgStates = {};
       imgChoice = {};
     }
     dataShown = D.dataset_id;
     imgToken++;
     closeCard(); cardMeta = null;   // the card described the previous data set
-    spaceById = {}; D.spaces.forEach(function (s) { s._unit = null; spaceById[s.id] = s; });
+    spaceById = {};
+    spatialTemplate = null;
+    D.spaces.forEach(function (s) {
+      s._unit = null;
+      if (s.id === 'spatial') spatialTemplate = s;
+      else spaceById[s.id] = s;
+    });
+    var initialSamples = spatialSamples();
+    var availableSamples = initialSamples.map(function (sample) { return sample.name; });
+    selectedSpatial = dataChanged ? [] : previousSelected.filter(function (name) {
+      return availableSamples.indexOf(name) >= 0;
+    });
+    if (!selectedSpatial.length && initialSamples.length) {
+      selectedSpatial = [initialSamples[0].name];
+    }
+    var activeName = !dataChanged && selectedSpatial.indexOf(previousActiveName) >= 0
+      ? previousActiveName : selectedSpatial[0];
+    activeSpatialId = activeName ? spatialId(activeName) : null;
+    if (dataChanged) backgroundMode = 'auto';
+    rebuildSpatialInstances();
     colorBy = D.default_group ||
       (D.groups ? Object.keys(D.groups)[0] : null) || null;
     unpinTip();
@@ -3433,14 +3647,7 @@ var focusPanel = null;
     var nkEl = $('cv-niche'); if (nkEl) nkEl.value = '250';
     var nkLbl = $('cv-niche-val'); if (nkLbl) nkLbl.textContent = '250';
 
-    // Preload the histology image, if any spatial space carries one, and seed
-    // the transform state from its preset (e.g. flipY for some platforms).
-    var withImg = null;
-    D.spaces.forEach(function (s) {
-      if (spatialImages(s).length) withImg = s;
-    });
-    loadSpaceImage(withImg);
-
+    ensurePanelSlots(orderedSpaces().length);
     renderMeta();
 
     buildPanels();
@@ -3467,11 +3674,7 @@ var focusPanel = null;
     fillProjPicker();
     fillSpatialPicker();
     renderGroupFilters();
-    renderImagePicker();
-    // The controls have to show the state just loaded. In the app the bar is
-    // re-rendered by the server per data set, which hid the omission; but the
-    // client owns the values, so it is the client that must write them.
-    seedImgControls();
+    activateSpatial(activeSpatialId);
     // hide the gene/RGB pickers on a fresh dataset (starts in a categorical mode)
     var geneCtl = $('cv-gene-ctl'), rgbCtl = $('cv-rgb-ctl');
     if (geneCtl) geneCtl.style.display = 'none';
@@ -3583,6 +3786,18 @@ var focusPanel = null;
     // clear button + point-size slider live in the top bar (client-owned)
     document.addEventListener('click', function (e) {
       var t = e.target;
+      var bgMode = t && t.closest && t.closest('[data-cv-bg-mode]');
+      if (bgMode) {
+        var mode = bgMode.getAttribute('data-cv-bg-mode');
+        var pop = $('cv-bg-popover');
+        if (mode === 'custom' && backgroundMode === 'custom') {
+          if (pop) pop.classList.toggle('is-open');
+        } else {
+          setBackgroundMode(mode);
+          if (pop) pop.classList.toggle('is-open', mode === 'custom');
+        }
+        return;
+      }
       // The pinned tooltip's two actions. Checked before anything else, because
       // the tooltip sits over a panel and the handlers below would otherwise
       // read the click as one on the workspace underneath.
@@ -3743,6 +3958,10 @@ var focusPanel = null;
     // widget are left alone so several levels can be ticked in one visit.
     document.addEventListener('click', function (e) {
       var t = e.target;
+      var pop = $('cv-bg-popover');
+      if (pop && !(t && t.closest && t.closest('.cv-bg-ctl'))) {
+        pop.classList.remove('is-open');
+      }
       if (t && t.closest && t.closest('.cv-filt')) return;
       closeFilterMenus();
     });
@@ -3750,6 +3969,8 @@ var focusPanel = null;
     // dismiss like one — and any open filter menu, for the same reason.
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
+      var bgPop = $('cv-bg-popover');
+      if (bgPop) bgPop.classList.remove('is-open');
       closeFilterMenus();
       if (!cardOpen()) return;
       pick = null; unpinTip(); closeCard(); drawAll();

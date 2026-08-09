@@ -546,7 +546,11 @@ output[["coordviews_image_ui"]] <- renderUI({
   )
   div(
     class = "cv-imgbar",
-    tags$span(class = "cv-imgbar-title", "Histology image"),
+    div(
+      class = "cv-imgbar-heading",
+      tags$span(class = "cv-imgbar-title", "Histology image"),
+      tags$span(class = "cv-imgbar-active", id = "cv-img-active-label")
+    ),
     chk("cv-img-show", "Show", TRUE),
     div(
       class = "cv-img-ctl",

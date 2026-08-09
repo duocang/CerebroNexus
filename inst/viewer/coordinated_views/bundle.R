@@ -437,17 +437,55 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
   )
   span <- c(diff(xr), diff(yr))
   images <- list()
-  emb <- sd$histology_image
-  if (!is.null(emb) && is.character(emb) && nzchar(emb)) {
-    b <- sd$histology_image_bounds
+  embedded <- sd$histology_images
+  if (is.null(embedded) || !length(embedded)) {
+    embedded <- if (!is.null(sd$histology_image)) {
+      list("Embedded histology" = sd$histology_image)
+    } else {
+      list()
+    }
+  }
+  for (embedded_index in seq_along(embedded)) {
+    entry <- embedded[[embedded_index]]
+    embedded_names <- names(embedded)
+    entry_name <- if (
+      !is.null(embedded_names) && length(embedded_names) >= embedded_index
+    ) {
+      embedded_names[[embedded_index]]
+    } else {
+      ""
+    }
+    if (is.list(entry)) {
+      emb <- entry$image %||% entry$uri %||% entry$data
+      b <- entry$bounds %||% sd$histology_image_bounds
+      label <- entry$label %||% entry_name
+    } else {
+      emb <- entry
+      b <- sd$histology_image_bounds
+      label <- entry_name
+    }
+    if (!is.character(emb) || length(emb) != 1L || is.na(emb) || !nzchar(emb)) {
+      next
+    }
     if (is.null(b)) {
       b <- bounds_default
     }
-    ## The embedded image comes out of the same pipeline as the coordinates, so
-    ## it needs no hand alignment and is the default where it exists.
+    if (is.null(label) || !length(label) || is.na(label) || !nzchar(label)) {
+      label <- if (length(embedded) == 1L) {
+        "Embedded histology"
+      } else {
+        paste("Embedded histology", embedded_index)
+      }
+    }
+    ## Every embedded image comes out of the same pipeline as the coordinates,
+    ## so it needs no hand alignment and the first remains the automatic default.
     images[[length(images) + 1]] <- list(
-      id = "embedded",
-      label = "Embedded histology",
+      id = if (embedded_index == 1L) {
+        "embedded"
+      } else {
+        paste0("embedded-", embedded_index)
+      },
+      label = label,
       uri = emb,
       bounds = list(
         xmin = as.numeric(b$xmin),

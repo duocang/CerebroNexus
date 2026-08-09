@@ -67,6 +67,71 @@
 .coordviews-page .cv-topbar select:focus {
   outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
 }
+.coordviews-page .cv-spatial-ctl .selectize-control { min-width: 210px; }
+.coordviews-page .cv-spatial-ctl .selectize-input { max-width: 310px; }
+
+/* Backgrounds use one compact global mode. The uncommon per-section choices
+   live in a popover, so selecting several tissues does not grow the top bar. */
+.coordviews-page .cv-bg-ctl { position: relative; }
+.coordviews-page .cv-bg-mode {
+  display: inline-flex; overflow: hidden; border-radius: 7px;
+  border: 1px solid var(--c-border-2, #e0e0e0); background: var(--cv-surface);
+}
+.coordviews-page .cv-bg-mode-btn {
+  border: 0; border-left: 1px solid var(--c-border-2, #e0e0e0);
+  background: transparent; color: var(--cv-text2); cursor: pointer;
+  padding: 7px 11px; font: 600 12px/1.2 inherit;
+}
+.coordviews-page .cv-bg-mode-btn:first-child { border-left: 0; }
+.coordviews-page .cv-bg-mode-btn:hover { background: var(--cv-surface2); }
+.coordviews-page .cv-bg-mode-btn.is-on {
+  background: var(--cv-amber50); color: var(--cv-amber700);
+}
+.coordviews-page .cv-bg-popover {
+  display: none; position: absolute; z-index: 1200; top: calc(100% + 8px);
+  right: 0; width: min(390px, 86vw); padding: 10px;
+  background: var(--cv-surface); border: 1px solid var(--cv-border);
+  border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, .14);
+}
+.coordviews-page .cv-bg-popover.is-open { display: block; }
+.coordviews-page .cv-bg-row {
+  padding: 10px; border-radius: 8px; background: var(--cv-surface2);
+}
+.coordviews-page .cv-bg-row + .cv-bg-row { margin-top: 8px; }
+.coordviews-page .cv-bg-row-heading {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 7px;
+}
+.coordviews-page .cv-bg-row-label { font-size: 12.5px; font-weight: 650; }
+.coordviews-page .cv-bg-count,
+.coordviews-page .cv-bg-unavailable { font-size: 11px; color: var(--cv-text3); }
+.coordviews-page .cv-bg-row select { width: 100%; min-width: 0; }
+.coordviews-page .cv-bg-single {
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+  font-size: 12px; color: var(--cv-text2);
+}
+.coordviews-page .cv-bg-thumb {
+  width: 28px; height: 20px; border-radius: 5px;
+  background: linear-gradient(135deg, #f6d7e8, #d9c4ee);
+  border: 1px solid rgba(0, 0, 0, .08);
+}
+.coordviews-page .cv-bg-single-name { flex: 1; min-width: 0; }
+.coordviews-page .cv-bg-single input { position: absolute; opacity: 0; }
+.coordviews-page .cv-bg-switch {
+  width: 32px; height: 18px; border-radius: 999px; position: relative;
+  background: #c8c8cc; transition: background .16s ease;
+}
+.coordviews-page .cv-bg-switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: #fff; transition: transform .16s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .22);
+}
+.coordviews-page .cv-bg-single input:checked + .cv-bg-switch {
+  background: var(--cv-amber);
+}
+.coordviews-page .cv-bg-single input:checked + .cv-bg-switch::after {
+  transform: translateX(14px);
+}
 /* The "More" panel is not inside .cv-topbar, so its dropdowns need the same
    look stated for them rather than inherited. */
 .coordviews-page .cv-more-inner select {
@@ -361,15 +426,16 @@
      (below), and resizeAll's crisp redraw lands after the transition settles. */
   transition: grid-template-columns .28s ease;
 }
-/* Three spaces = the "rotated 品": UMAP is one centred square on the left, the two
-   other spaces stack on the right, so UMAP spans both rows. */
-.coordviews-page .cv-panes.cv-n3 .cv-pane:first-child { grid-row: 1 / span 2; }
 .coordviews-page .cv-pane {
   position: relative;
   background: var(--cv-surface); border: 1px solid var(--cv-border);
   border-radius: 10px; padding: 12px;
   display: flex; flex-direction: column;
   transition: opacity .2s ease;
+}
+.coordviews-page .cv-pane.cv-active-spatial {
+  border-color: var(--cv-amber200);
+  box-shadow: 0 0 0 2px var(--cv-amber50), var(--shadow-1, 0 1px 3px rgba(0,0,0,.08));
 }
 .coordviews-page .cv-pane.cv-hidden { display: none; }
 .coordviews-page .cv-pane-head {
@@ -694,6 +760,14 @@
 }
 .coordviews-page .cv-imgbar-title {
   font-weight: 650; color: var(--cv-text); margin-right: 2px;
+}
+.coordviews-page .cv-imgbar-heading {
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.coordviews-page .cv-imgbar-active {
+  padding: 2px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 650;
+  color: var(--cv-amber700); background: var(--cv-amber50);
+  border: 1px solid var(--cv-amber200); white-space: nowrap;
 }
 .coordviews-page .cv-img-ctl { display: flex; align-items: center; gap: 6px; }
 .coordviews-page .cv-img-ctl > label {

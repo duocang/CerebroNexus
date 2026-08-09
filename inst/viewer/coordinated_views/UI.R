@@ -86,9 +86,9 @@ cv_panebar <- function(panel) {
   )
 }
 
-## One panel slot. There are always FOUR in the DOM (A = umap, B/C/D = the data
-## set's other spaces); www/coordviews.js assigns a space to each present one and
-## hides the rest, and lays them out 1x2 / rotated-品 / 2x2 by how many exist.
+## One panel slot. Four initial slots avoid DOM churn for the common case;
+## www/coordviews.js clones more when several spatial sections push the linked
+## workspace beyond four panels, then lays all visible slots out responsively.
 ## Every head carries a (hidden) Trekker info button, shown by JS on whichever
 ## panel ends up holding the Trekker space.
 cv_pane <- function(key) {
@@ -202,29 +202,48 @@ tab_coordinated_views <- tabItem(
         tags$label("Projection"),
         tags$select(id = "cv-pick-proj")
       ),
-      ## Spatial-sample picker — shown by JS only when the data set carries MORE
-      ## than one spatial section (each its own coordinate system + image). All
-      ## samples travel in the bundle, so switching the spatial panel is instant.
+      ## Spatial sections are a multi-select. Every selected section receives an
+      ## independent linked canvas; all sections still share colour, filtering,
+      ## brushing and hover state.
       div(
         class = "cv-ctl",
         id = "cv-spatial-ctl",
         style = "display:none",
         tags$label("Spatial data"),
-        tags$select(id = "cv-pick-spatial")
+        tags$select(id = "cv-pick-spatial", multiple = "multiple")
       ),
-      ## Which background the section is shown against. Beside "Spatial data"
-      ## because it answers the same kind of question -- what am I looking at --
-      ## rather than in the alignment bar, which is about adjusting whatever is
-      ## chosen here. Filled and revealed by JS: only the client knows how many
-      ## backgrounds the section on screen has, and with one there is nothing to
-      ## choose. "Show" in the alignment bar stays the way to turn it off, so the
-      ## list carries no "none" entry duplicating it.
+      ## One global background mode, matching the Spatial page. Per-section
+      ## choices live inside Customize rather than expanding the top bar.
       div(
-        class = "cv-ctl",
+        class = "cv-ctl cv-bg-ctl",
         id = "cv-img-pick-ctl",
         style = "display:none",
         tags$label("Background image"),
-        tags$select(id = "cv-img-pick")
+        div(
+          class = "cv-bg-mode",
+          tags$button(
+            type = "button",
+            class = "cv-bg-mode-btn is-on",
+            `data-cv-bg-mode` = "auto",
+            "Auto"
+          ),
+          tags$button(
+            type = "button",
+            class = "cv-bg-mode-btn",
+            `data-cv-bg-mode` = "none",
+            "None"
+          ),
+          tags$button(
+            type = "button",
+            class = "cv-bg-mode-btn cv-bg-customize-btn",
+            `data-cv-bg-mode` = "custom",
+            "Customize…"
+          )
+        ),
+        div(
+          class = "cv-bg-popover",
+          id = "cv-bg-popover"
+        )
       ),
       ## Single-gene expression picker — a real server-side gene search (the
       ## whole transcriptome), shown only in "Gene expression" mode. JS toggles
@@ -496,9 +515,9 @@ tab_coordinated_views <- tabItem(
 
     ## ---- panel grid ----------------------------------------------------- ##
     ## Every space the data set carries gets its OWN panel (no switch): A = UMAP,
-    ## then Spatial / Trekker / Clonal in whatever combination exists. coordviews.js
-    ## assigns spaces, hides the unused slots, and picks the grid (1x2 / rotated-品
-    ## for three / 2x2 for four) to fill the width and height with >=300px squares.
+    ## then every selected Spatial section, Trekker and Clonal. coordviews.js
+    ## assigns spaces, hides unused slots, creates extras as needed, and wraps
+    ## panels automatically while keeping each canvas at least 300px wide.
     div(
       class = "cv-panes",
       cv_pane("A"),

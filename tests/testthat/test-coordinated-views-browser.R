@@ -97,6 +97,106 @@ cv_ink_js <- function(canvas_id = "cv-cv-a") {
   )
 }
 
+test_that("multiple spatial sections become independent linked panels", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_multi_spatial")
+  on.exit(app$stop(), add = TRUE)
+
+  samples_js <- paste0(
+    "['A tissue','B tissue','C tissue'].map(function(name, sampleIndex) {",
+    " return { name:name, label:name + ' (spatial)',",
+    " x:blob(sampleIndex * 4), y:blob(sampleIndex * 3),",
+    " images: sampleIndex === 0 ? [",
+    " {id:'rose',label:'Rose H&E',uri:'data:image/png;base64,iVBORw0KGgo=',",
+    " bounds:{xmin:-2,xmax:2,ymin:-2,ymax:2},preset:{}},",
+    " {id:'blue',label:'Blue H&E',uri:'data:image/png;base64,iVBORw0KGgo=',",
+    " bounds:{xmin:-2,xmax:2,ymin:-2,ymax:2},preset:{}}] : [",
+    " {id:'embedded',label:'Embedded histology',",
+    " uri:'data:image/png;base64,iVBORw0KGgo=',",
+    " bounds:{xmin:-2,xmax:2,ymin:-2,ymax:2},preset:{}}] }; })"
+  )
+  app$run_js(cv_bundle_js(paste0(
+    "{ spaces:[",
+    " {id:'umap',label:'umap (expression)',x:blob(0),y:blob(0)},",
+    " {id:'spatial',label:'A tissue (spatial)',x:blob(0),y:blob(0),",
+    "  samples:",
+    samples_js,
+    "},",
+    " {id:'trekker',label:'Physical (Trekker)',x:blob(1),y:blob(2)},",
+    " {id:'clone',label:'Clonal expansion (TCR)',x:blob(2),y:blob(1)}",
+    "] }"
+  )))
+  app$wait_for_js(
+    paste0(
+      "(function(){var e=document.getElementById('cv-pick-spatial');",
+      "return e && (e.selectize ? Object.keys(e.selectize.options).length : ",
+      "e.options.length) === 3;})()"
+    ),
+    timeout = 15000
+  )
+
+  expect_true(app$get_js(
+    "document.getElementById('cv-pick-spatial').multiple"
+  ))
+  app$run_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-spatial');",
+    "if(e.selectize){e.selectize.setValue(['A tissue','B tissue','C tissue']);}",
+    "else{Array.from(e.options).forEach(function(o){o.selected=true;});",
+    "e.dispatchEvent(new Event('change',{bubbles:true}));}})();"
+  ))
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length === 6",
+    timeout = 15000
+  )
+
+  titles <- unlist(app$get_js(paste0(
+    "Array.from(document.querySelectorAll(",
+    "'.cv-pane:not(.cv-hidden) .cv-ptitle'))",
+    ".map(function(x){return x.textContent.trim();})"
+  )))
+  expect_equal(
+    titles,
+    c(
+      "umap (expression)",
+      "A tissue (spatial)",
+      "B tissue (spatial)",
+      "C tissue (spatial)",
+      "Physical (Trekker)",
+      "Clonal expansion (TCR)"
+    )
+  )
+  expect_gte(
+    app$get_js("document.querySelectorAll('.cv-panes > .cv-pane').length"),
+    6
+  )
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-pane:not(.cv-hidden)'))",
+    ".every(function(x){return x.getBoundingClientRect().width >= 300;})"
+  )))
+  expect_equal(
+    app$get_js("document.querySelectorAll('.cv-bg-row').length"),
+    3
+  )
+  expect_equal(
+    app$get_js("document.querySelectorAll('.cv-bg-row select').length"),
+    1
+  )
+  expect_equal(
+    app$get_js(
+      "document.querySelectorAll('.cv-bg-row input[type=checkbox]').length"
+    ),
+    2
+  )
+  expect_equal(
+    app$get_js(
+      "document.querySelectorAll('.cv-pane.cv-active-spatial').length"
+    ),
+    1
+  )
+
+  app$stop()
+})
+
 
 test_that("the tab renders a pushed bundle and offers every meta column", {
   local_app_support(inst_dir)
@@ -2156,7 +2256,8 @@ test_that("the image controls follow the spatial section", {
   ## Switch to section B, whose calibration is non-uniform.
   app$run_js(paste0(
     "(function () { var s = document.getElementById('cv-pick-spatial');\n",
-    "  s.value = 'B'; s.dispatchEvent(new Event('change')); })();"
+    "  if (s.selectize) s.selectize.setValue(['B']); else {",
+    "s.value = 'B'; s.dispatchEvent(new Event('change'));} })();"
   ))
   app$wait_for_idle(timeout = 10000)
 
@@ -2397,9 +2498,11 @@ test_that("each section and background keeps its own alignment", {
   pick_sample <- function(name) {
     app$run_js(paste0(
       "(function () { var s = document.getElementById('cv-pick-spatial');\n",
-      "  s.value = '",
+      "  if (s.selectize) s.selectize.setValue(['",
       name,
-      "'; s.dispatchEvent(new Event('change')); })();"
+      "']); else {s.value = '",
+      name,
+      "'; s.dispatchEvent(new Event('change'));} })();"
     ))
     app$wait_for_idle(timeout = 8000)
   }
@@ -2740,7 +2843,8 @@ test_that("the summary line follows the spatial section", {
 
   app$run_js(paste0(
     "(function () { var s = document.getElementById('cv-pick-spatial');\n",
-    "  s.value = 'B'; s.dispatchEvent(new Event('change')); })();"
+    "  if (s.selectize) s.selectize.setValue(['B']); else {",
+    "s.value = 'B'; s.dispatchEvent(new Event('change'));} })();"
   ))
   app$wait_for_idle(timeout = 10000)
   meta <- app$get_js("document.getElementById('cv-meta').textContent")
