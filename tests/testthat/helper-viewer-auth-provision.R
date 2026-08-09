@@ -64,16 +64,10 @@ viewer_auth_raw_contains <- function(haystack, text) {
   if (!length(needle) || length(needle) > length(haystack)) {
     return(FALSE)
   }
-  any(vapply(
-    seq_len(length(haystack) - length(needle) + 1L),
-    function(start) {
-      identical(haystack[start:(start + length(needle) - 1L)], needle)
-    },
-    logical(1)
-  ))
+  length(grepRaw(needle, haystack, fixed = TRUE)) > 0L
 }
 
-viewer_auth_file_contains <- function(path, text) {
+viewer_auth_file_contains <- function(path, text, chunk_size = 1024L * 1024L) {
   if (dir.exists(path)) {
     return(FALSE)
   }
@@ -81,7 +75,25 @@ viewer_auth_file_contains <- function(path, text) {
   if (is.na(size) || size < 0) {
     return(TRUE)
   }
-  viewer_auth_raw_contains(readBin(path, "raw", n = size), text)
+  needle <- charToRaw(enc2utf8(text))
+  if (!length(needle)) {
+    return(FALSE)
+  }
+  connection <- file(path, "rb")
+  on.exit(close(connection), add = TRUE)
+  overlap <- raw()
+  repeat {
+    chunk <- readBin(connection, "raw", n = chunk_size)
+    if (!length(chunk)) {
+      return(FALSE)
+    }
+    candidate <- c(overlap, chunk)
+    if (length(grepRaw(needle, candidate, fixed = TRUE))) {
+      return(TRUE)
+    }
+    keep <- min(length(needle) - 1L, length(candidate))
+    overlap <- if (keep) tail(candidate, keep) else raw()
+  }
 }
 
 viewer_auth_provision_test_state <- function(

@@ -32,6 +32,13 @@ test_that("provider R channels are redacted and all sinks are restored", {
   expect_identical(sink.number(type = "message"), message_before)
 })
 
+test_that("sensitive artifact scanning is bounded and detects chunk boundaries", {
+  path <- withr::local_tempfile(fileext = ".bin")
+  writeBin(charToRaw("prefix-SECRET-suffix"), path)
+  expect_true(viewer_auth_file_contains(path, "SECRET", chunk_size = 8L))
+  expect_false(viewer_auth_file_contains(path, "missing", chunk_size = 8L))
+})
+
 test_that("public provisioning returns a strict secret-free result", {
   fixture <- viewer_auth_provision_public_fixture()
   fixture$ops$setenv <- function(name, value) {
