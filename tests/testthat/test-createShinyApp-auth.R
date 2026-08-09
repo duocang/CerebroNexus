@@ -640,6 +640,9 @@ test_that("authentication deployment documentation is runnable and credited", {
   required <- c(
     "Roman Hillje",
     "Xuesong Wang",
+    "# One-minute setup",
+    "# What goes where",
+    "# Troubleshooting",
     "shinymanager::create_db",
     "createShinyApp(",
     "readRenviron(",
@@ -649,6 +652,15 @@ test_that("authentication deployment documentation is runnable and credited", {
     "Shiny Server",
     "systemd",
     "Docker Compose",
+    "Docker Engine with Docker Compose",
+    "compose.yaml",
+    "remotes::install_github",
+    "docker compose up --build",
+    "http://localhost:3838",
+    "docker compose logs -f cerebro",
+    "docker compose down",
+    "systemctl status shiny-server",
+    "journalctl -u shiny-server -f",
     "another machine"
   )
   for (term in required) {
@@ -660,6 +672,71 @@ test_that("authentication deployment documentation is runnable and credited", {
     vignette,
     fixed = TRUE
   )))
+  expect_false(any(grepl(
+    "provisionViewerAuthentication",
+    vignette,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    'names(auth) must be exactly "credentials", "passphrase_env", and optionally "timeout_minutes"',
+    vignette,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl("builder", vignette, ignore.case = TRUE)))
+  for (label in c(
+    "**Run this as:**",
+    "**Run it on:**",
+    "**What happens:**",
+    "**Verify:**"
+  )) {
+    expect_true(
+      sum(grepl(label, vignette, fixed = TRUE)) >= 5L,
+      info = label
+    )
+  }
+  expect_true(any(grepl("toc: true", vignette, fixed = TRUE)))
+  expect_true(any(grepl("number_sections: true", vignette, fixed = TRUE)))
+  expect_true(any(grepl("max-width: none", vignette, fixed = TRUE)))
+  expect_true(any(grepl("overflow-x: auto", vignette, fixed = TRUE)))
+  diagrams <- c(
+    "img/auth-lite-validation.svg",
+    "img/auth-deployment-boundary.svg"
+  )
+  for (diagram in diagrams) {
+    expect_true(any(grepl(diagram, vignette, fixed = TRUE)), info = diagram)
+    expect_true(
+      file.exists(auth_test_package_file(file.path(
+        "vignettes",
+        diagram
+      ))),
+      info = diagram
+    )
+  }
+  expect_false(any(grepl(".png", vignette, fixed = TRUE)))
+
+  script_starts <- grep(
+    "^```(\\{r eval=FALSE\\}|bash|ini|dockerfile|yaml)$",
+    vignette
+  )
+  expect_gt(length(script_starts), 8L)
+  for (line in script_starts) {
+    block_type <- vignette[[line]]
+    expected_prefix <- if (identical(block_type, "```{r eval=FALSE}")) {
+      c("# R console —", "# R startup file —", "# Builder worker R code —")
+    } else if (identical(block_type, "```bash")) {
+      "# Terminal —"
+    } else if (identical(block_type, "```dockerfile")) {
+      "# Dockerfile —"
+    } else if (identical(block_type, "```yaml")) {
+      "# compose.yaml —"
+    } else {
+      "# systemd override —"
+    }
+    expect_true(
+      any(startsWith(vignette[[line + 1L]], expected_prefix)),
+      info = paste(block_type, paste(expected_prefix, collapse = " | "))
+    )
+  }
 
   description <- read.dcf(auth_test_package_file("DESCRIPTION"))
   expect_identical(description[[1L, "Version"]], "4.1")
