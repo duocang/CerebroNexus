@@ -56,6 +56,39 @@ builder_app_capability <- function(
   )
 }
 
+builder_auth_capability <- function(
+  .available = function(package) requireNamespace(package, quietly = TRUE),
+  .version = function(package) utils::packageVersion(package)
+) {
+  manager_available <- isTRUE(.available("shinymanager"))
+  manager_version <- if (manager_available) {
+    try(.version("shinymanager"), silent = TRUE)
+  } else {
+    NULL
+  }
+  manager_supported <- manager_available &&
+    !inherits(manager_version, "try-error") &&
+    isTRUE(manager_version >= base::package_version("1.1.0"))
+  missing <- c(
+    character(),
+    if (!manager_supported) "shinymanager (>= 1.1.0)",
+    if (!isTRUE(.available("openssl"))) "openssl"
+  )
+  list(
+    available = !length(missing),
+    missing = missing,
+    reason = if (length(missing)) {
+      paste0(
+        "Login App creation requires: ",
+        paste(missing, collapse = ", "),
+        "."
+      )
+    } else {
+      NULL
+    }
+  )
+}
+
 builder_app_control <- function(capability, current_value = NULL) {
   available <- is.list(capability) &&
     isTRUE(capability$available) &&

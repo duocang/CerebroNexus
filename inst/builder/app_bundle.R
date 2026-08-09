@@ -42,6 +42,7 @@ if (!length(.builder_app_bundle_source_matches)) {
 .builder_app_bundle_source_dir <-
   .builder_app_bundle_source_matches[[1L]]
 for (.builder_app_bundle_source_name in c(
+  "auth.R",
   "contract.R",
   "backend.R",
   "request.R",

@@ -77,6 +77,7 @@ Suggests:
   jpeg,
   knitr,
   monocle,
+  openssl,
   png,
   processx,
   ps,

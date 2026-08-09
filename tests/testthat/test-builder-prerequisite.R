@@ -106,6 +106,52 @@ test_that("app capability explains the safe alternatives", {
   expect_false(builder_app_capability(1)$available)
 })
 
+test_that("login capability identifies only missing package requirements", {
+  available <- function(package) package %in% c("shinymanager", "openssl")
+  supported <- function(package) base::package_version("1.1.0")
+
+  capability <- builder_auth_capability(available, supported)
+  expect_true(capability$available)
+  expect_identical(capability$missing, character())
+  expect_null(capability$reason)
+
+  missing_manager <- builder_auth_capability(
+    function(package) identical(package, "openssl"),
+    supported
+  )
+  expect_false(missing_manager$available)
+  expect_identical(missing_manager$missing, "shinymanager (>= 1.1.0)")
+
+  old_manager <- builder_auth_capability(
+    available,
+    function(package) base::package_version("1.0.9")
+  )
+  expect_false(old_manager$available)
+  expect_identical(old_manager$missing, "shinymanager (>= 1.1.0)")
+
+  unreadable_manager <- builder_auth_capability(
+    available,
+    function(package) stop("internal package read failure")
+  )
+  expect_false(unreadable_manager$available)
+  expect_match(
+    unreadable_manager$reason,
+    "shinymanager (>= 1.1.0)",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "internal package read failure",
+    unreadable_manager$reason
+  ))
+
+  missing_openssl <- builder_auth_capability(
+    function(package) identical(package, "shinymanager"),
+    supported
+  )
+  expect_false(missing_openssl$available)
+  expect_identical(missing_openssl$missing, "openssl")
+})
+
 test_that("CRB-only plans remain available by default", {
   local({
     builder_repo_source("preview.R")
