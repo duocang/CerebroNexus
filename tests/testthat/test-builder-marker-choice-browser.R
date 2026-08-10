@@ -135,4 +135,12 @@ test_that("Marker import confirms an inferred source before enabling Save", {
     ),
     timeout = 10000
   )
+  app$click("enhance-marker_import_save")
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('builder-marker-dialog-backdrop').hidden && ",
+      "document.querySelector('.marker-genes-action')?.getAttribute('aria-pressed') === 'true'"
+    ),
+    timeout = 10000
+  )
 })

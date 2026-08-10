@@ -277,7 +277,8 @@ output[["enhance-analysis_modules"]] <- renderUI({
       entry$profile,
       list(
         organism = contract$organism,
-        analyses = entry$settings$analyses %||% character()
+        analyses = entry$settings$analyses %||% character(),
+        marker_imports = entry$settings$marker_imports %||% list()
       )
     )
   )

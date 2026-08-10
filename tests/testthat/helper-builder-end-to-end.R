@@ -9,6 +9,7 @@ builder_e2e_source_runtime <- function(local = parent.frame()) {
     "preview.R",
     "extras.R",
     "analysis.R",
+    "marker_import.R",
     "app_bundle.R",
     "build.R",
     "prerequisite.R",

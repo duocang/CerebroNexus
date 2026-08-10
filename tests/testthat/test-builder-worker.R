@@ -80,6 +80,30 @@ test_that("the isolated worker API is available", {
   expect_true(builder_worker_stop_api_available)
 })
 
+test_that("the real worker loads Marker import support before Build", {
+  worker <- readLines(builder_worker_path, warn = FALSE)
+  marker_line <- grep(
+    'source(file.path(dir, "marker_import.R"))',
+    worker,
+    fixed = TRUE
+  )
+  build_line <- grep('source(file.path(dir, "build.R"))', worker, fixed = TRUE)
+  expect_length(marker_line, 1L)
+  expect_length(build_line, 1L)
+  expect_lt(marker_line, build_line)
+
+  expect_true(callr::r(
+    function(marker_path) {
+      `%||%` <- function(left, right) if (is.null(left)) right else left
+      source(marker_path, local = globalenv())
+      exists("builder_attach_marker_imports", mode = "function")
+    },
+    args = list(
+      marker_path = builder_profile_inst_path("builder", "marker_import.R")
+    )
+  ))
+})
+
 test_that("authentication accounts are redacted from every protocol owner", {
   raw_contains <- function(value, text) {
     bytes <- serialize(value, NULL)

@@ -11,6 +11,7 @@ builder_plan_contract_source_runtime <- function(local = parent.frame()) {
   targets <- if (identical(helper, local)) list(local) else list(helper, local)
   for (target in targets) {
     builder_profile_source_runtime(target)
+    builder_repo_source("marker_import.R", local = target)
     builder_repo_source("prerequisite.R", local = target)
     builder_repo_source("recommend.R", local = target)
     builder_repo_source("state.R", local = target)

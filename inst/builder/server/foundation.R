@@ -98,7 +98,8 @@ auth_validation <- reactiveVal(list(ok = TRUE, error = NULL))
 enhance_contract <- reactiveVal(list(
   id = NULL,
   organism = NULL,
-  analysis_dependencies = character()
+  analysis_dependencies = character(),
+  marker_import_ids = character()
 ))
 review_page_contract <- reactiveVal(list(
   dataset = NULL,
@@ -152,7 +153,9 @@ observe({
     analysis_dependencies = intersect(
       unname(entry$settings$analyses %||% character()),
       "marker_genes"
-    )
+    ),
+    marker_import_ids = names(entry$settings$marker_imports %||% list()) %||%
+      character()
   )
   if (!identical(next_contract, isolate(enhance_contract()))) {
     enhance_contract(next_contract)

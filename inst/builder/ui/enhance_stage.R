@@ -151,7 +151,10 @@ builder_enhance_modules <- function(profile, settings) {
       relevant = applicability$relevant,
       blocked = applicability$blocked,
       blocked_reason = applicability$blocked_reason,
-      selected = step$id %in% settings$analyses,
+      selected = step$id %in%
+        settings$analyses ||
+        (identical(step$id, "marker_genes") &&
+          length(settings$marker_imports %||% list()) > 0L),
       enabled_pages = enabled_pages,
       replacement_policy = paste0(
         "A newly computed ",

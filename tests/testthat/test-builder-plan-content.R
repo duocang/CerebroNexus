@@ -832,6 +832,53 @@ test_that("final metadata policy owns review and frozen output", {
   })
 })
 
+test_that("ready Marker imports enter BuildPlan without upload metadata", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    group <- (entry$settings$included_groups %||% entry$settings$groups)[[1L]]
+    level <- entry$levels[[group]][[1L]]
+    source <- builder_marker_import_map_single(
+      builder_marker_import_source(
+        paste0(level, ".csv"),
+        NULL,
+        data.frame(gene = "marker-a", score = 5)
+      ),
+      group,
+      level,
+      entry$levels[[group]],
+      confirmed = TRUE
+    )
+    source$id <- "source-001"
+    source$datapath <- "/private/upload/marker.csv"
+    draft <- builder_marker_import_new_draft(
+      "marker-import-1",
+      "Scanpy Wilcoxon",
+      group,
+      list(source),
+      entry$levels[[group]]
+    )
+    draft$sources[[1L]] <- source
+    draft <- builder_marker_import_refresh_draft(draft)
+    draft$ready <- TRUE
+    entry$settings$marker_imports <- list(
+      `marker-import-1` = draft
+    )
+
+    plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
+
+    expect_null(plan$error)
+    imports <- plan$items[[1L]]$marker_imports
+    expect_length(imports, 1L)
+    expect_identical(imports[[1L]]$method, "Scanpy Wilcoxon")
+    expect_null(imports[[1L]]$sources[[1L]]$raw_table)
+    expect_null(imports[[1L]]$sources[[1L]]$datapath)
+  })
+})
+
 test_that("final metadata policies must prove their own consistency", {
   local({
     builder_repo_source("preview.R")

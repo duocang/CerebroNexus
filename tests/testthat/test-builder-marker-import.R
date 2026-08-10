@@ -242,3 +242,91 @@ test_that("draft preparation guesses mappings but requires row confirmation", {
   expect_true(draft$validation$ready)
   expect_identical(draft$validation$coverage$missing, "NK")
 })
+
+test_that("frozen imports keep only validated safe source fields", {
+  source <- builder_marker_import_map_single(
+    builder_marker_import_source(
+      "T.csv",
+      NULL,
+      data.frame(gene = c("CD3D", "IL7R"), score = c(4, 3))
+    ),
+    "cluster",
+    "T",
+    c("T", "B"),
+    confirmed = TRUE
+  )
+  source$id <- "source-001"
+  source$datapath <- "/tmp/private-upload-path.csv"
+  record <- list(
+    id = "marker-import-1",
+    method = "Scanpy Wilcoxon",
+    group = "cluster",
+    known_levels = c("T", "B"),
+    existing_methods = character(),
+    sources = list(source),
+    validation = list(
+      ready = TRUE,
+      errors = character(),
+      coverage = list(covered = "T", missing = "B"),
+      warnings = "No imported rows for: B"
+    ),
+    ready = TRUE
+  )
+
+  frozen <- builder_freeze_marker_imports(list(record))
+
+  expect_length(frozen, 1L)
+  expect_named(
+    frozen[[1L]],
+    c("id", "method", "group", "sources", "coverage", "warnings", "ready")
+  )
+  expect_null(frozen[[1L]]$sources[[1L]]$raw_table)
+  expect_null(frozen[[1L]]$sources[[1L]]$datapath)
+  expect_true(is.data.frame(frozen[[1L]]$sources[[1L]]$table))
+  expect_false(grepl(
+    "private-upload-path",
+    paste(capture.output(str(frozen)), collapse = ""),
+    fixed = TRUE
+  ))
+})
+
+test_that("attaching imports preserves existing methods and rejects collisions", {
+  skip_if_not_installed("SeuratObject")
+  object <- SeuratObject::pbmc_small
+  object@misc$marker_genes <- list(cerebro_seurat = list())
+  source <- builder_marker_import_map_single(
+    builder_marker_import_source(
+      "T.csv",
+      NULL,
+      data.frame(gene = c("CD3D", "IL7R"), score = c(4, 3))
+    ),
+    "cluster",
+    "T",
+    c("T", "B"),
+    confirmed = TRUE
+  )
+  record <- list(
+    id = "marker-import-1",
+    method = "Scanpy Wilcoxon",
+    group = "cluster",
+    sources = list(source),
+    coverage = list(covered = "T", missing = "B"),
+    warnings = "No imported rows for: B",
+    ready = TRUE
+  )
+
+  got <- builder_attach_marker_imports(object, list(record))
+
+  expect_identical(
+    names(got@misc$marker_genes),
+    c("cerebro_seurat", "Scanpy Wilcoxon")
+  )
+  expect_identical(
+    got@misc$marker_genes[["Scanpy Wilcoxon"]][["cluster"]]$cluster,
+    c("T", "T")
+  )
+  expect_error(
+    builder_attach_marker_imports(got, list(record)),
+    "already exists"
+  )
+})

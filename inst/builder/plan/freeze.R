@@ -576,6 +576,9 @@ builder_freeze_plan <- function(
           source_snapshot_identity$closure_bytes %||% 0
         ),
         tables = settings$tables %||% list(),
+        marker_imports = builder_freeze_marker_imports(
+          settings$marker_imports %||% list()
+        ),
         images = alignments$spatial,
         trekker_alignment = alignments$trekker,
         colors = builder_resolve_colors(settings, entry$levels %||% list()),

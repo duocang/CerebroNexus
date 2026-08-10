@@ -944,8 +944,12 @@ builder_worker_start <- function(
         source(file.path(dir, "stats.R"))
         source(file.path(dir, "extras.R"))
         source(file.path(dir, "analysis.R"))
+        source(file.path(dir, "marker_import.R"))
         source(file.path(dir, "app_bundle.R"))
         source(file.path(dir, "build.R"))
+        if (!exists("builder_attach_marker_imports", mode = "function")) {
+          stop("Builder worker could not load Marker import support.")
+        }
         source(file.path(dir, "prerequisite.R"))
         source(file.path(dir, "state.R"))
         source(file.path(dir, "plan.R"))

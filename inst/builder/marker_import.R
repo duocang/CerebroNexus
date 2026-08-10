@@ -435,3 +435,99 @@ builder_marker_import_confirm_source <- function(
   draft$sources[[index]] <- mapped
   builder_marker_import_refresh_draft(draft)
 }
+
+builder_marker_import_safe_source <- function(source) {
+  if (!builder_marker_import_source_ready(source)) {
+    stop("Only resolved Marker import sources can be frozen.", call. = FALSE)
+  }
+  list(
+    id = as.character(source$id),
+    source_name = as.character(source$source_name),
+    file_name = basename(as.character(source$file_name)),
+    sheet = if (is.null(source$sheet)) NULL else as.character(source$sheet),
+    rows = as.integer(source$rows),
+    columns = as.character(source$columns),
+    mapping = as.character(source$mapping),
+    cluster_column = if (is.null(source$cluster_column)) {
+      NULL
+    } else {
+      as.character(source$cluster_column)
+    },
+    cluster = if (is.null(source$cluster)) {
+      NULL
+    } else {
+      as.character(source$cluster)
+    },
+    levels = as.character(source$levels),
+    table = as.data.frame(source$table, stringsAsFactors = FALSE)
+  )
+}
+
+builder_freeze_marker_imports <- function(imports) {
+  imports <- imports %||% list()
+  if (!is.list(imports)) {
+    stop("Marker imports must be a list.", call. = FALSE)
+  }
+  frozen <- lapply(imports, function(record) {
+    validation <- record$validation %||% list(ready = record$ready)
+    if (!isTRUE(validation$ready) || !length(record$sources %||% list())) {
+      stop("Only ready Marker import methods can be frozen.", call. = FALSE)
+    }
+    list(
+      id = as.character(record$id),
+      method = trimws(as.character(record$method)),
+      group = as.character(record$group),
+      sources = lapply(record$sources, builder_marker_import_safe_source),
+      coverage = validation$coverage %||% record$coverage %||% list(),
+      warnings = as.character(
+        validation$warnings %||% record$warnings %||% character()
+      ),
+      ready = TRUE
+    )
+  })
+  names(frozen) <- names(imports)
+  frozen
+}
+
+builder_attach_marker_imports <- function(object, imports) {
+  imports <- imports %||% list()
+  if (!length(imports)) {
+    return(object)
+  }
+  if (!methods::is(object, "Seurat")) {
+    stop("Marker imports require a Seurat object.", call. = FALSE)
+  }
+  existing <- object@misc$marker_genes %||% list()
+  for (record in imports) {
+    method <- trimws(as.character(record$method %||% ""))
+    group <- as.character(record$group %||% "")
+    if (!nzchar(method) || !nzchar(group) || !isTRUE(record$ready)) {
+      stop("A frozen Marker import method is invalid.", call. = FALSE)
+    }
+    if (method %in% names(existing)) {
+      stop("Marker gene method already exists: ", method, call. = FALSE)
+    }
+    tables <- lapply(record$sources %||% list(), function(source) source$table)
+    if (!length(tables) || any(!vapply(tables, is.data.frame, logical(1)))) {
+      stop("Marker gene method has no ready tables: ", method, call. = FALSE)
+    }
+    if (
+      any(
+        !vapply(
+          tables,
+          function(table) {
+            identical(names(table)[[1L]], group)
+          },
+          logical(1)
+        )
+      )
+    ) {
+      stop("Marker gene grouping column is invalid: ", method, call. = FALSE)
+    }
+    merged <- do.call(rbind, tables)
+    rownames(merged) <- NULL
+    existing[[method]] <- stats::setNames(list(merged), group)
+  }
+  object@misc$marker_genes <- existing
+  object
+}

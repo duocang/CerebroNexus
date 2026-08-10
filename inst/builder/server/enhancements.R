@@ -219,6 +219,41 @@ observeEvent(input[["enhance-marker_source_confirm"]], {
   replace_marker_import_draft(id, got)
 })
 
+observeEvent(input[["enhance-marker_import_save"]], {
+  id <- current()
+  req(id)
+  entry <- entry_of(id)
+  draft <- marker_import_draft_of(id)
+  req(entry, draft)
+  validation <- builder_marker_import_validate(
+    draft$method,
+    draft$group,
+    draft$sources,
+    draft$known_levels,
+    builder_marker_existing_methods(entry)
+  )
+  if (!isTRUE(validation$ready)) {
+    showNotification(
+      "Resolve every Marker import source before saving.",
+      type = "error"
+    )
+    return()
+  }
+  draft$validation <- validation
+  draft$ready <- TRUE
+  record <- builder_freeze_marker_imports(list(draft))[[1L]]
+  imports <- entry$settings$marker_imports %||% list()
+  imports[[record$id]] <- record
+  entry$settings$marker_imports <- imports
+  entry$settings$analyses <- setdiff(
+    entry$settings$analyses %||% character(),
+    "marker_genes"
+  )
+  replace_entry(entry)
+  replace_marker_import_draft(id, NULL)
+  builder_close_marker_dialog()
+})
+
 ## -- supplementary tables -------------------------------------------------
 observeEvent(input[["enhance-table_files"]], {
   id <- current()
