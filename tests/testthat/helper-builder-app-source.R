@@ -1,5 +1,6 @@
 builder_app_source_files <- c(
   "app.R",
+  "workflow.R",
   file.path("server", "foundation.R"),
   file.path("server", "imports.R"),
   file.path("server", "datasets.R"),
