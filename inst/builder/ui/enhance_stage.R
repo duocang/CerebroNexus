@@ -72,10 +72,10 @@ builder_enhance_model <- function(id, profile, state, settings, modules) {
           )),
         cost = "Image decoding, encoding, and alignment.",
         network = "No network access.",
-        prerequisite = "Requires spatial sections and coordinates.",
+        prerequisite = "Requires spatial FOVs and coordinates.",
         sections = spatial_sections,
         selected = names(settings$images %||% list()) %||% character(),
-        replacement_policy = "One saved image per tissue section.",
+        replacement_policy = "One selected image per FOV.",
         skip_consequence = paste(
           "Sections without an image keep points-only spatial views."
         )
@@ -319,7 +319,7 @@ builder_spatial_alignment_ui <- function(id, model) {
           class = "spatial-alignment-sidebar builder-controls-grid",
           selectInput(
             ns("active_section"),
-            "Tissue section",
+            "Spatial capture (FOV)",
             choices = choices,
             selected = sections[[1L]]
           ),

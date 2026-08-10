@@ -491,6 +491,19 @@ test_that("Viewer content cards preserve disclosure state across Shiny redraws",
   expect_match(js, "sibling.open = false", fixed = TRUE)
 })
 
+test_that("Spatial alignment distinguishes FOVs from section-owned images", {
+  enhance <- builder_asset_text("ui", "enhance_stage.R")
+
+  expect_match(enhance, "Requires spatial FOVs and coordinates.", fixed = TRUE)
+  expect_match(enhance, "One selected image per FOV.", fixed = TRUE)
+  expect_match(enhance, '"Spatial capture (FOV)"', fixed = TRUE)
+  expect_false(grepl(
+    "One saved image per tissue section.",
+    enhance,
+    fixed = TRUE
+  ))
+})
+
 test_that("Review layout and staged workflow contracts stay user-facing", {
   css <- builder_stylesheet_text()
   app <- builder_app_source_text()
