@@ -430,9 +430,14 @@
   }
 
   function updateDialogLock() {
+    var hasVisibleModal = Array.from(
+      document.querySelectorAll('[aria-modal="true"]')
+    ).some(function (dialog) {
+      return !dialog.closest("[hidden]");
+    });
     document.body.classList.toggle(
       "builder-dialog-open",
-      document.querySelector('[aria-modal="true"]:not([hidden])') !== null
+      hasVisibleModal
     );
   }
 

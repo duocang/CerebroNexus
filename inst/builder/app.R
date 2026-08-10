@@ -12,6 +12,10 @@
 
 library(shiny)
 
+## Serialized Seurat objects can be substantially larger than Shiny's default
+## 5 MiB upload limit. Accept up to 10 GiB in the local Builder app.
+options(shiny.maxRequestSize = 10 * 1024^3)
+
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
 source(

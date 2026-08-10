@@ -288,14 +288,12 @@ test_that("builder interaction reflows and preserves accessible state", {
 })
 
 test_that("builder explains a mocked old privacy contract exactly", {
-  old_contract_app <- function() {
-    builder_browser_old_contract_app(
-      file.path(builder_browser_dir, "app.R"),
-      .local_envir = parent.frame()
-    )
-  }
+  old_contract_app <- builder_browser_old_contract_app(
+    builder_browser_dir,
+    .local_envir = environment()
+  )
   app <- AppDriver$new(
-    old_contract_app(),
+    old_contract_app,
     name = "builder_old_privacy_contract",
     width = 768,
     height = 800,

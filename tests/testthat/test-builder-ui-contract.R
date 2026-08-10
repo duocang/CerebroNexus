@@ -695,11 +695,13 @@ test_that("builder client owns accessible dialog and live-state semantics", {
   expect_match(js, "focusableElements", fixed = TRUE)
   expect_match(js, "restoreFocus", fixed = TRUE)
   expect_false(grepl("window.confirm", js, fixed = TRUE))
+  expect_match(js, 'Array.from(', fixed = TRUE)
   expect_match(
     js,
-    'querySelector(\'[aria-modal="true"]:not([hidden])\')',
+    'document.querySelectorAll(\'[aria-modal="true"]\')',
     fixed = TRUE
   )
+  expect_match(js, 'return !dialog.closest("[hidden]");', fixed = TRUE)
   expect_false(grepl("closeFileDialog", js, fixed = TRUE))
 
   expect_match(js, "builder-live-status", fixed = TRUE)

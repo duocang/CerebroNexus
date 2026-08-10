@@ -603,7 +603,8 @@ test_that("Builder auth resets after a successful enqueue", {
     "window.__builderBuildLabels.includes('Choose a folder…')",
     timeout = 10000
   )
-  app$wait_for_idle(timeout = 10000)
+  ## Enqueue starts the asynchronous build, so Shiny intentionally remains
+  ## busy until the worker finishes. Wait for the auth reset contract below.
   app$wait_for_js(
     paste0(
       "window.__authInputs.at(-1) === null && ",

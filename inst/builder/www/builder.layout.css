@@ -55,6 +55,21 @@
   max-width: 100%;
 }
 
+/* The dataset navigator has a different purpose from the workspace. On
+   desktop it gets its own scrollport; the workspace keeps the document
+   scrollport so long forms and result cards always remain reachable. */
+@media (min-width: 58.0625rem) {
+  .shell .rail,
+  .builder-shell .rail {
+    align-self: start;
+    position: sticky;
+    top: 4.2rem;
+    max-height: calc(100dvh - 5.2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 #workbench {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
