@@ -523,6 +523,11 @@
      (below), and resizeAll's crisp redraw lands after the transition settles. */
   transition: grid-template-columns .28s ease;
 }
+.coordviews-page .cv-panes.cv-focus-transitioning {
+  /* FLIP owns the motion while focus changes: do not make the grid and each
+     pane animate competing versions of the same reflow. */
+  transition: none;
+}
 .coordviews-page .cv-pane {
   position: relative;
   background: var(--cv-surface); border: 1px solid var(--cv-border);
@@ -530,6 +535,12 @@
   display: flex; flex-direction: column;
   transition: opacity .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
+.coordviews-page .cv-panes.cv-focus-transitioning .cv-pane {
+  will-change: transform, opacity;
+  transition: transform .42s cubic-bezier(.22, .61, .36, 1),
+    opacity .28s ease, border-color .22s ease, box-shadow .22s ease;
+}
+.coordviews-page .cv-panes.cv-focus-transitioning canvas { transition: none; }
 .coordviews-page .cv-pane.cv-focus-primary {
   border-color: var(--cv-amber);
   box-shadow: 0 0 0 2px var(--cv-amber50), var(--shadow-2, 0 4px 12px rgba(0,0,0,.10));
@@ -550,6 +561,30 @@
 .coordviews-page .cv-pane-head .cv-ptitle {
   font-size: 13px; font-weight: 650; cursor: pointer;
 }
+.coordviews-page .cv-role-badge {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
+  border: 1px solid var(--cv-border); border-radius: 999px;
+  background: var(--cv-surface2); color: var(--cv-text3);
+  font-size: 9.5px; font-weight: 750; letter-spacing: .055em;
+  line-height: 1; text-transform: uppercase;
+}
+.coordviews-page .cv-role-badge.is-focus {
+  border-color: var(--cv-amber200); background: var(--cv-amber50);
+  color: var(--cv-amber700);
+}
+.coordviews-page .cv-role-badge.is-context {
+  border-color: #d8e1ea; background: #f6f8fa; color: #687585;
+}
+.coordviews-page .cv-moran-badge {
+  height: 22px; padding: 0 8px; cursor: pointer;
+  border: 1px solid #cfe1f3; border-radius: 999px;
+  background: #f4f9fe; color: #35688f;
+  font: 650 10.5px/1 var(--cv-font, inherit);
+  font-variant-numeric: tabular-nums;
+}
+.coordviews-page .cv-moran-badge:hover {
+  border-color: #9ec5e7; background: #eaf4fd; color: #245779;
+}
 /* per-panel hover toolbar (plotly-style), top-right of each panel */
 .coordviews-page .cv-panebar {
   margin-left: auto; display: flex; gap: 4px;
@@ -567,7 +602,7 @@
    longer share the header row with the title + space-switch without crowding, so
    it floats as a VERTICAL stack in the pane's top-right corner instead. */
 .coordviews-page .cv-pane.cv-narrow .cv-panebar {
-  position: absolute; top: 10px; right: 10px; z-index: 4;
+  position: absolute; top: 44px; right: 10px; z-index: 4;
   margin-left: 0; flex-direction: column;
   background: var(--cv-surface); border: 1px solid var(--cv-border);
   border-radius: 6px; padding: 3px;
@@ -618,6 +653,20 @@
 .coordviews-page .cv-tbtn.is-on {
   background: var(--cv-amber50); border-color: var(--cv-amber200);
   color: var(--cv-amber700);
+}
+.coordviews-page .cv-focus-btn {
+  width: auto; min-width: 72px; height: 26px; padding: 0 9px; gap: 5px;
+  flex: none; font-size: 11.5px; font-weight: 650;
+}
+.coordviews-page .cv-focus-btn .svg-inline--fa { font-size: 10px; }
+.coordviews-page .cv-focus-btn::after { top: calc(100% + 6px); }
+.coordviews-page .cv-pane.cv-narrow .cv-focus-btn::after {
+  top: calc(100% + 6px); right: 0;
+  transform: translateY(-3px);
+}
+.coordviews-page .cv-pane.cv-narrow .cv-focus-btn:hover::after,
+.coordviews-page .cv-pane.cv-narrow .cv-focus-btn:focus-visible::after {
+  transform: none;
 }
 .coordviews-page .cv-pane-head select {
   margin-left: auto; padding: 4px 7px; border: 1px solid var(--c-border-2, #e0e0e0);
@@ -808,6 +857,15 @@
   background: var(--cv-surface2); border-radius: 6px; padding: 7px 9px;
 }
 .coordviews-page .cv-card-sub { font-size: 11.5px; color: var(--cv-text2); margin-top: 5px; }
+.coordviews-page .cv-evidence-thumb {
+  display: block; width: 100%; padding: 0; overflow: hidden; cursor: zoom-in;
+  border: 1px solid var(--cv-border); border-radius: 8px;
+  background: var(--cv-surface2);
+}
+.coordviews-page .cv-evidence-thumb img {
+  display: block; width: 100%; max-height: 180px; object-fit: contain;
+}
+.coordviews-page .cv-evidence-thumb:hover { border-color: var(--cv-amber200); }
 /* Placeholder rows shown while the full meta row is fetched from the server. */
 .coordviews-page .cv-card-skel { display: grid; gap: 6px; }
 .coordviews-page .cv-card-skel span {
@@ -1048,6 +1106,38 @@
   margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
 }
 
+/* The default workspace state needs an affordance of its own. This compact
+   guide occupies the same strip as the Active cohort bar: selection replaces
+   it, rather than stacking another block above the plots. */
+.coordviews-page .cv-workspace-guide {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
+  margin: 14px 0 8px; padding: 7px 10px;
+  border: 1px solid var(--cv-border); border-radius: 8px;
+  background: var(--cv-surface); color: var(--cv-text2); font-size: 12px;
+  max-height: 90px; overflow: hidden;
+  transition: max-height .2s ease, opacity .18s ease,
+    margin-top .2s ease, margin-bottom .2s ease,
+    padding-top .2s ease, padding-bottom .2s ease;
+}
+.coordviews-page .cv-workspace-guide.cv-collapse {
+  max-height: 0; opacity: 0;
+  margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
+}
+.coordviews-page .cv-workspace-kicker {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--cv-amber700); font-size: 10.5px; font-weight: 750;
+  letter-spacing: .045em; text-transform: uppercase; white-space: nowrap;
+}
+.coordviews-page .cv-workspace-guide-text { color: var(--cv-text2); }
+.coordviews-page .cv-workspace-overview {
+  margin-left: auto; padding: 4px 9px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--cv-amber200); border-radius: 6px;
+  background: var(--cv-amber50); color: var(--cv-amber700);
+  font-family: inherit; font-size: 11.5px; font-weight: 650;
+}
+.coordviews-page .cv-workspace-overview:hover { background: #fff1e6; }
+
 /* ---- readout (composition + clonotypes) --------------------------------- */
 .coordviews-page .cv-readout {
   display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 20px;
@@ -1102,6 +1192,27 @@
   font-size: 10px; color: var(--cv-text3); cursor: help;
 }
 .coordviews-page .cv-hint { font-size: 11px; color: var(--cv-text3); margin-top: 8px; }
+.coordviews-page .cv-field-summary { min-width: min(520px, 100%); }
+.coordviews-page .cv-field-desc {
+  margin: -2px 0 12px; color: var(--cv-text2); font-size: 11.5px; line-height: 1.45;
+}
+.coordviews-page .cv-field-table-title {
+  margin-bottom: 7px; color: var(--cv-text2); font-size: 11px; font-weight: 650;
+}
+.coordviews-page .cv-field-table-title span { margin-left: 6px; font-weight: 400; color: var(--cv-text3); }
+.coordviews-page .cv-field-table { display: grid; gap: 6px; }
+.coordviews-page .cv-field-row {
+  display: grid; grid-template-columns: minmax(76px, 130px) minmax(120px, 1fr) auto;
+  gap: 9px; align-items: center; font-size: 11px;
+}
+.coordviews-page .cv-field-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coordviews-page .cv-field-bars { display: grid; gap: 2px; }
+.coordviews-page .cv-field-track { height: 5px; border-radius: 999px; background: #edf0f2; overflow: hidden; }
+.coordviews-page .cv-field-track span { display: block; height: 100%; background: #aeb8c2; border-radius: inherit; }
+.coordviews-page .cv-field-track.is-selected span { background: var(--cv-amber); }
+.coordviews-page .cv-field-values { display: flex; gap: 8px; min-width: 70px; justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.coordviews-page .cv-field-values span { color: var(--cv-text3); }
+.coordviews-page .cv-field-values b { color: var(--cv-amber700); font-weight: 650; }
 
 /* Trekker detail modal (native <dialog>, opened by coordviews.js). Content
    classes (.tk-*) come from trekker.css via the "trekker-page" class on the
@@ -1121,6 +1232,48 @@
 /* Fixed 3-column stat grid (2 rows for 6 stats) instead of trekker.css's
    auto-fit, which ragged-wraps 4+2 at this modal's narrower width. */
 #cv-tk-modal .tk-grid { grid-template-columns: repeat(3, 1fr); }
+
+.cv-insight-modal {
+  position: relative; width: min(460px, 92vw); padding: 22px 24px;
+  border: 1px solid var(--cv-border, #ececec); border-radius: 12px;
+  color: var(--cv-text, #252527); background: var(--cv-surface, #fff);
+  box-shadow: var(--shadow-4, 0 18px 52px rgba(0, 0, 0, .22));
+}
+.cv-insight-modal::backdrop { background: rgba(0, 0, 0, .42); }
+.cv-insight-modal .cv-insight-x {
+  position: absolute; top: 10px; right: 12px; width: 28px; height: 28px;
+  border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+  color: var(--cv-text3, #777); font-size: 20px; line-height: 1;
+}
+.cv-insight-modal .cv-insight-x:hover { background: var(--cv-surface2, #f5f5f5); }
+.cv-insight-modal .cv-insight-kicker {
+  color: #35688f; font-size: 10.5px; font-weight: 750;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.cv-insight-modal h4 { margin: 5px 34px 10px 0; font-size: 17px; }
+.cv-insight-modal p { margin: 12px 0 0; color: var(--cv-text2, #666); line-height: 1.55; }
+.cv-moran-modal-value {
+  font-size: 30px; font-weight: 700; color: #245779;
+  font-variant-numeric: tabular-nums;
+}
+.cv-evidence-modal {
+  position: relative; width: min(860px, 94vw); max-height: 90vh;
+  padding: 20px; overflow: auto;
+  border: 1px solid var(--cv-border, #ececec); border-radius: 12px;
+  background: var(--cv-surface, #fff); box-shadow: var(--shadow-4);
+}
+.cv-evidence-modal::backdrop { background: rgba(0, 0, 0, .62); }
+.cv-evidence-modal .cv-insight-x {
+  position: absolute; top: 10px; right: 12px; width: 30px; height: 30px;
+  border: 0; border-radius: 6px; background: rgba(255,255,255,.9);
+  color: #555; cursor: pointer; font-size: 21px; line-height: 1;
+}
+.cv-evidence-modal-cell {
+  margin: 4px 38px 12px 0; color: var(--cv-text2, #666);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+.cv-evidence-modal img { display: block; max-width: 100%; margin: 0 auto; }
 
 /* Kept for old saved markup only. The adaptive focus model no longer folds
    linked context away. */

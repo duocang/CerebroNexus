@@ -198,6 +198,102 @@ test_that("multiple spatial sections become independent linked panels", {
 })
 
 
+test_that("a continuous colouring explains its spatial pattern on each card", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_spatial_moran")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(cv_bundle_js(
+    paste0(
+      "{ fields: { 'meta:signal': { label:'Signal', ",
+      "v:Array.from({length:n},function(_,i){return i < n/2 ? 0 : 255;}), ",
+      "min:0,max:1,scale:255 } },",
+      " spaces:[{id:'umap',label:'umap (expression)',x:blob(0),y:blob(0)},",
+      "{id:'spatial',label:'slide (spatial)',",
+      "x:Array.from({length:n},function(_,i){return i;}),",
+      "y:Array.from({length:n},function(_,i){return (i%5)*0.01;})}] }"
+    ),
+    n = 80
+  ))
+  app$wait_for_js(
+    "document.querySelector('.cv-pane:not(.cv-hidden) .cv-moran-badge') !== null",
+    timeout = 15000
+  )
+  app$run_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-color');",
+    "e.value='__field__meta:signal';",
+    "e.dispatchEvent(new Event('change',{bubbles:true}));})()"
+  ))
+  app$wait_for_js(
+    paste0(
+      "Array.from(document.querySelectorAll('.cv-pane:not(.cv-hidden)'))",
+      ".some(function(p){var t=p.querySelector('.cv-ptitle');",
+      "var b=p.querySelector('.cv-moran-badge');",
+      "return /slide/.test(t.textContent) && /Moran/.test(b.textContent);})"
+    ),
+    timeout = 10000
+  )
+  expect_true(app$get_js(paste0(
+    "(function(){var p=Array.from(document.querySelectorAll('.cv-pane'))",
+    ".find(function(x){return /slide/.test(x.querySelector('.cv-ptitle').textContent);});",
+    "var b=p.querySelector('.cv-moran-badge');",
+    "return Number.isFinite(Number(b.dataset.value)) && Number(b.dataset.value) > 0.5;})()"
+  )))
+  expect_match(
+    app$get_js(paste0(
+      "Array.from(document.querySelectorAll('.cv-pane')).find(function(x){",
+      "return /slide/.test(x.querySelector('.cv-ptitle').textContent);})",
+      ".querySelector('.cv-moran-badge').getAttribute('title')"
+    )),
+    "six nearest spatial neighbours",
+    fixed = TRUE
+  )
+
+  app$run_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-color');",
+    "e.value='cluster';e.dispatchEvent(new Event('change',{bubbles:true}));})()"
+  ))
+  app$wait_for_js(
+    paste0(
+      "Array.from(document.querySelectorAll('.cv-moran-badge'))",
+      ".every(function(b){return getComputedStyle(b).display==='none';})"
+    ),
+    timeout = 5000
+  )
+})
+
+
+test_that("a Trekker field explains itself in the contextual readout", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_trekker_field_summary")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(cv_bundle_js(paste0(
+    "{ fields:{purity:{label:'Spatial purity',source:'trekker',",
+    "desc:'Fraction of physical neighbours sharing the cell type.',",
+    "v:Array.from({length:n},function(_,i){return (i%3)*120;}),",
+    "min:0,max:1,scale:255,by_type:[",
+    "{type:'a',median:0.1},{type:'b',median:0.5},{type:'c',median:0.9}] }},",
+    "trekker:{evidence:null},",
+    "spaces:[{id:'umap',label:'umap',x:blob(0),y:blob(0)},",
+    "{id:'trekker',label:'Physical (Trekker)',x:blob(1),y:blob(1)}] }"
+  )))
+  app$wait_for_js("document.getElementById('cv-pick-color').options.length > 0")
+  app$run_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-color');",
+    "e.value='__field__purity';e.dispatchEvent(new Event('change',{bubbles:true}));})()"
+  ))
+  app$wait_for_js(
+    "document.querySelector('#cv-readout .cv-field-summary') !== null",
+    timeout = 5000
+  )
+  summary <- app$get_js("document.getElementById('cv-readout').textContent")
+  expect_match(summary, "Spatial purity")
+  expect_match(summary, "Fraction of physical neighbours")
+  expect_match(summary, "Median by cell type")
+})
+
+
 test_that("the tab renders a pushed bundle and offers every meta column", {
   local_app_support(inst_dir)
   app <- cv_app("cv_browser_render")
@@ -1919,18 +2015,126 @@ test_that("a panel can become the focus without losing linked context", {
     timeout = 15000
   )
   app$wait_for_idle(timeout = 10000)
+
+  ## On a narrow card the plotting tools must stay attached to the card's
+  ## right edge. Focus owns the title row; the vertical tool strip begins
+  ## beneath it instead of being pushed inward to make room.
+  app$wait_for_js(
+    "document.querySelector('.cv-pane.cv-narrow .cv-panebar') !== null",
+    timeout = 10000
+  )
+  expect_equal(
+    app$get_js(
+      "getComputedStyle(document.querySelector('.cv-pane.cv-narrow .cv-panebar')).right"
+    ),
+    "10px"
+  )
+  expect_equal(
+    app$get_js(
+      "getComputedStyle(document.querySelector('.cv-pane.cv-narrow .cv-panebar')).top"
+    ),
+    "44px"
+  )
+
+  ## The linked-workspace model must be visible before the user discovers a
+  ## hidden gesture. The persistent guide explains the two core actions, and
+  ## every card exposes Focus as a labelled control rather than a hover icon.
+  expect_true(app$get_js(
+    "getComputedStyle(document.getElementById('cv-workspace-guide')).display !== 'none'"
+  ))
+  expect_match(
+    app$get_js(
+      "document.getElementById('cv-workspace-guide-text').textContent"
+    ),
+    "Drag in any view"
+  )
+  expect_equal(
+    app$get_js(
+      "document.querySelector('.cv-focus-btn[data-panel=\"A\"] .cv-focus-label').textContent.trim()"
+    ),
+    "Focus"
+  )
+  expect_equal(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-role-a')).display"
+    ),
+    "none"
+  )
+
+  ## Focus has an explicit round trip before any cohort exists: the guide names
+  ## the focused lens, cards name their roles, and the global Overview action
+  ## returns to the equal workspace.
+  app$run_js(
+    "document.querySelector('.cv-focus-btn[data-panel=\"A\"]').click();"
+  )
+  expect_true(app$get_js(
+    "document.querySelector('.cv-panes').classList.contains('cv-focus-transitioning')"
+  ))
+  app$wait_for_idle(timeout = 10000)
+  expect_match(
+    app$get_js(
+      "document.getElementById('cv-workspace-guide-text').textContent"
+    ),
+    "Focused view: umap"
+  )
+  expect_equal(
+    app$get_js("document.getElementById('cv-role-a').textContent"),
+    "FOCUS"
+  )
+  expect_equal(
+    app$get_js("document.getElementById('cv-role-b').textContent"),
+    "CONTEXT"
+  )
+  expect_equal(
+    app$get_js(
+      "document.querySelector('.cv-focus-btn[data-panel=\"A\"] .cv-focus-label').textContent.trim()"
+    ),
+    "Exit focus"
+  )
+  expect_equal(
+    app$get_js(
+      "document.querySelector('.cv-focus-btn[data-panel=\"A\"]').getAttribute('aria-label')"
+    ),
+    "Exit focus and return to overview"
+  )
+  expect_true(app$get_js(
+    "getComputedStyle(document.getElementById('cv-workspace-overview')).display !== 'none'"
+  ))
+  app$wait_for_js(
+    "!document.querySelector('.cv-panes').classList.contains('cv-focus-transitioning')",
+    timeout = 10000
+  )
+  expect_true(app$get_js(
+    "Array.from(document.querySelectorAll('.cv-pane')).every(function (p) { return p.style.transform === ''; })"
+  ))
+  app$run_js("document.getElementById('cv-workspace-overview').click();")
+  app$wait_for_idle(timeout = 10000)
+  expect_equal(
+    app$get_js("document.querySelectorAll('.cv-focus-primary').length"),
+    0
+  )
+  expect_match(
+    app$get_js(
+      "document.getElementById('cv-workspace-guide-text').textContent"
+    ),
+    "Drag in any view"
+  )
+
   small <- app$get_js("document.getElementById('cv-cv-a').clientWidth")
 
-  ## Select something first, so the claim about keeping it can be tested.
+  ## Select something first, so the claim about keeping it can be tested. Keep
+  ## the brush well inside the plotting square: Focus changes the canvas size,
+  ## so this also proves the committed outline remains registered to the data
+  ## rather than to its old pixel coordinates.
   app$run_js(
     paste0(
       "(function () {\n",
       "  var cv = document.getElementById('cv-cv-a');\n",
       "  var r = cv.getBoundingClientRect();\n",
       "  cv.dispatchEvent(new MouseEvent('mousedown',\n",
-      "    { clientX: r.left + 4, clientY: r.top + 4, bubbles: true }));\n",
-      "  var pts = [[r.width - 4, 4], [r.width - 4, r.height - 4],\n",
-      "    [4, r.height - 4], [4, 4]];\n",
+      "    { clientX: r.left + r.width * .2, clientY: r.top + r.height * .2, bubbles: true }));\n",
+      "  var pts = [[r.width * .8, r.height * .2], [r.width * .8, r.height * .8],\n",
+      "    [r.width * .2, r.height * .8], [r.width * .2, r.height * .2]];\n",
       "  pts.forEach(function (q) {\n",
       "    cv.dispatchEvent(new MouseEvent('mousemove',\n",
       "      { clientX: r.left + q[0], clientY: r.top + q[1], bubbles: true }));\n",
@@ -1942,6 +2146,16 @@ test_that("a panel can become the focus without losing linked context", {
   app$wait_for_js(
     "document.getElementById('cv-seltext').textContent.indexOf('Selected') >= 0",
     timeout = 10000
+  )
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-workspace-guide')).display === 'none'",
+    timeout = 10000
+  )
+  expect_equal(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-workspace-guide')).display"
+    ),
+    "none"
   )
   before <- app$get_js("document.getElementById('cv-seltext').textContent")
   expect_equal(
@@ -1991,6 +2205,26 @@ test_that("a panel can become the focus without losing linked context", {
     ),
     app$get_js("document.getElementById('cv-cv-b').clientWidth")
   )
+  ## The outline is stored in the data coordinate system, so after A grows it
+  ## lands at its new projected position (not at the old 20%-of-canvas pixel).
+  ## Test a small neighbourhood around the first corner: the dashed blue stroke
+  ## is intentionally anti-aliased, hence a colour tolerance rather than an
+  ## exact one-pixel match.
+  expect_true(app$get_js(paste0(
+    "(function () {",
+    " var cv=document.getElementById('cv-cv-a'), w=cv.clientWidth;",
+    " var oldW=",
+    small,
+    ", oldX=oldW*.2, oldS=oldW-32;",
+    " var ux=(oldX-16)/oldS, want=16+ux*(w-32);",
+    " var c=cv.getContext('2d'), d=c.getImageData(0,0,w,w).data;",
+    " for(var y=Math.max(0,Math.floor(want)-7); y<=Math.min(w-1,Math.ceil(want)+7); y++)",
+    "  for(var x=Math.max(0,Math.floor(want)-7); x<=Math.min(w-1,Math.ceil(want)+7); x++){",
+    "   var i=(y*w+x)*4; if(d[i]<80 && d[i+1]>70 && d[i+2]>150) return true;",
+    "  }",
+    " return false;",
+    "})()"
+  )))
   ## The selection is untouched -- this is magnification, not a reset.
   expect_equal(
     app$get_js("document.getElementById('cv-seltext').textContent"),
@@ -2117,6 +2351,11 @@ test_that("the card reports what is known about a position", {
   sys.source(bundle_file, envir = benv)
   b <- benv$cv_build_bundle(readRDS(trekker_crb))
   skip_if_not(!is.null(b) && !is.null(b$trekker))
+  evidence <- Filter(Negate(is.null), unclass(b$trekker$evidence_img))
+  skip_if_not(length(evidence) > 0)
+  ## Whichever positioned cell the geometry probe reaches should exercise the
+  ## evidence UI; the bundle contract itself is tested separately above.
+  b$trekker$evidence_img <- I(rep(evidence[[1]], b$n))
 
   app <- cv_app("cv_browser_card_trekker")
   app$run_js(paste0(
@@ -2184,6 +2423,23 @@ test_that("the card reports what is known about a position", {
       )
     ),
     1
+  )
+  expect_equal(
+    app$get_js(
+      "document.querySelectorAll('#cv-card-body .cv-evidence-thumb img').length"
+    ),
+    1
+  )
+  app$run_js(
+    "document.querySelector('#cv-card-body .cv-evidence-thumb').click();"
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-evidence-modal').open",
+    timeout = 5000
+  )
+  expect_match(
+    app$get_js("document.querySelector('#cv-evidence-modal img').src"),
+    "data:image/"
   )
 
   app$stop()

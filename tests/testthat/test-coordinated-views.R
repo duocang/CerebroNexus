@@ -92,6 +92,28 @@ test_that("Linked views treats projections as a multi-panel selection", {
   expect_match(js, "plugins: ['remove_button']", fixed = TRUE)
 })
 
+test_that("Linked views keeps replacement controls contextual and user-facing", {
+  ui_file <- file.path(dirname(bundle_file), "UI.R")
+  js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
+  server_file <- file.path(dirname(bundle_file), "server.R")
+  skip_if_not(
+    file.exists(ui_file) && file.exists(js_file) && file.exists(server_file)
+  )
+
+  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+
+  expect_no_match(ui, "cv-trekker-morph", fixed = TRUE)
+  expect_no_match(js, "function setTrekkerMorph", fixed = TRUE)
+  expect_no_match(js, "function playTrekkerMorph", fixed = TRUE)
+  expect_no_match(server, "cv-img-copy", fixed = TRUE)
+  expect_no_match(js, "function copyImgPreset", fixed = TRUE)
+  expect_match(ui, "cv-moran-badge", fixed = TRUE)
+  expect_match(js, "function updateMoranBadges", fixed = TRUE)
+  expect_match(js, "function fieldSummaryHtml", fixed = TRUE)
+})
+
 test_that("the omnibus spatial bundle preserves every embedded background", {
   skip_if_not(have_bundle)
   skip_if_not(nzchar(omnibus_crb) && file.exists(omnibus_crb))
@@ -631,6 +653,15 @@ test_that("the trekker bundle carries what a placement is judged on", {
   ## there. `conf` remains the bare vector the dissolve slider indexes.
   expect_true("position_confidence" %in% names(b$fields))
   expect_false(is.null(b$trekker$conf))
+  purity <- b$fields$spatial_purity
+  expect_identical(purity$source, "trekker")
+  expect_true(nzchar(purity$desc))
+  expect_true(length(purity$by_type) > 0)
+  expect_true(all(vapply(
+    purity$by_type,
+    function(x) !is.null(x$type) && !is.null(x$median),
+    logical(1)
+  )))
 
   ## The two numbers the dedicated page prints beside confidence, which say
   ## whether that confidence is worth anything, now travel with it.
@@ -638,6 +669,13 @@ test_that("the trekker bundle carries what a placement is judged on", {
   expect_false(is.null(b$trekker$conf_sb))
   expect_equal(length(b$trekker$conf_noise), b$n)
   expect_equal(length(b$trekker$conf_sb), b$n)
+
+  ## Evidence is not just a ring: the detail card must be able to explain why a
+  ## nucleus was placed there without sending the user back to the old page.
+  expect_equal(length(b$trekker$evidence_img), b$n)
+  evidence <- Filter(Negate(is.null), unclass(b$trekker$evidence_img))
+  expect_true(length(evidence) > 0)
+  expect_true(all(startsWith(unlist(evidence), "data:image/")))
 
   ## No field is invented: everything the card lists as Trekker's own is a key
   ## the builder produced.

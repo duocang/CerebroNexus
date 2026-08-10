@@ -222,8 +222,44 @@ cv_space <- function(id, label, x, y) {
 ## than one global constant. Must match FIELD_PREFIX in www/coordviews.js.
 cv_field_mode <- "__field__"
 cv_field_scale <- 1000L
-cv_field <- function(label, v, min, max, scale = cv_field_scale) {
-  list(label = label, v = I(v), min = min, max = max, scale = scale)
+cv_field <- function(
+  label,
+  v,
+  min,
+  max,
+  scale = cv_field_scale,
+  source = NULL,
+  desc = NULL,
+  by_type = NULL
+) {
+  list(
+    label = label,
+    v = I(v),
+    min = min,
+    max = max,
+    scale = scale,
+    source = source,
+    desc = desc,
+    by_type = by_type
+  )
+}
+
+cv_trekker_by_type <- function(value) {
+  if (is.null(value) || !length(value)) {
+    return(NULL)
+  }
+  if (is.list(value) && all(vapply(value, is.list, logical(1)))) {
+    return(I(unname(value)))
+  }
+  labels <- names(value) %||% dimnames(value)[[1]]
+  if (is.null(labels) || length(labels) != length(value)) {
+    return(NULL)
+  }
+  I(Map(
+    function(type, median) list(type = type, median = as.numeric(median)),
+    as.character(labels),
+    as.numeric(value)
+  ))
 }
 cv_clone <- function(
   id,
@@ -636,7 +672,10 @@ cv_build_trekker <- function(crb, cells, md) {
       as.integer(f$v)[tk_idx],
       f$min %||% 0,
       f$max %||% 1,
-      scale = 255L
+      scale = 255L,
+      source = "trekker",
+      desc = f$desc %||% NULL,
+      by_type = cv_trekker_by_type(f$by_type %||% NULL)
     )
   }
   conf_v <- if (!is.null(tk$conf) && !is.null(tk$conf$prop_top)) {
@@ -661,6 +700,7 @@ cv_build_trekker <- function(crb, cells, md) {
     }
   }
   ev_flag <- NULL
+  ev_img <- NULL
   if (length(tk$evidence)) {
     ev_bc <- vapply(
       tk$evidence,
@@ -668,6 +708,19 @@ cv_build_trekker <- function(crb, cells, md) {
       character(1)
     )
     ev_flag <- I(as.integer(cells %in% ev_bc))
+    ## Keep the evidence aligned to the bundle's cell order. Most entries are
+    ## NULL (the vendor ships images for only a small subset), so this adds the
+    ## actual explanation to the detail card without duplicating barcodes or
+    ## forcing a server round-trip for every click.
+    ev_img <- vector("list", length(cells))
+    for (e in tk$evidence) {
+      at <- match(as.character(e$bc %||% ""), cells)
+      img <- e$img %||% NULL
+      if (!is.na(at) && !is.null(img) && nzchar(img)) {
+        ev_img[at] <- list(as.character(img))
+      }
+    }
+    ev_img <- I(ev_img)
   }
   bundle <- list(
     conf = conf_v,
@@ -675,6 +728,7 @@ cv_build_trekker <- function(crb, cells, md) {
     conf_sb = conf_extra$sb_total,
     conf_sb_umi = conf_extra$sb_umi_top,
     evidence = ev_flag,
+    evidence_img = ev_img,
     ## Dataset-level (not per-cell, no `tk_idx` re-indexing needed): the
     ## same coordinate-source / QC / Moran's I detail the Trekker page
     ## shows, surfaced here via a modal (see coordviews.js `cv-tk-info-btn`).

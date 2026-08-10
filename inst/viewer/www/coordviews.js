@@ -88,6 +88,7 @@ var focusPanel = null;
   var resizeObserver = null;    // fires when the tab becomes visible / resizes
   var resizeTimer = null;
   var focusResizeTimer = null;
+  var focusAnimating = false;
   // Each spatial instance owns `_imgEl`, `_imgReady`, `_imgState` and its image
   // identity. The alignment bar edits only activeSpatialId.
 
@@ -675,6 +676,34 @@ var focusPanel = null;
     }
   }
 
+  // A committed brush is part of the data conversation, not a decoration at a
+  // particular canvas pixel. Keep it in unit coordinates so a Focus reflow (or
+  // any other resize) sends the outline through the exact same projection as
+  // the cells it selected. `p.lasso` remains screen-space while the pointer is
+  // moving, because hit testing happens against the already-projected cells.
+  function lassoToUnit(p, lasso) {
+    if (!lasso || !p._S) return null;
+    var v = p.view, S = p._S, ox = p._sox, oy = p._soy;
+    return lasso.map(function (q) {
+      var zx = (q[0] - ox) / S;
+      var zy = (oy + S - q[1]) / S;
+      return v
+        ? [(zx - 0.5) * v.span + v.cx, (zy - 0.5) * v.span + v.cy]
+        : [zx, zy];
+    });
+  }
+  function lassoToScreen(p) {
+    var lasso = p.lassoData || p.lasso;
+    if (!lasso || !p._S) return lasso;
+    if (!p.lassoData) return lasso;
+    var v = p.view, S = p._S, ox = p._sox, oy = p._soy;
+    return lasso.map(function (q) {
+      var zx = v ? (q[0] - v.cx) / v.span + 0.5 : q[0];
+      var zy = v ? (q[1] - v.cy) / v.span + 0.5 : q[1];
+      return [ox + zx * S, oy + S - zy * S];
+    });
+  }
+
   // The rotation project() applies, as a function. Anything that has to land
   // in the same place as the cells — the group labels, the axis tripod — turns
   // through here. project() inlines the identical arithmetic on its per-cell
@@ -1178,11 +1207,12 @@ var focusPanel = null;
       }
     }
     // lasso: filled while dragging; a dashed outline once committed (kept so the
-    // selected region stays visible until the next selection / reproject).
-    if (p.lasso && p.lasso.length > 1) {
+    // selected region stays visible until an interaction deliberately replaces it).
+    var outline = lassoToScreen(p);
+    if (outline && outline.length > 1) {
       c.globalAlpha = 1; c.strokeStyle = '#2f6fd6'; c.lineWidth = 1.5;
-      c.beginPath(); c.moveTo(p.lasso[0][0], p.lasso[0][1]);
-      for (var q = 1; q < p.lasso.length; q++) c.lineTo(p.lasso[q][0], p.lasso[q][1]);
+      c.beginPath(); c.moveTo(outline[0][0], outline[0][1]);
+      for (var q = 1; q < outline.length; q++) c.lineTo(outline[q][0], outline[q][1]);
       c.closePath();
       if (p.drag) {
         c.fillStyle = 'rgba(47,111,214,.08)'; c.fill(); c.stroke();
@@ -1211,8 +1241,9 @@ var focusPanel = null;
     el.textContent = 'showing ' + fmt(n) + ' of ' + fmt(D.n) + ' cells';
   }
   function drawAll() { panels.forEach(draw); renderShownCount(); }
-  // Drop any committed lasso outlines (their screen coords go stale on reproject,
-  // and a new selection supersedes them). Returns true if anything was cleared.
+  // Drop any committed lasso outlines when an interaction deliberately changes
+  // what the region means (for example a new selection or selection zoom).
+  // Returns true if anything was cleared.
   // Default point radius from the cell count and the panel size: a 200k-cell
   // panel needs smaller dots than a 2k one, and nobody should have to find the
   // slider to get a readable first paint. Same idea as the Projection tab's
@@ -1355,7 +1386,9 @@ var focusPanel = null;
 
   function clearLassos() {
     var any = false;
-    panels.forEach(function (p) { if (p.lasso) { p.lasso = null; any = true; } });
+    panels.forEach(function (p) {
+      if (p.lasso || p.lassoData) { p.lasso = null; p.lassoData = null; any = true; }
+    });
     return any;
   }
 
@@ -1454,6 +1487,30 @@ var focusPanel = null;
       }, 240);
     }
   }
+  function renderWorkspaceGuide() {
+    var guide = $('cv-workspace-guide');
+    var text = $('cv-workspace-guide-text');
+    var overview = $('cv-workspace-overview');
+    if (!guide) return;
+    var active = !!((sel && sel.size) || (pick != null && nicheSet));
+    if (focusPanel) {
+      var focused = null;
+      panels.forEach(function (p) { if (p.key === focusPanel) focused = p; });
+      var sp = focused && spaceById[focused.spaceId];
+      if (text) {
+        text.textContent = 'Focused view: ' + ((sp && sp.label) || 'linked lens') +
+          ' · other views remain visible and linked.';
+      }
+      if (overview) overview.style.display = '';
+    } else {
+      if (text) {
+        text.textContent = 'Drag in any view to create an active cohort. ' +
+          'Use Focus to enlarge one lens while keeping the others linked.';
+      }
+      if (overview) overview.style.display = 'none';
+    }
+    revealEl(guide, !!D && !active);
+  }
   // The Zoom / Clear buttons live together and appear only with a selection.
   function updateSelActions() {
     var hasSel = !!(sel && sel.size);
@@ -1519,6 +1576,24 @@ var focusPanel = null;
   // Promote one lens without leaving the linked workspace. The focused pane
   // grows; every other pane remains visible as context and keeps its viewport.
   function setFocusPanel(key) {
+    var host = panels[0] && panels[0].pane && panels[0].pane.parentElement;
+    // A second click during the motion starts from the visible layout rather
+    // than inheriting a half-finished transform from the first transition.
+    clearTimeout(focusResizeTimer);
+    if (host) host.classList.remove('cv-focus-transitioning');
+    panels.forEach(function (p) {
+      if (!p.pane) return;
+      p.pane.style.transition = '';
+      p.pane.style.transform = '';
+      p.pane.style.transformOrigin = '';
+      p.pane.style.opacity = '';
+    });
+    var before = {};
+    panels.forEach(function (p) {
+      if (p.pane && p.spaceId) before[p.key] = p.pane.getBoundingClientRect();
+    });
+    focusAnimating = true;
+    if (host) host.classList.add('cv-focus-transitioning');
     focusPanel = (focusPanel === key) ? null : key;
     panels.forEach(function (p) {
       if (!p.pane) return;
@@ -1533,22 +1608,64 @@ var focusPanel = null;
         var on = primary;
         btn.classList.toggle('is-on', on);
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-        var tip = on ? 'Return to equal panels' : 'Make this the focus';
+        var tip = on ? 'Exit focus and return to overview' : 'Make this the focus';
         btn.setAttribute('data-tip', tip);
         btn.setAttribute('aria-label', tip);
+        var label = btn.querySelector('.cv-focus-label');
+        if (label) label.textContent = on ? 'Exit focus' : 'Focus';
+      }
+      var role = p.pane.querySelector('.cv-role-badge');
+      if (role) {
+        role.classList.remove('is-focus', 'is-context');
+        if (focusPanel && p.spaceId) {
+          role.style.display = '';
+          role.textContent = primary ? 'FOCUS' : 'CONTEXT';
+          role.classList.add(primary ? 'is-focus' : 'is-context');
+        } else {
+          role.style.display = 'none';
+          role.textContent = '';
+        }
       }
     });
-    var host = panels[0] && panels[0].pane && panels[0].pane.parentElement;
     if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
     updateFocusButtons();
+    renderWorkspaceGuide();
     resizeAll();
-    // The canvases animate width/height for 280ms; settle once more afterwards
-    // so their backing stores land on the final mosaic dimensions.
-    clearTimeout(focusResizeTimer);
+
+    // FLIP the grid reflow: the CSS grid reaches its final geometry immediately,
+    // then every pane animates from its old rectangle into that geometry. This is
+    // symmetric for enter/exit and avoids ResizeObserver repeatedly redrawing a
+    // canvas while its CSS box is still moving.
+    panels.forEach(function (p) {
+      if (!p.pane || !p.spaceId || !before[p.key]) return;
+      var from = before[p.key], to = p.pane.getBoundingClientRect();
+      if (!(to.width > 0 && to.height > 0)) return;
+      var dx = from.left - to.left, dy = from.top - to.top;
+      var sx = from.width / to.width, sy = from.height / to.height;
+      p.pane.style.transition = 'none';
+      p.pane.style.transformOrigin = 'top left';
+      p.pane.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')';
+      p.pane.style.opacity = focusPanel && p.key !== focusPanel ? '.88' : '.96';
+    });
+    if (host) void host.offsetWidth; // commit the inverse transforms before release
+    requestAnimationFrame(function () {
+      panels.forEach(function (p) {
+        if (!p.pane || !p.spaceId) return;
+        p.pane.style.transition = '';
+        p.pane.style.transform = '';
+        p.pane.style.opacity = '';
+      });
+    });
     focusResizeTimer = setTimeout(function () {
       _layoutKey = null;
+      focusAnimating = false;
+      if (host) host.classList.remove('cv-focus-transitioning');
+      panels.forEach(function (p) {
+        if (!p.pane) return;
+        p.pane.style.transformOrigin = '';
+      });
       resizeAll();
-    }, 320);
+    }, 460);
   }
   // The per-panel "zoom to selection" is only an action while there IS one, and
   // only on a panel that lays cells out in a plane -- a rotated cloud has no
@@ -1678,7 +1795,7 @@ var focusPanel = null;
   // space on a data-set switch -- and a field cleared in only one of them
   // survives into a data set it was never computed for.
   function clearPanelView(p) {
-    p.view = null; p.lasso = null;
+    p.view = null; p.lasso = null; p.lassoData = null;
     p.rot = null; p.depth = null; p.miniBg = null;
   }
   function resetSpaceViews(spaceId) {
@@ -1819,6 +1936,7 @@ var focusPanel = null;
       }
     }
     revealEl(bar, !!((sel && sel.size) || (pick != null && nicheSet)));
+    renderWorkspaceGuide();
   }
   // Trekker: cell-type composition of the picked nucleus's physical neighbours
   // within the niche radius (µm). Uses the physical (spatial) space coords. Shown
@@ -1876,6 +1994,62 @@ var focusPanel = null;
     host.innerHTML = head + '<div class="cv-bars">' + compBars(comp, g) + '</div></div>';
     return true;
   }
+  function median(values) {
+    if (!values.length) return null;
+    values.sort(function (a, b) { return a - b; });
+    var m = Math.floor(values.length / 2);
+    return values.length % 2 ? values[m] : (values[m - 1] + values[m]) / 2;
+  }
+  function fieldSummaryHtml() {
+    var fld = fieldOf();
+    if (!fld || fld.source !== 'trekker') return '';
+    var desc = fld.desc
+      ? '<div class="cv-field-desc">' + esc(fld.desc) + '</div>' : '';
+    var g = catOf(compGroupName()), selected = !!(sel && sel.size), rows = [];
+    if (g) {
+      var all = {}, chosen = {}, i;
+      for (i = 0; i < D.n; i++) {
+        if (!visible(i)) continue;
+        var value = fieldValue(fld, i); if (value == null) continue;
+        var level = g.values[i];
+        (all[level] || (all[level] = [])).push(value);
+        if (selected && sel.has(i)) (chosen[level] || (chosen[level] = [])).push(value);
+      }
+      Object.keys(all).forEach(function (level) {
+        rows.push({
+          label: g.levels[+level],
+          all: median(all[level]),
+          selected: selected ? median(chosen[level] || []) : null
+        });
+      });
+    } else if (fld.by_type && fld.by_type.length) {
+      rows = fld.by_type.map(function (row) {
+        return { label: row.type, all: +row.median, selected: null };
+      });
+    }
+    rows.sort(function (a, b) { return (b.all || 0) - (a.all || 0); });
+    var max = 0;
+    rows.forEach(function (row) {
+      max = Math.max(max, row.all || 0, row.selected || 0);
+    });
+    var table = rows.length ? '<div class="cv-field-table-title">Median by cell type' +
+      (selected ? ' <span>Selected vs all visible cells</span>' : '') + '</div>' +
+      '<div class="cv-field-table">' + rows.map(function (row) {
+        var allWidth = max ? row.all / max * 100 : 0;
+        var selectedWidth = max && row.selected != null ? row.selected / max * 100 : 0;
+        return '<div class="cv-field-row"><div class="cv-field-type">' + esc(row.label) + '</div>' +
+          '<div class="cv-field-bars"><div class="cv-field-track"><span style="width:' +
+          allWidth.toFixed(1) + '%"></span></div>' +
+          (selected ? '<div class="cv-field-track is-selected"><span style="width:' +
+            selectedWidth.toFixed(1) + '%"></span></div>' : '') + '</div>' +
+          '<div class="cv-field-values"><span>' + fmtVal(row.all) + '</span>' +
+          (selected ? '<b>' + (row.selected == null ? '—' : fmtVal(row.selected)) + '</b>' : '') +
+          '</div></div>';
+      }).join('') + '</div>' : '';
+    return '<div class="cv-readcol cv-rise cv-field-summary"><h4 class="cv-read-h">' +
+      esc(fld.label || 'Trekker field') +
+      ' <span class="cv-read-sub">physical field</span></h4>' + desc + table + '</div>';
+  }
   // The niche radius only means something once a single nucleus is picked (and no
   // lasso selection is active), so its slider is disabled — with a hint tooltip —
   // until then.
@@ -1894,6 +2068,8 @@ var focusPanel = null;
     updateNicheEnabled();
     if (!sel || !sel.size) {
       if (renderNiche(host)) return;   // Trekker: picked-nucleus niche composition
+      var fieldOnly = fieldSummaryHtml();
+      if (fieldOnly) { host.innerHTML = fieldOnly; return; }
       host.innerHTML = '<div class="cv-empty">' + (anyFlatPanel()
         ? ('Lasso-drag in any ' + (panels.some(panelIs3D) ? '2-D ' : '') +
           'panel to select cells. The same cells highlight ' +
@@ -1978,7 +2154,7 @@ var focusPanel = null;
       }
     }
 
-    host.innerHTML = compHtml + cloneHtml;
+    host.innerHTML = fieldSummaryHtml() + compHtml + cloneHtml;
 
     // wire clonotype-row -> select its cells (repertoire selection into the loop)
     Array.prototype.forEach.call(host.querySelectorAll('.cv-crow'), function (tr) {
@@ -2243,6 +2419,16 @@ var focusPanel = null;
     if (tkRows.length) {
       html += '<div class="cv-card-sec">Positioning</div>' + kvHtml(tkRows);
     }
+    var evidenceImg = D.trekker && D.trekker.evidence_img &&
+      D.trekker.evidence_img[i];
+    if (evidenceImg && /^data:image\//.test(evidenceImg)) {
+      html += '<div class="cv-card-sec">Positioning evidence</div>' +
+        '<button type="button" class="cv-evidence-thumb" ' +
+        'data-cell="' + esc(D.cells[i]) + '" aria-label="Enlarge positioning evidence">' +
+        '<img src="' + esc(evidenceImg) + '" alt="Positioning evidence for ' +
+        esc(D.cells[i]) + '"></button>' +
+        '<div class="cv-card-sub">Why this nucleus was placed here. Click to enlarge.</div>';
+    }
     // the full meta row, or a placeholder until the server answers
     html += '<div class="cv-card-sec">Meta data</div>';
     if (cardMeta && cardMeta.cell === D.cells[i] && cardMeta.rows) {
@@ -2489,8 +2675,10 @@ var focusPanel = null;
       }
       // a fresh brush supersedes any committed lasso (this panel's is replaced,
       // the other panel's is dropped)
-      panels.forEach(function (o) { if (o !== p) o.lasso = null; });
-      p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start];
+      panels.forEach(function (o) {
+        if (o !== p) { o.lasso = null; o.lassoData = null; }
+      });
+      p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start]; p.lassoData = null;
     });
     p.canvas.addEventListener('mousemove', function (e) {
       if (p.orbiting) {
@@ -2555,7 +2743,7 @@ var focusPanel = null;
       }
       if (!p.drag) return;
       p.drag = false;
-      if (!D || !p.ok || !p.sx) { p.lasso = null; return; }  // not projected yet
+      if (!D || !p.ok || !p.sx) { p.lasso = null; p.lassoData = null; return; }  // not projected yet
       var keep = false;
       if (p.moved && p.lasso && p.lasso.length > 2) {
         var s = new Set();
@@ -2567,7 +2755,8 @@ var focusPanel = null;
         // (that ring is not gated on `!sel`). An empty lasso keeps the pick.
         // a lasso is a different question from "tell me about this one cell"
         if (s.size) {
-          pick = null; unpinTip(); closeCard(); setSelection(s, p); keep = true;
+          pick = null; unpinTip(); closeCard(); setSelection(s, p);
+          p.lassoData = lassoToUnit(p, p.lasso); keep = true;
         } else { setSelection(null); }
       } else {
         var m = pos(e), k = nearest(p, m[0], m[1]);
@@ -2590,7 +2779,7 @@ var focusPanel = null;
         drawAll();
         if (!sel) renderReadout();   // Trekker niche readout for the picked cell
       }
-      if (!keep) p.lasso = null;
+      if (!keep) { p.lasso = null; p.lassoData = null; }
       draw(p);
     });
   }
@@ -2636,7 +2825,7 @@ var focusPanel = null;
       var p = { key: key, canvas: cv, ctx: cv.getContext('2d'), tipId: 'cv-tip-' + low,
         // the canvas sits in .cv-canvas-wrap now, so the pane is two levels up
         pane: cv.closest('.cv-pane'), spaceId: null, W: 0, H: 0,
-        sx: null, sy: null, ok: null, lasso: null, drag: false, moved: false,
+        sx: null, sy: null, ok: null, lasso: null, lassoData: null, drag: false, moved: false,
         view: null, mini: mini, mctx: null, miniBg: null, miniUnit: null };
       // The minimap is a FIXED size, so its backing store is set once here
       // rather than on every re-fit.
@@ -2683,7 +2872,7 @@ var focusPanel = null;
     if (!resizeObserver) {
       resizeObserver = new ResizeObserver(function () {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function () { if (D) resizeAll(); }, 30);
+        resizeTimer = setTimeout(function () { if (D && !focusAnimating) resizeAll(); }, 30);
       });
       panels.forEach(function (p) {
         if (p.pane) resizeObserver.observe(p.pane);
@@ -2692,7 +2881,7 @@ var focusPanel = null;
     // Only flow chrome changes the available panel height. More is an overlay,
     // and observing it would make an innocuous settings click re-fit the grid.
     if (!resizeObserver._cvChromeObserved) {
-      ['cv-selbar'].forEach(function (id) {
+      ['cv-workspace-guide', 'cv-selbar'].forEach(function (id) {
         var el = $(id);
         if (el) resizeObserver.observe(el);
       });
@@ -2889,6 +3078,100 @@ var focusPanel = null;
     _fldCacheD = D; _fldCacheKey = colorBy; _fldCacheVal = v;
     return v;
   }
+
+  // Spatial autocorrelation belongs to the spatial lens that gives it meaning.
+  // Keep the score on each spatial card, and only while a continuous quantity
+  // (one gene or one numeric field) is actually being drawn.
+  function continuousValues() {
+    if (colorBy === GENE_MODE && D && D.gene) {
+      return { label: D.gene.gene, values: D.gene.v };
+    }
+    var fld = fieldOf();
+    return fld ? { label: fld.label || 'Continuous value', values: fld.v } : null;
+  }
+  function spatialMoran(space, values) {
+    var valid = [], i;
+    for (i = 0; i < D.n; i++) {
+      var x = space.x[i], y = space.y[i], v = values[i];
+      if (x == null || y == null || v == null || isNaN(x) || isNaN(y) || isNaN(v)) continue;
+      valid.push(i);
+    }
+    if (valid.length < 7) return null;
+    // Stable, evenly-spaced sampling avoids a random-looking score after every
+    // redraw while bounding the six-neighbour search on large slides.
+    var cap = 1000, idx = valid;
+    if (valid.length > cap) {
+      idx = new Array(cap);
+      for (i = 0; i < cap; i++) idx[i] = valid[Math.floor(i * valid.length / cap)];
+    }
+    var n = idx.length, z = new Float64Array(n), mean = 0;
+    for (i = 0; i < n; i++) mean += +values[idx[i]];
+    mean /= n;
+    var denom = 0;
+    for (i = 0; i < n; i++) { z[i] = +values[idx[i]] - mean; denom += z[i] * z[i]; }
+    if (!denom) return 0;
+    var adj = new Array(n);
+    for (i = 0; i < n; i++) adj[i] = new Set();
+    for (i = 0; i < n; i++) {
+      var nearest = [], ii = idx[i], xi = +space.x[ii], yi = +space.y[ii];
+      for (var j = 0; j < n; j++) {
+        if (j === i) continue;
+        var jj = idx[j], dx = xi - +space.x[jj], dy = yi - +space.y[jj];
+        var d = dx * dx + dy * dy;
+        var at = nearest.length;
+        while (at > 0 && nearest[at - 1].d > d) at--;
+        nearest.splice(at, 0, { j: j, d: d });
+        if (nearest.length > 6) nearest.pop();
+      }
+      nearest.forEach(function (q) { adj[i].add(q.j); adj[q.j].add(i); });
+    }
+    var num = 0, weight = 0;
+    for (i = 0; i < n; i++) {
+      var degree = adj[i].size;
+      if (!degree) continue;
+      weight += 1;
+      var neighbourSum = 0;
+      adj[i].forEach(function (j) { neighbourSum += z[j]; });
+      num += z[i] * neighbourSum / degree;
+    }
+    return weight ? (n / weight) * num / denom : null;
+  }
+  function updateMoranBadges() {
+    var continuous = continuousValues();
+    panels.forEach(function (p) {
+      var badge = $('cv-moran-' + p.key.toLowerCase());
+      if (!badge) return;
+      var sp = spaceById[p.spaceId];
+      if (!continuous || !isSpatialSpace(sp)) {
+        badge.style.display = 'none'; badge.textContent = '';
+        delete badge.dataset.value; delete badge.dataset.field;
+        return;
+      }
+      var score = spatialMoran(sp, continuous.values);
+      if (score == null || !isFinite(score)) {
+        badge.style.display = 'none'; return;
+      }
+      var value = Math.max(-1, Math.min(1, score));
+      badge.dataset.value = value.toFixed(6);
+      badge.dataset.field = continuous.label;
+      badge.textContent = "Moran's I " + value.toFixed(3);
+      badge.title = continuous.label +
+        " · each cell's six nearest spatial neighbours · click for details";
+      badge.style.display = '';
+    });
+  }
+  function openMoranDialog(badge) {
+    if (!badge || !badge.dataset.value) return;
+    var dlg = $('cv-moran-modal'); if (!dlg || !dlg.showModal) return;
+    var title = $('cv-moran-modal-title'), value = $('cv-moran-modal-value');
+    var pane = badge.closest('.cv-pane'), panel = null;
+    panels.forEach(function (candidate) { if (candidate.pane === pane) panel = candidate; });
+    var sp = panel && spaceById[panel.spaceId];
+    if (title) title.textContent = (badge.dataset.field || 'Continuous value') +
+      ' in ' + ((sp && sp.label) || 'spatial data');
+    if (value) value.textContent = "Moran's I " + Number(badge.dataset.value).toFixed(3);
+    dlg.showModal();
+  }
   // The "Colour by" list mirrors the Projection tab's, which offers EVERY meta
   // column: registered groups first, then the other categorical columns, then
   // every continuous field (numeric meta columns — including the QC ones people
@@ -2941,7 +3224,7 @@ var focusPanel = null;
     if (rgbCtl) rgbCtl.style.display = (mode === RGB_MODE) ? '' : 'none';
     updateClipControl();
     clipRange();                 // seed the cache the colours read from
-    renderLegend(); drawAll(); renderReadout();
+    renderLegend(); drawAll(); renderReadout(); updateMoranBadges();
   }
 
   // ---- projection multi-picker --------------------------------------------
@@ -3039,6 +3322,7 @@ var focusPanel = null;
     ensurePanelSlots(orderedSpaces().length);
     buildPanels();
     layoutPanels();
+    updateSpaceScopedControls();
     renderMeta();
     resizeAll();
   }
@@ -3631,6 +3915,14 @@ var focusPanel = null;
         fb.setAttribute('aria-pressed', 'false');
         fb.setAttribute('data-tip', 'Make this the focus');
         fb.setAttribute('aria-label', 'Make this the focus');
+        var fl = fb.querySelector('.cv-focus-label');
+        if (fl) fl.textContent = 'Focus';
+      }
+      var rb = p.pane && p.pane.querySelector('.cv-role-badge');
+      if (rb) {
+        rb.style.display = 'none';
+        rb.textContent = '';
+        rb.classList.remove('is-focus', 'is-context');
       }
     });
     var host0 = panels[0] && panels[0].pane && panels[0].pane.parentElement;
@@ -3651,6 +3943,7 @@ var focusPanel = null;
         if (p.pane) p.pane.classList.add('cv-hidden');
       }
     });
+    updateMoranBadges();
     // Trekker info button lives on the Trekker panel only.
     var showTk = !!(D.trekker && D.trekker.qc);
     panels.forEach(function (p) {
@@ -3835,7 +4128,7 @@ var focusPanel = null;
     zoomed = false; hidden = new Set(); groupFilter = {};
     panels.forEach(function (p) {
       p.spaceId = null; p.sx = null; p.sy = null; p.ok = null;
-      p.lasso = null; p.view = null;
+      p.lasso = null; p.lassoData = null; p.view = null;
       p.miniBg = null; p.miniUnit = null;
       if (p.mini) p.mini.classList.remove('is-on');
       if (p.ctx) p.ctx.clearRect(0, 0, p.W, p.H);
@@ -3852,7 +4145,7 @@ var focusPanel = null;
     if (R) {
       R.innerHTML = '<div class="cv-empty">Nothing to show for this data set.</div>';
     }
-    ['cv-selbar', 'cv-selactions', 'cv-shown', 'cv-trekker-ctl',
+    ['cv-workspace-guide', 'cv-selbar', 'cv-selactions', 'cv-shown', 'cv-trekker-ctl',
       'cv-clone-layout-ctl'].forEach(function (id) {
       var el = $(id); if (el) el.style.display = 'none';
     });
@@ -4017,7 +4310,7 @@ var focusPanel = null;
         clipRange();
         if (colorBy === GENE_MODE) {
           renderColorbar(true, null, esc(m.gene) + ' — not available');
-          drawAll();
+          drawAll(); updateMoranBadges();
         }
         return;
       }
@@ -4025,7 +4318,7 @@ var focusPanel = null;
       // A new gene is a new distribution, so the trimmed range has to be
       // recomputed before anything reads a colour from it.
       clipRange();
-      if (colorBy === GENE_MODE) { renderLegend(); drawAll(); }
+      if (colorBy === GENE_MODE) { renderLegend(); drawAll(); updateMoranBadges(); }
     });
     // The exact meta row behind the open detail card. Ignored if the card has
     // since moved on to another cell (or closed) — a slow reply must not
@@ -4105,6 +4398,24 @@ var focusPanel = null;
     // clear button + point-size slider live in the top bar (client-owned)
     document.addEventListener('click', function (e) {
       var t = e.target;
+      var evidenceThumb = t && t.closest && t.closest('.cv-evidence-thumb');
+      if (evidenceThumb) {
+        var image = evidenceThumb.querySelector('img');
+        var dlg = $('cv-evidence-modal'), modalImage = $('cv-evidence-modal-img');
+        var modalCell = $('cv-evidence-modal-cell');
+        if (dlg && modalImage && image && dlg.showModal) {
+          modalImage.src = image.src;
+          if (modalCell) modalCell.textContent = evidenceThumb.dataset.cell || '';
+          dlg.showModal();
+        }
+        return;
+      }
+      var moranBadge = t && t.closest && t.closest('.cv-moran-badge');
+      if (moranBadge) { openMoranDialog(moranBadge); return; }
+      if (t && t.closest && t.closest('#cv-workspace-overview')) {
+        if (focusPanel) setFocusPanel(focusPanel);
+        return;
+      }
       var bgMode = t && t.closest && t.closest('[data-cv-bg-mode]');
       if (bgMode) {
         var mode = bgMode.getAttribute('data-cv-bg-mode');

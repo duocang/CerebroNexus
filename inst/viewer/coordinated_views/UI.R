@@ -66,17 +66,6 @@ cv_panebar <- function(panel) {
       `aria-label` = "Zoom this panel to the selection",
       icon("crop-simple")
     ),
-    ## Promote one panel as the primary lens while every other panel remains as
-    ## linked context. Selection is kept, so this changes emphasis, not state.
-    tags$button(
-      type = "button",
-      class = "cv-tbtn cv-focus-btn",
-      `data-act` = "focus",
-      `data-panel` = panel,
-      `data-tip` = "Make this the focus",
-      `aria-label` = "Make this the focus",
-      icon("expand")
-    ),
     ## A house, not the four-corner "expand" glyph that was here: that one reads
     ## as fullscreen everywhere else. This is the same mark plotly puts on its
     ## "Reset axes" button, which is where these users are coming from.
@@ -97,6 +86,19 @@ cv_pane <- function(key) {
     div(
       class = "cv-pane-head",
       tags$span(class = "cv-ptitle", id = paste0("cv-title-", low), "—"),
+      tags$span(
+        class = "cv-role-badge",
+        id = paste0("cv-role-", low),
+        style = "display:none"
+      ),
+      tags$button(
+        type = "button",
+        class = "cv-moran-badge",
+        id = paste0("cv-moran-", low),
+        `data-act` = "moran-info",
+        `data-panel` = key,
+        style = "display:none"
+      ),
       tags$button(
         type = "button",
         class = "cv-tbtn",
@@ -107,7 +109,21 @@ cv_pane <- function(key) {
         `aria-label` = "Trekker coordinate source, QC and Moran's I",
         icon("circle-info")
       ),
-      cv_panebar(key)
+      cv_panebar(key),
+      ## Focus is a primary workspace action, not an advanced plotting tool.
+      ## Keep it labelled and visible; the title click and canvas double-click
+      ## remain shortcuts rather than the only way to discover the capability.
+      tags$button(
+        type = "button",
+        class = "cv-tbtn cv-focus-btn",
+        `data-act` = "focus",
+        `data-panel` = key,
+        `data-tip` = "Make this the focus",
+        `aria-label` = "Make this the focus",
+        `aria-pressed` = "false",
+        icon("expand"),
+        tags$span(class = "cv-focus-label", "Focus")
+      )
     ),
     ## The canvas gets a positioned wrapper so the minimap can sit at the
     ## CANVAS's bottom-left rather than the pane's. It matters because the square
@@ -522,7 +538,34 @@ tab_coordinated_views <- tabItem(
       )
     ),
 
-    ## ---- active cohort: the shared state all lenses are describing ------- ##
+    ## ---- linked-workspace guide / active cohort -------------------------- ##
+    ## The quiet opening guide makes the two defining interactions discoverable.
+    ## Once cells are selected it yields this space to the richer cohort bar.
+    div(
+      class = "cv-workspace-guide cv-collapse",
+      id = "cv-workspace-guide",
+      style = "display:none",
+      tags$span(
+        class = "cv-workspace-kicker",
+        icon("link"),
+        "Linked workspace"
+      ),
+      tags$span(
+        class = "cv-workspace-guide-text",
+        id = "cv-workspace-guide-text",
+        "Drag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked."
+      ),
+      tags$button(
+        type = "button",
+        class = "cv-workspace-overview",
+        id = "cv-workspace-overview",
+        style = "display:none",
+        icon("table-cells-large"),
+        "Back to overview"
+      )
+    ),
+
+    ## Active cohort: the shared state all lenses are describing.
     div(
       class = "cv-selbar cv-collapse",
       id = "cv-selbar",
@@ -683,6 +726,41 @@ tab_coordinated_views <- tabItem(
         )),
         tags$tbody(id = "cv-tk-morantbl")
       )
+    ),
+
+    tags$dialog(
+      id = "cv-moran-modal",
+      class = "cv-insight-modal",
+      tags$button(
+        class = "cv-insight-x",
+        onclick = "document.getElementById('cv-moran-modal').close()",
+        `aria-label` = "Close",
+        HTML("&times;")
+      ),
+      tags$div(class = "cv-insight-kicker", "Spatial pattern"),
+      tags$h4(id = "cv-moran-modal-title"),
+      tags$div(class = "cv-moran-modal-value", id = "cv-moran-modal-value"),
+      tags$p(
+        "Moran's I measures whether nearby cells carry similar values. ",
+        "Positive values indicate spatial clustering, values near zero indicate ",
+        "little spatial structure, and negative values indicate neighbouring ",
+        "cells tend to differ. The estimate uses each cell's six nearest spatial ",
+        "neighbours and a stable sample of at most 1,000 positioned cells."
+      )
+    ),
+
+    tags$dialog(
+      id = "cv-evidence-modal",
+      class = "cv-evidence-modal",
+      tags$button(
+        class = "cv-insight-x",
+        onclick = "document.getElementById('cv-evidence-modal').close()",
+        `aria-label` = "Close",
+        HTML("&times;")
+      ),
+      tags$div(class = "cv-insight-kicker", "Positioning evidence"),
+      tags$div(class = "cv-evidence-modal-cell", id = "cv-evidence-modal-cell"),
+      tags$img(id = "cv-evidence-modal-img", alt = "Positioning evidence")
     )
   )
 )
