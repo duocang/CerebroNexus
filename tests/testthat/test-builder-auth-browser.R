@@ -581,34 +581,26 @@ test_that("Builder auth resets after a successful enqueue", {
   )
   app$wait_for_idle(timeout = 10000)
 
-  app$click("review_current_dataset")
+  app$click("continue_to_review")
   app$wait_for_js(
-    "document.querySelector('.rail-review-status.reviewed') !== null",
+    "document.getElementById('confirm_review') !== null",
     timeout = 10000
   )
-  app$wait_for_idle(timeout = 10000)
+  app$click("confirm_review")
   app$wait_for_js(
     paste0(
       "document.getElementById('build') !== null && ",
-      "!document.getElementById('build').disabled"
+      "document.getElementById('build').disabled"
     ),
     timeout = 30000
   )
-  builder_auth_browser_intercept_inputs(app)
-  app$run_js(paste0(
-    "window.__builderBuildLabels = [];",
-    "window.__builderBuildObserver = new MutationObserver(function () {",
-    "const action = document.getElementById('build');",
-    "if (action) window.__builderBuildLabels.push(action.textContent.trim());",
-    "});",
-    "window.__builderBuildObserver.observe(document.body, ",
-    "{childList:true,subtree:true,characterData:true});"
-  ))
-  app$click("build")
+  app$click("choose_output_folder")
   app$wait_for_js(
-    "window.__builderBuildLabels.includes('Choose a folder…')",
-    timeout = 10000
+    "!document.getElementById('build').disabled",
+    timeout = 30000
   )
+  builder_auth_browser_intercept_inputs(app)
+  app$click("build")
   ## Enqueue starts the asynchronous build, so Shiny intentionally remains
   ## busy until the worker finishes. Wait for the auth reset contract below.
   app$wait_for_js(

@@ -534,7 +534,7 @@ test_that("Review layout and staged workflow contracts stay user-facing", {
   ))
 })
 
-test_that("Build dialogs use accessible modal semantics and plain language", {
+test_that("Build dialogs are reserved for real output conflicts", {
   js <- builder_asset_text("www", "builder.js")
 
   expect_match(js, "showBuildDialog", fixed = TRUE)
@@ -547,16 +547,12 @@ test_that("Build dialogs use accessible modal semantics and plain language", {
   )
   expect_match(js, "trapDialogKeydown", fixed = TRUE)
   expect_match(js, "restoreFocus(dialog)", fixed = TRUE)
-  expect_match(js, "Ready to build all datasets?", fixed = TRUE)
-  expect_match(js, "Back to review", fixed = TRUE)
-  expect_match(js, "Continue", fixed = TRUE)
   expect_match(js, "Choose another folder", fixed = TRUE)
   expect_match(js, "Replace existing files", fixed = TRUE)
-  expect_match(
-    js,
-    "Confirm the selected frozen revision before building.",
-    fixed = TRUE
-  )
+  expect_false(grepl("Ready to build all datasets?", js, fixed = TRUE))
+  expect_false(grepl('message.type === "datasets"', js, fixed = TRUE))
+  expect_false(grepl('action: "continue"', js, fixed = TRUE))
+  expect_false(grepl("review_required|attention_required", js))
   expect_match(js, 'message.action === "close"', fixed = TRUE)
   expect_false(grepl("window.confirm", js, fixed = TRUE))
 })

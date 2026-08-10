@@ -14,7 +14,12 @@ builder_build_confirmation_status <- function(state, plan) {
   if (!builder_review_can_build(stored)) {
     return(list(ok = FALSE, reason = "stored_plan_unavailable"))
   }
-  if (!builder_review_can_build(plan)) {
+  if (
+    !inherits(plan, "builder_build_plan") ||
+      !is.list(plan) ||
+      !identical(plan$readiness, "ready") ||
+      !is.null(plan$error)
+  ) {
     return(list(ok = FALSE, reason = "candidate_plan_unavailable"))
   }
   if (!builder_workflow_confirmation_matches(state, stored)) {
@@ -40,15 +45,24 @@ builder_build_confirmation_matches <- function(plan) {
   )
 }
 
-builder_require_confirmed_build_plan <- function(plan) {
+builder_require_confirmed_build_plan <- function(plan, output_path = NULL) {
   state <- isolate(workflow())
   status <- builder_build_confirmation_status(state, plan)
+  if (
+    isTRUE(status$ok) &&
+      !is.null(output_path) &&
+      (!builder_has_text(output_path) ||
+        !identical(isolate(selected_output()), output_path))
+  ) {
+    status <- list(ok = FALSE, reason = "output_mismatch")
+  }
   if (isTRUE(status$ok)) {
     return(invisible(TRUE))
   }
   if (state$stage %in% c("review", "build")) {
     workflow(builder_reduce_workflow(state, list(type = "invalidate")))
   }
+  selected_output(NULL)
   build_flow(list(stage = "idle", plan = NULL))
   session$sendCustomMessage(
     "builder_build_dialog",
@@ -66,7 +80,7 @@ enqueue_build_plan <- function(
   plan,
   auth_accounts
 ) {
-  if (!isTRUE(builder_require_confirmed_build_plan(plan))) {
+  if (!isTRUE(builder_require_confirmed_build_plan(plan, plan$out_dir))) {
     return(invisible(FALSE))
   }
   rs <- worker()
@@ -127,7 +141,7 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
       )
       return(invisible(FALSE))
     }
-    if (!isTRUE(builder_require_confirmed_build_plan(plan))) {
+    if (!isTRUE(builder_require_confirmed_build_plan(plan, path))) {
       return(invisible(FALSE))
     }
     if (length(plan$existing_targets) && !isTRUE(overwrite)) {
@@ -147,16 +161,13 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
 }
 
 choose_build_folder <- function() {
-  build_flow(list(stage = "choosing_folder", plan = NULL))
   session$onFlushed(
     function() {
       choice <- builder_choose_output_directory()
       if (identical(choice$status, "cancelled")) {
-        build_flow(list(stage = "idle", plan = NULL))
         return()
       }
       if (!identical(choice$status, "selected")) {
-        build_flow(list(stage = "idle", plan = NULL))
         showNotification(
           choice$error %||% "The folder picker could not be opened.",
           type = "error",
@@ -164,61 +175,63 @@ choose_build_folder <- function() {
         )
         return()
       }
-      prepare_selected_output(choice$path)
+      selected_output(choice$path)
     },
     once = TRUE
   )
 }
 
-observeEvent(input$build, {
-  req(identical(isolate(build_flow())$stage, "idle"))
-  plan <- isolate(frozen_review_plan())
-  datasets <- isolate(sets())
-  if (!isTRUE(builder_require_confirmed_build_plan(plan))) {
-    return()
-  }
-  if (length(datasets) >= 2L) {
-    build_flow(list(stage = "confirming", plan = NULL))
-    session$sendCustomMessage(
-      "builder_build_dialog",
-      list(
-        type = "datasets",
-        title = "Ready to build all datasets?",
-        count = length(datasets),
-        names = vapply(
-          datasets,
-          function(entry) entry$settings$name %||% "Dataset",
-          character(1)
-        )
-      )
-    )
+observeEvent(input$choose_output_folder, {
+  live <- isolate(frozen_review_plan())
+  if (!isTRUE(builder_require_confirmed_build_plan(live))) {
     return()
   }
   choose_build_folder()
 })
 
+observeEvent(input$build, {
+  req(identical(isolate(build_flow())$stage, "idle"))
+  live <- isolate(frozen_review_plan())
+  output_path <- isolate(selected_output())
+  if (!isTRUE(builder_require_confirmed_build_plan(live))) {
+    return()
+  }
+  if (!builder_has_text(output_path)) {
+    return()
+  }
+  prepare_selected_output(output_path)
+})
+
 observeEvent(input$builder_build_dialog, {
   action <- input$builder_build_dialog$action %||% "cancel"
   flow <- isolate(build_flow())
-  if (identical(action, "continue") && identical(flow$stage, "confirming")) {
-    if (
-      !isTRUE(builder_require_confirmed_build_plan(
-        isolate(frozen_review_plan())
-      ))
-    ) {
-      return()
-    }
-    choose_build_folder()
-  } else if (
+  if (
     identical(action, "replace") &&
       identical(flow$stage, "conflict") &&
       inherits(flow$plan, "builder_build_plan")
   ) {
+    if (
+      !isTRUE(builder_require_confirmed_build_plan(
+        flow$plan,
+        flow$plan$out_dir
+      ))
+    ) {
+      return()
+    }
     prepare_selected_output(flow$plan$out_dir, overwrite = TRUE)
   } else if (
     identical(action, "choose_another") &&
       identical(flow$stage, "conflict")
   ) {
+    if (
+      !isTRUE(builder_require_confirmed_build_plan(
+        flow$plan,
+        flow$plan$out_dir
+      ))
+    ) {
+      return()
+    }
+    build_flow(list(stage = "idle", plan = NULL))
     choose_build_folder()
   } else {
     build_flow(list(stage = "idle", plan = NULL))

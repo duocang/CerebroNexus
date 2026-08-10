@@ -44,3 +44,62 @@ builder_configure_actions_ui <- function(message, can_continue, app_control) {
     )
   )
 }
+
+builder_build_workbench_ui <- function(model, output_path, status = NULL) {
+  stopifnot(
+    is.list(model),
+    is.character(output_path),
+    length(output_path) <= 1L,
+    !length(output_path) || !is.na(output_path)
+  )
+  output_label <- if (isTRUE(model$output$private_app)) {
+    "Viewer App"
+  } else {
+    "CRB files"
+  }
+  selected_label <- if (builder_has_text(output_path)) {
+    output_path
+  } else {
+    "No output folder selected"
+  }
+  div(
+    class = "builder-stage builder-stage-build builder-card builder-section",
+    `data-workflow-stage` = "build",
+    h2("Build your Viewer"),
+    p(
+      class = "stage-intro",
+      "Build the frozen plan you reviewed and confirmed."
+    ),
+    tags$section(
+      class = "builder-build-summary",
+      h3("Reviewed output"),
+      p(
+        strong(paste0(model$output$crb_count, " dataset")),
+        if (identical(model$output$crb_count, 1L)) "" else "s",
+        " · ",
+        output_label
+      )
+    ),
+    p(class = "builder-selected-output", selected_label),
+    div(
+      class = "builder-stage-actions builder-build-actions",
+      actionButton(
+        "back_to_review",
+        "Back to review",
+        class = "btn"
+      ),
+      actionButton(
+        "choose_output_folder",
+        "Choose folder…",
+        class = "btn"
+      ),
+      actionButton(
+        "build",
+        "Build",
+        class = "btn btn-action",
+        disabled = !builder_has_text(output_path)
+      )
+    ),
+    status
+  )
+}

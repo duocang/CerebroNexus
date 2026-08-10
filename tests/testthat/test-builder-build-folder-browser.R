@@ -31,7 +31,43 @@ builder_build_folder_picker <- function(
   invisible(output_dir)
 }
 
-test_that("native folder selection queues a Build after a flush", {
+builder_build_folder_open_stage <- function(app) {
+  app$wait_for_js(
+    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
+    timeout = 10000
+  )
+  app$click(selector = ".example-btn[data-ex=all_content]")
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
+      "document.getElementById('continue_to_review') !== null"
+    ),
+    timeout = 60000
+  )
+  app$wait_for_idle(timeout = 30000)
+  app$set_inputs(make_app = FALSE)
+  app$wait_for_idle(timeout = 10000)
+  app$click("continue_to_review")
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('review-stage') !== null && ",
+      "document.getElementById('confirm_review') !== null"
+    ),
+    timeout = 30000
+  )
+  app$click("confirm_review")
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('[data-workflow-stage=build]') !== null && ",
+      "document.getElementById('choose_output_folder') !== null && ",
+      "document.getElementById('build') !== null && ",
+      "document.getElementById('build').disabled"
+    ),
+    timeout = 30000
+  )
+}
+
+test_that("confirmed Build waits for a separately selected output folder", {
   app_dir <- builder_profile_inst_path("builder")
   local_app_support(app_dir)
   output_dir <- file.path(
@@ -49,50 +85,27 @@ test_that("native folder selection queues a Build after a flush", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
+  builder_build_folder_open_stage(app)
 
-  app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-    timeout = 10000
-  )
-  app$click(selector = ".example-btn[data-ex=all_content]")
+  app$click("choose_output_folder")
   app$wait_for_js(
     paste0(
-      "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
-      "document.getElementById('review_current_dataset') !== null && ",
-      "document.getElementById('build') !== null"
-    ),
-    timeout = 60000
-  )
-  app$wait_for_idle(timeout = 30000)
-  app$set_inputs(make_app = FALSE)
-  app$click("review_current_dataset")
-  app$wait_for_js(
-    paste0(
-      "document.querySelector('.rail-review-status.reviewed') !== null && ",
-      "!document.getElementById('build').disabled"
+      "!document.getElementById('build').disabled && ",
+      "document.querySelector('.builder-selected-output').textContent.includes(",
+      "'builder-native-folder-output')"
     ),
     timeout = 30000
   )
-
-  app$run_js(paste0(
-    "window.__builderBuildLabels = [];",
-    "window.__builderBuildObserver = new MutationObserver(function () {",
-    "const action = document.getElementById('build');",
-    "if (action) window.__builderBuildLabels.push(action.textContent.trim());",
-    "});",
-    "window.__builderBuildObserver.observe(document.body, ",
-    "{childList:true,subtree:true,characterData:true});"
-  ))
-  app$click("build")
-  app$wait_for_js(
-    "window.__builderBuildLabels.includes('Choose a folder…')",
-    timeout = 10000
-  )
   app$wait_for_idle(timeout = 10000)
 
-  labels <- app$get_js("window.__builderBuildLabels")
-  expect_true(
-    "Building…" %in% labels,
-    info = paste("Observed Build labels:", paste(labels, collapse = " -> "))
+  expect_false(app$get_js(paste0(
+    "document.querySelector('.busy.is-building') !== null || ",
+    "document.querySelector('.result-card') !== null"
+  )))
+
+  app$click("build")
+  app$wait_for_js(
+    "document.querySelector('.busy.is-building') !== null",
+    timeout = 30000
   )
 })

@@ -576,14 +576,6 @@ render_review_workbench <- function() {
   )
 }
 
-render_build_workbench <- function() {
-  r <- result()
-  if (is.null(r)) {
-    return(NULL)
-  }
-  builder_build_status_ui(builder_build_status_model(r))
-}
-
 observeEvent(input$back_to_settings, {
   workflow(builder_reduce_workflow(
     isolate(workflow()),

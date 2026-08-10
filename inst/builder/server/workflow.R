@@ -41,3 +41,57 @@ observeEvent(input$continue_to_review, {
     once = TRUE
   )
 })
+
+render_build_workbench <- function() {
+  state <- workflow()
+  plan <- state$review_plan
+  if (
+    !identical(state$stage, "build") ||
+      !builder_review_can_build(plan) ||
+      !builder_workflow_confirmation_matches(state, plan)
+  ) {
+    return(NULL)
+  }
+  current_result <- result()
+  builder_build_workbench_ui(
+    builder_review_model(plan),
+    selected_output() %||% character(),
+    status = if (is.null(current_result)) {
+      NULL
+    } else {
+      builder_build_status_ui(builder_build_status_model(current_result))
+    }
+  )
+}
+
+observeEvent(input$back_to_review, {
+  state <- isolate(workflow())
+  if (!identical(state$stage, "build")) {
+    return()
+  }
+  workflow(builder_reduce_workflow(
+    state,
+    list(type = "back_to_review")
+  ))
+  build_flow(list(stage = "idle", plan = NULL))
+  session$sendCustomMessage(
+    "builder_build_dialog",
+    list(action = "close")
+  )
+  session$onFlushed(
+    function() {
+      session$sendCustomMessage("builder_focus_review", list())
+    },
+    once = TRUE
+  )
+})
+
+observe({
+  state <- workflow()
+  if (
+    (is.null(state$review_plan) || is.null(state$confirmation)) &&
+      !is.null(isolate(selected_output()))
+  ) {
+    selected_output(NULL)
+  }
+})

@@ -334,15 +334,37 @@ test_that("native output directory selection normalizes selection and preserves 
   expect_match(failed$error, "picker unavailable", fixed = TRUE)
 })
 
-test_that("Build flow confirms multiple datasets and handles real conflicts", {
-  app <- paste(builder_app_lines(), collapse = "\n")
+test_that("folder selection is separate from Build and only conflicts prompt", {
+  lines <- builder_app_lines()
+  app <- paste(lines, collapse = "\n")
+  picker <- builder_app_block(
+    lines,
+    "choose_build_folder <- function() {",
+    "observeEvent(input$build, {"
+  )
+  build <- builder_app_block(
+    lines,
+    "observeEvent(input$build, {",
+    "observeEvent(input$builder_build_dialog, {"
+  )
+  dialog <- builder_app_block(
+    lines,
+    "observeEvent(input$builder_build_dialog, {",
+    "validate_rail_removal <- function"
+  )
 
-  expect_match(app, '"builder_build_dialog"', fixed = TRUE)
-  expect_match(app, '"Ready to build all datasets?"', fixed = TRUE)
+  expect_match(app, "selected_output <- reactiveVal(NULL)", fixed = TRUE)
+  expect_match(picker, "builder_choose_output_directory()", fixed = TRUE)
+  expect_match(picker, "selected_output(choice$path)", fixed = TRUE)
+  expect_false(grepl("prepare_selected_output", picker, fixed = TRUE))
+  expect_match(build, "selected_output()", fixed = TRUE)
+  expect_match(build, "prepare_selected_output", fixed = TRUE)
+  expect_false(grepl("Ready to build all datasets?", app, fixed = TRUE))
+  expect_false(grepl('type = "datasets"', app, fixed = TRUE))
+  expect_false(grepl('identical(action, "continue")', dialog, fixed = TRUE))
   expect_match(app, '"Files already exist"', fixed = TRUE)
-  expect_match(app, 'identical(action, "replace")', fixed = TRUE)
-  expect_match(app, 'identical(action, "choose_another")', fixed = TRUE)
-  expect_match(app, "builder_choose_output_directory()", fixed = TRUE)
+  expect_match(dialog, 'identical(action, "replace")', fixed = TRUE)
+  expect_match(dialog, 'identical(action, "choose_another")', fixed = TRUE)
   expect_false(grepl("isolate(input$out_dir)", app, fixed = TRUE))
   expect_false(grepl("isolate(input$overwrite)", app, fixed = TRUE))
 })
@@ -359,11 +381,72 @@ test_that("Build flow requires one confirmed frozen Review plan", {
   expect_match(app, 'identical(state$stage, "build")', fixed = TRUE)
   expect_match(app, "builder_require_confirmed_build_plan", fixed = TRUE)
   expect_match(app, "builder_review_plan_identity(plan)", fixed = TRUE)
+  expect_gte(
+    lengths(regmatches(
+      app,
+      gregexpr("builder_require_confirmed_build_plan", app, fixed = TRUE)
+    )),
+    4L
+  )
+  expect_match(app, "selected_output(NULL)", fixed = TRUE)
   expect_match(
     app,
     '"Settings changed. Review the updated plan before building."',
     fixed = TRUE
   )
+})
+
+test_that("Build stage renders only the confirmed stored plan", {
+  app <- paste(builder_app_lines(), collapse = "\n")
+  workflow_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "workflow.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  workflow_ui_lines <- readLines(
+    builder_profile_inst_path("builder", "ui", "workflow.R"),
+    warn = FALSE
+  )
+  build_ui_start <- grep(
+    "builder_build_workbench_ui <- function",
+    workflow_ui_lines,
+    fixed = TRUE
+  )
+  workflow_ui <- paste(
+    workflow_ui_lines[build_ui_start:length(workflow_ui_lines)],
+    collapse = "\n"
+  )
+
+  expect_match(workflow_server, "state$review_plan", fixed = TRUE)
+  expect_identical(
+    lengths(regmatches(
+      app,
+      gregexpr("render_build_workbench <- function", app, fixed = TRUE)
+    )),
+    1L
+  )
+  expect_match(
+    workflow_server,
+    "builder_workflow_confirmation_matches(state, plan)",
+    fixed = TRUE
+  )
+  expect_match(workflow_server, "selected_output()", fixed = TRUE)
+  expect_match(workflow_server, "input$back_to_review", fixed = TRUE)
+  expect_match(workflow_server, 'list(type = "back_to_review")', fixed = TRUE)
+  expect_match(workflow_ui, '`data-workflow-stage` = "build"', fixed = TRUE)
+  expect_match(workflow_ui, 'h2("Build your Viewer")', fixed = TRUE)
+  expect_match(workflow_ui, '"No output folder selected"', fixed = TRUE)
+  expect_match(workflow_ui, '"choose_output_folder"', fixed = TRUE)
+  expect_match(workflow_ui, '"Choose folder…"', fixed = TRUE)
+  expect_match(workflow_ui, '"build"', fixed = TRUE)
+  expect_match(
+    workflow_ui,
+    "disabled = !builder_has_text(output_path)",
+    fixed = TRUE
+  )
+  expect_false(grepl("make_app|Configure", workflow_ui))
 })
 
 test_that("group color changes use the existing settings revision path", {

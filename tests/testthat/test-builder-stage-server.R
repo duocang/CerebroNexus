@@ -540,6 +540,7 @@ test_that("changed auth accounts invalidate a confirmed frozen plan", {
       },
       envir = environment(enqueue_build_plan)
     )
+    selected_output(plan_a$out_dir)
     expect_true(enqueue_build_plan(plan_a, auth_accounts = accounts_a))
     session$flushReact()
 
@@ -578,6 +579,7 @@ test_that("changed auth accounts invalidate a confirmed frozen plan", {
     expect_identical(workflow()$stage, "configure")
     expect_null(workflow()$review_plan)
     expect_null(workflow()$confirmation)
+    expect_null(selected_output())
     expect_false(builder_build_confirmation_matches(plan_a))
     enqueued <- FALSE
     assign(
@@ -801,9 +803,10 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
   )
   expect_match(
     build_source,
-    "builder_require_confirmed_build_plan(plan)",
+    "builder_require_confirmed_build_plan(plan, plan$out_dir)",
     fixed = TRUE
   )
+  expect_match(build_source, 'reason = "output_mismatch"', fixed = TRUE)
   expect_match(
     build_source,
     'list(action = "close")',

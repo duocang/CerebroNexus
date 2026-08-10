@@ -51,7 +51,7 @@ builder_browser_geometry <- function(app) {
     "mainWidth: main.getBoundingClientRect().width,",
     "actionTop: box.top, actionBottom: box.bottom,",
     "viewportHeight: window.innerHeight,",
-    "position: getComputedStyle(action.closest('.actionbar')).position,",
+    "position: getComputedStyle(action.closest('.builder-build-actions')).position,",
     "primaryVisible: window.__builderPrimaryActionVisible === true",
     "};",
     "})()"
@@ -85,7 +85,7 @@ test_that("builder interaction reflows and preserves accessible state", {
     paste0(
       "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
       "document.querySelector('[aria-current=stage]') !== null && ",
-      "document.getElementById('build') !== null"
+      "document.getElementById('continue_to_review') !== null"
     ),
     timeout = 60000
   )
@@ -132,13 +132,17 @@ test_that("builder interaction reflows and preserves accessible state", {
     timeout = 10000
   )
 
-  app$click("review_current_dataset")
+  app$click("continue_to_review")
   app$wait_for_js(
-    "document.querySelector('.rail-review-status.reviewed') !== null",
+    "document.getElementById('confirm_review') !== null",
     timeout = 10000
   )
+  app$click("confirm_review")
   app$wait_for_js(
-    "!document.getElementById('build').disabled",
+    paste0(
+      "document.querySelector('[data-workflow-stage=build]') !== null && ",
+      "document.getElementById('build').disabled"
+    ),
     timeout = 30000
   )
   app$run_js(paste0(
@@ -147,6 +151,11 @@ test_that("builder interaction reflows and preserves accessible state", {
     "window.__builderCopiedText = message.text;",
     "});"
   ))
+  app$click("choose_output_folder")
+  app$wait_for_js(
+    "!document.getElementById('build').disabled",
+    timeout = 30000
+  )
   app$click("build")
   app$wait_for_js(
     "document.querySelector('.result-card.success') !== null",
