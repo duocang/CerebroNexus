@@ -804,6 +804,16 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
     fixed = TRUE
   )
   expect_match(components, "transition-duration: 0s !important", fixed = TRUE)
+  expect_match(server, "is.list(workflow()$confirmation)", fixed = TRUE)
+  expect_match(server, '`data-workflow-stage` = "upload"', fixed = TRUE)
+  browser <- paste(
+    readLines(testthat::test_path(
+      "test-builder-staged-workflow-browser.R"
+    )),
+    collapse = "\n"
+  )
+  expect_match(browser, "builder-loading-stage", fixed = TRUE)
+  expect_match(browser, "app$get_logs()", fixed = TRUE)
 })
 
 test_that("builder client owns accessible dialog and live-state semantics", {

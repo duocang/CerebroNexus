@@ -2,7 +2,10 @@ output$workflow_progress <- renderUI({
   if (!is.null(active_import_id())) {
     return(NULL)
   }
-  builder_workflow_progress_ui(workflow()$stage)
+  builder_workflow_progress_ui(
+    workflow()$stage,
+    confirmed = is.list(workflow()$confirmation)
+  )
 })
 
 output$workbench <- renderUI({
@@ -15,7 +18,8 @@ output$workbench <- renderUI({
   if (!is.null(loading_entry)) {
     return(tagAppendAttributes(
       builder_loading_workbench_ui(loading_entry),
-      class = "builder-stage-upload"
+      class = "builder-stage-upload",
+      `data-workflow-stage` = "upload"
     ))
   }
 

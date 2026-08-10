@@ -22,11 +22,23 @@ test_that("Builder shell and workflow UI separate all four stages", {
   expect_match(shell, '"server/workflow.R"', fixed = TRUE)
   expect_match(shell, "Build your first Viewer in four steps", fixed = TRUE)
 
-  progress <- app_env$builder_workflow_progress_ui("configure")
+  progress <- app_env$builder_workflow_progress_ui(
+    "configure",
+    confirmed = FALSE
+  )
   progress_html <- htmltools::renderTags(progress)$html
   expect_match(progress_html, "builder-workflow-progress", fixed = TRUE)
   expect_match(progress_html, 'aria-label="Builder progress"', fixed = TRUE)
   expect_match(progress_html, 'aria-current="step"', fixed = TRUE)
+  expect_match(progress_html, 'data-workflow-confirmed="false"', fixed = TRUE)
+  confirmed_progress <- htmltools::renderTags(
+    app_env$builder_workflow_progress_ui("build", confirmed = TRUE)
+  )$html
+  expect_match(
+    confirmed_progress,
+    'data-workflow-confirmed="true"',
+    fixed = TRUE
+  )
   expect_identical(
     lengths(regmatches(
       progress_html,
@@ -35,7 +47,7 @@ test_that("Builder shell and workflow UI separate all four stages", {
     4L
   )
   expect_error(
-    app_env$builder_workflow_progress_ui("future"),
+    app_env$builder_workflow_progress_ui("future", confirmed = FALSE),
     "valid Builder workflow stage"
   )
 

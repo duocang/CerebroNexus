@@ -1,4 +1,4 @@
-builder_workflow_progress_ui <- function(stage) {
+builder_workflow_progress_ui <- function(stage, confirmed = FALSE) {
   stages <- c("upload", "configure", "review", "build")
   if (
     !is.character(stage) ||
@@ -8,10 +8,14 @@ builder_workflow_progress_ui <- function(stage) {
   ) {
     stop("A valid Builder workflow stage is required.", call. = FALSE)
   }
+  if (!is.logical(confirmed) || length(confirmed) != 1L || is.na(confirmed)) {
+    stop("A confirmation state is required.", call. = FALSE)
+  }
   labels <- c("Upload", "Configure", "Review", "Build")
   tags$nav(
     class = "builder-workflow-progress",
     `aria-label` = "Builder progress",
+    `data-workflow-confirmed` = if (confirmed) "true" else "false",
     tags$ol(lapply(seq_along(stages), function(index) {
       current <- identical(stage, stages[[index]])
       tags$li(
