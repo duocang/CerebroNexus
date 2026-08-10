@@ -3368,16 +3368,18 @@ var focusPanel = null;
     var continuous = continuousValues();
     panels.forEach(function (p) {
       var badge = $('cv-moran-' + p.key.toLowerCase());
+      var corner = $('cv-moran-corner-' + p.key.toLowerCase());
       if (!badge) return;
       var sp = spaceById[p.spaceId];
       if (!continuous || !isSpatialSpace(sp)) {
-        badge.style.display = 'none'; badge.textContent = '';
+        badge.style.display = 'none'; if (corner) corner.style.display = 'none';
+        badge.textContent = ''; if (corner) corner.textContent = '';
         delete badge.dataset.value; delete badge.dataset.field;
         return;
       }
       var score = spatialMoran(sp, continuous.values);
       if (score == null || !isFinite(score)) {
-        badge.style.display = 'none'; return;
+        badge.style.display = 'none'; if (corner) corner.style.display = 'none'; return;
       }
       var value = Math.max(-1, Math.min(1, score));
       badge.dataset.value = value.toFixed(6);
@@ -3386,6 +3388,13 @@ var focusPanel = null;
       badge.title = continuous.label +
         " · each cell's six nearest spatial neighbours · click for details";
       badge.style.display = '';
+      if (corner) {
+        corner.dataset.value = badge.dataset.value;
+        corner.dataset.field = badge.dataset.field;
+        corner.textContent = badge.textContent;
+        corner.title = badge.title;
+        corner.style.display = '';
+      }
     });
   }
   function openMoranDialog(badge) {
@@ -4368,6 +4377,7 @@ var focusPanel = null;
         'This data set has no dimensional reduction to link its modalities on.';
     }
     var L = $('cv-legend'); if (L) L.innerHTML = '';
+    var EL = $('cv-evidence-legend'); if (EL) EL.style.display = 'none';
     var C = $('cv-cbar'); if (C) C.style.display = 'none';
     var R = $('cv-readout');
     if (R) {
@@ -4492,6 +4502,8 @@ var focusPanel = null;
     if (D.trekker) fillTrekkerInsights();
     // positioning-evidence markers default ON when the data set carries them
     evidenceOn = !!(D.trekker && D.trekker.evidence);
+    var evLegend = $('cv-evidence-legend');
+    if (evLegend) evLegend.style.display = evidenceOn ? 'flex' : 'none';
     var evChk = $('cv-evidence'); if (evChk) evChk.checked = evidenceOn;
     fillColorPicker();
     fillProjPicker();

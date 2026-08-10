@@ -582,8 +582,12 @@
   font: 650 10.5px/1 var(--cv-font, inherit);
   font-variant-numeric: tabular-nums;
 }
+.coordviews-page .cv-pane-head > .cv-moran-badge { display: none !important; }
 .coordviews-page .cv-moran-badge:hover {
   border-color: #9ec5e7; background: #eaf4fd; color: #245779;
+}
+.coordviews-page .cv-moran-corner {
+  position: absolute; left: 12px; bottom: 12px; z-index: 3;
 }
 /* per-panel hover toolbar (plotly-style), top-right of each panel */
 .coordviews-page .cv-panebar {
@@ -892,6 +896,10 @@
 .coordviews-page .cv-lg:hover { background: var(--cv-surface2); }
 .coordviews-page .cv-lg.off { opacity: .5; }
 .coordviews-page .cv-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.coordviews-page .cv-evidence-dot {
+  width: 9px; height: 9px; border: 1.5px solid #1f2937; border-radius: 50%; flex: none;
+  box-sizing: border-box;
+}
 .coordviews-page .cv-lg-ct { color: var(--cv-text3); }
 /* RGB channel legend: informational, not a toggle */
 .coordviews-page .cv-rgb-lg { cursor: default; }

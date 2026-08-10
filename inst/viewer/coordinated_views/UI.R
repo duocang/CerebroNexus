@@ -140,6 +140,14 @@ cv_pane <- function(key) {
       ## Inside the wrapper, so the coordinates the hover code computes (which
       ## are relative to the CANVAS) are the coordinates this is positioned by.
       ## As a child of the pane it was offset by the header's height.
+      tags$button(
+        type = "button",
+        class = "cv-moran-badge cv-moran-corner",
+        id = paste0("cv-moran-corner-", low),
+        `data-act` = "moran-info",
+        `data-panel` = key,
+        style = "display:none"
+      ),
       div(class = "cv-tip", id = paste0("cv-tip-", low))
     )
   )
@@ -600,6 +608,13 @@ tab_coordinated_views <- tabItem(
       div(class = "cv-grad", id = "cv-grad"),
       tags$span(id = "cv-cb1", "1"),
       tags$span(class = "cv-cbar-note", id = "cv-cbar-note", "expression")
+    ),
+    div(
+      class = "cv-lg cv-evidence-lg",
+      id = "cv-evidence-legend",
+      style = "display:none",
+      tags$span(class = "cv-evidence-dot"),
+      "Positioning evidence"
     ),
 
     ## ---- panel grid ----------------------------------------------------- ##
