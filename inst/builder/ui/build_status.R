@@ -569,7 +569,7 @@ builder_build_status_ui <- function(model) {
       div(
         class = "builder-recovery-action",
         p(
-          "Retry the failed optional work, or remove it and rebuild without it."
+          "Retry the failed optional work, or remove it, review, and build again."
         ),
         actionButton(
           "retry_failed_analysis",
@@ -579,7 +579,7 @@ builder_build_status_ui <- function(model) {
         if (builder_stage_has_text(model$failed_dataset_id %||% "")) {
           actionButton(
             "remove_failed_analysis",
-            "Remove and rebuild",
+            "Remove and review",
             class = "btn btn-quiet"
           )
         }

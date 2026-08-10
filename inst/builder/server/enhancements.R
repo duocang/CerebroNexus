@@ -378,24 +378,43 @@ observeEvent(input$copy_report, {
   })
 })
 observeEvent(input$retry_failed_analysis, {
-  start_confirmed_build()
+  retry_confirmed_build()
 })
 observeEvent(input$remove_failed_analysis, {
   current_result <- isolate(result())
   dataset_id <- current_result$failed_dataset_id %||% NULL
-  req(builder_stage_has_text(dataset_id %||% ""))
+  if (!builder_stage_has_text(dataset_id %||% "")) {
+    showNotification(
+      "The failed optional work could not be removed.",
+      type = "error"
+    )
+    return()
+  }
   failed <- current_result$retry_closure %||% character()
   entry <- isolate(entry_of(dataset_id))
-  req(entry)
-  if (length(intersect(entry$settings$analyses %||% character(), failed))) {
-    entry$settings$analyses <- setdiff(entry$settings$analyses, failed)
-    replace_entry(entry)
+  removable <- if (is.null(entry)) {
+    character()
+  } else {
+    intersect(entry$settings$analyses %||% character(), failed)
   }
-  session$onFlushed(
-    function() {
-      start_confirmed_build()
-    },
-    once = TRUE
+  if (!length(removable)) {
+    showNotification(
+      "The failed optional work could not be removed.",
+      type = "error"
+    )
+    return()
+  }
+  entry$settings$analyses <- setdiff(entry$settings$analyses, removable)
+  changed <- try(replace_entry(entry), silent = TRUE)
+  if (inherits(changed, "try-error") || !isTRUE(changed)) {
+    showNotification(
+      "The failed optional work could not be removed.",
+      type = "error"
+    )
+    return()
+  }
+  builder_build_recovery_needs_fresh_review(
+    "Optional work removed. Review the updated plan before building."
   )
 })
 observeEvent(input$restart_worker, {
@@ -405,9 +424,23 @@ observeEvent(input$restart_worker, {
   current_worker <- isolate(worker())
   current_protocol <- isolate(protocol())
   req(current_worker, current_protocol)
-  restart_worker_protocol(
-    current_worker,
-    current_protocol,
-    "The worker was restarted from saved snapshots."
+  restarted <- try(
+    restart_worker_protocol(
+      current_worker,
+      current_protocol,
+      "The worker was restarted from saved snapshots."
+    ),
+    silent = TRUE
   )
+  if (inherits(restarted, "try-error") || !isTRUE(restarted)) {
+    showNotification(
+      "The background worker could not restart. Try again or restart this Builder session.",
+      type = "error"
+    )
+    return()
+  }
+  if (isTRUE(builder_build_recovery_ready())) {
+    result(NULL)
+    build_flow(list(stage = "idle", plan = NULL))
+  }
 })

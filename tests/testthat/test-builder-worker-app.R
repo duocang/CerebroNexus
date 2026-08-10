@@ -465,7 +465,17 @@ test_that("Build status projection keeps one stable typed host", {
   expect_match(result_html$success, "Copy Path", fixed = TRUE)
   expect_match(result_html$success, "Copy Report", fixed = TRUE)
   expect_match(result_html$needs_decision, "Retry optional work", fixed = TRUE)
-  expect_match(result_html$needs_decision, "Remove and rebuild", fixed = TRUE)
+  expect_match(result_html$needs_decision, "Remove and review", fixed = TRUE)
+  expect_false(grepl(
+    "remove and rebuild",
+    result_html$needs_decision,
+    ignore.case = TRUE
+  ))
+  expect_match(
+    result_html$needs_decision,
+    "remove it, review, and build again",
+    ignore.case = TRUE
+  )
   expect_match(result_html$failure, "Restart worker", fixed = TRUE)
   expect_match(
     result_html$recovery_required,

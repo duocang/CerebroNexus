@@ -457,7 +457,8 @@ test_that("recovery actions require explicit typed evidence", {
 
   expect_match(undecidable, "Retry optional work", fixed = TRUE)
   expect_false(grepl("Remove and rebuild", undecidable, fixed = TRUE))
-  expect_match(targeted, "Remove and rebuild", fixed = TRUE)
+  expect_match(targeted, "Remove and review", fixed = TRUE)
+  expect_false(grepl("Remove and rebuild", targeted, fixed = TRUE))
   expect_false(grepl("Restart worker", ordinary_failure, fixed = TRUE))
   expect_match(worker_failure, "Restart worker", fixed = TRUE)
 })

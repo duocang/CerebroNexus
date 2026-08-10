@@ -1229,6 +1229,256 @@ test_that("active Build states reject forged stage actions", {
   })
 })
 
+test_that("Build recovery actions preserve confirmation only when safe", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this recovery test.")
+  }
+  app_env$auth_capability$available <- TRUE
+  rlang::local_bindings(
+    builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
+    .env = environment(builder_stage_frozen_plan)
+  )
+  app_env$builder_freeze_plan <- function(
+    entries,
+    out_dir,
+    make_app,
+    overwrite,
+    app_options,
+    app_auth
+  ) {
+    plan <- builder_stage_frozen_plan(make_app)
+    plan$revision <- max(vapply(entries, `[[`, integer(1), "revision"))
+    plan$dataset_order <- vapply(entries, `[[`, character(1), "id")
+    plan$items <- list(plan$items[[1L]])
+    plan$items[[1L]]$id <- entries[[1L]]$id
+    plan$items[[1L]]$analyses <- entries[[1L]]$settings$analyses %||%
+      character()
+    plan$app_auth <- app_auth
+    plan$out_dir <- out_dir
+    plan$overwrite <- overwrite
+    plan$existing_targets <- character()
+    plan
+  }
+
+  shiny::testServer(app_env$server, {
+    real_session <- session
+    notifications <- character()
+    enqueued <- list()
+    restart_succeeds <- TRUE
+    server_env <- environment(start_confirmed_build)
+    assign(
+      "showNotification",
+      function(ui, ...) {
+        notifications <<- c(notifications, as.character(ui))
+      },
+      envir = server_env
+    )
+    assign(
+      "restart_worker_protocol",
+      function(...) restart_succeeds,
+      envir = server_env
+    )
+    assign(
+      "enqueue",
+      function(payload) {
+        enqueued[[length(enqueued) + 1L]] <<- payload
+        queued <- isolate(protocol())
+        queued$build_status <- "queued"
+        protocol(queued)
+        TRUE
+      },
+      envir = server_env
+    )
+
+    action_nonce <- 0L
+    valid_accounts <- app_env$builder_auth_validate_payload(
+      TRUE,
+      list(list(
+        id = "auth-account-1",
+        username = "user-a",
+        password = "password-a"
+      ))
+    )$accounts
+    set_case <- function(
+      value,
+      auth_missing = FALSE,
+      auth_ready = FALSE,
+      stale = FALSE,
+      analyses = "marker_genes"
+    ) {
+      entry <- list(
+        id = "dataset-a",
+        revision = 0L,
+        snapshot = list(
+          path = "/private/dataset-a",
+          owner_token = "owner-a",
+          object_md5 = strrep("a", 32L)
+        ),
+        profile = list(marker = "a"),
+        settings = list(name = "Dataset A", analyses = analyses)
+      )
+      use_state_only_fixture(list(entry))
+      auth_enabled(isTRUE(auth_ready))
+      auth_accounts(
+        if (isTRUE(auth_ready)) {
+          valid_accounts
+        } else {
+          app_env$builder_auth_empty_accounts()
+        }
+      )
+      real_session$setInputs(make_app = isTRUE(auth_ready))
+      real_session$flushReact()
+      plan <- isolate(frozen_review_plan())
+      if (isTRUE(auth_missing)) {
+        plan$app_auth <- list(
+          enabled = TRUE,
+          account_count = 1L,
+          timeout_minutes = 15L
+        )
+        auth_enabled(TRUE)
+      }
+      if (isTRUE(stale)) {
+        plan$revision <- plan$revision - 1L
+      }
+      reviewed <- app_env$builder_reduce_workflow(
+        app_env$builder_workflow_state(),
+        list(type = "open_review", plan = plan)
+      )
+      workflow(app_env$builder_reduce_workflow(
+        reviewed,
+        list(type = "confirm_review", plan = plan)
+      ))
+      selected_output("/private/host/output")
+      build_flow(list(stage = "idle", plan = NULL))
+      worker(list(alive = TRUE))
+      protocol(app_env$builder_request_protocol("worker-recovery"))
+      result(value)
+      notifications <<- character()
+      enqueued <<- list()
+      invisible(plan)
+    }
+    click_action <- function(id) {
+      action_nonce <<- action_nonce + 1L
+      do.call(
+        real_session$setInputs,
+        stats::setNames(list(action_nonce), id)
+      )
+      real_session$flushReact()
+    }
+
+    restart_failure <- app_env$builder_result_failure(
+      "Worker stopped.",
+      restartable_worker = TRUE
+    )
+    set_case(restart_failure)
+    restart_succeeds <- TRUE
+    click_action("restart_worker")
+    expect_null(result())
+    expect_identical(workflow()$stage, "build")
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_identical(selected_output(), "/private/host/output")
+    expect_match(
+      paste(unlist(output$build_stage_status), collapse = " "),
+      "Build Viewer",
+      fixed = TRUE
+    )
+
+    set_case(restart_failure)
+    restart_succeeds <- FALSE
+    click_action("restart_worker")
+    expect_identical(result(), restart_failure)
+    expect_match(
+      tail(notifications, 1L),
+      "could not restart",
+      ignore.case = TRUE
+    )
+
+    set_case(restart_failure, auth_missing = TRUE)
+    restart_succeeds <- TRUE
+    click_action("restart_worker")
+    expect_identical(workflow()$stage, "configure")
+    expect_null(selected_output())
+    expect_null(result())
+    expect_match(
+      tail(notifications, 1L),
+      "Re-enter login accounts and review the plan before retrying.",
+      fixed = TRUE
+    )
+
+    decision <- app_env$builder_result_needs_decision(
+      "Choose one.",
+      retry_closure = "marker_genes",
+      failed_dataset_id = "dataset-a"
+    )
+    set_case(decision)
+    click_action("remove_failed_analysis")
+    expect_false("marker_genes" %in% entry_of("dataset-a")$settings$analyses)
+    expect_identical(workflow()$stage, "configure")
+    expect_null(selected_output())
+    expect_null(result())
+    expect_length(enqueued, 0L)
+    expect_match(
+      tail(notifications, 1L),
+      "Optional work removed. Review the updated plan before building.",
+      fixed = TRUE
+    )
+
+    missing_decision <- app_env$builder_result_needs_decision(
+      "Choose one.",
+      retry_closure = "marker_genes",
+      failed_dataset_id = "missing"
+    )
+    set_case(missing_decision)
+    click_action("remove_failed_analysis")
+    expect_identical(result(), missing_decision)
+    expect_length(enqueued, 0L)
+    expect_match(
+      tail(notifications, 1L),
+      "could not be removed",
+      ignore.case = TRUE
+    )
+
+    set_case(decision)
+    click_action("retry_failed_analysis")
+    expect_length(enqueued, 1L)
+    expect_null(result())
+    expect_identical(build_flow()$stage, "building")
+
+    set_case(decision, auth_ready = TRUE)
+    click_action("retry_failed_analysis")
+    expect_length(enqueued, 1L)
+    expect_null(result())
+    expect_identical(build_flow()$stage, "building")
+    expect_length(auth_accounts(), 0L)
+    expect_false(auth_validation()$ok)
+
+    set_case(decision, auth_missing = TRUE)
+    click_action("retry_failed_analysis")
+    expect_length(enqueued, 0L)
+    expect_identical(workflow()$stage, "configure")
+    expect_null(selected_output())
+    expect_null(result())
+    expect_match(
+      tail(notifications, 1L),
+      "Re-enter login accounts and review the plan before retrying.",
+      fixed = TRUE
+    )
+
+    set_case(decision, stale = TRUE)
+    click_action("retry_failed_analysis")
+    expect_length(enqueued, 0L)
+    expect_identical(workflow()$stage, "configure")
+    expect_null(selected_output())
+    expect_match(tail(notifications, 1L), "Review", fixed = TRUE)
+    expect_match(tail(notifications, 1L), "before retrying", fixed = TRUE)
+  })
+})
+
 test_that("Viewer and spatial preview contracts ignore settings-only revisions", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")

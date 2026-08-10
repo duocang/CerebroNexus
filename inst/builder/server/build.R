@@ -57,6 +57,56 @@ builder_build_confirmation_matches <- function(plan) {
   )
 }
 
+builder_build_recovery_needs_fresh_review <- function(message) {
+  state <- isolate(workflow())
+  if (state$stage %in% c("review", "build")) {
+    workflow(builder_reduce_workflow(state, list(type = "invalidate")))
+  }
+  selected_output(NULL)
+  build_flow(list(stage = "idle", plan = NULL))
+  result(NULL)
+  session$sendCustomMessage(
+    "builder_build_dialog",
+    list(action = "close")
+  )
+  showNotification(
+    message,
+    type = "warning",
+    duration = 6
+  )
+  invisible(FALSE)
+}
+
+builder_build_recovery_ready <- function() {
+  state <- isolate(workflow())
+  stored <- state$review_plan
+  auth_required <- isTRUE(isolate(auth_enabled())) ||
+    (is.list(stored) && isTRUE(stored$app_auth$enabled))
+  if (auth_required) {
+    parsed <- builder_auth_validate_payload(TRUE, isolate(auth_accounts()))
+    expected <- if (is.list(stored)) {
+      stored$app_auth$account_count %||% 1L
+    } else {
+      1L
+    }
+    if (
+      !isTRUE(parsed$ok) ||
+        !identical(as.integer(length(parsed$accounts)), as.integer(expected))
+    ) {
+      return(builder_build_recovery_needs_fresh_review(
+        "Re-enter login accounts and review the plan before retrying."
+      ))
+    }
+  }
+  live <- isolate(frozen_review_plan())
+  if (!isTRUE(builder_build_confirmation_status(state, live)$ok)) {
+    return(builder_build_recovery_needs_fresh_review(
+      "Settings changed. Review the updated plan before retrying."
+    ))
+  }
+  invisible(TRUE)
+}
+
 builder_require_confirmed_build_plan <- function(plan, output_path = NULL) {
   state <- isolate(workflow())
   status <- builder_build_confirmation_status(state, plan)
@@ -248,6 +298,13 @@ start_confirmed_build <- function() {
     return(invisible(FALSE))
   }
   prepare_selected_output(output_path)
+}
+
+retry_confirmed_build <- function() {
+  if (!isTRUE(builder_build_recovery_ready())) {
+    return(invisible(FALSE))
+  }
+  start_confirmed_build()
 }
 
 observeEvent(input$build, {
