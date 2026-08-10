@@ -49,6 +49,7 @@ Imports:
   plotly (>= 4.9.0),
   qvalue (>= 2.14.0),
   R6 (>= 2.4.0),
+  readxl,
   rlang (>= 0.4.2),
   scales (>= 1.1.0),
   scRepertoire (>= 2.0.0),
@@ -93,7 +94,8 @@ Suggests:
   SummarizedExperiment,
   testthat (>= 3.0.0),
   shinytest2 (>= 0.2.0),
-  withr
+  withr,
+  writexl
 Remotes:
   bnprks/BPCells/r
 VignetteBuilder: knitr

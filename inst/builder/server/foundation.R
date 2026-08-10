@@ -113,6 +113,22 @@ projection_preview_contract <- reactiveVal(NULL)
 trajectory_preview_contract <- reactiveVal(NULL)
 spatial_coords <- reactiveVal(NULL)
 alignment_preview <- reactiveVal(NULL)
+marker_import_drafts <- reactiveVal(list())
+
+marker_import_draft_of <- function(id) {
+  marker_import_drafts()[[id]]
+}
+
+replace_marker_import_draft <- function(id, draft) {
+  drafts <- isolate(marker_import_drafts())
+  if (is.null(draft)) {
+    drafts[[id]] <- NULL
+  } else {
+    drafts[[id]] <- draft
+  }
+  marker_import_drafts(drafts)
+  invisible(draft)
+}
 
 entry_of <- function(id) {
   all <- sets()

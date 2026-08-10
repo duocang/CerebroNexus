@@ -244,6 +244,69 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   )
 })
 
+test_that("Marker import workbench exposes explicit per-source confirmation", {
+  source <- list(
+    id = "source-001",
+    source_name = "T_cells",
+    file_name = "markers.xlsx",
+    sheet = "T_cells",
+    rows = 12L,
+    columns = c("gene", "score", "cluster"),
+    raw_table = data.frame(gene = "CD3D"),
+    table = NULL,
+    mapping = "single",
+    cluster_column = NULL,
+    cluster = "T cells",
+    levels = "T cells",
+    confirmed = FALSE,
+    status = "confirmation_required",
+    error = NULL
+  )
+  draft <- list(
+    id = "marker-import-1",
+    method = "Scanpy Wilcoxon",
+    group = "cell_type",
+    known_levels = c("T cells", "B cells", "NK"),
+    sources = list(source),
+    validation = list(
+      ready = FALSE,
+      errors = "unresolved_sources",
+      coverage = list(
+        covered = character(),
+        missing = c("T cells", "B cells", "NK")
+      ),
+      warnings = "No imported rows for: T cells, B cells, NK"
+    )
+  )
+
+  html <- builder_stage_html(builder_marker_import_ui(
+    "enhance",
+    groups = "cell_type",
+    draft = draft
+  ))
+
+  expect_match(html, "Scanpy Wilcoxon", fixed = TRUE)
+  expect_match(html, "markers.xlsx", fixed = TRUE)
+  expect_match(html, "T_cells", fixed = TRUE)
+  expect_match(html, "12 rows", fixed = TRUE)
+  expect_match(html, 'id="enhance-marker_source_mode_source-001"', fixed = TRUE)
+  expect_match(
+    html,
+    'id="enhance-marker_source_cluster_source-001"',
+    fixed = TRUE
+  )
+  expect_match(html, 'data-source-id="source-001"', fixed = TRUE)
+  expect_match(html, "Confirm mapping", fixed = TRUE)
+  expect_match(html, 'aria-live="polite"', fixed = TRUE)
+  expect_match(html, 'id="enhance-marker_import_save"', fixed = TRUE)
+  expect_match(
+    html,
+    '<button[^>]+disabled[^>]+id="enhance-marker_import_save"',
+    perl = TRUE
+  )
+  expect_match(html, "No imported rows for", fixed = TRUE)
+})
+
 test_that("Enhance model derives attachments and retained content from state", {
   model <- builder_enhance_model(
     id = "dataset-a",

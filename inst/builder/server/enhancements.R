@@ -4,7 +4,18 @@ marker_dialog_mode <- reactiveVal("choice")
 
 output[["enhance-marker_dialog_body"]] <- renderUI({
   if (identical(marker_dialog_mode(), "import")) {
-    builder_marker_import_pending_ui()
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    groups <- entry$settings$included_groups %||%
+      entry$settings$groups %||%
+      names(entry$levels %||% list())
+    builder_marker_import_ui(
+      "enhance",
+      groups = groups,
+      draft = marker_import_draft_of(id)
+    )
   } else {
     builder_marker_source_choice_ui("enhance")
   }
@@ -77,10 +88,136 @@ observeEvent(
 observeEvent(
   input[["enhance-marker_genes_upload"]],
   {
+    id <- current()
+    req(id)
+    replace_marker_import_draft(id, NULL)
     builder_show_marker_dialog("import")
   },
   ignoreInit = TRUE
 )
+
+builder_marker_existing_methods <- function(entry) {
+  imported <- entry$settings$marker_imports %||% list()
+  imported_methods <- vapply(
+    imported,
+    function(record) as.character(record$method %||% ""),
+    character(1)
+  )
+  content <- entry$dataset_profile$content$marker_genes %||%
+    entry$profile$content$marker_genes %||%
+    list()
+  existing <- names(content$normalized %||% list()) %||% character()
+  unique(c(existing, imported_methods[nzchar(imported_methods)]))
+}
+
+observeEvent(input[["enhance-marker_import_files"]], {
+  id <- current()
+  req(id)
+  entry <- entry_of(id)
+  req(entry)
+  method <- trimws(as.character(
+    input[["enhance-marker_import_method"]] %||% ""
+  ))
+  group <- as.character(input[["enhance-marker_import_group"]] %||% "")
+  groups <- entry$settings$included_groups %||%
+    entry$settings$groups %||%
+    names(entry$levels %||% list())
+  if (!nzchar(method) || !group %in% groups) {
+    showNotification(
+      "Enter a method name and choose Groups before adding files.",
+      type = "error"
+    )
+    return()
+  }
+  uploads <- input[["enhance-marker_import_files"]]
+  req(is.data.frame(uploads), nrow(uploads) > 0L)
+  sources <- builder_marker_import_inventory(
+    uploads$datapath,
+    uploads$name,
+    uploads$size
+  )
+  draft <- builder_marker_import_new_draft(
+    id = paste0("marker-import-", id, "-", isolate(store()$revision)),
+    method = method,
+    group = group,
+    sources = sources,
+    known_levels = entry$levels[[group]] %||% character(),
+    existing_methods = builder_marker_existing_methods(entry)
+  )
+  replace_marker_import_draft(id, draft)
+})
+
+observeEvent(input[["enhance-marker_source_mode"]], {
+  id <- current()
+  req(id)
+  action <- input[["enhance-marker_source_mode"]]
+  req(is.list(action), nzchar(action$id %||% ""))
+  draft <- marker_import_draft_of(id)
+  req(draft)
+  index <- which(vapply(
+    draft$sources,
+    function(source) identical(source$id, action$id),
+    logical(1)
+  ))
+  if (length(index) != 1L || !action$mode %in% c("single", "multiple")) {
+    return()
+  }
+  source <- draft$sources[[index]]
+  source$mapping <- action$mode
+  source$table <- NULL
+  source$levels <- character()
+  source$confirmed <- FALSE
+  source$status <- "mapping_required"
+  source$error <- NULL
+  if (identical(action$mode, "single") && is.null(source$cluster)) {
+    source$cluster <- if (length(draft$known_levels)) {
+      draft$known_levels[[1L]]
+    } else {
+      NULL
+    }
+  }
+  if (identical(action$mode, "multiple") && is.null(source$cluster_column)) {
+    source$cluster_column <- if (length(source$columns)) {
+      source$columns[[1L]]
+    } else {
+      NULL
+    }
+  }
+  draft$sources[[index]] <- source
+  replace_marker_import_draft(
+    id,
+    builder_marker_import_refresh_draft(draft)
+  )
+})
+
+observeEvent(input[["enhance-marker_source_confirm"]], {
+  id <- current()
+  req(id)
+  action <- input[["enhance-marker_source_confirm"]]
+  req(is.list(action), nzchar(action$id %||% ""))
+  draft <- marker_import_draft_of(id)
+  req(draft)
+  mode <- as.character(
+    input[[paste0("enhance-marker_source_mode_", action$id)]] %||% "single"
+  )
+  value <- if (identical(mode, "multiple")) {
+    input[[paste0("enhance-marker_source_column_", action$id)]]
+  } else {
+    input[[paste0("enhance-marker_source_cluster_", action$id)]]
+  }
+  got <- try(
+    builder_marker_import_confirm_source(draft, action$id, mode, value),
+    silent = TRUE
+  )
+  if (inherits(got, "try-error")) {
+    showNotification(
+      "This source mapping could not be confirmed.",
+      type = "error"
+    )
+    return()
+  }
+  replace_marker_import_draft(id, got)
+})
 
 ## -- supplementary tables -------------------------------------------------
 observeEvent(input[["enhance-table_files"]], {

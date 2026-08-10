@@ -909,6 +909,83 @@ div.viewer-trajectory-preview {
 @media (max-width: 40rem) {
   .marker-source-choice-grid { grid-template-columns: 1fr; }
 }
+.marker-import-workbench {
+  display: grid;
+  gap: var(--space-4);
+}
+.marker-import-intro { margin: 0; color: var(--c-text-muted); }
+.marker-import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+.marker-import-summary > div { display: grid; gap: .15rem; }
+.marker-import-summary dt {
+  color: var(--c-text-subtle);
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.marker-import-summary dd { margin: 0; color: var(--c-text); font-weight: 600; }
+.marker-import-source-list { display: grid; gap: var(--space-3); }
+.marker-import-source {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+}
+.marker-import-source.is-ready {
+  border-color: var(--builder-action);
+  background: var(--c-amber-50);
+}
+.marker-import-source-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.marker-import-source-heading > div { min-width: 0; display: grid; gap: .15rem; }
+.marker-import-source-name,
+.marker-import-source-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.marker-import-source-file,
+.marker-import-source-size {
+  color: var(--c-text-subtle);
+  font-size: .75rem;
+}
+.marker-import-source-controls {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+}
+.marker-import-source-controls .form-group { margin: 0; }
+.marker-import-source-status { margin: 0; color: var(--c-text-muted); font-size: .8rem; }
+.marker-import-source.is-ready .marker-import-source-status {
+  color: var(--builder-action-active);
+  font-weight: 600;
+}
+.marker-import-validation { min-height: 1.4rem; }
+.marker-import-warning,
+.marker-import-error { margin: 0; font-size: .82rem; }
+.marker-import-warning { color: var(--builder-action-active); }
+.marker-import-error { color: var(--c-error); }
+.marker-import-save { justify-self: end; }
+@media (max-width: 48rem) {
+  .marker-import-source-controls { grid-template-columns: 1fr; }
+  .marker-import-source-heading { display: grid; }
+  .marker-import-save { width: 100%; }
+}
 .enhance-module-title {
   display: block;
   font-size: 1.05rem;

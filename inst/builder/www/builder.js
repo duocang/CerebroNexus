@@ -1833,6 +1833,15 @@
       });
       return;
     }
+    var confirmMarkerSource = target.closest(".marker-source-confirm");
+    if (confirmMarkerSource) {
+      event.preventDefault();
+      send("enhance-marker_source_confirm", {
+        id: confirmMarkerSource.dataset.sourceId,
+        nonce: Date.now(),
+      });
+      return;
+    }
     var infoButton = target.closest(".enhance-info-button");
     if (infoButton) {
       event.preventDefault();
@@ -2011,6 +2020,14 @@
   });
 
   document.addEventListener("change", function (event) {
+    if (event.target.id.indexOf("enhance-marker_source_mode_") === 0) {
+      send("enhance-marker_source_mode", {
+        id: event.target.id.replace("enhance-marker_source_mode_", ""),
+        mode: event.target.value,
+        nonce: Date.now(),
+      });
+      return;
+    }
     if (event.target.matches("#dataset_files")) {
       beginClientDatasetUpload(event.target);
       return;

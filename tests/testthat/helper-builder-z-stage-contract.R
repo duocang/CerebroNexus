@@ -2,6 +2,7 @@ builder_stage_contract_source_runtime <- function(local = parent.frame()) {
   builder_repo_source("app_bundle.R", local = local)
   for (file in c(
     "profile.R",
+    "marker_import.R",
     "ui/inspect_stage.R",
     "preview.R",
     "ui/core_stage.R",
