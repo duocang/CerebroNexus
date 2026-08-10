@@ -101,6 +101,10 @@ test_that("staged workflow remains focused and overflow-free", {
     expect_false(app$get_js(
       "!!document.querySelector('[data-workflow-stage=review] input:not([type=hidden]), [data-workflow-stage=review] select, [data-workflow-stage=review] textarea')"
     ))
+    initial_revision <- app$get_js(paste0(
+      "document.querySelector('.review-plan-revision').textContent.trim()",
+      ".match(/(\\d+)$/)[1]"
+    ))
     builder_expect_no_horizontal_overflow(app)
 
     app$click("confirm_review")
@@ -114,6 +118,13 @@ test_that("staged workflow remains focused and overflow-free", {
         "document.querySelector('.builder-workflow-progress').dataset.workflowConfirmed"
       ),
       "true"
+    )
+    expect_identical(
+      app$get_js(paste0(
+        "document.querySelector('.confirmed-plan-revision').textContent.trim()",
+        ".match(/(\\d+)$/)[1]"
+      )),
+      initial_revision
     )
     builder_expect_no_horizontal_overflow(app)
 
@@ -160,6 +171,11 @@ test_that("staged workflow remains focused and overflow-free", {
       ),
       "false"
     )
+    revised_revision <- app$get_js(paste0(
+      "document.querySelector('.review-plan-revision').textContent.trim()",
+      ".match(/(\\d+)$/)[1]"
+    ))
+    expect_gt(as.integer(revised_revision), as.integer(initial_revision))
     app$click("confirm_review")
     builder_wait_for_visible_stage_focus(app, "build")
     expect_identical(
@@ -171,6 +187,13 @@ test_that("staged workflow remains focused and overflow-free", {
         "document.querySelector('.builder-workflow-progress').dataset.workflowConfirmed"
       ),
       "true"
+    )
+    expect_identical(
+      app$get_js(paste0(
+        "document.querySelector('.confirmed-plan-revision').textContent.trim()",
+        ".match(/(\\d+)$/)[1]"
+      )),
+      revised_revision
     )
     builder_expect_no_horizontal_overflow(app)
     builder_expect_clean_browser_logs(app)

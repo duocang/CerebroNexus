@@ -1077,6 +1077,7 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     assign(
       "session",
       list(
+        token = real_session$token,
         sendCustomMessage = function(type, message) {
           dialog_messages[[length(dialog_messages) + 1L]] <<- list(
             type = type,
@@ -1104,6 +1105,9 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
       "enqueue",
       function(payload) {
         enqueued[[length(enqueued) + 1L]] <<- payload
+        queued_protocol <- isolate(protocol())
+        queued_protocol$build_status <- "queued"
+        protocol(queued_protocol)
         TRUE
       },
       envir = fn_env
@@ -1148,9 +1152,16 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     )
     expect_length(conflict, 1L)
     expect_identical(conflict[[1L]]$message$files, "artifact.crb")
+    conflict_nonce <- conflict[[1L]]$message$nonce
+    expect_true(
+      is.character(conflict_nonce) &&
+        length(conflict_nonce) == 1L &&
+        nzchar(conflict_nonce)
+    )
+    expect_identical(build_flow()$nonce, conflict_nonce)
 
     real_session$setInputs(
-      builder_build_dialog = list(action = "cancel", nonce = 1L)
+      builder_build_dialog = list(action = "cancel", nonce = conflict_nonce)
     )
     real_session$flushReact()
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
@@ -1164,8 +1175,31 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     real_session$setInputs(build = 2L)
     real_session$flushReact()
     expect_identical(build_flow()$stage, "conflict")
+    next_conflict <- tail(
+      Filter(
+        function(message) {
+          identical(message$type, "builder_build_dialog") &&
+            identical(message$message$type, "conflict")
+        },
+        dialog_messages
+      ),
+      1L
+    )[[1L]]$message
+    expect_false(identical(next_conflict$nonce, conflict_nonce))
     real_session$setInputs(
-      builder_build_dialog = list(action = "choose_another", nonce = 2L)
+      builder_build_dialog = list(
+        action = "choose_another",
+        nonce = conflict_nonce
+      )
+    )
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    expect_identical(selected_output(), output_dir)
+    real_session$setInputs(
+      builder_build_dialog = list(
+        action = "choose_another",
+        nonce = next_conflict$nonce
+      )
     )
     real_session$flushReact()
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
@@ -1180,9 +1214,10 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     real_session$setInputs(build = 3L)
     real_session$flushReact()
     expect_identical(build_flow()$stage, "conflict")
+    third_nonce <- build_flow()$nonce
     worker(NULL)
     real_session$setInputs(
-      builder_build_dialog = list(action = "replace", nonce = 3L)
+      builder_build_dialog = list(action = "replace", nonce = third_nonce)
     )
     real_session$flushReact()
     expect_length(enqueued, 0L)
@@ -1200,13 +1235,33 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     real_session$setInputs(build = 4L)
     real_session$flushReact()
     expect_identical(build_flow()$stage, "conflict")
+    fourth_nonce <- build_flow()$nonce
     real_session$setInputs(
-      builder_build_dialog = list(action = "replace", nonce = 4L)
+      builder_build_dialog = list(action = "forged", nonce = fourth_nonce)
+    )
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    expect_length(enqueued, 0L)
+    real_session$setInputs(
+      builder_build_dialog = list(action = "replace", nonce = fourth_nonce)
     )
     real_session$flushReact()
     expect_length(enqueued, 1L)
     expect_true(enqueued[[1L]]$plan$overwrite)
     expect_identical(enqueued[[1L]]$plan$out_dir, output_dir)
+    expect_identical(build_flow()$stage, "building")
+    real_session$setInputs(
+      builder_build_dialog = list(action = "replace", nonce = fourth_nonce)
+    )
+    real_session$setInputs(
+      builder_build_dialog = list(action = "cancel", nonce = fourth_nonce)
+    )
+    real_session$setInputs(
+      builder_build_dialog = list(action = "forged", nonce = "forged-nonce")
+    )
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "building")
+    expect_length(enqueued, 1L)
 
     build_flow(list(stage = "idle", plan = NULL))
     busy_protocol <- app_env$builder_request_protocol("worker-b")
@@ -1215,9 +1270,10 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     real_session$setInputs(build = 5L)
     real_session$flushReact()
     expect_identical(build_flow()$stage, "conflict")
+    fifth_nonce <- build_flow()$nonce
     notification_count <- length(notifications)
     real_session$setInputs(
-      builder_build_dialog = list(action = "replace", nonce = 5L)
+      builder_build_dialog = list(action = "replace", nonce = fifth_nonce)
     )
     real_session$flushReact()
     expect_length(enqueued, 1L)
@@ -1229,8 +1285,9 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     real_session$setInputs(build = 6L)
     real_session$flushReact()
     expect_identical(build_flow()$stage, "conflict")
+    sixth_nonce <- build_flow()$nonce
     real_session$setInputs(
-      builder_build_dialog = list(action = "replace", nonce = 6L)
+      builder_build_dialog = list(action = "replace", nonce = sixth_nonce)
     )
     real_session$flushReact()
     expect_length(enqueued, 2L)
@@ -1242,12 +1299,13 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     real_session$setInputs(build = 7L)
     real_session$flushReact()
     expect_identical(build_flow()$stage, "conflict")
+    seventh_nonce <- build_flow()$nonce
     workflow(app_env$builder_reduce_workflow(
       isolate(workflow()),
       list(type = "invalidate")
     ))
     real_session$setInputs(
-      builder_build_dialog = list(action = "replace", nonce = 7L)
+      builder_build_dialog = list(action = "replace", nonce = seventh_nonce)
     )
     real_session$flushReact()
     expect_length(enqueued, 2L)
@@ -1362,6 +1420,112 @@ test_that("active Build states reject forged stage actions", {
     real_session$flushReact()
     expect_identical(workflow()$stage, "review")
     expect_identical(result(), navigation_result)
+  })
+})
+
+test_that("active builds lock dataset imports and rail mutations", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  app_env$builder_session_example <- function(...) invisible(TRUE)
+
+  shiny::testServer(app_env$server, {
+    real_session <- session
+    notifications <- character()
+    assign(
+      "showNotification",
+      function(ui, ...) {
+        notifications <<- c(notifications, as.character(ui))
+      },
+      envir = environment(start_load)
+    )
+    worker(list(alive = TRUE, snapshot_root = tempdir()))
+    worker_available(TRUE)
+    protocol(app_env$builder_request_protocol("worker-lock"))
+    entries <- lapply(c("dataset-a", "dataset-b"), function(id) {
+      list(
+        id = id,
+        source_id = id,
+        output_id = id,
+        selector_value = id,
+        path = file.path(tempdir(), paste0(id, ".rds")),
+        snapshot = builder_task6_snapshot_identity(),
+        format = "RDS",
+        profile = list(
+          n_cells = 12L,
+          nUMI = "nCount_RNA",
+          nGene = "nFeature_RNA"
+        ),
+        settings = list(
+          name = id,
+          groups = "cluster",
+          reductions = "umap",
+          layer = "data",
+          nUMI = "nCount_RNA",
+          nGene = "nFeature_RNA",
+          palette = list(cluster = c(one = "#111111")),
+          analyses = character()
+        )
+      )
+    })
+    store(app_env$builder_reduce_state(
+      app_env$builder_state(entries),
+      list(type = "remove", id = "dataset-b")
+    ))
+    expect_true(store()$can_undo_remove)
+
+    for (index in seq_along(c("queued", "building"))) {
+      stage <- c("queued", "building")[[index]]
+      build_flow(list(stage = stage, plan = NULL))
+      active_protocol <- isolate(protocol())
+      active_protocol$build_status <- c("queued", "running")[[index]]
+      protocol(active_protocol)
+      before <- isolate(store())
+      before_imports <- isolate(imports())
+      before_protocol <- isolate(protocol())
+
+      expect_false(start_load(
+        "example",
+        paste0("locked-example-", index),
+        "Locked example"
+      ))
+      real_session$setInputs(
+        reorder_ds = list(id = "dataset-a", direction = "down"),
+        drop_ds = list(id = "dataset-a", confirmed = TRUE),
+        undo_remove = index,
+        use_example = c("all_content", "spatial")[[index]],
+        dataset_files = data.frame(
+          name = "forged.rds",
+          datapath = tempfile(fileext = ".rds"),
+          size = 1,
+          type = "application/octet-stream"
+        )
+      )
+      real_session$flushReact()
+
+      expect_identical(store(), before, info = stage)
+      expect_identical(imports(), before_imports, info = stage)
+      expect_identical(protocol(), before_protocol, info = stage)
+    }
+    expect_true(any(grepl(
+      "Wait for the active build to finish before changing datasets.",
+      notifications,
+      fixed = TRUE
+    )))
+
+    build_flow(list(stage = "idle", plan = NULL))
+    protocol(app_env$builder_request_protocol("worker-lock"))
+    expect_true(start_load("example", "idle-example", "Idle example"))
+    expect_length(imports()$entries, 1L)
+    real_session$setInputs(undo_remove = 3L)
+    real_session$flushReact()
+    expect_false(store()$can_undo_remove)
+    expect_length(store()$datasets, 2L)
   })
 })
 

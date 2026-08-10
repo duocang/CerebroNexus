@@ -594,6 +594,45 @@ test_that("Build status projection keeps one stable typed host", {
   )
 })
 
+test_that("dataset mutation lock covers every active build state", {
+  idle_protocol <- builder_request_protocol("worker-lock")
+  expect_false(builder_mutations_locked(
+    list(stage = "idle", plan = NULL),
+    idle_protocol
+  ))
+  for (stage in c(
+    "queued",
+    "building",
+    "choosing",
+    "choosing_folder",
+    "conflict"
+  )) {
+    expect_true(
+      builder_mutations_locked(
+        list(stage = stage, plan = NULL),
+        idle_protocol
+      ),
+      info = stage
+    )
+  }
+  for (status in c("queued", "running", "cancelling")) {
+    active_protocol <- idle_protocol
+    active_protocol$build_status <- status
+    expect_true(
+      builder_mutations_locked(
+        list(stage = "idle", plan = NULL),
+        active_protocol
+      ),
+      info = status
+    )
+  }
+  expect_true(builder_mutations_locked(NULL, idle_protocol))
+  expect_true(builder_mutations_locked(
+    list(stage = "idle", plan = NULL),
+    list(build_status = NA_character_)
+  ))
+})
+
 test_that("completed preview protocols enable a selected Build", {
   protocol <- builder_request_protocol("worker-completed-preview")
   protocol <- builder_enqueue(

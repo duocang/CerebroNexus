@@ -5,6 +5,11 @@
 ## process only sends a plan and waits for the report, so the page keeps
 ## answering while a marker-gene run takes its minutes.
 auth_accounts_state <- auth_accounts
+conflict_nonce_sequence <- 0L
+next_conflict_nonce <- function() {
+  conflict_nonce_sequence <<- conflict_nonce_sequence + 1L
+  paste(session$token, conflict_nonce_sequence, sep = "-")
+}
 
 output$build_stage_status_content <- renderUI({
   req(identical(workflow()$stage, "build"))
@@ -16,6 +21,13 @@ output$build_stage_status_content <- renderUI({
     output_selected = builder_stage_has_text(selected_output() %||% "")
   )
   builder_build_stage_status_ui(model)
+})
+
+observe({
+  session$sendCustomMessage(
+    "builder_dataset_mutation_lock",
+    list(locked = builder_mutations_locked(build_flow(), protocol()))
+  )
 })
 
 builder_build_confirmation_status <- function(state, plan) {
@@ -235,13 +247,15 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
       return(invisible(FALSE))
     }
     if (length(plan$existing_targets) && !isTRUE(overwrite)) {
-      build_flow(list(stage = "conflict", plan = plan))
+      nonce <- next_conflict_nonce()
+      build_flow(list(stage = "conflict", plan = plan, nonce = nonce))
       session$sendCustomMessage(
         "builder_build_dialog",
         list(
           type = "conflict",
           title = "Files already exist",
-          files = basename(plan$existing_targets)
+          files = basename(plan$existing_targets),
+          nonce = nonce
         )
       )
       return(invisible(FALSE))
@@ -314,11 +328,29 @@ observeEvent(input$build, {
 })
 
 observeEvent(input$builder_build_dialog, {
-  action <- input$builder_build_dialog$action %||% "cancel"
+  event <- input$builder_build_dialog
   flow <- isolate(build_flow())
+  if (!identical(flow$stage, "conflict")) {
+    return()
+  }
+  if (
+    !is.list(event) ||
+      is.object(event) ||
+      !identical(sort(names(event)), c("action", "nonce")) ||
+      !is.character(event$action) ||
+      length(event$action) != 1L ||
+      is.na(event$action) ||
+      !is.character(event$nonce) ||
+      length(event$nonce) != 1L ||
+      is.na(event$nonce) ||
+      !nzchar(event$nonce) ||
+      !identical(event$nonce, flow$nonce)
+  ) {
+    return()
+  }
+  action <- event$action
   if (
     identical(action, "replace") &&
-      identical(flow$stage, "conflict") &&
       inherits(flow$plan, "builder_build_plan")
   ) {
     if (
@@ -330,10 +362,7 @@ observeEvent(input$builder_build_dialog, {
       return()
     }
     prepare_selected_output(flow$plan$out_dir, overwrite = TRUE)
-  } else if (
-    identical(action, "choose_another") &&
-      identical(flow$stage, "conflict")
-  ) {
+  } else if (identical(action, "choose_another")) {
     if (
       !isTRUE(builder_require_confirmed_build_plan(
         flow$plan,
@@ -344,7 +373,7 @@ observeEvent(input$builder_build_dialog, {
     }
     build_flow(list(stage = "idle", plan = NULL))
     choose_build_folder()
-  } else {
+  } else if (identical(action, "cancel")) {
     build_flow(list(stage = "idle", plan = NULL))
   }
 })
@@ -413,7 +442,9 @@ rail_controller <- builder_dataset_rail_server(
     } else if (!identical(validation$code, "confirmation_required")) {
       add_error(validation$message)
     }
-  }
+  },
+  mutations_locked = dataset_mutations_locked,
+  on_locked = function() dataset_mutations_locked(notify = TRUE)
 )
 
 output$busy <- renderUI({

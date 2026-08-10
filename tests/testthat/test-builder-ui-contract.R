@@ -1080,9 +1080,10 @@ test_that("Inspect shows compact detected-content tags instead of audit output",
   expect_false(grepl("projection(s) and", inspect, fixed = TRUE))
   expect_false(grepl("group_distribution$bucket", inspect, fixed = TRUE))
   expect_false(grepl("builder-stats-chart", inspect, fixed = TRUE))
-  expect_match(review, "expected-versus-verified", fixed = TRUE)
-  expect_match(review, "Expected after build", fixed = TRUE)
-  expect_match(review, "Verified after build", fixed = TRUE)
+  expect_match(review, "Pages in the App", fixed = TRUE)
+  expect_false(grepl("expected-versus-verified", review, fixed = TRUE))
+  expect_false(grepl("Expected after build", review, fixed = TRUE))
+  expect_false(grepl("Verified after build", review, fixed = TRUE))
   expect_match(stats, 'setAttribute("aria-label"', fixed = TRUE)
   expect_match(stats, "prefers-reduced-motion", fixed = TRUE)
   expect_false(grepl("fetch|XMLHttpRequest|https?://", stats))
@@ -1193,9 +1194,15 @@ test_that("dense stages default to plain summaries and bounded details", {
 
   expect_match(enhance, "Optional analyses", fixed = TRUE)
   expect_false(grepl("What this changes", enhance, fixed = TRUE))
-  expect_match(review, "Technical plan details", fixed = TRUE)
-  expect_match(review, "Detailed manifest", fixed = TRUE)
-  expect_match(review, "builder_review_bounded_lines", fixed = TRUE)
+  expect_match(review, "Frozen plan revision", fixed = TRUE)
+  expect_identical(
+    lengths(regmatches(
+      review,
+      gregexpr("builder_review_stage_ui <- function", review, fixed = TRUE)
+    )),
+    1L
+  )
+  expect_false(grepl("builder_review_bounded_lines", review, fixed = TRUE))
   for (label in c("Move up", "Move down", "Remove")) {
     expect_match(rail, label, fixed = TRUE)
   }
@@ -1203,6 +1210,18 @@ test_that("dense stages default to plain summaries and bounded details", {
   expect_match(css, ".ds-actions", fixed = TRUE)
   expect_false(grepl("builder-select-initial", rail, fixed = TRUE))
   expect_false(grepl("builder-duplicate", rail, fixed = TRUE))
+})
+
+test_that("active build mutation controls and conflict replies are nonce-bound", {
+  js <- builder_asset_text("www", "builder.js")
+  build <- builder_asset_text("server", "build.R")
+
+  expect_match(js, "builder_dataset_mutation_lock", fixed = TRUE)
+  expect_match(js, "applyDatasetMutationLock", fixed = TRUE)
+  expect_match(js, 'nonce: message.nonce', fixed = TRUE)
+  expect_match(build, "next_conflict_nonce", fixed = TRUE)
+  expect_match(build, "!identical(event$nonce, flow$nonce)", fixed = TRUE)
+  expect_match(build, '!identical(flow$stage, "conflict")', fixed = TRUE)
 })
 
 test_that("Enhance analyses use amber selectable cards with quiet info controls", {

@@ -14,7 +14,7 @@ test_that("Review model translates a frozen plan into user language", {
   )
   model <- builder_review_model(plan)
 
-  expect_null(model$revision)
+  expect_identical(model$revision, 17L)
   expect_null(model$contract)
   expect_null(model$manifest)
   expect_null(model$app$host)
@@ -115,6 +115,7 @@ test_that("Review presents datasets, App experience, pages, and output", {
     fixed = TRUE
   )
   expect_match(html, "2 datasets", fixed = TRUE)
+  expect_match(html, "Frozen plan revision 17", fixed = TRUE)
   expect_match(html, "Creates Shiny App", fixed = TRUE)
   expect_match(html, "1 App containing 2 datasets", fixed = TRUE)
   expect_false(grepl("1 secret env file", html, fixed = TRUE))
@@ -147,7 +148,6 @@ test_that("Review presents datasets, App experience, pages, and output", {
   expect_match(html, "Private App", fixed = TRUE)
   expect_match(html, "not offered as public downloads", fixed = TRUE)
   forbidden <- c(
-    "Plan revision",
     "App contract",
     "Artifact mode",
     "automatic",
@@ -177,6 +177,27 @@ test_that("Review presents datasets, App experience, pages, and output", {
     fixed = TRUE
   )))
   expect_false(grepl("Needs attention", html, fixed = TRUE))
+})
+
+test_that("Review requires a typed frozen plan revision", {
+  plan <- builder_stage_frozen_plan()
+  for (revision in list(NULL, NA_integer_, 17, "", c("17", "18"))) {
+    plan$revision <- revision
+    expect_error(
+      builder_review_model(plan),
+      "typed frozen plan revision",
+      fixed = TRUE
+    )
+  }
+  plan$revision <- "release-17"
+  expect_identical(builder_review_model(plan)$revision, "release-17")
+})
+
+test_that("Build shows the confirmed frozen plan revision", {
+  model <- builder_review_model(builder_stage_frozen_plan())
+  html <- builder_stage_html(builder_build_workbench_ui(model))
+
+  expect_match(html, "Confirmed plan revision 17", fixed = TRUE)
 })
 
 test_that("Review has one global confirmation and no editable controls", {

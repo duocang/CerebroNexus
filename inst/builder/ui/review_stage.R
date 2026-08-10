@@ -447,6 +447,17 @@ builder_review_model <- function(plan, verification = NULL) {
   ) {
     stop("Review requires a ready frozen BuildPlan.", call. = FALSE)
   }
+  revision <- plan$revision
+  valid_revision <- (is.integer(revision) &&
+    length(revision) == 1L &&
+    !is.na(revision)) ||
+    (is.character(revision) &&
+      length(revision) == 1L &&
+      !is.na(revision) &&
+      nzchar(revision))
+  if (!valid_revision) {
+    stop("Review requires a typed frozen plan revision.", call. = FALSE)
+  }
   items <- plan$items %||% list()
   app_options <- plan$app_options %||% list(enabled = FALSE)
   names_by_id <- stats::setNames(
@@ -644,6 +655,7 @@ builder_review_model <- function(plan, verification = NULL) {
     }
   }
   model <- list(
+    revision = revision,
     dataset_count = as.integer(length(items)),
     output_label = if (!isTRUE(plan$make_app)) {
       "CRB files"
@@ -716,312 +728,6 @@ builder_review_blocked_ui <- function(id, message = NULL) {
   )
 }
 
-builder_review_value_lines <- function(value, prefix = NULL) {
-  if (is.null(value)) {
-    return(character())
-  }
-  if (!is.list(value)) {
-    text <- paste(as.character(value), collapse = ", ")
-    return(
-      if (builder_stage_has_text(prefix %||% "")) {
-        paste0(prefix, ": ", text)
-      } else {
-        text
-      }
-    )
-  }
-  value_names <- names(value)
-  unlist(
-    lapply(seq_along(value), function(index) {
-      label <- if (is.null(value_names) || !nzchar(value_names[[index]])) {
-        as.character(index)
-      } else {
-        value_names[[index]]
-      }
-      next_prefix <- if (builder_stage_has_text(prefix %||% "")) {
-        paste(prefix, label, sep = " / ")
-      } else {
-        label
-      }
-      builder_review_value_lines(value[[index]], next_prefix)
-    }),
-    use.names = FALSE
-  )
-}
-
-builder_review_bounded_lines <- function(
-  value,
-  value_limit = 8L,
-  prefix = NULL
-) {
-  if (is.null(value)) {
-    return(character())
-  }
-  if (!is.list(value)) {
-    shown <- utils::head(as.character(value), value_limit)
-    text <- paste(shown, collapse = ", ")
-    if (length(value) > value_limit) {
-      text <- paste0(
-        text,
-        " … (",
-        length(value),
-        " values; ",
-        length(value) - value_limit,
-        " more values not shown)"
-      )
-    }
-    return(
-      if (builder_stage_has_text(prefix %||% "")) {
-        paste0(prefix, ": ", text)
-      } else {
-        text
-      }
-    )
-  }
-  value_names <- names(value)
-  lines <- unlist(
-    lapply(seq_along(value), function(index) {
-      label <- if (is.null(value_names) || !nzchar(value_names[[index]])) {
-        as.character(index)
-      } else {
-        value_names[[index]]
-      }
-      next_prefix <- if (builder_stage_has_text(prefix %||% "")) {
-        paste(prefix, label, sep = " / ")
-      } else {
-        label
-      }
-      builder_review_bounded_lines(
-        value[[index]],
-        value_limit = value_limit,
-        prefix = next_prefix
-      )
-    }),
-    use.names = FALSE
-  )
-  lines
-}
-
-builder_review_stage_ui <- function(id, model) {
-  ns <- NS(id)
-  options <- model$app_options %||% list()
-  compact_dataset_fields <- function(dataset) {
-    dataset[c(
-      "analysis_dependency_graph",
-      "artifact_identity",
-      "histology_coverage"
-    )] <- NULL
-    dataset
-  }
-  names_by_id <- stats::setNames(
-    vapply(model$datasets, `[[`, character(1), "name"),
-    model$dataset_order
-  )
-  initial <- names_by_id[[options$initial_dataset]] %||% options$initial_dataset
-  div(
-    id = ns("stage"),
-    class = "builder-stage builder-stage-review builder-card builder-section",
-    h2("Review"),
-    span(
-      class = "visually-hidden",
-      paste0("Artifact mode: ", model$artifact_mode)
-    ),
-    p(
-      class = "stage-intro",
-      "Confirm the datasets and output below. Technical details stay available when you need them."
-    ),
-    div(
-      class = "review-summary-strip",
-      span(tags$b(length(model$datasets)), " dataset(s)"),
-      span("Plan revision ", tags$b(model$revision)),
-      span(
-        "Output: ",
-        tags$b(
-          if (identical(model$artifact_mode, "crbs_only")) {
-            "CRB files"
-          } else {
-            "CRB files + private App"
-          }
-        )
-      )
-    ),
-    div(
-      class = "review-dataset-grid",
-      lapply(model$datasets, function(dataset) {
-        div(
-          class = "review-dataset-card",
-          tags$b(dataset$name),
-          p(class = "review-dataset-file", dataset$filename),
-          div(
-            class = "review-counts",
-            span(format(dataset$cell_count %||% 0L, big.mark = ","), " cells"),
-            span(format(dataset$gene_count %||% 0L, big.mark = ","), " genes")
-          ),
-          p(
-            paste(length(dataset$groups %||% character()), "group fields ·"),
-            paste(length(dataset$reductions %||% character()), "projections ·"),
-            paste("backend", dataset$expression_backend %||% "embedded")
-          ),
-          tags$details(
-            tags$summary("Technical dataset details"),
-            h4("Analysis dependency graph"),
-            builder_stage_text_items(builder_review_bounded_lines(
-              dataset$analysis_dependency_graph
-            )),
-            h4("Artifact identity"),
-            builder_stage_text_items(builder_review_bounded_lines(list(
-              schema_version = dataset$artifact_identity$schema_version,
-              frozen_cell_ids = length(
-                dataset$artifact_identity$cells %||% character()
-              ),
-              frozen_feature_ids = length(
-                dataset$artifact_identity$features %||% character()
-              ),
-              group_levels = dataset$artifact_identity$group_levels,
-              projections = dataset$artifact_identity$projections,
-              source_metadata = dataset$artifact_identity$source_metadata,
-              metadata = dataset$artifact_identity$metadata,
-              spatial_sections = dataset$artifact_identity$spatial_sections
-            ))),
-            h4("Histology coverage"),
-            builder_stage_text_items(builder_review_bounded_lines(
-              dataset$histology_coverage
-            )),
-            h4("Frozen dataset fields"),
-            builder_stage_text_items(
-              builder_review_bounded_lines(compact_dataset_fields(dataset))
-            )
-          )
-        )
-      })
-    ),
-    if (identical(model$artifact_mode, "crbs_and_private_app")) {
-      tagList(
-        h3(paste0("App contract ", model$app_contract_version)),
-        p(
-          "Selector order: ",
-          paste(unname(names_by_id[model$dataset_order]), collapse = " → ")
-        ),
-        p(
-          "Initial dataset: ",
-          initial,
-          " (",
-          options$initial_dataset_mode,
-          ")"
-        ),
-        p(
-          if (isTRUE(options$show_upload_ui)) {
-            "Uploads enabled"
-          } else {
-            "Uploads disabled"
-          }
-        ),
-        p(paste0("Welcome message: ", options$welcome_message)),
-        p(paste0(
-          "Point size: ",
-          options$point_size$overview_projection_point_size
-        )),
-        p(paste0(
-          "Variable comparison: ",
-          if (isTRUE(options$variable_to_compare)) "enabled" else "disabled"
-        )),
-        p(paste0("Host: ", options$host)),
-        p(paste0("Port: ", options$port)),
-        p(paste0("Request limit: ", options$max_request_size, " MB")),
-        p(paste0("Display mode: ", options$display_mode)),
-        p(paste0(
-          "Launch browser: ",
-          if (isTRUE(options$launch_browser)) "enabled" else "disabled"
-        )),
-        p("Palettes are frozen per dataset and metadata group."),
-        p(
-          "The CRBs and sidecars are duplicated into private App storage."
-        ),
-        p(
-          class = "privacy",
-          "Private data is not directly downloadable and belongs to no HTTP-public asset class."
-        )
-      )
-    },
-    h3("Planned payload members"),
-    builder_stage_text_items(model$release_members),
-    h3("Output release"),
-    p(paste0("Output directory: ", model$output_release$directory)),
-    p(paste0(
-      "Overwrite: ",
-      if (isTRUE(model$output_release$overwrite)) "enabled" else "disabled"
-    )),
-    p(paste0(
-      "Replacement policy: ",
-      model$output_release$replacement_policy
-    )),
-    p(paste0(
-      "Estimated runtime: ",
-      model$output_release$estimated_runtime
-    )),
-    p(paste0(
-      "Estimated disk: ",
-      model$output_release$estimated_disk_bytes,
-      " bytes"
-    )),
-    h3("Acknowledged warnings"),
-    builder_stage_text_items(builder_review_value_lines(
-      model$acknowledgements
-    )),
-    tags$details(
-      class = "review-technical-details",
-      tags$summary("Technical plan details"),
-      h3("Frozen content manifest"),
-      p(
-        class = "hint",
-        paste(length(model$manifest %||% list()), "manifest sections")
-      ),
-      tags$details(
-        tags$summary("Detailed manifest (bounded preview)"),
-        builder_stage_text_items(builder_review_bounded_lines(model$manifest))
-      )
-    ),
-    h3("Viewer page expectations"),
-    div(
-      class = "expected-versus-verified",
-      div(
-        class = "page-checklist expected-pages",
-        h4("Expected after build"),
-        builder_stage_text_items(builder_review_value_lines(
-          model$viewer_page_expectations
-        ))
-      ),
-      div(
-        class = "page-checklist verified-pages",
-        h4("Verified after build"),
-        if (length(model$verified_page_expectations %||% list())) {
-          builder_stage_text_items(builder_review_value_lines(
-            model$verified_page_expectations
-          ))
-        } else {
-          p("Available after a successful build.")
-        }
-      )
-    ),
-    if (length(model$viewer_bundle_assets)) {
-      tagList(
-        h3("Viewer bundle assets"),
-        p(
-          class = "privacy",
-          "Viewer-bundle assets are private runtime inputs and are not directly downloadable."
-        ),
-        builder_stage_text_items(model$viewer_bundle_assets)
-      )
-    },
-    if (length(model$private_assets)) {
-      tagList(
-        h3("Private assets"),
-        builder_stage_text_items(model$private_assets)
-      )
-    }
-  )
-}
-
 ## The Review surface consumes only the user-facing projection above. The
 ## frozen BuildPlan remains intact for execution and reporting.
 builder_review_stage_ui <- function(id, model) {
@@ -1065,6 +771,10 @@ builder_review_stage_ui <- function(id, model) {
     div(
       class = "review-summary-strip",
       span(plural(model$dataset_count, "dataset")),
+      span(
+        class = "review-plan-revision",
+        paste("Frozen plan revision", model$revision)
+      ),
       span(paste("Creates", model$output_label))
     ),
     tags$section(

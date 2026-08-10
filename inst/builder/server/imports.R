@@ -1,5 +1,20 @@
 ## Builder server: imports.
 
+dataset_mutations_locked <- function(notify = TRUE) {
+  locked <- builder_mutations_locked(
+    isolate(build_flow()),
+    isolate(protocol())
+  )
+  if (isTRUE(locked) && isTRUE(notify)) {
+    showNotification(
+      "Wait for the active build to finish before changing datasets.",
+      type = "warning",
+      duration = 6
+    )
+  }
+  isTRUE(locked)
+}
+
 ## -- native file picker and examples --------------------------------------
 ## An example already on the list is not an offer any more. Which ones are
 ## taken is derived state, so it is pushed rather than re-rendered.
@@ -16,6 +31,9 @@ observe({
 })
 
 start_load <- function(kind, arg, label, file_meta = NULL) {
+  if (dataset_mutations_locked()) {
+    return(invisible(FALSE))
+  }
   rs <- worker()
   if (is.null(rs)) {
     add_error("The background worker is not ready yet.")

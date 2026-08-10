@@ -16,6 +16,7 @@
   var clientUploadSequence = 0;
   var viewerDisclosureState = new Map();
   var managerTransitionSequence = 0;
+  var datasetMutationsLocked = false;
   var normalMotionDuration = 180;
   var authEditor = {
     nextId: 1,
@@ -29,6 +30,37 @@
     if (window.Shiny) {
       window.Shiny.setInputValue(name, value, { priority: "event" });
     }
+  }
+
+  function applyDatasetMutationLock() {
+    var selectors = [
+      "#dataset_files",
+      ".builder-file-trigger",
+      ".example-btn",
+      ".builder-reorder",
+      ".builder-drop",
+      ".pending-upload-remove",
+      ".builder-retry-import",
+      ".builder-remove-import",
+      "#undo_remove",
+    ].join(", ");
+    document.querySelectorAll(selectors).forEach(function (control) {
+      if ("disabled" in control) control.disabled = datasetMutationsLocked;
+      control.setAttribute(
+        "aria-disabled",
+        datasetMutationsLocked ? "true" : "false"
+      );
+      control.classList.toggle(
+        "is-dataset-mutation-locked",
+        datasetMutationsLocked
+      );
+      if (datasetMutationsLocked) control.setAttribute("tabindex", "-1");
+      else if (control.classList.contains("builder-file-trigger")) {
+        control.setAttribute("tabindex", "0");
+      } else {
+        control.removeAttribute("tabindex");
+      }
+    });
   }
 
   function authCopy(accounts) {
@@ -792,7 +824,7 @@
       closed = true;
       send("builder_build_dialog", {
         action: action || "cancel",
-        nonce: Date.now(),
+        nonce: message.nonce,
       });
       removeTransientLayer(backdrop, dialog, "is-visible", function () {
         updateDialogLock();
@@ -1574,12 +1606,18 @@
     setupViewerGroupCatalogs();
     setupViewerContentCatalogs();
     setupCreatableSelects();
+    applyDatasetMutationLock();
     document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
     document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
   }
 
   document.addEventListener("click", function (event) {
     var target = event.target;
+    if (target.closest('[aria-disabled="true"]')) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     var authOpen = target.closest(".builder-auth-open");
     if (authOpen) {
       event.preventDefault();
@@ -1781,6 +1819,10 @@
   });
 
   document.addEventListener("keydown", function (event) {
+    if (event.target.closest('[aria-disabled="true"]')) {
+      event.preventDefault();
+      return;
+    }
     var fileTrigger = event.target.closest(".builder-file-trigger");
     if (
       fileTrigger &&
@@ -1956,6 +1998,13 @@
   function registerBuildDialogHandler() {
     if (buildDialogHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
+    window.Shiny.addCustomMessageHandler(
+      "builder_dataset_mutation_lock",
+      function (message) {
+        datasetMutationsLocked = Boolean(message && message.locked === true);
+        applyDatasetMutationLock();
+      }
+    );
     window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;

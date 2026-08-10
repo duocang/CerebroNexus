@@ -1,17 +1,5 @@
 builder_stage_contract_source_runtime(environment())
 
-test_that("Review bounds large atomic identifier vectors without leaking tails", {
-  ids <- sprintf("CELL-%05d", seq_len(1000L))
-  lines <- builder_review_bounded_lines(list(cells = list(ids = ids)))
-  text <- paste(lines, collapse = "\n")
-
-  expect_match(text, "CELL-00001", fixed = TRUE)
-  expect_match(text, "1000 values", fixed = TRUE)
-  expect_match(text, "more values not shown", fixed = TRUE)
-  expect_false(grepl("CELL-01000", text, fixed = TRUE))
-  expect_lt(max(nchar(lines)), 240L)
-})
-
 test_that("Inspect leads with attention and compact detected-content tags", {
   model <- list(
     summary = c("1,200 cells", "4,500 genes"),

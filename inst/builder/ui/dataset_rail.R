@@ -352,7 +352,9 @@ builder_dataset_rail_server <- function(
   on_select = function(...) invisible(NULL),
   on_remove = function(...) invisible(NULL),
   on_undo = function(...) invisible(NULL),
-  on_validation = function(...) invisible(NULL)
+  on_validation = function(...) invisible(NULL),
+  mutations_locked = function() FALSE,
+  on_locked = function(...) invisible(NULL)
 ) {
   stopifnot(
     is.function(store),
@@ -360,8 +362,20 @@ builder_dataset_rail_server <- function(
     is.function(on_select),
     is.function(on_remove),
     is.function(on_undo),
-    is.function(on_validation)
+    is.function(on_validation),
+    is.function(mutations_locked),
+    is.function(on_locked)
   )
+  reject_locked <- function() {
+    locked <- tryCatch(
+      isTRUE(mutations_locked()),
+      error = function(error) TRUE
+    )
+    if (locked) {
+      on_locked()
+    }
+    locked
+  }
   validation <- shiny::reactiveVal(.builder_rail_validation(
     FALSE,
     code = "not_run",
@@ -382,6 +396,9 @@ builder_dataset_rail_server <- function(
     on_select(id)
   })
   shiny::observeEvent(input$reorder_ds, {
+    if (reject_locked()) {
+      return()
+    }
     event <- input$reorder_ds
     state <- shiny::isolate(store())
     ids <- vapply(state$datasets, `[[`, character(1), "id")
@@ -408,6 +425,9 @@ builder_dataset_rail_server <- function(
     ))
   })
   shiny::observeEvent(input$drop_ds, {
+    if (reject_locked()) {
+      return()
+    }
     event <- .builder_rail_remove_event(input$drop_ds)
     if (is.null(event)) {
       return()
@@ -453,6 +473,9 @@ builder_dataset_rail_server <- function(
     on_remove(previous, next_state, id, result)
   })
   shiny::observeEvent(input$undo_remove, {
+    if (reject_locked()) {
+      return()
+    }
     state <- shiny::isolate(store())
     if (!isTRUE(state$can_undo_remove)) {
       return()

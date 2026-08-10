@@ -105,6 +105,10 @@ builder_build_workbench_ui <- function(model) {
       class = "builder-build-summary",
       h3("Reviewed output"),
       p(
+        class = "confirmed-plan-revision",
+        paste("Confirmed plan revision", model$revision)
+      ),
+      p(
         strong(paste0(model$output$crb_count, " dataset")),
         if (identical(model$output$crb_count, 1L)) "" else "s",
         " · ",

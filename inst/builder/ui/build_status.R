@@ -1,5 +1,33 @@
 ## Typed top-level Builder result models and actions.
 
+builder_mutations_locked <- function(flow, protocol) {
+  scalar_text <- function(value) {
+    is.character(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      nzchar(value)
+  }
+  if (!is.list(flow) || !scalar_text(flow$stage)) {
+    return(TRUE)
+  }
+  if (!is.null(protocol)) {
+    if (!is.list(protocol) || !scalar_text(protocol$build_status)) {
+      return(TRUE)
+    }
+    if (protocol$build_status %in% c("queued", "running", "cancelling")) {
+      return(TRUE)
+    }
+  }
+  flow$stage %in%
+    c(
+      "queued",
+      "building",
+      "choosing",
+      "choosing_folder",
+      "conflict"
+    )
+}
+
 .builder_result <- function(state, message = NULL, fields = list()) {
   if (
     !is.character(state) ||
