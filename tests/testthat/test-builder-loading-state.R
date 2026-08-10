@@ -75,13 +75,16 @@ test_that("failed examples stay represented only by their rail card", {
   expect_identical(directory$loading, "queued_example")
 })
 
-test_that("a watched import keeps focus when it becomes ready", {
+test_that("ready import target follows watched and current dataset state", {
+  expect_identical(
+    names(formals(builder_import_ready_target)),
+    c("watched", "current_id", "loaded_id")
+  )
   expect_identical(
     builder_import_ready_target(
       watched = TRUE,
       current_id = "ds1",
-      loaded_id = "ds2",
-      first_unreviewed = "ds1"
+      loaded_id = "ds2"
     ),
     "ds2"
   )
@@ -89,8 +92,7 @@ test_that("a watched import keeps focus when it becomes ready", {
     builder_import_ready_target(
       watched = FALSE,
       current_id = "ds1",
-      loaded_id = "ds2",
-      first_unreviewed = "ds2"
+      loaded_id = "ds2"
     ),
     "ds1"
   )
@@ -98,10 +100,9 @@ test_that("a watched import keeps focus when it becomes ready", {
     builder_import_ready_target(
       watched = FALSE,
       current_id = NULL,
-      loaded_id = "ds2",
-      first_unreviewed = "ds1"
+      loaded_id = "ds2"
     ),
-    "ds1"
+    "ds2"
   )
 })
 

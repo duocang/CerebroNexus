@@ -930,8 +930,7 @@ observe({
     next_current <- builder_import_ready_target(
       watched = watched,
       current_id = isolate(current()),
-      loaded_id = p$id,
-      first_unreviewed = NULL
+      loaded_id = p$id
     )
     if (!identical(next_current, isolate(current()))) {
       current(next_current)

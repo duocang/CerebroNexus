@@ -326,8 +326,7 @@ builder_example_directory_state <- function(datasets, queue) {
 builder_import_ready_target <- function(
   watched,
   current_id,
-  loaded_id,
-  first_unreviewed = NULL
+  loaded_id
 ) {
   if (isTRUE(watched)) {
     return(loaded_id)
@@ -335,7 +334,7 @@ builder_import_ready_target <- function(
   if (.builder_import_text(current_id)) {
     return(current_id)
   }
-  if (.builder_import_text(first_unreviewed)) first_unreviewed else loaded_id
+  loaded_id
 }
 
 builder_import_legacy_state <- function(entry) {
