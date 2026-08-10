@@ -11,6 +11,10 @@ CerebroNexus treats each name returned by `SeuratObject::Images(object)` as a
 entry may be a Visium slice, Xenium/MERFISH field of view (FOV), Slide-seq puck,
 or another `SpatialImage` subclass. A donor can be a useful entry name, but
 `donor` is not a structural level required by either Seurat or CerebroNexus.
+An `FOV` normally supplies spatial geometry such as centroids, boundaries,
+segmentations, or molecule coordinates; it does not guarantee a tissue raster.
+Raster backgrounds are carried separately when present, for example through
+`@misc$cerebro_spatial_images` or the external `spatial_images` argument.
 
 Each entry always keeps its coordinates and may additionally expose zero, one,
 or several user-named background images. Labels such as `H&E`, `DAPI`, or
@@ -369,7 +373,13 @@ Stretch-to-fill would squash a non-square image (the MERFISH DAPI mosaic is ~0.6
 
 # 5. Why Slide-seq has no background image
 
-Structural, not an oversight: the platform records positions, not a tissue photo. The `SlideSeq` S4 class in SeuratObject has only a `coordinates` slot — it carries no tissue raster, unlike Visium's `VisiumV2` (`image` slot) or the imaging `FOV`. Slide-seq *does* image beads, but only to recover their positions; the public `ssHippo` object stores those coordinates, not an H&E/DAPI photo.
+Structural, not an oversight: the platform records positions, not a tissue
+photo. The `SlideSeq` S4 class in SeuratObject has only a `coordinates` slot,
+so it carries no tissue raster. A Visium spatial-image object may carry a
+raster; an imaging `FOV` commonly carries geometry but likewise does not
+guarantee a raster. Slide-seq *does* image beads, but only to recover their
+positions; the public `ssHippo` object stores those coordinates, not an
+H&E/DAPI photo.
 
 The bead scatter therefore **is** the complete spatial view.
 

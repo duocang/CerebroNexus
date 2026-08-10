@@ -35,8 +35,8 @@ The following optional conversion surfaces are populated:
 - experiment, parameter, technical, and gene-list metadata;
 - marker genes, most-expressed genes, mean expression, and enriched pathways;
 - a cell-type tree and a list-based monocle2-style trajectory;
-- unified TCR and BCR rows for both samples;
-- synthetic class I and class II HLA genotypes for both samples;
+- unified TCR and BCR rows in the three-donor fixture;
+- synthetic class I and class II HLA genotypes for all three donors;
 - an extra table and ggplot;
 - a compact Trekker payload aligned to the expression cells;
 - three FOV coordinate/expression entries, multiple embedded backgrounds, and

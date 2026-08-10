@@ -650,6 +650,20 @@ test_that("the Omnibus public API verifier exposes the documented workflow", {
     'welcome_message\\s*=\\s*"<h2>Synthetic Omnibus Atlas</h2>"'
   )
   expect_false(grepl(":::", source, fixed = TRUE))
+  expect_match(source, "readRDS(crb_path)", fixed = TRUE)
+  expect_match(source, "HDF5Array::TENxMatrix", fixed = TRUE)
+  expect_match(source, "getExpressionBackend()", fixed = TRUE)
+  expect_match(source, "getGroups()", fixed = TRUE)
+  expect_match(source, "getMethodsForMarkerGenes()", fixed = TRUE)
+  expect_match(source, "availableSpatial()", fixed = TRUE)
+  expect_match(
+    source,
+    'readRDS(file.path(app_dir, "cerebro_config.rds"))',
+    fixed = TRUE
+  )
+  expect_match(source, "private-data", fixed = TRUE)
+  expect_match(source, "Pathology review", fixed = TRUE)
+  expect_match(source, "stop(", fixed = TRUE)
 })
 
 test_that("public help documents the complete multi-spatial Omnibus workflow", {
