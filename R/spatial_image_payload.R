@@ -2,6 +2,25 @@
 #'
 #' @keywords internal
 #' @noRd
+.isLegacySpatialImagePayload <- function(payload) {
+  if (!is.list(payload) || is.null(names(payload))) {
+    return(FALSE)
+  }
+  valid_fields <- c("histology_image", "histology_image_bounds")
+  image <- payload[["histology_image"]]
+  bounds <- payload[["histology_image_bounds"]]
+  valid_image <- is.character(image) && length(image) == 1L && !is.na(image)
+  valid_bounds <- is.null(bounds) ||
+    (is.numeric(bounds) && length(bounds) == 4L)
+  !anyDuplicated(names(payload)) &&
+    all(names(payload) %in% valid_fields) &&
+    "histology_image" %in% names(payload) &&
+    valid_image &&
+    valid_bounds
+}
+
+#' @keywords internal
+#' @noRd
 .validateCerebroSpatialImages <- function(payloads, available_images) {
   if (is.null(payloads)) {
     return(NULL)
@@ -39,11 +58,7 @@
     )
   }
   lapply(payloads, function(images) {
-    if (
-      is.list(images) &&
-        !is.null(names(images)) &&
-        "histology_image" %in% names(images)
-    ) {
+    if (.isLegacySpatialImagePayload(images)) {
       return(list(`Tissue background` = images))
     }
     images
@@ -55,11 +70,7 @@
 #' @keywords internal
 #' @noRd
 .validateCerebroSpatialImage <- function(payload, image_name, coordinates) {
-  if (
-    is.list(payload) &&
-      !is.null(names(payload)) &&
-      "histology_image" %in% names(payload)
-  ) {
+  if (.isLegacySpatialImagePayload(payload)) {
     payload <- list(`Tissue background` = payload)
   }
   list(

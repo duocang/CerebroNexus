@@ -88,10 +88,30 @@
       anyNA(image_names) ||
       any(!nzchar(image_names))
   ) {
-    stop(context, " image labels must be non-empty.", call. = FALSE)
+    invalid_label <- if (is.null(image_names)) {
+      "<unnamed>"
+    } else if (anyNA(image_names)) {
+      "<NA>"
+    } else {
+      "<empty>"
+    }
+    stop(
+      context,
+      " image label `",
+      invalid_label,
+      "` is invalid; labels must be non-empty.",
+      call. = FALSE
+    )
   }
   if (anyDuplicated(image_names)) {
-    stop(context, " image labels must be unique.", call. = FALSE)
+    duplicate_label <- unique(image_names[duplicated(image_names)])[[1L]]
+    stop(
+      context,
+      " has duplicate image label `",
+      duplicate_label,
+      "`; labels must be unique.",
+      call. = FALSE
+    )
   }
 
   normalized <- lapply(seq_along(images), function(i) {
@@ -225,10 +245,30 @@
     }
     labels <- names(declarations)
     if (is.null(labels) || anyNA(labels) || any(!nzchar(labels))) {
-      stop(spatial_context, " image labels must be non-empty.", call. = FALSE)
+      invalid_label <- if (is.null(labels)) {
+        "<unnamed>"
+      } else if (anyNA(labels)) {
+        "<NA>"
+      } else {
+        "<empty>"
+      }
+      stop(
+        spatial_context,
+        " image label `",
+        invalid_label,
+        "` is invalid; labels must be non-empty.",
+        call. = FALSE
+      )
     }
     if (anyDuplicated(labels)) {
-      stop(spatial_context, " image labels must be unique.", call. = FALSE)
+      duplicate_label <- unique(labels[duplicated(labels)])[[1L]]
+      stop(
+        spatial_context,
+        " has duplicate image label `",
+        duplicate_label,
+        "`; labels must be unique.",
+        call. = FALSE
+      )
     }
 
     descriptors <- lapply(seq_along(declarations), function(j) {

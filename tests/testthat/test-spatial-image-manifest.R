@@ -55,12 +55,41 @@ test_that("spatial image labels must be non-empty and unique", {
 
   expect_error(
     crb$addSpatialData("empty", spatial_manifest_data(empty_label)),
-    "non-empty"
+    "Spatial data `empty`.*<empty>"
   )
   expect_error(
     crb$addSpatialData("duplicate", spatial_manifest_data(duplicate_labels)),
-    "unique"
+    "Spatial data `duplicate`.*duplicate.*DAPI"
   )
+})
+
+test_that("serialized spatial getter is self-contained without package helpers", {
+  crb <- Cerebro$new()
+  crb$spatial$legacy <- list(
+    coordinates = spatial_manifest_coordinates(),
+    expression = matrix(1:4, nrow = 2),
+    histology_image = "data:image/png;base64,AA==",
+    histology_image_bounds = c(xmin = 0, xmax = 100, ymin = 0, ymax = 80)
+  )
+  crb$spatial$canonical <- spatial_manifest_data(
+    list(DAPI = spatial_manifest_payload())
+  )
+  method_environment <- environment(crb$getSpatialData)
+  parent.env(method_environment) <- baseenv()
+  path <- tempfile(fileext = ".crb")
+  saveRDS(crb, path)
+
+  isolated <- readRDS(path)
+  legacy <- isolated$getSpatialData("legacy")
+  canonical <- isolated$getSpatialData("canonical")
+
+  expect_named(legacy$histology_images, "Tissue background")
+  expect_identical(
+    legacy$histology_images[["Tissue background"]]$histology_image,
+    "data:image/png;base64,AA=="
+  )
+  expect_named(canonical$histology_images, "DAPI")
+  expect_identical(canonical$histology_images$DAPI, spatial_manifest_payload())
 })
 
 test_that("spatial image manifests reject malformed payloads", {
@@ -188,7 +217,7 @@ test_that("spatial image paths normalize labels, descriptors, and file errors", 
       "sliceA",
       "`spatial_images`"
     ),
-    "non-empty"
+    "spatial `sliceA`.*<empty>"
   )
   expect_error(
     .normalizeSpatialImagePaths(
@@ -196,7 +225,7 @@ test_that("spatial image paths normalize labels, descriptors, and file errors", 
       "sliceA",
       "`spatial_images`"
     ),
-    "unique"
+    "spatial `sliceA`.*duplicate.*IF"
   )
   expect_error(
     .normalizeSpatialImagePaths(

@@ -68,6 +68,27 @@ test_that("Seurat spatial image payloads accept the legacy shorthand", {
   expect_identical(normalized$omnibus_fov[["Tissue background"]], payload)
 })
 
+test_that("histology_image is a valid canonical image label", {
+  payload <- valid_spatial_image_payload()
+  declared <- list(
+    omnibus_fov = list(histology_image = payload)
+  )
+
+  normalized <- .validateCerebroSpatialImages(declared, "omnibus_fov")
+  expect_named(normalized$omnibus_fov, "histology_image")
+  expect_identical(normalized$omnibus_fov$histology_image, payload)
+
+  coordinates <- data.frame(x = c(10, 90), y = c(5, 75))
+  expect_identical(
+    .validateCerebroSpatialImage(
+      list(histology_image = payload),
+      "omnibus_fov",
+      coordinates
+    ),
+    list(histology_images = list(histology_image = payload))
+  )
+})
+
 test_that("spatial image payload validation rejects malformed images", {
   payload <- valid_spatial_image_payload()
   coordinates <- data.frame(x = c(10, 90), y = c(5, 75))
