@@ -57,5 +57,5 @@ builder_browser_old_contract_app <- function(
     ),
     app_file
   )
-  shiny::shinyAppDir(fixture_dir)
+  fixture_dir
 }

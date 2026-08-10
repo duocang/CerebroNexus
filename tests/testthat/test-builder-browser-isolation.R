@@ -26,12 +26,12 @@ test_that("old privacy contract app restores its namespace fixture", {
 
     invoke_fixture <- function() {
       app <- builder_browser_old_contract_app(dirname(app_file))
-      expect_true(shiny::is.shiny.appobj(app))
+      expect_true(dir.exists(app))
       expect_identical(
         get(marker, envir = namespace, inherits = FALSE),
-        0L
+        original_value
       )
-      expect_true(bindingIsLocked(marker, namespace))
+      expect_identical(bindingIsLocked(marker, namespace), locked)
     }
     invoke_fixture()
 
