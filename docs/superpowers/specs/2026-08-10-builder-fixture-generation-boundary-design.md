@@ -1,0 +1,49 @@
+# Builder Fixture Generation Boundary Design
+
+## Goal
+
+Keep synthetic-data manufacture out of the installed Builder runtime. The
+installed package needs only the serialized All content fixture, its sidecars,
+and the code that locates and reads them.
+
+## Options considered
+
+1. Keep all constructors in `inst/builder/io.R`. This maximizes reuse but ships
+   development-only generation code and mixes runtime I/O with fixture authoring.
+2. Move only the All content constructor to `data-raw`. This improves the public
+   fixture path but leaves immune and spatial test factories in installed code.
+3. Move every fixture constructor out of `inst` (selected). All content authoring
+   belongs to `data-raw/build_builder_fixtures.R`; capability-only factories
+   belong to `tests/testthat/helper-builder-synthetic-fixtures.R`.
+
+## Runtime boundary
+
+`inst/builder/io.R` retains only resource resolution, serialized-object reading,
+catalog records, and gallery projection. It must not define functions named
+`builder_make_permanent_fixture`, `builder_write_permanent_fixtures`, or
+`.builder_fixture_*`.
+
+The catalog continues to read `inst/builder/fixtures/all_content.rds`, so choosing
+the built-in example exercises the same serialized Seurat adapter path as before.
+
+## Authoring boundary
+
+`data-raw/build_builder_fixtures.R` owns deterministic creation of the All content
+Seurat object, six FOVs, Trekker payload, five PNG sidecars, round-trip validation,
+and writing into `inst/builder/fixtures/`. The script remains excluded from the
+built package.
+
+Synthetic immune and two-section spatial objects are not gallery products. Their
+factories move to a test helper so generated-app capability tests can keep using
+them without expanding the runtime API.
+
+## Tests
+
+- A source-contract test first fails while generator symbols remain in `io.R`.
+- Omnibus tests load the committed RDS through `builder_example_catalog()`, not a
+  runtime factory.
+- End-to-end and generated-app tests use either the catalog object or test-only
+  factories.
+- The generation script is run once to prove it can reproduce the committed
+  fixture, followed by focused Builder contracts and `git diff --check`.
+
