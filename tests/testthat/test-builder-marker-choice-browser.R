@@ -20,8 +20,11 @@ test_that("Marker genes keeps the calculated selection after confirmation", {
   )
   app$wait_for_idle(timeout = 30000)
 
-  app$run_js(
-    "document.getElementById('enhance-analysis_marker_genes').click()"
+  app$click(
+    selector = paste0(
+      ".enhance-module:has(#enhance-analysis_marker_genes) ",
+      ".enhance-module-title"
+    )
   )
   app$wait_for_js(
     paste0(

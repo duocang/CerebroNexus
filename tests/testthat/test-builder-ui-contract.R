@@ -1177,6 +1177,7 @@ test_that("Marker genes asks for a source before it changes selection", {
   expect_match(server, "enhance-marker_genes_calculate", fixed = TRUE)
   expect_match(server, "enhance-marker_genes_upload", fixed = TRUE)
   expect_match(js, "enhance-marker_genes_disable", fixed = TRUE)
+  expect_match(js, "event.target === markerCheckbox", fixed = TRUE)
   expect_match(server, "enhance-marker_genes_disable", fixed = TRUE)
   expect_match(modal, "Calculate for all Groups", fixed = TRUE)
   expect_match(modal, "Upload precomputed results", fixed = TRUE)

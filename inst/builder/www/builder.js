@@ -2170,10 +2170,13 @@
       "#enhance-analysis_marker_genes"
     );
     if (!markerCheckbox || markerCheckbox.disabled) return;
+    var markerEnabling = event.target === markerCheckbox
+      ? markerCheckbox.checked
+      : !markerCheckbox.checked;
     event.preventDefault();
     event.stopImmediatePropagation();
     send(
-      markerCheckbox.checked
+      markerEnabling
         ? "enhance-marker_genes_mode_request"
         : "enhance-marker_genes_disable",
       { nonce: Date.now() }

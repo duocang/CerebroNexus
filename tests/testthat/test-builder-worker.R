@@ -959,6 +959,22 @@ if (builder_lifecycle_api_available) {
     expect_identical(worker$snapshot_registry, list())
   })
 
+  test_that("a fresh worker loads imported marker build support", {
+    skip_if_not_installed("callr")
+    worker <- builder_worker_start(builder_profile_inst_path("builder"))
+    withr::defer({
+      try(worker$process$close(), silent = TRUE)
+      if (isTRUE(worker$owns_root)) {
+        unlink(worker$snapshot_root, recursive = TRUE, force = TRUE)
+      }
+    })
+
+    expect_true(worker$ready)
+    expect_true(worker$process$run(function() {
+      exists("builder_attach_marker_imports", mode = "function")
+    }))
+  })
+
   test_that("main registry rejects an owned snapshot from another root", {
     skip_if_not_installed("callr")
     foreign <- builder_worker_fixture()
