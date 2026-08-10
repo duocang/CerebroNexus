@@ -239,7 +239,7 @@
   background: var(--cv-amber50); color: var(--cv-amber700); font-weight: 600;
 }
 
-/* ---- right cluster: readout + selection actions ------------------------- */
+/* ---- right cluster: global readout -------------------------------------- */
 .coordviews-page .cv-topbar-right {
   margin-left: auto; display: flex; align-items: center; gap: 14px;
 }
@@ -250,33 +250,24 @@
   font-size: 15px; color: var(--cv-amber700); font-weight: 700;
   white-space: nowrap;
 }
-/* Zoom + Clear: stacked vertically while they fit on the controls' row (saves
-   width). When the other controls push them onto their own line, JS adds
-   `.cv-actions-row` and they lay out side by side to use that full-width line. */
+/* Zoom + Clear live inside the active-cohort bar, beside the selection they
+   affect. They stay horizontal and move to a new flex line only when needed. */
 .coordviews-page .cv-selactions {
-  display: flex; flex-direction: column; gap: 6px; align-self: center;
+  display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px;
+  align-self: center; margin-left: auto;
   transition: opacity .16s ease, transform .16s ease;
-}
-.coordviews-page .cv-selactions.cv-actions-row {
-  flex-direction: row; flex-wrap: wrap;
 }
 /* collapsed (hidden) state — a quiet fade + tiny lift */
 .coordviews-page .cv-selactions.cv-collapse {
   opacity: 0; transform: translateY(-4px); pointer-events: none;
 }
-/* Zoom + Clear share IDENTICAL box metrics — 152x31, fixed — and differ only by
-   colour, so they read as two equal-weight but distinct actions.
-   The label is deliberately larger than the rest of the bar: these are the
-   actions, not another setting. The box does not grow with it. Height is fixed
-   and the label centred by flex, so type size no longer drives height; and the
-   horizontal padding is only a minimum gutter (width comes from min-width), so
-   it can be spent on type. "Zoom to selection" at 15/700 needs ~132px of the
-   150px inside the border — 14px gutters would have pushed the button wider. */
+/* Zoom + Clear share identical compact metrics and differ only by colour, so
+   they read as equal-weight actions on the cohort rather than more settings. */
 .coordviews-page .cv-selactions button {
-  min-width: 152px; height: 31px; box-sizing: border-box;
+  min-width: 126px; height: 30px; box-sizing: border-box;
   display: inline-flex; align-items: center; justify-content: center;
   white-space: nowrap; font-family: inherit; cursor: pointer;
-  padding: 0 6px; font-size: 15px; font-weight: 700; line-height: 1;
+  padding: 0 9px; font-size: 12.5px; font-weight: 700; line-height: 1;
   border: 1px solid; border-radius: 6px;
 }
 /* These two are deliberately OUTSIDE the amber vocabulary. Everything else in
@@ -537,7 +528,15 @@
   background: var(--cv-surface); border: 1px solid var(--cv-border);
   border-radius: 10px; padding: 12px;
   display: flex; flex-direction: column;
-  transition: opacity .2s ease;
+  transition: opacity .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.coordviews-page .cv-pane.cv-focus-primary {
+  border-color: var(--cv-amber);
+  box-shadow: 0 0 0 2px var(--cv-amber50), var(--shadow-2, 0 4px 12px rgba(0,0,0,.10));
+}
+.coordviews-page .cv-pane.cv-focus-context {
+  border-color: var(--cv-border);
+  box-shadow: var(--shadow-1, 0 1px 3px rgba(0,0,0,.06));
 }
 .coordviews-page .cv-pane.cv-active-spatial {
   border-color: var(--cv-amber200);
@@ -548,7 +547,9 @@
   display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
   flex-wrap: wrap;   /* title + space-switch + toolbar never overflow/cut off */
 }
-.coordviews-page .cv-pane-head .cv-ptitle { font-size: 13px; font-weight: 650; }
+.coordviews-page .cv-pane-head .cv-ptitle {
+  font-size: 13px; font-weight: 650; cursor: pointer;
+}
 /* per-panel hover toolbar (plotly-style), top-right of each panel */
 .coordviews-page .cv-panebar {
   margin-left: auto; display: flex; gap: 4px;
@@ -1022,15 +1023,26 @@
    param boxes) and only a small gap below (hugs the panels it describes).
    Reveals by collapsing height + margins so the panels slide, not jump. */
 .coordviews-page .cv-selbar {
-  display: flex; align-items: center; gap: 10px; margin: 14px 0 6px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
+  margin: 14px 0 8px;
   background: var(--cv-amber50); border: 1px solid var(--cv-amber200);
-  border-radius: 6px; padding: 8px 12px; font-size: 12.5px;
-  color: var(--cv-amber700);
-  max-height: 60px; overflow: hidden;
+  border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  color: var(--cv-text2);
+  max-height: 120px; overflow: hidden;
   transition: max-height .2s ease, opacity .18s ease,
     margin-top .2s ease, margin-bottom .2s ease,
     padding-top .2s ease, padding-bottom .2s ease;
 }
+.coordviews-page .cv-sel-kicker {
+  color: var(--cv-amber700); font-size: 10.5px; font-weight: 750;
+  letter-spacing: .045em; text-transform: uppercase;
+}
+.coordviews-page .cv-sel-count { color: var(--cv-text); }
+.coordviews-page .cv-sel-chip {
+  padding: 3px 8px; border: 1px solid var(--cv-amber200); border-radius: 999px;
+  background: var(--cv-surface); color: var(--cv-amber700); font-weight: 650;
+}
+.coordviews-page .cv-sel-detail { color: var(--cv-text3); white-space: nowrap; }
 .coordviews-page .cv-selbar.cv-collapse {
   max-height: 0; opacity: 0;
   margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
@@ -1110,11 +1122,10 @@
    auto-fit, which ragged-wraps 4+2 at this modal's narrower width. */
 #cv-tk-modal .tk-grid { grid-template-columns: repeat(3, 1fr); }
 
-/* A panel folded away while another has the grid. Not "unassigned": it keeps
-   its space and its view, so coming back is instant and nothing about the
-   selection changes. */
+/* Kept for old saved markup only. The adaptive focus model no longer folds
+   linked context away. */
 .coordviews-page .cv-pane.cv-folded { display: none; }
-/* The maximise button while it is the one holding the grid. */
+/* The focus button while its lens is primary. */
 .coordviews-page .cv-tbtn.cv-focus-btn.is-on {
   background: var(--cv-amber50); color: var(--cv-amber700);
 }

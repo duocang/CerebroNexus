@@ -66,16 +66,15 @@ cv_panebar <- function(panel) {
       `aria-label` = "Zoom this panel to the selection",
       icon("crop-simple")
     ),
-    ## Temporarily give one panel the whole grid. With three or four panels each
-    ## square is small enough that detail is guesswork; the selection is kept and
-    ## stays coordinated, so this is a change of magnification, not of state.
+    ## Promote one panel as the primary lens while every other panel remains as
+    ## linked context. Selection is kept, so this changes emphasis, not state.
     tags$button(
       type = "button",
       class = "cv-tbtn cv-focus-btn",
       `data-act` = "focus",
       `data-panel` = panel,
-      `data-tip` = "Maximise this panel",
-      `aria-label` = "Maximise this panel",
+      `data-tip` = "Make this the focus",
+      `aria-label` = "Make this the focus",
       icon("expand")
     ),
     ## A house, not the four-corner "expand" glyph that was here: that one reads
@@ -335,27 +334,14 @@ tab_coordinated_views <- tabItem(
         ## a rotation makes visible as a wobble)
         tags$span(class = "cv-caret")
       ),
-      ## Right-aligned cluster: the filter/subsample readout + the selection
-      ## actions. Both are hidden by default and surface only when relevant.
+      ## Right-aligned global filter/subsample readout. Cohort actions belong to
+      ## the Active cohort bar below, not to this settings row.
       div(
         class = "cv-topbar-right",
         ## Live "showing N / M cells" readout — hidden unless a filter/subsample
         ## reduces the view, so filtering is visible even when the panels are
         ## coloured by a different variable than the one being filtered.
-        tags$span(class = "cv-shown", id = "cv-shown"),
-        ## Selection actions: appear together only when a selection exists. They
-        ## stack vertically by default and lay out side by side on narrow widths.
-        div(
-          class = "cv-selactions cv-collapse",
-          id = "cv-selactions",
-          style = "display:none",
-          tags$button(
-            id = "cv-zoom",
-            class = "cv-zoombtn",
-            "Zoom to selection"
-          ),
-          tags$button(id = "cv-clear", class = "cv-clearbtn", "Clear selection")
-        )
+        tags$span(class = "cv-shown", id = "cv-shown")
       ),
 
       ## ---- collapsible second row of the SAME bar ----------------------- ##
@@ -536,12 +522,29 @@ tab_coordinated_views <- tabItem(
       )
     ),
 
-    ## ---- selection bar: sits below the params, above the panels --------- ##
+    ## ---- active cohort: the shared state all lenses are describing ------- ##
     div(
       class = "cv-selbar cv-collapse",
       id = "cv-selbar",
       style = "display:none",
-      tags$span(id = "cv-seltext", "—")
+      tags$span(class = "cv-sel-kicker", id = "cv-sel-kicker", "Active cohort"),
+      tags$span(class = "cv-sel-count", id = "cv-seltext", "—"),
+      tags$span(class = "cv-sel-chip", id = "cv-selprofile", ""),
+      tags$span(class = "cv-sel-detail", id = "cv-selorigin", ""),
+      tags$span(class = "cv-sel-detail", id = "cv-selcoverage", ""),
+      ## Actions sit with the cohort they affect, rather than in the unrelated
+      ## global-control row. They remain hidden until a selection/niche exists.
+      div(
+        class = "cv-selactions cv-collapse",
+        id = "cv-selactions",
+        style = "display:none",
+        tags$button(
+          id = "cv-zoom",
+          class = "cv-zoombtn",
+          "Zoom to selection"
+        ),
+        tags$button(id = "cv-clear", class = "cv-clearbtn", "Clear selection")
+      )
     ),
 
     ## ---- panel grid ----------------------------------------------------- ##

@@ -1540,6 +1540,31 @@ test_that("a click pins the tooltip, and the card opens only on request", {
     ),
     timeout = 10000
   )
+  ## A single-cell pick is also shared workspace state. It lives in the same
+  ## status surface as a lasso cohort, but says what it actually is and keeps
+  ## its Clear action reachable.
+  expect_true(app$get_js(
+    "getComputedStyle(document.getElementById('cv-selbar')).display !== 'none'"
+  ))
+  expect_equal(
+    app$get_js("document.getElementById('cv-sel-kicker').textContent"),
+    "Active cell"
+  )
+  expect_match(
+    app$get_js("document.getElementById('cv-seltext').textContent"),
+    "Picked nucleus"
+  )
+  expect_true(app$get_js(
+    "getComputedStyle(document.getElementById('cv-clear')).display !== 'none'"
+  ))
+  app$run_js(paste0(
+    "(function () { var r = document.getElementById('cv-niche');",
+    "r.value = '50'; r.dispatchEvent(new Event('input', { bubbles: true })); })();"
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-selcoverage').textContent.indexOf('50 µm') >= 0",
+    timeout = 5000
+  )
 
   ## It stays put when the pointer moves away -- otherwise the buttons could not
   ## be reached, which is the whole reason for pinning.
@@ -1597,6 +1622,22 @@ test_that("a click pins the tooltip, and the card opens only on request", {
       ".indexOf('Niche of picked nucleus') >= 0"
     )
   ))
+
+  ## Escape closes the open details card and releases its active cell; every
+  ## surface that represents that state must clear with it.
+  app$run_js(
+    "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));"
+  )
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-selbar')).display === 'none'",
+    timeout = 5000
+  )
+  expect_equal(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-selactions')).display"
+    ),
+    "none"
+  )
 
   app$stop()
 })
@@ -1858,11 +1899,10 @@ test_that("a Moran's I row colours the panels by that gene", {
   app$stop()
 })
 
-## With three or four panels each square is small enough that detail becomes
-## guesswork, and the way out used to be leaving for a dedicated page. Maximising
-## is a change of magnification only: the folded panels keep their space and
-## their view, and the selection stays exactly as it was, coordinated.
-test_that("a panel can take the grid without losing the selection", {
+## Focusing is a change of emphasis, not a trip into a different workspace. The
+## chosen lens grows, while every other lens stays visible as linked context.
+## Selection identity and provenance remain explicit throughout the transition.
+test_that("a panel can become the focus without losing linked context", {
   local_app_support(inst_dir)
   app <- cv_app("cv_browser_focus")
 
@@ -1904,10 +1944,20 @@ test_that("a panel can take the grid without losing the selection", {
     timeout = 10000
   )
   before <- app$get_js("document.getElementById('cv-seltext').textContent")
+  expect_equal(
+    app$get_js("document.getElementById('cv-sel-kicker').textContent"),
+    "Active cohort"
+  )
+  expect_match(
+    app$get_js("document.getElementById('cv-selorigin').textContent"),
+    "umap",
+    ignore.case = TRUE
+  )
+  expect_true(nzchar(
+    app$get_js("document.getElementById('cv-selprofile').textContent")
+  ))
 
-  ## The button is offered here because four panels take two rows. It is not
-  ## offered on a one-row layout, where folding the others cannot make the
-  ## remaining square any bigger -- the height it is already using is the limit.
+  ## Any workspace with another linked lens offers the focus affordance.
   expect_true(app$get_js(
     paste0(
       "getComputedStyle(document.querySelector(",
@@ -1915,30 +1965,31 @@ test_that("a panel can take the grid without losing the selection", {
     )
   ))
 
-  ## Maximise panel A.
+  ## Focus panel A. The linked contexts stay on screen, but A becomes larger.
   app$run_js(
     "document.querySelector('.cv-focus-btn[data-panel=\"A\"]').click();"
   )
   app$wait_for_idle(timeout = 10000)
   expect_equal(
     app$get_js(
-      paste0(
-        "document.querySelectorAll('.cv-pane:not(.cv-hidden)",
-        ":not(.cv-folded)').length"
-      )
+      "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length"
     ),
+    4
+  )
+  expect_equal(
+    app$get_js("document.querySelectorAll('.cv-focus-primary').length"),
     1
   )
-  ## It is bigger, and the panels still fit the viewport.
+  expect_equal(
+    app$get_js("document.querySelectorAll('.cv-focus-context').length"),
+    3
+  )
   expect_gt(app$get_js("document.getElementById('cv-cv-a').clientWidth"), small)
-  expect_lte(
+  expect_gt(
     app$get_js(
-      paste0(
-        "Math.round(document.querySelector('.cv-panes')",
-        ".getBoundingClientRect().bottom) - window.innerHeight"
-      )
+      "document.getElementById('cv-cv-a').clientWidth"
     ),
-    0
+    app$get_js("document.getElementById('cv-cv-b').clientWidth")
   )
   ## The selection is untouched -- this is magnification, not a reset.
   expect_equal(
@@ -1946,20 +1997,53 @@ test_that("a panel can take the grid without losing the selection", {
     before
   )
 
-  ## And back.
+  ## Clicking a context title promotes that lens without disturbing selection.
+  ## Ordinary plotting gestures do not reflow it.
   app$run_js(
-    "document.querySelector('.cv-focus-btn[data-panel=\"A\"]').click();"
+    "document.getElementById('cv-title-b').click();"
+  )
+  app$wait_for_idle(timeout = 10000)
+  expect_true(
+    app$get_js(
+      "document.getElementById('cv-cv-b').closest('.cv-pane').classList.contains('cv-focus-primary')"
+    )
+  )
+  expect_equal(
+    app$get_js("document.getElementById('cv-seltext').textContent"),
+    before
+  )
+
+  ## Clicking the focused panel's button returns to the equal overview.
+  app$run_js(
+    "document.querySelector('.cv-focus-btn[data-panel=\"B\"]').click();"
   )
   app$wait_for_idle(timeout = 10000)
   expect_equal(
-    app$get_js(
-      paste0(
-        "document.querySelectorAll('.cv-pane:not(.cv-hidden)",
-        ":not(.cv-folded)').length"
-      )
-    ),
-    4
+    app$get_js("document.querySelectorAll('.cv-focus-primary').length"),
+    0
   )
+  expect_equal(
+    app$get_js("document.querySelectorAll('.cv-focus-context').length"),
+    0
+  )
+
+  ## Double-clicking a plot is the second deliberate promotion gesture.
+  app$run_js(
+    paste0(
+      "document.getElementById('cv-cv-c').dispatchEvent(",
+      "new MouseEvent('dblclick', { bubbles: true }));"
+    )
+  )
+  app$wait_for_idle(timeout = 10000)
+  expect_true(
+    app$get_js(
+      "document.getElementById('cv-cv-c').closest('.cv-pane').classList.contains('cv-focus-primary')"
+    )
+  )
+  app$run_js(
+    "document.querySelector('.cv-focus-btn[data-panel=\"C\"]').click();"
+  )
+  app$wait_for_idle(timeout = 10000)
 
   ## Per-panel zoom-to-selection: offered while a selection exists, and it moves
   ## only the panel that asked. The top bar's button does the expression panel,
@@ -1981,10 +2065,9 @@ test_that("a panel can take the grid without losing the selection", {
     "document.getElementById('cv-mini-a').classList.contains('is-on')"
   ))
 
-  ## Two panels are one row on this window, so there is nothing to maximise into
-  ## and the button says so by not being there. It is the LAYOUT that decides,
-  ## not the count: the same two panels wrap to two rows on a narrow window, and
-  ## there maximising is exactly what is wanted.
+  ## Two panels can still benefit from explicit emphasis: focusing is no longer
+  ## an all-or-nothing maximise action, so the affordance is present whenever a
+  ## second linked lens exists, at both wide and narrow widths.
   app$run_js(cv_bundle_js(
     paste0(
       "{ spaces: [",
@@ -2001,7 +2084,7 @@ test_that("a panel can take the grid without losing the selection", {
     "getComputedStyle(document.querySelector(",
     "'.cv-focus-btn[data-panel=\"A\"]')).display !== 'none'"
   )
-  expect_false(app$get_js(focus_shown))
+  expect_true(app$get_js(focus_shown))
 
   ## Narrow the window until those same two panels stack, and it comes back.
   app$set_window_size(width = 700, height = 900)

@@ -23,6 +23,7 @@
   var D = null;                 // the data bundle
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
+  var selectionSource = null;   // label of the lens that created the active cohort
   var pick = null;              // hovered/clicked cell index
 // Panel + cell of a PINNED tooltip: the one a click left in place, carrying the
 // Details and Close buttons. {null, null} when no tooltip is pinned.
@@ -62,10 +63,8 @@ var activeSpatialId = null;
 var backgroundModes = {};
 var backgroundScopePulse = false;
 var spatialTemplate = null;
-// Panel key currently given the whole grid, or null for the normal layout. With
-// three or four panels each square is small enough that detail becomes guesswork;
-// this is a change of magnification only -- the selection is kept and every panel
-// stays coordinated, so what returns is the same workspace, larger.
+// Panel key currently promoted as the primary lens, or null for equal overview.
+// Context lenses stay present and coordinated while the primary grows.
 var focusPanel = null;
   var zoomed = false;           // is the umap panel currently zoomed to a selection
   var selectMode = 'lasso';     // drag-select mode: 'lasso' (freeform) or 'box'
@@ -1415,8 +1414,16 @@ var focusPanel = null;
   }
 
   // ---- selection ----------------------------------------------------------
-  function setSelection(s) {
+  function selectionSourceLabel(source) {
+    if (!source) return '';
+    if (typeof source === 'string') return source;
+    var sp = source.spaceId && spaceById[source.spaceId];
+    return (sp && sp.label) || source.spaceId || '';
+  }
+  function setSelection(s, source) {
     sel = (s && s.size) ? s : null;
+    if (!sel) selectionSource = null;
+    else if (source) selectionSource = selectionSourceLabel(source);
     rebuildNiche();   // a lasso selection supersedes the niche highlight
     // A zoom is tied to a specific selection, so any selection change (new brush
     // or clear) returns to the full view and resets the toggle.
@@ -1455,7 +1462,6 @@ var focusPanel = null;
     var hasNiche = !hasSel && pick != null && !!nicheSet;
     var show = hasSel || hasNiche;
     revealEl($('cv-selactions'), show);
-    if (show) updateSelActionsLayout();
     var zb = $('cv-zoom');
     // Offered only when there is a flat panel for it to act on: with the
     // expression panel showing a 3-D embedding it would have nothing to zoom,
@@ -1464,20 +1470,6 @@ var focusPanel = null;
       return isProjectionPanel(p) && !panelIs3D(p);
     });
     if (zb) zb.style.display = canZoom ? '' : 'none';
-  }
-  // Vertical stack while the buttons fit on the controls' row; horizontal once
-  // the other controls push them onto their own (full-width) line. Detected by
-  // comparing row position against a control that is always on the first row —
-  // pure CSS can't tell whether a content-sized flex item has wrapped.
-  function updateSelActionsLayout() {
-    var box = $('cv-selactions');
-    if (!box || getComputedStyle(box).display === 'none') return;
-    // "Colour by" is always the first control on row 1; if the buttons start at
-    // or below its bottom edge they have wrapped onto their own line.
-    var ref = $('cv-pick-color');
-    if (!ref) return;
-    var a = box.getBoundingClientRect(), b = ref.getBoundingClientRect();
-    box.classList.toggle('cv-actions-row', a.top >= b.bottom - 2);
   }
   // Zoom ONLY the expression (umap) panel to the bounding box of its selected
   // cells — the point of the action is to inspect the umap's internal structure
@@ -1524,20 +1516,24 @@ var focusPanel = null;
     if (did) drawAll();
     return did;
   }
-  // Give one panel the grid, or hand it back. The folded panels keep their space
-  // and their view -- they are display:none, not unassigned -- so returning is
-  // instant and nothing about the selection changes.
+  // Promote one lens without leaving the linked workspace. The focused pane
+  // grows; every other pane remains visible as context and keeps its viewport.
   function setFocusPanel(key) {
     focusPanel = (focusPanel === key) ? null : key;
     panels.forEach(function (p) {
       if (!p.pane) return;
-      p.pane.classList.toggle('cv-folded',
-        !!focusPanel && p.key !== focusPanel && !!p.spaceId);
+      var primary = !!focusPanel && p.key === focusPanel;
+      var context = !!focusPanel && p.key !== focusPanel && !!p.spaceId;
+      p.pane.classList.remove('cv-folded');
+      p.pane.classList.toggle('cv-focus-primary', primary);
+      p.pane.classList.toggle('cv-focus-context', context);
+      p.pane.style.order = primary ? '0' : (context ? '1' : '');
       var btn = p.pane.querySelector('.cv-focus-btn');
       if (btn) {
-        var on = focusPanel === p.key;
+        var on = primary;
         btn.classList.toggle('is-on', on);
-        var tip = on ? 'Back to all panels' : 'Maximise this panel';
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        var tip = on ? 'Return to equal panels' : 'Make this the focus';
         btn.setAttribute('data-tip', tip);
         btn.setAttribute('aria-label', tip);
       }
@@ -1546,10 +1542,8 @@ var focusPanel = null;
     if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
     updateFocusButtons();
     resizeAll();
-    // The canvases animate width/height for 280ms. The immediate measurement
-    // necessarily sees an in-between canvas and can underestimate pane chrome;
-    // settle once more after the transition so a maximised panel cannot finish
-    // a few pixels below the visible workspace.
+    // The canvases animate width/height for 280ms; settle once more afterwards
+    // so their backing stores land on the final mosaic dimensions.
     clearTimeout(focusResizeTimer);
     focusResizeTimer = setTimeout(function () {
       _layoutKey = null;
@@ -1559,32 +1553,15 @@ var focusPanel = null;
   // The per-panel "zoom to selection" is only an action while there IS one, and
   // only on a panel that lays cells out in a plane -- a rotated cloud has no
   // rectangle to zoom to that survives the next turn.
-  // Maximise is only offered where it can deliver. The panels are squares sized
-  // by whichever of width and height runs out first, and with one row of them
-  // that is the height -- which folding the others does not change, so the
-  // "maximised" panel would come back exactly the size it was. It earns its
-  // place from three panels up, where the grid takes a second row.
+  // Focus is meaningful whenever another linked lens exists: it changes visual
+  // hierarchy even when all panels already fit on one row.
   function updateFocusButtons() {
-    // Offered where it can deliver, and that is a question about the LAYOUT, not
-    // about how many panels there are. Panels are squares sized by whichever of
-    // width and height runs out first; folding the others only helps when doing
-    // so removes a row. Two panels are one row on a desktop -- and two rows on a
-    // narrow window, where maximising is exactly what is wanted. Counting panels
-    // got the desktop answer and applied it everywhere.
     var vis = panels.filter(function (p) { return p.spaceId; });
-    var host = panels[0] && panels[0].pane && panels[0].pane.parentElement;
-    var rows = 1;
-    if (host && vis.length) {
-      var availW = host.clientWidth;
-      var single = availW < ((PREF_SIDE + 26) * 2 + 14);
-      var cols = single ? 1 : 2;
-      rows = Math.ceil(vis.length / cols);
-    }
     panels.forEach(function (p) {
       if (!p.pane) return;
       var btn = p.pane.querySelector('.cv-focus-btn');
       if (!btn) return;
-      var useful = rows > 1 || focusPanel === p.key;
+      var useful = vis.length > 1 || focusPanel === p.key;
       btn.style.display = (p.spaceId && useful) ? '' : 'none';
     });
   }
@@ -1775,11 +1752,73 @@ var focusPanel = null;
   function renderSelbar() {
     var bar = $('cv-selbar');
     if (!bar) return;
-    if (sel) {
+    if (sel && sel.size) {
+      $('cv-sel-kicker').textContent = 'Active cohort';
       $('cv-seltext').innerHTML = 'Selected <b>' + fmt(sel.size) + '</b> / ' +
         fmt(D.n) + ' cells &mdash; coordinated across all panels';
+
+      // Give the geometry a compact biological identity. This is descriptive:
+      // the dominant registered category and its observed share, not an inferred
+      // interpretation of the selection.
+      var profile = $('cv-selprofile'), compName = compGroupName();
+      var g = catOf(compName), top = null, counts = {};
+      if (g) {
+        sel.forEach(function (i) {
+          var lv = g.values[i]; counts[lv] = (counts[lv] || 0) + 1;
+        });
+        Object.keys(counts).forEach(function (lv) {
+          if (!top || counts[lv] > top[1]) top = [lv, counts[lv]];
+        });
+      }
+      if (profile) {
+        profile.textContent = top
+          ? (g.levels[+top[0]] + ' · ' + Math.round(top[1] / sel.size * 100) + '%')
+          : 'Linked cell set';
+      }
+
+      var origin = $('cv-selorigin');
+      if (origin) origin.textContent = selectionSource
+        ? ('Selected in ' + selectionSource) : 'Shared selection';
+
+      // A cohort remains the same set even when one lens cannot place every
+      // member. Report that coverage rather than silently making it look smaller.
+      var mapped = [];
+      panels.forEach(function (p) {
+        if (!p.spaceId || !p.ok) return;
+        var n = 0; sel.forEach(function (i) { if (p.ok[i]) n++; });
+        mapped.push(n);
+      });
+      var coverage = $('cv-selcoverage');
+      if (coverage) {
+        var lo = mapped.length ? Math.min.apply(Math, mapped) : sel.size;
+        var hi = mapped.length ? Math.max.apply(Math, mapped) : sel.size;
+        coverage.textContent = lo === sel.size
+          ? (mapped.length + ' linked views · complete mapping')
+          : (lo + '–' + hi + ' / ' + sel.size + ' mapped across ' +
+            mapped.length + ' views');
+      }
+    } else if (pick != null && nicheSet) {
+      // A picked Trekker nucleus is the single-cell counterpart of an active
+      // cohort. Keep it in the same shared-state surface so its identity,
+      // neighbourhood, and Clear action remain visible across every lens.
+      $('cv-sel-kicker').textContent = 'Active cell';
+      $('cv-seltext').innerHTML = 'Picked nucleus <b>' + esc(D.cells[pick]) + '</b>';
+
+      var pickProfile = $('cv-selprofile'), pickGroup = catOf(compGroupName());
+      if (pickProfile) {
+        var pickLevel = pickGroup && pickGroup.values[pick];
+        pickProfile.textContent = pickGroup && pickGroup.levels[pickLevel] != null
+          ? pickGroup.levels[pickLevel] : 'Single nucleus';
+      }
+      var pickOrigin = $('cv-selorigin');
+      if (pickOrigin) pickOrigin.textContent = 'Single-cell neighbourhood';
+      var pickCoverage = $('cv-selcoverage');
+      if (pickCoverage) {
+        pickCoverage.textContent = Math.max(0, nicheSet.size - 1) +
+          ' neighbours within ' + nicheRadius + ' µm';
+      }
     }
-    revealEl(bar, !!sel);
+    revealEl(bar, !!((sel && sel.size) || (pick != null && nicheSet)));
   }
   // Trekker: cell-type composition of the picked nucleus's physical neighbours
   // within the niche radius (µm). Uses the physical (spatial) space coords. Shown
@@ -1948,7 +1987,7 @@ var focusPanel = null;
         var s = new Set();
         for (var i = 0; i < D.n; i++) if (D.clone.id[i] === cid) s.add(i);
         clearLassos();   // this selection didn't come from a lasso
-        setSelection(s);
+        setSelection(s, 'Clonotype table');
       };
     });
   }
@@ -2528,7 +2567,7 @@ var focusPanel = null;
         // (that ring is not gated on `!sel`). An empty lasso keeps the pick.
         // a lasso is a different question from "tell me about this one cell"
         if (s.size) {
-          pick = null; unpinTip(); closeCard(); setSelection(s); keep = true;
+          pick = null; unpinTip(); closeCard(); setSelection(s, p); keep = true;
         } else { setSelection(null); }
       } else {
         var m = pos(e), k = nearest(p, m[0], m[1]);
@@ -2547,6 +2586,7 @@ var focusPanel = null;
         if (pick != null) pinTip(p, pick);
         rebuildNiche();              // Trekker: cells within the picked niche
         updateSelActions();          // niche pick → show the (animated) Clear button
+        renderSelbar();               // expose the shared Active cell state
         drawAll();
         if (!sel) renderReadout();   // Trekker niche readout for the picked cell
       }
@@ -2616,6 +2656,24 @@ var focusPanel = null;
           if (found && isSpatialSpace(spaceById[found.spaceId])) {
             activateSpatial(found.spaceId);
           }
+        });
+        p.pane.addEventListener('click', function (e) {
+          if (!e.target.closest('.cv-ptitle')) return;
+          var pane = this, found = null;
+          panels.forEach(function (candidate) {
+            if (candidate.pane === pane) found = candidate;
+          });
+          if (found && found.spaceId) setFocusPanel(found.key);
+        });
+        p.pane.addEventListener('dblclick', function (e) {
+          if (!e.target.closest('.cv-canvas-wrap')) return;
+          var pane = this, found = null;
+          panels.forEach(function (candidate) {
+            if (candidate.pane === pane) found = candidate;
+          });
+          if (!found || !found.spaceId) return;
+          e.preventDefault();
+          setFocusPanel(found.key);
         });
       }
       if (resizeObserver && p.pane) resizeObserver.observe(p.pane);
@@ -2884,8 +2942,6 @@ var focusPanel = null;
     updateClipControl();
     clipRange();                 // seed the cache the colours read from
     renderLegend(); drawAll(); renderReadout();
-    // RGB mode widens the bar and may push the action buttons onto their own line
-    updateSelActionsLayout();
   }
 
   // ---- projection multi-picker --------------------------------------------
@@ -3561,9 +3617,21 @@ var focusPanel = null;
     // not even hold the same one now.
     focusPanel = null;
     panels.forEach(function (p) {
-      if (p.pane) p.pane.classList.remove('cv-folded');
+      if (p.pane) {
+        p.pane.classList.remove(
+          'cv-folded', 'cv-focus-primary', 'cv-focus-context'
+        );
+        p.pane.style.order = '';
+        p.pane.style.gridColumn = '';
+        p.pane.style.gridRow = '';
+      }
       var fb = p.pane && p.pane.querySelector('.cv-focus-btn');
-      if (fb) fb.classList.remove('is-on');
+      if (fb) {
+        fb.classList.remove('is-on');
+        fb.setAttribute('aria-pressed', 'false');
+        fb.setAttribute('data-tip', 'Make this the focus');
+        fb.setAttribute('aria-label', 'Make this the focus');
+      }
     });
     var host0 = panels[0] && panels[0].pane && panels[0].pane.parentElement;
     if (host0) host0.classList.remove('cv-has-focus');
@@ -3607,6 +3675,10 @@ var focusPanel = null;
   // fell off the bottom -- on the one layout that most needs to be seen at once.
   var PREF_SIDE = 300;
   var MIN_SIDE = 300;
+  // Context is a persistent orientation aid, not the place for close reading.
+  // Let it become slightly smaller while a primary lens is present so a common
+  // 1280px workspace can keep both roles in the same visual field.
+  var FOCUS_CONTEXT_SIDE = 260;
   // The square's size is computed from the pane header's height, and the header
   // grows when the pane is narrow enough for its toolbar to wrap. That is a
   // positive feedback loop: a smaller square makes a taller header makes a
@@ -3647,9 +3719,7 @@ var focusPanel = null;
     if (!D || !panels.length) return;
     var panes = panels[0].pane && panels[0].pane.parentElement;
     if (!panes) return;
-    var vis = panels.filter(function (p) {
-      return p.spaceId && (!focusPanel || p.key === focusPanel);
-    });
+    var vis = panels.filter(function (p) { return p.spaceId; });
     var k = vis.length;
     if (!k) return;
     var availW = panes.clientWidth;
@@ -3673,20 +3743,33 @@ var focusPanel = null;
     // spaces onto the next row. Height is deliberately not a constraint; with
     // five or six modalities, shrinking everything to keep one viewport made
     // the panels unreadable.
-    var cols = Math.max(1, Math.min(k,
-      Math.floor((availW + gap) / (PREF_SIDE + chromeX + gap))));
+    var columnFloor = focusPanel ? FOCUS_CONTEXT_SIDE : PREF_SIDE;
+    var availableCols = Math.max(1,
+      Math.floor((availW + gap) / (columnFloor + chromeX + gap)));
+    // A focused lens consumes an extra grid track so it can be materially larger
+    // without evicting its peers. In overview, one panel consumes one track.
+    var cols = Math.max(1, Math.min(k + (focusPanel ? 1 : 0), availableCols));
     var single = cols === 1;
     var colW = (availW - (cols - 1) * gap) / cols;
-    var side = Math.max(MIN_SIDE, Math.floor(colW - chromeX));
+    var side = Math.max(
+      focusPanel ? FOCUS_CONTEXT_SIDE : MIN_SIDE,
+      Math.floor(colW - chromeX)
+    );
     if (single && side + chromeX > availW) side = Math.max(150, availW - chromeX);
-    // A lone/maximised card should use the available HEIGHT as well as width.
+    // A lone/focused card should use the available HEIGHT as well as width.
     // Without this cap a wide monitor produced a 1200px square that continued
     // far below the viewport. Multi-card grids deliberately keep the 300px
-    // width floor and may scroll vertically; a focused card has no second row
-    // to compare and gains nothing from growing past the visible workspace.
+    // width floor and may scroll vertically; a focused lens is still capped
+    // unless that would make it smaller than its persistent context lenses.
+    var focusSide = side;
+    if (focusPanel && cols > 1) {
+      focusSide = Math.floor((side + chromeX) * 2 + gap - chromeX);
+    }
     if (single || focusPanel) {
-      var firstPane = vis[0] && vis[0].pane;
-      var canvas = vis[0] && vis[0].canvas;
+      var focusObj = null;
+      vis.forEach(function (p) { if (p.key === focusPanel) focusObj = p; });
+      var firstPane = (focusObj || vis[0]) && (focusObj || vis[0]).pane;
+      var canvas = (focusObj || vis[0]) && (focusObj || vis[0]).canvas;
       var overhead = firstPane && canvas
         ? Math.max(0, firstPane.offsetHeight - canvas.clientHeight) : 58;
       var scrollHost = panes.closest('.content-wrapper');
@@ -3697,7 +3780,21 @@ var focusPanel = null;
       var availH = Math.floor(
         visibleBottom - panes.getBoundingClientRect().top - bottomPad - 8
       );
-      if (availH > 0) side = Math.min(side, Math.max(MIN_SIDE, availH - overhead));
+      if (availH > 0) {
+        if (focusPanel) {
+          focusSide = Math.min(focusSide, Math.max(MIN_SIDE, availH - overhead));
+          // Focus hierarchy wins over one-viewport packing. When the controls
+          // and cohort bar leave little height, squeezing the primary below its
+          // context reverses the meaning of the layout; let the page scroll.
+          focusSide = Math.max(
+            focusSide,
+            Math.min(Math.floor((side + chromeX) * 2 + gap - chromeX),
+              Math.round(side * 1.4))
+          );
+        } else {
+          side = Math.min(side, Math.max(MIN_SIDE, availH - overhead));
+        }
+      }
     }
     // Explicit column tracks (px) so cells hug the squares and the grid centres in
     // availW; rows stay auto (each pane = head + square), so the "品" span works.
@@ -3706,13 +3803,21 @@ var focusPanel = null;
     var col = []; for (var c = 0; c < cols; c++) col.push((side + chromeX) + 'px');
     panes.style.gridTemplateColumns = col.join(' ');
     panes.style.gridTemplateRows = '';
-    vis.forEach(function (p) { resizePanelSquare(p, side); });
+    vis.forEach(function (p) {
+      var primary = !!focusPanel && p.key === focusPanel;
+      if (p.pane) {
+        p.pane.style.gridColumn = primary && cols > 1 ? 'span 2' : '';
+        // With three or more tracks the large lens occupies a genuine 2×2 bento
+        // cell; the smaller lenses flow into the open tracks around it.
+        p.pane.style.gridRow = primary && cols > 2 ? 'span 2' : '';
+      }
+      resizePanelSquare(p, primary ? focusSide : side);
+    });
     if (!psSeeded) autoPointSize(side);
-    // Whether maximising can help is a fact about the layout that was just
-    // computed, so it is re-decided here rather than only when the data changes:
-    // narrowing the window is what turns one row of panels into two.
+    // Visibility of focus affordances depends on how many linked lenses remain.
     updateFocusButtons();
     drawAll();
+    if ((sel && sel.size) || (pick != null && nicheSet)) renderSelbar();
   }
 
   // ---- receive the bundle --------------------------------------------------
@@ -3724,7 +3829,8 @@ var focusPanel = null;
   function showUnavailable(msg) {
     closeCard(); cardMeta = null;
     unpinTip();
-    D = null; spaceById = {}; sel = null; pick = null; nicheSet = null;
+    D = null; spaceById = {}; sel = null; selectionSource = null;
+    pick = null; nicheSet = null;
     hoverCell = null; focusPanel = null;
     zoomed = false; hidden = new Set(); groupFilter = {};
     panels.forEach(function (p) {
@@ -3817,7 +3923,8 @@ var focusPanel = null;
     colorBy = D.default_group ||
       (D.groups ? Object.keys(D.groups)[0] : null) || null;
     unpinTip();
-    hidden = new Set(); sel = null; pick = null; hoverCell = null;
+    hidden = new Set(); sel = null; selectionSource = null;
+    pick = null; hoverCell = null;
     focusPanel = null;
     // Reset the additional-parameter state to defaults for the new dataset.
     pctShow = 100; pctMask = null; groupFilter = {}; pointOpacity = 0.8;
@@ -4152,6 +4259,7 @@ var focusPanel = null;
         var nl = $('cv-niche-val'); if (nl) nl.textContent = nicheRadius;
         positionRangeVal('cv-niche', 'cv-niche-val');
         rebuildNiche();               // resize the highlighted niche + circle
+        renderSelbar();                // keep Active cell radius/count in sync
         drawAll();
         if (!sel) renderReadout();     // recompute the niche of the picked cell
       } else if (id && id.indexOf('cv-img-') === 0) {
@@ -4206,12 +4314,16 @@ var focusPanel = null;
       closeFilterMenus();
       if (!cardOpen()) return;
       pick = null; unpinTip(); closeCard(); drawAll();
-      if (!sel) { rebuildNiche(); renderReadout(); }
+      if (!sel) {
+        rebuildNiche();
+        updateSelActions();
+        renderSelbar();
+        renderReadout();
+      }
     });
     window.addEventListener('resize', function () {
       clearLassos();   // screen-space lasso no longer matches the reprojected points
       if (D) resizeAll();
-      updateSelActionsLayout();
       // the grid just changed shape; an open card has to be re-centred on it
       if (cardOpen()) centreCard();
     });
