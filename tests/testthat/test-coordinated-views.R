@@ -706,10 +706,18 @@ test_that("a section offers every background it has, each with its own id", {
   ## only the FIRST configured file was read. Two files of the same basename
   ## also have to stay apart, so the id cannot be the basename alone.
   tmp <- file.path(tempdir(), "cv_imgs")
-  dir.create(file.path(tmp, "a"), recursive = TRUE, showWarnings = FALSE)
-  dir.create(file.path(tmp, "b"), recursive = TRUE, showWarnings = FALSE)
-  png <- file.path(tmp, "a", "he.png")
-  png2 <- file.path(tmp, "b", "he.png")
+  dir.create(
+    file.path(tmp, "spatial-assets", "a"),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+  dir.create(
+    file.path(tmp, "spatial-assets", "b"),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+  png <- file.path(tmp, "spatial-assets", "a", "he.png")
+  png2 <- file.path(tmp, "spatial-assets", "b", "he.png")
   ## A real 1x1 PNG written byte-wise: no graphics device needed, so this does
   ## not depend on one being available in the check environment.
   px <- as.raw(c(
@@ -791,7 +799,12 @@ test_that("a section offers every background it has, each with its own id", {
 
   ## The builders read these two app-scope objects when they exist; this is the
   ## same shape the running app provides.
-  cv_env$Cerebro.options <- list(spatial_images = list(ds = c(png, png2)))
+  cv_env$Cerebro.options <- list(
+    cerebro_root = tmp,
+    spatial_images = list(
+      ds = c("spatial-assets/a/he.png", "spatial-assets/b/he.png")
+    )
+  )
   cv_env$available_crb_files <- list(
     selected = "f.crb",
     files = c(ds = "f.crb")

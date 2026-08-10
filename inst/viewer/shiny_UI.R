@@ -163,10 +163,6 @@ source(
   local = TRUE
 )
 source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/overview/UI.R"),
-  local = TRUE
-)
-source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/groups/UI.R"),
   local = TRUE
 )
@@ -228,14 +224,6 @@ source(
   local = TRUE
 )
 source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/spatial/UI.R"),
-  local = TRUE
-)
-source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/trekker/UI.R"),
-  local = TRUE
-)
-source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/hla_tcr_motifs/UI.R"),
   local = TRUE
 )
@@ -285,7 +273,11 @@ ui <- dashboardPage(
         icon = icon("info"),
         selected = TRUE
       ),
-      menuItem("Projection", tabName = "overview", icon = icon("home")),
+      menuItem(
+        "Linked views",
+        tabName = "coordinated_views",
+        icon = icon("diagram-project")
+      ),
       menuItem("Groups", tabName = "groups", icon = icon("layer-group")),
       ## Marker genes and Most expressed genes are inserted conditionally (see
       ## insertConditionalTab in shiny_server.R): a data set that carries neither
@@ -299,10 +291,7 @@ ui <- dashboardPage(
       div(id = "sidebar_item_extra_material_placeholder"),
       div(id = "sidebar_item_immune_repertoire_placeholder"),
       div(id = "sidebar_item_trajectory_placeholder"),
-      div(id = "sidebar_item_spatial_placeholder"),
-      div(id = "sidebar_item_trekker_placeholder"),
       div(id = "sidebar_item_hla_tcr_motifs_placeholder"),
-      div(id = "sidebar_item_coordinated_views_placeholder"),
       menuItem(
         "Gene expression",
         tabName = "geneExpression",
@@ -333,7 +322,7 @@ ui <- dashboardPage(
     ##  - cv-geom.js      : shared 2-D geometry kernels (window.CBGeom) used by
     ##                      the canvas engines below. Deferred scripts execute in
     ##                      document order, so it is defined before them.
-    ##  - trekker.*       : Trekker page assets (scoped under .trekker-page / tk-).
+    ##  - trekker.*       : Shared Trekker QC/Moran renderers used by Linked views.
     ##  - hla_motifs.*    : modebar over the visNetwork motif network.
     ##  - coordviews.*    : Linked views assets (scoped under .coordviews-page /
     ##                      cv- ids).
@@ -348,7 +337,7 @@ ui <- dashboardPage(
       cerebro_js("hla_motifs.js", defer = TRUE),
       cerebro_js("coordviews.js", defer = TRUE),
       ## Shared projection-scatter engine, loaded ONCE here instead of being
-      ## inlined into all five projection tabs' extendShinyjs() (~69KB x5). Both
+      ## inlined into each remaining projection-style detail tab. Both
       ## files expose only window globals (window.cerebroProjectionLayout /
       ## window.cerebroProjection); each tab's thin js_projection_update_plot.js
       ## (still inlined via extendShinyjs) calls those globals. These are NOT
@@ -360,7 +349,6 @@ ui <- dashboardPage(
     tags$script(HTML('$("body").addClass("fixed");')),
     tabItems(
       tab_load_data,
-      tab_overview,
       tab_groups,
       tab_marker_genes,
       tab_most_expressed_genes,
@@ -368,8 +356,6 @@ ui <- dashboardPage(
       tab_extra_material,
       tab_immune_repertoire,
       tab_trajectory,
-      tab_spatial,
-      tab_trekker,
       tab_hla_tcr_motifs,
       tab_coordinated_views,
       tab_gene_expression,

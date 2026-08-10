@@ -479,10 +479,6 @@ server <- function(input, output, session) {
     local = TRUE
   )
   source(
-    paste0(Cerebro.options[["cerebro_root"]], "/viewer/overview/server.R"),
-    local = TRUE
-  )
-  source(
     paste0(Cerebro.options[["cerebro_root"]], "/viewer/groups/server.R"),
     local = TRUE
   )
@@ -632,23 +628,6 @@ server <- function(input, output, session) {
     function() intersect(getMethodsForTrajectories(), c("monocle2"))
   )
   insertConditionalTab(
-    "Spatial",
-    "spatial",
-    "map-pin",
-    function() availableSpatial()
-  )
-  ## Trekker single-cell spatial mapping: its own bespoke page (not the generic
-  ## Spatial tab). Shown only when the loaded .crb carries a `trekker` slot.
-  insertConditionalTab(
-    "Trekker",
-    "trekker",
-    "map-marked-alt",
-    function() {
-      tk <- tryCatch(data_set()$getTrekker(), error = function(e) NULL)
-      !is.null(tk)
-    }
-  )
-  insertConditionalTab(
     "HLA & TCR Motifs",
     "hla_tcr_motifs",
     "project-diagram",
@@ -672,17 +651,6 @@ server <- function(input, output, session) {
           c("TRA", "TRB")
       )
     }
-  )
-
-  ## Coordinated (Linked) views: a general cross-modal workspace. Shown for any
-  ## single-cell data set that carries an embedding (every space it also has —
-  ## spatial, clonal — is linked automatically). Same gate as Projection.
-  insertConditionalTab(
-    "Linked views",
-    "coordinated_views",
-    "diagram-project",
-    function() availableProjections(),
-    placeholder_id = "coordinated_views"
   )
 
   ## Cleanup snapshot artifacts that may have been left by test runs.
@@ -736,20 +704,6 @@ server <- function(input, output, session) {
   source(
     paste0(
       Cerebro.options[["cerebro_root"]],
-      "/viewer/spatial/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/trekker/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
       "/viewer/hla_tcr_motifs/server.R"
     ),
     local = TRUE
@@ -766,13 +720,6 @@ server <- function(input, output, session) {
   ## Export reactive values for testing (shinytest2).
   ##--------------------------------------------------------------------------##
   exportTestValues(
-    overview_cells_to_show = {
-      if (is.null(data_set())) {
-        NULL
-      } else {
-        overview_projection_cells_to_show()
-      }
-    },
     expression_levels = {
       if (is.null(data_set())) {
         NULL

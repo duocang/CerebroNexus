@@ -82,92 +82,32 @@ render_bundle_spatial_background <- function(
   background_image_allowlist
 ) {
   renderer <- new.env(parent = globalenv())
+  dataset <- names(config$crb_file_to_load)[[1L]]
+  config$spatial_images[[dataset]] <- background_image_allowlist
+  config$cerebro_root <- app
   renderer$Cerebro.options <- config
+  renderer$available_crb_files <- list(
+    files = config$crb_file_to_load,
+    names = names(config$crb_file_to_load),
+    selected = unname(config$crb_file_to_load[[1L]])
+  )
   sys.source(
     file.path(
       app,
       "viewer",
-      "spatial",
-      "func_projection_update_plot.R"
+      "coordinated_views",
+      "bundle.R"
     ),
     envir = renderer
   )
 
-  js <- get("js", envir = asNamespace("shinyjs"))
-  binding_names <- c(
-    "getSpatialContainerDimensions",
-    "updatePlot2DContinuousSpatial"
+  images <- renderer$cv_external_images()
+  wanted <- basename(background_image)
+  hit <- Filter(
+    function(image) endsWith(image$id, paste0(":", wanted)),
+    images
   )
-  binding_existed <- vapply(
-    binding_names,
-    exists,
-    logical(1),
-    envir = js,
-    inherits = FALSE
-  )
-  previous_bindings <- lapply(binding_names, function(name) {
-    if (exists(name, envir = js, inherits = FALSE)) {
-      get(name, envir = js, inherits = FALSE)
-    } else {
-      NULL
-    }
-  })
-  on.exit(
-    for (index in seq_along(binding_names)) {
-      name <- binding_names[[index]]
-      if (binding_existed[[index]]) {
-        assign(name, previous_bindings[[index]], envir = js)
-      } else if (exists(name, envir = js, inherits = FALSE)) {
-        rm(list = name, envir = js)
-      }
-    },
-    add = TRUE
-  )
-
-  rendered_meta <- NULL
-  assign(
-    "getSpatialContainerDimensions",
-    function(plot_id) list(width = 800, height = 600),
-    envir = js
-  )
-  assign(
-    "updatePlot2DContinuousSpatial",
-    function(meta, ...) rendered_meta <<- meta,
-    envir = js
-  )
-
-  withr::with_dir(
-    app,
-    renderer$spatial_projection_update_plot(list(
-      cells_df = data.frame(score = c(1, 2)),
-      coordinates = data.frame(x = c(1, 2), y = c(3, 4)),
-      reset_axes = TRUE,
-      color_assignments = character(),
-      hover_info = c("first", "second"),
-      plot_parameters = list(
-        color_variable = "score",
-        background_image = background_image,
-        background_image_allowlist = background_image_allowlist,
-        n_dimensions = 2,
-        x_range = NULL,
-        y_range = NULL,
-        background_flip_x = FALSE,
-        background_flip_y = FALSE,
-        background_scale_x = 1,
-        background_scale_y = 1,
-        background_offset_x = 0,
-        background_offset_y = 0,
-        background_opacity = 1,
-        plot_type = "Feature plot",
-        point_size = 5,
-        point_opacity = 1,
-        draw_border = FALSE,
-        hover_info = FALSE
-      )
-    ))
-  )
-
-  rendered_meta
+  list(background_image = if (length(hit)) hit[[1L]]$uri else NULL)
 }
 
 source_bundle_runtime <- function(app = NULL) {

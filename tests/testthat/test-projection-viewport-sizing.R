@@ -268,9 +268,7 @@ test_that("generic fill wrappers do not clip widget controls", {
 
 test_that("all projection tabs delegate live height to the shared controller", {
   ui_paths <- c(
-    repo_file("inst", "viewer", "overview", "UI_projection.R"),
     repo_file("inst", "viewer", "gene_expression", "UI_projection.R"),
-    repo_file("inst", "viewer", "spatial", "UI_projection.R"),
     repo_file("inst", "viewer", "trajectory", "projection.R")
   )
   ui_source <- paste(unlist(lapply(ui_paths, readLines)), collapse = "\n")
@@ -283,7 +281,7 @@ test_that("all projection tabs delegate live height to the shared controller", {
       ui_source,
       gregexpr("cerebro-projection-gate", ui_source, fixed = TRUE)
     )),
-    4L
+    2L
   )
 })
 
@@ -662,21 +660,4 @@ test_that("CSS hides projection outputs until the resize path reveals them", {
   # NOT a plotId-keyed set — so a host that is removed and recreated (e.g. the IR
   # Clonal UMAP when faceting toggles) reveals again instead of staying hidden.
   expect_false(grepl("projectionRevealed", js_source, fixed = TRUE))
-})
-
-test_that("Spatial background remains registered to Plotly data axes", {
-  source <- paste(
-    readLines(repo_file(
-      "inst",
-      "viewer",
-      "spatial",
-      "js_spatial_background.js"
-    )),
-    collapse = "\n"
-  )
-
-  expect_match(source, "xaxis.l2p", fixed = TRUE)
-  expect_match(source, "yaxis.l2p", fixed = TRUE)
-  expect_match(source, "plotly_afterplot", fixed = TRUE)
-  expect_match(source, "applySpatialBackground", fixed = TRUE)
 })

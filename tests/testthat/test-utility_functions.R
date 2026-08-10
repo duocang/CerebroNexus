@@ -55,20 +55,6 @@ test_that("projection hover info accepts standard Seurat QC columns", {
   expect_match(hover[[2]], "sample</b>: donorB", fixed = TRUE)
 })
 
-test_that("spatial offset ranges require finite coordinates", {
-  path <- file.path(
-    dirname(utils_file),
-    "spatial/UI_projection_additional_parameters.R"
-  )
-  source_text <- paste(readLines(path, warn = FALSE), collapse = "\n")
-
-  expect_match(
-    source_text,
-    "x <- co\\[\\[1\\]\\]\\[is.finite\\(co\\[\\[1\\]\\]\\)\\]"
-  )
-  expect_match(source_text, "length\\(x\\) > 0 && length\\(y\\) > 0")
-})
-
 ## ---------------------------------------------------------------------------
 ## centerOfGroups
 ## ---------------------------------------------------------------------------
@@ -319,11 +305,11 @@ test_that("a capped projection always reaches a dispatch branch", {
   }
 })
 
-test_that("both projection tabs cap the projection they plot", {
+test_that("the gene-expression projection caps the projection it plots", {
   ## A tab that reports a capped width but still hands over the full-width
   ## coordinates (or the reverse) puts the two back out of step, so pin both
   ## call sites per tab rather than the helper alone.
-  for (tab in c("overview", "gene_expression")) {
+  for (tab in "gene_expression") {
     parameters <- paste(
       readLines(
         file.path(dirname(utils_file), tab, "obj_projection_parameters_plot.R"),
@@ -364,14 +350,7 @@ test_that("the selected-cell panels carry only the identifier's two columns", {
   ## leaves the third column in the table. Only the join sites can close it, and
   ## checking one tab's says nothing about the other's -- which is exactly how
   ## the Gene expression table stayed open after the Overview ones were fixed.
-  sites <- list(
-    overview = c(
-      "out_details_selected_cells_table.R",
-      "out_details_selected_cells_plot.R",
-      "obj_projection_selected_cells.R"
-    ),
-    gene_expression = "UI_table_of_selected_cells.R"
-  )
+  sites <- list(gene_expression = "UI_table_of_selected_cells.R")
   for (tab in names(sites)) {
     for (f in sites[[tab]]) {
       source_text <- paste(

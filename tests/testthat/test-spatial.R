@@ -92,128 +92,6 @@ test_that("exportFromSeurat carries the spatial extraction path", {
 })
 
 ##----------------------------------------------------------------------------##
-## Session B: Shiny tab wiring guards.
-##----------------------------------------------------------------------------##
-
-test_that("all spatial module files parse without errors", {
-  spatial_dir <- file.path(shiny_root, "spatial")
-  skip_if_not(dir.exists(spatial_dir), message = "spatial module missing")
-  mod_files <- list.files(spatial_dir, pattern = "\\.R$", full.names = TRUE)
-  expect_true(length(mod_files) > 0)
-  for (fpath in mod_files) {
-    expect_no_error(parse(file = fpath))
-  }
-})
-
-test_that("ImageFeaturePlot reaches getExpressionMatrix as a Cerebro method", {
-  # getExpressionMatrix / getMeanExpressionForCells are Cerebro_v1.3 R6 methods,
-  # not bare functions — they must be called through data_set()$. A bare
-  # getExpressionMatrix(...) crashed the ImageFeaturePlot (gene-coloured) path
-  # with "could not find function". Guard every expression-method call in the
-  # spatial module against the bare form.
-  spatial_dir <- file.path(shiny_root, "spatial")
-  skip_if_not(dir.exists(spatial_dir), message = "spatial module missing")
-  methods <- c("getExpressionMatrix", "getMeanExpressionForCells")
-  for (fpath in list.files(spatial_dir, pattern = "\\.R$", full.names = TRUE)) {
-    src <- paste(readLines(fpath), collapse = "\n")
-    for (m in methods) {
-      # a call to the method NOT immediately preceded by `$`
-      bare <- gregexpr(
-        paste0("(^|[^$[:alnum:]_.])", m, "\\("),
-        src,
-        perl = TRUE
-      )[[1]]
-      expect_true(
-        bare[1] == -1,
-        info = paste0(
-          "bare ",
-          m,
-          "() in ",
-          basename(fpath),
-          " — use data_set()$"
-        )
-      )
-    }
-  }
-})
-
-test_that("plot update guards against a colour variable absent from metadata", {
-  # Switching the loaded .crb can leave the point-colour dropdown holding a
-  # column from the previous dataset (e.g. Xenium "cluster" vs MERFISH
-  # "cell_type"). Colouring by a missing column makes the downstream
-  # dplyr::group_by() error and freezes the plot on the old data. The render
-  # function must fall back to a valid metadata column. Assert the guard survives
-  # (cross-line tolerant per project convention).
-  fpath <- file.path(shiny_root, "spatial", "func_projection_update_plot.R")
-  skip_if_not(file.exists(fpath), message = "spatial update module missing")
-  src <- paste(readLines(fpath), collapse = "\n")
-  expect_match(
-    src,
-    "color_variable[\\s\\S]{0,80}%in%[\\s\\S]{0,20}colnames\\(metadata\\)",
-    perl = TRUE
-  )
-  expect_match(
-    src,
-    "color_variable[\\s\\S]{0,40}<-[\\s\\S]{0,40}colnames\\(metadata\\)\\[1\\]",
-    perl = TRUE
-  )
-})
-
-test_that("group_filters widget the spatial tab depends on is present", {
-  # spatial/UI_projection_group_filters.R calls registerGroupFiltersUI() and
-  # registerGroupFiltersInfo(); those are only defined in the shared module,
-  # which must be shipped and sourced or the tab errors on mount.
-  widget <- file.path(
-    shiny_root,
-    "module",
-    "group_filters",
-    "group_filters_widget.R"
-  )
-  skip_if_not(file.exists(widget))
-  widget_src <- paste(readLines(widget), collapse = "\n")
-  for (fn in c("registerGroupFiltersUI", "registerGroupFiltersInfo")) {
-    expect_match(
-      widget_src,
-      paste0(fn, "[\\s]{0,3}<-[\\s]{0,3}function"),
-      perl = TRUE,
-      info = fn
-    )
-  }
-})
-
-test_that("spatial UI defines correct tabName", {
-  ui_file <- file.path(shiny_root, "spatial", "UI.R")
-  skip_if_not(file.exists(ui_file))
-  content <- paste(readLines(ui_file), collapse = "\n")
-  expect_match(content, 'tabName\\s*=\\s*"spatial"', perl = TRUE)
-})
-
-test_that("Spatial tab is wired into the app UI and server", {
-  # Guard the integration points so a future refactor that drops the wiring
-  # (module present but never mounted) fails loudly. Cross-line-tolerant regex
-  # per project convention (air may reflow).
-  ui_src <- paste(
-    readLines(file.path(shiny_root, "shiny_UI.R")),
-    collapse = "\n"
-  )
-  expect_match(ui_src, "spatial/UI\\.R")
-  expect_match(ui_src, "tab_spatial")
-  expect_match(ui_src, "sidebar_item_spatial_placeholder")
-
-  server_src <- paste(
-    readLines(file.path(shiny_root, "shiny_server.R")),
-    collapse = "\n"
-  )
-  expect_match(server_src, "spatial/server\\.R")
-  expect_match(server_src, "group_filters/group_filters_widget\\.R")
-  expect_match(
-    server_src,
-    'insertConditionalTab\\([\\s\\S]{0,80}"spatial"',
-    perl = TRUE
-  )
-})
-
-##----------------------------------------------------------------------------##
 ## Spatial background image: createShinyApp production channel + demo wiring.
 ##----------------------------------------------------------------------------##
 
@@ -403,15 +281,14 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
   sys.source(
     file.path(
       system.file("viewer", package = "CerebroNexus"),
-      "spatial",
-      "func_projection_update_plot.R"
+      "coordinated_views",
+      "bundle.R"
     ),
     envir = renderer
   )
   configured_image <- "extdata/examples/demo_spatial_visium_he.png"
   expect_identical(
-    renderer$authorized_spatial_image_path(
-      configured_image,
+    renderer$cv_authorized_external_image_path(
       configured_image,
       system.file(package = "CerebroNexus")
     ),

@@ -100,6 +100,55 @@ cv_clone_per_cell <- function(ir, cells, receptor = NULL) {
   list(clone = rows$clone[idx], ctaa = rows$CTaa[idx], receptor = receptor)
 }
 
+## Resolve a configured image only inside the app's public image roots. The
+## canonical containment check is deliberately performed after symlink
+## resolution: a configured `spatial-assets/link.png` must not become a read
+## primitive for a file outside the generated app.
+cv_authorized_external_image_path <- function(path, cerebro_root) {
+  if (
+    !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path) ||
+      !is.character(cerebro_root) ||
+      length(cerebro_root) != 1L ||
+      is.na(cerebro_root)
+  ) {
+    return(NULL)
+  }
+  canonicalize <- function(candidate) {
+    tryCatch(
+      suppressWarnings(
+        normalizePath(candidate, winslash = "/", mustWork = TRUE)
+      ),
+      error = function(error) NULL
+    )
+  }
+  image_path <- canonicalize(file.path(cerebro_root, path))
+  trusted_roots <- Filter(
+    Negate(is.null),
+    lapply(
+      c("spatial-assets", "extdata"),
+      function(root) canonicalize(file.path(cerebro_root, root))
+    )
+  )
+  if (is.null(image_path) || !length(trusted_roots)) {
+    return(NULL)
+  }
+  comparison_path <- image_path
+  if (.Platform$OS.type == "windows") {
+    comparison_path <- tolower(comparison_path)
+    trusted_roots <- lapply(trusted_roots, tolower)
+  }
+  inside <- any(vapply(
+    trusted_roots,
+    function(root) {
+      startsWith(comparison_path, paste0(sub("/+$", "", root), "/"))
+    },
+    logical(1)
+  ))
+  if (!inside) NULL else image_path
+}
+
 ## Resolve an EXTERNAL histology image (Cerebro.options$spatial_images) for the
 ## CURRENTLY selected dataset, plus its alignment preset, base64-encoded so the
 ## browser can show it. Returns list(uri, preset) or NULL. The preset offset is
@@ -150,13 +199,8 @@ cv_external_images <- function() {
   out <- list()
   for (i in seq_along(paths)) {
     path <- paths[i]
-    img_path <- if (!is.null(root)) file.path(root, path) else path
-    if (!file.exists(img_path)) {
-      img_path <- path
-    }
-    if (
-      !file.exists(img_path) || !requireNamespace("base64enc", quietly = TRUE)
-    ) {
+    img_path <- cv_authorized_external_image_path(path, root)
+    if (is.null(img_path) || !requireNamespace("base64enc", quietly = TRUE)) {
       next
     }
     ext <- tolower(tools::file_ext(img_path))

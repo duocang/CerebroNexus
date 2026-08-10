@@ -2,8 +2,7 @@
 ## button alongside "Clear selection": a hidden actionButton keyed
 ## <plot_id>_zoom_to_selection, a shinyjs bridge to the shared zoomToSelection(),
 ## that bridge registered in extendShinyjs(functions=), and an observer that
-## shows/hides it with the selection. Spatial is included here (it already had
-## Clear), so all four projection tabs stay in lock-step.
+## shows/hides it with the selection.
 
 repo_file <- function(...) {
   parts <- c(...)
@@ -36,10 +35,6 @@ read_all <- function(dir) {
 }
 
 tabs <- list(
-  overview = list(
-    plot_id = "overview_projection",
-    bridge = "overviewZoomToSelection"
-  ),
   gene_expression = list(
     plot_id = "expression_projection",
     bridge = "expressionZoomToSelection"
@@ -47,10 +42,6 @@ tabs <- list(
   trajectory = list(
     plot_id = "trajectory_projection",
     bridge = "trajectoryZoomToSelection"
-  ),
-  spatial = list(
-    plot_id = "spatial_projection",
-    bridge = "spatialZoomToSelection"
   )
 )
 
@@ -62,25 +53,20 @@ for (tab in names(tabs)) {
     src <- read_all(dir)
 
     test_that(paste0(dir, ": has a hidden zoom-to-selection actionButton"), {
-      if (identical(dir, "spatial")) {
-        expect_match(src, "panel$zoom_id", fixed = TRUE)
-        expect_match(src, "_persistent_selection", fixed = TRUE)
-      } else {
-        expect_match(
-          src,
-          paste0('inputId = "', plot_id, '_zoom_to_selection"'),
-          fixed = TRUE
-        )
-        expect_match(
-          src,
-          paste0(
-            "shinyjs::hidden\\([\\s\\S]{0,120}?",
-            plot_id,
-            "_zoom_to_selection"
-          ),
-          perl = TRUE
-        )
-      }
+      expect_match(
+        src,
+        paste0('inputId = "', plot_id, '_zoom_to_selection"'),
+        fixed = TRUE
+      )
+      expect_match(
+        src,
+        paste0(
+          "shinyjs::hidden\\([\\s\\S]{0,120}?",
+          plot_id,
+          "_zoom_to_selection"
+        ),
+        perl = TRUE
+      )
       expect_match(src, '"Zoom to selection"', fixed = TRUE)
     })
 
@@ -95,31 +81,22 @@ for (tab in names(tabs)) {
     })
 
     test_that(paste0(dir, ": event zooms and observer toggles the button"), {
-      if (identical(dir, "spatial")) {
-        expect_match(src, "input[[panel$zoom_id]]", fixed = TRUE)
-        expect_match(
-          src,
-          paste0("js$", bridge, "(panel$plot_id)"),
-          fixed = TRUE
-        )
-      } else {
-        expect_match(
-          src,
-          paste0('input\\[\\["', plot_id, '_zoom_to_selection"\\]\\]'),
-          perl = TRUE
-        )
-        expect_match(src, paste0("js\\$", bridge, "\\(\\)"), perl = TRUE)
-        expect_match(
-          src,
-          paste0('shinyjs::show\\("', plot_id, '_zoom_to_selection"\\)'),
-          perl = TRUE
-        )
-        expect_match(
-          src,
-          paste0('shinyjs::hide\\("', plot_id, '_zoom_to_selection"\\)'),
-          perl = TRUE
-        )
-      }
+      expect_match(
+        src,
+        paste0('input\\[\\["', plot_id, '_zoom_to_selection"\\]\\]'),
+        perl = TRUE
+      )
+      expect_match(src, paste0("js\\$", bridge, "\\(\\)"), perl = TRUE)
+      expect_match(
+        src,
+        paste0('shinyjs::show\\("', plot_id, '_zoom_to_selection"\\)'),
+        perl = TRUE
+      )
+      expect_match(
+        src,
+        paste0('shinyjs::hide\\("', plot_id, '_zoom_to_selection"\\)'),
+        perl = TRUE
+      )
     })
 
     test_that(paste0(dir, ": both buttons share the no-wrap flex row"), {
@@ -128,15 +105,11 @@ for (tab in names(tabs)) {
 
     test_that(paste0(dir, ": zoom-state observer swaps style and label"), {
       # driven by <plot_id>_zoom_state reported from the JS toggle
-      if (identical(dir, "spatial")) {
-        expect_match(src, "_zoom_state", fixed = TRUE)
-      } else {
-        expect_match(
-          src,
-          paste0('input\\[\\["', plot_id, '_zoom_state"\\]\\]'),
-          perl = TRUE
-        )
-      }
+      expect_match(
+        src,
+        paste0('input\\[\\["', plot_id, '_zoom_state"\\]\\]'),
+        perl = TRUE
+      )
       expect_match(src, '"Reset zoom"', fixed = TRUE)
       expect_match(src, "is-zoomed", fixed = TRUE)
     })
