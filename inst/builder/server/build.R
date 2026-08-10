@@ -6,6 +6,18 @@
 ## answering while a marker-gene run takes its minutes.
 auth_accounts_state <- auth_accounts
 
+output$build_stage_status <- renderUI({
+  req(identical(workflow()$stage, "build"))
+  model <- builder_build_stage_status_model(
+    flow = build_flow(),
+    protocol = protocol(),
+    note = busy_note(),
+    result = result(),
+    output_selected = builder_stage_has_text(selected_output() %||% "")
+  )
+  builder_build_stage_status_ui(model)
+})
+
 builder_build_confirmation_status <- function(state, plan) {
   if (!identical(state$stage, "build")) {
     return(list(ok = FALSE, reason = "stage_mismatch"))
@@ -188,13 +200,16 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
 }
 
 choose_build_folder <- function() {
+  build_flow(list(stage = "choosing_folder", plan = NULL))
   session$onFlushed(
     function() {
       choice <- builder_choose_output_directory()
       if (identical(choice$status, "cancelled")) {
+        build_flow(list(stage = "idle", plan = NULL))
         return()
       }
       if (!identical(choice$status, "selected")) {
+        build_flow(list(stage = "idle", plan = NULL))
         showNotification(
           choice$error %||% "The folder picker could not be opened.",
           type = "error",
@@ -203,6 +218,7 @@ choose_build_folder <- function() {
         return()
       }
       selected_output(choice$path)
+      build_flow(list(stage = "idle", plan = NULL))
     },
     once = TRUE
   )
@@ -219,19 +235,23 @@ observeEvent(input$choose_output_folder, {
   choose_build_folder()
 })
 
-observeEvent(input$build, {
+start_confirmed_build <- function() {
   if (builder_build_controls_locked(isolate(build_flow()))) {
-    return()
+    return(invisible(FALSE))
   }
   live <- isolate(frozen_review_plan())
   output_path <- isolate(selected_output())
   if (!isTRUE(builder_require_confirmed_build_plan(live))) {
-    return()
+    return(invisible(FALSE))
   }
   if (!builder_has_text(output_path)) {
-    return()
+    return(invisible(FALSE))
   }
   prepare_selected_output(output_path)
+}
+
+observeEvent(input$build, {
+  start_confirmed_build()
 })
 
 observeEvent(input$builder_build_dialog, {
@@ -339,22 +359,12 @@ rail_controller <- builder_dataset_rail_server(
 
 output$busy <- renderUI({
   note <- busy_note()
-  if (is.null(note)) {
+  if (is.null(note) || identical(workflow()$stage, "build")) {
     return(NULL)
   }
-  current_protocol <- protocol()
-  build_phase <- current_protocol$build_status %||% "idle"
-  pipeline <- if (identical(build_phase, "queued")) {
-    builder_build_pipeline_ui("queued")
-  } else if (identical(build_phase, "running")) {
-    builder_build_pipeline_ui("building")
-  } else {
-    NULL
-  }
   div(
-    class = paste("busy", if (is.null(pipeline)) NULL else "is-building"),
-    if (is.null(pipeline)) span(class = "spinner"),
-    pipeline,
+    class = "busy",
+    span(class = "spinner"),
     span(note)
   )
 })

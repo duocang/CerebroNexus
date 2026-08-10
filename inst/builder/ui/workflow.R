@@ -102,14 +102,8 @@ builder_build_workbench_ui <- function(
         "Choose folder…",
         class = "btn",
         disabled = controls_disabled
-      ),
-      actionButton(
-        "build",
-        "Build",
-        class = "btn btn-action",
-        disabled = controls_disabled || !builder_has_text(output_path)
       )
     ),
-    status
+    uiOutput("build_stage_status")
   )
 }

@@ -3,6 +3,7 @@
 ## -------------------------------------------------------------------------
 
 builder_profile_source_runtime(globalenv())
+builder_stage_contract_source_runtime(globalenv())
 builder_repo_source("io.R", local = globalenv())
 builder_repo_source("adapters.R", local = globalenv())
 builder_repo_source("state.R", local = globalenv())
@@ -315,6 +316,178 @@ test_that("workflow server exclusively owns loading and stage rendering", {
   expect_false(grepl('uiOutput("actionbar")', app, fixed = TRUE))
 })
 
+test_that("Build status projection keeps one stable typed host", {
+  skip_if_not_installed("shiny")
+  withr::local_package("shiny")
+  idle <- builder_build_stage_status_model(
+    flow = list(stage = "idle"),
+    protocol = list(build_status = "idle"),
+    note = NULL,
+    result = NULL,
+    output_selected = TRUE
+  )
+  choosing <- builder_build_stage_status_model(
+    flow = list(stage = "choosing_folder"),
+    protocol = NULL,
+    note = NULL,
+    result = NULL,
+    output_selected = FALSE
+  )
+  queued <- builder_build_stage_status_model(
+    flow = list(stage = "building"),
+    protocol = list(build_status = "queued"),
+    note = NULL,
+    result = NULL,
+    output_selected = TRUE
+  )
+  running <- builder_build_stage_status_model(
+    flow = list(stage = "building"),
+    protocol = list(build_status = "running"),
+    note = "Building 3 datasets…",
+    result = NULL,
+    output_selected = TRUE
+  )
+  cancelling <- builder_build_stage_status_model(
+    flow = list(stage = "building"),
+    protocol = list(build_status = "cancelling"),
+    note = NULL,
+    result = NULL,
+    output_selected = TRUE
+  )
+  conflict <- builder_build_stage_status_model(
+    flow = list(stage = "conflict"),
+    protocol = list(build_status = "idle"),
+    note = NULL,
+    result = NULL,
+    output_selected = TRUE
+  )
+  malformed <- builder_build_stage_status_model(
+    flow = NULL,
+    protocol = list(build_status = NA_character_),
+    note = list("not a status note"),
+    result = NULL,
+    output_selected = TRUE
+  )
+
+  expect_named(
+    idle,
+    c("state", "message", "pipeline_state", "can_build", "result_model"),
+    ignore.order = FALSE
+  )
+  expect_identical(idle$state, "ready")
+  expect_true(idle$can_build)
+  expect_identical(choosing$state, "choosing_folder")
+  expect_false(choosing$can_build)
+  expect_identical(queued$state, "queued")
+  expect_identical(queued$pipeline_state, "queued")
+  expect_false(queued$can_build)
+  expect_identical(running$state, "building")
+  expect_identical(running$message, "Building 3 datasets…")
+  expect_identical(running$pipeline_state, "building")
+  expect_false(running$can_build)
+  expect_identical(cancelling$state, "building")
+  expect_false(cancelling$can_build)
+  expect_identical(conflict$state, "ready")
+  expect_false(conflict$can_build)
+  expect_identical(malformed$state, "ready")
+  expect_null(malformed$message)
+  expect_false(malformed$can_build)
+
+  results <- list(
+    success = builder_result_success(
+      published = TRUE,
+      built = "/release/dataset.crb",
+      app_dir = "/release/cerebro_app",
+      app_verified = TRUE,
+      report_path = "/release/build-report.json"
+    ),
+    needs_decision = builder_result_needs_decision(
+      "Choose one.",
+      retry_closure = "marker_genes",
+      failed_dataset_id = "dataset-a"
+    ),
+    failure = builder_result_failure(
+      "Worker stopped.",
+      restartable_worker = TRUE
+    ),
+    recovery_required = builder_result_recovery_required(
+      "Restore the preserved backup."
+    )
+  )
+  result_html <- lapply(results, function(value) {
+    model <- builder_build_stage_status_model(
+      flow = list(stage = "idle"),
+      protocol = list(build_status = "idle"),
+      note = NULL,
+      result = value,
+      output_selected = TRUE
+    )
+    expect_identical(model$state, "result")
+    expect_s3_class(model$result_model, "builder_build_status")
+    htmltools::renderTags(builder_build_stage_status_ui(model))$html
+  })
+
+  ready_html <- htmltools::renderTags(
+    builder_build_stage_status_ui(idle)
+  )$html
+  choosing_html <- htmltools::renderTags(
+    builder_build_stage_status_ui(choosing)
+  )$html
+  queued_html <- htmltools::renderTags(
+    builder_build_stage_status_ui(queued)
+  )$html
+  running_html <- htmltools::renderTags(
+    builder_build_stage_status_ui(running)
+  )$html
+  all_html <- c(
+    list(ready_html, choosing_html, queued_html, running_html),
+    result_html
+  )
+  for (html in all_html) {
+    expect_identical(
+      lengths(regmatches(
+        html,
+        gregexpr('id="build-stage-status"', html, fixed = TRUE)
+      )),
+      1L
+    )
+    expect_match(html, 'role="status"', fixed = TRUE)
+    expect_match(html, 'aria-live="polite"', fixed = TRUE)
+    expect_match(html, 'aria-atomic="true"', fixed = TRUE)
+  }
+  expect_match(ready_html, ">Build Viewer<", fixed = TRUE)
+  expect_match(ready_html, "btn btn-action", fixed = TRUE)
+  expect_match(choosing_html, "Choosing output folder…", fixed = TRUE)
+  expect_match(queued_html, "Build queued…", fixed = TRUE)
+  expect_match(running_html, "Building 3 datasets…", fixed = TRUE)
+  expect_match(result_html$success, "Open App", fixed = TRUE)
+  expect_match(result_html$success, "Reveal Folder", fixed = TRUE)
+  expect_match(result_html$success, "Copy Path", fixed = TRUE)
+  expect_match(result_html$success, "Copy Report", fixed = TRUE)
+  expect_match(result_html$needs_decision, "Retry optional work", fixed = TRUE)
+  expect_match(result_html$needs_decision, "Remove and rebuild", fixed = TRUE)
+  expect_match(result_html$failure, "Restart worker", fixed = TRUE)
+  expect_match(
+    result_html$recovery_required,
+    "Manual recovery steps",
+    fixed = TRUE
+  )
+  expect_error(
+    builder_build_stage_status_ui(list(state = "future")),
+    "Build-stage status is unsupported"
+  )
+  expect_error(
+    builder_build_stage_status_model(
+      flow = NULL,
+      protocol = NULL,
+      note = NULL,
+      result = list(error = "legacy"),
+      output_selected = FALSE
+    ),
+    "typed"
+  )
+})
+
 test_that("native output directory selection normalizes selection and preserves cancellation", {
   root <- withr::local_tempdir()
   nested <- file.path(root, "nested", "..", "output")
@@ -340,9 +513,14 @@ test_that("folder selection is separate from Build and only conflicts prompt", {
   picker <- builder_app_block(
     lines,
     "choose_build_folder <- function() {",
-    "observeEvent(input$build, {"
+    "start_confirmed_build <- function() {"
   )
   build <- builder_app_block(
+    lines,
+    "start_confirmed_build <- function() {",
+    "observeEvent(input$build, {"
+  )
+  build_observer <- builder_app_block(
     lines,
     "observeEvent(input$build, {",
     "observeEvent(input$builder_build_dialog, {"
@@ -359,6 +537,7 @@ test_that("folder selection is separate from Build and only conflicts prompt", {
   expect_false(grepl("prepare_selected_output", picker, fixed = TRUE))
   expect_match(build, "selected_output()", fixed = TRUE)
   expect_match(build, "prepare_selected_output", fixed = TRUE)
+  expect_match(build_observer, "start_confirmed_build()", fixed = TRUE)
   expect_false(grepl("Ready to build all datasets?", app, fixed = TRUE))
   expect_false(grepl('type = "datasets"', app, fixed = TRUE))
   expect_false(grepl('identical(action, "continue")', dialog, fixed = TRUE))
@@ -440,12 +619,12 @@ test_that("Build stage renders only the confirmed stored plan", {
   expect_match(workflow_ui, '"No output folder selected"', fixed = TRUE)
   expect_match(workflow_ui, '"choose_output_folder"', fixed = TRUE)
   expect_match(workflow_ui, '"Choose folder…"', fixed = TRUE)
-  expect_match(workflow_ui, '"build"', fixed = TRUE)
-  expect_match(
+  expect_match(workflow_ui, 'uiOutput("build_stage_status")', fixed = TRUE)
+  expect_false(grepl(
+    'actionButton(\n        "build"',
     workflow_ui,
-    "disabled = controls_disabled || !builder_has_text(output_path)",
     fixed = TRUE
-  )
+  ))
   expect_false(grepl("make_app|Configure", workflow_ui))
 })
 

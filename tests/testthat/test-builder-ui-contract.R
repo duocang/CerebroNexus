@@ -573,7 +573,7 @@ test_that("active Build states disable every stage action", {
     controls_disabled = FALSE
   ))$html
 
-  for (id in c("back_to_review", "choose_output_folder", "build")) {
+  for (id in c("back_to_review", "choose_output_folder")) {
     disabled_button <- paste0(
       '<button(?=[^>]*id="',
       id,
@@ -594,6 +594,36 @@ test_that("active Build states disable every stage action", {
       info = id
     )
   }
+
+  blocked_build <- htmltools::renderTags(
+    app_env$builder_build_stage_status_ui(list(
+      state = "ready",
+      can_build = FALSE
+    ))
+  )$html
+  ready_build <- htmltools::renderTags(
+    app_env$builder_build_stage_status_ui(list(
+      state = "ready",
+      can_build = TRUE
+    ))
+  )$html
+  expect_match(
+    blocked_build,
+    '<button(?=[^>]*id="build")(?=[^>]* disabled)[^>]*>',
+    perl = TRUE
+  )
+  expect_false(grepl(
+    '<button(?=[^>]*id="build")(?=[^>]* disabled)[^>]*>',
+    ready_build,
+    perl = TRUE
+  ))
+  expect_identical(
+    lengths(regmatches(
+      ready_build,
+      gregexpr('id="build-stage-status"', ready_build, fixed = TRUE)
+    )),
+    1L
+  )
 })
 
 test_that("builder client removes per-dataset compact review navigation", {
@@ -1050,6 +1080,7 @@ test_that("top-level states use icons plus text and a bounded motion contract", 
 test_that("pipeline visualization reflects the current step", {
   js <- builder_asset_text("www", "builder.js")
   status <- builder_asset_text("ui", "build_status.R")
+  build_server <- builder_asset_text("server", "build.R")
 
   expect_match(js, "pipeline", fixed = TRUE)
   expect_match(js, 'setAttribute("aria-current"', fixed = TRUE)
@@ -1059,10 +1090,20 @@ test_that("pipeline visualization reflects the current step", {
   expect_match(status, "Complete", fixed = TRUE)
   expect_false(grepl('pipeline_state.*"verify"', status))
   expect_match(
-    builder_app_source_text(),
+    status,
     'builder_build_pipeline_ui("building")',
     fixed = TRUE
   )
+  expect_match(
+    build_server,
+    'identical(workflow()$stage, "build")',
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    'builder_build_pipeline_ui("building")',
+    build_server,
+    fixed = TRUE
+  ))
   expect_false(grepl(
     'build_phase %in% c("running", "cancelling")',
     builder_app_source_text(),

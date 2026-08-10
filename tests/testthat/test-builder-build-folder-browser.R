@@ -16,6 +16,7 @@ builder_build_folder_picker <- function(
   writeLines(
     c(
       "#!/bin/sh",
+      "sleep 1",
       sprintf(
         "printf '%%s\\n' %s",
         shQuote(normalizePath(output_dir, winslash = "/", mustWork = TRUE))
@@ -59,6 +60,7 @@ builder_build_folder_open_stage <- function(app) {
   app$wait_for_js(
     paste0(
       "document.querySelector('[data-workflow-stage=build]') !== null && ",
+      "document.querySelectorAll('#build-stage-status').length === 1 && ",
       "document.getElementById('choose_output_folder') !== null && ",
       "document.getElementById('build') !== null && ",
       "document.getElementById('build').disabled"
@@ -87,9 +89,18 @@ test_that("confirmed Build waits for a separately selected output folder", {
   app$wait_for_idle(timeout = 30000)
   builder_build_folder_open_stage(app)
 
+  expect_true(app$get_js(
+    "document.querySelectorAll('#build-stage-status.is-ready').length === 1"
+  ))
+
   app$click("choose_output_folder")
   app$wait_for_js(
+    "document.querySelectorAll('#build-stage-status.is-choosing_folder').length === 1",
+    timeout = 10000
+  )
+  app$wait_for_js(
     paste0(
+      "document.querySelectorAll('#build-stage-status.is-ready').length === 1 && ",
       "!document.getElementById('build').disabled && ",
       "document.querySelector('.builder-selected-output').textContent.includes(",
       "'builder-native-folder-output')"
@@ -100,12 +111,23 @@ test_that("confirmed Build waits for a separately selected output folder", {
 
   expect_false(app$get_js(paste0(
     "document.querySelector('.busy.is-building') !== null || ",
-    "document.querySelector('.result-card') !== null"
+    "document.querySelector('#build-stage-status .result-card') !== null"
   )))
 
   app$click("build")
   app$wait_for_js(
-    "document.querySelector('.busy.is-building') !== null",
+    paste0(
+      "document.querySelectorAll('#build-stage-status').length === 1 && ",
+      "document.querySelector('#build-stage-status.is-building .builder-build-pipeline') !== null && ",
+      "document.querySelector('.topbar .builder-build-pipeline') === null"
+    ),
     timeout = 30000
+  )
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll('#build-stage-status').length === 1 && ",
+      "document.querySelector('#build-stage-status.is-result .result-card') !== null"
+    ),
+    timeout = 120000
   )
 })

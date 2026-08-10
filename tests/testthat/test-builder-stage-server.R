@@ -10,6 +10,13 @@ test_that("Builder shell and workflow UI separate all four stages", {
   shell <- builder_app_source_text()
   expect_false(grepl('uiOutput("actionbar")', shell, fixed = TRUE))
   expect_false(grepl('uiOutput("result_card")', shell, fixed = TRUE))
+  expect_identical(
+    lengths(regmatches(
+      shell,
+      gregexpr('uiOutput("build_stage_status")', shell, fixed = TRUE)
+    )),
+    0L
+  )
   expect_match(shell, 'uiOutput("workflow_progress")', fixed = TRUE)
   expect_match(shell, 'file.path("ui", "workflow.R")', fixed = TRUE)
   expect_match(shell, '"server/workflow.R"', fixed = TRUE)
@@ -74,6 +81,78 @@ test_that("Builder shell and workflow UI separate all four stages", {
     fixed = TRUE
   )
   expect_false(grepl("<input|<select|<textarea", confirmation_html))
+})
+
+test_that("Build stage exclusively owns its live status projection", {
+  app <- builder_app_source_text()
+  workflow_ui <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "ui", "workflow.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  build_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "build.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  enhancements <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "enhancements.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  status_renderer <- substr(
+    build_server,
+    regexpr(
+      "output$build_stage_status <- renderUI({",
+      build_server,
+      fixed = TRUE
+    ),
+    regexpr(
+      "builder_build_confirmation_status <- function",
+      build_server,
+      fixed = TRUE
+    ) -
+      1L
+  )
+
+  expect_identical(
+    lengths(regmatches(
+      workflow_ui,
+      gregexpr('uiOutput("build_stage_status")', workflow_ui, fixed = TRUE)
+    )),
+    1L
+  )
+  expect_identical(
+    lengths(regmatches(
+      build_server,
+      gregexpr(
+        "output$build_stage_status <- renderUI({",
+        build_server,
+        fixed = TRUE
+      )
+    )),
+    1L
+  )
+  expect_match(status_renderer, "flow = build_flow()", fixed = TRUE)
+  expect_match(status_renderer, "protocol = protocol()", fixed = TRUE)
+  expect_match(status_renderer, "note = busy_note()", fixed = TRUE)
+  expect_match(status_renderer, "result = result()", fixed = TRUE)
+  expect_match(status_renderer, "selected_output()", fixed = TRUE)
+  expect_false(grepl("isolate(build_flow())", status_renderer, fixed = TRUE))
+  expect_false(grepl("isolate(protocol())", status_renderer, fixed = TRUE))
+  expect_false(grepl("output$result_card", enhancements, fixed = TRUE))
+  expect_false(grepl('uiOutput("result_card")', app, fixed = TRUE))
+  expect_match(
+    build_server,
+    'identical(workflow()$stage, "build")',
+    fixed = TRUE
+  )
 })
 
 test_that("workflow server owns loading and Configure rendering", {

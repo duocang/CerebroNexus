@@ -399,6 +399,120 @@ builder_build_pipeline_ui <- function(state) {
   )
 }
 
+builder_build_stage_status_model <- function(
+  flow,
+  protocol,
+  note,
+  result,
+  output_selected
+) {
+  flow_valid <-
+    is.list(flow) &&
+    is.character(flow$stage) &&
+    length(flow$stage) == 1L &&
+    !is.na(flow$stage)
+  flow_stage <- if (flow_valid) {
+    flow$stage
+  } else {
+    "idle"
+  }
+  build_status <- if (
+    is.list(protocol) &&
+      is.character(protocol$build_status) &&
+      length(protocol$build_status) == 1L &&
+      !is.na(protocol$build_status)
+  ) {
+    protocol$build_status
+  } else {
+    "idle"
+  }
+  state <- if (!is.null(result)) {
+    "result"
+  } else if (identical(build_status, "queued")) {
+    "queued"
+  } else if (build_status %in% c("running", "cancelling")) {
+    "building"
+  } else if (identical(flow_stage, "choosing_folder")) {
+    "choosing_folder"
+  } else {
+    "ready"
+  }
+  message <- if (
+    is.character(note) &&
+      length(note) == 1L &&
+      !is.na(note)
+  ) {
+    note
+  } else {
+    NULL
+  }
+  list(
+    state = state,
+    message = message,
+    pipeline_state = switch(
+      state,
+      queued = "queued",
+      building = "building",
+      NULL
+    ),
+    can_build = identical(state, "ready") &&
+      flow_valid &&
+      identical(flow_stage, "idle") &&
+      isTRUE(output_selected),
+    result_model = if (is.null(result)) {
+      NULL
+    } else {
+      builder_build_status_model(result)
+    }
+  )
+}
+
+builder_build_stage_status_ui <- function(model) {
+  if (
+    !is.list(model) ||
+      !is.character(model$state) ||
+      length(model$state) != 1L ||
+      is.na(model$state)
+  ) {
+    stop("A Build-stage status model is required.", call. = FALSE)
+  }
+  content <- switch(
+    model$state,
+    ready = actionButton(
+      "build",
+      "Build Viewer",
+      class = "btn btn-action",
+      disabled = !isTRUE(model$can_build)
+    ),
+    choosing_folder = div(
+      class = "builder-build-waiting",
+      span(class = "spinner"),
+      span("Choosing output folder…")
+    ),
+    queued = tagList(
+      builder_build_pipeline_ui("queued"),
+      p(model$message %||% "Build queued…")
+    ),
+    building = tagList(
+      builder_build_pipeline_ui("building"),
+      p(model$message %||% "Building Viewer…")
+    ),
+    result = builder_build_status_ui(model$result_model),
+    stop("The Build-stage status is unsupported.", call. = FALSE)
+  )
+  div(
+    id = "build-stage-status",
+    class = paste(
+      "builder-build-stage-status",
+      paste0("is-", model$state)
+    ),
+    role = "status",
+    `aria-live` = "polite",
+    `aria-atomic` = "true",
+    content
+  )
+}
+
 builder_build_status_ui <- function(model) {
   if (inherits(model, "builder_result")) {
     model <- builder_build_status_model(model)

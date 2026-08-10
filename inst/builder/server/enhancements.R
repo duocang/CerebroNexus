@@ -344,15 +344,6 @@ alignment_server <- builder_spatial_alignment_server(
 )
 active_slice <- alignment_server$active_section
 
-## -- what the last build produced ---------------------------------------
-output$result_card <- renderUI({
-  r <- result()
-  if (is.null(r)) {
-    return(NULL)
-  }
-  builder_build_status_ui(builder_build_status_model(r))
-})
-
 run_result_action <- function(action) {
   current_result <- isolate(result())
   req(inherits(current_result, "builder_result"))
@@ -387,7 +378,7 @@ observeEvent(input$copy_report, {
   })
 })
 observeEvent(input$retry_failed_analysis, {
-  session$sendCustomMessage("builder_click", list(id = "build"))
+  start_confirmed_build()
 })
 observeEvent(input$remove_failed_analysis, {
   current_result <- isolate(result())
@@ -402,7 +393,7 @@ observeEvent(input$remove_failed_analysis, {
   }
   session$onFlushed(
     function() {
-      session$sendCustomMessage("builder_click", list(id = "build"))
+      start_confirmed_build()
     },
     once = TRUE
   )
