@@ -461,16 +461,16 @@ tab_coordinated_views <- tabItem(
                 disp = "0.80",
                 val_id = "cv-op-val"
               ),
-            ),
-            cv_range(
-              "Show % of cells",
-              "cv-pct",
-              min = "5",
-              max = "100",
-              step = "5",
-              value = "100",
-              disp = "100",
-              val_id = "cv-pct-val"
+              cv_range(
+                "Show % of cells",
+                "cv-pct",
+                min = "5",
+                max = "100",
+                step = "5",
+                value = "100",
+                disp = "100",
+                val_id = "cv-pct-val"
+              )
             ),
             ## Continuous colourings only (JS shows it for a gene or a numeric
             ## field). A single extreme value otherwise owns the top of the

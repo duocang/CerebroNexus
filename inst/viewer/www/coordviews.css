@@ -61,7 +61,8 @@
   text-transform: uppercase; letter-spacing: .03em;
 }
 .coordviews-page .cv-topbar select {
-  padding: 6px 9px; border: 1px solid var(--c-border-2, #e0e0e0);
+  box-sizing: border-box; height: 30px; padding: 6px 9px;
+  border: 1px solid var(--c-border-2, #e0e0e0);
   border-radius: 6px; background: var(--cv-surface); color: var(--cv-text);
   font-size: 12.5px; font-family: inherit; min-width: 168px;
 }
@@ -185,8 +186,25 @@
    the thumb. */
 .coordviews-page .cv-range { position: relative; width: 150px; height: 32px; }
 .coordviews-page .cv-range input[type=range] {
-  position: absolute; left: 0; bottom: 2px; margin: 0;
-  width: 150px; height: 20px; accent-color: var(--cv-amber);
+  position: absolute; left: 0; bottom: 2px; margin: 0; width: 150px; height: 20px;
+  appearance: none; -webkit-appearance: none; background: transparent;
+}
+.coordviews-page .cv-range input[type=range]::-webkit-slider-runnable-track {
+  height: 8px; border: 1px solid var(--cv-border); border-radius: 999px;
+  background: linear-gradient(to right, var(--cv-amber) 0 var(--cv-range-fill, 50%), #fff var(--cv-range-fill, 50%) 100%);
+}
+.coordviews-page .cv-range input[type=range]::-webkit-slider-thumb {
+  width: 25px; height: 25px; margin-top: -10px; border: 3px solid var(--cv-amber);
+  border-radius: 50%; background: #fff; cursor: pointer; -webkit-appearance: none;
+}
+.coordviews-page .cv-range input[type=range]::-moz-range-track {
+  height: 8px; border: 1px solid var(--cv-border); border-radius: 999px; background: #fff;
+}
+.coordviews-page .cv-range input[type=range]::-moz-range-progress {
+  height: 8px; border-radius: 999px; background: var(--cv-amber);
+}
+.coordviews-page .cv-range input[type=range]::-moz-range-thumb {
+  width: 19px; height: 19px; border: 3px solid var(--cv-amber); border-radius: 50%; background: #fff; cursor: pointer;
 }
 .coordviews-page .cv-ps-val {
   position: absolute; top: 0; transform: translateX(-50%); pointer-events: none;
@@ -383,8 +401,12 @@
 .coordviews-page .cv-more-images {
   flex: 1 1 100%; padding-bottom: 14px; border-bottom: 1px solid var(--cv-border);
 }
-.coordviews-page .cv-more-points { display: flex; flex-wrap: wrap; gap: 16px; }
+.coordviews-page .cv-more-points {
+  display: grid; grid-template-columns: repeat(3, minmax(150px, max-content));
+  gap: 16px 30px; align-items: start;
+}
 .coordviews-page .cv-more-points .cv-more-heading { flex: 0 0 100%; margin-bottom: -4px; }
+.coordviews-page .cv-more-points .cv-more-heading { grid-column: 1 / -1; }
 /* The controls drift up a few px as the row closes, so the row reads as folding
    away rather than being clipped off. */
 .coordviews-page .cv-more-inner > * {
@@ -949,17 +971,27 @@
    The app theme styles .selectize-input at higher weight, so override with
    !important on the box-defining properties. */
 .coordviews-page .cv-topbar .selectize-control .selectize-input {
-  padding: 6px 9px !important; min-height: 0 !important; line-height: 1.35 !important;
+  box-sizing: border-box !important; height: 30px !important; min-height: 30px !important;
+  padding: 4px 8px !important; line-height: 1.35 !important;
   border: 1px solid var(--c-border-2, #e0e0e0) !important;
   border-radius: 6px !important;
   background: var(--cv-surface) !important; color: var(--cv-text) !important;
   font-size: 12.5px !important; box-shadow: none !important;
+  display: flex !important; flex-wrap: nowrap !important; align-items: center !important;
+  overflow-x: auto !important; overflow-y: hidden !important; white-space: nowrap !important;
 }
 .coordviews-page .cv-topbar .selectize-control .selectize-input.focus {
   border-color: var(--cv-blue) !important; box-shadow: 0 0 0 2px var(--cv-blue100) !important;
 }
 .coordviews-page .cv-topbar .selectize-control .selectize-input input,
 .coordviews-page .cv-topbar .selectize-dropdown { font-size: 12.5px !important; }
+.coordviews-page .cv-topbar .selectize-control { height: 30px; }
+.coordviews-page .cv-topbar .selectize-control .selectize-input > .item {
+  flex: 0 0 auto; margin: 0 3px 0 0 !important; line-height: 18px !important;
+}
+.coordviews-page .cv-topbar .selectize-control .selectize-input > input {
+  flex: 0 0 8px; min-width: 8px !important; height: 18px !important;
+}
 
 /* ---- selection bar ------------------------------------------------------ */
 /* Sits between the params and the panels: a clear gap above (stands off the

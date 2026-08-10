@@ -2818,6 +2818,65 @@ test_that("More settings overlays the workspace and groups point and histology c
   ))
 })
 
+test_that("top pickers and More sliders keep one shared control geometry", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_control_geometry")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(cv_bundle_js(paste0(
+    "{ projections:{umap:{x:blob(0),y:blob(0),ndim:2},",
+    "tsne:{x:blob(1),y:blob(1),ndim:2}},",
+    "spaces:[{id:'umap',label:'umap',x:blob(0),y:blob(0)},",
+    "{id:'spatial',label:'A tissue (spatial)',x:blob(0),y:blob(0),",
+    "samples:[{name:'A tissue',label:'A tissue (spatial)',x:blob(0),y:blob(0),images:[]},",
+    "{name:'B tissue',label:'B tissue (spatial)',x:blob(1),y:blob(1),images:[]}]},",
+    "{id:'trekker',label:'Physical (Trekker)',x:blob(0),y:blob(0)}],",
+    "trekker:{conf:new Array(n).fill(1),evidence:new Array(n).fill(1)}}"
+  )))
+  app$wait_for_js(
+    "document.getElementById('cv-pick-proj').selectize != null",
+    timeout = 15000
+  )
+  app$run_js(
+    "document.getElementById('cv-pick-proj').selectize.setValue(['umap','tsne']);"
+  )
+  app$run_js(
+    "document.getElementById('cv-pick-spatial').selectize.setValue(['A tissue']);"
+  )
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-spatial-ctl')).display !== 'none'",
+    timeout = 5000
+  )
+  app$run_js("document.getElementById('cv-more-btn').click();")
+  app$wait_for_js(
+    "document.getElementById('cv-more').classList.contains('is-open')",
+    timeout = 5000
+  )
+
+  heights <- unlist(app$get_js(paste0(
+    "['#cv-pick-color','#cv-proj-ctl .selectize-input',",
+    "'#cv-spatial-ctl .selectize-input'].map(function(q){",
+    "return Math.round(document.querySelector(q).getBoundingClientRect().height);})"
+  )))
+  expect_lte(max(heights) - min(heights), 1)
+  expect_equal(
+    app$get_js(
+      "document.querySelectorAll('.cv-more-points .cv-ctl-range').length"
+    ),
+    3
+  )
+  label_tops <- unlist(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-more-points .cv-ctl-range > label'))",
+    ".map(function(x){return Math.round(x.getBoundingClientRect().top);})"
+  )))
+  expect_lte(max(label_tops) - min(label_tops), 1)
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-range input[type=range]'))",
+    ".every(function(x){return getComputedStyle(x)",
+    ".getPropertyValue('--cv-range-fill').trim() !== '';})"
+  )))
+})
+
 test_that("More settings becomes a recoverable floating window after dragging", {
   local_app_support(inst_dir)
   app <- cv_app("cv_browser_more_drag")

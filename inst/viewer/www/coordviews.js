@@ -1368,8 +1368,9 @@ var focusPanel = null;
     if (!s || !v) return;
     var min = parseFloat(s.min), max = parseFloat(s.max), val = parseFloat(s.value);
     var frac = (max > min) ? (val - min) / (max - min) : 0;
-    var w = s.offsetWidth || 150, thumb = 16;
+    var w = s.offsetWidth || 150, thumb = 25;
     v.style.left = (frac * (w - thumb) + thumb / 2) + 'px';
+    s.style.setProperty('--cv-range-fill', (frac * 100) + '%');
   }
   function positionAllRangeVals() {
     positionRangeVal('cv-ps', 'cv-ps-val');
