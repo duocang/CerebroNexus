@@ -126,6 +126,8 @@
 .marker-import-controls { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(10rem, .8fr) auto; gap: var(--space-3); align-items: end; }
 .marker-import-controls .form-group { margin: 0; }.marker-import-file-control { margin-bottom: .5rem; }.marker-import-status { padding: var(--space-3); border: 1px solid var(--c-warning-100); border-radius: var(--r-sm); background: var(--c-warning-50); color: var(--c-warning-700); font-size: .84rem; }
 @media (max-width: 700px) { .marker-import-controls { grid-template-columns: 1fr; }.marker-import-file-control { margin-bottom: 0; } }
+.marker-import-summary { display: grid; grid-template-columns: auto auto 1fr; gap: var(--space-2); align-items: center; padding: var(--space-3); border: 1px solid var(--c-border); border-radius: var(--r-sm); background: var(--c-surface-2); }
+.marker-import-missing { grid-column: 1 / -1; margin: 0; color: var(--c-warning-700); font-size: .82rem; }
 .builder-file-list,
 .enhance-table-list {
   display: grid;

@@ -334,6 +334,40 @@ output[["enhance-table_list"]] <- renderUI({
   )
 })
 
+output[["enhance-marker_import_list"]] <- renderUI({
+  id <- current()
+  req(id)
+  entry <- entry_of(id)
+  req(entry)
+  imports <- entry$settings$marker_imports %||% list()
+  if (!length(imports)) {
+    return(NULL)
+  }
+  tagList(lapply(imports, function(imported) {
+    coverage <- imported$coverage %||% list()
+    missing <- as.character(coverage$missing %||% character())
+    accepted <- Filter(
+      function(source) isTRUE(source$valid),
+      imported$sources %||% list()
+    )
+    div(
+      class = "marker-import-summary",
+      strong(imported$method),
+      span(class = "hint", paste("Groups:", imported$group)),
+      span(
+        class = "builder-status builder-status--ready",
+        paste(length(accepted), "sources ready")
+      ),
+      if (length(missing)) {
+        p(
+          class = "marker-import-missing",
+          paste("Missing:", paste(missing, collapse = ", "))
+        )
+      }
+    )
+  }))
+})
+
 output[["dataset_context"]] <- renderUI({
   state <- store()
   id <- current()

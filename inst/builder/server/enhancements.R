@@ -1,5 +1,58 @@
 ## Builder server: enhancements.
 
+observeEvent(input[["enhance-marker_import_files"]], {
+  id <- current()
+  req(id)
+  method <- trimws(as.character(
+    input[["enhance-marker_import_method"]] %||% ""
+  ))
+  group <- as.character(input[["enhance-marker_import_group"]] %||% "")
+  entry <- entry_of(id)
+  req(entry)
+  if (!nzchar(method) || !nzchar(group)) {
+    showNotification(
+      "Enter a method name and choose Groups before adding files.",
+      type = "error"
+    )
+    return()
+  }
+  uploads <- input[["enhance-marker_import_files"]]
+  req(is.data.frame(uploads), nrow(uploads) > 0L)
+  sources <- builder_marker_import_inventory(uploads$datapath, uploads$name)
+  known_levels <- entry$levels[[group]] %||% character()
+  sources <- lapply(sources, function(source) {
+    if (!isTRUE(source$valid)) {
+      return(source)
+    }
+    if (group %in% source$columns) {
+      return(builder_marker_import_map_multiple(
+        source,
+        group,
+        group,
+        known_levels
+      ))
+    }
+    inferred <- builder_marker_import_infer_level(
+      source$file_name,
+      source$sheet,
+      known_levels
+    )
+    if (is.null(inferred)) {
+      return(builder_marker_import_mapping_error(source, "mapping_required"))
+    }
+    builder_marker_import_map_single(source, group, inferred, known_levels)
+  })
+  imports <- entry$settings$marker_imports %||% list()
+  imports[[paste0("marker-import-", length(imports) + 1L)]] <- list(
+    method = method,
+    group = group,
+    sources = sources,
+    coverage = builder_marker_import_coverage(sources, known_levels)
+  )
+  entry$settings$marker_imports <- imports
+  replace_entry(entry)
+})
+
 ## -- supplementary tables -------------------------------------------------
 observeEvent(input[["enhance-table_files"]], {
   id <- current()
