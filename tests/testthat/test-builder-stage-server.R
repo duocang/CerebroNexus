@@ -109,7 +109,7 @@ test_that("Build stage exclusively owns its live status projection", {
   status_renderer <- substr(
     build_server,
     regexpr(
-      "output$build_stage_status <- renderUI({",
+      "output$build_stage_status_content <- renderUI({",
       build_server,
       fixed = TRUE
     ),
@@ -124,7 +124,11 @@ test_that("Build stage exclusively owns its live status projection", {
   expect_identical(
     lengths(regmatches(
       workflow_ui,
-      gregexpr('uiOutput("build_stage_status")', workflow_ui, fixed = TRUE)
+      gregexpr(
+        'uiOutput("build_stage_status_content")',
+        workflow_ui,
+        fixed = TRUE
+      )
     )),
     1L
   )
@@ -132,7 +136,7 @@ test_that("Build stage exclusively owns its live status projection", {
     lengths(regmatches(
       build_server,
       gregexpr(
-        "output$build_stage_status <- renderUI({",
+        "output$build_stage_status_content <- renderUI({",
         build_server,
         fixed = TRUE
       )
@@ -153,6 +157,114 @@ test_that("Build stage exclusively owns its live status projection", {
     'identical(workflow()$stage, "build")',
     fixed = TRUE
   )
+})
+
+test_that("Build result survives failed folder selection and clears on acceptance", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this folder lifecycle test.")
+  }
+  rlang::local_bindings(
+    builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
+    .env = environment(builder_stage_frozen_plan)
+  )
+  app_env$builder_freeze_plan <- function(...) builder_stage_frozen_plan(FALSE)
+
+  shiny::testServer(app_env$server, {
+    real_session <- session
+    entry <- list(
+      id = "dataset-a",
+      revision = 0L,
+      snapshot = list(
+        path = "/private/dataset-a",
+        owner_token = "owner-a",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a"),
+      settings = list(name = "Dataset A")
+    )
+    use_state_only_fixture(list(entry))
+    real_session$setInputs(make_app = FALSE)
+    real_session$flushReact()
+    plan <- isolate(frozen_review_plan())
+    reviewed <- app_env$builder_reduce_workflow(
+      app_env$builder_workflow_state(),
+      list(type = "open_review", plan = plan)
+    )
+    workflow(app_env$builder_reduce_workflow(
+      reviewed,
+      list(type = "confirm_review", plan = plan)
+    ))
+    selected_output("/old/output")
+    protocol(app_env$builder_request_protocol("worker-folder"))
+    success <- app_env$builder_result_success(
+      published = TRUE,
+      built = "/old/output/dataset.crb"
+    )
+    result(success)
+    choices <- list(
+      list(status = "cancelled", path = NULL),
+      list(status = "error", path = NULL, error = "picker failed"),
+      list(status = "selected", path = "/new/output")
+    )
+    folder_env <- environment(choose_build_folder)
+    assign(
+      "session",
+      list(onFlushed = function(callback, once = FALSE) callback()),
+      envir = folder_env
+    )
+    assign(
+      "builder_choose_output_directory",
+      function(...) {
+        choice <- choices[[1L]]
+        choices <<- choices[-1L]
+        choice
+      },
+      envir = folder_env
+    )
+    assign("showNotification", function(...) NULL, envir = folder_env)
+
+    pending_protocol <- app_env$builder_request_protocol("worker-pending")
+    pending_protocol <- app_env$builder_enqueue(
+      pending_protocol,
+      app_env$builder_query("preview", "dataset-a", generation = 1L)
+    )
+    result(NULL)
+    protocol(pending_protocol)
+    busy_note("Preparing preview…")
+    real_session$flushReact()
+    pending_content <- paste(
+      unlist(output$build_stage_status_content),
+      collapse = " "
+    )
+    expect_match(pending_content, "Preparing preview…", fixed = TRUE)
+    expect_match(pending_content, " disabled", fixed = TRUE)
+    expect_length(output$busy, 0L)
+    protocol(app_env$builder_request_protocol("worker-folder"))
+    busy_note(NULL)
+    result(success)
+
+    choose_build_folder()
+    real_session$flushReact()
+    expect_identical(result(), success)
+    expect_identical(selected_output(), "/old/output")
+    choose_build_folder()
+    real_session$flushReact()
+    expect_identical(result(), success)
+    expect_identical(selected_output(), "/old/output")
+    choose_build_folder()
+    real_session$flushReact()
+    expect_null(result())
+    expect_identical(selected_output(), "/new/output")
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    content <- paste(unlist(output$build_stage_status_content), collapse = " ")
+    expect_match(content, "Build Viewer", fixed = TRUE)
+    expect_false(grepl(" disabled", content, fixed = TRUE))
+  })
 })
 
 test_that("workflow server owns loading and Configure rendering", {
@@ -645,6 +757,11 @@ test_that("changed auth accounts invalidate a confirmed frozen plan", {
     session$flushReact()
     expect_identical(workflow()$stage, "build")
 
+    stale_result <- app_env$builder_result_success(
+      published = TRUE,
+      built = "/old/output/dataset.crb"
+    )
+    result(stale_result)
     auth_accounts(accounts_b)
     session$flushReact()
 
@@ -659,6 +776,7 @@ test_that("changed auth accounts invalidate a confirmed frozen plan", {
     expect_null(workflow()$review_plan)
     expect_null(workflow()$confirmation)
     expect_null(selected_output())
+    expect_null(result())
     expect_false(builder_build_confirmation_matches(plan_a))
     enqueued <- FALSE
     assign(
@@ -1223,9 +1341,15 @@ test_that("active Build states reject forged stage actions", {
     real_session$flushReact()
     expect_identical(picker_calls, 1L)
     expect_identical(selected_output(), "/new/output")
+    navigation_result <- app_env$builder_result_success(
+      published = TRUE,
+      built = "/new/output/dataset.crb"
+    )
+    result(navigation_result)
     real_session$setInputs(back_to_review = 4L)
     real_session$flushReact()
     expect_identical(workflow()$stage, "review")
+    expect_identical(result(), navigation_result)
   })
 })
 
@@ -1383,7 +1507,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
     expect_identical(selected_output(), "/private/host/output")
     expect_match(
-      paste(unlist(output$build_stage_status), collapse = " "),
+      paste(unlist(output$build_stage_status_content), collapse = " "),
       "Build Viewer",
       fixed = TRUE
     )

@@ -321,7 +321,7 @@ test_that("Build status projection keeps one stable typed host", {
   withr::local_package("shiny")
   idle <- builder_build_stage_status_model(
     flow = list(stage = "idle"),
-    protocol = list(build_status = "idle"),
+    protocol = builder_request_protocol("worker-idle"),
     note = NULL,
     result = NULL,
     output_selected = TRUE
@@ -368,6 +368,43 @@ test_that("Build status projection keeps one stable typed host", {
     result = NULL,
     output_selected = TRUE
   )
+  incomplete_protocol <- structure(
+    list(build_status = "idle"),
+    class = c("builder_request_protocol", "list")
+  )
+  incomplete <- builder_build_stage_status_model(
+    flow = list(stage = "idle"),
+    protocol = incomplete_protocol,
+    note = "The background worker is not ready.",
+    result = NULL,
+    output_selected = TRUE
+  )
+  missing_protocol <- builder_build_stage_status_model(
+    flow = list(stage = "idle"),
+    protocol = NULL,
+    note = "The background worker is not ready.",
+    result = NULL,
+    output_selected = TRUE
+  )
+  pending_protocol <- builder_request_protocol("worker-pending")
+  pending_protocol <- builder_enqueue(
+    pending_protocol,
+    builder_query("preview", "dataset-a", generation = 1L)
+  )
+  pending <- builder_build_stage_status_model(
+    flow = list(stage = "idle"),
+    protocol = pending_protocol,
+    note = "Preparing preview…",
+    result = NULL,
+    output_selected = TRUE
+  )
+  quiescent <- builder_build_stage_status_model(
+    flow = list(stage = "idle"),
+    protocol = builder_request_protocol("worker-ready"),
+    note = NULL,
+    result = NULL,
+    output_selected = TRUE
+  )
 
   expect_named(
     idle,
@@ -392,6 +429,15 @@ test_that("Build status projection keeps one stable typed host", {
   expect_identical(malformed$state, "ready")
   expect_null(malformed$message)
   expect_false(malformed$can_build)
+  expect_false(incomplete$can_build)
+  expect_false(missing_protocol$can_build)
+  expect_identical(
+    missing_protocol$message,
+    "The background worker is not ready."
+  )
+  expect_false(pending$can_build)
+  expect_identical(pending$message, "Preparing preview…")
+  expect_true(quiescent$can_build)
 
   results <- list(
     success = builder_result_success(
@@ -439,27 +485,27 @@ test_that("Build status projection keeps one stable typed host", {
   running_html <- htmltools::renderTags(
     builder_build_stage_status_ui(running)
   )$html
+  missing_html <- htmltools::renderTags(
+    builder_build_stage_status_ui(missing_protocol)
+  )$html
   all_html <- c(
-    list(ready_html, choosing_html, queued_html, running_html),
+    list(ready_html, choosing_html, queued_html, running_html, missing_html),
     result_html
   )
   for (html in all_html) {
-    expect_identical(
-      lengths(regmatches(
-        html,
-        gregexpr('id="build-stage-status"', html, fixed = TRUE)
-      )),
-      1L
-    )
-    expect_match(html, 'role="status"', fixed = TRUE)
-    expect_match(html, 'aria-live="polite"', fixed = TRUE)
-    expect_match(html, 'aria-atomic="true"', fixed = TRUE)
+    expect_false(grepl('id="build-stage-status"', html, fixed = TRUE))
   }
   expect_match(ready_html, ">Build Viewer<", fixed = TRUE)
   expect_match(ready_html, "btn btn-action", fixed = TRUE)
   expect_match(choosing_html, "Choosing output folder…", fixed = TRUE)
   expect_match(queued_html, "Build queued…", fixed = TRUE)
   expect_match(running_html, "Building 3 datasets…", fixed = TRUE)
+  expect_match(
+    missing_html,
+    "The background worker is not ready.",
+    fixed = TRUE
+  )
+  expect_match(missing_html, " disabled", fixed = TRUE)
   expect_match(result_html$success, "Open App", fixed = TRUE)
   expect_match(result_html$success, "Reveal Folder", fixed = TRUE)
   expect_match(result_html$success, "Copy Path", fixed = TRUE)
@@ -626,16 +672,42 @@ test_that("Build stage renders only the confirmed stored plan", {
   expect_match(workflow_server, 'list(type = "back_to_review")', fixed = TRUE)
   expect_match(workflow_ui, '`data-workflow-stage` = "build"', fixed = TRUE)
   expect_match(workflow_ui, 'h2("Build your Viewer")', fixed = TRUE)
-  expect_match(workflow_ui, '"No output folder selected"', fixed = TRUE)
-  expect_match(workflow_ui, '"choose_output_folder"', fixed = TRUE)
-  expect_match(workflow_ui, '"Choose folder…"', fixed = TRUE)
-  expect_match(workflow_ui, 'uiOutput("build_stage_status")', fixed = TRUE)
+  expect_match(
+    paste(workflow_ui_lines, collapse = "\n"),
+    '"No output folder selected"',
+    fixed = TRUE
+  )
+  expect_match(workflow_ui, 'uiOutput("build_stage_controls")', fixed = TRUE)
+  expect_match(workflow_ui, 'id = "build-stage-status"', fixed = TRUE)
+  expect_match(
+    workflow_ui,
+    'uiOutput("build_stage_status_content")',
+    fixed = TRUE
+  )
   expect_false(grepl(
     'actionButton(\n        "build"',
     workflow_ui,
     fixed = TRUE
   ))
   expect_false(grepl("make_app|Configure", workflow_ui))
+
+  render_build <- builder_app_block(
+    readLines(
+      builder_profile_inst_path("builder", "server", "workflow.R"),
+      warn = FALSE
+    ),
+    "render_build_workbench <- function() {",
+    "output$build_stage_controls <- renderUI({"
+  )
+  for (volatile in c(
+    "result()",
+    "build_flow()",
+    "protocol()",
+    "busy_note()",
+    "selected_output()"
+  )) {
+    expect_false(grepl(volatile, render_build, fixed = TRUE), info = volatile)
+  }
 })
 
 test_that("group color changes use the existing settings revision path", {

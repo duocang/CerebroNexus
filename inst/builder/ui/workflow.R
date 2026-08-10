@@ -45,14 +45,11 @@ builder_configure_actions_ui <- function(message, can_continue, app_control) {
   )
 }
 
-builder_build_workbench_ui <- function(
-  model,
+builder_build_stage_controls_ui <- function(
   output_path,
-  status = NULL,
   controls_disabled = FALSE
 ) {
   stopifnot(
-    is.list(model),
     is.character(output_path),
     length(output_path) <= 1L,
     !length(output_path) || !is.na(output_path),
@@ -60,15 +57,37 @@ builder_build_workbench_ui <- function(
     length(controls_disabled) == 1L,
     !is.na(controls_disabled)
   )
-  output_label <- if (isTRUE(model$output$private_app)) {
-    "Viewer App"
-  } else {
-    "CRB files"
-  }
   selected_label <- if (builder_has_text(output_path)) {
     output_path
   } else {
     "No output folder selected"
+  }
+  tagList(
+    p(class = "builder-selected-output", selected_label),
+    div(
+      class = "builder-stage-actions builder-build-actions",
+      actionButton(
+        "back_to_review",
+        "Back to review",
+        class = "btn",
+        disabled = controls_disabled
+      ),
+      actionButton(
+        "choose_output_folder",
+        "Choose folder…",
+        class = "btn",
+        disabled = controls_disabled
+      )
+    )
+  )
+}
+
+builder_build_workbench_ui <- function(model) {
+  stopifnot(is.list(model))
+  output_label <- if (isTRUE(model$output$private_app)) {
+    "Viewer App"
+  } else {
+    "CRB files"
   }
   div(
     class = "builder-stage builder-stage-build builder-card builder-section",
@@ -88,22 +107,14 @@ builder_build_workbench_ui <- function(
         output_label
       )
     ),
-    p(class = "builder-selected-output", selected_label),
+    uiOutput("build_stage_controls"),
     div(
-      class = "builder-stage-actions builder-build-actions",
-      actionButton(
-        "back_to_review",
-        "Back to review",
-        class = "btn",
-        disabled = controls_disabled
-      ),
-      actionButton(
-        "choose_output_folder",
-        "Choose folder…",
-        class = "btn",
-        disabled = controls_disabled
-      )
-    ),
-    uiOutput("build_stage_status")
+      id = "build-stage-status",
+      class = "builder-build-stage-status",
+      role = "status",
+      `aria-live` = "polite",
+      `aria-atomic` = "true",
+      uiOutput("build_stage_status_content")
+    )
   )
 }

@@ -90,17 +90,24 @@ test_that("confirmed Build waits for a separately selected output folder", {
   builder_build_folder_open_stage(app)
 
   expect_true(app$get_js(
-    "document.querySelectorAll('#build-stage-status.is-ready').length === 1"
+    "document.querySelectorAll('#build-stage-status .is-ready').length === 1"
   ))
+  app$get_js(
+    "window.__builderStableBuildHost = document.getElementById('build-stage-status'); true"
+  )
 
   app$click("choose_output_folder")
   app$wait_for_js(
-    "document.querySelectorAll('#build-stage-status.is-choosing_folder').length === 1",
+    paste0(
+      "document.getElementById('build-stage-status') === window.__builderStableBuildHost && ",
+      "document.querySelectorAll('#build-stage-status .is-choosing_folder').length === 1"
+    ),
     timeout = 10000
   )
   app$wait_for_js(
     paste0(
-      "document.querySelectorAll('#build-stage-status.is-ready').length === 1 && ",
+      "document.querySelectorAll('#build-stage-status .is-ready').length === 1 && ",
+      "document.getElementById('build-stage-status') === window.__builderStableBuildHost && ",
       "!document.getElementById('build').disabled && ",
       "document.querySelector('.builder-selected-output').textContent.includes(",
       "'builder-native-folder-output')"
@@ -118,7 +125,8 @@ test_that("confirmed Build waits for a separately selected output folder", {
   app$wait_for_js(
     paste0(
       "document.querySelectorAll('#build-stage-status').length === 1 && ",
-      "document.querySelector('#build-stage-status.is-building .builder-build-pipeline') !== null && ",
+      "document.getElementById('build-stage-status') === window.__builderStableBuildHost && ",
+      "document.querySelector('#build-stage-status .is-building .builder-build-pipeline') !== null && ",
       "document.querySelector('.topbar .builder-build-pipeline') === null"
     ),
     timeout = 30000
@@ -126,8 +134,18 @@ test_that("confirmed Build waits for a separately selected output folder", {
   app$wait_for_js(
     paste0(
       "document.querySelectorAll('#build-stage-status').length === 1 && ",
-      "document.querySelector('#build-stage-status.is-result .result-card') !== null"
+      "document.getElementById('build-stage-status') === window.__builderStableBuildHost && ",
+      "document.querySelector('#build-stage-status .is-result .result-card') !== null"
     ),
     timeout = 120000
+  )
+  app$click("choose_output_folder")
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('build-stage-status') === window.__builderStableBuildHost && ",
+      "document.querySelector('#build-stage-status .is-ready #build') !== null && ",
+      "!document.getElementById('build').disabled"
+    ),
+    timeout = 30000
   )
 })

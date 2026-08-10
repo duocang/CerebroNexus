@@ -575,13 +575,11 @@ test_that("active Build states disable every stage action", {
   withr::local_dir(builder_profile_inst_path("builder"))
   sys.source("app.R", envir = app_env)
   model <- list(output = list(private_app = FALSE, crb_count = 2L))
-  active <- htmltools::renderTags(app_env$builder_build_workbench_ui(
-    model,
+  active <- htmltools::renderTags(app_env$builder_build_stage_controls_ui(
     "/tmp/output",
     controls_disabled = TRUE
   ))$html
-  idle <- htmltools::renderTags(app_env$builder_build_workbench_ui(
-    model,
+  idle <- htmltools::renderTags(app_env$builder_build_stage_controls_ui(
     "/tmp/output",
     controls_disabled = FALSE
   ))$html
@@ -630,13 +628,21 @@ test_that("active Build states disable every stage action", {
     ready_build,
     perl = TRUE
   ))
+  shell <- htmltools::renderTags(
+    app_env$builder_build_workbench_ui(model)
+  )$html
   expect_identical(
     lengths(regmatches(
-      ready_build,
-      gregexpr('id="build-stage-status"', ready_build, fixed = TRUE)
+      shell,
+      gregexpr('id="build-stage-status"', shell, fixed = TRUE)
     )),
     1L
   )
+  expect_match(shell, 'role="status"', fixed = TRUE)
+  expect_match(shell, 'aria-live="polite"', fixed = TRUE)
+  expect_match(shell, 'aria-atomic="true"', fixed = TRUE)
+  expect_match(shell, 'id="build_stage_status_content"', fixed = TRUE)
+  expect_false(grepl('id="build-stage-status"', ready_build, fixed = TRUE))
 })
 
 test_that("builder client removes per-dataset compact review navigation", {

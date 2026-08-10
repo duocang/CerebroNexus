@@ -377,70 +377,82 @@ observeEvent(input$copy_report, {
     builder_copy_result_path(value, "report", .copy = copy_result_value)
   })
 })
-observeEvent(input$retry_failed_analysis, {
-  retry_confirmed_build()
-})
-observeEvent(input$remove_failed_analysis, {
-  current_result <- isolate(result())
-  dataset_id <- current_result$failed_dataset_id %||% NULL
-  if (!builder_stage_has_text(dataset_id %||% "")) {
-    showNotification(
-      "The failed optional work could not be removed.",
-      type = "error"
+observeEvent(
+  input$retry_failed_analysis,
+  {
+    retry_confirmed_build()
+  },
+  priority = 100
+)
+observeEvent(
+  input$remove_failed_analysis,
+  {
+    current_result <- isolate(result())
+    dataset_id <- current_result$failed_dataset_id %||% NULL
+    if (!builder_stage_has_text(dataset_id %||% "")) {
+      showNotification(
+        "The failed optional work could not be removed.",
+        type = "error"
+      )
+      return()
+    }
+    failed <- current_result$retry_closure %||% character()
+    entry <- isolate(entry_of(dataset_id))
+    removable <- if (is.null(entry)) {
+      character()
+    } else {
+      intersect(entry$settings$analyses %||% character(), failed)
+    }
+    if (!length(removable)) {
+      showNotification(
+        "The failed optional work could not be removed.",
+        type = "error"
+      )
+      return()
+    }
+    entry$settings$analyses <- setdiff(entry$settings$analyses, removable)
+    changed <- try(replace_entry(entry), silent = TRUE)
+    if (inherits(changed, "try-error") || !isTRUE(changed)) {
+      showNotification(
+        "The failed optional work could not be removed.",
+        type = "error"
+      )
+      return()
+    }
+    builder_build_recovery_needs_fresh_review(
+      "Optional work removed. Review the updated plan before building."
     )
-    return()
-  }
-  failed <- current_result$retry_closure %||% character()
-  entry <- isolate(entry_of(dataset_id))
-  removable <- if (is.null(entry)) {
-    character()
-  } else {
-    intersect(entry$settings$analyses %||% character(), failed)
-  }
-  if (!length(removable)) {
-    showNotification(
-      "The failed optional work could not be removed.",
-      type = "error"
+  },
+  priority = 100
+)
+observeEvent(
+  input$restart_worker,
+  {
+    current_result <- isolate(result())
+    req(inherits(current_result, "builder_result"))
+    req(isTRUE(current_result$restartable_worker))
+    current_worker <- isolate(worker())
+    current_protocol <- isolate(protocol())
+    req(current_worker, current_protocol)
+    restarted <- try(
+      restart_worker_protocol(
+        current_worker,
+        current_protocol,
+        "The worker was restarted from saved snapshots."
+      ),
+      silent = TRUE
     )
-    return()
-  }
-  entry$settings$analyses <- setdiff(entry$settings$analyses, removable)
-  changed <- try(replace_entry(entry), silent = TRUE)
-  if (inherits(changed, "try-error") || !isTRUE(changed)) {
-    showNotification(
-      "The failed optional work could not be removed.",
-      type = "error"
-    )
-    return()
-  }
-  builder_build_recovery_needs_fresh_review(
-    "Optional work removed. Review the updated plan before building."
-  )
-})
-observeEvent(input$restart_worker, {
-  current_result <- isolate(result())
-  req(inherits(current_result, "builder_result"))
-  req(isTRUE(current_result$restartable_worker))
-  current_worker <- isolate(worker())
-  current_protocol <- isolate(protocol())
-  req(current_worker, current_protocol)
-  restarted <- try(
-    restart_worker_protocol(
-      current_worker,
-      current_protocol,
-      "The worker was restarted from saved snapshots."
-    ),
-    silent = TRUE
-  )
-  if (inherits(restarted, "try-error") || !isTRUE(restarted)) {
-    showNotification(
-      "The background worker could not restart. Try again or restart this Builder session.",
-      type = "error"
-    )
-    return()
-  }
-  if (isTRUE(builder_build_recovery_ready())) {
-    result(NULL)
-    build_flow(list(stage = "idle", plan = NULL))
-  }
-})
+    if (inherits(restarted, "try-error") || !isTRUE(restarted)) {
+      showNotification(
+        "The background worker could not restart. Try again or restart this Builder session.",
+        type = "error"
+      )
+      return()
+    }
+    if (isTRUE(builder_build_recovery_ready())) {
+      result(NULL)
+      build_flow(list(stage = "idle", plan = NULL))
+    }
+  },
+  priority = 100
+)

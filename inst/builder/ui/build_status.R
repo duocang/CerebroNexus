@@ -446,6 +446,22 @@ builder_build_stage_status_model <- function(
   } else {
     NULL
   }
+  protocol_ready <- isTRUE(tryCatch(
+    {
+      .builder_protocol_assert(protocol)
+      all(
+        c("pending", "queue", "awaiting_ack", "build_status") %in%
+          names(protocol)
+      ) &&
+        is.list(protocol$queue) &&
+        is.list(protocol$awaiting_ack) &&
+        is.null(protocol$pending) &&
+        !length(protocol$queue) &&
+        !length(protocol$awaiting_ack) &&
+        identical(protocol$build_status, "idle")
+    },
+    error = function(error) FALSE
+  ))
   list(
     state = state,
     message = message,
@@ -458,6 +474,7 @@ builder_build_stage_status_model <- function(
     can_build = identical(state, "ready") &&
       flow_valid &&
       identical(flow_stage, "idle") &&
+      protocol_ready &&
       isTRUE(output_selected),
     result_model = if (is.null(result)) {
       NULL
@@ -478,11 +495,19 @@ builder_build_stage_status_ui <- function(model) {
   }
   content <- switch(
     model$state,
-    ready = actionButton(
-      "build",
-      "Build Viewer",
-      class = "btn btn-action",
-      disabled = !isTRUE(model$can_build)
+    ready = tagList(
+      if (
+        !isTRUE(model$can_build) &&
+          builder_stage_has_text(model$message %||% "")
+      ) {
+        p(class = "builder-build-readiness", model$message)
+      },
+      actionButton(
+        "build",
+        "Build Viewer",
+        class = "btn btn-action",
+        disabled = !isTRUE(model$can_build)
+      )
     ),
     choosing_folder = div(
       class = "builder-build-waiting",
@@ -501,14 +526,10 @@ builder_build_stage_status_ui <- function(model) {
     stop("The Build-stage status is unsupported.", call. = FALSE)
   )
   div(
-    id = "build-stage-status",
     class = paste(
-      "builder-build-stage-status",
+      "builder-build-stage-status-content",
       paste0("is-", model$state)
     ),
-    role = "status",
-    `aria-live` = "polite",
-    `aria-atomic` = "true",
     content
   )
 }

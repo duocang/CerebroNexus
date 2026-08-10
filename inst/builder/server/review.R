@@ -603,6 +603,7 @@ observeEvent(input$confirm_review, {
     )
   if (!isTRUE(matches)) {
     workflow(builder_reduce_workflow(state, list(type = "invalidate")))
+    result(NULL)
     session$onFlushed(
       function() {
         session$sendCustomMessage("builder_focus_dataset", list())
@@ -640,6 +641,7 @@ observe({
   if (!isTRUE(matches)) {
     workflow(builder_reduce_workflow(state, list(type = "invalidate")))
     build_flow(list(stage = "idle", plan = NULL))
+    result(NULL)
     session$sendCustomMessage(
       "builder_build_dialog",
       list(action = "close")

@@ -6,7 +6,7 @@
 ## answering while a marker-gene run takes its minutes.
 auth_accounts_state <- auth_accounts
 
-output$build_stage_status <- renderUI({
+output$build_stage_status_content <- renderUI({
   req(identical(workflow()$stage, "build"))
   model <- builder_build_stage_status_model(
     flow = build_flow(),
@@ -126,6 +126,7 @@ builder_require_confirmed_build_plan <- function(plan, output_path = NULL) {
   }
   selected_output(NULL)
   build_flow(list(stage = "idle", plan = NULL))
+  result(NULL)
   session$sendCustomMessage(
     "builder_build_dialog",
     list(action = "close")
@@ -268,6 +269,7 @@ choose_build_folder <- function() {
         return()
       }
       selected_output(choice$path)
+      result(NULL)
       build_flow(list(stage = "idle", plan = NULL))
     },
     once = TRUE
