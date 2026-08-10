@@ -293,6 +293,46 @@ test_that("a Trekker field explains itself in the contextual readout", {
   expect_match(summary, "Median by cell type")
 })
 
+test_that("Trekker insights are discoverable but collapsed on first render", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_trekker_insights_default")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(cv_bundle_js(paste0(
+    "{ trekker:{qc:{sample_id:'s1'},moran:[],",
+    "evidence:Array.from({length:n},function(_,i){return i<3?1:0;})},",
+    "spaces:[{id:'umap',label:'umap',x:blob(0),y:blob(0)},",
+    "{id:'trekker',label:'Physical (Trekker)',x:blob(1),y:blob(1)}] }"
+  )))
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-tk-insights')).display !== 'none'",
+    timeout = 15000
+  )
+
+  expect_equal(
+    app$get_js(
+      "document.getElementById('cv-tk-insights-toggle').getAttribute('aria-expanded')"
+    ),
+    "false"
+  )
+  expect_equal(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-tk-insights-body')).display"
+    ),
+    "none"
+  )
+  expect_true(app$get_js("document.getElementById('cv-evidence').checked"))
+
+  app$run_js("document.getElementById('cv-tk-insights-toggle').click();")
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-tk-insights-body')).display !== 'none'",
+    timeout = 5000
+  )
+  expect_true(app$get_js(
+    "document.getElementById('cv-tk-tab-cell').classList.contains('is-active')"
+  ))
+})
+
 
 test_that("the tab renders a pushed bundle and offers every meta column", {
   local_app_support(inst_dir)
@@ -1539,7 +1579,7 @@ test_that("three and four panels keep a 300px floor and wrap on a small screen",
 ## follows the cursor; a click PINS that tooltip, which is what makes its buttons
 ## clickable at all -- one that tracks the pointer moves out from under any
 ## attempt to press it -- and adds Details and Close; Details opens the card.
-test_that("a click pins the tooltip, and the card opens only on request", {
+test_that("a Trekker click opens the inspector without covering linked views", {
   local_app_support(inst_dir)
   app <- cv_app("cv_browser_detail_button")
 
@@ -1691,13 +1731,29 @@ test_that("a click pins the tooltip, and the card opens only on request", {
     "auto"
   )
 
-  ## Details opens the card.
-  app$run_js("document.querySelector('#cv-tip-a .cv-tip-details').click();")
-  app$wait_for_js(card_open, timeout = 10000)
+  ## Trekker clicks open the shared inspector below the linked grid rather than
+  ## covering the canvases with the generic floating card.
+  app$wait_for_js(
+    "document.getElementById('cv-tk-insights-toggle').getAttribute('aria-expanded') === 'true'",
+    timeout = 10000
+  )
+  expect_true(app$get_js(
+    "document.getElementById('cv-tk-tab-cell').classList.contains('is-active')"
+  ))
   expect_gt(
-    app$get_js("document.getElementById('cv-card-body').textContent.length"),
+    app$get_js("document.getElementById('cv-tk-cell-body').textContent.length"),
     0
   )
+  expect_false(app$get_js(card_open))
+
+  ## The pinned tooltip's Details action routes to the same inspector; it does
+  ## not create a second presentation of the same cell.
+  app$run_js("document.querySelector('#cv-tip-a .cv-tip-details').click();")
+  app$wait_for_js(
+    "document.getElementById('cv-tk-tab-cell').classList.contains('is-active')",
+    timeout = 10000
+  )
+  expect_false(app$get_js(card_open))
 
   ## Close dismisses the tooltip.
   app$run_js("document.querySelector('#cv-tip-a .cv-tip-close').click();")
@@ -1956,7 +2012,7 @@ test_that("a Moran's I row colours the panels by that gene", {
     timeout = 15000
   )
 
-  ## Open the Trekker detail modal, where the table lives.
+  ## Open the unified Trekker insights region and switch to Moran's I.
   app$run_js(
     paste0(
       "(function () { var b = document.querySelector(",
@@ -1969,15 +2025,30 @@ test_that("a Moran's I row colours the panels by that gene", {
     "document.querySelectorAll('#cv-tk-morantbl a[data-g]').length === 2",
     timeout = 10000
   )
+  expect_equal(
+    app$get_js(
+      "document.getElementById('cv-tk-insights-toggle').getAttribute('aria-expanded')"
+    ),
+    "true"
+  )
+  app$run_js("document.getElementById('cv-tk-tab-moran').click();")
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-tk-panel-moran')).display !== 'none'",
+    timeout = 5000
+  )
 
-  ## Clicking a row leaves the modal, switches to gene colouring and asks for
-  ## that gene -- all three, since any one alone leaves the user somewhere they
-  ## did not ask to be.
+  ## Clicking a row switches to gene colouring and asks for that gene while the
+  ## insights region remains available for reading the other ranked genes.
   app$run_js(
     "document.querySelector('#cv-tk-morantbl a[data-g=\"GENE2\"]').click();"
   )
   app$wait_for_idle(timeout = 10000)
-  expect_false(app$get_js("document.getElementById('cv-tk-modal').open"))
+  expect_equal(
+    app$get_js(
+      "document.getElementById('cv-tk-insights-toggle').getAttribute('aria-expanded')"
+    ),
+    "true"
+  )
   expect_equal(
     app$get_js("document.getElementById('cv-pick-color').value"),
     "__gene__"
@@ -2336,7 +2407,7 @@ test_that("a panel can become the focus without losing linked context", {
 ## `fields.bead_noise` that no builder produces, so it proved a contract that did
 ## not exist -- and missed that the real one lists position_confidence as a
 ## field, which the card was also printing from `conf`, twice under two names.
-test_that("the card reports what is known about a position", {
+test_that("the Trekker inspector reports what is known about a position", {
   local_app_support(inst_dir)
   skip_if_not(nzchar(inst_dir))
   trekker_crb <- file.path(inst_dir, "extdata/examples/demo_trekker.crb")
@@ -2393,17 +2464,17 @@ test_that("the card reports what is known about a position", {
     "  }\n",
     "})();"
   ))
+  ## A Trekker cell click opens the inspector directly, matching the old page.
   app$wait_for_js(
-    "document.querySelector('#cv-tip-a .cv-tip-details') !== null",
-    timeout = 10000
-  )
-  app$run_js("document.querySelector('#cv-tip-a .cv-tip-details').click();")
-  app$wait_for_js(
-    "document.getElementById('cv-card').classList.contains('is-open')",
+    paste0(
+      "document.getElementById('cv-tk-insights-toggle')",
+      ".getAttribute('aria-expanded') === 'true' && ",
+      "document.getElementById('cv-tk-cell-body').textContent.length > 0"
+    ),
     timeout = 10000
   )
 
-  card <- app$get_js("document.getElementById('cv-card-body').textContent")
+  card <- app$get_js("document.getElementById('cv-tk-cell-body').textContent")
   expect_match(card, "Positioning")
   ## The field labels are the builder's own -- "Position confidence", not a name
   ## chosen here -- which is the point of driving this from the real bundle.
@@ -2418,7 +2489,7 @@ test_that("the card reports what is known about a position", {
   expect_equal(
     app$get_js(
       paste0(
-        "(document.getElementById('cv-card-body').textContent",
+        "(document.getElementById('cv-tk-cell-body').textContent",
         ".match(/onfidence/g) || []).length"
       )
     ),
@@ -2426,12 +2497,12 @@ test_that("the card reports what is known about a position", {
   )
   expect_equal(
     app$get_js(
-      "document.querySelectorAll('#cv-card-body .cv-evidence-thumb img').length"
+      "document.querySelectorAll('#cv-tk-cell-body .cv-evidence-thumb img').length"
     ),
     1
   )
   app$run_js(
-    "document.querySelector('#cv-card-body .cv-evidence-thumb').click();"
+    "document.querySelector('#cv-tk-cell-body .cv-evidence-thumb').click();"
   )
   app$wait_for_js(
     "document.getElementById('cv-evidence-modal').open",

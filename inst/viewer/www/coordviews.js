@@ -2396,9 +2396,13 @@ var focusPanel = null;
     var i = cardCell;
     var g = catOf(colorBy);
     var t = $('cv-card-title'), b = $('cv-card-bc'), body = $('cv-card-body');
+    var it = $('cv-tk-cell-title'), ib = $('cv-tk-cell-bc');
+    var inspectorBody = $('cv-tk-cell-body');
     if (t) t.textContent = g ? g.levels[g.values[i]] : 'Cell';
     if (b) b.textContent = D.cells[i];
-    if (!body) return;
+    if (it) it.textContent = g ? g.levels[g.values[i]] : 'Cell';
+    if (ib) ib.textContent = D.cells[i];
+    if (!body && !inspectorBody) return;
     var html = '';
     // clonotype, in full — the tooltip can only ever show a prefix of this
     if (D.clone && D.clone.id[i] >= 0) {
@@ -2436,7 +2440,11 @@ var focusPanel = null;
     } else {
       html += '<div class="cv-card-skel"><span></span><span></span><span></span></div>';
     }
-    body.innerHTML = html;
+    if (body) body.innerHTML = html;
+    if (inspectorBody) inspectorBody.innerHTML = html;
+    var empty = $('cv-tk-cell-empty'), content = $('cv-tk-cell-content');
+    if (empty) empty.style.display = 'none';
+    if (content) content.style.display = '';
     // The meta row arriving makes the card taller, so where it was centred is no
     // longer the centre. Re-centre (left/top are transitioned, so it glides).
     if (cardOpen() && $('cv-card').classList.contains('is-open')) centreCard();
@@ -2514,6 +2522,10 @@ var focusPanel = null;
   }
 
   function openCard(p, i) {
+    if (D && D.trekker) {
+      openTrekkerInspector(i);
+      return;
+    }
     cardCell = i;
     if (!cardMeta || cardMeta.cell !== D.cells[i]) cardMeta = null;
     renderCard();
@@ -2529,9 +2541,23 @@ var focusPanel = null;
     }
   }
 
+  function openTrekkerInspector(i) {
+    cardCell = i;
+    if (!cardMeta || cardMeta.cell !== D.cells[i]) cardMeta = null;
+    renderCard();
+    openTrekkerInsights('cell');
+    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+      Shiny.setInputValue('coordviews_cell_detail', D.cells[i],
+        { priority: 'event' });
+    }
+  }
+
   function closeCard() {
     var card = $('cv-card');
     cardCell = null;
+    var empty = $('cv-tk-cell-empty'), content = $('cv-tk-cell-content');
+    if (empty) empty.style.display = '';
+    if (content) content.style.display = 'none';
     if (!card || !card.classList.contains('is-open')) return;
     card.classList.remove('is-in');
     // let the fade finish before it leaves the flow
@@ -2772,7 +2798,10 @@ var focusPanel = null;
         // Any open card described a cell the user has now moved on from.
         if (cardOpen()) closeCard();
         unpinTip();
-        if (pick != null) pinTip(p, pick);
+        if (pick != null) {
+          pinTip(p, pick);
+          if (D.trekker) openTrekkerInspector(pick);
+        }
         rebuildNiche();              // Trekker: cells within the picked niche
         updateSelActions();          // niche pick → show the (animated) Clear button
         renderSelbar();               // expose the shared Active cell state
@@ -2890,17 +2919,42 @@ var focusPanel = null;
   }
 
   // Coordinate-source / QC / positioning / Moran's I detail for a Trekker data
-  // set — same content as the dedicated Trekker page's "Data and QC" +
-  // "Moran's I" boxes, built by the shared functions in www/trekker.js
-  // (loaded before this file) so the two pages never drift apart.
-  function openTrekkerModal() {
-    var dlg = $('cv-tk-modal');
+  // set. The three depth views share one default-collapsed region beneath the
+  // linked grid, rather than three old-page boxes or a hidden modal.
+  function selectTrekkerInsight(name) {
+    var names = ['cell', 'qc', 'moran'];
+    if (names.indexOf(name) < 0) name = 'cell';
+    names.forEach(function (candidate) {
+      var tab = $('cv-tk-tab-' + candidate);
+      var panel = $('cv-tk-panel-' + candidate);
+      var active = candidate === name;
+      if (tab) {
+        tab.classList.toggle('is-active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      }
+      if (panel) {
+        panel.classList.toggle('is-active', active);
+        panel.style.display = active ? '' : 'none';
+      }
+    });
+  }
+
+  function setTrekkerInsightsOpen(on) {
+    var toggle = $('cv-tk-insights-toggle');
+    var body = $('cv-tk-insights-body');
+    if (!toggle || !body) return;
+    toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+    toggle.classList.toggle('is-open', on);
+    body.style.display = on ? '' : 'none';
+  }
+
+  function fillTrekkerInsights() {
     var CT = window.CerebroTrekker;
-    if (!dlg || !CT || !D.trekker || !D.trekker.qc) return;
-    var q = D.trekker.qc;
+    if (!CT || !D || !D.trekker) return;
+    var q = D.trekker.qc || {};
     // Each box is filled independently. The builders read a couple of dozen QC
     // fields and throw on one that is absent, so a .crb carrying a partial QC
-    // record used to lose the WHOLE modal to whichever box failed first --
+    // record used to lose the WHOLE detail view to whichever box failed first --
     // including the Moran table, which does not depend on any of them.
     var fill = function (id, build) {
       var el = $(id); if (!el) return;
@@ -2922,12 +2976,21 @@ var focusPanel = null;
       function (a) {
         a.onclick = function (e) {
           e.preventDefault();
-          dlg.close();
           colourByGene(a.getAttribute('data-g'));
         };
       }
     );
-    dlg.showModal();
+  }
+
+  function openTrekkerInsights(tab, reveal) {
+    var region = $('cv-tk-insights');
+    if (!region || !D || !D.trekker) return;
+    fillTrekkerInsights();
+    selectTrekkerInsight(tab || 'cell');
+    setTrekkerInsightsOpen(true);
+    if (reveal && region.scrollIntoView) {
+      region.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   // Mark a gene as asked-for and clear what is on screen for the previous one.
@@ -4146,9 +4209,10 @@ var focusPanel = null;
       R.innerHTML = '<div class="cv-empty">Nothing to show for this data set.</div>';
     }
     ['cv-workspace-guide', 'cv-selbar', 'cv-selactions', 'cv-shown', 'cv-trekker-ctl',
-      'cv-clone-layout-ctl'].forEach(function (id) {
+      'cv-tk-insights', 'cv-clone-layout-ctl'].forEach(function (id) {
       var el = $(id); if (el) el.style.display = 'none';
     });
+    setTrekkerInsightsOpen(false);
     setMoreOpen(false);
     reportSelection();
   }
@@ -4256,6 +4320,11 @@ var focusPanel = null;
     var hasTk = !!(D.trekker && (D.trekker.conf || D.trekker.evidence));
     var tkc = $('cv-trekker-ctl');
     if (tkc) tkc.style.display = hasTk ? '' : 'none';
+    var tkInsights = $('cv-tk-insights');
+    if (tkInsights) tkInsights.style.display = D.trekker ? '' : 'none';
+    setTrekkerInsightsOpen(false);
+    selectTrekkerInsight('cell');
+    if (D.trekker) fillTrekkerInsights();
     // positioning-evidence markers default ON when the data set carries them
     evidenceOn = !!(D.trekker && D.trekker.evidence);
     var evChk = $('cv-evidence'); if (evChk) evChk.checked = evidenceOn;
@@ -4398,6 +4467,18 @@ var focusPanel = null;
     // clear button + point-size slider live in the top bar (client-owned)
     document.addEventListener('click', function (e) {
       var t = e.target;
+      if (t && t.closest && t.closest('#cv-tk-insights-toggle')) {
+        var tkToggle = $('cv-tk-insights-toggle');
+        setTrekkerInsightsOpen(
+          !tkToggle || tkToggle.getAttribute('aria-expanded') !== 'true'
+        );
+        return;
+      }
+      var tkTab = t && t.closest && t.closest('.cv-tk-tab[data-tk-tab]');
+      if (tkTab) {
+        selectTrekkerInsight(tkTab.getAttribute('data-tk-tab'));
+        return;
+      }
       var evidenceThumb = t && t.closest && t.closest('.cv-evidence-thumb');
       if (evidenceThumb) {
         var image = evidenceThumb.querySelector('img');
@@ -4467,7 +4548,7 @@ var focusPanel = null;
         if (act === 'box' || act === 'lasso' || act === 'pan' || act === 'orbit') {
           selectMode = act; syncModeButtons(); return;
         }
-        if (act === 'trekker-info') { openTrekkerModal(); return; }
+        if (act === 'trekker-info') { openTrekkerInsights('qc', true); return; }
         if (pp) {
           if (act === 'png') { downloadPanelPNG(pp); }
           else if (act === 'zin') { zoomStep(pp, 0.8); }

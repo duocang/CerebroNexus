@@ -114,6 +114,27 @@ test_that("Linked views keeps replacement controls contextual and user-facing", 
   expect_match(js, "function fieldSummaryHtml", fixed = TRUE)
 })
 
+test_that("Trekker depth views form one collapsed insights region", {
+  ui_file <- file.path(dirname(bundle_file), "UI.R")
+  js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
+  skip_if_not(file.exists(ui_file) && file.exists(js_file))
+
+  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  expect_match(ui, 'id = "cv-tk-insights"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-tk-insights-toggle"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-tk-tab-cell"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-tk-tab-qc"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-tk-tab-moran"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-tk-cell-body"', fixed = TRUE)
+  expect_no_match(ui, 'id = "cv-tk-modal"', fixed = TRUE)
+
+  expect_match(js, "function openTrekkerInsights", fixed = TRUE)
+  expect_match(js, "function selectTrekkerInsight", fixed = TRUE)
+  expect_match(js, "function fillTrekkerInsights", fixed = TRUE)
+})
+
 test_that("the omnibus spatial bundle preserves every embedded background", {
   skip_if_not(have_bundle)
   skip_if_not(nzchar(omnibus_crb) && file.exists(omnibus_crb))

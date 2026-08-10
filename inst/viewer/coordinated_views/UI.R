@@ -672,59 +672,130 @@ tab_coordinated_views <- tabItem(
       uiOutput("coordviews_selected_cells_UI")
     ),
 
-    ## ---- Trekker detail modal --------------------------------------------- ##
-    ## Client-driven (no server round-trip): coordviews.js fills these ids from
-    ## D.trekker.qc / D.trekker.moran via the shared builders in www/trekker.js
-    ## (CerebroTrekker.build*), the same functions the dedicated Trekker page
-    ## uses for its permanent "Data and QC" / "Moran's I" boxes.
-    tags$dialog(
-      id = "cv-tk-modal",
-      class = "trekker-page",
+    ## ---- Trekker insights ------------------------------------------------- ##
+    ## One discoverable, default-collapsed analysis region replaces the old
+    ## page's three vertically stacked boxes. It is client-driven: the selected
+    ## cell, QC and upstream Moran values are already in the Linked views bundle.
+    div(
+      class = "cv-tk-insights",
+      id = "cv-tk-insights",
+      style = "display:none",
       tags$button(
-        class = "tk-zoom-x",
-        onclick = "document.getElementById('cv-tk-modal').close()",
-        "Close"
+        type = "button",
+        class = "cv-tk-insights-toggle",
+        id = "cv-tk-insights-toggle",
+        `aria-expanded` = "false",
+        tags$span(
+          tags$span(class = "cv-tk-insights-kicker", "Trekker"),
+          tags$strong("Trekker insights"),
+          tags$small(
+            "Cell inspector, positioning quality and spatial autocorrelation"
+          )
+        ),
+        icon("chevron-down")
       ),
-      tags$h4(class = "tk-sub-h", "Data and QC"),
-      div(class = "tk-grid", id = "cv-tk-stats"),
       div(
-        class = "tk-two",
+        class = "cv-tk-insights-body trekker-page",
+        id = "cv-tk-insights-body",
+        style = "display:none",
         div(
-          tags$h4(class = "tk-sub-h", "Positioning class distribution"),
+          class = "cv-tk-tabs",
+          role = "tablist",
+          `aria-label` = "Trekker insights",
+          tags$button(
+            type = "button",
+            class = "cv-tk-tab is-active",
+            id = "cv-tk-tab-cell",
+            `data-tk-tab` = "cell",
+            role = "tab",
+            `aria-selected` = "true",
+            "Cell inspector"
+          ),
+          tags$button(
+            type = "button",
+            class = "cv-tk-tab",
+            id = "cv-tk-tab-qc",
+            `data-tk-tab` = "qc",
+            role = "tab",
+            `aria-selected` = "false",
+            "Data and QC"
+          ),
+          tags$button(
+            type = "button",
+            class = "cv-tk-tab",
+            id = "cv-tk-tab-moran",
+            `data-tk-tab` = "moran",
+            role = "tab",
+            `aria-selected` = "false",
+            "Spatial autocorrelation — Moran's I"
+          )
+        ),
+        div(
+          class = "cv-tk-panel is-active",
+          id = "cv-tk-panel-cell",
+          role = "tabpanel",
+          `aria-labelledby` = "cv-tk-tab-cell",
+          div(
+            class = "cv-tk-cell-empty",
+            id = "cv-tk-cell-empty",
+            "Click a nucleus in any linked cell view to inspect its identity, ",
+            "physical neighbourhood and positioning evidence."
+          ),
+          div(
+            class = "cv-tk-cell-content",
+            id = "cv-tk-cell-content",
+            style = "display:none",
+            tags$h4(id = "cv-tk-cell-title", "—"),
+            tags$div(class = "cv-tk-cell-bc", id = "cv-tk-cell-bc"),
+            div(class = "cv-card-body", id = "cv-tk-cell-body")
+          )
+        ),
+        div(
+          class = "cv-tk-panel",
+          id = "cv-tk-panel-qc",
+          role = "tabpanel",
+          `aria-labelledby` = "cv-tk-tab-qc",
+          style = "display:none",
+          div(class = "tk-grid", id = "cv-tk-stats"),
+          div(
+            class = "tk-two",
+            div(
+              tags$h4(class = "tk-sub-h", "Positioning class distribution"),
+              tags$table(
+                class = "tk-table",
+                tags$thead(tags$tr(
+                  tags$th("Spatial locations"),
+                  tags$th(class = "num", "Nuclei"),
+                  tags$th(class = "num", "Share"),
+                  tags$th("Handling")
+                )),
+                tags$tbody(id = "cv-tk-postbl")
+              ),
+              div(class = "tk-flag", id = "cv-tk-salvflag")
+            ),
+            div(
+              tags$h4(class = "tk-sub-h", "Provenance"),
+              tags$dl(class = "tk-kv", id = "cv-tk-prov"),
+              div(class = "tk-flag", id = "cv-tk-rangeflag")
+            )
+          )
+        ),
+        div(
+          class = "cv-tk-panel",
+          id = "cv-tk-panel-moran",
+          role = "tabpanel",
+          `aria-labelledby` = "cv-tk-tab-moran",
+          style = "display:none",
           tags$table(
             class = "tk-table",
             tags$thead(tags$tr(
-              tags$th("Spatial locations"),
-              tags$th(class = "num", "Nuclei"),
-              tags$th(class = "num", "Share"),
-              tags$th("Handling")
+              tags$th(class = "num", "#"),
+              tags$th("Gene"),
+              tags$th(class = "num", "Moran's I")
             )),
-            tags$tbody(id = "cv-tk-postbl")
-          ),
-          div(class = "tk-flag", id = "cv-tk-salvflag")
-        ),
-        div(
-          tags$h4(class = "tk-sub-h", "Provenance"),
-          tags$dl(class = "tk-kv", id = "cv-tk-prov"),
-          div(class = "tk-flag", id = "cv-tk-rangeflag")
+            tags$tbody(id = "cv-tk-morantbl")
+          )
         )
-      ),
-      ## Same top gap as "Positioning class distribution" above (that one comes
-      ## from .tk-two's own margin-top: 14px; matched here explicitly since this
-      ## heading isn't inside a .tk-two).
-      tags$h4(
-        class = "tk-sub-h",
-        style = "margin-top:14px",
-        "Spatial autocorrelation — Moran's I (upstream)"
-      ),
-      tags$table(
-        class = "tk-table",
-        tags$thead(tags$tr(
-          tags$th(class = "num", "#"),
-          tags$th("Gene"),
-          tags$th(class = "num", "Moran's I")
-        )),
-        tags$tbody(id = "cv-tk-morantbl")
       )
     ),
 
