@@ -273,3 +273,37 @@ builder_attach_marker_imports <- function(object, imports) {
   object@misc$marker_genes <- existing
   object
 }
+
+builder_marker_imports_validate <- function(imports, groups, levels) {
+  if (!length(imports)) {
+    return(list())
+  }
+  methods <- vapply(imports, `[[`, character(1), "method")
+  if (
+    anyNA(methods) || any(!nzchar(trimws(methods))) || anyDuplicated(methods)
+  ) {
+    stop("Imported Marker genes method names must be unique.", call. = FALSE)
+  }
+  lapply(imports, function(imported) {
+    group <- imported$group %||% ""
+    if (!is.character(group) || length(group) != 1L || !group %in% groups) {
+      stop("Imported Marker genes group is not included.", call. = FALSE)
+    }
+    checked <- builder_marker_import_validate_sources(
+      imported$sources %||% list(),
+      levels[[group]] %||% character()
+    )
+    if (!isTRUE(checked$valid)) {
+      stop("Imported Marker genes sources are invalid.", call. = FALSE)
+    }
+    list(
+      method = imported$method,
+      group = group,
+      sources = checked$sources,
+      coverage = builder_marker_import_coverage(
+        checked$sources,
+        levels[[group]]
+      )
+    )
+  })
+}

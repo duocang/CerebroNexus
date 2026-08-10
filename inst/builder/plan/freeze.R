@@ -575,6 +575,13 @@ builder_freeze_plan <- function(
         estimated_disk_bytes = as.double(
           source_snapshot_identity$closure_bytes %||% 0
         ),
+        marker_imports = .builder_plan_deep_copy(
+          builder_marker_imports_validate(
+            settings$marker_imports %||% list(),
+            included_groups[[index]],
+            entry$levels %||% list()
+          )
+        ),
         tables = settings$tables %||% list(),
         images = alignments$spatial,
         trekker_alignment = alignments$trekker,
