@@ -11,6 +11,80 @@ omnibus_example_path <- function(file) {
   testthat::test_path("..", "..", "inst", "extdata", "examples", file)
 }
 
+load_omnibus_publisher <- function() {
+  builder_path <- testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "build_omnibus_demo.R"
+  )
+  expressions <- parse(builder_path)
+  definition <- which(vapply(
+    expressions,
+    function(expression) {
+      is.call(expression) &&
+        identical(expression[[1L]], as.name("<-")) &&
+        identical(expression[[2L]], as.name("publish_omnibus_artifacts"))
+    },
+    logical(1)
+  ))
+  if (length(definition) != 1L) {
+    stop("Omnibus publisher helper is not defined exactly once.", call. = FALSE)
+  }
+  environment <- new.env(parent = baseenv())
+  eval(expressions[[definition]], envir = environment)
+  environment$publish_omnibus_artifacts
+}
+
+test_that("Omnibus publication restores every target after any rename failure", {
+  publish <- load_omnibus_publisher()
+  artifact_names <- paste0("artifact-", seq_len(5L), ".dat")
+
+  for (failure_index in seq_along(artifact_names)) {
+    root <- withr::local_tempdir()
+    stage_dir <- file.path(root, paste0("stage-", failure_index))
+    output_dir <- file.path(root, paste0("output-", failure_index))
+    dir.create(stage_dir)
+    dir.create(output_dir)
+    staged <- file.path(stage_dir, artifact_names)
+    destinations <- file.path(output_dir, artifact_names)
+    for (index in seq_along(artifact_names)) {
+      writeLines(paste("new", index), staged[[index]])
+      writeLines(paste("old", index), destinations[[index]])
+    }
+
+    rename_count <- 0L
+    injected_rename <- function(from, to) {
+      rename_count <<- rename_count + 1L
+      expect_identical(dirname(from), dirname(to))
+      if (rename_count == failure_index) {
+        return(FALSE)
+      }
+      file.rename(from, to)
+    }
+
+    expect_error(
+      publish(
+        staged = staged,
+        destinations = destinations,
+        publish_rename = injected_rename
+      ),
+      paste0("artifact-", failure_index, "[.]dat")
+    )
+    expect_equal(
+      unname(vapply(destinations, readLines, "", warn = FALSE)),
+      paste("old", seq_along(artifact_names))
+    )
+    leftovers <- list.files(
+      output_dir,
+      all.files = TRUE,
+      no.. = TRUE,
+      pattern = "[.](publish|backup)-"
+    )
+    expect_length(leftovers, 0L)
+  }
+})
+
 test_that("bundled Omnibus artifacts share the declared expression universe", {
   skip_if_not_installed("Seurat")
   skip_if_not_installed("png")
@@ -37,13 +111,68 @@ test_that("bundled Omnibus artifacts share the declared expression universe", {
   expect_setequal(crb$getGeneNames(), rownames(seurat))
   expect_setequal(unique(seurat$orig.ident), c("donorA", "donorB", "donorC"))
   expect_equal(as.integer(table(seurat$orig.ident)), rep(40L, 3L))
-  expect_setequal(unique(seurat$condition), c("Control", "Treatment"))
+  expect_identical(
+    unname(seurat$condition),
+    unname(ifelse(seurat$orig.ident == "donorB", "Treatment", "Control"))
+  )
 
   markers <- utils::read.csv(marker_path, stringsAsFactors = FALSE)
-  expect_setequal(unique(markers$cluster), unique(seurat$cell_type))
-  expect_true(all(table(markers$cluster) > 0L))
+  required_marker_columns <- c(
+    "cluster",
+    "gene",
+    "avg_log2FC",
+    "pct.1",
+    "pct.2",
+    "p_val_adj",
+    "on_cell_surface"
+  )
+  expect_equal(nrow(markers), 40L)
+  expect_true(all(required_marker_columns %in% colnames(markers)))
+  expect_equal(
+    as.integer(table(factor(
+      markers$cluster,
+      levels = unique(seurat$cell_type)
+    ))),
+    rep(10L, 4L)
+  )
+  expect_setequal(markers$gene, sprintf("Gene%03d", seq_len(40L)))
   expect_equal(dim(png::readPNG(donor_b_image)), c(72L, 96L, 3L))
   expect_equal(dim(png::readPNG(donor_c_image)), c(90L, 110L, 3L))
+
+  misc_images <- seurat@misc$cerebro_spatial_images
+  expect_false("donorC tissue" %in% names(misc_images))
+  canonical_payloads <- unlist(
+    lapply(misc_images, function(images) {
+      vapply(images, `[[`, "", "histology_image")
+    }),
+    use.names = FALSE
+  )
+  external_paths <- c(donor_b_image, donor_c_image)
+  external_base64 <- vapply(
+    external_paths,
+    base64enc::base64encode,
+    ""
+  )
+  expect_false(any(vapply(
+    external_base64,
+    function(encoded) {
+      any(grepl(encoded, canonical_payloads, fixed = TRUE))
+    },
+    logical(1)
+  )))
+  decoded_payloads <- lapply(canonical_payloads, function(payload) {
+    base64enc::base64decode(sub("^[^,]+,", "", payload))
+  })
+  external_bytes <- lapply(external_paths, function(path) {
+    readBin(path, what = "raw", n = file.info(path)$size)
+  })
+  expect_false(any(vapply(
+    external_bytes,
+    function(bytes) {
+      any(vapply(decoded_payloads, identical, logical(1), bytes))
+    },
+    logical(1)
+  )))
 })
 
 test_that("bundled Omnibus CRB covers every declared Viewer data surface", {
@@ -97,6 +226,40 @@ test_that("bundled Omnibus spatial entries preserve cells, images, and bounds", 
   expect_true(all(lengths(seurat_cells) == 40L))
   expect_length(unique(unlist(seurat_cells)), 120L)
   expect_setequal(unlist(seurat_cells), colnames(seurat))
+
+  source_coordinates <- lapply(spatial_names, function(name) {
+    SeuratObject::GetTissueCoordinates(seurat[[name]])[, c("x", "y")]
+  })
+  names(source_coordinates) <- spatial_names
+  donor_a <- source_coordinates[["donorA tissue"]]
+  donor_a_radius <- sqrt(
+    (donor_a$x - mean(range(donor_a$x)))^2 +
+      (donor_a$y - mean(range(donor_a$y)))^2
+  )
+  expect_lt(max(donor_a_radius) - min(donor_a_radius), 1e-8)
+
+  donor_b <- source_coordinates[["donorB tissue"]]
+  expect_equal(length(unique(donor_b$x)), 8L)
+  expect_equal(length(unique(donor_b$y)), 5L)
+  expect_equal(nrow(unique(donor_b)), 40L)
+
+  donor_c <- source_coordinates[["donorC tissue"]]
+  distance_to_edge <- pmin(
+    abs(donor_c$y - 100),
+    abs(4 * donor_c$x + 3 * donor_c$y - 3900),
+    abs(12 * donor_c$x - 7 * donor_c$y - 500)
+  )
+  expect_true(all(distance_to_edge < 1e-8))
+  expect_true(all(vapply(
+    list(c(100, 100), c(900, 100), c(450, 700)),
+    function(vertex) {
+      any(
+        abs(donor_c$x - vertex[[1L]]) < 1e-8 &
+          abs(donor_c$y - vertex[[2L]]) < 1e-8
+      )
+    },
+    logical(1)
+  )))
 
   bounds <- lapply(spatial_names, function(name) {
     spatial <- crb$getSpatialData(name)

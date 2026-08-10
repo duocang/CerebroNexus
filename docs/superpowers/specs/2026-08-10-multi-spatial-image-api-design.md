@@ -187,6 +187,15 @@ genes, enrichment, trajectories, TCR/BCR, HLA, Trekker, trees, and extra
 material. The builder also writes a marker CSV, the donor B image supplied to
 the converter, and a donor C image supplied only to the app builder.
 
+The five fixed output paths cannot provide cross-file group-atomic visibility
+portably. After all staged artifacts pass semantic validation, the builder
+copies each candidate to a temporary file in its destination directory and
+backs up every existing target before publication. It publishes each file with
+an atomic rename. If any publish step fails, all five target paths are restored
+to their prior state and all temporary and backup files are removed. Concurrent
+readers are not promised freedom from a brief missing or mixed-version view
+while the five individual renames are in progress.
+
 ## End-to-end public API proof
 
 An executable integration test starts only from committed user-facing inputs:

@@ -536,8 +536,13 @@ CSV 覆盖所有 cell_type marker；两张 PNG 分别与 donorB、donorC bounds 
 - [ ] **步骤 5：只通过 converter 生成 CRB**
 
 builder 保存 staged Seurat 后调用公开 `convertSeuratToCerebro()`。禁止 readRDS CRB 后
-补字段。重新读取 Seurat、CRB、CSV、PNG，完成 semantic validation 后原子替换五个
-工件。
+补字段。重新读取 Seurat、CRB、CSV、PNG，完成 semantic validation 后，为每个固定
+输出在目标同目录准备临时文件，并在发布前备份全部已有目标；每个文件通过 atomic
+rename 发布，任一步失败则完整恢复五个目标并清除临时/备份。五个固定路径无法跨平台
+提供跨文件组原子可见性，不承诺并发读取者不会短暂看到缺失或混合版本。
+
+发布 helper 必须支持 fault injection 测试：第 N 次 rename 失败时，包含失败目标本身
+在内的五个路径都恢复旧内容，且不在 examples 目录留下 publish temp 或 backup。
 
 - [ ] **步骤 6：重新生成并跑工件测试**
 

@@ -4,6 +4,128 @@
 ## Run from any directory with:
 ##   Rscript data-raw/build_omnibus_demo.R
 
+publish_omnibus_artifacts <- function(
+  staged,
+  destinations,
+  publish_rename = file.rename
+) {
+  valid_paths <- is.character(staged) &&
+    is.character(destinations) &&
+    length(staged) == length(destinations) &&
+    length(staged) > 0L &&
+    !anyNA(staged) &&
+    !anyNA(destinations) &&
+    !anyDuplicated(destinations) &&
+    all(file.exists(staged)) &&
+    all(!dir.exists(staged)) &&
+    all(dir.exists(dirname(destinations)))
+  if (!valid_paths) {
+    stop("Invalid staged or destination Omnibus artifact paths.", call. = FALSE)
+  }
+
+  publish_temps <- vapply(
+    destinations,
+    function(destination) {
+      tempfile(
+        pattern = paste0(".", basename(destination), ".publish-"),
+        tmpdir = dirname(destination)
+      )
+    },
+    ""
+  )
+  backup_paths <- vapply(
+    destinations,
+    function(destination) {
+      tempfile(
+        pattern = paste0(".", basename(destination), ".backup-"),
+        tmpdir = dirname(destination)
+      )
+    },
+    ""
+  )
+  on.exit(
+    unlink(c(publish_temps, backup_paths), force = TRUE),
+    add = TRUE
+  )
+
+  copied <- file.copy(
+    staged,
+    publish_temps,
+    overwrite = FALSE,
+    copy.mode = TRUE
+  )
+  if (
+    !all(copied) ||
+      !identical(
+        unname(tools::md5sum(staged)),
+        unname(tools::md5sum(publish_temps))
+      )
+  ) {
+    stop(
+      "Could not prepare same-directory Omnibus publish files.",
+      call. = FALSE
+    )
+  }
+
+  existed <- file.exists(destinations)
+  if (any(existed)) {
+    backed_up <- file.copy(
+      destinations[existed],
+      backup_paths[existed],
+      overwrite = FALSE,
+      copy.mode = TRUE
+    )
+    backup_matches <- identical(
+      unname(tools::md5sum(destinations[existed])),
+      unname(tools::md5sum(backup_paths[existed]))
+    )
+    if (!all(backed_up) || !backup_matches) {
+      stop("Could not back up existing Omnibus artifacts.", call. = FALSE)
+    }
+  }
+
+  rollback <- function() {
+    unlink(destinations[file.exists(destinations)], force = TRUE)
+    restored <- logical(sum(existed))
+    if (any(existed)) {
+      restored <- mapply(
+        file.rename,
+        backup_paths[existed],
+        destinations[existed]
+      )
+    }
+    all(restored)
+  }
+
+  for (index in seq_along(destinations)) {
+    destination <- destinations[[index]]
+    if (file.exists(destination)) {
+      unlink(destination, force = TRUE)
+    }
+    published <- isTRUE(publish_rename(publish_temps[[index]], destination))
+    if (!published) {
+      restored <- rollback()
+      if (!restored) {
+        stop(
+          "Omnibus publication failed at ",
+          basename(destination),
+          " and rollback was incomplete.",
+          call. = FALSE
+        )
+      }
+      stop(
+        "Omnibus publication failed at ",
+        basename(destination),
+        "; all previous targets were restored.",
+        call. = FALSE
+      )
+    }
+  }
+
+  unlink(backup_paths[file.exists(backup_paths)], force = TRUE)
+  invisible(destinations)
+}
+
 required_packages <- c(
   "base64enc",
   "devtools",
@@ -122,8 +244,8 @@ segment_points <- function(from, to, n) {
 
 angle <- seq(0, 2 * pi, length.out = 41L)[seq_len(40L)]
 donor_a_coordinates <- data.frame(
-  x = 400 + 220 * cos(angle),
-  y = 300 + 180 * sin(angle),
+  x = 400 + 200 * cos(angle),
+  y = 300 + 200 * sin(angle),
   cell = cell_names[1:40]
 )
 donor_b_grid <- expand.grid(
@@ -247,8 +369,7 @@ object@misc$cerebro_spatial_images <- list(
         ymax = 550
       )
     )
-  ),
-  `donorC tissue` = list()
+  )
 )
 
 object@misc$experiment <- list(date_of_analysis = as.Date("2026-08-10"))
@@ -532,10 +653,21 @@ build_artifacts <- function() {
     setequal(unlist(source_spatial_cells), cell_names),
     setequal(unique(source_object$orig.ident), c("donorA", "donorB", "donorC")),
     all(unname(table(source_object$orig.ident)) == rep(40L, 3L)),
-    setequal(unique(source_object$condition), c("Control", "Treatment")),
+    identical(
+      unname(source_object$condition),
+      unname(ifelse(
+        source_object$orig.ident == "donorB",
+        "Treatment",
+        "Control"
+      ))
+    ),
+    !"donorC tissue" %in%
+      names(
+        source_object@misc$cerebro_spatial_images
+      ),
     identical(
       lapply(source_object@misc$cerebro_spatial_images, names),
-      expected_image_labels
+      expected_image_labels[names(source_object@misc$cerebro_spatial_images)]
     ),
     inherits(cerebro_object, "Cerebro"),
     setequal(cerebro_object$getCellNames(), cell_names),
@@ -558,10 +690,100 @@ build_artifacts <- function() {
     length(cerebro_object$getExtraMaterialCategories()) > 0L,
     !is.null(cerebro_object$getTrekker()),
     identical(cerebro_object$availableSpatial(), spatial_names),
-    setequal(unique(staged_markers$cluster), unique(cell_type)),
-    all(table(staged_markers$cluster) > 0L),
+    nrow(staged_markers) == 40L,
+    all(
+      c(
+        "cluster",
+        "gene",
+        "avg_log2FC",
+        "pct.1",
+        "pct.2",
+        "p_val_adj",
+        "on_cell_surface"
+      ) %in%
+        colnames(staged_markers)
+    ),
+    all(
+      as.integer(table(factor(
+        staged_markers$cluster,
+        levels = unique(cell_type)
+      ))) ==
+        rep(10L, 4L)
+    ),
+    setequal(staged_markers$gene, gene_names[seq_len(40L)]),
     identical(dim(donor_b_png), c(72L, 96L, 3L)),
     identical(dim(donor_c_png), c(90L, 110L, 3L))
+  )
+
+  donor_a <- SeuratObject::GetTissueCoordinates(
+    source_object[["donorA tissue"]]
+  )
+  donor_a_radius <- sqrt(
+    (donor_a$x - mean(range(donor_a$x)))^2 +
+      (donor_a$y - mean(range(donor_a$y)))^2
+  )
+  donor_b <- SeuratObject::GetTissueCoordinates(
+    source_object[["donorB tissue"]]
+  )
+  donor_c <- SeuratObject::GetTissueCoordinates(
+    source_object[["donorC tissue"]]
+  )
+  donor_c_distance_to_edge <- pmin(
+    abs(donor_c$y - 100),
+    abs(4 * donor_c$x + 3 * donor_c$y - 3900),
+    abs(12 * donor_c$x - 7 * donor_c$y - 500)
+  )
+  stopifnot(
+    max(donor_a_radius) - min(donor_a_radius) < 1e-8,
+    length(unique(donor_b$x)) == 8L,
+    length(unique(donor_b$y)) == 5L,
+    nrow(unique(donor_b[, c("x", "y")])) == 40L,
+    all(donor_c_distance_to_edge < 1e-8),
+    all(vapply(
+      list(c(100, 100), c(900, 100), c(450, 700)),
+      function(vertex) {
+        any(
+          abs(donor_c$x - vertex[[1L]]) < 1e-8 &
+            abs(donor_c$y - vertex[[2L]]) < 1e-8
+        )
+      },
+      logical(1)
+    ))
+  )
+
+  canonical_payloads <- unlist(
+    lapply(
+      source_object@misc$cerebro_spatial_images,
+      function(images) vapply(images, `[[`, "", "histology_image")
+    ),
+    use.names = FALSE
+  )
+  external_paths <- staged[c(
+    "demo_omnibus_donorB_if.png",
+    "demo_omnibus_donorC_review.png"
+  )]
+  external_base64 <- vapply(external_paths, base64enc::base64encode, "")
+  decoded_payloads <- lapply(canonical_payloads, function(payload) {
+    base64enc::base64decode(sub("^[^,]+,", "", payload))
+  })
+  external_bytes <- lapply(external_paths, function(path) {
+    readBin(path, what = "raw", n = file.info(path)$size)
+  })
+  stopifnot(
+    !any(vapply(
+      external_base64,
+      function(encoded) {
+        any(grepl(encoded, canonical_payloads, fixed = TRUE))
+      },
+      logical(1)
+    )),
+    !any(vapply(
+      external_bytes,
+      function(bytes) {
+        any(vapply(decoded_payloads, identical, logical(1), bytes))
+      },
+      logical(1)
+    ))
   )
 
   for (spatial_name in spatial_names) {
@@ -590,51 +812,7 @@ build_artifacts <- function() {
     }
   }
 
-  backup_dir <- file.path(stage_dir, "backups")
-  dir.create(backup_dir)
-  existed <- file.exists(destinations)
-  if (any(existed)) {
-    copied <- file.copy(
-      destinations[existed],
-      file.path(backup_dir, names(destinations)[existed]),
-      overwrite = TRUE
-    )
-    if (!all(copied)) {
-      stop("Could not back up existing Omnibus artifacts.", call. = FALSE)
-    }
-  }
-
-  replaced <- character(0)
-  replacement_error <- NULL
-  for (artifact_name in artifact_names) {
-    copied <- file.copy(
-      staged[[artifact_name]],
-      destinations[[artifact_name]],
-      overwrite = TRUE
-    )
-    if (!copied) {
-      replacement_error <- paste0(
-        "Could not replace generated artifact: ",
-        destinations[[artifact_name]]
-      )
-      break
-    }
-    replaced <- c(replaced, artifact_name)
-  }
-  if (!is.null(replacement_error)) {
-    for (artifact_name in replaced) {
-      if (existed[[artifact_name]]) {
-        file.copy(
-          file.path(backup_dir, artifact_name),
-          destinations[[artifact_name]],
-          overwrite = TRUE
-        )
-      } else {
-        unlink(destinations[[artifact_name]], force = TRUE)
-      }
-    }
-    stop(replacement_error, call. = FALSE)
-  }
+  publish_omnibus_artifacts(staged, destinations)
 }
 
 build_artifacts()
