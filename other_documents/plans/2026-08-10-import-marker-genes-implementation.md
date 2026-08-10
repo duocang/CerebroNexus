@@ -6,7 +6,8 @@
 
 **Architecture:** A pure marker-import domain inventories files, confirms cluster mappings, and emits safe normalized tables with the selected group as first column. Editable records live in `settings$marker_imports`; freeze copies only ready records into BuildPlan; build merges those records into `object@misc$marker_genes` before export. The Viewer remains unchanged.
 
-**Tech stack:** R, Shiny, testthat, `readxl`, existing Builder state/plan/build contracts.
+**Tech stack:** R, Shiny, testthat, `readxl` (runtime XLSX reader), `writexl`
+(test-only XLSX fixture writer), existing Builder state/plan/build contracts.
 
 ---
 
@@ -50,7 +51,9 @@ Expected: FAIL because the inventory function and XLSX fixture helper are absent
 
 - [ ] **Step 3: Implement the minimal inventory**
 
-Add `readxl` to `Imports`. In `inst/builder/marker_import.R` implement:
+Add `readxl` to `Imports` and `writexl` to `Suggests`; define
+`builder_marker_import_xlsx()` in the test file with `writexl::write_xlsx()`.
+In `inst/builder/marker_import.R` implement:
 
 ```r
 builder_marker_import_inventory <- function(paths, filenames = basename(paths)) {
