@@ -188,6 +188,7 @@ marker_table <- do.call(
       pct.1 = seq(0.95, 0.70, length.out = length(genes)),
       pct.2 = seq(0.25, 0.45, length.out = length(genes)),
       p_val_adj = seq(1e-8, 1e-4, length.out = length(genes)),
+      on_cell_surface = rep(c(TRUE, FALSE), length.out = length(genes)),
       stringsAsFactors = FALSE
     )
   })

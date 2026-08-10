@@ -105,12 +105,12 @@ test_that("{shinytest2} recording: overview", {
   app <- AppDriver$new(inst_dir, name = "overview", height = 950, width = 1619)
   app$wait_for_idle(timeout = 20000)
 
-  ## Data Info tab: verify key values from the loaded example.crb
+  ## Data Info tab: verify key values from the default Omnibus data set.
   cells_box <- retry_get_value(app, output = "load_data_number_of_cells")
-  expect_true(grepl("1,?476", cells_box$html))
+  expect_true(grepl("120", cells_box$html))
 
   organism_box <- retry_get_value(app, output = "load_data_organism")
-  expect_true(grepl("hg", organism_box$html))
+  expect_true(grepl("Human", organism_box$html))
 
   date_box <- retry_get_value(app, output = "load_data_date_of_export")
   expect_true(grepl("[0-9]{4}-[0-9]{2}-[0-9]{2}", date_box$html))
@@ -212,8 +212,8 @@ test_that("{shinytest2} recording: marker_genes", {
   activate_tab(app, "markerGenes")
   app$wait_for_idle(timeout = 10000)
 
-  ## select seurat_clusters (only group with actual marker genes)
-  app$set_inputs(marker_genes_selected_table = "seurat_clusters", wait_ = FALSE)
+  ## Omnibus carries synthetic marker genes grouped by cell type.
+  app$set_inputs(marker_genes_selected_table = "cell_type", wait_ = FALSE)
   app$wait_for_idle(timeout = 10000)
 
   ## table renders — marker gene results render asynchronously, so the output can
@@ -319,12 +319,12 @@ test_that("{shinytest2} recording: gene_expression", {
   ## is "not found" and no gene is ever selected.
   wait_for_input(app, "expression_genes_input")
 
-  ## select MS4A1 and verify it is found in the data set
-  app$set_inputs(expression_genes_input = "MS4A1", wait_ = FALSE)
+  ## Select a deterministic Omnibus gene and verify it is found in the data set.
+  app$set_inputs(expression_genes_input = "Gene001", wait_ = FALSE)
   app$wait_for_idle(timeout = 15000)
 
   genes_text <- retry_get_value(app, output = "expression_genes_displayed")
-  expect_true(grepl("MS4A1", genes_text))
+  expect_true(grepl("Gene001", genes_text))
   expect_true(grepl("0 gene(s) are not in data set", genes_text, fixed = TRUE))
 
   ## projection plot renders after gene selection

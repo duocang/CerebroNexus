@@ -327,9 +327,9 @@ test_that("immune_repertoire module loads without breaking main app", {
   withr::defer(app$stop())
   app$wait_for_idle(timeout = 20000)
 
-  # Data info tab should still render normally (1476 cells in the new example)
+  # Data info tab should still render normally for the default Omnibus data.
   cells_box <- app$get_value(output = "load_data_number_of_cells")
-  expect_true(grepl("1,?476", cells_box$html))
+  expect_true(grepl("120", cells_box$html))
 })
 
 test_that("Clonal UMAP tab renders with receptor + projection selectors", {
@@ -482,7 +482,7 @@ test_that("Clonal UMAP switches to static facets only when grouped", {
   expect_true(isTRUE(exists_el("#ir_clonalUMAP_projection .plotly")))
   expect_false(isTRUE(exists_el("#ir_plot_clonalUMAP_static img")))
 
-  app$set_inputs(ir_p_umap_group_by = "sample", wait_ = FALSE)
+  app$set_inputs(ir_p_umap_group_by = "orig.ident", wait_ = FALSE)
   app$wait_for_idle(timeout = 20000)
 
   expect_false(isTRUE(exists_el("#ir_clonalUMAP_projection .plotly")))
