@@ -2141,6 +2141,18 @@
       review.focus();
       if (message && message.message) scheduleStatusAnnouncement(message.message);
     });
+    window.Shiny.addCustomMessageHandler("builder_focus_build", function (message) {
+      window.setTimeout(function () {
+        var build = document.getElementById("build");
+        if (!build) return;
+        build.scrollIntoView({
+          block: "center",
+          behavior: reducedMotion.matches ? "auto" : "smooth",
+        });
+        build.focus({ preventScroll: true });
+        if (message && message.message) scheduleStatusAnnouncement(message.message);
+      }, 120);
+    });
     window.Shiny.addCustomMessageHandler("builder_import_status", function (message) {
       if (message && message.text) scheduleStatusAnnouncement(message.text);
     });

@@ -642,7 +642,7 @@ observeEvent(input$review_current_dataset, {
     ))
   } else {
     session$sendCustomMessage(
-      "builder_focus_review",
+      "builder_focus_build",
       list(
         message = paste0(entry$settings$name, " marked as reviewed.")
       )
@@ -713,6 +713,23 @@ output$review_action_summary <- renderUI({
 ## from recreating those inputs and resetting the browser's current values.
 output$build_actions <- renderUI({
   rep <- review_report()
+  progress <- builder_review_progress(sets())
+  if (!isTRUE(progress$complete)) {
+    return(tagList(
+      actionButton(
+        "build",
+        "Build",
+        class = "btn btn-action",
+        disabled = TRUE,
+        style = "display:none;"
+      ),
+      actionButton(
+        "review_all_action",
+        "Review datasets",
+        class = "btn btn-action"
+      )
+    ))
+  }
   flow <- build_flow()
   current_protocol <- protocol()
   build_phase <- if (is.null(current_protocol)) {
@@ -739,6 +756,17 @@ output$build_actions <- renderUI({
       !isTRUE(worker_available())
   )
 })
+
+observeEvent(
+  input$review_all_action,
+  {
+    session$sendCustomMessage(
+      "builder_focus_review",
+      list(message = "Review every dataset before building.")
+    )
+  },
+  ignoreInit = TRUE
+)
 
 observe({
   current_flow <- build_flow()
