@@ -441,26 +441,31 @@ generated_app_fixture_pages <- function(conditional = character()) {
 }
 
 .generated_app_fixture_spatial <- function() {
-  record <- .generated_app_fixture_static_record("spatial_multi_section")
-  object <- record$make()$object
-  root <- dirname(record$serialized_path)
+  generated_app_fixture_source_runtime()
+  object <- .builder_fixture_with_seed(
+    2026L,
+    .builder_fixture_stabilize(.builder_fixture_spatial())
+  )
+  root <- dirname(
+    .generated_app_fixture_static_record("all_content")$serialized_path
+  )
   alignment <- list(
     section_a = list(
       bounds = list(xmin = 10, xmax = 106, ymin = 20, ymax = 92),
-      dimensions = c(height = 72L, width = 96L)
+      dimensions = c(height = 240L, width = 320L)
     ),
     section_b = list(
       bounds = list(xmin = 250, xmax = 330, ymin = 40, ymax = 104),
-      dimensions = c(height = 64L, width = 80L)
+      dimensions = c(height = 220L, width = 360L)
     )
   )
   attachments <- list(
     section_a = c(
-      list(path = file.path(root, "spatial_section_a.png")),
+      list(path = file.path(root, "patient_a_section_1.png")),
       alignment$section_a
     ),
     section_b = c(
-      list(path = file.path(root, "spatial_section_b.png")),
+      list(path = file.path(root, "patient_b_section_1.png")),
       alignment$section_b
     )
   )
@@ -496,9 +501,13 @@ generated_app_fixture_pages <- function(conditional = character()) {
 }
 
 .generated_app_fixture_immune <- function(id, name, output_file) {
-  record <- .generated_app_fixture_static_record(id)
-  object <- record$make()$object
   is_tcr <- identical(id, "immune_tcr_hla")
+  mode <- if (is_tcr) "tcr_hla" else "bcr_only"
+  generated_app_fixture_source_runtime()
+  object <- .builder_fixture_with_seed(
+    2026L,
+    .builder_fixture_stabilize(.builder_fixture_immune(mode))
+  )
   if (is_tcr) {
     umap <- SeuratObject::Embeddings(object, "umap")
     tsne <- cbind(TSNE_1 = umap[, 2L] + 0.25, TSNE_2 = -umap[, 1L])
@@ -555,28 +564,32 @@ generated_app_fixture_pages <- function(conditional = character()) {
   trekker <- object@misc$trekker
   object@misc <- list(trekker = trekker)
   object@images <- list()
-  groups <- c("sample", "cell_type", "condition")
-  colors <- c(control = "#A16207", treated = "#FACC15")
+  groups <- c("patient", "cell_type", "region")
+  colors <- c(
+    epithelial_zone = "#A16207",
+    stroma = "#FACC15",
+    immune_zone = "#CA8A04"
+  )
   list(
     object = object,
     attachments = list(),
     builder_settings = .generated_app_fixture_settings(
       "Trekker map",
-      "mm",
+      "hg",
       groups,
       "umap",
-      "condition",
+      "region",
       "umap",
-      color_overrides = list(condition = colors)
+      color_overrides = list(region = colors)
     ),
     expected = .generated_app_fixture_contract(
       object,
       "Trekker map",
-      "mm",
+      "hg",
       groups,
-      "condition",
+      "region",
       "umap",
-      palettes = list(condition = colors),
+      palettes = list(region = colors),
       conditional_pages = "trekker",
       optional_payloads = "trekker",
       output_file = "06-trekker-map-e2e-trekker.crb"

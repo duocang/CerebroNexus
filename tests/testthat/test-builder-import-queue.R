@@ -20,7 +20,7 @@ test_that("the live app exposes imports before their worker result", {
     worker_available(TRUE)
     protocol(app_env$builder_request_protocol("worker-import-queue"))
 
-    expect_true(start_load("example", "basic_pbmc", "Basic PBMC"))
+    expect_true(start_load("example", "all_content", "All content"))
     entry <- app_env$builder_import_find(imports(), "ds1")
     expect_s3_class(entry, "builder_import_entry")
     expect_true(entry$load_state %in% c("queued", "reading"))
@@ -44,7 +44,7 @@ test_that("the live app exposes imports before their worker result", {
     workbench_html <- paste(unlist(output$workbench), collapse = " ")
     actions_html <- paste(unlist(output$build_actions), collapse = " ")
     summary_html <- paste(unlist(output$review_action_summary), collapse = " ")
-    expect_match(rail_html, "Basic PBMC", fixed = TRUE)
+    expect_match(rail_html, "All content", fixed = TRUE)
     expect_match(rail_html, "builder-import-status", fixed = TRUE)
     expect_identical(output$ds_count, "1")
     expect_match(workbench_html, "Loading dataset", fixed = TRUE)

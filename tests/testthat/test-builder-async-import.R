@@ -95,7 +95,7 @@ test_that("a controlled slow importer runs outside the caller", {
   dispatch_elapsed <- unname(system.time(app_env$builder_session_example(
     worker,
     "slow",
-    "basic_pbmc",
+    "all_content",
     dispatched$request,
     progress_path = progress,
     import_generation = 1L,

@@ -117,17 +117,7 @@ test_that("Builder release documentation matches the guided workflow", {
 test_that("the Builder example catalog is a stable product contract", {
   expect_true(exists("builder_example_catalog", mode = "function"))
   catalog <- builder_example_catalog()
-  expected_ids <- c(
-    "basic_pbmc",
-    "spatial_multi_section",
-    "immune_tcr_hla",
-    "immune_tcr_only",
-    "immune_hla_only",
-    "immune_bcr_only",
-    "immune_metadata_tcr",
-    "immune_legacy_tcr",
-    "all_content"
-  )
+  expected_ids <- "all_content"
   expect_identical(names(catalog), expected_ids)
   expect_identical(
     unname(vapply(catalog, `[[`, character(1), "id")),
@@ -194,23 +184,9 @@ test_that("sourced Builder resources stay in the io.R inst tree", {
   installed_io <- file.path(installed_inst, "builder", "io.R")
   expect_true(file.copy(io_source, io_copy))
   expect_true(file.copy(io_source, installed_io))
-  fixture_names <- paste0(
-    c(
-      "spatial_multi_section",
-      "immune_tcr_hla",
-      "immune_tcr_only",
-      "immune_hla_only",
-      "immune_bcr_only",
-      "immune_metadata_tcr",
-      "immune_legacy_tcr",
-      "all_content"
-    ),
-    ".rds"
-  )
   resources <- c(
-    "extdata/examples/pbmc_seurat.rds",
-    "extdata/examples/demo_trekker.crb",
-    file.path("builder", "fixtures", fixture_names)
+    "builder/fixtures/all_content.rds",
+    "extdata/examples/demo_trekker.crb"
   )
   for (relative in resources) {
     current <- file.path(source_inst, relative)
@@ -256,13 +232,9 @@ test_that("sourced Builder resources stay in the io.R inst tree", {
     expected_root <- cases[[case]][[3L]]
     runtime <- load_io(loader, io_path)
     catalog <- runtime$builder_example_catalog()
-    expected_paths <- normalizePath(file.path(
-      expected_root,
-      c(resources[[1L]], resources[-c(1L, 2L)], resources[[2L]])
-    ))
+    expected_paths <- normalizePath(file.path(expected_root, resources))
     observed_paths <- c(
-      catalog$basic_pbmc$serialized_path,
-      vapply(catalog[-1L], `[[`, character(1), "serialized_path"),
+      catalog$all_content$serialized_path,
       runtime$.builder_example_path("extdata/examples/demo_trekker.crb")
     )
     expect_identical(unname(observed_paths), expected_paths, info = case)
@@ -323,7 +295,7 @@ test_that("synthetic constructors and permanent fixture writes are deterministic
     function(record) identical(record$provenance, "synthetic"),
     builder_example_catalog()
   )
-  expect_length(synthetic, 8L)
+  expect_length(synthetic, 1L)
 
   set.seed(1402)
   caller_seed <- .Random.seed
@@ -390,8 +362,11 @@ test_that("synthetic constructors and permanent fixture writes are deterministic
   }
   generated_names <- c(
     names,
-    "spatial_section_a.png",
-    "spatial_section_b.png"
+    "patient_a_section_1.png",
+    "patient_a_section_2.png",
+    "patient_b_section_1.png",
+    "patient_b_section_2.png",
+    "patient_b_section_3.png"
   )
   committed_dir <- dirname(synthetic[[1L]]$serialized_path)
   committed_paths <- file.path(committed_dir, generated_names)
@@ -577,15 +552,21 @@ test_that("all valid examples build and reopen", {
       available_bytes = 2^40
     )
     entry$snapshot <- snapshot
-    if (record$id %in% c("spatial_multi_section", "all_content")) {
+    if (identical(record$id, "all_content")) {
       sections <- entry$dataset_profile$spatial$sections
-      images <- c("spatial_section_a.png", "spatial_section_b.png")
-      image_bounds <- list(
-        section_a = list(xmin = 10, xmax = 106, ymin = 20, ymax = 92),
-        section_b = list(xmin = 250, xmax = 330, ymin = 40, ymax = 104)
+      image_sections <- setdiff(sections, "patient_c_section_1")
+      images <- c(
+        "patient_a_section_1.png",
+        "patient_a_section_2.png",
+        "patient_b_section_1.png",
+        "patient_b_section_2.png",
+        "patient_b_section_3.png"
       )
       entry$settings$images <- stats::setNames(
-        lapply(seq_along(sections), function(i) {
+        lapply(seq_along(image_sections), function(i) {
+          coordinates <- SeuratObject::GetTissueCoordinates(
+            object[[image_sections[[i]]]]
+          )
           list(
             uri = paste0(
               "data:image/png;base64,",
@@ -594,10 +575,15 @@ test_that("all valid examples build and reopen", {
                 images[[i]]
               ))
             ),
-            bounds = image_bounds[[sections[[i]]]]
+            bounds = list(
+              xmin = min(coordinates$x),
+              xmax = max(coordinates$x),
+              ymin = min(coordinates$y),
+              ymax = max(coordinates$y)
+            )
           )
         }),
-        sections
+        image_sections
       )
     }
     release <- file.path(root, paste0(record$id, "-release"))
@@ -704,45 +690,71 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
   expect_identical(anyDuplicated(matrix), 0L)
 
   records <- builder_example_catalog()
-  source_ids <- c(
-    plain = "basic_pbmc",
-    histology = "spatial_multi_section",
-    trekker = "all_content"
-  )
-  fixtures <- lapply(names(source_ids), function(content) {
-    record <- records[[source_ids[[content]]]]
+  content_names <- c("plain", "histology", "trekker")
+  fixtures <- lapply(content_names, function(content) {
+    object <- records$all_content$make()$object
+    if (content %in% c("plain", "trekker")) {
+      for (section in SeuratObject::Images(object)) {
+        object[[section]] <- NULL
+      }
+    }
+    if (content %in% c("plain", "histology")) {
+      object@misc$trekker <- NULL
+    }
+    record <- list(
+      id = paste0("matrix_", content),
+      label = paste("Matrix", content),
+      make = function() list(object = object, format = "Built-in example")
+    )
     entry <- builder_e2e_entry(record)
     snapshot <- builder_snapshot_seurat(
-      record$make()$object,
+      object,
       file.path(root, paste0(content, "-snapshot")),
       available_bytes = 2^40
     )
     entry$snapshot <- snapshot
     if (identical(content, "histology")) {
       sections <- entry$dataset_profile$spatial$sections
-      image_names <- c("spatial_section_a.png", "spatial_section_b.png")
+      image_sections <- setdiff(sections, "patient_c_section_1")
+      image_names <- c(
+        "patient_a_section_1.png",
+        "patient_a_section_2.png",
+        "patient_b_section_1.png",
+        "patient_b_section_2.png",
+        "patient_b_section_3.png"
+      )
       entry$settings$images <- stats::setNames(
-        lapply(seq_along(sections), function(i) {
-          image <- file.path(dirname(record$serialized_path), image_names[[i]])
+        lapply(seq_along(image_sections), function(i) {
+          image <- file.path(
+            dirname(records$all_content$serialized_path),
+            image_names[[i]]
+          )
+          coordinates <- SeuratObject::GetTissueCoordinates(
+            object[[image_sections[[i]]]]
+          )
           list(
             uri = paste0(
               "data:image/png;base64,",
               base64enc::base64encode(image)
             ),
             bounds = list(
-              xmin = as.double((i - 1L) * 200L),
-              xmax = as.double((i - 1L) * 200L + 100L),
-              ymin = 0,
-              ymax = 100
+              xmin = min(coordinates$x),
+              xmax = max(coordinates$x),
+              ymin = min(coordinates$y),
+              ymax = max(coordinates$y)
             )
           )
         }),
-        sections
+        image_sections
       )
     }
-    list(entry = entry, snapshot = snapshot)
+    list(
+      entry = entry,
+      snapshot = snapshot,
+      sections = SeuratObject::Images(object)
+    )
   })
-  names(fixtures) <- names(source_ids)
+  names(fixtures) <- content_names
 
   for (index in seq_len(nrow(matrix))) {
     coordinate <- matrix[index, , drop = FALSE]
@@ -805,12 +817,12 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
     }
     if (identical(coordinate$content, "histology")) {
       spatial <- reopened$spatial
-      expect_identical(
-        names(spatial),
-        names(entry$settings$images),
+      expect_identical(names(spatial), fixture$sections, info = label)
+      expect_true(
+        all(names(entry$settings$images) %in% names(spatial)),
         info = label
       )
-      for (section in names(spatial)) {
+      for (section in names(entry$settings$images)) {
         expect_identical(
           spatial[[section]]$histology_image,
           entry$settings$images[[section]]$uri,
@@ -822,6 +834,10 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
           info = label
         )
       }
+      points_only <- setdiff(names(spatial), names(entry$settings$images))
+      expect_identical(points_only, "patient_c_section_1", info = label)
+      expect_null(spatial[[points_only]]$histology_image, info = label)
+      expect_null(spatial[[points_only]]$histology_image_bounds, info = label)
     }
     if (identical(coordinate$content, "trekker")) {
       clusters <- reopened$getTrekker()$clusters

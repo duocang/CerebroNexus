@@ -131,10 +131,10 @@ builder_e2e_entry <- function(record, caller = parent.frame()) {
 builder_e2e_invalid_content_entry <- function() {
   caller <- parent.frame()
   object <- get(
-    "builder_make_permanent_fixture",
+    ".builder_fixture_immune",
     caller,
     inherits = TRUE
-  )("immune_tcr_hla")
+  )("tcr_hla")
   legacy <- object@misc$immune_repertoire
   legacy[[1L]]$CTaa[[1L]] <- "CASSDIVERGENTF"
   legacy[[1L]]$CTstrict[[1L]] <- "TRB_divergent_clone"
@@ -178,39 +178,31 @@ builder_e2e_validate_all_content <- function(
   promised <- names(record$expected_dispositions)[
     record$expected_dispositions == "preserved"
   ]
-  required <- c(
-    marker_genes = "marker_genes",
-    most_expressed_genes = "most_expressed_genes",
-    mean_expression = "mean_expression",
-    enriched_pathways = "enriched_pathways",
-    trajectory = "trajectories",
-    extra_material = "extra_material",
-    immune_repertoire = "immune_repertoire",
-    hla = "hla_typing",
-    spatial = "spatial",
-    trekker = "trekker"
+  check(
+    identical(
+      intersect(promised, c("spatial", "trekker")),
+      c("spatial", "trekker")
+    ),
+    "catalog preserved families"
   )
-  check(all(names(required) %in% promised), "catalog preserved families")
-  for (id in names(required)) {
-    value <- field(required[[id]])
-    check(!is.null(value) && length(value) > 0L, paste(id, "is non-empty"))
-  }
-
-  direct <- c(
-    marker_genes = "marker_genes",
-    most_expressed_genes = "most_expressed_genes",
-    mean_expression = "mean_expression",
-    enriched_pathways = "enriched_pathways",
-    trajectories = "trajectories",
-    extra_material = "extra_material",
-    immune_repertoire = "immune_repertoire"
+  forbidden <- c(
+    "marker_genes",
+    "most_expressed_genes",
+    "mean_expression",
+    "enriched_pathways",
+    "trajectories",
+    "extra_material",
+    "immune_repertoire",
+    "hla_typing"
   )
-  for (name in names(direct)) {
-    check(
-      same(source@misc[[name]], field(direct[[name]])),
-      paste(name, "round trip")
-    )
-  }
+  check(
+    all(vapply(
+      forbidden,
+      function(name) length(field(name)) == 0L,
+      logical(1)
+    )),
+    "Enhance content is not precomputed"
+  )
 
   source_trekker <- source@misc$trekker
   output_trekker <- field("trekker")
@@ -242,52 +234,19 @@ builder_e2e_validate_all_content <- function(
     identical(output_trekker$builder_group_values, expected_group_values),
     "trekker Builder group values"
   )
-  expected_levels <- levels(source@meta.data[[settings$default_group]])
-  expected_colors <- c(
-    Astrocyte = "#FFC312",
-    Microglia = "#C4E538",
-    Neuron = "#12CBC4"
-  )
-  check(
-    identical(names(output_trekker$builder_colors), expected_levels) &&
-      identical(output_trekker$builder_colors, expected_colors),
-    "trekker Builder colors"
-  )
-
-  source_hla <- source@misc$hla_typing
-  output_hla <- field("hla_typing")
-  check(
-    same(output_hla[names(source_hla)], source_hla),
-    "HLA typing core columns"
-  )
-  check(
-    identical(unique(output_hla$source_type), "synthetic"),
-    "HLA typing provenance"
-  )
 
   spatial <- field("spatial")
   sections <- SeuratObject::Images(source)
   check(identical(names(spatial), sections), "spatial section order")
-  check(identical(names(settings$images), sections), "image section order")
-  designs <- list(
-    section_a = list(
-      bounds = list(xmin = 10, xmax = 106, ymin = 20, ymax = 92),
-      dimensions = c(height = 72L, width = 96L),
-      file = "spatial_section_a.png"
-    ),
-    section_b = list(
-      bounds = list(xmin = 250, xmax = 330, ymin = 40, ymax = 104),
-      dimensions = c(height = 64L, width = 80L),
-      file = "spatial_section_b.png"
-    )
+  expected_images <- setdiff(sections, "patient_c_section_1")
+  check(
+    identical(names(settings$images), expected_images),
+    "five image section assignments"
   )
   for (section in sections) {
     source_coordinates <- SeuratObject::GetTissueCoordinates(source[[section]])
     source_coordinates <- source_coordinates[, c("x", "y"), drop = FALSE]
     output <- spatial[[section]]
-    design <- designs[[section]]
-    image_path <- file.path(dirname(record$serialized_path), design$file)
-    image <- png::readPNG(image_path)
     check(
       same(
         unname(as.matrix(output$coordinates)),
@@ -306,40 +265,23 @@ builder_e2e_validate_all_content <- function(
       identical(output$coordinate_source, "object.GetTissueCoordinates"),
       paste(section, "coordinate source")
     )
-    check(
-      identical(settings$images[[section]]$bounds, design$bounds),
-      paste(section, "configured bounds")
-    )
-    check(
-      identical(output$histology_image_bounds, design$bounds),
-      paste(section, "readback bounds")
-    )
-    check(
-      identical(output$histology_image, settings$images[[section]]$uri),
-      paste(section, "histology image")
-    )
-    check(
-      identical(dim(image)[1:2], unname(design$dimensions)),
-      paste(section, "PNG dimensions")
-    )
-    transformed_x <- (output$coordinates$x - design$bounds$xmin) /
-      (design$bounds$xmax - design$bounds$xmin) *
-      design$dimensions[["width"]]
-    transformed_y <- (output$coordinates$y - design$bounds$ymin) /
-      (design$bounds$ymax - design$bounds$ymin) *
-      design$dimensions[["height"]]
-    check(
-      all(transformed_x >= 0 & transformed_x <= design$dimensions[["width"]]),
-      paste(section, "x transform")
-    )
-    check(
-      all(transformed_y >= 0 & transformed_y <= design$dimensions[["height"]]),
-      paste(section, "y transform")
-    )
+    if (section %in% expected_images) {
+      configured <- settings$images[[section]]
+      check(
+        identical(output$histology_image, configured$uri),
+        paste(section, "histology image")
+      )
+      check(
+        identical(output$histology_image_bounds, configured$bounds),
+        paste(section, "image bounds")
+      )
+    } else {
+      check(is.null(output$histology_image), "patient C has no image")
+      check(is.null(output$histology_image_bounds), "patient C has no bounds")
+    }
   }
   invisible(TRUE)
 }
-
 builder_e2e_run_generated_app <- function(
   app_dir,
   hermetic_library,

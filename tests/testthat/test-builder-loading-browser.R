@@ -21,7 +21,7 @@ test_that("Builder stays visible while a dataset loads", {
 
   expect_true(app$get_js(paste0(
     "document.querySelector('.builder-shell') !== null && ",
-    "document.querySelector('.example-btn[data-ex=basic_pbmc]') !== null && ",
+    "document.querySelector('.example-btn[data-ex=all_content]') !== null && ",
     "document.querySelector('.builder-empty-state') !== null && ",
     "document.getElementById('workbench').textContent.trim().length > 0"
   )))
@@ -43,7 +43,7 @@ test_that("Builder stays visible while a dataset loads", {
   expect_gt(geometry$paneWidth, 1200)
   expect_lte(geometry$documentWidth, geometry$viewport + 1)
 
-  app$click(selector = ".example-btn[data-ex=basic_pbmc]")
+  app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     paste0(
       "document.querySelector('.builder-loading-stage') !== null && ",
@@ -69,7 +69,7 @@ test_that("Builder stays visible while a dataset loads", {
     timeout = 60000
   )
   expect_true(app$get_js(paste0(
-    "document.querySelector('.example-btn[data-ex=basic_pbmc]').classList",
+    "document.querySelector('.example-btn[data-ex=all_content]').classList",
     ".contains('is-taken') && ",
     "document.getElementById('workbench').textContent.trim().length > 0 && ",
     "window.Shiny.shinyapp.$socket.readyState === WebSocket.OPEN"

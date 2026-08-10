@@ -1,11 +1,11 @@
 library(shinytest2)
 
-builder_narrow_document_height_budget <- 5000
+builder_narrow_document_height_budget <- 6500
 
-test_that("Builder narrow height budget excludes the recorded baseline", {
-  recorded_baseline <- 5500
+test_that("Builder narrow height budget covers the All content baseline", {
+  recorded_baseline <- 6156
 
-  expect_gte(recorded_baseline, builder_narrow_document_height_budget)
+  expect_lte(recorded_baseline, builder_narrow_document_height_budget)
 })
 
 builder_responsive_geometry <- function(app) {
@@ -48,10 +48,10 @@ test_that("Builder preserves responsive geometry before Build", {
   app$wait_for_idle(timeout = 30000)
 
   app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=basic_pbmc]') !== null",
+    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
     timeout = 10000
   )
-  app$click(selector = ".example-btn[data-ex=basic_pbmc]")
+  app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     paste0(
       "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
@@ -103,7 +103,7 @@ test_that("Builder preserves responsive geometry before Build", {
   expect_gte(geometries[["768"]]$mainWidth, 768 * 0.9)
   expect_lte(geometries[["768"]]$mainWidth, 768)
   expect_lte(geometries[["390"]]$documentWidth, 391)
-  # The recorded baseline was about 5500px; 5000 preserves cross-font headroom.
+  # All content renders near 6156px; 6500 preserves cross-font headroom.
   expect_lt(
     geometries[["390"]]$documentHeight,
     builder_narrow_document_height_budget

@@ -62,8 +62,8 @@ test_that("static example cards carry stable IDs and loading metadata", {
   sys.source("app.R", envir = app_env)
   html <- htmltools::renderTags(app_env$builder_example_buttons_ui())$html
 
-  expect_match(html, 'data-ex="basic_pbmc"', fixed = TRUE)
-  expect_match(html, 'data-label="Basic PBMC"', fixed = TRUE)
+  expect_match(html, 'data-ex="all_content"', fixed = TRUE)
+  expect_match(html, 'data-label="All content"', fixed = TRUE)
   expect_match(html, 'class="btn example-btn"', fixed = TRUE)
   expect_match(html, "builder-example-directory", fixed = TRUE)
 })
@@ -956,10 +956,10 @@ if (builder_rail_api_available) {
 
     shiny::testServer(app_env$server, {
       used <- builder_rail_entry("used-example")
-      used$example <- "basic_pbmc"
+      used$example <- "all_content"
       sets(list(used))
 
-      session$setInputs(use_example = "basic_pbmc")
+      session$setInputs(use_example = "all_content")
       expect_identical(
         add_error(),
         "Worker startup is disabled in this picker-state test."
@@ -971,11 +971,7 @@ if (builder_rail_api_available) {
         "Worker startup is disabled in this picker-state test."
       )
 
-      session$setInputs(use_example = "spatial_multi_section")
-      expect_identical(
-        add_error(),
-        "The background worker is not ready yet."
-      )
+      expect_length(sets(), 1L)
     })
   })
 
@@ -1014,31 +1010,31 @@ if (builder_rail_api_available) {
       worker_available(TRUE)
       protocol(app_env$builder_request_protocol("worker-reservation"))
 
-      expect_true(start_load("example", "basic_pbmc", "PBMC"))
-      expect_false(start_load("example", "basic_pbmc", "PBMC"))
+      expect_true(start_load("example", "all_content", "PBMC"))
+      expect_false(start_load("example", "all_content", "PBMC"))
       expect_length(pending_sources(), 1L)
-      pending_sources(builder_source_key("example", "basic_pbmc"))
+      pending_sources(builder_source_key("example", "all_content"))
       worker(NULL)
       worker_available(FALSE)
       release_pending_source(list(
         kind = "load",
         source = "example",
-        example = "basic_pbmc"
+        example = "all_content"
       ))
       worker(list(epoch = "worker-reservation-retry"))
       worker_available(TRUE)
       protocol(app_env$builder_request_protocol("worker-reservation-retry"))
-      expect_true(start_load("example", "basic_pbmc", "PBMC"))
+      expect_true(start_load("example", "all_content", "PBMC"))
 
       release_pending_source(list(
         kind = "load",
         source = "example",
-        example = "basic_pbmc"
+        example = "all_content"
       ))
       loaded <- builder_rail_entry("loaded")
-      loaded$example <- "basic_pbmc"
+      loaded$example <- "all_content"
       sets(list(loaded))
-      expect_false(start_load("example", "basic_pbmc", "PBMC"))
+      expect_false(start_load("example", "all_content", "PBMC"))
     })
   })
 
@@ -1144,7 +1140,7 @@ if (builder_rail_api_available) {
       worker(list(epoch = "worker-before-recovery"))
       worker_available(TRUE)
       protocol(app_env$builder_request_protocol("worker-before-recovery"))
-      expect_true(start_load("example", "basic_pbmc", "PBMC"))
+      expect_true(start_load("example", "all_content", "PBMC"))
       reserved <- pending_sources()
 
       expect_true(apply_protocol_recovery(

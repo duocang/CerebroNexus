@@ -51,10 +51,10 @@ test_that("native folder selection queues a Build after a flush", {
   app$wait_for_idle(timeout = 30000)
 
   app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=basic_pbmc]') !== null",
+    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
     timeout = 10000
   )
-  app$click(selector = ".example-btn[data-ex=basic_pbmc]")
+  app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     paste0(
       "document.querySelector('.ds-pick[aria-current=true]') !== null && ",

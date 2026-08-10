@@ -59,7 +59,7 @@ builder_auth_browser_picker <- function(
   invisible(output_dir)
 }
 
-builder_auth_browser_load_example <- function(app, example = "basic_pbmc") {
+builder_auth_browser_load_example <- function(app, example = "all_content") {
   app$wait_for_js(
     sprintf(
       "document.querySelector('.example-btn[data-ex=%s]') !== null",
@@ -380,7 +380,13 @@ test_that("Builder auth survives redraw and traps focus", {
   on.exit(builder_auth_browser_teardown(app), add = TRUE)
   app$wait_for_idle(timeout = 30000)
   builder_auth_browser_load_example(app)
-  app$click(selector = ".example-btn[data-ex=spatial_multi_section]")
+  app$upload_file(
+    dataset_files = builder_profile_inst_path(
+      "builder",
+      "fixtures",
+      "all_content.rds"
+    )
+  )
   app$wait_for_js(
     paste0(
       "document.querySelectorAll('.ds-pick').length === 2 && ",

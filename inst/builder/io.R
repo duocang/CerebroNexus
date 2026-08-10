@@ -528,144 +528,178 @@ builder_list_candidates <- function(dir) {
 }
 
 .builder_fixture_all_content <- function() {
-  object <- .builder_fixture_immune("tcr_hla")
-  cells <- colnames(object)
-  object <- .builder_fixture_add_section(
-    object,
-    "section_a",
-    cells[seq_len(12L)],
-    c(10, 20),
-    c(96, 72)
+  patients <- rep(c("patient_a", "patient_b", "patient_c"), each = 60L)
+  sections <- c(
+    rep(c("patient_a_section_1", "patient_a_section_2"), each = 30L),
+    rep(
+      c(
+        "patient_b_section_1",
+        "patient_b_section_2",
+        "patient_b_section_3"
+      ),
+      each = 20L
+    ),
+    rep("patient_c_section_1", 60L)
   )
-  object <- .builder_fixture_add_section(
-    object,
-    "section_b",
-    cells[13:24],
-    c(250, 40),
-    c(80, 64)
+  cell_types <- c("Epithelial", "Fibroblast", "Macrophage", "T cell")
+  cells <- sprintf("%s_cell_%03d", patients, seq_along(patients))
+  cell_type <- rep(cell_types, length.out = length(cells))
+  cluster <- paste0("cluster_", match(cell_type, cell_types))
+  region <- unname(c(
+    Epithelial = "epithelial_zone",
+    Fibroblast = "stroma",
+    Macrophage = "immune_zone",
+    `T cell` = "immune_zone"
+  )[cell_type])
+  marker_genes <- list(
+    Epithelial = c("EPCAM", "KRT8", "KRT18", "KRT19"),
+    Fibroblast = c("COL1A1", "COL1A2", "DCN", "LUM"),
+    Macrophage = c("CD68", "LYZ", "CD163", "CSF1R"),
+    `T cell` = c("CD3D", "CD3E", "TRBC1", "IL7R")
   )
-  object@misc$marker_genes <- list(
-    cerebro_seurat = list(
-      cell_type = data.frame(
-        cell_type = c("Neuron", "Astrocyte"),
-        gene = c("Gene1", "Gene2"),
-        avg_log2FC = c(1, 0.8),
-        stringsAsFactors = FALSE
-      )
-    )
+  genes <- c(
+    unlist(marker_genes, use.names = FALSE),
+    sprintf("GENE%03d", 1:144)
   )
-  object@misc$most_expressed_genes <- list(
-    cell_type = data.frame(
-      cell_type = c("Neuron", "Astrocyte"),
-      gene = c("Gene1", "Gene2"),
-      pct = c(90, 85),
-      stringsAsFactors = FALSE
-    )
-  )
-  object@misc$mean_expression <- list(
-    cell_type = data.frame(
-      cell_type = c("Neuron", "Astrocyte"),
-      gene = c("Gene1", "Gene2"),
-      mean_expr = c(2.5, 1.8),
-      stringsAsFactors = FALSE
-    )
-  )
-  object@misc$enriched_pathways <- list(
-    synthetic = list(
-      cell_type = data.frame(
-        cell_type = c("Neuron", "Astrocyte"),
-        Term = c("Synapse", "Glial differentiation"),
-        Combined.Score = c(8.2, 7.5),
-        stringsAsFactors = FALSE
-      )
-    )
-  )
-  object@misc$extra_material <- list(
-    tables = list(
-      summary = data.frame(metric = "cells", value = ncol(object))
-    )
-  )
-  trajectory_cells <- cells[c(1L, 3L)]
-  object@misc$trajectories <- list(
-    monocle2 = list(
-      lineage = list(
-        meta = data.frame(
-          DR_1 = c(0.1, 0.8),
-          DR_2 = c(0.2, 0.7),
-          pseudotime = c(0, 1),
-          state = factor(c("1", "2"), levels = c("1", "2")),
-          row.names = trajectory_cells,
-          check.names = FALSE
-        ),
-        edges = data.frame(
-          source = "n1",
-          target = "n2",
-          weight = 1,
-          source_dim_1 = 0.1,
-          source_dim_2 = 0.2,
-          target_dim_1 = 0.8,
-          target_dim_2 = 0.7,
-          stringsAsFactors = FALSE,
-          check.names = FALSE
-        )
-      )
-    )
-  )
-  trekker <- readRDS(
-    .builder_example_path("extdata/examples/demo_trekker.crb")
-  )$getTrekker()
-  keep <- seq_along(cells)
-  for (name in c("x", "y", "ux", "uy", "clusters")) {
-    trekker[[name]] <- trekker[[name]][keep]
+  lambda <- matrix(0.12, nrow = length(genes), ncol = length(cells))
+  rownames(lambda) <- genes
+  colnames(lambda) <- cells
+  for (type in cell_types) {
+    lambda[marker_genes[[type]], cell_type == type] <- 5
   }
-  trekker$barcodes <- cells
-  trekker$fields <- lapply(trekker$fields, function(field) {
-    field$v <- field$v[keep]
-    field
-  })
-  trekker$conf <- lapply(trekker$conf, function(values) values[keep])
-  trekker$moran <- utils::head(trekker$moran, 8L)
-  for (index in seq_along(trekker$moran)) {
-    trekker$moran[[index]]$gene <- paste0("Gene", index)
+  counts <- Matrix::Matrix(
+    matrix(stats::rpois(length(lambda), lambda), nrow = nrow(lambda)),
+    sparse = TRUE,
+    dimnames = list(genes, cells)
+  )
+  object <- SeuratObject::CreateSeuratObject(counts = counts)
+  object <- Seurat::NormalizeData(object, verbose = FALSE)
+  object$patient <- factor(patients, levels = unique(patients))
+  object$section <- factor(sections, levels = unique(sections))
+  object$cell_type <- factor(cell_type, levels = cell_types)
+  object$cluster <- factor(cluster, levels = unique(cluster))
+  object$region <- factor(region, levels = unique(region))
+
+  cluster_index <- match(cell_type, cell_types)
+  centers <- matrix(c(-4, -2, 4, -2, -2, 4, 4, 4), ncol = 2, byrow = TRUE)
+  umap <- centers[cluster_index, , drop = FALSE] +
+    matrix(stats::rnorm(length(cells) * 2L, sd = 0.7), ncol = 2L)
+  tsne <- centers[cluster_index, , drop = FALSE] *
+    1.4 +
+    matrix(stats::rnorm(length(cells) * 2L, sd = 0.9), ncol = 2L)
+  pca <- cbind(
+    umap,
+    matrix(stats::rnorm(length(cells) * 3L), ncol = 3L)
+  )
+  rownames(umap) <- rownames(tsne) <- rownames(pca) <- cells
+  colnames(umap) <- c("UMAP_1", "UMAP_2")
+  colnames(tsne) <- c("TSNE_1", "TSNE_2")
+  colnames(pca) <- paste0("PC_", 1:5)
+  object[["pca"]] <- SeuratObject::CreateDimReducObject(
+    pca,
+    key = "PC_",
+    assay = "RNA"
+  )
+  object[["umap"]] <- SeuratObject::CreateDimReducObject(
+    umap,
+    key = "UMAP_",
+    assay = "RNA"
+  )
+  object[["tsne"]] <- SeuratObject::CreateDimReducObject(
+    tsne,
+    key = "TSNE_",
+    assay = "RNA"
+  )
+
+  section_names <- unique(sections)
+  for (index in seq_along(section_names)) {
+    section <- section_names[[index]]
+    section_cells <- cells[sections == section]
+    object <- .builder_fixture_add_section(
+      object,
+      section,
+      section_cells,
+      origin = c((index - 1L) * 1200, (index %% 2L) * 250),
+      span = c(950, 720)
+    )
   }
-  trekker$evidence <- list()
-  trekker$qc_examples <- list()
-  trekker$meta$n_cells_full <- length(cells)
-  trekker$meta$n_cells <- length(cells)
-  trekker$meta$n_genes_obj <- nrow(object)
-  trekker$meta$generated <- "2026-08-06T00:00:00+0000"
-  trekker$qc$total_nuclei <- length(cells)
-  trekker$qc$in_lib <- length(cells)
-  trekker$qc$positioned <- length(cells)
-  trekker$qc$conf <- length(cells)
-  trekker$qc$o_1 <- length(cells)
-  trekker$qc$n_0 <- 0
-  trekker$qc$n_1 <- length(cells)
-  trekker$qc$n_2 <- 0
-  trekker$qc$n_3 <- 0
-  trekker$qc$n_4p <- 0
-  trekker$qc$salv_2 <- 0
-  trekker$qc$salv_3 <- 0
-  object@misc$trekker <- trekker
+
+  positioned <- seq(1L, length(cells), by = 2L)
+  positioned_cells <- cells[positioned]
+  purity <- stats::runif(length(positioned), 0.45, 0.98)
+  object@misc$trekker <- list(
+    meta = list(
+      n_cells_full = length(cells),
+      n_cells = length(positioned),
+      n_genes_obj = length(genes),
+      unit = "um",
+      coord_source = "synthetic_xenium",
+      r = 25,
+      seurat = TRUE,
+      generated = "2026-08-10T00:00:00+0000"
+    ),
+    qc = list(
+      sample_id = "xenium_omnibus",
+      assay = "synthetic_xenium",
+      tile_id = "all_sections",
+      eps = "25",
+      min_sb = "5",
+      total_nuclei = length(cells),
+      in_lib = length(cells),
+      pct_in_lib = 100,
+      pct_valid_sb = 100,
+      positioned = length(positioned),
+      pct_positioned = 100 * length(positioned) / length(cells),
+      conf = length(positioned),
+      pct_conf = 100 * length(positioned) / length(cells),
+      pct_2plus = 0,
+      o_1 = length(positioned),
+      n_0 = 0L,
+      n_1 = length(positioned),
+      n_2 = 0L,
+      n_3 = 0L,
+      n_4p = 0L,
+      salv_2 = 0L,
+      salv_3 = 0L
+    ),
+    barcodes = positioned_cells,
+    x = unname(round(stats::runif(length(positioned), 0, 4200), 2)),
+    y = unname(round(stats::runif(length(positioned), 0, 3200), 2)),
+    ux = unname(round(umap[positioned, 1L], 3)),
+    uy = unname(round(umap[positioned, 2L], 3)),
+    clusters = unname(cluster_index[positioned] - 1L),
+    celltype = cell_types,
+    fields = list(
+      spatial_purity = list(
+        v = unname(as.integer(round(purity * 255))),
+        max = 1,
+        label = "Spatial purity",
+        desc = "Synthetic neighbour agreement."
+      )
+    ),
+    conf = list(
+      prop_top = unname(round(stats::runif(length(positioned), 0.7, 0.99), 3)),
+      prop_noise = unname(round(stats::runif(length(positioned), 0, 0.2), 3)),
+      sb_total = rep(100L, length(positioned)),
+      sb_umi_top = rep(80L, length(positioned))
+    ),
+    moran = lapply(seq_len(8L), function(index) {
+      list(
+        rank = as.integer(index),
+        gene = genes[[index]],
+        I = 0.8 - index * 0.04
+      )
+    }),
+    evidence = list(),
+    qc_examples = list()
+  )
   object
 }
 
 builder_make_permanent_fixture <- function(id) {
   .builder_fixture_with_seed(2026L, {
-    modes <- c(
-      immune_tcr_hla = "tcr_hla",
-      immune_tcr_only = "tcr_only",
-      immune_hla_only = "hla_only",
-      immune_bcr_only = "bcr_only",
-      immune_metadata_tcr = "metadata_tcr",
-      immune_legacy_tcr = "legacy_tcr"
-    )
-    object <- if (identical(id, "spatial_multi_section")) {
-      .builder_fixture_spatial()
-    } else if (identical(id, "all_content")) {
+    object <- if (identical(id, "all_content")) {
       .builder_fixture_all_content()
-    } else if (id %in% names(modes)) {
-      .builder_fixture_immune(unname(modes[[id]]))
     } else {
       stop("Unknown permanent Builder fixture: ", id, call. = FALSE)
     }
@@ -698,34 +732,32 @@ builder_make_permanent_fixture <- function(id) {
 builder_write_permanent_fixtures <- function(output_dir) {
   .builder_fixture_with_seed(2026L, {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-    .builder_fixture_write_tissue_png(
-      file.path(output_dir, "spatial_section_a.png"),
-      96L,
-      72L,
-      1401L
+    images <- data.frame(
+      name = c(
+        "patient_a_section_1.png",
+        "patient_a_section_2.png",
+        "patient_b_section_1.png",
+        "patient_b_section_2.png",
+        "patient_b_section_3.png"
+      ),
+      width = c(320L, 280L, 360L, 300L, 340L),
+      height = c(240L, 300L, 220L, 280L, 260L),
+      seed = 1401:1405,
+      stringsAsFactors = FALSE
     )
-    .builder_fixture_write_tissue_png(
-      file.path(output_dir, "spatial_section_b.png"),
-      80L,
-      64L,
-      1402L
-    )
-    ids <- c(
-      "spatial_multi_section",
-      "immune_tcr_hla",
-      "immune_tcr_only",
-      "immune_hla_only",
-      "immune_bcr_only",
-      "immune_metadata_tcr",
-      "immune_legacy_tcr",
-      "all_content"
-    )
-    for (id in ids) {
-      saveRDS(
-        builder_make_permanent_fixture(id),
-        file.path(output_dir, paste0(id, ".rds")),
-        version = 3L
+    for (index in seq_len(nrow(images))) {
+      .builder_fixture_write_tissue_png(
+        file.path(output_dir, images$name[[index]]),
+        images$width[[index]],
+        images$height[[index]],
+        images$seed[[index]]
       )
+    }
+    path <- file.path(output_dir, "all_content.rds")
+    saveRDS(builder_make_permanent_fixture("all_content"), path, version = 3L)
+    reopened <- readRDS(path)
+    if (!methods::is(reopened, "Seurat")) {
+      stop("The permanent All content fixture did not round-trip as Seurat.")
     }
   })
   invisible(output_dir)
@@ -902,222 +934,39 @@ builder_example_catalog <- function() {
       expected_dispositions = expected_dispositions
     )
   }
-  synthetic_make <- function(id) {
-    force(id)
-    function() {
-      list(
-        object = builder_make_permanent_fixture(id),
-        format = "Built-in example"
-      )
-    }
-  }
-  records <- list(
-    record(
-      "basic_pbmc",
-      "Basic PBMC",
-      "A compact real PBMC object for the core expression workflow",
-      "real",
-      .builder_example_path("extdata/examples/pbmc_seurat.rds"),
-      expected_dispositions = with_content(
-        core(c("pca", "umap")),
-        marker_genes = "preserved"
-      ),
-      expected_pages = "marker_genes"
+  all_content <- record(
+    "all_content",
+    "All content",
+    "Synthetic Seurat with three Xenium patients, six sections, and Trekker",
+    "synthetic",
+    fixture("all_content.rds"),
+    expected_dispositions = with_content(
+      core(c("pca", "umap", "tsne")),
+      spatial = "preserved",
+      trekker = "preserved"
     ),
-    record(
-      "spatial_multi_section",
-      "Spatial multi-section",
-      "Two synthetic tissue sections with independent image alignment",
-      "synthetic",
-      fixture("spatial_multi_section.rds"),
-      make = synthetic_make("spatial_multi_section"),
-      expected_dispositions = with_content(
-        core(c("umap", "tsne")),
-        spatial = "preserved"
-      ),
-      expected_pages = "spatial",
-      expected_supporting_content = c(
-        "spatial_section_a.png",
-        "spatial_section_b.png"
-      )
-    ),
-    record(
-      "immune_tcr_hla",
-      "Immune: TCR + HLA",
-      "T-cell receptor data with donor HLA typing",
-      "synthetic",
-      fixture("immune_tcr_hla.rds"),
-      make = synthetic_make("immune_tcr_hla"),
-      expected_dispositions = with_content(
-        core(),
-        immune_repertoire = "preserved",
-        hla_tcr_motifs = "preserved",
-        hla = "preserved"
-      ),
-      expected_pages = c("immune_repertoire", "hla_tcr_motifs")
-    ),
-    record(
-      "immune_tcr_only",
-      "Immune: TCR only",
-      "T-cell receptor data without HLA typing",
-      "synthetic",
-      fixture("immune_tcr_only.rds"),
-      make = synthetic_make("immune_tcr_only"),
-      expected_dispositions = with_content(
-        core(),
-        immune_repertoire = "preserved",
-        hla_tcr_motifs = "preserved"
-      ),
-      expected_pages = c("immune_repertoire", "hla_tcr_motifs")
-    ),
-    record(
-      "immune_hla_only",
-      "Immune: HLA only",
-      "HLA typing without an immune repertoire",
-      "synthetic",
-      fixture("immune_hla_only.rds"),
-      make = synthetic_make("immune_hla_only"),
-      expected_dispositions = with_content(core(), hla = "preserved")
-    ),
-    record(
-      "immune_bcr_only",
-      "Immune: BCR only",
-      "B-cell receptor data without TCR chains",
-      "synthetic",
-      fixture("immune_bcr_only.rds"),
-      make = synthetic_make("immune_bcr_only"),
-      expected_dispositions = with_content(
-        core(),
-        immune_repertoire = "preserved"
-      ),
-      expected_pages = "immune_repertoire"
-    ),
-    record(
-      "immune_metadata_tcr",
-      "Immune: metadata TCR",
-      "TCR fields in metadata for Builder conversion",
-      "synthetic",
-      fixture("immune_metadata_tcr.rds"),
-      make = synthetic_make("immune_metadata_tcr"),
-      expected_dispositions = with_content(
-        core(groups = "converted"),
-        immune_repertoire = "converted",
-        hla_tcr_motifs = "converted"
-      ),
-      expected_pages = c("immune_repertoire", "hla_tcr_motifs")
-    ),
-    record(
-      "immune_legacy_tcr",
-      "Immune: legacy TCR",
-      "Legacy TCR payload for Builder conversion",
-      "synthetic",
-      fixture("immune_legacy_tcr.rds"),
-      make = synthetic_make("immune_legacy_tcr"),
-      expected_dispositions = with_content(
-        core(),
-        immune_repertoire = "converted",
-        hla_tcr_motifs = "converted"
-      ),
-      expected_pages = c("immune_repertoire", "hla_tcr_motifs")
-    ),
-    record(
-      "all_content",
-      "All content",
-      "Expression, immune, HLA, spatial, Trekker, and supporting content",
-      "synthetic",
-      fixture("all_content.rds"),
-      make = synthetic_make("all_content"),
-      expected_dispositions = with_content(
-        core(),
-        marker_genes = "preserved",
-        most_expressed_genes = "preserved",
-        mean_expression = "preserved",
-        enriched_pathways = "preserved",
-        trajectory = "preserved",
-        extra_material = "preserved",
-        immune_repertoire = "preserved",
-        hla_tcr_motifs = "preserved",
-        hla = "preserved",
-        spatial = "preserved",
-        trekker = "preserved"
-      ),
-      expected_pages = c(
-        "marker_genes",
-        "most_expressed_genes",
-        "enriched_pathways",
-        "extra_material",
-        "immune_repertoire",
-        "trajectory",
-        "spatial",
-        "trekker",
-        "hla_tcr_motifs"
-      ),
-      expected_supporting_content = c(
-        "spatial_section_a.png",
-        "spatial_section_b.png",
-        "extra_material"
-      )
+    expected_pages = c("spatial", "trekker"),
+    expected_supporting_content = c(
+      "patient_a_section_1.png",
+      "patient_a_section_2.png",
+      "patient_b_section_1.png",
+      "patient_b_section_2.png",
+      "patient_b_section_3.png"
     )
   )
-  names(records) <- vapply(records, `[[`, character(1), "id")
-  records
+  list(all_content = all_content)
 }
 
 #' Static first-paint directory for the example picker.
 builder_example_directory <- local({
   directory <- list(
     list(
-      id = "basic_pbmc",
-      label = "Basic PBMC",
-      detail = "A compact real PBMC object for the core expression workflow",
-      source = "extdata/examples/pbmc_seurat.rds"
-    ),
-    list(
-      id = "spatial_multi_section",
-      label = "Spatial multi-section",
-      detail = "Two synthetic tissue sections with independent image alignment",
-      source = "builder/fixtures/spatial_multi_section.rds"
-    ),
-    list(
-      id = "immune_tcr_hla",
-      label = "Immune: TCR + HLA",
-      detail = "T-cell receptor data with donor HLA typing",
-      source = "builder/fixtures/immune_tcr_hla.rds"
-    ),
-    list(
-      id = "immune_tcr_only",
-      label = "Immune: TCR only",
-      detail = "T-cell receptor data without HLA typing",
-      source = "builder/fixtures/immune_tcr_only.rds"
-    ),
-    list(
-      id = "immune_hla_only",
-      label = "Immune: HLA only",
-      detail = "HLA typing without an immune repertoire",
-      source = "builder/fixtures/immune_hla_only.rds"
-    ),
-    list(
-      id = "immune_bcr_only",
-      label = "Immune: BCR only",
-      detail = "B-cell receptor data without TCR chains",
-      source = "builder/fixtures/immune_bcr_only.rds"
-    ),
-    list(
-      id = "immune_metadata_tcr",
-      label = "Immune: metadata TCR",
-      detail = "TCR fields in metadata for Builder conversion",
-      source = "builder/fixtures/immune_metadata_tcr.rds"
-    ),
-    list(
-      id = "immune_legacy_tcr",
-      label = "Immune: legacy TCR",
-      detail = "Legacy TCR payload for Builder conversion",
-      source = "builder/fixtures/immune_legacy_tcr.rds"
-    ),
-    list(
       id = "all_content",
       label = "All content",
-      detail = "Expression, immune, HLA, spatial, Trekker, and supporting content",
+      detail = paste(
+        "Synthetic Seurat with three Xenium patients,",
+        "six sections, and Trekker"
+      ),
       source = "builder/fixtures/all_content.rds"
     )
   )

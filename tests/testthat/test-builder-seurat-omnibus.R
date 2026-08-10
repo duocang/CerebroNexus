@@ -56,15 +56,22 @@ test_that("omnibus fixture models a user-uploaded Xenium Seurat object", {
     "patient_c_section_1"
   )
   expect_setequal(SeuratObject::Images(object), sections)
+  section_map <- unique(data.frame(
+    patient = as.character(object$patient),
+    section = as.character(object$section),
+    stringsAsFactors = FALSE
+  ))
   expect_identical(
-    unname(table(sub("_section_[0-9]+$", "", sections))),
+    as.integer(table(section_map$patient)),
     c(2L, 3L, 1L)
   )
   for (section in sections) {
-    expect_gt(
-      length(SeuratObject::Cells(object[[section]])),
-      0L,
-      info = section
+    section_cells <- SeuratObject::Cells(object[[section]])
+    expect_gt(length(section_cells), 0L)
+    expect_true(all(as.character(object$section[section_cells]) == section))
+    expect_identical(
+      unique(as.character(object$patient[section_cells])),
+      sub("_section_[0-9]+$", "", section)
     )
   }
 
@@ -83,8 +90,33 @@ test_that("omnibus fixture models a user-uploaded Xenium Seurat object", {
   trekker <- object@misc$trekker
   expect_type(trekker, "list")
   expect_true(length(trekker$barcodes) > 0L)
-  expect_false(anyDuplicated(trekker$barcodes))
+  expect_identical(anyDuplicated(trekker$barcodes), 0L)
   expect_true(all(trekker$barcodes %in% colnames(object)))
+})
+
+test_that("omnibus Trekker payload satisfies the Builder content contract", {
+  for (relative in c(
+    "viewer/core/spatial_coordinate_contract.R",
+    "builder/spatial.R",
+    "builder/content_spatial.R"
+  )) {
+    sys.source(
+      builder_profile_inst_path(relative),
+      envir = builder_omnibus_env
+    )
+  }
+  object <- builder_omnibus_env$builder_make_permanent_fixture("all_content")
+  profile <- builder_omnibus_env$builder_profile_trekker_payload(
+    object@misc$trekker,
+    list(
+      cells = SeuratObject::Cells(object),
+      features = SeuratObject::Features(object)
+    )
+  )
+
+  expect_true(profile$valid, info = paste(profile$diagnostics, collapse = ", "))
+  expect_identical(profile$diagnostics, character())
+  expect_identical(profile$page_candidates, "trekker")
 })
 
 test_that("omnibus fixture declares five patient A/B histology sidecars", {
@@ -103,4 +135,8 @@ test_that("omnibus fixture declares five patient A/B histology sidecars", {
     dirname(record$serialized_path),
     expected
   ))))
+  expect_setequal(
+    list.files(dirname(record$serialized_path)),
+    c("all_content.rds", expected)
+  )
 })

@@ -155,7 +155,7 @@ test_that("Builder app selection keeps initial URL and user priority", {
   )
   expect_identical(
     initial$get_value(input = "overview_projection_point_color"),
-    "condition"
+    "region"
   )
   initial$get_js(
     "document.querySelector('a[href=\"#shiny-tab-spatial\"]').click();"

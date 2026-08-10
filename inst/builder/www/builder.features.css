@@ -21,6 +21,15 @@
 .spatial-alignment-sidebar { grid-area: controls; }
 .spatial-alignment-main { grid-area: preview; }
 .spatial-alignment-sidebar { gap: var(--space-3); }
+.spatial-alignment-sidebar > *,
+.spatial-alignment-sidebar .shiny-input-container,
+.spatial-alignment-sidebar .selectize-control,
+.spatial-alignment-sidebar .builder-file-picker {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
 .spatial-alignment-sidebar > .form-group { margin-bottom: 0; }
 .spatial-alignment-status:empty { display: none; }
 .spatial-alignment-plots,

@@ -132,6 +132,7 @@ privacy_source_builder_runtime <- function(contract_version = 1L) {
     "preview.R",
     "extras.R",
     "analysis.R",
+    "marker_import.R",
     "build.R",
     "prerequisite.R",
     "state.R",
@@ -251,8 +252,18 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
       builder_build_app <<- local({
         build_app <- builder_build_app
         trusted_app <- trusted_create_app
-        function(request, stage, create_app = trusted_app) {
-          build_app(request, stage, create_app = create_app)
+        function(
+          request,
+          stage,
+          create_app = trusted_app,
+          auth_material = NULL
+        ) {
+          build_app(
+            request,
+            stage,
+            create_app = create_app,
+            auth_material = auth_material
+          )
         }
       })
       invisible(TRUE)
@@ -274,19 +285,21 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     )
     loaded
   }
-  first <- load_example("dataset-a", "basic_pbmc")
-  second <- load_example("dataset-b", "spatial_multi_section")
+  first <- load_example("dataset-a", "all_content")
+  second <- load_example("dataset-b", "all_content")
   entries <- list(
     privacy_builder_entry(runtime, "dataset-a", "Dataset A", first),
     privacy_builder_entry(runtime, "dataset-b", "Dataset B", second)
   )
-  entries[[1L]]$settings$groups <- c("sample", "seurat_clusters")
-  entries[[1L]]$settings$default_group <- "seurat_clusters"
+  entries[[1L]]$settings$groups <- c("patient", "cluster")
+  entries[[1L]]$settings$included_groups <- c("patient", "cluster")
+  entries[[1L]]$settings$default_group <- "cluster"
   entries[[1L]]$settings$reductions <- "umap"
   entries[[1L]]$settings$default_projection <- "umap"
   entries[[1L]]$settings$expression_backend <- "h5"
-  entries[[2L]]$settings$groups <- c("cell_type", "condition")
-  entries[[2L]]$settings$default_group <- "condition"
+  entries[[2L]]$settings$groups <- c("cell_type", "region")
+  entries[[2L]]$settings$included_groups <- c("cell_type", "region")
+  entries[[2L]]$settings$default_group <- "region"
   entries[[2L]]$settings$reductions <- c("umap", "tsne")
   entries[[2L]]$settings$default_projection <- "tsne"
   section <- entries[[2L]]$dataset_profile$spatial$sections[[1L]]
@@ -300,7 +313,6 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     list(list(uri = encoded, bounds = bounds)),
     section
   )
-
   release <- file.path(root, "release")
   plan <- runtime$builder_freeze_plan(
     entries,
@@ -317,7 +329,12 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     )
   )
   if (!is.null(plan$error)) {
-    stop(plan$error)
+    stop(
+      plan$error,
+      " [",
+      plan$error_code %||% "unknown",
+      "]"
+    )
   }
   protocol <- runtime$builder_request_protocol(worker$epoch)
   protocol <- runtime$builder_enqueue(

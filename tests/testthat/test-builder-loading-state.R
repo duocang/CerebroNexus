@@ -38,22 +38,22 @@ test_that("new imports enter the typed queue without loading data", {
 })
 
 test_that("failed examples stay represented only by their rail card", {
-  ready <- list(list(example = "basic_pbmc"))
+  ready <- list(list(example = "all_content"))
   queue <- builder_import_queue(max_active = 2L)
   queue <- builder_import_add(
     queue,
     builder_import_entry(
       "ds2",
-      "Spatial multi-section",
-      list(kind = "example", example = "spatial_multi_section")
+      "Queued example",
+      list(kind = "example", example = "queued_example")
     )
   )
   queue <- builder_import_add(
     queue,
     builder_import_entry(
       "ds3",
-      "Immune",
-      list(kind = "example", example = "immune_tcr_hla")
+      "Failed example",
+      list(kind = "example", example = "failed_example")
     )
   )
   queue <- builder_import_transition(queue, "ds2", "reading", 1L)
@@ -70,9 +70,9 @@ test_that("failed examples stay represented only by their rail card", {
 
   expect_setequal(
     directory$ids,
-    c("basic_pbmc", "immune_tcr_hla")
+    c("all_content", "failed_example")
   )
-  expect_identical(directory$loading, "spatial_multi_section")
+  expect_identical(directory$loading, "queued_example")
 })
 
 test_that("a watched import keeps focus when it becomes ready", {
@@ -124,7 +124,7 @@ test_that("imports follow the bounded loading state machine", {
     "builder_import_entry",
     "ds1",
     "PBMC",
-    list(kind = "example", example = "basic_pbmc")
+    list(kind = "example", example = "all_content")
   )
   queue <- builder_loading_call("builder_import_queue", max_active = 1L)
   queue <- builder_loading_call("builder_import_add", queue, entry)
@@ -148,7 +148,7 @@ test_that("invalid transitions fail and stale completions are ignored", {
     builder_import_entry(
       "ds1",
       "PBMC",
-      list(kind = "example", example = "basic_pbmc")
+      list(kind = "example", example = "all_content")
     )
   )
 
@@ -174,7 +174,7 @@ test_that("error retry uses a new generation and cannot be overwritten", {
     builder_import_entry(
       "ds1",
       "PBMC",
-      list(kind = "example", example = "basic_pbmc")
+      list(kind = "example", example = "all_content")
     )
   )
   queue <- builder_import_transition(queue, "ds1", "reading", 1L)

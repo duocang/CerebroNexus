@@ -73,15 +73,15 @@ test_that("loading workbench remains visible and accessible", {
   }
   entry <- builder_import_entry(
     "ds1",
-    "Basic PBMC",
-    list(kind = "example", example = "basic_pbmc")
+    "All content",
+    list(kind = "example", example = "all_content")
   )
   entry$load_state <- "inspecting"
   entry$progress_label <- "Checking cells, genes and metadata…"
   html <- htmltools::renderTags(fun(entry))$html
 
   expect_match(html, "Loading dataset", fixed = TRUE)
-  expect_match(html, "Basic PBMC", fixed = TRUE)
+  expect_match(html, "All content", fixed = TRUE)
   expect_match(html, "Checking cells, genes and metadata…", fixed = TRUE)
   expect_match(html, 'aria-live="polite"', fixed = TRUE)
   expect_match(html, "builder-loading-stage", fixed = TRUE)
