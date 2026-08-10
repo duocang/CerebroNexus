@@ -596,10 +596,6 @@ builder_verify_crb <- function(path, item) {
         levels = item$artifact_identity$group_levels[[group]]
       )
     }
-    object <- builder_attach_marker_imports(
-      object,
-      item$marker_imports %||% list()
-    )
     object <- builder_attach_tables(object, item$tables %||% list())
   }
   object

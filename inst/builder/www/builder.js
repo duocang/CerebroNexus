@@ -2164,25 +2164,6 @@
     registerViewerContentHandlers();
   });
 
-  document.addEventListener("click", function (event) {
-    var markerLabel = event.target.closest(".enhance-module-select");
-    var markerCheckbox = markerLabel && markerLabel.querySelector(
-      "#enhance-analysis_marker_genes"
-    );
-    if (!markerCheckbox || markerCheckbox.disabled) return;
-    var markerEnabling = event.target === markerCheckbox
-      ? markerCheckbox.checked
-      : !markerCheckbox.checked;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    send(
-      markerEnabling
-        ? "enhance-marker_genes_mode_request"
-        : "enhance-marker_genes_disable",
-      { nonce: Date.now() }
-    );
-  }, true);
-
   function initializeBuilder() {
     registerExampleMessageHandler();
     registerBuildDialogHandler();

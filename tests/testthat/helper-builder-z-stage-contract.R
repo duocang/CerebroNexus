@@ -5,7 +5,6 @@ builder_stage_contract_source_runtime <- function(local = parent.frame()) {
     "ui/inspect_stage.R",
     "preview.R",
     "ui/core_stage.R",
-    "ui/marker_import.R",
     "ui/enhance_stage.R",
     "ui/review_stage.R",
     "ui/build_status.R",

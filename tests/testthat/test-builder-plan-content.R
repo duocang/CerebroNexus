@@ -1,36 +1,4 @@
 builder_plan_contract_source_runtime(environment())
-builder_repo_source("marker_import.R", local = environment())
-
-test_that("BuildPlan freezes ready imported Marker genes", {
-  local({
-    builder_repo_source("preview.R")
-    builder_repo_source("plan.R")
-    entry <- builder_task6_entry()
-    source <- builder_marker_import_map_single(
-      builder_marker_import_source(
-        "",
-        "B.csv",
-        NULL,
-        data.frame(gene = "MS4A1")
-      ),
-      group = "cluster",
-      level = "B",
-      known_levels = c("A", "B")
-    )
-    entry$settings$marker_imports <- list(list(
-      method = "Scanpy Wilcoxon",
-      group = "cluster",
-      sources = list(source)
-    ))
-
-    plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
-
-    expect_identical(
-      plan$items[[1L]]$marker_imports[[1L]]$method,
-      "Scanpy Wilcoxon"
-    )
-  })
-})
 
 test_that("immune pages require one exportable canonical payload", {
   local({

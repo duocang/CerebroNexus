@@ -151,10 +151,7 @@ builder_enhance_modules <- function(profile, settings) {
       relevant = applicability$relevant,
       blocked = applicability$blocked,
       blocked_reason = applicability$blocked_reason,
-      selected = step$id %in%
-        settings$analyses ||
-        (identical(step$id, "marker_genes") &&
-          length(settings$marker_imports %||% list()) > 0L),
+      selected = step$id %in% settings$analyses,
       enabled_pages = enabled_pages,
       replacement_policy = paste0(
         "A newly computed ",
@@ -200,11 +197,7 @@ builder_enhance_modules_ui <- function(id, modules) {
         tags$input(
           id = ns(paste0("analysis_", module$id)),
           type = "checkbox",
-          class = if (identical(module$id, "marker_genes")) {
-            "enhance-module-checkbox marker-genes-choice-checkbox visually-hidden"
-          } else {
-            "enhance-module-checkbox visually-hidden shiny-input-checkbox"
-          },
+          class = "enhance-module-checkbox visually-hidden shiny-input-checkbox",
           checked = if (isTRUE(module$selected)) "checked",
           disabled = if (isTRUE(module$blocked)) "disabled"
         ),

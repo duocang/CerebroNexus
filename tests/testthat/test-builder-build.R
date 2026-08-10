@@ -5,7 +5,6 @@ builder_build_source_runtime <- function(local = parent.frame()) {
     "inspect.R",
     "analysis.R",
     "extras.R",
-    "marker_import.R",
     "state.R",
     "app_bundle.R",
     "build.R"

@@ -136,8 +136,7 @@ observe({
     analysis_dependencies = intersect(
       unname(entry$settings$analyses %||% character()),
       "marker_genes"
-    ),
-    marker_imports = length(entry$settings$marker_imports %||% list())
+    )
   )
   if (!identical(next_contract, isolate(enhance_contract()))) {
     enhance_contract(next_contract)

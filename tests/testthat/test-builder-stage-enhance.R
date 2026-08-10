@@ -76,7 +76,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, 'class="enhance-module-select"', fixed = TRUE)
   expect_match(
     html,
-    'class="enhance-module-checkbox marker-genes-choice-checkbox visually-hidden"',
+    'class="enhance-module-checkbox visually-hidden shiny-input-checkbox"',
     fixed = TRUE
   )
   expect_match(html, 'class="enhance-module-title"', fixed = TRUE)
@@ -127,8 +127,6 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "disabled", fixed = TRUE)
   expect_match(html, "enhance-module is-blocked", fixed = TRUE)
   expect_match(html, "Optional attachments", fixed = TRUE)
-  expect_false(grepl("Import precomputed Marker genes", html, fixed = TRUE))
-  expect_false(grepl("enhance-marker_import_method", html, fixed = TRUE))
   expect_match(html, "Tables for Extra material", fixed = TRUE)
   expect_match(
     html,

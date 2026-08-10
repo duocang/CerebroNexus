@@ -707,11 +707,7 @@ observeEvent(
 )
 
 ## Assay-dependent controls above use the namespaced Core inputs.
-analysis_checkbox_steps <- Filter(
-  function(step) !identical(step$id, "marker_genes"),
-  builder_analysis_steps()
-)
-invisible(lapply(analysis_checkbox_steps, function(step) {
+invisible(lapply(builder_analysis_steps(), function(step) {
   observeEvent(
     input[[paste0("enhance-analysis_", step$id)]],
     {

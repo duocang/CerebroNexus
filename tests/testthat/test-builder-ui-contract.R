@@ -1165,25 +1165,6 @@ test_that("Enhance info opens a transient accessible facts dialog", {
   expect_match(css, ".is-wide", fixed = TRUE)
 })
 
-test_that("Marker genes asks for a source before it changes selection", {
-  builder_repo_source(file.path("ui", "marker_import.R"))
-  js <- builder_asset_text("www", "builder.js")
-  server <- builder_asset_text("server", "enhancements.R")
-  modal <- builder_stage_html(builder_marker_import_choice_ui("enhance"))
-
-  expect_match(js, "enhance-marker_genes_mode_request", fixed = TRUE)
-  expect_match(js, "enhance-analysis_marker_genes", fixed = TRUE)
-  expect_match(server, "enhance-marker_genes_mode_request", fixed = TRUE)
-  expect_match(server, "enhance-marker_genes_calculate", fixed = TRUE)
-  expect_match(server, "enhance-marker_genes_upload", fixed = TRUE)
-  expect_match(js, "enhance-marker_genes_disable", fixed = TRUE)
-  expect_match(js, "event.target === markerCheckbox", fixed = TRUE)
-  expect_match(server, "enhance-marker_genes_disable", fixed = TRUE)
-  expect_match(modal, "Calculate for all Groups", fixed = TRUE)
-  expect_match(modal, "Upload precomputed results", fixed = TRUE)
-  expect_false(grepl("enhance-marker_import_files", modal, fixed = TRUE))
-})
-
 test_that("result actions remain native keyboard controls", {
   status <- builder_asset_text("ui", "build_status.R")
 
