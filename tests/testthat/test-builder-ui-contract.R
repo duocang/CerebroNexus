@@ -782,6 +782,8 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
     'behavior: reducedMotion.matches ? "auto" : "smooth"',
     fixed = TRUE
   )
+  expect_match(js, 'document.querySelector(".topbar")', fixed = TRUE)
+  expect_match(js, "heading.style.scrollMarginTop", fixed = TRUE)
   expect_match(
     js,
     'scheduleStatusAnnouncement("Opened " + id + " step.")',

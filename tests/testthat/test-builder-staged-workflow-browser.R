@@ -24,6 +24,23 @@ builder_expect_clean_browser_logs <- function(app) {
   )
 }
 
+builder_wait_for_visible_stage_focus <- function(app, stage) {
+  selector <- sprintf("[data-workflow-stage=%s] h2", stage)
+  app$wait_for_js(
+    sprintf(
+      paste0(
+        "(() => { const heading = document.querySelector('%s'); ",
+        "const topbar = document.querySelector('.topbar'); ",
+        "return heading && topbar && document.activeElement === heading && ",
+        "heading.getBoundingClientRect().top >= ",
+        "topbar.getBoundingClientRect().bottom - 2; })()"
+      ),
+      selector
+    ),
+    timeout = 10000
+  )
+}
+
 test_that("staged workflow remains focused and overflow-free", {
   skip_if_not(identical(Sys.getenv("CEREBRO_RUN_BROWSER_TESTS"), "true"))
   app_dir <- builder_profile_inst_path("builder")
@@ -72,10 +89,7 @@ test_that("staged workflow remains focused and overflow-free", {
     builder_expect_no_horizontal_overflow(app)
 
     app$click("continue_to_review")
-    app$wait_for_js(
-      "document.activeElement === document.querySelector('[data-workflow-stage=review] h2')",
-      timeout = 10000
-    )
+    builder_wait_for_visible_stage_focus(app, "review")
     expect_identical(
       app$get_js("document.querySelectorAll('#confirm_review').length"),
       1L
@@ -90,10 +104,7 @@ test_that("staged workflow remains focused and overflow-free", {
     builder_expect_no_horizontal_overflow(app)
 
     app$click("confirm_review")
-    app$wait_for_js(
-      "document.activeElement === document.querySelector('[data-workflow-stage=build] h2')",
-      timeout = 10000
-    )
+    builder_wait_for_visible_stage_focus(app, "build")
     expect_identical(
       app$get_js("document.querySelectorAll('#build-stage-status').length"),
       1L
@@ -107,10 +118,7 @@ test_that("staged workflow remains focused and overflow-free", {
     builder_expect_no_horizontal_overflow(app)
 
     app$click("back_to_review")
-    app$wait_for_js(
-      "document.activeElement === document.querySelector('[data-workflow-stage=review] h2')",
-      timeout = 10000
-    )
+    builder_wait_for_visible_stage_focus(app, "review")
     expect_identical(
       app$get_js(
         "document.querySelector('.builder-workflow-progress').dataset.workflowConfirmed"
@@ -118,10 +126,7 @@ test_that("staged workflow remains focused and overflow-free", {
       "true"
     )
     app$click("back_to_settings")
-    app$wait_for_js(
-      "document.activeElement === document.querySelector('[data-workflow-stage=configure] h2')",
-      timeout = 10000
-    )
+    builder_wait_for_visible_stage_focus(app, "configure")
     expect_identical(
       app$get_js(
         "document.querySelector('.builder-workflow-progress').dataset.workflowConfirmed"
@@ -156,10 +161,7 @@ test_that("staged workflow remains focused and overflow-free", {
       "false"
     )
     app$click("confirm_review")
-    app$wait_for_js(
-      "document.activeElement === document.querySelector('[data-workflow-stage=build] h2')",
-      timeout = 10000
-    )
+    builder_wait_for_visible_stage_focus(app, "build")
     expect_identical(
       app$get_js("document.querySelectorAll('#build-stage-status').length"),
       1L

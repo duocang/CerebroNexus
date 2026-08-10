@@ -1964,6 +1964,9 @@
       if (!stage) return;
       var heading = stage.querySelector("h2");
       if (!heading) return;
+      var topbar = document.querySelector(".topbar");
+      var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
+      heading.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
       heading.setAttribute("tabindex", "-1");
       heading.scrollIntoView({
         block: "start",
