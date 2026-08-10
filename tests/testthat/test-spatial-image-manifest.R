@@ -69,7 +69,12 @@ test_that("serialized spatial getter is self-contained without package helpers",
     coordinates = spatial_manifest_coordinates(),
     expression = matrix(1:4, nrow = 2),
     histology_image = "data:image/png;base64,AA==",
-    histology_image_bounds = c(xmin = 0, xmax = 100, ymin = 0, ymax = 80)
+    histology_image_bounds = list(
+      ymax = 80,
+      xmin = 0,
+      ymin = 0,
+      xmax = 100
+    )
   )
   crb$spatial$canonical <- spatial_manifest_data(
     list(DAPI = spatial_manifest_payload())
@@ -87,6 +92,10 @@ test_that("serialized spatial getter is self-contained without package helpers",
   expect_identical(
     legacy$histology_images[["Tissue background"]]$histology_image,
     "data:image/png;base64,AA=="
+  )
+  expect_identical(
+    legacy$histology_images[["Tissue background"]]$histology_image_bounds,
+    c(xmin = 0, xmax = 100, ymin = 0, ymax = 80)
   )
   expect_named(canonical$histology_images, "DAPI")
   expect_identical(canonical$histology_images$DAPI, spatial_manifest_payload())
@@ -158,6 +167,52 @@ test_that("legacy singular spatial images normalize on read", {
   )
   expect_null(normalized[["histology_image"]])
   expect_null(normalized[["histology_image_bounds"]])
+})
+
+test_that("legacy fixture list bounds normalize to a numeric vector", {
+  for (fixture in c("demo_spatial_xenium.crb", "demo_spatial_merfish.crb")) {
+    path <- system.file(
+      "extdata",
+      "examples",
+      fixture,
+      package = "CerebroNexus"
+    )
+    skip_if(
+      path == "" || !file.exists(path),
+      message = paste(fixture, "missing")
+    )
+    crb <- readRDS(path)
+    spatial_name <- crb$availableSpatial()[[1L]]
+
+    normalized <- .normalizeSpatialDataImages(
+      crb$spatial[[spatial_name]],
+      spatial_name
+    )
+    bounds <- normalized$histology_images[["Tissue background"]][[
+      "histology_image_bounds"
+    ]]
+
+    expect_identical(typeof(bounds), "double", info = fixture)
+    expect_identical(
+      names(bounds),
+      c("xmin", "xmax", "ymin", "ymax"),
+      info = fixture
+    )
+  }
+})
+
+test_that("canonical manifests reject legacy list bounds", {
+  payload <- spatial_manifest_payload()
+  payload$histology_image_bounds <- as.list(payload$histology_image_bounds)
+
+  expect_error(
+    .normalizeEmbeddedSpatialImages(
+      list(DAPI = payload),
+      spatial_manifest_coordinates(),
+      "Spatial data `canonical`"
+    ),
+    "bounds must contain exactly"
+  )
 })
 
 test_that("canonical spatial image manifests take precedence over legacy fields", {

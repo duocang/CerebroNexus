@@ -70,6 +70,40 @@
   bounds
 }
 
+#' Coerce historical singular spatial image bounds
+#'
+#' @keywords internal
+#' @noRd
+.legacySpatialImageBounds <- function(bounds, context) {
+  if (is.null(bounds) || !is.list(bounds)) {
+    return(bounds)
+  }
+  required <- c("xmin", "xmax", "ymin", "ymax")
+  valid <- length(bounds) == 4L &&
+    !is.null(names(bounds)) &&
+    setequal(names(bounds), required) &&
+    !anyDuplicated(names(bounds)) &&
+    all(vapply(
+      bounds,
+      function(value) {
+        is.numeric(value) && length(value) == 1L && is.finite(value)
+      },
+      logical(1)
+    ))
+  if (!valid) {
+    stop(
+      context,
+      " legacy bounds must be a named list of finite numeric scalar ",
+      "xmin, xmax, ymin, and ymax values.",
+      call. = FALSE
+    )
+  }
+  stats::setNames(
+    as.numeric(unlist(bounds[required], use.names = FALSE)),
+    required
+  )
+}
+
 #' Normalize embedded images for one spatial entry
 #'
 #' @keywords internal
@@ -171,10 +205,18 @@
   if ("histology_images" %in% names(data)) {
     images <- data[["histology_images"]]
   } else if ("histology_image" %in% names(data)) {
+    legacy_context <- paste0(
+      "Spatial data `",
+      spatial_name,
+      "` image `Tissue background`"
+    )
     images <- list(
       `Tissue background` = list(
         histology_image = data[["histology_image"]],
-        histology_image_bounds = data[["histology_image_bounds"]]
+        histology_image_bounds = .legacySpatialImageBounds(
+          data[["histology_image_bounds"]],
+          legacy_context
+        )
       )
     )
   } else {

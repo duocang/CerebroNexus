@@ -1309,10 +1309,41 @@ Cerebro <- R6::R6Class(
       if ("histology_images" %in% names(data)) {
         images <- data[["histology_images"]]
       } else if ("histology_image" %in% names(data)) {
+        legacy_bounds <- data[["histology_image_bounds"]]
+        if (is.list(legacy_bounds)) {
+          required <- c("xmin", "xmax", "ymin", "ymax")
+          valid_legacy_bounds <- length(legacy_bounds) == 4L &&
+            !is.null(names(legacy_bounds)) &&
+            setequal(names(legacy_bounds), required) &&
+            !anyDuplicated(names(legacy_bounds)) &&
+            all(vapply(
+              legacy_bounds,
+              function(value) {
+                is.numeric(value) &&
+                  length(value) == 1L &&
+                  is.finite(value)
+              },
+              logical(1)
+            ))
+          if (!valid_legacy_bounds) {
+            stop(
+              context,
+              " image `Tissue background` legacy bounds must be a named ",
+              "list of finite numeric scalar xmin, xmax, ymin, and ymax ",
+              "values.",
+              call. = FALSE
+            )
+          }
+          legacy_bounds <- as.numeric(unlist(
+            legacy_bounds[required],
+            use.names = FALSE
+          ))
+          names(legacy_bounds) <- required
+        }
         images <- list(
           `Tissue background` = list(
             histology_image = data[["histology_image"]],
-            histology_image_bounds = data[["histology_image_bounds"]]
+            histology_image_bounds = legacy_bounds
           )
         )
       } else {

@@ -455,10 +455,10 @@ test_that("bundled real demos embed a genuine tissue image in the .crb", {
     # cells must fall inside the image's coordinate-space extent
     coords <- sd$coordinates
     expect_true(
-      min(coords$x) >= b$xmin &&
-        max(coords$x) <= b$xmax &&
-        min(coords$y) >= b$ymin &&
-        max(coords$y) <= b$ymax,
+      min(coords$x) >= b[["xmin"]] &&
+        max(coords$x) <= b[["xmax"]] &&
+        min(coords$y) >= b[["ymin"]] &&
+        max(coords$y) <= b[["ymax"]],
       info = f
     )
   }

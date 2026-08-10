@@ -68,6 +68,36 @@ test_that("Seurat spatial image payloads accept the legacy shorthand", {
   expect_identical(normalized$omnibus_fov[["Tissue background"]], payload)
 })
 
+test_that("legacy misc list bounds canonicalize in fixed numeric order", {
+  payload <- valid_spatial_image_payload()
+  payload$histology_image_bounds <- list(
+    ymax = 80,
+    xmin = 0,
+    ymin = 0,
+    xmax = 100
+  )
+  coordinates <- data.frame(x = c(10, 90), y = c(5, 75))
+
+  declared <- .validateCerebroSpatialImages(
+    list(omnibus_fov = payload),
+    "omnibus_fov"
+  )
+  expect_named(declared$omnibus_fov, "Tissue background")
+
+  normalized <- .validateCerebroSpatialImage(
+    payload,
+    "omnibus_fov",
+    coordinates
+  )
+  bounds <- normalized$histology_images[["Tissue background"]][[
+    "histology_image_bounds"
+  ]]
+  expect_identical(
+    bounds,
+    c(xmin = 0, xmax = 100, ymin = 0, ymax = 80)
+  )
+})
+
 test_that("histology_image is a valid canonical image label", {
   payload <- valid_spatial_image_payload()
   declared <- list(
