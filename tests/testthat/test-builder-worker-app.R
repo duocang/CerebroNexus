@@ -356,7 +356,9 @@ test_that("Build flow requires one confirmed frozen Review plan", {
   expect_false(grepl("reviewed_revision", app, fixed = TRUE))
   expect_false(grepl("review_current_dataset", app, fixed = TRUE))
   expect_false(grepl("next_unreviewed", app, fixed = TRUE))
-  expect_match(app, 'identical(workflow_state$stage, "build")', fixed = TRUE)
+  expect_match(app, 'identical(state$stage, "build")', fixed = TRUE)
+  expect_match(app, "builder_require_confirmed_build_plan", fixed = TRUE)
+  expect_match(app, "builder_review_plan_identity(plan)", fixed = TRUE)
   expect_match(
     app,
     '"Confirm the current frozen Review before building."',

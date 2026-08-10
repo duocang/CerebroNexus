@@ -6,10 +6,38 @@
 ## answering while a marker-gene run takes its minutes.
 auth_accounts_state <- auth_accounts
 
+builder_build_confirmation_matches <- function(plan) {
+  state <- isolate(workflow())
+  stored <- state$review_plan
+  identical(state$stage, "build") &&
+    builder_review_can_build(stored) &&
+    builder_review_can_build(plan) &&
+    builder_workflow_confirmation_matches(state, stored) &&
+    identical(
+      builder_review_plan_identity(stored),
+      builder_review_plan_identity(plan)
+    )
+}
+
+builder_require_confirmed_build_plan <- function(plan) {
+  if (isTRUE(builder_build_confirmation_matches(plan))) {
+    return(invisible(TRUE))
+  }
+  build_flow(list(stage = "idle", plan = NULL))
+  session$sendCustomMessage(
+    "builder_build_dialog",
+    list(action = "close")
+  )
+  invisible(FALSE)
+}
+
 enqueue_build_plan <- function(
   plan,
   auth_accounts
 ) {
+  if (!isTRUE(builder_require_confirmed_build_plan(plan))) {
+    return(invisible(FALSE))
+  }
   rs <- worker()
   req(rs)
   current_protocol <- isolate(protocol())
@@ -68,6 +96,9 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
       )
       return(invisible(FALSE))
     }
+    if (!isTRUE(builder_require_confirmed_build_plan(plan))) {
+      return(invisible(FALSE))
+    }
     if (length(plan$existing_targets) && !isTRUE(overwrite)) {
       build_flow(list(stage = "conflict", plan = plan))
       session$sendCustomMessage(
@@ -110,19 +141,9 @@ choose_build_folder <- function() {
 
 observeEvent(input$build, {
   req(identical(isolate(build_flow())$stage, "idle"))
-  workflow_state <- isolate(workflow())
   plan <- isolate(frozen_review_plan())
   datasets <- isolate(sets())
-  confirmed <- identical(workflow_state$stage, "build") &&
-    builder_review_can_build(plan) &&
-    builder_workflow_confirmation_matches(workflow_state, plan)
-  if (!isTRUE(confirmed)) {
-    if (!is.null(workflow_state$review_plan)) {
-      workflow(builder_reduce_workflow(
-        workflow_state,
-        list(type = "invalidate")
-      ))
-    }
+  if (!isTRUE(builder_require_confirmed_build_plan(plan))) {
     showNotification(
       "Confirm the current frozen Review before building.",
       type = "warning",
@@ -154,6 +175,13 @@ observeEvent(input$builder_build_dialog, {
   action <- input$builder_build_dialog$action %||% "cancel"
   flow <- isolate(build_flow())
   if (identical(action, "continue") && identical(flow$stage, "confirming")) {
+    if (
+      !isTRUE(builder_require_confirmed_build_plan(
+        isolate(frozen_review_plan())
+      ))
+    ) {
+      return()
+    }
     choose_build_folder()
   } else if (
     identical(action, "replace") &&

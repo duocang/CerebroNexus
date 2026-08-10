@@ -552,54 +552,45 @@ test_that("Build dialogs use accessible modal semantics and plain language", {
   expect_match(js, "Continue", fixed = TRUE)
   expect_match(js, "Choose another folder", fixed = TRUE)
   expect_match(js, "Replace existing files", fixed = TRUE)
-  expect_match(js, "Some datasets have not been reviewed", fixed = TRUE)
-  expect_match(js, "Review every dataset before building.", fixed = TRUE)
-  expect_match(js, "Review now", fixed = TRUE)
-  expect_match(js, "Some datasets still need attention", fixed = TRUE)
-  expect_match(js, "Fix issues", fixed = TRUE)
-  expect_match(js, "All ", fixed = TRUE)
-  expect_match(js, " datasets have been reviewed.", fixed = TRUE)
+  expect_match(
+    js,
+    "Confirm the selected frozen revision before building.",
+    fixed = TRUE
+  )
+  expect_match(js, 'message.action === "close"', fixed = TRUE)
   expect_false(grepl("window.confirm", js, fixed = TRUE))
 })
 
-test_that("builder client avoids layout-measurement animation loops", {
+test_that("builder client removes per-dataset compact review navigation", {
   js <- builder_asset_text("www", "builder.js")
 
-  expect_match(js, "function measureCompactReviewNavigator()", fixed = TRUE)
-  expect_match(
-    js,
-    "function scheduleCompactReviewNavigatorMeasure()",
-    fixed = TRUE
-  )
-  expect_match(js, "function setupCompactReviewNavigator()", fixed = TRUE)
-  expect_match(js, "IntersectionObserver", fixed = TRUE)
-  expect_match(js, "ResizeObserver", fixed = TRUE)
-  expect_false(grepl(
-    'addEventListener\\("scroll"[^;]*getBoundingClientRect',
-    js,
-    perl = TRUE
-  ))
-  expect_match(js, "current.offsetWidth", fixed = TRUE)
-  expect_false(grepl("#detail", js, fixed = TRUE))
-  expect_false(grepl("swatch_change", js, fixed = TRUE))
+  for (legacy in c(
+    "setupCompactReviewNavigator",
+    "measureCompactReviewNavigator",
+    "review_compact_dataset",
+    "dataset-compact-segment",
+    ".rail-review-status"
+  )) {
+    expect_false(grepl(legacy, js, fixed = TRUE), info = legacy)
+  }
+  expect_match(js, ".rail-readiness-status", fixed = TRUE)
 })
 
-test_that("compact review navigator has bounded motion and responsive geometry", {
+test_that("builder styles remove per-dataset review selectors", {
   css <- builder_asset_text("www", "builder.features.css")
 
-  expect_match(css, ".dataset-compact-review", fixed = TRUE)
-  expect_match(css, "position: fixed", fixed = TRUE)
-  expect_match(css, "translateY(-6px)", fixed = TRUE)
-  expect_match(css, "180ms", fixed = TRUE)
-  expect_match(css, ".dataset-compact-track", fixed = TRUE)
-  expect_match(css, "overflow-x: auto", fixed = TRUE)
-  expect_match(css, "clip-path: polygon", fixed = TRUE)
-  expect_match(css, "prefers-reduced-motion: reduce", fixed = TRUE)
-  expect_false(grepl(
-    "\\.dataset-context\\.is-multiple\\s*\\{[^}]*position:\\s*sticky",
-    css,
-    perl = TRUE
-  ))
+  for (legacy in c(
+    "dataset-compact-review",
+    "dataset-compact-track",
+    "dataset-review-progress",
+    "dataset-review-footer",
+    ".rail-review-status",
+    ".reviewed",
+    ".reviewing",
+    ".not-reviewed"
+  )) {
+    expect_false(grepl(legacy, css, fixed = TRUE), info = legacy)
+  }
 })
 
 test_that("dataset rail uses one selected state and one soft-danger action", {
@@ -657,17 +648,10 @@ test_that("dataset focus compensates for the sticky Builder topbar", {
   expect_match(js, "window.__builderFocusDatasetContext", fixed = TRUE)
 })
 
-test_that("compact review selection is resolved against the latest server state", {
+test_that("per-dataset compact review server inputs are removed", {
   app <- builder_app_source_text()
 
-  expect_match(app, "select_dataset <- function(target_id)", fixed = TRUE)
-  expect_match(app, "target_id %in% ids", fixed = TRUE)
-  expect_match(app, "session$onFlushed", fixed = TRUE)
-  expect_match(app, "once = TRUE", fixed = TRUE)
-  expect_match(app, "input$review_compact_previous_dataset", fixed = TRUE)
-  expect_match(app, "input$review_compact_next_dataset", fixed = TRUE)
-  expect_match(app, "event <- input$review_compact_dataset", fixed = TRUE)
-  expect_match(app, "select_dataset(event$id)", fixed = TRUE)
+  expect_false(grepl("review_compact_", app, fixed = TRUE))
   expect_match(app, 'id = "workbench",', fixed = TRUE)
   expect_match(app, 'tabindex = "-1"', fixed = TRUE)
 })
@@ -768,7 +752,6 @@ test_that("builder UI keeps semantic colors and states on the token system", {
   }
   expect_match(features, ".review-auth-dependency", fixed = TRUE)
   expect_match(features, ".review-auth-summary", fixed = TRUE)
-  expect_match(features, ".dataset-compact-segment.is-pending", fixed = TRUE)
   expect_false(grepl("font-weight: 650|font-weight: 750", css))
   expect_match(components, "@keyframes spin", fixed = TRUE)
   expect_false(grepl(

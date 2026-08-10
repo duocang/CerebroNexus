@@ -478,6 +478,14 @@ test_that("Build enqueue retains auth after failure and resets only after succes
     )$accounts
     plan <- builder_stage_frozen_plan()
     plan$app_auth <- summarize_auth(TRUE, accounts)
+    reviewed <- app_env$builder_reduce_workflow(
+      app_env$builder_workflow_state(),
+      list(type = "open_review", plan = plan)
+    )
+    workflow(app_env$builder_reduce_workflow(
+      reviewed,
+      list(type = "confirm_review", plan = plan)
+    ))
     fn_env <- environment(enqueue_build_plan)
     messages <- list()
     assign(
@@ -529,6 +537,90 @@ test_that("Build enqueue retains auth after failure and resets only after succes
     )
     expect_identical(messages[[1L]]$message, list(reset = TRUE))
   })
+})
+
+test_that("Build dialogs cannot enqueue a stale frozen revision", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  rlang::local_bindings(
+    builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
+    .env = environment(builder_stage_frozen_plan)
+  )
+  shiny::testServer(app_env$server, {
+    plan_a <- builder_stage_frozen_plan()
+    reviewed <- app_env$builder_reduce_workflow(
+      app_env$builder_workflow_state(),
+      list(type = "open_review", plan = plan_a)
+    )
+    workflow(app_env$builder_reduce_workflow(
+      reviewed,
+      list(type = "confirm_review", plan = plan_a)
+    ))
+    expect_true(builder_build_confirmation_matches(plan_a))
+
+    build_flow(list(stage = "confirming", plan = plan_a))
+    workflow(app_env$builder_reduce_workflow(
+      isolate(workflow()),
+      list(type = "invalidate")
+    ))
+    expect_false(builder_require_confirmed_build_plan(plan_a))
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+
+    workflow(app_env$builder_reduce_workflow(
+      app_env$builder_reduce_workflow(
+        app_env$builder_workflow_state(),
+        list(type = "open_review", plan = plan_a)
+      ),
+      list(type = "confirm_review", plan = plan_a)
+    ))
+    plan_b <- plan_a
+    plan_b$app_options$welcome_message <- "Changed after dialog opened"
+    build_flow(list(stage = "conflict", plan = plan_a))
+    expect_false(builder_require_confirmed_build_plan(plan_b))
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    enqueued <- FALSE
+    assign(
+      "enqueue",
+      function(...) {
+        enqueued <<- TRUE
+        TRUE
+      },
+      envir = environment(enqueue_build_plan)
+    )
+    expect_false(enqueue_build_plan(
+      plan_b,
+      auth_accounts = app_env$builder_auth_empty_accounts()
+    ))
+    expect_false(enqueued)
+
+    relocated <- plan_a
+    relocated$out_dir <- tempfile("relocated-output-")
+    expect_true(builder_build_confirmation_matches(relocated))
+  })
+
+  build_source <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "build.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    build_source,
+    "builder_require_confirmed_build_plan(plan)",
+    fixed = TRUE
+  )
+  expect_match(
+    build_source,
+    'list(action = "close")',
+    fixed = TRUE
+  )
 })
 
 test_that("Viewer and spatial preview contracts ignore settings-only revisions", {

@@ -17,11 +17,6 @@
   var viewerDisclosureState = new Map();
   var managerTransitionSequence = 0;
   var normalMotionDuration = 180;
-  var compactReviewState = {
-    generation: 0, host: null, context: null, workbench: null, topbar: null,
-    intersection: null, resize: null, frame: 0, focused: false,
-    pendingHide: false,
-  };
   var authEditor = {
     nextId: 1,
     committed: [],
@@ -454,10 +449,10 @@
     if (!summary || !rail) return;
     var current = rail.querySelector(".ds.is-active");
     var name = current && current.querySelector(".nm");
-    var reviewStatus = current && current.querySelector(".rail-review-status");
+    var readiness = current && current.querySelector(".rail-readiness-status");
     var nextName = name ? name.textContent.trim() : "No dataset selected";
     var nextState = [
-      reviewStatus ? reviewStatus.textContent.trim() : "",
+      readiness ? readiness.textContent.trim() : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -743,7 +738,13 @@
   }
 
   function showBuildDialog(message) {
-    if (document.querySelector(".builder-build-dialog-backdrop")) return;
+    var existing = document.querySelector(".builder-build-dialog-backdrop");
+    if (message && message.action === "close") {
+      if (existing) existing.remove();
+      updateDialogLock();
+      return;
+    }
+    if (existing) return;
     var trigger = document.getElementById("build");
     var backdrop = document.createElement("div");
     backdrop.className = "builder-confirm-backdrop builder-build-dialog-backdrop";
@@ -753,8 +754,6 @@
     title.id = "builder-build-dialog-title";
     var defaultTitles = {
       conflict: "Files already exist",
-      unreviewed: "Some datasets have not been reviewed",
-      needs_attention: "Some datasets still need attention",
       datasets: "Ready to build all datasets?",
     };
     title.textContent = message.title || defaultTitles[message.type] ||
@@ -764,13 +763,8 @@
     var description = document.createElement("p");
     if (message.type === "conflict") {
       description.textContent = "Some outputs already exist in this folder:";
-    } else if (message.type === "unreviewed") {
-      description.textContent = "Review every dataset before building.";
-    } else if (message.type === "needs_attention") {
-      description.textContent = "Resolve the highlighted issues before building.";
     } else {
-      description.textContent = "All " + message.count +
-        " datasets have been reviewed.";
+      description.textContent = "Confirm the selected frozen revision before building.";
     }
     dialog.appendChild(description);
 
@@ -803,16 +797,6 @@
         { label: "Cancel", action: "cancel", className: "btn" },
         { label: "Replace existing files", action: "replace", className: "btn btn-replace" },
         { label: "Choose another folder", action: "choose_another", className: "btn btn-action" },
-      ];
-    } else if (message.type === "unreviewed") {
-      buttons = [
-        { label: "Cancel", action: "cancel", className: "btn" },
-        { label: "Review now", action: "review_now", className: "btn btn-action" },
-      ];
-    } else if (message.type === "needs_attention") {
-      buttons = [
-        { label: "Cancel", action: "cancel", className: "btn" },
-        { label: "Fix issues", action: "fix_issues", className: "btn btn-action" },
       ];
     } else {
       buttons = [
@@ -1476,129 +1460,6 @@
     if (status && message && message.message) status.textContent = message.message;
   }
 
-  function setCompactReviewVisibility(visible) {
-    var host = compactReviewState.host;
-    if (!host) return;
-    if (!visible && compactReviewState.focused) {
-      compactReviewState.pendingHide = true;
-      return;
-    }
-    compactReviewState.pendingHide = false;
-    host.classList.toggle("is-visible", visible);
-    host.setAttribute("aria-hidden", visible ? "false" : "true");
-    host.inert = !visible;
-  }
-
-  function measureCompactReviewNavigator() {
-    var state = compactReviewState;
-    if (!state.host || !state.host.isConnected) return;
-    var contextRect = state.context.getBoundingClientRect();
-    var workbenchRect = state.workbench.getBoundingClientRect();
-    var topbarRect = state.topbar ? state.topbar.getBoundingClientRect() : null;
-    var activationLine = (topbarRect ? topbarRect.bottom : 0) + 8;
-    state.host.style.setProperty("--compact-review-top", activationLine + "px");
-    state.host.style.setProperty("--compact-review-left", workbenchRect.left + "px");
-    state.host.style.setProperty("--compact-review-width", workbenchRect.width + "px");
-    setCompactReviewVisibility(
-      contextRect.bottom <= activationLine && workbenchRect.bottom > activationLine
-    );
-    var current = state.host.querySelector(".dataset-compact-segment.is-current");
-    var track = state.host.querySelector(".dataset-compact-track");
-    if (current && track) {
-      track.scrollLeft = Math.max(
-        0,
-        current.offsetLeft - (track.clientWidth - current.offsetWidth) / 2
-      );
-    }
-  }
-
-  function scheduleCompactReviewNavigatorMeasure() {
-    if (compactReviewState.frame) return;
-    compactReviewState.frame = window.requestAnimationFrame(function () {
-      compactReviewState.frame = 0;
-      measureCompactReviewNavigator();
-    });
-  }
-
-  function teardownCompactReviewNavigator(restoreFocus) {
-    var state = compactReviewState;
-    if (state.intersection) state.intersection.disconnect();
-    if (state.resize) state.resize.disconnect();
-    if (state.frame) window.cancelAnimationFrame(state.frame);
-    state.intersection = null;
-    state.resize = null;
-    state.frame = 0;
-    state.host = null;
-    state.context = null;
-    state.workbench = null;
-    state.topbar = null;
-    state.pendingHide = false;
-    state.focused = false;
-    if (restoreFocus) {
-      window.setTimeout(function () {
-        var target = document.querySelector(".dataset-context") ||
-          document.getElementById("workbench");
-        if (target && target.isConnected) target.focus();
-      }, 0);
-    }
-  }
-
-  function setupCompactReviewNavigator() {
-    var host = document.querySelector(".dataset-compact-review");
-    if (host === compactReviewState.host) {
-      scheduleCompactReviewNavigatorMeasure();
-      return;
-    }
-    var restoreFocus = compactReviewState.focused;
-    teardownCompactReviewNavigator(false);
-    compactReviewState.generation += 1;
-    if (!host) {
-      if (restoreFocus) teardownCompactReviewNavigator(true);
-      return;
-    }
-    var context = document.querySelector(".dataset-context.is-multiple");
-    var workbench = document.getElementById("workbench");
-    if (!context || !workbench) return;
-    compactReviewState.host = host;
-    compactReviewState.context = context;
-    compactReviewState.workbench = workbench;
-    compactReviewState.topbar = document.querySelector(".topbar");
-    host.inert = true;
-    host.addEventListener("focusin", function () {
-      compactReviewState.focused = true;
-    });
-    host.addEventListener("focusout", function () {
-      window.setTimeout(function () {
-        if (!host.contains(document.activeElement)) {
-          compactReviewState.focused = false;
-          if (compactReviewState.pendingHide) setCompactReviewVisibility(false);
-        }
-      }, 0);
-    });
-    if (!("IntersectionObserver" in window) || !("ResizeObserver" in window)) {
-      setCompactReviewVisibility(false);
-      return;
-    }
-    var generation = compactReviewState.generation;
-    compactReviewState.intersection = new IntersectionObserver(function () {
-      if (generation === compactReviewState.generation) {
-        scheduleCompactReviewNavigatorMeasure();
-      }
-    }, { threshold: [0, 1] });
-    compactReviewState.intersection.observe(context);
-    compactReviewState.intersection.observe(workbench);
-    compactReviewState.resize = new ResizeObserver(function () {
-      if (generation === compactReviewState.generation) {
-        scheduleCompactReviewNavigatorMeasure();
-      }
-    });
-    compactReviewState.resize.observe(workbench);
-    if (compactReviewState.topbar) {
-      compactReviewState.resize.observe(compactReviewState.topbar);
-    }
-    scheduleCompactReviewNavigatorMeasure();
-  }
-
   function normalizeCreatableSelectValue(value) {
     return String(value || "").trim().replace(/\s+/g, " ");
   }
@@ -1731,7 +1592,6 @@
     setupViewerGroupCatalogs();
     setupViewerContentCatalogs();
     setupCreatableSelects();
-    setupCompactReviewNavigator();
     document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
     document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
   }
@@ -1794,15 +1654,6 @@
       authRender([]);
       send("builder_auth_accounts", { enabled: false, accounts: [], nonce: Date.now() });
       send("builder_auth_accounts", null);
-      return;
-    }
-    var compactSegment = target.closest(".dataset-compact-segment");
-    if (compactSegment) {
-      event.preventDefault();
-      send("review_compact_dataset", {
-        id: compactSegment.dataset.datasetId,
-        nonce: Date.now(),
-      });
       return;
     }
     var groupColorToggle = target.closest(".group-color-toggle");
