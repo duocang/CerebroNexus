@@ -107,9 +107,12 @@ Expected before implementation: FAIL because the image fields are absent.
 
 - [ ] **Step 5: Wire validation and merge into `exportFromSeurat()`**
 
-Immediately after resolving `has_images`, validate top-level payload names against `names(object@images)`. Inside the image loop, after coordinate normalization and before `addSpatialData()`, run:
+Immediately after resolving `has_images`, validate top-level payload names against `names(object@images)`. Refactor the image loop so `tryCatch()` wraps only `.getSpatialData()` and coordinate normalization; it returns `NULL` after issuing the existing warning when coordinate extraction fails. After that catch boundary, skip `NULL` entries and validate/merge the declared payload before `addSpatialData()`:
 
 ```r
+if (is.null(spatial_data)) {
+  next
+}
 if (!is.null(spatial_images[[image_name]])) {
   image_payload <- .validateCerebroSpatialImage(
     spatial_images[[image_name]],
@@ -120,7 +123,7 @@ if (!is.null(spatial_images[[image_name]])) {
 }
 ```
 
-Validation errors must propagate. Only coordinate-extraction errors retain the existing warning behavior; malformed declared image payloads must not be swallowed by the spatial `tryCatch()`.
+Validation errors and `addSpatialData()` errors must propagate. Only coordinate-extraction errors retain the existing warning behavior; malformed declared image payloads must not be swallowed by the spatial `tryCatch()`.
 
 - [ ] **Step 6: Run focused tests**
 
