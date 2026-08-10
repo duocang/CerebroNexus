@@ -1,20 +1,35 @@
 ## Unit tests for CerebroNexus R package functions
 ## These tests do NOT require a running Shiny app or Seurat.
-## They test pure R logic: the Cerebro_v1.3 R6 class, data loading,
+## They test pure R logic: the Cerebro R6 class, data loading,
 ## and input validation in functions that can be tested without Seurat.
 
 ## ---------------------------------------------------------------------------
-## Cerebro_v1.3 R6 class
+## Cerebro R6 class
 ## ---------------------------------------------------------------------------
 
-test_that("Cerebro_v1.3 object can be instantiated", {
-  obj <- Cerebro_v1.3$new()
-  expect_true(inherits(obj, "Cerebro_v1.3"))
+test_that("Cerebro object can be instantiated", {
+  obj <- Cerebro$new()
+  expect_true(inherits(obj, "Cerebro"))
   expect_true(inherits(obj, "R6"))
 })
 
-test_that("Cerebro_v1.3: addGroup / getGroups round-trip", {
-  obj <- Cerebro_v1.3$new()
+test_that("legacy serialized Cerebro objects remain readable", {
+  legacy <- Cerebro$new()
+  class(legacy) <- c(paste0("Cerebro_v1", ".3"), "R6")
+  path <- tempfile(fileext = ".crb")
+  saveRDS(legacy, path)
+
+  loaded <- readRDS(path)
+  expect_true(inherits(loaded, "R6"))
+  expect_true(is.function(loaded$getExpressionMatrix))
+  expect_identical(
+    CerebroNexus:::.readBundleBackend(path),
+    list(type = "embedded", location = NULL, legacy = FALSE)
+  )
+})
+
+test_that("Cerebro: addGroup / getGroups round-trip", {
+  obj <- Cerebro$new()
   # addGroup checks that the column exists in meta_data first
   obj$setMetaData(data.frame(
     sample = c("rep1", "rep2"),
@@ -28,8 +43,8 @@ test_that("Cerebro_v1.3: addGroup / getGroups round-trip", {
   expect_equal(sort(groups), sort(c("sample", "cluster")))
 })
 
-test_that("Cerebro_v1.3: getGroupLevels returns correct levels", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: getGroupLevels returns correct levels", {
+  obj <- Cerebro$new()
   obj$setMetaData(data.frame(sample = c("A", "B"), stringsAsFactors = FALSE))
   obj$addGroup("sample", c("A", "B", "C"))
 
@@ -37,8 +52,8 @@ test_that("Cerebro_v1.3: getGroupLevels returns correct levels", {
   expect_equal(lvls, c("A", "B", "C"))
 })
 
-test_that("Cerebro_v1.3: checkIfGroupExists works correctly", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: checkIfGroupExists works correctly", {
+  obj <- Cerebro$new()
   obj$setMetaData(data.frame(cluster = c("0", "1"), stringsAsFactors = FALSE))
   obj$addGroup("cluster", c("0", "1"))
 
@@ -48,8 +63,8 @@ test_that("Cerebro_v1.3: checkIfGroupExists works correctly", {
   expect_error(obj$checkIfGroupExists("nonexistent"), regexp = "not present")
 })
 
-test_that("Cerebro_v1.3: addProjection / getProjection round-trip", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: addProjection / getProjection round-trip", {
+  obj <- Cerebro$new()
   proj <- data.frame(
     UMAP_1 = c(1.0, 2.0, 3.0),
     UMAP_2 = c(4.0, 5.0, 6.0)
@@ -60,8 +75,8 @@ test_that("Cerebro_v1.3: addProjection / getProjection round-trip", {
   expect_equal(result, proj)
 })
 
-test_that("Cerebro_v1.3: availableProjections lists added projections", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: availableProjections lists added projections", {
+  obj <- Cerebro$new()
   obj$addProjection("tSNE", data.frame(x = 1:3, y = 1:3))
   obj$addProjection("UMAP", data.frame(x = 1:3, y = 1:3))
 
@@ -70,8 +85,8 @@ test_that("Cerebro_v1.3: availableProjections lists added projections", {
   expect_true("UMAP" %in% projs)
 })
 
-test_that("Cerebro_v1.3: setMetaData / getMetaData round-trip", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: setMetaData / getMetaData round-trip", {
+  obj <- Cerebro$new()
   meta <- data.frame(
     cell_barcode = paste0("cell_", 1:5),
     sample = c("A", "A", "B", "B", "B"),
@@ -86,8 +101,8 @@ test_that("Cerebro_v1.3: setMetaData / getMetaData round-trip", {
   expect_true("nUMI" %in% colnames(result))
 })
 
-test_that("Cerebro_v1.3: addMarkerGenes / getMarkerGenes round-trip", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: addMarkerGenes / getMarkerGenes round-trip", {
+  obj <- Cerebro$new()
   mg_table <- data.frame(
     gene = c("CD3D", "CD79A", "FCGR3A"),
     p_val = c(0.001, 0.002, 0.003),
@@ -101,8 +116,8 @@ test_that("Cerebro_v1.3: addMarkerGenes / getMarkerGenes round-trip", {
   expect_true("gene" %in% colnames(result))
 })
 
-test_that("Cerebro_v1.3: setExpression / getExpressionMatrix round-trip", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: setExpression / getExpressionMatrix round-trip", {
+  obj <- Cerebro$new()
   # Use a sparse Matrix (single-value class "dgCMatrix") to avoid the
   # length > 1 class() issue with base matrix in R >= 4.x
   mat <- Matrix::Matrix(
@@ -121,8 +136,8 @@ test_that("Cerebro_v1.3: setExpression / getExpressionMatrix round-trip", {
   expect_equal(ncol(result), 2L) # 2 cells
 })
 
-test_that("Cerebro_v1.3: getMeanExpressionForGenes returns numeric vector", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: getMeanExpressionForGenes returns numeric vector", {
+  obj <- Cerebro$new()
   mat <- Matrix::Matrix(
     c(0, 2, 4, 6, 1, 3),
     nrow = 2,
@@ -147,8 +162,8 @@ test_that("Cerebro_v1.3: getMeanExpressionForGenes returns numeric vector", {
   )
 })
 
-test_that("Cerebro_v1.3: addGeneList / getGeneLists round-trip", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: addGeneList / getGeneLists round-trip", {
+  obj <- Cerebro$new()
   # addGeneList(name, genes) — two separate arguments
   obj$addGeneList("mito", c("MT-CO1", "MT-ND1"))
   obj$addGeneList("ribo", c("RPS2", "RPL3"))
@@ -159,8 +174,8 @@ test_that("Cerebro_v1.3: addGeneList / getGeneLists round-trip", {
   expect_equal(gl$mito, c("MT-CO1", "MT-ND1"))
 })
 
-test_that("Cerebro_v1.3: addExperiment / getExperiment round-trip", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: addExperiment / getExperiment round-trip", {
+  obj <- Cerebro$new()
   # addExperiment(field, content) — two separate arguments, call once per field
   obj$addExperiment("experiment_name", "PBMC test")
   obj$addExperiment("organism", "hg")
@@ -171,8 +186,8 @@ test_that("Cerebro_v1.3: addExperiment / getExperiment round-trip", {
   expect_equal(exp$organism, "hg")
 })
 
-test_that("Cerebro_v1.3: version can be set and retrieved", {
-  obj <- Cerebro_v1.3$new()
+test_that("Cerebro: version can be set and retrieved", {
+  obj <- Cerebro$new()
   obj$setVersion("1.3.0")
   expect_equal(as.character(obj$getVersion()), "1.3.0")
 })
@@ -186,7 +201,7 @@ test_that("example.crb loads successfully and has correct structure", {
   expect_true(file.exists(path))
 
   data <- readRDS(path)
-  expect_true(inherits(data, "Cerebro_v1.3"))
+  expect_true(inherits(data, "Cerebro"))
 
   # groups
   groups <- data$getGroups()

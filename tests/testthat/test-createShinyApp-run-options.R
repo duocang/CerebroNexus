@@ -3,7 +3,7 @@ run_options_test_fixture <- function() {
   source_dir <- file.path(root, "source")
   dir.create(source_dir)
   crb <- file.path(source_dir, "dataset.crb")
-  saveRDS(Cerebro_v1.3$new(), crb)
+  saveRDS(Cerebro$new(), crb)
   list(root = root, crb = crb)
 }
 

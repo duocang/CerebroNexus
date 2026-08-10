@@ -616,7 +616,7 @@ immune_repertoire <- lapply(split(sel, sel$donor), function(x) {
   )
 })
 
-crb <- Cerebro_v1.3$new()
+crb <- Cerebro$new()
 crb$expression <- expression
 crb$setMetaData(meta)
 crb$projections <- list(umap = umap)

@@ -44,7 +44,7 @@ minimal_export <- function(type = "embedded", location = NULL) {
   export$getExpressionBackend <- local({
     function() backend
   })
-  class(export) <- c("Cerebro_v1.3", "R6")
+  class(export) <- c("Cerebro", "R6")
   export
 }
 
@@ -134,7 +134,7 @@ test_that("backend ownership checks do not execute serialized bindings", {
   sentinel <- file.path(root, "binding-ran")
 
   active <- new.env(parent = emptyenv())
-  class(active) <- c("Cerebro_v1.3", "R6")
+  class(active) <- c("Cerebro", "R6")
   makeActiveBinding(
     "expression_backend",
     function(value) {
@@ -149,7 +149,7 @@ test_that("backend ownership checks do not execute serialized bindings", {
   expect_false(file.exists(sentinel))
 
   lazy <- new.env(parent = emptyenv())
-  class(lazy) <- c("Cerebro_v1.3", "R6")
+  class(lazy) <- c("Cerebro", "R6")
   delayedAssign(
     "expression_backend",
     {
