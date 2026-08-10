@@ -904,6 +904,20 @@ dedent <- function(string) {
   catalog
 }
 
+.spatialImageBundleTarget <- function(dataset, spatial_name, filename) {
+  target <- paste(
+    "spatial-assets",
+    dataset,
+    spatial_name,
+    filename,
+    sep = "/"
+  )
+  .portableBundlePath(
+    target,
+    paste0("The spatial image bundle target '", target, "'")
+  )
+}
+
 .bundleBackendOverrideKey <- function(backend, cerebro_options) {
   if (isTRUE(backend$legacy)) {
     if (!is.null(cerebro_options[["expression_matrix_h5"]])) {
@@ -1959,6 +1973,30 @@ createShinyApp <- function(
   if (anyDuplicated(data_labels)) {
     stop("cerebro_data labels must be unique.", call. = FALSE)
   }
+  builder_spatial_options <- c(
+    "spatial_images",
+    "spatial_image_settings",
+    "spatial_images_flip_x",
+    "spatial_images_flip_y",
+    "spatial_images_scale_x",
+    "spatial_images_scale_y",
+    "spatial_images_offset_x",
+    "spatial_images_offset_y"
+  )
+  supplied_option_names <- names(cerebro_options)
+  forbidden_spatial_options <- unique(intersect(
+    supplied_option_names,
+    builder_spatial_options
+  ))
+  if (length(forbidden_spatial_options) > 0L) {
+    stop(
+      "`cerebro_options` contains builder-owned spatial key(s): ",
+      paste(forbidden_spatial_options, collapse = ", "),
+      ". Supply these through the corresponding createShinyApp() formal ",
+      "parameters instead.",
+      call. = FALSE
+    )
+  }
   if (
     !is.logical(overwrite) ||
       length(overwrite) != 1L ||
@@ -2413,8 +2451,7 @@ createShinyApp <- function(
         for (image_label in names(declarations)) {
           descriptor <- declarations[[image_label]]
           image <- descriptor$path
-          target <- file.path(
-            "spatial-assets",
+          target <- .spatialImageBundleTarget(
             dataset,
             spatial_name,
             basename(image)

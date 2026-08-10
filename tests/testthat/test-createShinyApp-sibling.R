@@ -2421,6 +2421,60 @@ test_that("spatial images and settings preserve dataset spatial image nesting", 
   )))
 })
 
+test_that("spatial image bundle targets always use portable separators", {
+  target <- .spatialImageBundleTarget("Dataset", "section", "image.png")
+
+  expect_identical(target, "spatial-assets/Dataset/section/image.png")
+  expect_false(grepl("\\\\", target))
+})
+
+test_that("builder-owned spatial options cannot bypass formal parameters", {
+  root <- withr::local_tempdir()
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
+  keys <- c(
+    "spatial_images",
+    "spatial_image_settings",
+    "spatial_images_flip_x",
+    "spatial_images_flip_y",
+    "spatial_images_scale_x",
+    "spatial_images_scale_y",
+    "spatial_images_offset_x",
+    "spatial_images_offset_y"
+  )
+
+  for (key in keys) {
+    app <- file.path(root, paste0("bypass-", key))
+    expect_error(
+      build_test_app(
+        c(Dataset = crb),
+        app,
+        cerebro_options = stats::setNames(list(TRUE), key)
+      ),
+      paste0("cerebro_options.*", key, ".*formal.*parameter")
+    )
+    expect_false(dir.exists(app))
+  }
+
+  image <- file.path(root, "image.png")
+  writeLines("IMAGE", image)
+  app <- file.path(root, "conflict")
+  expect_error(
+    build_test_app(
+      c(Dataset = crb),
+      app,
+      spatial_images = list(
+        Dataset = list(section = c(Histology = image))
+      ),
+      cerebro_options = list(
+        spatial_images = list(bypass = TRUE),
+        spatial_image_settings = list(bypass = TRUE)
+      )
+    ),
+    "cerebro_options.*spatial_images.*spatial_image_settings.*formal.*parameter"
+  )
+  expect_false(dir.exists(app))
+})
+
 test_that("spatial image preflight rejects unknown and conflicting references", {
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(
