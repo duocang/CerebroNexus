@@ -1763,13 +1763,14 @@ test_that("a Trekker click opens the inspector without covering linked views", {
     app$get_js("getComputedStyle(document.getElementById('cv-tip-a')).opacity"),
     "1"
   )
-  ## The tooltip must not become a hit target itself, or it would block hovering
-  ## whatever sits under it; only the buttons are clickable.
+  ## Once pinned, the tooltip must become a hit target so the delegated click
+  ## handler can receive Details/Close clicks instead of the event falling
+  ## through to the canvas.
   expect_equal(
     app$get_js(
       "getComputedStyle(document.getElementById('cv-tip-a')).pointerEvents"
     ),
-    "none"
+    "auto"
   )
   expect_equal(
     app$get_js(

@@ -2284,7 +2284,6 @@ var focusPanel = null;
     // headline = the active categorical level, else the barcode
     var head = g ? g.levels[g.values[i]] : D.cells[i];
     var h = '<div class="cv-tip-row"><b>' + esc(head) + '</b></div>';
-    if (g) rows.push(['cell', D.cells[i]]);
     // the continuous variable in play, at its true value
     var fld = fieldOf();
     if (fld) rows.push([fld.label, fmtVal(fieldValue(fld, i))]);
@@ -2300,11 +2299,6 @@ var focusPanel = null;
         var gg = D.groups[k];
         rows.push([groupLabel(k), gg.levels[gg.values[i]]]);
       });
-    }
-    if (D.clone && D.clone.id[i] >= 0) {
-      var lab = D.clone.label[D.clone.id[i]] || '';
-      if (lab.length > 28) lab = lab.slice(0, 26) + '…';
-      rows.push(['clone', lab + ' (' + D.clone.size[D.clone.id[i]] + ' cells)']);
     }
     rows.forEach(function (r) {
       if (r[1] == null || r[1] === '') return;
@@ -2620,6 +2614,29 @@ var focusPanel = null;
     pinnedTip = { panel: p, cell: i };
     tip.classList.add('cv-tip-pinned');
     tip.innerHTML = hoverHtml(i, true);
+    var detailHandled = false;
+    var runDetails = function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (detailHandled) return;
+      detailHandled = true;
+      openCard(p, i);
+    };
+    var details = tip.querySelector('.cv-tip-details');
+    if (details) {
+      details.addEventListener('pointerdown', runDetails);
+      details.addEventListener('click', runDetails);
+    }
+    var runClose = function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (detailHandled) return;
+      detailHandled = true;
+      unpinTip();
+    };
+    var close = tip.querySelector('.cv-tip-close');
+    if (close) {
+      close.addEventListener('pointerdown', runClose);
+      close.addEventListener('click', runClose);
+    }
     tip.style.opacity = 1;
     placeTip(p, tip, i);
   }
