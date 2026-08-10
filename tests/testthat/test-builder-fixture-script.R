@@ -26,3 +26,19 @@ test_that("the fixture generator refuses a non-repository working directory", {
     fixed = TRUE
   )
 })
+
+test_that("the installed Builder runtime does not manufacture fixtures", {
+  io_path <- builder_profile_inst_path("builder", "io.R")
+  io_source <- readLines(io_path, warn = FALSE)
+  generator_definitions <- grep(
+    paste0(
+      "^(?:\\.builder_fixture_[[:alnum:]_]+|",
+      "builder_(?:make|write)_permanent_fixture)\\s*<-\\s*function"
+    ),
+    io_source,
+    value = TRUE,
+    perl = TRUE
+  )
+
+  expect_identical(generator_definitions, character())
+})

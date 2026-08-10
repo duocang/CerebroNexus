@@ -18,7 +18,7 @@ test_that("Builder gallery contains one synthetic Seurat omnibus", {
 })
 
 test_that("omnibus fixture models a user-uploaded Xenium Seurat object", {
-  object <- builder_omnibus_env$builder_make_permanent_fixture("all_content")
+  object <- builder_omnibus_env$builder_example_catalog()$all_content$make()$object
 
   expect_s4_class(object, "Seurat")
   expect_s4_class(
@@ -105,7 +105,7 @@ test_that("omnibus Trekker payload satisfies the Builder content contract", {
       envir = builder_omnibus_env
     )
   }
-  object <- builder_omnibus_env$builder_make_permanent_fixture("all_content")
+  object <- builder_omnibus_env$builder_example_catalog()$all_content$make()$object
   profile <- builder_omnibus_env$builder_profile_trekker_payload(
     object@misc$trekker,
     list(

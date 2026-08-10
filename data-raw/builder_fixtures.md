@@ -16,6 +16,12 @@ The generator is offline, deterministic, and preserves the caller's random
 number state. It overwrites only the committed files in
 `inst/builder/fixtures/`.
 
+All synthetic-data construction lives in `data-raw/build_builder_fixtures.R`,
+which is excluded from the installed package. The installed Builder runtime
+only locates and reads the committed RDS and sidecars; it does not contain a
+fixture factory. Passing one optional directory argument writes the same
+fixture set to that directory for reproducibility tests.
+
 ## All content Seurat
 
 `all_content.rds` is a serialized synthetic Seurat object designed to follow

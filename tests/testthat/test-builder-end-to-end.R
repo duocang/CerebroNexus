@@ -247,7 +247,7 @@ test_that("sourced Builder resources stay in the io.R inst tree", {
       info = case
     )
     expect_s4_class(
-      runtime$builder_make_permanent_fixture("all_content"),
+      catalog$all_content$make()$object,
       "Seurat"
     )
   }
@@ -289,8 +289,7 @@ test_that("example and file adapters inspect the same immutable objects", {
   expect_identical(.Random.seed, caller_seed)
 })
 
-test_that("synthetic constructors and permanent fixture writes are deterministic", {
-  skip_if_not_installed("callr")
+test_that("serialized gallery and data-raw fixture writes are deterministic", {
   synthetic <- Filter(
     function(record) identical(record$provenance, "synthetic"),
     builder_example_catalog()
@@ -309,38 +308,30 @@ test_that("synthetic constructors and permanent fixture writes are deterministic
 
   first_dir <- withr::local_tempdir(pattern = "builder-fixtures-first-")
   second_dir <- withr::local_tempdir(pattern = "builder-fixtures-second-")
-  io_path <- builder_profile_inst_path("builder", "io.R")
-  write_in_fresh_process <- function(output_dir, source_path, ids) {
-    callr::r(
-      function(output_dir, source_path, ids) {
-        sys.source(source_path, envir = .GlobalEnv)
-        set.seed(1403)
-        caller_seed <- .Random.seed
-        builder_write_permanent_fixtures(output_dir)
-        list(
-          rng_restored = identical(.Random.seed, caller_seed),
-          hashes = unname(tools::md5sum(file.path(
-            output_dir,
-            paste0(ids, ".rds")
-          )))
-        )
-      },
-      args = list(output_dir, source_path, ids),
-      spinner = FALSE
+  builder_dir <- normalizePath(builder_profile_inst_path("builder"))
+  repo <- dirname(dirname(builder_dir))
+  script <- file.path(repo, "data-raw", "build_builder_fixtures.R")
+  write_in_fresh_process <- function(output_dir, ids) {
+    result <- processx::run(
+      file.path(R.home("bin"), "Rscript"),
+      c(script, output_dir),
+      wd = repo,
+      error_on_status = FALSE,
+      echo = FALSE
     )
+    expect_identical(result$status, 0L, info = result$stderr)
+    unname(tools::md5sum(file.path(output_dir, paste0(ids, ".rds"))))
   }
-  first_write <- write_in_fresh_process(first_dir, io_path, names(synthetic))
-  second_write <- write_in_fresh_process(second_dir, io_path, names(synthetic))
+  first_hashes <- write_in_fresh_process(first_dir, names(synthetic))
+  second_hashes <- write_in_fresh_process(second_dir, names(synthetic))
   expect_identical(.Random.seed, caller_seed)
-  expect_true(first_write$rng_restored)
-  expect_true(second_write$rng_restored)
 
   names <- paste0(names(synthetic), ".rds")
   first_paths <- file.path(first_dir, names)
   second_paths <- file.path(second_dir, names)
   expect_true(all(file.exists(first_paths)))
   expect_true(all(file.exists(second_paths)))
-  expect_identical(first_write$hashes, second_write$hashes)
+  expect_identical(first_hashes, second_hashes)
   expect_identical(
     lapply(first_paths, function(path) {
       serialize(readRDS(path), NULL, version = 3L)
