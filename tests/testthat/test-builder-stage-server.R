@@ -440,6 +440,114 @@ test_that("Builder auth accepts only the exact typed browser payload", {
   })
 })
 
+test_that("changed auth accounts invalidate a confirmed frozen plan", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  rlang::local_bindings(
+    builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
+    .env = environment(builder_stage_frozen_plan)
+  )
+  app_env$auth_capability$available <- TRUE
+  app_env$builder_freeze_plan <- function(
+    entries,
+    out_dir,
+    make_app,
+    overwrite,
+    app_options,
+    app_auth
+  ) {
+    plan <- builder_stage_frozen_plan(make_app)
+    plan$dataset_order <- vapply(entries, `[[`, character(1), "id")
+    plan$app_options <- app_options
+    plan$app_auth <- app_auth
+    plan$out_dir <- out_dir
+    plan$overwrite <- overwrite
+    plan
+  }
+
+  shiny::testServer(app_env$server, {
+    entry <- list(
+      id = "dataset-a",
+      revision = 0L,
+      snapshot = list(
+        path = "/private/dataset-a",
+        owner_token = "owner-a",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a"),
+      settings = list(name = "Dataset A")
+    )
+    use_state_only_fixture(list(entry))
+    session$setInputs(make_app = TRUE)
+    accounts_a <- app_env$builder_auth_validate_payload(
+      TRUE,
+      list(list(
+        id = "auth-account-1",
+        username = "user-a",
+        password = "password-a"
+      ))
+    )$accounts
+    accounts_b <- app_env$builder_auth_validate_payload(
+      TRUE,
+      c(
+        unclass(accounts_a),
+        list(list(
+          id = "auth-account-2",
+          username = "user-b",
+          password = "password-b"
+        ))
+      )
+    )$accounts
+    auth_enabled(TRUE)
+    auth_accounts(accounts_a)
+    session$flushReact()
+
+    plan_a <- frozen_review_plan()
+    expect_identical(plan_a$app_auth$account_count, 1L)
+    reviewed <- app_env$builder_reduce_workflow(
+      isolate(workflow()),
+      list(type = "open_review", plan = plan_a)
+    )
+    workflow(app_env$builder_reduce_workflow(
+      reviewed,
+      list(type = "confirm_review", plan = plan_a)
+    ))
+    expect_identical(workflow()$stage, "build")
+
+    auth_accounts(accounts_b)
+    session$flushReact()
+
+    plan_b <- frozen_review_plan()
+    expect_identical(plan_b$app_auth$account_count, 2L)
+    expect_named(
+      plan_b$app_auth,
+      c("enabled", "account_count", "timeout_minutes")
+    )
+    expect_false("accounts" %in% names(plan_b$app_auth))
+    expect_identical(workflow()$stage, "configure")
+    expect_null(workflow()$review_plan)
+    expect_null(workflow()$confirmation)
+    expect_false(builder_build_confirmation_matches(plan_a))
+    enqueued <- FALSE
+    assign(
+      "enqueue",
+      function(...) {
+        enqueued <<- TRUE
+        TRUE
+      },
+      envir = environment(enqueue_build_plan)
+    )
+    expect_false(enqueue_build_plan(plan_a, auth_accounts = accounts_a))
+    expect_false(enqueued)
+  })
+})
+
 test_that("Build enqueue retains auth after failure and resets only after success", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
@@ -553,6 +661,26 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
     .env = environment(builder_stage_frozen_plan)
   )
   shiny::testServer(app_env$server, {
+    fn_env <- environment(builder_require_confirmed_build_plan)
+    notifications <- character()
+    dialog_messages <- list()
+    assign(
+      "showNotification",
+      function(ui, ...) {
+        notifications <<- c(notifications, as.character(ui))
+      },
+      envir = fn_env
+    )
+    assign(
+      "session",
+      list(sendCustomMessage = function(type, message) {
+        dialog_messages[[length(dialog_messages) + 1L]] <<- list(
+          type = type,
+          message = message
+        )
+      }),
+      envir = fn_env
+    )
     plan_a <- builder_stage_frozen_plan()
     reviewed <- app_env$builder_reduce_workflow(
       app_env$builder_workflow_state(),
@@ -579,11 +707,30 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
       ),
       list(type = "confirm_review", plan = plan_a)
     ))
+    relocated <- plan_a
+    relocated$out_dir <- tempfile("relocated-output-")
+    expect_true(builder_build_confirmation_matches(relocated))
+
     plan_b <- plan_a
     plan_b$app_options$welcome_message <- "Changed after dialog opened"
     build_flow(list(stage = "conflict", plan = plan_a))
+    guard <- builder_build_confirmation_status(isolate(workflow()), plan_b)
+    expect_identical(guard, list(ok = FALSE, reason = "identity_mismatch"))
     expect_false(builder_require_confirmed_build_plan(plan_b))
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_identical(workflow()$stage, "configure")
+    expect_null(workflow()$review_plan)
+    expect_null(workflow()$confirmation)
+    expect_match(
+      tail(notifications, 1L),
+      "Settings changed. Review the updated plan before building.",
+      fixed = TRUE
+    )
+    expect_true(any(vapply(
+      dialog_messages,
+      function(message) identical(message$message, list(action = "close")),
+      logical(1)
+    )))
     enqueued <- FALSE
     assign(
       "enqueue",
@@ -598,10 +745,6 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
       auth_accounts = app_env$builder_auth_empty_accounts()
     ))
     expect_false(enqueued)
-
-    relocated <- plan_a
-    relocated$out_dir <- tempfile("relocated-output-")
-    expect_true(builder_build_confirmation_matches(relocated))
   })
 
   build_source <- paste(

@@ -361,7 +361,7 @@ test_that("Build flow requires one confirmed frozen Review plan", {
   expect_match(app, "builder_review_plan_identity(plan)", fixed = TRUE)
   expect_match(
     app,
-    '"Confirm the current frozen Review before building."',
+    '"Settings changed. Review the updated plan before building."',
     fixed = TRUE
   )
 })

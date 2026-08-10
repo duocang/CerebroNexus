@@ -6,27 +6,58 @@
 ## answering while a marker-gene run takes its minutes.
 auth_accounts_state <- auth_accounts
 
-builder_build_confirmation_matches <- function(plan) {
-  state <- isolate(workflow())
+builder_build_confirmation_status <- function(state, plan) {
+  if (!identical(state$stage, "build")) {
+    return(list(ok = FALSE, reason = "stage_mismatch"))
+  }
   stored <- state$review_plan
-  identical(state$stage, "build") &&
-    builder_review_can_build(stored) &&
-    builder_review_can_build(plan) &&
-    builder_workflow_confirmation_matches(state, stored) &&
-    identical(
+  if (!builder_review_can_build(stored)) {
+    return(list(ok = FALSE, reason = "stored_plan_unavailable"))
+  }
+  if (!builder_review_can_build(plan)) {
+    return(list(ok = FALSE, reason = "candidate_plan_unavailable"))
+  }
+  if (!builder_workflow_confirmation_matches(state, stored)) {
+    return(list(ok = FALSE, reason = "confirmation_mismatch"))
+  }
+  if (
+    !identical(
       builder_review_plan_identity(stored),
       builder_review_plan_identity(plan)
     )
+  ) {
+    return(list(ok = FALSE, reason = "identity_mismatch"))
+  }
+  list(ok = TRUE, reason = NULL)
+}
+
+builder_build_confirmation_matches <- function(plan) {
+  isTRUE(
+    builder_build_confirmation_status(
+      isolate(workflow()),
+      plan
+    )$ok
+  )
 }
 
 builder_require_confirmed_build_plan <- function(plan) {
-  if (isTRUE(builder_build_confirmation_matches(plan))) {
+  state <- isolate(workflow())
+  status <- builder_build_confirmation_status(state, plan)
+  if (isTRUE(status$ok)) {
     return(invisible(TRUE))
+  }
+  if (state$stage %in% c("review", "build")) {
+    workflow(builder_reduce_workflow(state, list(type = "invalidate")))
   }
   build_flow(list(stage = "idle", plan = NULL))
   session$sendCustomMessage(
     "builder_build_dialog",
     list(action = "close")
+  )
+  showNotification(
+    "Settings changed. Review the updated plan before building.",
+    type = "warning",
+    duration = 6
   )
   invisible(FALSE)
 }
@@ -144,11 +175,6 @@ observeEvent(input$build, {
   plan <- isolate(frozen_review_plan())
   datasets <- isolate(sets())
   if (!isTRUE(builder_require_confirmed_build_plan(plan))) {
-    showNotification(
-      "Confirm the current frozen Review before building.",
-      type = "warning",
-      duration = 6
-    )
     return()
   }
   if (length(datasets) >= 2L) {

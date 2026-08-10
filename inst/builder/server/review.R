@@ -182,15 +182,21 @@ freeze_plan_for_output <- function(out_dir, overwrite = FALSE) {
   }
   typed <- review_options()
   app_options <- builder_review_options_for_plan(typed)
-  if (isTRUE(auth_enabled()) && !isTRUE(auth_capability$available)) {
+  login_enabled <- isTRUE(auth_enabled())
+  if (login_enabled && !isTRUE(auth_capability$available)) {
     return(builder_plan_error(
       "Login requires optional authentication packages.",
       "missing_auth_dependency"
     ))
   }
+  current_auth_accounts <- if (login_enabled) {
+    auth_accounts()
+  } else {
+    builder_auth_empty_accounts()
+  }
   parsed_auth <- builder_auth_validate_payload(
-    isTRUE(auth_enabled()),
-    isolate(auth_accounts())
+    login_enabled,
+    current_auth_accounts
   )
   if (!isTRUE(parsed_auth$ok)) {
     return(builder_plan_error(parsed_auth$error, "invalid_auth_accounts"))
@@ -202,7 +208,7 @@ freeze_plan_for_output <- function(out_dir, overwrite = FALSE) {
     overwrite = isTRUE(overwrite),
     app_options = app_options,
     app_auth = builder_auth_summary(
-      isTRUE(auth_enabled()),
+      login_enabled,
       parsed_auth$accounts
     )
   )
@@ -638,6 +644,18 @@ observe({
     )
   if (!isTRUE(matches)) {
     workflow(builder_reduce_workflow(state, list(type = "invalidate")))
+    build_flow(list(stage = "idle", plan = NULL))
+    session$sendCustomMessage(
+      "builder_build_dialog",
+      list(action = "close")
+    )
+    if (state$stage %in% c("review", "build")) {
+      showNotification(
+        "Settings changed. Review the updated plan before building.",
+        type = "warning",
+        duration = 6
+      )
+    }
   }
 })
 
