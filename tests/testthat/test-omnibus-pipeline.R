@@ -106,3 +106,93 @@ test_that("the source app loads Omnibus first without an external image", {
   spatial_options <- regmatches(app_source, spatial_match)[[1L]][[2L]]
   expect_false(grepl('"Omnibus"', spatial_options, fixed = TRUE))
 })
+
+test_that("Omnibus converts and bundles into a standalone Shiny app", {
+  skip_if_not_installed("Seurat")
+
+  root <- withr::local_tempdir()
+  source_rds <- file.path(root, "demo_omnibus_seurat.rds")
+  expect_true(file.copy(
+    omnibus_example_path("demo_omnibus_seurat.rds"),
+    source_rds
+  ))
+
+  convert_dir <- file.path(root, "converted")
+  dir.create(convert_dir)
+  convertSeuratToCerebro(
+    seurat_file = source_rds,
+    result_dir = convert_dir,
+    assay = "RNA",
+    slot = "data",
+    experiment_name = "Synthetic Omnibus",
+    organism = "Human",
+    groups = c("seurat_clusters", "orig.ident", "cell_type", "phase"),
+    cell_cycle = "phase",
+    add_most_expressed_genes = FALSE,
+    verbose = FALSE
+  )
+  generated_path <- file.path(
+    convert_dir,
+    "cerebro_demo_omnibus_seurat.crb"
+  )
+  expect_true(file.exists(generated_path))
+
+  generated <- readRDS(generated_path)
+  bundled <- readRDS(omnibus_example_path("demo_omnibus.crb"))
+  expect_equal(dim(generated$getExpressionMatrix()), c(80L, 120L))
+  expect_setequal(generated$getCellNames(), bundled$getCellNames())
+  expect_setequal(generated$getGeneNames(), bundled$getGeneNames())
+  expect_setequal(generated$getGroups(), bundled$getGroups())
+  expect_equal(
+    generated$getSpatialData("omnibus_fov")$histology_image,
+    bundled$getSpatialData("omnibus_fov")$histology_image
+  )
+  expect_equal(
+    generated$getSpatialData("omnibus_fov")$histology_image_bounds,
+    bundled$getSpatialData("omnibus_fov")$histology_image_bounds
+  )
+  expect_equal(
+    generated$getMethodsForTrajectories(),
+    bundled$getMethodsForTrajectories()
+  )
+  expect_equal(
+    generated$getImmuneRepertoire(),
+    bundled$getImmuneRepertoire()
+  )
+  expect_equal(generated$getHLATyping(), bundled$getHLATyping())
+  expect_equal(generated$getTrekker(), bundled$getTrekker())
+  expect_equal(
+    generated$getExtraMaterialCategories(),
+    bundled$getExtraMaterialCategories()
+  )
+
+  app_dir <- file.path(root, "app")
+  createShinyApp(
+    cerebro_data = c(Omnibus = generated_path),
+    result_dir = app_dir,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+  expect_true(file.exists(file.path(app_dir, "app.R")))
+  expect_true(file.exists(file.path(app_dir, "cerebro_config.rds")))
+  expect_true(dir.exists(file.path(app_dir, "viewer")))
+
+  private_crbs <- list.files(
+    file.path(app_dir, "private-data"),
+    pattern = "[.]crb$",
+    full.names = TRUE
+  )
+  expect_length(private_crbs, 1L)
+  private_object <- readRDS(private_crbs[[1L]])
+  expect_s3_class(private_object, "Cerebro")
+  expect_match(
+    private_object$getSpatialData("omnibus_fov")$histology_image,
+    "^data:image/png;base64,"
+  )
+
+  utility_source <- readLines(
+    file.path(app_dir, "viewer", "utility_functions.R"),
+    warn = FALSE
+  )
+  expect_false(any(grepl("CerebroNexus::", utility_source, fixed = TRUE)))
+})
