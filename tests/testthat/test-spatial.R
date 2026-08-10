@@ -478,6 +478,12 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
       path = "spatial-assets/atlas.png",
       bounds = c(xmin = -10, xmax = 110, ymin = -20, ymax = 120)
     ),
+    background_identity = list(
+      dataset = "Atlas",
+      spatial_name = "section",
+      source = "external",
+      label = "Atlas"
+    ),
     background_image_allowlist = "spatial-assets/atlas.png",
     n_dimensions = 2,
     x_range = c(0, 100),
@@ -517,6 +523,10 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   expect_identical(rendered$data$x, c(20, 80))
   expect_identical(rendered$data$y, c(30, 70))
   expect_identical(rendered$meta$background_rotation, 37)
+  expect_identical(
+    rendered$meta$background_identity,
+    params$background_identity
+  )
 
   params$background_descriptor$bounds <- NULL
   call_renderer(params)
@@ -553,9 +563,14 @@ test_that("spatial background JS seeds resolved rotation on image changes", {
 
   expect_match(
     scatter_js,
-    "meta\\.background_rotation[[:space:]]*\\n?[[:space:]]*\\)",
+    paste0(
+      "meta\\.background_rotation[[:space:]]*,[[:space:]]*\\n?",
+      "[[:space:]]*meta\\.background_identity[[:space:]]*\\n?",
+      "[[:space:]]*\\)"
+    ),
     perl = TRUE
   )
+  expect_match(scatter_js, "meta\\.background_identity", perl = TRUE)
   expect_match(
     background_js,
     "rotate !== undefined.*dataset\\.rotate === undefined",
@@ -565,6 +580,89 @@ test_that("spatial background JS seeds resolved rotation on image changes", {
     background_js,
     "dataset\\.rotate = String\\(rotate\\)",
     perl = TRUE
+  )
+  renderer_src <- paste(
+    readLines(testthat::test_path(
+      "../../inst/viewer/spatial/func_projection_update_plot.R"
+    )),
+    collapse = "\n"
+  )
+  identity_assignments <- gregexpr(
+    "background_identity = plot_parameters",
+    renderer_src,
+    fixed = TRUE
+  )[[1L]]
+  expect_length(identity_assignments[identity_assignments > 0L], 3L)
+})
+
+test_that("spatial background JS isolates identical URIs by logical identity", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  js_path <- testthat::test_path(
+    "../../inst/viewer/spatial/js_spatial_background.js"
+  )
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      "global.shinyjs = { getParams: (x) => x };",
+      "const wrapper = { id: 'spatial_projection_wrapper', style: {}, insertBefore: () => {} };",
+      "const plot = { id: 'spatial_projection', parentElement: wrapper, style: {}, dataset: {} };",
+      "const bg = { id: 'spatial_projection_background', parentElement: wrapper, style: {}, dataset: {} };",
+      "const elements = { spatial_projection: plot, spatial_projection_wrapper: wrapper, spatial_projection_background: bg };",
+      "global.document = { getElementById: id => elements[id] || null, createElement: () => { throw new Error('unexpected create'); } };",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(js_path, quote = "\"")
+      ),
+      "shinyjs.applySpatialBackground = () => {};",
+      "const uri = 'data:image/png;base64,SAME';",
+      "const a = {dataset:'Atlas', spatial_name:'sliceA', source:'embedded', label:'H&E'};",
+      "const b = {dataset:'Other', spatial_name:'sliceB', source:'external', label:'H&E'};",
+      "shinyjs.syncSpatialBackground(uri, false, false, 1, 1, 0.8, null, 2, 3, 10, a);",
+      "shinyjs.updateSpatialBackgroundAppearance({flipX:true, scaleX:4, offsetX:40, rotate:80});",
+      "shinyjs.syncSpatialBackground(uri, false, true, 2, 3, 0.4, null, 5, 6, 20, b);",
+      "const switched = {flipX:bg.dataset.flipX, flipY:bg.dataset.flipY, scaleX:bg.dataset.scaleX, scaleY:bg.dataset.scaleY, offsetX:bg.dataset.offsetX, offsetY:bg.dataset.offsetY, rotate:bg.dataset.rotate, opacity:bg.dataset.opacity, identity:bg.dataset.backgroundIdentity};",
+      "shinyjs.updateSpatialBackgroundAppearance({flipX:true, scaleX:7, offsetX:70, rotate:90});",
+      "shinyjs.syncSpatialBackground(uri, false, false, 9, 9, 0.1, null, 9, 9, 9, b);",
+      "const same = {flipX:bg.dataset.flipX, scaleX:bg.dataset.scaleX, offsetX:bg.dataset.offsetX, rotate:bg.dataset.rotate};",
+      "console.log(JSON.stringify({switched, same}));"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_equal(
+    attr(output, "status"),
+    NULL,
+    info = paste(output, collapse = "\n")
+  )
+  result <- jsonlite::fromJSON(output)
+  expect_identical(
+    unname(unlist(result$switched[c(
+      "flipX",
+      "flipY",
+      "scaleX",
+      "scaleY",
+      "offsetX",
+      "offsetY",
+      "rotate",
+      "opacity"
+    )])),
+    c("false", "true", "2", "3", "5", "6", "20", "0.4")
+  )
+  expect_identical(
+    jsonlite::fromJSON(result$switched$identity),
+    list(
+      dataset = "Other",
+      spatial_name = "sliceB",
+      source = "external",
+      label = "H&E"
+    )
+  )
+  expect_identical(
+    unname(unlist(result$same)),
+    c("true", "7", "70", "90")
   )
 })
 

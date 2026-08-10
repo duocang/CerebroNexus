@@ -106,6 +106,11 @@ spatial_projection_parameters_plot_raw <- reactive({
     embedded_images,
     configured_background_images
   )
+  background_identity <- spatial_background_identity(
+    dataset,
+    spatial_name,
+    background_descriptor
+  )
   image_label <- if (is.null(background_descriptor)) {
     NULL
   } else {
@@ -152,6 +157,7 @@ spatial_projection_parameters_plot_raw <- reactive({
     y_range = input[["spatial_projection_scale_y_manual_range"]],
     background_image = background_image,
     background_descriptor = background_descriptor,
+    background_identity = background_identity,
     background_image_allowlist = vapply(
       configured_background_images,
       `[[`,

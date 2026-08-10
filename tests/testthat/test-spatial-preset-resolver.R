@@ -245,6 +245,29 @@ test_that("selected identity resolves the matching descriptor and bounds", {
   expect_null(resolve_spatial_background("none", embedded, external))
 })
 
+test_that("background identity includes its full logical image location", {
+  descriptor <- list(
+    source = "embedded",
+    label = "H&E",
+    image = "data:image/png;base64,SAME"
+  )
+
+  expect_identical(
+    spatial_background_identity("Atlas", "sliceA", descriptor),
+    list(
+      dataset = "Atlas",
+      spatial_name = "sliceA",
+      source = "embedded",
+      label = "H&E"
+    )
+  )
+  expect_false(identical(
+    spatial_background_identity("Atlas", "sliceA", descriptor),
+    spatial_background_identity("Other", "sliceB", descriptor)
+  ))
+  expect_null(spatial_background_identity("Atlas", "sliceA", NULL))
+})
+
 test_that("copy preset formatter emits exact canonical image settings", {
   code <- format_spatial_preset_code(
     dataset = "Atlas",

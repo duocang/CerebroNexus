@@ -166,6 +166,34 @@ resolve_spatial_background <- function(
   c(list(source = source, label = label), descriptor)
 }
 
+## The browser must distinguish a logical image from its encoded bytes. Two
+## datasets can legitimately reuse an identical data URI while owning different
+## presets, so keep the full resolved location as structured metadata instead
+## of building a delimiter-based string that could collide on user labels.
+spatial_background_identity <- function(dataset, spatial_name, descriptor) {
+  if (is.null(descriptor)) {
+    return(NULL)
+  }
+  values <- list(
+    dataset = dataset,
+    spatial_name = spatial_name,
+    source = descriptor[["source"]],
+    label = descriptor[["label"]]
+  )
+  if (
+    any(vapply(
+      values,
+      function(value) {
+        !is.character(value) || length(value) != 1L || is.na(value)
+      },
+      logical(1)
+    ))
+  ) {
+    return(NULL)
+  }
+  values
+}
+
 format_spatial_preset_code <- function(
   dataset,
   spatial_name,

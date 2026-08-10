@@ -991,10 +991,11 @@
         meta.image_bounds,
         meta.background_offset_x,
         meta.background_offset_y,
-        meta.background_rotation
+        meta.background_rotation,
+        meta.background_identity
       );
     } else {
-      shinyjs.syncSpatialBackground(null, false, false, 1, 1, 1, null, 0, 0, 0);
+      shinyjs.syncSpatialBackground(null, false, false, 1, 1, 1, null, 0, 0, 0, null);
     }
   }
 
