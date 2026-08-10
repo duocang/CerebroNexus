@@ -153,7 +153,9 @@ cv_range <- function(
     tags$label(label),
     div(
       class = "cv-range",
+      tags$span(class = "cv-range-min", min),
       tags$span(class = "cv-ps-val", id = val_id, disp),
+      tags$span(class = "cv-range-max", max),
       tags$input(
         type = "range",
         id = input_id,
@@ -327,7 +329,8 @@ tab_coordinated_views <- tabItem(
         class = "cv-morebtn",
         `aria-expanded` = "false",
         `aria-controls` = "cv-more",
-        tags$span("More"),
+        icon("sliders"),
+        tags$span("More settings"),
         ## drawn in CSS (a glyph's position inside its box varies by font, which
         ## a rotation makes visible as a wobble)
         tags$span(class = "cv-caret")
