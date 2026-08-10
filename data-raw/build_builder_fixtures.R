@@ -44,21 +44,35 @@ add_fixture_section <- function(object, name, cells, origin, span) {
 }
 
 make_all_content_fixture <- function() {
-  patients <- rep(c("patient_a", "patient_b", "patient_c"), each = 60L)
-  sections <- c(
-    rep(c("patient_a_section_1", "patient_a_section_2"), each = 30L),
+  patient_id <- rep(c("patient_a", "patient_b", "patient_c"), each = 60L)
+  section_id <- c(
+    rep(c("section_a_1", "section_a_2"), each = 30L),
     rep(
       c(
-        "patient_b_section_1",
-        "patient_b_section_2",
-        "patient_b_section_3"
+        "section_b_1",
+        "section_b_2",
+        "section_b_3"
       ),
       each = 20L
     ),
-    rep("patient_c_section_1", 60L)
+    rep("section_c_1", 60L)
   )
+  fov_id <- paste0(section_id, "_fov_1")
+  sample_id <- unname(c(
+    section_a_1 = "xenium_a_1",
+    section_a_2 = "xenium_a_2",
+    section_b_1 = "xenium_b_1",
+    section_b_2 = "xenium_b_2",
+    section_b_3 = "xenium_b_3",
+    section_c_1 = "xenium_c_1"
+  )[section_id])
+  condition <- unname(c(
+    patient_a = "baseline",
+    patient_b = "treated",
+    patient_c = "baseline"
+  )[patient_id])
   cell_types <- c("Epithelial", "Fibroblast", "Macrophage", "T cell")
-  cells <- sprintf("%s_cell_%03d", patients, seq_along(patients))
+  cells <- sprintf("%s_cell_%03d", patient_id, seq_along(patient_id))
   cell_type <- rep(cell_types, length.out = length(cells))
   cluster <- paste0("cluster_", match(cell_type, cell_types))
   region <- unname(c(
@@ -90,8 +104,11 @@ make_all_content_fixture <- function() {
   )
   object <- SeuratObject::CreateSeuratObject(counts = counts)
   object <- Seurat::NormalizeData(object, verbose = FALSE)
-  object$patient <- factor(patients, levels = unique(patients))
-  object$section <- factor(sections, levels = unique(sections))
+  object$patient_id <- factor(patient_id, levels = unique(patient_id))
+  object$section_id <- factor(section_id, levels = unique(section_id))
+  object$fov_id <- factor(fov_id, levels = unique(fov_id))
+  object$sample_id <- factor(sample_id, levels = unique(sample_id))
+  object$condition <- factor(condition, levels = unique(condition))
   object$cell_type <- factor(cell_type, levels = cell_types)
   object$cluster <- factor(cluster, levels = unique(cluster))
   object$region <- factor(region, levels = unique(region))
@@ -127,18 +144,29 @@ make_all_content_fixture <- function() {
     assay = "RNA"
   )
 
-  section_names <- unique(sections)
-  for (index in seq_along(section_names)) {
-    section <- section_names[[index]]
-    section_cells <- cells[sections == section]
+  fov_names <- unique(fov_id)
+  for (index in seq_along(fov_names)) {
+    fov <- fov_names[[index]]
+    fov_cells <- cells[fov_id == fov]
     object <- add_fixture_section(
       object,
-      section,
-      section_cells,
+      fov,
+      fov_cells,
       origin = c((index - 1L) * 1200, (index %% 2L) * 250),
       span = c(950, 720)
     )
   }
+  object@misc$spatial_coordinate_system <- stats::setNames(
+    lapply(fov_names, function(fov) {
+      list(
+        unit = "micron",
+        origin = "top-left",
+        x_direction = "right",
+        y_direction = "down"
+      )
+    }),
+    fov_names
+  )
 
   positioned <- seq(1L, length(cells), by = 2L)
   positioned_cells <- cells[positioned]
@@ -157,7 +185,7 @@ make_all_content_fixture <- function() {
     qc = list(
       sample_id = "xenium_omnibus",
       assay = "synthetic_xenium",
-      tile_id = "all_sections",
+      tile_id = "all_fovs",
       eps = "25",
       min_sb = "5",
       total_nuclei = length(cells),
