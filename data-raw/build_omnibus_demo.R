@@ -7,7 +7,8 @@
 publish_omnibus_artifacts <- function(
   staged,
   destinations,
-  publish_rename = file.rename
+  publish_rename = file.rename,
+  restore_rename = file.rename
 ) {
   valid_paths <- is.character(staged) &&
     is.character(destinations) &&
@@ -43,10 +44,10 @@ publish_omnibus_artifacts <- function(
     },
     ""
   )
-  on.exit(
-    unlink(c(publish_temps, backup_paths), force = TRUE),
-    add = TRUE
-  )
+  ## Publish temps never contain the only copy of old user data and are always
+  ## safe to clean. Backups are managed explicitly below because a failed
+  ## restore can leave one as the sole surviving copy of a target.
+  on.exit(unlink(publish_temps, force = TRUE), add = TRUE)
 
   copied <- file.copy(
     staged,
@@ -80,46 +81,80 @@ publish_omnibus_artifacts <- function(
       unname(tools::md5sum(backup_paths[existed]))
     )
     if (!all(backed_up) || !backup_matches) {
+      unlink(backup_paths[file.exists(backup_paths)], force = TRUE)
       stop("Could not back up existing Omnibus artifacts.", call. = FALSE)
     }
   }
 
   rollback <- function() {
     unlink(destinations[file.exists(destinations)], force = TRUE)
-    restored <- logical(sum(existed))
+    restored <- rep(TRUE, length(destinations))
     if (any(existed)) {
-      restored <- mapply(
-        file.rename,
-        backup_paths[existed],
-        destinations[existed]
-      )
-    }
-    all(restored)
-  }
-
-  for (index in seq_along(destinations)) {
-    destination <- destinations[[index]]
-    if (file.exists(destination)) {
-      unlink(destination, force = TRUE)
-    }
-    published <- isTRUE(publish_rename(publish_temps[[index]], destination))
-    if (!published) {
-      restored <- rollback()
-      if (!restored) {
-        stop(
-          "Omnibus publication failed at ",
-          basename(destination),
-          " and rollback was incomplete.",
-          call. = FALSE
+      for (index in which(existed)) {
+        restored[[index]] <- tryCatch(
+          isTRUE(restore_rename(
+            backup_paths[[index]],
+            destinations[[index]]
+          )),
+          error = function(error) FALSE
         )
       }
+    }
+    failed <- which(existed & !restored)
+    list(
+      complete = length(failed) == 0L,
+      failed_backups = backup_paths[failed]
+    )
+  }
+
+  failed_index <- NA_integer_
+  publication_error <- NULL
+  tryCatch(
+    {
+      for (index in seq_along(destinations)) {
+        failed_index <- index
+        destination <- destinations[[index]]
+        if (file.exists(destination)) {
+          unlink(destination, force = TRUE)
+        }
+        published <- publish_rename(publish_temps[[index]], destination)
+        if (!isTRUE(published)) {
+          stop("publish rename returned FALSE", call. = FALSE)
+        }
+      }
+      failed_index <- NA_integer_
+    },
+    error = function(error) {
+      publication_error <<- error
+    },
+    finally = {
+      unlink(publish_temps[file.exists(publish_temps)], force = TRUE)
+    }
+  )
+
+  if (!is.null(publication_error)) {
+    rollback_result <- rollback()
+    failed_destination <- destinations[[failed_index]]
+    if (!rollback_result$complete) {
       stop(
         "Omnibus publication failed at ",
-        basename(destination),
-        "; all previous targets were restored.",
+        basename(failed_destination),
+        ": ",
+        conditionMessage(publication_error),
+        "; rollback was incomplete; preserved backup(s): ",
+        paste(rollback_result$failed_backups, collapse = ", "),
         call. = FALSE
       )
     }
+    unlink(backup_paths[file.exists(backup_paths)], force = TRUE)
+    stop(
+      "Omnibus publication failed at ",
+      basename(failed_destination),
+      ": ",
+      conditionMessage(publication_error),
+      "; all previous targets were restored.",
+      call. = FALSE
+    )
   }
 
   unlink(backup_paths[file.exists(backup_paths)], force = TRUE)

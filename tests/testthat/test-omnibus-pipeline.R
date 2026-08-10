@@ -85,6 +85,153 @@ test_that("Omnibus publication restores every target after any rename failure", 
   }
 })
 
+test_that("Omnibus publication rolls back when publish rename throws", {
+  publish <- load_omnibus_publisher()
+  artifact_names <- paste0("artifact-", seq_len(5L), ".dat")
+
+  for (failure_index in seq_along(artifact_names)) {
+    root <- withr::local_tempdir()
+    stage_dir <- file.path(root, paste0("stage-error-", failure_index))
+    output_dir <- file.path(root, paste0("output-error-", failure_index))
+    dir.create(stage_dir)
+    dir.create(output_dir)
+    staged <- file.path(stage_dir, artifact_names)
+    destinations <- file.path(output_dir, artifact_names)
+    for (index in seq_along(artifact_names)) {
+      writeLines(paste("new", index), staged[[index]])
+      writeLines(paste("old", index), destinations[[index]])
+    }
+
+    rename_count <- 0L
+    throwing_rename <- function(from, to) {
+      rename_count <<- rename_count + 1L
+      if (rename_count == failure_index) {
+        stop("injected publish error", call. = FALSE)
+      }
+      file.rename(from, to)
+    }
+
+    expect_error(
+      publish(
+        staged = staged,
+        destinations = destinations,
+        publish_rename = throwing_rename
+      ),
+      "injected publish error.*restored"
+    )
+    expect_equal(
+      unname(vapply(destinations, readLines, "", warn = FALSE)),
+      paste("old", seq_along(artifact_names))
+    )
+    expect_length(
+      list.files(
+        output_dir,
+        all.files = TRUE,
+        no.. = TRUE,
+        pattern = "[.](publish|backup)-"
+      ),
+      0L
+    )
+  }
+})
+
+test_that("Omnibus publication preserves an unrestored backup", {
+  publish <- load_omnibus_publisher()
+  root <- withr::local_tempdir()
+  stage_dir <- file.path(root, "stage-restore")
+  output_dir <- file.path(root, "output-restore")
+  dir.create(stage_dir)
+  dir.create(output_dir)
+  artifact_names <- paste0("artifact-", seq_len(5L), ".dat")
+  staged <- file.path(stage_dir, artifact_names)
+  destinations <- file.path(output_dir, artifact_names)
+  for (index in seq_along(artifact_names)) {
+    writeLines(paste("new", index), staged[[index]])
+    writeLines(paste("old", index), destinations[[index]])
+  }
+
+  restore_count <- 0L
+  failing_restore <- function(from, to) {
+    restore_count <<- restore_count + 1L
+    if (restore_count == 3L) {
+      return(FALSE)
+    }
+    file.rename(from, to)
+  }
+  failure <- tryCatch(
+    publish(
+      staged = staged,
+      destinations = destinations,
+      publish_rename = function(from, to) FALSE,
+      restore_rename = failing_restore
+    ),
+    error = identity
+  )
+  expect_s3_class(failure, "error")
+  expect_match(conditionMessage(failure), "rollback was incomplete")
+
+  backup_leftovers <- list.files(
+    output_dir,
+    all.files = TRUE,
+    no.. = TRUE,
+    pattern = "[.]backup-",
+    full.names = TRUE
+  )
+  expect_length(backup_leftovers, 1L)
+  expect_match(basename(backup_leftovers), "^[.]artifact-3[.]dat[.]backup-")
+  expect_true(grepl(
+    backup_leftovers,
+    conditionMessage(failure),
+    fixed = TRUE
+  ))
+  expect_identical(readLines(backup_leftovers, warn = FALSE), "old 3")
+  expect_false(file.exists(destinations[[3L]]))
+  expect_equal(
+    unname(vapply(destinations[-3L], readLines, "", warn = FALSE)),
+    paste("old", c(1L, 2L, 4L, 5L))
+  )
+  expect_length(
+    list.files(
+      output_dir,
+      all.files = TRUE,
+      no.. = TRUE,
+      pattern = "[.]publish-"
+    ),
+    0L
+  )
+})
+
+test_that("successful Omnibus publication leaves no temporary files", {
+  publish <- load_omnibus_publisher()
+  root <- withr::local_tempdir()
+  stage_dir <- file.path(root, "stage-success")
+  output_dir <- file.path(root, "output-success")
+  dir.create(stage_dir)
+  dir.create(output_dir)
+  artifact_names <- paste0("artifact-", seq_len(5L), ".dat")
+  staged <- file.path(stage_dir, artifact_names)
+  destinations <- file.path(output_dir, artifact_names)
+  for (index in seq_along(artifact_names)) {
+    writeLines(paste("new", index), staged[[index]])
+    writeLines(paste("old", index), destinations[[index]])
+  }
+
+  expect_identical(publish(staged, destinations), destinations)
+  expect_equal(
+    unname(vapply(destinations, readLines, "", warn = FALSE)),
+    paste("new", seq_along(artifact_names))
+  )
+  expect_length(
+    list.files(
+      output_dir,
+      all.files = TRUE,
+      no.. = TRUE,
+      pattern = "[.](publish|backup)-"
+    ),
+    0L
+  )
+})
+
 test_that("bundled Omnibus artifacts share the declared expression universe", {
   skip_if_not_installed("Seurat")
   skip_if_not_installed("png")
