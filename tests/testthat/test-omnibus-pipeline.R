@@ -13,11 +13,20 @@ omnibus_example_path <- function(file) {
 
 test_that("bundled Omnibus artifacts share the declared expression universe", {
   skip_if_not_installed("Seurat")
+  skip_if_not_installed("png")
 
   seurat_path <- omnibus_example_path("demo_omnibus_seurat.rds")
   crb_path <- omnibus_example_path("demo_omnibus.crb")
-  expect_true(file.exists(seurat_path))
-  expect_true(file.exists(crb_path))
+  marker_path <- omnibus_example_path("demo_omnibus_markers.csv")
+  donor_b_image <- omnibus_example_path("demo_omnibus_donorB_if.png")
+  donor_c_image <- omnibus_example_path("demo_omnibus_donorC_review.png")
+  expect_true(all(file.exists(c(
+    seurat_path,
+    crb_path,
+    marker_path,
+    donor_b_image,
+    donor_c_image
+  ))))
 
   seurat <- readRDS(seurat_path)
   crb <- readRDS(crb_path)
@@ -26,6 +35,15 @@ test_that("bundled Omnibus artifacts share the declared expression universe", {
   expect_equal(unname(dim(seurat)), c(80L, 120L))
   expect_setequal(crb$getCellNames(), colnames(seurat))
   expect_setequal(crb$getGeneNames(), rownames(seurat))
+  expect_setequal(unique(seurat$orig.ident), c("donorA", "donorB", "donorC"))
+  expect_equal(as.integer(table(seurat$orig.ident)), rep(40L, 3L))
+  expect_setequal(unique(seurat$condition), c("Control", "Treatment"))
+
+  markers <- utils::read.csv(marker_path, stringsAsFactors = FALSE)
+  expect_setequal(unique(markers$cluster), unique(seurat$cell_type))
+  expect_true(all(table(markers$cluster) > 0L))
+  expect_equal(dim(png::readPNG(donor_b_image)), c(72L, 96L, 3L))
+  expect_equal(dim(png::readPNG(donor_c_image)), c(90L, 110L, 3L))
 })
 
 test_that("bundled Omnibus CRB covers every declared Viewer data surface", {
@@ -33,7 +51,7 @@ test_that("bundled Omnibus CRB covers every declared Viewer data surface", {
 
   expect_setequal(
     crb$getGroups(),
-    c("seurat_clusters", "orig.ident", "cell_type", "phase")
+    c("seurat_clusters", "orig.ident", "cell_type", "phase", "condition")
   )
   expect_identical(crb$getCellCycle(), "phase")
   expect_true(length(crb$getGeneLists()) > 0L)
@@ -48,36 +66,79 @@ test_that("bundled Omnibus CRB covers every declared Viewer data surface", {
   expect_false(is.null(crb$getTrekker()))
 
   repertoire <- crb$getImmuneRepertoire()
-  expect_setequal(names(repertoire), c("sample_A", "sample_B"))
+  expect_setequal(names(repertoire), c("donorA", "donorB"))
   expect_setequal(
     unique(unlist(lapply(repertoire, function(x) x$receptor))),
     c("TCR", "BCR")
   )
-  expect_setequal(unique(crb$getHLATyping()$sample), c("sample_A", "sample_B"))
+  expect_setequal(
+    unique(crb$getHLATyping()$sample),
+    c("donorA", "donorB", "donorC")
+  )
 })
 
-test_that("bundled Omnibus FOV carries its synthetic image inside the CRB", {
-  crb <- readRDS(omnibus_example_path("demo_omnibus.crb"))
-  expect_identical(crb$availableSpatial(), "omnibus_fov")
+test_that("bundled Omnibus spatial entries preserve cells, images, and bounds", {
+  skip_if_not_installed("Seurat")
 
-  spatial <- crb$getSpatialData("omnibus_fov")
-  expect_match(spatial$histology_image, "^data:image/png;base64,")
-  expect_identical(
-    names(spatial$histology_image_bounds),
-    c("xmin", "xmax", "ymin", "ymax")
+  seurat <- readRDS(omnibus_example_path("demo_omnibus_seurat.rds"))
+  crb <- readRDS(omnibus_example_path("demo_omnibus.crb"))
+  spatial_names <- c("donorA tissue", "donorB tissue", "donorC tissue")
+  expected_labels <- list(
+    `donorA tissue` = c("H&E", "DAPI"),
+    `donorB tissue` = "H&E",
+    `donorC tissue` = character(0)
   )
-  expect_true(all(
-    spatial$coordinates$x >= spatial$histology_image_bounds[["xmin"]]
-  ))
-  expect_true(all(
-    spatial$coordinates$x <= spatial$histology_image_bounds[["xmax"]]
-  ))
-  expect_true(all(
-    spatial$coordinates$y >= spatial$histology_image_bounds[["ymin"]]
-  ))
-  expect_true(all(
-    spatial$coordinates$y <= spatial$histology_image_bounds[["ymax"]]
-  ))
+  expect_identical(Seurat::Images(seurat), spatial_names)
+  expect_identical(crb$availableSpatial(), spatial_names)
+
+  seurat_cells <- lapply(spatial_names, function(name) {
+    Seurat::Cells(seurat[[name]])
+  })
+  expect_true(all(lengths(seurat_cells) == 40L))
+  expect_length(unique(unlist(seurat_cells)), 120L)
+  expect_setequal(unlist(seurat_cells), colnames(seurat))
+
+  bounds <- lapply(spatial_names, function(name) {
+    spatial <- crb$getSpatialData(name)
+    expect_equal(nrow(spatial$coordinates), 40L)
+    expect_setequal(
+      rownames(spatial$coordinates),
+      Seurat::Cells(seurat[[name]])
+    )
+    if (length(expected_labels[[name]]) == 0L) {
+      expect_identical(spatial$histology_images, list())
+    } else {
+      expect_named(spatial$histology_images, expected_labels[[name]])
+    }
+    lapply(spatial$histology_images, function(image) {
+      expect_match(image$histology_image, "^data:image/png;base64,")
+      expect_identical(
+        names(image$histology_image_bounds),
+        c("xmin", "xmax", "ymin", "ymax")
+      )
+      expect_true(all(
+        spatial$coordinates$x >= image$histology_image_bounds[["xmin"]] &
+          spatial$coordinates$x <= image$histology_image_bounds[["xmax"]] &
+          spatial$coordinates$y >= image$histology_image_bounds[["ymin"]] &
+          spatial$coordinates$y <= image$histology_image_bounds[["ymax"]]
+      ))
+      image$histology_image_bounds
+    })
+  })
+  names(bounds) <- spatial_names
+  entry_bounds <- lapply(spatial_names, function(name) {
+    spatial <- crb$getSpatialData(name)
+    c(
+      xmin = min(spatial$coordinates$x),
+      xmax = max(spatial$coordinates$x),
+      ymin = min(spatial$coordinates$y),
+      ymax = max(spatial$coordinates$y)
+    )
+  })
+  expect_length(unique(vapply(entry_bounds, paste, collapse = ":", "")), 3L)
+  expect_length(bounds[["donorA tissue"]], 2L)
+  expect_length(bounds[["donorB tissue"]], 1L)
+  expect_length(bounds[["donorC tissue"]], 0L)
 })
 
 test_that("the source app loads Omnibus first without an external image", {
@@ -98,12 +159,19 @@ test_that("the source app loads Omnibus first without an external image", {
   expect_lt(omnibus_entry, pbmc_entry)
   expect_match(app_source, '"crb_pick_smallest_file"\\s*=\\s*FALSE')
 
-  spatial_match <- regexec(
-    '(?s)"spatial_images"\\s*=\\s*c\\((.*?)\\n\\s*\\)',
+  spatial_start <- regexpr(
+    '"spatial_images"\\s*=\\s*list\\(',
     app_source,
     perl = TRUE
-  )
-  spatial_options <- regmatches(app_source, spatial_match)[[1L]][[2L]]
+  )[[1L]]
+  settings_start <- regexpr(
+    '"spatial_image_settings"\\s*=',
+    app_source,
+    perl = TRUE
+  )[[1L]]
+  expect_gt(spatial_start, 0L)
+  expect_gt(settings_start, spatial_start)
+  spatial_options <- substr(app_source, spatial_start, settings_start - 1L)
   expect_false(grepl('"Omnibus"', spatial_options, fixed = TRUE))
 })
 
@@ -126,7 +194,13 @@ test_that("Omnibus converts and bundles into a standalone Shiny app", {
     slot = "data",
     experiment_name = "Synthetic Omnibus",
     organism = "Human",
-    groups = c("seurat_clusters", "orig.ident", "cell_type", "phase"),
+    groups = c(
+      "seurat_clusters",
+      "orig.ident",
+      "cell_type",
+      "phase",
+      "condition"
+    ),
     cell_cycle = "phase",
     add_most_expressed_genes = FALSE,
     verbose = FALSE
@@ -143,14 +217,13 @@ test_that("Omnibus converts and bundles into a standalone Shiny app", {
   expect_setequal(generated$getCellNames(), bundled$getCellNames())
   expect_setequal(generated$getGeneNames(), bundled$getGeneNames())
   expect_setequal(generated$getGroups(), bundled$getGroups())
-  expect_equal(
-    generated$getSpatialData("omnibus_fov")$histology_image,
-    bundled$getSpatialData("omnibus_fov")$histology_image
-  )
-  expect_equal(
-    generated$getSpatialData("omnibus_fov")$histology_image_bounds,
-    bundled$getSpatialData("omnibus_fov")$histology_image_bounds
-  )
+  expect_identical(generated$availableSpatial(), bundled$availableSpatial())
+  for (spatial_name in generated$availableSpatial()) {
+    expect_equal(
+      generated$getSpatialData(spatial_name)$histology_images,
+      bundled$getSpatialData(spatial_name)$histology_images
+    )
+  }
   expect_equal(
     generated$getMethodsForTrajectories(),
     bundled$getMethodsForTrajectories()
@@ -185,9 +258,17 @@ test_that("Omnibus converts and bundles into a standalone Shiny app", {
   expect_length(private_crbs, 1L)
   private_object <- readRDS(private_crbs[[1L]])
   expect_s3_class(private_object, "Cerebro")
-  expect_match(
-    private_object$getSpatialData("omnibus_fov")$histology_image,
-    "^data:image/png;base64,"
+  expect_named(
+    private_object$getSpatialData("donorA tissue")$histology_images,
+    c("H&E", "DAPI")
+  )
+  expect_named(
+    private_object$getSpatialData("donorB tissue")$histology_images,
+    "H&E"
+  )
+  expect_identical(
+    private_object$getSpatialData("donorC tissue")$histology_images,
+    list()
   )
 
   utility_source <- readLines(
