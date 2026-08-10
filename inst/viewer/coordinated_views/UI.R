@@ -93,14 +93,6 @@ cv_pane <- function(key) {
       ),
       tags$button(
         type = "button",
-        class = "cv-moran-badge",
-        id = paste0("cv-moran-", low),
-        `data-act` = "moran-info",
-        `data-panel` = key,
-        style = "display:none"
-      ),
-      tags$button(
-        type = "button",
         class = "cv-tbtn",
         id = paste0("cv-tk-info-", low),
         `data-act` = "trekker-info",
@@ -143,7 +135,7 @@ cv_pane <- function(key) {
       tags$button(
         type = "button",
         class = "cv-moran-badge cv-moran-corner",
-        id = paste0("cv-moran-corner-", low),
+        id = paste0("cv-moran-", low),
         `data-act` = "moran-info",
         `data-panel` = key,
         style = "display:none"
@@ -609,14 +601,6 @@ tab_coordinated_views <- tabItem(
       tags$span(id = "cv-cb1", "1"),
       tags$span(class = "cv-cbar-note", id = "cv-cbar-note", "expression")
     ),
-    div(
-      class = "cv-lg cv-evidence-lg",
-      id = "cv-evidence-legend",
-      style = "display:none",
-      tags$span(class = "cv-evidence-dot"),
-      "Positioning evidence"
-    ),
-
     ## ---- panel grid ----------------------------------------------------- ##
     ## Every selected/present space gets its OWN panel: selected projections,
     ## selected Spatial sections, Trekker and Clonal. coordviews.js

@@ -2206,15 +2206,24 @@ var focusPanel = null;
   function renderLegend() {
     var L = $('cv-legend'); if (!L) return;
     L.innerHTML = '';
+    function appendEvidenceLegend() {
+      if (!evidenceOn) return;
+      var e = document.createElement('div');
+      e.className = 'cv-lg cv-rgb-lg';
+      e.innerHTML = '<span class="cv-evidence-dot"></span>Positioning evidence';
+      L.appendChild(e);
+    }
     // Continuous modes: colourbar for a single gene; nothing for RGB.
     if (colorBy === GENE_MODE) {
       renderColorbar(!!D.gene, D.gene ? D.gene.max : null,
         D.gene ? (D.gene.gene + ' (log-normalised)') : 'select a gene');
+      appendEvidenceLegend();
       return;
     }
     var fld = fieldOf();
     if (fld) {   // Trekker physical / meta field → viridis colourbar (min..max)
       renderColorbar(true, fld.max, fld.label, fld.min);
+      appendEvidenceLegend();
       return;
     }
     if (colorBy === RGB_MODE) {
@@ -2232,11 +2241,12 @@ var focusPanel = null;
           (gene ? esc(gene) : '<span class="cv-rgb-none">not set</span>');
         L.appendChild(d);
       });
+      appendEvidenceLegend();
       return;
     }
     renderColorbar(false);
     var g = catOf(colorBy);
-    if (!g) return;
+    if (!g) { appendEvidenceLegend(); return; }
     var counts = {};
     for (var i = 0; i < D.n; i++) counts[g.values[i]] = (counts[g.values[i]] || 0) + 1;
     g.levels.forEach(function (nm, li) {
@@ -2251,6 +2261,7 @@ var focusPanel = null;
       };
       L.appendChild(d);
     });
+    appendEvidenceLegend();
   }
 
   // ---- hover tooltip -------------------------------------------------------
@@ -3368,18 +3379,16 @@ var focusPanel = null;
     var continuous = continuousValues();
     panels.forEach(function (p) {
       var badge = $('cv-moran-' + p.key.toLowerCase());
-      var corner = $('cv-moran-corner-' + p.key.toLowerCase());
       if (!badge) return;
       var sp = spaceById[p.spaceId];
       if (!continuous || !isSpatialSpace(sp)) {
-        badge.style.display = 'none'; if (corner) corner.style.display = 'none';
-        badge.textContent = ''; if (corner) corner.textContent = '';
+        badge.style.display = 'none'; badge.textContent = '';
         delete badge.dataset.value; delete badge.dataset.field;
         return;
       }
       var score = spatialMoran(sp, continuous.values);
       if (score == null || !isFinite(score)) {
-        badge.style.display = 'none'; if (corner) corner.style.display = 'none'; return;
+        badge.style.display = 'none'; return;
       }
       var value = Math.max(-1, Math.min(1, score));
       badge.dataset.value = value.toFixed(6);
@@ -3388,13 +3397,6 @@ var focusPanel = null;
       badge.title = continuous.label +
         " · each cell's six nearest spatial neighbours · click for details";
       badge.style.display = '';
-      if (corner) {
-        corner.dataset.value = badge.dataset.value;
-        corner.dataset.field = badge.dataset.field;
-        corner.textContent = badge.textContent;
-        corner.title = badge.title;
-        corner.style.display = '';
-      }
     });
   }
   function openMoranDialog(badge) {
@@ -4377,7 +4379,6 @@ var focusPanel = null;
         'This data set has no dimensional reduction to link its modalities on.';
     }
     var L = $('cv-legend'); if (L) L.innerHTML = '';
-    var EL = $('cv-evidence-legend'); if (EL) EL.style.display = 'none';
     var C = $('cv-cbar'); if (C) C.style.display = 'none';
     var R = $('cv-readout');
     if (R) {
@@ -4502,8 +4503,6 @@ var focusPanel = null;
     if (D.trekker) fillTrekkerInsights();
     // positioning-evidence markers default ON when the data set carries them
     evidenceOn = !!(D.trekker && D.trekker.evidence);
-    var evLegend = $('cv-evidence-legend');
-    if (evLegend) evLegend.style.display = evidenceOn ? 'flex' : 'none';
     var evChk = $('cv-evidence'); if (evChk) evChk.checked = evidenceOn;
     fillColorPicker();
     fillProjPicker();

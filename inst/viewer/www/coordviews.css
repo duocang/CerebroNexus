@@ -582,7 +582,6 @@
   font: 650 10.5px/1 var(--cv-font, inherit);
   font-variant-numeric: tabular-nums;
 }
-.coordviews-page .cv-pane-head > .cv-moran-badge { display: none !important; }
 .coordviews-page .cv-moran-badge:hover {
   border-color: #9ec5e7; background: #eaf4fd; color: #245779;
 }
