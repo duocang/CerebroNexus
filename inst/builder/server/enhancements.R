@@ -44,6 +44,23 @@ observeEvent(
 )
 
 observeEvent(
+  input[["enhance-marker_genes_disable"]],
+  {
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    entry$settings$analyses <- setdiff(
+      entry$settings$analyses %||% character(),
+      "marker_genes"
+    )
+    entry$settings$marker_imports <- NULL
+    replace_entry(entry)
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
   input[["enhance-marker_genes_upload"]],
   {
     id <- current()

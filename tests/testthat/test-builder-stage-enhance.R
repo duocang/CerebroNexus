@@ -76,7 +76,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, 'class="enhance-module-select"', fixed = TRUE)
   expect_match(
     html,
-    'class="enhance-module-checkbox visually-hidden shiny-input-checkbox"',
+    'class="enhance-module-checkbox marker-genes-choice-checkbox visually-hidden"',
     fixed = TRUE
   )
   expect_match(html, 'class="enhance-module-title"', fixed = TRUE)

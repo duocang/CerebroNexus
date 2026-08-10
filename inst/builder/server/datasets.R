@@ -707,7 +707,11 @@ observeEvent(
 )
 
 ## Assay-dependent controls above use the namespaced Core inputs.
-invisible(lapply(builder_analysis_steps(), function(step) {
+analysis_checkbox_steps <- Filter(
+  function(step) !identical(step$id, "marker_genes"),
+  builder_analysis_steps()
+)
+invisible(lapply(analysis_checkbox_steps, function(step) {
   observeEvent(
     input[[paste0("enhance-analysis_", step$id)]],
     {
@@ -722,21 +726,6 @@ invisible(lapply(builder_analysis_steps(), function(step) {
       req(entry)
       selected <- entry$settings$analyses %||% character()
       requested <- isTRUE(input[[paste0("enhance-analysis_", step$id)]])
-      if (identical(step$id, "marker_genes")) {
-        if (requested) {
-          shiny::updateCheckboxInput(
-            session,
-            "enhance-analysis_marker_genes",
-            value = FALSE
-          )
-          builder_show_marker_genes_choice()
-          return()
-        }
-        entry$settings$analyses <- setdiff(selected, "marker_genes")
-        entry$settings$marker_imports <- NULL
-        replace_entry(entry)
-        return()
-      }
       analysis_profile <- builder_enhance_analysis_profile(
         entry$profile,
         entry$settings$organism
