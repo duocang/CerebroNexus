@@ -7,6 +7,7 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 | I want to… | Read |
 |------------|------|
 | know the exact source / citation / download command / license of a dataset | [`DATASETS.md`](DATASETS.md) — the provenance registry |
+| understand or rebuild the synthetic **Omnibus** pipeline | [`omnibus.md`](omnibus.md) |
 | understand or rebuild the **spatial** demos | [`spatial.md`](spatial.md) |
 | understand or rebuild the **immune repertoire** demos | [`immune_repertoire.md`](immune_repertoire.md) |
 | understand or rebuild the **trajectory** demo | [`trajectory.md`](trajectory.md) |
@@ -21,6 +22,7 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 
 | Family | Datasets | Build script | Runs | Notes |
 |--------|----------|--------------|------|-------|
+| Omnibus | synthetic Seurat source + converted CRB | `build_omnibus_demo.R` | self-contained and offline | [`omnibus.md`](omnibus.md) |
 | Immune repertoire | 3 PBMC subsets (TCR/BCR by lineage) | `build_ir_demos.R` | download-then-run (needs the VDJ CSVs first — see acquire in `DATASETS.md`) | [`immune_repertoire.md`](immune_repertoire.md) |
 | Spatial | Visium · Slide-seq v2 · MERFISH · Xenium | `build_spatial_demos.R` | self-contained (all sources fetched automatically — R packages for Visium/Slide-seq/MERFISH, auto-`download.file` for Xenium) | [`spatial.md`](spatial.md) |
 | Trajectory | monocle2 pseudotime, carried inside `demo_full_tcr_bcr.crb` | `build_trajectory_demo.R` | self-contained (input is the already-built IR demo `.crb`; needs `monocle`) | [`trajectory.md`](trajectory.md) |
