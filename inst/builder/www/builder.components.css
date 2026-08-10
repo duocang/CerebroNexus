@@ -551,6 +551,7 @@
   opacity: 0;
   transition: opacity var(--duration-normal) var(--ease-standard);
 }
+.builder-confirm-backdrop[hidden] { display: none; }
 .builder-dialog,
 .builder-confirm-dialog {
   width: min(28rem, 100%);
