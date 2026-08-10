@@ -96,3 +96,55 @@ test_that("unknown and overlapping cluster assignments are rejected", {
   expect_identical(unknown$error, "unknown_cluster")
   expect_identical(duplicate$error, "duplicate_cluster")
 })
+
+test_that("marker import merge preserves existing methods", {
+  skip_if_not_installed("SeuratObject")
+  object <- SeuratObject::pbmc_small
+  object@misc$marker_genes <- list(
+    cerebro_seurat = list(cluster = data.frame())
+  )
+  imported <- list(
+    method = "Scanpy Wilcoxon",
+    group = "cluster",
+    sources = list(builder_marker_import_map_single(
+      builder_marker_import_source(
+        "",
+        "B.csv",
+        NULL,
+        data.frame(gene = "MS4A1")
+      ),
+      group = "cluster",
+      level = "B",
+      known_levels = c("A", "B", "C")
+    ))
+  )
+
+  got <- builder_attach_marker_imports(object, list(imported))
+
+  expect_setequal(
+    names(got@misc$marker_genes),
+    c("cerebro_seurat", "Scanpy Wilcoxon")
+  )
+  expect_identical(
+    got@misc$marker_genes[["Scanpy Wilcoxon"]][["cluster"]][[1L]],
+    "B"
+  )
+})
+
+test_that("marker import merge refuses an existing method name", {
+  skip_if_not_installed("SeuratObject")
+  object <- SeuratObject::pbmc_small
+  object@misc$marker_genes <- list(cerebro_seurat = list())
+
+  expect_error(
+    builder_attach_marker_imports(
+      object,
+      list(list(
+        method = "cerebro_seurat",
+        group = "cluster",
+        sources = list()
+      ))
+    ),
+    "already exists"
+  )
+})

@@ -221,3 +221,55 @@ builder_marker_import_coverage <- function(sources, known_levels) {
     missing = setdiff(as.character(known_levels), present)
   )
 }
+
+builder_marker_import_bind_tables <- function(sources) {
+  tables <- lapply(sources, `[[`, "table")
+  columns <- unique(unlist(lapply(tables, names), use.names = FALSE))
+  aligned <- lapply(tables, function(table) {
+    missing <- setdiff(columns, names(table))
+    for (column in missing) {
+      table[[column]] <- NA
+    }
+    table[columns]
+  })
+  result <- do.call(rbind, aligned)
+  rownames(result) <- NULL
+  result
+}
+
+builder_attach_marker_imports <- function(object, imports) {
+  if (!methods::is(object, "Seurat") || !length(imports)) {
+    return(object)
+  }
+  existing <- object@misc$marker_genes %||% list()
+  for (imported in imports) {
+    method <- imported$method %||% ""
+    group <- imported$group %||% ""
+    if (!is.character(method) || length(method) != 1L || !nzchar(method)) {
+      stop("Imported Marker genes require one method name.", call. = FALSE)
+    }
+    if (!is.character(group) || length(group) != 1L || !nzchar(group)) {
+      stop("Imported Marker genes require one group.", call. = FALSE)
+    }
+    if (method %in% names(existing)) {
+      stop(
+        "An imported Marker genes method already exists: ",
+        method,
+        call. = FALSE
+      )
+    }
+    checked <- builder_marker_import_validate_sources(
+      imported$sources %||% list(),
+      unique(unlist(lapply(imported$sources %||% list(), `[[`, "levels")))
+    )
+    if (!isTRUE(checked$valid)) {
+      stop("Imported Marker genes sources are invalid.", call. = FALSE)
+    }
+    existing[[method]] <- list()
+    existing[[method]][[group]] <- builder_marker_import_bind_tables(
+      checked$sources
+    )
+  }
+  object@misc$marker_genes <- existing
+  object
+}
