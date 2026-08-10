@@ -11,6 +11,36 @@ omnibus_example_path <- function(file) {
   testthat::test_path("..", "..", "inst", "extdata", "examples", file)
 }
 
+public_api_omnibus_result <- local({
+  result <- NULL
+  function() {
+    if (!is.null(result)) {
+      return(result)
+    }
+    skip_if_not_installed("HDF5Array")
+    script <- testthat::test_path(
+      "..",
+      "..",
+      "data-raw",
+      "verify_omnibus_public_api.R"
+    )
+    root <- withr::local_tempdir(.local_envir = parent.frame())
+    status <- system2(
+      file.path(R.home("bin"), "Rscript"),
+      c(shQuote(script), shQuote(root)),
+      stdout = TRUE,
+      stderr = TRUE
+    )
+    expect_identical(
+      attr(status, "status"),
+      NULL,
+      info = paste(status, collapse = "\n")
+    )
+    result <<- list(root = root, output = status)
+    result
+  }
+})
+
 load_omnibus_publisher <- function() {
   builder_path <- testthat::test_path(
     "..",
@@ -586,4 +616,305 @@ test_that("Omnibus converts and bundles into a standalone Shiny app", {
     warn = FALSE
   )
   expect_false(any(grepl("CerebroNexus::", utility_source, fixed = TRUE)))
+})
+
+test_that("the Omnibus public API verifier exposes the documented workflow", {
+  verifier <- testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "verify_omnibus_public_api.R"
+  )
+  expect_true(file.exists(verifier))
+
+  source <- paste(readLines(verifier, warn = FALSE), collapse = "\n")
+  expect_match(source, "convertSeuratToCerebro\\(")
+  expect_match(source, 'seurat_file\\s*=\\s*"inputs/demo_omnibus_seurat[.]rds"')
+  expect_match(
+    source,
+    'groups\\s*=\\s*c\\("orig[.]ident",\\s*"condition",\\s*"cell_type"\\)'
+  )
+  expect_match(
+    source,
+    'groups_naming\\s*=\\s*list\\("orig[.]ident"\\s*=\\s*"sample",\\s*"cell_type"\\s*=\\s*"cluster"\\)'
+  )
+  expect_match(source, 'marker_method\\s*=\\s*"Synthetic markers"')
+  expect_match(source, 'expression_matrix_mode\\s*=\\s*"h5"')
+  expect_match(source, "createShinyApp\\(")
+  expect_match(
+    source,
+    'cerebro_data\\s*=\\s*c\\(Omnibus\\s*=\\s*"output/cerebro_demo_omnibus_seurat[.]crb"\\)'
+  )
+  expect_match(
+    source,
+    'welcome_message\\s*=\\s*"<h2>Synthetic Omnibus Atlas</h2>"'
+  )
+  expect_false(grepl(":::", source, fixed = TRUE))
+})
+
+test_that("public APIs convert committed Omnibus inputs into a standalone H5 app", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("callr")
+  skip_on_os("windows")
+
+  run <- public_api_omnibus_result()
+  root <- run$root
+  input_dir <- file.path(root, "inputs")
+  output_dir <- file.path(root, "output")
+  app_dir <- file.path(root, "my_app")
+  expected_inputs <- c(
+    "demo_omnibus_seurat.rds",
+    "demo_omnibus_markers.csv",
+    "demo_omnibus_donorB_if.png",
+    "demo_omnibus_donorC_review.png"
+  )
+  expect_true(all(file.exists(file.path(input_dir, expected_inputs))))
+
+  crb_path <- file.path(output_dir, "cerebro_demo_omnibus_seurat.crb")
+  expect_true(file.exists(crb_path))
+  crb <- readRDS(crb_path)
+  backend <- crb$getExpressionBackend()
+  expect_identical(backend$type, "h5")
+  expect_true(nzchar(backend$location))
+  expect_false(grepl("^(/|[A-Za-z]:)", backend$location))
+  h5_path <- file.path(output_dir, backend$location)
+  expect_true(file.exists(h5_path))
+  h5_matrix <- HDF5Array::TENxMatrix(h5_path, group = "expression")
+  expect_equal(dim(h5_matrix), c(120L, 80L))
+
+  expect_setequal(crb$getGroups(), c("sample", "condition", "cluster"))
+  expect_false(any(c("orig.ident", "cell_type") %in% crb$getGroups()))
+  expect_false(is.null(crb$getTree("cluster")))
+  expect_true("cluster" %in% crb$getGroupsWithMostExpressedGenes())
+  expect_false("cell_type" %in% crb$getGroupsWithMostExpressedGenes())
+  expect_true("cluster" %in% crb$getGroupsWithMeanExpression())
+  expect_false("cell_type" %in% crb$getGroupsWithMeanExpression())
+  metadata <- crb$getMetaData()
+  expect_setequal(unique(metadata$sample), c("donorA", "donorB", "donorC"))
+  expect_setequal(unique(metadata$condition), c("Control", "Treatment"))
+  expect_setequal(
+    unique(metadata$cluster),
+    c("T cell", "B cell", "Myeloid", "Stromal")
+  )
+  expect_identical(crb$getMethodsForMarkerGenes(), "Synthetic markers")
+  marker_groups <- crb$getGroupsWithMarkerGenes("Synthetic markers")
+  imported_markers <- do.call(
+    rbind,
+    lapply(marker_groups, function(group) {
+      crb$getMarkerGenes("Synthetic markers", group)
+    })
+  )
+  expected_markers <- utils::read.csv(
+    file.path(input_dir, "demo_omnibus_markers.csv"),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(nrow(imported_markers), nrow(expected_markers))
+  expect_setequal(imported_markers$gene, expected_markers$gene)
+
+  expected_spatial_labels <- list(
+    `donorA tissue` = c("H&E", "DAPI"),
+    `donorB tissue` = c("H&E", "IF panel"),
+    `donorC tissue` = character()
+  )
+  expect_identical(crb$availableSpatial(), names(expected_spatial_labels))
+  for (spatial_name in names(expected_spatial_labels)) {
+    spatial <- crb$getSpatialData(spatial_name)
+    if (length(expected_spatial_labels[[spatial_name]]) == 0L) {
+      expect_identical(spatial$histology_images, list())
+    } else {
+      expect_setequal(
+        names(spatial$histology_images),
+        expected_spatial_labels[[spatial_name]]
+      )
+    }
+    for (label in names(spatial$histology_images)) {
+      image <- spatial$histology_images[[label]]
+      expect_match(image$histology_image, "^data:image/png;base64,")
+      expect_identical(
+        names(image$histology_image_bounds),
+        c("xmin", "xmax", "ymin", "ymax")
+      )
+      bounds <- image$histology_image_bounds
+      expect_true(all(
+        spatial$coordinates$x >= bounds[["xmin"]] &
+          spatial$coordinates$x <= bounds[["xmax"]] &
+          spatial$coordinates$y >= bounds[["ymin"]] &
+          spatial$coordinates$y <= bounds[["ymax"]]
+      ))
+    }
+  }
+
+  expect_true(file.exists(file.path(app_dir, "app.R")))
+  expect_true(file.exists(file.path(app_dir, "cerebro_config.rds")))
+  expect_true(dir.exists(file.path(app_dir, "viewer")))
+  expect_true(dir.exists(file.path(app_dir, "extdata")))
+  private_crb <- file.path(
+    app_dir,
+    "private-data",
+    "cerebro_demo_omnibus_seurat.crb"
+  )
+  private_h5 <- file.path(app_dir, "private-data", backend$location)
+  expect_true(file.exists(private_crb))
+  expect_true(file.exists(private_h5))
+
+  config <- readRDS(file.path(app_dir, "cerebro_config.rds"))
+  expect_identical(
+    config$welcome_message,
+    "<h2>Synthetic Omnibus Atlas</h2>"
+  )
+  expect_identical(
+    config$.bundle_run_options$shiny_app_options$port,
+    8080L
+  )
+  expect_identical(
+    config$.bundle_run_options$shiny_app_options$host,
+    "127.0.0.1"
+  )
+  expect_identical(
+    config$.bundle_run_options$max_request_size_bytes,
+    as.double(8000 * 1024^2)
+  )
+  configured_crb <- unname(config$crb_file_to_load[["Omnibus"]])
+  expect_identical(config$.bundle_backend_plan$schema_version, 1L)
+  expect_identical(
+    config$.bundle_backend_plan$entries[[configured_crb]],
+    list(type = "h5", mode = "bundled", location = backend$location)
+  )
+  external <- config$spatial_images$Omnibus[["donorC tissue"]][[
+    "Pathology review"
+  ]]
+  external_path <- if (is.list(external)) external$path else external
+  expect_true(nzchar(external_path))
+  expect_false(grepl("^(/|[A-Za-z]:)", external_path))
+  expect_true(file.exists(file.path(app_dir, external_path)))
+
+  private_object <- readRDS(private_crb)
+  expect_identical(private_object$getExpressionBackend(), backend)
+  expect_setequal(
+    names(private_object$getSpatialData("donorA tissue")$histology_images),
+    c("H&E", "DAPI")
+  )
+  expect_setequal(
+    names(private_object$getSpatialData("donorB tissue")$histology_images),
+    c("H&E", "IF panel")
+  )
+  expect_identical(
+    private_object$getSpatialData("donorC tissue")$histology_images,
+    list()
+  )
+  utility <- file.path(app_dir, "viewer", "utility_functions.R")
+  utility_source <- readLines(utility, warn = FALSE)
+  expect_false(any(grepl("CerebroNexus::", utility_source, fixed = TRUE)))
+
+  hermetic_lib <- withr::local_tempdir()
+  linked_any <- FALSE
+  for (lib in .libPaths()) {
+    for (package in list.dirs(lib, recursive = FALSE, full.names = FALSE)) {
+      if (identical(package, "CerebroNexus")) {
+        next
+      }
+      destination <- file.path(hermetic_lib, package)
+      if (!file.exists(destination)) {
+        linked <- tryCatch(
+          file.symlink(file.path(lib, package), destination),
+          error = function(error) FALSE
+        )
+        linked_any <- linked_any || isTRUE(linked)
+      }
+    }
+  }
+  skip_if_not(linked_any, "could not build a hermetic library via symlinks")
+  runtime_result <- callr::r(
+    function(app_dir) {
+      if (requireNamespace("CerebroNexus", quietly = TRUE)) {
+        stop("CerebroNexus is reachable; the library is not hermetic")
+      }
+      setwd(app_dir)
+      config <- readRDS("cerebro_config.rds")
+      assign("Cerebro.options", config, envir = .GlobalEnv)
+      runtime <- new.env(parent = globalenv())
+      sys.source("viewer/utility_functions.R", envir = runtime)
+      crb <- unname(config$crb_file_to_load[[1L]])
+      object <- runtime$get_or_load_crb(
+        crb,
+        config$.bundle_backend_plan,
+        unname(config$crb_file_to_load)
+      )
+      list(
+        backend = object$getExpressionBackend(),
+        dimension = dim(object$expression),
+        groups = object$getGroups(),
+        spatial = object$availableSpatial()
+      )
+    },
+    args = list(app_dir = app_dir),
+    libpath = hermetic_lib
+  )
+  expect_identical(runtime_result$backend, backend)
+  expect_equal(runtime_result$dimension, c(80L, 120L))
+  expect_setequal(runtime_result$groups, c("sample", "condition", "cluster"))
+  expect_identical(runtime_result$spatial, names(expected_spatial_labels))
+})
+
+test_that("embedded Omnibus fallback still exercises both public functions", {
+  skip_if(requireNamespace("HDF5Array", quietly = TRUE))
+  skip_if_not_installed("Seurat")
+
+  root <- withr::local_tempdir()
+  inputs <- file.path(root, "inputs")
+  output <- file.path(root, "output")
+  dir.create(inputs)
+  dir.create(output)
+  input_names <- c(
+    "demo_omnibus_seurat.rds",
+    "demo_omnibus_markers.csv",
+    "demo_omnibus_donorB_if.png",
+    "demo_omnibus_donorC_review.png"
+  )
+  expect_true(all(file.copy(
+    file.path(
+      testthat::test_path("../../inst/extdata/examples"),
+      input_names
+    ),
+    file.path(inputs, input_names)
+  )))
+
+  convertSeuratToCerebro(
+    seurat_file = file.path(inputs, "demo_omnibus_seurat.rds"),
+    result_dir = output,
+    assay = "RNA",
+    slot = "data",
+    experiment_name = "Synthetic Omnibus",
+    organism = "Human",
+    groups = c("orig.ident", "condition", "cell_type"),
+    groups_naming = list("orig.ident" = "sample", "cell_type" = "cluster"),
+    marker_file = file.path(inputs, "demo_omnibus_markers.csv"),
+    marker_method = "Synthetic markers",
+    spatial_images = list(
+      "donorB tissue" = c(
+        "IF panel" = file.path(inputs, "demo_omnibus_donorB_if.png")
+      )
+    ),
+    expression_matrix_mode = "embedded",
+    verbose = FALSE
+  )
+  crb <- file.path(output, "cerebro_demo_omnibus_seurat.crb")
+  createShinyApp(
+    cerebro_data = c(Omnibus = crb),
+    spatial_images = list(
+      Omnibus = list(
+        "donorC tissue" = c(
+          "Pathology review" = file.path(
+            inputs,
+            "demo_omnibus_donorC_review.png"
+          )
+        )
+      )
+    ),
+    result_dir = file.path(root, "my_app"),
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+  expect_identical(readRDS(crb)$getExpressionBackend()$type, "embedded")
+  expect_true(file.exists(file.path(root, "my_app", "app.R")))
 })

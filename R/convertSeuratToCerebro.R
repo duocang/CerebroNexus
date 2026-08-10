@@ -605,6 +605,26 @@ convertSeuratToCerebro <- function(
       seurat@meta.data[[new_name]] <- seurat@meta.data[[old_name]]
       seurat@meta.data[[old_name]] <- NULL
 
+      # Keep group-indexed analysis payloads aligned with the renamed metadata.
+      # exportFromSeurat() registers the new group names before importing these
+      # collections, so a stale key would either be dropped (summary tables) or
+      # rejected (trees) even though the public rename itself is valid.
+      for (collection in c(
+        "trees",
+        "most_expressed_genes",
+        "mean_expression"
+      )) {
+        payload <- seurat@misc[[collection]]
+        if (
+          is.list(payload) &&
+            old_name %in% names(payload) &&
+            !new_name %in% names(payload)
+        ) {
+          names(payload)[names(payload) == old_name] <- new_name
+          seurat@misc[[collection]] <- payload
+        }
+      }
+
       # Update groups vector with new name
       idx <- which(groups == old_name)
       if (length(idx) > 0) {
