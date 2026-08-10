@@ -263,30 +263,34 @@ local({
 ##----------------------------------------------------------------------------##
 ## Copy alignment as preset.
 ##
-## Reads the current control values for the current dataset and renders the
-## matching `spatial_images_*` Cerebro.options code, so a hand-tuned alignment
-## can be shipped as the app default instead of re-nudged every session. Scale
-## honours the lock state (single slider drives both axes when locked). Rotation
-## has no preset option and is not emitted.
+## Reads the exact current dataset / spatial / image identity and renders one
+## canonical spatial_image_settings leaf. No Background has no image identity,
+## so it deliberately produces no snippet.
 ##----------------------------------------------------------------------------##
 spatial_preset_code <- reactiveVal(NULL)
 
 observeEvent(input[["spatial_projection_background_copy_preset"]], {
-  ## Current dataset label (the key the preset is written under). Fall back to a
-  ## placeholder so the snippet is still copyable if the name can't be resolved.
-  dataset_label <- "Dataset name"
-  if (
-    exists("available_crb_files") &&
-      !is.null(available_crb_files$selected) &&
-      !is.null(available_crb_files$files)
-  ) {
-    idx <- which(available_crb_files$files == available_crb_files$selected)
-    if (length(idx) > 0) {
-      nm <- names(available_crb_files$files)[idx[1]]
-      if (!is.null(nm) && nzchar(nm)) {
-        dataset_label <- nm
-      }
-    }
+  spatial_name <- input[["spatial_projection_to_display"]]
+  dataset <- spatial_dataset_name(
+    if (exists("available_crb_files")) available_crb_files$files else NULL,
+    if (exists("available_crb_files")) available_crb_files$selected else NULL
+  )
+  spatial_data <- tryCatch(
+    getSpatialData(spatial_name),
+    error = function(e) list()
+  )
+  descriptor <- resolve_spatial_background(
+    input[["spatial_projection_background_image"]],
+    embedded_spatial_images(spatial_data),
+    configured_spatial_images(
+      if (exists("Cerebro.options")) Cerebro.options else NULL,
+      dataset,
+      spatial_name
+    )
+  )
+  if (is.null(descriptor)) {
+    spatial_preset_code(NULL)
+    return()
   }
 
   locked <- isTRUE(input[["spatial_projection_background_scale_lock"]])
@@ -303,13 +307,16 @@ observeEvent(input[["spatial_projection_background_copy_preset"]], {
   }
 
   code <- format_spatial_preset_code(
-    label = dataset_label,
+    dataset = dataset,
+    spatial_name = spatial_name,
+    image_label = descriptor$label,
     offset_x = null_to(input[["spatial_projection_background_offset_x"]], 0),
     offset_y = null_to(input[["spatial_projection_background_offset_y"]], 0),
     scale_x = null_to(scale_x, 1),
     scale_y = null_to(scale_y, 1),
     flip_x = isTRUE(input[["spatial_projection_background_flip_x"]]),
-    flip_y = isTRUE(input[["spatial_projection_background_flip_y"]])
+    flip_y = isTRUE(input[["spatial_projection_background_flip_y"]]),
+    rotation = null_to(input[["spatial_projection_background_rotate"]], 0)
   )
   spatial_preset_code(code)
 })

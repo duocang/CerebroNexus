@@ -371,6 +371,7 @@ spatial_projection_update_plot <- function(input) {
       background_scale_y = plot_parameters[["background_scale_y"]],
       background_offset_x = plot_parameters[["background_offset_x"]],
       background_offset_y = plot_parameters[["background_offset_y"]],
+      background_rotation = plot_parameters[["background_rotation"]],
       background_opacity = plot_parameters[["background_opacity"]]
     )
     output_data <- list(
@@ -421,6 +422,7 @@ spatial_projection_update_plot <- function(input) {
       background_scale_y = plot_parameters[['background_scale_y']],
       background_offset_x = plot_parameters[['background_offset_x']],
       background_offset_y = plot_parameters[['background_offset_y']],
+      background_rotation = plot_parameters[['background_rotation']],
       background_opacity = plot_parameters[['background_opacity']]
     )
     ## put together data
@@ -486,6 +488,7 @@ spatial_projection_update_plot <- function(input) {
       background_scale_y = plot_parameters[['background_scale_y']],
       background_offset_x = plot_parameters[['background_offset_x']],
       background_offset_y = plot_parameters[['background_offset_y']],
+      background_rotation = plot_parameters[['background_rotation']],
       background_opacity = plot_parameters[['background_opacity']]
     )
     ## put together data

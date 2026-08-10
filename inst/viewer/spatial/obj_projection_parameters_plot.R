@@ -130,6 +130,7 @@ spatial_projection_parameters_plot_raw <- reactive({
   background_scale_y <- resolve_bg_setting("scale_y", 1)
   background_offset_x <- resolve_bg_setting("offset_x", 0)
   background_offset_y <- resolve_bg_setting("offset_y", 0)
+  background_rotation <- resolve_bg_setting("rotation", 0)
 
   parameters <- list(
     projection = input[["spatial_projection_to_display"]],
@@ -163,6 +164,7 @@ spatial_projection_parameters_plot_raw <- reactive({
     background_scale_y = background_scale_y,
     background_offset_x = background_offset_x,
     background_offset_y = background_offset_y,
+    background_rotation = background_rotation,
     background_opacity = background_opacity,
     webgl = preferences[["use_webgl"]],
     hover_info = preferences[["show_hover_info_in_projections"]]

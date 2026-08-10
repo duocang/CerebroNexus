@@ -488,6 +488,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
     background_scale_y = 1,
     background_offset_x = 0,
     background_offset_y = 0,
+    background_rotation = 37,
     background_opacity = 1,
     plot_type = "ImageFeaturePlot",
     point_size = 5,
@@ -515,6 +516,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   expect_identical(rendered$data$y_range, c(10, 90))
   expect_identical(rendered$data$x, c(20, 80))
   expect_identical(rendered$data$y, c(30, 70))
+  expect_identical(rendered$meta$background_rotation, 37)
 
   params$background_descriptor$bounds <- NULL
   call_renderer(params)
@@ -533,6 +535,91 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   expect_identical(rendered$data$y_range, c(10, 90))
   expect_identical(rendered$data$x, c(20, 80))
   expect_identical(rendered$data$y, c(30, 70))
+})
+
+test_that("spatial background JS seeds resolved rotation on image changes", {
+  scatter_js <- paste(
+    readLines(testthat::test_path(
+      "../../inst/viewer/www/projection_scatter.js"
+    )),
+    collapse = "\n"
+  )
+  background_js <- paste(
+    readLines(testthat::test_path(
+      "../../inst/viewer/spatial/js_spatial_background.js"
+    )),
+    collapse = "\n"
+  )
+
+  expect_match(
+    scatter_js,
+    "meta\\.background_rotation[[:space:]]*\\n?[[:space:]]*\\)",
+    perl = TRUE
+  )
+  expect_match(
+    background_js,
+    "rotate !== undefined.*dataset\\.rotate === undefined",
+    perl = TRUE
+  )
+  expect_match(
+    background_js,
+    "dataset\\.rotate = String\\(rotate\\)",
+    perl = TRUE
+  )
+})
+
+test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
+  main_ui <- testthat::test_path(
+    "../../inst/viewer/spatial/UI_projection_main_parameters.R"
+  )
+  atlas <- list(
+    sliceA = list(
+      coordinates = data.frame(x = 1:2, y = 3:4),
+      histology_images = list(
+        `H&E` = list(histology_image = "data:image/png;base64,HE")
+      )
+    ),
+    sliceB = list(
+      coordinates = data.frame(x = 101:102, y = 203:204),
+      histology_images = list(
+        IF = list(histology_image = "data:image/png;base64,IF")
+      )
+    )
+  )
+  server <- function(input, output, session) {
+    data_set <- function() TRUE
+    availableSpatial <- function() names(atlas)
+    getSpatialData <- function(name) atlas[[name]]
+    getMetaData <- function() data.frame(group = c("a", "b"))
+    getGroups <- function() "group"
+    serverSideGeneSelector <- function(...) invisible(NULL)
+    Cerebro.options <- list(
+      spatial_images = list(
+        Atlas = list(
+          sliceA = c(DAPI = "spatial-assets/Atlas/sliceA/dapi.png"),
+          sliceB = c(MIBI = "spatial-assets/Atlas/sliceB/mibi.png")
+        )
+      )
+    )
+    available_crb_files <- list(
+      files = c(Atlas = "atlas.crb"),
+      selected = "atlas.crb"
+    )
+    sys.source(main_ui, envir = environment())
+  }
+
+  shiny::testServer(server, {
+    session$setInputs(spatial_projection_to_display = "sliceB")
+    session$flushReact()
+    html <- as.character(output$spatial_projection_main_parameters_UI$html)
+
+    expect_match(html, 'value="sliceB" selected', fixed = TRUE)
+    expect_match(html, "embedded::IF", fixed = TRUE)
+    expect_match(html, "external::MIBI", fixed = TRUE)
+    expect_false(grepl("embedded::H&amp;E", html, fixed = TRUE))
+    expect_false(grepl("external::DAPI", html, fixed = TRUE))
+    expect_identical(getSpatialData("sliceB")$coordinates$x, 101:102)
+  })
 })
 
 test_that("bundled real demos embed a genuine tissue image in the .crb", {

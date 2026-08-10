@@ -254,7 +254,7 @@ shinyjs.applySpatialBackground = function () {
   }
 };
 
-shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX, scaleY, opacity, imageBounds, offsetX, offsetY) {
+shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX, scaleY, opacity, imageBounds, offsetX, offsetY, rotate) {
   const plotContainer = document.getElementById('spatial_projection');
   if (!plotContainer) return;
   let parent = plotContainer.parentElement;
@@ -326,6 +326,9 @@ shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX,
   }
   if (offsetY !== undefined && bg.dataset.offsetY === undefined) {
     bg.dataset.offsetY = String(offsetY || 0);
+  }
+  if (rotate !== undefined && bg.dataset.rotate === undefined) {
+    bg.dataset.rotate = String(rotate);
   }
   // flipX/flipY/opacity are USER-interaction state, owned by the independent
   // appearance channel (updateSpatialBackgroundAppearance). The render pass must

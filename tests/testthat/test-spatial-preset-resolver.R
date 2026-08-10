@@ -119,6 +119,17 @@ test_that("settings resolve only the exact image leaf", {
     resolve_spatial_image_setting(
       spatial_options,
       "Atlas",
+      "sliceA",
+      "DAPI",
+      "rotation",
+      0
+    ),
+    90
+  )
+  expect_identical(
+    resolve_spatial_image_setting(
+      spatial_options,
+      "Atlas",
       "sliceB",
       "IF",
       "offset_x",
@@ -232,4 +243,51 @@ test_that("selected identity resolves the matching descriptor and bounds", {
     c(xmin = 0, xmax = 100, ymin = 5, ymax = 95)
   )
   expect_null(resolve_spatial_background("none", embedded, external))
+})
+
+test_that("copy preset formatter emits exact canonical image settings", {
+  code <- format_spatial_preset_code(
+    dataset = "Atlas",
+    spatial_name = "sliceA",
+    image_label = "DAPI",
+    offset_x = 2,
+    offset_y = -3,
+    scale_x = 1.25,
+    scale_y = 0.75,
+    flip_x = TRUE,
+    flip_y = FALSE,
+    rotation = 90
+  )
+  value <- eval(parse(text = paste0("list(", code, ")")), envir = baseenv())
+
+  expect_named(value, "spatial_image_settings")
+  expect_true(startsWith(code, "spatial_image_settings = list("))
+  expect_identical(
+    value$spatial_image_settings$Atlas$sliceA$DAPI,
+    list(
+      flip_x = TRUE,
+      flip_y = FALSE,
+      scale_x = 1.25,
+      scale_y = 0.75,
+      offset_x = 2,
+      offset_y = -3,
+      rotation = 90
+    )
+  )
+  expect_false(grepl("spatial_images_offset_x", code, fixed = TRUE))
+})
+
+test_that("copy preset formatter rejects a missing image target", {
+  expect_null(format_spatial_preset_code(
+    dataset = "Atlas",
+    spatial_name = "sliceA",
+    image_label = NULL,
+    offset_x = 0,
+    offset_y = 0,
+    scale_x = 1,
+    scale_y = 1,
+    flip_x = FALSE,
+    flip_y = FALSE,
+    rotation = 0
+  ))
 })

@@ -167,48 +167,67 @@ resolve_spatial_background <- function(
 }
 
 format_spatial_preset_code <- function(
-  label,
+  dataset,
+  spatial_name,
+  image_label,
   offset_x,
   offset_y,
   scale_x,
   scale_y,
   flip_x,
-  flip_y
+  flip_y,
+  rotation
 ) {
-  key <- function(value) paste0('c("', label, '" = ', value, ")")
-  lines <- character(0)
-  add <- function(option_name, value) {
-    lines[[length(lines) + 1]] <<- paste0(
-      '"',
-      option_name,
-      '" = ',
-      key(value)
-    )
+  targets <- list(dataset, spatial_name, image_label)
+  if (
+    any(vapply(
+      targets,
+      function(value) {
+        is.null(value) || length(value) != 1L || is.na(value) || !nzchar(value)
+      },
+      logical(1)
+    ))
+  ) {
+    return(NULL)
   }
-  if (isTRUE(offset_x != 0)) {
-    add("spatial_images_offset_x", offset_x)
-  }
-  if (isTRUE(offset_y != 0)) {
-    add("spatial_images_offset_y", offset_y)
-  }
-  if (isTRUE(scale_x != 1)) {
-    add("spatial_images_scale_x", scale_x)
-  }
-  if (isTRUE(scale_y != 1)) {
-    add("spatial_images_scale_y", scale_y)
-  }
-  if (isTRUE(flip_x)) {
-    add("spatial_images_flip_x", "TRUE")
-  }
-  if (isTRUE(flip_y)) {
-    add("spatial_images_flip_y", "TRUE")
-  }
-  if (length(lines) == 0) {
-    return(
-      "## No adjustments to persist — the overlay is at its default alignment."
-    )
-  }
-  paste(lines, collapse = ",\n")
+  quote_name <- function(value) encodeString(value, quote = '"')
+  paste0(
+    "spatial_image_settings = list(\n",
+    "  ",
+    quote_name(dataset),
+    " = list(\n",
+    "    ",
+    quote_name(spatial_name),
+    " = list(\n",
+    "      ",
+    quote_name(image_label),
+    " = list(\n",
+    "        flip_x = ",
+    if (isTRUE(flip_x)) "TRUE" else "FALSE",
+    ",\n",
+    "        flip_y = ",
+    if (isTRUE(flip_y)) "TRUE" else "FALSE",
+    ",\n",
+    "        scale_x = ",
+    format(scale_x, scientific = FALSE),
+    ",\n",
+    "        scale_y = ",
+    format(scale_y, scientific = FALSE),
+    ",\n",
+    "        offset_x = ",
+    format(offset_x, scientific = FALSE),
+    ",\n",
+    "        offset_y = ",
+    format(offset_y, scientific = FALSE),
+    ",\n",
+    "        rotation = ",
+    format(rotation, scientific = FALSE),
+    "\n",
+    "      )\n",
+    "    )\n",
+    "  )\n",
+    ")"
+  )
 }
 
 compute_group_hulls <- function(x, y, group) {

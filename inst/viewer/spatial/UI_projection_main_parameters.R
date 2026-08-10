@@ -70,7 +70,8 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     selectInput(
       "spatial_projection_to_display",
       label = "Spatial data",
-      choices = availableSpatial()
+      choices = availableSpatial(),
+      selected = current_spatial
     ),
     selectInput(
       "spatial_projection_plot_type",
