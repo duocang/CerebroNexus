@@ -1,5 +1,68 @@
 ## Builder server: enhancements.
 
+observeEvent(
+  input[["enhance-marker_genes_mode_request"]],
+  {
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    shiny::showModal(shiny::modalDialog(
+      title = "Add Marker genes",
+      builder_marker_import_choice_ui("enhance"),
+      easyClose = TRUE,
+      footer = shiny::modalButton("Cancel")
+    ))
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input[["enhance-marker_genes_calculate"]],
+  {
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    selected <- unique(c(
+      entry$settings$analyses %||% character(),
+      "marker_genes"
+    ))
+    entry$settings$analyses <- builder_normalize_analyses(
+      selected,
+      builder_profile_has(entry$profile, "marker_genes")
+    )
+    entry$settings$marker_imports <- NULL
+    replace_entry(entry)
+    shiny::removeModal()
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input[["enhance-marker_genes_upload"]],
+  {
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    groups <- unique(c(
+      entry$settings$included_groups %||% character(),
+      entry$settings$groups %||% character()
+    ))
+    if (!length(groups)) {
+      groups <- names(entry$levels %||% list())
+    }
+    shiny::showModal(shiny::modalDialog(
+      title = "Upload Marker gene results",
+      builder_marker_import_ui("enhance", groups),
+      easyClose = TRUE,
+      footer = shiny::modalButton("Cancel")
+    ))
+  },
+  ignoreInit = TRUE
+)
+
 observeEvent(input[["enhance-marker_import_files"]], {
   id <- current()
   req(id)
@@ -51,6 +114,7 @@ observeEvent(input[["enhance-marker_import_files"]], {
   )
   entry$settings$marker_imports <- imports
   replace_entry(entry)
+  shiny::removeModal()
 })
 
 ## -- supplementary tables -------------------------------------------------

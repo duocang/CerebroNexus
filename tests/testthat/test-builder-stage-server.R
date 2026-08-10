@@ -983,7 +983,7 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
 
     session$setInputs(
       `enhance-rendered_for` = "dataset-a",
-      `enhance-analysis_marker_genes` = TRUE
+      `enhance-marker_genes_calculate` = 1L
     )
     session$flushReact()
     enabled_html <- paste(

@@ -10,7 +10,7 @@ any Viewer changes.
 
 ## Scope
 
-This feature adds one focused workflow in **Enhance > Marker genes**:
+This feature adds one focused workflow from **Enhance > Marker genes**:
 
 1. The user enters a method name and selects one already configured grouping
    variable.
@@ -41,9 +41,11 @@ group name as its first column.
 
 ### Start an import
 
-The Marker genes Enhance card exposes a separate **Import precomputed results**
-action. It is independent of the existing Marker genes analysis checkbox; a
-user may import one or more methods, calculate the built-in method, or do both.
+Selecting the existing **Marker genes** card first opens a choice dialog. The
+user either calculates the built-in result for every configured group or opens
+the upload workflow for precomputed results. The card does not change state
+until that choice is confirmed, so it does not flash between selected and
+unselected states.
 
 The action requests:
 

@@ -2164,6 +2164,17 @@
     registerViewerContentHandlers();
   });
 
+  document.addEventListener("click", function (event) {
+    var markerLabel = event.target.closest(".enhance-module-select");
+    var markerCheckbox = markerLabel && markerLabel.querySelector(
+      "#enhance-analysis_marker_genes"
+    );
+    if (!markerCheckbox || markerCheckbox.checked || markerCheckbox.disabled) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    send("enhance-marker_genes_mode_request", { nonce: Date.now() });
+  }, true);
+
   function initializeBuilder() {
     registerExampleMessageHandler();
     registerBuildDialogHandler();

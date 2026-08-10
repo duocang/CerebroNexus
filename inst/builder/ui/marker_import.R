@@ -1,3 +1,31 @@
+builder_marker_import_choice_ui <- function(id) {
+  ns <- shiny::NS(id)
+  shiny::div(
+    class = "marker-import-choice",
+    shiny::p(
+      class = "marker-import-choice-intro",
+      "Choose how this app should provide marker genes."
+    ),
+    shiny::div(
+      class = "marker-import-choice-actions",
+      shiny::actionButton(
+        ns("marker_genes_calculate"),
+        "Calculate for all Groups",
+        class = "btn btn-action"
+      ),
+      shiny::actionButton(
+        ns("marker_genes_upload"),
+        "Upload precomputed results",
+        class = "btn"
+      )
+    ),
+    shiny::p(
+      class = "hint marker-import-choice-note",
+      "Calculation uses the selected analysis settings. Uploaded results are added as a separate Viewer method."
+    )
+  )
+}
+
 builder_marker_import_ui <- function(id, groups = character()) {
   ns <- shiny::NS(id)
   choices <- stats::setNames(groups, groups)

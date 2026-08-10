@@ -722,6 +722,15 @@ invisible(lapply(builder_analysis_steps(), function(step) {
       req(entry)
       selected <- entry$settings$analyses %||% character()
       requested <- isTRUE(input[[paste0("enhance-analysis_", step$id)]])
+      if (identical(step$id, "marker_genes")) {
+        if (requested) {
+          return()
+        }
+        entry$settings$analyses <- setdiff(selected, "marker_genes")
+        entry$settings$marker_imports <- NULL
+        replace_entry(entry)
+        return()
+      }
       analysis_profile <- builder_enhance_analysis_profile(
         entry$profile,
         entry$settings$organism

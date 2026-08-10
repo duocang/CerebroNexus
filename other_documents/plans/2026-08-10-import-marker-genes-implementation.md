@@ -219,7 +219,7 @@ git add inst/builder/marker_import.R inst/builder/plan/freeze.R inst/builder/bui
 git commit -m "feat(builder): freeze imported marker methods"
 ```
 
-### Task 4: Add the accessible Enhance workbench
+### Task 4: Add the accessible Marker genes choice dialog
 
 **Files:**
 - Create: `inst/builder/ui/marker_import.R`
@@ -229,13 +229,12 @@ git commit -m "feat(builder): freeze imported marker methods"
 - [ ] **Step 1: Write failing UI/server tests**
 
 ```r
-test_that("Enhance exposes an accessible precomputed Marker genes workbench", {
+test_that("Marker genes offers calculation or precomputed upload", {
   html <- builder_stage_html(builder_enhance_stage_ui("enhance", model))
-  expect_match(html, "Import precomputed Marker genes", fixed = TRUE)
-  expect_match(html, 'id="enhance-marker_import_files"', fixed = TRUE)
-  expect_match(html, 'accept=".xlsx,.csv,.tsv"', fixed = TRUE)
-  expect_match(html, "Method name", fixed = TRUE)
-  expect_match(html, 'aria-live="polite"', fixed = TRUE)
+  choice <- builder_stage_html(builder_marker_import_choice_ui("enhance"))
+  expect_false(grepl("Import precomputed Marker genes", html, fixed = TRUE))
+  expect_match(choice, "Calculate for all Groups", fixed = TRUE)
+  expect_match(choice, "Upload precomputed results", fixed = TRUE)
 })
 ```
 
@@ -259,7 +258,7 @@ Expected: FAIL because controls, action protocol, and observers are absent.
 
 - [ ] **Step 3: Implement UI and server translation**
 
-Create `builder_marker_import_ui()` with method name, Groups select, multi-file input, mapping rows, and textual coverage. A row includes basename/sheet, shape, mapping control, visible status, and remove button. Use a live region for status.
+Use `builder_marker_import_choice_ui()` for the first dialog. It offers default calculation for all configured Groups or opens `builder_marker_import_ui()` in a second dialog for upload.
 
 Add delegated JS events carrying only `{action, import_id, source_id, value, nonce}` to `enhance-marker_import_action`; never include temporary paths. Observers call pure helpers, change only `entry$settings$marker_imports`, then call `replace_entry(entry)`. Support exactly `set_method`, `set_group`, `set_multi_column`, `set_single_level`, `remove_source`, and `remove_import`. Recompute coverage from `entry$levels[[group]]` and render the same safe summary in Review. Add scoped `.marker-import-*` styles with a mobile one-column layout.
 
