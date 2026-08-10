@@ -142,3 +142,117 @@ test_that("canonical spatial image manifests take precedence over legacy fields"
   expect_null(normalized[["histology_image"]])
   expect_null(normalized[["histology_image_bounds"]])
 })
+
+test_that("spatial image paths normalize labels, descriptors, and file errors", {
+  image_dir <- tempfile("spatial-image-paths-")
+  dir.create(image_dir)
+  png_path <- file.path(image_dir, "tissue.png")
+  jpeg_path <- file.path(image_dir, "nuclei.jpeg")
+  svg_path <- file.path(image_dir, "markers.svg")
+  tiff_path <- file.path(image_dir, "unsupported.tiff")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), png_path)
+  writeBin(as.raw(c(0xff, 0xd8, 0xff)), jpeg_path)
+  writeLines("<svg xmlns='http://www.w3.org/2000/svg'/>", svg_path)
+  writeBin(as.raw(c(0x49, 0x49)), tiff_path)
+
+  normalized <- .normalizeSpatialImagePaths(
+    list(
+      sliceA = c(`H&E` = png_path, DAPI = jpeg_path),
+      sliceB = list(
+        IF = list(
+          path = svg_path,
+          bounds = c(xmin = 0, xmax = 100, ymin = 0, ymax = 100)
+        )
+      )
+    ),
+    c("sliceA", "sliceB", "sliceC"),
+    "`spatial_images`"
+  )
+
+  expect_named(normalized$sliceA, c("H&E", "DAPI"))
+  expect_identical(normalized$sliceA[["H&E"]], list(path = png_path))
+  expect_identical(normalized$sliceA$DAPI, list(path = jpeg_path))
+  expect_identical(normalized$sliceB$IF$path, svg_path)
+
+  expect_error(
+    .normalizeSpatialImagePaths(
+      list(unknown = c(stain = png_path)),
+      c("sliceA", "sliceB"),
+      "`spatial_images`"
+    ),
+    "unknown.*not present"
+  )
+  expect_error(
+    .normalizeSpatialImagePaths(
+      list(sliceA = structure(png_path, names = "")),
+      "sliceA",
+      "`spatial_images`"
+    ),
+    "non-empty"
+  )
+  expect_error(
+    .normalizeSpatialImagePaths(
+      list(sliceA = structure(c(png_path, jpeg_path), names = c("IF", "IF"))),
+      "sliceA",
+      "`spatial_images`"
+    ),
+    "unique"
+  )
+  expect_error(
+    .normalizeSpatialImagePaths(
+      list(sliceA = c(stain = file.path(image_dir, "missing.png"))),
+      "sliceA",
+      "`spatial_images`"
+    ),
+    "does not exist"
+  )
+  expect_error(
+    .normalizeSpatialImagePaths(
+      list(sliceA = c(stain = image_dir)),
+      "sliceA",
+      "`spatial_images`"
+    ),
+    "regular file"
+  )
+  expect_error(
+    .normalizeSpatialImagePaths(
+      list(sliceA = c(stain = tiff_path)),
+      "sliceA",
+      "`spatial_images`"
+    ),
+    "png.*jpg.*jpeg.*svg"
+  )
+  expect_error(
+    .normalizeSpatialImagePaths(
+      list(
+        sliceA = list(
+          stain = list(
+            path = png_path,
+            bounds = c(xmin = 0, xmax = 0, ymin = 0, ymax = 100)
+          )
+        )
+      ),
+      "sliceA",
+      "`spatial_images`"
+    ),
+    "xmin.*less than.*xmax"
+  )
+})
+
+test_that("argument and misc spatial images cannot claim the same label", {
+  coordinates <- list(
+    sliceA = data.frame(x = c(0, 100), y = c(0, 100))
+  )
+  misc <- list(
+    sliceA = list(`H&E` = spatial_manifest_payload())
+  )
+  argument <- list(
+    sliceA = list(`H&E` = list(path = tempfile(fileext = ".png")))
+  )
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), argument$sliceA[["H&E"]]$path)
+
+  expect_error(
+    .mergeSpatialImageDeclarations(misc, argument, coordinates),
+    "sliceA.*H&E.*both"
+  )
+})

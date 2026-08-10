@@ -170,3 +170,105 @@ test_that("exportFromSeurat preserves a declared FOV image payload", {
     payload
   )
 })
+
+test_that("exportFromSeurat embeds named path images for multiple FOVs", {
+  skip_if_not_installed("Seurat")
+  skip_if_not_installed("SeuratObject")
+
+  object <- make_synthetic_spatial_seurat(n_cells = 12, n_genes = 10, seed = 8)
+  fov <- object@images$fov
+  object@images <- list(sliceA = fov, sliceB = fov, sliceC = fov)
+  image_dir <- tempfile("spatial-export-images-")
+  dir.create(image_dir)
+  png_path <- file.path(image_dir, "tissue.png")
+  jpeg_path <- file.path(image_dir, "nuclei.jpg")
+  svg_path <- file.path(image_dir, "markers.svg")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), png_path)
+  writeBin(as.raw(c(0xff, 0xd8, 0xff)), jpeg_path)
+  writeLines("<svg xmlns='http://www.w3.org/2000/svg'/>", svg_path)
+  output <- tempfile(fileext = ".crb")
+
+  exportFromSeurat(
+    object = object,
+    assay = "Spatial",
+    slot = "data",
+    file = output,
+    experiment_name = "Synthetic named images",
+    organism = "mouse",
+    groups = c("seurat_clusters", "cell_type_final"),
+    nUMI = "nCount_Spatial",
+    nGene = "nFeature_Spatial",
+    spatial_images = list(
+      sliceA = c(`H&E` = png_path, DAPI = jpeg_path),
+      sliceB = list(
+        IF = list(
+          path = svg_path,
+          bounds = c(xmin = 0, xmax = 100, ymin = 0, ymax = 100)
+        )
+      )
+    ),
+    verbose = FALSE
+  )
+
+  crb <- readRDS(output)
+  slice_a <- crb$getSpatialData("sliceA")
+  slice_b <- crb$getSpatialData("sliceB")
+  slice_c <- crb$getSpatialData("sliceC")
+  expect_named(slice_a$histology_images, c("H&E", "DAPI"))
+  expect_match(
+    slice_a$histology_images[["H&E"]]$histology_image,
+    "^data:image/png;base64,"
+  )
+  expect_match(
+    slice_a$histology_images$DAPI$histology_image,
+    "^data:image/jpeg;base64,"
+  )
+  expect_named(slice_b$histology_images, "IF")
+  expect_match(
+    slice_b$histology_images$IF$histology_image,
+    "^data:image/svg\\+xml;base64,"
+  )
+  expect_identical(
+    slice_b$histology_images$IF$histology_image_bounds,
+    c(xmin = 0, xmax = 100, ymin = 0, ymax = 100)
+  )
+  expect_identical(slice_c$histology_images, list())
+})
+
+test_that("convertSeuratToCerebro forwards spatial_images without mutation", {
+  skip_if_not_installed("Seurat")
+  skip_if_not_installed("SeuratObject")
+
+  object <- make_synthetic_spatial_seurat(n_cells = 8, n_genes = 6, seed = 9)
+  image_path <- tempfile(fileext = ".png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image_path)
+  declared <- list(fov = c(stain = image_path))
+  original_misc <- object@misc
+  received <- new.env(parent = emptyenv())
+  received$spatial_images <- NULL
+  testthat::local_mocked_bindings(
+    exportFromSeurat = function(..., spatial_images = NULL) {
+      received$spatial_images <- spatial_images
+      invisible(NULL)
+    },
+    .package = "CerebroNexus"
+  )
+
+  convertSeuratToCerebro(
+    seurat_file = object,
+    result_dir = tempfile("spatial-wrapper-"),
+    assay = "Spatial",
+    slot = "data",
+    experiment_name = "Forward images",
+    organism = "mouse",
+    groups = c("seurat_clusters", "cell_type_final"),
+    nUMI = "nCount_Spatial",
+    nGene = "nFeature_Spatial",
+    add_most_expressed_genes = FALSE,
+    spatial_images = declared,
+    verbose = FALSE
+  )
+
+  expect_identical(received$spatial_images, declared)
+  expect_identical(object@misc, original_misc)
+})

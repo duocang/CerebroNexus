@@ -355,6 +355,10 @@
 #'   directory, so packaging the \code{.crb} with its sibling
 #'   \code{<stem>.bpcells/} or \code{<stem>.h5} together is enough for
 #'   portable deployment.
+#' @param spatial_images Optional named list mapping Seurat image names to named
+#'   image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
+#'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
+#'   derived from the exported x/y coordinate range.
 #' @param verbose Logical indicating whether to print progress messages; default:
 #'   \code{TRUE}.
 #' @param cell_cycle Character vector of column names in metadata containing
@@ -415,7 +419,8 @@
 #'   result_dir = "output",
 #'   groups = c("cluster", "sample", "celltype"),
 #'   groups_naming = list("cluster" = "Cluster", "celltype" = "Cell Type"),
-#'   marker_file = "markers.csv"
+#'   marker_file = "markers.csv",
+#'   spatial_images = list(slice1 = c(`H&E` = "path/to/tissue.png"))
 #' )
 #' }
 #'
@@ -437,6 +442,7 @@ convertSeuratToCerebro <- function(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  spatial_images = NULL,
   verbose = TRUE,
   cell_cycle = NULL,
   marker_file = NULL,
@@ -926,6 +932,7 @@ convertSeuratToCerebro <- function(
         verbose = verbose,
         use_delayed_array = use_delayed_array,
         expression_matrix_mode = expression_matrix_mode,
+        spatial_images = spatial_images,
         .expression_resolution = expr_resolution
       )
       cat("Successfully exported:", file_name, "\n")
