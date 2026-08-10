@@ -2424,8 +2424,14 @@ createShinyApp <- function(
             normalizePath(image, winslash = "/", mustWork = TRUE),
             "spatial image"
           )
+          bundled_descriptor <- descriptor
+          bundled_descriptor$path <- target
           bundled_spatial_images[[dataset]][[spatial_name]][[image_label]] <-
-            target
+            if (identical(names(bundled_descriptor), "path")) {
+              target
+            } else {
+              bundled_descriptor
+            }
         }
       }
     }

@@ -2394,7 +2394,15 @@ test_that("spatial images and settings preserve dataset spatial image nesting", 
   )
   expect_identical(
     config$spatial_images$Dataset[["section-b"]]$DAPI,
-    file.path("spatial-assets", "Dataset", "section-b", "second.jpg")
+    list(
+      path = file.path(
+        "spatial-assets",
+        "Dataset",
+        "section-b",
+        "second.jpg"
+      ),
+      bounds = c(xmin = 0, xmax = 100, ymin = 0, ymax = 100)
+    )
   )
   expect_identical(
     config$spatial_image_settings$Dataset[["section-a"]][["H&E"]],
