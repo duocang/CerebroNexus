@@ -24,6 +24,9 @@ builder_app_coordinator_plan_fixture <- function(
       name = labels[[1L]],
       filename = filenames[[1L]],
       colors = list(cluster = c(A = "#000000")),
+      default_projection = "umap",
+      default_trajectory = NULL,
+      overview_point_size = 5,
       expression_backend = "embedded",
       sidecars = character()
     ),
@@ -32,6 +35,9 @@ builder_app_coordinator_plan_fixture <- function(
       name = labels[[2L]],
       filename = filenames[[2L]],
       colors = list(cluster = c(B = "#ffffff")),
+      default_projection = "pca",
+      default_trajectory = list(method = "slingshot", name = "lineage"),
+      overview_point_size = 7,
       expression_backend = "embedded",
       sidecars = character()
     )
@@ -1300,6 +1306,74 @@ test_that("coordinator freezes the complete App publication expectation", {
     expect_identical(
       handle$app_expectation$app_dir,
       file.path(handle$stage, "cerebro_app")
+    )
+    expect_true(builder_coordinator_abort(handle)$aborted)
+  })
+})
+
+test_that("coordinator preserves per-dataset Viewer defaults for parent verification", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
+    contract <- .builder_coordinator_app_contract(plan)
+
+    expect_identical(
+      contract$plan$items[[1L]]$default_projection,
+      "umap"
+    )
+    expect_null(contract$plan$items[[1L]]$default_trajectory)
+    expect_identical(
+      contract$plan$items[[1L]]$overview_point_size,
+      5
+    )
+    expect_identical(
+      contract$plan$items[[2L]]$default_projection,
+      "pca"
+    )
+    expect_identical(
+      contract$plan$items[[2L]]$default_trajectory,
+      list(method = "slingshot", name = "lineage")
+    )
+    expect_identical(
+      contract$plan$items[[2L]]$overview_point_size,
+      7
+    )
+  })
+})
+
+test_that("parent and worker requests retain identical Viewer defaults", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
+    handle <- builder_coordinator_prepare(plan, "viewer-defaults")
+    artifacts <- file.path(
+      handle$stage,
+      vapply(
+        plan$items,
+        `[[`,
+        character(1),
+        "filename"
+      )
+    )
+    lapply(artifacts, function(path) writeBin(raw(0), path))
+    names(artifacts) <- vapply(plan$items, `[[`, character(1), "name")
+
+    worker_request <- builder_app_bundle_request(
+      plan,
+      artifacts,
+      names(artifacts)
+    )
+    parent_request <- builder_app_bundle_request(
+      handle$app_plan,
+      artifacts,
+      names(artifacts)
+    )
+
+    expect_identical(
+      parent_request$viewer_content,
+      worker_request$viewer_content
     )
     expect_true(builder_coordinator_abort(handle)$aborted)
   })

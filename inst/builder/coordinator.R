@@ -176,6 +176,9 @@
       "name",
       "filename",
       "colors",
+      "default_projection",
+      "default_trajectory",
+      "overview_point_size",
       "expression_backend",
       "sidecars"
     )]
