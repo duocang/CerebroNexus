@@ -79,3 +79,30 @@ test_that("bundled Omnibus FOV carries its synthetic image inside the CRB", {
     spatial$coordinates$y <= spatial$histology_image_bounds[["ymax"]]
   ))
 })
+
+test_that("the source app loads Omnibus first without an external image", {
+  app_path <- testthat::test_path("..", "..", "inst", "app.R")
+  app_source <- paste(readLines(app_path, warn = FALSE), collapse = "\n")
+
+  omnibus_entry <- regexpr(
+    '"Omnibus"\\s*=\\s*"extdata/examples/demo_omnibus[.]crb"',
+    app_source,
+    perl = TRUE
+  )[[1L]]
+  pbmc_entry <- regexpr(
+    '"PBMC - Full \\(T\\+B\\)"\\s*=',
+    app_source,
+    perl = TRUE
+  )[[1L]]
+  expect_gt(omnibus_entry, 0L)
+  expect_lt(omnibus_entry, pbmc_entry)
+  expect_match(app_source, '"crb_pick_smallest_file"\\s*=\\s*FALSE')
+
+  spatial_match <- regexec(
+    '(?s)"spatial_images"\\s*=\\s*c\\((.*?)\\n\\s*\\)',
+    app_source,
+    perl = TRUE
+  )
+  spatial_options <- regmatches(app_source, spatial_match)[[1L]][[2L]]
+  expect_false(grepl('"Omnibus"', spatial_options, fixed = TRUE))
+})
