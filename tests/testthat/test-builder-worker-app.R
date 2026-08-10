@@ -279,34 +279,40 @@ test_that("a successful drop forgets all stale protocol state", {
   expect_match(drop, "discarded", fixed = TRUE)
 })
 
-test_that("Build actions rerender without rebuilding persistent output inputs", {
+test_that("workflow server exclusively owns loading and stage rendering", {
   lines <- builder_app_lines()
-  actionbar <- builder_app_block(
+  app <- paste(lines, collapse = "\n")
+  workbench <- builder_app_block(
     lines,
-    "output$actionbar <- renderUI({",
-    "output$build_actions <- renderUI({"
-  )
-  actions <- builder_app_block(
-    lines,
-    "output$build_actions <- renderUI({",
-    "## -- build"
+    "output$workbench <- renderUI({",
+    "observeEvent(input$continue_to_review, {"
   )
 
-  expect_match(actionbar, '"build_actions"', fixed = TRUE)
-  expect_false(grepl("protocol()", actionbar, fixed = TRUE))
-  expect_false(grepl(
-    'textInput(\n          "out_dir"',
-    actionbar,
+  expect_identical(
+    lengths(regmatches(
+      app,
+      gregexpr("output$workbench <- renderUI({", app, fixed = TRUE)
+    )),
+    1L
+  )
+  expect_match(workbench, "active_import_id()", fixed = TRUE)
+  expect_match(workbench, "builder_loading_workbench_ui", fixed = TRUE)
+  expect_match(workbench, "stage <- workflow()$stage", fixed = TRUE)
+  expect_lt(
+    regexpr("builder_loading_workbench_ui", workbench, fixed = TRUE),
+    regexpr("stage <- workflow()$stage", workbench, fixed = TRUE)
+  )
+  expect_match(workbench, "upload = builder_empty_workbench_ui()", fixed = TRUE)
+  expect_match(
+    workbench,
+    "configure = render_configure_workbench()",
     fixed = TRUE
-  ))
-  expect_false(grepl('"Replace existing outputs"', actionbar, fixed = TRUE))
-  expect_false(grepl("input$out_dir", actionbar, fixed = TRUE))
-  expect_false(grepl("input$overwrite", actionbar, fixed = TRUE))
-  expect_match(actions, "protocol()", fixed = TRUE)
-  expect_match(actions, '"build"', fixed = TRUE)
-  expect_match(actions, '"Choose a folder…"', fixed = TRUE)
-  expect_match(actions, '"Building…"', fixed = TRUE)
-  expect_false(grepl('"cancel_build"', actions, fixed = TRUE))
+  )
+  expect_match(workbench, "review = render_review_workbench()", fixed = TRUE)
+  expect_match(workbench, "build = render_build_workbench()", fixed = TRUE)
+  expect_match(workbench, "Unsupported Builder workflow stage", fixed = TRUE)
+  expect_false(grepl('actionButton(\n      "build"', app, fixed = TRUE))
+  expect_false(grepl('uiOutput("actionbar")', app, fixed = TRUE))
 })
 
 test_that("native output directory selection normalizes selection and preserves cancellation", {
@@ -747,13 +753,13 @@ test_that("serialized session build arguments contain paths but no login secrets
   expect_false("auth_accounts" %in% names(formals(captured_callback)))
 })
 
-test_that("the App exposes one Build flight without unsafe hard cancellation", {
+test_that("the App keeps Build execution private until the workflow reaches it", {
   lines <- builder_app_lines()
   app <- paste(lines, collapse = "\n")
-  actions <- builder_app_block(
+  workbench <- builder_app_block(
     lines,
-    "output$build_actions <- renderUI({",
-    "## -- build"
+    "output$workbench <- renderUI({",
+    "observeEvent(input$continue_to_review, {"
   )
 
   expect_match(
@@ -765,9 +771,9 @@ test_that("the App exposes one Build flight without unsafe hard cancellation", {
   expect_false(grepl('observeEvent(input$cancel_build, {', app, fixed = TRUE))
   expect_false(grepl("builder_protocol_cancel", app, fixed = TRUE))
   expect_false(grepl("builder_worker_interrupt", app, fixed = TRUE))
-  expect_false(grepl('"cancel_build"', actions, fixed = TRUE))
-  expect_match(actions, 'c("queued", "running", "cancelling")', fixed = TRUE)
-  expect_match(actions, "build_in_flight", fixed = TRUE)
+  expect_false(grepl('"cancel_build"', workbench, fixed = TRUE))
+  expect_false(grepl('actionButton(\n      "build"', app, fixed = TRUE))
+  expect_match(workbench, "build = render_build_workbench()", fixed = TRUE)
 })
 
 test_that("session shutdown stops the worker before releasing snapshots", {

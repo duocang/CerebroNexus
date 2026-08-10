@@ -6,6 +6,7 @@ builder_app_source_files <- c(
   file.path("server", "datasets.R"),
   file.path("server", "enhancements.R"),
   file.path("server", "review.R"),
+  file.path("server", "workflow.R"),
   file.path("server", "build.R")
 )
 

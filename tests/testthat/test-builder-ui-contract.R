@@ -491,9 +491,10 @@ test_that("Viewer content cards preserve disclosure state across Shiny redraws",
   expect_match(js, "sibling.open = false", fixed = TRUE)
 })
 
-test_that("Review uses a compact responsive user-facing layout", {
+test_that("Review layout and staged workflow contracts stay user-facing", {
   css <- builder_stylesheet_text()
   app <- builder_app_source_text()
+  workflow_ui <- builder_asset_text("ui", "workflow.R")
 
   expect_match(css, ".review-app-grid", fixed = TRUE)
   expect_match(css, ".review-page-tags", fixed = TRUE)
@@ -515,9 +516,17 @@ test_that("Review uses a compact responsive user-facing layout", {
     fixed = TRUE
   )
   expect_match(css, "overflow-wrap: anywhere", fixed = TRUE)
-  expect_match(app, '"Build"', fixed = TRUE)
-  expect_match(app, '"Choose a folder…"', fixed = TRUE)
-  expect_match(app, '"Building…"', fixed = TRUE)
+  expect_match(app, 'uiOutput("workflow_progress")', fixed = TRUE)
+  expect_false(grepl('uiOutput("actionbar")', app, fixed = TRUE))
+  expect_false(grepl('uiOutput("result_card")', app, fixed = TRUE))
+  expect_match(workflow_ui, 'class = "builder-workflow-progress"', fixed = TRUE)
+  expect_match(workflow_ui, '`aria-label` = "Builder progress"', fixed = TRUE)
+  expect_match(
+    workflow_ui,
+    'class = "builder-stage-actions builder-configure-actions"',
+    fixed = TRUE
+  )
+  expect_match(workflow_ui, '"continue_to_review"', fixed = TRUE)
   expect_false(grepl(
     'actionButton(\n      "build",\n      "Build",',
     app,
@@ -775,10 +784,12 @@ test_that("Builder keeps login account editing outside the redrawn workbench", {
   app <- builder_app_source_text()
 
   expect_match(app, 'builder_auth_dialog_ui()', fixed = TRUE)
-  expect_match(app, 'uiOutput("actionbar")', fixed = TRUE)
+  expect_match(app, 'uiOutput("workflow_progress")', fixed = TRUE)
+  expect_false(grepl('uiOutput("actionbar")', app, fixed = TRUE))
+  expect_false(grepl('uiOutput("result_card")', app, fixed = TRUE))
   expect_match(app, 'id = "builder-live-status"', fixed = TRUE)
   expect_lt(
-    regexpr('uiOutput("actionbar")', app, fixed = TRUE),
+    regexpr('uiOutput("workflow_progress")', app, fixed = TRUE),
     regexpr('builder_auth_dialog_ui()', app, fixed = TRUE)
   )
   expect_lt(
