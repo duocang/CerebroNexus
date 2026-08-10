@@ -83,23 +83,33 @@ Cerebro.options <<- list(
   ## Images default to NO flip; the Spatial tab's "Flip vertically/horizontally"
   ## checkboxes let the user align it if a given dataset needs it (for this Visium
   ## H&E that is a vertical flip, matching Seurat's own SpatialPlot).
-  "spatial_images" = c(
-    "Mouse brain (Visium)" = "extdata/examples/demo_spatial_visium_he.png"
+  "spatial_images" = list(
+    "Mouse brain (Visium)" = list(
+      "anterior1" = c(
+        "Tissue background" = "extdata/examples/demo_spatial_visium_he.png"
+      )
+    )
   ),
   ## Default alignment of the Visium H&E overlay, found by eye in the Spatial
   ## tab and captured here so the demo opens pre-aligned. The user can still
   ## adjust or Reset (which returns to these values, not to identity).
-  "spatial_images_offset_x" = c("Mouse brain (Visium)" = 600),
-  "spatial_images_offset_y" = c(
-    "Mouse brain (Visium)" = -750,
-    "Mouse ileum (MERFISH)" = -0,
-    "Mouse brain (Xenium)" = -10
-  ),
-  "spatial_images_scale_x" = c("Mouse brain (Visium)" = 1.55),
-  "spatial_images_scale_y" = c("Mouse brain (Visium)" = 1.55),
-  "spatial_images_flip_y" = c(
-    "Mouse brain (Visium)" = TRUE,
-    "Mouse brain (Xenium)" = TRUE
+  "spatial_image_settings" = list(
+    "Mouse brain (Visium)" = list(
+      "anterior1" = list(
+        "Tissue background" = list(
+          offset_x = 600,
+          offset_y = -750,
+          scale_x = 1.55,
+          scale_y = 1.55,
+          flip_y = TRUE
+        )
+      )
+    ),
+    "Mouse brain (Xenium)" = list(
+      "fov" = list(
+        "Tissue background" = list(offset_y = -10, flip_y = TRUE)
+      )
+    )
   ),
   "cerebro_root" = ".",
   "welcome_message" = custom_welcome_message,

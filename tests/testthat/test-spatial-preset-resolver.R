@@ -1,179 +1,235 @@
-# test-spatial-preset-resolver.R — unit tests for the per-dataset spatial
-# background-image preset resolver.
-#
-# The spatial tab seeds the background overlay's move / scale / flip from
-# per-dataset `spatial_images_*` presets in Cerebro.options. That lookup was
-# copy-pasted into three places (UI seed, plot params, Reset). These tests pin
-# the pure resolver that replaces all three: given an options list, the set of
-# available crb files (a named vector of file -> label) and the selected file,
-# return the preset value for the current dataset or a fallback.
+# Pure contracts for Viewer spatial background identity and settings.
 
-resolve <- resolve_spatial_image_preset
-
-# A minimal fixture: two datasets, one carrying an offset preset.
-crb_files <- c(
-  "Mouse brain (Visium)" = "visium.crb",
-  "Mouse ileum (MERFISH)" = "merfish.crb"
+spatial_options <- list(
+  spatial_images = list(
+    Atlas = list(
+      sliceA = list(
+        `H&E` = "spatial-assets/Atlas/sliceA/he.png",
+        DAPI = list(
+          path = "spatial-assets/Atlas/sliceA/dapi.png",
+          bounds = c(xmin = 0, xmax = 100, ymin = 5, ymax = 95)
+        )
+      ),
+      sliceB = c(IF = "spatial-assets/Atlas/sliceB/if.png"),
+      sliceC = list()
+    ),
+    Other = list(
+      sliceA = c(Histology = "spatial-assets/Other/sliceA/other.png")
+    )
+  ),
+  spatial_image_settings = list(
+    Atlas = list(
+      sliceA = list(
+        `H&E` = list(offset_x = 11, scale_x = 1.25, flip_y = TRUE),
+        DAPI = list(offset_x = 22, rotation = 90)
+      ),
+      sliceB = list(IF = list(offset_x = 33, flip_x = TRUE))
+    ),
+    Other = list(sliceA = list(Histology = list(offset_x = 99)))
+  )
 )
-opts <- list(
-  spatial_images_offset_x = c("Mouse brain (Visium)" = 450),
-  spatial_images_flip_y = c("Mouse brain (Visium)" = TRUE)
-)
 
-test_that("returns the preset value for the selected dataset", {
-  expect_equal(
-    resolve("spatial_images_offset_x", 0, opts, crb_files, "visium.crb"),
-    450
-  )
-})
+test_that("configured images resolve one exact dataset and spatial leaf", {
+  slice_a <- configured_spatial_images(spatial_options, "Atlas", "sliceA")
 
-test_that("returns the fallback when the dataset has no entry for the option", {
-  # MERFISH is selected but has no offset_x preset -> fallback.
-  expect_equal(
-    resolve("spatial_images_offset_x", 0, opts, crb_files, "merfish.crb"),
-    0
-  )
-})
-
-test_that("returns the fallback when the option is absent entirely", {
-  expect_equal(
-    resolve("spatial_images_scale_x", 1, opts, crb_files, "visium.crb"),
-    1
-  )
-})
-
-test_that("returns the fallback when nothing is selected", {
-  expect_equal(
-    resolve("spatial_images_offset_x", 0, opts, crb_files, NULL),
-    0
-  )
-})
-
-test_that("returns the fallback when the selected file is not among the files", {
-  expect_equal(
-    resolve("spatial_images_offset_x", 0, opts, crb_files, "unknown.crb"),
-    0
-  )
-})
-
-test_that("resolves logical presets and preserves their type", {
+  expect_named(slice_a, c("H&E", "DAPI"))
   expect_identical(
-    resolve("spatial_images_flip_y", FALSE, opts, crb_files, "visium.crb"),
-    TRUE
+    slice_a[["H&E"]],
+    list(path = "spatial-assets/Atlas/sliceA/he.png", bounds = NULL)
+  )
+  expect_identical(
+    slice_a$DAPI$bounds,
+    c(xmin = 0, xmax = 100, ymin = 5, ymax = 95)
+  )
+  expect_named(
+    configured_spatial_images(spatial_options, "Atlas", "sliceB"),
+    "IF"
+  )
+  expect_identical(
+    configured_spatial_images(spatial_options, "Atlas", "sliceC"),
+    list()
   )
 })
 
-test_that("returns the fallback for an NA preset value", {
-  opts_na <- list(
-    spatial_images_offset_x = c("Mouse brain (Visium)" = NA_real_)
+test_that("configured images fail closed without leaking neighbouring leaves", {
+  expect_identical(
+    configured_spatial_images(spatial_options, "Atlas", "missing"),
+    list()
   )
-  expect_equal(
-    resolve("spatial_images_offset_x", 7, opts_na, crb_files, "visium.crb"),
-    7
+  expect_identical(
+    configured_spatial_images(spatial_options, "missing", "sliceA"),
+    list()
   )
+  expect_identical(configured_spatial_images(NULL, "Atlas", "sliceA"), list())
 })
 
-test_that("returns the fallback for a non-scalar preset value", {
-  opts_vec <- list(
-    spatial_images_offset_x = list("Mouse brain (Visium)" = c(1, 2))
+test_that("embedded images expose canonical labels and normalize singular legacy", {
+  canonical <- list(
+    histology_images = list(
+      `H&E` = list(
+        histology_image = "data:image/png;base64,HE",
+        histology_image_bounds = c(xmin = 0, xmax = 10, ymin = 0, ymax = 20)
+      ),
+      DAPI = list(histology_image = "data:image/png;base64,DAPI")
+    ),
+    histology_image = "data:image/png;base64,STALE"
   )
-  expect_equal(
-    resolve("spatial_images_offset_x", 3, opts_vec, crb_files, "visium.crb"),
-    3
+  expect_named(embedded_spatial_images(canonical), c("H&E", "DAPI"))
+  expect_identical(
+    embedded_spatial_images(canonical)$DAPI$image,
+    "data:image/png;base64,DAPI"
   )
+
+  legacy <- list(
+    histology_image = "data:image/png;base64,LEGACY",
+    histology_image_bounds = c(xmin = 1, xmax = 2, ymin = 3, ymax = 4)
+  )
+  expect_named(embedded_spatial_images(legacy), "Tissue background")
+  expect_identical(
+    embedded_spatial_images(legacy)[["Tissue background"]]$bounds,
+    legacy$histology_image_bounds
+  )
+  expect_identical(embedded_spatial_images(list()), list())
 })
 
-test_that("returns the fallback when options is NULL", {
-  expect_equal(
-    resolve("spatial_images_offset_x", 0, NULL, crb_files, "visium.crb"),
+test_that("settings resolve only the exact image leaf", {
+  expect_identical(
+    resolve_spatial_image_setting(
+      spatial_options,
+      "Atlas",
+      "sliceA",
+      "H&E",
+      "offset_x",
+      0
+    ),
+    11
+  )
+  expect_identical(
+    resolve_spatial_image_setting(
+      spatial_options,
+      "Atlas",
+      "sliceA",
+      "DAPI",
+      "offset_x",
+      0
+    ),
+    22
+  )
+  expect_identical(
+    resolve_spatial_image_setting(
+      spatial_options,
+      "Atlas",
+      "sliceB",
+      "IF",
+      "offset_x",
+      0
+    ),
+    33
+  )
+  expect_identical(
+    resolve_spatial_image_setting(
+      spatial_options,
+      "Atlas",
+      "sliceC",
+      "IF",
+      "offset_x",
+      0
+    ),
+    0
+  )
+  expect_identical(
+    resolve_spatial_image_setting(
+      spatial_options,
+      "Atlas",
+      "sliceA",
+      "H&E",
+      "rotation",
+      0
+    ),
     0
   )
 })
 
-test_that("background allowlist follows the currently selected dataset", {
-  image_options <- list(
-    spatial_images = list(
-      "Mouse brain (Visium)" = "spatial-assets/visium.png",
-      "Mouse ileum (MERFISH)" = "spatial-assets/merfish.png"
+test_that("background choices keep labels separate from source-tagged identity", {
+  embedded <- embedded_spatial_images(list(
+    histology_images = list(
+      `H&E` = list(histology_image = "data:image/png;base64,HE")
+    )
+  ))
+  external <- configured_spatial_images(spatial_options, "Atlas", "sliceA")
+  choices <- spatial_background_choices(embedded, external)
+
+  expect_identical(names(choices), c("No Background", "H&E", "H&E", "DAPI"))
+  expect_identical(
+    unname(choices),
+    c(
+      "none",
+      spatial_background_key("embedded", "H&E"),
+      spatial_background_key("external", "H&E"),
+      spatial_background_key("external", "DAPI")
     )
   )
+  expect_false(any(
+    unname(choices) %in%
+      c(
+        "data:image/png;base64,HE",
+        "spatial-assets/Atlas/sliceA/he.png"
+      )
+  ))
+})
+
+test_that("stale selections reset to the first current image or none", {
+  slice_a_choices <- spatial_background_choices(
+    list(),
+    configured_spatial_images(spatial_options, "Atlas", "sliceA")
+  )
+  slice_b_choices <- spatial_background_choices(
+    list(),
+    configured_spatial_images(spatial_options, "Atlas", "sliceB")
+  )
+  slice_c_choices <- spatial_background_choices(list(), list())
+  old <- spatial_background_key("external", "H&E")
 
   expect_identical(
-    configured_spatial_images(
-      image_options,
-      crb_files,
-      "merfish.crb"
-    ),
-    "spatial-assets/merfish.png"
+    normalize_spatial_background_choice(old, slice_a_choices),
+    old
   )
   expect_identical(
-    configured_spatial_images(
-      image_options,
-      crb_files,
-      "unknown.crb"
-    ),
-    character()
+    normalize_spatial_background_choice(old, slice_b_choices),
+    spatial_background_key("external", "IF")
+  )
+  expect_identical(
+    normalize_spatial_background_choice(old, slice_c_choices),
+    "none"
   )
 })
 
-test_that("background allowlist has fail-closed selection fallbacks", {
-  image_options <- list(
-    spatial_images = c(
-      "Mouse brain (Visium)" = "spatial-assets/visium.png",
-      "Mouse ileum (MERFISH)" = "spatial-assets/merfish.png"
+test_that("selected identity resolves the matching descriptor and bounds", {
+  embedded <- embedded_spatial_images(list(
+    histology_images = list(
+      DAPI = list(
+        histology_image = "data:image/png;base64,DAPI",
+        histology_image_bounds = c(xmin = 1, xmax = 9, ymin = 2, ymax = 8)
+      )
     )
-  )
+  ))
+  external <- configured_spatial_images(spatial_options, "Atlas", "sliceA")
 
   expect_identical(
-    configured_spatial_images(image_options),
-    character()
+    resolve_spatial_background(
+      spatial_background_key("embedded", "DAPI"),
+      embedded,
+      external
+    )$bounds,
+    c(xmin = 1, xmax = 9, ymin = 2, ymax = 8)
   )
   expect_identical(
-    configured_spatial_images(image_options, unname(crb_files), "visium.crb"),
-    character()
+    resolve_spatial_background(
+      spatial_background_key("external", "DAPI"),
+      embedded,
+      external
+    )$bounds,
+    c(xmin = 0, xmax = 100, ymin = 5, ymax = 95)
   )
-  expect_identical(configured_spatial_images(NULL), character())
-})
-
-test_that("uploaded data cannot inherit a configured spatial image", {
-  image_options <- list(
-    crb_file_to_load = crb_files,
-    spatial_images = list(
-      "Mouse brain (Visium)" = "spatial-assets/visium.png"
-    )
-  )
-
-  expect_identical(
-    configured_spatial_images(
-      image_options,
-      image_options$crb_file_to_load,
-      tempfile(fileext = ".crb")
-    ),
-    character()
-  )
-})
-
-test_that("submitted backgrounds are normalized against the allowlist", {
-  configured <- "spatial-assets/visium.png"
-
-  expect_identical(
-    normalize_spatial_background_choice(configured, configured),
-    configured
-  )
-  expect_identical(
-    normalize_spatial_background_choice("private-data/dataset.crb", configured),
-    "No Background"
-  )
-  expect_identical(
-    normalize_spatial_background_choice("../outside.png", configured),
-    "No Background"
-  )
-  expect_identical(
-    normalize_spatial_background_choice("__embedded__", configured, FALSE),
-    "No Background"
-  )
-  expect_identical(
-    normalize_spatial_background_choice("__embedded__", configured, TRUE),
-    "__embedded__"
-  )
+  expect_null(resolve_spatial_background("none", embedded, external))
 })

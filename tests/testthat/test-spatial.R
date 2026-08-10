@@ -224,6 +224,7 @@ test_that("createShinyApp accepts the spatial_images parameters", {
   args <- names(formals(createShinyApp))
   for (a in c(
     "spatial_images",
+    "spatial_image_settings",
     "spatial_images_flip_x",
     "spatial_images_flip_y",
     "spatial_images_scale_x",
@@ -333,15 +334,16 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
   cfg <- readRDS(cfg_path)
   expect_true(!is.null(cfg[["spatial_images"]]))
   # path rewritten to the bundle-relative spatial asset directory
-  stored <- cfg[["spatial_images"]][["Xenium demo"]]
+  spatial_name <- readRDS(spatial_crb)$availableSpatial()[[1L]]
+  stored <- cfg[["spatial_images"]][["Xenium demo"]][[spatial_name]][[
+    "Tissue background"
+  ]]
   expect_match(stored, "^spatial-assets/", perl = TRUE)
   # and the image really landed in the bundle
   expect_true(file.exists(file.path(out_dir, stored)))
 })
 
-test_that("createShinyApp drops unmatched spatial_images with a warning", {
-  # A spatial_images entry whose name matches no dataset must be ignored (not
-  # errored) so a typo never blocks app generation.
+test_that("createShinyApp rejects unmatched spatial_images", {
   skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), img)
@@ -351,7 +353,7 @@ test_that("createShinyApp drops unmatched spatial_images with a warning", {
   )
   on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
 
-  expect_warning(
+  expect_error(
     suppressMessages(
       createShinyApp(
         cerebro_data = c("Xenium demo" = spatial_crb),
@@ -361,10 +363,9 @@ test_that("createShinyApp drops unmatched spatial_images with a warning", {
         verbose = FALSE
       )
     ),
-    "No matching names"
+    "dataset `no_such_dataset` is not present"
   )
-  cfg <- readRDS(file.path(out_dir, "cerebro_config.rds"))
-  expect_null(cfg[["spatial_images"]])
+  expect_false(dir.exists(out_dir))
 })
 
 test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
@@ -421,6 +422,117 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
     ),
     normalizePath(png, winslash = "/", mustWork = TRUE)
   )
+})
+
+test_that("renderer uses selected descriptor bounds without changing cell axes", {
+  skip_if_not_installed("base64enc")
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "spatial-assets"))
+  image_path <- file.path(root, "spatial-assets", "atlas.png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image_path)
+
+  renderer <- new.env(parent = globalenv())
+  renderer$Cerebro.options <- list(cerebro_root = root)
+  sys.source(
+    testthat::test_path(
+      "../../inst/viewer/spatial/func_projection_update_plot.R"
+    ),
+    envir = renderer
+  )
+  js <- get("js", envir = asNamespace("shinyjs"))
+  bindings <- c("getContainerDimensions", "updatePlot2DContinuousSpatial")
+  existed <- vapply(bindings, exists, logical(1), envir = js, inherits = FALSE)
+  previous <- lapply(bindings, function(name) {
+    if (exists(name, envir = js, inherits = FALSE)) get(name, envir = js)
+  })
+  on.exit(
+    {
+      for (i in seq_along(bindings)) {
+        if (existed[[i]]) {
+          assign(bindings[[i]], previous[[i]], envir = js)
+        } else if (exists(bindings[[i]], envir = js, inherits = FALSE)) {
+          rm(list = bindings[[i]], envir = js)
+        }
+      }
+    },
+    add = TRUE
+  )
+  rendered <- NULL
+  assign(
+    "getContainerDimensions",
+    function() list(width = 800, height = 600),
+    envir = js
+  )
+  assign(
+    "updatePlot2DContinuousSpatial",
+    function(meta, data, ...) rendered <<- list(meta = meta, data = data),
+    envir = js
+  )
+
+  params <- list(
+    color_variable = "score",
+    background_image = spatial_background_key("external", "Atlas"),
+    background_descriptor = list(
+      source = "external",
+      label = "Atlas",
+      path = "spatial-assets/atlas.png",
+      bounds = c(xmin = -10, xmax = 110, ymin = -20, ymax = 120)
+    ),
+    background_image_allowlist = "spatial-assets/atlas.png",
+    n_dimensions = 2,
+    x_range = c(0, 100),
+    y_range = c(10, 90),
+    background_flip_x = FALSE,
+    background_flip_y = FALSE,
+    background_scale_x = 1,
+    background_scale_y = 1,
+    background_offset_x = 0,
+    background_offset_y = 0,
+    background_opacity = 1,
+    plot_type = "ImageFeaturePlot",
+    point_size = 5,
+    point_opacity = 1,
+    draw_border = FALSE,
+    hover_info = FALSE
+  )
+  call_renderer <- function(plot_parameters) {
+    renderer$spatial_projection_update_plot(list(
+      cells_df = data.frame(score = c(1, 2)),
+      coordinates = data.frame(x = c(20, 80), y = c(30, 70)),
+      reset_axes = FALSE,
+      color_assignments = character(),
+      hover_info = c("first", "second"),
+      plot_parameters = plot_parameters
+    ))
+  }
+
+  call_renderer(params)
+  expect_identical(
+    unlist(rendered$meta$image_bounds[c("xmin", "xmax", "ymin", "ymax")]),
+    c(xmin = -10, xmax = 110, ymin = -20, ymax = 120)
+  )
+  expect_identical(rendered$data$x_range, c(0, 100))
+  expect_identical(rendered$data$y_range, c(10, 90))
+  expect_identical(rendered$data$x, c(20, 80))
+  expect_identical(rendered$data$y, c(30, 70))
+
+  params$background_descriptor$bounds <- NULL
+  call_renderer(params)
+  expect_identical(
+    unlist(rendered$meta$image_bounds[c("xmin", "xmax", "ymin", "ymax")]),
+    c(xmin = 20, xmax = 80, ymin = 30, ymax = 70)
+  )
+  expect_identical(rendered$data$x_range, c(0, 100))
+  expect_identical(rendered$data$y_range, c(10, 90))
+
+  params$background_image <- "none"
+  params$background_descriptor <- NULL
+  call_renderer(params)
+  expect_null(rendered$meta$background_image)
+  expect_identical(rendered$data$x_range, c(0, 100))
+  expect_identical(rendered$data$y_range, c(10, 90))
+  expect_identical(rendered$data$x, c(20, 80))
+  expect_identical(rendered$data$y, c(30, 70))
 })
 
 test_that("bundled real demos embed a genuine tissue image in the .crb", {
@@ -572,9 +684,10 @@ test_that("app.R ships the Visium H&E overlay pre-aligned", {
     readLines(system.file("app.R", package = "CerebroNexus")),
     collapse = "\n"
   )
-  expect_match(app_src, "\"spatial_images_flip_y\"", fixed = TRUE)
-  expect_match(app_src, "\"spatial_images_offset_x\"", fixed = TRUE)
-  expect_match(app_src, "\"spatial_images_scale_x\"", fixed = TRUE)
+  expect_match(app_src, "\"spatial_image_settings\"", fixed = TRUE)
+  expect_match(app_src, "offset_x = 600", fixed = TRUE)
+  expect_match(app_src, "scale_x = 1.55", fixed = TRUE)
+  expect_match(app_src, "flip_y = TRUE", fixed = TRUE)
 })
 
 ##----------------------------------------------------------------------------##

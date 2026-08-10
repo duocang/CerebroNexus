@@ -128,35 +128,57 @@ observeEvent(input[["spatial_projection_background_scale_lock"]], {
 ## Reset the background-image adjustments back to identity.
 ##----------------------------------------------------------------------------##
 observeEvent(input[["spatial_projection_background_reset"]], {
-  ## Reset returns to the app-configured default for the current dataset (the
-  ## `spatial_images_*` presets), not a hard identity value — otherwise resetting
-  ## a pre-aligned overlay would knock it out of alignment. Falls back to the
-  ## identity (0 move, 1 scale, FALSE flip) when no preset is set. Same
-  ## per-dataset name lookup as the UI seeds it with.
-  reset_preset_default <- function(option_name, fallback) {
-    resolve_spatial_image_preset(
-      option_name,
-      fallback,
+  spatial_name <- input[["spatial_projection_to_display"]]
+  dataset <- spatial_dataset_name(
+    if (exists("available_crb_files")) available_crb_files$files else NULL,
+    if (exists("available_crb_files")) available_crb_files$selected else NULL
+  )
+  spatial_data <- tryCatch(
+    getSpatialData(spatial_name),
+    error = function(e) list()
+  )
+  selected_descriptor <- resolve_spatial_background(
+    input[["spatial_projection_background_image"]],
+    embedded_spatial_images(spatial_data),
+    configured_spatial_images(
       if (exists("Cerebro.options")) Cerebro.options else NULL,
-      if (exists("available_crb_files")) available_crb_files$files else NULL,
-      if (exists("available_crb_files")) available_crb_files$selected else NULL
+      dataset,
+      spatial_name
+    )
+  )
+  image_label <- if (is.null(selected_descriptor)) {
+    NULL
+  } else {
+    selected_descriptor$label
+  }
+  reset_preset_default <- function(setting, fallback) {
+    if (is.null(image_label)) {
+      return(fallback)
+    }
+    resolve_spatial_image_setting(
+      if (exists("Cerebro.options")) Cerebro.options else NULL,
+      dataset,
+      spatial_name,
+      image_label,
+      setting,
+      fallback
     )
   }
   updateSliderInput(
     session,
     "spatial_projection_background_offset_x",
-    value = reset_preset_default("spatial_images_offset_x", 0)
+    value = reset_preset_default("offset_x", 0)
   )
   updateSliderInput(
     session,
     "spatial_projection_background_offset_y",
-    value = reset_preset_default("spatial_images_offset_y", 0)
+    value = reset_preset_default("offset_y", 0)
   )
   ## Move, flip and scale all reset to their preset (the shipped alignment),
   ## matching how the UI seeds them, so Reset restores the aligned overlay rather
   ## than a bare image. Scale is single-source now, so it too returns to preset.
-  scale_x_reset <- reset_preset_default("spatial_images_scale_x", 1)
-  scale_y_reset <- reset_preset_default("spatial_images_scale_y", 1)
+  scale_x_reset <- reset_preset_default("scale_x", 1)
+  scale_y_reset <- reset_preset_default("scale_y", 1)
   updateCheckboxInput(
     session,
     "spatial_projection_background_scale_lock",
@@ -177,16 +199,20 @@ observeEvent(input[["spatial_projection_background_reset"]], {
     "spatial_projection_background_scale_y",
     value = scale_y_reset
   )
-  updateSliderInput(session, "spatial_projection_background_rotate", value = 0)
+  updateSliderInput(
+    session,
+    "spatial_projection_background_rotate",
+    value = reset_preset_default("rotation", 0)
+  )
   updateCheckboxInput(
     session,
     "spatial_projection_background_flip_x",
-    value = isTRUE(reset_preset_default("spatial_images_flip_x", FALSE))
+    value = isTRUE(reset_preset_default("flip_x", FALSE))
   )
   updateCheckboxInput(
     session,
     "spatial_projection_background_flip_y",
-    value = isTRUE(reset_preset_default("spatial_images_flip_y", FALSE))
+    value = isTRUE(reset_preset_default("flip_y", FALSE))
   )
 })
 

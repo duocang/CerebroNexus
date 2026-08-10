@@ -80,155 +80,56 @@ spatial_projection_parameters_plot_raw <- reactive({
     }
   })
 
-  background_flip_x <- FALSE
-  background_flip_y <- FALSE
-  background_scale_x <- 1
-  background_scale_y <- 1
-  background_offset_x <- 0
-  background_offset_y <- 0
-
-  ## Resolve a per-dataset `spatial_images_*` preset by the current dataset name.
-  ## Returns `fallback` when unset. Used to seed the background transform so the
-  ## overlay opens pre-aligned (see the flip/scale blocks below and the offset
-  ## block that follows).
-  resolve_bg_preset <- function(option_name, fallback) {
-    resolve_spatial_image_preset(
-      option_name,
-      fallback,
-      if (exists("Cerebro.options")) Cerebro.options else NULL,
-      if (exists("available_crb_files")) available_crb_files$files else NULL,
-      if (exists("available_crb_files")) available_crb_files$selected else NULL
-    )
-  }
-  background_offset_x <- resolve_bg_preset("spatial_images_offset_x", 0)
-  background_offset_y <- resolve_bg_preset("spatial_images_offset_y", 0)
-
-  if (
-    exists("Cerebro.options") &&
-      !is.null(Cerebro.options[["spatial_images_flip_x"]]) &&
-      exists("available_crb_files") &&
-      !is.null(available_crb_files$selected)
-  ) {
-    match_idx <- which(
-      available_crb_files$files == available_crb_files$selected
-    )
-    if (length(match_idx) > 0) {
-      current_name <- names(available_crb_files$files)[match_idx[1]]
-      if (
-        !is.null(current_name) &&
-          current_name %in% names(Cerebro.options[["spatial_images_flip_x"]])
-      ) {
-        background_flip_x <- Cerebro.options[["spatial_images_flip_x"]][[
-          current_name
-        ]]
-      }
-    }
-  }
-
-  if (
-    exists("Cerebro.options") &&
-      !is.null(Cerebro.options[["spatial_images_flip_y"]]) &&
-      exists("available_crb_files") &&
-      !is.null(available_crb_files$selected)
-  ) {
-    match_idx <- which(
-      available_crb_files$files == available_crb_files$selected
-    )
-    if (length(match_idx) > 0) {
-      current_name <- names(available_crb_files$files)[match_idx[1]]
-      if (
-        !is.null(current_name) &&
-          current_name %in% names(Cerebro.options[["spatial_images_flip_y"]])
-      ) {
-        background_flip_y <- Cerebro.options[["spatial_images_flip_y"]][[
-          current_name
-        ]]
-      }
-    }
-  }
-
-  if (
-    exists("Cerebro.options") &&
-      !is.null(Cerebro.options[["spatial_images_scale_x"]]) &&
-      exists("available_crb_files") &&
-      !is.null(available_crb_files$selected)
-  ) {
-    match_idx <- which(
-      available_crb_files$files == available_crb_files$selected
-    )
-    if (length(match_idx) > 0) {
-      current_name <- names(available_crb_files$files)[match_idx[1]]
-      if (
-        !is.null(current_name) &&
-          current_name %in% names(Cerebro.options[["spatial_images_scale_x"]])
-      ) {
-        background_scale_x <- Cerebro.options[["spatial_images_scale_x"]][[
-          current_name
-        ]]
-      }
-    }
-  }
-
-  if (
-    exists("Cerebro.options") &&
-      !is.null(Cerebro.options[["spatial_images_scale_y"]]) &&
-      exists("available_crb_files") &&
-      !is.null(available_crb_files$selected)
-  ) {
-    match_idx <- which(
-      available_crb_files$files == available_crb_files$selected
-    )
-    if (length(match_idx) > 0) {
-      current_name <- names(available_crb_files$files)[match_idx[1]]
-      if (
-        !is.null(current_name) &&
-          current_name %in% names(Cerebro.options[["spatial_images_scale_y"]])
-      ) {
-        background_scale_y <- Cerebro.options[["spatial_images_scale_y"]][[
-          current_name
-        ]]
-      }
-    }
-  }
-
   spatial_data <- getSpatialData(input[["spatial_projection_to_display"]])
   n_dimensions <- ncol(spatial_data$coordinates)
-
-  ## A .crb built from real data may embed the genuine histology image (base64
-  ## data: URI) plus its extent in coordinate space. When present it is offered
-  ## as a background choice ("__embedded__") and rendered directly, aligned via
-  ## its stored bounds — no external file, no manual flip/scale.
-  embedded_image <- spatial_data$histology_image
-  embedded_bounds <- spatial_data$histology_image_bounds
-
-  ## Normalise the background choice against the CURRENT dataset. When the user
-  ## switches from an image-bearing demo (where they picked "__embedded__") to
-  ## one without an embedded image (e.g. Xenium -> Slide-seq), the stale
-  ## "__embedded__" input value would otherwise leave `background_image` pointing
-  ## at an image this dataset does not have, wedging the plot update. Fall back to
-  ## no background whenever the embedded image is absent.
-  background_image <- input[["spatial_projection_background_image"]]
-  configured_crb_files <- if (exists("Cerebro.options")) {
-    Cerebro.options[["crb_file_to_load"]]
-  } else {
-    NULL
-  }
-  selected_crb <- if (exists("available_crb_files")) {
-    available_crb_files$selected
-  } else {
-    NULL
-  }
+  spatial_name <- input[["spatial_projection_to_display"]]
+  dataset <- spatial_dataset_name(
+    if (exists("available_crb_files")) available_crb_files$files else NULL,
+    if (exists("available_crb_files")) available_crb_files$selected else NULL
+  )
+  embedded_images <- embedded_spatial_images(spatial_data)
   configured_background_images <- configured_spatial_images(
     if (exists("Cerebro.options")) Cerebro.options else NULL,
-    configured_crb_files,
-    selected_crb,
-    names(configured_crb_files)
+    dataset,
+    spatial_name
+  )
+  background_choices <- spatial_background_choices(
+    embedded_images,
+    configured_background_images
   )
   background_image <- normalize_spatial_background_choice(
-    background_image,
-    configured_background_images,
-    !is.null(embedded_image)
+    input[["spatial_projection_background_image"]],
+    background_choices
   )
+  background_descriptor <- resolve_spatial_background(
+    background_image,
+    embedded_images,
+    configured_background_images
+  )
+  image_label <- if (is.null(background_descriptor)) {
+    NULL
+  } else {
+    background_descriptor$label
+  }
+  resolve_bg_setting <- function(setting, fallback) {
+    if (is.null(image_label)) {
+      return(fallback)
+    }
+    resolve_spatial_image_setting(
+      if (exists("Cerebro.options")) Cerebro.options else NULL,
+      dataset,
+      spatial_name,
+      image_label,
+      setting,
+      fallback
+    )
+  }
+  background_flip_x <- isTRUE(resolve_bg_setting("flip_x", FALSE))
+  background_flip_y <- isTRUE(resolve_bg_setting("flip_y", FALSE))
+  background_scale_x <- resolve_bg_setting("scale_x", 1)
+  background_scale_y <- resolve_bg_setting("scale_y", 1)
+  background_offset_x <- resolve_bg_setting("offset_x", 0)
+  background_offset_y <- resolve_bg_setting("offset_y", 0)
 
   parameters <- list(
     projection = input[["spatial_projection_to_display"]],
@@ -249,9 +150,13 @@ spatial_projection_parameters_plot_raw <- reactive({
     x_range = input[["spatial_projection_scale_x_manual_range"]],
     y_range = input[["spatial_projection_scale_y_manual_range"]],
     background_image = background_image,
-    background_image_allowlist = configured_background_images,
-    embedded_image = embedded_image,
-    embedded_bounds = embedded_bounds,
+    background_descriptor = background_descriptor,
+    background_image_allowlist = vapply(
+      configured_background_images,
+      `[[`,
+      character(1),
+      "path"
+    ),
     background_flip_x = background_flip_x,
     background_flip_y = background_flip_y,
     background_scale_x = background_scale_x,
