@@ -582,37 +582,6 @@ convertSeuratToCerebro <- function(
         call. = FALSE
       )
     }
-    valid_targets <- vapply(
-      groups_naming,
-      function(target) {
-        is.character(target) &&
-          length(target) == 1L &&
-          !is.na(target) &&
-          nzchar(target)
-      },
-      logical(1)
-    )
-    if (!all(valid_targets)) {
-      stop(
-        "groups_naming targets must each be a non-empty scalar character name.",
-        call. = FALSE
-      )
-    }
-    target_names <- unname(vapply(groups_naming, `[[`, character(1), 1L))
-    duplicate_target <- duplicated(target_names) |
-      duplicated(
-        target_names,
-        fromLast = TRUE
-      )
-    if (any(duplicate_target)) {
-      stop(
-        "Multiple groups map to the same groups_naming target '",
-        target_names[which(duplicate_target)[[1L]]],
-        "'.",
-        call. = FALSE
-      )
-    }
-
     # Check if at least one name in groups_naming exists in groups
     valid_names <- names(groups_naming)[names(groups_naming) %in% groups]
 
@@ -636,6 +605,43 @@ convertSeuratToCerebro <- function(
           "Available groups: ",
           paste(groups, collapse = ", ")
         ),
+        call. = FALSE
+      )
+    }
+
+    effective_mappings <- groups_naming[valid_names]
+    valid_targets <- vapply(
+      effective_mappings,
+      function(target) {
+        is.character(target) &&
+          length(target) == 1L &&
+          !is.na(target) &&
+          nzchar(target)
+      },
+      logical(1)
+    )
+    if (!all(valid_targets)) {
+      stop(
+        "groups_naming targets must each be a non-empty scalar character name.",
+        call. = FALSE
+      )
+    }
+    target_names <- unname(vapply(
+      effective_mappings,
+      `[[`,
+      character(1),
+      1L
+    ))
+    duplicate_target <- duplicated(target_names) |
+      duplicated(
+        target_names,
+        fromLast = TRUE
+      )
+    if (any(duplicate_target)) {
+      stop(
+        "Multiple groups map to the same groups_naming target '",
+        target_names[which(duplicate_target)[[1L]]],
+        "'.",
         call. = FALSE
       )
     }

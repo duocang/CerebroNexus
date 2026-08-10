@@ -741,6 +741,42 @@ test_that("group rename preflight rejects ambiguous target names", {
   )
 })
 
+test_that("unknown group rename mappings are warned and ignored", {
+  skip_if_not_installed("Seurat")
+  object <- readRDS(omnibus_example_path("demo_omnibus_seurat.rds"))
+  mappings <- list(
+    list("not_a_group" = "cluster", "cell_type" = "cluster"),
+    list("not_a_group" = "", "cell_type" = "cluster"),
+    list("not_a_group" = c("invalid", "target"), "cell_type" = "cluster")
+  )
+
+  for (index in seq_along(mappings)) {
+    output <- withr::local_tempdir()
+    expect_warning(
+      convertSeuratToCerebro(
+        seurat_file = object,
+        result_dir = output,
+        assay = "RNA",
+        slot = "data",
+        experiment_name = paste("Ignored mapping", index),
+        organism = "Human",
+        groups = c("orig.ident", "condition", "cell_type"),
+        groups_naming = mappings[[index]],
+        add_most_expressed_genes = FALSE,
+        expression_matrix_mode = "embedded",
+        verbose = FALSE
+      ),
+      "ignored.*not_a_group"
+    )
+    result <- readRDS(file.path(
+      output,
+      paste0("cerebro_Ignored_mapping_", index, ".crb")
+    ))
+    expect_true("cluster" %in% result$getGroups())
+    expect_false("cell_type" %in% result$getGroups())
+  }
+})
+
 test_that("public APIs convert committed Omnibus inputs into a standalone H5 app", {
   skip_if_not_installed("HDF5Array")
   skip_if_not_installed("callr")
