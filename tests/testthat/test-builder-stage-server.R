@@ -1,4 +1,105 @@
 builder_stage_contract_source_runtime(environment())
+builder_profile_source_runtime(environment())
+
+test_that("Builder shell and workflow UI separate all four stages", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+
+  shell <- builder_app_source_text()
+  expect_false(grepl('uiOutput("actionbar")', shell, fixed = TRUE))
+  expect_false(grepl('uiOutput("result_card")', shell, fixed = TRUE))
+  expect_match(shell, 'uiOutput("workflow_progress")', fixed = TRUE)
+  expect_match(shell, 'file.path("ui", "workflow.R")', fixed = TRUE)
+  expect_match(shell, '"server/workflow.R"', fixed = TRUE)
+  expect_match(shell, "Build your first Viewer in four steps", fixed = TRUE)
+
+  progress <- app_env$builder_workflow_progress_ui("configure")
+  progress_html <- htmltools::renderTags(progress)$html
+  expect_match(progress_html, "builder-workflow-progress", fixed = TRUE)
+  expect_match(progress_html, 'aria-label="Builder progress"', fixed = TRUE)
+  expect_match(progress_html, 'aria-current="step"', fixed = TRUE)
+  expect_identical(
+    lengths(regmatches(
+      progress_html,
+      gregexpr("<li", progress_html, fixed = TRUE)
+    )),
+    4L
+  )
+  expect_error(
+    app_env$builder_workflow_progress_ui("future"),
+    "valid Builder workflow stage"
+  )
+
+  actions <- app_env$builder_configure_actions_ui(
+    "Wait for all datasets to finish loading.",
+    can_continue = FALSE,
+    app_env$builder_app_control(app_env$app_capability, FALSE)
+  )
+  actions_html <- htmltools::renderTags(actions)$html
+  expect_match(actions_html, "builder-stage-actions", fixed = TRUE)
+  expect_match(actions_html, "builder-configure-actions", fixed = TRUE)
+  expect_identical(
+    lengths(regmatches(
+      actions_html,
+      gregexpr('id="continue_to_review"', actions_html, fixed = TRUE)
+    )),
+    1L
+  )
+  expect_match(actions_html, ">Continue<", fixed = TRUE)
+  expect_match(actions_html, " disabled", fixed = TRUE)
+})
+
+test_that("workflow server owns loading and Configure rendering", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this workflow test.")
+  }
+  shiny::testServer(app_env$server, {
+    expect_identical(workflow()$stage, "upload")
+    expect_match(
+      paste(unlist(output$workflow_progress), collapse = " "),
+      "Upload",
+      fixed = TRUE
+    )
+
+    use_state_only_fixture(list(list(
+      id = "dataset-a",
+      revision = 0L,
+      snapshot = list(
+        path = "/private/dataset-a",
+        owner_token = "owner-a",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a"),
+      settings = list(name = "Dataset A")
+    )))
+    session$flushReact()
+    expect_identical(workflow()$stage, "configure")
+  })
+
+  workflow_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "workflow.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(workflow_server, "builder_loading_workbench_ui", fixed = TRUE)
+  expect_match(workflow_server, "render_configure_workbench", fixed = TRUE)
+  expect_match(workflow_server, "render_review_workbench", fixed = TRUE)
+  expect_match(workflow_server, "render_build_workbench", fixed = TRUE)
+  expect_match(
+    workflow_server,
+    "Unsupported Builder workflow stage",
+    fixed = TRUE
+  )
+})
 
 test_that("build completion preserves decisions and always has an idle ack path", {
   skip_if_not_installed("shiny")
@@ -116,43 +217,19 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
     expect_identical(frozen_review_plan()$error_code, "empty_release")
   })
 
-  lines <- builder_app_source_lines()
-  app_block <- function(start, finish) {
-    first <- grep(start, lines, fixed = TRUE)[1L]
-    last <- grep(finish, lines, fixed = TRUE)
-    last <- last[last > first][1L]
-    paste(lines[first:(last - 1L)], collapse = "\n")
-  }
-  workbench <- app_block(
-    "output$workbench <- renderUI({",
-    "output$review_stage <- renderUI({"
+  review_source <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
   )
-  review_stage <- app_block(
-    "output$review_stage <- renderUI({",
-    "output$actionbar <- renderUI({"
-  )
-  review_app_options <- app_block(
-    'output[["review_app_options"]] <- renderUI({',
-    'output[["dataset_review_footer"]] <- renderUI({'
-  )
-  actionbar <- app_block(
-    "output$actionbar <- renderUI({",
-    "output$review_action_summary <- renderUI({"
-  )
-  expect_match(workbench, "entry <- isolate(entry_of(id))", fixed = TRUE)
-  expect_false(grepl("frozen_review_plan()", workbench, fixed = TRUE))
-  expect_match(workbench, 'uiOutput("review_stage")', fixed = TRUE)
-  expect_match(workbench, 'uiOutput("review_app_options")', fixed = TRUE)
-  expect_false(grepl("builder_review_controls_ui", workbench, fixed = TRUE))
-  expect_match(
-    review_app_options,
-    "builder_review_controls_ui",
-    fixed = TRUE
-  )
-  expect_match(review_stage, "frozen_review_plan()", fixed = TRUE)
-  expect_false(grepl("builder_review_controls_ui", review_stage, fixed = TRUE))
-  expect_match(actionbar, 'uiOutput("review_action_summary"', fixed = TRUE)
-  expect_false(grepl("review_report()", actionbar, fixed = TRUE))
+  expect_match(review_source, "render_configure_workbench", fixed = TRUE)
+  expect_match(review_source, 'uiOutput("review_app_options")', fixed = TRUE)
+  expect_match(review_source, "builder_review_controls_ui", fixed = TRUE)
+  expect_false(grepl("output$workbench <-", review_source, fixed = TRUE))
+  expect_false(grepl("output$actionbar <-", review_source, fixed = TRUE))
+  expect_false(grepl("output$build_actions <-", review_source, fixed = TRUE))
 })
 
 test_that("workbench identity ignores settings writes but tracks selection", {
@@ -326,6 +403,10 @@ test_that("Build enqueue retains auth after failure and resets only after succes
   app_env <- new.env(parent = globalenv())
   withr::local_dir(builder_profile_inst_path("builder"))
   sys.source("app.R", envir = app_env)
+  rlang::local_bindings(
+    builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
+    .env = environment(builder_stage_frozen_plan)
+  )
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this state-only test.")
   }

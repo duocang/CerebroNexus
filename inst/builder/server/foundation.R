@@ -5,6 +5,7 @@
 ## changes so switching between data sets does not lose it.
 store <- reactiveVal(builder_state())
 imports <- reactiveVal(builder_import_queue(max_active = 1L))
+workflow <- reactiveVal(builder_workflow_state())
 active_import_id <- reactiveVal(NULL)
 example_directory_sent <- reactiveVal(NULL)
 current_id <- reactiveVal(NULL)
@@ -16,6 +17,22 @@ update_current_id <- function(value) {
 }
 observe({
   update_current_id(store()$current_dataset)
+})
+observe({
+  loaded <- store()$datasets %||% list()
+  pending <- imports()$entries %||% list()
+  state <- isolate(workflow())
+  if (!length(loaded) && !length(pending)) {
+    if (!identical(state$stage, "upload") || !is.null(state$review_plan)) {
+      workflow(builder_reduce_workflow(state, list(type = "empty")))
+    }
+  } else if (
+    length(loaded) &&
+      !length(pending) &&
+      identical(state$stage, "upload")
+  ) {
+    workflow(builder_reduce_workflow(state, list(type = "datasets_ready")))
+  }
 })
 app_store_compat_entries <- function(state, datasets, mark = FALSE) {
   ids <- vapply(

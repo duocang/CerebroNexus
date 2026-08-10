@@ -103,6 +103,7 @@ source(file.path("ui", "core_stage.R"), local = TRUE)
 source(file.path("ui", "marker_import.R"), local = TRUE)
 source(file.path("ui", "enhance_stage.R"), local = TRUE)
 source(file.path("ui", "review_stage.R"), local = TRUE)
+source(file.path("ui", "workflow.R"), local = TRUE)
 source(file.path("ui", "build_status.R"), local = TRUE)
 source("worker.R", local = TRUE)
 source("session.R", local = TRUE)
@@ -391,11 +392,10 @@ ui <- tagList(
         class = "shiny-html-output",
         tabindex = "-1",
         builder_empty_workbench_ui()
-      ),
-      uiOutput("result_card")
+      )
     )
   ),
-  uiOutput("actionbar"),
+  uiOutput("workflow_progress"),
   builder_auth_dialog_ui(),
   builder_marker_dialog_ui(),
   div(
@@ -410,11 +410,12 @@ ui <- tagList(
     `data-first-run` = "true",
     role = "region",
     `aria-label` = "Getting started",
-    h2("Build your first Viewer in three steps"),
+    h2("Build your first Viewer in four steps"),
     tags$ol(
-      tags$li("Add a dataset or choose a bundled example."),
-      tags$li("Check what was found and adjust the defaults."),
-      tags$li("Review the exact output, then build.")
+      tags$li("Upload a dataset or choose a bundled example."),
+      tags$li("Configure what was found and adjust the defaults."),
+      tags$li("Review the exact output."),
+      tags$li("Build the selected artifacts.")
     ),
     tags$button(
       type = "button",
@@ -431,6 +432,7 @@ server <- function(input, output, session) {
     "server/datasets.R",
     "server/enhancements.R",
     "server/review.R",
+    "server/workflow.R",
     "server/build.R"
   )) {
     source(.builder_server_source, local = TRUE)

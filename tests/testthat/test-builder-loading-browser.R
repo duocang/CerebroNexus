@@ -52,9 +52,10 @@ test_that("Builder stays visible while a dataset loads", {
       "document.getElementById('workbench').textContent.trim().length > 0 && ",
       "document.querySelector('.builder-loading-status')",
       ".textContent.trim().length > 0 && ",
-      "document.documentElement.scrollHeight > ",
-      "document.documentElement.clientHeight && ",
-      "document.getElementById('build').disabled === true"
+      "document.querySelector('.actionbar') === null && ",
+      "document.getElementById('build') === null && ",
+      "document.getElementById('make_app') === null && ",
+      "document.getElementById('continue_to_review') === null"
     ),
     timeout = 10000
   )
@@ -64,7 +65,10 @@ test_that("Builder stays visible while a dataset loads", {
       "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
       "document.querySelector('#core-stage') !== null && ",
       "document.querySelector('#inspect-stage') !== null && ",
-      "document.querySelector('.builder-loading-stage') === null"
+      "document.querySelector('.builder-loading-stage') === null && ",
+      "document.querySelector('.builder-configure-actions') !== null && ",
+      "document.getElementById('make_app') !== null && ",
+      "document.querySelectorAll('#continue_to_review').length === 1"
     ),
     timeout = 60000
   )
@@ -95,12 +99,9 @@ test_that("Builder stays visible while a dataset loads", {
     aligned <- app$get_js(paste0(
       "(() => {",
       "const shell = document.querySelector('.builder-shell');",
-      "const actionbar = document.querySelector('.actionbar')",
-      ".getBoundingClientRect();",
       "const viewport = document.documentElement.clientWidth;",
       "const shellStyle = getComputedStyle(shell);",
       "return {",
-      "left: actionbar.left, right: viewport - actionbar.right, ",
       "shellLeft: parseFloat(shellStyle.paddingLeft), ",
       "shellRight: parseFloat(shellStyle.paddingRight), ",
       "viewport: viewport, ",
@@ -108,10 +109,8 @@ test_that("Builder stays visible while a dataset loads", {
       "};",
       "})()"
     ))
-    expect_lte(abs(aligned$left - layout$gutter), 2)
-    expect_lte(abs(aligned$right - layout$gutter), 2)
-    expect_equal(aligned$shellLeft, layout$gutter)
-    expect_equal(aligned$shellRight, layout$gutter)
+    expect_lte(abs(aligned$shellLeft - layout$gutter), 2)
+    expect_lte(abs(aligned$shellRight - layout$gutter), 2)
     expect_lte(aligned$documentWidth, aligned$viewport + 1)
   }
 

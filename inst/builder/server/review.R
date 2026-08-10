@@ -266,6 +266,33 @@ review_report <- reactive({
   )
 })
 
+configure_readiness <- reactive({
+  if (length(imports()$entries)) {
+    return(list(
+      can_continue = FALSE,
+      message = "Wait for all datasets to finish loading.",
+      plan = NULL
+    ))
+  }
+  plan <- frozen_review_plan()
+  ready <- builder_review_can_build(plan)
+  list(
+    can_continue = ready,
+    message = if (ready) {
+      count <- length(plan$items)
+      paste0(
+        count,
+        " dataset",
+        if (identical(count, 1L)) "" else "s",
+        " ready to review."
+      )
+    } else {
+      plan$error %||% "Resolve the highlighted settings."
+    },
+    plan = plan
+  )
+})
+
 output[["enhance-analysis_modules"]] <- renderUI({
   contract <- enhance_contract()
   req(contract$id)
@@ -412,16 +439,19 @@ output[["dataset_review_footer"]] <- renderUI({
   )
 })
 
-output$workbench <- renderUI({
-  loading_id <- active_import_id()
-  loading_entry <- if (is.null(loading_id)) {
-    NULL
-  } else {
-    builder_import_find(imports(), loading_id)
-  }
-  if (!is.null(loading_entry)) {
-    return(builder_loading_workbench_ui(loading_entry))
-  }
+output$configure_actions <- renderUI({
+  readiness <- configure_readiness()
+  builder_configure_actions_ui(
+    readiness$message,
+    readiness$can_continue,
+    builder_app_control(
+      app_capability,
+      current_value = isolate(input$make_app)
+    )
+  )
+})
+
+render_configure_workbench <- function() {
   id <- current()
   entry <- isolate(entry_of(id))
   if (is.null(entry)) {
@@ -541,14 +571,25 @@ output$workbench <- renderUI({
       ),
       dynamic_modules = TRUE
     ),
-    uiOutput("review_stage"),
     conditionalPanel(
       condition = "input.make_app === true",
       uiOutput("review_app_options")
     ),
-    uiOutput("dataset_review_footer")
+    uiOutput("configure_actions")
   )
-})
+}
+
+render_review_workbench <- function() {
+  tagList(uiOutput("review_stage"))
+}
+
+render_build_workbench <- function() {
+  r <- result()
+  if (is.null(r)) {
+    return(NULL)
+  }
+  builder_build_status_ui(builder_build_status_model(r))
+}
 
 focus_dataset_settings <- function(message = NULL) {
   session$sendCustomMessage("builder_focus_dataset", list(message = message))
@@ -664,97 +705,6 @@ output$review_stage <- renderUI({
       if (is.list(plan)) plan$error %||% NULL else NULL
     )
   }
-})
-
-datasets_present <- reactiveVal(FALSE)
-observe({
-  present <- length(sets()) > 0L || length(imports()$entries) > 0L
-  if (!identical(present, isolate(datasets_present()))) {
-    datasets_present(present)
-  }
-})
-
-output$actionbar <- renderUI({
-  if (!isTRUE(datasets_present())) {
-    return(NULL)
-  }
-  make_app_control <- builder_app_control(
-    app_capability,
-    current_value = isolate(input$make_app)
-  )
-  div(
-    class = "actionbar",
-    div(
-      class = "inner",
-      span(
-        class = "grow actionbar-output-note",
-        "Choose where to save the build output."
-      ),
-      uiOutput("review_action_summary", inline = TRUE),
-      make_app_control,
-      uiOutput(
-        "build_actions",
-        inline = TRUE,
-        class = "builder-action-row"
-      )
-    )
-  )
-})
-
-output$review_action_summary <- renderUI({
-  if (!isTRUE(datasets_present())) {
-    return(NULL)
-  }
-  span(class = "summary", review_report()$msg)
-})
-
-## Build state changes frequently while the fields above are user-edited.
-## Keeping the buttons in their own output prevents a protocol transition
-## from recreating those inputs and resetting the browser's current values.
-output$build_actions <- renderUI({
-  rep <- review_report()
-  progress <- builder_review_progress(sets())
-  if (!isTRUE(progress$complete)) {
-    return(tagList(
-      actionButton(
-        "build",
-        "Build",
-        class = "btn btn-action",
-        disabled = TRUE,
-        style = "display:none;"
-      ),
-      actionButton(
-        "review_all_action",
-        "Review datasets",
-        class = "btn btn-action"
-      )
-    ))
-  }
-  flow <- build_flow()
-  current_protocol <- protocol()
-  build_phase <- if (is.null(current_protocol)) {
-    "idle"
-  } else {
-    current_protocol$build_status %||% "idle"
-  }
-  build_in_flight <- build_phase %in% c("queued", "running", "cancelling")
-  protocol_quiescent <- !is.null(current_protocol) &&
-    builder_protocol_is_quiescent(current_protocol)
-  actionButton(
-    "build",
-    switch(
-      flow$stage,
-      choosing_folder = "Choose a folder…",
-      building = "Building…",
-      "Build"
-    ),
-    class = "btn btn-action",
-    disabled = !isTRUE(rep$ok) ||
-      !identical(flow$stage, "idle") ||
-      build_in_flight ||
-      !protocol_quiescent ||
-      !isTRUE(worker_available())
-  )
 })
 
 observeEvent(

@@ -42,19 +42,31 @@ test_that("the live app exposes imports before their worker result", {
       collapse = " "
     )
     workbench_html <- paste(unlist(output$workbench), collapse = " ")
-    actions_html <- paste(unlist(output$build_actions), collapse = " ")
-    summary_html <- paste(unlist(output$review_action_summary), collapse = " ")
     expect_match(rail_html, "All content", fixed = TRUE)
     expect_match(rail_html, "builder-import-status", fixed = TRUE)
     expect_identical(output$ds_count, "1")
     expect_match(workbench_html, "Loading dataset", fixed = TRUE)
     expect_match(workbench_html, 'aria-live="polite"', fixed = TRUE)
-    expect_match(actions_html, " disabled", fixed = TRUE)
-    expect_match(
-      summary_html,
-      "Wait for all datasets to finish loading before building.",
-      fixed = TRUE
-    )
+    expect_false(grepl('id="build"', workbench_html, fixed = TRUE))
+    expect_false(grepl('id="make_app"', workbench_html, fixed = TRUE))
+    expect_false(grepl('id="continue_to_review"', workbench_html, fixed = TRUE))
+    expect_identical(workflow()$stage, "upload")
+
+    forget_import("ds1")
+    use_state_only_fixture(list(list(
+      id = "dataset-a",
+      revision = 0L,
+      snapshot = list(
+        path = "/private/dataset-a",
+        owner_token = "owner-a",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a"),
+      settings = list(name = "Dataset A")
+    )))
+    active_import_id(NULL)
+    session$flushReact()
+    expect_identical(workflow()$stage, "configure")
   })
 })
 
@@ -119,12 +131,19 @@ test_that("ten queued sources stay lightweight and single-flight", {
   })
 })
 
-test_that("loading datasets block Build with a user-facing reason", {
+test_that("loading datasets block Configure with a user-facing reason", {
   app <- builder_app_source_text()
+  workflow_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "workflow.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
 
   expect_match(
     app,
-    "Wait for all datasets to finish loading before building.",
+    "Wait for all datasets to finish loading.",
     fixed = TRUE
   )
   expect_match(
@@ -133,5 +152,5 @@ test_that("loading datasets block Build with a user-facing reason", {
     fixed = TRUE
   )
   expect_match(app, "active_import_id", fixed = TRUE)
-  expect_match(app, "builder_loading_workbench_ui", fixed = TRUE)
+  expect_match(workflow_server, "builder_loading_workbench_ui", fixed = TRUE)
 })
