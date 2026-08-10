@@ -731,69 +731,73 @@ tab_coordinated_views <- tabItem(
           )
         ),
         div(
-          class = "cv-tk-panel is-active",
-          id = "cv-tk-panel-cell",
-          role = "tabpanel",
-          `aria-labelledby` = "cv-tk-tab-cell",
+          class = "cv-tk-panel-stage",
+          id = "cv-tk-panel-stage",
           div(
-            class = "cv-tk-cell-empty",
-            id = "cv-tk-cell-empty",
-            "Click a nucleus in any linked cell view to inspect its identity, ",
-            "physical neighbourhood and positioning evidence."
-          ),
-          div(
-            class = "cv-tk-cell-content",
-            id = "cv-tk-cell-content",
-            style = "display:none",
-            tags$h4(id = "cv-tk-cell-title", "—"),
-            tags$div(class = "cv-tk-cell-bc", id = "cv-tk-cell-bc"),
-            div(class = "cv-card-body", id = "cv-tk-cell-body")
-          )
-        ),
-        div(
-          class = "cv-tk-panel",
-          id = "cv-tk-panel-qc",
-          role = "tabpanel",
-          `aria-labelledby` = "cv-tk-tab-qc",
-          style = "display:none",
-          div(class = "tk-grid", id = "cv-tk-stats"),
-          div(
-            class = "tk-two",
+            class = "cv-tk-panel is-active",
+            id = "cv-tk-panel-cell",
+            role = "tabpanel",
+            `aria-labelledby` = "cv-tk-tab-cell",
             div(
-              tags$h4(class = "tk-sub-h", "Positioning class distribution"),
-              tags$table(
-                class = "tk-table",
-                tags$thead(tags$tr(
-                  tags$th("Spatial locations"),
-                  tags$th(class = "num", "Nuclei"),
-                  tags$th(class = "num", "Share"),
-                  tags$th("Handling")
-                )),
-                tags$tbody(id = "cv-tk-postbl")
-              ),
-              div(class = "tk-flag", id = "cv-tk-salvflag")
+              class = "cv-tk-cell-empty",
+              id = "cv-tk-cell-empty",
+              "Click a nucleus in any linked cell view to inspect its identity, ",
+              "physical neighbourhood and positioning evidence."
             ),
             div(
-              tags$h4(class = "tk-sub-h", "Provenance"),
-              tags$dl(class = "tk-kv", id = "cv-tk-prov"),
-              div(class = "tk-flag", id = "cv-tk-rangeflag")
+              class = "cv-tk-cell-content",
+              id = "cv-tk-cell-content",
+              style = "display:none",
+              tags$h4(id = "cv-tk-cell-title", "—"),
+              tags$div(class = "cv-tk-cell-bc", id = "cv-tk-cell-bc"),
+              div(class = "cv-card-body", id = "cv-tk-cell-body")
             )
-          )
-        ),
-        div(
-          class = "cv-tk-panel",
-          id = "cv-tk-panel-moran",
-          role = "tabpanel",
-          `aria-labelledby` = "cv-tk-tab-moran",
-          style = "display:none",
-          tags$table(
-            class = "tk-table",
-            tags$thead(tags$tr(
-              tags$th(class = "num", "#"),
-              tags$th("Gene"),
-              tags$th(class = "num", "Moran's I")
-            )),
-            tags$tbody(id = "cv-tk-morantbl")
+          ),
+          div(
+            class = "cv-tk-panel",
+            id = "cv-tk-panel-qc",
+            role = "tabpanel",
+            `aria-labelledby` = "cv-tk-tab-qc",
+            style = "display:none",
+            div(class = "tk-grid", id = "cv-tk-stats"),
+            div(
+              class = "tk-two",
+              div(
+                tags$h4(class = "tk-sub-h", "Positioning class distribution"),
+                tags$table(
+                  class = "tk-table",
+                  tags$thead(tags$tr(
+                    tags$th("Spatial locations"),
+                    tags$th(class = "num", "Nuclei"),
+                    tags$th(class = "num", "Share"),
+                    tags$th("Handling")
+                  )),
+                  tags$tbody(id = "cv-tk-postbl")
+                ),
+                div(class = "tk-flag", id = "cv-tk-salvflag")
+              ),
+              div(
+                tags$h4(class = "tk-sub-h", "Provenance"),
+                tags$dl(class = "tk-kv", id = "cv-tk-prov"),
+                div(class = "tk-flag", id = "cv-tk-rangeflag")
+              )
+            )
+          ),
+          div(
+            class = "cv-tk-panel",
+            id = "cv-tk-panel-moran",
+            role = "tabpanel",
+            `aria-labelledby` = "cv-tk-tab-moran",
+            style = "display:none",
+            tags$table(
+              class = "tk-table",
+              tags$thead(tags$tr(
+                tags$th(class = "num", "#"),
+                tags$th("Gene"),
+                tags$th(class = "num", "Moran's I")
+              )),
+              tags$tbody(id = "cv-tk-morantbl")
+            )
           )
         )
       )

@@ -117,22 +117,40 @@ test_that("Linked views keeps replacement controls contextual and user-facing", 
 test_that("Trekker depth views form one collapsed insights region", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
-  skip_if_not(file.exists(ui_file) && file.exists(js_file))
+  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
+  skip_if_not(
+    file.exists(ui_file) && file.exists(js_file) && file.exists(css_file)
+  )
 
   ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
 
   expect_match(ui, 'id = "cv-tk-insights"', fixed = TRUE)
   expect_match(ui, 'id = "cv-tk-insights-toggle"', fixed = TRUE)
   expect_match(ui, 'id = "cv-tk-tab-cell"', fixed = TRUE)
   expect_match(ui, 'id = "cv-tk-tab-qc"', fixed = TRUE)
   expect_match(ui, 'id = "cv-tk-tab-moran"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-tk-panel-stage"', fixed = TRUE)
   expect_match(ui, 'id = "cv-tk-cell-body"', fixed = TRUE)
   expect_no_match(ui, 'id = "cv-tk-modal"', fixed = TRUE)
 
   expect_match(js, "function openTrekkerInsights", fixed = TRUE)
   expect_match(js, "function selectTrekkerInsight", fixed = TRUE)
+  expect_match(js, "function animateTrekkerInsight", fixed = TRUE)
+  expect_match(js, "function trekkerScrollHost", fixed = TRUE)
   expect_match(js, "function fillTrekkerInsights", fixed = TRUE)
+  expect_match(js, "cv-tk-cell-block--position", fixed = TRUE)
+  expect_match(js, "cv-tk-cell-block--evidence", fixed = TRUE)
+  expect_match(js, "cv-tk-cell-block--metadata", fixed = TRUE)
+
+  expect_match(css, "#cv-tk-cell-body > .cv-tk-cell-block", fixed = TRUE)
+  expect_match(
+    css,
+    "grid-template-columns: repeat(4, minmax(0, 1fr))",
+    fixed = TRUE
+  )
+  expect_match(css, ".cv-tk-panel-stage.is-switching", fixed = TRUE)
 })
 
 test_that("the omnibus spatial bundle preserves every embedded background", {

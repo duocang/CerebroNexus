@@ -2404,14 +2404,31 @@ var focusPanel = null;
     if (ib) ib.textContent = D.cells[i];
     if (!body && !inspectorBody) return;
     var html = '';
+    var inspectorSections = [];
+    var inspectorClass = {
+      position: 'cv-tk-cell-block--position',
+      positioning: 'cv-tk-cell-block--positioning',
+      evidence: 'cv-tk-cell-block--evidence',
+      metadata: 'cv-tk-cell-block--metadata',
+      clonotype: 'cv-tk-cell-block--clonotype'
+    };
+    var addSection = function (key, label, content) {
+      html += '<div class="cv-card-sec">' + esc(label) + '</div>' + content;
+      inspectorSections.push(
+        '<section class="cv-tk-cell-block ' + inspectorClass[key] + '">' +
+        '<div class="cv-card-sec">' + esc(label) + '</div>' + content +
+        '</section>'
+      );
+    };
     // clonotype, in full — the tooltip can only ever show a prefix of this
     if (D.clone && D.clone.id[i] >= 0) {
       var ci = D.clone.id[i];
-      html += '<div class="cv-card-sec">Clonotype</div>' +
+      addSection('clonotype', 'Clonotype',
         '<div class="cv-card-seq">' + esc(D.clone.label[ci] || '—') + '</div>' +
-        '<div class="cv-card-sub">' + fmt(D.clone.size[ci]) + ' cells in this clone</div>';
+        '<div class="cv-card-sub">' + fmt(D.clone.size[ci]) +
+        ' cells in this clone</div>');
     }
-    html += '<div class="cv-card-sec">Position</div>' + kvHtml(cardCoordRows());
+    addSection('position', 'Position', kvHtml(cardCoordRows()));
     // Trekker: how much to trust where this nucleus was put. A physical position
     // is an inference, not a measurement, and the card is where a reader decides
     // whether to believe the one they just clicked -- otherwise the only way to
@@ -2421,27 +2438,28 @@ var focusPanel = null;
     // colourings and therefore carry a value for every cell.
     var tkRows = trekkerCellRows(i);
     if (tkRows.length) {
-      html += '<div class="cv-card-sec">Positioning</div>' + kvHtml(tkRows);
+      addSection('positioning', 'Positioning', kvHtml(tkRows));
     }
     var evidenceImg = D.trekker && D.trekker.evidence_img &&
       D.trekker.evidence_img[i];
     if (evidenceImg && /^data:image\//.test(evidenceImg)) {
-      html += '<div class="cv-card-sec">Positioning evidence</div>' +
+      addSection('evidence', 'Positioning evidence',
         '<button type="button" class="cv-evidence-thumb" ' +
         'data-cell="' + esc(D.cells[i]) + '" aria-label="Enlarge positioning evidence">' +
         '<img src="' + esc(evidenceImg) + '" alt="Positioning evidence for ' +
         esc(D.cells[i]) + '"></button>' +
-        '<div class="cv-card-sub">Why this nucleus was placed here. Click to enlarge.</div>';
+        '<div class="cv-card-sub">Why this nucleus was placed here. Click to enlarge.</div>');
     }
     // the full meta row, or a placeholder until the server answers
-    html += '<div class="cv-card-sec">Meta data</div>';
+    var metaHtml = '';
     if (cardMeta && cardMeta.cell === D.cells[i] && cardMeta.rows) {
-      html += kvHtml(cardMeta.rows.map(function (r) { return [r.k, r.v]; }));
+      metaHtml = kvHtml(cardMeta.rows.map(function (r) { return [r.k, r.v]; }));
     } else {
-      html += '<div class="cv-card-skel"><span></span><span></span><span></span></div>';
+      metaHtml = '<div class="cv-card-skel"><span></span><span></span><span></span></div>';
     }
+    addSection('metadata', 'Meta data', metaHtml);
     if (body) body.innerHTML = html;
-    if (inspectorBody) inspectorBody.innerHTML = html;
+    if (inspectorBody) inspectorBody.innerHTML = inspectorSections.join('');
     var empty = $('cv-tk-cell-empty'), content = $('cv-tk-cell-content');
     if (empty) empty.style.display = 'none';
     if (content) content.style.display = '';
@@ -2921,22 +2939,160 @@ var focusPanel = null;
   // Coordinate-source / QC / positioning / Moran's I detail for a Trekker data
   // set. The three depth views share one default-collapsed region beneath the
   // linked grid, rather than three old-page boxes or a hidden modal.
-  function selectTrekkerInsight(name) {
+  var trekkerInsightCurrent = 'cell';
+  var trekkerInsightTimer = null;
+  var trekkerInsightFrame = null;
+
+  function updateTrekkerInsightTabs(name) {
     var names = ['cell', 'qc', 'moran'];
     if (names.indexOf(name) < 0) name = 'cell';
     names.forEach(function (candidate) {
       var tab = $('cv-tk-tab-' + candidate);
-      var panel = $('cv-tk-panel-' + candidate);
       var active = candidate === name;
       if (tab) {
         tab.classList.toggle('is-active', active);
         tab.setAttribute('aria-selected', active ? 'true' : 'false');
       }
-      if (panel) {
-        panel.classList.toggle('is-active', active);
-        panel.style.display = active ? '' : 'none';
-      }
     });
+    return name;
+  }
+
+  function trekkerScrollHost(region) {
+    var node = region && region.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+      var style = window.getComputedStyle(node);
+      if (/(auto|scroll|overlay)/.test(style.overflowY) &&
+        node.scrollHeight > node.clientHeight) return node;
+      node = node.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
+  function scrollTrekkerHostBy(host, delta) {
+    if (!host || Math.abs(delta) <= .5) return;
+    if (host === document.scrollingElement || host === document.documentElement ||
+      host === document.body) {
+      window.scrollBy(0, delta);
+    } else {
+      host.scrollTop += delta;
+    }
+  }
+
+  // The insight card sits at the end of the document. If a tall panel is simply
+  // replaced by a short one, the browser has to clamp scrollY to the new document
+  // height and the whole card jumps down the viewport. Keep an invisible tail only
+  // as large as the missing viewport space; the card itself can still shrink, but
+  // its heading remains where the reader left it.
+  function setTrekkerAnchorSpace(stageHeight) {
+    var region = $('cv-tk-insights');
+    var stage = $('cv-tk-panel-stage');
+    if (!region || !stage || !stageHeight) return;
+    var host = trekkerScrollHost(region);
+    var viewportHeight = host === document.scrollingElement ||
+      host === document.documentElement || host === document.body
+      ? window.innerHeight : host.clientHeight;
+    var chrome = Math.max(0, region.offsetHeight - stage.offsetHeight);
+    var space = Math.max(0, viewportHeight - chrome - stageHeight - 18);
+    region.style.setProperty('--cv-tk-anchor-space', Math.round(space) + 'px');
+  }
+
+  function settleTrekkerInsight(name) {
+    var stage = $('cv-tk-panel-stage');
+    ['cell', 'qc', 'moran'].forEach(function (candidate) {
+      var panel = $('cv-tk-panel-' + candidate);
+      if (!panel) return;
+      var active = candidate === name;
+      panel.style.display = active ? '' : 'none';
+      panel.style.position = '';
+      panel.style.visibility = '';
+      panel.style.width = '';
+      panel.classList.toggle('is-active', active);
+      panel.classList.remove('is-entering', 'is-leaving');
+    });
+    if (stage) {
+      stage.classList.remove('is-switching');
+      stage.style.height = '';
+      setTrekkerAnchorSpace(stage.getBoundingClientRect().height);
+    }
+    trekkerInsightCurrent = name;
+  }
+
+  function animateTrekkerInsight(name) {
+    var stage = $('cv-tk-panel-stage');
+    var region = $('cv-tk-insights');
+    var oldPanel = $('cv-tk-panel-' + trekkerInsightCurrent);
+    var nextPanel = $('cv-tk-panel-' + name);
+    if (!stage || !region || !oldPanel || !nextPanel) {
+      settleTrekkerInsight(name);
+      return;
+    }
+
+    clearTimeout(trekkerInsightTimer);
+    if (trekkerInsightFrame) cancelAnimationFrame(trekkerInsightFrame);
+    if (stage.classList.contains('is-switching')) {
+      settleTrekkerInsight(trekkerInsightCurrent);
+      oldPanel = $('cv-tk-panel-' + trekkerInsightCurrent);
+    }
+
+    var anchorTop = region.getBoundingClientRect().top;
+    var scrollHost = trekkerScrollHost(region);
+    var startHeight = stage.getBoundingClientRect().height;
+    var minHeight = parseFloat(window.getComputedStyle(stage).minHeight) || 0;
+    nextPanel.style.display = '';
+    nextPanel.style.position = 'absolute';
+    nextPanel.style.visibility = 'hidden';
+    nextPanel.style.width = '100%';
+    var targetHeight = Math.max(minHeight, nextPanel.scrollHeight);
+    nextPanel.style.visibility = '';
+
+    stage.style.height = Math.max(minHeight, startHeight) + 'px';
+    stage.classList.add('is-switching');
+    oldPanel.classList.add('is-leaving');
+    nextPanel.classList.add('is-entering');
+    nextPanel.classList.add('is-active');
+    setTrekkerAnchorSpace(targetHeight);
+    void stage.offsetHeight;
+
+    var motionReduced = window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (motionReduced) {
+      settleTrekkerInsight(name);
+      var reducedDelta = region.getBoundingClientRect().top - anchorTop;
+      scrollTrekkerHostBy(scrollHost, reducedDelta);
+      return;
+    }
+
+    var started = performance.now();
+    var holdAnchor = function () {
+      var delta = region.getBoundingClientRect().top - anchorTop;
+      scrollTrekkerHostBy(scrollHost, delta);
+      if (performance.now() - started < 320) {
+        trekkerInsightFrame = requestAnimationFrame(holdAnchor);
+      }
+    };
+    trekkerInsightFrame = requestAnimationFrame(function () {
+      stage.style.height = targetHeight + 'px';
+      nextPanel.classList.remove('is-entering');
+      oldPanel.classList.remove('is-active');
+      holdAnchor();
+    });
+    trekkerInsightTimer = setTimeout(function () {
+      settleTrekkerInsight(name);
+      var delta = region.getBoundingClientRect().top - anchorTop;
+      scrollTrekkerHostBy(scrollHost, delta);
+    }, 330);
+  }
+
+  function selectTrekkerInsight(name) {
+    name = updateTrekkerInsightTabs(name);
+    var body = $('cv-tk-insights-body');
+    var stage = $('cv-tk-panel-stage');
+    var hidden = !body || window.getComputedStyle(body).display === 'none';
+    if (hidden || !stage || name === trekkerInsightCurrent) {
+      settleTrekkerInsight(name);
+      return;
+    }
+    animateTrekkerInsight(name);
   }
 
   function setTrekkerInsightsOpen(on) {
@@ -2946,6 +3102,15 @@ var focusPanel = null;
     toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
     toggle.classList.toggle('is-open', on);
     body.style.display = on ? '' : 'none';
+    if (on) {
+      requestAnimationFrame(function () {
+        var stage = $('cv-tk-panel-stage');
+        if (stage) setTrekkerAnchorSpace(stage.getBoundingClientRect().height);
+      });
+    } else {
+      var region = $('cv-tk-insights');
+      if (region) region.style.setProperty('--cv-tk-anchor-space', '0px');
+    }
   }
 
   function fillTrekkerInsights() {

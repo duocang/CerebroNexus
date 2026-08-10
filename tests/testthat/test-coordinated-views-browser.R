@@ -376,6 +376,56 @@ test_that("the tab renders a pushed bundle and offers every meta column", {
   app$stop()
 })
 
+test_that("Trekker insight tabs resize smoothly without losing their anchor", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_trekker_insights_transition")
+  on.exit(app$stop(), add = TRUE)
+  app$set_window_size(width = 1440, height = 900)
+
+  app$run_js(cv_bundle_js(paste0(
+    "{ trekker:{qc:{sample_id:'s1'},moran:[{gene:'G1',i:.4}]},",
+    "spaces:[{id:'umap',label:'umap',x:blob(0),y:blob(0)},",
+    "{id:'trekker',label:'Physical (Trekker)',x:blob(1),y:blob(1)}] }"
+  )))
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-tk-insights')).display !== 'none'",
+    timeout = 15000
+  )
+  app$run_js(paste0(
+    "document.getElementById('cv-tk-insights-toggle').click();",
+    "document.getElementById('cv-tk-panel-cell').style.minHeight='760px';",
+    "document.getElementById('cv-tk-panel-qc').style.minHeight='360px';",
+    "document.getElementById('cv-tk-insights').scrollIntoView({block:'start'});",
+    "window.__cvTkAnchor=document.getElementById('cv-tk-insights')",
+    ".getBoundingClientRect().top;"
+  ))
+  app$run_js("document.getElementById('cv-tk-tab-qc').click();")
+  app$wait_for_js(
+    "document.getElementById('cv-tk-panel-stage').classList.contains('is-switching')",
+    timeout = 3000
+  )
+  expect_match(
+    app$get_js("document.getElementById('cv-tk-panel-stage').style.height"),
+    "px$"
+  )
+  app$wait_for_js(
+    "!document.getElementById('cv-tk-panel-stage').classList.contains('is-switching')",
+    timeout = 5000
+  )
+  expect_lt(
+    abs(app$get_js(paste0(
+      "document.getElementById('cv-tk-insights').getBoundingClientRect().top-",
+      "window.__cvTkAnchor"
+    ))),
+    36
+  )
+  expect_true(app$get_js(
+    "document.getElementById('cv-tk-tab-qc').classList.contains('is-active')"
+  ))
+
+  app$stop()
+})
+
 
 test_that("multiple projections become independent responsive linked panels", {
   local_app_support(inst_dir)
@@ -2429,6 +2479,7 @@ test_that("the Trekker inspector reports what is known about a position", {
   b$trekker$evidence_img <- I(rep(evidence[[1]], b$n))
 
   app <- cv_app("cv_browser_card_trekker")
+  app$set_window_size(width = 1440, height = 900)
   app$run_js(paste0(
     "Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: {\n",
     "  coordviews_data: ",
@@ -2499,6 +2550,20 @@ test_that("the Trekker inspector reports what is known about a position", {
     app$get_js(
       "document.querySelectorAll('#cv-tk-cell-body .cv-evidence-thumb img').length"
     ),
+    1
+  )
+  expect_equal(
+    app$get_js(
+      "document.querySelectorAll('#cv-tk-cell-body > .cv-tk-cell-block').length"
+    ),
+    4
+  )
+  expect_equal(
+    app$get_js(paste0(
+      "new Set(Array.from(document.querySelectorAll(",
+      "'#cv-tk-cell-body > .cv-tk-cell-block')).map(function(el){",
+      "return Math.round(el.getBoundingClientRect().top); })).size"
+    )),
     1
   )
   app$run_js(
