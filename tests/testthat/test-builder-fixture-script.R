@@ -56,11 +56,13 @@ test_that("the fixture script exactly reproduces committed gallery inputs", {
   )
   expected_names <- sort(c(
     "all_content.rds",
-    "patient_a_section_1.png",
-    "patient_a_section_2.png",
-    "patient_b_section_1.png",
-    "patient_b_section_2.png",
-    "patient_b_section_3.png"
+    "section_a_1_he.png",
+    "section_a_1_dapi.png",
+    "section_a_2_he.png",
+    "section_a_2_dapi.png",
+    "section_b_1_he.png",
+    "section_b_1_if.png",
+    "section_b_1_pas.png"
   ))
   first_dir <- withr::local_tempdir(pattern = "builder-fixtures-first-")
   second_dir <- withr::local_tempdir(pattern = "builder-fixtures-second-")

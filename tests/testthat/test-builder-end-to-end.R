@@ -143,6 +143,7 @@ test_that("the Builder example catalog is a stable product contract", {
     "expected_dispositions",
     "expected_pages",
     "expected_supporting_content",
+    "histology_images",
     "gallery_visible"
   )
   expect_true(all(vapply(
@@ -456,14 +457,19 @@ test_that("all valid examples build and reopen", {
     )
     entry$snapshot <- snapshot
     if (identical(record$id, "all_content")) {
-      sections <- entry$dataset_profile$spatial$sections
-      image_sections <- setdiff(sections, "patient_c_section_1")
-      images <- c(
-        "patient_a_section_1.png",
-        "patient_a_section_2.png",
-        "patient_b_section_1.png",
-        "patient_b_section_2.png",
-        "patient_b_section_3.png"
+      image_records <- record$histology_images
+      image_sections <- vapply(
+        image_records,
+        function(image) image$fov_ids[[1L]],
+        character(1)
+      )
+      default_images <- !duplicated(image_sections)
+      image_sections <- image_sections[default_images]
+      images <- vapply(
+        image_records[default_images],
+        `[[`,
+        character(1),
+        "path"
       )
       entry$settings$images <- stats::setNames(
         lapply(seq_along(image_sections), function(i) {
@@ -617,14 +623,19 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
     )
     entry$snapshot <- snapshot
     if (identical(content, "histology")) {
-      sections <- entry$dataset_profile$spatial$sections
-      image_sections <- setdiff(sections, "patient_c_section_1")
-      image_names <- c(
-        "patient_a_section_1.png",
-        "patient_a_section_2.png",
-        "patient_b_section_1.png",
-        "patient_b_section_2.png",
-        "patient_b_section_3.png"
+      image_records <- records$all_content$histology_images
+      image_sections <- vapply(
+        image_records,
+        function(image) image$fov_ids[[1L]],
+        character(1)
+      )
+      default_images <- !duplicated(image_sections)
+      image_sections <- image_sections[default_images]
+      image_names <- vapply(
+        image_records[default_images],
+        `[[`,
+        character(1),
+        "path"
       )
       entry$settings$images <- stats::setNames(
         lapply(seq_along(image_sections), function(i) {
@@ -738,9 +749,14 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
         )
       }
       points_only <- setdiff(names(spatial), names(entry$settings$images))
-      expect_identical(points_only, "patient_c_section_1", info = label)
-      expect_null(spatial[[points_only]]$histology_image, info = label)
-      expect_null(spatial[[points_only]]$histology_image_bounds, info = label)
+      expect_setequal(
+        points_only,
+        c("section_b_2_fov_1", "section_b_3_fov_1", "section_c_1_fov_1")
+      )
+      for (section in points_only) {
+        expect_null(spatial[[section]]$histology_image, info = label)
+        expect_null(spatial[[section]]$histology_image_bounds, info = label)
+      }
     }
     if (identical(coordinate$content, "trekker")) {
       clusters <- reopened$getTrekker()$clusters

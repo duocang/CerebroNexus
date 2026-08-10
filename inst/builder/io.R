@@ -343,6 +343,7 @@ builder_example_record <- function(
   expected_dispositions = character(),
   expected_pages = character(),
   expected_supporting_content = character(),
+  histology_images = list(),
   gallery_visible = TRUE
 ) {
   require_string <- function(value, name, nonempty = TRUE) {
@@ -431,6 +432,58 @@ builder_example_record <- function(
     }
   }
   if (
+    !is.list(histology_images) ||
+      (length(histology_images) &&
+        (is.null(names(histology_images)) ||
+          anyNA(names(histology_images)) ||
+          any(!nzchar(names(histology_images))) ||
+          anyDuplicated(names(histology_images)) > 0L))
+  ) {
+    stop(
+      "`histology_images` must be a named list with unique non-empty IDs.",
+      call. = FALSE
+    )
+  }
+  for (image_id in names(histology_images)) {
+    image <- histology_images[[image_id]]
+    required <- c("id", "label", "stain", "path", "section_id", "fov_ids")
+    if (!is.list(image) || !all(required %in% names(image))) {
+      stop(
+        "`histology_images` entries must declare id, label, stain, path, ",
+        "section_id, and fov_ids.",
+        call. = FALSE
+      )
+    }
+    if (!identical(image$id, image_id)) {
+      stop(
+        "`histology_images` entry IDs must match their list names.",
+        call. = FALSE
+      )
+    }
+    for (name in c("id", "label", "stain", "path", "section_id")) {
+      require_string(image[[name]], paste0("histology_images$", name))
+    }
+    if (
+      !is.character(image$fov_ids) ||
+        !length(image$fov_ids) ||
+        anyNA(image$fov_ids) ||
+        any(!nzchar(image$fov_ids)) ||
+        anyDuplicated(image$fov_ids) > 0L
+    ) {
+      stop(
+        "`histology_images` entries must declare unique non-empty `fov_ids`.",
+        call. = FALSE
+      )
+    }
+    if (!image$path %in% expected_supporting_content) {
+      stop(
+        "Each `histology_images` path must appear in ",
+        "`expected_supporting_content`.",
+        call. = FALSE
+      )
+    }
+  }
+  if (
     !is.logical(gallery_visible) ||
       length(gallery_visible) != 1L ||
       is.na(gallery_visible)
@@ -462,6 +515,7 @@ builder_example_record <- function(
     expected_dispositions = expected_dispositions,
     expected_pages = expected_pages,
     expected_supporting_content = expected_supporting_content,
+    histology_images = histology_images,
     gallery_visible = gallery_visible
   )
 }
@@ -502,10 +556,71 @@ builder_example_catalog <- function() {
       expected_dispositions = expected_dispositions
     )
   }
+  histology_images <- list(
+    section_a_1_he = list(
+      id = "section_a_1_he",
+      label = "H&E",
+      stain = "H&E",
+      path = "section_a_1_he.png",
+      section_id = "section_a_1",
+      fov_ids = "section_a_1_fov_1"
+    ),
+    section_a_1_dapi = list(
+      id = "section_a_1_dapi",
+      label = "DAPI",
+      stain = "DAPI",
+      path = "section_a_1_dapi.png",
+      section_id = "section_a_1",
+      fov_ids = "section_a_1_fov_1"
+    ),
+    section_a_2_he = list(
+      id = "section_a_2_he",
+      label = "H&E",
+      stain = "H&E",
+      path = "section_a_2_he.png",
+      section_id = "section_a_2",
+      fov_ids = "section_a_2_fov_1"
+    ),
+    section_a_2_dapi = list(
+      id = "section_a_2_dapi",
+      label = "DAPI",
+      stain = "DAPI",
+      path = "section_a_2_dapi.png",
+      section_id = "section_a_2",
+      fov_ids = "section_a_2_fov_1"
+    ),
+    section_b_1_he = list(
+      id = "section_b_1_he",
+      label = "H&E",
+      stain = "H&E",
+      path = "section_b_1_he.png",
+      section_id = "section_b_1",
+      fov_ids = "section_b_1_fov_1"
+    ),
+    section_b_1_if = list(
+      id = "section_b_1_if",
+      label = "IF",
+      stain = "IF",
+      path = "section_b_1_if.png",
+      section_id = "section_b_1",
+      fov_ids = "section_b_1_fov_1"
+    ),
+    section_b_1_pas = list(
+      id = "section_b_1_pas",
+      label = "PAS",
+      stain = "PAS",
+      path = "section_b_1_pas.png",
+      section_id = "section_b_1",
+      fov_ids = "section_b_1_fov_1"
+    )
+  )
   all_content <- record(
     "all_content",
     "All content",
-    "Synthetic Seurat with three Xenium patients, six sections, and Trekker",
+    paste(
+      "Synthetic Seurat with three patients, six measured sections/FOVs,",
+      "seven histology images, and Trekker"
+    ),
     "synthetic",
     fixture("all_content.rds"),
     expected_dispositions = with_content(
@@ -514,13 +629,13 @@ builder_example_catalog <- function() {
       trekker = "preserved"
     ),
     expected_pages = c("spatial", "trekker"),
-    expected_supporting_content = c(
-      "patient_a_section_1.png",
-      "patient_a_section_2.png",
-      "patient_b_section_1.png",
-      "patient_b_section_2.png",
-      "patient_b_section_3.png"
-    )
+    expected_supporting_content = unname(vapply(
+      histology_images,
+      `[[`,
+      character(1),
+      "path"
+    )),
+    histology_images = histology_images
   )
   list(all_content = all_content)
 }
@@ -532,8 +647,8 @@ builder_example_directory <- local({
       id = "all_content",
       label = "All content",
       detail = paste(
-        "Synthetic Seurat with three Xenium patients,",
-        "six sections, and Trekker"
+        "Synthetic Seurat with three patients, six measured sections/FOVs,",
+        "seven histology images, and Trekker"
       ),
       source = "builder/fixtures/all_content.rds"
     )

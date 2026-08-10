@@ -445,11 +445,11 @@ generated_app_fixture_pages <- function(conditional = character()) {
   )
   attachments <- list(
     section_a = c(
-      list(path = file.path(root, "patient_a_section_1.png")),
+      list(path = file.path(root, "section_a_1_he.png")),
       alignment$section_a
     ),
     section_b = c(
-      list(path = file.path(root, "patient_b_section_1.png")),
+      list(path = file.path(root, "section_b_1_he.png")),
       alignment$section_b
     )
   )

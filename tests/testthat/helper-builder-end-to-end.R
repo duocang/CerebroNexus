@@ -238,10 +238,15 @@ builder_e2e_validate_all_content <- function(
   spatial <- field("spatial")
   sections <- SeuratObject::Images(source)
   check(identical(names(spatial), sections), "spatial section order")
-  expected_images <- setdiff(sections, "patient_c_section_1")
+  image_fovs <- vapply(
+    record$histology_images,
+    function(image) image$fov_ids[[1L]],
+    character(1)
+  )
+  expected_images <- unique(image_fovs)
   check(
     identical(names(settings$images), expected_images),
-    "five image section assignments"
+    "default image FOV assignments"
   )
   for (section in sections) {
     source_coordinates <- SeuratObject::GetTissueCoordinates(source[[section]])

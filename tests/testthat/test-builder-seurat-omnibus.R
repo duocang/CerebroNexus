@@ -151,21 +151,46 @@ test_that("omnibus Trekker payload satisfies the Builder content contract", {
   expect_identical(profile$page_candidates, "trekker")
 })
 
-test_that("omnibus fixture declares five patient A/B histology sidecars", {
+test_that("omnibus fixture declares section-owned multi-image histology sidecars", {
   record <- builder_omnibus_env$builder_example_catalog()$all_content
   expected <- c(
-    "patient_a_section_1.png",
-    "patient_a_section_2.png",
-    "patient_b_section_1.png",
-    "patient_b_section_2.png",
-    "patient_b_section_3.png"
+    "section_a_1_he.png",
+    "section_a_1_dapi.png",
+    "section_a_2_he.png",
+    "section_a_2_dapi.png",
+    "section_b_1_he.png",
+    "section_b_1_if.png",
+    "section_b_1_pas.png"
   )
 
   expect_setequal(record$expected_supporting_content, expected)
-  expect_false(any(grepl("patient_c", expected, fixed = TRUE)))
+  expect_setequal(names(record$histology_images), sub("\\.png$", "", expected))
+  expect_true(all(mapply(
+    function(id, image) identical(image$id, id),
+    names(record$histology_images),
+    record$histology_images,
+    USE.NAMES = FALSE
+  )))
+  images_by_fov <- split(
+    names(record$histology_images),
+    unlist(lapply(record$histology_images, `[[`, "fov_ids"), use.names = FALSE)
+  )
+  expect_identical(
+    images_by_fov[["section_a_1_fov_1"]],
+    c("section_a_1_he", "section_a_1_dapi")
+  )
+  expect_identical(
+    images_by_fov[["section_a_2_fov_1"]],
+    c("section_a_2_he", "section_a_2_dapi")
+  )
+  expect_identical(
+    images_by_fov[["section_b_1_fov_1"]],
+    c("section_b_1_he", "section_b_1_if", "section_b_1_pas")
+  )
+  expect_false("section_c_1_fov_1" %in% names(images_by_fov))
   expect_true(all(file.exists(file.path(
     dirname(record$serialized_path),
-    expected
+    vapply(record$histology_images, `[[`, character(1), "path")
   ))))
   expect_setequal(
     list.files(dirname(record$serialized_path)),

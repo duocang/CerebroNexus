@@ -14,7 +14,17 @@ test_that("Builder example records validate their public list contract", {
       metadata = "converted"
     ),
     expected_pages = c("marker_genes", "spatial"),
-    expected_supporting_content = c("section.png", "extra_material"),
+    expected_supporting_content = c("section_a_1_he.png", "extra_material"),
+    histology_images = list(
+      section_a_1_he = list(
+        id = "section_a_1_he",
+        label = "H&E",
+        stain = "H&E",
+        path = "section_a_1_he.png",
+        section_id = "section_a_1",
+        fov_ids = "section_a_1_fov_1"
+      )
+    ),
     gallery_visible = FALSE
   )
   record <- do.call(builder_example_record, valid)
@@ -29,6 +39,7 @@ test_that("Builder example records validate their public list contract", {
     record$expected_supporting_content,
     valid$expected_supporting_content
   )
+  expect_identical(record$histology_images, valid$histology_images)
 
   for (field in c("id", "label", "detail", "provenance")) {
     invalid <- valid
@@ -137,5 +148,17 @@ test_that("Builder example records validate their public list contract", {
   expect_error(
     do.call(builder_example_record, invalid),
     "`gallery_visible` must be TRUE or FALSE"
+  )
+  invalid <- valid
+  invalid$histology_images[[1L]]$fov_ids <- character()
+  expect_error(
+    do.call(builder_example_record, invalid),
+    "`histology_images` entries must declare unique non-empty `fov_ids`"
+  )
+  invalid <- valid
+  invalid$histology_images[[1L]]$id <- "other"
+  expect_error(
+    do.call(builder_example_record, invalid),
+    "`histology_images` entry IDs must match their list names"
   )
 })

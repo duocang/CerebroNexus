@@ -281,14 +281,16 @@ if (!methods::is(readRDS(fixture_path), "Seurat")) {
 
 images <- data.frame(
   name = c(
-    "patient_a_section_1.png",
-    "patient_a_section_2.png",
-    "patient_b_section_1.png",
-    "patient_b_section_2.png",
-    "patient_b_section_3.png"
+    "section_a_1_he.png",
+    "section_a_1_dapi.png",
+    "section_a_2_he.png",
+    "section_a_2_dapi.png",
+    "section_b_1_he.png",
+    "section_b_1_if.png",
+    "section_b_1_pas.png"
   ),
-  width = c(320L, 280L, 360L, 300L, 340L),
-  height = c(240L, 300L, 220L, 280L, 260L),
+  width = c(320L, 280L, 300L, 260L, 360L, 340L, 320L),
+  height = c(240L, 300L, 260L, 320L, 220L, 280L, 240L),
   stringsAsFactors = FALSE
 )
 for (index in seq_len(nrow(images))) {
@@ -298,8 +300,18 @@ for (index in seq_len(nrow(images))) {
     images$height[[index]]
   )
 }
+unlink(file.path(
+  output,
+  c(
+    "patient_a_section_1.png",
+    "patient_a_section_2.png",
+    "patient_b_section_1.png",
+    "patient_b_section_2.png",
+    "patient_b_section_3.png"
+  )
+))
 cat(
-  "Wrote All content Seurat fixture and five histology sidecars to ",
+  "Wrote All content Seurat fixture and seven histology sidecars to ",
   output,
   "\n"
 )
