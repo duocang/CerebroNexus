@@ -173,7 +173,7 @@ three 40-cell spatial entries:
 
 - `donorA tissue`: two named embedded backgrounds;
 - `donorB tissue`: one named embedded background, plus an external background
-  used by the application integration test;
+  passed through the conversion API;
 - `donorC tissue`: coordinates only.
 
 The entries deliberately have different coordinate layouts and bounds. This
@@ -184,17 +184,17 @@ technology-specific extraction.
 
 The fixture retains expression, groups, PCA/UMAP, marker and most-expressed
 genes, enrichment, trajectories, TCR/BCR, HLA, Trekker, trees, and extra
-material. The builder also writes a marker CSV and the external image used by
-the public-API integration example.
+material. The builder also writes a marker CSV, the donor B image supplied to
+the converter, and a donor C image supplied only to the app builder.
 
 ## End-to-end public API proof
 
 An executable integration test starts only from committed user-facing inputs:
-the Omnibus Seurat RDS, marker CSV, and external spatial images. It calls
+the Omnibus Seurat RDS, marker CSV, and two external spatial images. It calls
 `convertSeuratToCerebro()` with group renaming, marker import, and
 `expression_matrix_mode = "h5"`, verifies the CRB and sibling H5 backend, then
-calls `createShinyApp()` with multiple named CRBs and the nested external image
-manifest.
+calls `createShinyApp()` with the generated CRB and a nested external image
+manifest for a different spatial entry.
 
 The generated app is reread and checked for private CRB/H5 placement, nested
 image configuration, spatial/image isolation, embedded-image preservation,
