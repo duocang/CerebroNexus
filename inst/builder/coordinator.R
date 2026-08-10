@@ -536,7 +536,17 @@ builder_coordinator_prepare <- function(plan, build_id) {
       )
     }
     if (isTRUE(exact)) {
-      unplanned <- setdiff(present, expected)
+      planned <- vapply(
+        present,
+        function(path) {
+          any(
+            path %in% expected,
+            startsWith(path, paste0(expected, "/"))
+          )
+        },
+        logical(1)
+      )
+      unplanned <- present[!planned]
     } else {
       expected_roots <- unique(sub("/.*$", "", expected))
       present_roots <- unique(sub("/.*$", "", present))

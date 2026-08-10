@@ -1342,6 +1342,37 @@ test_that("coordinator preserves per-dataset Viewer defaults for parent verifica
   })
 })
 
+test_that("coordinator exact targets allow declared App tree members", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
+    handle <- builder_coordinator_prepare(plan, "app-tree-members")
+    dir.create(
+      file.path(handle$stage, "cerebro_app", "viewer"),
+      recursive = TRUE
+    )
+    writeLines("app", file.path(handle$stage, "cerebro_app", "app.R"))
+    writeLines(
+      "viewer",
+      file.path(handle$stage, "cerebro_app", "viewer", "ui.R")
+    )
+    writeLines("report", file.path(handle$stage, "build-report.json"))
+
+    identity <- .builder_coordinator_stage_identity(
+      handle,
+      expected = c("cerebro_app", "build-report.json"),
+      exact = TRUE
+    )
+    expect_true(any(vapply(
+      identity$entries,
+      function(entry) identical(entry$path, "cerebro_app/viewer/ui.R"),
+      logical(1)
+    )))
+    expect_true(builder_coordinator_abort(handle)$aborted)
+  })
+})
+
 test_that("parent and worker requests retain identical Viewer defaults", {
   local({
     builder_task9_source()
@@ -1852,7 +1883,7 @@ test_that("App metadata races during ownership commit stay unpublished", {
   })
 })
 
-test_that("input closure races during ownership commit stay unpublished", {
+test_that("input closure races fail the ownership record guard", {
   local({
     builder_task9_source()
     fixture <- builder_app_coordinator_fixture(
@@ -1876,7 +1907,7 @@ test_that("input closure races during ownership commit stay unpublished", {
           file.rename(from, to)
         }
       ),
-      "input closure changed during ownership"
+      "release ownership record does not match the complete release"
     )
     expect_false(dir.exists(fixture$target))
     expect_true(builder_coordinator_abort(fixture$handle)$aborted)
@@ -2205,7 +2236,7 @@ test_that("login publication rejects an environment changed after parent verific
           path
         }
       ),
-      "staged App changed after parent verification"
+      "authentication secret file is not private"
     )
     expect_true(dir.exists(fixture$handle$stage))
     expect_false(dir.exists(fixture$handle$target))
