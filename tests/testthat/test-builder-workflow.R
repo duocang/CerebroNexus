@@ -168,6 +168,57 @@ test_that("review confirmation rejects a changed BuildPlan", {
   )
 })
 
+test_that("datasets becoming ready invalidates an old confirmation", {
+  plan <- builder_workflow_test_plan()
+  state <- builder_reduce_workflow(
+    builder_workflow_state(),
+    list(type = "open_review", plan = plan)
+  )
+  state <- builder_reduce_workflow(
+    state,
+    list(type = "confirm_review", plan = plan)
+  )
+  expect_true(builder_workflow_confirmation_matches(state, plan))
+
+  state <- builder_reduce_workflow(
+    state,
+    list(type = "datasets_ready")
+  )
+
+  expect_identical(state$stage, "configure")
+  expect_null(state$confirmation)
+  expect_false(builder_workflow_confirmation_matches(state, plan))
+})
+
+test_that("opening review preserves only the matching confirmation", {
+  plan_a <- builder_workflow_test_plan()
+  confirmed <- builder_reduce_workflow(
+    builder_workflow_state(),
+    list(type = "open_review", plan = plan_a)
+  )
+  confirmed <- builder_reduce_workflow(
+    confirmed,
+    list(type = "confirm_review", plan = plan_a)
+  )
+
+  relocated <- plan_a
+  relocated$out_dir <- tempfile("relocated-builder-output-")
+  matching <- builder_reduce_workflow(
+    confirmed,
+    list(type = "open_review", plan = relocated)
+  )
+  expect_true(builder_workflow_confirmation_matches(matching, relocated))
+
+  plan_b <- plan_a
+  plan_b$app_options$welcome_message <- "Plan B"
+  changed <- builder_reduce_workflow(
+    confirmed,
+    list(type = "open_review", plan = plan_b)
+  )
+  expect_null(changed$confirmation)
+  expect_false(builder_workflow_confirmation_matches(changed, plan_a))
+})
+
 test_that("workflow reset events clear reviewed and confirmed plans", {
   plan <- builder_workflow_test_plan()
   state <- builder_reduce_workflow(
@@ -186,11 +237,33 @@ test_that("workflow reset events clear reviewed and confirmed plans", {
   expect_identical(invalidated$stage, "upload")
   expect_null(invalidated$review_plan)
   expect_null(invalidated$confirmation)
+  expect_named(
+    invalidated,
+    c("stage", "review_plan", "confirmation", "revision")
+  )
+  expect_identical(
+    builder_reduce_workflow(
+      invalidated,
+      list(type = "datasets_ready")
+    )$stage,
+    "configure"
+  )
 
   emptied <- builder_reduce_workflow(state, list(type = "empty"))
   expect_identical(emptied$stage, "upload")
   expect_null(emptied$review_plan)
   expect_null(emptied$confirmation)
+  expect_named(
+    emptied,
+    c("stage", "review_plan", "confirmation", "revision")
+  )
+  expect_identical(
+    builder_reduce_workflow(
+      emptied,
+      list(type = "datasets_ready")
+    )$stage,
+    "configure"
+  )
 })
 
 test_that("workflow guards malformed state and events", {
@@ -225,6 +298,86 @@ test_that("workflow guards malformed state and events", {
     builder_reduce_workflow(state, list(type = "back_to_review")),
     "No reviewed BuildPlan is available\\."
   )
+})
+
+test_that("workflow validator rejects impossible review and build states", {
+  plan <- builder_workflow_test_plan()
+  state <- builder_workflow_state()
+
+  impossible_review <- state
+  impossible_review$stage <- "review"
+  expect_false(.builder_workflow_state_valid(impossible_review))
+
+  impossible_build <- state
+  impossible_build$stage <- "build"
+  expect_false(.builder_workflow_state_valid(impossible_build))
+
+  malformed_build <- impossible_build
+  malformed_build$review_plan <- plan
+  malformed_build$confirmation <- list(
+    identity = list(revision = plan$revision),
+    plan_revision = plan$revision
+  )
+  expect_false(.builder_workflow_state_valid(malformed_build))
+})
+
+test_that("invalidate returns only to stages that need no confirmation", {
+  plan <- builder_workflow_test_plan()
+  state <- builder_reduce_workflow(
+    builder_workflow_state(),
+    list(type = "open_review", plan = plan)
+  )
+  state <- builder_reduce_workflow(
+    state,
+    list(type = "confirm_review", plan = plan)
+  )
+
+  expect_error(
+    builder_reduce_workflow(
+      state,
+      list(type = "invalidate", stage = "build")
+    ),
+    "Invalidation must return to upload or configure.",
+    fixed = TRUE
+  )
+  expect_error(
+    builder_reduce_workflow(
+      state,
+      list(type = "invalidate", stage = "review")
+    ),
+    "Invalidation must return to upload or configure.",
+    fixed = TRUE
+  )
+})
+
+test_that("every reducer branch returns a valid workflow state", {
+  plan <- builder_workflow_test_plan()
+  state <- builder_workflow_state()
+  expect_true(.builder_workflow_state_valid(state))
+
+  state <- builder_reduce_workflow(state, list(type = "datasets_ready"))
+  expect_true(.builder_workflow_state_valid(state))
+
+  state <- builder_reduce_workflow(
+    state,
+    list(type = "open_review", plan = plan)
+  )
+  expect_true(.builder_workflow_state_valid(state))
+
+  state <- builder_reduce_workflow(
+    state,
+    list(type = "confirm_review", plan = plan)
+  )
+  expect_true(.builder_workflow_state_valid(state))
+
+  state <- builder_reduce_workflow(state, list(type = "back_to_review"))
+  expect_true(.builder_workflow_state_valid(state))
+
+  state <- builder_reduce_workflow(state, list(type = "invalidate"))
+  expect_true(.builder_workflow_state_valid(state))
+
+  state <- builder_reduce_workflow(state, list(type = "empty"))
+  expect_true(.builder_workflow_state_valid(state))
 })
 
 test_that("app and source helper load workflow immediately after state", {

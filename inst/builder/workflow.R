@@ -1,4 +1,21 @@
 .builder_workflow_stages <- c("upload", "configure", "review", "build")
+.builder_workflow_fields <- c(
+  "stage",
+  "review_plan",
+  "confirmation",
+  "revision"
+)
+.builder_workflow_identity_fields <- c(
+  "revision",
+  "dataset_order",
+  "make_app",
+  "app_contract_version",
+  "items",
+  "manifest",
+  "app_options",
+  "app_auth",
+  "acknowledgements"
+)
 
 .builder_workflow_copy <- function(value) {
   unserialize(serialize(value, NULL, version = 3L))
@@ -10,14 +27,34 @@
     identical(plan$readiness, "ready")
 }
 
+.builder_workflow_plan_identity <- function(plan) {
+  .builder_workflow_copy(plan[.builder_workflow_identity_fields])
+}
+
+.builder_workflow_confirmation_valid <- function(confirmation, review_plan) {
+  if (
+    !is.list(confirmation) ||
+      is.object(confirmation) ||
+      !identical(names(confirmation), c("identity", "plan_revision")) ||
+      !.builder_workflow_plan_valid(review_plan)
+  ) {
+    return(FALSE)
+  }
+
+  identity <- tryCatch(
+    .builder_workflow_plan_identity(review_plan),
+    error = function(error) error
+  )
+  !inherits(identity, "condition") &&
+    identical(confirmation$identity, identity) &&
+    identical(confirmation$plan_revision, review_plan$revision)
+}
+
 .builder_workflow_state_valid <- function(state) {
   if (
     !is.list(state) ||
       !identical(class(state), c("builder_workflow_state", "list")) ||
-      !all(
-        c("stage", "review_plan", "confirmation", "revision") %in%
-          names(state)
-      ) ||
+      !identical(names(state), .builder_workflow_fields) ||
       !is.character(state$stage) ||
       length(state$stage) != 1L ||
       is.na(state$stage) ||
@@ -29,7 +66,19 @@
       state$revision == .Machine$integer.max ||
       (!is.null(state$review_plan) &&
         !.builder_workflow_plan_valid(state$review_plan)) ||
-      (!is.null(state$confirmation) && !is.list(state$confirmation))
+      (state$stage %in%
+        c("review", "build") &&
+        !.builder_workflow_plan_valid(state$review_plan)) ||
+      (!is.null(state$confirmation) &&
+        !.builder_workflow_confirmation_valid(
+          state$confirmation,
+          state$review_plan
+        )) ||
+      (state$stage %in%
+        c("upload", "configure") &&
+        !is.null(state$confirmation)) ||
+      (identical(state$stage, "build") &&
+        is.null(state$confirmation))
   ) {
     return(FALSE)
   }
@@ -46,18 +95,7 @@ builder_review_plan_identity <- function(plan) {
     stop("A ready frozen BuildPlan is required.", call. = FALSE)
   }
 
-  fields <- c(
-    "revision",
-    "dataset_order",
-    "make_app",
-    "app_contract_version",
-    "items",
-    "manifest",
-    "app_options",
-    "app_auth",
-    "acknowledgements"
-  )
-  .builder_workflow_copy(plan[fields])
+  .builder_workflow_plan_identity(plan)
 }
 
 builder_workflow_state <- function() {
@@ -106,12 +144,18 @@ builder_reduce_workflow <- function(state, event) {
 
   if (identical(type, "empty")) {
     next_state$stage <- "upload"
-    next_state$review_plan <- NULL
-    next_state$confirmation <- NULL
+    next_state[c("review_plan", "confirmation")] <- list(NULL, NULL)
   } else if (identical(type, "datasets_ready")) {
     next_state$stage <- "configure"
+    next_state["confirmation"] <- list(NULL)
   } else if (identical(type, "open_review")) {
-    builder_review_plan_identity(event$plan)
+    identity <- builder_review_plan_identity(event$plan)
+    if (
+      !is.list(next_state$confirmation) ||
+        !identical(next_state$confirmation$identity, identity)
+    ) {
+      next_state["confirmation"] <- list(NULL)
+    }
     next_state$review_plan <- .builder_workflow_copy(event$plan)
     next_state$stage <- "review"
   } else if (identical(type, "confirm_review")) {
@@ -148,13 +192,15 @@ builder_reduce_workflow <- function(state, event) {
       !is.character(stage) ||
         length(stage) != 1L ||
         is.na(stage) ||
-        !stage %in% .builder_workflow_stages
+        !stage %in% c("upload", "configure")
     ) {
-      .builder_workflow_stop_invalid()
+      stop(
+        "Invalidation must return to upload or configure.",
+        call. = FALSE
+      )
     }
     next_state$stage <- stage
-    next_state$review_plan <- NULL
-    next_state$confirmation <- NULL
+    next_state[c("review_plan", "confirmation")] <- list(NULL, NULL)
   } else {
     stop(
       "The Builder workflow event is not supported.",
@@ -164,5 +210,8 @@ builder_reduce_workflow <- function(state, event) {
 
   next_state$revision <- next_state$revision + 1L
   class(next_state) <- c("builder_workflow_state", "list")
+  if (!.builder_workflow_state_valid(next_state)) {
+    .builder_workflow_stop_invalid()
+  }
   next_state
 }
