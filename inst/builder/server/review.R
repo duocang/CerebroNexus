@@ -637,6 +637,9 @@ observe({
   if (is.null(state$review_plan) && is.null(state$confirmation)) {
     return()
   }
+  if (isolate(build_flow())$stage %in% c("queued", "building")) {
+    return()
+  }
   matches <- builder_review_can_build(live) &&
     identical(
       builder_review_plan_identity(state$review_plan),

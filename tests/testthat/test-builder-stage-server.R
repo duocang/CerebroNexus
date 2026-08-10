@@ -520,6 +520,51 @@ test_that("changed auth accounts invalidate a confirmed frozen plan", {
     ))
     expect_identical(workflow()$stage, "build")
 
+    notifications <- character()
+    assign(
+      "showNotification",
+      function(ui, ...) {
+        notifications <<- c(notifications, as.character(ui))
+      },
+      envir = environment(enqueue_build_plan)
+    )
+    worker(list(alive = TRUE))
+    protocol(app_env$builder_request_protocol("worker-a"))
+    assign(
+      "enqueue",
+      function(...) {
+        queued_protocol <- isolate(protocol())
+        queued_protocol$build_status <- "queued"
+        protocol(queued_protocol)
+        TRUE
+      },
+      envir = environment(enqueue_build_plan)
+    )
+    expect_true(enqueue_build_plan(plan_a, auth_accounts = accounts_a))
+    session$flushReact()
+
+    expect_length(auth_accounts(), 0L)
+    expect_named(
+      plan_a$app_auth,
+      c("enabled", "account_count", "timeout_minutes")
+    )
+    expect_false(any(grepl(
+      "password-a|user-a",
+      capture.output(dput(plan_a))
+    )))
+    expect_identical(workflow()$stage, "build")
+    expect_identical(build_flow()$stage, "building")
+    expect_false(any(grepl(
+      "Settings changed. Review the updated plan before building.",
+      notifications,
+      fixed = TRUE
+    )))
+
+    protocol(app_env$builder_request_protocol("worker-a"))
+    build_flow(list(stage = "idle", plan = NULL))
+    session$flushReact()
+    expect_identical(workflow()$stage, "build")
+
     auth_accounts(accounts_b)
     session$flushReact()
 
