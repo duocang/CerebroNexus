@@ -652,6 +652,40 @@ test_that("the Omnibus public API verifier exposes the documented workflow", {
   expect_false(grepl(":::", source, fixed = TRUE))
 })
 
+test_that("public help documents the complete multi-spatial Omnibus workflow", {
+  package_root <- testthat::test_path("..", "..")
+  convert_help <- paste(
+    readLines(
+      file.path(package_root, "man", "convertSeuratToCerebro.Rd"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  app_help <- paste(
+    readLines(
+      file.path(package_root, "man", "createShinyApp.Rd"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(convert_help, "convertSeuratToCerebro\\(")
+  expect_match(convert_help, 'expression_matrix_mode = "h5"', fixed = TRUE)
+  expect_match(convert_help, '"donorB tissue" = c(', fixed = TRUE)
+  expect_match(convert_help, '"IF panel" =', fixed = TRUE)
+  expect_match(convert_help, "spatial entry -> image label", fixed = TRUE)
+
+  expect_match(app_help, "createShinyApp\\(")
+  expect_match(
+    app_help,
+    "dataset -> spatial entry -> image label",
+    fixed = TRUE
+  )
+  expect_match(app_help, '"donorC tissue" = list(', fixed = TRUE)
+  expect_match(app_help, '"Pathology review" =', fixed = TRUE)
+  expect_match(app_help, "spatial_image_settings = list(", fixed = TRUE)
+})
+
 expect_omnibus_group_rename_error <- function(object, mapping, regexp) {
   before <- serialize(object, NULL, version = 3)
   expect_error(

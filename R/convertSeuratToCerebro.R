@@ -308,12 +308,12 @@
 #' Convert Seurat Object to Cerebro Format
 #'
 #' @description
-#' This function reads a Seurat object from a file, optionally renames grouping
-#' variables, loads marker gene tables, and exports the data to Cerebro format
-#' for visualization.
+#' This function accepts a Seurat object or reads one from an RDS file,
+#' optionally renames grouping variables, loads marker gene tables, and exports
+#' the data to Cerebro format for visualization.
 #'
-#' @param seurat_file Character string specifying the path to the Seurat object
-#'   file. Supported format: \code{.rds}.
+#' @param seurat_file A Seurat object in memory, or a character string specifying
+#'   its \code{.rds} file path.
 #' @param result_dir Character string specifying the directory where the Cerebro
 #'   output file (.crb) will be saved.
 #' @param assay Character string specifying which assay to use from the Seurat
@@ -355,10 +355,15 @@
 #'   directory, so packaging the \code{.crb} with its sibling
 #'   \code{<stem>.bpcells/} or \code{<stem>.h5} together is enough for
 #'   portable deployment.
-#' @param spatial_images Optional named list mapping Seurat image names to named
-#'   image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
-#'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
-#'   derived from the exported x/y coordinate range.
+#' @param spatial_images Optional manifest in
+#'   \code{spatial entry -> image label -> path} form. Spatial-entry names must
+#'   match \code{SeuratObject::Images(seurat_file)}. Each entry may contain one
+#'   or more arbitrarily named PNG, JPEG/JPG, or SVG files. A named character
+#'   vector is path shorthand; a leaf may instead be
+#'   \code{list(path = ..., bounds = c(xmin = ..., xmax = ..., ymin = ...,
+#'   ymax = ...))}. Missing bounds are derived from the exported coordinates.
+#'   Supplied images are embedded in the generated CRB; existing embedded images
+#'   declared by the Seurat object are retained.
 #' @param verbose Logical indicating whether to print progress messages; default:
 #'   \code{TRUE}.
 #' @param cell_cycle Character vector of column names in metadata containing
@@ -405,23 +410,38 @@
 #'     collection
 #' }
 #'
+#' Seurat uses the same named image collection for several platform-specific
+#' structures: a name can identify a Visium slice, Xenium or MERFISH field of
+#' view (FOV), Slide-seq puck, or another SpatialImage subclass. It is a
+#' structural spatial-entry key, not necessarily a donor or sample name. An
+#' entry can carry multiple user-named backgrounds, or coordinates only.
+#'
 #' @examples
 #' \dontrun{
-#' # Basic usage
-#' convertSeuratToCerebro(
-#'   seurat_file = "path/to/seurat_object.rds",
-#'   result_dir = "path/to/output"
-#' )
+#' library(CerebroNexus)
 #'
-#' # With custom grouping and renaming
+#' input_dir <- system.file("extdata/examples", package = "CerebroNexus")
 #' convertSeuratToCerebro(
-#'   seurat_file = "seurat_object.rds",
+#'   seurat_file = file.path(input_dir, "demo_omnibus_seurat.rds"),
 #'   result_dir = "output",
-#'   groups = c("cluster", "sample", "celltype"),
-#'   groups_naming = list("cluster" = "Cluster", "celltype" = "Cell Type"),
-#'   marker_file = "markers.csv",
-#'   spatial_images = list(slice1 = c(`H&E` = "path/to/tissue.png"))
+#'   assay = "RNA",
+#'   slot = "data",
+#'   experiment_name = "Synthetic Omnibus",
+#'   organism = "Human",
+#'   groups = c("orig.ident", "condition", "cell_type"),
+#'   groups_naming = list(
+#'     "orig.ident" = "sample",
+#'     "cell_type" = "cluster"
+#'   ),
+#'   marker_file = file.path(input_dir, "demo_omnibus_markers.csv"),
+#'   spatial_images = list(
+#'     "donorB tissue" = c(
+#'       "IF panel" = file.path(input_dir, "demo_omnibus_donorB_if.png")
+#'     )
+#'   ),
+#'   expression_matrix_mode = "h5"
 #' )
+#' # Creates output/cerebro_demo_omnibus_seurat.crb and its sibling .h5 file.
 #' }
 #'
 #' @seealso \code{\link{exportFromSeurat}}

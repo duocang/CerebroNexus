@@ -104,7 +104,9 @@ when that CRB has exactly one spatial entry.}
 \item{spatial_image_settings}{Optional nested settings in
 \code{dataset -> spatial entry -> image label -> settings} form. Settings
 may contain only \code{flip_x}, \code{flip_y}, \code{scale_x},
-\code{scale_y}, \code{offset_x}, \code{offset_y}, and \code{rotation}.}
+\code{scale_y}, \code{offset_x}, \code{offset_y}, and \code{rotation}.
+Use exactly the same dataset, spatial-entry, and image-label keys as in
+\code{spatial_images}; labels are user-facing names, not protocol names.}
 
 \item{spatial_images_flip_x}{Legacy named per-dataset horizontal flip values.
 Each dataset must resolve to exactly one spatial image target.}
@@ -210,4 +212,49 @@ Platform-specific ACLs, ownership changes, and security labels remain the
 deployment system's responsibility. All CRBs, descriptor sidecars, spatial
 images and their source-path ancestors must remain trusted and unchanged
 while the build is running; the target build lock does not protect inputs.
+}
+\examples{
+\dontrun{
+library(CerebroNexus)
+
+input_dir <- system.file("extdata/examples", package = "CerebroNexus")
+createShinyApp(
+  cerebro_data = c(
+    Omnibus = "output/cerebro_demo_omnibus_seurat.crb"
+  ),
+  result_dir = "my_app",
+  welcome_message = "<h2>Synthetic Omnibus Atlas</h2>",
+  port = 8080,
+  host = "127.0.0.1",
+  max_request_size = 8000,
+  overwrite = TRUE,
+  spatial_images = list(
+    Omnibus = list(
+      "donorC tissue" = list(
+        "Pathology review" = list(
+          path = file.path(input_dir, "demo_omnibus_donorC_review.png"),
+          bounds = c(xmin = 100, xmax = 900, ymin = 100, ymax = 700)
+        )
+      )
+    )
+  ),
+  spatial_image_settings = list(
+    Omnibus = list(
+      "donorC tissue" = list(
+        "Pathology review" = list(
+          flip_x = FALSE,
+          flip_y = FALSE,
+          scale_x = 1,
+          scale_y = 1,
+          offset_x = 0,
+          offset_y = 0,
+          rotation = 0
+        )
+      )
+    )
+  )
+)
+# Run with shiny::runApp("my_app") or deploy my_app/ to Shiny Server.
+}
+
 }

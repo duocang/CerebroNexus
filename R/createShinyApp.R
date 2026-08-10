@@ -1854,6 +1854,8 @@ dedent <- function(string) {
 #'   \code{dataset -> spatial entry -> image label -> settings} form. Settings
 #'   may contain only \code{flip_x}, \code{flip_y}, \code{scale_x},
 #'   \code{scale_y}, \code{offset_x}, \code{offset_y}, and \code{rotation}.
+#'   Use exactly the same dataset, spatial-entry, and image-label keys as in
+#'   \code{spatial_images}; labels are user-facing names, not protocol names.
 #' @param spatial_images_flip_x Legacy named per-dataset horizontal flip values.
 #'   Each dataset must resolve to exactly one spatial image target.
 #' @param spatial_images_flip_y Legacy named per-dataset vertical flip values.
@@ -1878,6 +1880,51 @@ dedent <- function(string) {
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
 #'   during the build, warns and returns the frozen absolute publication path.
+#'
+#' @examples
+#' \dontrun{
+#' library(CerebroNexus)
+#'
+#' input_dir <- system.file("extdata/examples", package = "CerebroNexus")
+#' createShinyApp(
+#'   cerebro_data = c(
+#'     Omnibus = "output/cerebro_demo_omnibus_seurat.crb"
+#'   ),
+#'   result_dir = "my_app",
+#'   welcome_message = "<h2>Synthetic Omnibus Atlas</h2>",
+#'   port = 8080,
+#'   host = "127.0.0.1",
+#'   max_request_size = 8000,
+#'   overwrite = TRUE,
+#'   spatial_images = list(
+#'     Omnibus = list(
+#'       "donorC tissue" = list(
+#'         "Pathology review" = list(
+#'           path = file.path(input_dir, "demo_omnibus_donorC_review.png"),
+#'           bounds = c(xmin = 100, xmax = 900, ymin = 100, ymax = 700)
+#'         )
+#'       )
+#'     )
+#'   ),
+#'   spatial_image_settings = list(
+#'     Omnibus = list(
+#'       "donorC tissue" = list(
+#'         "Pathology review" = list(
+#'           flip_x = FALSE,
+#'           flip_y = FALSE,
+#'           scale_x = 1,
+#'           scale_y = 1,
+#'           offset_x = 0,
+#'           offset_y = 0,
+#'           rotation = 0
+#'         )
+#'       )
+#'     )
+#'   )
+#' )
+#' # Run with shiny::runApp("my_app") or deploy my_app/ to Shiny Server.
+#' }
+#'
 #' @importFrom later later
 #' @importFrom stats setNames
 #' @export
