@@ -77,6 +77,16 @@ test_that("review identity requires a ready frozen BuildPlan", {
   )
 })
 
+test_that("review identity accepts frozen BuildPlan subclasses", {
+  plan <- builder_workflow_test_plan()
+  class(plan) <- c("special_builder_plan", class(plan))
+
+  expect_identical(
+    builder_review_plan_identity(plan),
+    builder_review_plan_identity(builder_workflow_test_plan())
+  )
+})
+
 test_that("workflow advances through review and confirmation", {
   plan <- builder_workflow_test_plan()
   state <- builder_workflow_state()

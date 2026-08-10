@@ -6,7 +6,7 @@
 
 .builder_workflow_plan_valid <- function(plan) {
   is.list(plan) &&
-    identical(class(plan), c("builder_build_plan", "list")) &&
+    inherits(plan, "builder_build_plan") &&
     identical(plan$readiness, "ready")
 }
 
