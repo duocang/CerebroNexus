@@ -244,14 +244,7 @@ test_that("builder exposes one compact responsive component system", {
     ),
     perl = TRUE
   )
-  expect_match(
-    css,
-    paste0(
-      "\\.actionbar \\{[^}]*max-width: none;[^}]*margin: 0 ",
-      "var\\(--builder-page-gutter\\) 1\\.5rem;"
-    ),
-    perl = TRUE
-  )
+  expect_false(grepl(".actionbar", layout_css, fixed = TRUE))
   expect_match(css, "@media (max-width: 68.75rem)", fixed = TRUE)
   expect_match(css, "@media (max-width: 58rem)", fixed = TRUE)
   expect_match(css, "@media (max-width: 40rem)", fixed = TRUE)
@@ -274,11 +267,6 @@ test_that("builder exposes one compact responsive component system", {
   expect_gt(manager_start, tablet_start)
   expect_gt(mobile_start, manager_start)
   tablet_css <- substr(layout_css, tablet_start, manager_start - 1L)
-  expect_match(
-    tablet_css,
-    ".actionbar { margin-inline: var(--space-6); }",
-    fixed = TRUE
-  )
   expect_match(css, "@media (prefers-reduced-motion: reduce)", fixed = TRUE)
   expect_match(css, ".builder-file-picker--sidebar", fixed = TRUE)
   expect_match(css, ".builder-file-picker--content", fixed = TRUE)
@@ -721,15 +709,16 @@ test_that("Builder action orange follows the contrast-safe Nexus brand shade", {
   expect_match(logo, 'fill="#ea6a0f"', fixed = TRUE)
 })
 
-test_that("dataset focus compensates for the sticky Builder topbar", {
+test_that("stage focus targets the active heading", {
   js <- builder_asset_text("www", "builder.js")
 
-  expect_match(js, "function focusDatasetContext(context)", fixed = TRUE)
-  expect_match(js, 'document.querySelector(".topbar")', fixed = TRUE)
-  expect_match(js, "window.scrollTo({", fixed = TRUE)
-  expect_match(js, "topbarBottom - 12", fixed = TRUE)
-  expect_match(js, "context.focus({ preventScroll: true })", fixed = TRUE)
-  expect_match(js, "window.__builderFocusDatasetContext", fixed = TRUE)
+  expect_match(
+    js,
+    'addCustomMessageHandler("builder_focus_stage"',
+    fixed = TRUE
+  )
+  expect_match(js, 'var heading = stage.querySelector("h2")', fixed = TRUE)
+  expect_match(js, "heading.focus({ preventScroll: true })", fixed = TRUE)
 })
 
 test_that("per-dataset compact review server inputs are removed", {
@@ -744,11 +733,10 @@ test_that("builder keeps primary actions in flow and exposes a narrow manager", 
   css <- builder_stylesheet_text()
   js <- builder_asset_text("www", "builder.js")
 
-  expect_match(css, "\\.actionbar \\{\\s*position: static", perl = TRUE)
   expect_false(grepl(
-    "\\.actionbar \\{[^}]*position: fixed",
-    css,
-    perl = TRUE
+    ".actionbar",
+    builder_asset_text("www", "builder.layout.css"),
+    fixed = TRUE
   ))
   expect_match(css, "@media (max-width: 68.75rem)", fixed = TRUE)
   expect_match(css, "@media (max-width: 58rem)", fixed = TRUE)
@@ -761,6 +749,61 @@ test_that("builder keeps primary actions in flow and exposes a narrow manager", 
     'window.matchMedia("(max-width: 58rem)")',
     fixed = TRUE
   )
+})
+
+test_that("staged workflow owns responsive styles and one safe focus handler", {
+  layout <- builder_asset_text("www", "builder.layout.css")
+  components <- builder_asset_text("www", "builder.components.css")
+  features <- builder_asset_text("www", "builder.features.css")
+  js <- builder_asset_text("www", "builder.js")
+  server <- paste(
+    builder_asset_text("server", "workflow.R"),
+    builder_asset_text("server", "review.R")
+  )
+
+  expect_false(grepl(".actionbar", layout, fixed = TRUE))
+  expect_match(components, ".builder-workflow-progress", fixed = TRUE)
+  expect_match(components, ".builder-stage-actions", fixed = TRUE)
+  for (stage in c("configure", "review", "build")) {
+    expect_match(features, paste0(".builder-stage-", stage), fixed = TRUE)
+  }
+  expect_length(
+    gregexpr(
+      'addCustomMessageHandler("builder_focus_stage"',
+      js,
+      fixed = TRUE
+    )[[1]],
+    1L
+  )
+  expect_false(grepl("builder_focus_review", js, fixed = TRUE))
+  expect_false(grepl("builder_focus_build", js, fixed = TRUE))
+  expect_match(
+    js,
+    'behavior: reducedMotion.matches ? "auto" : "smooth"',
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    'scheduleStatusAnnouncement("Opened " + id + " step.")',
+    fixed = TRUE
+  )
+  expect_false(grepl("builder_focus_review|builder_focus_build", server))
+  expect_match(
+    server,
+    '"builder_focus_stage", list(id = "configure")',
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    '"builder_focus_stage", list(id = "review")',
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    '"builder_focus_stage", list(id = "build")',
+    fixed = TRUE
+  )
+  expect_match(components, "transition-duration: 0s !important", fixed = TRUE)
 })
 
 test_that("builder client owns accessible dialog and live-state semantics", {

@@ -1957,34 +1957,20 @@
     if (buildDialogHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
     window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
-    window.Shiny.addCustomMessageHandler("builder_focus_dataset", function (message) {
-      var context = document.querySelector(".dataset-context");
-      if (!context) return;
-      focusDatasetContext(context);
-      if (message && message.message) scheduleStatusAnnouncement(message.message);
-    });
-    window.Shiny.addCustomMessageHandler("builder_focus_review", function (message) {
-      var review = document.getElementById("review-stage");
-      if (!review) return;
-      review.setAttribute("tabindex", "-1");
-      review.scrollIntoView({
+    window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
+      var id = message && message.id;
+      if (["upload", "configure", "review", "build"].indexOf(id) < 0) return;
+      var stage = document.querySelector('[data-workflow-stage="' + id + '"]');
+      if (!stage) return;
+      var heading = stage.querySelector("h2");
+      if (!heading) return;
+      heading.setAttribute("tabindex", "-1");
+      heading.scrollIntoView({
         block: "start",
         behavior: reducedMotion.matches ? "auto" : "smooth",
       });
-      review.focus();
-      if (message && message.message) scheduleStatusAnnouncement(message.message);
-    });
-    window.Shiny.addCustomMessageHandler("builder_focus_build", function (message) {
-      window.setTimeout(function () {
-        var build = document.getElementById("build");
-        if (!build) return;
-        build.scrollIntoView({
-          block: "center",
-          behavior: reducedMotion.matches ? "auto" : "smooth",
-        });
-        build.focus({ preventScroll: true });
-        if (message && message.message) scheduleStatusAnnouncement(message.message);
-      }, 120);
+      heading.focus({ preventScroll: true });
+      scheduleStatusAnnouncement("Opened " + id + " step.");
     });
     window.Shiny.addCustomMessageHandler("builder_import_status", function (message) {
       if (message && message.text) scheduleStatusAnnouncement(message.text);

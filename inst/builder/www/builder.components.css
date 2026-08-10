@@ -896,3 +896,42 @@
   .builder-dialog,
   .builder-dialog.is-visible { transform: none !important; }
 }
+
+/* ---- staged workflow --------------------------------------------------- */
+.builder-workflow-progress,
+.builder-stage-actions,
+.builder-workflow-progress ol,
+.builder-workflow-progress li { min-width: 0; }
+.builder-workflow-progress ol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .5rem;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+.builder-workflow-progress li {
+  padding: .55rem .7rem;
+  border-bottom: 2px solid var(--c-border);
+  color: var(--c-text-muted);
+  overflow-wrap: anywhere;
+}
+.builder-workflow-progress li[aria-current="step"] {
+  border-color: var(--builder-action);
+  color: var(--c-text);
+  font-weight: 700;
+}
+.builder-stage-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; }
+.builder-selected-output,
+.builder-status,
+.builder-file-item { overflow-wrap: anywhere; word-break: break-word; }
+@media (max-width: 40rem) {
+  .builder-workflow-progress li:not([aria-current="step"]) { font-size: 0; padding-inline: .25rem; }
+  .builder-workflow-progress li[aria-current="step"]::before { content: "Current " counter(list-item) " of 4 · "; }
+  .builder-stage-actions { align-items: stretch; flex-direction: column; }
+  .builder-stage-actions .btn { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .builder-workflow-progress *,
+  .builder-stage-actions * { transition-duration: 0s !important; animation-duration: 0s !important; }
+}

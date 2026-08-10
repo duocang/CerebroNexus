@@ -13,13 +13,20 @@ output$workbench <- renderUI({
     builder_import_find(imports(), loading_id)
   }
   if (!is.null(loading_entry)) {
-    return(builder_loading_workbench_ui(loading_entry))
+    return(tagAppendAttributes(
+      builder_loading_workbench_ui(loading_entry),
+      class = "builder-stage-upload"
+    ))
   }
 
   stage <- workflow()$stage
   switch(
     stage,
-    upload = builder_empty_workbench_ui(),
+    upload = tagAppendAttributes(
+      builder_empty_workbench_ui(),
+      class = "builder-stage-upload",
+      `data-workflow-stage` = "upload"
+    ),
     configure = render_configure_workbench(),
     review = render_review_workbench(),
     build = render_build_workbench(),
@@ -36,7 +43,7 @@ observeEvent(input$continue_to_review, {
   ))
   session$onFlushed(
     function() {
-      session$sendCustomMessage("builder_focus_review", list())
+      session$sendCustomMessage("builder_focus_stage", list(id = "review"))
     },
     once = TRUE
   )
@@ -82,7 +89,7 @@ observeEvent(input$back_to_review, {
   )
   session$onFlushed(
     function() {
-      session$sendCustomMessage("builder_focus_review", list())
+      session$sendCustomMessage("builder_focus_stage", list(id = "review"))
     },
     once = TRUE
   )

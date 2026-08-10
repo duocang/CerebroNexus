@@ -1669,3 +1669,17 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   .enhance-module:hover,
   .enhance-module:focus-within { transform: none !important; }
 }
+
+.builder-stage-configure,
+.builder-stage-review,
+.builder-stage-build,
+.builder-stage-configure > *,
+.builder-stage-review > *,
+.builder-stage-build > * { min-width: 0; max-width: 100%; }
+.builder-build-summary,
+.builder-review-summary { overflow-wrap: anywhere; }
+@media (max-width: 40rem) {
+  .builder-stage-configure,
+  .builder-stage-review,
+  .builder-stage-build { overflow-x: clip; }
+}

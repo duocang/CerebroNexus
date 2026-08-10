@@ -544,7 +544,10 @@ render_configure_workbench <- function() {
       }
     )
   )
-  tagList(
+  div(
+    class = "builder-stage builder-stage-configure",
+    `data-workflow-stage` = "configure",
+    h2("Configure"),
     uiOutput("dataset_context"),
     uiOutput("inspect_stage"),
     builder_core_stage_ui("core", core_model),
@@ -570,8 +573,12 @@ render_configure_workbench <- function() {
 render_review_workbench <- function() {
   plan <- workflow()$review_plan
   req(builder_review_can_build(plan))
-  tagList(
+  stage <- tagAppendAttributes(
     builder_review_stage_ui("review", builder_review_model(plan)),
+    `data-workflow-stage` = "review"
+  )
+  tagList(
+    stage,
     builder_review_confirmation_ui()
   )
 }
@@ -583,7 +590,7 @@ observeEvent(input$back_to_settings, {
   ))
   session$onFlushed(
     function() {
-      session$sendCustomMessage("builder_focus_dataset", list())
+      session$sendCustomMessage("builder_focus_stage", list(id = "configure"))
     },
     once = TRUE
   )
@@ -606,7 +613,7 @@ observeEvent(input$confirm_review, {
     result(NULL)
     session$onFlushed(
       function() {
-        session$sendCustomMessage("builder_focus_dataset", list())
+        session$sendCustomMessage("builder_focus_stage", list(id = "configure"))
       },
       once = TRUE
     )
@@ -618,7 +625,7 @@ observeEvent(input$confirm_review, {
   ))
   session$onFlushed(
     function() {
-      session$sendCustomMessage("builder_focus_build", list())
+      session$sendCustomMessage("builder_focus_stage", list(id = "build"))
     },
     once = TRUE
   )
