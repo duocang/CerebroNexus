@@ -45,12 +45,20 @@ builder_configure_actions_ui <- function(message, can_continue, app_control) {
   )
 }
 
-builder_build_workbench_ui <- function(model, output_path, status = NULL) {
+builder_build_workbench_ui <- function(
+  model,
+  output_path,
+  status = NULL,
+  controls_disabled = FALSE
+) {
   stopifnot(
     is.list(model),
     is.character(output_path),
     length(output_path) <= 1L,
-    !length(output_path) || !is.na(output_path)
+    !length(output_path) || !is.na(output_path),
+    is.logical(controls_disabled),
+    length(controls_disabled) == 1L,
+    !is.na(controls_disabled)
   )
   output_label <- if (isTRUE(model$output$private_app)) {
     "Viewer App"
@@ -86,18 +94,20 @@ builder_build_workbench_ui <- function(model, output_path, status = NULL) {
       actionButton(
         "back_to_review",
         "Back to review",
-        class = "btn"
+        class = "btn",
+        disabled = controls_disabled
       ),
       actionButton(
         "choose_output_folder",
         "Choose folder…",
-        class = "btn"
+        class = "btn",
+        disabled = controls_disabled
       ),
       actionButton(
         "build",
         "Build",
         class = "btn btn-action",
-        disabled = !builder_has_text(output_path)
+        disabled = controls_disabled || !builder_has_text(output_path)
       )
     ),
     status

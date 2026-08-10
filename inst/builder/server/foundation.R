@@ -111,6 +111,9 @@ current <- function(value) {
 }
 result <- reactiveVal(NULL)
 build_flow <- reactiveVal(list(stage = "idle", plan = NULL))
+builder_build_controls_locked <- function(flow) {
+  !is.list(flow) || !identical(flow$stage, "idle")
+}
 review_options <- reactiveVal(builder_review_options())
 review_validation <- reactiveVal(list(ok = TRUE, error = NULL))
 auth_enabled <- reactiveVal(FALSE)

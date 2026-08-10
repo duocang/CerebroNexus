@@ -678,8 +678,11 @@ test_that("Build enqueue retains auth after failure and resets only after succes
     expect_identical(queued_payload$auth_accounts, accounts)
     expect_identical(auth_accounts(), accounts)
     expect_true(auth_validation()$ok)
-    expect_length(messages, 0L)
+    expect_length(messages, 1L)
+    expect_identical(messages[[1L]]$type, "builder_build_dialog")
+    expect_identical(messages[[1L]]$message, list(action = "close"))
 
+    messages <- list()
     assign("enqueue", function(payload) TRUE, envir = fn_env)
     expect_true(enqueue_build_plan(plan, auth_accounts = accounts))
     expect_s3_class(auth_accounts(), "builder_auth_accounts")
@@ -968,8 +971,28 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     real_session$setInputs(build = 3L)
     real_session$flushReact()
     expect_identical(build_flow()$stage, "conflict")
+    worker(NULL)
     real_session$setInputs(
       builder_build_dialog = list(action = "replace", nonce = 3L)
+    )
+    real_session$flushReact()
+    expect_length(enqueued, 0L)
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_identical(selected_output(), output_dir)
+    expect_match(tail(notifications, 1L), "worker", ignore.case = TRUE)
+    expect_true(any(vapply(
+      dialog_messages,
+      function(message) identical(message$message, list(action = "close")),
+      logical(1)
+    )))
+
+    worker(list(alive = TRUE))
+    protocol(app_env$builder_request_protocol("worker-a"))
+    real_session$setInputs(build = 4L)
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    real_session$setInputs(
+      builder_build_dialog = list(action = "replace", nonce = 4L)
     )
     real_session$flushReact()
     expect_length(enqueued, 1L)
@@ -977,9 +1000,37 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     expect_identical(enqueued[[1L]]$plan$out_dir, output_dir)
 
     build_flow(list(stage = "idle", plan = NULL))
-    protocol(app_env$builder_request_protocol("worker-a"))
+    busy_protocol <- app_env$builder_request_protocol("worker-b")
+    busy_protocol$build_status <- "running"
+    protocol(busy_protocol)
+    real_session$setInputs(build = 5L)
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    notification_count <- length(notifications)
+    real_session$setInputs(
+      builder_build_dialog = list(action = "replace", nonce = 5L)
+    )
+    real_session$flushReact()
+    expect_length(enqueued, 1L)
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_gt(length(notifications), notification_count)
+    expect_match(tail(notifications, 1L), "worker", ignore.case = TRUE)
+
+    protocol(app_env$builder_request_protocol("worker-c"))
+    real_session$setInputs(build = 6L)
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    real_session$setInputs(
+      builder_build_dialog = list(action = "replace", nonce = 6L)
+    )
+    real_session$flushReact()
+    expect_length(enqueued, 2L)
+    expect_true(enqueued[[2L]]$plan$overwrite)
+
+    build_flow(list(stage = "idle", plan = NULL))
+    protocol(app_env$builder_request_protocol("worker-d"))
     selected_output(output_dir)
-    real_session$setInputs(build = 4L)
+    real_session$setInputs(build = 7L)
     real_session$flushReact()
     expect_identical(build_flow()$stage, "conflict")
     workflow(app_env$builder_reduce_workflow(
@@ -987,10 +1038,10 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
       list(type = "invalidate")
     ))
     real_session$setInputs(
-      builder_build_dialog = list(action = "replace", nonce = 4L)
+      builder_build_dialog = list(action = "replace", nonce = 7L)
     )
     real_session$flushReact()
-    expect_length(enqueued, 1L)
+    expect_length(enqueued, 2L)
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
     expect_null(selected_output())
     expect_identical(workflow()$stage, "configure")
@@ -999,6 +1050,103 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
       "Settings changed. Review the updated plan before building.",
       fixed = TRUE
     )
+  })
+})
+
+test_that("active Build states reject forged stage actions", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  rlang::local_bindings(
+    builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
+    .env = environment(builder_stage_frozen_plan)
+  )
+  app_env$builder_freeze_plan <- function(...) builder_stage_frozen_plan(FALSE)
+
+  shiny::testServer(app_env$server, {
+    real_session <- session
+    picker_calls <- 0L
+    notifications <- character()
+    fn_env <- environment(builder_require_confirmed_build_plan)
+    assign(
+      "session",
+      list(
+        sendCustomMessage = function(...) NULL,
+        onFlushed = function(callback, once = FALSE) callback()
+      ),
+      envir = fn_env
+    )
+    assign(
+      "showNotification",
+      function(ui, ...) {
+        notifications <<- c(notifications, as.character(ui))
+      },
+      envir = fn_env
+    )
+    assign(
+      "builder_choose_output_directory",
+      function(...) {
+        picker_calls <<- picker_calls + 1L
+        list(status = "selected", path = "/new/output")
+      },
+      envir = fn_env
+    )
+    use_state_only_fixture(list(list(
+      id = "dataset-a",
+      revision = 0L,
+      snapshot = list(
+        path = "/private/dataset-a",
+        owner_token = "owner-a",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a"),
+      settings = list(name = "Dataset A")
+    )))
+    real_session$setInputs(make_app = FALSE)
+    real_session$flushReact()
+    plan <- frozen_review_plan()
+    reviewed <- app_env$builder_reduce_workflow(
+      app_env$builder_workflow_state(),
+      list(type = "open_review", plan = plan)
+    )
+    workflow(app_env$builder_reduce_workflow(
+      reviewed,
+      list(type = "confirm_review", plan = plan)
+    ))
+    selected_output("/confirmed/output")
+
+    for (index in seq_along(c("queued", "building", "conflict"))) {
+      stage <- c("queued", "building", "conflict")[[index]]
+      frozen_flow <- list(
+        stage = stage,
+        plan = if (identical(stage, "conflict")) plan else NULL
+      )
+      build_flow(frozen_flow)
+      real_session$setInputs(back_to_review = index)
+      real_session$setInputs(choose_output_folder = index)
+      real_session$setInputs(build = index)
+      real_session$flushReact()
+
+      expect_identical(workflow()$stage, "build", info = stage)
+      expect_identical(build_flow(), frozen_flow, info = stage)
+      expect_identical(selected_output(), "/confirmed/output", info = stage)
+      expect_identical(picker_calls, 0L, info = stage)
+      expect_length(notifications, 0L)
+    }
+
+    build_flow(list(stage = "idle", plan = NULL))
+    real_session$setInputs(choose_output_folder = 4L)
+    real_session$flushReact()
+    expect_identical(picker_calls, 1L)
+    expect_identical(selected_output(), "/new/output")
+    real_session$setInputs(back_to_review = 4L)
+    real_session$flushReact()
+    expect_identical(workflow()$stage, "review")
   })
 })
 

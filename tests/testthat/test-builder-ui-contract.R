@@ -557,6 +557,45 @@ test_that("Build dialogs are reserved for real output conflicts", {
   expect_false(grepl("window.confirm", js, fixed = TRUE))
 })
 
+test_that("active Build states disable every stage action", {
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  model <- list(output = list(private_app = FALSE, crb_count = 2L))
+  active <- htmltools::renderTags(app_env$builder_build_workbench_ui(
+    model,
+    "/tmp/output",
+    controls_disabled = TRUE
+  ))$html
+  idle <- htmltools::renderTags(app_env$builder_build_workbench_ui(
+    model,
+    "/tmp/output",
+    controls_disabled = FALSE
+  ))$html
+
+  for (id in c("back_to_review", "choose_output_folder", "build")) {
+    disabled_button <- paste0(
+      '<button(?=[^>]*id="',
+      id,
+      '")(?=[^>]* disabled)[^>]*>'
+    )
+    expect_match(
+      active,
+      disabled_button,
+      perl = TRUE,
+      info = id
+    )
+    expect_false(
+      grepl(
+        disabled_button,
+        idle,
+        perl = TRUE
+      ),
+      info = id
+    )
+  }
+})
+
 test_that("builder client removes per-dataset compact review navigation", {
   js <- builder_asset_text("www", "builder.js")
 

@@ -443,7 +443,7 @@ test_that("Build stage renders only the confirmed stored plan", {
   expect_match(workflow_ui, '"build"', fixed = TRUE)
   expect_match(
     workflow_ui,
-    "disabled = !builder_has_text(output_path)",
+    "disabled = controls_disabled || !builder_has_text(output_path)",
     fixed = TRUE
   )
   expect_false(grepl("make_app|Configure", workflow_ui))

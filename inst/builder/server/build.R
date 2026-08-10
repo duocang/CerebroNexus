@@ -76,6 +76,20 @@ builder_require_confirmed_build_plan <- function(plan, output_path = NULL) {
   invisible(FALSE)
 }
 
+builder_build_attempt_failed <- function(message) {
+  build_flow(list(stage = "idle", plan = NULL))
+  session$sendCustomMessage(
+    "builder_build_dialog",
+    list(action = "close")
+  )
+  showNotification(
+    message,
+    type = "warning",
+    duration = 6
+  )
+  invisible(FALSE)
+}
+
 enqueue_build_plan <- function(
   plan,
   auth_accounts
@@ -83,10 +97,23 @@ enqueue_build_plan <- function(
   if (!isTRUE(builder_require_confirmed_build_plan(plan, plan$out_dir))) {
     return(invisible(FALSE))
   }
-  rs <- worker()
-  req(rs)
+  rs <- isolate(worker())
+  if (is.null(rs)) {
+    return(builder_build_attempt_failed(
+      "The background worker is not ready. Try Build again in a moment."
+    ))
+  }
   current_protocol <- isolate(protocol())
-  req(builder_protocol_is_quiescent(current_protocol))
+  protocol_ready <- !is.null(current_protocol) &&
+    isTRUE(tryCatch(
+      builder_protocol_is_quiescent(current_protocol),
+      error = function(error) FALSE
+    ))
+  if (!protocol_ready) {
+    return(builder_build_attempt_failed(
+      "The background worker is busy. Try Build again when it is ready."
+    ))
+  }
   plan <- unserialize(serialize(plan, NULL, version = 3L))
   parsed_auth <- builder_auth_validate_payload(
     isTRUE(plan$app_auth$enabled),
@@ -111,19 +138,19 @@ enqueue_build_plan <- function(
       "…"
     )
   ))
-  build_flow(list(
-    stage = if (isTRUE(queued)) "building" else "idle",
-    plan = NULL
-  ))
-  if (isTRUE(queued)) {
-    auth_accounts_state(builder_auth_empty_accounts())
-    auth_validation(list(
-      ok = FALSE,
-      error = "Set up login accounts again before the next build."
+  if (!isTRUE(queued)) {
+    return(builder_build_attempt_failed(
+      "The build could not be queued. Try Build again."
     ))
-    session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
   }
-  invisible(isTRUE(queued))
+  build_flow(list(stage = "building", plan = NULL))
+  auth_accounts_state(builder_auth_empty_accounts())
+  auth_validation(list(
+    ok = FALSE,
+    error = "Set up login accounts again before the next build."
+  ))
+  session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
+  invisible(TRUE)
 }
 
 prepare_selected_output <- function(path, overwrite = FALSE) {
@@ -182,6 +209,9 @@ choose_build_folder <- function() {
 }
 
 observeEvent(input$choose_output_folder, {
+  if (builder_build_controls_locked(isolate(build_flow()))) {
+    return()
+  }
   live <- isolate(frozen_review_plan())
   if (!isTRUE(builder_require_confirmed_build_plan(live))) {
     return()
@@ -190,7 +220,9 @@ observeEvent(input$choose_output_folder, {
 })
 
 observeEvent(input$build, {
-  req(identical(isolate(build_flow())$stage, "idle"))
+  if (builder_build_controls_locked(isolate(build_flow()))) {
+    return()
+  }
   live <- isolate(frozen_review_plan())
   output_path <- isolate(selected_output())
   if (!isTRUE(builder_require_confirmed_build_plan(live))) {

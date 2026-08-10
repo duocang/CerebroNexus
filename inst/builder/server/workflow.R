@@ -53,6 +53,7 @@ render_build_workbench <- function() {
     return(NULL)
   }
   current_result <- result()
+  current_flow <- build_flow()
   builder_build_workbench_ui(
     builder_review_model(plan),
     selected_output() %||% character(),
@@ -60,11 +61,15 @@ render_build_workbench <- function() {
       NULL
     } else {
       builder_build_status_ui(builder_build_status_model(current_result))
-    }
+    },
+    controls_disabled = builder_build_controls_locked(current_flow)
   )
 }
 
 observeEvent(input$back_to_review, {
+  if (builder_build_controls_locked(isolate(build_flow()))) {
+    return()
+  }
   state <- isolate(workflow())
   if (!identical(state$stage, "build")) {
     return()
