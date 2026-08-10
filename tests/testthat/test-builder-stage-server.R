@@ -814,6 +814,194 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
   )
 })
 
+test_that("Build conflict actions preserve confirmation and fail closed", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  rlang::local_bindings(
+    builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
+    .env = environment(builder_stage_frozen_plan)
+  )
+  output_dir <- withr::local_tempdir()
+  replacement_dir <- withr::local_tempdir()
+  existing_target <- file.path(output_dir, "artifact.crb")
+  writeLines("existing", existing_target)
+  app_env$builder_freeze_plan <- function(
+    entries,
+    out_dir,
+    make_app,
+    overwrite,
+    app_options,
+    app_auth
+  ) {
+    plan <- builder_stage_frozen_plan(FALSE)
+    target <- file.path(out_dir, "artifact.crb")
+    plan$out_dir <- out_dir
+    plan$make_app <- FALSE
+    plan$overwrite <- isTRUE(overwrite)
+    plan$targets <- target
+    plan$existing_targets <- target[file.exists(target)]
+    plan$output_release$directory <- out_dir
+    plan$output_release$overwrite <- isTRUE(overwrite)
+    plan$output_release$replacement_policy <- if (isTRUE(overwrite)) {
+      "replace_existing_atomically"
+    } else {
+      "preserve_existing"
+    }
+    plan$output_release$targets <- target
+    plan
+  }
+
+  shiny::testServer(app_env$server, {
+    real_session <- session
+    dialog_messages <- list()
+    notifications <- character()
+    fn_env <- environment(builder_require_confirmed_build_plan)
+    assign(
+      "session",
+      list(
+        sendCustomMessage = function(type, message) {
+          dialog_messages[[length(dialog_messages) + 1L]] <<- list(
+            type = type,
+            message = message
+          )
+        },
+        onFlushed = function(callback, once = FALSE) callback()
+      ),
+      envir = fn_env
+    )
+    assign(
+      "showNotification",
+      function(ui, ...) {
+        notifications <<- c(notifications, as.character(ui))
+      },
+      envir = fn_env
+    )
+    assign(
+      "builder_choose_output_directory",
+      function(...) list(status = "selected", path = replacement_dir),
+      envir = fn_env
+    )
+    enqueued <- list()
+    assign(
+      "enqueue",
+      function(payload) {
+        enqueued[[length(enqueued) + 1L]] <<- payload
+        TRUE
+      },
+      envir = fn_env
+    )
+    worker(list(alive = TRUE))
+    protocol(app_env$builder_request_protocol("worker-a"))
+
+    use_state_only_fixture(list(list(
+      id = "dataset-a",
+      revision = 0L,
+      snapshot = list(
+        path = "/private/dataset-a",
+        owner_token = "owner-a",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a"),
+      settings = list(name = "Dataset A")
+    )))
+    real_session$setInputs(make_app = FALSE)
+    real_session$flushReact()
+    live <- frozen_review_plan()
+    reviewed <- app_env$builder_reduce_workflow(
+      app_env$builder_workflow_state(),
+      list(type = "open_review", plan = live)
+    )
+    workflow(app_env$builder_reduce_workflow(
+      reviewed,
+      list(type = "confirm_review", plan = live)
+    ))
+    selected_output(output_dir)
+
+    real_session$setInputs(build = 1L)
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    expect_length(enqueued, 0L)
+    conflict <- Filter(
+      function(message) {
+        identical(message$type, "builder_build_dialog") &&
+          identical(message$message$type, "conflict")
+      },
+      dialog_messages
+    )
+    expect_length(conflict, 1L)
+    expect_identical(conflict[[1L]]$message$files, "artifact.crb")
+
+    real_session$setInputs(
+      builder_build_dialog = list(action = "cancel", nonce = 1L)
+    )
+    real_session$flushReact()
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_identical(selected_output(), output_dir)
+    expect_true(app_env$builder_workflow_confirmation_matches(
+      isolate(workflow()),
+      live
+    ))
+    expect_length(enqueued, 0L)
+
+    real_session$setInputs(build = 2L)
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    real_session$setInputs(
+      builder_build_dialog = list(action = "choose_another", nonce = 2L)
+    )
+    real_session$flushReact()
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_identical(selected_output(), replacement_dir)
+    expect_true(app_env$builder_workflow_confirmation_matches(
+      isolate(workflow()),
+      live
+    ))
+    expect_length(enqueued, 0L)
+
+    selected_output(output_dir)
+    real_session$setInputs(build = 3L)
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    real_session$setInputs(
+      builder_build_dialog = list(action = "replace", nonce = 3L)
+    )
+    real_session$flushReact()
+    expect_length(enqueued, 1L)
+    expect_true(enqueued[[1L]]$plan$overwrite)
+    expect_identical(enqueued[[1L]]$plan$out_dir, output_dir)
+
+    build_flow(list(stage = "idle", plan = NULL))
+    protocol(app_env$builder_request_protocol("worker-a"))
+    selected_output(output_dir)
+    real_session$setInputs(build = 4L)
+    real_session$flushReact()
+    expect_identical(build_flow()$stage, "conflict")
+    workflow(app_env$builder_reduce_workflow(
+      isolate(workflow()),
+      list(type = "invalidate")
+    ))
+    real_session$setInputs(
+      builder_build_dialog = list(action = "replace", nonce = 4L)
+    )
+    real_session$flushReact()
+    expect_length(enqueued, 1L)
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_null(selected_output())
+    expect_identical(workflow()$stage, "configure")
+    expect_match(
+      tail(notifications, 1L),
+      "Settings changed. Review the updated plan before building.",
+      fixed = TRUE
+    )
+  })
+})
+
 test_that("Viewer and spatial preview contracts ignore settings-only revisions", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
