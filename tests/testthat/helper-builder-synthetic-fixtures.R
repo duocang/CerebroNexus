@@ -1,7 +1,7 @@
 ## Test-only synthetic objects for capability tests. Public Builder examples
 ## are loaded from their committed serialized fixtures instead.
 
-.builder_fixture_with_seed <- function(seed, code) {
+.builder_test_with_seed <- function(seed, code) {
   seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
   if (seed_exists) {
     caller_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)

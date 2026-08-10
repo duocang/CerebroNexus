@@ -16,27 +16,6 @@ if (!identical(normalizePath(getwd(), mustWork = TRUE), repo)) {
   )
 }
 
-suppressPackageStartupMessages({
-  library(Seurat)
-  library(SeuratObject)
-})
-
-with_fixture_seed <- function(seed, code) {
-  seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  if (seed_exists) {
-    caller_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  }
-  on.exit({
-    if (seed_exists) {
-      assign(".Random.seed", caller_seed, envir = .GlobalEnv)
-    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-      rm(".Random.seed", envir = .GlobalEnv)
-    }
-  })
-  set.seed(seed)
-  force(code)
-}
-
 stabilize_fixture <- function(object) {
   fixed_time <- as.POSIXct("2026-08-06 00:00:00", tz = "UTC")
   if (length(object@commands)) {
@@ -233,61 +212,24 @@ make_all_content_fixture <- function() {
   object
 }
 
-write_tissue_png <- function(path, width, height, seed) {
-  with_fixture_seed(seed, {
-    gx <- matrix(rep(seq_len(width), each = height), nrow = height)
-    gy <- matrix(rep(seq_len(height), times = width), nrow = height)
-    band <- 0.5 + 0.35 * sin(gy / height * 6 * pi) * cos(gx / width * 2 * pi)
-    vignette <- 1 -
-      0.5 *
-        (((gx - width / 2) / width)^2 +
-          ((gy - height / 2) / height)^2) *
-        4
-    vignette[vignette < 0] <- 0
-    red <- pmin(1, band * vignette * 1.05)
-    green <- pmin(1, band * vignette * 0.75)
-    blue <- pmin(1, band * vignette * 0.95)
-    png::writePNG(
-      array(c(red, green, blue), dim = c(height, width, 3)),
-      path
-    )
-  })
+write_tissue_png <- function(path, width, height) {
+  gx <- matrix(rep(seq_len(width), each = height), nrow = height)
+  gy <- matrix(rep(seq_len(height), times = width), nrow = height)
+  band <- 0.5 + 0.35 * sin(gy / height * 6 * pi) * cos(gx / width * 2 * pi)
+  vignette <- 1 -
+    0.5 *
+      (((gx - width / 2) / width)^2 +
+        ((gy - height / 2) / height)^2) *
+      4
+  vignette[vignette < 0] <- 0
+  red <- pmin(1, band * vignette * 1.05)
+  green <- pmin(1, band * vignette * 0.75)
+  blue <- pmin(1, band * vignette * 0.95)
+  png::writePNG(
+    array(c(red, green, blue), dim = c(height, width, 3)),
+    path
+  )
   invisible(path)
-}
-
-write_builder_fixtures <- function(output_dir) {
-  with_fixture_seed(2026L, {
-    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-    images <- data.frame(
-      name = c(
-        "patient_a_section_1.png",
-        "patient_a_section_2.png",
-        "patient_b_section_1.png",
-        "patient_b_section_2.png",
-        "patient_b_section_3.png"
-      ),
-      width = c(320L, 280L, 360L, 300L, 340L),
-      height = c(240L, 300L, 220L, 280L, 260L),
-      seed = 1401:1405,
-      stringsAsFactors = FALSE
-    )
-    for (index in seq_len(nrow(images))) {
-      write_tissue_png(
-        file.path(output_dir, images$name[[index]]),
-        images$width[[index]],
-        images$height[[index]],
-        images$seed[[index]]
-      )
-    }
-    object <- stabilize_fixture(make_all_content_fixture())
-    path <- file.path(output_dir, "all_content.rds")
-    saveRDS(object, path, version = 3L)
-    reopened <- readRDS(path)
-    if (!methods::is(reopened, "Seurat")) {
-      stop("The permanent All content fixture did not round-trip as Seurat.")
-    }
-  })
-  invisible(output_dir)
 }
 
 output_arguments <- commandArgs(trailingOnly = TRUE)
@@ -299,7 +241,35 @@ output <- if (length(output_arguments)) {
 } else {
   file.path("inst", "builder", "fixtures")
 }
-write_builder_fixtures(output)
+
+dir.create(output, recursive = TRUE, showWarnings = FALSE)
+set.seed(2026L)
+object <- stabilize_fixture(make_all_content_fixture())
+fixture_path <- file.path(output, "all_content.rds")
+saveRDS(object, fixture_path, version = 3L)
+if (!methods::is(readRDS(fixture_path), "Seurat")) {
+  stop("The permanent All content fixture did not round-trip as Seurat.")
+}
+
+images <- data.frame(
+  name = c(
+    "patient_a_section_1.png",
+    "patient_a_section_2.png",
+    "patient_b_section_1.png",
+    "patient_b_section_2.png",
+    "patient_b_section_3.png"
+  ),
+  width = c(320L, 280L, 360L, 300L, 340L),
+  height = c(240L, 300L, 220L, 280L, 260L),
+  stringsAsFactors = FALSE
+)
+for (index in seq_len(nrow(images))) {
+  write_tissue_png(
+    file.path(output, images$name[[index]]),
+    images$width[[index]],
+    images$height[[index]]
+  )
+}
 cat(
   "Wrote All content Seurat fixture and five histology sidecars to ",
   output,

@@ -35,22 +35,6 @@ generated_app_fixture_pages <- function(conditional = character()) {
   )
 }
 
-.generated_app_fixture_seed <- function(seed, code) {
-  seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  if (seed_exists) {
-    caller_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  }
-  on.exit({
-    if (seed_exists) {
-      assign(".Random.seed", caller_seed, envir = .GlobalEnv)
-    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-      rm(".Random.seed", envir = .GlobalEnv)
-    }
-  })
-  set.seed(seed)
-  force(code)
-}
-
 .generated_app_fixture_gene_ids <- function(n_genes, organism = "hg") {
   prefix <- if (identical(organism, "hg")) {
     c("MT-CO1", "MT-ND1", "MT-CYB", "RPS3", "RPL4")
@@ -68,7 +52,7 @@ generated_app_fixture_pages <- function(conditional = character()) {
   sample_levels,
   organism = "hg"
 ) {
-  .generated_app_fixture_seed(4101L + n_cells + n_genes, {
+  .builder_test_with_seed(4101L + n_cells + n_genes, {
     cells <- sprintf("%s_cell_%02d", prefix, seq_len(n_cells))
     genes <- .generated_app_fixture_gene_ids(n_genes, organism)
     row_index <- matrix(seq_len(n_genes), nrow = n_genes, ncol = n_cells)
@@ -442,7 +426,7 @@ generated_app_fixture_pages <- function(conditional = character()) {
 
 .generated_app_fixture_spatial <- function() {
   generated_app_fixture_source_runtime()
-  object <- .builder_fixture_with_seed(
+  object <- .builder_test_with_seed(
     2026L,
     .builder_fixture_stabilize(.builder_fixture_spatial())
   )
@@ -504,7 +488,7 @@ generated_app_fixture_pages <- function(conditional = character()) {
   is_tcr <- identical(id, "immune_tcr_hla")
   mode <- if (is_tcr) "tcr_hla" else "bcr_only"
   generated_app_fixture_source_runtime()
-  object <- .builder_fixture_with_seed(
+  object <- .builder_test_with_seed(
     2026L,
     .builder_fixture_stabilize(.builder_fixture_immune(mode))
   )

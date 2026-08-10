@@ -51,8 +51,9 @@ them without expanding the runtime API.
 
 The standalone generator does not preserve a caller RNG state because it only
 runs in its own `Rscript` process. It sets one explicit seed for the Seurat
-object and one explicit seed per image. The script executes its single write
-path directly instead of wrapping it in a one-use writer function.
+object; image pixels are deterministic mathematical functions of fixed
+dimensions and require no seed. The script executes its single write path
+directly instead of wrapping it in a one-use writer function.
 
 Generator determinism belongs to `test-builder-fixture-script.R`: run the script
 twice in isolated output directories, require the exact six-file inventory, and

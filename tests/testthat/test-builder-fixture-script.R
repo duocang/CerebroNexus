@@ -1,24 +1,31 @@
-test_that("the fixture generator refuses a non-repository working directory", {
+builder_fixture_script_layout <- function() {
   builder_dir <- normalizePath(builder_profile_inst_path("builder"))
   repo <- dirname(dirname(builder_dir))
-  script <- file.path(
-    repo,
-    "data-raw",
-    "build_builder_fixtures.R"
+  list(
+    repo = repo,
+    script = file.path(repo, "data-raw", "build_builder_fixtures.R"),
+    committed = file.path(builder_dir, "fixtures")
   )
-  skip_if_not(
-    file.exists(script),
-    "fixture generator source not present (installed-package layout)"
-  )
-  script <- normalizePath(script)
-  outside <- withr::local_tempdir(pattern = "builder-wrong-cwd-")
-  result <- processx::run(
+}
+
+builder_run_fixture_script <- function(layout, output, wd = layout$repo) {
+  processx::run(
     file.path(R.home("bin"), "Rscript"),
-    script,
-    wd = outside,
+    c(layout$script, output),
+    wd = wd,
     error_on_status = FALSE,
     echo = FALSE
   )
+}
+
+test_that("the fixture generator refuses a non-repository working directory", {
+  layout <- builder_fixture_script_layout()
+  skip_if_not(
+    file.exists(layout$script),
+    "fixture generator source not present (installed-package layout)"
+  )
+  outside <- withr::local_tempdir(pattern = "builder-wrong-cwd-")
+  result <- builder_run_fixture_script(layout, outside, wd = outside)
   expect_false(identical(result$status, 0L))
   expect_match(
     paste(result$stdout, result$stderr),
@@ -27,18 +34,51 @@ test_that("the fixture generator refuses a non-repository working directory", {
   )
 })
 
-test_that("the installed Builder runtime does not manufacture fixtures", {
+test_that("the Builder runtime does not manufacture fixtures", {
   io_path <- builder_profile_inst_path("builder", "io.R")
-  io_source <- readLines(io_path, warn = FALSE)
-  generator_definitions <- grep(
-    paste0(
-      "^(?:\\.builder_fixture_[[:alnum:]_]+|",
-      "builder_(?:make|write)_permanent_fixture)\\s*<-\\s*function"
-    ),
-    io_source,
+  runtime <- new.env(parent = baseenv())
+  sys.source(io_path, envir = runtime)
+  generator_symbols <- grep(
+    "^(?:[.]builder_fixture_|builder_(?:make|write)_permanent_fixture$)",
+    ls(runtime, all.names = TRUE),
     value = TRUE,
     perl = TRUE
   )
 
-  expect_identical(generator_definitions, character())
+  expect_identical(generator_symbols, character())
+})
+
+test_that("the fixture script exactly reproduces committed gallery inputs", {
+  layout <- builder_fixture_script_layout()
+  skip_if_not(
+    file.exists(layout$script),
+    "fixture generator source not present (installed-package layout)"
+  )
+  expected_names <- sort(c(
+    "all_content.rds",
+    "patient_a_section_1.png",
+    "patient_a_section_2.png",
+    "patient_b_section_1.png",
+    "patient_b_section_2.png",
+    "patient_b_section_3.png"
+  ))
+  first_dir <- withr::local_tempdir(pattern = "builder-fixtures-first-")
+  second_dir <- withr::local_tempdir(pattern = "builder-fixtures-second-")
+
+  first <- builder_run_fixture_script(layout, first_dir)
+  second <- builder_run_fixture_script(layout, second_dir)
+  expect_identical(first$status, 0L, info = first$stderr)
+  expect_identical(second$status, 0L, info = second$stderr)
+  expect_identical(sort(list.files(first_dir)), expected_names)
+  expect_identical(sort(list.files(second_dir)), expected_names)
+  expect_identical(sort(list.files(layout$committed)), expected_names)
+
+  read_bytes <- function(directory) {
+    lapply(file.path(directory, expected_names), function(path) {
+      readBin(path, what = "raw", n = as.integer(file.info(path)$size))
+    })
+  }
+  generated <- read_bytes(first_dir)
+  expect_identical(generated, read_bytes(second_dir))
+  expect_identical(generated, read_bytes(layout$committed))
 })

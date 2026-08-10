@@ -12,9 +12,9 @@ repository root with:
 Rscript data-raw/build_builder_fixtures.R
 ```
 
-The generator is offline, deterministic, and preserves the caller's random
-number state. It overwrites only the committed files in
-`inst/builder/fixtures/`.
+The generator is offline and deterministic, with one explicit object seed and
+images derived entirely from fixed dimensions and mathematical functions. It
+overwrites only the committed files in `inst/builder/fixtures/`.
 
 All synthetic-data construction lives in `data-raw/build_builder_fixtures.R`,
 which is excluded from the installed package. The installed Builder runtime

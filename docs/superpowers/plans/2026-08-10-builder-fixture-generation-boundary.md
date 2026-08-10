@@ -41,8 +41,8 @@
 
 - [ ] 先运行现有 deterministic fixture 测试，保存绿色基线和 committed
   fixture 哈希。
-- [ ] 在 `data-raw/build_builder_fixtures.R` 删除 caller RNG 保存/恢复和
-  one-use writer，改为对象 seed 加每张图片 seed 的直接执行流。
+- [ ] 在 `data-raw/build_builder_fixtures.R` 删除 caller RNG 保存/恢复、无效的
+  image seed 和 one-use writer，改为单一对象 seed 的直接执行流。
 - [ ] 将确定性生成测试从 `test-builder-end-to-end.R` 移到
   `test-builder-fixture-script.R`，比较两次生成结果、六文件清单和 committed
   fixture 的逐字节内容。
