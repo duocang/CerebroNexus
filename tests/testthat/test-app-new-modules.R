@@ -52,7 +52,7 @@ test_that("most_expressed_genes tab navigates and renders table", {
   select_html <- app$get_value(
     output = "most_expressed_genes_select_group_UI"
   )$html
-  expect_true(grepl("seurat_clusters", select_html))
+  expect_true(grepl("cell_type", select_html))
 
   # Table renders without error
   table_html <- app$get_value(output = "most_expressed_genes_table_UI")$html
