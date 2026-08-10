@@ -482,3 +482,422 @@
   }
   merged
 }
+
+#' Validate one level of a named spatial manifest
+#'
+#' @keywords internal
+#' @noRd
+.spatialManifestNames <- function(x, context) {
+  labels <- names(x)
+  if (
+    is.null(labels) ||
+      anyNA(labels) ||
+      any(!nzchar(labels)) ||
+      anyDuplicated(labels)
+  ) {
+    stop(context, " must use unique non-empty names.", call. = FALSE)
+  }
+  labels
+}
+
+#' Normalize createShinyApp external spatial-image declarations
+#'
+#' @keywords internal
+#' @noRd
+.normalizeAppSpatialImages <- function(images, catalogs) {
+  if (is.null(images)) {
+    return(NULL)
+  }
+  if (!is.list(images) && !is.atomic(images)) {
+    stop("`spatial_images` must be a named list or vector.", call. = FALSE)
+  }
+  if (!is.null(names(images)) && anyDuplicated(names(images))) {
+    stop("spatial_images names must be unique.", call. = FALSE)
+  }
+  datasets <- .spatialManifestNames(images, "`spatial_images`")
+  unknown_datasets <- setdiff(datasets, names(catalogs))
+  if (length(unknown_datasets) > 0L) {
+    stop(
+      "`spatial_images` dataset `",
+      unknown_datasets[[1L]],
+      "` is not present in `cerebro_data`.",
+      call. = FALSE
+    )
+  }
+
+  normalized <- lapply(seq_along(images), function(i) {
+    dataset <- datasets[[i]]
+    declaration <- images[[i]]
+    catalog <- catalogs[[dataset]]
+    spatial_names <- names(catalog)
+    legacy <- is.character(declaration) && length(declaration) == 1L
+    if (legacy) {
+      if (length(spatial_names) != 1L) {
+        choices <- if (length(spatial_names) == 0L) {
+          "no available spatial entries"
+        } else {
+          paste0(
+            "available spatial entries: ",
+            paste(spatial_names, collapse = ", ")
+          )
+        }
+        stop(
+          "legacy spatial_images for dataset `",
+          dataset,
+          "` requires exactly one spatial entry; ",
+          choices,
+          ".",
+          call. = FALSE
+        )
+      }
+      declaration <- stats::setNames(
+        list(stats::setNames(declaration, "Tissue background")),
+        spatial_names
+      )
+    } else if (!is.list(declaration)) {
+      stop(
+        "`spatial_images` dataset `",
+        dataset,
+        "` must contain spatial-entry declarations.",
+        call. = FALSE
+      )
+    }
+
+    declared_spatials <- .spatialManifestNames(
+      declaration,
+      paste0("`spatial_images` dataset `", dataset, "`")
+    )
+    unknown_spatials <- setdiff(declared_spatials, spatial_names)
+    if (length(unknown_spatials) > 0L) {
+      choices <- if (length(spatial_names) == 0L) {
+        "no available spatial entries"
+      } else {
+        paste0(
+          "available spatial entries: ",
+          paste(spatial_names, collapse = ", ")
+        )
+      }
+      stop(
+        "`spatial_images` dataset `",
+        dataset,
+        "` spatial `",
+        unknown_spatials[[1L]],
+        "` is not available; ",
+        choices,
+        ".",
+        call. = FALSE
+      )
+    }
+
+    dataset_images <- .normalizeSpatialImagePaths(
+      declaration,
+      spatial_names,
+      paste0("`spatial_images` dataset `", dataset, "`")
+    )
+    for (spatial_name in names(dataset_images)) {
+      conflicts <- intersect(
+        names(dataset_images[[spatial_name]]),
+        catalog[[spatial_name]]
+      )
+      if (length(conflicts) > 0L) {
+        stop(
+          "`spatial_images` dataset `",
+          dataset,
+          "` spatial `",
+          spatial_name,
+          "` image `",
+          conflicts[[1L]],
+          "` conflicts with an embedded image label.",
+          call. = FALSE
+        )
+      }
+    }
+    dataset_images
+  })
+  names(normalized) <- datasets
+  normalized
+}
+
+#' Normalize per-image createShinyApp settings
+#'
+#' @keywords internal
+#' @noRd
+.normalizeAppSpatialImageSettings <- function(settings, catalogs, images) {
+  if (is.null(settings)) {
+    return(NULL)
+  }
+  if (!is.list(settings)) {
+    stop("`spatial_image_settings` must be a named list.", call. = FALSE)
+  }
+  datasets <- .spatialManifestNames(settings, "`spatial_image_settings`")
+  unknown_datasets <- setdiff(datasets, names(catalogs))
+  if (length(unknown_datasets) > 0L) {
+    stop(
+      "`spatial_image_settings` dataset `",
+      unknown_datasets[[1L]],
+      "` is not present in `cerebro_data`.",
+      call. = FALSE
+    )
+  }
+  allowed <- c(
+    "flip_x",
+    "flip_y",
+    "scale_x",
+    "scale_y",
+    "offset_x",
+    "offset_y",
+    "rotation"
+  )
+  logical_fields <- c("flip_x", "flip_y")
+
+  normalized <- lapply(seq_along(settings), function(i) {
+    dataset <- datasets[[i]]
+    spatial_settings <- settings[[i]]
+    if (!is.list(spatial_settings)) {
+      stop(
+        "`spatial_image_settings` dataset `",
+        dataset,
+        "` must contain spatial-entry settings.",
+        call. = FALSE
+      )
+    }
+    spatial_names <- .spatialManifestNames(
+      spatial_settings,
+      paste0("`spatial_image_settings` dataset `", dataset, "`")
+    )
+    unknown_spatials <- setdiff(spatial_names, names(catalogs[[dataset]]))
+    if (length(unknown_spatials) > 0L) {
+      stop(
+        "`spatial_image_settings` dataset `",
+        dataset,
+        "` spatial `",
+        unknown_spatials[[1L]],
+        "` is not available.",
+        call. = FALSE
+      )
+    }
+
+    result <- lapply(spatial_names, function(spatial_name) {
+      image_settings <- spatial_settings[[spatial_name]]
+      if (!is.list(image_settings)) {
+        stop(
+          "`spatial_image_settings` dataset `",
+          dataset,
+          "` spatial `",
+          spatial_name,
+          "` must contain per-image settings.",
+          call. = FALSE
+        )
+      }
+      image_names <- .spatialManifestNames(
+        image_settings,
+        paste0(
+          "`spatial_image_settings` dataset `",
+          dataset,
+          "` spatial `",
+          spatial_name,
+          "`"
+        )
+      )
+      available_images <- union(
+        catalogs[[dataset]][[spatial_name]],
+        names(images[[dataset]][[spatial_name]])
+      )
+      unknown_images <- setdiff(image_names, available_images)
+      if (length(unknown_images) > 0L) {
+        stop(
+          "`spatial_image_settings` image `",
+          unknown_images[[1L]],
+          "` does not exist for dataset `",
+          dataset,
+          "` spatial `",
+          spatial_name,
+          "`.",
+          call. = FALSE
+        )
+      }
+      leaves <- lapply(image_names, function(image_name) {
+        leaf <- image_settings[[image_name]]
+        context <- paste0(
+          "`spatial_image_settings` dataset `",
+          dataset,
+          "` spatial `",
+          spatial_name,
+          "` image `",
+          image_name,
+          "`"
+        )
+        if (
+          !is.list(leaf) || is.null(names(leaf)) || anyDuplicated(names(leaf))
+        ) {
+          stop(
+            context,
+            " must be a uniquely named settings list.",
+            call. = FALSE
+          )
+        }
+        unknown_fields <- setdiff(names(leaf), allowed)
+        if (length(unknown_fields) > 0L) {
+          stop(
+            context,
+            " has unknown setting `",
+            unknown_fields[[1L]],
+            "`.",
+            call. = FALSE
+          )
+        }
+        if (length(leaf) == 0L) {
+          return(list())
+        }
+        for (field in names(leaf)) {
+          value <- leaf[[field]]
+          valid <- if (field %in% logical_fields) {
+            is.logical(value) && length(value) == 1L && !is.na(value)
+          } else {
+            is.numeric(value) && length(value) == 1L && is.finite(value)
+          }
+          if (!valid) {
+            type <- if (field %in% logical_fields) {
+              "logical"
+            } else {
+              "finite numeric"
+            }
+            stop(
+              context,
+              " setting `",
+              field,
+              "` must be one ",
+              type,
+              " scalar.",
+              call. = FALSE
+            )
+          }
+        }
+        leaf
+      })
+      names(leaves) <- image_names
+      leaves
+    })
+    names(result) <- spatial_names
+    result
+  })
+  names(normalized) <- datasets
+  normalized
+}
+
+#' Normalize one legacy per-dataset image setting
+#'
+#' @keywords internal
+#' @noRd
+.normalizeLegacyAppSpatialSetting <- function(
+  values,
+  argument,
+  field,
+  catalogs,
+  images
+) {
+  if (is.null(values)) {
+    return(NULL)
+  }
+  datasets <- .spatialManifestNames(values, paste0("`", argument, "`"))
+  unknown <- setdiff(datasets, names(catalogs))
+  if (length(unknown) > 0L) {
+    stop(
+      "`",
+      argument,
+      "` dataset `",
+      unknown[[1L]],
+      "` is not present in `cerebro_data`.",
+      call. = FALSE
+    )
+  }
+  logical_field <- field %in% c("flip_x", "flip_y")
+  result <- list()
+  for (i in seq_along(values)) {
+    dataset <- datasets[[i]]
+    value <- values[[i]]
+    valid <- if (logical_field) {
+      is.logical(value) && length(value) == 1L && !is.na(value)
+    } else {
+      is.numeric(value) && length(value) == 1L && is.finite(value)
+    }
+    if (!valid) {
+      type <- if (logical_field) "logical" else "finite numeric"
+      stop("`", argument, "` must contain ", type, " scalars.", call. = FALSE)
+    }
+    targets <- list()
+    for (spatial_name in names(catalogs[[dataset]])) {
+      image_names <- union(
+        catalogs[[dataset]][[spatial_name]],
+        names(images[[dataset]][[spatial_name]])
+      )
+      for (image_name in image_names) {
+        targets[[length(targets) + 1L]] <- c(spatial_name, image_name)
+      }
+    }
+    if (length(targets) != 1L) {
+      available <- vapply(
+        targets,
+        function(target) paste(target, collapse = "/"),
+        character(1)
+      )
+      detail <- if (length(available) == 0L) {
+        "no image targets are available"
+      } else {
+        paste0("available image targets: ", paste(available, collapse = ", "))
+      }
+      stop(
+        "Legacy `",
+        argument,
+        "` for dataset `",
+        dataset,
+        "` requires exactly one image target; ",
+        detail,
+        ".",
+        call. = FALSE
+      )
+    }
+    spatial_name <- targets[[1L]][[1L]]
+    image_name <- targets[[1L]][[2L]]
+    result[[dataset]][[spatial_name]][[image_name]][[field]] <- value
+  }
+  result
+}
+
+#' Merge normalized per-image setting manifests
+#'
+#' @keywords internal
+#' @noRd
+.mergeAppSpatialImageSettings <- function(current, addition) {
+  if (is.null(addition)) {
+    return(current)
+  }
+  if (is.null(current)) {
+    current <- list()
+  }
+  for (dataset in names(addition)) {
+    for (spatial_name in names(addition[[dataset]])) {
+      for (image_name in names(addition[[dataset]][[spatial_name]])) {
+        leaf <- addition[[dataset]][[spatial_name]][[image_name]]
+        existing <- current[[dataset]][[spatial_name]][[image_name]]
+        conflicts <- intersect(names(existing), names(leaf))
+        if (length(conflicts) > 0L) {
+          stop(
+            "Spatial image setting `",
+            conflicts[[1L]],
+            "` is declared more than once for dataset `",
+            dataset,
+            "` spatial `",
+            spatial_name,
+            "` image `",
+            image_name,
+            "`.",
+            call. = FALSE
+          )
+        }
+        current[[dataset]][[spatial_name]][[image_name]] <- c(existing, leaf)
+      }
+    }
+  }
+  current
+}
