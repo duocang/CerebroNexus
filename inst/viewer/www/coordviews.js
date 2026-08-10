@@ -3381,9 +3381,16 @@ var focusPanel = null;
       var badge = $('cv-moran-' + p.key.toLowerCase());
       if (!badge) return;
       var sp = spaceById[p.spaceId];
-      if (!continuous || !isSpatialSpace(sp)) {
+      if (!isSpatialSpace(sp)) {
         badge.style.display = 'none'; badge.textContent = '';
         delete badge.dataset.value; delete badge.dataset.field;
+        return;
+      }
+      if (!continuous) {
+        delete badge.dataset.value; delete badge.dataset.field;
+        badge.textContent = "Moran's I";
+        badge.title = "Choose a continuous value or gene to calculate Moran's I";
+        badge.style.display = '';
         return;
       }
       var score = spatialMoran(sp, continuous.values);
