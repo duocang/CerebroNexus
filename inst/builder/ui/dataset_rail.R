@@ -1,10 +1,10 @@
-##----------------------------------------------------------------------------##
+## ----------------------------------------------------------------------------##
 ## Persistent dataset rail UI and controller boundaries.
 ##
 ## Ordering and selection semantics live in state.R. This file renders the rail,
 ## validates Shiny events and next-plan removal, reserves input sources, and
 ## coordinates snapshot alias/release transitions through injected callbacks.
-##----------------------------------------------------------------------------##
+## ----------------------------------------------------------------------------##
 
 .builder_rail_or <- function(value, fallback) {
   if (is.null(value)) fallback else value
@@ -150,111 +150,7 @@ builder_snapshot_release_transition <- function(
   )
   .builder_rail_or(
     records[[dataset_state$readiness]],
-    list(label = "Checking", icon = "\u2026")
-  )
-}
-
-builder_dataset_is_reviewed <- function(entry) {
-  revision <- as.integer(.builder_rail_or(entry$revision, 0L))
-  reviewed <- entry$reviewed_revision
-  is.numeric(reviewed) &&
-    length(reviewed) == 1L &&
-    !is.na(reviewed) &&
-    identical(as.integer(reviewed), revision)
-}
-
-builder_dataset_review_status <- function(entry, active = FALSE) {
-  dataset_state <- builder_dataset_state(entry)
-  if (!identical(dataset_state$readiness, "ready")) {
-    return(list(id = "needs-attention", label = "Needs attention"))
-  }
-  if (builder_dataset_is_reviewed(entry)) {
-    return(list(id = "reviewed", label = "Reviewed"))
-  }
-  if (isTRUE(active)) {
-    return(list(id = "reviewing", label = "Reviewing"))
-  }
-  list(id = "not-reviewed", label = "Not reviewed")
-}
-
-builder_review_progress <- function(entries) {
-  reviewed <- vapply(entries, builder_dataset_is_reviewed, logical(1))
-  list(
-    reviewed = sum(reviewed),
-    total = length(entries),
-    complete = all(reviewed)
-  )
-}
-
-builder_next_unreviewed <- function(entries, current_id = NULL) {
-  ids <- vapply(entries, `[[`, character(1), "id")
-  pending <- ids[!vapply(entries, builder_dataset_is_reviewed, logical(1))]
-  pending <- setdiff(pending, .builder_rail_or(current_id, character()))
-  if (length(pending)) pending[[1L]] else NULL
-}
-
-builder_compact_dataset_review_ui <- function(entries, index, progress) {
-  ids <- vapply(entries, `[[`, character(1), "id")
-  shiny::tags$nav(
-    class = "dataset-compact-review",
-    `aria-label` = "Compact dataset review navigation",
-    `aria-hidden` = "true",
-    shiny::tags$button(
-      id = "review_compact_previous_dataset",
-      type = "button",
-      class = "dataset-compact-step dataset-compact-previous action-button",
-      disabled = if (index == 1L) "disabled" else NULL,
-      `aria-label` = "Previous dataset",
-      "Previous"
-    ),
-    shiny::div(
-      class = "dataset-compact-track",
-      lapply(seq_along(entries), function(i) {
-        entry <- entries[[i]]
-        shiny::tags$button(
-          type = "button",
-          class = paste(
-            c(
-              "dataset-compact-segment",
-              if (i == index) "is-current",
-              if (builder_dataset_is_reviewed(entry)) {
-                "is-reviewed"
-              } else {
-                "is-pending"
-              }
-            ),
-            collapse = " "
-          ),
-          `data-dataset-id` = entry$id,
-          `aria-current` = if (i == index) "step" else NULL,
-          `aria-label` = paste0(
-            "Dataset ",
-            i,
-            " of ",
-            length(ids),
-            ", ",
-            .builder_rail_or(entry$settings$name, entry$id)
-          ),
-          shiny::span(class = "dataset-compact-index", i),
-          shiny::span(
-            class = "dataset-compact-name",
-            .builder_rail_or(entry$settings$name, entry$id)
-          )
-        )
-      })
-    ),
-    shiny::tags$button(
-      id = "review_compact_next_dataset",
-      type = "button",
-      class = "dataset-compact-step dataset-compact-next action-button",
-      disabled = if (index == length(ids)) "disabled" else NULL,
-      `aria-label` = "Next dataset",
-      "Next"
-    ),
-    shiny::span(
-      class = "dataset-compact-summary",
-      paste(progress$reviewed, "of", progress$total, "reviewed")
-    )
+    records$blocked
   )
 }
 
@@ -265,7 +161,6 @@ builder_dataset_context_ui <- function(state, current = state$current_dataset) {
     return(NULL)
   }
   entry <- state$datasets[[index]]
-  progress <- builder_review_progress(state$datasets)
   multiple <- length(ids) > 1L
   cells <- .builder_rail_or(entry$profile$n_cells, 0L)
   genes <- .builder_rail_or(
@@ -293,61 +188,9 @@ builder_dataset_context_ui <- function(state, current = state$current_dataset) {
           " genes"
         )
       )
-    ),
-    if (multiple) {
-      shiny::div(
-        class = "dataset-review-progress",
-        shiny::span(
-          paste(progress$reviewed, "of", progress$total, "datasets reviewed")
-        ),
-        shiny::div(
-          class = "dataset-review-progress-track",
-          role = "progressbar",
-          `aria-label` = "Datasets reviewed",
-          `aria-valuemin` = "0",
-          `aria-valuemax` = progress$total,
-          `aria-valuenow` = progress$reviewed,
-          shiny::span(
-            style = paste0(
-              "width:",
-              if (progress$total) {
-                100 * progress$reviewed / progress$total
-              } else {
-                0
-              },
-              "%"
-            )
-          )
-        )
-      )
-    },
-    if (multiple) {
-      shiny::div(
-        class = "dataset-context-navigation",
-        shiny::tags$button(
-          id = "review_previous_dataset",
-          type = "button",
-          class = "btn btn-default action-button",
-          disabled = if (index == 1L) "disabled" else NULL,
-          "Previous"
-        ),
-        shiny::tags$button(
-          id = "review_next_dataset",
-          type = "button",
-          class = "btn btn-default action-button",
-          disabled = if (index == length(ids)) "disabled" else NULL,
-          "Next"
-        )
-      )
-    }
+    )
   )
-  if (!multiple) {
-    return(context)
-  }
-  shiny::tagList(
-    context,
-    builder_compact_dataset_review_ui(state$datasets, index, progress)
-  )
+  context
 }
 
 builder_dataset_remove_requires_confirmation <- function(entry) {
@@ -831,7 +674,7 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
       cells <- .builder_rail_or(entry$profile$n_cells, 0L)
       confirm <- builder_dataset_remove_requires_confirmation(entry)
       active <- identical(entry$id, current)
-      review_status <- builder_dataset_review_status(entry, active)
+      readiness <- .builder_rail_readiness(builder_dataset_state(entry))
 
       shiny::div(
         class = paste(c("ds", if (active) "is-active"), collapse = " "),
@@ -847,7 +690,7 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
             class = "ds-body",
             shiny::span(class = "nm", label),
             shiny::span(
-              class = if (identical(review_status$id, "needs-attention")) {
+              class = if (identical(readiness$label, "Needs attention")) {
                 "meta bad"
               } else {
                 "meta"
@@ -858,9 +701,8 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
                 entry$format
               ),
               shiny::span(
-                class = paste("rail-review-status", review_status$id),
-                `data-review-status` = review_status$id,
-                review_status$label
+                class = "rail-readiness-status",
+                readiness$label
               )
             )
           )

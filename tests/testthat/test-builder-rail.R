@@ -3,6 +3,19 @@ builder_profile_source_runtime(globalenv())
 builder_rail_source <- function(file) {
   path <- builder_profile_inst_path("builder", file)
   if (nzchar(path) && file.exists(path)) {
+    had_dir <- exists("dir", envir = globalenv(), inherits = FALSE)
+    old_dir <- if (had_dir) get("dir", envir = globalenv()) else NULL
+    assign("dir", builder_profile_inst_path("builder"), envir = globalenv())
+    on.exit(
+      {
+        if (had_dir) {
+          assign("dir", old_dir, envir = globalenv())
+        } else {
+          rm("dir", envir = globalenv())
+        }
+      },
+      add = TRUE
+    )
     sys.source(path, envir = globalenv())
   }
 }
@@ -17,7 +30,7 @@ test_that("the dataset rail presents a themed trigger for the native picker", {
     collapse = "\n"
   )
 
-  expect_match(rail, 'tags$input(', fixed = TRUE)
+  expect_match(rail, "tags$input(", fixed = TRUE)
   expect_match(rail, 'id = "dataset_files"', fixed = TRUE)
   expect_match(rail, 'type = "file"', fixed = TRUE)
   expect_match(rail, 'multiple = "multiple"', fixed = TRUE)
@@ -29,8 +42,8 @@ test_that("the dataset rail presents a themed trigger for the native picker", {
   expect_match(rail, "builder-file-input", fixed = TRUE)
   expect_match(rail, "builder-file-trigger", fixed = TRUE)
   expect_match(rail, '"Add datasets…"', fixed = TRUE)
-  expect_false(grepl('fileInput(', rail, fixed = TRUE))
-  expect_match(rail, 'builder_example_buttons_ui(', fixed = TRUE)
+  expect_false(grepl("fileInput(", rail, fixed = TRUE))
+  expect_match(rail, "builder_example_buttons_ui(", fixed = TRUE)
   expect_false(grepl('uiOutput("example_buttons")', rail, fixed = TRUE))
   expect_false(grepl('uiOutput("browser_panel")', rail, fixed = TRUE))
 })
@@ -528,7 +541,7 @@ if (builder_rail_api_available) {
     state <- builder_state(list(entry))
     html <- as.character(builder_dataset_rail_ui(state))
 
-    expect_match(html, "Needs attention", fixed = TRUE)
+    expect_match(html, "Blocked", fixed = TRUE)
   })
 
   test_that("typed store rejects unrecognized dataset profiles", {
@@ -549,7 +562,7 @@ if (builder_rail_api_available) {
     expect_match(html, "ds is-active", fixed = TRUE)
     expect_match(html, 'aria-current="true"', fixed = TRUE)
     expect_match(html, "12 cells", fixed = TRUE)
-    expect_match(html, "Reviewing", fixed = TRUE)
+    expect_match(html, "Ready", fixed = TRUE)
     expect_match(html, "data-direction=\"up\"", fixed = TRUE)
     expect_match(html, "data-direction=\"down\"", fixed = TRUE)
     expect_match(html, ">Remove<", fixed = TRUE)
@@ -559,51 +572,37 @@ if (builder_rail_api_available) {
     expect_match(html, "data-confirm=\"true\"", fixed = TRUE)
   })
 
-  test_that("review status follows the reviewed settings revision", {
+  test_that("rail status maps only typed dataset readiness", {
     entry <- builder_rail_entry("a", "Dataset A")
-    entry$revision <- 2L
-
+    readiness <- builder_dataset_state(entry)$readiness
     expect_identical(
-      builder_dataset_review_status(entry, FALSE)$label,
-      "Not reviewed"
+      .builder_rail_readiness(list(readiness = readiness))$label,
+      "Ready"
+    )
+    labels <- vapply(
+      c("ready", "needs_attention", "loading", "blocked", "reload_required"),
+      function(value) .builder_rail_readiness(list(readiness = value))$label,
+      character(1)
     )
     expect_identical(
-      builder_dataset_review_status(entry, TRUE)$label,
-      "Reviewing"
-    )
-
-    entry$reviewed_revision <- 2L
-    expect_identical(
-      builder_dataset_review_status(entry, FALSE)$label,
-      "Reviewed"
-    )
-
-    entry$revision <- 3L
-    expect_identical(
-      builder_dataset_review_status(entry, FALSE)$label,
-      "Not reviewed"
+      unname(labels),
+      c("Ready", "Needs attention", "Loading", "Blocked", "Reload required")
     )
   })
 
-  test_that("rail and context show textual review progress", {
+  test_that("rail and context provide dataset navigation without review progress", {
     first <- builder_rail_entry("a", "Dataset A")
     second <- builder_rail_entry("b", "Dataset B")
-    first$revision <- 1L
-    first$reviewed_revision <- 1L
-    second$revision <- 1L
     state <- builder_state(list(first, second), current_dataset = "b")
 
     rail <- as.character(builder_dataset_rail_ui(state, current = "b"))
     context <- as.character(builder_dataset_context_ui(state, current = "b"))
 
-    expect_match(rail, "Reviewed", fixed = TRUE)
-    expect_match(rail, "Reviewing", fixed = TRUE)
+    expect_length(gregexpr("Ready", rail, fixed = TRUE)[[1L]], 2L)
     expect_match(context, "Dataset 2 of 2", fixed = TRUE)
     expect_match(context, "Dataset B", fixed = TRUE)
-    expect_match(context, "1 of 2 datasets reviewed", fixed = TRUE)
-    expect_match(context, "Previous", fixed = TRUE)
-    expect_match(context, "Next", fixed = TRUE)
-    expect_match(context, 'aria-valuenow="1"', fixed = TRUE)
+    expect_false(grepl("datasets reviewed", context, fixed = TRUE))
+    expect_false(grepl("progressbar", context, fixed = TRUE))
   })
 
   test_that("compact review navigation is server-authored for multiple datasets", {
@@ -613,68 +612,12 @@ if (builder_rail_api_available) {
     state <- builder_state(entries, current_dataset = "d")
     html <- as.character(builder_dataset_context_ui(state, "d"))
 
-    expect_match(html, "dataset-compact-review", fixed = TRUE)
     expect_match(html, "Dataset 4 of 6", fixed = TRUE)
-    expect_length(
-      regmatches(
-        html,
-        gregexpr("dataset-compact-segment", html, fixed = TRUE)
-      )[[1L]],
-      6L
-    )
-    expect_match(html, 'aria-current="step"', fixed = TRUE)
-    expect_match(html, 'data-dataset-id="d"', fixed = TRUE)
-    expect_match(html, 'aria-label="Dataset 4 of 6, Dataset D"', fixed = TRUE)
-    expect_match(html, 'id="review_compact_previous_dataset"', fixed = TRUE)
-    expect_match(html, 'id="review_compact_next_dataset"', fixed = TRUE)
+    expect_false(grepl("dataset-compact-review", html, fixed = TRUE))
 
     single <- builder_state(list(entries[[1L]]), current_dataset = "a")
     single_html <- as.character(builder_dataset_context_ui(single, "a"))
     expect_false(grepl("dataset-compact-review", single_html, fixed = TRUE))
-  })
-
-  test_that("full and compact review controls preserve server boundaries", {
-    entries <- lapply(letters[1:2], builder_rail_entry)
-    first <- as.character(builder_dataset_context_ui(
-      builder_state(entries, current_dataset = "a"),
-      "a"
-    ))
-    last <- as.character(builder_dataset_context_ui(
-      builder_state(entries, current_dataset = "b"),
-      "b"
-    ))
-
-    expect_match(
-      first,
-      'id="review_previous_dataset"[^>]*disabled',
-      perl = TRUE
-    )
-    expect_match(
-      first,
-      'id="review_compact_previous_dataset"[^>]*disabled',
-      perl = TRUE
-    )
-    expect_match(last, 'id="review_next_dataset"[^>]*disabled', perl = TRUE)
-    expect_match(
-      last,
-      'id="review_compact_next_dataset"[^>]*disabled',
-      perl = TRUE
-    )
-  })
-
-  test_that("review navigation starts with the first pending dataset", {
-    entries <- lapply(c("a", "b", "c"), builder_rail_entry)
-    entries[[1L]]$revision <- 1L
-    entries[[1L]]$reviewed_revision <- 1L
-    entries[[2L]]$revision <- 1L
-    entries[[3L]]$revision <- 1L
-
-    expect_identical(builder_next_unreviewed(entries), "b")
-
-    single <- builder_state(list(entries[[2L]]), current_dataset = "b")
-    context <- as.character(builder_dataset_context_ui(single, "b"))
-    expect_false(grepl("Dataset 1 of 1", context, fixed = TRUE))
-    expect_false(grepl("datasets reviewed", context, fixed = TRUE))
   })
 
   test_that("client events preserve confirmed removal and native-picker semantics", {
@@ -717,7 +660,7 @@ if (builder_rail_api_available) {
       text
     )
 
-    expect_match(rail, 'tags$input(', fixed = TRUE)
+    expect_match(rail, "tags$input(", fixed = TRUE)
     expect_match(rail, 'type = "file"', fixed = TRUE)
     expect_match(rail, 'multiple = "multiple"', fixed = TRUE)
     expect_match(rail, "builder_example_buttons_ui()", fixed = TRUE)
@@ -749,13 +692,7 @@ if (builder_rail_api_available) {
     state <- builder_state(lapply(c("a", "b", "c"), builder_rail_entry))
     next_state <- builder_reduce_state(state, list(type = "remove", id = "b"))
     calls <- list()
-    freeze <- function(
-      entries,
-      out_dir,
-      make_app,
-      overwrite,
-      app_options
-    ) {
+    freeze <- function(entries, out_dir, make_app, overwrite, app_options) {
       calls <<- list(
         ids = vapply(entries, `[[`, character(1), "id"),
         out_dir = out_dir,

@@ -144,6 +144,15 @@ test_that("workflow advances through review and confirmation", {
   expect_identical(state$stage, "review")
   expect_true(builder_workflow_confirmation_matches(state, plan))
 
+  state <- builder_reduce_workflow(state, list(type = "back_to_settings"))
+  expect_identical(state$stage, "configure")
+  expect_identical(state$review_plan, plan)
+  expect_true(builder_workflow_confirmation_matches(state, plan))
+
+  state <- builder_reduce_workflow(state, list(type = "back_to_review"))
+  expect_identical(state$stage, "review")
+  expect_true(builder_workflow_confirmation_matches(state, plan))
+
   state <- builder_reduce_workflow(state, list(type = "invalidate"))
   expect_identical(state$stage, "configure")
   expect_null(state$review_plan)
@@ -186,6 +195,7 @@ test_that("datasets becoming ready invalidates an old confirmation", {
   )
 
   expect_identical(state$stage, "configure")
+  expect_null(state$review_plan)
   expect_null(state$confirmation)
   expect_false(builder_workflow_confirmation_matches(state, plan))
 })
@@ -368,6 +378,12 @@ test_that("every reducer branch returns a valid workflow state", {
     state,
     list(type = "confirm_review", plan = plan)
   )
+  expect_true(.builder_workflow_state_valid(state))
+
+  state <- builder_reduce_workflow(state, list(type = "back_to_review"))
+  expect_true(.builder_workflow_state_valid(state))
+
+  state <- builder_reduce_workflow(state, list(type = "back_to_settings"))
   expect_true(.builder_workflow_state_valid(state))
 
   state <- builder_reduce_workflow(state, list(type = "back_to_review"))

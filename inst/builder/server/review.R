@@ -421,24 +421,6 @@ output[["review_app_options"]] <- renderUI({
   )
 })
 
-output[["dataset_review_footer"]] <- renderUI({
-  entries <- sets()
-  id <- current()
-  req(id, length(entries))
-  div(
-    class = "dataset-review-footer",
-    actionButton(
-      "review_current_dataset",
-      if (is.null(builder_next_unreviewed(entries, id))) {
-        "Looks good — finish review"
-      } else {
-        "Looks good — review next dataset"
-      },
-      class = "btn btn-action dataset-review-confirm"
-    )
-  )
-})
-
 output$configure_actions <- renderUI({
   readiness <- configure_readiness()
   builder_configure_actions_ui(
@@ -580,7 +562,12 @@ render_configure_workbench <- function() {
 }
 
 render_review_workbench <- function() {
-  tagList(uiOutput("review_stage"))
+  plan <- workflow()$review_plan
+  req(builder_review_can_build(plan))
+  tagList(
+    builder_review_stage_ui("review", builder_review_model(plan)),
+    builder_review_confirmation_ui()
+  )
 }
 
 render_build_workbench <- function() {
@@ -591,132 +578,68 @@ render_build_workbench <- function() {
   builder_build_status_ui(builder_build_status_model(r))
 }
 
-focus_dataset_settings <- function(message = NULL) {
-  session$sendCustomMessage("builder_focus_dataset", list(message = message))
-}
+observeEvent(input$back_to_settings, {
+  workflow(builder_reduce_workflow(
+    isolate(workflow()),
+    list(type = "back_to_settings")
+  ))
+  session$onFlushed(
+    function() {
+      session$sendCustomMessage("builder_focus_dataset", list())
+    },
+    once = TRUE
+  )
+})
 
-select_dataset <- function(target_id) {
-  entries <- isolate(sets())
-  ids <- vapply(entries, `[[`, character(1), "id")
-  if (
-    length(target_id) != 1L ||
-      is.na(target_id) ||
-      !target_id %in% ids ||
-      identical(target_id, isolate(current()))
-  ) {
-    return(invisible(FALSE))
+observeEvent(input$confirm_review, {
+  state <- isolate(workflow())
+  if (!identical(state$stage, "review")) {
+    return()
   }
-  current(target_id)
-  session$onFlushed(function() focus_dataset_settings(), once = TRUE)
-  invisible(TRUE)
-}
-
-select_dataset_index <- function(offset) {
-  entries <- isolate(sets())
-  ids <- vapply(entries, `[[`, character(1), "id")
-  index <- match(isolate(current()), ids)
-  target <- index + offset
-  if (!is.na(index) && target >= 1L && target <= length(ids)) {
-    select_dataset(ids[[target]])
-  }
-}
-
-observeEvent(input$review_previous_dataset, select_dataset_index(-1L))
-observeEvent(input$review_next_dataset, select_dataset_index(1L))
-observeEvent(
-  input$review_compact_previous_dataset,
-  select_dataset_index(-1L)
-)
-observeEvent(input$review_compact_next_dataset, select_dataset_index(1L))
-observeEvent(
-  input$review_compact_dataset,
-  {
-    event <- input$review_compact_dataset
-    if (
-      !is.list(event) ||
-        is.object(event) ||
-        !is.character(event$id) ||
-        length(event$id) != 1L ||
-        is.na(event$id) ||
-        !is.null(attributes(event$id))
-    ) {
-      return()
-    }
-    select_dataset(event$id)
-  },
-  ignoreInit = TRUE
-)
-
-observeEvent(input$review_current_dataset, {
-  id <- isolate(current())
-  entries <- isolate(sets())
-  index <- match(id, vapply(entries, `[[`, character(1), "id"))
-  req(!is.na(index))
-  entry <- entries[[index]]
-  status <- builder_dataset_review_status(entry, TRUE)
-  if (identical(status$id, "needs-attention")) {
-    showNotification(
-      "Resolve this dataset’s highlighted issues before marking it reviewed.",
-      type = "warning",
-      duration = 5
+  reviewed <- state$review_plan
+  live <- isolate(frozen_review_plan())
+  matches <- builder_review_can_build(live) &&
+    identical(
+      builder_review_plan_identity(reviewed),
+      builder_review_plan_identity(live)
+    )
+  if (!isTRUE(matches)) {
+    workflow(builder_reduce_workflow(state, list(type = "invalidate")))
+    session$onFlushed(
+      function() {
+        session$sendCustomMessage("builder_focus_dataset", list())
+      },
+      once = TRUE
     )
     return()
   }
-  entry$reviewed_revision <- as.integer(entry$revision %||% 0L)
-  next_state <- builder_reduce_state(
-    isolate(store()),
-    list(type = "replace", id = id, entry = entry)
+  workflow(builder_reduce_workflow(
+    state,
+    list(type = "confirm_review", plan = live)
+  ))
+  session$onFlushed(
+    function() {
+      session$sendCustomMessage("builder_focus_build", list())
+    },
+    once = TRUE
   )
-  store(next_state)
-  next_unreviewed <- builder_next_unreviewed(next_state$datasets, id)
-  if (!is.null(next_unreviewed)) {
-    next_entry <- next_state$datasets[[match(
-      next_unreviewed,
-      vapply(next_state$datasets, `[[`, character(1), "id")
-    )]]
-    current(next_unreviewed)
-    focus_dataset_settings(paste0(
-      entry$settings$name,
-      " marked as reviewed. Opening ",
-      next_entry$settings$name,
-      "."
-    ))
-  } else {
-    session$sendCustomMessage(
-      "builder_focus_build",
-      list(
-        message = paste0(entry$settings$name, " marked as reviewed.")
-      )
-    )
-  }
 })
 
-output$review_stage <- renderUI({
-  plan <- frozen_review_plan()
-  if (
-    inherits(plan, "builder_build_plan") &&
-      is.list(plan) &&
-      identical(plan$readiness, "ready")
-  ) {
-    builder_review_stage_ui("review", builder_review_model(plan, result()))
-  } else {
-    builder_review_blocked_ui(
-      "review",
-      if (is.list(plan)) plan$error %||% NULL else NULL
+observe({
+  live <- frozen_review_plan()
+  state <- isolate(workflow())
+  if (is.null(state$review_plan) && is.null(state$confirmation)) {
+    return()
+  }
+  matches <- builder_review_can_build(live) &&
+    identical(
+      builder_review_plan_identity(state$review_plan),
+      builder_review_plan_identity(live)
     )
+  if (!isTRUE(matches)) {
+    workflow(builder_reduce_workflow(state, list(type = "invalidate")))
   }
 })
-
-observeEvent(
-  input$review_all_action,
-  {
-    session$sendCustomMessage(
-      "builder_focus_review",
-      list(message = "Review every dataset before building.")
-    )
-  },
-  ignoreInit = TRUE
-)
 
 observe({
   current_flow <- build_flow()

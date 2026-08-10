@@ -889,7 +889,6 @@ observe({
       dataset_profile = value$dataset_profile,
       snapshot = value$snapshot,
       revision = 1L,
-      reviewed_revision = NULL,
       ## Level names per grouping variable, in the order the exporter will
       ## produce them -- the keys a configured palette has to match.
       levels = value$levels %||% list(),
@@ -927,13 +926,12 @@ observe({
       entry$revision,
       .builder_worker_identity(entry$snapshot)
     ))
-    first_unreviewed <- builder_next_unreviewed(next_state$datasets)
     watched <- identical(isolate(active_import_id()), p$id)
     next_current <- builder_import_ready_target(
       watched = watched,
       current_id = isolate(current()),
       loaded_id = p$id,
-      first_unreviewed = first_unreviewed
+      first_unreviewed = NULL
     )
     if (!identical(next_current, isolate(current()))) {
       current(next_current)
@@ -1040,8 +1038,7 @@ observe({
     all <- Filter(function(e) !identical(e$id, p$id), sets())
     sets(all)
     if (identical(current(), p$id)) {
-      next_id <- builder_next_unreviewed(all)
-      current(if (length(all)) next_id %||% all[[1]]$id else NULL)
+      current(if (length(all)) all[[1]]$id else NULL)
       result(NULL)
     }
     acknowledged <- try(

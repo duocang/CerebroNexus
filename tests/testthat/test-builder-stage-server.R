@@ -49,6 +49,31 @@ test_that("Builder shell and workflow UI separate all four stages", {
   )
   expect_match(actions_html, ">Continue<", fixed = TRUE)
   expect_match(actions_html, " disabled", fixed = TRUE)
+
+  confirmation_html <- htmltools::renderTags(
+    app_env$builder_review_confirmation_ui()
+  )$html
+  expect_identical(
+    lengths(regmatches(
+      confirmation_html,
+      gregexpr('id="confirm_review"', confirmation_html, fixed = TRUE)
+    )),
+    1L
+  )
+  expect_identical(
+    lengths(regmatches(
+      confirmation_html,
+      gregexpr('id="back_to_settings"', confirmation_html, fixed = TRUE)
+    )),
+    1L
+  )
+  expect_match(confirmation_html, "Ready to continue?", fixed = TRUE)
+  expect_match(
+    confirmation_html,
+    "Looks good — continue to build",
+    fixed = TRUE
+  )
+  expect_false(grepl("<input|<select|<textarea", confirmation_html))
 })
 
 test_that("workflow server owns loading and Configure rendering", {
@@ -99,6 +124,24 @@ test_that("workflow server owns loading and Configure rendering", {
     "Unsupported Builder workflow stage",
     fixed = TRUE
   )
+
+  review_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    workflow_server,
+    "plan <- isolate(frozen_review_plan())",
+    fixed = TRUE
+  )
+  expect_match(review_server, "plan <- workflow()$review_plan", fixed = TRUE)
+  expect_match(review_server, "input$back_to_settings", fixed = TRUE)
+  expect_match(review_server, "input$confirm_review", fixed = TRUE)
+  expect_false(grepl("review_current_dataset", review_server, fixed = TRUE))
+  expect_false(grepl("dataset_review_footer", review_server, fixed = TRUE))
 })
 
 test_that("build completion preserves decisions and always has an idle ack path", {
@@ -869,9 +912,6 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(sets()[[1L]]$settings$nGene, "nFeature_SCT")
 
     before_groups <- sets()[[1L]]$revision
-    reviewed <- isolate(store())
-    reviewed$datasets[[1L]]$reviewed_revision <- before_groups
-    store(reviewed)
     session$setInputs(
       `core-group_action` = list(
         action = "set",
@@ -885,7 +925,6 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(grouped$settings$included_groups, c("cluster", "sample"))
     expect_identical(grouped$settings$default_group, "sample")
     expect_gt(grouped$revision, before_groups)
-    expect_false(identical(grouped$reviewed_revision, grouped$revision))
 
     session$setInputs(
       `core-group_action` = list(
@@ -911,9 +950,6 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(sets()[[1L]]$revision, before_focus)
 
     before_projection <- sets()[[1L]]$revision
-    reviewed <- isolate(store())
-    reviewed$datasets[[1L]]$reviewed_revision <- before_projection
-    store(reviewed)
     session$setInputs(
       `core-projection_action` = list(
         action = "set",
@@ -927,23 +963,15 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(projected$settings$included_projections, c("umap", "pca"))
     expect_identical(projected$settings$default_projection, "pca")
     expect_gt(projected$revision, before_projection)
-    expect_false(identical(projected$reviewed_revision, projected$revision))
 
     before_point_size <- projected$revision
-    reviewed <- isolate(store())
-    reviewed$datasets[[1L]]$reviewed_revision <- before_point_size
-    store(reviewed)
     session$setInputs(`core-point_size` = 8)
     session$flushReact()
     resized <- sets()[[1L]]
     expect_identical(resized$settings$overview_point_size, 8)
     expect_gt(resized$revision, before_point_size)
-    expect_false(identical(resized$reviewed_revision, resized$revision))
 
     before_trajectory <- resized$revision
-    reviewed <- isolate(store())
-    reviewed$datasets[[1L]]$reviewed_revision <- before_trajectory
-    store(reviewed)
     session$setInputs(
       `core-trajectory_action` = list(
         action = "set",
@@ -966,7 +994,6 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
       list(method = "monocle2", name = "lineage_b")
     )
     expect_gt(trajectory$revision, before_trajectory)
-    expect_false(identical(trajectory$reviewed_revision, trajectory$revision))
 
     before_gallery_view <- trajectory$revision
     invisible(output[["core-projection_gallery"]])
@@ -985,9 +1012,6 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     session$flushReact()
 
     before_color <- sets()[[1L]]$revision
-    marked <- isolate(store())
-    marked$datasets[[1L]]$reviewed_revision <- before_color
-    store(marked)
     session$setInputs(
       `core-group_color` = list(
         group = "cluster",
@@ -1008,7 +1032,6 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     )
     expect_identical(colored$settings$default_projection, "umap")
     expect_gt(colored$revision, before_color)
-    expect_false(identical(colored$reviewed_revision, colored$revision))
 
     before_reset <- colored$revision
     session$setInputs(`core-reset_colors` = 1L)

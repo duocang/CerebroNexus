@@ -74,9 +74,8 @@
           state$confirmation,
           state$review_plan
         )) ||
-      (state$stage %in%
-        c("upload", "configure") &&
-        !is.null(state$confirmation)) ||
+      (identical(state$stage, "upload") &&
+        (!is.null(state$review_plan) || !is.null(state$confirmation))) ||
       (identical(state$stage, "build") &&
         is.null(state$confirmation))
   ) {
@@ -147,7 +146,7 @@ builder_reduce_workflow <- function(state, event) {
     next_state[c("review_plan", "confirmation")] <- list(NULL, NULL)
   } else if (identical(type, "datasets_ready")) {
     next_state$stage <- "configure"
-    next_state["confirmation"] <- list(NULL)
+    next_state[c("review_plan", "confirmation")] <- list(NULL, NULL)
   } else if (identical(type, "open_review")) {
     identity <- builder_review_plan_identity(event$plan)
     if (
@@ -183,6 +182,11 @@ builder_reduce_workflow <- function(state, event) {
       stop("No reviewed BuildPlan is available.", call. = FALSE)
     }
     next_state$stage <- "review"
+  } else if (identical(type, "back_to_settings")) {
+    if (is.null(next_state$review_plan)) {
+      stop("No reviewed BuildPlan is available.", call. = FALSE)
+    }
+    next_state$stage <- "configure"
   } else if (identical(type, "invalidate")) {
     stage <- event$stage
     if (is.null(stage)) {

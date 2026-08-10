@@ -1,4 +1,9 @@
-builder_stage_contract_source_runtime(environment())
+withr::local_dir(builder_profile_inst_path("builder"))
+sys.source(
+  file.path("..", "viewer", "core", "viewer_content_contract.R"),
+  envir = globalenv()
+)
+sys.source("app.R", envir = environment())
 
 test_that("Review model translates a frozen plan into user language", {
   plan <- builder_stage_frozen_plan()
@@ -172,6 +177,37 @@ test_that("Review presents datasets, App experience, pages, and output", {
     fixed = TRUE
   )))
   expect_false(grepl("Needs attention", html, fixed = TRUE))
+})
+
+test_that("Review has one global confirmation and no editable controls", {
+  model <- builder_review_model(builder_stage_frozen_plan(TRUE))
+  html <- builder_stage_html(tagList(
+    builder_review_stage_ui("review", model),
+    builder_review_confirmation_ui()
+  ))
+
+  expect_length(
+    regmatches(
+      html,
+      gregexpr("Looks good — continue to build", html, fixed = TRUE)
+    )[[1L]],
+    1L
+  )
+  expect_length(
+    regmatches(html, gregexpr("Back to settings", html, fixed = TRUE))[[1L]],
+    1L
+  )
+  expect_match(html, "Ready to continue?", fixed = TRUE)
+  expect_match(
+    html,
+    "Confirm this frozen revision to open the Build step.",
+    fixed = TRUE
+  )
+  expect_match(html, 'id="confirm_review"', fixed = TRUE)
+  expect_match(html, 'id="back_to_settings"', fixed = TRUE)
+  expect_false(grepl("review_current_dataset", html, fixed = TRUE))
+  expect_false(grepl("dataset_review_footer", html, fixed = TRUE))
+  expect_false(grepl("<input|<select|<textarea", html))
 })
 
 test_that("Review explains the three release modes without duplicating estimates", {

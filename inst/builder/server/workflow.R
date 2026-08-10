@@ -28,12 +28,16 @@ output$workbench <- renderUI({
 })
 
 observeEvent(input$continue_to_review, {
-  readiness <- isolate(configure_readiness())
-  if (!isTRUE(readiness$can_continue)) {
-    return()
-  }
+  plan <- isolate(frozen_review_plan())
+  req(builder_review_can_build(plan))
   workflow(builder_reduce_workflow(
     isolate(workflow()),
-    list(type = "open_review", plan = readiness$plan)
+    list(type = "open_review", plan = plan)
   ))
+  session$onFlushed(
+    function() {
+      session$sendCustomMessage("builder_focus_review", list())
+    },
+    once = TRUE
+  )
 })

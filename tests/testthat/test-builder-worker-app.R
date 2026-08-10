@@ -347,17 +347,21 @@ test_that("Build flow confirms multiple datasets and handles real conflicts", {
   expect_false(grepl("isolate(input$overwrite)", app, fixed = TRUE))
 })
 
-test_that("Build flow requires current review revisions before final confirmation", {
+test_that("Build flow requires one confirmed frozen Review plan", {
   app <- paste(builder_app_lines(), collapse = "\n")
 
-  expect_match(app, "reviewed_revision", fixed = TRUE)
-  expect_match(app, '"Some datasets have not been reviewed"', fixed = TRUE)
-  expect_match(app, '"Some datasets still need attention"', fixed = TRUE)
-  expect_match(app, 'identical(action, "review_now")', fixed = TRUE)
-  expect_match(app, 'identical(action, "fix_issues")', fixed = TRUE)
-  expect_match(app, 'input$review_current_dataset', fixed = TRUE)
-  expect_match(app, "next_unreviewed", fixed = TRUE)
-  expect_match(app, '"builder_focus_review"', fixed = TRUE)
+  expect_match(app, "builder_workflow_confirmation_matches", fixed = TRUE)
+  expect_match(app, "workflow()$review_plan", fixed = TRUE)
+  expect_match(app, "input$confirm_review", fixed = TRUE)
+  expect_false(grepl("reviewed_revision", app, fixed = TRUE))
+  expect_false(grepl("review_current_dataset", app, fixed = TRUE))
+  expect_false(grepl("next_unreviewed", app, fixed = TRUE))
+  expect_match(app, 'identical(workflow_state$stage, "build")', fixed = TRUE)
+  expect_match(
+    app,
+    '"Confirm the current frozen Review before building."',
+    fixed = TRUE
+  )
 })
 
 test_that("group color changes use the existing settings revision path", {
@@ -768,7 +772,7 @@ test_that("the App keeps Build execution private until the workflow reaches it",
     fixed = TRUE
   )
   expect_match(app, "builder_reduce_build", fixed = TRUE)
-  expect_false(grepl('observeEvent(input$cancel_build, {', app, fixed = TRUE))
+  expect_false(grepl("observeEvent(input$cancel_build, {", app, fixed = TRUE))
   expect_false(grepl("builder_protocol_cancel", app, fixed = TRUE))
   expect_false(grepl("builder_worker_interrupt", app, fixed = TRUE))
   expect_false(grepl('"cancel_build"', workbench, fixed = TRUE))

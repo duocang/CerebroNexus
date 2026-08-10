@@ -256,6 +256,26 @@ builder_review_can_build <- function(plan) {
     (!length(plan$existing_targets) || isTRUE(plan$overwrite))
 }
 
+builder_review_confirmation_ui <- function() {
+  div(
+    class = "builder-stage-actions builder-review-confirmation",
+    div(
+      h3("Ready to continue?"),
+      p("Confirm this frozen revision to open the Build step.")
+    ),
+    actionButton(
+      "back_to_settings",
+      "Back to settings",
+      class = "btn"
+    ),
+    actionButton(
+      "confirm_review",
+      "Looks good — continue to build",
+      class = "btn btn-action"
+    )
+  )
+}
+
 builder_review_human_size <- function(bytes) {
   builder_file_human_size(bytes)
 }

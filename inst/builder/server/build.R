@@ -110,67 +110,21 @@ choose_build_folder <- function() {
 
 observeEvent(input$build, {
   req(identical(isolate(build_flow())$stage, "idle"))
+  workflow_state <- isolate(workflow())
   plan <- isolate(frozen_review_plan())
   datasets <- isolate(sets())
-  review_statuses <- lapply(
-    datasets,
-    builder_dataset_review_status,
-    active = FALSE
-  )
-  attention <- which(vapply(
-    review_statuses,
-    function(status) identical(status$id, "needs-attention"),
-    logical(1)
-  ))
-  unreviewed <- which(
-    !vapply(datasets, builder_dataset_is_reviewed, logical(1))
-  )
-  if (length(attention)) {
-    target <- datasets[[attention[[1L]]]]$id
-    build_flow(list(
-      stage = "attention_required",
-      plan = NULL,
-      target = target
-    ))
-    session$sendCustomMessage(
-      "builder_build_dialog",
-      list(
-        type = "needs_attention",
-        title = "Some datasets still need attention",
-        names = vapply(
-          datasets[attention],
-          function(entry) {
-            paste0(
-              entry$settings$name,
-              " — Resolve the highlighted settings."
-            )
-          },
-          character(1)
-        )
-      )
-    )
-    return()
-  }
-  if (length(unreviewed)) {
-    target <- datasets[[unreviewed[[1L]]]]$id
-    build_flow(list(stage = "review_required", plan = NULL, target = target))
-    session$sendCustomMessage(
-      "builder_build_dialog",
-      list(
-        type = "unreviewed",
-        title = "Some datasets have not been reviewed",
-        names = vapply(
-          datasets[unreviewed],
-          function(entry) entry$settings$name,
-          character(1)
-        )
-      )
-    )
-    return()
-  }
-  if (!builder_review_can_build(plan)) {
+  confirmed <- identical(workflow_state$stage, "build") &&
+    builder_review_can_build(plan) &&
+    builder_workflow_confirmation_matches(workflow_state, plan)
+  if (!isTRUE(confirmed)) {
+    if (!is.null(workflow_state$review_plan)) {
+      workflow(builder_reduce_workflow(
+        workflow_state,
+        list(type = "invalidate")
+      ))
+    }
     showNotification(
-      plan$error %||% "Resolve the highlighted settings before building.",
+      "Confirm the current frozen Review before building.",
       type = "warning",
       duration = 6
     )
@@ -212,20 +166,6 @@ observeEvent(input$builder_build_dialog, {
       identical(flow$stage, "conflict")
   ) {
     choose_build_folder()
-  } else if (
-    identical(action, "review_now") &&
-      identical(flow$stage, "review_required")
-  ) {
-    current(flow$target)
-    build_flow(list(stage = "idle", plan = NULL))
-    focus_dataset_settings()
-  } else if (
-    identical(action, "fix_issues") &&
-      identical(flow$stage, "attention_required")
-  ) {
-    current(flow$target)
-    build_flow(list(stage = "idle", plan = NULL))
-    focus_dataset_settings()
   } else {
     build_flow(list(stage = "idle", plan = NULL))
   }
