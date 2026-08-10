@@ -92,6 +92,20 @@ test_that("Linked views treats projections as a multi-panel selection", {
   expect_match(js, "plugins: ['remove_button']", fixed = TRUE)
 })
 
+test_that("Linked views places the shared legend above the panel grid", {
+  ui_file <- file.path(dirname(bundle_file), "UI.R")
+  skip_if_not(file.exists(ui_file))
+  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
+  legend_pos <- regexpr('id = "cv-legend"', ui, fixed = TRUE)[[1]]
+  cbar_pos <- regexpr('id = "cv-cbar"', ui, fixed = TRUE)[[1]]
+  panes_pos <- regexpr('class = "cv-panes"', ui, fixed = TRUE)[[1]]
+  expect_gt(legend_pos, 0)
+  expect_gt(cbar_pos, 0)
+  expect_gt(panes_pos, 0)
+  expect_lt(legend_pos, panes_pos)
+  expect_lt(cbar_pos, panes_pos)
+})
+
 test_that("Linked views keeps replacement controls contextual and user-facing", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")

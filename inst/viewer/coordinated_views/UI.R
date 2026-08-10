@@ -590,6 +590,18 @@ tab_coordinated_views <- tabItem(
       )
     ),
 
+    ## ---- legend (categorical) or colourbar (continuous gene) ------------ ##
+    div(class = "cv-legend", id = "cv-legend"),
+    div(
+      class = "cv-cbar",
+      id = "cv-cbar",
+      style = "display:none",
+      tags$span(id = "cv-cb0", "0"),
+      div(class = "cv-grad", id = "cv-grad"),
+      tags$span(id = "cv-cb1", "1"),
+      tags$span(class = "cv-cbar-note", id = "cv-cbar-note", "expression")
+    ),
+
     ## ---- panel grid ----------------------------------------------------- ##
     ## Every selected/present space gets its OWN panel: selected projections,
     ## selected Spatial sections, Trekker and Clonal. coordviews.js
@@ -634,18 +646,6 @@ tab_coordinated_views <- tabItem(
           div(class = "cv-card-body", id = "cv-card-body")
         )
       )
-    ),
-
-    ## ---- legend (categorical) or colourbar (continuous gene) ------------ ##
-    div(class = "cv-legend", id = "cv-legend"),
-    div(
-      class = "cv-cbar",
-      id = "cv-cbar",
-      style = "display:none",
-      tags$span(id = "cv-cb0", "0"),
-      div(class = "cv-grad", id = "cv-grad"),
-      tags$span(id = "cv-cb1", "1"),
-      tags$span(class = "cv-cbar-note", id = "cv-cbar-note", "expression")
     ),
 
     ## ---- readout: composition + top clonotypes -------------------------- ##
