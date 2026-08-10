@@ -717,6 +717,60 @@ test_that("builder client owns accessible dialog and live-state semantics", {
   )
 })
 
+test_that("builder UI keeps semantic colors and states on the token system", {
+  tokens <- builder_asset_text("www", "builder.tokens.css")
+  css <- builder_stylesheet_text()
+  features <- builder_asset_text("www", "builder.features.css")
+  components <- builder_asset_text("www", "builder.components.css")
+  stats <- builder_asset_text("www", "stats.js")
+
+  for (tone in c(
+    "metadata",
+    "projection",
+    "spatial",
+    "analysis",
+    "trajectory",
+    "immune",
+    "extra"
+  )) {
+    expect_match(tokens, paste0("--builder-tag-", tone, "-bg"), fixed = TRUE)
+    expect_match(
+      features,
+      paste0(".builder-content-tag.is-", tone),
+      fixed = TRUE
+    )
+    expect_match(
+      features,
+      paste0("background: var(--builder-tag-", tone, "-bg)"),
+      fixed = TRUE
+    )
+  }
+  for (tone in 3:5) {
+    expect_match(
+      features,
+      paste0(".review-page-tag.tone-", tone),
+      fixed = TRUE
+    )
+    expect_match(
+      features,
+      paste0("background: var(--builder-page-tone-", tone, "-bg)"),
+      fixed = TRUE
+    )
+  }
+  expect_match(features, ".review-auth-dependency", fixed = TRUE)
+  expect_match(features, ".review-auth-summary", fixed = TRUE)
+  expect_match(features, ".dataset-compact-segment.is-pending", fixed = TRUE)
+  expect_false(grepl("font-weight: 650|font-weight: 750", css))
+  expect_match(components, "@keyframes spin", fixed = TRUE)
+  expect_false(grepl(
+    "@keyframes builder-import-spin",
+    components,
+    fixed = TRUE
+  ))
+  expect_match(stats, "--builder-action", fixed = TRUE)
+  expect_false(grepl("#C94718", stats, fixed = TRUE))
+})
+
 test_that("Builder keeps login account editing outside the redrawn workbench", {
   app <- builder_app_source_text()
 

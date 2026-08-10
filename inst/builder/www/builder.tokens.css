@@ -28,8 +28,14 @@
   --c-amber-700: #c85a0e;
 
   --c-success: #16a34a;
+  --c-success-50: #eefbf2;
+  --c-success-700: #14653a;
   --c-warning: #d97706;
+  --c-warning-50: #fdf3e3;
+  --c-warning-100: #f0dcb6;
+  --c-warning-700: #85510a;
   --c-error: #dc2626;
+  --c-error-700: #8f1d1d;
 
   --shadow-1: 0 1px 2px rgba(17,17,26,0.04), 0 1px 3px rgba(17,17,26,0.05);
   --shadow-2: 0 2px 4px rgba(17,17,26,0.04), 0 4px 12px rgba(17,17,26,0.06);
@@ -54,6 +60,7 @@
   --builder-action-hover: #9a3412;
   --builder-action-active: #7c2d12;
   --builder-accent-strong: #65230f;
+  --builder-focus-ring: var(--c-blue-600);
   --builder-selection-bg: var(--builder-action);
   --builder-selection-fg: var(--c-white);
   --builder-text-muted: #525257;
@@ -67,6 +74,38 @@
   --builder-page-gutter: 26px;
   --builder-stage-padding: var(--space-6);
   --builder-section-gap: var(--space-6);
+
+  /* Semantic content and review tag palette. */
+  --builder-tag-metadata-bg: #f5f3ff;
+  --builder-tag-metadata-border: #ddd6fe;
+  --builder-tag-metadata-text: #6d28d9;
+  --builder-tag-projection-bg: var(--c-amber-50);
+  --builder-tag-projection-border: var(--c-amber-100);
+  --builder-tag-projection-text: var(--builder-action-active);
+  --builder-tag-spatial-bg: #f0fdf4;
+  --builder-tag-spatial-border: #bbf7d0;
+  --builder-tag-spatial-text: #15803d;
+  --builder-tag-analysis-bg: #fff1f2;
+  --builder-tag-analysis-border: #fecdd3;
+  --builder-tag-analysis-text: #be123c;
+  --builder-tag-trajectory-bg: #f0fdfa;
+  --builder-tag-trajectory-border: #99f6e4;
+  --builder-tag-trajectory-text: #0f766e;
+  --builder-tag-immune-bg: #eef2ff;
+  --builder-tag-immune-border: #c7d2fe;
+  --builder-tag-immune-text: #4338ca;
+  --builder-tag-extra-bg: #fff7ed;
+  --builder-tag-extra-border: #fed7aa;
+  --builder-tag-extra-text: #c2410c;
+  --builder-page-tone-3-bg: var(--builder-tag-metadata-bg);
+  --builder-page-tone-3-border: var(--builder-tag-metadata-border);
+  --builder-page-tone-3-text: var(--builder-tag-metadata-text);
+  --builder-page-tone-4-bg: var(--builder-tag-spatial-bg);
+  --builder-page-tone-4-border: var(--builder-tag-spatial-border);
+  --builder-page-tone-4-text: var(--builder-tag-spatial-text);
+  --builder-page-tone-5-bg: #fdf2f8;
+  --builder-page-tone-5-border: #fbcfe8;
+  --builder-page-tone-5-text: #be185d;
 
   /* Compatibility aliases for existing Builder components. */
   --c-surface-muted: var(--c-surface-2);
