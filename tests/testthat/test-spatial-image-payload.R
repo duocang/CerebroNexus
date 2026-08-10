@@ -16,12 +16,17 @@ test_that("spatial image payload validation accepts a contained FOV image", {
 
   expect_identical(
     .validateCerebroSpatialImage(payload, "omnibus_fov", coordinates),
-    payload
+    list(histology_images = list(`Tissue background` = payload))
   )
 })
 
 test_that("spatial image collections match uniquely named Seurat images", {
-  payloads <- list(omnibus_fov = valid_spatial_image_payload())
+  payloads <- list(
+    omnibus_fov = list(
+      `H&E` = valid_spatial_image_payload(),
+      DAPI = valid_spatial_image_payload()
+    )
+  )
 
   expect_identical(
     .validateCerebroSpatialImages(payloads, "omnibus_fov"),
@@ -37,21 +42,30 @@ test_that("spatial image collections match uniquely named Seurat images", {
   )
   expect_error(
     .validateCerebroSpatialImages(
-      structure(
-        list(valid_spatial_image_payload(), valid_spatial_image_payload()),
-        names = c("omnibus_fov", "omnibus_fov")
-      ),
+      structure(list(list()), names = "unknown_fov"),
       "omnibus_fov"
     ),
-    "unique"
+    "unknown_fov.*not present"
   )
   expect_error(
     .validateCerebroSpatialImages(
-      structure(list(valid_spatial_image_payload()), names = ""),
+      structure(list(list()), names = ""),
       "omnibus_fov"
     ),
     "non-empty"
   )
+})
+
+test_that("Seurat spatial image payloads accept the legacy shorthand", {
+  payload <- valid_spatial_image_payload()
+
+  normalized <- .validateCerebroSpatialImages(
+    list(omnibus_fov = payload),
+    "omnibus_fov"
+  )
+
+  expect_named(normalized$omnibus_fov, "Tissue background")
+  expect_identical(normalized$omnibus_fov[["Tissue background"]], payload)
 })
 
 test_that("spatial image payload validation rejects malformed images", {
@@ -132,7 +146,9 @@ test_that("exportFromSeurat preserves a declared FOV image payload", {
     ymin = 0,
     ymax = 100
   )
-  object@misc$cerebro_spatial_images <- list(fov = payload)
+  object@misc$cerebro_spatial_images <- list(
+    fov = list(`Tissue stain` = payload)
+  )
   output <- tempfile(fileext = ".crb")
 
   exportFromSeurat(
@@ -149,9 +165,8 @@ test_that("exportFromSeurat preserves a declared FOV image payload", {
   )
 
   spatial <- readRDS(output)$getSpatialData("fov")
-  expect_identical(spatial$histology_image, payload$histology_image)
   expect_identical(
-    spatial$histology_image_bounds,
-    payload$histology_image_bounds
+    spatial$histology_images[["Tissue stain"]],
+    payload
   )
 })

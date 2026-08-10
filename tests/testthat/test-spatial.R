@@ -388,8 +388,12 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
     message = "visium crb missing"
   )
   crb <- readRDS(crb_path)
-  sd <- crb$getSpatialData(crb$availableSpatial()[1])
-  expect_null(sd$histology_image)
+  spatial_name <- crb$availableSpatial()[1]
+  sd <- .normalizeSpatialDataImages(
+    crb$getSpatialData(spatial_name),
+    spatial_name
+  )
+  expect_identical(sd$histology_images, list())
 
   # app.R must wire the external image via spatial_images for the Visium dataset
   app_src <- paste(
@@ -421,7 +425,8 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
 
 test_that("bundled real demos embed a genuine tissue image in the .crb", {
   # MERFISH and Xenium carry their REAL histology image (DAPI) inside the .crb
-  # under `histology_image`, with coordinate-space bounds, so the Spatial tab
+  # under the canonical `histology_images` manifest, with coordinate-space
+  # bounds, so the Spatial tab
   # renders the true tissue background out of the box. (Visium uses an external
   # image — tested above; Slide-seq carries no image — tested below.)
   for (f in c(
@@ -434,10 +439,15 @@ test_that("bundled real demos embed a genuine tissue image in the .crb", {
     )
     skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
     crb <- readRDS(path)
-    sd <- crb$getSpatialData(crb$availableSpatial()[1])
-    expect_true(is.character(sd$histology_image), info = f)
-    expect_match(sd$histology_image, "^data:image/", info = f)
-    b <- sd$histology_image_bounds
+    spatial_name <- crb$availableSpatial()[1]
+    sd <- .normalizeSpatialDataImages(
+      crb$getSpatialData(spatial_name),
+      spatial_name
+    )
+    expect_named(sd$histology_images, "Tissue background", info = f)
+    image <- sd$histology_images[["Tissue background"]]
+    expect_match(image$histology_image, "^data:image/", info = f)
+    b <- image$histology_image_bounds
     expect_true(
       all(c("xmin", "xmax", "ymin", "ymax") %in% names(b)),
       info = f
@@ -515,7 +525,7 @@ test_that("real spatial demos are wired into the bundled dropdown", {
 
 test_that("image-free demo (Slide-seq) carries no histology image", {
   # This platform records positions, not a tissue photo, so a genuine
-  # absence of `histology_image` is the CORRECT state, not a build regression.
+  # an empty `histology_images` manifest is the correct state.
   for (f in c("demo_spatial_slideseq")) {
     path <- system.file(
       file.path("extdata/examples", paste0(f, ".crb")),
@@ -523,8 +533,12 @@ test_that("image-free demo (Slide-seq) carries no histology image", {
     )
     skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
     crb <- readRDS(path)
-    sd <- crb$getSpatialData(crb$availableSpatial()[1])
-    expect_null(sd$histology_image, info = f)
+    spatial_name <- crb$availableSpatial()[1]
+    sd <- .normalizeSpatialDataImages(
+      crb$getSpatialData(spatial_name),
+      spatial_name
+    )
+    expect_identical(sd$histology_images, list(), info = f)
   }
 })
 
@@ -539,8 +553,12 @@ test_that("embedded image demos store the image natively with no flip flag", {
     )
     skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
     crb <- readRDS(path)
-    sd <- crb$getSpatialData(crb$availableSpatial()[1])
-    expect_false(is.null(sd$histology_image), info = f)
+    spatial_name <- crb$availableSpatial()[1]
+    sd <- .normalizeSpatialDataImages(
+      crb$getSpatialData(spatial_name),
+      spatial_name
+    )
+    expect_named(sd$histology_images, "Tissue background", info = f)
     expect_null(sd$histology_image_flip_y, info = f)
   }
 })
