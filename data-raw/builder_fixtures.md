@@ -3,7 +3,8 @@
 The Builder gallery ships one compact input fixture:
 
 - `inst/builder/fixtures/all_content.rds`
-- five deterministic tissue PNG sidecars for patient A and patient B
+- seven deterministic histology PNG sidecars mapped explicitly to sections and
+  FOVs
 
 These are Builder inputs, not demo `.crb` outputs. Regenerate them from the
 repository root with:
@@ -28,12 +29,13 @@ fixture set to that directory for reproducibility tests.
 the same inspection and build path as a user-uploaded RDS. It contains:
 
 - a sparse RNA counts layer and normalized data;
-- marker-driven synthetic expression and patient, section, cell-type, cluster,
-  region, and QC metadata;
+- marker-driven synthetic expression and explicit `patient_id`, `section_id`,
+  `fov_id`, `sample_id`, `condition`, cell-type, cluster, region, and QC
+  metadata;
 - PCA, UMAP, and t-SNE reductions;
-- three Xenium patients represented by six native FOVs:
+- three Xenium patients represented by six measured sections/FOVs:
   `patient_a` has two sections, `patient_b` has three, and `patient_c`
-  has one;
+  has one; each FOV has a declared micron coordinate system;
 - a valid Trekker payload aligned to a subset of Seurat cell barcodes.
 
 The fixture intentionally does not precompute Marker genes, Most expressed
@@ -43,18 +45,20 @@ Enhance workflow or later dedicated upload scenarios.
 
 ## Histology sidecars
 
-The fixture directory contains:
+The catalog in `inst/builder/io.R` maps these files to explicit `section_id`
+and `fov_ids`; the file name is never the authority for that relationship. The
+fixture directory contains:
 
-- `patient_a_section_1.png`
-- `patient_a_section_2.png`
-- `patient_b_section_1.png`
-- `patient_b_section_2.png`
-- `patient_b_section_3.png`
+- `section_a_1_he.png` and `section_a_1_dapi.png`
+- `section_a_2_he.png` and `section_a_2_dapi.png`
+- `section_b_1_he.png`, `section_b_1_if.png`, and `section_b_1_pas.png`
 
-Patient C has spatial coordinates but no image. The PNG files are standalone
-alignment inputs; selecting the built-in example does not silently attach them
-to the generated Cerebro object. This preserves the same explicit image
-alignment step used for a local Seurat upload.
+The A sections each have two images, B's first section has three images, and
+the remaining B sections plus C are coordinates-only. A photo is never a new
+FOV. The PNG files are standalone alignment inputs; selecting the built-in
+example does not silently attach them to the generated Cerebro object. This
+preserves the same explicit image-alignment step used for a local Seurat
+upload.
 
 The catalog in `inst/builder/io.R` is the source of truth for the single
 `all_content` gallery record, its expected manifest, visible pages, and

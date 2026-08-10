@@ -52,11 +52,12 @@
   flow, turns the dataset rail into a compact modal manager on narrow screens,
   and provides keyboard-trapped dialogs, focus restoration, live status,
   reduced-motion support, and text equivalents for previews and colour inputs.
-- **The final four-stage workflow is backed by a shipped example gallery.**
-  Import and Inspect, Core, Enhance, and Review expose real PBMC plus compact
-  synthetic spatial, immune/HLA, legacy-conversion, and all-content inputs.
-  Distinct example and file adapters join the shared inspection, immutable-
-  snapshot, frozen-plan, CRB, and optional generated-App pipeline.
+- **The final four-stage workflow is backed by one shipped All content Seurat
+  gallery input.** It has explicit patient, tissue-section, FOV, and histology
+  image identities, three patients across six measured sections/FOVs, optional
+  multi-image histology sidecars, and Trekker. Distinct example and file
+  adapters join the shared inspection, immutable-snapshot, frozen-plan, CRB,
+  and optional generated-App pipeline.
 - **Review and publication now describe the complete release boundary.** Review
   distinguishes CRB-only output from a private generated App, reports planned
   payload targets and a snapshot-based disk estimate, and identifies private

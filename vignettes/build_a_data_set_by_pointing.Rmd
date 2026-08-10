@@ -67,11 +67,12 @@ formats it can read.
 
 ![The installed Builder source sheet and its shipped example gallery.](img/builder_source_gallery.png)
 
-The gallery covers the basic PBMC workflow, multi-section spatial data, immune
-and HLA combinations, metadata and legacy conversion, and an all-content
-example. Gallery and file inputs use **distinct source adapters**, then join the
-**shared import pipeline** for inspection, recommendations, snapshots, Review,
-and Build.
+The gallery contains one compact **All content** Seurat example. It models three
+patients, six measured tissue sections/FOVs, optional section-owned histology
+sidecars, and Trekker. Patient, section, FOV, and image identities are explicit:
+a tissue photograph is not a new spatial FOV. Gallery and file inputs use
+**distinct source adapters**, then join the **shared import pipeline** for
+inspection, recommendations, snapshots, Review, and Build.
 
 After loading, **Import & Inspect** reports cells, genes, detected content,
 attention items, and blockers. A dataset is registered only after the worker
@@ -126,10 +127,11 @@ explicit controls.
 
 ![Enhance for the spatial example, including auto-retained content and per-section histology controls.](img/builder_enhance_spatial.png)
 
-For spatial data, each tissue section has its own image and bounds. The
-alignment view overlays cells on a PNG or JPEG and can save one section or apply
-the image to all sections while recomputing each section's extent. TIFF and
-OME-TIFF require conversion before import.
+For spatial data, each FOV has its own coordinates; a tissue section can own
+several labelled images (for example H&E and DAPI). The alignment view overlays
+one selected PNG or JPEG on its FOV and records its own bounds and transform.
+Coordinates-only FOVs remain valid. TIFF and OME-TIFF require conversion before
+import.
 
 Selected analysis failures are never presented as successful partial work. The
 result becomes **Needs decision**: retry the failed item with its dependency
