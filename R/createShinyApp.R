@@ -1854,8 +1854,10 @@ dedent <- function(string) {
 #'   \code{dataset -> spatial entry -> image label -> settings} form. Settings
 #'   may contain only \code{flip_x}, \code{flip_y}, \code{scale_x},
 #'   \code{scale_y}, \code{offset_x}, \code{offset_y}, and \code{rotation}.
-#'   Use exactly the same dataset, spatial-entry, and image-label keys as in
-#'   \code{spatial_images}; labels are user-facing names, not protocol names.
+#'   A leaf may target an embedded or external image available under that exact
+#'   dataset and spatial entry. The image label must exist in the union of the
+#'   CRB's embedded images and this call's \code{spatial_images}; unknown
+#'   identities are rejected. Labels are user-facing names, not protocol names.
 #' @param spatial_images_flip_x Legacy named per-dataset horizontal flip values.
 #'   Each dataset must resolve to exactly one spatial image target.
 #' @param spatial_images_flip_y Legacy named per-dataset vertical flip values.

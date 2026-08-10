@@ -684,6 +684,11 @@ test_that("public help documents the complete multi-spatial Omnibus workflow", {
   expect_match(app_help, '"donorC tissue" = list(', fixed = TRUE)
   expect_match(app_help, '"Pathology review" =', fixed = TRUE)
   expect_match(app_help, "spatial_image_settings = list(", fixed = TRUE)
+  expect_match(
+    app_help,
+    "embedded or external image",
+    fixed = TRUE
+  )
 })
 
 expect_omnibus_group_rename_error <- function(object, mapping, regexp) {
