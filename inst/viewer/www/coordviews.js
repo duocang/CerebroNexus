@@ -3387,10 +3387,8 @@ var focusPanel = null;
         return;
       }
       if (!continuous) {
+        badge.style.display = 'none'; badge.textContent = '';
         delete badge.dataset.value; delete badge.dataset.field;
-        badge.textContent = "Moran's I";
-        badge.title = "Choose a continuous value or gene to calculate Moran's I";
-        badge.style.display = '';
         return;
       }
       var score = spatialMoran(sp, continuous.values);
