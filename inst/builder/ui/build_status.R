@@ -447,19 +447,7 @@ builder_build_stage_status_model <- function(
     NULL
   }
   protocol_ready <- isTRUE(tryCatch(
-    {
-      .builder_protocol_assert(protocol)
-      all(
-        c("pending", "queue", "awaiting_ack", "build_status") %in%
-          names(protocol)
-      ) &&
-        is.list(protocol$queue) &&
-        is.list(protocol$awaiting_ack) &&
-        is.null(protocol$pending) &&
-        !length(protocol$queue) &&
-        !length(protocol$awaiting_ack) &&
-        identical(protocol$build_status, "idle")
-    },
+    builder_protocol_is_quiescent(protocol),
     error = function(error) FALSE
   ))
   list(

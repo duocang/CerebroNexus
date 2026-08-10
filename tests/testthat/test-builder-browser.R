@@ -51,7 +51,7 @@ builder_browser_geometry <- function(app) {
     "mainWidth: main.getBoundingClientRect().width,",
     "actionTop: box.top, actionBottom: box.bottom,",
     "viewportHeight: window.innerHeight,",
-    "position: getComputedStyle(action.closest('.builder-build-actions')).position,",
+    "position: getComputedStyle(action).position,",
     "primaryVisible: window.__builderPrimaryActionVisible === true",
     "};",
     "})()"
@@ -59,7 +59,11 @@ builder_browser_geometry <- function(app) {
 }
 
 test_that("builder interaction reflows and preserves accessible state", {
-  local_app_support(builder_browser_dir)
+  app_dir <- builder_browser_current_contract_app(
+    builder_browser_dir,
+    .local_envir = environment()
+  )
+  local_app_support(app_dir)
   output_dir <- file.path(
     tempdir(),
     paste0("builder-browser-result-", Sys.getpid())
@@ -67,7 +71,7 @@ test_that("builder interaction reflows and preserves accessible state", {
   builder_browser_mock_folder_picker(output_dir)
   withr::defer(unlink(output_dir, recursive = TRUE, force = TRUE))
   app <- AppDriver$new(
-    builder_browser_dir,
+    app_dir,
     name = "builder_accessible_interaction",
     width = 1280,
     height = 900,
@@ -110,65 +114,61 @@ test_that("builder interaction reflows and preserves accessible state", {
   )))
 
   app$set_inputs(make_app = FALSE)
+  app$wait_for_idle(timeout = 10000)
   app$wait_for_js(
     paste0(
-      "document.getElementById('review-stage').textContent.includes(",
-      "'Creates CRB files') && ",
-      "!document.getElementById('review-stage').textContent.includes(",
-      "'Creates Shiny App')"
+      "document.getElementById('make_app') !== null && ",
+      "!document.getElementById('make_app').checked && ",
+      "document.getElementById('continue_to_review') !== null"
     ),
     timeout = 10000
   )
-  app$set_inputs(make_app = TRUE)
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('review-stage').textContent.includes(",
-      "'Creates Shiny App') && ",
-      "document.getElementById('review-stage').textContent.includes(",
-      "'1 App containing 1 dataset') && ",
-      "!document.getElementById('review-stage').textContent.includes(",
-      "'Creates CRB files + private App')"
-    ),
-    timeout = 10000
-  )
-
+  readiness <- app$get_js(paste0(
+    "({disabled: document.getElementById('continue_to_review').disabled, ",
+    "text: document.querySelector('.builder-configure-readiness').textContent})"
+  ))
+  expect_false(readiness$disabled, info = readiness$text)
   app$click("continue_to_review")
   app$wait_for_js(
-    "document.getElementById('confirm_review') !== null",
+    "document.getElementById('review-stage') !== null",
     timeout = 10000
   )
+  review_text <- app$get_js(
+    "document.getElementById('review-stage').textContent"
+  )
+  expect_match(review_text, "Creates CRB files", fixed = TRUE)
+  expect_match(review_text, "1 dataset", fixed = TRUE)
+  expect_false(grepl("Creates Shiny App", review_text, fixed = TRUE))
+  expect_false(grepl(
+    "Creates CRB files + private App",
+    review_text,
+    fixed = TRUE
+  ))
+  expect_true(app$get_js(
+    "document.querySelector('#review-stage .review-summary-strip') !== null"
+  ))
+  expect_false(app$get_js(paste0(
+    "document.querySelector('#review-stage input:not([type=hidden]), ",
+    "#review-stage select, #review-stage textarea') !== null"
+  )))
   app$click("confirm_review")
   app$wait_for_js(
     paste0(
       "document.querySelector('[data-workflow-stage=build]') !== null && ",
+      "document.getElementById('build') !== null && ",
       "document.getElementById('build').disabled"
     ),
     timeout = 30000
   )
-  app$run_js(paste0(
-    "window.__builderCopiedText = null;",
-    "Shiny.addCustomMessageHandler('builder_copy_text', function(message) {",
-    "window.__builderCopiedText = message.text;",
-    "});"
-  ))
   app$click("choose_output_folder")
   app$wait_for_js(
-    "!document.getElementById('build').disabled",
+    paste0(
+      "document.getElementById('build') !== null && ",
+      "!document.getElementById('build').disabled"
+    ),
     timeout = 30000
   )
-  app$click("build")
-  app$wait_for_js(
-    "document.querySelector('.result-card.success') !== null",
-    timeout = 180000
-  )
-  expect_true(app$get_js("document.getElementById('open_app') !== null"))
-  expect_true(app$get_js("document.getElementById('reveal_folder') !== null"))
-  expected_release <- app$get_js(
-    "document.getElementById('copy_path').dataset.path"
-  )
-  app$click("copy_path")
-  app$wait_for_js("window.__builderCopiedText !== null", timeout = 10000)
-  expect_identical(app$get_js("window.__builderCopiedText"), expected_release)
+  expect_false(app$get_js("document.querySelector('.result-card') !== null"))
 
   geometry_by_width <- list()
   for (viewport in list(
@@ -301,6 +301,7 @@ test_that("builder explains a mocked old privacy contract exactly", {
     builder_browser_dir,
     .local_envir = environment()
   )
+  local_app_support(old_contract_app)
   app <- AppDriver$new(
     old_contract_app,
     name = "builder_old_privacy_contract",

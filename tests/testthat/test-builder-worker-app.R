@@ -2,6 +2,7 @@
 ## Builder worker integration contracts owned by the Shiny main process.
 ## -------------------------------------------------------------------------
 
+builder_app_source_runtime_prerequisites(globalenv())
 builder_profile_source_runtime(globalenv())
 builder_stage_contract_source_runtime(globalenv())
 builder_repo_source("io.R", local = globalenv())
@@ -33,6 +34,15 @@ builder_app_block <- function(lines, start, finish) {
   expect_false(is.na(last), info = paste("Missing App marker:", finish))
   paste(lines[first:(last - 1L)], collapse = "\n")
 }
+
+test_that("worker test runtime loads the App path contract first", {
+  runtime <- new.env(parent = baseenv())
+  paths <- builder_app_source_runtime_prerequisites(runtime)
+
+  expect_true(length(paths) > 0L)
+  expect_true(all(file.exists(paths)))
+  expect_true(exists(".pathWithin", envir = runtime, inherits = FALSE))
+})
 
 test_that("parent and worker load App assembly before build authorities", {
   app <- paste(builder_app_lines(), collapse = "\n")
@@ -74,6 +84,37 @@ test_that("parent and worker load App assembly before build authorities", {
     worker,
     fixed = TRUE
   ))
+})
+
+test_that("the worker protocol exclusively owns quiescence", {
+  app <- paste(builder_app_lines(), collapse = "\n")
+  worker <- paste(
+    readLines(builder_app_worker_path, warn = FALSE),
+    collapse = "\n"
+  )
+  status <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "ui", "build_status.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_false(grepl(
+    "builder_protocol_is_quiescent <- function",
+    app,
+    fixed = TRUE
+  ))
+  expect_match(
+    worker,
+    "builder_protocol_is_quiescent <- function",
+    fixed = TRUE
+  )
+  expect_match(
+    status,
+    "builder_protocol_is_quiescent(protocol)",
+    fixed = TRUE
+  )
 })
 
 test_that("preview and coordinates apply only to the visible dataset section", {
@@ -303,7 +344,16 @@ test_that("workflow server exclusively owns loading and stage rendering", {
     regexpr("builder_loading_workbench_ui", workbench, fixed = TRUE),
     regexpr("stage <- workflow()$stage", workbench, fixed = TRUE)
   )
-  expect_match(workbench, "upload = builder_empty_workbench_ui()", fixed = TRUE)
+  expect_match(
+    workbench,
+    paste0(
+      "upload = tagAppendAttributes(\n",
+      "      builder_empty_workbench_ui(),\n",
+      "      class = \"builder-stage-upload\",\n",
+      "      `data-workflow-stage` = \"upload\""
+    ),
+    fixed = TRUE
+  )
   expect_match(
     workbench,
     "configure = render_configure_workbench()",
@@ -542,6 +592,29 @@ test_that("Build status projection keeps one stable typed host", {
     ),
     "typed"
   )
+})
+
+test_that("completed preview protocols enable a selected Build", {
+  protocol <- builder_request_protocol("worker-completed-preview")
+  protocol <- builder_enqueue(
+    protocol,
+    builder_query("preview", "dataset-a", generation = 1L)
+  )
+  dispatched <- builder_protocol_dispatch(protocol)
+  completed <- builder_protocol_complete(
+    dispatched$protocol,
+    builder_worker_response(dispatched$request, value = list())
+  )$protocol
+
+  expect_false("pending" %in% names(completed))
+  model <- builder_build_stage_status_model(
+    flow = list(stage = "idle"),
+    protocol = completed,
+    note = NULL,
+    result = NULL,
+    output_selected = TRUE
+  )
+  expect_true(model$can_build)
 })
 
 test_that("native output directory selection normalizes selection and preserves cancellation", {

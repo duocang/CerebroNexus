@@ -229,14 +229,6 @@ builder_example_buttons_ui <- function(examples = builder_example_directory()) {
   )
 }
 
-builder_protocol_is_quiescent <- function(protocol) {
-  .builder_protocol_assert(protocol)
-  is.null(protocol$pending) &&
-    !length(protocol$queue) &&
-    !length(protocol$awaiting_ack) &&
-    identical(protocol$build_status, "idle")
-}
-
 builder_app_acknowledge_build <- function(protocol, request_id) {
   builder_protocol_acknowledge(protocol, request_id)
 }

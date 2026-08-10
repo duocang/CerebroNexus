@@ -75,6 +75,17 @@ builder_request_protocol <- function(epoch = .builder_worker_epoch()) {
   )
 }
 
+builder_protocol_is_quiescent <- function(protocol) {
+  .builder_protocol_assert(protocol)
+  all(c("queue", "awaiting_ack", "build_status") %in% names(protocol)) &&
+    is.list(protocol$queue) &&
+    is.list(protocol$awaiting_ack) &&
+    is.null(protocol$pending) &&
+    !length(protocol$queue) &&
+    !length(protocol$awaiting_ack) &&
+    identical(protocol$build_status, "idle")
+}
+
 .builder_worker_request <- function(
   kind,
   dataset,

@@ -1,9 +1,11 @@
-builder_browser_old_contract_app <- function(
+builder_browser_contract_app <- function(
   app_dir,
+  contract_version,
   .local_envir = parent.frame()
 ) {
+  stopifnot(contract_version %in% c(0L, 1L))
   app_dir <- normalizePath(app_dir, winslash = "/", mustWork = TRUE)
-  fixture_root <- tempfile("builder-old-contract-")
+  fixture_root <- tempfile("builder-contract-")
   fixture_dir <- file.path(fixture_root, "builder")
   viewer_dir <- file.path(dirname(app_dir), "viewer")
   if (!dir.exists(viewer_dir)) {
@@ -17,45 +19,32 @@ builder_browser_old_contract_app <- function(
     envir = .local_envir
   )
 
-  app_file <- file.path(fixture_dir, "app.R")
-  source_file <- normalizePath(
-    file.path(app_dir, "app.R"),
-    winslash = "/",
-    mustWork = TRUE
-  )
-  marker <- ".cerebro_bundle_privacy_contract_version"
-  namespace <- asNamespace("CerebroNexus")
-  original_value <- get(marker, envir = namespace, inherits = FALSE)
-  original_locked <- bindingIsLocked(marker, namespace)
-  restore_marker <- function() {
-    if (bindingIsLocked(marker, namespace)) {
-      unlockBinding(marker, namespace)
-    }
-    assign(marker, original_value, envir = namespace)
-    if (original_locked) {
-      lockBinding(marker, namespace)
-    }
-  }
-  withr::defer(restore_marker(), envir = .local_envir)
+  prerequisite <- file.path(fixture_dir, "prerequisite.R")
   writeLines(
     c(
-      "namespace <- asNamespace(\"CerebroNexus\")",
-      sprintf("marker <- %s", deparse(marker)),
-      "if (!exists(marker, namespace, inherits = FALSE)) {",
-      "  stop(\"Privacy contract marker is unavailable.\", call. = FALSE)",
-      "}",
-      "if (bindingIsLocked(marker, namespace)) {",
-      "  unlockBinding(marker, namespace)",
-      "}",
-      "assign(marker, 0L, envir = namespace)",
-      "lockBinding(marker, namespace)",
-      sprintf("app <- source(%s, local = TRUE)$value", deparse(source_file)),
-      "if (!shiny::is.shiny.appobj(app)) {",
-      "  stop(\"Builder fixture did not return a Shiny app.\", call. = FALSE)",
-      "}",
-      "app"
+      readLines(prerequisite, warn = FALSE),
+      "",
+      "## Test fixture: fix the installed Viewer contract in this process.",
+      sprintf(
+        "builder_installed_app_contract_version <- function(...) %dL",
+        as.integer(contract_version)
+      )
     ),
-    app_file
+    prerequisite
   )
   fixture_dir
+}
+
+builder_browser_current_contract_app <- function(
+  app_dir,
+  .local_envir = parent.frame()
+) {
+  builder_browser_contract_app(app_dir, 1L, .local_envir)
+}
+
+builder_browser_old_contract_app <- function(
+  app_dir,
+  .local_envir = parent.frame()
+) {
+  builder_browser_contract_app(app_dir, 0L, .local_envir)
 }

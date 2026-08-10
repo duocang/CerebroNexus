@@ -6,6 +6,13 @@ builder_auth_browser_require <- function() {
   skip_if_not_installed("openssl")
 }
 
+builder_auth_browser_app <- function(.local_envir = parent.frame()) {
+  builder_browser_current_contract_app(
+    builder_auth_browser_dir,
+    .local_envir = .local_envir
+  )
+}
+
 builder_auth_browser_teardown <- function(app) {
   try(
     app$run_js(paste0(
@@ -75,6 +82,41 @@ builder_auth_browser_load_example <- function(app, example = "all_content") {
   app$wait_for_idle(timeout = 30000)
 }
 
+builder_auth_browser_enable_login <- function(app) {
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('[data-workflow-stage=configure]') !== null && ",
+      "document.getElementById('make_app') !== null && ",
+      "document.getElementById('continue_to_review') !== null"
+    ),
+    timeout = 10000
+  )
+  app$set_inputs(make_app = TRUE)
+  app$wait_for_idle(timeout = 10000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('make_app').checked && ",
+      "document.querySelector('.review-app-options') !== null && ",
+      "document.getElementById('review-require_login') !== null && ",
+      "!document.getElementById('review-require_login').disabled"
+    ),
+    timeout = 10000
+  )
+  app$run_js("document.querySelector('.review-app-options').open = true;")
+  app$wait_for_js(
+    "document.getElementById('review-require_login').getClientRects().length > 0",
+    timeout = 10000
+  )
+  app$click(selector = "#review-require_login")
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('review-require_login').checked && ",
+      "document.querySelector('.builder-auth-open') !== null"
+    ),
+    timeout = 10000
+  )
+}
+
 builder_auth_browser_intercept_inputs <- function(app) {
   app$run_js(paste0(
     "window.__authInputs = [];",
@@ -130,9 +172,10 @@ builder_auth_browser_set_row <- function(app, index, username, password) {
 
 test_that("Builder auth saves ordered accounts once and clears every browser copy", {
   builder_auth_browser_require()
-  local_app_support(builder_auth_browser_dir)
+  app_dir <- builder_auth_browser_app(environment())
+  local_app_support(app_dir)
   app <- shinytest2::AppDriver$new(
-    builder_auth_browser_dir,
+    app_dir,
     name = "builder_auth_accounts",
     width = 1280,
     height = 900,
@@ -143,20 +186,7 @@ test_that("Builder auth saves ordered accounts once and clears every browser cop
   builder_auth_browser_load_example(app)
   builder_auth_browser_intercept_inputs(app)
 
-  app$set_inputs(make_app = TRUE)
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('review-require_login') !== null && ",
-      "!document.getElementById('review-require_login').disabled"
-    ),
-    timeout = 10000
-  )
-  app$run_js("document.querySelector('.review-app-options').open = true;")
-  app$click(selector = "#review-require_login")
-  app$wait_for_js(
-    "document.querySelector('.builder-auth-open') !== null",
-    timeout = 10000
-  )
+  builder_auth_browser_enable_login(app)
   builder_auth_browser_open(app)
   accounts <- builder_auth_test_accounts()
   builder_auth_browser_set_row(
@@ -289,9 +319,10 @@ test_that("Builder auth saves ordered accounts once and clears every browser cop
 
 test_that("Builder auth accepts only the matching save acknowledgement", {
   builder_auth_browser_require()
-  local_app_support(builder_auth_browser_dir)
+  app_dir <- builder_auth_browser_app(environment())
+  local_app_support(app_dir)
   app <- shinytest2::AppDriver$new(
-    builder_auth_browser_dir,
+    app_dir,
     name = "builder_auth_nonce_lock",
     width = 1280,
     height = 900,
@@ -300,17 +331,7 @@ test_that("Builder auth accepts only the matching save acknowledgement", {
   on.exit(builder_auth_browser_teardown(app), add = TRUE)
   app$wait_for_idle(timeout = 30000)
   builder_auth_browser_load_example(app)
-  app$set_inputs(make_app = TRUE)
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('review-require_login') !== null && ",
-      "!document.getElementById('review-require_login').disabled"
-    ),
-    timeout = 10000
-  )
-  app$run_js("document.querySelector('.review-app-options').open = true;")
-  app$click(selector = "#review-require_login")
-  app$wait_for_js("document.querySelector('.builder-auth-open') !== null")
+  builder_auth_browser_enable_login(app)
   builder_auth_browser_open(app)
   accounts <- builder_auth_test_accounts()
   builder_auth_browser_set_row(
@@ -367,11 +388,12 @@ test_that("Builder auth accepts only the matching save acknowledgement", {
 
 test_that("Builder auth survives redraw and traps focus", {
   builder_auth_browser_require()
-  local_app_support(builder_auth_browser_dir)
+  app_dir <- builder_auth_browser_app(environment())
+  local_app_support(app_dir)
   output_dir <- file.path(withr::local_tempdir(), "builder-auth-output")
   builder_auth_browser_picker(output_dir)
   app <- shinytest2::AppDriver$new(
-    builder_auth_browser_dir,
+    app_dir,
     name = "builder_auth_redraw_enqueue",
     width = 1280,
     height = 900,
@@ -397,17 +419,7 @@ test_that("Builder auth survives redraw and traps focus", {
   app$wait_for_idle(timeout = 30000)
   builder_auth_browser_intercept_inputs(app)
 
-  app$set_inputs(make_app = TRUE)
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('review-require_login') !== null && ",
-      "!document.getElementById('review-require_login').disabled"
-    ),
-    timeout = 10000
-  )
-  app$run_js("document.querySelector('.review-app-options').open = true;")
-  app$click(selector = "#review-require_login")
-  app$wait_for_js("document.querySelector('.builder-auth-open') !== null")
+  builder_auth_browser_enable_login(app)
   builder_auth_browser_open(app)
   accounts <- builder_auth_test_accounts()
   builder_auth_browser_set_row(
@@ -531,11 +543,12 @@ test_that("Builder auth survives redraw and traps focus", {
 
 test_that("Builder auth resets after a successful enqueue", {
   builder_auth_browser_require()
-  local_app_support(builder_auth_browser_dir)
+  app_dir <- builder_auth_browser_app(environment())
+  local_app_support(app_dir)
   output_dir <- file.path(withr::local_tempdir(), "builder-auth-enqueue-output")
   builder_auth_browser_picker(output_dir)
   app <- shinytest2::AppDriver$new(
-    builder_auth_browser_dir,
+    app_dir,
     name = "builder_auth_enqueue_reset",
     width = 1280,
     height = 900,
@@ -545,20 +558,7 @@ test_that("Builder auth resets after a successful enqueue", {
   app$wait_for_idle(timeout = 30000)
   builder_auth_browser_load_example(app)
 
-  app$set_inputs(make_app = TRUE)
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('review-require_login') !== null && ",
-      "!document.getElementById('review-require_login').disabled"
-    ),
-    timeout = 10000
-  )
-  app$run_js("document.querySelector('.review-app-options').open = true;")
-  app$click(selector = "#review-require_login")
-  app$wait_for_js(
-    "document.querySelector('.builder-auth-open') !== null",
-    timeout = 10000
-  )
+  builder_auth_browser_enable_login(app)
   builder_auth_browser_open(app)
   accounts <- builder_auth_test_accounts()
   builder_auth_browser_set_row(
@@ -580,6 +580,17 @@ test_that("Builder auth resets after a successful enqueue", {
     timeout = 10000
   )
   app$wait_for_idle(timeout = 10000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('review-require_login').checked && ",
+      "document.querySelector('.review-auth-summary') !== null && ",
+      "document.querySelector('.review-auth-summary').textContent.includes(",
+      "'Login required · 2 accounts') && ",
+      "document.getElementById('continue_to_review') !== null && ",
+      "!document.getElementById('continue_to_review').disabled"
+    ),
+    timeout = 10000
+  )
 
   app$click("continue_to_review")
   app$wait_for_js(
@@ -596,7 +607,10 @@ test_that("Builder auth resets after a successful enqueue", {
   )
   app$click("choose_output_folder")
   app$wait_for_js(
-    "!document.getElementById('build').disabled",
+    paste0(
+      "document.getElementById('build') !== null && ",
+      "!document.getElementById('build').disabled"
+    ),
     timeout = 30000
   )
   builder_auth_browser_intercept_inputs(app)
