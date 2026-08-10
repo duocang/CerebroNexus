@@ -724,6 +724,12 @@ invisible(lapply(builder_analysis_steps(), function(step) {
       requested <- isTRUE(input[[paste0("enhance-analysis_", step$id)]])
       if (identical(step$id, "marker_genes")) {
         if (requested) {
+          shiny::updateCheckboxInput(
+            session,
+            "enhance-analysis_marker_genes",
+            value = FALSE
+          )
+          builder_show_marker_genes_choice()
           return()
         }
         entry$settings$analyses <- setdiff(selected, "marker_genes")

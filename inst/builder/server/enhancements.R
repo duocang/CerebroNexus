@@ -1,5 +1,14 @@
 ## Builder server: enhancements.
 
+builder_show_marker_genes_choice <- function() {
+  shiny::showModal(shiny::modalDialog(
+    title = "Add Marker genes",
+    builder_marker_import_choice_ui("enhance"),
+    easyClose = TRUE,
+    footer = shiny::modalButton("Cancel")
+  ))
+}
+
 observeEvent(
   input[["enhance-marker_genes_mode_request"]],
   {
@@ -7,12 +16,7 @@ observeEvent(
     req(id)
     entry <- entry_of(id)
     req(entry)
-    shiny::showModal(shiny::modalDialog(
-      title = "Add Marker genes",
-      builder_marker_import_choice_ui("enhance"),
-      easyClose = TRUE,
-      footer = shiny::modalButton("Cancel")
-    ))
+    builder_show_marker_genes_choice()
   },
   ignoreInit = TRUE
 )

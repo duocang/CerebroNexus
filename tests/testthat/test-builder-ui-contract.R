@@ -1176,6 +1176,11 @@ test_that("Marker genes asks for a source before it changes selection", {
   expect_match(server, "enhance-marker_genes_mode_request", fixed = TRUE)
   expect_match(server, "enhance-marker_genes_calculate", fixed = TRUE)
   expect_match(server, "enhance-marker_genes_upload", fixed = TRUE)
+  expect_match(
+    builder_asset_text("server", "datasets.R"),
+    "builder_show_marker_genes_choice",
+    fixed = TRUE
+  )
   expect_match(modal, "Calculate for all Groups", fixed = TRUE)
   expect_match(modal, "Upload precomputed results", fixed = TRUE)
   expect_false(grepl("enhance-marker_import_files", modal, fixed = TRUE))
