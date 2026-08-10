@@ -706,6 +706,42 @@
     showTransientLayer(backdrop, dialog);
   }
 
+  function setMarkerDialog(message) {
+    var backdrop = document.getElementById("builder-marker-dialog-backdrop");
+    var dialog = document.getElementById("builder-marker-dialog");
+    var title = document.getElementById("builder-marker-dialog-title");
+    var closeButton = document.getElementById("builder-marker-dialog-close");
+    if (!backdrop || !dialog || !closeButton) return;
+
+    function close() {
+      if (backdrop.hidden) return;
+      dialog.removeEventListener("keydown", trapDialogKeydown);
+      removeTransientLayer(backdrop, dialog, "is-visible", function () {
+        backdrop.hidden = true;
+        updateDialogLock();
+        restoreFocus(dialog);
+      }, false);
+    }
+
+    if (!message || message.action === "close") {
+      close();
+      return;
+    }
+    if (title && message.title) title.textContent = message.title;
+    backdrop.hidden = false;
+    closeButton.onclick = close;
+    backdrop.onclick = function (event) {
+      if (event.target === backdrop) close();
+    };
+    dialog.removeEventListener("keydown", trapDialogKeydown);
+    prepareDialog(
+      dialog,
+      document.querySelector(".marker-genes-action"),
+      close
+    );
+    showTransientLayer(backdrop, dialog);
+  }
+
   function showBuildDialog(message) {
     if (document.querySelector(".builder-build-dialog-backdrop")) return;
     var trigger = document.getElementById("build");
@@ -2070,6 +2106,7 @@
   function registerBuildDialogHandler() {
     if (buildDialogHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
+    window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
     window.Shiny.addCustomMessageHandler("builder_focus_dataset", function (message) {
       var context = document.querySelector(".dataset-context");
       if (!context) return;

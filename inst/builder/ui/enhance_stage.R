@@ -186,27 +186,52 @@ builder_enhance_modules_ui <- function(id, modules) {
     return(p(class = "hint", "No optional modules apply to this dataset."))
   }
   tagList(lapply(modules, function(module) {
+    marker_action <- identical(module$id, "marker_genes")
     div(
-      class = if (isTRUE(module$blocked)) {
-        "enhance-module is-blocked"
-      } else {
-        "enhance-module"
-      },
-      tags$label(
-        class = "enhance-module-select",
-        tags$input(
-          id = ns(paste0("analysis_", module$id)),
-          type = "checkbox",
-          class = "enhance-module-checkbox visually-hidden shiny-input-checkbox",
-          checked = if (isTRUE(module$selected)) "checked",
-          disabled = if (isTRUE(module$blocked)) "disabled"
+      class = paste(
+        c(
+          "enhance-module",
+          if (isTRUE(module$selected)) "is-selected" else NULL,
+          if (isTRUE(module$blocked)) "is-blocked" else NULL
         ),
-        tags$span(class = "enhance-module-title", module$label),
-        p(class = "consequence", module$consequence %||% ""),
-        if (isTRUE(module$blocked)) {
-          p(class = "blocked", module$blocked_reason %||% "Unavailable")
-        }
+        collapse = " "
       ),
+      if (marker_action) {
+        tags$button(
+          id = ns("analysis_marker_genes_action"),
+          type = "button",
+          class = paste(
+            "enhance-module-select marker-genes-action action-button",
+            if (isTRUE(module$selected)) "is-selected" else ""
+          ),
+          `data-val` = "0",
+          `aria-pressed` = if (isTRUE(module$selected)) "true" else "false",
+          disabled = if (isTRUE(module$blocked)) "disabled",
+          tags$span(class = "enhance-module-title", module$label),
+          p(class = "consequence", module$consequence %||% ""),
+          if (isTRUE(module$blocked)) {
+            p(class = "blocked", module$blocked_reason %||% "Unavailable")
+          }
+        )
+      } else {
+        tags$label(
+          class = "enhance-module-select",
+          tags$input(
+            id = ns(paste0("analysis_", module$id)),
+            type = "checkbox",
+            class = paste(
+              "enhance-module-checkbox visually-hidden shiny-input-checkbox"
+            ),
+            checked = if (isTRUE(module$selected)) "checked",
+            disabled = if (isTRUE(module$blocked)) "disabled"
+          ),
+          tags$span(class = "enhance-module-title", module$label),
+          p(class = "consequence", module$consequence %||% ""),
+          if (isTRUE(module$blocked)) {
+            p(class = "blocked", module$blocked_reason %||% "Unavailable")
+          }
+        )
+      },
       tags$button(
         type = "button",
         class = "enhance-info-button",

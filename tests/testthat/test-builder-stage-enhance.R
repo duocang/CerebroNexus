@@ -73,19 +73,37 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
 
   expect_match(html, "Marker genes", fixed = TRUE)
   expect_match(html, "Adds ranked marker tables", fixed = TRUE)
-  expect_match(html, 'class="enhance-module-select"', fixed = TRUE)
+  expect_match(
+    html,
+    'class="[^"]*marker-genes-action[^"]*is-selected[^"]*"',
+    perl = TRUE
+  )
   expect_match(
     html,
     'class="enhance-module-checkbox visually-hidden shiny-input-checkbox"',
     fixed = TRUE
   )
   expect_match(html, 'class="enhance-module-title"', fixed = TRUE)
-  expect_match(html, 'id="enhance-analysis_marker_genes"', fixed = TRUE)
-  expect_match(html, 'checked="checked"', fixed = TRUE)
+  expect_match(
+    html,
+    'id="enhance-analysis_marker_genes_action"',
+    fixed = TRUE
+  )
+  expect_match(html, 'aria-pressed="true"', fixed = TRUE)
+  expect_false(grepl(
+    'id="enhance-analysis_marker_genes" type="checkbox"',
+    html,
+    fixed = TRUE
+  ))
+  expect_match(
+    html,
+    'id="enhance-analysis_enriched_pathways" type="checkbox"',
+    fixed = TRUE
+  )
   expect_match(html, 'class="enhance-info-button"', fixed = TRUE)
   expect_match(
     html,
-    '</label>\\s*<button type="button" class="enhance-info-button"',
+    '</button>\\s*<button type="button" class="enhance-info-button"',
     perl = TRUE
   )
   expect_match(

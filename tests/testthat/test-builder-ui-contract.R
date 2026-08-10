@@ -1220,8 +1220,10 @@ test_that("transient layers expose state-bearing motion lifecycle", {
       js,
       gregexpr("showTransientLayer(backdrop, dialog);", js, fixed = TRUE)
     )[[1L]],
-    4L
+    5L
   )
+  expect_match(js, "setMarkerDialog", fixed = TRUE)
+  expect_match(js, '"builder_marker_dialog", setMarkerDialog', fixed = TRUE)
   expect_length(
     regmatches(
       js,

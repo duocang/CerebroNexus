@@ -576,6 +576,25 @@
   width: min(31rem, calc(100vw - 2rem));
 }
 
+.builder-marker-dialog-backdrop {
+  z-index: 90;
+}
+
+.builder-marker-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: min(46rem, calc(100vh - 2rem));
+  overflow: auto;
+}
+
+.builder-marker-dialog h2 {
+  margin: 0 0 var(--space-4);
+  font-size: 1.15rem;
+}
+
+.marker-dialog-actions {
+  margin-top: var(--space-4);
+}
+
 .builder-build-dialog-list {
   max-height: 15rem;
   margin: 0 0 1rem;

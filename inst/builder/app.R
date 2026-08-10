@@ -98,6 +98,7 @@ source(file.path("ui", "dataset_rail.R"), local = TRUE)
 source("plan.R", local = TRUE)
 source(file.path("ui", "inspect_stage.R"), local = TRUE)
 source(file.path("ui", "core_stage.R"), local = TRUE)
+source(file.path("ui", "marker_import.R"), local = TRUE)
 source(file.path("ui", "enhance_stage.R"), local = TRUE)
 source(file.path("ui", "review_stage.R"), local = TRUE)
 source(file.path("ui", "build_status.R"), local = TRUE)
@@ -394,6 +395,7 @@ ui <- tagList(
   ),
   uiOutput("actionbar"),
   builder_auth_dialog_ui(),
+  builder_marker_dialog_ui(),
   div(
     id = "builder-live-status",
     class = "visually-hidden",

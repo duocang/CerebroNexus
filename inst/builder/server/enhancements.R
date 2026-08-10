@@ -1,5 +1,87 @@
 ## Builder server: enhancements.
 
+marker_dialog_mode <- reactiveVal("choice")
+
+output[["enhance-marker_dialog_body"]] <- renderUI({
+  if (identical(marker_dialog_mode(), "import")) {
+    builder_marker_import_pending_ui()
+  } else {
+    builder_marker_source_choice_ui("enhance")
+  }
+})
+
+builder_show_marker_dialog <- function(mode = "choice") {
+  marker_dialog_mode(mode)
+  session$sendCustomMessage(
+    "builder_marker_dialog",
+    list(
+      action = "open",
+      title = if (identical(mode, "import")) {
+        "Upload Marker gene results"
+      } else {
+        "Add Marker genes"
+      }
+    )
+  )
+}
+
+builder_close_marker_dialog <- function() {
+  session$sendCustomMessage(
+    "builder_marker_dialog",
+    list(action = "close")
+  )
+}
+
+observeEvent(
+  input[["enhance-analysis_marker_genes_action"]],
+  {
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    selected <- entry$settings$analyses %||% character()
+    imported <- entry$settings$marker_imports %||% list()
+    if ("marker_genes" %in% selected || length(imported)) {
+      entry$settings$analyses <- setdiff(selected, "marker_genes")
+      entry$settings$marker_imports <- NULL
+      replace_entry(entry)
+      return()
+    }
+    builder_show_marker_dialog("choice")
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input[["enhance-marker_genes_calculate"]],
+  {
+    id <- current()
+    req(id)
+    entry <- entry_of(id)
+    req(entry)
+    selected <- unique(c(
+      entry$settings$analyses %||% character(),
+      "marker_genes"
+    ))
+    entry$settings$analyses <- builder_normalize_analyses(
+      selected,
+      builder_profile_has(entry$profile, "marker_genes")
+    )
+    entry$settings$marker_imports <- NULL
+    replace_entry(entry)
+    builder_close_marker_dialog()
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input[["enhance-marker_genes_upload"]],
+  {
+    builder_show_marker_dialog("import")
+  },
+  ignoreInit = TRUE
+)
+
 ## -- supplementary tables -------------------------------------------------
 observeEvent(input[["enhance-table_files"]], {
   id <- current()
