@@ -31,3 +31,68 @@ test_that("marker import inventories delimited files and XLSX sheets", {
   )
   expect_true(all(vapply(got, `[[`, logical(1), "valid")))
 })
+
+test_that("single and multi cluster imports normalize to the Viewer contract", {
+  levels <- c("B", "T", "NK")
+  single <- builder_marker_import_map_single(
+    builder_marker_import_source(
+      "",
+      "NK.csv",
+      NULL,
+      data.frame(gene = "NKG7")
+    ),
+    group = "cell_type",
+    level = "NK",
+    known_levels = levels
+  )
+  multiple <- builder_marker_import_map_multiple(
+    builder_marker_import_source(
+      "",
+      "markers.csv",
+      NULL,
+      data.frame(
+        label = c("B", "T"),
+        gene = c("MS4A1", "CD3D")
+      )
+    ),
+    group = "cell_type",
+    column = "label",
+    known_levels = levels
+  )
+
+  expect_identical(names(single$table)[[1L]], "cell_type")
+  expect_identical(single$table$cell_type, "NK")
+  expect_identical(names(multiple$table)[[1L]], "cell_type")
+  expect_identical(
+    builder_marker_import_coverage(list(single, multiple), levels)$missing,
+    character()
+  )
+})
+
+test_that("unknown and overlapping cluster assignments are rejected", {
+  source <- builder_marker_import_source(
+    "",
+    "markers.csv",
+    NULL,
+    data.frame(gene = "NKG7")
+  )
+  unknown <- builder_marker_import_map_single(
+    source,
+    group = "cell_type",
+    level = "Unknown",
+    known_levels = "NK"
+  )
+  first <- builder_marker_import_map_single(
+    source,
+    group = "cell_type",
+    level = "NK",
+    known_levels = "NK"
+  )
+  duplicate <- builder_marker_import_validate_sources(
+    list(first, first),
+    known_levels = "NK"
+  )
+
+  expect_identical(unknown$error, "unknown_cluster")
+  expect_identical(duplicate$error, "duplicate_cluster")
+})

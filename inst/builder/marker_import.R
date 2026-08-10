@@ -101,3 +101,123 @@ builder_marker_import_inventory <- function(
     use.names = FALSE
   )
 }
+
+builder_marker_import_infer_level <- function(
+  source_name,
+  sheet,
+  known_levels
+) {
+  candidates <- unique(c(
+    tools::file_path_sans_ext(basename(source_name)),
+    as.character(sheet %||% "")
+  ))
+  hits <- known_levels[tolower(known_levels) %in% tolower(candidates)]
+  if (length(hits) == 1L) hits else NULL
+}
+
+builder_marker_import_normalize <- function(table, group, values) {
+  table[[group]] <- as.character(values)
+  table <- table[c(group, setdiff(names(table), group))]
+  rownames(table) <- NULL
+  table
+}
+
+builder_marker_import_mapping_error <- function(source, error) {
+  source$table <- NULL
+  source$valid <- FALSE
+  source$error <- error
+  source$levels <- character()
+  source
+}
+
+builder_marker_import_map_single <- function(
+  source,
+  group,
+  level,
+  known_levels
+) {
+  if (!isTRUE(source$valid) || !is.data.frame(source$table)) {
+    return(builder_marker_import_mapping_error(source, "unusable_table"))
+  }
+  level <- trimws(as.character(level %||% ""))
+  if (length(level) != 1L || is.na(level) || !nzchar(level)) {
+    return(builder_marker_import_mapping_error(source, "missing_cluster"))
+  }
+  if (!level %in% known_levels) {
+    return(builder_marker_import_mapping_error(source, "unknown_cluster"))
+  }
+  source$table <- builder_marker_import_normalize(source$table, group, level)
+  source$columns <- names(source$table)
+  source$group <- group
+  source$levels <- level
+  source$mapping <- "single"
+  source$error <- NULL
+  source
+}
+
+builder_marker_import_map_multiple <- function(
+  source,
+  group,
+  column,
+  known_levels
+) {
+  if (!isTRUE(source$valid) || !is.data.frame(source$table)) {
+    return(builder_marker_import_mapping_error(source, "unusable_table"))
+  }
+  column <- as.character(column %||% "")
+  if (
+    length(column) != 1L || is.na(column) || !column %in% names(source$table)
+  ) {
+    return(builder_marker_import_mapping_error(
+      source,
+      "missing_cluster_column"
+    ))
+  }
+  values <- as.character(source$table[[column]])
+  if (anyNA(values) || any(!nzchar(trimws(values)))) {
+    return(builder_marker_import_mapping_error(source, "missing_cluster"))
+  }
+  levels <- unique(values)
+  if (any(!levels %in% known_levels)) {
+    return(builder_marker_import_mapping_error(source, "unknown_cluster"))
+  }
+  source$table <- builder_marker_import_normalize(source$table, group, values)
+  source$columns <- names(source$table)
+  source$group <- group
+  source$levels <- levels
+  source$mapping <- "multiple"
+  source$error <- NULL
+  source
+}
+
+builder_marker_import_validate_sources <- function(sources, known_levels) {
+  if (!length(sources)) {
+    return(list(valid = FALSE, error = "empty_import"))
+  }
+  valid <- vapply(sources, function(source) isTRUE(source$valid), logical(1))
+  if (!all(valid)) {
+    return(list(valid = FALSE, error = "unresolved_source"))
+  }
+  levels <- unlist(lapply(sources, `[[`, "levels"), use.names = FALSE)
+  if (any(!levels %in% known_levels)) {
+    return(list(valid = FALSE, error = "unknown_cluster"))
+  }
+  if (anyDuplicated(levels)) {
+    return(list(valid = FALSE, error = "duplicate_cluster"))
+  }
+  list(valid = TRUE, error = NULL, sources = sources)
+}
+
+builder_marker_import_coverage <- function(sources, known_levels) {
+  present <- unique(unlist(
+    lapply(sources, function(source) {
+      as.character(source$levels %||% character())
+    }),
+    use.names = FALSE
+  ))
+  list(
+    known = as.character(known_levels),
+    present = present,
+    missing = setdiff(as.character(known_levels), present)
+  )
+}
