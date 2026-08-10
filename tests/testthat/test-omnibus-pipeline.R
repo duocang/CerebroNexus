@@ -652,6 +652,95 @@ test_that("the Omnibus public API verifier exposes the documented workflow", {
   expect_false(grepl(":::", source, fixed = TRUE))
 })
 
+expect_omnibus_group_rename_error <- function(object, mapping, regexp) {
+  before <- serialize(object, NULL, version = 3)
+  expect_error(
+    convertSeuratToCerebro(
+      seurat_file = object,
+      result_dir = withr::local_tempdir(.local_envir = parent.frame()),
+      assay = "RNA",
+      slot = "data",
+      experiment_name = "Rename preflight",
+      organism = "Human",
+      groups = c("orig.ident", "condition", "cell_type"),
+      groups_naming = mapping,
+      add_most_expressed_genes = FALSE,
+      expression_matrix_mode = "embedded",
+      verbose = FALSE
+    ),
+    regexp
+  )
+  expect_identical(serialize(object, NULL, version = 3), before)
+}
+
+test_that("group renames reject metadata target collisions before mutation", {
+  skip_if_not_installed("Seurat")
+  object <- readRDS(omnibus_example_path("demo_omnibus_seurat.rds"))
+  object$sample <- paste0("existing-", seq_len(ncol(object)))
+
+  expect_omnibus_group_rename_error(
+    object,
+    list("orig.ident" = "sample", "cell_type" = "cluster"),
+    "metadata conflict.*orig[.]ident.*sample"
+  )
+})
+
+test_that("group renames reject keyed misc collisions before mutation", {
+  skip_if_not_installed("Seurat")
+  source <- readRDS(omnibus_example_path("demo_omnibus_seurat.rds"))
+  old_tree <- source@misc$trees$cell_type
+  new_tree <- old_tree
+  new_tree$tip.label <- paste0("existing-", seq_along(new_tree$tip.label))
+  conflicting_values <- list(
+    trees = new_tree,
+    most_expressed_genes = data.frame(
+      cluster = "existing",
+      gene = "ExistingGene",
+      pct = 1
+    ),
+    mean_expression = data.frame(
+      cluster = "existing",
+      gene = "ExistingGene",
+      mean_expr = 1
+    )
+  )
+
+  for (collection in names(conflicting_values)) {
+    object <- source
+    object@misc[[collection]][["cluster"]] <- conflicting_values[[collection]]
+    expect_false(identical(
+      object@misc[[collection]][["cell_type"]],
+      object@misc[[collection]][["cluster"]]
+    ))
+    expect_omnibus_group_rename_error(
+      object,
+      list("cell_type" = "cluster"),
+      paste0(collection, ".*cell_type.*cluster.*both keys")
+    )
+  }
+})
+
+test_that("group rename preflight rejects ambiguous target names", {
+  skip_if_not_installed("Seurat")
+  object <- readRDS(omnibus_example_path("demo_omnibus_seurat.rds"))
+
+  expect_omnibus_group_rename_error(
+    object,
+    list("orig.ident" = "renamed", "cell_type" = "renamed"),
+    "Multiple.*renamed"
+  )
+  expect_omnibus_group_rename_error(
+    object,
+    list("cell_type" = ""),
+    "non-empty scalar"
+  )
+  expect_omnibus_group_rename_error(
+    object,
+    list("cell_type" = c("cluster", "other")),
+    "non-empty scalar"
+  )
+})
+
 test_that("public APIs convert committed Omnibus inputs into a standalone H5 app", {
   skip_if_not_installed("HDF5Array")
   skip_if_not_installed("callr")

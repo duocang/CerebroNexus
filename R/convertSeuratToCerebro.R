@@ -571,6 +571,47 @@ convertSeuratToCerebro <- function(
         call. = FALSE
       )
     }
+    source_names <- names(groups_naming)
+    if (
+      anyNA(source_names) ||
+        any(!nzchar(source_names)) ||
+        anyDuplicated(source_names)
+    ) {
+      stop(
+        "groups_naming source names must be non-empty and unique.",
+        call. = FALSE
+      )
+    }
+    valid_targets <- vapply(
+      groups_naming,
+      function(target) {
+        is.character(target) &&
+          length(target) == 1L &&
+          !is.na(target) &&
+          nzchar(target)
+      },
+      logical(1)
+    )
+    if (!all(valid_targets)) {
+      stop(
+        "groups_naming targets must each be a non-empty scalar character name.",
+        call. = FALSE
+      )
+    }
+    target_names <- unname(vapply(groups_naming, `[[`, character(1), 1L))
+    duplicate_target <- duplicated(target_names) |
+      duplicated(
+        target_names,
+        fromLast = TRUE
+      )
+    if (any(duplicate_target)) {
+      stop(
+        "Multiple groups map to the same groups_naming target '",
+        target_names[which(duplicate_target)[[1L]]],
+        "'.",
+        call. = FALSE
+      )
+    }
 
     # Check if at least one name in groups_naming exists in groups
     valid_names <- names(groups_naming)[names(groups_naming) %in% groups]
@@ -599,8 +640,50 @@ convertSeuratToCerebro <- function(
       )
     }
 
+    # Preflight every effective rename before changing metadata or misc. This
+    # keeps the in-memory Seurat object intact if any later mapping conflicts.
+    keyed_misc <- c("trees", "most_expressed_genes", "mean_expression")
     for (old_name in valid_names) {
       new_name <- groups_naming[[old_name]]
+      if (identical(old_name, new_name)) {
+        next
+      }
+      if (new_name %in% names(seurat@meta.data)) {
+        stop(
+          "Group rename metadata conflict: '",
+          old_name,
+          "' -> '",
+          new_name,
+          "'; the target column already exists.",
+          call. = FALSE
+        )
+      }
+      for (collection in keyed_misc) {
+        payload <- seurat@misc[[collection]]
+        if (
+          is.list(payload) &&
+            old_name %in% names(payload) &&
+            new_name %in% names(payload)
+        ) {
+          stop(
+            "Group rename conflict in misc payload '",
+            collection,
+            "': '",
+            old_name,
+            "' -> '",
+            new_name,
+            "'; both keys already exist.",
+            call. = FALSE
+          )
+        }
+      }
+    }
+
+    for (old_name in valid_names) {
+      new_name <- groups_naming[[old_name]]
+      if (identical(old_name, new_name)) {
+        next
+      }
       # Rename column in metadata
       seurat@meta.data[[new_name]] <- seurat@meta.data[[old_name]]
       seurat@meta.data[[old_name]] <- NULL
@@ -609,11 +692,7 @@ convertSeuratToCerebro <- function(
       # exportFromSeurat() registers the new group names before importing these
       # collections, so a stale key would either be dropped (summary tables) or
       # rejected (trees) even though the public rename itself is valid.
-      for (collection in c(
-        "trees",
-        "most_expressed_genes",
-        "mean_expression"
-      )) {
+      for (collection in keyed_misc) {
         payload <- seurat@misc[[collection]]
         if (
           is.list(payload) &&
