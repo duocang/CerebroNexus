@@ -73,6 +73,25 @@ test_that("bundle.R parses and defines the builder API", {
   }
 })
 
+test_that("Linked views treats projections as a multi-panel selection", {
+  ui_file <- file.path(dirname(bundle_file), "UI.R")
+  js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
+  skip_if_not(file.exists(ui_file) && file.exists(js_file))
+
+  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    ui,
+    'tags\\$select\\(id = "cv-pick-proj", multiple = "multiple"\\)'
+  )
+  expect_match(js, "var selectedProjections = []", fixed = TRUE)
+  expect_match(js, "function rebuildProjectionInstances()", fixed = TRUE)
+  expect_match(js, "function setSelectedProjections(names)", fixed = TRUE)
+  expect_match(js, "selectedProjections.forEach", fixed = TRUE)
+  expect_match(js, "plugins: ['remove_button']", fixed = TRUE)
+})
+
 test_that("the omnibus spatial bundle preserves every embedded background", {
   skip_if_not(have_bundle)
   skip_if_not(nzchar(omnibus_crb) && file.exists(omnibus_crb))

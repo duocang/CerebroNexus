@@ -193,14 +193,14 @@ tab_coordinated_views <- tabItem(
         tags$label("Colour by"),
         tags$select(id = "cv-pick-color")
       ),
-      ## Which projection feeds the expression panel. Every projection's coords
-      ## travel in the bundle, so switching is client-side and instant. Hidden by
-      ## JS when the data set has only one projection.
+      ## Projections are a multi-select. Every selected embedding receives its
+      ## own linked card in the same responsive grid as Spatial, Trekker and TCR.
+      ## All coordinates already travel in the bundle, so this stays client-side.
       div(
         class = "cv-ctl",
         id = "cv-proj-ctl",
         tags$label("Projection"),
-        tags$select(id = "cv-pick-proj")
+        tags$select(id = "cv-pick-proj", multiple = "multiple")
       ),
       ## Spatial sections are a multi-select. Every selected section receives an
       ## independent linked canvas; all sections still share colour, filtering,
@@ -211,39 +211,6 @@ tab_coordinated_views <- tabItem(
         style = "display:none",
         tags$label("Spatial data"),
         tags$select(id = "cv-pick-spatial", multiple = "multiple")
-      ),
-      ## One global background mode, matching the Spatial page. Per-section
-      ## choices live inside Customize rather than expanding the top bar.
-      div(
-        class = "cv-ctl cv-bg-ctl",
-        id = "cv-img-pick-ctl",
-        style = "display:none",
-        tags$label("Background image"),
-        div(
-          class = "cv-bg-mode",
-          tags$button(
-            type = "button",
-            class = "cv-bg-mode-btn is-on",
-            `data-cv-bg-mode` = "auto",
-            "Auto"
-          ),
-          tags$button(
-            type = "button",
-            class = "cv-bg-mode-btn",
-            `data-cv-bg-mode` = "none",
-            "None"
-          ),
-          tags$button(
-            type = "button",
-            class = "cv-bg-mode-btn cv-bg-customize-btn",
-            `data-cv-bg-mode` = "custom",
-            "Customize…"
-          )
-        ),
-        div(
-          class = "cv-bg-popover",
-          id = "cv-bg-popover"
-        )
       ),
       ## Single-gene expression picker — a real server-side gene search (the
       ## whole transcriptome), shown only in "Gene expression" mode. JS toggles
@@ -404,31 +371,96 @@ tab_coordinated_views <- tabItem(
         class = "cv-more",
         id = "cv-more",
         div(
+          class = "cv-more-titlebar",
+          `data-cv-more-drag-handle` = "true",
+          `aria-label` = "Drag More settings window",
+          tags$span(
+            class = "cv-more-grip",
+            HTML("&middot;&middot;<br>&middot;&middot;")
+          ),
+          tags$span(class = "cv-more-title", "More settings"),
+          tags$span(class = "cv-more-drag-hint", "Drag to move"),
+          tags$button(
+            type = "button",
+            id = "cv-more-close",
+            class = "cv-more-close",
+            `aria-label` = "Close More settings",
+            HTML("&times;")
+          )
+        ),
+        div(
           class = "cv-more-clip",
           div(
             class = "cv-more-inner",
-            ## Point size sits with Point opacity: they are the same kind of
-            ## adjustment to the same marks, and separating them put one in the
-            ## always-visible bar and the other behind "More".
-            cv_range(
-              "Point size",
-              "cv-ps",
-              min = "0.8",
-              max = "7",
-              step = "0.2",
-              value = "3",
-              disp = "3.0",
-              val_id = "cv-ps-val"
+            ## Advanced controls float over the workspace rather than growing
+            ## the bar. Point appearance and per-image calibration are two
+            ## deliberately distinct sections of one low-frequency surface.
+            div(
+              class = "cv-more-section cv-more-images",
+              tags$div(class = "cv-more-heading", "Background image"),
+              div(
+                class = "cv-ctl cv-bg-ctl",
+                id = "cv-img-pick-ctl",
+                style = "display:none",
+                div(class = "cv-bg-space-tabs", id = "cv-bg-space-tabs"),
+                div(
+                  class = "cv-bg-settings",
+                  div(
+                    class = "cv-bg-display",
+                    tags$div(class = "cv-bg-display-title", "Display"),
+                    div(
+                      class = "cv-bg-mode",
+                      tags$button(
+                        type = "button",
+                        class = "cv-bg-mode-btn is-on",
+                        `data-cv-bg-mode` = "auto",
+                        "Auto"
+                      ),
+                      tags$button(
+                        type = "button",
+                        class = "cv-bg-mode-btn",
+                        `data-cv-bg-mode` = "none",
+                        "None"
+                      ),
+                      tags$button(
+                        type = "button",
+                        class = "cv-bg-mode-btn cv-bg-customize-btn",
+                        `data-cv-bg-mode` = "custom",
+                        "Customize…"
+                      )
+                    )
+                  ),
+                  uiOutput("coordviews_image_ui")
+                ),
+                div(class = "cv-bg-popover", id = "cv-bg-popover")
+              )
             ),
-            cv_range(
-              "Point opacity",
-              "cv-opacity",
-              min = "0.1",
-              max = "1",
-              step = "0.05",
-              value = "0.8",
-              disp = "0.80",
-              val_id = "cv-op-val"
+            div(
+              class = "cv-more-section cv-more-points",
+              tags$div(class = "cv-more-heading", "Points"),
+              ## Point size sits with Point opacity: they are the same kind of
+              ## adjustment to the same marks, and separating them put one in the
+              ## always-visible bar and the other behind "More".
+              cv_range(
+                "Point size",
+                "cv-ps",
+                min = "0.8",
+                max = "7",
+                step = "0.2",
+                value = "3",
+                disp = "3.0",
+                val_id = "cv-ps-val"
+              ),
+              cv_range(
+                "Point opacity",
+                "cv-opacity",
+                min = "0.1",
+                max = "1",
+                step = "0.05",
+                value = "0.8",
+                disp = "0.80",
+                val_id = "cv-op-val"
+              ),
             ),
             cv_range(
               "Show % of cells",
@@ -501,10 +533,6 @@ tab_coordinated_views <- tabItem(
       )
     ),
 
-    ## ---- spatial background-image controls (server-rendered; only when the
-    ## current data set carries spatial coordinates with a histology image) --- ##
-    uiOutput("coordviews_image_ui"),
-
     ## ---- selection bar: sits below the params, above the panels --------- ##
     div(
       class = "cv-selbar cv-collapse",
@@ -514,8 +542,8 @@ tab_coordinated_views <- tabItem(
     ),
 
     ## ---- panel grid ----------------------------------------------------- ##
-    ## Every space the data set carries gets its OWN panel (no switch): A = UMAP,
-    ## then every selected Spatial section, Trekker and Clonal. coordviews.js
+    ## Every selected/present space gets its OWN panel: selected projections,
+    ## selected Spatial sections, Trekker and Clonal. coordviews.js
     ## assigns spaces, hides unused slots, creates extras as needed, and wraps
     ## panels automatically while keeping each canvas at least 300px wide.
     div(

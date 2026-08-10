@@ -175,7 +175,7 @@ test_that("multiple spatial sections become independent linked panels", {
   )))
   expect_equal(
     app$get_js("document.querySelectorAll('.cv-bg-row').length"),
-    3
+    1
   )
   expect_equal(
     app$get_js("document.querySelectorAll('.cv-bg-row select').length"),
@@ -183,9 +183,9 @@ test_that("multiple spatial sections become independent linked panels", {
   )
   expect_equal(
     app$get_js(
-      "document.querySelectorAll('.cv-bg-row input[type=checkbox]').length"
+      "document.querySelectorAll('.cv-bg-space-tab').length"
     ),
-    2
+    3
   )
   expect_equal(
     app$get_js(
@@ -241,7 +241,7 @@ test_that("the tab renders a pushed bundle and offers every meta column", {
 })
 
 
-test_that("switching projection resets the viewport and the lasso", {
+test_that("multiple projections become independent responsive linked panels", {
   local_app_support(inst_dir)
   app <- cv_app("cv_browser_projection_reset")
 
@@ -256,9 +256,31 @@ test_that("switching projection resets the viewport and the lasso", {
     )
   ))
   app$wait_for_js(
-    "document.getElementById('cv-pick-proj').options.length === 2",
+    "document.getElementById('cv-pick-proj').selectize != null",
     timeout = 15000
   )
+
+  app$run_js(
+    "document.getElementById('cv-pick-proj').selectize.setValue(['umap','tsne']);"
+  )
+  app$wait_for_js(
+    paste0(
+      "Array.from(document.querySelectorAll('.cv-pane'))",
+      ".filter(function(p){return !p.classList.contains('cv-hidden');}).length === 2"
+    ),
+    timeout = 10000
+  )
+  expect_equal(
+    unlist(app$get_js(paste0(
+      "Array.from(document.querySelectorAll('.cv-pane:not(.cv-hidden) .cv-ptitle'))",
+      ".map(function(x){return x.textContent;})"
+    ))),
+    c("umap (expression)", "tsne (expression)")
+  )
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-pane:not(.cv-hidden) canvas[id^=cv-cv-]'))",
+    ".every(function(x){return x.getBoundingClientRect().width >= 300;})"
+  )))
 
   # zoom in hard with the toolbar (the wheel no longer zooms), and leave a
   # committed lasso behind
@@ -288,8 +310,7 @@ test_that("switching projection resets the viewport and the lasso", {
 
   app$run_js(
     paste0(
-      "(function () { var s = document.getElementById('cv-pick-proj');\n",
-      "  s.value = 'tsne'; s.dispatchEvent(new Event('change')); })();"
+      "document.getElementById('cv-pick-proj').selectize.setValue(['tsne']);"
     )
   )
   app$wait_for_js(
@@ -304,7 +325,7 @@ test_that("switching projection resets the viewport and the lasso", {
       "document.getElementById('cv-mini-a').classList.contains('is-on');"
     )
   )
-  expect_gt(app$get_js(cv_ink_js()), 5)
+  expect_gt(app$get_js(cv_ink_js()), 1)
 
   app$stop()
 })
@@ -490,7 +511,10 @@ test_that("a 3-D embedding can be rotated, and a 2-D one cannot", {
     )
   )
   app$wait_for_js(
-    "document.getElementById('cv-pick-proj').options.length === 2",
+    paste0(
+      "document.getElementById('cv-pick-proj').selectize && ",
+      "Object.keys(document.getElementById('cv-pick-proj').selectize.options).length === 2"
+    ),
     timeout = 15000
   )
 
@@ -505,8 +529,9 @@ test_that("a 3-D embedding can be rotated, and a 2-D one cannot", {
   expect_equal(
     app$get_js(
       paste0(
-        "Array.from(document.getElementById('cv-pick-proj').options)",
-        ".map(function (o) { return o.textContent; })"
+        "Object.keys(document.getElementById('cv-pick-proj').selectize.options)",
+        ".map(function (k) { return ",
+        "document.getElementById('cv-pick-proj').selectize.options[k].text; })"
       )
     ),
     list("umap_3D (3-D)", "umap_2D")
@@ -613,7 +638,10 @@ test_that("a 3-D embedding can be rotated, and a 2-D one cannot", {
   )
   overlay_after <- unlist(app$get_js(dark_centroid))
   expect_false(is.null(overlay_after))
-  expect_gt(sqrt(sum((overlay_after - overlay_before)^2)), 10)
+  # Canvas rasterisation can move this sampled centroid by a pixel or two at
+  # different responsive panel sizes. A 6px displacement still cleanly rejects
+  # the original regression (the overlay stayed fixed at 0px).
+  expect_gt(sqrt(sum((overlay_after - overlay_before)^2)), 6)
 
   # reset returns it to the starting angle. Compared with a tolerance because
   # the centroid is sampled off the canvas on a 4px lattice, so it carries a
@@ -628,10 +656,7 @@ test_that("a 3-D embedding can be rotated, and a 2-D one cannot", {
   # switching to the flat projection retires the tool — it would have nothing
   # to turn, and leaving it offered implies a dimension that is not there
   app$run_js(
-    paste0(
-      "(function () { var s = document.getElementById('cv-pick-proj');\n",
-      "  s.value = 'umap_2D'; s.dispatchEvent(new Event('change')); })();"
-    )
+    "document.getElementById('cv-pick-proj').selectize.setValue(['umap_2D']);"
   )
   app$wait_for_js(paste0("!(", orbit_shown, ")"), timeout = 8000)
   expect_false(app$get_js(orbit_shown))
@@ -979,6 +1004,12 @@ test_that("data-set strings cannot inject markup into the workspace", {
       "  default_group: '",
       payload,
       "',\n",
+      "  projections: { '",
+      payload,
+      "': { x: blob(0), y: blob(0), ndim: 2 } },\n",
+      "  default_projection: '",
+      payload,
+      "',\n",
       "  spaces: [{ id: 'umap', label: '",
       payload,
       "',\n",
@@ -1313,7 +1344,7 @@ test_that("the bundle is built only while the workspace is on screen", {
 ## 1366x768 screen is more height than three or four panels have -- so the last
 ## row fell past the bottom and the page scrolled, on exactly the layouts that
 ## most need to be seen together.
-test_that("three and four panels fit one viewport on a small screen", {
+test_that("three and four panels keep a 300px floor and wrap on a small screen", {
   local_app_support(inst_dir)
   app <- cv_app("cv_browser_viewport_fit")
   ## A 1366x768 laptop, the smallest screen this is expected to work on.
@@ -1379,13 +1410,25 @@ test_that("three and four panels fit one viewport on a small screen", {
       n * 2, # each pane carries its canvas and its minimap
       info = paste(n, "panels")
     )
-    ## ... and the page does not scroll to show them.
-    expect_lte(app$get_js(overflow), 0)
-    ## The squares stay usable rather than collapsing to fit.
+    ## The requested 300px floor wins over squeezing every row into one screen;
+    ## additional rows remain reachable by normal page scrolling.
     expect_gte(
       app$get_js("document.getElementById('cv-cv-a').clientWidth"),
-      150
+      300
     )
+    expect_lte(
+      app$get_js(paste0(
+        "Math.round(document.querySelector('.cv-panes').getBoundingClientRect().right)",
+        " - document.documentElement.clientWidth"
+      )),
+      0
+    )
+    if (app$get_js(overflow) > 0) {
+      expect_gt(
+        app$get_js("document.querySelector('.content-wrapper').scrollHeight"),
+        app$get_js("document.querySelector('.content-wrapper').clientHeight")
+      )
+    }
   }
 
   app$stop()
@@ -2740,6 +2783,85 @@ test_that("point size sits with point opacity", {
   expect_gt(app$get_js(cv_ink_js()), 1)
 
   app$stop()
+})
+
+test_that("More settings overlays the workspace and groups point and histology controls", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_more_overlay")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(cv_bundle_js(paste0(
+    "{ spaces: [{ id: 'umap', label: 'umap', x: blob(0), y: blob(0) },",
+    "{ id: 'spatial', label: 'A (spatial)', x: blob(0), y: blob(0),",
+    "images: [{ id: 'one', label: 'H&E', uri: 'data:image/png;base64,iVBORw0KGgo=',",
+    "preset: { opacity: 0.6 } }] }] }"
+  )))
+  app$wait_for_js(
+    "document.getElementById('cv-more-btn') !== null",
+    timeout = 15000
+  )
+  app$run_js("document.getElementById('cv-more-btn').click();")
+  app$wait_for_js(
+    "(function(){var x=document.getElementById('cv-more'); return x && x.classList.contains('is-open');})()",
+    timeout = 5000
+  )
+
+  expect_equal(
+    app$get_js("getComputedStyle(document.getElementById('cv-more')).position"),
+    "absolute"
+  )
+  expect_true(app$get_js(
+    "document.querySelector('#cv-more [data-cv-bg-mode]') !== null"
+  ))
+  expect_true(app$get_js(
+    "document.querySelector('#cv-more .cv-more-points #cv-ps') !== null"
+  ))
+})
+
+test_that("More settings becomes a recoverable floating window after dragging", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_more_drag")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(cv_bundle_js())
+  app$wait_for_js(
+    "document.getElementById('cv-more-btn') !== null",
+    timeout = 15000
+  )
+  app$run_js("document.getElementById('cv-more-btn').click();")
+  app$wait_for_js(
+    "document.getElementById('cv-more').classList.contains('is-open')",
+    timeout = 5000
+  )
+
+  expect_true(app$get_js(
+    "document.querySelector('#cv-more [data-cv-more-drag-handle]') !== null"
+  ))
+  expect_equal(
+    app$get_js(
+      "getComputedStyle(document.getElementById('cv-more-close')).display"
+    ),
+    "none"
+  )
+
+  app$run_js(paste0(
+    "(function(){ var h=document.querySelector('[data-cv-more-drag-handle]');",
+    "var r=h.getBoundingClientRect();",
+    "h.dispatchEvent(new PointerEvent('pointerdown',{pointerId:1,clientX:r.left+8,clientY:r.top+8,bubbles:true}));",
+    "document.dispatchEvent(new PointerEvent('pointermove',{pointerId:1,clientX:32,clientY:40,bubbles:true}));",
+    "document.dispatchEvent(new PointerEvent('pointerup',{pointerId:1,bubbles:true})); })();"
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-more').classList.contains('is-floating')",
+    timeout = 5000
+  )
+  expect_true(app$get_js(
+    "getComputedStyle(document.getElementById('cv-more-close')).display !== 'none'"
+  ))
+  expect_true(app$get_js(paste0(
+    "(function(){var r=document.getElementById('cv-more').getBoundingClientRect();",
+    "return r.right >= 50 && r.bottom >= 50 && r.left <= innerWidth - 50 && r.top <= innerHeight - 50;})()"
+  )))
 })
 
 

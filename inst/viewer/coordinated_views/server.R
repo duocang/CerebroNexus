@@ -507,13 +507,26 @@ output[["coordviews_image_ui"]] <- renderUI({
     span <- c(400, 400)
   }
   rng <- function(id, mn, mx, val, step) {
-    tags$input(
-      type = "range",
-      id = id,
-      min = mn,
-      max = mx,
-      value = val,
-      step = step
+    fmt <- function(x) {
+      format(signif(x, 4), trim = TRUE, scientific = FALSE)
+    }
+    div(
+      class = "cv-img-range",
+      tags$span(class = "cv-img-range-min", fmt(mn)),
+      tags$span(
+        class = "cv-img-range-value",
+        id = paste0(id, "-val"),
+        fmt(val)
+      ),
+      tags$span(class = "cv-img-range-max", fmt(mx)),
+      tags$input(
+        type = "range",
+        id = id,
+        min = mn,
+        max = mx,
+        value = val,
+        step = step
+      )
     )
   }
   chk <- function(id, label, on) {
@@ -548,8 +561,7 @@ output[["coordviews_image_ui"]] <- renderUI({
     class = "cv-imgbar",
     div(
       class = "cv-imgbar-heading",
-      tags$span(class = "cv-imgbar-title", "Histology image"),
-      tags$span(class = "cv-imgbar-active", id = "cv-img-active-label")
+      tags$span(class = "cv-imgbar-title", "Alignment")
     ),
     chk("cv-img-show", "Show", TRUE),
     div(
@@ -679,8 +691,8 @@ observeEvent(input[["coordinated_views_info"]], {
         "Every modality is a layout of the ",
         tags$b("same cells"),
         ": the ",
-        tags$b("UMAP"),
-        " (transcriptome), the ",
+        tags$b("selected projections"),
+        " (UMAP, t-SNE, PCA or any other embedding), the ",
         tags$b("Spatial"),
         " map (physical positions, when the data set carries them), and ",
         tags$b("Clonal expansion"),
@@ -693,9 +705,9 @@ observeEvent(input[["coordinated_views_info"]], {
         " panel and the same cells highlight in ",
         tags$i("every"),
         " panel, because the selection is keyed on the cell, not on a panel's ",
-        "coordinates. Select a UMAP cluster to see where those cells sit in ",
+        "coordinates. Select a cluster in any projection to see where those cells sit in ",
         "tissue and which clonotypes they carry; select an expanded clone to see ",
-        "where its cells fall in the UMAP. A 3-D panel is for navigating: with ",
+        "where its cells fall across every selected embedding. A 3-D panel is for navigating: with ",
         "depth on screen, what a lasso encloses depends on the viewing angle, so ",
         "those panels display a selection rather than make one."
       ),
@@ -717,7 +729,7 @@ observeEvent(input[["coordinated_views_info"]], {
         " — zoom with each panel's toolbar buttons, and drag with the hand tool ",
         "(or shift-drag / middle-drag from any tool) to pan. The toolbar also ",
         "has reset and PNG download. A 3-D embedding is ",
-        "marked as such in the projection picker and gains a rotate tool: drag ",
+        "marked as such in the multi-projection picker and gains a rotate tool: drag ",
         "to turn it, and nearer cells are drawn larger so the depth reads."
       ),
       tags$p(

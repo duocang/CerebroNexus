@@ -57,7 +57,10 @@ var imgToken = 0;
 // them is active so the single alignment bar has an unambiguous target.
 var selectedSpatial = [];
 var activeSpatialId = null;
-var backgroundMode = 'auto';
+// A background choice belongs to one spatial section. Auto/None/Custom must
+// not leak from donor A into donor C merely because they are shown together.
+var backgroundModes = {};
+var backgroundScopePulse = false;
 var spatialTemplate = null;
 // Panel key currently given the whole grid, or null for the normal layout. With
 // three or four panels each square is small enough that detail becomes guesswork;
@@ -76,13 +79,16 @@ var focusPanel = null;
   var ps = 3.0;                 // point size
   var pointOpacity = 0.8;       // base draw opacity (no-selection view)
   var hidden = new Set();       // hidden level indices for the active group
-  var curProj = null;           // projection name feeding the expression panel
+  // Every selected embedding is an independent panel. Colour/filter/selection
+  // state remains global, while viewport and 3-D rotation live on the panel.
+  var selectedProjections = [];
   var pctShow = 100;            // % of cells to render
   var pctMask = null;           // Uint8Array subsample mask, or null (all shown)
   var groupFilter = {};         // groupName -> Set(allowed level idx); absent = all
   var spaceById = {};
   var resizeObserver = null;    // fires when the tab becomes visible / resizes
   var resizeTimer = null;
+  var focusResizeTimer = null;
   // Each spatial instance owns `_imgEl`, `_imgReady`, `_imgState` and its image
   // identity. The alignment bar edits only activeSpatialId.
 
@@ -689,6 +695,11 @@ var focusPanel = null;
     var sp = p && spaceById[p.spaceId];
     return !!(sp && sp.z);
   }
+  function projectionId(name) { return 'projection::' + name; }
+  function isProjectionSpace(sp) { return !!(sp && sp._projectionName); }
+  function isProjectionPanel(p) {
+    return !!(p && isProjectionSpace(spaceById[p.spaceId]));
+  }
 
   // Is there a panel one can actually select on?
   function anyFlatPanel() {
@@ -1225,12 +1236,11 @@ var focusPanel = null;
     positionRangeVal('cv-ps', 'cv-ps-val');
   }
 
-  // ---- the control bar's collapsible second row ----------------------------
-  // Open/closed is one class on the row plus aria-expanded on the button; CSS
-  // drives the height, the caret rotation and the button's active style from
-  // those two. Opening changes how much height the panels have, so the grid is
-  // re-fitted in the same tick — its own transitions then run alongside the
-  // row's, and the squares glide instead of snapping when the animation lands.
+  // ---- the More settings overlay -------------------------------------------
+  // Open/closed is one class on the floating panel plus aria-expanded on the
+  // trigger. Unlike the former second bar row, it never claims layout height:
+  // the visualisation grid stays still while advanced point/image controls are
+  // adjusted above it.
   function isMoreOpen() {
     var mp = $('cv-more');
     return !!(mp && mp.classList.contains('is-open'));
@@ -1249,12 +1259,66 @@ var focusPanel = null;
   }
 
   var moreClipTimer = null, moreMountTimer = null;
+  var moreFloating = false, moreDrag = null;
+  var MORE_VISIBLE_EDGE = 50;
+
+  function resetMorePosition() {
+    var mp = $('cv-more');
+    if (!mp) return;
+    moreFloating = false;
+    moreDrag = null;
+    mp.classList.remove('is-floating');
+    mp.style.left = '';
+    mp.style.top = '';
+  }
+
+  function clampMorePosition(left, top, mp) {
+    var w = mp.offsetWidth, h = mp.offsetHeight;
+    return {
+      left: Math.max(MORE_VISIBLE_EDGE - w, Math.min(window.innerWidth - MORE_VISIBLE_EDGE, left)),
+      top: Math.max(MORE_VISIBLE_EDGE - h, Math.min(window.innerHeight - MORE_VISIBLE_EDGE, top))
+    };
+  }
+
+  function bringMoreToFront() {
+    var mp = $('cv-more');
+    if (!mp || !moreFloating) return;
+    mp.style.zIndex = '1601';
+    setTimeout(function () { if (mp) mp.style.zIndex = ''; }, 120);
+  }
+
+  function beginMoreDrag(e) {
+    var mp = $('cv-more');
+    if (!mp || !isMoreOpen() || (e.button != null && e.button !== 0)) return;
+    var r = mp.getBoundingClientRect();
+    moreFloating = true;
+    mp.classList.add('is-floating');
+    mp.style.left = r.left + 'px';
+    mp.style.top = r.top + 'px';
+    moreDrag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
+    e.preventDefault();
+  }
+
+  function moveMoreDrag(e) {
+    var mp = $('cv-more');
+    if (!moreDrag || !mp || e.pointerId !== moreDrag.id) return;
+    var p = clampMorePosition(e.clientX - moreDrag.dx, e.clientY - moreDrag.dy, mp);
+    mp.style.left = p.left + 'px';
+    mp.style.top = p.top + 'px';
+    e.preventDefault();
+  }
+
+  function endMoreDrag(e) {
+    if (!moreDrag || (e.pointerId != null && e.pointerId !== moreDrag.id)) return;
+    moreDrag = null;
+  }
+
   function setMoreOpen(open) {
     var mp = $('cv-more'), btn = $('cv-more-btn');
     if (!mp) return;
-    // Mount before opening, unmount after closing. While folded the row is
-    // display:none so it costs the bar neither a flex line nor that line's
-    // row-gap; the animation still needs a laid-out box, hence the extra frame.
+    // Mount before opening, unmount after closing. While folded the overlay is
+    // display:none; once mounted it is absolutely positioned, never creating a
+    // new flex line or changing the available panel height.
     clearTimeout(moreMountTimer);
     if (open) {
       mp.classList.add('is-mounted');
@@ -1266,7 +1330,7 @@ var focusPanel = null;
     }
     mp.classList.toggle('is-open', open);
     if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    // The overflow:hidden that lets the row collapse also clips the group-filter
+    // The overflow:hidden that lets the overlay enter also clips the group-filter
     // dropdowns, which open downwards out of it. Release it once the opening
     // animation has landed; re-apply it immediately on close so the collapse
     // still hides what it is folding away.
@@ -1285,7 +1349,9 @@ var focusPanel = null;
     // row comes back — and the click that reopens the row would then read as the
     // click that closes the menu. Fold them away with their row.
     if (!open) closeFilterMenus();
-    if (D) resizeAll();
+    if (!open) resetMorePosition();
+    // This is deliberately not resizeAll(): More is outside normal flow, so a
+    // settings visit must not remeasure or resize any visualisation panel.
   }
 
   function clearLassos() {
@@ -1311,6 +1377,26 @@ var focusPanel = null;
     positionRangeVal('cv-pct', 'cv-pct-val');
     positionRangeVal('cv-dissolve', 'cv-dissolve-val');
     positionRangeVal('cv-niche', 'cv-niche-val');
+  }
+
+  function positionImgRangeValue(slider) {
+    if (!slider) return;
+    var wrap = slider.closest('.cv-img-range');
+    var value = wrap && wrap.querySelector('.cv-img-range-value');
+    if (!value) return;
+    var min = parseFloat(slider.min), max = parseFloat(slider.max), val = parseFloat(slider.value);
+    var frac = (max > min) ? (val - min) / (max - min) : 0;
+    var w = slider.offsetWidth || 148, thumb = 16;
+    value.textContent = String(Math.round(val * 100) / 100);
+    value.style.left = (frac * (w - thumb) + thumb / 2) + 'px';
+    slider.style.setProperty('--cv-range-fill', (frac * 100) + '%');
+  }
+
+  function positionAllImgRangeValues() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('.cv-img-range input[type=range]'),
+      positionImgRangeValue
+    );
   }
 
   // ---- geometry helpers ----------------------------------------------------
@@ -1374,7 +1460,7 @@ var focusPanel = null;
     // expression panel showing a 3-D embedding it would have nothing to zoom,
     // and a button that does nothing reads as one that failed.
     var canZoom = hasSel && panels.some(function (p) {
-      return p.spaceId === 'umap' && !panelIs3D(p);
+      return isProjectionPanel(p) && !panelIs3D(p);
     });
     if (zb) zb.style.display = canZoom ? '' : 'none';
   }
@@ -1408,7 +1494,7 @@ var focusPanel = null;
     if (!sel || !sel.size) return false;
     var did = false;
     panels.forEach(function (p) {
-      if (only ? p !== only : p.spaceId !== 'umap') return;
+      if (only ? p !== only : !isProjectionPanel(p)) return;
       // Never a rotated cloud, whichever button asked. A zoom is a rectangle in
       // screen space, and on a 3-D panel that rectangle is only the one the
       // current angle produces -- turn it afterwards and the cells it was fitted
@@ -1459,6 +1545,15 @@ var focusPanel = null;
     if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
     updateFocusButtons();
     resizeAll();
+    // The canvases animate width/height for 280ms. The immediate measurement
+    // necessarily sees an in-between canvas and can underestimate pane chrome;
+    // settle once more after the transition so a maximised panel cannot finish
+    // a few pixels below the visible workspace.
+    clearTimeout(focusResizeTimer);
+    focusResizeTimer = setTimeout(function () {
+      _layoutKey = null;
+      resizeAll();
+    }, 320);
   }
   // The per-panel "zoom to selection" is only an action while there IS one, and
   // only on a panel that lays cells out in a plane -- a rotated cloud has no
@@ -1613,7 +1708,9 @@ var focusPanel = null;
       if (p.spaceId !== spaceId) return;
       clearPanelView(p);
     });
-    if (spaceId === 'umap' && zoomed) { zoomed = false; updateZoomBtn(); }
+    if (isProjectionSpace(spaceById[spaceId]) && zoomed) {
+      zoomed = false; updateZoomBtn();
+    }
   }
 
   // Zoom about a screen point, keeping whatever is under it fixed — the gesture
@@ -1641,7 +1738,9 @@ var focusPanel = null;
       project(p);
     }
     // keep the umap "Zoom back" toggle honest when the panel returns to full
-    if (p.spaceId === 'umap' && !p.view && zoomed) { zoomed = false; updateZoomBtn(); }
+    if (isProjectionPanel(p) && !p.view && zoomed) {
+      zoomed = false; updateZoomBtn();
+    }
     drawAll();
   }
   function zoomStep(p, factor) {
@@ -2531,12 +2630,10 @@ var focusPanel = null;
         if (p.pane) resizeObserver.observe(p.pane);
       });
     }
-    // Also re-fit when the CHROME above the panels changes height — the "More"
-    // panel expanding/collapsing, or the histology-image / selection bars
-    // animating in and out — so the squares always fill the remaining viewport
-    // in real time, not only after leaving and re-entering the tab.
+    // Only flow chrome changes the available panel height. More is an overlay,
+    // and observing it would make an innocuous settings click re-fit the grid.
     if (!resizeObserver._cvChromeObserved) {
-      ['cv-more', 'coordviews_image_ui', 'cv-selbar'].forEach(function (id) {
+      ['cv-selbar'].forEach(function (id) {
         var el = $(id);
         if (el) resizeObserver.observe(el);
       });
@@ -2790,14 +2887,10 @@ var focusPanel = null;
     updateSelActionsLayout();
   }
 
-  // ---- projection picker (expression panel) -------------------------------
-  // Every projection's coords are in the bundle, so switching is client-side:
-  // swap the umap space's x/y, re-normalise, reproject the expression panel(s).
-  // The control hides itself when the data set offers only one projection.
-  // The panels are 2-D, so a 3-D embedding is shown by its first two dimensions.
-  // Say that in the picker and in the panel title instead of flattening it
-  // silently — the Projection tab renders the same object in real 3D, so a user
-  // coming from there must be able to see which one they are looking at.
+  // ---- projection multi-picker --------------------------------------------
+  // Every projection's coordinates are in the bundle. A selected projection is
+  // represented by a lightweight client-side space and therefore gets its own
+  // canvas, viewport and optional 3-D rotation while sharing all cell state.
   function projDims(nm) {
     var pj = D.projections && D.projections[nm];
     return (pj && pj.ndim) || 2;
@@ -2818,48 +2911,79 @@ var focusPanel = null;
     var t = projDimLabel(projDims(nm));
     return nm + ' (expression' + (t ? ', ' + t : '') + ')';
   }
+  function rebuildProjectionInstances() {
+    var keep = {};
+    selectedProjections.forEach(function (name) { keep[projectionId(name)] = true; });
+    Object.keys(spaceById).forEach(function (id) {
+      if (id.indexOf('projection::') === 0 && !keep[id]) delete spaceById[id];
+    });
+    selectedProjections.forEach(function (name) {
+      var pj = D.projections && D.projections[name];
+      if (!pj) return;
+      var id = projectionId(name), old = spaceById[id];
+      if (old) return;
+      var sp = spaceById[id] = {
+        id: id,
+        label: projSpaceLabel(name),
+        x: pj.x,
+        y: pj.y,
+        _projectionName: name,
+        _unit: null
+      };
+      if (pj.z) { sp.z = pj.z; sp.axes = pj.axes; }
+    });
+  }
   function fillProjPicker() {
     var selEl = $('cv-pick-proj'); if (!selEl) return;
     var names = D.projections ? Object.keys(D.projections) : [];
     var ctl = $('cv-proj-ctl');
-    // Shown even with a single projection. Hiding it saved a little width but
-    // took away the answer to "which embedding am I looking at?" — and it is
-    // where a 3-D embedding is marked as such, which is the one a user most
-    // needs told apart from the rest.
+    if (selEl.selectize) selEl.selectize.destroy();
     if (ctl) ctl.style.display = names.length ? '' : 'none';
     if (!names.length) return;
     selEl.innerHTML = names.map(function (nm) {
       return '<option value="' + esc(nm) + '">' +
         esc(projOptionLabel(nm)) + '</option>';
     }).join('');
-    selEl.value = curProj || D.default_projection || names[0];
-    selEl.onchange = function () { setProjection(selEl.value); };
-    // Keep the panel title in sync with the projection actually on screen (the
-    // server labels the space before it knows about the 3-D flag).
-    var sp = spaceById['umap'];
-    if (sp) sp.label = projSpaceLabel(selEl.value);
-  }
-  function setProjection(name) {
-    if (!D || !D.projections || !D.projections[name]) return;
-    curProj = name;
-    var sp = spaceById['umap']; if (!sp) return;
-    var pj = D.projections[name];
-    sp.x = pj.x; sp.y = pj.y; sp._unit = null;
-    // z has to travel with x/y: without this a 2-D projection would keep the
-    // previous 3-D one's z and claim to be rotatable.
-    if (pj.z) { sp.z = pj.z; sp.axes = pj.axes; }
-    else { delete sp.z; delete sp.axes; }
-    sp.label = projSpaceLabel(name);
-    syncOrbitButtons();   // this panel may have just gained or lost a dimension
-    resetSpaceViews('umap');   // the old viewport means nothing in the new one
-    panels.forEach(function (p) {
-      if (p.spaceId !== 'umap') return;
-      project(p);
-      var t = $('cv-title-' + p.key.toLowerCase());
-      if (t) t.textContent = sp.label;
+    Array.prototype.forEach.call(selEl.options, function (option) {
+      option.selected = selectedProjections.indexOf(option.value) >= 0;
     });
+    var changed = function (values) {
+      values = values == null ? [] : (Array.isArray(values) ? values : [values]);
+      setSelectedProjections(values);
+    };
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
+      var $sel = window.jQuery(selEl);
+      $sel.selectize({
+        plugins: ['remove_button'],
+        persist: false,
+        closeAfterSelect: false,
+        onChange: changed
+      });
+      selEl.selectize.setValue(selectedProjections, true);
+    } else {
+      selEl.onchange = function () {
+        changed(Array.prototype.filter.call(selEl.options, function (o) {
+          return o.selected;
+        }).map(function (o) { return o.value; }));
+      };
+    }
+  }
+  function setSelectedProjections(names) {
+    var available = D && D.projections ? Object.keys(D.projections) : [];
+    names = names.filter(function (name, index) {
+      return available.indexOf(name) >= 0 && names.indexOf(name) === index;
+    });
+    if (!names.length && available.length) {
+      names = [D.default_projection && available.indexOf(D.default_projection) >= 0
+        ? D.default_projection : available[0]];
+    }
+    selectedProjections = names;
+    rebuildProjectionInstances();
+    ensurePanelSlots(orderedSpaces().length);
+    buildPanels();
+    layoutPanels();
     renderMeta();
-    drawAll();
+    resizeAll();
   }
 
   // Preload a space's histology image + seed the transform state from its preset.
@@ -2896,14 +3020,23 @@ var focusPanel = null;
   function currentImage(sp) {
     var list = spatialImages(sp);
     if (!list.length) return null;
-    if (backgroundMode === 'none') return null;
-    if (backgroundMode === 'auto') return list[0];
+    var mode = backgroundModeFor(sp);
+    if (mode === 'none') return null;
+    if (mode === 'auto') return list[0];
     var wanted = sp && sp._customImageId;
     if (wanted === IMG_NONE) return null;
     for (var i = 0; i < list.length; i++) {
       if (list[i].id === wanted) return list[i];
     }
     return list[0];
+  }
+  function spatialName(sp) {
+    return sp && (sp._sampleName ||
+      (sp.samples && sp.samples[0] && sp.samples[0].name) || sp.id);
+  }
+  function backgroundModeFor(sp) {
+    var name = spatialName(sp);
+    return (name && backgroundModes[name]) || 'auto';
   }
   // The key a calibration is stored under. Both halves matter: the same image
   // against a different section is a different alignment problem.
@@ -2995,21 +3128,46 @@ var focusPanel = null;
         fmt(D.clone.n_clones) + ' clonotypes' : '');
   }
 
-  // The background picker. Hidden with one image -- there is nothing to choose,
-  // and "Show" in the alignment bar is already how it is turned off, so the list
-  // carries no entry duplicating that.
+  // The background picker is scoped to the selected spatial section. Its tabs
+  // stay at the top of the Background image section so the mode below and the
+  // Image alignment bar both read as settings for that chosen section.
   function renderImagePicker() {
-    var ctl = $('cv-img-pick-ctl'), pop = $('cv-bg-popover');
+    var ctl = $('cv-img-pick-ctl'), pop = $('cv-bg-popover'), tabs = $('cv-bg-space-tabs');
     if (!ctl || !pop) return;
-    var spaces = selectedSpatial.map(function (name) {
+    var allSpaces = selectedSpatial.map(function (name) {
       return spaceById[spatialId(name)];
     }).filter(Boolean);
-    ctl.style.display = spaces.length ? '' : 'none';
+    var active = activeSpatial();
+    if (!active || allSpaces.indexOf(active) < 0) active = allSpaces[0] || null;
+    ctl.style.display = active ? '' : 'none';
+    if (tabs) {
+      tabs.innerHTML = allSpaces.map(function (sp) {
+        return '<button type="button" class="cv-bg-space-tab' + (sp === active ? ' is-on' : '') +
+          '" data-cv-bg-tab="' + esc(sp.id) + '">' +
+          esc(sp._sampleName || sp.label || sp.id) + '</button>';
+      }).join('');
+      Array.prototype.forEach.call(tabs.querySelectorAll('[data-cv-bg-tab]'), function (tab) {
+        tab.onclick = function () {
+          backgroundScopePulse = true;
+          activateSpatial(tab.getAttribute('data-cv-bg-tab'));
+          renderImagePicker();
+        };
+      });
+      if (backgroundScopePulse) {
+        var settings = ctl.querySelector('.cv-bg-settings');
+        if (settings) {
+          settings.classList.remove('is-scope-changing');
+          void settings.offsetWidth;
+          settings.classList.add('is-scope-changing');
+        }
+        backgroundScopePulse = false;
+      }
+    }
     var buttons = ctl.querySelectorAll('[data-cv-bg-mode]');
     Array.prototype.forEach.call(buttons, function (button) {
-      button.classList.toggle('is-on', button.dataset.cvBgMode === backgroundMode);
+      button.classList.toggle('is-on', button.dataset.cvBgMode === backgroundModeFor(active));
     });
-    pop.innerHTML = spaces.map(function (sp) {
+    pop.innerHTML = active ? [active].map(function (sp) {
       var list = spatialImages(sp), count = list.length;
       var heading = '<div class="cv-bg-row-heading"><span class="cv-bg-row-label">' +
         esc(sp._sampleName) + '</span><span class="cv-bg-count">' + count +
@@ -3030,8 +3188,8 @@ var focusPanel = null;
         body = '<select data-cv-bg-space="' + esc(sp.id) + '">' + opts.join('') + '</select>';
       }
       return '<div class="cv-bg-row">' + heading + body + '</div>';
-    }).join('');
-    spaces.forEach(function (sp) {
+    }).join('') : '';
+    (active ? [active] : []).forEach(function (sp) {
       var input = pop.querySelector('[data-cv-bg-space="' + cssEscape(sp.id) + '"]');
       if (!input) return;
       if (input.tagName === 'SELECT') input.value = sp._customImageId || spatialImages(sp)[0].id;
@@ -3044,7 +3202,6 @@ var focusPanel = null;
     });
     // Kept as an invisible compatibility surface for older browser automation
     // and extensions. The visible UI is the mode control + per-section cards.
-    var active = activeSpatial();
     var activeImages = spatialImages(active);
     var legacy = document.createElement('select');
     legacy.id = 'cv-img-pick';
@@ -3059,7 +3216,6 @@ var focusPanel = null;
     legacy.value = active && active._customImageId ? active._customImageId
       : (activeImages[0] ? activeImages[0].id : IMG_NONE);
     legacy.onchange = function () {
-      backgroundMode = 'custom';
       setSpatialImage(legacy.value, activeSpatial());
       renderImagePicker();
     };
@@ -3075,23 +3231,21 @@ var focusPanel = null;
     stashImgState(sp);
     sp._customImageId = id;
     imgChoice[sp._sampleName] = id;
-    if (backgroundMode === 'custom') loadSpaceImage(sp);
+    backgroundModes[spatialName(sp)] = 'custom';
+    loadSpaceImage(sp);
     if (sp.id === activeSpatialId) seedImgControls();
+    renderImagePicker();
     updateSpaceScopedControls();
     drawAll();
   }
 
-  function setBackgroundMode(mode) {
+  function setBackgroundMode(mode, sp) {
     if (['auto', 'none', 'custom'].indexOf(mode) < 0) return;
-    selectedSpatial.forEach(function (name) {
-      var sp = spaceById[spatialId(name)];
-      if (sp) stashImgState(sp);
-    });
-    backgroundMode = mode;
-    selectedSpatial.forEach(function (name) {
-      var sp = spaceById[spatialId(name)];
-      if (sp) loadSpaceImage(sp);
-    });
+    sp = sp || activeSpatial();
+    if (!sp) return;
+    stashImgState(sp);
+    backgroundModes[spatialName(sp)] = mode;
+    loadSpaceImage(sp);
     renderImagePicker();
     updateSpaceScopedControls();
     seedImgControls();
@@ -3370,11 +3524,13 @@ var focusPanel = null;
     stashImgState(sp);
   }
 
-  // Spaces in panel order: umap first, then spatial / trekker / clone (present
-  // ones), then anything else. Panel A gets order[0] (umap), B/C/D the rest.
+  // Spaces in panel order: selected projections, selected spatial sections,
+  // Trekker and clone, then any future modality spaces.
   function orderedSpaces() {
     var out = [];
-    if (spaceById.umap) out.push('umap');
+    selectedProjections.forEach(function (name) {
+      var id = projectionId(name); if (spaceById[id]) out.push(id);
+    });
     selectedSpatial.forEach(function (name) {
       var id = spatialId(name); if (spaceById[id]) out.push(id);
     });
@@ -3382,7 +3538,9 @@ var focusPanel = null;
       if (spaceById[id]) out.push(id);
     });
     D.spaces.forEach(function (s) {
-      if (s.id !== 'spatial' && out.indexOf(s.id) < 0) out.push(s.id);
+      if (s.id !== 'umap' && s.id !== 'spatial' && out.indexOf(s.id) < 0) {
+        out.push(s.id);
+      }
     });
     return out;
   }
@@ -3520,6 +3678,26 @@ var focusPanel = null;
     var colW = (availW - (cols - 1) * gap) / cols;
     var side = Math.max(MIN_SIDE, Math.floor(colW - chromeX));
     if (single && side + chromeX > availW) side = Math.max(150, availW - chromeX);
+    // A lone/maximised card should use the available HEIGHT as well as width.
+    // Without this cap a wide monitor produced a 1200px square that continued
+    // far below the viewport. Multi-card grids deliberately keep the 300px
+    // width floor and may scroll vertically; a focused card has no second row
+    // to compare and gains nothing from growing past the visible workspace.
+    if (single || focusPanel) {
+      var firstPane = vis[0] && vis[0].pane;
+      var canvas = vis[0] && vis[0].canvas;
+      var overhead = firstPane && canvas
+        ? Math.max(0, firstPane.offsetHeight - canvas.clientHeight) : 58;
+      var scrollHost = panes.closest('.content-wrapper');
+      var visibleBottom = scrollHost
+        ? scrollHost.getBoundingClientRect().bottom : window.innerHeight;
+      var bottomPad = scrollHost
+        ? (parseFloat(getComputedStyle(scrollHost).paddingBottom) || 0) : 0;
+      var availH = Math.floor(
+        visibleBottom - panes.getBoundingClientRect().top - bottomPad - 8
+      );
+      if (availH > 0) side = Math.min(side, Math.max(MIN_SIDE, availH - overhead));
+    }
     // Explicit column tracks (px) so cells hug the squares and the grid centres in
     // availW; rows stay auto (each pane = head + square), so the "品" span works.
     panes.classList.remove('cv-n2', 'cv-n3', 'cv-n4', 'cv-single');
@@ -3595,6 +3773,7 @@ var focusPanel = null;
     // meant a user's alignment work survived only until they looked away.
     var dataChanged = D.dataset_id !== dataShown;
     var previousSelected = selectedSpatial.slice();
+    var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
     if (dataChanged) {
       imgStates = {};
@@ -3608,8 +3787,19 @@ var focusPanel = null;
     D.spaces.forEach(function (s) {
       s._unit = null;
       if (s.id === 'spatial') spatialTemplate = s;
+      else if (s.id === 'umap') { /* rebuilt from D.projections below */ }
       else spaceById[s.id] = s;
     });
+    var projectionNames = D.projections ? Object.keys(D.projections) : [];
+    selectedProjections = dataChanged ? [] : previousProjections.filter(function (name) {
+      return projectionNames.indexOf(name) >= 0;
+    });
+    if (!selectedProjections.length && projectionNames.length) {
+      selectedProjections = [D.default_projection &&
+        projectionNames.indexOf(D.default_projection) >= 0
+        ? D.default_projection : projectionNames[0]];
+    }
+    rebuildProjectionInstances();
     var initialSamples = spatialSamples();
     var availableSamples = initialSamples.map(function (sample) { return sample.name; });
     selectedSpatial = dataChanged ? [] : previousSelected.filter(function (name) {
@@ -3621,7 +3811,7 @@ var focusPanel = null;
     var activeName = !dataChanged && selectedSpatial.indexOf(previousActiveName) >= 0
       ? previousActiveName : selectedSpatial[0];
     activeSpatialId = activeName ? spatialId(activeName) : null;
-    if (dataChanged) backgroundMode = 'auto';
+    if (dataChanged) backgroundModes = {};
     rebuildSpatialInstances();
     colorBy = D.default_group ||
       (D.groups ? Object.keys(D.groups)[0] : null) || null;
@@ -3629,8 +3819,6 @@ var focusPanel = null;
     hidden = new Set(); sel = null; pick = null; hoverCell = null;
     focusPanel = null;
     // Reset the additional-parameter state to defaults for the new dataset.
-    curProj = D.default_projection ||
-      (D.projections ? Object.keys(D.projections)[0] : null);
     pctShow = 100; pctMask = null; groupFilter = {}; pointOpacity = 0.8;
     psSeeded = false;   // a new data set re-seeds the point size from ITS cell count
     var opEl = $('cv-opacity'); if (opEl) opEl.value = '0.8';
@@ -3783,18 +3971,53 @@ var focusPanel = null;
     if (jq) { jq(document).on('shiny:connected', onConnected); }
     else { document.addEventListener('shiny:connected', onConnected); }
 
+    // More is normally anchored to the control bar. A title-bar drag makes it
+    // a free window, while clamping keeps at least a recoverable 50px edge in
+    // view even if the user deliberately drags it beyond the viewport.
+    document.addEventListener('pointerdown', function (e) {
+      var handle = e.target && e.target.closest && e.target.closest('[data-cv-more-drag-handle]');
+      if (handle) beginMoreDrag(e);
+    });
+    document.addEventListener('pointermove', moveMoreDrag);
+    document.addEventListener('pointerup', endMoreDrag);
+    document.addEventListener('pointercancel', endMoreDrag);
+    // The alignment controls are server-rendered after the client bundle. When
+    // Shiny replaces that small fragment, populate its section tabs again; the
+    // observer watches only the host itself, so painting tab buttons cannot
+    // trigger a render loop.
+    var imageHost = $('coordviews_image_ui');
+    if (imageHost && window.MutationObserver) {
+      new MutationObserver(function () {
+        renderImagePicker();
+        positionAllImgRangeValues();
+      })
+        .observe(imageHost, { childList: true });
+    }
+
     // clear button + point-size slider live in the top bar (client-owned)
     document.addEventListener('click', function (e) {
       var t = e.target;
       var bgMode = t && t.closest && t.closest('[data-cv-bg-mode]');
       if (bgMode) {
         var mode = bgMode.getAttribute('data-cv-bg-mode');
+        var active = activeSpatial();
         var pop = $('cv-bg-popover');
-        if (mode === 'custom' && backgroundMode === 'custom') {
+        if (mode === 'custom' && backgroundModeFor(active) === 'custom') {
           if (pop) pop.classList.toggle('is-open');
         } else {
-          setBackgroundMode(mode);
+          setBackgroundMode(mode, active);
           if (pop) pop.classList.toggle('is-open', mode === 'custom');
+        }
+        if (mode === 'custom' && pop && pop.classList.contains('is-open')) {
+          var ctl = $('cv-img-pick-ctl'), buttonBox = bgMode.getBoundingClientRect();
+          var ctlBox = ctl && ctl.getBoundingClientRect();
+          if (ctl && ctlBox) {
+            var left = buttonBox.left - ctlBox.left;
+            left = Math.max(0, Math.min(ctl.clientWidth - pop.offsetWidth, left));
+            pop.style.left = left + 'px';
+            pop.style.top = (buttonBox.bottom - ctlBox.top + 8) + 'px';
+            pop.style.right = 'auto';
+          }
         }
         return;
       }
@@ -3836,7 +4059,7 @@ var focusPanel = null;
             // rotation is part of "where you are looking" too
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
-            if (pp.spaceId === 'umap') { zoomed = false; updateZoomBtn(); }
+            if (isProjectionPanel(pp)) { zoomed = false; updateZoomBtn(); }
             clearLassos(); drawAll();
           }
         }
@@ -3852,11 +4075,19 @@ var focusPanel = null;
         pick = null; unpinTip(); closeCard(); clearLassos(); setSelection(null);
         return;
       }
+      if (t && t.closest && t.closest('#cv-more-close')) {
+        setMoreOpen(false);
+        return;
+      }
       // "More" panel toggle
-      // "More" toggles the bar's second row. closest(), because the click can
-      // land on the label or the caret inside the button.
+      // While anchored More toggles the panel. Once dragged, More is a focus
+      // affordance and close lives on the visible window's own X button.
       var moreBtn = t && t.closest && t.closest('#cv-more-btn');
-      if (moreBtn) { setMoreOpen(!isMoreOpen()); return; }
+      if (moreBtn) {
+        if (isMoreOpen() && moreFloating) bringMoreToFront();
+        else setMoreOpen(!isMoreOpen());
+        return;
+      }
       // clonal-layout segmented toggle: recompute the clone space + reproject
       var seg = t && t.closest && t.closest('#cv-clone-layout .cv-seg-btn');
       if (seg) {
@@ -3923,7 +4154,7 @@ var focusPanel = null;
         drawAll();
         if (!sel) renderReadout();     // recompute the niche of the picked cell
       } else if (id && id.indexOf('cv-img-') === 0) {
-        syncImgControls(id); drawAll();
+        positionImgRangeValue(e.target); syncImgControls(id); drawAll();
       }
     });
     document.addEventListener('change', function (e) {
