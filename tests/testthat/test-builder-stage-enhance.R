@@ -127,6 +127,12 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "disabled", fixed = TRUE)
   expect_match(html, "enhance-module is-blocked", fixed = TRUE)
   expect_match(html, "Optional attachments", fixed = TRUE)
+  expect_match(html, "Import precomputed Marker genes", fixed = TRUE)
+  expect_match(html, 'id="enhance-marker_import_method"', fixed = TRUE)
+  expect_match(html, 'id="enhance-marker_import_group"', fixed = TRUE)
+  expect_match(html, 'id="enhance-marker_import_files"', fixed = TRUE)
+  expect_match(html, 'accept=".xlsx,.csv,.tsv"', fixed = TRUE)
+  expect_match(html, 'aria-live="polite"', fixed = TRUE)
   expect_match(html, "Tables for Extra material", fixed = TRUE)
   expect_match(
     html,

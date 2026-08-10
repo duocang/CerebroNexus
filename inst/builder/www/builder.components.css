@@ -119,6 +119,13 @@
   color: var(--c-text-muted);
   font-size: .84rem;
 }
+.marker-import { display: grid; gap: var(--space-4); margin-top: var(--space-5); }
+.marker-import-hero { padding: var(--space-4); border-radius: var(--r-md); background: linear-gradient(135deg, var(--builder-accent-strong), var(--builder-action)); color: var(--c-white); }
+.marker-import-hero h4 { margin: .2rem 0; color: inherit; }.marker-import-hero p { margin: 0; color: var(--c-amber-50); font-size: .86rem; }
+.marker-import-kicker { color: var(--c-amber-100); font-size: .7rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.marker-import-controls { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(10rem, .8fr) auto; gap: var(--space-3); align-items: end; }
+.marker-import-controls .form-group { margin: 0; }.marker-import-file-control { margin-bottom: .5rem; }.marker-import-status { padding: var(--space-3); border: 1px solid var(--c-warning-100); border-radius: var(--r-sm); background: var(--c-warning-50); color: var(--c-warning-700); font-size: .84rem; }
+@media (max-width: 700px) { .marker-import-controls { grid-template-columns: 1fr; }.marker-import-file-control { margin-bottom: 0; } }
 .builder-file-list,
 .enhance-table-list {
   display: grid;

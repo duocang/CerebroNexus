@@ -39,6 +39,10 @@ builder_enhance_model <- function(id, profile, state, settings, modules) {
   ))
   list(
     id = id,
+    groups = unique(c(
+      settings$included_groups %||% character(),
+      settings$groups %||% character()
+    )),
     modules = modules,
     attachments = list(
       tables = list(
@@ -482,6 +486,10 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
       } else {
         builder_enhance_modules_ui(id, model$modules %||% list())
       }
+    ),
+    builder_marker_import_ui(
+      id,
+      model$groups %||% character()
     ),
     h3("Optional attachments"),
     div(
