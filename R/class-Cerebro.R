@@ -1197,13 +1197,16 @@ Cerebro <- R6::R6Class(
     #' @description
     #' Add spatial data.
     #'
-    #' @param name Name of the spatial data entry (e.g. image name).
+    #' @param name Name of the spatial data entry (for example a Seurat image or
+    #'   Cerebro spatial entry).
     #' @param data \code{list} containing 'coordinates' (data.frame) and
-    #'   'expression' (sparse matrix). It may optionally carry an embedded
-    #'   histology image as 'image' (a base64 \code{data:} URI string) plus
-    #'   'image_bounds' (named list xmin/xmax/ymin/ymax in coordinate space)
-    #'   so the Spatial tab can render the real tissue background without an
-    #'   external file.
+    #'   'expression' (sparse matrix). Embedded backgrounds are stored in
+    #'   'histology_images', a uniquely named list of image payloads. Each
+    #'   payload contains 'histology_image' (a base64 \code{data:} URI) and
+    #'   'histology_image_bounds' (xmin/xmax/ymin/ymax in coordinate space).
+    #'   Bounds omitted from a payload are derived from the coordinates. Legacy
+    #'   singular image fields are accepted and normalized as 'Tissue
+    #'   background'.
     addSpatialData = function(name, data) {
       if (
         !is.list(data) || !all(c("coordinates", "expression") %in% names(data))
@@ -1212,7 +1215,7 @@ Cerebro <- R6::R6Class(
           "Spatial data must be a list containing 'coordinates' and 'expression'."
         )
       }
-      self$spatial[[name]] <- data
+      self$spatial[[name]] <- .normalizeSpatialDataImages(data, name)
     },
 
     #' @description
@@ -1221,15 +1224,220 @@ Cerebro <- R6::R6Class(
     #' @param name Name of the spatial data entry.
     #'
     #' @return
-    #' \code{list} containing 'coordinates' and 'expression'.
+    #' A canonical spatial-data \code{list} containing 'coordinates',
+    #' 'expression', and 'histology_images'. Legacy singular image fields are
+    #' normalized on read.
     getSpatialData = function(name) {
       if (name %in% names(self$spatial) == FALSE) {
         stop(
-          glue::glue('Spatial data `{name}` is not available.'),
+          paste0("Spatial data `", name, "` is not available."),
           call. = FALSE
         )
       }
-      return(self$spatial[[name]])
+      data <- self$spatial[[name]]
+      context <- paste0("Spatial data `", name, "`")
+      normalize_bounds <- function(bounds, coordinates, image_context) {
+        valid_coordinates <- is.data.frame(coordinates) &&
+          all(c("x", "y") %in% colnames(coordinates)) &&
+          is.numeric(coordinates[["x"]]) &&
+          is.numeric(coordinates[["y"]]) &&
+          nrow(coordinates) > 0L
+        if (!valid_coordinates) {
+          stop(
+            image_context,
+            " requires non-empty numeric x and y coordinates.",
+            call. = FALSE
+          )
+        }
+        xy <- coordinates[, c("x", "y"), drop = FALSE]
+        if (any(!is.finite(as.matrix(xy)))) {
+          stop(image_context, " coordinates must be finite.", call. = FALSE)
+        }
+        required <- c("xmin", "xmax", "ymin", "ymax")
+        if (is.null(bounds)) {
+          bounds <- c(
+            xmin = min(coordinates[["x"]]),
+            xmax = max(coordinates[["x"]]),
+            ymin = min(coordinates[["y"]]),
+            ymax = max(coordinates[["y"]])
+          )
+        } else {
+          valid_bounds <- is.numeric(bounds) &&
+            length(bounds) == 4L &&
+            !is.null(names(bounds)) &&
+            setequal(names(bounds), required) &&
+            !anyDuplicated(names(bounds))
+          if (!valid_bounds) {
+            stop(
+              image_context,
+              " bounds must contain exactly xmin, xmax, ymin, and ymax.",
+              call. = FALSE
+            )
+          }
+          bounds <- bounds[required]
+        }
+        if (any(!is.finite(bounds))) {
+          stop(image_context, " bounds must be finite.", call. = FALSE)
+        }
+        if (bounds[["xmin"]] >= bounds[["xmax"]]) {
+          stop(
+            image_context,
+            " requires xmin to be less than xmax.",
+            call. = FALSE
+          )
+        }
+        if (bounds[["ymin"]] >= bounds[["ymax"]]) {
+          stop(
+            image_context,
+            " requires ymin to be less than ymax.",
+            call. = FALSE
+          )
+        }
+        outside <- coordinates[["x"]] < bounds[["xmin"]] |
+          coordinates[["x"]] > bounds[["xmax"]] |
+          coordinates[["y"]] < bounds[["ymin"]] |
+          coordinates[["y"]] > bounds[["ymax"]]
+        if (any(outside)) {
+          stop(
+            image_context,
+            " has coordinates outside its declared bounds.",
+            call. = FALSE
+          )
+        }
+        bounds
+      }
+      if ("histology_images" %in% names(data)) {
+        images <- data[["histology_images"]]
+      } else if ("histology_image" %in% names(data)) {
+        legacy_bounds <- data[["histology_image_bounds"]]
+        if (is.list(legacy_bounds)) {
+          required <- c("xmin", "xmax", "ymin", "ymax")
+          valid_legacy_bounds <- length(legacy_bounds) == 4L &&
+            !is.null(names(legacy_bounds)) &&
+            setequal(names(legacy_bounds), required) &&
+            !anyDuplicated(names(legacy_bounds)) &&
+            all(vapply(
+              legacy_bounds,
+              function(value) {
+                is.numeric(value) &&
+                  length(value) == 1L &&
+                  is.finite(value)
+              },
+              logical(1)
+            ))
+          if (!valid_legacy_bounds) {
+            stop(
+              context,
+              " image `Tissue background` legacy bounds must be a named ",
+              "list of finite numeric scalar xmin, xmax, ymin, and ymax ",
+              "values.",
+              call. = FALSE
+            )
+          }
+          legacy_bounds <- as.numeric(unlist(
+            legacy_bounds[required],
+            use.names = FALSE
+          ))
+          names(legacy_bounds) <- required
+        }
+        images <- list(
+          `Tissue background` = list(
+            histology_image = data[["histology_image"]],
+            histology_image_bounds = legacy_bounds
+          )
+        )
+      } else {
+        images <- list()
+      }
+      if (!is.list(images)) {
+        stop(
+          context,
+          " `histology_images` must be a named list.",
+          call. = FALSE
+        )
+      }
+      if (length(images) > 0L) {
+        image_names <- names(images)
+        if (
+          is.null(image_names) ||
+            anyNA(image_names) ||
+            any(!nzchar(image_names))
+        ) {
+          invalid_label <- if (is.null(image_names)) {
+            "<unnamed>"
+          } else if (anyNA(image_names)) {
+            "<NA>"
+          } else {
+            "<empty>"
+          }
+          stop(
+            context,
+            " image label `",
+            invalid_label,
+            "` is invalid; labels must be non-empty.",
+            call. = FALSE
+          )
+        }
+        if (anyDuplicated(image_names)) {
+          duplicate_label <- unique(image_names[duplicated(image_names)])[[1L]]
+          stop(
+            context,
+            " has duplicate image label `",
+            duplicate_label,
+            "`; labels must be unique.",
+            call. = FALSE
+          )
+        }
+        normalized <- lapply(seq_along(images), function(i) {
+          label <- image_names[[i]]
+          payload <- images[[i]]
+          image_context <- paste0(context, " image `", label, "`")
+          valid_fields <- c("histology_image", "histology_image_bounds")
+          if (
+            !is.list(payload) ||
+              is.null(names(payload)) ||
+              !"histology_image" %in% names(payload) ||
+              anyDuplicated(names(payload)) ||
+              any(!names(payload) %in% valid_fields)
+          ) {
+            stop(
+              image_context,
+              " must contain `histology_image` and optional ",
+              "`histology_image_bounds`.",
+              call. = FALSE
+            )
+          }
+          image <- payload[["histology_image"]]
+          valid_image <- is.character(image) &&
+            length(image) == 1L &&
+            !is.na(image) &&
+            grepl(
+              "^data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/]+={0,2}$",
+              image
+            )
+          if (!valid_image) {
+            stop(
+              image_context,
+              " must contain one base64 `data:image/...` URI.",
+              call. = FALSE
+            )
+          }
+          list(
+            histology_image = image,
+            histology_image_bounds = normalize_bounds(
+              payload[["histology_image_bounds"]],
+              data[["coordinates"]],
+              image_context
+            )
+          )
+        })
+        names(normalized) <- image_names
+        images <- normalized
+      }
+      data[["histology_images"]] <- images
+      data[["histology_image"]] <- NULL
+      data[["histology_image_bounds"]] <- NULL
+      data
     },
 
     #' @description

@@ -6,6 +6,17 @@
   version-suffixed constructor was removed; existing `.crb` files remain
   readable and all bundled examples have been reserialized with the new class.
 
+## Data and conversion
+
+- Spatial backgrounds now use the public hierarchy `dataset -> spatial entry ->
+  image label` in `createShinyApp()`, while conversion starts at `spatial entry
+  -> image label`. A spatial entry is a Seurat `Images()` name (for example a
+  Visium slice, Xenium/MERFISH FOV, or Slide-seq puck), not a required donor
+  field. Each entry may contain multiple arbitrarily named embedded and external
+  PNG/JPEG/SVG backgrounds, or remain coordinates-only. Optional per-image
+  bounds and display settings use the same stable keys; ambiguous legacy
+  dataset-to-path calls now fail instead of guessing a spatial target.
+
 # CerebroNexus 4.1.0
 
 ## Viewer

@@ -30,14 +30,8 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     ]
   }
 
-  ## prepare background image choices
-  background_choices <- c("No Background")
-
-  ## Real .crb data may carry a genuine histology image embedded in the spatial
-  ## slot. Offer it ONLY when the CURRENTLY DISPLAYED spatial entry has one — not
-  ## when any dataset does. Otherwise a bead-only platform (Slide-seq, no image
-  ## by design) would list "__embedded__" and show a neighbouring dataset's
-  ## tissue image behind its cells.
+  ## Build this entry's choices only. Values carry source + label identity; paths
+  ## and data URIs remain server-side descriptors and never become input values.
   current_spatial <- input[["spatial_projection_to_display"]]
   if (
     is.null(current_spatial) ||
@@ -49,44 +43,35 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     getSpatialData(current_spatial),
     error = function(e) NULL
   )
-  has_embedded <- !is.null(current_sd) && !is.null(current_sd$histology_image)
-  if (has_embedded) {
-    background_choices <- c(
-      background_choices,
-      "Tissue background (H&E / DAPI)" = "__embedded__"
-    )
+  embedded_images <- if (is.null(current_sd)) {
+    list()
+  } else {
+    embedded_spatial_images(current_sd)
   }
-
-  if (
-    exists("Cerebro.options") && !is.null(Cerebro.options[["spatial_images"]])
-  ) {
-    configured_crb_files <- Cerebro.options[["crb_file_to_load"]]
-    selected_crb <- if (exists("available_crb_files")) {
-      available_crb_files$selected
-    } else {
-      NULL
-    }
-    ## Resolve against configured CRBs, not the switcher state: uploads clear
-    ## that state and must not inherit a configured dataset's image.
-    img_paths <- configured_spatial_images(
-      Cerebro.options,
-      configured_crb_files,
-      selected_crb,
-      names(configured_crb_files)
-    )
-    if (length(img_paths) > 0L) {
-      background_choices <- c(
-        background_choices,
-        setNames(img_paths, basename(img_paths))
-      )
-    }
-  }
+  dataset <- spatial_dataset_name(
+    if (exists("available_crb_files")) available_crb_files$files else NULL,
+    if (exists("available_crb_files")) available_crb_files$selected else NULL
+  )
+  external_images <- configured_spatial_images(
+    if (exists("Cerebro.options")) Cerebro.options else NULL,
+    dataset,
+    current_spatial
+  )
+  background_choices <- spatial_background_choices(
+    embedded_images,
+    external_images
+  )
+  selected_background <- normalize_spatial_background_choice(
+    isolate(input[["spatial_projection_background_image"]]),
+    background_choices
+  )
 
   tagList(
     selectInput(
       "spatial_projection_to_display",
       label = "Spatial data",
-      choices = availableSpatial()
+      choices = availableSpatial(),
+      selected = current_spatial
     ),
     selectInput(
       "spatial_projection_plot_type",
@@ -155,17 +140,15 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
         )
       )
     ),
-    if (length(background_choices) > 1) {
-      ## Only the image PICKER lives in Main parameters. All the appearance
-      ## adjustments (opacity, move, flip, scale, rotate) live in Additional
-      ## parameters and are decoupled from the scatter plot.
-      selectInput(
-        "spatial_projection_background_image",
-        label = "Background image",
-        choices = background_choices,
-        selected = "No Background"
-      )
-    }
+    ## Keep the selector present for image-free entries too, where its sole
+    ## choice is No Background. Re-rendering on a spatial switch resets a stale
+    ## source-tagged value before the plot reactive can reuse old image data.
+    selectInput(
+      "spatial_projection_background_image",
+      label = "Background image",
+      choices = background_choices,
+      selected = selected_background
+    )
   )
 })
 

@@ -10,115 +10,137 @@
 
 codegen <- format_spatial_preset_code
 
-test_that("emits every non-identity option keyed by the dataset label", {
+test_that("emits every option under the canonical image identity", {
   out <- codegen(
-    label = "Mouse brain (Visium)",
+    dataset = "Spatial atlas",
+    spatial_name = "Mouse brain (Visium)",
+    image_label = "H&E",
     offset_x = 500,
     offset_y = -1000,
     scale_x = 1.55,
     scale_y = 1.55,
     flip_x = FALSE,
-    flip_y = TRUE
+    flip_y = TRUE,
+    rotation = 0
   )
   expect_true(grepl(
-    '"spatial_images_offset_x" = c("Mouse brain (Visium)" = 500)',
+    '"Spatial atlas" = list(',
     out,
     fixed = TRUE
   ))
   expect_true(grepl(
-    '"spatial_images_offset_y" = c("Mouse brain (Visium)" = -1000)',
+    '"Mouse brain (Visium)" = list(',
     out,
     fixed = TRUE
   ))
   expect_true(grepl(
-    '"spatial_images_scale_x" = c("Mouse brain (Visium)" = 1.55)',
+    '"H&E" = list(',
     out,
     fixed = TRUE
   ))
   expect_true(grepl(
-    '"spatial_images_scale_y" = c("Mouse brain (Visium)" = 1.55)',
+    'offset_x = 500',
     out,
     fixed = TRUE
   ))
   expect_true(grepl(
-    '"spatial_images_flip_y" = c("Mouse brain (Visium)" = TRUE)',
+    'flip_y = TRUE',
     out,
     fixed = TRUE
   ))
 })
 
-test_that("omits identity values (offset 0, scale 1, flip FALSE)", {
+test_that("preserves identity values in a complete image preset", {
   out <- codegen(
-    label = "X",
+    dataset = "Atlas",
+    spatial_name = "X",
+    image_label = "None",
     offset_x = 0,
     offset_y = 0,
     scale_x = 1,
     scale_y = 1,
     flip_x = FALSE,
-    flip_y = FALSE
+    flip_y = FALSE,
+    rotation = 0
   )
-  expect_false(grepl("spatial_images_offset_x", out, fixed = TRUE))
-  expect_false(grepl("spatial_images_scale_x", out, fixed = TRUE))
-  expect_false(grepl("spatial_images_flip", out, fixed = TRUE))
+  expect_match(out, "offset_x = 0", fixed = TRUE)
+  expect_match(out, "scale_x = 1", fixed = TRUE)
+  expect_match(out, "flip_x = FALSE", fixed = TRUE)
 })
 
-test_that("a fully-identity alignment yields a clear 'nothing to persist' note", {
+test_that("a fully-identity alignment remains pasteable", {
   out <- codegen(
-    label = "X",
+    dataset = "Atlas",
+    spatial_name = "X",
+    image_label = "H&E",
     offset_x = 0,
     offset_y = 0,
     scale_x = 1,
     scale_y = 1,
     flip_x = FALSE,
-    flip_y = FALSE
+    flip_y = FALSE,
+    rotation = 0
   )
-  expect_match(out, "no adjustments", ignore.case = TRUE)
+  expect_match(out, "spatial_image_settings = list(", fixed = TRUE)
+  expect_match(out, '"H&E" = list(', fixed = TRUE)
 })
 
-test_that("emits only the axis that differs from identity", {
+test_that("emits an offset under the selected image", {
   out <- codegen(
-    label = "X",
+    dataset = "Atlas",
+    spatial_name = "X",
+    image_label = "DAPI",
     offset_x = 42,
     offset_y = 0,
     scale_x = 1,
     scale_y = 1,
     flip_x = FALSE,
-    flip_y = FALSE
+    flip_y = FALSE,
+    rotation = 0
   )
   expect_true(grepl(
-    '"spatial_images_offset_x" = c("X" = 42)',
+    'offset_x = 42',
     out,
     fixed = TRUE
   ))
-  expect_false(grepl("spatial_images_offset_y", out, fixed = TRUE))
+  expect_match(out, '"DAPI" = list(', fixed = TRUE)
 })
 
 test_that("emits flip_x TRUE when horizontally flipped", {
   out <- codegen(
-    label = "X",
+    dataset = "Atlas",
+    spatial_name = "X",
+    image_label = "H&E",
     offset_x = 0,
     offset_y = 0,
     scale_x = 1,
     scale_y = 1,
     flip_x = TRUE,
-    flip_y = FALSE
+    flip_y = FALSE,
+    rotation = 0
   )
   expect_true(grepl(
-    '"spatial_images_flip_x" = c("X" = TRUE)',
+    'flip_x = TRUE',
     out,
     fixed = TRUE
   ))
 })
 
-test_that("quotes a label containing special characters verbatim", {
+test_that("quotes every identity containing special characters verbatim", {
   out <- codegen(
-    label = "Mouse ileum (MERFISH)",
+    dataset = "Atlas (review)",
+    spatial_name = "Mouse ileum (MERFISH)",
+    image_label = "Rose H&E",
     offset_x = -350,
     offset_y = 0,
     scale_x = 1,
     scale_y = 1,
     flip_x = FALSE,
-    flip_y = FALSE
+    flip_y = FALSE,
+    rotation = -90
   )
-  expect_true(grepl('c("Mouse ileum (MERFISH)" = -350)', out, fixed = TRUE))
+  expect_match(out, '"Atlas (review)" = list(', fixed = TRUE)
+  expect_match(out, '"Mouse ileum (MERFISH)" = list(', fixed = TRUE)
+  expect_match(out, '"Rose H&E" = list(', fixed = TRUE)
+  expect_match(out, "rotation = -90", fixed = TRUE)
 })
