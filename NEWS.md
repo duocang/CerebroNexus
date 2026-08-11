@@ -26,7 +26,7 @@
 ## Breaking changes
 
 - `launchCerebro()` is now the single application launcher. The obsolete
-  version selector and version-named `launchCerebroV1.x()` exports were removed
+  version selector and deprecated version-specific launch exports were removed
   because CerebroNexus ships one Viewer implementation.
 
 ## Internal

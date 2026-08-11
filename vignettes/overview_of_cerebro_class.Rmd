@@ -14,7 +14,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-The introduction of the `Cerebro` class is an attempt to formalize the data structure and thereby provide stability in future releases, ultimately aiming to improve backwards compatibility between Cerebro version.
+The `Cerebro` data class formalizes the data structure to provide stability and improve backward compatibility across CerebroNexus releases.
 
 While the data is organized similar to how it was done before, now they live in their own class with setter and getter methods for the different slots. Also, unnecessary prefixes and suffixes have been removed, allowing direct connection between results, e.g. tables of marker genes, and the grouping variable they belong to / were derived from. Moreover, additional layers have been added to allow storing results derived from different methods.
 
