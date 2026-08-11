@@ -7,7 +7,7 @@ example_crb <- system.file(
 )
 
 fresh_extra_material_crb <- function(include_plots = FALSE) {
-  crb <- Cerebro_v1.3$new()
+  crb <- Cerebro$new()
   crb$addExtraTable(
     "example_table",
     data.frame(cell = c("cell_1", "cell_2"), score = c(1, 2))

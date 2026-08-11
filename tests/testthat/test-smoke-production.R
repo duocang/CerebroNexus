@@ -476,7 +476,7 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
     libpath = hermetic_lib
   )
 
-  expect_true("Cerebro_v1.3" %in% result$classes)
+  expect_true("Cerebro" %in% result$classes)
   expect_true(nzchar(result$version))
   expect_gt(result$n_cells, 0)
   expect_gt(result$n_genes, 0)

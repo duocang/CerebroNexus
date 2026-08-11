@@ -43,7 +43,7 @@ test_that("legacy H5 guidance persists a portable backend descriptor", {
 
   test_root <- withr::local_tempdir()
   crb_input <- file.path(test_root, "input.crb")
-  crb <- Cerebro_v1.3$new()
+  crb <- Cerebro$new()
   crb$expression <- Matrix::Matrix(
     matrix(
       seq_len(6L),

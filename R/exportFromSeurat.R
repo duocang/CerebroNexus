@@ -771,7 +771,7 @@ exportFromSeurat <- function(
   }
 
   ## create new Cerebro object
-  export <- Cerebro_v1.3$new()
+  export <- Cerebro$new()
 
   ## add experiment name
   export$addExperiment('experiment_name', experiment_name)
@@ -779,7 +779,7 @@ exportFromSeurat <- function(
   ## add organism
   export$addExperiment('organism', organism)
 
-  ## add cerebroApp version
+  ## record the CerebroNexus exporter version
   export$setVersion(utils::packageVersion('CerebroNexus'))
 
   ##--------------------------------------------------------------------------##
@@ -1657,6 +1657,13 @@ exportFromSeurat <- function(
         }
       }
     }
+  }
+
+  ##--------------------------------------------------------------------------##
+  ## Trekker single-cell spatial mapping
+  ##--------------------------------------------------------------------------##
+  if (!is.null(object@misc$trekker)) {
+    export$addTrekker(object@misc$trekker)
   }
 
   ##--------------------------------------------------------------------------##

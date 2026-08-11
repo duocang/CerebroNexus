@@ -20,7 +20,7 @@
 #'
 #' Pipeline: 10x filtered_contig_annotations.csv -> scRepertoire loadContigs +
 #' combineTCR/combineBCR -> CT* clonotype pool -> assigned only to cells of the
-#' matching lineage -> injected into a fresh Cerebro_v1.3 subset of example.crb.
+#' matching lineage -> injected into a fresh Cerebro subset of example.crb.
 
 suppressMessages({
   library(CerebroNexus)
@@ -46,7 +46,7 @@ out_full <- Sys.getenv(
 
 ct_cols <- c("barcode", "CTgene", "CTnt", "CTaa", "CTstrict")
 
-## Fields copied when reconstructing a Cerebro_v1.3 object.
+## Fields copied when reconstructing a Cerebro object.
 data_fields <- c(
   "expression",
   "meta_data",
@@ -138,14 +138,14 @@ filter_group_slot <- function(x, allowed) {
   x
 }
 
-## Rebuild a fresh Cerebro_v1.3 restricted to the given cell barcodes. Per-cell
+## Rebuild a fresh Cerebro restricted to the given cell barcodes. Per-cell
 ## slots (expression columns, meta rows, projection rows) are filtered by
 ## barcode; group-level analyses are filtered by the groups that survive in the
 ## subset (see filter_group_slot) so the demo is internally consistent.
 group_slots <- c("marker_genes", "most_expressed_genes", "enriched_pathways")
 
 subset_cerebro <- function(keep_barcodes, experiment_name) {
-  new <- Cerebro_v1.3$new()
+  new <- Cerebro$new()
   for (f in data_fields) {
     val <- old[[f]]
     if (!is.null(val)) new[[f]] <- val

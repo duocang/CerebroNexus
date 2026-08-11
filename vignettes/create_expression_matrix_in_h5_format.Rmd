@@ -202,5 +202,5 @@ less error-prone route.
 # See also
 
 - [Create a self-contained Shiny app](create_a_self_contained_shiny_app.html)
-- [Seurat workflow](cerebroApp_workflow_Seurat.html)
+- [Seurat workflow](cerebronexus_workflow_seurat.html)
 - `?exportFromSeurat`

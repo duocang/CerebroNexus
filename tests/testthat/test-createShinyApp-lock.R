@@ -1,7 +1,7 @@
 lock_test_crb <- function(root, backend = NULL) {
   source <- file.path(root, "source")
   dir.create(source, recursive = TRUE, showWarnings = FALSE)
-  object <- Cerebro_v1.3$new()
+  object <- Cerebro$new()
   if (!is.null(backend)) {
     object$setExpressionBackend(
       type = backend$type,

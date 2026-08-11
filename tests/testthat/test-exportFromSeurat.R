@@ -116,7 +116,7 @@ test_that("exportFromSeurat: produces a valid .crb file from pbmc_seurat.rds", {
 
   ## load and inspect the Cerebro object
   cerebro <- readRDS(outf)
-  expect_true(inherits(cerebro, "Cerebro_v1.3"))
+  expect_true(inherits(cerebro, "Cerebro"))
 
   ## experiment metadata
   exp <- cerebro$getExperiment()

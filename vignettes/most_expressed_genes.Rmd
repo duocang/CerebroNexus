@@ -60,4 +60,4 @@ exportFromSeurat(seurat_object, file = "my_data.crb")
 
 # See also
 
-`vignette("cerebroApp_workflow_Seurat")` for the complete export workflow.
+`vignette("cerebronexus_workflow_seurat")` for the complete export workflow.

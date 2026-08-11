@@ -48,7 +48,7 @@ publication_expect_stage_failure <- function(failure) {
   source <- file.path(root, "source")
   dir.create(source)
   crb <- file.path(source, "dataset.crb")
-  saveRDS(Cerebro_v1.3$new(), crb)
+  saveRDS(Cerebro$new(), crb)
   result <- file.path(root, "app")
   dir.create(result)
   writeLines("OLD", file.path(result, "marker.txt"))

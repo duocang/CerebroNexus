@@ -66,7 +66,7 @@ The essence is short: **declare the contracts, store a 0-gene matrix, then add t
 ```{r, eval = FALSE}
 # ... build `meta` (one row per analysis unit), `ir` (receptors), `hla_long` (genotypes)
 
-crb <- Cerebro_v1.3$new()
+crb <- Cerebro$new()
 crb$technical_info <- list(observation_unit = "analysis unit",   # a row is NOT a cell
                            receptor_key     = "v_gene+cdr3",
                            tcr_selection    = "association-conditioned")
@@ -126,7 +126,7 @@ The provenance differs (synthetic vs. real), but the object layout, the contract
 
 ## Option B — a small synthetic bulk `.crb` you can run now
 
-There is no Seurat object here (no cells), so we build the `Cerebro_v1.3` object **by hand**.
+There is no Seurat object here (no cells), so we build the `Cerebro` object **by hand**.
 
 ### Setup and donors
 
@@ -230,7 +230,7 @@ This is why the `.crb` will declare `receptor_key = "v_gene+cdr3"`: a receptor i
 Now set the object's slots directly, including the declared contracts under `technical_info`:
 
 ```{r, eval = FALSE}
-crb <- Cerebro_v1.3$new()
+crb <- Cerebro$new()
 crb$experiment <- list(
   experiment_name = "Toy bulk TCRb cohort - synthetic HLA associations",
   organism = "hg", date_of_export = format(Sys.Date())
@@ -315,7 +315,7 @@ Provenance is separate from selection: `addHLATyping(..., source_type = "genotyp
 # Bringing your own bulk cohort
 
 Option B built `ir` and `hla_long` from random generators.
-With your own data you build the *same two objects* from real files, then run Option B's assembly block unchanged — there is no Seurat object (bulk has no cells), so you set the `Cerebro_v1.3` slots by hand exactly as shown above.
+With your own data you build the *same two objects* from real files, then run Option B's assembly block unchanged — there is no Seurat object (bulk has no cells), so you set the `Cerebro` slots by hand exactly as shown above.
 
 ## Receptors from immunoSEQ / MiXCR
 

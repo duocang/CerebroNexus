@@ -209,12 +209,12 @@ Two stages in `build_trekker_demo.R`:
 
 **(a) a proper Cerebro object** — the down-sampled Seurat (SCT `data` + UMAP +
 `cluster`/`celltype` groups) goes through `exportFromSeurat()`, giving a normal
-`Cerebro_v1.3` object with whole-transcriptome expression and gene names. This is
+`Cerebro` object with whole-transcriptome expression and gene names. This is
 what powers gene colouring on the page: the gene picker lists all measured
 genes, and on selection the server slices one gene, quantises it 0–255, and
 sends it to the client aligned to the page's nuclei.
 
-**(b) the `trekker` slot** — a new `Cerebro_v1.3` field (`addTrekker()` /
+**(b) the `trekker` slot** — a new `Cerebro` field (`addTrekker()` /
 `getTrekker()`, backward-compatible so older `.crb` files simply lack it) holds
 everything the bespoke page needs beyond expression:
 

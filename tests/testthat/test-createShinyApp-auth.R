@@ -322,7 +322,7 @@ test_that("database preflight rejects corrupt auxiliary tables", {
 auth_test_build_fixture <- function() {
   root <- withr::local_tempdir(.local_envir = parent.frame())
   crb <- file.path(root, "dataset.crb")
-  saveRDS(Cerebro_v1.3$new(), crb)
+  saveRDS(Cerebro$new(), crb)
   credentials <- file.path(root, "credentials.sqlite")
   writeBin(as.raw(c(0x53, 0x51, 0x4c)), credentials)
   list(root = root, crb = crb, credentials = credentials)
@@ -746,7 +746,7 @@ test_that("authentication deployment documentation is runnable and credited", {
   }
 
   description <- read.dcf(auth_test_package_file("DESCRIPTION"))
-  expect_identical(description[[1L, "Version"]], "4.1")
+  expect_identical(description[[1L, "Version"]], "4.2")
   suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
   expect_false(any(grepl("askpass|chromote", suggests)))
