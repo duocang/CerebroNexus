@@ -27,7 +27,7 @@ builder_workflow_test_plan <- function(
   )
 }
 
-test_that("review identity includes intent and excludes output execution state", {
+test_that("review identity includes CRB intent and excludes output intent", {
   plan <- builder_workflow_test_plan()
   relocated <- plan
   relocated$out_dir <- tempfile("relocated-builder-output-")
@@ -41,12 +41,8 @@ test_that("review identity includes intent and excludes output execution state",
     c(
       "revision",
       "dataset_order",
-      "make_app",
-      "app_contract_version",
       "items",
       "manifest",
-      "app_options",
-      "app_auth",
       "acknowledgements"
     )
   )
@@ -54,9 +50,18 @@ test_that("review identity includes intent and excludes output execution state",
 
   changed_viewer <- plan
   changed_viewer$app_options$welcome_message <- "Changed"
-  expect_false(identical(
+  changed_viewer$make_app <- FALSE
+  changed_viewer$app_auth <- list(enabled = TRUE, account_count = 2L)
+  expect_identical(
     identity,
     builder_review_plan_identity(changed_viewer)
+  )
+
+  changed_crb <- plan
+  changed_crb$items[[1L]]$included_groups <- "cell_type"
+  expect_false(identical(
+    identity,
+    builder_review_plan_identity(changed_crb)
   ))
 })
 
@@ -138,7 +143,7 @@ test_that("workflow advances through review and confirmation", {
 
   changed_viewer <- plan
   changed_viewer$app_options$welcome_message <- "Changed"
-  expect_false(builder_workflow_confirmation_matches(state, changed_viewer))
+  expect_true(builder_workflow_confirmation_matches(state, changed_viewer))
 
   state <- builder_reduce_workflow(state, list(type = "back_to_review"))
   expect_identical(state$stage, "review")
@@ -166,7 +171,7 @@ test_that("review confirmation rejects a changed BuildPlan", {
     list(type = "open_review", plan = plan)
   )
   changed <- plan
-  changed$app_options$welcome_message <- "Changed"
+  changed$items[[1L]]$included_groups <- "cell_type"
 
   expect_error(
     builder_reduce_workflow(
@@ -220,7 +225,7 @@ test_that("opening review preserves only the matching confirmation", {
   expect_true(builder_workflow_confirmation_matches(matching, relocated))
 
   plan_b <- plan_a
-  plan_b$app_options$welcome_message <- "Plan B"
+  plan_b$items[[1L]]$included_groups <- "cell_type"
   changed <- builder_reduce_workflow(
     confirmed,
     list(type = "open_review", plan = plan_b)

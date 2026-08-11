@@ -5,15 +5,11 @@
   "confirmation",
   "revision"
 )
-.builder_workflow_identity_fields <- c(
+.builder_review_identity_fields <- c(
   "revision",
   "dataset_order",
-  "make_app",
-  "app_contract_version",
   "items",
   "manifest",
-  "app_options",
-  "app_auth",
   "acknowledgements"
 )
 
@@ -28,7 +24,7 @@
 }
 
 .builder_workflow_plan_identity <- function(plan) {
-  .builder_workflow_copy(plan[.builder_workflow_identity_fields])
+  .builder_workflow_copy(plan[.builder_review_identity_fields])
 }
 
 .builder_workflow_confirmation_valid <- function(confirmation, review_plan) {
@@ -95,6 +91,21 @@ builder_review_plan_identity <- function(plan) {
   }
 
   .builder_workflow_plan_identity(plan)
+}
+
+builder_final_build_identity <- function(plan) {
+  if (!.builder_workflow_plan_valid(plan)) {
+    stop("A ready frozen BuildPlan is required.", call. = FALSE)
+  }
+  list(
+    review = builder_review_plan_identity(plan),
+    output = .builder_workflow_copy(plan[c(
+      "make_app",
+      "app_contract_version",
+      "app_options",
+      "app_auth"
+    )])
+  )
 }
 
 builder_workflow_state <- function() {
