@@ -116,7 +116,15 @@ build_stage_status_projection <- reactive({
 })
 
 output$build_stage_status_content <- renderUI({
-  builder_build_stage_status_body_ui(build_stage_status_projection())
+  body <- builder_build_stage_status_body_ui(build_stage_status_projection())
+  if (is.null(body)) {
+    return(NULL)
+  }
+  tags$section(
+    class = "builder-stage-section builder-build-status-section",
+    tags$h3("Build status"),
+    body
+  )
 })
 
 output$build_stage_footer <- renderUI({

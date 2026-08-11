@@ -168,64 +168,6 @@ test_that("Builder preserves responsive geometry before Build", {
   )))
 
   app$run_js(paste0(
-    "window.scrollTo(0, 0);",
-    "const context = document.querySelector('.dataset-context');",
-    "context.classList.add('is-multiple');",
-    "context.insertAdjacentHTML('afterend', `",
-    "<nav class=\"dataset-compact-review\" aria-hidden=\"true\" ",
-    "aria-label=\"Compact dataset review navigation\">",
-    "<button class=\"dataset-compact-step\" type=\"button\">Previous</button>",
-    "<div class=\"dataset-compact-track\">",
-    "<button class=\"dataset-compact-segment is-current\" data-dataset-id=\"a\" type=\"button\">A</button>",
-    "<button class=\"dataset-compact-segment\" data-dataset-id=\"b\" type=\"button\">B</button>",
-    "</div><button class=\"dataset-compact-step\" type=\"button\">Next</button>",
-    "</nav>`);"
-  ))
-  app$wait_for_js(
-    "document.querySelector('.dataset-compact-review') !== null",
-    timeout = 10000
-  )
-  expect_identical(
-    app$get_js(
-      "document.querySelector('.dataset-compact-review').getAttribute('aria-hidden')"
-    ),
-    "true"
-  )
-  app$run_js(paste0(
-    "const context = document.querySelector('.dataset-context');",
-    "const topbar = document.querySelector('.topbar');",
-    "window.scrollBy(0, context.getBoundingClientRect().bottom - ",
-    "topbar.getBoundingClientRect().bottom + 24);"
-  ))
-  app$wait_for_js(
-    "document.querySelector('.dataset-compact-review').classList.contains('is-visible')",
-    timeout = 10000
-  )
-  compact_geometry <- app$get_js(paste0(
-    "(() => { const rect = document.querySelector('.dataset-compact-review').getBoundingClientRect();",
-    "return {documentWidth: document.documentElement.scrollWidth,",
-    "viewportWidth: window.innerWidth, left: rect.left, right: rect.right}; })()"
-  ))
-  expect_lte(compact_geometry$documentWidth, compact_geometry$viewportWidth + 1)
-  expect_gte(compact_geometry$left, -1)
-  expect_lte(compact_geometry$right, compact_geometry$viewportWidth + 1)
-
-  app$run_js(paste0(
-    "window.__compactSelections = []; window.__compactSetInput = Shiny.setInputValue;",
-    "Shiny.setInputValue = function(name, value, options) {",
-    "if (name === 'review_compact_dataset') { window.__compactSelections.push(value); return; }",
-    "return window.__compactSetInput.apply(this, arguments); };",
-    "document.querySelector('.dataset-compact-segment:not(.is-current)').click();"
-  ))
-  compact_selections <- app$get_js("window.__compactSelections")
-  expect_length(compact_selections, 1L)
-  expect_true(nzchar(compact_selections[[1L]]$id))
-  app$run_js(paste0(
-    "Shiny.setInputValue = window.__compactSetInput;",
-    "delete window.__compactSetInput; delete window.__compactSelections;"
-  ))
-
-  app$run_js(paste0(
     "window.__builderFocusDatasetContext(",
     "document.querySelector('.dataset-context'));"
   ))

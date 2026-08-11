@@ -8,7 +8,7 @@ The redesign must make Upload, Data setup, Review, and Build feel like one profe
 
 ## Direction
 
-Use a compact, professional-tool layout. Stage pages are flat documents organized by headings, whitespace, and quiet dividers. Borders and tinted surfaces are reserved for content that has an actual object or state boundary.
+Use a compact, professional-tool layout. The stage shell stays flat, while major content groups sit on white lightweight panels over the gray workspace. Each panel uses the same subtle border, 14px desktop radius, and low shadow as the Viewer reference. Tinted surfaces remain reserved for conditional or exceptional states.
 
 The governing rule is:
 
@@ -30,11 +30,11 @@ The stage footer contains a short status at the left and actions at the right. I
 The UI has four structural levels:
 
 - `stage shell`: the active page. It has no border, radius, background, or shadow.
-- `stage section`: a normal group of related fields or read-only facts. It uses a heading, optional description, spacing, and an optional divider.
+- `stage section`: a major group of related fields or read-only facts. It uses one white lightweight panel with a heading, optional description, subtle border, and low shadow.
 - `object`: an independently identifiable item such as one of several datasets. It may use a light border and small radius.
 - `state panel`: a warning, error, progress state, or conditional group such as expanded Viewer App settings. It may use a quiet tinted background.
 
-Nested general-purpose cards are not allowed. A bordered object may contain rows, but not another generic bordered card. Status and validation treatments retain their semantic colors.
+Nested general-purpose cards are not allowed. A stage panel may contain rows or a genuinely independent object, but not another generic stage panel. Status and validation treatments retain their semantic colors.
 
 ## Visual rhythm
 
@@ -47,7 +47,7 @@ Use one compact spacing scale derived from existing tokens:
 - final section to stage footer: 40px
 - footer top padding: 20px
 
-Radii for objects and state panels remain within 6–8px. Ordinary sections have no shadow. The active workspace must not add amber borders or elevation merely because it is the current stage; the fixed progress navigation already communicates the active stage.
+Major stage panels use the existing 14px large radius and `shadow-1` on desktop, reducing to 10px on mobile. Objects and state panels inside them remain within 6–8px and must be visually quieter than the parent panel. The stage shell itself has no border or shadow, and the active workspace must not add amber elevation merely because it is current; the fixed progress navigation already communicates the active stage.
 
 ## Stage-specific design
 
@@ -60,7 +60,7 @@ Keep the upload empty-state surface because it is a bounded interaction with a d
 - Remove the bordered/elevated stage wrapper.
 - Add a task-oriented header and concise intro.
 - Compress active-dataset identity into a summary strip rather than a separate summary card.
-- Present Import and Inspect, Core content, and Optional content as flat sections.
+- Present Import and Inspect, Core content, and Optional content as three consistent lightweight panels.
 - Keep borders only for genuinely independent controls or data objects inside those sections.
 - Replace `Ready to review · N datasets` with the shorter `N dataset(s) ready`.
 - Place the status and `Continue` in the shared stage footer.
@@ -70,7 +70,7 @@ Keep the upload empty-state surface because it is a bounded interaction with a d
 - Remove the bordered/elevated stage wrapper.
 - Keep the frozen revision, dataset count, and output count in one compact summary strip.
 - For one dataset, present its facts as a flat subsection. For multiple datasets, use light object boundaries to preserve identity.
-- Keep content and output information in flat sections.
+- Keep Datasets, CRB content, and Output in consistent lightweight panels.
 - Delete the separate `Ready to continue?` heading and explanatory confirmation block.
 - Move `Back to Data setup` and `Continue to Build` into the shared stage footer, alongside a short `CRB plan ready` status.
 - The footer must be a descendant of the element carrying `data-workflow-stage="review"`.
@@ -79,7 +79,7 @@ Keep the upload empty-state surface because it is a bounded interaction with a d
 
 - Remove the bordered/elevated stage wrapper.
 - Present confirmed-plan facts in the shared summary strip.
-- Present Output type, Destination, and Build status as flat sections.
+- Present Output type, Destination, and non-empty Build status as consistent lightweight panels.
 - Use a quiet state panel only for Viewer App settings revealed by the output choice.
 - End with the shared stage footer: `Back to Review` and the primary build action when the selected output and destination are ready.
 
@@ -123,6 +123,7 @@ Automated UI structure checks should assert:
 - the removed `Ready to continue?` copy is absent;
 - action input IDs and enabled/disabled behavior remain unchanged;
 - no general stage shell retains the generic card class;
+- every major stage section uses the shared lightweight panel treatment;
 - nested generic cards are absent except explicitly allowed object/state structures.
 
 Run focused server and UI tests for stage navigation, review confirmation, Build option locking, and authentication settings. Then run the project Builder test suite once.

@@ -810,7 +810,8 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
     fixed = TRUE
   )
   expect_false(grepl('content: "Current "', components, fixed = TRUE))
-  expect_match(components, ".builder-stage-actions", fixed = TRUE)
+  expect_false(grepl(".builder-stage-actions", components, fixed = TRUE))
+  expect_match(components, ".builder-stage-footer", fixed = TRUE)
   for (stage in c("configure", "review", "build")) {
     expect_match(features, paste0(".builder-stage-", stage), fixed = TRUE)
   }
@@ -827,6 +828,21 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
   expect_match(components, ".builder-stage-shell", fixed = TRUE)
   expect_match(components, ".builder-stage-summary", fixed = TRUE)
   expect_match(components, ".builder-stage-section", fixed = TRUE)
+  expect_match(
+    components,
+    "\\.builder-stage-section \\{[^}]*border: 1px solid var\\(--c-border\\);",
+    perl = TRUE
+  )
+  expect_match(
+    components,
+    "\\.builder-stage-section \\{[^}]*background: var\\(--c-surface\\);",
+    perl = TRUE
+  )
+  expect_match(
+    components,
+    "\\.builder-stage-section \\{[^}]*box-shadow: var\\(--shadow-1\\);",
+    perl = TRUE
+  )
   expect_match(components, ".builder-stage-footer", fixed = TRUE)
   expect_match(components, ".builder-stage-footer-actions", fixed = TRUE)
   expect_match(

@@ -2,9 +2,11 @@
 
 > **For AI agent workers:** Required sub-skill: use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Track progress with the checkboxes below.
 
-**Goal:** Unify Data setup, Review, and Build as flat professional-tool pages with shared section and footer semantics while preserving all Builder workflow behavior.
+**Goal:** Unify Data setup, Review, and Build as professional-tool pages with shared lightweight section panels and footer semantics while preserving all Builder workflow behavior.
 
-**Architecture:** Add a small set of stage-layout primitives in `ui/workflow.R`, then migrate each public stage to those primitives without changing input IDs or server transitions. Replace generic card styling at stage and ordinary-section boundaries with a shared shell, flat sections, compact summaries, and one in-flow footer; retain bounded panels only for independent objects and conditional/error states.
+**Architecture:** Add a small set of stage-layout primitives in `ui/workflow.R`, then migrate each public stage to those primitives without changing input IDs or server transitions. Replace the generic outer stage card with a flat shell, compact summaries, consistent lightweight white section panels, and one in-flow footer; retain smaller bounded panels only for independent objects and conditional/error states.
+
+**Plan revision:** During browser review, the user supplied the Viewer at `http://127.0.0.1:5873/` as the visual reference and requested visible grouping boundaries. The final section treatment therefore uses the reference page's 1px quiet border, 14px desktop radius, and `shadow-1` on a gray workspace. Any later task wording that says an ordinary section is “flat” means the stage shell is flat and sections are not nested cards; it does not override this lightweight panel treatment.
 
 **Tech stack:** R, Shiny/htmltools, CSS custom properties, testthat, existing Builder browser contract helpers.
 

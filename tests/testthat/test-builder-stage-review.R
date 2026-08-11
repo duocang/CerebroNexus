@@ -188,8 +188,8 @@ test_that("Build shows the confirmed frozen plan revision", {
   expect_match(html, "builder-stage-shell", fixed = TRUE)
   expect_false(grepl("builder-stage-build builder-card", html, fixed = TRUE))
   expect_match(html, "builder-stage-summary", fixed = TRUE)
-  expect_match(html, "builder-stage-section", fixed = TRUE)
   expect_match(html, 'id="build_stage_footer"', fixed = TRUE)
+  expect_false(grepl("Build status", html, fixed = TRUE))
   expect_match(html, "Confirmed plan revision 17", fixed = TRUE)
 })
 

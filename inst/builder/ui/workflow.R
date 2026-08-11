@@ -200,17 +200,13 @@ builder_build_workbench_ui <- function(model) {
     ),
     uiOutput("build_output_options"),
     uiOutput("build_stage_controls"),
-    tags$section(
-      class = "builder-stage-section builder-build-status-section",
-      tags$h3("Build status"),
-      div(
-        id = "build-stage-status",
-        class = "builder-build-stage-status",
-        role = "status",
-        `aria-live` = "polite",
-        `aria-atomic` = "true",
-        uiOutput("build_stage_status_content")
-      )
+    div(
+      id = "build-stage-status",
+      class = "builder-build-stage-status",
+      role = "status",
+      `aria-live` = "polite",
+      `aria-atomic` = "true",
+      uiOutput("build_stage_status_content")
     ),
     uiOutput("build_stage_footer")
   )

@@ -1121,9 +1121,7 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
 .review-dataset-file { margin: .15rem 0 .55rem; color: var(--c-text-subtle); font-family: var(--font-mono); }
 .review-counts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .review-section {
-  margin-top: var(--space-5, 1.25rem);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--c-border);
+  margin-top: var(--space-6);
 }
 .review-section > h3 { margin: 0 0 var(--space-3); font-size: 1rem; }
 .review-dataset-card {
@@ -1359,7 +1357,7 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: .75rem 1.25rem;
   align-items: center;
-  margin: 0 0 var(--space-6);
+  margin: 0;
   padding: 0 0 var(--space-4);
   border: 0;
   border-bottom: 1px solid var(--c-border);
@@ -1390,9 +1388,7 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
 .builder-stage-inspect,
 .builder-stage-core,
 .builder-stage-enhance {
-  margin: 0;
-  background: transparent;
-  box-shadow: none;
+  margin-top: var(--space-6);
 }
 
 .js-plotly-plot { transition: opacity var(--duration-base) var(--ease); }
