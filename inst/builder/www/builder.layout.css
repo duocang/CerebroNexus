@@ -61,11 +61,13 @@
   right: var(--builder-page-gutter);
   bottom: max(.5rem, env(safe-area-inset-bottom));
   z-index: 12;
-  background: var(--c-surface);
-  border: 1px solid #e1e4e8;
-  border-radius: 1.15rem;
-  box-shadow: 0 .7rem 2rem rgb(17 17 26 / .12);
-  padding: 1.25rem 1.75rem;
+  background: rgb(255 255 255 / .82);
+  border: 1px solid rgb(225 228 232 / .78);
+  border-radius: .9rem;
+  box-shadow: 0 .35rem 1.2rem rgb(17 17 26 / .08);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  padding: .7rem 1.15rem;
   transition: opacity var(--duration-base) var(--ease), transform var(--duration-base) var(--ease);
 }
 #builder-workspace .builder-workflow-progress ol {
@@ -75,9 +77,9 @@
 #builder-workspace .builder-workflow-progress li {
   border-bottom: 0;
   color: var(--c-text);
-  font-size: clamp(1rem, 1.15vw, 1.35rem);
+  font-size: clamp(.9rem, 1vw, 1.05rem);
   font-weight: 500;
-  padding: .25rem .5rem;
+  padding: .2rem .4rem;
 }
 #builder-workspace .builder-workflow-progress li[aria-current="step"] {
   border-color: transparent;
