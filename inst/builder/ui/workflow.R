@@ -72,8 +72,8 @@ builder_stage_header_ui <- function(stage, title, intro) {
   )
 }
 
-builder_stage_summary_ui <- function(...) {
-  tags$div(class = "builder-stage-summary", ...)
+builder_stage_summary_ui <- function(..., class = NULL) {
+  tags$div(class = paste("builder-stage-summary", class), ...)
 }
 
 builder_stage_section_ui <- function(

@@ -257,20 +257,16 @@ builder_review_can_build <- function(plan) {
 }
 
 builder_review_confirmation_ui <- function() {
-  div(
-    class = "builder-stage-actions builder-review-confirmation",
-    div(
-      h3("Ready to continue?"),
-      p("Confirm this frozen revision to open the Build step.")
-    ),
+  builder_stage_footer_ui(
+    "CRB plan ready",
     actionButton(
       "back_to_settings",
-      "Back to settings",
+      "Back to Data setup",
       class = "btn"
     ),
     actionButton(
       "confirm_review",
-      "Looks good — continue to build",
+      "Continue to Build",
       class = "btn btn-action"
     )
   )
@@ -678,7 +674,7 @@ builder_review_blocked_ui <- function(id, message = NULL) {
 
 ## The Review surface consumes only the user-facing projection above. The
 ## frozen BuildPlan remains intact for execution and reporting.
-builder_review_stage_ui <- function(id, model) {
+builder_review_stage_ui <- function(id, model, footer = NULL) {
   ns <- NS(id)
   plural <- function(value, singular, plural = paste0(singular, "s")) {
     paste(value, if (identical(as.integer(value), 1L)) singular else plural)
@@ -710,13 +706,13 @@ builder_review_stage_ui <- function(id, model) {
 
   div(
     id = ns("stage"),
-    class = "builder-stage builder-stage-review builder-card builder-section",
-    h2("Review"),
-    p(
-      class = "stage-intro",
+    class = "builder-stage builder-stage-shell builder-stage-review",
+    builder_stage_header_ui(
+      "Review",
+      "Review the CRB plan",
       "Check the CRB data plan before choosing build outputs."
     ),
-    div(
+    builder_stage_summary_ui(
       class = "review-summary-strip",
       span(plural(model$dataset_count, "dataset")),
       span(
@@ -726,14 +722,17 @@ builder_review_stage_ui <- function(id, model) {
       span(paste("Creates", model$output_label))
     ),
     tags$section(
-      class = "review-section review-datasets",
+      class = "builder-stage-section review-section review-datasets",
       h3("Datasets"),
       div(
-        class = "review-dataset-grid",
+        class = paste(
+          "review-dataset-grid",
+          if (identical(length(model$datasets), 1L)) "is-single-dataset"
+        ),
         lapply(model$datasets, function(dataset) {
           viewer_content <- dataset$viewer_content
           div(
-            class = "review-dataset-card",
+            class = "builder-object review-dataset-card",
             h4(dataset$name),
             p(
               class = "review-dataset-counts",
@@ -940,7 +939,7 @@ builder_review_stage_ui <- function(id, model) {
       )
     ),
     tags$section(
-      class = "review-section review-pages",
+      class = "builder-stage-section review-section review-pages",
       h3("Content available from the CRBs"),
       page_tags(shown_pages),
       if (length(more_pages)) {
@@ -952,7 +951,7 @@ builder_review_stage_ui <- function(id, model) {
       }
     ),
     tags$section(
-      class = "review-section review-output",
+      class = "builder-stage-section review-section review-output",
       h3("Output"),
       tags$dl(
         class = "review-fields review-output-fields",
@@ -967,10 +966,14 @@ builder_review_stage_ui <- function(id, model) {
     ),
     if (length(model$warnings %||% character())) {
       tags$section(
-        class = "review-section review-needs-attention",
+        class = paste(
+          "builder-stage-section review-section",
+          "review-needs-attention"
+        ),
         h3("Needs attention"),
         tags$ul(lapply(model$warnings, tags$li))
       )
-    }
+    },
+    footer
   )
 }

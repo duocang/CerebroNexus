@@ -1098,16 +1098,13 @@ details > summary {
 details > summary:hover { color: var(--builder-action-active); }
 details > summary:focus-visible { outline: 2px solid var(--builder-action); outline-offset: 2px; }
 .review-summary-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 .review-summary-strip > span,
 .review-counts > span {
-  padding: .3rem .65rem;
-  border-radius: var(--r-pill);
-  background: var(--c-surface-2);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--c-text-muted);
 }
 .review-dataset-grid {
@@ -1132,7 +1129,12 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
 .review-dataset-card {
   min-width: 0;
   background: var(--c-surface);
-  box-shadow: var(--shadow-1);
+  box-shadow: none;
+}
+.review-dataset-grid.is-single-dataset .review-dataset-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
 }
 .review-dataset-card h4 { margin: 0 0 .25rem; font-size: 1rem; }
 .review-dataset-counts,

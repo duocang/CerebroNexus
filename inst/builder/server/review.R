@@ -556,13 +556,13 @@ render_configure_workbench <- function() {
 render_review_workbench <- function() {
   plan <- workflow()$review_plan
   req(builder_review_can_build(plan))
-  stage <- tagAppendAttributes(
-    builder_review_stage_ui("review", builder_review_model(plan)),
+  tagAppendAttributes(
+    builder_review_stage_ui(
+      "review",
+      builder_review_model(plan),
+      footer = builder_review_confirmation_ui()
+    ),
     `data-workflow-stage` = "review"
-  )
-  tagList(
-    stage,
-    builder_review_confirmation_ui()
   )
 }
 

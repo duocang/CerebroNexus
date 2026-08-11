@@ -190,33 +190,50 @@ test_that("Build shows the confirmed frozen plan revision", {
 
 test_that("Review has one global confirmation and no editable controls", {
   model <- builder_review_model(builder_stage_frozen_plan(TRUE))
-  html <- builder_stage_html(tagList(
-    builder_review_stage_ui("review", model),
-    builder_review_confirmation_ui()
-  ))
+  stage <- builder_review_stage_ui(
+    "review",
+    model,
+    footer = builder_review_confirmation_ui()
+  )
+  html <- builder_stage_html(stage)
 
   expect_length(
     regmatches(
       html,
-      gregexpr("Looks good — continue to build", html, fixed = TRUE)
+      gregexpr("Continue to Build", html, fixed = TRUE)
     )[[1L]],
     1L
   )
   expect_length(
-    regmatches(html, gregexpr("Back to settings", html, fixed = TRUE))[[1L]],
+    regmatches(html, gregexpr("Back to Data setup", html, fixed = TRUE))[[1L]],
     1L
   )
-  expect_match(html, "Ready to continue?", fixed = TRUE)
-  expect_match(
-    html,
+  expect_match(html, "builder-stage-shell", fixed = TRUE)
+  expect_match(html, "builder-stage-footer", fixed = TRUE)
+  expect_match(html, "CRB plan ready", fixed = TRUE)
+  expect_false(grepl("Ready to continue?", html, fixed = TRUE))
+  expect_false(grepl(
     "Confirm this frozen revision to open the Build step.",
+    html,
     fixed = TRUE
-  )
+  ))
   expect_match(html, 'id="confirm_review"', fixed = TRUE)
   expect_match(html, 'id="back_to_settings"', fixed = TRUE)
   expect_false(grepl("review_current_dataset", html, fixed = TRUE))
   expect_false(grepl("dataset_review_footer", html, fixed = TRUE))
   expect_false(grepl("<input|<select|<textarea", html))
+})
+
+test_that("Review flattens a single dataset but bounds multiple datasets", {
+  model <- builder_review_model(builder_stage_frozen_plan())
+  multiple <- builder_stage_html(builder_review_stage_ui("review", model))
+  expect_match(multiple, "builder-object", fixed = TRUE)
+  expect_false(grepl("is-single-dataset", multiple, fixed = TRUE))
+
+  model$datasets <- model$datasets[1L]
+  model$dataset_count <- 1L
+  single <- builder_stage_html(builder_review_stage_ui("review", model))
+  expect_match(single, "is-single-dataset", fixed = TRUE)
 })
 
 test_that("Review remains CRB-only for every downstream output draft", {

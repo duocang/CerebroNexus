@@ -126,12 +126,15 @@ test_that("Builder shell and workflow UI separate all four stages", {
     )),
     1L
   )
-  expect_match(confirmation_html, "Ready to continue?", fixed = TRUE)
+  expect_match(confirmation_html, "builder-stage-footer", fixed = TRUE)
+  expect_match(confirmation_html, "CRB plan ready", fixed = TRUE)
   expect_match(
     confirmation_html,
-    "Looks good — continue to build",
+    "Continue to Build",
     fixed = TRUE
   )
+  expect_match(confirmation_html, "Back to Data setup", fixed = TRUE)
+  expect_false(grepl("Ready to continue?", confirmation_html, fixed = TRUE))
   expect_false(grepl("<input|<select|<textarea", confirmation_html))
 })
 
