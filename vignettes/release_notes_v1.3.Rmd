@@ -65,9 +65,9 @@ The Seurat framework is a great toolkit to analyze single cell data. But that do
 
 Please note that pre-processing functions are still limited to `Seurat` object as an input. It is on the roadmap to adapt those functions.
 
-# The `Cerebro_v1.3` class
+# The `Cerebro` class
 
-Starting with v1.3, the data that is exported by cerebroApp and stored as a `.crb` file is organized in a dedicated class: `Cerebro_v1.3` (based on R6 reference class). Given the increasing amount of data that can be exported and visualized, this appeard to be an inevitable step. Furthermore, it aims to improve backwards-compatibility between exported data and Cerebro interfaces because data is not accessed directly, but rather returned by the object through dedicated functions/methods that, even when changing data organization inside the object in the future, can keep their name and return the same output.
+Starting with v1.3, the data that is exported by cerebroApp and stored as a `.crb` file is organized in a dedicated class: `Cerebro` (based on R6 reference class). Given the increasing amount of data that can be exported and visualized, this appeard to be an inevitable step. Furthermore, it aims to improve backwards-compatibility between exported data and Cerebro interfaces because data is not accessed directly, but rather returned by the object through dedicated functions/methods that, even when changing data organization inside the object in the future, can keep their name and return the same output.
 
 Since `.crb` files are just `.rds` files with a different extension, you can get an overview of an exported data set - to understand what it contains - by loading it into R and calling its `print()` function:
 
@@ -79,7 +79,7 @@ data_set$print()
 You should then get an output similar to this:
 
 ```
-class: Cerebro_v1.3
+class: Cerebro
 cerebroApp version: 1.3.0
 experiment name: pbmc_Seurat
 organism: hg
@@ -218,13 +218,13 @@ I prepared a couple of vignettes to highlight some of the new features and optio
 * [Launch Cerebro with pre-loaded data set](launch_cerebro_with_pre-loaded_data_set.html)
 * [Host Cerebro on shinyapps.io](host_cerebro_on_shinyapps.html)
 * [Control access to Cerebro with a login page](control_access_to_cerebro_with_a_login_page.html)
-* [Overview of the Cerebro v1.3 class](articles/overview_of_cerebro_v1.3_class.html)
+* [Overview of the Cerebro class](articles/overview_of_cerebro_class.html)
 
 # Consequences
 
 ## Backwards (in)compatibility
 
-While the introduction of the `Cerebro_v1.3` object hopefully provides more stability of the data organization in future releases, it also means that data sets exported with cerebroApp version older than v1.3 will not be properly shown in Cerebro v1.3.
+While the introduction of the `Cerebro` object hopefully provides more stability of the data organization in future releases, it also means that data sets exported with cerebroApp version older than v1.3 will not be properly shown in Cerebro v1.3.
 Moreover, due to the re-work of some pre-processing functions, it is necessary to perform the pre-processing again if you want to export data sets that you already pre-processed with older cerebroApp version.
 
 ## Launching older cerebroApp versions

@@ -302,7 +302,7 @@ typing_rows <- lapply(donors, function(d) {
 typing_long <- do.call(rbind, typing_rows)
 
 ## ---- 7. Assemble the .crb ------------------------------------------------ ##
-crb <- Cerebro_v1.3$new()
+crb <- Cerebro$new()
 crb$experiment <- list(
   experiment_name = "PBMC bulk TCRb cohort (Emerson 2017) - real HLA",
   organism = "hg",

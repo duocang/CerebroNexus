@@ -1,11 +1,11 @@
-# Tests for the Cerebro_v1.3 hla_typing slot + getter/setter round-trip and
+# Tests for the Cerebro hla_typing slot + getter/setter round-trip and
 # backward compatibility with objects that predate the field.
 
 make_minimal_cerebro <- function() {
   # A minimal object is enough to exercise the HLA slot: the getter/setter do
   # not touch expression/metadata. initialize() takes no args (fields are set
   # post-hoc), so a bare $new() is sufficient.
-  Cerebro_v1.3$new()
+  Cerebro$new()
 }
 
 test_that("addHLATyping / getHLATyping round-trips a named list", {

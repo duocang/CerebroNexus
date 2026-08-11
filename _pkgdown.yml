@@ -36,7 +36,7 @@ reference:
       - extractMonocleTrajectory
   - title: "Internal"
     contents:
-      - Cerebro_v1.3
+      - Cerebro
       - starts_with(".")
 
 articles:
@@ -49,7 +49,7 @@ articles:
     navbar: Interface
     contents:
       - Cerebro_interface_v1.2
-      - overview_of_cerebro_v1.3_class
+      - overview_of_cerebro_class
       - release_notes_v1.3
   - title: "How-to guides"
     navbar: How-to

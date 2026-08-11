@@ -1006,88 +1006,94 @@ match_dataset_by_url <- function(url_dataset, files, file_names = NULL) {
 ##
 ## Never directly interact with data set: data_set()
 ##----------------------------------------------------------------------------##
+is_cerebro_dataset <- function(object) {
+  is.environment(object) &&
+    inherits(object, "R6") &&
+    any(startsWith(class(object), "Cerebro"))
+}
+
 getExperiment <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getExperiment())
   }
 }
 getParameters <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getParameters())
   }
 }
 getTechnicalInfo <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getTechnicalInfo())
   }
 }
 getGeneLists <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGeneLists())
   }
 }
 getGeneNames <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGeneNames())
   }
 }
 getGroups <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGroups())
   }
 }
 getGroupLevels <- function(group) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGroupLevels(group))
   }
 }
 getCellCycle <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getCellCycle())
   }
 }
 getMetaData <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getMetaData())
   }
 }
 availableProjections <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$availableProjections())
   }
 }
 getProjection <- function(name) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getProjection(name))
   }
 }
 getMethodsForMarkerGenes <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getMethodsForMarkerGenes())
   }
 }
 getGroupsWithMarkerGenes <- function(method) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGroupsWithMarkerGenes(method))
   }
 }
 getMarkerGenes <- function(method, group) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getMarkerGenes(method, group))
   }
 }
 getMethodsForTrajectories <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getMethodsForTrajectories())
   }
 }
 getNamesOfTrajectories <- function(method) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getNamesOfTrajectories(method))
   }
 }
 getTrajectory <- function(method, name) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getTrajectory(method, name))
   }
 }
@@ -1769,66 +1775,66 @@ getGroupsWithMeanExpression <- function() {
   tryCatch(ds$getGroupsWithMeanExpression(), error = function(e) character(0))
 }
 getGroupsWithMostExpressedGenes <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGroupsWithMostExpressedGenes())
   }
 }
 getMostExpressedGenes <- function(group) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getMostExpressedGenes(group))
   }
 }
 
 ## Wrapper functions for enriched_pathways module.
 getMethodsForEnrichedPathways <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getMethodsForEnrichedPathways())
   }
 }
 getGroupsWithEnrichedPathways <- function(method) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGroupsWithEnrichedPathways(method))
   }
 }
 getEnrichedPathways <- function(method, group) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getEnrichedPathways(method, group))
   }
 }
 
 ## Wrapper functions for extra_material module.
 getExtraMaterialCategories <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getExtraMaterialCategories())
   }
 }
 checkForExtraTables <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$checkForExtraTables())
   }
 }
 getNamesOfExtraTables <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getNamesOfExtraTables())
   }
 }
 getExtraTable <- function(name) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getExtraTable(name))
   }
 }
 checkForExtraPlots <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$checkForExtraPlots())
   }
 }
 getNamesOfExtraPlots <- function() {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getNamesOfExtraPlots())
   }
 }
 getExtraPlot <- function(name) {
-  if ('Cerebro_v1.3' %in% class(data_set())) {
+  if (is_cerebro_dataset(data_set())) {
     return(data_set()$getExtraPlot(name))
   }
 }

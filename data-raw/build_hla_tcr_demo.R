@@ -1051,7 +1051,7 @@ meta <- data.frame(
 meta$nUMI <- pmax(meta$nUMI, 500)
 
 ## ---- Assemble ----------------------------------------------------------- ##
-crb <- Cerebro_v1.3$new()
+crb <- Cerebro$new()
 crb$expression <- expression
 crb$setMetaData(meta)
 crb$projections <- list(umap = projection)

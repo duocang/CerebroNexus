@@ -109,7 +109,7 @@ The `unique()` is what makes this a *pool* rather than a per-cell table: the ori
 
 ## 3.4 Step 2 — subsetting `example.crb`
 
-`subset_cerebro()` rebuilds a fresh `Cerebro_v1.3` restricted to a set of barcodes. Three kinds of slot need different treatment:
+`subset_cerebro()` rebuilds a fresh `Cerebro` restricted to a set of barcodes. Three kinds of slot need different treatment:
 
 ```r
 bc   <- old$getMetaData()$cell_barcode

@@ -750,13 +750,18 @@ dedent <- function(string) {
   "getTrajectory"
 )
 
+.isRecognizedCerebroObject <- function(object) {
+  is.environment(object) &&
+    inherits(object, "R6") &&
+    any(startsWith(class(object), "Cerebro")) &&
+    environmentIsLocked(object)
+}
+
 ## Treat the ordinary field as data. The getter binding is checked only as a
 ## format marker and is never invoked during preflight.
 .readBundleBackend <- function(crb_path) {
   object <- readRDS(crb_path)
-  recognized <- is.environment(object) &&
-    all(c("Cerebro_v1.3", "R6") %in% class(object)) &&
-    environmentIsLocked(object)
+  recognized <- .isRecognizedCerebroObject(object)
   if (recognized) {
     for (method in .bundleRequiredCerebroMethods) {
       if (

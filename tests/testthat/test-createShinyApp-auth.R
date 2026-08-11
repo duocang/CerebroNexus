@@ -322,7 +322,7 @@ test_that("database preflight rejects corrupt auxiliary tables", {
 auth_test_build_fixture <- function() {
   root <- withr::local_tempdir(.local_envir = parent.frame())
   crb <- file.path(root, "dataset.crb")
-  saveRDS(Cerebro_v1.3$new(), crb)
+  saveRDS(Cerebro$new(), crb)
   credentials <- file.path(root, "credentials.sqlite")
   writeBin(as.raw(c(0x53, 0x51, 0x4c)), credentials)
   list(root = root, crb = crb, credentials = credentials)

@@ -1,3 +1,11 @@
+# CerebroNexus 4.2
+
+## Breaking changes
+
+- The public R6 data-class constructor is now `Cerebro$new()`. The
+  version-suffixed constructor was removed; existing `.crb` files remain
+  readable and bundled examples were reserialized with the new class.
+
 # CerebroNexus 4.1
 
 ## Viewer
@@ -285,7 +293,7 @@
   `CerebroNexus` name. Install from `mihem/CerebroNexus` and load the package
   with `library(CerebroNexus)`.
 - Kept the established Cerebro data model and public API, including `.crb`
-  files, `Cerebro_v1.3`, `Cerebro.options`, `launchCerebro()`, and
+  files, `Cerebro`, `Cerebro.options`, `launchCerebro()`, and
   `convertSeuratToCerebro()`.
 - Updated the HLA export metadata field to `CerebroNexus_version`.
 
@@ -302,7 +310,7 @@
   **HLA Associations** (descriptive carrier vs. non-carrier overlap — no p-value,
   no restriction claim), and **Data & QC** (coverage, normalized typing, and a
   session-only HLA upload).
-- **HLA typing on the data class.** `Cerebro_v1.3` gained an optional
+- **HLA typing on the data class.** `Cerebro` gained an optional
   `hla_typing` slot with `addHLATyping()` / `getHLATyping()`; the getter is
   backward-compatible with older `.crb` files. Typing accepts a canonical long
   table, a wide `sample` + `HLA-*_1/_2` table, or a named list, and carries
@@ -388,7 +396,7 @@
   values below the vendor's reference range are flagged without adjudicating sample
   usability; and Moran's I is the upstream vendor value, labelled and never mixed
   with Cerebro's own.
-- **Data class.** `Cerebro_v1.3` gained an optional `trekker` slot with
+- **Data class.** `Cerebro` gained an optional `trekker` slot with
   `addTrekker()` / `getTrekker()`; the getter is backward-compatible with older
   `.crb` files that predate the field.
 - **Demo data and vignette.** A real, down-sampled demo `.crb`
@@ -528,7 +536,7 @@
 
 ## Spatial transcriptomics (backend)
 
-- **Spatial data layer**: the `Cerebro_v1.3` class gains a `spatial` field with
+- **Spatial data layer**: the `Cerebro` class gains a `spatial` field with
   `addSpatialData()`, `getSpatialData()`, and `availableSpatial()` accessors.
 - **Export support**: `exportFromSeurat()` now extracts spatial coordinates and
   expression from Seurat v5 image slots (Visium / Xenium / FOV) via the internal
@@ -727,7 +735,7 @@ previous releases and refreshes documentation for the current codebase.
 
 - Fixed `exportFromSCE()` projections: `reducedDims()` output is now coerced to `data.frame` before `addProjection()`, matching the Seurat path and clearing a latent runtime error for SCE inputs with non-PCA reductions
 - Fixed `.attachExternalExpression` crashing on legacy `.crb` objects that predate the `getExpressionBackend()` method; such objects are now treated as embedded backend and skip the attach step
-- Fixed "method not found" errors on the trajectory tab by renaming the corresponding `Cerebro_v1.3` methods to the names the Shiny server already calls (`getMethodsForTrajectories`, `getNamesOfTrajectories`)
+- Fixed "method not found" errors on the trajectory tab by renaming the corresponding `Cerebro` methods to the names the Shiny server already calls (`getMethodsForTrajectories`, `getNamesOfTrajectories`)
 - Fixed gene_expression plot chain freezing on gene picker changes: removed a stale `isolate()` wrapper and a reference to a non-existent `expression_projection_update_button` input; the existing 250 ms debounce on the data-to-plot reactive still throttles bursts
 
 ## Testing
@@ -833,7 +841,7 @@ Despite the minor version bump, this update contains substantial performance imp
 - Cellular barcodes in tables of selected cells are formatted in monospace font.
 - Columns in meta data tables, e.g. table of cells selected in projections, which are identified to contain percentage on a 0-100 scale are changed to a 0-1 scale to prevent non-sensical values such as 500%.
 - Add comma to Y axis and hover info in bar chart of selected cells in projection ("Overview" tab).
-- The `crb_file_to_load` parameter of the `launchCerebroV1.3()` function (or as part of `Cerebro.options`) can now be set to the name of a `Cerebro_v1.3` object. That means you can load the data set before launching Cerebro (with `readRDS()`) and make Cerebro initialize itself with it. This is particularly useful when hosting Cerebro in `closed` mode, preventing that each user session has to read the data set from disk.
+- The `crb_file_to_load` parameter of the `launchCerebroV1.3()` function (or as part of `Cerebro.options`) can now be set to the name of a `Cerebro` object. That means you can load the data set before launching Cerebro (with `readRDS()`) and make Cerebro initialize itself with it. This is particularly useful when hosting Cerebro in `closed` mode, preventing that each user session has to read the data set from disk.
 - Update author info in "About" tab.
 
 ## Fixes
@@ -848,7 +856,7 @@ Because this is a relatively big release, I have prepared a dedicated article wi
 ## Major changes
 
 - With data sets becoming more complex, users often have more than just the two grouping variables Cerebro was initially made to work with ('sample' and 'cluster'). To provide a more generalized interface, users can now specify multiple grouping variables (or a single one). Consequently, the 'Samples' and 'Clusters' tabs in the Cerebro interface have been replaced by the 'Groups' tab, where users can select one of the available grouping variables (with the same content as before). This can be useful when you cluster the cells with different methods/settings or have additional grouping variables, such as treatments, and want to provide the Cerebro user with both results.
-- Data loaded into Cerebro is now stored in a dedicated class: `Cerebro_v1.3`.
+- Data loaded into Cerebro is now stored in a dedicated class: `Cerebro`.
 - Due to the changes in data structure, files exported with cerebroApp v1.3 can only be visualized in Cerebro v1.3. Moreover, files exported with cerebroApp v1.2 and earlier cannot be loaded into Cerebro v1.3. I apologize for any inconvenience but I believe these changes will lead to more stability coming releases.
 - Removed support for Seurat objects before v3.0. Users who need to continue working with older version of Seurat have two options: (1) use the `Seurat::UpdateSeuratObject()` function to update their Seurat object before exporting it for visualization in Cerebro; (2) use older Cerebro version. I apologize for the any trouble this may cause.
 - The "Gene expression" and "Gene set expression" tabs have been merged into the new "Gene (set) expression)" which gives you access to both.

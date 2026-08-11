@@ -354,7 +354,7 @@ Only the 2,000 variable genes ship — 33,538 × 12,000 would be a large file fo
 
 ## 3.9 Step 6 — assembling the `.crb`
 
-A `.crb` is an R6 `Cerebro_v1.3` object written with `saveRDS()`. Building one from scratch means assigning its fields directly; there is no converter to go through.
+A `.crb` is an R6 `Cerebro` object written with `saveRDS()`. Building one from scratch means assigning its fields directly; there is no converter to go through.
 
 ```r
 # Three states, not two: absence from the published table is only evidence of
@@ -389,7 +389,7 @@ immune_repertoire <- lapply(split(sel, sel$donor), function(x) {
              CTaa = x$CTaa, CTstrict = x$CTstrict, stringsAsFactors = FALSE)
 })
 
-crb <- Cerebro_v1.3$new()
+crb <- Cerebro$new()
 crb$expression  <- expression
 crb$setMetaData(meta)
 crb$projections <- list(umap = umap)
