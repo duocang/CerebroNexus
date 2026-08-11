@@ -1101,7 +1101,7 @@ getTrajectory <- function(method, name) {
 ##----------------------------------------------------------------------------##
 ## Metadata column detectors + comparison-variable choices.
 ##
-## Restored from the original cerebroApp v1.3 utility layer; the Trajectory tab
+## Restored from an earlier utility layer; the Trajectory tab
 ## depends on them (mito/ribo/ery expression-metric sub-tabs and the "variable
 ## to compare" selector along pseudotime). They inspect the current data set's
 ## metadata columns, so they honour whatever the loaded .crb carries.
