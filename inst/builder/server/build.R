@@ -104,16 +104,26 @@ current_build_options <- function() {
   )
 }
 
-output$build_stage_status_content <- renderUI({
+build_stage_status_projection <- reactive({
   req(identical(workflow()$stage, "build"))
-  model <- builder_build_stage_status_model(
+  builder_build_stage_status_model(
     flow = build_flow(),
     protocol = protocol(),
     note = busy_note(),
     result = result(),
     output_selected = builder_stage_has_text(selected_output() %||% "")
   )
-  builder_build_stage_status_ui(model)
+})
+
+output$build_stage_status_content <- renderUI({
+  builder_build_stage_status_body_ui(build_stage_status_projection())
+})
+
+output$build_stage_footer <- renderUI({
+  builder_build_stage_footer_ui(
+    build_stage_status_projection(),
+    controls_disabled = builder_build_controls_locked(build_flow())
+  )
 })
 
 observe({

@@ -99,6 +99,7 @@
   min-width: 0;
   padding: var(--space-4);
   border-left: 2px solid var(--c-border-strong);
+  border-radius: var(--radius-sm);
   background: var(--c-surface-muted);
 }
 .builder-stage-footer {

@@ -607,6 +607,13 @@ test_that("Build owns output mode and expanded Viewer App settings", {
   expect_match(app_html, "Host", fixed = TRUE)
   expect_match(app_html, "Port", fixed = TRUE)
   expect_match(app_html, "Require login", fixed = TRUE)
+  expect_match(app_html, "builder-stage-section", fixed = TRUE)
+  expect_match(app_html, "builder-state-panel", fixed = TRUE)
+  expect_false(grepl(
+    "builder-app-settings builder-card",
+    app_html,
+    fixed = TRUE
+  ))
   expect_false(grepl("<details", app_html, fixed = TRUE))
 
   unavailable <- builder_stage_html(builder_build_options_ui(
@@ -817,7 +824,8 @@ test_that("Build stage renders only the confirmed stored plan", {
   expect_match(workflow_server, "input$back_to_review", fixed = TRUE)
   expect_match(workflow_server, 'list(type = "back_to_review")', fixed = TRUE)
   expect_match(workflow_ui, '`data-workflow-stage` = "build"', fixed = TRUE)
-  expect_match(workflow_ui, 'h2("Build outputs")', fixed = TRUE)
+  expect_match(workflow_ui, 'builder_stage_header_ui(', fixed = TRUE)
+  expect_match(workflow_ui, '"Build outputs"', fixed = TRUE)
   expect_match(
     paste(workflow_ui_lines, collapse = "\n"),
     '"No output folder selected"',
@@ -830,6 +838,7 @@ test_that("Build stage renders only the confirmed stored plan", {
     'uiOutput("build_stage_status_content")',
     fixed = TRUE
   )
+  expect_match(workflow_ui, 'uiOutput("build_stage_footer")', fixed = TRUE)
   expect_false(grepl(
     'actionButton(\n        "build"',
     workflow_ui,

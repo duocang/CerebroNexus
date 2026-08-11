@@ -206,7 +206,7 @@ test_that("Build stage exclusively owns its live status projection", {
   status_renderer <- substr(
     build_server,
     regexpr(
-      "output$build_stage_status_content <- renderUI({",
+      "build_stage_status_projection <- reactive({",
       build_server,
       fixed = TRUE
     ),
@@ -226,6 +226,13 @@ test_that("Build stage exclusively owns its live status projection", {
         workflow_ui,
         fixed = TRUE
       )
+    )),
+    1L
+  )
+  expect_identical(
+    lengths(regmatches(
+      workflow_ui,
+      gregexpr('uiOutput("build_stage_footer")', workflow_ui, fixed = TRUE)
     )),
     1L
   )
@@ -339,7 +346,8 @@ test_that("Build result survives failed folder selection and clears on acceptanc
       collapse = " "
     )
     expect_match(pending_content, "Preparing preview…", fixed = TRUE)
-    expect_match(pending_content, " disabled", fixed = TRUE)
+    pending_footer <- paste(unlist(output$build_stage_footer), collapse = " ")
+    expect_match(pending_footer, " disabled", fixed = TRUE)
     expect_length(output$busy, 0L)
     protocol(app_env$builder_request_protocol("worker-folder"))
     busy_note(NULL)
@@ -358,7 +366,7 @@ test_that("Build result survives failed folder selection and clears on acceptanc
     expect_null(result())
     expect_identical(selected_output(), "/new/output")
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
-    content <- paste(unlist(output$build_stage_status_content), collapse = " ")
+    content <- paste(unlist(output$build_stage_footer), collapse = " ")
     expect_match(content, ">Build<", fixed = TRUE)
     expect_false(grepl(" disabled", content, fixed = TRUE))
   })
@@ -1787,7 +1795,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
     expect_identical(selected_output(), "/private/host/output")
     expect_match(
-      paste(unlist(output$build_stage_status_content), collapse = " "),
+      paste(unlist(output$build_stage_footer), collapse = " "),
       ">Build<",
       fixed = TRUE
     )

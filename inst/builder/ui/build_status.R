@@ -155,7 +155,7 @@ builder_build_options_ui <- function(
     output_mode <- disable_app_choice(output_mode)
   }
   tags$section(
-    class = "builder-build-options",
+    class = "builder-stage-section builder-build-options",
     h3("Output type"),
     tags$fieldset(
       class = "builder-build-options-fields",
@@ -169,7 +169,7 @@ builder_build_options_ui <- function(
       },
       if (isTRUE(options$make_app)) {
         div(
-          class = "builder-app-settings builder-card builder-section",
+          class = "builder-app-settings builder-state-panel",
           h3("Viewer App settings"),
           shiny::textInput(
             "build_welcome_message",
@@ -723,7 +723,7 @@ builder_build_stage_status_model <- function(
   )
 }
 
-builder_build_stage_status_ui <- function(model) {
+builder_build_stage_status_validate <- function(model) {
   if (
     !is.list(model) ||
       !is.character(model$state) ||
@@ -732,22 +732,59 @@ builder_build_stage_status_ui <- function(model) {
   ) {
     stop("A Build-stage status model is required.", call. = FALSE)
   }
-  content <- switch(
+  invisible(model)
+}
+
+builder_build_stage_status_label <- function(model) {
+  builder_build_stage_status_validate(model)
+  switch(
     model$state,
-    ready = tagList(
-      if (
-        !isTRUE(model$can_build) &&
-          builder_stage_has_text(model$message %||% "")
-      ) {
-        p(class = "builder-build-readiness", model$message)
-      },
-      actionButton(
-        "build",
-        "Build",
-        class = "btn btn-action",
-        disabled = !isTRUE(model$can_build)
-      )
+    ready = if (isTRUE(model$can_build)) {
+      "Ready to build"
+    } else {
+      model$message %||% "Choose an output folder"
+    },
+    choosing_folder = "Choosing output folder…",
+    queued = "Build queued",
+    building = "Build in progress",
+    result = switch(
+      model$result_model$type %||% "",
+      success = "Build complete",
+      needs_decision = "Build needs a decision",
+      failure = "Build failed",
+      recovery_required = "Release recovery required",
+      "Build finished"
     ),
+    stop("The Build-stage status is unsupported.", call. = FALSE)
+  )
+}
+
+builder_build_stage_primary_action_ui <- function(
+  model,
+  controls_disabled = FALSE
+) {
+  builder_build_stage_status_validate(model)
+  if (!identical(model$state, "ready")) {
+    return(NULL)
+  }
+  actionButton(
+    "build",
+    "Build",
+    class = "btn btn-action",
+    disabled = isTRUE(controls_disabled) || !isTRUE(model$can_build)
+  )
+}
+
+builder_build_stage_status_body_ui <- function(model) {
+  builder_build_stage_status_validate(model)
+  switch(
+    model$state,
+    ready = if (
+      !isTRUE(model$can_build) &&
+        builder_stage_has_text(model$message %||% "")
+    ) {
+      p(class = "builder-build-readiness", model$message)
+    },
     choosing_folder = div(
       class = "builder-build-waiting",
       span(class = "spinner"),
@@ -763,6 +800,13 @@ builder_build_stage_status_ui <- function(model) {
     ),
     result = builder_build_status_ui(model$result_model),
     stop("The Build-stage status is unsupported.", call. = FALSE)
+  )
+}
+
+builder_build_stage_status_ui <- function(model) {
+  content <- tagList(
+    builder_build_stage_status_body_ui(model),
+    builder_build_stage_primary_action_ui(model)
   )
   div(
     class = paste(

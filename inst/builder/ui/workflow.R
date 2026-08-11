@@ -138,22 +138,34 @@ builder_build_stage_controls_ui <- function(
   } else {
     "No output folder selected"
   }
-  tagList(
+  tags$section(
+    class = "builder-stage-section builder-build-destination",
+    tags$h3("Destination"),
     p(class = "builder-selected-output", selected_label),
     div(
-      class = "builder-stage-actions builder-build-actions",
-      actionButton(
-        "back_to_review",
-        "Back to review",
-        class = "btn",
-        disabled = controls_disabled
-      ),
+      class = "builder-build-destination-actions",
       actionButton(
         "choose_output_folder",
         "Choose folder…",
         class = "btn",
         disabled = controls_disabled
       )
+    )
+  )
+}
+
+builder_build_stage_footer_ui <- function(model, controls_disabled = FALSE) {
+  builder_stage_footer_ui(
+    builder_build_stage_status_label(model),
+    actionButton(
+      "back_to_review",
+      "Back to Review",
+      class = "btn",
+      disabled = controls_disabled
+    ),
+    builder_build_stage_primary_action_ui(
+      model,
+      controls_disabled = controls_disabled
     )
   )
 }
@@ -166,16 +178,15 @@ builder_build_workbench_ui <- function(model) {
     "CRB files"
   }
   div(
-    class = "builder-stage builder-stage-build builder-card builder-section",
+    class = "builder-stage builder-stage-shell builder-stage-build",
     `data-workflow-stage` = "build",
-    h2("Build outputs"),
-    p(
-      class = "stage-intro",
+    builder_stage_header_ui(
+      "Build",
+      "Build outputs",
       "Build the frozen plan you reviewed and confirmed."
     ),
-    tags$section(
+    builder_stage_summary_ui(
       class = "builder-build-summary",
-      h3("Reviewed output"),
       p(
         class = "confirmed-plan-revision",
         paste("Confirmed plan revision", model$revision)
@@ -189,13 +200,18 @@ builder_build_workbench_ui <- function(model) {
     ),
     uiOutput("build_output_options"),
     uiOutput("build_stage_controls"),
-    div(
-      id = "build-stage-status",
-      class = "builder-build-stage-status",
-      role = "status",
-      `aria-live` = "polite",
-      `aria-atomic` = "true",
-      uiOutput("build_stage_status_content")
-    )
+    tags$section(
+      class = "builder-stage-section builder-build-status-section",
+      tags$h3("Build status"),
+      div(
+        id = "build-stage-status",
+        class = "builder-build-stage-status",
+        role = "status",
+        `aria-live` = "polite",
+        `aria-atomic` = "true",
+        uiOutput("build_stage_status_content")
+      )
+    ),
+    uiOutput("build_stage_footer")
   )
 }

@@ -1692,6 +1692,14 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
 .builder-stage-build > * { min-width: 0; max-width: 100%; }
 .builder-build-summary,
 .builder-review-summary { overflow-wrap: anywhere; }
+.builder-build-summary p { margin: 0; }
+.builder-build-destination-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.builder-build-status-section { min-width: 0; }
+.builder-app-settings { margin-top: var(--space-4); }
 @media (max-width: 40rem) {
   .builder-stage-configure,
   .builder-stage-review,

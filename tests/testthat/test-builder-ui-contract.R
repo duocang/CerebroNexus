@@ -585,7 +585,7 @@ test_that("active Build states disable every stage action", {
     controls_disabled = FALSE
   ))$html
 
-  for (id in c("back_to_review", "choose_output_folder")) {
+  for (id in "choose_output_folder") {
     disabled_button <- paste0(
       '<button(?=[^>]*id="',
       id,
@@ -605,6 +605,32 @@ test_that("active Build states disable every stage action", {
       ),
       info = id
     )
+  }
+
+  active_footer <- htmltools::renderTags(
+    app_env$builder_build_stage_footer_ui(
+      list(state = "ready", can_build = FALSE),
+      controls_disabled = TRUE
+    )
+  )$html
+  idle_footer <- htmltools::renderTags(
+    app_env$builder_build_stage_footer_ui(
+      list(state = "ready", can_build = TRUE),
+      controls_disabled = FALSE
+    )
+  )$html
+  expect_match(active_footer, "builder-stage-footer", fixed = TRUE)
+  for (id in c("back_to_review", "build")) {
+    expect_match(
+      active_footer,
+      paste0('<button(?=[^>]*id="', id, '")(?=[^>]* disabled)[^>]*>'),
+      perl = TRUE
+    )
+    expect_false(grepl(
+      paste0('<button(?=[^>]*id="', id, '")(?=[^>]* disabled)[^>]*>'),
+      idle_footer,
+      perl = TRUE
+    ))
   }
 
   blocked_build <- htmltools::renderTags(
@@ -643,6 +669,7 @@ test_that("active Build states disable every stage action", {
   expect_match(shell, 'aria-live="polite"', fixed = TRUE)
   expect_match(shell, 'aria-atomic="true"', fixed = TRUE)
   expect_match(shell, 'id="build_stage_status_content"', fixed = TRUE)
+  expect_match(shell, 'id="build_stage_footer"', fixed = TRUE)
   expect_false(grepl('id="build-stage-status"', ready_build, fixed = TRUE))
 })
 
