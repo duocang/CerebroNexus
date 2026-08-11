@@ -93,8 +93,7 @@ builder_app_control <- function(capability, current_value = NULL) {
   checked <- available &&
     (is.null(current_value) || isTRUE(current_value))
 
-  shiny::tags$div(
-    class = "builder-app-control",
+  shiny::tagList(
     shiny::tags$fieldset(
       disabled = if (!available) "disabled",
       style = "border:0;padding:0;margin:0;min-width:0;",
