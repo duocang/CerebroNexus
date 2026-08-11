@@ -10,153 +10,252 @@
 ## only the host packages need to be installed, not CerebroNexus itself.
 ##----------------------------------------------------------------------------##
 
-resolve_spatial_image_preset <- function(
-  option_name,
-  fallback,
-  options,
-  crb_files,
-  selected
-) {
-  if (
-    is.null(options) ||
-      is.null(options[[option_name]]) ||
-      is.null(crb_files) ||
-      is.null(selected)
-  ) {
-    return(fallback)
-  }
-  idx <- which(crb_files == selected)
-  if (length(idx) == 0) {
-    return(fallback)
-  }
-  current_name <- names(crb_files)[idx[1]]
-  if (
-    is.null(current_name) ||
-      !(current_name %in% names(options[[option_name]]))
-  ) {
-    return(fallback)
-  }
-  val <- options[[option_name]][[current_name]]
-  if (is.null(val) || length(val) != 1 || is.na(val)) fallback else val
-}
-
-## Resolve the server-side allowlist for the selected dataset. Browser-provided
-## selectInput values are never an authority for which files may be read.
-configured_spatial_images <- function(
-  options,
-  crb_files = NULL,
-  selected = NULL,
-  crb_names = NULL
-) {
-  if (is.null(options) || is.null(options[["spatial_images"]])) {
-    return(character())
-  }
-
-  spatial_images <- options[["spatial_images"]]
-  if (length(spatial_images) == 0L) {
-    return(character())
-  }
-
-  if (is.null(crb_files) || is.null(selected)) {
-    return(character())
+spatial_dataset_name <- function(crb_files, selected) {
+  if (is.null(crb_files) || is.null(selected) || is.null(names(crb_files))) {
+    return(NULL)
   }
   index <- which(crb_files == selected)
   if (length(index) == 0L) {
-    return(character())
+    return(NULL)
   }
-  dataset <- names(crb_files)[index[[1L]]]
-  if (
-    (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) &&
-      length(crb_names) >= index[[1L]]
-  ) {
-    dataset <- crb_names[[index[[1L]]]]
-  }
-  if (
-    (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) &&
-      length(crb_files) == 1L &&
-      length(spatial_images) == 1L
-  ) {
-    dataset <- names(spatial_images)[[1L]]
-  }
-  if (is.null(dataset) || is.na(dataset) || !nzchar(dataset)) {
-    return(character())
-  }
-  configured <- which(names(spatial_images) == dataset)
-  if (length(configured) == 0L) {
-    return(character())
-  }
-  images <- unlist(spatial_images[configured], use.names = FALSE)
-
-  if (!is.character(images)) {
-    return(character())
-  }
-  unique(images[!is.na(images) & nzchar(images)])
+  dataset <- names(crb_files)[[index[[1L]]]]
+  if (is.na(dataset) || !nzchar(dataset)) NULL else dataset
 }
 
-normalize_spatial_background_choice <- function(
-  background_image,
-  configured_images,
-  has_embedded_image = FALSE
+## Resolve only options$spatial_images[[dataset]][[spatial_name]]. Each result
+## is a descriptor so its display label is never confused with a filesystem
+## path, and descriptor bounds survive all the way to the renderer.
+configured_spatial_images <- function(options, dataset, spatial_name) {
+  if (
+    is.null(options) ||
+      is.null(dataset) ||
+      is.null(spatial_name) ||
+      is.null(options[["spatial_images"]][[dataset]][[spatial_name]])
+  ) {
+    return(list())
+  }
+  leaf <- options[["spatial_images"]][[dataset]][[spatial_name]]
+  if (length(leaf) == 0L || is.null(names(leaf))) {
+    return(list())
+  }
+  normalize <- function(value) {
+    if (is.character(value) && length(value) == 1L && !is.na(value)) {
+      return(list(path = unname(value), bounds = NULL))
+    }
+    if (
+      is.list(value) &&
+        is.character(value[["path"]]) &&
+        length(value[["path"]]) == 1L &&
+        !is.na(value[["path"]])
+    ) {
+      return(list(path = value[["path"]], bounds = value[["bounds"]]))
+    }
+    NULL
+  }
+  images <- lapply(as.list(leaf), normalize)
+  images[!vapply(images, is.null, logical(1))]
+}
+
+## Canonical .crb files carry histology_images; older files carry one singular
+## histology_image. Prefer the canonical manifest when both happen to exist.
+embedded_spatial_images <- function(spatial_data) {
+  manifest <- spatial_data[["histology_images"]]
+  if (is.list(manifest) && length(manifest) > 0L && !is.null(names(manifest))) {
+    normalize <- function(payload) {
+      if (!is.list(payload) || is.null(payload[["histology_image"]])) {
+        return(NULL)
+      }
+      list(
+        image = payload[["histology_image"]],
+        bounds = payload[["histology_image_bounds"]]
+      )
+    }
+    images <- lapply(manifest, normalize)
+    return(images[!vapply(images, is.null, logical(1))])
+  }
+  if (!is.null(spatial_data[["histology_image"]])) {
+    return(list(
+      "Tissue background" = list(
+        image = spatial_data[["histology_image"]],
+        bounds = spatial_data[["histology_image_bounds"]]
+      )
+    ))
+  }
+  list()
+}
+
+resolve_spatial_image_setting <- function(
+  options,
+  dataset,
+  spatial_name,
+  image_label,
+  setting,
+  fallback
 ) {
-  allowed <- c(
-    "No Background",
-    configured_images,
-    if (isTRUE(has_embedded_image)) "__embedded__"
+  value <- options[["spatial_image_settings"]][[dataset]][[spatial_name]][[
+    image_label
+  ]][[setting]]
+  if (is.null(value) || length(value) != 1L || is.na(value)) fallback else value
+}
+
+spatial_background_key <- function(source, label) {
+  paste0(source, "::", label)
+}
+
+spatial_background_choices <- function(embedded_images, external_images) {
+  c(
+    "No Background" = "none",
+    if (length(embedded_images) > 0L) {
+      stats::setNames(
+        paste0("embedded::", names(embedded_images)),
+        names(embedded_images)
+      )
+    },
+    if (length(external_images) > 0L) {
+      stats::setNames(
+        paste0("external::", names(external_images)),
+        names(external_images)
+      )
+    }
   )
+}
+
+normalize_spatial_background_choice <- function(background_image, choices) {
+  values <- unname(choices)
+  if (
+    is.character(background_image) &&
+      length(background_image) == 1L &&
+      !is.na(background_image) &&
+      background_image %in% values
+  ) {
+    return(background_image)
+  }
+  if (length(values) > 1L) values[[2L]] else "none"
+}
+
+resolve_spatial_background <- function(
+  background_image,
+  embedded_images,
+  external_images
+) {
   if (
     !is.character(background_image) ||
       length(background_image) != 1L ||
       is.na(background_image) ||
-      !(background_image %in% allowed)
+      identical(background_image, "none")
   ) {
-    return("No Background")
+    return(NULL)
   }
-  background_image
+  source <- if (startsWith(background_image, "embedded::")) {
+    "embedded"
+  } else if (startsWith(background_image, "external::")) {
+    "external"
+  } else {
+    return(NULL)
+  }
+  label <- sub("^[^:]+::", "", background_image)
+  images <- if (identical(source, "embedded")) {
+    embedded_images
+  } else {
+    external_images
+  }
+  descriptor <- images[[label]]
+  if (is.null(descriptor)) {
+    return(NULL)
+  }
+  c(list(source = source, label = label), descriptor)
+}
+
+## The browser must distinguish a logical image from its encoded bytes. Two
+## datasets can legitimately reuse an identical data URI while owning different
+## presets, so keep the full resolved location as structured metadata instead
+## of building a delimiter-based string that could collide on user labels.
+spatial_background_identity <- function(dataset, spatial_name, descriptor) {
+  if (is.null(descriptor)) {
+    return(NULL)
+  }
+  values <- list(
+    dataset = dataset,
+    spatial_name = spatial_name,
+    source = descriptor[["source"]],
+    label = descriptor[["label"]]
+  )
+  if (
+    any(vapply(
+      values,
+      function(value) {
+        !is.character(value) || length(value) != 1L || is.na(value)
+      },
+      logical(1)
+    ))
+  ) {
+    return(NULL)
+  }
+  values
 }
 
 format_spatial_preset_code <- function(
-  label,
+  dataset,
+  spatial_name,
+  image_label,
   offset_x,
   offset_y,
   scale_x,
   scale_y,
   flip_x,
-  flip_y
+  flip_y,
+  rotation
 ) {
-  key <- function(value) paste0('c("', label, '" = ', value, ")")
-  lines <- character(0)
-  add <- function(option_name, value) {
-    lines[[length(lines) + 1]] <<- paste0(
-      '"',
-      option_name,
-      '" = ',
-      key(value)
-    )
+  targets <- list(dataset, spatial_name, image_label)
+  if (
+    any(vapply(
+      targets,
+      function(value) {
+        is.null(value) || length(value) != 1L || is.na(value) || !nzchar(value)
+      },
+      logical(1)
+    ))
+  ) {
+    return(NULL)
   }
-  if (isTRUE(offset_x != 0)) {
-    add("spatial_images_offset_x", offset_x)
-  }
-  if (isTRUE(offset_y != 0)) {
-    add("spatial_images_offset_y", offset_y)
-  }
-  if (isTRUE(scale_x != 1)) {
-    add("spatial_images_scale_x", scale_x)
-  }
-  if (isTRUE(scale_y != 1)) {
-    add("spatial_images_scale_y", scale_y)
-  }
-  if (isTRUE(flip_x)) {
-    add("spatial_images_flip_x", "TRUE")
-  }
-  if (isTRUE(flip_y)) {
-    add("spatial_images_flip_y", "TRUE")
-  }
-  if (length(lines) == 0) {
-    return(
-      "## No adjustments to persist — the overlay is at its default alignment."
-    )
-  }
-  paste(lines, collapse = ",\n")
+  quote_name <- function(value) encodeString(value, quote = '"')
+  paste0(
+    "spatial_image_settings = list(\n",
+    "  ",
+    quote_name(dataset),
+    " = list(\n",
+    "    ",
+    quote_name(spatial_name),
+    " = list(\n",
+    "      ",
+    quote_name(image_label),
+    " = list(\n",
+    "        flip_x = ",
+    if (isTRUE(flip_x)) "TRUE" else "FALSE",
+    ",\n",
+    "        flip_y = ",
+    if (isTRUE(flip_y)) "TRUE" else "FALSE",
+    ",\n",
+    "        scale_x = ",
+    format(scale_x, scientific = FALSE),
+    ",\n",
+    "        scale_y = ",
+    format(scale_y, scientific = FALSE),
+    ",\n",
+    "        offset_x = ",
+    format(offset_x, scientific = FALSE),
+    ",\n",
+    "        offset_y = ",
+    format(offset_y, scientific = FALSE),
+    ",\n",
+    "        rotation = ",
+    format(rotation, scientific = FALSE),
+    "\n",
+    "      )\n",
+    "    )\n",
+    "  )\n",
+    ")"
+  )
 }
 
 compute_group_hulls <- function(x, y, group) {

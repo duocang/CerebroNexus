@@ -8,9 +8,22 @@
 
 ## Data and conversion
 
+- Spatial backgrounds now use the public hierarchy `dataset -> spatial entry ->
+  image label` in `createShinyApp()`, while conversion starts at `spatial entry
+  -> image label`. A spatial entry is a Seurat `Images()` name (for example a
+  Visium slice, Xenium/MERFISH FOV, or Slide-seq puck), not a required donor
+  field. Each entry may contain multiple arbitrarily named embedded and external
+  PNG/JPEG/SVG backgrounds, or remain coordinates-only. Optional per-image
+  bounds and display settings use the same stable keys; ambiguous legacy
+  dataset-to-path calls now fail instead of guessing a spatial target.
+- The Omnibus fixture now covers three donor-named FOVs with different layouts,
+  multiple embedded images, a coordinates-only entry, a marker CSV, and
+  conversion-time and app-time external PNG inputs. Its executable public API
+  example proves `convertSeuratToCerebro(..., expression_matrix_mode = "h5")`
+  followed by `createShinyApp()` without post-conversion CRB mutation.
 - A deterministic synthetic Omnibus Seurat object now provides an offline,
   reproducible Seurat-to-CRB integration fixture and is the default bundled
-  Viewer dataset. Its converted FOV retains an embedded synthetic tissue image,
+  Viewer dataset. Its converted FOV entries retain named embedded backgrounds,
   and the same object covers marker, enrichment, trajectory, repertoire, HLA,
   Trekker, tree, and extra-material paths.
 

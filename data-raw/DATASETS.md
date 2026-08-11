@@ -65,18 +65,18 @@ When adding a dataset (spatial, trajectory, or otherwise), **copy the template a
 
 ### demo_omnibus.crb
 - **type**: omnibus
-- **technology**: deterministic synthetic scRNA-seq plus a Seurat v5 `FOV`
+- **technology**: deterministic synthetic scRNA-seq plus three Seurat v5 `FOV` entries
 - **dropdown label**: `Omnibus`
 - **organism / tissue**: synthetic human multi-lineage tissue-like fixture
 - **source**: generated locally from fixed seed `20260810`; no external data
 - **acquire**: `Rscript data-raw/build_omnibus_demo.R`
-- **object type**: Seurat object with an RNA assay, deterministic reductions, one centroid FOV, and documented `misc` payloads
+- **object type**: Seurat object with an RNA assay, deterministic reductions, three 40-cell centroid FOVs (`donorA tissue`, `donorB tissue`, `donorC tissue`), and documented `misc` payloads
 - **sampling**: no sampling; exactly 120 synthetic cells and 80 synthetic genes
 - **cell-type field**: `cell_type`
-- **embedded image**: synthetic RGB tissue-like PNG stored as a base64 data URI with `[0, 1000] x [0, 800]` coordinate bounds
+- **embedded image**: `donorA tissue` has named synthetic `H&E` and `DAPI` PNGs; `donorB tissue` has named synthetic `H&E`; `donorC tissue` is coordinates-only. The registry also ships `demo_omnibus_donorB_if.png` for conversion-time embedding and `demo_omnibus_donorC_review.png` for app-time bundling. Names describe fixture inputs and are not protocol requirements.
 - **license**: generated project fixture, distributed under the repository license
 - **build**: `data-raw/build_omnibus_demo.R`
-- **output**: `inst/extdata/examples/demo_omnibus_seurat.rds` (~0.1 MB) + `inst/extdata/examples/demo_omnibus.crb` (~0.4 MB)
+- **output**: `inst/extdata/examples/demo_omnibus_seurat.rds` (~0.1 MB) + `demo_omnibus_markers.csv` + `demo_omnibus_donorB_if.png` + `demo_omnibus_donorC_review.png` + `demo_omnibus.crb` (~0.4 MB)
 
 See [`omnibus.md`](omnibus.md) for the complete feature inventory and conversion contract.
 

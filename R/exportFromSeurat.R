@@ -483,6 +483,10 @@
 #' Only POSIX mode bits are set or preserved; ownership, ACLs, extended
 #' attributes, and security labels remain the deployment system's
 #' responsibility on every platform.
+#' @param spatial_images Optional named list mapping Seurat image names to named
+#'   image paths or descriptors of the form code{list(path = ..., bounds = ...)}.
+#'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
+#'   derived from the exported x/y coordinate range.
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
 #' defaults to \code{FALSE}.
 #' @param .expression_resolution Internal handoff used by
@@ -546,6 +550,7 @@ exportFromSeurat <- function(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
 ) {
@@ -779,7 +784,7 @@ exportFromSeurat <- function(
   ## add organism
   export$addExperiment('organism', organism)
 
-  ## record the CerebroNexus exporter version
+  ## add cerebroApp version
   export$setVersion(utils::packageVersion('CerebroNexus'))
 
   ##--------------------------------------------------------------------------##
@@ -1686,6 +1691,16 @@ exportFromSeurat <- function(
   has_images <- .spx_has_slot(object, "images") &&
     !is.null(object@images) &&
     length(object@images) > 0
+  misc_spatial_images <- .validateCerebroSpatialImages(
+    object@misc$cerebro_spatial_images,
+    if (has_images) names(object@images) else character(0)
+  )
+  path_spatial_images <- .normalizeSpatialImagePaths(
+    spatial_images,
+    if (has_images) names(object@images) else character(0),
+    "`spatial_images`"
+  )
+  .mergeSpatialImageDeclarations(misc_spatial_images, path_spatial_images)
 
   if (has_images) {
     if (verbose) {
@@ -1700,7 +1715,7 @@ exportFromSeurat <- function(
     }
 
     for (image_name in names(object@images)) {
-      tryCatch(
+      spatial_data <- tryCatch(
         {
           # Extract spatial data (coordinates + expression)
           # Using .getSpatialData helper which handles Visium, FOV/Xenium, etc.
@@ -1743,24 +1758,7 @@ exportFromSeurat <- function(
             }
           }
           spatial_data$coordinates <- coords_df
-
-          # Add to Cerebro object
-          export$addSpatialData(image_name, spatial_data)
-
-          if (verbose) {
-            message(
-              paste0(
-                '[',
-                format(Sys.time(), '%H:%M:%S'),
-                '] ',
-                'Added spatial data: ',
-                image_name,
-                ' (',
-                nrow(spatial_data$coordinates),
-                ' cells)'
-              )
-            )
-          }
+          spatial_data
         },
         error = function(e) {
           ## Never drop a spatial image silently: an object that clearly has
@@ -1776,8 +1774,35 @@ exportFromSeurat <- function(
             conditionMessage(e),
             call. = FALSE
           )
+          NULL
         }
       )
+      if (is.null(spatial_data)) {
+        next
+      }
+      merged_images <- .mergeSpatialImageDeclarations(
+        misc_spatial_images[image_name],
+        path_spatial_images[image_name],
+        setNames(list(spatial_data$coordinates), image_name)
+      )
+      spatial_data$histology_images <- merged_images[[image_name]]
+
+      export$addSpatialData(image_name, spatial_data)
+
+      if (verbose) {
+        message(
+          paste0(
+            '[',
+            format(Sys.time(), '%H:%M:%S'),
+            '] ',
+            'Added spatial data: ',
+            image_name,
+            ' (',
+            nrow(spatial_data$coordinates),
+            ' cells)'
+          )
+        )
+      }
     }
   }
 

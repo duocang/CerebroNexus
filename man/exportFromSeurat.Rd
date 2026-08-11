@@ -19,6 +19,7 @@ exportFromSeurat(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
 )
@@ -110,6 +111,11 @@ concurrent writers remain outside this multi-path transaction guarantee.
 Only POSIX mode bits are set or preserved; ownership, ACLs, extended
 attributes, and security labels remain the deployment system's
 responsibility on every platform.}
+
+\item{spatial_images}{Optional named list mapping Seurat image names to named
+image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
+Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
+derived from the exported x/y coordinate range.}
 
 \item{verbose}{Set this to \code{TRUE} if you want additional log messages;
 defaults to \code{FALSE}.}

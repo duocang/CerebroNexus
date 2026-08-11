@@ -4,6 +4,59 @@ Provenance of record (citation, licence, sampling, output size) lives in [`DATAS
 This file is the working guide: what to install or download, what each step does to the data, and the code that does it.
 Every command is meant to be copy-pasted and run from the package root.
 
+## Public naming and image model
+
+CerebroNexus treats each name returned by `SeuratObject::Images(object)` as a
+**spatial entry**. Seurat uses that common collection across technologies: an
+entry may be a Visium slice, Xenium/MERFISH field of view (FOV), Slide-seq puck,
+or another `SpatialImage` subclass. A donor can be a useful entry name, but
+`donor` is not a structural level required by either Seurat or CerebroNexus.
+An `FOV` normally supplies spatial geometry such as centroids, boundaries,
+segmentations, or molecule coordinates; it does not guarantee a tissue raster.
+Raster backgrounds are carried separately when present, for example through
+`@misc$cerebro_spatial_images` or the external `spatial_images` argument.
+
+Each entry always keeps its coordinates and may additionally expose zero, one,
+or several user-named background images. Labels such as `H&E`, `DAPI`, or
+`IF panel` describe the supplied file and are not fixed protocol vocabulary.
+Images embedded during conversion and external images bundled during app
+creation can coexist; the Viewer limits its selector to the current dataset and
+spatial entry.
+
+The public manifests mirror those identities:
+
+```r
+# One Seurat object: spatial entry -> image label -> path/descriptor
+convertSeuratToCerebro(
+  seurat_file = seurat_object,
+  result_dir = "output",
+  spatial_images = list(
+    "section 1" = list(
+      "morphology" = list(
+        path = "images/section1.png",
+        bounds = c(xmin = 0, xmax = 1200, ymin = 0, ymax = 900)
+      ),
+      "nuclear stain" = "images/section1_dapi.jpg"
+    )
+  )
+)
+
+# Several CRBs: dataset -> spatial entry -> image label -> path/descriptor
+createShinyApp(
+  cerebro_data = c(Atlas = "output/cerebro_atlas.crb"),
+  result_dir = "my_app",
+  spatial_images = list(
+    Atlas = list(
+      "section 2" = c("review annotation" = "images/section2.svg")
+    )
+  )
+)
+```
+
+PNG, JPEG/JPG, and SVG files are accepted. Descriptor `bounds` use the point
+coordinate space; conversion derives them from the coordinates when omitted.
+An entry with no image remains a valid coordinates-only spatial view.
+
 ## Contents
 
 1. [What ships](#1-what-ships)
@@ -37,7 +90,7 @@ Genuinely measured, public spatial-transcriptomics demos. Each is a down-sampled
 
 They deliberately exercise **both** background-image paths the app supports:
 
-- **MERFISH / Xenium** embed the image in the `.crb` under `histology_image`, with its extent in coordinate space under `histology_image_bounds`. The Spatial tab offers it as "Tissue background (H&E / DAPI)".
+- **MERFISH / Xenium** embed named images in the `.crb` under `histology_images`, with each extent in coordinate space under `histology_image_bounds`.
 - **Visium** loads its H&E from an *external* PNG (`demo_spatial_visium_he.png`) via `spatial_images` in `inst/app.R` — a live example of that path, which also keeps the Visium `.crb` smaller. The tab offers it by filename.
 
 `demo_spatial.crb` + `demo_spatial_histology.svg` are lightweight **synthetic** fixtures used only by `test-spatial.R`; they are intentionally not in the app's dropdown.
@@ -155,7 +208,12 @@ encode_raster_png(arr, max_px = 1400)     # -> "data:image/png;base64,..."
 
 Every embedded image is stored in its **native** orientation (row 0 = image top). The build never flips; display orientation is a user control (§4.1).
 
-**(d) Export, inject the image, and verify.** The image cannot be passed to `exportFromSeurat` — it is added to the spatial slot afterwards, under a **dedicated key**, because `.getSpatialData` already stores the image *name* under `image` and overloading that would clobber it:
+**(d) Export, attach the builder's already-decoded image, and verify.** Public
+callers should pass image files through `exportFromSeurat(spatial_images = ...)`
+or `convertSeuratToCerebro(spatial_images = ...)`. This older demo builder
+already holds decoded data URIs, so it uses the supported legacy singular
+payload when assembling each fixture; `addSpatialData()` normalizes that payload
+to the canonical named `histology_images` list:
 
 ```r
 exportFromSeurat(object = obj, assay = assay, slot = "data", file = file,
@@ -292,7 +350,12 @@ Getting the real image to line up with the points needs two things, because the 
 
 The image is always stored native (row 0 = image top); the renderer draws it top-down while Plotly's y-axis grows upward. Whether a display flip is needed is **not uniform** — it depends on how a dataset's point y relates to its image rows, which differs by platform (`GetTissueCoordinates` vs a raw `y_centroid` vs `MerfishData::imgRaster`).
 
-There is **no stored per-`.crb` flip flag**. The user aligns with the Spatial tab's "Flip vertically/horizontally" checkboxes (`func_projection_update_plot.R` → `js_projection_update_plot.js`, via a background `scale(1, -1)`); external images can be pre-flipped with `spatial_images_flip_y` in `inst/app.R`.
+There is **no global per-`.crb` flip flag**. The user can align an image with the
+Spatial tab controls, or configure one exact
+`dataset -> spatial entry -> image label` leaf through
+`spatial_image_settings` when calling `createShinyApp()`. Legacy
+`spatial_images_flip_y` remains available only for an unambiguous single-image
+target.
 
 Correct orientation is judged by **visual comparison against a native ground-truth reference**: overlay the real centroids on the source raster in its native frame, pick an unambiguous anatomical landmark, then flip in the app until it matches.
 
@@ -310,7 +373,13 @@ Stretch-to-fill would squash a non-square image (the MERFISH DAPI mosaic is ~0.6
 
 # 5. Why Slide-seq has no background image
 
-Structural, not an oversight: the platform records positions, not a tissue photo. The `SlideSeq` S4 class in SeuratObject has only a `coordinates` slot — it carries no tissue raster, unlike Visium's `VisiumV2` (`image` slot) or the imaging `FOV`. Slide-seq *does* image beads, but only to recover their positions; the public `ssHippo` object stores those coordinates, not an H&E/DAPI photo.
+Structural, not an oversight: the platform records positions, not a tissue
+photo. The `SlideSeq` S4 class in SeuratObject has only a `coordinates` slot,
+so it carries no tissue raster. A Visium spatial-image object may carry a
+raster; an imaging `FOV` commonly carries geometry but likewise does not
+guarantee a raster. Slide-seq *does* image beads, but only to recover their
+positions; the public `ssHippo` object stores those coordinates, not an
+H&E/DAPI photo.
 
 The bead scatter therefore **is** the complete spatial view.
 
