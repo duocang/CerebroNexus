@@ -58,6 +58,17 @@ test_that("the package exposes a versionless Cerebro data class", {
   expect_true(is.function(object$getExpressionMatrix))
 })
 
+test_that("every bundled Cerebro fixture uses the versionless data class", {
+  example_dir <- file.path(versionless_inst_dir(), "extdata", "examples")
+  files <- sort(list.files(example_dir, pattern = "[.]crb$", full.names = TRUE))
+
+  expect_gt(length(files), 0L)
+  for (path in files) {
+    object <- readRDS(path)
+    expect_true(inherits(object, "Cerebro"), info = basename(path))
+  }
+})
+
 test_that("current code and documentation do not describe a legacy viewer version", {
   root <- normalizePath(testthat::test_path("..", ".."), mustWork = TRUE)
   roots <- file.path(root, c("R", "man", "vignettes", "tests"))

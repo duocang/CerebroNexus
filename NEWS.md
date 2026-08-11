@@ -4,7 +4,7 @@
 
 - The public R6 data-class constructor is now `Cerebro$new()`. The
   version-suffixed constructor was removed; existing `.crb` files remain
-  readable and bundled examples were reserialized with the new class.
+  readable and all bundled examples have been reserialized with the new class.
 
 # CerebroNexus 4.1
 
