@@ -377,17 +377,20 @@ ui <- tagList(
       )
     ),
     div(
-      id = "pane",
+      id = "builder-workspace",
       class = "builder-content",
       div(
-        id = "workbench",
-        class = "shiny-html-output",
-        tabindex = "-1",
-        builder_empty_workbench_ui()
-      )
-    )
+        id = "pane",
+        div(
+          id = "workbench",
+          class = "shiny-html-output",
+          tabindex = "-1",
+          builder_empty_workbench_ui()
+        )
+      ),
+      uiOutput("workflow_progress")
+    ),
   ),
-  uiOutput("workflow_progress"),
   builder_auth_dialog_ui(),
   builder_marker_dialog_ui(),
   div(

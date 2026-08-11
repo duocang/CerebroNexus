@@ -48,10 +48,7 @@ builder_app_capability <- function(
     reason = if (available) {
       NULL
     } else {
-      paste0(
-        "Private app publication requires privacy contract v1. ",
-        "Build CRB-only output for now."
-      )
+      "Viewer app creation isn’t available in this installation. You can still build CRB files."
     }
   )
 }
@@ -102,7 +99,7 @@ builder_app_control <- function(capability, current_value = NULL) {
       style = "border:0;padding:0;margin:0;min-width:0;",
       shiny::checkboxInput(
         "make_app",
-        "Bundle a Shiny app",
+        "Create a Viewer app",
         value = checked,
         width = "auto"
       )

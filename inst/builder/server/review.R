@@ -287,10 +287,10 @@ configure_readiness <- reactive({
     message = if (ready) {
       count <- length(plan$items)
       paste0(
+        "Ready to review · ",
         count,
         " dataset",
-        if (identical(count, 1L)) "" else "s",
-        " ready to review."
+        if (identical(count, 1L)) "" else "s"
       )
     } else {
       plan$error %||% "Resolve the highlighted settings."

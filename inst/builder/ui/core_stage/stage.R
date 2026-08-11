@@ -26,7 +26,7 @@ builder_core_stage_ui <- function(id, model) {
   div(
     id = ns("stage"),
     class = "builder-stage builder-stage-core builder-card builder-section",
-    h2("Core"),
+    h3("Core settings"),
     tags$input(
       id = ns("rendered_for"),
       type = "text",

@@ -194,7 +194,7 @@
   color: var(--c-text-muted);
   font-size: .72rem;
 }
-.enhance-table-display-name { width: 100%; min-width: 0; }
+.enhance-table-display-name { width: 100%; min-width: 0; padding-inline: .7rem; }
 .enhance-table-remove {
   min-height: 2.15rem;
   padding: .4rem .65rem;

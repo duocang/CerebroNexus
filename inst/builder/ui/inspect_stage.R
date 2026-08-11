@@ -116,7 +116,7 @@ builder_inspect_stage_ui <- function(id, model) {
   div(
     id = ns("stage"),
     class = "builder-stage builder-stage-inspect builder-card builder-section",
-    h2("Import & Inspect"),
+    h3("Import & Inspect"),
     div(
       class = "facts",
       lapply(as.character(model$summary %||% character()), function(value) {
