@@ -13,7 +13,7 @@ data that can be visualized in Cerebro.
 \section{Public fields}{
   \if{html}{\out{<div class="r6-fields">}}
   \describe{
-    \item{\code{version}}{cerebroApp version that was used to create the object.}
+    \item{\code{version}}{Exporter package version that was used to create the object.}
 
     \item{\code{experiment}}{\code{list} that contains meta data about the data set,
 including experiment name, species, date of export.}
@@ -209,7 +209,7 @@ Consumed by the Trekker page. Optional; older .crb files simply lack it.}
 \if{html}{\out{<a id="method-Cerebro-setVersion"></a>}}
 \if{latex}{\out{\hypertarget{method-Cerebro-setVersion}{}}}
 \subsection{\code{Cerebro$setVersion()}}{
-  Set the version of \code{cerebroApp} that was used to generate this
+  Set the exporter package version that was used to generate this
 object.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
@@ -229,7 +229,7 @@ object.
 \if{html}{\out{<a id="method-Cerebro-getVersion"></a>}}
 \if{latex}{\out{\hypertarget{method-Cerebro-getVersion}{}}}
 \subsection{\code{Cerebro$getVersion()}}{
-  Get the version of \code{cerebroApp} that was used to generate this
+  Get the exporter package version that was used to generate this
 object.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}

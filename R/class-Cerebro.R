@@ -19,7 +19,7 @@ Cerebro <- R6::R6Class(
 
   ## public fields and methods
   public = list(
-    #' @field version cerebroApp version that was used to create the object.
+    #' @field version Exporter package version that was used to create the object.
     version = c(),
 
     #' @field experiment \code{list} that contains meta data about the data set,
@@ -152,7 +152,7 @@ Cerebro <- R6::R6Class(
     },
 
     #' @description
-    #' Set the version of \code{cerebroApp} that was used to generate this
+    #' Set the exporter package version that was used to generate this
     #' object.
     #'
     #' @param version Version to set.
@@ -161,7 +161,7 @@ Cerebro <- R6::R6Class(
     },
 
     #' @description
-    #' Get the version of \code{cerebroApp} that was used to generate this
+    #' Get the exporter package version that was used to generate this
     #' object.
     #'
     #' @return
@@ -1461,7 +1461,7 @@ Cerebro <- R6::R6Class(
         paste0(
           'class: Cerebro',
           '\n',
-          'cerebroApp version: ',
+          'exporter package version: ',
           self$getVersion(),
           '\n',
           'experiment name: ',

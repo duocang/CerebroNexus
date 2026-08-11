@@ -779,7 +779,7 @@ exportFromSeurat <- function(
   ## add organism
   export$addExperiment('organism', organism)
 
-  ## add cerebroApp version
+  ## record the CerebroNexus exporter version
   export$setVersion(utils::packageVersion('CerebroNexus'))
 
   ##--------------------------------------------------------------------------##

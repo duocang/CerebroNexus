@@ -188,8 +188,11 @@ test_that("Cerebro: addExperiment / getExperiment round-trip", {
 
 test_that("Cerebro: version can be set and retrieved", {
   obj <- Cerebro$new()
-  obj$setVersion("1.3.0")
-  expect_equal(as.character(obj$getVersion()), "1.3.0")
+  obj$setVersion(utils::packageVersion("CerebroNexus"))
+  expect_equal(
+    as.character(obj$getVersion()),
+    as.character(utils::packageVersion("CerebroNexus"))
+  )
 })
 
 ## ---------------------------------------------------------------------------
