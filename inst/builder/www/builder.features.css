@@ -1359,17 +1359,20 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: .75rem 1.25rem;
   align-items: center;
-  margin: 0 0 1rem;
-  padding: .9rem 1rem;
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  background: #fffdfa;
-  box-shadow: 0 4px 14px rgb(56 37 20 / 6%);
+  margin: 0 0 var(--space-6);
+  padding: 0 0 var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--c-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   outline: none;
 }
 
 .dataset-context:focus-visible {
-  box-shadow: 0 0 0 3px var(--c-amber-100), 0 4px 14px rgb(56 37 20 / 6%);
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--builder-action);
+  outline-offset: 3px;
 }
 
 .dataset-context-position,
@@ -1379,8 +1382,17 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
 }
 
 .dataset-context-title {
+  display: block;
   margin: .12rem 0;
   font-size: 1.15rem;
+}
+
+.builder-stage-inspect,
+.builder-stage-core,
+.builder-stage-enhance {
+  margin: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .js-plotly-plot { transition: opacity var(--duration-base) var(--ease); }

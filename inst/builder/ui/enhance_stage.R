@@ -487,7 +487,7 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
   histology <- model$attachments$histology %||% list()
   div(
     id = ns("stage"),
-    class = "builder-stage builder-stage-enhance builder-card builder-section",
+    class = "builder-stage-section builder-stage-enhance",
     h3("Optional enhancements"),
     p(
       class = "stage-intro",

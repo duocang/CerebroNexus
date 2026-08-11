@@ -294,10 +294,10 @@ configure_readiness <- reactive({
     message = if (ready) {
       count <- length(plan$items)
       paste0(
-        "Ready to review · ",
         count,
         " dataset",
-        if (identical(count, 1L)) "" else "s"
+        if (identical(count, 1L)) "" else "s",
+        " ready"
       )
     } else {
       plan$error %||% "Resolve the highlighted settings."
@@ -532,9 +532,13 @@ render_configure_workbench <- function() {
     )
   )
   div(
-    class = "builder-stage builder-stage-configure",
+    class = "builder-stage builder-stage-shell builder-stage-configure",
     `data-workflow-stage` = "configure",
-    h2("Data setup"),
+    builder_stage_header_ui(
+      "Data setup",
+      "Choose data to include",
+      "Define the content saved to each CRB file."
+    ),
     uiOutput("dataset_context"),
     uiOutput("inspect_stage"),
     builder_core_stage_ui("core", core_model),

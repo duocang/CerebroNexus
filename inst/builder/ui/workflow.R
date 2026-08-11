@@ -110,9 +110,8 @@ builder_configure_actions_ui <- function(message, can_continue) {
     length(can_continue) == 1L,
     !is.na(can_continue)
   )
-  div(
-    class = "builder-stage-actions builder-configure-actions",
-    p(class = "builder-configure-readiness", message),
+  builder_stage_footer_ui(
+    message,
     actionButton(
       "continue_to_review",
       "Continue",

@@ -14,6 +14,8 @@ test_that("Inspect leads with attention and compact detected-content tags", {
 
   html <- builder_stage_html(builder_inspect_stage_ui("inspect", model))
 
+  expect_match(html, "builder-stage-section", fixed = TRUE)
+  expect_false(grepl("builder-card", html, fixed = TRUE))
   expect_match(html, "Needs attention", fixed = TRUE)
   expect_match(html, model$attention[[1L]], fixed = TRUE)
   expect_match(html, model$blockers[[1L]], fixed = TRUE)
@@ -102,6 +104,8 @@ test_that("Core keeps technical controls advanced and metadata visible", {
 
   html <- builder_stage_html(builder_core_stage_ui("core", model))
 
+  expect_match(html, "builder-stage-section", fixed = TRUE)
+  expect_false(grepl("builder-card", html, fixed = TRUE))
   expect_match(html, "Dataset name", fixed = TRUE)
   expect_match(html, "Organism", fixed = TRUE)
   expect_match(html, "Groups", fixed = TRUE)

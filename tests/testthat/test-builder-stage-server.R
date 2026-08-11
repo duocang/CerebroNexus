@@ -95,8 +95,9 @@ test_that("Builder shell and workflow UI separate all four stages", {
     can_continue = FALSE
   )
   actions_html <- htmltools::renderTags(actions)$html
-  expect_match(actions_html, "builder-stage-actions", fixed = TRUE)
-  expect_match(actions_html, "builder-configure-actions", fixed = TRUE)
+  expect_match(actions_html, "builder-stage-footer", fixed = TRUE)
+  expect_match(actions_html, "builder-stage-footer-status", fixed = TRUE)
+  expect_match(actions_html, "builder-stage-footer-actions", fixed = TRUE)
   expect_identical(
     lengths(regmatches(
       actions_html,
@@ -108,6 +109,13 @@ test_that("Builder shell and workflow UI separate all four stages", {
   expect_match(actions_html, " disabled", fixed = TRUE)
   expect_false(grepl("make_app", actions_html, fixed = TRUE))
   expect_false(grepl("Create a Viewer app", actions_html, fixed = TRUE))
+
+  ready_html <- htmltools::renderTags(app_env$builder_configure_actions_ui(
+    "1 dataset ready",
+    can_continue = TRUE
+  ))$html
+  expect_match(ready_html, "1 dataset ready", fixed = TRUE)
+  expect_false(grepl(" disabled", ready_html, fixed = TRUE))
 
   confirmation_html <- htmltools::renderTags(
     app_env$builder_review_confirmation_ui()

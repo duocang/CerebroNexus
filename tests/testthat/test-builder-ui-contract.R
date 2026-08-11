@@ -496,6 +496,10 @@ test_that("Review layout and staged workflow contracts stay user-facing", {
   css <- builder_stylesheet_text()
   app <- builder_app_source_text()
   workflow_ui <- builder_asset_text("ui", "workflow.R")
+  review_server <- builder_asset_text("server", "review.R")
+  inspect_ui <- builder_asset_text("ui", "inspect_stage.R")
+  core_ui <- builder_core_stage_source_text()
+  enhance_ui <- builder_asset_text("ui", "enhance_stage.R")
 
   expect_match(css, ".review-app-grid", fixed = TRUE)
   expect_match(css, ".review-page-tags", fixed = TRUE)
@@ -522,12 +526,21 @@ test_that("Review layout and staged workflow contracts stay user-facing", {
   expect_false(grepl('uiOutput("result_card")', app, fixed = TRUE))
   expect_match(workflow_ui, 'class = "builder-workflow-progress"', fixed = TRUE)
   expect_match(workflow_ui, '`aria-label` = "Builder progress"', fixed = TRUE)
+  expect_match(workflow_ui, "builder_stage_footer_ui(", fixed = TRUE)
+  expect_match(workflow_ui, '"continue_to_review"', fixed = TRUE)
   expect_match(
-    workflow_ui,
-    'class = "builder-stage-actions builder-configure-actions"',
+    review_server,
+    'class = "builder-stage builder-stage-shell builder-stage-configure"',
     fixed = TRUE
   )
-  expect_match(workflow_ui, '"continue_to_review"', fixed = TRUE)
+  expect_match(review_server, '"Choose data to include"', fixed = TRUE)
+  expect_match(review_server, '" dataset"', fixed = TRUE)
+  expect_match(review_server, '" ready"', fixed = TRUE)
+  expect_false(grepl("Ready to review", review_server, fixed = TRUE))
+  for (source in list(inspect_ui, core_ui, enhance_ui)) {
+    expect_match(source, "builder-stage-section", fixed = TRUE)
+    expect_false(grepl("builder-card builder-section", source, fixed = TRUE))
+  }
   expect_false(grepl(
     'actionButton(\n      "build",\n      "Build",',
     app,

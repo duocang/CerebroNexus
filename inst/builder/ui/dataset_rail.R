@@ -168,7 +168,10 @@ builder_dataset_context_ui <- function(state, current = state$current_dataset) {
     .builder_rail_or(entry$profile$n_features, 0L)
   )
   context <- shiny::div(
-    class = paste("dataset-context", if (multiple) "is-multiple" else ""),
+    class = paste(
+      "builder-stage-summary dataset-context",
+      if (multiple) "is-multiple" else ""
+    ),
     tabindex = "-1",
     shiny::div(
       class = "dataset-context-copy",
@@ -178,7 +181,7 @@ builder_dataset_context_ui <- function(state, current = state$current_dataset) {
           paste("Dataset", index, "of", length(ids))
         )
       },
-      shiny::h2(class = "dataset-context-title", entry$settings$name),
+      shiny::strong(class = "dataset-context-title", entry$settings$name),
       shiny::span(
         class = "dataset-context-counts",
         paste0(

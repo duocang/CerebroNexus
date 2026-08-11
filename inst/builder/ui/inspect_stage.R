@@ -115,7 +115,7 @@ builder_inspect_stage_ui <- function(id, model) {
   blockers <- as.character(model$blockers %||% character())
   div(
     id = ns("stage"),
-    class = "builder-stage builder-stage-inspect builder-card builder-section",
+    class = "builder-stage-section builder-stage-inspect",
     h3("Import & Inspect"),
     div(
       class = "facts",

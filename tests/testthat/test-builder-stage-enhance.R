@@ -71,6 +71,8 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
 
   html <- builder_stage_html(builder_enhance_stage_ui("enhance", model))
 
+  expect_match(html, "builder-stage-section", fixed = TRUE)
+  expect_false(grepl("builder-card", html, fixed = TRUE))
   expect_match(html, "Marker genes", fixed = TRUE)
   expect_match(html, "Adds ranked marker tables", fixed = TRUE)
   expect_match(
