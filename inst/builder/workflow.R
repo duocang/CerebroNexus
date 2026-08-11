@@ -70,8 +70,6 @@
           state$confirmation,
           state$review_plan
         )) ||
-      (identical(state$stage, "upload") &&
-        (!is.null(state$review_plan) || !is.null(state$confirmation))) ||
       (identical(state$stage, "build") &&
         is.null(state$confirmation))
   ) {
@@ -136,6 +134,29 @@ builder_workflow_confirmation_matches <- function(state, plan) {
   !is.null(identity) && identical(state$confirmation$identity, identity)
 }
 
+builder_workflow_stage_availability <- function(state, datasets_ready) {
+  if (
+    !.builder_workflow_state_valid(state) ||
+      !is.logical(datasets_ready) ||
+      length(datasets_ready) != 1L ||
+      is.na(datasets_ready)
+  ) {
+    stop(
+      "Valid Builder workflow availability inputs are required.",
+      call. = FALSE
+    )
+  }
+  c(
+    upload = TRUE,
+    configure = isTRUE(datasets_ready),
+    review = .builder_workflow_plan_valid(state$review_plan),
+    build = .builder_workflow_confirmation_valid(
+      state$confirmation,
+      state$review_plan
+    )
+  )
+}
+
 builder_reduce_workflow <- function(state, event) {
   if (
     !.builder_workflow_state_valid(state) ||
@@ -198,6 +219,29 @@ builder_reduce_workflow <- function(state, event) {
       stop("No reviewed BuildPlan is available.", call. = FALSE)
     }
     next_state$stage <- "configure"
+  } else if (identical(type, "navigate")) {
+    target <- event$stage
+    if (
+      !is.character(target) ||
+        length(target) != 1L ||
+        is.na(target) ||
+        !target %in% .builder_workflow_stages
+    ) {
+      .builder_workflow_stop_invalid()
+    }
+    datasets_ready <- event$datasets_ready
+    if (is.null(datasets_ready)) {
+      datasets_ready <- !identical(next_state$stage, "upload") ||
+        !is.null(next_state$review_plan)
+    }
+    availability <- builder_workflow_stage_availability(
+      next_state,
+      datasets_ready = datasets_ready
+    )
+    if (!isTRUE(availability[[target]])) {
+      stop("The requested Builder stage is not available.", call. = FALSE)
+    }
+    next_state$stage <- target
   } else if (identical(type, "invalidate")) {
     stage <- event$stage
     if (is.null(stage)) {

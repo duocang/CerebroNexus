@@ -28,6 +28,219 @@ builder_mutations_locked <- function(flow, protocol) {
     )
 }
 
+builder_build_options <- function(
+  make_app = FALSE,
+  welcome_message = "Welcome to CerebroNexus!",
+  initial_page = "data_info",
+  point_size = 5,
+  variable_to_compare = FALSE,
+  host = "127.0.0.1",
+  port = 8080L,
+  max_request_size = 8000,
+  display_mode = "normal",
+  launch_browser = TRUE,
+  show_upload_ui = FALSE,
+  initial_dataset = NULL
+) {
+  if (!is.logical(make_app) || length(make_app) != 1L || is.na(make_app)) {
+    stop("A valid Build output mode is required.", call. = FALSE)
+  }
+  app <- builder_review_options(
+    welcome_message = welcome_message,
+    initial_page = initial_page,
+    point_size = point_size,
+    variable_to_compare = variable_to_compare,
+    host = host,
+    port = port,
+    max_request_size = max_request_size,
+    display_mode = display_mode,
+    launch_browser = launch_browser,
+    show_upload_ui = show_upload_ui
+  )
+  if (
+    !is.null(initial_dataset) &&
+      (!is.character(initial_dataset) ||
+        length(initial_dataset) != 1L ||
+        is.na(initial_dataset) ||
+        !nzchar(initial_dataset))
+  ) {
+    stop("A valid starting dataset is required.", call. = FALSE)
+  }
+  structure(
+    list(
+      make_app = make_app,
+      app = app,
+      initial_dataset = initial_dataset
+    ),
+    class = c("builder_build_options", "list")
+  )
+}
+
+builder_build_options_ui <- function(
+  options,
+  app_available = TRUE,
+  app_reason = NULL,
+  initial_page_choices = c("Data info" = "data_info"),
+  dataset_choices = character(),
+  auth = list(
+    enabled = FALSE,
+    account_count = 0L,
+    error = NULL,
+    available = TRUE
+  )
+) {
+  stopifnot(inherits(options, "builder_build_options"))
+  tags <- htmltools::tags
+  div <- tags$div
+  h3 <- tags$h3
+  p <- tags$p
+  span <- tags$span
+  selected_dataset <- options$initial_dataset
+  if (
+    length(dataset_choices) &&
+      (is.null(selected_dataset) || !selected_dataset %in% dataset_choices)
+  ) {
+    selected_dataset <- unname(dataset_choices[[1L]])
+  }
+  selected_page <- options$app$initial_page
+  if (!selected_page %in% initial_page_choices) {
+    selected_page <- unname(initial_page_choices[[1L]])
+  }
+  auth_available <- isTRUE(auth$available)
+  require_login <- shiny::checkboxInput(
+    "build_require_login",
+    "Require login",
+    isTRUE(auth$enabled)
+  )
+  if (!auth_available) {
+    require_login <- htmltools::tagQuery(require_login)$find("input")$addAttrs(
+      disabled = "disabled"
+    )$allTags()
+  }
+  output_mode <- shiny::radioButtons(
+    "build_output_mode",
+    label = NULL,
+    choices = c(
+      "CRB files only" = "crb",
+      "CRB files + Viewer App" = "app"
+    ),
+    selected = if (isTRUE(options$make_app)) "app" else "crb"
+  )
+  if (!isTRUE(app_available)) {
+    disable_app_choice <- function(node) {
+      if (inherits(node, "shiny.tag")) {
+        if (
+          identical(node$name, "input") &&
+            identical(node$attribs$value, "app")
+        ) {
+          node$attribs$disabled <- "disabled"
+          node$attribs$`aria-disabled` <- "true"
+        }
+        node$children <- lapply(node$children, disable_app_choice)
+        return(node)
+      }
+      if (is.list(node)) {
+        original_attributes <- attributes(node)
+        node <- lapply(node, disable_app_choice)
+        attributes(node) <- original_attributes
+      }
+      node
+    }
+    output_mode <- disable_app_choice(output_mode)
+  }
+  tags$section(
+    class = "builder-build-options",
+    h3("Output type"),
+    output_mode,
+    if (!isTRUE(app_available)) {
+      p(
+        class = "hint builder-app-capability-reason",
+        app_reason %||% "Viewer App creation is unavailable."
+      )
+    },
+    if (isTRUE(options$make_app)) {
+      div(
+        class = "builder-app-settings builder-card builder-section",
+        h3("Viewer App settings"),
+        shiny::textInput(
+          "build_welcome_message",
+          "Welcome message",
+          options$app$welcome_message
+        ),
+        div(
+          class = "builder-app-network-fields",
+          shiny::textInput("build_host", "Host", options$app$host),
+          shiny::numericInput(
+            "build_port",
+            "Port",
+            options$app$port,
+            min = 1,
+            max = 65535
+          )
+        ),
+        shiny::checkboxInput(
+          "build_launch_browser",
+          "Open App after build",
+          options$app$launch_browser
+        ),
+        shiny::checkboxInput(
+          "build_show_upload_ui",
+          "Allow visitor uploads",
+          options$app$show_upload_ui
+        ),
+        if (length(dataset_choices)) {
+          shiny::selectInput(
+            "build_initial_dataset",
+            "Starting dataset",
+            choices = dataset_choices,
+            selected = selected_dataset
+          )
+        },
+        shiny::selectInput(
+          "build_initial_page",
+          "Starting page",
+          choices = initial_page_choices,
+          selected = selected_page
+        ),
+        require_login,
+        if (!auth_available) {
+          p(
+            class = "hint builder-auth-dependency",
+            "Login requires optional authentication packages."
+          )
+        },
+        if (isTRUE(auth$enabled) && auth_available) {
+          div(
+            class = "review-auth-controls",
+            span(
+              class = "review-auth-summary",
+              if (identical(auth$account_count, 1L)) {
+                "Login required · 1 account"
+              } else if (auth$account_count > 1L) {
+                paste0("Login required · ", auth$account_count, " accounts")
+              } else {
+                "Add at least one account"
+              }
+            ),
+            tags$button(
+              type = "button",
+              class = "btn builder-auth-open",
+              if (auth$account_count > 0L) {
+                "Edit accounts"
+              } else {
+                "Set up accounts"
+              }
+            ),
+            if (builder_stage_has_text(auth$error %||% "")) {
+              p(class = "hint review-auth-error", auth$error)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 .builder_result <- function(state, message = NULL, fields = list()) {
   if (
     !is.character(state) ||
@@ -520,7 +733,7 @@ builder_build_stage_status_ui <- function(model) {
       },
       actionButton(
         "build",
-        "Build Viewer",
+        "Build",
         class = "btn btn-action",
         disabled = !isTRUE(model$can_build)
       )

@@ -1,4 +1,9 @@
-builder_workflow_progress_ui <- function(stage, confirmed = FALSE) {
+builder_workflow_progress_ui <- function(
+  stage,
+  available,
+  confirmed = FALSE,
+  locked = FALSE
+) {
   stages <- c("upload", "configure", "review", "build")
   if (
     !is.character(stage) ||
@@ -11,23 +16,54 @@ builder_workflow_progress_ui <- function(stage, confirmed = FALSE) {
   if (!is.logical(confirmed) || length(confirmed) != 1L || is.na(confirmed)) {
     stop("A confirmation state is required.", call. = FALSE)
   }
-  labels <- c("Upload", "Configure", "Review", "Build")
+  if (
+    !is.logical(available) ||
+      !identical(names(available), stages) ||
+      anyNA(available) ||
+      !is.logical(locked) ||
+      length(locked) != 1L ||
+      is.na(locked)
+  ) {
+    stop("Valid Builder workflow availability is required.", call. = FALSE)
+  }
+  labels <- c("Upload", "Data setup", "Review", "Build")
   tags$nav(
     class = "builder-workflow-progress",
     `aria-label` = "Builder progress",
     `data-workflow-confirmed` = if (confirmed) "true" else "false",
     tags$ol(lapply(seq_along(stages), function(index) {
-      current <- identical(stage, stages[[index]])
+      stage_id <- stages[[index]]
+      current <- identical(stage, stage_id)
+      enabled <- isTRUE(available[[stage_id]]) && !isTRUE(locked)
+      label <- if (current) {
+        tags$span(labels[[index]])
+      } else if (enabled) {
+        actionLink(
+          paste0("workflow_stage_", stage_id),
+          labels[[index]],
+          class = "builder-workflow-stage-link"
+        )
+      } else {
+        tags$span(`aria-disabled` = "true", labels[[index]])
+      }
       tags$li(
-        class = if (current) "is-current" else NULL,
+        class = paste(
+          if (current) "is-current" else NULL,
+          if (isTRUE(available[[stage_id]])) {
+            "is-available"
+          } else {
+            "is-unavailable"
+          },
+          if (isTRUE(locked) && !current) "is-locked" else NULL
+        ),
         `aria-current` = if (current) "step" else NULL,
-        labels[[index]]
+        label
       )
     }))
   )
 }
 
-builder_configure_actions_ui <- function(message, can_continue, app_control) {
+builder_configure_actions_ui <- function(message, can_continue) {
   stopifnot(
     is.character(message),
     length(message) == 1L,
@@ -39,7 +75,6 @@ builder_configure_actions_ui <- function(message, can_continue, app_control) {
   div(
     class = "builder-stage-actions builder-configure-actions",
     p(class = "builder-configure-readiness", message),
-    app_control,
     actionButton(
       "continue_to_review",
       "Continue",
@@ -96,7 +131,7 @@ builder_build_workbench_ui <- function(model) {
   div(
     class = "builder-stage builder-stage-build builder-card builder-section",
     `data-workflow-stage` = "build",
-    h2("Build your Viewer"),
+    h2("Build outputs"),
     p(
       class = "stage-intro",
       "Build the frozen plan you reviewed and confirmed."
@@ -115,6 +150,7 @@ builder_build_workbench_ui <- function(model) {
         output_label
       )
     ),
+    uiOutput("build_output_options"),
     uiOutput("build_stage_controls"),
     div(
       id = "build-stage-status",

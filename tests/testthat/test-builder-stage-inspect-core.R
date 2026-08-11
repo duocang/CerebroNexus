@@ -232,10 +232,10 @@ test_that("Core exposes a bounded metadata catalog for Viewer Groups", {
     builder_group_detail_model(catalog, "cluster")
   ))
 
-  expect_match(html, "Viewer content", fixed = TRUE)
+  expect_match(html, "CRB content", fixed = TRUE)
   expect_match(
     html,
-    "Choose what the generated app includes and how it opens.",
+    "Choose what each CRB retains from the source dataset.",
     fixed = TRUE
   )
   expect_match(html, "Groups", fixed = TRUE)
@@ -396,11 +396,11 @@ test_that("Group details describe the effective metadata policy truthfully", {
     ),
     excluded = list(
       retained = FALSE,
-      expected = "Not included in the generated app."
+      expected = "Not retained in the CRB."
     ),
     attention = list(
       retained = FALSE,
-      expected = "Not included in the generated app."
+      expected = "Not retained in the CRB."
     )
   )
 
@@ -456,7 +456,7 @@ test_that("Group details describe the effective metadata policy truthfully", {
   expect_true(is.na(legacy$items[[1L]]$metadata_retained))
   expect_false(grepl("Kept as ordinary metadata.", legacy_detail, fixed = TRUE))
   expect_false(grepl(
-    "Not included in the generated app.",
+    "Not retained in the CRB.",
     legacy_detail,
     fixed = TRUE
   ))
@@ -585,7 +585,7 @@ test_that("Group colors has a short empty state for invalid groups", {
 
   expect_match(
     html,
-    "Select a Viewer Group to set its initial colors.",
+    "Select an included Group to set its retained colors.",
     fixed = TRUE
   )
   expect_false(grepl('type="color"', html, fixed = TRUE))

@@ -113,14 +113,8 @@ test_that("builder interaction reflows and preserves accessible state", {
     ".every(node => node.open === false)"
   )))
 
-  app$set_inputs(make_app = FALSE)
-  app$wait_for_idle(timeout = 10000)
   app$wait_for_js(
-    paste0(
-      "document.getElementById('make_app') !== null && ",
-      "!document.getElementById('make_app').checked && ",
-      "document.getElementById('continue_to_review') !== null"
-    ),
+    "document.getElementById('continue_to_review') !== null",
     timeout = 10000
   )
   readiness <- app$get_js(paste0(
@@ -317,15 +311,25 @@ test_that("builder explains a mocked old privacy contract exactly", {
   )
   app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
-    "document.querySelector('.app-capability-reason') !== null",
+    "document.getElementById('continue_to_review') !== null",
     timeout = 60000
   )
+  app$click("continue_to_review")
+  app$wait_for_js(
+    "document.getElementById('confirm_review') !== null",
+    timeout = 10000
+  )
+  app$click("confirm_review")
+  app$wait_for_js(
+    "document.querySelector('.builder-app-capability-reason') !== null",
+    timeout = 10000
+  )
   expect_true(app$get_js(
-    "document.getElementById('make_app').matches(':disabled')"
+    "document.querySelector('input[name=build_output_mode][value=app]').matches(':disabled')"
   ))
   expect_identical(
     app$get_js(
-      "document.querySelector('.app-capability-reason').textContent.trim()"
+      "document.querySelector('.builder-app-capability-reason').textContent.trim()"
     ),
     paste(
       "Private app publication requires privacy contract v1.",

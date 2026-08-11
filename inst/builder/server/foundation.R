@@ -6,6 +6,7 @@
 store <- reactiveVal(builder_state())
 imports <- reactiveVal(builder_import_queue(max_active = 1L))
 workflow <- reactiveVal(builder_workflow_state())
+workflow_manual_navigation <- reactiveVal(FALSE)
 selected_output <- reactiveVal(NULL)
 active_import_id <- reactiveVal(NULL)
 example_directory_sent <- reactiveVal(NULL)
@@ -24,6 +25,7 @@ observe({
   pending <- imports()$entries %||% list()
   state <- isolate(workflow())
   if (!length(loaded) && !length(pending)) {
+    workflow_manual_navigation(FALSE)
     if (!is.null(isolate(selected_output()))) {
       selected_output(NULL)
     }
@@ -33,7 +35,8 @@ observe({
   } else if (
     length(loaded) &&
       !length(pending) &&
-      identical(state$stage, "upload")
+      identical(state$stage, "upload") &&
+      !isTRUE(isolate(workflow_manual_navigation()))
   ) {
     workflow(builder_reduce_workflow(state, list(type = "datasets_ready")))
   }
@@ -116,6 +119,8 @@ builder_build_controls_locked <- function(flow) {
 }
 review_options <- reactiveVal(builder_review_options())
 review_validation <- reactiveVal(list(ok = TRUE, error = NULL))
+build_mode <- reactiveVal(FALSE)
+build_initial_dataset <- reactiveVal(NULL)
 auth_enabled <- reactiveVal(FALSE)
 auth_accounts <- reactiveVal(builder_auth_empty_accounts())
 auth_validation <- reactiveVal(list(ok = TRUE, error = NULL))

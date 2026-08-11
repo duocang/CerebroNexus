@@ -46,8 +46,6 @@ builder_build_folder_open_stage <- function(app) {
     timeout = 60000
   )
   app$wait_for_idle(timeout = 30000)
-  app$set_inputs(make_app = FALSE)
-  app$wait_for_idle(timeout = 10000)
   app$click("continue_to_review")
   app$wait_for_js(
     paste0(

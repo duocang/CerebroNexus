@@ -459,35 +459,10 @@ builder_review_model <- function(plan, verification = NULL) {
     stop("Review requires a typed frozen plan revision.", call. = FALSE)
   }
   items <- plan$items %||% list()
-  app_options <- plan$app_options %||% list(enabled = FALSE)
   names_by_id <- stats::setNames(
     vapply(items, function(item) item$name %||% "Dataset", character(1)),
     vapply(items, function(item) item$id %||% "", character(1))
   )
-  order_ids <- plan$dataset_order %||% names(names_by_id)
-  ordered_names <- unname(names_by_id[order_ids])
-  ordered_names <- ordered_names[!is.na(ordered_names)]
-  initial_id <- app_options$initial_dataset %||% ""
-  initial_name <- if (
-    nzchar(initial_id) && initial_id %in% names(names_by_id)
-  ) {
-    names_by_id[[initial_id]]
-  } else if (length(ordered_names)) {
-    ordered_names[[1L]]
-  } else {
-    "Not selected"
-  }
-  page_catalog <- do.call(
-    rbind,
-    unname(builder_viewer_page_catalog())
-  )
-  initial_page_id <- app_options$initial_page %||% "data_info"
-  initial_page_index <- match(initial_page_id, page_catalog$id)
-  initial_page_name <- if (!is.na(initial_page_index)) {
-    page_catalog$label[[initial_page_index]]
-  } else {
-    "Data info"
-  }
   review_dataset <- function(item) {
     group_values <- item$included_groups %||% item$groups %||% character()
     group_levels <- item$artifact_identity$group_levels %||% list()
@@ -516,9 +491,7 @@ builder_review_model <- function(plan, verification = NULL) {
     } else {
       color_custom_count
     }
-    point_size <- item$overview_point_size %||%
-      app_options$point_size$overview_projection_point_size %||%
-      5
+    point_size <- item$overview_point_size %||% 5
     trajectory_model <- builder_review_trajectory_model(
       item$included_trajectories %||% list(),
       item$default_trajectory %||% NULL
@@ -657,30 +630,8 @@ builder_review_model <- function(plan, verification = NULL) {
   model <- list(
     revision = revision,
     dataset_count = as.integer(length(items)),
-    output_label = if (!isTRUE(plan$make_app)) {
-      "CRB files"
-    } else if (isTRUE(plan$app_auth$enabled)) {
-      "Login-protected Shiny App"
-    } else {
-      "Shiny App"
-    },
+    output_label = "CRB files",
     datasets = lapply(items, review_dataset),
-    app = list(
-      enabled = isTRUE(plan$make_app),
-      initial_dataset = initial_name,
-      initial_page = initial_page_name,
-      dataset_order = ordered_names,
-      uploads_enabled = isTRUE(app_options$show_upload_ui),
-      welcome_message = app_options$welcome_message %||%
-        "Welcome to CerebroNexus!",
-      point_size = app_options$point_size$overview_projection_point_size %||% 5,
-      variable_comparison = isTRUE(app_options$variable_to_compare),
-      login = list(
-        enabled = isTRUE(plan$app_auth$enabled),
-        account_count = as.integer(plan$app_auth$account_count %||% 0L),
-        timeout_minutes = as.integer(plan$app_auth$timeout_minutes %||% 15L)
-      )
-    ),
     pages = builder_review_page_labels(items, plan$viewer_page_expectations),
     output = list(
       directory = if (isTRUE(plan$output_pending)) {
@@ -689,9 +640,6 @@ builder_review_model <- function(plan, verification = NULL) {
         plan$output_release$directory %||% ""
       },
       crb_count = as.integer(length(items)),
-      private_app = isTRUE(plan$make_app),
-      authenticated_app = isTRUE(plan$make_app) &&
-        isTRUE(plan$app_auth$enabled),
       existing_files = builder_review_existing_files(
         plan$output_release$replacement_policy,
         plan$output_release$overwrite
@@ -766,7 +714,7 @@ builder_review_stage_ui <- function(id, model) {
     h2("Review"),
     p(
       class = "stage-intro",
-      "Check your datasets and output before building."
+      "Check the CRB data plan before choosing build outputs."
     ),
     div(
       class = "review-summary-strip",
@@ -991,53 +939,9 @@ builder_review_stage_ui <- function(id, model) {
         })
       )
     ),
-    if (isTRUE(model$app$enabled)) {
-      tags$section(
-        class = "review-section review-app-experience",
-        h3("App experience"),
-        div(
-          class = "review-app-grid",
-          tags$dl(
-            class = "review-fields",
-            field("Starting dataset", model$app$initial_dataset),
-            field("Starting page", model$app$initial_page),
-            field(
-              "Visitor uploads",
-              if (isTRUE(model$app$uploads_enabled)) "On" else "Off"
-            ),
-            field("Welcome message", model$app$welcome_message),
-            field(
-              "Variable comparison",
-              if (isTRUE(model$app$variable_comparison)) "On" else "Off"
-            ),
-            field(
-              "Login",
-              if (isTRUE(model$app$login$enabled)) {
-                if (identical(model$app$login$account_count, 1L)) {
-                  "Login required · 1 account"
-                } else {
-                  paste0(
-                    "Login required · ",
-                    model$app$login$account_count,
-                    " accounts"
-                  )
-                }
-              } else {
-                "Off"
-              }
-            )
-          ),
-          div(
-            class = "review-order",
-            h4("Dataset order"),
-            tags$ol(lapply(model$app$dataset_order, tags$li))
-          )
-        )
-      )
-    },
     tags$section(
       class = "review-section review-pages",
-      h3("Pages in the App"),
+      h3("Content available from the CRBs"),
       page_tags(shown_pages),
       if (length(more_pages)) {
         tags$details(
@@ -1055,31 +959,12 @@ builder_review_stage_ui <- function(id, model) {
         field("Folder", model$output$directory, "is-path"),
         field(
           "Creates",
-          if (isTRUE(model$output$private_app)) {
-            paste0(
-              "1 App containing ",
-              plural(model$output$crb_count, "dataset")
-            )
-          } else {
-            plural(model$output$crb_count, "CRB file")
-          }
+          plural(model$output$crb_count, "CRB file")
         ),
-        if (isTRUE(model$output$authenticated_app)) {
-          field("Authentication", "1 secret env file")
-        },
         field("Estimated size", model$output$estimated_size),
         field("Estimated build time", model$output$estimated_time)
       )
     ),
-    if (isTRUE(model$output$private_app)) {
-      tags$section(
-        class = "review-section review-privacy",
-        h3("Private App"),
-        p(
-          "Dataset files are bundled privately with the App and are not offered as public downloads. The estimate is approximate and includes the App data copy."
-        )
-      )
-    },
     if (length(model$warnings %||% character())) {
       tags$section(
         class = "review-section review-needs-attention",

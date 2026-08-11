@@ -905,29 +905,53 @@
 .builder-workflow-progress ol {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: .5rem;
-  margin: 0 0 var(--space-4);
+  gap: clamp(.15rem, 1vw, .75rem);
+  margin: 0;
   padding: 0;
+  border-bottom: 1px solid var(--c-border);
   list-style: none;
 }
 .builder-workflow-progress li {
-  padding: .55rem .7rem;
-  border-bottom: 2px solid var(--c-border);
-  color: var(--c-text-muted);
-  overflow-wrap: anywhere;
-}
-.builder-workflow-progress li[aria-current="step"] {
-  border-color: var(--builder-action);
+  padding: 0;
   color: var(--c-text);
-  font-weight: 700;
+  text-align: center;
+  white-space: normal;
+}
+.builder-workflow-progress li > a,
+.builder-workflow-progress li > span {
+  display: block;
+  min-height: 2rem;
+  padding: .35rem clamp(.2rem, 1vw, .65rem) .4rem;
+  border-bottom: 2px solid transparent;
+  color: inherit;
+  line-height: 1.2;
+  text-decoration: none;
+  transform: translateY(1px);
+}
+.builder-workflow-progress li[aria-current="step"] > span {
+  border-bottom-color: var(--builder-action);
+}
+.builder-workflow-progress li.is-unavailable,
+.builder-workflow-progress li.is-locked:not(.is-current) {
+  color: var(--builder-text-disabled);
+  font-weight: 400;
+}
+.builder-workflow-progress .builder-workflow-stage-link:hover {
+  color: var(--builder-action);
+}
+.builder-workflow-progress .builder-workflow-stage-link:focus-visible {
+  border-radius: .2rem;
+  outline: 2px solid var(--builder-action);
+  outline-offset: 2px;
 }
 .builder-stage-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; }
 .builder-selected-output,
 .builder-status,
 .builder-file-item { overflow-wrap: anywhere; word-break: break-word; }
 @media (max-width: 40rem) {
-  .builder-workflow-progress li:not([aria-current="step"]) { font-size: 0; padding-inline: .25rem; }
-  .builder-workflow-progress li[aria-current="step"]::before { content: "Current " counter(list-item) " of 4 · "; }
+  .builder-workflow-progress ol { gap: 0; }
+  .builder-workflow-progress li > a,
+  .builder-workflow-progress li > span { padding-inline: .15rem; }
   .builder-stage-actions { align-items: stretch; flex-direction: column; }
   .builder-stage-actions .btn { width: 100%; }
 }

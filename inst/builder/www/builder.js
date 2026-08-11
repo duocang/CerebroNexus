@@ -1685,7 +1685,7 @@
       send("builder_auth_accounts", { enabled: true, accounts: accounts, nonce: nonce });
       return;
     }
-    if (target.matches("#review-require_login") && !target.checked) {
+    if (target.matches("#build_require_login") && !target.checked) {
       clearAuthSecrets();
       authRender([]);
       send("builder_auth_accounts", { enabled: false, accounts: [], nonce: Date.now() });

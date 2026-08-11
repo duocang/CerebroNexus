@@ -299,7 +299,7 @@ builder_specialized_content_model <- function(model) {
           "Review the source data before building."
         )
     } else if (identical(state, "not_included")) {
-      message <- "This content will not be included in the generated app."
+      message <- "This content will not be retained in the CRB."
     }
     list(
       id = id,
@@ -398,7 +398,7 @@ builder_specialized_content_model <- function(model) {
     )
   } else if ("incompatible_immune_source_selection" %in% immune_diagnostics) {
     paste(
-      "The detected immune sources cannot support both Viewer pages together.",
+      "The detected immune sources cannot support both content types together.",
       "Keep one compatible source or reconcile the source data."
     )
   } else if (
@@ -607,7 +607,7 @@ builder_specialized_content_ui <- function(model, id = NULL) {
         h4(selector$title),
         p(
           class = "viewer-immune-source-copy",
-          "Choose which detected source to use in the generated app."
+          "Choose which detected source to retain in the CRB."
         ),
         selectInput(
           ns(paste0("immune_source_", selector$capability)),
@@ -733,7 +733,7 @@ builder_analysis_results_model <- function(model) {
           " page stays unavailable until this is fixed."
         )
       } else if (excluded) {
-        "This result will not be included in the generated app."
+        "This result will not be retained in the CRB."
       } else if (identical(id, "mean_expression")) {
         paste(
           "Used by the Most expressed genes page",
@@ -812,7 +812,7 @@ builder_analysis_results_ui <- function(model) {
         } else if (item$status == "not_included") {
           p(
             class = "viewer-analysis-result-metrics",
-            "Excluded from the generated app."
+            "Excluded from the CRB."
           )
         } else {
           p(

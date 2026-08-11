@@ -66,8 +66,8 @@ builder_core_stage_ui <- function(id, model) {
       class = "builder-viewer-content",
       div(
         class = "builder-viewer-content-head",
-        h3("Viewer content"),
-        p("Choose what the generated app includes and how it opens.")
+        h3("CRB content"),
+        p("Choose what each CRB retains from the source dataset.")
       ),
       tags$details(
         class = "builder-viewer-card builder-viewer-groups",

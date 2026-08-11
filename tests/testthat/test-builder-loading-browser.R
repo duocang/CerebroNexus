@@ -67,7 +67,7 @@ test_that("Builder stays visible while a dataset loads", {
       "document.querySelector('#inspect-stage') !== null && ",
       "document.querySelector('.builder-loading-stage') === null && ",
       "document.querySelector('.builder-configure-actions') !== null && ",
-      "document.getElementById('make_app') !== null && ",
+      "document.getElementById('make_app') === null && ",
       "document.querySelectorAll('#continue_to_review').length === 1"
     ),
     timeout = 60000

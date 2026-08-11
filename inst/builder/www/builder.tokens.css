@@ -65,6 +65,7 @@
   --builder-selection-fg: var(--c-white);
   --builder-text-muted: #525257;
   --builder-text-subtle: #6b6b70;
+  --builder-text-disabled: #a9adb4;
   --builder-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
                        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
                        "Helvetica Neue", Arial, sans-serif;

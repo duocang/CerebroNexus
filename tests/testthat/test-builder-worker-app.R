@@ -545,7 +545,7 @@ test_that("Build status projection keeps one stable typed host", {
   for (html in all_html) {
     expect_false(grepl('id="build-stage-status"', html, fixed = TRUE))
   }
-  expect_match(ready_html, ">Build Viewer<", fixed = TRUE)
+  expect_match(ready_html, ">Build<", fixed = TRUE)
   expect_match(ready_html, "btn btn-action", fixed = TRUE)
   expect_match(choosing_html, "Choosing output folder…", fixed = TRUE)
   expect_match(queued_html, "Build queued…", fixed = TRUE)
@@ -592,6 +592,30 @@ test_that("Build status projection keeps one stable typed host", {
     ),
     "typed"
   )
+})
+
+test_that("Build owns output mode and expanded Viewer App settings", {
+  crb <- builder_build_options_ui(builder_build_options())
+  crb_html <- builder_stage_html(crb)
+  expect_match(crb_html, "CRB files only", fixed = TRUE)
+  expect_false(grepl("Welcome message", crb_html, fixed = TRUE))
+
+  app <- builder_build_options_ui(builder_build_options(make_app = TRUE))
+  app_html <- builder_stage_html(app)
+  expect_match(app_html, "CRB files + Viewer App", fixed = TRUE)
+  expect_match(app_html, "Welcome message", fixed = TRUE)
+  expect_match(app_html, "Host", fixed = TRUE)
+  expect_match(app_html, "Port", fixed = TRUE)
+  expect_match(app_html, "Require login", fixed = TRUE)
+  expect_false(grepl("<details", app_html, fixed = TRUE))
+
+  unavailable <- builder_stage_html(builder_build_options_ui(
+    builder_build_options(),
+    app_available = FALSE,
+    app_reason = "Install Viewer dependencies."
+  ))
+  expect_match(unavailable, 'value="app" disabled="disabled"', fixed = TRUE)
+  expect_match(unavailable, "Install Viewer dependencies.", fixed = TRUE)
 })
 
 test_that("dataset mutation lock covers every active build state", {
@@ -783,7 +807,7 @@ test_that("Build stage renders only the confirmed stored plan", {
   expect_match(workflow_server, "input$back_to_review", fixed = TRUE)
   expect_match(workflow_server, 'list(type = "back_to_review")', fixed = TRUE)
   expect_match(workflow_ui, '`data-workflow-stage` = "build"', fixed = TRUE)
-  expect_match(workflow_ui, 'h2("Build your Viewer")', fixed = TRUE)
+  expect_match(workflow_ui, 'h2("Build outputs")', fixed = TRUE)
   expect_match(
     paste(workflow_ui_lines, collapse = "\n"),
     '"No output folder selected"',

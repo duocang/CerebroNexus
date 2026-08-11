@@ -148,7 +148,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "Tables for Extra material", fixed = TRUE)
   expect_match(
     html,
-    "Add optional CSV or TSV tables to the generated app’s Extra material page.",
+    "Add optional CSV or TSV tables to the CRB’s Extra material content.",
     fixed = TRUE
   )
   expect_match(html, "Spatial alignment", fixed = TRUE)

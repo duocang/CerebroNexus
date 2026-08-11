@@ -24,15 +24,41 @@ test_that("Builder shell and workflow UI separate all four stages", {
 
   progress <- app_env$builder_workflow_progress_ui(
     "configure",
-    confirmed = FALSE
+    available = c(
+      upload = TRUE,
+      configure = TRUE,
+      review = FALSE,
+      build = FALSE
+    ),
+    confirmed = FALSE,
+    locked = FALSE
   )
   progress_html <- htmltools::renderTags(progress)$html
   expect_match(progress_html, "builder-workflow-progress", fixed = TRUE)
   expect_match(progress_html, 'aria-label="Builder progress"', fixed = TRUE)
   expect_match(progress_html, 'aria-current="step"', fixed = TRUE)
   expect_match(progress_html, 'data-workflow-confirmed="false"', fixed = TRUE)
+  expect_match(progress_html, "Data setup", fixed = TRUE)
+  expect_false(grepl(">Configure<", progress_html, fixed = TRUE))
+  expect_match(progress_html, 'id="workflow_stage_upload"', fixed = TRUE)
+  expect_match(progress_html, 'aria-disabled="true"', fixed = TRUE)
+  expect_match(progress_html, "is-unavailable", fixed = TRUE)
+  expect_false(grepl("✓|✔|checkmark", progress_html, ignore.case = TRUE))
   confirmed_progress <- htmltools::renderTags(
-    app_env$builder_workflow_progress_ui("build", confirmed = TRUE)
+    app_env$builder_workflow_progress_ui(
+      "build",
+      available = stats::setNames(
+        rep(TRUE, 4L),
+        c(
+          "upload",
+          "configure",
+          "review",
+          "build"
+        )
+      ),
+      confirmed = TRUE,
+      locked = FALSE
+    )
   )$html
   expect_match(
     confirmed_progress,
@@ -47,14 +73,26 @@ test_that("Builder shell and workflow UI separate all four stages", {
     4L
   )
   expect_error(
-    app_env$builder_workflow_progress_ui("future", confirmed = FALSE),
+    app_env$builder_workflow_progress_ui(
+      "future",
+      available = stats::setNames(
+        rep(FALSE, 4L),
+        c(
+          "upload",
+          "configure",
+          "review",
+          "build"
+        )
+      ),
+      confirmed = FALSE,
+      locked = FALSE
+    ),
     "valid Builder workflow stage"
   )
 
   actions <- app_env$builder_configure_actions_ui(
     "Wait for all datasets to finish loading.",
-    can_continue = FALSE,
-    app_env$builder_app_control(app_env$app_capability, FALSE)
+    can_continue = FALSE
   )
   actions_html <- htmltools::renderTags(actions)$html
   expect_match(actions_html, "builder-stage-actions", fixed = TRUE)
@@ -68,6 +106,8 @@ test_that("Builder shell and workflow UI separate all four stages", {
   )
   expect_match(actions_html, ">Continue<", fixed = TRUE)
   expect_match(actions_html, " disabled", fixed = TRUE)
+  expect_false(grepl("make_app", actions_html, fixed = TRUE))
+  expect_false(grepl("Create a Viewer app", actions_html, fixed = TRUE))
 
   confirmation_html <- htmltools::renderTags(
     app_env$builder_review_confirmation_ui()
@@ -274,7 +314,7 @@ test_that("Build result survives failed folder selection and clears on acceptanc
     expect_identical(selected_output(), "/new/output")
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
     content <- paste(unlist(output$build_stage_status_content), collapse = " ")
-    expect_match(content, "Build Viewer", fixed = TRUE)
+    expect_match(content, ">Build<", fixed = TRUE)
     expect_false(grepl(" disabled", content, fixed = TRUE))
   })
 })
@@ -307,6 +347,20 @@ test_that("workflow server owns loading and Configure rendering", {
       profile = list(marker = "a"),
       settings = list(name = "Dataset A")
     )))
+    session$flushReact()
+    expect_identical(workflow()$stage, "configure")
+
+    session$setInputs(workflow_stage_review = 1L)
+    session$flushReact()
+    expect_identical(workflow()$stage, "configure")
+
+    session$setInputs(workflow_stage_upload = 1L)
+    session$flushReact()
+    expect_identical(workflow()$stage, "upload")
+    session$flushReact()
+    expect_identical(workflow()$stage, "upload")
+
+    session$setInputs(workflow_stage_configure = 1L)
     session$flushReact()
     expect_identical(workflow()$stage, "configure")
   })
@@ -471,8 +525,11 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
     collapse = "\n"
   )
   expect_match(review_source, "render_configure_workbench", fixed = TRUE)
-  expect_match(review_source, 'uiOutput("review_app_options")', fixed = TRUE)
-  expect_match(review_source, "builder_review_controls_ui", fixed = TRUE)
+  expect_false(grepl(
+    'uiOutput("review_app_options")',
+    review_source,
+    fixed = TRUE
+  ))
   expect_false(grepl("output$workbench <-", review_source, fixed = TRUE))
   expect_false(grepl("output$actionbar <-", review_source, fixed = TRUE))
   expect_false(grepl("output$build_actions <-", review_source, fixed = TRUE))
@@ -550,8 +607,7 @@ test_that("Builder auth accepts only the exact typed browser payload", {
     expect_false(auth_enabled())
     expect_length(auth_accounts(), 0L)
 
-    session$setInputs(make_app = TRUE)
-    session$flushReact()
+    build_mode(TRUE)
     session$setInputs(
       builder_auth_accounts = list(
         enabled = TRUE,
@@ -601,7 +657,7 @@ test_that("Builder auth accepts only the exact typed browser payload", {
     )
     expect_false(grepl("short", auth_validation()$error, fixed = TRUE))
 
-    session$setInputs(make_app = FALSE)
+    build_mode(FALSE)
     session$flushReact()
     expect_false(auth_enabled())
     expect_s3_class(auth_accounts(), "builder_auth_accounts")
@@ -624,7 +680,7 @@ test_that("Builder auth accepts only the exact typed browser payload", {
     )
 
     app_env$auth_capability$available <- FALSE
-    session$setInputs(make_app = TRUE)
+    build_mode(TRUE)
     session$setInputs(
       builder_auth_accounts = list(
         enabled = TRUE,
@@ -643,7 +699,7 @@ test_that("Builder auth accepts only the exact typed browser payload", {
   })
 })
 
-test_that("changed auth accounts invalidate a confirmed frozen plan", {
+test_that("Build-only auth changes preserve the confirmed CRB review", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   app_env <- new.env(parent = globalenv())
@@ -687,7 +743,6 @@ test_that("changed auth accounts invalidate a confirmed frozen plan", {
       settings = list(name = "Dataset A")
     )
     use_state_only_fixture(list(entry))
-    session$setInputs(make_app = TRUE)
     accounts_a <- app_env$builder_auth_validate_payload(
       TRUE,
       list(list(
@@ -709,98 +764,60 @@ test_that("changed auth accounts invalidate a confirmed frozen plan", {
     )$accounts
     auth_enabled(TRUE)
     auth_accounts(accounts_a)
+    build_mode(TRUE)
     session$flushReact()
 
-    plan_a <- frozen_review_plan()
-    expect_identical(plan_a$app_auth$account_count, 1L)
+    review_plan <- frozen_review_plan()
+    expect_false(review_plan$make_app)
+    expect_identical(review_plan$app_auth$account_count, 0L)
     reviewed <- app_env$builder_reduce_workflow(
       isolate(workflow()),
-      list(type = "open_review", plan = plan_a)
+      list(type = "open_review", plan = review_plan)
     )
     workflow(app_env$builder_reduce_workflow(
       reviewed,
-      list(type = "confirm_review", plan = plan_a)
+      list(type = "confirm_review", plan = review_plan)
     ))
     expect_identical(workflow()$stage, "build")
-
-    notifications <- character()
-    assign(
-      "showNotification",
-      function(ui, ...) {
-        notifications <<- c(notifications, as.character(ui))
-      },
-      envir = environment(enqueue_build_plan)
-    )
-    worker(list(alive = TRUE))
-    protocol(app_env$builder_request_protocol("worker-a"))
-    assign(
-      "enqueue",
-      function(...) {
-        queued_protocol <- isolate(protocol())
-        queued_protocol$build_status <- "queued"
-        protocol(queued_protocol)
-        TRUE
-      },
-      envir = environment(enqueue_build_plan)
-    )
-    selected_output(plan_a$out_dir)
-    expect_true(enqueue_build_plan(plan_a, auth_accounts = accounts_a))
-    session$flushReact()
-
-    expect_length(auth_accounts(), 0L)
-    expect_named(
-      plan_a$app_auth,
-      c("enabled", "account_count", "timeout_minutes")
-    )
-    expect_false(any(grepl(
-      "password-a|user-a",
-      capture.output(dput(plan_a))
-    )))
-    expect_identical(workflow()$stage, "build")
-    expect_identical(build_flow()$stage, "building")
-    expect_false(any(grepl(
-      "Settings changed. Review the updated plan before building.",
-      notifications,
-      fixed = TRUE
-    )))
-
-    protocol(app_env$builder_request_protocol("worker-a"))
-    build_flow(list(stage = "idle", plan = NULL))
-    session$flushReact()
-    expect_identical(workflow()$stage, "build")
-
-    stale_result <- app_env$builder_result_success(
-      published = TRUE,
-      built = "/old/output/dataset.crb"
-    )
-    result(stale_result)
     auth_accounts(accounts_b)
     session$flushReact()
 
-    plan_b <- frozen_review_plan()
+    expect_identical(workflow()$stage, "build")
+    expect_true(builder_build_confirmation_matches(review_plan))
+    expect_identical(workflow()$review_plan, review_plan)
+
+    review_options(builder_review_options(
+      welcome_message = "Build-stage welcome",
+      initial_page = "projection",
+      host = "0.0.0.0",
+      port = 4242L,
+      launch_browser = FALSE,
+      show_upload_ui = TRUE
+    ))
+    build_initial_dataset("dataset-a")
+    plan_b <- freeze_plan_for_output(
+      tempfile("builder-app-output-"),
+      output_options = current_build_options()
+    )
+    expect_true(plan_b$make_app)
     expect_identical(plan_b$app_auth$account_count, 2L)
     expect_named(
       plan_b$app_auth,
       c("enabled", "account_count", "timeout_minutes")
     )
     expect_false("accounts" %in% names(plan_b$app_auth))
-    expect_identical(workflow()$stage, "configure")
-    expect_null(workflow()$review_plan)
-    expect_null(workflow()$confirmation)
-    expect_null(selected_output())
-    expect_null(result())
-    expect_false(builder_build_confirmation_matches(plan_a))
-    enqueued <- FALSE
-    assign(
-      "enqueue",
-      function(...) {
-        enqueued <<- TRUE
-        TRUE
-      },
-      envir = environment(enqueue_build_plan)
-    )
-    expect_false(enqueue_build_plan(plan_a, auth_accounts = accounts_a))
-    expect_false(enqueued)
+    expect_identical(plan_b$app_options$welcome_message, "Build-stage welcome")
+    expect_identical(plan_b$app_options$host, "0.0.0.0")
+    expect_identical(plan_b$app_options$port, 4242L)
+    expect_false(plan_b$app_options$launch_browser)
+    expect_true(plan_b$app_options$show_upload_ui)
+    expect_identical(plan_b$app_options$initial_dataset, "dataset-a")
+    expect_identical(plan_b$app_options$initial_page, "projection")
+    expect_false(any(grepl(
+      "password-a|password-b|user-a|user-b",
+      capture.output(dput(plan_b))
+    )))
+    expect_true(builder_build_confirmation_matches(plan_b))
   })
 })
 
@@ -971,7 +988,7 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
     expect_true(builder_build_confirmation_matches(relocated))
 
     plan_b <- plan_a
-    plan_b$app_options$welcome_message <- "Changed after dialog opened"
+    plan_b$items[[1L]]$name <- "Changed after dialog opened"
     build_flow(list(stage = "conflict", plan = plan_a))
     guard <- builder_build_confirmation_status(isolate(workflow()), plan_b)
     expect_identical(guard, list(ok = FALSE, reason = "identity_mismatch"))
@@ -1631,7 +1648,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
           app_env$builder_auth_empty_accounts()
         }
       )
-      real_session$setInputs(make_app = isTRUE(auth_ready))
+      build_mode(isTRUE(auth_ready))
       real_session$flushReact()
       plan <- isolate(frozen_review_plan())
       if (isTRUE(auth_missing)) {
@@ -1684,7 +1701,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
     expect_identical(selected_output(), "/private/host/output")
     expect_match(
       paste(unlist(output$build_stage_status_content), collapse = " "),
-      "Build Viewer",
+      ">Build<",
       fixed = TRUE
     )
 

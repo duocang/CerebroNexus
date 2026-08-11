@@ -18,16 +18,16 @@ validate_review_inputs <- function(values) {
 observe({
   current_options <- isolate(review_options())
   values <- list(
-    welcome_message = input[["review-welcome_message"]],
-    initial_page = input[["review-initial_page"]],
-    point_size = input[["review-point_size"]] %||% 5,
-    variable_to_compare = input[["review-variable_to_compare"]],
-    host = current_options$host,
-    port = current_options$port,
+    welcome_message = input[["build_welcome_message"]],
+    initial_page = input[["build_initial_page"]],
+    point_size = current_options$point_size,
+    variable_to_compare = current_options$variable_to_compare,
+    host = input[["build_host"]],
+    port = input[["build_port"]],
     max_request_size = current_options$max_request_size,
     display_mode = current_options$display_mode,
-    launch_browser = current_options$launch_browser,
-    show_upload_ui = input[["review-show_upload_ui"]]
+    launch_browser = input[["build_launch_browser"]],
+    show_upload_ui = input[["build_show_upload_ui"]]
   )
   if (any(vapply(values, is.null, logical(1)))) {
     return()
@@ -36,11 +36,11 @@ observe({
 })
 
 observeEvent(
-  input[["review-require_login"]],
+  input[["build_require_login"]],
   {
-    enabled <- isTRUE(input[["review-require_login"]])
+    enabled <- isTRUE(input[["build_require_login"]])
     if (
-      enabled && (!isTRUE(input$make_app) || !isTRUE(auth_capability$available))
+      enabled && (!isTRUE(build_mode()) || !isTRUE(auth_capability$available))
     ) {
       auth_enabled(FALSE)
       auth_accounts(builder_auth_empty_accounts())
@@ -88,7 +88,7 @@ observeEvent(
     }
     if (
       isTRUE(payload$enabled) &&
-        (!isTRUE(input$make_app) || !isTRUE(auth_capability$available))
+        (!isTRUE(build_mode()) || !isTRUE(auth_capability$available))
     ) {
       auth_enabled(FALSE)
       auth_accounts(builder_auth_empty_accounts())
@@ -145,9 +145,9 @@ observeEvent(
 )
 
 observeEvent(
-  input$make_app,
+  build_mode(),
   {
-    if (isTRUE(input$make_app)) {
+    if (isTRUE(build_mode())) {
       return()
     }
     auth_enabled(FALSE)
@@ -158,7 +158,11 @@ observeEvent(
   ignoreInit = TRUE
 )
 
-freeze_plan_for_output <- function(out_dir, overwrite = FALSE) {
+freeze_plan_for_output <- function(
+  out_dir,
+  overwrite = FALSE,
+  output_options = NULL
+) {
   pending <- imports()$entries
   if (length(pending)) {
     states <- vapply(pending, `[[`, character(1), "load_state")
@@ -180,37 +184,31 @@ freeze_plan_for_output <- function(out_dir, overwrite = FALSE) {
   if (!length(all)) {
     return(builder_plan_error("No datasets yet.", "empty_release"))
   }
-  typed <- review_options()
-  app_options <- builder_review_options_for_plan(typed)
-  login_enabled <- isTRUE(auth_enabled())
-  if (login_enabled && !isTRUE(auth_capability$available)) {
-    return(builder_plan_error(
-      "Login requires optional authentication packages.",
-      "missing_auth_dependency"
-    ))
-  }
-  current_auth_accounts <- if (login_enabled) {
-    auth_accounts()
-  } else {
-    builder_auth_empty_accounts()
-  }
+  make_app <- inherits(output_options, "builder_build_options") &&
+    isTRUE(output_options$make_app)
+  login_enabled <- make_app && isTRUE(auth_enabled())
   parsed_auth <- builder_auth_validate_payload(
     login_enabled,
-    current_auth_accounts
+    if (login_enabled) auth_accounts() else builder_auth_empty_accounts()
   )
   if (!isTRUE(parsed_auth$ok)) {
     return(builder_plan_error(parsed_auth$error, "invalid_auth_accounts"))
   }
+  app_options <- if (make_app) {
+    builder_review_options_for_plan(
+      output_options$app,
+      initial_dataset = output_options$initial_dataset
+    )
+  } else {
+    builder_review_options_for_plan(builder_review_options())
+  }
   builder_freeze_plan(
     entries = all,
     out_dir = out_dir,
-    make_app = isTRUE(input$make_app),
+    make_app = make_app,
     overwrite = isTRUE(overwrite),
     app_options = app_options,
-    app_auth = builder_auth_summary(
-      login_enabled,
-      parsed_auth$accounts
-    )
+    app_auth = builder_auth_summary(login_enabled, parsed_auth$accounts)
   )
 }
 
@@ -411,31 +409,11 @@ output[["inspect_stage"]] <- renderUI({
   )
 })
 
-output[["review_app_options"]] <- renderUI({
-  contract <- review_page_contract()
-  req(contract$dataset)
-  builder_review_controls_ui(
-    "review",
-    isolate(review_options()),
-    contract$choices,
-    auth = list(
-      enabled = isTRUE(auth_enabled()),
-      account_count = as.integer(length(auth_accounts())),
-      error = auth_validation()$error %||% NULL,
-      available = isTRUE(auth_capability$available)
-    )
-  )
-})
-
 output$configure_actions <- renderUI({
   readiness <- configure_readiness()
   builder_configure_actions_ui(
     readiness$message,
-    readiness$can_continue,
-    builder_app_control(
-      app_capability,
-      current_value = isolate(input$make_app)
-    )
+    readiness$can_continue
   )
 })
 
@@ -547,7 +525,7 @@ render_configure_workbench <- function() {
   div(
     class = "builder-stage builder-stage-configure",
     `data-workflow-stage` = "configure",
-    h2("Configure"),
+    h2("Data setup"),
     uiOutput("dataset_context"),
     uiOutput("inspect_stage"),
     builder_core_stage_ui("core", core_model),
@@ -561,10 +539,6 @@ render_configure_workbench <- function() {
         modules = list()
       ),
       dynamic_modules = TRUE
-    ),
-    conditionalPanel(
-      condition = "input.make_app === true",
-      uiOutput("review_app_options")
     ),
     uiOutput("configure_actions")
   )

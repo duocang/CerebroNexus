@@ -517,7 +517,7 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
       h4("Tables for Extra material"),
       p(
         class = "enhance-attachment-description",
-        "Add optional CSV or TSV tables to the generated app’s Extra material page."
+        "Add optional CSV or TSV tables to the CRB’s Extra material content."
       ),
       div(
         class = "enhance-table-file-control builder-file-picker builder-file-picker--content",

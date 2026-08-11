@@ -86,31 +86,38 @@ builder_auth_browser_enable_login <- function(app) {
   app$wait_for_js(
     paste0(
       "document.querySelector('[data-workflow-stage=configure]') !== null && ",
-      "document.getElementById('make_app') !== null && ",
       "document.getElementById('continue_to_review') !== null"
     ),
     timeout = 10000
   )
-  app$set_inputs(make_app = TRUE)
+  app$click("continue_to_review")
+  app$wait_for_js(
+    "document.getElementById('confirm_review') !== null",
+    timeout = 10000
+  )
+  app$click("confirm_review")
+  app$wait_for_js(
+    "document.getElementById('build_output_mode') !== null",
+    timeout = 10000
+  )
+  app$set_inputs(build_output_mode = "app")
   app$wait_for_idle(timeout = 10000)
   app$wait_for_js(
     paste0(
-      "document.getElementById('make_app').checked && ",
-      "document.querySelector('.review-app-options') !== null && ",
-      "document.getElementById('review-require_login') !== null && ",
-      "!document.getElementById('review-require_login').disabled"
+      "document.querySelector('.builder-app-settings') !== null && ",
+      "document.getElementById('build_require_login') !== null && ",
+      "!document.getElementById('build_require_login').disabled"
     ),
     timeout = 10000
   )
-  app$run_js("document.querySelector('.review-app-options').open = true;")
   app$wait_for_js(
-    "document.getElementById('review-require_login').getClientRects().length > 0",
+    "document.getElementById('build_require_login').getClientRects().length > 0",
     timeout = 10000
   )
-  app$click(selector = "#review-require_login")
+  app$click(selector = "#build_require_login")
   app$wait_for_js(
     paste0(
-      "document.getElementById('review-require_login').checked && ",
+      "document.getElementById('build_require_login').checked && ",
       "document.querySelector('.builder-auth-open') !== null"
     ),
     timeout = 10000
@@ -145,7 +152,6 @@ builder_auth_browser_hold_inputs <- function(app) {
 }
 
 builder_auth_browser_open <- function(app) {
-  app$run_js("document.querySelector('.review-app-options').open = true;")
   app$wait_for_js(
     "document.querySelector('.builder-auth-open').getClientRects().length > 0",
     timeout = 10000
@@ -257,26 +263,25 @@ test_that("Builder auth saves ordered accounts once and clears every browser cop
 
   app$run_js("window.__authInputs = [];")
   app$wait_for_js(
-    "document.getElementById('review-require_login').checked === true",
+    "document.getElementById('build_require_login').checked === true",
     timeout = 10000
   )
-  app$run_js("document.querySelector('.review-app-options').open = true;")
   app$run_js(paste0(
     "window.__authCheckboxClicks = 0;",
     "window.__authBeforeChecked = ",
-    "document.getElementById('review-require_login').checked;",
-    "document.getElementById('review-require_login').addEventListener(",
+    "document.getElementById('build_require_login').checked;",
+    "document.getElementById('build_require_login').addEventListener(",
     "'click', function() { window.__authCheckboxClicks += 1; }, {once:true});"
   ))
-  app$click(selector = "#review-require_login")
+  app$click(selector = "#build_require_login")
   app$wait_for_idle(timeout = 10000)
   reset_state <- app$get_js(paste0(
     "(() => ({",
-    "checked: document.getElementById('review-require_login').checked,",
+    "checked: document.getElementById('build_require_login').checked,",
     "beforeChecked: window.__authBeforeChecked,",
     "checkboxClicks: window.__authCheckboxClicks,",
-    "checkboxConnected: document.getElementById('review-require_login').isConnected,",
-    "checkboxRects: document.getElementById('review-require_login').getClientRects().length,",
+    "checkboxConnected: document.getElementById('build_require_login').isConnected,",
+    "checkboxRects: document.getElementById('build_require_login').getClientRects().length,",
     "wrapperActive: Shiny.setInputValue !== window.__authOriginalSetInputValue,",
     "inputs: window.__authInputs,",
     "lastInputIsNull: window.__authInputs.at(-1) === null,",
@@ -582,22 +587,14 @@ test_that("Builder auth resets after a successful enqueue", {
   app$wait_for_idle(timeout = 10000)
   app$wait_for_js(
     paste0(
-      "document.getElementById('review-require_login').checked && ",
+      "document.getElementById('build_require_login').checked && ",
       "document.querySelector('.review-auth-summary') !== null && ",
       "document.querySelector('.review-auth-summary').textContent.includes(",
       "'Login required · 2 accounts') && ",
-      "document.getElementById('continue_to_review') !== null && ",
-      "!document.getElementById('continue_to_review').disabled"
+      "document.getElementById('build') !== null"
     ),
     timeout = 10000
   )
-
-  app$click("continue_to_review")
-  app$wait_for_js(
-    "document.getElementById('confirm_review') !== null",
-    timeout = 10000
-  )
-  app$click("confirm_review")
   app$wait_for_js(
     paste0(
       "document.getElementById('build') !== null && ",

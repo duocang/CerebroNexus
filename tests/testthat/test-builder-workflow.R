@@ -82,6 +82,21 @@ test_that("review identity requires a ready frozen BuildPlan", {
   )
 })
 
+test_that("final build identity includes output-only settings", {
+  plan <- builder_workflow_test_plan()
+  changed <- plan
+  changed$app_options$welcome_message <- "Changed at Build"
+
+  expect_identical(
+    builder_final_build_identity(plan)$review,
+    builder_final_build_identity(changed)$review
+  )
+  expect_false(identical(
+    builder_final_build_identity(plan),
+    builder_final_build_identity(changed)
+  ))
+})
+
 test_that("review identity accepts frozen BuildPlan subclasses", {
   plan <- builder_workflow_test_plan()
   class(plan) <- c("special_builder_plan", class(plan))
@@ -162,6 +177,51 @@ test_that("workflow advances through review and confirmation", {
   expect_identical(state$stage, "configure")
   expect_null(state$review_plan)
   expect_null(state$confirmation)
+})
+
+test_that("available workflow stages can be revisited without losing confirmation", {
+  plan <- builder_workflow_test_plan()
+  state <- builder_reduce_workflow(
+    builder_workflow_state(),
+    list(type = "datasets_ready")
+  )
+  expect_identical(
+    builder_workflow_stage_availability(state, datasets_ready = TRUE),
+    c(upload = TRUE, configure = TRUE, review = FALSE, build = FALSE)
+  )
+
+  state <- builder_reduce_workflow(
+    state,
+    list(type = "open_review", plan = plan)
+  )
+  expect_identical(
+    builder_workflow_stage_availability(state, datasets_ready = TRUE),
+    c(upload = TRUE, configure = TRUE, review = TRUE, build = FALSE)
+  )
+  state <- builder_reduce_workflow(
+    state,
+    list(type = "confirm_review", plan = plan)
+  )
+  expect_true(all(builder_workflow_stage_availability(
+    state,
+    datasets_ready = TRUE
+  )))
+
+  revisited <- builder_reduce_workflow(
+    state,
+    list(type = "navigate", stage = "upload")
+  )
+  expect_identical(revisited$stage, "upload")
+  expect_identical(revisited$review_plan, plan)
+  expect_true(builder_workflow_confirmation_matches(revisited, plan))
+
+  expect_error(
+    builder_reduce_workflow(
+      builder_workflow_state(),
+      list(type = "navigate", stage = "review")
+    ),
+    "not available"
+  )
 })
 
 test_that("review confirmation rejects a changed BuildPlan", {

@@ -39,7 +39,7 @@ builder_group_colors_ui <- function(id, model) {
       h3("Group colors"),
       p(
         class = "group-color-empty",
-        "Select a Viewer Group to set its initial colors."
+        "Select an included Group to set its retained colors."
       )
     ))
   }
@@ -555,7 +555,7 @@ builder_group_detail_ui <- function(id, model) {
         } else if (identical(item$metadata_retained, FALSE)) {
           span(
             class = "viewer-metadata-policy is-excluded",
-            "Not included in the generated app."
+            "Not retained in the CRB."
           )
         }
       )

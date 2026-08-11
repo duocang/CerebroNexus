@@ -763,6 +763,13 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
 
   expect_false(grepl(".actionbar", layout, fixed = TRUE))
   expect_match(components, ".builder-workflow-progress", fixed = TRUE)
+  expect_match(components, ".is-unavailable", fixed = TRUE)
+  expect_match(
+    components,
+    ".builder-workflow-stage-link:focus-visible",
+    fixed = TRUE
+  )
+  expect_false(grepl('content: "Current "', components, fixed = TRUE))
   expect_match(components, ".builder-stage-actions", fixed = TRUE)
   for (stage in c("configure", "review", "build")) {
     expect_match(features, paste0(".builder-stage-", stage), fixed = TRUE)
@@ -1080,7 +1087,7 @@ test_that("Inspect shows compact detected-content tags instead of audit output",
   expect_false(grepl("projection(s) and", inspect, fixed = TRUE))
   expect_false(grepl("group_distribution$bucket", inspect, fixed = TRUE))
   expect_false(grepl("builder-stats-chart", inspect, fixed = TRUE))
-  expect_match(review, "Pages in the App", fixed = TRUE)
+  expect_match(review, "Content available from the CRBs", fixed = TRUE)
   expect_false(grepl("expected-versus-verified", review, fixed = TRUE))
   expect_false(grepl("Expected after build", review, fixed = TRUE))
   expect_false(grepl("Verified after build", review, fixed = TRUE))

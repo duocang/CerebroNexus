@@ -11,6 +11,91 @@ next_conflict_nonce <- function() {
   paste(session$token, conflict_nonce_sequence, sep = "-")
 }
 
+observeEvent(
+  input$build_output_mode,
+  {
+    requested <- identical(input$build_output_mode, "app")
+    enabled <- requested && isTRUE(app_capability$available)
+    build_mode(enabled)
+    if (!enabled) {
+      auth_enabled(FALSE)
+      auth_accounts(builder_auth_empty_accounts())
+      auth_validation(list(ok = TRUE, error = NULL))
+      session$sendCustomMessage("builder_auth_reset", list(reset = TRUE))
+    }
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input$build_initial_dataset,
+  {
+    value <- input$build_initial_dataset
+    if (builder_has_text(value %||% "")) {
+      build_initial_dataset(value)
+    }
+  },
+  ignoreInit = TRUE
+)
+
+output$build_output_options <- renderUI({
+  req(identical(workflow()$stage, "build"))
+  plan <- workflow()$review_plan
+  items <- plan$items %||% list()
+  dataset_choices <- stats::setNames(
+    vapply(items, `[[`, character(1), "id"),
+    vapply(items, `[[`, character(1), "name")
+  )
+  selected_dataset <- isolate(build_initial_dataset())
+  if (is.null(selected_dataset) && length(dataset_choices)) {
+    selected_dataset <- unname(dataset_choices[[1L]])
+  }
+  builder_build_options_ui(
+    builder_build_options(
+      make_app = isTRUE(build_mode()),
+      welcome_message = isolate(review_options()$welcome_message),
+      initial_page = isolate(review_options()$initial_page),
+      point_size = isolate(review_options()$point_size),
+      variable_to_compare = isolate(review_options()$variable_to_compare),
+      host = isolate(review_options()$host),
+      port = isolate(review_options()$port),
+      max_request_size = isolate(review_options()$max_request_size),
+      display_mode = isolate(review_options()$display_mode),
+      launch_browser = isolate(review_options()$launch_browser),
+      show_upload_ui = isolate(review_options()$show_upload_ui),
+      initial_dataset = selected_dataset
+    ),
+    app_available = isTRUE(app_capability$available),
+    app_reason = app_capability$reason,
+    initial_page_choices = review_page_contract()$choices,
+    dataset_choices = dataset_choices,
+    auth = list(
+      enabled = isTRUE(auth_enabled()),
+      account_count = as.integer(length(auth_accounts())),
+      error = auth_validation()$error %||% NULL,
+      available = isTRUE(auth_capability$available)
+    )
+  )
+})
+
+current_build_options <- function() {
+  options <- isolate(review_options())
+  builder_build_options(
+    make_app = isTRUE(isolate(build_mode())),
+    welcome_message = options$welcome_message,
+    initial_page = options$initial_page,
+    point_size = options$point_size,
+    variable_to_compare = options$variable_to_compare,
+    host = options$host,
+    port = options$port,
+    max_request_size = options$max_request_size,
+    display_mode = options$display_mode,
+    launch_browser = options$launch_browser,
+    show_upload_ui = options$show_upload_ui,
+    initial_dataset = isolate(build_initial_dataset())
+  )
+}
+
 output$build_stage_status_content <- renderUI({
   req(identical(workflow()$stage, "build"))
   model <- builder_build_stage_status_model(
@@ -92,14 +177,15 @@ builder_build_recovery_needs_fresh_review <- function(message) {
 builder_build_recovery_ready <- function() {
   state <- isolate(workflow())
   stored <- state$review_plan
-  auth_required <- isTRUE(isolate(auth_enabled())) ||
+  auth_required <- (isTRUE(isolate(build_mode())) &&
+    isTRUE(isolate(auth_enabled()))) ||
     (is.list(stored) && isTRUE(stored$app_auth$enabled))
   if (auth_required) {
     parsed <- builder_auth_validate_payload(TRUE, isolate(auth_accounts()))
-    expected <- if (is.list(stored)) {
+    expected <- if (is.list(stored) && isTRUE(stored$app_auth$enabled)) {
       stored$app_auth$account_count %||% 1L
     } else {
-      1L
+      length(isolate(auth_accounts()))
     }
     if (
       !isTRUE(parsed$ok) ||
@@ -230,7 +316,11 @@ enqueue_build_plan <- function(
 
 prepare_selected_output <- function(path, overwrite = FALSE) {
   isolate({
-    plan <- freeze_plan_for_output(path, overwrite = overwrite)
+    plan <- freeze_plan_for_output(
+      path,
+      overwrite = overwrite,
+      output_options = current_build_options()
+    )
     if (
       !inherits(plan, "builder_build_plan") ||
         !identical(plan$readiness, "ready")
@@ -382,7 +472,7 @@ validate_rail_removal <- function(next_state, id) {
   builder_validate_next_plan(
     next_state,
     out_dir = file.path(tempdir(), "cerebro-builder-output-preview"),
-    make_app = isTRUE(isolate(input$make_app)),
+    make_app = FALSE,
     overwrite = FALSE
   )
 }

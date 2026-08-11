@@ -86,6 +86,28 @@ test_that("staged workflow remains focused and overflow-free", {
       app$get_js("document.querySelectorAll('#continue_to_review').length"),
       1L
     )
+    expect_identical(
+      app$get_js(
+        "document.querySelectorAll('.builder-workflow-stage-link').length"
+      ),
+      1L
+    )
+    expect_identical(
+      app$get_js(
+        "document.querySelectorAll('.builder-workflow-progress .is-unavailable').length"
+      ),
+      2L
+    )
+    app$click("workflow_stage_upload")
+    app$wait_for_js(
+      "document.querySelector('[data-workflow-stage=upload]') !== null",
+      timeout = 10000
+    )
+    app$click("workflow_stage_configure")
+    app$wait_for_js(
+      "document.querySelector('[data-workflow-stage=configure]') !== null",
+      timeout = 10000
+    )
     builder_expect_no_horizontal_overflow(app)
 
     app$click("continue_to_review")
@@ -128,7 +150,11 @@ test_that("staged workflow remains focused and overflow-free", {
     )
     builder_expect_no_horizontal_overflow(app)
 
-    app$click("back_to_review")
+    app$wait_for_js(
+      "document.getElementById('workflow_stage_review') !== null",
+      timeout = 10000
+    )
+    app$click("workflow_stage_review")
     builder_wait_for_visible_stage_focus(app, "review")
     expect_identical(
       app$get_js(
@@ -136,7 +162,7 @@ test_that("staged workflow remains focused and overflow-free", {
       ),
       "true"
     )
-    app$click("back_to_settings")
+    app$click("workflow_stage_configure")
     builder_wait_for_visible_stage_focus(app, "configure")
     expect_identical(
       app$get_js(
