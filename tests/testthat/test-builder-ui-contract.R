@@ -784,6 +784,16 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
   )
   expect_false(grepl("builder_focus_review", js, fixed = TRUE))
   expect_false(grepl("builder_focus_build", js, fixed = TRUE))
+  expect_match(components, ".builder-stage-shell", fixed = TRUE)
+  expect_match(components, ".builder-stage-summary", fixed = TRUE)
+  expect_match(components, ".builder-stage-section", fixed = TRUE)
+  expect_match(components, ".builder-stage-footer", fixed = TRUE)
+  expect_match(components, ".builder-stage-footer-actions", fixed = TRUE)
+  expect_match(
+    components,
+    ".builder-stage-footer-actions .btn { width: 100%; }",
+    fixed = TRUE
+  )
   expect_match(
     js,
     'behavior: reducedMotion.matches ? "auto" : "smooth"',

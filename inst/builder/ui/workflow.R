@@ -63,6 +63,44 @@ builder_workflow_progress_ui <- function(
   )
 }
 
+builder_stage_header_ui <- function(stage, title, intro) {
+  tags$header(
+    class = "builder-stage-header",
+    tags$p(class = "builder-stage-eyebrow", stage),
+    tags$h2(title),
+    tags$p(class = "stage-intro", intro)
+  )
+}
+
+builder_stage_summary_ui <- function(...) {
+  tags$div(class = "builder-stage-summary", ...)
+}
+
+builder_stage_section_ui <- function(
+  title,
+  ...,
+  description = NULL,
+  class = NULL
+) {
+  tags$section(
+    class = paste("builder-stage-section", class),
+    tags$div(
+      class = "builder-stage-section-head",
+      tags$h3(title),
+      if (!is.null(description)) tags$p(description)
+    ),
+    ...
+  )
+}
+
+builder_stage_footer_ui <- function(status, ...) {
+  tags$footer(
+    class = "builder-stage-footer",
+    tags$p(class = "builder-stage-footer-status", status),
+    tags$div(class = "builder-stage-footer-actions", ...)
+  )
+}
+
 builder_configure_actions_ui <- function(message, can_continue) {
   stopifnot(
     is.character(message),

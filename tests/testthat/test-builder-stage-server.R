@@ -135,6 +135,40 @@ test_that("Builder shell and workflow UI separate all four stages", {
   expect_false(grepl("<input|<select|<textarea", confirmation_html))
 })
 
+test_that("shared stage layout primitives expose one visual grammar", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+
+  header <- app_env$builder_stage_header_ui(
+    "Data setup",
+    "Choose data to include",
+    "Define the content saved to each CRB file."
+  )
+  section <- app_env$builder_stage_section_ui(
+    "Core content",
+    htmltools::tags$p("Required content")
+  )
+  footer <- app_env$builder_stage_footer_ui(
+    "1 dataset ready",
+    shiny::actionButton("continue_to_review", "Continue")
+  )
+  html <- htmltools::renderTags(htmltools::tagList(
+    header,
+    section,
+    footer
+  ))$html
+
+  expect_match(html, "builder-stage-header", fixed = TRUE)
+  expect_match(html, "builder-stage-eyebrow", fixed = TRUE)
+  expect_match(html, "builder-stage-section", fixed = TRUE)
+  expect_match(html, "builder-stage-footer", fixed = TRUE)
+  expect_match(html, "builder-stage-footer-status", fixed = TRUE)
+  expect_match(html, "builder-stage-footer-actions", fixed = TRUE)
+  expect_match(html, 'id="continue_to_review"', fixed = TRUE)
+})
+
 test_that("Build stage exclusively owns its live status projection", {
   app <- builder_app_source_text()
   workflow_ui <- paste(
