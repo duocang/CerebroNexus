@@ -198,7 +198,7 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
   curl -fL -o data-raw/vdj_10x/pbmc3_b_contig.csv \
     "$BASE/vdj_v1_hs_pbmc3_b_filtered_contig_annotations.csv"
   ```
-- **object type**: `Cerebro_v1.3` cell subset of `example.crb` (T + B + Mono, 1,476 cells)
+- **object type**: `Cerebro` cell subset of `example.crb` (T + B + Mono, 1,476 cells)
 - **sampling**: `set.seed()`-pinned cell subset; TCR clonotypes assigned only to T cells, BCR only to B cells.
 - **cell-type field**: existing `cell_type` from `example.crb`
 - **embedded image**: none (n/a for immune repertoire)
@@ -217,7 +217,7 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
 - **organism / tissue**: human gene symbols / notional PBMC T-cell cohort. No organism was sampled.
 - **source**: **no source — every value is fabricated** by `data-raw/build_hla_tcr_demo.R`. Reused as vocabulary only, not as measurement: gene symbols (from `demo_full_tcr_bcr.crb`, so the Gene expression tab is searchable), IMGT V/J gene names, and European HLA allele frequency ranges.
 - **acquire**: none — no download; the generator is self-contained.
-- **object type**: `Cerebro_v1.3`, built from the current generator (`hla_typing` slot + methods present).
+- **object type**: `Cerebro`, built from the current generator (`hla_typing` slot + methods present).
 - **sampling**: **30 donors × 167 cells = 5,010 cells**, `set.seed(20260715)`. Composition: CD8 T 2,000 / CD4 T 1,750 / Treg 500 / B 500 / Monocytes 260; only T cells carry a receptor (TRB in 95%, TRA in 90%). Measured with the package's own motif core: **TRB 2,913 unique CDR3 → 440 nodes in 20 motifs (sizes 5–64, diameter 3–6)**; TRA 3,330 → 184 nodes in 10 motifs. ~1,200 genes.
 - **why synthetic**: the predecessor carried REAL CDR3s and rendered a **4-node** network (TRB: 456 unique CDR3 → 2 Hamming-1 pairs; TRA: 395 → 32 pairs). That is not a sample-size accident — an unselected polyclonal repertoire is sparse in CDR3 space, pair count grows ~n², and 5,000 cells only extrapolates to ~150 pairs. Dense motif networks in real data come from **selection** (public/antigen-conditioned receptors converge), not scale, so the families here are designed in: a branching walk in sequence space, one V/J per family, verified isolated at Hamming ≥ 2 from every other family and from the ~2,470 background singletons.
 - **HLA design**: 30 synthetic genotypes over HLA-A/B/C/DRB1 only (the loci `HLA_MVP_LOCI` enforces). Carrier counts for anchor alleles are fixed, not drawn, so the allele picker opens on **HLA-A*02:01 — 15 carrier / 15 non-carrier**. Families are tiered: 6 **strong** (members appear only in carriers ⇒ solid "Carrier" islands), 8 **weak** (carrier-enriched, leaks ⇒ Carrier + Mixed), 6 **none** (random donors ⇒ Mixed). The four largest families are concentrated on `HLA-A*02:01`, because one strong family per allele lights a single island and washes the rest to "Mixed". Class I anchors live in CD8 T, class II in CD4 T / Treg, so lineage MHC context stays coherent.
@@ -245,7 +245,7 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
   tar xzf data-raw/pubtcrs/pubtcrs_data_v1.tgz -C data-raw/pubtcrs
   ```
   The 349 MB archive is **not tracked** (`.gitignore`); only the built `.crb` ships.
-- **object type**: `Cerebro_v1.3` built from scratch (no source `.crb`).
+- **object type**: `Cerebro` built from scratch (no source `.crb`).
 - **sampling**: **everything is real measured data; nothing is synthesised.** TCRs are the paper's real HLA-associated public TCR-beta chains (V family + CDR3 aa) for six single alleles (`HLA-A*02:01`, `A*01:01`, `B*07:02`, `B*08:01`, `DRB1*04:01`, `DRB1*07:01`); donor↔TCR linkage is the real observed occurrence pattern; HLA is each donor's real genotype. Donors: the first 100 by donor index among those with HLA typing that carry ≥ 1 demo TCR (deterministic, *not* chosen to flatter any association). Restricted to single alleles because the canonical HLA table stores one allele per locus × copy, so the source's DR/DQ haplotype triples and DQ/DP α-β pairs cannot be represented.
 - **⚠️ association-conditioned (positive control, NOT independent evidence)**: the receptor set was chosen **using** the published HLA association, and donors were then kept only if they carry one of those receptors. **Any carrier / non-carrier contrast the page shows is put there by that selection**, and re-computing overlap on the same cohort the association was derived from is not independent replication. This is a positive control for the workflow. The `.crb` declares it in `technical_info$tcr_selection = "association-conditioned"`, and the app surfaces it as a warning above the Associations tables. The paper's p/q values are **not** stored in the `.crb` — only the TCRs that its association selected.
 - **receptor key**: this source identifies a receptor by (V family, CDR3), not CDR3 alone — 22 of its CDR3s occur on more than one V family. Declared as `technical_info$receptor_key = "v_gene+cdr3"`, which makes split-by-V the app's default so nodes match the source's own receptor identity.
@@ -281,7 +281,7 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
   done
   ```
   `-C -` resumes a partial transfer: the expression matrices are ~283 MB each. The donor genotypes are **not** in these files — see the HLA typing entry below.
-- **object type**: `Cerebro_v1.3` built from scratch (Seurat used only for normalisation/PCA/UMAP).
+- **object type**: `Cerebro` built from scratch (Seurat used only for normalisation/PCA/UMAP).
 - **sampling**: **everything is real measured data.** Cells are kept only if they carry a clonotype with **both** chains resolved **and** bound exactly **one** dextramer (multi-binders are dropped, not guessed at). The paired test is stricter than "has a `CTaa`": `combineTCR()` writes the literal string `NA` on a side it could not resolve, so an earlier build shipped 1,493 single-chain cells under a "paired" label. Deterministically subsampled to **3,000 cells per donor = 12,000 cells**, `set.seed(20260721)`, **after** the expression join so the balance is exact; matrix cut to the 2,000 most variable genes and kept **sparse** (`dgCMatrix`, like every other demo here — densifying it cost 184 MiB of memory and 4.5 MiB of installed package). Measured with the package's own motif core on the shipped object: **TRB 3,270 unique CDR3 → 169 nodes in 39 motifs (largest 30, 3,112 isolated); TRA 3,189 → 396 nodes in 141 motifs**.
 - **why this data set exists**: it answers the fair objection that the motif network is only legible on synthetic data. A CDR3 Hamming-1 network needs an **antigen-selected** repertoire; an unselected one is sparse in CDR3 space and no amount of cells fixes it. Measured on this same source: all cells unselected = 26,449 unique CDR3 → trips the size guard; dextramer-binding cells = 2,910 → 308 nodes in 75 motifs; the single Flu-MP `GILGFVFTL` epitope = 267 → **121 nodes in 7 motifs**, i.e. 45 % of the CDR3s against one immunodominant epitope collapse into seven families. That is measured convergence, not a designed fixture.
 - **cell-type field**: `cell_type` (single level, `CD8 T` — the cells were sorted CD8+). Declared via `technical_info$lineage_column`, so the app never has to infer it.
@@ -314,7 +314,7 @@ Built by `data-raw/build_trajectory_demo.R` (see [`trajectory.md`](trajectory.md
 - **organism / tissue**: human (hg) / PBMC B cells, healthy donor
 - **source**: derived entirely from `demo_full_tcr_bcr.crb` itself — no new download. The trajectory is computed on that demo's 915 B cells.
 - **acquire**: none (input is the already-built IR demo `.crb`)
-- **object type**: `monocle` `CellDataSet`, ordered by `DDRTree`; stored via `Cerebro_v1.3$addTrajectory("monocle2", "B_cell_maturation", trajectory)`.
+- **object type**: `monocle` `CellDataSet`, ordered by `DDRTree`; stored via `Cerebro$addTrajectory("monocle2", "B_cell_maturation", trajectory)`.
 - **sampling**: `set.seed(42)`; all 915 B cells of the demo; ordering filter on high-variance genes. The stored `meta` has `DR_1`, `DR_2`, `pseudotime`, `state`.
 - **cell-type field**: `state` (monocle2 DDRTree state) / continuous `pseudotime`
 - **embedded image**: none (n/a for trajectory)

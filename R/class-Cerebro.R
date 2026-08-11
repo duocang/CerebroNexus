@@ -4,22 +4,22 @@ setOldClass(Classes = 'package_version')
 #' R6 class in which data sets will be stored for visualization in Cerebro.
 #'
 #' @description
-#' A \code{Cerebro_v1.3} object is an R6 class that contains several types of
+#' A \code{Cerebro} object is an R6 class that contains several types of
 #' data that can be visualized in Cerebro.
 #'
 #' @return
-#' A new \code{Cerebro_v1.3} object.
+#' A new \code{Cerebro} object.
 #'
 #' @importFrom R6 R6Class
 #
 #' @export
 #
-Cerebro_v1.3 <- R6::R6Class(
-  'Cerebro_v1.3',
+Cerebro <- R6::R6Class(
+  'Cerebro',
 
   ## public fields and methods
   public = list(
-    #' @field version cerebroApp version that was used to create the object.
+    #' @field version Exporter package version that was used to create the object.
     version = c(),
 
     #' @field experiment \code{list} that contains meta data about the data set,
@@ -138,10 +138,10 @@ Cerebro_v1.3 <- R6::R6Class(
     ##------------------------------------------------------------------------##
 
     #' @description
-    #' Create a new \code{Cerebro_v1.3} object.
+    #' Create a new \code{Cerebro} object.
     #'
     #' @return
-    #' A new \code{Cerebro_v1.3} object.
+    #' A new \code{Cerebro} object.
     initialize = function() {
       self$experiment <- list(
         experiment_name = NULL,
@@ -152,7 +152,7 @@ Cerebro_v1.3 <- R6::R6Class(
     },
 
     #' @description
-    #' Set the version of \code{cerebroApp} that was used to generate this
+    #' Set the exporter package version that was used to generate this
     #' object.
     #'
     #' @param version Version to set.
@@ -161,7 +161,7 @@ Cerebro_v1.3 <- R6::R6Class(
     },
 
     #' @description
-    #' Get the version of \code{cerebroApp} that was used to generate this
+    #' Get the exporter package version that was used to generate this
     #' object.
     #'
     #' @return
@@ -1459,9 +1459,9 @@ Cerebro_v1.3 <- R6::R6Class(
     print = function() {
       message(
         paste0(
-          'class: Cerebro_v1.3',
+          'class: Cerebro',
           '\n',
-          'cerebroApp version: ',
+          'exporter package version: ',
           self$getVersion(),
           '\n',
           'experiment name: ',

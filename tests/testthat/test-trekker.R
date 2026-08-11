@@ -1,7 +1,7 @@
 # test-trekker.R — Trekker single-cell spatial-mapping page.
 #
 # Covers the parts of the feature that are pure and don't need a browser: the
-# Cerebro_v1.3 `trekker` slot round-trip (which also gates whether the tab
+# Cerebro `trekker` slot round-trip (which also gates whether the tab
 # appears), and the two pure helpers that drive the gene picker and the
 # meta-field colouring. The pure helpers are sourced from the same inst/ file the
 # app sources at runtime (see helper-trekker-helpers.R).
@@ -9,14 +9,14 @@
 # ---- R6 slot: addTrekker / getTrekker round-trip -------------------------- ##
 
 test_that("getTrekker defaults to NULL so the tab stays hidden for old .crb", {
-  obj <- Cerebro_v1.3$new()
+  obj <- Cerebro$new()
   # An object that predates the feature carries no trekker slot; the tab is
   # inserted only when getTrekker() is non-NULL, so this is what keeps it hidden.
   expect_null(obj$getTrekker())
 })
 
 test_that("addTrekker stores the payload and getTrekker returns it verbatim", {
-  obj <- Cerebro_v1.3$new()
+  obj <- Cerebro$new()
   payload <- list(
     barcodes = c("AAA", "CCC"),
     clusters = c(0L, 1L),
@@ -29,7 +29,7 @@ test_that("addTrekker stores the payload and getTrekker returns it verbatim", {
 })
 
 test_that("addTrekker rejects a non-list", {
-  obj <- Cerebro_v1.3$new()
+  obj <- Cerebro$new()
   expect_error(obj$addTrekker(42), "must be a list")
   expect_null(obj$getTrekker())
 })

@@ -41,6 +41,34 @@ test_that("the package exposes one versionless launcher", {
   }
 })
 
+test_that("the package exposes a versionless Cerebro data class", {
+  exports <- getNamespaceExports("CerebroNexus")
+  r_dir <- testthat::test_path("..", "..", "R")
+
+  expect_true("Cerebro" %in% exports)
+  expect_false(any(grepl("^Cerebro_v", exports)))
+  if (dir.exists(r_dir)) {
+    r_files <- basename(list.files(r_dir))
+    expect_false(any(grepl("^class-Cerebro_v.*[.]R$", r_files)))
+  }
+
+  object <- Cerebro$new()
+  expect_s3_class(object, "Cerebro")
+  expect_true(inherits(object, "R6"))
+  expect_true(is.function(object$getExpressionMatrix))
+})
+
+test_that("every bundled Cerebro fixture uses the versionless data class", {
+  example_dir <- file.path(versionless_inst_dir(), "extdata", "examples")
+  files <- sort(list.files(example_dir, pattern = "[.]crb$", full.names = TRUE))
+
+  expect_gt(length(files), 0L)
+  for (path in files) {
+    object <- readRDS(path)
+    expect_true(inherits(object, "Cerebro"), info = basename(path))
+  }
+})
+
 test_that("current code and documentation do not describe a legacy viewer version", {
   root <- normalizePath(testthat::test_path("..", ".."), mustWork = TRUE)
   roots <- file.path(root, c("R", "man", "vignettes", "tests"))
