@@ -26,7 +26,7 @@ When adding a dataset (spatial, trajectory, or otherwise), **copy the template a
 
 | Field | Meaning |
 |-------|---------|
-| **type** | `immune_repertoire` \| `spatial` \| `trajectory` \| `trekker` |
+| **type** | `omnibus` \| `immune_repertoire` \| `spatial` \| `trajectory` \| `trekker` |
 | **technology** | assay/platform (e.g. `10x Visium`, `Slide-seq v2`, `Monocle3`) |
 | **dropdown label** | exact string shown in the app's dataset switcher |
 | **organism / tissue** | species + tissue of origin |
@@ -58,6 +58,27 @@ When adding a dataset (spatial, trajectory, or otherwise), **copy the template a
 - **build**: `data-raw/<script>.R` → `<function>()`
 - **output**: `inst/extdata/examples/demo_<type>_<name>.crb` (~X MB)
 ```
+
+---
+
+## Omnibus
+
+### demo_omnibus.crb
+- **type**: omnibus
+- **technology**: deterministic synthetic scRNA-seq plus a Seurat v5 `FOV`
+- **dropdown label**: `Omnibus`
+- **organism / tissue**: synthetic human multi-lineage tissue-like fixture
+- **source**: generated locally from fixed seed `20260810`; no external data
+- **acquire**: `Rscript data-raw/build_omnibus_demo.R`
+- **object type**: Seurat object with an RNA assay, deterministic reductions, one centroid FOV, and documented `misc` payloads
+- **sampling**: no sampling; exactly 120 synthetic cells and 80 synthetic genes
+- **cell-type field**: `cell_type`
+- **embedded image**: synthetic RGB tissue-like PNG stored as a base64 data URI with `[0, 1000] x [0, 800]` coordinate bounds
+- **license**: generated project fixture, distributed under the repository license
+- **build**: `data-raw/build_omnibus_demo.R`
+- **output**: `inst/extdata/examples/demo_omnibus_seurat.rds` (~0.1 MB) + `inst/extdata/examples/demo_omnibus.crb` (~0.4 MB)
+
+See [`omnibus.md`](omnibus.md) for the complete feature inventory and conversion contract.
 
 ---
 

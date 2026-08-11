@@ -34,6 +34,42 @@ test_that("addTrekker rejects a non-list", {
   expect_null(obj$getTrekker())
 })
 
+test_that("exportFromSeurat passes through a Trekker misc payload", {
+  skip_if_not_installed("Seurat")
+  skip_if_not_installed("SeuratObject")
+
+  object <- make_synthetic_spatial_seurat(n_cells = 12, n_genes = 10, seed = 9)
+  cells <- colnames(object)
+  payload <- list(
+    coordinates = data.frame(
+      cell = cells,
+      x = seq_along(cells),
+      y = rep(1, length(cells))
+    ),
+    metadata = data.frame(cell = cells, cell_type = "synthetic"),
+    positioning_qc = list(pct_positioned = 100),
+    morans_i = data.frame(gene = "Gene1", morans_i = 0.5),
+    evidence = list()
+  )
+  object@misc$trekker <- payload
+  output <- tempfile(fileext = ".crb")
+
+  exportFromSeurat(
+    object = object,
+    assay = "Spatial",
+    slot = "data",
+    file = output,
+    experiment_name = "Synthetic Trekker",
+    organism = "mouse",
+    groups = c("seurat_clusters", "cell_type_final"),
+    nUMI = "nCount_Spatial",
+    nGene = "nFeature_Spatial",
+    verbose = FALSE
+  )
+
+  expect_equal(readRDS(output)$getTrekker(), payload)
+})
+
 # ---- trekker_gene_suggest ------------------------------------------------- ##
 
 test_that("trekker_gene_suggest keeps Moran + marker genes present in the matrix", {

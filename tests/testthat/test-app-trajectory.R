@@ -63,10 +63,10 @@ test_that("trajectory module loads without breaking the main app", {
   app$set_inputs(sidebar = "loadData")
   app$wait_for_idle(timeout = 10000)
 
-  # Default data set (1,476 cells) now carries the trajectory; confirm the
+  # Default Omnibus data set (120 cells) carries the trajectory; confirm the
   # Data info tab still renders its cell count normally alongside it.
   cells_box <- app$get_value(output = "load_data_number_of_cells")
-  expect_true(grepl("1,476", cells_box$html))
+  expect_true(grepl("120", cells_box$html))
 })
 
 test_that("trajectory projection fits the viewport with selectors in parameters", {

@@ -24,11 +24,14 @@ Cerebro.options <<- list(
   ## the UMAP, the cell-type composition, and the conditional tabs (Immune
   ## Repertoire / Trajectory on the PBMC set, Spatial on the spatial sets).
   ## They are embedded-backend .crb files, so no h5 matrix is configured. The
-  ## PBMC set (Full, T+B) is listed first and loaded by default
-  ## (crb_pick_smallest_file = FALSE); it carries TCR + BCR and a monocle2
-  ## B-cell trajectory, so it surfaces both the Immune Repertoire and Trajectory
-  ## tabs (dynamically inserted by insertConditionalTab).
+  ## The deterministic synthetic Omnibus set is listed first and loaded by default
+  ## (crb_pick_smallest_file = FALSE). It is generated from the bundled Seurat
+  ## RDS through convertSeuratToCerebro() and covers the complete data surface,
+  ## including FOV coordinates plus an embedded synthetic tissue image. Rebuild
+  ## it offline with data-raw/build_omnibus_demo.R.
   "crb_file_to_load" = c(
+    "Omnibus" = "extdata/examples/demo_omnibus.crb",
+    ## The PBMC set remains a focused real-data TCR/BCR/trajectory fixture.
     "PBMC - Full (T+B)" = "extdata/examples/demo_full_tcr_bcr.crb",
     ## REAL public spatial data, one per technology (down-sampled). The bracketed
     ## label states the platform. All four flow through the same platform-

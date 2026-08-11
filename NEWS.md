@@ -6,6 +6,14 @@
   version-suffixed constructor was removed; existing `.crb` files remain
   readable and bundled examples were reserialized with the new class.
 
+## Data and conversion
+
+- A deterministic synthetic Omnibus Seurat object now provides an offline,
+  reproducible Seurat-to-CRB integration fixture and is the default bundled
+  Viewer dataset. Its converted FOV retains an embedded synthetic tissue image,
+  and the same object covers marker, enrichment, trajectory, repertoire, HLA,
+  Trekker, tree, and extra-material paths.
+
 # CerebroNexus 4.1
 
 ## Viewer
