@@ -54,9 +54,11 @@
   width: 100%;
   max-width: 100%;
 }
-#builder-workspace { padding-bottom: 5rem; }
+#builder-workspace { padding-bottom: 5.5rem; }
 #builder-workspace .builder-workflow-progress {
-  position: sticky;
+  position: fixed;
+  left: calc(19.5rem + (2 * var(--builder-page-gutter)) + var(--builder-section-gap));
+  right: var(--builder-page-gutter);
   bottom: max(.75rem, env(safe-area-inset-bottom));
   z-index: 12;
   background: var(--c-surface);
@@ -65,7 +67,6 @@
   box-shadow: var(--shadow-2);
   padding: .5rem;
 }
-
 /* The dataset navigator has a different purpose from the workspace. On
    desktop it gets its own scrollport; the workspace keeps the document
    scrollport so long forms and result cards always remain reachable. */
@@ -352,6 +353,9 @@
     grid-template-columns: minmax(0, 1fr);
     gap: var(--builder-section-gap);
     padding-inline: var(--builder-page-gutter);
+  }
+  #builder-workspace .builder-workflow-progress {
+    left: var(--builder-page-gutter);
   }
   .rail-summary { display: flex; }
   .rail-manager-backdrop.is-open {
