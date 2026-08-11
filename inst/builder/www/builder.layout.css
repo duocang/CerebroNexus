@@ -57,15 +57,21 @@
 #builder-workspace { padding-bottom: 5.5rem; }
 #builder-workspace .builder-workflow-progress {
   position: fixed;
-  left: calc(19.5rem + (2 * var(--builder-page-gutter)) + var(--builder-section-gap));
+  left: var(--builder-page-gutter);
   right: var(--builder-page-gutter);
-  bottom: max(.75rem, env(safe-area-inset-bottom));
+  bottom: max(.5rem, env(safe-area-inset-bottom));
   z-index: 12;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-2);
   padding: .5rem;
+  transition: opacity var(--duration-base) var(--ease), transform var(--duration-base) var(--ease);
+}
+#builder-workspace .builder-workflow-progress.is-scrolling {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(100% + 1rem));
 }
 /* The dataset navigator has a different purpose from the workspace. On
    desktop it gets its own scrollport; the workspace keeps the document

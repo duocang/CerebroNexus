@@ -2,6 +2,22 @@
 (function () {
   "use strict";
 
+  var workflowProgressScrollTimer = null;
+  function updateWorkflowProgressVisibility() {
+    var progress = document.querySelector(".builder-workflow-progress");
+    if (!progress) return;
+    progress.classList.add("is-scrolling");
+    window.clearTimeout(workflowProgressScrollTimer);
+    workflowProgressScrollTimer = window.setTimeout(function () {
+      progress.classList.remove("is-scrolling");
+    }, 250);
+  }
+  window.addEventListener("scroll", updateWorkflowProgressVisibility, { passive: true });
+  window.addEventListener("resize", function () {
+    var progress = document.querySelector(".builder-workflow-progress");
+    if (progress) progress.classList.remove("is-scrolling");
+  });
+
   var narrowManager = window.matchMedia("(max-width: 58rem)");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   var statusTimer = null;
