@@ -73,7 +73,7 @@ test_that("utility wrappers for trajectory exist", {
 })
 
 test_that("getTrajectory bug is fixed in class definition", {
-  cls <- Cerebro_v1.3
+  cls <- Cerebro
   methods_text <- paste(
     deparse(cls$public_methods$getTrajectory),
     collapse = "\n"

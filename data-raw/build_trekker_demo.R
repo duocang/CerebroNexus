@@ -24,7 +24,7 @@
 ##
 ## WHAT THIS SCRIPT PRODUCES
 ##   inst/extdata/examples/demo_trekker.crb  (target: <= 5 MB, self-contained)
-##   A proper Cerebro_v1.3 object (whole-transcriptome expression + UMAP +
+##   A proper Cerebro object (whole-transcriptome expression + UMAP +
 ##   cell-type / cluster groups) PLUS a `trekker` slot carrying the Trekker
 ##   page's content: three measured coordinate orientations, positioning QC in
 ##   the vendor's own field names, the upstream (vendor) Moran's I table, and

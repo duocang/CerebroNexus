@@ -1,5 +1,5 @@
 copy_cerebro_fixture_bindings <- function(exclude = character()) {
-  source <- Cerebro_v1.3$new()
+  source <- Cerebro$new()
   payload <- new.env(parent = emptyenv())
   bindings <- setdiff(ls(source, all.names = TRUE), exclude)
   for (binding in bindings) {
@@ -41,7 +41,7 @@ write_bundle_crb <- function(
     ## members, while mutable data fields such as expression remain writable.
     lockEnvironment(payload, bindings = FALSE)
   } else {
-    payload <- Cerebro_v1.3$new()
+    payload <- Cerebro$new()
     if (!is.null(backend)) {
       payload$setExpressionBackend(
         type = backend$type,
@@ -212,7 +212,7 @@ new_backend_contract_object <- function(backend = NULL, legacy = FALSE) {
     lockEnvironment(object, bindings = TRUE)
     return(object)
   }
-  object <- Cerebro_v1.3$new()
+  object <- Cerebro$new()
   object$expression_backend <- backend
   object
 }
@@ -350,7 +350,7 @@ expect_real_backend_bundle_roundtrip <- function(type) {
     "expression.bpcells"
   }
   backend_path <- file.path(source, location)
-  object <- Cerebro_v1.3$new()
+  object <- Cerebro$new()
   object$setMetaData(data.frame(
     group = c("A", "A", "B", "B"),
     row.names = c("Cell1", "Cell2", "Cell3", "Cell4")
@@ -855,7 +855,7 @@ test_that("malformed backend descriptors are rejected", {
   lockEnvironment(broken, bindings = TRUE)
   broken_path <- file.path(root, "broken.crb")
   saveRDS(broken, broken_path)
-  inconsistent <- Cerebro_v1.3$new()
+  inconsistent <- Cerebro$new()
   inconsistent$expression_backend <- list(
     type = "embedded",
     location = "matrix.h5"
@@ -891,7 +891,7 @@ test_that("arbitrary RDS objects are not accepted as Cerebro data", {
 test_that("a Cerebro class label alone is not a valid Cerebro object", {
   root <- withr::local_tempdir()
   path <- file.path(root, "impostor.rds")
-  saveRDS(structure(42, class = "Cerebro_v1.3"), path)
+  saveRDS(structure(42, class = "Cerebro"), path)
 
   expect_error(
     build_test_app(c("Impostor" = path), file.path(root, "app")),
@@ -903,7 +903,7 @@ test_that("a Cerebro class label alone is not a valid Cerebro object", {
 test_that("an empty classed environment is not a Cerebro object", {
   root <- withr::local_tempdir()
   empty <- new.env(parent = emptyenv())
-  class(empty) <- c("Cerebro_v1.3", "R6")
+  class(empty) <- c("Cerebro", "R6")
   path <- file.path(root, "empty.crb")
   saveRDS(empty, path)
 
@@ -917,7 +917,7 @@ test_that("an empty classed environment is not a Cerebro object", {
 test_that("the minimum runtime Cerebro API is required before publication", {
   root <- withr::local_tempdir()
   incomplete <- new.env(parent = emptyenv())
-  class(incomplete) <- c("Cerebro_v1.3", "R6")
+  class(incomplete) <- c("Cerebro", "R6")
   for (method in c("getVersion", "getMetaData", "getCellNames")) {
     assign(method, function(...) NULL, envir = incomplete)
   }

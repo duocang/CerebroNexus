@@ -36,21 +36,19 @@ reference:
       - extractMonocleTrajectory
   - title: "Internal"
     contents:
-      - Cerebro_v1.3
+      - Cerebro
       - starts_with(".")
 
 articles:
   - title: "Workflows"
     navbar: Workflows
     contents:
-      - cerebroApp_workflow_Seurat
+      - cerebronexus_workflow_seurat
       - export_a_data_set_in_SCE_format
-  - title: "Cerebro interface"
+  - title: "Data model"
     navbar: Interface
     contents:
-      - Cerebro_interface_v1.2
-      - overview_of_cerebro_v1.3_class
-      - release_notes_v1.3
+      - overview_of_cerebro_class
   - title: "How-to guides"
     navbar: How-to
     contents:

@@ -188,19 +188,21 @@ getMarkerGenes <- function(
     }
 
     ## try up to 3 times to retrieve genes in "cell surface" GO term
-    attempt <- 1
-    while (
-      !exists('genes_on_cell_surface') &&
-        attempt <= 3
-    ) {
+    for (attempt in seq_len(3L)) {
       try(
-        genes_on_cell_surface <- biomaRt::getBM(
-          attributes = temp_attributes,
-          filters = 'go',
-          values = 'GO:0009986',
-          mart = biomaRt::useMart('ensembl', dataset = temp_dataset)
-        )[, 1]
+        {
+          genes_on_cell_surface <- biomaRt::getBM(
+            attributes = temp_attributes,
+            filters = 'go',
+            values = 'GO:0009986',
+            mart = biomaRt::useMart('ensembl', dataset = temp_dataset)
+          )[, 1]
+        },
+        silent = TRUE
       )
+      if (exists('genes_on_cell_surface')) {
+        break
+      }
     }
 
     ## if genes could not be retrieved, show log message

@@ -43,7 +43,7 @@ test_that("getSpatialData errors on unknown spatial entry", {
 })
 
 test_that("spatial accessor methods are defined on the class", {
-  cls <- Cerebro_v1.3
+  cls <- Cerebro
   for (m in c("addSpatialData", "getSpatialData", "availableSpatial")) {
     expect_true(is.function(cls$public_methods[[m]]), info = m)
   }
@@ -53,7 +53,7 @@ test_that("addSpatialData validates its input structure", {
   # A malformed entry (missing coordinates/expression) must be rejected so the
   # class contract getSpatialData() relies on cannot be violated silently.
   cls_text <- paste(
-    deparse(Cerebro_v1.3$public_methods$addSpatialData),
+    deparse(Cerebro$public_methods$addSpatialData),
     collapse = "\n"
   )
   expect_match(cls_text, "coordinates", fixed = TRUE)
@@ -106,7 +106,7 @@ test_that("all spatial module files parse without errors", {
 })
 
 test_that("ImageFeaturePlot reaches getExpressionMatrix as a Cerebro method", {
-  # getExpressionMatrix / getMeanExpressionForCells are Cerebro_v1.3 R6 methods,
+  # getExpressionMatrix / getMeanExpressionForCells are Cerebro R6 methods,
   # not bare functions — they must be called through data_set()$. A bare
   # getExpressionMatrix(...) crashed the ImageFeaturePlot (gene-coloured) path
   # with "could not find function". Guard every expression-method call in the

@@ -236,7 +236,7 @@ output[["enriched_pathways_table"]] <- DT::renderDataTable({
 
       ## ... if there is at least 1 row, create proper table
     } else if (nrow(results_df) > 0) {
-      ## check if data frame comes from the enrichR cerebroApp function
+      ## check whether the data frame comes from the enrichR helper
       columns_hide <- c()
       if (
         any(grepl(colnames(results_df), pattern = "Term")) &&
