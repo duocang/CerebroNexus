@@ -799,6 +799,32 @@ div.viewer-trajectory-preview {
   color: var(--builder-tag-extra-text);
 }
 
+/* Configure keeps its final decision row near the visual end of short forms. */
+.builder-stage-configure {
+  min-height: calc(100dvh - 11rem);
+  display: flex;
+  flex-direction: column;
+}
+.builder-configure-actions {
+  margin-top: auto;
+  padding-top: var(--space-6);
+}
+.builder-app-control {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+}
+.builder-app-control fieldset,
+.builder-app-control .form-group,
+.builder-app-control .checkbox,
+.builder-app-control .app-capability-reason { margin: 0; }
+@media (max-width: 40rem) {
+  .builder-stage-configure { min-height: auto; }
+  .builder-configure-actions { margin-top: var(--space-5); }
+  .builder-app-control { align-items: flex-start; flex-direction: column; gap: .2rem; }
+}
+
 /* ---- optional analyses and progressive disclosure --------------------- */
 .stage-intro,
 .builder-measure-copy {
