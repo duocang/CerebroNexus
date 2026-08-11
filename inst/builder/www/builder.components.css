@@ -902,6 +902,7 @@
 .builder-stage-actions,
 .builder-workflow-progress ol,
 .builder-workflow-progress li { min-width: 0; }
+.builder-build-options-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
 .builder-workflow-progress ol {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

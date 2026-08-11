@@ -14,6 +14,9 @@ next_conflict_nonce <- function() {
 observeEvent(
   input$build_output_mode,
   {
+    if (builder_mutations_locked(isolate(build_flow()), isolate(protocol()))) {
+      return()
+    }
     requested <- identical(input$build_output_mode, "app")
     enabled <- requested && isTRUE(app_capability$available)
     build_mode(enabled)
@@ -30,6 +33,9 @@ observeEvent(
 observeEvent(
   input$build_initial_dataset,
   {
+    if (builder_mutations_locked(isolate(build_flow()), isolate(protocol()))) {
+      return()
+    }
     value <- input$build_initial_dataset
     if (builder_has_text(value %||% "")) {
       build_initial_dataset(value)
@@ -41,6 +47,7 @@ observeEvent(
 output$build_output_options <- renderUI({
   req(identical(workflow()$stage, "build"))
   plan <- workflow()$review_plan
+  controls_disabled <- builder_mutations_locked(build_flow(), protocol())
   items <- plan$items %||% list()
   dataset_choices <- stats::setNames(
     vapply(items, `[[`, character(1), "id"),
@@ -74,7 +81,8 @@ output$build_output_options <- renderUI({
       account_count = as.integer(length(auth_accounts())),
       error = auth_validation()$error %||% NULL,
       available = isTRUE(auth_capability$available)
-    )
+    ),
+    controls_disabled = controls_disabled
   )
 })
 
@@ -253,7 +261,8 @@ builder_build_attempt_failed <- function(message) {
 
 enqueue_build_plan <- function(
   plan,
-  auth_accounts
+  auth_accounts,
+  expected_identity = builder_final_build_identity(plan)
 ) {
   if (!isTRUE(builder_require_confirmed_build_plan(plan, plan$out_dir))) {
     return(invisible(FALSE))
@@ -276,6 +285,11 @@ enqueue_build_plan <- function(
     ))
   }
   plan <- unserialize(serialize(plan, NULL, version = 3L))
+  if (!identical(builder_final_build_identity(plan), expected_identity)) {
+    return(builder_build_attempt_failed(
+      "Output settings changed before the build was queued. Try Build again."
+    ))
+  }
   parsed_auth <- builder_auth_validate_payload(
     isTRUE(plan$app_auth$enabled),
     auth_accounts
@@ -350,7 +364,12 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
       )
       return(invisible(FALSE))
     }
-    enqueue_build_plan(plan, auth_accounts = isolate(auth_accounts()))
+    request_identity <- builder_final_build_identity(plan)
+    enqueue_build_plan(
+      plan,
+      auth_accounts = isolate(auth_accounts()),
+      expected_identity = request_identity
+    )
   })
 }
 

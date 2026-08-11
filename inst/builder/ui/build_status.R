@@ -87,9 +87,15 @@ builder_build_options_ui <- function(
     account_count = 0L,
     error = NULL,
     available = TRUE
-  )
+  ),
+  controls_disabled = FALSE
 ) {
-  stopifnot(inherits(options, "builder_build_options"))
+  stopifnot(
+    inherits(options, "builder_build_options"),
+    is.logical(controls_disabled),
+    length(controls_disabled) == 1L,
+    !is.na(controls_disabled)
+  )
   tags <- htmltools::tags
   div <- tags$div
   h3 <- tags$h3
@@ -151,93 +157,97 @@ builder_build_options_ui <- function(
   tags$section(
     class = "builder-build-options",
     h3("Output type"),
-    output_mode,
-    if (!isTRUE(app_available)) {
-      p(
-        class = "hint builder-app-capability-reason",
-        app_reason %||% "Viewer App creation is unavailable."
-      )
-    },
-    if (isTRUE(options$make_app)) {
-      div(
-        class = "builder-app-settings builder-card builder-section",
-        h3("Viewer App settings"),
-        shiny::textInput(
-          "build_welcome_message",
-          "Welcome message",
-          options$app$welcome_message
-        ),
+    tags$fieldset(
+      class = "builder-build-options-fields",
+      disabled = if (controls_disabled) "disabled",
+      output_mode,
+      if (!isTRUE(app_available)) {
+        p(
+          class = "hint builder-app-capability-reason",
+          app_reason %||% "Viewer App creation is unavailable."
+        )
+      },
+      if (isTRUE(options$make_app)) {
         div(
-          class = "builder-app-network-fields",
-          shiny::textInput("build_host", "Host", options$app$host),
-          shiny::numericInput(
-            "build_port",
-            "Port",
-            options$app$port,
-            min = 1,
-            max = 65535
-          )
-        ),
-        shiny::checkboxInput(
-          "build_launch_browser",
-          "Open App after build",
-          options$app$launch_browser
-        ),
-        shiny::checkboxInput(
-          "build_show_upload_ui",
-          "Allow visitor uploads",
-          options$app$show_upload_ui
-        ),
-        if (length(dataset_choices)) {
-          shiny::selectInput(
-            "build_initial_dataset",
-            "Starting dataset",
-            choices = dataset_choices,
-            selected = selected_dataset
-          )
-        },
-        shiny::selectInput(
-          "build_initial_page",
-          "Starting page",
-          choices = initial_page_choices,
-          selected = selected_page
-        ),
-        require_login,
-        if (!auth_available) {
-          p(
-            class = "hint builder-auth-dependency",
-            "Login requires optional authentication packages."
-          )
-        },
-        if (isTRUE(auth$enabled) && auth_available) {
+          class = "builder-app-settings builder-card builder-section",
+          h3("Viewer App settings"),
+          shiny::textInput(
+            "build_welcome_message",
+            "Welcome message",
+            options$app$welcome_message
+          ),
           div(
-            class = "review-auth-controls",
-            span(
-              class = "review-auth-summary",
-              if (identical(auth$account_count, 1L)) {
-                "Login required · 1 account"
-              } else if (auth$account_count > 1L) {
-                paste0("Login required · ", auth$account_count, " accounts")
-              } else {
-                "Add at least one account"
+            class = "builder-app-network-fields",
+            shiny::textInput("build_host", "Host", options$app$host),
+            shiny::numericInput(
+              "build_port",
+              "Port",
+              options$app$port,
+              min = 1,
+              max = 65535
+            )
+          ),
+          shiny::checkboxInput(
+            "build_launch_browser",
+            "Open App after build",
+            options$app$launch_browser
+          ),
+          shiny::checkboxInput(
+            "build_show_upload_ui",
+            "Allow visitor uploads",
+            options$app$show_upload_ui
+          ),
+          if (length(dataset_choices)) {
+            shiny::selectInput(
+              "build_initial_dataset",
+              "Starting dataset",
+              choices = dataset_choices,
+              selected = selected_dataset
+            )
+          },
+          shiny::selectInput(
+            "build_initial_page",
+            "Starting page",
+            choices = initial_page_choices,
+            selected = selected_page
+          ),
+          require_login,
+          if (!auth_available) {
+            p(
+              class = "hint builder-auth-dependency",
+              "Login requires optional authentication packages."
+            )
+          },
+          if (isTRUE(auth$enabled) && auth_available) {
+            div(
+              class = "review-auth-controls",
+              span(
+                class = "review-auth-summary",
+                if (identical(auth$account_count, 1L)) {
+                  "Login required · 1 account"
+                } else if (auth$account_count > 1L) {
+                  paste0("Login required · ", auth$account_count, " accounts")
+                } else {
+                  "Add at least one account"
+                }
+              ),
+              tags$button(
+                type = "button",
+                class = "btn builder-auth-open",
+                if (auth$account_count > 0L) {
+                  "Edit accounts"
+                } else {
+                  "Set up accounts"
+                }
+              ),
+              if (builder_stage_has_text(auth$error %||% "")) {
+                p(class = "hint review-auth-error", auth$error)
               }
-            ),
-            tags$button(
-              type = "button",
-              class = "btn builder-auth-open",
-              if (auth$account_count > 0L) {
-                "Edit accounts"
-              } else {
-                "Set up accounts"
-              }
-            ),
-            if (builder_stage_has_text(auth$error %||% "")) {
-              p(class = "hint review-auth-error", auth$error)
-            }
-          )
-        }
-      )
-    }
+            )
+          }
+        )
+      }
+    )
   )
 }
 

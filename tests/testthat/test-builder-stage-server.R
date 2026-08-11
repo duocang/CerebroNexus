@@ -506,7 +506,11 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
     expect_false(validate_review_inputs(invalid))
     expect_false(review_validation()$ok)
     expect_match(review_validation()$error, "Review options", fixed = TRUE)
-    invalid_plan <- frozen_review_plan()
+    expect_identical(frozen_review_plan()$error_code, "empty_release")
+    invalid_plan <- freeze_plan_for_output(
+      tempfile("invalid-viewer-options-"),
+      output_options = builder_build_options(make_app = TRUE)
+    )
     expect_identical(invalid_plan$error_code, "invalid_review_options")
     expect_false(app_env$builder_review_can_build(invalid_plan))
 
@@ -779,6 +783,28 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
       list(type = "confirm_review", plan = review_plan)
     ))
     expect_identical(workflow()$stage, "build")
+
+    review_validation(list(
+      ok = FALSE,
+      error = "Viewer App options are invalid."
+    ))
+    session$flushReact()
+    expect_identical(workflow()$stage, "build")
+    expect_true(builder_build_confirmation_matches(frozen_review_plan()))
+    invalid_app_plan <- freeze_plan_for_output(
+      tempfile("invalid-app-output-"),
+      output_options = current_build_options()
+    )
+    expect_identical(invalid_app_plan$error_code, "invalid_review_options")
+    build_mode(FALSE)
+    crb_plan <- freeze_plan_for_output(
+      tempfile("valid-crb-output-"),
+      output_options = current_build_options()
+    )
+    expect_true(app_env$builder_review_can_build(crb_plan))
+    build_mode(TRUE)
+    review_validation(list(ok = TRUE, error = NULL))
+
     auth_accounts(accounts_b)
     session$flushReact()
 
@@ -818,6 +844,11 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
       capture.output(dput(plan_b))
     )))
     expect_true(builder_build_confirmation_matches(plan_b))
+
+    build_flow(list(stage = "building", plan = NULL))
+    session$setInputs(build_output_mode = "crb")
+    session$flushReact()
+    expect_true(build_mode())
   })
 })
 
@@ -837,7 +868,7 @@ test_that("Build enqueue retains auth after failure and resets only after succes
   shiny::testServer(app_env$server, {
     expect_identical(
       names(formals(enqueue_build_plan)),
-      c("plan", "auth_accounts")
+      c("plan", "auth_accounts", "expected_identity")
     )
     validate_auth <- get(
       "builder_auth_validate_payload",
@@ -899,6 +930,17 @@ test_that("Build enqueue retains auth after failure and resets only after succes
       },
       envir = fn_env
     )
+    changed_output <- plan
+    changed_output$app_options$welcome_message <- "Changed before enqueue"
+    expect_false(enqueue_build_plan(
+      changed_output,
+      auth_accounts = accounts,
+      expected_identity = app_env$builder_final_build_identity(plan)
+    ))
+    expect_null(queued_payload)
+    expect_identical(auth_accounts(), accounts)
+    messages <- list()
+
     expect_false(enqueue_build_plan(plan, auth_accounts = accounts))
     expect_s3_class(queued_payload$auth_accounts, "builder_auth_accounts")
     expect_identical(queued_payload$auth_accounts, accounts)

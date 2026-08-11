@@ -16,6 +16,9 @@ validate_review_inputs <- function(values) {
 }
 
 observe({
+  if (builder_mutations_locked(isolate(build_flow()), isolate(protocol()))) {
+    return()
+  }
   current_options <- isolate(review_options())
   values <- list(
     welcome_message = input[["build_welcome_message"]],
@@ -38,6 +41,9 @@ observe({
 observeEvent(
   input[["build_require_login"]],
   {
+    if (builder_mutations_locked(isolate(build_flow()), isolate(protocol()))) {
+      return()
+    }
     enabled <- isTRUE(input[["build_require_login"]])
     if (
       enabled && (!isTRUE(build_mode()) || !isTRUE(auth_capability$available))
@@ -67,6 +73,9 @@ observeEvent(
 observeEvent(
   input$builder_auth_accounts,
   {
+    if (builder_mutations_locked(isolate(build_flow()), isolate(protocol()))) {
+      return()
+    }
     payload <- input$builder_auth_accounts
     if (
       is.null(payload) ||
@@ -173,10 +182,12 @@ freeze_plan_for_output <- function(
     }
     return(builder_plan_error(message, "imports_pending"))
   }
+  make_app <- inherits(output_options, "builder_build_options") &&
+    isTRUE(output_options$make_app)
   validation <- review_validation()
-  if (!isTRUE(validation$ok)) {
+  if (make_app && !isTRUE(validation$ok)) {
     return(builder_plan_error(
-      validation$error %||% "Review options are invalid.",
+      validation$error %||% "Viewer App options are invalid.",
       "invalid_review_options"
     ))
   }
@@ -184,8 +195,6 @@ freeze_plan_for_output <- function(
   if (!length(all)) {
     return(builder_plan_error("No datasets yet.", "empty_release"))
   }
-  make_app <- inherits(output_options, "builder_build_options") &&
-    isTRUE(output_options$make_app)
   login_enabled <- make_app && isTRUE(auth_enabled())
   parsed_auth <- builder_auth_validate_payload(
     login_enabled,

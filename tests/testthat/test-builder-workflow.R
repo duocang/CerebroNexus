@@ -95,6 +95,15 @@ test_that("final build identity includes output-only settings", {
     builder_final_build_identity(plan),
     builder_final_build_identity(changed)
   ))
+
+  relocated <- plan
+  relocated$out_dir <- tempfile("final-output-")
+  relocated$overwrite <- TRUE
+  relocated$targets <- file.path(relocated$out_dir, "dataset-a.crb")
+  expect_false(identical(
+    builder_final_build_identity(plan),
+    builder_final_build_identity(relocated)
+  ))
 })
 
 test_that("review identity accepts frozen BuildPlan subclasses", {

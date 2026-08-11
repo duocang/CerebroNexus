@@ -98,6 +98,9 @@ builder_final_build_identity <- function(plan) {
   list(
     review = builder_review_plan_identity(plan),
     output = .builder_workflow_copy(plan[c(
+      "out_dir",
+      "overwrite",
+      "targets",
       "make_app",
       "app_contract_version",
       "app_options",

@@ -408,7 +408,7 @@ ui <- tagList(
     h2("Build your first Viewer in four steps"),
     tags$ol(
       tags$li("Upload a dataset or choose a bundled example."),
-      tags$li("Configure what was found and adjust the defaults."),
+      tags$li("Set up what each CRB retains from the dataset."),
       tags$li("Review the exact output."),
       tags$li("Build the selected artifacts.")
     ),

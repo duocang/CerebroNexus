@@ -616,6 +616,16 @@ test_that("Build owns output mode and expanded Viewer App settings", {
   ))
   expect_match(unavailable, 'value="app" disabled="disabled"', fixed = TRUE)
   expect_match(unavailable, "Install Viewer dependencies.", fixed = TRUE)
+
+  locked <- builder_stage_html(builder_build_options_ui(
+    builder_build_options(make_app = TRUE),
+    controls_disabled = TRUE
+  ))
+  expect_match(
+    locked,
+    'class="builder-build-options-fields" disabled="disabled"',
+    fixed = TRUE
+  )
 })
 
 test_that("dataset mutation lock covers every active build state", {
