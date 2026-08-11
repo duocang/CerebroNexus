@@ -526,7 +526,6 @@
 #'   nUMI = 'nCount_RNA',
 #'   nGene = 'nFeature_RNA',
 #'   use_delayed_array = FALSE,
-#'   spatial_images = list(slice1 = c(`H&E` = "path/to/tissue.png")),
 #'   verbose = TRUE
 #' )
 #'
