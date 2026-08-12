@@ -3280,6 +3280,10 @@ test_that("More settings overlays the workspace and groups point and histology c
     "document.getElementById('cv-more-btn') !== null",
     timeout = 15000
   )
+  panel_before <- unlist(app$get_js(paste0(
+    "(function(){var r=document.getElementById('cv-cv-a').getBoundingClientRect();",
+    "return [r.left,r.top,r.width,r.height];})()"
+  )))
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js(
     paste0(
@@ -3304,6 +3308,11 @@ test_that("More settings overlays the workspace and groups point and histology c
   expect_true(app$get_js(
     "document.querySelector('#cv-more .cv-more-points #cv-ps') !== null"
   ))
+  panel_after <- unlist(app$get_js(paste0(
+    "(function(){var r=document.getElementById('cv-cv-a').getBoundingClientRect();",
+    "return [r.left,r.top,r.width,r.height];})()"
+  )))
+  expect_equal(panel_after, panel_before, tolerance = 1)
 })
 
 test_that("top pickers and More sliders keep one shared control geometry", {

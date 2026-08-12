@@ -1378,7 +1378,7 @@ body .btn:active { transform: translateY(0.5px); }
     overflow-x: hidden;
     overflow-y: auto;
     transform: translateX(-100%) !important;
-    transition: transform .24s var(--ease) !important;
+    transition: transform .22s var(--ease) !important;
     box-shadow: var(--shadow-4) !important;
   }
   html body.skin-blue.sidebar-open .main-sidebar {

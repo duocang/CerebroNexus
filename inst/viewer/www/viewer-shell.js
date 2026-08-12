@@ -33,7 +33,7 @@
     function syncSemantics() {
       var mobile = isMobile();
       var open = mobile && body.classList.contains('sidebar-open');
-      toggle.setAttribute('aria-controls', 'sidebar');
+      toggle.setAttribute('aria-controls', sidebar.id);
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       toggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
       scrim.setAttribute('aria-hidden', open ? 'false' : 'true');

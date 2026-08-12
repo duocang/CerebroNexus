@@ -352,7 +352,7 @@
   box-sizing: border-box;
   background: var(--cv-surface); border: 1px solid var(--cv-border);
   border-radius: 12px 0 0 12px; box-shadow: -12px 0 34px rgba(0, 0, 0, .16);
-  transform: translateX(100%); transition: transform .24s cubic-bezier(.2, .8, .2, 1),
+  transform: translateX(100%); transition: transform .22s cubic-bezier(.2, .8, .2, 1),
     opacity .16s ease; overflow: hidden;
 }
 #cv-more.is-mounted { display: flex; flex-direction: column; }

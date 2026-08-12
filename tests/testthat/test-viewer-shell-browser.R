@@ -36,6 +36,12 @@ test_that("mobile navigation is modal, dismissible, and exclusive with More", {
     app$get_js(paste0(toggle, ".getAttribute('aria-label')")),
     "Open navigation"
   )
+  sidebar_id <- app$get_js("document.querySelector('.main-sidebar').id")
+  expect_true(nzchar(sidebar_id))
+  expect_equal(
+    app$get_js(paste0(toggle, ".getAttribute('aria-controls')")),
+    sidebar_id
+  )
 
   app$run_js(paste0(toggle, ".click();"))
   app$wait_for_js(nav_open)
@@ -114,4 +120,31 @@ test_that("mobile More traps focus inside its modal settings page", {
     app$get_js("document.activeElement && document.activeElement.id"),
     "cv-more-close"
   )
+})
+
+test_that("More closes when navigation leaves Linked views", {
+  local_app_support(viewer_inst_dir)
+  app <- AppDriver$new(
+    viewer_inst_dir,
+    name = "viewer_more_navigation_close",
+    height = 900,
+    width = 1440
+  )
+  on.exit(app$stop(), add = TRUE)
+  app$wait_for_idle(timeout = 30000)
+  app$run_js(
+    "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"
+  )
+  app$run_js("document.getElementById('cv-more-btn').click();")
+  app$wait_for_js("document.activeElement.id==='cv-more-close'", timeout = 5000)
+  app$run_js(
+    "document.querySelector('a[href=\"#shiny-tab-groups\"]').click();"
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-more').getAttribute('aria-hidden')==='true'",
+    timeout = 5000
+  )
+  expect_false(app$get_js(
+    "document.getElementById('cv-more').classList.contains('is-open')"
+  ))
 })
