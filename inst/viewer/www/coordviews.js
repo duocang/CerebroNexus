@@ -1250,9 +1250,9 @@ var focusPanel = null;
   // dynamicPointSize(), fitted to this canvas's radius scale.
   //
   // It seeds the value ONCE per data set and then leaves it alone. Recomputing
-  // on every resize would mean the dots visibly change size when the bar's
-  // second row opens or a bar appears — the panels shrink slightly, and a point
-  // size that twitches at every unrelated layout change reads as a glitch.
+  // on every resize would mean the dots visibly change size whenever app chrome
+  // appears — a point size that twitches at unrelated layout changes reads as a
+  // glitch.
   var psSeeded = false;
   function autoPointSize(side) {
     if (!D) return;
@@ -1267,7 +1267,7 @@ var focusPanel = null;
   }
 
   // ---- the More settings overlay -------------------------------------------
-  // Open/closed is one class on the floating panel plus aria-expanded on the
+  // Open/closed is one class on the viewport drawer plus aria-expanded on the
   // trigger. Unlike the former second bar row, it never claims layout height:
   // the visualisation grid stays still while advanced point/image controls are
   // adjusted above it.
@@ -1288,40 +1288,52 @@ var focusPanel = null;
     );
   }
 
-  var moreClipTimer = null, moreMountTimer = null;
+  var moreMountTimer = null;
+
+  function syncMoreMode() {
+    var mp = $('cv-more');
+    if (!mp) return;
+    mp.setAttribute(
+      'aria-modal',
+      window.matchMedia('(max-width: 900px)').matches ? 'true' : 'false'
+    );
+  }
 
   function setMoreOpen(open) {
     var mp = $('cv-more'), btn = $('cv-more-btn');
     if (!mp) return;
+    if (open) {
+      document.dispatchEvent(new CustomEvent('cerebro:overlay-opening', {
+        detail: { owner: 'more' }
+      }));
+    }
+    syncMoreMode();
     // Mount before opening, unmount after closing. While folded the overlay is
-    // display:none; once mounted it is absolutely positioned, never creating a
+    // display:none; once mounted it is fixed to the viewport, never creating a
     // new flex line or changing the available panel height.
     clearTimeout(moreMountTimer);
     if (open) {
+      // A transformed app shell becomes the containing block of fixed children.
+      // Move this exact node (never clone/rebuild it) to body so "fixed" means
+      // the real viewport and every input value/event binding survives intact.
+      if (mp.parentNode !== document.body) document.body.appendChild(mp);
       mp.classList.add('is-mounted');
       void mp.offsetWidth;              // commit the display change first
     } else {
       moreMountTimer = setTimeout(function () {
         if (!mp.classList.contains('is-open')) mp.classList.remove('is-mounted');
-      }, 340);
+      }, 260);
     }
     mp.classList.toggle('is-open', open);
     mp.setAttribute('aria-hidden', open ? 'false' : 'true');
     if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    // The overflow:hidden that lets the overlay enter also clips the group-filter
-    // dropdowns, which open downwards out of it. Release it once the opening
-    // animation has landed; re-apply it immediately on close so the collapse
-    // still hides what it is folding away.
-    var clip = mp.querySelector('.cv-more-clip');
-    clearTimeout(moreClipTimer);
-    if (clip) {
-      if (open) {
-        moreClipTimer = setTimeout(function () {
-          clip.classList.add('is-clear');
-        }, 340);
-      } else {
-        clip.classList.remove('is-clear');
-      }
+    if (open) {
+      window.requestAnimationFrame(function () {
+        var close = $('cv-more-close');
+        if (close && isMoreOpen()) close.focus();
+      });
+    } else if (btn && mp.contains(document.activeElement)) {
+      btn.focus();
     }
     // A level menu left open inside a folded row would still be "open" when the
     // row comes back — and the click that reopens the row would then read as the
@@ -1330,6 +1342,39 @@ var focusPanel = null;
     // This is deliberately not resizeAll(): More is outside normal flow, so a
     // settings visit must not remeasure or resize any visualisation panel.
   }
+
+  window.addEventListener('resize', syncMoreMode);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && isMoreOpen()) {
+      e.preventDefault();
+      setMoreOpen(false);
+      return;
+    }
+    if (e.key !== 'Tab' || !isMoreOpen() ||
+        !window.matchMedia('(max-width: 900px)').matches) return;
+    var mp = $('cv-more');
+    var focusable = Array.prototype.filter.call(
+      mp.querySelectorAll(
+        'button:not([disabled]), a[href], input:not([disabled]), ' +
+        'select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ),
+      function (el) { return el.getClientRects().length > 0; }
+    );
+    if (!focusable.length) return;
+    var first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+  document.addEventListener('cerebro:overlay-opening', function (e) {
+    if (e.detail && e.detail.owner !== 'more' && isMoreOpen()) {
+      setMoreOpen(false);
+    }
+  });
 
   function clearLassos() {
     var any = false;
@@ -4435,7 +4480,7 @@ var focusPanel = null;
     var opLbl = $('cv-op-val'); if (opLbl) opLbl.textContent = '0.80';
     var pctEl = $('cv-pct'); if (pctEl) pctEl.value = '100';
     var pctLbl = $('cv-pct-val'); if (pctLbl) pctLbl.textContent = '100';
-    setMoreOpen(false);   // a new data set starts with the bar's second row folded
+    setMoreOpen(false);   // a new data set starts with advanced settings closed
     // Trekker controls reset
     dissolvePct = 0; dissolveThresh = null; evidenceOn = false; nicheRadius = 250;
     nicheSet = null;
