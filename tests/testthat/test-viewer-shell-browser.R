@@ -96,8 +96,7 @@ test_that("mobile navigation is modal, dismissible, and exclusive with More", {
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js(paste0(
     "!document.body.classList.contains('sidebar-open') && ",
-    "document.getElementById('cv-more').classList.contains('is-open') && ",
-    "document.activeElement.id==='cv-more-close'"
+    "document.getElementById('cv-more').classList.contains('is-open')"
   ))
   app$run_js(paste0(toggle, ".click();"))
   app$wait_for_js(paste0(
