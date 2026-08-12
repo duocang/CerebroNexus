@@ -1289,59 +1289,6 @@ var focusPanel = null;
   }
 
   var moreClipTimer = null, moreMountTimer = null;
-  var moreFloating = false, moreDrag = null;
-  var MORE_VISIBLE_EDGE = 50;
-
-  function resetMorePosition() {
-    var mp = $('cv-more');
-    if (!mp) return;
-    moreFloating = false;
-    moreDrag = null;
-    mp.classList.remove('is-floating');
-    mp.style.left = '';
-    mp.style.top = '';
-  }
-
-  function clampMorePosition(left, top, mp) {
-    var w = mp.offsetWidth, h = mp.offsetHeight;
-    return {
-      left: Math.max(MORE_VISIBLE_EDGE - w, Math.min(window.innerWidth - MORE_VISIBLE_EDGE, left)),
-      top: Math.max(MORE_VISIBLE_EDGE - h, Math.min(window.innerHeight - MORE_VISIBLE_EDGE, top))
-    };
-  }
-
-  function bringMoreToFront() {
-    var mp = $('cv-more');
-    if (!mp || !moreFloating) return;
-    mp.style.zIndex = '1601';
-    setTimeout(function () { if (mp) mp.style.zIndex = ''; }, 120);
-  }
-
-  function beginMoreDrag(e) {
-    var mp = $('cv-more');
-    if (!mp || !isMoreOpen() || (e.button != null && e.button !== 0)) return;
-    var r = mp.getBoundingClientRect();
-    moreFloating = true;
-    mp.classList.add('is-floating');
-    mp.style.left = r.left + 'px';
-    mp.style.top = r.top + 'px';
-    moreDrag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
-    e.preventDefault();
-  }
-
-  function moveMoreDrag(e) {
-    var mp = $('cv-more');
-    if (!moreDrag || !mp || e.pointerId !== moreDrag.id) return;
-    var p = clampMorePosition(e.clientX - moreDrag.dx, e.clientY - moreDrag.dy, mp);
-    mp.style.left = p.left + 'px';
-    mp.style.top = p.top + 'px';
-    e.preventDefault();
-  }
-
-  function endMoreDrag(e) {
-    if (!moreDrag || (e.pointerId != null && e.pointerId !== moreDrag.id)) return;
-    moreDrag = null;
-  }
 
   function setMoreOpen(open) {
     var mp = $('cv-more'), btn = $('cv-more-btn');
@@ -1359,6 +1306,7 @@ var focusPanel = null;
       }, 340);
     }
     mp.classList.toggle('is-open', open);
+    mp.setAttribute('aria-hidden', open ? 'false' : 'true');
     if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     // The overflow:hidden that lets the overlay enter also clips the group-filter
     // dropdowns, which open downwards out of it. Release it once the opening
@@ -1379,7 +1327,6 @@ var focusPanel = null;
     // row comes back — and the click that reopens the row would then read as the
     // click that closes the menu. Fold them away with their row.
     if (!open) closeFilterMenus();
-    if (!open) resetMorePosition();
     // This is deliberately not resizeAll(): More is outside normal flow, so a
     // settings visit must not remeasure or resize any visualisation panel.
   }
@@ -4639,16 +4586,6 @@ var focusPanel = null;
     if (jq) { jq(document).on('shiny:connected', onConnected); }
     else { document.addEventListener('shiny:connected', onConnected); }
 
-    // More is normally anchored to the control bar. A title-bar drag makes it
-    // a free window, while clamping keeps at least a recoverable 50px edge in
-    // view even if the user deliberately drags it beyond the viewport.
-    document.addEventListener('pointerdown', function (e) {
-      var handle = e.target && e.target.closest && e.target.closest('[data-cv-more-drag-handle]');
-      if (handle) beginMoreDrag(e);
-    });
-    document.addEventListener('pointermove', moveMoreDrag);
-    document.addEventListener('pointerup', endMoreDrag);
-    document.addEventListener('pointercancel', endMoreDrag);
     // The alignment controls are server-rendered after the client bundle. When
     // Shiny replaces that small fragment, populate its section tabs again; the
     // observer watches only the host itself, so painting tab buttons cannot
@@ -4777,13 +4714,10 @@ var focusPanel = null;
         setMoreOpen(false);
         return;
       }
-      // "More" panel toggle
-      // While anchored More toggles the panel. Once dragged, More is a focus
-      // affordance and close lives on the visible window's own X button.
+      // "More" drawer toggle
       var moreBtn = t && t.closest && t.closest('#cv-more-btn');
       if (moreBtn) {
-        if (isMoreOpen() && moreFloating) bringMoreToFront();
-        else setMoreOpen(!isMoreOpen());
+        setMoreOpen(!isMoreOpen());
         return;
       }
       // clonal-layout segmented toggle: recompute the clone space + reproject

@@ -1027,3 +1027,29 @@ test_that("the alignment sliders contain the preset they are given", {
   expect_match(txt, "scale_lo", fixed = TRUE)
   expect_no_match(txt, 'rng("cv-img-scalex", 0.3, 3', fixed = TRUE)
 })
+
+test_that("More settings is an accessible drawer rather than a draggable window", {
+  skip_if(is.na(local_inst), "viewer sources not found")
+
+  ui <- paste(
+    readLines(
+      file.path(local_inst, "viewer/coordinated_views/UI.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  js <- paste(
+    readLines(
+      file.path(local_inst, "viewer/www/coordviews.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(ui, '`role` = "dialog"', fixed = TRUE)
+  expect_match(ui, '`aria-hidden` = "true"', fixed = TRUE)
+  expect_no_match(ui, "data-cv-more-drag-handle", fixed = TRUE)
+  expect_no_match(ui, "Drag to move", fixed = TRUE)
+  expect_no_match(js, "beginMoreDrag", fixed = TRUE)
+  expect_no_match(js, "moreFloating", fixed = TRUE)
+})

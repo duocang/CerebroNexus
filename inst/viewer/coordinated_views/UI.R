@@ -375,16 +375,17 @@ tab_coordinated_views <- tabItem(
       div(
         class = "cv-more",
         id = "cv-more",
+        `role` = "dialog",
+        `aria-modal` = "false",
+        `aria-hidden` = "true",
+        `aria-labelledby` = "cv-more-title",
         div(
           class = "cv-more-titlebar",
-          `data-cv-more-drag-handle` = "true",
-          `aria-label` = "Drag More settings window",
           tags$span(
-            class = "cv-more-grip",
-            HTML("&middot;&middot;<br>&middot;&middot;")
+            class = "cv-more-title",
+            id = "cv-more-title",
+            "More settings"
           ),
-          tags$span(class = "cv-more-title", "More settings"),
-          tags$span(class = "cv-more-drag-hint", "Drag to move"),
           tags$button(
             type = "button",
             id = "cv-more-close",
