@@ -4786,6 +4786,13 @@ var focusPanel = null;
         closeFilterMenus();
         if (menu) menu.style.display = willOpen ? '' : 'none';
         fbtn.classList.toggle('is-open', willOpen);
+        if (willOpen) {
+          window.requestAnimationFrame(function () {
+            // More scrolls internally. Keep the entire popover inside that
+            // scrollport so it is visible and hit-testable near either edge.
+            menu.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          });
+        }
         return;
       }
       // group-filter All / None

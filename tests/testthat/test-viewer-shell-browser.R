@@ -71,8 +71,34 @@ test_that("mobile navigation is modal, dismissible, and exclusive with More", {
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js(paste0(
     "!document.body.classList.contains('sidebar-open') && ",
-    "document.getElementById('cv-more').classList.contains('is-open')"
+    "document.getElementById('cv-more').classList.contains('is-open') && ",
+    "document.activeElement.id==='cv-more-close'"
   ))
+  app$run_js(paste0(toggle, ".click();"))
+  app$wait_for_js(paste0(
+    "document.body.classList.contains('sidebar-open') && ",
+    "!document.getElementById('cv-more').classList.contains('is-open')"
+  ))
+  app$run_js("document.getElementById('cerebro-nav-scrim').click();")
+  app$wait_for_js("!document.body.classList.contains('sidebar-open')")
+})
+
+test_that("mobile More traps focus inside its modal settings page", {
+  local_app_support(viewer_inst_dir)
+  app <- AppDriver$new(
+    viewer_inst_dir,
+    name = "viewer_mobile_more_focus",
+    height = 844,
+    width = 390
+  )
+  on.exit(app$stop(), add = TRUE)
+  app$wait_for_idle(timeout = 30000)
+  app$run_js(
+    "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"
+  )
+  app$run_js("document.getElementById('cv-more-btn').click();")
+  app$wait_for_js("document.activeElement.id==='cv-more-close'", timeout = 5000)
+
   app$run_js(paste0(
     "document.dispatchEvent(new KeyboardEvent('keydown',",
     "{key:'Tab',shiftKey:true,bubbles:true}));"
@@ -88,12 +114,4 @@ test_that("mobile navigation is modal, dismissible, and exclusive with More", {
     app$get_js("document.activeElement && document.activeElement.id"),
     "cv-more-close"
   )
-
-  app$run_js(paste0(toggle, ".click();"))
-  app$wait_for_js(paste0(
-    "document.body.classList.contains('sidebar-open') && ",
-    "!document.getElementById('cv-more').classList.contains('is-open')"
-  ))
-  app$run_js("document.getElementById('cerebro-nav-scrim').click();")
-  app$wait_for_js("!document.body.classList.contains('sidebar-open')")
 })

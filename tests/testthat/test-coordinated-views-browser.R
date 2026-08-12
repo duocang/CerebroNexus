@@ -564,10 +564,11 @@ test_that("group-filter menus open, exclude each other, and dismiss", {
 
   app$run_js(paste0(
     "document.querySelectorAll('.cv-filt-btn')[0]",
-    ".scrollIntoView({block:'center'});",
+    ".scrollIntoView({block:'center',behavior:'auto'});",
     "document.querySelectorAll('.cv-filt-btn')[0].click();"
   ))
   app$wait_for_js(paste0("(", open_count, ") === 1"), timeout = 8000)
+  app$wait_for_js(hittable, timeout = 8000)
   expect_true(app$get_js(hittable))
   expect_equal(app$get_js(lit_count), 1)
 
