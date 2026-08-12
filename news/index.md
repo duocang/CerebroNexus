@@ -1,17 +1,32 @@
 # Changelog
 
-## CerebroNexus 4.2
+## CerebroNexus 4.2.0
 
-### Benchmark
+### Breaking changes
 
-- The real-data expression-backend benchmark is finalized as a flat
-  harness with a controlled three-backend Panel A and a separate BPCells
-  full-scale Panel B through all 4,140,453 cells. The harness records
-  raw evidence and does not include validated full-scale results in this
-  release.
-- The benchmark operator guide now documents the pinned source, exact
-  nested sampling, paired worker schedules, evidence schemas, and the
-  Panel A to Panel B validation boundary.
+- The public R6 data-class constructor is now `Cerebro$new()`. The
+  version-suffixed constructor was removed; existing `.crb` files remain
+  readable and all bundled examples have been reserialized with the new
+  class.
+
+## CerebroNexus 4.1.0
+
+### Viewer
+
+- [`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
+  can optionally protect a generated Viewer with an existing encrypted
+  shinymanager SQLite database and an environment-variable key. The
+  encrypted database is copied into the private app bundle; its
+  passphrase and plaintext login passwords are not. Apps remain public
+  when `auth` is omitted.
+- Authenticated Viewers use a responsive CerebroNexus login page with
+  accessible controls and mobile-friendly spacing.
+- Viewer sessions now close server-side on logout or authentication
+  timeout, and forced-password-change pages cannot start the protected
+  Viewer server.
+- Authentication preflight validates the complete shinymanager database,
+  requires a non-trivial database passphrase, and verifies private POSIX
+  modes.
 
 ## CerebroNexus 4.0
 
@@ -19,16 +34,8 @@
 
 - [`launchCerebro()`](https://mihem.github.io/CerebroNexus/reference/launchCerebro.md)
   is now the single application launcher. The obsolete version selector
-  and version-named `launchCerebroV1.x()` exports were removed because
+  and deprecated version-specific launch exports were removed because
   CerebroNexus ships one Viewer implementation.
-
-### Documentation
-
-- **The expression-backend article now documents the rebuilt MSSM
-  protocol and its evidence limits.** It separates the controlled
-  three-backend comparison from BPCells scaling through the complete
-  4,140,453-cell source. Reviewed full-scale results have not yet been
-  committed.
 
 ### Internal
 
@@ -36,11 +43,6 @@
   examples live under `inst/extdata/examples/`. Removing the historical
   Viewer version from internal paths does not change the application or
   data formats.
-- **[`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md)
-  can stream one complete BPCells-backed Seurat `data` layer through its
-  public BPCells mode.** The rebuilt real-data harness uses one pinned
-  local MSSM H5AD, exact nested sampling, isolated paired workers,
-  correctness fingerprints, and fail-closed Panel A to Panel B linkage.
 
 ## CerebroNexus 3.2.0
 
@@ -363,7 +365,7 @@
   the package with
   [`library(CerebroNexus)`](https://mihem.github.io/CerebroNexus/).
 - Kept the established Cerebro data model and public API, including
-  `.crb` files, `Cerebro_v1.3`, `Cerebro.options`,
+  `.crb` files, `Cerebro`, `Cerebro.options`,
   [`launchCerebro()`](https://mihem.github.io/CerebroNexus/reference/launchCerebro.md),
   and
   [`convertSeuratToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSeuratToCerebro.md).
@@ -383,7 +385,7 @@
   (descriptive carrier vs. non-carrier overlap — no p-value, no
   restriction claim), and **Data & QC** (coverage, normalized typing,
   and a session-only HLA upload).
-- **HLA typing on the data class.** `Cerebro_v1.3` gained an optional
+- **HLA typing on the data class.** `Cerebro` gained an optional
   `hla_typing` slot with `addHLATyping()` / `getHLATyping()`; the getter
   is backward-compatible with older `.crb` files. Typing accepts a
   canonical long table, a wide `sample` + `HLA-*_1/_2` table, or a named
@@ -483,7 +485,7 @@
   range are flagged without adjudicating sample usability; and Moran’s I
   is the upstream vendor value, labelled and never mixed with Cerebro’s
   own.
-- **Data class.** `Cerebro_v1.3` gained an optional `trekker` slot with
+- **Data class.** `Cerebro` gained an optional `trekker` slot with
   `addTrekker()` / `getTrekker()`; the getter is backward-compatible
   with older `.crb` files that predate the field.
 - **Demo data and vignette.** A real, down-sampled demo `.crb`
@@ -641,9 +643,9 @@
 
 ### Spatial transcriptomics (backend)
 
-- **Spatial data layer**: the `Cerebro_v1.3` class gains a `spatial`
-  field with `addSpatialData()`, `getSpatialData()`, and
-  `availableSpatial()` accessors.
+- **Spatial data layer**: the `Cerebro` class gains a `spatial` field
+  with `addSpatialData()`, `getSpatialData()`, and `availableSpatial()`
+  accessors.
 - **Export support**:
   [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md)
   now extracts spatial coordinates and expression from Seurat v5 image
@@ -659,7 +661,7 @@
 ### Trajectory tab
 
 - **Trajectory module**: restores the pseudotime trajectory explorer
-  from the original cerebroApp v1.3 (projection coloured by
+  from the original v1.3 implementation (projection coloured by
   state/pseudotime, states by group, expression metrics along
   pseudotime, per-state gene/transcript counts). The code is Roman
   Hillje’s original implementation, restructured into the v1.4 sub-file
@@ -903,8 +905,8 @@ previous releases and refreshes documentation for the current codebase.
   that predate the `getExpressionBackend()` method; such objects are now
   treated as embedded backend and skip the attach step
 - Fixed “method not found” errors on the trajectory tab by renaming the
-  corresponding `Cerebro_v1.3` methods to the names the Shiny server
-  already calls (`getMethodsForTrajectories`, `getNamesOfTrajectories`)
+  corresponding `Cerebro` methods to the names the Shiny server already
+  calls (`getMethodsForTrajectories`, `getNamesOfTrajectories`)
 - Fixed gene_expression plot chain freezing on gene picker changes:
   removed a stale `isolate()` wrapper and a reference to a non-existent
   `expression_projection_update_button` input; the existing 250 ms
@@ -1016,9 +1018,8 @@ previous releases and refreshes documentation for the current codebase.
 
 ## Version 1.4.0
 
-This is the first update of this cerebroApp fork. Its aim is to continue
-a lightweight version of the excellent cerebroApp with only the main
-function as the cerebroApp by Roman Hillje is sadly discontinued.
+This was the first update of the lightweight fork that continued the
+main functionality after its predecessor was discontinued.
 
 ### Major changes
 

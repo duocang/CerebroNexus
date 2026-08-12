@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.2.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -34,13 +34,11 @@
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
 <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Workflows</h6></li>
-    <li><a class="dropdown-item" href="../articles/cerebroApp_workflow_Seurat.html">Introduction to the cerebroApp workflow (Seurat)</a></li>
+    <li><a class="dropdown-item" href="../articles/cerebronexus_workflow_seurat.html">Introduction to the CerebroNexus workflow (Seurat)</a></li>
     <li><a class="dropdown-item" href="../articles/export_a_data_set_in_SCE_format.html">Export a data set in SCE format</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Interface</h6></li>
-    <li><a class="dropdown-item" href="../articles/Cerebro_interface_v1.2.html">Introduction to the Cerebro interface (v1.2 and older)</a></li>
-    <li><a class="dropdown-item" href="../articles/overview_of_cerebro_v1.3_class.html">Overview of the Cerebro v1.3 class</a></li>
-    <li><a class="dropdown-item" href="../articles/release_notes_v1.3.html">Release notes: Cerebro/cerebroApp v1.3</a></li>
+    <li><a class="dropdown-item" href="../articles/overview_of_cerebro_class.html">Overview of the Cerebro v1.3 class</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>How-to</h6></li>
     <li><a class="dropdown-item" href="../articles/data_integrity_contracts.html">Data integrity from Seurat to a self-contained Cerebro app</a></li>
@@ -51,7 +49,7 @@
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
-    <li><a class="dropdown-item" href="../articles/control_access_to_cerebro_with_a_login_page.html">Control access to Cerebro with a login page</a></li>
+    <li><a class="dropdown-item" href="../articles/control_access_to_cerebro_with_a_login_page.html">Control access to CerebroNexus with a login page</a></li>
     <li><a class="dropdown-item" href="../articles/host_cerebro_on_shinyapps.html">Host Cerebro on shinyapps.io</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Modules</h6></li>
@@ -99,9 +97,9 @@
                         <h4 data-toc-skip class="author">Xuesong
 Wang</h4>
             
-            <h4 data-toc-skip class="date">07 August, 2026</h4>
+            <h4 data-toc-skip class="date">12 August, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/real-data-benchmark/vignettes/hla_tcr_motifs.Rmd" class="external-link"><code>vignettes/hla_tcr_motifs.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/vignettes/hla_tcr_motifs.Rmd" class="external-link"><code>vignettes/hla_tcr_motifs.Rmd</code></a></small>
       <div class="d-none name"><code>hla_tcr_motifs.Rmd</code></div>
     </div>
 
@@ -897,9 +895,10 @@ contrast.</p>
 </h2>
 <ul>
 <li>
-<strong>Introduction to the cerebroApp workflow (Seurat)</strong> —
-the general Seurat → <code>.crb</code> export basics, if this is your
-first Cerebro export; the HLA slots above just ride along with it.</li>
+<strong>Introduction to the CerebroNexus workflow (Seurat)</strong>
+— the general Seurat → <code>.crb</code> export basics, if this is your
+first CerebroNexus export; the HLA slots above just ride along with
+it.</li>
 <li>
 <strong>HLA Associations on bulk TCRβ with real donor HLA</strong> —
 the companion workflow for bulk immunosequencing: real genotypes, no
@@ -910,7 +909,7 @@ scRepertoire-based module that produces the same
 <code>@misc$immune_repertoire</code> slot from real 10x data.</li>
 <li>
 <code><a href="../reference/exportFromSeurat.html">?exportFromSeurat</a></code>, <code><a href="../reference/createShinyApp.html">?createShinyApp</a></code>, and
-<code><a href="../reference/Cerebro_v1.3.html">?Cerebro_v1.3</a></code> (see <code>addHLATyping</code> /
+<code><a href="../reference/Cerebro.html">?Cerebro</a></code> (see <code>addHLATyping</code> /
 <code>getHLATyping</code>).</li>
 </ul>
 </div>
@@ -934,7 +933,7 @@ scRepertoire-based module that produces the same
 <span><span class="co">#&gt; Running under: Ubuntu 24.04.4 LTS</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Matrix products: default</span></span>
-<span><span class="co">#&gt; BLAS/LAPACK: /nix/store/033709igii0r3shbix1h49pagjfcg9lq-blas-3/lib/libblas.so.3;  LAPACK version 3.12.0</span></span>
+<span><span class="co">#&gt; BLAS/LAPACK: /nix/store/ffv6vz8kps2qz63xq85ksfz0iwvvvq7w-blas-3/lib/libblas.so.3;  LAPACK version 3.12.0</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; locale:</span></span>
 <span><span class="co">#&gt;  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              </span></span>

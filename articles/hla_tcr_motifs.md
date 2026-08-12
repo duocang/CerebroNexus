@@ -725,9 +725,9 @@ they were would inflate any apparent contrast.
 
 ## See also
 
-- **Introduction to the cerebroApp workflow (Seurat)** — the general
-  Seurat → `.crb` export basics, if this is your first Cerebro export;
-  the HLA slots above just ride along with it.
+- **Introduction to the CerebroNexus workflow (Seurat)** — the general
+  Seurat → `.crb` export basics, if this is your first CerebroNexus
+  export; the HLA slots above just ride along with it.
 - **HLA Associations on bulk TCRβ with real donor HLA** — the companion
   workflow for bulk immunosequencing: real genotypes, no single cells,
   and the positive-control caveat that comes with them.
@@ -737,7 +737,7 @@ they were would inflate any apparent contrast.
 - [`?exportFromSeurat`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md),
   [`?createShinyApp`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md),
   and
-  [`?Cerebro_v1.3`](https://mihem.github.io/CerebroNexus/reference/Cerebro_v1.3.md)
+  [`?Cerebro`](https://mihem.github.io/CerebroNexus/reference/Cerebro.md)
   (see `addHLATyping` / `getHLATyping`).
 
 ## Getting help
@@ -757,7 +757,7 @@ sessionInfo()
 #> Running under: Ubuntu 24.04.4 LTS
 #> 
 #> Matrix products: default
-#> BLAS/LAPACK: /nix/store/033709igii0r3shbix1h49pagjfcg9lq-blas-3/lib/libblas.so.3;  LAPACK version 3.12.0
+#> BLAS/LAPACK: /nix/store/ffv6vz8kps2qz63xq85ksfz0iwvvvq7w-blas-3/lib/libblas.so.3;  LAPACK version 3.12.0
 #> 
 #> locale:
 #>  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              

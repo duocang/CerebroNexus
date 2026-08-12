@@ -109,13 +109,9 @@ exportFromSeurat(
 
   - `"bpcells"` writes the matrix to a BPCells on-disk directory next to
     the `.crb` and keeps only a lightweight handle in the serialised
-    object. A complete BPCells-backed Seurat layer is streamed directly
-    without first materialising it in memory. Split disk-backed layers
-    must be joined upstream with a representation-aware operation; the
-    exporter will not silently choose one physical layer or materialise
-    the split representation. Recommended for large sparse matrices. The
-    resulting `.crb` is portable as long as the sibling `.bpcells/`
-    directory travels with it; the Shiny runtime re-resolves paths via
+    object. Recommended for large sparse matrices. The resulting `.crb`
+    is portable as long as the sibling `.bpcells/` directory travels
+    with it; the Shiny runtime re-resolves paths via
     `getExpressionBackend()$location` relative to the `.crb`'s parent
     directory (step 7.3 runtime attach).
 
@@ -199,22 +195,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [21:54:25] Initializing Cerebro object...
-#> [21:54:25] Adding expression data (embedded)...
-#> [21:54:25] Collecting available meta data...
-#> [21:54:25] Extracting all meta data columns...
-#> [21:54:25] Extracting dimensional reductions...
-#> [21:54:25] Will export the following dimensional reductions: umap
-#> [21:54:25] Extracting marker genes table...
-#> [21:54:25] No trajectories to extract...
-#> [21:54:25] Checking for spatial data...
-#> [21:54:25] Overview of Cerebro object:
-#> class: Cerebro_v1.3
-#> cerebroApp version: 4.2
+#> [06:05:13] Initializing Cerebro object...
+#> [06:05:13] Adding expression data (embedded)...
+#> [06:05:13] Collecting available meta data...
+#> [06:05:13] Extracting all meta data columns...
+#> [06:05:13] Extracting dimensional reductions...
+#> [06:05:13] Will export the following dimensional reductions: umap
+#> [06:05:13] Extracting marker genes table...
+#> [06:05:13] No trajectories to extract...
+#> [06:05:13] Checking for spatial data...
+#> [06:05:13] Overview of Cerebro object:
+#> class: Cerebro
+#> exporter package version: 4.2.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-08-07
+#> date of export: 2026-08-12
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -230,6 +226,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [21:54:25] Saving Cerebro object to: /tmp/nix-shell-4138-2221110158/RtmpUTYcyt/pbmc_Seurat.crb
-#> [21:54:25] Done!
+#> [06:05:13] Saving Cerebro object to: /tmp/nix-shell-4387-1494263574/RtmpuqjbOk/pbmc_Seurat.crb
+#> [06:05:13] Done!
 ```
