@@ -702,13 +702,14 @@ test_that("Builder defines semantic action and measure roles", {
     style_contract_path("builder", "www", "builder.tokens.css")
   )
 
-  expect_identical(unname(builder["--builder-action"]), "#c2410c")
+  expect_identical(unname(builder["--builder-action"]), "#c9500b")
   expect_identical(
     unname(builder["--builder-selection-bg"]),
     "var(--builder-action)"
   )
   expect_identical(unname(builder["--builder-measure-copy"]), "48rem")
   expect_identical(unname(builder["--builder-measure-form"]), "56rem")
+  expect_identical(unname(builder["--builder-footer-gap"]), "40px")
   builder_font_sans <- paste(
     '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",',
     '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",',
@@ -772,7 +773,7 @@ test_that("Builder motion uses its 180ms duration role", {
   )[[1L]]
 
   expect_length(shared_duration_uses, 0L)
-  expect_length(builder_duration_uses, 15L)
+  expect_length(builder_duration_uses, 19L)
 })
 
 test_that("Builder layered stylesheets own their declared responsibilities", {
@@ -791,7 +792,7 @@ test_that("Builder layered stylesheets own their declared responsibilities", {
     ".builder-shell" = "layout",
     ".builder-stage" = "layout",
     ".rail-summary" = "layout",
-    ".actionbar" = "layout",
+    ".builder-stage-footer" = "components",
     ".btn" = "components",
     ".review-app-options > summary" = "components",
     ".builder-dialog" = "components",
@@ -964,7 +965,10 @@ test_that("Optional analysis states change emphasis without moving cards", {
     c(
       ".enhance-module:has(input:checked)",
       ".enhance-module:has(input:checked):hover",
-      ".enhance-module:has(input:checked):focus-within"
+      ".enhance-module:has(input:checked):focus-within",
+      ".enhance-module.is-selected",
+      ".enhance-module.is-selected:hover",
+      ".enhance-module.is-selected:focus-within"
     )
   )
 
