@@ -71,7 +71,7 @@ Calling the Cerebro object will give an overview of the information it currently
 
 ```
 class: Cerebro
-exporter package version: 4.2.0
+exporter package version: 4.3.0
 experiment name: pbmc_Seurat
 organism: hg
 date of analysis: 2020-02-19

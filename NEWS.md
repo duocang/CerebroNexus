@@ -1,10 +1,4 @@
-# CerebroNexus 4.2.0
-
-## Breaking changes
-
-- The public R6 data-class constructor is now `Cerebro$new()`. The
-  version-suffixed constructor was removed; existing `.crb` files remain
-  readable and all bundled examples have been reserialized with the new class.
+# CerebroNexus 4.3.0
 
 ## Data and conversion
 
@@ -16,6 +10,14 @@
   PNG/JPEG/SVG backgrounds, or remain coordinates-only. Optional per-image
   bounds and display settings use the same stable keys; ambiguous legacy
   dataset-to-path calls now fail instead of guessing a spatial target.
+
+# CerebroNexus 4.2.0
+
+## Breaking changes
+
+- The public R6 data-class constructor is now `Cerebro$new()`. The
+  version-suffixed constructor was removed; existing `.crb` files remain
+  readable and all bundled examples have been reserialized with the new class.
 
 # CerebroNexus 4.1.0
 
