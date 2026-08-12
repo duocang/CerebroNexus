@@ -36,7 +36,7 @@ test_that("the source demo supplies its version without a package lookup", {
   expect_false(grepl("packageVersion", app_source, fixed = TRUE))
 })
 
-test_that("CerebroNexus releases use major.minor versions", {
+test_that("CerebroNexus releases use major.minor.patch versions", {
   description_path <- system.file("DESCRIPTION", package = "CerebroNexus")
   if (!nzchar(description_path)) {
     description_path <- testthat::test_path("..", "..", "DESCRIPTION")
@@ -49,7 +49,7 @@ test_that("CerebroNexus releases use major.minor versions", {
   app_source <- readLines(repo_file("app.R"), warn = FALSE)
   news <- readLines(news_path, warn = FALSE)
 
-  expect_match(package_version, "^[0-9]+[.][0-9]+$")
+  expect_match(package_version, "^[0-9]+[.][0-9]+[.][0-9]+$")
   expect_true(
     paste0('  "cerebro_version" = "', package_version, '",') %in% app_source
   )
