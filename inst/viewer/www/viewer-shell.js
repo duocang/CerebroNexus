@@ -39,13 +39,35 @@
       scrim.setAttribute('aria-hidden', open ? 'false' : 'true');
       if (mobile) {
         sidebar.setAttribute('role', 'dialog');
+        sidebar.setAttribute('aria-label', 'Primary navigation');
         sidebar.setAttribute('aria-modal', 'true');
         sidebar.setAttribute('aria-hidden', open ? 'false' : 'true');
+        sidebar.inert = !open;
       } else {
         sidebar.removeAttribute('role');
+        sidebar.removeAttribute('aria-label');
         sidebar.removeAttribute('aria-modal');
         sidebar.removeAttribute('aria-hidden');
+        sidebar.inert = false;
       }
+    }
+
+    function focusActiveDestination(navLink) {
+      var moved = false;
+      function move() {
+        if (moved) return;
+        var pane = document.querySelector('.tab-pane.active[id^="shiny-tab-"]');
+        if (!pane) return;
+        var target = pane.querySelector('h1, h2, h3') || pane;
+        target.setAttribute('tabindex', '-1');
+        target.focus({ preventScroll: true });
+        moved = true;
+      }
+      // Bootstrap announces the newly active tab after its click handler has
+      // run. Use that event when available; the timer is a no-jQuery/backstop
+      // path and deliberately waits beyond the current click dispatch.
+      if (window.jQuery) window.jQuery(navLink).one('shown.bs.tab', move);
+      window.setTimeout(move, 80);
     }
 
     function setOpen(open, restoreFocus) {
@@ -88,8 +110,13 @@
         setOpen(false);
         return;
       }
-      if (isOpen() && target.closest('.main-sidebar a[href]')) {
-        setOpen(false, false);
+      var navLink = target.closest('.main-sidebar a[href]');
+      if (navLink) {
+        document.dispatchEvent(new CustomEvent('cerebro:overlay-opening', {
+          detail: { owner: 'nav' }
+        }));
+        if (isOpen()) setOpen(false, false);
+        focusActiveDestination(navLink);
       }
     }, true);
 
@@ -97,6 +124,7 @@
       if (!isOpen()) return;
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopImmediatePropagation();
         setOpen(false);
         return;
       }
@@ -115,7 +143,7 @@
         event.preventDefault();
         first.focus();
       }
-    });
+    }, true);
 
     document.addEventListener('cerebro:overlay-opening', function (event) {
       if (event.detail && event.detail.owner !== 'nav' && isOpen()) {

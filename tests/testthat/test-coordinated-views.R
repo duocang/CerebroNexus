@@ -1045,6 +1045,13 @@ test_that("More settings is an accessible drawer rather than a draggable window"
     ),
     collapse = "\n"
   )
+  css <- paste(
+    readLines(
+      file.path(local_inst, "viewer/www/coordviews.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
 
   expect_match(ui, '`role` = "dialog"', fixed = TRUE)
   expect_match(ui, '`aria-hidden` = "true"', fixed = TRUE)
@@ -1052,4 +1059,8 @@ test_that("More settings is an accessible drawer rather than a draggable window"
   expect_no_match(ui, "Drag to move", fixed = TRUE)
   expect_no_match(js, "beginMoreDrag", fixed = TRUE)
   expect_no_match(js, "moreFloating", fixed = TRUE)
+  expect_match(css, "@media (prefers-reduced-motion: reduce)", fixed = TRUE)
+  expect_match(css, "#cv-more,", fixed = TRUE)
+  expect_match(css, "transition: none", fixed = TRUE)
+  expect_no_match(css, "transition: transform .3s", fixed = TRUE)
 })

@@ -1299,7 +1299,7 @@ var focusPanel = null;
     );
   }
 
-  function setMoreOpen(open) {
+  function setMoreOpen(open, restoreFocus) {
     var mp = $('cv-more'), btn = $('cv-more-btn');
     if (!mp) return;
     if (open) {
@@ -1332,7 +1332,7 @@ var focusPanel = null;
         var close = $('cv-more-close');
         if (close && isMoreOpen()) close.focus();
       });
-    } else if (btn && mp.contains(document.activeElement)) {
+    } else if (restoreFocus !== false && btn && mp.contains(document.activeElement)) {
       btn.focus();
     }
     // A level menu left open inside a folded row would still be "open" when the
@@ -1347,6 +1347,7 @@ var focusPanel = null;
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && isMoreOpen()) {
       e.preventDefault();
+      e.stopImmediatePropagation();
       setMoreOpen(false);
       return;
     }
@@ -1369,10 +1370,10 @@ var focusPanel = null;
       e.preventDefault();
       first.focus();
     }
-  });
+  }, true);
   document.addEventListener('cerebro:overlay-opening', function (e) {
     if (e.detail && e.detail.owner !== 'more' && isMoreOpen()) {
-      setMoreOpen(false);
+      setMoreOpen(false, false);
     }
   });
 

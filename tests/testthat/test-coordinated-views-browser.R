@@ -3280,6 +3280,11 @@ test_that("More settings overlays the workspace and groups point and histology c
     "document.getElementById('cv-more-btn') !== null",
     timeout = 15000
   )
+  app$set_window_size(width = 1619, height = 700)
+  app$run_js("document.querySelector('.content-wrapper').scrollTop=120;")
+  scroll_before <- app$get_js(
+    "document.querySelector('.content-wrapper').scrollTop"
+  )
   panel_before <- unlist(app$get_js(paste0(
     "(function(){var r=document.getElementById('cv-cv-a').getBoundingClientRect();",
     "return [r.left,r.top,r.width,r.height];})()"
@@ -3313,6 +3318,10 @@ test_that("More settings overlays the workspace and groups point and histology c
     "return [r.left,r.top,r.width,r.height];})()"
   )))
   expect_equal(panel_after, panel_before, tolerance = 1)
+  expect_equal(
+    app$get_js("document.querySelector('.content-wrapper').scrollTop"),
+    scroll_before
+  )
 })
 
 test_that("top pickers and More sliders keep one shared control geometry", {
@@ -3406,6 +3415,10 @@ test_that("More settings becomes a full-screen settings page on narrow viewports
     ),
     "false"
   )
+  app$run_js(paste0(
+    "(function(){var x=document.getElementById('cv-opacity');",
+    "x.value='0.35';x.dispatchEvent(new Event('input',{bubbles:true}));})()"
+  ))
 
   app$run_js(paste0(
     "document.dispatchEvent(new KeyboardEvent('keydown',",
@@ -3423,6 +3436,10 @@ test_that("More settings becomes a full-screen settings page on narrow viewports
   app$wait_for_js(
     "document.getElementById('cv-more').classList.contains('is-open')",
     timeout = 5000
+  )
+  expect_equal(
+    app$get_js("document.getElementById('cv-opacity').value"),
+    "0.35"
   )
 
   app$set_window_size(width = 768, height = 900)

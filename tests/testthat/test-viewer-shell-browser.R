@@ -42,9 +42,17 @@ test_that("mobile navigation is modal, dismissible, and exclusive with More", {
     app$get_js(paste0(toggle, ".getAttribute('aria-controls')")),
     sidebar_id
   )
+  expect_equal(
+    app$get_js(
+      "document.querySelector('.main-sidebar').getAttribute('aria-label')"
+    ),
+    "Primary navigation"
+  )
+  expect_true(app$get_js("document.querySelector('.main-sidebar').inert"))
 
   app$run_js(paste0(toggle, ".click();"))
   app$wait_for_js(nav_open)
+  expect_false(app$get_js("document.querySelector('.main-sidebar').inert"))
   expect_equal(
     app$get_js("document.activeElement && document.activeElement.id"),
     "cerebro-nav-close"
@@ -59,14 +67,25 @@ test_that("mobile navigation is modal, dismissible, and exclusive with More", {
   app$run_js(
     "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"
   )
-  app$wait_for_js("!document.body.classList.contains('sidebar-open')")
+  app$wait_for_js(paste0(
+    "!document.body.classList.contains('sidebar-open') && ",
+    "document.querySelector('.main-sidebar').inert && ",
+    "document.querySelector('.tab-pane.active[id^=\"shiny-tab-\"]')",
+    ".contains(document.activeElement)"
+  ))
 
   app$run_js(paste0(toggle, ".click();"))
   app$wait_for_js(nav_open)
+  app$run_js(paste0(
+    "window.__escapeUnderlay=0;",
+    "document.addEventListener('keydown',function(){window.__escapeUnderlay++;},",
+    "{once:true});"
+  ))
   app$run_js(
     "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));"
   )
   app$wait_for_js("!document.body.classList.contains('sidebar-open')")
+  expect_equal(app$get_js("window.__escapeUnderlay"), 0)
   expect_equal(
     app$get_js("document.activeElement && document.activeElement.className"),
     "sidebar-toggle"
@@ -120,6 +139,16 @@ test_that("mobile More traps focus inside its modal settings page", {
     app$get_js("document.activeElement && document.activeElement.id"),
     "cv-more-close"
   )
+  app$run_js(paste0(
+    "window.__escapeUnderlay=0;",
+    "document.addEventListener('keydown',function(){window.__escapeUnderlay++;},",
+    "{once:true});",
+    "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));"
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-more').getAttribute('aria-hidden')==='true'"
+  )
+  expect_equal(app$get_js("window.__escapeUnderlay"), 0)
 })
 
 test_that("More closes when navigation leaves Linked views", {
@@ -134,6 +163,10 @@ test_that("More closes when navigation leaves Linked views", {
   app$wait_for_idle(timeout = 30000)
   app$run_js(
     "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"
+  )
+  app$wait_for_js(
+    "document.getElementById('cv-title-a').textContent.trim() !== '—'",
+    timeout = 15000
   )
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js("document.activeElement.id==='cv-more-close'", timeout = 5000)
