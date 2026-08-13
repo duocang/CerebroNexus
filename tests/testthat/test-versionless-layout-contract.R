@@ -133,3 +133,21 @@ test_that("current launcher documentation stays versionless", {
   )
   expect_false(any(startsWith(launcher_source, "#\"")))
 })
+
+test_that("the Cerebro class overview stays versionless", {
+  root <- normalizePath(testthat::test_path("..", ".."), mustWork = TRUE)
+  overview <- file.path(root, "vignettes", "overview_of_cerebro_class.Rmd")
+  testthat::skip_if_not(
+    file.exists(overview),
+    "current source tree is not present in the installed-package layout"
+  )
+
+  text <- paste(readLines(overview, warn = FALSE), collapse = "\n")
+  expect_false(grepl("Cerebro v[0-9]", text))
+  expect_match(text, 'title: "Overview of the Cerebro class"', fixed = TRUE)
+  expect_match(
+    text,
+    "\\VignetteIndexEntry{Overview of the Cerebro class}",
+    fixed = TRUE
+  )
+})

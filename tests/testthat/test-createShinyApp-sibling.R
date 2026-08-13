@@ -9,6 +9,18 @@ copy_cerebro_fixture_bindings <- function(exclude = character()) {
   payload
 }
 
+legacy_cerebro_v1_3_fixture <- function() {
+  ## `Cerebro_v1.3` was the serialized class immediately before b13fee58
+  ## introduced spatial storage and its three accessors. Keep the historical
+  ## class identity here so this fixture cannot disguise a damaged current CRB.
+  payload <- copy_cerebro_fixture_bindings(
+    c("spatial", "addSpatialData", "availableSpatial", "getSpatialData")
+  )
+  class(payload) <- c("Cerebro_v1.3", "R6")
+  lockEnvironment(payload, bindings = FALSE)
+  payload
+}
+
 add_lazy_cerebro_binding <- function(payload, binding, value, sentinel) {
   evaluation <- new.env(parent = baseenv())
   evaluation$value <- value
@@ -50,6 +62,144 @@ write_bundle_crb <- function(
     }
   }
   saveRDS(payload, path)
+  path
+}
+
+test_that("CRB preflight reads, inspects, and releases one dataset at a time", {
+  events <- character()
+  paths <- c(First = "first.crb", Second = "second.crb")
+
+  preflight <- .preflightBundleData(
+    paths,
+    read_object = function(path) {
+      events <<- c(events, paste("read", path))
+      list(path = path)
+    },
+    inspect_backend = function(path, object) {
+      events <<- c(events, paste("backend", object$path))
+      list(type = "embedded", location = NULL, legacy = FALSE)
+    },
+    inspect_spatial = function(object, dataset) {
+      events <<- c(events, paste("spatial", dataset))
+      list(section = character())
+    },
+    release_object = function(object) {
+      events <<- c(events, paste("release", object$path))
+    }
+  )
+
+  expect_identical(
+    events,
+    c(
+      "read first.crb",
+      "backend first.crb",
+      "spatial First",
+      "release first.crb",
+      "read second.crb",
+      "backend second.crb",
+      "spatial Second",
+      "release second.crb"
+    )
+  )
+  expect_named(preflight$backends, c("First", "Second"))
+  expect_named(preflight$spatial_catalogs, c("First", "Second"))
+})
+
+test_that("CRB preflight releases the current dataset after an inspection error", {
+  events <- character()
+
+  expect_error(
+    .preflightBundleData(
+      c(First = "first.crb"),
+      read_object = function(path) {
+        events <<- c(events, paste("read", path))
+        list(path = path)
+      },
+      inspect_backend = function(path, object) {
+        events <<- c(events, paste("backend", object$path))
+        stop("backend inspection failed")
+      },
+      inspect_spatial = function(object, dataset) {
+        events <<- c(events, paste("spatial", dataset))
+        list(section = character())
+      },
+      release_object = function(object) {
+        events <<- c(events, paste("release", object$path))
+      }
+    ),
+    "backend inspection failed"
+  )
+
+  expect_identical(
+    events,
+    c("read first.crb", "backend first.crb", "release first.crb")
+  )
+})
+
+test_that("CRB preflight preserves an inspection error when release also fails", {
+  events <- character()
+
+  expect_error(
+    .preflightBundleData(
+      c(First = "first.crb"),
+      read_object = function(path) list(path = path),
+      inspect_backend = function(path, object) {
+        events <<- c(events, "backend")
+        stop("backend inspection failed")
+      },
+      inspect_spatial = function(object, dataset) list(section = character()),
+      release_object = function(object) {
+        events <<- c(events, "release")
+        stop("release failed")
+      }
+    ),
+    "backend inspection failed"
+  )
+  expect_identical(events, c("backend", "release"))
+})
+
+write_spatial_bundle_crb <- function(
+  directory,
+  name = "dataset.crb",
+  spatials = list(section = character())
+) {
+  dir.create(directory, recursive = TRUE, showWarnings = FALSE)
+  object <- Cerebro$new()
+  coordinates <- data.frame(
+    x = c(0, 100),
+    y = c(0, 100),
+    row.names = c("cell-1", "cell-2")
+  )
+  expression <- matrix(
+    1:4,
+    nrow = 2,
+    dimnames = list(c("gene-1", "gene-2"), rownames(coordinates))
+  )
+  for (spatial_name in names(spatials)) {
+    labels <- spatials[[spatial_name]]
+    images <- lapply(labels, function(label) {
+      list(
+        histology_image = "data:image/png;base64,AA==",
+        histology_image_bounds = c(
+          xmin = 0,
+          xmax = 100,
+          ymin = 0,
+          ymax = 100
+        )
+      )
+    })
+    names(images) <- labels
+    object$addSpatialData(
+      spatial_name,
+      list(
+        coordinates = coordinates,
+        expression = expression,
+        histology_images = images
+      )
+    )
+  }
+  path <- file.path(directory, name)
+  saveRDS(object, path)
   path
 }
 
@@ -832,17 +982,20 @@ test_that("every copied artifact has a portable bundle target", {
     "portable relative path"
   )
 
-  crb <- write_bundle_crb(file.path(root, "source"))
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
   reserved_image <- file.path(root, "AUX.png")
   writeLines("IMAGE", reserved_image)
-  expect_error(
-    build_test_app(
-      c("Dataset" = crb),
-      file.path(root, "reserved-image-app"),
-      spatial_images = list("Dataset" = reserved_image)
-    ),
-    "portable relative path"
+  app <- file.path(root, "reserved-image-app")
+  build_test_app(
+    c("Dataset" = crb),
+    app,
+    spatial_images = list("Dataset" = reserved_image)
   )
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_true(file.exists(file.path(
+    app,
+    config$spatial_images$Dataset$section[["Tissue background"]]
+  )))
 })
 
 test_that("malformed backend descriptors are rejected", {
@@ -2214,37 +2367,48 @@ test_that("different sources cannot write the same private bundle target", {
 
 test_that("private and spatial targets may share a basename", {
   root <- withr::local_tempdir()
-  crb <- write_bundle_crb(file.path(root, "source"), "first.crb")
-  image <- file.path(root, "image", "first.crb")
+  crb <- write_spatial_bundle_crb(
+    file.path(root, "source"),
+    "first.png"
+  )
+  image <- file.path(root, "image", "first.png")
   dir.create(dirname(image))
   writeLines("IMAGE", image)
   app <- file.path(root, "app")
 
-  build_test_app(
+  suppressWarnings(build_test_app(
     c("First" = crb),
     app,
     spatial_images = list("First" = image)
-  )
+  ))
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
-  expect_true(file.exists(file.path(app, "private-data", "first.crb")))
+  expect_true(file.exists(file.path(app, "private-data", "first.png")))
   expect_identical(
-    config$spatial_images[["First"]],
-    file.path("spatial-assets", "first.crb")
+    config$spatial_images$First$section[["Tissue background"]],
+    expected_spatial_image_target(
+      "First",
+      "section",
+      "Tissue background",
+      "first.png"
+    )
   )
   expect_identical(
-    readLines(file.path(app, "spatial-assets", "first.crb")),
+    readLines(file.path(
+      app,
+      config$spatial_images$First$section[["Tissue background"]]
+    )),
     "IMAGE"
   )
 })
 
-test_that("different spatial sources cannot share a spatial target", {
+test_that("different datasets isolate equal spatial image basenames", {
   root <- withr::local_tempdir()
-  first_crb <- write_bundle_crb(
+  first_crb <- write_spatial_bundle_crb(
     file.path(root, "first-crb"),
     "first.crb"
   )
-  second_crb <- write_bundle_crb(
+  second_crb <- write_spatial_bundle_crb(
     file.path(root, "second-crb"),
     "second.crb"
   )
@@ -2255,13 +2419,30 @@ test_that("different spatial sources cannot share a spatial target", {
   writeLines("FIRST", first)
   writeLines("SECOND", second)
 
-  expect_error(
-    build_test_app(
-      c("First" = first_crb, "Second" = second_crb),
-      file.path(root, "app"),
-      spatial_images = list("First" = first, "Second" = second)
-    ),
-    "same bundle target"
+  app <- file.path(root, "app")
+  build_test_app(
+    c("First" = first_crb, "Second" = second_crb),
+    app,
+    spatial_images = list("First" = first, "Second" = second)
+  )
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(
+    config$spatial_images$First$section[["Tissue background"]],
+    expected_spatial_image_target(
+      "First",
+      "section",
+      "Tissue background",
+      "histology.png"
+    )
+  )
+  expect_identical(
+    config$spatial_images$Second$section[["Tissue background"]],
+    expected_spatial_image_target(
+      "Second",
+      "section",
+      "Tissue background",
+      "histology.png"
+    )
   )
 })
 
@@ -2283,10 +2464,483 @@ test_that("duplicate spatial image data set names are rejected", {
   )
 })
 
+test_that("spatial images and settings preserve dataset spatial image nesting", {
+  root <- withr::local_tempdir()
+  crb <- write_spatial_bundle_crb(
+    file.path(root, "source"),
+    spatials = list(`section-a` = "Embedded", `section-b` = character())
+  )
+  first <- file.path(root, "first.png")
+  second <- file.path(root, "second.jpg")
+  writeLines("FIRST", first)
+  writeLines("SECOND", second)
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c(Dataset = crb),
+    app,
+    spatial_images = list(
+      Dataset = list(
+        `section-a` = c(`H&E` = first),
+        `section-b` = list(
+          DAPI = list(
+            path = second,
+            bounds = c(xmin = 0, xmax = 100, ymin = 0, ymax = 100)
+          )
+        )
+      )
+    ),
+    spatial_image_settings = list(
+      Dataset = list(
+        `section-a` = list(
+          `H&E` = list(flip_x = TRUE, scale_x = 1.5, rotation = 90)
+        ),
+        `section-b` = list(
+          DAPI = list(
+            flip_y = FALSE,
+            scale_y = 0.5,
+            offset_x = 2,
+            offset_y = -3
+          )
+        )
+      )
+    )
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(
+    config$spatial_images$Dataset[["section-a"]][["H&E"]],
+    expected_spatial_image_target("Dataset", "section-a", "H&E", "first.png")
+  )
+  expect_identical(
+    config$spatial_images$Dataset[["section-b"]]$DAPI,
+    list(
+      path = file.path(
+        expected_spatial_image_target(
+          "Dataset",
+          "section-b",
+          "DAPI",
+          "second.jpg"
+        )
+      ),
+      bounds = c(xmin = 0, xmax = 100, ymin = 0, ymax = 100)
+    )
+  )
+  expect_identical(
+    config$spatial_image_settings$Dataset[["section-a"]][["H&E"]],
+    list(flip_x = TRUE, scale_x = 1.5, rotation = 90)
+  )
+  expect_identical(
+    config$spatial_image_settings$Dataset[["section-b"]]$DAPI,
+    list(flip_y = FALSE, scale_y = 0.5, offset_x = 2, offset_y = -3)
+  )
+  expect_true(file.exists(file.path(
+    app,
+    config$spatial_images$Dataset[["section-a"]][["H&E"]]
+  )))
+})
+
+test_that("spatial image bundle targets use encoded portable components", {
+  target <- .spatialImageBundleTarget(
+    "Dataset",
+    "section",
+    "Image",
+    "image.png"
+  )
+
+  expect_identical(
+    target,
+    "spatial-assets/u44617461736574/u73656374696f6e/u496d616765/u696d6167652e706e67.png"
+  )
+  expect_false(grepl("\\\\", target))
+})
+
+test_that("builder-owned spatial options cannot bypass formal parameters", {
+  root <- withr::local_tempdir()
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
+  keys <- c(
+    "spatial_images",
+    "spatial_image_settings",
+    "spatial_images_flip_x",
+    "spatial_images_flip_y",
+    "spatial_images_scale_x",
+    "spatial_images_scale_y",
+    "spatial_images_offset_x",
+    "spatial_images_offset_y"
+  )
+
+  for (key in keys) {
+    app <- file.path(root, paste0("bypass-", key))
+    expect_error(
+      build_test_app(
+        c(Dataset = crb),
+        app,
+        cerebro_options = stats::setNames(list(TRUE), key)
+      ),
+      paste0("cerebro_options.*", key, ".*formal.*parameter")
+    )
+    expect_false(dir.exists(app))
+  }
+
+  image <- file.path(root, "image.png")
+  writeLines("IMAGE", image)
+  app <- file.path(root, "conflict")
+  expect_error(
+    build_test_app(
+      c(Dataset = crb),
+      app,
+      spatial_images = list(
+        Dataset = list(section = c(Histology = image))
+      ),
+      cerebro_options = list(
+        spatial_images = list(bypass = TRUE),
+        spatial_image_settings = list(bypass = TRUE)
+      )
+    ),
+    "cerebro_options.*spatial_images.*spatial_image_settings.*formal.*parameter"
+  )
+  expect_false(dir.exists(app))
+})
+
+test_that("spatial image preflight rejects unknown and conflicting references", {
+  root <- withr::local_tempdir()
+  crb <- write_spatial_bundle_crb(
+    file.path(root, "source"),
+    spatials = list(first = "Embedded", second = character())
+  )
+  image <- file.path(root, "image.png")
+  writeLines("IMAGE", image)
+
+  expect_error(
+    build_test_app(
+      c(Dataset = crb),
+      file.path(root, "unknown-dataset"),
+      spatial_images = list(Typo = list(first = c(Image = image)))
+    ),
+    "dataset `Typo`.*cerebro_data"
+  )
+  expect_error(
+    build_test_app(
+      c(Dataset = crb),
+      file.path(root, "unknown-spatial"),
+      spatial_images = list(Dataset = list(typo = c(Image = image)))
+    ),
+    "spatial `typo`.*available.*first.*second"
+  )
+  expect_error(
+    build_test_app(
+      c(Dataset = crb),
+      file.path(root, "embedded-conflict"),
+      spatial_images = list(Dataset = list(first = c(Embedded = image)))
+    ),
+    "first.*Embedded.*embedded"
+  )
+  expect_error(
+    build_test_app(
+      c(Dataset = crb),
+      file.path(root, "unknown-image"),
+      spatial_image_settings = list(
+        Dataset = list(first = list(Missing = list(flip_x = TRUE)))
+      )
+    ),
+    "settings.*Missing.*not exist"
+  )
+})
+
+test_that("spatial image targets distinguish equal basenames and preserve logical names", {
+  root <- withr::local_tempdir()
+  crb <- write_spatial_bundle_crb(
+    file.path(root, "source"),
+    spatials = stats::setNames(list(character()), "section/a")
+  )
+  first <- file.path(root, "first", "histology.png")
+  second <- file.path(root, "second", "histology.png")
+  dir.create(dirname(first))
+  dir.create(dirname(second))
+  writeLines("FIRST", first)
+  writeLines("SECOND", second)
+
+  app <- file.path(root, "app")
+  build_test_app(
+    c("Patient 1: baseline" = crb),
+    app,
+    spatial_images = list(
+      "Patient 1: baseline" = list(
+        "section/a" = c("H&E baseline" = first, "H&E follow-up" = second)
+      )
+    )
+  )
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  images <- config$spatial_images[["Patient 1: baseline"]][["section/a"]]
+
+  expect_named(images, c("H&E baseline", "H&E follow-up"))
+  expect_false(identical(images[[1L]], images[[2L]]))
+  expect_true(file.exists(file.path(app, images[[1L]])))
+  expect_true(file.exists(file.path(app, images[[2L]])))
+  expect_identical(readLines(file.path(app, images[[1L]])), "FIRST")
+  expect_identical(readLines(file.path(app, images[[2L]])), "SECOND")
+})
+
+test_that("spatial image targets bound long logical names and filenames", {
+  root <- withr::local_tempdir()
+  dataset <- paste(rep("dataset", 25L), collapse = "-")
+  spatial_name <- paste(rep("spatial", 25L), collapse = "-")
+  image_label <- paste(rep("image", 35L), collapse = "-")
+  filename <- paste0(paste(rep("x", 180L), collapse = ""), ".png")
+  crb <- write_spatial_bundle_crb(
+    file.path(root, "source"),
+    spatials = stats::setNames(list(character()), spatial_name)
+  )
+  image <- file.path(root, filename)
+  writeLines("IMAGE", image)
+  app <- file.path(root, "app")
+
+  build_test_app(
+    stats::setNames(crb, dataset),
+    app,
+    spatial_images = stats::setNames(
+      list(stats::setNames(
+        list(stats::setNames(image, image_label)),
+        spatial_name
+      )),
+      dataset
+    )
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  target <- config$spatial_images[[dataset]][[spatial_name]][[image_label]]
+  expect_true(file.exists(file.path(app, target)))
+  expect_true(all(
+    nchar(strsplit(target, "/", fixed = TRUE)[[1L]], type = "bytes") <= 255L
+  ))
+  ## Keep enough headroom for an ordinary Windows app directory beneath the
+  ## historical 260-character full-path limit. Per-segment validity alone is
+  ## insufficient when four encoded logical identifiers are nested.
+  expect_lte(nchar(target, type = "bytes"), 180L)
+  expect_match(target, "\\.png$")
+})
+
+test_that("spatial image settings accept only strict scalar fields", {
+  root <- withr::local_tempdir()
+  crb <- write_spatial_bundle_crb(
+    file.path(root, "source"),
+    spatials = list(section = "Embedded")
+  )
+  cases <- list(
+    list(settings = list(opacity = 0.5), error = "unknown setting.*opacity"),
+    list(settings = list(flip_x = 1), error = "flip_x.*logical scalar"),
+    list(settings = list(flip_y = NA), error = "flip_y.*logical scalar"),
+    list(settings = list(scale_x = Inf), error = "scale_x.*finite numeric"),
+    list(
+      settings = list(rotation = c(0, 90)),
+      error = "rotation.*finite numeric"
+    )
+  )
+
+  for (i in seq_along(cases)) {
+    case <- cases[[i]]
+    expect_error(
+      build_test_app(
+        c(Dataset = crb),
+        file.path(root, paste0("app-", i)),
+        spatial_image_settings = list(
+          Dataset = list(section = list(Embedded = case$settings))
+        )
+      ),
+      case$error
+    )
+  }
+})
+
+test_that("legacy spatial image arguments require one unambiguous spatial", {
+  root <- withr::local_tempdir()
+  image <- file.path(root, "histology.png")
+  writeLines("IMAGE", image)
+  single <- write_spatial_bundle_crb(
+    file.path(root, "single"),
+    spatials = list(section = character())
+  )
+  app <- file.path(root, "single-app")
+
+  build_test_app(
+    c(Dataset = single),
+    app,
+    spatial_images = c(Dataset = image),
+    spatial_images_flip_x = c(Dataset = TRUE)
+  )
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(
+    config$spatial_images$Dataset$section[["Tissue background"]],
+    expected_spatial_image_target(
+      "Dataset",
+      "section",
+      "Tissue background",
+      "histology.png"
+    )
+  )
+  expect_identical(
+    config$spatial_image_settings$Dataset$section[["Tissue background"]],
+    list(flip_x = TRUE)
+  )
+
+  multiple <- write_spatial_bundle_crb(
+    file.path(root, "multiple"),
+    spatials = list(first = character(), second = character())
+  )
+  expect_error(
+    build_test_app(
+      c(Dataset = multiple),
+      file.path(root, "multiple-app"),
+      spatial_images = c(Dataset = image)
+    ),
+    "legacy spatial_images.*first.*second"
+  )
+  none <- write_bundle_crb(file.path(root, "none"))
+  expect_error(
+    build_test_app(
+      c(Dataset = none),
+      file.path(root, "none-app"),
+      spatial_images = c(Dataset = image)
+    ),
+    "legacy spatial_images.*no available spatial"
+  )
+})
+
+test_that("legacy non-spatial Cerebro objects remain bundleable", {
+  root <- withr::local_tempdir()
+  legacy <- legacy_cerebro_v1_3_fixture()
+  crb <- file.path(root, "legacy-non-spatial.crb")
+  saveRDS(legacy, crb)
+
+  app <- file.path(root, "app")
+  expect_silent(build_test_app(c(Legacy = crb), app))
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_null(config$spatial_images)
+})
+
+test_that("legacy non-spatial Cerebro objects reject external spatial images clearly", {
+  root <- withr::local_tempdir()
+  legacy <- legacy_cerebro_v1_3_fixture()
+  crb <- file.path(root, "legacy-non-spatial.crb")
+  image <- file.path(root, "histology.png")
+  saveRDS(legacy, crb)
+  writeLines("IMAGE", image)
+
+  expect_error(
+    build_test_app(
+      c(Legacy = crb),
+      file.path(root, "app"),
+      spatial_images = c(Legacy = image)
+    ),
+    "legacy spatial_images.*no available spatial"
+  )
+})
+
+test_that("current Cerebro objects missing spatial accessors are rejected", {
+  root <- withr::local_tempdir()
+  malformed <- copy_cerebro_fixture_bindings(
+    c("spatial", "addSpatialData", "availableSpatial", "getSpatialData")
+  )
+  lockEnvironment(malformed, bindings = FALSE)
+  crb <- file.path(root, "malformed-current.crb")
+  saveRDS(malformed, crb)
+
+  expect_error(
+    build_test_app(c(Dataset = crb), file.path(root, "app")),
+    "has no spatial accessor methods"
+  )
+})
+
+test_that("partial, active, and lazy spatial accessors are rejected", {
+  root <- withr::local_tempdir()
+  partial <- copy_cerebro_fixture_bindings("getSpatialData")
+  active <- copy_cerebro_fixture_bindings("availableSpatial")
+  lazy <- copy_cerebro_fixture_bindings("getSpatialData")
+  sentinel <- file.path(root, "lazy-accessor-was-forced")
+
+  makeActiveBinding(
+    "availableSpatial",
+    function(replacement) {
+      if (!missing(replacement)) {
+        stop("fixture binding is read-only")
+      }
+      character()
+    },
+    active
+  )
+  add_lazy_cerebro_binding(lazy, "getSpatialData", function(...) NULL, sentinel)
+
+  cases <- list(partial = partial, active = active, lazy = lazy)
+  for (case_name in names(cases)) {
+    payload <- cases[[case_name]]
+    lockEnvironment(payload, bindings = FALSE)
+    path <- file.path(root, paste0(case_name, ".crb"))
+    saveRDS(payload, path)
+    expect_error(
+      build_test_app(
+        c(Dataset = path),
+        file.path(root, paste0(case_name, "-app"))
+      ),
+      "invalid spatial accessor methods",
+      info = case_name
+    )
+  }
+  expect_false(file.exists(sentinel))
+})
+
+test_that("unambiguous legacy multi-path vectors bundle every image", {
+  root <- withr::local_tempdir()
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
+  paths <- file.path(root, c("first.png", "second.png"))
+  writeLines("FIRST", paths[[1L]])
+  writeLines("SECOND", paths[[2L]])
+  app <- file.path(root, "app")
+
+  build_test_app(c(Dataset = crb), app, spatial_images = list(Dataset = paths))
+
+  images <- readRDS(file.path(
+    app,
+    "cerebro_config.rds"
+  ))$spatial_images$Dataset$section
+  expect_named(images, c("Tissue background 1", "Tissue background 2"))
+  expect_identical(readLines(file.path(app, images[[1L]])), "FIRST")
+  expect_identical(readLines(file.path(app, images[[2L]])), "SECOND")
+})
+
+test_that("legacy multi-path images broadcast legacy per-dataset settings", {
+  root <- withr::local_tempdir()
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
+  paths <- file.path(root, c("first.png", "second.png"))
+  writeLines("FIRST", paths[[1L]])
+  writeLines("SECOND", paths[[2L]])
+  app <- file.path(root, "app")
+
+  build_test_app(
+    c(Dataset = crb),
+    app,
+    spatial_images = list(Dataset = paths),
+    spatial_images_flip_x = c(Dataset = TRUE),
+    spatial_images_scale_x = c(Dataset = 1.5)
+  )
+
+  settings <- readRDS(file.path(
+    app,
+    "cerebro_config.rds"
+  ))$spatial_image_settings$Dataset$section
+  expect_identical(
+    settings[["Tissue background 1"]],
+    list(flip_x = TRUE, scale_x = 1.5)
+  )
+  expect_identical(
+    settings[["Tissue background 2"]],
+    list(flip_x = TRUE, scale_x = 1.5)
+  )
+})
+
 test_that("one spatial image can be shared by multiple data sets", {
   root <- withr::local_tempdir()
-  first <- write_bundle_crb(file.path(root, "first"), "first.crb")
-  second <- write_bundle_crb(file.path(root, "second"), "second.crb")
+  first <- write_spatial_bundle_crb(file.path(root, "first"), "first.crb")
+  second <- write_spatial_bundle_crb(file.path(root, "second"), "second.crb")
   image <- file.path(root, "histology.png")
   writeLines("IMAGE", image)
   app <- file.path(root, "app")
@@ -2300,10 +2954,26 @@ test_that("one spatial image can be shared by multiple data sets", {
   config <- readRDS(file.path(app, "cerebro_config.rds"))
   expect_identical(
     unname(unlist(config$spatial_images, use.names = FALSE)),
-    rep(file.path("spatial-assets", "histology.png"), 2L)
+    c(
+      expected_spatial_image_target(
+        "First",
+        "section",
+        "Tissue background",
+        "histology.png"
+      ),
+      expected_spatial_image_target(
+        "Second",
+        "section",
+        "Tissue background",
+        "histology.png"
+      )
+    )
   )
   expect_identical(
-    readLines(file.path(app, "spatial-assets", "histology.png")),
+    readLines(file.path(
+      app,
+      config$spatial_images$First$section[["Tissue background"]]
+    )),
     "IMAGE"
   )
 })
@@ -2311,7 +2981,7 @@ test_that("one spatial image can be shared by multiple data sets", {
 test_that("external spatial images render from disk without an HTTP mapping", {
   skip_if_not_installed("base64enc")
   root <- withr::local_tempdir()
-  crb <- write_bundle_crb(file.path(root, "source"))
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
   image <- file.path(root, "histology.png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
   app <- file.path(root, "app")
@@ -2323,8 +2993,16 @@ test_that("external spatial images render from disk without an HTTP mapping", {
   )
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
-  stored <- config$spatial_images[["Dataset"]]
-  expect_identical(stored, file.path("spatial-assets", "histology.png"))
+  stored <- config$spatial_images$Dataset$section[["Tissue background"]]
+  expect_identical(
+    stored,
+    expected_spatial_image_target(
+      "Dataset",
+      "section",
+      "Tissue background",
+      "histology.png"
+    )
+  )
   app_source <- paste(readLines(file.path(app, "app.R")), collapse = "\n")
   expect_false(grepl("addResourcePath", app_source, fixed = TRUE))
 
@@ -2342,7 +3020,7 @@ test_that("external spatial images render from disk without an HTTP mapping", {
 test_that("forged spatial backgrounds cannot read unconfigured files", {
   skip_if_not_installed("base64enc")
   root <- withr::local_tempdir()
-  crb <- write_bundle_crb(file.path(root, "source"))
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
   image <- file.path(root, "histology.png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
   app <- file.path(root, "app")
@@ -2354,7 +3032,7 @@ test_that("forged spatial backgrounds cannot read unconfigured files", {
   )
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
-  allowed <- config$spatial_images[["Dataset"]]
+  allowed <- config$spatial_images$Dataset$section[["Tissue background"]]
   outside <- file.path(root, "outside-secret.png")
   unconfigured <- file.path(app, "spatial-assets", "unconfigured.png")
   writeLines("OUTSIDE-PRIVATE-SENTINEL", outside)
@@ -2396,52 +3074,41 @@ test_that("forged spatial backgrounds cannot read unconfigured files", {
   }
 })
 
-test_that("partially unmatched spatial images are not bundled", {
+test_that("unknown spatial image datasets fail before bundling", {
   root <- withr::local_tempdir()
-  crb <- write_bundle_crb(file.path(root, "source"))
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
   matched <- file.path(root, "matched.png")
   unmatched <- file.path(root, "unmatched.png")
   writeLines("MATCHED", matched)
   writeLines("UNMATCHED", unmatched)
   app <- file.path(root, "app")
 
-  expect_warning(
+  expect_error(
     build_test_app(
       c("Dataset" = crb),
       app,
       spatial_images = list("Dataset" = matched, "Typo" = unmatched)
     ),
-    "do not match cerebro_data"
+    "dataset `Typo`.*cerebro_data"
   )
-
-  config <- readRDS(file.path(app, "cerebro_config.rds"))
-  expect_identical(names(config$spatial_images), "Dataset")
-  expect_identical(
-    config$spatial_images[["Dataset"]],
-    file.path("spatial-assets", "matched.png")
-  )
-  expect_false(
-    file.exists(file.path(app, "spatial-assets", "unmatched.png"))
-  )
+  expect_false(dir.exists(app))
 })
 
-test_that("missing spatial images are omitted from the bundle config", {
+test_that("missing spatial images fail before bundling", {
   root <- withr::local_tempdir()
-  crb <- write_bundle_crb(file.path(root, "source"))
+  crb <- write_spatial_bundle_crb(file.path(root, "source"))
   missing <- file.path(root, "missing.png")
   app <- file.path(root, "app")
 
-  expect_warning(
+  expect_error(
     build_test_app(
       c("Dataset" = crb),
       app,
       spatial_images = list("Dataset" = missing)
     ),
-    "Spatial image not found"
+    "does not exist"
   )
-
-  config <- readRDS(file.path(app, "cerebro_config.rds"))
-  expect_null(config$spatial_images)
+  expect_false(dir.exists(app))
 })
 
 test_that("parent and child bundle targets conflict before copying", {

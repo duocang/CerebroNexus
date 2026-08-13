@@ -1446,13 +1446,16 @@ values into downstream analysis.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{name}}{Name of the spatial data entry (e.g. image name).}
+      \item{\code{name}}{Name of the spatial data entry (for example a Seurat image or
+Cerebro spatial entry).}
       \item{\code{data}}{\code{list} containing 'coordinates' (data.frame) and
-'expression' (sparse matrix). It may optionally carry an embedded
-histology image as 'image' (a base64 \code{data:} URI string) plus
-'image_bounds' (named list xmin/xmax/ymin/ymax in coordinate space)
-so the Spatial tab can render the real tissue background without an
-external file.}
+'expression' (sparse matrix). Embedded backgrounds are stored in
+'histology_images', a uniquely named list of image payloads. Each
+payload contains 'histology_image' (a base64 \code{data:} URI) and
+'histology_image_bounds' (xmin/xmax/ymin/ymax in coordinate space).
+Bounds omitted from a payload are derived from the coordinates. Legacy
+singular image fields are accepted and normalized as 'Tissue
+background'.}
     }
     \if{html}{\out{</div>}}
   }
@@ -1476,7 +1479,9 @@ external file.}
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    \code{list} containing 'coordinates' and 'expression'.
+    A canonical spatial-data \code{list} containing 'coordinates',
+'expression', and 'histology_images'. Legacy singular image fields are
+normalized on read.
   }
 }
 

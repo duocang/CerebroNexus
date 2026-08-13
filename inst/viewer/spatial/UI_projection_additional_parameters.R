@@ -1,7 +1,10 @@
 ##----------------------------------------------------------------------------##
 ## UI elements to set additional parameters for the projection.
 ##----------------------------------------------------------------------------##
-output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
+## Scatter controls deliberately live in a renderUI which is independent of the
+## selected background image. This preserves users' point-size, opacity and
+## sampling choices while moving among backgrounds.
+output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
   ## Start from a dynamic default sized to the spot count + canvas, falling back
   ## to the fixed default if that can't be computed. A dataset-specific preset
   ## (below) still takes precedence over this when one is configured.
@@ -56,6 +59,43 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
     }
   }
 
+  tagList(
+    sliderInput(
+      "spatial_projection_point_size",
+      label = "Point size",
+      min = preferences[["gene_expression_plot_point_size"]][["min"]],
+      max = preferences[["gene_expression_plot_point_size"]][["max"]],
+      step = preferences[["gene_expression_plot_point_size"]][["step"]],
+      value = default_point_size
+    ),
+    sliderInput(
+      "spatial_projection_point_opacity",
+      label = "Point opacity",
+      min = preferences[["gene_expression_plot_point_opacity"]][["min"]],
+      max = preferences[["gene_expression_plot_point_opacity"]][["max"]],
+      step = preferences[["gene_expression_plot_point_opacity"]][["step"]],
+      value = 1
+    ),
+    sliderInput(
+      "spatial_projection_percentage_cells_to_show",
+      label = "Show % of cells",
+      min = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
+        "min"
+      ]],
+      max = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
+        "max"
+      ]],
+      step = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
+        "step"
+      ]],
+      value = 100
+    )
+  )
+})
+
+## The image-specific controls may safely be regenerated when the selected
+## image changes: their initial values come from that image's preset.
+output[["spatial_projection_background_parameters_UI"]] <- renderUI({
   ## Offset sliders move the background image in DATA units, so their range is
   ## sized to the current dataset's coordinate span (± the larger of x/y span).
   ## That keeps one range usable whether the coordinates run 0–5k (Xenium) or
@@ -85,22 +125,45 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
     error = function(e) NULL
   )
 
-  ## Initial background-image adjustments for the CURRENT dataset, if the app was
-  ## built with the matching `spatial_images_*` preset. Resolved by dataset name
-  ## via `available_crb_files`. These control INITIAL VALUES so that an app can
-  ## ship a pre-aligned overlay (move + flip + scale) as the default, instead of
-  ## forcing the user to nudge it into place every session. The `fallback` is the
-  ## identity value used when no preset applies (0 for move, 1 for scale, FALSE
-  ## for flip). NOTE: the JS appearance channel that actually transforms the
-  ## background reads these UI inputs, so seeding the inputs here is what makes a
-  ## preset take effect — reading the option anywhere else has no visible result.
-  preset_default <- function(option_name, fallback) {
-    resolve_spatial_image_preset(
-      option_name,
-      fallback,
+  ## Seed appearance from the exact dataset / spatial / image leaf. Because this
+  ## renderUI reads the selected source-tagged image key, changing either spatial
+  ## entry or image recreates every control with that image's own defaults.
+  spatial_name <- input[["spatial_projection_to_display"]]
+  dataset <- spatial_dataset_name(
+    if (exists("available_crb_files")) available_crb_files$files else NULL,
+    if (exists("available_crb_files")) available_crb_files$selected else NULL
+  )
+  spatial_data <- tryCatch(
+    getSpatialData(spatial_name),
+    error = function(e) list()
+  )
+  embedded_images <- embedded_spatial_images(spatial_data)
+  external_images <- configured_spatial_images(
+    if (exists("Cerebro.options")) Cerebro.options else NULL,
+    dataset,
+    spatial_name
+  )
+  selected_descriptor <- resolve_spatial_background(
+    input[["spatial_projection_background_image"]],
+    embedded_images,
+    external_images
+  )
+  image_label <- if (is.null(selected_descriptor)) {
+    NULL
+  } else {
+    selected_descriptor$label
+  }
+  preset_default <- function(setting, fallback) {
+    if (is.null(image_label)) {
+      return(fallback)
+    }
+    resolve_spatial_image_setting(
       if (exists("Cerebro.options")) Cerebro.options else NULL,
-      if (exists("available_crb_files")) available_crb_files$files else NULL,
-      if (exists("available_crb_files")) available_crb_files$selected else NULL
+      dataset,
+      spatial_name,
+      image_label,
+      setting,
+      fallback
     )
   }
   ## Seed MOVE and FLIP from the preset so the controls honestly reflect the
@@ -115,59 +178,25 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
   ## sees one slider (locked, X drives both) or two (unlocked). Initial lock state
   ## follows the preset: equal x/y -> locked single slider; unequal -> unlocked
   ## with both shown.
-  offset_x_default <- preset_default("spatial_images_offset_x", 0)
-  offset_y_default <- preset_default("spatial_images_offset_y", 0)
-  flip_x_default <- isTRUE(preset_default("spatial_images_flip_x", FALSE))
-  flip_y_default <- isTRUE(preset_default("spatial_images_flip_y", FALSE))
-  scale_x_default <- preset_default("spatial_images_scale_x", 1)
-  scale_y_default <- preset_default("spatial_images_scale_y", 1)
+  offset_x_default <- preset_default("offset_x", 0)
+  offset_y_default <- preset_default("offset_y", 0)
+  flip_x_default <- isTRUE(preset_default("flip_x", FALSE))
+  flip_y_default <- isTRUE(preset_default("flip_y", FALSE))
+  scale_x_default <- preset_default("scale_x", 1)
+  scale_y_default <- preset_default("scale_y", 1)
+  rotation_default <- preset_default("rotation", 0)
   aspect_locked_default <- isTRUE(
     all.equal(scale_x_default, scale_y_default) == TRUE
   )
 
   tagList(
-    sliderInput(
-      "spatial_projection_point_size",
-      label = "Point size",
-      min = preferences[["gene_expression_plot_point_size"]][["min"]],
-      max = preferences[["gene_expression_plot_point_size"]][["max"]],
-      step = preferences[["gene_expression_plot_point_size"]][["step"]],
-      value = default_point_size
-    ),
-    sliderInput(
-      "spatial_projection_point_opacity",
-      label = "Point opacity",
-      min = preferences[["gene_expression_plot_point_opacity"]][["min"]],
-      max = preferences[["gene_expression_plot_point_opacity"]][["max"]],
-      step = preferences[["gene_expression_plot_point_opacity"]][["step"]],
-      ## Spatial-specific default: fully opaque points (cells sit over a tissue
-      ## image, where translucent points read as washed out).
-      value = 1
-    ),
-    sliderInput(
-      "spatial_projection_percentage_cells_to_show",
-      label = "Show % of cells",
-      min = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
-        "min"
-      ]],
-      max = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
-        "max"
-      ]],
-      step = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
-        "step"
-      ]],
-      ## Spatial-specific default: show all cells. Unlike a scRNA-seq UMAP,
-      ## where down-sampling barely changes the picture, spatial resolution is
-      ## the whole point here — dropping cells visibly degrades the tissue map.
-      value = 100
-    ),
     ## Background-image adjustments. Shown only when an image is selected. Every
     ## control here is DECOUPLED from the scatter plot: it re-styles the image
     ## <div> via the independent JS channel and never re-renders the points.
     conditionalPanel(
       condition = paste0(
         "input.spatial_projection_background_image && ",
-        "input.spatial_projection_background_image !== 'No Background'"
+        "input.spatial_projection_background_image !== 'none'"
       ),
       tags$hr(style = "margin: 16px 0 10px; border-top: 2px solid #ccc;"),
       tags$div(
@@ -287,7 +316,7 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
         label = "Rotate (about centre)",
         min = -180,
         max = 180,
-        value = 0,
+        value = rotation_default,
         step = 1
       ),
       checkboxInput(
@@ -337,7 +366,12 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
 ## make sure elements are loaded even though the box is collapsed
 outputOptions(
   output,
-  "spatial_projection_additional_parameters_UI",
+  "spatial_projection_scatter_parameters_UI",
+  suspendWhenHidden = FALSE
+)
+outputOptions(
+  output,
+  "spatial_projection_background_parameters_UI",
   suspendWhenHidden = FALSE
 )
 

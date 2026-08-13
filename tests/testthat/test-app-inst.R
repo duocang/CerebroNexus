@@ -118,6 +118,115 @@ test_that("{shinytest2} recording: overview", {
   app$stop()
 })
 
+test_that("Spatial backgrounds reset when the spatial dataset changes", {
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "spatial_background_isolation",
+    height = 950,
+    width = 1619
+  )
+  withr::defer(app$stop())
+  app$wait_for_idle(timeout = 20000)
+
+  app$set_inputs(
+    crb_file_selector = "extdata/examples/demo_spatial_visium.crb",
+    wait_ = FALSE
+  )
+  app$wait_for_idle(timeout = 30000)
+  activate_tab(app, "spatial", timeout = 30000)
+  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_background_image').value === ",
+      "'external::Tissue background'"
+    ),
+    timeout = 30000
+  )
+  expect_identical(
+    retry_get_value(
+      app,
+      input = "spatial_projection_to_display",
+      timeout = 30000,
+      validate = function(value) identical(value, "anterior1")
+    ),
+    "anterior1"
+  )
+  expect_identical(
+    unlist(
+      app$get_js(paste0(
+        "Object.keys(document.getElementById(",
+        "'spatial_projection_background_image').selectize.options)"
+      )),
+      use.names = FALSE
+    ),
+    c("none", "external::Tissue background")
+  )
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_background') && ",
+      "document.getElementById('spatial_projection_background').dataset.",
+      "backgroundImage.startsWith('data:image/')"
+    ),
+    timeout = 30000
+  )
+  ## Exercise the imageChanged path directly: it clears old interaction state,
+  ## then must seed the renderer-provided rotation in the same sync call.
+  app$run_js(paste0(
+    "shinyjs.syncSpatialBackground(",
+    "'data:image/png;base64,ROTATED', false, false, 1, 1, 1, ",
+    "null, 0, 0, 37);"
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_background').dataset.",
+      "rotate === '37'"
+    ),
+    timeout = 30000
+  )
+
+  app$set_inputs(
+    crb_file_selector = "extdata/examples/demo_spatial_slideseq.crb",
+    wait_ = FALSE
+  )
+  app$wait_for_idle(timeout = 30000)
+  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_background_image').value ",
+      "=== 'none'"
+    ),
+    timeout = 30000
+  )
+  expect_identical(
+    retry_get_value(
+      app,
+      input = "spatial_projection_to_display",
+      timeout = 30000,
+      validate = function(value) identical(value, "image")
+    ),
+    "image"
+  )
+  expect_identical(
+    unlist(
+      app$get_js(paste0(
+        "Object.keys(document.getElementById(",
+        "'spatial_projection_background_image').selectize.options)"
+      )),
+      use.names = FALSE
+    ),
+    "none"
+  )
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_background') && ",
+      "document.getElementById('spatial_projection_background').dataset.",
+      "backgroundImage === ''"
+    ),
+    timeout = 30000
+  )
+})
+
 
 test_that("{shinytest2} recording: main", {
   local_app_support(inst_dir)

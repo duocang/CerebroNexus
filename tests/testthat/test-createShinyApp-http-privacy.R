@@ -4,6 +4,21 @@ privacy_test_sources <- function(root) {
 
   h5 <- Cerebro$new()
   h5$setExpressionBackend(type = "h5", location = "matrix.h5")
+  h5$addSpatialData(
+    "section",
+    list(
+      coordinates = data.frame(
+        x = c(0, 1),
+        y = c(0, 1),
+        row.names = c("cell-1", "cell-2")
+      ),
+      expression = matrix(
+        1:4,
+        nrow = 2,
+        dimnames = list(c("gene-1", "gene-2"), c("cell-1", "cell-2"))
+      )
+    )
+  )
   h5_crb <- file.path(source_dir, "h5-data.crb")
   saveRDS(h5, h5_crb)
   writeLines("H5 PAYLOAD", file.path(source_dir, "matrix.h5"))
@@ -167,7 +182,9 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
     host = "127.0.0.1",
     launch_browser = FALSE,
     quiet = TRUE,
-    spatial_images = list("H5" = sources$image),
+    spatial_images = list(
+      H5 = list(section = c(Histology = sources$image))
+    ),
     verbose = FALSE
   )
 
@@ -179,7 +196,13 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
   )
   expect_true(all(file.exists(private_paths)))
   expect_false(dir.exists(file.path(app_dir, "data")))
-  spatial_image <- file.path(app_dir, "spatial-assets", "histology.png")
+  spatial_image_target <- expected_spatial_image_target(
+    "H5",
+    "section",
+    "Histology",
+    "histology.png"
+  )
+  spatial_image <- file.path(app_dir, spatial_image_target)
   expect_true(file.exists(spatial_image))
 
   app <- privacy_start_app(app_dir, port, root)
@@ -195,7 +218,7 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
     "/private-data/bpcells-data.crb",
     "/private-data/matrix.h5",
     "/private-data/matrix.bpcells/payload",
-    "/spatial-assets/histology.png"
+    paste0("/", spatial_image_target)
   )
   statuses <- vapply(
     private_urls,
@@ -230,7 +253,9 @@ test_that("a running legacy data mapping cannot expose replacement data", {
     host = "127.0.0.1",
     launch_browser = FALSE,
     quiet = TRUE,
-    spatial_images = list("H5" = sources$image),
+    spatial_images = list(
+      H5 = list(section = c(Histology = sources$image))
+    ),
     verbose = FALSE
   )
   expect_true(legacy_app$process$is_alive())

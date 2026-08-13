@@ -1,5 +1,5 @@
 ---
-title: "Overview of the Cerebro v1.3 class"
+title: "Overview of the Cerebro class"
 author: "Roman Hillje"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
@@ -9,7 +9,7 @@ output:
     self_contained: yes
     mode: selfcontained
 vignette: >
-  %\VignetteIndexEntry{Overview of the Cerebro v1.3 class}
+  %\VignetteIndexEntry{Overview of the Cerebro class}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -71,7 +71,7 @@ Calling the Cerebro object will give an overview of the information it currently
 
 ```
 class: Cerebro
-exporter package version: 4.2.0
+exporter package version: 4.3.0
 experiment name: pbmc_Seurat
 organism: hg
 date of analysis: 2020-02-19

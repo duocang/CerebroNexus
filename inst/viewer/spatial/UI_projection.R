@@ -26,7 +26,10 @@ output[["spatial_projection_UI"]] <- renderUI({
             "Additional parameters",
             cerebroInfoButton("spatial_projection_additional_parameters_info")
           ),
-          uiOutput("spatial_projection_additional_parameters_UI"),
+          tagList(
+            uiOutput("spatial_projection_scatter_parameters_UI"),
+            uiOutput("spatial_projection_background_parameters_UI")
+          ),
           collapsed = TRUE
         )
       ),

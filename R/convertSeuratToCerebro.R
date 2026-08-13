@@ -308,12 +308,12 @@
 #' Convert Seurat Object to Cerebro Format
 #'
 #' @description
-#' This function reads a Seurat object from a file, optionally renames grouping
-#' variables, loads marker gene tables, and exports the data to Cerebro format
-#' for visualization.
+#' This function accepts a Seurat object or reads one from an RDS file,
+#' optionally renames grouping variables, loads marker gene tables, and exports
+#' the data to Cerebro format for visualization.
 #'
-#' @param seurat_file Character string specifying the path to the Seurat object
-#'   file. Supported format: \code{.rds}.
+#' @param seurat_file A Seurat object in memory, or a character string specifying
+#'   its \code{.rds} file path.
 #' @param result_dir Character string specifying the directory where the Cerebro
 #'   output file (.crb) will be saved.
 #' @param assay Character string specifying which assay to use from the Seurat
@@ -355,6 +355,15 @@
 #'   directory, so packaging the \code{.crb} with its sibling
 #'   \code{<stem>.bpcells/} or \code{<stem>.h5} together is enough for
 #'   portable deployment.
+#' @param spatial_images Optional manifest in
+#'   \code{spatial entry -> image label -> path} form. Spatial-entry names must
+#'   match \code{SeuratObject::Images(seurat_file)}. Each entry may contain one
+#'   or more arbitrarily named PNG, JPEG/JPG, or SVG files. A named character
+#'   vector is path shorthand; a leaf may instead be
+#'   \code{list(path = ..., bounds = c(xmin = ..., xmax = ..., ymin = ...,
+#'   ymax = ...))}. Missing bounds are derived from the exported coordinates.
+#'   Supplied images are embedded in the generated CRB; existing embedded images
+#'   declared by the Seurat object are retained.
 #' @param verbose Logical indicating whether to print progress messages; default:
 #'   \code{TRUE}.
 #' @param cell_cycle Character vector of column names in metadata containing
@@ -401,22 +410,28 @@
 #'     collection
 #' }
 #'
+#' Seurat uses the same named image collection for several platform-specific
+#' structures: a name can identify a Visium slice, Xenium or MERFISH field of
+#' view (FOV), Slide-seq puck, or another SpatialImage subclass. It is a
+#' structural spatial-entry key, not necessarily a donor or sample name. An
+#' entry can carry multiple user-named backgrounds, or coordinates only.
+#'
 #' @examples
 #' \dontrun{
-#' # Basic usage
-#' convertSeuratToCerebro(
-#'   seurat_file = "path/to/seurat_object.rds",
-#'   result_dir = "path/to/output"
-#' )
+#' library(CerebroNexus)
 #'
-#' # With custom grouping and renaming
+#' input_dir <- system.file("extdata/examples", package = "CerebroNexus")
 #' convertSeuratToCerebro(
-#'   seurat_file = "seurat_object.rds",
+#'   seurat_file = file.path(input_dir, "pbmc_seurat.rds"),
 #'   result_dir = "output",
-#'   groups = c("cluster", "sample", "celltype"),
-#'   groups_naming = list("cluster" = "Cluster", "celltype" = "Cell Type"),
-#'   marker_file = "markers.csv"
+#'   assay = "RNA",
+#'   slot = "data",
+#'   experiment_name = "PBMC example",
+#'   organism = "Human",
+#'   groups = c("sample", "seurat_clusters"),
+#'   groups_naming = list("seurat_clusters" = "cluster")
 #' )
+#' # Creates output/cerebro_pbmc_seurat.crb.
 #' }
 #'
 #' @seealso \code{\link{exportFromSeurat}}
@@ -437,6 +452,7 @@ convertSeuratToCerebro <- function(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  spatial_images = NULL,
   verbose = TRUE,
   cell_cycle = NULL,
   marker_file = NULL,
@@ -565,7 +581,17 @@ convertSeuratToCerebro <- function(
         call. = FALSE
       )
     }
-
+    source_names <- names(groups_naming)
+    if (
+      anyNA(source_names) ||
+        any(!nzchar(source_names)) ||
+        anyDuplicated(source_names)
+    ) {
+      stop(
+        "groups_naming source names must be non-empty and unique.",
+        call. = FALSE
+      )
+    }
     # Check if at least one name in groups_naming exists in groups
     valid_names <- names(groups_naming)[names(groups_naming) %in% groups]
 
@@ -593,11 +619,106 @@ convertSeuratToCerebro <- function(
       )
     }
 
+    effective_mappings <- groups_naming[valid_names]
+    valid_targets <- vapply(
+      effective_mappings,
+      function(target) {
+        is.character(target) &&
+          length(target) == 1L &&
+          !is.na(target) &&
+          nzchar(target)
+      },
+      logical(1)
+    )
+    if (!all(valid_targets)) {
+      stop(
+        "groups_naming targets must each be a non-empty scalar character name.",
+        call. = FALSE
+      )
+    }
+    target_names <- unname(vapply(
+      effective_mappings,
+      `[[`,
+      character(1),
+      1L
+    ))
+    duplicate_target <- duplicated(target_names) |
+      duplicated(
+        target_names,
+        fromLast = TRUE
+      )
+    if (any(duplicate_target)) {
+      stop(
+        "Multiple groups map to the same groups_naming target '",
+        target_names[which(duplicate_target)[[1L]]],
+        "'.",
+        call. = FALSE
+      )
+    }
+
+    # Preflight every effective rename before changing metadata or misc. This
+    # keeps the in-memory Seurat object intact if any later mapping conflicts.
+    keyed_misc <- c("trees", "most_expressed_genes", "mean_expression")
     for (old_name in valid_names) {
       new_name <- groups_naming[[old_name]]
+      if (identical(old_name, new_name)) {
+        next
+      }
+      if (new_name %in% names(seurat@meta.data)) {
+        stop(
+          "Group rename metadata conflict: '",
+          old_name,
+          "' -> '",
+          new_name,
+          "'; the target column already exists.",
+          call. = FALSE
+        )
+      }
+      for (collection in keyed_misc) {
+        payload <- seurat@misc[[collection]]
+        if (
+          is.list(payload) &&
+            old_name %in% names(payload) &&
+            new_name %in% names(payload)
+        ) {
+          stop(
+            "Group rename conflict in misc payload '",
+            collection,
+            "': '",
+            old_name,
+            "' -> '",
+            new_name,
+            "'; both keys already exist.",
+            call. = FALSE
+          )
+        }
+      }
+    }
+
+    for (old_name in valid_names) {
+      new_name <- groups_naming[[old_name]]
+      if (identical(old_name, new_name)) {
+        next
+      }
       # Rename column in metadata
       seurat@meta.data[[new_name]] <- seurat@meta.data[[old_name]]
       seurat@meta.data[[old_name]] <- NULL
+
+      # Keep group-indexed analysis payloads aligned with the renamed metadata.
+      # exportFromSeurat() registers the new group names before importing these
+      # collections, so a stale key would either be dropped (summary tables) or
+      # rejected (trees) even though the public rename itself is valid.
+      for (collection in keyed_misc) {
+        payload <- seurat@misc[[collection]]
+        if (
+          is.list(payload) &&
+            old_name %in% names(payload) &&
+            !new_name %in% names(payload)
+        ) {
+          names(payload)[names(payload) == old_name] <- new_name
+          seurat@misc[[collection]] <- payload
+        }
+      }
 
       # Update groups vector with new name
       idx <- which(groups == old_name)
@@ -926,6 +1047,7 @@ convertSeuratToCerebro <- function(
         verbose = verbose,
         use_delayed_array = use_delayed_array,
         expression_matrix_mode = expression_matrix_mode,
+        spatial_images = spatial_images,
         .expression_resolution = expr_resolution
       )
       cat("Successfully exported:", file_name, "\n")
