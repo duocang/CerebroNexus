@@ -20,6 +20,7 @@ exportFromSeurat(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
 )
@@ -143,6 +144,13 @@ exportFromSeurat(
   preserved; ownership, ACLs, extended attributes, and security labels
   remain the deployment system's responsibility on every platform.
 
+- spatial_images:
+
+  Optional named list mapping Seurat image names to named image paths or
+  descriptors of the form `list(path = ..., bounds = ...)`. Supported
+  file extensions are png, jpg, jpeg, and svg. Missing bounds are
+  derived from the exported x/y coordinate range.
+
 - verbose:
 
   Set this to `TRUE` if you want additional log messages; defaults to
@@ -195,22 +203,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [06:05:13] Initializing Cerebro object...
-#> [06:05:13] Adding expression data (embedded)...
-#> [06:05:13] Collecting available meta data...
-#> [06:05:13] Extracting all meta data columns...
-#> [06:05:13] Extracting dimensional reductions...
-#> [06:05:13] Will export the following dimensional reductions: umap
-#> [06:05:13] Extracting marker genes table...
-#> [06:05:13] No trajectories to extract...
-#> [06:05:13] Checking for spatial data...
-#> [06:05:13] Overview of Cerebro object:
+#> [19:06:18] Initializing Cerebro object...
+#> [19:06:18] Adding expression data (embedded)...
+#> [19:06:18] Collecting available meta data...
+#> [19:06:18] Extracting all meta data columns...
+#> [19:06:18] Extracting dimensional reductions...
+#> [19:06:18] Will export the following dimensional reductions: umap
+#> [19:06:18] Extracting marker genes table...
+#> [19:06:18] No trajectories to extract...
+#> [19:06:18] Checking for spatial data...
+#> [19:06:18] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 4.2.0
+#> exporter package version: 4.3.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-08-12
+#> date of export: 2026-08-13
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -226,6 +234,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [06:05:13] Saving Cerebro object to: /tmp/nix-shell-4387-1494263574/RtmpuqjbOk/pbmc_Seurat.crb
-#> [06:05:13] Done!
+#> [19:06:18] Saving Cerebro object to: /tmp/nix-shell-4351-1569210743/RtmpJGibug/pbmc_Seurat.crb
+#> [19:06:18] Done!
 ```
