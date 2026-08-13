@@ -144,7 +144,12 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     timeout = 30000
   )
   expect_identical(
-    app$get_value(input = "spatial_projection_to_display"),
+    retry_get_value(
+      app,
+      input = "spatial_projection_to_display",
+      timeout = 30000,
+      validate = function(value) identical(value, "anterior1")
+    ),
     "anterior1"
   )
   expect_identical(
@@ -194,7 +199,12 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     timeout = 30000
   )
   expect_identical(
-    app$get_value(input = "spatial_projection_to_display"),
+    retry_get_value(
+      app,
+      input = "spatial_projection_to_display",
+      timeout = 30000,
+      validate = function(value) identical(value, "image")
+    ),
     "image"
   )
   expect_identical(
