@@ -123,6 +123,7 @@ cv_authorized_external_image_path <- function(path, cerebro_root) {
       error = function(error) NULL
     )
   }
+  canonical_root <- canonicalize(cerebro_root)
   image_path <- canonicalize(file.path(cerebro_root, path))
   trusted_roots <- Filter(
     Negate(is.null),
@@ -131,13 +132,30 @@ cv_authorized_external_image_path <- function(path, cerebro_root) {
       function(root) canonicalize(file.path(cerebro_root, root))
     )
   )
-  if (is.null(image_path) || !length(trusted_roots)) {
+  if (
+    is.null(canonical_root) ||
+      is.null(image_path) ||
+      !length(trusted_roots)
+  ) {
     return(NULL)
   }
   comparison_path <- image_path
+  comparison_root <- canonical_root
   if (.Platform$OS.type == "windows") {
     comparison_path <- tolower(comparison_path)
+    comparison_root <- tolower(comparison_root)
     trusted_roots <- lapply(trusted_roots, tolower)
+  }
+  ## A trusted directory may itself be a symlink. Canonicalising only the image
+  ## and that directory would bless the symlink target as a public root.
+  trusted_roots <- Filter(
+    function(root) {
+      startsWith(root, paste0(sub("/+$", "", comparison_root), "/"))
+    },
+    trusted_roots
+  )
+  if (!length(trusted_roots)) {
+    return(NULL)
   }
   inside <- any(vapply(
     trusted_roots,
@@ -149,19 +167,9 @@ cv_authorized_external_image_path <- function(path, cerebro_root) {
   if (!inside) NULL else image_path
 }
 
-## Resolve an EXTERNAL histology image (Cerebro.options$spatial_images) for the
-## CURRENTLY selected dataset, plus its alignment preset, base64-encoded so the
-## browser can show it. Returns list(uri, preset) or NULL. The preset offset is
-## in DATA units and scale is a unitless multiplier (same contract the Spatial
-## page uses), so it transfers to the coordinated-views canvas unchanged.
-cv_external_images <- function() {
-  if (
-    !exists("Cerebro.options") ||
-      is.null(Cerebro.options[["spatial_images"]])
-  ) {
-    return(list())
-  }
-  si <- Cerebro.options[["spatial_images"]]
+## Resolve the user-facing label for the selected data set. Builder-owned Viewer
+## defaults and spatial manifests are keyed by this label, not by file path.
+cv_selected_dataset_name <- function() {
   nm <- NULL
   if (exists("available_crb_files") && !is.null(available_crb_files$selected)) {
     sel <- available_crb_files$selected
@@ -173,56 +181,221 @@ cv_external_images <- function() {
       }
     }
   }
-  if (is.null(nm) || is.na(nm) || !(nm %in% names(si))) {
+  if (is.null(nm) || !length(nm) || is.na(nm) || !nzchar(nm)) NULL else nm
+}
+
+cv_selected_viewer_content <- function() {
+  if (!exists("Cerebro.options")) {
     return(list())
   }
-  paths <- si[[nm]]
-  root <- Cerebro.options[["cerebro_root"]]
-  pget <- function(key, d) {
-    v <- Cerebro.options[[key]]
-    if (is.null(v) || is.null(names(v)) || !(nm %in% names(v))) d else v[[nm]]
+  dataset <- cv_selected_dataset_name()
+  configured <- Cerebro.options[["viewer_content"]]
+  if (
+    is.null(dataset) ||
+      !is.list(configured) ||
+      !(dataset %in% names(configured)) ||
+      !is.list(configured[[dataset]])
+  ) {
+    return(list())
   }
-  ## The alignment options are indexed by DATA SET, not by image, so every
-  ## external image of one data set starts from the same numbers. That is the
-  ## configuration contract as it stands; per-image presets would need a new
-  ## option shape, and the client remembers what the user does to each image
-  ## separately regardless.
-  preset <- list(
-    offsetX = as.numeric(pget("spatial_images_offset_x", 0)),
-    offsetY = as.numeric(pget("spatial_images_offset_y", 0)),
-    scaleX = as.numeric(pget("spatial_images_scale_x", 1)),
-    scaleY = as.numeric(pget("spatial_images_scale_y", 1)),
-    flipX = isTRUE(pget("spatial_images_flip_x", FALSE)),
-    flipY = isTRUE(pget("spatial_images_flip_y", FALSE)),
+  configured[[dataset]]
+}
+
+cv_alignment_appearance <- function(alignment) {
+  if (!is.list(alignment)) {
+    return(list(image_opacity = NULL, point_opacity = NULL, point_size = NULL))
+  }
+  number <- function(key, lower, upper, lower_open = FALSE) {
+    value <- suppressWarnings(as.numeric(alignment[[key]]))
+    lower_bad <- if (lower_open) value <= lower else value < lower
+    if (
+      length(value) != 1L ||
+        is.na(value) ||
+        !is.finite(value) ||
+        lower_bad ||
+        value > upper
+    ) {
+      NULL
+    } else {
+      unname(value)
+    }
+  }
+  list(
+    image_opacity = number("image_opacity", 0, 1),
+    point_opacity = number("point_opacity", 0, 1),
+    point_size = number("point_size", 0, 20)
+  )
+}
+
+cv_image_preset <- function(spatial_name, image_label) {
+  defaults <- list(
+    offsetX = 0,
+    offsetY = 0,
+    scaleX = 1,
+    scaleY = 1,
+    flipX = FALSE,
+    flipY = FALSE,
+    rotation = 0,
     opacity = 0.6
   )
+  if (!exists("Cerebro.options")) {
+    return(defaults)
+  }
+  dataset <- cv_selected_dataset_name()
+  settings <- Cerebro.options[["spatial_image_settings"]]
+  if (
+    is.null(dataset) ||
+      is.null(settings) ||
+      !(dataset %in% names(settings)) ||
+      !(spatial_name %in% names(settings[[dataset]])) ||
+      !(image_label %in% names(settings[[dataset]][[spatial_name]]))
+  ) {
+    return(defaults)
+  }
+  setting <- settings[[dataset]][[spatial_name]][[image_label]]
+  if (!is.list(setting)) {
+    return(defaults)
+  }
+  number <- function(key, default) {
+    value <- suppressWarnings(as.numeric(setting[[key]] %||% default))
+    if (length(value) != 1L || is.na(value) || !is.finite(value)) {
+      default
+    } else {
+      unname(value)
+    }
+  }
+  list(
+    offsetX = number("offset_x", defaults$offsetX),
+    offsetY = number("offset_y", defaults$offsetY),
+    scaleX = number("scale_x", defaults$scaleX),
+    scaleY = number("scale_y", defaults$scaleY),
+    flipX = isTRUE(setting[["flip_x"]]),
+    flipY = isTRUE(setting[["flip_y"]]),
+    rotation = number("rotation", defaults$rotation),
+    opacity = number("image_opacity", defaults$opacity)
+  )
+}
+
+## Resolve only the external backgrounds declared for one dataset/FOV pair.
+## Paths are canonicalised inside public roots and become data URIs, so no
+## server-side filesystem path crosses the client boundary.
+cv_external_images <- function(spatial_name = NULL) {
+  if (
+    !exists("Cerebro.options") ||
+      is.null(Cerebro.options[["spatial_images"]])
+  ) {
+    return(list())
+  }
+  dataset <- cv_selected_dataset_name()
+  images_by_dataset <- Cerebro.options[["spatial_images"]]
+  if (
+    is.null(dataset) ||
+      !(dataset %in% names(images_by_dataset))
+  ) {
+    return(list())
+  }
+  dataset_images <- images_by_dataset[[dataset]]
+  if (!is.list(dataset_images)) {
+    return(list())
+  }
+  images_by_spatial <- dataset_images
+  if (is.null(spatial_name)) {
+    if (length(images_by_spatial) != 1L) {
+      return(list())
+    }
+    spatial_name <- names(images_by_spatial)[[1L]]
+  }
+  if (
+    !is.character(spatial_name) ||
+      length(spatial_name) != 1L ||
+      is.na(spatial_name) ||
+      !(spatial_name %in% names(images_by_spatial))
+  ) {
+    return(list())
+  }
+  configured <- images_by_spatial[[spatial_name]]
+  labels <- names(configured)
+  if (is.null(configured) || !length(configured)) {
+    return(list())
+  }
+  root <- Cerebro.options[["cerebro_root"]]
+  normalize_bounds <- function(value) {
+    required <- c("xmin", "xmax", "ymin", "ymax")
+    if (
+      is.null(value) ||
+        is.null(names(value)) ||
+        !all(required %in% names(value))
+    ) {
+      return(NULL)
+    }
+    numbers <- suppressWarnings(as.numeric(unlist(
+      value[required],
+      use.names = FALSE
+    )))
+    if (
+      length(numbers) != 4L ||
+        anyNA(numbers) ||
+        any(!is.finite(numbers)) ||
+        numbers[[1L]] >= numbers[[2L]] ||
+        numbers[[3L]] >= numbers[[4L]]
+    ) {
+      return(NULL)
+    }
+    stats::setNames(as.list(numbers), required)
+  }
   out <- list()
-  for (i in seq_along(paths)) {
-    path <- paths[i]
+  image_mime <- function(image_path) {
+    if (!isTRUE(file_test("-f", image_path))) {
+      return(NULL)
+    }
+    ext <- tolower(tools::file_ext(image_path))
+    if (!(ext %in% c("png", "jpg", "jpeg"))) {
+      return(NULL)
+    }
+    bytes <- tryCatch(
+      readBin(image_path, what = "raw", n = 8L),
+      error = function(error) raw()
+    )
+    png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+    jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
+    if (identical(ext, "png") && identical(bytes, png_magic)) {
+      return("image/png")
+    }
+    if (
+      ext %in%
+        c("jpg", "jpeg") &&
+        length(bytes) >= length(jpeg_magic) &&
+        identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
+    ) {
+      return("image/jpeg")
+    }
+    NULL
+  }
+  for (i in seq_along(configured)) {
+    descriptor <- configured[[i]]
+    path <- if (is.list(descriptor)) descriptor[["path"]] else descriptor
+    bounds <- if (is.list(descriptor)) {
+      normalize_bounds(descriptor[["bounds"]])
+    } else {
+      NULL
+    }
     img_path <- cv_authorized_external_image_path(path, root)
     if (is.null(img_path) || !requireNamespace("base64enc", quietly = TRUE)) {
       next
     }
-    ext <- tolower(tools::file_ext(img_path))
-    mime <- switch(
-      ext,
-      "jpg" = "image/jpeg",
-      "jpeg" = "image/jpeg",
-      "png" = "image/png",
-      "svg" = "image/svg+xml",
-      "image/png"
-    )
+    mime <- image_mime(img_path)
+    if (is.null(mime)) {
+      next
+    }
     base <- basename(path)
-    label <- if (!is.null(names(paths)) && nzchar(names(paths)[i] %||% "")) {
-      names(paths)[i]
+    label <- if (!is.null(labels) && nzchar(labels[[i]] %||% "")) {
+      labels[[i]]
     } else {
       base
     }
+    preset <- cv_image_preset(spatial_name, label)
     out[[length(out) + 1]] <- list(
-      ## The index keeps two files of the same basename apart, and keeps the id
-      ## stable: it is the position in the configured list, not a hash of
-      ## content or a counter that moves when another data set is opened.
-      id = paste0("ext", i, ":", base),
+      id = paste0("external:", spatial_name, ":", i, ":", label),
       label = label,
       uri = paste0(
         "data:",
@@ -230,6 +403,7 @@ cv_external_images <- function() {
         ";base64,",
         base64enc::base64encode(img_path)
       ),
+      bounds = bounds,
       preset = preset
     )
   }
@@ -238,8 +412,8 @@ cv_external_images <- function() {
 
 ## Kept for callers wanting only the primary image (and for the previous
 ## single-image contract): the first external image, or NULL.
-cv_external_image <- function() {
-  imgs <- cv_external_images()
+cv_external_image <- function(spatial_name = NULL) {
+  imgs <- cv_external_images(spatial_name)
   if (!length(imgs)) NULL else imgs[[1]]
 }
 
@@ -495,15 +669,6 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
   sidx <- match(cells, rownames(co))
   xr <- range(co[, 1], na.rm = TRUE)
   yr <- range(co[, 2], na.rm = TRUE)
-  identity_preset <- list(
-    offsetX = 0,
-    offsetY = 0,
-    scaleX = 1,
-    scaleY = 1,
-    flipX = FALSE,
-    flipY = FALSE,
-    opacity = 0.6
-  )
   ## Every background this section can be shown against, as objects with their
   ## own identity and calibration -- not one image tucked into the section.
   ## Embedded and external used to be exclusive, so an object carrying its own
@@ -517,14 +682,17 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
   )
   span <- c(diff(xr), diff(yr))
   images <- list()
-  embedded <- sd$histology_images
+  embedded <- sd[["histology_images", exact = TRUE]]
   if (is.null(embedded) || !length(embedded)) {
-    embedded <- if (!is.null(sd$histology_image)) {
-      list("Embedded histology" = sd$histology_image)
+    legacy_image <- sd[["histology_image", exact = TRUE]]
+    embedded <- if (!is.null(legacy_image)) {
+      list("Embedded histology" = legacy_image)
     } else {
       list()
     }
   }
+  alignment <- sd[["histology_alignment", exact = TRUE]]
+  appearance <- cv_alignment_appearance(alignment)
   for (embedded_index in seq_along(embedded)) {
     entry <- embedded[[embedded_index]]
     embedded_names <- names(embedded)
@@ -536,12 +704,17 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
       ""
     }
     if (is.list(entry)) {
-      emb <- entry$image %||% entry$uri %||% entry$data
-      b <- entry$bounds %||% sd$histology_image_bounds
+      emb <- entry$histology_image %||%
+        entry$image %||%
+        entry$uri %||%
+        entry$data
+      b <- entry$histology_image_bounds %||%
+        entry$bounds %||%
+        sd[["histology_image_bounds", exact = TRUE]]
       label <- entry$label %||% entry_name
     } else {
       emb <- entry
-      b <- sd$histology_image_bounds
+      b <- sd[["histology_image_bounds", exact = TRUE]]
       label <- entry_name
     }
     if (!is.character(emb) || length(emb) != 1L || is.na(emb) || !nzchar(emb)) {
@@ -557,8 +730,20 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
         paste("Embedded histology", embedded_index)
       }
     }
-    ## Every embedded image comes out of the same pipeline as the coordinates,
-    ## so it needs no hand alignment and the first remains the automatic default.
+    preset <- cv_image_preset(nm, label)
+    alignment_source <- if (is.list(alignment)) {
+      as.character(alignment$source %||% character())
+    } else {
+      character()
+    }
+    if (
+      length(alignment_source) == 1L &&
+        !is.na(alignment_source) &&
+        identical(label, basename(alignment_source)) &&
+        length(appearance$image_opacity) == 1L
+    ) {
+      preset$opacity <- unname(appearance$image_opacity)
+    }
     images[[length(images) + 1]] <- list(
       id = if (embedded_index == 1L) {
         "embedded"
@@ -568,22 +753,22 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
       label = label,
       uri = emb,
       bounds = list(
-        xmin = as.numeric(b$xmin),
-        xmax = as.numeric(b$xmax),
-        ymin = as.numeric(b$ymin),
-        ymax = as.numeric(b$ymax)
+        xmin = as.numeric(b[["xmin"]]),
+        xmax = as.numeric(b[["xmax"]]),
+        ymin = as.numeric(b[["ymin"]]),
+        ymax = as.numeric(b[["ymax"]])
       ),
-      preset = identity_preset,
+      preset = preset,
       coord_span = span
     )
   }
   if (allow_external) {
-    for (ex in cv_external_images()) {
+    for (ex in cv_external_images(nm)) {
       images[[length(images) + 1]] <- list(
         id = ex$id,
         label = ex$label,
         uri = ex$uri,
-        bounds = bounds_default,
+        bounds = ex$bounds %||% bounds_default,
         preset = ex$preset,
         coord_span = span
       )
@@ -613,7 +798,9 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
     ## `image` is the default one, kept so anything reading the older singular
     ## contract still works; `images` is the list the picker is built from.
     image = image,
-    images = images
+    images = images,
+    point_opacity = appearance$point_opacity,
+    point_size = appearance$point_size
   )
 }
 
@@ -629,12 +816,8 @@ cv_build_spatial <- function(crb, cells) {
   }
   built <- lapply(
     seq_along(sp_names),
-    ## `spatial_images` is configured PER DATA SET -- its shape carries no way
-    ## to say which section a file belongs to -- so its images are offered on
-    ## every section rather than silently attached to the first one. A reader
-    ## who has a background for their second section could not reach it at all.
-    ## Saying which image goes with which section needs a new option shape; the
-    ## client already remembers the choice per section.
+    ## External images are scoped by dataset -> FOV -> label, so each section
+    ## resolves only its own declarations.
     function(i) cv_spatial_one(crb, cells, sp_names[i], allow_external = TRUE)
   )
   built <- Filter(Negate(is.null), built)
@@ -665,10 +848,14 @@ cv_build_spatial <- function(crb, cells) {
         x = I(s$x),
         y = I(s$y),
         image = s$image,
-        images = I(s$images)
+        images = I(s$images),
+        builder_point_opacity = s$point_opacity,
+        builder_point_size = s$point_size
       )
     })
   }
+  space$builder_point_opacity <- first$point_opacity
+  space$builder_point_size <- first$point_size
   space
 }
 
@@ -698,6 +885,80 @@ cv_build_trekker <- function(crb, cells, md) {
     round(as.numeric(tk$x)[tk_idx], 2),
     round(as.numeric(tk$y)[tk_idx], 2)
   )
+  alignment <- tk[["histology_alignment", exact = TRUE]]
+  appearance <- cv_alignment_appearance(alignment)
+  histology <- tk[["histology_image", exact = TRUE]]
+  if (
+    is.character(histology) &&
+      length(histology) == 1L &&
+      !is.na(histology) &&
+      nzchar(histology)
+  ) {
+    positioned_x <- as.numeric(tk$x)[tk_idx]
+    positioned_y <- as.numeric(tk$y)[tk_idx]
+    xr <- suppressWarnings(range(positioned_x, na.rm = TRUE))
+    yr <- suppressWarnings(range(positioned_y, na.rm = TRUE))
+    if (!all(is.finite(xr)) || diff(xr) <= 0) {
+      finite_x <- positioned_x[is.finite(positioned_x)]
+      centre <- if (length(finite_x)) finite_x[[1L]] else 0
+      xr <- c(centre - 0.5, centre + 0.5)
+    }
+    if (!all(is.finite(yr)) || diff(yr) <= 0) {
+      finite_y <- positioned_y[is.finite(positioned_y)]
+      centre <- if (length(finite_y)) finite_y[[1L]] else 0
+      yr <- c(centre - 0.5, centre + 0.5)
+    }
+    bounds <- tk[["histology_image_bounds", exact = TRUE]]
+    required_bounds <- c("xmin", "xmax", "ymin", "ymax")
+    valid_bounds <- !is.null(bounds) &&
+      !is.null(names(bounds)) &&
+      all(required_bounds %in% names(bounds))
+    if (valid_bounds) {
+      bounds <- suppressWarnings(as.numeric(bounds[required_bounds]))
+      valid_bounds <- length(bounds) == 4L &&
+        !anyNA(bounds) &&
+        all(is.finite(bounds)) &&
+        bounds[[1L]] < bounds[[2L]] &&
+        bounds[[3L]] < bounds[[4L]]
+    }
+    if (!valid_bounds) {
+      bounds <- c(xr[[1L]], xr[[2L]], yr[[1L]], yr[[2L]])
+    }
+    names(bounds) <- required_bounds
+    source <- if (is.list(alignment)) {
+      as.character(alignment[["source"]] %||% character())
+    } else {
+      character()
+    }
+    label <- if (length(source) == 1L && !is.na(source) && nzchar(source)) {
+      basename(source)
+    } else {
+      "Trekker background"
+    }
+    preset <- cv_image_preset("trekker", label)
+    if (length(appearance$image_opacity) == 1L) {
+      preset$opacity <- appearance$image_opacity
+    }
+    image_entry <- list(
+      id = "trekker-embedded",
+      label = label,
+      uri = histology,
+      bounds = as.list(bounds),
+      preset = preset,
+      coord_span = c(diff(xr), diff(yr))
+    )
+    space$image <- image_entry[c(
+      "id",
+      "label",
+      "bounds",
+      "preset",
+      "coord_span"
+    )]
+    space$images <- I(list(image_entry))
+    space$background_scope <- "Trekker"
+  }
+  space$builder_point_opacity <- appearance$point_opacity
+  space$builder_point_size <- appearance$point_size
   ## Bring the Trekker page's extra controls into Linked views: continuous
   ## physical fields to colour by, per-cell positioning confidence (dissolve),
   ## and a positioning-evidence flag (nuclei markers). All aligned to `cells`;
@@ -942,30 +1203,70 @@ cv_build_bundle <- function(crb) {
   cat_skipped <- extra$skipped
   fields <- cv_build_fields(md)
 
-  ## spaces: umap (always) + spatial/trekker (if present) + clone (if present)
+  ## Every modality is independently useful. A spatial-only or Trekker-only CRB
+  ## must still open now that their legacy standalone pages no longer exist.
   projections <- cv_build_projections(crb, cells)
-  if (!length(projections)) {
-    return(NULL)
-  }
-  default_projection <- if ("umap" %in% names(projections)) {
-    "umap"
-  } else {
-    names(projections)[1]
-  }
-  dp <- projections[[default_projection]]
-  umap_space <- cv_space(
-    "umap",
-    paste0(default_projection, " (expression)"),
-    dp$x,
-    dp$y
+  viewer_content <- cv_selected_viewer_content()
+  default_projection <- NULL
+  default_point_size <- suppressWarnings(
+    as.numeric(viewer_content[["overview_point_size"]])
   )
-  ## A 3-D embedding carries its z into the space too, so the expression panel
-  ## starts orbitable rather than only becoming so after a projection switch.
-  if (!is.null(dp$z)) {
-    umap_space$z <- dp$z
-    umap_space$axes <- dp$axes
+  if (
+    length(default_point_size) != 1L ||
+      is.na(default_point_size) ||
+      !is.finite(default_point_size) ||
+      default_point_size < 0 ||
+      default_point_size > 20
+  ) {
+    default_point_size <- NULL
+  } else {
+    default_point_size <- unname(default_point_size)
   }
-  spaces <- list(umap_space)
+  default_percentage_cells_to_show <- suppressWarnings(
+    as.numeric(viewer_content[["overview_percentage_cells_to_show"]])
+  )
+  if (
+    length(default_percentage_cells_to_show) != 1L ||
+      is.na(default_percentage_cells_to_show) ||
+      !is.finite(default_percentage_cells_to_show) ||
+      default_percentage_cells_to_show < 10 ||
+      default_percentage_cells_to_show > 100
+  ) {
+    default_percentage_cells_to_show <- 100
+  } else {
+    default_percentage_cells_to_show <- unname(
+      default_percentage_cells_to_show
+    )
+  }
+  default_point_opacity <- NULL
+  spaces <- list()
+  if (length(projections)) {
+    configured_projection <- viewer_content[["default_projection"]]
+    default_projection <- if (
+      is.character(configured_projection) &&
+        length(configured_projection) == 1L &&
+        !is.na(configured_projection) &&
+        configured_projection %in% names(projections)
+    ) {
+      configured_projection
+    } else if ("umap" %in% names(projections)) {
+      "umap"
+    } else {
+      names(projections)[1]
+    }
+    dp <- projections[[default_projection]]
+    expression_space <- cv_space(
+      "umap",
+      paste0(default_projection, " (expression)"),
+      dp$x,
+      dp$y
+    )
+    if (!is.null(dp$z)) {
+      expression_space$z <- dp$z
+      expression_space$axes <- dp$axes
+    }
+    spaces[[length(spaces) + 1L]] <- expression_space
+  }
 
   ## Standard spatial and the Trekker physical mapping are INDEPENDENT spaces:
   ## add each whenever the object carries it. An object with both gets both panels
@@ -992,12 +1293,28 @@ cv_build_bundle <- function(crb) {
     clone_bundle <- cl$bundle
   }
 
+  if (!length(spaces)) {
+    return(NULL)
+  }
+
   ## Default colouring: a registered group if there is one (cell_type first, as
   ## before), else any other categorical column, else the first continuous field
   ## expressed as the client's field-mode string. An object with no colourable
   ## column at all still yields a usable bundle — the panels simply draw in one
   ## colour, which is strictly better than a blank tab.
-  default_group <- if ("cell_type" %in% names(groups)) {
+  configured_group <- tryCatch(
+    crb$getParameters()[["main_group"]],
+    error = function(e) NULL
+  )
+  available_groups <- c(names(groups), names(cat_extra))
+  default_group <- if (
+    is.character(configured_group) &&
+      length(configured_group) == 1L &&
+      !is.na(configured_group) &&
+      configured_group %in% available_groups
+  ) {
+    configured_group
+  } else if ("cell_type" %in% names(groups)) {
     "cell_type"
   } else if (length(groups)) {
     names(groups)[1]
@@ -1035,6 +1352,9 @@ cv_build_bundle <- function(crb) {
     cat_skipped = cat_skipped,
     fields = fields,
     default_group = default_group,
+    default_point_size = default_point_size,
+    default_point_opacity = default_point_opacity,
+    default_percentage_cells_to_show = default_percentage_cells_to_show,
     projections = projections,
     default_projection = default_projection,
     spaces = spaces,

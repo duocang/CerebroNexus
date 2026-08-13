@@ -433,6 +433,61 @@ test_that("cv_build_bundle still works when no grouping variable is registered",
   expect_equal(b$default_group, paste0(cv_env$cv_field_mode, "meta:nUMI"))
 })
 
+test_that("Linked views consumes Builder defaults for the initial workspace", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2", "c3")
+  md <- data.frame(
+    cell_barcode = cells,
+    cell_type = c("A", "B", "A"),
+    region = c("R1", "R1", "R2"),
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  crb <- list(
+    getMetaData = function() md,
+    getGroups = function() c("cell_type", "region"),
+    getParameters = function() list(main_group = "region"),
+    availableProjections = function() c("umap", "tsne"),
+    getProjection = function(name) {
+      offset <- if (identical(name, "tsne")) 10 else 0
+      matrix(
+        seq_len(6) + offset,
+        nrow = 3,
+        dimnames = list(cells, c("x", "y"))
+      )
+    },
+    availableSpatial = function() character(),
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL
+  )
+  cv_env$Cerebro.options <- list(
+    viewer_content = list(
+      ds = list(
+        default_projection = "tsne",
+        overview_point_size = 5,
+        overview_percentage_cells_to_show = 60
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  bundle <- cv_env$cv_build_bundle(crb)
+  expect_identical(bundle$default_projection, "tsne")
+  expect_identical(bundle$default_group, "region")
+  expect_identical(bundle$default_point_size, 5)
+  expect_identical(bundle$default_percentage_cells_to_show, 60)
+})
+
 test_that("cv_build_bundle assembles every modality from the omnibus demo", {
   skip_if_not(have_bundle)
   skip_if_not(
@@ -752,7 +807,7 @@ test_that("the histology bar exists when any section carries an image", {
   )
 })
 
-test_that("a section offers every background it has, each with its own id", {
+test_that("each FOV offers only its named configured backgrounds", {
   skip_if_not(have_bundle)
   ## Embedded and external used to be exclusive -- an object carrying its own
   ## histology silently dropped whatever the deployment had configured -- and
@@ -855,7 +910,22 @@ test_that("a section offers every background it has, each with its own id", {
   cv_env$Cerebro.options <- list(
     cerebro_root = tmp,
     spatial_images = list(
-      ds = c("spatial-assets/a/he.png", "spatial-assets/b/he.png")
+      ds = list(
+        `section-a` = list(
+          `H&E` = list(
+            path = "spatial-assets/a/he.png",
+            bounds = c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
+          )
+        ),
+        `section-b` = c(`H&E` = "spatial-assets/b/he.png")
+      )
+    ),
+    spatial_image_settings = list(
+      ds = list(
+        `section-a` = list(
+          `H&E` = list(offset_x = 4, rotation = 90, flip_x = TRUE)
+        )
+      )
     )
   )
   cv_env$available_crb_files <- list(
@@ -870,11 +940,211 @@ test_that("a section offers every background it has, each with its own id", {
     add = TRUE
   )
 
-  imgs <- cv_env$cv_external_images()
-  expect_equal(length(imgs), 2) # not just the first
-  ids <- vapply(imgs, function(x) x$id, character(1))
-  expect_equal(length(unique(ids)), 2) # same basename, different identity
-  expect_true(all(grepl("he\\.png$", ids)))
+  first <- cv_env$cv_external_images("section-a")
+  second <- cv_env$cv_external_images("section-b")
+  expect_length(first, 1L)
+  expect_length(second, 1L)
+  expect_identical(first[[1L]]$label, "H&E")
+  expect_identical(second[[1L]]$label, "H&E")
+  expect_false(identical(first[[1L]]$id, second[[1L]]$id))
+  expect_equal(
+    unlist(first[[1L]]$bounds, use.names = TRUE),
+    c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
+  )
+  expect_identical(first[[1L]]$preset$offsetX, 4)
+  expect_identical(first[[1L]]$preset$rotation, 90)
+  expect_true(first[[1L]]$preset$flipX)
+})
+
+test_that("flat per-dataset background manifests are rejected", {
+  skip_if_not(have_bundle)
+  skip_if_not_installed("base64enc")
+  tmp <- file.path(tempdir(), "cv_legacy_imgs")
+  dir.create(
+    file.path(tmp, "spatial-assets"),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+  image <- file.path(tmp, "spatial-assets", "he.png")
+  writeBin(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    image
+  )
+  cv_env$Cerebro.options <- list(
+    cerebro_root = tmp,
+    spatial_images = list(ds = c(`H&E` = "spatial-assets/he.png"))
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  images <- cv_env$cv_external_images("section-a")
+  expect_length(images, 0L)
+})
+
+test_that("a symlinked public image root cannot escape the generated app", {
+  skip_if_not(have_bundle)
+  skip_on_os("windows")
+  tmp <- file.path(tempdir(), "cv_symlink_root")
+  unlink(tmp, recursive = TRUE)
+  app <- file.path(tmp, "app")
+  outside <- file.path(tmp, "outside")
+  dir.create(app, recursive = TRUE)
+  dir.create(outside, recursive = TRUE)
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), file.path(outside, "secret.png"))
+  skip_if_not(file.symlink(outside, file.path(app, "spatial-assets")))
+
+  expect_null(cv_env$cv_authorized_external_image_path(
+    "spatial-assets/secret.png",
+    app
+  ))
+})
+
+test_that("external backgrounds are regular PNG or JPEG files with matching magic", {
+  skip_if_not(have_bundle)
+  skip_if_not_installed("base64enc")
+  tmp <- file.path(tempdir(), "cv_external_image_types")
+  unlink(tmp, recursive = TRUE)
+  assets <- file.path(tmp, "spatial-assets")
+  dir.create(assets, recursive = TRUE)
+  png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff, 0xe0))
+  writeBin(png_magic, file.path(assets, "valid.png"))
+  writeBin(jpeg_magic, file.path(assets, "valid.jpg"))
+  writeLines("not an image", file.path(assets, "text.png"))
+  writeBin(png_magic, file.path(assets, "mismatch.jpg"))
+  writeBin(png_magic, file.path(assets, "unknown.gif"))
+  dir.create(file.path(assets, "directory.png"))
+  cv_env$Cerebro.options <- list(
+    cerebro_root = tmp,
+    spatial_images = list(
+      ds = list(
+        fov = c(
+          png = "spatial-assets/valid.png",
+          jpeg = "spatial-assets/valid.jpg",
+          text = "spatial-assets/text.png",
+          mismatch = "spatial-assets/mismatch.jpg",
+          unknown = "spatial-assets/unknown.gif",
+          directory = "spatial-assets/directory.png"
+        )
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  images <- cv_env$cv_external_images("fov")
+  expect_identical(
+    vapply(images, `[[`, character(1), "label"),
+    c("png", "jpeg")
+  )
+  expect_match(images[[1L]]$uri, "^data:image/png;base64,")
+  expect_match(images[[2L]]$uri, "^data:image/jpeg;base64,")
+})
+
+test_that("malformed nested image settings fail closed to defaults", {
+  skip_if_not(have_bundle)
+  cv_env$Cerebro.options <- list(
+    spatial_image_settings = list(
+      ds = list(fov = list(image = "not-a-settings-leaf"))
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  expect_identical(
+    cv_env$cv_image_preset("fov", "image"),
+    list(
+      offsetX = 0,
+      offsetY = 0,
+      scaleX = 1,
+      scaleY = 1,
+      flipX = FALSE,
+      flipY = FALSE,
+      rotation = 0,
+      opacity = 0.6
+    )
+  )
+})
+
+test_that("per-image settings and Builder appearance reach embedded backgrounds", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  crb <- list(getSpatialData = function(name) {
+    list(
+      coordinates = data.frame(
+        x = c(1, 2),
+        y = c(3, 4),
+        row.names = cells
+      ),
+      histology_images = list(
+        Embedded = list(
+          histology_image = "data:image/png;base64,AA==",
+          histology_image_bounds = c(xmin = 0, xmax = 3, ymin = 0, ymax = 5)
+        )
+      ),
+      histology_alignment = list(
+        source = "Embedded",
+        image_opacity = 0.7,
+        point_opacity = 0.8,
+        point_size = 5
+      )
+    )
+  })
+  cv_env$Cerebro.options <- list(
+    spatial_image_settings = list(
+      ds = list(
+        fov = list(
+          Embedded = list(offset_x = 2, flip_y = TRUE, rotation = 45)
+        )
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  built <- cv_env$cv_spatial_one(crb, cells, "fov", allow_external = TRUE)
+  expect_identical(built$images[[1L]]$preset$offsetX, 2)
+  expect_identical(built$images[[1L]]$preset$rotation, 45)
+  expect_true(built$images[[1L]]$preset$flipY)
+  expect_identical(built$images[[1L]]$preset$opacity, 0.7)
+  expect_identical(built$point_opacity, 0.8)
+  expect_identical(built$point_size, 5)
 })
 
 test_that("the alignment bar follows the chosen background, not the data set", {
@@ -1006,14 +1276,11 @@ test_that("bundling two images of the same basename keeps both", {
   expect_true(all(file.exists(file.path(app_dir, cfg$spatial_images$ds))))
 })
 
-test_that("external images are offered on every spatial section", {
-  ## `spatial_images` is configured per DATA SET; its shape cannot say which
-  ## section a file belongs to. Attaching them to the first section only meant a
-  ## reader with a background for their second section could not reach it.
+test_that("external images retain their spatial-entry ownership", {
   path <- bundle_file
   txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(txt, "allow_external = TRUE", fixed = TRUE)
-  expect_no_match(txt, "allow_external = i == 1", fixed = TRUE)
+  expect_match(txt, "cv_external_images(nm)", fixed = TRUE)
+  expect_no_match(txt, "for (ex in cv_external_images())", fixed = TRUE)
 })
 
 test_that("the alignment sliders contain the preset they are given", {

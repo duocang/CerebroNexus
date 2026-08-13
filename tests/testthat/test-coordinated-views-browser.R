@@ -3538,6 +3538,75 @@ test_that("re-sending the same data set keeps the image adjustments", {
   app$stop()
 })
 
+test_that("Builder initial cells percentage seeds the linked workspace", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_builder_initial_cells")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(cv_bundle_js(
+    "{dataset_id:'builder-defaults',default_percentage_cells_to_show:40}",
+    n = 800
+  ))
+  app$wait_for_js(
+    "Number(document.getElementById('cv-pct').value) === 40",
+    timeout = 15000
+  )
+  expect_equal(
+    app$get_js("Number(document.getElementById('cv-pct').value)"),
+    40
+  )
+  expect_true(app$get_js(paste0(
+    "(function(){var t=document.getElementById('cv-shown').textContent;",
+    "var m=t.match(/showing ([0-9,]+) of 800 cells/);",
+    "return !!m && Number(m[1].replace(/,/g,'')) < 800;})()"
+  )))
+})
+
+test_that("a FOV named Trekker does not share direct Trekker background state", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_background_state_namespace")
+  on.exit(app$stop(), add = TRUE)
+
+  image <- paste0(
+    "data:image/png;base64,",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8",
+    "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  )
+  app$run_js(cv_bundle_js(paste0(
+    "{dataset_id:'same-visible-name',spaces:[",
+    "{id:'spatial',label:'Trekker (spatial)',x:blob(0),y:blob(0),samples:[",
+    "{name:'Trekker',label:'Trekker (spatial)',x:blob(0),y:blob(0),images:[",
+    "{id:'fov-image',label:'FOV image',uri:'",
+    image,
+    "',preset:{}}]}]},",
+    "{id:'trekker',label:'Physical (Trekker)',background_scope:'Trekker',",
+    "x:blob(1),y:blob(1),images:[",
+    "{id:'direct-image',label:'Direct image',uri:'",
+    image,
+    "',preset:{}}]}]}"
+  )))
+  app$wait_for_js(
+    "document.querySelectorAll('#cv-bg-space-tabs [data-cv-bg-tab]').length===2",
+    timeout = 15000
+  )
+  app$run_js(paste0(
+    "document.querySelector('[data-cv-bg-tab=\"spatial::Trekker\"]').click();",
+    "document.querySelector('[data-cv-bg-mode=\"none\"]').click();",
+    "document.querySelector('[data-cv-bg-tab=\"trekker\"]').click();"
+  ))
+  app$wait_for_idle(timeout = 5000)
+  expect_true(app$get_js(
+    "document.querySelector('[data-cv-bg-mode=\"auto\"]').classList.contains('is-on')"
+  ))
+  app$run_js(
+    "document.querySelector('[data-cv-bg-tab=\"spatial::Trekker\"]').click();"
+  )
+  app$wait_for_idle(timeout = 5000)
+  expect_true(app$get_js(
+    "document.querySelector('[data-cv-bg-mode=\"none\"]').classList.contains('is-on')"
+  ))
+})
+
 ## The line above the panels names the spaces on screen. Switching spatial
 ## section left it naming the section that had just been left, so the header and
 ## the panel title disagreed about what was being shown.
