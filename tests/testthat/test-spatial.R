@@ -160,6 +160,16 @@ test_that("background-image selection only recreates image calibration controls"
     projection_ui,
     'uiOutput\\("spatial_projection_background_parameters_UI"\\)'
   )
+  expect_match(
+    projection_ui,
+    paste0(
+      'tagList\\([[:space:]]*',
+      'uiOutput\\("spatial_projection_scatter_parameters_UI"\\),[[:space:]]*',
+      'uiOutput\\("spatial_projection_background_parameters_UI"\\)',
+      '[[:space:]]*\\)'
+    ),
+    perl = TRUE
+  )
 })
 
 test_that("ImageFeaturePlot reaches getExpressionMatrix as a Cerebro method", {
