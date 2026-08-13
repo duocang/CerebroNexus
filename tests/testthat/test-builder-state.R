@@ -113,6 +113,43 @@ test_that("the pure Builder state API is available", {
 })
 
 if (builder_state_api_available) {
+  test_that("spatial coordinate transforms are validated at the Builder state boundary", {
+    entry <- builder_state_entry()
+    entry$settings$spatial_coordinate_transforms <- list(
+      fov_a = list(rotation_degrees = 90, scale = 1.5)
+    )
+
+    state <- builder_dataset_state(entry)
+    expect_identical(
+      state$entry$settings$spatial_coordinate_transforms$fov_a,
+      list(schema_version = 1L, rotation_degrees = 90, scale = 1.5)
+    )
+
+    malformed <- builder_state_entry()
+    malformed$settings$spatial_coordinate_transforms <- list(
+      list(rotation_degrees = 0, scale = 1)
+    )
+    error <- capture_builder_state_error(builder_dataset_state(malformed))
+    expect_s3_class(error, "builder_state_error")
+    expect_identical(error$code, "invalid_spatial_coordinate_transform")
+
+    invalid_scale <- builder_state_entry()
+    invalid_scale$settings$spatial_coordinate_transforms <- list(
+      fov_a = list(rotation_degrees = 0, scale = 0)
+    )
+    error <- capture_builder_state_error(builder_dataset_state(invalid_scale))
+    expect_s3_class(error, "builder_state_error")
+    expect_identical(error$code, "invalid_spatial_coordinate_transform")
+
+    invalid_key <- builder_state_entry()
+    invalid_key$settings$spatial_coordinate_transforms <- list(
+      fov_a = list(rotation_degrees = 0, scale = 1, pivot = c(x = 0, y = 0))
+    )
+    error <- capture_builder_state_error(builder_dataset_state(invalid_key))
+    expect_s3_class(error, "builder_state_error")
+    expect_identical(error$code, "invalid_spatial_coordinate_transform")
+  })
+
   test_that("legacy settings upgrade to one canonical Viewer content shape", {
     upgraded <- builder_upgrade_viewer_content_entry(
       builder_viewer_settings_entry()
@@ -129,6 +166,7 @@ if (builder_state_api_available) {
     expect_identical(settings$included_projections, "umap")
     expect_identical(settings$default_projection, "umap")
     expect_identical(settings$overview_point_size, 5)
+    expect_identical(settings$overview_percentage_cells_to_show, 100)
     expect_identical(settings$cell_cycle_columns, "Phase")
     expect_identical(
       settings$included_trajectories,
@@ -137,6 +175,18 @@ if (builder_state_api_available) {
     expect_identical(
       settings$default_trajectory,
       list(method = "monocle2", name = "lineage")
+    )
+  })
+
+  test_that("initial Viewer cell percentage rejects values outside 10 to 100", {
+    entry <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry()
+    )
+    entry$settings$overview_percentage_cells_to_show <- 0
+
+    expect_error(
+      builder_dataset_state(entry),
+      class = "builder_state_error"
     )
   })
 

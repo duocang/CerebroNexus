@@ -344,6 +344,27 @@ alignment_server <- builder_spatial_alignment_server(
 )
 active_slice <- alignment_server$active_section
 
+observeEvent(
+  input[["enhance-spatial_image_storage"]],
+  {
+    id <- current()
+    entry <- if (is.null(id)) NULL else isolate(entry_of(id))
+    storage <- input[["enhance-spatial_image_storage"]]
+    if (
+      is.null(entry) ||
+        !is.character(storage) ||
+        length(storage) != 1L ||
+        !storage %in% c("external", "embedded") ||
+        identical(entry$settings$spatial_image_storage, storage)
+    ) {
+      return()
+    }
+    entry$settings$spatial_image_storage <- storage
+    replace_entry(entry)
+  },
+  ignoreInit = TRUE
+)
+
 run_result_action <- function(action) {
   current_result <- isolate(result())
   req(inherits(current_result, "builder_result"))

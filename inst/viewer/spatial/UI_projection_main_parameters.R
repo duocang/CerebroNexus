@@ -30,14 +30,8 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     ]
   }
 
-  ## prepare background image choices
-  background_choices <- c("No Background")
-
-  ## Real .crb data may carry a genuine histology image embedded in the spatial
-  ## slot. Offer it ONLY when the CURRENTLY DISPLAYED spatial entry has one — not
-  ## when any dataset does. Otherwise a bead-only platform (Slide-seq, no image
-  ## by design) would list "__embedded__" and show a neighbouring dataset's
-  ## tissue image behind its cells.
+  ## Build this entry's choices only. Values carry source + label identity; paths
+  ## and data URIs remain server-side descriptors and never become input values.
   current_spatial <- input[["spatial_projection_to_display"]]
   if (
     is.null(current_spatial) ||
@@ -49,58 +43,32 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
     getSpatialData(current_spatial),
     error = function(e) NULL
   )
-  has_embedded <- !is.null(current_sd) && !is.null(current_sd$histology_image)
-  builder_alignment_background_default <- if (
-    has_embedded && is.list(current_sd$histology_alignment)
-  ) {
-    "__embedded__"
+  embedded_images <- if (is.null(current_sd)) {
+    list()
   } else {
-    "No Background"
+    embedded_spatial_images(current_sd)
   }
-  if (has_embedded) {
-    background_choices <- c(
-      background_choices,
-      "Tissue background (H&E / DAPI)" = "__embedded__"
-    )
-  }
-
-  if (
-    exists("Cerebro.options") && !is.null(Cerebro.options[["spatial_images"]])
-  ) {
-    configured_crb_files <- Cerebro.options[["crb_file_to_load"]]
-    selected_crb <- if (exists("available_crb_files")) {
-      available_crb_files$selected
-    } else {
-      NULL
-    }
-    ## Resolve against configured CRBs, not the switcher state: uploads clear
-    ## that state and must not inherit a configured dataset's image.
-    img_paths <- configured_spatial_images(
-      Cerebro.options,
-      configured_crb_files,
-      selected_crb,
-      names(configured_crb_files)
-    )
-    if (length(img_paths) > 0L) {
-      background_choices <- c(
-        background_choices,
-        setNames(img_paths, basename(img_paths))
-      )
-    }
-  }
-
-  ## Every selectInput below has to be told what is already selected.
-  ##
-  ## This block reads `spatial_projection_to_display` (above) *and* emits it,
-  ## so picking a section invalidates the block and re-emits the control. With
-  ## no `selected=`, a selectInput falls back to its first choice -- so choosing
-  ## the second section snapped straight back to the first and no section but
-  ## the first was ever reachable. The same re-render also resets the two
-  ## controls after it, which only became visible once switching worked at all.
+  dataset <- spatial_dataset_name(
+    if (exists("available_crb_files")) available_crb_files$files else NULL,
+    if (exists("available_crb_files")) available_crb_files$selected else NULL
+  )
+  external_images <- configured_spatial_images(
+    if (exists("Cerebro.options")) Cerebro.options else NULL,
+    dataset,
+    current_spatial
+  )
+  background_choices <- spatial_background_choices(
+    embedded_images,
+    external_images
+  )
+  selected_background <- normalize_spatial_background_choice(
+    isolate(input[["spatial_projection_background_image"]]),
+    background_choices
+  )
   keep <- function(id, choices, fallback = NULL) {
     value <- isolate(input[[id]])
-    if (is.null(value) || !(value %in% choices)) {
-      value <- if (is.null(fallback)) choices[1] else fallback
+    if (is.null(value) || !value %in% choices) {
+      value <- if (is.null(fallback)) choices[[1L]] else fallback
     }
     value
   }
@@ -184,21 +152,15 @@ output[["spatial_projection_main_parameters_UI"]] <- renderUI({
         )
       )
     ),
-    if (length(background_choices) > 1) {
-      ## Only the image PICKER lives in Main parameters. All the appearance
-      ## adjustments (opacity, move, flip, scale, rotate) live in Additional
-      ## parameters and are decoupled from the scatter plot.
-      selectInput(
-        "spatial_projection_background_image",
-        label = "Background image",
-        choices = background_choices,
-        selected = keep(
-          "spatial_projection_background_image",
-          background_choices,
-          builder_alignment_background_default
-        )
-      )
-    }
+    ## Keep the selector present for image-free entries too, where its sole
+    ## choice is No Background. Re-rendering on a spatial switch resets a stale
+    ## source-tagged value before the plot reactive can reuse old image data.
+    selectInput(
+      "spatial_projection_background_image",
+      label = "Background image",
+      choices = background_choices,
+      selected = selected_background
+    )
   )
 })
 

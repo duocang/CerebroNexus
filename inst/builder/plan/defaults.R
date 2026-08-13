@@ -118,6 +118,48 @@ builder_resolve_colors <- function(settings, levels) {
   )
 }
 
+.builder_plan_flatten_spatial_images <- function(images) {
+  if (
+    exists(
+      "builder_image_collection_flatten",
+      mode = "function",
+      inherits = TRUE
+    )
+  ) {
+    return(builder_image_collection_flatten(images %||% list()))
+  }
+  images <- images %||% list()
+  flattened <- list()
+  for (section_id in names(images)) {
+    section <- images[[section_id]]
+    records <- if (is.list(section) && !is.null(section$uri)) {
+      stats::setNames(list(section), section$source$name %||% section_id)
+    } else {
+      section
+    }
+    labels <- names(records)
+    if (
+      is.null(labels) ||
+        anyNA(labels) ||
+        any(!nzchar(labels)) ||
+        anyDuplicated(labels)
+    ) {
+      stop("Spatial image labels must be unique and non-empty.", call. = FALSE)
+    }
+    for (image_label in names(records)) {
+      flattened[[length(flattened) + 1L]] <- c(
+        list(section_id = section_id, image_label = image_label),
+        records[[image_label]]
+      )
+    }
+  }
+  flattened
+}
+
+.builder_plan_spatial_image_count <- function(images) {
+  as.integer(length(.builder_plan_flatten_spatial_images(images)))
+}
+
 builder_default_settings <- function(
   profile,
   name,
@@ -143,6 +185,8 @@ builder_default_settings <- function(
     analyses = character(),
     tables = list(),
     images = list(),
+    spatial_coordinate_transforms = list(),
+    spatial_image_storage = "external",
     palette = "cerebro",
     color_overrides = list(),
     group_color_overrides = list()

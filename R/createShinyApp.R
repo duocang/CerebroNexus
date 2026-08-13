@@ -163,13 +163,17 @@ dedent <- function(string) {
   "getTrajectory"
 )
 
+.isRecognizedCerebroObject <- function(object) {
+  is.environment(object) &&
+    inherits(object, "R6") &&
+    any(startsWith(class(object), "Cerebro")) &&
+    environmentIsLocked(object)
+}
+
 ## Treat the ordinary field as data. The getter binding is checked only as a
 ## format marker and is never invoked during preflight.
-.readBundleBackend <- function(crb_path) {
-  object <- readRDS(crb_path)
-  recognized <- is.environment(object) &&
-    all(c("Cerebro_v1.3", "R6") %in% class(object)) &&
-    environmentIsLocked(object)
+.readBundleBackend <- function(crb_path, object = readRDS(crb_path)) {
+  recognized <- .isRecognizedCerebroObject(object)
   if (recognized) {
     for (method in .bundleRequiredCerebroMethods) {
       if (
@@ -259,6 +263,78 @@ dedent <- function(string) {
   }
   backend$legacy <- FALSE
   backend
+}
+
+.readBundleSpatialCatalog <- function(object, dataset) {
+  if (
+    !is.function(object$availableSpatial) ||
+      !is.function(object$getSpatialData)
+  ) {
+    return(list())
+  }
+  available <- tryCatch(
+    object$availableSpatial(),
+    error = function(error) {
+      stop(
+        "Could not read available spatial entries for dataset `",
+        dataset,
+        "`: ",
+        conditionMessage(error),
+        call. = FALSE
+      )
+    }
+  )
+  if (is.null(available)) {
+    available <- character()
+  }
+  if (
+    !is.character(available) ||
+      anyNA(available) ||
+      any(!nzchar(available)) ||
+      anyDuplicated(available)
+  ) {
+    stop(
+      "Dataset `",
+      dataset,
+      "` returned invalid available spatial entry names.",
+      call. = FALSE
+    )
+  }
+  catalog <- lapply(available, function(spatial_name) {
+    data <- tryCatch(
+      object$getSpatialData(spatial_name),
+      error = function(error) {
+        stop(
+          "Could not read dataset `",
+          dataset,
+          "` spatial `",
+          spatial_name,
+          "`: ",
+          conditionMessage(error),
+          call. = FALSE
+        )
+      }
+    )
+    data <- .normalizeSpatialDataImages(data, spatial_name)
+    images <- data[["histology_images"]]
+    if (is.null(images)) character() else names(images)
+  })
+  names(catalog) <- available
+  catalog
+}
+
+.spatialImageBundleTarget <- function(dataset, spatial_name, filename) {
+  target <- paste(
+    "spatial-assets",
+    dataset,
+    spatial_name,
+    filename,
+    sep = "/"
+  )
+  .portableBundlePath(
+    target,
+    paste0("The spatial image bundle target '", target, "'")
+  )
 }
 
 .bundleBackendOverrideKey <- function(backend, cerebro_options) {
@@ -1197,25 +1273,23 @@ dedent <- function(string) {
 #' @param point_size Named list with \code{overview_projection_point_size}
 #'   (and optionally other keys) forwarded to \code{Cerebro.options}.
 #' @param variable_to_compare Forwarded to \code{Cerebro.options}.
-#' @param spatial_images Named list/vector of paths to spatial background images
-#'   (e.g. tissue histology) shown behind the Spatial tab projection. Names must
-#'   match \code{cerebro_data}. Supplied files are copied verbatim into the
-#'   app's \code{spatial-assets/} directory. The server-side renderer reads and
-#'   embeds them as data URIs. Missing files are omitted with a warning.
-#' @param spatial_images_flip_x Named list/vector; whether to flip the spatial
-#'   background image horizontally. Names must match \code{cerebro_data}.
-#' @param spatial_images_flip_y Named list/vector; whether to flip the spatial
-#'   background image vertically. Names must match \code{cerebro_data}.
-#' @param spatial_images_scale_x Named list/vector; scaling factor for the X
-#'   axis of the spatial background image. Names must match \code{cerebro_data}.
-#' @param spatial_images_scale_y Named list/vector; scaling factor for the Y
-#'   axis of the spatial background image. Names must match \code{cerebro_data}.
-#' @param spatial_images_offset_x Named list/vector; horizontal offset (in data
-#'   units) applied to move the spatial background image. Names must match
-#'   \code{cerebro_data}.
-#' @param spatial_images_offset_y Named list/vector; vertical offset (in data
-#'   units) applied to move the spatial background image. Names must match
-#'   \code{cerebro_data}.
+#' @param spatial_images Optional nested external-image manifest in
+#'   \code{dataset -> spatial entry -> image label -> path} form. Dataset names
+#'   must match \code{cerebro_data}; spatial names must match the corresponding
+#'   CRB's \code{availableSpatial()}, and image labels must be unique and
+#'   non-empty within an entry. A leaf may instead be a descriptor containing
+#'   \code{path} and optional coordinate \code{bounds}. Supplied files are
+#'   copied under \code{spatial-assets/<dataset>/<spatial>/} and configured with
+#'   relative paths. Flat per-dataset declarations are rejected.
+#' @param spatial_image_settings Optional nested settings in
+#'   \code{dataset -> spatial entry -> image label -> settings} form. Settings
+#'   may contain only \code{flip_x}, \code{flip_y}, \code{scale_x},
+#'   \code{scale_y}, \code{offset_x}, \code{offset_y}, \code{rotation}, and
+#'   \code{image_opacity} in the inclusive range 0 to 1.
+#'   A leaf may target an embedded or external image available under that exact
+#'   dataset and spatial entry. The image label must exist in the union of the
+#'   CRB's embedded images and this call's \code{spatial_images}; unknown
+#'   identities are rejected. Labels are user-facing names, not protocol names.
 #' @param spatial_plot_rotation Named list/vector; initial rotation (degrees)
 #'   applied to spatial cell coordinates. Names must match \code{cerebro_data}.
 #' @param auth Optional authentication settings. \code{NULL}, the default,
@@ -1228,6 +1302,24 @@ dedent <- function(string) {
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
 #'   during the build, warns and returns the frozen absolute publication path.
+#'
+#' @examples
+#' \dontrun{
+#' library(CerebroNexus)
+#'
+#' createShinyApp(
+#'   cerebro_data = c(
+#'     "PBMC example" = "output/cerebro_pbmc_seurat.crb"
+#'   ),
+#'   result_dir = "my_app",
+#'   port = 8080,
+#'   host = "127.0.0.1",
+#'   max_request_size = 8000,
+#'   overwrite = TRUE
+#' )
+#' # Run with shiny::runApp("my_app") or deploy my_app/ to Shiny Server.
+#' }
+#'
 #' @importFrom later later
 #' @importFrom stats setNames
 #' @export
@@ -1252,12 +1344,7 @@ createShinyApp <- function(
   ),
   variable_to_compare = NULL,
   spatial_images = NULL,
-  spatial_images_flip_x = NULL,
-  spatial_images_flip_y = NULL,
-  spatial_images_scale_x = NULL,
-  spatial_images_scale_y = NULL,
-  spatial_images_offset_x = NULL,
-  spatial_images_offset_y = NULL,
+  spatial_image_settings = NULL,
   spatial_plot_rotation = NULL,
   initial_dataset = NULL,
   initial_page = NULL,
@@ -1265,6 +1352,29 @@ createShinyApp <- function(
   ...
 ) {
   # Validate inputs ----------------------------------------------------------##
+  dots <- list(...)
+  removed_spatial_arguments <- intersect(
+    names(dots),
+    c(
+      "spatial_images_flip_x",
+      "spatial_images_flip_y",
+      "spatial_images_scale_x",
+      "spatial_images_scale_y",
+      "spatial_images_offset_x",
+      "spatial_images_offset_y"
+    )
+  )
+  if (length(removed_spatial_arguments) > 0L) {
+    stop(
+      paste0(
+        "The removed argument(s) ",
+        paste(sprintf("`%s`", removed_spatial_arguments), collapse = ", "),
+        " are no longer supported; use nested `spatial_image_settings` ",
+        "keyed by dataset, spatial entry, and image label."
+      ),
+      call. = FALSE
+    )
+  }
   if (is.list(cerebro_data)) {
     valid_entries <- vapply(
       cerebro_data,
@@ -1323,6 +1433,24 @@ createShinyApp <- function(
   }
   if (anyDuplicated(data_labels)) {
     stop("cerebro_data labels must be unique.", call. = FALSE)
+  }
+  builder_spatial_options <- c(
+    "spatial_images",
+    "spatial_image_settings"
+  )
+  supplied_option_names <- names(cerebro_options)
+  forbidden_spatial_options <- unique(intersect(
+    supplied_option_names,
+    builder_spatial_options
+  ))
+  if (length(forbidden_spatial_options) > 0L) {
+    stop(
+      "`cerebro_options` contains builder-owned spatial key(s): ",
+      paste(forbidden_spatial_options, collapse = ", "),
+      ". Supply these through the corresponding createShinyApp() formal ",
+      "parameters instead.",
+      call. = FALSE
+    )
   }
   if (
     !is.null(initial_dataset) &&
@@ -1572,35 +1700,6 @@ createShinyApp <- function(
     }
     x[matching]
   }
-  spatial_images <- validate_named_against_data(
-    spatial_images,
-    "spatial_images",
-    reject_duplicates = TRUE
-  )
-  spatial_images_flip_x <- validate_named_against_data(
-    spatial_images_flip_x,
-    "spatial_images_flip_x"
-  )
-  spatial_images_flip_y <- validate_named_against_data(
-    spatial_images_flip_y,
-    "spatial_images_flip_y"
-  )
-  spatial_images_scale_x <- validate_named_against_data(
-    spatial_images_scale_x,
-    "spatial_images_scale_x"
-  )
-  spatial_images_scale_y <- validate_named_against_data(
-    spatial_images_scale_y,
-    "spatial_images_scale_y"
-  )
-  spatial_images_offset_x <- validate_named_against_data(
-    spatial_images_offset_x,
-    "spatial_images_offset_x"
-  )
-  spatial_images_offset_y <- validate_named_against_data(
-    spatial_images_offset_y,
-    "spatial_images_offset_y"
-  )
   spatial_plot_rotation <- validate_named_against_data(
     spatial_plot_rotation,
     "spatial_plot_rotation"
@@ -1640,7 +1739,24 @@ createShinyApp <- function(
 
   # Preflight data inputs ----------------------------------------------------##
   private_data_root <- "private-data"
-  backends <- lapply(cerebro_data, .readBundleBackend)
+  crb_objects <- lapply(cerebro_data, readRDS)
+  backends <- Map(.readBundleBackend, cerebro_data, crb_objects)
+  spatial_catalogs <- Map(
+    .readBundleSpatialCatalog,
+    crb_objects,
+    names(cerebro_data)
+  )
+  names(spatial_catalogs) <- names(cerebro_data)
+  rm(crb_objects)
+  spatial_images <- .normalizeAppSpatialImages(
+    spatial_images,
+    spatial_catalogs
+  )
+  spatial_image_settings <- .normalizeAppSpatialImageSettings(
+    spatial_image_settings,
+    spatial_catalogs,
+    spatial_images
+  )
   crb_targets <- paste0(private_data_root, "/", basename(cerebro_data))
   copy_plan <- list()
   claimed_targets <- character()
@@ -1862,27 +1978,31 @@ createShinyApp <- function(
   ## apps mapped /data over HTTP, so replacement bundles never reuse that path.
   if (!is.null(spatial_images) && length(spatial_images) > 0L) {
     bundled_spatial_images <- list()
-    for (index in seq_along(spatial_images)) {
-      dataset <- names(spatial_images)[[index]]
-      copied_paths <- character()
-      for (image in spatial_images[[index]]) {
-        if (!file.exists(image)) {
-          warning("Spatial image not found: ", image, call. = FALSE)
-          next
+    for (dataset in names(spatial_images)) {
+      for (spatial_name in names(spatial_images[[dataset]])) {
+        declarations <- spatial_images[[dataset]][[spatial_name]]
+        for (image_label in names(declarations)) {
+          descriptor <- declarations[[image_label]]
+          image <- descriptor$path
+          target <- .spatialImageBundleTarget(
+            dataset,
+            spatial_name,
+            basename(image)
+          )
+          claim_target(
+            target,
+            normalizePath(image, winslash = "/", mustWork = TRUE),
+            "spatial image"
+          )
+          bundled_descriptor <- descriptor
+          bundled_descriptor$path <- target
+          bundled_spatial_images[[dataset]][[spatial_name]][[image_label]] <-
+            if (identical(names(bundled_descriptor), "path")) {
+              target
+            } else {
+              bundled_descriptor
+            }
         }
-        target <- paste0("spatial-assets/", basename(image))
-        claim_target(
-          target,
-          normalizePath(image, winslash = "/", mustWork = TRUE),
-          "spatial image"
-        )
-        copied_paths <- c(copied_paths, target)
-      }
-      if (length(copied_paths) > 0L) {
-        bundled_spatial_images[[length(bundled_spatial_images) + 1L]] <-
-          copied_paths
-        names(bundled_spatial_images)[[length(bundled_spatial_images)]] <-
-          dataset
       }
     }
     spatial_images <- if (length(bundled_spatial_images) > 0L) {
@@ -2056,23 +2176,8 @@ createShinyApp <- function(
   if (!is.null(spatial_images)) {
     cerebro_options[["spatial_images"]] <- spatial_images
   }
-  if (!is.null(spatial_images_flip_x)) {
-    cerebro_options[["spatial_images_flip_x"]] <- spatial_images_flip_x
-  }
-  if (!is.null(spatial_images_flip_y)) {
-    cerebro_options[["spatial_images_flip_y"]] <- spatial_images_flip_y
-  }
-  if (!is.null(spatial_images_scale_x)) {
-    cerebro_options[["spatial_images_scale_x"]] <- spatial_images_scale_x
-  }
-  if (!is.null(spatial_images_scale_y)) {
-    cerebro_options[["spatial_images_scale_y"]] <- spatial_images_scale_y
-  }
-  if (!is.null(spatial_images_offset_x)) {
-    cerebro_options[["spatial_images_offset_x"]] <- spatial_images_offset_x
-  }
-  if (!is.null(spatial_images_offset_y)) {
-    cerebro_options[["spatial_images_offset_y"]] <- spatial_images_offset_y
+  if (!is.null(spatial_image_settings)) {
+    cerebro_options[["spatial_image_settings"]] <- spatial_image_settings
   }
   if (!is.null(spatial_plot_rotation)) {
     cerebro_options[["spatial_plot_rotation"]] <- spatial_plot_rotation

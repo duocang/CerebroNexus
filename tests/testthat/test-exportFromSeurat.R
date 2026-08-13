@@ -331,3 +331,184 @@ test_that("h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
   expect_setequal(rownames(attached$expression), rownames(orig))
   expect_setequal(colnames(attached$expression), colnames(orig))
 })
+
+## ---------------------------------------------------------------------------
+## Spatial coordinate transforms
+## ---------------------------------------------------------------------------
+
+.export_synthetic_spatial <- function(object, file, transforms = NULL) {
+  exportFromSeurat(
+    object = object,
+    assay = "Spatial",
+    slot = "data",
+    file = file,
+    experiment_name = "coordinate-transform-test",
+    organism = "mouse",
+    groups = c("seurat_clusters", "cell_type_final"),
+    nUMI = "nCount_Spatial",
+    nGene = "nFeature_Spatial",
+    spatial_coordinate_transforms = transforms,
+    verbose = FALSE
+  )
+}
+
+test_that("exportFromSeurat applies named FOV coordinate transforms once and records provenance", {
+  skip_if_not_installed("Seurat")
+
+  object <- make_synthetic_multisection_seurat(seed = 41)
+  baseline_file <- tempfile(fileext = ".crb")
+  transformed_file <- tempfile(fileext = ".crb")
+  .export_synthetic_spatial(object, baseline_file)
+  .export_synthetic_spatial(
+    object,
+    transformed_file,
+    transforms = list(
+      sectionA1 = list(rotation_degrees = 90, scale = 2),
+      sectionA2 = list(rotation_degrees = -90, scale = 0.5)
+    )
+  )
+
+  baseline <- readRDS(baseline_file)
+  transformed <- readRDS(transformed_file)
+  untouched <- c("sectionB1")
+  expect_equal(
+    transformed$getSpatialData(untouched)$coordinates,
+    baseline$getSpatialData(untouched)$coordinates
+  )
+  expect_null(baseline$getSpatialData("sectionA1")$coordinate_transform)
+  expect_null(transformed$getSpatialData(untouched)$coordinate_transform)
+
+  for (section in c("sectionA1", "sectionA2")) {
+    before <- baseline$getSpatialData(section)$coordinates[,
+      c("x", "y"),
+      drop = FALSE
+    ]
+    after_data <- transformed$getSpatialData(section)
+    after <- after_data$coordinates[, c("x", "y"), drop = FALSE]
+    spec <- if (identical(section, "sectionA1")) {
+      list(rotation_degrees = 90, scale = 2)
+    } else {
+      list(rotation_degrees = -90, scale = 0.5)
+    }
+    pivot <- c(
+      x = mean(range(before$x)),
+      y = mean(range(before$y))
+    )
+    radians <- spec$rotation_degrees * pi / 180
+    dx <- before$x - pivot[["x"]]
+    dy <- before$y - pivot[["y"]]
+    expected <- data.frame(
+      x = pivot[["x"]] + spec$scale * (cos(radians) * dx - sin(radians) * dy),
+      y = pivot[["y"]] + spec$scale * (sin(radians) * dx + cos(radians) * dy),
+      row.names = rownames(before)
+    )
+    expect_equal(after, expected, tolerance = 1e-10, info = section)
+    expect_true(is.list(after_data$coordinate_transform), info = section)
+    expect_equal(
+      after_data$coordinate_transform$rotation_degrees,
+      ((spec$rotation_degrees + 180) %% 360) - 180,
+      info = section
+    )
+    expect_equal(
+      after_data$coordinate_transform$scale,
+      spec$scale,
+      info = section
+    )
+  }
+})
+
+test_that("exportFromSeurat rejects malformed and unknown coordinate transforms before spatial extraction", {
+  skip_if_not_installed("Seurat")
+
+  object <- make_synthetic_spatial_seurat(seed = 42)
+  expect_error(
+    .export_synthetic_spatial(
+      object,
+      tempfile(fileext = ".crb"),
+      transforms = list(fov = list(rotation_degrees = 0, scale = 0))
+    ),
+    regexp = "scale"
+  )
+  expect_error(
+    .export_synthetic_spatial(
+      object,
+      tempfile(fileext = ".crb"),
+      transforms = list(not_a_fov = list(rotation_degrees = 0, scale = 1))
+    ),
+    regexp = "not_a_fov|unknown|Unknown"
+  )
+})
+
+test_that("exportFromSeurat treats an empty coordinate-transform list as no transforms", {
+  skip_if_not_installed("Seurat")
+
+  object <- make_synthetic_spatial_seurat(seed = 44)
+  file <- tempfile(fileext = ".crb")
+
+  expect_no_error(
+    .export_synthetic_spatial(
+      object,
+      file,
+      transforms = list()
+    )
+  )
+  expect_null(readRDS(file)$getSpatialData("fov")$coordinate_transform)
+})
+
+test_that("exportFromSeurat fails instead of dropping a FOV when its transform overflows", {
+  skip_if_not_installed("Seurat")
+
+  object <- make_synthetic_spatial_seurat(seed = 45)
+  file <- tempfile(fileext = ".crb")
+
+  expect_error(
+    .export_synthetic_spatial(
+      object,
+      file,
+      transforms = list(fov = list(rotation_degrees = 0, scale = 1e308))
+    ),
+    regexp = "fov|non-finite|transform"
+  )
+  expect_false(file.exists(file))
+})
+
+test_that("convertSeuratToCerebro forwards coordinate transforms to the exporter", {
+  skip_if_not_installed("Seurat")
+
+  object <- make_synthetic_spatial_seurat(seed = 43)
+  direct_file <- tempfile(fileext = ".crb")
+  transform <- list(
+    fov = list(rotation_degrees = 45, scale = 1.5)
+  )
+  .export_synthetic_spatial(object, direct_file, transforms = transform)
+
+  result_dir <- withr::local_tempdir()
+  expect_no_error(
+    convertSeuratToCerebro(
+      seurat_file = object,
+      result_dir = result_dir,
+      assay = "Spatial",
+      slot = "data",
+      experiment_name = "conversion-coordinate-transform-test",
+      organism = "mouse",
+      groups = c("seurat_clusters", "cell_type_final"),
+      nUMI = "nCount_Spatial",
+      nGene = "nFeature_Spatial",
+      add_most_expressed_genes = FALSE,
+      spatial_coordinate_transforms = transform,
+      verbose = FALSE
+    )
+  )
+  converted_file <- list.files(
+    result_dir,
+    pattern = "\\.crb$",
+    full.names = TRUE,
+    recursive = TRUE
+  )
+  expect_length(converted_file, 1L)
+
+  direct <- readRDS(direct_file)$getSpatialData("fov")
+  converted <- readRDS(converted_file)$getSpatialData("fov")
+  expect_equal(converted$coordinates, direct$coordinates, tolerance = 1e-10)
+  expect_equal(converted$coordinate_transform, direct$coordinate_transform)
+})

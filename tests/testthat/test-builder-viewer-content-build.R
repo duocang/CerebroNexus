@@ -7,6 +7,7 @@ builder_viewer_content_source_runtime <- function(local = parent.frame()) {
     "preview.R",
     "extras.R",
     "analysis.R",
+    "marker_import.R",
     "prerequisite.R",
     "state.R",
     "plan.R",
@@ -63,6 +64,7 @@ builder_viewer_content_plan_entry <- function() {
         name = "lineage_b"
       ),
       overview_point_size = 8,
+      overview_percentage_cells_to_show = 60,
       cell_cycle_columns = "Phase",
       analyses = character(),
       tables = list(),
@@ -110,6 +112,7 @@ test_that("BuildPlan freezes the complete Viewer-content selection", {
     list(monocle2 = c("lineage_b", "lineage_a"))
   )
   expect_identical(item$overview_point_size, 8)
+  expect_identical(item$overview_percentage_cells_to_show, 60)
   expect_identical(item$cell_cycle, "Phase")
   expect_contains(item$artifact_identity$metadata, "Phase")
   expect_contains(item$metadata_policy$included, "batch")
@@ -186,7 +189,8 @@ test_that("generated-App content freezes defaults for every dataset", {
           method = "monocle2",
           name = "lineage_b"
         ),
-        overview_point_size = 8
+        overview_point_size = 8,
+        overview_percentage_cells_to_show = 60
       )
     )
   )

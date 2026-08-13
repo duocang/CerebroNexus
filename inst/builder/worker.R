@@ -918,6 +918,13 @@ builder_worker_start <- function(
           "core",
           "spatial_coordinate_contract.R"
         ))
+        source(file.path(
+          dir,
+          "..",
+          "viewer",
+          "core",
+          "spatial_coordinate_transform.R"
+        ))
         source(file.path(dir, "spatial.R"))
         source(file.path(
           dir,

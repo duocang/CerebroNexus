@@ -379,6 +379,10 @@
 #'   (.rds format). The data will be merged into the unified
 #'   \code{immune_repertoire} slot of the Seurat object before export;
 #'   default: \code{NULL}.
+#' @param spatial_coordinate_transforms Optional named list of spatial
+#'   coordinate transforms keyed by exact Seurat FOV/image name. Entries are
+#'   forwarded unchanged to \code{exportFromSeurat()}; see that function for
+#'   the accepted rotation and scale fields.
 #'
 #' @return
 #' This function does not return a value. It saves a Cerebro object (.crb file)
@@ -444,7 +448,8 @@ convertSeuratToCerebro <- function(
   add_most_expressed_genes = TRUE,
   most_expressed_genes = NULL,
   bcr_file = NULL,
-  tcr_file = NULL
+  tcr_file = NULL,
+  spatial_coordinate_transforms = NULL
 ) {
   expression_matrix_mode <- match.arg(expression_matrix_mode)
   if (inherits(seurat_file, "Seurat")) {
@@ -926,7 +931,8 @@ convertSeuratToCerebro <- function(
         verbose = verbose,
         use_delayed_array = use_delayed_array,
         expression_matrix_mode = expression_matrix_mode,
-        .expression_resolution = expr_resolution
+        .expression_resolution = expr_resolution,
+        spatial_coordinate_transforms = spatial_coordinate_transforms
       )
       cat("Successfully exported:", file_name, "\n")
     },

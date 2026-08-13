@@ -21,7 +21,8 @@ exportFromSeurat(
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
   verbose = FALSE,
   .expression_resolution = NULL,
-  projections = NULL
+  projections = NULL,
+  spatial_coordinate_transforms = NULL
 )
 }
 \arguments{
@@ -123,6 +124,14 @@ resolved and validated. Users should leave this as \code{NULL}.}
 export. When supplied, every named reduction is exported in that order,
 including PCA beside other projections. The default \code{NULL} preserves
 the legacy behavior that uses non-PCA reductions when they are available.}
+
+\item{spatial_coordinate_transforms}{Optional named list of coordinate
+transforms keyed by exact Seurat spatial FOV/image name. Each entry may
+specify \code{rotation_degrees} and positive uniform \code{scale}; the
+pivot is the coordinate bounds center. The transform is applied once to the
+exported spatial coordinates and its normalized provenance is stored in the
+corresponding CRB spatial record. \code{NULL} preserves coordinates exactly
+as extracted from Seurat.}
 }
 \value{
 No data returned.

@@ -307,10 +307,22 @@ build_smoke_app <- function(envir = parent.frame()) {
     cerebro_data = c("Dataset A" = crb_a, "Dataset B" = crb_b),
     result_dir = app_dir,
     launch_browser = FALSE,
-    spatial_images = c("Dataset A" = img_a, "Dataset B" = img_b),
-    spatial_images_offset_x = c("Dataset A" = 100, "Dataset B" = 250),
-    spatial_images_offset_y = c("Dataset A" = -50, "Dataset B" = 75),
-    spatial_images_flip_y = c("Dataset A" = TRUE, "Dataset B" = FALSE),
+    spatial_images = list(
+      `Dataset A` = list(fov = c(Histology = img_a)),
+      `Dataset B` = list(fov = c(Histology = img_b))
+    ),
+    spatial_image_settings = list(
+      `Dataset A` = list(
+        fov = list(
+          Histology = list(offset_x = 100, offset_y = -50, flip_y = TRUE)
+        )
+      ),
+      `Dataset B` = list(
+        fov = list(
+          Histology = list(offset_x = 250, offset_y = 75, flip_y = FALSE)
+        )
+      )
+    ),
     verbose = FALSE
   )
 
@@ -352,11 +364,17 @@ test_that("createShinyApp bundles the app directory and config", {
 
   ## Raw CRBs and background images remain in their separate bundle directories.
   private_data <- list.files(file.path(app$app_dir, "private-data"))
-  spatial_assets <- list.files(file.path(app$app_dir, "spatial-assets"))
+  spatial_assets <- list.files(
+    file.path(app$app_dir, "spatial-assets"),
+    recursive = TRUE
+  )
   expect_true(any(grepl("Synthetic_A\\.crb$", private_data)))
   expect_true(any(grepl("Synthetic_B\\.crb$", private_data)))
   expect_false(any(grepl("\\.png$", private_data)))
-  expect_setequal(spatial_assets, c("bg_a.png", "bg_b.png"))
+  expect_setequal(
+    basename(spatial_assets),
+    c("bg_a.png", "bg_b.png")
+  )
 })
 
 test_that("multi-crb config lists both datasets by name", {
@@ -400,22 +418,23 @@ test_that("each dataset keeps its own background image + alignment params", {
 
   ## Background image path is per-dataset, not shared.
   expect_identical(
-    cfg[["spatial_images"]][["Dataset A"]],
-    file.path("spatial-assets", "bg_a.png")
+    cfg[["spatial_images"]][["Dataset A"]]$fov$Histology,
+    file.path("spatial-assets", "Dataset A", "fov", "bg_a.png")
   )
   expect_identical(
-    cfg[["spatial_images"]][["Dataset B"]],
-    file.path("spatial-assets", "bg_b.png")
+    cfg[["spatial_images"]][["Dataset B"]]$fov$Histology,
+    file.path("spatial-assets", "Dataset B", "fov", "bg_b.png")
   )
 
   ## Offset / flip resolve independently per dataset name — the isolation that
   ## a single shared value would silently break.
-  expect_equal(cfg[["spatial_images_offset_x"]][["Dataset A"]], 100)
-  expect_equal(cfg[["spatial_images_offset_x"]][["Dataset B"]], 250)
-  expect_equal(cfg[["spatial_images_offset_y"]][["Dataset A"]], -50)
-  expect_equal(cfg[["spatial_images_offset_y"]][["Dataset B"]], 75)
-  expect_true(cfg[["spatial_images_flip_y"]][["Dataset A"]])
-  expect_false(cfg[["spatial_images_flip_y"]][["Dataset B"]])
+  settings <- cfg$spatial_image_settings
+  expect_equal(settings[["Dataset A"]]$fov$Histology$offset_x, 100)
+  expect_equal(settings[["Dataset B"]]$fov$Histology$offset_x, 250)
+  expect_equal(settings[["Dataset A"]]$fov$Histology$offset_y, -50)
+  expect_equal(settings[["Dataset B"]]$fov$Histology$offset_y, 75)
+  expect_true(settings[["Dataset A"]]$fov$Histology$flip_y)
+  expect_false(settings[["Dataset B"]]$fov$Histology$flip_y)
 })
 
 ## Real-data counterpart: bundle two genuine spatial .crb demos shipped in the
@@ -446,9 +465,16 @@ build_real_app <- function(envir = parent.frame()) {
     result_dir = app_dir,
     launch_browser = FALSE,
     ## Only Visium gets an external image; Xenium carries its own embedded one.
-    spatial_images = c("Visium" = visium_png),
-    spatial_images_offset_x = c("Visium" = 120),
-    spatial_images_flip_y = c("Visium" = TRUE),
+    spatial_images = list(
+      Visium = list(anterior1 = c(Histology = visium_png))
+    ),
+    spatial_image_settings = list(
+      Visium = list(
+        anterior1 = list(
+          Histology = list(offset_x = 120, flip_y = TRUE)
+        )
+      )
+    ),
     verbose = FALSE
   )
   list(
@@ -482,10 +508,16 @@ test_that("createShinyApp bundles real spatial demos with mixed image paths", {
   ## The external image + its alignment apply to Visium only; Xenium relies on
   ## its embedded histology and must NOT inherit Visium's external image, so it
   ## has no entry in spatial_images at all.
-  expect_match(cfg[["spatial_images"]][["Visium"]], "\\.png$")
+  expect_match(
+    cfg[["spatial_images"]][["Visium"]]$anterior1$Histology,
+    "\\.png$"
+  )
   expect_false("Xenium" %in% names(cfg[["spatial_images"]]))
-  expect_equal(cfg[["spatial_images_offset_x"]][["Visium"]], 120)
-  expect_true(cfg[["spatial_images_flip_y"]][["Visium"]])
+  expect_equal(
+    cfg$spatial_image_settings$Visium$anterior1$Histology$offset_x,
+    120
+  )
+  expect_true(cfg$spatial_image_settings$Visium$anterior1$Histology$flip_y)
 
   ## Both real crbs copied into the bundle.
   bundled <- list.files(

@@ -24,11 +24,20 @@ sys.source(
   ),
   envir = environment()
 )
+sys.source(
+  builder_spatial_test_inst_path(
+    "viewer",
+    "core",
+    "spatial_coordinate_transform.R"
+  ),
+  envir = environment()
+)
 builder_spatial_test_source("spatial.R")
 builder_spatial_test_source("preview.R")
 builder_spatial_test_source("extras.R")
 builder_spatial_test_source("worker.R")
 builder_spatial_test_source("spatial_alignment_server.R")
+builder_spatial_test_source("ui/enhance_stage.R")
 
 test_that("alignment capability is limited to Spatial and Trekker datasets", {
   skip_if_not_installed("SeuratObject")
@@ -59,6 +68,28 @@ test_that("alignment capability is limited to Spatial and Trekker datasets", {
   expect_match(trekker_sections[[1L]]$unit, "physical", ignore.case = TRUE)
 })
 
+test_that("external Builder images reject active or forged payloads", {
+  skip_if_not_installed("base64enc")
+  png_bytes <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  png_uri <- paste0(
+    "data:image/png;base64,",
+    base64enc::base64encode(png_bytes)
+  )
+  expect_identical(builder_parse_image_uri(png_uri)$mime, "image/png")
+  expect_error(
+    builder_parse_image_uri("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="),
+    "unsupported MIME"
+  )
+  expect_error(
+    builder_parse_image_uri("data:image/png;base64,PHN2Zz48L3N2Zz4="),
+    "does not match"
+  )
+  expect_error(
+    builder_materialize_image_uri(png_uri, tempfile(fileext = ".svg")),
+    "extension does not match"
+  )
+})
+
 test_that("alignment projection prefers UMAP then the current default then PCA", {
   expect_identical(
     builder_alignment_projection(c("pca", "umap"), "pca"),
@@ -75,24 +106,25 @@ test_that("alignment projection prefers UMAP then the current default then PCA",
   expect_null(builder_alignment_projection("tsne", "missing"))
 })
 
-test_that("alignment Plotly events expose canonical selected cell ids", {
-  event <- data.frame(
-    customdata = c("cell-b", "cell-a", "cell-b", NA_character_, ""),
+test_that("alignment previews are display-only Plotly figures", {
+  frame <- data.frame(
+    x = c(-1, 1),
+    y = c(1, -1),
+    group = c("A", "B"),
+    cell_barcode = c("cell-a", "cell-b"),
     stringsAsFactors = FALSE
   )
+  plot <- plotly::plotly_build(builder_alignment_plot(frame))
 
-  expect_identical(
-    builder_alignment_event_cells(event),
-    c("cell-b", "cell-a")
-  )
-  expect_identical(builder_alignment_event_cells(NULL), character())
-  expect_identical(
-    builder_alignment_event_cells(data.frame(x = 1)),
-    character()
-  )
+  expect_true(isTRUE(plot$x$config$staticPlot))
+  expect_false(isTRUE(plot$x$config$displayModeBar))
+  expect_true(isTRUE(plot$x$config$responsive))
+  expect_false(identical(plot$x$layout$dragmode, "select"))
+  expect_null(plot$x$data[[1L]]$customdata)
+  expect_lte(sum(unlist(plot$x$layout$margin)), 36)
 })
 
-test_that("alignment server subscribes through Plotly's registered event API", {
+test_that("alignment server does not subscribe to Plotly selection events", {
   server <- paste(
     readLines(
       builder_spatial_test_inst_path("builder", "spatial_alignment_server.R"),
@@ -101,9 +133,10 @@ test_that("alignment server subscribes through Plotly's registered event API", {
     collapse = "\n"
   )
 
-  expect_match(server, "plotly::event_data(", fixed = TRUE)
-  expect_match(server, "builder_alignment_event_cells", fixed = TRUE)
-  expect_match(server, "session$onFlushed(", fixed = TRUE)
+  expect_false(grepl("plotly::event_data(", server, fixed = TRUE))
+  expect_false(grepl("builder_alignment_event_cells", server, fixed = TRUE))
+  expect_false(grepl("selected_cells", server, fixed = TRUE))
+  expect_false(grepl("session$onFlushed(", server, fixed = TRUE))
   expect_false(grepl(".clientValue-", server, fixed = TRUE))
 })
 
@@ -173,6 +206,114 @@ test_that("alignment preview requeues when its render contract changes", {
       current_entry(replaced)
       session$flushReact()
       expect_length(requests, 3L)
+
+      session$setInputs(
+        `enhance-coordinate_rotation` = 45,
+        `enhance-coordinate_scale` = 1.5
+      )
+      session$flushReact()
+      expect_gte(length(requests), 4L)
+      expect_equal(
+        requests[[length(requests)]]$coordinate_transforms[["section-a"]],
+        list(schema_version = 1L, rotation_degrees = 45, scale = 1.5)
+      )
+    }
+  )
+})
+
+test_that("coordinate-frame controls are separate from image-only controls", {
+  ui <- builder_spatial_alignment_ui(
+    "enhance",
+    list(
+      sections = "section-a",
+      images = list(),
+      label = "Spatial alignment"
+    )
+  )
+  html <- htmltools::renderTags(ui)$html
+
+  expect_match(html, "Coordinate frame", fixed = TRUE)
+  expect_match(html, "enhance-coordinate_rotation", fixed = TRUE)
+  expect_match(html, "enhance-save_coordinate_transform", fixed = TRUE)
+  expect_true(
+    regexpr("has_coordinate_frame", html, fixed = TRUE)[[1L]] <
+      regexpr("has_image", html, fixed = TRUE)[[1L]]
+  )
+})
+
+test_that("saving and resetting a coordinate frame persists only saved specs", {
+  skip_if_not_installed("shiny")
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "section-a", extras = list()),
+    settings = list(
+      images = list(
+        "section-a" = list(
+          image = builder_alignment_record(
+            source = list(name = "image.png"),
+            source_uri = "data:image/png;base64,AA==",
+            uri = "data:image/png;base64,AA==",
+            base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+            saved = TRUE,
+            section = list(id = "section-a", kind = "spatial")
+          )
+        )
+      ),
+      spatial_coordinate_transforms = list(),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(NULL)
+  spatial_coords <- shiny::reactiveVal(NULL)
+
+  shiny::testServer(
+    function(input, output, session) {
+      builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(entry, images) {
+          entry$settings$images <- images
+          current_entry(entry)
+        },
+        alignment_preview = alignment_preview,
+        spatial_coords = spatial_coords
+      )
+    },
+    {
+      session$flushReact()
+      session$setInputs(
+        `enhance-coordinate_rotation` = 30,
+        `enhance-coordinate_scale` = 1.2,
+        `enhance-save_coordinate_transform` = 1L
+      )
+      session$flushReact()
+      expect_equal(
+        current_entry()$settings$spatial_coordinate_transforms[["section-a"]],
+        list(schema_version = 1L, rotation_degrees = 30, scale = 1.2)
+      )
+      expect_false(
+        current_entry()$settings$images[["section-a"]][["image"]]$saved
+      )
+
+      session$setInputs(`enhance-reset_coordinate_transform` = 1L)
+      session$flushReact()
+      expect_null(current_entry()$settings$spatial_coordinate_transforms[[
+        "section-a"
+      ]])
     }
   )
 })
@@ -279,6 +420,8 @@ test_that("pending tissue image requires its matching preview and snapshot", {
 
       suppressWarnings(session$setInputs(`enhance-drop_image` = 1L))
       session$flushReact()
+      session$setInputs(`enhance-remove_image_confirm` = 1L)
+      session$flushReact()
       expect_null(alignment$draft())
       expect_identical(commit_count, 2L)
 
@@ -303,6 +446,119 @@ test_that("pending tissue image requires its matching preview and snapshot", {
 
       expect_null(alignment$draft())
       expect_identical(commit_count, 2L)
+    }
+  )
+})
+
+test_that("duplicate tissue image can be confirmed with a unique label", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  skip_if_not_installed("png")
+  skip_if_not_installed("base64enc")
+
+  image_path <- tempfile(fileext = ".png")
+  on.exit(unlink(image_path), add = TRUE)
+  write_dummy_png(image_path)
+
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "section-a", extras = list()),
+    settings = list(
+      name = "Dataset A",
+      images = list(),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(NULL)
+  spatial_coords <- shiny::reactiveVal(NULL)
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(id = "section-a", kind = "spatial", unit = "pixels"),
+    projection_name = "umap",
+    capped = FALSE,
+    transcriptome = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(-1, 1),
+      y = c(-1, 1),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    ),
+    spatial = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    )
+  )
+  upload <- data.frame(
+    name = "duplicate.png",
+    size = file.info(image_path)$size,
+    type = "image/png",
+    datapath = image_path,
+    stringsAsFactors = FALSE
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(entry, images) {
+          updated <- current_entry()
+          updated$settings$images <- images
+          current_entry(updated)
+        },
+        alignment_preview = alignment_preview,
+        spatial_coords = spatial_coords
+      )
+    },
+    {
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+
+      suppressWarnings(
+        session$setInputs(`enhance-tissue_image_file` = upload)
+      )
+      session$flushReact()
+      expect_named(
+        current_entry()$settings$images[["section-a"]],
+        "duplicate.png"
+      )
+
+      suppressWarnings(
+        session$setInputs(`enhance-tissue_image_file` = upload)
+      )
+      session$flushReact()
+      expect_true(alignment$pending_upload()$awaiting_label)
+
+      session$setInputs(
+        `enhance-new_image_label` = "DAPI",
+        `enhance-add_image_confirm` = 1L
+      )
+      session$flushReact()
+
+      expect_named(
+        current_entry()$settings$images[["section-a"]],
+        c("duplicate.png", "DAPI")
+      )
+      expect_null(alignment$pending_upload())
     }
   )
 })
@@ -332,6 +588,139 @@ test_that("alignment preview joins both spaces by cell identity", {
   expect_true(all(is.finite(unlist(model$bounds))))
 })
 
+test_that("coordinate-frame preview rotates full spatial bounds before sampling", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object("section-a")
+
+  original <- builder_alignment_preview_model(
+    object,
+    default_projection = "pca",
+    section_id = "section-a",
+    max_cells = 12L
+  )
+  transformed <- builder_alignment_preview_model(
+    object,
+    default_projection = "pca",
+    section_id = "section-a",
+    coordinate_transforms = list(
+      "section-a" = list(rotation_degrees = 90, scale = 2)
+    ),
+    max_cells = 12L
+  )
+
+  expect_true(transformed$available)
+  expect_identical(
+    transformed$spatial$cell_barcode,
+    original$spatial$cell_barcode
+  )
+  expect_false(isTRUE(all.equal(transformed$bounds, original$bounds)))
+  expect_equal(
+    (transformed$bounds$xmax - transformed$bounds$xmin) /
+      (original$bounds$ymax - original$bounds$ymin),
+    2
+  )
+  expect_equal(
+    (transformed$bounds$ymax - transformed$bounds$ymin) /
+      (original$bounds$xmax - original$bounds$xmin),
+    2
+  )
+})
+
+test_that("coordinate-frame preview derives its pivot from the selected expression cohort", {
+  skip_if_not_installed("Seurat")
+  skip_if_not_installed("SeuratObject")
+
+  object <- make_synthetic_spatial_seurat(n_cells = 8L, n_genes = 6L, seed = 73)
+  selected_cells <- SeuratObject::Cells(object)[seq_len(7L)]
+  selected_data <- Seurat::GetAssayData(
+    object,
+    assay = "Spatial",
+    layer = "data"
+  )[, selected_cells, drop = FALSE]
+  object[["Selected"]] <- SeuratObject::CreateAssayObject(data = selected_data)
+
+  coordinates <- SeuratObject::GetTissueCoordinates(object[["fov"]])
+  outlier <- setdiff(SeuratObject::Cells(object), selected_cells)[[1L]]
+  coordinates[coordinates$cell == outlier, c("x", "y")] <- c(100000, -100000)
+  object[["fov"]] <- SeuratObject::CreateFOV(
+    coords = list(
+      centroids = SeuratObject::CreateCentroids(
+        data.frame(
+          x = coordinates$x,
+          y = coordinates$y,
+          cell = coordinates$cell
+        )
+      )
+    ),
+    type = "centroids",
+    assay = "Spatial"
+  )
+
+  transformed <- builder_alignment_preview_model(
+    object,
+    default_projection = "umap",
+    section_id = "fov",
+    assay = "Selected",
+    layer = "data",
+    coordinate_transforms = list(fov = list(rotation_degrees = 90, scale = 1)),
+    max_cells = 100L
+  )
+
+  expect_true(transformed$available)
+  expect_setequal(transformed$spatial$cell_barcode, selected_cells)
+  expect_false(outlier %in% transformed$spatial$cell_barcode)
+  expect_equal(
+    transformed$coordinate_transform$pivot,
+    c(
+      x = mean(range(coordinates[coordinates$cell %in% selected_cells, "x"])),
+      y = mean(range(coordinates[coordinates$cell %in% selected_cells, "y"]))
+    )
+  )
+
+  exported_file <- tempfile(fileext = ".crb")
+  export_preview <- builder_alignment_preview_model(
+    object,
+    default_projection = "umap",
+    section_id = "fov",
+    assay = "Spatial",
+    layer = "data",
+    coordinate_transforms = list(fov = list(rotation_degrees = 90, scale = 1)),
+    max_cells = 100L
+  )
+  exportFromSeurat(
+    object = object,
+    assay = "Spatial",
+    slot = "data",
+    file = exported_file,
+    experiment_name = "selected-cohort-preview",
+    organism = "mouse",
+    groups = "seurat_clusters",
+    nUMI = "nCount_Spatial",
+    nGene = "nFeature_Spatial",
+    spatial_coordinate_transforms = list(
+      fov = list(rotation_degrees = 90, scale = 1)
+    ),
+    verbose = FALSE
+  )
+  exported_spatial <- readRDS(exported_file)$getSpatialData("fov")
+  expected <- exported_spatial$coordinates[
+    match(
+      export_preview$spatial$cell_barcode,
+      rownames(exported_spatial$coordinates)
+    ),
+    c("x", "y"),
+    drop = FALSE
+  ]
+  expect_equal(
+    unname(as.matrix(export_preview$spatial[, c("x", "y")])),
+    unname(as.matrix(expected))
+  )
+  expect_equal(
+    export_preview$coordinate_transform$pivot,
+    exported_spatial$coordinate_transform$pivot
+  )
+})
+
 test_that("Trekker alignment preview uses its physical and transcriptome spaces", {
   skip_if_not_installed("SeuratObject")
   object <- builder_content_spatial_example_object()
@@ -357,6 +746,52 @@ test_that("Trekker alignment preview uses its physical and transcriptome spaces"
   expect_false(anyNA(model$spatial[, c("x", "y", "group")]))
 })
 
+test_that("coordinate-frame transforms never affect Trekker previews", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object()
+  methods::slot(object, "images", check = FALSE) <- list()
+  object@misc$trekker <- .builder_content_spatial_demo_payload()
+
+  original <- builder_alignment_preview_model(
+    object,
+    default_projection = "pca",
+    section_id = "trekker",
+    max_cells = 4L
+  )
+  transformed <- builder_alignment_preview_model(
+    object,
+    default_projection = "pca",
+    section_id = "trekker",
+    coordinate_transforms = list(
+      trekker = list(rotation_degrees = 90, scale = 2)
+    ),
+    max_cells = 4L
+  )
+
+  expect_identical(transformed$spatial, original$spatial)
+  expect_identical(transformed$bounds, original$bounds)
+})
+
+test_that("saving a coordinate frame invalidates every image confirmation in its FOV", {
+  record <- builder_alignment_record(
+    source = list(name = "image.png"),
+    source_uri = "data:image/png;base64,AA==",
+    uri = "data:image/png;base64,AA==",
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    saved = TRUE,
+    section = list(id = "fov-a", kind = "spatial")
+  )
+  images <- list(
+    "fov-a" = list(first = record, second = record),
+    "fov-b" = list(other = record)
+  )
+  invalidated <- builder_image_collection_mark_section_unsaved(images, "fov-a")
+
+  expect_false(invalidated[["fov-a"]][["first"]]$saved)
+  expect_false(invalidated[["fov-a"]][["second"]]$saved)
+  expect_true(invalidated[["fov-b"]][["other"]]$saved)
+})
+
 test_that("alignment preview fails safely when no paired spaces exist", {
   skip_if_not_installed("SeuratObject")
   object <- builder_content_spatial_example_object()
@@ -368,16 +803,46 @@ test_that("alignment preview fails safely when no paired spaces exist", {
   expect_match(model$message, "Spatial or Trekker", fixed = TRUE)
 })
 
-test_that("default image fit preserves aspect ratio inside physical bounds", {
+test_that("default image fit preserves aspect ratio and covers physical bounds", {
   fitted <- builder_alignment_fit_bounds(
     list(xmin = 0, xmax = 100, ymin = 0, ymax = 100),
     c(width = 200, height = 100)
   )
-  expect_equal(fitted, list(xmin = 0, xmax = 100, ymin = 25, ymax = 75))
+  expect_equal(fitted, list(xmin = -50, xmax = 150, ymin = 0, ymax = 100))
   expect_equal(
     (fitted$xmax - fitted$xmin) / (fitted$ymax - fitted$ymin),
     2
   )
+  expect_lte(fitted$xmin, 0)
+  expect_gte(fitted$xmax, 100)
+  expect_lte(fitted$ymin, 0)
+  expect_gte(fitted$ymax, 100)
+})
+
+test_that("default image fit covers decimal extrema despite floating error", {
+  bounds <- list(
+    xmin = 17.52,
+    xmax = 4151.96,
+    ymin = 3.92,
+    ymax = 3173.76
+  )
+  fitted <- builder_alignment_fit_bounds(
+    bounds,
+    c(width = 320, height = 240)
+  )
+  cover <- builder_bounds_cover(
+    fitted,
+    list(
+      c(bounds$xmin, bounds$xmax),
+      c(bounds$ymin, bounds$ymax)
+    )
+  )
+
+  expect_identical(cover$outside, 0L)
+  expect_lte(fitted$xmin, bounds$xmin)
+  expect_gte(fitted$xmax, bounds$xmax)
+  expect_lte(fitted$ymin, bounds$ymin)
+  expect_gte(fitted$ymax, bounds$ymax)
 })
 
 test_that("canonical alignment transform is deterministic and complete", {
@@ -507,6 +972,133 @@ test_that("legacy image records remain saved and gain canonical defaults", {
   expect_identical(normalized$point_size, 5)
 })
 
+test_that("named spatial image collections normalize without losing labels", {
+  record <- function(section, filename) {
+    builder_alignment_record(
+      source = list(name = filename, type = "image/png", size = 4),
+      source_uri = "data:image/png;base64,AAAA",
+      uri = "data:image/png;base64,AAAA",
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      saved = TRUE,
+      section = list(id = section, kind = "spatial")
+    )
+  }
+  images <- list(
+    section_a = list(
+      `H&E` = record("section_a", "H&E.png"),
+      DAPI = record("section_a", "DAPI.png")
+    )
+  )
+
+  normalized <- builder_image_collection_normalize(images)
+  expect_named(normalized, "section_a")
+  expect_named(normalized$section_a, c("H&E", "DAPI"))
+  expect_identical(builder_image_collection_count(normalized), 2L)
+  expect_identical(
+    vapply(
+      builder_image_collection_flatten(normalized),
+      `[[`,
+      "",
+      "image_label"
+    ),
+    c("H&E", "DAPI")
+  )
+  expect_error(
+    builder_image_collection_normalize(list(
+      section_a = setNames(
+        list(record(
+          "section_a",
+          "bad.png"
+        )),
+        ""
+      )
+    )),
+    "non-empty"
+  )
+  duplicate <- structure(
+    list(record("section_a", "A.png"), record("section_a", "B.png")),
+    names = c("H&E", "H&E")
+  )
+  expect_error(
+    builder_image_collection_normalize(list(section_a = duplicate)),
+    "unique"
+  )
+
+  legacy <- list(section_a = record("section_a", "H&E.png"))
+  upgraded <- builder_image_collection_normalize(legacy)
+  expect_named(upgraded$section_a, "H&E.png")
+})
+
+test_that("named spatial image actions preserve unaffected records", {
+  record <- function(section, filename, dx = 0) {
+    builder_alignment_record(
+      source = list(name = filename, type = "image/png", size = 4),
+      source_uri = paste0("data:image/png;base64,", filename),
+      uri = paste0("data:image/png;base64,", filename),
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      parameters = list(dx = dx),
+      saved = TRUE,
+      section = list(id = section, kind = "spatial")
+    )
+  }
+  he <- record("section_a", "he.png", dx = 3)
+  dapi <- record("section_a", "dapi.png")
+  images <- builder_image_collection_add(list(), "section_a", "H&E", he)
+  images <- builder_image_collection_add(images, "section_a", "DAPI", dapi)
+  expect_named(images$section_a, c("H&E", "DAPI"))
+  expect_identical(images$section_a[["H&E"]], he)
+
+  renamed <- builder_image_collection_rename(
+    images,
+    "section_a",
+    "DAPI",
+    "IF"
+  )
+  expect_named(renamed$section_a, c("H&E", "IF"))
+  expect_identical(renamed$section_a[["IF"]], dapi)
+  expect_identical(renamed$section_a[["H&E"]], he)
+  expect_error(
+    builder_image_collection_rename(renamed, "section_a", "IF", "H&E"),
+    "unique"
+  )
+
+  removed <- builder_image_collection_remove(renamed, "section_a", "H&E")
+  expect_named(removed$section_a, "IF")
+  expect_identical(removed$section_a$IF, dapi)
+})
+
+test_that("matching-label transform never crosses image identities", {
+  record <- function(section, filename, dx) {
+    builder_alignment_record(
+      source = list(name = filename, type = "image/png", size = 4),
+      source_uri = paste0("data:image/png;base64,", filename),
+      uri = paste0("data:image/png;base64,", filename),
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      parameters = list(dx = dx),
+      saved = TRUE,
+      section = list(id = section, kind = "spatial")
+    )
+  }
+  images <- list(
+    section_a = list(
+      `H&E` = record("section_a", "a-he.png", 4),
+      DAPI = record("section_a", "a-dapi.png", 7)
+    ),
+    section_b = list(
+      `H&E` = record("section_b", "b-he.png", 0),
+      DAPI = record("section_b", "b-dapi.png", 1)
+    )
+  )
+  copied <- builder_alignment_apply_transform_to_matching_label(
+    images,
+    "section_a",
+    "H&E"
+  )
+  expect_identical(copied$section_b[["H&E"]]$dx, 4)
+  expect_false(copied$section_b[["H&E"]]$saved)
+  expect_identical(copied$section_b$DAPI, images$section_b$DAPI)
+})
+
 test_that("serialized alignment payload excludes editing bytes and local paths", {
   record <- builder_alignment_record(
     source = list(name = "tissue.png", type = "image/png"),
@@ -524,6 +1116,7 @@ test_that("serialized alignment payload excludes editing bytes and local paths",
     payload,
     c(
       "source",
+      "builder_managed",
       "dx",
       "dy",
       "scale",
@@ -536,6 +1129,7 @@ test_that("serialized alignment payload excludes editing bytes and local paths",
     )
   )
   expect_identical(payload$source, "tissue.png")
+  expect_true(payload$builder_managed)
   expect_false(any(grepl("/private/tmp", unlist(payload), fixed = TRUE)))
   expect_false("source_uri" %in% names(payload))
   expect_false("datapath" %in% names(payload))
@@ -1400,26 +1994,4 @@ test_that("one slide applied to every section keeps each section's own extent", 
     vapply(got, function(x) x$outside, integer(1)),
     c(A = 0L, B = 0L, C = 7L)
   )
-})
-
-test_that("Spatial Viewer seeds appearance from saved alignment", {
-  path <- builder_spatial_test_inst_path(
-    "viewer",
-    "spatial",
-    "UI_projection_additional_parameters.R"
-  )
-  ui <- paste(readLines(path, warn = FALSE), collapse = "\n")
-
-  expect_match(ui, "histology_alignment", fixed = TRUE)
-  expect_match(ui, "alignment_point_opacity", fixed = TRUE)
-  expect_match(ui, "alignment_image_opacity", fixed = TRUE)
-
-  main_path <- builder_spatial_test_inst_path(
-    "viewer",
-    "spatial",
-    "UI_projection_main_parameters.R"
-  )
-  main_ui <- paste(readLines(main_path, warn = FALSE), collapse = "\n")
-  expect_match(main_ui, "builder_alignment_background_default", fixed = TRUE)
-  expect_match(main_ui, "histology_alignment", fixed = TRUE)
 })

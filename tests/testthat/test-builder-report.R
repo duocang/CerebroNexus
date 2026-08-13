@@ -22,7 +22,11 @@ builder_report_fixture <- function(
         analyses = c("marker_genes"),
         included_groups = c("cluster"),
         included_projections = c("umap"),
-        metadata_policy = list(included = c("cell_barcode", "cluster")),
+        metadata_policy = list(
+          retained = c("cell_barcode", "cluster"),
+          excluded = "secret_note",
+          forced = "cell_barcode"
+        ),
         expression_backend = "embedded",
         sidecars = character(),
         manifest = list(marker_genes = list(status = "valid"))
@@ -80,6 +84,14 @@ test_that("portable reports derive redacted identity from plan and verification"
   expect_identical(
     report$datasets[[1L]]$metadata_columns,
     c("cell_barcode", "cluster")
+  )
+  expect_identical(
+    report$datasets[[1L]]$metadata,
+    list(
+      retained = c("cell_barcode", "cluster"),
+      excluded = "secret_note",
+      forced = "cell_barcode"
+    )
   )
   expect_identical(
     report$output_members,

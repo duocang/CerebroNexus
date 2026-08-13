@@ -217,26 +217,75 @@ test_that("Spatial tab is wired into the app UI and server", {
 ## Spatial background image: createShinyApp production channel + demo wiring.
 ##----------------------------------------------------------------------------##
 
-test_that("createShinyApp accepts the spatial_images parameters", {
-  # Guard the production API surface: every spatial_images* arg must be part of
-  # the formals so downstream users can pass histology backgrounds and their
-  # per-dataset alignment defaults (flip / scale / move / rotate).
+test_that("createShinyApp exposes only the nested spatial image API", {
   args <- names(formals(createShinyApp))
-  for (a in c(
-    "spatial_images",
+  expect_contains(
+    args,
+    c(
+      "spatial_images",
+      "spatial_image_settings",
+      "spatial_plot_rotation"
+    )
+  )
+  expect_false(any(
+    c(
+      "spatial_images_flip_x",
+      "spatial_images_flip_y",
+      "spatial_images_scale_x",
+      "spatial_images_scale_y",
+      "spatial_images_offset_x",
+      "spatial_images_offset_y"
+    ) %in%
+      args
+  ))
+})
+
+test_that("createShinyApp rejects flat spatial_images declarations", {
+  skip_if_not(file.exists(spatial_crb))
+  img <- tempfile(fileext = ".png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), img)
+  expect_error(
+    createShinyApp(
+      cerebro_data = c("Xenium demo" = spatial_crb),
+      result_dir = tempfile("cerebro-flat-spatial-"),
+      spatial_images = c("Xenium demo" = img),
+      launch_browser = FALSE,
+      verbose = FALSE
+    ),
+    "dataset -> spatial entry -> image label"
+  )
+})
+
+test_that("createShinyApp rejects removed flat spatial alignment arguments", {
+  skip_if_not(file.exists(spatial_crb))
+  for (argument in c(
     "spatial_images_flip_x",
     "spatial_images_flip_y",
     "spatial_images_scale_x",
     "spatial_images_scale_y",
     "spatial_images_offset_x",
-    "spatial_images_offset_y",
-    "spatial_plot_rotation"
+    "spatial_images_offset_y"
   )) {
-    expect_true(a %in% args, info = a)
+    supplied <- stats::setNames(list(TRUE), argument)
+    expect_error(
+      do.call(
+        createShinyApp,
+        c(
+          list(
+            cerebro_data = c("Xenium demo" = spatial_crb),
+            result_dir = tempfile("cerebro-removed-spatial-"),
+            launch_browser = FALSE,
+            verbose = FALSE
+          ),
+          supplied
+        )
+      ),
+      paste0("removed argument.*", argument, ".*spatial_image_settings")
+    )
   }
 })
 
-test_that("createShinyApp bundles a spatial image and writes the option", {
+test_that("createShinyApp bundles a nested spatial image and writes the option", {
   # End-to-end exercise of the new side-copy + option-write path: a matched
   # spatial image must be copied into the bundle and its stored path rewritten
   # to the spatial-assets/<file> form inside cerebro_config.rds.
@@ -318,11 +367,14 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
   out_dir <- file.path(tempdir(), paste0("cerebro_spatial_", Sys.getpid()))
   on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
 
+  spatial_name <- readRDS(spatial_crb)$availableSpatial()[[1L]]
   suppressWarnings(suppressMessages(
     createShinyApp(
       cerebro_data = c("Xenium demo" = spatial_crb),
       result_dir = out_dir,
-      spatial_images = c("Xenium demo" = img),
+      spatial_images = list(
+        "Xenium demo" = stats::setNames(list(list("H&E" = img)), spatial_name)
+      ),
       launch_browser = FALSE,
       verbose = FALSE
     )
@@ -333,15 +385,13 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
   cfg <- readRDS(cfg_path)
   expect_true(!is.null(cfg[["spatial_images"]]))
   # path rewritten to the bundle-relative spatial asset directory
-  stored <- cfg[["spatial_images"]][["Xenium demo"]]
+  stored <- cfg[["spatial_images"]][["Xenium demo"]][[spatial_name]][["H&E"]]
   expect_match(stored, "^spatial-assets/", perl = TRUE)
   # and the image really landed in the bundle
   expect_true(file.exists(file.path(out_dir, stored)))
 })
 
-test_that("createShinyApp drops unmatched spatial_images with a warning", {
-  # A spatial_images entry whose name matches no dataset must be ignored (not
-  # errored) so a typo never blocks app generation.
+test_that("createShinyApp rejects unmatched nested spatial_images", {
   skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), img)
@@ -351,20 +401,18 @@ test_that("createShinyApp drops unmatched spatial_images with a warning", {
   )
   on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
 
-  expect_warning(
-    suppressMessages(
-      createShinyApp(
-        cerebro_data = c("Xenium demo" = spatial_crb),
-        result_dir = out_dir,
-        spatial_images = c("no_such_dataset" = img),
-        launch_browser = FALSE,
-        verbose = FALSE
-      )
+  expect_error(
+    createShinyApp(
+      cerebro_data = c("Xenium demo" = spatial_crb),
+      result_dir = out_dir,
+      spatial_images = list(
+        no_such_dataset = list(section = list("H&E" = img))
+      ),
+      launch_browser = FALSE,
+      verbose = FALSE
     ),
-    "No matching names"
+    "not present in `cerebro_data`"
   )
-  cfg <- readRDS(file.path(out_dir, "cerebro_config.rds"))
-  expect_null(cfg[["spatial_images"]])
 })
 
 test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
@@ -545,7 +593,7 @@ test_that("embedded image demos store the image natively with no flip flag", {
   }
 })
 
-test_that("app.R ships the Visium H&E overlay pre-aligned", {
+test_that("app.R ships the Visium H&E overlay with nested settings", {
   # The bundled Visium demo opens with its H&E overlay already aligned to the
   # points, so users see a correct overlay without nudging it. app.R therefore
   # sets the per-dataset alignment presets (move + scale + a vertical flip that
@@ -554,9 +602,10 @@ test_that("app.R ships the Visium H&E overlay pre-aligned", {
     readLines(system.file("app.R", package = "CerebroNexus")),
     collapse = "\n"
   )
-  expect_match(app_src, "\"spatial_images_flip_y\"", fixed = TRUE)
-  expect_match(app_src, "\"spatial_images_offset_x\"", fixed = TRUE)
-  expect_match(app_src, "\"spatial_images_scale_x\"", fixed = TRUE)
+  expect_match(app_src, "\"spatial_image_settings\"", fixed = TRUE)
+  expect_match(app_src, "\"anterior1\"", fixed = TRUE)
+  expect_match(app_src, "\"H&amp;E\"|\"H&E\"", perl = TRUE)
+  expect_false(grepl("\"spatial_images_flip_y\"", app_src, fixed = TRUE))
 })
 
 ##----------------------------------------------------------------------------##

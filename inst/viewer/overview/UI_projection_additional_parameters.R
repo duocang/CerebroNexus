@@ -42,6 +42,10 @@ output[["overview_projection_additional_parameters_UI"]] <- renderUI({
       }
     )
   }
+  percentage_cells_to_show_default <- configuredViewerPercentageCellsToShow(
+    viewer_defaults,
+    preferences[["overview_plot_percentage_cells_to_show"]][["default"]]
+  )
 
   tagList(
     sliderInput(
@@ -66,9 +70,7 @@ output[["overview_projection_additional_parameters_UI"]] <- renderUI({
       min = preferences[["overview_plot_percentage_cells_to_show"]][["min"]],
       max = preferences[["overview_plot_percentage_cells_to_show"]][["max"]],
       step = preferences[["overview_plot_percentage_cells_to_show"]][["step"]],
-      value = preferences[["overview_plot_percentage_cells_to_show"]][[
-        "default"
-      ]]
+      value = percentage_cells_to_show_default
     )
   )
 })

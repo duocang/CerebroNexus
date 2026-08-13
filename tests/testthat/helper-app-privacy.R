@@ -1,9 +1,23 @@
-privacy_test_sources <- function(root) {
+privacy_test_sources <- function(root, spatial = FALSE) {
   source_dir <- file.path(root, "source")
   dir.create(source_dir)
 
   h5 <- Cerebro_v1.3$new()
   h5$setExpressionBackend(type = "h5", location = "matrix.h5")
+  if (isTRUE(spatial)) {
+    h5$addSpatialData(
+      "section",
+      list(
+        coordinates = data.frame(
+          x = numeric(),
+          y = numeric(),
+          row.names = character()
+        ),
+        expression = matrix(numeric(), nrow = 0L, ncol = 0L),
+        histology_images = list()
+      )
+    )
+  }
   h5_crb <- file.path(source_dir, "h5-data.crb")
   saveRDS(h5, h5_crb)
   writeLines("H5 PAYLOAD", file.path(source_dir, "matrix.h5"))

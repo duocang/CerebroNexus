@@ -3,7 +3,7 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
   skip_if_not_installed("httpuv")
 
   root <- withr::local_tempdir()
-  sources <- privacy_test_sources(root)
+  sources <- privacy_test_sources(root, spatial = TRUE)
   port <- httpuv::randomPort(host = "127.0.0.1")
   app_dir <- file.path(root, "app")
   createShinyApp(
@@ -13,7 +13,9 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
     host = "127.0.0.1",
     launch_browser = FALSE,
     quiet = TRUE,
-    spatial_images = list("H5" = sources$image),
+    spatial_images = list(
+      H5 = list(section = c(Histology = sources$image))
+    ),
     verbose = FALSE
   )
 
@@ -25,7 +27,13 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
   )
   expect_true(all(file.exists(private_paths)))
   expect_false(dir.exists(file.path(app_dir, "data")))
-  spatial_image <- file.path(app_dir, "spatial-assets", "histology.png")
+  spatial_image <- file.path(
+    app_dir,
+    "spatial-assets",
+    "H5",
+    "section",
+    "histology.png"
+  )
   expect_true(file.exists(spatial_image))
 
   app <- privacy_start_app(app_dir, port, root)
@@ -41,7 +49,7 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
     "/private-data/bpcells-data.crb",
     "/private-data/matrix.h5",
     "/private-data/matrix.bpcells/payload",
-    "/spatial-assets/histology.png"
+    "/spatial-assets/H5/section/histology.png"
   )
   statuses <- vapply(
     private_urls,
@@ -57,7 +65,7 @@ test_that("a running legacy data mapping cannot expose replacement data", {
   skip_on_os("windows")
 
   root <- withr::local_tempdir()
-  sources <- privacy_test_sources(root)
+  sources <- privacy_test_sources(root, spatial = TRUE)
   app_dir <- file.path(root, "app")
   privacy_write_legacy_app(app_dir)
   port <- httpuv::randomPort(host = "127.0.0.1")
@@ -76,7 +84,9 @@ test_that("a running legacy data mapping cannot expose replacement data", {
     host = "127.0.0.1",
     launch_browser = FALSE,
     quiet = TRUE,
-    spatial_images = list("H5" = sources$image),
+    spatial_images = list(
+      H5 = list(section = c(Histology = sources$image))
+    ),
     verbose = FALSE
   )
   expect_true(legacy_app$process$is_alive())

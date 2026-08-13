@@ -199,6 +199,13 @@
           dataset[[field]]
         )
       }
+      if (is.list(dataset$metadata) && !is.object(dataset$metadata)) {
+        for (field in c("retained", "excluded", "forced")) {
+          dataset$metadata[[field]] <- .builder_report_json_character_vector(
+            dataset$metadata[[field]]
+          )
+        }
+      }
       dataset
     })
   }
@@ -223,6 +230,7 @@
     "groups",
     "projections",
     "metadata_columns",
+    "metadata",
     "cell_count",
     "feature_count",
     "expression_backend",
@@ -234,6 +242,17 @@
       (!unique || !anyDuplicated(value))
   }
   valid_dataset <- function(dataset) {
+    metadata_valid <- is.list(dataset$metadata) &&
+      !is.object(dataset$metadata) &&
+      identical(names(dataset$metadata), c("retained", "excluded", "forced")) &&
+      valid_vector(dataset$metadata$retained, unique = TRUE) &&
+      valid_vector(dataset$metadata$excluded, unique = TRUE) &&
+      valid_vector(dataset$metadata$forced, unique = TRUE) &&
+      !length(intersect(
+        dataset$metadata$retained,
+        dataset$metadata$excluded
+      )) &&
+      all(dataset$metadata$forced %in% dataset$metadata$retained)
     is.list(dataset) &&
       !is.object(dataset) &&
       identical(names(dataset), dataset_fields) &&
@@ -250,6 +269,7 @@
       valid_vector(dataset$groups, unique = TRUE) &&
       valid_vector(dataset$projections, unique = TRUE) &&
       valid_vector(dataset$metadata_columns, unique = TRUE) &&
+      metadata_valid &&
       .builder_report_count(dataset$cell_count) &&
       .builder_report_count(dataset$feature_count) &&
       .builder_report_text(dataset$expression_backend) &&
@@ -518,8 +538,18 @@ builder_build_report <- function(plan, result) {
       projections = unname(item$included_projections %||% character()),
       metadata_columns = unname(
         verification$metadata %||%
+          item$metadata_policy$retained %||%
           item$metadata_policy$included %||%
           character()
+      ),
+      metadata = list(
+        retained = unname(
+          item$metadata_policy$retained %||%
+            item$metadata_policy$included %||%
+            character()
+        ),
+        excluded = unname(item$metadata_policy$excluded %||% character()),
+        forced = unname(item$metadata_policy$forced %||% character())
       ),
       cell_count = length(verification$cells %||% character()),
       feature_count = length(verification$features %||% character()),

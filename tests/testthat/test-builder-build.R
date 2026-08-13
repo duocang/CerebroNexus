@@ -92,6 +92,38 @@ builder_build_test_plan <- function(analyses = character()) {
   )
 }
 
+test_that("Builder export forwards frozen spatial coordinate transforms", {
+  captured <- NULL
+  testthat::local_mocked_bindings(
+    exportFromSeurat = function(...) {
+      captured <<- list(...)
+      invisible(NULL)
+    },
+    .package = "CerebroNexus"
+  )
+  item <- builder_build_test_plan()$items[[1L]]
+  item$assay <- "RNA"
+  item$layer <- "data"
+  item$organism <- "human"
+  item$included_groups <- "cluster"
+  item$default_group <- "cluster"
+  item$included_projections <- "umap"
+  item$spatial_coordinate_transforms <- list(
+    fov = list(rotation_degrees = 45, scale = 1.2)
+  )
+
+  path <- tempfile(fileext = ".crb")
+  expect_identical(.builder_build_export(list(), item, path), path)
+  expect_identical(
+    captured$spatial_coordinate_transforms,
+    item$spatial_coordinate_transforms
+  )
+
+  item$spatial_coordinate_transforms <- list()
+  expect_identical(.builder_build_export(list(), item, path), path)
+  expect_null(captured$spatial_coordinate_transforms)
+})
+
 builder_build_test_hooks <- function(fail = NULL, outside = NULL) {
   list(
     open_snapshot = function(snapshot) list(snapshot = snapshot),
@@ -517,8 +549,10 @@ test_that("CRB read-back matches exact frozen artifact identity", {
     `slice-a` = list(
       coordinates = data.frame(x = 1, y = 2),
       expression = matrix(1),
-      histology_image = image$uri,
-      histology_image_bounds = image$bounds
+      histology_images = list(list(
+        histology_image = image$uri,
+        histology_image_bounds = unlist(image$bounds)
+      ))
     )
   )
   object$trekker <- NULL
@@ -542,6 +576,100 @@ test_that("CRB read-back matches exact frozen artifact identity", {
     item$artifact_identity$spatial_sections
   )
   expect_identical(observed$image_sections, "slice-a")
+
+  item$spatial_coordinate_transforms <- list(
+    `slice-a` = list(rotation_degrees = 90, scale = 1.5)
+  )
+  object$spatial[["slice-a"]]$coordinate_transform <- list(
+    schema_version = 1L,
+    rotation_degrees = 90,
+    scale = 1.5,
+    pivot = c(x = 1, y = 2),
+    pivot_method = "bounds_center",
+    convention = "counterclockwise_degrees",
+    source_coordinate_fingerprint = .spx_coordinate_transform_fingerprint(
+      object$spatial[["slice-a"]]$coordinates
+    ),
+    transformed_coordinate_fingerprint = .spx_coordinate_transform_fingerprint(
+      object$spatial[["slice-a"]]$coordinates
+    )
+  )
+  saveRDS(object, crb)
+  expect_true(builder_verify_crb(crb, item)$valid)
+
+  object$spatial[["slice-a"]]$coordinate_transform$scale <- 1
+  saveRDS(object, crb)
+  expect_error(
+    builder_verify_crb(crb, item),
+    "coordinate transform differs"
+  )
+
+  object$spatial[["slice-a"]]$coordinate_transform <- list(
+    schema_version = 1L,
+    rotation_degrees = 90,
+    scale = 1.5,
+    pivot = c(x = 1, y = 2),
+    pivot_method = "bounds_center",
+    convention = "counterclockwise_degrees",
+    source_coordinate_fingerprint = .spx_coordinate_transform_fingerprint(
+      object$spatial[["slice-a"]]$coordinates
+    ),
+    transformed_coordinate_fingerprint = "not-the-coordinate-fingerprint"
+  )
+  saveRDS(object, crb)
+  expect_error(
+    builder_verify_crb(crb, item),
+    "coordinate transform differs"
+  )
+
+  object$spatial[["slice-a"]]$coordinate_transform <- list(
+    schema_version = 999L,
+    rotation_degrees = 90,
+    scale = 1.5,
+    pivot = c(x = NA_real_, y = Inf),
+    pivot_method = "wrong",
+    convention = "clockwise",
+    source_coordinate_fingerprint = .spx_coordinate_transform_fingerprint(
+      object$spatial[["slice-a"]]$coordinates
+    ),
+    transformed_coordinate_fingerprint = .spx_coordinate_transform_fingerprint(
+      object$spatial[["slice-a"]]$coordinates
+    )
+  )
+  saveRDS(object, crb)
+  expect_error(
+    builder_verify_crb(crb, item),
+    "coordinate transform differs"
+  )
+
+  object$spatial[["slice-a"]]$coordinates$x <- 2
+  object$spatial[["slice-a"]]$coordinate_transform <- list(
+    schema_version = 1L,
+    rotation_degrees = 90,
+    scale = 1.5,
+    pivot = c(x = 1, y = 2),
+    pivot_method = "bounds_center",
+    convention = "counterclockwise_degrees",
+    source_coordinate_fingerprint = .spx_coordinate_transform_fingerprint(data.frame(
+      x = 1,
+      y = 2
+    )),
+    transformed_coordinate_fingerprint = .spx_coordinate_transform_fingerprint(
+      object$spatial[["slice-a"]]$coordinates
+    )
+  )
+  saveRDS(object, crb)
+  expect_error(
+    builder_verify_crb(crb, item),
+    "coordinate transform differs"
+  )
+
+  object$spatial[["slice-a"]]$coordinate_transform <- NULL
+  saveRDS(object, crb)
+  expect_error(
+    builder_verify_crb(crb, item),
+    "coordinate transform differs"
+  )
 
   item$artifact_identity$cells <- rev(item$artifact_identity$cells)
   expect_error(builder_verify_crb(crb, item), "cell identity")
@@ -874,6 +1002,7 @@ test_that("build preparation applies the frozen metadata policy", {
   skip_if_not_installed("SeuratObject")
   object <- SeuratObject::pbmc_small
   object$secret_note <- rep("private", ncol(object))
+  object$orig.ident <- factor(rep("sample_a", ncol(object)))
   item <- list(
     included_projections = "tsne",
     assay = "RNA",
@@ -882,11 +1011,12 @@ test_that("build preparation applies the frozen metadata policy", {
       group_levels = list(groups = sort(unique(object$groups)))
     ),
     metadata_policy = list(
-      included = c(
+      retained = c(
         "cell_barcode",
         "groups",
         "nCount_RNA",
-        "nFeature_RNA"
+        "nFeature_RNA",
+        "orig.ident"
       )
     ),
     tables = list()
@@ -896,8 +1026,9 @@ test_that("build preparation applies the frozen metadata policy", {
   prepared <- .builder_build_apply_metadata_policy(object, item)
   expect_setequal(
     colnames(prepared@meta.data),
-    c("groups", "nCount_RNA", "nFeature_RNA")
+    c("groups", "nCount_RNA", "nFeature_RNA", "orig.ident")
   )
+  expect_contains(colnames(prepared@meta.data), "orig.ident")
   expect_false("secret_note" %in% colnames(prepared@meta.data))
 })
 

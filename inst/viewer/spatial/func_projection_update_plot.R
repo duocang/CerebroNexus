@@ -99,17 +99,32 @@ spatial_projection_update_plot <- function(input) {
   background_image_data <- NULL
   image_bounds <- list()
 
-  ## Case 1: the real histology image embedded in the .crb. Its base64 data URI
-  ## and coordinate-space bounds travel with the data, so it renders directly and
-  ## aligns automatically — no file lookup, no manual flip/scale.
-  selected_background <- plot_parameters[["background_image"]]
+  ## The selected descriptor was resolved server-side from the exact current
+  ## dataset / spatial / image leaf. Browser input values never contain a path or
+  ## data URI and cannot select an image from another entry.
+  selected_background <- plot_parameters[["background_descriptor"]]
+  ## Compatibility for direct renderer callers that predate source-tagged
+  ## selection. The live Viewer always supplies background_descriptor.
+  if (
+    is.null(selected_background) &&
+      is.character(plot_parameters[["background_image"]]) &&
+      length(plot_parameters[["background_image"]]) == 1L &&
+      plot_parameters[["background_image"]] %in%
+        plot_parameters[["background_image_allowlist"]]
+  ) {
+    selected_background <- list(
+      source = "external",
+      label = basename(plot_parameters[["background_image"]]),
+      path = plot_parameters[["background_image"]],
+      bounds = NULL
+    )
+  }
   if (
     !is.null(selected_background) &&
-      identical(selected_background, "__embedded__") &&
-      !is.null(plot_parameters[['embedded_image']])
+      identical(selected_background$source, "embedded")
   ) {
-    background_image_data <- plot_parameters[['embedded_image']]
-    eb <- plot_parameters[['embedded_bounds']]
+    background_image_data <- selected_background$image
+    eb <- selected_background$bounds
     if (is.null(eb)) {
       # fall back to the coordinate range if bounds were not stored
       x_rng <- range(coordinates[[1]], na.rm = TRUE)
@@ -132,10 +147,10 @@ spatial_projection_update_plot <- function(input) {
     message("[spatial] using embedded histology image from .crb")
   } else if (
     !is.null(selected_background) &&
-      !identical(selected_background, "No Background")
+      identical(selected_background$source, "external")
   ) {
     img_path <- authorized_spatial_image_path(
-      selected_background,
+      selected_background$path,
       plot_parameters[["background_image_allowlist"]],
       Cerebro.options[["cerebro_root"]]
     )
@@ -144,7 +159,7 @@ spatial_projection_update_plot <- function(input) {
     } else {
       message(
         "[spatial] background_image = ",
-        plot_parameters[['background_image']]
+        selected_background$label
       )
       message("[spatial] resolved path  = ", img_path)
       message("[spatial] file.exists    = ", file.exists(img_path))
@@ -227,11 +242,20 @@ spatial_projection_update_plot <- function(input) {
         }
       )
 
+      explicit_bounds <- selected_background$bounds
+      if (is.null(explicit_bounds)) {
+        explicit_bounds <- list(
+          xmin = x_rng[1],
+          xmax = x_rng[2],
+          ymin = y_rng[1],
+          ymax = y_rng[2]
+        )
+      }
       image_bounds <- list(
-        xmin = x_rng[1],
-        xmax = x_rng[2],
-        ymin = y_rng[1],
-        ymax = y_rng[2],
+        xmin = explicit_bounds[["xmin"]],
+        xmax = explicit_bounds[["xmax"]],
+        ymin = explicit_bounds[["ymin"]],
+        ymax = explicit_bounds[["ymax"]],
         img_width = if (!is.null(img_dims)) img_dims[2] else 0,
         img_height = if (!is.null(img_dims)) img_dims[1] else 0
       )
@@ -281,8 +305,8 @@ spatial_projection_update_plot <- function(input) {
   x_range_out <- plot_parameters[["x_range"]]
   y_range_out <- plot_parameters[["y_range"]]
   using_embedded <-
-    identical(plot_parameters[["background_image"]], "__embedded__") &&
-    !is.null(plot_parameters[["embedded_image"]]) &&
+    !is.null(selected_background) &&
+    identical(selected_background$source, "embedded") &&
     length(image_bounds) > 0
   ## Images render in their native orientation by default. If a dataset needs a
   ## vertical/horizontal flip to align with the points, the user sets it from the
@@ -339,6 +363,7 @@ spatial_projection_update_plot <- function(input) {
       coexpr_colors = as.list(coexpr_colors),
       color_variable = paste(coexpr_labels, collapse = "  "),
       background_image = background_image_data,
+      background_identity = plot_parameters[["background_identity"]],
       is_embedded = using_embedded,
       image_bounds = image_bounds,
       background_flip_x = plot_parameters[["background_flip_x"]],
@@ -347,6 +372,7 @@ spatial_projection_update_plot <- function(input) {
       background_scale_y = plot_parameters[["background_scale_y"]],
       background_offset_x = plot_parameters[["background_offset_x"]],
       background_offset_y = plot_parameters[["background_offset_y"]],
+      background_rotation = plot_parameters[["background_rotation"]],
       background_opacity = plot_parameters[["background_opacity"]]
     )
     output_data <- list(
@@ -389,6 +415,7 @@ spatial_projection_update_plot <- function(input) {
       traces = plot_parameters[['color_variable']],
       color_variable = plot_parameters[['color_variable']],
       background_image = background_image_data,
+      background_identity = plot_parameters[['background_identity']],
       is_embedded = using_embedded,
       image_bounds = image_bounds,
       background_flip_x = plot_parameters[['background_flip_x']],
@@ -397,6 +424,7 @@ spatial_projection_update_plot <- function(input) {
       background_scale_y = plot_parameters[['background_scale_y']],
       background_offset_x = plot_parameters[['background_offset_x']],
       background_offset_y = plot_parameters[['background_offset_y']],
+      background_rotation = plot_parameters[['background_rotation']],
       background_opacity = plot_parameters[['background_opacity']]
     )
     ## put together data
@@ -454,6 +482,7 @@ spatial_projection_update_plot <- function(input) {
       traces = list(),
       color_variable = plot_parameters[['color_variable']],
       background_image = background_image_data,
+      background_identity = plot_parameters[['background_identity']],
       is_embedded = using_embedded,
       image_bounds = image_bounds,
       background_flip_x = plot_parameters[['background_flip_x']],
@@ -462,6 +491,7 @@ spatial_projection_update_plot <- function(input) {
       background_scale_y = plot_parameters[['background_scale_y']],
       background_offset_x = plot_parameters[['background_offset_x']],
       background_offset_y = plot_parameters[['background_offset_y']],
+      background_rotation = plot_parameters[['background_rotation']],
       background_opacity = plot_parameters[['background_opacity']]
     )
     ## put together data

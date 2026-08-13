@@ -564,7 +564,7 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
       tempfile("invalid-viewer-options-"),
       output_options = builder_build_options(make_app = TRUE)
     )
-    expect_identical(invalid_plan$error_code, "invalid_review_options")
+    expect_identical(invalid_plan$error_code, "empty_release")
     expect_false(app_env$builder_review_can_build(invalid_plan))
 
     invalid$port <- 8080L
@@ -2331,7 +2331,17 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(resized$settings$overview_point_size, 8)
     expect_gt(resized$revision, before_point_size)
 
-    before_trajectory <- resized$revision
+    before_cell_percentage <- resized$revision
+    session$setInputs(`core-percentage_cells_to_show` = 60)
+    session$flushReact()
+    sampled <- sets()[[1L]]
+    expect_identical(
+      sampled$settings$overview_percentage_cells_to_show,
+      60
+    )
+    expect_gt(sampled$revision, before_cell_percentage)
+
+    before_trajectory <- sampled$revision
     session$setInputs(
       `core-trajectory_action` = list(
         action = "set",
@@ -2514,7 +2524,10 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_length(sets()[[1L]]$settings$tables, 0L)
     expect_identical(top_level_runs, baseline)
 
-    alignment <- list(uri = "data:image/png;base64,AA==")
+    alignment <- list(
+      uri = "data:image/png;base64,AA==",
+      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10)
+    )
     saved <- sets()[[1L]]
     commit_enhance_images(saved, list(`section-a` = alignment))
     expect_null(retain_updates[["enhance-histology_to_retain"]])
@@ -2526,6 +2539,7 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
 
     picture <- list(
       uri = "data:image/png;base64,AA==",
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
       bytes = 2,
       width = 10,
       height = 10,
@@ -2554,8 +2568,43 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     )
     expect_identical(top_level_runs, baseline)
 
-    active_slice("section-a")
+    section_a_label <- names(builder_image_collection_normalize(
+      sets()[[1L]]$settings$images
+    )[["section-a"]])[[1L]]
+    session$setInputs(`enhance-active_section` = "section-a")
+    session$flushReact()
+    session$setInputs(`enhance-active_image` = section_a_label)
+    session$flushReact()
+    session$setInputs(`enhance-rename_image` = 1L)
+    session$flushReact()
+    session$setInputs(
+      `enhance-renamed_image_label` = "Aligned H&E",
+      `enhance-rename_image_confirm` = 1L
+    )
+    session$flushReact()
+    expect_identical(
+      names(builder_image_collection_normalize(
+        sets()[[1L]]$settings$images
+      )[["section-a"]]),
+      "Aligned H&E"
+    )
+
+    section_b_label <- names(builder_image_collection_normalize(
+      sets()[[1L]]$settings$images
+    )[["section-b"]])[[1L]]
+    session$setInputs(`enhance-active_section` = "section-b")
+    session$flushReact()
+    session$setInputs(`enhance-active_image` = section_b_label)
+    session$flushReact()
+    expect_identical(active_slice(), "section-b")
+    session$setInputs(`enhance-active_section` = "section-a")
+    session$flushReact()
+    session$setInputs(`enhance-active_image` = "Aligned H&E")
+    session$flushReact()
+
     session$setInputs(`enhance-drop_image` = 1L)
+    session$flushReact()
+    session$setInputs(`enhance-remove_image_confirm` = 1L)
     session$flushReact()
     expect_null(retain_updates[["enhance-histology_to_retain"]])
     expect_identical(
@@ -2579,12 +2628,12 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
   )
   expect_match(
     server,
-    "builder_alignment_apply_transform_to_all",
+    "builder_alignment_apply_transform_to_matching_label",
     fixed = TRUE
   )
   expect_match(
     server,
-    "commit_section(entry, section, NULL)",
+    "commit_section(entry, section, NULL, label = label)",
     fixed = TRUE
   )
 })

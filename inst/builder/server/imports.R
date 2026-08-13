@@ -559,6 +559,9 @@ observe({
         nxt$default_projection,
         nxt$group,
         nxt$section,
+        nxt$assay,
+        nxt$layer,
+        nxt$coordinate_transforms,
         4000L,
         request
       ),
@@ -893,6 +896,19 @@ observe({
       "preparing",
       p$import_generation %||% 1L
     )
+    recommendations <- list(
+      metadata = builder_recommend_metadata(value$dataset_profile)
+    )
+    settings <- builder_default_settings(
+      profile,
+      unique_name(p$label),
+      dataset_profile = value$dataset_profile
+    )
+    settings$recommendations <- recommendations
+    settings$metadata_policy <- builder_metadata_policy_set_retained(
+      recommendations$metadata,
+      recommendations$metadata$retained
+    )
     entry <- list(
       id = p$id,
       source_id = p$id,
@@ -910,11 +926,7 @@ observe({
       ## Level names per grouping variable, in the order the exporter will
       ## produce them -- the keys a configured palette has to match.
       levels = value$levels %||% list(),
-      settings = builder_default_settings(
-        profile,
-        unique_name(p$label),
-        dataset_profile = value$dataset_profile
-      )
+      settings = settings
     )
     updated_worker <- try(
       builder_worker_register_snapshot(
@@ -1107,12 +1119,15 @@ observe({
 })
 
 update_enhance_histology_choices <- function(entry) {
-  choices <- names(entry$settings$images %||% list()) %||% character()
+  collection <- builder_image_collection_normalize(
+    entry$settings$images %||% list()
+  )
+  choices <- lapply(collection, names)
   invisible(choices)
 }
 
 commit_enhance_images <- function(entry, images) {
-  entry$settings$images <- images
+  entry$settings$images <- builder_image_collection_normalize(images)
   replace_entry(entry)
   update_enhance_histology_choices(entry)
   invisible(entry)

@@ -15,6 +15,9 @@ test_that("Inspect leads with attention and compact detected-content tags", {
   html <- builder_stage_html(builder_inspect_stage_ui("inspect", model))
 
   expect_match(html, "builder-stage-section", fixed = TRUE)
+  expect_match(html, "<h3>Import &amp; Inspect</h3>", fixed = TRUE)
+  expect_match(html, "<h4>Needs attention</h4>", fixed = TRUE)
+  expect_match(html, "<h4>Detected content</h4>", fixed = TRUE)
   expect_false(grepl("builder-card", html, fixed = TRUE))
   expect_match(html, "Needs attention", fixed = TRUE)
   expect_match(html, model$attention[[1L]], fixed = TRUE)
@@ -105,6 +108,8 @@ test_that("Core keeps technical controls advanced and metadata visible", {
   html <- builder_stage_html(builder_core_stage_ui("core", model))
 
   expect_match(html, "builder-stage-section", fixed = TRUE)
+  expect_match(html, "<h3>Core settings</h3>", fixed = TRUE)
+  expect_match(html, "<h4>CRB content</h4>", fixed = TRUE)
   expect_false(grepl("builder-card", html, fixed = TRUE))
   expect_match(html, "Dataset name", fixed = TRUE)
   expect_match(html, "Organism", fixed = TRUE)
@@ -246,6 +251,10 @@ test_that("Core exposes a bounded metadata catalog for Viewer Groups", {
   expect_match(html, "Find metadata", fixed = TRUE)
   expect_match(html, "Select suggested", fixed = TRUE)
   expect_match(html, "Select all eligible", fixed = TRUE)
+  expect_match(html, "Keep in CRB", fixed = TRUE)
+  expect_match(html, "Keep all supported metadata", fixed = TRUE)
+  expect_match(html, "Restore recommended retention", fixed = TRUE)
+  expect_match(html, 'class="viewer-metadata-retain"', fixed = TRUE)
   expect_match(html, 'class="viewer-group-include"', fixed = TRUE)
   expect_match(html, 'type="radio"', fixed = TRUE)
   expect_match(html, "Default", fixed = TRUE)
@@ -288,6 +297,48 @@ test_that("Core exposes a bounded metadata catalog for Viewer Groups", {
   expect_match(detail, "A", fixed = TRUE)
   expect_match(detail, "Distribution", fixed = TRUE)
   expect_lte(length(catalog$items[[1L]]$sample_values), 5L)
+})
+
+test_that("constant metadata is retained without becoming a Group", {
+  policy <- list(
+    columns = list(
+      orig.ident = list(
+        name = "orig.ident",
+        disposition = "excluded",
+        effective_included = FALSE,
+        retain_in_crb = TRUE,
+        group_enabled = FALSE,
+        forced = FALSE,
+        sensitive = FALSE
+      )
+    )
+  )
+  catalog <- builder_group_catalog_model(list(
+    metadata_catalog = list(
+      orig.ident = list(
+        name = "orig.ident",
+        supported = TRUE,
+        classification = "categorical",
+        group_eligible = FALSE,
+        group_reason = "This column does not contain two usable categories."
+      )
+    ),
+    metadata_policy = policy
+  ))
+  html <- builder_stage_html(builder_group_catalog_ui("core", catalog))
+  detail <- builder_stage_html(builder_group_detail_ui(
+    "core",
+    builder_group_detail_model(catalog, "orig.ident")
+  ))
+
+  expect_match(
+    html,
+    'class="viewer-metadata-retain" data-group="orig.ident" checked="checked"',
+    fixed = TRUE
+  )
+  expect_false(grepl("viewer-group-include", html, fixed = TRUE))
+  expect_match(detail, "Kept as ordinary metadata", fixed = TRUE)
+  expect_match(detail, "Not eligible as a Group", fixed = TRUE)
 })
 
 test_that("Core offers cell-cycle annotations only for credible metadata", {
@@ -464,6 +515,34 @@ test_that("Group details describe the effective metadata policy truthfully", {
     legacy_detail,
     fixed = TRUE
   ))
+})
+
+test_that("metadata restore uses the independent recommendation for legacy edits", {
+  metadata_catalog <- list(
+    sample = list(name = "sample", supported = TRUE),
+    score = list(name = "score", supported = TRUE)
+  )
+  edited <- list(
+    columns = list(
+      sample = list(retain_in_crb = FALSE, effective_included = FALSE),
+      score = list(retain_in_crb = TRUE, effective_included = TRUE)
+    )
+  )
+  recommendation <- list(
+    columns = list(
+      sample = list(retain_in_crb = TRUE, effective_included = TRUE),
+      score = list(retain_in_crb = FALSE, effective_included = FALSE)
+    )
+  )
+
+  catalog <- builder_group_catalog_model(list(
+    metadata_catalog = metadata_catalog,
+    metadata_policy = edited,
+    metadata_recommendation = recommendation
+  ))
+
+  expect_identical(catalog$retained, "score")
+  expect_identical(catalog$recommended_retained, "sample")
 })
 
 test_that("Group colors stay behind a secondary closed Edit colors entry", {

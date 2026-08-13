@@ -211,6 +211,10 @@ builder_projection_catalog_model <- function(model) {
       model$overview_point_size,
       5
     ),
+    percentage_cells_to_show = .builder_viewer_scalar_number(
+      model$overview_percentage_cells_to_show,
+      100
+    ),
     colors = model$preview_colors %||% character()
   )
 }
@@ -222,23 +226,53 @@ builder_projection_catalog_ui <- function(id, model) {
     `data-input-id` = ns("projection_action"),
     div(
       class = "viewer-projection-toolbar",
-      tags$label(
-        `for` = ns("overview_point_size"),
-        span("Initial point size"),
-        span(
-          class = "viewer-point-size-value",
-          format(model$point_size, trim = TRUE)
+      div(
+        class = "viewer-projection-control",
+        tags$label(
+          `for` = ns("overview_point_size"),
+          span("Initial point size"),
+          span(
+            class = "viewer-range-value viewer-point-size-value",
+            format(model$point_size, trim = TRUE)
+          )
+        ),
+        tags$input(
+          id = ns("overview_point_size"),
+          class = "viewer-range-input viewer-point-size-input",
+          type = "range",
+          min = "0",
+          max = "20",
+          step = "1",
+          value = format(model$point_size, trim = TRUE),
+          `data-input-id` = ns("point_size")
         )
       ),
-      tags$input(
-        id = ns("overview_point_size"),
-        class = "viewer-point-size-input",
-        type = "range",
-        min = "0",
-        max = "20",
-        step = "1",
-        value = format(model$point_size, trim = TRUE),
-        `data-input-id` = ns("point_size")
+      div(
+        class = "viewer-projection-control",
+        tags$label(
+          `for` = ns("overview_percentage_cells_to_show"),
+          span("Initial cells shown"),
+          span(
+            class = paste(
+              "viewer-range-value viewer-point-size-value",
+              "viewer-cell-percentage-value"
+            ),
+            paste0(
+              format(model$percentage_cells_to_show, trim = TRUE),
+              "%"
+            )
+          )
+        ),
+        tags$input(
+          id = ns("overview_percentage_cells_to_show"),
+          class = "viewer-range-input viewer-cell-percentage-input",
+          type = "range",
+          min = "10",
+          max = "100",
+          step = "10",
+          value = format(model$percentage_cells_to_show, trim = TRUE),
+          `data-input-id` = ns("percentage_cells_to_show")
+        )
       )
     ),
     div(

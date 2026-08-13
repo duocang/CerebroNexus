@@ -323,6 +323,9 @@ builder_session_spatial_preview <- function(
   default_projection = NULL,
   group = NULL,
   section_id = NULL,
+  assay = NULL,
+  layer = "data",
+  coordinate_transforms = NULL,
   max_cells = 4000L,
   request = NULL
 ) {
@@ -333,6 +336,9 @@ builder_session_spatial_preview <- function(
       default_projection,
       group,
       section_id,
+      assay,
+      layer,
+      coordinate_transforms,
       max_cells,
       request
     ) {
@@ -349,6 +355,9 @@ builder_session_spatial_preview <- function(
               default_projection = default_projection,
               group = group,
               section_id = section_id,
+              assay = assay,
+              layer = layer,
+              coordinate_transforms = coordinate_transforms,
               max_cells = max_cells
             )
           )
@@ -363,6 +372,9 @@ builder_session_spatial_preview <- function(
       default_projection = default_projection,
       group = group,
       section_id = section_id,
+      assay = assay,
+      layer = layer,
+      coordinate_transforms = coordinate_transforms,
       max_cells = max_cells,
       request = request
     )

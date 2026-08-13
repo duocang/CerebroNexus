@@ -2,6 +2,22 @@ library(shinytest2)
 
 builder_browser_dir <- builder_profile_inst_path("builder")
 
+test_that("metadata retention and Group actions remain independent", {
+  js <- paste(
+    readLines(
+      file.path(builder_browser_dir, "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(js, 'action: "set-retention"', fixed = TRUE)
+  expect_match(js, "retained: retained", fixed = TRUE)
+  expect_match(js, 'action: "set-groups"', fixed = TRUE)
+  expect_match(js, "included: included", fixed = TRUE)
+  expect_match(js, "default: defaultGroup", fixed = TRUE)
+})
+
 builder_browser_mock_folder_picker <- function(
   output_dir,
   .local_envir = parent.frame()
@@ -98,6 +114,57 @@ test_that("builder interaction reflows and preserves accessible state", {
     "getComputedStyle(document.body).overflowY === 'hidden'"
   ))
 
+  app$wait_for_js(
+    paste0(
+      "document.querySelector(",
+      "'.viewer-metadata-retain[data-group=\"orig.ident\"]') !== null"
+    ),
+    timeout = 10000
+  )
+  expect_true(app$get_js(paste0(
+    "document.querySelector(",
+    "'.viewer-metadata-retain[data-group=\"orig.ident\"]')",
+    ".checked"
+  )))
+  app$click(
+    selector = paste0(
+      ".viewer-metadata-retain[data-group=\"orig.ident\"]"
+    )
+  )
+  app$wait_for_js(
+    paste0(
+      "!document.querySelector(",
+      "'.viewer-metadata-retain[data-group=\"orig.ident\"]').checked"
+    ),
+    timeout = 10000
+  )
+  app$click(
+    selector = paste0(
+      ".viewer-metadata-retain[data-group=\"orig.ident\"]"
+    )
+  )
+  expect_true(app$get_js(paste0(
+    "!document.querySelector(",
+    "'.viewer-metadata-retain[data-group=\"patient_id\"]')",
+    ".disabled"
+  )))
+  app$click(selector = ".viewer-metadata-select[data-action=all-supported]")
+  app$wait_for_js(
+    paste0(
+      "document.querySelector(",
+      "'.viewer-metadata-retain[data-group=\"patient_id\"]').checked"
+    ),
+    timeout = 10000
+  )
+  app$click(selector = ".viewer-group-select[data-action=all]")
+  app$wait_for_js(
+    paste0(
+      "document.querySelector(",
+      "'.viewer-metadata-retain[data-group=\"orig.ident\"]').checked"
+    ),
+    timeout = 10000
+  )
+
   expect_false(app$get_js(
     "document.querySelector('.builder-select-initial') !== null"
   ))
@@ -117,11 +184,15 @@ test_that("builder interaction reflows and preserves accessible state", {
     "document.getElementById('continue_to_review') !== null",
     timeout = 10000
   )
-  readiness <- app$get_js(paste0(
-    "({disabled: document.getElementById('continue_to_review').disabled, ",
-    "text: document.querySelector('.builder-configure-readiness').textContent})"
-  ))
-  expect_false(readiness$disabled, info = readiness$text)
+  readiness_text <- app$get_js(
+    "document.querySelector('.builder-configure-readiness').textContent"
+  )
+  expect_true(
+    app$get_js(
+      "document.getElementById('continue_to_review').disabled === false"
+    ),
+    info = readiness_text
+  )
   app$click("continue_to_review")
   app$wait_for_js(
     "document.getElementById('review-stage') !== null",
@@ -332,8 +403,8 @@ test_that("builder explains a mocked old privacy contract exactly", {
       "document.querySelector('.builder-app-capability-reason').textContent.trim()"
     ),
     paste(
-      "Private app publication requires privacy contract v1.",
-      "Build CRB-only output for now."
+      "Viewer app creation isn’t available in this installation.",
+      "You can still build CRB files."
     )
   )
 })

@@ -126,14 +126,14 @@ builder_inspect_stage_ui <- function(id, model) {
     if (length(c(attention, blockers))) {
       div(
         class = "notice warn",
-        h3("Needs attention"),
+        h4("Needs attention"),
         builder_stage_text_items(c(attention, blockers))
       )
     },
     if (length(model$content_tags %||% list())) {
       div(
         class = "builder-detected-content",
-        h3("Detected content"),
+        h4("Detected content"),
         div(
           class = "builder-content-tags",
           lapply(model$content_tags, function(tag) {

@@ -285,6 +285,132 @@ test_that("builder exposes one compact responsive component system", {
   ))
 })
 
+test_that("enhancement groups and previews use one quiet density system", {
+  css <- builder_stylesheet_text("builder.features.css")
+
+  expect_match(
+    css,
+    paste0(
+      "\\.enhance-group \\{[^}]*padding: 0;[^}]*",
+      "border: 0;[^}]*background: transparent;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.enhance-group \\+ \\.enhance-group \\{[^}]*",
+      "margin-top: var\\(--space-6\\);[^}]*",
+      "padding-top: var\\(--space-6\\);[^}]*",
+      "border-top: 1px solid var\\(--c-border\\);"
+    ),
+    perl = TRUE
+  )
+  expect_false(grepl(
+    "enhance-attachment-block + .enhance-attachment-block",
+    css,
+    fixed = TRUE
+  ))
+  expect_false(grepl("enhance-attachment-block--spatial", css, fixed = TRUE))
+  expect_match(
+    css,
+    "\\.spatial-alignment-plot-frame \\{[^}]*aspect-ratio: 1;",
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-alignment-legend-wrap \\{[^}]*",
+      "padding: var\\(--space-3\\);[^}]*",
+      "border: 1px solid var\\(--c-border\\);[^}]*",
+      "border-radius: var\\(--radius-md\\);[^}]*",
+      "background: var\\(--c-surface-muted\\);"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-alignment-title \\{[^}]*",
+      "font-size: 1rem;[^}]*font-weight: 700;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.builder-preview-grid,\\s*",
+      "\\.spatial-alignment-plots,\\s*",
+      "\\.spatial-alignment-controls \\{[^}]*",
+      "grid-template-columns: minmax\\(0, 1fr\\)"
+    ),
+    perl = TRUE
+  )
+})
+
+test_that("Builder framed surfaces use one explicit title hierarchy", {
+  components <- builder_stylesheet_text("builder.components.css")
+  features <- builder_stylesheet_text("builder.features.css")
+
+  expect_match(
+    components,
+    paste0(
+      "\\.builder-stage-section > h3 \\{[^}]*margin: 0 0 var\\(--space-3\\);[^}]*",
+      "font-size: 1rem;[^}]*line-height: 1.4;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    paste0(
+      "\\.builder-viewer-content-head h4 \\{[^}]*margin: 0;[^}]*",
+      "font-size: \\.9375rem;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.enhance-group > h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    components,
+    "\\.notice > h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.builder-detected-content h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.spatial-alignment-title \\{[^}]*font-size: 1rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    paste0(
+      "\\.enhance-attachment-block--tables > h5,\\s*",
+      "\\.spatial-alignment-legend-wrap h5 \\{[^}]*",
+      "font-size: \\.875rem;"
+    ),
+    perl = TRUE
+  )
+})
+
+test_that("Builder has no duplicate dataset context banner", {
+  js <- builder_asset_text("www", "builder.js")
+  review <- paste(
+    readLines(builder_profile_inst_path("builder", "server", "review.R")),
+    collapse = "\n"
+  )
+
+  expect_false(grepl("__builderFocusDatasetContext", js, fixed = TRUE))
+  expect_false(grepl('uiOutput("dataset_context")', review, fixed = TRUE))
+  expect_false(grepl('output[["dataset_context"]]', review, fixed = TRUE))
+})
+
 test_that("Viewer Group catalog interactions use stable names and client search", {
   js <- builder_asset_text("www", "builder.js")
   css <- builder_stylesheet_text()

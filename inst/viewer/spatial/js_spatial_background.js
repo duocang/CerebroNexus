@@ -71,7 +71,7 @@ shinyjs.applySpatialBackground = function () {
     const flipX = bg.dataset.flipX === 'true';
     const flipY = bg.dataset.flipY === 'true';
     // Scale is a SINGLE source of truth: the Scale slider(s), which the UI seeds
-    // from the build-config `spatial_images_scale_x/y` preset. There is no longer
+    // from the build-config `spatial_image_settings` preset. There is no longer
     // a separate dataset.scaleX factor multiplied on top (that produced a squared
     // scale, e.g. 1.55 × 1.55). scaleX/scaleY are independent when the user
     // unlocks the aspect ratio; locked, the X slider drives both.
@@ -254,7 +254,7 @@ shinyjs.applySpatialBackground = function () {
   }
 };
 
-shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX, scaleY, opacity, imageBounds, offsetX, offsetY) {
+shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX, scaleY, opacity, imageBounds, offsetX, offsetY, rotate, backgroundIdentity) {
   const plotContainer = document.getElementById('spatial_projection');
   if (!plotContainer) return;
   let parent = plotContainer.parentElement;
@@ -286,13 +286,27 @@ shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX,
   // platform like Slide-seq.) Normalise all of them to '' before comparing.
   {
     const normalizedImage = backgroundImage || '';
+    // New callers provide the resolved logical location as a structured object.
+    // JSON is collision-safe for user-controlled names and stable because R
+    // always emits the four named fields in canonical order. Older callers omit
+    // it and retain the historical URI-based behaviour.
+    const normalizedIdentity =
+      backgroundIdentity === undefined || backgroundIdentity === null
+        ? null
+        : JSON.stringify(backgroundIdentity);
+    const previousIdentity =
+      bg.dataset.backgroundIdentity === undefined
+        ? bg.dataset.backgroundImage || ''
+        : bg.dataset.backgroundIdentity;
+    const nextIdentity =
+      normalizedIdentity === null ? normalizedImage : normalizedIdentity;
     // When the image itself CHANGES (dataset switch, picking a different
     // background, or clearing it), the user-interaction state belongs to the OLD
     // image and must not carry over. Clear the interaction-owned fields so the
     // block below re-seeds flip/opacity from the NEW image's dataset defaults,
     // and reset the interactive nudges (offset/scale/rotate) that were relative
     // to the old image. Same image (a plain scatter re-render) → leave intact.
-    const imageChanged = bg.dataset.backgroundImage !== normalizedImage;
+    const imageChanged = previousIdentity !== nextIdentity;
     if (imageChanged) {
       delete bg.dataset.lastTransform;
       delete bg.dataset.flipX;
@@ -305,6 +319,11 @@ shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX,
       delete bg.dataset.offsetY;
     }
     bg.dataset.backgroundImage = normalizedImage;
+    if (normalizedIdentity === null) {
+      delete bg.dataset.backgroundIdentity;
+    } else {
+      bg.dataset.backgroundIdentity = normalizedIdentity;
+    }
   }
   // scaleX/scaleY seed the Scale slider(s) from the build-config preset, the
   // same SEED-ONLY way as flip/opacity below: set once when the image first
@@ -326,6 +345,9 @@ shinyjs.syncSpatialBackground = function (backgroundImage, flipX, flipY, scaleX,
   }
   if (offsetY !== undefined && bg.dataset.offsetY === undefined) {
     bg.dataset.offsetY = String(offsetY || 0);
+  }
+  if (rotate !== undefined && bg.dataset.rotate === undefined) {
+    bg.dataset.rotate = String(rotate);
   }
   // flipX/flipY/opacity are USER-interaction state, owned by the independent
   // appearance channel (updateSpatialBackgroundAppearance). The render pass must

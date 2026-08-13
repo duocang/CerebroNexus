@@ -17,8 +17,10 @@ observeEvent(
     if (builder_mutations_locked(isolate(build_flow()), isolate(protocol()))) {
       return()
     }
+    app_required <- isTRUE(isolate(workflow())$review_plan$make_app)
     requested <- identical(input$build_output_mode, "app")
-    enabled <- requested && isTRUE(app_capability$available)
+    enabled <- (requested || app_required) &&
+      isTRUE(app_capability$available)
     build_mode(enabled)
     if (!enabled) {
       auth_enabled(FALSE)
@@ -74,6 +76,7 @@ output$build_output_options <- renderUI({
     ),
     app_available = isTRUE(app_capability$available),
     app_reason = app_capability$reason,
+    app_required = isTRUE(plan$make_app),
     initial_page_choices = review_page_contract()$choices,
     dataset_choices = dataset_choices,
     auth = list(

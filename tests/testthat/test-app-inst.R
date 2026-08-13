@@ -432,6 +432,7 @@ test_that("createShinyApp bundles a working app", {
   createShinyApp(
     cerebro_data = c("mydata" = tmp),
     result_dir = app_dir,
+    port = httpuv::randomPort(host = "127.0.0.1"),
     launch_browser = FALSE,
     verbose = FALSE
   )

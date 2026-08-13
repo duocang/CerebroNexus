@@ -293,10 +293,15 @@ builder_tissue_image_file_ui <- function(id, record) {
 
 builder_alignment_plot_output <- function(id, label) {
   div(
-    class = "spatial-alignment-plot-output",
+    class = "spatial-alignment-plot-frame",
     `aria-label` = label,
     role = "img",
-    plotly::plotlyOutput(id, height = "360px")
+    plotly::plotlyOutput(
+      id,
+      width = "100%",
+      height = "100%",
+      inline = FALSE
+    )
   )
 }
 
@@ -306,11 +311,19 @@ builder_spatial_alignment_ui <- function(id, model) {
   section_labels <- sections
   section_labels[sections == "trekker"] <- "Trekker physical space"
   choices <- stats::setNames(sections, section_labels)
+  initial_image_choices <- if (length(sections)) {
+    names(model$images[[sections[[1L]]]] %||% list()) %||% character()
+  } else {
+    character()
+  }
   tagList(
-    h4(model$label %||% "Spatial alignment"),
+    h3(
+      class = "spatial-alignment-title",
+      model$label %||% "Spatial alignment"
+    ),
     p(
       class = "enhance-attachment-description",
-      "Compare transcriptome and physical space, then align an optional tissue image."
+      "Align tissue images with the spatial coordinates for each FOV or section."
     ),
     if (length(sections)) {
       div(
@@ -328,6 +341,49 @@ builder_spatial_alignment_ui <- function(id, model) {
             `aria-live` = "polite",
             uiOutput(ns("alignment_status"))
           ),
+          conditionalPanel(
+            condition = "output['has_coordinate_frame']",
+            tags$fieldset(
+              class = "spatial-alignment-control-group spatial-coordinate-frame",
+              tags$legend("Coordinate frame"),
+              p(
+                class = "hint",
+                "Transform spatial coordinates before they are written to the CRB. Positive rotation is counter-clockwise."
+              ),
+              sliderInput(
+                ns("coordinate_rotation"),
+                "Coordinate rotation (degrees)",
+                -180,
+                180,
+                0,
+                step = 1,
+                ticks = FALSE
+              ),
+              sliderInput(
+                ns("coordinate_scale"),
+                "Coordinate scale",
+                0.2,
+                3,
+                1,
+                step = 0.02,
+                ticks = FALSE
+              ),
+              div(
+                class = "builder-action-row",
+                actionButton(
+                  ns("save_coordinate_transform"),
+                  "Save coordinate transform",
+                  class = "btn btn-action"
+                ),
+                actionButton(
+                  ns("reset_coordinate_transform"),
+                  "Reset coordinates",
+                  class = "btn btn-quiet"
+                )
+              )
+            ),
+            ns = ns
+          ),
           div(
             class = "enhance-tissue-file-control builder-file-picker builder-file-picker--compact",
             tags$input(
@@ -343,8 +399,52 @@ builder_spatial_alignment_ui <- function(id, model) {
               class = "enhance-tissue-file-button builder-file-trigger",
               `tabindex` = "0",
               role = "button",
-              span("+ Add tissue image…")
+              uiOutput(ns("add_image_label"), inline = TRUE)
             )
+          ),
+          tags$details(
+            class = "builder-disclosure spatial-image-options",
+            tags$summary("Spatial image options"),
+            selectInput(
+              ns("spatial_image_storage"),
+              "Image storage",
+              choices = c(
+                "External files in App (spatial-assets/)" = "external",
+                "Embedded in CRB" = "embedded"
+              ),
+              selected = model$spatial_image_storage %||% "embedded"
+            )
+          ),
+          conditionalPanel(
+            condition = "output['has_multiple_images']",
+            selectInput(
+              ns("active_image"),
+              "Image",
+              choices = initial_image_choices,
+              selected = if (length(initial_image_choices)) {
+                initial_image_choices[[1L]]
+              } else {
+                character()
+              }
+            ),
+            ns = ns
+          ),
+          conditionalPanel(
+            condition = "output['has_image']",
+            div(
+              class = "spatial-image-actions builder-action-row",
+              actionButton(
+                ns("rename_image"),
+                "Rename image",
+                class = "btn btn-quiet"
+              ),
+              actionButton(
+                ns("remove_image"),
+                "Remove image",
+                class = "btn btn-remove-soft"
+              )
+            ),
+            ns = ns
           ),
           conditionalPanel(
             condition = "output['has_image']",
@@ -436,7 +536,7 @@ builder_spatial_alignment_ui <- function(id, model) {
               ),
               actionButton(
                 ns("apply_align_all"),
-                "Apply transform to all sections",
+                "Apply transform to matching image label",
                 class = "btn btn-quiet"
               ),
               actionButton(
@@ -452,19 +552,13 @@ builder_spatial_alignment_ui <- function(id, model) {
           class = "spatial-alignment-main",
           div(
             class = "spatial-alignment-plots builder-preview-grid",
-            tags$section(
-              class = "spatial-alignment-plot-card builder-subcard",
-              h5("Transcriptome space"),
-              uiOutput(ns("alignment_projection_label"), inline = TRUE),
-              builder_alignment_plot_output(
-                ns("alignment_transcriptome_plot"),
-                "Transcriptome-space cell plot"
-              )
-            ),
-            tags$section(
-              class = "spatial-alignment-plot-card builder-subcard",
-              h5("Spatial space"),
-              uiOutput(ns("alignment_spatial_label"), inline = TRUE),
+            tags$figure(
+              class = "spatial-alignment-figure",
+              tags$figcaption(
+                class = "spatial-alignment-figure-header",
+                h5("Spatial space"),
+                uiOutput(ns("alignment_spatial_label"), inline = TRUE)
+              ),
               builder_alignment_plot_output(
                 ns("alignment_spatial_plot"),
                 "Spatial-space cell plot"
@@ -487,12 +581,7 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
   histology <- model$attachments$histology %||% list()
   div(
     id = ns("stage"),
-    class = "builder-stage-section builder-stage-enhance",
-    h3("Optional enhancements"),
-    p(
-      class = "stage-intro",
-      "Optional: add analysis pages or attach supporting files. You can skip this stage."
-    ),
+    class = "builder-enhancement-stack",
     tags$input(
       id = ns("rendered_for"),
       type = "text",
@@ -502,47 +591,64 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
       tabindex = "-1",
       `aria-hidden` = "true"
     ),
-    h4("Optional analyses"),
-    div(
-      class = "enhance-module-grid",
-      if (isTRUE(dynamic_modules)) {
-        uiOutput(ns("analysis_modules"))
-      } else {
-        builder_enhance_modules_ui(id, model$modules %||% list())
-      }
-    ),
-    h4("Optional attachments"),
-    div(
-      class = "enhance-attachment builder-subcard",
-      h4("Tables for Extra material"),
+    tags$section(
+      class = "builder-stage-section builder-stage-enhance",
+      h3("Optional enhancements"),
       p(
-        class = "enhance-attachment-description",
-        "Add optional CSV or TSV tables to the CRB’s Extra material content."
+        class = "stage-intro",
+        "Optional: add analysis pages or attach supporting files. You can skip this stage."
       ),
       div(
-        class = "enhance-table-file-control builder-file-picker builder-file-picker--content",
-        tags$input(
-          id = ns("table_files"),
-          name = ns("table_files"),
-          class = "shiny-input-file enhance-table-file-input builder-file-input",
-          type = "file",
-          multiple = "multiple",
-          accept = ".csv,.tsv,.txt",
-          `tabindex` = "-1"
-        ),
-        tags$label(
-          `for` = ns("table_files"),
-          class = "enhance-table-file-button builder-file-trigger",
-          `tabindex` = "0",
-          role = "button",
-          span("+ Add tables…")
+        class = "enhance-group enhance-group--analyses",
+        h4("Optional analyses"),
+        div(
+          class = "enhance-module-grid",
+          if (isTRUE(dynamic_modules)) {
+            uiOutput(ns("analysis_modules"))
+          } else {
+            builder_enhance_modules_ui(id, model$modules %||% list())
+          }
         )
       ),
-      uiOutput(ns("table_list"))
+      div(
+        class = "enhance-group enhance-group--attachments",
+        h4("Optional attachments"),
+        div(
+          class = "enhance-attachment-block enhance-attachment-block--tables",
+          h5("Tables for Extra material"),
+          p(
+            class = "enhance-attachment-description",
+            "Add optional CSV or TSV tables to the CRB’s Extra material content."
+          ),
+          div(
+            class = "enhance-table-file-control builder-file-picker builder-file-picker--content",
+            tags$input(
+              id = ns("table_files"),
+              name = ns("table_files"),
+              class = "shiny-input-file enhance-table-file-input builder-file-input",
+              type = "file",
+              multiple = "multiple",
+              accept = ".csv,.tsv,.txt",
+              `tabindex` = "-1"
+            ),
+            tags$label(
+              `for` = ns("table_files"),
+              class = "enhance-table-file-button builder-file-trigger",
+              `tabindex` = "0",
+              role = "button",
+              span("+ Add tables…")
+            )
+          ),
+          uiOutput(ns("table_list"))
+        )
+      )
     ),
     if (isTRUE(histology$relevant)) {
-      div(
-        class = "enhance-attachment spatial-alignment-workbench builder-subcard",
+      tags$section(
+        class = paste(
+          "builder-stage-section builder-stage-spatial",
+          "spatial-alignment-workbench"
+        ),
         builder_spatial_alignment_ui(id, histology)
       )
     }

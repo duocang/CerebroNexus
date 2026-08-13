@@ -157,19 +157,23 @@ test_that("Review summarizes analysis results without exposing diagnostics", {
     columns = list(
       cell_barcode = list(
         disposition = "included",
-        effective_included = TRUE
+        effective_included = TRUE,
+        retain_in_crb = TRUE
       ),
       cell_type = list(
         disposition = "included",
-        effective_included = TRUE
+        effective_included = TRUE,
+        retain_in_crb = TRUE
       ),
       score = list(
         disposition = "excluded",
-        effective_included = FALSE
+        effective_included = FALSE,
+        retain_in_crb = FALSE
       ),
       donor = list(
         disposition = "attention",
-        effective_included = TRUE
+        effective_included = TRUE,
+        retain_in_crb = TRUE
       )
     )
   )

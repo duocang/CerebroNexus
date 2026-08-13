@@ -80,6 +80,7 @@ builder_build_options_ui <- function(
   options,
   app_available = TRUE,
   app_reason = NULL,
+  app_required = FALSE,
   initial_page_choices = c("Data info" = "data_info"),
   dataset_choices = character(),
   auth = list(
@@ -92,6 +93,9 @@ builder_build_options_ui <- function(
 ) {
   stopifnot(
     inherits(options, "builder_build_options"),
+    is.logical(app_required),
+    length(app_required) == 1L,
+    !is.na(app_required),
     is.logical(controls_disabled),
     length(controls_disabled) == 1L,
     !is.na(controls_disabled)
@@ -132,27 +136,30 @@ builder_build_options_ui <- function(
     ),
     selected = if (isTRUE(options$make_app)) "app" else "crb"
   )
-  if (!isTRUE(app_available)) {
-    disable_app_choice <- function(node) {
-      if (inherits(node, "shiny.tag")) {
-        if (
-          identical(node$name, "input") &&
-            identical(node$attribs$value, "app")
-        ) {
-          node$attribs$disabled <- "disabled"
-          node$attribs$`aria-disabled` <- "true"
-        }
-        node$children <- lapply(node$children, disable_app_choice)
-        return(node)
+  disable_output_choice <- function(node, value) {
+    if (inherits(node, "shiny.tag")) {
+      if (
+        identical(node$name, "input") &&
+          identical(node$attribs$value, value)
+      ) {
+        node$attribs$disabled <- "disabled"
+        node$attribs$`aria-disabled` <- "true"
       }
-      if (is.list(node)) {
-        original_attributes <- attributes(node)
-        node <- lapply(node, disable_app_choice)
-        attributes(node) <- original_attributes
-      }
-      node
+      node$children <- lapply(node$children, disable_output_choice, value)
+      return(node)
     }
-    output_mode <- disable_app_choice(output_mode)
+    if (is.list(node)) {
+      original_attributes <- attributes(node)
+      node <- lapply(node, disable_output_choice, value)
+      attributes(node) <- original_attributes
+    }
+    node
+  }
+  if (isTRUE(app_required)) {
+    output_mode <- disable_output_choice(output_mode, "crb")
+  }
+  if (!isTRUE(app_available)) {
+    output_mode <- disable_output_choice(output_mode, "app")
   }
   tags$section(
     class = "builder-stage-section builder-build-options",
@@ -161,6 +168,12 @@ builder_build_options_ui <- function(
       class = "builder-build-options-fields",
       disabled = if (controls_disabled) "disabled",
       output_mode,
+      if (isTRUE(app_required)) {
+        p(
+          class = "hint builder-app-required-reason",
+          "External spatial images require CRB files + Viewer App output."
+        )
+      },
       if (!isTRUE(app_available)) {
         p(
           class = "hint builder-app-capability-reason",

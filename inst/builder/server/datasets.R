@@ -97,6 +97,8 @@ group_catalog_for_entry <- function(entry) {
     metadata_policy = entry$settings$metadata_policy %||%
       entry$settings$recommendations$metadata %||%
       list(),
+    metadata_recommendation = entry$settings$recommendations$metadata %||%
+      list(),
     levels = entry$levels %||% list()
   ))
 }
@@ -174,6 +176,10 @@ send_projection_state <- function(entry, message = NULL) {
       ),
       default = entry$settings$default_projection %||% NULL,
       point_size = entry$settings$overview_point_size %||% 5,
+      percentage_cells_to_show = entry$settings[[
+        "overview_percentage_cells_to_show"
+      ]] %||%
+        100,
       message = message
     )
   )
@@ -325,6 +331,34 @@ observeEvent(
   ignoreInit = TRUE
 )
 
+observeEvent(
+  input[["core-percentage_cells_to_show"]],
+  {
+    id <- current()
+    value <- suppressWarnings(as.numeric(
+      input[["core-percentage_cells_to_show"]]
+    ))
+    if (
+      is.null(id) ||
+        !identical(input[["core-rendered_for"]], id) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        !is.finite(value) ||
+        value < 10 ||
+        value > 100
+    ) {
+      return()
+    }
+    entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+    req(entry)
+    entry$settings$overview_percentage_cells_to_show <- value
+    if (isTRUE(replace_entry(entry))) {
+      send_projection_state(entry)
+    }
+  },
+  ignoreInit = TRUE
+)
+
 parse_trajectory_action <- function(value, selectable) {
   records <- value %||% list()
   if (!is.list(records)) {
@@ -452,6 +486,54 @@ observe({
 })
 
 observeEvent(
+  input[["core-metadata_action"]],
+  {
+    id <- current()
+    action <- input[["core-metadata_action"]]
+    if (
+      is.null(id) ||
+        !identical(input[["core-rendered_for"]], id) ||
+        !is.list(action) ||
+        !identical(action$action, "set-retention")
+    ) {
+      return()
+    }
+    entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+    req(entry)
+    policy <- entry$settings$metadata_policy %||%
+      entry$settings$recommendations$metadata
+    req(is.list(policy))
+    retained <- unique(as.character(unlist(
+      action$retained %||% character(),
+      use.names = FALSE
+    )))
+    records <- policy$columns %||% list()
+    source_columns <- entry$dataset_profile$metadata$columns %||% list()
+    supported <- names(records)[vapply(
+      names(records),
+      function(column_id) {
+        record <- records[[column_id]]
+        source <- source_columns[[column_id]]
+        identical(column_id, "cell_barcode") ||
+          (is.list(source) && isTRUE(source$supported)) ||
+          isTRUE(record$forced)
+      },
+      logical(1)
+    )]
+    retained <- intersect(retained, supported)
+    entry$settings$metadata_policy <- builder_metadata_policy_set_retained(
+      policy,
+      retained
+    )
+    changed <- replace_entry(entry)
+    if (isTRUE(changed)) {
+      send_group_state(entry)
+    }
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
   input[["core-group_action"]],
   {
     id <- current()
@@ -460,7 +542,7 @@ observeEvent(
       is.null(id) ||
         !identical(input[["core-rendered_for"]], id) ||
         !is.list(action) ||
-        !identical(action$action, "set")
+        !action$action %in% c("set", "set-groups")
     ) {
       return()
     }
@@ -499,6 +581,14 @@ observeEvent(
     entry$settings$groups <- included
     entry$settings$default_group <- default
     entry$settings$group_color_overrides <- next_overrides
+    policy <- entry$settings$metadata_policy %||%
+      entry$settings$recommendations$metadata
+    if (is.list(policy)) {
+      entry$settings$metadata_policy <- builder_metadata_policy_set_groups(
+        policy,
+        included
+      )
+    }
     changed <- replace_entry(entry)
     if (isTRUE(changed)) {
       send_group_state(entry)
@@ -610,6 +700,9 @@ output[["core-projection_gallery"]] <- renderUI({
     included_projections = entry$settings$included_projections,
     default_projection = entry$settings$default_projection,
     overview_point_size = entry$settings$overview_point_size,
+    overview_percentage_cells_to_show = entry$settings[[
+      "overview_percentage_cells_to_show"
+    ]],
     projection_previews = frames,
     preview_colors = colors
   ))

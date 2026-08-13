@@ -29,7 +29,10 @@
   "crb_pick_smallest_file",
   "backend_plan",
   "backend_identities",
-  "content_identities"
+  "content_identities",
+  "spatial_images",
+  "spatial_image_settings",
+  "spatial_image_identities"
 )
 
 .builder_app_identity_fields <- c(
@@ -71,6 +74,222 @@
 .builder_app_inert_max_objects <- 100000
 .builder_app_inert_max_elements <- 100000
 .builder_app_inert_max_bytes <- 16 * 1024^2
+
+.builder_app_spatial_setting_fields <- c(
+  "flip_x",
+  "flip_y",
+  "scale_x",
+  "scale_y",
+  "offset_x",
+  "offset_y",
+  "rotation",
+  "image_opacity"
+)
+
+.builder_app_spatial_target <- function(dataset, section, path) {
+  paste("spatial-assets", dataset, section, basename(path), sep = "/")
+}
+
+.builder_app_config_spatial_manifest_valid <- function(images, selector_order) {
+  if (is.null(images)) {
+    return(TRUE)
+  }
+  if (
+    !is.list(images) ||
+      is.object(images) ||
+      any(!names(images) %in% selector_order) ||
+      length(names(images)) != length(images) ||
+      anyDuplicated(names(images))
+  ) {
+    return(FALSE)
+  }
+  for (dataset in names(images)) {
+    sections <- images[[dataset]]
+    if (
+      !is.list(sections) ||
+        is.object(sections) ||
+        !length(sections) ||
+        length(names(sections)) != length(sections) ||
+        anyNA(names(sections)) ||
+        any(!nzchar(names(sections))) ||
+        anyDuplicated(names(sections))
+    ) {
+      return(FALSE)
+    }
+    for (section in names(sections)) {
+      declarations <- sections[[section]]
+      if (
+        !is.list(declarations) ||
+          is.object(declarations) ||
+          !length(declarations) ||
+          length(names(declarations)) != length(declarations) ||
+          anyNA(names(declarations)) ||
+          any(!nzchar(names(declarations))) ||
+          anyDuplicated(names(declarations))
+      ) {
+        return(FALSE)
+      }
+      for (label in names(declarations)) {
+        descriptor <- declarations[[label]]
+        path <- if (is.character(descriptor)) descriptor else descriptor$path
+        bounds <- if (is.list(descriptor)) descriptor$bounds else NULL
+        if (
+          !is.character(path) ||
+            length(path) != 1L ||
+            is.na(path) ||
+            !.builder_app_safe_relative(path) ||
+            !identical(
+              path,
+              .builder_app_spatial_target(dataset, section, path)
+            ) ||
+            (is.list(descriptor) &&
+              (!identical(names(descriptor), c("path", "bounds")) ||
+                !is.numeric(bounds) ||
+                length(bounds) != 4L ||
+                anyNA(bounds) ||
+                any(!is.finite(bounds)) ||
+                !identical(
+                  names(bounds),
+                  c("xmin", "xmax", "ymin", "ymax")
+                ))) ||
+            (!is.character(descriptor) && !is.list(descriptor))
+        ) {
+          return(FALSE)
+        }
+      }
+    }
+  }
+  TRUE
+}
+
+.builder_app_spatial_manifest_valid <- function(
+  images,
+  settings,
+  identities,
+  selector_order,
+  stage
+) {
+  if (
+    !is.list(images) ||
+      is.object(images) ||
+      !is.list(settings) ||
+      is.object(settings) ||
+      !is.list(identities) ||
+      is.object(identities) ||
+      !identical(names(images), names(settings)) ||
+      !identical(names(images), names(identities)) ||
+      any(!names(images) %in% selector_order) ||
+      anyDuplicated(names(images))
+  ) {
+    return(FALSE)
+  }
+  source_paths <- character()
+  targets <- character()
+  valid <- TRUE
+  for (dataset in names(images)) {
+    dataset_images <- images[[dataset]]
+    dataset_settings <- settings[[dataset]]
+    dataset_identities <- identities[[dataset]]
+    if (
+      !is.list(dataset_images) ||
+        is.object(dataset_images) ||
+        !length(dataset_images) ||
+        length(names(dataset_images)) != length(dataset_images) ||
+        anyDuplicated(names(dataset_images)) ||
+        anyNA(names(dataset_images)) ||
+        any(!nzchar(names(dataset_images))) ||
+        !identical(names(dataset_images), names(dataset_settings)) ||
+        !identical(names(dataset_images), names(dataset_identities))
+    ) {
+      valid <- FALSE
+      break
+    }
+    for (section in names(dataset_images)) {
+      section_images <- dataset_images[[section]]
+      section_settings <- dataset_settings[[section]]
+      section_identities <- dataset_identities[[section]]
+      if (
+        !is.list(section_images) ||
+          is.object(section_images) ||
+          !length(section_images) ||
+          length(names(section_images)) != length(section_images) ||
+          anyDuplicated(names(section_images)) ||
+          anyNA(names(section_images)) ||
+          any(!nzchar(names(section_images))) ||
+          !identical(names(section_images), names(section_settings)) ||
+          !identical(names(section_images), names(section_identities))
+      ) {
+        valid <- FALSE
+        break
+      }
+      for (label in names(section_images)) {
+        descriptor <- section_images[[label]]
+        setting <- section_settings[[label]]
+        identity <- section_identities[[label]]
+        path <- if (is.list(descriptor)) descriptor$path else NULL
+        bounds <- if (is.list(descriptor)) descriptor$bounds else NULL
+        canonical <- tryCatch(
+          normalizePath(path, winslash = "/", mustWork = TRUE),
+          error = function(error) NULL
+        )
+        identity_label <- paste(dataset, section, label, sep = "/")
+        if (
+          !is.list(descriptor) ||
+            is.object(descriptor) ||
+            !identical(names(descriptor), c("path", "bounds")) ||
+            !is.character(path) ||
+            length(path) != 1L ||
+            is.na(path) ||
+            is.null(canonical) ||
+            !identical(path, canonical) ||
+            !.builder_app_path_within(path, stage) ||
+            .builder_app_is_link(path) ||
+            dir.exists(path) ||
+            !is.numeric(bounds) ||
+            length(bounds) != 4L ||
+            anyNA(bounds) ||
+            any(!is.finite(bounds)) ||
+            !identical(names(bounds), c("xmin", "xmax", "ymin", "ymax")) ||
+            !is.list(setting) ||
+            is.object(setting) ||
+            !identical(names(setting), .builder_app_spatial_setting_fields) ||
+            !all(vapply(
+              setting[c("flip_x", "flip_y")],
+              function(value) {
+                is.logical(value) && length(value) == 1L && !is.na(value)
+              },
+              logical(1)
+            )) ||
+            !all(vapply(
+              setting[setdiff(
+                .builder_app_spatial_setting_fields,
+                c("flip_x", "flip_y")
+              )],
+              function(value) {
+                is.numeric(value) &&
+                  length(value) == 1L &&
+                  !is.na(value) &&
+                  is.finite(value)
+              },
+              logical(1)
+            )) ||
+            setting$image_opacity < 0 ||
+            setting$image_opacity > 1 ||
+            !.builder_app_identity_valid(identity, identity_label, path)
+        ) {
+          valid <- FALSE
+          break
+        }
+        source_paths <- c(source_paths, path)
+        targets <- c(
+          targets,
+          .builder_app_spatial_target(dataset, section, path)
+        )
+      }
+    }
+  }
+  isTRUE(valid) && !anyDuplicated(source_paths) && !anyDuplicated(targets)
+}
 
 .builder_app_options_valid <- function(options, dataset_order) {
   expected <- c(
@@ -245,7 +464,8 @@
             c(
               "default_projection",
               "default_trajectory",
-              "overview_point_size"
+              "overview_point_size",
+              "overview_percentage_cells_to_show"
             )
           )
       ) {
@@ -254,6 +474,7 @@
       projection <- item$default_projection
       trajectory <- item$default_trajectory
       point_size <- item$overview_point_size
+      percentage_cells_to_show <- item$overview_percentage_cells_to_show
       projection_valid <- is.null(projection) ||
         (is.character(projection) &&
           length(projection) == 1L &&
@@ -280,7 +501,13 @@
         !is.na(point_size) &&
         is.finite(point_size) &&
         point_size >= 0 &&
-        point_size <= 20
+        point_size <= 20 &&
+        is.numeric(percentage_cells_to_show) &&
+        length(percentage_cells_to_show) == 1L &&
+        !is.na(percentage_cells_to_show) &&
+        is.finite(percentage_cells_to_show) &&
+        percentage_cells_to_show >= 10 &&
+        percentage_cells_to_show <= 100
     },
     logical(1)
   ))
@@ -299,6 +526,17 @@
         point_size > 20
     ) {
       point_size <- fallback
+    }
+    percentage_cells_to_show <- item$overview_percentage_cells_to_show
+    if (
+      !is.numeric(percentage_cells_to_show) ||
+        length(percentage_cells_to_show) != 1L ||
+        is.na(percentage_cells_to_show) ||
+        !is.finite(percentage_cells_to_show) ||
+        percentage_cells_to_show < 10 ||
+        percentage_cells_to_show > 100
+    ) {
+      percentage_cells_to_show <- 100
     }
     projection <- item$default_projection
     if (
@@ -330,7 +568,10 @@
     list(
       default_projection = projection,
       default_trajectory = trajectory,
-      overview_point_size = as.double(point_size)
+      overview_point_size = as.double(point_size),
+      overview_percentage_cells_to_show = as.double(
+        percentage_cells_to_show
+      )
     )
   })
   names(values) <- labels
