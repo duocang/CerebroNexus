@@ -105,6 +105,63 @@ test_that("all spatial module files parse without errors", {
   }
 })
 
+test_that("background-image selection only recreates image calibration controls", {
+  # The scatter controls retain user-selected values while moving between
+  # backgrounds. Keep them in their own renderUI so that the selected image
+  # can safely seed the calibration controls without recreating the point-size,
+  # point-opacity, or sampling sliders.
+  ui_file <- file.path(
+    shiny_root,
+    "spatial",
+    "UI_projection_additional_parameters.R"
+  )
+  src <- paste(readLines(ui_file), collapse = "\n")
+
+  expect_match(
+    src,
+    'output\\[\\["spatial_projection_scatter_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI',
+    perl = TRUE
+  )
+  expect_match(
+    src,
+    'output\\[\\["spatial_projection_background_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI',
+    perl = TRUE
+  )
+
+  scatter_src <- sub(
+    '^[\\s\\S]*?output\\[\\["spatial_projection_scatter_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI\\(\\{',
+    "",
+    src,
+    perl = TRUE
+  )
+  scatter_src <- sub(
+    'output\\[\\["spatial_projection_background_parameters_UI"\\]\\][[:space:]]*<-[[:space:]]*renderUI[\\s\\S]*$',
+    "",
+    scatter_src,
+    perl = TRUE
+  )
+  expect_false(
+    grepl(
+      'input\\[\\["spatial_projection_background_image"\\]\\]',
+      scatter_src,
+      fixed = FALSE
+    )
+  )
+
+  projection_ui <- paste(
+    readLines(file.path(shiny_root, "spatial", "UI_projection.R")),
+    collapse = "\n"
+  )
+  expect_match(
+    projection_ui,
+    'uiOutput\\("spatial_projection_scatter_parameters_UI"\\)'
+  )
+  expect_match(
+    projection_ui,
+    'uiOutput\\("spatial_projection_background_parameters_UI"\\)'
+  )
+})
+
 test_that("ImageFeaturePlot reaches getExpressionMatrix as a Cerebro method", {
   # getExpressionMatrix / getMeanExpressionForCells are Cerebro R6 methods,
   # not bare functions — they must be called through data_set()$. A bare

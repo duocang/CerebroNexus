@@ -1,7 +1,10 @@
 ##----------------------------------------------------------------------------##
 ## UI elements to set additional parameters for the projection.
 ##----------------------------------------------------------------------------##
-output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
+## Scatter controls deliberately live in a renderUI which is independent of the
+## selected background image. This preserves users' point-size, opacity and
+## sampling choices while moving among backgrounds.
+output[["spatial_projection_scatter_parameters_UI"]] <- renderUI({
   ## Start from a dynamic default sized to the spot count + canvas, falling back
   ## to the fixed default if that can't be computed. A dataset-specific preset
   ## (below) still takes precedence over this when one is configured.
@@ -56,6 +59,43 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
     }
   }
 
+  tagList(
+    sliderInput(
+      "spatial_projection_point_size",
+      label = "Point size",
+      min = preferences[["gene_expression_plot_point_size"]][["min"]],
+      max = preferences[["gene_expression_plot_point_size"]][["max"]],
+      step = preferences[["gene_expression_plot_point_size"]][["step"]],
+      value = default_point_size
+    ),
+    sliderInput(
+      "spatial_projection_point_opacity",
+      label = "Point opacity",
+      min = preferences[["gene_expression_plot_point_opacity"]][["min"]],
+      max = preferences[["gene_expression_plot_point_opacity"]][["max"]],
+      step = preferences[["gene_expression_plot_point_opacity"]][["step"]],
+      value = 1
+    ),
+    sliderInput(
+      "spatial_projection_percentage_cells_to_show",
+      label = "Show % of cells",
+      min = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
+        "min"
+      ]],
+      max = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
+        "max"
+      ]],
+      step = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
+        "step"
+      ]],
+      value = 100
+    )
+  )
+})
+
+## The image-specific controls may safely be regenerated when the selected
+## image changes: their initial values come from that image's preset.
+output[["spatial_projection_background_parameters_UI"]] <- renderUI({
   ## Offset sliders move the background image in DATA units, so their range is
   ## sized to the current dataset's coordinate span (± the larger of x/y span).
   ## That keeps one range usable whether the coordinates run 0–5k (Xenium) or
@@ -150,41 +190,6 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
   )
 
   tagList(
-    sliderInput(
-      "spatial_projection_point_size",
-      label = "Point size",
-      min = preferences[["gene_expression_plot_point_size"]][["min"]],
-      max = preferences[["gene_expression_plot_point_size"]][["max"]],
-      step = preferences[["gene_expression_plot_point_size"]][["step"]],
-      value = default_point_size
-    ),
-    sliderInput(
-      "spatial_projection_point_opacity",
-      label = "Point opacity",
-      min = preferences[["gene_expression_plot_point_opacity"]][["min"]],
-      max = preferences[["gene_expression_plot_point_opacity"]][["max"]],
-      step = preferences[["gene_expression_plot_point_opacity"]][["step"]],
-      ## Spatial-specific default: fully opaque points (cells sit over a tissue
-      ## image, where translucent points read as washed out).
-      value = 1
-    ),
-    sliderInput(
-      "spatial_projection_percentage_cells_to_show",
-      label = "Show % of cells",
-      min = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
-        "min"
-      ]],
-      max = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
-        "max"
-      ]],
-      step = preferences[["gene_expression_plot_percentage_cells_to_show"]][[
-        "step"
-      ]],
-      ## Spatial-specific default: show all cells. Unlike a scRNA-seq UMAP,
-      ## where down-sampling barely changes the picture, spatial resolution is
-      ## the whole point here — dropping cells visibly degrades the tissue map.
-      value = 100
-    ),
     ## Background-image adjustments. Shown only when an image is selected. Every
     ## control here is DECOUPLED from the scatter plot: it re-styles the image
     ## <div> via the independent JS channel and never re-renders the points.
@@ -361,7 +366,12 @@ output[["spatial_projection_additional_parameters_UI"]] <- renderUI({
 ## make sure elements are loaded even though the box is collapsed
 outputOptions(
   output,
-  "spatial_projection_additional_parameters_UI",
+  "spatial_projection_scatter_parameters_UI",
+  suspendWhenHidden = FALSE
+)
+outputOptions(
+  output,
+  "spatial_projection_background_parameters_UI",
   suspendWhenHidden = FALSE
 )
 

@@ -757,6 +757,16 @@ dedent <- function(string) {
     environmentIsLocked(object)
 }
 
+.isPreSpatialCerebroV1_3 <- function(object) {
+  ## b13fee58 added spatial storage and its accessors to Cerebro_v1.3. Its
+  ## predecessor serializes with this exact R6 class identity, so only that
+  ## historical format may omit the accessors. In particular, a damaged modern
+  ## `Cerebro` object must never silently become a non-spatial dataset.
+  identical(class(object), c("Cerebro_v1.3", "R6")) &&
+    is.environment(object) &&
+    environmentIsLocked(object)
+}
+
 ## Treat the ordinary field as data. The getter binding is checked only as a
 ## format marker and is never invoked during preflight.
 .readBundleBackend <- function(crb_path, object = readRDS(crb_path)) {
@@ -853,6 +863,45 @@ dedent <- function(string) {
 }
 
 .readBundleSpatialCatalog <- function(object, dataset) {
+  spatial_methods <- c("availableSpatial", "getSpatialData")
+  method_exists <- vapply(
+    spatial_methods,
+    exists,
+    logical(1),
+    envir = object,
+    inherits = FALSE
+  )
+  if (!any(method_exists)) {
+    if (.isPreSpatialCerebroV1_3(object)) {
+      ## Spatial accessors were added in b13fee58. The preceding
+      ## Cerebro_v1.3 serialization is non-spatial, rather than malformed.
+      return(list())
+    }
+    stop(
+      "Dataset `",
+      dataset,
+      "` has no spatial accessor methods.",
+      call. = FALSE
+    )
+  }
+  valid_methods <- vapply(
+    spatial_methods,
+    function(method) {
+      method_exists[[method]] &&
+        !bindingIsActive(method, object) &&
+        !isTRUE(rlang::env_binding_are_lazy(object, method)) &&
+        is.function(object[[method]])
+    },
+    logical(1)
+  )
+  if (!all(valid_methods)) {
+    stop(
+      "Dataset `",
+      dataset,
+      "` has invalid spatial accessor methods.",
+      call. = FALSE
+    )
+  }
   available <- tryCatch(
     object$availableSpatial(),
     error = function(error) {
@@ -904,12 +953,103 @@ dedent <- function(string) {
   catalog
 }
 
-.spatialImageBundleTarget <- function(dataset, spatial_name, filename) {
+.preflightBundleData <- function(
+  cerebro_data,
+  read_object = readRDS,
+  inspect_backend = .readBundleBackend,
+  inspect_spatial = .readBundleSpatialCatalog,
+  release_object = function(object) invisible(NULL)
+) {
+  backends <- vector("list", length(cerebro_data))
+  spatial_catalogs <- vector("list", length(cerebro_data))
+  names(backends) <- names(cerebro_data)
+  names(spatial_catalogs) <- names(cerebro_data)
+  for (index in seq_along(cerebro_data)) {
+    object <- read_object(cerebro_data[[index]])
+    inspection_error <- NULL
+    release_error <- NULL
+    tryCatch(
+      {
+        backends[[index]] <- inspect_backend(cerebro_data[[index]], object)
+        spatial_catalogs[[index]] <- inspect_spatial(
+          object,
+          names(cerebro_data)[[index]]
+        )
+      },
+      error = function(error) {
+        inspection_error <<- error
+      }
+    )
+    tryCatch(
+      release_object(object),
+      error = function(error) {
+        release_error <<- error
+      }
+    )
+    object <- NULL
+    if (!is.null(inspection_error)) {
+      stop(inspection_error)
+    }
+    if (!is.null(release_error)) {
+      stop(release_error)
+    }
+  }
+  list(backends = backends, spatial_catalogs = spatial_catalogs)
+}
+
+.spatialImageBundlePathDigest <- function(bytes) {
+  path <- tempfile("cerebro-spatial-path-")
+  on.exit(unlink(path), add = TRUE)
+  writeBin(bytes, path)
+  unname(tools::md5sum(path))
+}
+
+.spatialImageBundlePathComponent <- function(value, maximum_bytes = 40L) {
+  if (
+    !is.character(value) ||
+      length(value) != 1L ||
+      is.na(value) ||
+      !nzchar(value)
+  ) {
+    stop(
+      "Spatial image bundle path components must be non-empty strings.",
+      call. = FALSE
+    )
+  }
+  bytes <- charToRaw(enc2utf8(value))
+  encoded <- paste0(
+    "u",
+    paste(sprintf("%02x", as.integer(bytes)), collapse = "")
+  )
+  if (nchar(encoded, type = "bytes") <= maximum_bytes) {
+    return(encoded)
+  }
+  digest <- .spatialImageBundlePathDigest(bytes)
+  prefix_length <- maximum_bytes - nchar(digest, type = "bytes") - 1L
+  paste0(substr(encoded, 1L, prefix_length), "-", digest)
+}
+
+.spatialImageBundleTarget <- function(
+  dataset,
+  spatial_name,
+  image_label,
+  filename
+) {
+  extension <- tools::file_ext(filename)
+  extension_is_safe <- grepl("^[A-Za-z0-9]{1,16}$", extension)
+  encoded_filename <- .spatialImageBundlePathComponent(
+    filename,
+    40L - if (extension_is_safe) nchar(extension, type = "bytes") + 1L else 0L
+  )
+  if (extension_is_safe) {
+    encoded_filename <- paste0(encoded_filename, ".", extension)
+  }
   target <- paste(
     "spatial-assets",
-    dataset,
-    spatial_name,
-    filename,
+    .spatialImageBundlePathComponent(dataset),
+    .spatialImageBundlePathComponent(spatial_name),
+    .spatialImageBundlePathComponent(image_label),
+    encoded_filename,
     sep = "/"
   )
   .portableBundlePath(
@@ -1847,8 +1987,8 @@ dedent <- function(string) {
 #'   CRB's \code{availableSpatial()}, and image labels must be unique and
 #'   non-empty within an entry. A leaf may instead be a descriptor containing
 #'   \code{path} and optional coordinate \code{bounds}. Supplied files are
-#'   copied under \code{spatial-assets/<dataset>/<spatial>/} and configured with
-#'   relative paths. The legacy \code{c(Dataset = path)} form is accepted only
+#'   copied to opaque, safe relative paths under \code{spatial-assets/}. The
+#'   legacy \code{c(Dataset = path)} form is accepted only
 #'   when that CRB has exactly one spatial entry.
 #' @param spatial_image_settings Optional nested settings in
 #'   \code{dataset -> spatial entry -> image label -> settings} form. Settings
@@ -1859,17 +1999,29 @@ dedent <- function(string) {
 #'   CRB's embedded images and this call's \code{spatial_images}; unknown
 #'   identities are rejected. Labels are user-facing names, not protocol names.
 #' @param spatial_images_flip_x Legacy named per-dataset horizontal flip values.
-#'   Each dataset must resolve to exactly one spatial image target.
+#'   Each dataset must resolve to exactly one spatial image target, unless a
+#'   legacy multi-path \code{spatial_images} declaration was migrated; then the
+#'   value applies to every migrated external image.
 #' @param spatial_images_flip_y Legacy named per-dataset vertical flip values.
-#'   Each dataset must resolve to exactly one spatial image target.
+#'   Each dataset must resolve to exactly one spatial image target, unless a
+#'   legacy multi-path \code{spatial_images} declaration was migrated; then the
+#'   value applies to every migrated external image.
 #' @param spatial_images_scale_x Legacy named per-dataset X scale values. Each
-#'   dataset must resolve to exactly one spatial image target.
+#'   dataset must resolve to exactly one spatial image target, unless a legacy
+#'   multi-path \code{spatial_images} declaration was migrated; then the value
+#'   applies to every migrated external image.
 #' @param spatial_images_scale_y Legacy named per-dataset Y scale values. Each
-#'   dataset must resolve to exactly one spatial image target.
+#'   dataset must resolve to exactly one spatial image target, unless a legacy
+#'   multi-path \code{spatial_images} declaration was migrated; then the value
+#'   applies to every migrated external image.
 #' @param spatial_images_offset_x Legacy named per-dataset horizontal offsets.
-#'   Each dataset must resolve to exactly one spatial image target.
+#'   Each dataset must resolve to exactly one spatial image target, unless a
+#'   legacy multi-path \code{spatial_images} declaration was migrated; then the
+#'   value applies to every migrated external image.
 #' @param spatial_images_offset_y Legacy named per-dataset vertical offsets.
-#'   Each dataset must resolve to exactly one spatial image target.
+#'   Each dataset must resolve to exactly one spatial image target, unless a
+#'   legacy multi-path \code{spatial_images} declaration was migrated; then the
+#'   value applies to every migrated external image.
 #' @param spatial_plot_rotation Named list/vector; initial rotation (degrees)
 #'   applied to spatial cell coordinates. Names must match \code{cerebro_data}.
 #' @param auth Optional authentication settings. \code{NULL}, the default,
@@ -2207,15 +2359,9 @@ createShinyApp <- function(
 
   # Preflight data inputs ----------------------------------------------------##
   private_data_root <- "private-data"
-  crb_objects <- lapply(cerebro_data, readRDS)
-  backends <- Map(.readBundleBackend, cerebro_data, crb_objects)
-  spatial_catalogs <- Map(
-    .readBundleSpatialCatalog,
-    crb_objects,
-    names(cerebro_data)
-  )
-  names(spatial_catalogs) <- names(cerebro_data)
-  rm(crb_objects)
+  preflight_data <- .preflightBundleData(cerebro_data)
+  backends <- preflight_data$backends
+  spatial_catalogs <- preflight_data$spatial_catalogs
   spatial_images <- .normalizeAppSpatialImages(
     spatial_images,
     spatial_catalogs
@@ -2476,6 +2622,7 @@ createShinyApp <- function(
           target <- .spatialImageBundleTarget(
             dataset,
             spatial_name,
+            image_label,
             basename(image)
           )
           claim_target(

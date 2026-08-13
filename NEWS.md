@@ -10,6 +10,10 @@
   PNG/JPEG/SVG backgrounds, or remain coordinates-only. Optional per-image
   bounds and display settings use the same stable keys; ambiguous legacy
   dataset-to-path calls now fail instead of guessing a spatial target.
+- Existing pre-spatial `Cerebro_v1.3` files remain bundleable as coordinate-only
+  datasets. Legacy per-dataset `spatial_images` vectors with one unambiguous
+  spatial entry are migrated to separately labelled images; calls with zero or
+  multiple spatial entries still fail rather than guessing.
 
 # CerebroNexus 4.2.0
 

@@ -97,8 +97,8 @@ must match \code{cerebro_data}; spatial names must match the corresponding
 CRB's \code{availableSpatial()}, and image labels must be unique and
 non-empty within an entry. A leaf may instead be a descriptor containing
 \code{path} and optional coordinate \code{bounds}. Supplied files are
-copied under \code{spatial-assets/<dataset>/<spatial>/} and configured with
-relative paths. The legacy \code{c(Dataset = path)} form is accepted only
+copied to opaque, safe relative paths under \code{spatial-assets/}. The
+legacy \code{c(Dataset = path)} form is accepted only
 when that CRB has exactly one spatial entry.}
 
 \item{spatial_image_settings}{Optional nested settings in
@@ -111,22 +111,34 @@ CRB's embedded images and this call's \code{spatial_images}; unknown
 identities are rejected. Labels are user-facing names, not protocol names.}
 
 \item{spatial_images_flip_x}{Legacy named per-dataset horizontal flip values.
-Each dataset must resolve to exactly one spatial image target.}
+Each dataset must resolve to exactly one spatial image target, unless a
+legacy multi-path \code{spatial_images} declaration was migrated; then the
+value applies to every migrated external image.}
 
 \item{spatial_images_flip_y}{Legacy named per-dataset vertical flip values.
-Each dataset must resolve to exactly one spatial image target.}
+Each dataset must resolve to exactly one spatial image target, unless a
+legacy multi-path \code{spatial_images} declaration was migrated; then the
+value applies to every migrated external image.}
 
 \item{spatial_images_scale_x}{Legacy named per-dataset X scale values. Each
-dataset must resolve to exactly one spatial image target.}
+dataset must resolve to exactly one spatial image target, unless a legacy
+multi-path \code{spatial_images} declaration was migrated; then the value
+applies to every migrated external image.}
 
 \item{spatial_images_scale_y}{Legacy named per-dataset Y scale values. Each
-dataset must resolve to exactly one spatial image target.}
+dataset must resolve to exactly one spatial image target, unless a legacy
+multi-path \code{spatial_images} declaration was migrated; then the value
+applies to every migrated external image.}
 
 \item{spatial_images_offset_x}{Legacy named per-dataset horizontal offsets.
-Each dataset must resolve to exactly one spatial image target.}
+Each dataset must resolve to exactly one spatial image target, unless a
+legacy multi-path \code{spatial_images} declaration was migrated; then the
+value applies to every migrated external image.}
 
 \item{spatial_images_offset_y}{Legacy named per-dataset vertical offsets.
-Each dataset must resolve to exactly one spatial image target.}
+Each dataset must resolve to exactly one spatial image target, unless a
+legacy multi-path \code{spatial_images} declaration was migrated; then the
+value applies to every migrated external image.}
 
 \item{spatial_plot_rotation}{Named list/vector; initial rotation (degrees)
 applied to spatial cell coordinates. Names must match \code{cerebro_data}.}

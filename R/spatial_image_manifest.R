@@ -525,12 +525,13 @@
     )
   }
 
+  legacy_external_targets <- vector("list", length(images))
   normalized <- lapply(seq_along(images), function(i) {
     dataset <- datasets[[i]]
     declaration <- images[[i]]
     catalog <- catalogs[[dataset]]
     spatial_names <- names(catalog)
-    legacy <- is.character(declaration) && length(declaration) == 1L
+    legacy <- is.character(declaration) && length(declaration) >= 1L
     if (legacy) {
       if (length(spatial_names) != 1L) {
         choices <- if (length(spatial_names) == 0L) {
@@ -550,8 +551,17 @@
           call. = FALSE
         )
       }
+      labels <- if (length(declaration) == 1L) {
+        "Tissue background"
+      } else {
+        paste0("Tissue background ", seq_along(declaration))
+      }
       declaration <- stats::setNames(
-        list(stats::setNames(declaration, "Tissue background")),
+        list(stats::setNames(declaration, labels)),
+        spatial_names
+      )
+      legacy_external_targets[[i]] <<- stats::setNames(
+        list(labels),
         spatial_names
       )
     } else if (!is.list(declaration)) {
@@ -615,6 +625,8 @@
     dataset_images
   })
   names(normalized) <- datasets
+  names(legacy_external_targets) <- datasets
+  attr(normalized, "legacy_external_targets") <- legacy_external_targets
   normalized
 }
 
@@ -825,17 +837,28 @@
       type <- if (logical_field) "logical" else "finite numeric"
       stop("`", argument, "` must contain ", type, " scalars.", call. = FALSE)
     }
+    migrated_targets <- attr(images, "legacy_external_targets")[[dataset]]
     targets <- list()
-    for (spatial_name in names(catalogs[[dataset]])) {
-      image_names <- union(
-        catalogs[[dataset]][[spatial_name]],
-        names(images[[dataset]][[spatial_name]])
+    target_spatials <- if (is.null(migrated_targets)) {
+      stats::setNames(
+        lapply(names(catalogs[[dataset]]), function(spatial_name) {
+          union(
+            catalogs[[dataset]][[spatial_name]],
+            names(images[[dataset]][[spatial_name]])
+          )
+        }),
+        names(catalogs[[dataset]])
       )
+    } else {
+      migrated_targets
+    }
+    for (spatial_name in names(target_spatials)) {
+      image_names <- target_spatials[[spatial_name]]
       for (image_name in image_names) {
         targets[[length(targets) + 1L]] <- c(spatial_name, image_name)
       }
     }
-    if (length(targets) != 1L) {
+    if (is.null(migrated_targets) && length(targets) != 1L) {
       available <- vapply(
         targets,
         function(target) paste(target, collapse = "/"),
@@ -857,9 +880,11 @@
         call. = FALSE
       )
     }
-    spatial_name <- targets[[1L]][[1L]]
-    image_name <- targets[[1L]][[2L]]
-    result[[dataset]][[spatial_name]][[image_name]][[field]] <- value
+    for (target in targets) {
+      spatial_name <- target[[1L]]
+      image_name <- target[[2L]]
+      result[[dataset]][[spatial_name]][[image_name]][[field]] <- value
+    }
   }
   result
 }

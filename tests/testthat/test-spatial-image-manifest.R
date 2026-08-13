@@ -45,6 +45,26 @@ test_that("Cerebro accepts coordinates-only spatial entries", {
   expect_identical(crb$getSpatialData("coordinates")$histology_images, list())
 })
 
+test_that("legacy multi-path app spatial images receive distinct labels", {
+  catalogs <- list(Dataset = list(section = character()))
+  root <- withr::local_tempdir()
+  paths <- file.path(root, c("first.png", "second.png"))
+  lapply(paths, writeLines, text = "IMAGE")
+  normalized <- .normalizeAppSpatialImages(
+    list(Dataset = paths),
+    catalogs
+  )
+
+  expect_named(
+    normalized$Dataset$section,
+    c("Tissue background 1", "Tissue background 2")
+  )
+  expect_identical(
+    unname(unlist(normalized$Dataset$section, use.names = FALSE)),
+    paths
+  )
+})
+
 test_that("spatial image labels must be non-empty and unique", {
   crb <- Cerebro$new()
   empty_label <- structure(list(spatial_manifest_payload()), names = "")

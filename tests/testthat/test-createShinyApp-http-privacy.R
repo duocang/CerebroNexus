@@ -196,13 +196,13 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
   )
   expect_true(all(file.exists(private_paths)))
   expect_false(dir.exists(file.path(app_dir, "data")))
-  spatial_image <- file.path(
-    app_dir,
-    "spatial-assets",
+  spatial_image_target <- expected_spatial_image_target(
     "H5",
     "section",
+    "Histology",
     "histology.png"
   )
+  spatial_image <- file.path(app_dir, spatial_image_target)
   expect_true(file.exists(spatial_image))
 
   app <- privacy_start_app(app_dir, port, root)
@@ -218,7 +218,7 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
     "/private-data/bpcells-data.crb",
     "/private-data/matrix.h5",
     "/private-data/matrix.bpcells/payload",
-    "/spatial-assets/H5/section/histology.png"
+    paste0("/", spatial_image_target)
   )
   statuses <- vapply(
     private_urls,

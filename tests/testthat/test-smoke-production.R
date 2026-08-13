@@ -107,8 +107,26 @@ test_that("createShinyApp bundles the app directory and config", {
   expect_setequal(
     spatial_assets,
     c(
-      file.path("Dataset A", "fov", "bg_a.png"),
-      file.path("Dataset B", "fov", "bg_b.png")
+      sub(
+        "^spatial-assets/",
+        "",
+        expected_spatial_image_target(
+          "Dataset A",
+          "fov",
+          "Histology",
+          "bg_a.png"
+        )
+      ),
+      sub(
+        "^spatial-assets/",
+        "",
+        expected_spatial_image_target(
+          "Dataset B",
+          "fov",
+          "Histology",
+          "bg_b.png"
+        )
+      )
     )
   )
 })
@@ -155,11 +173,11 @@ test_that("each dataset keeps its own background image + alignment params", {
   ## Background image path is per-dataset, not shared.
   expect_identical(
     cfg$spatial_images[["Dataset A"]]$fov$Histology,
-    file.path("spatial-assets", "Dataset A", "fov", "bg_a.png")
+    expected_spatial_image_target("Dataset A", "fov", "Histology", "bg_a.png")
   )
   expect_identical(
     cfg$spatial_images[["Dataset B"]]$fov$Histology,
-    file.path("spatial-assets", "Dataset B", "fov", "bg_b.png")
+    expected_spatial_image_target("Dataset B", "fov", "Histology", "bg_b.png")
   )
 
   ## Offset / flip resolve independently per dataset name — the isolation that
