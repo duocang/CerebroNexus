@@ -33,6 +33,7 @@
 #  > "plotly",
 #  > "qvalue",
 #  > "R6",
+#  > "readxl",
 #  > "rlang",
 #  > "scales",
 #  > "scRepertoire",
@@ -91,6 +92,7 @@ let
       png
       qvalue
       R6
+      readxl
       rlang
       scales
       scRepertoire
