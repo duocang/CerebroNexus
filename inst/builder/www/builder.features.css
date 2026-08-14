@@ -1696,9 +1696,6 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   margin-top: var(--space-6);
 }
 
-.js-plotly-plot { transition: opacity var(--duration-base) var(--ease); }
-.js-plotly-plot.is-updating { opacity: .72; }
-
 @media (max-width: 68.75rem) {
   .spatial-alignment-layout {
     grid-template-areas: "preview" "controls";

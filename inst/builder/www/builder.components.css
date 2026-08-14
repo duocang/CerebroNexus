@@ -828,23 +828,6 @@
   line-height: 1.45;
 }
 
-.builder-preview-summary {
-  margin-top: .6rem;
-  color: var(--c-text-muted);
-  font-size: .82rem;
-}
-.builder-preview-summary table {
-  width: 100%;
-  margin-top: .45rem;
-  border-collapse: collapse;
-}
-.builder-preview-summary th,
-.builder-preview-summary td {
-  padding: .3rem .45rem;
-  border-bottom: 1px solid var(--c-border);
-  text-align: left;
-}
-
 @media (max-width: 68.75rem) {
   .cols-2 .shiny-options-group { grid-template-columns: 1fr; }
 }
