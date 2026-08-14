@@ -191,7 +191,7 @@ builder_spatial_alignment_server <- function(
         section = active_section(),
         image = active_image(),
         preview = alignment_preview(),
-        record = draft(),
+        record = draft_record(),
         coordinate_spec = coordinate_draft(),
         colors = colors()
       )
@@ -523,7 +523,6 @@ builder_spatial_alignment_server <- function(
     record[names(values)] <- values
     record
   })
-  current_record <- draft_record
   finalize_current_record <- function() {
     state <- shiny::isolate(list(
       record = draft_record(),
@@ -584,6 +583,13 @@ builder_spatial_alignment_server <- function(
     record$total <- cover$total
     record
   }
+  current_record <- shiny::reactive({
+    draft()
+    parameters()
+    raw_image()
+    alignment_preview()
+    finalize_current_record()
+  })
 
   shiny::observeEvent(input[["enhance-active_section"]], {
     id <- current()
