@@ -312,16 +312,31 @@ builder_tissue_image_file_ui <- function(id, record) {
   )
 }
 
-builder_alignment_plot_output <- function(id, label) {
+builder_alignment_canvas_output <- function(id, label) {
   div(
     class = "spatial-alignment-plot-frame",
-    `aria-label` = label,
-    role = "img",
-    plotly::plotlyOutput(
-      id,
-      width = "100%",
-      height = "100%",
-      inline = FALSE
+    tags$canvas(
+      id = id,
+      class = "builder-spatial-canvas",
+      `data-builder-spatial-canvas` = "true",
+      role = "img",
+      `aria-label` = label,
+      `aria-describedby` = paste0(id, "-summary")
+    ),
+    div(
+      class = "builder-spatial-canvas-status",
+      `aria-hidden` = "true",
+      "Loading spatial preview."
+    ),
+    div(
+      class = "builder-spatial-canvas-tooltip",
+      role = "tooltip",
+      hidden = "hidden"
+    ),
+    tags$span(
+      id = paste0(id, "-summary"),
+      class = "visually-hidden builder-spatial-canvas-summary",
+      "Loading spatial preview."
     )
   )
 }
@@ -605,8 +620,8 @@ builder_spatial_alignment_ui <- function(id, model) {
                 h5("Spatial space"),
                 uiOutput(ns("alignment_spatial_label"), inline = TRUE)
               ),
-              builder_alignment_plot_output(
-                ns("alignment_spatial_plot"),
+              builder_alignment_canvas_output(
+                ns("alignment_spatial_canvas"),
                 "Spatial-space cell plot"
               ),
               div(
