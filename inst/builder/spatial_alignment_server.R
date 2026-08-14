@@ -734,19 +734,7 @@ builder_spatial_alignment_server <- function(
       shiny::showNotification(image_encoded$error, type = "error", duration = 8)
       return(invisible(FALSE))
     }
-    previous_label <- active_image()
-    previous <- if (is.null(previous_label)) {
-      NULL
-    } else {
-      builder_alignment_normalize(
-        collection_for(entry)[[section]][[previous_label]],
-        section,
-        preview$section$kind
-      )
-    }
-    baseline(
-      if (!is.null(previous) && isTRUE(previous$saved)) previous else NULL
-    )
+    baseline(NULL)
     record <- builder_alignment_record(
       source = list(
         name = filename,
