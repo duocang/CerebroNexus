@@ -170,7 +170,11 @@ test_that("alignment preview requeues when its render contract changes", {
           requests[[length(requests) + 1L]] <<- request
           TRUE
         },
-        commit_images = function(entry, images) NULL,
+        commit_images = function(entry, images) {
+          entry$settings$images <- images
+          current_entry(entry)
+          invisible(entry)
+        },
         alignment_preview = alignment_preview,
         spatial_coords = spatial_coords
       )
@@ -185,18 +189,30 @@ test_that("alignment preview requeues when its render contract changes", {
       session$flushReact()
       expect_length(requests, 1L)
 
+      session$setInputs(`enhance-coordinate_rotation` = 37.5)
+      session$flushReact()
+      expect_length(requests, 1L)
+
+      session$setInputs(`enhance-save_coordinate_transform` = 1L)
+      session$flushReact()
+      expect_length(requests, 2L)
+      expect_identical(
+        requests[[2L]]$coordinate_transforms[["section-a"]],
+        list(schema_version = 1L, rotation_degrees = 37.5, scale = 1)
+      )
+
       regrouped <- current_entry()
       regrouped$settings$default_group <- "sample"
       current_entry(regrouped)
       session$flushReact()
-      expect_length(requests, 2L)
-      expect_identical(requests[[2L]]$group, "sample")
+      expect_length(requests, 3L)
+      expect_identical(requests[[3L]]$group, "sample")
 
       replaced <- current_entry()
       replaced$snapshot$object_md5 <- strrep("b", 32L)
       current_entry(replaced)
       session$flushReact()
-      expect_length(requests, 3L)
+      expect_length(requests, 4L)
     }
   )
 })

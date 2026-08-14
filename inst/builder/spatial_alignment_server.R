@@ -157,8 +157,8 @@ builder_spatial_alignment_server <- function(
   }
   coordinate_preview_transforms <- function(entry, section) {
     transforms <- coordinate_transforms_for(entry)
-    if (identical(kind_for(section), "spatial")) {
-      transforms[[section]] <- coordinate_draft()
+    if (!identical(kind_for(section), "spatial")) {
+      transforms[[section]] <- NULL
     }
     transforms
   }
