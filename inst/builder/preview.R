@@ -910,12 +910,19 @@ builder_spatial_canvas_scene <- function(
   }))
 
   image <- NULL
+  source_uri_valid <- FALSE
+  if (!is.null(normalized_record)) {
+    source_uri_valid <- isTRUE(tryCatch(
+      {
+        builder_parse_image_uri(normalized_record$source_uri)
+        TRUE
+      },
+      error = function(error) FALSE
+    ))
+  }
   if (
     !is.null(normalized_record) &&
-      is.character(normalized_record$source_uri) &&
-      length(normalized_record$source_uri) == 1L &&
-      !is.na(normalized_record$source_uri) &&
-      nzchar(normalized_record$source_uri) &&
+      source_uri_valid &&
       .builder_alignment_valid_bounds(normalized_record$base_bounds)
   ) {
     source_name <- if (is.list(normalized_record$source)) {
@@ -942,8 +949,43 @@ builder_spatial_canvas_scene <- function(
   }
 
   coordinate_frame <- preview$coordinate_frame
-  if (!.builder_alignment_valid_bounds(coordinate_frame)) {
-    coordinate_frame <- .builder_alignment_bounds(frame)
+  frame_is_valid <- isTRUE(tryCatch(
+    .builder_alignment_valid_bounds(coordinate_frame),
+    error = function(error) FALSE
+  ))
+  if (!frame_is_valid) {
+    xmin <- min(frame_x)
+    xmax <- max(frame_x)
+    ymin <- min(frame_y)
+    ymax <- max(frame_y)
+    x_span <- xmax - xmin
+    y_span <- ymax - ymin
+    if (x_span <= 0) {
+      x_center <- xmin + x_span / 2
+      x_padding <- max(y_span, abs(x_center) * 1e-6, 1) * 0.05
+      xmin <- x_center - x_padding
+      xmax <- x_center + x_padding
+    }
+    if (y_span <= 0) {
+      y_center <- ymin + y_span / 2
+      y_padding <- max(x_span, abs(y_center) * 1e-6, 1) * 0.05
+      ymin <- y_center - y_padding
+      ymax <- y_center + y_padding
+    }
+    coordinate_frame <- list(
+      xmin = unname(xmin),
+      xmax = unname(xmax),
+      ymin = unname(ymin),
+      ymax = unname(ymax)
+    )
+  }
+  if (
+    !isTRUE(tryCatch(
+      .builder_alignment_valid_bounds(coordinate_frame),
+      error = function(error) FALSE
+    ))
+  ) {
+    return(unavailable("Spatial preview coordinate frame is invalid."))
   }
   list(
     schema_version = 1L,
@@ -955,10 +997,10 @@ builder_spatial_canvas_scene <- function(
     capped = isTRUE(preview$capped),
     coordinate_frame = coordinate_frame,
     points = list(
-      x = unname(frame_x),
-      y = unname(frame_y),
-      barcode = unname(frame_barcode),
-      group_index = unname(as.integer(group_index))
+      x = I(unname(frame_x)),
+      y = I(unname(frame_y)),
+      barcode = I(unname(frame_barcode)),
+      group_index = I(unname(as.integer(group_index)))
     ),
     groups = groups,
     image = image,
