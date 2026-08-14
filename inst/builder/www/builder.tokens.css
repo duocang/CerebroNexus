@@ -76,6 +76,7 @@
   --builder-stage-padding: var(--space-6);
   --builder-section-gap: var(--space-6);
   --builder-footer-gap: 40px;
+  --spatial-preview-aspect: 4 / 3;
 
   /* Semantic content and review tag palette. */
   --builder-tag-metadata-bg: #f5f3ff;

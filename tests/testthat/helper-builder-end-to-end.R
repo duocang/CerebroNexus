@@ -311,6 +311,18 @@ builder_e2e_validate_all_content <- function(
   }
   invisible(TRUE)
 }
+builder_e2e_browser_available <- function(
+  info = tryCatch(chromote::chromote_info(), error = function(error) NULL)
+) {
+  is.list(info) &&
+    is.character(info$path) &&
+    length(info$path) == 1L &&
+    nzchar(info$path) &&
+    identical(info$error %||% "", "") &&
+    is.list(info$.check) &&
+    identical(info$.check$status, 0L)
+}
+
 builder_e2e_run_generated_app <- function(
   app_dir,
   hermetic_library,
@@ -345,6 +357,16 @@ builder_e2e_run_generated_app <- function(
       )
       on.exit(privacy_stop_app(app), add = TRUE)
       privacy_wait_for_app(app)
+
+      if (!builder_e2e_browser_available()) {
+        return(list(
+          started = TRUE,
+          browser_checked = FALSE,
+          backend = backend,
+          content = content,
+          elapsed = unname(proc.time()[["elapsed"]] - started_at)
+        ))
+      }
 
       driver <- shinytest2::AppDriver$new(
         app$base_url,
@@ -468,6 +490,7 @@ builder_e2e_run_generated_app <- function(
 
       list(
         started = TRUE,
+        browser_checked = TRUE,
         backend = backend,
         content = content,
         elapsed = unname(proc.time()[["elapsed"]] - started_at)

@@ -852,6 +852,22 @@ builder_protocol_recover <- function(
 }
 
 #' Start one isolated worker from main-owned immutable snapshot descriptors.
+.builder_worker_package_source <- function(builder_dir) {
+  candidate <- normalizePath(
+    file.path(builder_dir, "..", ".."),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  if (
+    identical(basename(dirname(builder_dir)), "inst") &&
+      file.exists(file.path(candidate, "DESCRIPTION")) &&
+      dir.exists(file.path(candidate, "R"))
+  ) {
+    return(candidate)
+  }
+  NULL
+}
+
 builder_worker_start <- function(
   builder_dir,
   snapshot_root = NULL,
@@ -900,8 +916,15 @@ builder_worker_start <- function(
   }
   setup <- try(
     process$run(
-      function(dir, root, registry) {
-        suppressMessages(library(CerebroNexus))
+      function(dir, root, registry, package_source) {
+        if (!is.null(package_source)) {
+          if (!requireNamespace("pkgload", quietly = TRUE)) {
+            stop("The pkgload package is required for a source-tree worker.")
+          }
+          pkgload::load_all(package_source, quiet = TRUE)
+        } else {
+          suppressMessages(library(CerebroNexus))
+        }
         source(file.path(dir, "io.R"))
         source(file.path(dir, "loading.R"))
         source(file.path(
@@ -990,7 +1013,8 @@ builder_worker_start <- function(
       args = list(
         dir = normalizePath(builder_dir, mustWork = TRUE),
         root = normalizePath(snapshot_root, mustWork = TRUE),
-        registry = snapshot_registry
+        registry = snapshot_registry,
+        package_source = .builder_worker_package_source(builder_dir)
       )
     ),
     silent = TRUE

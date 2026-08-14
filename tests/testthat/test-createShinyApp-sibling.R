@@ -2934,7 +2934,10 @@ test_that("external spatial images reach Linked views without an HTTP mapping", 
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(file.path(root, "source"))
   image <- file.path(root, "histology.png")
-  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
+  writeBin(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    image
+  )
   app <- file.path(root, "app")
 
   build_test_app(
@@ -2969,7 +2972,10 @@ test_that("Linked views cannot read spatial assets outside its frozen config", {
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(file.path(root, "source"))
   image <- file.path(root, "histology.png")
-  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
+  writeBin(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    image
+  )
   app <- file.path(root, "app")
 
   build_test_app(

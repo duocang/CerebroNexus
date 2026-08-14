@@ -633,7 +633,7 @@ for (dn in SAMPLES) {
     coordinates = co,
     expression = expression[, ix, drop = FALSE],
     histology_image = embedded_image,
-    histology_image_bounds = list(
+    histology_image_bounds = c(
       xmin = xr[1],
       xmax = xr[2],
       ymin = yr[1],
@@ -642,8 +642,14 @@ for (dn in SAMPLES) {
   )
   if (i == 1L) {
     spatial_entry$histology_images <- list(
-      "Rose H&E" = embedded_image,
-      "Blue H&E" = he_png_donor(i, palette = "blue")
+      "Rose H&E" = list(
+        histology_image = embedded_image,
+        histology_image_bounds = spatial_entry$histology_image_bounds
+      ),
+      "Blue H&E" = list(
+        histology_image = he_png_donor(i, palette = "blue"),
+        histology_image_bounds = spatial_entry$histology_image_bounds
+      )
     )
   }
   spatial_bank[[dn]] <- spatial_entry
@@ -827,7 +833,7 @@ trekker <- list(
 
 ## ---- 10. assemble the Cerebro object ------------------------------------- ##
 cat("== 10. assemble .crb ==\n")
-crb <- Cerebro_v1.3$new()
+crb <- Cerebro$new()
 crb$expression <- expression
 crb$setMetaData(meta)
 crb$projections <- list(
@@ -910,14 +916,16 @@ stopifnot(
 ## every spatial section must carry an embedded image + x/y coordinates
 for (nm in check$availableSpatial()) {
   sd <- check$getSpatialData(nm)
+  first_image <- sd$histology_images[[1L]]
   stopifnot(
     "spatial coords need x/y" = all(c("x", "y") %in% colnames(sd$coordinates)),
     "spatial image missing prefix" = grepl(
       "^data:image/",
-      sd$histology_image %||% ""
+      first_image$histology_image %||% ""
     ),
     "spatial bounds missing" = all(
-      c("xmin", "xmax", "ymin", "ymax") %in% names(sd$histology_image_bounds)
+      c("xmin", "xmax", "ymin", "ymax") %in%
+        names(first_image$histology_image_bounds)
     )
   )
 }

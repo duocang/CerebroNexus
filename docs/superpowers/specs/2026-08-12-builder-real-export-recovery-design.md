@@ -95,4 +95,3 @@ Verification proceeds from smallest to largest:
 4. Real Builder UI export of the two `anna_lena` datasets.
 5. CRB, configuration, image-manifest, file-tree, and HTTP comparison against
    the regenerated command-line App.
-

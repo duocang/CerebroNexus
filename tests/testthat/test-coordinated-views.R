@@ -1362,7 +1362,7 @@ test_that("bundling two images of the same basename keeps both", {
 
   copied <- list.files(
     file.path(app_dir, "spatial-assets"),
-    pattern = "he.*[.]png$",
+    pattern = "[.]png$",
     recursive = TRUE
   )
   expect_equal(length(copied), 2)

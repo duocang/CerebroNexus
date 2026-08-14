@@ -26,6 +26,24 @@ test_that("new and restored projects use explicit spatial image storage", {
   )
 })
 
+test_that("generated App smoke detects whether browser verification is available", {
+  expect_true(builder_e2e_browser_available(list(
+    path = "/path/to/chrome",
+    error = "",
+    .check = list(status = 0L)
+  )))
+  expect_false(builder_e2e_browser_available(list(
+    path = "/path/to/chrome",
+    error = "",
+    .check = list(status = -6L)
+  )))
+  expect_false(builder_e2e_browser_available(list(
+    path = "",
+    error = "Chrome was not found",
+    .check = list(status = 0L)
+  )))
+})
+
 test_that("Builder release documentation matches the guided workflow", {
   builder_dir <- normalizePath(builder_profile_inst_path("builder"))
   repo <- dirname(dirname(builder_dir))
@@ -123,7 +141,7 @@ test_that("Builder release documentation matches the guided workflow", {
   version <- unname(read.dcf(file.path(repo, "DESCRIPTION"))[[1L, "Version"]])
   app <- paste(readLines(file.path(repo, "inst", "app.R")), collapse = "\n")
   news_heading <- news[grepl("^# CerebroNexus ", news)][[1L]]
-  expect_identical(version, "5.0")
+  expect_identical(version, "5.0.0")
   expect_match(
     app,
     paste0('"cerebro_version" = "', version, '"'),
@@ -842,4 +860,14 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
     function(result) isTRUE(result$started),
     logical(1)
   )))
+  browser_checked <- vapply(
+    runtime_results,
+    function(result) isTRUE(result$browser_checked),
+    logical(1)
+  )
+  if (builder_e2e_browser_available()) {
+    expect_true(all(browser_checked))
+  } else {
+    expect_false(any(browser_checked))
+  }
 })

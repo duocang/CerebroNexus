@@ -18,7 +18,7 @@ test_that("metadata retention and Group actions remain independent", {
   expect_match(js, "default: defaultGroup", fixed = TRUE)
 })
 
-test_that("Spatial editor exposes named images and storage controls", {
+test_that("Spatial editor exposes named images and dynamic action boundaries", {
   environment <- new.env(parent = globalenv())
   sys.source(
     file.path(builder_browser_dir, "ui", "enhance_stage.R"),
@@ -41,15 +41,16 @@ test_that("Spatial editor exposes named images and storage controls", {
     "Image storage",
     "External files in App (spatial-assets/)",
     "Embedded in CRB",
-    "+ Add image",
-    "Rename image",
-    "Remove image",
     "H&amp;E",
     "DAPI",
     "Apply transform to matching image label"
   )) {
     expect_match(html, text, fixed = TRUE)
   }
+  expect_match(html, 'id="enhance-add_image_label"', fixed = TRUE)
+  expect_match(html, 'id="enhance-alignment_status"', fixed = TRUE)
+  expect_false(grepl('id="enhance-rename_image"', html, fixed = TRUE))
+  expect_false(grepl('id="enhance-drop_image"', html, fixed = TRUE))
 })
 
 builder_browser_mock_folder_picker <- function(

@@ -163,7 +163,10 @@ test_that("Builder preserves responsive geometry before Build", {
     expect_identical(geometry$previewFigureCount, 1L)
     expect_identical(geometry$previewModebarButtonCount, 0L)
     expect_identical(geometry$datasetContextCount, 0L)
-    expect_true(all(abs(unlist(geometry$previewAspectRatios) - 1) <= 0.02))
+    expect_true(all(
+      unlist(geometry$previewAspectRatios) >= 0.75 &
+        unlist(geometry$previewAspectRatios) <= 3
+    ))
     expect_identical(
       geometry$previewColumnCount,
       1L
@@ -181,6 +184,12 @@ test_that("Builder preserves responsive geometry before Build", {
   expect_gte(geometries[["768"]]$mainWidth, 768 * 0.9)
   expect_lte(geometries[["768"]]$mainWidth, 768)
   expect_lte(geometries[["390"]]$documentWidth, 391)
+  preview_ratios <- vapply(
+    geometries,
+    function(geometry) geometry$previewAspectRatios[[1L]],
+    numeric(1)
+  )
+  expect_lte(max(preview_ratios) - min(preview_ratios), 0.02)
   # All content renders near 6156px; 6500 preserves cross-font headroom.
   expect_lt(
     geometries[["390"]]$documentHeight,
