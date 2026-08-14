@@ -226,15 +226,6 @@ freeze_plan_for_output <- function(
 }
 
 frozen_review_plan <- reactive({
-  if (
-    exists("alignment_server", inherits = TRUE) &&
-      isTRUE(alignment_server$has_unsaved())
-  ) {
-    return(builder_plan_error(
-      "Save or discard the active spatial alignment before continuing.",
-      "unsaved_spatial_alignment"
-    ))
-  }
   plan <- freeze_plan_for_output(
     file.path(tempdir(), "cerebro-builder-output-preview"),
     overwrite = FALSE

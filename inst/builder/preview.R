@@ -62,57 +62,6 @@ builder_alignment_coordinate_frame <- function(bounds, transform = NULL) {
   frame
 }
 
-#' Apply a normalized full-data coordinate transform to a bounded preview.
-#'
-#' Unlike `.spx_apply_coordinate_transform()`, this helper must not derive a
-#' pivot from the sampled rows. The worker-normalized provenance carries the
-#' full coordinate bounds centre used by export.
-builder_alignment_apply_coordinate_provenance <- function(frame, transform) {
-  if (is.null(transform)) {
-    return(frame)
-  }
-  if (
-    !is.data.frame(frame) ||
-      !all(c("x", "y") %in% names(frame)) ||
-      !is.list(transform) ||
-      !identical(transform$pivot_method, "bounds_center") ||
-      !identical(transform$convention, "counterclockwise_degrees")
-  ) {
-    stop("Alignment preview coordinate provenance is invalid.", call. = FALSE)
-  }
-  pivot <- suppressWarnings(as.numeric(transform$pivot))
-  rotation <- suppressWarnings(as.numeric(transform$rotation_degrees))
-  scale <- suppressWarnings(as.numeric(transform$scale))
-  if (
-    length(pivot) != 2L ||
-      anyNA(pivot) ||
-      any(!is.finite(pivot)) ||
-      length(rotation) != 1L ||
-      is.na(rotation) ||
-      !is.finite(rotation) ||
-      length(scale) != 1L ||
-      is.na(scale) ||
-      !is.finite(scale) ||
-      scale <= 0
-  ) {
-    stop("Alignment preview coordinate provenance is invalid.", call. = FALSE)
-  }
-  names(pivot) <- c("x", "y")
-  if (identical(rotation, 0) && identical(scale, 1)) {
-    return(frame)
-  }
-  angle <- rotation * pi / 180
-  centered_x <- frame$x - pivot[["x"]]
-  centered_y <- frame$y - pivot[["y"]]
-  frame$x <- pivot[["x"]] +
-    scale *
-      (centered_x * cos(angle) - centered_y * sin(angle))
-  frame$y <- pivot[["y"]] +
-    scale *
-      (centered_x * sin(angle) + centered_y * cos(angle))
-  frame
-}
-
 .builder_alignment_unavailable <- function(sections = list(), message) {
   list(
     available = FALSE,
@@ -285,7 +234,6 @@ builder_alignment_preview_model <- function(
   }
   coordinate_transform <- NULL
   coordinate_frame <- .builder_alignment_bounds(physical)
-  display_physical <- physical
   if (
     is.list(coordinate_transforms) &&
       !is.null(coordinate_transforms[[section$source_id]])
@@ -295,7 +243,7 @@ builder_alignment_preview_model <- function(
       physical,
       context = paste0("spatial_coordinate_transforms$", section$source_id)
     )
-    display_physical <- .spx_apply_coordinate_transform(
+    physical <- .spx_apply_coordinate_transform(
       physical,
       coordinate_transforms[[section$source_id]]
     )
@@ -320,11 +268,6 @@ builder_alignment_preview_model <- function(
     c("cell_barcode", "x", "y"),
     drop = FALSE
   ]
-  display_spatial_full <- display_physical[
-    match(common, display_physical$cell_barcode),
-    c("cell_barcode", "x", "y"),
-    drop = FALSE
-  ]
   spatial_full$group <- transcriptome_full$group
   keep <- .builder_alignment_sample(nrow(spatial_full), max_cells)
   list(
@@ -335,7 +278,7 @@ builder_alignment_preview_model <- function(
     projection_name = reduction,
     transcriptome = transcriptome_full[keep, , drop = FALSE],
     spatial = spatial_full[keep, , drop = FALSE],
-    bounds = .builder_alignment_bounds(display_spatial_full),
+    bounds = .builder_alignment_bounds(spatial_full),
     coordinate_frame = coordinate_frame,
     coordinate_transform = coordinate_transform,
     capped = nrow(spatial_full) > length(keep)
@@ -768,7 +711,6 @@ builder_alignment_plot <- function(
   colors = NULL,
   image_uri = NULL,
   image_bounds = NULL,
-  image_preview = NULL,
   coordinate_frame = NULL,
   coordinate_transform = NULL,
   image_opacity = 0.8,
@@ -807,8 +749,7 @@ builder_alignment_plot <- function(
     ),
     text = hover,
     hoverinfo = "text",
-    showlegend = FALSE,
-    meta = list(builder_alignment_role = "points")
+    showlegend = FALSE
   )
   frame_bounds <- coordinate_frame %||% .builder_alignment_bounds(frame)
   initial_outline <- builder_alignment_coordinate_frame(frame_bounds)
@@ -827,7 +768,6 @@ builder_alignment_plot <- function(
       line = list(color = "#9a958d", width = 1, dash = "dot"),
       hoverinfo = "skip",
       showlegend = FALSE,
-      meta = list(builder_alignment_role = "initial-frame"),
       inherit = FALSE
     )
   }
@@ -842,7 +782,6 @@ builder_alignment_plot <- function(
       line = list(color = "#5f5a54", width = 1.5),
       hoverinfo = "skip",
       showlegend = FALSE,
-      meta = list(builder_alignment_role = "current-frame"),
       inherit = FALSE
     )
     rotation <- as.numeric(coordinate_transform$rotation_degrees %||% 0)
@@ -868,7 +807,6 @@ builder_alignment_plot <- function(
       marker = list(color = "#d45500", size = 6),
       hoverinfo = "skip",
       showlegend = FALSE,
-      meta = list(builder_alignment_role = "reference-edge"),
       inherit = FALSE
     )
     plot <- plotly::add_trace(
@@ -883,7 +821,6 @@ builder_alignment_plot <- function(
       textfont = list(color = "#d45500", size = 12),
       hoverinfo = "skip",
       showlegend = FALSE,
-      meta = list(builder_alignment_role = "reference-label"),
       inherit = FALSE
     )
   }
@@ -924,33 +861,6 @@ builder_alignment_plot <- function(
       scaleanchor = "x"
     ),
     margin = list(l = 12, r = 6, t = 6, b = 12),
-    meta = list(
-      builder_alignment_rotation = as.numeric(
-        coordinate_transform$rotation_degrees %||% 0
-      ),
-      builder_alignment_pivot = list(
-        x = (frame_bounds$xmin + frame_bounds$xmax) / 2,
-        y = (frame_bounds$ymin + frame_bounds$ymax) / 2
-      ),
-      builder_alignment_scale = as.numeric(
-        coordinate_transform$scale %||% 1
-      ),
-      builder_image_preview = if (is.null(image_preview)) {
-        NULL
-      } else {
-        list(
-          source = image_preview$source_uri,
-          base_bounds = image_preview$base_bounds,
-          dx = image_preview$dx,
-          dy = image_preview$dy,
-          scale = image_preview$scale,
-          rotation = image_preview$rotation,
-          flip_x = image_preview$flip_x,
-          flip_y = image_preview$flip_y,
-          image_opacity = image_preview$image_opacity
-        )
-      }
-    ),
     showlegend = FALSE,
     paper_bgcolor = "rgba(0,0,0,0)",
     plot_bgcolor = "rgba(0,0,0,0)"

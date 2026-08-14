@@ -497,12 +497,10 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     lapply(
       transform_names,
       function(section) {
-        spec <- .spx_coordinate_transform_spec_normalize(
+        .spx_coordinate_transform_spec_normalize(
           value[[section]],
           context = paste0("spatial_coordinate_transforms$", section)
         )
-        spec$scale <- 1
-        spec
       }
     ),
     error = function(error) error

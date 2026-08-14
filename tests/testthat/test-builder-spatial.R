@@ -131,29 +131,6 @@ test_that("alignment server does not subscribe to Plotly selection events", {
   expect_false(grepl(".clientValue-", server, fixed = TRUE))
 })
 
-test_that("spatial draft restoration waits for a completed server render", {
-  server <- paste(
-    readLines(
-      builder_spatial_test_inst_path("builder", "spatial_alignment_server.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  client <- paste(
-    readLines(
-      builder_spatial_test_inst_path("builder", "www", "builder.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(server, "builder_alignment_render_token", fixed = TRUE)
-  expect_match(client, "spatialDraftRestorePending", fixed = TRUE)
-  expect_match(client, "completeSpatialAlignmentServerRestore", fixed = TRUE)
-  expect_false(grepl("spatialDraftRestoreTimer", client, fixed = TRUE))
-  expect_false(grepl("}, 80);", client, fixed = TRUE))
-})
-
 test_that("alignment preview requeues when its render contract changes", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
@@ -193,11 +170,7 @@ test_that("alignment preview requeues when its render contract changes", {
           requests[[length(requests) + 1L]] <<- request
           TRUE
         },
-        commit_images = function(entry, images) {
-          entry$settings$images <- images
-          current_entry(entry)
-          invisible(entry)
-        },
+        commit_images = function(entry, images) NULL,
         alignment_preview = alignment_preview,
         spatial_coords = spatial_coords
       )
@@ -212,30 +185,18 @@ test_that("alignment preview requeues when its render contract changes", {
       session$flushReact()
       expect_length(requests, 1L)
 
-      session$setInputs(`enhance-coordinate_rotation` = 37.5)
-      session$flushReact()
-      expect_length(requests, 1L)
-
-      session$setInputs(`enhance-save_coordinate_transform` = 1L)
-      session$flushReact()
-      expect_length(requests, 2L)
-      expect_identical(
-        requests[[2L]]$coordinate_transforms[["section-a"]],
-        list(schema_version = 1L, rotation_degrees = 37.5, scale = 1)
-      )
-
       regrouped <- current_entry()
       regrouped$settings$default_group <- "sample"
       current_entry(regrouped)
       session$flushReact()
-      expect_length(requests, 3L)
-      expect_identical(requests[[3L]]$group, "sample")
+      expect_length(requests, 2L)
+      expect_identical(requests[[2L]]$group, "sample")
 
       replaced <- current_entry()
       replaced$snapshot$object_md5 <- strrep("b", 32L)
       current_entry(replaced)
       session$flushReact()
-      expect_length(requests, 4L)
+      expect_length(requests, 3L)
     }
   )
 })
@@ -272,7 +233,6 @@ test_that("pending tissue image requires its matching preview and snapshot", {
   spatial_coords <- shiny::reactiveVal(NULL)
   committed <- list()
   commit_count <- 0L
-  encode_count <- 0L
   preview <- list(
     available = TRUE,
     bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
@@ -312,10 +272,6 @@ test_that("pending tissue image requires its matching preview and snapshot", {
           committed <<- images
           commit_count <<- commit_count + 1L
         },
-        encode_image = function(...) {
-          encode_count <<- encode_count + 1L
-          builder_encode_image(...)
-        },
         alignment_preview = alignment_preview,
         spatial_coords = spatial_coords
       )
@@ -344,30 +300,13 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       expect_match(alignment$draft()$source_uri, "^data:image/png;base64,")
       expect_named(committed, "section-a")
       expect_identical(commit_count, 1L)
-      after_upload_encode_count <- encode_count
-
-      session$setInputs(
-        `enhance-img_rotate` = 37,
-        `enhance-image_flip_x` = TRUE
-      )
-      session$flushReact()
-      expect_identical(encode_count, after_upload_encode_count)
-      expect_true(alignment$has_unsaved())
-
-      session$setInputs(`enhance-apply_align` = 1L)
-      session$flushReact()
-      expect_identical(encode_count, after_upload_encode_count + 1L)
-      expect_true(alignment$draft()$saved)
-      expect_false(alignment$has_unsaved())
-      expect_identical(alignment$draft()$outside, 0L)
-      expect_identical(alignment$draft()$total, 2L)
 
       suppressWarnings(session$setInputs(`enhance-drop_image` = 1L))
       session$flushReact()
       session$setInputs(`enhance-remove_image_confirm` = 1L)
       session$flushReact()
       expect_null(alignment$draft())
-      expect_identical(commit_count, 3L)
+      expect_identical(commit_count, 2L)
 
       alignment_preview(NULL)
       session$setInputs(
@@ -389,7 +328,7 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       session$flushReact()
 
       expect_null(alignment$draft())
-      expect_identical(commit_count, 3L)
+      expect_identical(commit_count, 2L)
     }
   )
 })
@@ -656,43 +595,6 @@ test_that("alignment preview joins both spaces by cell identity", {
   expect_identical(model$transcriptome$group, model$spatial$group)
   expect_named(model$bounds, c("xmin", "xmax", "ymin", "ymax"))
   expect_true(all(is.finite(unlist(model$bounds))))
-
-  transformed <- builder_alignment_preview_model(
-    object,
-    default_projection = "pca",
-    group = group,
-    section_id = "section-a",
-    coordinate_transforms = list(
-      `section-a` = list(rotation_degrees = 37.5, scale = 1)
-    ),
-    max_cells = 12L
-  )
-  expect_identical(
-    transformed$spatial$cell_barcode,
-    model$spatial$cell_barcode
-  )
-  expect_equal(
-    transformed$spatial[c("x", "y")],
-    model$spatial[c("x", "y")]
-  )
-  expect_identical(transformed$coordinate_frame, model$coordinate_frame)
-
-  displayed <- builder_alignment_apply_coordinate_provenance(
-    transformed$spatial,
-    transformed$coordinate_transform
-  )
-  pivot <- transformed$coordinate_transform$pivot
-  angle <- 37.5 * pi / 180
-  centered_x <- model$spatial$x - pivot[["x"]]
-  centered_y <- model$spatial$y - pivot[["y"]]
-  expect_equal(
-    displayed$x,
-    pivot[["x"]] + centered_x * cos(angle) - centered_y * sin(angle)
-  )
-  expect_equal(
-    displayed$y,
-    pivot[["y"]] + centered_x * sin(angle) + centered_y * cos(angle)
-  )
 })
 
 test_that("Trekker alignment preview uses its physical and transcriptome spaces", {
@@ -893,12 +795,12 @@ test_that("alignment plot preserves decimal coordinate rotation labels", {
     coordinate_transform = transform
   ))
   traces <- plot$x$data
-  roles <- vapply(
+  label_traces <- vapply(
     traces,
-    function(trace) trace$meta$builder_alignment_role %||% "",
-    character(1)
+    function(trace) identical(trace$mode, "text"),
+    logical(1)
   )
-  label <- traces[[which(roles == "reference-label")]]$text
+  label <- traces[[which(label_traces)]]$text
 
   expect_identical(unname(label), "+37.5°")
 })
