@@ -610,6 +610,75 @@ test_that("canonical alignment transform is deterministic and complete", {
   )
 })
 
+test_that("rotated alignment bounds preserve one data-unit scale per image pixel", {
+  base_bounds <- list(xmin = 0, xmax = 92, ymin = 0, ymax = 56)
+  image_geometry <- list(
+    source_width = 920,
+    source_height = 560,
+    extent_width = 1060,
+    extent_height = 870
+  )
+
+  oriented <- builder_alignment_oriented_bounds(
+    base_bounds,
+    image_geometry
+  )
+
+  expect_equal(
+    (oriented$xmax - oriented$xmin) / image_geometry$extent_width,
+    (oriented$ymax - oriented$ymin) / image_geometry$extent_height,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    c(
+      x = (oriented$xmin + oriented$xmax) / 2,
+      y = (oriented$ymin + oriented$ymax) / 2
+    ),
+    c(x = 46, y = 28),
+    tolerance = 1e-12
+  )
+
+  record <- builder_alignment_record(
+    source = list(name = "directional.png", type = "image/png"),
+    source_uri = "data:image/png;base64,SOURCE",
+    uri = "data:image/png;base64,ROTATED",
+    base_bounds = base_bounds,
+    parameters = list(dx = 7, dy = -3, scale = 1.2, rotation = -23),
+    image_geometry = image_geometry,
+    section = list(id = "FOV_A", kind = "spatial")
+  )
+  expected <- builder_adjust_bounds(oriented, dx = 7, dy = -3, scale = 1.2)
+  expect_equal(record$bounds, expected, tolerance = 1e-12)
+})
+
+test_that("alignment plot preserves decimal coordinate rotation labels", {
+  skip_if_not_installed("plotly")
+  frame <- data.frame(
+    cell_barcode = c("a", "b", "c"),
+    x = c(0, 20, 80),
+    y = c(0, 55, 10),
+    group = c("A", "B", "C")
+  )
+  transform <- .spx_coordinate_transform_normalize(
+    list(rotation_degrees = 37.5, scale = 1.2),
+    frame
+  )
+  plot <- plotly::plotly_build(builder_alignment_plot(
+    frame,
+    coordinate_frame = .builder_alignment_bounds(frame),
+    coordinate_transform = transform
+  ))
+  traces <- plot$x$data
+  roles <- vapply(
+    traces,
+    function(trace) trace$meta$builder_alignment_role %||% "",
+    character(1)
+  )
+  label <- traces[[which(roles == "reference-label")]]$text
+
+  expect_identical(unname(label), "+37.5°")
+})
+
 test_that("reset and apply-to-all preserve each section image identity", {
   defaults <- builder_alignment_defaults()
   first <- builder_alignment_record(

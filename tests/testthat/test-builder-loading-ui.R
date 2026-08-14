@@ -85,6 +85,8 @@ test_that("loading workbench remains visible and accessible", {
   expect_match(html, "Checking cells, genes and metadata…", fixed = TRUE)
   expect_match(html, 'aria-live="polite"', fixed = TRUE)
   expect_match(html, "builder-loading-stage", fixed = TRUE)
+  expect_false(grepl("builder-remove-import", html, fixed = TRUE))
+  expect_false(grepl(">Remove<", html, fixed = TRUE))
   expect_false(grepl("spinner", html, fixed = TRUE))
 })
 
@@ -114,9 +116,36 @@ test_that("loading rail rows expose safe status and real actions", {
   expect_match(html, "ds ds--import is-active is-importing", fixed = TRUE)
   expect_match(html, 'data-load-state="queued"', fixed = TRUE)
   expect_match(html, 'aria-current="true"', fixed = TRUE)
-  expect_match(html, 'aria-label="Cancel loading patient-one"', fixed = TRUE)
+  expect_match(
+    html,
+    'aria-label="Remove queued import patient-one"',
+    fixed = TRUE
+  )
+  expect_match(html, "Remove from queue", fixed = TRUE)
   expect_match(html, "ds-state-dot", fixed = TRUE)
   expect_false(grepl("/private/session", html, fixed = TRUE))
+})
+
+test_that("active imports do not offer a fake cancellation action", {
+  entry <- builder_import_entry(
+    "ds1",
+    "patient-one",
+    list(kind = "file", staged_path = "/private/session/object.rds")
+  )
+  queue <- builder_import_add(builder_import_queue(), entry)
+  queue <- builder_import_transition(queue, "ds1", "reading", 1L)
+
+  rail_html <- htmltools::renderTags(
+    builder_import_rail_ui(queue$entries, current = "ds1")
+  )$html
+  workbench_html <- htmltools::renderTags(
+    builder_loading_workbench_ui(queue$entries[["ds1"]])
+  )$html
+
+  expect_false(grepl("builder-remove-import", rail_html, fixed = TRUE))
+  expect_false(grepl("builder-remove-import", workbench_html, fixed = TRUE))
+  expect_false(grepl("Remove from queue", rail_html, fixed = TRUE))
+  expect_false(grepl(">Remove<", workbench_html, fixed = TRUE))
 })
 
 test_that("error rows offer Retry and Remove without internal details", {

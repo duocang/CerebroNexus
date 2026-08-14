@@ -3,9 +3,28 @@
   "use strict";
 
   var workflowProgressScrollTimer = null;
+  var compactWorkflowManager = window.matchMedia("(max-width: 40rem)");
+  var narrowManager = window.matchMedia("(max-width: 58rem)");
+  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  function syncWorkflowProgressHeight() {
+    var progress = document.querySelector(".builder-workflow-progress");
+    var height = progress ? Math.ceil(progress.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty(
+      "--builder-workflow-progress-height",
+      height + "px"
+    );
+  }
   function updateWorkflowProgressVisibility() {
     var progress = document.querySelector(".builder-workflow-progress");
     if (!progress) return;
+    if (
+      !compactWorkflowManager.matches ||
+      reducedMotion.matches ||
+      progress.matches(":focus-within")
+    ) {
+      progress.classList.remove("is-scrolling");
+      return;
+    }
     progress.classList.add("is-scrolling");
     window.clearTimeout(workflowProgressScrollTimer);
     workflowProgressScrollTimer = window.setTimeout(function () {
@@ -16,10 +35,9 @@
   window.addEventListener("resize", function () {
     var progress = document.querySelector(".builder-workflow-progress");
     if (progress) progress.classList.remove("is-scrolling");
+    syncWorkflowProgressHeight();
   });
 
-  var narrowManager = window.matchMedia("(max-width: 58rem)");
-  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   var statusTimer = null;
   var lastAnnouncement = "";
   var observedPrimaryAction = null;
@@ -29,11 +47,13 @@
   var viewerGroupHandlerRegistered = false;
   var viewerProjectionHandlerRegistered = false;
   var viewerTrajectoryHandlerRegistered = false;
+  var spatialSectionHandlerRegistered = false;
+  var desiredSpatialSection = null;
   var clientUploadSequence = 0;
   var viewerDisclosureState = new Map();
   var managerTransitionSequence = 0;
   var datasetMutationsLocked = false;
-  var normalMotionDuration = 180;
+  var normalMotionDuration = 220;
   var authEditor = {
     nextId: 1,
     committed: [],
@@ -55,7 +75,6 @@
       ".example-btn",
       ".builder-reorder",
       ".builder-drop",
-      ".pending-upload-remove",
       ".builder-retry-import",
       ".builder-remove-import",
       "#undo_remove",
@@ -1137,7 +1156,9 @@
     syncSpatialWorkbench(frame, plot, ratio);
     if (window.Plotly && window.Plotly.Plots) {
       window.requestAnimationFrame(function () {
-        window.Plotly.Plots.resize(plot);
+        if (plot.isConnected && plot.offsetParent !== null && plot.clientWidth > 0) {
+          window.Plotly.Plots.resize(plot);
+        }
       });
     }
   }
@@ -1152,19 +1173,16 @@
       frame.style.removeProperty("height");
       return;
     }
-    var header = figure.querySelector(".spatial-alignment-figure-header");
-    var availableWidth = figure.clientWidth;
-    var availableHeight = figure.clientHeight - (header ? header.offsetHeight + 6 : 0);
-    if (!(availableWidth > 0 && availableHeight > 0)) return;
-    var width = Math.min(availableWidth, availableHeight * ratio);
-    var height = width / ratio;
-    frame.style.width = Math.floor(width) + "px";
-    frame.style.height = Math.floor(height) + "px";
+    frame.style.width = "100%";
+    frame.style.height = "100%";
     if (!frame.builderResizeObserver && window.ResizeObserver) {
       frame.builderResizeObserver = new ResizeObserver(function () {
         window.requestAnimationFrame(function () {
           syncSpatialWorkbench(frame, plot, spatialPreviewAspect(plot));
-          if (window.Plotly && window.Plotly.Plots) window.Plotly.Plots.resize(plot);
+          if (window.Plotly && window.Plotly.Plots && plot.isConnected &&
+              plot.offsetParent !== null && plot.clientWidth > 0) {
+            window.Plotly.Plots.resize(plot);
+          }
         });
       });
       frame.builderResizeObserver.observe(figure);
@@ -1794,7 +1812,252 @@
     }
   }
 
+  function spatialAlignmentHasImage(sidebar) {
+    var imageControls = sidebar.querySelector(
+      ".spatial-alignment-sidebar-scroll > .shiny-panel-conditional"
+    );
+    return Boolean(
+      imageControls && window.getComputedStyle(imageControls).display !== "none"
+    );
+  }
+
+  function syncSpatialAlignmentScrollbar(sidebar) {
+    if (!sidebar.dataset.builderWheelPageScroll) {
+      sidebar.dataset.builderWheelPageScroll = "true";
+      sidebar.addEventListener("wheel", function (event) {
+        if (event.ctrlKey) return;
+        var multiplier = event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? window.innerHeight
+            : 1;
+        event.preventDefault();
+        window.scrollBy(0, event.deltaY * multiplier);
+      }, { passive: false });
+    }
+    var scrollbar = sidebar.querySelector(".spatial-alignment-persistent-scrollbar");
+    if (!scrollbar) {
+      scrollbar = document.createElement("div");
+      scrollbar.className = "spatial-alignment-persistent-scrollbar";
+      scrollbar.setAttribute("aria-hidden", "true");
+      scrollbar.innerHTML = '<div class="spatial-alignment-persistent-scrollbar-thumb"></div>';
+      sidebar.appendChild(scrollbar);
+
+      scrollbar.addEventListener("pointerdown", function (event) {
+        event.preventDefault();
+        var start = event.clientY;
+        var initialScroll = sidebar.scrollTop;
+        var available = Math.max(1, sidebar.scrollHeight - sidebar.clientHeight);
+        var thumb = scrollbar.firstElementChild;
+        var track = Math.max(1, scrollbar.clientHeight - thumb.clientHeight);
+        function drag(moveEvent) {
+          sidebar.scrollTop = initialScroll +
+            ((moveEvent.clientY - start) / track) * available;
+        }
+        function stop() {
+          document.removeEventListener("pointermove", drag);
+          document.removeEventListener("pointerup", stop);
+        }
+        document.addEventListener("pointermove", drag);
+        document.addEventListener("pointerup", stop, { once: true });
+      });
+      sidebar.addEventListener("scroll", function () {
+        syncSpatialAlignmentScrollbar(sidebar);
+      }, { passive: true });
+    }
+
+    var visible = spatialAlignmentHasImage(sidebar);
+    scrollbar.hidden = !visible;
+    if (!visible) return;
+
+    var rect = sidebar.getBoundingClientRect();
+    var trackHeight = Math.max(0, rect.height);
+    var range = Math.max(0, sidebar.scrollHeight - sidebar.clientHeight);
+    var thumbHeight = range > 0
+      ? Math.max(28, trackHeight * (sidebar.clientHeight / sidebar.scrollHeight))
+      : trackHeight;
+    var travel = Math.max(0, trackHeight - thumbHeight);
+    var thumbTop = range > 0 ? travel * (sidebar.scrollTop / range) : 0;
+    var thumb = scrollbar.firstElementChild;
+
+    scrollbar.style.top = rect.top + "px";
+    scrollbar.style.left = (rect.right - 10) + "px";
+    scrollbar.style.height = trackHeight + "px";
+    thumb.style.height = thumbHeight + "px";
+    thumb.style.transform = "translateY(" + thumbTop + "px)";
+  }
+
+  function syncSpatialAlignmentScrollbars() {
+    document.querySelectorAll(".spatial-alignment-sidebar").forEach(
+      syncSpatialAlignmentScrollbar
+    );
+  }
+
+  function spatialAlignmentPlot() {
+    var output = document.getElementById("enhance-alignment_spatial_plot");
+    if (!output) return null;
+    return output.matches(".js-plotly-plot")
+      ? output : output.querySelector(".js-plotly-plot");
+  }
+
+  function applyContinuousCoordinateTransform(rotation, scale) {
+    var plot = spatialAlignmentPlot();
+    if (!plot || !window.Plotly || !plot.data || !plot.layout) return;
+
+    var meta = plot.layout.meta || {};
+    var pivot = meta.builder_alignment_pivot;
+    var sourceAngle = Number(meta.builder_alignment_rotation);
+    var sourceScale = Number(meta.builder_alignment_scale == null
+      ? 1 : meta.builder_alignment_scale);
+    var targetAngle = Number(rotation);
+    var targetScale = Number(scale);
+    if (!pivot || !Number.isFinite(sourceAngle) || !Number.isFinite(sourceScale) ||
+      !Number.isFinite(targetAngle) || !Number.isFinite(targetScale) ||
+      sourceScale <= 0 || targetScale <= 0) return;
+
+    var sourceKey = sourceAngle + "::" + sourceScale;
+    if (plot.__builderAlignmentSourceKey !== sourceKey) {
+      plot.__builderAlignmentSourceKey = sourceKey;
+      plot.__builderAlignmentSourceAngle = sourceAngle;
+      plot.__builderAlignmentSourceScale = sourceScale;
+      plot.__builderAlignmentSource = plot.data.map(function (trace) {
+        return {
+          role: trace.meta && trace.meta.builder_alignment_role,
+          x: Array.from(trace.x || []),
+          y: Array.from(trace.y || [])
+        };
+      });
+    }
+
+    var radians = (targetAngle - sourceAngle) * Math.PI / 180;
+    var cosine = Math.cos(radians);
+    var sine = Math.sin(radians);
+    var scaleRatio = targetScale / sourceScale;
+    var mutableRoles = new Set([
+      "points", "current-frame", "reference-edge", "reference-label"
+    ]);
+
+    plot.__builderAlignmentSource.forEach(function (source, index) {
+      if (!mutableRoles.has(source.role)) return;
+      var x = source.x.map(function (value, pointIndex) {
+        var dx = value - pivot.x;
+        var dy = source.y[pointIndex] - pivot.y;
+        return pivot.x + scaleRatio * ((dx * cosine) - (dy * sine));
+      });
+      var y = source.y.map(function (value, pointIndex) {
+        var dx = value - pivot.x;
+        var dy = source.y[pointIndex] - pivot.y;
+        return pivot.y + scaleRatio * ((dx * sine) + (dy * cosine));
+      });
+      window.Plotly.restyle(plot, { x: [x], y: [y] }, [index]);
+      if (source.role === "reference-label") {
+        var angle = targetAngle;
+        window.Plotly.restyle(
+          plot,
+          { text: [[(angle > 0 ? "+" : "") + angle.toFixed(1) + "°"]] },
+          [index]
+        );
+      }
+    });
+  }
+
+  function applyContinuousCoordinateRotation(rotation) {
+    var scale = document.getElementById("enhance-coordinate_scale");
+    applyContinuousCoordinateTransform(rotation, scale ? scale.value : 1);
+  }
+
+  var coordinateRotationFrame = null;
+  function scheduleContinuousCoordinateRotation(value) {
+    if (coordinateRotationFrame !== null) {
+      window.cancelAnimationFrame(coordinateRotationFrame);
+    }
+    coordinateRotationFrame = window.requestAnimationFrame(function () {
+      coordinateRotationFrame = null;
+      applyContinuousCoordinateRotation(value);
+    });
+  }
+
+  var spatialAlignmentFrame = null;
+  function spatialAlignmentValue(id, fallback) {
+    var input = document.getElementById(id);
+    var value = input ? Number(input.value) : Number(fallback);
+    return Number.isFinite(value) ? value : Number(fallback);
+  }
+
+  function applyContinuousSpatialAlignment() {
+    var plot = spatialAlignmentPlot();
+    if (!plot || !window.Plotly || !plot.layout) return;
+    var meta = plot.layout.meta || {};
+    var preview = meta.builder_image_preview;
+    var updates = {};
+    if (preview && preview.source && preview.base_bounds) {
+      var bounds = preview.base_bounds;
+      var dx = spatialAlignmentValue("enhance-img_dx", preview.dx || 0);
+      var dy = spatialAlignmentValue("enhance-img_dy", preview.dy || 0);
+      var scale = spatialAlignmentValue("enhance-img_scale", preview.scale || 1);
+      var rotation = spatialAlignmentValue(
+        "enhance-img_rotate", preview.rotation || 0
+      );
+      var opacity = spatialAlignmentValue(
+        "enhance-image_opacity", (preview.image_opacity || 0.8) * 100
+      ) / 100;
+      var width = (Number(bounds.xmax) - Number(bounds.xmin)) * scale;
+      var height = (Number(bounds.ymax) - Number(bounds.ymin)) * scale;
+      var centreX = (Number(bounds.xmin) + Number(bounds.xmax)) / 2 + dx;
+      var centreY = (Number(bounds.ymin) + Number(bounds.ymax)) / 2 + dy;
+      updates["images[0].source"] = preview.source;
+      updates["images[0].x"] = centreX - width / 2;
+      updates["images[0].y"] = centreY + height / 2;
+      updates["images[0].sizex"] = width;
+      updates["images[0].sizey"] = height;
+      updates["images[0].opacity"] = opacity;
+      var flipX = !!(document.getElementById("enhance-image_flip_x") || {}).checked;
+      var flipY = !!(document.getElementById("enhance-image_flip_y") || {}).checked;
+      window.Plotly.relayout(plot, updates).then(function () {
+        var image = plot.querySelector(".imagelayer image");
+        if (!image) return;
+        var x = Number(image.getAttribute("x"));
+        var y = Number(image.getAttribute("y"));
+        var w = Number(image.getAttribute("width"));
+        var h = Number(image.getAttribute("height"));
+        var cx = x + w / 2;
+        var cy = y + h / 2;
+        image.setAttribute(
+          "transform",
+          "translate(" + cx + " " + cy + ") rotate(" + (-rotation) + ") " +
+          "scale(" + (flipX ? -1 : 1) + " " + (flipY ? -1 : 1) + ") " +
+          "translate(" + (-cx) + " " + (-cy) + ")"
+        );
+        image.setAttribute("preserveAspectRatio", "none");
+      });
+    }
+
+    var pointOpacity = spatialAlignmentValue("enhance-point_opacity", 85) / 100;
+    var pointSize = spatialAlignmentValue("enhance-point_size", 5);
+    (plot.data || []).forEach(function (trace, index) {
+      if (trace.meta && trace.meta.builder_alignment_role === "points") {
+        window.Plotly.restyle(
+          plot,
+          { "marker.opacity": pointOpacity, "marker.size": pointSize },
+          [index]
+        );
+      }
+    });
+  }
+
+  function scheduleContinuousSpatialAlignment() {
+    if (spatialAlignmentFrame !== null) {
+      window.cancelAnimationFrame(spatialAlignmentFrame);
+    }
+    spatialAlignmentFrame = window.requestAnimationFrame(function () {
+      spatialAlignmentFrame = null;
+      applyContinuousSpatialAlignment();
+    });
+  }
+
   function enhanceDynamicContent() {
+    syncWorkflowProgressHeight();
+    syncSpatialAlignmentScrollbars();
     if (window.BuilderIcons) window.BuilderIcons.decorate(document);
     setupRail();
     updateRailSummary();
@@ -1814,6 +2077,16 @@
     setupViewerGroupCatalogs();
     setupViewerContentCatalogs();
     setupCreatableSelects();
+    if (desiredSpatialSection) {
+      var sectionSelect = document.getElementById("enhance-active_section");
+      if (sectionSelect && sectionSelect.value !== desiredSpatialSection) {
+        if (sectionSelect.selectize) {
+          sectionSelect.selectize.setValue(desiredSpatialSection, true);
+        } else {
+          sectionSelect.value = desiredSpatialSection;
+        }
+      }
+    }
     applyDatasetMutationLock();
     document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
     document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
@@ -1973,17 +2246,6 @@
       return;
     }
 
-    var removePendingUpload = target.closest(".pending-upload-remove");
-    if (removePendingUpload) {
-      event.preventDefault();
-      event.stopPropagation();
-      send("cancel_pending_upload", {
-        id: removePendingUpload.dataset.uploadId,
-        nonce: Date.now(),
-      });
-      return;
-    }
-
     var pickImport = target.closest(".builder-pick-import");
     if (pickImport) {
       send("pick_import", {
@@ -2126,6 +2388,9 @@
   });
 
   document.addEventListener("change", function (event) {
+    if (event.target.id === "enhance-active_section") {
+      desiredSpatialSection = event.target.value;
+    }
     if (event.target.id.indexOf("enhance-marker_source_mode_") === 0) {
       send("enhance-marker_source_mode", {
         id: event.target.id.replace("enhance-marker_source_mode_", ""),
@@ -2314,6 +2579,24 @@
       );
       viewerTrajectoryHandlerRegistered = true;
     }
+    if (!spatialSectionHandlerRegistered) {
+      window.Shiny.addCustomMessageHandler(
+        "builder_spatial_section_state",
+        function (message) {
+          if (!message || !message.value) return;
+          desiredSpatialSection = message.value;
+          [0, 50, 200, 500, 1000, 2000, 5000].forEach(function (delay) {
+            window.setTimeout(function () {
+              var select = document.getElementById("enhance-active_section");
+              if (!select) return;
+              if (select.selectize) select.selectize.setValue(message.value, true);
+              else select.value = message.value;
+            }, delay);
+          });
+        }
+      );
+      spatialSectionHandlerRegistered = true;
+    }
   }
 
   document.addEventListener("shiny:connected", function () {
@@ -2329,7 +2612,45 @@
     registerViewerGroupHandler();
     registerViewerContentHandlers();
   });
-
+  document.addEventListener("shiny:conditional", function () {
+    window.requestAnimationFrame(syncSpatialAlignmentScrollbars);
+  });
+  document.addEventListener("input", function (event) {
+    if (event.target.id === "enhance-coordinate_rotation" ||
+      event.target.id === "enhance-coordinate_scale") {
+      var rotation = document.getElementById("enhance-coordinate_rotation");
+      var scale = document.getElementById("enhance-coordinate_scale");
+      applyContinuousCoordinateTransform(
+        rotation ? rotation.value : 0,
+        scale ? scale.value : 1
+      );
+    }
+    if (new Set([
+      "enhance-img_dx", "enhance-img_dy", "enhance-img_scale",
+      "enhance-img_rotate", "enhance-image_opacity",
+      "enhance-point_opacity", "enhance-point_size"
+    ]).has(event.target.id)) {
+      scheduleContinuousSpatialAlignment();
+    }
+  }, true);
+  document.addEventListener("change", function (event) {
+    if (event.target.id === "enhance-coordinate_rotation" ||
+      event.target.id === "enhance-coordinate_scale") {
+      var rotation = document.getElementById("enhance-coordinate_rotation");
+      var scale = document.getElementById("enhance-coordinate_scale");
+      applyContinuousCoordinateTransform(
+        rotation ? rotation.value : 0,
+        scale ? scale.value : 1
+      );
+    }
+    if (new Set([
+      "enhance-img_dx", "enhance-img_dy", "enhance-img_scale",
+      "enhance-img_rotate", "enhance-image_flip_x", "enhance-image_flip_y",
+      "enhance-image_opacity", "enhance-point_opacity", "enhance-point_size"
+    ]).has(event.target.id)) {
+      scheduleContinuousSpatialAlignment();
+    }
+  }, true);
   function initializeBuilder() {
     registerExampleMessageHandler();
     registerBuildDialogHandler();
@@ -2350,6 +2671,8 @@
       reducedMotion.addListener(updateMotionDuration);
     }
     updateMotionDuration();
+    window.addEventListener("resize", syncSpatialAlignmentScrollbars, { passive: true });
+    window.addEventListener("scroll", syncSpatialAlignmentScrollbars, { passive: true });
     ensureLiveRegion();
     enhanceDynamicContent();
   }

@@ -83,7 +83,9 @@
   "offset_x",
   "offset_y",
   "rotation",
-  "image_opacity"
+  "image_opacity",
+  "point_opacity",
+  "point_size"
 )
 
 .builder_app_spatial_path_digest <- function(bytes) {
@@ -353,6 +355,9 @@
             )) ||
             setting$image_opacity < 0 ||
             setting$image_opacity > 1 ||
+            setting$point_opacity < 0 ||
+            setting$point_opacity > 1 ||
+            setting$point_size <= 0 ||
             !.builder_app_identity_valid(identity, identity_label, path)
         ) {
           valid <- FALSE

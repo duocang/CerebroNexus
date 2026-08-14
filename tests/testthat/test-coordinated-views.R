@@ -1121,7 +1121,10 @@ test_that("each section offers only its own configured backgrounds", {
             scale_y = 0.75,
             flip_x = TRUE,
             flip_y = FALSE,
-            rotation = 90
+            rotation = 90,
+            image_opacity = 0.6,
+            point_opacity = 0.55,
+            point_size = 8
           )
         )
       )
@@ -1160,7 +1163,9 @@ test_that("each section offers only its own configured backgrounds", {
       flipX = TRUE,
       flipY = FALSE,
       rotation = 90,
-      opacity = 0.6
+      opacity = 0.6,
+      pointOpacity = 0.55,
+      pointSize = 8
     )
   )
 
@@ -1169,6 +1174,7 @@ test_that("each section offers only its own configured backgrounds", {
     collapse = "\n"
   )
   expect_match(js, "pr.rotation != null ? pr.rotation : 0", fixed = TRUE)
+  expect_match(js, "c.rotate(-state.rotate * Math.PI / 180)", fixed = TRUE)
 })
 
 test_that("per-image settings also apply to embedded backgrounds", {
@@ -1189,6 +1195,18 @@ test_that("per-image settings also apply to embedded backgrounds", {
             xmax = 3,
             ymin = 0,
             ymax = 5
+          ),
+          histology_alignment = list(
+            source = "Embedded",
+            dx = -4,
+            dy = 6,
+            scale = 1.25,
+            rotation = -32,
+            flip_x = TRUE,
+            flip_y = FALSE,
+            image_opacity = 0.7,
+            point_opacity = 0.35,
+            point_size = 9
           )
         )
       ),
@@ -1225,16 +1243,25 @@ test_that("per-image settings also apply to embedded backgrounds", {
   expect_identical(
     built$images[[1L]]$preset,
     list(
-      offsetX = 2,
-      offsetY = 0,
-      scaleX = 1,
-      scaleY = 1,
-      flipX = FALSE,
-      flipY = TRUE,
-      rotation = 45,
-      opacity = 0.7
+      offsetX = -4,
+      offsetY = 6,
+      scaleX = 1.25,
+      scaleY = 1.25,
+      flipX = TRUE,
+      flipY = FALSE,
+      rotation = -32,
+      opacity = 0.7,
+      pointOpacity = 0.35,
+      pointSize = 9,
+      geometryBaked = TRUE
     )
   )
+  js <- paste(
+    readLines(file.path(dirname(bundle_file), "..", "www", "coordviews.js")),
+    collapse = "\n"
+  )
+  expect_match(js, "function imageRenderState(img, state)", fixed = TRUE)
+  expect_match(js, "if (!pr.geometryBaked) return state;", fixed = TRUE)
 })
 
 test_that("the alignment bar follows the chosen background, not the data set", {

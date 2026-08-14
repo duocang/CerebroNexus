@@ -189,11 +189,58 @@ test_that("Builder preserves responsive geometry before Build", {
     function(geometry) geometry$previewAspectRatios[[1L]],
     numeric(1)
   )
-  expect_lte(max(preview_ratios) - min(preview_ratios), 0.02)
+  narrow_preview_ratios <- preview_ratios[names(preview_ratios) != "1920"]
+  expect_lte(
+    max(narrow_preview_ratios) - min(narrow_preview_ratios),
+    0.02
+  )
   # All content renders near 6156px; 6500 preserves cross-font headroom.
   expect_lt(
     geometries[["390"]]$documentHeight,
     builder_narrow_document_height_budget
+  )
+
+  app$get_chromote_session()$set_viewport_size(width = 1400L, height = 720L)
+  app$wait_for_js(
+    "window.innerWidth === 1400 && window.innerHeight === 720",
+    timeout = 10000
+  )
+  app$run_js(
+    "document.querySelector('.spatial-image-options').open = true;"
+  )
+  app$wait_for_js(
+    "document.querySelector('.spatial-image-options').open === true",
+    timeout = 10000
+  )
+  spatial_scroll_geometry <- app$get_js(paste0(
+    "(() => {",
+    "const layout = document.querySelector('.spatial-alignment-layout');",
+    "const sidebar = document.querySelector('.spatial-alignment-sidebar');",
+    "const layoutRect = layout.getBoundingClientRect();",
+    "const sidebarRect = sidebar.getBoundingClientRect();",
+    "return {",
+    "sidebarBottom: sidebarRect.bottom,",
+    "layoutBottom: layoutRect.bottom,",
+    "sidebarHeight: sidebar.clientHeight,",
+    "sidebarContentHeight: sidebar.scrollHeight",
+    "};",
+    "})()"
+  ))
+  expect_lte(
+    spatial_scroll_geometry$sidebarBottom,
+    spatial_scroll_geometry$layoutBottom + 1
+  )
+  expect_gt(
+    spatial_scroll_geometry$sidebarContentHeight,
+    spatial_scroll_geometry$sidebarHeight
+  )
+  app$run_js(paste0(
+    "const sidebar = document.querySelector('.spatial-alignment-sidebar');",
+    "sidebar.scrollTop = sidebar.scrollHeight;"
+  ))
+  app$wait_for_js(
+    "document.querySelector('.spatial-alignment-sidebar').scrollTop > 0",
+    timeout = 10000
   )
 
   app$run_js(paste0(

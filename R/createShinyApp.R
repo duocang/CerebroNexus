@@ -1419,8 +1419,9 @@ dedent <- function(string) {
 #' @param spatial_image_settings Optional nested settings in
 #'   \code{dataset -> spatial entry -> image label -> settings} form. Settings
 #'   may contain only \code{flip_x}, \code{flip_y}, \code{scale_x},
-#'   \code{scale_y}, \code{offset_x}, \code{offset_y}, \code{rotation}, and
-#'   \code{image_opacity} in the inclusive range 0 to 1.
+#'   \code{scale_y}, \code{offset_x}, \code{offset_y}, \code{rotation},
+#'   \code{image_opacity}, \code{point_opacity}, and \code{point_size}.
+#'   Opacities use the inclusive range 0 to 1 and point size must be positive.
 #'   A leaf may target an embedded or external image available under that exact
 #'   dataset and spatial entry. The image label must exist in the union of the
 #'   CRB's embedded images and this call's \code{spatial_images}; unknown

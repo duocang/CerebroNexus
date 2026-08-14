@@ -773,7 +773,7 @@ test_that("Builder motion uses its 180ms duration role", {
   )[[1L]]
 
   expect_length(shared_duration_uses, 0L)
-  expect_length(builder_duration_uses, 19L)
+  expect_length(builder_duration_uses, 20L)
 })
 
 test_that("Builder layered stylesheets own their declared responsibilities", {

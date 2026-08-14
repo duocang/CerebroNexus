@@ -1,6 +1,13 @@
 ## Guided Enhance stage.
 
-builder_enhance_model <- function(id, profile, state, settings, modules) {
+builder_enhance_model <- function(
+  id,
+  profile,
+  state,
+  settings,
+  modules,
+  active_section = NULL
+) {
   manifest <- state$manifest %||% list()
   retained <- Filter(
     function(entry) {
@@ -74,6 +81,7 @@ builder_enhance_model <- function(id, profile, state, settings, modules) {
         network = "No network access.",
         prerequisite = "Requires spatial FOVs and coordinates.",
         sections = spatial_sections,
+        active_section = active_section,
         images = builder_image_collection_normalize(
           settings$images %||% list()
         ),
@@ -276,21 +284,22 @@ builder_tissue_image_file_ui <- function(id, record) {
         strong(filename),
         span(class = "hint", detail)
       ),
-      div(
-        class = "builder-action-row",
-        span(
-          class = paste(
-            "builder-status",
-            if (saved) "builder-status--ready" else "builder-status--attention"
-          ),
-          if (saved) "Ready" else "Needs saving"
+      span(
+        class = paste(
+          "builder-status",
+          "enhance-tissue-file-status",
+          if (saved) "builder-status--ready" else "builder-status--attention"
         ),
+        if (saved) "Ready" else "Needs saving"
+      ),
+      div(
+        class = "builder-action-row enhance-tissue-file-action-row",
         div(
           class = "enhance-tissue-file-actions",
           actionButton(
             ns("rename_image"),
             "Rename image",
-            class = "btn btn-quiet"
+            class = "btn"
           ),
           actionButton(
             ns("drop_image"),
@@ -328,6 +337,10 @@ builder_spatial_alignment_ui <- function(id, model) {
   } else {
     character()
   }
+  selected_section <- model$active_section %||% sections[[1L]]
+  if (!selected_section %in% sections) {
+    selected_section <- sections[[1L]]
+  }
   tagList(
     h3(
       class = "spatial-alignment-title",
@@ -343,209 +356,250 @@ builder_spatial_alignment_ui <- function(id, model) {
         div(
           class = "spatial-alignment-sidebar builder-controls-grid",
           div(
-            class = "spatial-alignment-sidebar-primary",
+            class = "spatial-alignment-sidebar-fixed",
             selectInput(
               ns("active_section"),
               "Spatial capture (FOV)",
               choices = choices,
-              selected = sections[[1L]]
-            ),
+              selected = selected_section,
+              selectize = FALSE
+            )
+          ),
+          div(
+            class = "spatial-alignment-sidebar-body",
             div(
-              class = "enhance-tissue-file-control builder-file-picker builder-file-picker--compact",
-              tags$input(
-                id = ns("tissue_image_file"),
-                name = ns("tissue_image_file"),
-                class = "shiny-input-file enhance-tissue-file-input builder-file-input",
-                type = "file",
-                accept = ".png,.jpg,.jpeg",
-                `tabindex` = "-1"
-              ),
-              tags$label(
-                `for` = ns("tissue_image_file"),
-                class = "enhance-tissue-file-button builder-file-trigger",
-                `tabindex` = "0",
-                role = "button",
-                uiOutput(ns("add_image_label"), inline = TRUE)
-              )
-            ),
-            tags$details(
-              class = "builder-disclosure spatial-image-options",
-              tags$summary("Spatial image options"),
-              selectInput(
-                ns("spatial_image_storage"),
-                "Image storage",
-                choices = c(
-                  "External files in App (spatial-assets/)" = "external",
-                  "Embedded in CRB" = "embedded"
-                ),
-                selected = model$spatial_image_storage %||% "embedded"
-              ),
+              class = "spatial-alignment-sidebar-primary",
               conditionalPanel(
                 condition = "output['has_coordinate_frame']",
-                tags$fieldset(
-                  class = "spatial-alignment-control-group spatial-coordinate-frame",
-                  tags$legend("Coordinate frame"),
-                  p(
-                    class = "hint",
-                    "Transform coordinates before export. Positive rotation is counter-clockwise."
-                  ),
-                  sliderInput(
-                    ns("coordinate_rotation"),
-                    "Coordinate rotation (degrees)",
-                    -180,
-                    180,
-                    0,
-                    step = 1,
-                    ticks = FALSE
-                  ),
-                  sliderInput(
-                    ns("coordinate_scale"),
-                    "Uniform coordinate scale",
-                    0.1,
-                    10,
-                    1,
-                    step = 0.1,
-                    ticks = FALSE
-                  ),
+                tags$details(
+                  class = "spatial-coordinate-settings",
+                  open = "open",
+                  tags$summary("Coordinate settings"),
                   div(
-                    class = "builder-action-row",
+                    class = "spatial-coordinate-settings-body",
+                    p(
+                      class = "hint",
+                      "Transform coordinates before export. Positive rotation is counter-clockwise."
+                    ),
+                    sliderInput(
+                      ns("coordinate_rotation"),
+                      "Coordinate rotation (degrees)",
+                      -180,
+                      180,
+                      0,
+                      step = 0.1,
+                      ticks = FALSE
+                    ),
+                    sliderInput(
+                      ns("coordinate_scale"),
+                      "Uniform coordinate scale",
+                      0.1,
+                      10,
+                      1,
+                      step = 0.1,
+                      ticks = FALSE
+                    ),
+                    sliderInput(
+                      ns("point_opacity"),
+                      "Point opacity",
+                      0,
+                      100,
+                      85,
+                      step = 5,
+                      post = "%",
+                      ticks = FALSE
+                    ),
+                    sliderInput(
+                      ns("point_size"),
+                      "Point size",
+                      1,
+                      12,
+                      5,
+                      step = 1,
+                      ticks = FALSE
+                    ),
+                    div(
+                      class = "builder-action-row",
+                      actionButton(
+                        ns("save_coordinate_transform"),
+                        "Save",
+                        class = "btn btn-action"
+                      ),
+                      actionButton(
+                        ns("reset_coordinate_transform"),
+                        "Reset",
+                        class = "btn btn-quiet"
+                      )
+                    )
+                  )
+                ),
+                ns = ns
+              ),
+              div(
+                class = "enhance-tissue-file-control builder-file-picker builder-file-picker--compact",
+                tags$input(
+                  id = ns("tissue_image_file"),
+                  name = ns("tissue_image_file"),
+                  class = "shiny-input-file enhance-tissue-file-input builder-file-input",
+                  type = "file",
+                  accept = ".png,.jpg,.jpeg",
+                  `tabindex` = "-1"
+                ),
+                tags$label(
+                  `for` = ns("tissue_image_file"),
+                  class = "enhance-tissue-file-button builder-file-trigger",
+                  `tabindex` = "0",
+                  role = "button",
+                  uiOutput(ns("add_image_label"), inline = TRUE)
+                )
+              ),
+              conditionalPanel(
+                condition = "output['has_multiple_images']",
+                selectInput(
+                  ns("active_image"),
+                  "Image",
+                  choices = initial_image_choices,
+                  selected = if (length(initial_image_choices)) {
+                    initial_image_choices[[1L]]
+                  } else {
+                    character()
+                  }
+                ),
+                ns = ns
+              ),
+              div(
+                class = "spatial-alignment-status",
+                `aria-live` = "polite",
+                uiOutput(ns("alignment_status"))
+              ),
+            ),
+            div(
+              class = "spatial-alignment-sidebar-scroll",
+              conditionalPanel(
+                condition = "output['has_image']",
+                div(
+                  class = "spatial-alignment-controls builder-controls-grid builder-controls-grid--sliders",
+                  tags$details(
+                    class = "spatial-coordinate-settings",
+                    open = "open",
+                    tags$summary("Position"),
+                    div(
+                      class = "spatial-coordinate-settings-body",
+                      sliderInput(
+                        ns("img_dx"),
+                        "Horizontal offset",
+                        -1,
+                        1,
+                        0,
+                        ticks = FALSE
+                      ),
+                      sliderInput(
+                        ns("img_dy"),
+                        "Vertical offset",
+                        -1,
+                        1,
+                        0,
+                        ticks = FALSE
+                      )
+                    )
+                  ),
+                  tags$details(
+                    class = "spatial-coordinate-settings",
+                    open = "open",
+                    tags$summary("Scale & orientation"),
+                    div(
+                      class = "spatial-coordinate-settings-body",
+                      sliderInput(
+                        ns("img_scale"),
+                        "Scale",
+                        0.2,
+                        3,
+                        1,
+                        step = 0.02,
+                        ticks = FALSE
+                      ),
+                      sliderInput(
+                        ns("img_rotate"),
+                        "Rotation (degrees)",
+                        -180,
+                        180,
+                        0,
+                        ticks = FALSE
+                      ),
+                      checkboxInput(
+                        ns("image_flip_x"),
+                        "Flip horizontally",
+                        FALSE
+                      ),
+                      checkboxInput(
+                        ns("image_flip_y"),
+                        "Flip vertically",
+                        FALSE
+                      )
+                    )
+                  ),
+                  tags$details(
+                    class = "spatial-coordinate-settings",
+                    open = "open",
+                    tags$summary("Image appearance"),
+                    div(
+                      class = "spatial-coordinate-settings-body",
+                      sliderInput(
+                        ns("image_opacity"),
+                        "Image opacity",
+                        0,
+                        100,
+                        80,
+                        step = 5,
+                        post = "%",
+                        ticks = FALSE
+                      )
+                    )
+                  )
+                ),
+                div(
+                  class = "spatial-alignment-actions builder-action-row",
+                  div(
+                    class = "spatial-alignment-actions-primary",
                     actionButton(
-                      ns("save_coordinate_transform"),
-                      "Save coordinate transform",
+                      ns("apply_align"),
+                      "Save alignment",
                       class = "btn btn-action"
                     ),
                     actionButton(
-                      ns("reset_coordinate_transform"),
-                      "Reset coordinates",
+                      ns("reset_align"),
+                      "Reset alignment",
                       class = "btn btn-quiet"
+                    )
+                  ),
+                  actionButton(
+                    ns("apply_align_all"),
+                    "Apply transform to matching image label",
+                    class = "btn btn-quiet"
+                  )
+                ),
+                ns = ns
+              ),
+              conditionalPanel(
+                condition = "output['has_image']",
+                tags$details(
+                  class = "spatial-coordinate-settings spatial-image-options",
+                  tags$summary("Spatial image options"),
+                  div(
+                    class = "spatial-coordinate-settings-body",
+                    selectInput(
+                      ns("spatial_image_storage"),
+                      "Image storage",
+                      choices = c(
+                        "External files in App (spatial-assets/)" = "external",
+                        "Embedded in CRB" = "embedded"
+                      ),
+                      selected = model$spatial_image_storage %||% "embedded"
                     )
                   )
                 ),
                 ns = ns
               )
-            ),
-            conditionalPanel(
-              condition = "output['has_multiple_images']",
-              selectInput(
-                ns("active_image"),
-                "Image",
-                choices = initial_image_choices,
-                selected = if (length(initial_image_choices)) {
-                  initial_image_choices[[1L]]
-                } else {
-                  character()
-                }
-              ),
-              ns = ns
-            ),
-            div(
-              class = "builder-status spatial-alignment-status",
-              `aria-live` = "polite",
-              uiOutput(ns("alignment_status"))
-            ),
-          ),
-          div(
-            class = "spatial-alignment-sidebar-scroll",
-            conditionalPanel(
-              condition = "output['has_image']",
-              div(
-                class = "spatial-alignment-controls builder-controls-grid builder-controls-grid--sliders",
-                tags$fieldset(
-                  class = "spatial-alignment-control-group",
-                  tags$legend("Position"),
-                  sliderInput(
-                    ns("img_dx"),
-                    "Horizontal offset",
-                    -1,
-                    1,
-                    0,
-                    ticks = FALSE
-                  ),
-                  sliderInput(
-                    ns("img_dy"),
-                    "Vertical offset",
-                    -1,
-                    1,
-                    0,
-                    ticks = FALSE
-                  )
-                ),
-                tags$fieldset(
-                  class = "spatial-alignment-control-group",
-                  tags$legend("Scale & orientation"),
-                  sliderInput(
-                    ns("img_scale"),
-                    "Scale",
-                    0.2,
-                    3,
-                    1,
-                    step = 0.02,
-                    ticks = FALSE
-                  ),
-                  sliderInput(
-                    ns("img_rotate"),
-                    "Rotation (degrees)",
-                    -180,
-                    180,
-                    0,
-                    ticks = FALSE
-                  ),
-                  checkboxInput(ns("image_flip_x"), "Flip horizontally", FALSE),
-                  checkboxInput(ns("image_flip_y"), "Flip vertically", FALSE)
-                ),
-                tags$fieldset(
-                  class = "spatial-alignment-control-group",
-                  tags$legend("Appearance"),
-                  sliderInput(
-                    ns("image_opacity"),
-                    "Image opacity",
-                    0,
-                    100,
-                    80,
-                    step = 5,
-                    post = "%",
-                    ticks = FALSE
-                  ),
-                  sliderInput(
-                    ns("point_opacity"),
-                    "Point opacity",
-                    0,
-                    100,
-                    85,
-                    step = 5,
-                    post = "%",
-                    ticks = FALSE
-                  ),
-                  sliderInput(
-                    ns("point_size"),
-                    "Point size",
-                    1,
-                    12,
-                    5,
-                    step = 1,
-                    ticks = FALSE
-                  )
-                )
-              ),
-              div(
-                class = "spatial-alignment-actions builder-action-row",
-                actionButton(
-                  ns("apply_align"),
-                  "Save alignment",
-                  class = "btn btn-action"
-                ),
-                actionButton(
-                  ns("apply_align_all"),
-                  "Apply transform to matching image label",
-                  class = "btn btn-quiet"
-                ),
-                actionButton(
-                  ns("reset_align"),
-                  "Reset alignment",
-                  class = "btn btn-quiet"
-                )
-              ),
-              ns = ns
             )
           )
         ),
@@ -563,13 +617,13 @@ builder_spatial_alignment_ui <- function(id, model) {
               builder_alignment_plot_output(
                 ns("alignment_spatial_plot"),
                 "Spatial-space cell plot"
+              ),
+              div(
+                class = "spatial-alignment-legend-wrap",
+                h5("Groups"),
+                uiOutput(ns("alignment_legend"))
               )
             )
-          ),
-          div(
-            class = "spatial-alignment-legend-wrap",
-            h5("Groups"),
-            uiOutput(ns("alignment_legend"))
           )
         )
       )

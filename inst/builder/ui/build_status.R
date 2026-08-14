@@ -924,38 +924,56 @@ builder_build_status_ui <- function(model) {
         )
       )
     },
-    builder_stage_text_items(model$warnings),
-    if (length(model$built)) builder_stage_text_items(basename(model$built)),
-    if (!is.null(model$app_dir)) {
-      actionButton(
-        "open_app",
-        "Open App",
-        class = "btn btn-primary",
-        `data-path` = model$app_dir
+    if (
+      !is.null(model$app_dir) ||
+        !is.null(model$release_dir) ||
+        !is.null(model$report_path)
+    ) {
+      div(
+        class = "builder-result-actions",
+        if (!is.null(model$app_dir)) {
+          actionButton(
+            "open_app",
+            "Open App",
+            class = "btn btn-primary",
+            `data-path` = model$app_dir
+          )
+        },
+        if (!is.null(model$release_dir)) {
+          actionButton(
+            "reveal_folder",
+            "Reveal Folder",
+            class = "btn btn-quiet",
+            `data-path` = model$release_dir
+          )
+        },
+        if (!is.null(model$release_dir)) {
+          actionButton(
+            "copy_path",
+            "Copy Path",
+            class = "btn btn-quiet",
+            `data-path` = model$release_dir
+          )
+        },
+        if (!is.null(model$report_path)) {
+          actionButton(
+            "copy_report",
+            "Copy Report",
+            class = "btn btn-quiet",
+            `data-report` = model$report_path
+          )
+        }
       )
     },
-    if (!is.null(model$release_dir)) {
-      actionButton(
-        "reveal_folder",
-        "Reveal Folder",
-        class = "btn btn-quiet",
-        `data-path` = model$release_dir
-      )
-    },
-    if (!is.null(model$release_dir)) {
-      actionButton(
-        "copy_path",
-        "Copy Path",
-        class = "btn btn-quiet",
-        `data-path` = model$release_dir
-      )
-    },
-    if (!is.null(model$report_path)) {
-      actionButton(
-        "copy_report",
-        "Copy Report",
-        class = "btn btn-quiet",
-        `data-report` = model$report_path
+    if (length(model$warnings) || length(model$built)) {
+      tags$details(
+        class = "builder-result-details",
+        open = if (!identical(model$type, "success")) "open",
+        tags$summary("Build details"),
+        builder_stage_text_items(model$warnings),
+        if (length(model$built)) {
+          builder_stage_text_items(basename(model$built))
+        }
       )
     }
   )

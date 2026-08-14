@@ -802,6 +802,23 @@ var focusPanel = null;
   // Draw the histology image behind the points of the spatial panel. The image's
   // data-space bounds are mapped to screen with the SAME transform as the cells,
   // so it aligns; opacity/offset/scale/flip/rotate then adjust it on top.
+  function imageRenderState(img, state) {
+    var pr = (img && img.preset) || {};
+    if (!pr.geometryBaked) return state;
+    var baseScaleX = Number(pr.scaleX) || 1;
+    var baseScaleY = Number(pr.scaleY) || baseScaleX;
+    return {
+      show: state.show,
+      opacity: state.opacity,
+      offsetX: state.offsetX - (Number(pr.offsetX) || 0),
+      offsetY: state.offsetY - (Number(pr.offsetY) || 0),
+      scaleX: state.scaleX / baseScaleX,
+      scaleY: state.scaleY / baseScaleY,
+      flipX: !!state.flipX !== !!pr.flipX,
+      flipY: !!state.flipY !== !!pr.flipY,
+      rotate: state.rotate - (Number(pr.rotation) || 0)
+    };
+  }
   function drawImage(p) {
     var sp = spaceById[p.spaceId];
     var cimg = currentImage(sp);
@@ -809,6 +826,7 @@ var focusPanel = null;
     if (!sp || !cimg || !sp._imgEl || !sp._imgReady || !state || !state.show) return;
     var b = cimg.bounds;
     if (!b) return;
+    state = imageRenderState(cimg, state);
     var tl = dataToScreen(p, b.xmin, b.ymax);   // data ymax = top (y-up)
     var br = dataToScreen(p, b.xmax, b.ymin);
     if (!tl || !br) return;
@@ -825,7 +843,7 @@ var focusPanel = null;
     c.save();
     c.globalAlpha = state.opacity;
     c.translate(x + w / 2 + offSX, y + h / 2 + offSY);
-    if (state.rotate) c.rotate(state.rotate * Math.PI / 180);
+    if (state.rotate) c.rotate(-state.rotate * Math.PI / 180);
     c.scale(state.scaleX * (state.flipX ? -1 : 1),
       state.scaleY * (state.flipY ? -1 : 1));
     c.drawImage(sp._imgEl, -w / 2, -h / 2, w, h);
@@ -3744,6 +3762,11 @@ var focusPanel = null;
     _layoutKey = null;
     var img = currentImage(space);
     if (!img || !img.uri) return;
+    var imagePreset = img.preset || {};
+    space.builder_point_opacity = imagePreset.pointOpacity != null
+      ? imagePreset.pointOpacity : space._builderDefaultPointOpacity;
+    space.builder_point_size = imagePreset.pointSize != null
+      ? imagePreset.pointSize : space._builderDefaultPointSize;
     var k = imgKey(space, img);
     space._imgState = (k && imgStates[k]) ? imgStates[k] : presetState(img);
     // Only the newest request may paint. Without the token a large image chosen
@@ -3756,6 +3779,28 @@ var focusPanel = null;
     };
     im.src = img.uri;
     space._imgEl = im;
+  }
+
+  function seedPointAppearanceFromImage(space) {
+    var img = currentImage(space);
+    var preset = (img && img.preset) || {};
+    if (!pointOpacityEdited && preset.pointOpacity != null &&
+      isFinite(Number(preset.pointOpacity))) {
+      pointOpacity = Number(preset.pointOpacity);
+      var opacity = $('cv-opacity');
+      if (opacity) { opacity.step = 'any'; opacity.value = String(pointOpacity); }
+      var opacityLabel = $('cv-op-val');
+      if (opacityLabel) opacityLabel.textContent = pointOpacity.toFixed(2);
+    }
+    if (!pointSizeEdited && preset.pointSize != null &&
+      isFinite(Number(preset.pointSize))) {
+      ps = Number(preset.pointSize);
+      psSeeded = true;
+      var size = $('cv-ps');
+      if (size) { size.step = 'any'; size.value = String(ps); }
+      var sizeLabel = $('cv-ps-val');
+      if (sizeLabel) sizeLabel.textContent = ps.toFixed(1);
+    }
   }
 
   // The line above the panels names the spaces on screen, so it has to be
@@ -3877,7 +3922,10 @@ var focusPanel = null;
     imgChoice[backgroundStateKey(sp)] = id;
     backgroundModes[backgroundStateKey(sp)] = 'custom';
     loadSpaceImage(sp);
-    if (sp.id === activeSpatialId) seedImgControls();
+    if (sp.id === activeSpatialId) {
+      seedImgControls();
+      seedPointAppearanceFromImage(sp);
+    }
     renderImagePicker();
     updateSpaceScopedControls();
     drawAll();
@@ -3909,6 +3957,7 @@ var focusPanel = null;
     });
     renderImagePicker();
     seedImgControls();
+    seedPointAppearanceFromImage(activeSpatial());
     updateSpaceScopedControls();
   }
 
@@ -3936,7 +3985,7 @@ var focusPanel = null;
         var el = $(id); if (!el) return;
         var lim = Math.max(Math.abs(ext) * 1.2, Math.abs(want || 0) * 1.1);
         el.min = String(-lim); el.max = String(lim);
-        el.step = String(Math.max(lim / 200, 1e-6));
+        el.step = 'any';
       };
       rerange('cv-img-offx', span[0], v.offsetX);
       rerange('cv-img-offy', span[1], v.offsetY);
@@ -3946,7 +3995,10 @@ var focusPanel = null;
     ['cv-img-scalex', 'cv-img-scaley'].forEach(function (id) {
       var el = $(id); if (!el) return;
       el.min = String(sLo); el.max = String(sHi);
+      el.step = 'any';
     });
+    var opacity = $('cv-img-opacity'); if (opacity) opacity.step = 'any';
+    var rotation = $('cv-img-rotate'); if (rotation) rotation.step = 'any';
     set('cv-img-opacity', v.opacity);
     set('cv-img-offx', v.offsetX);
     set('cv-img-offy', v.offsetY);
@@ -4016,6 +4068,8 @@ var focusPanel = null;
         images: images,
         builder_point_opacity: sample.builder_point_opacity,
         builder_point_size: sample.builder_point_size,
+        _builderDefaultPointOpacity: sample.builder_point_opacity,
+        _builderDefaultPointSize: sample.builder_point_size,
         _sampleName: sample.name,
         _spatialSample: true,
         _customImageId: custom,

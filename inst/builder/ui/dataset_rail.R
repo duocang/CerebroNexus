@@ -474,19 +474,9 @@ builder_pending_dataset_files_ui <- function(files) {
           shiny::strong(filename),
           shiny::span(class = "hint", detail)
         ),
-        shiny::div(
-          class = "builder-action-row",
-          shiny::span(
-            class = "builder-status builder-status--reading",
-            "Reading…"
-          ),
-          shiny::tags$button(
-            type = "button",
-            class = "btn btn-remove-soft pending-upload-remove",
-            `data-upload-id` = file$id,
-            `aria-label` = paste("Cancel adding", filename),
-            "Remove"
-          )
+        shiny::span(
+          class = "builder-status builder-status--reading",
+          "Reading…"
         )
       )
     })
@@ -507,6 +497,7 @@ builder_empty_workbench_ui <- function() {
 builder_loading_workbench_ui <- function(entry) {
   stopifnot(inherits(entry, "builder_import_entry"))
   failed <- identical(entry$load_state, "error")
+  queued <- identical(entry$load_state, "queued")
   shiny::tags$section(
     class = paste(
       "builder-stage builder-loading-stage",
@@ -536,23 +527,25 @@ builder_loading_workbench_ui <- function(entry) {
         shiny::span()
       )
     },
-    shiny::div(
-      class = "builder-action-row builder-loading-actions",
-      if (failed) {
+    if (failed || queued) {
+      shiny::div(
+        class = "builder-action-row builder-loading-actions",
+        if (failed) {
+          shiny::tags$button(
+            type = "button",
+            class = "btn builder-retry-import",
+            `data-import-id` = entry$id,
+            "Retry"
+          )
+        },
         shiny::tags$button(
           type = "button",
-          class = "btn builder-retry-import",
+          class = "btn btn-remove-soft builder-remove-import",
           `data-import-id` = entry$id,
-          "Retry"
+          if (failed) "Remove dataset" else "Remove from queue"
         )
-      },
-      shiny::tags$button(
-        type = "button",
-        class = "btn btn-remove-soft builder-remove-import",
-        `data-import-id` = entry$id,
-        if (failed) "Remove dataset" else "Remove"
       )
-    )
+    }
   )
 }
 
@@ -567,6 +560,7 @@ builder_import_rail_ui <- function(entries, current = NULL) {
       stopifnot(inherits(entry, "builder_import_entry"))
       active <- identical(entry$id, current)
       failed <- identical(entry$load_state, "error")
+      queued <- identical(entry$load_state, "queued")
       importing <- !failed
       detail <- Filter(
         function(value) {
@@ -615,28 +609,30 @@ builder_import_rail_ui <- function(entries, current = NULL) {
             )
           )
         ),
-        shiny::div(
-          class = "ds-actions",
-          if (failed) {
+        if (failed || queued) {
+          shiny::div(
+            class = "ds-actions",
+            if (failed) {
+              shiny::tags$button(
+                type = "button",
+                class = "ds-move builder-retry-import",
+                `data-import-id` = entry$id,
+                "Retry"
+              )
+            },
             shiny::tags$button(
               type = "button",
-              class = "ds-move builder-retry-import",
+              class = "ds-del btn-remove-soft builder-remove-import",
               `data-import-id` = entry$id,
-              "Retry"
+              `aria-label` = if (failed) {
+                paste("Remove failed import", entry$label)
+              } else {
+                paste("Remove queued import", entry$label)
+              },
+              if (failed) "Remove" else "Remove from queue"
             )
-          },
-          shiny::tags$button(
-            type = "button",
-            class = "ds-del btn-remove-soft builder-remove-import",
-            `data-import-id` = entry$id,
-            `aria-label` = if (failed) {
-              paste("Remove failed import", entry$label)
-            } else {
-              paste("Cancel loading", entry$label)
-            },
-            "Remove"
           )
-        )
+        }
       )
     })
   )

@@ -525,6 +525,10 @@ test_that("CRB read-back matches exact frozen artifact identity", {
             xmax = 10,
             ymin = 0,
             ymax = 10
+          ),
+          histology_alignment = utils::modifyList(
+            builder_alignment_payload(image),
+            list(source = "Embedded tissue image")
           )
         )
       )
@@ -739,6 +743,46 @@ test_that("Builder image attachment is exact, collision-safe, and idempotent", {
     "data:image/png;base64,CC=="
   )
   expect_identical(second$histology_images[["tissue.png"]], embedded)
+})
+
+test_that("one embedded FOV keeps every Builder image label and appearance", {
+  spatial <- list(
+    coordinates = data.frame(x = 1:2, y = 2:1, row.names = c("a", "b")),
+    histology_images = list()
+  )
+  make_record <- function(name, opacity, point_size) {
+    builder_alignment_record(
+      source = list(name = paste0(name, ".png"), type = "image/png"),
+      source_uri = paste0("data:image/png;base64,", name),
+      uri = paste0("data:image/png;base64,", name),
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 6),
+      parameters = list(image_opacity = opacity, point_size = point_size),
+      saved = TRUE,
+      section = list(id = "FOV_A", kind = "spatial")
+    )
+  }
+  spatial <- builder_attach_spatial_image(
+    spatial,
+    make_record("axes", 0.6, 8),
+    label = "Axes",
+    replace_managed = TRUE
+  )
+  spatial <- builder_attach_spatial_image(
+    spatial,
+    make_record("layers", 0.4, 4),
+    label = "Layers",
+    replace_managed = FALSE
+  )
+
+  expect_identical(names(spatial$histology_images), c("Axes", "Layers"))
+  expect_equal(
+    spatial$histology_images$Axes$histology_alignment$image_opacity,
+    0.6
+  )
+  expect_equal(
+    spatial$histology_images$Layers$histology_alignment$point_size,
+    4
+  )
 })
 
 test_that("legacy singular Builder images migrate without leaving a duplicate", {

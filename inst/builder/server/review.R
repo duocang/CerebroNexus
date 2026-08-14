@@ -545,7 +545,8 @@ render_configure_workbench <- function() {
         profile = entry$profile,
         state = if (inherits(state, "try-error")) list() else state,
         settings = entry$settings,
-        modules = list()
+        modules = list(),
+        active_section = active_slice()
       ),
       dynamic_modules = TRUE
     ),

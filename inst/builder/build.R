@@ -390,10 +390,17 @@ builder_verify_crb <- function(path, item) {
     } else {
       expected_image
     }
-    expected_payloads <- lapply(
-      expected_records,
-      builder_histology_image_payload
-    )
+    expected_record_labels <- names(expected_records)
+    expected_payloads <- lapply(seq_along(expected_records), function(index) {
+      payload <- builder_histology_image_payload(expected_records[[index]])
+      if (
+        !is.null(expected_record_labels) &&
+          nzchar(expected_record_labels[[index]])
+      ) {
+        payload$histology_alignment$source <- expected_record_labels[[index]]
+      }
+      payload
+    })
     observed_images <- if (is.list(observed_image)) {
       observed_image$histology_images %||% list()
     } else {
@@ -422,6 +429,13 @@ builder_verify_crb <- function(path, item) {
       )
     }
     expected_alignment <- utils::tail(expected_records, 1L)[[1L]]
+    expected_alignment_payload <- builder_alignment_payload(expected_alignment)
+    if (!is.null(expected_record_labels) && length(expected_record_labels)) {
+      expected_alignment_payload$source <- utils::tail(
+        expected_record_labels,
+        1L
+      )[[1L]]
+    }
     has_canonical_alignment <- any(
       c("dx", "rotation", "image_opacity", "point_opacity") %in%
         names(expected_alignment)
@@ -430,7 +444,7 @@ builder_verify_crb <- function(path, item) {
       has_canonical_alignment &&
         !identical(
           observed_image$histology_alignment,
-          builder_alignment_payload(expected_alignment)
+          expected_alignment_payload
         )
     ) {
       stop(
@@ -912,7 +926,9 @@ builder_verify_crb <- function(path, item) {
         offset_x = record$dx,
         offset_y = record$dy,
         rotation = record$rotation,
-        image_opacity = record$image_opacity
+        image_opacity = record$image_opacity,
+        point_opacity = record$point_opacity,
+        point_size = record$point_size
       )
     }
   }

@@ -110,7 +110,7 @@ test_that("pending dataset files render safe bounded Reading rows", {
   expect_match(html, "RDS · 2 KB", fixed = TRUE)
   expect_match(html, "QS2 · 4 KB", fixed = TRUE)
   expect_match(html, "Reading…", fixed = TRUE)
-  expect_match(html, "pending-upload-remove", fixed = TRUE)
+  expect_false(grepl("pending-upload-remove", html, fixed = TRUE))
   expect_false(grepl("/private/shiny-upload", html, fixed = TRUE))
   expect_false(grepl("fakepath", html, fixed = TRUE))
 })
@@ -1034,7 +1034,7 @@ if (builder_rail_api_available) {
     })
   })
 
-  test_that("pending dataset Remove is delegated through one Shiny event", {
+  test_that("pending dataset UI does not advertise unsupported cancellation", {
     client <- paste(
       readLines(
         builder_profile_inst_path("builder", "www", "builder.js"),
@@ -1043,8 +1043,8 @@ if (builder_rail_api_available) {
       collapse = "\n"
     )
 
-    expect_match(client, ".pending-upload-remove", fixed = TRUE)
-    expect_match(client, 'send("cancel_pending_upload"', fixed = TRUE)
+    expect_false(grepl(".pending-upload-remove", client, fixed = TRUE))
+    expect_false(grepl('send("cancel_pending_upload"', client, fixed = TRUE))
   })
 
   test_that("protocol recovery retains retried and releases failed load reservations", {

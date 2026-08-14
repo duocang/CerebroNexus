@@ -425,7 +425,7 @@ ui <- tagList(
     ),
     tags$button(
       type = "button",
-      class = "btn btn-primary builder-first-run-dismiss",
+      class = "btn builder-first-run-dismiss",
       "Got it"
     )
   )

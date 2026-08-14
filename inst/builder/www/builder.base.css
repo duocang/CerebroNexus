@@ -1,7 +1,11 @@
 /* CerebroNexus Builder: base element and global foundation styles. */
 
 * { box-sizing: border-box; }
-html { font-size: 16px; }
+html {
+  font-size: 16px;
+  scrollbar-color: var(--c-border-2) transparent;
+  scrollbar-width: thin;
+}
 .visually-hidden {
   position: absolute !important;
   width: 1px !important;

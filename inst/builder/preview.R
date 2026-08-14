@@ -35,6 +35,33 @@ BUILDER_PREVIEW_MAX <- 12000L
   list(xmin = xr[[1L]], xmax = xr[[2L]], ymin = yr[[1L]], ymax = yr[[2L]])
 }
 
+builder_alignment_coordinate_frame <- function(bounds, transform = NULL) {
+  if (!.builder_alignment_valid_bounds(bounds)) {
+    return(NULL)
+  }
+  frame <- data.frame(
+    x = c(bounds$xmin, bounds$xmax, bounds$xmax, bounds$xmin, bounds$xmin),
+    y = c(bounds$ymin, bounds$ymin, bounds$ymax, bounds$ymax, bounds$ymin)
+  )
+  if (is.null(transform)) {
+    return(frame)
+  }
+  angle <- as.numeric(transform$rotation_degrees %||% 0) * pi / 180
+  scale <- as.numeric(transform$scale %||% 1)
+  pivot <- transform$pivot %||%
+    c(
+      x = (bounds$xmin + bounds$xmax) / 2,
+      y = (bounds$ymin + bounds$ymax) / 2
+    )
+  centered_x <- frame$x - pivot[["x"]]
+  centered_y <- frame$y - pivot[["y"]]
+  frame$x <- pivot[["x"]] +
+    scale * (centered_x * cos(angle) - centered_y * sin(angle))
+  frame$y <- pivot[["y"]] +
+    scale * (centered_x * sin(angle) + centered_y * cos(angle))
+  frame
+}
+
 .builder_alignment_unavailable <- function(sections = list(), message) {
   list(
     available = FALSE,
@@ -45,6 +72,7 @@ BUILDER_PREVIEW_MAX <- 12000L
     transcriptome = NULL,
     spatial = NULL,
     bounds = NULL,
+    coordinate_frame = NULL,
     capped = FALSE
   )
 }
@@ -138,6 +166,7 @@ builder_alignment_preview_model <- function(
       transcriptome = transcriptome_full[keep, , drop = FALSE],
       spatial = spatial_full[keep, , drop = FALSE],
       bounds = .builder_alignment_bounds(spatial_full),
+      coordinate_frame = .builder_alignment_bounds(spatial_full),
       capped = nrow(spatial_full) > length(keep)
     ))
   }
@@ -204,6 +233,7 @@ builder_alignment_preview_model <- function(
     ))
   }
   coordinate_transform <- NULL
+  coordinate_frame <- .builder_alignment_bounds(physical)
   if (
     is.list(coordinate_transforms) &&
       !is.null(coordinate_transforms[[section$source_id]])
@@ -249,6 +279,7 @@ builder_alignment_preview_model <- function(
     transcriptome = transcriptome_full[keep, , drop = FALSE],
     spatial = spatial_full[keep, , drop = FALSE],
     bounds = .builder_alignment_bounds(spatial_full),
+    coordinate_frame = coordinate_frame,
     coordinate_transform = coordinate_transform,
     capped = nrow(spatial_full) > length(keep)
   )
@@ -680,6 +711,9 @@ builder_alignment_plot <- function(
   colors = NULL,
   image_uri = NULL,
   image_bounds = NULL,
+  image_preview = NULL,
+  coordinate_frame = NULL,
+  coordinate_transform = NULL,
   image_opacity = 0.8,
   point_opacity = 0.85,
   point_size = 5
@@ -716,8 +750,86 @@ builder_alignment_plot <- function(
     ),
     text = hover,
     hoverinfo = "text",
-    showlegend = FALSE
+    showlegend = FALSE,
+    meta = list(builder_alignment_role = "points")
   )
+  frame_bounds <- coordinate_frame %||% .builder_alignment_bounds(frame)
+  initial_outline <- builder_alignment_coordinate_frame(frame_bounds)
+  frame_outline <- builder_alignment_coordinate_frame(
+    frame_bounds,
+    coordinate_transform
+  )
+  if (!is.null(initial_outline)) {
+    plot <- plotly::add_trace(
+      plot,
+      data = initial_outline,
+      x = ~x,
+      y = ~y,
+      type = "scatter",
+      mode = "lines",
+      line = list(color = "#9a958d", width = 1, dash = "dot"),
+      hoverinfo = "skip",
+      showlegend = FALSE,
+      meta = list(builder_alignment_role = "initial-frame"),
+      inherit = FALSE
+    )
+  }
+  if (!is.null(frame_outline)) {
+    plot <- plotly::add_trace(
+      plot,
+      data = frame_outline,
+      x = ~x,
+      y = ~y,
+      type = "scatter",
+      mode = "lines",
+      line = list(color = "#5f5a54", width = 1.5),
+      hoverinfo = "skip",
+      showlegend = FALSE,
+      meta = list(builder_alignment_role = "current-frame"),
+      inherit = FALSE
+    )
+    rotation <- as.numeric(coordinate_transform$rotation_degrees %||% 0)
+    reference_edge <- frame_outline[1:2, , drop = FALSE]
+    rotation_label <- format(
+      round(rotation, 1),
+      trim = TRUE,
+      scientific = FALSE
+    )
+    reference_label <- data.frame(
+      x = mean(reference_edge$x),
+      y = mean(reference_edge$y),
+      label = paste0(if (rotation > 0) "+" else "", rotation_label, "°")
+    )
+    plot <- plotly::add_trace(
+      plot,
+      data = reference_edge,
+      x = ~x,
+      y = ~y,
+      type = "scatter",
+      mode = "lines+markers",
+      line = list(color = "#d45500", width = 3),
+      marker = list(color = "#d45500", size = 6),
+      hoverinfo = "skip",
+      showlegend = FALSE,
+      meta = list(builder_alignment_role = "reference-edge"),
+      inherit = FALSE
+    )
+    plot <- plotly::add_trace(
+      plot,
+      data = reference_label,
+      x = ~x,
+      y = ~y,
+      text = ~label,
+      type = "scatter",
+      mode = "text",
+      textposition = "top center",
+      textfont = list(color = "#d45500", size = 12),
+      hoverinfo = "skip",
+      showlegend = FALSE,
+      meta = list(builder_alignment_role = "reference-label"),
+      inherit = FALSE
+    )
+  }
   images <- list()
   if (!is.null(image_uri) && .builder_alignment_valid_bounds(image_bounds)) {
     images <- list(list(
@@ -738,24 +850,53 @@ builder_alignment_plot <- function(
     images = images,
     dragmode = FALSE,
     xaxis = list(
-      title = "",
       zeroline = FALSE,
-      showgrid = FALSE,
-      showticklabels = FALSE,
+      showgrid = TRUE,
+      gridcolor = "rgba(0, 0, 0, 0.08)",
+      showticklabels = TRUE,
+      ticks = "outside",
       fixedrange = TRUE
     ),
     yaxis = list(
-      title = "",
       zeroline = FALSE,
-      showgrid = FALSE,
-      showticklabels = FALSE,
+      showgrid = TRUE,
+      gridcolor = "rgba(0, 0, 0, 0.08)",
+      showticklabels = TRUE,
+      ticks = "outside",
       fixedrange = TRUE,
-      scaleanchor = if (length(images)) "x" else NULL
+      scaleanchor = "x"
     ),
-    margin = list(l = 8, r = 8, t = 8, b = 8),
+    margin = list(l = 12, r = 6, t = 6, b = 12),
+    meta = list(
+      builder_alignment_rotation = as.numeric(
+        coordinate_transform$rotation_degrees %||% 0
+      ),
+      builder_alignment_pivot = list(
+        x = (frame_bounds$xmin + frame_bounds$xmax) / 2,
+        y = (frame_bounds$ymin + frame_bounds$ymax) / 2
+      ),
+      builder_alignment_scale = as.numeric(
+        coordinate_transform$scale %||% 1
+      ),
+      builder_image_preview = if (is.null(image_preview)) {
+        NULL
+      } else {
+        list(
+          source = image_preview$source_uri,
+          base_bounds = image_preview$base_bounds,
+          dx = image_preview$dx,
+          dy = image_preview$dy,
+          scale = image_preview$scale,
+          rotation = image_preview$rotation,
+          flip_x = image_preview$flip_x,
+          flip_y = image_preview$flip_y,
+          image_opacity = image_preview$image_opacity
+        )
+      }
+    ),
     showlegend = FALSE,
     paper_bgcolor = "rgba(0,0,0,0)",
-    plot_bgcolor = "#fbfaf8"
+    plot_bgcolor = "rgba(0,0,0,0)"
   ) |>
     plotly::config(
       staticPlot = TRUE,

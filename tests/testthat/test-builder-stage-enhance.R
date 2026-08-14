@@ -285,7 +285,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   )
   expect_match(html, "Position", fixed = TRUE)
   expect_match(html, "Scale &amp; orientation", fixed = TRUE)
-  expect_match(html, "Appearance", fixed = TRUE)
+  expect_match(html, "Image appearance", fixed = TRUE)
   expect_match(html, "Image opacity", fixed = TRUE)
   expect_match(html, "Point opacity", fixed = TRUE)
   expect_match(html, 'data-postfix="%"', fixed = TRUE)
@@ -411,7 +411,8 @@ test_that("Enhance model derives attachments and retained content from state", {
         )
       )
     ),
-    modules = list()
+    modules = list(),
+    active_section = "section-b"
   )
 
   expect_identical(model$attachments$tables$selected, "markers")
@@ -420,6 +421,7 @@ test_that("Enhance model derives attachments and retained content from state", {
     c("section-a", "section-b")
   )
   expect_identical(model$attachments$histology$selected, "section-a")
+  expect_identical(model$attachments$histology$active_section, "section-b")
   expect_identical(
     vapply(model$auto_retained, `[[`, character(1), "id"),
     "immune_repertoire"

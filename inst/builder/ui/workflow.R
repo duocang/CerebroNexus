@@ -27,6 +27,7 @@ builder_workflow_progress_ui <- function(
     stop("Valid Builder workflow availability is required.", call. = FALSE)
   }
   labels <- c("Upload", "Data setup", "Review", "Build")
+  current_index <- match(stage, stages)
   tags$nav(
     class = "builder-workflow-progress",
     `aria-label` = "Builder progress",
@@ -34,6 +35,7 @@ builder_workflow_progress_ui <- function(
     tags$ol(lapply(seq_along(stages), function(index) {
       stage_id <- stages[[index]]
       current <- identical(stage, stage_id)
+      complete <- index < current_index
       enabled <- isTRUE(available[[stage_id]]) && !isTRUE(locked)
       label <- if (current) {
         tags$span(labels[[index]])
@@ -41,10 +43,23 @@ builder_workflow_progress_ui <- function(
         actionLink(
           paste0("workflow_stage_", stage_id),
           labels[[index]],
-          class = "builder-workflow-stage-link"
+          class = "builder-workflow-stage-link",
+          `aria-label` = if (complete) {
+            paste(labels[[index]], "completed")
+          } else {
+            labels[[index]]
+          }
         )
       } else {
-        tags$span(`aria-disabled` = "true", labels[[index]])
+        tags$span(
+          `aria-disabled` = "true",
+          `aria-label` = if (complete) {
+            paste(labels[[index]], "completed")
+          } else {
+            labels[[index]]
+          },
+          labels[[index]]
+        )
       }
       tags$li(
         class = paste(
@@ -54,7 +69,8 @@ builder_workflow_progress_ui <- function(
           } else {
             "is-unavailable"
           },
-          if (isTRUE(locked) && !current) "is-locked" else NULL
+          if (isTRUE(locked) && !current) "is-locked" else NULL,
+          if (complete) "is-complete" else NULL
         ),
         `aria-current` = if (current) "step" else NULL,
         label

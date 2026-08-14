@@ -338,7 +338,9 @@ test_that("createShinyApp freezes typed run options into config", {
     )
   )
   expect_true("shiny.appobj" %in% runtime$class)
-  expect_identical(runtime$options, expected_options)
+  ## Launch/runtime options live in the exported config but are stripped from
+  ## the embedded shiny.appobj so AppDriver/shiny-server can choose their port.
+  expect_length(runtime$options, 0L)
   expect_identical(runtime$after_source, runtime$sentinel)
   expect_identical(runtime$during, runtime$expected_bytes)
   expect_identical(runtime$after_stop, runtime$sentinel)

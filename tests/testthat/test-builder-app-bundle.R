@@ -349,7 +349,9 @@ builder_app_external_fixture <- function(
         offset_x = 2,
         offset_y = -1,
         rotation = 90,
-        image_opacity = 0.8
+        image_opacity = 0.8,
+        point_opacity = 0.65,
+        point_size = 6
       )
     )
   )
@@ -1402,6 +1404,12 @@ test_that("the bundled App entrypoint runs directly with visible startup informa
 
   expect_match(source, "sys.nframe() == 0L", fixed = TRUE)
   expect_match(source, "direct_options$quiet <- FALSE", fixed = TRUE)
+  expect_match(
+    source,
+    'embedded_options[c("port", "host", "launch.browser", "quiet", "display.mode")] <- NULL',
+    fixed = TRUE
+  )
+  expect_match(source, "options = embedded_options", fixed = TRUE)
   expect_match(source, "do.call(shiny::runApp", fixed = TRUE)
 })
 

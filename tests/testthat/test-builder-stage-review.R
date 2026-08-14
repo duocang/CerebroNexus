@@ -27,9 +27,13 @@ test_that("Review model translates a frozen plan into user language", {
   expect_identical(model$output$estimated_size, "4 KB")
   expect_identical(model$output$estimated_time, "A few minutes")
   expect_true(all(
-    c("Data info", "Linked views", "Marker genes") %in% model$pages
+    c("Data info", "Linked views", "Marker genes") %in%
+      vapply(model$pages, `[[`, character(1), "label")
   ))
-  expect_false(any(c("marker_genes", "spatial") %in% model$pages))
+  expect_false(any(
+    c("marker_genes", "spatial") %in%
+      vapply(model$pages, `[[`, character(1), "id")
+  ))
   expect_length(model$warnings, 0L)
   expect_true(model$can_build)
 })

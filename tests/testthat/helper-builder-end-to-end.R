@@ -297,9 +297,13 @@ builder_e2e_validate_all_content <- function(
       )
       matches <- vapply(
         output$histology_images %||% list(),
-        identical,
-        logical(1),
-        y = payload
+        function(observed) {
+          identical(
+            observed[c("histology_image", "histology_image_bounds")],
+            payload
+          )
+        },
+        logical(1)
       )
       check(
         any(matches),

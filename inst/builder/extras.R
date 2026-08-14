@@ -302,6 +302,50 @@ builder_alignment_transform_bounds <- function(
   )
 }
 
+#' Expand the immutable source-image bounds to the encoded rotation canvas.
+#'
+#' Arbitrary image rotation grows a transparent canvas around the source. The
+#' encoded canvas must keep the same data-units-per-pixel in both axes; fitting
+#' that larger canvas back into the unrotated bounds would stretch it.
+builder_alignment_oriented_bounds <- function(base_bounds, image_geometry) {
+  if (!.builder_alignment_valid_bounds(base_bounds)) {
+    stop("Alignment base bounds are invalid.", call. = FALSE)
+  }
+  geometry <- image_geometry %||% list()
+  values <- suppressWarnings(as.numeric(c(
+    geometry$source_width,
+    geometry$source_height,
+    geometry$extent_width,
+    geometry$extent_height
+  )))
+  if (
+    length(values) != 4L ||
+      anyNA(values) ||
+      any(!is.finite(values)) ||
+      any(values <= 0)
+  ) {
+    return(base_bounds)
+  }
+  source_width <- values[[1L]]
+  source_height <- values[[2L]]
+  extent_width <- values[[3L]]
+  extent_height <- values[[4L]]
+  units_per_pixel <- mean(c(
+    (base_bounds$xmax - base_bounds$xmin) / source_width,
+    (base_bounds$ymax - base_bounds$ymin) / source_height
+  ))
+  centre_x <- (base_bounds$xmin + base_bounds$xmax) / 2
+  centre_y <- (base_bounds$ymin + base_bounds$ymax) / 2
+  width <- extent_width * units_per_pixel
+  height <- extent_height * units_per_pixel
+  list(
+    xmin = centre_x - width / 2,
+    xmax = centre_x + width / 2,
+    ymin = centre_y - height / 2,
+    ymax = centre_y + height / 2
+  )
+}
+
 #' Create the canonical per-section alignment record.
 builder_alignment_record <- function(
   source,
@@ -309,17 +353,22 @@ builder_alignment_record <- function(
   uri,
   base_bounds,
   parameters = list(),
+  image_geometry = NULL,
   saved = FALSE,
   section = list()
 ) {
   parameters <- .builder_alignment_parameters(parameters)
+  oriented_bounds <- builder_alignment_oriented_bounds(
+    base_bounds,
+    image_geometry
+  )
   c(
     list(
       source = source,
       source_uri = source_uri,
       uri = uri,
       base_bounds = base_bounds,
-      bounds = builder_alignment_transform_bounds(base_bounds, parameters)
+      bounds = builder_alignment_transform_bounds(oriented_bounds, parameters)
     ),
     parameters,
     list(
@@ -348,6 +397,7 @@ builder_alignment_normalize <- function(
     uri = record$uri,
     base_bounds = base_bounds,
     parameters = parameters,
+    image_geometry = record,
     saved = if (is.null(record$saved)) TRUE else isTRUE(record$saved),
     section = list(
       id = section_id %||% record$section_id %||% "",
@@ -371,6 +421,12 @@ builder_alignment_reset <- function(record) {
     uri = normalized$source_uri,
     base_bounds = normalized$base_bounds,
     parameters = builder_alignment_defaults(),
+    image_geometry = list(
+      source_width = normalized$source_width,
+      source_height = normalized$source_height,
+      extent_width = normalized$source_width,
+      extent_height = normalized$source_height
+    ),
     saved = FALSE,
     section = list(
       id = normalized$section_id,
@@ -394,6 +450,14 @@ builder_alignment_reset <- function(record) {
     names(normalized)
   )
   reset[carried] <- normalized[carried]
+  if (!is.null(reset$source_width) && !is.null(reset$source_height)) {
+    reset$extent_width <- reset$source_width
+    reset$extent_height <- reset$source_height
+    reset$display_width <- reset$source_width
+    reset$display_height <- reset$source_height
+    reset$width <- reset$source_width
+    reset$height <- reset$source_height
+  }
   reset
 }
 
@@ -429,7 +493,7 @@ builder_alignment_apply_transform_to_all <- function(images, source_section) {
       target[[field]] <- source[[field]]
     }
     target$bounds <- builder_alignment_transform_bounds(
-      target$base_bounds,
+      builder_alignment_oriented_bounds(target$base_bounds, target),
       target
     )
     target$saved <- FALSE
@@ -473,7 +537,8 @@ builder_histology_image_payload <- function(record) {
   )
   list(
     histology_image = normalized$uri,
-    histology_image_bounds = bounds
+    histology_image_bounds = bounds,
+    histology_alignment = builder_alignment_payload(normalized)
   )
 }
 
@@ -483,7 +548,12 @@ builder_histology_image_payload <- function(record) {
 #' while a CRB may already contain several embedded images. Preserve those and
 #' add the Builder image under its source filename instead of reviving the
 #' removed singular `histology_image` fields.
-builder_attach_spatial_image <- function(spatial, record) {
+builder_attach_spatial_image <- function(
+  spatial,
+  record,
+  label = NULL,
+  replace_managed = TRUE
+) {
   normalized <- builder_alignment_normalize(record)
   if (is.null(normalized)) {
     return(NULL)
@@ -553,19 +623,21 @@ builder_attach_spatial_image <- function(spatial, record) {
   ## Rebuilding or re-aligning replaces the one image managed by the previous
   ## Builder run. Other embedded images remain untouched.
   if (
-    !is.null(previous_builder_label) &&
+    isTRUE(replace_managed) &&
+      !is.null(previous_builder_label) &&
       previous_builder_label %in% names(images)
   ) {
     images[[previous_builder_label]] <- NULL
   }
-  payload <- builder_histology_image_payload(normalized)
   label <- builder_safe_file_name(
-    normalized$source$name,
+    label %||% normalized$source$name,
     fallback = "Builder tissue image"
   )
   if (label %in% names(images)) {
     label <- utils::tail(make.unique(c(names(images), label)), 1L)
   }
+  payload <- builder_histology_image_payload(normalized)
+  payload$histology_alignment$source <- label
   images[[label]] <- payload
   alignment <- builder_alignment_payload(normalized)
   alignment$source <- label
@@ -1388,8 +1460,20 @@ builder_attach_crb_extras <- function(
       if (!is.null(builder_alignment_normalize(records, section_id = name))) {
         records <- list(records)
       }
-      for (record in records) {
-        spatial <- builder_attach_spatial_image(spatial, record)
+      record_labels <- names(records)
+      for (record_index in seq_along(records)) {
+        record <- records[[record_index]]
+        record_label <- if (!is.null(record_labels)) {
+          record_labels[[record_index]]
+        } else {
+          NULL
+        }
+        spatial <- builder_attach_spatial_image(
+          spatial,
+          record,
+          label = record_label,
+          replace_managed = identical(record_index, 1L)
+        )
         if (is.null(spatial)) {
           return(list(
             error = paste0(

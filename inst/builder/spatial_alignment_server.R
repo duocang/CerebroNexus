@@ -319,6 +319,13 @@ builder_spatial_alignment_server <- function(
       "enhance-active_section",
       selected = section
     )
+    ## Saving/restoring alignment replaces the outer Configure UI. The client
+    ## remembers this authoritative value across that redraw and re-applies it
+    ## to the replacement select without generating a second server event.
+    session$sendCustomMessage(
+      "builder_spatial_section_state",
+      list(value = section)
+    )
     labels <- update_image_choices(entry, section, selected = label)
     label <- if (!is.null(label) && label %in% labels) {
       label
@@ -489,6 +496,7 @@ builder_spatial_alignment_server <- function(
       uri = current_encoded$uri,
       base_bounds = current_draft$base_bounds,
       parameters = parameters(),
+      image_geometry = current_encoded,
       saved = FALSE,
       section = list(id = active_section(), kind = preview$section$kind)
     )
@@ -870,6 +878,9 @@ builder_spatial_alignment_server <- function(
       colors(),
       image_uri = record$uri %||% NULL,
       image_bounds = record$bounds %||% NULL,
+      image_preview = record,
+      coordinate_frame = preview$coordinate_frame %||% NULL,
+      coordinate_transform = preview$coordinate_transform %||% NULL,
       image_opacity = parameters()$image_opacity,
       point_opacity = appearance$opacity,
       point_size = appearance$size
@@ -917,10 +928,7 @@ builder_spatial_alignment_server <- function(
       return(shiny::div(class = "notice bad", preview$message))
     }
     if (is.null(current_draft)) {
-      return(shiny::div(
-        class = "notice",
-        "Points-only spatial view. Add a tissue image only when one is available."
-      ))
+      return(NULL)
     }
     builder_tissue_image_file_ui("enhance", current_draft)
   })
@@ -1040,6 +1048,21 @@ builder_spatial_alignment_server <- function(
     }
     changed <- !identical(previous, transforms[[section]])
     coordinate_draft(spec)
+    if (isTRUE(reset)) {
+      ids <- c("enhance-coordinate_rotation", "enhance-coordinate_scale")
+      invisible(lapply(ids, function(id) shiny::freezeReactiveValue(input, id)))
+      shiny::updateSliderInput(
+        session,
+        "enhance-coordinate_rotation",
+        value = 0
+      )
+      shiny::updateSliderInput(
+        session,
+        "enhance-coordinate_scale",
+        value = 1
+      )
+      request_preview(entry, section)
+    }
     if (!changed) {
       return(invisible(FALSE))
     }
@@ -1228,6 +1251,25 @@ builder_spatial_alignment_server <- function(
         next
       }
       record$uri <- image_encoded$uri
+      facts <- intersect(
+        names(image_encoded),
+        c(
+          "bytes",
+          "width",
+          "height",
+          "source_width",
+          "source_height",
+          "extent_width",
+          "extent_height",
+          "display_width",
+          "display_height"
+        )
+      )
+      record[facts] <- image_encoded[facts]
+      record$bounds <- builder_alignment_transform_bounds(
+        builder_alignment_oriented_bounds(record$base_bounds, record),
+        record
+      )
       record$saved <- TRUE
       images[[section]][[label]] <- record
     }

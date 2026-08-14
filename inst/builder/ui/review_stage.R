@@ -287,7 +287,23 @@ builder_review_existing_files <- function(policy, overwrite = FALSE) {
   )
 }
 
-builder_review_page_labels <- function(items, plan_contract = list()) {
+builder_review_page_tone <- function(id) {
+  switch(
+    as.character(id %||% ""),
+    marker_genes = ,
+    most_expressed_genes = ,
+    enriched_pathways = "is-analysis",
+    spatial = ,
+    trekker = "is-spatial",
+    trajectory = "is-trajectory",
+    immune_repertoire = ,
+    hla_tcr_motifs = "is-immune",
+    extra_material = "is-extra",
+    "is-core"
+  )
+}
+
+builder_review_pages <- function(items, plan_contract = list()) {
   catalog <- builder_viewer_page_catalog()
   visible_ids <- unique(unlist(
     lapply(items, function(item) {
@@ -303,14 +319,19 @@ builder_review_page_labels <- function(items, plan_contract = list()) {
       use.names = FALSE
     ))
   }
-  labels <- c(
-    catalog$always$label,
-    catalog$conditional$label[match(
-      intersect(catalog$conditional$id, visible_ids),
-      catalog$conditional$id
-    )]
-  )
-  unique(labels[!is.na(labels) & nzchar(labels)])
+  pages <- rbind(catalog$always, catalog$conditional)
+  page_ids <- unique(c(
+    catalog$always$id,
+    intersect(catalog$conditional$id, visible_ids)
+  ))
+  pages <- pages[match(page_ids, pages$id), , drop = FALSE]
+  unname(lapply(seq_len(nrow(pages)), function(index) {
+    list(
+      id = pages$id[[index]],
+      label = pages$label[[index]],
+      tone = builder_review_page_tone(pages$id[[index]])
+    )
+  }))
 }
 
 builder_review_group_label <- function(value) {
@@ -644,7 +665,7 @@ builder_review_model <- function(plan, verification = NULL) {
     dataset_count = as.integer(length(items)),
     output_label = "CRB files",
     datasets = lapply(items, review_dataset),
-    pages = builder_review_page_labels(items, plan$viewer_page_expectations),
+    pages = builder_review_pages(items, plan$viewer_page_expectations),
     output = list(
       directory = if (isTRUE(plan$output_pending)) {
         "Choose when you build"
@@ -703,18 +724,20 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
     )
   }
   page_limit <- 8L
-  shown_pages <- utils::head(model$pages %||% character(), page_limit)
+  pages <- model$pages %||% list()
+  shown_pages <- utils::head(pages, page_limit)
   more_pages <- utils::tail(
-    model$pages %||% character(),
-    max(0L, length(model$pages %||% character()) - page_limit)
+    pages,
+    max(0L, length(pages) - page_limit)
   )
   page_tags <- function(pages) {
     div(
       class = "review-page-tags",
       lapply(seq_along(pages), function(index) {
+        page <- pages[[index]]
         span(
-          class = paste0("review-page-tag tone-", ((index - 1L) %% 5L) + 1L),
-          pages[[index]]
+          class = paste("review-page-tag", page$tone),
+          page$label
         )
       })
     )
