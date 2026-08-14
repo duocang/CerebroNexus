@@ -142,7 +142,7 @@ builder_freeze_plan <- function(
       "unsafe_reference"
     ))
   }
-  preflight <- .builder_plan_preflight_entries(entries)
+  preflight <- .builder_plan_preflight_entries(entries, make_app = make_app)
   if (inherits(preflight, "builder_plan_failure")) {
     return(preflight)
   }
@@ -312,6 +312,7 @@ builder_freeze_plan <- function(
   included_projections <- preflight$included_projections
   included_trajectories <- preflight$included_trajectories
   cell_cycle <- preflight$cell_cycle
+  spatial_coordinate_transforms <- preflight$spatial_coordinate_transforms
   invalid_nomenclature <- vapply(
     entries,
     function(entry) {
@@ -548,6 +549,10 @@ builder_freeze_plan <- function(
         analyses = analyses,
         analysis_dependency_graph = analysis_dependency_graph,
         artifact_identity = artifact_identity,
+        spatial_coordinate_transforms = spatial_coordinate_transforms[[
+          index
+        ]] %||%
+          list(),
         cell_count = as.integer(
           entry$profile$n_cells %||%
             length(artifact_identity$cells %||% character())
@@ -562,10 +567,14 @@ builder_freeze_plan <- function(
           missing_histology = setdiff(spatial_sections, image_sections)
         ),
         spatial_alignment = list(
-          section_count = as.integer(length(alignment_sections)),
-          image_count = as.integer(length(aligned_sections)),
-          saved_count = as.integer(length(aligned_sections)),
-          points_only = setdiff(alignment_sections, aligned_sections)
+          section_count = as.integer(length(spatial_sections)),
+          image_count = .builder_plan_spatial_image_count(alignments$spatial),
+          saved_count = as.integer(sum(vapply(
+            .builder_plan_flatten_spatial_images(alignments$spatial),
+            function(record) isTRUE(record$saved),
+            logical(1)
+          ))),
+          points_only = setdiff(spatial_sections, image_sections)
         ),
         estimated_runtime = if (length(analyses)) {
           paste(unique(unname(runtime_costs[analyses])), collapse = ", ")
@@ -580,6 +589,7 @@ builder_freeze_plan <- function(
           settings$marker_imports %||% list()
         ),
         images = alignments$spatial,
+        spatial_image_storage = settings$spatial_image_storage %||% "embedded",
         trekker_alignment = alignments$trekker,
         colors = builder_resolve_colors(settings, entry$levels %||% list()),
         group_color_overrides = selected_color_overrides,
@@ -591,6 +601,10 @@ builder_freeze_plan <- function(
           settings$reductions[[1L]],
         default_trajectory = settings$default_trajectory %||% NULL,
         overview_point_size = settings$overview_point_size %||% 5,
+        overview_percentage_cells_to_show = settings[[
+          "overview_percentage_cells_to_show"
+        ]] %||%
+          100,
         metadata_policy = states[[index]]$metadata_policy %||%
           list(
             included = unique(c(

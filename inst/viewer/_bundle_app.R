@@ -31,7 +31,7 @@ viewer_app <- viewer_auth_apply(
   Cerebro.options[["cerebro_root"]]
 )
 
-shiny::shinyApp(
+app <- shiny::shinyApp(
   ui = viewer_app$ui,
   server = viewer_app$server,
   onStart = function() {
@@ -44,3 +44,11 @@ shiny::shinyApp(
   },
   options = shiny_options
 )
+
+if (sys.nframe() == 0L) {
+  direct_options <- shiny_options
+  direct_options$quiet <- FALSE
+  do.call(shiny::runApp, c(list(appDir = app), direct_options))
+} else {
+  app
+}

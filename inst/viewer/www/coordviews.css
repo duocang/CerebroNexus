@@ -169,12 +169,12 @@
 }
 /* The "More" panel is not inside .cv-topbar, so its dropdowns need the same
    look stated for them rather than inherited. */
-.coordviews-page .cv-more-inner select {
+#cv-more .cv-more-inner select {
   padding: 6px 9px; border: 1px solid var(--c-border-2, #e0e0e0);
   border-radius: 6px; background: var(--cv-surface); color: var(--cv-text);
   font-size: 12.5px; font-family: inherit; min-width: 150px;
 }
-.coordviews-page .cv-more-inner select:focus {
+#cv-more .cv-more-inner select:focus {
   outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
 }
 .coordviews-page .cv-ctl-range { min-width: 150px; }
@@ -299,7 +299,7 @@
 }
 .coordviews-page .cv-clearbtn:hover { background: var(--cv-red100); }
 
-/* ---- "More" toggle + the bar's collapsible second row ------------------- */
+/* ---- "More" toggle + responsive settings drawer ------------------------- */
 .coordviews-page .cv-morebtn {
   align-self: flex-end; display: inline-flex; align-items: center; gap: 7px;
   padding: 6px 13px; font-size: 12px; font-weight: 700;
@@ -332,95 +332,82 @@
   border-bottom: 4.5px solid transparent;
   border-left: 5.5px solid currentColor;
   transform-origin: 2.5px 50%;
-  transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+  transition: transform .2s cubic-bezier(.4, 0, .2, 1);
   transform: rotate(0deg);
 }
 .coordviews-page .cv-morebtn[aria-expanded="true"] .cv-caret {
   transform: rotate(90deg);
 }
 
-/* The second row of the SAME bar. Height animates via grid-template-rows
-   0fr -> 1fr, which interpolates to the content's natural height — no magic
-   max-height to guess and overshoot. `.cv-more-clip` provides the
-   overflow/min-height that makes the 0fr row collapse; `.cv-more-inner` carries
-   the hairline and padding so neither paints while collapsed. */
-/* Folded, this is display:none so the bar does not hold a flex line — and that
-   line's 16px row-gap — for a row that is not there. A negative margin cannot
-   pay for the gap: row-gap sits BETWEEN lines rather than on the item, and
-   under the bar's align-items:flex-end a margin-top does not move the item
-   either. JS mounts it (is-mounted) a frame before opening it, and unmounts it
-   after the collapse finishes, so the height animation still has a box to run
-   in. Open, the bar's gap sits above the hairline and balances its padding. */
-.coordviews-page .cv-more {
-  display: none; position: absolute; z-index: 1200;
-  top: calc(100% + 8px); right: 0; width: min(1000px, calc(100vw - 42px));
-  grid-template-rows: 0fr; opacity: 0; padding: 0 14px 14px;
+/* More is a stable viewport drawer, not another row in the plotting controls.
+   Keeping it outside normal flow prevents an advanced-settings visit from
+   resizing every canvas. JS mounts it for the enter/leave animation, then
+   removes it from display when closed. */
+#cv-more {
+  display: none; position: fixed; z-index: 1600;
+  inset: 0 0 0 auto; width: min(420px, calc(100vw - 24px)); height: 100vh;
+  height: 100dvh; padding: 0 14px 14px; opacity: 0;
+  box-sizing: border-box;
   background: var(--cv-surface); border: 1px solid var(--cv-border);
-  border-radius: 10px; box-shadow: 0 14px 34px rgba(0, 0, 0, .16);
-  transition: grid-template-rows .22s cubic-bezier(.4, 0, .2, 1),
-    opacity .16s ease;
+  border-radius: 12px 0 0 12px; box-shadow: -12px 0 34px rgba(0, 0, 0, .16);
+  transform: translateX(100%); transition: transform .22s cubic-bezier(.2, .8, .2, 1),
+    opacity .16s ease; overflow: hidden;
 }
-.coordviews-page .cv-more.is-mounted { display: grid; }
-.coordviews-page .cv-more.is-open { grid-template-rows: 1fr; opacity: 1; }
-.coordviews-page .cv-more.is-floating {
-  position: fixed; right: auto; top: 0; z-index: 1600;
-}
-.coordviews-page .cv-more-titlebar {
-  display: flex; align-items: center; gap: 8px; height: 40px;
+#cv-more.is-mounted { display: flex; flex-direction: column; }
+#cv-more.is-open { opacity: 1; transform: none; }
+#cv-more .cv-more-titlebar {
+  display: flex; flex: 0 0 auto; align-items: center; gap: 8px; height: 52px;
   margin: 0 -14px; padding: 0 13px; border-bottom: 1px solid var(--cv-border);
-  cursor: grab; user-select: none; touch-action: none;
 }
-.coordviews-page .cv-more-titlebar:active { cursor: grabbing; }
-.coordviews-page .cv-more-grip {
-  width: 15px; color: var(--cv-text3); font-size: 17px; font-weight: 700;
-  line-height: 7px; letter-spacing: 2px; text-align: center; transform: translateY(-2px);
-}
-.coordviews-page .cv-more-title { font-size: 12.5px; font-weight: 700; }
-.coordviews-page .cv-more-drag-hint { color: var(--cv-text3); font-size: 11px; }
-.coordviews-page .cv-more-close {
-  display: none; margin-left: auto; width: 25px; height: 25px; padding: 0;
+#cv-more .cv-more-title { font-size: 14px; font-weight: 700; }
+#cv-more .cv-more-close {
+  display: block; margin-left: auto; width: 32px; height: 32px; padding: 0;
   border: 0; border-radius: 5px; background: transparent; color: var(--cv-text2);
-  cursor: pointer; font: 22px/22px inherit;
+  cursor: pointer; font: 24px/24px inherit;
 }
-.coordviews-page .cv-more-close:hover { background: var(--cv-surface2); color: var(--cv-text); }
-.coordviews-page .cv-more.is-floating .cv-more-close { display: block; }
-.coordviews-page .cv-more-clip { overflow: hidden; min-height: 0; }
-/* The clip that makes the height animation possible also clips anything the row
-   opens DOWNWARDS — the group-filter dropdowns live here, and inside a clipped
-   box they are invisible and unclickable. Once the row has finished opening
-   there is nothing left to clip, so JS hands overflow back (and takes it away
-   again the instant a close starts, so the collapse still hides its contents). */
-.coordviews-page .cv-more-clip.is-clear { overflow: visible; }
-.coordviews-page .cv-more-inner {
-  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 22px 30px;
-  padding-top: 15px;
+#cv-more .cv-more-close:hover { background: var(--cv-surface2); color: var(--cv-text); }
+#cv-more .cv-more-clip {
+  flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.coordviews-page .cv-more-section { min-width: 0; }
-.coordviews-page .cv-more-heading {
+#cv-more .cv-more-inner {
+  display: flex; flex-direction: column; align-items: stretch; gap: 24px;
+  padding: 18px 2px 12px;
+}
+#cv-more .cv-more-section { min-width: 0; }
+#cv-more .cv-more-heading {
   margin: 0 0 9px; color: var(--cv-text2); font-size: 10.5px;
   font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
 }
-.coordviews-page .cv-more-images {
+#cv-more .cv-more-images {
   flex: 1 1 100%; padding-bottom: 14px; border-bottom: 1px solid var(--cv-border);
 }
-.coordviews-page .cv-more-points {
-  display: grid; grid-template-columns: repeat(3, minmax(150px, max-content));
-  gap: 16px 30px; align-items: start;
+#cv-more .cv-more-points {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: 18px; align-items: start;
 }
-.coordviews-page .cv-more-points .cv-more-heading { flex: 0 0 100%; margin-bottom: -4px; }
-.coordviews-page .cv-more-points .cv-more-heading { grid-column: 1 / -1; }
+#cv-more .cv-more-points .cv-more-heading { flex: 0 0 100%; margin-bottom: -4px; }
+#cv-more .cv-more-points .cv-more-heading { grid-column: 1 / -1; }
 /* The controls drift up a few px as the row closes, so the row reads as folding
    away rather than being clipped off. */
-.coordviews-page .cv-more-inner > * {
-  transition: transform .3s cubic-bezier(.4, 0, .2, 1), opacity .22s ease;
+#cv-more .cv-more-inner > * {
+  transition: transform .2s cubic-bezier(.4, 0, .2, 1), opacity .2s ease;
   transform: translateY(-5px); opacity: .35;
 }
-.coordviews-page .cv-more.is-open .cv-more-inner > * {
+#cv-more.is-open .cv-more-inner > * {
   transform: none; opacity: 1;
 }
+@media (max-width: 900px) {
+  #cv-more {
+    inset: 0; width: 100vw; max-width: none; height: 100vh; height: 100dvh;
+    border-width: 0; border-radius: 0; box-shadow: none;
+  }
+  #cv-more .cv-more-titlebar { height: 56px; }
+  #cv-more .cv-more-inner { padding: 20px 4px 18px; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .coordviews-page .cv-more,
-  .coordviews-page .cv-more-inner > *,
+  #cv-more,
+  #cv-more .cv-more-inner > *,
   .coordviews-page .cv-caret,
   .coordviews-page .cv-morebtn { transition: none; }
 }

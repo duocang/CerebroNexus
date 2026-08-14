@@ -1090,13 +1090,85 @@
     if (!plot.data || typeof plot.on !== "function") return;
     plot.dataset.builderPreview = "true";
     plot.on("plotly_afterplot", function () {
+      syncSpatialPreviewAspect(plot);
       renderPlotSummary(plot);
       plot.classList.remove("is-updating");
     });
     plot.on("plotly_relayouting", function () {
       plot.classList.add("is-updating");
     });
+    syncSpatialPreviewAspect(plot);
     renderPlotSummary(plot);
+  }
+
+  function finiteExtent(values) {
+    var finite = Array.from(values || []).map(Number).filter(Number.isFinite);
+    if (!finite.length) return null;
+    return Math.max.apply(null, finite) - Math.min.apply(null, finite);
+  }
+
+  function spatialPreviewAspect(plot) {
+    var images = plot && plot.layout && Array.from(plot.layout.images || []);
+    if (images && images.length) {
+      var image = images[0];
+      var imageWidth = Math.abs(Number(image.sizex));
+      var imageHeight = Math.abs(Number(image.sizey));
+      if (imageWidth > 0 && imageHeight > 0) return imageWidth / imageHeight;
+    }
+    var xs = [], ys = [];
+    Array.from((plot && plot.data) || []).forEach(function (trace) {
+      xs = xs.concat(Array.from(trace.x || []));
+      ys = ys.concat(Array.from(trace.y || []));
+    });
+    var width = finiteExtent(xs);
+    var height = finiteExtent(ys);
+    return width > 0 && height > 0 ? width / height : 4 / 3;
+  }
+
+  function syncSpatialPreviewAspect(plot) {
+    var frame = plot && plot.closest(".spatial-alignment-plot-frame");
+    if (!frame) return;
+    var ratio = spatialPreviewAspect(plot);
+    ratio = Math.max(0.75, Math.min(3, ratio));
+    var value = ratio.toFixed(4);
+    if (frame.dataset.spatialPreviewAspect === value) return;
+    frame.dataset.spatialPreviewAspect = value;
+    frame.style.setProperty("--spatial-preview-aspect", value);
+    syncSpatialWorkbench(frame, plot, ratio);
+    if (window.Plotly && window.Plotly.Plots) {
+      window.requestAnimationFrame(function () {
+        window.Plotly.Plots.resize(plot);
+      });
+    }
+  }
+
+  function syncSpatialWorkbench(frame, plot, ratio) {
+    var workbench = frame && frame.closest(".spatial-alignment-workbench");
+    var figure = frame && frame.closest(".spatial-alignment-figure");
+    if (!workbench || !figure) return;
+    var desktop = window.matchMedia("(min-width: 68.8125rem)").matches;
+    if (!desktop) {
+      frame.style.removeProperty("width");
+      frame.style.removeProperty("height");
+      return;
+    }
+    var header = figure.querySelector(".spatial-alignment-figure-header");
+    var availableWidth = figure.clientWidth;
+    var availableHeight = figure.clientHeight - (header ? header.offsetHeight + 6 : 0);
+    if (!(availableWidth > 0 && availableHeight > 0)) return;
+    var width = Math.min(availableWidth, availableHeight * ratio);
+    var height = width / ratio;
+    frame.style.width = Math.floor(width) + "px";
+    frame.style.height = Math.floor(height) + "px";
+    if (!frame.builderResizeObserver && window.ResizeObserver) {
+      frame.builderResizeObserver = new ResizeObserver(function () {
+        window.requestAnimationFrame(function () {
+          syncSpatialWorkbench(frame, plot, spatialPreviewAspect(plot));
+          if (window.Plotly && window.Plotly.Plots) window.Plotly.Plots.resize(plot);
+        });
+      });
+      frame.builderResizeObserver.observe(figure);
+    }
   }
 
   function colourLabel(input) {
@@ -1400,6 +1472,16 @@
     if (emit && input.dataset.inputId) send(input.dataset.inputId, value);
   }
 
+  function updateProjectionCellPercentage(input, emit) {
+    var root = input.closest(".viewer-projection-workspace");
+    if (!root) return;
+    var value = Number(input.value);
+    if (!Number.isFinite(value)) return;
+    var output = root.querySelector(".viewer-cell-percentage-value");
+    if (output) output.textContent = String(value) + "%";
+    if (emit && input.dataset.inputId) send(input.dataset.inputId, value);
+  }
+
   function trajectoryCards(root) {
     return Array.from(root.querySelectorAll(".viewer-trajectory-card"));
   }
@@ -1455,6 +1537,8 @@
       updateProjectionSelection(root, false);
       var pointSize = root.querySelector(".viewer-point-size-input");
       if (pointSize) updateProjectionPointSize(pointSize, false);
+      var cellPercentage = root.querySelector(".viewer-cell-percentage-input");
+      if (cellPercentage) updateProjectionCellPercentage(cellPercentage, false);
     });
     document.querySelectorAll(".viewer-trajectory-workspace").forEach(function (root) {
       if (root.dataset.builderTrajectories === "true") return;
@@ -1514,6 +1598,15 @@
     if (pointSize && message && Number.isFinite(Number(message.point_size))) {
       pointSize.value = String(message.point_size);
       updateProjectionPointSize(pointSize, false);
+    }
+    var cellPercentage = root.querySelector(".viewer-cell-percentage-input");
+    if (
+      cellPercentage &&
+      message &&
+      Number.isFinite(Number(message.percentage_cells_to_show))
+    ) {
+      cellPercentage.value = String(message.percentage_cells_to_show);
+      updateProjectionCellPercentage(cellPercentage, false);
     }
     updateProjectionSelection(root, false);
     var status = root.querySelector(".viewer-projection-status");
@@ -1729,6 +1822,13 @@
 
   document.addEventListener("click", function (event) {
     var target = event.target;
+    var spatialImageTrigger = target.closest(".enhance-tissue-file-button");
+    if (spatialImageTrigger) {
+      var spatialImageInput = document.getElementById(
+        spatialImageTrigger.getAttribute("for")
+      );
+      if (spatialImageInput) spatialImageInput.value = "";
+    }
     if (target.closest('[aria-disabled="true"]')) {
       event.preventDefault();
       event.stopPropagation();
@@ -1952,7 +2052,12 @@
     ) {
       event.preventDefault();
       var fileInput = document.getElementById(fileTrigger.getAttribute("for"));
-      if (fileInput) fileInput.click();
+      if (fileInput) {
+        if (fileTrigger.classList.contains("enhance-tissue-file-button")) {
+          fileInput.value = "";
+        }
+        fileInput.click();
+      }
       return;
     }
     var enhanceCheckbox = event.target.closest(".enhance-module-checkbox");
@@ -2001,6 +2106,10 @@
   document.addEventListener("input", function (event) {
     if (event.target.matches(".viewer-point-size-input")) {
       updateProjectionPointSize(event.target, false);
+      return;
+    }
+    if (event.target.matches(".viewer-cell-percentage-input")) {
+      updateProjectionCellPercentage(event.target, false);
       return;
     }
     if (event.target.matches(".viewer-group-search")) {
@@ -2061,6 +2170,10 @@
       updateProjectionPointSize(event.target, true);
       return;
     }
+    if (event.target.matches(".viewer-cell-percentage-input")) {
+      updateProjectionCellPercentage(event.target, true);
+      return;
+    }
     if (event.target.matches(".viewer-trajectory-include, .viewer-trajectory-default")) {
       updateTrajectorySelection(
         event.target.closest(".viewer-trajectory-workspace"),
@@ -2110,19 +2223,6 @@
     );
     exampleMessageHandlerRegistered = true;
   }
-
-  function focusDatasetContext(context) {
-    var topbar = document.querySelector(".topbar");
-    var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
-    var targetTop = window.scrollY + context.getBoundingClientRect().top -
-      topbarBottom - 12;
-    window.scrollTo({
-      top: Math.max(0, targetTop),
-      behavior: reducedMotion.matches ? "auto" : "smooth",
-    });
-    context.focus({ preventScroll: true });
-  }
-  window.__builderFocusDatasetContext = focusDatasetContext;
 
   function registerBuildDialogHandler() {
     if (buildDialogHandlerRegistered || !window.Shiny) return;

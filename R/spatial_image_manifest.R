@@ -658,7 +658,8 @@
     "scale_y",
     "offset_x",
     "offset_y",
-    "rotation"
+    "rotation",
+    "image_opacity"
   )
   logical_fields <- c("flip_x", "flip_y")
 
@@ -781,6 +782,16 @@
               "` must be one ",
               type,
               " scalar.",
+              call. = FALSE
+            )
+          }
+          if (
+            identical(field, "image_opacity") &&
+              (value < 0 || value > 1)
+          ) {
+            stop(
+              context,
+              " setting `image_opacity` must be between 0 and 1.",
               call. = FALSE
             )
           }

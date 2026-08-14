@@ -650,6 +650,45 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
   expect_false(grepl("source_uri", serialized, fixed = TRUE))
 })
 
+test_that("external Spatial images materialize without entering CRB payloads", {
+  root <- withr::local_tempdir()
+  record <- builder_alignment_record(
+    source = list(name = "H&E.png", type = "image/png"),
+    source_uri = "data:image/png;base64,iVBORw0KGgo=",
+    uri = "data:image/png;base64,iVBORw0KGgo=",
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
+    parameters = list(
+      dx = 2,
+      dy = -1,
+      scale = 1.25,
+      rotation = 90,
+      flip_x = TRUE,
+      flip_y = FALSE,
+      image_opacity = 0.8
+    ),
+    saved = TRUE,
+    section = list(id = "slice-a", kind = "spatial")
+  )
+  item <- list(
+    id = "dataset-a",
+    name = "Dataset A",
+    images = list(`slice-a` = list(`H&E` = record))
+  )
+
+  external <- .builder_build_materialize_spatial_images(item, root)
+  descriptor <- external$images[["Dataset A"]][["slice-a"]][["H&E"]]
+  setting <- external$settings[["Dataset A"]][["slice-a"]][["H&E"]]
+
+  expect_true(file.exists(descriptor$path))
+  expect_identical(
+    unname(descriptor$bounds),
+    c(0, 10, 0, 8)
+  )
+  expect_identical(setting$image_opacity, 0.8)
+  expect_identical(setting$scale_x, 1.25)
+  expect_identical(setting$scale_y, 1.25)
+})
+
 test_that("Builder image attachment is exact, collision-safe, and idempotent", {
   withr::local_options(warnPartialMatchDollar = TRUE)
   embedded <- list(

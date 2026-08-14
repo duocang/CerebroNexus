@@ -288,7 +288,7 @@ cv_image_preset <- function(spatial_name, image_label) {
     flipX = isTRUE(setting[["flip_x"]]),
     flipY = isTRUE(setting[["flip_y"]]),
     rotation = number("rotation", defaults$rotation),
-    opacity = 0.6
+    opacity = number("image_opacity", defaults$opacity)
   )
 }
 
@@ -358,6 +358,33 @@ cv_external_images <- function(spatial_name = NULL) {
     stats::setNames(as.list(numbers), required)
   }
   out <- list()
+  image_mime <- function(image_path) {
+    if (!isTRUE(file_test("-f", image_path))) {
+      return(NULL)
+    }
+    ext <- tolower(tools::file_ext(image_path))
+    if (!(ext %in% c("png", "jpg", "jpeg"))) {
+      return(NULL)
+    }
+    bytes <- tryCatch(
+      readBin(image_path, what = "raw", n = 8L),
+      error = function(error) raw()
+    )
+    png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+    jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
+    if (identical(ext, "png") && identical(bytes, png_magic)) {
+      return("image/png")
+    }
+    if (
+      ext %in%
+        c("jpg", "jpeg") &&
+        length(bytes) >= length(jpeg_magic) &&
+        identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
+    ) {
+      return("image/jpeg")
+    }
+    NULL
+  }
   for (i in seq_along(configured)) {
     descriptor <- configured[[i]]
     path <- if (is.list(descriptor)) descriptor[["path"]] else descriptor
@@ -370,15 +397,10 @@ cv_external_images <- function(spatial_name = NULL) {
     if (is.null(img_path) || !requireNamespace("base64enc", quietly = TRUE)) {
       next
     }
-    ext <- tolower(tools::file_ext(img_path))
-    mime <- switch(
-      ext,
-      "jpg" = "image/jpeg",
-      "jpeg" = "image/jpeg",
-      "png" = "image/png",
-      "svg" = "image/svg+xml",
-      "image/png"
-    )
+    mime <- image_mime(img_path)
+    if (is.null(mime)) {
+      next
+    }
     base <- basename(path)
     label <- if (!is.null(labels) && nzchar(labels[[i]] %||% "")) {
       labels[[i]]
@@ -1207,6 +1229,9 @@ cv_build_bundle <- function(crb) {
   default_point_size <- suppressWarnings(
     as.numeric(viewer_content[["overview_point_size"]])
   )
+  default_percentage_cells_to_show <- suppressWarnings(
+    as.numeric(viewer_content[["overview_percentage_cells_to_show"]])
+  )
   if (
     length(default_point_size) != 1L ||
       is.na(default_point_size) ||
@@ -1215,6 +1240,19 @@ cv_build_bundle <- function(crb) {
     default_point_size <- NULL
   } else {
     default_point_size <- unname(default_point_size)
+  }
+  if (
+    length(default_percentage_cells_to_show) != 1L ||
+      is.na(default_percentage_cells_to_show) ||
+      !is.finite(default_percentage_cells_to_show) ||
+      default_percentage_cells_to_show < 10 ||
+      default_percentage_cells_to_show > 100
+  ) {
+    default_percentage_cells_to_show <- 100
+  } else {
+    default_percentage_cells_to_show <- unname(
+      default_percentage_cells_to_show
+    )
   }
   default_point_opacity <- NULL
   spaces <- list()
@@ -1333,6 +1371,7 @@ cv_build_bundle <- function(crb) {
     fields = fields,
     default_group = default_group,
     default_point_size = default_point_size,
+    default_percentage_cells_to_show = default_percentage_cells_to_show,
     default_point_opacity = default_point_opacity,
     projections = projections,
     default_projection = default_projection,

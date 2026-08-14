@@ -288,8 +288,8 @@ test_that("Review summarizes saved and points-only spatial sections", {
   html <- builder_stage_html(builder_review_stage_ui("review", model))
 
   expect_identical(model$datasets[[1L]]$spatial_alignment$saved_count, 1L)
-  expect_match(html, "Spatial alignment", fixed = TRUE)
-  expect_match(html, "1 of 2 sections has a saved tissue image", fixed = TRUE)
+  expect_match(html, "Spatial", fixed = TRUE)
+  expect_match(html, "2 sections · 1 images · Embedded in CRB", fixed = TRUE)
   expect_match(html, "1 section remains points-only", fixed = TRUE)
   expect_false(grepl("section-b", html, fixed = TRUE))
   expect_false(grepl("histology_image_bounds", html, fixed = TRUE))

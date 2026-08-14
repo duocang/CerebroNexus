@@ -39,29 +39,41 @@ builder_e2e_review_metadata_policy <- function(recommendation, groups) {
     if (identical(record$disposition, "blocking")) {
       next
     }
-    include <- isTRUE(record$required) || id %in% groups
-    disposition <- if (include) "included" else "excluded"
+    include <- isTRUE(record$retain_in_crb) ||
+      isTRUE(record$required) ||
+      id %in% groups
+    disposition <- if (include) {
+      "included"
+    } else {
+      "excluded"
+    }
     record$value <- disposition
     record$disposition <- disposition
-    record$effective_included <- include
+    record$effective_included <- identical(disposition, "included")
+    record$retain_in_crb <- include
+    record$group_enabled <- id %in% groups
+    record$forced <- isTRUE(record$forced %||% record$required)
     record$requires_confirmation <- FALSE
     record$group_eligible <- id %in% groups
     record$preview_allowed <- id %in% groups
     policy$columns[[id]] <- record
   }
   dispositions <- vapply(policy$columns, `[[`, character(1), "disposition")
-  included <- vapply(
+  retained <- vapply(
     policy$columns,
     `[[`,
     logical(1),
-    "effective_included"
+    "retain_in_crb"
   )
   ids <- names(policy$columns)
-  policy$included <- ids[included]
+  policy$retained <- ids[retained]
+  policy$groups <- intersect(ids, groups)
+  policy$forced <- ids[vapply(policy$columns, `[[`, logical(1), "forced")]
+  policy$included <- ids[retained]
   policy$attention <- ids[dispositions == "attention"]
-  policy$excluded <- ids[dispositions == "excluded"]
+  policy$excluded <- ids[!retained]
   policy$blocking <- ids[dispositions == "blocking"]
-  policy$value <- policy$included
+  policy$value <- policy$retained
   policy$requires_confirmation <- length(policy$attention) > 0L ||
     length(policy$blocking) > 0L
   policy

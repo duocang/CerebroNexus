@@ -41,6 +41,21 @@ builder_stylesheet_text <- function(
   )
 }
 
+test_that("builder UI includes the Bootstrap dependency required by modals", {
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(dirname(builder_asset_path("app.R")))
+  sys.source("app.R", envir = app_env)
+
+  dependency_names <- vapply(
+    htmltools::renderTags(app_env$ui)$dependencies,
+    function(dependency) dependency$name,
+    character(1),
+    USE.NAMES = FALSE
+  )
+
+  expect_contains(dependency_names, "bootstrap")
+})
+
 test_that("builder stylesheets load in explicit responsibility order", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(dirname(builder_asset_path("app.R")))
@@ -285,6 +300,144 @@ test_that("builder exposes one compact responsive component system", {
   ))
 })
 
+test_that("enhancement groups and previews use one quiet density system", {
+  css <- builder_stylesheet_text("builder.features.css")
+
+  expect_match(
+    css,
+    paste0(
+      "\\.enhance-group \\{[^}]*padding: 0;[^}]*",
+      "border: 0;[^}]*background: transparent;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.enhance-group \\+ \\.enhance-group \\{[^}]*",
+      "margin-top: var\\(--space-6\\);[^}]*",
+      "padding-top: var\\(--space-6\\);[^}]*",
+      "border-top: 1px solid var\\(--c-border\\);"
+    ),
+    perl = TRUE
+  )
+  expect_false(grepl(
+    "enhance-attachment-block + .enhance-attachment-block",
+    css,
+    fixed = TRUE
+  ))
+  expect_false(grepl("enhance-attachment-block--spatial", css, fixed = TRUE))
+  expect_false(grepl("aspect-ratio: 1;", css, fixed = TRUE))
+  expect_match(css, "--spatial-preview-aspect", fixed = TRUE)
+  js <- builder_asset_text("www", "builder.js")
+  expect_match(js, "syncSpatialPreviewAspect", fixed = TRUE)
+  expect_match(js, "syncSpatialWorkbench", fixed = TRUE)
+  expect_match(js, "ResizeObserver", fixed = TRUE)
+  expect_match(js, "plotly_afterplot", fixed = TRUE)
+  expect_match(
+    css,
+    "height: calc(100dvh - var(--builder-spatial-viewport-offset));",
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    "\\.spatial-alignment-sidebar-scroll \\{[^}]*overflow-y: auto;",
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-alignment-legend-wrap \\{[^}]*",
+      "padding: var\\(--space-3\\);[^}]*",
+      "border: 1px solid var\\(--c-border\\);[^}]*",
+      "border-radius: var\\(--radius-md\\);[^}]*",
+      "background: var\\(--c-surface-muted\\);"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-alignment-title \\{[^}]*",
+      "font-size: 1rem;[^}]*font-weight: 700;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.builder-preview-grid,\\s*",
+      "\\.spatial-alignment-plots,\\s*",
+      "\\.spatial-alignment-controls \\{[^}]*",
+      "grid-template-columns: minmax\\(0, 1fr\\)"
+    ),
+    perl = TRUE
+  )
+})
+
+test_that("Builder framed surfaces use one explicit title hierarchy", {
+  components <- builder_stylesheet_text("builder.components.css")
+  features <- builder_stylesheet_text("builder.features.css")
+
+  expect_match(
+    components,
+    paste0(
+      "\\.builder-stage-section > h3 \\{[^}]*margin: 0 0 var\\(--space-3\\);[^}]*",
+      "font-size: 1rem;[^}]*line-height: 1.4;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    paste0(
+      "\\.builder-viewer-content-head h4 \\{[^}]*margin: 0;[^}]*",
+      "font-size: \\.9375rem;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.enhance-group > h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    components,
+    "\\.notice > h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.builder-detected-content h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.spatial-alignment-title \\{[^}]*font-size: 1rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    paste0(
+      "\\.enhance-attachment-block--tables > h5,\\s*",
+      "\\.spatial-alignment-legend-wrap h5 \\{[^}]*",
+      "font-size: \\.875rem;"
+    ),
+    perl = TRUE
+  )
+})
+
+test_that("Builder has no duplicate dataset context banner", {
+  js <- builder_asset_text("www", "builder.js")
+  review <- paste(
+    readLines(builder_profile_inst_path("builder", "server", "review.R")),
+    collapse = "\n"
+  )
+
+  expect_false(grepl("__builderFocusDatasetContext", js, fixed = TRUE))
+  expect_false(grepl('uiOutput("dataset_context")', review, fixed = TRUE))
+  expect_false(grepl('output[["dataset_context"]]', review, fixed = TRUE))
+})
+
 test_that("Viewer Group catalog interactions use stable names and client search", {
   js <- builder_asset_text("www", "builder.js")
   css <- builder_stylesheet_text()
@@ -483,7 +636,11 @@ test_that("Spatial alignment distinguishes FOVs from section-owned images", {
   enhance <- builder_asset_text("ui", "enhance_stage.R")
 
   expect_match(enhance, "Requires spatial FOVs and coordinates.", fixed = TRUE)
-  expect_match(enhance, "One selected image per FOV.", fixed = TRUE)
+  expect_match(
+    enhance,
+    "Named images remain separate within each FOV.",
+    fixed = TRUE
+  )
   expect_match(enhance, '"Spatial capture (FOV)"', fixed = TRUE)
   expect_false(grepl(
     "One saved image per tissue section.",
@@ -887,8 +1044,15 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
     )),
     collapse = "\n"
   )
+  browser_helper <- paste(
+    readLines(testthat::test_path(
+      "helper-builder-browser-contract.R"
+    )),
+    collapse = "\n"
+  )
   expect_match(browser, "builder-loading-stage", fixed = TRUE)
-  expect_match(browser, "app$get_logs()", fixed = TRUE)
+  expect_match(browser, "builder_expect_clean_browser_logs(app)", fixed = TRUE)
+  expect_match(browser_helper, "app$get_logs()", fixed = TRUE)
 })
 
 test_that("builder client owns accessible dialog and live-state semantics", {

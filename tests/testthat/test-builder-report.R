@@ -28,6 +28,13 @@ builder_report_fixture <- function(
           forced = "cell_barcode"
         ),
         expression_backend = "embedded",
+        spatial_image_storage = "external",
+        spatial_alignment = list(
+          section_count = 6L,
+          image_count = 7L,
+          saved_count = 7L,
+          points_only = character()
+        ),
         sidecars = character(),
         manifest = list(marker_genes = list(status = "valid"))
       )),
@@ -92,6 +99,14 @@ test_that("portable reports derive redacted identity from plan and verification"
       excluded = "secret_note",
       forced = "cell_barcode"
     )
+  )
+  expect_identical(
+    report$datasets[[1L]]$expression_storage,
+    list(mode = "embedded")
+  )
+  expect_identical(
+    report$datasets[[1L]]$spatial_image_storage,
+    list(mode = "external", image_count = 7L, section_count = 6L)
   )
   expect_identical(
     report$output_members,

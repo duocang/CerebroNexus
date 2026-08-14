@@ -577,23 +577,226 @@ builder_attach_spatial_image <- function(spatial, record) {
 }
 
 #' Keep Trekker's physical image out of Seurat spatial section matching.
+builder_image_collection_normalize <- function(images) {
+  images <- images %||% list()
+  if (!is.list(images) || is.object(images)) {
+    stop("Spatial image collection must be a named list.", call. = FALSE)
+  }
+  sections <- names(images)
+  if (is.null(sections)) {
+    sections <- character()
+  }
+  if (
+    length(images) &&
+      (anyNA(sections) || any(!nzchar(sections)) || anyDuplicated(sections))
+  ) {
+    stop("Spatial section names must be unique and non-empty.", call. = FALSE)
+  }
+  normalized <- list()
+  for (section_id in sections) {
+    section <- images[[section_id]]
+    legacy <- builder_alignment_normalize(section, section_id = section_id)
+    if (!is.null(legacy)) {
+      label <- builder_safe_file_name(
+        legacy$source$name %||% "Embedded tissue image",
+        fallback = "Embedded tissue image"
+      )
+      normalized[[section_id]] <- stats::setNames(list(legacy), label)
+      next
+    }
+    if (!is.list(section) || is.object(section)) {
+      stop(
+        "Each Spatial section must contain named image records.",
+        call. = FALSE
+      )
+    }
+    labels <- names(section)
+    if (
+      is.null(labels) ||
+        anyNA(labels) ||
+        any(!nzchar(trimws(labels)))
+    ) {
+      stop("Spatial image labels must be non-empty.", call. = FALSE)
+    }
+    if (anyDuplicated(labels)) {
+      stop(
+        "Spatial image labels must be unique within each section.",
+        call. = FALSE
+      )
+    }
+    records <- lapply(labels, function(label) {
+      record <- builder_alignment_normalize(
+        section[[label]],
+        section_id = section_id,
+        section_kind = "spatial"
+      )
+      if (is.null(record)) {
+        stop(
+          "Spatial image records must contain an image URI and bounds.",
+          call. = FALSE
+        )
+      }
+      record
+    })
+    names(records) <- labels
+    normalized[[section_id]] <- records
+  }
+  normalized
+}
+
+builder_image_collection_flatten <- function(images) {
+  images <- builder_image_collection_normalize(images)
+  unlist(
+    lapply(names(images), function(section_id) {
+      lapply(names(images[[section_id]]), function(image_label) {
+        c(
+          list(section_id = section_id, image_label = image_label),
+          images[[section_id]][[image_label]]
+        )
+      })
+    }),
+    recursive = FALSE,
+    use.names = FALSE
+  )
+}
+
+builder_image_collection_count <- function(images) {
+  as.integer(sum(lengths(builder_image_collection_normalize(images))))
+}
+
+builder_image_collection_add <- function(images, section, label, record) {
+  images <- builder_image_collection_normalize(images)
+  label <- trimws(as.character(label %||% ""))
+  if (!nzchar(section) || !nzchar(label)) {
+    stop("Spatial section and image label must be non-empty.", call. = FALSE)
+  }
+  if (label %in% names(images[[section]] %||% list())) {
+    stop(
+      "Spatial image labels must be unique within each section.",
+      call. = FALSE
+    )
+  }
+  normalized <- builder_alignment_normalize(
+    record,
+    section_id = section,
+    section_kind = "spatial"
+  )
+  if (is.null(normalized)) {
+    stop("Spatial image record is invalid.", call. = FALSE)
+  }
+  images[[section]][[label]] <- normalized
+  images
+}
+
+builder_image_collection_rename <- function(images, section, from, to) {
+  images <- builder_image_collection_normalize(images)
+  to <- trimws(as.character(to %||% ""))
+  section_images <- images[[section]] %||% list()
+  if (!from %in% names(section_images)) {
+    stop("The spatial image to rename does not exist.", call. = FALSE)
+  }
+  if (!nzchar(to) || (to %in% names(section_images) && !identical(to, from))) {
+    stop("Spatial image labels must be non-empty and unique.", call. = FALSE)
+  }
+  if (identical(from, to)) {
+    return(images)
+  }
+  position <- match(from, names(section_images))
+  names(section_images)[[position]] <- to
+  images[[section]] <- section_images
+  images
+}
+
+builder_image_collection_remove <- function(images, section, label) {
+  images <- builder_image_collection_normalize(images)
+  section_images <- images[[section]] %||% list()
+  if (!label %in% names(section_images)) {
+    return(images)
+  }
+  section_images[[label]] <- NULL
+  images[[section]] <- if (length(section_images)) section_images else NULL
+  images
+}
+
+#' Coordinate-frame edits change the point coordinate system, so every saved
+#' tissue-image placement in that FOV needs explicit confirmation again.
+#' Keep the geometry as a useful starting point; only its confirmation changes.
+builder_image_collection_mark_section_unsaved <- function(images, section) {
+  images <- builder_image_collection_normalize(images)
+  records <- images[[section]] %||% list()
+  if (!length(records)) {
+    return(images)
+  }
+  for (label in names(records)) {
+    records[[label]]$saved <- FALSE
+  }
+  images[[section]] <- records
+  images
+}
+
+builder_alignment_apply_transform_to_matching_label <- function(
+  images,
+  source_section,
+  label
+) {
+  images <- builder_image_collection_normalize(images)
+  source <- images[[source_section]][[label]]
+  if (is.null(source)) {
+    return(images)
+  }
+  fields <- c(
+    "dx",
+    "dy",
+    "scale",
+    "rotation",
+    "flip_x",
+    "flip_y",
+    "image_opacity",
+    "point_opacity",
+    "point_size"
+  )
+  for (section in setdiff(names(images), source_section)) {
+    target <- images[[section]][[label]]
+    if (is.null(target)) {
+      next
+    }
+    for (field in fields) {
+      target[[field]] <- source[[field]]
+    }
+    target$bounds <- builder_alignment_transform_bounds(
+      target$base_bounds,
+      target
+    )
+    target$saved <- FALSE
+    images[[section]][[label]] <- target
+  }
+  images
+}
+
 builder_partition_alignments <- function(images) {
   spatial <- list()
   trekker <- NULL
   for (name in names(images %||% list())) {
     record <- builder_alignment_normalize(images[[name]], section_id = name)
-    if (is.null(record)) {
-      next
-    }
     if (
-      identical(record$section_kind, "trekker") || identical(name, "trekker")
+      identical(record$section_kind %||% "", "trekker") ||
+        identical(name, "trekker")
     ) {
+      if (is.null(record)) {
+        stop(
+          "Trekker alignment must remain a single image record.",
+          call. = FALSE
+        )
+      }
       trekker <- record
     } else {
-      spatial[[name]] <- record
+      spatial[[name]] <- images[[name]]
     }
   }
-  list(spatial = spatial, trekker = trekker)
+  list(
+    spatial = builder_image_collection_normalize(spatial),
+    trekker = trekker
+  )
 }
 
 #' Read an image file into an array png::writePNG can write back out.
@@ -672,6 +875,67 @@ builder_read_image_uri <- function(uri) {
     return(list(error = "The saved tissue image could not be reopened."))
   }
   list(array = image, width = dim(image)[2L], height = dim(image)[1L])
+}
+
+builder_parse_image_uri <- function(uri) {
+  if (
+    !is.character(uri) ||
+      length(uri) != 1L ||
+      is.na(uri) ||
+      !grepl("^data:image/[^;,]+;base64,", uri)
+  ) {
+    stop("Builder image URI is invalid.", call. = FALSE)
+  }
+  separator <- regexpr(",", uri, fixed = TRUE)[[1L]]
+  header <- substring(uri, 6L, separator - 1L)
+  mime <- sub(";base64$", "", header)
+  payload <- substring(uri, separator + 1L)
+  if (!requireNamespace("base64enc", quietly = TRUE)) {
+    stop("Materializing Builder images requires base64enc.", call. = FALSE)
+  }
+  bytes <- tryCatch(
+    base64enc::base64decode(payload),
+    error = function(error) NULL
+  )
+  if (is.null(bytes) || !is.raw(bytes)) {
+    stop("Builder image URI could not be decoded.", call. = FALSE)
+  }
+  if (!mime %in% c("image/png", "image/jpeg")) {
+    stop("Builder image URI has an unsupported MIME type.", call. = FALSE)
+  }
+  png_signature <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  jpeg_signature <- as.raw(c(0xff, 0xd8, 0xff))
+  valid_signature <- if (identical(mime, "image/png")) {
+    length(bytes) >= length(png_signature) &&
+      identical(bytes[seq_along(png_signature)], png_signature)
+  } else {
+    length(bytes) >= length(jpeg_signature) &&
+      identical(bytes[seq_along(jpeg_signature)], jpeg_signature)
+  }
+  if (!valid_signature) {
+    stop(
+      "Builder image URI content does not match its MIME type.",
+      call. = FALSE
+    )
+  }
+  list(mime = mime, bytes = bytes)
+}
+
+builder_materialize_image_uri <- function(uri, path) {
+  parsed <- builder_parse_image_uri(uri)
+  expected_extension <- if (identical(parsed$mime, "image/png")) {
+    "png"
+  } else {
+    c("jpg", "jpeg")
+  }
+  if (!tolower(tools::file_ext(path)) %in% expected_extension) {
+    stop(
+      "Builder image target extension does not match its MIME type.",
+      call. = FALSE
+    )
+  }
+  writeBin(parsed$bytes, path)
+  normalizePath(path, winslash = "/", mustWork = TRUE)
 }
 
 .builder_rotation_quarter_turn <- function(degrees) {
@@ -1120,15 +1384,21 @@ builder_attach_crb_extras <- function(
     }
     for (name in applied) {
       spatial <- crb$getSpatialData(name)
-      spatial <- builder_attach_spatial_image(spatial, images[[name]])
-      if (is.null(spatial)) {
-        return(list(
-          error = paste0(
-            "The configured image for spatial section `",
-            name,
-            "` is invalid."
-          )
-        ))
+      records <- images[[name]]
+      if (!is.null(builder_alignment_normalize(records, section_id = name))) {
+        records <- list(records)
+      }
+      for (record in records) {
+        spatial <- builder_attach_spatial_image(spatial, record)
+        if (is.null(spatial)) {
+          return(list(
+            error = paste0(
+              "The configured image for spatial section `",
+              name,
+              "` is invalid."
+            )
+          ))
+        }
       }
       crb$addSpatialData(name, spatial)
     }
@@ -1186,6 +1456,54 @@ builder_attach_crb_extras <- function(
   unlink(backup, force = TRUE)
 
   list(applied = applied, trekker = trekker_applied)
+}
+
+builder_attach_external_spatial_appearance <- function(crb_path, images) {
+  collection <- builder_image_collection_normalize(images)
+  if (!length(collection)) {
+    return(list(applied = character()))
+  }
+  crb <- try(readRDS(crb_path), silent = TRUE)
+  if (inherits(crb, "try-error")) {
+    return(list(error = "The exported .crb could not be read back."))
+  }
+  available <- try(crb$availableSpatial(), silent = TRUE)
+  if (inherits(available, "try-error")) {
+    return(list(error = "The .crb contains no spatial data."))
+  }
+  applied <- intersect(names(collection), available)
+  for (section_id in applied) {
+    spatial <- crb$getSpatialData(section_id)
+    previous <- spatial$histology_alignment %||% list()
+    embedded <- spatial$histology_images %||% list()
+    if (
+      isTRUE(previous$builder_managed) && previous$source %in% names(embedded)
+    ) {
+      embedded[[previous$source]] <- NULL
+    }
+    active_label <- utils::tail(names(collection[[section_id]]), 1L)
+    active <- collection[[section_id]][[active_label]]
+    alignment <- builder_alignment_payload(active)
+    alignment$source <- active_label
+    spatial$histology_images <- embedded
+    spatial$histology_image <- NULL
+    spatial$histology_image_bounds <- NULL
+    spatial$histology_alignment <- alignment
+    crb$addSpatialData(section_id, spatial)
+  }
+  temporary <- tempfile(
+    paste0(".", basename(crb_path), "-external-"),
+    tmpdir = dirname(crb_path)
+  )
+  on.exit(unlink(temporary, force = TRUE), add = TRUE)
+  written <- try(saveRDS(crb, temporary, compress = "xz"), silent = TRUE)
+  if (inherits(written, "try-error") || !file.exists(temporary)) {
+    return(list(error = "Could not write external-image CRB appearance."))
+  }
+  if (!file.rename(temporary, crb_path)) {
+    return(list(error = "Could not replace the external-image CRB."))
+  }
+  list(applied = applied)
 }
 
 #' The coordinates of the first spatial slice, for bounds decisions.

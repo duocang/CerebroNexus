@@ -37,21 +37,13 @@ builder_open_app_runtime_fixture <- function() {
 }
 
 builder_open_app_child_in_callr <- function(path, env_file, previous = NULL) {
-  repo <- dirname(dirname(dirname(builder_profile_inst_path(
-    "builder",
-    "app_bundle.R"
-  ))))
+  app_bundle <- builder_profile_inst_path("builder", "app_bundle.R")
+  build_status <- builder_profile_inst_path("builder", "ui", "build_status.R")
   callr::r(
-    function(repo, path, env_file, previous) {
+    function(app_bundle, build_status, path, env_file, previous) {
       runtime <- new.env(parent = globalenv())
-      sys.source(
-        file.path(repo, "inst", "builder", "app_bundle.R"),
-        envir = runtime
-      )
-      sys.source(
-        file.path(repo, "inst", "builder", "ui", "build_status.R"),
-        envir = runtime
-      )
+      sys.source(app_bundle, envir = runtime)
+      sys.source(build_status, envir = runtime)
       launched <- FALSE
       if (!is.null(previous)) {
         do.call(
@@ -85,7 +77,8 @@ builder_open_app_child_in_callr <- function(path, env_file, previous = NULL) {
       )
     },
     args = list(
-      repo = repo,
+      app_bundle = app_bundle,
+      build_status = build_status,
       path = path,
       env_file = env_file,
       previous = previous

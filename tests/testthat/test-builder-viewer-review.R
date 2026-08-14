@@ -28,6 +28,17 @@ builder_viewer_review_plan <- function(with_trajectory = TRUE) {
     cell_cycle = "Phase",
     colors = list(cell_type = c(T = "#CC5500")),
     expression_backend = "embedded",
+    spatial_image_storage = "external",
+    spatial_alignment = list(
+      section_count = 6L,
+      image_count = 7L,
+      saved_count = 7L,
+      points_only = character()
+    ),
+    metadata_policy = list(
+      retained = paste0("metadata_", seq_len(12L)),
+      excluded = character()
+    ),
     viewer_page_expectations = list(visible_conditional = "projection")
   )
   if (isTRUE(with_trajectory)) {
@@ -87,6 +98,12 @@ test_that("Review summarizes frozen Viewer content without technical payloads", 
   expect_identical(dataset$viewer_content$projections$point_size, 5)
   expect_identical(dataset$viewer_content$trajectories$included_count, 1L)
   expect_identical(dataset$viewer_content$cell_cycle$included, "Phase")
+  expect_identical(dataset$spatial_alignment$section_count, 6L)
+  expect_identical(dataset$spatial_alignment$image_count, 7L)
+  expect_identical(
+    dataset$spatial_alignment$storage,
+    "External spatial-assets"
+  )
   expect_identical(
     dataset$viewer_content$trajectories$default,
     "trajectory_1"
@@ -94,6 +111,7 @@ test_that("Review summarizes frozen Viewer content without technical payloads", 
 
   html <- builder_viewer_review_html(builder_review_stage_ui("review", model))
   expect_match(html, "Groups", fixed = TRUE)
+  expect_match(html, "12 retained · 0 excluded", fixed = TRUE)
   expect_match(html, "3 included · Default: Cell type", fixed = TRUE)
   expect_match(html, "8 colors customized", fixed = TRUE)
   expect_match(html, "Projections", fixed = TRUE)
@@ -106,6 +124,13 @@ test_that("Review summarizes frozen Viewer content without technical payloads", 
   )
   expect_match(html, "Trajectories", fixed = TRUE)
   expect_match(html, "Cell cycle", fixed = TRUE)
+  expect_match(html, "Expression storage", fixed = TRUE)
+  expect_match(html, "Embedded", fixed = TRUE)
+  expect_match(
+    html,
+    "6 sections · 7 images · External spatial-assets",
+    fixed = TRUE
+  )
   expect_match(html, "Phase", fixed = TRUE)
   expect_match(html, "1 included · Default: trajectory_1", fixed = TRUE)
   expect_false(grepl("manifest", html, ignore.case = TRUE))
@@ -259,7 +284,7 @@ test_that("Review summarizes analysis results without exposing diagnostics", {
   )
   expect_match(html, "Marker genes", fixed = TRUE)
   expect_match(html, "Metadata", fixed = TRUE)
-  expect_match(html, "2 kept · 1 excluded", fixed = TRUE)
+  expect_match(html, "2 retained · 1 excluded", fixed = TRUE)
   expect_false(grepl("needs attention", html, ignore.case = TRUE))
   expect_false(grepl("unsafe_container", html, fixed = TRUE))
 })

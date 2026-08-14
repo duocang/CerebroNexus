@@ -709,6 +709,7 @@ test_that("Builder defines semantic action and measure roles", {
   )
   expect_identical(unname(builder["--builder-measure-copy"]), "48rem")
   expect_identical(unname(builder["--builder-measure-form"]), "56rem")
+  expect_identical(unname(builder["--builder-footer-gap"]), "40px")
   builder_font_sans <- paste(
     '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",',
     '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",',

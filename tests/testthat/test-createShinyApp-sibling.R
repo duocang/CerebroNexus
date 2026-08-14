@@ -2426,7 +2426,12 @@ test_that("spatial images and settings preserve dataset spatial image nesting", 
     spatial_image_settings = list(
       Dataset = list(
         `section-a` = list(
-          `H&E` = list(flip_x = TRUE, scale_x = 1.5, rotation = 90)
+          `H&E` = list(
+            flip_x = TRUE,
+            scale_x = 1.5,
+            rotation = 90,
+            image_opacity = 0.8
+          )
         ),
         `section-b` = list(
           DAPI = list(
@@ -2461,7 +2466,12 @@ test_that("spatial images and settings preserve dataset spatial image nesting", 
   )
   expect_identical(
     config$spatial_image_settings$Dataset[["section-a"]][["H&E"]],
-    list(flip_x = TRUE, scale_x = 1.5, rotation = 90)
+    list(
+      flip_x = TRUE,
+      scale_x = 1.5,
+      rotation = 90,
+      image_opacity = 0.8
+    )
   )
   expect_identical(
     config$spatial_image_settings$Dataset[["section-b"]]$DAPI,
@@ -2664,6 +2674,14 @@ test_that("spatial image settings accept only strict scalar fields", {
     list(settings = list(flip_x = 1), error = "flip_x.*logical scalar"),
     list(settings = list(flip_y = NA), error = "flip_y.*logical scalar"),
     list(settings = list(scale_x = Inf), error = "scale_x.*finite numeric"),
+    list(
+      settings = list(image_opacity = -0.1),
+      error = "image_opacity.*between 0 and 1"
+    ),
+    list(
+      settings = list(image_opacity = 1.1),
+      error = "image_opacity.*between 0 and 1"
+    ),
     list(
       settings = list(rotation = c(0, 90)),
       error = "rotation.*finite numeric"

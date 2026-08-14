@@ -492,13 +492,7 @@ test_that("initial dataset is reserved and validated through its argument", {
 })
 
 test_that("runtime initial selection keeps URL and session precedence", {
-  server_file <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
-    "viewer",
-    "shiny_server.R"
-  )
+  server_file <- builder_profile_inst_path("viewer", "shiny_server.R")
   if (!file.exists(server_file)) {
     server_file <- system.file(
       "viewer",
@@ -531,13 +525,15 @@ test_that("runtime initial selection keeps URL and session precedence", {
 })
 
 test_that("runtime starting page is mapped and applied only to the first load", {
-  server_file <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
-    "viewer",
-    "shiny_server.R"
-  )
+  server_file <- builder_profile_inst_path("viewer", "shiny_server.R")
+  if (!file.exists(server_file)) {
+    server_file <- system.file(
+      "viewer",
+      "shiny_server.R",
+      package = "CerebroNexus"
+    )
+  }
+  expect_true(file.exists(server_file))
   source <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
 
   expect_match(

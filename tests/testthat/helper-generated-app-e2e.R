@@ -239,6 +239,7 @@ generated_app_e2e_stop <- function() {
   entry$settings$analyses <- character()
   entry$settings$tables <- list()
   entry$settings$images <- .generated_app_e2e_images(fixture)
+  entry$settings$spatial_image_storage <- "embedded"
   snapshot <- builder_snapshot_seurat(
     fixture$object,
     file.path(snapshot_root, record$id),

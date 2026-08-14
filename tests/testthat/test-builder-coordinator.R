@@ -2031,6 +2031,21 @@ test_that("coordinator freezes only the portable report-plan projection", {
       handle$report_plan$output_release$targets,
       plan$output_release$targets
     )
+    expect_identical(
+      handle$report_plan$items[[1L]]$spatial_image_storage,
+      plan$items[[1L]]$spatial_image_storage %||% "embedded"
+    )
+    expect_identical(
+      handle$report_plan$items[[1L]]$spatial_alignment,
+      list(
+        section_count = as.integer(
+          plan$items[[1L]]$spatial_alignment$section_count %||% 0L
+        ),
+        image_count = as.integer(
+          plan$items[[1L]]$spatial_alignment$image_count %||% 0L
+        )
+      )
+    )
     expect_true(builder_coordinator_abort(handle)$aborted)
   })
 })

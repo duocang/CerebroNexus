@@ -116,11 +116,15 @@ test_that("pending dataset files render safe bounded Reading rows", {
 })
 
 test_that("the Builder launcher bounds uploads without leaking process options", {
+  launcher_path <- testthat::test_path(
+    "..",
+    "..",
+    "R",
+    "launchCerebroBuilder.R"
+  )
+  skip_if_not(file.exists(launcher_path), "R source tree not present")
   launcher <- paste(
-    readLines(
-      testthat::test_path("..", "..", "R", "launchCerebroBuilder.R"),
-      warn = FALSE
-    ),
+    readLines(launcher_path, warn = FALSE),
     collapse = "\n"
   )
 
@@ -590,34 +594,18 @@ if (builder_rail_api_available) {
     )
   })
 
-  test_that("rail and context provide dataset navigation without review progress", {
+  test_that("rail provides dataset navigation without review progress", {
     first <- builder_rail_entry("a", "Dataset A")
     second <- builder_rail_entry("b", "Dataset B")
     state <- builder_state(list(first, second), current_dataset = "b")
 
     rail <- as.character(builder_dataset_rail_ui(state, current = "b"))
-    context <- as.character(builder_dataset_context_ui(state, current = "b"))
 
     expect_length(gregexpr("Ready", rail, fixed = TRUE)[[1L]], 2L)
-    expect_match(context, "Dataset 2 of 2", fixed = TRUE)
-    expect_match(context, "Dataset B", fixed = TRUE)
-    expect_false(grepl("datasets reviewed", context, fixed = TRUE))
-    expect_false(grepl("progressbar", context, fixed = TRUE))
-  })
-
-  test_that("compact review navigation is server-authored for multiple datasets", {
-    entries <- lapply(letters[1:6], function(id) {
-      builder_rail_entry(id, paste("Dataset", toupper(id)))
-    })
-    state <- builder_state(entries, current_dataset = "d")
-    html <- as.character(builder_dataset_context_ui(state, "d"))
-
-    expect_match(html, "Dataset 4 of 6", fixed = TRUE)
-    expect_false(grepl("dataset-compact-review", html, fixed = TRUE))
-
-    single <- builder_state(list(entries[[1L]]), current_dataset = "a")
-    single_html <- as.character(builder_dataset_context_ui(single, "a"))
-    expect_false(grepl("dataset-compact-review", single_html, fixed = TRUE))
+    expect_match(rail, "Dataset B", fixed = TRUE)
+    expect_match(rail, 'aria-current="true"', fixed = TRUE)
+    expect_false(grepl("datasets reviewed", rail, fixed = TRUE))
+    expect_false(grepl("progressbar", rail, fixed = TRUE))
   })
 
   test_that("client events preserve confirmed removal and native-picker semantics", {

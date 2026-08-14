@@ -507,6 +507,15 @@ builder_review_model <- function(plan, verification = NULL) {
       content_manifest = item$manifest %||% list(),
       content_acknowledgements = item$acknowledgements %||% character()
     ))
+    spatial_alignment <- item$spatial_alignment %||% NULL
+    if (!is.null(spatial_alignment)) {
+      spatial_alignment$storage <- switch(
+        item$spatial_image_storage %||% "embedded",
+        external = "External spatial-assets",
+        embedded = "Embedded in CRB",
+        item$spatial_image_storage
+      )
+    }
     list(
       name = item$name %||% "Dataset",
       cells = as.integer(item$cell_count %||% 0L),
@@ -583,7 +592,7 @@ builder_review_model <- function(plan, verification = NULL) {
         bpcells = "BPCells",
         item$expression_backend %||% "Embedded"
       ),
-      spatial_alignment = item$spatial_alignment %||% NULL,
+      spatial_alignment = spatial_alignment,
       output_file = basename(item$filename %||% "dataset.crb")
     )
   }
@@ -758,7 +767,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                   h5("Metadata"),
                   p(paste0(
                     viewer_content$metadata$kept_count,
-                    " kept · ",
+                    " retained · ",
                     viewer_content$metadata$excluded_count,
                     " excluded"
                   )),
@@ -773,6 +782,11 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                   }
                 )
               },
+              div(
+                class = "review-viewer-content-item review-expression-storage",
+                h5("Expression storage"),
+                p(dataset$expression_storage)
+              ),
               div(
                 class = "review-viewer-content-item review-viewer-groups",
                 h5("Groups"),
@@ -906,20 +920,14 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
             ) {
               div(
                 class = "review-spatial-alignment",
-                tags$b("Spatial alignment"),
+                tags$b("Spatial"),
                 p(paste0(
-                  dataset$spatial_alignment$saved_count,
-                  " of ",
                   dataset$spatial_alignment$section_count,
-                  if (identical(dataset$spatial_alignment$section_count, 1L)) {
-                    " section has a saved tissue image."
-                  } else if (
-                    identical(dataset$spatial_alignment$saved_count, 1L)
-                  ) {
-                    " sections has a saved tissue image."
-                  } else {
-                    " sections have saved tissue images."
-                  }
+                  " sections · ",
+                  dataset$spatial_alignment$image_count %||%
+                    dataset$spatial_alignment$saved_count,
+                  " images · ",
+                  dataset$spatial_alignment$storage
                 )),
                 if (length(dataset$spatial_alignment$points_only)) {
                   p(

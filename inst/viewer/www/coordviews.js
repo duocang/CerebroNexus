@@ -1305,7 +1305,7 @@ var focusPanel = null;
   }
 
   // ---- the More settings overlay -------------------------------------------
-  // Open/closed is one class on the floating panel plus aria-expanded on the
+  // Open/closed is one class on the viewport drawer plus aria-expanded on the
   // trigger. Unlike the former second bar row, it never claims layout height:
   // the visualisation grid stays still while advanced point/image controls are
   // adjusted above it.
@@ -1326,101 +1326,94 @@ var focusPanel = null;
     );
   }
 
-  var moreClipTimer = null, moreMountTimer = null;
-  var moreFloating = false, moreDrag = null;
-  var MORE_VISIBLE_EDGE = 50;
+  var moreMountTimer = null;
 
-  function resetMorePosition() {
+  function syncMoreMode() {
     var mp = $('cv-more');
     if (!mp) return;
-    moreFloating = false;
-    moreDrag = null;
-    mp.classList.remove('is-floating');
-    mp.style.left = '';
-    mp.style.top = '';
+    mp.setAttribute(
+      'aria-modal',
+      window.matchMedia('(max-width: 900px)').matches ? 'true' : 'false'
+    );
   }
 
-  function clampMorePosition(left, top, mp) {
-    var w = mp.offsetWidth, h = mp.offsetHeight;
-    return {
-      left: Math.max(MORE_VISIBLE_EDGE - w, Math.min(window.innerWidth - MORE_VISIBLE_EDGE, left)),
-      top: Math.max(MORE_VISIBLE_EDGE - h, Math.min(window.innerHeight - MORE_VISIBLE_EDGE, top))
-    };
-  }
-
-  function bringMoreToFront() {
-    var mp = $('cv-more');
-    if (!mp || !moreFloating) return;
-    mp.style.zIndex = '1601';
-    setTimeout(function () { if (mp) mp.style.zIndex = ''; }, 120);
-  }
-
-  function beginMoreDrag(e) {
-    var mp = $('cv-more');
-    if (!mp || !isMoreOpen() || (e.button != null && e.button !== 0)) return;
-    var r = mp.getBoundingClientRect();
-    moreFloating = true;
-    mp.classList.add('is-floating');
-    mp.style.left = r.left + 'px';
-    mp.style.top = r.top + 'px';
-    moreDrag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
-    e.preventDefault();
-  }
-
-  function moveMoreDrag(e) {
-    var mp = $('cv-more');
-    if (!moreDrag || !mp || e.pointerId !== moreDrag.id) return;
-    var p = clampMorePosition(e.clientX - moreDrag.dx, e.clientY - moreDrag.dy, mp);
-    mp.style.left = p.left + 'px';
-    mp.style.top = p.top + 'px';
-    e.preventDefault();
-  }
-
-  function endMoreDrag(e) {
-    if (!moreDrag || (e.pointerId != null && e.pointerId !== moreDrag.id)) return;
-    moreDrag = null;
-  }
-
-  function setMoreOpen(open) {
+  function setMoreOpen(open, restoreFocus) {
     var mp = $('cv-more'), btn = $('cv-more-btn');
     if (!mp) return;
+    if (open) {
+      document.dispatchEvent(new CustomEvent('cerebro:overlay-opening', {
+        detail: { owner: 'more' }
+      }));
+    }
+    syncMoreMode();
     // Mount before opening, unmount after closing. While folded the overlay is
-    // display:none; once mounted it is absolutely positioned, never creating a
+    // display:none; once mounted it is fixed to the viewport, never creating a
     // new flex line or changing the available panel height.
     clearTimeout(moreMountTimer);
     if (open) {
+      // A transformed app shell becomes the containing block of fixed children.
+      // Move this exact node (never clone/rebuild it) to body so "fixed" means
+      // the real viewport and every input value/event binding survives intact.
+      if (mp.parentNode !== document.body) document.body.appendChild(mp);
       mp.classList.add('is-mounted');
       void mp.offsetWidth;              // commit the display change first
     } else {
       moreMountTimer = setTimeout(function () {
         if (!mp.classList.contains('is-open')) mp.classList.remove('is-mounted');
-      }, 340);
+      }, 260);
     }
     mp.classList.toggle('is-open', open);
+    mp.setAttribute('aria-hidden', open ? 'false' : 'true');
     if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    // The overflow:hidden that lets the overlay enter also clips the group-filter
-    // dropdowns, which open downwards out of it. Release it once the opening
-    // animation has landed; re-apply it immediately on close so the collapse
-    // still hides what it is folding away.
-    var clip = mp.querySelector('.cv-more-clip');
-    clearTimeout(moreClipTimer);
-    if (clip) {
-      if (open) {
-        moreClipTimer = setTimeout(function () {
-          clip.classList.add('is-clear');
-        }, 340);
-      } else {
-        clip.classList.remove('is-clear');
-      }
+    if (open) {
+      window.requestAnimationFrame(function () {
+        var close = $('cv-more-close');
+        if (close && isMoreOpen()) close.focus();
+      });
+    } else if (restoreFocus !== false && btn && mp.contains(document.activeElement)) {
+      btn.focus();
     }
     // A level menu left open inside a folded row would still be "open" when the
     // row comes back — and the click that reopens the row would then read as the
     // click that closes the menu. Fold them away with their row.
     if (!open) closeFilterMenus();
-    if (!open) resetMorePosition();
     // This is deliberately not resizeAll(): More is outside normal flow, so a
     // settings visit must not remeasure or resize any visualisation panel.
   }
+
+  window.addEventListener('resize', syncMoreMode);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && isMoreOpen()) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setMoreOpen(false);
+      return;
+    }
+    if (e.key !== 'Tab' || !isMoreOpen() ||
+        !window.matchMedia('(max-width: 900px)').matches) return;
+    var mp = $('cv-more');
+    var focusable = Array.prototype.filter.call(
+      mp.querySelectorAll(
+        'button:not([disabled]), a[href], input:not([disabled]), ' +
+        'select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ),
+      function (el) { return el.getClientRects().length > 0; }
+    );
+    if (!focusable.length) return;
+    var first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, true);
+  document.addEventListener('cerebro:overlay-opening', function (e) {
+    if (e.detail && e.detail.owner !== 'more' && isMoreOpen()) {
+      setMoreOpen(false, false);
+    }
+  });
 
   function clearLassos() {
     var any = false;
@@ -3683,9 +3676,16 @@ var focusPanel = null;
     return sp && (sp._sampleName ||
       (sp.samples && sp.samples[0] && sp.samples[0].name) || sp.id);
   }
+  // Visible labels are not state identities: a FOV may itself be named
+  // "Trekker", so modality plus stable space id namespaces its background.
+  function backgroundStateKey(sp) {
+    if (!sp) return null;
+    if (sp._spatialSample) return 'fov:' + (sp.id || spatialName(sp));
+    return 'space:' + (sp.id || 'unknown') + ':' + spatialName(sp);
+  }
   function backgroundModeFor(sp) {
-    var name = spatialName(sp);
-    return (name && backgroundModes[name]) || 'auto';
+    var key = backgroundStateKey(sp);
+    return (key && backgroundModes[key]) || 'auto';
   }
   // The key a calibration is stored under. Both halves matter: the same image
   // against a different section is a different alignment problem.
@@ -3696,10 +3696,7 @@ var focusPanel = null;
     // back to the space id gave the opening section one key and the same
     // section a different one on return -- and the alignment stored under the
     // first was never found again.
-    var name = sp._sampleName ||
-      (sp.samples && sp.samples[0] && sp.samples[0].name) ||
-      sp.id || 'spatial';
-    return name + '|' + (img.id || 'image');
+    return backgroundStateKey(sp) + '|' + (img.id || 'image');
   }
   function presetState(img) {
     var pr = (img && img.preset) || {};
@@ -3726,9 +3723,8 @@ var focusPanel = null;
     if (sp) {
       // Which background this section was showing, so returning to it returns
       // the view that was left rather than resetting to its first image.
-      var nm = sp._sampleName ||
-        (sp.samples && sp.samples[0] && sp.samples[0].name) || sp.id;
-      if (nm) imgChoice[nm] = sp._customImageId || null;
+      var stateKey = backgroundStateKey(sp);
+      if (stateKey) imgChoice[stateKey] = sp._customImageId || null;
     }
     var k = imgKey(sp, currentImage(sp));
     if (!k || !sp || !sp._imgState) return;
@@ -3878,8 +3874,8 @@ var focusPanel = null;
     if (!sp || !id) return;
     stashImgState(sp);
     sp._customImageId = id;
-    imgChoice[spatialName(sp)] = id;
-    backgroundModes[spatialName(sp)] = 'custom';
+    imgChoice[backgroundStateKey(sp)] = id;
+    backgroundModes[backgroundStateKey(sp)] = 'custom';
     loadSpaceImage(sp);
     if (sp.id === activeSpatialId) seedImgControls();
     renderImagePicker();
@@ -3892,7 +3888,7 @@ var focusPanel = null;
     sp = sp || activeSpatial();
     if (!sp) return;
     stashImgState(sp);
-    backgroundModes[spatialName(sp)] = mode;
+    backgroundModes[backgroundStateKey(sp)] = mode;
     loadSpaceImage(sp);
     renderImagePicker();
     updateSpaceScopedControls();
@@ -4007,8 +4003,9 @@ var focusPanel = null;
       var id = spatialId(sample.name), old = spaceById[id];
       if (old) return;
       var images = sample.images || (sample.image ? [sample.image] : []);
-      var custom = Object.prototype.hasOwnProperty.call(imgChoice, sample.name)
-        ? imgChoice[sample.name]
+      var sampleStateKey = 'fov:' + id;
+      var custom = Object.prototype.hasOwnProperty.call(imgChoice, sampleStateKey)
+        ? imgChoice[sampleStateKey]
         : ((images[0] && images[0].id) || IMG_NONE);
       var sp = spaceById[id] = {
         id: id,
@@ -4532,9 +4529,9 @@ var focusPanel = null;
       var direct = spaceById[id];
       if (!direct || !direct.background_scope) return;
       var images = spatialImages(direct);
-      var scope = spatialName(direct);
-      direct._customImageId = Object.prototype.hasOwnProperty.call(imgChoice, scope)
-        ? imgChoice[scope] : ((images[0] && images[0].id) || IMG_NONE);
+      var scopeKey = backgroundStateKey(direct);
+      direct._customImageId = Object.prototype.hasOwnProperty.call(imgChoice, scopeKey)
+        ? imgChoice[scopeKey] : ((images[0] && images[0].id) || IMG_NONE);
       loadSpaceImage(direct);
     });
     colorBy = D.default_group ||
@@ -4546,6 +4543,7 @@ var focusPanel = null;
     // Reset point appearance only for a genuinely different data set. Bundles
     // from the same one are re-sent after returning to the tab or recolouring;
     // those refreshes must not discard the user's shared override.
+    groupFilter = {};
     if (dataChanged) {
       var configuredOpacity = Number(D.default_point_opacity);
       pointOpacity = D.default_point_opacity != null && isFinite(configuredOpacity)
@@ -4556,11 +4554,16 @@ var focusPanel = null;
       var opEl = $('cv-opacity'); if (opEl) opEl.value = String(pointOpacity);
       var opLbl = $('cv-op-val');
       if (opLbl) opLbl.textContent = pointOpacity.toFixed(2);
+
+      var configuredPercentage = Number(D.default_percentage_cells_to_show);
+      pctShow = D.default_percentage_cells_to_show != null &&
+        isFinite(configuredPercentage)
+        ? Math.max(10, Math.min(100, configuredPercentage)) : 100;
+      rebuildPctMask();
+      var pctEl = $('cv-pct'); if (pctEl) pctEl.value = String(pctShow);
+      var pctLbl = $('cv-pct-val'); if (pctLbl) pctLbl.textContent = String(pctShow);
     }
-    pctShow = 100; pctMask = null; groupFilter = {};
-    var pctEl = $('cv-pct'); if (pctEl) pctEl.value = '100';
-    var pctLbl = $('cv-pct-val'); if (pctLbl) pctLbl.textContent = '100';
-    setMoreOpen(false);   // a new data set starts with the bar's second row folded
+    setMoreOpen(false);   // a new data set starts with advanced settings closed
     // Trekker controls reset
     dissolvePct = 0; dissolveThresh = null; evidenceOn = false; nicheRadius = 250;
     nicheSet = null;
@@ -4711,16 +4714,6 @@ var focusPanel = null;
     if (jq) { jq(document).on('shiny:connected', onConnected); }
     else { document.addEventListener('shiny:connected', onConnected); }
 
-    // More is normally anchored to the control bar. A title-bar drag makes it
-    // a free window, while clamping keeps at least a recoverable 50px edge in
-    // view even if the user deliberately drags it beyond the viewport.
-    document.addEventListener('pointerdown', function (e) {
-      var handle = e.target && e.target.closest && e.target.closest('[data-cv-more-drag-handle]');
-      if (handle) beginMoreDrag(e);
-    });
-    document.addEventListener('pointermove', moveMoreDrag);
-    document.addEventListener('pointerup', endMoreDrag);
-    document.addEventListener('pointercancel', endMoreDrag);
     // The alignment controls are server-rendered after the client bundle. When
     // Shiny replaces that small fragment, populate its section tabs again; the
     // observer watches only the host itself, so painting tab buttons cannot
@@ -4849,13 +4842,10 @@ var focusPanel = null;
         setMoreOpen(false);
         return;
       }
-      // "More" panel toggle
-      // While anchored More toggles the panel. Once dragged, More is a focus
-      // affordance and close lives on the visible window's own X button.
+      // "More" drawer toggle
       var moreBtn = t && t.closest && t.closest('#cv-more-btn');
       if (moreBtn) {
-        if (isMoreOpen() && moreFloating) bringMoreToFront();
-        else setMoreOpen(!isMoreOpen());
+        setMoreOpen(!isMoreOpen());
         return;
       }
       // clonal-layout segmented toggle: recompute the clone space + reproject
@@ -4879,6 +4869,13 @@ var focusPanel = null;
         closeFilterMenus();
         if (menu) menu.style.display = willOpen ? '' : 'none';
         fbtn.classList.toggle('is-open', willOpen);
+        if (willOpen) {
+          window.requestAnimationFrame(function () {
+            // More scrolls internally. Keep the entire popover inside that
+            // scrollport so it is visible and hit-testable near either edge.
+            menu.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          });
+        }
         return;
       }
       // group-filter All / None

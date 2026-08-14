@@ -107,6 +107,7 @@ test_that("projection cards use real names, shared colors, and native choices", 
     included_projections = c("umap", "pca"),
     default_projection = "umap",
     overview_point_size = 6,
+    overview_percentage_cells_to_show = 70,
     projection_previews = frames,
     preview_colors = c(B = "#D97706", T = "#7C3AED")
   ))
@@ -126,6 +127,12 @@ test_that("projection cards use real names, shared colors, and native choices", 
   expect_match(html, "viewer-projection-preview", fixed = TRUE)
   expect_match(html, "<svg", fixed = TRUE)
   expect_match(html, "Initial point size", fixed = TRUE)
+  expect_match(html, "Initial cells shown", fixed = TRUE)
+  expect_match(html, "core-percentage_cells_to_show", fixed = TRUE)
+  expect_match(html, "min=\"10\"", fixed = TRUE)
+  expect_match(html, "max=\"100\"", fixed = TRUE)
+  expect_match(html, "step=\"10\"", fixed = TRUE)
+  expect_match(html, "value=\"70\"", fixed = TRUE)
   expect_match(html, "Set default", fixed = TRUE)
   expect_match(html, "Default", fixed = TRUE)
   expect_false(grepl("Opens first", html, fixed = TRUE))

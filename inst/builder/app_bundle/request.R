@@ -40,8 +40,17 @@
       default_projection = .subset2(item, "default_projection"),
       default_trajectory = .subset2(item, "default_trajectory"),
       overview_point_size = .subset2(item, "overview_point_size"),
+      overview_percentage_cells_to_show = .subset2(
+        item,
+        "overview_percentage_cells_to_show"
+      ),
       expression_backend = .subset2(item, "expression_backend"),
-      sidecars = .subset2(item, "sidecars")
+      sidecars = .subset2(item, "sidecars"),
+      spatial_image_storage = .subset2(item, "spatial_image_storage") %||%
+        "embedded",
+      external_images = .subset2(item, "external_images") %||% list(),
+      external_image_settings = .subset2(item, "external_image_settings") %||%
+        list()
     )
   })
   plan <- list(
@@ -56,6 +65,25 @@
     invalid()
   }
   .builder_app_plain_value(plan)
+}
+
+.builder_app_capture_spatial_identities <- function(images) {
+  identities <- lapply(names(images), function(dataset) {
+    sections <- lapply(names(images[[dataset]]), function(section) {
+      values <- lapply(names(images[[dataset]][[section]]), function(label) {
+        .builder_app_capture_file_identity(
+          images[[dataset]][[section]][[label]]$path,
+          paste(dataset, section, label, sep = "/")
+        )
+      })
+      names(values) <- names(images[[dataset]][[section]])
+      values
+    })
+    names(sections) <- names(images[[dataset]])
+    sections
+  })
+  names(identities) <- names(images)
+  identities
 }
 
 builder_app_bundle_request <- function(plan, built, labels) {
@@ -201,6 +229,48 @@ builder_app_bundle_request <- function(plan, built, labels) {
     backend_identities,
     backend_plan
   )
+  storage_valid <- vapply(
+    items,
+    function(item) {
+      storage <- item$spatial_image_storage
+      images <- item$external_images
+      settings <- item$external_image_settings
+      is.character(storage) &&
+        length(storage) == 1L &&
+        !is.na(storage) &&
+        storage %in% c("embedded", "external") &&
+        is.list(images) &&
+        !is.object(images) &&
+        is.list(settings) &&
+        !is.object(settings) &&
+        identical(names(images), names(settings)) &&
+        (identical(storage, "external") ||
+          (!length(images) && !length(settings)))
+    },
+    logical(1)
+  )
+  if (!all(storage_valid)) {
+    stop("BuildPlan external spatial image contract is invalid.", call. = FALSE)
+  }
+  external <- vapply(
+    items,
+    function(item) identical(item$spatial_image_storage, "external"),
+    logical(1)
+  )
+  spatial_images <- lapply(items[external], `[[`, "external_images")
+  spatial_image_settings <- lapply(
+    items[external],
+    `[[`,
+    "external_image_settings"
+  )
+  names(spatial_images) <- item_labels[external]
+  names(spatial_image_settings) <- item_labels[external]
+  populated <- vapply(spatial_images, length, integer(1)) > 0L
+  spatial_images <- spatial_images[populated]
+  spatial_image_settings <- spatial_image_settings[populated]
+  spatial_image_identities <- .builder_app_capture_spatial_identities(
+    spatial_images
+  )
 
   request <- structure(
     list(
@@ -227,7 +297,10 @@ builder_app_bundle_request <- function(plan, built, labels) {
       crb_pick_smallest_file = FALSE,
       backend_plan = backend_plan,
       backend_identities = backend_identities,
-      content_identities = content_identities
+      content_identities = content_identities,
+      spatial_images = spatial_images,
+      spatial_image_settings = spatial_image_settings,
+      spatial_image_identities = spatial_image_identities
     ),
     class = c("builder_app_bundle_request", "list")
   )

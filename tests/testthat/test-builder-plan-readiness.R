@@ -84,6 +84,100 @@ test_that("an uploaded image with unsaved alignment blocks freezing", {
   })
 })
 
+test_that("spatial image storage and nested image counts freeze exactly", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    record <- list(
+      source = list(name = "H&E.png", type = "image/png", size = 4),
+      source_uri = "data:image/png;base64,AAAA",
+      uri = "data:image/png;base64,AAAA",
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      dx = 0,
+      dy = 0,
+      scale = 1,
+      rotation = 0,
+      flip_x = FALSE,
+      flip_y = FALSE,
+      image_opacity = 0.8,
+      point_opacity = 0.85,
+      point_size = 5,
+      saved = TRUE,
+      section_id = "fov",
+      section_kind = "spatial"
+    )
+    record$outside <- 0L
+    entry$dataset_profile$spatial <- list(sections = "fov")
+    entry$settings$images <- list(fov = list(`H&E` = record))
+    expect_false(builder_plan_requires_app(list(entry)))
+
+    entry$settings$spatial_image_storage <- "external"
+    expect_true(builder_plan_requires_app(list(entry)))
+
+    entry$settings$images <- list()
+    expect_false(builder_plan_requires_app(list(entry)))
+
+    trekker_record <- record
+    trekker_record$section_id <- "trekker"
+    trekker_record$section_kind <- "trekker"
+    entry$settings$images <- list(trekker = trekker_record)
+    expect_true(builder_plan_requires_app(list(entry)))
+
+    entry$settings$images <- list(fov = list(`H&E` = record))
+
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    expect_identical(blocked$error_code, "external_images_require_app")
+
+    entry$settings$spatial_image_storage <- "invalid"
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
+    expect_identical(blocked$error_code, "invalid_spatial_image_storage")
+
+    entry$settings$spatial_image_storage <- "external"
+    ready <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
+    expect_null(ready$error)
+    expect_identical(ready$items[[1L]]$spatial_image_storage, "external")
+    expect_identical(ready$items[[1L]]$spatial_alignment$image_count, 1L)
+
+    expect_error(
+      builder_plan_requires_app("not a list"),
+      "Builder plan entries must be a list.",
+      fixed = TRUE
+    )
+
+    valid_external_entry <- entry
+    duplicate <- structure(list(record, record), names = c("H&E", "H&E"))
+    entry$settings$images <- list(fov = duplicate)
+    expect_error(builder_plan_requires_app(list(entry)), "unique")
+    expect_error(
+      builder_plan_requires_app(list(valid_external_entry, entry)),
+      "unique"
+    )
+
+    invalid_image_entry <- valid_external_entry
+    invalid_image_entry$settings$images <- list(fov = "corrupt image record")
+    expect_error(
+      builder_plan_requires_app(list(invalid_image_entry)),
+      "invalid for atomic vectors",
+      fixed = TRUE
+    )
+    expect_error(
+      builder_plan_requires_app(list(
+        valid_external_entry,
+        invalid_image_entry
+      )),
+      "invalid for atomic vectors",
+      fixed = TRUE
+    )
+
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
+    expect_identical(blocked$error_code, "duplicate_spatial_image_label")
+  })
+})
+
 test_that("final included sets own their default values", {
   local({
     builder_repo_source("preview.R")

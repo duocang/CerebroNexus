@@ -182,18 +182,22 @@ freeze_plan_for_output <- function(
     }
     return(builder_plan_error(message, "imports_pending"))
   }
-  make_app <- inherits(output_options, "builder_build_options") &&
+  all <- sets()
+  if (!length(all)) {
+    return(builder_plan_error("No datasets yet.", "empty_release"))
+  }
+  explicit_output <- inherits(output_options, "builder_build_options")
+  make_app <- if (explicit_output) {
     isTRUE(output_options$make_app)
+  } else {
+    builder_plan_requires_app(all)
+  }
   validation <- review_validation()
   if (make_app && !isTRUE(validation$ok)) {
     return(builder_plan_error(
       validation$error %||% "Viewer App options are invalid.",
       "invalid_review_options"
     ))
-  }
-  all <- sets()
-  if (!length(all)) {
-    return(builder_plan_error("No datasets yet.", "empty_release"))
   }
   login_enabled <- make_app && isTRUE(auth_enabled())
   parsed_auth <- builder_auth_validate_payload(
@@ -203,7 +207,7 @@ freeze_plan_for_output <- function(
   if (!isTRUE(parsed_auth$ok)) {
     return(builder_plan_error(parsed_auth$error, "invalid_auth_accounts"))
   }
-  app_options <- if (make_app) {
+  app_options <- if (make_app && explicit_output) {
     builder_review_options_for_plan(
       output_options$app,
       initial_dataset = output_options$initial_dataset
@@ -375,13 +379,6 @@ output[["enhance-table_list"]] <- renderUI({
   )
 })
 
-output[["dataset_context"]] <- renderUI({
-  state <- store()
-  id <- current()
-  req(id)
-  builder_dataset_context_ui(state, id)
-})
-
 output[["inspect_stage"]] <- renderUI({
   id <- current()
   req(id)
@@ -539,7 +536,6 @@ render_configure_workbench <- function() {
       "Choose data to include",
       "Define the content saved to each CRB file."
     ),
-    uiOutput("dataset_context"),
     uiOutput("inspect_stage"),
     builder_core_stage_ui("core", core_model),
     builder_enhance_stage_ui(
@@ -605,6 +601,9 @@ observeEvent(input$confirm_review, {
       once = TRUE
     )
     return()
+  }
+  if (isTRUE(live$make_app)) {
+    build_mode(TRUE)
   }
   workflow(builder_reduce_workflow(
     state,

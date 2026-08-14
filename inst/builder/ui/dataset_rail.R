@@ -154,48 +154,6 @@ builder_snapshot_release_transition <- function(
   )
 }
 
-builder_dataset_context_ui <- function(state, current = state$current_dataset) {
-  ids <- vapply(state$datasets, `[[`, character(1), "id")
-  index <- match(current, ids)
-  if (is.na(index)) {
-    return(NULL)
-  }
-  entry <- state$datasets[[index]]
-  multiple <- length(ids) > 1L
-  cells <- .builder_rail_or(entry$profile$n_cells, 0L)
-  genes <- .builder_rail_or(
-    entry$profile$n_genes,
-    .builder_rail_or(entry$profile$n_features, 0L)
-  )
-  context <- shiny::div(
-    class = paste(
-      "builder-stage-summary dataset-context",
-      if (multiple) "is-multiple" else ""
-    ),
-    tabindex = "-1",
-    shiny::div(
-      class = "dataset-context-copy",
-      if (multiple) {
-        shiny::span(
-          class = "dataset-context-position",
-          paste("Dataset", index, "of", length(ids))
-        )
-      },
-      shiny::strong(class = "dataset-context-title", entry$settings$name),
-      shiny::span(
-        class = "dataset-context-counts",
-        paste0(
-          format(cells, big.mark = ","),
-          " cells · ",
-          format(genes, big.mark = ","),
-          " genes"
-        )
-      )
-    )
-  )
-  context
-}
-
 builder_dataset_remove_requires_confirmation <- function(entry) {
   settings <- entry$settings
   spatial <- .builder_rail_or(entry$spatial_drafts, list())

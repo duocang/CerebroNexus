@@ -227,6 +227,24 @@ builder_fake_app <- function(request, app_dir) {
       file.path(app_dir, targets[[index]])
     )
   }
+  bundled_spatial_images <- list()
+  for (dataset in names(request$spatial_images)) {
+    for (section in names(request$spatial_images[[dataset]])) {
+      for (label in names(request$spatial_images[[dataset]][[section]])) {
+        descriptor <- request$spatial_images[[dataset]][[section]][[label]]
+        target <- .builder_app_spatial_target(
+          dataset,
+          section,
+          label,
+          descriptor$path
+        )
+        dir.create(dirname(file.path(app_dir, target)), recursive = TRUE)
+        file.copy(descriptor$path, file.path(app_dir, target))
+        descriptor$path <- target
+        bundled_spatial_images[[dataset]][[section]][[label]] <- descriptor
+      }
+    }
+  }
   expect_true(file.copy(
     builder_profile_inst_path("viewer", "_bundle_app.R"),
     file.path(app_dir, "app.R")
@@ -253,12 +271,90 @@ builder_fake_app <- function(request, app_dir) {
         )
       ),
       colors = request$colors,
+      spatial_images = if (length(bundled_spatial_images)) {
+        bundled_spatial_images
+      } else {
+        NULL
+      },
+      spatial_image_settings = if (length(request$spatial_image_settings)) {
+        request$spatial_image_settings
+      } else {
+        NULL
+      },
       crb_pick_smallest_file = request$crb_pick_smallest_file,
       .bundle_backend_plan = request$backend_plan
     ),
     file.path(app_dir, "cerebro_config.rds")
   )
   app_dir
+}
+
+test_that("Builder spatial targets match the package canonical target", {
+  cases <- list(
+    c("Dataset A", "FOV/one", "H&E", "histology.png"),
+    c(strrep("dataset ", 20L), "unsafe/section", "label one", "same.png")
+  )
+  for (case in cases) {
+    expect_identical(
+      .builder_app_spatial_target(
+        case[[1L]],
+        case[[2L]],
+        case[[3L]],
+        case[[4L]]
+      ),
+      CerebroNexus:::.spatialImageBundleTarget(
+        case[[1L]],
+        case[[2L]],
+        case[[3L]],
+        case[[4L]]
+      )
+    )
+  }
+  first <- .builder_app_spatial_target("Dataset", "FOV", "H&E", "same.png")
+  second <- .builder_app_spatial_target("Dataset", "FOV", "DAPI", "same.png")
+  expect_false(identical(first, second))
+  expect_true(.builder_app_safe_relative(first))
+  expect_true(.builder_app_safe_relative(second))
+})
+
+builder_app_external_fixture <- function(
+  stage = withr::local_tempdir(.local_envir = parent.frame())
+) {
+  fixture <- builder_app_bundle_fixture(stage = stage)
+  image_dir <- file.path(
+    fixture$stage,
+    ".builder-spatial-assets",
+    "dataset-a",
+    "section-a"
+  )
+  dir.create(image_dir, recursive = TRUE)
+  image <- file.path(image_dir, "histology.png")
+  writeBin(as.raw(1:32), image)
+  fixture$plan$items[[1L]]$spatial_image_storage <- "external"
+  fixture$plan$items[[1L]]$external_images <- list(
+    `section-a` = list(
+      `H&E` = list(
+        path = normalizePath(image, winslash = "/"),
+        bounds = c(xmin = 0, xmax = 10, ymin = 0, ymax = 8)
+      )
+    )
+  )
+  fixture$plan$items[[1L]]$external_image_settings <- list(
+    `section-a` = list(
+      `H&E` = list(
+        flip_x = FALSE,
+        flip_y = TRUE,
+        scale_x = 1,
+        scale_y = 1,
+        offset_x = 2,
+        offset_y = -1,
+        rotation = 90,
+        image_opacity = 0.8
+      )
+    )
+  )
+  fixture$image <- image
+  fixture
 }
 
 builder_flip_file_byte <- function(path) {
@@ -309,7 +405,8 @@ test_that("App arguments come only from the frozen plan", {
     list(
       default_projection = "pca",
       default_trajectory = list(method = "monocle2", name = "lineage"),
-      overview_point_size = 7
+      overview_point_size = 7,
+      overview_percentage_cells_to_show = 100
     )
   )
   expect_false(request$crb_pick_smallest_file)
@@ -339,7 +436,10 @@ test_that("App arguments come only from the frozen plan", {
       "crb_pick_smallest_file",
       "backend_plan",
       "backend_identities",
-      "content_identities"
+      "content_identities",
+      "spatial_images",
+      "spatial_image_settings",
+      "spatial_image_identities"
     )
   )
   expect_identical(names(request$crb_identities), fixture$labels)
@@ -1291,6 +1391,20 @@ test_that("installed layout carries the exact App entrypoint template", {
   )
 })
 
+test_that("the bundled App entrypoint runs directly with visible startup information", {
+  source <- paste(
+    readLines(
+      builder_profile_inst_path("viewer", "_bundle_app.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(source, "sys.nframe() == 0L", fixed = TRUE)
+  expect_match(source, "direct_options$quiet <- FALSE", fixed = TRUE)
+  expect_match(source, "do.call(shiny::runApp", fixed = TRUE)
+})
+
 test_that("App verification rejects stable copied data replacements", {
   crb_fixture <- builder_app_bundle_fixture()
   crb_request <- builder_app_bundle_request(
@@ -1835,4 +1949,146 @@ test_that("App verification rejects private data outside exact allowed roots", {
   expect_true(file.copy(trusted_rds_demo, rds_demo, overwrite = TRUE))
   builder_flip_file_byte(demo)
   expect_error(builder_verify_app(app_dir, request), "outside private-data")
+})
+
+test_that("external spatial assets are frozen and passed as formal arguments", {
+  fixture <- builder_app_external_fixture()
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  identity <- request$spatial_image_identities[["Dataset A"]][["section-a"]][[
+    "H&E"
+  ]]
+  expect_identical(
+    request$backend_plan$entries[["private-data/dataset-a.crb"]]$type,
+    "embedded"
+  )
+  expect_identical(identity$label, "Dataset A/section-a/H&E")
+  expect_identical(identity$path, normalizePath(fixture$image, winslash = "/"))
+
+  observed <- NULL
+  create_app <- function(...) {
+    observed <<- list(...)
+    dir.create(observed$result_dir)
+  }
+  builder_build_app(request, fixture$stage, create_app)
+  expect_identical(observed$spatial_images, request$spatial_images)
+  expect_identical(
+    observed$spatial_image_settings,
+    request$spatial_image_settings
+  )
+
+  changed <- builder_app_external_fixture()
+  changed_request <- builder_app_bundle_request(
+    changed$plan,
+    changed$paths,
+    changed$labels
+  )
+  writeBin(as.raw(33:64), changed$image)
+  expect_error(
+    builder_build_app(changed_request, changed$stage, create_app),
+    "spatial image changed"
+  )
+})
+
+test_that("external spatial request rejects aliases and target collisions", {
+  linked <- builder_app_external_fixture()
+  link <- file.path(linked$stage, ".builder-spatial-assets", "linked.png")
+  expect_true(file.symlink(linked$image, link))
+  linked$plan$items[[1L]]$external_images[["section-a"]][["H&E"]]$path <- link
+  expect_error(
+    builder_app_bundle_request(linked$plan, linked$paths, linked$labels)
+  )
+
+  duplicated <- builder_app_external_fixture()
+  duplicated$plan$items[[1L]]$external_images[["section-a"]][["DAPI"]] <-
+    duplicated$plan$items[[1L]]$external_images[["section-a"]][["H&E"]]
+  duplicated$plan$items[[1L]]$external_image_settings[["section-a"]][[
+    "DAPI"
+  ]] <-
+    duplicated$plan$items[[1L]]$external_image_settings[["section-a"]][["H&E"]]
+  expect_error(
+    builder_app_bundle_request(
+      duplicated$plan,
+      duplicated$paths,
+      duplicated$labels
+    ),
+    "request contract"
+  )
+
+  collided <- builder_app_external_fixture()
+  second_dir <- file.path(
+    collided$stage,
+    ".builder-spatial-assets",
+    "other"
+  )
+  dir.create(second_dir, recursive = TRUE)
+  second <- file.path(second_dir, basename(collided$image))
+  writeBin(as.raw(65:96), second)
+  collided$plan$items[[1L]]$external_images[["section-a"]][["DAPI"]] <-
+    list(
+      path = normalizePath(second, winslash = "/"),
+      bounds = c(xmin = 0, xmax = 10, ymin = 0, ymax = 8)
+    )
+  collided$plan$items[[1L]]$external_image_settings[["section-a"]][["DAPI"]] <-
+    collided$plan$items[[1L]]$external_image_settings[["section-a"]][["H&E"]]
+  collided_request <- builder_app_bundle_request(
+    collided$plan,
+    collided$paths,
+    collided$labels
+  )
+  collided_images <- collided_request$spatial_images[["Dataset A"]][[
+    "section-a"
+  ]]
+  collided_targets <- vapply(
+    names(collided_images),
+    function(label) {
+      .builder_app_spatial_target(
+        "Dataset A",
+        "section-a",
+        label,
+        collided_images[[label]]$path
+      )
+    },
+    character(1)
+  )
+  expect_length(unique(collided_targets), 2L)
+})
+
+test_that("external spatial topology contains only declared relative assets", {
+  fixture <- builder_app_external_fixture()
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  app_dir <- builder_fake_app(
+    request,
+    file.path(fixture$stage, "cerebro_app")
+  )
+  expect_true(builder_verify_app(app_dir, request)$valid)
+  config <- readRDS(file.path(app_dir, "cerebro_config.rds"))
+  bundled <- config$spatial_images[["Dataset A"]][["section-a"]][["H&E"]]$path
+  expect_identical(
+    bundled,
+    .builder_app_spatial_target(
+      "Dataset A",
+      "section-a",
+      "H&E",
+      fixture$image
+    )
+  )
+  expect_false(grepl(
+    normalizePath(fixture$stage, winslash = "/"),
+    bundled,
+    fixed = TRUE
+  ))
+
+  writeBin(as.raw(1:4), file.path(app_dir, "spatial-assets", "undeclared.png"))
+  expect_error(
+    builder_verify_app(app_dir, request),
+    "spatial-assets topology"
+  )
 })

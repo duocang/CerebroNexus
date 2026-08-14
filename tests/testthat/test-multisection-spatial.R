@@ -206,3 +206,39 @@ test_that("attaching nothing, or to a section that is absent, is handled", {
     expect_false(is.null(bad$error))
   })
 })
+
+test_that("named image stacks remain isolated between spatial sections", {
+  local({
+    builder_multisection_source_extras(environment())
+    record <- function(section, label, dx) {
+      builder_alignment_record(
+        source = list(name = paste0(label, ".png"), type = "image/png"),
+        source_uri = "data:image/png;base64,AAAA",
+        uri = "data:image/png;base64,AAAA",
+        base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+        parameters = list(dx = dx),
+        saved = TRUE,
+        section = list(id = section, kind = "spatial")
+      )
+    }
+    images <- list(
+      sectionA1 = list(
+        `H&E` = record("sectionA1", "H&E", 4),
+        DAPI = record("sectionA1", "DAPI", 7)
+      ),
+      sectionA2 = list(
+        `H&E` = record("sectionA2", "H&E", 0),
+        DAPI = record("sectionA2", "DAPI", 1)
+      ),
+      sectionB1 = list(`H&E` = record("sectionB1", "H&E", 2))
+    )
+    copied <- builder_alignment_apply_transform_to_matching_label(
+      images,
+      "sectionA1",
+      "DAPI"
+    )
+    expect_identical(copied$sectionA2$DAPI$dx, 7)
+    expect_identical(copied$sectionB1[["H&E"]], images$sectionB1[["H&E"]])
+    expect_false("DAPI" %in% names(copied$sectionB1))
+  })
+})
