@@ -583,13 +583,7 @@ builder_spatial_alignment_server <- function(
     record$total <- cover$total
     record
   }
-  current_record <- shiny::reactive({
-    draft()
-    parameters()
-    raw_image()
-    alignment_preview()
-    finalize_current_record()
-  })
+  current_record <- draft_record
 
   shiny::observeEvent(input[["enhance-active_section"]], {
     id <- current()
@@ -1012,7 +1006,6 @@ builder_spatial_alignment_server <- function(
       shiny::isolate(active_section()),
       next_record
     )
-    publish_canvas(reset_controls = TRUE)
     invisible(TRUE)
   }
   shiny::observeEvent(
