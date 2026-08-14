@@ -762,17 +762,44 @@ builder_spatial_canvas_scene <- function(
     }
     unname(value)
   }
-  safe_identity <- if (is.list(identity) && !is.null(names(identity))) {
+  identity_character <- function(value, nonempty = TRUE) {
+    if (
+      !is.character(value) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        (isTRUE(nonempty) && !nzchar(value))
+    ) {
+      return(NULL)
+    }
+    unname(value)
+  }
+  identity_revision <- function(value) {
+    if (
+      !is.numeric(value) ||
+        is.object(value) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        !is.finite(value)
+    ) {
+      return(NULL)
+    }
+    unname(value)
+  }
+  identity_source <- if (is.list(identity)) {
     identity
   } else {
     list()
   }
-  unsafe_identity <- grepl(
-    "path|worker|snapshot",
-    names(safe_identity),
-    ignore.case = TRUE
+  safe_identity <- list(
+    dataset_id = identity_character(identity_source$dataset_id),
+    dataset_revision = identity_revision(identity_source$dataset_revision),
+    section_id = identity_character(identity_source$section_id),
+    section_kind = identity_character(identity_source$section_kind),
+    image_label = identity_character(
+      identity_source$image_label,
+      nonempty = FALSE
+    )
   )
-  safe_identity <- safe_identity[!unsafe_identity]
 
   defaults <- builder_alignment_defaults()
   normalized_record <- tryCatch(
@@ -826,20 +853,50 @@ builder_spatial_canvas_scene <- function(
     preview_message <- if (is.list(preview)) preview$message else NULL
     return(unavailable(preview_message))
   }
-  frame <- preview$spatial_base %||% preview$spatial
+  frame <- preview$spatial_base
   required <- c("cell_barcode", "x", "y", "group")
   if (
     !is.data.frame(frame) ||
       !nrow(frame) ||
-      !all(required %in% names(frame)) ||
-      anyNA(frame$cell_barcode) ||
-      any(!nzchar(as.character(frame$cell_barcode))) ||
-      any(!is.finite(suppressWarnings(as.numeric(frame$x)))) ||
-      any(!is.finite(suppressWarnings(as.numeric(frame$y))))
+      !all(required %in% names(frame))
   ) {
     return(unavailable("Spatial preview points are invalid."))
   }
-  frame_group <- as.character(frame$group)
+  rows <- nrow(frame)
+  column_lengths <- vapply(
+    required,
+    function(name) length(frame[[name]]),
+    integer(1)
+  )
+  frame_x <- tryCatch(
+    suppressWarnings(as.numeric(frame$x)),
+    error = function(error) numeric()
+  )
+  frame_y <- tryCatch(
+    suppressWarnings(as.numeric(frame$y)),
+    error = function(error) numeric()
+  )
+  frame_barcode <- tryCatch(
+    as.character(frame$cell_barcode),
+    error = function(error) character()
+  )
+  frame_group <- tryCatch(
+    as.character(frame$group),
+    error = function(error) character()
+  )
+  if (
+    any(column_lengths != rows) ||
+      length(frame_x) != rows ||
+      length(frame_y) != rows ||
+      length(frame_barcode) != rows ||
+      length(frame_group) != rows ||
+      anyNA(frame_barcode) ||
+      any(!nzchar(frame_barcode)) ||
+      any(!is.finite(frame_x)) ||
+      any(!is.finite(frame_y))
+  ) {
+    return(unavailable("Spatial preview points are invalid."))
+  }
   frame_group[is.na(frame_group) | !nzchar(frame_group)] <- "N/A"
   levels <- unique(frame_group)
   palette <- builder_level_colors(levels, overrides = colors)
@@ -862,17 +919,18 @@ builder_spatial_canvas_scene <- function(
       .builder_alignment_valid_bounds(normalized_record$base_bounds)
   ) {
     source_name <- if (is.list(normalized_record$source)) {
-      normalized_record$source$name
+      identity_character(normalized_record$source$name, nonempty = FALSE)
     } else {
       NULL
     }
     image_key <- safe_identity$image_label %||%
-      safe_identity$image %||%
-      normalized_record$image_label %||%
+      identity_character(
+        normalized_record$image_label,
+        nonempty = FALSE
+      ) %||%
       source_name %||%
       "Tissue image"
-    image_key <- as.character(image_key)
-    if (length(image_key) != 1L || is.na(image_key) || !nzchar(image_key)) {
+    if (!nzchar(image_key)) {
       image_key <- "Tissue image"
     }
     image_key <- gsub("[/\\\\]+", "_", image_key)
@@ -897,9 +955,9 @@ builder_spatial_canvas_scene <- function(
     capped = isTRUE(preview$capped),
     coordinate_frame = coordinate_frame,
     points = list(
-      x = unname(as.numeric(frame$x)),
-      y = unname(as.numeric(frame$y)),
-      barcode = unname(as.character(frame$cell_barcode)),
+      x = unname(frame_x),
+      y = unname(frame_y),
+      barcode = unname(frame_barcode),
       group_index = unname(as.integer(group_index))
     ),
     groups = groups,
