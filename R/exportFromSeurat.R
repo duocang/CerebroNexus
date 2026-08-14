@@ -339,6 +339,7 @@
     }
   }
 
+  export <- .stripCerebroSourceReferences(export)
   saveRDS(export, stage_crb)
   if (!file.exists(stage_crb)) {
     stop("Failed to serialise the staged Cerebro object.", call. = FALSE)

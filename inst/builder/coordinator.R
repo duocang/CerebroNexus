@@ -197,6 +197,7 @@
       "default_projection",
       "default_trajectory",
       "overview_point_size",
+      "overview_percentage_cells_to_show",
       "expression_backend",
       "sidecars"
     )]

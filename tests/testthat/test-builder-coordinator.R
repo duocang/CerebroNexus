@@ -1378,6 +1378,8 @@ test_that("parent and worker requests retain identical Viewer defaults", {
     builder_task9_source()
     root <- withr::local_tempdir()
     plan <- builder_app_coordinator_plan_fixture(file.path(root, "release"))
+    plan$items[[1L]]$overview_percentage_cells_to_show <- 65
+    plan$items[[2L]]$overview_percentage_cells_to_show <- 80
     handle <- builder_coordinator_prepare(plan, "viewer-defaults")
     artifacts <- file.path(
       handle$stage,
@@ -1405,6 +1407,18 @@ test_that("parent and worker requests retain identical Viewer defaults", {
     expect_identical(
       parent_request$viewer_content,
       worker_request$viewer_content
+    )
+    expect_identical(
+      parent_request$viewer_content[["Dataset A"]][[
+        "overview_percentage_cells_to_show"
+      ]],
+      65
+    )
+    expect_identical(
+      parent_request$viewer_content[["Dataset B"]][[
+        "overview_percentage_cells_to_show"
+      ]],
+      80
     )
     expect_true(builder_coordinator_abort(handle)$aborted)
   })
