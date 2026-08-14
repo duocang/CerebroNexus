@@ -138,6 +138,11 @@ builder_spatial_alignment_server <- function(
     if (is.null(names(transforms))) {
       return(list())
     }
+    for (section in names(transforms)) {
+      if (is.list(transforms[[section]])) {
+        transforms[[section]]$scale <- 1
+      }
+    }
     transforms
   }
   coordinate_spec_for <- function(entry, section) {
@@ -298,17 +303,11 @@ builder_spatial_alignment_server <- function(
   restore_coordinate_controls <- function(entry, section) {
     spec <- coordinate_spec_for(entry, section)
     coordinate_draft(spec)
-    ids <- c("enhance-coordinate_rotation", "enhance-coordinate_scale")
-    invisible(lapply(ids, function(id) shiny::freezeReactiveValue(input, id)))
+    shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
     shiny::updateSliderInput(
       session,
       "enhance-coordinate_rotation",
       value = spec$rotation_degrees
-    )
-    shiny::updateSliderInput(
-      session,
-      "enhance-coordinate_scale",
-      value = spec$scale
     )
   }
   switch_to <- function(entry, section, label = NULL) {
@@ -418,15 +417,14 @@ builder_spatial_alignment_server <- function(
       list(
         rotation_degrees = input[["enhance-coordinate_rotation"]] %||%
           current_spec$rotation_degrees,
-        scale = input[["enhance-coordinate_scale"]] %||% current_spec$scale
+        scale = 1
       ),
       context = "Coordinate frame"
     )
   })
   shiny::observe({
     rotation <- input[["enhance-coordinate_rotation"]]
-    scale <- input[["enhance-coordinate_scale"]]
-    if (is.null(rotation) || is.null(scale)) {
+    if (is.null(rotation)) {
       return()
     }
     section <- active_section()
@@ -1049,17 +1047,11 @@ builder_spatial_alignment_server <- function(
     changed <- !identical(previous, transforms[[section]])
     coordinate_draft(spec)
     if (isTRUE(reset)) {
-      ids <- c("enhance-coordinate_rotation", "enhance-coordinate_scale")
-      invisible(lapply(ids, function(id) shiny::freezeReactiveValue(input, id)))
+      shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
       shiny::updateSliderInput(
         session,
         "enhance-coordinate_rotation",
         value = 0
-      )
-      shiny::updateSliderInput(
-        session,
-        "enhance-coordinate_scale",
-        value = 1
       )
       request_preview(entry, section)
     }

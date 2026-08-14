@@ -391,15 +391,6 @@ builder_spatial_alignment_ui <- function(id, model) {
                       ticks = FALSE
                     ),
                     sliderInput(
-                      ns("coordinate_scale"),
-                      "Uniform coordinate scale",
-                      0.1,
-                      10,
-                      1,
-                      step = 0.1,
-                      ticks = FALSE
-                    ),
-                    sliderInput(
                       ns("point_opacity"),
                       "Point opacity",
                       0,

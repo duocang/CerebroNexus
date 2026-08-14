@@ -1962,8 +1962,7 @@
   }
 
   function applyContinuousCoordinateRotation(rotation) {
-    var scale = document.getElementById("enhance-coordinate_scale");
-    applyContinuousCoordinateTransform(rotation, scale ? scale.value : 1);
+    applyContinuousCoordinateTransform(rotation, 1);
   }
 
   var coordinateRotationFrame = null;
@@ -2616,13 +2615,11 @@
     window.requestAnimationFrame(syncSpatialAlignmentScrollbars);
   });
   document.addEventListener("input", function (event) {
-    if (event.target.id === "enhance-coordinate_rotation" ||
-      event.target.id === "enhance-coordinate_scale") {
+    if (event.target.id === "enhance-coordinate_rotation") {
       var rotation = document.getElementById("enhance-coordinate_rotation");
-      var scale = document.getElementById("enhance-coordinate_scale");
       applyContinuousCoordinateTransform(
         rotation ? rotation.value : 0,
-        scale ? scale.value : 1
+        1
       );
     }
     if (new Set([
@@ -2634,13 +2631,11 @@
     }
   }, true);
   document.addEventListener("change", function (event) {
-    if (event.target.id === "enhance-coordinate_rotation" ||
-      event.target.id === "enhance-coordinate_scale") {
+    if (event.target.id === "enhance-coordinate_rotation") {
       var rotation = document.getElementById("enhance-coordinate_rotation");
-      var scale = document.getElementById("enhance-coordinate_scale");
       applyContinuousCoordinateTransform(
         rotation ? rotation.value : 0,
-        scale ? scale.value : 1
+        1
       );
     }
     if (new Set([
