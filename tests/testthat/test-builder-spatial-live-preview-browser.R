@@ -186,6 +186,76 @@ test_that("Builder spatial sliders update the visible preview on the next frame"
     "item.meta.builder_alignment_role === 'points');",
     "return {x: Array.from(trace.x), y: Array.from(trace.y)}; })()"
   ))
+
+  post_restore_rotation <- 50
+  restore_angle <- (post_restore_rotation - target_rotation) * pi / 180
+  restore_dx <- live_coordinate$x[[1L]] - baseline$pivotX
+  restore_dy <- live_coordinate$y[[1L]] - baseline$pivotY
+  expected_restore_x <- baseline$pivotX +
+    restore_dx * cos(restore_angle) -
+    restore_dy * sin(restore_angle)
+  expected_restore_y <- baseline$pivotY +
+    restore_dx * sin(restore_angle) +
+    restore_dy * cos(restore_angle)
+  app$run_js(paste0(
+    "(() => {",
+    "const plot = document.getElementById('enhance-alignment_spatial_plot');",
+    "const meta = plot.layout.meta;",
+    "const oldToken = Number(meta.builder_alignment_render_token) || 0;",
+    "plot.dispatchEvent(new Event('shiny:value', {bubbles: true}));",
+    "window.setTimeout(() => {",
+    "meta.builder_alignment_rotation = 42;",
+    "meta.builder_alignment_render_token = oldToken + 1000;",
+    "plot.emit('plotly_afterplot');",
+    "}, 180);",
+    "})();"
+  ))
+  app$wait_for_js(
+    paste0(
+      "(() => { const plot = document.getElementById('enhance-alignment_spatial_plot');",
+      "return Number(plot.layout.meta.builder_alignment_render_token) > 0 && ",
+      "Number(plot.layout.meta.builder_alignment_rotation) === 42; })()"
+    ),
+    timeout = 1000
+  )
+  app$run_js(paste0(
+    "(() => { const rotation = document.getElementById(",
+    "'enhance-coordinate_rotation'); rotation.value = '50';",
+    "rotation.dispatchEvent(new Event('input', {bubbles: true})); })();"
+  ))
+  app$wait_for_js(
+    sprintf(
+      paste0(
+        "(() => { const plot = document.getElementById('enhance-alignment_spatial_plot');",
+        "const trace = plot.data.find(item => item.meta && ",
+        "item.meta.builder_alignment_role === 'points');",
+        "return Math.abs(Number(trace.x[0]) - %.15f) < 1e-8 && ",
+        "Math.abs(Number(trace.y[0]) - %.15f) < 1e-8; })()"
+      ),
+      expected_restore_x,
+      expected_restore_y
+    ),
+    timeout = 1000
+  )
+  app$run_js(paste0(
+    "(() => { const rotation = document.getElementById(",
+    "'enhance-coordinate_rotation'); rotation.value = '42';",
+    "rotation.dispatchEvent(new Event('input', {bubbles: true})); })();"
+  ))
+  app$wait_for_js(
+    sprintf(
+      paste0(
+        "(() => { const plot = document.getElementById('enhance-alignment_spatial_plot');",
+        "const trace = plot.data.find(item => item.meta && ",
+        "item.meta.builder_alignment_role === 'points');",
+        "return Math.abs(Number(trace.x[0]) - %.15f) < 1e-8 && ",
+        "Math.abs(Number(trace.y[0]) - %.15f) < 1e-8; })()"
+      ),
+      live_coordinate$x[[1L]],
+      live_coordinate$y[[1L]]
+    ),
+    timeout = 1000
+  )
   app$click("enhance-save_coordinate_transform")
   app$wait_for_idle(timeout = 30000)
   app$wait_for_js(

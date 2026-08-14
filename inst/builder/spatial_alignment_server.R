@@ -852,6 +852,7 @@ builder_spatial_alignment_server <- function(
       overrides
     )
   })
+  alignment_plot_render_token <- 0L
   output[["enhance-alignment_spatial_plot"]] <- plotly::renderPlotly({
     preview <- alignment_preview()
     shiny::req(isTRUE(preview$available))
@@ -864,7 +865,7 @@ builder_spatial_alignment_server <- function(
       preview$spatial,
       preview$coordinate_transform %||% NULL
     )
-    builder_alignment_plot(
+    plot <- builder_alignment_plot(
       display_frame,
       colors(),
       image_uri = record$uri %||% NULL,
@@ -876,6 +877,10 @@ builder_spatial_alignment_server <- function(
       point_opacity = appearance$point_opacity,
       point_size = appearance$point_size
     )
+    alignment_plot_render_token <<- alignment_plot_render_token + 1L
+    plot$x$layout$meta$builder_alignment_render_token <-
+      alignment_plot_render_token
+    plot
   })
 
   output[["enhance-alignment_legend"]] <- shiny::renderUI({

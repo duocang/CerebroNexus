@@ -131,6 +131,29 @@ test_that("alignment server does not subscribe to Plotly selection events", {
   expect_false(grepl(".clientValue-", server, fixed = TRUE))
 })
 
+test_that("spatial draft restoration waits for a completed server render", {
+  server <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "spatial_alignment_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(server, "builder_alignment_render_token", fixed = TRUE)
+  expect_match(client, "spatialDraftRestorePending", fixed = TRUE)
+  expect_match(client, "completeSpatialAlignmentServerRestore", fixed = TRUE)
+  expect_false(grepl("spatialDraftRestoreTimer", client, fixed = TRUE))
+  expect_false(grepl("}, 80);", client, fixed = TRUE))
+})
+
 test_that("alignment preview requeues when its render contract changes", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")

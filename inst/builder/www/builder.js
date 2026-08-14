@@ -1105,10 +1105,17 @@
   }
 
   function enhancePlot(plot) {
-    if (!plot || plot.dataset.builderPreview === "true") return;
+    if (!plot) return;
     if (!plot.data || typeof plot.on !== "function") return;
+    if (
+      plot.__builderPreviewEmitter &&
+      plot.__builderPreviewEmitter === plot._ev
+    ) {
+      return;
+    }
     plot.dataset.builderPreview = "true";
     plot.on("plotly_afterplot", function () {
+      completeSpatialAlignmentServerRestore(plot);
       syncSpatialPreviewAspect(plot);
       renderPlotSummary(plot);
       plot.classList.remove("is-updating");
@@ -1116,6 +1123,8 @@
     plot.on("plotly_relayouting", function () {
       plot.classList.add("is-updating");
     });
+    plot.__builderPreviewEmitter = plot._ev;
+    completeSpatialAlignmentServerRestore(plot);
     syncSpatialPreviewAspect(plot);
     renderPlotSummary(plot);
   }
@@ -1904,7 +1913,7 @@
   var spatialDraftFrame = null;
   var spatialDraftPending = null;
   var spatialDraftInFlight = null;
-  var spatialDraftRestoreTimer = null;
+  var spatialDraftRestorePending = null;
   var spatialDraftInputIds = new Set([
     "enhance-coordinate_rotation",
     "enhance-img_dx", "enhance-img_dy", "enhance-img_scale",
@@ -1959,6 +1968,12 @@
   function spatialDraftIsCurrent(plot, draft) {
     return draft.revision === spatialDraftRevision &&
       spatialAlignmentPlot() === plot;
+  }
+
+  function spatialDraftRenderToken(plot) {
+    var meta = plot && plot.layout ? plot.layout.meta || {} : {};
+    var token = Number(meta.builder_alignment_render_token);
+    return Number.isFinite(token) ? token : null;
   }
 
   function spatialDraftSource(plot) {
@@ -2140,20 +2155,28 @@
   function resetSpatialAlignmentDraft() {
     spatialDraftRevision += 1;
     spatialDraftPending = null;
-    if (spatialDraftRestoreTimer !== null) {
-      window.clearTimeout(spatialDraftRestoreTimer);
-      spatialDraftRestoreTimer = null;
-    }
     var plot = spatialAlignmentPlot();
     if (plot) delete plot.__builderSpatialDraftSource;
   }
 
-  function restoreSpatialAlignmentDraftAfterPlot() {
+  function beginSpatialAlignmentServerRestore() {
+    var plot = spatialAlignmentPlot();
+    if (!spatialDraftRestorePending) {
+      spatialDraftRestorePending = {
+        plot: plot,
+        token: spatialDraftRenderToken(plot)
+      };
+    }
     resetSpatialAlignmentDraft();
-    spatialDraftRestoreTimer = window.setTimeout(function () {
-      spatialDraftRestoreTimer = null;
-      scheduleSpatialAlignmentDraft();
-    }, 80);
+  }
+
+  function completeSpatialAlignmentServerRestore(plot) {
+    if (!spatialDraftRestorePending || !plot) return;
+    var token = spatialDraftRenderToken(plot);
+    if (token === null || token === spatialDraftRestorePending.token) return;
+    spatialDraftRestorePending = null;
+    delete plot.__builderSpatialDraftSource;
+    scheduleSpatialAlignmentDraft();
   }
 
   function enhanceDynamicContent() {
@@ -2728,7 +2751,7 @@
   }, true);
   function handleSpatialAlignmentValue(event) {
     if (event.target && event.target.id === "enhance-alignment_spatial_plot") {
-      restoreSpatialAlignmentDraftAfterPlot();
+      beginSpatialAlignmentServerRestore();
     }
   }
   document.addEventListener("shiny:value", handleSpatialAlignmentValue);
