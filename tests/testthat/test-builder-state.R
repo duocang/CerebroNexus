@@ -4,6 +4,17 @@ builder_state_path <- builder_profile_inst_path("builder", "state.R")
 if (nzchar(builder_state_path) && file.exists(builder_state_path)) {
   sys.source(builder_state_path, envir = globalenv())
 }
+builder_plan_preflight_path <- builder_profile_inst_path(
+  "builder",
+  "plan",
+  "preflight.R"
+)
+if (
+  nzchar(builder_plan_preflight_path) &&
+    file.exists(builder_plan_preflight_path)
+) {
+  sys.source(builder_plan_preflight_path, envir = globalenv())
+}
 
 builder_state_api <- c(
   "builder_dataset_state",
@@ -110,6 +121,20 @@ capture_builder_state_error <- function(expr) {
 
 test_that("the pure Builder state API is available", {
   expect_true(builder_state_api_available)
+})
+
+test_that("Builder coordinate transforms canonicalize legacy scale to one", {
+  legacy <- list(
+    FOV_A = list(rotation_degrees = 37, scale = 1.7)
+  )
+
+  state_value <- .builder_state_spatial_coordinate_transforms(legacy)
+  plan_value <- .builder_plan_coordinate_transform_specs(legacy, "FOV_A")
+
+  expect_identical(state_value$FOV_A$rotation_degrees, 37)
+  expect_identical(state_value$FOV_A$scale, 1)
+  expect_identical(plan_value$FOV_A$rotation_degrees, 37)
+  expect_identical(plan_value$FOV_A$scale, 1)
 })
 
 if (builder_state_api_available) {
