@@ -87,11 +87,30 @@
       return null;
     }
 
+    var spanX = value.xmax - value.xmin;
+    var spanY = value.ymax - value.ymin;
+    var centerX = value.xmin / 2 + value.xmax / 2;
+    var centerY = value.ymin / 2 + value.ymax / 2;
+    if (
+      !isFiniteNumber(spanX) ||
+      !isFiniteNumber(spanY) ||
+      spanX <= 0 ||
+      spanY <= 0 ||
+      !isFiniteNumber(centerX) ||
+      !isFiniteNumber(centerY)
+    ) {
+      return null;
+    }
+
     return {
       xmin: value.xmin,
       xmax: value.xmax,
       ymin: value.ymin,
-      ymax: value.ymax
+      ymax: value.ymax,
+      spanX: spanX,
+      spanY: spanY,
+      centerX: centerX,
+      centerY: centerY
     };
   }
 
@@ -441,15 +460,23 @@
   }
 
   function buildViewport(frame, image) {
-    var centerX = (frame.xmin + frame.xmax) / 2;
-    var centerY = (frame.ymin + frame.ymax) / 2;
-    var halfWidth = (frame.xmax - frame.xmin) / 2;
-    var halfHeight = (frame.ymax - frame.ymin) / 2;
-    var radius = Math.sqrt(halfWidth * halfWidth + halfHeight * halfHeight);
-    var xmin = centerX - radius;
-    var xmax = centerX + radius;
-    var ymin = centerY - radius;
-    var ymax = centerY + radius;
+    var halfWidth = frame.spanX / 2;
+    var halfHeight = frame.spanY / 2;
+    var radius = Math.hypot(halfWidth, halfHeight);
+    if (!isFiniteNumber(radius) || radius <= 0) return null;
+
+    var square = parseBounds({
+      xmin: frame.centerX - radius,
+      xmax: frame.centerX + radius,
+      ymin: frame.centerY - radius,
+      ymax: frame.centerY + radius
+    });
+    if (!square) return null;
+
+    var xmin = square.xmin;
+    var xmax = square.xmax;
+    var ymin = square.ymin;
+    var ymax = square.ymax;
 
     if (image) {
       xmin = Math.min(xmin, image.baseBounds.xmin);
@@ -458,14 +485,25 @@
       ymax = Math.max(ymax, image.baseBounds.ymax);
     }
 
-    var paddingX = (xmax - xmin) * 0.06;
-    var paddingY = (ymax - ymin) * 0.06;
-    return {
-      xmin: xmin - paddingX,
-      xmax: xmax + paddingX,
-      ymin: ymin - paddingY,
-      ymax: ymax + paddingY
-    };
+    var union = parseBounds({ xmin: xmin, xmax: xmax, ymin: ymin, ymax: ymax });
+    if (!union) return null;
+    var paddingX = union.spanX * 0.06;
+    var paddingY = union.spanY * 0.06;
+    if (
+      !isFiniteNumber(paddingX) ||
+      !isFiniteNumber(paddingY) ||
+      paddingX <= 0 ||
+      paddingY <= 0
+    ) {
+      return null;
+    }
+
+    return parseBounds({
+      xmin: union.xmin - paddingX,
+      xmax: union.xmax + paddingX,
+      ymin: union.ymin - paddingY,
+      ymax: union.ymax + paddingY
+    });
   }
 
   function plotGeometry(width, height, viewport) {
@@ -481,21 +519,21 @@
     plot.ymax = plot.top + plot.height;
     if (plot.width <= 0 || plot.height <= 0) return null;
 
-    var worldWidth = viewport.xmax - viewport.xmin;
-    var worldHeight = viewport.ymax - viewport.ymin;
+    var worldWidth = viewport.spanX;
+    var worldHeight = viewport.spanY;
     var scale = Math.min(plot.width / worldWidth, plot.height / worldHeight);
     if (!isFiniteNumber(scale) || scale <= 0) return null;
 
     return {
       plot: plot,
-      centerX: (viewport.xmin + viewport.xmax) / 2,
-      centerY: (viewport.ymin + viewport.ymax) / 2,
+      centerX: viewport.centerX,
+      centerY: viewport.centerY,
       scale: scale,
       visible: {
-        xmin: (viewport.xmin + viewport.xmax) / 2 - plot.width / (2 * scale),
-        xmax: (viewport.xmin + viewport.xmax) / 2 + plot.width / (2 * scale),
-        ymin: (viewport.ymin + viewport.ymax) / 2 - plot.height / (2 * scale),
-        ymax: (viewport.ymin + viewport.ymax) / 2 + plot.height / (2 * scale)
+        xmin: viewport.centerX - plot.width / (2 * scale),
+        xmax: viewport.centerX + plot.width / (2 * scale),
+        ymin: viewport.centerY - plot.height / (2 * scale),
+        ymax: viewport.centerY + plot.height / (2 * scale)
       }
     };
   }
@@ -650,12 +688,12 @@
     if (!rendererImage || !scene.image || controls.image_opacity <= 0) return;
     var bounds = scene.image.baseBounds;
     var center = worldToScreen(
-      (bounds.xmin + bounds.xmax) / 2 + controls.dx,
-      (bounds.ymin + bounds.ymax) / 2 + controls.dy,
+      bounds.centerX + controls.dx,
+      bounds.centerY + controls.dy,
       geometry
     );
-    var width = (bounds.xmax - bounds.xmin) * controls.scale * geometry.scale;
-    var height = (bounds.ymax - bounds.ymin) * controls.scale * geometry.scale;
+    var width = bounds.spanX * controls.scale * geometry.scale;
+    var height = bounds.spanY * controls.scale * geometry.scale;
     var radians = controls.rotation * Math.PI / 180;
 
     context.save();
@@ -789,7 +827,8 @@
       sourceUri: null,
       image: null,
       state: "none",
-      token: null
+      token: null,
+      loader: null
     };
 
     function setStatus(message) {
@@ -822,13 +861,26 @@
 
     function invalidateImage() {
       imageSerial += 1;
+      var loader = imageState.loader;
+      if (loader) {
+        loader.onload = null;
+        loader.onerror = null;
+        if (imageState.state === "loading") {
+          try {
+            loader.src = "data:,";
+          } catch (error) {
+            // Best-effort cancellation; the stale token still rejects completion.
+          }
+        }
+      }
       imageState = {
         viewKey: null,
         key: null,
         sourceUri: null,
         image: null,
         state: "none",
-        token: null
+        token: null,
+        loader: null
       };
     }
 
@@ -879,16 +931,24 @@
       imageState.sourceUri = descriptor.sourceUri;
       imageState.state = "loading";
       imageState.token = token;
+      imageState.loader = sourceImage;
       setStatus("Loading spatial image\u2026");
+
+      function releaseLoader() {
+        sourceImage.onload = null;
+        sourceImage.onerror = null;
+        if (imageState.loader === sourceImage) imageState.loader = null;
+      }
 
       function acceptImage() {
         if (settled) return;
-        settled = true;
-        if (!imageTokenIsCurrent(token)) return;
         if (!sourceImage.naturalWidth || !sourceImage.naturalHeight) {
           rejectImage();
           return;
         }
+        settled = true;
+        releaseLoader();
+        if (!imageTokenIsCurrent(token)) return;
         imageState.image = sourceImage;
         imageState.state = "loaded";
         setStatus("");
@@ -896,8 +956,9 @@
       }
 
       function rejectImage() {
-        if (settled && imageState.state !== "loading") return;
+        if (settled) return;
         settled = true;
+        releaseLoader();
         if (!imageTokenIsCurrent(token)) return;
         imageState.image = null;
         imageState.state = "error";
@@ -1012,8 +1073,8 @@
       drawAxes(context, geometry);
 
       var frameBounds = scene.coordinateFrame;
-      var pivotX = (frameBounds.xmin + frameBounds.xmax) / 2;
-      var pivotY = (frameBounds.ymin + frameBounds.ymax) / 2;
+      var pivotX = frameBounds.centerX;
+      var pivotY = frameBounds.centerY;
       var radians = controls.coordinate_rotation * Math.PI / 180;
       var cosine = Math.cos(radians);
       var sine = Math.sin(radians);
@@ -1079,12 +1140,25 @@
         return true;
       }
 
-      scene = parsed;
-      if (!controls || viewChanged || resetChanged) controls = cloneControls(parsed.controls);
       if (!viewport || viewportViewKey !== parsed.viewKey) {
-        viewport = buildViewport(parsed.coordinateFrame, parsed.image);
+        var nextViewport = buildViewport(parsed.coordinateFrame, parsed.image);
+        if (!nextViewport) {
+          scene = null;
+          viewport = null;
+          viewportViewKey = null;
+          invalidateImage();
+          pointer = null;
+          hideTooltip();
+          setStatus("Spatial preview geometry is unavailable.");
+          updateUnavailableAccessibility("Spatial preview geometry is unavailable.");
+          schedule();
+          return true;
+        }
+        viewport = nextViewport;
         viewportViewKey = parsed.viewKey;
       }
+      scene = parsed;
+      if (!controls || viewChanged || resetChanged) controls = cloneControls(parsed.controls);
       syncImage(parsed, viewChanged || resetChanged);
       updateSceneAccessibility(parsed);
       schedule();
@@ -1149,9 +1223,7 @@
       }
       if (resizeObserver) resizeObserver.disconnect();
       if (usingWindowResize) window.removeEventListener("resize", schedule);
-      imageSerial += 1;
-      imageState.image = null;
-      imageState.token = null;
+      invalidateImage();
       pointer = null;
       hideTooltip();
       canvas.removeEventListener("pointermove", onPointerMove);
