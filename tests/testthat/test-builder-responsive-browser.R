@@ -88,7 +88,7 @@ test_that("Builder preserves responsive geometry before Build", {
       "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
       "document.querySelector('.stage-intro') !== null && ",
       "document.querySelector('.builder-form-grid') !== null && ",
-      "document.querySelectorAll('.spatial-alignment-figure .js-plotly-plot').length === 1"
+      "document.querySelectorAll('.spatial-alignment-figure canvas.builder-spatial-canvas[data-builder-spatial-canvas=true]').length === 1"
     ),
     timeout = 60000
   )
