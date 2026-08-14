@@ -24,6 +24,7 @@ builder_spatial_alignment_server <- function(
   active_image <- shiny::reactiveVal(NULL)
   pending_section <- shiny::reactiveVal(NULL)
   pending_image <- shiny::reactiveVal(NULL)
+  pending_dataset <- shiny::reactiveVal(NULL)
   pending_upload <- shiny::reactiveVal(NULL)
   preview_contract <- shiny::reactiveVal(NULL)
   expected_controls <- shiny::reactiveVal(NULL)
@@ -353,6 +354,7 @@ builder_spatial_alignment_server <- function(
     pending_upload(NULL)
     pending_section(NULL)
     pending_image(NULL)
+    pending_dataset(NULL)
     id <- current()
     entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
     if (is.null(entry)) {
@@ -1317,17 +1319,71 @@ builder_spatial_alignment_server <- function(
     draft(old)
     display_record(old)
   }
+  request_dataset_switch <- function(target, commit) {
+    if (
+      !is.character(target) ||
+        length(target) != 1L ||
+        is.na(target) ||
+        !nzchar(target) ||
+        !is.function(commit)
+    ) {
+      return(invisible(FALSE))
+    }
+    current_draft <- shiny::isolate(draft())
+    if (is.null(current_draft) || isTRUE(current_draft$saved)) {
+      return(commit())
+    }
+    pending_section(NULL)
+    pending_image(NULL)
+    pending_dataset(list(
+      source = shiny::isolate(current()),
+      target = target,
+      commit = commit
+    ))
+    shiny::showModal(shiny::modalDialog(
+      title = "Save alignment changes?",
+      shiny::p(
+        "The current tissue image has unsaved alignment changes."
+      ),
+      easyClose = FALSE,
+      footer = shiny::tagList(
+        shiny::actionButton("enhance-alignment_switch_cancel", "Cancel"),
+        shiny::actionButton(
+          "enhance-alignment_switch_discard",
+          "Discard changes",
+          class = "btn btn-remove-soft"
+        ),
+        shiny::actionButton(
+          "enhance-alignment_switch_save",
+          "Save and continue",
+          class = "btn btn-action"
+        )
+      )
+    ))
+    invisible(TRUE)
+  }
   shiny::observeEvent(input[["enhance-alignment_switch_save"]], {
     section_target <- pending_section()
     image_target <- pending_image()
+    dataset_target <- pending_dataset()
     if (
-      (!is.null(section_target) || !is.null(image_target)) &&
+      (!is.null(section_target) ||
+        !is.null(image_target) ||
+        !is.null(dataset_target)) &&
         save_current(notify = FALSE)
     ) {
       shiny::removeModal()
       pending_section(NULL)
       pending_image(NULL)
-      if (!is.null(section_target)) {
+      pending_dataset(NULL)
+      if (!is.null(dataset_target)) {
+        if (
+          identical(dataset_target$source, shiny::isolate(current())) &&
+            is.function(dataset_target$commit)
+        ) {
+          dataset_target$commit()
+        }
+      } else if (!is.null(section_target)) {
         switch_to(entry_of(current()), section_target)
       } else {
         active_image(image_target)
@@ -1343,12 +1399,25 @@ builder_spatial_alignment_server <- function(
   shiny::observeEvent(input[["enhance-alignment_switch_discard"]], {
     section_target <- pending_section()
     image_target <- pending_image()
-    if (!is.null(section_target) || !is.null(image_target)) {
+    dataset_target <- pending_dataset()
+    if (
+      !is.null(section_target) ||
+        !is.null(image_target) ||
+        !is.null(dataset_target)
+    ) {
       discard_current()
       shiny::removeModal()
       pending_section(NULL)
       pending_image(NULL)
-      if (!is.null(section_target)) {
+      pending_dataset(NULL)
+      if (!is.null(dataset_target)) {
+        if (
+          identical(dataset_target$source, shiny::isolate(current())) &&
+            is.function(dataset_target$commit)
+        ) {
+          dataset_target$commit()
+        }
+      } else if (!is.null(section_target)) {
         switch_to(entry_of(current()), section_target)
       } else {
         active_image(image_target)
@@ -1365,12 +1434,14 @@ builder_spatial_alignment_server <- function(
     shiny::removeModal()
     pending_section(NULL)
     pending_image(NULL)
+    pending_dataset(NULL)
   })
 
   list(
     active_section = active_section,
     active_image = active_image,
     pending_image = pending_image,
+    pending_dataset = pending_dataset,
     draft = draft,
     pending_upload = pending_upload,
     raw_image = raw_image,
@@ -1378,6 +1449,7 @@ builder_spatial_alignment_server <- function(
       current_draft <- draft()
       !is.null(current_draft) && !isTRUE(current_draft$saved)
     }),
+    request_dataset_switch = request_dataset_switch,
     current_record = finalize_current_record
   )
 }

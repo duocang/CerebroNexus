@@ -869,6 +869,41 @@ if (builder_rail_api_available) {
     )
   })
 
+  test_that("dataset selection waits for its injected commit gate", {
+    skip_if_not_installed("shiny")
+    initial <- builder_state(lapply(c("a", "b"), builder_rail_entry))
+    pending_commit <- NULL
+    requested <- NULL
+
+    shiny::testServer(
+      function(input, output, session) {
+        rail_store <- shiny::reactiveVal(initial)
+        rail <- builder_dataset_rail_server(
+          input = input,
+          session = session,
+          store = rail_store,
+          validate_remove = function(...) {
+            stop("removal validation should not run")
+          },
+          select_dataset = function(id, commit) {
+            requested <<- id
+            pending_commit <<- commit
+          }
+        )
+      },
+      {
+        session$setInputs(pick = "b")
+        expect_identical(requested, "b")
+        expect_true(is.function(pending_commit))
+        expect_identical(rail$state()$current_dataset, "a")
+
+        pending_commit()
+        session$flushReact()
+        expect_identical(rail$state()$current_dataset, "b")
+      }
+    )
+  })
+
   test_that("used examples stay disabled in the persistent rail picker", {
     skip_if_not_installed("shiny")
     skip_if_not_installed("plotly")
