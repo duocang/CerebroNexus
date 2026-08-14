@@ -15,6 +15,273 @@ shared_fixture_env <- environment()
 shared_smoke_app <- NULL
 shared_real_app <- NULL
 shared_real_app_initialized <- FALSE
+shared_builder_private_app <- NULL
+shared_builder_real_contract_app <- NULL
+
+get_builder_private_app <- function() {
+  if (is.null(shared_builder_private_app)) {
+    root <- withr::local_tempdir(.local_envir = shared_fixture_env)
+    shared_builder_private_app <<- privacy_build_dormant_app(root)
+  }
+  shared_builder_private_app
+}
+
+get_builder_real_contract_app <- function() {
+  if (is.null(shared_builder_real_contract_app)) {
+    root <- withr::local_tempdir(.local_envir = shared_fixture_env)
+    shared_builder_real_contract_app <<- privacy_build_dormant_app(
+      root,
+      contract_version = NULL
+    )
+  }
+  shared_builder_real_contract_app
+}
+
+test_that("Builder dormant app path publishes one verified private bundle", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("base64enc")
+  skip_if_not_installed("rhdf5")
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("httpuv")
+  skip_on_os("windows")
+
+  built <- get_builder_private_app()
+  expect_true(isTRUE(built$result$published))
+  expect_true(dir.exists(built$app_dir))
+  config <- readRDS(file.path(built$app_dir, "cerebro_config.rds"))
+  expect_identical(
+    names(config$crb_file_to_load),
+    c("Dataset A", "Dataset B")
+  )
+  expect_identical(config$initial_dataset, "Dataset B")
+  expect_false(config$show_upload_ui)
+
+  second <- file.path(built$app_dir, config$crb_file_to_load[[2L]])
+  object <- readRDS(second)
+  spatial <- object$getSpatialData(built$section)
+  expect_identical(spatial$histology_image, built$image_uri)
+  expect_identical(spatial$histology_image_bounds, built$image_bounds)
+  expect_match(spatial$histology_image, "^data:image/png;base64,")
+  expect_false(grepl("https?://|^/|^file:", spatial$histology_image))
+
+  first_relative <- config$crb_file_to_load[[1L]]
+  backend <- config$.bundle_backend_plan$entries[[first_relative]]
+  expect_identical(backend$type, "h5")
+  expect_identical(dirname(first_relative), "private-data")
+  backend_relative <- file.path(dirname(first_relative), backend$location)
+  expect_true(file.exists(file.path(built$app_dir, backend_relative)))
+
+  hermetic <- privacy_hermetic_library(dirname(built$release))
+  skip_if(is.null(hermetic), "could not build a hermetic library")
+  port <- httpuv::randomPort(host = "127.0.0.1")
+  app <- privacy_start_app(
+    built$app_dir,
+    port,
+    dirname(built$release),
+    libpath = hermetic,
+    exclude_package = TRUE,
+    test_mode = TRUE
+  )
+  on.exit(privacy_stop_app(app), add = TRUE)
+  privacy_wait_for_app(app)
+  paths <- c(
+    "/data/dataset-a.crb",
+    "/private-data/dataset-a.crb",
+    paste0("/", backend_relative),
+    "/spatial-assets/builder-histology.png"
+  )
+  statuses <- vapply(
+    paths,
+    function(path) httr::status_code(privacy_get_from_app(app, path)),
+    integer(1)
+  )
+  expect_identical(unname(statuses), rep(404L, length(paths)))
+})
+
+test_that("Builder app selection keeps initial URL and user priority", {
+  skip_if_not_installed("shinytest2")
+  skip_if_not_installed("base64enc")
+  skip_if_not_installed("rhdf5")
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("httpuv")
+  skip_on_cran()
+  skip_on_os("windows")
+
+  built <- get_builder_private_app()
+  config <- readRDS(file.path(built$app_dir, "cerebro_config.rds"))
+  values <- unname(config$crb_file_to_load)
+  hermetic <- privacy_hermetic_library(dirname(built$release))
+  skip_if(is.null(hermetic), "could not build a hermetic library")
+  port <- httpuv::randomPort(host = "127.0.0.1")
+  app <- privacy_start_app(
+    built$app_dir,
+    port,
+    dirname(built$release),
+    libpath = hermetic,
+    exclude_package = TRUE,
+    test_mode = TRUE
+  )
+  on.exit(privacy_stop_app(app), add = TRUE)
+  privacy_wait_for_app(app)
+
+  initial <- shinytest2::AppDriver$new(
+    app$base_url,
+    name = "builder_private_initial",
+    load_timeout = 60000
+  )
+  withr::defer(initial$stop())
+  initial$wait_for_idle(timeout = 30000)
+  expect_identical(
+    initial$get_value(input = "crb_file_selector"),
+    values[[2L]]
+  )
+  initial$wait_for_js(
+    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;",
+    timeout = 30000
+  )
+  initial$get_js(
+    "document.querySelector('a[href=\"#shiny-tab-overview\"]').click();"
+  )
+  initial$wait_for_js(
+    paste0(
+      "document.getElementById('overview_projection_to_display') !== null && ",
+      "document.getElementById('overview_projection_point_color') !== null"
+    ),
+    timeout = 30000
+  )
+  expect_identical(
+    initial$get_value(input = "overview_projection_to_display"),
+    "tsne"
+  )
+  expect_identical(
+    initial$get_value(input = "overview_projection_point_color"),
+    "region"
+  )
+  initial$get_js(
+    "document.querySelector('a[href=\"#shiny-tab-spatial\"]').click();"
+  )
+  initial$wait_for_js(
+    "document.getElementById('spatial_projection_background_image') !== null;",
+    timeout = 30000
+  )
+  initial$wait_for_idle(timeout = 30000)
+  initial$get_js(
+    paste0(
+      "(function() {",
+      "var input = document.getElementById(",
+      "'spatial_projection_background_image');",
+      "if (input.selectize) {",
+      "input.selectize.setValue('__embedded__');",
+      "} else {",
+      "window.jQuery(input).val('__embedded__').trigger('change');",
+      "}",
+      "})()"
+    )
+  )
+  initial$wait_for_js(
+    paste0(
+      "document.getElementById(",
+      "'spatial_projection_background_image').value === '__embedded__';"
+    ),
+    timeout = 30000
+  )
+  initial$wait_for_js(
+    paste0(
+      "(function() {",
+      "var bg = document.getElementById('spatial_projection_background');",
+      "var plot = document.getElementById('spatial_projection');",
+      "if (!bg || !plot || !plot.querySelector('.main-svg')) return false;",
+      "var source = bg.dataset.backgroundImage || '';",
+      "var rendered = bg._imgEl && bg._imgEl.src ? ",
+      "bg._imgEl.src : bg.style.backgroundImage;",
+      "var rect = bg.getBoundingClientRect();",
+      "return source.indexOf('data:image/') === 0 && ",
+      "rendered.indexOf('data:image/') !== -1 && ",
+      "getComputedStyle(bg).display !== 'none' && ",
+      "rect.width > 0 && rect.height > 0;",
+      "})()"
+    ),
+    timeout = 30000
+  )
+  embedded_background <- initial$get_js(
+    paste0(
+      "(function() {",
+      "var bg = document.getElementById('spatial_projection_background');",
+      "return {",
+      "source: bg.dataset.backgroundImage || '',",
+      "rendered: bg._imgEl && bg._imgEl.src ? ",
+      "bg._imgEl.src : bg.style.backgroundImage",
+      "};",
+      "})()"
+    )
+  )
+  expect_match(embedded_background$source, "^data:image/")
+  expect_match(embedded_background$rendered, "data:image/", fixed = TRUE)
+  expect_false(grepl("https?://|file:", embedded_background$rendered))
+  initial$set_inputs(crb_file_selector = values[[1L]], wait_ = FALSE)
+  initial$wait_for_idle(timeout = 30000)
+  expect_identical(
+    initial$get_value(input = "crb_file_selector"),
+    values[[1L]]
+  )
+  initial$wait_for_js(
+    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') === null;",
+    timeout = 30000
+  )
+  initial$wait_for_js(
+    paste0(
+      "document.getElementById('overview_projection_to_display').value === ",
+      "'umap' && ",
+      "document.getElementById('overview_projection_point_color').value === ",
+      "'seurat_clusters'"
+    ),
+    timeout = 30000
+  )
+  expect_identical(
+    initial$get_js(
+      "document.getElementById('overview_projection_to_display').value"
+    ),
+    "umap"
+  )
+  expect_identical(
+    initial$get_js(
+      "document.getElementById('overview_projection_point_color').value"
+    ),
+    "seurat_clusters"
+  )
+  initial$set_inputs(crb_file_selector = values[[2L]], wait_ = FALSE)
+  initial$wait_for_idle(timeout = 30000)
+  initial$wait_for_js(
+    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;",
+    timeout = 30000
+  )
+
+  url <- shinytest2::AppDriver$new(
+    paste0(app$base_url, "/?dataset=Dataset%20A"),
+    name = "builder_private_url",
+    load_timeout = 60000
+  )
+  withr::defer(url$stop())
+  url$wait_for_idle(timeout = 30000)
+  expect_identical(
+    url$get_value(input = "crb_file_selector"),
+    values[[1L]]
+  )
+})
+
+test_that("installed contract enables the same Builder app path", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("base64enc")
+  skip_if_not_installed("rhdf5")
+  skip_if_not_installed("HDF5Array")
+  skip_on_os("windows")
+
+  built <- get_builder_real_contract_app()
+  expect_identical(built$actual_contract_version, 1L)
+  expect_true(isTRUE(built$result$published))
+  config <- readRDS(file.path(built$app_dir, "cerebro_config.rds"))
+  expect_identical(config$initial_dataset, "Dataset B")
+})
 
 ## Shared fixture: convert two synthetic spatial datasets and build one app that
 ## bundles both, each with its own background image and alignment defaults.
@@ -350,7 +617,11 @@ test_that("the generated real-data app boots with Linked views", {
   driver <- shinytest2::AppDriver$new(
     app_info$app_dir,
     name = "smoke_real_multicrb",
-    load_timeout = 60000
+    load_timeout = 60000,
+    shiny_args = list(
+      host = "127.0.0.1",
+      port = httpuv::randomPort(host = "127.0.0.1")
+    )
   )
   withr::defer(driver$stop())
   driver$wait_for_idle(timeout = 30000)
@@ -377,7 +648,11 @@ test_that("the generated multi-crb app boots and switches datasets", {
   driver <- shinytest2::AppDriver$new(
     app_info$app_dir,
     name = "smoke_multicrb",
-    load_timeout = 60000
+    load_timeout = 60000,
+    shiny_args = list(
+      host = "127.0.0.1",
+      port = httpuv::randomPort(host = "127.0.0.1")
+    )
   )
   withr::defer(driver$stop())
   driver$wait_for_idle(timeout = 30000)

@@ -473,3 +473,47 @@ test_that(".getSpatialData tolerates a real Slide-seq object (NA-named coord col
   # the NA-named column must not have leaked through the sanitiser
   expect_false(any(is.na(colnames(res$coordinates))))
 })
+
+test_that("the spatial section switcher keeps the section you picked", {
+  # `spatial_projection_main_parameters_UI` both READS
+  # `spatial_projection_to_display` (to decide whether the current section has
+  # an embedded histology image) and EMITS it. Reading it inside the renderUI
+  # makes the block re-run on every switch, so the control is re-created -- and
+  # a selectInput with no `selected=` falls back to its first choice. The effect
+  # was that picking any section but the first snapped straight back, making
+  # every section after the first unreachable.
+  #
+  # No shipped .crb has more than one spatial entry, so nothing else in the
+  # suite can catch this. Cross-line-tolerant regex per project convention.
+  src <- paste(
+    readLines(
+      file.path(shiny_root, "spatial", "UI_projection_main_parameters.R")
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    src,
+    paste0(
+      "\"spatial_projection_to_display\"",
+      "[\\s\\S]{0,200}",
+      "selected\\s*=\\s*current_spatial"
+    ),
+    perl = TRUE,
+    info = "the section selectInput must be told what is already selected"
+  )
+
+  # The same re-render resets the controls emitted alongside it, which only
+  # became visible once switching worked at all.
+  for (id in c(
+    "spatial_projection_plot_type",
+    "spatial_projection_point_color"
+  )) {
+    expect_match(
+      src,
+      paste0("\"", id, "\"", "[\\s\\S]{0,400}", "selected\\s*="),
+      perl = TRUE,
+      info = paste(id, "must survive a re-render of the parameter block")
+    )
+  }
+})

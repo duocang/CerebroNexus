@@ -34,6 +34,32 @@ test_that("addTrekker rejects a non-list", {
   expect_null(obj$getTrekker())
 })
 
+test_that("Trekker Viewer consumes Builder tissue alignment and palette", {
+  path <- testthat::test_path("..", "..", "inst", "viewer", "www", "trekker.js")
+  if (!file.exists(path)) {
+    path <- system.file("viewer", "www", "trekker.js", package = "CerebroNexus")
+  }
+  client <- paste(readLines(path, warn = FALSE), collapse = "\n")
+
+  expect_match(client, "D.histology_image", fixed = TRUE)
+  expect_match(client, "D.histology_image_bounds", fixed = TRUE)
+  expect_match(client, "drawTissueImage", fixed = TRUE)
+  expect_match(client, "D.builder_colors", fixed = TRUE)
+})
+
+test_that("Trekker resets per-dataset appearance and rejects stale image loads", {
+  path <- testthat::test_path("..", "..", "inst", "viewer", "www", "trekker.js")
+  if (!file.exists(path)) {
+    path <- system.file("viewer", "www", "trekker.js", package = "CerebroNexus")
+  }
+  client <- paste(readLines(path, warn = FALSE), collapse = "\n")
+
+  expect_match(client, "var dataGeneration = 0;", fixed = TRUE)
+  expect_match(client, "var generation = ++dataGeneration;", fixed = TRUE)
+  expect_match(client, "ps = 2.2;", fixed = TRUE)
+  expect_match(client, "generation !== dataGeneration", fixed = TRUE)
+})
+
 # ---- trekker_gene_suggest ------------------------------------------------- ##
 
 test_that("trekker_gene_suggest keeps Moran + marker genes present in the matrix", {
