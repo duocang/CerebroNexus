@@ -1900,158 +1900,260 @@
       ? output : output.querySelector(".js-plotly-plot");
   }
 
-  function applyContinuousCoordinateTransform(rotation, scale) {
-    var plot = spatialAlignmentPlot();
-    if (!plot || !window.Plotly || !plot.data || !plot.layout) return;
+  var spatialDraftRevision = 0;
+  var spatialDraftFrame = null;
+  var spatialDraftPending = null;
+  var spatialDraftInFlight = null;
+  var spatialDraftRestoreTimer = null;
+  var spatialDraftInputIds = new Set([
+    "enhance-coordinate_rotation",
+    "enhance-img_dx", "enhance-img_dy", "enhance-img_scale",
+    "enhance-img_rotate", "enhance-image_flip_x", "enhance-image_flip_y",
+    "enhance-image_opacity", "enhance-point_opacity", "enhance-point_size"
+  ]);
 
-    var meta = plot.layout.meta || {};
-    var pivot = meta.builder_alignment_pivot;
-    var sourceAngle = Number(meta.builder_alignment_rotation);
-    var sourceScale = Number(meta.builder_alignment_scale == null
-      ? 1 : meta.builder_alignment_scale);
-    var targetAngle = Number(rotation);
-    var targetScale = Number(scale);
-    if (!pivot || !Number.isFinite(sourceAngle) || !Number.isFinite(sourceScale) ||
-      !Number.isFinite(targetAngle) || !Number.isFinite(targetScale) ||
-      sourceScale <= 0 || targetScale <= 0) return;
-
-    var sourceKey = sourceAngle + "::" + sourceScale;
-    if (plot.__builderAlignmentSourceKey !== sourceKey) {
-      plot.__builderAlignmentSourceKey = sourceKey;
-      plot.__builderAlignmentSourceAngle = sourceAngle;
-      plot.__builderAlignmentSourceScale = sourceScale;
-      plot.__builderAlignmentSource = plot.data.map(function (trace) {
-        return {
-          role: trace.meta && trace.meta.builder_alignment_role,
-          x: Array.from(trace.x || []),
-          y: Array.from(trace.y || [])
-        };
-      });
-    }
-
-    var radians = (targetAngle - sourceAngle) * Math.PI / 180;
-    var cosine = Math.cos(radians);
-    var sine = Math.sin(radians);
-    var scaleRatio = targetScale / sourceScale;
-    var mutableRoles = new Set([
-      "points", "current-frame", "reference-edge", "reference-label"
-    ]);
-
-    plot.__builderAlignmentSource.forEach(function (source, index) {
-      if (!mutableRoles.has(source.role)) return;
-      var x = source.x.map(function (value, pointIndex) {
-        var dx = value - pivot.x;
-        var dy = source.y[pointIndex] - pivot.y;
-        return pivot.x + scaleRatio * ((dx * cosine) - (dy * sine));
-      });
-      var y = source.y.map(function (value, pointIndex) {
-        var dx = value - pivot.x;
-        var dy = source.y[pointIndex] - pivot.y;
-        return pivot.y + scaleRatio * ((dx * sine) + (dy * cosine));
-      });
-      window.Plotly.restyle(plot, { x: [x], y: [y] }, [index]);
-      if (source.role === "reference-label") {
-        var angle = targetAngle;
-        window.Plotly.restyle(
-          plot,
-          { text: [[(angle > 0 ? "+" : "") + angle.toFixed(1) + "°"]] },
-          [index]
-        );
-      }
-    });
-  }
-
-  function applyContinuousCoordinateRotation(rotation) {
-    applyContinuousCoordinateTransform(rotation, 1);
-  }
-
-  var coordinateRotationFrame = null;
-  function scheduleContinuousCoordinateRotation(value) {
-    if (coordinateRotationFrame !== null) {
-      window.cancelAnimationFrame(coordinateRotationFrame);
-    }
-    coordinateRotationFrame = window.requestAnimationFrame(function () {
-      coordinateRotationFrame = null;
-      applyContinuousCoordinateRotation(value);
-    });
-  }
-
-  var spatialAlignmentFrame = null;
   function spatialAlignmentValue(id, fallback) {
     var input = document.getElementById(id);
     var value = input ? Number(input.value) : Number(fallback);
     return Number.isFinite(value) ? value : Number(fallback);
   }
 
-  function applyContinuousSpatialAlignment() {
+  function spatialAlignmentChecked(id, fallback) {
+    var input = document.getElementById(id);
+    return input ? input.checked : Boolean(fallback);
+  }
+
+  function readSpatialAlignmentDraft(revision) {
     var plot = spatialAlignmentPlot();
-    if (!plot || !window.Plotly || !plot.layout) return;
+    var meta = plot && plot.layout ? plot.layout.meta || {} : {};
+    var preview = meta.builder_image_preview;
+    preview = preview || {};
+    return {
+      revision: revision,
+      coordinateRotation: spatialAlignmentValue(
+        "enhance-coordinate_rotation", meta.builder_alignment_rotation || 0
+      ),
+      coordinateScale: 1,
+      imageDx: spatialAlignmentValue("enhance-img_dx", preview.dx || 0),
+      imageDy: spatialAlignmentValue("enhance-img_dy", preview.dy || 0),
+      imageScale: spatialAlignmentValue(
+        "enhance-img_scale", preview.scale || 1
+      ),
+      imageRotation: spatialAlignmentValue(
+        "enhance-img_rotate", preview.rotation || 0
+      ),
+      imageFlipX: spatialAlignmentChecked(
+        "enhance-image_flip_x", preview.flip_x
+      ),
+      imageFlipY: spatialAlignmentChecked(
+        "enhance-image_flip_y", preview.flip_y
+      ),
+      imageOpacity: spatialAlignmentValue(
+        "enhance-image_opacity", (preview.image_opacity || 0.8) * 100
+      ) / 100,
+      pointOpacity: spatialAlignmentValue("enhance-point_opacity", 85) / 100,
+      pointSize: spatialAlignmentValue("enhance-point_size", 5)
+    };
+  }
+
+  function spatialDraftIsCurrent(plot, draft) {
+    return draft.revision === spatialDraftRevision &&
+      spatialAlignmentPlot() === plot;
+  }
+
+  function spatialDraftSource(plot) {
+    if (plot.__builderSpatialDraftSource) {
+      return plot.__builderSpatialDraftSource;
+    }
+    var meta = plot.layout.meta || {};
+    var pivot = meta.builder_alignment_pivot;
+    var angle = Number(meta.builder_alignment_rotation);
+    var scale = Number(meta.builder_alignment_scale == null
+      ? 1 : meta.builder_alignment_scale);
+    if (!pivot || !Number.isFinite(Number(pivot.x)) ||
+      !Number.isFinite(Number(pivot.y)) || !Number.isFinite(angle) ||
+      !Number.isFinite(scale) || scale <= 0) return null;
+    plot.__builderSpatialDraftSource = {
+      angle: angle,
+      scale: scale,
+      pivot: { x: Number(pivot.x), y: Number(pivot.y) },
+      traces: (plot.data || []).map(function (trace) {
+        return {
+          role: trace.meta && trace.meta.builder_alignment_role,
+          x: Array.from(trace.x || []).map(Number),
+          y: Array.from(trace.y || []).map(Number)
+        };
+      })
+    };
+    return plot.__builderSpatialDraftSource;
+  }
+
+  function spatialDraftCoordinateUpdates(plot, draft) {
+    var source = spatialDraftSource(plot);
+    if (!source || !Number.isFinite(draft.coordinateRotation) ||
+      !Number.isFinite(draft.coordinateScale) || draft.coordinateScale <= 0) {
+      return [];
+    }
+    var radians = (draft.coordinateRotation - source.angle) * Math.PI / 180;
+    var cosine = Math.cos(radians);
+    var sine = Math.sin(radians);
+    var scaleRatio = draft.coordinateScale / source.scale;
+    var mutableRoles = new Set([
+      "points", "current-frame", "reference-edge", "reference-label"
+    ]);
+    return source.traces.map(function (trace, index) {
+      if (!mutableRoles.has(trace.role)) return null;
+      var x = trace.x.map(function (value, pointIndex) {
+        var dx = value - source.pivot.x;
+        var dy = trace.y[pointIndex] - source.pivot.y;
+        return source.pivot.x + scaleRatio * ((dx * cosine) - (dy * sine));
+      });
+      var y = trace.y.map(function (value, pointIndex) {
+        var dx = trace.x[pointIndex] - source.pivot.x;
+        var dy = trace.y[pointIndex] - source.pivot.y;
+        return source.pivot.y + scaleRatio * ((dx * sine) + (dy * cosine));
+      });
+      return { index: index, role: trace.role, x: x, y: y };
+    }).filter(Boolean);
+  }
+
+  function spatialDraftImageUpdate(plot, draft) {
     var meta = plot.layout.meta || {};
     var preview = meta.builder_image_preview;
-    var updates = {};
-    if (preview && preview.source && preview.base_bounds) {
-      var bounds = preview.base_bounds;
-      var dx = spatialAlignmentValue("enhance-img_dx", preview.dx || 0);
-      var dy = spatialAlignmentValue("enhance-img_dy", preview.dy || 0);
-      var scale = spatialAlignmentValue("enhance-img_scale", preview.scale || 1);
-      var rotation = spatialAlignmentValue(
-        "enhance-img_rotate", preview.rotation || 0
-      );
-      var opacity = spatialAlignmentValue(
-        "enhance-image_opacity", (preview.image_opacity || 0.8) * 100
-      ) / 100;
-      var width = (Number(bounds.xmax) - Number(bounds.xmin)) * scale;
-      var height = (Number(bounds.ymax) - Number(bounds.ymin)) * scale;
-      var centreX = (Number(bounds.xmin) + Number(bounds.xmax)) / 2 + dx;
-      var centreY = (Number(bounds.ymin) + Number(bounds.ymax)) / 2 + dy;
-      updates["images[0].source"] = preview.source;
-      updates["images[0].x"] = centreX - width / 2;
-      updates["images[0].y"] = centreY + height / 2;
-      updates["images[0].sizex"] = width;
-      updates["images[0].sizey"] = height;
-      updates["images[0].opacity"] = opacity;
-      var flipX = !!(document.getElementById("enhance-image_flip_x") || {}).checked;
-      var flipY = !!(document.getElementById("enhance-image_flip_y") || {}).checked;
-      window.Plotly.relayout(plot, updates).then(function () {
-        var image = plot.querySelector(".imagelayer image");
-        if (!image) return;
-        var x = Number(image.getAttribute("x"));
-        var y = Number(image.getAttribute("y"));
-        var w = Number(image.getAttribute("width"));
-        var h = Number(image.getAttribute("height"));
-        var cx = x + w / 2;
-        var cy = y + h / 2;
-        image.setAttribute(
-          "transform",
-          "translate(" + cx + " " + cy + ") rotate(" + (-rotation) + ") " +
-          "scale(" + (flipX ? -1 : 1) + " " + (flipY ? -1 : 1) + ") " +
-          "translate(" + (-cx) + " " + (-cy) + ")"
-        );
-        image.setAttribute("preserveAspectRatio", "none");
-      });
-    }
+    if (!preview || !preview.source || !preview.base_bounds) return null;
+    var bounds = preview.base_bounds;
+    var width = (Number(bounds.xmax) - Number(bounds.xmin)) * draft.imageScale;
+    var height = (Number(bounds.ymax) - Number(bounds.ymin)) * draft.imageScale;
+    var centreX = (Number(bounds.xmin) + Number(bounds.xmax)) / 2 +
+      draft.imageDx;
+    var centreY = (Number(bounds.ymin) + Number(bounds.ymax)) / 2 +
+      draft.imageDy;
+    return {
+      "images[0].source": preview.source,
+      "images[0].x": centreX - width / 2,
+      "images[0].y": centreY + height / 2,
+      "images[0].sizex": width,
+      "images[0].sizey": height,
+      "images[0].opacity": draft.imageOpacity
+    };
+  }
 
-    var pointOpacity = spatialAlignmentValue("enhance-point_opacity", 85) / 100;
-    var pointSize = spatialAlignmentValue("enhance-point_size", 5);
+  function applySpatialDraftImageTransform(plot, draft) {
+    var image = plot.querySelector(".imagelayer image");
+    if (!image) return;
+    var x = Number(image.getAttribute("x"));
+    var y = Number(image.getAttribute("y"));
+    var width = Number(image.getAttribute("width"));
+    var height = Number(image.getAttribute("height"));
+    if (![x, y, width, height].every(Number.isFinite)) return;
+    var centreX = x + width / 2;
+    var centreY = y + height / 2;
+    image.setAttribute(
+      "transform",
+      "translate(" + centreX + " " + centreY + ") rotate(" +
+      (-draft.imageRotation) + ") scale(" +
+      (draft.imageFlipX ? -1 : 1) + " " +
+      (draft.imageFlipY ? -1 : 1) + ") translate(" +
+      (-centreX) + " " + (-centreY) + ")"
+    );
+    image.setAttribute("preserveAspectRatio", "none");
+  }
+
+  function applySpatialAlignmentDraft(draft) {
+    var plot = spatialAlignmentPlot();
+    if (!plot || !window.Plotly || !plot.data || !plot.layout) {
+      return Promise.resolve();
+    }
+    var coordinateUpdates = spatialDraftCoordinateUpdates(plot, draft);
+    var imageUpdate = spatialDraftImageUpdate(plot, draft);
+    var operations = [];
+    if (coordinateUpdates.length) {
+      operations.push(function () {
+        return window.Plotly.restyle(plot, {
+          x: coordinateUpdates.map(function (update) { return update.x; }),
+          y: coordinateUpdates.map(function (update) { return update.y; })
+        }, coordinateUpdates.map(function (update) { return update.index; }));
+      });
+      var labelUpdate = coordinateUpdates.find(function (update) {
+        return update.role === "reference-label";
+      });
+      if (labelUpdate) {
+        operations.push(function () {
+          var angle = draft.coordinateRotation;
+          return window.Plotly.restyle(plot, {
+            text: [[(angle > 0 ? "+" : "") + angle.toFixed(1) + "°"]]
+          }, [labelUpdate.index]);
+        });
+      }
+    }
     (plot.data || []).forEach(function (trace, index) {
       if (trace.meta && trace.meta.builder_alignment_role === "points") {
-        window.Plotly.restyle(
-          plot,
-          { "marker.opacity": pointOpacity, "marker.size": pointSize },
-          [index]
-        );
+        operations.push(function () {
+          return window.Plotly.restyle(plot, {
+            "marker.opacity": draft.pointOpacity,
+            "marker.size": draft.pointSize
+          }, [index]);
+        });
+      }
+    });
+    if (imageUpdate) {
+      operations.push(function () {
+        return window.Plotly.relayout(plot, imageUpdate);
+      });
+    }
+    return operations.reduce(function (promise, operation) {
+      return promise.then(function () {
+        if (!spatialDraftIsCurrent(plot, draft)) return undefined;
+        return operation();
+      });
+    }, Promise.resolve()).then(function () {
+      if (imageUpdate && spatialDraftIsCurrent(plot, draft)) {
+        applySpatialDraftImageTransform(plot, draft);
       }
     });
   }
 
-  function scheduleContinuousSpatialAlignment() {
-    if (spatialAlignmentFrame !== null) {
-      window.cancelAnimationFrame(spatialAlignmentFrame);
-    }
-    spatialAlignmentFrame = window.requestAnimationFrame(function () {
-      spatialAlignmentFrame = null;
-      applyContinuousSpatialAlignment();
+  function queueSpatialAlignmentDraft() {
+    if (spatialDraftFrame !== null || spatialDraftInFlight) return;
+    spatialDraftFrame = window.requestAnimationFrame(pumpSpatialAlignmentDraft);
+  }
+
+  function pumpSpatialAlignmentDraft() {
+    spatialDraftFrame = null;
+    if (spatialDraftInFlight || !spatialDraftPending) return;
+    var draft = spatialDraftPending;
+    spatialDraftPending = null;
+    spatialDraftInFlight = applySpatialAlignmentDraft(draft).catch(function (error) {
+      window.console.error("Unable to render spatial alignment draft", error);
+    }).then(function () {
+      spatialDraftInFlight = null;
+      if (spatialDraftPending) queueSpatialAlignmentDraft();
     });
+  }
+
+  function scheduleSpatialAlignmentDraft() {
+    spatialDraftRevision += 1;
+    spatialDraftPending = readSpatialAlignmentDraft(spatialDraftRevision);
+    queueSpatialAlignmentDraft();
+  }
+
+  function resetSpatialAlignmentDraft() {
+    spatialDraftRevision += 1;
+    spatialDraftPending = null;
+    if (spatialDraftRestoreTimer !== null) {
+      window.clearTimeout(spatialDraftRestoreTimer);
+      spatialDraftRestoreTimer = null;
+    }
+    var plot = spatialAlignmentPlot();
+    if (plot) delete plot.__builderSpatialDraftSource;
+  }
+
+  function restoreSpatialAlignmentDraftAfterPlot() {
+    resetSpatialAlignmentDraft();
+    spatialDraftRestoreTimer = window.setTimeout(function () {
+      spatialDraftRestoreTimer = null;
+      scheduleSpatialAlignmentDraft();
+    }, 80);
   }
 
   function enhanceDynamicContent() {
@@ -2615,37 +2717,27 @@
     window.requestAnimationFrame(syncSpatialAlignmentScrollbars);
   });
   document.addEventListener("input", function (event) {
-    if (event.target.id === "enhance-coordinate_rotation") {
-      var rotation = document.getElementById("enhance-coordinate_rotation");
-      applyContinuousCoordinateTransform(
-        rotation ? rotation.value : 0,
-        1
-      );
-    }
-    if (new Set([
-      "enhance-img_dx", "enhance-img_dy", "enhance-img_scale",
-      "enhance-img_rotate", "enhance-image_opacity",
-      "enhance-point_opacity", "enhance-point_size"
-    ]).has(event.target.id)) {
-      scheduleContinuousSpatialAlignment();
+    if (spatialDraftInputIds.has(event.target.id)) {
+      scheduleSpatialAlignmentDraft();
     }
   }, true);
   document.addEventListener("change", function (event) {
-    if (event.target.id === "enhance-coordinate_rotation") {
-      var rotation = document.getElementById("enhance-coordinate_rotation");
-      applyContinuousCoordinateTransform(
-        rotation ? rotation.value : 0,
-        1
-      );
-    }
-    if (new Set([
-      "enhance-img_dx", "enhance-img_dy", "enhance-img_scale",
-      "enhance-img_rotate", "enhance-image_flip_x", "enhance-image_flip_y",
-      "enhance-image_opacity", "enhance-point_opacity", "enhance-point_size"
-    ]).has(event.target.id)) {
-      scheduleContinuousSpatialAlignment();
+    if (spatialDraftInputIds.has(event.target.id)) {
+      scheduleSpatialAlignmentDraft();
     }
   }, true);
+  function handleSpatialAlignmentValue(event) {
+    if (event.target && event.target.id === "enhance-alignment_spatial_plot") {
+      restoreSpatialAlignmentDraftAfterPlot();
+    }
+  }
+  document.addEventListener("shiny:value", handleSpatialAlignmentValue);
+  if (window.jQuery) {
+    window.jQuery(document).on(
+      "shiny:value.builderSpatialDraft",
+      handleSpatialAlignmentValue
+    );
+  }
   function initializeBuilder() {
     registerExampleMessageHandler();
     registerBuildDialogHandler();

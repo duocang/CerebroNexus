@@ -347,7 +347,30 @@ test_that("enhancement groups and previews use one quiet density system", {
     fixed = TRUE
   ))
   expect_false(grepl("enhance-coordinate_scale", js, fixed = TRUE))
-  expect_match(js, "scheduleContinuousSpatialAlignment", fixed = TRUE)
+  expect_match(js, "scheduleSpatialAlignmentDraft", fixed = TRUE)
+  expect_match(js, "spatialDraftRevision", fixed = TRUE)
+  expect_match(js, "spatialDraftPending", fixed = TRUE)
+  expect_match(js, "spatialDraftInFlight", fixed = TRUE)
+  expect_match(js, "restoreSpatialAlignmentDraftAfterPlot", fixed = TRUE)
+  expect_match(js, 'addEventListener("shiny:value"', fixed = TRUE)
+  expect_match(js, "shiny:value.builderSpatialDraft", fixed = TRUE)
+  expect_match(js, "centreX - width / 2", fixed = TRUE)
+  expect_match(js, "centreY + height / 2", fixed = TRUE)
+  expect_false(grepl(
+    "scheduleContinuousCoordinateRotation",
+    js,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "applyContinuousCoordinateTransform",
+    js,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "scheduleContinuousSpatialAlignment",
+    js,
+    fixed = TRUE
+  ))
   for (input_id in c(
     "enhance-img_dx",
     "enhance-img_dy",
