@@ -3,17 +3,23 @@ generated_app_e2e_reset_runtime()
 .generated_app_e2e_click_inner_tab <- function(id, value, timeout = 60000) {
   selector <- sprintf("#%s a[data-value='%s']", id, value)
   selector_js <- .generated_app_e2e_js_value(selector)
+  id_js <- .generated_app_e2e_js_value(id)
+  value_js <- .generated_app_e2e_js_value(value)
   driver <- generated_app_e2e_driver()
   driver$wait_for_js(
-    sprintf("document.querySelector(%s) !== null", selector_js),
+    paste0(
+      "(function(){var link=document.querySelector(",
+      selector_js,
+      ");if(!link)return false;var active=!!(link.parentElement&&",
+      "link.parentElement.classList.contains('active'));var app=window.Shiny&&",
+      "Shiny.shinyapp;var current=app&&app.$inputValues?",
+      "app.$inputValues[",
+      id_js,
+      "]:null;if(!active)link.click();return active&&current===",
+      value_js,
+      ";})()"
+    ),
     timeout = timeout
-  )
-  driver$run_js(sprintf("document.querySelector(%s).click()", selector_js))
-  generated_app_e2e_value(
-    "input",
-    id,
-    timeout = timeout,
-    validate = function(current) identical(current, value)
   )
   invisible(value)
 }

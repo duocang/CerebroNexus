@@ -1,3 +1,26 @@
+.builder_plan_alignment_outside_count <- function(record) {
+  if (!is.list(record)) {
+    return(NA_integer_)
+  }
+  if (is.null(record[["outside"]])) {
+    return(0L)
+  }
+  value <- record[["outside"]]
+  if (
+    !is.numeric(value) ||
+      is.object(value) ||
+      length(value) != 1L ||
+      is.na(value) ||
+      !is.finite(value) ||
+      value < 0 ||
+      value != floor(value) ||
+      value > .Machine$integer.max
+  ) {
+    return(NA_integer_)
+  }
+  as.integer(value)
+}
+
 .builder_plan_preflight_entries <- function(entries) {
   for (entry in entries) {
     state_error <- tryCatch(
@@ -41,6 +64,34 @@
           "” has an image but no saved alignment. Save or remove it before building."
         ),
         "unsaved_spatial_alignment"
+      ))
+    }
+    outside_counts <- vapply(
+      images,
+      .builder_plan_alignment_outside_count,
+      integer(1)
+    )
+    invalid_outside <- names(images)[is.na(outside_counts)]
+    if (length(invalid_outside)) {
+      return(builder_plan_error(
+        paste0(
+          "Section “",
+          invalid_outside[[1L]],
+          "” has invalid image-coverage diagnostics. Re-open and save its alignment before building."
+        ),
+        "invalid_spatial_alignment_diagnostics"
+      ))
+    }
+    outside <- names(images)[outside_counts > 0L]
+    if (length(outside)) {
+      return(builder_plan_error(
+        paste0(
+          "Section “",
+          outside[[1L]],
+          "” has cells outside its saved image bounds. Adjust the alignment ",
+          "until every cell is covered before building."
+        ),
+        "spatial_alignment_outside"
       ))
     }
   }

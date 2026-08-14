@@ -57,6 +57,19 @@ label, .control-label {
 .selectize-control { min-width: 0; }
 .selectize-control.single .selectize-input { margin: 0; }
 .selectize-dropdown { z-index: 50; color: var(--c-text); }
+.selectize-control.multi .selectize-input > input::placeholder {
+  color: var(--c-text-muted);
+  opacity: 1;
+}
+.selectize-control.multi .selectize-input > input:only-child {
+  min-width: 5.5em !important;
+}
+.selectize-control.multi .selectize-dropdown {
+  width: max-content !important;
+  min-width: 100% !important;
+  max-width: calc(100vw - 32px) !important;
+}
+.selectize-control.multi .selectize-dropdown .option { white-space: nowrap; }
 .selectize-input.disabled,
 .form-control:disabled {
   background: var(--c-surface-muted) !important;

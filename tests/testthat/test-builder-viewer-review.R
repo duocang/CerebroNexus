@@ -1,6 +1,7 @@
 builder_repo_source("ui/inspect_stage.R")
 builder_repo_source("extras.R")
 builder_repo_source("ui/core_stage.R")
+builder_repo_source("ui/workflow.R")
 builder_repo_source("ui/review_stage.R")
 
 builder_viewer_review_html <- function(value) {
@@ -39,6 +40,7 @@ builder_viewer_review_plan <- function(with_trajectory = TRUE) {
   structure(
     list(
       readiness = "ready",
+      revision = 1L,
       make_app = TRUE,
       dataset_order = "dataset-a",
       items = list(item),
@@ -157,19 +159,23 @@ test_that("Review summarizes analysis results without exposing diagnostics", {
     columns = list(
       cell_barcode = list(
         disposition = "included",
-        effective_included = TRUE
+        effective_included = TRUE,
+        retain_in_crb = TRUE
       ),
       cell_type = list(
         disposition = "included",
-        effective_included = TRUE
+        effective_included = TRUE,
+        retain_in_crb = TRUE
       ),
       score = list(
         disposition = "excluded",
-        effective_included = FALSE
+        effective_included = FALSE,
+        retain_in_crb = FALSE
       ),
       donor = list(
         disposition = "attention",
-        effective_included = TRUE
+        effective_included = TRUE,
+        retain_in_crb = TRUE
       )
     )
   )

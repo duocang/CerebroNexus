@@ -272,17 +272,29 @@ builder_e2e_validate_all_content <- function(
     )
     if (section %in% expected_images) {
       configured <- settings$images[[section]]
+      bound_names <- c("xmin", "xmax", "ymin", "ymax")
+      payload <- list(
+        histology_image = configured$uri,
+        histology_image_bounds = stats::setNames(
+          as.numeric(unlist(
+            configured$bounds[bound_names],
+            use.names = FALSE
+          )),
+          bound_names
+        )
+      )
+      matches <- vapply(
+        output$histology_images %||% list(),
+        identical,
+        logical(1),
+        y = payload
+      )
       check(
-        identical(output$histology_image, configured$uri),
+        any(matches),
         paste(section, "histology image")
       )
-      check(
-        identical(output$histology_image_bounds, configured$bounds),
-        paste(section, "image bounds")
-      )
     } else {
-      check(is.null(output$histology_image), "patient C has no image")
-      check(is.null(output$histology_image_bounds), "patient C has no bounds")
+      check(!length(output$histology_images), "patient C has no image")
     }
   }
   invisible(TRUE)
@@ -376,134 +388,66 @@ builder_e2e_run_generated_app <- function(
           id
         )))
       }
+      check(has_tab("coordinated_views"), "Linked views was not exposed")
+      check(!has_tab("spatial"), "the removed Spatial page was exposed")
+      check(!has_tab("trekker"), "the removed Trekker page was exposed")
+      driver$click(selector = "a[href='#shiny-tab-coordinated_views']")
+      driver$wait_for_js(
+        paste0(
+          "document.querySelector(",
+          "'a[href=\"#shiny-tab-coordinated_views\"]'",
+          ").parentElement.classList.contains('active')"
+        ),
+        timeout = 30000
+      )
+
       if (identical(content, "plain")) {
-        check(!has_tab("spatial"), "plain data exposed the Spatial page")
-        check(!has_tab("trekker"), "plain data exposed the Trekker page")
+        driver$wait_for_js(
+          paste0(
+            "(function() {",
+            "var meta = document.getElementById('cv-meta');",
+            "return !!(meta && meta.textContent.indexOf('expression') >= 0);",
+            "})()"
+          ),
+          timeout = 60000
+        )
       } else if (identical(content, "histology")) {
-        check(has_tab("spatial"), "histology data did not expose Spatial")
-        check(!has_tab("trekker"), "histology data exposed Trekker")
-        driver$click(
-          selector = "a[href='#shiny-tab-spatial']"
-        )
-        driver$wait_for_js(
-          paste0(
-            "document.querySelector(",
-            "'a[href=\"#shiny-tab-spatial\"]'",
-            ").parentElement.classList.contains('active')"
-          ),
-          timeout = 30000
-        )
-        driver$wait_for_js(
-          paste0(
-            "(function() {",
-            "var input = document.getElementById(",
-            "'spatial_projection_background_image');",
-            "return !!(input && input.selectize && ",
-            "input.selectize.options['__embedded__']);",
-            "})()"
-          ),
-          timeout = 60000
-        )
-        driver$wait_for_js(
-          paste0(
-            "(function() {",
-            "var plot = document.getElementById('spatial_projection');",
-            "return !!(plot && plot.data && plot.data.length);",
-            "})()"
-          ),
-          timeout = 60000
-        )
-        driver$run_js(
-          paste0(
-            "document.getElementById(",
-            "'spatial_projection_background_image'",
-            ").selectize.setValue('__embedded__');"
-          )
-        )
-        tryCatch(
-          driver$wait_for_js(
-            paste0(
-              "(function() {",
-              "var bg = document.getElementById(",
-              "'spatial_projection_background');",
-              "return !!(bg && bg.dataset.backgroundImage && ",
-              "bg.dataset.backgroundImage.indexOf(",
-              "'data:image/png;base64,') === 0 && ",
-              "bg.dataset.boundsXmin !== undefined);",
-              "})()"
-            ),
-            timeout = 60000
-          ),
-          error = function(error) {
-            diagnostic <- driver$get_js(
-              paste0(
-                "(function() {",
-                "var input = document.getElementById(",
-                "'spatial_projection_background_image');",
-                "var plot = document.getElementById('spatial_projection');",
-                "var bg = document.getElementById(",
-                "'spatial_projection_background');",
-                "return {value: input && input.selectize ? ",
-                "input.selectize.getValue() : null, ",
-                "plot: !!(plot && plot.data && plot.data.length), ",
-                "background: bg ? bg.dataset.backgroundImage || '' : null, ",
-                "bounds: bg ? bg.dataset.boundsXmin || null : null};",
-                "})()"
-              )
-            )
-            stop(
-              conditionMessage(error),
-              "\nDOM: ",
-              paste(capture.output(str(diagnostic)), collapse = " "),
-              "\n",
-              privacy_app_logs(app),
-              call. = FALSE
-            )
-          }
-        )
-        rendered <- driver$get_js(
-          paste0(
-            "(function() {",
-            "var bg = document.getElementById('spatial_projection_background');",
-            "return {image: bg.dataset.backgroundImage, bounds: {",
-            "xmin: Number(bg.dataset.boundsXmin),",
-            "xmax: Number(bg.dataset.boundsXmax),",
-            "ymin: Number(bg.dataset.boundsYmin),",
-            "ymax: Number(bg.dataset.boundsYmax)}};",
-            "})()"
-          )
-        )
         expected <- expected_images[[1L]]
-        check(
-          identical(rendered$image, expected$uri),
-          "Spatial did not render the embedded data URI"
-        )
-        check(
-          isTRUE(all.equal(rendered$bounds, expected$bounds)),
-          "Spatial did not consume the embedded image bounds"
+        source <- expected$source %||%
+          list(name = "Embedded tissue image")
+        expected_label <- basename(source$name)
+        expected_json <- jsonlite::toJSON(expected_label, auto_unbox = TRUE)
+        driver$wait_for_js(
+          paste0(
+            "(function() {",
+            "var titles = Array.from(document.querySelectorAll('.cv-ptitle'))",
+            ".map(function(x) { return x.textContent; });",
+            "var picker = document.getElementById('cv-img-pick');",
+            "var labels = picker ? Array.from(picker.options)",
+            ".map(function(x) { return x.textContent; }) : [];",
+            "var canvas = document.querySelector(",
+            "'.cv-pane:not(.cv-hidden) canvas[id^=\"cv-cv-\"]');",
+            "return titles.some(function(x) { return x.indexOf('(spatial)') >= 0; }) && ",
+            "labels.indexOf(",
+            expected_json,
+            ") >= 0 && ",
+            "canvas && canvas.width > 0 && canvas.height > 0;",
+            "})()"
+          ),
+          timeout = 60000
         )
       } else if (identical(content, "trekker")) {
-        check(has_tab("trekker"), "Trekker data did not expose Trekker")
-        driver$click(
-          selector = "a[href='#shiny-tab-trekker']"
-        )
-        driver$wait_for_js(
-          paste0(
-            "document.querySelector(",
-            "'a[href=\"#shiny-tab-trekker\"]'",
-            ").parentElement.classList.contains('active')"
-          ),
-          timeout = 30000
-        )
         driver$wait_for_js(
           paste0(
             "(function() {",
-            "var subline = document.querySelector('#tk-subline code');",
-            "var spatial = document.getElementById('tk-cv-sp');",
-            "var umap = document.getElementById('tk-cv-um');",
-            "return !!(subline && subline.textContent.trim().length > 0 && ",
-            "spatial && spatial.width > 0 && spatial.height > 0 && ",
-            "umap && umap.width > 0 && umap.height > 0);",
+            "var titles = Array.from(document.querySelectorAll('.cv-ptitle'))",
+            ".map(function(x) { return x.textContent; });",
+            "var controls = document.getElementById('cv-trekker-ctl');",
+            "var canvas = document.querySelector(",
+            "'.cv-pane:not(.cv-hidden) canvas[id^=\"cv-cv-\"]');",
+            "return titles.some(function(x) { return x.indexOf('Trekker') >= 0; }) && ",
+            "controls && controls.style.display !== 'none' && ",
+            "canvas && canvas.width > 0 && canvas.height > 0;",
             "})()"
           ),
           timeout = 60000

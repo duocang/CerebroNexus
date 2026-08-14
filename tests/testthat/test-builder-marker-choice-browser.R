@@ -1,5 +1,25 @@
 library(shinytest2)
 
+builder_marker_browser_load_example <- function(app) {
+  app$wait_for_js(
+    paste0(
+      "window.Shiny && Shiny.shinyapp && ",
+      "document.querySelector('.example-btn[data-ex=all_content]') !== null"
+    ),
+    timeout = 60000
+  )
+  app$click(selector = ".example-btn[data-ex=all_content]")
+  app$wait_for_js(
+    "document.querySelector('.ds-pick[aria-current=true]') !== null",
+    timeout = 60000
+  )
+  app$wait_for_idle(timeout = 30000)
+  app$wait_for_js(
+    "document.querySelector('.marker-genes-action') !== null",
+    timeout = 60000
+  )
+}
+
 test_that("visible Marker genes card chooses and clears calculation", {
   builder_dir <- builder_profile_inst_path("builder")
   local_app_support(builder_dir)
@@ -13,12 +33,7 @@ test_that("visible Marker genes card chooses and clears calculation", {
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
 
-  app$click(selector = ".example-btn[data-ex=all_content]")
-  app$wait_for_js(
-    "document.getElementById('enhance-analysis_marker_genes_action') !== null",
-    timeout = 60000
-  )
-  app$wait_for_idle(timeout = 30000)
+  builder_marker_browser_load_example(app)
 
   app$click(selector = ".marker-genes-action .enhance-module-title")
   app$wait_for_js(
@@ -36,6 +51,10 @@ test_that("visible Marker genes card chooses and clears calculation", {
     "false"
   )
 
+  app$wait_for_js(
+    "document.getElementById('enhance-marker_genes_calculate') !== null",
+    timeout = 10000
+  )
   app$click("enhance-marker_genes_calculate")
   app$wait_for_js(
     paste0(
@@ -64,11 +83,7 @@ test_that("cancelling Marker genes choice leaves the card disabled", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
-  app$click(selector = ".example-btn[data-ex=all_content]")
-  app$wait_for_js(
-    "document.querySelector('.marker-genes-action') !== null",
-    timeout = 60000
-  )
+  builder_marker_browser_load_example(app)
   app$click(selector = ".marker-genes-action .enhance-module-title")
   app$wait_for_js(
     "!document.getElementById('builder-marker-dialog-backdrop').hidden"
@@ -104,11 +119,7 @@ test_that("Marker import confirms an inferred source before enabling Save", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
-  app$click(selector = ".example-btn[data-ex=all_content]")
-  app$wait_for_js(
-    "document.querySelector('.marker-genes-action') !== null",
-    timeout = 60000
-  )
+  builder_marker_browser_load_example(app)
   app$click(selector = ".marker-genes-action .enhance-module-title")
   app$wait_for_js(
     "document.getElementById('enhance-marker_genes_upload') !== null"

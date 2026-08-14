@@ -2,8 +2,14 @@
 
 generated_app_fixture_source_runtime <- function() {
   target <- environment(generated_app_fixture_source_runtime)
-  if (!exists("builder_example_catalog", envir = target, inherits = TRUE)) {
+  ## Builder test files intentionally source and mock many runtime functions in
+  ## the shared test environment. A single inherited symbol is not proof that
+  ## this fixture's complete runtime was loaded; in a full-suite run that made
+  ## generated-App fixtures reuse a partially mocked Builder. Own an explicit
+  ## sentinel and source the canonical runtime once for this fixture family.
+  if (!isTRUE(.generated_app_fixture_runtime$loaded)) {
     builder_e2e_source_runtime(target)
+    .generated_app_fixture_runtime$loaded <- TRUE
   }
   invisible(target)
 }
@@ -11,7 +17,7 @@ generated_app_fixture_source_runtime <- function() {
 generated_app_fixture_pages <- function(conditional = character()) {
   always <- c(
     "data_info",
-    "projection",
+    "coordinated_views",
     "groups",
     "gene_expression",
     "gene_id_conversion",
@@ -25,8 +31,6 @@ generated_app_fixture_pages <- function(conditional = character()) {
     "extra_material",
     "immune_repertoire",
     "trajectory",
-    "spatial",
-    "trekker",
     "hla_tcr_motifs"
   )
   list(
@@ -236,6 +240,7 @@ generated_app_fixture_pages <- function(conditional = character()) {
     reductions = reductions,
     default_group = default_group,
     default_projection = default_projection,
+    overview_point_size = 6,
     expression_backend = "embedded",
     palette = "cerebro",
     color_overrides = color_overrides
@@ -394,14 +399,23 @@ generated_app_fixture_pages <- function(conditional = character()) {
   list(
     object = object,
     attachments = list(),
-    builder_settings = .generated_app_fixture_settings(
-      "Offline analysis",
-      "hg",
-      groups,
-      c("umap", "tsne"),
-      "seurat_clusters",
-      "tsne",
-      color_overrides = list(seurat_clusters = colors)
+    builder_settings = utils::modifyList(
+      .generated_app_fixture_settings(
+        "Offline analysis",
+        "hg",
+        groups,
+        c("umap", "tsne"),
+        "seurat_clusters",
+        "tsne",
+        color_overrides = list(seurat_clusters = colors)
+      ),
+      list(
+        included_trajectories = list(monocle2 = "analysis_lineage"),
+        default_trajectory = list(
+          method = "monocle2",
+          name = "analysis_lineage"
+        )
+      )
     ),
     expected = .generated_app_fixture_contract(
       object,
@@ -475,7 +489,7 @@ generated_app_fixture_pages <- function(conditional = character()) {
       "condition",
       "tsne",
       palettes = list(condition = colors),
-      conditional_pages = "spatial",
+      conditional_pages = character(),
       optional_payloads = "spatial",
       spatial_sections = c("section_a", "section_b"),
       image_alignment = alignment,
@@ -548,7 +562,7 @@ generated_app_fixture_pages <- function(conditional = character()) {
   trekker <- object@misc$trekker
   object@misc <- list(trekker = trekker)
   object@images <- list()
-  groups <- c("patient", "cell_type", "region")
+  groups <- c("patient_id", "cell_type", "region")
   colors <- c(
     epithelial_zone = "#A16207",
     stroma = "#FACC15",
@@ -574,7 +588,8 @@ generated_app_fixture_pages <- function(conditional = character()) {
       "region",
       "umap",
       palettes = list(region = colors),
-      conditional_pages = "trekker",
+      projections = "umap",
+      conditional_pages = character(),
       optional_payloads = "trekker",
       output_file = "06-trekker-map-e2e-trekker.crb"
     )

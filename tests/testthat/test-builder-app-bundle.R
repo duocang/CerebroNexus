@@ -1210,8 +1210,8 @@ test_that("App bundle rejects NULL rendered scalar options", {
 
 test_that("real createShinyApp output round trips the frozen request", {
   fixture <- builder_app_bundle_fixture()
-  saveRDS(Cerebro_v1.3$new(), fixture$paths[[1L]])
-  saveRDS(Cerebro_v1.3$new(), fixture$paths[[2L]])
+  saveRDS(Cerebro$new(), fixture$paths[[1L]])
+  saveRDS(Cerebro$new(), fixture$paths[[2L]])
   request <- builder_app_bundle_request(
     fixture$plan,
     fixture$paths,
@@ -1235,8 +1235,8 @@ test_that("real login App verifies its exact database and external env pair", {
     account_count = 2L,
     timeout_minutes = 15L
   )
-  saveRDS(Cerebro_v1.3$new(), fixture$paths[[1L]])
-  saveRDS(Cerebro_v1.3$new(), fixture$paths[[2L]])
+  saveRDS(Cerebro$new(), fixture$paths[[1L]])
+  saveRDS(Cerebro$new(), fixture$paths[[2L]])
   request <- builder_app_bundle_request(
     fixture$plan,
     fixture$paths,
@@ -1722,6 +1722,23 @@ test_that("App verification rejects symlinks anywhere in the bundle", {
   ))
 
   expect_error(builder_verify_app(app_dir, request), "symbolic")
+})
+
+test_that("the privacy allowlist covers every bundled demo data file", {
+  examples <- builder_profile_inst_path("extdata", "examples")
+  files <- list.files(
+    examples,
+    pattern = "[.](crb|h5|hdf5|rds)$",
+    full.names = TRUE
+  )
+  relative <- file.path("extdata", "examples", basename(files))
+
+  expect_setequal(names(.builder_app_demo_data), relative)
+  ordered <- files[match(names(.builder_app_demo_data), relative)]
+  expect_identical(
+    unname(tools::md5sum(ordered)),
+    unname(.builder_app_demo_data)
+  )
 })
 
 test_that("App verification rejects private data outside exact allowed roots", {

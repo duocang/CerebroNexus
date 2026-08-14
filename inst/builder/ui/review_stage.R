@@ -384,7 +384,11 @@ builder_review_metadata_model <- function(
     effective_included <- vapply(
       records,
       function(record) {
-        value <- if (is.list(record)) record$effective_included else NULL
+        value <- if (is.list(record)) {
+          record$retain_in_crb %||% record$effective_included
+        } else {
+          NULL
+        }
         if (is.logical(value) && length(value) == 1L && !is.na(value)) {
           value
         } else {
@@ -424,7 +428,10 @@ builder_review_metadata_model <- function(
       attention_count = attention_count
     ))
   }
-  included <- setdiff(policy$included %||% character(), "cell_barcode")
+  included <- setdiff(
+    policy$retained %||% policy$included %||% character(),
+    "cell_barcode"
+  )
   excluded <- setdiff(policy$excluded %||% character(), "cell_barcode")
   attention <- setdiff(policy$attention %||% character(), "cell_barcode")
   list(

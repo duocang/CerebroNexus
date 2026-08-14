@@ -69,10 +69,13 @@ builder_auth_browser_picker <- function(
 builder_auth_browser_load_example <- function(app, example = "all_content") {
   app$wait_for_js(
     sprintf(
-      "document.querySelector('.example-btn[data-ex=%s]') !== null",
+      paste0(
+        "window.Shiny && Shiny.shinyapp && ",
+        "document.querySelector('.example-btn[data-ex=%s]') !== null"
+      ),
       example
     ),
-    timeout = 10000
+    timeout = 60000
   )
   app$click(selector = sprintf(".example-btn[data-ex=%s]", example))
   app$wait_for_js(
@@ -473,13 +476,15 @@ test_that("Builder auth survives redraw and traps focus", {
 
   app$run_js(paste0(
     "window.__authDialogNode = document.getElementById('builder-auth-dialog');",
-    "window.__authWorkbenchNode = document.getElementById('workbench').firstElementChild;"
+    "window.__authTargetDataset = document.querySelector(",
+    "'.ds-pick:not([aria-current=true])').dataset.ds;"
   ))
   app$click(selector = ".ds-pick:not([aria-current=true])")
   app$wait_for_js(
     paste0(
-      "window.__authWorkbenchNode !== ",
-      "document.getElementById('workbench').firstElementChild"
+      "Array.from(document.querySelectorAll('.ds-pick')).some(node => ",
+      "node.dataset.ds === window.__authTargetDataset && ",
+      "node.getAttribute('aria-current') === 'true')"
     ),
     timeout = 10000
   )

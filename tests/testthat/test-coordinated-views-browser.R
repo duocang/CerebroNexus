@@ -140,6 +140,65 @@ test_that("multiple spatial sections become independent linked panels", {
   ))
   app$run_js(paste0(
     "(function(){var e=document.getElementById('cv-pick-spatial');",
+    "e.selectize.clear();e.selectize.focus();e.selectize.open();})()"
+  ))
+  app$wait_for_js(
+    paste0(
+      "(function(){var e=document.getElementById('cv-pick-spatial');",
+      "return e.selectize.$control_input.attr('placeholder') === 'Select…' && ",
+      "e.selectize.$dropdown.is(':visible') && ",
+      "!Array.from(document.querySelectorAll('.cv-pane:not(.cv-hidden) .cv-ptitle'))",
+      ".some(function(x){return /\\(spatial\\)$/.test(x.textContent.trim());});})()"
+    ),
+    timeout = 15000
+  )
+  expect_equal(
+    app$get_js("document.querySelectorAll('.cv-pane:not(.cv-hidden)').length"),
+    3
+  )
+  expect_true(app$get_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-spatial');",
+    "var w=e.selectize.$wrapper[0].getBoundingClientRect().width;",
+    "var longest=Math.max.apply(null,Array.from(e.options).map(function(o){",
+    "var probe=document.createElement('span');probe.style.cssText=",
+    "'position:fixed;visibility:hidden;white-space:nowrap;font:12.5px sans-serif';",
+    "probe.textContent=o.textContent;document.body.appendChild(probe);",
+    "var value=probe.getBoundingClientRect().width+42;probe.remove();return value;}));",
+    "var more=document.getElementById('cv-more-btn').getBoundingClientRect().width;",
+    "var target=Math.min(window.innerWidth-32,Math.max(more,Math.ceil(longest)));",
+    "return Math.abs(w-target)<=2;})()"
+  )))
+  expect_true(app$get_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-spatial');",
+    "var d=e.selectize.$dropdown[0], opts=d.querySelectorAll('.option');",
+    "return Array.from(opts).every(function(o){return o.scrollWidth <= ",
+    "o.clientWidth + 1;}) && d.getBoundingClientRect().right <= ",
+    "window.innerWidth + 1;})()"
+  )))
+  app$run_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-proj');",
+    "e.selectize.clear();e.selectize.focus();})()"
+  ))
+  app$wait_for_js(
+    paste0(
+      "(function(){var e=document.getElementById('cv-pick-proj');",
+      "return e.selectize.items.length===0 && ",
+      "!Array.from(document.querySelectorAll('.cv-pane:not(.cv-hidden) .cv-ptitle'))",
+      ".some(function(x){return /\\(expression\\)$/.test(x.textContent.trim());});})()"
+    ),
+    timeout = 15000
+  )
+  expect_true(app$get_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-proj');",
+    "var w=e.selectize.$wrapper[0].getBoundingClientRect().width;",
+    "var more=document.getElementById('cv-more-btn').getBoundingClientRect().width;",
+    "return Math.abs(w-more)<=2;})()"
+  )))
+  app$run_js(
+    "document.getElementById('cv-pick-proj').selectize.setValue(['umap']);"
+  )
+  app$run_js(paste0(
+    "(function(){var e=document.getElementById('cv-pick-spatial');",
     "if(e.selectize){e.selectize.setValue(['A tissue','B tissue','C tissue']);}",
     "else{Array.from(e.options).forEach(function(o){o.selected=true;});",
     "e.dispatchEvent(new Event('change',{bubbles:true}));}})();"
@@ -395,10 +454,15 @@ test_that("Trekker insight tabs resize smoothly without losing their anchor", {
     "document.getElementById('cv-tk-insights-toggle').click();",
     "document.getElementById('cv-tk-panel-cell').style.minHeight='760px';",
     "document.getElementById('cv-tk-panel-qc').style.minHeight='360px';",
-    "document.getElementById('cv-tk-insights').scrollIntoView({block:'start'});",
+    "window.__cvTkAnchorReady=false;",
+    "document.getElementById('cv-tk-insights').scrollIntoView(",
+    "{behavior:'instant',block:'start'});",
+    "requestAnimationFrame(function(){",
     "window.__cvTkAnchor=document.getElementById('cv-tk-insights')",
-    ".getBoundingClientRect().top;"
+    ".getBoundingClientRect().top;window.__cvTkAnchorReady=true;});"
   ))
+  app$wait_for_js("window.__cvTkAnchorReady === true", timeout = 3000)
+  expect_lt(abs(app$get_js("window.__cvTkAnchor")), 36)
   app$run_js("document.getElementById('cv-tk-tab-qc').click();")
   app$wait_for_js(
     "document.getElementById('cv-tk-panel-stage').classList.contains('is-switching')",
@@ -832,12 +896,14 @@ test_that("a 3-D embedding can be rotated, and a 2-D one cannot", {
   # reset returns it to the starting angle. Compared with a tolerance because
   # the centroid is sampled off the canvas on a 4px lattice, so it carries a
   # pixel of rounding — this is "back where it was", not "bit-identical".
+  # A strict 5px cut-off is itself unstable when the sampled x/y both round by
+  # a few pixels, so keep the rejection boundary just above that diagonal.
   app$run_js(
     "document.querySelector('.cv-tbtn[data-act=\"reset\"][data-panel=\"A\"]').click();"
   )
   app$wait_for_idle(timeout = 5000)
   back <- unlist(app$get_js(centroid))
-  expect_lt(sqrt(sum((back - before)^2)), 5)
+  expect_lt(sqrt(sum((back - before)^2)), 6)
 
   # switching to the flat projection retires the tool — it would have nothing
   # to turn, and leaving it offered implies a dimension that is not there
@@ -2231,6 +2297,13 @@ test_that("a panel can become the focus without losing linked context", {
   ))
   app$run_js("document.getElementById('cv-workspace-overview').click();")
   app$wait_for_idle(timeout = 10000)
+  app$wait_for_js(
+    paste0(
+      "!document.querySelector('.cv-panes')",
+      ".classList.contains('cv-focus-transitioning')"
+    ),
+    timeout = 10000
+  )
   expect_equal(
     app$get_js("document.querySelectorAll('.cv-focus-primary').length"),
     0
@@ -2306,6 +2379,13 @@ test_that("a panel can become the focus without losing linked context", {
     "document.querySelector('.cv-focus-btn[data-panel=\"A\"]').click();"
   )
   app$wait_for_idle(timeout = 10000)
+  app$wait_for_js(
+    paste0(
+      "!document.querySelector('.cv-panes')",
+      ".classList.contains('cv-focus-transitioning')"
+    ),
+    timeout = 10000
+  )
   expect_equal(
     app$get_js(
       "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length"
@@ -2327,26 +2407,47 @@ test_that("a panel can become the focus without losing linked context", {
     ),
     app$get_js("document.getElementById('cv-cv-b').clientWidth")
   )
+  app$run_js(paste0(
+    "(function(){window.__cvFocusRasterReady=false;var previous=null;",
+    "var settle=function(){var cv=document.getElementById('cv-cv-a');",
+    "var current=[cv.clientWidth,cv.clientHeight,cv.width,cv.height].join('|');",
+    "if(current===previous){window.__cvFocusRasterReady=true;return;}",
+    "previous=current;requestAnimationFrame(settle);};",
+    "requestAnimationFrame(settle);})()"
+  ))
+  app$wait_for_js("window.__cvFocusRasterReady === true", timeout = 3000)
   ## The outline is stored in the data coordinate system, so after A grows it
   ## lands at its new projected position (not at the old 20%-of-canvas pixel).
   ## Test a small neighbourhood around the first corner: the dashed blue stroke
   ## is intentionally anti-aliased, hence a colour tolerance rather than an
   ## exact one-pixel match.
-  expect_true(app$get_js(paste0(
+  outline_corner <- app$get_js(paste0(
     "(function () {",
-    " var cv=document.getElementById('cv-cv-a'), w=cv.clientWidth;",
+    " var cv=document.getElementById('cv-cv-a'), cssW=cv.clientWidth;",
     " var oldW=",
     small,
     ", oldX=oldW*.2, oldS=oldW-32;",
-    " var ux=(oldX-16)/oldS, want=16+ux*(w-32);",
-    " var c=cv.getContext('2d'), d=c.getImageData(0,0,w,w).data;",
-    " for(var y=Math.max(0,Math.floor(want)-7); y<=Math.min(w-1,Math.ceil(want)+7); y++)",
-    "  for(var x=Math.max(0,Math.floor(want)-7); x<=Math.min(w-1,Math.ceil(want)+7); x++){",
-    "   var i=(y*w+x)*4; if(d[i]<80 && d[i+1]>70 && d[i+2]>150) return true;",
+    " var ux=(oldX-16)/oldS, wantCss=16+ux*(cssW-32);",
+    " var sx=cv.width/cssW, sy=cv.height/cv.clientHeight;",
+    " var wantX=wantCss*sx, wantY=wantCss*sy;",
+    " var radius=Math.ceil(7*Math.max(sx,sy));",
+    " var c=cv.getContext('2d'), image=c.getImageData(0,0,cv.width,cv.height),",
+    " d=image.data, found=false;",
+    " for(var y=Math.max(0,Math.floor(wantY)-radius);",
+    " y<=Math.min(image.height-1,Math.ceil(wantY)+radius);y++)",
+    "  for(var x=Math.max(0,Math.floor(wantX)-radius);",
+    " x<=Math.min(image.width-1,Math.ceil(wantX)+radius);x++){",
+    "   var i=(y*image.width+x)*4;",
+    "   if(d[i]<80 && d[i+1]>70 && d[i+2]>150){found=true;break;}",
     "  }",
-    " return false;",
+    " return {found:found,cssWidth:cssW,backingWidth:cv.width,",
+    " scaleX:sx,scaleY:sy,wantCss:wantCss};",
     "})()"
-  )))
+  ))
+  expect_true(
+    isTRUE(outline_corner$found),
+    info = jsonlite::toJSON(outline_corner, auto_unbox = TRUE)
+  )
   ## The selection is untouched -- this is magnification, not a reset.
   expect_equal(
     app$get_js("document.getElementById('cv-seltext').textContent"),
@@ -3468,6 +3569,124 @@ test_that("re-sending the same data set keeps the image adjustments", {
   app$run_js(bundle("ds-B"))
   app$wait_for_idle(timeout = 10000)
   expect_equal(app$get_js(scalex), 1)
+
+  app$stop()
+})
+
+test_that("Builder point appearance is per-space until the shared override", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_point_appearance_repush")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(paste0(
+    "(function(){var p=CanvasRenderingContext2D.prototype;",
+    "window.__cvPointPaint={radii:{},alphas:{}};",
+    "if(!p.__cvOriginalArc){p.__cvOriginalArc=p.arc;",
+    "p.arc=function(x,y,r){var id=this.canvas&&this.canvas.id;",
+    "if(id&&id.indexOf('cv-cv-')===0){",
+    "(__cvPointPaint.radii[id]||(__cvPointPaint.radii[id]=[])).push(r);}",
+    "return p.__cvOriginalArc.apply(this,arguments);};}",
+    "if(!p.__cvOriginalFill){p.__cvOriginalFill=p.fill;",
+    "p.fill=function(){var id=this.canvas&&this.canvas.id;",
+    "if(id&&id.indexOf('cv-cv-')===0){",
+    "(__cvPointPaint.alphas[id]||(__cvPointPaint.alphas[id]=[]))",
+    ".push(this.globalAlpha);}",
+    "return p.__cvOriginalFill.apply(this,arguments);};}})();"
+  ))
+  bundle <- function(id, trekker_size = 9) {
+    cv_bundle_js(
+      paste0(
+        "{dataset_id:'",
+        id,
+        "',default_point_size:5,",
+        "default_point_opacity:0.8,spaces:[",
+        "{id:'umap',label:'umap',x:blob(0),y:blob(0)},",
+        "{id:'trekker',label:'Trekker',x:blob(1),y:blob(1),",
+        "builder_point_size:",
+        trekker_size,
+        ",builder_point_opacity:0.65}]}"
+      ),
+      n = 12
+    )
+  }
+  redraw <- paste0(
+    "window.__cvPointPaint={radii:{},alphas:{}};",
+    "document.getElementById('cv-pick-color')",
+    ".dispatchEvent(new Event('change',{bubbles:true}));"
+  )
+  has_value <- function(kind, canvas, value) {
+    app$get_js(paste0(
+      "(__cvPointPaint.",
+      kind,
+      "['",
+      canvas,
+      "']||[])",
+      ".some(function(x){return Math.abs(x-",
+      value,
+      ")<0.001;})"
+    ))
+  }
+
+  app$run_js(bundle("style-A"))
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-pane:not(.cv-hidden)').length===2",
+    timeout = 15000
+  )
+  app$run_js(redraw)
+  app$wait_for_idle(timeout = 5000)
+  expect_true(has_value("radii", "cv-cv-a", 5))
+  expect_true(has_value("radii", "cv-cv-b", 9))
+  expect_true(has_value("alphas", "cv-cv-a", 0.8))
+  expect_true(has_value("alphas", "cv-cv-b", 0.65))
+
+  app$run_js(paste0(
+    "(function(){var s=document.getElementById('cv-ps');s.value='12';",
+    "s.dispatchEvent(new Event('input',{bubbles:true}));",
+    "var o=document.getElementById('cv-opacity');o.value='0.4';",
+    "o.dispatchEvent(new Event('input',{bubbles:true}));})();"
+  ))
+  app$run_js(bundle("style-A"))
+  app$wait_for_idle(timeout = 10000)
+  expect_equal(
+    app$get_js("Number(document.getElementById('cv-ps').value)"),
+    12
+  )
+  expect_equal(
+    app$get_js("Number(document.getElementById('cv-opacity').value)"),
+    0.4
+  )
+  app$run_js(redraw)
+  app$wait_for_idle(timeout = 5000)
+  expect_true(has_value("radii", "cv-cv-a", 12))
+  expect_true(has_value("radii", "cv-cv-b", 12))
+  expect_true(has_value("alphas", "cv-cv-a", 0.4))
+  expect_true(has_value("alphas", "cv-cv-b", 0.4))
+
+  app$run_js(bundle("style-B"))
+  app$wait_for_idle(timeout = 10000)
+  expect_equal(
+    app$get_js("Number(document.getElementById('cv-ps').value)"),
+    5
+  )
+  expect_equal(
+    app$get_js("Number(document.getElementById('cv-opacity').value)"),
+    0.8
+  )
+  app$run_js(redraw)
+  app$wait_for_idle(timeout = 5000)
+  expect_true(has_value("radii", "cv-cv-a", 5))
+  expect_true(has_value("radii", "cv-cv-b", 9))
+  expect_true(has_value("alphas", "cv-cv-a", 0.8))
+  expect_true(has_value("alphas", "cv-cv-b", 0.65))
+
+  ## Zero is a valid Builder value: it intentionally hides the points while
+  ## leaving an aligned tissue image visible. Do not treat it as "unset".
+  app$run_js(bundle("style-C", trekker_size = 0))
+  app$wait_for_idle(timeout = 10000)
+  app$run_js(redraw)
+  app$wait_for_idle(timeout = 5000)
+  expect_true(has_value("radii", "cv-cv-a", 5))
+  expect_true(has_value("radii", "cv-cv-b", 0))
 
   app$stop()
 })

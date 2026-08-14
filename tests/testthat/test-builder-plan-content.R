@@ -1,5 +1,83 @@
 builder_plan_contract_source_runtime(environment())
 
+metadata_retention_entry <- function() {
+  entry <- builder_task6_entry()
+  entry$dataset_profile$metadata$columns$orig.ident <- list(
+    name = "orig.ident",
+    class = "factor",
+    supported = TRUE,
+    non_missing = 100L,
+    unique_non_missing = 1L
+  )
+  recommendation <- builder_recommend_metadata(
+    entry$dataset_profile,
+    required = c("nCount_RNA", "nFeature_RNA")
+  )
+  entry$settings$recommendations$metadata <- recommendation
+  entry$settings$metadata_policy <- builder_task6_final_metadata_policy(
+    recommendation,
+    list(nCount_RNA = "included", nFeature_RNA = "included")
+  )
+  entry
+}
+
+test_that("metadata retention is independent from Group selection", {
+  entry <- metadata_retention_entry()
+  final <- .builder_state_effective_metadata_policy(
+    entry,
+    entry$dataset_profile
+  )
+
+  expect_contains(final$retained, "orig.ident")
+  expect_false("orig.ident" %in% final$groups)
+})
+
+test_that("a Group cannot be excluded from retained metadata", {
+  entry <- metadata_retention_entry()
+  entry$settings$groups <- "cluster"
+  entry$settings$included_groups <- "cluster"
+  policy <- entry$settings$metadata_policy
+  policy$retained <- setdiff(policy$retained, "cluster")
+  policy$columns$cluster$retain_in_crb <- FALSE
+  entry$settings$metadata_policy <- policy
+
+  error <- tryCatch(
+    {
+      .builder_state_effective_metadata_policy(
+        entry,
+        entry$dataset_profile
+      )
+      NULL
+    },
+    builder_state_error = identity
+  )
+  expect_s3_class(error, "builder_state_error")
+  expect_identical(error$code, "metadata_dependency_conflict")
+})
+
+test_that("legacy metadata policies preserve their prior retention choices", {
+  entry <- metadata_retention_entry()
+  legacy <- entry$settings$metadata_policy
+  legacy$retained <- NULL
+  legacy$groups <- NULL
+  legacy$forced <- NULL
+  for (id in names(legacy$columns)) {
+    legacy$columns[[id]]$retain_in_crb <- NULL
+    legacy$columns[[id]]$group_enabled <- NULL
+    legacy$columns[[id]]$forced <- NULL
+  }
+
+  upgraded <- .builder_state_upgrade_metadata_policy(legacy)
+
+  expected <- names(legacy$columns)[vapply(
+    legacy$columns,
+    function(record) isTRUE(record$effective_included),
+    logical(1)
+  )]
+  expect_setequal(upgraded$retained, expected)
+  expect_identical(upgraded$groups, character())
+})
+
 test_that("immune pages require one exportable canonical payload", {
   local({
     builder_repo_source("preview.R")
@@ -760,6 +838,14 @@ test_that("final metadata policy owns review and frozen output", {
     selected <- builder_task6_entry()
     recommendation <- selected$settings$recommendations$metadata
     final_policy <- selected$settings$metadata_policy
+    expected_final_policy <- .builder_state_metadata_policy_sync_groups(
+      final_policy,
+      .builder_state_included_groups(selected)
+    )
+    expected_recommendation <- .builder_state_metadata_policy_sync_groups(
+      .builder_state_upgrade_metadata_policy(recommendation),
+      .builder_state_included_groups(selected)
+    )
     expect_identical(
       recommendation$columns$donor_id$disposition,
       "attention"
@@ -783,7 +869,7 @@ test_that("final metadata policy owns review and frozen output", {
     expect_null(plan$error)
     expect_identical(
       plan$items[[1L]]$metadata_policy,
-      final_policy
+      expected_final_policy
     )
 
     recommendation_only <- builder_task6_entry()
@@ -801,7 +887,7 @@ test_that("final metadata policy owns review and frozen output", {
     expect_null(recommendation_plan$error)
     expect_identical(
       recommendation_plan$items[[1L]]$metadata_policy,
-      recommendation
+      expected_recommendation
     )
 
     final_attention <- builder_task6_entry()
@@ -827,7 +913,7 @@ test_that("final metadata policy owns review and frozen output", {
     expect_null(attention_plan$error)
     expect_identical(
       attention_plan$items[[1L]]$metadata_policy,
-      recommendation
+      expected_recommendation
     )
   })
 })

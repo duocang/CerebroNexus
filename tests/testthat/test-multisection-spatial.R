@@ -107,25 +107,28 @@ test_that("histology is attached per section, not once for all of them", {
 
     crb <- readRDS(crb_path)
     bounds <- lapply(sections, function(nm) {
-      crb$getSpatialData(nm)$histology_image_bounds
+      records <- crb$getSpatialData(nm)$histology_images
+      expect_length(records, 1L)
+      records[[1L]]$histology_image_bounds
     })
     names(bounds) <- sections
 
     ## Distinct extents, and each one actually frames its own section's cells.
     expect_equal(
-      vapply(bounds, function(b) b$xmin, numeric(1)),
+      vapply(bounds, function(b) b[["xmin"]], numeric(1)),
       c(sectionA1 = 0, sectionA2 = 500, sectionB1 = 1000)
     )
     for (nm in sections) {
       sd <- crb$getSpatialData(nm)
+      record <- sd$histology_images[[1L]]
       expect_true(
-        grepl("^data:image/png;base64,", sd$histology_image),
+        grepl("^data:image/png;base64,", record$histology_image),
         info = nm
       )
       expect_true(
         all(
-          sd$coordinates[, 1] >= bounds[[nm]]$xmin &
-            sd$coordinates[, 1] <= bounds[[nm]]$xmax
+          sd$coordinates[, 1] >= bounds[[nm]][["xmin"]] &
+            sd$coordinates[, 1] <= bounds[[nm]][["xmax"]]
         ),
         info = paste(nm, "cells must sit inside their own image extent")
       )
@@ -134,7 +137,9 @@ test_that("histology is attached per section, not once for all of them", {
     ## The four documented bound keys, per section.
     for (nm in sections) {
       expect_setequal(
-        names(crb$getSpatialData(nm)$histology_image_bounds),
+        names(
+          crb$getSpatialData(nm)$histology_images[[1L]]$histology_image_bounds
+        ),
         c("xmin", "xmax", "ymin", "ymax")
       )
     }
@@ -169,9 +174,9 @@ test_that("attaching to some sections leaves the others without an image", {
     ## A partial attachment is legitimate -- the viewer simply offers no
     ## background for the bare sections -- but it must not bleed across.
     crb <- readRDS(crb_path)
-    expect_false(is.null(crb$getSpatialData("sectionA2")$histology_image))
-    expect_null(crb$getSpatialData("sectionA1")$histology_image)
-    expect_null(crb$getSpatialData("sectionB1")$histology_image)
+    expect_length(crb$getSpatialData("sectionA2")$histology_images, 1L)
+    expect_length(crb$getSpatialData("sectionA1")$histology_images, 0L)
+    expect_length(crb$getSpatialData("sectionB1")$histology_images, 0L)
   })
 })
 

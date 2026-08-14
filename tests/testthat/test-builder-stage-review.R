@@ -27,7 +27,7 @@ test_that("Review model translates a frozen plan into user language", {
   expect_identical(model$output$estimated_size, "4 KB")
   expect_identical(model$output$estimated_time, "A few minutes")
   expect_true(all(
-    c("Data info", "Projection", "Marker genes") %in% model$pages
+    c("Data info", "Linked views", "Marker genes") %in% model$pages
   ))
   expect_false(any(c("marker_genes", "spatial") %in% model$pages))
   expect_length(model$warnings, 0L)
@@ -789,7 +789,7 @@ test_that("typed Review controls expose only accepted App options", {
     expect_match(html, label, fixed = TRUE)
   }
   expect_match(html, "review-initial_page", fixed = TRUE)
-  expect_match(html, "Projection", fixed = TRUE)
+  expect_match(html, "Linked views", fixed = TRUE)
   expect_match(html, "Trajectory", fixed = TRUE)
   expect_false(grepl("Spatial", html, fixed = TRUE))
   for (label in c(

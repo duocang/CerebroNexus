@@ -1,5 +1,6 @@
 builder_profile_source_runtime()
 builder_repo_source("state.R", local = globalenv())
+builder_repo_source("marker_import.R", local = globalenv())
 
 recommend_path <- builder_profile_inst_path("builder", "recommend.R")
 if (nzchar(recommend_path) && file.exists(recommend_path)) {
@@ -159,6 +160,10 @@ if (recommend_api_available) {
         class = "list",
         supported = FALSE
       ),
+      patientName = metadata_fact(
+        "patientName",
+        unique_non_missing = 2L
+      ),
       donor_id = metadata_fact("donor_id", unique_non_missing = 2L)
     )
     columns <- lapply(columns, function(column) {
@@ -198,7 +203,7 @@ if (recommend_api_available) {
     ))
     expect_true("cell_type" %in% first$included)
     expect_true("exactly_five_percent" %in% first$included)
-    expect_false("over_five_percent" %in% first$included)
+    expect_true("over_five_percent" %in% first$included)
     expect_identical(
       first$columns$over_five_percent$disposition,
       "attention"
@@ -206,9 +211,9 @@ if (recommend_api_available) {
     expect_true(first$columns$over_five_percent$requires_confirmation)
     expect_false(first$columns$over_five_percent$effective_included)
     expect_true("over_five_percent" %in% first$attention)
-    expect_false("constant" %in% first$included)
-    expect_false("unique_cell" %in% first$included)
-    expect_false("continuous" %in% first$included)
+    expect_true("constant" %in% first$included)
+    expect_true("unique_cell" %in% first$included)
+    expect_true("continuous" %in% first$included)
     expect_identical(first$columns$continuous$disposition, "attention")
     expect_true(first$columns$continuous$requires_confirmation)
     expect_false(first$columns$continuous$effective_included)
@@ -218,7 +223,42 @@ if (recommend_api_available) {
     expect_true("seurat_clusters" %in% first$included)
     expect_identical(first$columns$unsupported$disposition, "excluded")
     expect_identical(first$columns$donor_id$disposition, "attention")
+    expect_false("patientName" %in% first$included)
     expect_false("donor_id" %in% first$included)
+    expect_true(first$columns$constant$retain_in_crb)
+    expect_false(first$columns$constant$group_eligible)
+    expect_true(first$columns$continuous$retain_in_crb)
+    expect_false(first$columns$continuous$group_eligible)
+    expect_true(first$columns$unique_cell$retain_in_crb)
+    expect_false(first$columns$unique_cell$group_eligible)
+    expect_false(first$columns$unsupported$retain_in_crb)
+    expect_false(first$columns$patientName$retain_in_crb)
+    expect_true(first$columns$patientName$requires_confirmation)
+    expect_contains(
+      first$retained,
+      c("constant", "continuous", "unique_cell")
+    )
+    expect_false("unsupported" %in% first$retained)
+  })
+
+  test_that("constant orig.ident is retained but not recommended as a Group", {
+    profile <- recommendation_profile(
+      n_cells = 100L,
+      columns = list(
+        orig.ident = metadata_fact(
+          "orig.ident",
+          class = "factor",
+          non_missing = 100L,
+          unique_non_missing = 1L
+        )
+      )
+    )
+    policy <- builder_recommend_metadata(profile)
+
+    expect_true(policy$columns$orig.ident$retain_in_crb)
+    expect_false(policy$columns$orig.ident$group_eligible)
+    expect_contains(policy$retained, "orig.ident")
+    expect_false("orig.ident" %in% policy$group_candidates)
   })
 
   test_that("metadata cardinality boundaries are strict for every sample size", {
@@ -249,10 +289,10 @@ if (recommend_api_available) {
     )
     recommendation <- builder_recommend_metadata(boundary)
 
-    expect_false("one" %in% recommendation$included)
-    expect_true("two" %in% recommendation$included)
-    expect_true("fifty" %in% recommendation$included)
-    expect_false("fifty_one" %in% recommendation$included)
+    expect_false("one" %in% recommendation$group_candidates)
+    expect_true("two" %in% recommendation$group_candidates)
+    expect_true("fifty" %in% recommendation$group_candidates)
+    expect_false("fifty_one" %in% recommendation$group_candidates)
     expect_identical(
       recommendation$columns$fifty_one$disposition,
       "attention"
@@ -271,7 +311,7 @@ if (recommend_api_available) {
         )
       )
     ))
-    expect_false("two" %in% small$included)
+    expect_false("two" %in% small$group_candidates)
   })
 
   test_that("required and sensitive metadata fail closed", {

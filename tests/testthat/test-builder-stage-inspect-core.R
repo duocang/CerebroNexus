@@ -246,6 +246,10 @@ test_that("Core exposes a bounded metadata catalog for Viewer Groups", {
   expect_match(html, "Find metadata", fixed = TRUE)
   expect_match(html, "Select suggested", fixed = TRUE)
   expect_match(html, "Select all eligible", fixed = TRUE)
+  expect_match(html, "Keep in CRB", fixed = TRUE)
+  expect_match(html, "Keep all supported metadata", fixed = TRUE)
+  expect_match(html, "Restore recommended retention", fixed = TRUE)
+  expect_match(html, 'class="viewer-metadata-retain"', fixed = TRUE)
   expect_match(html, 'class="viewer-group-include"', fixed = TRUE)
   expect_match(html, 'type="radio"', fixed = TRUE)
   expect_match(html, "Default", fixed = TRUE)
@@ -288,6 +292,48 @@ test_that("Core exposes a bounded metadata catalog for Viewer Groups", {
   expect_match(detail, "A", fixed = TRUE)
   expect_match(detail, "Distribution", fixed = TRUE)
   expect_lte(length(catalog$items[[1L]]$sample_values), 5L)
+})
+
+test_that("constant metadata is retained without becoming a Group", {
+  policy <- list(
+    columns = list(
+      orig.ident = list(
+        name = "orig.ident",
+        disposition = "excluded",
+        effective_included = FALSE,
+        retain_in_crb = TRUE,
+        group_enabled = FALSE,
+        forced = FALSE,
+        sensitive = FALSE
+      )
+    )
+  )
+  catalog <- builder_group_catalog_model(list(
+    metadata_catalog = list(
+      orig.ident = list(
+        name = "orig.ident",
+        supported = TRUE,
+        classification = "categorical",
+        group_eligible = FALSE,
+        group_reason = "This column does not contain two usable categories."
+      )
+    ),
+    metadata_policy = policy
+  ))
+  html <- builder_stage_html(builder_group_catalog_ui("core", catalog))
+  detail <- builder_stage_html(builder_group_detail_ui(
+    "core",
+    builder_group_detail_model(catalog, "orig.ident")
+  ))
+
+  expect_match(
+    html,
+    'class="viewer-metadata-retain" data-group="orig.ident" checked="checked"',
+    fixed = TRUE
+  )
+  expect_false(grepl("viewer-group-include", html, fixed = TRUE))
+  expect_match(detail, "Kept as ordinary metadata", fixed = TRUE)
+  expect_match(detail, "Not eligible as a Group", fixed = TRUE)
 })
 
 test_that("Core offers cell-cycle annotations only for credible metadata", {

@@ -69,9 +69,7 @@
 .coordviews-page .cv-topbar select:focus {
   outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
 }
-.coordviews-page .cv-spatial-ctl .selectize-control { min-width: 210px; }
 .coordviews-page .cv-spatial-ctl .selectize-input { max-width: 310px; }
-.coordviews-page #cv-proj-ctl .selectize-control { min-width: 190px; }
 .coordviews-page #cv-proj-ctl .selectize-input { max-width: 310px; }
 
 /* Background image choices are scoped to the selected spatial data.  The
@@ -1083,6 +1081,10 @@
 }
 .coordviews-page .cv-topbar .selectize-control .selectize-input > input {
   flex: 0 0 8px; min-width: 8px !important; height: 18px !important;
+}
+.coordviews-page .cv-topbar .selectize-control.multi .selectize-input > input:only-child {
+  flex-basis: 5.5em;
+  min-width: 5.5em !important;
 }
 
 /* ---- selection bar ------------------------------------------------------ */

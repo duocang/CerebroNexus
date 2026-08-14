@@ -1,6 +1,7 @@
 builder_repo_source("prerequisite.R")
 builder_repo_source("profile.R")
 builder_repo_source("state.R")
+builder_plan_contract_source_runtime(environment())
 
 test_that("the app privacy marker must be the exact integer contract", {
   namespace <- new.env(parent = emptyenv())
@@ -90,12 +91,13 @@ test_that("app capability explains the safe alternatives", {
   )
   expect_false(unavailable$available)
   expect_identical(unavailable$version, 0L)
-  expect_match(
+  expect_identical(
     unavailable$reason,
-    "private app publication",
-    ignore.case = TRUE
+    paste(
+      "Viewer app creation isn’t available in this installation.",
+      "You can still build CRB files."
+    )
   )
-  expect_match(unavailable$reason, "CRB-only", fixed = TRUE)
   expect_false(grepl("PR #", unavailable$reason, fixed = TRUE))
 
   available <- builder_app_capability(1L)
@@ -160,7 +162,7 @@ test_that("CRB-only plans remain available by default", {
     expect_identical(formals(builder_make_plan)$make_app, FALSE)
     expect_false("app_capability" %in% names(formals(builder_make_plan)))
     plan <- builder_make_plan(
-      list(builder_minimal_entry()),
+      list(builder_task6_entry()),
       tempdir()
     )
 
@@ -174,12 +176,14 @@ test_that("CRB-only plans remain available by default", {
 
 test_that("app plans fail closed without privacy contract v1", {
   local({
+    builder_repo_source("prerequisite.R")
+    builder_installed_app_contract_version <- function(namespace = NULL) 0L
     builder_repo_source("preview.R")
     builder_repo_source("plan.R")
-    capability <- builder_app_capability()
+    capability <- builder_app_capability(0L)
 
     plan <- builder_make_plan(
-      list(builder_minimal_entry()),
+      list(builder_task6_entry()),
       tempdir(),
       make_app = TRUE
     )
@@ -196,7 +200,7 @@ test_that("app plans freeze the accepted privacy contract version", {
     builder_repo_source("plan.R")
 
     plan <- builder_make_plan(
-      list(builder_minimal_entry()),
+      list(builder_task6_entry()),
       tempdir(),
       make_app = TRUE
     )
@@ -206,32 +210,6 @@ test_that("app plans freeze the accepted privacy contract version", {
     expect_identical(plan$app_contract_version, 1L)
     expect_true(any(basename(plan$targets) == "cerebro_app"))
   })
-})
-
-test_that("unavailable app control is unchecked and disabled", {
-  capability <- builder_app_capability(0L)
-  html <- as.character(builder_app_control(capability, current_value = TRUE))
-
-  expect_match(html, '<fieldset[^>]*disabled="disabled"')
-  expect_match(html, 'id="make_app"', fixed = TRUE)
-  expect_false(grepl('checked="checked"', html, fixed = TRUE))
-  expect_match(html, capability$reason, fixed = TRUE)
-})
-
-test_that("available app control defaults checked and preserves current state", {
-  capability <- builder_app_capability(1L)
-  initial <- as.character(builder_app_control(capability))
-  current_false <- as.character(
-    builder_app_control(capability, current_value = FALSE)
-  )
-  current_true <- as.character(
-    builder_app_control(capability, current_value = TRUE)
-  )
-
-  expect_false(grepl('disabled="disabled"', initial, fixed = TRUE))
-  expect_match(initial, 'checked="checked"', fixed = TRUE)
-  expect_false(grepl('checked="checked"', current_false, fixed = TRUE))
-  expect_match(current_true, 'checked="checked"', fixed = TRUE)
 })
 
 test_that("builder UI loads the prerequisite before its plan", {
@@ -248,11 +226,6 @@ test_that("builder UI loads the prerequisite before its plan", {
   expect_length(plan_source, 1L)
   expect_lt(prerequisite_source, plan_source)
   expect_match(text, "app_capability <- builder_app_capability\\(\\)")
-  expect_match(
-    text,
-    "builder_app_control\\("
-  )
-  expect_match(text, "current_value = isolate\\(input\\$make_app\\)")
 })
 
 test_that("worker setup loads the app prerequisite before planning", {
@@ -346,7 +319,12 @@ test_that("session binds successful App results to the dispatched build id", {
   local({
     builder_repo_source("session.R")
     builder_installed_app_contract_version <- function(namespace = NULL) 1L
-    builder_execute_plan <- function(plan, stage, registry) {
+    builder_execute_plan <- function(
+      plan,
+      stage,
+      registry,
+      auth_material = NULL
+    ) {
       list(state = "success", publishable = TRUE, stage = stage)
     }
     builder_worker_response <- function(request, value = NULL, error = NULL) {

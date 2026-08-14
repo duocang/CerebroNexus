@@ -77,6 +77,11 @@ var focusPanel = null;
   var colorBy = null;           // group name
   var ps = 3.0;                 // point size
   var pointOpacity = 0.8;       // base draw opacity (no-selection view)
+  // Builder alignment appearance belongs to one physical space. It seeds that
+  // space until the user deliberately moves the shared workspace control; from
+  // that point the user's value is the global linked-view override.
+  var pointSizeEdited = false;
+  var pointOpacityEdited = false;
   var hidden = new Set();       // hidden level indices for the active group
   // Every selected embedding is an independent panel. Colour/filter/selection
   // state remains global, while viewport and 3-D rotation live on the panel.
@@ -1076,11 +1081,33 @@ var focusPanel = null;
   // path fills one path per COLOUR — a path can hold arcs of different radii,
   // but not of different alphas, so shading by opacity would cost the batching
   // exactly where it matters most.
+  function pointSizeOf(p) {
+    var sp = p && spaceById[p.spaceId];
+    var configured = sp && sp.builder_point_size != null
+      ? Number(sp.builder_point_size) : NaN;
+    if (!pointSizeEdited && isFinite(configured) &&
+      configured >= 0 && configured <= 20) {
+      return configured;
+    }
+    return ps;
+  }
+  function pointOpacityOf(p) {
+    var sp = p && spaceById[p.spaceId];
+    var configured = sp && sp.builder_point_opacity != null
+      ? Number(sp.builder_point_opacity) : NaN;
+    if (!pointOpacityEdited && isFinite(configured) &&
+      configured >= 0 && configured <= 1) {
+      return configured;
+    }
+    return pointOpacity;
+  }
   function radiusOf(p, i) {
-    if (!p.depth) return ps;
+    var pointSize = p._renderPointSize == null
+      ? pointSizeOf(p) : p._renderPointSize;
+    if (!p.depth) return pointSize;
     var t = (p.depth[i] - p._dmin) / p._dspan;   // 0 = furthest, 1 = nearest
     if (t < 0) t = 0; else if (t > 1) t = 1;
-    return ps * (0.5 + 0.85 * t);
+    return pointSize * (0.5 + 0.85 * t);
   }
 
   function paintCell(p, i, alpha) {
@@ -1093,6 +1120,8 @@ var focusPanel = null;
   function draw(p) {
     var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
     if (!p.sx) return;
+    p._renderPointSize = pointSizeOf(p);
+    var panelPointOpacity = pointOpacityOf(p);
     drawImage(p);
     drawAxes(p);
     // One two-layer pass: background on layer 0, foreground on layer 1 (on top).
@@ -1129,7 +1158,7 @@ var focusPanel = null;
     var ord = paintOrder();
     for (var layer = 0; layer < 2; layer++) {
       var alpha = hiSet ? (layer === 1 ? 0.95 : 0.05)
-        : rgb ? (layer === 1 ? 1 : 0.5 * pointOpacity) : pointOpacity;
+        : rgb ? (layer === 1 ? 1 : 0.5 * panelPointOpacity) : panelPointOpacity;
       if (n >= BATCH_MIN) {
         var buckets = null;
         for (var oi = 0; oi < n; oi++) {
@@ -1169,7 +1198,7 @@ var focusPanel = null;
       c.globalAlpha = 1; c.strokeStyle = '#1f2937'; c.lineWidth = 1.4;
       for (i = 0; i < n; i++) {
         if (!p.ok[i] || !shownMask[i] || D.trekker.evidence[i] !== 1) continue;
-        c.beginPath(); c.arc(p.sx[i], p.sy[i], ps + 2.5, 0, 6.2832); c.stroke();
+        c.beginPath(); c.arc(p.sx[i], p.sy[i], p._renderPointSize + 2.5, 0, 6.2832); c.stroke();
       }
     }
     drawAxes3D(p);
@@ -1180,17 +1209,17 @@ var focusPanel = null;
     if (hoverCell != null && hoverCell !== pick && p.ok[hoverCell]) {
       c.globalAlpha = 1; c.strokeStyle = '#0f172a'; c.lineWidth = 1.6;
       c.beginPath();
-      c.arc(p.sx[hoverCell], p.sy[hoverCell], ps + 3.5, 0, 6.2832);
+      c.arc(p.sx[hoverCell], p.sy[hoverCell], p._renderPointSize + 3.5, 0, 6.2832);
       c.stroke();
       c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1;
       c.beginPath();
-      c.arc(p.sx[hoverCell], p.sy[hoverCell], ps + 5, 0, 6.2832);
+      c.arc(p.sx[hoverCell], p.sy[hoverCell], p._renderPointSize + 5, 0, 6.2832);
       c.stroke();
     }
     // picked cell ring
     if (pick != null && p.ok[pick]) {
       c.globalAlpha = 1; c.strokeStyle = '#f97316'; c.lineWidth = 2.2;
-      c.beginPath(); c.arc(p.sx[pick], p.sy[pick], ps + 4, 0, 6.2832); c.stroke();
+      c.beginPath(); c.arc(p.sx[pick], p.sy[pick], p._renderPointSize + 4, 0, 6.2832); c.stroke();
     }
     // Trekker: dashed niche-radius circle around the picked nucleus (physical
     // panel). Radius µm → screen px via the same data→unit→screen scale.
@@ -1257,9 +1286,18 @@ var focusPanel = null;
   function autoPointSize(side) {
     if (!D) return;
     psSeeded = true;
-    var base = 6.5 - Math.log10(Math.max(1, D.n));
-    var scale = Math.max(0.75, Math.min(1.35, (side || 520) / 520));
-    var v = Math.max(0.8, Math.min(7, base * scale));
+    var configured = D.default_point_size == null
+      ? NaN : Number(D.default_point_size);
+    var v;
+    if (isFinite(configured)) {
+      // The Builder's Overview point size now belongs to the unified workspace.
+      // Builder and Linked views share the full public 0..20 range.
+      v = Math.max(0, Math.min(20, configured));
+    } else {
+      var base = 6.5 - Math.log10(Math.max(1, D.n));
+      var scale = Math.max(0.75, Math.min(1.35, (side || 520) / 520));
+      v = Math.max(0.8, Math.min(7, base * scale));
+    }
     ps = Math.round(v * 5) / 5;                    // slider step is 0.2
     var el = $('cv-ps'); if (el) el.value = String(ps);
     var lbl = $('cv-ps-val'); if (lbl) lbl.textContent = ps.toFixed(1);
@@ -2626,10 +2664,11 @@ var focusPanel = null;
       details.addEventListener('pointerdown', runDetails);
       details.addEventListener('click', runDetails);
     }
+    var closeHandled = false;
     var runClose = function (e) {
       e.preventDefault(); e.stopPropagation();
-      if (detailHandled) return;
-      detailHandled = true;
+      if (closeHandled) return;
+      closeHandled = true;
       unpinTip();
     };
     var close = tip.querySelector('.cv-tip-close');
@@ -3574,10 +3613,6 @@ var focusPanel = null;
     names = names.filter(function (name, index) {
       return available.indexOf(name) >= 0 && names.indexOf(name) === index;
     });
-    if (!names.length && available.length) {
-      names = [D.default_projection && available.indexOf(D.default_projection) >= 0
-        ? D.default_projection : available[0]];
-    }
     selectedProjections = names;
     rebuildProjectionInstances();
     ensurePanelSlots(orderedSpaces().length);
@@ -3597,7 +3632,19 @@ var focusPanel = null;
   // The picker's value for "no background", kept out of the id space a builder
   // can produce.
   var IMG_NONE = '__none__';
-  function isSpatialSpace(sp) { return !!(sp && sp._spatialSample); }
+  function isSpatialSpace(sp) {
+    return !!(sp && (sp._spatialSample || sp.background_scope));
+  }
+  function backgroundSpaces() {
+    var out = selectedSpatial.map(function (name) {
+      return spaceById[spatialId(name)];
+    }).filter(Boolean);
+    Object.keys(spaceById).forEach(function (id) {
+      var sp = spaceById[id];
+      if (isSpatialSpace(sp) && out.indexOf(sp) < 0) out.push(sp);
+    });
+    return out;
+  }
   function activeSpatial() {
     if (activeSpatialId && spaceById[activeSpatialId]) return spaceById[activeSpatialId];
     for (var id in spaceById) if (isSpatialSpace(spaceById[id])) return spaceById[id];
@@ -3663,7 +3710,8 @@ var focusPanel = null;
       offsetY: (pr.offsetY != null ? pr.offsetY : 0),
       scaleX: (pr.scaleX != null ? pr.scaleX : 1),
       scaleY: (pr.scaleY != null ? pr.scaleY : 1),
-      flipX: !!pr.flipX, flipY: !!pr.flipY, rotate: 0,
+      flipX: !!pr.flipX, flipY: !!pr.flipY,
+      rotate: (pr.rotation != null ? pr.rotation : 0),
       // Part of the state, not of the controls: unlocking while X and Y happen
       // to be equal is a decision, and reading the lock back off the checkbox
       // silently re-made it as "locked" on the next visit.
@@ -3736,9 +3784,7 @@ var focusPanel = null;
   function renderImagePicker() {
     var ctl = $('cv-img-pick-ctl'), pop = $('cv-bg-popover'), tabs = $('cv-bg-space-tabs');
     if (!ctl || !pop) return;
-    var allSpaces = selectedSpatial.map(function (name) {
-      return spaceById[spatialId(name)];
-    }).filter(Boolean);
+    var allSpaces = backgroundSpaces();
     var active = activeSpatial();
     if (!active || allSpaces.indexOf(active) < 0) active = allSpaces[0] || null;
     ctl.style.display = active ? '' : 'none';
@@ -3832,7 +3878,7 @@ var focusPanel = null;
     if (!sp || !id) return;
     stashImgState(sp);
     sp._customImageId = id;
-    imgChoice[sp._sampleName] = id;
+    imgChoice[spatialName(sp)] = id;
     backgroundModes[spatialName(sp)] = 'custom';
     loadSpaceImage(sp);
     if (sp.id === activeSpatialId) seedImgControls();
@@ -3856,7 +3902,8 @@ var focusPanel = null;
 
   function activateSpatial(id) {
     if (!id || !isSpatialSpace(spaceById[id])) {
-      id = selectedSpatial.length ? spatialId(selectedSpatial[0]) : null;
+      var scopes = backgroundSpaces();
+      id = scopes.length ? scopes[0].id : null;
     }
     activeSpatialId = id;
     panels.forEach(function (p) {
@@ -3944,7 +3991,9 @@ var focusPanel = null;
       x: spatialTemplate.x,
       y: spatialTemplate.y,
       image: spatialTemplate.image,
-      images: spatialTemplate.images || []
+      images: spatialTemplate.images || [],
+      builder_point_opacity: spatialTemplate.builder_point_opacity,
+      builder_point_size: spatialTemplate.builder_point_size
     }];
   }
   function rebuildSpatialInstances() {
@@ -3968,6 +4017,8 @@ var focusPanel = null;
         y: sample.y,
         image: sample.image || null,
         images: images,
+        builder_point_opacity: sample.builder_point_opacity,
+        builder_point_size: sample.builder_point_size,
         _sampleName: sample.name,
         _spatialSample: true,
         _customImageId: custom,
@@ -4024,7 +4075,6 @@ var focusPanel = null;
     names = names.filter(function (name, index) {
       return available.indexOf(name) >= 0 && names.indexOf(name) === index;
     });
-    if (!names.length && available.length) names = [available[0]];
     selectedSpatial.forEach(function (name) {
       var sp = spaceById[spatialId(name)]; if (sp) stashImgState(sp);
     });
@@ -4450,7 +4500,10 @@ var focusPanel = null;
       s._unit = null;
       if (s.id === 'spatial') spatialTemplate = s;
       else if (s.id === 'umap') { /* rebuilt from D.projections below */ }
-      else spaceById[s.id] = s;
+      else {
+        spaceById[s.id] = s;
+        if (s.background_scope) s._sampleName = s.background_scope;
+      }
     });
     var projectionNames = D.projections ? Object.keys(D.projections) : [];
     selectedProjections = dataChanged ? [] : previousProjections.filter(function (name) {
@@ -4475,17 +4528,36 @@ var focusPanel = null;
     activeSpatialId = activeName ? spatialId(activeName) : null;
     if (dataChanged) backgroundModes = {};
     rebuildSpatialInstances();
+    Object.keys(spaceById).forEach(function (id) {
+      var direct = spaceById[id];
+      if (!direct || !direct.background_scope) return;
+      var images = spatialImages(direct);
+      var scope = spatialName(direct);
+      direct._customImageId = Object.prototype.hasOwnProperty.call(imgChoice, scope)
+        ? imgChoice[scope] : ((images[0] && images[0].id) || IMG_NONE);
+      loadSpaceImage(direct);
+    });
     colorBy = D.default_group ||
       (D.groups ? Object.keys(D.groups)[0] : null) || null;
     unpinTip();
     hidden = new Set(); sel = null; selectionSource = null;
     pick = null; hoverCell = null;
     focusPanel = null;
-    // Reset the additional-parameter state to defaults for the new dataset.
-    pctShow = 100; pctMask = null; groupFilter = {}; pointOpacity = 0.8;
-    psSeeded = false;   // a new data set re-seeds the point size from ITS cell count
-    var opEl = $('cv-opacity'); if (opEl) opEl.value = '0.8';
-    var opLbl = $('cv-op-val'); if (opLbl) opLbl.textContent = '0.80';
+    // Reset point appearance only for a genuinely different data set. Bundles
+    // from the same one are re-sent after returning to the tab or recolouring;
+    // those refreshes must not discard the user's shared override.
+    if (dataChanged) {
+      var configuredOpacity = Number(D.default_point_opacity);
+      pointOpacity = D.default_point_opacity != null && isFinite(configuredOpacity)
+        ? Math.max(0, Math.min(1, configuredOpacity)) : 0.8;
+      pointSizeEdited = false;
+      pointOpacityEdited = false;
+      psSeeded = false;
+      var opEl = $('cv-opacity'); if (opEl) opEl.value = String(pointOpacity);
+      var opLbl = $('cv-op-val');
+      if (opLbl) opLbl.textContent = pointOpacity.toFixed(2);
+    }
+    pctShow = 100; pctMask = null; groupFilter = {};
     var pctEl = $('cv-pct'); if (pctEl) pctEl.value = '100';
     var pctLbl = $('cv-pct-val'); if (pctLbl) pctLbl.textContent = '100';
     setMoreOpen(false);   // a new data set starts with the bar's second row folded
@@ -4825,11 +4897,13 @@ var focusPanel = null;
       var id = e.target && e.target.id;
       if (id === 'cv-ps') {
         psSeeded = true;            // a chosen size is never overwritten
+        pointSizeEdited = true;
         ps = +e.target.value;
         var lbl = $('cv-ps-val'); if (lbl) lbl.textContent = (+e.target.value).toFixed(1);
         positionRangeVal('cv-ps', 'cv-ps-val');
         drawAll();
       } else if (id === 'cv-opacity') {
+        pointOpacityEdited = true;
         pointOpacity = +e.target.value;
         var ol = $('cv-op-val'); if (ol) ol.textContent = pointOpacity.toFixed(2);
         positionRangeVal('cv-opacity', 'cv-op-val');

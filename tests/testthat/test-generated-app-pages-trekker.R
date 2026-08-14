@@ -20,47 +20,55 @@ generated_app_e2e_reset_runtime()
   )))
 }
 
-test_that("Trekker renders linked canvases and source-backed QC content", {
+test_that("Linked views renders Trekker canvas and source-backed QC content", {
   fixture <- generated_app_e2e_select_dataset("trekker")
   expect_identical(
     generated_app_e2e_visible_pages(),
     fixture$expected$visible_pages
   )
-  generated_app_e2e_activate_tab("trekker")
-
+  generated_app_e2e_open_linked_views(fixture)
   driver <- generated_app_e2e_driver()
+
   driver$wait_for_js(
     paste0(
-      "(function(){var spatial=document.getElementById('tk-cv-sp');",
-      "var umap=document.getElementById('tk-cv-um');",
-      "return !!(spatial && umap && spatial.width>0 && spatial.height>0 && ",
-      "umap.width>0 && umap.height>0);})()"
+      "(function(){var pane=Array.from(document.querySelectorAll(",
+      "'.cv-pane:not(.cv-hidden)')).find(function(node){return ",
+      "(node.querySelector('.cv-ptitle').textContent||'')",
+      ".indexOf('Trekker')!==-1;});var canvas=pane&&pane.querySelector('canvas');",
+      "return !!(canvas&&canvas.width>0&&canvas.height>0);})()"
     ),
     timeout = 60000
   )
+  expect_true(any(grepl(
+    "Trekker",
+    generated_app_e2e_linked_titles(),
+    fixed = TRUE
+  )))
 
-  subline <- .generated_app_e2e_dom_text(
-    "tk-subline",
-    c("Mouse_Brain_TrekkerU_C", "24")
-  )
-  expect_match(subline, "TrekkerU_C", fixed = TRUE)
-  stats <- .generated_app_e2e_dom_text("tk-stats", c("24", "100"))
+  stats <- .generated_app_e2e_dom_text("cv-tk-stats", c("180", "100"))
   expect_match(stats, "nuclei", ignore.case = TRUE)
   position_classes <- .generated_app_e2e_dom_text(
-    "tk-postbl",
-    c("24", "100.00%", "Imported")
+    "cv-tk-postbl",
+    c("90", "50.00%", "Imported")
   )
   expect_match(position_classes, "salvaged", ignore.case = TRUE)
-  moran <- .generated_app_e2e_dom_text("tk-morantbl", c("Gene1", "0.2603"))
-  expect_match(moran, "Gene8", fixed = TRUE)
-
-  expect_identical(
-    generated_app_e2e_value("input", "trekker_view"),
-    "pair"
+  moran <- .generated_app_e2e_dom_text(
+    "cv-tk-morantbl",
+    c("EPCAM", "0.7600")
   )
+  expect_match(moran, "LUM", fixed = TRUE)
+
+  expect_false(identical(
+    driver$get_js(
+      "getComputedStyle(document.getElementById('cv-tk-insights')).display"
+    ),
+    "none"
+  ))
   expect_identical(
-    length(generated_app_e2e_value("input", "trekker_group_filter_cluster")),
-    length(unique(fixture$object@misc$trekker$clusters))
+    driver$get_js(
+      "document.querySelector(\"a[href='#shiny-tab-trekker']\") !== null"
+    ),
+    FALSE
   )
   generated_app_e2e_expect_clean_browser()
 })

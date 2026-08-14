@@ -161,6 +161,33 @@ builder_alignment_defaults <- function() {
   )
 }
 
+#' Read the saved coverage diagnostic without accepting malformed values.
+#'
+#' Older Builder projects may omit `outside`; that means no recorded failures.
+#' Once present, the value must be one finite, non-negative integer count.
+builder_alignment_outside_count <- function(record) {
+  if (!is.list(record)) {
+    return(NA_integer_)
+  }
+  if (is.null(record[["outside"]])) {
+    return(0L)
+  }
+  value <- record[["outside"]]
+  if (
+    !is.numeric(value) ||
+      is.object(value) ||
+      length(value) != 1L ||
+      is.na(value) ||
+      !is.finite(value) ||
+      value < 0 ||
+      value != floor(value) ||
+      value > .Machine$integer.max
+  ) {
+    return(NA_integer_)
+  }
+  as.integer(value)
+}
+
 .builder_alignment_valid_bounds <- function(bounds) {
   is.list(bounds) &&
     all(c("xmin", "xmax", "ymin", "ymax") %in% names(bounds)) &&
@@ -196,12 +223,19 @@ builder_alignment_fit_bounds <- function(bounds, image_dimensions) {
   available_height <- bounds$ymax - bounds$ymin
   available_ratio <- available_width / available_height
   if (image_ratio >= available_ratio) {
-    width <- available_width
-    height <- width / image_ratio
-  } else {
     height <- available_height
     width <- height * image_ratio
+  } else {
+    width <- available_width
+    height <- width / image_ratio
   }
+  ## Decimal extrema can land a few ulps outside an algebraically identical
+  ## centred rectangle (for example 3.92 after subtracting half the height).
+  ## Preserve the image aspect ratio while adding an invisible numerical guard
+  ## so the default fit really does cover every boundary point.
+  safety_factor <- 1 + 64 * .Machine$double.eps
+  width <- width * safety_factor
+  height <- height * safety_factor
   centre_x <- (bounds$xmin + bounds$xmax) / 2
   centre_y <- (bounds$ymin + bounds$ymax) / 2
   list(
@@ -413,6 +447,7 @@ builder_alignment_payload <- function(record) {
   }
   list(
     source = basename(as.character(normalized$source$name %||% "Tissue image")),
+    builder_managed = TRUE,
     dx = normalized$dx,
     dy = normalized$dy,
     scale = normalized$scale,
@@ -423,6 +458,122 @@ builder_alignment_payload <- function(record) {
     point_opacity = normalized$point_opacity,
     point_size = normalized$point_size
   )
+}
+
+#' Convert one Builder alignment to the canonical multi-image leaf contract.
+builder_histology_image_payload <- function(record) {
+  normalized <- builder_alignment_normalize(record)
+  if (is.null(normalized)) {
+    return(NULL)
+  }
+  required <- c("xmin", "xmax", "ymin", "ymax")
+  bounds <- stats::setNames(
+    as.numeric(unlist(normalized$bounds[required], use.names = FALSE)),
+    required
+  )
+  list(
+    histology_image = normalized$uri,
+    histology_image_bounds = bounds
+  )
+}
+
+#' Store one Builder background in the canonical multi-image CRB contract.
+#'
+#' The Builder currently aligns one uploaded background per spatial section,
+#' while a CRB may already contain several embedded images. Preserve those and
+#' add the Builder image under its source filename instead of reviving the
+#' removed singular `histology_image` fields.
+builder_attach_spatial_image <- function(spatial, record) {
+  normalized <- builder_alignment_normalize(record)
+  if (is.null(normalized)) {
+    return(NULL)
+  }
+  images <- spatial[["histology_images", exact = TRUE]] %||% list()
+  legacy_image <- spatial[["histology_image", exact = TRUE]]
+  legacy_bounds <- spatial[["histology_image_bounds", exact = TRUE]]
+  previous_alignment <- spatial[["histology_alignment", exact = TRUE]]
+  previous_label <- if (is.list(previous_alignment)) {
+    source <- as.character(previous_alignment[["source"]] %||% character())
+    if (length(source) == 1L && !is.na(source) && nzchar(source)) {
+      basename(source)
+    } else {
+      NULL
+    }
+  } else {
+    NULL
+  }
+  previous_builder_label <- if (
+    is.list(previous_alignment) &&
+      isTRUE(previous_alignment[["builder_managed"]])
+  ) {
+    previous_label
+  } else {
+    NULL
+  }
+  valid_legacy_image <- is.character(legacy_image) &&
+    length(legacy_image) == 1L &&
+    !is.na(legacy_image) &&
+    grepl("^data:image/", legacy_image)
+  if (!length(images) && valid_legacy_image) {
+    legacy_builder_fields <- c(
+      "source",
+      "dx",
+      "dy",
+      "scale",
+      "rotation",
+      "flip_x",
+      "flip_y",
+      "image_opacity",
+      "point_opacity",
+      "point_size"
+    )
+    legacy_parameters_valid <- isTRUE(tryCatch(
+      {
+        .builder_alignment_parameters(previous_alignment)
+        TRUE
+      },
+      error = function(error) FALSE
+    ))
+    legacy_was_builder_managed <- is.list(previous_alignment) &&
+      !is.null(previous_label) &&
+      all(legacy_builder_fields %in% names(previous_alignment)) &&
+      legacy_parameters_valid
+    ## The previous Builder wrote its managed upload into the singular fields.
+    ## Replace that value during canonical migration. A plain legacy image with
+    ## no Builder alignment is user data and remains as an embedded background.
+    if (!legacy_was_builder_managed) {
+      images <- list(
+        `Tissue background` = list(
+          histology_image = legacy_image,
+          histology_image_bounds = legacy_bounds
+        )
+      )
+    }
+  }
+  ## Rebuilding or re-aligning replaces the one image managed by the previous
+  ## Builder run. Other embedded images remain untouched.
+  if (
+    !is.null(previous_builder_label) &&
+      previous_builder_label %in% names(images)
+  ) {
+    images[[previous_builder_label]] <- NULL
+  }
+  payload <- builder_histology_image_payload(normalized)
+  label <- builder_safe_file_name(
+    normalized$source$name,
+    fallback = "Builder tissue image"
+  )
+  if (label %in% names(images)) {
+    label <- utils::tail(make.unique(c(names(images), label)), 1L)
+  }
+  images[[label]] <- payload
+  alignment <- builder_alignment_payload(normalized)
+  alignment$source <- label
+  spatial[["histology_images"]] <- images
+  spatial[["histology_image"]] <- NULL
+  spatial[["histology_image_bounds"]] <- NULL
+  spatial[["histology_alignment"]] <- alignment
+  spatial
 }
 
 #' Keep Trekker's physical image out of Seurat spatial section matching.
@@ -914,9 +1065,16 @@ builder_attach_histology <- function(crb_path, images) {
   ## coordinates. The .crb has carried per-section fields all along.
   for (nm in targets) {
     sd <- crb$getSpatialData(nm)
-    sd$histology_image <- images[[nm]]$uri
-    sd$histology_image_bounds <- images[[nm]]$bounds
-    sd$histology_alignment <- builder_alignment_payload(images[[nm]])
+    sd <- builder_attach_spatial_image(sd, images[[nm]])
+    if (is.null(sd)) {
+      return(list(
+        error = paste0(
+          "The configured image for spatial section `",
+          nm,
+          "` is invalid."
+        )
+      ))
+    }
     crb$addSpatialData(nm, sd)
   }
   saveRDS(crb, crb_path, compress = "xz")
@@ -962,9 +1120,16 @@ builder_attach_crb_extras <- function(
     }
     for (name in applied) {
       spatial <- crb$getSpatialData(name)
-      spatial$histology_image <- images[[name]]$uri
-      spatial$histology_image_bounds <- images[[name]]$bounds
-      spatial$histology_alignment <- builder_alignment_payload(images[[name]])
+      spatial <- builder_attach_spatial_image(spatial, images[[name]])
+      if (is.null(spatial)) {
+        return(list(
+          error = paste0(
+            "The configured image for spatial section `",
+            name,
+            "` is invalid."
+          )
+        ))
+      }
       crb$addSpatialData(name, spatial)
     }
   }

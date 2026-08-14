@@ -1,7 +1,7 @@
 generated_app_e2e_tab_catalog <- function() {
   c(
     data_info = "loadData",
-    projection = "overview",
+    coordinated_views = "coordinated_views",
     groups = "groups",
     gene_expression = "geneExpression",
     gene_id_conversion = "geneIdConversion",
@@ -13,10 +13,64 @@ generated_app_e2e_tab_catalog <- function() {
     extra_material = "extra_material",
     immune_repertoire = "immune_repertoire",
     trajectory = "trajectory",
-    spatial = "spatial",
-    trekker = "trekker",
     hla_tcr_motifs = "hla_tcr_motifs"
   )
+}
+
+generated_app_e2e_open_linked_views <- function(
+  fixture,
+  timeout = 60000
+) {
+  generated_app_e2e_activate_tab("coordinated_views", timeout = timeout)
+  cells <- as.character(fixture$expected$n_cells)
+  generated_app_e2e_driver()$wait_for_js(
+    paste0(
+      "(function(){var meta=document.getElementById('cv-meta');",
+      "var canvases=Array.from(document.querySelectorAll(",
+      "'.cv-pane:not(.cv-hidden) canvas[id^=\"cv-cv-\"]'));",
+      "return !!(meta && meta.textContent.indexOf(",
+      .generated_app_e2e_js_value(cells),
+      ")!==-1 && canvases.length && canvases.every(function(canvas){",
+      "return canvas.width>0 && canvas.height>0;}));})()"
+    ),
+    timeout = timeout
+  )
+  invisible(fixture)
+}
+
+generated_app_e2e_linked_titles <- function() {
+  value <- generated_app_e2e_driver()$get_js(
+    paste0(
+      "Array.from(document.querySelectorAll(",
+      "'.cv-pane:not(.cv-hidden) .cv-ptitle'))",
+      ".map(function(node){return node.textContent.trim();})"
+    )
+  )
+  unname(unlist(value, use.names = FALSE))
+}
+
+generated_app_e2e_linked_legend <- function() {
+  value <- generated_app_e2e_driver()$get_js(
+    paste0(
+      "Array.from(document.querySelectorAll('#cv-legend .cv-lg')).map(",
+      "function(row){var dot=row.querySelector('.cv-dot');return {",
+      "text:(row.textContent||'').trim(),",
+      "color:dot?getComputedStyle(dot).backgroundColor:''};})"
+    )
+  )
+  lapply(value, function(row) {
+    list(
+      text = as.character(row$text),
+      color = as.character(row$color)
+    )
+  })
+}
+
+generated_app_e2e_rgb <- function(colors) {
+  rgb <- grDevices::col2rgb(colors)
+  unname(apply(rgb, 2L, function(value) {
+    paste0("rgb(", paste(value, collapse = ", "), ")")
+  }))
 }
 
 .generated_app_e2e_js_value <- function(value) {
@@ -391,12 +445,7 @@ generated_app_e2e_browser_failures <- function(
         "assert",
         "throw"
       )
-  documented_noise <- grepl(
-    "the fixed layout requires the slimscroll plugin!",
-    as.character(logs$message),
-    fixed = TRUE
-  )
-  logs[browser_failure & !documented_noise, , drop = FALSE]
+  logs[browser_failure, , drop = FALSE]
 }
 
 generated_app_e2e_expect_clean_browser <- function() {

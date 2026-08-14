@@ -18,6 +18,131 @@
   value
 }
 
+.builder_state_upgrade_metadata_policy <- function(policy) {
+  if (is.null(policy)) {
+    return(NULL)
+  }
+  if (!is.list(policy) || !is.list(policy$columns)) {
+    return(policy)
+  }
+  columns <- policy$columns
+  for (id in names(columns)) {
+    record <- columns[[id]]
+    if (!is.list(record)) {
+      next
+    }
+    if (is.null(record$retain_in_crb)) {
+      record$retain_in_crb <- isTRUE(record$effective_included)
+    }
+    if (is.null(record$group_enabled)) {
+      record$group_enabled <- FALSE
+    }
+    if (is.null(record$forced)) {
+      record$forced <- isTRUE(record$required)
+    }
+    columns[[id]] <- record
+  }
+  ids <- names(columns) %||% character()
+  retained <- ids[vapply(
+    columns,
+    function(record) is.list(record) && isTRUE(record$retain_in_crb),
+    logical(1)
+  )]
+  groups <- ids[vapply(
+    columns,
+    function(record) is.list(record) && isTRUE(record$group_enabled),
+    logical(1)
+  )]
+  forced <- ids[vapply(
+    columns,
+    function(record) is.list(record) && isTRUE(record$forced),
+    logical(1)
+  )]
+  dispositions <- vapply(
+    columns,
+    function(record) {
+      if (is.list(record) && is.character(record$disposition)) {
+        record$disposition[[1L]]
+      } else {
+        ""
+      }
+    },
+    character(1)
+  )
+  policy$columns <- columns
+  if (is.null(policy$retained)) {
+    policy$retained <- retained
+  }
+  if (is.null(policy$groups)) {
+    policy$groups <- groups
+  }
+  if (is.null(policy$forced)) {
+    policy$forced <- forced
+  }
+  if (is.null(policy$included)) {
+    policy$included <- retained
+  }
+  if (is.null(policy$attention)) {
+    policy$attention <- ids[dispositions == "attention"]
+  }
+  if (is.null(policy$excluded)) {
+    policy$excluded <- setdiff(ids, retained)
+  }
+  if (is.null(policy$blocking)) {
+    policy$blocking <- ids[dispositions == "blocking"]
+  }
+  if (is.null(policy$value)) {
+    policy$value <- retained
+  }
+  if (is.null(policy$requires_confirmation)) {
+    policy$requires_confirmation <- length(policy$attention) > 0L ||
+      length(policy$blocking) > 0L
+  }
+  policy
+}
+
+builder_metadata_policy_set_retained <- function(policy, retained) {
+  retained <- unique(as.character(retained))
+  policy <- .builder_state_upgrade_metadata_policy(policy)
+  for (id in names(policy$columns)) {
+    policy$columns[[id]]$retain_in_crb <- id %in%
+      retained ||
+      isTRUE(policy$columns[[id]]$forced)
+  }
+  policy$retained <- NULL
+  policy$included <- NULL
+  policy$excluded <- NULL
+  policy$value <- NULL
+  .builder_state_upgrade_metadata_policy(policy)
+}
+
+builder_metadata_policy_set_groups <- function(policy, groups) {
+  groups <- unique(as.character(groups))
+  policy <- .builder_state_upgrade_metadata_policy(policy)
+  for (id in names(policy$columns)) {
+    policy$columns[[id]]$group_enabled <- id %in% groups
+    if (id %in% groups) {
+      policy$columns[[id]]$retain_in_crb <- TRUE
+    }
+  }
+  policy$retained <- NULL
+  policy$groups <- NULL
+  policy$included <- NULL
+  policy$excluded <- NULL
+  policy$value <- NULL
+  .builder_state_upgrade_metadata_policy(policy)
+}
+
+.builder_state_metadata_policy_sync_groups <- function(policy, groups) {
+  policy <- .builder_state_upgrade_metadata_policy(policy)
+  groups <- unique(as.character(groups %||% character()))
+  for (id in names(policy$columns)) {
+    policy$columns[[id]]$group_enabled <- id %in% groups
+  }
+  policy$groups <- NULL
+  .builder_state_upgrade_metadata_policy(policy)
+}
+
 .builder_state_missing_metadata_sentinel <- function(record, id) {
   zero_count <- function(value) {
     is.numeric(value) &&
@@ -120,7 +245,7 @@
       function(id) {
         record <- policy$columns[[id]]
         is.list(record) &&
-          (isTRUE(record$effective_included) ||
+          (isTRUE(record$retain_in_crb) ||
             identical(record$disposition, "blocking"))
       },
       logical(1)
@@ -218,6 +343,18 @@
     )
   })
   names(buckets) <- bucket_names
+  retained <- .builder_state_metadata_policy_ids(
+    policy$retained,
+    "Final metadata retained columns"
+  )
+  groups <- .builder_state_metadata_policy_ids(
+    policy$groups,
+    "Final metadata Group columns"
+  )
+  forced <- .builder_state_metadata_policy_ids(
+    policy$forced,
+    "Final metadata forced columns"
+  )
   if (length(intersect(buckets$included, buckets$excluded))) {
     .builder_state_metadata_policy_abort(
       "Included metadata columns cannot also be excluded."
@@ -242,6 +379,15 @@
         !is.logical(record$effective_included) ||
         length(record$effective_included) != 1L ||
         is.na(record$effective_included) ||
+        !is.logical(record$retain_in_crb) ||
+        length(record$retain_in_crb) != 1L ||
+        is.na(record$retain_in_crb) ||
+        !is.logical(record$group_enabled) ||
+        length(record$group_enabled) != 1L ||
+        is.na(record$group_enabled) ||
+        !is.logical(record$forced) ||
+        length(record$forced) != 1L ||
+        is.na(record$forced) ||
         !is.logical(record$requires_confirmation) ||
         length(record$requires_confirmation) != 1L ||
         is.na(record$requires_confirmation)
@@ -273,12 +419,36 @@
     effective[[id]] <- record$effective_included
   }
 
+  derived_retained <- column_ids[vapply(
+    policy$columns,
+    `[[`,
+    logical(1),
+    "retain_in_crb"
+  )]
+  derived_groups <- column_ids[vapply(
+    policy$columns,
+    `[[`,
+    logical(1),
+    "group_enabled"
+  )]
+  derived_forced <- column_ids[vapply(
+    policy$columns,
+    `[[`,
+    logical(1),
+    "forced"
+  )]
   derived <- list(
-    included = column_ids[effective],
+    included = derived_retained,
     attention = column_ids[dispositions == "attention"],
-    excluded = column_ids[dispositions == "excluded"],
+    excluded = setdiff(column_ids, derived_retained),
     blocking = column_ids[dispositions == "blocking"]
   )
+  if (length(setdiff(groups, retained))) {
+    .builder_state_abort(
+      "metadata_dependency_conflict",
+      "Every included Group must also be retained as metadata."
+    )
+  }
   if (
     !all(vapply(
       bucket_names,
@@ -292,7 +462,32 @@
       "Final metadata policy buckets do not match their column records."
     )
   }
-  if (!identical(policy$value, buckets$included)) {
+  if (
+    !setequal(retained, derived_retained) ||
+      !setequal(groups, derived_groups) ||
+      !setequal(forced, derived_forced)
+  ) {
+    .builder_state_metadata_policy_abort(
+      "Final metadata retention or Group sets do not match their records."
+    )
+  }
+  forced_present <- intersect(forced, expected_ids)
+  forced_missing <- forced_present[
+    !forced_present %in% retained &
+      dispositions[forced_present] != "blocking"
+  ]
+  if (length(forced_missing)) {
+    message <- paste0(
+      "Forced metadata must be retained: ",
+      paste(forced_missing, collapse = ", "),
+      "."
+    )
+    if ("cell_barcode" %in% forced_missing) {
+      .builder_state_metadata_policy_abort(message)
+    }
+    .builder_state_abort("metadata_dependency_conflict", message)
+  }
+  if (!identical(policy$value, retained)) {
     .builder_state_metadata_policy_abort(
       "Final metadata policy value must equal its included columns."
     )
@@ -319,7 +514,8 @@
       !isTRUE(barcode$required) ||
       identical(barcode$disposition, "excluded") ||
       !isTRUE(barcode$effective_included) ||
-      !"cell_barcode" %in% buckets$included
+      !isTRUE(barcode$retain_in_crb) ||
+      !"cell_barcode" %in% retained
   ) {
     .builder_state_metadata_policy_abort(
       "The final metadata policy must include required cell barcodes."
@@ -344,7 +540,7 @@
         !isTRUE(fact$supported) ||
         !is.character(classes) ||
         any(classes %in% c("list", "data.frame"))
-      unsafe && isTRUE(record$effective_included)
+      unsafe && isTRUE(record$retain_in_crb)
     },
     logical(1)
   )]
@@ -380,11 +576,25 @@
     )
   }
   recommendation <- if (is.list(recommendations)) {
-    recommendations$metadata
+    .builder_state_upgrade_metadata_policy(recommendations$metadata)
   } else {
     NULL
   }
-  policy <- entry$settings$metadata_policy
+  policy <- .builder_state_upgrade_metadata_policy(
+    entry$settings$metadata_policy
+  )
+  selected_groups <- .builder_state_included_groups(entry)
+  if (!is.null(policy)) {
+    policy <- .builder_state_metadata_policy_sync_groups(
+      policy,
+      selected_groups
+    )
+  } else if (!is.null(recommendation)) {
+    recommendation <- .builder_state_metadata_policy_sync_groups(
+      recommendation,
+      selected_groups
+    )
+  }
   effective <- .builder_state_or(policy, recommendation)
   for (candidate in list(recommendation, policy)) {
     if (

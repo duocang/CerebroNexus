@@ -134,8 +134,10 @@ builder_task6_final_metadata_policy <- function(policy, decisions = list()) {
     record$disposition <- disposition
     if (identical(disposition, "included")) {
       record$effective_included <- TRUE
+      record$retain_in_crb <- TRUE
     } else if (identical(disposition, "excluded")) {
       record$effective_included <- FALSE
+      record$retain_in_crb <- FALSE
     }
     record$requires_confirmation <- disposition %in%
       c("attention", "blocking")
@@ -154,11 +156,34 @@ builder_task6_final_metadata_policy <- function(policy, decisions = list()) {
     "effective_included"
   )
   ids <- names(policy$columns)
-  policy$included <- ids[effective]
+  for (id in ids) {
+    policy$columns[[id]]$group_enabled <-
+      isTRUE(policy$columns[[id]]$group_enabled)
+    policy$columns[[id]]$forced <- isTRUE(
+      policy$columns[[id]]$forced %||% policy$columns[[id]]$required
+    )
+  }
+  retained <- ids[vapply(
+    policy$columns,
+    function(record) isTRUE(record$retain_in_crb),
+    logical(1)
+  )]
+  policy$retained <- retained
+  policy$groups <- ids[vapply(
+    policy$columns,
+    function(record) isTRUE(record$group_enabled),
+    logical(1)
+  )]
+  policy$forced <- ids[vapply(
+    policy$columns,
+    function(record) isTRUE(record$forced),
+    logical(1)
+  )]
+  policy$included <- retained
   policy$attention <- ids[dispositions == "attention"]
-  policy$excluded <- ids[dispositions == "excluded"]
+  policy$excluded <- setdiff(ids, retained)
   policy$blocking <- ids[dispositions == "blocking"]
-  policy$value <- policy$included
+  policy$value <- retained
   policy$requires_confirmation <- length(policy$attention) > 0L ||
     length(policy$blocking) > 0L
   policy

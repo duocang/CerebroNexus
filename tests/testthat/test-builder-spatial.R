@@ -368,16 +368,46 @@ test_that("alignment preview fails safely when no paired spaces exist", {
   expect_match(model$message, "Spatial or Trekker", fixed = TRUE)
 })
 
-test_that("default image fit preserves aspect ratio inside physical bounds", {
+test_that("default image fit preserves aspect ratio and covers physical bounds", {
   fitted <- builder_alignment_fit_bounds(
     list(xmin = 0, xmax = 100, ymin = 0, ymax = 100),
     c(width = 200, height = 100)
   )
-  expect_equal(fitted, list(xmin = 0, xmax = 100, ymin = 25, ymax = 75))
+  expect_equal(fitted, list(xmin = -50, xmax = 150, ymin = 0, ymax = 100))
   expect_equal(
     (fitted$xmax - fitted$xmin) / (fitted$ymax - fitted$ymin),
     2
   )
+  expect_lte(fitted$xmin, 0)
+  expect_gte(fitted$xmax, 100)
+  expect_lte(fitted$ymin, 0)
+  expect_gte(fitted$ymax, 100)
+})
+
+test_that("default image fit covers decimal extrema despite floating error", {
+  bounds <- list(
+    xmin = 17.52,
+    xmax = 4151.96,
+    ymin = 3.92,
+    ymax = 3173.76
+  )
+  fitted <- builder_alignment_fit_bounds(
+    bounds,
+    c(width = 320, height = 240)
+  )
+  cover <- builder_bounds_cover(
+    fitted,
+    list(
+      c(bounds$xmin, bounds$xmax),
+      c(bounds$ymin, bounds$ymax)
+    )
+  )
+
+  expect_identical(cover$outside, 0L)
+  expect_lte(fitted$xmin, bounds$xmin)
+  expect_gte(fitted$xmax, bounds$xmax)
+  expect_lte(fitted$ymin, bounds$ymin)
+  expect_gte(fitted$ymax, bounds$ymax)
 })
 
 test_that("canonical alignment transform is deterministic and complete", {
@@ -524,6 +554,7 @@ test_that("serialized alignment payload excludes editing bytes and local paths",
     payload,
     c(
       "source",
+      "builder_managed",
       "dx",
       "dy",
       "scale",
@@ -536,6 +567,7 @@ test_that("serialized alignment payload excludes editing bytes and local paths",
     )
   )
   expect_identical(payload$source, "tissue.png")
+  expect_true(payload$builder_managed)
   expect_false(any(grepl("/private/tmp", unlist(payload), fixed = TRUE)))
   expect_false("source_uri" %in% names(payload))
   expect_false("datapath" %in% names(payload))
@@ -1402,24 +1434,16 @@ test_that("one slide applied to every section keeps each section's own extent", 
   )
 })
 
-test_that("Spatial Viewer seeds appearance from saved alignment", {
+test_that("Linked views seeds Builder image opacity from saved alignment", {
   path <- builder_spatial_test_inst_path(
     "viewer",
-    "spatial",
-    "UI_projection_additional_parameters.R"
+    "coordinated_views",
+    "bundle.R"
   )
-  ui <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  bundle <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
-  expect_match(ui, "histology_alignment", fixed = TRUE)
-  expect_match(ui, "alignment_point_opacity", fixed = TRUE)
-  expect_match(ui, "alignment_image_opacity", fixed = TRUE)
-
-  main_path <- builder_spatial_test_inst_path(
-    "viewer",
-    "spatial",
-    "UI_projection_main_parameters.R"
-  )
-  main_ui <- paste(readLines(main_path, warn = FALSE), collapse = "\n")
-  expect_match(main_ui, "builder_alignment_background_default", fixed = TRUE)
-  expect_match(main_ui, "histology_alignment", fixed = TRUE)
+  expect_match(bundle, "histology_images", fixed = TRUE)
+  expect_match(bundle, "histology_image_bounds", fixed = TRUE)
+  expect_match(bundle, "histology_alignment", fixed = TRUE)
+  expect_match(bundle, "image_opacity", fixed = TRUE)
 })

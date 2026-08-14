@@ -356,13 +356,15 @@
   text-overflow: clip;
   white-space: normal;
 }
-.viewer-group-check {
+.viewer-group-check,
+.viewer-metadata-check {
   display: grid;
   place-items: center;
   height: 100%;
   margin: 0;
 }
 .viewer-group-check-spacer { pointer-events: none; }
+.viewer-metadata-retain,
 .viewer-group-include,
 .viewer-group-default {
   accent-color: var(--builder-action-active);

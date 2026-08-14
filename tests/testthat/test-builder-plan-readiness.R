@@ -53,8 +53,34 @@ test_that("an uploaded image with unsaved alignment blocks freezing", {
     expect_match(blocked$error, "no saved alignment")
 
     entry$settings$images$fov$saved <- TRUE
+    entry$settings$images$fov$outside <- 1L
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    expect_identical(blocked$error_code, "spatial_alignment_outside")
+    expect_match(blocked$error, "fov")
+    expect_match(blocked$error, "outside")
+
+    entry$settings$images$fov$outside <- 0L
     ready <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
     expect_null(ready$error)
+
+    for (invalid in list("invalid", NA_integer_, c(0L, 1L), -1L, 1.5)) {
+      entry$settings$images$fov$outside <- invalid
+      blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+      expect_identical(
+        blocked$error_code,
+        "invalid_spatial_alignment_diagnostics"
+      )
+    }
+
+    entry$settings$images$fov <- "corrupt image record"
+    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    expect_identical(
+      blocked$error_code,
+      "invalid_spatial_alignment_diagnostics"
+    )
+    expect_true(is.na(.builder_plan_alignment_outside_count(
+      "corrupt image record"
+    )))
   })
 })
 

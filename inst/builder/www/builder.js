@@ -232,13 +232,33 @@
   function restoreFocus(dialog) {
     var target = dialog && dialog.__builderRestoreFocus;
     var fallback = dialog && dialog.__builderRestoreFocusFallback;
-    window.setTimeout(function () {
+    var lastTarget = null;
+    var attempts = 0;
+    function attempt() {
+      var active = document.activeElement;
+      var focusWasLost = !active || active === document.body ||
+        active === document.documentElement ||
+        (dialog && dialog.contains(active)) || active === lastTarget;
+      // Do not steal focus if the user has already moved it elsewhere while a
+      // Shiny redraw is settling. Re-check the intended target briefly because
+      // a redraw can replace the button after the first successful focus,
+      // leaving document.body active again.
+      if (!focusWasLost) return;
       var nextTarget = canRestoreFocus(target) ? target : null;
       if (!nextTarget && typeof fallback === "function") {
         nextTarget = fallback();
       }
-      if (canRestoreFocus(nextTarget)) nextTarget.focus();
-    }, 0);
+      if (canRestoreFocus(nextTarget)) {
+        nextTarget.focus();
+        lastTarget = nextTarget;
+        target = nextTarget;
+      }
+      attempts++;
+      if (attempts < 3) {
+        window.setTimeout(attempt, attempts === 1 ? 50 : 150);
+      }
+    }
+    window.setTimeout(attempt, 0);
   }
 
   function removeDatasetFocusFallback() {
@@ -1140,6 +1160,36 @@
     return Array.from(root.querySelectorAll(".viewer-group-row"));
   }
 
+  function updateViewerMetadataSelection(root, emit) {
+    if (!root) return;
+    var retained = viewerGroupRows(root)
+      .filter(function (row) {
+        var checkbox = row.querySelector(".viewer-metadata-retain");
+        return checkbox && checkbox.checked;
+      })
+      .map(function (row) { return row.dataset.group; });
+    if (emit && root.dataset.metadataInputId) {
+      send(root.dataset.metadataInputId, {
+        action: "set-retention",
+        retained: retained,
+        nonce: Date.now(),
+      });
+    }
+  }
+
+  function selectViewerMetadata(button) {
+    var root = button.closest(".viewer-group-workspace");
+    if (!root) return;
+    var action = button.dataset.action;
+    viewerGroupRows(root).forEach(function (row) {
+      var checkbox = row.querySelector(".viewer-metadata-retain");
+      if (!checkbox || checkbox.disabled) return;
+      checkbox.checked = action === "all-supported" ||
+        row.dataset.recommendedRetained === "true";
+    });
+    updateViewerMetadataSelection(root, true);
+  }
+
   function updateDefaultCopy(root, selector) {
     root.querySelectorAll(selector).forEach(function (input) {
       var label = input.closest("label");
@@ -1198,7 +1248,7 @@
     updateViewerGroupCount(root);
     if (emit && root.dataset.inputId) {
       send(root.dataset.inputId, {
-        action: "set",
+        action: "set-groups",
         included: included,
         default: defaultGroup,
         nonce: Date.now(),
@@ -1602,6 +1652,55 @@
     );
   }
 
+  var multiSelectPlaceholder = "Select…";
+
+  function minimumMultiSelectEmptyWidth() {
+    var more = document.getElementById("cv-more-btn");
+    return more ? Math.ceil(more.getBoundingClientRect().width) : 140;
+  }
+
+  function multiSelectEmptyWidth(select, instance) {
+    var control = instance.$control && instance.$control[0];
+    var style = window.getComputedStyle(control || select);
+    var canvas = multiSelectEmptyWidth.canvas ||
+      (multiSelectEmptyWidth.canvas = document.createElement("canvas"));
+    var context = canvas.getContext("2d");
+    context.font = style.font || [style.fontSize, style.fontFamily].join(" ");
+    var longest = Array.prototype.reduce.call(select.options, function (width, option) {
+      return Math.max(width, context.measureText(option.textContent || "").width);
+    }, 0);
+    return Math.min(
+      window.innerWidth - 32,
+      Math.max(minimumMultiSelectEmptyWidth(), Math.ceil(longest + 42))
+    );
+  }
+
+  function sizeEmptyMultiSelect(select, instance) {
+    var empty = !instance.items.length;
+    instance.$wrapper.toggleClass("cerebro-multiselect-empty", empty);
+    instance.$wrapper.css(
+      "width",
+      empty ? multiSelectEmptyWidth(select, instance) + "px" : ""
+    );
+  }
+
+  function enhanceMultiSelect(select) {
+    if (!select || !select.multiple) return;
+    select.setAttribute("data-placeholder", multiSelectPlaceholder);
+    if (!select.selectize) return;
+    select.selectize.settings.placeholder = multiSelectPlaceholder;
+    select.selectize.$control_input.attr("placeholder", multiSelectPlaceholder);
+    select.selectize.updatePlaceholder();
+    select.selectize.$wrapper.addClass("cerebro-multiselect");
+    sizeEmptyMultiSelect(select, select.selectize);
+    if (!select.dataset.cerebroMultiSelectReady) {
+      select.selectize.on("change", function () {
+        sizeEmptyMultiSelect(select, select.selectize);
+      });
+      select.dataset.cerebroMultiSelectReady = "true";
+    }
+  }
+
   function enhanceDynamicContent() {
     if (window.BuilderIcons) window.BuilderIcons.decorate(document);
     setupRail();
@@ -1625,6 +1724,7 @@
     applyDatasetMutationLock();
     document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
     document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
+    document.querySelectorAll("select[multiple]").forEach(enhanceMultiSelect);
   }
 
   document.addEventListener("click", function (event) {
@@ -1708,6 +1808,12 @@
     if (viewerGroupSelect) {
       event.preventDefault();
       selectViewerGroups(viewerGroupSelect);
+      return;
+    }
+    var viewerMetadataSelect = target.closest(".viewer-metadata-select");
+    if (viewerMetadataSelect) {
+      event.preventDefault();
+      selectViewerMetadata(viewerMetadataSelect);
       return;
     }
     var removeTable = target.closest(".enhance-table-remove");
@@ -1925,6 +2031,13 @@
     }
     if (event.target.matches(".viewer-group-include")) {
       updateViewerGroupSelection(
+        event.target.closest(".viewer-group-workspace"),
+        true
+      );
+      return;
+    }
+    if (event.target.matches(".viewer-metadata-retain")) {
+      updateViewerMetadataSelection(
         event.target.closest(".viewer-group-workspace"),
         true
       );

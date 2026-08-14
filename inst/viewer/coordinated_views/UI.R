@@ -449,8 +449,8 @@ tab_coordinated_views <- tabItem(
               cv_range(
                 "Point size",
                 "cv-ps",
-                min = "0.8",
-                max = "7",
+                min = "0",
+                max = "20",
                 step = "0.2",
                 value = "3",
                 disp = "3.0",
@@ -459,7 +459,7 @@ tab_coordinated_views <- tabItem(
               cv_range(
                 "Point opacity",
                 "cv-opacity",
-                min = "0.1",
+                min = "0",
                 max = "1",
                 step = "0.05",
                 value = "0.8",

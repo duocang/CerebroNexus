@@ -131,7 +131,7 @@ test_that("Manager and confirmation dialogs animate state and restore focus", {
     "return {background: style.backgroundColor, color: style.color}; })()"
   ))
   expect_identical(danger_style$background, "rgb(255, 241, 242)")
-  expect_identical(danger_style$color, "rgb(190, 18, 60)")
+  expect_identical(danger_style$color, "rgb(220, 38, 38)")
   app$run_js(paste0(
     "const dialog = document.querySelector('.builder-confirm-dialog');",
     "const cancel = dialog.querySelector('.btn:not(.btn-remove-soft)');",

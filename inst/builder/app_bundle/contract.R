@@ -341,15 +341,16 @@
 }
 
 .builder_app_demo_data <- c(
-  "extdata/examples/demo_full_tcr_bcr.crb" = "1cba0b06e2fa6d3753fa106d07a54c06",
-  "extdata/examples/demo_hla_tcr_dextramer.crb" = "33f485ee36c28556e79c273a8b39f03e",
-  "extdata/examples/demo_spatial_merfish.crb" = "f79806e5df9e746e96609b3ede3e7d38",
-  "extdata/examples/demo_spatial_slideseq.crb" = "ec2c6e97cfec73857f3b36e022954ad6",
-  "extdata/examples/demo_spatial_visium.crb" = "37ea7dd49363c341efa755346b6c0e80",
-  "extdata/examples/demo_spatial_xenium.crb" = "8ed897dbf1b8be9aac099181ac6b5171",
-  "extdata/examples/demo_spatial.crb" = "543f1b3323d199f31de854b95807c21a",
-  "extdata/examples/demo_trekker.crb" = "081f8b377425cceee154684fc1bf5dea",
-  "extdata/examples/example.crb" = "abe7e1c9102569cf9374460010686a22",
+  "extdata/examples/demo_full_tcr_bcr.crb" = "79e89b0c5f68c30d1a37307e716bd028",
+  "extdata/examples/demo_hla_tcr_dextramer.crb" = "6141dd39716154972a5715db7e9e9195",
+  "extdata/examples/demo_omnibus.crb" = "70d7fe4bc3f6ce2bfb48bf564999befc",
+  "extdata/examples/demo_spatial_merfish.crb" = "a9c9d998d5c1db01fc480aece140141c",
+  "extdata/examples/demo_spatial_slideseq.crb" = "3f35ef21fbdc163705954a4cc4439711",
+  "extdata/examples/demo_spatial_visium.crb" = "7afce4b4d30bb217412b6b281eecab8f",
+  "extdata/examples/demo_spatial_xenium.crb" = "cbc00ab7c3d2f6b45ca899cb51c6bfb5",
+  "extdata/examples/demo_spatial.crb" = "39bcd25db023b1034b19925fb552d268",
+  "extdata/examples/demo_trekker.crb" = "cdf8dc1ba0dcb42fff77d7b1ca99f697",
+  "extdata/examples/example.crb" = "432b0b2634b460c4ca6dcea01252ad52",
   "extdata/examples/example.h5" = "42ea78375ebdf742db55baa6ba12aabf",
   "extdata/examples/pbmc_SCE.rds" = "7b388677c44186cc8a6c13036065e1cb",
   "extdata/examples/pbmc_seurat.rds" = "7c0515903aa08f9aead17f190e4d328e"

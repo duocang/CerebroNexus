@@ -705,6 +705,27 @@ builder_spatial_alignment_server <- function(
       shiny::showNotification(record$error, type = "error", duration = 8)
       return(FALSE)
     }
+    outside <- builder_alignment_outside_count(record)
+    if (is.na(outside)) {
+      shiny::showNotification(
+        "Image-coverage diagnostics are invalid. Re-open this section and align it again before saving.",
+        type = "error",
+        duration = 8
+      )
+      return(FALSE)
+    }
+    if (outside > 0L) {
+      shiny::showNotification(
+        paste0(
+          outside,
+          if (outside == 1L) " cell is" else " cells are",
+          " outside the image bounds. Adjust the alignment before saving."
+        ),
+        type = "error",
+        duration = 8
+      )
+      return(FALSE)
+    }
     record$saved <- TRUE
     commit_section(entry, section, record)
     draft(record)

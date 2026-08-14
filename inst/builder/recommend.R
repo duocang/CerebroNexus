@@ -205,6 +205,15 @@
   one_value_per_cell <- non_missing > 0L &&
     unique_non_missing >= non_missing
 
+  retain_in_crb <- if (!isTRUE(fact$supported)) {
+    FALSE
+  } else if (sensitive) {
+    is_required
+  } else {
+    TRUE
+  }
+  group_recommended <- FALSE
+
   disposition <- "excluded"
   effective_included <- FALSE
   confirmation <- FALSE
@@ -236,12 +245,14 @@
     effective_included <- TRUE
     preview_allowed <- TRUE
     group_eligible <- TRUE
+    group_recommended <- TRUE
     reason <- "This is an explicitly named low-cardinality category."
   } else if (is_required && safe_type && low_cardinality) {
     disposition <- "included"
     effective_included <- TRUE
     preview_allowed <- TRUE
     group_eligible <- TRUE
+    group_recommended <- TRUE
     reason <- "This required column is a safe categorical export."
   } else if (is_required) {
     disposition <- "attention"
@@ -269,6 +280,7 @@
     effective_included <- TRUE
     preview_allowed <- TRUE
     group_eligible <- TRUE
+    group_recommended <- TRUE
     reason <- "This is a safe low-cardinality categorical column."
   } else if (numeric_type) {
     disposition <- "attention"
@@ -296,7 +308,10 @@
     dependency_ids = .builder_recommend_dependencies(dependency_ids, name),
     preview_allowed = preview_allowed,
     effective_included = effective_included,
+    retain_in_crb = retain_in_crb,
     group_eligible = group_eligible,
+    group_recommended = group_recommended,
+    forced = is_required,
     sensitive = sensitive,
     required = is_required
   )
@@ -364,7 +379,10 @@ builder_recommend_metadata <- function(
     dependency_ids = "core.cell_identity",
     preview_allowed = FALSE,
     effective_included = TRUE,
+    retain_in_crb = TRUE,
     group_eligible = FALSE,
+    group_recommended = FALSE,
+    forced = TRUE,
     sensitive = FALSE,
     required = TRUE
   )
@@ -395,17 +413,27 @@ builder_recommend_metadata <- function(
       dependency_ids = .builder_recommend_dependencies(dependency_ids, name),
       preview_allowed = FALSE,
       effective_included = FALSE,
+      retain_in_crb = FALSE,
       group_eligible = FALSE,
+      group_recommended = FALSE,
+      forced = TRUE,
       sensitive = .builder_recommend_sensitive_name(name),
       required = TRUE
     )
   }
   records <- c(list(cell_barcode = cell_barcode), records)
   disposition <- vapply(records, `[[`, "", "disposition")
-  effective <- vapply(records, `[[`, FALSE, "effective_included")
-  included <- names(records)[effective]
+  retained <- names(records)[vapply(records, `[[`, FALSE, "retain_in_crb")]
+  group_candidates <- names(records)[vapply(
+    records,
+    `[[`,
+    FALSE,
+    "group_eligible"
+  )]
+  forced <- names(records)[vapply(records, `[[`, FALSE, "forced")]
+  included <- retained
   attention <- names(records)[disposition == "attention"]
-  excluded <- names(records)[disposition == "excluded"]
+  excluded <- names(records)[!names(records) %in% retained]
   blocking <- names(records)[disposition == "blocking"]
   requires_confirmation <- length(attention) > 0L || length(blocking) > 0L
 
@@ -428,6 +456,9 @@ builder_recommend_metadata <- function(
     requires_confirmation = requires_confirmation,
     columns = records,
     included = included,
+    retained = retained,
+    group_candidates = group_candidates,
+    forced = forced,
     attention = attention,
     excluded = excluded,
     blocking = blocking

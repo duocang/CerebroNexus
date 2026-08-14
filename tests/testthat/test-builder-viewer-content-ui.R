@@ -638,7 +638,11 @@ test_that("ambiguous immune sources get one compact actionable selector", {
     c("Unified immune repertoire", "Metadata annotations")
   )
   expect_match(html, "core-immune_source_immune_repertoire", fixed = TRUE)
-  expect_match(html, "Choose which detected source to use", fixed = TRUE)
+  expect_match(
+    html,
+    "Choose which detected source to retain in the CRB.",
+    fixed = TRUE
+  )
   expect_match(html, "Unified immune repertoire", fixed = TRUE)
   expect_match(html, "Metadata annotations", fixed = TRUE)
   expect_false(grepl("divergent_source_overlap", html, fixed = TRUE))

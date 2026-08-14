@@ -336,6 +336,7 @@ ui <- dashboardPage(
       cerebro_js("trekker.js", defer = TRUE),
       cerebro_js("hla_motifs.js", defer = TRUE),
       cerebro_js("coordviews.js", defer = TRUE),
+      cerebro_js("multiselect.js", defer = TRUE),
       ## Shared projection-scatter engine, loaded ONCE here instead of being
       ## inlined into each remaining projection-style detail tab. Both
       ## files expose only window globals (window.cerebroProjectionLayout /
@@ -346,7 +347,6 @@ ui <- dashboardPage(
       cerebro_js("projection_layouts.js"),
       cerebro_js("projection_scatter.js")
     ),
-    tags$script(HTML('$("body").addClass("fixed");')),
     tabItems(
       tab_load_data,
       tab_groups,

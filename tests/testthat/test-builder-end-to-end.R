@@ -737,15 +737,18 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
         info = label
       )
       for (section in names(entry$settings$images)) {
+        expected <- entry$settings$images[[section]]
+        image_label <- builder_alignment_payload(expected)$source
+        observed <- spatial[[section]]$histology_images[[image_label]]
         expect_identical(
-          spatial[[section]]$histology_image,
-          entry$settings$images[[section]]$uri,
-          info = label
+          observed$histology_image,
+          expected$uri,
+          info = image_label
         )
         expect_identical(
-          spatial[[section]]$histology_image_bounds,
-          entry$settings$images[[section]]$bounds,
-          info = label
+          observed$histology_image_bounds,
+          builder_histology_image_payload(expected)$histology_image_bounds,
+          info = image_label
         )
       }
       points_only <- setdiff(names(spatial), names(entry$settings$images))
@@ -754,8 +757,7 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
         c("section_b_2_fov_1", "section_b_3_fov_1", "section_c_1_fov_1")
       )
       for (section in points_only) {
-        expect_null(spatial[[section]]$histology_image, info = label)
-        expect_null(spatial[[section]]$histology_image_bounds, info = label)
+        expect_length(spatial[[section]]$histology_images, 0L)
       }
     }
     if (identical(coordinate$content, "trekker")) {

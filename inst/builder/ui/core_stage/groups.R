@@ -160,6 +160,13 @@ builder_metadata_policy_status <- function(policy, id) {
   }
   retained <- if (
     is.list(record) &&
+      is.logical(record$retain_in_crb) &&
+      length(record$retain_in_crb) == 1L &&
+      !is.na(record$retain_in_crb)
+  ) {
+    isTRUE(record$retain_in_crb)
+  } else if (
+    is.list(record) &&
       is.logical(record$effective_included) &&
       length(record$effective_included) == 1L &&
       !is.na(record$effective_included)
@@ -170,7 +177,12 @@ builder_metadata_policy_status <- function(policy, id) {
   }
   list(
     retained = retained,
-    disposition = disposition
+    disposition = disposition,
+    forced = isTRUE(record$forced %||% record$required),
+    sensitive = isTRUE(record$sensitive),
+    recommended = isTRUE(record$retain_in_crb),
+    supported = !identical(record$retain_in_crb, FALSE) ||
+      !identical(disposition, "excluded")
   )
 }
 
@@ -267,6 +279,10 @@ builder_group_catalog_model <- function(model) {
       reason = reason,
       metadata_retained = metadata_status$retained,
       metadata_disposition = metadata_status$disposition,
+      retention_locked = isTRUE(metadata_status$forced) ||
+        !isTRUE(column$supported %||% metadata_status$supported),
+      retention_sensitive = isTRUE(metadata_status$sensitive),
+      recommended_retained = isTRUE(metadata_status$recommended),
       included = selected,
       default = selected && identical(id, default),
       suggested = eligible && id %in% suggested,
@@ -292,6 +308,30 @@ builder_group_catalog_model <- function(model) {
   })
   included <- vapply(
     Filter(function(item) isTRUE(item$included), items),
+    `[[`,
+    character(1),
+    "id"
+  )
+  retained <- vapply(
+    Filter(function(item) isTRUE(item$metadata_retained), items),
+    `[[`,
+    character(1),
+    "id"
+  )
+  supported <- vapply(
+    Filter(
+      function(item) {
+        !isTRUE(item$retention_locked) ||
+          isTRUE(item$metadata_retained)
+      },
+      items
+    ),
+    `[[`,
+    character(1),
+    "id"
+  )
+  recommended_retained <- vapply(
+    Filter(function(item) isTRUE(item$recommended_retained), items),
     `[[`,
     character(1),
     "id"
@@ -324,6 +364,9 @@ builder_group_catalog_model <- function(model) {
   })
   list(
     items = items,
+    retained = retained,
+    supported = supported,
+    recommended_retained = recommended_retained,
     included = included,
     default = if (default_valid) {
       default
@@ -550,7 +593,7 @@ builder_group_detail_ui <- function(id, model) {
         if (isTRUE(item$metadata_retained)) {
           span(
             class = "viewer-metadata-policy is-retained",
-            "Kept as ordinary metadata."
+            "Kept as ordinary metadata. Not eligible as a Group."
           )
         } else if (identical(item$metadata_retained, FALSE)) {
           span(
@@ -614,6 +657,7 @@ builder_group_catalog_ui <- function(id, catalog) {
   div(
     class = "viewer-group-workspace",
     `data-input-id` = ns("group_action"),
+    `data-metadata-input-id` = ns("metadata_action"),
     `data-focus-input-id` = ns("group_focus"),
     div(
       class = "viewer-group-directory",
@@ -635,6 +679,18 @@ builder_group_catalog_ui <- function(id, catalog) {
           class = "viewer-group-actions",
           tags$button(
             type = "button",
+            class = "btn viewer-metadata-select",
+            `data-action` = "all-supported",
+            "Keep all supported metadata"
+          ),
+          tags$button(
+            type = "button",
+            class = "btn viewer-metadata-select",
+            `data-action` = "recommended",
+            "Restore recommended retention"
+          ),
+          tags$button(
+            type = "button",
             class = "btn viewer-group-select",
             `data-action` = "suggested",
             "Select suggested"
@@ -650,6 +706,7 @@ builder_group_catalog_ui <- function(id, catalog) {
       div(
         class = "viewer-group-list",
         lapply(catalog$items, function(item) {
+          retain_id <- ns(paste0("metadata_retain_", item$index))
           checkbox_id <- ns(paste0("group_include_", item$index))
           radio_id <- ns(paste0("group_default_", item$index))
           div(
@@ -662,6 +719,30 @@ builder_group_catalog_ui <- function(id, catalog) {
             `data-search` = item$search,
             `data-eligible` = tolower(as.character(item$eligible)),
             `data-suggested` = tolower(as.character(item$suggested)),
+            `data-recommended-retained` = tolower(as.character(
+              item$recommended_retained
+            )),
+            tags$label(
+              class = "viewer-metadata-check",
+              `for` = retain_id,
+              tags$input(
+                id = retain_id,
+                type = "checkbox",
+                class = "viewer-metadata-retain",
+                `data-group` = item$id,
+                checked = if (isTRUE(item$metadata_retained)) {
+                  "checked"
+                } else {
+                  NULL
+                },
+                disabled = if (isTRUE(item$retention_locked)) {
+                  "disabled"
+                } else {
+                  NULL
+                }
+              ),
+              span(class = "visually-hidden", paste("Keep in CRB", item$label))
+            ),
             if (item$eligible) {
               tags$label(
                 class = "viewer-group-check",

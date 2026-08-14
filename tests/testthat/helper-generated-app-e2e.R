@@ -235,6 +235,7 @@ generated_app_e2e_stop <- function() {
   entry$settings$groups <- overrides$groups
   entry$settings$included_groups <- overrides$groups
   entry$settings$reductions <- overrides$reductions
+  entry$settings$included_projections <- overrides$reductions
   entry$settings$analyses <- character()
   entry$settings$tables <- list()
   entry$settings$images <- .generated_app_e2e_images(fixture)

@@ -2,13 +2,13 @@ privacy_test_sources <- function(root) {
   source_dir <- file.path(root, "source")
   dir.create(source_dir)
 
-  h5 <- Cerebro_v1.3$new()
+  h5 <- Cerebro$new()
   h5$setExpressionBackend(type = "h5", location = "matrix.h5")
   h5_crb <- file.path(source_dir, "h5-data.crb")
   saveRDS(h5, h5_crb)
   writeLines("H5 PAYLOAD", file.path(source_dir, "matrix.h5"))
 
-  bpcells <- Cerebro_v1.3$new()
+  bpcells <- Cerebro$new()
   bpcells$setExpressionBackend(
     type = "bpcells",
     location = "matrix.bpcells"
@@ -194,6 +194,20 @@ privacy_builder_entry <- function(runtime, id, label, loaded) {
   )
 }
 
+privacy_spatial_image_bounds <- function(coordinates) {
+  stopifnot(
+    is.data.frame(coordinates),
+    all(c("x", "y") %in% names(coordinates)),
+    nrow(coordinates) > 0L
+  )
+  list(
+    xmin = min(coordinates$x),
+    xmax = max(coordinates$x),
+    ymin = min(coordinates$y),
+    ymax = max(coordinates$y)
+  )
+}
+
 privacy_build_dormant_app <- function(root, contract_version = 1L) {
   sourced <- privacy_source_builder_runtime(contract_version)
   runtime <- sourced$runtime
@@ -291,8 +305,8 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     privacy_builder_entry(runtime, "dataset-a", "Dataset A", first),
     privacy_builder_entry(runtime, "dataset-b", "Dataset B", second)
   )
-  entries[[1L]]$settings$groups <- c("patient", "cluster")
-  entries[[1L]]$settings$included_groups <- c("patient", "cluster")
+  entries[[1L]]$settings$groups <- c("patient_id", "cluster")
+  entries[[1L]]$settings$included_groups <- c("patient_id", "cluster")
   entries[[1L]]$settings$default_group <- "cluster"
   entries[[1L]]$settings$reductions <- "umap"
   entries[[1L]]$settings$default_projection <- "umap"
@@ -308,7 +322,12 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
     "data:image/png;base64,",
     base64enc::base64encode(image_file)
   )
-  bounds <- list(xmin = 3, xmax = 103, ymin = 5, ymax = 105)
+  snapshot <- runtime$builder_open_snapshot(entries[[2L]]$snapshot)
+  coordinates <- runtime$builder_spatial_contract(
+    snapshot,
+    image = section
+  )$coordinates
+  bounds <- privacy_spatial_image_bounds(coordinates)
   entries[[2L]]$settings$images <- stats::setNames(
     list(list(uri = encoded, bounds = bounds)),
     section

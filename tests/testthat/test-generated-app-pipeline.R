@@ -1,3 +1,13 @@
+generated_app_expected_content_pages <- function(expected) {
+  unique(c(
+    intersect(
+      expected$visible_pages,
+      generated_app_fixture_pages()$hidden
+    ),
+    intersect(expected$optional_payloads, c("spatial", "trekker"))
+  ))
+}
+
 test_that("canonical fixtures freeze into one explicit multi-dataset plan", {
   expect_true(exists("generated_app_e2e_bundle", mode = "function"))
   bundle <- generated_app_e2e_bundle()
@@ -74,10 +84,7 @@ test_that("Builder settings survive profile and BuildPlan normalization", {
     )
     expect_identical(
       item$viewer_page_expectations$visible_conditional,
-      intersect(
-        expected$visible_pages,
-        generated_app_fixture_pages()$hidden
-      ),
+      generated_app_expected_content_pages(expected),
       info = name
     )
     for (group in names(expected$palettes)) {
@@ -120,10 +127,7 @@ test_that("generated CRBs preserve source identities, values, and page causes", 
     )
     expect_setequal(
       .builder_crb_visible_pages(crb),
-      setdiff(
-        expected$visible_pages,
-        generated_app_fixture_pages()$visible
-      )
+      generated_app_expected_content_pages(expected)
     )
   }
 
@@ -146,8 +150,16 @@ test_that("generated CRBs preserve source identities, values, and page causes", 
   for (section in spatial$availableSpatial()) {
     value <- spatial$getSpatialData(section)
     contract <- bundle$fixtures$spatial$expected$image_alignment[[section]]
-    expect_identical(value$histology_image_bounds, contract$bounds)
-    expect_match(value$histology_image, "^data:image/png;base64,")
+    images <- value[["histology_images", exact = TRUE]]
+    expect_length(images, 1L)
+    image <- images[[1L]]
+    expect_identical(
+      image$histology_image_bounds,
+      unlist(contract$bounds, use.names = TRUE)
+    )
+    expect_match(image$histology_image, "^data:image/png;base64,")
+    expect_null(value[["histology_image", exact = TRUE]])
+    expect_null(value[["histology_image_bounds", exact = TRUE]])
   }
 
   expect_false(is.null(bundle$crbs$immune_tcr_hla$getImmuneRepertoire()))

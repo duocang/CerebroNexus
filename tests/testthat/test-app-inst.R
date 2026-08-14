@@ -116,7 +116,75 @@ test_that("{shinytest2} recording: overview", {
   app$stop()
 })
 
-test_that("Spatial backgrounds reset when the spatial dataset changes", {
+test_that("the native sidebar scrolls and its mobile toggle still works", {
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "native_sidebar_scroll",
+    height = 420,
+    width = 600
+  )
+  withr::defer(app$stop())
+  app$wait_for_idle(timeout = 20000)
+
+  layout <- app$get_js(paste0(
+    "(function () {",
+    "var sidebar = document.querySelector('.main-sidebar');",
+    "var links = Array.from(document.querySelectorAll('.sidebar-menu a'));",
+    "var last = links[links.length - 1];",
+    "var style = getComputedStyle(sidebar);",
+    "return {",
+    "fixedClass: document.body.classList.contains('fixed'),",
+    "position: style.position, overflowY: style.overflowY,",
+    "clientHeight: sidebar.clientHeight, scrollHeight: sidebar.scrollHeight,",
+    "lastText: last ? last.textContent.trim() : '', viewport: innerHeight",
+    "};",
+    "})()"
+  ))
+  expect_false(layout$fixedClass)
+  expect_identical(layout$position, "fixed")
+  expect_match(layout$overflowY, "auto|scroll")
+  expect_lte(layout$clientHeight, layout$viewport)
+  expect_gt(layout$scrollHeight, layout$clientHeight)
+  expect_identical(layout$lastText, "About")
+
+  app$run_js(paste0(
+    "document.querySelector('.main-sidebar').scrollTop = ",
+    "document.querySelector('.main-sidebar').scrollHeight;"
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('.main-sidebar').scrollTop > 0 && ",
+      "Array.from(document.querySelectorAll('.sidebar-menu a')).slice(-1)[0]",
+      ".getBoundingClientRect().bottom <= innerHeight"
+    ),
+    timeout = 5000
+  )
+
+  app$wait_for_js(
+    "getComputedStyle(document.querySelector('.sidebar-toggle')).display !== 'none'",
+    timeout = 5000
+  )
+  app$run_js("document.querySelector('.sidebar-toggle').click();")
+  app$wait_for_js(
+    "document.body.classList.contains('sidebar-open')",
+    timeout = 5000
+  )
+  app$run_js("document.querySelector('.sidebar-toggle').click();")
+  app$wait_for_js(
+    "!document.body.classList.contains('sidebar-open')",
+    timeout = 5000
+  )
+
+  logs <- app$get_logs()
+  expect_false(any(grepl(
+    "fixed layout requires the slimscroll plugin",
+    as.character(logs$message),
+    fixed = TRUE
+  )))
+})
+
+test_that("Linked-view backgrounds and FOVs reset with the dataset", {
   local_app_support(inst_dir)
   app <- AppDriver$new(
     inst_dir,
@@ -132,55 +200,38 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
-  activate_tab(app, "spatial", timeout = 30000)
-  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
+  activate_tab(app, "coordinated_views", timeout = 30000)
   app$wait_for_js(
     paste0(
-      "document.getElementById('spatial_projection_background_image').value === ",
-      "'external::Tissue background'"
+      "(function () {",
+      "var spatial = document.getElementById('cv-pick-spatial');",
+      "var image = document.getElementById('cv-img-pick');",
+      "if (!spatial || !image) return false;",
+      "var fovs = Array.from(spatial.options).map(function (x) { return x.value; });",
+      "var images = Array.from(image.options).map(function (x) { return x.textContent; });",
+      "return fovs.length === 1 && fovs[0] === 'anterior1' && ",
+      "images.length === 2 && images[0] === 'None' && ",
+      "images[1] === 'Tissue background' && image.value !== '__none__';",
+      "})()"
     ),
     timeout = 30000
   )
-  expect_identical(
-    retry_get_value(
-      app,
-      input = "spatial_projection_to_display",
-      timeout = 30000,
-      validate = function(value) identical(value, "anterior1")
-    ),
-    "anterior1"
-  )
+  expect_null(app$get_js(
+    "document.querySelector('a[href=\"#shiny-tab-spatial\"]')"
+  ))
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-ptitle')).some(",
+    "function (x) { return x.textContent.indexOf('anterior1') >= 0; })"
+  )))
   expect_identical(
     unlist(
       app$get_js(paste0(
-        "Object.keys(document.getElementById(",
-        "'spatial_projection_background_image').selectize.options)"
+        "Array.from(document.getElementById('cv-img-pick').options).map(",
+        "function (x) { return x.textContent; })"
       )),
       use.names = FALSE
     ),
-    c("none", "external::Tissue background")
-  )
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('spatial_projection_background') && ",
-      "document.getElementById('spatial_projection_background').dataset.",
-      "backgroundImage.startsWith('data:image/')"
-    ),
-    timeout = 30000
-  )
-  ## Exercise the imageChanged path directly: it clears old interaction state,
-  ## then must seed the renderer-provided rotation in the same sync call.
-  app$run_js(paste0(
-    "shinyjs.syncSpatialBackground(",
-    "'data:image/png;base64,ROTATED', false, false, 1, 1, 1, ",
-    "null, 0, 0, 37);"
-  ))
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('spatial_projection_background').dataset.",
-      "rotate === '37'"
-    ),
-    timeout = 30000
+    c("None", "Tissue background")
   )
 
   app$set_inputs(
@@ -188,41 +239,45 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
-  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
     paste0(
-      "document.getElementById('spatial_projection_background_image').value ",
-      "=== 'none'"
+      "(function () {",
+      "var spatial = document.getElementById('cv-pick-spatial');",
+      "var image = document.getElementById('cv-img-pick');",
+      "if (!spatial || !image) return false;",
+      "var fovs = Array.from(spatial.options).map(function (x) { return x.value; });",
+      "var images = Array.from(image.options).map(function (x) { return x.textContent; });",
+      "return fovs.length === 1 && fovs[0] === 'image' && ",
+      "images.length === 1 && images[0] === 'None' && ",
+      "image.value === '__none__' && image.disabled;",
+      "})()"
     ),
     timeout = 30000
   )
   expect_identical(
-    retry_get_value(
-      app,
-      input = "spatial_projection_to_display",
-      timeout = 30000,
-      validate = function(value) identical(value, "image")
+    unlist(
+      app$get_js(paste0(
+        "Array.from(document.getElementById('cv-pick-spatial').options).map(",
+        "function (x) { return x.value; })"
+      )),
+      use.names = FALSE
     ),
     "image"
   )
   expect_identical(
     unlist(
       app$get_js(paste0(
-        "Object.keys(document.getElementById(",
-        "'spatial_projection_background_image').selectize.options)"
+        "Array.from(document.getElementById('cv-img-pick').options).map(",
+        "function (x) { return x.textContent; })"
       )),
       use.names = FALSE
     ),
-    "none"
+    "None"
   )
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('spatial_projection_background') && ",
-      "document.getElementById('spatial_projection_background').dataset.",
-      "backgroundImage === ''"
-    ),
-    timeout = 30000
-  )
+  expect_false(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-ptitle')).some(",
+    "function (x) { return x.textContent.indexOf('anterior1') >= 0; })"
+  )))
 })
 
 

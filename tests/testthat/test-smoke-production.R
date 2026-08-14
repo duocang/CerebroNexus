@@ -18,6 +18,20 @@ shared_real_app_initialized <- FALSE
 shared_builder_private_app <- NULL
 shared_builder_real_contract_app <- NULL
 
+test_that("privacy Builder bounds follow the selected FOV coordinates", {
+  coordinates <- data.frame(
+    x = c(6.5, 813),
+    y = c(262, 963)
+  )
+
+  bounds <- privacy_spatial_image_bounds(coordinates)
+
+  expect_equal(
+    unlist(bounds, use.names = TRUE),
+    c(xmin = 6.5, xmax = 813, ymin = 262, ymax = 963)
+  )
+})
+
 get_builder_private_app <- function() {
   if (is.null(shared_builder_private_app)) {
     root <- withr::local_tempdir(.local_envir = shared_fixture_env)
@@ -59,10 +73,17 @@ test_that("Builder dormant app path publishes one verified private bundle", {
   second <- file.path(built$app_dir, config$crb_file_to_load[[2L]])
   object <- readRDS(second)
   spatial <- object$getSpatialData(built$section)
-  expect_identical(spatial$histology_image, built$image_uri)
-  expect_identical(spatial$histology_image_bounds, built$image_bounds)
-  expect_match(spatial$histology_image, "^data:image/png;base64,")
-  expect_false(grepl("https?://|^/|^file:", spatial$histology_image))
+  images <- spatial[["histology_images", exact = TRUE]]
+  expect_length(images, 1L)
+  image <- images[[1L]]
+  expect_identical(image$histology_image, built$image_uri)
+  expect_equal(
+    unlist(image$histology_image_bounds, use.names = TRUE),
+    unlist(built$image_bounds, use.names = TRUE)
+  )
+  expect_null(spatial[["histology_image", exact = TRUE]])
+  expect_match(image$histology_image, "^data:image/png;base64,")
+  expect_false(grepl("https?://|^/|^file:", image$histology_image))
 
   first_relative <- config$crb_file_to_load[[1L]]
   backend <- config$.bundle_backend_plan$entries[[first_relative]]
@@ -136,88 +157,51 @@ test_that("Builder app selection keeps initial URL and user priority", {
     values[[2L]]
   )
   initial$wait_for_js(
-    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;",
+    paste0(
+      "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]') !== null && ",
+      "document.querySelector('a[href=\"#shiny-tab-overview\"]') === null && ",
+      "document.querySelector('a[href=\"#shiny-tab-spatial\"]') === null && ",
+      "document.querySelector('a[href=\"#shiny-tab-trekker\"]') === null;"
+    ),
     timeout = 30000
   )
   initial$get_js(
-    "document.querySelector('a[href=\"#shiny-tab-overview\"]').click();"
+    "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"
   )
   initial$wait_for_js(
     paste0(
-      "document.getElementById('overview_projection_to_display') !== null && ",
-      "document.getElementById('overview_projection_point_color') !== null"
+      "document.getElementById('cv-pick-proj') && ",
+      "document.getElementById('cv-pick-proj').selectize && ",
+      "document.getElementById('cv-pick-color') && ",
+      "document.getElementById('cv-meta').textContent.indexOf('linked spaces') >= 0"
     ),
     timeout = 30000
   )
   expect_identical(
-    initial$get_value(input = "overview_projection_to_display"),
+    unlist(
+      initial$get_js(
+        "document.getElementById('cv-pick-proj').selectize.getValue()"
+      ),
+      use.names = FALSE
+    ),
     "tsne"
   )
   expect_identical(
-    initial$get_value(input = "overview_projection_point_color"),
+    initial$get_js("document.getElementById('cv-pick-color').value"),
     "region"
   )
-  initial$get_js(
-    "document.querySelector('a[href=\"#shiny-tab-spatial\"]').click();"
-  )
-  initial$wait_for_js(
-    "document.getElementById('spatial_projection_background_image') !== null;",
-    timeout = 30000
-  )
-  initial$wait_for_idle(timeout = 30000)
-  initial$get_js(
-    paste0(
-      "(function() {",
-      "var input = document.getElementById(",
-      "'spatial_projection_background_image');",
-      "if (input.selectize) {",
-      "input.selectize.setValue('__embedded__');",
-      "} else {",
-      "window.jQuery(input).val('__embedded__').trigger('change');",
-      "}",
-      "})()"
-    )
+  expect_equal(
+    as.numeric(initial$get_js("document.getElementById('cv-ps').value")),
+    5
   )
   initial$wait_for_js(
     paste0(
-      "document.getElementById(",
-      "'spatial_projection_background_image').value === '__embedded__';"
+      "Array.from(document.getElementById('cv-img-pick').options)",
+      ".some(function(option) { return option.textContent.indexOf(",
+      "'Embedded tissue image') >= 0; });"
     ),
     timeout = 30000
   )
-  initial$wait_for_js(
-    paste0(
-      "(function() {",
-      "var bg = document.getElementById('spatial_projection_background');",
-      "var plot = document.getElementById('spatial_projection');",
-      "if (!bg || !plot || !plot.querySelector('.main-svg')) return false;",
-      "var source = bg.dataset.backgroundImage || '';",
-      "var rendered = bg._imgEl && bg._imgEl.src ? ",
-      "bg._imgEl.src : bg.style.backgroundImage;",
-      "var rect = bg.getBoundingClientRect();",
-      "return source.indexOf('data:image/') === 0 && ",
-      "rendered.indexOf('data:image/') !== -1 && ",
-      "getComputedStyle(bg).display !== 'none' && ",
-      "rect.width > 0 && rect.height > 0;",
-      "})()"
-    ),
-    timeout = 30000
-  )
-  embedded_background <- initial$get_js(
-    paste0(
-      "(function() {",
-      "var bg = document.getElementById('spatial_projection_background');",
-      "return {",
-      "source: bg.dataset.backgroundImage || '',",
-      "rendered: bg._imgEl && bg._imgEl.src ? ",
-      "bg._imgEl.src : bg.style.backgroundImage",
-      "};",
-      "})()"
-    )
-  )
-  expect_match(embedded_background$source, "^data:image/")
-  expect_match(embedded_background$rendered, "data:image/", fixed = TRUE)
-  expect_false(grepl("https?://|file:", embedded_background$rendered))
   initial$set_inputs(crb_file_selector = values[[1L]], wait_ = FALSE)
   initial$wait_for_idle(timeout = 30000)
   expect_identical(
@@ -225,34 +209,29 @@ test_that("Builder app selection keeps initial URL and user priority", {
     values[[1L]]
   )
   initial$wait_for_js(
-    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') === null;",
-    timeout = 30000
-  )
-  initial$wait_for_js(
     paste0(
-      "document.getElementById('overview_projection_to_display').value === ",
-      "'umap' && ",
-      "document.getElementById('overview_projection_point_color').value === ",
-      "'seurat_clusters'"
+      "document.getElementById('cv-pick-proj').selectize.getValue()[0] === ",
+      "'umap' && document.getElementById('cv-pick-color').value === 'cluster'"
     ),
     timeout = 30000
   )
   expect_identical(
-    initial$get_js(
-      "document.getElementById('overview_projection_to_display').value"
+    unlist(
+      initial$get_js(
+        "document.getElementById('cv-pick-proj').selectize.getValue()"
+      ),
+      use.names = FALSE
     ),
     "umap"
   )
   expect_identical(
-    initial$get_js(
-      "document.getElementById('overview_projection_point_color').value"
-    ),
-    "seurat_clusters"
+    initial$get_js("document.getElementById('cv-pick-color').value"),
+    "cluster"
   )
   initial$set_inputs(crb_file_selector = values[[2L]], wait_ = FALSE)
   initial$wait_for_idle(timeout = 30000)
   initial$wait_for_js(
-    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;",
+    "document.getElementById('cv-pick-proj').selectize.getValue()[0] === 'tsne';",
     timeout = 30000
   )
 

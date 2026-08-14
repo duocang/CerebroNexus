@@ -68,7 +68,7 @@ test_that("generated App source is package-free and contains no remote assets", 
   generated_app_e2e_expect_clean_browser()
 })
 
-test_that("browser console classification keeps only documented dependency noise", {
+test_that("browser console classification does not exempt dependency failures", {
   logs <- data.frame(
     location = rep("chromote", 2L),
     level = rep("error", 2L),
@@ -80,8 +80,17 @@ test_that("browser console classification keeps only documented dependency noise
   )
 
   failures <- generated_app_e2e_browser_failures(logs)
-  expect_identical(nrow(failures), 1L)
-  expect_match(failures$message, "generated fixture failure", fixed = TRUE)
+  expect_identical(nrow(failures), 2L)
+  expect_true(any(grepl(
+    "fixed layout requires the slimscroll plugin",
+    failures$message,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "generated fixture failure",
+    failures$message,
+    fixed = TRUE
+  )))
 })
 
 test_that("generated App browser emits no unexpected console failures", {

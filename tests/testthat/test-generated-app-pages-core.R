@@ -22,60 +22,47 @@ test_that("basic generated dataset exposes the exact core navigation and summary
   expect_match(summary$organism, "hg", fixed = TRUE)
 })
 
-test_that("Projection uses the Builder defaults, palette, and complete cell set", {
+test_that("Linked views uses Builder defaults, palette, and complete cell set", {
   fixture <- generated_app_e2e_select_dataset("basic")
-  generated_app_e2e_activate_tab("projection")
-  generated_app_e2e_wait_input("overview_projection_to_display")
-  generated_app_e2e_wait_input("overview_projection_point_color")
+  generated_app_e2e_open_linked_views(fixture)
+  driver <- generated_app_e2e_driver()
+  driver$wait_for_js(
+    paste0(
+      "document.getElementById('cv-pick-proj').selectize && ",
+      "document.getElementById('cv-pick-proj').selectize.getValue().length"
+    ),
+    timeout = 60000
+  )
 
   expect_identical(
-    generated_app_e2e_driver()$get_js(
-      "document.getElementById('overview_projection_point_size').getAttribute('data-min')"
-    ),
+    driver$get_js("document.getElementById('cv-ps').getAttribute('min')"),
     "0"
   )
 
   expect_identical(
-    generated_app_e2e_value("input", "overview_projection_to_display"),
+    driver$get_js(
+      "document.getElementById('cv-pick-proj').selectize.getValue()[0]"
+    ),
     fixture$expected$default_projection
   )
   expect_identical(
-    generated_app_e2e_value("input", "overview_projection_point_color"),
+    driver$get_js("document.getElementById('cv-pick-color').value"),
     fixture$expected$default_group
   )
   expect_equal(
-    generated_app_e2e_value("input", "overview_projection_point_size"),
+    as.numeric(driver$get_js("document.getElementById('cv-ps').value")),
     fixture$expected$app_settings$point_size$overview_projection_point_size
   )
 
-  generated_app_e2e_wait_plotly("overview_projection")
-  expect_identical(
-    generated_app_e2e_plotly_point_count("overview_projection"),
-    fixture$expected$n_cells
-  )
-  expect_length(
-    generated_app_e2e_value("export", "overview_cells_to_show"),
-    fixture$expected$n_cells
-  )
-
-  observed_coordinates <- generated_app_e2e_plotly_coordinates(
-    "overview_projection"
-  )
-  expected_coordinates <- fixture$expected$projection_coordinates[[
-    fixture$expected$default_projection
-  ]]
-  expect_true(all(vapply(
-    seq_len(nrow(expected_coordinates)),
-    function(index) {
-      any(
-        abs(observed_coordinates[, 1L] - expected_coordinates[index, 1L]) <
-          1e-12 &
-          abs(observed_coordinates[, 2L] - expected_coordinates[index, 2L]) <
-            1e-12
-      )
-    },
-    logical(1)
+  expect_true(any(grepl(
+    paste0("^", fixture$expected$default_projection, " \\(expression"),
+    generated_app_e2e_linked_titles()
   )))
+  expect_match(
+    generated_app_e2e_output_text("cv-meta"),
+    paste(fixture$expected$n_cells, "cells"),
+    fixed = TRUE
+  )
 
   palettes <- generated_app_e2e_value("export", "group_colors")
   expect_identical(
@@ -84,6 +71,22 @@ test_that("Projection uses the Builder defaults, palette, and complete cell set"
     )]),
     unname(fixture$expected$palettes$seurat_clusters)
   )
+  legend <- generated_app_e2e_linked_legend()
+  expect_identical(
+    vapply(legend, `[[`, character(1), "color"),
+    generated_app_e2e_rgb(fixture$expected$palettes$seurat_clusters)
+  )
+  expect_true(all(vapply(
+    names(fixture$expected$palettes$seurat_clusters),
+    function(level) {
+      any(grepl(
+        level,
+        vapply(legend, `[[`, character(1), "text"),
+        fixed = TRUE
+      ))
+    },
+    logical(1)
+  )))
 })
 
 test_that("Gene expression renders the exact selected source-gene values", {

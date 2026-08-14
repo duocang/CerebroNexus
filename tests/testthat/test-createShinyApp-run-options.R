@@ -384,7 +384,7 @@ test_that("createShinyApp accepts boundary and whole-valued ports", {
 test_that("explicit initial dataset preserves configured selector order", {
   fixture <- run_options_test_fixture()
   second <- file.path(dirname(fixture$crb), "dataset-b.crb")
-  saveRDS(Cerebro_v1.3$new(), second)
+  saveRDS(Cerebro$new(), second)
   app <- file.path(fixture$root, "app-initial")
 
   createShinyApp(
@@ -432,7 +432,7 @@ test_that("initial page is validated and frozen through its argument", {
 test_that("generated Apps retain per-dataset Viewer defaults", {
   fixture <- run_options_test_fixture()
   second <- file.path(dirname(fixture$crb), "dataset-b.crb")
-  saveRDS(Cerebro_v1.3$new(), second)
+  saveRDS(Cerebro$new(), second)
   app <- file.path(fixture$root, "app-viewer-content")
   viewer_content <- list(
     A = list(
@@ -465,7 +465,7 @@ test_that("generated Apps retain per-dataset Viewer defaults", {
 test_that("initial dataset is reserved and validated through its argument", {
   fixture <- run_options_test_fixture()
   second <- file.path(dirname(fixture$crb), "dataset-b.crb")
-  saveRDS(Cerebro_v1.3$new(), second)
+  saveRDS(Cerebro$new(), second)
 
   injected <- file.path(fixture$root, "app-injected")
   createShinyApp(

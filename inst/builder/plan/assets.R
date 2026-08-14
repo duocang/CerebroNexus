@@ -309,7 +309,7 @@
   settings <- if (is.list(entry$settings)) entry$settings else list()
   policy <- settings$metadata_policy
   source_metadata <- if (is.list(policy)) {
-    policy$included %||% character()
+    policy$retained %||% policy$included %||% character()
   } else {
     character()
   }

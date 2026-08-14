@@ -279,13 +279,21 @@ builder_verify_crb <- function(path, item) {
   for (section in names(expected_images)) {
     observed_image <- spatial[[section]]
     expected_image <- expected_images[[section]]
+    expected_payload <- builder_histology_image_payload(expected_image)
+    observed_images <- if (is.list(observed_image)) {
+      observed_image$histology_images %||% list()
+    } else {
+      list()
+    }
+    matching_image <- any(vapply(
+      observed_images,
+      identical,
+      logical(1),
+      y = expected_payload
+    ))
     if (
       !is.list(observed_image) ||
-        !identical(observed_image$histology_image, expected_image$uri) ||
-        !identical(
-          observed_image$histology_image_bounds,
-          expected_image$bounds
-        )
+        !matching_image
     ) {
       stop(
         "The staged CRB histology image differs from BuildPlan: ",
@@ -609,7 +617,9 @@ builder_verify_crb <- function(path, item) {
     return(object)
   }
   metadata <- setdiff(
-    item$metadata_policy$included %||% character(),
+    item$metadata_policy$retained %||%
+      item$metadata_policy$included %||%
+      character(),
     "cell_barcode"
   )
   if ("percent_mt_ribo" %in% item$analyses) {
