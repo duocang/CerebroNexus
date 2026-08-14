@@ -692,9 +692,22 @@
       bounds.centerY + controls.dy,
       geometry
     );
-    var width = bounds.spanX * controls.scale * geometry.scale;
-    var height = bounds.spanY * controls.scale * geometry.scale;
+    var width = bounds.spanX * geometry.scale;
+    var height = bounds.spanY * geometry.scale;
+    width *= controls.scale;
+    height *= controls.scale;
     var radians = controls.rotation * Math.PI / 180;
+    if (
+      !isFiniteNumber(center.x) ||
+      !isFiniteNumber(center.y) ||
+      !isFiniteNumber(width) ||
+      !isFiniteNumber(height) ||
+      !isFiniteNumber(radians) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      return;
+    }
 
     context.save();
     context.globalAlpha = controls.image_opacity;
