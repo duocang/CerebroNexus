@@ -62,6 +62,57 @@ builder_alignment_coordinate_frame <- function(bounds, transform = NULL) {
   frame
 }
 
+#' Apply a normalized full-data coordinate transform to a bounded preview.
+#'
+#' Unlike `.spx_apply_coordinate_transform()`, this helper must not derive a
+#' pivot from the sampled rows. The worker-normalized provenance carries the
+#' full coordinate bounds centre used by export.
+builder_alignment_apply_coordinate_provenance <- function(frame, transform) {
+  if (is.null(transform)) {
+    return(frame)
+  }
+  if (
+    !is.data.frame(frame) ||
+      !all(c("x", "y") %in% names(frame)) ||
+      !is.list(transform) ||
+      !identical(transform$pivot_method, "bounds_center") ||
+      !identical(transform$convention, "counterclockwise_degrees")
+  ) {
+    stop("Alignment preview coordinate provenance is invalid.", call. = FALSE)
+  }
+  pivot <- suppressWarnings(as.numeric(transform$pivot))
+  rotation <- suppressWarnings(as.numeric(transform$rotation_degrees))
+  scale <- suppressWarnings(as.numeric(transform$scale))
+  if (
+    length(pivot) != 2L ||
+      anyNA(pivot) ||
+      any(!is.finite(pivot)) ||
+      length(rotation) != 1L ||
+      is.na(rotation) ||
+      !is.finite(rotation) ||
+      length(scale) != 1L ||
+      is.na(scale) ||
+      !is.finite(scale) ||
+      scale <= 0
+  ) {
+    stop("Alignment preview coordinate provenance is invalid.", call. = FALSE)
+  }
+  names(pivot) <- c("x", "y")
+  if (identical(rotation, 0) && identical(scale, 1)) {
+    return(frame)
+  }
+  angle <- rotation * pi / 180
+  centered_x <- frame$x - pivot[["x"]]
+  centered_y <- frame$y - pivot[["y"]]
+  frame$x <- pivot[["x"]] +
+    scale *
+      (centered_x * cos(angle) - centered_y * sin(angle))
+  frame$y <- pivot[["y"]] +
+    scale *
+      (centered_x * sin(angle) + centered_y * cos(angle))
+  frame
+}
+
 .builder_alignment_unavailable <- function(sections = list(), message) {
   list(
     available = FALSE,
@@ -234,6 +285,7 @@ builder_alignment_preview_model <- function(
   }
   coordinate_transform <- NULL
   coordinate_frame <- .builder_alignment_bounds(physical)
+  display_physical <- physical
   if (
     is.list(coordinate_transforms) &&
       !is.null(coordinate_transforms[[section$source_id]])
@@ -243,7 +295,7 @@ builder_alignment_preview_model <- function(
       physical,
       context = paste0("spatial_coordinate_transforms$", section$source_id)
     )
-    physical <- .spx_apply_coordinate_transform(
+    display_physical <- .spx_apply_coordinate_transform(
       physical,
       coordinate_transforms[[section$source_id]]
     )
@@ -268,6 +320,11 @@ builder_alignment_preview_model <- function(
     c("cell_barcode", "x", "y"),
     drop = FALSE
   ]
+  display_spatial_full <- display_physical[
+    match(common, display_physical$cell_barcode),
+    c("cell_barcode", "x", "y"),
+    drop = FALSE
+  ]
   spatial_full$group <- transcriptome_full$group
   keep <- .builder_alignment_sample(nrow(spatial_full), max_cells)
   list(
@@ -278,7 +335,7 @@ builder_alignment_preview_model <- function(
     projection_name = reduction,
     transcriptome = transcriptome_full[keep, , drop = FALSE],
     spatial = spatial_full[keep, , drop = FALSE],
-    bounds = .builder_alignment_bounds(spatial_full),
+    bounds = .builder_alignment_bounds(display_spatial_full),
     coordinate_frame = coordinate_frame,
     coordinate_transform = coordinate_transform,
     capped = nrow(spatial_full) > length(keep)

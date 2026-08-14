@@ -1666,17 +1666,46 @@ test_that("result actions remain native keyboard controls", {
   expect_false(grepl('tabindex = "-1"', status, fixed = TRUE))
 })
 
-test_that("spatial translation does not invalidate image encoding", {
+test_that("spatial drafts encode only at the save boundary", {
   lines <- readLines(
     builder_asset_path("spatial_alignment_server.R"),
     warn = FALSE
   )
-  start <- grep("encoded <- shiny::reactive", lines, fixed = TRUE)
-  finish <- grep("current_record <- shiny::reactive", lines, fixed = TRUE)
-  encoded <- paste(lines[start:(finish - 1L)], collapse = "\n")
+  server <- paste(lines, collapse = "\n")
+  start <- grep("finalize_record <- function(", lines, fixed = TRUE)
+  finish <- grep(
+    'shiny::observeEvent(input[["enhance-active_section"]]',
+    lines,
+    fixed = TRUE
+  )
+  finalizer <- paste(lines[start:(finish - 1L)], collapse = "\n")
+  render_start <- grep(
+    'output[["enhance-alignment_spatial_plot"]] <- plotly::renderPlotly',
+    lines,
+    fixed = TRUE
+  )
+  render_finish <- grep(
+    'output[["enhance-alignment_legend"]] <- shiny::renderUI',
+    lines,
+    fixed = TRUE
+  )
+  render <- paste(
+    lines[render_start:(render_finish - 1L)],
+    collapse = "\n"
+  )
 
-  expect_false(grepl("img_dx|img_dy|img_scale|opacity|point_size", encoded))
-  expect_match(encoded, "orientation()", fixed = TRUE)
+  expect_false(grepl("encoded <- shiny::reactive", server, fixed = TRUE))
+  expect_match(finalizer, "encode_image(", fixed = TRUE)
+  expect_match(finalizer, "builder_bounds_cover(", fixed = TRUE)
+  expect_match(finalizer, "finalize_current_record <- function()", fixed = TRUE)
+  for (reactive_call in c(
+    "current_record()",
+    "parameters()",
+    "point_appearance()",
+    "orientation()"
+  )) {
+    expect_false(grepl(reactive_call, render, fixed = TRUE))
+  }
 })
 
 test_that("transient layers expose state-bearing motion lifecycle", {
