@@ -283,7 +283,14 @@ ci_test_shard_loads <- function(assignments, weights) {
   )
 }
 
-ci_test_shard_files <- function(plan, group, shard = 1L, shards = 1L) {
+ci_test_shard_files <- function(
+  plan,
+  group,
+  shard = 1L,
+  shards = 1L,
+  strategy = "round-robin",
+  weights = NULL
+) {
   groups <- c("logic", "process-sensitive", "browser")
   if (length(group) != 1L || !group %in% groups) {
     stop(
@@ -301,7 +308,12 @@ ci_test_shard_files <- function(plan, group, shard = 1L, shards = 1L) {
   } else {
     group
   }
-  assignments <- ci_test_shards(plan[[key]], shards)
+  assignments <- ci_test_shards(
+    plan[[key]],
+    shards,
+    strategy = strategy,
+    weights = weights
+  )
   if (shard > length(assignments)) {
     stop("shard cannot be greater than shards", call. = FALSE)
   }
@@ -377,13 +389,14 @@ ci_parse_args <- function(args) {
     group = NULL,
     shard = 1L,
     shards = 1L,
+    strategy = "round-robin",
     list = FALSE,
     validate = FALSE
   )
   index <- 1L
   while (index <= length(args)) {
     argument <- args[[index]]
-    if (argument %in% c("--group", "--shard", "--shards")) {
+    if (argument %in% c("--group", "--shard", "--shards", "--strategy")) {
       if (index == length(args)) {
         stop("Missing value after ", argument, call. = FALSE)
       }
@@ -405,6 +418,13 @@ ci_parse_args <- function(args) {
       stop("Unknown argument: ", argument, call. = FALSE)
     }
   }
+  if (
+    length(options$strategy) != 1L ||
+      is.na(options$strategy) ||
+      !options$strategy %in% c("round-robin", "weighted")
+  ) {
+    stop("strategy must be round-robin or weighted", call. = FALSE)
+  }
   options
 }
 
@@ -424,6 +444,14 @@ ci_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   options <- ci_parse_args(args)
   repo_root <- ci_script_repo_root()
   plan <- ci_test_plan(file.path(repo_root, "tests", "testthat"))
+  weights <- if (identical(options$strategy, "weighted")) {
+    ci_test_runtime_weights(
+      plan,
+      file.path(repo_root, "scripts", "test-runtime-weights.csv")
+    )
+  } else {
+    NULL
+  }
 
   if (isTRUE(options$validate)) {
     message(
@@ -449,7 +477,9 @@ ci_main <- function(args = commandArgs(trailingOnly = TRUE)) {
     plan,
     group = options$group,
     shard = options$shard,
-    shards = options$shards
+    shards = options$shards,
+    strategy = options$strategy,
+    weights = weights
   )
   if (isTRUE(options$list)) {
     writeLines(files)

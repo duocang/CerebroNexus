@@ -225,6 +225,21 @@ test_that("browser shards allow slow process startup on shared CI runners", {
   )
 })
 
+test_that("the shard CLI accepts explicit weighted strategy", {
+  expect_identical(
+    test_plan_api$ci_parse_args(character())$strategy,
+    "round-robin"
+  )
+  expect_identical(
+    test_plan_api$ci_parse_args(c("--strategy", "weighted"))$strategy,
+    "weighted"
+  )
+  expect_error(
+    test_plan_api$ci_parse_args(c("--strategy", "unknown")),
+    "strategy"
+  )
+})
+
 test_that("new valid test files automatically join the logic group", {
   test_dir <- withr::local_tempdir()
   explicit <- c(
@@ -339,6 +354,7 @@ test_that("CI workflows use the shared plan without repeating package tests", {
     fixed = TRUE
   )
   expect_match(logic_job, "--shards 4", fixed = TRUE)
+  expect_match(logic_job, "--strategy weighted", fixed = TRUE)
   expect_match(process_sensitive_job, "name: process-sensitive", fixed = TRUE)
   expect_match(
     process_sensitive_job,
@@ -377,6 +393,7 @@ test_that("CI workflows use the shared plan without repeating package tests", {
     fixed = TRUE
   )
   expect_match(browser_job, "--shards 6", fixed = TRUE)
+  expect_match(browser_job, "--strategy weighted", fixed = TRUE)
   expect_match(
     browser_job,
     "name: shinytest2-failures-${{ matrix.shard }}-of-6",
