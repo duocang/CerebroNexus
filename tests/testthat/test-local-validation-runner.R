@@ -132,3 +132,165 @@ test_that("aggregate status remains nonzero after later successes", {
     0L
   )
 })
+
+test_that("real child processes obey the cap and keep separate logs", {
+  skip_if_not_installed("processx")
+  output_dir <- withr::local_tempdir()
+  rscript <- shQuote(file.path(R.home("bin"), "Rscript"))
+  jobs <- do.call(
+    rbind,
+    lapply(seq_len(3L), function(index) {
+      local_validation_api$local_validation_job(
+        "synthetic",
+        paste0("job-", index),
+        2L,
+        paste(
+          rscript,
+          "-e",
+          shQuote(paste0(
+            "cat('job-",
+            index,
+            "\\n'); Sys.sleep(0.25)"
+          ))
+        )
+      )
+    })
+  )
+
+  results <- local_validation_api$local_validation_run_phase(
+    jobs,
+    repo_root = test_path("..", ".."),
+    output_dir = output_dir,
+    poll_interval = 0.01
+  )
+
+  expect_identical(results$status, rep(0L, 3L))
+  expect_true(all(file.exists(results$log)))
+  expect_length(unique(results$log), 3L)
+  expect_true(all(vapply(
+    seq_len(3L),
+    function(index) {
+      grepl(
+        paste0("job-", index),
+        paste(readLines(results$log[[index]], warn = FALSE), collapse = "\n"),
+        fixed = TRUE
+      )
+    },
+    logical(1)
+  )))
+  overlaps <- vapply(
+    results$started,
+    function(started) {
+      sum(results$started <= started & results$ended > started)
+    },
+    integer(1)
+  )
+  expect_lte(max(overlaps), 2L)
+  expect_gte(max(overlaps), 2L)
+})
+
+test_that("a failed child does not prevent later jobs from running", {
+  skip_if_not_installed("processx")
+  output_dir <- withr::local_tempdir()
+  rscript <- shQuote(file.path(R.home("bin"), "Rscript"))
+  jobs <- rbind(
+    local_validation_api$local_validation_job(
+      "synthetic",
+      "fails",
+      1L,
+      paste(rscript, "-e", shQuote("quit(status = 7L)"))
+    ),
+    local_validation_api$local_validation_job(
+      "synthetic",
+      "runs-after-failure",
+      1L,
+      paste(rscript, "-e", shQuote("cat('completed\\n')"))
+    )
+  )
+
+  results <- local_validation_api$local_validation_run_phase(
+    jobs,
+    repo_root = test_path("..", ".."),
+    output_dir = output_dir,
+    poll_interval = 0.01
+  )
+
+  expect_identical(results$status, c(7L, 0L))
+  expect_match(
+    paste(readLines(results$log[[2L]], warn = FALSE), collapse = "\n"),
+    "completed",
+    fixed = TRUE
+  )
+  expect_identical(
+    local_validation_api$local_validation_exit_code(results$status),
+    1L
+  )
+})
+
+test_that("browser jobs receive isolated runtime environment", {
+  output_dir <- withr::local_tempdir()
+  schedule <- local_validation_api$local_validation_schedule(
+    mode = "tests",
+    output_dir = output_dir
+  )
+  browser <- schedule[schedule$phase == "browser", , drop = FALSE]
+  environments <- lapply(
+    seq_len(nrow(browser)),
+    function(index) {
+      local_validation_api$local_validation_job_env(
+        browser[index, , drop = FALSE],
+        repo_root = test_path("..", "..")
+      )
+    }
+  )
+
+  expect_true(all(vapply(
+    environments,
+    function(environment) {
+      identical(unname(environment[["CEREBRO_RUN_BROWSER_TESTS"]]), "true")
+    },
+    logical(1)
+  )))
+  expect_identical(
+    vapply(
+      environments,
+      function(environment) {
+        unname(environment[["CEREBRO_TEST_ARTIFACT_DIR"]])
+      },
+      character(1)
+    ),
+    browser$artifact_dir
+  )
+})
+
+test_that("stray process preflight reports only recognizable launchers", {
+  lines <- c(
+    "101 R --vanilla -e shiny::runApp('app')",
+    "102 /usr/bin/Rscript ordinary-analysis.R",
+    "103 R -e cerebroApp::launch()"
+  )
+
+  expect_identical(
+    local_validation_api$local_validation_stray_processes(lines),
+    lines[c(1L, 3L)]
+  )
+})
+
+test_that("cleanup terminates only children owned by the runner", {
+  skip_if_not_installed("processx")
+  command <- file.path(R.home("bin"), "Rscript")
+  owned <- processx::process$new(command, c("-e", "Sys.sleep(10)"))
+  unrelated <- processx::process$new(command, c("-e", "Sys.sleep(10)"))
+  on.exit({
+    if (owned$is_alive()) {
+      owned$kill_tree()
+    }
+    if (unrelated$is_alive()) unrelated$kill_tree()
+  })
+
+  local_validation_api$local_validation_terminate_children(list(owned))
+  owned$wait(1000)
+
+  expect_false(owned$is_alive())
+  expect_true(unrelated$is_alive())
+})
