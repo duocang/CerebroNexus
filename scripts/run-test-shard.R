@@ -118,6 +118,108 @@ ci_test_plan <- function(test_dir = file.path("tests", "testthat")) {
   )
 }
 
+ci_test_runtime_weights <- function(
+  plan,
+  path = file.path("scripts", "test-runtime-weights.csv")
+) {
+  if (!file.exists(path)) {
+    stop("Test runtime weight registry does not exist: ", path, call. = FALSE)
+  }
+  records <- read.csv(
+    path,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  required <- c("group", "file", "seconds", "basis")
+  missing_columns <- setdiff(required, names(records))
+  if (length(missing_columns)) {
+    stop(
+      "Test runtime weight registry is missing column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  records <- records[, required, drop = FALSE]
+  records$group <- as.character(records$group)
+  records$file <- as.character(records$file)
+  records$basis <- as.character(records$basis)
+  records$seconds <- suppressWarnings(as.numeric(records$seconds))
+  duplicate_files <- unique(records$file[duplicated(records$file)])
+  if (length(duplicate_files)) {
+    stop(
+      "Test runtime weight registry has duplicate file(s): ",
+      paste(duplicate_files, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  if (
+    anyNA(records$seconds) ||
+      any(!is.finite(records$seconds)) ||
+      any(records$seconds <= 0)
+  ) {
+    stop("Test runtime weights must be finite positive numbers.", call. = FALSE)
+  }
+  valid_groups <- c("logic", "process-sensitive", "browser")
+  if (any(!records$group %in% valid_groups)) {
+    stop(
+      "Test runtime weight registry contains an unknown group.",
+      call. = FALSE
+    )
+  }
+  if (any(!records$basis %in% c("measured", "estimated"))) {
+    stop(
+      "Test runtime weight basis must be measured or estimated.",
+      call. = FALSE
+    )
+  }
+  stale <- setdiff(records$file, plan$all)
+  if (length(stale)) {
+    stop(
+      "Test runtime weight registry has stale file(s): ",
+      paste(stale, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  expected_group <- c(
+    setNames(rep("logic", length(plan$logic)), plan$logic),
+    setNames(
+      rep("process-sensitive", length(plan$process_sensitive)),
+      plan$process_sensitive
+    ),
+    setNames(rep("browser", length(plan$browser)), plan$browser)
+  )
+  wrong_group <- records$file[
+    records$group != unname(expected_group[records$file])
+  ]
+  if (length(wrong_group)) {
+    stop(
+      "Test runtime weight file is classified in the wrong group: ",
+      paste(wrong_group, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  files <- sort(plan$all)
+  weights <- setNames(rep(NA_real_, length(files)), files)
+  weights[records$file] <- records$seconds
+  missing_files <- names(weights)[is.na(weights)]
+  measured <- records[records$basis == "measured", , drop = FALSE]
+  overall_default <- if (nrow(measured)) median(measured$seconds) else 1
+  for (file in missing_files) {
+    group <- unname(expected_group[[file]])
+    group_values <- measured$seconds[measured$group == group]
+    weights[[file]] <- if (length(group_values)) {
+      median(group_values)
+    } else {
+      overall_default
+    }
+  }
+  attr(weights, "estimated") <- sort(unique(c(
+    records$file[records$basis == "estimated"],
+    missing_files
+  )))
+  weights
+}
+
 ci_test_shards <- function(files, shards) {
   if (
     length(shards) != 1L || is.na(shards) || shards < 1L || shards %% 1L != 0L

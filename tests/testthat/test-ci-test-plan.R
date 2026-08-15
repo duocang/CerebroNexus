@@ -52,6 +52,85 @@ test_that("shard assignment is deterministic and lossless", {
   expect_length(unlist(first, use.names = FALSE), length(plan$logic))
 })
 
+test_that("runtime weights validate records and fill new files by group", {
+  plan <- list(
+    all = c("test-a.R", "test-b.R", "test-c.R"),
+    logic = c("test-a.R", "test-b.R"),
+    process_sensitive = character(),
+    browser = "test-c.R"
+  )
+  weights_path <- withr::local_tempfile(fileext = ".csv")
+  write.csv(
+    data.frame(
+      group = c("logic", "browser"),
+      file = c("test-a.R", "test-c.R"),
+      seconds = c(10, 20),
+      basis = c("measured", "measured")
+    ),
+    weights_path,
+    row.names = FALSE
+  )
+
+  weights <- test_plan_api$ci_test_runtime_weights(plan, weights_path)
+
+  expect_identical(names(weights), sort(plan$all))
+  expect_identical(as.numeric(weights), c(10, 10, 20))
+  expect_true(all(is.finite(weights) & weights > 0))
+  expect_identical(attr(weights, "estimated"), "test-b.R")
+})
+
+test_that("runtime weights reject malformed or stale records", {
+  plan <- list(
+    all = c("test-a.R", "test-b.R"),
+    logic = "test-a.R",
+    process_sensitive = character(),
+    browser = "test-b.R"
+  )
+  weights_path <- withr::local_tempfile(fileext = ".csv")
+  write_weights <- function(group, file, seconds, basis = "measured") {
+    write.csv(
+      data.frame(
+        group = group,
+        file = file,
+        seconds = seconds,
+        basis = basis
+      ),
+      weights_path,
+      row.names = FALSE
+    )
+  }
+
+  write_weights(c("logic", "logic"), c("test-a.R", "test-a.R"), c(1, 2))
+  expect_error(
+    test_plan_api$ci_test_runtime_weights(plan, weights_path),
+    "duplicate"
+  )
+
+  write_weights("logic", "test-a.R", 0)
+  expect_error(
+    test_plan_api$ci_test_runtime_weights(plan, weights_path),
+    "positive"
+  )
+
+  write_weights("unknown", "test-a.R", 1)
+  expect_error(
+    test_plan_api$ci_test_runtime_weights(plan, weights_path),
+    "group"
+  )
+
+  write_weights("logic", "test-stale.R", 1)
+  expect_error(
+    test_plan_api$ci_test_runtime_weights(plan, weights_path),
+    "stale"
+  )
+
+  write_weights("browser", "test-a.R", 1)
+  expect_error(
+    test_plan_api$ci_test_runtime_weights(plan, weights_path),
+    "classified"
+  )
+})
+
 test_that("browser shards allow slow process startup on shared CI runners", {
   withr::local_options(list(chromote.timeout = 10))
   withr::local_envvar(CEREBRO_PACKAGE_SOURCE = NA)
