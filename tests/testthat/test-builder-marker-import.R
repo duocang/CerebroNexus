@@ -6,6 +6,7 @@ test_that("Marker import module exposes its inventory contract", {
 
 test_that("Marker import inventories delimited files and workbook sheets", {
   skip_if_not(exists("builder_marker_import_inventory", mode = "function"))
+  skip_if_not_installed("writexl")
   csv <- tempfile(fileext = ".csv")
   tsv <- tempfile(fileext = ".tsv")
   xlsx <- tempfile(fileext = ".xlsx")
