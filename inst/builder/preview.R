@@ -711,7 +711,6 @@ builder_alignment_plot <- function(
   colors = NULL,
   image_uri = NULL,
   image_bounds = NULL,
-  image_preview = NULL,
   coordinate_frame = NULL,
   coordinate_transform = NULL,
   image_opacity = 0.8,
@@ -750,8 +749,7 @@ builder_alignment_plot <- function(
     ),
     text = hover,
     hoverinfo = "text",
-    showlegend = FALSE,
-    meta = list(builder_alignment_role = "points")
+    showlegend = FALSE
   )
   frame_bounds <- coordinate_frame %||% .builder_alignment_bounds(frame)
   initial_outline <- builder_alignment_coordinate_frame(frame_bounds)
@@ -770,7 +768,6 @@ builder_alignment_plot <- function(
       line = list(color = "#9a958d", width = 1, dash = "dot"),
       hoverinfo = "skip",
       showlegend = FALSE,
-      meta = list(builder_alignment_role = "initial-frame"),
       inherit = FALSE
     )
   }
@@ -785,7 +782,6 @@ builder_alignment_plot <- function(
       line = list(color = "#5f5a54", width = 1.5),
       hoverinfo = "skip",
       showlegend = FALSE,
-      meta = list(builder_alignment_role = "current-frame"),
       inherit = FALSE
     )
     rotation <- as.numeric(coordinate_transform$rotation_degrees %||% 0)
@@ -811,7 +807,6 @@ builder_alignment_plot <- function(
       marker = list(color = "#d45500", size = 6),
       hoverinfo = "skip",
       showlegend = FALSE,
-      meta = list(builder_alignment_role = "reference-edge"),
       inherit = FALSE
     )
     plot <- plotly::add_trace(
@@ -826,7 +821,6 @@ builder_alignment_plot <- function(
       textfont = list(color = "#d45500", size = 12),
       hoverinfo = "skip",
       showlegend = FALSE,
-      meta = list(builder_alignment_role = "reference-label"),
       inherit = FALSE
     )
   }
@@ -867,33 +861,6 @@ builder_alignment_plot <- function(
       scaleanchor = "x"
     ),
     margin = list(l = 12, r = 6, t = 6, b = 12),
-    meta = list(
-      builder_alignment_rotation = as.numeric(
-        coordinate_transform$rotation_degrees %||% 0
-      ),
-      builder_alignment_pivot = list(
-        x = (frame_bounds$xmin + frame_bounds$xmax) / 2,
-        y = (frame_bounds$ymin + frame_bounds$ymax) / 2
-      ),
-      builder_alignment_scale = as.numeric(
-        coordinate_transform$scale %||% 1
-      ),
-      builder_image_preview = if (is.null(image_preview)) {
-        NULL
-      } else {
-        list(
-          source = image_preview$source_uri,
-          base_bounds = image_preview$base_bounds,
-          dx = image_preview$dx,
-          dy = image_preview$dy,
-          scale = image_preview$scale,
-          rotation = image_preview$rotation,
-          flip_x = image_preview$flip_x,
-          flip_y = image_preview$flip_y,
-          image_opacity = image_preview$image_opacity
-        )
-      }
-    ),
     showlegend = FALSE,
     paper_bgcolor = "rgba(0,0,0,0)",
     plot_bgcolor = "rgba(0,0,0,0)"

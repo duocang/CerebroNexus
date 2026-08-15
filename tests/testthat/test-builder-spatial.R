@@ -333,6 +333,132 @@ test_that("pending tissue image requires its matching preview and snapshot", {
   )
 })
 
+test_that("dataset switches save discard or cancel an unsaved alignment", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  skip_if_not_installed("png")
+  skip_if_not_installed("base64enc")
+
+  image_path <- tempfile(fileext = ".png")
+  on.exit(unlink(image_path), add = TRUE)
+  write_dummy_png(image_path)
+  image <- png::readPNG(image_path)
+  encoded <- builder_encode_image(image)
+  record <- builder_alignment_record(
+    source = list(name = "section-a.png", type = "image/png"),
+    source_uri = encoded$uri,
+    uri = encoded$uri,
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    image_geometry = encoded,
+    saved = TRUE,
+    section = list(id = "section-a", kind = "spatial")
+  )
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "section-a", extras = list()),
+    settings = list(
+      name = "Dataset A",
+      images = list(`section-a` = list(`H&E` = record)),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(id = "section-a", kind = "spatial", unit = "pixels"),
+    projection_name = "umap",
+    capped = FALSE,
+    transcriptome = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(-1, 1),
+      y = c(-1, 1),
+      group = c("A", "B")
+    ),
+    spatial = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("A", "B")
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(preview)
+  spatial_coords <- shiny::reactiveVal(NULL)
+  switched <- character()
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(entry, images) {
+          entry$settings$images <- images
+          current_entry(entry)
+          invisible(entry)
+        },
+        alignment_preview = alignment_preview,
+        spatial_coords = spatial_coords
+      )
+    },
+    {
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+      expect_false(alignment$has_unsaved())
+
+      alignment$request_dataset_switch("dataset-b", function() {
+        switched <<- c(switched, "immediate")
+      })
+      expect_identical(switched, "immediate")
+
+      session$setInputs(`enhance-img_dx` = 0)
+      session$flushReact()
+      session$setInputs(`enhance-img_dx` = 2)
+      session$flushReact()
+      expect_true(alignment$has_unsaved())
+      alignment$request_dataset_switch("dataset-b", function() {
+        switched <<- c(switched, "cancelled")
+      })
+      session$setInputs(`enhance-alignment_switch_cancel` = 1L)
+      session$flushReact()
+      expect_identical(switched, "immediate")
+
+      alignment$request_dataset_switch("dataset-b", function() {
+        switched <<- c(switched, "discarded")
+      })
+      session$setInputs(`enhance-alignment_switch_discard` = 1L)
+      session$flushReact()
+      expect_identical(switched, c("immediate", "discarded"))
+      expect_false(alignment$has_unsaved())
+
+      session$setInputs(`enhance-img_dx` = 1)
+      session$flushReact()
+      expect_true(alignment$has_unsaved())
+      alignment$request_dataset_switch("dataset-b", function() {
+        switched <<- c(switched, "saved")
+      })
+      session$setInputs(`enhance-alignment_switch_save` = 1L)
+      session$flushReact()
+      expect_identical(switched, c("immediate", "discarded", "saved"))
+      expect_false(alignment$has_unsaved())
+      expect_identical(alignment$draft()$dx, 1)
+    }
+  )
+})
+
 test_that("duplicate tissue image can be confirmed with a unique label", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
@@ -669,12 +795,12 @@ test_that("alignment plot preserves decimal coordinate rotation labels", {
     coordinate_transform = transform
   ))
   traces <- plot$x$data
-  roles <- vapply(
+  label_traces <- vapply(
     traces,
-    function(trace) trace$meta$builder_alignment_role %||% "",
-    character(1)
+    function(trace) identical(trace$mode, "text"),
+    logical(1)
   )
-  label <- traces[[which(roles == "reference-label")]]$text
+  label <- traces[[which(label_traces)]]$text
 
   expect_identical(unname(label), "+37.5°")
 })

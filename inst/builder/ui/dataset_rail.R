@@ -310,6 +310,7 @@ builder_dataset_rail_server <- function(
   session,
   store,
   validate_remove,
+  select_dataset = function(id, commit) commit(),
   on_select = function(...) invisible(NULL),
   on_remove = function(...) invisible(NULL),
   on_undo = function(...) invisible(NULL),
@@ -320,6 +321,7 @@ builder_dataset_rail_server <- function(
   stopifnot(
     is.function(store),
     is.function(validate_remove),
+    is.function(select_dataset),
     is.function(on_select),
     is.function(on_remove),
     is.function(on_undo),
@@ -350,11 +352,29 @@ builder_dataset_rail_server <- function(
     if (is.null(id)) {
       return()
     }
-    store(builder_reduce_state(
-      state,
-      list(type = "select", id = id)
-    ))
-    on_select(id)
+    commit <- local({
+      requested_id <- id
+      committed <- FALSE
+      function() {
+        if (committed) {
+          return(invisible(FALSE))
+        }
+        latest <- shiny::isolate(store())
+        latest_ids <- vapply(latest$datasets, `[[`, character(1), "id")
+        selected_id <- .builder_rail_dataset_id(requested_id, latest_ids)
+        if (is.null(selected_id)) {
+          return(invisible(FALSE))
+        }
+        committed <<- TRUE
+        store(builder_reduce_state(
+          latest,
+          list(type = "select", id = selected_id)
+        ))
+        on_select(selected_id)
+        invisible(TRUE)
+      }
+    })
+    select_dataset(id, commit)
   })
   shiny::observeEvent(input$reorder_ds, {
     if (reject_locked()) {

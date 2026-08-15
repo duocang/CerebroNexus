@@ -22,6 +22,7 @@ builder_spatial_alignment_server <- function(
   active_image <- shiny::reactiveVal(NULL)
   pending_section <- shiny::reactiveVal(NULL)
   pending_image <- shiny::reactiveVal(NULL)
+  pending_dataset <- shiny::reactiveVal(NULL)
   pending_upload <- shiny::reactiveVal(NULL)
   preview_contract <- shiny::reactiveVal(NULL)
   expected_controls <- shiny::reactiveVal(NULL)
@@ -137,6 +138,11 @@ builder_spatial_alignment_server <- function(
     transforms <- entry$settings$spatial_coordinate_transforms %||% list()
     if (is.null(names(transforms))) {
       return(list())
+    }
+    for (section in names(transforms)) {
+      if (is.list(transforms[[section]])) {
+        transforms[[section]]$scale <- 1
+      }
     }
     transforms
   }
@@ -298,17 +304,11 @@ builder_spatial_alignment_server <- function(
   restore_coordinate_controls <- function(entry, section) {
     spec <- coordinate_spec_for(entry, section)
     coordinate_draft(spec)
-    ids <- c("enhance-coordinate_rotation", "enhance-coordinate_scale")
-    invisible(lapply(ids, function(id) shiny::freezeReactiveValue(input, id)))
+    shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
     shiny::updateSliderInput(
       session,
       "enhance-coordinate_rotation",
       value = spec$rotation_degrees
-    )
-    shiny::updateSliderInput(
-      session,
-      "enhance-coordinate_scale",
-      value = spec$scale
     )
   }
   switch_to <- function(entry, section, label = NULL) {
@@ -349,6 +349,7 @@ builder_spatial_alignment_server <- function(
     pending_upload(NULL)
     pending_section(NULL)
     pending_image(NULL)
+    pending_dataset(NULL)
     id <- current()
     entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
     if (is.null(entry)) {
@@ -418,15 +419,14 @@ builder_spatial_alignment_server <- function(
       list(
         rotation_degrees = input[["enhance-coordinate_rotation"]] %||%
           current_spec$rotation_degrees,
-        scale = input[["enhance-coordinate_scale"]] %||% current_spec$scale
+        scale = 1
       ),
       context = "Coordinate frame"
     )
   })
   shiny::observe({
     rotation <- input[["enhance-coordinate_rotation"]]
-    scale <- input[["enhance-coordinate_scale"]]
-    if (is.null(rotation) || is.null(scale)) {
+    if (is.null(rotation)) {
       return()
     }
     section <- active_section()
@@ -878,7 +878,6 @@ builder_spatial_alignment_server <- function(
       colors(),
       image_uri = record$uri %||% NULL,
       image_bounds = record$bounds %||% NULL,
-      image_preview = record,
       coordinate_frame = preview$coordinate_frame %||% NULL,
       coordinate_transform = preview$coordinate_transform %||% NULL,
       image_opacity = parameters()$image_opacity,
@@ -1049,17 +1048,11 @@ builder_spatial_alignment_server <- function(
     changed <- !identical(previous, transforms[[section]])
     coordinate_draft(spec)
     if (isTRUE(reset)) {
-      ids <- c("enhance-coordinate_rotation", "enhance-coordinate_scale")
-      invisible(lapply(ids, function(id) shiny::freezeReactiveValue(input, id)))
+      shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
       shiny::updateSliderInput(
         session,
         "enhance-coordinate_rotation",
         value = 0
-      )
-      shiny::updateSliderInput(
-        session,
-        "enhance-coordinate_scale",
-        value = 1
       )
       request_preview(entry, section)
     }
@@ -1334,17 +1327,71 @@ builder_spatial_alignment_server <- function(
     commit_section(entry, section, old)
     draft(old)
   }
+  request_dataset_switch <- function(target, commit) {
+    if (
+      !is.character(target) ||
+        length(target) != 1L ||
+        is.na(target) ||
+        !nzchar(target) ||
+        !is.function(commit)
+    ) {
+      return(invisible(FALSE))
+    }
+    current_draft <- shiny::isolate(draft())
+    if (is.null(current_draft) || isTRUE(current_draft$saved)) {
+      return(commit())
+    }
+    pending_section(NULL)
+    pending_image(NULL)
+    pending_dataset(list(
+      source = shiny::isolate(current()),
+      target = target,
+      commit = commit
+    ))
+    shiny::showModal(shiny::modalDialog(
+      title = "Save alignment changes?",
+      shiny::p(
+        "The current tissue image has unsaved alignment changes."
+      ),
+      easyClose = FALSE,
+      footer = shiny::tagList(
+        shiny::actionButton("enhance-alignment_switch_cancel", "Cancel"),
+        shiny::actionButton(
+          "enhance-alignment_switch_discard",
+          "Discard changes",
+          class = "btn btn-remove-soft"
+        ),
+        shiny::actionButton(
+          "enhance-alignment_switch_save",
+          "Save and continue",
+          class = "btn btn-action"
+        )
+      )
+    ))
+    invisible(TRUE)
+  }
   shiny::observeEvent(input[["enhance-alignment_switch_save"]], {
     section_target <- pending_section()
     image_target <- pending_image()
+    dataset_target <- pending_dataset()
     if (
-      (!is.null(section_target) || !is.null(image_target)) &&
+      (!is.null(section_target) ||
+        !is.null(image_target) ||
+        !is.null(dataset_target)) &&
         save_current(notify = FALSE)
     ) {
       shiny::removeModal()
       pending_section(NULL)
       pending_image(NULL)
-      if (!is.null(section_target)) {
+      pending_dataset(NULL)
+      if (!is.null(dataset_target)) {
+        if (
+          identical(dataset_target$source, shiny::isolate(current())) &&
+            is.function(dataset_target$commit)
+        ) {
+          dataset_target$commit()
+        }
+      } else if (!is.null(section_target)) {
         switch_to(entry_of(current()), section_target)
       } else {
         active_image(image_target)
@@ -1360,12 +1407,25 @@ builder_spatial_alignment_server <- function(
   shiny::observeEvent(input[["enhance-alignment_switch_discard"]], {
     section_target <- pending_section()
     image_target <- pending_image()
-    if (!is.null(section_target) || !is.null(image_target)) {
+    dataset_target <- pending_dataset()
+    if (
+      !is.null(section_target) ||
+        !is.null(image_target) ||
+        !is.null(dataset_target)
+    ) {
       discard_current()
       shiny::removeModal()
       pending_section(NULL)
       pending_image(NULL)
-      if (!is.null(section_target)) {
+      pending_dataset(NULL)
+      if (!is.null(dataset_target)) {
+        if (
+          identical(dataset_target$source, shiny::isolate(current())) &&
+            is.function(dataset_target$commit)
+        ) {
+          dataset_target$commit()
+        }
+      } else if (!is.null(section_target)) {
         switch_to(entry_of(current()), section_target)
       } else {
         active_image(image_target)
@@ -1382,15 +1442,22 @@ builder_spatial_alignment_server <- function(
     shiny::removeModal()
     pending_section(NULL)
     pending_image(NULL)
+    pending_dataset(NULL)
   })
 
   list(
     active_section = active_section,
     active_image = active_image,
     pending_image = pending_image,
+    pending_dataset = pending_dataset,
     draft = draft,
     pending_upload = pending_upload,
     raw_image = raw_image,
+    has_unsaved = shiny::reactive({
+      current_draft <- draft()
+      !is.null(current_draft) && !isTRUE(current_draft$saved)
+    }),
+    request_dataset_switch = request_dataset_switch,
     current_record = current_record
   )
 }

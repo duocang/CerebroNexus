@@ -340,24 +340,29 @@ test_that("enhancement groups and previews use one quiet density system", {
   js <- builder_asset_text("www", "builder.js")
   enhance_ui <- builder_asset_text("ui", "enhance_stage.R")
   alignment_server <- builder_asset_text("spatial_alignment_server.R")
-  expect_match(enhance_ui, 'ns("coordinate_scale")', fixed = TRUE)
+  expect_false(grepl('ns("coordinate_scale")', enhance_ui, fixed = TRUE))
+  expect_false(grepl(
+    "enhance-coordinate_scale",
+    alignment_server,
+    fixed = TRUE
+  ))
+  expect_false(grepl("enhance-coordinate_scale", js, fixed = TRUE))
+  for (client_renderer in c(
+    "spatialDraftRevision",
+    "scheduleSpatialAlignmentDraft",
+    "applyContinuousCoordinateTransform",
+    "scheduleContinuousCoordinateRotation",
+    "applyContinuousSpatialAlignment",
+    "scheduleContinuousSpatialAlignment"
+  )) {
+    expect_false(grepl(client_renderer, js, fixed = TRUE))
+  }
   expect_match(
     alignment_server,
-    'input[["enhance-coordinate_scale"]]',
+    "transforms[[section]] <- coordinate_draft()",
     fixed = TRUE
   )
-  expect_match(js, "scheduleContinuousSpatialAlignment", fixed = TRUE)
-  for (input_id in c(
-    "enhance-img_dx",
-    "enhance-img_dy",
-    "enhance-img_scale",
-    "enhance-img_rotate",
-    "enhance-image_opacity",
-    "enhance-point_opacity",
-    "enhance-point_size"
-  )) {
-    expect_match(js, input_id, fixed = TRUE)
-  }
+  expect_match(alignment_server, "record <- current_record()", fixed = TRUE)
   expect_match(js, "syncSpatialPreviewAspect", fixed = TRUE)
   expect_match(js, "syncSpatialWorkbench", fixed = TRUE)
   expect_match(js, 'sidebar.addEventListener("wheel"', fixed = TRUE)
@@ -1635,8 +1640,8 @@ test_that("result actions remain native keyboard controls", {
   for (id in c("open_app", "reveal_folder", "copy_path", "copy_report")) {
     expect_match(
       status,
-      paste0('actionButton(\n        "', id, '"'),
-      fixed = TRUE
+      paste0('actionButton\\(\\s*"', id, '"'),
+      perl = TRUE
     )
   }
   expect_false(grepl('tabindex = "-1"', status, fixed = TRUE))
@@ -1668,7 +1673,7 @@ test_that("transient layers expose state-bearing motion lifecycle", {
     expect_match(js, paste0("function ", function_name, "("), fixed = TRUE)
   }
   expect_match(js, 'getPropertyValue("--duration-normal")', fixed = TRUE)
-  expect_match(js, "var normalMotionDuration = 180", fixed = TRUE)
+  expect_match(js, "var normalMotionDuration = 220", fixed = TRUE)
   expect_match(js, "var match = duration.match(", fixed = TRUE)
   expect_match(js, 'match[2] === "ms"', fixed = TRUE)
   expect_match(js, "requestAnimationFrame", fixed = TRUE)

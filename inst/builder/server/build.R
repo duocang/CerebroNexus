@@ -560,6 +560,7 @@ rail_controller <- builder_dataset_rail_server(
   session = session,
   store = store,
   validate_remove = validate_rail_removal,
+  select_dataset = alignment_server$request_dataset_switch,
   on_select = function(id) {
     active_import_id(NULL)
     result(NULL)
