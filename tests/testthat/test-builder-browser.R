@@ -131,20 +131,22 @@ test_that("builder interaction reflows and preserves accessible state", {
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
 
-  app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-    timeout = 10000
-  )
-  app$click(selector = ".example-btn[data-ex=all_content]")
-  app$wait_for_js(
-    paste0(
-      "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
-      "document.querySelector('[aria-current=stage]') !== null && ",
-      "document.getElementById('continue_to_review') !== null"
-    ),
-    timeout = 60000
-  )
-  app$wait_for_idle(timeout = 30000)
+  builder_with_browser_diagnostics(app, "browser-accessible-load-example", {
+    app$wait_for_js(
+      "document.querySelector('.example-btn[data-ex=all_content]') !== null",
+      timeout = 10000
+    )
+    app$click(selector = ".example-btn[data-ex=all_content]")
+    app$wait_for_js(
+      paste0(
+        "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
+        "document.querySelector('[aria-current=stage]') !== null && ",
+        "document.getElementById('continue_to_review') !== null"
+      ),
+      timeout = 60000
+    )
+    app$wait_for_idle(timeout = 30000)
+  })
   expect_false(app$get_js(
     "getComputedStyle(document.body).overflowY === 'hidden'"
   ))
@@ -423,15 +425,17 @@ test_that("duplicate spatial image names open a usable naming modal", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
-  app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-    timeout = 10000
-  )
-  app$click(selector = ".example-btn[data-ex=all_content]")
-  app$wait_for_js(
-    "document.getElementById('enhance-tissue_image_file') !== null",
-    timeout = 60000
-  )
+  builder_with_browser_diagnostics(app, "browser-spatial-modal-load-example", {
+    app$wait_for_js(
+      "document.querySelector('.example-btn[data-ex=all_content]') !== null",
+      timeout = 10000
+    )
+    app$click(selector = ".example-btn[data-ex=all_content]")
+    app$wait_for_js(
+      "document.getElementById('enhance-tissue_image_file') !== null",
+      timeout = 60000
+    )
+  })
 
   app$upload_file(`enhance-tissue_image_file` = image_path)
   app$wait_for_js(

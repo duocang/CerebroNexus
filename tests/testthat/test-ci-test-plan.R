@@ -21,10 +21,17 @@ test_that("the CI test plan classifies every test file exactly once", {
 
 test_that("process-sensitive and browser tests cannot enter the logic pool", {
   plan <- test_plan_api$ci_test_plan(test_path())
+  browser_opt_in <- c(
+    "test-builder-loading-browser.R",
+    "test-builder-browser.R",
+    "test-builder-staged-workflow-browser.R"
+  )
 
   expect_identical(plan$process_sensitive, "test-builder-worker.R")
-  expect_false("test-builder-worker.R" %in% plan$logic)
+  expect_false("test-builder-worker.R" %in% c(plan$logic, plan$browser))
+  expect_length(plan$browser, 25L)
   expect_length(intersect(plan$browser, plan$logic), 0L)
+  expect_true(all(browser_opt_in %in% plan$browser))
   expect_true(all(
     c(
       "test-generated-app-multidataset.R",
@@ -108,16 +115,111 @@ test_that("CI workflows use the shared plan without repeating package tests", {
       workflow_lines
     )
   ]
-  r_tests <- paste(
-    readLines(file.path(workflow_dir, "R-tests.yaml"), warn = FALSE),
-    collapse = "\n"
+  r_test_lines <- readLines(
+    file.path(workflow_dir, "R-tests.yaml"),
+    warn = FALSE
   )
+  r_tests <- paste(r_test_lines, collapse = "\n")
   r_cmd_check <- paste(
     readLines(file.path(workflow_dir, "R-cmd-check.yaml"), warn = FALSE),
     collapse = "\n"
   )
+  workflow_job <- function(job_name) {
+    job_starts <- grep("^  [[:alnum:]_-]+:$", r_test_lines)
+    target <- grep(paste0("^  ", job_name, ":$"), r_test_lines)
+    if (length(target) != 1L) {
+      stop(
+        "Expected exactly one top-level workflow job named ",
+        job_name,
+        call. = FALSE
+      )
+    }
+    following_jobs <- job_starts[job_starts > target]
+    end <- if (length(following_jobs)) {
+      following_jobs[[1L]] - 1L
+    } else {
+      length(r_test_lines)
+    }
+    job_lines <- r_test_lines[seq.int(target, end)]
+    job_lines <- job_lines[!grepl("^[[:space:]]*#", job_lines)]
+    paste(job_lines, collapse = "\n")
+  }
+  logic_job <- workflow_job("logic")
+  process_sensitive_job <- workflow_job("process_sensitive")
+  browser_job <- workflow_job("browser")
+  summary_job <- workflow_job("test")
 
   expect_match(r_tests, "scripts/run-test-shard.R", fixed = TRUE)
+  expect_match(
+    logic_job,
+    "name: logic (${{ matrix.shard }}/4)",
+    fixed = TRUE
+  )
+  expect_match(logic_job, "shard: [1, 2, 3, 4]", fixed = TRUE)
+  expect_match(
+    logic_job,
+    "name: Run logic shard ${{ matrix.shard }}/4",
+    fixed = TRUE
+  )
+  expect_match(logic_job, "--shards 4", fixed = TRUE)
+  expect_match(process_sensitive_job, "name: process-sensitive", fixed = TRUE)
+  expect_match(
+    process_sensitive_job,
+    "--group process-sensitive",
+    fixed = TRUE
+  )
+  expect_match(
+    browser_job,
+    "name: browser (${{ matrix.shard }}/6)",
+    fixed = TRUE
+  )
+  expect_match(browser_job, "fail-fast: false", fixed = TRUE)
+  expect_match(browser_job, "max-parallel: 6", fixed = TRUE)
+  expect_match(browser_job, "shard: [1, 2, 3, 4, 5, 6]", fixed = TRUE)
+  expect_match(
+    browser_job,
+    "GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}",
+    fixed = TRUE
+  )
+  expect_match(
+    browser_job,
+    'CEREBRO_RUN_BROWSER_TESTS: "true"',
+    fixed = TRUE
+  )
+  expect_match(
+    browser_job,
+    paste0(
+      "CEREBRO_TEST_ARTIFACT_DIR: ",
+      "tests/testthat/_artifacts/browser-${{ matrix.shard }}-of-6"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    browser_job,
+    "name: Run browser shard ${{ matrix.shard }}/6",
+    fixed = TRUE
+  )
+  expect_match(browser_job, "--shards 6", fixed = TRUE)
+  expect_match(
+    browser_job,
+    "name: shinytest2-failures-${{ matrix.shard }}-of-6",
+    fixed = TRUE
+  )
+  expect_match(browser_job, "name: Upload test artifacts", fixed = TRUE)
+  expect_match(browser_job, "if: always()", fixed = TRUE)
+  expect_match(
+    browser_job,
+    "tests/testthat/_artifacts/",
+    fixed = TRUE
+  )
+  expect_match(browser_job, "tests/testthat/_snaps/", fixed = TRUE)
+  expect_match(browser_job, "/tmp/shinytest2*", fixed = TRUE)
+  expect_match(summary_job, "name: test", fixed = TRUE)
+  expect_match(
+    summary_job,
+    "needs: [logic, process_sensitive, browser]",
+    fixed = TRUE
+  )
   expect_false(any(grepl(
     "testthat::test",
     active_workflow_lines,

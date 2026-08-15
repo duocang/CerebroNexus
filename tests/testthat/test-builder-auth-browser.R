@@ -67,22 +67,28 @@ builder_auth_browser_picker <- function(
 }
 
 builder_auth_browser_load_example <- function(app, example = "all_content") {
-  app$wait_for_js(
-    sprintf(
-      paste0(
-        "window.Shiny && Shiny.shinyapp && ",
-        "document.querySelector('.example-btn[data-ex=%s]') !== null"
-      ),
-      example
-    ),
-    timeout = 60000
+  builder_with_browser_diagnostics(
+    app,
+    paste0("auth-load-example-", example),
+    {
+      app$wait_for_js(
+        sprintf(
+          paste0(
+            "window.Shiny && Shiny.shinyapp && ",
+            "document.querySelector('.example-btn[data-ex=%s]') !== null"
+          ),
+          example
+        ),
+        timeout = 60000
+      )
+      app$click(selector = sprintf(".example-btn[data-ex=%s]", example))
+      app$wait_for_js(
+        "document.querySelector('.ds-pick[aria-current=true]') !== null",
+        timeout = 60000
+      )
+      app$wait_for_idle(timeout = 30000)
+    }
   )
-  app$click(selector = sprintf(".example-btn[data-ex=%s]", example))
-  app$wait_for_js(
-    "document.querySelector('.ds-pick[aria-current=true]') !== null",
-    timeout = 60000
-  )
-  app$wait_for_idle(timeout = 30000)
 }
 
 builder_auth_browser_enable_login <- function(app) {

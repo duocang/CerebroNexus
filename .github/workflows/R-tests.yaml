@@ -79,17 +79,19 @@ jobs:
           "Rscript scripts/run-test-shard.R --group process-sensitive"
 
   browser:
-    name: browser (${{ matrix.shard }}/4)
+    name: browser (${{ matrix.shard }}/6)
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 6
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      CEREBRO_RUN_BROWSER_TESTS: "true"
+      CEREBRO_TEST_ARTIFACT_DIR: tests/testthat/_artifacts/browser-${{ matrix.shard }}-of-6
 
     steps:
       - uses: actions/checkout@v6
@@ -106,20 +108,21 @@ jobs:
       - name: Install R package dependencies
         run: nix-shell default.nix --run "echo 'R package dependencies installed'"
 
-      - name: Run browser shard ${{ matrix.shard }}/4
+      - name: Run browser shard ${{ matrix.shard }}/6
         run: >-
           nix-shell default.nix --run
           "Rscript scripts/run-test-shard.R
           --group browser
           --shard ${{ matrix.shard }}
-          --shards 4"
+          --shards 6"
 
-      - name: Upload test artifacts on failure
-        if: failure()
+      - name: Upload test artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shinytest2-failures-${{ matrix.shard }}-of-4
+          name: shinytest2-failures-${{ matrix.shard }}-of-6
           path: |
+            tests/testthat/_artifacts/
             tests/testthat/_snaps/
             /tmp/shinytest2*
           retention-days: 14
