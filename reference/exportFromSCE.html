@@ -9,7 +9,7 @@ object to visualize in Cerebro."><meta property="og:image" content="https://mihe
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.3.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -22,6 +22,7 @@ object to visualize in Cerebro."><meta property="og:image" content="https://mihe
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Workflows</h6></li>
+    <li><a class="dropdown-item" href="../articles/build_a_data_set_by_pointing.html">Build a data set without writing code</a></li>
     <li><a class="dropdown-item" href="../articles/cerebronexus_workflow_seurat.html">Introduction to the CerebroNexus workflow (Seurat)</a></li>
     <li><a class="dropdown-item" href="../articles/export_a_data_set_in_SCE_format.html">Export a data set in SCE format</a></li>
     <li><hr class="dropdown-divider"></li>
@@ -71,7 +72,7 @@ object to visualize in Cerebro."><meta property="og:image" content="https://mihe
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Export SingleCellExperiment (SCE) object to Cerebro.</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/R/exportFromSCE.R" class="external-link"><code>R/exportFromSCE.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/integration/colleague-spatial-builder/R/exportFromSCE.R" class="external-link"><code>R/exportFromSCE.R</code></a></small>
       <div class="d-none name"><code>exportFromSCE.Rd</code></div>
     </div>
 
@@ -188,19 +189,19 @@ defaults to <code>FALSE</code>.</p></dd>
 <span class="r-in"><span>  use_delayed_array <span class="op">=</span> <span class="cn">FALSE</span>,</span></span>
 <span class="r-in"><span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] Initializing Cerebro object...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] Collecting available meta data...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] Extracting all meta data columns...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] Extracting dimensional reductions...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] Will export the following dimensional reductions: UMAP</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] No trajectories to extract...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] Overview of Cerebro object:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:55] Initializing Cerebro object...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:55] Collecting available meta data...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:55] Extracting all meta data columns...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:55] Extracting dimensional reductions...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:55] Will export the following dimensional reductions: UMAP</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] No trajectories to extract...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Overview of Cerebro object:</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> class: Cerebro</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> exporter package version: 4.3.0</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> exporter package version: 5.0.0</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> experiment name: PBMC</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> organism: hg</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> date of analysis: </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> date of export: 2026-08-13</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> date of export: 2026-08-15</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> number of cells: 80</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> number of genes: 230</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> grouping variables (2): sample, cluster</span>
@@ -215,8 +216,8 @@ defaults to <code>FALSE</code>.</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Immune repertoire:</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> HLA typing: none</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Spatial data:</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] Saving Cerebro object to: /tmp/nix-shell-4351-1569210743/RtmpJGibug/pbmc_SCE.crb</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:17] Done!</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Saving Cerebro object to: /tmp/nix-shell-4206-2734747124/Rtmpdxre0M/pbmc_SCE.crb</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Done!</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.3.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -20,6 +20,7 @@
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Workflows</h6></li>
+    <li><a class="dropdown-item" href="../articles/build_a_data_set_by_pointing.html">Build a data set without writing code</a></li>
     <li><a class="dropdown-item" href="../articles/cerebronexus_workflow_seurat.html">Introduction to the CerebroNexus workflow (Seurat)</a></li>
     <li><a class="dropdown-item" href="../articles/export_a_data_set_in_SCE_format.html">Export a data set in SCE format</a></li>
     <li><hr class="dropdown-divider"></li>
@@ -69,7 +70,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Export Seurat object to Cerebro.</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/R/exportFromSeurat.R" class="external-link"><code>R/exportFromSeurat.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/integration/colleague-spatial-builder/R/exportFromSeurat.R" class="external-link"><code>R/exportFromSeurat.R</code></a></small>
       <div class="d-none name"><code>exportFromSeurat.Rd</code></div>
     </div>
 
@@ -96,7 +97,9 @@
 <span>  expression_matrix_mode <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"embedded"</span>, <span class="st">"bpcells"</span>, <span class="st">"h5"</span><span class="op">)</span>,</span>
 <span>  spatial_images <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  .expression_resolution <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  .expression_resolution <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  projections <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  spatial_coordinate_transforms <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -233,6 +236,21 @@ defaults to <code>FALSE</code>.</p></dd>
 <code><a href="convertSeuratToCerebro.html">convertSeuratToCerebro()</a></code> to reuse a matrix that has already been
 resolved and validated. Users should leave this as <code>NULL</code>.</p></dd>
 
+
+<dt id="arg-projections">projections<a class="anchor" aria-label="anchor" href="#arg-projections"></a></dt>
+<dd><p>Optional ordered names of dimensional reductions to
+export. When supplied, every named reduction is exported in that order,
+including PCA beside other projections. The default <code>NULL</code> preserves
+the legacy behavior that uses non-PCA reductions when they are available.</p></dd>
+
+
+<dt id="arg-spatial-coordinate-transforms">spatial_coordinate_transforms<a class="anchor" aria-label="anchor" href="#arg-spatial-coordinate-transforms"></a></dt>
+<dd><p>Optional named list of coordinate
+transforms keyed by exact Seurat spatial FOV/image name. Each entry may
+specify <code>rotation_degrees</code> and positive uniform <code>scale</code>; the pivot
+is the coordinate bounds center. Normalized provenance is stored with the
+transformed CRB spatial record.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -278,22 +296,22 @@ genotype is never mistaken for a directly typed one.</p>
 <span class="r-in"><span>  use_delayed_array <span class="op">=</span> <span class="cn">FALSE</span>,</span></span>
 <span class="r-in"><span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Initializing Cerebro object...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Adding expression data (embedded)...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Collecting available meta data...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Extracting all meta data columns...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Extracting dimensional reductions...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Will export the following dimensional reductions: umap</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Extracting marker genes table...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] No trajectories to extract...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Checking for spatial data...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Overview of Cerebro object:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Initializing Cerebro object...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Adding expression data (embedded)...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Collecting available meta data...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Extracting all meta data columns...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Extracting dimensional reductions...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Will export the following dimensional reductions: umap</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Extracting marker genes table...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] No trajectories to extract...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Checking for spatial data...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Overview of Cerebro object:</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> class: Cerebro</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> exporter package version: 4.3.0</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> exporter package version: 5.0.0</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> experiment name: PBMC</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> organism: hg</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> date of analysis: </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> date of export: 2026-08-13</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> date of export: 2026-08-15</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> number of cells: 80</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> number of genes: 230</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> grouping variables (2): sample, seurat_clusters</span>
@@ -309,8 +327,8 @@ genotype is never mistaken for a directly typed one.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Immune repertoire:</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> HLA typing: none</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Spatial data:</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Saving Cerebro object to: /tmp/nix-shell-4351-1569210743/RtmpJGibug/pbmc_Seurat.crb</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [19:06:18] Done!</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Saving Cerebro object to: /tmp/nix-shell-4206-2734747124/Rtmpdxre0M/pbmc_Seurat.crb</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:01:56] Done!</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

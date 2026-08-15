@@ -36,6 +36,8 @@ createShinyApp(
   spatial_images_offset_x = NULL,
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
+  initial_dataset = NULL,
+  initial_page = NULL,
   auth = NULL,
   ...
 )
@@ -86,7 +88,14 @@ createShinyApp(
 
 - colors:
 
-  Optional named list of colour palettes per dataset.
+  Optional colour palettes, keyed by data set label, then by grouping
+  variable, then by group level:
+  `list("PBMC example" = list(sample = c(sample_1 = "#1f77b4")))`. The
+  level names have to be the ones in the data. A palette may cover only
+  some levels; the rest keep their default colour. Anything R cannot
+  read as a colour, or a label that is not in `cerebro_data`, is
+  reported here rather than ignored at runtime. Users can still override
+  a colour in the Color management tab, which wins for that session.
 
 - cerebro_options:
 
@@ -200,6 +209,18 @@ createShinyApp(
 
   Named list/vector; initial rotation (degrees) applied to spatial cell
   coordinates. Names must match `cerebro_data`.
+
+- initial_dataset:
+
+  Optional exact data set label to load initially. This does not change
+  the order of `cerebro_data`. URL selection and a session's current
+  selection take precedence.
+
+- initial_page:
+
+  Optional stable Viewer page identifier to open after the initial data
+  set loads. Defaults to the existing Data info start page when omitted
+  and is applied only once per Viewer session.
 
 - auth:
 

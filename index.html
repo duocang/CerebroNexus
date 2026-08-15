@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.3.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -37,6 +37,7 @@
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
 <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Workflows</h6></li>
+    <li><a class="dropdown-item" href="articles/build_a_data_set_by_pointing.html">Build a data set without writing code</a></li>
     <li><a class="dropdown-item" href="articles/cerebronexus_workflow_seurat.html">Introduction to the CerebroNexus workflow (Seurat)</a></li>
     <li><a class="dropdown-item" href="articles/export_a_data_set_in_SCE_format.html">Export a data set in SCE format</a></li>
     <li><hr class="dropdown-divider"></li>
@@ -110,7 +111,14 @@
 <div class="section level2">
 <h2 id="id_2-quick-start">2. Quick Start<a class="anchor" aria-label="anchor" href="#id_2-quick-start"></a>
 </h2>
+<p>For a guided local workflow, launch the Dataset Builder:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mihem.github.io/CerebroNexus/">CerebroNexus</a></span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/launchCerebroBuilder.html">launchCerebroBuilder</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<p>The Builder leads you through <strong>Import and Inspect</strong>, <strong>Core setup</strong>, <strong>Enhance content</strong>, and <strong>Review and Build</strong>. It reads trusted Seurat objects on the machine running R, freezes private snapshots for repeatable builds, and can publish CRBs alone, a public generated app, or a login-protected generated app with multiple local accounts. Review the planned payload targets and snapshot-based disk estimate before anything is replaced. The published release also adds <code>build-report.json</code> and the <code>.cerebro-builder-release-v1</code> ownership record.</p>
+<p>See <a href="https://mihem.github.io/CerebroNexus/articles/build_a_data_set_by_pointing.html">Build a data set without writing code</a> for the complete workflow, examples, privacy boundary, and recovery model.</p>
+<p>For a scripted export, use the package API directly:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mihem.github.io/CerebroNexus/">CerebroNexus</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="reference/convertSeuratToCerebro.html">convertSeuratToCerebro</a></span><span class="op">(</span></span>

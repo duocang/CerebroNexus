@@ -11,7 +11,7 @@ the data to Cerebro format for visualization."><meta property="og:image" content
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.3.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -24,6 +24,7 @@ the data to Cerebro format for visualization."><meta property="og:image" content
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Workflows</h6></li>
+    <li><a class="dropdown-item" href="../articles/build_a_data_set_by_pointing.html">Build a data set without writing code</a></li>
     <li><a class="dropdown-item" href="../articles/cerebronexus_workflow_seurat.html">Introduction to the CerebroNexus workflow (Seurat)</a></li>
     <li><a class="dropdown-item" href="../articles/export_a_data_set_in_SCE_format.html">Export a data set in SCE format</a></li>
     <li><hr class="dropdown-divider"></li>
@@ -73,7 +74,7 @@ the data to Cerebro format for visualization."><meta property="og:image" content
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Convert Seurat Object to Cerebro Format</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/R/convertSeuratToCerebro.R" class="external-link"><code>R/convertSeuratToCerebro.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/integration/colleague-spatial-builder/R/convertSeuratToCerebro.R" class="external-link"><code>R/convertSeuratToCerebro.R</code></a></small>
       <div class="d-none name"><code>convertSeuratToCerebro.Rd</code></div>
     </div>
 
@@ -108,7 +109,8 @@ the data to Cerebro format for visualization.</p>
 <span>  add_most_expressed_genes <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  most_expressed_genes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  bcr_file <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  tcr_file <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  tcr_file <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  spatial_coordinate_transforms <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -211,6 +213,12 @@ vector is path shorthand; a leaf may instead be
 ymax = ...))</code>. Missing bounds are derived from the exported coordinates.
 Supplied images are embedded in the generated CRB; existing embedded images
 declared by the Seurat object are retained.</p></dd>
+
+
+<dt id="arg-spatial-coordinate-transforms">spatial_coordinate_transforms<a class="anchor" aria-label="anchor" href="#arg-spatial-coordinate-transforms"></a></dt>
+<dd><p>Optional named list of spatial
+coordinate transforms keyed by exact Seurat FOV/image name. Entries are
+forwarded unchanged to <code><a href="exportFromSeurat.html">exportFromSeurat()</a></code>.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>

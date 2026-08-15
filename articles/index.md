@@ -2,6 +2,8 @@
 
 ### Workflows
 
+- [Build a data set without writing
+  code](https://mihem.github.io/CerebroNexus/articles/build_a_data_set_by_pointing.md):
 - [Introduction to the CerebroNexus workflow
   (Seurat)](https://mihem.github.io/CerebroNexus/articles/cerebronexus_workflow_seurat.md):
 - [Export a data set in SCE

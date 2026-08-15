@@ -4,6 +4,9 @@
 
 - [`launchCerebro()`](https://mihem.github.io/CerebroNexus/reference/launchCerebro.md)
   : Launch CerebroNexus
+- [`launchCerebroBuilder()`](https://mihem.github.io/CerebroNexus/reference/launchCerebroBuilder.md)
+  : Build a Cerebro data set from a Seurat object, by pointing and
+  clicking.
 
 ## Export data
 
@@ -66,5 +69,8 @@
   : Normalize any accepted HLA input into the canonical long table
 - [`launchCerebro()`](https://mihem.github.io/CerebroNexus/reference/launchCerebro.md)
   : Launch CerebroNexus
+- [`launchCerebroBuilder()`](https://mihem.github.io/CerebroNexus/reference/launchCerebroBuilder.md)
+  : Build a Cerebro data set from a Seurat object, by pointing and
+  clicking.
 - [`performGeneSetEnrichmentAnalysis()`](https://mihem.github.io/CerebroNexus/reference/performGeneSetEnrichmentAnalysis.md)
   : Perform gene set enrichment analysis with GSVA.

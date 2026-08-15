@@ -34,6 +34,30 @@ remotes::install_github('mihem/CerebroNexus')
 
 ## 2. Quick Start
 
+For a guided local workflow, launch the Dataset Builder:
+
+``` r
+library(CerebroNexus)
+launchCerebroBuilder()
+```
+
+The Builder leads you through **Import and Inspect**, **Core setup**,
+**Enhance content**, and **Review and Build**. It reads trusted Seurat
+objects on the machine running R, freezes private snapshots for
+repeatable builds, and can publish CRBs alone, a public generated app,
+or a login-protected generated app with multiple local accounts. Review
+the planned payload targets and snapshot-based disk estimate before
+anything is replaced. The published release also adds
+`build-report.json` and the `.cerebro-builder-release-v1` ownership
+record.
+
+See [Build a data set without writing
+code](https://mihem.github.io/CerebroNexus/articles/build_a_data_set_by_pointing.html)
+for the complete workflow, examples, privacy boundary, and recovery
+model.
+
+For a scripted export, use the package API directly:
+
 ``` r
 library(CerebroNexus)
 
