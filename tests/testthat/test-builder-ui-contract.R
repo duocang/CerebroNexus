@@ -357,12 +357,11 @@ test_that("enhancement groups and previews use one quiet density system", {
   )) {
     expect_false(grepl(client_renderer, js, fixed = TRUE))
   }
-  expect_match(
-    alignment_server,
-    "transforms[[section]] <- coordinate_draft()",
-    fixed = TRUE
-  )
-  expect_match(alignment_server, "record <- current_record()", fixed = TRUE)
+  canvas_js <- builder_asset_text("www", "builder-spatial-canvas.js")
+  expect_match(alignment_server, "builder_spatial_canvas_scene(", fixed = TRUE)
+  expect_match(alignment_server, "current_record(encode = TRUE)", fixed = TRUE)
+  expect_match(canvas_js, "requestAnimationFrame", fixed = TRUE)
+  expect_false(grepl("Plotly", canvas_js, fixed = TRUE))
   expect_match(js, "syncSpatialPreviewAspect", fixed = TRUE)
   expect_match(js, "syncSpatialWorkbench", fixed = TRUE)
   expect_match(js, 'sidebar.addEventListener("wheel"', fixed = TRUE)
@@ -1652,12 +1651,17 @@ test_that("spatial translation does not invalidate image encoding", {
     builder_asset_path("spatial_alignment_server.R"),
     warn = FALSE
   )
-  start <- grep("encoded <- shiny::reactive", lines, fixed = TRUE)
-  finish <- grep("current_record <- shiny::reactive", lines, fixed = TRUE)
+  start <- grep("encode_current_image <- function", lines, fixed = TRUE)
+  finish <- grep("current_record <- function", lines, fixed = TRUE)
   encoded <- paste(lines[start:(finish - 1L)], collapse = "\n")
 
   expect_false(grepl("img_dx|img_dy|img_scale|opacity|point_size", encoded))
   expect_match(encoded, "orientation()", fixed = TRUE)
+  expect_match(
+    paste(lines, collapse = "\n"),
+    "current_record(encode = TRUE)",
+    fixed = TRUE
+  )
 })
 
 test_that("transient layers expose state-bearing motion lifecycle", {

@@ -315,13 +315,23 @@ builder_tissue_image_file_ui <- function(id, record) {
 builder_alignment_plot_output <- function(id, label) {
   div(
     class = "spatial-alignment-plot-frame",
-    `aria-label` = label,
-    role = "img",
-    plotly::plotlyOutput(
-      id,
-      width = "100%",
-      height = "100%",
-      inline = FALSE
+    tags$canvas(
+      id = id,
+      class = "builder-spatial-canvas",
+      role = "img",
+      `aria-label` = label,
+      `aria-describedby` = paste0(id, "-summary")
+    ),
+    tags$div(
+      id = paste0(id, "-tooltip"),
+      class = "builder-spatial-canvas-tooltip",
+      role = "tooltip",
+      hidden = "hidden"
+    ),
+    tags$p(
+      id = paste0(id, "-summary"),
+      class = "visually-hidden builder-spatial-canvas-summary",
+      "Spatial alignment preview is loading."
     )
   )
 }

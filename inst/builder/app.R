@@ -307,6 +307,12 @@ ui <- tagList(
     builder_stylesheet_tags(),
     tags$script(src = paste0("icons.js", asset_stamp("www/icons.js"))),
     tags$script(src = paste0("stats.js", asset_stamp("www/stats.js"))),
+    tags$script(
+      src = paste0(
+        "builder-spatial-canvas.js",
+        asset_stamp("www/builder-spatial-canvas.js")
+      )
+    ),
     tags$script(src = paste0("builder.js", asset_stamp("www/builder.js"))),
     tags$script(HTML(
       paste0(

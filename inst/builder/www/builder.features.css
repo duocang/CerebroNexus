@@ -128,12 +128,24 @@
   border-radius: 0;
   background: var(--c-surface);
 }
-.spatial-alignment-plot-frame > .plotly,
-.spatial-alignment-plot-frame .plot-container,
-.spatial-alignment-plot-frame .svg-container,
-.spatial-alignment-plot-frame .js-plotly-plot {
+.builder-spatial-canvas {
+  display: block;
   width: 100% !important;
   height: 100% !important;
+}
+.builder-spatial-canvas-tooltip {
+  position: absolute;
+  z-index: 2;
+  max-width: 16rem;
+  padding: .35rem .5rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, .96);
+  box-shadow: var(--shadow-sm);
+  color: var(--c-text);
+  font-size: .75rem;
+  pointer-events: none;
+  transform: translate(.65rem, .65rem);
 }
 .spatial-alignment-legend-wrap {
   margin: 0;

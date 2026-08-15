@@ -81,7 +81,9 @@ builder_alignment_coordinate_frame <- function(bounds, transform = NULL) {
 #'
 #' Both frames are sampled with one shared index after joining by canonical
 #' cell barcode. That makes linked selection exact and prevents row-order drift.
-#' Full-data physical bounds are retained for deterministic image fitting.
+#' Full-data physical bounds are retained for deterministic image fitting. The
+#' worker returns raw sampled spatial coordinates; draft rotation belongs to the
+#' persistent browser renderer and canonical transformation remains an R concern.
 builder_alignment_preview_model <- function(
   object,
   default_projection = NULL,
@@ -232,22 +234,7 @@ builder_alignment_preview_model <- function(
       "The selected section has no safe paired spatial coordinates."
     ))
   }
-  coordinate_transform <- NULL
   coordinate_frame <- .builder_alignment_bounds(physical)
-  if (
-    is.list(coordinate_transforms) &&
-      !is.null(coordinate_transforms[[section$source_id]])
-  ) {
-    coordinate_transform <- .spx_coordinate_transform_normalize(
-      coordinate_transforms[[section$source_id]],
-      physical,
-      context = paste0("spatial_coordinate_transforms$", section$source_id)
-    )
-    physical <- .spx_apply_coordinate_transform(
-      physical,
-      coordinate_transforms[[section$source_id]]
-    )
-  }
   common <- intersect(
     transcriptome_full$cell_barcode,
     physical$cell_barcode
@@ -280,8 +267,68 @@ builder_alignment_preview_model <- function(
     spatial = spatial_full[keep, , drop = FALSE],
     bounds = .builder_alignment_bounds(spatial_full),
     coordinate_frame = coordinate_frame,
-    coordinate_transform = coordinate_transform,
+    coordinate_transform = NULL,
     capped = nrow(spatial_full) > length(keep)
+  )
+}
+
+builder_spatial_canvas_scene <- function(
+  preview,
+  colors,
+  record = NULL,
+  coordinate_transform = NULL,
+  identity,
+  generation,
+  reset_token = 0L
+) {
+  if (!isTRUE(preview$available)) {
+    return(list(
+      available = FALSE,
+      message = preview$message %||% "Spatial preview is unavailable.",
+      viewKey = identity,
+      generation = generation,
+      resetToken = reset_token
+    ))
+  }
+  points <- preview$spatial
+  levels <- unique(as.character(points$group))
+  palette <- builder_level_colors(levels)
+  shared <- intersect(levels, names(colors %||% character()))
+  palette[shared] <- colors[shared]
+  counts <- table(points$group)
+  list(
+    available = TRUE,
+    viewKey = identity,
+    generation = generation,
+    resetToken = reset_token,
+    capped = isTRUE(preview$capped),
+    points = list(
+      x = unname(as.numeric(points$x)),
+      y = unname(as.numeric(points$y)),
+      barcode = as.character(points$cell_barcode),
+      group = as.character(points$group),
+      color = unname(palette[as.character(points$group)]),
+      count = unname(as.integer(counts[as.character(points$group)]))
+    ),
+    bounds = preview$coordinate_frame %||% preview$bounds,
+    image = if (is.null(record)) {
+      NULL
+    } else {
+      list(
+        uri = record$source_uri %||% record$uri,
+        baseBounds = record$base_bounds
+      )
+    },
+    controls = utils::modifyList(
+      list(coordinateRotation = coordinate_transform$rotation_degrees %||% 0),
+      as.list(
+        if (is.null(record)) {
+          builder_alignment_defaults()
+        } else {
+          .builder_alignment_parameters(record)
+        }
+      )
+    )
   )
 }
 

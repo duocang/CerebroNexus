@@ -489,8 +489,10 @@ test_that("dataset switches save discard or cancel an unsaved alignment", {
       canonical <- alignment$current_record()
       expect_identical(alignment$draft()$uri, canonical$uri)
       expect_identical(alignment$draft()$bounds, canonical$bounds)
-      expect_identical(alignment$draft()$outside, canonical$outside)
-      expect_identical(alignment$draft()$total, canonical$total)
+      expect_false("outside" %in% names(alignment$draft()))
+      expect_false("total" %in% names(alignment$draft()))
+      expect_true(is.numeric(canonical$outside))
+      expect_true(is.numeric(canonical$total))
       alignment$request_dataset_switch("dataset-b", function() {
         switched <<- c(switched, "saved")
       })

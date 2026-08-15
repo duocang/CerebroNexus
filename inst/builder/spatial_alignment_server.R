@@ -18,6 +18,10 @@ builder_spatial_alignment_server <- function(
   draft <- shiny::reactiveVal(NULL)
   baseline <- shiny::reactiveVal(NULL)
   coordinate_draft <- shiny::reactiveVal(list(rotation_degrees = 0, scale = 1))
+  coordinate_baseline <- shiny::reactiveVal(list(
+    rotation_degrees = 0,
+    scale = 1
+  ))
   active_section <- shiny::reactiveVal(NULL)
   active_image <- shiny::reactiveVal(NULL)
   pending_section <- shiny::reactiveVal(NULL)
@@ -26,6 +30,8 @@ builder_spatial_alignment_server <- function(
   pending_upload <- shiny::reactiveVal(NULL)
   preview_contract <- shiny::reactiveVal(NULL)
   expected_controls <- shiny::reactiveVal(NULL)
+  canvas_generation <- shiny::reactiveVal(0L)
+  canvas_reset_token <- shiny::reactiveVal(0L)
   image_collection_cache <- new.env(parent = emptyenv())
 
   output[["enhance-has_image"]] <- shiny::reactive(!is.null(draft()))
@@ -156,13 +162,6 @@ builder_spatial_alignment_server <- function(
       context = paste0("spatial_coordinate_transforms$", section)
     )
   }
-  coordinate_preview_transforms <- function(entry, section) {
-    transforms <- coordinate_transforms_for(entry)
-    if (identical(kind_for(section), "spatial")) {
-      transforms[[section]] <- coordinate_draft()
-    }
-    transforms
-  }
   preview_contract_for <- function(entry, section) {
     list(
       dataset = entry$id,
@@ -171,8 +170,7 @@ builder_spatial_alignment_server <- function(
       default_projection = entry$settings$default_projection %||% NULL,
       group = entry$settings$default_group %||% NULL,
       assay = entry$settings$assay %||% NULL,
-      layer = entry$settings$layer %||% "data",
-      coordinate_transforms = coordinate_preview_transforms(entry, section)
+      layer = entry$settings$layer %||% "data"
     )
   }
   request_preview <- function(entry, section) {
@@ -185,7 +183,6 @@ builder_spatial_alignment_server <- function(
       group = entry$settings$default_group %||% NULL,
       assay = entry$settings$assay %||% NULL,
       layer = entry$settings$layer %||% "data",
-      coordinate_transforms = coordinate_preview_transforms(entry, section),
       replaces = "spatial_alignment",
       note = paste0("Loading paired views for ", section, "…")
     ))
@@ -304,6 +301,7 @@ builder_spatial_alignment_server <- function(
   restore_coordinate_controls <- function(entry, section) {
     spec <- coordinate_spec_for(entry, section)
     coordinate_draft(spec)
+    coordinate_baseline(spec)
     shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
     shiny::updateSliderInput(
       session,
@@ -343,6 +341,7 @@ builder_spatial_alignment_server <- function(
     draft(NULL)
     baseline(NULL)
     coordinate_draft(list(rotation_degrees = 0, scale = 1))
+    coordinate_baseline(list(rotation_degrees = 0, scale = 1))
     alignment_preview(NULL)
     spatial_coords(NULL)
     preview_contract(NULL)
@@ -462,7 +461,7 @@ builder_spatial_alignment_server <- function(
       flip_y = input[["enhance-image_flip_y"]] %||% defaults$flip_y
     )
   })
-  encoded <- shiny::reactive({
+  encode_current_image <- function() {
     image <- raw_image()
     if (is.null(image)) {
       return(NULL)
@@ -475,33 +474,34 @@ builder_spatial_alignment_server <- function(
       flip_x = transform$flip_x,
       rotate = transform$rotation
     )
-  })
-  current_record <- shiny::reactive({
+  }
+  current_record <- function(encode = FALSE) {
     current_draft <- draft()
-    current_encoded <- encoded()
     preview <- alignment_preview()
     if (
       is.null(current_draft) ||
-        is.null(current_encoded) ||
         !isTRUE(preview$available)
     ) {
       return(NULL)
     }
+    current_encoded <- if (isTRUE(encode)) encode_current_image() else NULL
     if (!is.null(current_encoded$error)) {
       return(current_encoded)
     }
+    observed <- parameters()
+    geometry <- current_encoded %||% current_draft
     record <- builder_alignment_record(
       source = current_draft$source,
       source_uri = current_draft$source_uri,
-      uri = current_encoded$uri,
+      uri = current_encoded$uri %||% current_draft$uri,
       base_bounds = current_draft$base_bounds,
-      parameters = parameters(),
-      image_geometry = current_encoded,
+      parameters = observed,
+      image_geometry = geometry,
       saved = FALSE,
       section = list(id = active_section(), kind = preview$section$kind)
     )
     facts <- intersect(
-      names(current_encoded),
+      names(geometry),
       c(
         "bytes",
         "width",
@@ -514,15 +514,20 @@ builder_spatial_alignment_server <- function(
         "display_height"
       )
     )
-    record[facts] <- current_encoded[facts]
+    record[facts] <- geometry[facts]
+    coverage_spatial <- if (identical(kind_for(active_section()), "spatial")) {
+      .spx_apply_coordinate_transform(preview$spatial, coordinate_baseline())
+    } else {
+      preview$spatial
+    }
     cover <- builder_bounds_cover(
       record$bounds,
-      list(preview$spatial$x, preview$spatial$y)
+      list(coverage_spatial$x, coverage_spatial$y)
     )
     record$outside <- cover$outside
     record$total <- cover$total
     record
-  })
+  }
 
   shiny::observeEvent(input[["enhance-active_section"]], {
     id <- current()
@@ -865,25 +870,33 @@ builder_spatial_alignment_server <- function(
       overrides
     )
   })
-  output[["enhance-alignment_spatial_plot"]] <- plotly::renderPlotly({
+  shiny::observe({
     preview <- alignment_preview()
-    shiny::req(isTRUE(preview$available))
-    record <- current_record()
-    if (!is.null(record$error)) {
-      record <- NULL
+    entry <- entry_of(current())
+    section <- active_section()
+    if (is.null(preview) || is.null(entry) || is.null(section)) {
+      return()
     }
-    appearance <- point_appearance()
-    builder_alignment_plot(
-      preview$spatial,
-      colors(),
-      image_uri = record$uri %||% NULL,
-      image_bounds = record$bounds %||% NULL,
-      coordinate_frame = preview$coordinate_frame %||% NULL,
-      coordinate_transform = preview$coordinate_transform %||% NULL,
-      image_opacity = parameters()$image_opacity,
-      point_opacity = appearance$opacity,
-      point_size = appearance$size
+    generation <- shiny::isolate(canvas_generation()) + 1L
+    canvas_generation(generation)
+    identity <- paste(
+      entry$id,
+      .builder_worker_identity(entry$snapshot),
+      section,
+      kind_for(section),
+      active_image() %||% "",
+      sep = "::"
     )
+    scene <- builder_spatial_canvas_scene(
+      preview = preview,
+      colors = colors(),
+      record = draft(),
+      coordinate_transform = coordinate_draft(),
+      identity = identity,
+      generation = generation,
+      reset_token = canvas_reset_token()
+    )
+    session$sendCustomMessage("builder_spatial_canvas_scene", scene)
   })
 
   output[["enhance-alignment_legend"]] <- shiny::renderUI({
@@ -959,23 +972,17 @@ builder_spatial_alignment_server <- function(
     ) {
       return(invisible(FALSE))
     }
-    next_record <- shiny::isolate(current_record())
-    if (!is.null(next_record) && !is.null(next_record$error)) {
-      return(invisible(FALSE))
-    }
-    if (is.null(next_record)) {
-      next_record <- current_draft
-      parameter_names <- names(builder_alignment_defaults())
-      next_record[parameter_names] <- observed[parameter_names]
-      oriented_bounds <- builder_alignment_oriented_bounds(
-        current_draft$base_bounds,
-        current_draft
-      )
-      next_record$bounds <- builder_alignment_transform_bounds(
-        oriented_bounds,
-        observed
-      )
-    }
+    next_record <- current_draft
+    parameter_names <- names(builder_alignment_defaults())
+    next_record[parameter_names] <- observed[parameter_names]
+    oriented_bounds <- builder_alignment_oriented_bounds(
+      current_draft$base_bounds,
+      observed
+    )
+    next_record$bounds <- builder_alignment_transform_bounds(
+      oriented_bounds,
+      observed
+    )
     expected_controls(NULL)
     baseline(current_draft)
     next_record$saved <- FALSE
@@ -1006,8 +1013,24 @@ builder_spatial_alignment_server <- function(
   save_current <- function(notify = TRUE) {
     entry <- shiny::isolate(entry_of(current()))
     section <- shiny::isolate(active_section())
-    record <- shiny::isolate(current_record())
-    if (is.null(entry) || is.null(section) || is.null(record)) {
+    if (is.null(entry) || is.null(section)) {
+      return(FALSE)
+    }
+    if (
+      !identical(
+        shiny::isolate(coordinate_draft()),
+        shiny::isolate(coordinate_baseline())
+      )
+    ) {
+      shiny::showNotification(
+        "Save or reset the coordinate draft before saving image alignment.",
+        type = "error",
+        duration = 8
+      )
+      return(FALSE)
+    }
+    record <- shiny::isolate(current_record(encode = TRUE))
+    if (is.null(record)) {
       return(FALSE)
     }
     if (!is.null(record$error)) {
@@ -1071,19 +1094,11 @@ builder_spatial_alignment_server <- function(
     }
     changed <- !identical(previous, transforms[[section]])
     coordinate_draft(spec)
-    if (isTRUE(reset)) {
-      shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
-      shiny::updateSliderInput(
-        session,
-        "enhance-coordinate_rotation",
-        value = 0
-      )
-      request_preview(entry, section)
-    }
     if (!changed) {
       return(invisible(FALSE))
     }
     entry$settings$spatial_coordinate_transforms <- transforms
+    coordinate_baseline(spec)
     images <- builder_image_collection_mark_section_unsaved(
       collection_for(entry),
       section
@@ -1105,7 +1120,6 @@ builder_spatial_alignment_server <- function(
       draft(invalidated)
       baseline(NULL)
     }
-    request_preview(entry, section)
     shiny::showNotification(
       if (isTRUE(reset) || identity) {
         paste0("Coordinates reset for “", section, "”.")
@@ -1123,7 +1137,17 @@ builder_spatial_alignment_server <- function(
   )
   shiny::observeEvent(
     input[["enhance-reset_coordinate_transform"]],
-    save_coordinate_transform(reset = TRUE)
+    {
+      spec <- list(rotation_degrees = 0, scale = 1)
+      coordinate_draft(spec)
+      shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
+      shiny::updateSliderInput(
+        session,
+        "enhance-coordinate_rotation",
+        value = 0
+      )
+      canvas_reset_token(canvas_reset_token() + 1L)
+    }
   )
   shiny::observeEvent(input[["enhance-reset_align"]], {
     current_draft <- draft()
@@ -1132,6 +1156,7 @@ builder_spatial_alignment_server <- function(
     }
     reset <- builder_alignment_reset(current_draft)
     draft(reset)
+    canvas_reset_token(canvas_reset_token() + 1L)
     update_controls(reset, alignment_preview()$bounds %||% NULL)
     commit_section(entry_of(current()), active_section(), reset)
   })
