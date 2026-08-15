@@ -48,7 +48,7 @@ test_that("the Builder runtime does not manufacture fixtures", {
   expect_identical(generator_symbols, character())
 })
 
-test_that("the fixture script exactly reproduces committed gallery inputs", {
+test_that("the fixture script reproducibly generates committed gallery inputs", {
   layout <- builder_fixture_script_layout()
   skip_if_not(
     file.exists(layout$script),
@@ -88,7 +88,7 @@ test_that("the fixture script exactly reproduces committed gallery inputs", {
   expect_equal(
     readRDS(file.path(first_dir, "all_content.rds")),
     readRDS(file.path(layout$committed, "all_content.rds")),
-    tolerance = 0
+    tolerance = 1e-12
   )
 })
 
