@@ -234,6 +234,8 @@
     "cell_count",
     "feature_count",
     "expression_backend",
+    "expression_storage",
+    "spatial_image_storage",
     "pages"
   )
   content_fields <- c("status", "disposition", "pages")
@@ -253,6 +255,24 @@
         dataset$metadata$excluded
       )) &&
       all(dataset$metadata$forced %in% dataset$metadata$retained)
+    expression_storage_valid <- is.list(dataset$expression_storage) &&
+      !is.object(dataset$expression_storage) &&
+      identical(names(dataset$expression_storage), "mode") &&
+      identical(
+        dataset$expression_storage$mode,
+        dataset$expression_backend
+      )
+    spatial_storage <- dataset$spatial_image_storage
+    spatial_storage_valid <- is.list(spatial_storage) &&
+      !is.object(spatial_storage) &&
+      identical(
+        names(spatial_storage),
+        c("mode", "image_count", "section_count")
+      ) &&
+      .builder_report_text(spatial_storage$mode) &&
+      spatial_storage$mode %in% c("embedded", "external") &&
+      .builder_report_count(spatial_storage$image_count) &&
+      .builder_report_count(spatial_storage$section_count)
     is.list(dataset) &&
       !is.object(dataset) &&
       identical(names(dataset), dataset_fields) &&
@@ -274,6 +294,8 @@
       .builder_report_count(dataset$feature_count) &&
       .builder_report_text(dataset$expression_backend) &&
       dataset$expression_backend %in% c("embedded", "h5", "bpcells") &&
+      expression_storage_valid &&
+      spatial_storage_valid &&
       valid_vector(dataset$pages, unique = TRUE)
   }
   valid_content <- function(content) {
@@ -554,6 +576,14 @@ builder_build_report <- function(plan, result) {
       cell_count = length(verification$cells %||% character()),
       feature_count = length(verification$features %||% character()),
       expression_backend = item$expression_backend,
+      expression_storage = list(mode = item$expression_backend),
+      spatial_image_storage = list(
+        mode = item$spatial_image_storage %||% "embedded",
+        image_count = as.integer(item$spatial_alignment$image_count %||% 0L),
+        section_count = as.integer(
+          item$spatial_alignment$section_count %||% 0L
+        )
+      ),
       pages = unname(
         item$viewer_page_expectations$visible_conditional %||% character()
       )

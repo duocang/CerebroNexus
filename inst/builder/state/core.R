@@ -267,6 +267,29 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     return(entry)
   }
   settings <- entry$settings
+  if (is.null(settings$spatial_image_storage)) {
+    settings$spatial_image_storage <- "embedded"
+    entry$settings <- settings
+  }
+  if (is.null(settings$spatial_coordinate_transforms)) {
+    settings$spatial_coordinate_transforms <- list()
+    entry$settings <- settings
+  }
+  if (!is.null(settings$spatial_coordinate_transforms)) {
+    settings$spatial_coordinate_transforms <-
+      .builder_state_spatial_coordinate_transforms(
+        settings$spatial_coordinate_transforms
+      )
+    entry$settings <- settings
+  }
+  if (
+    identical(settings$viewer_content_schema_version, 1L) &&
+      !"overview_percentage_cells_to_show" %in% names(settings)
+  ) {
+    settings$overview_percentage_cells_to_show <- 100
+    entry$settings <- settings
+    return(entry)
+  }
   if (identical(settings$viewer_content_schema_version, 1L)) {
     return(entry)
   }
@@ -416,6 +439,17 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   ) {
     point_size <- 5
   }
+  percentage_cells_to_show <- settings$overview_percentage_cells_to_show
+  if (
+    !is.numeric(percentage_cells_to_show) ||
+      length(percentage_cells_to_show) != 1L ||
+      is.na(percentage_cells_to_show) ||
+      !is.finite(percentage_cells_to_show) ||
+      percentage_cells_to_show < 10 ||
+      percentage_cells_to_show > 100
+  ) {
+    percentage_cells_to_show <- 100
+  }
 
   settings$viewer_content_schema_version <- 1L
   settings$included_groups <- groups
@@ -425,6 +459,9 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   settings$included_projections <- projections
   settings["default_projection"] <- list(default_projection)
   settings$overview_point_size <- as.numeric(point_size)
+  settings$overview_percentage_cells_to_show <- as.numeric(
+    percentage_cells_to_show
+  )
   settings$included_trajectories <- included_trajectories
   settings["default_trajectory"] <- list(default_trajectory)
   # Keep the two legacy aliases synchronized while older planning code is
@@ -433,6 +470,49 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   settings$reductions <- projections
   entry$settings <- settings
   entry
+}
+
+.builder_state_spatial_coordinate_transforms <- function(value) {
+  if (is.null(value)) {
+    return(list())
+  }
+  transform_names <- names(value)
+  if (
+    !is.list(value) ||
+      is.object(value) ||
+      (length(value) &&
+        (is.null(transform_names) ||
+          !is.character(transform_names) ||
+          is.object(transform_names) ||
+          anyNA(transform_names) ||
+          any(!nzchar(transform_names)) ||
+          anyDuplicated(transform_names)))
+  ) {
+    .builder_state_abort(
+      "invalid_spatial_coordinate_transform",
+      "Spatial coordinate transforms must be an ordinary named list of FOV specifications."
+    )
+  }
+  normalized <- tryCatch(
+    lapply(
+      transform_names,
+      function(section) {
+        .spx_coordinate_transform_spec_normalize(
+          value[[section]],
+          context = paste0("spatial_coordinate_transforms$", section)
+        )
+      }
+    ),
+    error = function(error) error
+  )
+  if (inherits(normalized, "condition")) {
+    .builder_state_abort(
+      "invalid_spatial_coordinate_transform",
+      conditionMessage(normalized)
+    )
+  }
+  names(normalized) <- transform_names
+  normalized
 }
 
 .builder_state_validate_viewer_content_settings <- function(entry) {
@@ -532,6 +612,20 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     .builder_state_abort(
       "invalid_viewer_content_settings",
       "Initial point size must be between 0 and 20."
+    )
+  }
+  percentage_cells_to_show <- settings$overview_percentage_cells_to_show
+  if (
+    !is.numeric(percentage_cells_to_show) ||
+      length(percentage_cells_to_show) != 1L ||
+      is.na(percentage_cells_to_show) ||
+      !is.finite(percentage_cells_to_show) ||
+      percentage_cells_to_show < 10 ||
+      percentage_cells_to_show > 100
+  ) {
+    .builder_state_abort(
+      "invalid_viewer_content_settings",
+      "Initial cells shown must be between 10 and 100 percent."
     )
   }
 
@@ -634,6 +728,20 @@ builder_upgrade_viewer_content_entry <- function(entry) {
       "Dataset settings must be a plain inert record."
     )
   }
+  storage <- .subset2(settings, "spatial_image_storage")
+  if (
+    !is.null(storage) &&
+      !identical(storage, "embedded") &&
+      !identical(storage, "external")
+  ) {
+    .builder_state_abort(
+      "invalid_spatial_image_storage",
+      "Spatial image storage must be embedded or external."
+    )
+  }
+  .builder_state_spatial_coordinate_transforms(
+    .subset2(settings, "spatial_coordinate_transforms")
+  )
   text_vector <- function(value) {
     is.character(value) &&
       !is.object(value) &&

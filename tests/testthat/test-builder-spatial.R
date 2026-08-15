@@ -75,24 +75,47 @@ test_that("alignment projection prefers UMAP then the current default then PCA",
   expect_null(builder_alignment_projection("tsne", "missing"))
 })
 
-test_that("alignment Plotly events expose canonical selected cell ids", {
-  event <- data.frame(
-    customdata = c("cell-b", "cell-a", "cell-b", NA_character_, ""),
-    stringsAsFactors = FALSE
+test_that("external Builder images reject active or forged payloads", {
+  skip_if_not_installed("base64enc")
+  png_bytes <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  png_uri <- paste0(
+    "data:image/png;base64,",
+    base64enc::base64encode(png_bytes)
   )
-
-  expect_identical(
-    builder_alignment_event_cells(event),
-    c("cell-b", "cell-a")
+  expect_identical(builder_parse_image_uri(png_uri)$mime, "image/png")
+  expect_error(
+    builder_parse_image_uri("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="),
+    "unsupported MIME"
   )
-  expect_identical(builder_alignment_event_cells(NULL), character())
-  expect_identical(
-    builder_alignment_event_cells(data.frame(x = 1)),
-    character()
+  expect_error(
+    builder_parse_image_uri("data:image/png;base64,PHN2Zz48L3N2Zz4="),
+    "does not match"
+  )
+  expect_error(
+    builder_materialize_image_uri(png_uri, tempfile(fileext = ".svg")),
+    "extension does not match"
   )
 })
 
-test_that("alignment server subscribes through Plotly's registered event API", {
+test_that("alignment previews are display-only Plotly figures", {
+  frame <- data.frame(
+    x = c(-1, 1),
+    y = c(1, -1),
+    group = c("A", "B"),
+    cell_barcode = c("cell-a", "cell-b"),
+    stringsAsFactors = FALSE
+  )
+  plot <- plotly::plotly_build(builder_alignment_plot(frame))
+
+  expect_true(isTRUE(plot$x$config$staticPlot))
+  expect_false(isTRUE(plot$x$config$displayModeBar))
+  expect_true(isTRUE(plot$x$config$responsive))
+  expect_false(identical(plot$x$layout$dragmode, "select"))
+  expect_null(plot$x$data[[1L]]$customdata)
+  expect_lte(sum(unlist(plot$x$layout$margin)), 36)
+})
+
+test_that("alignment server does not subscribe to Plotly selection events", {
   server <- paste(
     readLines(
       builder_spatial_test_inst_path("builder", "spatial_alignment_server.R"),
@@ -101,9 +124,10 @@ test_that("alignment server subscribes through Plotly's registered event API", {
     collapse = "\n"
   )
 
-  expect_match(server, "plotly::event_data(", fixed = TRUE)
-  expect_match(server, "builder_alignment_event_cells", fixed = TRUE)
-  expect_match(server, "session$onFlushed(", fixed = TRUE)
+  expect_false(grepl("plotly::event_data(", server, fixed = TRUE))
+  expect_false(grepl("builder_alignment_event_cells", server, fixed = TRUE))
+  expect_false(grepl("selected_cells", server, fixed = TRUE))
+  expect_false(grepl("session$onFlushed(", server, fixed = TRUE))
   expect_false(grepl(".clientValue-", server, fixed = TRUE))
 })
 
@@ -279,6 +303,8 @@ test_that("pending tissue image requires its matching preview and snapshot", {
 
       suppressWarnings(session$setInputs(`enhance-drop_image` = 1L))
       session$flushReact()
+      session$setInputs(`enhance-remove_image_confirm` = 1L)
+      session$flushReact()
       expect_null(alignment$draft())
       expect_identical(commit_count, 2L)
 
@@ -303,6 +329,119 @@ test_that("pending tissue image requires its matching preview and snapshot", {
 
       expect_null(alignment$draft())
       expect_identical(commit_count, 2L)
+    }
+  )
+})
+
+test_that("duplicate tissue image can be confirmed with a unique label", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  skip_if_not_installed("png")
+  skip_if_not_installed("base64enc")
+
+  image_path <- tempfile(fileext = ".png")
+  on.exit(unlink(image_path), add = TRUE)
+  write_dummy_png(image_path)
+
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "section-a", extras = list()),
+    settings = list(
+      name = "Dataset A",
+      images = list(),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(NULL)
+  spatial_coords <- shiny::reactiveVal(NULL)
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(id = "section-a", kind = "spatial", unit = "pixels"),
+    projection_name = "umap",
+    capped = FALSE,
+    transcriptome = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(-1, 1),
+      y = c(-1, 1),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    ),
+    spatial = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    )
+  )
+  upload <- data.frame(
+    name = "duplicate.png",
+    size = file.info(image_path)$size,
+    type = "image/png",
+    datapath = image_path,
+    stringsAsFactors = FALSE
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(entry, images) {
+          updated <- current_entry()
+          updated$settings$images <- images
+          current_entry(updated)
+        },
+        alignment_preview = alignment_preview,
+        spatial_coords = spatial_coords
+      )
+    },
+    {
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+
+      suppressWarnings(
+        session$setInputs(`enhance-tissue_image_file` = upload)
+      )
+      session$flushReact()
+      expect_named(
+        current_entry()$settings$images[["section-a"]],
+        "duplicate.png"
+      )
+
+      suppressWarnings(
+        session$setInputs(`enhance-tissue_image_file` = upload)
+      )
+      session$flushReact()
+      expect_true(alignment$pending_upload()$awaiting_label)
+
+      session$setInputs(
+        `enhance-new_image_label` = "DAPI",
+        `enhance-add_image_confirm` = 1L
+      )
+      session$flushReact()
+
+      expect_named(
+        current_entry()$settings$images[["section-a"]],
+        c("duplicate.png", "DAPI")
+      )
+      expect_null(alignment$pending_upload())
     }
   )
 })
@@ -471,6 +610,75 @@ test_that("canonical alignment transform is deterministic and complete", {
   )
 })
 
+test_that("rotated alignment bounds preserve one data-unit scale per image pixel", {
+  base_bounds <- list(xmin = 0, xmax = 92, ymin = 0, ymax = 56)
+  image_geometry <- list(
+    source_width = 920,
+    source_height = 560,
+    extent_width = 1060,
+    extent_height = 870
+  )
+
+  oriented <- builder_alignment_oriented_bounds(
+    base_bounds,
+    image_geometry
+  )
+
+  expect_equal(
+    (oriented$xmax - oriented$xmin) / image_geometry$extent_width,
+    (oriented$ymax - oriented$ymin) / image_geometry$extent_height,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    c(
+      x = (oriented$xmin + oriented$xmax) / 2,
+      y = (oriented$ymin + oriented$ymax) / 2
+    ),
+    c(x = 46, y = 28),
+    tolerance = 1e-12
+  )
+
+  record <- builder_alignment_record(
+    source = list(name = "directional.png", type = "image/png"),
+    source_uri = "data:image/png;base64,SOURCE",
+    uri = "data:image/png;base64,ROTATED",
+    base_bounds = base_bounds,
+    parameters = list(dx = 7, dy = -3, scale = 1.2, rotation = -23),
+    image_geometry = image_geometry,
+    section = list(id = "FOV_A", kind = "spatial")
+  )
+  expected <- builder_adjust_bounds(oriented, dx = 7, dy = -3, scale = 1.2)
+  expect_equal(record$bounds, expected, tolerance = 1e-12)
+})
+
+test_that("alignment plot preserves decimal coordinate rotation labels", {
+  skip_if_not_installed("plotly")
+  frame <- data.frame(
+    cell_barcode = c("a", "b", "c"),
+    x = c(0, 20, 80),
+    y = c(0, 55, 10),
+    group = c("A", "B", "C")
+  )
+  transform <- .spx_coordinate_transform_normalize(
+    list(rotation_degrees = 37.5, scale = 1.2),
+    frame
+  )
+  plot <- plotly::plotly_build(builder_alignment_plot(
+    frame,
+    coordinate_frame = .builder_alignment_bounds(frame),
+    coordinate_transform = transform
+  ))
+  traces <- plot$x$data
+  roles <- vapply(
+    traces,
+    function(trace) trace$meta$builder_alignment_role %||% "",
+    character(1)
+  )
+  label <- traces[[which(roles == "reference-label")]]$text
+
+  expect_identical(unname(label), "+37.5°")
+})
+
 test_that("reset and apply-to-all preserve each section image identity", {
   defaults <- builder_alignment_defaults()
   first <- builder_alignment_record(
@@ -535,6 +743,153 @@ test_that("legacy image records remain saved and gain canonical defaults", {
   expect_identical(normalized$base_bounds, legacy$bounds)
   expect_identical(normalized$section_id, "fov")
   expect_identical(normalized$point_size, 5)
+})
+
+test_that("named spatial image collections normalize without losing labels", {
+  record <- function(section, filename) {
+    builder_alignment_record(
+      source = list(name = filename, type = "image/png", size = 4),
+      source_uri = "data:image/png;base64,AAAA",
+      uri = "data:image/png;base64,AAAA",
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      saved = TRUE,
+      section = list(id = section, kind = "spatial")
+    )
+  }
+  images <- list(
+    section_a = list(
+      `H&E` = record("section_a", "H&E.png"),
+      DAPI = record("section_a", "DAPI.png")
+    )
+  )
+
+  normalized <- builder_image_collection_normalize(images)
+  expect_named(normalized, "section_a")
+  expect_named(normalized$section_a, c("H&E", "DAPI"))
+  expect_identical(builder_image_collection_count(normalized), 2L)
+  expect_identical(
+    vapply(
+      builder_image_collection_flatten(normalized),
+      `[[`,
+      "",
+      "image_label"
+    ),
+    c("H&E", "DAPI")
+  )
+  expect_error(
+    builder_image_collection_normalize(list(
+      section_a = setNames(
+        list(record(
+          "section_a",
+          "bad.png"
+        )),
+        ""
+      )
+    )),
+    "non-empty"
+  )
+  duplicate <- structure(
+    list(record("section_a", "A.png"), record("section_a", "B.png")),
+    names = c("H&E", "H&E")
+  )
+  expect_error(
+    builder_image_collection_normalize(list(section_a = duplicate)),
+    "unique"
+  )
+
+  legacy <- list(section_a = record("section_a", "H&E.png"))
+  upgraded <- builder_image_collection_normalize(legacy)
+  expect_named(upgraded$section_a, "H&E.png")
+})
+
+test_that("named spatial image actions preserve unaffected records", {
+  record <- function(section, filename, dx = 0) {
+    builder_alignment_record(
+      source = list(name = filename, type = "image/png", size = 4),
+      source_uri = paste0("data:image/png;base64,", filename),
+      uri = paste0("data:image/png;base64,", filename),
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      parameters = list(dx = dx),
+      saved = TRUE,
+      section = list(id = section, kind = "spatial")
+    )
+  }
+  he <- record("section_a", "he.png", dx = 3)
+  dapi <- record("section_a", "dapi.png")
+  images <- builder_image_collection_add(list(), "section_a", "H&E", he)
+  images <- builder_image_collection_add(images, "section_a", "DAPI", dapi)
+  expect_named(images$section_a, c("H&E", "DAPI"))
+  expect_identical(images$section_a[["H&E"]], he)
+
+  renamed <- builder_image_collection_rename(
+    images,
+    "section_a",
+    "DAPI",
+    "IF"
+  )
+  expect_named(renamed$section_a, c("H&E", "IF"))
+  expect_identical(renamed$section_a[["IF"]], dapi)
+  expect_identical(renamed$section_a[["H&E"]], he)
+  expect_error(
+    builder_image_collection_rename(renamed, "section_a", "IF", "H&E"),
+    "unique"
+  )
+
+  removed <- builder_image_collection_remove(renamed, "section_a", "H&E")
+  expect_named(removed$section_a, "IF")
+  expect_identical(removed$section_a$IF, dapi)
+})
+
+test_that("matching-label transform never crosses image identities", {
+  record <- function(section, filename, dx) {
+    builder_alignment_record(
+      source = list(name = filename, type = "image/png", size = 4),
+      source_uri = paste0("data:image/png;base64,", filename),
+      uri = paste0("data:image/png;base64,", filename),
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      parameters = list(dx = dx),
+      saved = TRUE,
+      section = list(id = section, kind = "spatial")
+    )
+  }
+  images <- list(
+    section_a = list(
+      `H&E` = record("section_a", "a-he.png", 4),
+      DAPI = record("section_a", "a-dapi.png", 7)
+    ),
+    section_b = list(
+      `H&E` = record("section_b", "b-he.png", 0),
+      DAPI = record("section_b", "b-dapi.png", 1)
+    )
+  )
+  copied <- builder_alignment_apply_transform_to_matching_label(
+    images,
+    "section_a",
+    "H&E"
+  )
+  expect_identical(copied$section_b[["H&E"]]$dx, 4)
+  expect_false(copied$section_b[["H&E"]]$saved)
+  expect_identical(copied$section_b$DAPI, images$section_b$DAPI)
+})
+
+test_that("saving a coordinate frame invalidates every image confirmation in its FOV", {
+  record <- builder_alignment_record(
+    source = list(name = "image.png"),
+    source_uri = "data:image/png;base64,AA==",
+    uri = "data:image/png;base64,AA==",
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    saved = TRUE,
+    section = list(id = "fov-a", kind = "spatial")
+  )
+  images <- list(
+    "fov-a" = list(first = record, second = record),
+    "fov-b" = list(other = record)
+  )
+  invalidated <- builder_image_collection_mark_section_unsaved(images, "fov-a")
+
+  expect_false(invalidated[["fov-a"]][["first"]]$saved)
+  expect_false(invalidated[["fov-a"]][["second"]]$saved)
+  expect_true(invalidated[["fov-b"]][["other"]]$saved)
 })
 
 test_that("serialized alignment payload excludes editing bytes and local paths", {

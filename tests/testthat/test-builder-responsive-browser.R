@@ -18,6 +18,14 @@ builder_responsive_geometry <- function(app) {
     "const form = document.querySelector('.builder-form-grid');",
     "const stages = Array.from(document.querySelectorAll('.builder-stage'));",
     "const stageTops = stages.map(node => node.getBoundingClientRect().top + window.scrollY);",
+    "const enhancementGroups = Array.from(document.querySelectorAll('.enhance-group'));",
+    "const spatialSection = document.querySelector('.builder-stage-spatial');",
+    "const datasetNameInput = document.getElementById('core-name');",
+    "const organismInput = document.querySelector('.builder-field--organism .selectize-input');",
+    "const metadataSearch = document.querySelector('.viewer-group-search');",
+    "const projectionControls = Array.from(document.querySelectorAll('.viewer-projection-control'));",
+    "const plotFrames = Array.from(document.querySelectorAll('.spatial-alignment-plot-frame'));",
+    "const plotRects = plotFrames.map(node => node.getBoundingClientRect());",
     "return {",
     "viewportWidth: window.innerWidth,",
     "viewportHeight: window.innerHeight,",
@@ -28,7 +36,30 @@ builder_responsive_geometry <- function(app) {
     "mainWidth: main.getBoundingClientRect().width,",
     "stageIntroMaxWidth: parseFloat(getComputedStyle(intro).maxWidth),",
     "formGridMaxWidth: parseFloat(getComputedStyle(form).maxWidth),",
-    "workflowInDocumentOrder: stageTops.every((top, index) => index === 0 || top >= stageTops[index - 1])",
+    "workflowInDocumentOrder: stageTops.every((top, index) => index === 0 || top >= stageTops[index - 1]),",
+    "enhancementGroupCount: enhancementGroups.length,",
+    "enhancementStackSectionCount: document.querySelectorAll('.builder-enhancement-stack > .builder-stage-section').length,",
+    "enhancementGroupGap: enhancementGroups.length === 2 ? enhancementGroups[1].getBoundingClientRect().top - enhancementGroups[0].getBoundingClientRect().bottom : null,",
+    "spatialSectionCount: document.querySelectorAll('.builder-stage-spatial').length,",
+    "spatialInsideEnhancements: Boolean(document.querySelector('.builder-stage-enhance .builder-stage-spatial')),",
+    "enhancementToSpatialGap: spatialSection ? spatialSection.getBoundingClientRect().top - document.querySelector('.builder-stage-enhance').getBoundingClientRect().bottom : null,",
+    "datasetNameHeight: datasetNameInput.getBoundingClientRect().height,",
+    "organismHeight: organismInput.getBoundingClientRect().height,",
+    "datasetNamePaddingLeft: parseFloat(getComputedStyle(datasetNameInput).paddingLeft),",
+    "organismPaddingLeft: parseFloat(getComputedStyle(organismInput).paddingLeft),",
+    "organismRadius: parseFloat(getComputedStyle(organismInput).borderRadius),",
+    "organismFontSize: parseFloat(getComputedStyle(organismInput).fontSize),",
+    "metadataSearchHeight: metadataSearch.getBoundingClientRect().height,",
+    "metadataSearchPaddingLeft: parseFloat(getComputedStyle(metadataSearch).paddingLeft),",
+    "metadataSearchRadius: parseFloat(getComputedStyle(metadataSearch).borderRadius),",
+    "metadataSearchFontSize: parseFloat(getComputedStyle(metadataSearch).fontSize),",
+    "projectionControlCount: projectionControls.length,",
+    "projectionControlsShareRow: projectionControls.length === 2 && Math.abs(projectionControls[0].getBoundingClientRect().top - projectionControls[1].getBoundingClientRect().top) <= 2,",
+    "previewFigureCount: plotFrames.length,",
+    "previewColumnCount: 1,",
+    "previewAspectRatios: plotRects.map(rect => rect.width / rect.height),",
+    "previewModebarButtonCount: document.querySelectorAll('.spatial-alignment-figure .modebar-btn').length,",
+    "datasetContextCount: document.querySelectorAll('.dataset-context').length",
     "};",
     "})()"
   ))
@@ -56,7 +87,8 @@ test_that("Builder preserves responsive geometry before Build", {
     paste0(
       "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
       "document.querySelector('.stage-intro') !== null && ",
-      "document.querySelector('.builder-form-grid') !== null"
+      "document.querySelector('.builder-form-grid') !== null && ",
+      "document.querySelectorAll('.spatial-alignment-figure .js-plotly-plot').length === 1"
     ),
     timeout = 60000
   )
@@ -90,6 +122,55 @@ test_that("Builder preserves responsive geometry before Build", {
     expect_equal(geometry$stageIntroMaxWidth, 768, tolerance = 1)
     expect_equal(geometry$formGridMaxWidth, 896, tolerance = 1)
     expect_true(geometry$workflowInDocumentOrder)
+    expect_identical(geometry$enhancementGroupCount, 2L)
+    expect_identical(geometry$enhancementStackSectionCount, 2L)
+    expect_gte(geometry$enhancementGroupGap, 23)
+    expect_identical(geometry$spatialSectionCount, 1L)
+    expect_false(geometry$spatialInsideEnhancements)
+    expect_gte(
+      geometry$enhancementToSpatialGap,
+      if (viewport[[1]] <= 640L) 19 else 23
+    )
+    expect_lte(
+      abs(geometry$datasetNameHeight - geometry$organismHeight),
+      0.5
+    )
+    expect_lte(
+      abs(geometry$datasetNamePaddingLeft - geometry$organismPaddingLeft),
+      0.5
+    )
+    expect_lte(
+      abs(geometry$metadataSearchHeight - geometry$organismHeight),
+      0.5
+    )
+    expect_lte(
+      abs(geometry$metadataSearchPaddingLeft - geometry$organismPaddingLeft),
+      0.5
+    )
+    expect_lte(
+      abs(geometry$metadataSearchRadius - geometry$organismRadius),
+      0.5
+    )
+    expect_lte(
+      abs(geometry$metadataSearchFontSize - geometry$organismFontSize),
+      0.5
+    )
+    expect_identical(geometry$projectionControlCount, 2L)
+    expect_identical(
+      geometry$projectionControlsShareRow,
+      viewport[[1]] > 640L
+    )
+    expect_identical(geometry$previewFigureCount, 1L)
+    expect_identical(geometry$previewModebarButtonCount, 0L)
+    expect_identical(geometry$datasetContextCount, 0L)
+    expect_true(all(
+      unlist(geometry$previewAspectRatios) >= 0.75 &
+        unlist(geometry$previewAspectRatios) <= 3
+    ))
+    expect_identical(
+      geometry$previewColumnCount,
+      1L
+    )
     expect_identical(
       geometry$managerSummaryDisplay != "none",
       viewport[[1]] <= 928L
@@ -103,10 +184,63 @@ test_that("Builder preserves responsive geometry before Build", {
   expect_gte(geometries[["768"]]$mainWidth, 768 * 0.9)
   expect_lte(geometries[["768"]]$mainWidth, 768)
   expect_lte(geometries[["390"]]$documentWidth, 391)
+  preview_ratios <- vapply(
+    geometries,
+    function(geometry) geometry$previewAspectRatios[[1L]],
+    numeric(1)
+  )
+  narrow_preview_ratios <- preview_ratios[names(preview_ratios) != "1920"]
+  expect_lte(
+    max(narrow_preview_ratios) - min(narrow_preview_ratios),
+    0.02
+  )
   # All content renders near 6156px; 6500 preserves cross-font headroom.
   expect_lt(
     geometries[["390"]]$documentHeight,
     builder_narrow_document_height_budget
+  )
+
+  app$get_chromote_session()$set_viewport_size(width = 1400L, height = 720L)
+  app$wait_for_js(
+    "window.innerWidth === 1400 && window.innerHeight === 720",
+    timeout = 10000
+  )
+  app$run_js(
+    "document.querySelector('.spatial-image-options').open = true;"
+  )
+  app$wait_for_js(
+    "document.querySelector('.spatial-image-options').open === true",
+    timeout = 10000
+  )
+  spatial_scroll_geometry <- app$get_js(paste0(
+    "(() => {",
+    "const layout = document.querySelector('.spatial-alignment-layout');",
+    "const sidebar = document.querySelector('.spatial-alignment-sidebar');",
+    "const layoutRect = layout.getBoundingClientRect();",
+    "const sidebarRect = sidebar.getBoundingClientRect();",
+    "return {",
+    "sidebarBottom: sidebarRect.bottom,",
+    "layoutBottom: layoutRect.bottom,",
+    "sidebarHeight: sidebar.clientHeight,",
+    "sidebarContentHeight: sidebar.scrollHeight",
+    "};",
+    "})()"
+  ))
+  expect_lte(
+    spatial_scroll_geometry$sidebarBottom,
+    spatial_scroll_geometry$layoutBottom + 1
+  )
+  expect_gt(
+    spatial_scroll_geometry$sidebarContentHeight,
+    spatial_scroll_geometry$sidebarHeight
+  )
+  app$run_js(paste0(
+    "const sidebar = document.querySelector('.spatial-alignment-sidebar');",
+    "sidebar.scrollTop = sidebar.scrollHeight;"
+  ))
+  app$wait_for_js(
+    "document.querySelector('.spatial-alignment-sidebar').scrollTop > 0",
+    timeout = 10000
   )
 
   app$run_js(paste0(
@@ -168,22 +302,18 @@ test_that("Builder preserves responsive geometry before Build", {
   )))
 
   app$run_js(paste0(
-    "window.__builderFocusDatasetContext(",
-    "document.querySelector('.dataset-context'));"
+    "const percentage = document.querySelector('.viewer-cell-percentage-input');",
+    "percentage.value = '60';",
+    "percentage.dispatchEvent(new Event('input', {bubbles: true}));",
+    "percentage.dispatchEvent(new Event('change', {bubbles: true}));"
   ))
   app$wait_for_js(
     paste0(
-      "Math.abs(document.querySelector('.dataset-context').getBoundingClientRect().top - ",
-      "(document.querySelector('.topbar').getBoundingClientRect().bottom + 12)) <= 2"
+      "document.querySelector('.viewer-cell-percentage-value').textContent.trim() === '60%' && ",
+      "document.querySelector('.viewer-cell-percentage-input').value === '60'"
     ),
     timeout = 10000
   )
-  aligned_geometry <- app$get_js(paste0(
-    "(() => ({contextTop: document.querySelector('.dataset-context').getBoundingClientRect().top,",
-    "topbarBottom: document.querySelector('.topbar').getBoundingClientRect().bottom}))()"
-  ))
-  expect_gte(aligned_geometry$contextTop, aligned_geometry$topbarBottom + 10)
-  expect_lte(aligned_geometry$contextTop, aligned_geometry$topbarBottom + 14)
 
   cat(
     "\nBuilder responsive geometry: ",

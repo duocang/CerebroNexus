@@ -55,7 +55,7 @@
 .builder-stage-eyebrow {
   margin: 0 0 var(--space-1);
   color: var(--c-text-subtle);
-  font-size: .72rem;
+  font-size: .75rem;
   font-weight: 700;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -74,12 +74,17 @@
 }
 .builder-stage-section {
   min-width: 0;
-  margin-top: var(--space-6);
+  margin-top: var(--builder-footer-gap);
   padding: var(--space-6);
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
   background: var(--c-surface);
   box-shadow: var(--shadow-1);
+}
+.builder-stage-section > h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 1rem;
+  line-height: 1.4;
 }
 .builder-stage-section + .builder-stage-section { margin-top: var(--space-6); }
 .builder-stage-section-head { margin-bottom: var(--space-3); }
@@ -294,7 +299,7 @@
   display: grid;
   gap: .2rem;
   color: var(--c-text-muted);
-  font-size: .72rem;
+  font-size: .75rem;
 }
 .enhance-table-display-name { width: 100%; min-width: 0; padding-inline: .7rem; }
 .enhance-table-remove {
@@ -333,7 +338,7 @@
      dropdowns. The accent bar below is inset instead of being clipped. */
 }
 .card > h2 {
-  font-size: .72rem;
+  font-size: .75rem;
   font-family: var(--font-mono);
   letter-spacing: .09em;
   text-transform: uppercase;
@@ -363,7 +368,7 @@
 
 .pills { display: flex; flex-wrap: wrap; gap: .35rem; }
 .pill {
-  font-family: var(--font-mono); font-size: .71rem;
+  font-family: var(--font-mono); font-size: .75rem;
   padding: .18em .6em; border-radius: var(--r-xs);
   border: 1px solid var(--c-border-2); color: var(--c-text-subtle);
   background: var(--c-surface-2);
@@ -403,6 +408,11 @@
 .builder-advanced-grid > .form-group { width: 100%; }
 .builder-field--name { grid-column: 1; grid-row: 1; }
 .builder-field--organism { grid-column: 2; grid-row: 1; }
+.builder-field--name .form-control {
+  min-height: 2.65rem;
+  padding: .6rem .75rem;
+  line-height: 1.35;
+}
 .builder-field[data-builder-creatable-select="true"] .selectize-control {
   border: 0 !important;
   box-shadow: none !important;
@@ -567,7 +577,7 @@
   align-items: center;
   gap: var(--space-1);
   color: var(--c-text-muted);
-  font-size: .74rem;
+  font-size: .75rem;
   line-height: 1.35;
 }
 .builder-status--ready { color: var(--c-success); }
@@ -589,6 +599,7 @@
   border-left: 3px solid var(--c-text-subtle); background: var(--c-surface-2);
   margin-top: .7rem;
 }
+.notice > h4 { margin: 0 0 var(--space-2); font-size: .9375rem; }
 .notice.bad  { border-left-color: var(--c-error);   background: var(--c-error-50); color: var(--c-error-700); }
 .notice.warn { border-left-color: var(--c-warning); background: var(--c-warning-50); color: var(--c-warning-700); }
 .notice.ok   { border-left-color: var(--c-success); background: var(--c-success-50); color: var(--c-success-700); }
@@ -806,7 +817,7 @@
 .builder-analysis-info-fact dt {
   margin-bottom: .25rem;
   color: var(--builder-action-active);
-  font-size: .72rem;
+  font-size: .75rem;
   font-weight: 700;
   letter-spacing: .03em;
   text-transform: uppercase;
@@ -1032,6 +1043,13 @@
 }
 .builder-workflow-progress li[aria-current="step"] > span {
   border-bottom-color: var(--builder-action);
+}
+.builder-workflow-progress li.is-complete > a::before,
+.builder-workflow-progress li.is-complete > span::before {
+  margin-right: .35rem;
+  color: var(--c-success-700);
+  content: "\2713";
+  font-weight: 700;
 }
 .builder-workflow-progress li.is-unavailable,
 .builder-workflow-progress li.is-locked:not(.is-current) {

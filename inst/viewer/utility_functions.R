@@ -1077,6 +1077,28 @@ configuredViewerContent <- function(config, selected_file, files = NULL) {
   value
 }
 
+configuredViewerPercentageCellsToShow <- function(
+  viewer_defaults,
+  fallback = 100
+) {
+  value <- if (is.list(viewer_defaults)) {
+    viewer_defaults[["overview_percentage_cells_to_show"]]
+  } else {
+    NULL
+  }
+  if (
+    is.numeric(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      is.finite(value) &&
+      value >= 10 &&
+      value <= 100
+  ) {
+    return(as.numeric(value))
+  }
+  fallback
+}
+
 ##----------------------------------------------------------------------------##
 ## Functions to interact with data set.
 ##

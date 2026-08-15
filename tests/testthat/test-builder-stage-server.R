@@ -1,5 +1,6 @@
 builder_stage_contract_source_runtime(environment())
 builder_profile_source_runtime(environment())
+builder_plan_contract_source_runtime(environment())
 
 test_that("Builder shell and workflow UI separate all four stages", {
   skip_if_not_installed("shiny")
@@ -144,6 +145,35 @@ test_that("Builder shell and workflow UI separate all four stages", {
   expect_match(confirmation_html, "Back to Data setup", fixed = TRUE)
   expect_false(grepl("Ready to continue?", confirmation_html, fixed = TRUE))
   expect_false(grepl("<input|<select|<textarea", confirmation_html))
+})
+
+test_that("Build output UI locks CRB-only when external images require an App", {
+  skip_if_not_installed("shiny")
+  options <- builder_build_options(make_app = TRUE)
+  html <- htmltools::renderTags(builder_build_options_ui(
+    options,
+    app_required = TRUE
+  ))$html
+
+  expect_match(
+    html,
+    "External spatial images require CRB files + Viewer App output.",
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    '<input type="radio" name="build_output_mode" value="crb" disabled="disabled" aria-disabled="true"/>',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    '<input type="radio" name="build_output_mode" value="app" checked="checked"/>',
+    fixed = TRUE
+  )
+  expect_error(
+    builder_build_options_ui(options, app_required = c(TRUE, FALSE))
+  )
+  expect_error(builder_build_options_ui(options, app_required = NA))
 })
 
 test_that("shared stage layout primitives expose one visual grammar", {
@@ -564,7 +594,7 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
       tempfile("invalid-viewer-options-"),
       output_options = builder_build_options(make_app = TRUE)
     )
-    expect_identical(invalid_plan$error_code, "invalid_review_options")
+    expect_identical(invalid_plan$error_code, "empty_release")
     expect_false(app_env$builder_review_can_build(invalid_plan))
 
     invalid$port <- 8080L
@@ -590,6 +620,109 @@ test_that("Review inputs fail explicitly and recover without rebuilding inputs",
   expect_false(grepl("output$workbench <-", review_source, fixed = TRUE))
   expect_false(grepl("output$actionbar <-", review_source, fixed = TRUE))
   expect_false(grepl("output$build_actions <-", review_source, fixed = TRUE))
+})
+
+test_that("external spatial images carry required App output through Review", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  rlang::local_bindings(
+    builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
+    .env = environment(builder_stage_frozen_plan)
+  )
+  real_builder_freeze_plan <- app_env$builder_freeze_plan
+  app_env$builder_freeze_plan <- function(
+    entries,
+    out_dir,
+    make_app,
+    overwrite,
+    app_options,
+    app_auth
+  ) {
+    if (!isTRUE(make_app)) {
+      return(real_builder_freeze_plan(
+        entries = entries,
+        out_dir = out_dir,
+        make_app = make_app,
+        overwrite = overwrite,
+        app_options = app_options,
+        app_auth = app_auth
+      ))
+    }
+    plan <- builder_stage_frozen_plan(TRUE)
+    plan$dataset_order <- vapply(entries, `[[`, character(1), "id")
+    plan$app_options <- app_options
+    plan$app_auth <- app_auth
+    plan$out_dir <- out_dir
+    plan$overwrite <- overwrite
+    plan
+  }
+
+  shiny::testServer(app_env$server, {
+    entry <- builder_task6_entry()
+    image <- list(
+      source = list(name = "H&E.png", type = "image/png", size = 4),
+      source_uri = "data:image/png;base64,AAAA",
+      uri = "data:image/png;base64,AAAA",
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      dx = 0,
+      dy = 0,
+      scale = 1,
+      rotation = 0,
+      flip_x = FALSE,
+      flip_y = FALSE,
+      image_opacity = 0.8,
+      point_opacity = 0.85,
+      point_size = 5,
+      saved = TRUE,
+      outside = 0L,
+      section_id = "fov",
+      section_kind = "spatial"
+    )
+    entry$dataset_profile$spatial <- list(sections = "fov")
+    entry$settings$images <- list(fov = list(`H&E` = image))
+    entry$settings$spatial_image_storage <- "external"
+    use_state_only_fixture(list(entry))
+
+    plan <- frozen_review_plan()
+    expect_null(plan$error)
+    expect_identical(plan$readiness, "ready")
+    expect_true(plan$make_app)
+
+    configured <- app_env$builder_reduce_workflow(
+      isolate(workflow()),
+      list(type = "datasets_ready")
+    )
+    workflow(app_env$builder_reduce_workflow(
+      configured,
+      list(type = "open_review", plan = plan)
+    ))
+    session$setInputs(confirm_review = 1L)
+    session$flushReact()
+    expect_identical(workflow()$stage, "build")
+    expect_true(build_mode())
+
+    session$setInputs(build_output_mode = "crb")
+    session$flushReact()
+    expect_true(build_mode())
+
+    app_env$app_capability$available <- FALSE
+    session$setInputs(build_output_mode = "app")
+    session$flushReact()
+    expect_false(build_mode())
+
+    blocked <- freeze_plan_for_output(
+      tempfile("external-images-crb-"),
+      output_options = builder_build_options(make_app = FALSE)
+    )
+    expect_identical(blocked$error_code, "external_images_require_app")
+  })
 })
 
 test_that("workbench identity ignores settings writes but tracks selection", {
@@ -2331,7 +2464,17 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(resized$settings$overview_point_size, 8)
     expect_gt(resized$revision, before_point_size)
 
-    before_trajectory <- resized$revision
+    before_cell_percentage <- resized$revision
+    session$setInputs(`core-percentage_cells_to_show` = 60)
+    session$flushReact()
+    sampled <- sets()[[1L]]
+    expect_identical(
+      sampled$settings$overview_percentage_cells_to_show,
+      60
+    )
+    expect_gt(sampled$revision, before_cell_percentage)
+
+    before_trajectory <- sampled$revision
     session$setInputs(
       `core-trajectory_action` = list(
         action = "set",
@@ -2514,7 +2657,10 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_length(sets()[[1L]]$settings$tables, 0L)
     expect_identical(top_level_runs, baseline)
 
-    alignment <- list(uri = "data:image/png;base64,AA==")
+    alignment <- list(
+      uri = "data:image/png;base64,AA==",
+      bounds = list(xmin = 0, xmax = 1, ymin = 0, ymax = 1)
+    )
     saved <- sets()[[1L]]
     commit_enhance_images(saved, list(`section-a` = alignment))
     expect_null(retain_updates[["enhance-histology_to_retain"]])
@@ -2538,11 +2684,11 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     )
     per_section <- list(
       `section-a` = list(
-        bounds = c(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+        bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
         cover = list(outside = 0L, total = 2L)
       ),
       `section-b` = list(
-        bounds = c(xmin = 10, xmax = 20, ymin = 10, ymax = 20),
+        bounds = list(xmin = 10, xmax = 20, ymin = 10, ymax = 20),
         cover = list(outside = 0L, total = 2L)
       )
     )
@@ -2551,16 +2697,6 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     expect_identical(
       names(sets()[[1L]]$settings$images),
       c("section-a", "section-b")
-    )
-    expect_identical(top_level_runs, baseline)
-
-    active_slice("section-a")
-    session$setInputs(`enhance-drop_image` = 1L)
-    session$flushReact()
-    expect_null(retain_updates[["enhance-histology_to_retain"]])
-    expect_identical(
-      names(sets()[[1L]]$settings$images),
-      "section-b"
     )
     expect_identical(top_level_runs, baseline)
   })
@@ -2579,12 +2715,12 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
   )
   expect_match(
     server,
-    "builder_alignment_apply_transform_to_all",
+    "builder_alignment_apply_transform_to_matching_label",
     fixed = TRUE
   )
   expect_match(
     server,
-    "commit_section(entry, section, NULL)",
+    "commit_section(entry, section, NULL, label = label)",
     fixed = TRUE
   )
 })

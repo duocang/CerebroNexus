@@ -21,7 +21,87 @@
   as.integer(value)
 }
 
-.builder_plan_preflight_entries <- function(entries) {
+.builder_plan_coordinate_transform_specs <- function(
+  transforms,
+  spatial_sections
+) {
+  if (is.null(transforms)) {
+    return(list())
+  }
+  names_transforms <- names(transforms)
+  if (is.list(transforms) && !is.object(transforms) && !length(transforms)) {
+    return(list())
+  }
+  if (
+    !is.list(transforms) ||
+      is.object(transforms) ||
+      is.null(names_transforms) ||
+      !is.character(names_transforms) ||
+      is.object(names_transforms) ||
+      anyNA(names_transforms) ||
+      any(!nzchar(names_transforms)) ||
+      anyDuplicated(names_transforms)
+  ) {
+    stop(
+      "Spatial coordinate transforms must be an ordinary named list with unique non-blank FOV names.",
+      call. = FALSE
+    )
+  }
+  unknown <- setdiff(names_transforms, spatial_sections)
+  if (length(unknown)) {
+    stop(
+      "Spatial coordinate transforms contain unknown FOV(s): ",
+      paste(unknown, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  normalizer <- get0(
+    ".spx_coordinate_transform_spec_normalize",
+    mode = "function",
+    inherits = TRUE
+  )
+  if (is.null(normalizer)) {
+    stop(
+      "Spatial coordinate transform validation is unavailable.",
+      call. = FALSE
+    )
+  }
+  normalized <- lapply(names_transforms, function(section) {
+    spec <- normalizer(
+      transforms[[section]],
+      context = paste0("spatial_coordinate_transforms$", section)
+    )
+    spec[c("rotation_degrees", "scale")]
+  })
+  names(normalized) <- names_transforms
+  normalized
+}
+
+builder_plan_requires_app <- function(entries) {
+  if (!is.list(entries)) {
+    stop("Builder plan entries must be a list.", call. = FALSE)
+  }
+  requires_app <- FALSE
+  for (entry in entries) {
+    if (!is.list(entry) || !is.list(entry$settings)) {
+      next
+    }
+    storage <- entry$settings$spatial_image_storage %||% "embedded"
+    if (!identical(storage, "external")) {
+      next
+    }
+    alignments <- .builder_plan_partition_alignments(
+      entry$settings$images %||% list()
+    )
+    images <- .builder_plan_flatten_spatial_images(alignments$spatial)
+    if (length(images) || !is.null(alignments$trekker)) {
+      requires_app <- TRUE
+    }
+  }
+  requires_app
+}
+
+.builder_plan_preflight_entries <- function(entries, make_app = FALSE) {
   for (entry in entries) {
     state_error <- tryCatch(
       {
@@ -48,20 +128,73 @@
   }
 
   for (entry in entries) {
-    images <- entry$settings$images %||% list()
-    unsaved <- names(images)[vapply(
-      images,
-      function(record) {
-        is.list(record) && identical(record$saved, FALSE)
-      },
-      logical(1)
-    )]
+    storage <- entry$settings$spatial_image_storage %||% "embedded"
+    if (
+      !is.character(storage) ||
+        length(storage) != 1L ||
+        is.na(storage) ||
+        !storage %in% c("embedded", "external")
+    ) {
+      return(builder_plan_error(
+        "Spatial image storage must be embedded or external.",
+        "invalid_spatial_image_storage"
+      ))
+    }
+    alignments <- tryCatch(
+      .builder_plan_partition_alignments(entry$settings$images %||% list()),
+      error = function(error) error
+    )
+    if (inherits(alignments, "condition")) {
+      code <- if (grepl("unique", conditionMessage(alignments), fixed = TRUE)) {
+        "duplicate_spatial_image_label"
+      } else {
+        "invalid_spatial_alignment_diagnostics"
+      }
+      return(builder_plan_error(conditionMessage(alignments), code))
+    }
+    images <- tryCatch(
+      .builder_plan_flatten_spatial_images(alignments$spatial),
+      error = function(error) error
+    )
+    if (inherits(images, "condition")) {
+      code <- if (grepl("unique", conditionMessage(images), fixed = TRUE)) {
+        "duplicate_spatial_image_label"
+      } else {
+        "invalid_spatial_alignment_diagnostics"
+      }
+      return(builder_plan_error(conditionMessage(images), code))
+    }
+    if (!is.null(alignments$trekker)) {
+      images <- c(
+        images,
+        list(c(
+          list(section_id = "trekker", image_label = "trekker"),
+          alignments$trekker
+        ))
+      )
+    }
+    if (
+      identical(storage, "external") &&
+        length(images) &&
+        !isTRUE(make_app)
+    ) {
+      return(builder_plan_error(
+        "External spatial images require CRB files + Viewer App output.",
+        "external_images_require_app"
+      ))
+    }
+    unsaved <- Filter(function(record) identical(record$saved, FALSE), images)
     if (length(unsaved)) {
+      first <- unsaved[[1L]]
       return(builder_plan_error(
         paste0(
-          "Section “",
-          unsaved[[1L]],
-          "” has an image but no saved alignment. Save or remove it before building."
+          "Dataset “",
+          entry$settings$name,
+          "”, section “",
+          first$section_id,
+          "”, image “",
+          first$image_label,
+          "” has no saved alignment. Save or remove it before building."
         ),
         "unsaved_spatial_alignment"
       ))
@@ -71,23 +204,33 @@
       .builder_plan_alignment_outside_count,
       integer(1)
     )
-    invalid_outside <- names(images)[is.na(outside_counts)]
+    invalid_outside <- which(is.na(outside_counts))
     if (length(invalid_outside)) {
+      first <- images[[invalid_outside[[1L]]]]
       return(builder_plan_error(
         paste0(
-          "Section “",
-          invalid_outside[[1L]],
+          "Dataset “",
+          entry$settings$name,
+          "”, section “",
+          first$section_id,
+          "”, image “",
+          first$image_label,
           "” has invalid image-coverage diagnostics. Re-open and save its alignment before building."
         ),
         "invalid_spatial_alignment_diagnostics"
       ))
     }
-    outside <- names(images)[outside_counts > 0L]
+    outside <- which(outside_counts > 0L)
     if (length(outside)) {
+      first <- images[[outside[[1L]]]]
       return(builder_plan_error(
         paste0(
-          "Section “",
-          outside[[1L]],
+          "Dataset “",
+          entry$settings$name,
+          "”, section “",
+          first$section_id,
+          "”, image “",
+          first$image_label,
           "” has cells outside its saved image bounds. Adjust the alignment ",
           "until every cell is covered before building."
         ),
@@ -323,12 +466,47 @@
     entries
   )
 
+  coordinate_transforms <- tryCatch(
+    Map(
+      function(entry, groups, projections, trajectories, cycle) {
+        identity <- .builder_plan_artifact_identity(
+          entry,
+          groups,
+          projections,
+          entry$settings$analyses %||% character(),
+          trajectories,
+          cycle
+        )
+        .builder_plan_coordinate_transform_specs(
+          entry$settings$spatial_coordinate_transforms %||% list(),
+          identity$spatial_sections %||% character()
+        )
+      },
+      entries,
+      included_groups,
+      included_projections,
+      included_trajectories,
+      cell_cycle
+    ),
+    error = function(error) error
+  )
+  if (inherits(coordinate_transforms, "condition")) {
+    message <- conditionMessage(coordinate_transforms)
+    code <- if (grepl("unknown FOV", message, fixed = TRUE)) {
+      "unknown_spatial_coordinate_transform"
+    } else {
+      "invalid_spatial_coordinate_transform"
+    }
+    return(builder_plan_error(message, code))
+  }
+
   list(
     labels = labels,
     included_groups = included_groups,
     included_projections = included_projections,
     included_trajectories = included_trajectories,
-    cell_cycle = cell_cycle
+    cell_cycle = cell_cycle,
+    spatial_coordinate_transforms = coordinate_transforms
   )
 }
 

@@ -154,48 +154,6 @@ builder_snapshot_release_transition <- function(
   )
 }
 
-builder_dataset_context_ui <- function(state, current = state$current_dataset) {
-  ids <- vapply(state$datasets, `[[`, character(1), "id")
-  index <- match(current, ids)
-  if (is.na(index)) {
-    return(NULL)
-  }
-  entry <- state$datasets[[index]]
-  multiple <- length(ids) > 1L
-  cells <- .builder_rail_or(entry$profile$n_cells, 0L)
-  genes <- .builder_rail_or(
-    entry$profile$n_genes,
-    .builder_rail_or(entry$profile$n_features, 0L)
-  )
-  context <- shiny::div(
-    class = paste(
-      "builder-stage-summary dataset-context",
-      if (multiple) "is-multiple" else ""
-    ),
-    tabindex = "-1",
-    shiny::div(
-      class = "dataset-context-copy",
-      if (multiple) {
-        shiny::span(
-          class = "dataset-context-position",
-          paste("Dataset", index, "of", length(ids))
-        )
-      },
-      shiny::strong(class = "dataset-context-title", entry$settings$name),
-      shiny::span(
-        class = "dataset-context-counts",
-        paste0(
-          format(cells, big.mark = ","),
-          " cells · ",
-          format(genes, big.mark = ","),
-          " genes"
-        )
-      )
-    )
-  )
-  context
-}
-
 builder_dataset_remove_requires_confirmation <- function(entry) {
   settings <- entry$settings
   spatial <- .builder_rail_or(entry$spatial_drafts, list())
@@ -516,19 +474,9 @@ builder_pending_dataset_files_ui <- function(files) {
           shiny::strong(filename),
           shiny::span(class = "hint", detail)
         ),
-        shiny::div(
-          class = "builder-action-row",
-          shiny::span(
-            class = "builder-status builder-status--reading",
-            "Reading…"
-          ),
-          shiny::tags$button(
-            type = "button",
-            class = "btn btn-remove-soft pending-upload-remove",
-            `data-upload-id` = file$id,
-            `aria-label` = paste("Cancel adding", filename),
-            "Remove"
-          )
+        shiny::span(
+          class = "builder-status builder-status--reading",
+          "Reading…"
         )
       )
     })
@@ -549,6 +497,7 @@ builder_empty_workbench_ui <- function() {
 builder_loading_workbench_ui <- function(entry) {
   stopifnot(inherits(entry, "builder_import_entry"))
   failed <- identical(entry$load_state, "error")
+  queued <- identical(entry$load_state, "queued")
   shiny::tags$section(
     class = paste(
       "builder-stage builder-loading-stage",
@@ -578,23 +527,25 @@ builder_loading_workbench_ui <- function(entry) {
         shiny::span()
       )
     },
-    shiny::div(
-      class = "builder-action-row builder-loading-actions",
-      if (failed) {
+    if (failed || queued) {
+      shiny::div(
+        class = "builder-action-row builder-loading-actions",
+        if (failed) {
+          shiny::tags$button(
+            type = "button",
+            class = "btn builder-retry-import",
+            `data-import-id` = entry$id,
+            "Retry"
+          )
+        },
         shiny::tags$button(
           type = "button",
-          class = "btn builder-retry-import",
+          class = "btn btn-remove-soft builder-remove-import",
           `data-import-id` = entry$id,
-          "Retry"
+          if (failed) "Remove dataset" else "Remove from queue"
         )
-      },
-      shiny::tags$button(
-        type = "button",
-        class = "btn btn-remove-soft builder-remove-import",
-        `data-import-id` = entry$id,
-        if (failed) "Remove dataset" else "Remove"
       )
-    )
+    }
   )
 }
 
@@ -609,6 +560,7 @@ builder_import_rail_ui <- function(entries, current = NULL) {
       stopifnot(inherits(entry, "builder_import_entry"))
       active <- identical(entry$id, current)
       failed <- identical(entry$load_state, "error")
+      queued <- identical(entry$load_state, "queued")
       importing <- !failed
       detail <- Filter(
         function(value) {
@@ -657,28 +609,30 @@ builder_import_rail_ui <- function(entries, current = NULL) {
             )
           )
         ),
-        shiny::div(
-          class = "ds-actions",
-          if (failed) {
+        if (failed || queued) {
+          shiny::div(
+            class = "ds-actions",
+            if (failed) {
+              shiny::tags$button(
+                type = "button",
+                class = "ds-move builder-retry-import",
+                `data-import-id` = entry$id,
+                "Retry"
+              )
+            },
             shiny::tags$button(
               type = "button",
-              class = "ds-move builder-retry-import",
+              class = "ds-del btn-remove-soft builder-remove-import",
               `data-import-id` = entry$id,
-              "Retry"
+              `aria-label` = if (failed) {
+                paste("Remove failed import", entry$label)
+              } else {
+                paste("Remove queued import", entry$label)
+              },
+              if (failed) "Remove" else "Remove from queue"
             )
-          },
-          shiny::tags$button(
-            type = "button",
-            class = "ds-del btn-remove-soft builder-remove-import",
-            `data-import-id` = entry$id,
-            `aria-label` = if (failed) {
-              paste("Remove failed import", entry$label)
-            } else {
-              paste("Cancel loading", entry$label)
-            },
-            "Remove"
           )
-        )
+        }
       )
     })
   )

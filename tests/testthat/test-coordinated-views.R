@@ -465,7 +465,8 @@ test_that("Linked views consumes Builder Viewer defaults", {
       ds = list(
         default_projection = "tsne",
         default_trajectory = NULL,
-        overview_point_size = 5
+        overview_point_size = 5,
+        overview_percentage_cells_to_show = 60
       )
     )
   )
@@ -491,6 +492,7 @@ test_that("Linked views consumes Builder Viewer defaults", {
       point_size,
       info = paste("point size", point_size)
     )
+    expect_identical(bundle$default_percentage_cells_to_show, 60)
   }
 })
 
@@ -1119,7 +1121,10 @@ test_that("each section offers only its own configured backgrounds", {
             scale_y = 0.75,
             flip_x = TRUE,
             flip_y = FALSE,
-            rotation = 90
+            rotation = 90,
+            image_opacity = 0.6,
+            point_opacity = 0.55,
+            point_size = 8
           )
         )
       )
@@ -1158,7 +1163,9 @@ test_that("each section offers only its own configured backgrounds", {
       flipX = TRUE,
       flipY = FALSE,
       rotation = 90,
-      opacity = 0.6
+      opacity = 0.6,
+      pointOpacity = 0.55,
+      pointSize = 8
     )
   )
 
@@ -1167,6 +1174,7 @@ test_that("each section offers only its own configured backgrounds", {
     collapse = "\n"
   )
   expect_match(js, "pr.rotation != null ? pr.rotation : 0", fixed = TRUE)
+  expect_match(js, "c.rotate(-state.rotate * Math.PI / 180)", fixed = TRUE)
 })
 
 test_that("per-image settings also apply to embedded backgrounds", {
@@ -1187,6 +1195,18 @@ test_that("per-image settings also apply to embedded backgrounds", {
             xmax = 3,
             ymin = 0,
             ymax = 5
+          ),
+          histology_alignment = list(
+            source = "Embedded",
+            dx = -4,
+            dy = 6,
+            scale = 1.25,
+            rotation = -32,
+            flip_x = TRUE,
+            flip_y = FALSE,
+            image_opacity = 0.7,
+            point_opacity = 0.35,
+            point_size = 9
           )
         )
       ),
@@ -1223,16 +1243,25 @@ test_that("per-image settings also apply to embedded backgrounds", {
   expect_identical(
     built$images[[1L]]$preset,
     list(
-      offsetX = 2,
-      offsetY = 0,
-      scaleX = 1,
-      scaleY = 1,
-      flipX = FALSE,
-      flipY = TRUE,
-      rotation = 45,
-      opacity = 0.7
+      offsetX = -4,
+      offsetY = 6,
+      scaleX = 1.25,
+      scaleY = 1.25,
+      flipX = TRUE,
+      flipY = FALSE,
+      rotation = -32,
+      opacity = 0.7,
+      pointOpacity = 0.35,
+      pointSize = 9,
+      geometryBaked = TRUE
     )
   )
+  js <- paste(
+    readLines(file.path(dirname(bundle_file), "..", "www", "coordviews.js")),
+    collapse = "\n"
+  )
+  expect_match(js, "function imageRenderState(img, state)", fixed = TRUE)
+  expect_match(js, "if (!pr.geometryBaked) return state;", fixed = TRUE)
 })
 
 test_that("the alignment bar follows the chosen background, not the data set", {
@@ -1360,7 +1389,7 @@ test_that("bundling two images of the same basename keeps both", {
 
   copied <- list.files(
     file.path(app_dir, "spatial-assets"),
-    pattern = "he.*[.]png$",
+    pattern = "[.]png$",
     recursive = TRUE
   )
   expect_equal(length(copied), 2)
@@ -1389,4 +1418,88 @@ test_that("the alignment sliders contain the preset they are given", {
   expect_match(txt, "abs(pr$offsetX", fixed = TRUE)
   expect_match(txt, "scale_lo", fixed = TRUE)
   expect_no_match(txt, 'rng("cv-img-scalex", 0.3, 3', fixed = TRUE)
+})
+
+test_that("More settings is an accessible drawer rather than a draggable window", {
+  skip_if(is.na(local_inst), "viewer sources not found")
+
+  ui <- paste(
+    readLines(
+      file.path(local_inst, "viewer/coordinated_views/UI.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  js <- paste(
+    readLines(
+      file.path(local_inst, "viewer/www/coordviews.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  css <- paste(
+    readLines(
+      file.path(local_inst, "viewer/www/coordviews.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(ui, '`role` = "dialog"', fixed = TRUE)
+  expect_match(ui, '`aria-hidden` = "true"', fixed = TRUE)
+  expect_no_match(ui, "data-cv-more-drag-handle", fixed = TRUE)
+  expect_no_match(ui, "Drag to move", fixed = TRUE)
+  expect_no_match(js, "beginMoreDrag", fixed = TRUE)
+  expect_no_match(js, "moreFloating", fixed = TRUE)
+  expect_match(css, "@media (prefers-reduced-motion: reduce)", fixed = TRUE)
+  expect_match(css, "#cv-more,", fixed = TRUE)
+  expect_match(css, "transition: none", fixed = TRUE)
+  expect_no_match(css, "transition: transform .3s", fixed = TRUE)
+})
+
+test_that("external backgrounds require matching PNG or JPEG magic bytes", {
+  skip_if_not(have_bundle)
+  skip_if_not_installed("base64enc")
+  tmp <- file.path(tempdir(), "cv_external_magic")
+  unlink(tmp, recursive = TRUE)
+  assets <- file.path(tmp, "spatial-assets")
+  dir.create(assets, recursive = TRUE)
+  png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff, 0xe0))
+  writeBin(png_magic, file.path(assets, "valid.png"))
+  writeBin(jpeg_magic, file.path(assets, "valid.jpg"))
+  writeLines("not an image", file.path(assets, "text.png"))
+  writeBin(png_magic, file.path(assets, "mismatch.jpg"))
+  cv_env$Cerebro.options <- list(
+    cerebro_root = tmp,
+    spatial_images = list(
+      ds = list(
+        fov = c(
+          png = "spatial-assets/valid.png",
+          jpeg = "spatial-assets/valid.jpg",
+          text = "spatial-assets/text.png",
+          mismatch = "spatial-assets/mismatch.jpg"
+        )
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  images <- cv_env$cv_external_images("fov")
+  expect_identical(
+    vapply(images, `[[`, character(1), "label"),
+    c("png", "jpeg")
+  )
+  expect_match(images[[1L]]$uri, "^data:image/png;base64,")
+  expect_match(images[[2L]]$uri, "^data:image/jpeg;base64,")
 })

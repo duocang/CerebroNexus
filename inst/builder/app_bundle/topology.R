@@ -365,16 +365,19 @@
   path
 }
 
-.builder_app_assert_root_topology <- function(identity) {
+.builder_app_assert_root_topology <- function(identity, spatial_images) {
   paths <- names(identity$entries)
   root_paths <- paths[!grepl("/", paths, fixed = TRUE)]
   expected <- c(
     "app.R" = "file",
     "cerebro_config.rds" = "file",
     "extdata" = "directory",
-    "private-data" = "directory",
-    "viewer" = "directory"
+    "private-data" = "directory"
   )
+  if (length(spatial_images)) {
+    expected <- c(expected, "spatial-assets" = "directory")
+  }
+  expected <- c(expected, "viewer" = "directory")
   actual <- vapply(
     identity$entries[root_paths],
     `[[`,
@@ -384,6 +387,106 @@
   if (!identical(actual, expected)) {
     stop(
       "The staged App root differs from its trusted topology.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+.builder_app_assert_spatial_topology <- function(
+  identity,
+  request,
+  spatial_images
+) {
+  entries <- identity$entries
+  spatial_entries <- entries[
+    names(entries) == "spatial-assets" |
+      startsWith(names(entries), "spatial-assets/")
+  ]
+  if (!length(spatial_images)) {
+    if (length(spatial_entries)) {
+      stop(
+        "The staged App contains undeclared spatial assets.",
+        call. = FALSE
+      )
+    }
+    return(invisible(TRUE))
+  }
+  files <- character()
+  expected_content <- list()
+  for (dataset in names(spatial_images)) {
+    for (section in names(spatial_images[[dataset]])) {
+      for (label in names(spatial_images[[dataset]][[section]])) {
+        descriptor <- spatial_images[[dataset]][[section]][[label]]
+        path <- if (is.character(descriptor)) descriptor else descriptor$path
+        files <- c(files, path)
+      }
+    }
+  }
+  for (dataset in names(request$spatial_images)) {
+    for (section in names(request$spatial_images[[dataset]])) {
+      for (label in names(request$spatial_images[[dataset]][[section]])) {
+        descriptor <- request$spatial_images[[dataset]][[section]][[label]]
+        target <- .builder_app_spatial_target(
+          dataset,
+          section,
+          label,
+          descriptor$path
+        )
+        source <- request$spatial_image_identities[[dataset]][[section]][[
+          label
+        ]]
+        expected_content[[target]] <- .builder_app_portable_file(
+          target,
+          source$size,
+          source$md5
+        )
+      }
+    }
+  }
+  directories <- unique(unlist(
+    lapply(files, function(path) {
+      components <- strsplit(dirname(path), "/", fixed = TRUE)[[1L]]
+      vapply(
+        seq_along(components),
+        function(index) {
+          paste(components[seq_len(index)], collapse = "/")
+        },
+        character(1)
+      )
+    }),
+    use.names = FALSE
+  ))
+  expected_paths <- c(directories, files)
+  if (
+    anyDuplicated(files) ||
+      !setequal(names(spatial_entries), expected_paths)
+  ) {
+    stop(
+      "The staged App spatial-assets topology differs from its manifest.",
+      call. = FALSE
+    )
+  }
+  directory_types <- vapply(
+    entries[directories],
+    `[[`,
+    character(1),
+    "type"
+  )
+  actual_content <- lapply(names(expected_content), function(path) {
+    entry <- entries[[path]]
+    if (!is.list(entry) || !identical(entry$type, "file")) {
+      return(NULL)
+    }
+    .builder_app_portable_file(path, entry$size, entry$md5)
+  })
+  names(actual_content) <- names(expected_content)
+  if (
+    any(directory_types != "directory") ||
+      !identical(actual_content, expected_content)
+  ) {
+    stop(
+      "The staged App spatial assets differ from frozen input.",
       call. = FALSE
     )
   }

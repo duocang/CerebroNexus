@@ -28,8 +28,8 @@
 .shell,
 .builder-shell {
   display: grid;
-  grid-template-columns: 19.5rem minmax(0, 1fr);
-  gap: var(--builder-section-gap);
+  grid-template-columns: var(--builder-rail-width) minmax(0, 1fr);
+  gap: var(--builder-shell-gap);
   width: 100%;
   max-width: none;
   margin: 0;
@@ -57,8 +57,11 @@
 #builder-workspace { padding-bottom: 4.75rem; }
 #builder-workspace .builder-workflow-progress {
   position: fixed;
-  left: 0;
-  right: 0;
+  left: calc(
+    var(--builder-page-gutter) + var(--builder-rail-width) +
+    var(--builder-shell-gap)
+  );
+  right: var(--builder-page-gutter);
   bottom: 0;
   z-index: 12;
   background: rgb(255 255 255 / .97);
@@ -94,6 +97,7 @@
     align-self: start;
     position: sticky;
     top: 4.2rem;
+    max-height: calc(100vh - 5.2rem);
     max-height: calc(100dvh - 5.2rem);
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -185,7 +189,7 @@
 .rail-head {
   padding: .75rem .95rem;
   border-bottom: 1px solid var(--c-border);
-  font-size: .7rem;
+  font-size: .75rem;
   font-family: var(--font-mono);
   letter-spacing: .09em;
   text-transform: uppercase;
@@ -205,7 +209,7 @@
   transition: background var(--duration-base) var(--ease);
 }
 .ds-picker .ds:not(.is-active):has(.ds-pick:hover) {
-  background: var(--c-amber-50);
+  background: var(--builder-hover-bg);
 }
 .ds.is-active {
   background: var(--builder-selection-bg);
@@ -249,7 +253,7 @@
   flex: 0 0 1.35rem;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: .72rem;
+  font-size: .75rem;
   line-height: 1.5rem;
   text-align: center;
   color: var(--c-text-subtle);
@@ -274,7 +278,7 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .ds .meta {
-  display: block; font-family: var(--font-mono); font-size: .71rem;
+  display: block; font-family: var(--font-mono); font-size: .75rem;
   color: var(--c-text-subtle);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -324,7 +328,7 @@
   align-items: center;
   gap: .3rem;
   font: inherit;
-  font-size: .7rem;
+  font-size: .75rem;
   line-height: 1;
 }
 .ds-move { display: inline-flex; width: auto; }
@@ -357,10 +361,14 @@
 }
 
 @media (max-width: 68.75rem) {
+  :root {
+    --builder-rail-width: 17.75rem;
+    --builder-shell-gap: var(--space-4);
+  }
   .shell,
   .builder-shell {
-    grid-template-columns: 17.75rem minmax(0, 1fr);
-    gap: var(--space-4);
+    grid-template-columns: var(--builder-rail-width) minmax(0, 1fr);
+    gap: var(--builder-shell-gap);
     padding-inline: var(--space-6);
   }
 }
@@ -374,6 +382,7 @@
   }
   #builder-workspace .builder-workflow-progress {
     left: var(--builder-page-gutter);
+    right: var(--builder-page-gutter);
   }
   .rail-summary { display: flex; }
   .rail-manager-backdrop.is-open {
@@ -435,6 +444,12 @@
   .topbar .formats { width: 100%; margin-left: 0; }
   .shell,
   .builder-shell { padding-block: var(--space-4); }
+  .ds-move,
+  .ds-del,
+  .rail-manager-close {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -2,7 +2,7 @@ builder_repo_source("prerequisite.R")
 builder_repo_source("app_bundle.R")
 
 test_that("Builder App bundle loads the auth contract before request helpers", {
-  path <- testthat::test_path("..", "..", "inst", "builder", "app_bundle.R")
+  path <- builder_profile_inst_path("builder", "app_bundle.R")
   lines <- readLines(path, warn = FALSE)
   auth_source <- grep('"auth.R"', lines, fixed = TRUE)
   contract_source <- grep('"contract.R"', lines, fixed = TRUE)

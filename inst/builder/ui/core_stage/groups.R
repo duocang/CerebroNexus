@@ -181,8 +181,17 @@ builder_metadata_policy_status <- function(policy, id) {
     forced = isTRUE(record$forced %||% record$required),
     sensitive = isTRUE(record$sensitive),
     recommended = isTRUE(record$retain_in_crb),
-    supported = !identical(record$retain_in_crb, FALSE) ||
-      !identical(disposition, "excluded")
+    supported = if (
+      is.list(record) &&
+        is.logical(record$supported) &&
+        length(record$supported) == 1L &&
+        !is.na(record$supported)
+    ) {
+      isTRUE(record$supported)
+    } else {
+      !identical(record$retain_in_crb, FALSE) ||
+        !identical(disposition, "excluded")
+    }
   )
 }
 

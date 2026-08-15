@@ -154,19 +154,6 @@ builder_alignment_projection <- function(reductions, current = NULL) {
   find_named("pca")
 }
 
-#' Return stable cell identities from one Plotly selection event.
-#'
-#' Plotly returns `NULL` for deselection and a data-frame-like payload for
-#' click/box/lasso selection. Keeping the extraction pure makes both panes use
-#' the same barcode contract and lets deselection clear the linked highlight.
-builder_alignment_event_cells <- function(event) {
-  if (is.null(event) || !is.list(event) || is.null(event$customdata)) {
-    return(character())
-  }
-  ids <- unique(as.character(event$customdata))
-  ids[!is.na(ids) & nzchar(ids)]
-}
-
 .builder_spatial_assert_match <- function(match) {
   if (isTRUE(match$valid)) {
     return(invisible(match))

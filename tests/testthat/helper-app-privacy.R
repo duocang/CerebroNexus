@@ -316,6 +316,7 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
   entries[[2L]]$settings$default_group <- "region"
   entries[[2L]]$settings$reductions <- c("umap", "tsne")
   entries[[2L]]$settings$default_projection <- "tsne"
+  entries[[2L]]$settings$spatial_image_storage <- "embedded"
   section <- entries[[2L]]$dataset_profile$spatial$sections[[1L]]
   image_file <- write_dummy_png(file.path(root, "builder-histology.png"))
   encoded <- paste0(

@@ -709,6 +709,7 @@ test_that("Builder defines semantic action and measure roles", {
   )
   expect_identical(unname(builder["--builder-measure-copy"]), "48rem")
   expect_identical(unname(builder["--builder-measure-form"]), "56rem")
+  expect_identical(unname(builder["--builder-footer-gap"]), "40px")
   builder_font_sans <- paste(
     '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",',
     '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",',
@@ -772,7 +773,7 @@ test_that("Builder motion uses its 180ms duration role", {
   )[[1L]]
 
   expect_length(shared_duration_uses, 0L)
-  expect_length(builder_duration_uses, 19L)
+  expect_length(builder_duration_uses, 20L)
 })
 
 test_that("Builder layered stylesheets own their declared responsibilities", {

@@ -29,14 +29,32 @@
       included_groups = .subset2(item, "included_groups") %||% character(),
       included_projections = .subset2(item, "included_projections") %||%
         character(),
-      metadata_policy = list(
-        included = .subset2(
-          .subset2(item, "metadata_policy") %||% list(),
-          "included"
-        ) %||%
+      metadata_policy = {
+        policy <- .subset2(item, "metadata_policy") %||% list()
+        retained <- .subset2(policy, "retained") %||%
+          .subset2(policy, "included") %||%
           character()
-      ),
+        list(
+          retained = retained,
+          included = retained,
+          excluded = .subset2(policy, "excluded") %||% character(),
+          forced = .subset2(policy, "forced") %||% character()
+        )
+      },
       expression_backend = .subset2(item, "expression_backend"),
+      spatial_image_storage = .subset2(item, "spatial_image_storage") %||%
+        "embedded",
+      spatial_alignment = {
+        alignment <- .subset2(item, "spatial_alignment") %||% list()
+        list(
+          section_count = as.integer(
+            .subset2(alignment, "section_count") %||% 0L
+          ),
+          image_count = as.integer(
+            .subset2(alignment, "image_count") %||% 0L
+          )
+        )
+      },
       sidecars = .subset2(item, "sidecars") %||% character(),
       viewer_page_expectations = list(
         visible_conditional = .subset2(
@@ -179,6 +197,7 @@
       "default_projection",
       "default_trajectory",
       "overview_point_size",
+      "overview_percentage_cells_to_show",
       "expression_backend",
       "sidecars"
     )]

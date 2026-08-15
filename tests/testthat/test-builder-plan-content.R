@@ -32,6 +32,47 @@ test_that("metadata retention is independent from Group selection", {
   expect_false("orig.ident" %in% final$groups)
 })
 
+test_that("metadata retention controls resolve recommendation attention", {
+  entry <- metadata_retention_entry()
+  recommendation <- entry$settings$recommendations$metadata
+  recommendation$columns$patient_id <- recommendation$columns$cluster
+  recommendation$columns$patient_id$name <- "patient_id"
+  recommendation$columns$patient_id$value <- "attention"
+  recommendation$columns$patient_id$disposition <- "attention"
+  recommendation$columns$patient_id$effective_included <- FALSE
+  recommendation$columns$patient_id$retain_in_crb <- FALSE
+  recommendation$columns$patient_id$requires_confirmation <- TRUE
+  recommendation$attention <- "patient_id"
+  recommendation$excluded <- unique(c(
+    recommendation$excluded,
+    "patient_id"
+  ))
+  recommendation$requires_confirmation <- TRUE
+
+  excluded <- builder_metadata_policy_set_retained(
+    recommendation,
+    recommendation$retained
+  )
+  expect_identical(
+    excluded$columns$patient_id$disposition,
+    "excluded"
+  )
+  expect_false(excluded$columns$patient_id$requires_confirmation)
+  expect_false("patient_id" %in% excluded$attention)
+
+  included <- builder_metadata_policy_set_retained(
+    recommendation,
+    c(recommendation$retained, "patient_id")
+  )
+  expect_identical(
+    included$columns$patient_id$disposition,
+    "included"
+  )
+  expect_true(included$columns$patient_id$effective_included)
+  expect_true("patient_id" %in% included$retained)
+  expect_false(included$requires_confirmation)
+})
+
 test_that("a Group cannot be excluded from retained metadata", {
   entry <- metadata_retention_entry()
   entry$settings$groups <- "cluster"

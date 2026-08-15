@@ -147,6 +147,36 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "disabled", fixed = TRUE)
   expect_match(html, "enhance-module is-blocked", fixed = TRUE)
   expect_match(html, "Optional attachments", fixed = TRUE)
+  expect_length(
+    gregexpr('class="enhance-group ', html, fixed = TRUE)[[1L]],
+    2L
+  )
+  expect_match(
+    html,
+    'class="enhance-group enhance-group--analyses"',
+    fixed = TRUE
+  )
+  expect_match(html, "<h3>Optional enhancements</h3>", fixed = TRUE)
+  expect_match(html, "<h4>Optional analyses</h4>", fixed = TRUE)
+  expect_match(html, "<h4>Optional attachments</h4>", fixed = TRUE)
+  expect_match(
+    html,
+    'id="enhance-stage" class="builder-enhancement-stack"',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    paste(
+      'class="builder-stage-section builder-stage-spatial',
+      'spatial-alignment-workbench"'
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    'class="enhance-group enhance-group--attachments"',
+    fixed = TRUE
+  )
   expect_match(html, "Tables for Extra material", fixed = TRUE)
   expect_match(
     html,
@@ -156,7 +186,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "Spatial alignment", fixed = TRUE)
   expect_match(
     html,
-    "Compare transcriptome and physical space, then align an optional tissue image.",
+    "Align tissue images with the spatial coordinates for each FOV or section.",
     fixed = TRUE
   )
   expect_false(grepl("Enabled page: extra material", html, fixed = TRUE))
@@ -203,20 +233,59 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
     'class="enhance-tissue-file-control builder-file-picker builder-file-picker--compact"',
     fixed = TRUE
   )
-  expect_match(html, "+ Add tissue image…", fixed = TRUE)
+  expect_match(html, 'id="enhance-add_image_label"', fixed = TRUE)
   expect_false(grepl('id="enhance-image_path"', html, fixed = TRUE))
   expect_false(grepl('id="enhance-attach_image"', html, fixed = TRUE))
   expect_false(grepl('id="enhance-histology_to_retain"', html, fixed = TRUE))
-  expect_match(html, "Transcriptome space", fixed = TRUE)
   expect_match(html, "Spatial space", fixed = TRUE)
-  expect_match(html, 'id="enhance-alignment_transcriptome_plot"', fixed = TRUE)
+  expect_false(grepl("Transcriptome space", html, fixed = TRUE))
+  expect_false(grepl(
+    'id="enhance-alignment_transcriptome_plot"',
+    html,
+    fixed = TRUE
+  ))
   expect_match(html, 'id="enhance-alignment_spatial_plot"', fixed = TRUE)
   expect_match(html, 'id="enhance-alignment_legend"', fixed = TRUE)
-  expect_match(html, 'aria-label="Transcriptome-space cell plot"', fixed = TRUE)
   expect_match(html, 'aria-label="Spatial-space cell plot"', fixed = TRUE)
+  expect_match(
+    html,
+    'class="enhance-attachment-block enhance-attachment-block--tables"',
+    fixed = TRUE
+  )
+  expect_false(grepl("enhance-attachment-block--spatial", html, fixed = TRUE))
+  expect_false(grepl(
+    'class="enhance-attachment[^\"]*builder-subcard',
+    html,
+    perl = TRUE
+  ))
+  expect_length(
+    gregexpr('class="spatial-alignment-figure"', html, fixed = TRUE)[[1L]],
+    1L
+  )
+  expect_false(grepl("Transcriptome space", html, fixed = TRUE))
+  expect_false(grepl(
+    'class="spatial-alignment-plot-card builder-subcard"',
+    html,
+    fixed = TRUE
+  ))
+  expect_match(
+    html,
+    'class="spatial-alignment-figure-header"',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    '<h5>Tables for Extra material</h5>',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    '<h3 class="spatial-alignment-title">Spatial alignment</h3>',
+    fixed = TRUE
+  )
   expect_match(html, "Position", fixed = TRUE)
   expect_match(html, "Scale &amp; orientation", fixed = TRUE)
-  expect_match(html, "Appearance", fixed = TRUE)
+  expect_match(html, "Image appearance", fixed = TRUE)
   expect_match(html, "Image opacity", fixed = TRUE)
   expect_match(html, "Point opacity", fixed = TRUE)
   expect_match(html, 'data-postfix="%"', fixed = TRUE)
@@ -224,7 +293,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, 'data-ns-prefix="enhance-"', fixed = TRUE)
   expect_match(html, "Point size", fixed = TRUE)
   expect_match(html, "Save alignment", fixed = TRUE)
-  expect_match(html, "Apply transform to all sections", fixed = TRUE)
+  expect_match(html, "Apply transform to matching image label", fixed = TRUE)
   expect_match(html, "Reset alignment", fixed = TRUE)
   expect_match(html, 'id="enhance-alignment_status"', fixed = TRUE)
   expect_false(grepl("Remove image", html, fixed = TRUE))
@@ -234,6 +303,8 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
     'class="spatial-alignment-sidebar builder-controls-grid"',
     fixed = TRUE
   )
+  expect_match(html, 'class="spatial-alignment-sidebar-primary"', fixed = TRUE)
+  expect_match(html, 'class="spatial-alignment-sidebar-scroll"', fixed = TRUE)
   expect_match(
     html,
     'class="spatial-alignment-plots builder-preview-grid"',
@@ -333,9 +404,15 @@ test_that("Enhance model derives attachments and retained content from state", {
     ),
     settings = list(
       tables = list(markers = list(table = data.frame())),
-      images = list(`section-a` = list(uri = "data:image/png;base64,AA=="))
+      images = list(
+        `section-a` = list(
+          uri = "data:image/png;base64,AA==",
+          bounds = list(xmin = 0, xmax = 1, ymin = 0, ymax = 1)
+        )
+      )
     ),
-    modules = list()
+    modules = list(),
+    active_section = "section-b"
   )
 
   expect_identical(model$attachments$tables$selected, "markers")
@@ -344,6 +421,7 @@ test_that("Enhance model derives attachments and retained content from state", {
     c("section-a", "section-b")
   )
   expect_identical(model$attachments$histology$selected, "section-a")
+  expect_identical(model$attachments$histology$active_section, "section-b")
   expect_identical(
     vapply(model$auto_retained, `[[`, character(1), "id"),
     "immune_repertoire"
@@ -483,7 +561,7 @@ test_that("Enhance distinguishes intrinsic absence from dependency blocking", {
   expect_match(html, "disabled", fixed = TRUE)
 })
 
-test_that("tissue image metadata and Remove share the bounded file-list UI", {
+test_that("tissue image metadata owns the single rename and remove actions", {
   html <- builder_stage_html(builder_tissue_image_file_ui(
     "enhance",
     list(
@@ -502,7 +580,19 @@ test_that("tissue image metadata and Remove share the bounded file-list UI", {
   expect_match(html, "Ready", fixed = TRUE)
   expect_false(grepl("/private/upload", html, fixed = TRUE))
   expect_match(html, 'id="enhance-drop_image"', fixed = TRUE)
+  expect_match(html, 'id="enhance-rename_image"', fixed = TRUE)
+  expect_lt(
+    regexpr('id="enhance-rename_image"', html, fixed = TRUE)[[1L]],
+    regexpr('id="enhance-drop_image"', html, fixed = TRUE)[[1L]]
+  )
   expect_match(html, "btn-remove-soft", fixed = TRUE)
+
+  stage_html <- builder_stage_html(builder_spatial_alignment_ui(
+    "enhance",
+    list(label = "Spatial alignment", sections = "section-a")
+  ))
+  expect_false(grepl('id="enhance-remove_image"', stage_html, fixed = TRUE))
+  expect_false(grepl('id="enhance-rename_image"', stage_html, fixed = TRUE))
 
   server <- readLines(
     builder_profile_inst_path("builder", "spatial_alignment_server.R"),
@@ -510,6 +600,11 @@ test_that("tissue image metadata and Remove share the bounded file-list UI", {
   )
   expect_true(any(grepl(
     'observeEvent(input[["enhance-drop_image"]]',
+    server,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    'observeEvent(input[["enhance-remove_image"]]',
     server,
     fixed = TRUE
   )))
@@ -531,7 +626,7 @@ test_that("Apply to all sections requires an explicit confirmation", {
   expect_match(server, "enhance-confirm_apply_align_all", fixed = TRUE)
   expect_match(
     server,
-    "Apply transform to all image-bearing sections?",
+    "Apply transform to matching image label?",
     fixed = TRUE
   )
 })

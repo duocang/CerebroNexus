@@ -47,6 +47,15 @@ source(
   ),
   local = TRUE
 )
+source(
+  file.path(
+    "..",
+    "viewer",
+    "core",
+    "spatial_coordinate_transform.R"
+  ),
+  local = TRUE
+)
 source("spatial.R", local = TRUE)
 source(
   file.path(
@@ -85,6 +94,7 @@ source("content_spatial.R", local = TRUE)
 source("content.R", local = TRUE)
 source("profile.R", local = TRUE)
 source("inspect.R", local = TRUE)
+source("recommend.R", local = TRUE)
 source("adapters.R", local = TRUE)
 source("preview.R", local = TRUE)
 source("stats.R", local = TRUE)
@@ -292,6 +302,7 @@ builder_app_settle_release <- function(
 }
 
 ui <- tagList(
+  shiny::bootstrapLib(),
   tags$head(
     builder_stylesheet_tags(),
     tags$script(src = paste0("icons.js", asset_stamp("www/icons.js"))),
@@ -414,7 +425,7 @@ ui <- tagList(
     ),
     tags$button(
       type = "button",
-      class = "btn btn-primary builder-first-run-dismiss",
+      class = "btn builder-first-run-dismiss",
       "Got it"
     )
   )

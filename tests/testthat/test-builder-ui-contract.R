@@ -41,6 +41,21 @@ builder_stylesheet_text <- function(
   )
 }
 
+test_that("builder UI includes the Bootstrap dependency required by modals", {
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(dirname(builder_asset_path("app.R")))
+  sys.source("app.R", envir = app_env)
+
+  dependency_names <- vapply(
+    htmltools::renderTags(app_env$ui)$dependencies,
+    function(dependency) dependency$name,
+    character(1),
+    USE.NAMES = FALSE
+  )
+
+  expect_contains(dependency_names, "bootstrap")
+})
+
 test_that("builder stylesheets load in explicit responsibility order", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(dirname(builder_asset_path("app.R")))
@@ -116,7 +131,11 @@ test_that("builder uses a responsive card grid", {
 
   expect_match(css, "#workbench \\{")
   expect_match(css, "\\.builder-stage,")
-  expect_match(css, "grid-template-columns: 19.5rem")
+  expect_match(
+    layout_css,
+    "grid-template-columns: var(--builder-rail-width) minmax(0, 1fr)",
+    fixed = TRUE
+  )
   expect_match(layout_css, "@media (max-width: 58rem)", fixed = TRUE)
   expect_match(layout_css, "@media (max-width: 40rem)", fixed = TRUE)
   expect_match(components_css, "@media (max-width: 40rem)", fixed = TRUE)
@@ -219,6 +238,10 @@ test_that("builder exposes one compact responsive component system", {
   )) {
     expect_match(css, component, fixed = TRUE)
   }
+  expect_match(css, "--duration-fast: 120ms", fixed = TRUE)
+  expect_match(css, "--duration-normal: 220ms", fixed = TRUE)
+  expect_match(css, "--builder-text-muted: var(--c-text-2)", fixed = TRUE)
+  expect_match(css, "--builder-text-subtle: var(--c-text-3)", fixed = TRUE)
   expect_match(css, "--builder-page-gutter: 26px", fixed = TRUE)
   expect_false(grepl(
     "\\.shell,\\s*\\.builder-shell \\{[^}]*82\\.5rem",
@@ -283,6 +306,186 @@ test_that("builder exposes one compact responsive component system", {
     css,
     perl = TRUE
   ))
+})
+
+test_that("enhancement groups and previews use one quiet density system", {
+  css <- builder_stylesheet_text("builder.features.css")
+
+  expect_match(
+    css,
+    paste0(
+      "\\.enhance-group \\{[^}]*padding: 0;[^}]*",
+      "border: 0;[^}]*background: transparent;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.enhance-group \\+ \\.enhance-group \\{[^}]*",
+      "margin-top: var\\(--space-6\\);[^}]*",
+      "padding-top: var\\(--space-6\\);[^}]*",
+      "border-top: 1px solid var\\(--c-border\\);"
+    ),
+    perl = TRUE
+  )
+  expect_false(grepl(
+    "enhance-attachment-block + .enhance-attachment-block",
+    css,
+    fixed = TRUE
+  ))
+  expect_false(grepl("enhance-attachment-block--spatial", css, fixed = TRUE))
+  expect_false(grepl("aspect-ratio: 1;", css, fixed = TRUE))
+  expect_match(css, "--spatial-preview-aspect", fixed = TRUE)
+  js <- builder_asset_text("www", "builder.js")
+  enhance_ui <- builder_asset_text("ui", "enhance_stage.R")
+  alignment_server <- builder_asset_text("spatial_alignment_server.R")
+  expect_match(enhance_ui, 'ns("coordinate_scale")', fixed = TRUE)
+  expect_match(
+    alignment_server,
+    'input[["enhance-coordinate_scale"]]',
+    fixed = TRUE
+  )
+  expect_match(js, "scheduleContinuousSpatialAlignment", fixed = TRUE)
+  for (input_id in c(
+    "enhance-img_dx",
+    "enhance-img_dy",
+    "enhance-img_scale",
+    "enhance-img_rotate",
+    "enhance-image_opacity",
+    "enhance-point_opacity",
+    "enhance-point_size"
+  )) {
+    expect_match(js, input_id, fixed = TRUE)
+  }
+  expect_match(js, "syncSpatialPreviewAspect", fixed = TRUE)
+  expect_match(js, "syncSpatialWorkbench", fixed = TRUE)
+  expect_match(js, 'sidebar.addEventListener("wheel"', fixed = TRUE)
+  expect_match(js, "event.preventDefault()", fixed = TRUE)
+  expect_match(js, "window.scrollBy(", fixed = TRUE)
+  expect_match(js, "{ passive: false }", fixed = TRUE)
+  expect_match(js, "ResizeObserver", fixed = TRUE)
+  expect_match(js, "plotly_afterplot", fixed = TRUE)
+  expect_match(
+    css,
+    "100dvh - var\\(--builder-spatial-viewport-offset\\) -[^;]*var\\(--builder-workflow-progress-height",
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    "\\.spatial-alignment-sidebar \\{[^}]*overflow-y: auto;",
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-image-options\\[open\\] \\{[^}]*",
+      "max-height: none;[^}]*",
+      "overflow: visible;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-alignment-figure \\{[^}]*",
+      "border: 1px solid var\\(--c-border\\);[^}]*",
+      "border-radius: var\\(--radius-md\\);[^}]*",
+      "background: var\\(--c-surface\\);"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-alignment-legend-wrap \\{[^}]*",
+      "margin: 0;[^}]*padding: var\\(--space-3\\);[^}]*",
+      "background: var\\(--c-surface\\);"
+    ),
+    perl = TRUE
+  )
+  expect_false(grepl("background: #fbfaf8", css, fixed = TRUE))
+  expect_match(
+    css,
+    paste0(
+      "\\.spatial-alignment-title \\{[^}]*",
+      "font-size: 1rem;[^}]*font-weight: 700;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    css,
+    paste0(
+      "\\.builder-preview-grid,\\s*",
+      "\\.spatial-alignment-plots,\\s*",
+      "\\.spatial-alignment-controls \\{[^}]*",
+      "grid-template-columns: minmax\\(0, 1fr\\)"
+    ),
+    perl = TRUE
+  )
+})
+
+test_that("Builder framed surfaces use one explicit title hierarchy", {
+  components <- builder_stylesheet_text("builder.components.css")
+  features <- builder_stylesheet_text("builder.features.css")
+
+  expect_match(
+    components,
+    paste0(
+      "\\.builder-stage-section > h3 \\{[^}]*margin: 0 0 var\\(--space-3\\);[^}]*",
+      "font-size: 1rem;[^}]*line-height: 1.4;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    paste0(
+      "\\.builder-viewer-content-head h4 \\{[^}]*margin: 0;[^}]*",
+      "font-size: \\.9375rem;"
+    ),
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.enhance-group > h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    components,
+    "\\.notice > h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.builder-detected-content h4 \\{[^}]*font-size: \\.9375rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    "\\.spatial-alignment-title \\{[^}]*font-size: 1rem;",
+    perl = TRUE
+  )
+  expect_match(
+    features,
+    paste0(
+      "\\.enhance-attachment-block--tables > h5,\\s*",
+      "\\.spatial-alignment-legend-wrap h5 \\{[^}]*",
+      "font-size: \\.875rem;"
+    ),
+    perl = TRUE
+  )
+})
+
+test_that("Builder has no duplicate dataset context banner", {
+  js <- builder_asset_text("www", "builder.js")
+  review <- paste(
+    readLines(builder_profile_inst_path("builder", "server", "review.R")),
+    collapse = "\n"
+  )
+
+  expect_false(grepl("__builderFocusDatasetContext", js, fixed = TRUE))
+  expect_false(grepl('uiOutput("dataset_context")', review, fixed = TRUE))
+  expect_false(grepl('output[["dataset_context"]]', review, fixed = TRUE))
 })
 
 test_that("Viewer Group catalog interactions use stable names and client search", {
@@ -415,11 +618,12 @@ test_that("example cards keep a consistent compact height", {
 
   expect_match(css, ".example-btn", fixed = TRUE)
   expect_match(css, ".ex-inner", fixed = TRUE)
-  expect_match(css, "height: 4.65rem", fixed = TRUE)
+  expect_match(css, "min-height: 4.65rem", fixed = TRUE)
 })
 
 test_that("builder interaction states follow the amber theme", {
   css <- builder_stylesheet_text()
+  tokens <- builder_stylesheet_text("builder.tokens.css")
 
   expect_match(
     css,
@@ -435,7 +639,13 @@ test_that("builder interaction states follow the amber theme", {
   expect_match(css, "background: var(--c-amber-50) !important", fixed = TRUE)
   expect_match(css, "color: var(--c-text) !important", fixed = TRUE)
   expect_match(css, ".example-btn:hover .ex-inner", fixed = TRUE)
-  expect_match(css, "border-color: var(--c-amber-100)", fixed = TRUE)
+  expect_match(css, "border-color: var(--builder-hover-border)", fixed = TRUE)
+  expect_match(css, "background: var(--builder-hover-bg)", fixed = TRUE)
+  expect_match(
+    tokens,
+    "--builder-hover-border: var(--c-amber-300)",
+    fixed = TRUE
+  )
   expect_false(grepl(
     ".selectize-dropdown .active { background: var(--c-blue-50)",
     css,
@@ -481,10 +691,16 @@ test_that("Viewer content cards preserve disclosure state across Shiny redraws",
 
 test_that("Spatial alignment distinguishes FOVs from section-owned images", {
   enhance <- builder_asset_text("ui", "enhance_stage.R")
+  js <- builder_asset_text("www", "builder.js")
 
   expect_match(enhance, "Requires spatial FOVs and coordinates.", fixed = TRUE)
-  expect_match(enhance, "One selected image per FOV.", fixed = TRUE)
+  expect_match(
+    enhance,
+    "Named images remain separate within each FOV.",
+    fixed = TRUE
+  )
   expect_match(enhance, '"Spatial capture (FOV)"', fixed = TRUE)
+  expect_match(js, "builder_spatial_section_state", fixed = TRUE)
   expect_false(grepl(
     "One saved image per tissue section.",
     enhance,
@@ -887,8 +1103,15 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
     )),
     collapse = "\n"
   )
+  browser_helper <- paste(
+    readLines(testthat::test_path(
+      "helper-builder-browser-contract.R"
+    )),
+    collapse = "\n"
+  )
   expect_match(browser, "builder-loading-stage", fixed = TRUE)
-  expect_match(browser, "app$get_logs()", fixed = TRUE)
+  expect_match(browser, "builder_expect_clean_browser_logs(app)", fixed = TRUE)
+  expect_match(browser_helper, "app$get_logs()", fixed = TRUE)
 })
 
 test_that("builder client owns accessible dialog and live-state semantics", {
@@ -950,18 +1173,17 @@ test_that("builder UI keeps semantic colors and states on the token system", {
       fixed = TRUE
     )
   }
-  for (tone in 3:5) {
-    expect_match(
-      features,
-      paste0(".review-page-tag.tone-", tone),
-      fixed = TRUE
-    )
-    expect_match(
-      features,
-      paste0("background: var(--builder-page-tone-", tone, "-bg)"),
-      fixed = TRUE
-    )
+  for (tone in c(
+    "core",
+    "analysis",
+    "spatial",
+    "trajectory",
+    "immune",
+    "extra"
+  )) {
+    expect_match(features, paste0(".review-page-tag.is-", tone), fixed = TRUE)
   }
+  expect_false(grepl(".review-page-tag.tone-", features, fixed = TRUE))
   expect_match(features, ".review-auth-dependency", fixed = TRUE)
   expect_match(features, ".review-auth-summary", fixed = TRUE)
   expect_false(grepl("font-weight: 650|font-weight: 750", css))
@@ -1171,6 +1393,12 @@ test_that("first-run guidance and recovery stay focused", {
 
   expect_false(grepl('source("help.R"', app, fixed = TRUE))
   expect_match(app, "builder-first-run", fixed = TRUE)
+  expect_match(app, 'class = "btn builder-first-run-dismiss"', fixed = TRUE)
+  expect_false(grepl(
+    'class = "btn btn-primary builder-first-run-dismiss"',
+    app,
+    fixed = TRUE
+  ))
   expect_match(status, "builder-recovery-action", fixed = TRUE)
   expect_match(js, "localStorage", fixed = TRUE)
   expect_false(grepl("builder-glossary", js, fixed = TRUE))

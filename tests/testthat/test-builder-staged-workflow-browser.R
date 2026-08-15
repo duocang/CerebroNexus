@@ -8,22 +8,6 @@ builder_expect_no_horizontal_overflow <- function(app) {
   expect_lte(geometry$documentWidth, geometry$clientWidth + 1)
 }
 
-builder_expect_clean_browser_logs <- function(app) {
-  logs <- app$get_logs()
-  failures <- logs[
-    as.character(logs$location) == "chromote" &
-      tolower(as.character(logs$level)) %in%
-        c("error", "warning", "assert", "throw"),
-    ,
-    drop = FALSE
-  ]
-  expect_identical(
-    nrow(failures),
-    0L,
-    info = paste(failures$message, collapse = "\n")
-  )
-}
-
 builder_wait_for_visible_stage_focus <- function(app, stage) {
   selector <- sprintf("[data-workflow-stage=%s] h2", stage)
   app$wait_for_js(

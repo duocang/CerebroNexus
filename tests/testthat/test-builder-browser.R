@@ -18,6 +18,41 @@ test_that("metadata retention and Group actions remain independent", {
   expect_match(js, "default: defaultGroup", fixed = TRUE)
 })
 
+test_that("Spatial editor exposes named images and dynamic action boundaries", {
+  environment <- new.env(parent = globalenv())
+  sys.source(
+    file.path(builder_browser_dir, "ui", "enhance_stage.R"),
+    envir = environment
+  )
+  html <- htmltools::renderTags(environment$builder_spatial_alignment_ui(
+    "enhance",
+    list(
+      label = "Spatial alignment",
+      sections = c("section_a", "section_b"),
+      images = list(
+        section_a = list(`H&E` = list(), DAPI = list()),
+        section_b = list(`H&E` = list())
+      ),
+      spatial_image_storage = "external"
+    )
+  ))$html
+
+  for (text in c(
+    "Image storage",
+    "External files in App (spatial-assets/)",
+    "Embedded in CRB",
+    "H&amp;E",
+    "DAPI",
+    "Apply transform to matching image label"
+  )) {
+    expect_match(html, text, fixed = TRUE)
+  }
+  expect_match(html, 'id="enhance-add_image_label"', fixed = TRUE)
+  expect_match(html, 'id="enhance-alignment_status"', fixed = TRUE)
+  expect_false(grepl('id="enhance-rename_image"', html, fixed = TRUE))
+  expect_false(grepl('id="enhance-drop_image"', html, fixed = TRUE))
+})
+
 builder_browser_mock_folder_picker <- function(
   output_dir,
   .local_envir = parent.frame()
@@ -113,6 +148,57 @@ test_that("builder interaction reflows and preserves accessible state", {
   expect_false(app$get_js(
     "getComputedStyle(document.body).overflowY === 'hidden'"
   ))
+
+  app$wait_for_js(
+    paste0(
+      "document.querySelector(",
+      "'.viewer-metadata-retain[data-group=\"orig.ident\"]') !== null"
+    ),
+    timeout = 10000
+  )
+  expect_true(app$get_js(paste0(
+    "document.querySelector(",
+    "'.viewer-metadata-retain[data-group=\"orig.ident\"]')",
+    ".checked"
+  )))
+  app$click(
+    selector = paste0(
+      ".viewer-metadata-retain[data-group=\"orig.ident\"]"
+    )
+  )
+  app$wait_for_js(
+    paste0(
+      "!document.querySelector(",
+      "'.viewer-metadata-retain[data-group=\"orig.ident\"]').checked"
+    ),
+    timeout = 10000
+  )
+  app$click(
+    selector = paste0(
+      ".viewer-metadata-retain[data-group=\"orig.ident\"]"
+    )
+  )
+  expect_true(app$get_js(paste0(
+    "!document.querySelector(",
+    "'.viewer-metadata-retain[data-group=\"patient_id\"]')",
+    ".disabled"
+  )))
+  app$click(selector = ".viewer-metadata-select[data-action=all-supported]")
+  app$wait_for_js(
+    paste0(
+      "document.querySelector(",
+      "'.viewer-metadata-retain[data-group=\"patient_id\"]').checked"
+    ),
+    timeout = 10000
+  )
+  app$click(selector = ".viewer-group-select[data-action=all]")
+  app$wait_for_js(
+    paste0(
+      "document.querySelector(",
+      "'.viewer-metadata-retain[data-group=\"orig.ident\"]').checked"
+    ),
+    timeout = 10000
+  )
 
   expect_false(app$get_js(
     "document.querySelector('.builder-select-initial') !== null"
@@ -308,6 +394,140 @@ test_that("builder interaction reflows and preserves accessible state", {
     "document.getElementById('builder-live-status').textContent.trim().length > 0",
     timeout = 10000
   )
+})
+
+test_that("duplicate spatial image names open a usable naming modal", {
+  skip_if_not(identical(Sys.getenv("CEREBRO_RUN_BROWSER_TESTS"), "true"))
+  app_dir <- builder_browser_current_contract_app(
+    builder_browser_dir,
+    .local_envir = environment()
+  )
+  local_app_support(app_dir)
+
+  image_path <- tempfile("builder-modal-image-", fileext = ".png")
+  png::writePNG(
+    array(
+      rep(c(0.12, 0.42, 0.82), each = 16L * 16L),
+      dim = c(16L, 16L, 3L)
+    ),
+    image_path
+  )
+  withr::defer(unlink(image_path, force = TRUE))
+
+  app <- AppDriver$new(
+    app_dir,
+    name = "builder_duplicate_spatial_image_modal",
+    width = 1280,
+    height = 900,
+    load_timeout = 60000
+  )
+  on.exit(app$stop(), add = TRUE)
+  app$wait_for_idle(timeout = 30000)
+  app$wait_for_js(
+    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
+    timeout = 10000
+  )
+  app$click(selector = ".example-btn[data-ex=all_content]")
+  app$wait_for_js(
+    "document.getElementById('enhance-tissue_image_file') !== null",
+    timeout = 60000
+  )
+
+  app$upload_file(`enhance-tissue_image_file` = image_path)
+  app$wait_for_js(
+    paste0(
+      "Object.keys(document.getElementById(",
+      "'enhance-active_image').selectize.options).length === 1 && ",
+      "document.querySelector('.enhance-tissue-file-item') !== null && ",
+      "document.getElementById('enhance-apply_align').offsetParent !== null"
+    ),
+    timeout = 30000
+  )
+  section <- app$get_js(
+    "document.getElementById('enhance-active_section').value"
+  )
+  app$click("enhance-apply_align")
+  app$wait_for_js(
+    "document.querySelector('#enhance-alignment_status .builder-status--ready') !== null",
+    timeout = 10000
+  )
+
+  app$upload_file(`enhance-tissue_image_file` = image_path)
+  tryCatch(
+    app$wait_for_js(
+      paste0(
+        "(() => { const modal = document.getElementById('shiny-modal'); ",
+        "const label = document.getElementById('enhance-new_image_label'); ",
+        "const confirm = document.getElementById('enhance-add_image_confirm'); ",
+        "return modal && (modal.classList.contains('show') || ",
+        "modal.classList.contains('in')) && label && confirm && ",
+        "label.classList.contains('shiny-bound-input') && ",
+        "confirm.classList.contains('shiny-bound-input') && ",
+        "confirm.offsetParent !== null && ",
+        "modal.textContent.includes('Name this image'); })()"
+      ),
+      timeout = 10000
+    ),
+    error = function(error) {
+      logs <- app$get_logs()
+      browser_failures <- logs[
+        as.character(logs$location) == "chromote" &
+          tolower(as.character(logs$level)) %in%
+            c("error", "warning", "assert", "throw"),
+        ,
+        drop = FALSE
+      ]
+      stop(
+        paste(
+          conditionMessage(error),
+          paste(browser_failures$message, collapse = "\n"),
+          sep = "\n"
+        ),
+        call. = FALSE
+      )
+    }
+  )
+  app$set_inputs(`enhance-new_image_label` = "DAPI")
+  app$wait_for_idle(timeout = 10000)
+  expect_identical(
+    app$get_js("document.getElementById('enhance-new_image_label').value"),
+    "DAPI"
+  )
+  app$click("enhance-add_image_confirm")
+  app$wait_for_js(
+    "document.getElementById('shiny-modal') === null",
+    timeout = 10000
+  )
+  app$wait_for_js(
+    paste0(
+      "Object.keys(document.getElementById(",
+      "'enhance-active_image').selectize.options).length === 2"
+    ),
+    timeout = 30000
+  )
+  app$click("enhance-apply_align")
+  app$wait_for_js(
+    "document.querySelector('#enhance-alignment_status .builder-status--ready') !== null",
+    timeout = 10000
+  )
+
+  expect_identical(
+    app$get_js("document.getElementById('enhance-active_section').value"),
+    section
+  )
+  expect_setequal(
+    unlist(
+      app$get_js(
+        paste0(
+          "Object.keys(document.getElementById(",
+          "'enhance-active_image').selectize.options).sort()"
+        )
+      ),
+      use.names = FALSE
+    ),
+    c(basename(image_path), "DAPI")
+  )
+  builder_expect_clean_browser_logs(app)
 })
 
 test_that("builder explains a mocked old privacy contract exactly", {

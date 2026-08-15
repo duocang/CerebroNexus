@@ -48,3 +48,19 @@ builder_browser_old_contract_app <- function(
 ) {
   builder_browser_contract_app(app_dir, 0L, .local_envir)
 }
+
+builder_expect_clean_browser_logs <- function(app) {
+  logs <- app$get_logs()
+  failures <- logs[
+    as.character(logs$location) == "chromote" &
+      tolower(as.character(logs$level)) %in%
+        c("error", "warning", "assert", "throw"),
+    ,
+    drop = FALSE
+  ]
+  expect_identical(
+    nrow(failures),
+    0L,
+    info = paste(failures$message, collapse = "\n")
+  )
+}

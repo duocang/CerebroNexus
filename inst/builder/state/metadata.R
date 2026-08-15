@@ -105,14 +105,26 @@ builder_metadata_policy_set_retained <- function(policy, retained) {
   retained <- unique(as.character(retained))
   policy <- .builder_state_upgrade_metadata_policy(policy)
   for (id in names(policy$columns)) {
-    policy$columns[[id]]$retain_in_crb <- id %in%
-      retained ||
-      isTRUE(policy$columns[[id]]$forced)
+    record <- policy$columns[[id]]
+    keep <- id %in% retained || isTRUE(record$forced)
+    record$retain_in_crb <- keep
+    if (!identical(record$disposition, "blocking")) {
+      record$value <- if (keep) "included" else "excluded"
+      record$disposition <- record$value
+      record$effective_included <- keep
+      record$requires_confirmation <- FALSE
+    }
+    policy$columns[[id]] <- record
   }
-  policy$retained <- NULL
-  policy$included <- NULL
-  policy$excluded <- NULL
-  policy$value <- NULL
+  policy[c(
+    "retained",
+    "included",
+    "attention",
+    "excluded",
+    "blocking",
+    "value",
+    "requires_confirmation"
+  )] <- list(NULL)
   .builder_state_upgrade_metadata_policy(policy)
 }
 
@@ -120,16 +132,29 @@ builder_metadata_policy_set_groups <- function(policy, groups) {
   groups <- unique(as.character(groups))
   policy <- .builder_state_upgrade_metadata_policy(policy)
   for (id in names(policy$columns)) {
-    policy$columns[[id]]$group_enabled <- id %in% groups
+    record <- policy$columns[[id]]
+    record$group_enabled <- id %in% groups
     if (id %in% groups) {
-      policy$columns[[id]]$retain_in_crb <- TRUE
+      record$retain_in_crb <- TRUE
+      if (!identical(record$disposition, "blocking")) {
+        record$value <- "included"
+        record$disposition <- "included"
+        record$effective_included <- TRUE
+        record$requires_confirmation <- FALSE
+      }
     }
+    policy$columns[[id]] <- record
   }
-  policy$retained <- NULL
-  policy$groups <- NULL
-  policy$included <- NULL
-  policy$excluded <- NULL
-  policy$value <- NULL
+  policy[c(
+    "retained",
+    "groups",
+    "included",
+    "attention",
+    "excluded",
+    "blocking",
+    "value",
+    "requires_confirmation"
+  )] <- list(NULL)
   .builder_state_upgrade_metadata_policy(policy)
 }
 

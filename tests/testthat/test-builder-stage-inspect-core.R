@@ -15,6 +15,9 @@ test_that("Inspect leads with attention and compact detected-content tags", {
   html <- builder_stage_html(builder_inspect_stage_ui("inspect", model))
 
   expect_match(html, "builder-stage-section", fixed = TRUE)
+  expect_match(html, "<h3>Import &amp; Inspect</h3>", fixed = TRUE)
+  expect_match(html, "<h4>Needs attention</h4>", fixed = TRUE)
+  expect_match(html, "<h4>Detected content</h4>", fixed = TRUE)
   expect_false(grepl("builder-card", html, fixed = TRUE))
   expect_match(html, "Needs attention", fixed = TRUE)
   expect_match(html, model$attention[[1L]], fixed = TRUE)
@@ -105,6 +108,8 @@ test_that("Core keeps technical controls advanced and metadata visible", {
   html <- builder_stage_html(builder_core_stage_ui("core", model))
 
   expect_match(html, "builder-stage-section", fixed = TRUE)
+  expect_match(html, "<h3>Core settings</h3>", fixed = TRUE)
+  expect_match(html, "<h4>CRB content</h4>", fixed = TRUE)
   expect_false(grepl("builder-card", html, fixed = TRUE))
   expect_match(html, "Dataset name", fixed = TRUE)
   expect_match(html, "Organism", fixed = TRUE)

@@ -62,9 +62,32 @@
     analysis_log = character(),
     failed_analyses = character(),
     retry_closure = character(),
+    spatial_images = list(),
+    spatial_image_settings = list(),
     app_dir = NULL,
     app_verification = NULL
   )
+}
+
+.builder_build_cleanup_spatial_assets <- function(stage) {
+  path <- file.path(stage, ".builder-spatial-assets")
+  exists <- function(value) {
+    file.exists(value) || dir.exists(value) || .builder_app_is_link(value)
+  }
+  if (!exists(path)) {
+    return(invisible(TRUE))
+  }
+  if (
+    .builder_app_is_link(path) ||
+      !.builder_build_path_within(path, stage, must_exist = TRUE)
+  ) {
+    stop("Builder spatial asset staging is unsafe to clean.", call. = FALSE)
+  }
+  unlink(path, recursive = TRUE, force = TRUE)
+  if (exists(path)) {
+    stop("Builder spatial asset staging could not be cleaned.", call. = FALSE)
+  }
+  invisible(TRUE)
 }
 
 .builder_build_field <- function(object, name) {
@@ -274,22 +297,126 @@ builder_verify_crb <- function(path, item) {
       call. = FALSE
     )
   }
-  expected_images <- item$images %||% list()
+  expected_images <- if (identical(item$spatial_image_storage, "external")) {
+    list()
+  } else {
+    item$images %||% list()
+  }
   spatial <- .builder_build_field(object, "spatial")
+  expected_coordinate_transforms <- item$spatial_coordinate_transforms %||%
+    list()
+  for (section in names(expected_coordinate_transforms)) {
+    observed_spatial <- spatial[[section]]
+    coordinates <- if (is.list(observed_spatial)) {
+      observed_spatial$coordinates
+    } else {
+      NULL
+    }
+    valid_coordinates <- is.data.frame(coordinates) &&
+      all(c("x", "y") %in% names(coordinates)) &&
+      is.numeric(coordinates$x) &&
+      is.numeric(coordinates$y) &&
+      !is.object(coordinates$x) &&
+      !is.object(coordinates$y) &&
+      all(is.finite(coordinates$x)) &&
+      all(is.finite(coordinates$y))
+    if (!isTRUE(valid_coordinates)) {
+      stop(
+        "The staged CRB spatial coordinates are invalid for transformed FOV: ",
+        section,
+        call. = FALSE
+      )
+    }
+    observed_transform <- observed_spatial$coordinate_transform
+    expected_transform <- expected_coordinate_transforms[[section]]
+    valid_pivot <- is.numeric(observed_transform$pivot) &&
+      !is.object(observed_transform$pivot) &&
+      identical(names(observed_transform$pivot), c("x", "y")) &&
+      length(observed_transform$pivot) == 2L &&
+      all(is.finite(observed_transform$pivot))
+    observed_fingerprint <- tryCatch(
+      .spx_coordinate_transform_fingerprint(coordinates),
+      error = function(error) NULL
+    )
+    source_fingerprint <- tryCatch(
+      .spx_coordinate_transform_fingerprint(
+        .spx_invert_coordinate_transform(coordinates, observed_transform)
+      ),
+      error = function(error) NULL
+    )
+    if (
+      !is.list(observed_transform) ||
+        !identical(observed_transform$schema_version, 1L) ||
+        !identical(
+          as.numeric(observed_transform$rotation_degrees %||% NA_real_),
+          as.numeric(expected_transform$rotation_degrees)
+        ) ||
+        !identical(
+          as.numeric(observed_transform$scale %||% NA_real_),
+          as.numeric(expected_transform$scale)
+        ) ||
+        !isTRUE(valid_pivot) ||
+        !identical(observed_transform$pivot_method, "bounds_center") ||
+        !identical(
+          observed_transform$convention,
+          "counterclockwise_degrees"
+        ) ||
+        !identical(
+          observed_transform$transformed_coordinate_fingerprint,
+          observed_fingerprint
+        ) ||
+        !identical(
+          observed_transform$source_coordinate_fingerprint,
+          source_fingerprint
+        )
+    ) {
+      stop(
+        "The staged CRB spatial coordinate transform differs from BuildPlan: ",
+        section,
+        call. = FALSE
+      )
+    }
+  }
   for (section in names(expected_images)) {
     observed_image <- spatial[[section]]
     expected_image <- expected_images[[section]]
-    expected_payload <- builder_histology_image_payload(expected_image)
+    expected_records <- if (
+      !is.null(builder_alignment_normalize(
+        expected_image,
+        section_id = section
+      ))
+    ) {
+      list(expected_image)
+    } else {
+      expected_image
+    }
+    expected_record_labels <- names(expected_records)
+    expected_payloads <- lapply(seq_along(expected_records), function(index) {
+      payload <- builder_histology_image_payload(expected_records[[index]])
+      if (
+        !is.null(expected_record_labels) &&
+          nzchar(expected_record_labels[[index]])
+      ) {
+        payload$histology_alignment$source <- expected_record_labels[[index]]
+      }
+      payload
+    })
     observed_images <- if (is.list(observed_image)) {
       observed_image$histology_images %||% list()
     } else {
       list()
     }
-    matching_image <- any(vapply(
-      observed_images,
-      identical,
-      logical(1),
-      y = expected_payload
+    matching_image <- all(vapply(
+      expected_payloads,
+      function(expected_payload) {
+        any(vapply(
+          observed_images,
+          identical,
+          logical(1),
+          y = expected_payload
+        ))
+      },
+      logical(1)
     ))
     if (
       !is.list(observed_image) ||
@@ -301,15 +428,23 @@ builder_verify_crb <- function(path, item) {
         call. = FALSE
       )
     }
+    expected_alignment <- utils::tail(expected_records, 1L)[[1L]]
+    expected_alignment_payload <- builder_alignment_payload(expected_alignment)
+    if (!is.null(expected_record_labels) && length(expected_record_labels)) {
+      expected_alignment_payload$source <- utils::tail(
+        expected_record_labels,
+        1L
+      )[[1L]]
+    }
     has_canonical_alignment <- any(
       c("dx", "rotation", "image_opacity", "point_opacity") %in%
-        names(expected_image)
+        names(expected_alignment)
     )
     if (
       has_canonical_alignment &&
         !identical(
           observed_image$histology_alignment,
-          builder_alignment_payload(expected_image)
+          expected_alignment_payload
         )
     ) {
       stop(
@@ -639,6 +774,14 @@ builder_verify_crb <- function(path, item) {
 
 .builder_build_export <- function(object, item, path) {
   object <- .builder_build_apply_metadata_policy(object, item)
+  coordinate_transforms <- item$spatial_coordinate_transforms %||% NULL
+  if (
+    is.list(coordinate_transforms) &&
+      !is.object(coordinate_transforms) &&
+      !length(coordinate_transforms)
+  ) {
+    coordinate_transforms <- NULL
+  }
   CerebroNexus::exportFromSeurat(
     object = object,
     assay = item$assay,
@@ -654,6 +797,7 @@ builder_verify_crb <- function(path, item) {
     add_all_meta_data = TRUE,
     projections = item$included_projections,
     expression_matrix_mode = item$expression_backend,
+    spatial_coordinate_transforms = coordinate_transforms,
     verbose = FALSE
   )
   path
@@ -681,16 +825,114 @@ builder_verify_crb <- function(path, item) {
       )
     }
   }
+  embedded_images <- if (identical(item$spatial_image_storage, "external")) {
+    list()
+  } else {
+    item$images %||% list()
+  }
   result <- builder_attach_crb_extras(
     path,
-    item$images %||% list(),
+    embedded_images,
     trekker,
     item$trekker_alignment %||% NULL
   )
   if (!is.null(result$error)) {
     stop(result$error, call. = FALSE)
   }
+  if (identical(item$spatial_image_storage, "external")) {
+    external <- .builder_build_materialize_spatial_images(item, dirname(path))
+    appearance <- builder_attach_external_spatial_appearance(
+      path,
+      item$images %||% list()
+    )
+    if (!is.null(appearance$error)) {
+      stop(appearance$error, call. = FALSE)
+    }
+    result$external_images <- external$images
+    result$external_settings <- external$settings
+  } else {
+    result$external_images <- list()
+    result$external_settings <- list()
+  }
   result
+}
+
+.builder_build_materialize_spatial_images <- function(item, stage) {
+  safe_component <- function(value, fallback) {
+    value <- tolower(iconv(
+      as.character(value),
+      to = "ASCII//TRANSLIT",
+      sub = ""
+    ))
+    value <- gsub("[^a-z0-9]+", "-", value)
+    value <- gsub("(^-+|-+$)", "", value)
+    if (!nzchar(value)) fallback else substr(value, 1L, 48L)
+  }
+  images <- list()
+  settings <- list()
+  collection <- builder_image_collection_normalize(item$images %||% list())
+  for (section_id in names(collection)) {
+    section_dir <- file.path(
+      stage,
+      ".builder-spatial-assets",
+      safe_component(item$id, "dataset"),
+      safe_component(section_id, "section")
+    )
+    dir.create(
+      section_dir,
+      recursive = TRUE,
+      mode = "0700",
+      showWarnings = FALSE
+    )
+    for (label in names(collection[[section_id]])) {
+      record <- collection[[section_id]][[label]]
+      parsed <- builder_parse_image_uri(record$source_uri)
+      extension <- switch(
+        parsed$mime,
+        `image/png` = "png",
+        `image/jpeg` = "jpg",
+        stop("Builder image URI has an unsupported MIME type.", call. = FALSE)
+      )
+      filename <- builder_safe_file_name(record$source$name, label)
+      if (!nzchar(tools::file_ext(filename))) {
+        filename <- paste0(filename, ".", extension)
+      }
+      existing_paths <- unlist(
+        lapply(images[[item$name]][[section_id]] %||% list(), `[[`, "path"),
+        use.names = FALSE
+      )
+      existing_names <- if (length(existing_paths)) {
+        basename(existing_paths)
+      } else {
+        character()
+      }
+      filename <- utils::tail(
+        make.unique(c(existing_names, filename)),
+        1L
+      )
+      materialized <- builder_materialize_image_uri(
+        record$source_uri,
+        file.path(section_dir, filename)
+      )
+      images[[item$name]][[section_id]][[label]] <- list(
+        path = materialized,
+        bounds = unlist(record$base_bounds[c("xmin", "xmax", "ymin", "ymax")])
+      )
+      settings[[item$name]][[section_id]][[label]] <- list(
+        flip_x = record$flip_x,
+        flip_y = record$flip_y,
+        scale_x = record$scale,
+        scale_y = record$scale,
+        offset_x = record$dx,
+        offset_y = record$dy,
+        rotation = record$rotation,
+        image_opacity = record$image_opacity,
+        point_opacity = record$point_opacity,
+        point_size = record$point_size
+      )
+    }
+  }
+  list(images = images, settings = settings)
 }
 
 builder_build_hooks <- function() {
@@ -888,6 +1130,11 @@ builder_execute_plan <- function(
         conditionMessage(extras)
       )))
     }
+    if (length(extras$external_images %||% list())) {
+      result$spatial_images[[item$name]] <- extras$external_images[[item$name]]
+      result$spatial_image_settings[[item$name]] <-
+        extras$external_settings[[item$name]]
+    }
     verified <- tryCatch(hooks$verify(exported, item), error = function(error) {
       error
     })
@@ -910,8 +1157,16 @@ builder_execute_plan <- function(
         "Generated-App build hooks are incomplete."
       ))
     }
+    app_plan <- plan
+    for (index in seq_along(app_plan$items)) {
+      dataset <- app_plan$items[[index]]$name
+      app_plan$items[[index]]$external_images <-
+        result$spatial_images[[dataset]] %||% list()
+      app_plan$items[[index]]$external_image_settings <-
+        result$spatial_image_settings[[dataset]] %||% list()
+    }
     request <- tryCatch(
-      builder_app_bundle_request(plan, result$built, result$labels),
+      builder_app_bundle_request(app_plan, result$built, result$labels),
       error = function(error) error
     )
     if (inherits(request, "condition")) {
@@ -958,6 +1213,13 @@ builder_execute_plan <- function(
     }
     result$app_dir <- app_dir
     result$app_verification <- app_verification
+    cleaned_assets <- tryCatch(
+      .builder_build_cleanup_spatial_assets(stage),
+      error = function(error) error
+    )
+    if (inherits(cleaned_assets, "condition")) {
+      return(.builder_build_failure(conditionMessage(cleaned_assets)))
+    }
   }
   if (auth_enabled) {
     auth_env_file <- auth_material$env_file

@@ -174,6 +174,10 @@ send_projection_state <- function(entry, message = NULL) {
       ),
       default = entry$settings$default_projection %||% NULL,
       point_size = entry$settings$overview_point_size %||% 5,
+      percentage_cells_to_show = entry$settings[[
+        "overview_percentage_cells_to_show"
+      ]] %||%
+        100,
       message = message
     )
   )
@@ -318,6 +322,34 @@ observeEvent(
     entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
     req(entry)
     entry$settings$overview_point_size <- value
+    if (isTRUE(replace_entry(entry))) {
+      send_projection_state(entry)
+    }
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input[["core-percentage_cells_to_show"]],
+  {
+    id <- current()
+    value <- suppressWarnings(as.numeric(
+      input[["core-percentage_cells_to_show"]]
+    ))
+    if (
+      is.null(id) ||
+        !identical(input[["core-rendered_for"]], id) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        !is.finite(value) ||
+        value < 10 ||
+        value > 100
+    ) {
+      return()
+    }
+    entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
+    req(entry)
+    entry$settings$overview_percentage_cells_to_show <- value
     if (isTRUE(replace_entry(entry))) {
       send_projection_state(entry)
     }
@@ -666,6 +698,9 @@ output[["core-projection_gallery"]] <- renderUI({
     included_projections = entry$settings$included_projections,
     default_projection = entry$settings$default_projection,
     overview_point_size = entry$settings$overview_point_size,
+    overview_percentage_cells_to_show = entry$settings[[
+      "overview_percentage_cells_to_show"
+    ]],
     projection_previews = frames,
     preview_colors = colors
   ))

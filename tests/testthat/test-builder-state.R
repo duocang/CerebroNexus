@@ -129,6 +129,7 @@ if (builder_state_api_available) {
     expect_identical(settings$included_projections, "umap")
     expect_identical(settings$default_projection, "umap")
     expect_identical(settings$overview_point_size, 5)
+    expect_identical(settings$overview_percentage_cells_to_show, 100)
     expect_identical(settings$cell_cycle_columns, "Phase")
     expect_identical(
       settings$included_trajectories,
@@ -137,6 +138,18 @@ if (builder_state_api_available) {
     expect_identical(
       settings$default_trajectory,
       list(method = "monocle2", name = "lineage")
+    )
+  })
+
+  test_that("initial Viewer cell percentage rejects values outside 10 to 100", {
+    entry <- builder_upgrade_viewer_content_entry(
+      builder_viewer_settings_entry()
+    )
+    entry$settings$overview_percentage_cells_to_show <- 0
+
+    expect_error(
+      builder_dataset_state(entry),
+      class = "builder_state_error"
     )
   })
 

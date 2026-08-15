@@ -19,6 +19,14 @@ if (!is.null(Cerebro.options$colors)) {
 
 bundle_run_options <- Cerebro.options$.bundle_run_options
 shiny_options <- bundle_run_options$shiny_app_options
+embedded_options <- shiny_options
+embedded_options[c(
+  "port",
+  "host",
+  "launch.browser",
+  "quiet",
+  "display.mode"
+)] <- NULL
 
 source(file.path(cerebro_root, "viewer/shiny_UI.R"))
 source(file.path(cerebro_root, "viewer/shiny_server.R"))
@@ -31,7 +39,7 @@ viewer_app <- viewer_auth_apply(
   Cerebro.options[["cerebro_root"]]
 )
 
-shiny::shinyApp(
+app <- shiny::shinyApp(
   ui = viewer_app$ui,
   server = viewer_app$server,
   onStart = function() {
@@ -42,5 +50,13 @@ shiny::shinyApp(
       options(previous)
     })
   },
-  options = shiny_options
+  options = embedded_options
 )
+
+if (sys.nframe() == 0L) {
+  direct_options <- shiny_options
+  direct_options$quiet <- FALSE
+  do.call(shiny::runApp, c(list(appDir = app), direct_options))
+} else {
+  app
+}

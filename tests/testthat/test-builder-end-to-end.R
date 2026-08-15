@@ -1,5 +1,49 @@
 builder_e2e_source_runtime()
 
+test_that("new and restored projects use explicit spatial image storage", {
+  profile <- list(
+    default_assay = "RNA",
+    assay_profiles = list(
+      RNA = list(
+        default_layer = "data",
+        nUMI = "nCount_RNA",
+        nGene = "nFeature_RNA"
+      )
+    ),
+    group_preselect = "cluster",
+    reduction_preselect = "umap",
+    organism_guess = "hg"
+  )
+  expect_identical(
+    builder_default_settings(profile, "Dataset A")$spatial_image_storage,
+    "external"
+  )
+
+  legacy <- list(settings = list(viewer_content_schema_version = 1L))
+  expect_identical(
+    builder_upgrade_viewer_content_entry(legacy)$settings$spatial_image_storage,
+    "embedded"
+  )
+})
+
+test_that("generated App smoke detects whether browser verification is available", {
+  expect_true(builder_e2e_browser_available(list(
+    path = "/path/to/chrome",
+    error = "",
+    .check = list(status = 0L)
+  )))
+  expect_false(builder_e2e_browser_available(list(
+    path = "/path/to/chrome",
+    error = "",
+    .check = list(status = -6L)
+  )))
+  expect_false(builder_e2e_browser_available(list(
+    path = "",
+    error = "Chrome was not found",
+    .check = list(status = 0L)
+  )))
+})
+
 test_that("Builder release documentation matches the guided workflow", {
   builder_dir <- normalizePath(builder_profile_inst_path("builder"))
   repo <- dirname(dirname(builder_dir))
@@ -97,7 +141,7 @@ test_that("Builder release documentation matches the guided workflow", {
   version <- unname(read.dcf(file.path(repo, "DESCRIPTION"))[[1L, "Version"]])
   app <- paste(readLines(file.path(repo, "inst", "app.R")), collapse = "\n")
   news_heading <- news[grepl("^# CerebroNexus ", news)][[1L]]
-  expect_identical(version, "5.0")
+  expect_identical(version, "5.0.0")
   expect_match(
     app,
     paste0('"cerebro_version" = "', version, '"'),
@@ -457,6 +501,7 @@ test_that("all valid examples build and reopen", {
     )
     entry$snapshot <- snapshot
     if (identical(record$id, "all_content")) {
+      entry$settings$spatial_image_storage <- "embedded"
       image_records <- record$histology_images
       image_sections <- vapply(
         image_records,
@@ -510,7 +555,11 @@ test_that("all valid examples build and reopen", {
       stage,
       stats::setNames(list(snapshot), record$id)
     )
-    expect_identical(result$state, "success", info = record$id)
+    expect_identical(
+      result$state,
+      "success",
+      info = paste(record$id, result$error %||% "")
+    )
     expect_true(result$publishable, info = record$id)
     expect_length(result$built, 1L)
     reopened <- readRDS(result$built[[1L]])
@@ -679,6 +728,13 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
     entry$settings$name <- paste("Matrix", index)
     entry$settings$expression_backend <- coordinate$backend
     make_app <- identical(coordinate$output, "generated_app")
+    if (identical(coordinate$content, "histology")) {
+      entry$settings$spatial_image_storage <- if (make_app) {
+        "external"
+      } else {
+        "embedded"
+      }
+    }
     release <- file.path(root, paste0("release-", index))
     plan <- builder_freeze_plan(
       list(entry),
@@ -694,7 +750,11 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
       stats::setNames(list(fixture$snapshot), entry$id)
     )
     result$build_id <- handle$build_id
-    expect_identical(result$state, "success", info = label)
+    expect_identical(
+      result$state,
+      "success",
+      info = paste(label, result$error %||% "")
+    )
     expect_true(result$publishable, info = label)
     published <- builder_coordinator_publish(handle, result)
     expect_true(published$published, info = label)
@@ -740,16 +800,21 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
         expected <- entry$settings$images[[section]]
         image_label <- builder_alignment_payload(expected)$source
         observed <- spatial[[section]]$histology_images[[image_label]]
-        expect_identical(
-          observed$histology_image,
-          expected$uri,
-          info = image_label
-        )
-        expect_identical(
-          observed$histology_image_bounds,
-          builder_histology_image_payload(expected)$histology_image_bounds,
-          info = image_label
-        )
+        if (make_app) {
+          expect_null(observed$histology_image, info = image_label)
+          expect_null(observed$histology_image_bounds, info = image_label)
+        } else {
+          expect_identical(
+            observed$histology_image,
+            expected$uri,
+            info = image_label
+          )
+          expect_identical(
+            observed$histology_image_bounds,
+            builder_histology_image_payload(expected)$histology_image_bounds,
+            info = image_label
+          )
+        }
       }
       points_only <- setdiff(names(spatial), names(entry$settings$images))
       expect_setequal(
@@ -795,4 +860,14 @@ test_that("the exact 18 artifact combinations build, publish, and relocate", {
     function(result) isTRUE(result$started),
     logical(1)
   )))
+  browser_checked <- vapply(
+    runtime_results,
+    function(result) isTRUE(result$browser_checked),
+    logical(1)
+  )
+  if (builder_e2e_browser_available()) {
+    expect_true(all(browser_checked))
+  } else {
+    expect_false(any(browser_checked))
+  }
 })

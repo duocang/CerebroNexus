@@ -10,8 +10,8 @@
   --c-border: #ececec;
   --c-border-2: #e0e0e0;
   --c-text: #1c1c1e;
-  --c-text-2: #6b6b70;
-  --c-text-3: #9a9aa0;
+  --c-text-2: #525257;
+  --c-text-3: #6b6b70;
 
   --c-blue-50: #eef4fb;
   --c-blue-100: #d7e6f7;
@@ -49,8 +49,6 @@
   --r-pill: 999px;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur: 0.16s;
-
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
                "Helvetica Neue", Arial, sans-serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
@@ -63,9 +61,11 @@
   --builder-focus-ring: var(--c-blue-600);
   --builder-selection-bg: var(--builder-action);
   --builder-selection-fg: var(--c-white);
-  --builder-text-muted: #525257;
-  --builder-text-subtle: #6b6b70;
+  --builder-text-muted: var(--c-text-2);
+  --builder-text-subtle: var(--c-text-3);
   --builder-text-disabled: #a9adb4;
+  --builder-hover-bg: var(--c-surface-2);
+  --builder-hover-border: var(--c-amber-300);
   --builder-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
                        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
                        "Helvetica Neue", Arial, sans-serif;
@@ -75,6 +75,10 @@
   --builder-page-gutter: 26px;
   --builder-stage-padding: var(--space-6);
   --builder-section-gap: var(--space-6);
+  --builder-footer-gap: 40px;
+  --builder-rail-width: 19.5rem;
+  --builder-shell-gap: var(--builder-section-gap);
+  --spatial-preview-aspect: 4 / 3;
 
   /* Semantic content and review tag palette. */
   --builder-tag-metadata-bg: #f5f3ff;
@@ -98,16 +102,6 @@
   --builder-tag-extra-bg: #fff7ed;
   --builder-tag-extra-border: #fed7aa;
   --builder-tag-extra-text: #c2410c;
-  --builder-page-tone-3-bg: var(--builder-tag-metadata-bg);
-  --builder-page-tone-3-border: var(--builder-tag-metadata-border);
-  --builder-page-tone-3-text: var(--builder-tag-metadata-text);
-  --builder-page-tone-4-bg: var(--builder-tag-spatial-bg);
-  --builder-page-tone-4-border: var(--builder-tag-spatial-border);
-  --builder-page-tone-4-text: var(--builder-tag-spatial-text);
-  --builder-page-tone-5-bg: #fdf2f8;
-  --builder-page-tone-5-border: #fbcfe8;
-  --builder-page-tone-5-text: #be185d;
-
   /* Compatibility aliases for existing Builder components. */
   --c-surface-muted: var(--c-surface-2);
   --c-surface-subtle: var(--c-surface-3);
@@ -127,9 +121,11 @@
   --radius-lg: var(--r-lg);
   --radius-pill: var(--r-pill);
   --ease-standard: var(--ease);
-  --duration-fast: 140ms;
-  --duration-normal: 180ms;
+  --duration-fast: 120ms;
+  --duration-normal: 220ms;
   --duration-base: var(--duration-normal);
+  --motion-fast: var(--duration-fast);
+  --builder-workflow-progress-height: 4.75rem;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;

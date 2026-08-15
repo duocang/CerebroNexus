@@ -27,9 +27,13 @@ test_that("Review model translates a frozen plan into user language", {
   expect_identical(model$output$estimated_size, "4 KB")
   expect_identical(model$output$estimated_time, "A few minutes")
   expect_true(all(
-    c("Data info", "Linked views", "Marker genes") %in% model$pages
+    c("Data info", "Linked views", "Marker genes") %in%
+      vapply(model$pages, `[[`, character(1), "label")
   ))
-  expect_false(any(c("marker_genes", "spatial") %in% model$pages))
+  expect_false(any(
+    c("marker_genes", "spatial") %in%
+      vapply(model$pages, `[[`, character(1), "id")
+  ))
   expect_length(model$warnings, 0L)
   expect_true(model$can_build)
 })
@@ -288,8 +292,8 @@ test_that("Review summarizes saved and points-only spatial sections", {
   html <- builder_stage_html(builder_review_stage_ui("review", model))
 
   expect_identical(model$datasets[[1L]]$spatial_alignment$saved_count, 1L)
-  expect_match(html, "Spatial alignment", fixed = TRUE)
-  expect_match(html, "1 of 2 sections has a saved tissue image", fixed = TRUE)
+  expect_match(html, "Spatial", fixed = TRUE)
+  expect_match(html, "2 sections · 1 images · Embedded in CRB", fixed = TRUE)
   expect_match(html, "1 section remains points-only", fixed = TRUE)
   expect_false(grepl("section-b", html, fixed = TRUE))
   expect_false(grepl("histology_image_bounds", html, fixed = TRUE))

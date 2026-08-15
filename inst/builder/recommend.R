@@ -311,6 +311,7 @@
     retain_in_crb = retain_in_crb,
     group_eligible = group_eligible,
     group_recommended = group_recommended,
+    supported = isTRUE(fact$supported),
     forced = is_required,
     sensitive = sensitive,
     required = is_required
@@ -382,6 +383,7 @@ builder_recommend_metadata <- function(
     retain_in_crb = TRUE,
     group_eligible = FALSE,
     group_recommended = FALSE,
+    supported = TRUE,
     forced = TRUE,
     sensitive = FALSE,
     required = TRUE
@@ -416,6 +418,7 @@ builder_recommend_metadata <- function(
       retain_in_crb = FALSE,
       group_eligible = FALSE,
       group_recommended = FALSE,
+      supported = FALSE,
       forced = TRUE,
       sensitive = .builder_recommend_sensitive_name(name),
       required = TRUE

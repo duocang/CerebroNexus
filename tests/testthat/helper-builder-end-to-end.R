@@ -39,29 +39,41 @@ builder_e2e_review_metadata_policy <- function(recommendation, groups) {
     if (identical(record$disposition, "blocking")) {
       next
     }
-    include <- isTRUE(record$required) || id %in% groups
-    disposition <- if (include) "included" else "excluded"
+    include <- isTRUE(record$retain_in_crb) ||
+      isTRUE(record$required) ||
+      id %in% groups
+    disposition <- if (include) {
+      "included"
+    } else {
+      "excluded"
+    }
     record$value <- disposition
     record$disposition <- disposition
-    record$effective_included <- include
+    record$effective_included <- identical(disposition, "included")
+    record$retain_in_crb <- include
+    record$group_enabled <- id %in% groups
+    record$forced <- isTRUE(record$forced %||% record$required)
     record$requires_confirmation <- FALSE
     record$group_eligible <- id %in% groups
     record$preview_allowed <- id %in% groups
     policy$columns[[id]] <- record
   }
   dispositions <- vapply(policy$columns, `[[`, character(1), "disposition")
-  included <- vapply(
+  retained <- vapply(
     policy$columns,
     `[[`,
     logical(1),
-    "effective_included"
+    "retain_in_crb"
   )
   ids <- names(policy$columns)
-  policy$included <- ids[included]
+  policy$retained <- ids[retained]
+  policy$groups <- intersect(ids, groups)
+  policy$forced <- ids[vapply(policy$columns, `[[`, logical(1), "forced")]
+  policy$included <- ids[retained]
   policy$attention <- ids[dispositions == "attention"]
-  policy$excluded <- ids[dispositions == "excluded"]
+  policy$excluded <- ids[!retained]
   policy$blocking <- ids[dispositions == "blocking"]
-  policy$value <- policy$included
+  policy$value <- policy$retained
   policy$requires_confirmation <- length(policy$attention) > 0L ||
     length(policy$blocking) > 0L
   policy
@@ -285,9 +297,13 @@ builder_e2e_validate_all_content <- function(
       )
       matches <- vapply(
         output$histology_images %||% list(),
-        identical,
-        logical(1),
-        y = payload
+        function(observed) {
+          identical(
+            observed[c("histology_image", "histology_image_bounds")],
+            payload
+          )
+        },
+        logical(1)
       )
       check(
         any(matches),
@@ -299,6 +315,18 @@ builder_e2e_validate_all_content <- function(
   }
   invisible(TRUE)
 }
+builder_e2e_browser_available <- function(
+  info = tryCatch(chromote::chromote_info(), error = function(error) NULL)
+) {
+  is.list(info) &&
+    is.character(info$path) &&
+    length(info$path) == 1L &&
+    nzchar(info$path) &&
+    identical(info$error %||% "", "") &&
+    is.list(info$.check) &&
+    identical(info$.check$status, 0L)
+}
+
 builder_e2e_run_generated_app <- function(
   app_dir,
   hermetic_library,
@@ -333,6 +361,16 @@ builder_e2e_run_generated_app <- function(
       )
       on.exit(privacy_stop_app(app), add = TRUE)
       privacy_wait_for_app(app)
+
+      if (!builder_e2e_browser_available()) {
+        return(list(
+          started = TRUE,
+          browser_checked = FALSE,
+          backend = backend,
+          content = content,
+          elapsed = unname(proc.time()[["elapsed"]] - started_at)
+        ))
+      }
 
       driver <- shinytest2::AppDriver$new(
         app$base_url,
@@ -456,6 +494,7 @@ builder_e2e_run_generated_app <- function(
 
       list(
         started = TRUE,
+        browser_checked = TRUE,
         backend = backend,
         content = content,
         elapsed = unname(proc.time()[["elapsed"]] - started_at)

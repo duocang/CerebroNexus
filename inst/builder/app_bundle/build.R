@@ -20,6 +20,8 @@ builder_build_app <- function(
     cerebro_data = request$cerebro_data,
     result_dir = app_dir,
     colors = request$colors,
+    spatial_images = request$spatial_images,
+    spatial_image_settings = request$spatial_image_settings,
     cerebro_options = list(
       exclude_trivial_metadata = TRUE,
       viewer_content = request$viewer_content
@@ -194,6 +196,79 @@ builder_verify_app <- function(
   if (!identical(config[["colors"]], request$colors)) {
     stop("The staged App palettes differ from request.", call. = FALSE)
   }
+  expected_spatial_images <- if (length(request$spatial_images)) {
+    values <- lapply(names(request$spatial_images), function(dataset) {
+      sections <- lapply(
+        names(request$spatial_images[[dataset]]),
+        function(section) {
+          values <- Map(
+            function(descriptor, label) {
+              descriptor$path <- .builder_app_spatial_target(
+                dataset,
+                section,
+                label,
+                descriptor$path
+              )
+              descriptor
+            },
+            request$spatial_images[[dataset]][[section]],
+            names(request$spatial_images[[dataset]][[section]])
+          )
+          names(values) <- names(request$spatial_images[[dataset]][[section]])
+          values
+        }
+      )
+      names(sections) <- names(request$spatial_images[[dataset]])
+      sections
+    })
+    names(values) <- names(request$spatial_images)
+    values
+  } else {
+    list()
+  }
+  observed_spatial_images <- config[["spatial_images"]]
+  spatial_images_match <- .builder_app_config_spatial_manifest_valid(
+    observed_spatial_images,
+    request$selector_order
+  )
+  for (dataset in names(expected_spatial_images)) {
+    for (section in names(expected_spatial_images[[dataset]])) {
+      for (label in names(expected_spatial_images[[dataset]][[section]])) {
+        spatial_images_match <- spatial_images_match &&
+          identical(
+            observed_spatial_images[[dataset]][[section]][[label]],
+            expected_spatial_images[[dataset]][[section]][[label]]
+          )
+      }
+    }
+  }
+  if (!spatial_images_match) {
+    stop(
+      "The staged App spatial image manifest differs from request.",
+      call. = FALSE
+    )
+  }
+  observed_spatial_settings <- config[["spatial_image_settings"]]
+  spatial_settings_match <- TRUE
+  for (dataset in names(request$spatial_image_settings)) {
+    for (section in names(request$spatial_image_settings[[dataset]])) {
+      for (label in names(request$spatial_image_settings[[dataset]][[
+        section
+      ]])) {
+        spatial_settings_match <- spatial_settings_match &&
+          identical(
+            observed_spatial_settings[[dataset]][[section]][[label]],
+            request$spatial_image_settings[[dataset]][[section]][[label]]
+          )
+      }
+    }
+  }
+  if (!spatial_settings_match) {
+    stop(
+      "The staged App spatial image settings differ from request.",
+      call. = FALSE
+    )
+  }
   if (
     !identical(
       config[["crb_pick_smallest_file"]],
@@ -271,7 +346,12 @@ builder_verify_app <- function(
   private_root <- normalizePath(private_root, winslash = "/", mustWork = TRUE)
   .builder_app_validate_private_locations(tree_before, app_dir)
   .builder_app_assert_trusted_templates(tree_before)
-  .builder_app_assert_root_topology(tree_before)
+  .builder_app_assert_root_topology(tree_before, observed_spatial_images)
+  .builder_app_assert_spatial_topology(
+    tree_before,
+    request,
+    observed_spatial_images
+  )
   configured_files <- character()
   for (index in seq_along(crbs)) {
     relative_crb <- unname(crbs[[index]])

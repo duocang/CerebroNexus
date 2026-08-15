@@ -459,6 +459,13 @@
         plain$backend_identities,
         plain$backend_plan,
         plain$cerebro_data
+      ) ||
+      !.builder_app_spatial_manifest_valid(
+        plain$spatial_images,
+        plain$spatial_image_settings,
+        plain$spatial_image_identities,
+        plain$selector_order,
+        plain$stage
       )
   ) {
     .builder_app_request_error()
@@ -540,6 +547,19 @@
 .builder_app_assert_input_identities <- function(request) {
   .builder_app_assert_crb_identities(request)
   .builder_app_assert_backend_identities(request)
+  current_spatial <- tryCatch(
+    .builder_app_capture_spatial_identities(request$spatial_images),
+    error = function(error) NULL
+  )
+  if (
+    is.null(current_spatial) ||
+      !identical(current_spatial, request$spatial_image_identities)
+  ) {
+    stop(
+      "A verified input spatial image changed after request creation.",
+      call. = FALSE
+    )
+  }
   invisible(TRUE)
 }
 

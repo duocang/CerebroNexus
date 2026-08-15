@@ -525,6 +525,10 @@ test_that("CRB read-back matches exact frozen artifact identity", {
             xmax = 10,
             ymin = 0,
             ymax = 10
+          ),
+          histology_alignment = utils::modifyList(
+            builder_alignment_payload(image),
+            list(source = "Embedded tissue image")
           )
         )
       )
@@ -650,6 +654,45 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
   expect_false(grepl("source_uri", serialized, fixed = TRUE))
 })
 
+test_that("external Spatial images materialize without entering CRB payloads", {
+  root <- withr::local_tempdir()
+  record <- builder_alignment_record(
+    source = list(name = "H&E.png", type = "image/png"),
+    source_uri = "data:image/png;base64,iVBORw0KGgo=",
+    uri = "data:image/png;base64,iVBORw0KGgo=",
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
+    parameters = list(
+      dx = 2,
+      dy = -1,
+      scale = 1.25,
+      rotation = 90,
+      flip_x = TRUE,
+      flip_y = FALSE,
+      image_opacity = 0.8
+    ),
+    saved = TRUE,
+    section = list(id = "slice-a", kind = "spatial")
+  )
+  item <- list(
+    id = "dataset-a",
+    name = "Dataset A",
+    images = list(`slice-a` = list(`H&E` = record))
+  )
+
+  external <- .builder_build_materialize_spatial_images(item, root)
+  descriptor <- external$images[["Dataset A"]][["slice-a"]][["H&E"]]
+  setting <- external$settings[["Dataset A"]][["slice-a"]][["H&E"]]
+
+  expect_true(file.exists(descriptor$path))
+  expect_identical(
+    unname(descriptor$bounds),
+    c(0, 10, 0, 8)
+  )
+  expect_identical(setting$image_opacity, 0.8)
+  expect_identical(setting$scale_x, 1.25)
+  expect_identical(setting$scale_y, 1.25)
+})
+
 test_that("Builder image attachment is exact, collision-safe, and idempotent", {
   withr::local_options(warnPartialMatchDollar = TRUE)
   embedded <- list(
@@ -700,6 +743,46 @@ test_that("Builder image attachment is exact, collision-safe, and idempotent", {
     "data:image/png;base64,CC=="
   )
   expect_identical(second$histology_images[["tissue.png"]], embedded)
+})
+
+test_that("one embedded FOV keeps every Builder image label and appearance", {
+  spatial <- list(
+    coordinates = data.frame(x = 1:2, y = 2:1, row.names = c("a", "b")),
+    histology_images = list()
+  )
+  make_record <- function(name, opacity, point_size) {
+    builder_alignment_record(
+      source = list(name = paste0(name, ".png"), type = "image/png"),
+      source_uri = paste0("data:image/png;base64,", name),
+      uri = paste0("data:image/png;base64,", name),
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 6),
+      parameters = list(image_opacity = opacity, point_size = point_size),
+      saved = TRUE,
+      section = list(id = "FOV_A", kind = "spatial")
+    )
+  }
+  spatial <- builder_attach_spatial_image(
+    spatial,
+    make_record("axes", 0.6, 8),
+    label = "Axes",
+    replace_managed = TRUE
+  )
+  spatial <- builder_attach_spatial_image(
+    spatial,
+    make_record("layers", 0.4, 4),
+    label = "Layers",
+    replace_managed = FALSE
+  )
+
+  expect_identical(names(spatial$histology_images), c("Axes", "Layers"))
+  expect_equal(
+    spatial$histology_images$Axes$histology_alignment$image_opacity,
+    0.6
+  )
+  expect_equal(
+    spatial$histology_images$Layers$histology_alignment$point_size,
+    4
+  )
 })
 
 test_that("legacy singular Builder images migrate without leaving a duplicate", {

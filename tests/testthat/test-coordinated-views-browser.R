@@ -599,11 +599,10 @@ test_that("group-filter menus open, exclude each other, and dismiss", {
     timeout = 15000
   )
 
-  # The row folds away when closed, so its overflow clip used to swallow these
-  # menus entirely: they opened, painted outside the clip, and could not be hit.
+  # The drawer scrolls internally, so its menus must still be fully hit-testable.
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js(
-    "document.querySelector('.cv-more-clip').classList.contains('is-clear')",
+    "document.getElementById('cv-more').classList.contains('is-open')",
     timeout = 10000
   )
 
@@ -627,8 +626,13 @@ test_that("group-filter menus open, exclude each other, and dismiss", {
     "})();"
   )
 
-  app$run_js("document.querySelectorAll('.cv-filt-btn')[0].click();")
+  app$run_js(paste0(
+    "document.querySelectorAll('.cv-filt-btn')[0]",
+    ".scrollIntoView({block:'center',behavior:'auto'});",
+    "document.querySelectorAll('.cv-filt-btn')[0].click();"
+  ))
   app$wait_for_js(paste0("(", open_count, ") === 1"), timeout = 8000)
+  app$wait_for_js(hittable, timeout = 8000)
   expect_true(app$get_js(hittable))
   expect_equal(app$get_js(lit_count), 1)
 
@@ -694,7 +698,7 @@ test_that("values from the data set cannot inject markup", {
   )
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js(
-    "document.querySelector('.cv-more-clip').classList.contains('is-clear')",
+    "document.getElementById('cv-more').classList.contains('is-open')",
     timeout = 10000
   )
   app$run_js("document.querySelectorAll('.cv-filt-btn')[0].click();")
@@ -3377,22 +3381,48 @@ test_that("More settings overlays the workspace and groups point and histology c
     "document.getElementById('cv-more-btn') !== null",
     timeout = 15000
   )
+  app$set_window_size(width = 1619, height = 700)
+  app$run_js("document.querySelector('.content-wrapper').scrollTop=120;")
+  scroll_before <- app$get_js(
+    "document.querySelector('.content-wrapper').scrollTop"
+  )
+  panel_before <- unlist(app$get_js(paste0(
+    "(function(){var r=document.getElementById('cv-cv-a').getBoundingClientRect();",
+    "return [r.left,r.top,r.width,r.height];})()"
+  )))
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js(
-    "(function(){var x=document.getElementById('cv-more'); return x && x.classList.contains('is-open');})()",
+    paste0(
+      "(function(){var x=document.getElementById('cv-more'); return x && ",
+      "x.classList.contains('is-open') && getComputedStyle(x).transform === 'none';})()"
+    ),
     timeout = 5000
   )
 
   expect_equal(
     app$get_js("getComputedStyle(document.getElementById('cv-more')).position"),
-    "absolute"
+    "fixed"
   )
+  expect_true(app$get_js(paste0(
+    "(function(){var r=document.getElementById('cv-more').getBoundingClientRect();",
+    "return Math.abs(r.right-innerWidth) <= 1 && Math.abs(r.top) <= 1 && ",
+    "Math.abs(r.height-innerHeight) <= 1 && r.width >= 360 && r.width <= 440;})()"
+  )))
   expect_true(app$get_js(
     "document.querySelector('#cv-more [data-cv-bg-mode]') !== null"
   ))
   expect_true(app$get_js(
     "document.querySelector('#cv-more .cv-more-points #cv-ps') !== null"
   ))
+  panel_after <- unlist(app$get_js(paste0(
+    "(function(){var r=document.getElementById('cv-cv-a').getBoundingClientRect();",
+    "return [r.left,r.top,r.width,r.height];})()"
+  )))
+  expect_equal(panel_after, panel_before, tolerance = 1)
+  expect_equal(
+    app$get_js("document.querySelector('.content-wrapper').scrollTop"),
+    scroll_before
+  )
 })
 
 test_that("top pickers and More sliders keep one shared control geometry", {
@@ -3426,7 +3456,10 @@ test_that("top pickers and More sliders keep one shared control geometry", {
   )
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js(
-    "document.getElementById('cv-more').classList.contains('is-open')",
+    paste0(
+      "document.getElementById('cv-more').classList.contains('is-open') && ",
+      "getComputedStyle(document.getElementById('cv-more')).transform === 'none'"
+    ),
     timeout = 5000
   )
 
@@ -3442,11 +3475,11 @@ test_that("top pickers and More sliders keep one shared control geometry", {
     ),
     3
   )
-  label_tops <- unlist(app$get_js(paste0(
+  label_lefts <- unlist(app$get_js(paste0(
     "Array.from(document.querySelectorAll('.cv-more-points .cv-ctl-range > label'))",
-    ".map(function(x){return Math.round(x.getBoundingClientRect().top);})"
+    ".map(function(x){return Math.round(x.getBoundingClientRect().left);})"
   )))
-  expect_lte(max(label_tops) - min(label_tops), 1)
+  expect_lte(max(label_lefts) - min(label_lefts), 1)
   expect_true(app$get_js(paste0(
     "Array.from(document.querySelectorAll('.cv-range input[type=range]'))",
     ".every(function(x){return getComputedStyle(x)",
@@ -3454,9 +3487,9 @@ test_that("top pickers and More sliders keep one shared control geometry", {
   )))
 })
 
-test_that("More settings becomes a recoverable floating window after dragging", {
+test_that("More settings becomes a full-screen settings page on narrow viewports", {
   local_app_support(inst_dir)
-  app <- cv_app("cv_browser_more_drag")
+  app <- cv_app("cv_browser_more_responsive")
   on.exit(app$stop(), add = TRUE)
 
   app$run_js(cv_bundle_js())
@@ -3466,37 +3499,70 @@ test_that("More settings becomes a recoverable floating window after dragging", 
   )
   app$run_js("document.getElementById('cv-more-btn').click();")
   app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-more').classList.contains('is-open') && ",
+      "getComputedStyle(document.getElementById('cv-more')).transform === 'none'"
+    ),
+    timeout = 5000
+  )
+
+  expect_equal(
+    app$get_js("document.activeElement && document.activeElement.id"),
+    "cv-more-close"
+  )
+  expect_equal(
+    app$get_js(
+      "document.getElementById('cv-more').getAttribute('aria-hidden')"
+    ),
+    "false"
+  )
+  app$run_js(paste0(
+    "(function(){var x=document.getElementById('cv-opacity');",
+    "x.value='0.35';x.dispatchEvent(new Event('input',{bubbles:true}));})()"
+  ))
+
+  app$run_js(paste0(
+    "document.dispatchEvent(new KeyboardEvent('keydown',",
+    "{key:'Escape',bubbles:true}));"
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-more').getAttribute('aria-hidden') === 'true'",
+    timeout = 5000
+  )
+  expect_equal(
+    app$get_js("document.activeElement && document.activeElement.id"),
+    "cv-more-btn"
+  )
+  app$run_js("document.getElementById('cv-more-btn').click();")
+  app$wait_for_js(
     "document.getElementById('cv-more').classList.contains('is-open')",
     timeout = 5000
   )
-
-  expect_true(app$get_js(
-    "document.querySelector('#cv-more [data-cv-more-drag-handle]') !== null"
-  ))
   expect_equal(
-    app$get_js(
-      "getComputedStyle(document.getElementById('cv-more-close')).display"
-    ),
-    "none"
+    app$get_js("document.getElementById('cv-opacity').value"),
+    "0.35"
   )
 
-  app$run_js(paste0(
-    "(function(){ var h=document.querySelector('[data-cv-more-drag-handle]');",
-    "var r=h.getBoundingClientRect();",
-    "h.dispatchEvent(new PointerEvent('pointerdown',{pointerId:1,clientX:r.left+8,clientY:r.top+8,bubbles:true}));",
-    "document.dispatchEvent(new PointerEvent('pointermove',{pointerId:1,clientX:32,clientY:40,bubbles:true}));",
-    "document.dispatchEvent(new PointerEvent('pointerup',{pointerId:1,bubbles:true})); })();"
-  ))
-  app$wait_for_js(
-    "document.getElementById('cv-more').classList.contains('is-floating')",
-    timeout = 5000
+  app$set_window_size(width = 768, height = 900)
+  expect_equal(
+    app$get_js("document.getElementById('cv-more').getAttribute('aria-modal')"),
+    "true"
   )
   expect_true(app$get_js(
     "getComputedStyle(document.getElementById('cv-more-close')).display !== 'none'"
   ))
   expect_true(app$get_js(paste0(
     "(function(){var r=document.getElementById('cv-more').getBoundingClientRect();",
-    "return r.right >= 50 && r.bottom >= 50 && r.left <= innerWidth - 50 && r.top <= innerHeight - 50;})()"
+    "return Math.abs(r.left) <= 1 && Math.abs(r.top) <= 1 && ",
+    "Math.abs(r.width-innerWidth) <= 1 && Math.abs(r.height-innerHeight) <= 1 && ",
+    "getComputedStyle(document.querySelector('#cv-more .cv-more-clip')).overflowY === 'auto';})()"
+  )))
+
+  app$set_window_size(width = 390, height = 844)
+  expect_true(app$get_js(paste0(
+    "(function(){var r=document.getElementById('cv-more').getBoundingClientRect();",
+    "return Math.abs(r.width-innerWidth) <= 1 && Math.abs(r.height-innerHeight) <= 1 && ",
+    "document.documentElement.scrollWidth <= innerWidth;})()"
   )))
 })
 
@@ -3734,4 +3800,36 @@ test_that("the summary line follows the spatial section", {
   )
 
   app$stop()
+})
+
+test_that("background state keys namespace FOV and direct modalities", {
+  js <- paste(
+    readLines(
+      file.path(inst_dir, "viewer", "www", "coordviews.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(js, "function backgroundStateKey\\(sp\\)")
+  expect_match(js, "return 'fov:' \\+ \\(sp.id \\|\\| spatialName\\(sp\\)\\)")
+  expect_match(js, "return 'space:' \\+ \\(sp.id \\|\\| 'unknown'\\)")
+})
+
+test_that("same-dataset refresh preserves percentage and group filters", {
+  js <- paste(
+    readLines(
+      file.path(inst_dir, "viewer", "www", "coordviews.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    js,
+    "if \\(dataChanged\\) \\{[\\s\\S]{0,1200}rebuildPctMask\\(\\)",
+    perl = TRUE
+  )
+  expect_no_match(
+    js,
+    "pctMask = null; groupFilter = \\{\\};[[:space:]]*rebuildPctMask\\(\\)"
+  )
 })

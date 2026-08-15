@@ -236,7 +236,7 @@ cv_alignment_appearance <- function(alignment) {
       unname(value)
     }
   }
-  list(
+  preset <- list(
     image_opacity = number("image_opacity", 0, 1),
     point_opacity = number("point_opacity", 0, 1),
     point_size = number("point_size", 0, 20, lower_open = TRUE)
@@ -280,7 +280,7 @@ cv_image_preset <- function(spatial_name, image_label) {
       unname(value)
     }
   }
-  list(
+  preset <- list(
     offsetX = number("offset_x", defaults$offsetX),
     offsetY = number("offset_y", defaults$offsetY),
     scaleX = number("scale_x", defaults$scaleX),
@@ -288,8 +288,56 @@ cv_image_preset <- function(spatial_name, image_label) {
     flipX = isTRUE(setting[["flip_x"]]),
     flipY = isTRUE(setting[["flip_y"]]),
     rotation = number("rotation", defaults$rotation),
-    opacity = 0.6
+    opacity = number("image_opacity", defaults$opacity)
   )
+  if (!is.null(setting[["point_opacity"]])) {
+    preset$pointOpacity <- number("point_opacity", 0.8)
+  }
+  if (!is.null(setting[["point_size"]])) {
+    preset$pointSize <- number("point_size", 3)
+  }
+  preset
+}
+
+## Overlay the alignment stored beside one embedded image onto the generic
+## Viewer preset. Embedded CRBs are self-contained, so their per-image leaf is
+## the authority for every transform, not just appearance. Keeping this mapping
+## here also makes the embedded and external JavaScript contracts identical.
+cv_embedded_alignment_preset <- function(preset, alignment) {
+  if (!is.list(alignment)) {
+    return(preset)
+  }
+  number <- function(key, fallback) {
+    value <- suppressWarnings(as.numeric(alignment[[key]]))
+    if (length(value) != 1L || is.na(value) || !is.finite(value)) {
+      fallback
+    } else {
+      unname(value)
+    }
+  }
+  preset$offsetX <- number("dx", preset$offsetX)
+  preset$offsetY <- number("dy", preset$offsetY)
+  embedded_scale <- number("scale", preset$scaleX)
+  preset$scaleX <- embedded_scale
+  preset$scaleY <- embedded_scale
+  preset$rotation <- number("rotation", preset$rotation)
+  if (!is.null(alignment[["flip_x"]])) {
+    preset$flipX <- isTRUE(alignment[["flip_x"]])
+  }
+  if (!is.null(alignment[["flip_y"]])) {
+    preset$flipY <- isTRUE(alignment[["flip_y"]])
+  }
+  preset$opacity <- number("image_opacity", preset$opacity)
+  preset$pointOpacity <- number(
+    "point_opacity",
+    preset$pointOpacity %||% 0.8
+  )
+  preset$pointSize <- number("point_size", preset$pointSize %||% 3)
+  ## The Builder serializes embedded pixels after applying this geometry and
+  ## writes their final data-space bounds. Viewer controls still expose the
+  ## saved calibration, but drawing must apply only changes relative to it.
+  preset$geometryBaked <- TRUE
+  preset
 }
 
 ## Resolve EXTERNAL histology images for one spatial entry of the selected data
@@ -358,6 +406,33 @@ cv_external_images <- function(spatial_name = NULL) {
     stats::setNames(as.list(numbers), required)
   }
   out <- list()
+  image_mime <- function(image_path) {
+    if (!isTRUE(file_test("-f", image_path))) {
+      return(NULL)
+    }
+    ext <- tolower(tools::file_ext(image_path))
+    if (!(ext %in% c("png", "jpg", "jpeg"))) {
+      return(NULL)
+    }
+    bytes <- tryCatch(
+      readBin(image_path, what = "raw", n = 8L),
+      error = function(error) raw()
+    )
+    png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+    jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
+    if (identical(ext, "png") && identical(bytes, png_magic)) {
+      return("image/png")
+    }
+    if (
+      ext %in%
+        c("jpg", "jpeg") &&
+        length(bytes) >= length(jpeg_magic) &&
+        identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
+    ) {
+      return("image/jpeg")
+    }
+    NULL
+  }
   for (i in seq_along(configured)) {
     descriptor <- configured[[i]]
     path <- if (is.list(descriptor)) descriptor[["path"]] else descriptor
@@ -370,15 +445,10 @@ cv_external_images <- function(spatial_name = NULL) {
     if (is.null(img_path) || !requireNamespace("base64enc", quietly = TRUE)) {
       next
     }
-    ext <- tolower(tools::file_ext(img_path))
-    mime <- switch(
-      ext,
-      "jpg" = "image/jpeg",
-      "jpeg" = "image/jpeg",
-      "png" = "image/png",
-      "svg" = "image/svg+xml",
-      "image/png"
-    )
+    mime <- image_mime(img_path)
+    if (is.null(mime)) {
+      next
+    }
     base <- basename(path)
     label <- if (!is.null(labels) && nzchar(labels[[i]] %||% "")) {
       labels[[i]]
@@ -724,6 +794,22 @@ cv_spatial_one <- function(crb, cells, nm, allow_external) {
       }
     }
     preset <- cv_image_preset(nm, label)
+    entry_alignment <- if (is.list(entry)) {
+      entry$histology_alignment %||% entry$alignment
+    } else {
+      NULL
+    }
+    preset <- cv_embedded_alignment_preset(preset, entry_alignment)
+    entry_appearance <- cv_alignment_appearance(entry_alignment)
+    if (length(entry_appearance$image_opacity) == 1L) {
+      preset$opacity <- entry_appearance$image_opacity
+    }
+    if (length(entry_appearance$point_opacity) == 1L) {
+      preset$pointOpacity <- entry_appearance$point_opacity
+    }
+    if (length(entry_appearance$point_size) == 1L) {
+      preset$pointSize <- entry_appearance$point_size
+    }
     alignment_source <- if (is.list(alignment)) {
       as.character(alignment$source %||% character())
     } else {
@@ -1207,6 +1293,9 @@ cv_build_bundle <- function(crb) {
   default_point_size <- suppressWarnings(
     as.numeric(viewer_content[["overview_point_size"]])
   )
+  default_percentage_cells_to_show <- suppressWarnings(
+    as.numeric(viewer_content[["overview_percentage_cells_to_show"]])
+  )
   if (
     length(default_point_size) != 1L ||
       is.na(default_point_size) ||
@@ -1215,6 +1304,19 @@ cv_build_bundle <- function(crb) {
     default_point_size <- NULL
   } else {
     default_point_size <- unname(default_point_size)
+  }
+  if (
+    length(default_percentage_cells_to_show) != 1L ||
+      is.na(default_percentage_cells_to_show) ||
+      !is.finite(default_percentage_cells_to_show) ||
+      default_percentage_cells_to_show < 10 ||
+      default_percentage_cells_to_show > 100
+  ) {
+    default_percentage_cells_to_show <- 100
+  } else {
+    default_percentage_cells_to_show <- unname(
+      default_percentage_cells_to_show
+    )
   }
   default_point_opacity <- NULL
   spaces <- list()
@@ -1333,6 +1435,7 @@ cv_build_bundle <- function(crb) {
     fields = fields,
     default_group = default_group,
     default_point_size = default_point_size,
+    default_percentage_cells_to_show = default_percentage_cells_to_show,
     default_point_opacity = default_point_opacity,
     projections = projections,
     default_projection = default_projection,
