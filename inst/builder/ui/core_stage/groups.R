@@ -1,0 +1,815 @@
+builder_group_colors_model <- function(
+  group,
+  levels,
+  palette = "cerebro",
+  overrides = list()
+) {
+  valid_group <- builder_stage_has_text(group %||% "")
+  levels <- unname(as.character(levels %||% character()))
+  levels <- levels[!is.na(levels) & nzchar(levels)]
+  if (!valid_group || !length(levels)) {
+    return(list(group = "", items = list(), total = 0L, custom_count = 0L))
+  }
+  group_overrides <- overrides[[group]] %||% character()
+  colors <- builder_level_colors(levels, palette, group_overrides)
+  custom_levels <- intersect(levels, names(group_overrides))
+  items <- lapply(seq_along(levels), function(index) {
+    level <- levels[[index]]
+    list(
+      index = index,
+      key = level,
+      label = builder_group_level_label(level),
+      color = unname(colors[[level]]),
+      custom = level %in% custom_levels
+    )
+  })
+  list(
+    group = group,
+    items = items,
+    total = length(items),
+    custom_count = length(custom_levels)
+  )
+}
+
+builder_group_colors_ui <- function(id, model) {
+  ns <- NS(id)
+  if (!length(model$items %||% list())) {
+    return(div(
+      class = "builder-group-colors is-empty",
+      h3("Group colors"),
+      p(
+        class = "group-color-empty",
+        "Select an included Group to set its retained colors."
+      )
+    ))
+  }
+  searchable <- model$total > 30L
+  expandable <- model$total > 12L
+  div(
+    class = "builder-group-colors",
+    `data-group` = model$group,
+    h3("Group colors"),
+    p(
+      class = "group-color-intro",
+      paste(
+        "Choose the initial colors used when plots are colored by this group.",
+        "You can change them later in Color management."
+      )
+    ),
+    p(
+      class = "group-color-context",
+      "Coloring by: ",
+      strong(model$group)
+    ),
+    if (searchable) {
+      tagList(
+        tags$label(
+          class = "group-color-search-label",
+          `for` = ns("group_color_search"),
+          "Find a group value"
+        ),
+        tags$input(
+          id = ns("group_color_search"),
+          type = "search",
+          class = "group-color-search",
+          autocomplete = "off"
+        )
+      )
+    },
+    div(
+      class = paste("group-color-grid", if (expandable) "is-collapsed" else ""),
+      `data-visible-limit` = "12",
+      lapply(model$items, function(item) {
+        input_id <- ns(paste0("group_color_", item$index))
+        div(
+          class = "group-color-item",
+          `data-search` = tolower(item$label),
+          title = item$label,
+          tags$input(
+            id = input_id,
+            type = "color",
+            class = "group-color-input",
+            value = item$color,
+            `data-input-id` = ns("group_color"),
+            `data-group` = model$group,
+            `data-level` = item$key,
+            `aria-label` = paste("Color for", model$group, item$label)
+          ),
+          tags$label(
+            class = "group-color-name",
+            `for` = input_id,
+            title = item$label,
+            item$label
+          ),
+          span(class = "group-color-hex", item$color)
+        )
+      })
+    ),
+    if (expandable) {
+      div(
+        class = "group-color-disclosure",
+        tags$button(
+          type = "button",
+          class = "btn group-color-toggle",
+          `data-action` = "show-all",
+          paste("Show all", model$total, "colors")
+        ),
+        tags$button(
+          type = "button",
+          class = "btn group-color-toggle",
+          `data-action` = "show-fewer",
+          hidden = "hidden",
+          "Show fewer"
+        )
+      )
+    },
+    div(
+      class = "group-color-reset-row",
+      actionButton(
+        ns("reset_colors"),
+        "Reset colors",
+        class = "btn group-color-reset"
+      ),
+      span("Restore the default palette for this group.")
+    ),
+    div(
+      class = "visually-hidden group-color-status",
+      `aria-live` = "polite",
+      `aria-atomic` = "true"
+    )
+  )
+}
+
+builder_metadata_policy_status <- function(policy, id) {
+  record <- if (
+    is.list(policy) &&
+      is.list(policy$columns) &&
+      is.list(policy$columns[[id]])
+  ) {
+    policy$columns[[id]]
+  } else {
+    NULL
+  }
+  disposition <- if (
+    is.list(record) &&
+      builder_stage_has_text(record$disposition %||% "")
+  ) {
+    record$disposition
+  } else {
+    "unknown"
+  }
+  retained <- if (
+    is.list(record) &&
+      is.logical(record$retain_in_crb) &&
+      length(record$retain_in_crb) == 1L &&
+      !is.na(record$retain_in_crb)
+  ) {
+    isTRUE(record$retain_in_crb)
+  } else if (
+    is.list(record) &&
+      is.logical(record$effective_included) &&
+      length(record$effective_included) == 1L &&
+      !is.na(record$effective_included)
+  ) {
+    isTRUE(record$effective_included)
+  } else {
+    NA
+  }
+  list(
+    retained = retained,
+    disposition = disposition,
+    forced = isTRUE(record$forced %||% record$required),
+    sensitive = isTRUE(record$sensitive),
+    recommended = isTRUE(record$retain_in_crb),
+    supported = !identical(record$retain_in_crb, FALSE) ||
+      !identical(disposition, "excluded")
+  )
+}
+
+builder_group_catalog_model <- function(model) {
+  metadata <- model$metadata_catalog %||% list()
+  if (!is.list(metadata) || !length(metadata)) {
+    choices <- unname(as.character(model$group_choices %||% character()))
+    metadata <- lapply(choices, function(name) {
+      list(
+        name = name,
+        classification = "categorical",
+        group_eligible = TRUE,
+        group_reason = NULL,
+        count = NA_integer_,
+        distinct_count = length(model$levels[[name]] %||% character()),
+        missing_count = 0L,
+        missing_percentage = 0,
+        sample_values = character(),
+        level_counts = list(
+          items = list(),
+          total = length(model$levels[[name]] %||% character()),
+          truncated = FALSE,
+          remaining_count = 0L
+        )
+      )
+    })
+    names(metadata) <- choices
+  }
+  ids <- names(metadata)
+  if (is.null(ids)) {
+    ids <- character()
+  }
+  included <- unname(as.character(
+    model$included_groups %||%
+      model$groups %||%
+      model$default_group %||%
+      character()
+  ))
+  included <- unique(included[!is.na(included) & nzchar(included)])
+  suggested <- unname(as.character(
+    model$suggested_groups %||% included
+  ))
+  default <- model$default_group %||% NULL
+
+  scalar_number <- function(value, fallback = 0) {
+    if (
+      is.numeric(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        is.finite(value)
+    ) {
+      as.numeric(value)
+    } else {
+      fallback
+    }
+  }
+  type_label <- function(value) {
+    switch(
+      value %||% "metadata",
+      categorical = "Categorical",
+      continuous = "Continuous",
+      logical = "Logical",
+      integer = "Integer",
+      character = "Text",
+      factor = "Categorical",
+      "Metadata"
+    )
+  }
+  items <- lapply(seq_along(ids), function(index) {
+    id <- ids[[index]]
+    column <- metadata[[index]]
+    metadata_status <- builder_metadata_policy_status(
+      model$metadata_policy %||% list(),
+      id
+    )
+    eligible <- isTRUE(column$group_eligible)
+    category_count <- scalar_number(
+      column$level_counts$total,
+      scalar_number(column$distinct_count, 0)
+    )
+    missing <- scalar_number(column$missing_percentage, 0)
+    count <- as.integer(scalar_number(column$count, 0))
+    missing_count <- as.integer(scalar_number(column$missing_count, 0))
+    reason <- column$group_reason %||% ""
+    classification <- column$classification %||% "metadata"
+    selected <- eligible && id %in% included
+    list(
+      index = index,
+      id = id,
+      label = column$name %||% id,
+      classification = classification,
+      type_label = type_label(classification),
+      eligible = eligible,
+      reason = reason,
+      metadata_retained = metadata_status$retained,
+      metadata_disposition = metadata_status$disposition,
+      retention_locked = isTRUE(metadata_status$forced) ||
+        !isTRUE(column$supported %||% metadata_status$supported),
+      retention_sensitive = isTRUE(metadata_status$sensitive),
+      recommended_retained = isTRUE(metadata_status$recommended),
+      included = selected,
+      default = selected && identical(id, default),
+      suggested = eligible && id %in% suggested,
+      category_count = as.integer(category_count),
+      count = count,
+      non_missing_count = as.integer(max(0L, count - missing_count)),
+      missing_percentage = missing,
+      sample_values = utils::head(
+        as.character(column$sample_values %||% character()),
+        5L
+      ),
+      distribution = utils::head(
+        column$level_counts$items %||% list(),
+        12L
+      ),
+      distribution_truncated = isTRUE(column$level_counts$truncated),
+      remaining_count = as.integer(scalar_number(
+        column$level_counts$remaining_count,
+        0
+      )),
+      search = tolower(paste(id, classification, reason))
+    )
+  })
+  included <- vapply(
+    Filter(function(item) isTRUE(item$included), items),
+    `[[`,
+    character(1),
+    "id"
+  )
+  retained <- vapply(
+    Filter(function(item) isTRUE(item$metadata_retained), items),
+    `[[`,
+    character(1),
+    "id"
+  )
+  supported <- vapply(
+    Filter(
+      function(item) {
+        !isTRUE(item$retention_locked) ||
+          isTRUE(item$metadata_retained)
+      },
+      items
+    ),
+    `[[`,
+    character(1),
+    "id"
+  )
+  recommended_retained <- vapply(
+    Filter(function(item) isTRUE(item$recommended_retained), items),
+    `[[`,
+    character(1),
+    "id"
+  )
+  default_valid <- builder_stage_has_text(default %||% "") &&
+    default %in% included
+  focus_valid <- builder_stage_has_text(default %||% "") && default %in% ids
+  preview_items <- utils::head(items, 6L)
+  preview_row_count <- min(
+    5L,
+    max(c(
+      0L,
+      vapply(
+        preview_items,
+        function(item) length(item$sample_values %||% character()),
+        integer(1)
+      )
+    ))
+  )
+  preview_rows <- lapply(seq_len(preview_row_count), function(row_index) {
+    vapply(
+      preview_items,
+      function(item) {
+        values <- item$sample_values %||% character()
+        value <- if (row_index <= length(values)) values[[row_index]] else ""
+        if (is.na(value)) "N/A" else as.character(value)
+      },
+      character(1)
+    )
+  })
+  list(
+    items = items,
+    retained = retained,
+    supported = supported,
+    recommended_retained = recommended_retained,
+    included = included,
+    default = if (default_valid) {
+      default
+    } else if (length(included)) {
+      included[[1L]]
+    } else {
+      NULL
+    },
+    included_count = length(included),
+    eligible_count = sum(vapply(items, `[[`, logical(1), "eligible")),
+    metadata_preview = list(
+      columns = vapply(preview_items, `[[`, character(1), "label"),
+      rows = preview_rows,
+      shown_columns = length(preview_items),
+      total_columns = length(items)
+    ),
+    focus = if (focus_valid) {
+      default
+    } else if (length(ids)) {
+      ids[[1L]]
+    } else {
+      NULL
+    }
+  )
+}
+
+builder_cell_cycle_catalog_model <- function(model) {
+  metadata <- model$metadata_catalog %||% list()
+  ids <- builder_cell_cycle_candidate_ids(metadata)
+  policy <- model$metadata_policy %||% list()
+  ids <- ids[vapply(
+    ids,
+    function(id) {
+      status <- builder_metadata_policy_status(policy, id)
+      !identical(status$retained, FALSE)
+    },
+    logical(1)
+  )]
+  selected <- unname(as.character(
+    model$cell_cycle_columns %||% character()
+  ))
+  selected <- ids[ids %in% selected]
+  items <- lapply(ids, function(id) {
+    column <- metadata[[id]] %||% list()
+    count <- column$level_counts$total %||% column$distinct_count %||% 0L
+    count <- if (is.numeric(count) && length(count) == 1L && !is.na(count)) {
+      as.integer(count)
+    } else {
+      0L
+    }
+    list(
+      id = id,
+      label = column$name %||% id,
+      phase_count = count,
+      included = id %in% selected
+    )
+  })
+  list(
+    items = items,
+    included = selected,
+    included_count = length(selected)
+  )
+}
+
+builder_cell_cycle_catalog_ui <- function(id, catalog) {
+  ns <- NS(id)
+  choices <- vapply(
+    catalog$items,
+    function(item) {
+      paste0(
+        item$label,
+        if (item$phase_count > 0L) {
+          paste0(
+            " · ",
+            item$phase_count,
+            if (item$phase_count == 1L) " phase" else " phases"
+          )
+        } else {
+          ""
+        }
+      )
+    },
+    character(1)
+  )
+  values <- vapply(catalog$items, `[[`, character(1), "id")
+  names(values) <- choices
+  div(
+    class = "viewer-cell-cycle-workspace",
+    p(
+      class = "viewer-cell-cycle-intro",
+      paste(
+        "Use categorical phase annotations in Color management and",
+        "composition views."
+      )
+    ),
+    checkboxGroupInput(
+      ns("cell_cycle"),
+      label = NULL,
+      choices = values,
+      selected = catalog$included
+    )
+  )
+}
+
+builder_group_detail_model <- function(catalog, group = NULL) {
+  items <- catalog$items %||% list()
+  ids <- vapply(items, `[[`, character(1), "id")
+  if (!builder_stage_has_text(group %||% "") || !group %in% ids) {
+    group <- catalog$focus %||% NULL
+  }
+  if (!builder_stage_has_text(group %||% "") || !group %in% ids) {
+    return(list(item = NULL, metadata_preview = catalog$metadata_preview))
+  }
+  list(
+    item = items[[match(group, ids)]],
+    metadata_preview = catalog$metadata_preview
+  )
+}
+
+builder_metadata_preview_ui <- function(preview, disclosure_key = NULL) {
+  columns <- preview$columns %||% character()
+  rows <- preview$rows %||% list()
+  if (!length(columns) || !length(rows)) {
+    return(NULL)
+  }
+  tags$details(
+    class = "viewer-metadata-preview-disclosure",
+    `data-disclosure-key` = disclosure_key,
+    tags$summary("Preview metadata"),
+    p(
+      class = "viewer-metadata-preview-note",
+      paste0(
+        "Showing the first ",
+        length(rows),
+        " rows and ",
+        length(columns),
+        if (length(columns) == 1L) " column" else " columns",
+        if ((preview$total_columns %||% length(columns)) > length(columns)) {
+          paste0(" of ", preview$total_columns)
+        } else {
+          ""
+        },
+        "."
+      )
+    ),
+    div(
+      class = "viewer-metadata-preview-scroll",
+      tags$table(
+        class = "viewer-metadata-preview-table",
+        tags$thead(tags$tr(
+          tags$th(scope = "col", "Row"),
+          lapply(columns, function(column) tags$th(scope = "col", column))
+        )),
+        tags$tbody(lapply(seq_along(rows), function(row_index) {
+          tags$tr(
+            class = "viewer-metadata-preview-row",
+            tags$th(scope = "row", row_index),
+            lapply(rows[[row_index]], function(value) {
+              tags$td(title = value, value)
+            })
+          )
+        }))
+      )
+    )
+  )
+}
+
+builder_group_detail_ui <- function(id, model) {
+  ns <- NS(id)
+  item <- model$item
+  if (!is.list(item)) {
+    return(div(
+      class = "viewer-group-detail is-empty",
+      p("Choose a metadata column to see its details.")
+    ))
+  }
+  percent <- format(
+    round(item$missing_percentage, 2L),
+    trim = TRUE,
+    scientific = FALSE
+  )
+  distribution <- item$distribution %||% list()
+  largest <- if (length(distribution)) {
+    max(vapply(distribution, function(value) value$count, numeric(1)))
+  } else {
+    1
+  }
+  div(
+    class = "viewer-group-detail",
+    `data-group` = item$id,
+    div(
+      class = "viewer-group-detail-head",
+      div(
+        h4(item$label),
+        p(
+          item$type_label,
+          span(`aria-hidden` = "true", " · "),
+          paste0(
+            format(item$non_missing_count, big.mark = ","),
+            " non-missing"
+          ),
+          span(`aria-hidden` = "true", " · "),
+          paste0(item$category_count, " categories"),
+          span(`aria-hidden` = "true", " · "),
+          paste0(percent, "% missing")
+        )
+      ),
+      span(
+        class = paste(
+          "viewer-group-eligibility",
+          if (item$eligible) "is-eligible" else "is-metadata-only"
+        ),
+        if (item$eligible) "Can be a Group" else "Not a Group"
+      )
+    ),
+    if (
+      !item$eligible &&
+        (nzchar(item$reason) ||
+          !is.na(item$metadata_retained))
+    ) {
+      div(
+        class = "viewer-group-reason",
+        if (nzchar(item$reason)) item$reason,
+        if (isTRUE(item$metadata_retained)) {
+          span(
+            class = "viewer-metadata-policy is-retained",
+            "Kept as ordinary metadata. Not eligible as a Group."
+          )
+        } else if (identical(item$metadata_retained, FALSE)) {
+          span(
+            class = "viewer-metadata-policy is-excluded",
+            "Not retained in the CRB."
+          )
+        }
+      )
+    },
+    div(
+      class = "viewer-group-detail-grid",
+      tags$section(
+        class = "viewer-group-distribution",
+        h5("Distribution"),
+        if (length(distribution)) {
+          tagList(lapply(distribution, function(value) {
+            count <- as.numeric(value$count)
+            width <- max(3, 100 * count / largest)
+            div(
+              class = "viewer-group-distribution-row",
+              span(class = "viewer-group-value", value$value),
+              span(
+                class = "viewer-group-bar-track",
+                span(
+                  class = "viewer-group-bar",
+                  style = paste0("width:", round(width, 2L), "%")
+                )
+              ),
+              span(class = "viewer-group-count", format(count, big.mark = ","))
+            )
+          }))
+        } else {
+          p(
+            class = "viewer-group-detail-empty",
+            "A categorical distribution is not shown for this column."
+          )
+        }
+      ),
+      NULL
+    ),
+    builder_metadata_preview_ui(
+      model$metadata_preview,
+      paste0("metadata-preview:", item$id)
+    ),
+    if (item$eligible && item$included) {
+      tags$details(
+        class = "viewer-group-colors-disclosure",
+        `data-disclosure-key` = paste0("group-colors:", item$id),
+        tags$summary("Edit colors"),
+        div(
+          class = "builder-group-colors-slot",
+          uiOutput(ns("group_colors"))
+        )
+      )
+    }
+  )
+}
+
+builder_group_catalog_ui <- function(id, catalog) {
+  ns <- NS(id)
+  div(
+    class = "viewer-group-workspace",
+    `data-input-id` = ns("group_action"),
+    `data-metadata-input-id` = ns("metadata_action"),
+    `data-focus-input-id` = ns("group_focus"),
+    div(
+      class = "viewer-group-directory",
+      div(
+        class = "viewer-group-tools",
+        tags$label(
+          class = "visually-hidden",
+          `for` = ns("group_search"),
+          "Find metadata"
+        ),
+        tags$input(
+          id = ns("group_search"),
+          type = "search",
+          class = "viewer-group-search",
+          placeholder = "Find metadata",
+          autocomplete = "off"
+        ),
+        div(
+          class = "viewer-group-actions",
+          tags$button(
+            type = "button",
+            class = "btn viewer-metadata-select",
+            `data-action` = "all-supported",
+            "Keep all supported metadata"
+          ),
+          tags$button(
+            type = "button",
+            class = "btn viewer-metadata-select",
+            `data-action` = "recommended",
+            "Restore recommended retention"
+          ),
+          tags$button(
+            type = "button",
+            class = "btn viewer-group-select",
+            `data-action` = "suggested",
+            "Select suggested"
+          ),
+          tags$button(
+            type = "button",
+            class = "btn viewer-group-select",
+            `data-action` = "all",
+            "Select all eligible"
+          )
+        )
+      ),
+      div(
+        class = "viewer-group-list",
+        lapply(catalog$items, function(item) {
+          retain_id <- ns(paste0("metadata_retain_", item$index))
+          checkbox_id <- ns(paste0("group_include_", item$index))
+          radio_id <- ns(paste0("group_default_", item$index))
+          div(
+            class = paste(
+              "viewer-group-row",
+              if (item$default) "is-focused" else "",
+              if (!item$eligible) "is-ineligible" else ""
+            ),
+            `data-group` = item$id,
+            `data-search` = item$search,
+            `data-eligible` = tolower(as.character(item$eligible)),
+            `data-suggested` = tolower(as.character(item$suggested)),
+            `data-recommended-retained` = tolower(as.character(
+              item$recommended_retained
+            )),
+            tags$label(
+              class = "viewer-metadata-check",
+              `for` = retain_id,
+              tags$input(
+                id = retain_id,
+                type = "checkbox",
+                class = "viewer-metadata-retain",
+                `data-group` = item$id,
+                checked = if (isTRUE(item$metadata_retained)) {
+                  "checked"
+                } else {
+                  NULL
+                },
+                disabled = if (isTRUE(item$retention_locked)) {
+                  "disabled"
+                } else {
+                  NULL
+                }
+              ),
+              span(class = "visually-hidden", paste("Keep in CRB", item$label))
+            ),
+            if (item$eligible) {
+              tags$label(
+                class = "viewer-group-check",
+                `for` = checkbox_id,
+                tags$input(
+                  id = checkbox_id,
+                  type = "checkbox",
+                  class = "viewer-group-include",
+                  `data-group` = item$id,
+                  checked = if (item$included) "checked" else NULL
+                ),
+                span(class = "visually-hidden", paste("Include", item$label))
+              )
+            } else {
+              span(class = "viewer-group-check viewer-group-check-spacer")
+            },
+            tags$button(
+              type = "button",
+              class = "viewer-group-focus",
+              `data-group` = item$id,
+              `aria-pressed` = if (item$default) "true" else "false",
+              span(class = "viewer-group-name", item$label),
+              span(
+                class = "viewer-group-meta",
+                if (item$eligible) {
+                  paste0(
+                    item$category_count,
+                    " categories · ",
+                    format(round(item$missing_percentage, 2L), trim = TRUE),
+                    "% missing"
+                  )
+                } else {
+                  item$reason
+                }
+              )
+            ),
+            if (item$eligible) {
+              tags$label(
+                class = "viewer-group-default-label",
+                `for` = radio_id,
+                tags$input(
+                  id = radio_id,
+                  type = "radio",
+                  name = ns("group_default_choice"),
+                  class = "viewer-group-default",
+                  value = item$id,
+                  `data-group` = item$id,
+                  checked = if (item$default) "checked" else NULL,
+                  disabled = if (!item$included) "disabled" else NULL
+                ),
+                span(
+                  class = "viewer-default-copy",
+                  if (item$default) "Default" else "Set default"
+                )
+              )
+            } else {
+              span(class = "viewer-group-not-eligible", "Not a Group")
+            }
+          )
+        })
+      ),
+      div(
+        class = "visually-hidden viewer-group-status",
+        role = "status",
+        `aria-live` = "polite"
+      )
+    ),
+    uiOutput(ns("group_detail"))
+  )
+}

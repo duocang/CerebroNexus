@@ -180,6 +180,17 @@ body.skin-blue .main-footer { margin-top: 0 !important; }
 /* -------------------------------------------------------------------------
    Sidebar — white nav rail, rounded items, warm active pill
    ------------------------------------------------------------------------- */
+body.skin-blue .main-sidebar,
+body.skin-blue .left-side {
+  position: fixed !important;
+  top: 0;
+  bottom: 0;
+  min-height: 0;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 body.skin-blue .main-sidebar {
   background: var(--c-white) !important;
   border-right: 1px solid var(--c-border) !important;
@@ -1016,6 +1027,24 @@ body .selectize-control.multi .selectize-input > .item {
   border-radius: var(--r-xs) !important;
   padding: 1px 8px !important;
   font-size: 13px;
+}
+/* Every multi-select keeps a useful empty target and lets its menu grow to the
+   longest option. The viewport cap preserves full labels by scrolling only
+   when a label genuinely cannot fit on screen. */
+body .selectize-control.multi .selectize-input > input::placeholder {
+  color: var(--c-text-3);
+  opacity: 1;
+}
+body .selectize-control.multi .selectize-input > input:only-child {
+  min-width: 5.5em !important;
+}
+body .selectize-control.multi .selectize-dropdown {
+  width: max-content !important;
+  min-width: 100% !important;
+  max-width: calc(100vw - 32px) !important;
+}
+body .selectize-control.multi .selectize-dropdown .option {
+  white-space: nowrap;
 }
 
 body label, body .control-label {

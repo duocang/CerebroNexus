@@ -79,14 +79,23 @@ publication_expect_stage_failure <- function(failure) {
       "injected config write error"
     },
     write = {
-      ops$write_lines <- function(text, connection) {
-        stop("injected app write error")
+      original_copy <- ops$copy
+      ops$copy <- function(from, to, ...) {
+        if (identical(basename(from), "_bundle_app.R")) {
+          stop("injected app write error")
+        }
+        original_copy(from, to, ...)
       }
       "injected app write error"
     },
     parse = {
-      ops$write_lines <- function(text, connection) {
-        writeLines("shiny::shinyApp(", connection)
+      original_copy <- ops$copy
+      ops$copy <- function(from, to, ...) {
+        if (identical(basename(from), "_bundle_app.R")) {
+          writeLines("shiny::shinyApp(", to)
+          return(TRUE)
+        }
+        original_copy(from, to, ...)
       }
       "Generated app.R is invalid"
     }

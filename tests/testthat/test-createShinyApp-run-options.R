@@ -7,6 +7,16 @@ run_options_test_fixture <- function() {
   list(root = root, crb = crb)
 }
 
+test_that("initial_dataset preserves historical positional arguments", {
+  arguments <- names(formals(createShinyApp))
+
+  expect_identical(arguments[[15L]], "welcome_message")
+  expect_identical(
+    tail(arguments, 4L),
+    c("initial_dataset", "initial_page", "auth", "...")
+  )
+})
+
 run_options_build_app <- function(fixture, result_name = "app", ...) {
   result <- file.path(fixture$root, result_name)
   createShinyApp(
@@ -152,6 +162,16 @@ test_that("createShinyApp validates run options before target preparation", {
       "AUTO",
       1,
       factor("auto")
+    ),
+    initial_dataset = list(
+      character(),
+      c("Dataset", "Other"),
+      NA_character_,
+      "",
+      "Other",
+      1,
+      TRUE,
+      factor("Dataset")
     )
   )
 
@@ -265,6 +285,15 @@ test_that("createShinyApp freezes typed run options into config", {
 
   app_file <- file.path(app, "app.R")
   app_source <- paste(readLines(app_file, warn = FALSE), collapse = "\n")
+  app_template <- builder_profile_inst_path(
+    "viewer",
+    "_bundle_app.R"
+  )
+  expect_true(nzchar(app_template))
+  expect_identical(
+    readBin(app_file, "raw", n = file.info(app_file)$size),
+    readBin(app_template, "raw", n = file.info(app_template)$size)
+  )
   expect_silent(parse(file = app_file, keep.source = FALSE))
   expect_false(grepl(host, app_source, fixed = TRUE))
   expect_false(grepl(as.character(port), app_source, fixed = TRUE))
@@ -350,4 +379,179 @@ test_that("createShinyApp accepts boundary and whole-valued ports", {
       as.integer(ports[[index]])
     )
   }
+})
+
+test_that("explicit initial dataset preserves configured selector order", {
+  fixture <- run_options_test_fixture()
+  second <- file.path(dirname(fixture$crb), "dataset-b.crb")
+  saveRDS(Cerebro$new(), second)
+  app <- file.path(fixture$root, "app-initial")
+
+  createShinyApp(
+    cerebro_data = c(A = fixture$crb, B = second),
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    crb_pick_smallest_file = TRUE,
+    initial_dataset = "B"
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(names(config$crb_file_to_load), c("A", "B"))
+  expect_identical(config$initial_dataset, "B")
+})
+
+test_that("initial page is validated and frozen through its argument", {
+  fixture <- run_options_test_fixture()
+  app <- run_options_build_app(
+    fixture,
+    result_name = "app-initial-page",
+    initial_page = "projection"
+  )
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(config$initial_page, "projection")
+
+  injected <- run_options_build_app(
+    fixture,
+    result_name = "app-injected-page",
+    cerebro_options = list(initial_page = "groups")
+  )
+  expect_null(readRDS(file.path(injected, "cerebro_config.rds"))$initial_page)
+
+  expect_error(
+    run_options_build_app(
+      fixture,
+      result_name = "app-invalid-page",
+      initial_page = "missing"
+    ),
+    "initial_page",
+    fixed = TRUE
+  )
+})
+
+test_that("generated Apps retain per-dataset Viewer defaults", {
+  fixture <- run_options_test_fixture()
+  second <- file.path(dirname(fixture$crb), "dataset-b.crb")
+  saveRDS(Cerebro$new(), second)
+  app <- file.path(fixture$root, "app-viewer-content")
+  viewer_content <- list(
+    A = list(
+      default_projection = "umap",
+      default_trajectory = NULL,
+      overview_point_size = 4
+    ),
+    B = list(
+      default_projection = "pca",
+      default_trajectory = list(method = "monocle2", name = "lineage"),
+      overview_point_size = 8
+    )
+  )
+
+  createShinyApp(
+    cerebro_data = c(A = fixture$crb, B = second),
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    cerebro_options = list(
+      exclude_trivial_metadata = TRUE,
+      viewer_content = viewer_content
+    )
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_identical(config$viewer_content, viewer_content)
+})
+
+test_that("initial dataset is reserved and validated through its argument", {
+  fixture <- run_options_test_fixture()
+  second <- file.path(dirname(fixture$crb), "dataset-b.crb")
+  saveRDS(Cerebro$new(), second)
+
+  injected <- file.path(fixture$root, "app-injected")
+  createShinyApp(
+    cerebro_data = c(A = fixture$crb, B = second),
+    result_dir = injected,
+    launch_browser = FALSE,
+    verbose = FALSE,
+    cerebro_options = list(initial_dataset = "B")
+  )
+  expect_null(
+    readRDS(file.path(injected, "cerebro_config.rds"))$initial_dataset
+  )
+
+  expect_error(
+    createShinyApp(
+      cerebro_data = c(A = fixture$crb, B = second),
+      result_dir = file.path(fixture$root, "app-invalid"),
+      launch_browser = FALSE,
+      verbose = FALSE,
+      initial_dataset = "missing"
+    ),
+    "initial_dataset"
+  )
+})
+
+test_that("runtime initial selection keeps URL and session precedence", {
+  server_file <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "viewer",
+    "shiny_server.R"
+  )
+  if (!file.exists(server_file)) {
+    server_file <- system.file(
+      "viewer",
+      "shiny_server.R",
+      package = "CerebroNexus"
+    )
+  }
+  expect_true(file.exists(server_file))
+  source <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+  url <- regexpr("match_dataset_by_url(", source, fixed = TRUE)[1L]
+  current <- regexpr("available_crb_files$selected", source, fixed = TRUE)[1L]
+  configured <- regexpr("initial_dataset", source, fixed = TRUE)[1L]
+  fallback <- regexpr("which.min(file_sizes)", source, fixed = TRUE)[1L]
+  manual <- regexpr(
+    "observeEvent(input[['crb_file_selector']]",
+    source,
+    fixed = TRUE
+  )[1L]
+
+  expect_gt(url, 0L)
+  expect_gt(current, url)
+  expect_gt(configured, current)
+  expect_gt(fallback, configured)
+  expect_gt(manual, fallback)
+  expect_match(
+    source,
+    "unname(file_to_load[[configured_initial_dataset]])",
+    fixed = TRUE
+  )
+})
+
+test_that("runtime starting page is mapped and applied only to the first load", {
+  server_file <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "viewer",
+    "shiny_server.R"
+  )
+  source <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    source,
+    "/viewer/core/viewer_content_contract.R",
+    fixed = TRUE
+  )
+  expect_match(source, "configured_initial_page", fixed = TRUE)
+  expect_match(source, "initial_navigation$applied", fixed = TRUE)
+  expect_match(source, "same_initial_file()", fixed = TRUE)
+  expect_match(source, "maybe_open_initial_page(tab_name)", fixed = TRUE)
+  expect_match(
+    source,
+    "updateTabItems(session, \"sidebar\", selected = tab_name)",
+    fixed = TRUE
+  )
 })

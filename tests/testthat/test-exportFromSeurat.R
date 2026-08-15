@@ -30,6 +30,75 @@ valid_args <- list(
   nGene = "nFeature_RNA"
 )
 
+test_that("export spatial projections use shared x and y axis semantics", {
+  expect_true(exists(".spx_export_projection_coordinates", mode = "function"))
+  if (!exists(".spx_export_projection_coordinates", mode = "function")) {
+    return(invisible())
+  }
+
+  cells <- c("cell-b", "cell-a")
+  visium <- data.frame(
+    imagerow = c(200, 100),
+    imagecol = c(20, 10),
+    row.names = cells
+  )
+  projection <- .spx_export_projection_coordinates(visium)
+  expect_identical(names(projection), c("x", "y"))
+  expect_identical(projection$x, visium$imagecol)
+  expect_identical(projection$y, visium$imagerow)
+  expect_identical(rownames(projection), cells)
+
+  standardized <- data.frame(
+    x = visium$imagecol,
+    y = visium$imagerow,
+    imagerow = visium$imagerow,
+    imagecol = visium$imagecol,
+    row.names = cells
+  )
+  expect_identical(
+    .spx_export_projection_coordinates(standardized),
+    standardized[, c("x", "y"), drop = FALSE]
+  )
+  expect_null(.spx_export_projection_coordinates(data.frame(foo = 1, bar = 2)))
+
+  core_path <- system.file(
+    "viewer/core/spatial_coordinate_contract.R",
+    package = "CerebroNexus"
+  )
+  builder_path <- system.file("builder/spatial.R", package = "CerebroNexus")
+  if (!nzchar(core_path)) {
+    core_path <- testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "viewer",
+      "core",
+      "spatial_coordinate_contract.R"
+    )
+  }
+  if (!nzchar(builder_path)) {
+    builder_path <- testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "builder",
+      "spatial.R"
+    )
+  }
+  runtime <- new.env(parent = baseenv())
+  sys.source(core_path, envir = runtime)
+  sys.source(builder_path, envir = runtime)
+  normalized <- runtime$builder_spatial_contract(
+    visium,
+    cells = rev(cells),
+    barcodes = rownames(visium),
+    source = "seurat_image"
+  )$preview
+  projection <- projection[normalized$cell_barcode, , drop = FALSE]
+  expect_identical(projection$x, normalized$x)
+  expect_identical(projection$y, normalized$y)
+})
+
 ## ---------------------------------------------------------------------------
 ## Input validation
 ## ---------------------------------------------------------------------------
