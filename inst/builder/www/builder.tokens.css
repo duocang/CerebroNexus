@@ -123,7 +123,7 @@
   --radius-pill: var(--r-pill);
   --ease-standard: var(--ease);
   --duration-fast: 120ms;
-  --duration-normal: 220ms;
+  --duration-normal: 180ms;
   --duration-base: var(--duration-normal);
   --motion-fast: var(--duration-fast);
   --builder-workflow-progress-height: 4.75rem;
