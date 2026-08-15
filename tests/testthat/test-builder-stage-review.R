@@ -30,8 +30,10 @@ test_that("Review model translates a frozen plan into user language", {
     c("Data info", "Linked views", "Marker genes") %in%
       vapply(model$pages, `[[`, character(1), "label")
   ))
-  expect_true("marker_genes" %in% vapply(model$pages, `[[`, character(1), "id"))
-  expect_false("spatial" %in% vapply(model$pages, `[[`, character(1), "id"))
+  expect_false(any(
+    c("marker_genes", "spatial") %in%
+      vapply(model$pages, `[[`, character(1), "id")
+  ))
   expect_length(model$warnings, 0L)
   expect_true(model$can_build)
 })

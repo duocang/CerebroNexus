@@ -244,14 +244,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
     html,
     fixed = TRUE
   ))
-  expect_match(html, 'id="enhance-alignment_spatial_canvas"', fixed = TRUE)
-  expect_match(html, 'data-builder-spatial-canvas="true"', fixed = TRUE)
-  expect_match(html, 'class="builder-spatial-canvas"', fixed = TRUE)
-  expect_false(grepl(
-    'id="enhance-alignment_spatial_plot"',
-    html,
-    fixed = TRUE
-  ))
+  expect_match(html, 'id="enhance-alignment_spatial_plot"', fixed = TRUE)
   expect_match(html, 'id="enhance-alignment_legend"', fixed = TRUE)
   expect_match(html, 'aria-label="Spatial-space cell plot"', fixed = TRUE)
   expect_match(

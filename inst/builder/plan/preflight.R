@@ -71,7 +71,6 @@
       transforms[[section]],
       context = paste0("spatial_coordinate_transforms$", section)
     )
-    spec$scale <- 1
     spec[c("rotation_degrees", "scale")]
   })
   names(normalized) <- names_transforms

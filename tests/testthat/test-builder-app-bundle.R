@@ -1406,8 +1406,8 @@ test_that("the bundled App entrypoint runs directly with visible startup informa
   expect_match(source, "direct_options$quiet <- FALSE", fixed = TRUE)
   expect_match(
     source,
-    "embedded_options\\[c\\(\\s*\"port\",\\s*\"host\",\\s*\"launch\\.browser\",\\s*\"quiet\",\\s*\"display\\.mode\"\\s*\\)\\] <- NULL",
-    perl = TRUE
+    'embedded_options[c("port", "host", "launch.browser", "quiet", "display.mode")] <- NULL',
+    fixed = TRUE
   )
   expect_match(source, "options = embedded_options", fixed = TRUE)
   expect_match(source, "do.call(shiny::runApp", fixed = TRUE)

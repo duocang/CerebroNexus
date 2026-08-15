@@ -71,7 +71,6 @@ builder_alignment_coordinate_frame <- function(bounds, transform = NULL) {
     projection_name = NULL,
     transcriptome = NULL,
     spatial = NULL,
-    spatial_base = NULL,
     bounds = NULL,
     coordinate_frame = NULL,
     capped = FALSE
@@ -166,7 +165,6 @@ builder_alignment_preview_model <- function(
       projection_name = "Trekker UMAP",
       transcriptome = transcriptome_full[keep, , drop = FALSE],
       spatial = spatial_full[keep, , drop = FALSE],
-      spatial_base = spatial_full[keep, , drop = FALSE],
       bounds = .builder_alignment_bounds(spatial_full),
       coordinate_frame = .builder_alignment_bounds(spatial_full),
       capped = nrow(spatial_full) > length(keep)
@@ -236,7 +234,6 @@ builder_alignment_preview_model <- function(
   }
   coordinate_transform <- NULL
   coordinate_frame <- .builder_alignment_bounds(physical)
-  physical_base <- physical
   if (
     is.list(coordinate_transforms) &&
       !is.null(coordinate_transforms[[section$source_id]])
@@ -271,13 +268,7 @@ builder_alignment_preview_model <- function(
     c("cell_barcode", "x", "y"),
     drop = FALSE
   ]
-  spatial_base_full <- physical_base[
-    match(common, physical_base$cell_barcode),
-    c("cell_barcode", "x", "y"),
-    drop = FALSE
-  ]
   spatial_full$group <- transcriptome_full$group
-  spatial_base_full$group <- transcriptome_full$group
   keep <- .builder_alignment_sample(nrow(spatial_full), max_cells)
   list(
     available = TRUE,
@@ -287,7 +278,6 @@ builder_alignment_preview_model <- function(
     projection_name = reduction,
     transcriptome = transcriptome_full[keep, , drop = FALSE],
     spatial = spatial_full[keep, , drop = FALSE],
-    spatial_base = spatial_base_full[keep, , drop = FALSE],
     bounds = .builder_alignment_bounds(spatial_full),
     coordinate_frame = coordinate_frame,
     coordinate_transform = coordinate_transform,
@@ -715,297 +705,174 @@ builder_overlay_plot <- function(coords, uri = NULL, bounds = NULL) {
     plotly::config(displayModeBar = FALSE)
 }
 
-#' Build the versioned scene consumed by the spatial alignment canvas.
-#'
-#' The scene contains bounded, columnar point data and display parameters only.
-#' Worker identities, filesystem paths, and snapshot details never cross this
-#' contract.
-builder_spatial_canvas_scene <- function(
-  preview,
+#' Draw either half of the linked alignment workbench.
+builder_alignment_plot <- function(
+  frame,
   colors = NULL,
-  record = NULL,
-  coordinate_spec = list(rotation_degrees = 0, scale = 1),
-  identity = list(),
-  generation = 0L,
-  reset_token = 0L
+  image_uri = NULL,
+  image_bounds = NULL,
+  coordinate_frame = NULL,
+  coordinate_transform = NULL,
+  image_opacity = 0.8,
+  point_opacity = 0.85,
+  point_size = 5
 ) {
-  scene_integer <- function(value) {
-    value <- tryCatch(
-      suppressWarnings(as.numeric(value)),
-      error = function(error) numeric()
-    )
-    if (
-      length(value) != 1L ||
-        is.na(value) ||
-        !is.finite(value) ||
-        value < 0 ||
-        value > .Machine$integer.max
-    ) {
-      return(0L)
-    }
-    as.integer(value)
+  if (is.null(frame) || !nrow(frame)) {
+    return(NULL)
   }
-  scene_number <- function(value, fallback) {
-    value <- tryCatch(
-      suppressWarnings(as.numeric(value)),
-      error = function(error) numeric()
-    )
-    if (length(value) != 1L || is.na(value) || !is.finite(value)) {
-      return(as.numeric(fallback))
-    }
-    unname(value)
+  levels <- unique(as.character(frame$group))
+  fallback <- builder_level_colors(levels)
+  if (length(colors)) {
+    shared <- intersect(levels, names(colors))
+    fallback[shared] <- colors[shared]
   }
-  scene_message <- function(value) {
-    value <- tryCatch(as.character(value), error = function(error) character())
-    if (length(value) != 1L || is.na(value) || !nzchar(value)) {
-      return("Spatial preview is unavailable.")
-    }
-    unname(value)
-  }
-  identity_character <- function(value, nonempty = TRUE) {
-    if (
-      !is.character(value) ||
-        length(value) != 1L ||
-        is.na(value) ||
-        (isTRUE(nonempty) && !nzchar(value))
-    ) {
-      return(NULL)
-    }
-    unname(value)
-  }
-  identity_revision <- function(value) {
-    if (
-      !is.numeric(value) ||
-        is.object(value) ||
-        length(value) != 1L ||
-        is.na(value) ||
-        !is.finite(value)
-    ) {
-      return(NULL)
-    }
-    unname(value)
-  }
-  identity_source <- if (is.list(identity)) {
-    identity
-  } else {
-    list()
-  }
-  safe_identity <- list(
-    dataset_id = identity_character(identity_source$dataset_id),
-    dataset_revision = identity_revision(identity_source$dataset_revision),
-    section_id = identity_character(identity_source$section_id),
-    section_kind = identity_character(identity_source$section_kind),
-    image_label = identity_character(
-      identity_source$image_label,
-      nonempty = FALSE
-    )
+  counts <- table(frame$group)
+  hover <- paste0(
+    frame$cell_barcode,
+    "<br>",
+    frame$group,
+    " · ",
+    unname(counts[frame$group]),
+    " cells"
   )
-
-  defaults <- builder_alignment_defaults()
-  normalized_record <- tryCatch(
-    builder_alignment_normalize(record),
-    error = function(error) NULL
-  )
-  parameters <- defaults
-  if (!is.null(normalized_record)) {
-    shared <- intersect(names(parameters), names(normalized_record))
-    parameters[shared] <- normalized_record[shared]
-  }
-  controls <- list(
-    coordinate_rotation = scene_number(
-      if (is.list(coordinate_spec)) coordinate_spec$rotation_degrees else NULL,
-      0
+  plot <- plotly::plot_ly(
+    data = frame,
+    x = ~x,
+    y = ~y,
+    type = "scattergl",
+    mode = "markers",
+    marker = list(
+      color = unname(fallback[frame$group]),
+      size = point_size,
+      opacity = point_opacity,
+      line = list(width = 0)
     ),
-    dx = scene_number(parameters$dx, defaults$dx),
-    dy = scene_number(parameters$dy, defaults$dy),
-    scale = scene_number(parameters$scale, defaults$scale),
-    rotation = scene_number(parameters$rotation, defaults$rotation),
-    flip_x = isTRUE(parameters$flip_x),
-    flip_y = isTRUE(parameters$flip_y),
-    image_opacity = scene_number(
-      parameters$image_opacity,
-      defaults$image_opacity
-    ),
-    point_opacity = scene_number(
-      parameters$point_opacity,
-      defaults$point_opacity
-    ),
-    point_size = scene_number(parameters$point_size, defaults$point_size)
+    text = hover,
+    hoverinfo = "text",
+    showlegend = FALSE
   )
-  unavailable <- function(message) {
-    list(
-      schema_version = 1L,
-      generation = scene_integer(generation),
-      reset_token = scene_integer(reset_token),
-      identity = safe_identity,
-      available = FALSE,
-      message = scene_message(message),
-      capped = FALSE,
-      coordinate_frame = NULL,
-      points = NULL,
-      groups = list(),
-      image = NULL,
-      controls = controls
+  frame_bounds <- coordinate_frame %||% .builder_alignment_bounds(frame)
+  initial_outline <- builder_alignment_coordinate_frame(frame_bounds)
+  frame_outline <- builder_alignment_coordinate_frame(
+    frame_bounds,
+    coordinate_transform
+  )
+  if (!is.null(initial_outline)) {
+    plot <- plotly::add_trace(
+      plot,
+      data = initial_outline,
+      x = ~x,
+      y = ~y,
+      type = "scatter",
+      mode = "lines",
+      line = list(color = "#9a958d", width = 1, dash = "dot"),
+      hoverinfo = "skip",
+      showlegend = FALSE,
+      inherit = FALSE
     )
   }
-
-  if (!is.list(preview) || !isTRUE(preview$available)) {
-    preview_message <- if (is.list(preview)) preview$message else NULL
-    return(unavailable(preview_message))
-  }
-  frame <- preview$spatial_base
-  required <- c("cell_barcode", "x", "y", "group")
-  if (
-    !is.data.frame(frame) ||
-      !nrow(frame) ||
-      !all(required %in% names(frame))
-  ) {
-    return(unavailable("Spatial preview points are invalid."))
-  }
-  rows <- nrow(frame)
-  column_lengths <- vapply(
-    required,
-    function(name) length(frame[[name]]),
-    integer(1)
-  )
-  frame_x <- tryCatch(
-    suppressWarnings(as.numeric(frame$x)),
-    error = function(error) numeric()
-  )
-  frame_y <- tryCatch(
-    suppressWarnings(as.numeric(frame$y)),
-    error = function(error) numeric()
-  )
-  frame_barcode <- tryCatch(
-    as.character(frame$cell_barcode),
-    error = function(error) character()
-  )
-  frame_group <- tryCatch(
-    as.character(frame$group),
-    error = function(error) character()
-  )
-  if (
-    any(column_lengths != rows) ||
-      length(frame_x) != rows ||
-      length(frame_y) != rows ||
-      length(frame_barcode) != rows ||
-      length(frame_group) != rows ||
-      anyNA(frame_barcode) ||
-      any(!nzchar(frame_barcode)) ||
-      any(!is.finite(frame_x)) ||
-      any(!is.finite(frame_y))
-  ) {
-    return(unavailable("Spatial preview points are invalid."))
-  }
-  frame_group[is.na(frame_group) | !nzchar(frame_group)] <- "N/A"
-  levels <- unique(frame_group)
-  palette <- builder_level_colors(levels, overrides = colors)
-  group_index <- match(frame_group, levels) - 1L
-  groups <- unname(lapply(seq_along(levels), function(index) {
-    list(
-      label = levels[[index]],
-      color = unname(palette[[levels[[index]]]]),
-      count = as.integer(sum(group_index == index - 1L))
+  if (!is.null(frame_outline)) {
+    plot <- plotly::add_trace(
+      plot,
+      data = frame_outline,
+      x = ~x,
+      y = ~y,
+      type = "scatter",
+      mode = "lines",
+      line = list(color = "#5f5a54", width = 1.5),
+      hoverinfo = "skip",
+      showlegend = FALSE,
+      inherit = FALSE
     )
-  }))
-
-  image <- NULL
-  source_uri_valid <- FALSE
-  if (!is.null(normalized_record)) {
-    source_uri_valid <- isTRUE(tryCatch(
-      {
-        builder_parse_image_uri(normalized_record$source_uri)
-        TRUE
-      },
-      error = function(error) FALSE
+    rotation <- as.numeric(coordinate_transform$rotation_degrees %||% 0)
+    reference_edge <- frame_outline[1:2, , drop = FALSE]
+    rotation_label <- format(
+      round(rotation, 1),
+      trim = TRUE,
+      scientific = FALSE
+    )
+    reference_label <- data.frame(
+      x = mean(reference_edge$x),
+      y = mean(reference_edge$y),
+      label = paste0(if (rotation > 0) "+" else "", rotation_label, "°")
+    )
+    plot <- plotly::add_trace(
+      plot,
+      data = reference_edge,
+      x = ~x,
+      y = ~y,
+      type = "scatter",
+      mode = "lines+markers",
+      line = list(color = "#d45500", width = 3),
+      marker = list(color = "#d45500", size = 6),
+      hoverinfo = "skip",
+      showlegend = FALSE,
+      inherit = FALSE
+    )
+    plot <- plotly::add_trace(
+      plot,
+      data = reference_label,
+      x = ~x,
+      y = ~y,
+      text = ~label,
+      type = "scatter",
+      mode = "text",
+      textposition = "top center",
+      textfont = list(color = "#d45500", size = 12),
+      hoverinfo = "skip",
+      showlegend = FALSE,
+      inherit = FALSE
+    )
+  }
+  images <- list()
+  if (!is.null(image_uri) && .builder_alignment_valid_bounds(image_bounds)) {
+    images <- list(list(
+      source = image_uri,
+      xref = "x",
+      yref = "y",
+      x = image_bounds$xmin,
+      y = image_bounds$ymax,
+      sizex = image_bounds$xmax - image_bounds$xmin,
+      sizey = image_bounds$ymax - image_bounds$ymin,
+      sizing = "stretch",
+      opacity = image_opacity,
+      layer = "below"
     ))
   }
-  if (
-    !is.null(normalized_record) &&
-      source_uri_valid &&
-      .builder_alignment_valid_bounds(normalized_record$base_bounds)
-  ) {
-    source_name <- if (is.list(normalized_record$source)) {
-      identity_character(normalized_record$source$name, nonempty = FALSE)
-    } else {
-      NULL
-    }
-    image_key <- safe_identity$image_label %||%
-      identity_character(
-        normalized_record$image_label,
-        nonempty = FALSE
-      ) %||%
-      source_name %||%
-      "Tissue image"
-    if (!nzchar(image_key)) {
-      image_key <- "Tissue image"
-    }
-    image_key <- gsub("[/\\\\]+", "_", image_key)
-    image <- list(
-      key = unname(image_key),
-      source_uri = unname(normalized_record$source_uri),
-      base_bounds = normalized_record$base_bounds
-    )
-  }
-
-  coordinate_frame <- preview$coordinate_frame
-  frame_is_valid <- isTRUE(tryCatch(
-    .builder_alignment_valid_bounds(coordinate_frame),
-    error = function(error) FALSE
-  ))
-  if (!frame_is_valid) {
-    xmin <- min(frame_x)
-    xmax <- max(frame_x)
-    ymin <- min(frame_y)
-    ymax <- max(frame_y)
-    x_span <- xmax - xmin
-    y_span <- ymax - ymin
-    if (x_span <= 0) {
-      x_center <- xmin + x_span / 2
-      x_padding <- max(y_span, abs(x_center) * 1e-6, 1) * 0.05
-      xmin <- x_center - x_padding
-      xmax <- x_center + x_padding
-    }
-    if (y_span <= 0) {
-      y_center <- ymin + y_span / 2
-      y_padding <- max(x_span, abs(y_center) * 1e-6, 1) * 0.05
-      ymin <- y_center - y_padding
-      ymax <- y_center + y_padding
-    }
-    coordinate_frame <- list(
-      xmin = unname(xmin),
-      xmax = unname(xmax),
-      ymin = unname(ymin),
-      ymax = unname(ymax)
-    )
-  }
-  if (
-    !isTRUE(tryCatch(
-      .builder_alignment_valid_bounds(coordinate_frame),
-      error = function(error) FALSE
-    ))
-  ) {
-    return(unavailable("Spatial preview coordinate frame is invalid."))
-  }
-  list(
-    schema_version = 1L,
-    generation = scene_integer(generation),
-    reset_token = scene_integer(reset_token),
-    identity = safe_identity,
-    available = TRUE,
-    message = NULL,
-    capped = isTRUE(preview$capped),
-    coordinate_frame = coordinate_frame,
-    points = list(
-      x = I(unname(frame_x)),
-      y = I(unname(frame_y)),
-      barcode = I(unname(frame_barcode)),
-      group_index = I(unname(as.integer(group_index)))
+  plot <- plotly::layout(
+    plot,
+    images = images,
+    dragmode = FALSE,
+    xaxis = list(
+      zeroline = FALSE,
+      showgrid = TRUE,
+      gridcolor = "rgba(0, 0, 0, 0.08)",
+      showticklabels = TRUE,
+      ticks = "outside",
+      fixedrange = TRUE
     ),
-    groups = groups,
-    image = image,
-    controls = controls
-  )
+    yaxis = list(
+      zeroline = FALSE,
+      showgrid = TRUE,
+      gridcolor = "rgba(0, 0, 0, 0.08)",
+      showticklabels = TRUE,
+      ticks = "outside",
+      fixedrange = TRUE,
+      scaleanchor = "x"
+    ),
+    margin = list(l = 12, r = 6, t = 6, b = 12),
+    showlegend = FALSE,
+    paper_bgcolor = "rgba(0,0,0,0)",
+    plot_bgcolor = "rgba(0,0,0,0)"
+  ) |>
+    plotly::config(
+      staticPlot = TRUE,
+      displayModeBar = FALSE,
+      displaylogo = FALSE,
+      responsive = TRUE,
+      scrollZoom = FALSE
+    )
+  plot
 }
 
 #' One bounded legend shared by both alignment plots.

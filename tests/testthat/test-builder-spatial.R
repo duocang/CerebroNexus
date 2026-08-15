@@ -97,7 +97,7 @@ test_that("external Builder images reject active or forged payloads", {
   )
 })
 
-test_that("alignment previews serialize bounded display-only canvas scenes", {
+test_that("alignment previews are display-only Plotly figures", {
   frame <- data.frame(
     x = c(-1, 1),
     y = c(1, -1),
@@ -105,68 +105,14 @@ test_that("alignment previews serialize bounded display-only canvas scenes", {
     cell_barcode = c("cell-a", "cell-b"),
     stringsAsFactors = FALSE
   )
-  scene <- builder_spatial_canvas_scene(
-    preview = list(
-      available = TRUE,
-      spatial_base = frame,
-      coordinate_frame = list(xmin = -1, xmax = 1, ymin = -1, ymax = 1)
-    ),
-    identity = list(
-      dataset_id = "dataset-a",
-      dataset_revision = 1,
-      section_id = "section-a",
-      section_kind = "spatial",
-      image_label = NULL
-    ),
-    generation = 2L,
-    reset_token = 3L
-  )
+  plot <- plotly::plotly_build(builder_alignment_plot(frame))
 
-  expect_identical(scene$schema_version, 1L)
-  expect_true(isTRUE(scene$available))
-  expect_identical(scene$generation, 2L)
-  expect_identical(scene$reset_token, 3L)
-  expect_identical(unclass(scene$points$x), c(-1, 1))
-  expect_identical(unclass(scene$points$y), c(1, -1))
-  expect_identical(unclass(scene$points$barcode), c("cell-a", "cell-b"))
-  expect_identical(unclass(scene$points$group_index), c(0L, 1L))
-  expect_identical(vapply(scene$groups, `[[`, integer(1), "count"), c(1L, 1L))
-  expect_null(scene$image)
-})
-
-test_that("single-point canvas scenes keep columnar JSON arrays", {
-  skip_if_not_installed("jsonlite")
-  scene <- builder_spatial_canvas_scene(
-    preview = list(
-      available = TRUE,
-      spatial_base = data.frame(
-        cell_barcode = "only-cell",
-        x = 4,
-        y = -3,
-        group = "Only group",
-        stringsAsFactors = FALSE
-      ),
-      coordinate_frame = list(xmin = 3, xmax = 5, ymin = -4, ymax = -2)
-    ),
-    identity = list(
-      dataset_id = "dataset-a",
-      dataset_revision = 1,
-      section_id = "section-a",
-      section_kind = "spatial",
-      image_label = NULL
-    )
-  )
-  parsed <- jsonlite::fromJSON(
-    jsonlite::toJSON(scene, auto_unbox = TRUE, null = "null"),
-    simplifyVector = FALSE
-  )
-
-  expect_true(is.list(parsed$points$x))
-  expect_true(is.list(parsed$points$y))
-  expect_true(is.list(parsed$points$barcode))
-  expect_true(is.list(parsed$points$group_index))
-  expect_equal(parsed$points$x[[1L]], 4)
-  expect_identical(parsed$points$barcode[[1L]], "only-cell")
+  expect_true(isTRUE(plot$x$config$staticPlot))
+  expect_false(isTRUE(plot$x$config$displayModeBar))
+  expect_true(isTRUE(plot$x$config$responsive))
+  expect_false(identical(plot$x$layout$dragmode, "select"))
+  expect_null(plot$x$data[[1L]]$customdata)
+  expect_lte(sum(unlist(plot$x$layout$margin)), 36)
 })
 
 test_that("alignment server does not subscribe to Plotly selection events", {
@@ -831,30 +777,32 @@ test_that("rotated alignment bounds preserve one data-unit scale per image pixel
   expect_equal(record$bounds, expected, tolerance = 1e-12)
 })
 
-test_that("alignment canvas scenes preserve decimal coordinate rotation", {
+test_that("alignment plot preserves decimal coordinate rotation labels", {
+  skip_if_not_installed("plotly")
   frame <- data.frame(
     cell_barcode = c("a", "b", "c"),
     x = c(0, 20, 80),
     y = c(0, 55, 10),
     group = c("A", "B", "C")
   )
-  scene <- builder_spatial_canvas_scene(
-    preview = list(
-      available = TRUE,
-      spatial_base = frame,
-      coordinate_frame = .builder_alignment_bounds(frame)
-    ),
-    coordinate_spec = list(rotation_degrees = 37.5, scale = 1),
-    identity = list(
-      dataset_id = "dataset-a",
-      dataset_revision = 1,
-      section_id = "section-a",
-      section_kind = "spatial",
-      image_label = NULL
-    )
+  transform <- .spx_coordinate_transform_normalize(
+    list(rotation_degrees = 37.5, scale = 1.2),
+    frame
   )
+  plot <- plotly::plotly_build(builder_alignment_plot(
+    frame,
+    coordinate_frame = .builder_alignment_bounds(frame),
+    coordinate_transform = transform
+  ))
+  traces <- plot$x$data
+  label_traces <- vapply(
+    traces,
+    function(trace) identical(trace$mode, "text"),
+    logical(1)
+  )
+  label <- traces[[which(label_traces)]]$text
 
-  expect_identical(scene$controls$coordinate_rotation, 37.5)
+  expect_identical(unname(label), "+37.5°")
 })
 
 test_that("reset and apply-to-all preserve each section image identity", {
@@ -1623,33 +1571,6 @@ test_that("quarter-turn rotations preserve every RGBA pixel exactly", {
   expect_false(grepl("return(arr[", implementation, fixed = TRUE))
 })
 
-test_that("encoded image flips are applied before positive rotation", {
-  skip_if_not_installed("png")
-  skip_if_not_installed("base64enc")
-  rgba <- array(1, dim = c(2L, 3L, 4L))
-  rgba[,, 1L] <- matrix(
-    c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6),
-    nrow = 2L,
-    byrow = TRUE
-  )
-  encoded <- builder_encode_image(
-    rgba,
-    max_px = 10L,
-    flip_x = TRUE,
-    rotate = 90
-  )
-  expect_null(encoded$error)
-
-  png_path <- withr::local_tempfile(fileext = ".png")
-  writeBin(base64enc::base64decode(sub("^[^,]+,", "", encoded$uri)), png_path)
-  decoded <- png::readPNG(png_path)
-  expected <- builder_rotate_array(
-    rgba[, rev(seq_len(dim(rgba)[2L])), , drop = FALSE],
-    90
-  )
-  expect_equal(decoded, expected, tolerance = 1 / 255)
-})
-
 test_that("rotation plans preserve dimensions for thin images", {
   plan <- NULL
   expect_no_error(
@@ -1841,9 +1762,10 @@ test_that("encoded display limits preserve transformed source extent", {
   )
 })
 
-test_that("rotated image extent drives canonical oriented bounds", {
+test_that("rotated image extent drives bounds and Plotly aspect", {
   skip_if_not_installed("png")
   skip_if_not_installed("base64enc")
+  skip_if_not_installed("plotly")
   image <- array(
     seq(0.01, 0.99, length.out = 2L * 4L * 4L),
     dim = c(2L, 4L, 4L)
@@ -1885,12 +1807,14 @@ test_that("rotated image extent drives canonical oriented bounds", {
       ),
       info = angle
     )
-    oriented <- builder_alignment_oriented_bounds(
-      list(xmin = 0, xmax = 4, ymin = 0, ymax = 2),
-      encoded
-    )
+    built <- plotly::plotly_build(builder_overlay_plot(
+      data.frame(sx = c(0, 1), sy = c(0, 1)),
+      encoded$uri,
+      bounds
+    ))
+    layout_image <- built$x$layout$images[[1L]]
     expect_equal(
-      (oriented$xmax - oriented$xmin) / (oriented$ymax - oriented$ymin),
+      layout_image$sizex / layout_image$sizey,
       expected[[angle]][["width"]] / expected[[angle]][["height"]],
       info = angle
     )

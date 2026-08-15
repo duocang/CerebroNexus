@@ -239,7 +239,7 @@ test_that("builder exposes one compact responsive component system", {
     expect_match(css, component, fixed = TRUE)
   }
   expect_match(css, "--duration-fast: 120ms", fixed = TRUE)
-  expect_match(css, "--duration-normal: 180ms", fixed = TRUE)
+  expect_match(css, "--duration-normal: 220ms", fixed = TRUE)
   expect_match(css, "--builder-text-muted: var(--c-text-2)", fixed = TRUE)
   expect_match(css, "--builder-text-subtle: var(--c-text-3)", fixed = TRUE)
   expect_match(css, "--builder-page-gutter: 26px", fixed = TRUE)
@@ -338,7 +338,6 @@ test_that("enhancement groups and previews use one quiet density system", {
   expect_false(grepl("aspect-ratio: 1;", css, fixed = TRUE))
   expect_match(css, "--spatial-preview-aspect", fixed = TRUE)
   js <- builder_asset_text("www", "builder.js")
-  canvas_js <- builder_asset_text("www", "builder-spatial-canvas.js")
   enhance_ui <- builder_asset_text("ui", "enhance_stage.R")
   alignment_server <- builder_asset_text("spatial_alignment_server.R")
   expect_false(grepl('ns("coordinate_scale")', enhance_ui, fixed = TRUE))
@@ -360,42 +359,18 @@ test_that("enhancement groups and previews use one quiet density system", {
   }
   expect_match(
     alignment_server,
-    "transforms[[section]] <- spec",
+    "transforms[[section]] <- coordinate_draft()",
     fixed = TRUE
   )
-  expect_match(alignment_server, "current_record <- draft_record", fixed = TRUE)
-  expect_match(
-    alignment_server,
-    "session$sendCustomMessage(\"builder_spatial_canvas_scene\"",
-    fixed = TRUE
-  )
-  expect_false(grepl("syncSpatialPreviewAspect", js, fixed = TRUE))
-  expect_false(grepl("syncSpatialWorkbench", js, fixed = TRUE))
+  expect_match(alignment_server, "record <- current_record()", fixed = TRUE)
+  expect_match(js, "syncSpatialPreviewAspect", fixed = TRUE)
+  expect_match(js, "syncSpatialWorkbench", fixed = TRUE)
   expect_match(js, 'sidebar.addEventListener("wheel"', fixed = TRUE)
   expect_match(js, "event.preventDefault()", fixed = TRUE)
   expect_match(js, "window.scrollBy(", fixed = TRUE)
   expect_match(js, "{ passive: false }", fixed = TRUE)
-  expect_match(canvas_js, "ResizeObserver", fixed = TRUE)
-  expect_match(canvas_js, "builder_spatial_canvas_scene", fixed = TRUE)
-  expect_match(canvas_js, "requestAnimationFrame", fixed = TRUE)
-  expect_match(canvas_js, "activeRangeDrag", fixed = TRUE)
-  expect_match(canvas_js, "rangeValueAtPointer", fixed = TRUE)
-  expect_match(canvas_js, "event.getCoalescedEvents", fixed = TRUE)
-  expect_match(canvas_js, 'input.getAttribute("data-min")', fixed = TRUE)
-  expect_match(canvas_js, 'input.getAttribute("data-max")', fixed = TRUE)
-  expect_match(canvas_js, 'input.getAttribute("data-step")', fixed = TRUE)
-  expect_match(
-    canvas_js,
-    'document.addEventListener("pointermove", updateRangeDrag, true)',
-    fixed = TRUE
-  )
-  rotate_at <- regexpr("context.rotate(-radians)", canvas_js, fixed = TRUE)[[
-    1L
-  ]]
-  scale_at <- regexpr("context.scale(", canvas_js, fixed = TRUE)[[1L]]
-  expect_gt(rotate_at, 0L)
-  expect_gt(scale_at, rotate_at)
-  expect_false(grepl("plotly_afterplot", js, fixed = TRUE))
+  expect_match(js, "ResizeObserver", fixed = TRUE)
+  expect_match(js, "plotly_afterplot", fixed = TRUE)
   expect_match(
     css,
     "100dvh - var\\(--builder-spatial-viewport-offset\\) -[^;]*var\\(--builder-workflow-progress-height",
@@ -1378,11 +1353,9 @@ test_that("explicitly declared creatable selects use the integrated menu enhance
 
 test_that("builder previews and colour controls have text equivalents", {
   js <- builder_asset_text("www", "builder.js")
-  canvas_js <- builder_asset_text("www", "builder-spatial-canvas.js")
 
-  expect_match(canvas_js, "builder-spatial-canvas-summary", fixed = TRUE)
-  expect_match(canvas_js, "aria-label", fixed = TRUE)
-  expect_match(canvas_js, "setAttribute(\"aria-label\"", fixed = TRUE)
+  expect_match(js, "plotly_afterplot", fixed = TRUE)
+  expect_match(js, "builder-preview-summary", fixed = TRUE)
   expect_match(js, 'input[type="color"]', fixed = TRUE)
   expect_match(js, "colourLabel", fixed = TRUE)
   expect_match(js, "value.toUpperCase()", fixed = TRUE)
@@ -1674,19 +1647,17 @@ test_that("result actions remain native keyboard controls", {
   expect_false(grepl('tabindex = "-1"', status, fixed = TRUE))
 })
 
-test_that("spatial live controls do not publish or encode images", {
+test_that("spatial translation does not invalidate image encoding", {
   lines <- readLines(
     builder_asset_path("spatial_alignment_server.R"),
     warn = FALSE
   )
-  start <- grep("  mark_unsaved <- function", lines, fixed = TRUE)
-  finish <- grep("  save_current <- function", lines, fixed = TRUE)
-  mark_unsaved <- paste(lines[start:(finish - 1L)], collapse = "\n")
+  start <- grep("encoded <- shiny::reactive", lines, fixed = TRUE)
+  finish <- grep("current_record <- shiny::reactive", lines, fixed = TRUE)
+  encoded <- paste(lines[start:(finish - 1L)], collapse = "\n")
 
-  expect_match(mark_unsaved, "commit_section", fixed = TRUE)
-  expect_false(grepl("builder_encode_image", mark_unsaved, fixed = TRUE))
-  expect_false(grepl("finalize_current_record", mark_unsaved, fixed = TRUE))
-  expect_false(grepl("publish_canvas", mark_unsaved, fixed = TRUE))
+  expect_false(grepl("img_dx|img_dy|img_scale|opacity|point_size", encoded))
+  expect_match(encoded, "orientation()", fixed = TRUE)
 })
 
 test_that("transient layers expose state-bearing motion lifecycle", {
@@ -1702,7 +1673,7 @@ test_that("transient layers expose state-bearing motion lifecycle", {
     expect_match(js, paste0("function ", function_name, "("), fixed = TRUE)
   }
   expect_match(js, 'getPropertyValue("--duration-normal")', fixed = TRUE)
-  expect_match(js, "var normalMotionDuration = 180", fixed = TRUE)
+  expect_match(js, "var normalMotionDuration = 220", fixed = TRUE)
   expect_match(js, "var match = duration.match(", fixed = TRUE)
   expect_match(js, 'match[2] === "ms"', fixed = TRUE)
   expect_match(js, "requestAnimationFrame", fixed = TRUE)

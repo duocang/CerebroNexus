@@ -60,12 +60,7 @@ label, .control-label {
   background: var(--c-amber-100) !important;
 }
 .selectize-control { min-width: 0; }
-.selectize-control.single .selectize-input {
-  min-height: 2.65rem;
-  padding: .6rem .75rem;
-  line-height: 1.35;
-  margin: 0;
-}
+.selectize-control.single .selectize-input { margin: 0; }
 .selectize-dropdown { z-index: 50; color: var(--c-text); }
 .selectize-control.multi .selectize-input > input::placeholder {
   color: var(--c-text-muted);

@@ -26,10 +26,7 @@ builder_spatial_alignment_server <- function(
   pending_upload <- shiny::reactiveVal(NULL)
   preview_contract <- shiny::reactiveVal(NULL)
   expected_controls <- shiny::reactiveVal(NULL)
-  canvas_generation <- shiny::reactiveVal(0L)
-  canvas_reset_token <- shiny::reactiveVal(0L)
   image_collection_cache <- new.env(parent = emptyenv())
-  canvas_color_cache <- new.env(parent = emptyenv())
 
   output[["enhance-has_image"]] <- shiny::reactive(!is.null(draft()))
   output[["enhance-add_image_label"]] <- shiny::renderUI({
@@ -159,79 +156,12 @@ builder_spatial_alignment_server <- function(
       context = paste0("spatial_coordinate_transforms$", section)
     )
   }
-  colors <- shiny::reactive({
-    preview <- alignment_preview()
-    id <- current()
-    entry <- if (is.null(id)) NULL else entry_of(id)
-    if (!isTRUE(preview$available) || is.null(entry)) {
-      return(character())
+  coordinate_preview_transforms <- function(entry, section) {
+    transforms <- coordinate_transforms_for(entry)
+    if (identical(kind_for(section), "spatial")) {
+      transforms[[section]] <- coordinate_draft()
     }
-    levels <- unique(as.character(preview$spatial$group))
-    group <- entry$settings$default_group %||% ""
-    overrides <- builder_settings_color_overrides(entry$settings)[[group]]
-    builder_level_colors(
-      levels,
-      entry$settings$palette %||% "cerebro",
-      overrides
-    )
-  })
-  publish_canvas <- function(reset_controls = FALSE, message = NULL) {
-    generation <- shiny::isolate(canvas_generation()) + 1L
-    canvas_generation(generation)
-    reset_token <- shiny::isolate(canvas_reset_token())
-    if (isTRUE(reset_controls)) {
-      reset_token <- reset_token + 1L
-      canvas_reset_token(reset_token)
-    }
-    state <- shiny::isolate({
-      id <- current()
-      entry <- if (is.null(id)) NULL else entry_of(id)
-      list(
-        entry = entry,
-        section = active_section(),
-        image = active_image(),
-        preview = alignment_preview(),
-        record = draft_record(),
-        coordinate_spec = coordinate_draft(),
-        colors = colors()
-      )
-    })
-    canvas_color_cache$value <- state$colors
-    valid_preview <- is.list(state$preview) &&
-      isTRUE(state$preview$available) &&
-      !is.null(state$section) &&
-      identical(state$preview$section$id, state$section)
-    preview <- if (isTRUE(valid_preview)) {
-      state$preview
-    } else {
-      preview_message <- message
-      if (is.null(preview_message) && is.list(state$preview)) {
-        preview_message <- state$preview$message
-      }
-      list(
-        available = FALSE,
-        message = preview_message %||% "Loading paired cell views…"
-      )
-    }
-    entry <- state$entry
-    section <- state$section
-    scene <- builder_spatial_canvas_scene(
-      preview = preview,
-      colors = state$colors,
-      record = state$record,
-      coordinate_spec = state$coordinate_spec,
-      identity = list(
-        dataset_id = entry$id,
-        dataset_revision = entry$revision %||% 0,
-        section_id = section,
-        section_kind = if (is.null(section)) NULL else kind_for(section),
-        image_label = state$image
-      ),
-      generation = generation,
-      reset_token = reset_token
-    )
-    session$sendCustomMessage("builder_spatial_canvas_scene", scene)
-    invisible(scene)
+    transforms
   }
   preview_contract_for <- function(entry, section) {
     list(
@@ -242,7 +172,7 @@ builder_spatial_alignment_server <- function(
       group = entry$settings$default_group %||% NULL,
       assay = entry$settings$assay %||% NULL,
       layer = entry$settings$layer %||% "data",
-      coordinate_transforms = coordinate_transforms_for(entry)
+      coordinate_transforms = coordinate_preview_transforms(entry, section)
     )
   }
   request_preview <- function(entry, section) {
@@ -255,7 +185,7 @@ builder_spatial_alignment_server <- function(
       group = entry$settings$default_group %||% NULL,
       assay = entry$settings$assay %||% NULL,
       layer = entry$settings$layer %||% "data",
-      coordinate_transforms = coordinate_transforms_for(entry),
+      coordinate_transforms = coordinate_preview_transforms(entry, section),
       replaces = "spatial_alignment",
       note = paste0("Loading paired views for ", section, "…")
     ))
@@ -370,7 +300,6 @@ builder_spatial_alignment_server <- function(
       }
     }
     update_controls(stored, alignment_preview()$bounds %||% NULL)
-    publish_canvas(reset_controls = TRUE)
   }
   restore_coordinate_controls <- function(entry, section) {
     spec <- coordinate_spec_for(entry, section)
@@ -404,8 +333,8 @@ builder_spatial_alignment_server <- function(
       if (length(labels)) labels[[1L]] else NULL
     }
     active_image(label)
-    restore_coordinate_controls(entry, section)
     restore(entry, section, label)
+    restore_coordinate_controls(entry, section)
     request_preview(entry, section)
   }
 
@@ -438,14 +367,6 @@ builder_spatial_alignment_server <- function(
     if (!length(sections)) {
       active_section(NULL)
       active_image(NULL)
-      publish_canvas(
-        reset_controls = TRUE,
-        message = if (is.null(entry)) {
-          "Select a dataset to load the spatial preview."
-        } else {
-          "No spatial sections are available."
-        }
-      )
       return()
     }
     switch_to(entry, sections[[1L]])
@@ -514,51 +435,70 @@ builder_spatial_alignment_server <- function(
     }
     coordinate_draft(coordinate_parameters())
   })
-  draft_record <- shiny::reactive({
-    record <- draft()
-    if (is.null(record)) {
+  point_appearance <- shiny::reactive({
+    current_draft <- draft()
+    defaults <- if (is.null(current_draft)) {
+      builder_alignment_defaults()
+    } else {
+      current_draft
+    }
+    list(
+      opacity = (input[["enhance-point_opacity"]] %||%
+        (defaults$point_opacity * 100)) /
+        100,
+      size = input[["enhance-point_size"]] %||% defaults$point_size
+    )
+  })
+  orientation <- shiny::reactive({
+    current_draft <- draft()
+    defaults <- if (is.null(current_draft)) {
+      builder_alignment_defaults()
+    } else {
+      current_draft
+    }
+    list(
+      rotation = input[["enhance-img_rotate"]] %||% defaults$rotation,
+      flip_x = input[["enhance-image_flip_x"]] %||% defaults$flip_x,
+      flip_y = input[["enhance-image_flip_y"]] %||% defaults$flip_y
+    )
+  })
+  encoded <- shiny::reactive({
+    image <- raw_image()
+    if (is.null(image)) {
       return(NULL)
     }
-    values <- parameters()
-    record[names(values)] <- values
-    record
+    transform <- orientation()
+    builder_encode_image(
+      image$array,
+      max_px = 1400,
+      flip_y = transform$flip_y,
+      flip_x = transform$flip_x,
+      rotate = transform$rotation
+    )
   })
-  finalize_current_record <- function() {
-    state <- shiny::isolate(list(
-      record = draft_record(),
-      image = raw_image(),
-      preview = alignment_preview(),
-      section = active_section()
-    ))
+  current_record <- shiny::reactive({
+    current_draft <- draft()
+    current_encoded <- encoded()
+    preview <- alignment_preview()
     if (
-      is.null(state$record) ||
-        is.null(state$image) ||
-        !is.list(state$preview) ||
-        !isTRUE(state$preview$available) ||
-        is.null(state$section) ||
-        !identical(state$preview$section$id, state$section)
+      is.null(current_draft) ||
+        is.null(current_encoded) ||
+        !isTRUE(preview$available)
     ) {
       return(NULL)
     }
-    current_encoded <- builder_encode_image(
-      state$image$array,
-      max_px = 1400,
-      flip_y = state$record$flip_y,
-      flip_x = state$record$flip_x,
-      rotate = state$record$rotation
-    )
     if (!is.null(current_encoded$error)) {
       return(current_encoded)
     }
     record <- builder_alignment_record(
-      source = state$record$source,
-      source_uri = state$record$source_uri,
+      source = current_draft$source,
+      source_uri = current_draft$source_uri,
       uri = current_encoded$uri,
-      base_bounds = state$record$base_bounds,
-      parameters = state$record,
+      base_bounds = current_draft$base_bounds,
+      parameters = parameters(),
       image_geometry = current_encoded,
       saved = FALSE,
-      section = state$preview$section
+      section = list(id = active_section(), kind = preview$section$kind)
     )
     facts <- intersect(
       names(current_encoded),
@@ -577,13 +517,12 @@ builder_spatial_alignment_server <- function(
     record[facts] <- current_encoded[facts]
     cover <- builder_bounds_cover(
       record$bounds,
-      list(state$preview$spatial$x, state$preview$spatial$y)
+      list(preview$spatial$x, preview$spatial$y)
     )
     record$outside <- cover$outside
     record$total <- cover$total
     record
-  }
-  current_record <- draft_record
+  })
 
   shiny::observeEvent(input[["enhance-active_section"]], {
     id <- current()
@@ -734,7 +673,19 @@ builder_spatial_alignment_server <- function(
       shiny::showNotification(image_encoded$error, type = "error", duration = 8)
       return(invisible(FALSE))
     }
-    baseline(NULL)
+    previous_label <- active_image()
+    previous <- if (is.null(previous_label)) {
+      NULL
+    } else {
+      builder_alignment_normalize(
+        collection_for(entry)[[section]][[previous_label]],
+        section,
+        preview$section$kind
+      )
+    }
+    baseline(
+      if (!is.null(previous) && isTRUE(previous$saved)) previous else NULL
+    )
     record <- builder_alignment_record(
       source = list(
         name = filename,
@@ -789,7 +740,6 @@ builder_spatial_alignment_server <- function(
     )
     entry$settings$images <- committed_images
     update_image_choices(entry, section, selected = proposed_label)
-    publish_canvas(reset_controls = TRUE)
     invisible(TRUE)
   }
 
@@ -894,30 +844,47 @@ builder_spatial_alignment_server <- function(
 
   shiny::observeEvent(alignment_preview(), {
     preview <- alignment_preview()
-    section <- active_section()
-    if (
-      isTRUE(preview$available) &&
-        !is.null(section) &&
-        identical(preview$section$id, section)
-    ) {
+    if (isTRUE(preview$available)) {
       update_controls(draft(), preview$bounds)
-      publish_canvas(reset_controls = FALSE)
     }
   })
-  shiny::observeEvent(
-    colors(),
-    {
-      current_colors <- colors()
-      if (
-        exists("value", canvas_color_cache, inherits = FALSE) &&
-          identical(canvas_color_cache$value, current_colors)
-      ) {
-        return()
-      }
-      publish_canvas(reset_controls = FALSE)
-    },
-    ignoreInit = TRUE
-  )
+
+  colors <- shiny::reactive({
+    preview <- alignment_preview()
+    id <- current()
+    entry <- if (is.null(id)) NULL else entry_of(id)
+    if (!isTRUE(preview$available) || is.null(entry)) {
+      return(character())
+    }
+    levels <- unique(as.character(preview$spatial$group))
+    group <- entry$settings$default_group %||% ""
+    overrides <- builder_settings_color_overrides(entry$settings)[[group]]
+    builder_level_colors(
+      levels,
+      entry$settings$palette %||% "cerebro",
+      overrides
+    )
+  })
+  output[["enhance-alignment_spatial_plot"]] <- plotly::renderPlotly({
+    preview <- alignment_preview()
+    shiny::req(isTRUE(preview$available))
+    record <- current_record()
+    if (!is.null(record$error)) {
+      record <- NULL
+    }
+    appearance <- point_appearance()
+    builder_alignment_plot(
+      preview$spatial,
+      colors(),
+      image_uri = record$uri %||% NULL,
+      image_bounds = record$bounds %||% NULL,
+      coordinate_frame = preview$coordinate_frame %||% NULL,
+      coordinate_transform = preview$coordinate_transform %||% NULL,
+      image_opacity = parameters()$image_opacity,
+      point_opacity = appearance$opacity,
+      point_size = appearance$size
+    )
+  })
 
   output[["enhance-alignment_legend"]] <- shiny::renderUI({
     preview <- alignment_preview()
@@ -970,8 +937,8 @@ builder_spatial_alignment_server <- function(
     if (is.null(current_draft) || !isTRUE(current_draft$saved)) {
       return(invisible(FALSE))
     }
-    next_record <- shiny::isolate(draft_record())
-    if (is.null(next_record)) {
+    next_record <- shiny::isolate(current_record())
+    if (is.null(next_record) || !is.null(next_record$error)) {
       return(invisible(FALSE))
     }
     expected <- shiny::isolate(expected_controls())
@@ -1015,7 +982,7 @@ builder_spatial_alignment_server <- function(
   save_current <- function(notify = TRUE) {
     entry <- shiny::isolate(entry_of(current()))
     section <- shiny::isolate(active_section())
-    record <- finalize_current_record()
+    record <- shiny::isolate(current_record())
     if (is.null(entry) || is.null(section) || is.null(record)) {
       return(FALSE)
     }
@@ -1048,7 +1015,6 @@ builder_spatial_alignment_server <- function(
     commit_section(entry, section, record)
     draft(record)
     baseline(record)
-    publish_canvas(reset_controls = TRUE)
     if (isTRUE(notify)) {
       shiny::showNotification(
         paste0("Alignment saved for “", section, "”."),
@@ -1088,12 +1054,9 @@ builder_spatial_alignment_server <- function(
         "enhance-coordinate_rotation",
         value = 0
       )
+      request_preview(entry, section)
     }
     if (!changed) {
-      if (isTRUE(reset)) {
-        publish_canvas(reset_controls = TRUE)
-        request_preview(entry, section)
-      }
       return(invisible(FALSE))
     }
     entry$settings$spatial_coordinate_transforms <- transforms
@@ -1118,7 +1081,6 @@ builder_spatial_alignment_server <- function(
       draft(invalidated)
       baseline(NULL)
     }
-    publish_canvas(reset_controls = TRUE)
     request_preview(entry, section)
     shiny::showNotification(
       if (isTRUE(reset) || identity) {
@@ -1148,7 +1110,6 @@ builder_spatial_alignment_server <- function(
     draft(reset)
     update_controls(reset, alignment_preview()$bounds %||% NULL)
     commit_section(entry_of(current()), active_section(), reset)
-    publish_canvas(reset_controls = TRUE)
   })
   show_remove_image <- function() {
     entry <- entry_of(current())
@@ -1249,7 +1210,6 @@ builder_spatial_alignment_server <- function(
     image_collection_cache$images <- images
     entry$settings$images <- images
     update_image_choices(entry, section, selected = renamed)
-    publish_canvas(reset_controls = TRUE)
     shiny::removeModal()
   })
   apply_to_all <- function() {

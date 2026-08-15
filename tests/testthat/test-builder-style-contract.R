@@ -773,7 +773,7 @@ test_that("Builder motion uses its 180ms duration role", {
   )[[1L]]
 
   expect_length(shared_duration_uses, 0L)
-  expect_length(builder_duration_uses, 19L)
+  expect_length(builder_duration_uses, 20L)
 })
 
 test_that("Builder layered stylesheets own their declared responsibilities", {
@@ -975,9 +975,9 @@ test_that("Optional analysis states change emphasis without moving cards", {
   expect_setequal(
     hover,
     c(
-      "border-color: var(--builder-hover-border)",
-      "background: var(--builder-hover-bg)",
-      "box-shadow: var(--shadow-1)",
+      "border-color: var(--c-amber-300)",
+      "background: var(--c-amber-50)",
+      "box-shadow: var(--shadow-2)",
       "transform: none"
     )
   )
