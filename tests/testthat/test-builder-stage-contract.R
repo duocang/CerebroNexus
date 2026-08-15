@@ -41,6 +41,11 @@ builder_open_app_child_in_callr <- function(path, env_file, previous = NULL) {
   build_status <- builder_profile_inst_path("builder", "ui", "build_status.R")
   callr::r(
     function(app_bundle, build_status, path, env_file, previous) {
+      app_bundle <- normalizePath(app_bundle)
+      build_status <- normalizePath(build_status)
+      # `callr` starts outside the package checkout; make the assembly loader's
+      # documented checkout-relative fallback available in this isolated child.
+      setwd(dirname(dirname(dirname(app_bundle))))
       runtime <- new.env(parent = globalenv())
       sys.source(app_bundle, envir = runtime)
       sys.source(build_status, envir = runtime)
