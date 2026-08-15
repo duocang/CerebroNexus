@@ -983,6 +983,60 @@ if (builder_lifecycle_api_available) {
     expect_identical(worker$snapshot_registry, list())
   })
 
+  test_that("worker startup tolerates a cold CI process launch", {
+    observed_timeout <- NULL
+    failed <- builder_worker_start(
+      builder_profile_inst_path("builder"),
+      .new_session = function(wait_timeout) {
+        observed_timeout <<- wait_timeout
+        stop("synthetic startup failure")
+      }
+    )
+
+    expect_identical(observed_timeout, 30000L)
+    expect_match(failed$error, "synthetic startup failure", fixed = TRUE)
+  })
+
+  test_that("an installed-layout worker resolves the private expression helper", {
+    skip_if_not_installed("callr")
+    runtime_root <- withr::local_tempdir()
+    fs::dir_copy(
+      builder_profile_inst_path("builder"),
+      file.path(runtime_root, "builder")
+    )
+    fs::dir_copy(
+      builder_profile_inst_path("viewer"),
+      file.path(runtime_root, "viewer")
+    )
+    worker <- builder_worker_start(file.path(runtime_root, "builder"))
+    withr::defer({
+      try(worker$process$close(), silent = TRUE)
+      if (isTRUE(worker$owns_root)) {
+        unlink(worker$snapshot_root, recursive = TRUE, force = TRUE)
+      }
+    })
+
+    fixture <- builder_profile_inst_path(
+      "builder",
+      "fixtures",
+      "all_content.rds"
+    )
+    preview <- worker$process$run(
+      function(path) {
+        builder_alignment_preview_model(
+          readRDS(path),
+          assay = "RNA",
+          layer = "data"
+        )
+      },
+      args = list(path = fixture)
+    )
+
+    expect_true(preview$available)
+    expect_null(preview$message)
+    expect_gt(nrow(preview$spatial), 0L)
+  })
+
   test_that("main registry rejects an owned snapshot from another root", {
     skip_if_not_installed("callr")
     foreign <- builder_worker_fixture()

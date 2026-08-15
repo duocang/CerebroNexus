@@ -47,7 +47,11 @@ jobs:
       - name: Build pkgdown site
         run: |
           nix-shell default.nix --run "Rscript -e \"
-            pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
+            pkgdown::build_site_github_pages(
+              new_process = FALSE,
+              install = FALSE,
+              dest_dir = 'pkgdown-site'
+            )
           \""
 
       - name: Deploy to GitHub Pages

@@ -52,6 +52,15 @@ test_that("shard assignment is deterministic and lossless", {
   expect_length(unlist(first, use.names = FALSE), length(plan$logic))
 })
 
+test_that("browser shards allow slow process startup on shared CI runners", {
+  withr::local_options(list(chromote.timeout = 10))
+
+  configured <- test_plan_api$ci_configure_browser_runtime()
+
+  expect_identical(configured, 30)
+  expect_identical(getOption("chromote.timeout"), 30)
+})
+
 test_that("new valid test files automatically join the logic group", {
   test_dir <- withr::local_tempdir()
   explicit <- c(
@@ -122,6 +131,10 @@ test_that("CI workflows use the shared plan without repeating package tests", {
   r_tests <- paste(r_test_lines, collapse = "\n")
   r_cmd_check <- paste(
     readLines(file.path(workflow_dir, "R-cmd-check.yaml"), warn = FALSE),
+    collapse = "\n"
+  )
+  pkgdown <- paste(
+    readLines(file.path(workflow_dir, "pkgdown.yaml"), warn = FALSE),
     collapse = "\n"
   )
   workflow_job <- function(job_name) {
@@ -231,4 +244,9 @@ test_that("CI workflows use the shared plan without repeating package tests", {
     fixed = TRUE
   )))
   expect_match(r_cmd_check, "--no-tests", fixed = TRUE)
+  expect_match(
+    pkgdown,
+    "dest_dir = 'pkgdown-site'",
+    fixed = TRUE
+  )
 })

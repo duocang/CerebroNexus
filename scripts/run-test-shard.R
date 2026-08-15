@@ -161,6 +161,21 @@ ci_test_shard_files <- function(plan, group, shard = 1L, shards = 1L) {
   assignments[[as.integer(shard)]]
 }
 
+ci_configure_browser_runtime <- function() {
+  timeout <- getOption("chromote.timeout", 10)
+  if (
+    !is.numeric(timeout) ||
+      length(timeout) != 1L ||
+      is.na(timeout) ||
+      !is.finite(timeout)
+  ) {
+    timeout <- 10
+  }
+  timeout <- max(as.numeric(timeout), 30)
+  options(chromote.timeout = timeout)
+  invisible(timeout)
+}
+
 ci_regex_escape <- function(value) {
   special <- c(
     "\\",
@@ -290,6 +305,10 @@ ci_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   if (isTRUE(options$list)) {
     writeLines(files)
     return(invisible(files))
+  }
+
+  if (identical(options$group, "browser")) {
+    ci_configure_browser_runtime()
   }
 
   message(

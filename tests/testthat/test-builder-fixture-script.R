@@ -84,3 +84,18 @@ test_that("the fixture script exactly reproduces committed gallery inputs", {
   expect_identical(generated, read_bytes(second_dir))
   expect_identical(generated, read_bytes(layout$committed))
 })
+
+test_that("the serialized fixture is portable across operating systems", {
+  layout <- builder_fixture_script_layout()
+  skip_if_not(
+    file.exists(layout$script),
+    "fixture generator source not present (installed-package layout)"
+  )
+  script <- paste(readLines(layout$script, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    script,
+    "saveRDS(object, fixture_path, version = 3L, compress = FALSE)",
+    fixed = TRUE
+  )
+})

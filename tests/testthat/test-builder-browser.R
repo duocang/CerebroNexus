@@ -437,16 +437,18 @@ test_that("duplicate spatial image names open a usable naming modal", {
     )
   })
 
-  app$upload_file(`enhance-tissue_image_file` = image_path)
-  app$wait_for_js(
-    paste0(
-      "Object.keys(document.getElementById(",
-      "'enhance-active_image').selectize.options).length === 1 && ",
-      "document.querySelector('.enhance-tissue-file-item') !== null && ",
-      "document.getElementById('enhance-apply_align').offsetParent !== null"
-    ),
-    timeout = 30000
-  )
+  builder_with_browser_diagnostics(app, "browser-spatial-modal-first-upload", {
+    app$upload_file(`enhance-tissue_image_file` = image_path)
+    app$wait_for_js(
+      paste0(
+        "Object.keys(document.getElementById(",
+        "'enhance-active_image').selectize.options).length === 1 && ",
+        "document.querySelector('.enhance-tissue-file-item') !== null && ",
+        "document.getElementById('enhance-apply_align').offsetParent !== null"
+      ),
+      timeout = 30000
+    )
+  })
   section <- app$get_js(
     "document.getElementById('enhance-active_section').value"
   )

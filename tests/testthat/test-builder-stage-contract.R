@@ -39,15 +39,18 @@ builder_open_app_runtime_fixture <- function() {
 builder_open_app_child_in_callr <- function(path, env_file, previous = NULL) {
   app_bundle <- builder_profile_inst_path("builder", "app_bundle.R")
   build_status <- builder_profile_inst_path("builder", "ui", "build_status.R")
+  viewer_auth <- test_path("..", "..", "R", "viewer-auth.R")
   callr::r(
-    function(app_bundle, build_status, path, env_file, previous) {
+    function(app_bundle, build_status, viewer_auth, path, env_file, previous) {
       app_bundle <- normalizePath(app_bundle)
       build_status <- normalizePath(build_status)
+      viewer_auth <- normalizePath(viewer_auth)
       # `callr` starts outside the package checkout; make the assembly loader's
       # documented checkout-relative fallback available in this isolated child.
       setwd(dirname(dirname(dirname(app_bundle))))
       runtime <- new.env(parent = globalenv())
       sys.source(app_bundle, envir = runtime)
+      sys.source(viewer_auth, envir = runtime)
       sys.source(build_status, envir = runtime)
       launched <- FALSE
       if (!is.null(previous)) {
@@ -63,6 +66,7 @@ builder_open_app_child_in_callr <- function(path, env_file, previous = NULL) {
             path,
             env_file,
             "CEREBRO_AUTH_PASSPHRASE",
+            validate_database = runtime$.viewerAuthValidateDatabase,
             run_app = function(...) {
               launched <<- TRUE
               Sys.getenv("CEREBRO_AUTH_PASSPHRASE", unset = NA_character_)
@@ -84,6 +88,7 @@ builder_open_app_child_in_callr <- function(path, env_file, previous = NULL) {
     args = list(
       app_bundle = app_bundle,
       build_status = build_status,
+      viewer_auth = viewer_auth,
       path = path,
       env_file = env_file,
       previous = previous

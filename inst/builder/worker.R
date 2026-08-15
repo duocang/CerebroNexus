@@ -872,7 +872,9 @@ builder_worker_start <- function(
   builder_dir,
   snapshot_root = NULL,
   snapshot_registry = list(),
-  epoch = NULL
+  epoch = NULL,
+  .new_session = callr::r_session$new,
+  .startup_timeout_ms = 30000L
 ) {
   if (!requireNamespace("callr", quietly = TRUE)) {
     return(list(error = "The callr package is required for background work."))
@@ -885,6 +887,19 @@ builder_worker_start <- function(
       (length(snapshot_registry) && is.null(names(snapshot_registry)))
   ) {
     return(list(error = "The snapshot registry must be a named list."))
+  }
+  if (
+    !is.function(.new_session) ||
+      !is.numeric(.startup_timeout_ms) ||
+      length(.startup_timeout_ms) != 1L ||
+      is.na(.startup_timeout_ms) ||
+      !is.finite(.startup_timeout_ms) ||
+      .startup_timeout_ms < 1 ||
+      .startup_timeout_ms != floor(.startup_timeout_ms)
+  ) {
+    return(list(
+      error = "The background worker startup configuration is invalid."
+    ))
   }
   owns_root <- is.null(snapshot_root) || !dir.exists(snapshot_root)
   if (is.null(snapshot_root)) {
@@ -905,7 +920,10 @@ builder_worker_start <- function(
   if (!dir.exists(snapshot_root)) {
     return(list(error = "The private Builder snapshot directory is missing."))
   }
-  process <- try(callr::r_session$new(), silent = TRUE)
+  process <- try(
+    .new_session(wait_timeout = as.integer(.startup_timeout_ms)),
+    silent = TRUE
+  )
   if (inherits(process, "try-error")) {
     return(list(
       error = paste0(

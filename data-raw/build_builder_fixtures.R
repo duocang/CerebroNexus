@@ -274,7 +274,7 @@ dir.create(output, recursive = TRUE, showWarnings = FALSE)
 set.seed(2026L)
 object <- stabilize_fixture(make_all_content_fixture())
 fixture_path <- file.path(output, "all_content.rds")
-saveRDS(object, fixture_path, version = 3L)
+saveRDS(object, fixture_path, version = 3L, compress = FALSE)
 if (!methods::is(readRDS(fixture_path), "Seurat")) {
   stop("The permanent All content fixture did not round-trip as Seurat.")
 }
