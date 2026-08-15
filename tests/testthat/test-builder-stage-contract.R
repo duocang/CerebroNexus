@@ -63,7 +63,7 @@ builder_open_app_child_in_callr <- function(path, env_file, previous = NULL) {
             path,
             env_file,
             "CEREBRO_AUTH_PASSPHRASE",
-            .run_app = function(...) {
+            run_app = function(...) {
               launched <<- TRUE
               Sys.getenv("CEREBRO_AUTH_PASSPHRASE", unset = NA_character_)
             }

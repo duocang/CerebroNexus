@@ -709,7 +709,7 @@ test_that("Open App rejects malformed authentication files before launch", {
       app_dir,
       env_file,
       "CEREBRO_AUTH_PASSPHRASE",
-      .run_app = function(...) {
+      run_app = function(...) {
         launched <<- TRUE
         TRUE
       }

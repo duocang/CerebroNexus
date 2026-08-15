@@ -445,12 +445,13 @@ builder_build_status_model <- function(result) {
   path,
   env_file,
   env_name,
-  .run_app = shiny::runApp
+  run_app = shiny::runApp
 ) {
-  if (
-    !identical(env_name, "CEREBRO_AUTH_PASSPHRASE") || !is.function(.run_app)
-  ) {
+  if (!identical(env_name, "CEREBRO_AUTH_PASSPHRASE")) {
     stop("The authentication environment is invalid.", call. = FALSE)
+  }
+  if (!is.function(run_app)) {
+    stop("The App launcher is invalid.", call. = FALSE)
   }
   path_is_link <- function(candidate) {
     link <- tryCatch(
@@ -523,7 +524,7 @@ builder_build_status_model <- function(result) {
     do.call(Sys.setenv, stats::setNames(list(value), env_name))
     installed <- TRUE
   }
-  .run_app(path, launch.browser = TRUE)
+  run_app(path, launch.browser = TRUE)
 }
 
 builder_open_final_app <- function(
@@ -547,7 +548,7 @@ builder_open_final_app <- function(
       env_name = "CEREBRO_AUTH_PASSPHRASE"
     )
     if (!is.null(.run_app)) {
-      args$.run_app <- .run_app
+      args$run_app <- .run_app
     }
     process <- callr::r_bg(
       .child,
