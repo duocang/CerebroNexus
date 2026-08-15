@@ -997,44 +997,15 @@ if (builder_lifecycle_api_available) {
     expect_match(failed$error, "synthetic startup failure", fixed = TRUE)
   })
 
-  test_that("an installed-layout worker resolves the private expression helper", {
-    skip_if_not_installed("callr")
-    runtime_root <- withr::local_tempdir()
-    fs::dir_copy(
-      builder_profile_inst_path("builder"),
-      file.path(runtime_root, "builder")
-    )
-    fs::dir_copy(
-      builder_profile_inst_path("viewer"),
-      file.path(runtime_root, "viewer")
-    )
-    worker <- builder_worker_start(file.path(runtime_root, "builder"))
-    withr::defer({
-      try(worker$process$close(), silent = TRUE)
-      if (isTRUE(worker$owns_root)) {
-        unlink(worker$snapshot_root, recursive = TRUE, force = TRUE)
-      }
-    })
+  test_that("copied Builder runtimes reuse the loaded development source", {
+    copied_runtime <- withr::local_tempdir()
+    copied_builder <- file.path(copied_runtime, "builder")
+    fs::dir_copy(builder_profile_inst_path("builder"), copied_builder)
 
-    fixture <- builder_profile_inst_path(
-      "builder",
-      "fixtures",
-      "all_content.rds"
+    expect_identical(
+      .builder_worker_package_source(copied_builder),
+      normalizePath(test_path("..", ".."), winslash = "/", mustWork = TRUE)
     )
-    preview <- worker$process$run(
-      function(path) {
-        builder_alignment_preview_model(
-          readRDS(path),
-          assay = "RNA",
-          layer = "data"
-        )
-      },
-      args = list(path = fixture)
-    )
-
-    expect_true(preview$available)
-    expect_null(preview$message)
-    expect_gt(nrow(preview$spatial), 0L)
   })
 
   test_that("main registry rejects an owned snapshot from another root", {

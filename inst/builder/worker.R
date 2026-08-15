@@ -853,6 +853,17 @@ builder_protocol_recover <- function(
 
 #' Start one isolated worker from main-owned immutable snapshot descriptors.
 .builder_worker_package_source <- function(builder_dir) {
+  is_source_package <- function(candidate) {
+    .builder_worker_scalar_text(candidate) &&
+      file.exists(file.path(candidate, "DESCRIPTION")) &&
+      dir.exists(file.path(candidate, "R")) &&
+      length(list.files(
+        file.path(candidate, "R"),
+        pattern = "[.][Rr]$",
+        full.names = FALSE
+      )) >
+        0L
+  }
   candidate <- normalizePath(
     file.path(builder_dir, "..", ".."),
     winslash = "/",
@@ -860,10 +871,16 @@ builder_protocol_recover <- function(
   )
   if (
     identical(basename(dirname(builder_dir)), "inst") &&
-      file.exists(file.path(candidate, "DESCRIPTION")) &&
-      dir.exists(file.path(candidate, "R"))
+      is_source_package(candidate)
   ) {
     return(candidate)
+  }
+  namespace_source <- tryCatch(
+    getNamespaceInfo(asNamespace("CerebroNexus"), "path"),
+    error = function(error) NULL
+  )
+  if (is_source_package(namespace_source)) {
+    return(normalizePath(namespace_source, winslash = "/", mustWork = TRUE))
   }
   NULL
 }
