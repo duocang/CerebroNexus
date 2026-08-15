@@ -46,7 +46,7 @@ test_that("shard assignment is deterministic and lossless", {
 })
 
 test_that("new valid test files automatically join the logic group", {
-  test_dir <- local_tempdir()
+  test_dir <- withr::local_tempdir()
   explicit <- c(
     test_plan_api$ci_browser_test_files(),
     test_plan_api$ci_process_sensitive_test_files()
@@ -64,7 +64,7 @@ test_that("new valid test files automatically join the logic group", {
 })
 
 test_that("invalid filenames and duplicate explicit groups are rejected", {
-  test_dir <- local_tempdir()
+  test_dir <- withr::local_tempdir()
   explicit <- c(
     test_plan_api$ci_browser_test_files(),
     test_plan_api$ci_process_sensitive_test_files()
