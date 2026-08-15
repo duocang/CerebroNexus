@@ -276,6 +276,31 @@ test_that("stray process preflight reports only recognizable launchers", {
   )
 })
 
+test_that("stray process preflight runs before any phase starts", {
+  calls <- 0L
+  schedule <- local_validation_api$local_validation_job(
+    "synthetic",
+    "must-not-start",
+    1L,
+    "true"
+  )
+
+  expect_error(
+    local_validation_api$local_validation_run_schedule(
+      schedule,
+      repo_root = test_path("..", ".."),
+      output_dir = withr::local_tempdir(),
+      stray_checker = function() "101 R -e shiny::runApp('app')",
+      phase_runner = function(...) {
+        calls <<- calls + 1L
+        data.frame()
+      }
+    ),
+    "Recognizable stray"
+  )
+  expect_identical(calls, 0L)
+})
+
 test_that("cleanup terminates only children owned by the runner", {
   skip_if_not_installed("processx")
   command <- file.path(R.home("bin"), "Rscript")

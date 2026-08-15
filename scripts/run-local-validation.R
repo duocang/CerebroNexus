@@ -367,23 +367,23 @@ local_validation_run_schedule <- function(
   schedule,
   repo_root,
   output_dir,
-  poll_interval = 0.05
+  poll_interval = 0.05,
+  stray_checker = local_validation_stray_processes,
+  phase_runner = local_validation_run_phase
 ) {
+  stray <- stray_checker()
+  if (length(stray)) {
+    stop(
+      "Recognizable stray Shiny/Cerebro process(es) found:\n",
+      paste(stray, collapse = "\n"),
+      "\nStop them manually before running validation.",
+      call. = FALSE
+    )
+  }
   results <- list()
   for (phase in unique(schedule$phase)) {
-    if (identical(phase, "browser")) {
-      stray <- local_validation_stray_processes()
-      if (length(stray)) {
-        stop(
-          "Recognizable stray Shiny/Cerebro process(es) found:\n",
-          paste(stray, collapse = "\n"),
-          "\nStop them manually before running browser validation.",
-          call. = FALSE
-        )
-      }
-    }
     jobs <- schedule[schedule$phase == phase, , drop = FALSE]
-    results[[phase]] <- local_validation_run_phase(
+    results[[phase]] <- phase_runner(
       jobs,
       repo_root = repo_root,
       output_dir = output_dir,
