@@ -7,6 +7,7 @@ CerebroNexus_*.tar.gz
 result
 vignettes/*.crb
 docs
+pkgdown-site/
 .Rproj.user
 *.Rproj
 tests/smoke/
@@ -18,6 +19,7 @@ tmp/
 
 # shinytest2 snapshot comparison artifacts
 tests/testthat/_snaps/**/*.new.png
+tests/testthat/_artifacts/
 
 # large public raw data — auto-downloaded by the build scripts, reproducible via
 # data-raw/DATASETS.md, not tracked (only the built .crb ship)

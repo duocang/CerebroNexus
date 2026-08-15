@@ -1,4 +1,5 @@
 url: https://mihem.github.io/CerebroNexus/
+destination: pkgdown-site
 
 template:
   bootstrap: 5
