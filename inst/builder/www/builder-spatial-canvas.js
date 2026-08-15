@@ -7,6 +7,8 @@
   var documentHandlersRegistered = false;
   var jqueryHandlersRegistered = false;
   var observerStarted = false;
+  var controlReadQueued = false;
+  var pendingControlId = null;
 
   function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -1327,12 +1329,28 @@
   }
 
   function handleControlEvent(event, data) {
-    if (!eventControlId(event, data)) return;
-    ensureInstance();
-    if (!currentInstance) return;
-    var controls = currentInstance.getControls();
-    if (!controls) return;
-    currentInstance.patchControls(readControlsFromDom(controls));
+    var controlId = eventControlId(event, data);
+    if (!controlId) return;
+    pendingControlId = controlId;
+    if (controlReadQueued) return;
+    controlReadQueued = true;
+    window.queueMicrotask(function () {
+      controlReadQueued = false;
+      ensureInstance();
+      if (!currentInstance) return;
+      var controls = currentInstance.getControls();
+      if (!controls) return;
+      var activeId = pendingControlId;
+      pendingControlId = null;
+      var name = controlNameForId(activeId);
+      var element = document.getElementById(activeId);
+      if (!name || !element) return;
+      var patch = {};
+      patch[name] = name === "flip_x" || name === "flip_y"
+        ? Boolean(element.checked)
+        : readNumericControl(element, name, controls[name]);
+      currentInstance.patchControls(patch);
+    });
   }
 
   function handleShinyLifecycle() {

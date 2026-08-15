@@ -388,6 +388,8 @@ test_that("enhancement groups and previews use one quiet density system", {
     'document.addEventListener("pointermove", handleControlEvent, true)',
     fixed = TRUE
   )
+  expect_match(canvas_js, "controlReadQueued", fixed = TRUE)
+  expect_match(canvas_js, "window.queueMicrotask", fixed = TRUE)
   rotate_at <- regexpr("context.rotate(-radians)", canvas_js, fixed = TRUE)[[
     1L
   ]]
