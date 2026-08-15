@@ -23,6 +23,7 @@
 #  > "glue",
 #  > "GSVA",
 #  > "HDF5Array",
+#  > "htmltools",
 #  > "htmlwidgets",
 #  > "httr",
 #  > "igraph",
@@ -82,6 +83,7 @@ let
       glue
       GSVA
       HDF5Array
+      htmltools
       htmlwidgets
       httr
       igraph

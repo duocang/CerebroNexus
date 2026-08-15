@@ -71,6 +71,7 @@ rix(
     "glue",
     "GSVA",
     "HDF5Array",
+    "htmltools",
     "htmlwidgets",
     "httr",
     "igraph",
