@@ -49,7 +49,8 @@ jobs:
           "Rscript scripts/run-test-shard.R
           --group logic
           --shard ${{ matrix.shard }}
-          --shards 4"
+          --shards 4
+          --strategy weighted"
 
   process_sensitive:
     name: process-sensitive
@@ -114,7 +115,8 @@ jobs:
           "Rscript scripts/run-test-shard.R
           --group browser
           --shard ${{ matrix.shard }}
-          --shards 6"
+          --shards 6
+          --strategy weighted"
 
       - name: Upload test artifacts
         if: always()

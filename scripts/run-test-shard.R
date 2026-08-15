@@ -118,25 +118,179 @@ ci_test_plan <- function(test_dir = file.path("tests", "testthat")) {
   )
 }
 
-ci_test_shards <- function(files, shards) {
+ci_test_runtime_weights <- function(
+  plan,
+  path = file.path("scripts", "test-runtime-weights.csv")
+) {
+  if (!file.exists(path)) {
+    stop("Test runtime weight registry does not exist: ", path, call. = FALSE)
+  }
+  records <- read.csv(
+    path,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  required <- c("group", "file", "seconds", "basis")
+  missing_columns <- setdiff(required, names(records))
+  if (length(missing_columns)) {
+    stop(
+      "Test runtime weight registry is missing column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  records <- records[, required, drop = FALSE]
+  records$group <- as.character(records$group)
+  records$file <- as.character(records$file)
+  records$basis <- as.character(records$basis)
+  records$seconds <- suppressWarnings(as.numeric(records$seconds))
+  duplicate_files <- unique(records$file[duplicated(records$file)])
+  if (length(duplicate_files)) {
+    stop(
+      "Test runtime weight registry has duplicate file(s): ",
+      paste(duplicate_files, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  if (
+    anyNA(records$seconds) ||
+      any(!is.finite(records$seconds)) ||
+      any(records$seconds <= 0)
+  ) {
+    stop("Test runtime weights must be finite positive numbers.", call. = FALSE)
+  }
+  valid_groups <- c("logic", "process-sensitive", "browser")
+  if (any(!records$group %in% valid_groups)) {
+    stop(
+      "Test runtime weight registry contains an unknown group.",
+      call. = FALSE
+    )
+  }
+  if (any(!records$basis %in% c("measured", "estimated"))) {
+    stop(
+      "Test runtime weight basis must be measured or estimated.",
+      call. = FALSE
+    )
+  }
+  stale <- setdiff(records$file, plan$all)
+  if (length(stale)) {
+    stop(
+      "Test runtime weight registry has stale file(s): ",
+      paste(stale, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  expected_group <- c(
+    setNames(rep("logic", length(plan$logic)), plan$logic),
+    setNames(
+      rep("process-sensitive", length(plan$process_sensitive)),
+      plan$process_sensitive
+    ),
+    setNames(rep("browser", length(plan$browser)), plan$browser)
+  )
+  wrong_group <- records$file[
+    records$group != unname(expected_group[records$file])
+  ]
+  if (length(wrong_group)) {
+    stop(
+      "Test runtime weight file is classified in the wrong group: ",
+      paste(wrong_group, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  files <- sort(plan$all)
+  weights <- setNames(rep(NA_real_, length(files)), files)
+  weights[records$file] <- records$seconds
+  missing_files <- names(weights)[is.na(weights)]
+  measured <- records[records$basis == "measured", , drop = FALSE]
+  overall_default <- if (nrow(measured)) median(measured$seconds) else 1
+  for (file in missing_files) {
+    group <- unname(expected_group[[file]])
+    group_values <- measured$seconds[measured$group == group]
+    weights[[file]] <- if (length(group_values)) {
+      median(group_values)
+    } else {
+      overall_default
+    }
+  }
+  attr(weights, "estimated") <- sort(unique(c(
+    records$file[records$basis == "estimated"],
+    missing_files
+  )))
+  weights
+}
+
+ci_test_shards <- function(
+  files,
+  shards,
+  strategy = "round-robin",
+  weights = NULL
+) {
   if (
     length(shards) != 1L || is.na(shards) || shards < 1L || shards %% 1L != 0L
   ) {
     stop("shards must be one positive integer", call. = FALSE)
   }
+  if (
+    length(strategy) != 1L ||
+      is.na(strategy) ||
+      !strategy %in% c("round-robin", "weighted")
+  ) {
+    stop("strategy must be round-robin or weighted", call. = FALSE)
+  }
   shards <- as.integer(shards)
   files <- sort(as.character(files))
   assignments <- vector("list", shards)
-  if (length(files)) {
+  if (!length(files)) {
+    return(assignments)
+  }
+  if (identical(strategy, "round-robin")) {
     shard_index <- ((seq_along(files) - 1L) %% shards) + 1L
     assignments <- lapply(seq_len(shards), function(index) {
       files[shard_index == index]
     })
+    return(assignments)
   }
-  assignments
+  if (
+    !is.numeric(weights) ||
+      is.null(names(weights)) ||
+      anyDuplicated(names(weights)) ||
+      any(!files %in% names(weights)) ||
+      anyNA(weights[files]) ||
+      any(!is.finite(weights[files])) ||
+      any(weights[files] <= 0)
+  ) {
+    stop(
+      "weighted strategy requires one finite positive weight per file",
+      call. = FALSE
+    )
+  }
+  ordered <- files[order(-unname(weights[files]), files)]
+  loads <- numeric(shards)
+  for (file in ordered) {
+    index <- which.min(loads)
+    assignments[[index]] <- c(assignments[[index]], file)
+    loads[[index]] <- loads[[index]] + unname(weights[[file]])
+  }
+  lapply(assignments, sort)
 }
 
-ci_test_shard_files <- function(plan, group, shard = 1L, shards = 1L) {
+ci_test_shard_loads <- function(assignments, weights) {
+  vapply(
+    assignments,
+    function(files) sum(unname(weights[files])),
+    numeric(1)
+  )
+}
+
+ci_test_shard_files <- function(
+  plan,
+  group,
+  shard = 1L,
+  shards = 1L,
+  strategy = "round-robin",
+  weights = NULL
+) {
   groups <- c("logic", "process-sensitive", "browser")
   if (length(group) != 1L || !group %in% groups) {
     stop(
@@ -154,7 +308,12 @@ ci_test_shard_files <- function(plan, group, shard = 1L, shards = 1L) {
   } else {
     group
   }
-  assignments <- ci_test_shards(plan[[key]], shards)
+  assignments <- ci_test_shards(
+    plan[[key]],
+    shards,
+    strategy = strategy,
+    weights = weights
+  )
   if (shard > length(assignments)) {
     stop("shard cannot be greater than shards", call. = FALSE)
   }
@@ -230,13 +389,14 @@ ci_parse_args <- function(args) {
     group = NULL,
     shard = 1L,
     shards = 1L,
+    strategy = "round-robin",
     list = FALSE,
     validate = FALSE
   )
   index <- 1L
   while (index <= length(args)) {
     argument <- args[[index]]
-    if (argument %in% c("--group", "--shard", "--shards")) {
+    if (argument %in% c("--group", "--shard", "--shards", "--strategy")) {
       if (index == length(args)) {
         stop("Missing value after ", argument, call. = FALSE)
       }
@@ -258,6 +418,13 @@ ci_parse_args <- function(args) {
       stop("Unknown argument: ", argument, call. = FALSE)
     }
   }
+  if (
+    length(options$strategy) != 1L ||
+      is.na(options$strategy) ||
+      !options$strategy %in% c("round-robin", "weighted")
+  ) {
+    stop("strategy must be round-robin or weighted", call. = FALSE)
+  }
   options
 }
 
@@ -277,6 +444,14 @@ ci_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   options <- ci_parse_args(args)
   repo_root <- ci_script_repo_root()
   plan <- ci_test_plan(file.path(repo_root, "tests", "testthat"))
+  weights <- if (identical(options$strategy, "weighted")) {
+    ci_test_runtime_weights(
+      plan,
+      file.path(repo_root, "scripts", "test-runtime-weights.csv")
+    )
+  } else {
+    NULL
+  }
 
   if (isTRUE(options$validate)) {
     message(
@@ -302,7 +477,9 @@ ci_main <- function(args = commandArgs(trailingOnly = TRUE)) {
     plan,
     group = options$group,
     shard = options$shard,
-    shards = options$shards
+    shards = options$shards,
+    strategy = options$strategy,
+    weights = weights
   )
   if (isTRUE(options$list)) {
     writeLines(files)
