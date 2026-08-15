@@ -53,7 +53,7 @@
   var viewerDisclosureState = new Map();
   var managerTransitionSequence = 0;
   var datasetMutationsLocked = false;
-  var normalMotionDuration = 220;
+  var normalMotionDuration = 180;
   var authEditor = {
     nextId: 1,
     committed: [],

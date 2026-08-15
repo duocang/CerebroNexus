@@ -975,9 +975,9 @@ test_that("Optional analysis states change emphasis without moving cards", {
   expect_setequal(
     hover,
     c(
-      "border-color: var(--c-amber-300)",
-      "background: var(--c-amber-50)",
-      "box-shadow: var(--shadow-2)",
+      "border-color: var(--builder-hover-border)",
+      "background: var(--builder-hover-bg)",
+      "box-shadow: var(--shadow-1)",
       "transform: none"
     )
   )

@@ -239,7 +239,7 @@ test_that("builder exposes one compact responsive component system", {
     expect_match(css, component, fixed = TRUE)
   }
   expect_match(css, "--duration-fast: 120ms", fixed = TRUE)
-  expect_match(css, "--duration-normal: 220ms", fixed = TRUE)
+  expect_match(css, "--duration-normal: 180ms", fixed = TRUE)
   expect_match(css, "--builder-text-muted: var(--c-text-2)", fixed = TRUE)
   expect_match(css, "--builder-text-subtle: var(--c-text-3)", fixed = TRUE)
   expect_match(css, "--builder-page-gutter: 26px", fixed = TRUE)
@@ -1673,7 +1673,7 @@ test_that("transient layers expose state-bearing motion lifecycle", {
     expect_match(js, paste0("function ", function_name, "("), fixed = TRUE)
   }
   expect_match(js, 'getPropertyValue("--duration-normal")', fixed = TRUE)
-  expect_match(js, "var normalMotionDuration = 220", fixed = TRUE)
+  expect_match(js, "var normalMotionDuration = 180", fixed = TRUE)
   expect_match(js, "var match = duration.match(", fixed = TRUE)
   expect_match(js, 'match[2] === "ms"', fixed = TRUE)
   expect_match(js, "requestAnimationFrame", fixed = TRUE)
