@@ -33,6 +33,15 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
+  ## What a clone is, for every page that shows one. Sourced before the modules
+  ## so the Immune repertoire tab and Linked views cannot answer it differently.
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/clone_contract.R"
+    ),
+    local = TRUE
+  )
 
   ##--------------------------------------------------------------------------##
   ## Central parameters.
@@ -470,10 +479,6 @@ server <- function(input, output, session) {
     local = TRUE
   )
   source(
-    paste0(Cerebro.options[["cerebro_root"]], "/viewer/overview/server.R"),
-    local = TRUE
-  )
-  source(
     paste0(Cerebro.options[["cerebro_root"]], "/viewer/groups/server.R"),
     local = TRUE
   )
@@ -623,23 +628,6 @@ server <- function(input, output, session) {
     function() intersect(getMethodsForTrajectories(), c("monocle2"))
   )
   insertConditionalTab(
-    "Spatial",
-    "spatial",
-    "map-pin",
-    function() availableSpatial()
-  )
-  ## Trekker single-cell spatial mapping: its own bespoke page (not the generic
-  ## Spatial tab). Shown only when the loaded .crb carries a `trekker` slot.
-  insertConditionalTab(
-    "Trekker",
-    "trekker",
-    "map-marked-alt",
-    function() {
-      tk <- tryCatch(data_set()$getTrekker(), error = function(e) NULL)
-      !is.null(tk)
-    }
-  )
-  insertConditionalTab(
     "HLA & TCR Motifs",
     "hla_tcr_motifs",
     "project-diagram",
@@ -716,21 +704,14 @@ server <- function(input, output, session) {
   source(
     paste0(
       Cerebro.options[["cerebro_root"]],
-      "/viewer/spatial/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/trekker/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
       "/viewer/hla_tcr_motifs/server.R"
+    ),
+    local = TRUE
+  )
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/coordinated_views/server.R"
     ),
     local = TRUE
   )
@@ -739,13 +720,6 @@ server <- function(input, output, session) {
   ## Export reactive values for testing (shinytest2).
   ##--------------------------------------------------------------------------##
   exportTestValues(
-    overview_cells_to_show = {
-      if (is.null(data_set())) {
-        NULL
-      } else {
-        overview_projection_cells_to_show()
-      }
-    },
     expression_levels = {
       if (is.null(data_set())) {
         NULL
@@ -765,6 +739,11 @@ server <- function(input, output, session) {
     ## was merely sampled before its callback ran.
     ir_heavy_deps_loaded = any(
       c("scRepertoire", "immApex", "iNEXT") %in% loadedNamespaces()
-    )
+    ),
+    ## Same idea for Linked views: the bundle walks every cell of the object and
+    ## is ~156 KB on the omnibus demo, so it must stay at 0 until the tab is
+    ## opened. It used to be built on connect, and rebuilt in full whenever a
+    ## group colour changed, for sessions that never opened the tab.
+    coordviews_bundles_built = coordviews_build_log$n
   )
 }

@@ -808,6 +808,130 @@ body .btn-group-justified > .btn.radiobtn.btn-primary.active {
   font-weight: 650;
 }
 
+/* Spatial: the common one-image-per-section case is automatic. The rare
+   per-section choices stay in one compact popover instead of growing the Main
+   parameters card by one full select per panel. */
+.spatial-background-mode {
+  display: flex;
+  width: 100%;
+}
+.spatial-background-mode > .spatial-background-mode-option,
+.spatial-background-mode > .spatial-background-customize > button {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 0 !important;
+  color: var(--c-text) !important;
+  background: var(--c-surface) !important;
+  border-color: var(--c-border-2) !important;
+  box-shadow: none !important;
+}
+.spatial-background-mode > :first-child {
+  border-radius: var(--r-sm) 0 0 var(--r-sm) !important;
+}
+.spatial-background-mode > .spatial-background-customize > button {
+  border-radius: 0 var(--r-sm) var(--r-sm) 0 !important;
+  width: 100%;
+}
+.spatial-background-mode > .is-active,
+.spatial-background-mode > .spatial-background-customize.is-active > button {
+  background: var(--c-amber) !important;
+  border-color: var(--c-amber) !important;
+  color: var(--c-white) !important;
+  font-weight: 650;
+}
+.spatial-background-customize {
+  flex: 1.35 1 0;
+}
+.spatial-background-customize .dropdown-menu {
+  max-width: calc(100vw - 40px);
+  padding: 10px;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+}
+.spatial-background-customize-list {
+  display: grid;
+  gap: 8px;
+}
+.spatial-background-row {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+}
+.spatial-background-row-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.spatial-background-row-label {
+  font-weight: 650;
+  color: var(--c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spatial-background-count {
+  flex: 0 0 auto;
+  color: var(--c-text-2);
+  font-size: 11px;
+}
+.spatial-background-row .form-group,
+.spatial-background-row .checkbox,
+.spatial-background-row .material-switch {
+  margin: 0;
+}
+.spatial-background-single {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+.spatial-background-single-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.spatial-background-image-icon {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(224, 109, 25, 0.2);
+  background:
+    radial-gradient(circle at 67% 34%, #ffffff 0 2px, transparent 2.5px),
+    linear-gradient(145deg, #ffe0ca 0 48%, #f29957 49% 66%, #c76321 67% 100%);
+}
+.spatial-background-single-name {
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spatial-background-multiple .form-control {
+  height: 42px;
+  border-color: var(--c-border-2);
+  background: var(--c-surface-2);
+}
+.spatial-background-unavailable {
+  display: block;
+  padding: 8px 9px;
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
 /* -------------------------------------------------------------------------
    Form controls — soft inputs, warm focus ring
    ------------------------------------------------------------------------- */

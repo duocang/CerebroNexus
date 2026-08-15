@@ -51,6 +51,14 @@ ir_env$cerebro_group_colors <- function(n) {
 }
 ir_env$input <- list()
 ir_env$session <- list()
+# What a clone is, shared with Linked views. data.R reads its chain names, bins
+# and clone-call mapping from here rather than declaring a second set, so this
+# has to be loaded first -- as the app does, before any module.
+sys.source(
+  file.path(dirname(data_r), "..", "clone_contract.R"),
+  envir = ir_env,
+  keep.source = FALSE
+)
 sys.source(data_r, envir = ir_env, keep.source = FALSE)
 
 ir_parse_segments <- ir_env$ir_parse_segments

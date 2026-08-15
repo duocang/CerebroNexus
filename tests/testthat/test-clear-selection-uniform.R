@@ -4,8 +4,7 @@
 ## projection_scatter.js can click it), a shinyjs bridge to the shared
 ## clearSelection(), that bridge registered in extendShinyjs(functions=), and an
 ## observer that shows/hides the button with the selection. This test locks the
-## wiring across overview / gene_expression / trajectory so it can't drift back
-## to spatial-only again.
+## wiring across the remaining projection-style detail tabs.
 
 repo_file <- function(...) {
   parts <- c(...)
@@ -39,10 +38,6 @@ read_all <- function(dir) {
 
 # tab dir -> (plot_id, shinyjs bridge name)
 tabs <- list(
-  overview = list(
-    plot_id = "overview_projection",
-    bridge = "overviewClearSelection"
-  ),
   gene_expression = list(
     plot_id = "expression_projection",
     bridge = "expressionClearSelection"
