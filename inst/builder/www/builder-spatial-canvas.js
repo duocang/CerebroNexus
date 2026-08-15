@@ -373,11 +373,14 @@
     }
   }
 
-  function eventControlId(event) {
+  function eventControlId(event, data) {
     if (event && event.target && controlNameForId(event.target.id)) return event.target.id;
     if (event && typeof event.name === "string" && controlNameForId(event.name)) return event.name;
     if (event && event.detail && typeof event.detail.name === "string" && controlNameForId(event.detail.name)) {
       return event.detail.name;
+    }
+    if (data && typeof data.name === "string" && controlNameForId(data.name)) {
+      return data.name;
     }
     if (
       event &&
@@ -770,13 +773,19 @@
     context.restore();
   }
 
-  function drawFrames(context, transformed, rotation) {
+  function drawFrames(context, original, transformed, rotation) {
     context.save();
     context.lineJoin = "round";
     context.lineCap = "round";
 
+    context.strokeStyle = "#94a3b8";
+    context.lineWidth = 1;
+    context.setLineDash([3, 4]);
+    traceClosedPath(context, original);
+    context.stroke();
+
     context.strokeStyle = "#334155";
-    context.lineWidth = 2;
+    context.lineWidth = 1.5;
     context.setLineDash([]);
     traceClosedPath(context, transformed);
     context.stroke();
@@ -1097,6 +1106,7 @@
       drawPoints(context, scene, controls, layout);
       drawFrames(
         context,
+        screenCorners(originalCorners, geometry),
         screenCorners(transformedCorners, geometry),
         controls.coordinate_rotation
       );
@@ -1309,8 +1319,8 @@
     handlerRegistered = true;
   }
 
-  function handleControlEvent(event) {
-    if (!eventControlId(event)) return;
+  function handleControlEvent(event, data) {
+    if (!eventControlId(event, data)) return;
     ensureInstance();
     if (!currentInstance) return;
     var controls = currentInstance.getControls();
