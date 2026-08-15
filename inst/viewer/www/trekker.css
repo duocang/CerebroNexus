@@ -87,7 +87,7 @@
   /* ---- cell inspector ---- */
   .tk-insp { display: grid; grid-template-columns: 200px 1fr 1.3fr; gap: 16px; }
   .tk-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12.5px; }
-  .tk-kv dt { color: var(--c-text-2); }
+  .tk-kv dt { color: var(--c-text-2); font-weight: 400; }
   .tk-kv dd { font-weight: 550; text-align: right; font-variant-numeric: tabular-nums; margin: 0; }
   .tk-bars { font-size: 12px; }
   .tk-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }

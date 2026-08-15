@@ -321,15 +321,58 @@
     }
   }
 
+  function bindProjectionAfterplot(plotId) {
+    const state = projectionResizeState.get(plotId);
+    const elements = projectionElements(plotId);
+    if (!state || !elements) return;
+
+    if (
+      state.afterplotPlot === elements.plot &&
+      state.afterplotHandler
+    ) {
+      return;
+    }
+    if (
+      state.afterplotPlot &&
+      state.afterplotHandler &&
+      typeof state.afterplotPlot.removeListener === 'function'
+    ) {
+      state.afterplotPlot.removeListener(
+        'plotly_afterplot',
+        state.afterplotHandler
+      );
+    }
+    state.afterplotPlot = null;
+    state.afterplotHandler = null;
+    if (typeof elements.plot.on !== 'function') return;
+
+    state.afterplotPlot = elements.plot;
+    state.afterplotHandler = function () {
+      scheduleProjectionResize(plotId);
+    };
+    elements.plot.on('plotly_afterplot', state.afterplotHandler);
+  }
+
   function observeProjectionElements(plotId) {
     const state = projectionResizeState.get(plotId);
     const elements = projectionElements(plotId);
-    if (!state || !elements || typeof ResizeObserver === 'undefined') return;
+    if (!state || !elements) return;
+
+    bindProjectionAfterplot(plotId);
+    if (typeof ResizeObserver === 'undefined') return;
 
     if (!state.observer) {
       state.observer = new ResizeObserver(function () {
         scheduleProjectionResize(plotId);
       });
+    }
+    // A reactive renderUI rebuild replaces the whole card while keeping the
+    // same plot id. Follow the live box element; otherwise ResizeObserver stays
+    // attached to the detached card and existing panels retain the width from
+    // the previous grid column count.
+    if (state.box !== elements.box) {
+      if (state.box) state.observer.unobserve(state.box);
+      state.box = elements.box;
       state.observer.observe(elements.box);
     }
     if (elements.legend && state.legend !== elements.legend) {
@@ -348,7 +391,10 @@
         width: null,
         settledHeight: null,
         observer: null,
+        box: null,
         legend: null,
+        afterplotPlot: null,
+        afterplotHandler: null,
         // true while a Plotly.relayout(width/height) is in flight but its
         // WebGL/DOM repaint has not resolved yet. Reveal waits for this to
         // clear so the host is not shown at the pre-relayout size (the visible
@@ -982,6 +1028,7 @@
     if (!meta || !meta.is_spatial) return;
     if (meta.background_image) {
       shinyjs.syncSpatialBackground(
+        plotId,
         meta.background_image,
         meta.background_flip_x,
         meta.background_flip_y,
@@ -990,12 +1037,21 @@
         meta.background_opacity,
         meta.image_bounds,
         meta.background_offset_x,
-        meta.background_offset_y,
-        meta.background_rotation,
-        meta.background_identity
+        meta.background_offset_y
       );
     } else {
-      shinyjs.syncSpatialBackground(null, false, false, 1, 1, 1, null, 0, 0, 0, null);
+      shinyjs.syncSpatialBackground(
+        plotId,
+        null,
+        false,
+        false,
+        1,
+        1,
+        1,
+        null,
+        0,
+        0
+      );
     }
   }
 
@@ -1552,6 +1608,8 @@
     _finiteExtent: finiteExtent,
     _projectionTargetHeight: projectionTargetHeight,
     _projectionSizingElement: projectionSizingElement,
+    _observeProjectionElements: observeProjectionElements,
+    _bindProjectionAfterplot: bindProjectionAfterplot,
     _revealProjectionHost: revealProjectionHost,
     _shouldRevealProjection: shouldRevealProjection,
     _projectionGateClass: PROJECTION_GATE_CLASS,

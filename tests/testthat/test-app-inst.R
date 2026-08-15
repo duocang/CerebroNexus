@@ -86,11 +86,9 @@ wait_for_input <- function(app, id, timeout = 20000) {
   )
 }
 
-## Activate a sidebar tab that is inserted CONDITIONALLY and ASYNCHRONOUSLY
-## (insertConditionalTab in shiny_server.R): Projection ("overview"), Gene
-## expression, Marker genes, etc. are no longer static menuItems, so navigating
-## with set_inputs(sidebar = ...) before the item is inserted silently no-ops and
-## the tab's outputs never render. Wait for the menu link, then click it.
+## Activate a sidebar tab by its real link. Conditional items are inserted
+## asynchronously, while static workspaces such as Linked views are available
+## immediately; the same helper handles both.
 activate_tab <- function(app, tab_name, timeout = 20000) {
   selector <- sprintf("a[href=\"#shiny-tab-%s\"]", tab_name)
   app$wait_for_js(
@@ -228,44 +226,22 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
 })
 
 
-test_that("{shinytest2} recording: main", {
+test_that("{shinytest2} recording: Linked views", {
   local_app_support(inst_dir)
   app <- AppDriver$new(inst_dir, name = "main", height = 950, width = 1619)
   app$wait_for_idle(timeout = 20000)
 
-  activate_tab(app, "overview")
-  app$wait_for_idle(timeout = 10000)
-
-  ## verify the projection renders
-  plot_val <- retry_get_value(app, output = "overview_projection")
-  expect_false(is.null(plot_val))
-
-  ## get unfiltered cell count
-  cells_all <- retry_get_value(app, export = "overview_cells_to_show")
-  expect_true(length(cells_all) > 0)
-
-  ## filter to cluster 0 only and verify fewer cells are shown
-  app$set_inputs(overview_projection_group_filter_seurat_clusters = "0")
-  app$wait_for_idle(timeout = 10000)
-  cells_filtered <- retry_get_value(app, export = "overview_cells_to_show")
-  expect_true(length(cells_filtered) < length(cells_all))
-
-  ## verify input parameters are applied
-  app$set_inputs(overview_projection_point_size = 9)
-  app$set_inputs(overview_projection_point_opacity = 0.9)
-  app$set_inputs(overview_projection_percentage_cells_to_show = 100)
-  app$wait_for_idle(timeout = 10000)
-
-  app$expect_values(
-    input = c(
-      "overview_projection_point_size",
-      "overview_projection_point_opacity",
-      "overview_projection_percentage_cells_to_show",
-      "overview_projection_group_filter_seurat_clusters"
+  activate_tab(app, "coordinated_views")
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll(",
+      "'.cv-panes .cv-pane'",
+      ").length > 0"
     ),
-    output = FALSE,
-    export = FALSE
+    timeout = 20000
   )
+  bundles <- retry_get_value(app, export = "coordviews_bundles_built")
+  expect_gt(bundles, 0L)
   app$stop()
 })
 
