@@ -133,6 +133,25 @@ test_that("aggregate status remains nonzero after later successes", {
   )
 })
 
+test_that("job durations are always reported in seconds", {
+  job <- local_validation_api$local_validation_job(
+    "synthetic",
+    "two-minutes",
+    1L,
+    "true"
+  )
+  started <- as.POSIXct("2026-08-15 12:00:00", tz = "UTC")
+  result <- local_validation_api$local_validation_result(
+    job,
+    status = 0L,
+    started = started,
+    ended = started + 120,
+    log = "two-minutes.log"
+  )
+
+  expect_identical(result$duration, 120)
+})
+
 test_that("real child processes obey the cap and keep separate logs", {
   skip_if_not_installed("processx")
   output_dir <- withr::local_tempdir()

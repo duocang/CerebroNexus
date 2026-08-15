@@ -235,7 +235,7 @@ local_validation_result <- function(job, status, started, ended, log) {
     status = as.integer(status),
     started = as.numeric(started),
     ended = as.numeric(ended),
-    duration = as.numeric(ended - started),
+    duration = as.numeric(difftime(ended, started, units = "secs")),
     log = log,
     stringsAsFactors = FALSE
   )
