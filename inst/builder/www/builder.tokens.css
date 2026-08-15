@@ -10,8 +10,8 @@
   --c-border: #ececec;
   --c-border-2: #e0e0e0;
   --c-text: #1c1c1e;
-  --c-text-2: #525257;
-  --c-text-3: #6b6b70;
+  --c-text-2: #6b6b70;
+  --c-text-3: #9a9aa0;
 
   --c-blue-50: #eef4fb;
   --c-blue-100: #d7e6f7;
@@ -49,6 +49,7 @@
   --r-pill: 999px;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur: 0.16s;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
                "Helvetica Neue", Arial, sans-serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
