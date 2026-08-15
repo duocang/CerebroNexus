@@ -79,14 +79,14 @@ jobs:
           "Rscript scripts/run-test-shard.R --group process-sensitive"
 
   browser:
-    name: browser (${{ matrix.shard }}/2)
+    name: browser (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -106,19 +106,19 @@ jobs:
       - name: Install R package dependencies
         run: nix-shell default.nix --run "echo 'R package dependencies installed'"
 
-      - name: Run browser shard ${{ matrix.shard }}/2
+      - name: Run browser shard ${{ matrix.shard }}/4
         run: >-
           nix-shell default.nix --run
           "Rscript scripts/run-test-shard.R
           --group browser
           --shard ${{ matrix.shard }}
-          --shards 2"
+          --shards 4"
 
       - name: Upload test artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: shinytest2-failures-${{ matrix.shard }}-of-2
+          name: shinytest2-failures-${{ matrix.shard }}-of-4
           path: |
             tests/testthat/_snaps/
             /tmp/shinytest2*
