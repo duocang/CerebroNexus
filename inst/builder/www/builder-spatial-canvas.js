@@ -770,19 +770,13 @@
     context.restore();
   }
 
-  function drawFrames(context, original, transformed, rotation) {
+  function drawFrames(context, transformed, rotation) {
     context.save();
     context.lineJoin = "round";
     context.lineCap = "round";
 
-    context.strokeStyle = "#94a3b8";
-    context.lineWidth = 1;
-    context.setLineDash([3, 4]);
-    traceClosedPath(context, original);
-    context.stroke();
-
     context.strokeStyle = "#334155";
-    context.lineWidth = 1.5;
+    context.lineWidth = 2;
     context.setLineDash([]);
     traceClosedPath(context, transformed);
     context.stroke();
@@ -1103,7 +1097,6 @@
       drawPoints(context, scene, controls, layout);
       drawFrames(
         context,
-        screenCorners(originalCorners, geometry),
         screenCorners(transformedCorners, geometry),
         controls.coordinate_rotation
       );
