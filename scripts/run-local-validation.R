@@ -185,7 +185,7 @@ local_validation_schedule <- function(
       1L,
       paste0(
         "Rscript -e \"pkgdown::build_site_github_pages(",
-        "new_process = FALSE, install = FALSE, ",
+        "new_process = FALSE, install = TRUE, ",
         "dest_dir = 'pkgdown-site')\""
       )
     )

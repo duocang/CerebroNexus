@@ -120,6 +120,11 @@ test_that("full schedule appends check and pkgdown serially", {
     "pkgdown-site",
     fixed = TRUE
   )
+  expect_match(
+    schedule$command[schedule$phase == "pkgdown"],
+    "install = TRUE",
+    fixed = TRUE
+  )
 })
 
 test_that("aggregate status remains nonzero after later successes", {
