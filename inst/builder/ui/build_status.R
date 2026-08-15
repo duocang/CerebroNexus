@@ -540,6 +540,7 @@ builder_open_final_app <- function(
     )
   },
   .child = .builder_open_app_child,
+  .validate_database = CerebroNexus:::.viewerAuthValidateDatabase,
   .run_app = NULL,
   .on_open = NULL,
   .open = function(path, env_file) {
@@ -549,8 +550,10 @@ builder_open_final_app <- function(
     args <- list(
       path = path,
       env_file = env_file,
-      env_name = "CEREBRO_AUTH_PASSPHRASE"
+      env_name = "CEREBRO_AUTH_PASSPHRASE",
+      validate_database = .validate_database
     )
+    environment(args$validate_database) <- globalenv()
     if (!is.null(.run_app)) {
       args$run_app <- .run_app
     }
@@ -565,6 +568,9 @@ builder_open_final_app <- function(
     TRUE
   }
 ) {
+  if (!is.function(.validate_database)) {
+    stop("The authentication validator is invalid.", call. = FALSE)
+  }
   result <- builder_as_result(result)
   if (
     !identical(result$state, "success") ||

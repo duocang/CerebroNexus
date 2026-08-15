@@ -82,10 +82,17 @@ test_that("the fixture script exactly reproduces committed gallery inputs", {
   }
   generated <- read_bytes(first_dir)
   expect_identical(generated, read_bytes(second_dir))
-  expect_identical(generated, read_bytes(layout$committed))
+  committed <- read_bytes(layout$committed)
+  rds_index <- match("all_content.rds", expected_names)
+  expect_identical(generated[-rds_index], committed[-rds_index])
+  expect_equal(
+    readRDS(file.path(first_dir, "all_content.rds")),
+    readRDS(file.path(layout$committed, "all_content.rds")),
+    tolerance = 0
+  )
 })
 
-test_that("the serialized fixture is portable across operating systems", {
+test_that("the serialized fixture avoids compressor-dependent bytes", {
   layout <- builder_fixture_script_layout()
   skip_if_not(
     file.exists(layout$script),
