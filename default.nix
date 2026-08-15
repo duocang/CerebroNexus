@@ -48,8 +48,7 @@
 #  > "tidyr",
 #  > "tidyselect",
 #  > "stringdist",
-#  > "visNetwork",
-#  > "writexl"),
+#  > "visNetwork"),
 #  > system_pkgs = c("chromium",
 #  > "pandoc"),
 #  > git_pkgs = list(list(package_name = "BPCells",
@@ -115,7 +114,6 @@ let
       tidyr
       tidyselect
       visNetwork
-      writexl
       withr;
   };
  
