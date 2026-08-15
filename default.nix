@@ -26,6 +26,7 @@
 #  > "htmlwidgets",
 #  > "httr",
 #  > "igraph",
+#  > "jpeg",
 #  > "later",
 #  > "Matrix",
 #  > "msigdbr",
@@ -34,6 +35,7 @@
 #  > "qvalue",
 #  > "R6",
 #  > "readxl",
+#  > "rhdf5",
 #  > "rlang",
 #  > "scales",
 #  > "scRepertoire",
@@ -83,6 +85,7 @@ let
       htmlwidgets
       httr
       igraph
+      jpeg
       later
       Matrix
       msigdbr
@@ -93,6 +96,7 @@ let
       qvalue
       R6
       readxl
+      rhdf5
       rlang
       scales
       scRepertoire

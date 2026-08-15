@@ -15,8 +15,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  logic:
+    name: logic (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -37,25 +43,105 @@ jobs:
       - name: Install R package dependencies
         run: nix-shell default.nix --run "echo 'R package dependencies installed'"
 
-      ## Run all tests — load package from source, then run every test_*.R.
-      - name: Run all unit/integration tests
-        run: |
-          nix-shell default.nix --run "Rscript -e \"
-            devtools::load_all('.')
-            testthat::test_dir(
-              path = 'tests/testthat',
-              reporter = testthat::default_reporter(),
-              stop_on_failure = TRUE
-            )
-          \""
+      - name: Run logic shard ${{ matrix.shard }}/4
+        run: >-
+          nix-shell default.nix --run
+          "Rscript scripts/run-test-shard.R
+          --group logic
+          --shard ${{ matrix.shard }}
+          --shards 4"
 
-      ## Upload shinytest2 failure artifacts (PNG diffs, logs) — unit test failures are in the log
+  process_sensitive:
+    name: process-sensitive
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create this folder to silence warning
+        run: mkdir -p ~/.nix-defexpr/channels
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure osmzhlab Attic cache
+        run: bash .github/scripts/setup-osmzhlab-cache.sh
+
+      - name: Install R package dependencies
+        run: nix-shell default.nix --run "echo 'R package dependencies installed'"
+
+      - name: Run process-sensitive tests serially
+        run: >-
+          nix-shell default.nix --run
+          "Rscript scripts/run-test-shard.R --group process-sensitive"
+
+  browser:
+    name: browser (${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        shard: [1, 2]
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create this folder to silence warning
+        run: mkdir -p ~/.nix-defexpr/channels
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure osmzhlab Attic cache
+        run: bash .github/scripts/setup-osmzhlab-cache.sh
+
+      - name: Install R package dependencies
+        run: nix-shell default.nix --run "echo 'R package dependencies installed'"
+
+      - name: Run browser shard ${{ matrix.shard }}/2
+        run: >-
+          nix-shell default.nix --run
+          "Rscript scripts/run-test-shard.R
+          --group browser
+          --shard ${{ matrix.shard }}
+          --shards 2"
+
       - name: Upload test artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: shinytest2-failures
+          name: shinytest2-failures-${{ matrix.shard }}-of-2
           path: |
             tests/testthat/_snaps/
             /tmp/shinytest2*
           retention-days: 14
+          if-no-files-found: ignore
+
+  # Keep the historical "R tests / test" check name for branch protection.
+  test:
+    name: test
+    if: ${{ always() }}
+    needs: [logic, process_sensitive, browser]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require every test group to pass
+        env:
+          LOGIC_RESULT: ${{ needs.logic.result }}
+          PROCESS_RESULT: ${{ needs.process_sensitive.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          echo "logic: $LOGIC_RESULT"
+          echo "process-sensitive: $PROCESS_RESULT"
+          echo "browser: $BROWSER_RESULT"
+          [[ "$LOGIC_RESULT" == "success" ]]
+          [[ "$PROCESS_RESULT" == "success" ]]
+          [[ "$BROWSER_RESULT" == "success" ]]
