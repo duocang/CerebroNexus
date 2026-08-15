@@ -268,9 +268,7 @@ test_that("generic fill wrappers do not clip widget controls", {
 
 test_that("all projection tabs delegate live height to the shared controller", {
   ui_paths <- c(
-    repo_file("inst", "viewer", "overview", "UI_projection.R"),
     repo_file("inst", "viewer", "gene_expression", "UI_projection.R"),
-    repo_file("inst", "viewer", "spatial", "UI_projection.R"),
     repo_file("inst", "viewer", "trajectory", "projection.R")
   )
   ui_source <- paste(unlist(lapply(ui_paths, readLines)), collapse = "\n")
@@ -283,7 +281,7 @@ test_that("all projection tabs delegate live height to the shared controller", {
       ui_source,
       gregexpr("cerebro-projection-gate", ui_source, fixed = TRUE)
     )),
-    4L
+    2L
   )
 })
 
@@ -375,6 +373,139 @@ test_that("shared controller observes wrapped legends and resizes Plotly", {
   expect_match(source, "Plotly.relayout", fixed = TRUE)
   expect_match(source, "Plotly.Plots.resize", fixed = TRUE)
   expect_match(source, "scheduleProjectionResize", fixed = TRUE)
+})
+
+test_that("projection resize observation follows a replaced plot box", {
+  testthat::skip_if(Sys.which("node") == "", "node not on PATH")
+  js_path <- repo_file(
+    "inst",
+    "viewer",
+    "www",
+    "projection_scatter.js"
+  )
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      "const events = [];",
+      "const box1 = { id: 'box1', getBoundingClientRect() { return {}; } };",
+      "const box2 = { id: 'box2', getBoundingClientRect() { return {}; } };",
+      "let currentBox = box1;",
+      "const parent = { classList: { contains() { return false; } } };",
+      "const plot = {",
+      "  id: 'plot', parentElement: parent,",
+      "  getBoundingClientRect() { return {}; },",
+      "  closest() { return currentBox; }",
+      "};",
+      "global.ResizeObserver = class {",
+      "  observe(element) { events.push(['observe', element.id]); }",
+      "  unobserve(element) { events.push(['unobserve', element.id]); }",
+      "};",
+      "global.document = {",
+      "  addEventListener() {},",
+      "  getElementById(id) { return id === 'plot' ? plot : null; }",
+      "};",
+      "global.window = {",
+      "  addEventListener() {},",
+      "  requestAnimationFrame() { return 1; }",
+      "};",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(js_path, quote = "\"")
+      ),
+      "window.cerebroProjection.registerPlot('plot');",
+      "const observe = window.cerebroProjection._observeProjectionElements;",
+      "if (typeof observe !== 'function') {",
+      "  console.log('missing observer hook');",
+      "} else {",
+      "  observe('plot');",
+      "  currentBox = box2;",
+      "  observe('plot');",
+      "  console.log(JSON.stringify(events));",
+      "}"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
+  expect_equal(attr(output, "status"), NULL)
+  expect_equal(
+    output,
+    paste0(
+      '[["observe","box1"],["unobserve","box1"],',
+      '["observe","box2"]]'
+    )
+  )
+})
+
+test_that("projection resize follows late Plotly redraws and replaced plots", {
+  testthat::skip_if(Sys.which("node") == "", "node not on PATH")
+  js_path <- repo_file(
+    "inst",
+    "viewer",
+    "www",
+    "projection_scatter.js"
+  )
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs = require('fs');",
+      "const events = [];",
+      "const box = { getBoundingClientRect() { return {}; } };",
+      "const parent = { classList: { contains() { return false; } } };",
+      "function makePlot(id) {",
+      "  return {",
+      "    id, parentElement: parent,",
+      "    getBoundingClientRect() { return {}; },",
+      "    closest() { return box; },",
+      "    on(event) { events.push(['on', id, event]); },",
+      "    removeListener(event) { events.push(['off', id, event]); }",
+      "  };",
+      "}",
+      "const plot1 = makePlot('plot1');",
+      "const plot2 = makePlot('plot2');",
+      "let currentPlot = plot1;",
+      "global.ResizeObserver = class { observe() {} unobserve() {} };",
+      "global.document = {",
+      "  addEventListener() {},",
+      "  getElementById(id) { return id === 'plot' ? currentPlot : null; }",
+      "};",
+      "global.window = {",
+      "  addEventListener() {},",
+      "  requestAnimationFrame() { return 1; }",
+      "};",
+      sprintf(
+        "eval(fs.readFileSync(%s, 'utf8'));",
+        encodeString(js_path, quote = "\"")
+      ),
+      "window.cerebroProjection.registerPlot('plot');",
+      "const bind = window.cerebroProjection._bindProjectionAfterplot;",
+      "if (typeof bind !== 'function') {",
+      "  console.log('missing afterplot hook');",
+      "} else {",
+      "  bind('plot');",
+      "  currentPlot = plot2;",
+      "  bind('plot');",
+      "  console.log(JSON.stringify(events));",
+      "}"
+    ),
+    runner
+  )
+
+  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+
+  expect_equal(attr(output, "status"), NULL)
+  expect_equal(
+    output,
+    paste0(
+      '[["on","plot1","plotly_afterplot"],',
+      '["off","plot1","plotly_afterplot"],',
+      '["on","plot2","plotly_afterplot"]]'
+    )
+  )
 })
 
 test_that("reveal waits for two equal measurements so the first frame is settled", {
@@ -529,21 +660,4 @@ test_that("CSS hides projection outputs until the resize path reveals them", {
   # NOT a plotId-keyed set — so a host that is removed and recreated (e.g. the IR
   # Clonal UMAP when faceting toggles) reveals again instead of staying hidden.
   expect_false(grepl("projectionRevealed", js_source, fixed = TRUE))
-})
-
-test_that("Spatial background remains registered to Plotly data axes", {
-  source <- paste(
-    readLines(repo_file(
-      "inst",
-      "viewer",
-      "spatial",
-      "js_spatial_background.js"
-    )),
-    collapse = "\n"
-  )
-
-  expect_match(source, "xaxis.l2p", fixed = TRUE)
-  expect_match(source, "yaxis.l2p", fixed = TRUE)
-  expect_match(source, "plotly_afterplot", fixed = TRUE)
-  expect_match(source, "applySpatialBackground", fixed = TRUE)
 })

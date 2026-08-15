@@ -22,7 +22,6 @@ output[["gene_info"]] <- DT::renderDataTable({
     filter = "none",
     selection = "multiple",
     escape = FALSE,
-    autoHideNavigation = TRUE,
     rownames = FALSE,
     options = list(
       scrollX = FALSE,
