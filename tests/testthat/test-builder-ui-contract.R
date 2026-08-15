@@ -378,18 +378,6 @@ test_that("enhancement groups and previews use one quiet density system", {
   expect_match(canvas_js, "ResizeObserver", fixed = TRUE)
   expect_match(canvas_js, "builder_spatial_canvas_scene", fixed = TRUE)
   expect_match(canvas_js, "requestAnimationFrame", fixed = TRUE)
-  expect_match(
-    canvas_js,
-    'event.target.closest(".shiny-input-container, .form-group")',
-    fixed = TRUE
-  )
-  expect_match(
-    canvas_js,
-    'document.addEventListener("pointermove", handleControlEvent, true)',
-    fixed = TRUE
-  )
-  expect_match(canvas_js, "controlReadQueued", fixed = TRUE)
-  expect_match(canvas_js, "window.queueMicrotask", fixed = TRUE)
   rotate_at <- regexpr("context.rotate(-radians)", canvas_js, fixed = TRUE)[[
     1L
   ]]

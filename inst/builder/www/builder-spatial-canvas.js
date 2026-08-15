@@ -7,8 +7,6 @@
   var documentHandlersRegistered = false;
   var jqueryHandlersRegistered = false;
   var observerStarted = false;
-  var controlReadQueued = false;
-  var pendingControlId = null;
 
   function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -375,21 +373,11 @@
     }
   }
 
-  function eventControlId(event, data) {
+  function eventControlId(event) {
     if (event && event.target && controlNameForId(event.target.id)) return event.target.id;
-    if (event && event.target && typeof event.target.closest === "function") {
-      var container = event.target.closest(".shiny-input-container, .form-group");
-      if (container) {
-        var candidate = container.querySelector("input[id], select[id]");
-        if (candidate && controlNameForId(candidate.id)) return candidate.id;
-      }
-    }
     if (event && typeof event.name === "string" && controlNameForId(event.name)) return event.name;
     if (event && event.detail && typeof event.detail.name === "string" && controlNameForId(event.detail.name)) {
       return event.detail.name;
-    }
-    if (data && typeof data.name === "string" && controlNameForId(data.name)) {
-      return data.name;
     }
     if (
       event &&
@@ -1328,29 +1316,13 @@
     handlerRegistered = true;
   }
 
-  function handleControlEvent(event, data) {
-    var controlId = eventControlId(event, data);
-    if (!controlId) return;
-    pendingControlId = controlId;
-    if (controlReadQueued) return;
-    controlReadQueued = true;
-    window.queueMicrotask(function () {
-      controlReadQueued = false;
-      ensureInstance();
-      if (!currentInstance) return;
-      var controls = currentInstance.getControls();
-      if (!controls) return;
-      var activeId = pendingControlId;
-      pendingControlId = null;
-      var name = controlNameForId(activeId);
-      var element = document.getElementById(activeId);
-      if (!name || !element) return;
-      var patch = {};
-      patch[name] = name === "flip_x" || name === "flip_y"
-        ? Boolean(element.checked)
-        : readNumericControl(element, name, controls[name]);
-      currentInstance.patchControls(patch);
-    });
+  function handleControlEvent(event) {
+    if (!eventControlId(event)) return;
+    ensureInstance();
+    if (!currentInstance) return;
+    var controls = currentInstance.getControls();
+    if (!controls) return;
+    currentInstance.patchControls(readControlsFromDom(controls));
   }
 
   function handleShinyLifecycle() {
@@ -1363,7 +1335,6 @@
     if (documentHandlersRegistered) return;
     document.addEventListener("input", handleControlEvent, true);
     document.addEventListener("change", handleControlEvent, true);
-    document.addEventListener("pointermove", handleControlEvent, true);
     document.addEventListener("shiny:inputchanged", handleControlEvent, true);
     document.addEventListener("shiny:connected", handleShinyLifecycle, true);
     document.addEventListener("shiny:sessioninitialized", handleShinyLifecycle, true);
