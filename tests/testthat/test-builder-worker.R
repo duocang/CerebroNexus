@@ -1008,6 +1008,22 @@ if (builder_lifecycle_api_available) {
     )
   })
 
+  test_that("copied Builder runtimes accept an explicit development source", {
+    copied_runtime <- withr::local_tempdir()
+    copied_builder <- file.path(copied_runtime, "builder")
+    fs::dir_copy(builder_profile_inst_path("builder"), copied_builder)
+    source_root <- withr::local_tempdir()
+    file.copy(test_path("..", "..", "DESCRIPTION"), source_root)
+    fs::dir_copy(test_path("..", "..", "R"), file.path(source_root, "R"))
+    source_root <- normalizePath(source_root, winslash = "/", mustWork = TRUE)
+    withr::local_envvar(CEREBRO_PACKAGE_SOURCE = source_root)
+
+    expect_identical(
+      .builder_worker_package_source(copied_builder),
+      source_root
+    )
+  })
+
   test_that("main registry rejects an owned snapshot from another root", {
     skip_if_not_installed("callr")
     foreign <- builder_worker_fixture()

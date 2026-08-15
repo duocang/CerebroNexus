@@ -54,11 +54,19 @@ test_that("shard assignment is deterministic and lossless", {
 
 test_that("browser shards allow slow process startup on shared CI runners", {
   withr::local_options(list(chromote.timeout = 10))
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = NA)
 
-  configured <- test_plan_api$ci_configure_browser_runtime()
+  configured <- test_plan_api$ci_configure_browser_runtime(test_path(
+    "..",
+    ".."
+  ))
 
   expect_identical(configured, 30)
   expect_identical(getOption("chromote.timeout"), 30)
+  expect_identical(
+    Sys.getenv("CEREBRO_PACKAGE_SOURCE"),
+    normalizePath(test_path("..", ".."), winslash = "/", mustWork = TRUE)
+  )
 })
 
 test_that("new valid test files automatically join the logic group", {

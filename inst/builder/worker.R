@@ -864,6 +864,14 @@ builder_protocol_recover <- function(
       )) >
         0L
   }
+  configured_source <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+  if (is_source_package(configured_source)) {
+    return(normalizePath(
+      configured_source,
+      winslash = "/",
+      mustWork = TRUE
+    ))
+  }
   candidate <- normalizePath(
     file.path(builder_dir, "..", ".."),
     winslash = "/",

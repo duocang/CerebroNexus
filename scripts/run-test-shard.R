@@ -161,7 +161,7 @@ ci_test_shard_files <- function(plan, group, shard = 1L, shards = 1L) {
   assignments[[as.integer(shard)]]
 }
 
-ci_configure_browser_runtime <- function() {
+ci_configure_browser_runtime <- function(repo_root = ".") {
   timeout <- getOption("chromote.timeout", 10)
   if (
     !is.numeric(timeout) ||
@@ -173,6 +173,8 @@ ci_configure_browser_runtime <- function() {
   }
   timeout <- max(as.numeric(timeout), 30)
   options(chromote.timeout = timeout)
+  source_root <- normalizePath(repo_root, winslash = "/", mustWork = TRUE)
+  Sys.setenv(CEREBRO_PACKAGE_SOURCE = source_root)
   invisible(timeout)
 }
 
@@ -308,7 +310,7 @@ ci_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   }
 
   if (identical(options$group, "browser")) {
-    ci_configure_browser_runtime()
+    ci_configure_browser_runtime(repo_root)
   }
 
   message(
