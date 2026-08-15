@@ -59,24 +59,36 @@ builder_browser_mock_folder_picker <- function(
 ) {
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   fake_bin <- withr::local_tempdir(.local_envir = .local_envir)
-  picker <- file.path(fake_bin, "osascript")
-  writeLines(
-    c(
-      "#!/bin/sh",
-      sprintf(
-        "printf '%%s\\n' %s",
-        shQuote(normalizePath(output_dir, winslash = "/", mustWork = TRUE))
-      )
-    ),
-    picker
+  picker_script <- c(
+    "#!/bin/sh",
+    sprintf(
+      "printf '%%s\\n' %s",
+      shQuote(normalizePath(output_dir, winslash = "/", mustWork = TRUE))
+    )
   )
-  Sys.chmod(picker, mode = "0755")
+  pickers <- file.path(fake_bin, c("osascript", "zenity", "kdialog"))
+  for (picker in pickers) {
+    writeLines(picker_script, picker)
+  }
+  Sys.chmod(pickers, mode = "0755")
   withr::local_envvar(
     PATH = paste(fake_bin, Sys.getenv("PATH"), sep = .Platform$path.sep),
     .local_envir = .local_envir
   )
   invisible(output_dir)
 }
+
+test_that("browser folder picker mock covers macOS and Linux commands", {
+  output_dir <- file.path(withr::local_tempdir(), "build-output")
+  builder_browser_mock_folder_picker(output_dir)
+
+  pickers <- c("osascript", "zenity", "kdialog")
+  expect_true(all(nzchar(Sys.which(pickers))))
+  expect_identical(
+    trimws(system2("zenity", stdout = TRUE)),
+    normalizePath(output_dir, winslash = "/", mustWork = TRUE)
+  )
+})
 
 builder_browser_escape <- function(app) {
   app$run_js(paste0(
