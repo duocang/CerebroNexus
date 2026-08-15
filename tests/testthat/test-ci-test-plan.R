@@ -52,6 +52,83 @@ test_that("shard assignment is deterministic and lossless", {
   expect_length(unlist(first, use.names = FALSE), length(plan$logic))
 })
 
+test_that("weighted shards use stable longest-processing-time assignment", {
+  files <- paste0("test-", letters[1:4], ".R")
+  weights <- c(
+    `test-a.R` = 8,
+    `test-b.R` = 7,
+    `test-c.R` = 6,
+    `test-d.R` = 5
+  )
+
+  first <- test_plan_api$ci_test_shards(
+    files,
+    2L,
+    strategy = "weighted",
+    weights = weights
+  )
+  second <- test_plan_api$ci_test_shards(
+    rev(files),
+    2L,
+    strategy = "weighted",
+    weights = weights[rev(names(weights))]
+  )
+
+  expect_identical(
+    first,
+    list(
+      c("test-a.R", "test-d.R"),
+      c("test-b.R", "test-c.R")
+    )
+  )
+  expect_identical(second, first)
+  expect_setequal(unlist(first, use.names = FALSE), files)
+  expect_false(anyDuplicated(unlist(first, use.names = FALSE)) > 0L)
+  expect_identical(
+    test_plan_api$ci_test_shard_loads(first, weights),
+    c(13, 13)
+  )
+})
+
+test_that("weighted shard ties prefer filenames and lower shard numbers", {
+  files <- c("test-c.R", "test-b.R", "test-a.R")
+  weights <- c(`test-c.R` = 1, `test-b.R` = 5, `test-a.R` = 5)
+
+  assigned <- test_plan_api$ci_test_shards(
+    files,
+    2L,
+    strategy = "weighted",
+    weights = weights
+  )
+
+  expect_identical(
+    assigned,
+    list(c("test-a.R", "test-c.R"), "test-b.R")
+  )
+})
+
+test_that("round-robin remains the default and weighted inputs are complete", {
+  files <- paste0("test-", letters[1:4], ".R")
+
+  expect_identical(
+    test_plan_api$ci_test_shards(files, 2L),
+    list(c("test-a.R", "test-c.R"), c("test-b.R", "test-d.R"))
+  )
+  expect_error(
+    test_plan_api$ci_test_shards(
+      files,
+      2L,
+      strategy = "weighted",
+      weights = c(`test-a.R` = 1)
+    ),
+    "weight"
+  )
+  expect_error(
+    test_plan_api$ci_test_shards(files, 2L, strategy = "unknown"),
+    "strategy"
+  )
+})
+
 test_that("runtime weights validate records and fill new files by group", {
   plan <- list(
     all = c("test-a.R", "test-b.R", "test-c.R"),

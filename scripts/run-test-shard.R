@@ -220,22 +220,67 @@ ci_test_runtime_weights <- function(
   weights
 }
 
-ci_test_shards <- function(files, shards) {
+ci_test_shards <- function(
+  files,
+  shards,
+  strategy = "round-robin",
+  weights = NULL
+) {
   if (
     length(shards) != 1L || is.na(shards) || shards < 1L || shards %% 1L != 0L
   ) {
     stop("shards must be one positive integer", call. = FALSE)
   }
+  if (
+    length(strategy) != 1L ||
+      is.na(strategy) ||
+      !strategy %in% c("round-robin", "weighted")
+  ) {
+    stop("strategy must be round-robin or weighted", call. = FALSE)
+  }
   shards <- as.integer(shards)
   files <- sort(as.character(files))
   assignments <- vector("list", shards)
-  if (length(files)) {
+  if (!length(files)) {
+    return(assignments)
+  }
+  if (identical(strategy, "round-robin")) {
     shard_index <- ((seq_along(files) - 1L) %% shards) + 1L
     assignments <- lapply(seq_len(shards), function(index) {
       files[shard_index == index]
     })
+    return(assignments)
   }
-  assignments
+  if (
+    !is.numeric(weights) ||
+      is.null(names(weights)) ||
+      anyDuplicated(names(weights)) ||
+      any(!files %in% names(weights)) ||
+      anyNA(weights[files]) ||
+      any(!is.finite(weights[files])) ||
+      any(weights[files] <= 0)
+  ) {
+    stop(
+      "weighted strategy requires one finite positive weight per file",
+      call. = FALSE
+    )
+  }
+  ordered <- files[order(-unname(weights[files]), files)]
+  loads <- numeric(shards)
+  for (file in ordered) {
+    index <- which.min(loads)
+    assignments[[index]] <- c(assignments[[index]], file)
+    loads[[index]] <- loads[[index]] + unname(weights[[file]])
+  }
+  lapply(assignments, sort)
+}
+
+ci_test_shard_loads <- function(assignments, weights) {
+  vapply(
+    assignments,
+    function(files) sum(unname(weights[files])),
+    numeric(1)
+  )
 }
 
 ci_test_shard_files <- function(plan, group, shard = 1L, shards = 1L) {
