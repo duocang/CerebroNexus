@@ -375,6 +375,13 @@
 
   function eventControlId(event, data) {
     if (event && event.target && controlNameForId(event.target.id)) return event.target.id;
+    if (event && event.target && typeof event.target.closest === "function") {
+      var container = event.target.closest(".shiny-input-container, .form-group");
+      if (container) {
+        var candidate = container.querySelector("input[id], select[id]");
+        if (candidate && controlNameForId(candidate.id)) return candidate.id;
+      }
+    }
     if (event && typeof event.name === "string" && controlNameForId(event.name)) return event.name;
     if (event && event.detail && typeof event.detail.name === "string" && controlNameForId(event.detail.name)) {
       return event.detail.name;
@@ -1338,6 +1345,7 @@
     if (documentHandlersRegistered) return;
     document.addEventListener("input", handleControlEvent, true);
     document.addEventListener("change", handleControlEvent, true);
+    document.addEventListener("pointermove", handleControlEvent, true);
     document.addEventListener("shiny:inputchanged", handleControlEvent, true);
     document.addEventListener("shiny:connected", handleShinyLifecycle, true);
     document.addEventListener("shiny:sessioninitialized", handleShinyLifecycle, true);
