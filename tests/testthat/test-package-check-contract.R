@@ -17,7 +17,8 @@ test_that("development-only directories are excluded from package builds", {
     "^\\.loci$",
     "^\\.playwright-mcp$",
     "^\\.sisyphus$",
-    "^\\.superpowers$"
+    "^\\.superpowers$",
+    "^pkgdown-site$"
   )
 
   expect_true(all(expected %in% ignores))
