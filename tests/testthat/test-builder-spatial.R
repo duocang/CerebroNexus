@@ -418,6 +418,8 @@ test_that("dataset switches save discard or cancel an unsaved alignment", {
       alignment_preview(preview)
       session$flushReact()
       expect_false(alignment$has_unsaved())
+      loaded_image <- alignment$raw_image()
+      expect_false(is.null(loaded_image))
 
       alignment$request_dataset_switch("dataset-b", function() {
         switched <<- c(switched, "immediate")
@@ -426,15 +428,22 @@ test_that("dataset switches save discard or cancel an unsaved alignment", {
 
       session$setInputs(`enhance-img_dx` = 0)
       session$flushReact()
+      expect_false(alignment$has_unsaved())
+
+      alignment$raw_image(NULL)
       session$setInputs(`enhance-img_dx` = 2)
       session$flushReact()
       expect_true(alignment$has_unsaved())
+      expect_identical(alignment$draft()$dx, 2)
+      expect_false("outside" %in% names(alignment$draft()))
       alignment$request_dataset_switch("dataset-b", function() {
         switched <<- c(switched, "cancelled")
       })
       session$setInputs(`enhance-alignment_switch_cancel` = 1L)
       session$flushReact()
       expect_identical(switched, "immediate")
+      expect_true(alignment$has_unsaved())
+      expect_identical(alignment$draft()$dx, 2)
 
       alignment$request_dataset_switch("dataset-b", function() {
         switched <<- c(switched, "discarded")
@@ -443,10 +452,45 @@ test_that("dataset switches save discard or cancel an unsaved alignment", {
       session$flushReact()
       expect_identical(switched, c("immediate", "discarded"))
       expect_false(alignment$has_unsaved())
+      expect_true(alignment$draft()$saved)
+      expect_identical(alignment$draft()$dx, 0)
 
+      session$setInputs(`enhance-img_dx` = 0)
+      session$flushReact()
+      expect_false(alignment$has_unsaved())
+
+      session$setInputs(`enhance-img_rotate` = 90)
+      session$flushReact()
+      expect_true(alignment$has_unsaved())
+      expect_identical(alignment$draft()$rotation, 90)
+      alignment$request_dataset_switch("dataset-b", function() NULL)
+      session$setInputs(`enhance-alignment_switch_discard` = 2L)
+      session$flushReact()
+      session$setInputs(`enhance-img_rotate` = 0)
+      session$flushReact()
+      expect_false(alignment$has_unsaved())
+
+      session$setInputs(`enhance-image_flip_x` = TRUE)
+      session$flushReact()
+      expect_true(alignment$has_unsaved())
+      expect_true(alignment$draft()$flip_x)
+      alignment$request_dataset_switch("dataset-b", function() NULL)
+      session$setInputs(`enhance-alignment_switch_discard` = 3L)
+      session$flushReact()
+      session$setInputs(`enhance-image_flip_x` = FALSE)
+      session$flushReact()
+      expect_false(alignment$has_unsaved())
+
+      alignment$raw_image(loaded_image)
+      session$flushReact()
       session$setInputs(`enhance-img_dx` = 1)
       session$flushReact()
       expect_true(alignment$has_unsaved())
+      canonical <- alignment$current_record()
+      expect_identical(alignment$draft()$uri, canonical$uri)
+      expect_identical(alignment$draft()$bounds, canonical$bounds)
+      expect_identical(alignment$draft()$outside, canonical$outside)
+      expect_identical(alignment$draft()$total, canonical$total)
       alignment$request_dataset_switch("dataset-b", function() {
         switched <<- c(switched, "saved")
       })

@@ -937,20 +937,44 @@ builder_spatial_alignment_server <- function(
     if (is.null(current_draft) || !isTRUE(current_draft$saved)) {
       return(invisible(FALSE))
     }
-    next_record <- shiny::isolate(current_record())
-    if (is.null(next_record) || !is.null(next_record$error)) {
-      return(invisible(FALSE))
-    }
+    observed <- shiny::isolate(parameters())
     expected <- shiny::isolate(expected_controls())
     if (
       !is.null(expected) &&
         isTRUE(all.equal(
-          .builder_alignment_parameters(next_record),
+          observed,
           expected,
           check.attributes = FALSE
         ))
     ) {
       return(invisible(FALSE))
+    }
+    draft_parameters <- .builder_alignment_parameters(current_draft)
+    if (
+      isTRUE(all.equal(
+        observed,
+        draft_parameters,
+        check.attributes = FALSE
+      ))
+    ) {
+      return(invisible(FALSE))
+    }
+    next_record <- shiny::isolate(current_record())
+    if (!is.null(next_record) && !is.null(next_record$error)) {
+      return(invisible(FALSE))
+    }
+    if (is.null(next_record)) {
+      next_record <- current_draft
+      parameter_names <- names(builder_alignment_defaults())
+      next_record[parameter_names] <- observed[parameter_names]
+      oriented_bounds <- builder_alignment_oriented_bounds(
+        current_draft$base_bounds,
+        current_draft
+      )
+      next_record$bounds <- builder_alignment_transform_bounds(
+        oriented_bounds,
+        observed
+      )
     }
     expected_controls(NULL)
     baseline(current_draft)
