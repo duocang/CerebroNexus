@@ -378,6 +378,17 @@ test_that("enhancement groups and previews use one quiet density system", {
   expect_match(canvas_js, "ResizeObserver", fixed = TRUE)
   expect_match(canvas_js, "builder_spatial_canvas_scene", fixed = TRUE)
   expect_match(canvas_js, "requestAnimationFrame", fixed = TRUE)
+  expect_match(canvas_js, "activeRangeDrag", fixed = TRUE)
+  expect_match(canvas_js, "rangeValueAtPointer", fixed = TRUE)
+  expect_match(canvas_js, "event.getCoalescedEvents", fixed = TRUE)
+  expect_match(canvas_js, 'input.getAttribute("data-min")', fixed = TRUE)
+  expect_match(canvas_js, 'input.getAttribute("data-max")', fixed = TRUE)
+  expect_match(canvas_js, 'input.getAttribute("data-step")', fixed = TRUE)
+  expect_match(
+    canvas_js,
+    'document.addEventListener("pointermove", updateRangeDrag, true)',
+    fixed = TRUE
+  )
   rotate_at <- regexpr("context.rotate(-radians)", canvas_js, fixed = TRUE)[[
     1L
   ]]

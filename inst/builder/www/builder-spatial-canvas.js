@@ -7,6 +7,7 @@
   var documentHandlersRegistered = false;
   var jqueryHandlersRegistered = false;
   var observerStarted = false;
+  var activeRangeDrag = null;
 
   function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -451,6 +452,90 @@
     }
 
     return values;
+  }
+
+  function rangeInputForTarget(target) {
+    if (!target || typeof target.closest !== "function") return null;
+    var container = target.closest(".shiny-input-container, .form-group");
+    if (!container || !target.closest(".irs")) return null;
+    var inputs = container.querySelectorAll("input[id]");
+    var index;
+    for (index = 0; index < inputs.length; index += 1) {
+      if (controlNameForId(inputs[index].id)) return inputs[index];
+    }
+    return null;
+  }
+
+  function rangeValueAtPointer(input, track, event, fallback) {
+    var bounds = track.getBoundingClientRect();
+    if (!isFiniteNumber(bounds.width) || bounds.width <= 0) return fallback;
+    var samples = typeof event.getCoalescedEvents === "function"
+      ? event.getCoalescedEvents()
+      : [];
+    var sample = samples.length ? samples[samples.length - 1] : event;
+    var minimumAttribute = input.getAttribute("min") || input.getAttribute("data-min");
+    var maximumAttribute = input.getAttribute("max") || input.getAttribute("data-max");
+    var minimum = Number(minimumAttribute);
+    var maximum = Number(maximumAttribute);
+    if (!isFiniteNumber(minimum) || !isFiniteNumber(maximum) || maximum <= minimum) {
+      return fallback;
+    }
+    var ratio = clamp((sample.clientX - bounds.left) / bounds.width, 0, 1);
+    var value = minimum + ratio * (maximum - minimum);
+    var stepAttribute = input.getAttribute("step") || input.getAttribute("data-step");
+    var step = Number(stepAttribute);
+    if (isFiniteNumber(step) && step > 0) {
+      value = minimum + Math.round((value - minimum) / step) * step;
+    }
+    return value;
+  }
+
+  function beginRangeDrag(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    var input = rangeInputForTarget(event.target);
+    if (!input) return;
+    var container = input.closest(".shiny-input-container, .form-group");
+    var track = container ? container.querySelector(".irs-line") : null;
+    if (!track) return;
+    ensureInstance();
+    if (!currentInstance || !currentInstance.getControls()) return;
+    activeRangeDrag = {
+      input: input,
+      track: track,
+      pointerId: event.pointerId
+    };
+    updateRangeDrag(event);
+  }
+
+  function updateRangeDrag(event) {
+    if (!activeRangeDrag || !currentInstance) return;
+    if (
+      activeRangeDrag.pointerId !== undefined &&
+      event.pointerId !== undefined &&
+      event.pointerId !== activeRangeDrag.pointerId
+    ) {
+      return;
+    }
+    var controls = currentInstance.getControls();
+    if (!controls) return;
+    var name = controlNameForId(activeRangeDrag.input.id);
+    if (!name) return;
+    var patch = {};
+    var value = rangeValueAtPointer(
+      activeRangeDrag.input,
+      activeRangeDrag.track,
+      event,
+      controls[name]
+    );
+    if (name === "image_opacity" || name === "point_opacity") value /= 100;
+    patch[name] = value;
+    currentInstance.patchControls(patch);
+  }
+
+  function endRangeDrag(event) {
+    if (!activeRangeDrag) return;
+    updateRangeDrag(event);
+    activeRangeDrag = null;
   }
 
   function isCanvasConnected(canvas) {
@@ -1335,6 +1420,10 @@
     if (documentHandlersRegistered) return;
     document.addEventListener("input", handleControlEvent, true);
     document.addEventListener("change", handleControlEvent, true);
+    document.addEventListener("pointerdown", beginRangeDrag, true);
+    document.addEventListener("pointermove", updateRangeDrag, true);
+    document.addEventListener("pointerup", endRangeDrag, true);
+    document.addEventListener("pointercancel", endRangeDrag, true);
     document.addEventListener("shiny:inputchanged", handleControlEvent, true);
     document.addEventListener("shiny:connected", handleShinyLifecycle, true);
     document.addEventListener("shiny:sessioninitialized", handleShinyLifecycle, true);
