@@ -543,6 +543,10 @@
       body.appendChild(name);
       body.appendChild(status);
       row.appendChild(body);
+      var dot = document.createElement("span");
+      dot.className = "ds-state-dot";
+      dot.setAttribute("aria-hidden", "true");
+      row.appendChild(dot);
       if (
         entry !== activeClientImport &&
         !entry.serverId &&

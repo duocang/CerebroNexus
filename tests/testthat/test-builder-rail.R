@@ -566,7 +566,9 @@ if (builder_rail_api_available) {
     html <- as.character(builder_dataset_rail_ui(state, current = "a"))
 
     expect_match(html, "Dataset A", fixed = TRUE)
-    expect_match(html, "ds is-active", fixed = TRUE)
+    expect_match(html, "ds is-ready is-active", fixed = TRUE)
+    expect_match(html, 'data-load-state="ready"', fixed = TRUE)
+    expect_match(html, "ds-state-dot ds-ready-dot", fixed = TRUE)
     expect_match(html, 'aria-current="true"', fixed = TRUE)
     expect_match(html, "12 cells", fixed = TRUE)
     expect_match(html, "Ready", fixed = TRUE)

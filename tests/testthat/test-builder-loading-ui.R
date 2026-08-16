@@ -275,6 +275,7 @@ test_that("client scheduler serializes file and example dispatch", {
   expect_match(client, 'entry.state = "unknown"', fixed = TRUE)
   expect_match(client, "Waiting to restore the import state", fixed = TRUE)
   expect_match(client, 'getElementById("ds_client_import_queue")', fixed = TRUE)
+  expect_match(client, 'dot.className = "ds-state-dot"', fixed = TRUE)
   expect_match(client, "Uploading…", fixed = TRUE)
   expect_match(client, "Waiting · ", fixed = TRUE)
   expect_match(client, "Possible duplicate", fixed = TRUE)
