@@ -185,6 +185,17 @@ builder_import_active_ids <- function(queue) {
     .builder_import_or(character())
 }
 
+builder_import_focus_id <- function(queue) {
+  .builder_import_queue_assert(queue)
+  ids <- names(Filter(
+    function(entry) {
+      !entry$load_state %in% c("ready", "error", "cancelled")
+    },
+    queue$entries
+  ))
+  if (length(ids)) ids[[1L]] else NULL
+}
+
 builder_import_add <- function(queue, entry) {
   .builder_import_queue_assert(queue)
   if (!inherits(entry, "builder_import_entry")) {

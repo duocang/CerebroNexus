@@ -9,6 +9,120 @@ workflow <- reactiveVal(builder_workflow_state())
 workflow_manual_navigation <- reactiveVal(FALSE)
 selected_output <- reactiveVal(NULL)
 active_import_id <- reactiveVal(NULL)
+import_focus_id <- reactive(builder_import_focus_id(imports()))
+client_import_server_ids <- reactiveVal(character())
+released_client_imports <- reactiveVal(character())
+released_client_import_records <- reactiveVal(list())
+pending_client_import_dispatch <- reactiveVal(NULL)
+pending_client_upload <- reactiveVal(NULL)
+pending_client_upload_sequence <- reactiveVal(0L)
+external_import_active <- reactiveVal(NULL)
+
+client_import_id_for <- function(server_id) {
+  ids <- isolate(client_import_server_ids())
+  value <- if (builder_has_text(server_id) && server_id %in% names(ids)) {
+    unname(ids[[server_id]])
+  } else {
+    character()
+  }
+  if (length(value) == 1L && !is.na(value) && nzchar(value)) value else NULL
+}
+
+replay_existing_client_import <- function(client_id) {
+  if (!builder_has_text(client_id)) {
+    return(invisible(FALSE))
+  }
+  record <- isolate(released_client_import_records())[[client_id]]
+  if (is.list(record)) {
+    session$sendCustomMessage(
+      "builder_client_import_release",
+      list(
+        client_id = client_id,
+        server_id = record$server_id,
+        outcome = record$state,
+        message = record$message
+      )
+    )
+    return(invisible(TRUE))
+  }
+  ids <- isolate(client_import_server_ids())
+  server_ids <- names(ids)[unname(ids) == client_id]
+  if (!length(server_ids)) {
+    return(invisible(FALSE))
+  }
+  session$sendCustomMessage(
+    "builder_client_import_accepted",
+    list(
+      client_id = client_id,
+      server_id = server_ids[[1L]],
+      name = NULL,
+      kind = NULL
+    )
+  )
+  invisible(TRUE)
+}
+
+bind_client_import <- function(client_id, server_id, name, kind) {
+  if (
+    !builder_has_text(client_id) ||
+      !builder_has_text(server_id) ||
+      !builder_has_text(name) ||
+      !kind %in% c("file", "example")
+  ) {
+    return(invisible(FALSE))
+  }
+  ids <- isolate(client_import_server_ids())
+  ids[[server_id]] <- client_id
+  client_import_server_ids(ids)
+  session$sendCustomMessage(
+    "builder_client_import_accepted",
+    list(
+      client_id = client_id,
+      server_id = server_id,
+      name = name,
+      kind = kind
+    )
+  )
+  invisible(TRUE)
+}
+
+release_client_import <- function(
+  client_id,
+  server_id = NULL,
+  outcome,
+  message = NULL
+) {
+  if (
+    !builder_has_text(client_id) ||
+      !builder_has_text(outcome) ||
+      !outcome %in% c("ready", "error", "cancelled", "rejected")
+  ) {
+    return(invisible(FALSE))
+  }
+  released <- isolate(released_client_imports())
+  if (client_id %in% released) {
+    return(invisible(FALSE))
+  }
+  released_client_imports(c(released, client_id))
+  records <- isolate(released_client_import_records())
+  records[[client_id]] <- list(
+    client_id = client_id,
+    server_id = server_id,
+    state = outcome,
+    message = message
+  )
+  released_client_import_records(records)
+  session$sendCustomMessage(
+    "builder_client_import_release",
+    list(
+      client_id = client_id,
+      server_id = server_id,
+      outcome = outcome,
+      message = message
+    )
+  )
+  invisible(TRUE)
+}
 example_directory_sent <- reactiveVal(NULL)
 current_id <- reactiveVal(NULL)
 update_current_id <- function(value) {
@@ -318,6 +432,29 @@ set_import_state <- function(id, state, generation, error = NULL) {
     return(invisible(FALSE))
   }
   imports(updated)
+  if (state %in% c("ready", "error", "cancelled")) {
+    entry <- builder_import_find(updated, id)
+    client_id <- client_import_id_for(id)
+    release_message <- if (identical(state, "error")) entry$error else NULL
+    session$onFlushed(
+      function() {
+        release_client_import(
+          client_id,
+          server_id = id,
+          outcome = state,
+          message = release_message
+        )
+      },
+      once = TRUE
+    )
+    if (identical(isolate(external_import_active()), id)) {
+      external_import_active(NULL)
+      session$sendCustomMessage(
+        "builder_import_scheduler_state",
+        list(active = FALSE, server_id = id)
+      )
+    }
+  }
   invisible(TRUE)
 }
 forget_import <- function(id) {
@@ -344,6 +481,13 @@ release_pending_source <- function(payload, drop_import = TRUE) {
   pending_sources(builder_source_release(pending_sources(), key))
   id <- as.character(payload$id %||% character())
   if (length(id) == 1L && !is.na(id) && nzchar(id)) {
+    if (id %in% isolate(cancelled_loads())) {
+      release_client_import(
+        client_import_id_for(id),
+        server_id = id,
+        outcome = "cancelled"
+      )
+    }
     if (isTRUE(drop_import)) {
       forget_import(id)
     }

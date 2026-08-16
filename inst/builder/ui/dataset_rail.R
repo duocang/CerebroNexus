@@ -581,6 +581,7 @@ builder_import_rail_ui <- function(entries, current = NULL) {
       active <- identical(entry$id, current)
       failed <- identical(entry$load_state, "error")
       queued <- identical(entry$load_state, "queued")
+      running <- !failed && !queued
       importing <- !failed
       detail <- Filter(
         function(value) {
@@ -629,7 +630,7 @@ builder_import_rail_ui <- function(entries, current = NULL) {
             )
           )
         ),
-        if (failed || queued) {
+        if (failed || queued || running) {
           shiny::div(
             class = "ds-actions",
             if (failed) {
@@ -646,10 +647,18 @@ builder_import_rail_ui <- function(entries, current = NULL) {
               `data-import-id` = entry$id,
               `aria-label` = if (failed) {
                 paste("Remove failed import", entry$label)
+              } else if (running) {
+                paste("Cancel active import", entry$label)
               } else {
                 paste("Remove queued import", entry$label)
               },
-              if (failed) "Remove" else "Remove from queue"
+              if (failed) {
+                "Remove"
+              } else if (running) {
+                "Cancel"
+              } else {
+                "Remove from queue"
+              }
             )
           )
         }

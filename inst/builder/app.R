@@ -358,6 +358,12 @@ ui <- tagList(
         div(
           id = "ds_import_list",
           class = "shiny-html-output"
+        ),
+        div(
+          id = "ds_client_import_queue",
+          class = "builder-client-import-queue",
+          `aria-live` = "polite",
+          `aria-relevant` = "additions text"
         )
       ),
       div(
@@ -367,9 +373,8 @@ ui <- tagList(
           tags$input(
             id = "dataset_files",
             name = "dataset_files",
-            class = "shiny-input-file dataset-file-input builder-file-input",
+            class = "shiny-input-file builder-upload-transport",
             type = "file",
-            multiple = "multiple",
             accept = paste(
               paste0(
                 ".",
@@ -377,13 +382,12 @@ ui <- tagList(
               ),
               collapse = ","
             ),
-            `tabindex` = "-1"
+            hidden = "hidden"
           ),
-          tags$label(
-            `for` = "dataset_files",
+          tags$button(
+            id = "builder_add_datasets",
+            type = "button",
             class = "dataset-file-button builder-file-trigger",
-            `tabindex` = "0",
-            role = "button",
             icon_svg(ICON_PLUS),
             span("Add datasets…")
           )

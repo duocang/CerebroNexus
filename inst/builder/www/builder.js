@@ -50,6 +50,12 @@
   var spatialSectionHandlerRegistered = false;
   var desiredSpatialSection = null;
   var clientUploadSequence = 0;
+  var clientImportQueue = [];
+  var activeClientImport = null;
+  var uploadConnectionReady = true;
+  var importSyncPending = false;
+  var serverImportGate = false;
+  var clientImportHandlersRegistered = false;
   var viewerDisclosureState = new Map();
   var managerTransitionSequence = 0;
   var datasetMutationsLocked = false;
@@ -472,43 +478,297 @@
     workbench.replaceChildren(clientLoadingStage(label, status));
   }
 
-  function beginClientDatasetUpload(input) {
-    var files = Array.from(input.files || []);
-    var list = document.getElementById("ds_list");
-    var importList = document.getElementById("ds_import_list");
-    if (!files.length || !list || !importList) return;
-    var empty = list.querySelector(".rail-empty");
-    if (empty) empty.remove();
-    files.forEach(function (file, index) {
-      clientUploadSequence += 1;
-      var label = file && file.name ? file.name : "Selected dataset";
+  function setClientLoadingPaused(paused) {
+    var stage = document.querySelector(".builder-loading-stage.is-client");
+    if (!stage) return;
+    stage.classList.toggle("is-paused", paused);
+    var status = stage.querySelector(".builder-loading-status");
+    if (paused && status) status.textContent = "Connection lost. Waiting to reconnect…";
+  }
+
+  function openDatasetPicker() {
+    if (datasetMutationsLocked) return;
+    var picker = document.createElement("input");
+    picker.type = "file";
+    picker.multiple = true;
+    var transport = document.getElementById("dataset_files");
+    picker.accept = transport ? transport.accept : ".rds,.qs,.qs2";
+    picker.addEventListener("change", function () {
+      enqueueClientFiles(picker.files);
+    }, { once: true });
+    picker.click();
+  }
+
+  function clientQueueStatus(entry, index) {
+    if (entry.state === "paused") return "Connection lost · Waiting to restore the import state…";
+    if (entry.state === "unknown") return "Import state could not be restored";
+    if (entry.state === "dispatching" || entry.state === "uploading") return "Uploading…";
+    if (entry.state === "awaiting_accept") return "Waiting for the server…";
+    if (entry.state === "error" || entry.state === "rejected") {
+      return entry.error || "Could not start this import";
+    }
+    return "Waiting · " + String(index + 1) + " in queue" +
+      (entry.duplicateHint ? " · Possible duplicate" : "");
+  }
+
+  function applyClientImportQueueLock() {
+    var locked = clientImportQueue.length > 0;
+    document.querySelectorAll(".builder-retry-import").forEach(function (control) {
+      control.disabled = locked;
+      control.setAttribute("aria-disabled", locked ? "true" : "false");
+    });
+  }
+
+  function renderClientImportQueue() {
+    var container = document.getElementById("ds_client_import_queue");
+    if (!container) return;
+    container.replaceChildren();
+    clientImportQueue.forEach(function (entry, index) {
+      if (entry.serverId && entry === activeClientImport) return;
       var row = document.createElement("div");
-      row.className = "ds ds--import is-active is-importing ds--client-upload";
-      row.dataset.clientUpload = String(clientUploadSequence);
-      row.dataset.loadState = "uploading";
-      row.setAttribute("role", "status");
-      row.setAttribute("aria-current", "true");
-      row.setAttribute("aria-label", label + ". Uploading.");
+      row.className = "ds ds--import ds--client-upload";
+      row.dataset.clientImportId = entry.clientId;
+      row.dataset.loadState = entry.state;
       var body = document.createElement("span");
       body.className = "ds-body";
       var name = document.createElement("span");
       name.className = "nm";
-      name.textContent = label;
+      name.textContent = entry.name;
       var status = document.createElement("span");
-      status.className = "builder-import-status is-reading";
-      status.textContent = "Uploading…";
+      status.className = "builder-import-status";
+      status.textContent = clientQueueStatus(entry, index);
       body.appendChild(name);
       body.appendChild(status);
       row.appendChild(body);
-      importList.appendChild(row);
-      if (index === 0) {
-        showClientLoadingWorkbench(label, "Uploading the selected file…");
+      if (
+        entry !== activeClientImport &&
+        !entry.serverId &&
+        !["error", "rejected"].includes(entry.state)
+      ) {
+        var cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "btn btn-remove-soft builder-cancel-client-import";
+        cancel.dataset.clientImportId = entry.clientId;
+        cancel.setAttribute("aria-label", "Cancel queued import " + entry.name);
+        cancel.textContent = "Cancel";
+        row.appendChild(cancel);
       }
+      container.appendChild(row);
     });
-    scheduleStatusAnnouncement(
-      files.length === 1 ? "Uploading selected dataset." :
-        "Uploading " + files.length + " selected datasets."
-    );
+    applyClientImportQueueLock();
+  }
+
+  function failClientDispatch(entry, message) {
+    entry.state = "error";
+    entry.outcome = "error";
+    entry.error = message;
+    renderClientImportQueue();
+    scheduleStatusAnnouncement(entry.name + ". " + message);
+    clientImportQueue.shift();
+    activeClientImport = null;
+    dispatchNextClientImport();
+  }
+
+  function dispatchFileImport(entry) {
+    var transport = document.getElementById("dataset_files");
+    if (!transport) {
+      failClientDispatch(entry, "The upload transport is unavailable.");
+      return;
+    }
+    entry.state = "dispatching";
+    try {
+      var transfer = new DataTransfer();
+      transfer.items.add(entry.file);
+      transport.files = transfer.files;
+    } catch (error) {
+      failClientDispatch(entry, "This browser could not prepare the upload.");
+      return;
+    }
+    if (
+      !transport.files ||
+      transport.files.length !== 1 ||
+      transport.files[0].name !== entry.file.name ||
+      transport.files[0].size !== entry.file.size
+    ) {
+      failClientDispatch(entry, "This browser could not prepare the selected file.");
+      return;
+    }
+    send("builder_client_import_dispatch", {
+      client_id: entry.clientId,
+      name: entry.name,
+      size: entry.size,
+      nonce: Date.now(),
+    });
+    entry.state = "uploading";
+    renderClientImportQueue();
+    showClientLoadingWorkbench(entry.name, "Uploading selected file…");
+    transport.dispatchEvent(new Event("change", { bubbles: true }));
+    entry.state = "awaiting_accept";
+  }
+
+  function dispatchExampleImport(entry) {
+    entry.state = "awaiting_accept";
+    renderClientImportQueue();
+    send("builder_import_example", {
+      example: entry.exampleId,
+      client_id: entry.clientId,
+      nonce: Date.now(),
+    });
+  }
+
+  function dispatchNextClientImport() {
+    if (!uploadConnectionReady) return;
+    if (importSyncPending) return;
+    if (serverImportGate) return;
+    if (activeClientImport) return;
+    if (!clientImportQueue.length) return;
+    activeClientImport = clientImportQueue[0];
+    if (activeClientImport.kind === "file") dispatchFileImport(activeClientImport);
+    else dispatchExampleImport(activeClientImport);
+  }
+
+  function enqueueClientFiles(fileList) {
+    var files = Array.from(fileList || []);
+    files.forEach(function (file) {
+      var duplicateHint = clientImportQueue.some(function (queued) {
+        return queued.kind === "file" &&
+          queued.name === file.name &&
+          queued.size === file.size &&
+          queued.lastModified === file.lastModified;
+      });
+      clientUploadSequence += 1;
+      clientImportQueue.push({
+        clientId: "client-import-" + clientUploadSequence,
+        kind: "file",
+        file: file,
+        name: file.name,
+        size: file.size,
+        lastModified: file.lastModified,
+        exampleId: null,
+        serverId: null,
+        state: "queued",
+        outcome: null,
+        error: null,
+        duplicateHint: duplicateHint,
+      });
+    });
+    if (!files.length) return;
+    renderClientImportQueue();
+    if (narrowManager.matches) closeDatasetManager();
+    dispatchNextClientImport();
+  }
+
+  function enqueueExample(example) {
+    clientUploadSequence += 1;
+    clientImportQueue.push({
+      clientId: "client-import-" + clientUploadSequence,
+      kind: "example",
+      file: null,
+      name: example.name,
+      size: null,
+      lastModified: null,
+      exampleId: example.exampleId,
+      serverId: null,
+      state: "queued",
+      outcome: null,
+      error: null,
+    });
+    renderClientImportQueue();
+    if (narrowManager.matches) closeDatasetManager();
+    dispatchNextClientImport();
+  }
+
+  function cancelClientImport(clientId) {
+    var index = clientImportQueue.findIndex(function (entry) {
+      return entry.clientId === clientId;
+    });
+    if (index < 0) return;
+    var entry = clientImportQueue[index];
+    if (entry === activeClientImport) {
+      if (!entry.serverId) return;
+      send("cancel_pending_upload", { id: entry.serverId, nonce: Date.now() });
+      return;
+    }
+    clientImportQueue.splice(index, 1);
+    renderClientImportQueue();
+  }
+
+  function handleClientImportAccepted(message) {
+    if (!activeClientImport || !message || message.client_id !== activeClientImport.clientId) return;
+    activeClientImport.serverId = message.server_id || null;
+    activeClientImport.state = "reading";
+    renderClientImportQueue();
+  }
+
+  function handleClientImportRelease(message) {
+    if (!activeClientImport || !message) return;
+    var anonymousMatch = !message.client_id &&
+      activeClientImport.kind === "file" &&
+      message.name === activeClientImport.name &&
+      (message.size == null || Number(message.size) === activeClientImport.size);
+    if (!anonymousMatch && message.client_id !== activeClientImport.clientId) return;
+    if (activeClientImport.serverId && message.server_id && message.server_id !== activeClientImport.serverId) return;
+    activeClientImport.outcome = message.outcome;
+    activeClientImport.error = message.message || null;
+    if (["error", "rejected"].includes(message.outcome)) {
+      scheduleStatusAnnouncement(
+        activeClientImport.name + ". " +
+          (activeClientImport.error || "The import could not be completed.")
+      );
+    }
+    clientImportQueue.shift();
+    activeClientImport = null;
+    renderClientImportQueue();
+    dispatchNextClientImport();
+  }
+
+  function handleClientImportSync(message) {
+    var records = Array.isArray(message && message.imports) ? message.imports : [];
+    serverImportGate = Boolean(message && message.server_busy);
+    if (!activeClientImport) {
+      importSyncPending = false;
+      dispatchNextClientImport();
+      return;
+    }
+    var entry = activeClientImport;
+    var record = records.find(function (item) {
+      return item && item.client_id === entry.clientId;
+    });
+    if (!record) {
+      if (!entry.serverId && ["uploading", "awaiting_accept", "paused"].includes(entry.state)) {
+        entry.serverId = null;
+        entry.state = "queued";
+        activeClientImport = null;
+        importSyncPending = false;
+        renderClientImportQueue();
+        dispatchNextClientImport();
+        return;
+      }
+      entry.state = "unknown";
+      entry.error = "The server could not match this import after reconnecting.";
+      renderClientImportQueue();
+      return;
+    }
+    if (entry.serverId && record.server_id !== entry.serverId) {
+      entry.state = "unknown";
+      entry.error = "The restored import identity did not match.";
+      renderClientImportQueue();
+      return;
+    }
+    entry.serverId = record.server_id || entry.serverId;
+    if (["ready", "error", "cancelled", "rejected"].includes(record.state)) {
+      importSyncPending = false;
+      handleClientImportRelease({
+        client_id: entry.clientId,
+        server_id: entry.serverId,
+        outcome: record.state,
+        message: record.message || null,
+      });
+      return;
+    }
+    entry.state = record.state || entry.stateBeforePause || "unknown";
+    importSyncPending = false;
+    renderClientImportQueue();
   }
 
   function updateDialogLock() {
@@ -1926,6 +2186,7 @@
       }
     }
     applyDatasetMutationLock();
+    applyClientImportQueueLock();
     document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
     document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
     document.querySelectorAll("select[multiple]").forEach(enhanceMultiSelect);
@@ -2098,6 +2359,7 @@
     if (retryImport) {
       event.preventDefault();
       event.stopPropagation();
+      if (clientImportQueue.length) return;
       send("retry_import", {
         id: retryImport.dataset.importId,
         nonce: Date.now(),
@@ -2113,6 +2375,17 @@
         id: removeImport.dataset.importId,
         nonce: Date.now(),
       });
+      return;
+    }
+
+    var cancelClientImportButton = target.closest(".builder-cancel-client-import");
+    if (cancelClientImportButton) {
+      cancelClientImport(cancelClientImportButton.dataset.clientImportId);
+      return;
+    }
+
+    if (target.closest("#builder_add_datasets")) {
+      openDatasetPicker();
       return;
     }
 
@@ -2132,11 +2405,10 @@
     }
     var example = target.closest(".example-btn");
     if (example) {
-      showClientLoadingWorkbench(
-        example.dataset.label || "Selected example",
-        "Waiting to load…"
-      );
-      send("use_example", example.dataset.ex);
+      enqueueExample({
+        exampleId: example.dataset.ex,
+        name: example.dataset.label || "Selected example",
+      });
     }
   });
 
@@ -2151,13 +2423,7 @@
       (event.key === "Enter" || event.key === " ")
     ) {
       event.preventDefault();
-      var fileInput = document.getElementById(fileTrigger.getAttribute("for"));
-      if (fileInput) {
-        if (fileTrigger.classList.contains("enhance-tissue-file-button")) {
-          fileInput.value = "";
-        }
-        fileInput.click();
-      }
+      if (fileTrigger.id === "builder_add_datasets") openDatasetPicker();
       return;
     }
     var enhanceCheckbox = event.target.closest(".enhance-module-checkbox");
@@ -2180,8 +2446,7 @@
       }
       if (modifier && event.code === "KeyO") {
         event.preventDefault();
-        var add = document.getElementById("dataset_files");
-        if (add) add.click();
+        openDatasetPicker();
         return;
       }
       if (modifier && event.code === "KeyZ") {
@@ -2237,10 +2502,7 @@
       });
       return;
     }
-    if (event.target.matches("#dataset_files")) {
-      beginClientDatasetUpload(event.target);
-      return;
-    }
+    if (event.target.matches("#dataset_files")) return;
     if (event.target.matches(".viewer-group-include")) {
       updateViewerGroupSelection(
         event.target.closest(".viewer-group-workspace"),
@@ -2392,6 +2654,30 @@
     buildDialogHandlerRegistered = true;
   }
 
+  function registerClientImportHandlers() {
+    if (clientImportHandlersRegistered || !window.Shiny) return;
+    window.Shiny.addCustomMessageHandler(
+      "builder_client_import_accepted",
+      handleClientImportAccepted
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_client_import_release",
+      handleClientImportRelease
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_import_sync",
+      handleClientImportSync
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_import_scheduler_state",
+      function (message) {
+        serverImportGate = Boolean(message && message.active);
+        if (!serverImportGate) dispatchNextClientImport();
+      }
+    );
+    clientImportHandlersRegistered = true;
+  }
+
   function registerViewerGroupHandler() {
     if (viewerGroupHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler(
@@ -2437,18 +2723,37 @@
     }
   }
 
-  document.addEventListener("shiny:connected", function () {
+  function requestClientImportSync() {
+    uploadConnectionReady = true;
+    importSyncPending = true;
     registerExampleMessageHandler();
     registerBuildDialogHandler();
+    registerClientImportHandlers();
     registerViewerGroupHandler();
     registerViewerContentHandlers();
+    send("builder_import_sync_request", { nonce: Date.now() });
     if (document.body) enhanceDynamicContent();
+  }
+
+  document.addEventListener("shiny:connected", function () {
+    setClientLoadingPaused(false);
+    requestClientImportSync();
+  });
+  document.addEventListener("shiny:disconnected", function () {
+    uploadConnectionReady = false;
+    importSyncPending = true;
+    clientImportQueue.forEach(function (entry) {
+      entry.stateBeforePause = entry.state;
+      entry.state = "paused";
+    });
+    setClientLoadingPaused(true);
+    renderClientImportQueue();
+    scheduleStatusAnnouncement(
+      "Connection lost. Waiting to restore the import state."
+    );
   });
   document.addEventListener("shiny:sessioninitialized", function () {
-    registerExampleMessageHandler();
-    registerBuildDialogHandler();
-    registerViewerGroupHandler();
-    registerViewerContentHandlers();
+    requestClientImportSync();
   });
   document.addEventListener("shiny:conditional", function () {
     window.requestAnimationFrame(syncSpatialAlignmentScrollbars);
@@ -2456,8 +2761,25 @@
   function initializeBuilder() {
     registerExampleMessageHandler();
     registerBuildDialogHandler();
+    registerClientImportHandlers();
     registerViewerGroupHandler();
     registerViewerContentHandlers();
+
+    var datasetTrigger = document.getElementById("builder_add_datasets");
+    if (datasetTrigger) {
+      datasetTrigger.addEventListener("dragover", function (event) {
+        event.preventDefault();
+        datasetTrigger.classList.add("is-drag-over");
+      });
+      datasetTrigger.addEventListener("dragleave", function () {
+        datasetTrigger.classList.remove("is-drag-over");
+      });
+      datasetTrigger.addEventListener("drop", function (event) {
+        event.preventDefault();
+        datasetTrigger.classList.remove("is-drag-over");
+        enqueueClientFiles(event.dataTransfer && event.dataTransfer.files);
+      });
+    }
 
     new MutationObserver(enhanceDynamicContent).observe(document.documentElement, {
       childList: true,

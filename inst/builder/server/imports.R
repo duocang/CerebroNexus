@@ -30,17 +30,35 @@ observe({
   )
 })
 
-start_load <- function(kind, arg, label, file_meta = NULL) {
+start_load <- function(kind, arg, label, file_meta = NULL, client_id = NULL) {
+  if (isTRUE(replay_existing_client_import(client_id))) {
+    return(invisible(FALSE))
+  }
   if (dataset_mutations_locked()) {
+    release_client_import(
+      client_id,
+      outcome = "rejected",
+      message = "Dataset changes are locked while the active build finishes."
+    )
     return(invisible(FALSE))
   }
   rs <- worker()
   if (is.null(rs)) {
     add_error("The background worker is not ready yet.")
-    return()
+    release_client_import(
+      client_id,
+      outcome = "rejected",
+      message = "The background worker is not ready yet."
+    )
+    return(invisible(FALSE))
   }
   reservation <- builder_source_reserve(sets(), pending_sources(), kind, arg)
   if (!isTRUE(reservation$ok)) {
+    release_client_import(
+      client_id,
+      outcome = "rejected",
+      message = "This dataset has already been added or is already waiting."
+    )
     return(invisible(FALSE))
   }
   pending_sources(reservation$pending)
@@ -108,6 +126,9 @@ start_load <- function(kind, arg, label, file_meta = NULL) {
   )
   imports(builder_import_add(isolate(imports()), pending_entry))
   active_import_id(id)
+  if (builder_has_text(client_id)) {
+    bind_client_import(client_id, id, filename %||% label, kind)
+  }
   queued <- enqueue(list(
     kind = "load",
     source = kind,
@@ -129,62 +150,242 @@ start_load <- function(kind, arg, label, file_meta = NULL) {
     pending_uploads(uploads)
     forget_import(id)
     builder_import_progress_remove(progress_path %||% "")
+    release_client_import(
+      client_id,
+      server_id = id,
+      outcome = "error",
+      message = "The background worker is not ready yet."
+    )
   }
   invisible(isTRUE(queued))
 }
 
-observeEvent(input$dataset_files, {
-  uploads <- input$dataset_files
+process_client_import_upload <- function(uploads, dispatch) {
+  pending_client_id <- if (is.list(dispatch)) dispatch$client_id else NULL
   if (
     !is.data.frame(uploads) ||
-      !all(c("name", "datapath") %in% names(uploads)) ||
-      !nrow(uploads)
+      nrow(uploads) != 1L ||
+      !all(c("name", "datapath") %in% names(uploads))
   ) {
+    release_client_import(
+      pending_client_id,
+      outcome = "rejected",
+      message = "Expected exactly one uploaded file."
+    )
     return()
   }
-  paths <- as.character(uploads$datapath)
-  labels <- as.character(uploads$name)
-  sizes <- if ("size" %in% names(uploads)) {
-    suppressWarnings(as.numeric(uploads$size))
+  path <- as.character(uploads$datapath[[1L]])
+  label <- as.character(uploads$name[[1L]])
+  size <- if ("size" %in% names(uploads)) {
+    suppressWarnings(as.numeric(uploads$size[[1L]]))
   } else {
-    rep(NA_real_, nrow(uploads))
+    NA_real_
   }
-  types <- if ("type" %in% names(uploads)) {
-    as.character(uploads$type)
+  type <- if ("type" %in% names(uploads)) {
+    as.character(uploads$type[[1L]])
   } else {
-    rep("", nrow(uploads))
+    ""
   }
-  valid <- !is.na(paths) & nzchar(paths) & !is.na(labels) & nzchar(labels)
-  paths <- paths[valid]
-  labels <- labels[valid]
-  sizes <- sizes[valid]
-  types <- types[valid]
-  duplicate <- duplicated(paths) |
-    paths %in%
-      vapply(
-        sets(),
-        function(entry) entry$path,
-        character(1)
+  metadata_matches <- is.list(dispatch) &&
+    builder_has_text(pending_client_id) &&
+    identical(dispatch$name, label) &&
+    (is.na(dispatch$size) ||
+      is.na(size) ||
+      identical(as.numeric(dispatch$size), as.numeric(size)))
+  if (
+    !metadata_matches || !builder_has_text(path) || !builder_has_text(label)
+  ) {
+    release_client_import(
+      pending_client_id,
+      outcome = "rejected",
+      message = "The uploaded file did not match its dispatch metadata."
+    )
+    return()
+  }
+  supported_extensions <- unique(tolower(unlist(lapply(
+    builder_formats,
+    `[[`,
+    "extensions"
+  ))))
+  if (!tolower(tools::file_ext(label)) %in% supported_extensions) {
+    release_client_import(
+      pending_client_id,
+      outcome = "rejected",
+      message = "This file format is not supported."
+    )
+    return()
+  }
+  start_load(
+    "file",
+    path,
+    tools::file_path_sans_ext(basename(label)),
+    file_meta = list(name = label, type = type, size = size),
+    client_id = pending_client_id
+  )
+  invisible(TRUE)
+}
+
+consume_client_import_upload <- function() {
+  dispatch <- isolate(pending_client_import_dispatch())
+  upload <- isolate(pending_client_upload())
+  if (is.null(dispatch) || is.null(upload)) {
+    return(invisible(FALSE))
+  }
+  pending_client_import_dispatch(NULL)
+  pending_client_upload(NULL)
+  process_client_import_upload(upload$files, dispatch)
+}
+
+expire_pending_client_upload <- function(token) {
+  upload <- isolate(pending_client_upload())
+  dispatch <- isolate(pending_client_import_dispatch())
+  if (
+    is.null(upload) ||
+      !identical(upload$token, token) ||
+      !is.null(dispatch)
+  ) {
+    return(invisible(FALSE))
+  }
+  files <- upload$files
+  pending_client_upload(NULL)
+  name <- if (is.data.frame(files) && nrow(files) == 1L) {
+    as.character(files$name[[1L]])
+  } else {
+    NULL
+  }
+  size <- if (
+    is.data.frame(files) &&
+      nrow(files) == 1L &&
+      "size" %in% names(files)
+  ) {
+    suppressWarnings(as.numeric(files$size[[1L]]))
+  } else {
+    NA_real_
+  }
+  session$sendCustomMessage(
+    "builder_client_import_release",
+    list(
+      client_id = NULL,
+      server_id = NULL,
+      outcome = "rejected",
+      message = "The upload metadata was not received in time.",
+      name = name,
+      size = size
+    )
+  )
+  invisible(TRUE)
+}
+
+observeEvent(input$builder_client_import_dispatch, {
+  event <- input$builder_client_import_dispatch
+  if (!is.list(event) || is.object(event)) {
+    pending_client_import_dispatch(NULL)
+    return()
+  }
+  pending_client_import_dispatch(list(
+    client_id = event$client_id %||% NULL,
+    name = event$name %||% NULL,
+    size = suppressWarnings(as.numeric(event$size %||% NA_real_)[1L]),
+    token = event$nonce %||% NULL
+  ))
+  consume_client_import_upload()
+  token <- event$nonce %||% NULL
+  later::later(
+    function() {
+      dispatch <- isolate(pending_client_import_dispatch())
+      if (is.null(dispatch) || !identical(dispatch$token, token)) {
+        return()
+      }
+      pending_client_import_dispatch(NULL)
+      release_client_import(
+        dispatch$client_id,
+        outcome = "rejected",
+        message = "The file upload was not received in time."
       )
-  for (i in which(!duplicate)) {
-    start_load(
-      "file",
-      paths[[i]],
-      tools::file_path_sans_ext(basename(labels[[i]])),
-      file_meta = list(
-        name = labels[[i]],
-        type = types[[i]],
-        size = sizes[[i]]
-      )
+    },
+    delay = 30
+  )
+})
+
+observeEvent(input$dataset_files, {
+  token <- isolate(pending_client_upload_sequence()) + 1L
+  pending_client_upload_sequence(token)
+  pending_client_upload(list(
+    files = input$dataset_files,
+    received = Sys.time(),
+    token = token
+  ))
+  consume_client_import_upload()
+  later::later(
+    function() expire_pending_client_upload(token),
+    delay = 30
+  )
+})
+
+observeEvent(input$builder_import_example, {
+  event <- input$builder_import_example
+  client_id <- if (is.list(event) && !is.object(event)) {
+    event$client_id
+  } else {
+    NULL
+  }
+  example_id <- if (is.list(event) && !is.object(event)) event$example else NULL
+  ex <- Filter(
+    function(e) identical(e$id, example_id),
+    builder_examples()
+  )
+  if (!builder_has_text(client_id) || !length(ex)) {
+    release_client_import(
+      client_id,
+      outcome = "rejected",
+      message = "The selected example is unavailable."
+    )
+    return()
+  }
+  start_load(
+    "example",
+    ex[[1L]]$id,
+    ex[[1L]]$label,
+    client_id = client_id
+  )
+})
+
+observeEvent(input$builder_import_sync_request, {
+  ids <- isolate(client_import_server_ids())
+  queue <- isolate(imports())
+  active <- lapply(names(ids), function(server_id) {
+    entry <- builder_import_find(queue, server_id)
+    if (is.null(entry)) {
+      return(NULL)
+    }
+    list(
+      client_id = unname(ids[[server_id]]),
+      server_id = server_id,
+      state = entry$load_state,
+      message = entry$error
+    )
+  })
+  active <- Filter(Negate(is.null), active)
+  terminal <- unname(isolate(released_client_import_records()))
+  dispatch <- isolate(pending_client_import_dispatch())
+  if (is.list(dispatch) && builder_has_text(dispatch$client_id)) {
+    active <- c(
+      active,
+      list(list(
+        client_id = dispatch$client_id,
+        server_id = NULL,
+        state = "uploading",
+        message = NULL
+      ))
     )
   }
-  if (any(duplicate)) {
-    add_error(paste0(
-      sum(duplicate),
-      if (sum(duplicate) == 1L) " file has" else " files have",
-      " already been added."
-    ))
-  }
+  session$sendCustomMessage(
+    "builder_import_sync",
+    list(
+      imports = unname(c(active, terminal)),
+      server_busy = builder_has_text(isolate(external_import_active()))
+    )
+  )
 })
 
 observeEvent(input$use_example, {
@@ -265,6 +466,11 @@ remove_pending_import <- function(id) {
   }
   protocol(forgotten$protocol)
   invisible(lapply(removed, function(request) {
+    release_client_import(
+      client_import_id_for(request$payload$id),
+      server_id = request$payload$id,
+      outcome = "cancelled"
+    )
     release_pending_source(request$payload)
   }))
   invisible(TRUE)
@@ -346,6 +552,11 @@ observeEvent(input$retry_import, {
   }
   imports(next_queue)
   active_import_id(id)
+  external_import_active(id)
+  session$sendCustomMessage(
+    "builder_import_scheduler_state",
+    list(active = TRUE, server_id = id)
+  )
   cancelled_loads(setdiff(cancelled_loads(), id))
   queued <- enqueue(list(
     kind = "load",
@@ -359,6 +570,11 @@ observeEvent(input$retry_import, {
     note = paste0("Loading ", entry$label, "…")
   ))
   if (!isTRUE(queued)) {
+    external_import_active(NULL)
+    session$sendCustomMessage(
+      "builder_import_scheduler_state",
+      list(active = FALSE, server_id = id)
+    )
     set_import_state(
       id,
       "error",
@@ -734,6 +950,14 @@ observe({
   protocol(completed$protocol)
   busy_note(NULL)
   if (!isTRUE(completed$accepted)) {
+    if (identical(p$kind, "load")) {
+      release_client_import(
+        client_import_id_for(p$id),
+        server_id = p$id,
+        outcome = "error",
+        message = "A stale dataset import result was rejected."
+      )
+    }
     release_pending_source(p)
     if (isTRUE(request$persistent)) {
       protocol(builder_protocol_acknowledge(
@@ -951,7 +1175,7 @@ observe({
     )
     store(next_state)
     protocol(builder_protocol_dataset(
-      protocol(),
+      isolate(protocol()),
       p$id,
       entry$revision,
       .builder_worker_identity(entry$snapshot)

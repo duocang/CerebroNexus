@@ -1,5 +1,5 @@
 output$workflow_progress <- renderUI({
-  if (!is.null(active_import_id())) {
+  if (!is.null(import_focus_id())) {
     return(NULL)
   }
   builder_workflow_progress_ui(
@@ -57,7 +57,7 @@ observeEvent(input$workflow_stage_build, {
 })
 
 output$workbench <- renderUI({
-  loading_id <- active_import_id()
+  loading_id <- import_focus_id()
   loading_entry <- if (is.null(loading_id)) {
     NULL
   } else {

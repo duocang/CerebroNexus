@@ -885,6 +885,14 @@
   display: grid;
   gap: .4rem;
 }
+.builder-client-import-queue {
+  display: grid;
+  gap: .4rem;
+}
+.builder-file-trigger.is-drag-over {
+  outline: 3px solid var(--c-amber-50);
+  outline-offset: 2px;
+}
 .ds--client-upload {
   min-height: 4.6rem;
   padding: .85rem 1rem;
@@ -974,6 +982,10 @@
   border-radius: inherit;
   background: var(--builder-action);
   animation: builder-loading-sweep 1.4s ease-in-out infinite alternate;
+}
+
+.builder-loading-stage.is-paused .builder-loading-progress > span {
+  animation: none;
 }
 .builder-loading-actions {
   margin-top: 1.1rem;
