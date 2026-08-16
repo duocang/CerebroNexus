@@ -560,6 +560,78 @@ test_that("CRB read-back matches exact frozen artifact identity", {
   expect_error(builder_verify_crb(crb, item), "cell identity")
 })
 
+test_that("CRB read-back accepts transform provenance despite inverse rounding", {
+  crb <- tempfile(fileext = ".crb")
+  on.exit(unlink(crb), add = TRUE)
+  source_coordinates <- data.frame(
+    x = c(3243.684326171875, 3443.931640625),
+    y = c(4736.96875, 5265.10546875),
+    row.names = c("cell-b", "cell-a")
+  )
+  spec <- list(rotation_degrees = 37.5, scale = 1)
+  transform <- .spx_coordinate_transform_normalize(spec, source_coordinates)
+  coordinates <- .spx_apply_coordinate_transform(source_coordinates, spec)
+  transform$source_coordinate_fingerprint <-
+    .spx_coordinate_transform_fingerprint(source_coordinates)
+  transform$transformed_coordinate_fingerprint <-
+    .spx_coordinate_transform_fingerprint(coordinates)
+
+  expect_false(identical(
+    .spx_coordinate_transform_fingerprint(
+      .spx_invert_coordinate_transform(coordinates, transform)
+    ),
+    transform$source_coordinate_fingerprint
+  ))
+
+  object <- new.env(parent = emptyenv())
+  object$expression <- matrix(
+    seq_len(4L),
+    nrow = 2L,
+    dimnames = list(c("Gene2", "Gene1"), c("cell-b", "cell-a"))
+  )
+  object$groups <- list(cluster = c("B", "A"))
+  object$meta_data <- data.frame(
+    cell_barcode = c("cell-b", "cell-a"),
+    cluster = c("B", "A"),
+    row.names = c("cell-b", "cell-a")
+  )
+  object$projections <- list(
+    umap = data.frame(
+      x = c(1, 2),
+      y = c(3, 4),
+      row.names = c("cell-b", "cell-a")
+    )
+  )
+  object$expression_backend <- list(type = "embedded", location = NULL)
+  for (field in c(
+    "marker_genes",
+    "most_expressed_genes",
+    "enriched_pathways",
+    "extra_material",
+    "immune_repertoire",
+    "trajectories"
+  )) {
+    object[[field]] <- list()
+  }
+  object$spatial <- list(
+    `fov.2` = list(
+      coordinates = coordinates,
+      coordinate_transform = transform
+    )
+  )
+  object$trekker <- NULL
+  object$hla_typing <- NULL
+  class(object) <- c("Cerebro_v1.3", "R6")
+  saveRDS(object, crb)
+
+  item <- builder_build_test_plan()$items[[1L]]
+  item$artifact_identity$spatial_sections <- "fov.2"
+  item$spatial_coordinate_transforms <- list(`fov.2` = spec)
+  item$viewer_page_expectations$visible_conditional <- "spatial"
+
+  expect_true(builder_verify_crb(crb, item)$valid)
+})
+
 test_that("Spatial and Trekker alignments persist without upload paths", {
   crb_path <- tempfile(fileext = ".crb")
   on.exit(unlink(crb_path), add = TRUE)

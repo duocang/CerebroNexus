@@ -338,12 +338,19 @@ builder_verify_crb <- function(path, item) {
       .spx_coordinate_transform_fingerprint(coordinates),
       error = function(error) NULL
     )
-    source_fingerprint <- tryCatch(
-      .spx_coordinate_transform_fingerprint(
-        .spx_invert_coordinate_transform(coordinates, observed_transform)
-      ),
-      error = function(error) NULL
-    )
+    # A floating-point rotation is not losslessly invertible, so hashing the
+    # inverse can reject an otherwise exact staged export. The source hash is
+    # provenance; staged integrity is bound to the actual transformed values
+    # below, while the frozen plan still binds the rotation and scale.
+    valid_source_fingerprint <-
+      is.character(observed_transform$source_coordinate_fingerprint) &&
+      !is.object(observed_transform$source_coordinate_fingerprint) &&
+      length(observed_transform$source_coordinate_fingerprint) == 1L &&
+      !is.na(observed_transform$source_coordinate_fingerprint) &&
+      grepl(
+        "^[0-9a-f]{32}$",
+        observed_transform$source_coordinate_fingerprint
+      )
     if (
       !is.list(observed_transform) ||
         !identical(observed_transform$schema_version, 1L) ||
@@ -365,10 +372,7 @@ builder_verify_crb <- function(path, item) {
           observed_transform$transformed_coordinate_fingerprint,
           observed_fingerprint
         ) ||
-        !identical(
-          observed_transform$source_coordinate_fingerprint,
-          source_fingerprint
-        )
+        !isTRUE(valid_source_fingerprint)
     ) {
       stop(
         "The staged CRB spatial coordinate transform differs from BuildPlan: ",
