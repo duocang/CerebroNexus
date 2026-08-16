@@ -51,6 +51,7 @@
   var desiredSpatialSection = null;
   var clientUploadSequence = 0;
   var clientImportQueue = [];
+  var clientImportFailures = [];
   var activeClientImport = null;
   var uploadConnectionReady = true;
   var importSyncPending = false;
@@ -502,6 +503,8 @@
   function clientQueueStatus(entry, index) {
     if (entry.state === "paused") return "Connection lost · Waiting to restore the import state…";
     if (entry.state === "unknown") return "Import state could not be restored";
+    if (entry.state === "awaiting_dispatch") return "Preparing upload…";
+    if (entry.state === "awaiting_upload") return "Waiting to upload…";
     if (entry.state === "dispatching" || entry.state === "uploading") return "Uploading…";
     if (entry.state === "awaiting_accept") return "Waiting for the server…";
     if (entry.state === "error" || entry.state === "rejected") {
@@ -523,7 +526,7 @@
     var container = document.getElementById("ds_client_import_queue");
     if (!container) return;
     container.replaceChildren();
-    clientImportQueue.forEach(function (entry, index) {
+    clientImportQueue.concat(clientImportFailures).forEach(function (entry, index) {
       if (entry.serverId && entry === activeClientImport) return;
       var row = document.createElement("div");
       row.className = "ds ds--import ds--client-upload";
@@ -552,6 +555,21 @@
         cancel.setAttribute("aria-label", "Cancel queued import " + entry.name);
         cancel.textContent = "Cancel";
         row.appendChild(cancel);
+      } else if (clientImportFailures.includes(entry)) {
+        if (entry.outcome === "error") {
+          var retry = document.createElement("button");
+          retry.type = "button";
+          retry.className = "btn builder-retry-client-import";
+          retry.dataset.clientImportId = entry.clientId;
+          retry.textContent = "Retry";
+          row.appendChild(retry);
+        }
+        var remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "btn btn-remove-soft builder-remove-client-failure";
+        remove.dataset.clientImportId = entry.clientId;
+        remove.textContent = "Remove";
+        row.appendChild(remove);
       }
       container.appendChild(row);
     });
@@ -562,20 +580,21 @@
     entry.state = "error";
     entry.outcome = "error";
     entry.error = message;
-    renderClientImportQueue();
     scheduleStatusAnnouncement(entry.name + ". " + message);
     clientImportQueue.shift();
     activeClientImport = null;
+    clientImportFailures.push(entry);
+    renderClientImportQueue();
     dispatchNextClientImport();
   }
 
-  function dispatchFileImport(entry) {
+  function startFileTransport(entry) {
     var transport = document.getElementById("dataset_files");
     if (!transport) {
       failClientDispatch(entry, "The upload transport is unavailable.");
       return;
     }
-    entry.state = "dispatching";
+    entry.state = "uploading";
     try {
       var transfer = new DataTransfer();
       transfer.items.add(entry.file);
@@ -593,17 +612,30 @@
       failClientDispatch(entry, "This browser could not prepare the selected file.");
       return;
     }
+    renderClientImportQueue();
+    showClientLoadingWorkbench(entry.name, "Uploading selected file…");
+    transport.dispatchEvent(new Event("change", { bubbles: true }));
+    entry.state = "awaiting_accept";
+    renderClientImportQueue();
+  }
+
+  function dispatchFileImport(entry) {
+    entry.state = "awaiting_dispatch";
+    renderClientImportQueue();
+    showClientLoadingWorkbench(entry.name, "Preparing upload…");
     send("builder_client_import_dispatch", {
       client_id: entry.clientId,
       name: entry.name,
       size: entry.size,
       nonce: Date.now(),
     });
-    entry.state = "uploading";
-    renderClientImportQueue();
-    showClientLoadingWorkbench(entry.name, "Uploading selected file…");
-    transport.dispatchEvent(new Event("change", { bubbles: true }));
-    entry.state = "awaiting_accept";
+  }
+
+  function handleClientImportDispatchReady(message) {
+    if (!activeClientImport || !message || message.client_id !== activeClientImport.clientId) return;
+    if (activeClientImport.kind !== "file" || activeClientImport.serverId) return;
+    if (!["awaiting_dispatch", "awaiting_upload"].includes(activeClientImport.state)) return;
+    startFileTransport(activeClientImport);
   }
 
   function dispatchExampleImport(entry) {
@@ -694,6 +726,30 @@
     renderClientImportQueue();
   }
 
+  function removeClientImportFailure(clientId) {
+    clientImportFailures = clientImportFailures.filter(function (entry) {
+      return entry.clientId !== clientId;
+    });
+    renderClientImportQueue();
+  }
+
+  function retryClientImportFailure(clientId) {
+    var index = clientImportFailures.findIndex(function (entry) {
+      return entry.clientId === clientId;
+    });
+    if (index < 0) return;
+    var entry = clientImportFailures.splice(index, 1)[0];
+    clientUploadSequence += 1;
+    entry.clientId = "client-import-" + clientUploadSequence;
+    entry.state = "queued";
+    entry.outcome = null;
+    entry.error = null;
+    entry.serverId = null;
+    clientImportQueue.push(entry);
+    renderClientImportQueue();
+    dispatchNextClientImport();
+  }
+
   function handleClientImportAccepted(message) {
     if (!activeClientImport || !message || message.client_id !== activeClientImport.clientId) return;
     activeClientImport.serverId = message.server_id || null;
@@ -703,12 +759,9 @@
 
   function handleClientImportRelease(message) {
     if (!activeClientImport || !message) return;
-    var anonymousMatch = !message.client_id &&
-      activeClientImport.kind === "file" &&
-      message.name === activeClientImport.name &&
-      (message.size == null || Number(message.size) === activeClientImport.size);
-    if (!anonymousMatch && message.client_id !== activeClientImport.clientId) return;
+    if (message.client_id !== activeClientImport.clientId) return;
     if (activeClientImport.serverId && message.server_id && message.server_id !== activeClientImport.serverId) return;
+    var releasedEntry = activeClientImport;
     activeClientImport.outcome = message.outcome;
     activeClientImport.error = message.message || null;
     if (["error", "rejected"].includes(message.outcome)) {
@@ -719,6 +772,9 @@
     }
     clientImportQueue.shift();
     activeClientImport = null;
+    if (["error", "rejected"].includes(message.outcome) && !message.server_id) {
+      clientImportFailures.push(releasedEntry);
+    }
     renderClientImportQueue();
     dispatchNextClientImport();
   }
@@ -765,6 +821,14 @@
         outcome: record.state,
         message: record.message || null,
       });
+      return;
+    }
+    if (record.state === "awaiting_upload") {
+      var uploadWasStarted = ["uploading", "awaiting_accept"].includes(entry.stateBeforePause);
+      entry.state = uploadWasStarted ? "awaiting_accept" : "awaiting_upload";
+      importSyncPending = false;
+      renderClientImportQueue();
+      if (!uploadWasStarted) startFileTransport(entry);
       return;
     }
     entry.state = record.state || entry.stateBeforePause || "unknown";
@@ -2385,6 +2449,18 @@
       return;
     }
 
+    var removeClientFailure = target.closest(".builder-remove-client-failure");
+    if (removeClientFailure) {
+      removeClientImportFailure(removeClientFailure.dataset.clientImportId);
+      return;
+    }
+
+    var retryClientFailure = target.closest(".builder-retry-client-import");
+    if (retryClientFailure) {
+      retryClientImportFailure(retryClientFailure.dataset.clientImportId);
+      return;
+    }
+
     if (target.closest("#builder_add_datasets")) {
       openDatasetPicker();
       return;
@@ -2657,6 +2733,10 @@
 
   function registerClientImportHandlers() {
     if (clientImportHandlersRegistered || !window.Shiny) return;
+    window.Shiny.addCustomMessageHandler(
+      "builder_client_import_dispatch_ready",
+      handleClientImportDispatchReady
+    );
     window.Shiny.addCustomMessageHandler(
       "builder_client_import_accepted",
       handleClientImportAccepted

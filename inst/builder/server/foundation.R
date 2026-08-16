@@ -17,6 +17,7 @@ pending_client_import_dispatch <- reactiveVal(NULL)
 pending_client_upload <- reactiveVal(NULL)
 pending_client_upload_sequence <- reactiveVal(0L)
 external_import_active <- reactiveVal(NULL)
+client_import_history_limit <- 200L
 
 client_import_id_for <- function(server_id) {
   ids <- isolate(client_import_server_ids())
@@ -72,6 +73,19 @@ bind_client_import <- function(client_id, server_id, name, kind) {
     return(invisible(FALSE))
   }
   ids <- isolate(client_import_server_ids())
+  existing_server_ids <- names(ids)[unname(ids) == client_id]
+  if (length(existing_server_ids) && !server_id %in% existing_server_ids) {
+    session$sendCustomMessage(
+      "builder_client_import_accepted",
+      list(
+        client_id = client_id,
+        server_id = existing_server_ids[[1L]],
+        name = name,
+        kind = kind
+      )
+    )
+    return(invisible(FALSE))
+  }
   ids[[server_id]] <- client_id
   client_import_server_ids(ids)
   session$sendCustomMessage(
@@ -103,7 +117,7 @@ release_client_import <- function(
   if (client_id %in% released) {
     return(invisible(FALSE))
   }
-  released_client_imports(c(released, client_id))
+  released <- c(released, client_id)
   records <- isolate(released_client_import_records())
   records[[client_id]] <- list(
     client_id = client_id,
@@ -111,7 +125,15 @@ release_client_import <- function(
     state = outcome,
     message = message
   )
+  if (length(records) > client_import_history_limit) {
+    keep <- tail(names(records), client_import_history_limit)
+    records <- records[keep]
+    released <- released[released %in% keep]
+  }
+  released_client_imports(released)
   released_client_import_records(records)
+  ids <- isolate(client_import_server_ids())
+  client_import_server_ids(ids[unname(ids) != client_id])
   session$sendCustomMessage(
     "builder_client_import_release",
     list(

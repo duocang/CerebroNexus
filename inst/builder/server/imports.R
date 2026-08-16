@@ -152,7 +152,7 @@ start_load <- function(kind, arg, label, file_meta = NULL, client_id = NULL) {
     builder_import_progress_remove(progress_path %||% "")
     release_client_import(
       client_id,
-      server_id = id,
+      server_id = NULL,
       outcome = "error",
       message = "The background worker is not ready yet."
     )
@@ -246,33 +246,7 @@ expire_pending_client_upload <- function(token) {
   ) {
     return(invisible(FALSE))
   }
-  files <- upload$files
   pending_client_upload(NULL)
-  name <- if (is.data.frame(files) && nrow(files) == 1L) {
-    as.character(files$name[[1L]])
-  } else {
-    NULL
-  }
-  size <- if (
-    is.data.frame(files) &&
-      nrow(files) == 1L &&
-      "size" %in% names(files)
-  ) {
-    suppressWarnings(as.numeric(files$size[[1L]]))
-  } else {
-    NA_real_
-  }
-  session$sendCustomMessage(
-    "builder_client_import_release",
-    list(
-      client_id = NULL,
-      server_id = NULL,
-      outcome = "rejected",
-      message = "The upload metadata was not received in time.",
-      name = name,
-      size = size
-    )
-  )
   invisible(TRUE)
 }
 
@@ -288,7 +262,16 @@ observeEvent(input$builder_client_import_dispatch, {
     size = suppressWarnings(as.numeric(event$size %||% NA_real_)[1L]),
     token = event$nonce %||% NULL
   ))
-  consume_client_import_upload()
+  consumed <- consume_client_import_upload()
+  if (!isTRUE(consumed)) {
+    current <- isolate(pending_client_import_dispatch())
+    if (is.list(current) && identical(current$token, event$nonce %||% NULL)) {
+      session$sendCustomMessage(
+        "builder_client_import_dispatch_ready",
+        list(client_id = current$client_id)
+      )
+    }
+  }
   token <- event$nonce %||% NULL
   later::later(
     function() {
@@ -374,7 +357,7 @@ observeEvent(input$builder_import_sync_request, {
       list(list(
         client_id = dispatch$client_id,
         server_id = NULL,
-        state = "uploading",
+        state = "awaiting_upload",
         message = NULL
       ))
     )
@@ -386,24 +369,6 @@ observeEvent(input$builder_import_sync_request, {
       server_busy = builder_has_text(isolate(external_import_active()))
     )
   )
-})
-
-observeEvent(input$use_example, {
-  used <- as.character(unlist(Filter(
-    Negate(is.null),
-    lapply(sets(), function(entry) entry$example)
-  )))
-  if (input$use_example %in% used) {
-    return()
-  }
-  ex <- Filter(
-    function(e) identical(e$id, input$use_example),
-    builder_examples()
-  )
-  if (!length(ex)) {
-    return()
-  }
-  start_load("example", ex[[1]]$id, ex[[1]]$label)
 })
 
 remove_pending_import <- function(id) {
