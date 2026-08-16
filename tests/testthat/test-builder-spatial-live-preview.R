@@ -45,8 +45,23 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
   expect_match(js, "devicePixelRatio", fixed = TRUE)
   expect_match(js, "Math.min(window.devicePixelRatio || 1, 2)", fixed = TRUE)
   expect_match(js, "pointermove", fixed = TRUE)
-  expect_false(grepl("Shiny.setInputValue", js, fixed = TRUE))
+  expect_match(js, "Shiny.setInputValue", fixed = TRUE)
+  expect_match(js, "finishInteraction", fixed = TRUE)
+  expect_false(grepl(">= state.resetToken", js, fixed = TRUE))
   expect_false(grepl("Plotly", js, fixed = TRUE))
+})
+
+test_that("same-token scene refreshes preserve browser-local controls", {
+  root <- testthat::test_path("..", "..", "inst", "builder")
+  js <- paste(
+    readLines(
+      file.path(root, "www", "builder-spatial-canvas.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(js, "viewChanged || resetToken > state.resetToken", fixed = TRUE)
 })
 
 test_that("Spatial preview worker contract does not include coordinate drafts", {

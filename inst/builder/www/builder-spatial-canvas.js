@@ -11,9 +11,14 @@
     image: null,
     imageUri: null,
     dragging: false,
+    activeControlId: null,
+    releaseGuardId: null,
+    pendingEventAt: null,
+    colorGroups: {},
   };
   window.__builderSpatialCanvasMetrics = window.__builderSpatialCanvasMetrics || {
     sceneMessages: 0, renders: 0, latestCoordinateRotation: 0,
+    eventToRenderMs: [], renderTimes: [], longTasks: 0,
   };
   var controlMap = {
     "enhance-coordinate_rotation": ["coordinateRotation", 1],
@@ -38,16 +43,33 @@
   function schedule() {
     if (!state.frame) state.frame = window.requestAnimationFrame(draw);
   }
+  function pushMetric(name, value) {
+    var values = window.__builderSpatialCanvasMetrics[name];
+    values.push(value);
+    if (values.length > 600) values.splice(0, values.length - 600);
+  }
+  function groupPointColors(points) {
+    var groups = {}, x = points.x || [], colors = points.color || [];
+    for (var i = 0; i < x.length; i += 1) {
+      var color = colors[i] || "#777";
+      if (!groups[color]) groups[color] = [];
+      groups[color].push(i);
+    }
+    return groups;
+  }
   function setScene(message) {
     var generation = finite(message.generation, -1);
     if (generation < state.generation) return;
-    if (state.viewKey !== null && message.viewKey !== state.viewKey) clear();
+    var viewChanged = state.viewKey !== null && message.viewKey !== state.viewKey;
+    if (viewChanged) clear();
     state.scene = message;
+    state.colorGroups = groupPointColors(message.points || {x: [], color: []});
     window.__builderSpatialCanvasMetrics.sceneMessages += 1;
     state.generation = generation;
     state.viewKey = message.viewKey;
-    if (finite(message.resetToken, 0) >= state.resetToken) {
-      state.resetToken = finite(message.resetToken, 0);
+    var resetToken = finite(message.resetToken, 0);
+    if (viewChanged || resetToken > state.resetToken || !state.controls) {
+      state.resetToken = resetToken;
       state.controls = Object.assign({}, message.controls || {});
     }
     loadImage(message.image && message.image.uri);
@@ -57,6 +79,7 @@
     state.scene = null;
     state.image = null;
     state.imageUri = null;
+    state.colorGroups = {};
     var node = canvas();
     if (node) node.getContext("2d").clearRect(0, 0, node.width, node.height);
   }
@@ -95,6 +118,12 @@
     var node = canvas(), scene = state.scene;
     if (!node || !scene) return;
     window.__builderSpatialCanvasMetrics.renders += 1;
+    var now = performance.now();
+    pushMetric("renderTimes", now);
+    if (state.pendingEventAt !== null) {
+      pushMetric("eventToRenderMs", now - state.pendingEventAt);
+      state.pendingEventAt = null;
+    }
     window.__builderSpatialCanvasMetrics.latestCoordinateRotation = finite(
       state.controls && state.controls.coordinateRotation, 0
     );
@@ -154,12 +183,22 @@
     var p = scene.points, c = state.controls;
     ctx.globalAlpha = finite(c.point_opacity, .85);
     var radius = Math.max(1, finite(c.point_size, 5) / 2);
-    for (var i = 0; i < p.x.length; i += 1) {
-      var at = screen(rotated({x: p.x[i], y: p.y[i]}, scene.bounds,
-        c.coordinateRotation));
-      ctx.beginPath(); ctx.arc(at.x, at.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = p.color[i]; ctx.fill();
-    }
+    var bounds = scene.bounds;
+    var cx = (bounds.xmin + bounds.xmax) / 2;
+    var cy = (bounds.ymin + bounds.ymax) / 2;
+    var angle = finite(c.coordinateRotation, 0) * Math.PI / 180;
+    var cosine = Math.cos(angle), sine = Math.sin(angle);
+    Object.keys(state.colorGroups).forEach(function (color) {
+      ctx.beginPath(); ctx.fillStyle = color;
+      state.colorGroups[color].forEach(function (index) {
+        var x = p.x[index] - cx, y = p.y[index] - cy;
+        var at = screen({x: cx + x * cosine - y * sine,
+          y: cy + x * sine + y * cosine});
+        ctx.moveTo(at.x + radius, at.y);
+        ctx.arc(at.x, at.y, radius, 0, Math.PI * 2);
+      });
+      ctx.fill();
+    });
     ctx.globalAlpha = 1;
   }
   function corners(bounds, degrees) {
@@ -193,29 +232,51 @@
   function consumeControl(target) {
     var spec = controlMap[target.id];
     if (!spec || !state.controls) return false;
-    state.controls[spec[0]] = controlValue(target, spec[1]); schedule();
+    state.controls[spec[0]] = controlValue(target, spec[1]);
+    state.activeControlId = target.id;
+    state.pendingEventAt = performance.now();
+    schedule();
     if (spec[0] === "coordinateRotation") {
       window.__builderSpatialCanvasMetrics.latestCoordinateRotation = state.controls[spec[0]];
     }
     return true;
   }
+  function finishInteraction() {
+    if (!state.dragging) return;
+    state.dragging = false;
+    var id = state.activeControlId;
+    state.activeControlId = null;
+    if (!id || !window.Shiny || typeof Shiny.setInputValue !== "function") return;
+    var target = document.getElementById(id);
+    if (!target) return;
+    state.releaseGuardId = id;
+    window.setTimeout(function () { state.releaseGuardId = null; }, 0);
+    Shiny.setInputValue(id, target.type === "checkbox" ? target.checked : target.value,
+      {priority: "event"});
+  }
   document.addEventListener("pointerdown", function (event) {
-    if (controlMap[event.target.id]) state.dragging = true;
+    if (controlMap[event.target.id] && event.target.type !== "checkbox") {
+      state.dragging = true;
+    }
   }, true);
   document.addEventListener("mousedown", function (event) {
     if (event.target.closest && event.target.closest(".irs")) state.dragging = true;
   }, true);
   document.addEventListener("input", function (event) {
     if (!consumeControl(event.target)) return;
-    if (state.dragging) event.stopImmediatePropagation();
+    if (state.dragging || event.target.id === state.releaseGuardId) {
+      event.stopImmediatePropagation();
+    }
   }, true);
   document.addEventListener("change", function (event) {
     if (!consumeControl(event.target)) return;
-    if (state.dragging) event.stopImmediatePropagation();
+    if (state.dragging || event.target.id === state.releaseGuardId) {
+      event.stopImmediatePropagation();
+    }
   }, true);
-  document.addEventListener("pointerup", function () { state.dragging = false; }, true);
-  document.addEventListener("pointercancel", function () { state.dragging = false; }, true);
-  document.addEventListener("mouseup", function () { state.dragging = false; }, true);
+  document.addEventListener("pointerup", finishInteraction, true);
+  document.addEventListener("pointercancel", finishInteraction, true);
+  document.addEventListener("mouseup", finishInteraction, true);
   document.addEventListener("pointermove", function (event) {
     var node = canvas(), scene = state.scene;
     if (!node || !scene || !scene.available) return;
@@ -251,7 +312,9 @@
       Object.keys(controlMap).map(function (id) { return "#" + id; }).join(","),
       function (event) {
         if (!consumeControl(event.currentTarget)) return;
-        if (state.dragging) event.stopImmediatePropagation();
+        if (state.dragging || event.currentTarget.id === state.releaseGuardId) {
+          event.stopImmediatePropagation();
+        }
       }
     );
   }
@@ -263,5 +326,12 @@
       state.controls = Object.assign({}, message.controls || state.controls || {});
       schedule();
     });
+  }
+  if (window.PerformanceObserver) {
+    try {
+      new PerformanceObserver(function (list) {
+        window.__builderSpatialCanvasMetrics.longTasks += list.getEntries().length;
+      }).observe({entryTypes: ["longtask"]});
+    } catch (error) { /* long-task observation is optional */ }
   }
 }());

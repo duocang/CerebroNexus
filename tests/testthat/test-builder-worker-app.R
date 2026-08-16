@@ -281,6 +281,39 @@ test_that("an invalidated query failure leaves a queued Build runnable", {
   expect_identical(build$protocol$build_status, "running")
 })
 
+test_that("a replaced spatial preview response is rejected", {
+  protocol <- builder_request_protocol("worker-a")
+  protocol <- builder_enqueue(
+    protocol,
+    builder_query(
+      "spatial_preview",
+      "dataset-a",
+      generation = 1L,
+      slot = "spatial_alignment"
+    )
+  )
+  first <- builder_protocol_dispatch(protocol)
+  protocol <- builder_enqueue(
+    first$protocol,
+    builder_query(
+      "spatial_preview",
+      "dataset-a",
+      generation = 2L,
+      slot = "spatial_alignment"
+    )
+  )
+
+  stale <- builder_protocol_complete(
+    protocol,
+    builder_worker_response(first$request, list(available = TRUE))
+  )
+  expect_false(stale$accepted)
+
+  current <- builder_protocol_dispatch(stale$protocol)
+  expect_identical(current$request$generation, 2L)
+  expect_identical(current$request$kind, "spatial_preview")
+})
+
 test_that("business errors are terminalized without worker recovery", {
   lines <- builder_app_lines()
   poller <- builder_app_block(

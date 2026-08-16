@@ -515,10 +515,16 @@ builder_spatial_alignment_server <- function(
       )
     )
     record[facts] <- geometry[facts]
-    coverage_spatial <- if (identical(kind_for(active_section()), "spatial")) {
-      .spx_apply_coordinate_transform(preview$spatial, coordinate_baseline())
+    full_coverage <- preview[["coverage", exact = TRUE]]
+    coverage_spatial <- if (!is.null(full_coverage)) {
+      data.frame(x = full_coverage$x, y = full_coverage$y)
     } else {
       preview$spatial
+    }
+    coverage_spatial <- if (identical(kind_for(active_section()), "spatial")) {
+      .spx_apply_coordinate_transform(coverage_spatial, coordinate_baseline())
+    } else {
+      coverage_spatial
     }
     cover <- builder_bounds_cover(
       record$bounds,

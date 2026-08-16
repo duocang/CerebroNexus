@@ -167,6 +167,7 @@ builder_alignment_preview_model <- function(
       projection_name = "Trekker UMAP",
       transcriptome = transcriptome_full[keep, , drop = FALSE],
       spatial = spatial_full[keep, , drop = FALSE],
+      coverage = list(x = spatial_full$x, y = spatial_full$y),
       bounds = .builder_alignment_bounds(spatial_full),
       coordinate_frame = .builder_alignment_bounds(spatial_full),
       capped = nrow(spatial_full) > length(keep)
@@ -265,6 +266,7 @@ builder_alignment_preview_model <- function(
     projection_name = reduction,
     transcriptome = transcriptome_full[keep, , drop = FALSE],
     spatial = spatial_full[keep, , drop = FALSE],
+    coverage = list(x = spatial_full$x, y = spatial_full$y),
     bounds = .builder_alignment_bounds(spatial_full),
     coordinate_frame = coordinate_frame,
     coordinate_transform = NULL,

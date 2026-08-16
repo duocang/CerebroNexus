@@ -643,6 +643,29 @@ test_that("alignment preview joins both spaces by cell identity", {
   expect_true(all(is.finite(unlist(model$bounds))))
 })
 
+test_that("bounded alignment scenes retain full R-only coverage coordinates", {
+  skip_if_not_installed("SeuratObject")
+  object <- builder_content_spatial_example_object("section-a")
+  preview <- builder_alignment_preview_model(
+    object,
+    section_id = "section-a",
+    max_cells = 2L
+  )
+
+  expect_true(preview$available)
+  expect_lte(nrow(preview$spatial), 2L)
+  expect_gt(length(preview$coverage$x), nrow(preview$spatial))
+  expect_identical(length(preview$coverage$x), length(preview$coverage$y))
+
+  scene <- builder_spatial_canvas_scene(
+    preview,
+    colors = character(),
+    identity = "dataset::section-a",
+    generation = 1L
+  )
+  expect_false("coverage" %in% names(scene))
+})
+
 test_that("Trekker alignment preview uses its physical and transcriptome spaces", {
   skip_if_not_installed("SeuratObject")
   object <- builder_content_spatial_example_object()
