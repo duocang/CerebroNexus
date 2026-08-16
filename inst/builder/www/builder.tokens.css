@@ -67,6 +67,14 @@
   --builder-text-disabled: #a9adb4;
   --builder-hover-bg: var(--c-surface-2);
   --builder-hover-border: var(--c-amber-300);
+  --builder-rail-selected-bg: var(--c-amber-50);
+  --builder-rail-selected-marker: var(--c-amber);
+  --builder-rail-hover-bg: #fffaf6;
+  --builder-rail-progress-bg: var(--c-blue-50);
+  --builder-rail-progress-fg: var(--c-blue);
+  --builder-rail-ready-fg: var(--c-success);
+  --builder-rail-error-bg: var(--c-error-50);
+  --builder-rail-error-fg: var(--c-error);
   --builder-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
                        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
                        "Helvetica Neue", Arial, sans-serif;

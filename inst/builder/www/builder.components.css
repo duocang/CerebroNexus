@@ -895,6 +895,9 @@
   outline-offset: 2px;
 }
 .ds--client-upload {
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
   min-height: 4.6rem;
   padding: .85rem 1rem;
 }
@@ -918,12 +921,56 @@
   border-radius: 50%;
   color: var(--c-text-subtle);
 }
+.ds:not(.is-active)[data-load-state="uploading"],
+.ds:not(.is-active)[data-load-state="dispatching"],
+.ds:not(.is-active)[data-load-state="awaiting_dispatch"],
+.ds:not(.is-active)[data-load-state="awaiting_upload"],
+.ds:not(.is-active)[data-load-state="awaiting_accept"],
+.ds:not(.is-active)[data-load-state="reading"],
+.ds:not(.is-active)[data-load-state="inspecting"],
+.ds:not(.is-active)[data-load-state="validating"],
+.ds:not(.is-active)[data-load-state="preparing"] {
+  background: var(--builder-rail-progress-bg);
+}
+.ds[data-load-state="uploading"] .ds-state-dot,
+.ds[data-load-state="dispatching"] .ds-state-dot,
+.ds[data-load-state="awaiting_dispatch"] .ds-state-dot,
+.ds[data-load-state="awaiting_upload"] .ds-state-dot,
+.ds[data-load-state="awaiting_accept"] .ds-state-dot,
+.ds[data-load-state="reading"] .ds-state-dot,
+.ds[data-load-state="inspecting"] .ds-state-dot,
+.ds[data-load-state="validating"] .ds-state-dot,
+.ds[data-load-state="preparing"] .ds-state-dot {
+  color: var(--builder-rail-progress-fg);
+}
+.ds[data-load-state="ready"] .ds-state-dot,
+.ds-ready-dot { color: var(--builder-rail-ready-fg); }
+.ds[data-load-state="queued"] .ds-state-dot,
+.ds[data-load-state="cancelled"] .ds-state-dot,
+.ds[data-load-state="paused"] .ds-state-dot { color: var(--c-text-subtle); }
+.ds:not(.is-active)[data-load-state="cancelled"],
+.ds:not(.is-active)[data-load-state="paused"] { background: var(--c-surface-2); }
+.ds:not(.is-active)[data-load-state="error"],
+.ds:not(.is-active)[data-load-state="rejected"] {
+  background: var(--builder-rail-error-bg);
+}
+.ds[data-load-state="error"] .ds-state-dot,
+.ds[data-load-state="rejected"] .ds-state-dot {
+  color: var(--builder-rail-error-fg);
+}
+.ds:not(.is-active)[data-load-state="unknown"] { background: var(--c-warning-50); }
+.ds[data-load-state="unknown"] .ds-state-dot { color: var(--c-warning-700); }
 .ds--import.is-importing .ds-state-dot {
   border-right-color: transparent;
   animation: spin .8s linear infinite;
 }
 .ds--import.is-error .ds-state-dot { color: var(--c-error); }
-.ds--import.is-active .ds-state-dot { color: var(--builder-selection-fg); }
+.ds[data-load-state="queued"] .ds-state-dot,
+.ds[data-load-state="paused"] .ds-state-dot,
+.ds[data-load-state="cancelled"] .ds-state-dot {
+  animation: none;
+  border-right-color: currentColor;
+}
 
 .btn-remove-soft {
   border-color: transparent;

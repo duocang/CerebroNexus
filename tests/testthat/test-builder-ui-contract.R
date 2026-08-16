@@ -539,6 +539,44 @@ test_that("dataset uploads use an amber trigger over the single transport", {
   )
 })
 
+test_that("dataset rail separates lifecycle colours from interaction states", {
+  tokens <- builder_asset_text("www", "builder.tokens.css")
+  layout <- builder_asset_text("www", "builder.layout.css")
+  components <- builder_asset_text("www", "builder.components.css")
+  css <- paste(tokens, layout, components, sep = "\n")
+
+  for (token in c(
+    "--builder-rail-selected-bg",
+    "--builder-rail-selected-marker",
+    "--builder-rail-hover-bg",
+    "--builder-rail-progress-bg",
+    "--builder-rail-progress-fg",
+    "--builder-rail-ready-fg",
+    "--builder-rail-error-bg",
+    "--builder-rail-error-fg"
+  )) {
+    expect_match(tokens, token, fixed = TRUE)
+  }
+  expect_match(
+    layout,
+    "background: var(--builder-rail-selected-bg)",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "background: var(--builder-selection-bg)",
+    layout,
+    fixed = TRUE
+  ))
+  expect_match(css, '[data-load-state="queued"]', fixed = TRUE)
+  expect_match(css, '[data-load-state="uploading"]', fixed = TRUE)
+  expect_match(css, '[data-load-state="reading"]', fixed = TRUE)
+  expect_match(css, '[data-load-state="ready"]', fixed = TRUE)
+  expect_match(css, '[data-load-state="error"]', fixed = TRUE)
+  expect_match(css, '[data-load-state="paused"]', fixed = TRUE)
+  expect_match(css, '[data-load-state="cancelled"]', fixed = TRUE)
+  expect_match(css, '[data-load-state="unknown"]', fixed = TRUE)
+})
+
 test_that("supplementary tables use an amber native multi-file chooser", {
   stage <- builder_asset_text("ui", "enhance_stage.R")
   css <- builder_stylesheet_text()
@@ -940,7 +978,7 @@ test_that("dataset rail uses one selected state and one soft-danger action", {
 
   expect_match(
     layout,
-    "\\.ds\\.is-active\\s*\\{[^}]*background:\\s*var\\(--builder-selection-bg\\)",
+    "\\.ds\\.is-active\\s*\\{[^}]*background:\\s*var\\(--builder-rail-selected-bg\\)",
     perl = TRUE
   )
   expect_match(

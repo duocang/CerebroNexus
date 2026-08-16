@@ -209,23 +209,24 @@
   transition: background var(--duration-base) var(--ease);
 }
 .ds-picker .ds:not(.is-active):has(.ds-pick:hover) {
-  background: var(--builder-hover-bg);
+  background: var(--builder-rail-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--builder-hover-border);
 }
 .ds.is-active {
-  background: var(--builder-selection-bg);
-  color: var(--builder-selection-fg);
+  background: var(--builder-rail-selected-bg);
+  color: var(--c-text);
 }
 /* The active marker slides between rows rather than blinking on and off. */
 .ds::before {
   content: "";
   position: absolute; left: 0; top: 0; bottom: 0;
-  width: 3px; background: var(--builder-action);
+  width: 4px; background: var(--builder-rail-selected-marker);
   transform: scaleY(0);
   transform-origin: center;
   transition: transform .22s var(--ease);
 }
 .ds.is-active::before {
-  background: var(--builder-selection-fg);
+  background: var(--builder-rail-selected-marker);
   transform: scaleY(1);
 }
 
@@ -243,7 +244,7 @@
   font: inherit;
   color: inherit;
 }
-.ds-pick:focus-visible { outline: 2px solid var(--builder-action); outline-offset: -2px; }
+.ds-pick:focus-visible { outline: 2px solid var(--builder-focus-ring); outline-offset: -2px; }
 
 /* The index is information, not decoration: data sets are written in this
    order and appear in this order in the generated app's switcher. The hairline
@@ -270,7 +271,7 @@
 .ds-idx::after  { top: 1.65rem; bottom: -.6rem; }
 .ds:first-child .ds-idx::before,
 .ds:last-child  .ds-idx::after { display: none; }
-.ds.is-active .ds-idx { color: var(--builder-selection-fg); font-weight: 600; }
+.ds.is-active .ds-idx { color: var(--builder-rail-selected-marker); font-weight: 700; }
 
 .ds-body { min-width: 0; flex: 1; }
 .ds .nm {
@@ -284,8 +285,8 @@
 }
 .ds .meta.bad { color: var(--c-warning); }
 .ds.is-active .meta,
-.ds.is-active .meta.bad,
-.ds.is-active .builder-import-status { color: rgb(255 247 237); }
+.ds.is-active .builder-import-status { color: var(--c-text-muted); }
+.ds.is-active .meta.bad { color: var(--c-warning-700); }
 
 /* Destructive actions remain visible without relying on pointer hover. */
 .ds-del {
@@ -344,9 +345,9 @@
 }
 .ds-move[disabled] { opacity: .4; cursor: not-allowed; }
 .ds.is-active .ds-move {
-  border-color: rgb(255 255 255 / .48);
-  background: rgb(255 255 255 / .12);
-  color: var(--builder-selection-fg);
+  border-color: var(--c-amber-300);
+  background: var(--c-surface);
+  color: var(--c-text-muted);
 }
 .rail-add { padding: .85rem .95rem; }
 
