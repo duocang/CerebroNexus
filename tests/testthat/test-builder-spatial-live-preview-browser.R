@@ -47,6 +47,9 @@ test_that("real Ion drag is rendered locally on the next animation frame", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_js("window.__builderSpatialCanvasMetrics.sceneMessages === 1")
+  viewport <- app$get_js("window.__builderSpatialCanvasMetrics.latestViewport")
+  expect_equal(viewport$centerX, 300, tolerance = 1)
+  expect_equal(viewport$centerY, 200, tolerance = 1)
   track <- app$get_js(paste0(
     "(() => { const t=document.querySelector('.irs-line');",
     "const r=t.getBoundingClientRect(); return {left:r.left,right:r.right,y:r.top+r.height/2}; })()"
@@ -100,6 +103,17 @@ test_that("real Ion drag is rendered locally on the next animation frame", {
 
   expect_gt(during$renders, 1)
   expect_gt(during$latestCoordinateRotation, 80)
+  expect_equal(
+    during$latestViewport$centerX,
+    viewport$centerX,
+    tolerance = 1e-9
+  )
+  expect_equal(
+    during$latestViewport$centerY,
+    viewport$centerY,
+    tolerance = 1e-9
+  )
+  expect_equal(during$latestViewport$scale, viewport$scale, tolerance = 1e-9)
   expect_identical(during$sceneMessages, 1L)
   expect_identical(app$get_value(output = "server_changes"), "1")
   metrics <- app$get_js("window.__builderSpatialCanvasMetrics")

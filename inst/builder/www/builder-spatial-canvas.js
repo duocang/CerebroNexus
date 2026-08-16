@@ -113,6 +113,31 @@
     return {xmin: cx - side / 2, xmax: cx + side / 2,
       ymin: cy - side / 2, ymax: cy + side / 2};
   }
+  function viewportLayout(bounds, width, height, pad) {
+    var view = viewport(bounds);
+    var viewWidth = view.xmax - view.xmin;
+    var viewHeight = view.ymax - view.ymin;
+    var scale = Math.min(
+      Math.max(width - pad * 2, 1) / viewWidth,
+      Math.max(height - pad * 2, 1) / viewHeight
+    );
+    var plotWidth = viewWidth * scale;
+    var plotHeight = viewHeight * scale;
+    var offsetX = (width - plotWidth) / 2;
+    var offsetY = (height - plotHeight) / 2;
+    return {
+      view: view,
+      scale: scale,
+      offsetX: offsetX,
+      offsetY: offsetY,
+      screen: function (point) {
+        return {
+          x: offsetX + (point.x - view.xmin) * scale,
+          y: offsetY + plotHeight - (point.y - view.ymin) * scale,
+        };
+      },
+    };
+  }
   function draw() {
     state.frame = 0;
     var node = canvas(), scene = state.scene;
@@ -139,11 +164,14 @@
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     ctx.fillStyle = "#fafbfa"; ctx.fillRect(0, 0, cssWidth, cssHeight);
     if (!scene.available || !scene.bounds) return;
-    var view = viewport(scene.bounds), pad = 28;
-    var scale = Math.min((cssWidth - pad * 2) / (view.xmax - view.xmin),
-      (cssHeight - pad * 2) / (view.ymax - view.ymin));
-    function screen(p) { return {x: pad + (p.x - view.xmin) * scale,
-      y: cssHeight - pad - (p.y - view.ymin) * scale}; }
+    var pad = 28;
+    var layout = viewportLayout(scene.bounds, cssWidth, cssHeight, pad);
+    var scale = layout.scale, screen = layout.screen;
+    window.__builderSpatialCanvasMetrics.latestViewport = {
+      centerX: layout.offsetX + (layout.view.xmax - layout.view.xmin) * scale / 2,
+      centerY: layout.offsetY + (layout.view.ymax - layout.view.ymin) * scale / 2,
+      scale: scale,
+    };
     drawGrid(ctx, cssWidth, cssHeight, pad);
     drawImage(ctx, scene, screen, scale);
     drawPoints(ctx, scene, screen);
@@ -282,14 +310,14 @@
     if (!node || !scene || !scene.available) return;
     var tip = document.getElementById(node.id + "-tooltip"); if (!tip) return;
     var rect = node.getBoundingClientRect(), best = -1, bestDistance = 64;
-    var view = viewport(scene.bounds), pad = 28;
-    var scale = Math.min((rect.width - pad * 2) / (view.xmax - view.xmin),
-      (rect.height - pad * 2) / (view.ymax - view.ymin));
+    var pad = 28;
+    var layout = viewportLayout(scene.bounds, rect.width, rect.height, pad);
+    var view = layout.view, scale = layout.scale;
     for (var i = 0; i < scene.points.x.length; i += 1) {
       var p = rotated({x: scene.points.x[i], y: scene.points.y[i]}, scene.bounds,
         state.controls.coordinateRotation);
-      var x = pad + (p.x - view.xmin) * scale;
-      var y = rect.height - pad - (p.y - view.ymin) * scale;
+      var x = layout.offsetX + (p.x - view.xmin) * scale;
+      var y = layout.offsetY + (view.ymax - p.y) * scale;
       var distance = Math.pow(x - (event.clientX - rect.left), 2) +
         Math.pow(y - (event.clientY - rect.top), 2);
       if (distance < bestDistance) { bestDistance = distance; best = i; }
