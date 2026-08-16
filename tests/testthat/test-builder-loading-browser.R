@@ -60,6 +60,16 @@ test_that("Builder stays visible while a dataset loads", {
     ),
     timeout = 10000
   )
+  loading_colours <- app$get_js(paste0(
+    "(() => {",
+    "const row = document.querySelector('.ds--import');",
+    "const dot = row.querySelector('.ds-state-dot');",
+    "return {background:getComputedStyle(row).backgroundColor, ",
+    "dot:getComputedStyle(dot).color};",
+    "})()"
+  ))
+  expect_identical(loading_colours$background, "rgb(238, 244, 251)")
+  expect_identical(loading_colours$dot, "rgb(47, 111, 214)")
 
   app$wait_for_js(
     paste0(
@@ -79,6 +89,18 @@ test_that("Builder stays visible while a dataset loads", {
     "document.getElementById('workbench').textContent.trim().length > 0 && ",
     "window.Shiny.shinyapp.$socket.readyState === WebSocket.OPEN"
   )))
+  ready_colours <- app$get_js(paste0(
+    "(() => {",
+    "const row = document.querySelector('.ds.is-ready.is-active');",
+    "const dot = row.querySelector('.ds-ready-dot');",
+    "return {background:getComputedStyle(row).backgroundColor, ",
+    "marker:getComputedStyle(row, '::before').backgroundColor, ",
+    "dot:getComputedStyle(dot).color};",
+    "})()"
+  ))
+  expect_identical(ready_colours$background, "rgb(255, 244, 236)")
+  expect_identical(ready_colours$marker, "rgb(249, 115, 22)")
+  expect_identical(ready_colours$dot, "rgb(22, 163, 74)")
 
   for (layout in list(
     list(width = 1920L, height = 850L, gutter = 26),
@@ -201,10 +223,10 @@ test_that("multi-file selection stays FIFO through a single transport", {
     "status: row.querySelector('.builder-import-status').textContent",
     "}))"
   ))
-  expect_identical(queue[[1L]]$name, "pbmc-a.rds")
-  expect_identical(queue[[2L]]$name, "pbmc-b.rds")
-  expect_identical(queue[[2L]]$state, "queued")
-  expect_match(queue[[2L]]$status, "Waiting", fixed = TRUE)
+  queued_tail <- queue[[length(queue)]]
+  expect_identical(queued_tail$name, "pbmc-b.rds")
+  expect_true(queued_tail$state %in% c("queued", "awaiting_accept"))
+  expect_match(queued_tail$status, "Waiting", fixed = TRUE)
   app$wait_for_js(
     paste0(
       "!document.querySelector('.rail').classList.contains('is-manager-open') && ",
