@@ -609,6 +609,7 @@
   function dispatchExampleImport(entry) {
     entry.state = "awaiting_accept";
     renderClientImportQueue();
+    showClientLoadingWorkbench(entry.name, "Waiting to load…");
     send("builder_import_example", {
       example: entry.exampleId,
       client_id: entry.clientId,

@@ -532,6 +532,11 @@ test_that("dataset uploads use an amber trigger over the single transport", {
   expect_false(grepl('dataset_files.*class = "btn', app, perl = TRUE))
   expect_match(css, ".dataset-file-button", fixed = TRUE)
   expect_match(css, "background: var(--builder-action)", fixed = TRUE)
+  expect_match(
+    css,
+    ".builder-upload-transport { display: none !important; }",
+    fixed = TRUE
+  )
 })
 
 test_that("supplementary tables use an amber native multi-file chooser", {

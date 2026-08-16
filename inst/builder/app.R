@@ -384,10 +384,11 @@ ui <- tagList(
             ),
             hidden = "hidden"
           ),
-          tags$button(
+          tags$label(
             id = "builder_add_datasets",
-            type = "button",
             class = "dataset-file-button builder-file-trigger",
+            tabindex = "0",
+            role = "button",
             icon_svg(ICON_PLUS),
             span("Add datasets…")
           )

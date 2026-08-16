@@ -889,6 +889,7 @@
   display: grid;
   gap: .4rem;
 }
+.builder-upload-transport { display: none !important; }
 .builder-file-trigger.is-drag-over {
   outline: 3px solid var(--c-amber-50);
   outline-offset: 2px;

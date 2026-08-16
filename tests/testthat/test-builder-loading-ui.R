@@ -65,7 +65,8 @@ test_that("dataset selection uses one hidden single-file Shiny transport", {
   )
 
   expect_match(pre_server, 'id = "builder_add_datasets"', fixed = TRUE)
-  expect_match(pre_server, 'type = "button"', fixed = TRUE)
+  expect_match(pre_server, 'tags$label(', fixed = TRUE)
+  expect_match(pre_server, 'role = "button"', fixed = TRUE)
   expect_match(
     pre_server,
     'class = "shiny-input-file builder-upload-transport"',
@@ -254,6 +255,11 @@ test_that("client scheduler serializes file and example dispatch", {
   expect_match(client, "try {", fixed = TRUE)
   expect_match(client, "failClientDispatch", fixed = TRUE)
   expect_match(client, "builder_import_example", fixed = TRUE)
+  expect_match(
+    client,
+    'showClientLoadingWorkbench(entry.name, "Waiting to load…")',
+    fixed = TRUE
+  )
   expect_match(client, "builder_client_import_dispatch", fixed = TRUE)
   expect_match(client, "builder-cancel-client-import", fixed = TRUE)
   expect_match(client, "entry !== activeClientImport", fixed = TRUE)
