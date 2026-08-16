@@ -18,11 +18,16 @@ test_that("real Ion drag is rendered locally on the next animation frame", {
       "  tags$canvas(id='enhance-alignment_spatial_plot', class='builder-spatial-canvas',",
       "    style='display:block;width:600px;height:400px'),",
       "  tags$div(id='enhance-alignment_spatial_plot-tooltip', hidden='hidden'),",
-      "  tags$p(id='enhance-alignment_spatial_plot-summary'), textOutput('server_changes'))",
+      "  tags$p(id='enhance-alignment_spatial_plot-summary'), textOutput('server_changes'),",
+      "  textOutput('server_value_valid'))",
       "server <- function(input, output, session) {",
       "  changes <- reactiveVal(0L)",
       "  observeEvent(input[['enhance-coordinate_rotation']], changes(changes()+1L), ignoreInit=TRUE)",
       "  output$server_changes <- renderText(changes())",
+      "  output$server_value_valid <- renderText({",
+      "    value <- input[['enhance-coordinate_rotation']]",
+      "    is.numeric(value) && length(value)==1L && is.finite(value)",
+      "  })",
       "  session$onFlushed(function() { session$sendCustomMessage('builder_spatial_canvas_scene', list(",
       "    available=TRUE, viewKey='test', generation=1L, resetToken=1L, capped=FALSE,",
       "    points=list(x=point_radius*cos(point_angle), y=point_radius*sin(point_angle),",
@@ -116,6 +121,7 @@ test_that("real Ion drag is rendered locally on the next animation frame", {
   expect_equal(during$latestViewport$scale, viewport$scale, tolerance = 1e-9)
   expect_identical(during$sceneMessages, 1L)
   expect_identical(app$get_value(output = "server_changes"), "1")
+  expect_identical(app$get_value(output = "server_value_valid"), "TRUE")
   metrics <- app$get_js("window.__builderSpatialCanvasMetrics")
   expect_gte(length(metrics$eventToRenderMs), 60L)
   expect_lte(unname(stats::quantile(unlist(metrics$eventToRenderMs), .95)), 34)

@@ -277,10 +277,11 @@
     if (!id || !window.Shiny || typeof Shiny.setInputValue !== "function") return;
     var target = document.getElementById(id);
     if (!target) return;
+    var value = target.type === "checkbox" ? target.checked : Number(target.value);
+    if (target.type !== "checkbox" && !Number.isFinite(value)) return;
     state.releaseGuardId = id;
     window.setTimeout(function () { state.releaseGuardId = null; }, 0);
-    Shiny.setInputValue(id, target.type === "checkbox" ? target.checked : target.value,
-      {priority: "event"});
+    Shiny.setInputValue(id, value, {priority: "event"});
   }
   document.addEventListener("pointerdown", function (event) {
     if (controlMap[event.target.id] && event.target.type !== "checkbox") {
