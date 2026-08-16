@@ -65,7 +65,8 @@ test_that("Builder stays visible while a dataset loads", {
     "const row = document.querySelector('.ds--import');",
     "const dot = row.querySelector('.ds-state-dot');",
     "return {background:getComputedStyle(row).backgroundColor, ",
-    "dot:getComputedStyle(dot).color};",
+    "dot:getComputedStyle(dot).color, ",
+    "dotWidth:getComputedStyle(dot).width, dotHeight:getComputedStyle(dot).height};",
     "})()"
   ))
   expect_identical(loading_colours$background, "rgb(238, 244, 251)")
@@ -91,16 +92,18 @@ test_that("Builder stays visible while a dataset loads", {
   )))
   ready_colours <- app$get_js(paste0(
     "(() => {",
-    "const row = document.querySelector('.ds.is-ready.is-active');",
+    "const row = document.querySelector('.ds.ds--ready.is-active');",
     "const dot = row.querySelector('.ds-ready-dot');",
     "return {background:getComputedStyle(row).backgroundColor, ",
     "marker:getComputedStyle(row, '::before').backgroundColor, ",
-    "dot:getComputedStyle(dot).color};",
+    "dot:getComputedStyle(dot).color, ",
+    "dotWidth:getComputedStyle(dot).width, dotHeight:getComputedStyle(dot).height};",
     "})()"
   ))
   expect_identical(ready_colours$background, "rgb(255, 244, 236)")
   expect_identical(ready_colours$marker, "rgb(249, 115, 22)")
   expect_identical(ready_colours$dot, "rgb(22, 163, 74)")
+  expect_identical(ready_colours$dotWidth, ready_colours$dotHeight)
 
   for (layout in list(
     list(width = 1920L, height = 850L, gutter = 26),

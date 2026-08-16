@@ -913,9 +913,11 @@
   color: var(--c-error);
 }
 .ds-state-dot {
+  display: block;
   flex: 0 0 auto;
   width: .55rem;
   height: .55rem;
+  box-sizing: border-box;
   margin-top: .48rem;
   border: 2px solid currentColor;
   border-radius: 50%;

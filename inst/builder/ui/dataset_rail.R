@@ -687,7 +687,7 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
 
       shiny::div(
         class = paste(
-          c("ds", "is-ready", if (active) "is-active"),
+          c("ds", "ds--ready", if (active) "is-active"),
           collapse = " "
         ),
         `data-ds` = entry$id,
@@ -717,11 +717,11 @@ builder_dataset_rail_ui <- function(state, current = state$current_dataset) {
                 class = "rail-readiness-status",
                 readiness$label
               )
-            ),
-            shiny::span(
-              class = "ds-state-dot ds-ready-dot",
-              `aria-hidden` = "true"
             )
+          ),
+          shiny::span(
+            class = "ds-state-dot ds-ready-dot",
+            `aria-hidden` = "true"
           )
         ),
         shiny::div(
