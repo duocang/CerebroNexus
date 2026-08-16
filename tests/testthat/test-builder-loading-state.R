@@ -233,6 +233,55 @@ test_that("the queue enforces one active importer and skips removed work", {
   )
 })
 
+test_that("import focus follows the first non-terminal entry in FIFO order", {
+  queue <- builder_import_queue(max_active = 1L)
+  for (id in paste0("ds", 1:4)) {
+    queue <- builder_import_add(
+      queue,
+      builder_import_entry(
+        id,
+        id,
+        list(kind = "example", example = id)
+      )
+    )
+  }
+  queue <- builder_import_transition(queue, "ds1", "reading", 1L)
+  queue <- builder_import_transition(queue, "ds1", "preparing", 1L)
+  queue <- builder_import_transition(queue, "ds1", "ready", 1L)
+  queue <- builder_import_transition(queue, "ds2", "reading", 1L)
+  queue <- builder_import_transition(
+    queue,
+    "ds2",
+    "error",
+    1L,
+    error = "fixture failure"
+  )
+  queue <- builder_import_transition(queue, "ds3", "cancelled", 1L)
+
+  expect_identical(builder_import_focus_id(queue), "ds4")
+
+  queue <- builder_import_transition(queue, "ds4", "reading", 1L)
+  expect_identical(builder_import_focus_id(queue), "ds4")
+  expect_lte(length(builder_import_active_ids(queue)), 1L)
+})
+
+test_that("import focus is empty when every entry is terminal", {
+  queue <- builder_import_queue()
+  queue <- builder_import_add(
+    queue,
+    builder_import_entry(
+      "ds1",
+      "Ready",
+      list(kind = "example", example = "ready")
+    )
+  )
+  queue <- builder_import_transition(queue, "ds1", "reading", 1L)
+  queue <- builder_import_transition(queue, "ds1", "preparing", 1L)
+  queue <- builder_import_transition(queue, "ds1", "ready", 1L)
+
+  expect_null(builder_import_focus_id(queue))
+})
+
 test_that("legacy ready entries retain the established loaded default", {
   entry <- list(load_state = NULL)
   expect_identical(

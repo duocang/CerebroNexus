@@ -507,7 +507,7 @@ test_that("Viewer Group catalog interactions use stable names and client search"
   expect_match(css, ".viewer-group-row", fixed = TRUE)
 })
 
-test_that("dataset uploads use an amber trigger without replacing the native chooser", {
+test_that("dataset uploads use an amber trigger over the single transport", {
   app <- builder_asset_text("app.R")
   css <- builder_stylesheet_text()
 
@@ -519,7 +519,7 @@ test_that("dataset uploads use an amber trigger without replacing the native cho
     'class = "dataset-file-control builder-file-picker builder-file-picker--sidebar"',
     fixed = TRUE
   )
-  expect_match(app, "builder-file-input", fixed = TRUE)
+  expect_match(app, "builder-upload-transport", fixed = TRUE)
   expect_match(app, "builder-file-trigger", fixed = TRUE)
   expect_match(
     app,
@@ -527,6 +527,7 @@ test_that("dataset uploads use an amber trigger without replacing the native cho
     fixed = TRUE
   )
   expect_match(app, '"Add datasets…"', fixed = TRUE)
+  expect_match(app, 'id = "builder_add_datasets"', fixed = TRUE)
   expect_false(grepl('fileInput(', app, fixed = TRUE))
   expect_false(grepl('dataset_files.*class = "btn', app, perl = TRUE))
   expect_match(css, ".dataset-file-button", fixed = TRUE)
@@ -578,7 +579,8 @@ test_that("all local attachments use accessible native file inputs", {
   css <- builder_stylesheet_text()
 
   expect_match(app, 'accept = paste(', fixed = TRUE)
-  expect_match(app, 'multiple = "multiple"', fixed = TRUE)
+  expect_false(grepl('multiple = "multiple"', app, fixed = TRUE))
+  expect_match(js, "picker.multiple = true", fixed = TRUE)
   expect_match(stage, 'accept = ".csv,.tsv,.txt"', fixed = TRUE)
   expect_match(stage, 'multiple = "multiple"', fixed = TRUE)
   expect_match(stage, 'accept = ".png,.jpg,.jpeg"', fixed = TRUE)
@@ -951,7 +953,7 @@ test_that("dataset rail uses one selected state and one soft-danger action", {
   expect_match(js, 'confirm.className = "btn btn-remove-soft"', fixed = TRUE)
   expect_match(
     js,
-    'row.className = "ds ds--import is-active is-importing ds--client-upload"',
+    'row.className = "ds ds--import ds--client-upload"',
     fixed = TRUE
   )
 })

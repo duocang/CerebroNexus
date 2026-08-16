@@ -20,7 +20,7 @@ builder_rail_source <- function(file) {
   }
 }
 
-test_that("the dataset rail presents a themed trigger for the native picker", {
+test_that("the dataset rail presents a button and single-file transport", {
   app <- readLines(
     builder_profile_inst_path("builder", "app.R"),
     warn = FALSE
@@ -33,13 +33,16 @@ test_that("the dataset rail presents a themed trigger for the native picker", {
   expect_match(rail, "tags$input(", fixed = TRUE)
   expect_match(rail, 'id = "dataset_files"', fixed = TRUE)
   expect_match(rail, 'type = "file"', fixed = TRUE)
-  expect_match(rail, 'multiple = "multiple"', fixed = TRUE)
+  expect_false(grepl('multiple = "multiple"', rail, fixed = TRUE))
+  expect_match(rail, 'hidden = "hidden"', fixed = TRUE)
+  expect_match(rail, "tags$button(", fixed = TRUE)
+  expect_match(rail, 'id = "builder_add_datasets"', fixed = TRUE)
   expect_match(
     rail,
     'class = "dataset-file-control builder-file-picker builder-file-picker--sidebar"',
     fixed = TRUE
   )
-  expect_match(rail, "builder-file-input", fixed = TRUE)
+  expect_match(rail, "builder-upload-transport", fixed = TRUE)
   expect_match(rail, "builder-file-trigger", fixed = TRUE)
   expect_match(rail, '"Add datasets…"', fixed = TRUE)
   expect_false(grepl("fileInput(", rail, fixed = TRUE))
@@ -636,7 +639,7 @@ if (builder_rail_api_available) {
     expect_match(app, "other_drop_ids", fixed = TRUE)
   })
 
-  test_that("one native picker owns multi-file entry beside rail examples", {
+  test_that("one hidden transport sits beside queued multi-file entry", {
     app <- readLines(
       builder_profile_inst_path("builder", "app.R"),
       warn = FALSE
@@ -650,7 +653,9 @@ if (builder_rail_api_available) {
 
     expect_match(rail, "tags$input(", fixed = TRUE)
     expect_match(rail, 'type = "file"', fixed = TRUE)
-    expect_match(rail, 'multiple = "multiple"', fixed = TRUE)
+    expect_false(grepl('multiple = "multiple"', rail, fixed = TRUE))
+    expect_match(rail, 'id = "builder_add_datasets"', fixed = TRUE)
+    expect_match(rail, 'id = "ds_client_import_queue"', fixed = TRUE)
     expect_match(rail, "builder_example_buttons_ui()", fixed = TRUE)
     expect_false(grepl("browse_open", text, fixed = TRUE))
     expect_false(grepl("browse_dir", text, fixed = TRUE))
@@ -998,7 +1003,7 @@ if (builder_rail_api_available) {
     })
   })
 
-  test_that("native uploads enqueue every datapath with its original name", {
+  test_that("single-file transport requires matching client metadata", {
     skip_if_not_installed("shiny")
     skip_if_not_installed("plotly")
     app_env <- new.env(parent = globalenv())
@@ -1018,58 +1023,109 @@ if (builder_rail_api_available) {
       protocol(app_env$builder_request_protocol("worker-native-picker"))
 
       session$setInputs(
+        builder_client_import_dispatch = list(
+          client_id = "client-import-1",
+          name = "alpha.rds",
+          size = 10,
+          nonce = 1
+        )
+      )
+      session$setInputs(
         dataset_files = data.frame(
-          name = c("alpha.rds", "beta.qs2", "alpha.rds"),
-          size = c(10, 20, 10),
-          type = rep("application/octet-stream", 3),
-          datapath = c("/tmp/upload-a", "/tmp/upload-b", "/tmp/upload-a"),
+          name = "alpha.rds",
+          size = 10,
+          type = "application/octet-stream",
+          datapath = "/tmp/upload-a",
           stringsAsFactors = FALSE
         )
       )
 
-      expect_setequal(
+      expect_identical(
         pending_sources(),
-        c(
-          builder_source_key("file", "/tmp/upload-a"),
-          builder_source_key("file", "/tmp/upload-b")
-        )
+        builder_source_key("file", "/tmp/upload-a")
       )
       requests <- c(list(protocol()$pending), protocol()$queue)
       expect_identical(
         vapply(requests, function(request) request$payload$label, character(1)),
-        c("alpha", "beta")
+        "alpha"
       )
-      expect_identical(names(pending_uploads()), c("ds1", "ds2"))
+      expect_identical(names(pending_uploads()), "ds1")
+      expect_identical(client_import_id_for("ds1"), "client-import-1")
       expect_identical(
         unname(vapply(pending_uploads(), `[[`, character(1), "filename")),
-        c("alpha.rds", "beta.qs2")
+        "alpha.rds"
       )
       expect_identical(
         unname(vapply(pending_uploads(), `[[`, character(1), "type")),
-        c("RDS", "QS2")
+        "RDS"
       )
       expect_false(any(vapply(
         pending_uploads(),
         function(file) any(grepl("/tmp/upload", unlist(file), fixed = TRUE)),
         logical(1)
       )))
-      expect_identical(add_error(), "1 file has already been added.")
-
-      session$setInputs(cancel_pending_upload = list(id = "ds2", nonce = 1))
-      expect_null(pending_uploads()[["ds2"]])
-      expect_false(any(vapply(
-        c(list(protocol()$pending), protocol()$queue),
-        function(request) identical(request$dataset, "ds2"),
-        logical(1)
-      )))
-
       session$setInputs(cancel_pending_upload = list(id = "ds1", nonce = 2))
       expect_false(isTRUE(pending_uploads()[["ds1"]]$visible))
       expect_identical(cancelled_loads(), "ds1")
+
+      session$setInputs(
+        dataset_files = data.frame(
+          name = "beta.rds",
+          size = 20,
+          type = "application/octet-stream",
+          datapath = "/tmp/upload-b",
+          stringsAsFactors = FALSE
+        )
+      )
+      expect_false(is.null(pending_client_upload()))
+      session$setInputs(
+        builder_client_import_dispatch = list(
+          client_id = "client-import-2",
+          name = "beta.rds",
+          size = 20,
+          nonce = 3
+        )
+      )
+      expect_identical(client_import_id_for("ds2"), "client-import-2")
+
+      session$setInputs(
+        builder_client_import_dispatch = list(
+          client_id = "client-import-3",
+          name = "gamma.rds",
+          size = 30,
+          nonce = 4
+        )
+      )
+      session$setInputs(
+        dataset_files = data.frame(
+          name = "wrong.rds",
+          size = 30,
+          type = "application/octet-stream",
+          datapath = "/tmp/upload-c",
+          stringsAsFactors = FALSE
+        )
+      )
+      expect_identical(
+        released_client_import_records()[["client-import-3"]]$state,
+        "rejected"
+      )
+
+      session$setInputs(
+        dataset_files = data.frame(
+          name = "orphan.rds",
+          size = 40,
+          type = "application/octet-stream",
+          datapath = "/tmp/upload-orphan",
+          stringsAsFactors = FALSE
+        )
+      )
+      orphan_token <- pending_client_upload()$token
+      expect_true(expire_pending_client_upload(orphan_token))
+      expect_null(pending_client_upload())
     })
   })
 
-  test_that("pending dataset UI does not advertise unsupported cancellation", {
+  test_that("client queue cancellation uses the established server action", {
     client <- paste(
       readLines(
         builder_profile_inst_path("builder", "www", "builder.js"),
@@ -1079,7 +1135,8 @@ if (builder_rail_api_available) {
     )
 
     expect_false(grepl(".pending-upload-remove", client, fixed = TRUE))
-    expect_false(grepl('send("cancel_pending_upload"', client, fixed = TRUE))
+    expect_match(client, "builder-cancel-client-import", fixed = TRUE)
+    expect_match(client, 'send("cancel_pending_upload"', fixed = TRUE)
   })
 
   test_that("protocol recovery retains retried and releases failed load reservations", {

@@ -57,6 +57,39 @@ test_that("the Builder initial HTML contains a stable non-empty shell", {
   expect_false(grepl('uiOutput("ds_list")', pre_server, fixed = TRUE))
 })
 
+test_that("dataset selection uses one hidden single-file Shiny transport", {
+  app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
+  pre_server <- paste(
+    app[seq_len(grep("server <- function", app, fixed = TRUE)[1L] - 1L)],
+    collapse = "\n"
+  )
+
+  expect_match(pre_server, 'id = "builder_add_datasets"', fixed = TRUE)
+  expect_match(pre_server, 'type = "button"', fixed = TRUE)
+  expect_match(
+    pre_server,
+    'class = "shiny-input-file builder-upload-transport"',
+    fixed = TRUE
+  )
+  expect_match(pre_server, 'hidden = "hidden"', fixed = TRUE)
+  expect_false(grepl('multiple = "multiple"', pre_server, fixed = TRUE))
+  expect_match(pre_server, 'id = "ds_client_import_queue"', fixed = TRUE)
+  expect_match(pre_server, '`aria-live` = "polite"', fixed = TRUE)
+  expect_match(pre_server, '`aria-relevant` = "additions text"', fixed = TRUE)
+  expect_identical(
+    lengths(regmatches(
+      pre_server,
+      gregexpr('type = "file"', pre_server, fixed = TRUE)
+    )),
+    1L
+  )
+  expect_match(
+    pre_server,
+    "options(shiny.maxRequestSize = 10 * 1024^3)",
+    fixed = TRUE
+  )
+})
+
 test_that("ready and importing rail regions update independently", {
   app <- builder_app_source_text()
 
@@ -126,7 +159,7 @@ test_that("loading rail rows expose safe status and real actions", {
   expect_false(grepl("/private/session", html, fixed = TRUE))
 })
 
-test_that("active imports do not offer a fake cancellation action", {
+test_that("active imports offer the established server cancellation action", {
   entry <- builder_import_entry(
     "ds1",
     "patient-one",
@@ -142,7 +175,9 @@ test_that("active imports do not offer a fake cancellation action", {
     builder_loading_workbench_ui(queue$entries[["ds1"]])
   )$html
 
-  expect_false(grepl("builder-remove-import", rail_html, fixed = TRUE))
+  expect_match(rail_html, "builder-remove-import", fixed = TRUE)
+  expect_match(rail_html, "Cancel active import patient-one", fixed = TRUE)
+  expect_match(rail_html, ">Cancel<", fixed = TRUE)
   expect_false(grepl("builder-remove-import", workbench_html, fixed = TRUE))
   expect_false(grepl("Remove from queue", rail_html, fixed = TRUE))
   expect_false(grepl(">Remove<", workbench_html, fixed = TRUE))
@@ -180,7 +215,7 @@ test_that("error rows offer Retry and Remove without internal details", {
   expect_false(grepl("stack", html, ignore.case = TRUE))
 })
 
-test_that("client upload feedback precedes the Shiny file transfer", {
+test_that("client scheduler serializes file and example dispatch", {
   client <- paste(
     readLines(
       builder_profile_inst_path("builder", "www", "builder.js"),
@@ -205,17 +240,45 @@ test_that("client upload feedback precedes the Shiny file transfer", {
     collapse = "\n"
   )
 
-  expect_match(client, "beginClientDatasetUpload", fixed = TRUE)
-  expect_match(client, 'event.target.matches("#dataset_files")', fixed = TRUE)
-  expect_match(client, 'getElementById("ds_import_list")', fixed = TRUE)
+  expect_match(client, "var clientImportQueue = []", fixed = TRUE)
+  expect_match(client, "var activeClientImport = null", fixed = TRUE)
+  expect_match(client, "function openDatasetPicker()", fixed = TRUE)
+  expect_match(client, 'picker.multiple = true', fixed = TRUE)
+  expect_match(client, "function enqueueClientFiles(fileList)", fixed = TRUE)
+  expect_match(client, "function enqueueExample(example)", fixed = TRUE)
+  expect_match(client, "function dispatchNextClientImport()", fixed = TRUE)
+  expect_match(client, "if (activeClientImport) return", fixed = TRUE)
+  expect_match(client, "new DataTransfer()", fixed = TRUE)
+  expect_match(client, "transport.files = transfer.files", fixed = TRUE)
+  expect_match(client, "transport.files.length !== 1", fixed = TRUE)
+  expect_match(client, "try {", fixed = TRUE)
+  expect_match(client, "failClientDispatch", fixed = TRUE)
+  expect_match(client, "builder_import_example", fixed = TRUE)
+  expect_match(client, "builder_client_import_dispatch", fixed = TRUE)
+  expect_match(client, "builder-cancel-client-import", fixed = TRUE)
+  expect_match(client, "entry !== activeClientImport", fixed = TRUE)
+  expect_match(client, 'addEventListener("drop"', fixed = TRUE)
+  expect_match(
+    client,
+    'document.addEventListener("shiny:disconnected"',
+    fixed = TRUE
+  )
+  expect_match(client, "importSyncPending = true", fixed = TRUE)
+  expect_match(client, "builder_import_sync_request", fixed = TRUE)
+  expect_match(client, "builder_import_sync", fixed = TRUE)
+  expect_match(client, 'entry.state = "unknown"', fixed = TRUE)
+  expect_match(client, "Waiting to restore the import state", fixed = TRUE)
+  expect_match(client, 'getElementById("ds_client_import_queue")', fixed = TRUE)
   expect_match(client, "Uploading…", fixed = TRUE)
+  expect_match(client, "Waiting · ", fixed = TRUE)
+  expect_match(client, "Possible duplicate", fixed = TRUE)
+  expect_match(client, "applyClientImportQueueLock", fixed = TRUE)
   expect_match(client, "textContent", fixed = TRUE)
   expect_match(client, ".builder-pick-import", fixed = TRUE)
   expect_match(client, ".builder-retry-import", fixed = TRUE)
   expect_match(client, ".builder-remove-import", fixed = TRUE)
-  expect_match(client, "is-importing", fixed = TRUE)
-  expect_match(client, "is-active", fixed = TRUE)
-  expect_match(client, 'setAttribute("aria-current", "true")', fixed = TRUE)
+  expect_false(grepl("beginClientDatasetUpload", client, fixed = TRUE))
+  expect_false(grepl('send("use_example"', client, fixed = TRUE))
   expect_match(css, ".builder-loading-stage", fixed = TRUE)
   expect_match(css, ".builder-loading-progress", fixed = TRUE)
   expect_match(css, "prefers-reduced-motion: reduce", fixed = TRUE)

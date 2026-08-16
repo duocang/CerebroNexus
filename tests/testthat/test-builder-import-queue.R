@@ -70,6 +70,47 @@ test_that("the live app exposes imports before their worker result", {
   })
 })
 
+test_that("client imports bind identities and release exactly once", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this protocol test.")
+  }
+  app_env$builder_session_example <- function(...) invisible(TRUE)
+  app_env$builder_session_poll <- function(worker, ...) {
+    list(worker = worker, event = NULL, result = NULL)
+  }
+
+  shiny::testServer(app_env$server, {
+    worker(list(epoch = "worker-client-protocol"))
+    worker_available(TRUE)
+    protocol(app_env$builder_request_protocol("worker-client-protocol"))
+
+    expect_true(start_load(
+      "example",
+      "all_content",
+      "All content",
+      client_id = "client-import-1"
+    ))
+    expect_identical(client_import_id_for("ds1"), "client-import-1")
+    expect_true(release_client_import(
+      "client-import-1",
+      server_id = "ds1",
+      outcome = "ready"
+    ))
+    expect_false(release_client_import(
+      "client-import-1",
+      server_id = "ds1",
+      outcome = "error",
+      message = "late failure"
+    ))
+    expect_identical(released_client_imports(), "client-import-1")
+  })
+})
+
 test_that("ten queued sources stay lightweight and single-flight", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")

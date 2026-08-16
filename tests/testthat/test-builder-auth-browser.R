@@ -416,19 +416,36 @@ test_that("Builder auth survives redraw and traps focus", {
   on.exit(builder_auth_browser_teardown(app), add = TRUE)
   app$wait_for_idle(timeout = 30000)
   builder_auth_browser_load_example(app)
-  app$upload_file(
-    dataset_files = builder_profile_inst_path(
-      "builder",
-      "fixtures",
-      "all_content.rds"
-    )
+  upload_path <- builder_profile_inst_path(
+    "builder",
+    "fixtures",
+    "all_content.rds"
   )
-  app$wait_for_js(
-    paste0(
-      "document.querySelectorAll('.ds-pick').length === 2 && ",
-      "document.querySelectorAll('.ds--import').length === 0"
-    ),
-    timeout = 60000
+  builder_with_browser_diagnostics(
+    app,
+    "auth-upload-after-example",
+    {
+      dispatch <- list(
+        client_id = "client-import-auth-upload",
+        name = basename(upload_path),
+        size = unname(file.info(upload_path)$size),
+        nonce = 1
+      )
+      app$run_js(sprintf(
+        "Shiny.setInputValue('builder_client_import_dispatch', %s, {priority:'event'});",
+        jsonlite::toJSON(dispatch, auto_unbox = TRUE)
+      ))
+      app$upload_file(
+        dataset_files = upload_path
+      )
+      app$wait_for_js(
+        paste0(
+          "document.querySelectorAll('.ds-pick').length === 2 && ",
+          "document.querySelectorAll('.ds--import').length === 0"
+        ),
+        timeout = 60000
+      )
+    }
   )
   app$wait_for_idle(timeout = 30000)
   builder_auth_browser_intercept_inputs(app)

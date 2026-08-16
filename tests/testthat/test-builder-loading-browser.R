@@ -13,6 +13,7 @@ test_that("Builder stays visible while a dataset loads", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
+
   app$get_chromote_session()$set_viewport_size(width = 1920, height = 850)
   app$wait_for_js(
     "window.innerWidth === 1920 && window.innerHeight === 850",
@@ -126,5 +127,310 @@ test_that("Builder stays visible while a dataset loads", {
     nrow(browser_failures),
     0L,
     info = paste(browser_failures$message, collapse = "\n")
+  )
+})
+
+builder_browser_choose_files <- function(app, files) {
+  chromote <- app$get_chromote_session()
+  chromote$Page$enable()
+  chromote$Page$setInterceptFileChooserDialog(enabled = TRUE)
+  chooser <- chromote$Page$fileChooserOpened(wait_ = FALSE)
+  chromote$Runtime$evaluate(
+    expression = "document.getElementById('builder_add_datasets').click()",
+    userGesture = TRUE,
+    awaitPromise = FALSE,
+    wait_ = FALSE
+  )
+  opened <- chromote$wait_for(chooser)
+  expect_true(isTRUE(opened$mode %in% c("selectMultiple", "select")))
+  chromote$DOM$setFileInputFiles(
+    files = as.list(normalizePath(files)),
+    backendNodeId = opened$backendNodeId
+  )
+  invisible(opened)
+}
+
+test_that("multi-file selection stays FIFO through a single transport", {
+  skip_if_not(identical(Sys.getenv("CEREBRO_RUN_BROWSER_TESTS"), "true"))
+  app_dir <- builder_profile_inst_path("builder")
+  local_app_support(app_dir)
+  app <- AppDriver$new(
+    app_dir,
+    name = "builder_loading_serial_files",
+    width = 390,
+    height = 844,
+    load_timeout = 60000
+  )
+  on.exit(app$stop(), add = TRUE)
+  app$wait_for_idle(timeout = 30000)
+
+  fixture_dir <- withr::local_tempdir()
+  fixture_source <- builder_profile_inst_path(
+    "extdata",
+    "examples",
+    "pbmc_seurat.rds"
+  )
+  fixture_a <- file.path(fixture_dir, "pbmc-a.rds")
+  fixture_b <- file.path(fixture_dir, "pbmc-b.rds")
+  expect_true(file.copy(fixture_source, fixture_a))
+  expect_true(file.copy(fixture_source, fixture_b))
+
+  app$click(selector = ".rail-summary")
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('.rail').classList.contains('is-manager-open') && ",
+      "document.querySelector('.rail').classList.contains('is-manager-visible')"
+    ),
+    timeout = 10000
+  )
+  builder_browser_choose_files(app, c(fixture_a, fixture_b))
+
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('dataset_files').files.length === 1 && ",
+      "document.querySelectorAll('#ds_client_import_queue ",
+      ".ds--client-upload').length >= 1"
+    ),
+    timeout = 10000
+  )
+  queue <- app$get_js(paste0(
+    "Array.from(document.querySelectorAll('#ds_client_import_queue ",
+    ".ds--client-upload')).map(row => ({",
+    "name: row.querySelector('.nm').textContent, ",
+    "state: row.dataset.loadState, ",
+    "status: row.querySelector('.builder-import-status').textContent",
+    "}))"
+  ))
+  expect_identical(queue[[1L]]$name, "pbmc-a.rds")
+  expect_identical(queue[[2L]]$name, "pbmc-b.rds")
+  expect_identical(queue[[2L]]$state, "queued")
+  expect_match(queue[[2L]]$status, "Waiting", fixed = TRUE)
+  app$wait_for_js(
+    paste0(
+      "!document.querySelector('.rail').classList.contains('is-manager-open') && ",
+      "!document.querySelector('.rail-manager-backdrop')",
+      ".classList.contains('is-open')"
+    ),
+    timeout = 10000
+  )
+  expect_false(app$get_js(
+    "document.body.classList.contains('builder-dialog-open')"
+  ))
+
+  builder_with_browser_diagnostics(
+    app,
+    "builder-loading-serial-files",
+    app$wait_for_js(
+      paste0(
+        "document.querySelector('.builder-stage-footer-status') !== null && ",
+        "document.querySelector('.builder-stage-footer-status')",
+        ".textContent.trim() === '2 datasets ready' && ",
+        "document.getElementById('ds_client_import_queue').children.length === 0"
+      ),
+      timeout = 120000
+    )
+  )
+})
+
+test_that("a failed import automatically continues to the next file", {
+  skip_if_not(identical(Sys.getenv("CEREBRO_RUN_BROWSER_TESTS"), "true"))
+  app_dir <- builder_profile_inst_path("builder")
+  local_app_support(app_dir)
+  app <- AppDriver$new(
+    app_dir,
+    name = "builder_loading_failure_continues",
+    width = 768,
+    height = 800,
+    load_timeout = 60000
+  )
+  on.exit(app$stop(), add = TRUE)
+  app$wait_for_idle(timeout = 30000)
+
+  fixture_dir <- withr::local_tempdir()
+  invalid <- file.path(fixture_dir, "invalid-sce.rds")
+  valid <- file.path(fixture_dir, "valid-seurat.rds")
+  expect_true(file.copy(
+    builder_profile_inst_path("extdata", "examples", "pbmc_SCE.rds"),
+    invalid
+  ))
+  expect_true(file.copy(
+    builder_profile_inst_path("extdata", "examples", "pbmc_seurat.rds"),
+    valid
+  ))
+
+  builder_browser_choose_files(app, c(invalid, valid))
+  builder_with_browser_diagnostics(
+    app,
+    "builder-loading-failure-continues",
+    app$wait_for_js(
+      paste0(
+        "document.getElementById('ds_client_import_queue').children.length === 0 && ",
+        "document.getElementById('builder-live-status').textContent",
+        ".includes('valid-seurat is ready')"
+      ),
+      timeout = 120000
+    )
+  )
+})
+
+test_that("a waiting file can be cancelled without cancelling the active file", {
+  skip_if_not(identical(Sys.getenv("CEREBRO_RUN_BROWSER_TESTS"), "true"))
+  app_dir <- builder_profile_inst_path("builder")
+  local_app_support(app_dir)
+  app <- AppDriver$new(
+    app_dir,
+    name = "builder_loading_cancel_waiting",
+    width = 390,
+    height = 844,
+    load_timeout = 60000
+  )
+  on.exit(app$stop(), add = TRUE)
+  app$wait_for_idle(timeout = 30000)
+
+  fixture_dir <- withr::local_tempdir()
+  fixture <- builder_profile_inst_path(
+    "extdata",
+    "examples",
+    "pbmc_seurat.rds"
+  )
+  first <- file.path(fixture_dir, "first.rds")
+  second <- file.path(fixture_dir, "second.rds")
+  expect_true(file.copy(fixture, first))
+  expect_true(file.copy(fixture, second))
+
+  builder_browser_choose_files(app, c(first, second))
+  app$wait_for_js(
+    "document.querySelector('.builder-cancel-client-import') !== null",
+    timeout = 10000
+  )
+  app$run_js(paste0(
+    "document.querySelectorAll('.builder-cancel-client-import')",
+    ".item(document.querySelectorAll('.builder-cancel-client-import').length - 1)",
+    ".click();"
+  ))
+  builder_with_browser_diagnostics(
+    app,
+    "builder-loading-cancel-waiting",
+    app$wait_for_js(
+      paste0(
+        "document.querySelector('.builder-stage-footer-status') !== null && ",
+        "document.querySelector('.builder-stage-footer-status')",
+        ".textContent.trim() === '1 dataset ready' && ",
+        "document.getElementById('ds_client_import_queue').children.length === 0"
+      ),
+      timeout = 120000
+    )
+  )
+})
+
+test_that("rapid repeated drops preserve every file in FIFO order", {
+  skip_if_not(identical(Sys.getenv("CEREBRO_RUN_BROWSER_TESTS"), "true"))
+  app_dir <- builder_profile_inst_path("builder")
+  local_app_support(app_dir)
+  app <- AppDriver$new(
+    app_dir,
+    name = "builder_loading_rapid_drop",
+    width = 768,
+    height = 800,
+    load_timeout = 60000
+  )
+  on.exit(app$stop(), add = TRUE)
+  app$wait_for_idle(timeout = 30000)
+
+  app$run_js(paste0(
+    "(() => {",
+    "const trigger = document.getElementById('builder_add_datasets');",
+    "const drop = names => {",
+    "const transfer = new DataTransfer();",
+    "names.forEach(name => transfer.items.add(new File(",
+    "[new Uint8Array([98,114,111,107,101,110])], name, ",
+    "{type:'application/octet-stream'})));",
+    "trigger.dispatchEvent(new DragEvent('drop', {",
+    "bubbles:true, cancelable:true, dataTransfer:transfer",
+    "}));",
+    "};",
+    "const started = performance.now();",
+    "drop(['rapid-a.rds','rapid-b.rds']);",
+    "drop(['rapid-c.rds','rapid-d.rds']);",
+    "window.__builderRapidDropElapsed = performance.now() - started;",
+    "})();"
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll('#ds_client_import_queue .nm').length >= 3 && ",
+      "window.__builderRapidDropElapsed < 100"
+    ),
+    timeout = 10000
+  )
+  expect_identical(
+    unlist(app$get_js(paste0(
+      "Array.from(document.querySelectorAll('#ds_list .nm'))",
+      ".map(node => node.textContent.trim())"
+    ))),
+    c("rapid-a.rds", "rapid-b.rds", "rapid-c.rds", "rapid-d.rds")
+  )
+  app$wait_for_js(
+    "document.getElementById('ds_client_import_queue').children.length === 0",
+    timeout = 120000
+  )
+})
+
+test_that("disconnect pauses the queue until server state is synchronized", {
+  skip_if_not(identical(Sys.getenv("CEREBRO_RUN_BROWSER_TESTS"), "true"))
+  app_dir <- builder_profile_inst_path("builder")
+  local_app_support(app_dir)
+  app <- AppDriver$new(
+    app_dir,
+    name = "builder_loading_disconnect_sync",
+    width = 768,
+    height = 800,
+    load_timeout = 60000
+  )
+  on.exit(app$stop(), add = TRUE)
+  app$wait_for_idle(timeout = 30000)
+
+  fixture_dir <- withr::local_tempdir()
+  fixture <- builder_profile_inst_path(
+    "builder",
+    "fixtures",
+    "all_content.rds"
+  )
+  first <- file.path(fixture_dir, "sync-a.rds")
+  second <- file.path(fixture_dir, "sync-b.rds")
+  expect_true(file.copy(fixture, first))
+  expect_true(file.copy(fixture, second))
+  builder_browser_choose_files(app, c(first, second))
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('ds_client_import_queue').children.length === 1 && ",
+      "document.querySelector('#ds_client_import_queue .nm')",
+      ".textContent.trim() === 'sync-b.rds'"
+    ),
+    timeout = 30000
+  )
+
+  app$run_js("document.dispatchEvent(new Event('shiny:disconnected')); ")
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#ds_client_import_queue [data-load-state=paused]')",
+      " !== null && ",
+      "document.getElementById('ds_client_import_queue').textContent",
+      ".includes('Connection lost')"
+    ),
+    timeout = 10000
+  )
+  app$run_js("document.dispatchEvent(new Event('shiny:connected')); ")
+  builder_with_browser_diagnostics(
+    app,
+    "builder-loading-disconnect-sync",
+    app$wait_for_js(
+      paste0(
+        "document.querySelector('.builder-stage-footer-status') !== null && ",
+        "document.querySelector('.builder-stage-footer-status')",
+        ".textContent.trim() === '2 datasets ready' && ",
+        "document.getElementById('ds_client_import_queue').children.length === 0"
+      ),
+      timeout = 120000
+    )
   )
 })
