@@ -360,31 +360,27 @@ tab_coordinated_views <- tabItem(
         tags$span(class = "cv-shown", id = "cv-shown")
       ),
 
-      ## ---- collapsible second row of the SAME bar ----------------------- ##
+      ## ---- responsive advanced-settings drawer ------------------------- ##
       ## Additional projection parameters (opacity, % of cells) + per-group
-      ## filters. These belong to the same control surface as the row above, so
-      ## they live in the same card and are separated by a hairline rather than
-      ## floating in a second box. Being a 100%-wide flex item, it wraps onto its
-      ## own line inside the bar.
+      ## filters. These belong to the same control system as the row above, but
+      ## use a stable viewport drawer so plots never resize when it opens.
       ##
-      ## Three nested elements is what a height animation costs when the content
-      ## height is unknown: `.cv-more` animates grid-template-rows 0fr -> 1fr,
-      ## `.cv-more-clip` supplies the overflow:hidden/min-height:0 that lets the
-      ## 0fr row actually collapse, and `.cv-more-inner` carries the hairline and
-      ## padding (they would still paint at zero height if put on the clip).
+      ## The exact control node is moved to a body-level viewport drawer when it
+      ## opens. Its clip owns internal scrolling; its inner wrapper owns spacing.
       div(
-        class = "cv-more",
+        class = "cv-more coordviews-page",
         id = "cv-more",
+        `role` = "dialog",
+        `aria-modal` = "false",
+        `aria-hidden` = "true",
+        `aria-labelledby` = "cv-more-title",
         div(
           class = "cv-more-titlebar",
-          `data-cv-more-drag-handle` = "true",
-          `aria-label` = "Drag More settings window",
           tags$span(
-            class = "cv-more-grip",
-            HTML("&middot;&middot;<br>&middot;&middot;")
+            class = "cv-more-title",
+            id = "cv-more-title",
+            "More settings"
           ),
-          tags$span(class = "cv-more-title", "More settings"),
-          tags$span(class = "cv-more-drag-hint", "Drag to move"),
           tags$button(
             type = "button",
             id = "cv-more-close",
@@ -449,8 +445,8 @@ tab_coordinated_views <- tabItem(
               cv_range(
                 "Point size",
                 "cv-ps",
-                min = "0.8",
-                max = "7",
+                min = "0",
+                max = "20",
                 step = "0.2",
                 value = "3",
                 disp = "3.0",
@@ -459,7 +455,7 @@ tab_coordinated_views <- tabItem(
               cv_range(
                 "Point opacity",
                 "cv-opacity",
-                min = "0.1",
+                min = "0",
                 max = "1",
                 step = "0.05",
                 value = "0.8",
