@@ -244,6 +244,9 @@ consume_client_import_upload <- function() {
 }
 
 expire_pending_client_upload <- function(token) {
+  if (!isTRUE(session_active)) {
+    return(invisible(FALSE))
+  }
   upload <- isolate(pending_client_upload())
   dispatch <- isolate(pending_client_import_dispatch())
   if (
@@ -282,6 +285,9 @@ observeEvent(input$builder_client_import_dispatch, {
   token <- event$nonce %||% NULL
   later::later(
     function() {
+      if (!isTRUE(session_active)) {
+        return(invisible(FALSE))
+      }
       dispatch <- isolate(pending_client_import_dispatch())
       if (is.null(dispatch) || !identical(dispatch$token, token)) {
         return()
