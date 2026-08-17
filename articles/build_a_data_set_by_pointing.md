@@ -152,7 +152,7 @@ Choose one artifact mode:
   contains the CRBs and sidecars.
 - **Login App** does the same, and adds `viewer-auth.env` beside the
   App. In Review, select **Require login**, add each local account, then
-  Build and use **Open App** to verify the local login. Keep
+  Build and use **Launch App** to verify the local login. Keep
   `viewer-auth.env` with the App when moving a release; never commit it
   to Git or place it in a web-accessible directory.
 
@@ -185,7 +185,7 @@ matches the data.
 
 A successful result names the published artifacts. Every published
 release offers **Reveal Folder**, **Copy Path**, and **Copy Report**;
-**Open App is available only for a generated App** that passed final
+**Launch App is available only for a generated App** that passed final
 verification. The report is portable and redacted; it describes
 artifact-visible datasets, methods, and metadata columns without source
 paths, host/PID data, lock paths, or raw values.
