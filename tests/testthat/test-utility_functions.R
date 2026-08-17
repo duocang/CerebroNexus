@@ -37,6 +37,9 @@ cachePlot <- utils_env$cachePlot
 dynamicPointSize <- utils_env$dynamicPointSize
 nProjectionDimensions <- utils_env$nProjectionDimensions
 capProjectionDimensions <- utils_env$capProjectionDimensions
+configuredViewerContent <- utils_env$configuredViewerContent
+configuredViewerPercentageCellsToShow <-
+  utils_env$configuredViewerPercentageCellsToShow
 
 test_that("projection hover info accepts standard Seurat QC columns", {
   utils_env$getGroups <- function() "sample"
@@ -365,4 +368,52 @@ test_that("the selected-cell panels carry only the identifier's two columns", {
       )
     }
   }
+})
+
+test_that("configured Viewer content follows the selected dataset", {
+  files <- c(A = "/private/a.crb", B = "/private/b.crb")
+  config <- list(
+    A = list(
+      default_projection = "umap",
+      overview_point_size = 4,
+      overview_percentage_cells_to_show = 100
+    ),
+    B = list(
+      default_projection = "pca",
+      default_trajectory = list(method = "monocle2", name = "lineage"),
+      overview_point_size = 8,
+      overview_percentage_cells_to_show = 60
+    )
+  )
+
+  expect_identical(
+    configuredViewerContent(config, "/private/b.crb", files),
+    config$B
+  )
+  expect_identical(
+    configuredViewerContent(config, "/private/upload.crb", NULL),
+    list()
+  )
+  expect_identical(configuredViewerContent(NULL, files[[1L]], files), list())
+})
+
+test_that("configured initial cell percentage is validated for Viewer use", {
+  expect_identical(
+    configuredViewerPercentageCellsToShow(
+      list(overview_percentage_cells_to_show = 60),
+      fallback = 100
+    ),
+    60
+  )
+  expect_identical(
+    configuredViewerPercentageCellsToShow(
+      list(overview_percentage_cells_to_show = 0),
+      fallback = 100
+    ),
+    100
+  )
+  expect_identical(
+    configuredViewerPercentageCellsToShow(list(), fallback = 100),
+    100
+  )
 })

@@ -180,7 +180,7 @@ test_that("classed column names never dispatch custom methods", {
   expect_false(touched)
 })
 
-test_that("the exporter consumes the shared coordinate contract", {
+test_that("the Builder and exporter consume the shared coordinate contract", {
   exporter_path <- testthat::test_path(
     "..",
     "..",
@@ -191,17 +191,25 @@ test_that("the exporter consumes the shared coordinate contract", {
     file.exists(exporter_path),
     "source tree not present (installed-package layout)"
   )
+  builder_path <- spatial_contract_inst_path(
+    "builder",
+    "content_spatial.R"
+  )
+  expect_true(file.exists(builder_path))
   exporter <- readLines(exporter_path, warn = FALSE)
-  expect_true(any(grepl(
-    ".spx_find_coordinate_columns",
-    exporter,
-    fixed = TRUE
-  )))
-  expect_true(any(grepl(
-    ".spx_find_barcode_column",
-    exporter,
-    fixed = TRUE
-  )))
+  builder <- readLines(builder_path, warn = FALSE)
+  for (consumer in list(exporter, builder)) {
+    expect_true(any(grepl(
+      ".spx_find_coordinate_columns",
+      consumer,
+      fixed = TRUE
+    )))
+    expect_true(any(grepl(
+      ".spx_find_barcode_column",
+      consumer,
+      fixed = TRUE
+    )))
+  }
 })
 
 test_that("the bundled coordinate contract is byte-identical and safe", {
