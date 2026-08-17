@@ -315,9 +315,13 @@
   function restoreFocus(dialog) {
     var target = dialog && dialog.__builderRestoreFocus;
     var fallback = dialog && dialog.__builderRestoreFocusFallback;
+    var restoreToken = dialog ?
+      (dialog.__builderFocusRestoreToken || 0) + 1 : 0;
+    if (dialog) dialog.__builderFocusRestoreToken = restoreToken;
     var lastTarget = null;
     var attempts = 0;
     function attempt() {
+      if (dialog && dialog.__builderFocusRestoreToken !== restoreToken) return;
       var active = document.activeElement;
       var focusWasLost = !active || active === document.body ||
         active === document.documentElement ||
@@ -390,6 +394,8 @@
   }
 
   function prepareDialog(dialog, trigger, close, restoreFallback) {
+    dialog.__builderFocusRestoreToken =
+      (dialog.__builderFocusRestoreToken || 0) + 1;
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("tabindex", "-1");
