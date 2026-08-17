@@ -7,14 +7,6 @@ run_options_test_fixture <- function() {
   list(root = root, crb = crb)
 }
 
-run_options_viewer_path <- function(...) {
-  path <- testthat::test_path("..", "..", "inst", "viewer", ...)
-  if (!file.exists(path)) {
-    path <- system.file("viewer", ..., package = "CerebroNexus")
-  }
-  path
-}
-
 test_that("initial_dataset preserves historical positional arguments", {
   arguments <- names(formals(createShinyApp))
 
@@ -293,7 +285,10 @@ test_that("createShinyApp freezes typed run options into config", {
 
   app_file <- file.path(app, "app.R")
   app_source <- paste(readLines(app_file, warn = FALSE), collapse = "\n")
-  app_template <- run_options_viewer_path("_bundle_app.R")
+  app_template <- builder_profile_inst_path(
+    "viewer",
+    "_bundle_app.R"
+  )
   expect_true(nzchar(app_template))
   expect_identical(
     readBin(app_file, "raw", n = file.info(app_file)$size),
@@ -499,7 +494,14 @@ test_that("initial dataset is reserved and validated through its argument", {
 })
 
 test_that("runtime initial selection keeps URL and session precedence", {
-  server_file <- run_options_viewer_path("shiny_server.R")
+  server_file <- builder_profile_inst_path("viewer", "shiny_server.R")
+  if (!file.exists(server_file)) {
+    server_file <- system.file(
+      "viewer",
+      "shiny_server.R",
+      package = "CerebroNexus"
+    )
+  }
   expect_true(file.exists(server_file))
   source <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
   url <- regexpr("match_dataset_by_url(", source, fixed = TRUE)[1L]
@@ -525,7 +527,14 @@ test_that("runtime initial selection keeps URL and session precedence", {
 })
 
 test_that("runtime starting page is mapped and applied only to the first load", {
-  server_file <- run_options_viewer_path("shiny_server.R")
+  server_file <- builder_profile_inst_path("viewer", "shiny_server.R")
+  if (!file.exists(server_file)) {
+    server_file <- system.file(
+      "viewer",
+      "shiny_server.R",
+      package = "CerebroNexus"
+    )
+  }
   expect_true(file.exists(server_file))
   source <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
 
