@@ -100,7 +100,10 @@ test_that("Manager and confirmation dialogs animate state and restore focus", {
   )
   builder_motion_escape(app)
   app$wait_for_js(
-    "document.querySelector('.builder-confirm-dialog') === null",
+    paste0(
+      "document.querySelector('.builder-confirm-dialog') === null && ",
+      "document.activeElement.classList.contains('builder-drop')"
+    ),
     timeout = 10000
   )
   expect_true(app$get_js(
