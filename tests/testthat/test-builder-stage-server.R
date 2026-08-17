@@ -106,7 +106,7 @@ test_that("Builder shell and workflow UI separate all four stages", {
     )),
     1L
   )
-  expect_match(actions_html, ">Continue<", fixed = TRUE)
+  expect_match(actions_html, ">Continue to Review<", fixed = TRUE)
   expect_match(actions_html, " disabled", fixed = TRUE)
   expect_false(grepl("make_app", actions_html, fixed = TRUE))
   expect_false(grepl("Create a Viewer app", actions_html, fixed = TRUE))
@@ -318,7 +318,7 @@ test_that("Build result survives failed folder selection and clears on acceptanc
         owner_token = "owner-a",
         object_md5 = strrep("a", 32L)
       ),
-      profile = list(marker = "a"),
+      profile = list(marker = "a", extras = list()),
       settings = list(name = "Dataset A")
     )
     use_state_only_fixture(list(entry))
@@ -427,7 +427,7 @@ test_that("workflow server owns loading and Configure rendering", {
         owner_token = "owner-a",
         object_md5 = strrep("a", 32L)
       ),
-      profile = list(marker = "a"),
+      profile = list(marker = "a", extras = list()),
       settings = list(name = "Dataset A")
     )))
     session$flushReact()
@@ -474,7 +474,7 @@ test_that("workflow server owns loading and Configure rendering", {
   )
   expect_match(
     workflow_server,
-    "plan <- isolate(frozen_review_plan())",
+    "plan <- freeze_materialized_plan_for_output(",
     fixed = TRUE
   )
   expect_match(review_server, "plan <- workflow()$review_plan", fixed = TRUE)
@@ -686,6 +686,7 @@ test_that("external spatial images carry required App output through Review", {
       section_kind = "spatial"
     )
     entry$dataset_profile$spatial <- list(sections = "fov")
+    entry$snapshot <- builder_task6_snapshot_identity()
     entry$settings$images <- list(fov = list(`H&E` = image))
     entry$settings$spatial_image_storage <- "external"
     use_state_only_fixture(list(entry))
@@ -744,7 +745,7 @@ test_that("workbench identity ignores settings writes but tracks selection", {
           owner_token = paste0("owner-", id),
           object_md5 = strrep(substr(id, nchar(id), nchar(id)), 32L)
         ),
-        profile = list(marker = id),
+        profile = list(marker = id, extras = list()),
         settings = list(name = id)
       )
     }
@@ -929,7 +930,7 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
         owner_token = "owner-a",
         object_md5 = strrep("a", 32L)
       ),
-      profile = list(marker = "a"),
+      profile = list(marker = "a", extras = list()),
       settings = list(name = "Dataset A")
     )
     use_state_only_fixture(list(entry))
@@ -1372,7 +1373,7 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
         owner_token = "owner-a",
         object_md5 = strrep("a", 32L)
       ),
-      profile = list(marker = "a"),
+      profile = list(marker = "a", extras = list()),
       settings = list(name = "Dataset A")
     )))
     real_session$setInputs(make_app = FALSE)
@@ -1620,7 +1621,7 @@ test_that("active Build states reject forged stage actions", {
         owner_token = "owner-a",
         object_md5 = strrep("a", 32L)
       ),
-      profile = list(marker = "a"),
+      profile = list(marker = "a", extras = list()),
       settings = list(name = "Dataset A")
     )))
     real_session$setInputs(make_app = FALSE)
@@ -1845,6 +1846,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
     )
 
     action_nonce <- 0L
+    recovery_output <- file.path(tempdir(), "builder-recovery-output")
     valid_accounts <- app_env$builder_auth_validate_payload(
       TRUE,
       list(list(
@@ -1868,7 +1870,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
           owner_token = "owner-a",
           object_md5 = strrep("a", 32L)
         ),
-        profile = list(marker = "a"),
+        profile = list(marker = "a", extras = list()),
         settings = list(name = "Dataset A", analyses = analyses)
       )
       use_state_only_fixture(list(entry))
@@ -1902,7 +1904,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
         reviewed,
         list(type = "confirm_review", plan = plan)
       ))
-      selected_output("/private/host/output")
+      selected_output(recovery_output)
       build_flow(list(stage = "idle", plan = NULL))
       worker(list(alive = TRUE))
       protocol(app_env$builder_request_protocol("worker-recovery"))
@@ -1930,7 +1932,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
     expect_null(result())
     expect_identical(workflow()$stage, "build")
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
-    expect_identical(selected_output(), "/private/host/output")
+    expect_identical(selected_output(), recovery_output)
     expect_match(
       paste(unlist(output$build_stage_footer), collapse = " "),
       ">Build<",

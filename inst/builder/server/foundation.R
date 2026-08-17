@@ -16,6 +16,7 @@ released_client_import_records <- reactiveVal(list())
 pending_client_import_dispatch <- reactiveVal(NULL)
 pending_client_upload <- reactiveVal(NULL)
 pending_client_upload_sequence <- reactiveVal(0L)
+session_active <- TRUE
 external_import_active <- reactiveVal(NULL)
 client_import_history_limit <- 200L
 
@@ -836,6 +837,7 @@ observe({
 })
 
 session$onSessionEnded(function() {
+  session_active <<- FALSE
   current_worker <- isolate(worker())
   if (!is.null(current_worker)) {
     stopped <- try(
