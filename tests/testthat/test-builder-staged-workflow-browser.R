@@ -82,12 +82,12 @@ test_that("staged workflow remains focused and overflow-free", {
       ),
       2L
     )
-    app$click("workflow_stage_upload")
+    app$click("complete_dataset_check")
     app$wait_for_js(
-      "document.querySelector('[data-workflow-stage=upload]') !== null",
+      "!document.getElementById('continue_to_review').disabled",
       timeout = 10000
     )
-    app$click("workflow_stage_configure")
+    app$click("workflow_stage_upload")
     app$wait_for_js(
       "document.querySelector('[data-workflow-stage=configure]') !== null",
       timeout = 10000

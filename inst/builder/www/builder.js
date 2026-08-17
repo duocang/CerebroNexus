@@ -337,8 +337,8 @@
         target = nextTarget;
       }
       attempts++;
-      if (attempts < 3) {
-        window.setTimeout(attempt, attempts === 1 ? 50 : 150);
+      if (attempts < 12) {
+        window.setTimeout(attempt, attempts === 1 ? 50 : 250);
       }
     }
     window.setTimeout(attempt, 0);

@@ -358,9 +358,10 @@ test_that("client scheduler serializes file and example dispatch", {
   expect_match(css, ".builder-loading-progress", fixed = TRUE)
   expect_match(
     css,
-    ".ds--client-upload:has(.builder-cancel-client-import)",
+    ".ds--client-upload .builder-cancel-client-import",
     fixed = TRUE
   )
-  expect_match(css, "bottom: .8rem", fixed = TRUE)
+  expect_match(css, "position: static", fixed = TRUE)
+  expect_match(css, "align-self: flex-end", fixed = TRUE)
   expect_match(css, "prefers-reduced-motion: reduce", fixed = TRUE)
 })
