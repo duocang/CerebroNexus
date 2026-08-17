@@ -1,6 +1,6 @@
 Package: CerebroNexus
 Title: Interactive visualization of single cell transcriptomics
-Version: 4.3.0
+Version: 5.0.0
 Authors@R: c(
   person("Michael", "Heming", email = "mihem@mailbox.org", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-9568-2790")),
   person("Roman", "Hillje", email = "roman.hillje@googlemail.com", role = c("aut")),
@@ -40,6 +40,7 @@ Imports:
   htmlwidgets,
   httr (>= 1.4.0),
   igraph,
+  jsonlite,
   later,
   Matrix (>= 1.2),
   methods,
@@ -48,6 +49,7 @@ Imports:
   plotly (>= 4.9.0),
   qvalue (>= 2.14.0),
   R6 (>= 2.4.0),
+  readxl,
   rlang (>= 0.4.2),
   scales (>= 1.1.0),
   scRepertoire (>= 2.0.0),
@@ -72,11 +74,17 @@ Suggests:
   formattable (>= 0.2.0.1),
   ggtree,
   HDF5Array (>= 1.18.1),
+  htmltools,
   httpuv,
-  jsonlite,
+  jpeg,
   knitr,
   monocle,
+  openssl,
   png,
+  processx,
+  ps,
+  qs,
+  qs2,
   reshape2,
   rhdf5,
   rmarkdown,
@@ -87,7 +95,8 @@ Suggests:
   SummarizedExperiment,
   testthat (>= 3.0.0),
   shinytest2 (>= 0.2.0),
-  withr
+  withr,
+  writexl
 Remotes:
   bnprks/BPCells/r
 VignetteBuilder: knitr
