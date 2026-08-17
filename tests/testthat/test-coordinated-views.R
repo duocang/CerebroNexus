@@ -433,6 +433,215 @@ test_that("cv_build_bundle still works when no grouping variable is registered",
   expect_equal(b$default_group, paste0(cv_env$cv_field_mode, "meta:nUMI"))
 })
 
+test_that("Linked views consumes Builder Viewer defaults", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2", "c3")
+  md <- data.frame(
+    cell_barcode = cells,
+    cell_type = c("A", "B", "A"),
+    region = c("R1", "R1", "R2"),
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  crb <- list(
+    getMetaData = function() md,
+    getGroups = function() c("cell_type", "region"),
+    getParameters = function() list(main_group = "region"),
+    availableProjections = function() c("umap", "tsne"),
+    getProjection = function(name) {
+      offset <- if (identical(name, "tsne")) 10 else 0
+      matrix(
+        seq_len(6) + offset,
+        nrow = 3,
+        dimnames = list(cells, c("x", "y"))
+      )
+    },
+    availableSpatial = function() character(),
+    getTrekker = function() NULL,
+    getImmuneRepertoire = function() NULL
+  )
+  cv_env$Cerebro.options <- list(
+    viewer_content = list(
+      ds = list(
+        default_projection = "tsne",
+        default_trajectory = NULL,
+        overview_point_size = 5,
+        overview_percentage_cells_to_show = 60
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  for (point_size in c(0, 5, 20)) {
+    cv_env$Cerebro.options$viewer_content$ds$overview_point_size <- point_size
+    bundle <- cv_env$cv_build_bundle(crb)
+    expect_identical(bundle$default_projection, "tsne")
+    expect_identical(bundle$default_group, "region")
+    expect_identical(
+      bundle$default_point_size,
+      point_size,
+      info = paste("point size", point_size)
+    )
+    expect_identical(bundle$default_percentage_cells_to_show, 60)
+  }
+})
+
+test_that("spatial and Trekker spaces do not require an expression projection", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  md <- data.frame(cell_barcode = cells, row.names = cells)
+  base <- list(
+    getMetaData = function() md,
+    getGroups = function() character(),
+    availableProjections = function() character(),
+    getProjection = function(name) NULL,
+    getImmuneRepertoire = function() NULL
+  )
+
+  spatial_crb <- base
+  spatial_crb$availableSpatial <- function() "slice-a"
+  spatial_crb$getSpatialData <- function(name) {
+    list(
+      coordinates = data.frame(
+        x = c(1, 2),
+        y = c(3, 4),
+        row.names = cells
+      )
+    )
+  }
+  spatial_crb$getTrekker <- function() NULL
+
+  spatial_bundle <- cv_env$cv_build_bundle(spatial_crb)
+  expect_type(spatial_bundle, "list")
+  expect_length(spatial_bundle$projections, 0L)
+  expect_null(spatial_bundle$default_projection)
+  expect_identical(
+    vapply(spatial_bundle$spaces, `[[`, character(1), "id"),
+    "spatial"
+  )
+
+  trekker_crb <- base
+  trekker_crb$availableSpatial <- function() character()
+  trekker_crb$getSpatialData <- function(name) NULL
+  trekker_crb$getTrekker <- function() {
+    list(
+      x = c(10, 20),
+      y = c(30, 40),
+      barcodes = cells,
+      fields = list(),
+      evidence = list(),
+      qc = NULL,
+      moran = NULL
+    )
+  }
+
+  trekker_bundle <- cv_env$cv_build_bundle(trekker_crb)
+  expect_type(trekker_bundle, "list")
+  expect_length(trekker_bundle$projections, 0L)
+  expect_null(trekker_bundle$default_projection)
+  expect_identical(
+    vapply(trekker_bundle$spaces, `[[`, character(1), "id"),
+    "trekker"
+  )
+})
+
+test_that("Builder Trekker backgrounds and appearance reach Linked views", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  md <- data.frame(cell_barcode = cells, row.names = cells)
+  crb <- list(
+    getMetaData = function() md,
+    getGroups = function() character(),
+    getParameters = function() list(),
+    availableProjections = function() character(),
+    availableSpatial = function() character(),
+    getImmuneRepertoire = function() NULL,
+    getTrekker = function() {
+      list(
+        x = c(10, 20),
+        y = c(30, 40),
+        barcodes = cells,
+        fields = list(),
+        evidence = list(),
+        qc = NULL,
+        moran = NULL,
+        histology_image = "data:image/png;base64,AA==",
+        histology_image_bounds = c(
+          xmin = 0,
+          xmax = 30,
+          ymin = 20,
+          ymax = 50
+        ),
+        histology_alignment = list(
+          source = "trekker.png",
+          image_opacity = 0.7,
+          point_opacity = 0.65,
+          point_size = 9
+        )
+      )
+    }
+  )
+
+  cv_env$Cerebro.options <- list(
+    viewer_content = list(
+      ds = list(overview_point_size = 5)
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  bundle <- cv_env$cv_build_bundle(crb)
+  trekker <- bundle$spaces[[which(
+    vapply(
+      bundle$spaces,
+      `[[`,
+      character(1),
+      "id"
+    ) ==
+      "trekker"
+  )]]
+  expect_length(trekker$images, 1L)
+  expect_identical(trekker$images[[1L]]$label, "trekker.png")
+  expect_identical(
+    trekker$images[[1L]]$uri,
+    "data:image/png;base64,AA=="
+  )
+  expect_identical(trekker$images[[1L]]$preset$opacity, 0.7)
+  expect_identical(trekker$background_scope, "Trekker")
+  ## Linked views keeps Overview as the shared-control seed while each spatial
+  ## space carries its own Builder appearance until the user changes that
+  ## shared control.
+  expect_identical(bundle$default_point_size, 5)
+  expect_identical(trekker$builder_point_opacity, 0.65)
+  expect_identical(trekker$builder_point_size, 9)
+
+  js <- paste(
+    readLines(file.path(dirname(bundle_file), "..", "www", "coordviews.js")),
+    collapse = "\n"
+  )
+  expect_match(js, "function pointSizeOf(p)", fixed = TRUE)
+  expect_match(js, "function pointOpacityOf(p)", fixed = TRUE)
+})
+
 test_that("cv_build_bundle assembles every modality from the omnibus demo", {
   skip_if_not(have_bundle)
   skip_if_not(
@@ -536,6 +745,43 @@ test_that("cv_build_bundle assembles every modality from the omnibus demo", {
   ## to decide a panel can be turned
   expect_null(b$projections$umap$z)
   expect_null(b$projections$tsne$z)
+})
+
+test_that("Viewer ships one global enhancement for every Selectize multi-select", {
+  ui_file <- file.path(dirname(bundle_file), "..", "shiny_UI.R")
+  js_file <- file.path(dirname(bundle_file), "..", "www", "multiselect.js")
+  css_file <- file.path(dirname(bundle_file), "..", "www", "custom.css")
+
+  expect_true(file.exists(js_file))
+  expect_match(
+    paste(readLines(ui_file, warn = FALSE), collapse = "\n"),
+    'cerebro_js("multiselect.js", defer = TRUE)',
+    fixed = TRUE
+  )
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
+  expect_match(js, 'var placeholder = "Select…"', fixed = TRUE)
+  expect_match(js, "select[multiple]", fixed = TRUE)
+  expect_match(js, "MutationObserver", fixed = TRUE)
+  expect_match(js, 'document.getElementById("cv-more-btn")', fixed = TRUE)
+  expect_match(js, "cerebro-multiselect-empty", fixed = TRUE)
+  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
+  expect_no_match(
+    css,
+    "#cv-proj-ctl .selectize-control { min-width:",
+    fixed = TRUE
+  )
+  expect_no_match(
+    css,
+    ".cv-spatial-ctl .selectize-control { min-width:",
+    fixed = TRUE
+  )
+  expect_match(
+    css,
+    ".selectize-control.multi .selectize-dropdown",
+    fixed = TRUE
+  )
+  expect_match(css, "width: max-content", fixed = TRUE)
 })
 
 test_that("a clone's label names its dominant CDR3 and says how many it hides", {
@@ -752,7 +998,7 @@ test_that("the histology bar exists when any section carries an image", {
   )
 })
 
-test_that("a section offers every background it has, each with its own id", {
+test_that("each section offers only its own configured backgrounds", {
   skip_if_not(have_bundle)
   ## Embedded and external used to be exclusive -- an object carrying its own
   ## histology silently dropped whatever the deployment had configured -- and
@@ -855,7 +1101,33 @@ test_that("a section offers every background it has, each with its own id", {
   cv_env$Cerebro.options <- list(
     cerebro_root = tmp,
     spatial_images = list(
-      ds = c("spatial-assets/a/he.png", "spatial-assets/b/he.png")
+      ds = list(
+        `section-a` = list(
+          `H&E` = list(
+            path = "spatial-assets/a/he.png",
+            bounds = c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
+          )
+        ),
+        `section-b` = c(`H&E` = "spatial-assets/b/he.png")
+      )
+    ),
+    spatial_image_settings = list(
+      ds = list(
+        `section-a` = list(
+          `H&E` = list(
+            offset_x = 4,
+            offset_y = -3,
+            scale_x = 1.5,
+            scale_y = 0.75,
+            flip_x = TRUE,
+            flip_y = FALSE,
+            rotation = 90,
+            image_opacity = 0.6,
+            point_opacity = 0.55,
+            point_size = 8
+          )
+        )
+      )
     )
   )
   cv_env$available_crb_files <- list(
@@ -870,11 +1142,126 @@ test_that("a section offers every background it has, each with its own id", {
     add = TRUE
   )
 
-  imgs <- cv_env$cv_external_images()
-  expect_equal(length(imgs), 2) # not just the first
-  ids <- vapply(imgs, function(x) x$id, character(1))
-  expect_equal(length(unique(ids)), 2) # same basename, different identity
-  expect_true(all(grepl("he\\.png$", ids)))
+  first <- cv_env$cv_external_images("section-a")
+  second <- cv_env$cv_external_images("section-b")
+  expect_length(first, 1L)
+  expect_length(second, 1L)
+  expect_identical(first[[1L]]$label, "H&E")
+  expect_identical(second[[1L]]$label, "H&E")
+  expect_false(identical(first[[1L]]$id, second[[1L]]$id))
+  expect_equal(
+    unlist(first[[1L]]$bounds, use.names = TRUE),
+    c(xmin = 1, xmax = 11, ymin = 2, ymax = 12)
+  )
+  expect_identical(
+    first[[1L]]$preset,
+    list(
+      offsetX = 4,
+      offsetY = -3,
+      scaleX = 1.5,
+      scaleY = 0.75,
+      flipX = TRUE,
+      flipY = FALSE,
+      rotation = 90,
+      opacity = 0.6,
+      pointOpacity = 0.55,
+      pointSize = 8
+    )
+  )
+
+  js <- paste(
+    readLines(file.path(dirname(bundle_file), "..", "www", "coordviews.js")),
+    collapse = "\n"
+  )
+  expect_match(js, "pr.rotation != null ? pr.rotation : 0", fixed = TRUE)
+  expect_match(js, "c.rotate(-state.rotate * Math.PI / 180)", fixed = TRUE)
+})
+
+test_that("per-image settings also apply to embedded backgrounds", {
+  skip_if_not(have_bundle)
+  cells <- c("c1", "c2")
+  crb <- list(getSpatialData = function(name) {
+    list(
+      coordinates = data.frame(
+        x = c(1, 2),
+        y = c(3, 4),
+        row.names = cells
+      ),
+      histology_images = list(
+        Embedded = list(
+          histology_image = "data:image/png;base64,AA==",
+          histology_image_bounds = c(
+            xmin = 0,
+            xmax = 3,
+            ymin = 0,
+            ymax = 5
+          ),
+          histology_alignment = list(
+            source = "Embedded",
+            dx = -4,
+            dy = 6,
+            scale = 1.25,
+            rotation = -32,
+            flip_x = TRUE,
+            flip_y = FALSE,
+            image_opacity = 0.7,
+            point_opacity = 0.35,
+            point_size = 9
+          )
+        )
+      ),
+      histology_alignment = list(
+        source = "Embedded",
+        image_opacity = 0.7,
+        point_opacity = 0.8,
+        point_size = 5
+      )
+    )
+  })
+  cv_env$Cerebro.options <- list(
+    spatial_image_settings = list(
+      ds = list(
+        fov = list(
+          Embedded = list(offset_x = 2, flip_y = TRUE, rotation = 45)
+        )
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  built <- cv_env$cv_spatial_one(crb, cells, "fov", allow_external = TRUE)
+  expect_identical(
+    built$images[[1L]]$preset,
+    list(
+      offsetX = -4,
+      offsetY = 6,
+      scaleX = 1.25,
+      scaleY = 1.25,
+      flipX = TRUE,
+      flipY = FALSE,
+      rotation = -32,
+      opacity = 0.7,
+      pointOpacity = 0.35,
+      pointSize = 9,
+      geometryBaked = TRUE
+    )
+  )
+  js <- paste(
+    readLines(file.path(dirname(bundle_file), "..", "www", "coordviews.js")),
+    collapse = "\n"
+  )
+  expect_match(js, "function imageRenderState(img, state)", fixed = TRUE)
+  expect_match(js, "if (!pr.geometryBaked) return state;", fixed = TRUE)
 })
 
 test_that("the alignment bar follows the chosen background, not the data set", {
@@ -979,41 +1366,46 @@ test_that("bundling two images of the same basename keeps both", {
   writeBin(px, p2)
 
   example <- system.file(
-    "extdata/examples/example.crb",
+    "extdata/examples/demo_spatial_visium.crb",
     package = "CerebroNexus"
   )
   skip_if_not(nzchar(example))
-  crb <- file.path(tmp, "demo.crb")
-  file.copy(example, crb, overwrite = TRUE)
+  crb_one <- file.path(tmp, "demo-one.crb")
+  crb_two <- file.path(tmp, "demo-two.crb")
+  file.copy(example, crb_one, overwrite = TRUE)
+  file.copy(example, crb_two, overwrite = TRUE)
+  spatial_name <- readRDS(crb_one)$availableSpatial()[[1L]]
   app_dir <- file.path(tmp, "app")
   createShinyApp(
-    cerebro_data = c("ds" = crb),
+    cerebro_data = c("ds one" = crb_one, "ds two" = crb_two),
     result_dir = app_dir,
-    spatial_images = list(ds = c(p1, p2)),
+    spatial_images = list(
+      `ds one` = stats::setNames(list(c(`H&E` = p1)), spatial_name),
+      `ds two` = stats::setNames(list(c(`H&E` = p2)), spatial_name)
+    ),
     launch_browser = FALSE,
     verbose = FALSE
   )
 
   copied <- list.files(
     file.path(app_dir, "spatial-assets"),
-    pattern = "he.*[.]png$"
+    pattern = "[.]png$",
+    recursive = TRUE
   )
   expect_equal(length(copied), 2)
   ## ... and the bundled configuration points at the two distinct files rather
   ## than twice at one. (The paths live in cerebro_config.rds, not app.R.)
   cfg <- readRDS(file.path(app_dir, "cerebro_config.rds"))
-  expect_equal(length(unique(cfg$spatial_images$ds)), 2)
-  expect_true(all(file.exists(file.path(app_dir, cfg$spatial_images$ds))))
+  paths <- unname(unlist(cfg$spatial_images))
+  expect_equal(length(unique(paths)), 2)
+  expect_true(all(file.exists(file.path(app_dir, paths))))
 })
 
-test_that("external images are offered on every spatial section", {
-  ## `spatial_images` is configured per DATA SET; its shape cannot say which
-  ## section a file belongs to. Attaching them to the first section only meant a
-  ## reader with a background for their second section could not reach it.
+test_that("external images retain their spatial-entry ownership", {
   path <- bundle_file
   txt <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(txt, "allow_external = TRUE", fixed = TRUE)
-  expect_no_match(txt, "allow_external = i == 1", fixed = TRUE)
+  expect_match(txt, "cv_external_images(nm)", fixed = TRUE)
+  expect_no_match(txt, "for (ex in cv_external_images())", fixed = TRUE)
 })
 
 test_that("the alignment sliders contain the preset they are given", {
@@ -1026,4 +1418,88 @@ test_that("the alignment sliders contain the preset they are given", {
   expect_match(txt, "abs(pr$offsetX", fixed = TRUE)
   expect_match(txt, "scale_lo", fixed = TRUE)
   expect_no_match(txt, 'rng("cv-img-scalex", 0.3, 3', fixed = TRUE)
+})
+
+test_that("More settings is an accessible drawer rather than a draggable window", {
+  skip_if(is.na(local_inst), "viewer sources not found")
+
+  ui <- paste(
+    readLines(
+      file.path(local_inst, "viewer/coordinated_views/UI.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  js <- paste(
+    readLines(
+      file.path(local_inst, "viewer/www/coordviews.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  css <- paste(
+    readLines(
+      file.path(local_inst, "viewer/www/coordviews.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(ui, '`role` = "dialog"', fixed = TRUE)
+  expect_match(ui, '`aria-hidden` = "true"', fixed = TRUE)
+  expect_no_match(ui, "data-cv-more-drag-handle", fixed = TRUE)
+  expect_no_match(ui, "Drag to move", fixed = TRUE)
+  expect_no_match(js, "beginMoreDrag", fixed = TRUE)
+  expect_no_match(js, "moreFloating", fixed = TRUE)
+  expect_match(css, "@media (prefers-reduced-motion: reduce)", fixed = TRUE)
+  expect_match(css, "#cv-more,", fixed = TRUE)
+  expect_match(css, "transition: none", fixed = TRUE)
+  expect_no_match(css, "transition: transform .3s", fixed = TRUE)
+})
+
+test_that("external backgrounds require matching PNG or JPEG magic bytes", {
+  skip_if_not(have_bundle)
+  skip_if_not_installed("base64enc")
+  tmp <- file.path(tempdir(), "cv_external_magic")
+  unlink(tmp, recursive = TRUE)
+  assets <- file.path(tmp, "spatial-assets")
+  dir.create(assets, recursive = TRUE)
+  png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff, 0xe0))
+  writeBin(png_magic, file.path(assets, "valid.png"))
+  writeBin(jpeg_magic, file.path(assets, "valid.jpg"))
+  writeLines("not an image", file.path(assets, "text.png"))
+  writeBin(png_magic, file.path(assets, "mismatch.jpg"))
+  cv_env$Cerebro.options <- list(
+    cerebro_root = tmp,
+    spatial_images = list(
+      ds = list(
+        fov = c(
+          png = "spatial-assets/valid.png",
+          jpeg = "spatial-assets/valid.jpg",
+          text = "spatial-assets/text.png",
+          mismatch = "spatial-assets/mismatch.jpg"
+        )
+      )
+    )
+  )
+  cv_env$available_crb_files <- list(
+    selected = "f.crb",
+    files = c(ds = "f.crb")
+  )
+  on.exit(
+    {
+      rm("Cerebro.options", envir = cv_env)
+      rm("available_crb_files", envir = cv_env)
+    },
+    add = TRUE
+  )
+
+  images <- cv_env$cv_external_images("fov")
+  expect_identical(
+    vapply(images, `[[`, character(1), "label"),
+    c("png", "jpeg")
+  )
+  expect_match(images[[1L]]$uri, "^data:image/png;base64,")
+  expect_match(images[[2L]]$uri, "^data:image/jpeg;base64,")
 })

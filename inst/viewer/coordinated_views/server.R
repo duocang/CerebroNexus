@@ -567,17 +567,17 @@ output[["coordviews_image_ui"]] <- renderUI({
     div(
       class = "cv-img-ctl",
       tags$label("Opacity"),
-      rng("cv-img-opacity", 0, 1, pr$opacity %||% 0.6, 0.05)
+      rng("cv-img-opacity", 0, 1, pr$opacity %||% 0.6, "any")
     ),
     div(
       class = "cv-img-ctl",
       tags$label("Move X"),
-      rng("cv-img-offx", -sx, sx, pr$offsetX %||% 0, signif(sx / 200, 2))
+      rng("cv-img-offx", -sx, sx, pr$offsetX %||% 0, "any")
     ),
     div(
       class = "cv-img-ctl",
       tags$label("Move Y"),
-      rng("cv-img-offy", -sy, sy, pr$offsetY %||% 0, signif(sy / 200, 2))
+      rng("cv-img-offy", -sy, sy, pr$offsetY %||% 0, "any")
     ),
     ## Two scales, not one. A preset can carry scaleX != scaleY -- a calibration
     ## that is genuinely non-uniform -- and a single slider had to pick a number
@@ -587,7 +587,7 @@ output[["coordviews_image_ui"]] <- renderUI({
     div(
       class = "cv-img-ctl",
       tags$label("Scale X"),
-      rng("cv-img-scalex", scale_lo, scale_hi, pr$scaleX %||% 1, 0.02)
+      rng("cv-img-scalex", scale_lo, scale_hi, pr$scaleX %||% 1, "any")
     ),
     div(
       class = "cv-img-ctl",
@@ -597,7 +597,7 @@ output[["coordviews_image_ui"]] <- renderUI({
         scale_lo,
         scale_hi,
         pr$scaleY %||% pr$scaleX %||% 1,
-        0.02
+        "any"
       )
     ),
     chk(
@@ -608,7 +608,7 @@ output[["coordviews_image_ui"]] <- renderUI({
     div(
       class = "cv-img-ctl",
       tags$label("Rotate"),
-      rng("cv-img-rotate", -180, 180, 0, 1)
+      rng("cv-img-rotate", -180, 180, pr$rotation %||% 0, "any")
     ),
     chk("cv-img-flipx", "Flip X", isTRUE(pr$flipX)),
     chk("cv-img-flipy", "Flip Y", isTRUE(pr$flipY)),
