@@ -27,49 +27,21 @@ viewer_contract_source_if_present <- function(local = parent.frame()) {
   }
 }
 
+viewer_manifest_source_if_present <- function(local = parent.frame()) {
+  path <- testthat::test_path("..", "..", "inst", "builder", "manifest.R")
+  if (!file.exists(path)) {
+    path <- system.file(
+      file.path("builder", "manifest.R"),
+      package = "CerebroNexus"
+    )
+  }
+  if (nzchar(path) && file.exists(path)) {
+    source(path, local = local)
+  }
+}
+
 viewer_contract_source_if_present()
-
-viewer_manifest_entry_record <- function(
-  id,
-  source,
-  status,
-  disposition,
-  artifact_scope,
-  summary = "",
-  diagnostics = list(),
-  compatibility = list(),
-  pages = character(),
-  required_action = NULL,
-  verifier = NULL
-) {
-  values <- .builder_manifest_validate_values(
-    id = id,
-    source = source,
-    status = status,
-    disposition = disposition,
-    artifact_scope = artifact_scope,
-    summary = summary,
-    diagnostics = diagnostics,
-    compatibility = compatibility,
-    pages = pages,
-    required_action = required_action,
-    verifier = verifier
-  )
-  structure(values, class = c("builder_manifest_entry", "list"))
-}
-
-viewer_content_manifest <- function(entries) {
-  entries <- unname(entries)
-  for (entry in entries) {
-    .builder_manifest_validate_entry(entry)
-  }
-  ids <- vapply(entries, function(entry) entry$id, character(1))
-  if (anyDuplicated(ids)) {
-    .builder_manifest_abort("duplicate_id", "Manifest ids must be unique.")
-  }
-  names(entries) <- ids
-  structure(entries, class = c("builder_content_manifest", "list"))
-}
+viewer_manifest_source_if_present()
 
 viewer_manifest_entry <- function(
   id,
@@ -79,7 +51,7 @@ viewer_manifest_entry <- function(
   artifact_scope = "both",
   required_action = NULL
 ) {
-  viewer_manifest_entry_record(
+  builder_manifest_entry(
     id = id,
     source = list(type = "fixture", location = id),
     status = status,
@@ -195,7 +167,7 @@ test_that("Viewer page catalog declares the current sidebar identities", {
 
 test_that("always pages stay visible with an empty manifest", {
   catalog <- builder_viewer_page_catalog()
-  pages <- builder_viewer_page_contract(viewer_content_manifest(list()))
+  pages <- builder_viewer_page_contract(builder_content_manifest(list()))
 
   expect_identical(pages$always, catalog$always)
   expect_identical(pages$conditional, catalog$conditional)
@@ -207,7 +179,7 @@ test_that("always pages stay visible with an empty manifest", {
 })
 
 test_that("only valid app-facing usable content opens conditional pages", {
-  manifest <- viewer_content_manifest(list(
+  manifest <- builder_content_manifest(list(
     viewer_manifest_entry(
       "markers_generated",
       "marker_genes",
