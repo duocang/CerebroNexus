@@ -565,6 +565,13 @@ test_that("Builder auth survives redraw and traps focus", {
     timeout = 10000
   )
   app$wait_for_idle(timeout = 10000)
+  app$wait_for_js(
+    paste0(
+      "document.activeElement === ",
+      "document.querySelector('.builder-auth-open')"
+    ),
+    timeout = 10000
+  )
   focus_state <- app$get_js(paste0(
     "(() => ({",
     "activeClass: document.activeElement.className,",
