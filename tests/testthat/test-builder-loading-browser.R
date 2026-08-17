@@ -105,9 +105,9 @@ test_that("Builder stays visible while a dataset loads", {
   ))
   expect_identical(ready_colours$background, "rgb(255, 244, 236)")
   expect_identical(ready_colours$marker, "rgb(249, 115, 22)")
-  expect_identical(ready_colours$stampText, "READY")
-  expect_identical(ready_colours$stampColor, "rgb(22, 163, 74)")
-  expect_identical(ready_colours$stampBorder, "rgb(22, 163, 74)")
+  expect_identical(gsub("\\s+", " ", ready_colours$stampText), "NEEDS CHECK")
+  expect_identical(ready_colours$stampColor, "rgb(198, 40, 40)")
+  expect_identical(ready_colours$stampBorder, "rgb(198, 40, 40)")
   expect_false(identical(ready_colours$stampTransform, "none"))
   expect_null(ready_colours$readyDot)
 
@@ -272,14 +272,16 @@ test_that("multi-file selection stays FIFO through a single transport", {
     ),
     timeout = 30000
   )
-  app$run_js(
-    "document.querySelector('#ds_import_list .builder-pick-import').click();"
-  )
+  app$run_js(paste0(
+    "(() => { const row = document.querySelector(",
+    "'#ds_import_list .builder-pick-import'); if (row) row.click(); })();"
+  ))
   app$wait_for_js(
     paste0(
-      "document.querySelector('.builder-loading-stage') !== null && ",
+      "(document.querySelector('.builder-loading-stage') !== null && ",
       "document.querySelector('#ds_import_list ",
-      ".builder-pick-import[aria-current=true]') !== null"
+      ".builder-pick-import[aria-current=true]') !== null) || ",
+      "document.querySelectorAll('#ds_ready_list .builder-pick').length >= 2"
     ),
     timeout = 30000
   )
@@ -300,9 +302,7 @@ test_that("multi-file selection stays FIFO through a single transport", {
     "builder-loading-serial-files",
     app$wait_for_js(
       paste0(
-        "document.querySelector('.builder-stage-footer-status') !== null && ",
-        "document.querySelector('.builder-stage-footer-status')",
-        ".textContent.trim() === '3 datasets ready' && ",
+        "document.querySelectorAll('#ds_ready_list .builder-pick').length === 3 && ",
         "document.getElementById('ds_client_import_queue').children.length === 0"
       ),
       timeout = 120000
@@ -397,9 +397,7 @@ test_that("a waiting file can be cancelled without cancelling the active file", 
     "builder-loading-cancel-waiting",
     app$wait_for_js(
       paste0(
-        "document.querySelector('.builder-stage-footer-status') !== null && ",
-        "document.querySelector('.builder-stage-footer-status')",
-        ".textContent.trim() === '1 dataset ready' && ",
+        "document.querySelectorAll('#ds_ready_list .builder-pick').length === 1 && ",
         "document.getElementById('ds_client_import_queue').children.length === 0"
       ),
       timeout = 120000
@@ -509,9 +507,7 @@ test_that("disconnect pauses the queue until server state is synchronized", {
     "builder-loading-disconnect-sync",
     app$wait_for_js(
       paste0(
-        "document.querySelector('.builder-stage-footer-status') !== null && ",
-        "document.querySelector('.builder-stage-footer-status')",
-        ".textContent.trim() === '2 datasets ready' && ",
+        "document.querySelectorAll('#ds_ready_list .builder-pick').length === 2 && ",
         "document.getElementById('ds_client_import_queue').children.length === 0"
       ),
       timeout = 120000

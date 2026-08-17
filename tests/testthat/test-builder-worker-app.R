@@ -370,17 +370,13 @@ test_that("workflow server exclusively owns loading and stage rendering", {
     )),
     1L
   )
-  expect_match(workbench, "import_focus_id()", fixed = TRUE)
-  expect_false(grepl(
-    "loading_id <- active_import_id()",
-    workbench,
-    fixed = TRUE
-  ))
+  expect_match(workbench, "active_import_id()", fixed = TRUE)
+  expect_false(grepl("import_focus_id()", workbench, fixed = TRUE))
   expect_match(workbench, "builder_loading_workbench_ui", fixed = TRUE)
-  expect_match(workbench, "stage <- workflow()$stage", fixed = TRUE)
+  expect_match(workbench, "stage <- selected_workflow_stage()", fixed = TRUE)
   expect_lt(
     regexpr("builder_loading_workbench_ui", workbench, fixed = TRUE),
-    regexpr("stage <- workflow()$stage", workbench, fixed = TRUE)
+    regexpr("stage <- selected_workflow_stage()", workbench, fixed = TRUE)
   )
   expect_match(
     workbench,
@@ -976,7 +972,7 @@ test_that("unchanged settings do not write state or advance revisions", {
         owner_token = "owner-a",
         object_md5 = strrep("a", 32L)
       ),
-      profile = list(marker = "current"),
+      profile = list(marker = "current", extras = list()),
       settings = list(name = "Dataset A")
     )
     use_state_only_fixture(list(entry))

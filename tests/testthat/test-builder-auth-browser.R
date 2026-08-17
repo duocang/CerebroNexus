@@ -83,10 +83,18 @@ builder_auth_browser_load_example <- function(app, example = "all_content") {
       )
       app$click(selector = sprintf(".example-btn[data-ex=%s]", example))
       app$wait_for_js(
-        "document.querySelector('.ds-pick[aria-current=true]') !== null",
+        paste0(
+          "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
+          "document.getElementById('complete_dataset_check') !== null"
+        ),
         timeout = 60000
       )
       app$wait_for_idle(timeout = 30000)
+      app$click("complete_dataset_check")
+      app$wait_for_js(
+        "!document.getElementById('continue_to_review').disabled",
+        timeout = 10000
+      )
     }
   )
 }
@@ -444,6 +452,19 @@ test_that("Builder auth survives redraw and traps focus", {
           "document.querySelectorAll('.ds--import').length === 0"
         ),
         timeout = 60000
+      )
+      app$run_js(paste0(
+        "(() => { const rows = document.querySelectorAll('.builder-pick'); ",
+        "rows.item(rows.length - 1).click(); })();"
+      ))
+      app$wait_for_js(
+        "document.querySelectorAll('.builder-pick')[1].getAttribute('aria-current') === 'true'",
+        timeout = 10000
+      )
+      app$click("complete_dataset_check")
+      app$wait_for_js(
+        "!document.getElementById('continue_to_review').disabled",
+        timeout = 10000
       )
     }
   )
