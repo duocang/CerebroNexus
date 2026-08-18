@@ -17,7 +17,6 @@ builder_spatial_alignment_server <- function(
 ) {
   raw_image <- shiny::reactiveVal(NULL)
   draft <- shiny::reactiveVal(NULL)
-  baseline <- shiny::reactiveVal(NULL)
   coordinate_draft <- shiny::reactiveVal(list(rotation_degrees = 0, scale = 1))
   coordinate_baseline <- shiny::reactiveVal(list(
     rotation_degrees = 0,
@@ -315,7 +314,6 @@ builder_spatial_alignment_server <- function(
       )
     }
     draft(stored)
-    baseline(stored)
     if (is.null(stored)) {
       raw_image(NULL)
     } else {
@@ -491,7 +489,6 @@ builder_spatial_alignment_server <- function(
     session$sendCustomMessage("builder_spatial_canvas_clear", list())
     raw_image(NULL)
     draft(NULL)
-    baseline(NULL)
     coordinate_draft(list(rotation_degrees = 0, scale = 1))
     coordinate_baseline(list(rotation_degrees = 0, scale = 1))
     point_appearance_baseline(NULL)
@@ -905,7 +902,6 @@ builder_spatial_alignment_server <- function(
         preview$section$kind
       )
     }
-    baseline(previous)
     parameters <- builder_alignment_defaults()
     if (!length(existing)) {
       appearance <- point_appearance_for(entry, section)
@@ -1244,7 +1240,6 @@ builder_spatial_alignment_server <- function(
       observed
     )
     expected_controls(NULL)
-    baseline(next_record)
     draft(next_record)
     commit_section(
       shiny::isolate(entry_of(current())),
@@ -1689,7 +1684,6 @@ builder_spatial_alignment_server <- function(
     }
     commit_images(entry, images)
     draft(images[[source_section]][[label]])
-    baseline(images[[source_section]][[label]])
     count <- sum(vapply(
       images,
       function(section) {
