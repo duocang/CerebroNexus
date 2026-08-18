@@ -57,6 +57,18 @@ core_setting_inputs <- c(
   nGene = "core-nGene",
   expression_backend = "core-backend"
 )
+core_layer_user_choice <- reactiveVal(NULL)
+observeEvent(
+  input[["core-layer"]],
+  {
+    id <- current()
+    if (!is.null(id) && identical(input[["core-rendered_for"]], id)) {
+      core_layer_user_choice(list(dataset = id, layer = input[["core-layer"]]))
+    }
+  },
+  ignoreInit = TRUE,
+  priority = 10
+)
 observeEvent(
   input[["core-assay"]],
   {
@@ -75,6 +87,7 @@ observeEvent(
       input[["core-assay"]]
     )
     for (field in names(controls)) {
+      freezeReactiveValue(input, paste0("core-", field))
       updateSelectInput(
         session,
         paste0("core-", field),
@@ -98,8 +111,22 @@ observe({
   entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
   req(entry)
   next_settings <- entry$settings
+  profile <- entry$profile %||% list()
+  stored_assay <- entry$settings$assay
+  stored_layer <- entry$settings$layer
+  stored_layers <- profile$assay_profiles[[stored_assay]]$layers %||%
+    character()
+  layer_missing <- builder_stage_has_text(stored_layer) &&
+    !stored_layer %in% stored_layers
+  choice <- isolate(core_layer_user_choice())
   for (setting in names(core_setting_inputs)) {
     next_settings[[setting]] <- values[[setting]]
+  }
+  if (
+    layer_missing &&
+      (!is.list(choice) || !identical(choice$dataset, id))
+  ) {
+    next_settings$layer <- stored_layer
   }
   assay_controls <- builder_core_assay_controls(
     entry$profile,
