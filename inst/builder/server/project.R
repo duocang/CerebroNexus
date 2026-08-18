@@ -35,6 +35,16 @@ builder_project_record_map <- function(manifest) {
   stats::setNames(records, ids)
 }
 
+register_loaded_entry_finalizer(function(entry) {
+  pending <- isolate(builder_project_pending_entries())
+  record <- pending[[entry$id]] %||% NULL
+  project <- isolate(builder_project())
+  if (is.null(record) || is.null(project)) {
+    return(entry)
+  }
+  builder_project_hydrate_loaded_entry(entry, record, project$root)
+})
+
 builder_project_dirty <- reactive({
   project <- builder_project()
   if (is.null(project)) {
@@ -509,9 +519,19 @@ builder_project_build_manifest <- function(entries, project) {
     records <- c(records, unname(inactive))
   }
   manifest$datasets <- records
+  manifest$configuration <- builder_project_configuration(
+    review_options = isolate(review_options()),
+    build_mode = isTRUE(isolate(build_mode())),
+    auth_enabled = isTRUE(isolate(auth_enabled())),
+    initial_dataset = isolate(build_initial_dataset())
+  )
   manifest$last_ui <- list(
     stage = isolate(selected_workflow_stage()),
-    selected_dataset = isolate(current())
+    selected_dataset = isolate(current()),
+    spatial = builder_project_last_ui_spatial(
+      isolate(alignment_server$project_selection()),
+      selected_dataset = isolate(current())
+    )
   )
   list(
     manifest = manifest,
@@ -520,11 +540,67 @@ builder_project_build_manifest <- function(entries, project) {
   )
 }
 
+restore_builder_project_preferences <- function(manifest) {
+  configuration <- manifest$configuration %||% builder_project_configuration()
+  saved_options <- configuration$review_options %||% NULL
+  if (is.list(saved_options)) {
+    restored <- try(
+      do.call(builder_review_options, saved_options),
+      silent = TRUE
+    )
+    if (!inherits(restored, "try-error")) {
+      review_options(restored)
+      review_validation(list(ok = TRUE, error = NULL))
+    }
+  }
+  make_app <- isTRUE(configuration$build_mode)
+  build_mode(make_app)
+  build_initial_dataset(configuration$initial_dataset %||% NULL)
+  auth_accounts(builder_auth_empty_accounts())
+  login_requested <- make_app && isTRUE(configuration$auth_enabled)
+  auth_enabled(login_requested)
+  auth_validation(
+    if (login_requested) {
+      list(
+        ok = FALSE,
+        error = "Add login accounts again before building this App."
+      )
+    } else {
+      list(ok = TRUE, error = NULL)
+    }
+  )
+  invisible(TRUE)
+}
+
+restore_builder_project_last_ui <- function(manifest) {
+  ids <- vapply(isolate(sets()), `[[`, character(1), "id")
+  target <- builder_project_last_ui_target(
+    manifest$last_ui %||% list(),
+    available_ids = ids,
+    checked_ids = isolate(checked_dataset_ids())
+  )
+  if (!is.null(target$selected_dataset)) {
+    current(target$selected_dataset)
+  }
+  alignment_server$restore_project_selection(target$spatial)
+  saved_initial <- isolate(build_initial_dataset())
+  if (!is.null(saved_initial) && !saved_initial %in% ids) {
+    build_initial_dataset(NULL)
+  }
+  if (identical(target$stage, "review")) {
+    navigate_workflow_stage("review")
+  } else {
+    navigate_workflow_stage("configure")
+  }
+  invisible(target)
+}
+
 save_builder_project_state <- function(
   show_actions = FALSE,
   materialize = TRUE,
   notify = TRUE,
-  manage_lifecycle = TRUE
+  manage_lifecycle = TRUE,
+  last_ui = NULL
 ) {
   project <- isolate(builder_project())
   if (is.null(project)) {
@@ -581,6 +657,9 @@ save_builder_project_state <- function(
       showNotification(conditionMessage(built), type = "error", duration = 7)
     }
     return(save_failed(conditionMessage(built)))
+  }
+  if (is.list(last_ui)) {
+    built$manifest$last_ui <- last_ui
   }
   changed_paths <- !identical(
     lapply(entries, `[[`, "path"),
@@ -926,6 +1005,7 @@ observeEvent(input$confirm_builder_project_open, {
       reusable_entries[[length(reusable_entries) + 1L]] <- entry
       artifacts[[record$id]] <- record$artifact
     } else if (identical(action, "resume") && status$restorable) {
+      record$runtime_restore_status <- status
       pending_entries[[record$id]] <- record
     }
   }
@@ -944,12 +1024,18 @@ observeEvent(input$confirm_builder_project_open, {
   ))
   marks <- character()
   if (length(reusable_entries)) {
-    marks <- vapply(
-      reusable_entries,
-      builder_project_check_identity,
-      character(1)
-    )
-    names(marks) <- vapply(reusable_entries, `[[`, character(1), "id")
+    for (entry in reusable_entries) {
+      record <- records[[entry$id]]
+      status <- builder_project_dataset_status(record, root)
+      restored_mark <- builder_project_restored_check_identity(
+        record,
+        entry,
+        status
+      )
+      if (!is.null(restored_mark)) {
+        marks[[entry$id]] <- restored_mark
+      }
+    }
   }
   dataset_check_marks(marks)
   builder_project_pending_entries(pending_entries)
@@ -960,6 +1046,7 @@ observeEvent(input$confirm_builder_project_open, {
     name = manifest$project$name,
     manifest = manifest
   ))
+  restore_builder_project_preferences(manifest)
   builder_project_restore(NULL)
   shiny::removeModal()
   restore_total <- length(pending_entries)
@@ -970,6 +1057,7 @@ observeEvent(input$confirm_builder_project_open, {
       remaining = 0L
     ))
     builder_project_operation_phase("idle")
+    restore_builder_project_last_ui(manifest)
     return()
   }
   builder_project_restore_progress(list(
@@ -1032,35 +1120,22 @@ observe({
   }
   state <- store()
   entries <- state$datasets %||% list()
-  changed <- FALSE
-  restored_ids <- character()
+  root <- isolate(builder_project())$root
+  batch <- builder_project_hydrate_pending_entries(entries, pending, root)
+  restored_ids <- names(batch$restored)
+  failed_ids <- names(batch$failures)
+  if (!length(restored_ids) && !length(failed_ids)) {
+    return()
+  }
+  entries <- batch$entries
+  pending <- batch$pending
   marks <- isolate(dataset_check_marks())
-  for (index in seq_along(entries)) {
-    id <- entries[[index]]$id
-    record <- pending[[id]] %||% NULL
-    if (
-      is.null(record) ||
-        !identical(entries[[index]]$load_state %||% "loaded", "loaded")
-    ) {
-      next
-    }
-    saved <- builder_project_restore_entry(
-      record,
-      isolate(builder_project())$root
-    )
-    restored <- entries[[index]]
-    restored$settings <- saved$settings
-    restored$acknowledgements <- saved$acknowledgements %||% NULL
-    restored$spatial_drafts <- saved$spatial_drafts %||% NULL
-    restored$revision <- max(
-      as.integer(restored$revision %||% 0L),
-      as.integer(saved$revision %||% 0L)
-    ) +
-      1L
-    entries[[index]] <- restored
-    restored_ids <- c(restored_ids, id)
+  for (id in restored_ids) {
+    restored <- batch$restored[[id]]$entry
+    record <- batch$restored[[id]]$record
     project <- isolate(builder_project())
-    status <- builder_project_dataset_status(record, project$root)
+    status <- record$runtime_restore_status %||%
+      builder_project_dataset_status(record, project$root)
     restored_mark <- builder_project_restored_check_identity(
       record,
       restored,
@@ -1069,34 +1144,115 @@ observe({
     if (!is.null(restored_mark)) {
       marks[[id]] <- restored_mark
     }
-    pending[[id]] <- NULL
-    changed <- TRUE
   }
-  if (changed) {
-    sets(entries)
-    alignment_server$restore_project_settings(restored_ids)
-    dataset_check_marks(marks)
-    builder_project_pending_entries(pending)
-    progress <- isolate(builder_project_restore_progress())
-    builder_project_restore_progress(list(
-      mode = "restoring",
-      total = as.integer(progress$total %||% length(pending)),
-      remaining = length(pending)
+  if (length(failed_ids)) {
+    marks <- marks[setdiff(names(marks), failed_ids)]
+    pending_drops <- isolate(pending_snapshot_drops())
+    for (id in failed_ids) {
+      failed <- batch$failures[[id]]
+      identity <- try(
+        .builder_worker_identity(failed$entry$snapshot),
+        silent = TRUE
+      )
+      if (!inherits(identity, "try-error")) {
+        pending_drops[[id]] <- identity
+        queued <- enqueue(list(
+          kind = "drop",
+          id = id,
+          dataset_revision = failed$entry$revision %||% 0L,
+          snapshot_identity = identity,
+          note = "Releasing a failed project restore…"
+        ))
+        if (!isTRUE(queued)) {
+          current_worker <- isolate(worker())
+          current_protocol <- isolate(protocol())
+          forgotten <- try(
+            builder_protocol_forget_dataset(current_protocol, id),
+            silent = TRUE
+          )
+          released_worker <- if (!inherits(forgotten, "try-error")) {
+            try(
+              builder_worker_release_snapshot(
+                current_worker,
+                id,
+                expected_identity = identity
+              ),
+              silent = TRUE
+            )
+          } else {
+            forgotten
+          }
+          if (
+            !inherits(released_worker, "try-error") &&
+              !inherits(forgotten, "try-error")
+          ) {
+            worker(released_worker)
+            protocol(forgotten$protocol)
+            pending_drops[[id]] <- NULL
+          } else {
+            recovered <- restart_worker_protocol(
+              current_worker,
+              current_protocol,
+              paste0(
+                "The failed project restore for ",
+                id,
+                " could not enqueue snapshot cleanup."
+              )
+            )
+            if (isTRUE(recovered)) {
+              enqueue(list(
+                kind = "drop",
+                id = id,
+                dataset_revision = failed$entry$revision %||% 0L,
+                snapshot_identity = identity,
+                note = "Retrying failed project restore cleanup…"
+              ))
+            }
+          }
+        }
+      }
+    }
+    pending_snapshot_drops(pending_drops)
+    add_error(paste(
+      vapply(
+        batch$failures,
+        `[[`,
+        character(1),
+        "message"
+      ),
+      collapse = "\n"
     ))
-    saved <- save_builder_project_state(
-      show_actions = FALSE,
-      materialize = FALSE,
-      notify = FALSE,
-      manage_lifecycle = FALSE
+  }
+  sets(entries)
+  alignment_server$restore_project_settings(restored_ids)
+  dataset_check_marks(marks)
+  builder_project_pending_entries(pending)
+  progress <- isolate(builder_project_restore_progress())
+  builder_project_restore_progress(list(
+    mode = "restoring",
+    total = as.integer(progress$total %||% length(pending)),
+    remaining = length(pending)
+  ))
+  restored_last_ui <- isolate(builder_project())$manifest$last_ui
+  saved <- save_builder_project_state(
+    show_actions = FALSE,
+    materialize = FALSE,
+    notify = FALSE,
+    manage_lifecycle = FALSE,
+    last_ui = restored_last_ui
+  )
+  if (!length(pending)) {
+    builder_project_restore_progress(list(
+      mode = "idle",
+      total = 0L,
+      remaining = 0L
+    ))
+    builder_project_operation_phase(
+      if (isTRUE(saved)) "idle" else "save_failed"
     )
-    if (!length(pending)) {
-      builder_project_restore_progress(list(
-        mode = "idle",
-        total = 0L,
-        remaining = 0L
-      ))
-      builder_project_operation_phase(
-        if (isTRUE(saved)) "idle" else "save_failed"
+    if (isTRUE(saved)) {
+      restore_builder_project_last_ui(
+        list(last_ui = restored_last_ui)
       )
     }
   }

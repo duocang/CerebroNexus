@@ -2,7 +2,7 @@
 ## workers. The JSON manifest is intentionally small enough to inspect, while
 ## exact R value shapes are retained in one typed payload per dataset.
 
-.builder_project_schema_version <- 1L
+.builder_project_schema_version <- 2L
 
 .builder_project_phases <- c(
   "none",
@@ -744,6 +744,7 @@ builder_project_safe_entry <- function(entry) {
   safe <- unserialize(serialize(entry, NULL, version = 3L))
   safe$snapshot <- NULL
   safe$project_artifact <- NULL
+  safe$project_hydration <- NULL
   safe$load_state <- "reload_required"
   safe
 }
@@ -957,6 +958,21 @@ builder_project_configuration_digest <- function(entry) {
     digest_entry,
     function(record, section, label) {
       if (is.list(record)) {
+        source_md5 <- record$project_asset$fingerprint$md5 %||% NULL
+        if (!.builder_project_text(source_md5)) {
+          source_md5 <- tryCatch(
+            {
+              parsed <- .builder_project_decode_image_uri(
+                record$source_uri %||% record$uri %||% NULL
+              )
+              unclass(as.character(openssl::md5(parsed$bytes)))
+            },
+            error = function(error) NULL
+          )
+        }
+        record$source_content_md5 <- source_md5
+        record$source_uri <- NULL
+        record$uri <- NULL
         record$project_asset <- NULL
       }
       record
@@ -1050,6 +1066,104 @@ builder_project_restore_entry <- function(
     )
   }
   entry
+}
+
+builder_project_hydrate_loaded_entry <- function(loaded, record, root) {
+  if (!is.list(loaded) || !.builder_project_identifier(loaded$id)) {
+    stop("A loaded dataset entry is required.", call. = FALSE)
+  }
+  if (!is.list(record) || !identical(as.character(record$id), loaded$id)) {
+    stop(
+      "The saved dataset configuration does not match the loaded entry.",
+      call. = FALSE
+    )
+  }
+  saved <- builder_project_restore_entry(record, root)
+  hydrated <- loaded
+  hydrated$settings <- saved$settings
+  hydrated$acknowledgements <- saved$acknowledgements %||% NULL
+  hydrated$spatial_drafts <- saved$spatial_drafts %||% NULL
+  hydrated$revision <- max(
+    as.integer(loaded$revision %||% 0L),
+    as.integer(saved$revision %||% 0L)
+  ) +
+    1L
+  hydrated$project_hydration <- list(
+    schema_version = 1L,
+    configuration_digest = as.character(
+      record$configuration$digest %||% ""
+    )
+  )
+  hydrated
+}
+
+builder_project_entry_hydrated_from <- function(entry, record) {
+  is.list(entry) &&
+    is.list(record) &&
+    is.list(entry$project_hydration) &&
+    .builder_project_text(record$configuration$digest %||% NULL) &&
+    identical(
+      as.character(entry$project_hydration$configuration_digest %||% ""),
+      as.character(record$configuration$digest)
+    )
+}
+
+builder_project_invalidate_entry_hydration <- function(entry) {
+  if (is.list(entry)) {
+    entry$project_hydration <- NULL
+  }
+  entry
+}
+
+builder_project_hydrate_pending_entries <- function(entries, pending, root) {
+  if (!is.list(entries) || !is.list(pending)) {
+    stop("Project restore state is invalid.", call. = FALSE)
+  }
+  keep <- rep(TRUE, length(entries))
+  restored <- list()
+  failures <- list()
+  for (index in seq_along(entries)) {
+    entry <- entries[[index]]
+    id <- as.character(entry$id %||% "")
+    record <- pending[[id]] %||% NULL
+    if (
+      is.null(record) ||
+        !identical(entry$load_state %||% "loaded", "loaded")
+    ) {
+      next
+    }
+    hydrated <- tryCatch(
+      if (builder_project_entry_hydrated_from(entry, record)) {
+        entry
+      } else {
+        builder_project_hydrate_loaded_entry(entry, record, root)
+      },
+      error = identity
+    )
+    pending[[id]] <- NULL
+    if (inherits(hydrated, "condition")) {
+      keep[[index]] <- FALSE
+      failures[[id]] <- list(
+        entry = entry,
+        record = record,
+        message = paste0(
+          "The saved project configuration for ",
+          id,
+          " could not be restored: ",
+          conditionMessage(hydrated)
+        )
+      )
+      next
+    }
+    entries[[index]] <- hydrated
+    restored[[id]] <- list(entry = hydrated, record = record)
+  }
+  list(
+    entries = entries[keep],
+    pending = pending,
+    restored = restored,
+    failures = failures
+  )
 }
 
 builder_project_artifact_available <- function(artifact, root) {
@@ -1183,9 +1297,259 @@ builder_project_new_manifest <- function(root, name = basename(root)) {
       )
     ),
     datasets = list(),
+    configuration = builder_project_configuration(),
     pending_build = NULL,
     releases = list(),
     last_ui = list(stage = "upload", selected_dataset = NULL)
+  )
+}
+
+builder_project_configuration <- function(
+  review_options = NULL,
+  build_mode = FALSE,
+  auth_enabled = FALSE,
+  initial_dataset = NULL
+) {
+  scalar_flag <- function(value) {
+    is.logical(value) && length(value) == 1L && !is.na(value)
+  }
+  if (!scalar_flag(build_mode) || !scalar_flag(auth_enabled)) {
+    stop("Builder project preferences are invalid.", call. = FALSE)
+  }
+  if (!is.null(initial_dataset)) {
+    initial_dataset <- as.character(initial_dataset)
+    if (
+      length(initial_dataset) != 1L ||
+        is.na(initial_dataset) ||
+        !.builder_project_identifier(initial_dataset)
+    ) {
+      stop("The Builder starting dataset preference is invalid.", call. = FALSE)
+    }
+  }
+  allowed <- c(
+    "welcome_message",
+    "initial_page",
+    "point_size",
+    "variable_to_compare",
+    "host",
+    "port",
+    "max_request_size",
+    "display_mode",
+    "launch_browser",
+    "show_upload_ui"
+  )
+  saved_options <- if (is.null(review_options)) {
+    NULL
+  } else {
+    if (!is.list(review_options)) {
+      stop("Builder Review preferences are invalid.", call. = FALSE)
+    }
+    candidate <- unclass(review_options)[
+      intersect(allowed, names(review_options))
+    ]
+    required <- setdiff(allowed, names(candidate))
+    if (length(required)) {
+      stop("Builder Review preferences are incomplete.", call. = FALSE)
+    }
+    valid_text <- function(value) {
+      is.character(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        nzchar(value)
+    }
+    valid_number <- function(value, lower, upper = Inf, whole = FALSE) {
+      is.numeric(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        is.finite(value) &&
+        value >= lower &&
+        value <= upper &&
+        (!whole || value == floor(value))
+    }
+    valid_flag <- function(value) {
+      is.logical(value) && length(value) == 1L && !is.na(value)
+    }
+    if (
+      !valid_text(candidate$welcome_message) ||
+        !valid_text(candidate$initial_page) ||
+        !valid_number(candidate$point_size, 0, 20) ||
+        !valid_flag(candidate$variable_to_compare) ||
+        !valid_text(candidate$host) ||
+        !valid_number(candidate$port, 1, 65535, whole = TRUE) ||
+        !valid_number(candidate$max_request_size, .Machine$double.eps) ||
+        !valid_text(candidate$display_mode) ||
+        !candidate$display_mode %in% c("auto", "normal", "showcase") ||
+        !valid_flag(candidate$launch_browser) ||
+        !valid_flag(candidate$show_upload_ui)
+    ) {
+      stop("Builder Review preferences are invalid.", call. = FALSE)
+    }
+    candidate$point_size <- as.double(candidate$point_size)
+    candidate$port <- as.integer(candidate$port)
+    candidate$max_request_size <- as.double(candidate$max_request_size)
+    candidate
+  }
+  list(
+    review_options = saved_options,
+    build_mode = isTRUE(build_mode),
+    auth_enabled = isTRUE(auth_enabled),
+    initial_dataset = initial_dataset
+  )
+}
+
+builder_project_migrate_manifest <- function(manifest) {
+  version <- .builder_project_integer(manifest$schema_version)
+  if (!version %in% c(1L, .builder_project_schema_version)) {
+    stop("This is not a supported Builder project.", call. = FALSE)
+  }
+  if (identical(version, 1L)) {
+    manifest$migrated_from_schema <- 1L
+    manifest$configuration <- builder_project_configuration()
+    manifest$schema_version <- .builder_project_schema_version
+    manifest$datasets <- lapply(manifest$datasets, function(record) {
+      payload <- record$configuration$payload %||% NULL
+      if (!.builder_project_text(payload)) {
+        return(record)
+      }
+      entry <- tryCatch(jsonlite::unserializeJSON(payload), error = identity)
+      if (inherits(entry, "condition")) {
+        return(record)
+      }
+      old_digest <- as.character(record$configuration$digest %||% "")
+      new_digest <- tryCatch(
+        builder_project_configuration_digest(entry),
+        error = function(error) NULL
+      )
+      if (!.builder_project_text(new_digest)) {
+        return(record)
+      }
+      record$configuration$digest <- new_digest
+      if (
+        is.list(record$artifact) &&
+          identical(
+            as.character(
+              record$artifact$built_from_configuration %||% ""
+            ),
+            old_digest
+          )
+      ) {
+        record$artifact$built_from_configuration <- new_digest
+      }
+      record
+    })
+  } else {
+    configuration <- manifest$configuration %||% list()
+    manifest$configuration <- builder_project_configuration(
+      review_options = configuration$review_options %||% NULL,
+      build_mode = configuration$build_mode %||% FALSE,
+      auth_enabled = configuration$auth_enabled %||% FALSE,
+      initial_dataset = configuration$initial_dataset %||% NULL
+    )
+  }
+  last_ui <- manifest$last_ui %||% list()
+  stage <- as.character(last_ui$stage %||% "configure")
+  if (
+    length(stage) != 1L ||
+      is.na(stage) ||
+      !stage %in% c("upload", "configure", "review", "build")
+  ) {
+    stage <- "configure"
+  }
+  selected <- last_ui$selected_dataset %||% NULL
+  if (!is.null(selected)) {
+    selected <- as.character(selected)
+    if (length(selected) != 1L || is.na(selected) || !nzchar(selected)) {
+      selected <- NULL
+    }
+  }
+  manifest$last_ui <- list(
+    stage = stage,
+    selected_dataset = selected,
+    spatial = builder_project_last_ui_spatial(
+      last_ui$spatial %||% NULL,
+      selected_dataset = selected
+    )
+  )
+  manifest
+}
+
+builder_project_last_ui_spatial <- function(
+  spatial,
+  selected_dataset = NULL
+) {
+  if (is.null(spatial)) {
+    return(NULL)
+  }
+  scalar_text <- function(value) {
+    is.character(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      nzchar(value)
+  }
+  if (
+    !is.list(spatial) ||
+      !scalar_text(spatial$dataset) ||
+      !scalar_text(spatial$section) ||
+      (!is.null(spatial$image) && !scalar_text(spatial$image)) ||
+      (!is.null(selected_dataset) &&
+        !identical(spatial$dataset, selected_dataset))
+  ) {
+    return(NULL)
+  }
+  list(
+    dataset = spatial$dataset,
+    section = spatial$section,
+    image = spatial$image %||% NULL
+  )
+}
+
+builder_project_last_ui_target <- function(
+  last_ui,
+  available_ids,
+  checked_ids = character()
+) {
+  available_ids <- unique(as.character(available_ids %||% character()))
+  checked_ids <- unique(as.character(checked_ids %||% character()))
+  saved_dataset <- if (is.list(last_ui)) last_ui$selected_dataset else NULL
+  selected_dataset <- if (
+    length(available_ids) &&
+      is.character(saved_dataset) &&
+      length(saved_dataset) == 1L &&
+      !is.na(saved_dataset) &&
+      saved_dataset %in% available_ids
+  ) {
+    saved_dataset
+  } else if (length(available_ids)) {
+    available_ids[[1L]]
+  } else {
+    NULL
+  }
+  saved_stage <- if (is.list(last_ui)) {
+    as.character(last_ui$stage %||% "configure")
+  } else {
+    "configure"
+  }
+  all_checked <- length(available_ids) > 0L &&
+    all(available_ids %in% checked_ids)
+  stage <- if (
+    length(saved_stage) == 1L &&
+      !is.na(saved_stage) &&
+      saved_stage %in% c("review", "build") &&
+      all_checked
+  ) {
+    ## A build-stage confirmation is intentionally session-only. Reopen its
+    ## frozen plan in Review rather than pretending the old build is confirmed.
+    "review"
+  } else {
+    "configure"
+  }
+  list(
+    selected_dataset = selected_dataset,
+    stage = stage,
+    spatial = builder_project_last_ui_spatial(
+      if (is.list(last_ui)) last_ui$spatial %||% NULL else NULL,
+      selected_dataset = selected_dataset
+    )
   )
 }
 
@@ -1196,7 +1560,8 @@ builder_project_read <- function(path) {
   manifest <- jsonlite::read_json(path, simplifyVector = FALSE)
   if (
     !is.list(manifest) ||
-      !identical(.builder_project_integer(manifest$schema_version), 1L) ||
+      !.builder_project_integer(manifest$schema_version) %in%
+        c(1L, .builder_project_schema_version) ||
       !is.list(manifest$project) ||
       !.builder_project_identifier(manifest$project$id) ||
       !is.list(manifest$datasets)
@@ -1222,7 +1587,7 @@ builder_project_read <- function(path) {
   manifest$project$revision <- .builder_project_integer(
     manifest$project$revision
   )
-  manifest
+  builder_project_migrate_manifest(manifest)
 }
 
 builder_project_write <- function(manifest, root, expected_revision = NULL) {
@@ -1243,6 +1608,13 @@ builder_project_write <- function(manifest, root, expected_revision = NULL) {
     stop("The Builder project header is missing.", call. = FALSE)
   }
   manifest$schema_version <- .builder_project_schema_version
+  manifest$migrated_from_schema <- NULL
+  manifest$configuration <- builder_project_configuration(
+    review_options = manifest$configuration$review_options %||% NULL,
+    build_mode = manifest$configuration$build_mode %||% FALSE,
+    auth_enabled = manifest$configuration$auth_enabled %||% FALSE,
+    initial_dataset = manifest$configuration$initial_dataset %||% NULL
+  )
   manifest$project$revision <- as.integer(disk_revision) + 1L
   manifest$project$updated_at <- format(
     Sys.time(),

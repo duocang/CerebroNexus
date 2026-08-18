@@ -1,0 +1,646 @@
+builder_project_hydration_runtime <- function() {
+  runtime <- new.env(parent = globalenv())
+  for (file in c("io.R", "project.R", "build.R")) {
+    sys.source(
+      testthat::test_path("..", "..", "inst", "builder", file),
+      envir = runtime
+    )
+  }
+  runtime
+}
+
+builder_stage_contract_source_runtime(environment())
+
+test_that("loaded source entries are hydrated before their first store attachment", {
+  runtime <- builder_project_hydration_runtime()
+  root <- withr::local_tempdir()
+  loaded <- list(
+    id = "ds1",
+    source_id = "ds1",
+    output_id = "ds1",
+    selector_value = "ds1",
+    snapshot = list(path = "/runtime/snapshot", owner_token = "owner"),
+    revision = 1L,
+    profile = list(),
+    settings = list(
+      name = "Source default",
+      organism = "hg",
+      assay = "RNA",
+      layer = "data",
+      nUMI = "nCount_RNA",
+      nGene = "nFeature_RNA",
+      expression_backend = "embedded",
+      included_projections = "umap",
+      default_projection = "umap",
+      overview_point_size = 5,
+      overview_percentage_cells_to_show = 100,
+      analyses = character(),
+      images = list()
+    )
+  )
+  saved <- loaded
+  saved$settings$name <- "Saved project name"
+  saved$settings$organism <- "mm"
+  saved$settings$included_projections <- c("umap", "pca")
+  saved$settings$default_projection <- "pca"
+  saved$settings$overview_point_size <- 8
+  saved$settings$overview_percentage_cells_to_show <- 60
+  saved$settings$group_color_overrides <- list(
+    cluster = c(B = "#E76F51")
+  )
+  saved$settings$included_groups <- c("cluster", "sample")
+  saved$settings$default_group <- "sample"
+  saved$settings$metadata_policy <- list(
+    retained = c("cluster", "sample", "batch"),
+    groups = c("cluster", "sample")
+  )
+  saved$settings$included_trajectories <- list(
+    slingshot = list(method = "slingshot", name = "lineage-2")
+  )
+  saved$settings$default_trajectory <- list(
+    method = "slingshot",
+    name = "lineage-2"
+  )
+  saved$settings$palette <- "okabe_ito"
+  saved$settings$content_sources <- list(immune_repertoire = "vdj")
+  saved$settings$tables <- list(qc = list(name = "QC", rows = 12L))
+  saved$settings$analyses <- c("most_expressed", "marker_genes")
+  saved$acknowledgements <- "metadata"
+  record <- runtime$builder_project_dataset_record(
+    saved,
+    source = list(kind = "missing", path = NULL),
+    checked = TRUE
+  )
+
+  hydrated <- runtime$builder_project_hydrate_loaded_entry(loaded, record, root)
+
+  expect_identical(hydrated$settings, saved$settings)
+  expect_identical(hydrated$acknowledgements, "metadata")
+  expect_identical(hydrated$snapshot, loaded$snapshot)
+  expect_identical(hydrated$source_id, "ds1")
+  expect_gt(hydrated$revision, loaded$revision)
+  expect_true(runtime$builder_project_entry_hydrated_from(hydrated, record))
+  expect_null(runtime$builder_project_safe_entry(hydrated)$project_hydration)
+
+  another_record <- record
+  another_record$configuration$digest <- "another-configuration"
+  expect_false(runtime$builder_project_entry_hydrated_from(
+    hydrated,
+    another_record
+  ))
+
+  changed <- runtime$builder_project_invalidate_entry_hydration(hydrated)
+  expect_null(changed$project_hydration)
+  expect_false(runtime$builder_project_entry_hydrated_from(changed, record))
+})
+
+test_that("pending project hydration isolates a corrupt dataset", {
+  runtime <- builder_project_hydration_runtime()
+  root <- withr::local_tempdir()
+  loaded <- function(id) {
+    list(
+      id = id,
+      load_state = "loaded",
+      revision = 1L,
+      snapshot = list(path = paste0("/runtime/", id)),
+      settings = list(name = paste("Source", id))
+    )
+  }
+  saved <- loaded("good")
+  saved$settings$name <- "Saved good"
+  good <- runtime$builder_project_dataset_record(
+    saved,
+    source = list(kind = "missing", path = NULL),
+    checked = TRUE
+  )
+  corrupt <- good
+  corrupt$id <- "corrupt"
+  corrupt$configuration$payload <- "not serialized JSON"
+
+  result <- runtime$builder_project_hydrate_pending_entries(
+    entries = list(loaded("good"), loaded("corrupt")),
+    pending = list(good = good, corrupt = corrupt),
+    root = root
+  )
+
+  expect_identical(
+    vapply(result$entries, `[[`, character(1), "id"),
+    "good"
+  )
+  expect_identical(result$entries[[1L]]$settings$name, "Saved good")
+  expect_identical(names(result$restored), "good")
+  expect_identical(names(result$failures), "corrupt")
+  expect_match(result$failures$corrupt$message, "configuration")
+  expect_identical(result$failures$corrupt$entry$id, "corrupt")
+  expect_length(result$pending, 0L)
+})
+
+test_that("configuration identity is stable across Spatial asset hydration", {
+  runtime <- builder_project_hydration_runtime()
+  source_uri <- paste0(
+    "data:image/png;base64,",
+    base64enc::base64encode(charToRaw("same-source-image"))
+  )
+  transformed_uri <- paste0(
+    "data:image/png;base64,",
+    base64enc::base64encode(charToRaw("derived-rotated-image"))
+  )
+  image <- list(
+    source = list(name = "H&E"),
+    source_uri = source_uri,
+    uri = transformed_uri,
+    base_bounds = list(xmin = 0, xmax = 100, ymin = 0, ymax = 80),
+    bounds = list(xmin = 306, xmax = 406, ymin = -25, ymax = 55),
+    dx = 306,
+    dy = -25,
+    scale = 1.42,
+    rotation = -17,
+    flip_x = TRUE,
+    flip_y = TRUE,
+    image_opacity = 0.55,
+    point_opacity = 0.65,
+    point_size = 8,
+    section_id = "fov-a",
+    section_kind = "spatial"
+  )
+  before <- list(
+    id = "ds1",
+    settings = list(
+      images = list(`fov-a` = list(`H&E` = image))
+    )
+  )
+  after <- before
+  after$settings$images[["fov-a"]][["H&E"]]$uri <- source_uri
+
+  expect_identical(
+    runtime$builder_project_configuration_digest(before),
+    runtime$builder_project_configuration_digest(after)
+  )
+
+  changed <- after
+  changed$settings$images[["fov-a"]][["H&E"]]$source_uri <- paste0(
+    "data:image/png;base64,",
+    base64enc::base64encode(charToRaw("different-source-image"))
+  )
+  expect_false(identical(
+    runtime$builder_project_configuration_digest(before),
+    runtime$builder_project_configuration_digest(changed)
+  ))
+})
+
+test_that("Spatial UI model carries every saved image control", {
+  image <- list(
+    source = list(name = "H&E"),
+    source_uri = "data:image/png;base64,AA==",
+    uri = "data:image/png;base64,AA==",
+    base_bounds = list(xmin = 0, xmax = 100, ymin = 0, ymax = 80),
+    bounds = list(xmin = 306, xmax = 448, ymin = -25, ymax = 89),
+    dx = 306,
+    dy = -25,
+    scale = 1.42,
+    rotation = -17,
+    flip_x = TRUE,
+    flip_y = TRUE,
+    image_opacity = 0.55,
+    point_opacity = 0.65,
+    point_size = 8,
+    section_id = "fov-a",
+    section_kind = "spatial"
+  )
+  dapi <- image
+  dapi$source$name <- "DAPI"
+  dapi$rotation <- 23
+  model <- builder_enhance_model(
+    id = "ds1",
+    profile = list(images = "fov-a", extras = list()),
+    state = list(manifest = list()),
+    settings = list(
+      tables = list(),
+      images = list(`fov-a` = list(`H&E` = image, DAPI = dapi)),
+      spatial_coordinate_transforms = list(
+        `fov-a` = list(rotation_degrees = 32.8, scale = 1)
+      ),
+      spatial_image_storage = "external"
+    ),
+    modules = list(),
+    active_section = "fov-a",
+    active_image = "DAPI"
+  )
+  controls <- model$attachments$histology$controls
+
+  expect_identical(model$attachments$histology$active_image, "DAPI")
+  expect_identical(controls$dx, 306)
+  expect_identical(controls$dy, -25)
+  expect_identical(controls$scale, 1.42)
+  expect_identical(controls$rotation, 23)
+  expect_true(controls$flip_x)
+  expect_true(controls$flip_y)
+  expect_identical(controls$image_opacity, 0.55)
+  expect_identical(controls$point_opacity, 0.65)
+  expect_identical(controls$point_size, 8)
+  expect_lte(controls$dx_min, 306)
+  expect_gte(controls$dx_max, 306)
+  expect_lte(controls$dy_min, -25)
+  expect_gte(controls$dy_max, -25)
+
+  html <- paste(
+    as.character(builder_spatial_alignment_ui(
+      "enhance",
+      model$attachments$histology
+    )),
+    collapse = ""
+  )
+  expect_match(html, 'id="enhance-img_dx"[^>]+data-from="306"', perl = TRUE)
+  expect_match(html, 'id="enhance-img_dy"[^>]+data-from="-25"', perl = TRUE)
+  expect_match(html, 'id="enhance-img_scale"[^>]+data-from="1.42"', perl = TRUE)
+  expect_match(html, 'id="enhance-img_rotate"[^>]+data-from="23"', perl = TRUE)
+  expect_match(html, 'id="enhance-image_flip_x"[^>]+checked', perl = TRUE)
+  expect_match(html, 'id="enhance-image_flip_y"[^>]+checked', perl = TRUE)
+})
+
+test_that("Spatial control ranges retain saved offsets before preview bounds arrive", {
+  record <- list(
+    base_bounds = list(xmin = 0, xmax = 100, ymin = 0, ymax = 80),
+    bounds = list(xmin = 306, xmax = 448, ymin = -25, ymax = 89),
+    dx = 306,
+    dy = -25
+  )
+
+  pending <- builder_alignment_control_ranges(record, bounds = NULL)
+  expect_lte(pending$dx$min, 306)
+  expect_gte(pending$dx$max, 306)
+  expect_lte(pending$dy$min, -25)
+  expect_gte(pending$dy$max, -25)
+
+  ready <- builder_alignment_control_ranges(
+    record,
+    bounds = list(xmin = 0, xmax = 500, ymin = -100, ymax = 100)
+  )
+  expect_identical(ready$dx$min, -500)
+  expect_identical(ready$dx$max, 500)
+  expect_identical(ready$dy$min, -200)
+  expect_identical(ready$dy$max, 200)
+})
+
+test_that("schema v1 projects migrate durable project preferences explicitly", {
+  runtime <- builder_project_hydration_runtime()
+  path <- withr::local_tempfile(fileext = ".json")
+  jsonlite::write_json(
+    list(
+      schema_version = 1L,
+      project = list(id = "project-safe", revision = 2L),
+      datasets = list(),
+      last_ui = list(stage = "configure", selected_dataset = "ds1")
+    ),
+    path,
+    auto_unbox = TRUE,
+    null = "null"
+  )
+
+  migrated <- runtime$builder_project_read(path)
+
+  expect_identical(migrated$schema_version, 2L)
+  expect_identical(migrated$migrated_from_schema, 1L)
+  expect_false(migrated$configuration$build_mode)
+  expect_false(migrated$configuration$auth_enabled)
+  expect_null(migrated$configuration$review_options)
+  expect_identical(migrated$last_ui$stage, "configure")
+})
+
+test_that("schema v1 migration canonicalizes record identity without dirtying", {
+  runtime <- builder_project_hydration_runtime()
+  path <- withr::local_tempfile(fileext = ".json")
+  entry <- builder_minimal_entry("ds1", "Saved dataset")
+  canonical <- runtime$builder_project_configuration_digest(entry)
+  record <- runtime$builder_project_dataset_record(
+    entry,
+    source = list(kind = "example", example = "all_content"),
+    checked = TRUE
+  )
+  record$configuration$digest <- "legacy-digest"
+  record$artifact <- list(
+    status = "ready",
+    built_from_configuration = "legacy-digest"
+  )
+  jsonlite::write_json(
+    list(
+      schema_version = 1L,
+      project = list(id = "project-safe", revision = 2L),
+      datasets = list(record),
+      last_ui = list(stage = "configure", selected_dataset = "ds1")
+    ),
+    path,
+    auto_unbox = TRUE,
+    null = "null"
+  )
+
+  migrated <- runtime$builder_project_read(path)
+
+  expect_identical(migrated$datasets[[1L]]$configuration$digest, canonical)
+  expect_identical(
+    migrated$datasets[[1L]]$artifact$built_from_configuration,
+    canonical
+  )
+  expect_false(runtime$builder_project_live_dirty(
+    list(entry),
+    "ds1",
+    migrated
+  ))
+})
+
+test_that("project preferences retain only validated non-secret values", {
+  runtime <- builder_project_hydration_runtime()
+  options <- list(
+    welcome_message = "Saved welcome",
+    initial_page = "overview",
+    point_size = 7,
+    variable_to_compare = TRUE,
+    host = "0.0.0.0",
+    port = 9090L,
+    max_request_size = 1234,
+    display_mode = "showcase",
+    launch_browser = FALSE,
+    show_upload_ui = TRUE,
+    password = "must-not-be-saved"
+  )
+
+  saved <- runtime$builder_project_configuration(
+    review_options = options,
+    build_mode = TRUE,
+    auth_enabled = TRUE,
+    initial_dataset = "ds2"
+  )
+
+  expect_identical(saved$review_options$welcome_message, "Saved welcome")
+  expect_identical(saved$review_options$initial_page, "overview")
+  expect_identical(saved$review_options$port, 9090L)
+  expect_true(saved$build_mode)
+  expect_true(saved$auth_enabled)
+  expect_identical(saved$initial_dataset, "ds2")
+  expect_false(any(
+    c(
+      "accounts",
+      "password",
+      "token",
+      "username",
+      "account_count"
+    ) %in%
+      names(saved)
+  ))
+})
+
+test_that("schema v2 preferences survive a manifest write and read", {
+  runtime <- builder_project_hydration_runtime()
+  root <- withr::local_tempdir()
+  manifest <- runtime$builder_project_new_manifest(root, "Round trip")
+  manifest$configuration <- runtime$builder_project_configuration(
+    review_options = list(
+      welcome_message = "Saved welcome",
+      initial_page = "overview",
+      point_size = 7,
+      variable_to_compare = TRUE,
+      host = "0.0.0.0",
+      port = 9090L,
+      max_request_size = 1234,
+      display_mode = "showcase",
+      launch_browser = FALSE,
+      show_upload_ui = TRUE
+    ),
+    build_mode = TRUE,
+    auth_enabled = TRUE,
+    initial_dataset = "ds2"
+  )
+  written <- runtime$builder_project_write(manifest, root)
+  restored <- runtime$builder_project_read(written$path)
+
+  expect_identical(restored$schema_version, 2L)
+  expect_identical(restored$configuration, written$manifest$configuration)
+  expect_null(restored$migrated_from_schema)
+})
+
+test_that("last UI restoration uses safe dataset and workflow fallbacks", {
+  runtime <- builder_project_hydration_runtime()
+
+  restored <- runtime$builder_project_last_ui_target(
+    list(stage = "build", selected_dataset = "ds2"),
+    available_ids = c("ds1", "ds2"),
+    checked_ids = c("ds1", "ds2")
+  )
+  expect_identical(restored$selected_dataset, "ds2")
+  expect_identical(restored$stage, "review")
+
+  spatial <- runtime$builder_project_last_ui_target(
+    list(
+      stage = "configure",
+      selected_dataset = "ds2",
+      spatial = list(dataset = "ds2", section = "fov-b", image = "DAPI")
+    ),
+    available_ids = c("ds1", "ds2"),
+    checked_ids = character()
+  )
+  expect_identical(
+    spatial$spatial,
+    list(dataset = "ds2", section = "fov-b", image = "DAPI")
+  )
+
+  fallback <- runtime$builder_project_last_ui_target(
+    list(
+      stage = "review",
+      selected_dataset = "skipped",
+      spatial = list(dataset = "skipped", section = "fov-z", image = "old")
+    ),
+    available_ids = "ds1",
+    checked_ids = character()
+  )
+  expect_identical(fallback$selected_dataset, "ds1")
+  expect_identical(fallback$stage, "configure")
+  expect_null(fallback$spatial)
+})
+
+test_that("Spatial project UI restoration selects the saved FOV and image", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(testthat::test_path("..", "..", "inst", "builder"))
+  sys.source("app.R", envir = app_env)
+  record <- function(section, label) {
+    app_env$builder_alignment_record(
+      source = list(name = label),
+      source_uri = "data:image/png;base64,AA==",
+      uri = "data:image/png;base64,AA==",
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      section = list(id = section, kind = "spatial")
+    )
+  }
+  entry <- list(
+    id = "ds1",
+    snapshot = list(
+      path = "/runtime/ds1",
+      owner_token = "owner",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = c("fov-a", "fov-b"), extras = list()),
+    settings = list(
+      name = "Dataset 1",
+      images = list(
+        `fov-a` = list(`H&E` = record("fov-a", "H&E")),
+        `fov-b` = list(
+          `H&E` = record("fov-b", "H&E"),
+          DAPI = record("fov-b", "DAPI")
+        )
+      ),
+      spatial_coordinate_transforms = list(),
+      default_group = "cluster",
+      default_projection = "umap"
+    )
+  )
+  current <- shiny::reactiveVal("ds1")
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- app_env$builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) entry,
+        entries = shiny::reactiveVal(list(entry)),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(entry, images) invisible(entry),
+        alignment_preview = shiny::reactiveVal(NULL),
+        spatial_coords = shiny::reactiveVal(NULL)
+      )
+    },
+    {
+      session$flushReact()
+      expect_identical(alignment$active_section(), "fov-a")
+      expect_identical(alignment$active_image(), "H&E")
+
+      expect_true(alignment$restore_project_selection(list(
+        dataset = "ds1",
+        section = "fov-b",
+        image = "DAPI"
+      )))
+      session$flushReact()
+
+      expect_identical(alignment$active_section(), "fov-b")
+      expect_identical(alignment$active_image(), "DAPI")
+
+      session$setInputs(`enhance-active_section` = "fov-a")
+      session$flushReact()
+      expect_identical(alignment$active_section(), "fov-a")
+      current(NULL)
+      session$flushReact()
+      current("ds1")
+      session$flushReact()
+      expect_identical(alignment$active_section(), "fov-a")
+      expect_identical(alignment$active_image(), "H&E")
+    }
+  )
+})
+
+test_that("the assembled Builder server registers pre-store project hydration", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(testthat::test_path("..", "..", "inst", "builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this hydration test.")
+  }
+  root <- withr::local_tempdir()
+  source_dir <- file.path(root, "sources", "ds1")
+  dir.create(source_dir, recursive = TRUE)
+  source_path <- file.path(source_dir, "input.rds")
+  writeBin(charToRaw("source"), source_path)
+  loaded <- builder_minimal_entry("ds1", "Source default")
+  loaded$revision <- 1L
+  loaded$snapshot <- list(path = "/runtime/new", owner_token = "new-owner")
+  saved <- loaded
+  saved$settings$name <- "Saved project name"
+  saved$settings$organism <- "mm"
+  saved$settings$overview_point_size <- 9
+  saved$settings$spatial_coordinate_transforms <- list(
+    fov_a = list(schema_version = 1L, rotation_degrees = 66.9, scale = 1)
+  )
+  record <- app_env$builder_project_dataset_record(
+    saved,
+    source = list(kind = "managed", path = "sources/ds1/input.rds"),
+    checked = TRUE
+  )
+
+  shiny::testServer(app_env$server, {
+    builder_project_pending_entries(list(ds1 = record))
+    builder_project(list(root = root, manifest = list()))
+
+    hydrated <- finalize_loaded_entry(loaded)
+
+    expect_identical(hydrated$settings, saved$settings)
+    expect_identical(hydrated$snapshot, loaded$snapshot)
+    expect_identical(
+      hydrated$settings$spatial_coordinate_transforms$fov_a$rotation_degrees,
+      66.9
+    )
+
+    use_state_only_fixture(list(hydrated))
+    edited <- hydrated
+    edited$settings$overview_point_size <- 10
+    expect_true(replace_entry(edited, internal = TRUE))
+    expect_null(isolate(store())$datasets[[1L]]$project_hydration)
+
+    invalid_saved <- saved
+    invalid_saved$settings$spatial_image_storage <- "forged"
+    invalid_record <- app_env$builder_project_dataset_record(
+      invalid_saved,
+      source = list(kind = "managed", path = "sources/ds1/input.rds"),
+      checked = TRUE
+    )
+    builder_project_pending_entries(list(ds1 = invalid_record))
+    use_state_only_fixture(list())
+    expect_error(
+      builder_prepare_loaded_entry_attachment(loaded),
+      class = "builder_state_error"
+    )
+  })
+})
+
+test_that("failed pre-store hydration releases its unattached snapshot", {
+  source <- paste(
+    readLines(
+      testthat::test_path("..", "..", "inst", "builder", "server", "imports.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  branch <- sub(
+    ".*if \\(inherits\\(finalized_entry, \"try-error\"\\)\\) \\{",
+    "",
+    source
+  )
+  branch <- sub("\\n    entry <- finalized_entry.*", "", branch)
+
+  expect_match(
+    branch,
+    ".builder_snapshot_release(value$snapshot)",
+    fixed = TRUE
+  )
+  expect_match(
+    branch,
+    "builder_protocol_acknowledge(protocol(), request$request_id)",
+    fixed = TRUE
+  )
+  expect_match(branch, "builder_import_progress_remove", fixed = TRUE)
+})
+
+test_that("failed fallback hydration has a synchronous snapshot cleanup path", {
+  source <- paste(
+    readLines(
+      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(source, "builder_worker_release_snapshot", fixed = TRUE)
+  expect_match(source, "builder_protocol_forget_dataset", fixed = TRUE)
+  expect_match(source, "Retrying failed project restore cleanup", fixed = TRUE)
+})

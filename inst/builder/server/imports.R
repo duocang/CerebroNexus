@@ -1217,6 +1217,45 @@ observe({
       levels = value$levels %||% list(),
       settings = settings
     )
+    prepared <- try(
+      builder_prepare_loaded_entry_attachment(entry),
+      silent = TRUE
+    )
+    if (inherits(prepared, "try-error")) {
+      message <- conditionMessage(attr(prepared, "condition"))
+      released <- try(.builder_snapshot_release(value$snapshot), silent = TRUE)
+      acknowledged <- try(
+        builder_protocol_acknowledge(protocol(), request$request_id),
+        silent = TRUE
+      )
+      if (inherits(acknowledged, "try-error")) {
+        protocol(NULL)
+        worker_available(FALSE)
+      } else {
+        protocol(acknowledged)
+      }
+      set_import_state(
+        p$id,
+        "error",
+        p$import_generation %||% 1L,
+        error = message
+      )
+      add_error(
+        if (isTRUE(released)) {
+          message
+        } else {
+          paste0(
+            message,
+            " The temporary snapshot will be cleaned up when Builder stops."
+          )
+        }
+      )
+      builder_import_progress_remove(p$progress_path %||% "")
+      release_pending_source(p)
+      return()
+    }
+    entry <- prepared$entry
+    next_state <- prepared$state
     updated_worker <- try(
       builder_worker_register_snapshot(
         got$worker,
@@ -1234,10 +1273,6 @@ observe({
       return()
     }
     worker(updated_worker)
-    next_state <- builder_reduce_state(
-      isolate(store()),
-      list(type = "add", entry = entry)
-    )
     store(next_state)
     protocol(builder_protocol_dataset(
       isolate(protocol()),

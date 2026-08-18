@@ -26,6 +26,7 @@ builder_spatial_alignment_server <- function(
   coordinate_session_drafts <- shiny::reactiveVal(list())
   active_section <- shiny::reactiveVal(NULL)
   active_image <- shiny::reactiveVal(NULL)
+  pending_project_selection <- shiny::reactiveVal(NULL)
   pending_upload <- shiny::reactiveVal(NULL)
   preview_contract <- shiny::reactiveVal(NULL)
   expected_controls <- shiny::reactiveVal(NULL)
@@ -211,17 +212,7 @@ builder_spatial_alignment_server <- function(
       .builder_alignment_parameters(record)
     }
     expected_controls(parameters)
-    span_x <- if (.builder_alignment_valid_bounds(bounds)) {
-      bounds$xmax - bounds$xmin
-    } else {
-      1
-    }
-    span_y <- if (.builder_alignment_valid_bounds(bounds)) {
-      bounds$ymax - bounds$ymin
-    } else {
-      1
-    }
-    nice <- function(value) max(signif(value, 2), .Machine$double.eps)
+    ranges <- builder_alignment_control_ranges(record, bounds)
     ids <- c(
       "enhance-img_dx",
       "enhance-img_dy",
@@ -237,18 +228,18 @@ builder_spatial_alignment_server <- function(
     shiny::updateSliderInput(
       session,
       "enhance-img_dx",
-      min = -nice(span_x),
-      max = nice(span_x),
+      min = ranges$dx$min,
+      max = ranges$dx$max,
       value = parameters$dx,
-      step = nice(span_x / 200)
+      step = ranges$dx$step
     )
     shiny::updateSliderInput(
       session,
       "enhance-img_dy",
-      min = -nice(span_y),
-      max = nice(span_y),
+      min = ranges$dy$min,
+      max = ranges$dy$max,
       value = parameters$dy,
-      step = nice(span_y / 200)
+      step = ranges$dy$step
     )
     shiny::updateSliderInput(
       session,
@@ -349,6 +340,77 @@ builder_spatial_alignment_server <- function(
     request_preview(entry, section)
   }
 
+  project_selection <- shiny::reactive({
+    id <- current()
+    section <- active_section()
+    if (is.null(id) || is.null(section)) {
+      return(NULL)
+    }
+    list(
+      dataset = id,
+      section = section,
+      image = active_image() %||% NULL
+    )
+  })
+  restore_project_selection <- function(selection) {
+    valid <- is.list(selection) &&
+      builder_has_text(selection$dataset) &&
+      builder_has_text(selection$section) &&
+      (is.null(selection$image) || builder_has_text(selection$image))
+    if (!valid) {
+      pending_project_selection(NULL)
+      return(invisible(FALSE))
+    }
+    selection <- list(
+      dataset = as.character(selection$dataset),
+      section = as.character(selection$section),
+      image = if (is.null(selection$image)) {
+        NULL
+      } else {
+        as.character(selection$image)
+      }
+    )
+    pending_project_selection(selection)
+    id <- shiny::isolate(current())
+    entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
+    if (is.null(entry) || !identical(id, selection$dataset)) {
+      return(invisible(TRUE))
+    }
+    sections <- sections_for(entry)
+    if (!length(sections)) {
+      return(invisible(FALSE))
+    }
+    section <- if (selection$section %in% sections) {
+      selection$section
+    } else {
+      sections[[1L]]
+    }
+    labels <- image_labels_for(entry, section)
+    label <- if (!is.null(selection$image) && selection$image %in% labels) {
+      selection$image
+    } else if (length(labels)) {
+      labels[[1L]]
+    } else {
+      NULL
+    }
+    switch_to(entry, section, label)
+    session$onFlushed(
+      function() {
+        pending <- shiny::isolate(pending_project_selection())
+        if (
+          is.list(pending) &&
+            identical(pending$dataset, selection$dataset) &&
+            identical(shiny::isolate(active_section()), section) &&
+            identical(shiny::isolate(active_image()), label)
+        ) {
+          pending_project_selection(NULL)
+        }
+      },
+      once = TRUE
+    )
+    invisible(TRUE)
+  }
+
   restore_project_settings <- function(datasets) {
     datasets <- unique(as.character(datasets %||% character()))
     if (!length(datasets)) {
@@ -434,7 +496,26 @@ builder_spatial_alignment_server <- function(
       active_image(NULL)
       return()
     }
-    switch_to(entry, sections[[1L]])
+    selection <- shiny::isolate(pending_project_selection())
+    if (is.list(selection) && identical(selection$dataset, entry$id)) {
+      section <- if (selection$section %in% sections) {
+        selection$section
+      } else {
+        sections[[1L]]
+      }
+      labels <- image_labels_for(entry, section)
+      label <- if (!is.null(selection$image) && selection$image %in% labels) {
+        selection$image
+      } else if (length(labels)) {
+        labels[[1L]]
+      } else {
+        NULL
+      }
+      switch_to(entry, section, label)
+      pending_project_selection(NULL)
+    } else {
+      switch_to(entry, sections[[1L]])
+    }
   })
 
   shiny::observe({
@@ -684,6 +765,7 @@ builder_spatial_alignment_server <- function(
     if (is.null(entry) || !nzchar(section) || identical(section, previous)) {
       return()
     }
+    pending_project_selection(NULL)
     switch_to(entry, section)
   })
 
@@ -701,6 +783,7 @@ builder_spatial_alignment_server <- function(
     ) {
       return()
     }
+    pending_project_selection(NULL)
     active_image(label)
     restore(entry, section, label)
   })
@@ -1498,6 +1581,7 @@ builder_spatial_alignment_server <- function(
   list(
     active_section = active_section,
     active_image = active_image,
+    project_selection = project_selection,
     draft = draft,
     coordinate_drafts = coordinate_session_drafts,
     canvas_contract = canvas_contract,
@@ -1505,6 +1589,7 @@ builder_spatial_alignment_server <- function(
     raw_image = raw_image,
     request_dataset_switch = request_dataset_switch,
     restore_project_settings = restore_project_settings,
+    restore_project_selection = restore_project_selection,
     materialize_coordinate_drafts = materialize_coordinate_drafts,
     current_record = current_record
   )

@@ -285,6 +285,54 @@ builder_alignment_fit_bounds <- function(bounds, image_dimensions) {
   parameters
 }
 
+#' Derive alignment slider ranges without discarding a restored transform.
+#'
+#' During project hydration the saved alignment is available before a fresh
+#' spatial preview has reported its coordinate bounds.  Slider updates must
+#' therefore include both the known coordinate span and the restored value;
+#' otherwise Shiny clamps an out-of-range saved offset back to the temporary
+#' default range.
+builder_alignment_control_ranges <- function(record = NULL, bounds = NULL) {
+  parameters <- .builder_alignment_parameters(record %||% list())
+  saved_bounds <- if (is.list(record)) {
+    record$base_bounds %||% record$bounds
+  } else {
+    NULL
+  }
+  effective_bounds <- if (.builder_alignment_valid_bounds(bounds)) {
+    bounds
+  } else if (.builder_alignment_valid_bounds(saved_bounds)) {
+    saved_bounds
+  } else {
+    NULL
+  }
+  span_x <- if (is.null(effective_bounds)) {
+    1
+  } else {
+    effective_bounds$xmax - effective_bounds$xmin
+  }
+  span_y <- if (is.null(effective_bounds)) {
+    1
+  } else {
+    effective_bounds$ymax - effective_bounds$ymin
+  }
+  nice <- function(value) max(signif(value, 2), .Machine$double.eps)
+  x_limit <- nice(max(1, abs(parameters$dx), abs(span_x)))
+  y_limit <- nice(max(1, abs(parameters$dy), abs(span_y)))
+  list(
+    dx = list(
+      min = -x_limit,
+      max = x_limit,
+      step = nice(span_x / 200)
+    ),
+    dy = list(
+      min = -y_limit,
+      max = y_limit,
+      step = nice(span_y / 200)
+    )
+  )
+}
+
 #' Apply translation and scale to the immutable default-fit bounds.
 builder_alignment_transform_bounds <- function(
   base_bounds,

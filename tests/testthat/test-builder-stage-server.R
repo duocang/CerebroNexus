@@ -2738,8 +2738,8 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
   )
   expect_match(
     server,
-    "commit_section(entry, section, record)",
-    fixed = TRUE
+    "commit_section\\(\\s*entry,\\s*section,\\s*record",
+    perl = TRUE
   )
   expect_match(
     server,

@@ -551,6 +551,7 @@ render_configure_workbench <- function() {
       "included_projections",
       "default_projection",
       "overview_point_size",
+      "overview_percentage_cells_to_show",
       "included_trajectories",
       "default_trajectory",
       "assay",
@@ -637,7 +638,8 @@ render_configure_workbench <- function() {
         state = if (inherits(state, "try-error")) list() else state,
         settings = entry$settings,
         modules = list(),
-        active_section = shiny::isolate(active_slice())
+        active_section = shiny::isolate(active_slice()),
+        active_image = shiny::isolate(alignment_server$active_image())
       ),
       dynamic_modules = TRUE
     ),

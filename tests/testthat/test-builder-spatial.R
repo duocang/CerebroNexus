@@ -24,6 +24,14 @@ sys.source(
   ),
   envir = environment()
 )
+sys.source(
+  builder_spatial_test_inst_path(
+    "viewer",
+    "core",
+    "spatial_coordinate_transform.R"
+  ),
+  envir = environment()
+)
 builder_spatial_test_source("spatial.R")
 builder_spatial_test_source("preview.R")
 builder_spatial_test_source("extras.R")

@@ -19,6 +19,25 @@ pending_client_upload_sequence <- reactiveVal(0L)
 external_import_active <- reactiveVal(NULL)
 client_import_history_limit <- 200L
 
+loaded_entry_lifecycle <- new.env(parent = emptyenv())
+loaded_entry_lifecycle$finalize <- function(entry) entry
+register_loaded_entry_finalizer <- function(finalizer) {
+  stopifnot(is.function(finalizer))
+  loaded_entry_lifecycle$finalize <- finalizer
+  invisible(finalizer)
+}
+finalize_loaded_entry <- function(entry) {
+  loaded_entry_lifecycle$finalize(entry)
+}
+builder_prepare_loaded_entry_attachment <- function(entry) {
+  finalized <- finalize_loaded_entry(entry)
+  next_state <- builder_reduce_state(
+    isolate(store()),
+    list(type = "add", entry = finalized)
+  )
+  list(entry = finalized, state = next_state)
+}
+
 client_import_id_for <- function(server_id) {
   ids <- isolate(client_import_server_ids())
   value <- if (builder_has_text(server_id) && server_id %in% names(ids)) {
@@ -409,6 +428,7 @@ replace_entry <- function(updated, internal = FALSE) {
   if (identical(existing$settings, updated$settings)) {
     return(invisible(FALSE))
   }
+  existing <- builder_project_invalidate_entry_hydration(existing)
   existing$settings <- updated$settings
   existing$revision <- as.integer(existing$revision %||% 0L) + 1L
   current_state <- isolate(store())

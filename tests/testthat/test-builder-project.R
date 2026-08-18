@@ -1215,8 +1215,11 @@ test_that("connection flush sends a message captured in reactive context", {
   )
   expect_match(
     source,
-    'function() session$sendCustomMessage(\n        "builder_activity_state",\n        activity_message',
-    fixed = TRUE
+    paste0(
+      'function\\(\\)\\s*\\{\\s*session\\$sendCustomMessage\\(\\s*',
+      '"builder_activity_state",\\s*activity_message'
+    ),
+    perl = TRUE
   )
 })
 

@@ -31,6 +31,30 @@ source locations, inspection summaries, user settings, checked state, and CRB
 metadata. Managed paths are relative to the project folder. Authentication
 secrets are not stored.
 
+Schema version 2 also records the last safe workflow location and non-secret
+Viewer/Build preferences (output mode, welcome text, initial page and dataset,
+host/port, display and launch options, and whether login was requested). Login
+accounts, usernames, passwords, tokens, active builds, worker snapshots, and
+preview caches remain session-only. Version-1 manifests are migrated in memory
+when opened and are written as version 2 on the next save.
+
+The last UI location includes the active Spatial FOV and image label for the
+selected dataset. These values are navigation state rather than dataset
+configuration: reopening selects them when they still exist and otherwise
+falls back to the first available FOV or image without changing saved image
+alignment parameters.
+
+During version-1 migration, each readable typed payload receives a new canonical
+configuration digest. A reusable artifact that explicitly referenced the old
+record digest is carried to the same new digest. The legacy digest is not used
+as an integrity proof; source fingerprints and managed Spatial asset
+fingerprints remain the integrity checks for restoring Checked state.
+
+Project source restoration is isolated per dataset. If one saved payload cannot
+be hydrated, Builder removes that incomplete live entry, retains its original
+manifest record, releases the temporary worker snapshot, and continues restoring
+the remaining datasets.
+
 Spatial images are stored as verified project assets instead of large base64
 strings inside the JSON manifest. Each image descriptor records its relative
 path and fingerprint. Older manifests with inline image data are migrated on

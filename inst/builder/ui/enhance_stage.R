@@ -6,7 +6,8 @@ builder_enhance_model <- function(
   state,
   settings,
   modules,
-  active_section = NULL
+  active_section = NULL,
+  active_image = NULL
 ) {
   manifest <- state$manifest %||% list()
   retained <- Filter(
@@ -44,11 +45,52 @@ builder_enhance_model <- function(
     profile$images %||% character(),
     if (has_trekker) "trekker" else character()
   ))
-  active_coordinate_transform <- if (is.null(active_section)) {
+  spatial_images <- builder_image_collection_normalize(
+    settings$images %||% list()
+  )
+  selected_section <- active_section
+  if (is.null(selected_section) || !selected_section %in% spatial_sections) {
+    selected_section <- if (length(spatial_sections)) {
+      spatial_sections[[1L]]
+    } else {
+      NULL
+    }
+  }
+  active_coordinate_transform <- if (is.null(selected_section)) {
     NULL
   } else {
-    (settings$spatial_coordinate_transforms %||% list())[[active_section]]
+    (settings$spatial_coordinate_transforms %||% list())[[selected_section]]
   }
+  image_labels <- if (is.null(selected_section)) {
+    character()
+  } else {
+    names(spatial_images[[selected_section]] %||% list()) %||% character()
+  }
+  selected_image <- if (
+    !is.null(active_image) && active_image %in% image_labels
+  ) {
+    active_image
+  } else if (length(image_labels)) {
+    image_labels[[1L]]
+  } else {
+    NULL
+  }
+  active_image_record <- if (is.null(selected_image)) {
+    NULL
+  } else {
+    spatial_images[[selected_section]][[selected_image]]
+  }
+  control_defaults <- builder_alignment_defaults()
+  controls <- .builder_alignment_parameters(
+    active_image_record %||% control_defaults
+  )
+  ranges <- builder_alignment_control_ranges(active_image_record)
+  controls$dx_min <- ranges$dx$min
+  controls$dx_max <- ranges$dx$max
+  controls$dx_step <- ranges$dx$step
+  controls$dy_min <- ranges$dy$min
+  controls$dy_max <- ranges$dy$max
+  controls$dy_step <- ranges$dy$step
   list(
     id = id,
     modules = modules,
@@ -86,12 +128,12 @@ builder_enhance_model <- function(
         network = "No network access.",
         prerequisite = "Requires spatial FOVs and coordinates.",
         sections = spatial_sections,
-        active_section = active_section,
+        active_section = selected_section,
+        active_image = selected_image,
         coordinate_rotation = active_coordinate_transform$rotation_degrees %||%
           0,
-        images = builder_image_collection_normalize(
-          settings$images %||% list()
-        ),
+        controls = controls,
+        images = spatial_images,
         spatial_image_storage = settings$spatial_image_storage %||% "embedded",
         selected = names(settings$images %||% list()) %||% character(),
         replacement_policy = "Named images remain separate within each FOV.",
@@ -344,15 +386,27 @@ builder_spatial_alignment_ui <- function(id, model) {
   section_labels <- sections
   section_labels[sections == "trekker"] <- "Trekker physical space"
   choices <- stats::setNames(sections, section_labels)
+  selected_section <- model$active_section
+  if (
+    length(sections) &&
+      (is.null(selected_section) || !selected_section %in% sections)
+  ) {
+    selected_section <- sections[[1L]]
+  }
   initial_image_choices <- if (length(sections)) {
-    names(model$images[[sections[[1L]]]] %||% list()) %||% character()
+    names(model$images[[selected_section]] %||% list()) %||% character()
   } else {
     character()
   }
-  selected_section <- model$active_section %||% sections[[1L]]
-  if (!selected_section %in% sections) {
-    selected_section <- sections[[1L]]
+  selected_image <- model$active_image
+  if (is.null(selected_image) || !selected_image %in% initial_image_choices) {
+    selected_image <- if (length(initial_image_choices)) {
+      initial_image_choices[[1L]]
+    } else {
+      character()
+    }
   }
+  controls <- model$controls %||% builder_alignment_defaults()
   tagList(
     h3(
       class = "spatial-alignment-title",
@@ -407,7 +461,7 @@ builder_spatial_alignment_ui <- function(id, model) {
                       "Point opacity",
                       0,
                       100,
-                      85,
+                      (controls$point_opacity %||% 0.85) * 100,
                       step = 5,
                       post = "%",
                       ticks = FALSE
@@ -417,7 +471,7 @@ builder_spatial_alignment_ui <- function(id, model) {
                       "Point size",
                       1,
                       12,
-                      5,
+                      controls$point_size %||% 5,
                       step = 1,
                       ticks = FALSE
                     ),
@@ -457,11 +511,7 @@ builder_spatial_alignment_ui <- function(id, model) {
                   ns("active_image"),
                   "Image",
                   choices = initial_image_choices,
-                  selected = if (length(initial_image_choices)) {
-                    initial_image_choices[[1L]]
-                  } else {
-                    character()
-                  }
+                  selected = selected_image
                 ),
                 ns = ns
               ),
@@ -486,17 +536,19 @@ builder_spatial_alignment_ui <- function(id, model) {
                       sliderInput(
                         ns("img_dx"),
                         "Horizontal offset",
-                        -1,
-                        1,
-                        0,
+                        controls$dx_min %||% -1,
+                        controls$dx_max %||% 1,
+                        controls$dx %||% 0,
+                        step = controls$dx_step %||% NULL,
                         ticks = FALSE
                       ),
                       sliderInput(
                         ns("img_dy"),
                         "Vertical offset",
-                        -1,
-                        1,
-                        0,
+                        controls$dy_min %||% -1,
+                        controls$dy_max %||% 1,
+                        controls$dy %||% 0,
+                        step = controls$dy_step %||% NULL,
                         ticks = FALSE
                       )
                     )
@@ -512,7 +564,7 @@ builder_spatial_alignment_ui <- function(id, model) {
                         "Scale",
                         0.2,
                         3,
-                        1,
+                        controls$scale %||% 1,
                         step = 0.02,
                         ticks = FALSE
                       ),
@@ -521,18 +573,18 @@ builder_spatial_alignment_ui <- function(id, model) {
                         "Rotation (degrees)",
                         -180,
                         180,
-                        0,
+                        controls$rotation %||% 0,
                         ticks = FALSE
                       ),
                       checkboxInput(
                         ns("image_flip_x"),
                         "Flip horizontally",
-                        FALSE
+                        isTRUE(controls$flip_x)
                       ),
                       checkboxInput(
                         ns("image_flip_y"),
                         "Flip vertically",
-                        FALSE
+                        isTRUE(controls$flip_y)
                       )
                     )
                   ),
@@ -547,7 +599,7 @@ builder_spatial_alignment_ui <- function(id, model) {
                         "Image opacity",
                         0,
                         100,
-                        80,
+                        (controls$image_opacity %||% 0.8) * 100,
                         step = 5,
                         post = "%",
                         ticks = FALSE
