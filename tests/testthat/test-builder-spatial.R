@@ -36,6 +36,7 @@ builder_spatial_test_source("spatial.R")
 builder_spatial_test_source("preview.R")
 builder_spatial_test_source("extras.R")
 builder_spatial_test_source("worker.R")
+builder_spatial_test_source("plan/defaults.R")
 builder_spatial_test_source("spatial_alignment_server.R")
 
 test_that("alignment capability is limited to Spatial and Trekker datasets", {
@@ -1221,6 +1222,95 @@ test_that("artifact entries do not initialize editable Spatial state", {
       session$flushReact()
       expect_null(alignment$active_section())
       expect_null(alignment$active_image())
+    }
+  )
+})
+
+test_that("points-only Spatial FOV appearance persists without an image", {
+  skip_if_not_installed("shiny")
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "fov-a", extras = list()),
+    settings = list(
+      name = "Dataset A",
+      images = list(),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro",
+      spatial_point_appearance = list(
+        "fov-a" = list(point_opacity = 0.65, point_size = 6)
+      )
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(id = "fov-a", kind = "spatial", unit = "pixels"),
+    projection_name = "umap",
+    capped = FALSE,
+    transcriptome = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(-1, 1),
+      y = c(-1, 1),
+      group = c("A", "B")
+    ),
+    spatial = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("A", "B")
+    )
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(updated, images) {
+          updated$settings$images <- images
+          current_entry(updated)
+          invisible(updated)
+        },
+        alignment_preview = shiny::reactiveVal(preview),
+        spatial_coords = shiny::reactiveVal(NULL)
+      )
+    },
+    {
+      session$flushReact()
+      session$flushReact()
+      expect_true(alignment$restore_project_settings("dataset-a"))
+      session$flushReact()
+      expect_identical(alignment$active_section(), "fov-a")
+      expect_identical(
+        alignment$point_appearance(),
+        list(opacity = 0.65, size = 6)
+      )
+      session$setInputs(`enhance-point_opacity` = 65, `enhance-point_size` = 6)
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["fov-a"]],
+        list(point_opacity = 0.65, point_size = 6)
+      )
+      session$setInputs(`enhance-point_opacity` = 70)
+      session$flushReact()
+
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["fov-a"]],
+        list(point_opacity = 0.7, point_size = 6)
+      )
     }
   )
 })
