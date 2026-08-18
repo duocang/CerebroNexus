@@ -383,7 +383,9 @@
   }
   if (window.Shiny) {
     Shiny.addCustomMessageHandler("builder_spatial_canvas_scene", setScene);
-    Shiny.addCustomMessageHandler("builder_spatial_canvas_clear", clear);
+    Shiny.addCustomMessageHandler("builder_spatial_canvas_clear", function (message) {
+      clear();
+    });
     Shiny.addCustomMessageHandler("builder_spatial_canvas_reset", function (message) {
       if (message.viewKey && message.viewKey !== state.viewKey) clear();
       state.resetToken = finite(message.resetToken, state.resetToken + 1);

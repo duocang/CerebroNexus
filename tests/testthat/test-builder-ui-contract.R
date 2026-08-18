@@ -91,14 +91,20 @@ test_that("coordinate rotation is WYSIWYG without an explicit save action", {
   ))
 })
 
-test_that("Spatial coordinate drafts flush at image, Review, and Build boundaries", {
+test_that("Spatial coordinate drafts flush at project, Review, and Build boundaries", {
   alignment <- builder_asset_text("spatial_alignment_server.R")
+  project <- builder_asset_text("server", "project.R")
   workflow <- builder_asset_text("server", "workflow.R")
   build <- builder_asset_text("server", "build.R")
 
   expect_match(
     alignment,
-    "materialize_coordinate_drafts(\n      dataset = dataset,\n      section = section",
+    "materialize_coordinate_drafts <- function(\n    dataset = NULL,\n    section = NULL",
+    fixed = TRUE
+  )
+  expect_match(
+    project,
+    "materialize_coordinate_drafts(\n      notify = FALSE",
     fixed = TRUE
   )
   expect_match(workflow, "freeze_materialized_plan_for_output", fixed = TRUE)
@@ -453,7 +459,7 @@ test_that("enhancement groups and previews use one quiet density system", {
   }
   canvas_js <- builder_asset_text("www", "builder-spatial-canvas.js")
   expect_match(alignment_server, "builder_spatial_canvas_scene(", fixed = TRUE)
-  expect_match(alignment_server, "current_record(encode = TRUE)", fixed = TRUE)
+  expect_match(alignment_server, "commit_alignment_controls()", fixed = TRUE)
   expect_match(canvas_js, "requestAnimationFrame", fixed = TRUE)
   expect_false(grepl("Plotly", canvas_js, fixed = TRUE))
   expect_match(js, "syncSpatialPreviewAspect", fixed = TRUE)
@@ -1536,7 +1542,17 @@ test_that("Builder JavaScript waits for a usable document before initialization"
     fixed = TRUE
   )
   expect_match(js, 'document.readyState === "loading"', fixed = TRUE)
-  expect_match(js, "new MutationObserver(enhanceDynamicContent)", fixed = TRUE)
+  expect_match(js, "function scheduleDynamicContentEnhancement()", fixed = TRUE)
+  expect_match(
+    js,
+    "dynamicContentEnhancementFrame = window.requestAnimationFrame",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "new MutationObserver(scheduleDynamicContentEnhancement)",
+    fixed = TRUE
+  )
 })
 
 test_that("explicitly declared creatable selects use the integrated menu enhancer", {
@@ -1888,9 +1904,19 @@ test_that("spatial translation does not invalidate image encoding", {
   expect_match(encoded, "orientation()", fixed = TRUE)
   expect_match(
     paste(lines, collapse = "\n"),
-    "current_record(encode = TRUE)",
+    "current_record <- function(encode = FALSE)",
     fixed = TRUE
   )
+  expect_match(
+    paste(lines, collapse = "\n"),
+    "current_encoded <- if (isTRUE(encode)) encode_current_image() else NULL",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "current_record(encode = TRUE)",
+    paste(lines, collapse = "\n"),
+    fixed = TRUE
+  ))
 })
 
 test_that("transient layers expose state-bearing motion lifecycle", {
@@ -1977,9 +2003,28 @@ test_that("transient layers expose state-bearing motion lifecycle", {
     "transition: opacity var(--duration-normal)",
     fixed = TRUE
   )
+  operation_card <- regmatches(
+    components_css,
+    regexpr(
+      "\\.builder-operation-overlay-card \\{[^}]+\\}",
+      components_css,
+      perl = TRUE
+    )
+  )
+  expect_match(
+    operation_card,
+    "transition:\n    width .28s",
+    fixed = TRUE
+  )
+  non_morphing_layers <- sub(
+    operation_card,
+    "",
+    paste(layout_css, components_css, sep = "\n"),
+    fixed = TRUE
+  )
   expect_false(grepl(
     "transition:[^;]*(width|height|top|left|padding|grid)",
-    paste(layout_css, components_css, sep = "\n"),
+    non_morphing_layers,
     perl = TRUE
   ))
 })

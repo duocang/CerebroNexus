@@ -49,6 +49,7 @@ test_that("staged workflow remains focused and overflow-free", {
     expect_false(app$get_js(
       "!!document.querySelector('#continue_to_review, .actionbar, [data-workflow-stage=build]')"
     ))
+    builder_browser_wait_for_example_ready(app)
     app$click(selector = ".example-btn[data-ex=all_content]")
     app$wait_for_js(
       paste0(
@@ -66,6 +67,7 @@ test_that("staged workflow remains focused and overflow-free", {
       "document.getElementById('continue_to_review') !== null",
       timeout = 60000
     )
+    builder_browser_dismiss_project_offer(app)
     expect_identical(
       app$get_js("document.querySelectorAll('#continue_to_review').length"),
       1L
@@ -94,6 +96,7 @@ test_that("staged workflow remains focused and overflow-free", {
     )
     builder_expect_no_horizontal_overflow(app)
 
+    builder_browser_check_current_dataset(app)
     app$click("continue_to_review")
     builder_wait_for_visible_stage_focus(app, "review")
     expect_identical(
@@ -166,6 +169,7 @@ test_that("staged workflow remains focused and overflow-free", {
       app$get_js("document.getElementById('core-name').value"),
       paste0("Accepted ", viewport[[1]])
     )
+    builder_browser_check_current_dataset(app)
     app$click("continue_to_review")
     app$wait_for_js(
       "document.getElementById('confirm_review') !== null",

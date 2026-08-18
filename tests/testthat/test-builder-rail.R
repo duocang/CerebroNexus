@@ -1033,6 +1033,7 @@ if (builder_rail_api_available) {
     }
 
     shiny::testServer(app_env$server, {
+      expect_false(start_builder_worker())
       used <- builder_rail_entry("used-example")
       used$example <- "all_content"
       sets(list(used))

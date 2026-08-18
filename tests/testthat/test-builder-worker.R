@@ -1672,7 +1672,7 @@ builder_session_api_available <- all(vapply(
   inherits = TRUE
 )) &&
   identical(
-    names(formals(builder_session_start)),
+    head(names(formals(builder_session_start)), 3L),
     c("builder_dir", "snapshot_root", "snapshot_registry")
   )
 
@@ -1698,6 +1698,11 @@ test_that("the Builder app has one protocol authority for worker requests", {
   expect_true(worker_source < session_source)
   expect_false(grepl("pending <- reactiveVal", text, fixed = TRUE))
   expect_false(grepl("queue <- reactiveVal", text, fixed = TRUE))
+  expect_match(
+    text,
+    "if (builder_session_closed())",
+    fixed = TRUE
+  )
   expect_false(grepl("latest_request <- reactiveVal", text, fixed = TRUE))
   expect_match(text, "protocol <- reactiveVal", fixed = TRUE)
   expect_match(text, "builder_protocol_dispatch", fixed = TRUE)

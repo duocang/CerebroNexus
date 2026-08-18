@@ -1342,7 +1342,12 @@ test_that("spatial canvas is cleared before switching datasets", {
   )
   expect_match(
     client_source,
-    'Shiny.addCustomMessageHandler("builder_spatial_canvas_clear", clear)',
+    paste0(
+      'Shiny.addCustomMessageHandler("builder_spatial_canvas_clear", ',
+      'function (message) {\n',
+      '      clear();\n',
+      '    });'
+    ),
     fixed = TRUE
   )
 })

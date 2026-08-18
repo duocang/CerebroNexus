@@ -30,6 +30,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Configure writable R library
+        run: echo "R_LIBS_USER=$RUNNER_TEMP/cerebronexus-library" >> "$GITHUB_ENV"
+
       - name: Create this folder to silence warning
         run: mkdir -p ~/.nix-defexpr/channels
 
@@ -39,9 +42,11 @@ jobs:
       - name: Configure osmzhlab Attic cache
         run: bash .github/scripts/setup-osmzhlab-cache.sh
 
-      # Install R package dependencies via nix-shell, using the default.nix file in the repository
-      - name: Install R package dependencies
-        run: nix-shell default.nix --run "echo 'R package dependencies installed'"
+      - name: Install CerebroNexus and R package dependencies
+        run: >-
+          nix-shell default.nix --run
+          'mkdir -p "$R_LIBS_USER" &&
+          R CMD INSTALL --library="$R_LIBS_USER" .'
 
       - name: Run logic shard ${{ matrix.shard }}/4
         run: >-
@@ -62,6 +67,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Configure writable R library
+        run: echo "R_LIBS_USER=$RUNNER_TEMP/cerebronexus-library" >> "$GITHUB_ENV"
+
       - name: Create this folder to silence warning
         run: mkdir -p ~/.nix-defexpr/channels
 
@@ -71,8 +79,11 @@ jobs:
       - name: Configure osmzhlab Attic cache
         run: bash .github/scripts/setup-osmzhlab-cache.sh
 
-      - name: Install R package dependencies
-        run: nix-shell default.nix --run "echo 'R package dependencies installed'"
+      - name: Install CerebroNexus and R package dependencies
+        run: >-
+          nix-shell default.nix --run
+          'mkdir -p "$R_LIBS_USER" &&
+          R CMD INSTALL --library="$R_LIBS_USER" .'
 
       - name: Run process-sensitive tests serially
         run: >-
@@ -97,6 +108,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Configure writable R library
+        run: echo "R_LIBS_USER=$RUNNER_TEMP/cerebronexus-library" >> "$GITHUB_ENV"
+
       - name: Create this folder to silence warning
         run: mkdir -p ~/.nix-defexpr/channels
 
@@ -106,8 +120,11 @@ jobs:
       - name: Configure osmzhlab Attic cache
         run: bash .github/scripts/setup-osmzhlab-cache.sh
 
-      - name: Install R package dependencies
-        run: nix-shell default.nix --run "echo 'R package dependencies installed'"
+      - name: Install CerebroNexus and R package dependencies
+        run: >-
+          nix-shell default.nix --run
+          'mkdir -p "$R_LIBS_USER" &&
+          R CMD INSTALL --library="$R_LIBS_USER" .'
 
       - name: Run browser shard ${{ matrix.shard }}/6
         run: >-

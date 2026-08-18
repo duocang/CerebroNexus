@@ -221,6 +221,24 @@ app_store_compat_entries <- function(state, datasets, mark = FALSE) {
   structure(state, class = c("builder_state", "list"))
 }
 use_state_only_fixture <- function(datasets = list()) {
+  datasets <- lapply(datasets, function(entry) {
+    profile <- entry$profile %||% list()
+    recognized <- any(
+      c(
+        "default_assay",
+        "assay_profiles",
+        "nUMI",
+        "nGene",
+        "extras"
+      ) %in%
+        names(profile)
+    )
+    if (!recognized && is.null(entry$dataset_profile)) {
+      profile$extras <- list()
+      entry$profile <- profile
+    }
+    entry
+  })
   fixture <- app_store_compat_entries(builder_state(), datasets, mark = TRUE)
   store(fixture)
   invisible(fixture)
@@ -846,6 +864,9 @@ restart_worker_protocol <- function(
 }
 
 start_builder_worker <- function() {
+  if (builder_session_closed()) {
+    return(invisible(FALSE))
+  }
   if (!is.null(shiny::isolate(worker()))) {
     return(invisible(TRUE))
   }
@@ -920,7 +941,7 @@ session$onFlushed(
         detail = "Loading dataset readers and analysis tools…"
       )
     )
-    later::later(start_builder_worker, delay = 0.05)
+    start_builder_worker()
   },
   once = TRUE
 )

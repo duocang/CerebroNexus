@@ -1,18 +1,13 @@
 library(shinytest2)
 
 builder_marker_browser_load_example <- function(app) {
-  app$wait_for_js(
-    paste0(
-      "window.Shiny && Shiny.shinyapp && ",
-      "document.querySelector('.example-btn[data-ex=all_content]') !== null"
-    ),
-    timeout = 60000
-  )
+  builder_browser_wait_for_example_ready(app)
   app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     "document.querySelector('.ds-pick[aria-current=true]') !== null",
     timeout = 60000
   )
+  builder_browser_dismiss_project_offer(app)
   app$wait_for_idle(timeout = 30000)
   app$wait_for_js(
     "document.querySelector('.marker-genes-action') !== null",

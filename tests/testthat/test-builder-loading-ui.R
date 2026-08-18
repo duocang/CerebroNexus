@@ -101,7 +101,7 @@ test_that("the initial shell explains background workspace startup", {
   expect_match(app, "Starting background workspace", fixed = TRUE)
   expect_match(app, "Loading dataset readers and analysis tools", fixed = TRUE)
   expect_match(foundation, "session$onFlushed(", fixed = TRUE)
-  expect_match(foundation, "later::later(start_builder_worker", fixed = TRUE)
+  expect_match(foundation, "start_builder_worker()", fixed = TRUE)
   expect_match(foundation, "shiny::isolate(worker())", fixed = TRUE)
   expect_match(client, '"builder_worker_status"', fixed = TRUE)
   expect_match(client, "builderWorkerReady", fixed = TRUE)
@@ -382,6 +382,13 @@ test_that("client scheduler serializes file and example dispatch", {
     ),
     collapse = "\n"
   )
+  imports <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "imports.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
   css <- paste(
     vapply(
       builder_loading_stylesheet_files,
@@ -438,6 +445,7 @@ test_that("client scheduler serializes file and example dispatch", {
   expect_match(client, "Waiting · ", fixed = TRUE)
   expect_match(client, "Possible duplicate", fixed = TRUE)
   expect_match(client, "applyClientImportQueueLock", fixed = TRUE)
+  expect_match(imports, "if (builder_session_closed())", fixed = TRUE)
   expect_match(client, "textContent", fixed = TRUE)
   expect_match(client, ".builder-pick-import", fixed = TRUE)
   expect_match(client, ".builder-retry-import", fixed = TRUE)
@@ -448,10 +456,11 @@ test_that("client scheduler serializes file and example dispatch", {
   expect_match(css, ".builder-loading-progress", fixed = TRUE)
   expect_match(
     css,
-    ".ds--client-upload:has(.builder-cancel-client-import)",
+    ".ds--client-upload .builder-cancel-client-import",
     fixed = TRUE
   )
-  expect_match(css, "bottom: .8rem", fixed = TRUE)
+  expect_match(css, "position: static", fixed = TRUE)
+  expect_match(css, "align-self: flex-end", fixed = TRUE)
   expect_match(css, "prefers-reduced-motion: reduce", fixed = TRUE)
 })
 

@@ -44,6 +44,7 @@ test_that("Builder stays visible while a dataset loads", {
   expect_gt(geometry$paneWidth, 1200)
   expect_lte(geometry$documentWidth, geometry$viewport + 1)
 
+  builder_browser_wait_for_example_ready(app)
   app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     paste0(
@@ -84,6 +85,7 @@ test_that("Builder stays visible while a dataset loads", {
     ),
     timeout = 60000
   )
+  builder_browser_dismiss_project_offer(app)
   expect_true(app$get_js(paste0(
     "document.querySelector('.example-btn[data-ex=all_content]').classList",
     ".contains('is-taken') && ",

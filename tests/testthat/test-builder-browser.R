@@ -21,6 +21,10 @@ test_that("metadata retention and Group actions remain independent", {
 test_that("Spatial editor exposes named images and dynamic action boundaries", {
   environment <- new.env(parent = globalenv())
   sys.source(
+    file.path(builder_browser_dir, "extras.R"),
+    envir = environment
+  )
+  sys.source(
     file.path(builder_browser_dir, "ui", "enhance_stage.R"),
     envir = environment
   )
@@ -144,10 +148,7 @@ test_that("builder interaction reflows and preserves accessible state", {
   app$wait_for_idle(timeout = 30000)
 
   builder_with_browser_diagnostics(app, "browser-accessible-load-example", {
-    app$wait_for_js(
-      "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-      timeout = 10000
-    )
+    builder_browser_wait_for_example_ready(app)
     app$click(selector = ".example-btn[data-ex=all_content]")
     app$wait_for_js(
       paste0(
@@ -159,6 +160,15 @@ test_that("builder interaction reflows and preserves accessible state", {
     )
     app$wait_for_idle(timeout = 30000)
   })
+  builder_browser_dismiss_project_offer(app)
+  app$run_js(paste0(
+    "const dismiss=document.querySelector('.builder-first-run-dismiss');",
+    "if(dismiss) dismiss.click();"
+  ))
+  app$wait_for_js(
+    "document.querySelector('.builder-first-run').hidden === true",
+    timeout = 10000
+  )
   expect_false(app$get_js(
     "getComputedStyle(document.body).overflowY === 'hidden'"
   ))
@@ -233,6 +243,7 @@ test_that("builder interaction reflows and preserves accessible state", {
     "document.getElementById('continue_to_review') !== null",
     timeout = 10000
   )
+  builder_browser_check_current_dataset(app)
   readiness_text <- app$get_js(
     "document.querySelector('.builder-configure-readiness').textContent"
   )
@@ -438,16 +449,14 @@ test_that("duplicate spatial image names open a usable naming modal", {
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
   builder_with_browser_diagnostics(app, "browser-spatial-modal-load-example", {
-    app$wait_for_js(
-      "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-      timeout = 10000
-    )
+    builder_browser_wait_for_example_ready(app)
     app$click(selector = ".example-btn[data-ex=all_content]")
     app$wait_for_js(
       "document.getElementById('enhance-tissue_image_file') !== null",
       timeout = 60000
     )
   })
+  builder_browser_dismiss_project_offer(app)
 
   builder_with_browser_diagnostics(app, "browser-spatial-modal-first-upload", {
     app$upload_file(`enhance-tissue_image_file` = image_path)
@@ -557,15 +566,14 @@ test_that("builder explains a mocked old privacy contract exactly", {
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
-  app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-    timeout = 10000
-  )
+  builder_browser_wait_for_example_ready(app)
   app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     "document.getElementById('continue_to_review') !== null",
     timeout = 60000
   )
+  builder_browser_dismiss_project_offer(app)
+  builder_browser_check_current_dataset(app)
   app$click("continue_to_review")
   app$wait_for_js(
     "document.getElementById('confirm_review') !== null",

@@ -33,10 +33,7 @@ builder_build_folder_picker <- function(
 }
 
 builder_build_folder_open_stage <- function(app) {
-  app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-    timeout = 10000
-  )
+  builder_browser_wait_for_example_ready(app)
   app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     paste0(
@@ -45,6 +42,7 @@ builder_build_folder_open_stage <- function(app) {
     ),
     timeout = 60000
   )
+  builder_browser_dismiss_project_offer(app)
   app$wait_for_idle(timeout = 30000)
   app$click("complete_dataset_check")
   app$wait_for_js(
