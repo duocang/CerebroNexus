@@ -88,6 +88,8 @@ git commit -m "perf(builder): make worker bootstrap non-blocking"
 
 Worker starting 时提交 load command；断言 queue 保留命令，ready 后第一次 dispatch 才调用 `builder_session_load()`，请求序列号不变。
 
+验收还必须覆盖：protocol 在 starting 阶段已经拥有稳定 epoch；多个请求按 seq 排序释放；启动失败时 pending/queue 转为带明确原因的终态或进入现有可重试恢复路径，不能清空后静默丢弃。
+
 - [ ] **步骤 3：运行测试确认失败**
 
 ```bash
@@ -103,6 +105,8 @@ Rscript -e 'devtools::test(filter="builder-(loading-ui|async-import)", stop_on_f
 - [ ] **步骤 5：支持 session 提前结束并验证**
 
 cleanup 对 starting 句柄同样停止子进程；later 回调先检查 session 是否关闭。运行步骤 3 命令，预期 PASS。
+
+测试必须持有一个被 gate 阻塞的真实 callr starting 进程，在 session cleanup 后断言父进程及已发现的子孙进程均已退出，避免断连泄漏半启动 Worker。
 
 - [ ] **步骤 6：提交**
 
@@ -131,6 +135,8 @@ git commit -m "perf(builder): keep startup off the Shiny event loop"
 
 `builder_worker_bootstrap(dir, root, registry, package_source)` 只加载包运行时和 core 文件，初始化对象、快照、根目录及 capability registry，返回恢复的数据集名称。
 
+bootstrap 返回 ready 前执行冒烟自检：逐项断言请求协议、对象/快照注册表、core loader 和错误包装函数存在且类型正确。任何缺失均作为 bootstrap failed 返回，禁止生成不完整的 ready Worker。
+
 - [ ] **步骤 5：替换 worker.R 中内联 source 长清单**
 
 ```r
@@ -157,6 +163,8 @@ git commit -m "perf(builder): bootstrap workers without pkgload"
 - [ ] **步骤 2：实现幂等 capability registry**
 
 `.builder_worker_capabilities` 记录 unloaded/loading/ready/failed。`builder_worker_ensure_capability(name)` 先加载依赖，再按固定清单 source；全部成功后才写 ready，失败保留阶段错误。
+
+同一能力处于 loading 时不得再次执行 loader；后续请求复用同一初始化结果。failed 状态默认稳定报出首次失败原因，只有显式 reset/restart 才允许重试，避免自动重试死循环或假 ready。
 
 - [ ] **步骤 3：为 session 请求声明能力**
 
