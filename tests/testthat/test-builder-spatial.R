@@ -636,13 +636,15 @@ test_that("new images inherit the active image appearance", {
       expect_null(alignment$pending_upload())
       expect_identical(commit_count, 1L)
 
+      session$setInputs(`enhance-active_image` = "DAPI")
+      session$flushReact()
       session$setInputs(`enhance-remove_image_confirm` = 1L)
       session$flushReact()
 
-      expect_identical(alignment$active_image(), "DAPI")
+      expect_identical(alignment$active_image(), "PAS")
       expect_named(
         current_entry()$settings$images[["section-a"]],
-        c("duplicate.png", "DAPI")
+        c("duplicate.png", "PAS")
       )
       expect_identical(
         current_entry()$settings$images[["section-a"]][["duplicate.png"]][
@@ -651,7 +653,7 @@ test_that("new images inherit the active image appearance", {
         list(point_opacity = 0.65, point_size = 6)
       )
       expect_identical(
-        current_entry()$settings$images[["section-a"]][["DAPI"]][
+        current_entry()$settings$images[["section-a"]][["PAS"]][
           c("point_opacity", "point_size")
         ],
         list(point_opacity = 0.7, point_size = 7)
