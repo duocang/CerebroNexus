@@ -297,6 +297,24 @@ test_that("Review summarizes saved and points-only spatial sections", {
   expect_false(grepl("histology_image_bounds", html, fixed = TRUE))
 })
 
+test_that("Review omits spatial storage when every section is points-only", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$items[[1L]]$spatial_alignment <- list(
+    section_count = 2L,
+    image_count = 0L,
+    saved_count = 0L,
+    points_only = c("section-a", "section-b")
+  )
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_null(model$datasets[[1L]]$spatial_alignment$storage)
+  expect_match(html, "2 sections · 0 images", fixed = TRUE)
+  expect_match(html, "2 sections remain points-only", fixed = TRUE)
+  expect_false(grepl("Embedded in CRB", html, fixed = TRUE))
+  expect_false(grepl("External spatial-assets", html, fixed = TRUE))
+})
+
 test_that("Review keeps group colors compact and distinguishes custom colors", {
   plan <- builder_stage_frozen_plan(TRUE)
   plan$items[[1L]]$colors$cluster <- c(

@@ -156,8 +156,7 @@ builder_project_restore_row_ui <- function(record, root) {
     tags$div(
       class = "builder-project-restore-summary",
       tags$div(
-        tags$h4(record$name %||% record$id),
-        tags$p(status$label)
+        tags$h4(record$name %||% record$id)
       ),
       tags$span(
         class = paste(
