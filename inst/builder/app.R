@@ -29,6 +29,7 @@ source("coordinator.R", local = TRUE)
 
 ## runApp() sets the working directory to the app directory.
 source("io.R", local = TRUE)
+source("project.R", local = TRUE)
 source(
   file.path(
     "..",
@@ -115,6 +116,7 @@ source(file.path("ui", "enhance_stage.R"), local = TRUE)
 source(file.path("ui", "review_stage.R"), local = TRUE)
 source(file.path("ui", "workflow.R"), local = TRUE)
 source(file.path("ui", "build_status.R"), local = TRUE)
+source(file.path("ui", "project.R"), local = TRUE)
 source("worker.R", local = TRUE)
 source("session.R", local = TRUE)
 source("spatial_alignment_server.R", local = TRUE)
@@ -136,6 +138,33 @@ builder_trajectory_preview_contract <- function(entry, trajectories) {
   )
 }
 
+builder_preview_cache_hit <- function(cache, id, contract) {
+  record <- cache[[id]] %||% NULL
+  is.list(record) && identical(record$contract, contract)
+}
+
+builder_preview_cache_begin <- function(cache, id, contract) {
+  cache[[id]] <- list(
+    contract = contract,
+    frames = list(),
+    status = "pending"
+  )
+  cache
+}
+
+builder_preview_cache_store <- function(cache, id, frames) {
+  record <- cache[[id]] %||% list(contract = NULL)
+  record$frames <- frames %||% list()
+  record$status <- "ready"
+  cache[[id]] <- record
+  cache
+}
+
+builder_preview_cache_frames <- function(cache, id) {
+  record <- cache[[id]] %||% NULL
+  if (is.list(record)) record$frames %||% list() else list()
+}
+
 builder_preview_revision_independent <- function(kind) {
   kind %in%
     c(
@@ -146,7 +175,15 @@ builder_preview_revision_independent <- function(kind) {
 }
 
 app_capability <- builder_app_capability()
-auth_capability <- builder_auth_capability()
+auth_capability <- local({
+  cached <- NULL
+  function() {
+    if (is.null(cached)) {
+      cached <<- builder_auth_capability()
+    }
+    cached
+  }
+})
 
 ## Inline icons: an icon set would be another dependency, and emoji are not
 ## icons.
@@ -333,7 +370,25 @@ ui <- tagList(
       "Turn Seurat objects into a ready-to-run visual app"
     ),
     uiOutput("busy", inline = TRUE),
-    span(class = "formats", textOutput("format_line", inline = TRUE))
+    builder_project_toolbar_ui()
+  ),
+  div(
+    id = "builder-worker-status",
+    class = "builder-worker-status is-starting",
+    role = "status",
+    `aria-live` = "polite",
+    span(class = "builder-worker-status-dot", `aria-hidden` = "true"),
+    span(
+      class = "builder-worker-status-copy",
+      strong(
+        id = "builder-worker-status-title",
+        "Starting background workspace…"
+      ),
+      span(
+        id = "builder-worker-status-detail",
+        "Loading dataset readers and analysis tools…"
+      )
+    )
   ),
   div(
     class = "shell builder-shell",
@@ -413,6 +468,43 @@ ui <- tagList(
       uiOutput("workflow_progress")
     ),
   ),
+  div(
+    id = "builder-operation-overlay",
+    class = "builder-operation-overlay",
+    role = "status",
+    `aria-live` = "assertive",
+    `aria-hidden` = "true",
+    div(
+      class = "builder-operation-overlay-card",
+      span(
+        class = "builder-operation-overlay-icon",
+        `aria-hidden` = "true",
+        span(class = "spinner"),
+        span(class = "builder-operation-success-mark", "✓"),
+        span(class = "builder-operation-error-mark", "!")
+      ),
+      div(
+        class = "builder-operation-overlay-copy",
+        strong(
+          id = "builder-operation-overlay-title",
+          "Working on your Builder project"
+        ),
+        span(
+          id = "builder-operation-overlay-message",
+          "Keep this page open."
+        ),
+        span(
+          id = "builder-operation-overlay-detail",
+          class = "builder-operation-overlay-detail"
+        )
+      ),
+      div(
+        id = "builder-operation-overlay-actions",
+        class = "builder-operation-overlay-actions",
+        `aria-hidden` = "true"
+      )
+    )
+  ),
   builder_auth_dialog_ui(),
   builder_marker_dialog_ui(),
   div(
@@ -450,7 +542,8 @@ server <- function(input, output, session) {
     "server/enhancements.R",
     "server/review.R",
     "server/workflow.R",
-    "server/build.R"
+    "server/build.R",
+    "server/project.R"
   )) {
     source(.builder_server_source, local = TRUE)
   }

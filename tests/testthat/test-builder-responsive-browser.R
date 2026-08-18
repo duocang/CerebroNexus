@@ -78,10 +78,7 @@ test_that("Builder preserves responsive geometry before Build", {
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
 
-  app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-    timeout = 10000
-  )
+  builder_browser_wait_for_example_ready(app)
   app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     paste0(
@@ -92,6 +89,7 @@ test_that("Builder preserves responsive geometry before Build", {
     ),
     timeout = 60000
   )
+  builder_browser_dismiss_project_offer(app)
   app$wait_for_idle(timeout = 30000)
 
   geometries <- list()

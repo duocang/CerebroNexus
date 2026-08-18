@@ -82,6 +82,9 @@
     state.image = null;
     state.imageUri = null;
     state.colorGroups = {};
+    state.viewKey = null;
+    state.controls = null;
+    state.controlsHeld = false;
     var node = canvas();
     if (node) node.getContext("2d").clearRect(0, 0, node.width, node.height);
   }
@@ -282,6 +285,7 @@
       section: scene.section,
       rotationDegrees: value,
       sequence: state.coordinateSequence,
+      generation: scene.generation,
     }, {priority: "event"});
   }
   function finishInteraction() {
@@ -379,6 +383,9 @@
   }
   if (window.Shiny) {
     Shiny.addCustomMessageHandler("builder_spatial_canvas_scene", setScene);
+    Shiny.addCustomMessageHandler("builder_spatial_canvas_clear", function (message) {
+      clear();
+    });
     Shiny.addCustomMessageHandler("builder_spatial_canvas_reset", function (message) {
       if (message.viewKey && message.viewKey !== state.viewKey) clear();
       state.resetToken = finite(message.resetToken, state.resetToken + 1);

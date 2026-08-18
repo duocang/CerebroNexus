@@ -71,16 +71,7 @@ builder_auth_browser_load_example <- function(app, example = "all_content") {
     app,
     paste0("auth-load-example-", example),
     {
-      app$wait_for_js(
-        sprintf(
-          paste0(
-            "window.Shiny && Shiny.shinyapp && ",
-            "document.querySelector('.example-btn[data-ex=%s]') !== null"
-          ),
-          example
-        ),
-        timeout = 60000
-      )
+      builder_browser_wait_for_example_ready(app, example)
       app$click(selector = sprintf(".example-btn[data-ex=%s]", example))
       app$wait_for_js(
         paste0(
@@ -89,6 +80,7 @@ builder_auth_browser_load_example <- function(app, example = "all_content") {
         ),
         timeout = 60000
       )
+      builder_browser_dismiss_project_offer(app)
       app$wait_for_idle(timeout = 30000)
       app$click("complete_dataset_check")
       app$wait_for_js(
@@ -107,6 +99,7 @@ builder_auth_browser_enable_login <- function(app) {
     ),
     timeout = 10000
   )
+  builder_browser_check_all_datasets(app)
   app$click("continue_to_review")
   app$wait_for_js(
     "document.getElementById('confirm_review') !== null",

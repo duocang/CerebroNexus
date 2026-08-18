@@ -46,7 +46,7 @@ observeEvent(
     }
     enabled <- isTRUE(input[["build_require_login"]])
     if (
-      enabled && (!isTRUE(build_mode()) || !isTRUE(auth_capability$available))
+      enabled && (!isTRUE(build_mode()) || !isTRUE(auth_capability()$available))
     ) {
       auth_enabled(FALSE)
       auth_accounts(builder_auth_empty_accounts())
@@ -97,7 +97,7 @@ observeEvent(
     }
     if (
       isTRUE(payload$enabled) &&
-        (!isTRUE(build_mode()) || !isTRUE(auth_capability$available))
+        (!isTRUE(build_mode()) || !isTRUE(auth_capability()$available))
     ) {
       auth_enabled(FALSE)
       auth_accounts(builder_auth_empty_accounts())
@@ -463,15 +463,31 @@ output$configure_actions <- renderUI({
 })
 
 observeEvent(input$complete_dataset_check, {
-  entries <- isolate(sets())
-  ids <- vapply(entries, `[[`, character(1), "id")
+  if (
+    exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("check_dataset"))
+  ) {
+    return()
+  }
   id <- isolate(current())
+  if (is.null(id)) {
+    return()
+  }
+  materialized <- alignment_server$materialize_coordinate_drafts(
+    dataset = id,
+    notify = TRUE
+  )
+  if (!isTRUE(materialized$ok)) {
+    return()
+  }
+  entries <- materialized$all_entries
+  ids <- vapply(entries, `[[`, character(1), "id")
   index <- match(id, ids)
   if (is.na(index)) {
     return()
   }
   marks <- isolate(dataset_check_marks())
-  marks[[id]] <- .builder_worker_identity(entries[[index]]$snapshot)
+  marks[[id]] <- builder_project_check_identity(entries[[index]])
   dataset_check_marks(marks)
   unchecked <- setdiff(ids, names(marks))
   if (!length(unchecked)) {
@@ -496,6 +512,13 @@ render_configure_workbench <- function() {
   entry <- isolate(entry_of(id))
   if (is.null(entry)) {
     return(builder_empty_workbench_ui())
+  }
+  if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
+    project <- isolate(builder_project())
+    return(builder_project_artifact_workbench_ui(
+      entry,
+      root = if (is.null(project)) NULL else project$root
+    ))
   }
   state <- try(builder_dataset_state(entry), silent = TRUE)
   attention <- if (inherits(state, "try-error")) {
@@ -528,6 +551,7 @@ render_configure_workbench <- function() {
       "included_projections",
       "default_projection",
       "overview_point_size",
+      "overview_percentage_cells_to_show",
       "included_trajectories",
       "default_trajectory",
       "assay",
@@ -614,7 +638,8 @@ render_configure_workbench <- function() {
         state = if (inherits(state, "try-error")) list() else state,
         settings = entry$settings,
         modules = list(),
-        active_section = shiny::isolate(active_slice())
+        active_section = shiny::isolate(active_slice()),
+        active_image = shiny::isolate(alignment_server$active_image())
       ),
       dynamic_modules = TRUE
     ),

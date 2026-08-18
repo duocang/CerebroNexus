@@ -941,8 +941,7 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                 p(paste0(
                   dataset$spatial_alignment$section_count,
                   " sections · ",
-                  dataset$spatial_alignment$image_count %||%
-                    dataset$spatial_alignment$saved_count,
+                  dataset$spatial_alignment$image_count %||% 0L,
                   " images · ",
                   dataset$spatial_alignment$storage
                 )),

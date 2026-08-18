@@ -498,6 +498,9 @@ builder_session_section_bounds <- function(
     if (!is.character(label) || length(label) != 1L || is.na(label)) {
       label <- id
     }
+    if (is.list(item$reused_artifact)) {
+      next
+    }
     snapshot <- snapshot_registry[[id]]
     if (is.null(snapshot)) {
       return(paste0("The frozen snapshot is missing for ", label, "."))

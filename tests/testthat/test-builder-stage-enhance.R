@@ -292,7 +292,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "has_image", fixed = TRUE)
   expect_match(html, 'data-ns-prefix="enhance-"', fixed = TRUE)
   expect_match(html, "Point size", fixed = TRUE)
-  expect_match(html, "Save alignment", fixed = TRUE)
+  expect_no_match(html, "Save alignment", fixed = TRUE)
   expect_match(html, "Apply transform to matching image label", fixed = TRUE)
   expect_match(html, "Reset alignment", fixed = TRUE)
   expect_match(html, 'id="enhance-alignment_status"', fixed = TRUE)
@@ -574,14 +574,14 @@ test_that("tissue image metadata owns the single rename and remove actions", {
         type = "image/png",
         size = 2048
       ),
-      saved = TRUE
+      section_id = "section-a"
     )
   ))
   expect_match(html, "builder-file-list", fixed = TRUE)
   expect_match(html, "builder-file-item", fixed = TRUE)
   expect_match(html, "section-a.png", fixed = TRUE)
   expect_match(html, "PNG · 2 KB", fixed = TRUE)
-  expect_match(html, "Ready", fixed = TRUE)
+  expect_match(html, "Added", fixed = TRUE)
   expect_false(grepl("/private/upload", html, fixed = TRUE))
   expect_match(html, 'id="enhance-drop_image"', fixed = TRUE)
   expect_match(html, 'id="enhance-rename_image"', fixed = TRUE)

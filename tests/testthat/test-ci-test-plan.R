@@ -341,6 +341,30 @@ test_that("CI workflows use the shared plan without repeating package tests", {
   browser_job <- workflow_job("browser")
   summary_job <- workflow_job("test")
 
+  for (job in list(logic_job, process_sensitive_job, browser_job)) {
+    configure_library <- paste0(
+      'echo "R_LIBS_USER=$RUNNER_TEMP/cerebronexus-library" ',
+      '>> "$GITHUB_ENV"'
+    )
+    expect_match(
+      job,
+      configure_library,
+      fixed = TRUE
+    )
+    expect_false(grepl('R_LIBS_USER: ${{ runner.temp }}', job, fixed = TRUE))
+    expect_match(job, 'mkdir -p "$R_LIBS_USER"', fixed = TRUE)
+    expect_match(job, "R CMD INSTALL", fixed = TRUE)
+    expect_match(job, '--library="$R_LIBS_USER" .', fixed = TRUE)
+    expect_lt(
+      regexpr(configure_library, job, fixed = TRUE),
+      regexpr("R CMD INSTALL", job, fixed = TRUE)
+    )
+    expect_lt(
+      regexpr("R CMD INSTALL", job, fixed = TRUE),
+      regexpr("Rscript scripts/run-test-shard.R", job, fixed = TRUE)
+    )
+  }
+
   expect_match(r_tests, "scripts/run-test-shard.R", fixed = TRUE)
   expect_match(
     logic_job,

@@ -370,7 +370,8 @@ test_that("workflow server exclusively owns loading and stage rendering", {
     )),
     1L
   )
-  expect_match(workbench, "active_import_id()", fixed = TRUE)
+  expect_match(app, "selected_workflow_stage <- reactive({", fixed = TRUE)
+  expect_match(workbench, "loading_id <- active_import_id()", fixed = TRUE)
   expect_false(grepl("import_focus_id()", workbench, fixed = TRUE))
   expect_match(workbench, "builder_loading_workbench_ui", fixed = TRUE)
   expect_match(workbench, "stage <- selected_workflow_stage()", fixed = TRUE)

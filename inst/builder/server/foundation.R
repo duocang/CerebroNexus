@@ -20,6 +20,36 @@ session_active <- TRUE
 external_import_active <- reactiveVal(NULL)
 client_import_history_limit <- 200L
 
+loaded_entry_lifecycle <- new.env(parent = emptyenv())
+loaded_entry_lifecycle$finalize <- function(entry) entry
+register_loaded_entry_finalizer <- function(finalizer) {
+  stopifnot(is.function(finalizer))
+  loaded_entry_lifecycle$finalize <- finalizer
+  invisible(finalizer)
+}
+finalize_loaded_entry <- function(entry) {
+  loaded_entry_lifecycle$finalize(entry)
+}
+builder_prepare_loaded_entry_attachment <- function(entry) {
+  finalized <- finalize_loaded_entry(entry)
+  current_state <- isolate(store())
+  existing <- Filter(
+    function(candidate) identical(candidate$id, finalized$id),
+    current_state$datasets
+  )
+  replacing_artifact <- length(existing) == 1L &&
+    identical(existing[[1L]]$load_state %||% "loaded", "artifact_ready")
+  next_state <- builder_reduce_state(
+    current_state,
+    if (replacing_artifact) {
+      list(type = "replace", id = finalized$id, entry = finalized)
+    } else {
+      list(type = "add", entry = finalized)
+    }
+  )
+  list(entry = finalized, state = next_state)
+}
+
 client_import_id_for <- function(server_id) {
   ids <- isolate(client_import_server_ids())
   value <- if (builder_has_text(server_id) && server_id %in% names(ids)) {
@@ -203,6 +233,24 @@ app_store_compat_entries <- function(state, datasets, mark = FALSE) {
   structure(state, class = c("builder_state", "list"))
 }
 use_state_only_fixture <- function(datasets = list()) {
+  datasets <- lapply(datasets, function(entry) {
+    profile <- entry$profile %||% list()
+    recognized <- any(
+      c(
+        "default_assay",
+        "assay_profiles",
+        "nUMI",
+        "nGene",
+        "extras"
+      ) %in%
+        names(profile)
+    )
+    if (!recognized && is.null(entry$dataset_profile)) {
+      profile$extras <- list()
+      entry$profile <- profile
+    }
+    entry
+  })
   fixture <- app_store_compat_entries(builder_state(), datasets, mark = TRUE)
   store(fixture)
   invisible(fixture)
@@ -256,7 +304,7 @@ checked_dataset_ids <- reactive({
   ids <- vapply(entries, `[[`, character(1), "id")
   identities <- vapply(
     entries,
-    function(entry) .builder_worker_identity(entry$snapshot),
+    builder_project_check_identity,
     character(1)
   )
   matched <- ids %in% names(marks)
@@ -298,10 +346,8 @@ review_page_contract <- reactiveVal(list(
 seq_id <- reactiveVal(0L)
 add_error <- reactiveVal(NULL)
 preview_frame <- reactiveVal(NULL)
-projection_previews <- reactiveVal(list(dataset = NULL, frames = list()))
-trajectory_previews <- reactiveVal(list(dataset = NULL, frames = list()))
-projection_preview_contract <- reactiveVal(NULL)
-trajectory_preview_contract <- reactiveVal(NULL)
+projection_previews <- reactiveVal(list())
+trajectory_previews <- reactiveVal(list())
 spatial_coords <- reactiveVal(NULL)
 alignment_preview <- reactiveVal(NULL)
 marker_import_drafts <- reactiveVal(list())
@@ -391,7 +437,14 @@ unique_name <- function(label) {
   paste0(label, " ", n)
 }
 
-replace_entry <- function(updated) {
+replace_entry <- function(updated, internal = FALSE) {
+  if (
+    !isTRUE(internal) &&
+      exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("edit_dataset", notify = FALSE))
+  ) {
+    return(invisible(FALSE))
+  }
   all <- isolate(sets())
   index <- which(vapply(
     all,
@@ -405,6 +458,7 @@ replace_entry <- function(updated) {
   if (identical(existing$settings, updated$settings)) {
     return(invisible(FALSE))
   }
+  existing <- builder_project_invalidate_entry_hydration(existing)
   existing$settings <- updated$settings
   existing$revision <- as.integer(existing$revision %||% 0L) + 1L
   current_state <- isolate(store())
@@ -435,7 +489,6 @@ replace_entry <- function(updated) {
   invisible(TRUE)
 }
 
-output$format_line <- renderText(builder_format_summary())
 output$ds_count <- renderText({
   n <- length(store()$datasets) + length(imports()$entries)
   if (n == 0) "" else paste0(n)
@@ -524,7 +577,7 @@ release_pending_source <- function(payload, drop_import = TRUE) {
   } else {
     payload$example
   }
-  key <- builder_source_key(payload$source, value)
+  key <- payload$reservation_key %||% builder_source_key(payload$source, value)
   pending_sources(builder_source_release(pending_sources(), key))
   id <- as.character(payload$id %||% character())
   if (length(id) == 1L && !is.na(id) && nzchar(id)) {
@@ -822,19 +875,88 @@ restart_worker_protocol <- function(
   )
 }
 
-observe({
-  if (!is.null(worker())) {
-    return()
+start_builder_worker <- function() {
+  if (builder_session_closed()) {
+    return(invisible(FALSE))
   }
-  started <- builder_session_start(getwd())
+  if (!is.null(shiny::isolate(worker()))) {
+    return(invisible(TRUE))
+  }
+  started <- builder_session_start(getwd(), .async = TRUE)
   if (!is.null(started$error)) {
     add_error(started$error)
-    return()
+    session$sendCustomMessage(
+      "builder_worker_status",
+      list(
+        state = "error",
+        title = "Background workspace unavailable",
+        detail = "Restart this Builder session to try again."
+      )
+    )
+    return(invisible(FALSE))
   }
   worker(started$worker)
-  worker_available(TRUE)
   protocol(builder_request_protocol(started$worker$epoch))
-})
+  later::later(poll_builder_worker_startup, delay = 0.1)
+  invisible(TRUE)
+}
+
+builder_session_closed <- function() {
+  is.function(session$isClosed) && isTRUE(session$isClosed())
+}
+
+poll_builder_worker_startup <- function() {
+  if (builder_session_closed()) {
+    return(invisible(FALSE))
+  }
+  current_worker <- shiny::isolate(worker())
+  if (is.null(current_worker)) {
+    return(invisible(FALSE))
+  }
+  startup <- builder_session_poll_startup(current_worker)
+  worker(startup$worker)
+  if (identical(startup$state, "starting")) {
+    later::later(poll_builder_worker_startup, delay = 0.1)
+    return(invisible(TRUE))
+  }
+  if (identical(startup$state, "failed")) {
+    add_error(startup$error)
+    session$sendCustomMessage(
+      "builder_worker_status",
+      list(
+        state = "error",
+        title = "Background workspace unavailable",
+        detail = startup$error
+      )
+    )
+    return(invisible(FALSE))
+  }
+  worker_available(TRUE)
+  session$sendCustomMessage(
+    "builder_worker_status",
+    list(
+      state = "ready",
+      title = "Builder is ready",
+      detail = "Datasets can now be added."
+    )
+  )
+  invisible(TRUE)
+}
+
+session$onFlushed(
+  function() {
+    session$sendCustomMessage(
+      "builder_worker_status",
+      list(
+        state = "starting",
+        title = "Starting background workspace…",
+        detail = "Loading dataset readers and analysis tools…"
+      )
+    )
+    start_builder_worker()
+  },
+  once = TRUE
+)
 
 session$onSessionEnded(function() {
   session_active <<- FALSE

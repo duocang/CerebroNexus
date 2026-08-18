@@ -682,7 +682,6 @@ test_that("Spatial and Trekker alignments persist without upload paths", {
         point_opacity = 0.8,
         point_size = 3
       ),
-      saved = TRUE,
       section = list(id = section_id, kind = section_kind)
     )
   }
@@ -742,7 +741,6 @@ test_that("external Spatial images materialize without entering CRB payloads", {
       flip_y = FALSE,
       image_opacity = 0.8
     ),
-    saved = TRUE,
     section = list(id = "slice-a", kind = "spatial")
   )
   item <- list(
@@ -784,7 +782,6 @@ test_that("Builder image attachment is exact, collision-safe, and idempotent", {
       uri = uri,
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
       parameters = list(dx = dx, image_opacity = 0.7),
-      saved = TRUE,
       section = list(id = "slice-a", kind = "spatial")
     )
   }
@@ -829,7 +826,6 @@ test_that("one embedded FOV keeps every Builder image label and appearance", {
       uri = paste0("data:image/png;base64,", name),
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 6),
       parameters = list(image_opacity = opacity, point_size = point_size),
-      saved = TRUE,
       section = list(id = "FOV_A", kind = "spatial")
     )
   }
@@ -880,7 +876,6 @@ test_that("legacy singular Builder images migrate without leaving a duplicate", 
     source_uri = "data:image/png;base64,NEW=",
     uri = "data:image/png;base64,NEW=",
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
-    saved = TRUE,
     section = list(id = "slice-a", kind = "spatial")
   )
 
@@ -903,7 +898,6 @@ test_that("unowned or malformed legacy singular images are preserved", {
     source_uri = "data:image/png;base64,NEW=",
     uri = "data:image/png;base64,NEW=",
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 8),
-    saved = TRUE,
     section = list(id = "slice-a", kind = "spatial")
   )
   cases <- list(
