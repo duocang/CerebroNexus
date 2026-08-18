@@ -254,7 +254,7 @@ test_that("managed example sources retain their example identity when restored",
   expect_identical(restored$path, normalizePath(source, winslash = "/"))
 })
 
-test_that("project payload preserves saved coordinate rotation", {
+test_that("project payload preserves saved Spatial FOV controls", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
   entry <- list(
@@ -262,6 +262,9 @@ test_that("project payload preserves saved coordinate rotation", {
     settings = list(
       spatial_coordinate_transforms = list(
         section_a_1_fov_1 = list(rotation_degrees = 66.9, scale = 1)
+      ),
+      spatial_point_appearance = list(
+        section_a_1_fov_1 = list(point_opacity = 0.7, point_size = 6)
       )
     )
   )
@@ -277,6 +280,10 @@ test_that("project payload preserves saved coordinate rotation", {
       "section_a_1_fov_1"
     ]]$rotation_degrees,
     66.9
+  )
+  expect_identical(
+    restored$settings$spatial_point_appearance[["section_a_1_fov_1"]],
+    list(point_opacity = 0.7, point_size = 6)
   )
 })
 

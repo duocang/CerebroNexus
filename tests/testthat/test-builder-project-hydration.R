@@ -566,6 +566,9 @@ test_that("the assembled Builder server registers pre-store project hydration", 
   saved$settings$spatial_coordinate_transforms <- list(
     fov_a = list(schema_version = 1L, rotation_degrees = 66.9, scale = 1)
   )
+  saved$settings$spatial_point_appearance <- list(
+    fov_a = list(point_opacity = 0.7, point_size = 6)
+  )
   record <- app_env$builder_project_dataset_record(
     saved,
     source = list(kind = "managed", path = "sources/ds1/input.rds"),
@@ -583,6 +586,10 @@ test_that("the assembled Builder server registers pre-store project hydration", 
     expect_identical(
       hydrated$settings$spatial_coordinate_transforms$fov_a$rotation_degrees,
       66.9
+    )
+    expect_identical(
+      hydrated$settings$spatial_point_appearance$fov_a,
+      list(point_opacity = 0.7, point_size = 6)
     )
 
     artifact <- saved
