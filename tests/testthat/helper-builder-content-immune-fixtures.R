@@ -1,12 +1,3 @@
-builder_content_immune_inst_path <- function(...) {
-  relative <- file.path(...)
-  path <- testthat::test_path("..", "..", "inst", relative)
-  if (!file.exists(path)) {
-    path <- system.file(relative, package = "CerebroNexus")
-  }
-  path
-}
-
 builder_content_immune_source_runtime <- function(local = parent.frame()) {
   hla_core <- vapply(
     c("hla_typing.R", "hla_motif_core.R", "hla_association_core.R"),

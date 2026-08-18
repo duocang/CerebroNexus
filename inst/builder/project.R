@@ -1004,6 +1004,7 @@ builder_project_configuration_digest <- function(entry) {
             error = function(error) NULL
           )
         }
+        # Digest-only content identity; never serialized as project UI state.
         record$source_content_md5 <- source_md5
         record$source_uri <- NULL
         record$uri <- NULL
@@ -1012,6 +1013,8 @@ builder_project_configuration_digest <- function(entry) {
       record
     }
   )
+  # `levels` is source-derived and immutable after import. Source fingerprinting,
+  # rather than the editable-configuration digest, invalidates it on reload.
   value <- list(
     settings = digest_entry$settings %||% list(),
     acknowledgements = digest_entry$acknowledgements %||% character(),
