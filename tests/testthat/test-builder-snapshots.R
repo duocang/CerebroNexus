@@ -67,6 +67,76 @@ test_that("embedded snapshots are private, atomic and reopenable", {
   }
 })
 
+test_that("in-memory snapshots keep the inspected object without a stub read-back", {
+  root <- withr::local_tempdir()
+  object <- .builder_snapshot_object(.builder_snapshot_dense())
+  read_backs <- 0L
+  frozen <- local({
+    testthat::local_mocked_bindings(
+      readRDS = function(...) {
+        read_backs <<- read_backs + 1L
+        stop("An in-memory snapshot must not read the stub back.")
+      },
+      .package = "base"
+    )
+    .builder_snapshot_seurat_impl(
+      object,
+      file.path(root, "mem.snapshot"),
+      available_bytes = 2^40
+    )
+  })
+
+  expect_identical(read_backs, 0L)
+  expect_identical(frozen$object, object)
+  expect_s4_class(builder_open_snapshot(frozen$snapshot), "Seurat")
+  expect_equal(
+    as.matrix(SeuratObject::LayerData(
+      builder_open_snapshot(frozen$snapshot),
+      layer = "counts"
+    )),
+    as.matrix(.builder_snapshot_dense())
+  )
+})
+
+test_that("file-backed snapshots read the stub once and re-link to the backing", {
+  skip_if_not_installed("BPCells")
+  root <- withr::local_tempdir()
+  source <- file.path(root, "bp-source")
+  BPCells::write_matrix_dir(
+    methods::as(
+      methods::as(.builder_snapshot_dense(), "CsparseMatrix"),
+      "IterableMatrix"
+    ),
+    dir = source
+  )
+  object <- .builder_snapshot_object(BPCells::open_matrix_dir(source))
+  original_readRDS <- base::readRDS
+  read_backs <- 0L
+  frozen <- local({
+    testthat::local_mocked_bindings(
+      readRDS = function(file, refhook = NULL) {
+        read_backs <<- read_backs + 1L
+        original_readRDS(file, refhook)
+      },
+      .package = "base"
+    )
+    .builder_snapshot_seurat_impl(
+      object,
+      file.path(root, "bp.snapshot"),
+      available_bytes = 2^40
+    )
+  })
+  unlink(source, recursive = TRUE)
+
+  expect_identical(read_backs, 1L)
+  expect_equal(
+    as.matrix(SeuratObject::LayerData(frozen$object, layer = "counts")),
+    as.matrix(.builder_snapshot_dense())
+  )
+  .builder_expect_cache_contained(frozen$snapshot)
+  expect_s4_class(builder_open_snapshot(frozen$snapshot), "Seurat")
+})
+
 test_that("BPCells backing data is closed over before its source disappears", {
   skip_if_not_installed("BPCells")
   root <- withr::local_tempdir()

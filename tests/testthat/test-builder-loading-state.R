@@ -217,6 +217,35 @@ test_that("error retry uses a new generation and cannot be overwritten", {
   expect_identical(stale, retried)
 })
 
+test_that("failed imports freeze their elapsed time and retries reset it", {
+  queue <- builder_import_queue()
+  queue <- builder_import_add(
+    queue,
+    builder_import_entry(
+      "ds1",
+      "PBMC",
+      list(kind = "example", example = "all_content")
+    )
+  )
+  queue <- builder_import_transition(queue, "ds1", "reading", 1L)
+  queue <- builder_import_transition(
+    queue,
+    "ds1",
+    "error",
+    1L,
+    error = "unreadable object"
+  )
+
+  failed <- builder_import_find(queue, "ds1")
+  expect_identical(failed$load_state, "error")
+  expect_true(is.finite(failed$import_elapsed_ms))
+  expect_gte(failed$import_elapsed_ms, 0)
+
+  retried <- builder_import_retry(queue, "ds1")
+  expect_null(builder_import_find(retried, "ds1")$import_elapsed_ms)
+  expect_true(is.finite(builder_import_find(retried, "ds1")$started_at_ms))
+})
+
 test_that("the queue enforces one active importer and skips removed work", {
   queue <- builder_import_queue(max_active = 1L)
   for (index in seq_len(10L)) {
