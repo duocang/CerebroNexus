@@ -1212,6 +1212,15 @@ test_that("artifact entries do not initialize editable Spatial state", {
       expect_null(alignment$active_section())
       expect_null(alignment$active_image())
       expect_null(alignment$draft())
+
+      expect_true(alignment$restore_project_selection(list(
+        dataset = "dataset-a",
+        section = "fov-a",
+        image = "H&E"
+      )))
+      session$flushReact()
+      expect_null(alignment$active_section())
+      expect_null(alignment$active_image())
     }
   )
 })

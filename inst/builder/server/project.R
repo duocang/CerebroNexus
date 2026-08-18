@@ -45,6 +45,27 @@ register_loaded_entry_finalizer(function(entry) {
   builder_project_hydrate_loaded_entry(entry, record, project$root)
 })
 
+builder_project_mark_restored_entry <- function(entry) {
+  if (!is.list(entry) || !builder_has_text(entry$id)) {
+    return(invisible(FALSE))
+  }
+  record <- isolate(builder_project_pending_entries())[[entry$id]] %||% NULL
+  project <- isolate(builder_project())
+  if (is.null(record) || is.null(project)) {
+    return(invisible(FALSE))
+  }
+  status <- record$runtime_restore_status %||%
+    builder_project_dataset_status(record, project$root)
+  mark <- builder_project_restored_check_identity(record, entry, status)
+  if (is.null(mark)) {
+    return(invisible(FALSE))
+  }
+  marks <- isolate(dataset_check_marks())
+  marks[[entry$id]] <- mark
+  dataset_check_marks(marks)
+  invisible(TRUE)
+}
+
 builder_project_dirty <- reactive({
   project <- builder_project()
   if (is.null(project)) {

@@ -1292,6 +1292,9 @@ observe({
     }
     worker(updated_worker)
     store(next_state)
+    if (exists("builder_project_mark_restored_entry", mode = "function")) {
+      builder_project_mark_restored_entry(entry)
+    }
     protocol(builder_protocol_dataset(
       isolate(protocol()),
       p$id,

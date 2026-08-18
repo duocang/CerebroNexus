@@ -581,6 +581,30 @@ test_that("the assembled Builder server registers pre-store project hydration", 
       66.9
     )
 
+    artifact <- saved
+    artifact$load_state <- "artifact_ready"
+    artifact$snapshot <- NULL
+    artifact$project_artifact <- list(
+      status = "ready",
+      path = "artifacts/ds1.crb"
+    )
+    use_state_only_fixture(list(artifact))
+    dataset_check_marks(stats::setNames(
+      app_env$builder_project_check_identity(artifact),
+      "ds1"
+    ))
+
+    prepared <- builder_prepare_loaded_entry_attachment(loaded)
+    expect_length(prepared$state$datasets, 1L)
+    expect_identical(prepared$state$datasets[[1L]]$id, "ds1")
+    expect_identical(prepared$state$current_dataset, "ds1")
+    expect_identical(prepared$entry$settings, saved$settings)
+
+    store(prepared$state)
+    expect_true(builder_project_mark_restored_entry(prepared$entry))
+    session$flushReact()
+    expect_identical(checked_dataset_ids(), "ds1")
+
     use_state_only_fixture(list(hydrated))
     edited <- hydrated
     edited$settings$overview_point_size <- 10
@@ -600,6 +624,60 @@ test_that("the assembled Builder server registers pre-store project hydration", 
       builder_prepare_loaded_entry_attachment(loaded),
       class = "builder_state_error"
     )
+  })
+})
+
+test_that("failed source resume preserves the checked artifact entry", {
+  skip_if_not_installed("shiny")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(testthat::test_path("..", "..", "inst", "builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this resume test.")
+  }
+  root <- withr::local_tempdir()
+  source_dir <- file.path(root, "sources", "ds1")
+  dir.create(source_dir, recursive = TRUE)
+  source_path <- file.path(source_dir, "input.rds")
+  writeBin(charToRaw("source"), source_path)
+  saved <- builder_minimal_entry("ds1", "Saved dataset")
+  record <- app_env$builder_project_dataset_record(
+    saved,
+    source = list(
+      kind = "managed",
+      path = "sources/ds1/input.rds",
+      filename = "input.rds"
+    ),
+    checked = TRUE
+  )
+  artifact <- saved
+  artifact$load_state <- "artifact_ready"
+  artifact$snapshot <- NULL
+  artifact$project_artifact <- list(
+    status = "ready",
+    path = "artifacts/ds1.crb"
+  )
+
+  shiny::testServer(app_env$server, {
+    use_state_only_fixture(list(artifact))
+    current("ds1")
+    mark <- app_env$builder_project_check_identity(artifact)
+    dataset_check_marks(stats::setNames(mark, "ds1"))
+    builder_project(list(
+      root = root,
+      manifest = list(datasets = list(record))
+    ))
+    builder_project_pending_entries(list())
+    session$flushReact()
+
+    session$setInputs(project_resume_current_source = 1)
+    session$flushReact()
+
+    expect_length(sets(), 1L)
+    expect_identical(sets()[[1L]]$id, "ds1")
+    expect_identical(sets()[[1L]]$load_state, "artifact_ready")
+    expect_identical(isolate(dataset_check_marks())[["ds1"]], mark)
+    expect_null(isolate(builder_project_pending_entries())[["ds1"]])
   })
 })
 
