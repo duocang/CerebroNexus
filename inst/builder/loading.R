@@ -134,6 +134,7 @@ builder_import_entry <- function(
       file_type = if (.builder_import_text(file_type)) file_type else NULL,
       size = suppressWarnings(as.numeric(size)[1L]),
       generation = generation,
+      started_at_ms = as.numeric(Sys.time()) * 1000,
       load_state = "queued",
       progress_label = unname(.builder_import_labels[["queued"]]),
       error = NULL,
@@ -279,6 +280,7 @@ builder_import_retry <- function(queue, id) {
     .builder_import_abort("Only a failed import can be retried.")
   }
   entry$generation <- .builder_import_generation(entry$generation + 1L)
+  entry$started_at_ms <- as.numeric(Sys.time()) * 1000
   entry$load_state <- "queued"
   entry$progress_label <- unname(.builder_import_labels[["queued"]])
   entry$error <- NULL

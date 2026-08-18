@@ -1291,6 +1291,22 @@ observe({
       return()
     }
     worker(updated_worker)
+    started_at_ms <- suppressWarnings(as.numeric(
+      pending_entry$started_at_ms %||% NA_real_
+    ))
+    entry$import_elapsed_ms <- if (
+      length(started_at_ms) == 1L &&
+        !is.na(started_at_ms) &&
+        is.finite(started_at_ms)
+    ) {
+      max(0, as.numeric(Sys.time()) * 1000 - started_at_ms)
+    } else {
+      NULL
+    }
+    next_state <- builder_reduce_state(
+      next_state,
+      list(type = "replace", id = entry$id, entry = entry)
+    )
     store(next_state)
     if (exists("builder_project_mark_restored_entry", mode = "function")) {
       builder_project_mark_restored_entry(entry)

@@ -1483,10 +1483,15 @@ builder_adapter_inspect <- function(adapter) {
   published <- TRUE
   .builder_snapshot_after_publish(descriptor)
 
-  reopened <- builder_open_snapshot(descriptor)
-  .builder_snapshot_verify_layer_contracts(reopened, layer_contracts)
+  runtime_object <- if (length(sources)) {
+    rewritten_cache <- .builder_snapshot_validate_cache(cache)
+    .builder_snapshot_reopen_stub(stub, rewritten_cache)
+  } else {
+    object
+  }
+  .builder_snapshot_verify_layer_contracts(runtime_object, layer_contracts)
   success <- TRUE
-  list(snapshot = descriptor, object = reopened)
+  list(snapshot = descriptor, object = runtime_object)
 }
 
 #' Freeze a Seurat object and every live on-disk layer into one snapshot.
