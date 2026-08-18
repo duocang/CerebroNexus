@@ -589,6 +589,7 @@ builder_import_rail_row_model <- function(entry, current = NULL) {
     load_state = entry$load_state,
     progress_label = entry$progress_label,
     started_at_ms = suppressWarnings(as.numeric(entry$started_at_ms)),
+    import_elapsed_ms = suppressWarnings(as.numeric(entry$import_elapsed_ms)),
     selected = identical(entry$id, current)
   )
 }
@@ -602,6 +603,7 @@ builder_import_rail_row_fingerprint <- function(model) {
       "load_state",
       "progress_label",
       "started_at_ms",
+      "import_elapsed_ms",
       "selected"
     )]),
     auto_unbox = TRUE,
@@ -651,6 +653,16 @@ builder_import_rail_row_ui <- function(model) {
           model$progress_label
         ),
         if (
+          length(model$import_elapsed_ms) == 1L &&
+            !is.na(model$import_elapsed_ms) &&
+            is.finite(model$import_elapsed_ms)
+        ) {
+          shiny::span(
+            class = "builder-load-time",
+            `data-elapsed-ms` = round(model$import_elapsed_ms),
+            sprintf("%.1fs", model$import_elapsed_ms / 1000)
+          )
+        } else if (
           length(model$started_at_ms) == 1L &&
             !is.na(model$started_at_ms) &&
             is.finite(model$started_at_ms)

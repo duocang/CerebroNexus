@@ -315,6 +315,8 @@ test_that("loading rail rows expose safe status and real actions", {
   )
   expect_match(html, "Remove from queue", fixed = TRUE)
   expect_match(html, "ds-state-dot", fixed = TRUE)
+  expect_match(html, 'data-started-at-ms="', fixed = TRUE)
+  expect_false(grepl("data-elapsed-ms", html, fixed = TRUE))
   expect_false(grepl("/private/session", html, fixed = TRUE))
 })
 
@@ -370,6 +372,8 @@ test_that("error rows offer Retry and Remove without internal details", {
   expect_match(html, 'data-load-state="error"', fixed = TRUE)
   expect_match(html, "is-error", fixed = TRUE)
   expect_match(html, 'aria-label="Remove failed import broken"', fixed = TRUE)
+  expect_match(html, 'data-elapsed-ms="', fixed = TRUE)
+  expect_false(grepl("data-started-at-ms", html, fixed = TRUE))
   expect_false(grepl("/private/session", html, fixed = TRUE))
   expect_false(grepl("stack", html, ignore.case = TRUE))
 })

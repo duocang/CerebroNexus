@@ -1358,6 +1358,7 @@ builder_adapter_inspect <- function(adapter) {
   target <- file.path(.builder_canonical_path(parent), basename(snapshot_dir))
   object <- .builder_clear_saved_cache(object)
   layer_contracts <- .builder_snapshot_layer_contracts(object)
+  has_on_disk_layers <- length(layer_contracts) > 0L
   if (is.null(available_bytes)) {
     available_bytes <- .builder_snapshot_available_bytes(parent)
   }
@@ -1391,8 +1392,13 @@ builder_adapter_inspect <- function(adapter) {
 
   stub_path <- file.path(stage, "object.rds")
   .builder_snapshot_save_stub(object, stub_path)
-  stub <- readRDS(stub_path)
-  discovered <- .builder_snapshot_validate_cache(.builder_saved_cache(stub))
+  if (has_on_disk_layers) {
+    stub <- readRDS(stub_path)
+    discovered <- .builder_snapshot_validate_cache(.builder_saved_cache(stub))
+  } else {
+    stub <- NULL
+    discovered <- list(cache = NULL, members = list())
+  }
   sources <- unique(unlist(discovered$members, use.names = FALSE))
   source_states <- lapply(sources, .builder_snapshot_tree_state)
   names(source_states) <- sources
