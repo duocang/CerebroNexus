@@ -20,17 +20,25 @@
 builder_session_start <- function(
   builder_dir,
   snapshot_root = NULL,
-  snapshot_registry = list()
+  snapshot_registry = list(),
+  .async = FALSE,
+  .bootstrap = NULL
 ) {
   worker <- builder_worker_start(
     builder_dir = builder_dir,
     snapshot_root = snapshot_root,
-    snapshot_registry = snapshot_registry
+    snapshot_registry = snapshot_registry,
+    .async = .async,
+    .bootstrap = .bootstrap
   )
   if (!is.null(worker$error)) {
     return(list(error = worker$error))
   }
   list(worker = worker, session = worker$process)
+}
+
+builder_session_poll_startup <- function(worker, timeout = 0) {
+  builder_worker_poll_startup(worker, timeout = timeout)
 }
 
 .builder_session_process <- function(worker) {

@@ -1,7 +1,7 @@
 builder_build_app <- function(
   request,
   stage,
-  create_app = CerebroNexus::createShinyApp,
+  create_app = createShinyApp,
   auth_material = NULL
 ) {
   passphrase <- NULL
