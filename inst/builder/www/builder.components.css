@@ -1046,6 +1046,19 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   background: transparent !important; color: var(--c-text-subtle) !important;
   font-family: var(--font-mono); font-size: 10.5px;
 }
+.builder-slider-reset-motion .irs--shiny .irs-handle,
+.builder-slider-reset-motion .irs--shiny .irs-bar,
+.builder-slider-reset-motion .irs--shiny .irs-single {
+  transition: left 320ms cubic-bezier(.22, 1, .36, 1),
+              width 320ms cubic-bezier(.22, 1, .36, 1) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .builder-slider-reset-motion .irs--shiny .irs-handle,
+  .builder-slider-reset-motion .irs--shiny .irs-bar,
+  .builder-slider-reset-motion .irs--shiny .irs-single {
+    transition: none !important;
+  }
+}
 
 .builder-dialog-open { overflow: hidden; }
 
