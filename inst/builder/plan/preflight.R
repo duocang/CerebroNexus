@@ -295,6 +295,32 @@ builder_plan_requires_app <- function(entries) {
     ))
   }
 
+  valid_layers <- vapply(
+    entries,
+    function(entry) {
+      settings <- entry$settings
+      profile <- entry$profile %||% list()
+      assay_profile <- profile$assay_profiles[[settings$assay]] %||% list()
+      layers <- assay_profile$layers %||% NULL
+      is.null(layers) || settings$layer %in% layers
+    },
+    logical(1)
+  )
+  if (!all(valid_layers)) {
+    index <- which(!valid_layers)[[1L]]
+    settings <- entries[[index]]$settings
+    return(builder_plan_error(
+      paste0(
+        "Layer `",
+        settings$layer,
+        "` is no longer available in assay `",
+        settings$assay,
+        "`. Select an available layer and check this dataset again."
+      ),
+      "missing_layer"
+    ))
+  }
+
   valid_qc <- vapply(
     entries,
     function(entry) {

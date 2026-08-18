@@ -2293,8 +2293,8 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
         nGene = "nFeature_RNA",
         assay_profiles = list(
           RNA = list(
-            layers = c("data", "counts"),
-            default_layer = "data",
+            layers = "counts",
+            default_layer = "counts",
             nUMI_choices = "nCount_RNA",
             nGene_choices = "nFeature_RNA",
             nUMI = "nCount_RNA",
@@ -2403,6 +2403,36 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     invisible(output[["inspect_stage"]])
     session$flushReact()
     baseline_enhance_stage_renders <- enhance_stage_renders
+
+    # A project can restore a layer that was present when it was saved but is
+    # no longer available in the freshly loaded source.  Rendering Core must
+    # not silently normalize that saved choice to the assay default: only an
+    # explicit user selection is allowed to repair it.
+    session$setInputs(
+      `core-rendered_for` = "dataset-a",
+      `core-name` = "Dataset A",
+      `core-organism` = "hg",
+      `core-default_group` = "cluster",
+      `core-default_projection` = "umap",
+      `core-assay` = "RNA",
+      `core-layer` = "data",
+      `core-nUMI` = "nCount_RNA",
+      `core-nGene` = "nFeature_RNA",
+      `core-backend` = "embedded"
+    )
+    session$flushReact()
+    expect_identical(sets()[[1L]]$settings$layer, "data")
+
+    session$setInputs(`core-layer` = "counts")
+    session$flushReact()
+    expect_identical(sets()[[1L]]$settings$layer, "counts")
+
+    # Restore the unavailable project value before exercising the normal
+    # assay-switch contract below.
+    unavailable_entry <- sets()[[1L]]
+    unavailable_entry$settings$layer <- "data"
+    replace_entry(unavailable_entry)
+    session$flushReact()
 
     top_level_runs <- 0L
     tracker <- observe({
