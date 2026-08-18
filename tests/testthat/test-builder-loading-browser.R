@@ -201,9 +201,15 @@ test_that("multi-file selection stays FIFO through a single transport", {
   app$get_js(paste0(
     "window.__builderFirstReadyRow = null;",
     "window.__builderFirstReadyRowDetached = false;",
+    "window.__builderReadyImportOverlap = false;",
     "window.__builderRailIdentityObserver = new MutationObserver(() => {",
     "const ready = document.querySelectorAll('#ds_ready_list > .ds[data-ds]');",
     "const first = ready.item(0);",
+    "const readyIds = new Set(Array.from(ready, row => row.dataset.ds));",
+    "const imports = document.querySelectorAll(",
+    "'#ds_import_list .ds[data-import-id]');",
+    "if (Array.from(imports).some(row => readyIds.has(row.dataset.importId))) ",
+    "window.__builderReadyImportOverlap = true;",
     "if (!window.__builderFirstReadyRow && ready.length >= 2 && first) ",
     "window.__builderFirstReadyRow = first;",
     "if (window.__builderFirstReadyRow && !window.__builderFirstReadyRow.isConnected) ",
@@ -318,6 +324,7 @@ test_that("multi-file selection stays FIFO through a single transport", {
     "window.__builderFirstReadyRow.isConnected && ",
     "window.__builderFirstReadyRowDetached === false"
   )))
+  expect_false(app$get_js("window.__builderReadyImportOverlap"))
   app$get_js("window.__builderRailIdentityObserver.disconnect(); true;")
 })
 
