@@ -152,9 +152,10 @@ Choose one artifact mode:
   contains the CRBs and sidecars.
 - **Login App** does the same, and adds `viewer-auth.env` beside the
   App. In Review, select **Require login**, add each local account, then
-  Build and use **Launch App** to verify the local login. Keep
-  `viewer-auth.env` with the App when moving a release; never commit it
-  to Git or place it in a web-accessible directory.
+  Build and open the generated App from its release directory to verify
+  the local login. Keep `viewer-auth.env` with the App when moving a
+  release; never commit it to Git or place it in a web-accessible
+  directory.
 
 Review’s disk estimate counts the source **snapshot payload once** per
 dataset; it is not a prediction of the complete release size. An App
@@ -184,16 +185,15 @@ matches the data.
 ## Results, replacement, and recovery
 
 A successful result names the published artifacts. Every published
-release offers **Reveal Folder**, **Copy Path**, and **Copy Report**;
-**Launch App is available only for a generated App** that passed final
-verification. The report is portable and redacted; it describes
-artifact-visible datasets, methods, and metadata columns without source
-paths, host/PID data, lock paths, or raw values.
+release offers **Reveal Folder**, **Copy Path**, and **Copy Report**.
+The report is portable and redacted; it describes artifact-visible
+datasets, methods, and metadata columns without source paths, host/PID
+data, lock paths, or raw values.
 
-![A completed installed-package build with the four result
+![A completed installed-package build with its result
 actions.](img/builder_success.png)
 
-A completed installed-package build with the four result actions.
+A completed installed-package build with its result actions.
 
 One release is published as a transaction:
 

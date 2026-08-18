@@ -258,9 +258,10 @@ private data directory contains the CRBs and sidecars.</li>
 <strong>Login App</strong> does the same, and adds
 <code>viewer-auth.env</code> beside the App. In Review, select
 <strong>Require login</strong>, add each local account, then Build and
-use <strong>Launch App</strong> to verify the local login. Keep
-<code>viewer-auth.env</code> with the App when moving a release; never
-commit it to Git or place it in a web-accessible directory.</li>
+open the generated App from its release directory to verify the local
+login. Keep <code>viewer-auth.env</code> with the App when moving a
+release; never commit it to Git or place it in a web-accessible
+directory.</li>
 </ul>
 <p>Review’s disk estimate counts the source <strong>snapshot payload
 once</strong> per dataset; it is not a prediction of the complete
@@ -291,14 +292,13 @@ access policy matches the data.</p>
 </h2>
 <p>A successful result names the published artifacts. Every published
 release offers <strong>Reveal Folder</strong>, <strong>Copy
-Path</strong>, and <strong>Copy Report</strong>; <strong>Launch App is
-available only for a generated App</strong> that passed final
-verification. The report is portable and redacted; it describes
-artifact-visible datasets, methods, and metadata columns without source
-paths, host/PID data, lock paths, or raw values.</p>
+Path</strong>, and <strong>Copy Report</strong>. The report is portable
+and redacted; it describes artifact-visible datasets, methods, and
+metadata columns without source paths, host/PID data, lock paths, or raw
+values.</p>
 <div class="float">
-<img src="img/builder_success.png" alt="A completed installed-package build with the four result actions."><div class="figcaption">A completed installed-package build with the
-four result actions.</div>
+<img src="img/builder_success.png" alt="A completed installed-package build with its result actions."><div class="figcaption">A completed installed-package build with its
+result actions.</div>
 </div>
 <p>One release is published as a transaction:</p>
 <pre class="text"><code>CRB-only release
