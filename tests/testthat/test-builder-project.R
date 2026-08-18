@@ -773,6 +773,10 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
   expect_match(html, "Load source — continue editing", fixed = TRUE)
   expect_match(html, 'value="reuse" checked="checked"', fixed = TRUE)
   expect_match(html, "CRB ready", fixed = TRUE)
+  expect_identical(
+    lengths(regmatches(html, gregexpr("CRB ready", html, fixed = TRUE))),
+    1L
+  )
 })
 
 test_that("project lifecycle capabilities lock only conflicting operations", {

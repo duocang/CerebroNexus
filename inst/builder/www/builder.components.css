@@ -340,13 +340,7 @@
   gap: var(--space-3);
   margin-bottom: var(--space-2);
 }
-.builder-project-restore-summary h4,
-.builder-project-restore-summary p { margin: 0; }
-.builder-project-restore-summary p {
-  margin-top: var(--space-1);
-  color: var(--c-text-muted);
-  font-size: .82rem;
-}
+.builder-project-restore-summary h4 { margin: 0; }
 .builder-project-restore-badge {
   flex: 0 0 auto;
   padding: .2rem .5rem;
