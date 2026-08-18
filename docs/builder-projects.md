@@ -9,9 +9,17 @@ and rebuild only the parts that changed.
 
 ## Project folder
 
-The first successful upload offers to create a project folder. Browser uploads
-are copied out of the Shiny session's temporary directory so they remain
-available after the app closes.
+After an import batch has completely settled, the first successful upload
+offers to create a project folder. The automatic offer waits for browser,
+server, and worker import queues to become idle; the toolbar action remains
+available earlier when the user wants to choose a folder manually. Browser
+uploads are copied out of the Shiny session's temporary directory so they
+remain available after the app closes.
+
+The native folder picker is synchronous on the host operating system. While it
+is open, the background worker may continue processing, but Builder cannot
+render new progress until the picker returns. This is a display pause rather
+than a pause or restart of the import itself.
 
 ```text
 my-project/

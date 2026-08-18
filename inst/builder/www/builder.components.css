@@ -175,6 +175,8 @@
 }
 .builder-page-inert .builder-operation-overlay,
 .builder-project-result-open .builder-operation-overlay { display: flex; }
+body.modal-open .modal-backdrop { z-index: 2010; }
+body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-operation-overlay-card {
   display: grid;
   width: min(100%, 32rem);
