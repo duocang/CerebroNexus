@@ -24,6 +24,7 @@ builder_spatial_alignment_server <- function(
     scale = 1
   ))
   coordinate_session_drafts <- shiny::reactiveVal(list())
+  active_dataset <- shiny::reactiveVal(NULL)
   active_section <- shiny::reactiveVal(NULL)
   active_image <- shiny::reactiveVal(NULL)
   pending_project_selection <- shiny::reactiveVal(NULL)
@@ -315,6 +316,7 @@ builder_spatial_alignment_server <- function(
   }
   switch_to <- function(entry, section, label = NULL) {
     pending_upload(NULL)
+    active_dataset(entry$id)
     active_section(section)
     shiny::updateSelectInput(
       session,
@@ -394,20 +396,7 @@ builder_spatial_alignment_server <- function(
       NULL
     }
     switch_to(entry, section, label)
-    session$onFlushed(
-      function() {
-        pending <- shiny::isolate(pending_project_selection())
-        if (
-          is.list(pending) &&
-            identical(pending$dataset, selection$dataset) &&
-            identical(shiny::isolate(active_section()), section) &&
-            identical(shiny::isolate(active_image()), label)
-        ) {
-          pending_project_selection(NULL)
-        }
-      },
-      once = TRUE
-    )
+    pending_project_selection(NULL)
     invisible(TRUE)
   }
 
@@ -456,6 +445,13 @@ builder_spatial_alignment_server <- function(
   }
 
   shiny::observeEvent(current(), {
+    id <- current()
+    previous_section <- shiny::isolate(active_section())
+    previous_image <- shiny::isolate(active_image())
+    preserve_active <- identical(
+      shiny::isolate(active_dataset()),
+      id
+    )
     session$sendCustomMessage("builder_spatial_canvas_clear", list())
     raw_image(NULL)
     draft(NULL)
@@ -467,7 +463,6 @@ builder_spatial_alignment_server <- function(
     preview_contract(NULL)
     canvas_contract(NULL)
     pending_upload(NULL)
-    id <- current()
     entry <- if (is.null(id)) NULL else shiny::isolate(entry_of(id))
     artifact_ready <- !is.null(entry) &&
       identical(
@@ -476,6 +471,7 @@ builder_spatial_alignment_server <- function(
       )
     if (is.null(entry) || artifact_ready) {
       rm(list = ls(image_collection_cache), envir = image_collection_cache)
+      active_dataset(NULL)
       active_section(NULL)
       active_image(NULL)
       if (artifact_ready) {
@@ -492,6 +488,7 @@ builder_spatial_alignment_server <- function(
     }
     sections <- if (is.null(entry)) character() else sections_for(entry)
     if (!length(sections)) {
+      active_dataset(NULL)
       active_section(NULL)
       active_image(NULL)
       return()
@@ -513,6 +510,8 @@ builder_spatial_alignment_server <- function(
       }
       switch_to(entry, section, label)
       pending_project_selection(NULL)
+    } else if (preserve_active && previous_section %in% sections) {
+      switch_to(entry, previous_section, previous_image)
     } else {
       switch_to(entry, sections[[1L]])
     }

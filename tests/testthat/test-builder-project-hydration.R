@@ -631,6 +631,43 @@ test_that("failed pre-store hydration releases its unattached snapshot", {
   expect_match(branch, "builder_import_progress_remove", fixed = TRUE)
 })
 
+test_that("failed pre-store load acknowledgement releases the persistent queue", {
+  runtime <- new.env(parent = globalenv())
+  sys.source(
+    testthat::test_path("..", "..", "inst", "builder", "worker.R"),
+    envir = runtime
+  )
+  protocol <- runtime$builder_request_protocol("worker-1")
+  protocol <- runtime$builder_enqueue(
+    protocol,
+    runtime$builder_command("load", "ds1", payload = list(path = "ds1.rds"))
+  )
+  protocol <- runtime$builder_enqueue(
+    protocol,
+    runtime$builder_command("load", "ds2", payload = list(path = "ds2.rds"))
+  )
+
+  dispatched <- runtime$builder_protocol_dispatch(protocol)
+  request <- dispatched$request
+  expect_identical(request$kind, "load")
+  expect_true(isTRUE(request$persistent))
+
+  completed <- runtime$builder_protocol_complete(
+    dispatched$protocol,
+    runtime$builder_worker_response(request, value = list(snapshot = "invalid"))
+  )
+  expect_length(completed$protocol$awaiting_ack, 1L)
+
+  acknowledged <- runtime$builder_protocol_acknowledge(
+    completed$protocol,
+    request$request_id
+  )
+  expect_length(acknowledged$awaiting_ack, 0L)
+
+  next_dispatched <- runtime$builder_protocol_dispatch(acknowledged)
+  expect_identical(next_dispatched$request$dataset, "ds2")
+})
+
 test_that("failed fallback hydration has a synchronous snapshot cleanup path", {
   source <- paste(
     readLines(
