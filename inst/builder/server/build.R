@@ -49,6 +49,7 @@ observeEvent(
 output$build_output_options <- renderUI({
   req(identical(workflow()$stage, "build"))
   plan <- workflow()$review_plan
+  auth <- auth_capability()
   controls_disabled <- builder_mutations_locked(build_flow(), protocol())
   items <- plan$items %||% list()
   dataset_choices <- stats::setNames(
@@ -83,7 +84,7 @@ output$build_output_options <- renderUI({
       enabled = isTRUE(auth_enabled()),
       account_count = as.integer(length(auth_accounts())),
       error = auth_validation()$error %||% NULL,
-      available = isTRUE(auth_capability$available)
+      available = isTRUE(auth$available)
     ),
     controls_disabled = controls_disabled
   )
@@ -342,6 +343,9 @@ enqueue_build_plan <- function(
       "The build could not be queued. Try Build again."
     ))
   }
+  if (exists("builder_project_capture_build_plan", mode = "function")) {
+    builder_project_capture_build_plan(plan)
+  }
   build_flow(list(stage = "building", plan = NULL))
   auth_accounts_state(builder_auth_empty_accounts())
   auth_validation(list(
@@ -464,6 +468,12 @@ observeEvent(input$choose_output_folder, {
 })
 
 start_confirmed_build <- function() {
+  if (
+    exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("build"))
+  ) {
+    return(invisible(FALSE))
+  }
   if (builder_build_controls_locked(isolate(build_flow()))) {
     return(invisible(FALSE))
   }
@@ -593,7 +603,15 @@ rail_controller <- builder_dataset_rail_server(
   session = session,
   store = store,
   validate_remove = validate_rail_removal,
-  select_dataset = alignment_server$request_dataset_switch,
+  select_dataset = function(id, commit) {
+    if (
+      exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+        !isTRUE(builder_operation_allowed("select_dataset"))
+    ) {
+      return(invisible(FALSE))
+    }
+    alignment_server$request_dataset_switch(id, commit)
+  },
   on_select = function(id) {
     active_import_id(NULL)
     result(NULL)

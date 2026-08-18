@@ -26,6 +26,12 @@ output$workflow_progress <- renderUI({
 })
 
 navigate_workflow_stage <- function(stage) {
+  if (
+    exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("navigate_workflow"))
+  ) {
+    return(invisible(FALSE))
+  }
   if (builder_build_controls_locked(isolate(build_flow()))) {
     return(invisible(FALSE))
   }
@@ -128,6 +134,12 @@ output$workbench <- renderUI({
 })
 
 observeEvent(input$continue_to_review, {
+  if (
+    exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("navigate_workflow"))
+  ) {
+    return()
+  }
   req(all_datasets_checked())
   plan <- freeze_materialized_plan_for_output(
     file.path(tempdir(), "cerebro-builder-output-preview"),

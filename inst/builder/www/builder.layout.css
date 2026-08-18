@@ -22,6 +22,13 @@
 }
 .topbar .formats {
   font-size: .76rem; color: var(--c-text-subtle); font-family: var(--font-mono);
+  margin-left: 0;
+}
+.builder-project-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: .45rem;
   margin-left: auto;
 }
 
@@ -455,7 +462,13 @@
     --builder-section-gap: var(--space-3);
   }
   .topbar { padding-inline: var(--space-4); }
-  .topbar .formats { width: 100%; margin-left: 0; }
+  .builder-project-toolbar {
+    width: 100%;
+    order: 3;
+    margin-left: 0;
+  }
+  .builder-project-toolbar .builder-project-status { margin-right: auto; }
+  .topbar .formats { width: 100%; margin-left: 0; order: 4; }
   .shell,
   .builder-shell { padding-block: var(--space-4); }
   .ds-move,

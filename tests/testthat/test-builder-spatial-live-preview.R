@@ -50,6 +50,7 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
   expect_match(js, '"builder_spatial_coordinate_draft"', fixed = TRUE)
   expect_match(js, "snapshotIdentity", fixed = TRUE)
   expect_match(js, "coordinateSequence", fixed = TRUE)
+  expect_match(js, "generation: scene.generation", fixed = TRUE)
   expect_false(grepl(">= state.resetToken", js, fixed = TRUE))
   expect_false(grepl("Plotly", js, fixed = TRUE))
 })

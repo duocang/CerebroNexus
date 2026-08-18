@@ -49,6 +49,83 @@ builder_browser_old_contract_app <- function(
   builder_browser_contract_app(app_dir, 0L, .local_envir)
 }
 
+builder_browser_wait_for_example_ready <- function(
+  app,
+  example = "all_content",
+  timeout = 60000
+) {
+  stopifnot(
+    is.character(example),
+    length(example) == 1L,
+    !is.na(example),
+    grepl("^[A-Za-z0-9_-]+$", example)
+  )
+  app$wait_for_js(
+    sprintf(
+      paste0(
+        "(() => { const button = document.querySelector(",
+        "'.example-btn[data-ex=%s]'); return button !== null && ",
+        "button.disabled === false && ",
+        "button.getAttribute('aria-disabled') === 'false'; })()"
+      ),
+      example
+    ),
+    timeout = timeout
+  )
+  invisible(TRUE)
+}
+
+builder_browser_wait_for_worker_ready <- function(app, timeout = 60000) {
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('builder-worker-status') !== null && ",
+      "document.getElementById('builder-worker-status')",
+      ".dataset.workerState === 'ready'"
+    ),
+    timeout = timeout
+  )
+  invisible(TRUE)
+}
+
+builder_browser_check_all_datasets <- function(app, timeout = 10000) {
+  for (attempt in seq_len(20L)) {
+    can_continue <- app$get_js(paste0(
+      "document.getElementById('continue_to_review') !== null && ",
+      "document.getElementById('continue_to_review').disabled === false"
+    ))
+    if (isTRUE(can_continue)) {
+      return(invisible(TRUE))
+    }
+    app$wait_for_js(
+      paste0(
+        "document.getElementById('complete_dataset_check') !== null && ",
+        "document.getElementById('complete_dataset_check').disabled === false"
+      ),
+      timeout = timeout
+    )
+    app$click("complete_dataset_check")
+    app$wait_for_idle(timeout = timeout)
+  }
+  stop("Datasets did not become checked.", call. = FALSE)
+}
+
+builder_browser_dismiss_project_offer <- function(app, timeout = 10000) {
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#shiny-modal .modal-title') !== null && ",
+      "document.querySelector('#shiny-modal .modal-title')",
+      ".textContent.trim() === 'Save this project'"
+    ),
+    timeout = timeout
+  )
+  app$click(selector = "#shiny-modal [data-dismiss=modal]")
+  app$wait_for_js(
+    "document.getElementById('shiny-modal') === null",
+    timeout = timeout
+  )
+  invisible(TRUE)
+}
+
 builder_expect_clean_browser_logs <- function(app) {
   logs <- app$get_logs()
   failures <- logs[

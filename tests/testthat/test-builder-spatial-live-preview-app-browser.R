@@ -12,10 +12,7 @@ test_that("the real Builder renders a 4000 point stress scene without blocking",
   )
   on.exit(app$stop(), add = TRUE)
   app$wait_for_idle(timeout = 30000)
-  app$wait_for_js(
-    "document.querySelector('.example-btn[data-ex=all_content]') !== null",
-    timeout = 30000
-  )
+  builder_browser_wait_for_example_ready(app)
   app$click(selector = ".example-btn[data-ex=all_content]")
   app$wait_for_js(
     paste0(
@@ -26,6 +23,7 @@ test_that("the real Builder renders a 4000 point stress scene without blocking",
     ),
     timeout = 60000
   )
+  builder_browser_dismiss_project_offer(app)
   app$run_js(paste0(
     "const dismiss=document.querySelector('.builder-first-run-dismiss');",
     "if(dismiss) dismiss.click();"
