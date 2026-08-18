@@ -903,9 +903,9 @@ builder_spatial_alignment_server <- function(
       )
     }
     parameters <- builder_alignment_defaults()
+    appearance <- point_appearance_for(entry, section, previous)
+    parameters[c("point_opacity", "point_size")] <- appearance
     if (!length(existing)) {
-      appearance <- point_appearance_for(entry, section)
-      parameters[c("point_opacity", "point_size")] <- appearance
       stored_appearance <- entry$settings$spatial_point_appearance %||% list()
       stored_appearance[[section]] <- NULL
       entry$settings$spatial_point_appearance <- stored_appearance
