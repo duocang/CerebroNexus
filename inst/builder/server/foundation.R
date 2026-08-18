@@ -901,8 +901,11 @@ start_builder_worker <- function() {
   invisible(TRUE)
 }
 
+builder_lifecycle_session <- session
+
 builder_session_closed <- function() {
-  is.function(session$isClosed) && isTRUE(session$isClosed())
+  is.function(builder_lifecycle_session$isClosed) &&
+    isTRUE(builder_lifecycle_session$isClosed())
 }
 
 poll_builder_worker_startup <- function() {
