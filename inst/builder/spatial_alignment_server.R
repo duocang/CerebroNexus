@@ -905,6 +905,14 @@ builder_spatial_alignment_server <- function(
       )
     }
     baseline(previous)
+    parameters <- builder_alignment_defaults()
+    if (!length(existing)) {
+      appearance <- point_appearance_for(entry, section)
+      parameters[c("point_opacity", "point_size")] <- appearance
+      stored_appearance <- entry$settings$spatial_point_appearance %||% list()
+      stored_appearance[[section]] <- NULL
+      entry$settings$spatial_point_appearance <- stored_appearance
+    }
     record <- builder_alignment_record(
       source = list(
         name = filename,
@@ -928,7 +936,7 @@ builder_spatial_alignment_server <- function(
           height = image_encoded$source_height
         )
       ),
-      parameters = builder_alignment_defaults(),
+      parameters = parameters,
       section = preview$section
     )
     facts <- intersect(
@@ -1270,6 +1278,21 @@ builder_spatial_alignment_server <- function(
         size = input[["enhance-point_size"]] %||%
           (restored$point_size %||% builder_alignment_defaults()$point_size)
       )
+      expected <- shiny::isolate(expected_controls())
+      if (!is.null(expected)) {
+        if (
+          !identical(
+            list(
+              point_opacity = appearance$opacity,
+              point_size = appearance$size
+            ),
+            expected[c("point_opacity", "point_size")]
+          )
+        ) {
+          return()
+        }
+        expected_controls(NULL)
+      }
       point_appearance_input_ready(TRUE)
       stored <- entry$settings$spatial_point_appearance %||% list()
       next_value <- list(
@@ -1499,6 +1522,17 @@ builder_spatial_alignment_server <- function(
     }
     labels <- image_labels_for(entry, section)
     position <- match(label, labels)
+    if (length(labels) == 1L) {
+      removed <- builder_alignment_normalize(
+        collection_for(entry)[[section]][[label]],
+        section,
+        kind_for(section)
+      )
+      appearance <- point_appearance_for(entry, section, removed)
+      stored_appearance <- entry$settings$spatial_point_appearance %||% list()
+      stored_appearance[[section]] <- appearance
+      entry$settings$spatial_point_appearance <- stored_appearance
+    }
     commit_section(entry, section, NULL, label = label)
     entry <- entry_of(current())
     remaining <- image_labels_for(entry, section)

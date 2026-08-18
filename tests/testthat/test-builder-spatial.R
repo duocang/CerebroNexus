@@ -233,7 +233,10 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       images = list(),
       default_group = "cluster",
       default_projection = "umap",
-      palette = "cerebro"
+      palette = "cerebro",
+      spatial_point_appearance = list(
+        "section-a" = list(point_opacity = 0.65, point_size = 6)
+      )
     )
   )
   current_entry <- shiny::reactiveVal(entry)
@@ -275,7 +278,7 @@ test_that("pending tissue image requires its matching preview and snapshot", {
         worker = shiny::reactiveVal(list()),
         enqueue = function(request) TRUE,
         commit_images = function(entry, images) {
-          updated <- current_entry()
+          updated <- entry
           updated$settings$images <- images
           current_entry(updated)
           committed <<- images
@@ -307,6 +310,11 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       expect_identical(alignment$draft()$source$name, "section-a.png")
       expect_false("saved" %in% names(alignment$draft()))
       expect_match(alignment$draft()$source_uri, "^data:image/png;base64,")
+      expect_identical(alignment$draft()$point_opacity, 0.65)
+      expect_identical(alignment$draft()$point_size, 6)
+      expect_null(current_entry()$settings$spatial_point_appearance[[
+        "section-a"
+      ]])
       expect_named(committed, "section-a")
       expect_identical(commit_count, 1L)
 
@@ -316,6 +324,10 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       session$flushReact()
       expect_null(alignment$draft())
       expect_identical(commit_count, 2L)
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["section-a"]],
+        list(point_opacity = 0.65, point_size = 6)
+      )
 
       alignment_preview(NULL)
       session$setInputs(
@@ -1297,6 +1309,12 @@ test_that("points-only Spatial FOV appearance persists without an image", {
       expect_identical(
         alignment$point_appearance(),
         list(opacity = 0.65, size = 6)
+      )
+      session$setInputs(`enhance-point_opacity` = 85, `enhance-point_size` = 5)
+      session$flushReact()
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["fov-a"]],
+        list(point_opacity = 0.65, point_size = 6)
       )
       session$setInputs(`enhance-point_opacity` = 65, `enhance-point_size` = 6)
       session$flushReact()
