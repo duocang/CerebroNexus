@@ -3,6 +3,7 @@
 builder_project <- reactiveVal(NULL)
 builder_project_saving <- reactiveVal(FALSE)
 builder_project_first_save_offered <- reactiveVal(FALSE)
+builder_project_first_save_scheduled <- reactiveVal(FALSE)
 builder_project_restore <- reactiveVal(NULL)
 builder_project_pending_entries <- reactiveVal(list())
 builder_project_artifacts <- reactiveVal(list())
@@ -841,15 +842,40 @@ observe({
 })
 
 observe({
-  entries <- sets()
-  if (
-    length(entries) &&
-      is.null(isolate(builder_project())) &&
-      !isTRUE(isolate(builder_project_first_save_offered()))
-  ) {
-    builder_project_first_save_offered(TRUE)
-    shiny::showModal(builder_project_first_save_dialog())
+  ready <- builder_project_first_save_offer_ready(
+    sets(),
+    builder_project(),
+    builder_project_first_save_offered(),
+    builder_activity(),
+    protocol()
+  )
+  if (!ready || isTRUE(builder_project_first_save_scheduled())) {
+    return()
   }
+  builder_project_first_save_scheduled(TRUE)
+  session$onFlushed(
+    function() {
+      shiny::isolate({
+        builder_project_first_save_scheduled(FALSE)
+        if (builder_session_closed()) {
+          return()
+        }
+        ready_after_flush <- builder_project_first_save_offer_ready(
+          sets(),
+          builder_project(),
+          builder_project_first_save_offered(),
+          builder_activity(),
+          protocol()
+        )
+        if (!ready_after_flush) {
+          return()
+        }
+        builder_project_first_save_offered(TRUE)
+        shiny::showModal(builder_project_first_save_dialog())
+      })
+    },
+    once = TRUE
+  )
 })
 
 observe({

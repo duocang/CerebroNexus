@@ -1999,6 +1999,16 @@ test_that("transient layers expose state-bearing motion lifecycle", {
   )
   expect_match(components_css, ".builder-dialog.is-visible", fixed = TRUE)
   expect_match(
+    components_css,
+    "body.modal-open #shiny-modal.modal",
+    fixed = TRUE
+  )
+  expect_match(
+    components_css,
+    "body.modal-open .modal-backdrop",
+    fixed = TRUE
+  )
+  expect_match(
     paste(layout_css, components_css, sep = "\n"),
     "transition: opacity var(--duration-normal)",
     fixed = TRUE
