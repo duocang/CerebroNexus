@@ -1488,6 +1488,8 @@ builder_spatial_alignment_server <- function(
     input[["enhance-reset_coordinate_transform"]],
     {
       spec <- list(rotation_degrees = 0, scale = 1)
+      defaults <- builder_alignment_defaults()
+      appearance <- defaults[c("point_opacity", "point_size")]
       entry <- shiny::isolate(entry_of(current()))
       section <- shiny::isolate(active_section())
       if (is.null(entry) || is.null(section)) {
@@ -1500,11 +1502,36 @@ builder_spatial_alignment_server <- function(
         snapshot_identity = .builder_worker_identity(entry$snapshot),
         force = TRUE
       )
+      current_draft <- shiny::isolate(draft())
+      if (is.null(current_draft)) {
+        stored <- entry$settings$spatial_point_appearance %||% list()
+        stored[[section]] <- appearance
+        entry$settings$spatial_point_appearance <- stored
+        commit_images(entry, collection_for(entry))
+      } else {
+        current_draft[names(appearance)] <- appearance
+        draft(current_draft)
+        commit_section(entry, section, current_draft)
+      }
+      point_appearance_baseline(appearance)
+      point_appearance_input_ready(FALSE)
       shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
+      shiny::freezeReactiveValue(input, "enhance-point_opacity")
+      shiny::freezeReactiveValue(input, "enhance-point_size")
       shiny::updateSliderInput(
         session,
         "enhance-coordinate_rotation",
         value = 0
+      )
+      shiny::updateSliderInput(
+        session,
+        "enhance-point_opacity",
+        value = defaults$point_opacity * 100
+      )
+      shiny::updateSliderInput(
+        session,
+        "enhance-point_size",
+        value = defaults$point_size
       )
       canvas_reset_token(canvas_reset_token() + 1L)
     }
