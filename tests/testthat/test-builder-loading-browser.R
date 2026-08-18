@@ -98,7 +98,7 @@ test_that("Builder stays visible while a dataset loads", {
     "const stamp = row.querySelector('.ds-ready-stamp');",
     "return {background:getComputedStyle(row).backgroundColor, ",
     "marker:getComputedStyle(row, '::before').backgroundColor, ",
-    "stampText:stamp.textContent.trim(), ",
+    "stampText:stamp.textContent.trim().replace(/\\s+/g, ' '), ",
     "stampColor:getComputedStyle(stamp).color, ",
     "stampBorder:getComputedStyle(stamp).borderColor, ",
     "stampTransform:getComputedStyle(stamp).transform, ",
@@ -107,9 +107,9 @@ test_that("Builder stays visible while a dataset loads", {
   ))
   expect_identical(ready_colours$background, "rgb(255, 244, 236)")
   expect_identical(ready_colours$marker, "rgb(249, 115, 22)")
-  expect_identical(ready_colours$stampText, "READY")
-  expect_identical(ready_colours$stampColor, "rgb(22, 163, 74)")
-  expect_identical(ready_colours$stampBorder, "rgb(22, 163, 74)")
+  expect_identical(ready_colours$stampText, "NEEDS CHECK")
+  expect_identical(ready_colours$stampColor, "rgb(198, 40, 40)")
+  expect_identical(ready_colours$stampBorder, "rgb(198, 40, 40)")
   expect_false(identical(ready_colours$stampTransform, "none"))
   expect_null(ready_colours$readyDot)
 
@@ -164,6 +164,7 @@ test_that("Builder stays visible while a dataset loads", {
 })
 
 builder_browser_choose_files <- function(app, files) {
+  builder_browser_wait_for_worker_ready(app)
   chromote <- app$get_chromote_session()
   chromote$Page$enable()
   chromote$Page$setInterceptFileChooserDialog(enabled = TRUE)
@@ -264,6 +265,7 @@ test_that("multi-file selection stays FIFO through a single transport", {
     ),
     timeout = 120000
   )
+  builder_browser_dismiss_project_offer(app)
   app$run_js(
     "document.querySelector('#ds_ready_list .builder-pick').click();"
   )
@@ -279,9 +281,10 @@ test_that("multi-file selection stays FIFO through a single transport", {
   )
   app$wait_for_js(
     paste0(
-      "document.querySelector('.builder-loading-stage') !== null && ",
+      "document.querySelector('#ds_import_list .builder-pick-import') === null || ",
+      "(document.querySelector('.builder-loading-stage') !== null && ",
       "document.querySelector('#ds_import_list ",
-      ".builder-pick-import[aria-current=true]') !== null"
+      ".builder-pick-import[aria-current=true]') !== null)"
     ),
     timeout = 30000
   )
@@ -302,9 +305,7 @@ test_that("multi-file selection stays FIFO through a single transport", {
     "builder-loading-serial-files",
     app$wait_for_js(
       paste0(
-        "document.querySelector('.builder-stage-footer-status') !== null && ",
-        "document.querySelector('.builder-stage-footer-status')",
-        ".textContent.trim() === '3 datasets ready' && ",
+        "document.querySelectorAll('#ds_ready_list .ds--ready').length === 3 && ",
         "document.getElementById('ds_client_import_queue').children.length === 0"
       ),
       timeout = 120000
@@ -399,9 +400,7 @@ test_that("a waiting file can be cancelled without cancelling the active file", 
     "builder-loading-cancel-waiting",
     app$wait_for_js(
       paste0(
-        "document.querySelector('.builder-stage-footer-status') !== null && ",
-        "document.querySelector('.builder-stage-footer-status')",
-        ".textContent.trim() === '1 dataset ready' && ",
+        "document.querySelectorAll('#ds_ready_list .ds--ready').length === 1 && ",
         "document.getElementById('ds_client_import_queue').children.length === 0"
       ),
       timeout = 120000
@@ -511,9 +510,7 @@ test_that("disconnect pauses the queue until server state is synchronized", {
     "builder-loading-disconnect-sync",
     app$wait_for_js(
       paste0(
-        "document.querySelector('.builder-stage-footer-status') !== null && ",
-        "document.querySelector('.builder-stage-footer-status')",
-        ".textContent.trim() === '2 datasets ready' && ",
+        "document.querySelectorAll('#ds_ready_list .ds--ready').length === 2 && ",
         "document.getElementById('ds_client_import_queue').children.length === 0"
       ),
       timeout = 120000

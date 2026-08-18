@@ -243,7 +243,7 @@ test_that("builder interaction reflows and preserves accessible state", {
     "document.getElementById('continue_to_review') !== null",
     timeout = 10000
   )
-  builder_browser_check_current_dataset(app)
+  builder_browser_check_all_datasets(app)
   readiness_text <- app$get_js(
     "document.querySelector('.builder-configure-readiness').textContent"
   )
@@ -573,7 +573,7 @@ test_that("builder explains a mocked old privacy contract exactly", {
     timeout = 60000
   )
   builder_browser_dismiss_project_offer(app)
-  builder_browser_check_current_dataset(app)
+  builder_browser_check_all_datasets(app)
   app$click("continue_to_review")
   app$wait_for_js(
     "document.getElementById('confirm_review') !== null",

@@ -75,23 +75,38 @@ builder_browser_wait_for_example_ready <- function(
   invisible(TRUE)
 }
 
-builder_browser_check_current_dataset <- function(app, timeout = 10000) {
+builder_browser_wait_for_worker_ready <- function(app, timeout = 60000) {
   app$wait_for_js(
     paste0(
-      "document.getElementById('complete_dataset_check') !== null && ",
-      "document.getElementById('complete_dataset_check').disabled === false"
-    ),
-    timeout = timeout
-  )
-  app$click("complete_dataset_check")
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('continue_to_review') !== null && ",
-      "document.getElementById('continue_to_review').disabled === false"
+      "document.getElementById('builder-worker-status') !== null && ",
+      "document.getElementById('builder-worker-status')",
+      ".dataset.workerState === 'ready'"
     ),
     timeout = timeout
   )
   invisible(TRUE)
+}
+
+builder_browser_check_all_datasets <- function(app, timeout = 10000) {
+  for (attempt in seq_len(20L)) {
+    can_continue <- app$get_js(paste0(
+      "document.getElementById('continue_to_review') !== null && ",
+      "document.getElementById('continue_to_review').disabled === false"
+    ))
+    if (isTRUE(can_continue)) {
+      return(invisible(TRUE))
+    }
+    app$wait_for_js(
+      paste0(
+        "document.getElementById('complete_dataset_check') !== null && ",
+        "document.getElementById('complete_dataset_check').disabled === false"
+      ),
+      timeout = timeout
+    )
+    app$click("complete_dataset_check")
+    app$wait_for_idle(timeout = timeout)
+  }
+  stop("Datasets did not become checked.", call. = FALSE)
 }
 
 builder_browser_dismiss_project_offer <- function(app, timeout = 10000) {

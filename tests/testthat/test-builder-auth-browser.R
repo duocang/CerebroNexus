@@ -91,7 +91,7 @@ builder_auth_browser_enable_login <- function(app) {
     ),
     timeout = 10000
   )
-  builder_browser_check_current_dataset(app)
+  builder_browser_check_all_datasets(app)
   app$click("continue_to_review")
   app$wait_for_js(
     "document.getElementById('confirm_review') !== null",

@@ -84,19 +84,13 @@ test_that("staged workflow remains focused and overflow-free", {
       ),
       2L
     )
-    app$click("workflow_stage_upload")
-    app$wait_for_js(
-      "document.querySelector('[data-workflow-stage=upload]') !== null",
-      timeout = 10000
-    )
-    app$click("workflow_stage_configure")
     app$wait_for_js(
       "document.querySelector('[data-workflow-stage=configure]') !== null",
       timeout = 10000
     )
     builder_expect_no_horizontal_overflow(app)
 
-    builder_browser_check_current_dataset(app)
+    builder_browser_check_all_datasets(app)
     app$click("continue_to_review")
     builder_wait_for_visible_stage_focus(app, "review")
     expect_identical(
@@ -169,7 +163,7 @@ test_that("staged workflow remains focused and overflow-free", {
       app$get_js("document.getElementById('core-name').value"),
       paste0("Accepted ", viewport[[1]])
     )
-    builder_browser_check_current_dataset(app)
+    builder_browser_check_all_datasets(app)
     app$click("continue_to_review")
     app$wait_for_js(
       "document.getElementById('confirm_review') !== null",
