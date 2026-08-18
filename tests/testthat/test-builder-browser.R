@@ -456,7 +456,8 @@ test_that("duplicate spatial image names open a usable naming modal", {
         "Object.keys(document.getElementById(",
         "'enhance-active_image').selectize.options).length === 1 && ",
         "document.querySelector('.enhance-tissue-file-item') !== null && ",
-        "document.getElementById('enhance-apply_align').offsetParent !== null"
+        "document.querySelector('#enhance-alignment_status ",
+        ".builder-status--ready') !== null"
       ),
       timeout = 30000
     )
@@ -464,12 +465,6 @@ test_that("duplicate spatial image names open a usable naming modal", {
   section <- app$get_js(
     "document.getElementById('enhance-active_section').value"
   )
-  app$click("enhance-apply_align")
-  app$wait_for_js(
-    "document.querySelector('#enhance-alignment_status .builder-status--ready') !== null",
-    timeout = 10000
-  )
-
   app$upload_file(`enhance-tissue_image_file` = image_path)
   tryCatch(
     app$wait_for_js(
@@ -523,7 +518,6 @@ test_that("duplicate spatial image names open a usable naming modal", {
     ),
     timeout = 30000
   )
-  app$click("enhance-apply_align")
   app$wait_for_js(
     "document.querySelector('#enhance-alignment_status .builder-status--ready') !== null",
     timeout = 10000

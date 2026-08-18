@@ -126,4 +126,24 @@ test_that("real Ion drag is rendered locally on the next animation frame", {
   expect_gte(length(metrics$eventToRenderMs), 60L)
   expect_lte(unname(stats::quantile(unlist(metrics$eventToRenderMs), .95)), 34)
   expect_identical(metrics$longTasks, 0L)
+
+  app$run_js(paste0(
+    "(() => {const scene={available:true,viewKey:'test',generation:2,",
+    "resetToken:2,capped:false,points:{x:[],y:[],barcode:[],group:[],",
+    "color:[],count:[]},bounds:{xmin:-1,xmax:1,ymin:-1,ymax:1},",
+    "image:null,controls:{coordinateRotation:66.9,dx:0,dy:0,scale:1,",
+    "rotation:0,flip_x:false,flip_y:false,image_opacity:.8,",
+    "point_opacity:.85,point_size:5}};Shiny.shinyapp.dispatchMessage(",
+    "JSON.stringify({custom:{builder_spatial_canvas_scene:scene}}));})()"
+  ))
+  app$wait_for_js(paste0(
+    "window.__builderSpatialCanvasMetrics.sceneMessages===2 && ",
+    "window.__builderSpatialCanvasMetrics.latestCoordinateRotation===66.9"
+  ))
+  expect_identical(
+    app$get_js(
+      "window.__builderSpatialCanvasMetrics.latestCoordinateRotation"
+    ),
+    66.9
+  )
 })

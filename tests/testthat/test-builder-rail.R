@@ -1129,9 +1129,17 @@ if (builder_rail_api_available) {
     app_env$builder_session_poll <- function(worker, ...) {
       list(worker = worker, event = NULL, result = NULL)
     }
+    upload_root <- withr::local_tempdir()
+    upload_path <- file.path(upload_root, "upload-a")
+    writeBin(as.raw(seq_len(10L)), upload_path)
+    second_upload_path <- file.path(upload_root, "upload-b")
+    writeBin(as.raw(seq_len(20L)), second_upload_path)
 
     shiny::testServer(app_env$server, {
-      worker(list(epoch = "worker-native-picker"))
+      worker(list(
+        epoch = "worker-native-picker",
+        snapshot_root = upload_root
+      ))
       worker_available(TRUE)
       protocol(app_env$builder_request_protocol("worker-native-picker"))
 
@@ -1148,14 +1156,14 @@ if (builder_rail_api_available) {
           name = "alpha.rds",
           size = 10,
           type = "application/octet-stream",
-          datapath = "/tmp/upload-a",
+          datapath = upload_path,
           stringsAsFactors = FALSE
         )
       )
 
       expect_identical(
         pending_sources(),
-        builder_source_key("file", "/tmp/upload-a")
+        builder_source_key("file", upload_path)
       )
       requests <- c(list(protocol()$pending), protocol()$queue)
       expect_identical(
@@ -1186,7 +1194,7 @@ if (builder_rail_api_available) {
           name = "beta.rds",
           size = 20,
           type = "application/octet-stream",
-          datapath = "/tmp/upload-b",
+          datapath = second_upload_path,
           stringsAsFactors = FALSE
         )
       )

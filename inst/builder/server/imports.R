@@ -1,6 +1,14 @@
 ## Builder server: imports.
 
 dataset_mutations_locked <- function(notify = TRUE) {
+  if (exists("builder_operation_allowed", mode = "function", inherits = TRUE)) {
+    return(
+      !isTRUE(builder_operation_allowed(
+        "mutate_datasets",
+        notify = notify
+      ))
+    )
+  }
   locked <- builder_mutations_locked(
     isolate(build_flow()),
     isolate(protocol())
@@ -30,11 +38,23 @@ observe({
   )
 })
 
-start_load <- function(kind, arg, label, file_meta = NULL, client_id = NULL) {
+start_load <- function(
+  kind,
+  arg,
+  label,
+  file_meta = NULL,
+  client_id = NULL,
+  dataset_id = NULL,
+  source_origin = NULL,
+  example_id = NULL
+) {
   if (isTRUE(replay_existing_client_import(client_id))) {
     return(invisible(FALSE))
   }
-  if (dataset_mutations_locked()) {
+  restoring_source <- !is.null(dataset_id) &&
+    exists("builder_project_pending_entries", inherits = TRUE) &&
+    dataset_id %in% names(isolate(builder_project_pending_entries()))
+  if (!isTRUE(restoring_source) && dataset_mutations_locked()) {
     release_client_import(
       client_id,
       outcome = "rejected",
@@ -63,11 +83,21 @@ start_load <- function(kind, arg, label, file_meta = NULL, client_id = NULL) {
   }
   pending_sources(reservation$pending)
   add_error(NULL)
-  seq_id(seq_id() + 1L)
-  id <- paste0("ds", seq_id())
+  existing_ids <- c(
+    vapply(sets(), `[[`, character(1), "id"),
+    vapply(imports()$entries %||% list(), `[[`, character(1), "id")
+  )
+  allocation <- builder_project_allocate_dataset_id(
+    seq_id(),
+    existing_ids,
+    restored_id = dataset_id
+  )
+  seq_id(allocation$sequence)
+  id <- allocation$id
   filename <- NULL
   file_type <- NULL
   file_size <- NA_real_
+  retained_source <- NULL
   if (identical(kind, "file") && is.list(file_meta)) {
     uploads <- pending_uploads()
     filename <- builder_safe_file_name(file_meta$name, paste0(label, ".rds"))
@@ -81,6 +111,18 @@ start_load <- function(kind, arg, label, file_meta = NULL, client_id = NULL) {
       visible = TRUE
     )
     pending_uploads(uploads)
+  } else if (identical(kind, "example")) {
+    example_source <- try(
+      builder_project_example_source(arg, builder_example_catalog()),
+      silent = TRUE
+    )
+    if (!inherits(example_source, "try-error")) {
+      filename <- example_source$filename
+      file_size <- suppressWarnings(as.numeric(
+        file.info(example_source$path)$size[[1L]]
+      ))
+      retained_source <- example_source$path
+    }
   }
   generation <- 1L
   progress_path <- NULL
@@ -99,10 +141,51 @@ start_load <- function(kind, arg, label, file_meta = NULL, client_id = NULL) {
       progress_path <- candidate
     }
   }
+  retain_example <- identical(kind, "example") &&
+    builder_has_text(retained_source) &&
+    builder_has_text(snapshot_root) &&
+    dir.exists(snapshot_root)
+  if (identical(kind, "file") || retain_example) {
+    retained <- try(
+      builder_project_retain_session_source(
+        retained_source %||% arg,
+        filename,
+        snapshot_root,
+        id
+      ),
+      silent = TRUE
+    )
+    if (inherits(retained, "try-error")) {
+      pending_sources(builder_source_release(
+        pending_sources(),
+        reservation$key
+      ))
+      uploads <- pending_uploads()
+      uploads[[id]] <- NULL
+      pending_uploads(uploads)
+      release_client_import(
+        client_id,
+        outcome = "error",
+        message = "The uploaded source could not be retained for this session."
+      )
+      add_error("The uploaded source could not be retained for this session.")
+      return(invisible(FALSE))
+    }
+    retained_source <- retained
+    if (identical(kind, "file")) {
+      arg <- retained
+    }
+  }
   source_descriptor <- list(
     kind = kind,
-    staged_path = if (identical(kind, "file")) arg else NULL,
-    example = if (identical(kind, "example")) arg else NULL,
+    origin = source_origin %||%
+      if (identical(kind, "example")) {
+        "example"
+      } else {
+        "upload"
+      },
+    staged_path = retained_source,
+    example = example_id %||% if (identical(kind, "example")) arg else NULL,
     reservation_key = reservation$key,
     fingerprint = if (identical(kind, "example")) {
       paste0("example:", arg, ":builder-profile-v1")
@@ -141,8 +224,12 @@ start_load <- function(kind, arg, label, file_meta = NULL, client_id = NULL) {
     source = kind,
     id = id,
     path = if (identical(kind, "file")) arg else NA_character_,
-    example = if (identical(kind, "example")) arg else NULL,
+    retained_path = retained_source,
+    example = example_id %||% if (identical(kind, "example")) arg else NULL,
+    source_origin = source_descriptor$origin,
     label = label,
+    filename = filename,
+    reservation_key = reservation$key,
     import_generation = generation,
     progress_path = progress_path,
     note = paste0("Loading ", label, "…")
@@ -535,8 +622,11 @@ observeEvent(input$retry_import, {
     source = entry$source$kind,
     id = entry$id,
     path = entry$source$staged_path,
+    retained_path = entry$source$staged_path,
     example = entry$source$example,
+    source_origin = entry$source$origin,
     label = entry$label,
+    filename = entry$filename,
     import_generation = entry$generation,
     progress_path = progress_path,
     note = paste0("Loading ", entry$label, "…")
@@ -1110,7 +1200,10 @@ observe({
       source_id = p$id,
       output_id = p$id,
       selector_value = p$id,
-      path = p$path,
+      path = p$retained_path %||% p$path,
+      filename = p$filename %||% basename(p$retained_path %||% p$path),
+      source_origin = p$source_origin %||%
+        if (identical(p$source, "example")) "example" else "upload",
       ## Which built-in example produced this, so removing it puts the
       ## example back on offer. NULL for anything read from a file.
       example = p$example,
@@ -1177,13 +1270,17 @@ observe({
       preview_frame(value)
     }
   } else if (identical(p$kind, "projection_previews")) {
-    if (identical(current(), p$id)) {
-      projection_previews(list(dataset = p$id, frames = value %||% list()))
-    }
+    projection_previews(builder_preview_cache_store(
+      isolate(projection_previews()),
+      p$id,
+      value
+    ))
   } else if (identical(p$kind, "trajectory_previews")) {
-    if (identical(current(), p$id)) {
-      trajectory_previews(list(dataset = p$id, frames = value %||% list()))
-    }
+    trajectory_previews(builder_preview_cache_store(
+      isolate(trajectory_previews()),
+      p$id,
+      value
+    ))
   } else if (identical(p$kind, "coords")) {
     if (
       identical(current(), p$id) &&
@@ -1322,9 +1419,9 @@ update_enhance_histology_choices <- function(entry) {
   invisible(choices)
 }
 
-commit_enhance_images <- function(entry, images) {
+commit_enhance_images <- function(entry, images, internal = FALSE) {
   entry$settings$images <- builder_image_collection_normalize(images)
-  changed <- replace_entry(entry)
+  changed <- replace_entry(entry, internal = internal)
   if (!isTRUE(changed)) {
     return(invisible(FALSE))
   }

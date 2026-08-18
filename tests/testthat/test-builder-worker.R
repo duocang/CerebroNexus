@@ -1029,6 +1029,35 @@ if (builder_lifecycle_api_available) {
     expect_true(worker$ready)
   })
 
+  test_that("a session can stop while worker bootstrap is still running", {
+    skip_if_not_installed("callr")
+    gate <- tempfile("builder-worker-stop-startup-gate-")
+    withr::defer(unlink(gate, force = TRUE))
+    worker <- builder_worker_start(
+      builder_profile_inst_path("builder"),
+      .async = TRUE,
+      .bootstrap = local({
+        gate_path <- gate
+        function(...) {
+          while (!file.exists(gate_path)) {
+            Sys.sleep(0.01)
+          }
+          character()
+        }
+      })
+    )
+    process <- worker$process
+
+    expect_identical(worker$state, "starting")
+    expect_true(process$is_alive())
+
+    stopped <- builder_worker_stop(worker, grace_ms = 1000L)
+
+    expect_true(stopped$stopped)
+    expect_false(process$is_alive())
+    expect_true(stopped$tree_verified)
+  })
+
   test_that("worker startup tolerates a cold CI process launch", {
     observed_timeout <- NULL
     failed <- builder_worker_start(

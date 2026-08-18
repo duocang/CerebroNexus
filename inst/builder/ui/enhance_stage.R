@@ -281,7 +281,6 @@ builder_tissue_image_file_ui <- function(id, record) {
     builder_file_human_size(source$size %||% NA_real_),
     sep = " · "
   )
-  saved <- isTRUE(record$saved)
   div(
     class = "builder-file-list builder-file-list--single",
     div(
@@ -292,12 +291,8 @@ builder_tissue_image_file_ui <- function(id, record) {
         span(class = "hint", detail)
       ),
       span(
-        class = paste(
-          "builder-status",
-          "enhance-tissue-file-status",
-          if (saved) "builder-status--ready" else "builder-status--attention"
-        ),
-        if (saved) "Ready" else "Needs saving"
+        class = "builder-status enhance-tissue-file-status builder-status--ready",
+        "Added"
       ),
       div(
         class = "builder-action-row enhance-tissue-file-action-row",
@@ -562,18 +557,10 @@ builder_spatial_alignment_ui <- function(id, model) {
                 ),
                 div(
                   class = "spatial-alignment-actions builder-action-row",
-                  div(
-                    class = "spatial-alignment-actions-primary",
-                    actionButton(
-                      ns("apply_align"),
-                      "Save alignment",
-                      class = "btn btn-action"
-                    ),
-                    actionButton(
-                      ns("reset_align"),
-                      "Reset alignment",
-                      class = "btn btn-quiet"
-                    )
+                  actionButton(
+                    ns("reset_align"),
+                    "Reset alignment",
+                    class = "btn btn-quiet"
                   ),
                   actionButton(
                     ns("apply_align_all"),

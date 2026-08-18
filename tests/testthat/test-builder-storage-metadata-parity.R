@@ -22,7 +22,6 @@ builder_storage_parity_record <- function(section, label) {
     uri = uri,
     base_bounds = list(xmin = -1e6, xmax = 1e6, ymin = -1e6, ymax = 1e6),
     parameters = list(image_opacity = 0.8),
-    saved = TRUE,
     section = list(id = section, kind = "spatial")
   )
 }

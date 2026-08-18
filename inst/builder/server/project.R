@@ -1,0 +1,1510 @@
+## Builder server: durable projects.
+
+builder_project <- reactiveVal(NULL)
+builder_project_saving <- reactiveVal(FALSE)
+builder_project_first_save_offered <- reactiveVal(FALSE)
+builder_project_restore <- reactiveVal(NULL)
+builder_project_pending_entries <- reactiveVal(list())
+builder_project_artifacts <- reactiveVal(list())
+builder_project_build_plan <- reactiveVal(NULL)
+builder_project_checkpoint <- reactiveVal(FALSE)
+builder_project_auto_save_signature <- reactiveVal(NULL)
+builder_project_operation_phase <- reactiveVal("idle")
+builder_project_last_save_error <- reactiveVal(NULL)
+builder_project_source_sync <- reactiveVal(list(
+  status = "idle",
+  completed = 0L,
+  total = 0L,
+  failed = 0L
+))
+builder_project_source_process <- reactiveVal(NULL)
+builder_project_source_queue <- reactiveVal(list())
+builder_project_source_active_ids <- reactiveVal(character())
+builder_project_source_progress <- reactiveVal(NULL)
+builder_client_import_state <- reactiveVal(list(nonce = 0, pending = 0L))
+builder_connection_state <- reactiveVal("connected")
+builder_project_restore_progress <- reactiveVal(list(
+  mode = "idle",
+  total = 0L,
+  remaining = 0L
+))
+
+builder_project_record_map <- function(manifest) {
+  records <- manifest$datasets %||% list()
+  ids <- vapply(records, function(record) as.character(record$id), character(1))
+  stats::setNames(records, ids)
+}
+
+builder_project_dirty <- reactive({
+  project <- builder_project()
+  if (is.null(project)) {
+    return(FALSE)
+  }
+  builder_project_live_dirty(
+    sets(),
+    checked_dataset_ids(),
+    project$manifest
+  )
+})
+
+builder_project_phase <- reactive({
+  operation <- builder_project_operation_phase()
+  if (!identical(operation, "idle")) {
+    return(operation)
+  }
+  if (is.null(builder_project())) {
+    return("none")
+  }
+  if (isTRUE(builder_project_dirty())) "dirty" else "clean"
+})
+
+builder_spatial_drafts_dirty <- reactive({
+  drafts <- alignment_server$coordinate_drafts()
+  length(drafts %||% list()) > 0L
+})
+
+builder_activity <- reactive({
+  project <- builder_project()
+  entries <- sets()
+  client_state <- builder_client_import_state()
+  builder_activity_state(
+    connection = builder_connection_state(),
+    client_imports = client_state$pending %||% 0L,
+    server_imports = length(imports()$entries %||% list()) > 0L,
+    project_phase = builder_project_phase(),
+    spatial_dirty = builder_spatial_drafts_dirty(),
+    source_syncing = identical(builder_project_source_sync()$status, "syncing"),
+    build_locked = builder_mutations_locked(build_flow(), protocol()),
+    has_project = !is.null(project),
+    has_datasets = length(entries) > 0L
+  )
+})
+
+builder_capabilities <- reactive({
+  builder_activity_capabilities(builder_activity())
+})
+
+builder_operation_allowed <- function(operation, notify = TRUE) {
+  activity <- isolate(builder_activity())
+  allowed <- isTRUE(builder_activity_capabilities(activity)[[operation]])
+  if (!allowed && isTRUE(notify)) {
+    showNotification(
+      builder_activity_reason(activity, operation),
+      type = "warning",
+      duration = 6
+    )
+  }
+  allowed
+}
+
+observeEvent(
+  input$builder_client_import_state,
+  {
+    state <- input$builder_client_import_state
+    if (
+      !is.list(state) ||
+        is.object(state) ||
+        !all(c("nonce", "pending") %in% names(state)) ||
+        !is.numeric(state$nonce) ||
+        length(state$nonce) != 1L ||
+        is.na(state$nonce) ||
+        !is.finite(state$nonce) ||
+        !is.numeric(state$pending) ||
+        length(state$pending) != 1L ||
+        is.na(state$pending) ||
+        !is.finite(state$pending) ||
+        state$pending < 0
+    ) {
+      return()
+    }
+    previous <- isolate(builder_client_import_state())
+    if (state$nonce < (previous$nonce %||% 0)) {
+      return()
+    }
+    builder_client_import_state(list(
+      nonce = as.double(state$nonce),
+      pending = as.integer(state$pending)
+    ))
+  },
+  ignoreInit = TRUE
+)
+
+observeEvent(
+  input$builder_client_connection,
+  {
+    state <- input$builder_client_connection
+    if (is.list(state) && identical(state$status %||% NULL, "connected")) {
+      builder_connection_state("connected")
+      activity_message <- builder_activity_message(isolate(builder_activity()))
+      session$onFlushed(
+        function() {
+          session$sendCustomMessage(
+            "builder_activity_state",
+            activity_message
+          )
+        },
+        once = TRUE
+      )
+    }
+  },
+  ignoreInit = TRUE
+)
+
+builder_activity_message <- function(activity, restore_progress = list()) {
+  capabilities <- builder_activity_capabilities(activity)
+  phase <- activity$project_phase
+  title <- switch(
+    phase,
+    opening = "Opening project",
+    restoring = "Restoring datasets",
+    saving = "Saving project",
+    registering = "Preparing reusable CRBs",
+    "Working on your Builder project"
+  )
+  message <- switch(
+    phase,
+    saving = "Saving the Builder project. Keep this page open.",
+    opening = "Reading the project file and checking saved datasets…",
+    restoring = "Loading the selected source datasets…",
+    registering = "Adding reusable CRBs to the project. Keep this page open.",
+    conflict = "This project changed in another Builder window.",
+    NULL
+  )
+  total <- as.integer(restore_progress$total %||% 0L)
+  remaining <- as.integer(restore_progress$remaining %||% 0L)
+  detail <- if (identical(phase, "opening")) {
+    "Keep this page open."
+  } else if (identical(phase, "restoring") && total > 0L) {
+    paste0(total - remaining, " of ", total, " datasets restored")
+  } else {
+    NULL
+  }
+  list(
+    phase = phase,
+    capabilities = capabilities,
+    busy_title = title,
+    busy_message = message,
+    busy_detail = detail,
+    has_project = isTRUE(activity$has_project),
+    warn_before_unload = isTRUE(capabilities$warn_before_unload),
+    page_inert = isTRUE(capabilities$page_inert)
+  )
+}
+
+observe({
+  session$sendCustomMessage(
+    "builder_activity_state",
+    builder_activity_message(
+      builder_activity(),
+      builder_project_restore_progress()
+    )
+  )
+})
+
+observe({
+  progress <- builder_project_source_sync()
+  session$sendCustomMessage(
+    "builder_project_source_progress",
+    list(
+      status = progress$status %||% "idle",
+      completed = as.integer(progress$completed %||% 0L),
+      total = as.integer(progress$total %||% 0L),
+      failed = as.integer(progress$failed %||% 0L)
+    )
+  )
+})
+
+builder_project_capture_build_plan <- function(plan) {
+  if (is.null(isolate(builder_project()))) {
+    builder_project_build_plan(NULL)
+    return(invisible(FALSE))
+  }
+  builder_project_build_plan(unserialize(serialize(plan, NULL, version = 3L)))
+  invisible(plan)
+}
+
+builder_project_source_runtime_file <- function() {
+  candidates <- c(
+    file.path(getwd(), "project.R"),
+    file.path(getwd(), "inst", "builder", "project.R")
+  )
+  found <- candidates[file.exists(candidates)]
+  if (!length(found)) {
+    stop("The Builder Project runtime could not be found.", call. = FALSE)
+  }
+  normalizePath(found[[1L]], winslash = "/", mustWork = TRUE)
+}
+
+builder_project_poll_source_sync <- NULL
+
+builder_project_start_source_sync <- function() {
+  process <- isolate(builder_project_source_process())
+  if (!is.null(process)) {
+    return(invisible(FALSE))
+  }
+  jobs <- isolate(builder_project_source_queue())
+  if (!length(jobs)) {
+    return(invisible(FALSE))
+  }
+  if (!requireNamespace("callr", quietly = TRUE)) {
+    builder_project_source_sync(list(
+      status = "failed",
+      completed = 0L,
+      total = length(jobs),
+      failed = length(jobs)
+    ))
+    showNotification(
+      "Source files could not be saved in the background because callr is unavailable.",
+      type = "error",
+      duration = 8
+    )
+    return(invisible(FALSE))
+  }
+  project <- isolate(builder_project())
+  if (is.null(project)) {
+    return(invisible(FALSE))
+  }
+  builder_project_source_queue(list())
+  builder_project_source_active_ids(vapply(jobs, `[[`, character(1), "id"))
+  progress_path <- tempfile(
+    pattern = ".builder-source-sync-",
+    tmpdir = project$root,
+    fileext = ".rds"
+  )
+  builder_project_source_progress(progress_path)
+  process <- tryCatch(
+    callr::r_bg(
+      function(jobs, progress_path, runtime_file) {
+        runtime <- new.env(parent = globalenv())
+        runtime$`%||%` <- function(left, right) {
+          if (is.null(left)) right else left
+        }
+        sys.source(runtime_file, envir = runtime)
+        runtime$builder_project_copy_source_jobs(jobs, progress_path)
+      },
+      args = list(
+        jobs = unname(jobs),
+        progress_path = progress_path,
+        runtime_file = builder_project_source_runtime_file()
+      ),
+      supervise = TRUE,
+      stdout = "|",
+      stderr = "|"
+    ),
+    error = identity
+  )
+  if (inherits(process, "error")) {
+    builder_project_source_active_ids(character())
+    builder_project_source_progress(NULL)
+    builder_project_source_sync(list(
+      status = "failed",
+      completed = 0L,
+      total = length(jobs),
+      failed = length(jobs)
+    ))
+    showNotification(conditionMessage(process), type = "error", duration = 8)
+    return(invisible(FALSE))
+  }
+  builder_project_source_process(process)
+  builder_project_source_sync(list(
+    status = "syncing",
+    completed = 0L,
+    total = length(jobs),
+    failed = 0L
+  ))
+  later::later(builder_project_poll_source_sync, delay = 0.2)
+  invisible(TRUE)
+}
+
+builder_project_poll_source_sync <- function() {
+  process <- isolate(builder_project_source_process())
+  if (is.null(process)) {
+    return(invisible(FALSE))
+  }
+  progress_path <- isolate(builder_project_source_progress())
+  if (.builder_project_text(progress_path) && file.exists(progress_path)) {
+    progress <- tryCatch(readRDS(progress_path), error = function(error) NULL)
+    if (is.list(progress)) {
+      failed <- sum(vapply(
+        Filter(Negate(is.null), progress$results %||% list()),
+        function(result) identical(result$status, "failed"),
+        logical(1)
+      ))
+      builder_project_source_sync(list(
+        status = "syncing",
+        completed = as.integer(progress$completed %||% 0L),
+        total = as.integer(progress$total %||% 0L),
+        failed = as.integer(failed)
+      ))
+    }
+  }
+  if (isTRUE(process$is_alive())) {
+    later::later(builder_project_poll_source_sync, delay = 0.2)
+    return(invisible(TRUE))
+  }
+  results <- tryCatch(process$get_result(), error = identity)
+  active_ids <- isolate(builder_project_source_active_ids())
+  if (inherits(results, "error")) {
+    results <- lapply(active_ids, function(id) {
+      list(
+        id = id,
+        status = "failed",
+        error = conditionMessage(results)
+      )
+    })
+  }
+  project <- isolate(builder_project())
+  written <- NULL
+  if (!is.null(project)) {
+    updated <- tryCatch(
+      builder_project_apply_source_results(
+        project$manifest,
+        results,
+        project$root
+      ),
+      error = identity
+    )
+    if (!inherits(updated, "error")) {
+      written <- tryCatch(
+        builder_project_write(
+          updated,
+          project$root,
+          expected_revision = project$manifest$project$revision
+        ),
+        error = identity
+      )
+    } else {
+      written <- updated
+    }
+  }
+  unlink(progress_path %||% "", force = TRUE)
+  builder_project_source_process(NULL)
+  builder_project_source_progress(NULL)
+  builder_project_source_active_ids(character())
+  failed <- sum(vapply(
+    results,
+    function(result) identical(result$status, "failed"),
+    logical(1)
+  ))
+  if (inherits(written, "error") || is.null(written)) {
+    failed <- max(1L, failed)
+    showNotification(
+      if (inherits(written, "error")) {
+        conditionMessage(written)
+      } else {
+        "The Project source results could not be saved."
+      },
+      type = "error",
+      duration = 8
+    )
+  } else {
+    project$manifest <- written$manifest
+    project$path <- written$path
+    builder_project(project)
+  }
+  builder_project_source_sync(list(
+    status = if (failed) "failed" else "ready",
+    completed = length(results),
+    total = length(results),
+    failed = as.integer(failed)
+  ))
+  if (length(isolate(builder_project_source_queue()))) {
+    builder_project_start_source_sync()
+  }
+  invisible(failed == 0L)
+}
+
+request_builder_project_source_sync <- function(jobs) {
+  jobs <- Filter(Negate(is.null), jobs %||% list())
+  if (!length(jobs)) {
+    return(invisible(FALSE))
+  }
+  active <- isolate(builder_project_source_active_ids())
+  queued <- isolate(builder_project_source_queue())
+  for (job in jobs) {
+    if (!job$id %in% active) {
+      queued[[job$id]] <- job
+    }
+  }
+  builder_project_source_queue(queued)
+  builder_project_start_source_sync()
+}
+
+builder_project_build_manifest <- function(entries, project) {
+  manifest <- project$manifest
+  previous <- builder_project_record_map(manifest)
+  checked <- isolate(checked_dataset_ids())
+  artifacts <- isolate(builder_project_artifacts())
+  staged_entries <- vector("list", length(entries))
+  records <- vector("list", length(entries))
+  jobs <- vector("list", length(entries))
+  for (index in seq_along(entries)) {
+    entry <- entries[[index]]
+    prior <- previous[[entry$id]] %||% NULL
+    if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
+      staged <- list(
+        entry = entry,
+        source = prior$source %||% list(kind = "missing", path = NULL),
+        job = NULL
+      )
+    } else {
+      staged <- builder_project_prepare_source(entry, project$root, prior)
+    }
+    artifact <- artifacts[[entry$id]] %||%
+      entry$project_artifact %||%
+      prior$artifact %||%
+      NULL
+    if (is.list(artifact)) {
+      current_digest <- builder_project_configuration_digest(staged$entry)
+      if (
+        !identical(entry$load_state %||% "loaded", "artifact_ready") &&
+          !identical(
+            artifact$built_from_configuration %||% "",
+            current_digest
+          )
+      ) {
+        artifact$status <- "stale"
+      }
+      if (
+        is.list(artifact$plan_item) &&
+          !.builder_project_text(artifact$plan_payload %||% "")
+      ) {
+        artifact$plan_payload <- jsonlite::serializeJSON(
+          artifact$plan_item,
+          digits = NA,
+          pretty = FALSE
+        )
+      }
+      artifact$plan_item <- NULL
+      artifact$resolved_path <- NULL
+      if (length(artifact$members %||% list())) {
+        artifact$members <- lapply(artifact$members, function(member) {
+          member$resolved_path <- NULL
+          member
+        })
+      }
+    }
+    payload_entry <- builder_project_stage_spatial_assets(
+      staged$entry,
+      project$root
+    )
+    staged_entries[[index]] <- staged$entry
+    jobs[[index]] <- staged$job
+    records[[index]] <- builder_project_dataset_record(
+      staged$entry,
+      staged$source,
+      checked = entry$id %in% checked,
+      artifact = artifact,
+      order = index,
+      payload_entry = payload_entry
+    )
+  }
+  retained_ids <- vapply(records, `[[`, character(1), "id")
+  inactive <- previous[setdiff(names(previous), retained_ids)]
+  if (length(inactive)) {
+    inactive <- lapply(inactive, function(record) {
+      record$release <- list(included = FALSE)
+      record
+    })
+    records <- c(records, unname(inactive))
+  }
+  manifest$datasets <- records
+  manifest$last_ui <- list(
+    stage = isolate(selected_workflow_stage()),
+    selected_dataset = isolate(current())
+  )
+  list(
+    manifest = manifest,
+    entries = staged_entries,
+    jobs = Filter(Negate(is.null), jobs)
+  )
+}
+
+save_builder_project_state <- function(
+  show_actions = FALSE,
+  materialize = TRUE,
+  notify = TRUE,
+  manage_lifecycle = TRUE
+) {
+  project <- isolate(builder_project())
+  if (is.null(project)) {
+    shiny::showModal(builder_project_first_save_dialog())
+    return(invisible(FALSE))
+  }
+  if (isTRUE(manage_lifecycle) && isTRUE(isolate(builder_project_saving()))) {
+    return(invisible(FALSE))
+  }
+  if (isTRUE(manage_lifecycle)) {
+    builder_project_saving(TRUE)
+    builder_project_operation_phase("saving")
+    on.exit(builder_project_saving(FALSE), add = TRUE)
+  }
+  save_failed <- function(message) {
+    builder_project_last_save_error(message)
+    if (isTRUE(manage_lifecycle)) {
+      builder_project_operation_phase(
+        if (grepl("updated by another Builder window", message, fixed = TRUE)) {
+          "conflict"
+        } else {
+          "save_failed"
+        }
+      )
+    }
+    invisible(FALSE)
+  }
+  entries <- isolate(sets())
+  if (isTRUE(materialize) && length(entries)) {
+    materialized <- alignment_server$materialize_coordinate_drafts(
+      notify = FALSE
+    )
+    if (!isTRUE(materialized$ok)) {
+      if (isTRUE(notify)) {
+        showNotification(
+          materialized$error %||%
+            "Current spatial settings could not be saved.",
+          type = "error",
+          duration = 7
+        )
+      }
+      return(save_failed(
+        materialized$error %||% "Current spatial settings could not be saved."
+      ))
+    }
+    entries <- materialized$all_entries
+  }
+  built <- tryCatch(
+    builder_project_build_manifest(entries, project),
+    error = function(error) error
+  )
+  if (inherits(built, "condition")) {
+    if (isTRUE(notify)) {
+      showNotification(conditionMessage(built), type = "error", duration = 7)
+    }
+    return(save_failed(conditionMessage(built)))
+  }
+  changed_paths <- !identical(
+    lapply(entries, `[[`, "path"),
+    lapply(built$entries, `[[`, "path")
+  )
+  written <- tryCatch(
+    builder_project_write(
+      built$manifest,
+      project$root,
+      expected_revision = project$manifest$project$revision
+    ),
+    error = function(error) error
+  )
+  if (inherits(written, "condition")) {
+    if (isTRUE(notify)) {
+      showNotification(conditionMessage(written), type = "error", duration = 8)
+    }
+    return(save_failed(conditionMessage(written)))
+  }
+  if (changed_paths) {
+    sets(built$entries)
+  }
+  project$manifest <- written$manifest
+  project$path <- written$path
+  project$name <- written$manifest$project$name
+  builder_project(project)
+  request_builder_project_source_sync(built$jobs)
+  builder_project_last_save_error(NULL)
+  if (isTRUE(manage_lifecycle)) {
+    builder_project_operation_phase("idle")
+  }
+  if (isTRUE(show_actions)) {
+    records <- builder_project_record_map(written$manifest)
+    checked <- sum(vapply(
+      records,
+      function(record) isTRUE(record$configuration$checked),
+      logical(1)
+    ))
+    reusable <- sum(vapply(
+      records,
+      function(record) {
+        builder_project_artifact_available(
+          record$artifact,
+          project$root
+        )
+      },
+      logical(1)
+    ))
+    source_sync <- isolate(builder_project_source_sync())
+    session$sendCustomMessage(
+      "builder_project_save_result",
+      list(
+        checked = as.integer(checked),
+        reusable = as.integer(reusable),
+        source_syncing = length(built$jobs) > 0L ||
+          identical(
+            source_sync$status,
+            "syncing"
+          ),
+        completed = as.integer(source_sync$completed %||% 0L),
+        total = as.integer(max(
+          source_sync$total %||% 0L,
+          length(built$jobs)
+        ))
+      )
+    )
+  } else if (isTRUE(notify)) {
+    showNotification(
+      if (length(built$jobs)) {
+        "Project settings saved. Source files are saving in the background."
+      } else {
+        "Project saved."
+      },
+      type = "message",
+      duration = 4
+    )
+  }
+  invisible(TRUE)
+}
+
+request_builder_project_save <- function(
+  show_actions = FALSE,
+  materialize = TRUE,
+  notify = TRUE,
+  after = NULL
+) {
+  if (isTRUE(isolate(builder_project_saving()))) {
+    return(invisible(FALSE))
+  }
+  builder_project_saving(TRUE)
+  builder_project_operation_phase("saving")
+  session$onFlushed(
+    function() {
+      shiny::isolate({
+        ok <- tryCatch(
+          save_builder_project_state(
+            show_actions = show_actions,
+            materialize = materialize,
+            notify = notify,
+            manage_lifecycle = FALSE
+          ),
+          error = function(error) {
+            builder_project_last_save_error(conditionMessage(error))
+            if (isTRUE(notify)) {
+              showNotification(
+                conditionMessage(error),
+                type = "error",
+                duration = 8
+              )
+            }
+            FALSE
+          }
+        )
+        builder_project_saving(FALSE)
+        if (isTRUE(ok)) {
+          builder_project_operation_phase("idle")
+        } else {
+          message <- builder_project_last_save_error() %||% ""
+          builder_project_operation_phase(
+            if (
+              grepl("updated by another Builder window", message, fixed = TRUE)
+            ) {
+              "conflict"
+            } else {
+              "save_failed"
+            }
+          )
+        }
+        if (is.function(after)) {
+          after(isTRUE(ok))
+        }
+      })
+    },
+    once = TRUE
+  )
+  invisible(TRUE)
+}
+
+output$project_status <- renderUI({
+  project <- builder_project()
+  builder_project_status_ui(
+    if (is.null(project)) NULL else list(name = project$name),
+    phase = builder_project_phase(),
+    source_sync = builder_project_source_sync()
+  )
+})
+
+observe({
+  entries <- sets()
+  if (
+    length(entries) &&
+      is.null(isolate(builder_project())) &&
+      !isTRUE(isolate(builder_project_first_save_offered()))
+  ) {
+    builder_project_first_save_offered(TRUE)
+    shiny::showModal(builder_project_first_save_dialog())
+  }
+})
+
+observe({
+  project <- builder_project()
+  entries <- sets()
+  if (
+    is.null(project) || !length(entries) || isTRUE(builder_project_saving())
+  ) {
+    return()
+  }
+  if (!isTRUE(builder_capabilities()$save_project)) {
+    return()
+  }
+  current_ids <- vapply(entries, `[[`, character(1), "id")
+  saved_ids <- names(builder_project_record_map(project$manifest))
+  missing_ids <- sort(setdiff(current_ids, saved_ids))
+  if (!length(missing_ids)) {
+    builder_project_auto_save_signature(NULL)
+    return()
+  }
+  signature <- paste(missing_ids, collapse = "\r")
+  if (identical(signature, isolate(builder_project_auto_save_signature()))) {
+    return()
+  }
+  builder_project_auto_save_signature(signature)
+  request_builder_project_save(
+    show_actions = FALSE,
+    materialize = FALSE,
+    notify = FALSE,
+    after = function(ok) {
+      if (!isTRUE(ok)) {
+        showNotification(
+          "The new dataset was not saved to the project. Use Save project to retry.",
+          type = "error",
+          duration = 8
+        )
+      }
+    }
+  )
+})
+
+observeEvent(input$choose_builder_project_folder, {
+  if (!builder_operation_allowed("create_project")) {
+    return()
+  }
+  choice <- builder_choose_project_directory()
+  if (!builder_operation_allowed("create_project")) {
+    return()
+  }
+  if (identical(choice$status, "cancelled")) {
+    return()
+  }
+  if (!identical(choice$status, "selected")) {
+    showNotification(
+      choice$error %||% "The project folder could not be opened.",
+      type = "error",
+      duration = 7
+    )
+    return()
+  }
+  manifest_path <- builder_project_manifest_path(choice$path)
+  if (file.exists(manifest_path)) {
+    showNotification(
+      "This folder already contains a Builder project. Use Open project instead.",
+      type = "warning",
+      duration = 7
+    )
+    return()
+  }
+  manifest <- builder_project_new_manifest(choice$path)
+  builder_project(list(
+    root = choice$path,
+    path = manifest_path,
+    name = manifest$project$name,
+    manifest = manifest
+  ))
+  shiny::removeModal()
+  request_builder_project_save(show_actions = FALSE, materialize = TRUE)
+})
+
+observeEvent(input$save_builder_project, {
+  if (is.null(isolate(builder_project()))) {
+    if (!builder_operation_allowed("create_project")) {
+      return()
+    }
+    shiny::showModal(builder_project_first_save_dialog())
+  } else {
+    if (!builder_operation_allowed("save_project")) {
+      return()
+    }
+    request_builder_project_save(show_actions = TRUE, materialize = TRUE)
+  }
+})
+
+observeEvent(input$open_builder_project, {
+  if (!builder_operation_allowed("open_project")) {
+    return()
+  }
+  choice <- builder_choose_project_manifest()
+  if (!builder_operation_allowed("open_project")) {
+    return()
+  }
+  if (identical(choice$status, "cancelled")) {
+    return()
+  }
+  if (!identical(choice$status, "selected")) {
+    showNotification(
+      choice$error %||% "The project file could not be opened.",
+      type = "error",
+      duration = 7
+    )
+    return()
+  }
+  builder_project_restore_progress(list(
+    mode = "opening",
+    total = 0L,
+    remaining = 0L
+  ))
+  builder_project_operation_phase("opening")
+  selected_path <- choice$path
+  session$onFlushed(
+    function() {
+      shiny::isolate({
+        manifest <- tryCatch(
+          builder_project_read(selected_path),
+          error = identity
+        )
+        if (inherits(manifest, "error")) {
+          builder_project_restore_progress(list(
+            mode = "idle",
+            total = 0L,
+            remaining = 0L
+          ))
+          builder_project_operation_phase("idle")
+          showNotification(
+            conditionMessage(manifest),
+            type = "error",
+            duration = 8
+          )
+          return()
+        }
+        if (identical(manifest$pending_build$status %||% NULL, "running")) {
+          manifest$pending_build$status <- "interrupted"
+        }
+        root <- dirname(selected_path)
+        builder_project_restore(list(
+          manifest = manifest,
+          root = root,
+          path = selected_path
+        ))
+        builder_project_restore_progress(list(
+          mode = "idle",
+          total = 0L,
+          remaining = 0L
+        ))
+        builder_project_operation_phase("idle")
+        shiny::showModal(builder_project_restore_dialog(manifest, root))
+      })
+    },
+    once = TRUE
+  )
+})
+
+observeEvent(input$confirm_builder_project_open, {
+  pending <- isolate(builder_project_restore())
+  operation <- isolate(builder_project_operation_phase())
+  if (is.null(pending) || !operation %in% c("idle", "conflict")) {
+    return()
+  }
+  manifest <- pending$manifest
+  root <- pending$root
+  records <- builder_project_record_map(manifest)
+  reusable_entries <- list()
+  pending_entries <- list()
+  artifacts <- list()
+  for (record in records) {
+    action <- input[[paste0("project_restore_", record$id)]] %||% "skip"
+    status <- builder_project_dataset_status(record, root)
+    if (identical(action, "reuse") && status$artifact_ready) {
+      entry <- builder_project_restore_entry(
+        record,
+        root,
+        hydrate_spatial_assets = FALSE
+      )
+      entry <- builder_project_artifact_entry(entry, record$artifact, root)
+      reusable_entries[[length(reusable_entries) + 1L]] <- entry
+      artifacts[[record$id]] <- record$artifact
+    } else if (identical(action, "resume") && status$restorable) {
+      pending_entries[[record$id]] <- record
+    }
+  }
+  reusable_entries <- reusable_entries[order(vapply(
+    reusable_entries,
+    function(entry) records[[entry$id]]$order %||% 0L,
+    numeric(1)
+  ))]
+  store(builder_state(
+    datasets = reusable_entries,
+    current_dataset = if (length(reusable_entries)) {
+      reusable_entries[[1L]]$id
+    } else {
+      NULL
+    }
+  ))
+  marks <- character()
+  if (length(reusable_entries)) {
+    marks <- vapply(
+      reusable_entries,
+      builder_project_check_identity,
+      character(1)
+    )
+    names(marks) <- vapply(reusable_entries, `[[`, character(1), "id")
+  }
+  dataset_check_marks(marks)
+  builder_project_pending_entries(pending_entries)
+  builder_project_artifacts(artifacts)
+  builder_project(list(
+    root = root,
+    path = pending$path,
+    name = manifest$project$name,
+    manifest = manifest
+  ))
+  builder_project_restore(NULL)
+  shiny::removeModal()
+  restore_total <- length(pending_entries)
+  if (!restore_total) {
+    builder_project_restore_progress(list(
+      mode = "idle",
+      total = 0L,
+      remaining = 0L
+    ))
+    builder_project_operation_phase("idle")
+    return()
+  }
+  builder_project_restore_progress(list(
+    mode = "restoring",
+    total = restore_total,
+    remaining = restore_total
+  ))
+  ## Keep the project locked while the client receives the restore UI update,
+  ## but do not advertise the sources as restoring until start_load() has
+  ## registered their import records. Otherwise the abandoned-entry observer
+  ## can run in this flush, see neither a live dataset nor an import, and drop
+  ## the saved settings before the onFlushed callback gets to enqueue them.
+  builder_project_operation_phase("opening")
+  entries_to_restore <- pending_entries
+  session$onFlushed(
+    function() {
+      shiny::isolate({
+        for (record in entries_to_restore) {
+          source <- record$source %||% list()
+          if (identical(source$kind, "example")) {
+            start_load(
+              "example",
+              source$example,
+              record$name,
+              dataset_id = record$id
+            )
+          } else {
+            path <- builder_project_resolve_path(
+              source$path,
+              root,
+              source$kind %||% "managed"
+            )
+            info <- file.info(path)
+            start_load(
+              "file",
+              path,
+              record$name,
+              file_meta = list(
+                name = source$filename %||% basename(path),
+                type = "application/octet-stream",
+                size = as.double(info$size[[1L]])
+              ),
+              dataset_id = record$id,
+              source_origin = source$origin %||% "upload",
+              example_id = source$example %||% NULL
+            )
+          }
+        }
+        builder_project_operation_phase("restoring")
+      })
+    },
+    once = TRUE
+  )
+})
+
+observe({
+  pending <- builder_project_pending_entries()
+  if (!length(pending)) {
+    return()
+  }
+  state <- store()
+  entries <- state$datasets %||% list()
+  changed <- FALSE
+  restored_ids <- character()
+  marks <- isolate(dataset_check_marks())
+  for (index in seq_along(entries)) {
+    id <- entries[[index]]$id
+    record <- pending[[id]] %||% NULL
+    if (
+      is.null(record) ||
+        !identical(entries[[index]]$load_state %||% "loaded", "loaded")
+    ) {
+      next
+    }
+    saved <- builder_project_restore_entry(
+      record,
+      isolate(builder_project())$root
+    )
+    restored <- entries[[index]]
+    restored$settings <- saved$settings
+    restored$acknowledgements <- saved$acknowledgements %||% NULL
+    restored$spatial_drafts <- saved$spatial_drafts %||% NULL
+    restored$revision <- max(
+      as.integer(restored$revision %||% 0L),
+      as.integer(saved$revision %||% 0L)
+    ) +
+      1L
+    entries[[index]] <- restored
+    restored_ids <- c(restored_ids, id)
+    project <- isolate(builder_project())
+    status <- builder_project_dataset_status(record, project$root)
+    restored_mark <- builder_project_restored_check_identity(
+      record,
+      restored,
+      status
+    )
+    if (!is.null(restored_mark)) {
+      marks[[id]] <- restored_mark
+    }
+    pending[[id]] <- NULL
+    changed <- TRUE
+  }
+  if (changed) {
+    sets(entries)
+    alignment_server$restore_project_settings(restored_ids)
+    dataset_check_marks(marks)
+    builder_project_pending_entries(pending)
+    progress <- isolate(builder_project_restore_progress())
+    builder_project_restore_progress(list(
+      mode = "restoring",
+      total = as.integer(progress$total %||% length(pending)),
+      remaining = length(pending)
+    ))
+    saved <- save_builder_project_state(
+      show_actions = FALSE,
+      materialize = FALSE,
+      notify = FALSE,
+      manage_lifecycle = FALSE
+    )
+    if (!length(pending)) {
+      builder_project_restore_progress(list(
+        mode = "idle",
+        total = 0L,
+        remaining = 0L
+      ))
+      builder_project_operation_phase(
+        if (isTRUE(saved)) "idle" else "save_failed"
+      )
+    }
+  }
+})
+
+observe({
+  if (!identical(builder_project_operation_phase(), "restoring")) {
+    return()
+  }
+  pending <- builder_project_pending_entries()
+  if (!length(pending)) {
+    builder_project_operation_phase("idle")
+    return()
+  }
+  live_ids <- vapply(sets(), `[[`, character(1), "id")
+  import_ids <- vapply(
+    imports()$entries %||% list(),
+    `[[`,
+    character(1),
+    "id"
+  )
+  abandoned <- builder_project_abandoned_entries(
+    pending,
+    live_ids,
+    import_ids,
+    builder_project_operation_phase()
+  )
+  if (!length(abandoned)) {
+    return()
+  }
+  pending[abandoned] <- NULL
+  builder_project_pending_entries(pending)
+  progress <- isolate(builder_project_restore_progress())
+  builder_project_restore_progress(list(
+    mode = if (length(pending)) "restoring" else "idle",
+    total = as.integer(progress$total %||% length(pending)),
+    remaining = length(pending)
+  ))
+  if (!length(pending)) {
+    builder_project_operation_phase("idle")
+  }
+})
+
+observeEvent(input$project_resume_current_source, {
+  if (!builder_operation_allowed("edit_dataset")) {
+    return()
+  }
+  id <- isolate(current())
+  project <- isolate(builder_project())
+  if (is.null(project) || is.null(id)) {
+    return()
+  }
+  records <- builder_project_record_map(project$manifest)
+  record <- records[[id]] %||% NULL
+  status <- if (is.null(record)) {
+    NULL
+  } else {
+    builder_project_dataset_status(record, project$root)
+  }
+  if (is.null(record) || !isTRUE(status$restorable)) {
+    showNotification(
+      "The source file must be re-linked before editing.",
+      type = "warning"
+    )
+    return()
+  }
+  remaining <- Filter(function(entry) !identical(entry$id, id), isolate(sets()))
+  store(builder_state(
+    datasets = remaining,
+    current_dataset = if (length(remaining)) remaining[[1L]]$id else NULL
+  ))
+  marks <- isolate(dataset_check_marks())
+  marks <- marks[names(marks) != id]
+  dataset_check_marks(marks)
+  pending <- isolate(builder_project_pending_entries())
+  pending[[id]] <- record
+  builder_project_pending_entries(pending)
+  source <- record$source
+  if (identical(source$kind, "example")) {
+    start_load("example", source$example, record$name, dataset_id = id)
+  } else {
+    path <- builder_project_resolve_path(source$path, project$root, source$kind)
+    info <- file.info(path)
+    start_load(
+      "file",
+      path,
+      record$name,
+      file_meta = list(
+        name = source$filename %||% basename(path),
+        type = "application/octet-stream",
+        size = as.double(info$size[[1L]])
+      ),
+      dataset_id = id,
+      source_origin = source$origin %||% "upload",
+      example_id = source$example %||% NULL
+    )
+  }
+})
+
+enqueue_builder_project_checkpoint <- function(plan) {
+  current_protocol <- isolate(protocol())
+  if (
+    is.null(current_protocol) ||
+      !isTRUE(tryCatch(
+        builder_protocol_is_quiescent(current_protocol),
+        error = function(error) FALSE
+      ))
+  ) {
+    showNotification(
+      "Wait for the current background action to finish.",
+      type = "warning"
+    )
+    return(invisible(FALSE))
+  }
+  builder_project_checkpoint(TRUE)
+  project <- isolate(builder_project())
+  if (!is.null(project)) {
+    project$manifest$pending_build <- list(
+      id = paste0(
+        "checkpoint-",
+        format(Sys.time(), "%Y%m%dT%H%M%S", tz = "UTC")
+      ),
+      status = "running",
+      dataset_ids = as.character(vapply(plan$items, `[[`, character(1), "id")),
+      started_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC")
+    )
+    builder_project(project)
+    save_builder_project_state(
+      show_actions = FALSE,
+      materialize = FALSE,
+      notify = FALSE
+    )
+  }
+  result(NULL)
+  queued <- enqueue(list(
+    kind = "build",
+    plan = unserialize(serialize(plan, NULL, version = 3L)),
+    auth_accounts = builder_auth_empty_accounts(),
+    note = paste0(
+      "Preparing ",
+      length(plan$items),
+      " checked CRB",
+      if (length(plan$items) == 1L) "" else "s",
+      "…"
+    )
+  ))
+  if (!isTRUE(queued)) {
+    builder_project_checkpoint(FALSE)
+    project <- isolate(builder_project())
+    if (!is.null(project)) {
+      project$manifest <- builder_project_finish_pending_build(
+        project$manifest,
+        status = "failed",
+        error = "The checkpoint build could not be queued."
+      )
+      builder_project(project)
+      save_builder_project_state(
+        show_actions = FALSE,
+        materialize = FALSE,
+        notify = FALSE
+      )
+    }
+    showNotification(
+      "The checkpoint build could not be queued.",
+      type = "error",
+      duration = 7
+    )
+    return(invisible(FALSE))
+  }
+  builder_project_capture_build_plan(plan)
+  build_flow(list(stage = "building", plan = NULL))
+  shiny::removeModal()
+  showNotification(
+    "The project is safe. Checked CRBs are being prepared.",
+    type = "message",
+    duration = 5
+  )
+  invisible(TRUE)
+}
+
+observeEvent(input$prepare_builder_project_crbs, {
+  if (!builder_operation_allowed("prepare_crbs")) {
+    return()
+  }
+  project <- isolate(builder_project())
+  checked <- isolate(checked_dataset_ids())
+  entries <- Filter(function(entry) entry$id %in% checked, isolate(sets()))
+  if (is.null(project) || !length(entries)) {
+    return()
+  }
+  request_builder_project_save(
+    show_actions = FALSE,
+    materialize = TRUE,
+    notify = TRUE,
+    after = function(ok) {
+      if (!isTRUE(ok)) {
+        return()
+      }
+      latest_project <- isolate(builder_project())
+      latest_checked <- isolate(checked_dataset_ids())
+      latest_entries <- Filter(
+        function(entry) entry$id %in% latest_checked,
+        isolate(sets())
+      )
+      output <- file.path(
+        latest_project$root,
+        "checkpoints",
+        format(Sys.time(), "%Y%m%dT%H%M%S", tz = "UTC")
+      )
+      dir.create(output, recursive = TRUE, showWarnings = FALSE)
+      checkpoint_entries <- builder_project_checkpoint_entries(latest_entries)
+      plan <- freeze_plan_for_output(
+        output,
+        overwrite = TRUE,
+        output_options = builder_build_options(make_app = FALSE),
+        entries_override = checkpoint_entries
+      )
+      if (
+        !inherits(plan, "builder_build_plan") ||
+          !identical(plan$readiness, "ready")
+      ) {
+        showNotification(
+          plan$error %||% "Checked CRBs could not be prepared.",
+          type = "error",
+          duration = 8
+        )
+        return()
+      }
+      enqueue_builder_project_checkpoint(plan)
+    }
+  )
+})
+
+observe({
+  value <- result()
+  plan <- isolate(builder_project_build_plan())
+  project <- isolate(builder_project())
+  if (is.null(plan) || is.null(project) || !is.list(value)) {
+    return()
+  }
+  terminal <- any(vapply(
+    c("success", "failure", "needs_decision"),
+    identical,
+    logical(1),
+    y = value$state
+  )) ||
+    isTRUE(value$published)
+  if (!isTRUE(terminal)) {
+    return()
+  }
+  builder_project_operation_phase("registering")
+  builder_project_build_plan(NULL)
+  builder_project_checkpoint(FALSE)
+  session$onFlushed(
+    function() {
+      on.exit(
+        {
+          if (
+            identical(isolate(builder_project_operation_phase()), "registering")
+          ) {
+            builder_project_operation_phase("save_failed")
+          }
+        },
+        add = TRUE
+      )
+      if (!is.null(project$manifest$pending_build)) {
+        terminal_status <- if (identical(value$state, "success")) {
+          "completed"
+        } else {
+          "failed"
+        }
+        project$manifest <- builder_project_finish_pending_build(
+          project$manifest,
+          status = terminal_status,
+          error = if (identical(terminal_status, "failed")) {
+            value$error %||% "The checkpoint build failed."
+          } else {
+            NULL
+          }
+        )
+        builder_project(project)
+      }
+      if (
+        !identical(value$state, "success") ||
+          !length(value$built %||% character())
+      ) {
+        saved <- save_builder_project_state(
+          show_actions = FALSE,
+          materialize = FALSE,
+          notify = FALSE,
+          manage_lifecycle = FALSE
+        )
+        builder_project_operation_phase(
+          if (isTRUE(saved)) "idle" else "save_failed"
+        )
+        return()
+      }
+      artifacts <- isolate(builder_project_artifacts())
+      entries <- isolate(sets())
+      entry_ids <- vapply(entries, `[[`, character(1), "id")
+      for (item in plan$items) {
+        built <- value$built[[item$name]] %||% NULL
+        if (!.builder_project_text(built) || !file.exists(built)) {
+          next
+        }
+        target_dir <- file.path(project$root, "artifacts", item$id)
+        dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+        target <- file.path(target_dir, basename(built))
+        same <- identical(
+          normalizePath(built, winslash = "/", mustWork = TRUE),
+          normalizePath(target, winslash = "/", mustWork = FALSE)
+        )
+        if (
+          !same && !file.copy(built, target, overwrite = TRUE, copy.mode = TRUE)
+        ) {
+          next
+        }
+        members <- list()
+        for (member_target in item$sidecars %||% character()) {
+          source <- file.path(dirname(built), member_target)
+          if (!file.exists(source)) {
+            next
+          }
+          member_destination <- file.path(target_dir, member_target)
+          dir.create(
+            dirname(member_destination),
+            recursive = TRUE,
+            showWarnings = FALSE
+          )
+          if (
+            file.copy(
+              source,
+              member_destination,
+              overwrite = TRUE,
+              copy.mode = TRUE
+            )
+          ) {
+            members[[length(members) + 1L]] <- list(
+              target = member_target,
+              path = builder_project_relative_path(
+                member_destination,
+                project$root
+              ),
+              fingerprint = builder_project_file_fingerprint(
+                member_destination,
+                content = TRUE
+              )
+            )
+          }
+        }
+        stored_item <- item
+        stored_item$reused_artifact <- NULL
+        revision <- if (item$id %in% entry_ids) {
+          entries[[match(item$id, entry_ids)]]$revision %||% 0L
+        } else {
+          0L
+        }
+        artifacts[[item$id]] <- list(
+          status = "ready",
+          reusable = identical(
+            item$spatial_image_storage %||% "embedded",
+            "embedded"
+          ) &&
+            !length(setdiff(
+              item$private_assets %||% character(),
+              c(item$filename, item$sidecars %||% character())
+            )),
+          path = builder_project_relative_path(target, project$root),
+          fingerprint = builder_project_file_fingerprint(
+            target,
+            content = TRUE
+          ),
+          built_from_revision = as.integer(revision),
+          built_from_configuration = if (item$id %in% entry_ids) {
+            builder_project_configuration_digest(entries[[match(
+              item$id,
+              entry_ids
+            )]])
+          } else {
+            NULL
+          },
+          built_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC"),
+          plan_payload = jsonlite::serializeJSON(
+            stored_item,
+            digits = NA,
+            pretty = FALSE
+          ),
+          members = members
+        )
+      }
+      builder_project_artifacts(artifacts)
+      saved <- save_builder_project_state(
+        show_actions = FALSE,
+        materialize = FALSE,
+        notify = FALSE,
+        manage_lifecycle = FALSE
+      )
+      builder_project_operation_phase(
+        if (isTRUE(saved)) "idle" else "save_failed"
+      )
+      if (isTRUE(saved)) {
+        showNotification(
+          "Reusable CRBs were added to the project.",
+          type = "message",
+          duration = 5
+        )
+      }
+    },
+    once = TRUE
+  )
+})

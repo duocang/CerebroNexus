@@ -87,6 +87,152 @@ builder_choose_output_directory <- function(.select = NULL) {
   list(status = "selected", path = path)
 }
 
+builder_project_osascript <- function(kind = c("directory", "manifest")) {
+  kind <- match.arg(kind)
+  if (identical(kind, "directory")) {
+    return(paste0(
+      "POSIX path of (choose folder with prompt ",
+      "\"Choose a folder for the Builder project.\")"
+    ))
+  }
+  paste0(
+    "POSIX path of (choose file with prompt ",
+    "\"Open a Builder project.\" of type {\"public.json\"})"
+  )
+}
+
+#' Choose a durable Builder project folder.
+builder_choose_project_directory <- function(.select = NULL) {
+  select <- .select %||%
+    function() {
+      system <- Sys.info()[["sysname"]] %||% ""
+      if (identical(system, "Windows")) {
+        return(utils::choose.dir(
+          caption = "Choose a folder for the Builder project."
+        ))
+      }
+      if (identical(system, "Darwin")) {
+        script <- builder_project_osascript("directory")
+        return(system2("osascript", c("-e", shQuote(script)), stdout = TRUE))
+      }
+      zenity <- Sys.which("zenity")
+      if (nzchar(zenity)) {
+        return(system2(
+          zenity,
+          c(
+            "--file-selection",
+            "--directory",
+            shQuote("--title=Choose a folder for the Builder project.")
+          ),
+          stdout = TRUE,
+          stderr = FALSE
+        ))
+      }
+      kdialog <- Sys.which("kdialog")
+      if (nzchar(kdialog)) {
+        return(system2(
+          kdialog,
+          c("--getexistingdirectory", shQuote(path.expand("~"))),
+          stdout = TRUE,
+          stderr = FALSE
+        ))
+      }
+      stop("No system folder picker is available.", call. = FALSE)
+    }
+  chosen <- tryCatch(select(), error = identity)
+  if (inherits(chosen, "error")) {
+    return(list(
+      status = "error",
+      path = NULL,
+      error = conditionMessage(chosen)
+    ))
+  }
+  if (!length(chosen) || is.na(chosen[[1L]]) || !nzchar(trimws(chosen[[1L]]))) {
+    return(list(status = "cancelled", path = NULL))
+  }
+  path <- tryCatch(
+    normalizePath(
+      path.expand(trimws(chosen[[1L]])),
+      winslash = "/",
+      mustWork = TRUE
+    ),
+    error = identity
+  )
+  if (inherits(path, "error") || !dir.exists(path)) {
+    return(list(
+      status = "error",
+      path = NULL,
+      error = "The selected folder is not available."
+    ))
+  }
+  list(status = "selected", path = path)
+}
+
+#' Choose an existing Builder project manifest with the operating system picker.
+builder_choose_project_manifest <- function(.select = NULL) {
+  select <- .select %||%
+    function() {
+      system <- Sys.info()[["sysname"]] %||% ""
+      if (identical(system, "Windows")) {
+        return(file.choose())
+      }
+      if (identical(system, "Darwin")) {
+        script <- builder_project_osascript("manifest")
+        return(system2("osascript", c("-e", shQuote(script)), stdout = TRUE))
+      }
+      zenity <- Sys.which("zenity")
+      if (nzchar(zenity)) {
+        return(system2(
+          zenity,
+          c(
+            "--file-selection",
+            shQuote("--title=Open a Builder project."),
+            shQuote("--file-filter=Builder project | *.json")
+          ),
+          stdout = TRUE,
+          stderr = FALSE
+        ))
+      }
+      kdialog <- Sys.which("kdialog")
+      if (nzchar(kdialog)) {
+        return(system2(
+          kdialog,
+          c("--getopenfilename", shQuote(path.expand("~")), shQuote("*.json")),
+          stdout = TRUE,
+          stderr = FALSE
+        ))
+      }
+      stop("No system file picker is available.", call. = FALSE)
+    }
+  chosen <- tryCatch(select(), error = identity)
+  if (inherits(chosen, "error")) {
+    return(list(
+      status = "error",
+      path = NULL,
+      error = conditionMessage(chosen)
+    ))
+  }
+  if (!length(chosen) || is.na(chosen[[1L]]) || !nzchar(trimws(chosen[[1L]]))) {
+    return(list(status = "cancelled", path = NULL))
+  }
+  path <- tryCatch(
+    normalizePath(
+      path.expand(trimws(chosen[[1L]])),
+      winslash = "/",
+      mustWork = TRUE
+    ),
+    error = identity
+  )
+  if (inherits(path, "error") || !file.exists(path) || dir.exists(path)) {
+    return(list(
+      status = "error",
+      path = NULL,
+      error = "The selected project file is not available."
+    ))
+  }
+  list(status = "selected", path = path)
+}
+
 ## Resource lookup must stay in the same immutable inst/ tree as this file.
 ## `system.file()` is deliberately only a fallback for runtimes where io.R was
 ## not sourced from a verifiable <inst>/builder/io.R path (for example, a

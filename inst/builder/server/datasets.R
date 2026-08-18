@@ -472,12 +472,16 @@ observe({
     logical(1)
   )]
   contract <- builder_projection_preview_contract(entry, ids)
-  if (identical(contract, isolate(projection_preview_contract()))) {
+  cache <- isolate(projection_previews())
+  if (builder_preview_cache_hit(cache, id, contract)) {
     return()
   }
-  projection_previews(list(dataset = id, frames = list()))
   if (!length(ids)) {
-    projection_preview_contract(contract)
+    projection_previews(builder_preview_cache_store(
+      builder_preview_cache_begin(cache, id, contract),
+      id,
+      list()
+    ))
     return()
   }
   queued <- enqueue(list(
@@ -489,7 +493,9 @@ observe({
     max_cells = 600L,
     replaces = "viewer-projection-gallery"
   ))
-  if (isTRUE(queued)) projection_preview_contract(contract)
+  if (isTRUE(queued)) {
+    projection_previews(builder_preview_cache_begin(cache, id, contract))
+  }
 })
 
 observe({
@@ -502,12 +508,16 @@ observe({
     trajectory_catalog_for_entry(entry)
   )
   contract <- builder_trajectory_preview_contract(entry, trajectories)
-  if (identical(contract, isolate(trajectory_preview_contract()))) {
+  cache <- isolate(trajectory_previews())
+  if (builder_preview_cache_hit(cache, id, contract)) {
     return()
   }
-  trajectory_previews(list(dataset = id, frames = list()))
   if (!length(trajectories)) {
-    trajectory_preview_contract(contract)
+    trajectory_previews(builder_preview_cache_store(
+      builder_preview_cache_begin(cache, id, contract),
+      id,
+      list()
+    ))
     return()
   }
   queued <- enqueue(list(
@@ -518,7 +528,9 @@ observe({
     max_cells = 600L,
     replaces = "viewer-trajectory-gallery"
   ))
-  if (isTRUE(queued)) trajectory_preview_contract(contract)
+  if (isTRUE(queued)) {
+    trajectory_previews(builder_preview_cache_begin(cache, id, contract))
+  }
 })
 
 observeEvent(
@@ -717,8 +729,7 @@ output[["core-projection_gallery"]] <- renderUI({
   }
   entry <- builder_upgrade_viewer_content_entry(entry_of(id))
   req(entry)
-  preview <- projection_previews()
-  frames <- if (identical(preview$dataset, id)) preview$frames else list()
+  frames <- builder_preview_cache_frames(projection_previews(), id)
   group <- entry$settings$default_group %||% ""
   levels <- entry$levels[[group]] %||% character()
   colors <- if (length(levels)) {
@@ -753,8 +764,7 @@ output[["core-trajectory_gallery"]] <- renderUI({
   }
   entry <- builder_upgrade_viewer_content_entry(entry_of(id))
   req(entry)
-  preview <- trajectory_previews()
-  frames <- if (identical(preview$dataset, id)) preview$frames else list()
+  frames <- builder_preview_cache_frames(trajectory_previews(), id)
   model <- builder_trajectory_catalog_model(list(
     trajectory_catalog = trajectory_catalog_for_entry(entry),
     included_trajectories = entry$settings$included_trajectories,

@@ -296,7 +296,7 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       session$flushReact()
 
       expect_identical(alignment$draft()$source$name, "section-a.png")
-      expect_false(alignment$draft()$saved)
+      expect_false("saved" %in% names(alignment$draft()))
       expect_match(alignment$draft()$source_uri, "^data:image/png;base64,")
       expect_named(committed, "section-a")
       expect_identical(commit_count, 1L)
@@ -333,7 +333,7 @@ test_that("pending tissue image requires its matching preview and snapshot", {
   )
 })
 
-test_that("dataset switches save discard or cancel an unsaved alignment", {
+test_that("alignment controls auto-commit before dataset switches", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   skip_if_not_installed("png")
@@ -350,7 +350,6 @@ test_that("dataset switches save discard or cancel an unsaved alignment", {
     uri = encoded$uri,
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
     image_geometry = encoded,
-    saved = TRUE,
     section = list(id = "section-a", kind = "spatial")
   )
   entry <- list(
@@ -417,7 +416,6 @@ test_that("dataset switches save discard or cancel an unsaved alignment", {
       session$flushReact()
       alignment_preview(preview)
       session$flushReact()
-      expect_false(alignment$has_unsaved())
       loaded_image <- alignment$raw_image()
       expect_false(is.null(loaded_image))
 
@@ -428,64 +426,40 @@ test_that("dataset switches save discard or cancel an unsaved alignment", {
 
       session$setInputs(`enhance-img_dx` = 0)
       session$flushReact()
-      expect_false(alignment$has_unsaved())
 
-      alignment$raw_image(NULL)
       session$setInputs(`enhance-img_dx` = 2)
       session$flushReact()
-      expect_true(alignment$has_unsaved())
       expect_identical(alignment$draft()$dx, 2)
       expect_false("outside" %in% names(alignment$draft()))
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["H&E"]]$dx,
+        2
+      )
       alignment$request_dataset_switch("dataset-b", function() {
-        switched <<- c(switched, "cancelled")
+        switched <<- c(switched, "after-dx")
       })
-      session$setInputs(`enhance-alignment_switch_cancel` = 1L)
-      session$flushReact()
-      expect_identical(switched, "immediate")
-      expect_true(alignment$has_unsaved())
+      expect_identical(switched, c("immediate", "after-dx"))
       expect_identical(alignment$draft()$dx, 2)
-
-      alignment$request_dataset_switch("dataset-b", function() {
-        switched <<- c(switched, "discarded")
-      })
-      session$setInputs(`enhance-alignment_switch_discard` = 1L)
-      session$flushReact()
-      expect_identical(switched, c("immediate", "discarded"))
-      expect_false(alignment$has_unsaved())
-      expect_true(alignment$draft()$saved)
-      expect_identical(alignment$draft()$dx, 0)
-
-      session$setInputs(`enhance-img_dx` = 0)
-      session$flushReact()
-      expect_false(alignment$has_unsaved())
 
       session$setInputs(`enhance-img_rotate` = 90)
       session$flushReact()
-      expect_true(alignment$has_unsaved())
       expect_identical(alignment$draft()$rotation, 90)
-      alignment$request_dataset_switch("dataset-b", function() NULL)
-      session$setInputs(`enhance-alignment_switch_discard` = 2L)
-      session$flushReact()
-      session$setInputs(`enhance-img_rotate` = 0)
-      session$flushReact()
-      expect_false(alignment$has_unsaved())
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["H&E"]]$rotation,
+        90
+      )
 
       session$setInputs(`enhance-image_flip_x` = TRUE)
       session$flushReact()
-      expect_true(alignment$has_unsaved())
       expect_true(alignment$draft()$flip_x)
-      alignment$request_dataset_switch("dataset-b", function() NULL)
-      session$setInputs(`enhance-alignment_switch_discard` = 3L)
-      session$flushReact()
-      session$setInputs(`enhance-image_flip_x` = FALSE)
-      session$flushReact()
-      expect_false(alignment$has_unsaved())
+      expect_true(
+        current_entry()$settings$images[["section-a"]][["H&E"]]$flip_x
+      )
 
       alignment$raw_image(loaded_image)
       session$flushReact()
       session$setInputs(`enhance-img_dx` = 1)
       session$flushReact()
-      expect_true(alignment$has_unsaved())
       canonical <- alignment$current_record()
       expect_identical(alignment$draft()$uri, canonical$uri)
       expect_identical(alignment$draft()$bounds, canonical$bounds)
@@ -494,13 +468,17 @@ test_that("dataset switches save discard or cancel an unsaved alignment", {
       expect_true(is.numeric(canonical$outside))
       expect_true(is.numeric(canonical$total))
       alignment$request_dataset_switch("dataset-b", function() {
-        switched <<- c(switched, "saved")
+        switched <<- c(switched, "after-final-change")
       })
-      session$setInputs(`enhance-alignment_switch_save` = 1L)
-      session$flushReact()
-      expect_identical(switched, c("immediate", "discarded", "saved"))
-      expect_false(alignment$has_unsaved())
+      expect_identical(
+        switched,
+        c("immediate", "after-dx", "after-final-change")
+      )
       expect_identical(alignment$draft()$dx, 1)
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["H&E"]]$dx,
+        1
+      )
     }
   )
 })
@@ -769,7 +747,6 @@ test_that("canonical alignment transform is deterministic and complete", {
     uri = "data:image/png;base64,BBBB",
     base_bounds = original,
     parameters = parameters,
-    saved = FALSE,
     section = list(id = "section-a", kind = "spatial")
   )
 
@@ -790,13 +767,12 @@ test_that("canonical alignment transform is deterministic and complete", {
       "image_opacity",
       "point_opacity",
       "point_size",
-      "saved",
       "section_id",
       "section_kind"
     ),
     ignore.order = TRUE
   )
-  expect_false(record$saved)
+  expect_false("saved" %in% names(record))
   expect_equal(
     record$bounds,
     list(xmin = -15, xmax = 135, ymin = 7.5, ymax = 82.5)
@@ -898,7 +874,6 @@ test_that("reset and apply-to-all preserve each section image identity", {
         point_size = 7
       )
     ),
-    saved = TRUE,
     section = list(id = "first", kind = "spatial")
   )
   second <- builder_alignment_record(
@@ -907,7 +882,6 @@ test_that("reset and apply-to-all preserve each section image identity", {
     uri = "data:image/png;base64,SECOND",
     base_bounds = list(xmin = 100, xmax = 130, ymin = 50, ymax = 70),
     parameters = defaults,
-    saved = TRUE,
     section = list(id = "second", kind = "spatial")
   )
 
@@ -931,16 +905,17 @@ test_that("reset and apply-to-all preserve each section image identity", {
   expect_identical(reset$dx, 0)
   expect_identical(reset$rotation, 0)
   expect_identical(reset$bounds, first$base_bounds)
-  expect_false(reset$saved)
+  expect_false("saved" %in% names(reset))
 })
 
-test_that("legacy image records remain saved and gain canonical defaults", {
+test_that("legacy image records drop saved flags and gain canonical defaults", {
   legacy <- list(
     uri = "data:image/png;base64,AAAA",
-    bounds = list(xmin = 0, xmax = 4, ymin = 0, ymax = 3)
+    bounds = list(xmin = 0, xmax = 4, ymin = 0, ymax = 3),
+    saved = FALSE
   )
   normalized <- builder_alignment_normalize(legacy, section_id = "fov")
-  expect_true(normalized$saved)
+  expect_false("saved" %in% names(normalized))
   expect_identical(normalized$base_bounds, legacy$bounds)
   expect_identical(normalized$section_id, "fov")
   expect_identical(normalized$point_size, 5)
@@ -953,7 +928,6 @@ test_that("named spatial image collections normalize without losing labels", {
       source_uri = "data:image/png;base64,AAAA",
       uri = "data:image/png;base64,AAAA",
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      saved = TRUE,
       section = list(id = section, kind = "spatial")
     )
   }
@@ -1011,7 +985,6 @@ test_that("named spatial image actions preserve unaffected records", {
       uri = paste0("data:image/png;base64,", filename),
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
       parameters = list(dx = dx),
-      saved = TRUE,
       section = list(id = section, kind = "spatial")
     )
   }
@@ -1049,7 +1022,6 @@ test_that("matching-label transform never crosses image identities", {
       uri = paste0("data:image/png;base64,", filename),
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
       parameters = list(dx = dx),
-      saved = TRUE,
       section = list(id = section, kind = "spatial")
     )
   }
@@ -1069,28 +1041,8 @@ test_that("matching-label transform never crosses image identities", {
     "H&E"
   )
   expect_identical(copied$section_b[["H&E"]]$dx, 4)
-  expect_false(copied$section_b[["H&E"]]$saved)
+  expect_false("saved" %in% names(copied$section_b[["H&E"]]))
   expect_identical(copied$section_b$DAPI, images$section_b$DAPI)
-})
-
-test_that("saving a coordinate frame invalidates every image confirmation in its FOV", {
-  record <- builder_alignment_record(
-    source = list(name = "image.png"),
-    source_uri = "data:image/png;base64,AA==",
-    uri = "data:image/png;base64,AA==",
-    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-    saved = TRUE,
-    section = list(id = "fov-a", kind = "spatial")
-  )
-  images <- list(
-    "fov-a" = list(first = record, second = record),
-    "fov-b" = list(other = record)
-  )
-  invalidated <- builder_image_collection_mark_section_unsaved(images, "fov-a")
-
-  expect_false(invalidated[["fov-a"]][["first"]]$saved)
-  expect_false(invalidated[["fov-a"]][["second"]]$saved)
-  expect_true(invalidated[["fov-b"]][["other"]]$saved)
 })
 
 test_that("coordinate drafts stay partitioned and reject stale browser events", {
@@ -1189,14 +1141,80 @@ test_that("coordinate draft pruning removes deleted and stale snapshots", {
   expect_setequal(pruned$removed, c("dataset-a::fov-a", "dataset-c::fov-c"))
 })
 
-test_that("coordinate drafts batch materialize transforms and image invalidation", {
+test_that("coordinate draft pruning treats artifact entries as snapshotless", {
+  drafts <- builder_coordinate_drafts_put(
+    list(),
+    "dataset-a",
+    "old-snapshot",
+    "fov-a",
+    list(rotation_degrees = 10, scale = 1),
+    1
+  )$drafts
+
+  pruned <- builder_coordinate_drafts_prune(
+    drafts,
+    list(list(id = "dataset-a", snapshot_identity = NULL))
+  )
+
+  expect_null(pruned$drafts[["dataset-a"]])
+  expect_identical(pruned$removed, "dataset-a::fov-a")
+})
+
+test_that("artifact entries do not initialize editable Spatial state", {
+  skip_if_not_installed("shiny")
+  entry <- list(
+    id = "dataset-a",
+    load_state = "artifact_ready",
+    snapshot = NULL,
+    profile = list(images = "fov-a", extras = list()),
+    settings = list(
+      name = "Dataset A",
+      images = list(
+        fov_a = list(
+          `H&E` = list(
+            project_asset = list(path = "spatial-assets/image.png"),
+            bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10)
+          )
+        )
+      )
+    )
+  )
+  current <- shiny::reactiveVal(entry$id)
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) entry,
+        entries = shiny::reactiveVal(list(entry)),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) stop("artifact entry requested a preview"),
+        commit_images = function(entry, images) {
+          stop("artifact entry committed editable images")
+        },
+        alignment_preview = shiny::reactiveVal(NULL),
+        spatial_coords = shiny::reactiveVal(NULL)
+      )
+    },
+    {
+      session$flushReact()
+      expect_null(alignment$active_section())
+      expect_null(alignment$active_image())
+      expect_null(alignment$draft())
+    }
+  )
+})
+
+test_that("coordinate drafts batch materialize transforms without image state", {
   record <- function(section) {
     builder_alignment_record(
       source = list(name = paste0(section, ".png")),
       source_uri = "data:image/png;base64,AA==",
       uri = "data:image/png;base64,AA==",
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      saved = TRUE,
       section = list(id = section, kind = "spatial")
     )
   }
@@ -1244,9 +1262,24 @@ test_that("coordinate drafts batch materialize transforms and image invalidation
     list(schema_version = 1L, rotation_degrees = 42, scale = 1)
   )
   expect_null(applied$entry$settings$spatial_coordinate_transforms[["fov-b"]])
-  expect_false(applied$entry$settings$images[["fov-a"]]$image$saved)
-  expect_false(applied$entry$settings$images[["fov-b"]]$image$saved)
-  expect_true(applied$entry$settings$images[["fov-c"]]$image$saved)
+  expect_false(
+    "saved" %in%
+      names(
+        applied$entry$settings$images[["fov-a"]]$image
+      )
+  )
+  expect_false(
+    "saved" %in%
+      names(
+        applied$entry$settings$images[["fov-b"]]$image
+      )
+  )
+  expect_false(
+    "saved" %in%
+      names(
+        applied$entry$settings$images[["fov-c"]]$image
+      )
+  )
 })
 
 test_that("coordinate release events stay light until one batched materialization", {
@@ -1360,6 +1393,168 @@ test_that("coordinate release events stay light until one batched materializatio
   )
 })
 
+test_that("project restore replaces default coordinate drafts authoritatively", {
+  skip_if_not_installed("shiny")
+  entry <- list(
+    id = "ds1",
+    snapshot = list(
+      path = "/private/ds1",
+      owner_token = "owner-ds1",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "section_a_1_fov_1", extras = list()),
+    settings = list(
+      name = "Dataset 1",
+      images = list(),
+      spatial_coordinate_transforms = list(),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro"
+    )
+  )
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(
+      id = "section_a_1_fov_1",
+      kind = "spatial",
+      unit = "pixels"
+    ),
+    projection_name = "umap",
+    capped = FALSE,
+    spatial = data.frame(
+      cell_barcode = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("A", "B"),
+      stringsAsFactors = FALSE
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  alignment_preview <- shiny::reactiveVal(preview)
+  input_messages <- list()
+  identity <- .builder_worker_identity(entry$snapshot)
+
+  shiny::testServer(
+    function(input, output, session) {
+      session$sendInputMessage <- function(input_id, message) {
+        input_messages[[length(input_messages) + 1L]] <<- list(
+          id = input_id,
+          message = message
+        )
+        invisible()
+      }
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        entries = shiny::reactive(list(current_entry())),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(updated, images) {
+          updated$settings$images <- images
+          current_entry(updated)
+          invisible(updated)
+        },
+        alignment_preview = alignment_preview,
+        spatial_coords = shiny::reactiveVal(NULL)
+      )
+    },
+    {
+      session$flushReact()
+      alignment_preview(preview)
+      session$flushReact()
+      initial_scene <- alignment$canvas_contract()
+      expect_identical(initial_scene$controls$coordinateRotation, 0)
+      session$setInputs(
+        builder_spatial_coordinate_draft = list(
+          dataset = "ds1",
+          snapshotIdentity = identity,
+          section = "section_a_1_fov_1",
+          rotationDegrees = 0,
+          sequence = 1,
+          generation = initial_scene$generation
+        )
+      )
+      session$flushReact()
+
+      restored <- current_entry()
+      restored$settings$spatial_coordinate_transforms <- list(
+        section_a_1_fov_1 = list(rotation_degrees = 66.9, scale = 1)
+      )
+      current_entry(restored)
+      expect_identical(
+        current_entry()$settings$spatial_coordinate_transforms[[
+          "section_a_1_fov_1"
+        ]]$rotation_degrees,
+        66.9
+      )
+      expect_identical(
+        alignment$coordinate_drafts()[["ds1"]][[
+          "section_a_1_fov_1"
+        ]]$spec$rotation_degrees,
+        0
+      )
+      alignment$restore_project_settings("ds1")
+      session$setInputs(
+        builder_spatial_coordinate_draft = list(
+          dataset = "ds1",
+          snapshotIdentity = identity,
+          section = "section_a_1_fov_1",
+          rotationDegrees = 0,
+          sequence = 2,
+          generation = initial_scene$generation
+        )
+      )
+      session$flushReact()
+      session$flushReact()
+
+      expect_identical(
+        current_entry()$settings$spatial_coordinate_transforms[[
+          "section_a_1_fov_1"
+        ]]$rotation_degrees,
+        66.9
+      )
+      slider_updates <- Filter(
+        function(item) identical(item$id, "enhance-coordinate_rotation"),
+        input_messages
+      )
+      expect_gt(length(slider_updates), 0L)
+      expect_identical(
+        as.numeric(tail(slider_updates, 1L)[[1L]]$message$value),
+        66.9
+      )
+      expect_identical(
+        alignment$canvas_contract()$controls$coordinateRotation,
+        66.9
+      )
+      expect_length(alignment$coordinate_drafts(), 0L)
+
+      restored_scene <- alignment$canvas_contract()
+      session$setInputs(
+        builder_spatial_coordinate_draft = list(
+          dataset = "ds1",
+          snapshotIdentity = identity,
+          section = "section_a_1_fov_1",
+          rotationDegrees = 12.5,
+          sequence = 3,
+          generation = restored_scene$generation
+        )
+      )
+      session$flushReact()
+      expect_identical(
+        alignment$coordinate_drafts()[["ds1"]][[
+          "section_a_1_fov_1"
+        ]]$spec$rotation_degrees,
+        12.5
+      )
+    }
+  )
+})
+
 test_that("failed coordinate materialization retains its session drafts", {
   skip_if_not_installed("shiny")
   entry <- list(
@@ -1427,7 +1622,6 @@ test_that("serialized alignment payload excludes editing bytes and local paths",
     uri = "data:image/png;base64,DISPLAY",
     base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 5),
     parameters = list(dx = 2, rotation = 15, point_size = 7),
-    saved = TRUE,
     section = list(id = "fov", kind = "spatial")
   )
   record$datapath <- "/private/tmp/upload.png"
@@ -1461,13 +1655,11 @@ test_that("Spatial and Trekker alignments are partitioned without collision", {
     fov = list(
       uri = "data:image/png;base64,SPATIAL",
       bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      saved = TRUE,
       section_kind = "spatial"
     ),
     trekker = list(
       uri = "data:image/png;base64,TREKKER",
       bounds = list(xmin = 20, xmax = 30, ymin = 40, ymax = 50),
-      saved = TRUE,
       section_kind = "trekker"
     )
   )

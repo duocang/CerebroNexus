@@ -50,6 +50,25 @@
     !any(components %in% c(".", ".."))
 }
 
+.builder_build_fingerprint_matches <- function(path, fingerprint) {
+  if (
+    !.builder_build_text(path) ||
+      !file.exists(path) ||
+      dir.exists(path) ||
+      !is.list(fingerprint) ||
+      !.builder_build_text(fingerprint$md5 %||% NULL)
+  ) {
+    return(FALSE)
+  }
+  observed <- tryCatch(
+    unname(tools::md5sum(path)),
+    error = function(error) NA_character_
+  )
+  length(observed) == 1L &&
+    !is.na(observed) &&
+    identical(as.character(observed), as.character(fingerprint$md5))
+}
+
 .builder_build_failure <- function(message, failures = character()) {
   list(
     state = "failure",
@@ -652,7 +671,7 @@ builder_verify_crb <- function(path, item) {
     candidate <- selected_record$evidence$selected_candidates[["metadata"]]
     sample_column <- candidate$normalized$sample_column %||% NULL
     object <- clear_sources(object)
-    return(CerebroNexus::addImmuneRepertoire(
+    return(addImmuneRepertoire(
       object,
       sample_col = sample_column,
       groups = item$included_groups,
@@ -670,7 +689,7 @@ builder_verify_crb <- function(path, item) {
   bcr <- if ("legacy_bcr" %in% selected) object@misc$bcr_data else NULL
   tcr <- if ("legacy_tcr" %in% selected) object@misc$tcr_data else NULL
   object <- clear_sources(object)
-  CerebroNexus::addImmuneRepertoire(
+  addImmuneRepertoire(
     object,
     tcr = tcr,
     bcr = bcr,
@@ -786,7 +805,7 @@ builder_verify_crb <- function(path, item) {
   ) {
     coordinate_transforms <- NULL
   }
-  CerebroNexus::exportFromSeurat(
+  exportFromSeurat(
     object = object,
     assay = item$assay,
     slot = item$layer,
@@ -1037,6 +1056,88 @@ builder_execute_plan <- function(
     stage = stage
   )
   for (item in plan$items) {
+    reused <- item$reused_artifact %||% NULL
+    if (is.list(reused)) {
+      if (
+        !.builder_build_safe_relative(item$filename) ||
+          !is.character(reused$path) ||
+          length(reused$path) != 1L ||
+          is.na(reused$path) ||
+          !file.exists(reused$path) ||
+          dir.exists(reused$path) ||
+          !.builder_build_fingerprint_matches(
+            reused$path,
+            reused$fingerprint %||% list()
+          )
+      ) {
+        return(.builder_build_failure(paste0(
+          item$name,
+          ": the reusable CRB is unavailable or has changed."
+        )))
+      }
+      target <- file.path(stage, item$filename)
+      if (
+        !.builder_build_path_within(target, stage, must_exist = FALSE) ||
+          !file.copy(reused$path, target, overwrite = FALSE, copy.mode = TRUE)
+      ) {
+        return(.builder_build_failure(paste0(
+          item$name,
+          ": the reusable CRB could not be staged."
+        )))
+      }
+      members <- reused$members %||% list()
+      for (member in members) {
+        member_source <- member$resolved_path %||% NULL
+        member_target <- member$target %||% NULL
+        if (
+          !is.character(member_source) ||
+            length(member_source) != 1L ||
+            is.na(member_source) ||
+            !file.exists(member_source) ||
+            !.builder_build_fingerprint_matches(
+              member_source,
+              member$fingerprint %||% list()
+            ) ||
+            !.builder_build_safe_relative(member_target %||% "")
+        ) {
+          return(.builder_build_failure(paste0(
+            item$name,
+            ": a reusable CRB companion file is unavailable."
+          )))
+        }
+        destination <- file.path(stage, member_target)
+        dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
+        if (
+          !.builder_build_path_within(destination, stage, must_exist = FALSE) ||
+            !file.copy(
+              member_source,
+              destination,
+              overwrite = FALSE,
+              copy.mode = TRUE
+            )
+        ) {
+          return(.builder_build_failure(paste0(
+            item$name,
+            ": a reusable CRB companion file could not be staged."
+          )))
+        }
+      }
+      verified <- tryCatch(hooks$verify(target, item), error = function(error) {
+        error
+      })
+      if (inherits(verified, "condition") || !isTRUE(verified$valid)) {
+        message <- if (inherits(verified, "condition")) {
+          conditionMessage(verified)
+        } else {
+          "Artifact verification did not return a valid result."
+        }
+        return(.builder_build_failure(paste0(item$name, ": ", message)))
+      }
+      result$built <- c(result$built, stats::setNames(target, item$name))
+      result$labels <- c(result$labels, item$name)
+      result$verifications[[item$id]] <- verified
+      next
+    }
     snapshot <- snapshots[[item$id]]
     if (is.null(snapshot)) {
       return(.builder_build_failure(paste0(

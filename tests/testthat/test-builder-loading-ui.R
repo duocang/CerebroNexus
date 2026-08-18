@@ -77,6 +77,94 @@ test_that("the Builder initial HTML contains a stable non-empty shell", {
   expect_false(grepl('uiOutput("ds_list")', pre_server, fixed = TRUE))
 })
 
+test_that("the initial shell explains background workspace startup", {
+  app <- paste(
+    readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  foundation <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "foundation.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(app, 'id = "builder-worker-status"', fixed = TRUE)
+  expect_match(app, "Starting background workspace", fixed = TRUE)
+  expect_match(app, "Loading dataset readers and analysis tools", fixed = TRUE)
+  expect_match(foundation, "session$onFlushed(", fixed = TRUE)
+  expect_match(foundation, "later::later(start_builder_worker", fixed = TRUE)
+  expect_match(foundation, "shiny::isolate(worker())", fixed = TRUE)
+  expect_match(client, '"builder_worker_status"', fixed = TRUE)
+  expect_match(client, "builderWorkerReady", fixed = TRUE)
+  expect_match(client, 'detail.hidden = state === "ready"', fixed = TRUE)
+
+  css <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.components.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(css, "display: inline-flex", fixed = TRUE)
+  expect_match(css, "background: transparent", fixed = TRUE)
+  expect_match(
+    css,
+    ".builder-worker-status.is-ready .builder-worker-status-copy span",
+    fixed = TRUE
+  )
+})
+
+test_that("project-folder selection remains available during client upload", {
+  client <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  import_sensitive <- regmatches(
+    client,
+    regexpr(
+      "(?s)var importSensitive = \\[.*?var workerSensitive =",
+      client,
+      perl = TRUE
+    )
+  )
+
+  expect_false(grepl('"create_project"', import_sensitive, fixed = TRUE))
+})
+
+test_that("optional authentication packages are checked only on demand", {
+  app <- paste(
+    readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  build_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "build.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_false(grepl(
+    "auth_capability <- builder_auth_capability()",
+    app,
+    fixed = TRUE
+  ))
+  expect_match(app, "auth_capability <- local({", fixed = TRUE)
+  expect_match(build_server, "auth_capability()", fixed = TRUE)
+})
+
 test_that("dataset selection uses one hidden single-file Shiny transport", {
   app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
   pre_server <- paste(
@@ -363,4 +451,18 @@ test_that("client scheduler serializes file and example dispatch", {
   )
   expect_match(css, "bottom: .8rem", fixed = TRUE)
   expect_match(css, "prefers-reduced-motion: reduce", fixed = TRUE)
+})
+
+test_that("dataset import feedback stays legible while Shiny recalculates", {
+  css <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.components.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(css, "#ds_import_list.recalculating", fixed = TRUE)
+  expect_match(css, "#ds_client_import_queue.recalculating", fixed = TRUE)
+  expect_match(css, "--shiny-fade-opacity: 1", fixed = TRUE)
 })

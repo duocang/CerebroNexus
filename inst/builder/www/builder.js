@@ -60,6 +60,35 @@
   var viewerDisclosureState = new Map();
   var managerTransitionSequence = 0;
   var datasetMutationsLocked = false;
+  var builderConnectionReady = true;
+  var builderWorkerReady = false;
+  var dynamicContentEnhancementFrame = null;
+  var builderActivityState = {
+    phase: "none",
+    capabilities: {
+      select_dataset: true,
+      add_dataset: true,
+      edit_dataset: true,
+      mutate_datasets: true,
+      check_dataset: true,
+      create_project: false,
+      save_project: false,
+      open_project: true,
+      prepare_crbs: false,
+      navigate_workflow: true,
+      build: true,
+      page_inert: false,
+      warn_before_unload: false,
+    },
+    busy_title: null,
+    busy_message: null,
+    busy_detail: null,
+    has_project: false,
+    warn_before_unload: false,
+    page_inert: false,
+  };
+  var builderProjectSaveResult = null;
+  var builderProjectSaveResultOpen = false;
   var buildStatusScrollPhase = 0;
   var normalMotionDuration = 180;
   var authEditor = {
@@ -76,7 +105,158 @@
     }
   }
 
+  function builderOperationElements() {
+    var overlay = document.getElementById("builder-operation-overlay");
+    return {
+      overlay: overlay,
+      card: overlay && overlay.querySelector(".builder-operation-overlay-card"),
+      title: document.getElementById("builder-operation-overlay-title"),
+      message: document.getElementById("builder-operation-overlay-message"),
+      detail: document.getElementById("builder-operation-overlay-detail"),
+      actions: document.getElementById("builder-operation-overlay-actions"),
+    };
+  }
+
+  function setBuilderOperationCopy(title, message, detail) {
+    var elements = builderOperationElements();
+    if (elements.title) elements.title.textContent = title || "";
+    if (elements.message) elements.message.textContent = message || "";
+    if (elements.detail) elements.detail.textContent = detail || "";
+  }
+
+  function setBuilderOperationActions(buttons) {
+    var elements = builderOperationElements();
+    if (!elements.actions || !elements.card) return;
+    elements.actions.replaceChildren();
+    buttons.forEach(function (specification) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = specification.primary ? "btn btn-primary" : "btn";
+      button.textContent = specification.label;
+      button.addEventListener("click", specification.action);
+      elements.actions.appendChild(button);
+    });
+    var hasActions = buttons.length > 0;
+    elements.card.classList.toggle("has-actions", hasActions);
+    elements.actions.setAttribute("aria-hidden", hasActions ? "false" : "true");
+  }
+
+  function closeBuilderProjectSaveResult() {
+    builderProjectSaveResultOpen = false;
+    builderProjectSaveResult = null;
+    document.body.classList.remove("builder-project-result-open");
+    var elements = builderOperationElements();
+    if (elements.overlay) {
+      elements.overlay.setAttribute("role", "status");
+      elements.overlay.removeAttribute("aria-modal");
+    }
+    if (elements.card) {
+      elements.card.classList.remove("is-result", "is-success", "is-error", "has-actions");
+    }
+    setBuilderOperationActions([]);
+    applyBuilderActivityState();
+  }
+
+  function showBuilderProjectSaveCompletion(status) {
+    if (!builderProjectSaveResultOpen || !builderProjectSaveResult) return;
+    var elements = builderOperationElements();
+    if (!elements.card) return;
+    var checked = Number(builderProjectSaveResult.checked || 0);
+    var reusable = Number(builderProjectSaveResult.reusable || 0);
+    var remaining = Math.max(0, checked - reusable);
+    elements.card.classList.add("is-result");
+    elements.card.classList.toggle("is-success", status !== "failed");
+    elements.card.classList.toggle("is-error", status === "failed");
+    if (status === "failed") {
+      setBuilderOperationCopy(
+        "Project settings saved",
+        "One or more dataset sources could not be copied into the Project.",
+        "Your current settings are retained. Use Save project to retry the source files."
+      );
+    } else {
+      setBuilderOperationCopy(
+        "Project saved",
+        "The project manifest and all dataset sources are safe.",
+        remaining > 0
+          ? remaining + " checked dataset" + (remaining === 1 ? " has" : "s have") + " no reusable CRB yet."
+          : "All checked datasets with prepared CRBs are ready for reuse."
+      );
+    }
+    var buttons = [{ label: "Done", action: closeBuilderProjectSaveResult }];
+    if (status === "failed") {
+      buttons.push({
+        label: "Retry Save project",
+        primary: true,
+        action: function () {
+          closeBuilderProjectSaveResult();
+          send("save_builder_project", { nonce: Date.now() });
+        },
+      });
+    } else if (remaining > 0) {
+      buttons.push({
+        label: "Prepare checked CRBs",
+        primary: true,
+        action: function () {
+          closeBuilderProjectSaveResult();
+          send("prepare_builder_project_crbs", { nonce: Date.now() });
+        },
+      });
+    }
+    setBuilderOperationActions(buttons);
+    var firstButton = elements.actions && elements.actions.querySelector("button");
+    if (firstButton) firstButton.focus({ preventScroll: true });
+  }
+
+  function updateBuilderProjectSourceProgress(message) {
+    if (!builderProjectSaveResultOpen || !builderProjectSaveResult) return;
+    var status = message && message.status;
+    if (status === "ready" || status === "failed") {
+      showBuilderProjectSaveCompletion(status);
+      return;
+    }
+    if (status !== "syncing") return;
+    var completed = Number(message.completed || 0);
+    var total = Number(message.total || 0);
+    var elements = builderOperationElements();
+    if (elements.card) {
+      elements.card.classList.add("is-result");
+      elements.card.classList.remove("is-success", "is-error", "has-actions");
+    }
+    setBuilderOperationActions([]);
+    setBuilderOperationCopy(
+      "Saving dataset sources",
+      "Project settings are saved. Dataset files are being copied in the background.",
+      total > 0 ? completed + " of " + total + " source files saved · Keep this page open." : "Keep this page open."
+    );
+  }
+
+  function showBuilderProjectSaveResult(message) {
+    builderProjectSaveResult = message || {};
+    builderProjectSaveResultOpen = true;
+    document.body.classList.add("builder-project-result-open");
+    var elements = builderOperationElements();
+    if (elements.overlay) {
+      elements.overlay.setAttribute("aria-hidden", "false");
+      elements.overlay.setAttribute("role", "dialog");
+      elements.overlay.setAttribute("aria-modal", "true");
+    }
+    if (elements.card) elements.card.classList.add("is-result");
+    var shell = document.querySelector(".builder-shell");
+    if (shell) shell.inert = true;
+    if (message && message.source_syncing === true) {
+      updateBuilderProjectSourceProgress({
+        status: "syncing",
+        completed: message.completed || 0,
+        total: message.total || 0,
+      });
+    } else {
+      showBuilderProjectSaveCompletion("ready");
+    }
+  }
+
   function applyDatasetMutationLock() {
+    var activityLocked = !builderConnectionReady || !builderWorkerReady ||
+      builderActivityState.capabilities.mutate_datasets === false;
     var selectors = [
       "#dataset_files",
       ".builder-file-trigger",
@@ -88,22 +268,191 @@
       "#undo_remove",
     ].join(", ");
     document.querySelectorAll(selectors).forEach(function (control) {
-      if ("disabled" in control) control.disabled = datasetMutationsLocked;
+      var restoreControl = control.matches(
+        ".builder-retry-import, .builder-remove-import"
+      );
+      var controlLocked = datasetMutationsLocked ||
+        (activityLocked && !restoreControl);
+      if ("disabled" in control) control.disabled = controlLocked;
       control.setAttribute(
         "aria-disabled",
-        datasetMutationsLocked ? "true" : "false"
+        controlLocked ? "true" : "false"
       );
       control.classList.toggle(
         "is-dataset-mutation-locked",
-        datasetMutationsLocked
+        controlLocked
       );
-      if (datasetMutationsLocked) control.setAttribute("tabindex", "-1");
+      if (controlLocked) control.setAttribute("tabindex", "-1");
       else if (control.classList.contains("builder-file-trigger")) {
         control.setAttribute("tabindex", "0");
       } else {
         control.removeAttribute("tabindex");
       }
     });
+  }
+
+  function activityCapability(name) {
+    var importSensitive = [
+      "check_dataset",
+      "save_project",
+      "open_project",
+      "prepare_crbs",
+      "navigate_workflow",
+      "build",
+    ].indexOf(name) >= 0;
+    var workerSensitive = [
+      "add_dataset",
+      "edit_dataset",
+      "mutate_datasets",
+      "check_dataset",
+      "open_project",
+      "prepare_crbs",
+      "navigate_workflow",
+      "build",
+    ].indexOf(name) >= 0;
+    return builderConnectionReady &&
+      (!workerSensitive || builderWorkerReady) &&
+      (!importSensitive || clientImportQueue.length === 0) &&
+      builderActivityState.capabilities[name] !== false;
+  }
+
+  function updateBuilderWorkerStatus(message) {
+    if (!message || typeof message !== "object") return;
+    var state = message.state || "starting";
+    var status = document.getElementById("builder-worker-status");
+    var title = document.getElementById("builder-worker-status-title");
+    var detail = document.getElementById("builder-worker-status-detail");
+    builderWorkerReady = state === "ready";
+    if (status) {
+      status.classList.toggle("is-starting", state === "starting");
+      status.classList.toggle("is-ready", state === "ready");
+      status.classList.toggle("is-error", state === "error");
+      status.setAttribute("data-worker-state", state);
+    }
+    if (title && message.title) title.textContent = message.title;
+    if (detail) {
+      detail.textContent = message.detail || "";
+      detail.hidden = state === "ready" || !message.detail;
+    }
+    applyDatasetMutationLock();
+    applyBuilderActivityState();
+    if (message.title) scheduleStatusAnnouncement(message.title);
+  }
+
+  function setActivityDisabled(control, disabled) {
+    if (!control || !("disabled" in control)) return;
+    if (disabled) {
+      if (!control.hasAttribute("data-builder-activity-lock")) {
+        control.setAttribute(
+          "data-builder-activity-was-disabled",
+          control.disabled ? "true" : "false"
+        );
+      }
+      control.setAttribute("data-builder-activity-lock", "true");
+      control.disabled = true;
+      if (control.selectize) control.selectize.disable();
+      control.setAttribute("aria-disabled", "true");
+      return;
+    }
+    if (!control.hasAttribute("data-builder-activity-lock")) return;
+    var wasDisabled = control.getAttribute(
+      "data-builder-activity-was-disabled"
+    ) === "true";
+    control.removeAttribute("data-builder-activity-lock");
+    control.removeAttribute("data-builder-activity-was-disabled");
+    control.disabled = wasDisabled;
+    if (control.selectize && !wasDisabled) control.selectize.enable();
+    control.setAttribute("aria-disabled", wasDisabled ? "true" : "false");
+  }
+
+  function applyBuilderActivityState() {
+    var capabilities = builderActivityState.capabilities || {};
+    var projectControls = {
+      open_builder_project: activityCapability("open_project"),
+      save_builder_project: activityCapability("save_project") ||
+        activityCapability("create_project"),
+      choose_builder_project_folder: activityCapability("create_project"),
+      confirm_builder_project_open: activityCapability("open_project"),
+      prepare_builder_project_crbs: activityCapability("prepare_crbs"),
+      project_resume_current_source: activityCapability("edit_dataset"),
+      complete_dataset_check: activityCapability("check_dataset"),
+      continue_to_review: activityCapability("navigate_workflow"),
+      choose_output_folder: activityCapability("build"),
+      build: activityCapability("build"),
+    };
+    Object.keys(projectControls).forEach(function (id) {
+      setActivityDisabled(
+        document.getElementById(id),
+        !projectControls[id]
+      );
+    });
+    document.querySelectorAll(".builder-pick").forEach(function (control) {
+      setActivityDisabled(control, !activityCapability("select_dataset"));
+    });
+
+    var save = document.getElementById("save_builder_project");
+    if (save) {
+      var saveLabel = builderActivityState.has_project === true
+        ? "Save project"
+        : "Create project…";
+      if (save.textContent !== saveLabel) save.textContent = saveLabel;
+    }
+
+    var workspaceLocked = !activityCapability("edit_dataset");
+    document.querySelectorAll(
+      "#builder-workspace input, #builder-workspace select, " +
+      "#builder-workspace textarea, #builder-workspace button"
+    ).forEach(function (control) {
+      setActivityDisabled(control, workspaceLocked);
+    });
+    document.querySelectorAll(".builder-workflow-stage-link").forEach(function (link) {
+      var locked = !activityCapability("navigate_workflow");
+      link.classList.toggle("is-activity-locked", locked);
+      link.setAttribute("aria-disabled", locked ? "true" : "false");
+      if (locked) link.setAttribute("tabindex", "-1");
+      else link.removeAttribute("tabindex");
+    });
+
+    var pageInert = builderConnectionReady &&
+      builderActivityState.page_inert === true;
+    var shell = document.querySelector(".builder-shell");
+    if (shell) shell.inert = pageInert || builderProjectSaveResultOpen;
+    document.body.classList.toggle("builder-page-inert", pageInert);
+    document.body.classList.toggle(
+      "builder-connection-lost",
+      !builderConnectionReady
+    );
+    var overlay = document.getElementById("builder-operation-overlay");
+    if (overlay) {
+      overlay.setAttribute(
+        "aria-hidden",
+        pageInert || builderProjectSaveResultOpen ? "false" : "true"
+      );
+    }
+    var title = document.getElementById("builder-operation-overlay-title");
+    var message = document.getElementById("builder-operation-overlay-message");
+    var detail = document.getElementById("builder-operation-overlay-detail");
+    if (
+      title &&
+      !builderProjectSaveResultOpen &&
+      builderActivityState.busy_title &&
+      title.textContent !== builderActivityState.busy_title
+    ) {
+      title.textContent = builderActivityState.busy_title;
+    }
+    if (
+      message &&
+      !builderProjectSaveResultOpen &&
+      builderActivityState.busy_message &&
+      message.textContent !== builderActivityState.busy_message
+    ) {
+      message.textContent = builderActivityState.busy_message;
+    }
+    if (detail && !builderProjectSaveResultOpen) {
+      var busyDetail = builderActivityState.busy_detail || "";
+      if (detail.textContent !== busyDetail) detail.textContent = busyDetail;
+    }
+    applyDatasetMutationLock();
   }
 
   function revealBuildStatus() {
@@ -545,7 +894,7 @@
   }
 
   function openDatasetPicker() {
-    if (datasetMutationsLocked) return;
+    if (datasetMutationsLocked || !builderWorkerReady) return;
     var picker = document.createElement("input");
     picker.type = "file";
     picker.multiple = true;
@@ -579,7 +928,16 @@
     });
   }
 
+  function reportClientImportQueueState() {
+    send("builder_client_import_state", {
+      nonce: Date.now(),
+      pending: clientImportQueue.length,
+    });
+  }
+
   function renderClientImportQueue() {
+    reportClientImportQueueState();
+    applyBuilderActivityState();
     var container = document.getElementById("ds_client_import_queue");
     if (!container) return;
     container.replaceChildren();
@@ -2547,9 +2905,18 @@
     }
     applyDatasetMutationLock();
     applyClientImportQueueLock();
+    applyBuilderActivityState();
     document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
     document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
     document.querySelectorAll("select[multiple]").forEach(enhanceMultiSelect);
+  }
+
+  function scheduleDynamicContentEnhancement() {
+    if (dynamicContentEnhancementFrame !== null) return;
+    dynamicContentEnhancementFrame = window.requestAnimationFrame(function () {
+      dynamicContentEnhancementFrame = null;
+      enhanceDynamicContent();
+    });
   }
 
   document.addEventListener("click", function (event) {
@@ -2980,6 +3347,35 @@
         applyDatasetMutationLock();
       }
     );
+    window.Shiny.addCustomMessageHandler(
+      "builder_activity_state",
+      function (message) {
+        if (!message || typeof message !== "object") return;
+        builderActivityState = {
+          phase: message.phase || "none",
+          capabilities: message.capabilities || {},
+          busy_title: message.busy_title || null,
+          busy_message: message.busy_message || null,
+          busy_detail: message.busy_detail || null,
+          has_project: message.has_project === true,
+          warn_before_unload: message.warn_before_unload === true,
+          page_inert: message.page_inert === true,
+        };
+        applyBuilderActivityState();
+      }
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_worker_status",
+      updateBuilderWorkerStatus
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_project_save_result",
+      showBuilderProjectSaveResult
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_project_source_progress",
+      updateBuilderProjectSourceProgress
+    );
     window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;
@@ -3119,14 +3515,22 @@
     send("builder_dataset_rail_sync", { nonce: Date.now() });
     send("builder_import_rail_sync", { nonce: Date.now() });
     send("builder_import_sync_request", { nonce: Date.now() });
-    if (document.body) enhanceDynamicContent();
+    if (document.body) scheduleDynamicContentEnhancement();
   }
 
   document.addEventListener("shiny:connected", function () {
+    builderConnectionReady = true;
     setClientLoadingPaused(false);
     requestClientImportSync();
+    reportClientImportQueueState();
+    send("builder_client_connection", {
+      status: "connected",
+      nonce: Date.now(),
+    });
+    applyBuilderActivityState();
   });
   document.addEventListener("shiny:disconnected", function () {
+    builderConnectionReady = false;
     uploadConnectionReady = false;
     importSyncPending = true;
     clientImportQueue.forEach(function (entry) {
@@ -3138,12 +3542,21 @@
     scheduleStatusAnnouncement(
       "Connection lost. Waiting to restore the import state."
     );
+    applyBuilderActivityState();
   });
   document.addEventListener("shiny:sessioninitialized", function () {
     requestClientImportSync();
   });
   document.addEventListener("shiny:conditional", function () {
     window.requestAnimationFrame(syncSpatialAlignmentScrollbars);
+  });
+  window.addEventListener("beforeunload", function (event) {
+    if (
+      builderActivityState.warn_before_unload !== true &&
+      builderConnectionReady
+    ) return;
+    event.preventDefault();
+    event.returnValue = "";
   });
   function initializeBuilder() {
     registerExampleMessageHandler();
@@ -3168,10 +3581,9 @@
       });
     }
 
-    new MutationObserver(enhanceDynamicContent).observe(document.documentElement, {
+    new MutationObserver(scheduleDynamicContentEnhancement).observe(document.documentElement, {
       childList: true,
       subtree: true,
-      characterData: true,
     });
 
     if (narrowManager.addEventListener) {

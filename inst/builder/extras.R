@@ -354,7 +354,6 @@ builder_alignment_record <- function(
   base_bounds,
   parameters = list(),
   image_geometry = NULL,
-  saved = FALSE,
   section = list()
 ) {
   parameters <- .builder_alignment_parameters(parameters)
@@ -372,7 +371,6 @@ builder_alignment_record <- function(
     ),
     parameters,
     list(
-      saved = isTRUE(saved),
       section_id = as.character(section$id %||% "")[[1L]],
       section_kind = as.character(section$kind %||% "spatial")[[1L]]
     )
@@ -398,13 +396,12 @@ builder_alignment_normalize <- function(
     base_bounds = base_bounds,
     parameters = parameters,
     image_geometry = record,
-    saved = if (is.null(record$saved)) TRUE else isTRUE(record$saved),
     section = list(
       id = section_id %||% record$section_id %||% "",
       kind = section_kind %||% record$section_kind %||% "spatial"
     )
   )
-  carried <- setdiff(names(record), names(normalized))
+  carried <- setdiff(names(record), c(names(normalized), "saved"))
   normalized[carried] <- record[carried]
   normalized
 }
@@ -427,7 +424,6 @@ builder_alignment_reset <- function(record) {
       extent_width = normalized$source_width,
       extent_height = normalized$source_height
     ),
-    saved = FALSE,
     section = list(
       id = normalized$section_id,
       kind = normalized$section_kind
@@ -496,7 +492,6 @@ builder_alignment_apply_transform_to_all <- function(images, source_section) {
       builder_alignment_oriented_bounds(target$base_bounds, target),
       target
     )
-    target$saved <- FALSE
     images[[name]] <- target
   }
   images[[source_section]] <- source
@@ -790,22 +785,6 @@ builder_image_collection_remove <- function(images, section, label) {
   images
 }
 
-#' Coordinate-frame edits change the point coordinate system, so every saved
-#' tissue-image placement in that FOV needs explicit confirmation again.
-#' Keep the geometry as a useful starting point; only its confirmation changes.
-builder_image_collection_mark_section_unsaved <- function(images, section) {
-  images <- builder_image_collection_normalize(images)
-  records <- images[[section]] %||% list()
-  if (!length(records)) {
-    return(images)
-  }
-  for (label in names(records)) {
-    records[[label]]$saved <- FALSE
-  }
-  images[[section]] <- records
-  images
-}
-
 builder_coordinate_drafts_get <- function(drafts, dataset, section) {
   drafts <- drafts %||% list()
   drafts[[dataset]][[section]] %||% NULL
@@ -883,7 +862,11 @@ builder_coordinate_drafts_drop <- function(drafts, dataset, section = NULL) {
 builder_coordinate_drafts_prune <- function(drafts, entries) {
   drafts <- drafts %||% list()
   identities <- stats::setNames(
-    vapply(entries, function(entry) entry$snapshot_identity, character(1)),
+    vapply(
+      entries,
+      function(entry) as.character(entry$snapshot_identity %||% "")[[1L]],
+      character(1)
+    ),
     vapply(entries, function(entry) entry$id, character(1))
   )
   removed <- character()
@@ -937,7 +920,6 @@ builder_coordinate_drafts_apply_entry <- function(
     }
     if (!identical(previous, transforms[[section]])) {
       changed_sections <- c(changed_sections, section)
-      images <- builder_image_collection_mark_section_unsaved(images, section)
     }
   }
   entry$settings$spatial_coordinate_transforms <- transforms
@@ -982,7 +964,6 @@ builder_alignment_apply_transform_to_matching_label <- function(
       target$base_bounds,
       target
     )
-    target$saved <- FALSE
     images[[section]][[label]] <- target
   }
   images

@@ -680,7 +680,6 @@ test_that("external spatial images carry required App output through Review", {
       image_opacity = 0.8,
       point_opacity = 0.85,
       point_size = 5,
-      saved = TRUE,
       outside = 0L,
       section_id = "fov",
       section_kind = "spatial"
@@ -2108,6 +2107,31 @@ test_that("Viewer and spatial preview contracts ignore settings-only revisions",
   trajectory_contract <- app_env$builder_trajectory_preview_contract(
     entry,
     trajectories
+  )
+
+  cache <- app_env$builder_preview_cache_begin(
+    list(),
+    entry$id,
+    projection_contract
+  )
+  cache <- app_env$builder_preview_cache_store(
+    cache,
+    entry$id,
+    list(umap = list(x = 1, y = 2))
+  )
+  cache <- app_env$builder_preview_cache_begin(
+    cache,
+    "dataset-b",
+    list(dataset = "dataset-b")
+  )
+  expect_true(app_env$builder_preview_cache_hit(
+    cache,
+    entry$id,
+    projection_contract
+  ))
+  expect_identical(
+    app_env$builder_preview_cache_frames(cache, entry$id),
+    list(umap = list(x = 1, y = 2))
   )
 
   settings_only <- entry

@@ -83,6 +83,18 @@ builder_dataset_state <- function(entry) {
       class = c("builder_dataset_state", "list")
     )))
   }
+  if (identical(load_state, "artifact_ready")) {
+    item <- entry$project_artifact$plan_item %||% list()
+    base$readiness <- "artifact_ready"
+    base$analyses <- item$analyses %||% character()
+    base$manifest <- item$manifest %||% list()
+    base$metadata_policy <- item$metadata_policy %||% list()
+    base$page_expectations <- item$viewer_page_expectations %||% list()
+    return(structure(
+      base,
+      class = c("builder_dataset_state", "list")
+    ))
+  }
   if (!identical(load_state, "loaded")) {
     .builder_state_abort(
       "invalid_load_state",

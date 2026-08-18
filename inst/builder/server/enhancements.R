@@ -339,7 +339,9 @@ alignment_server <- builder_spatial_alignment_server(
   entries = sets,
   worker = worker,
   enqueue = enqueue,
-  commit_images = commit_enhance_images,
+  commit_images = function(entry, images) {
+    commit_enhance_images(entry, images, internal = TRUE)
+  },
   alignment_preview = alignment_preview,
   spatial_coords = spatial_coords
 )
