@@ -1371,6 +1371,35 @@ test_that("points-only Spatial FOV appearance persists without an image", {
         current_entry()$settings$spatial_point_appearance[["fov-a"]],
         list(point_opacity = 0.7, point_size = 6)
       )
+
+      identity <- .builder_worker_identity(current_entry()$snapshot)
+      session$setInputs(
+        builder_spatial_coordinate_draft = list(
+          dataset = "dataset-a",
+          snapshotIdentity = identity,
+          section = "fov-a",
+          rotationDegrees = 35,
+          sequence = 1
+        )
+      )
+      before_reset <- alignment$canvas_contract()$resetToken
+      session$setInputs(`enhance-reset_coordinate_transform` = 1L)
+      session$flushReact()
+
+      defaults <- builder_alignment_defaults()
+      expect_identical(
+        alignment$coordinate_drafts()[["dataset-a"]][["fov-a"]]$spec,
+        list(schema_version = 1L, rotation_degrees = 0, scale = 1)
+      )
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["fov-a"]],
+        defaults[c("point_opacity", "point_size")]
+      )
+      expect_identical(
+        alignment$point_appearance(),
+        list(opacity = defaults$point_opacity, size = defaults$point_size)
+      )
+      expect_gt(alignment$canvas_contract()$resetToken, before_reset)
     }
   )
 })
