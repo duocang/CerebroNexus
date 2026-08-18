@@ -64,12 +64,12 @@ test_that("parent and worker load App assembly before build authorities", {
     1L
   ]
   app_bundle_worker <- regexpr(
-    'source(file.path(dir, "app_bundle.R"))',
+    'file.path(dir, "app_bundle.R")',
     worker,
     fixed = TRUE
   )[1L]
   build_worker <- regexpr(
-    'source(file.path(dir, "build.R"))',
+    'file.path(dir, "build.R")',
     worker,
     fixed = TRUE
   )[1L]

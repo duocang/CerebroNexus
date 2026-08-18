@@ -500,7 +500,16 @@ builder_project_stage_source <- function(entry, root) {
     normalizePath(source, winslash = "/", mustWork = TRUE),
     normalizePath(target, winslash = "/", mustWork = FALSE)
   )
-  if (!same && !file.copy(source, target, overwrite = TRUE, copy.mode = TRUE)) {
+  if (
+    !same &&
+      !file.copy(
+        source,
+        target,
+        overwrite = TRUE,
+        copy.mode = TRUE,
+        copy.date = TRUE
+      )
+  ) {
     stop(
       "The uploaded dataset could not be retained in the project.",
       call. = FALSE
