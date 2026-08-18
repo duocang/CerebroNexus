@@ -117,7 +117,11 @@ observe({
   for (field in names(assay_controls)) {
     next_settings[[field]] <- assay_controls[[field]]$selected
   }
-  if (layer_missing && identical(values$layer, stored_layer)) {
+  if (
+    layer_missing &&
+      identical(values$assay, stored_assay) &&
+      identical(values$layer, stored_layer)
+  ) {
     next_settings$layer <- stored_layer
   }
   if (!next_settings$organism %in% c("hg", "mm")) {

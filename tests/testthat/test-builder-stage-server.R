@@ -1331,15 +1331,20 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     fn_env <- environment(builder_require_confirmed_build_plan)
     assign(
       "session",
-      list(
-        token = real_session$token,
-        sendCustomMessage = function(type, message) {
-          dialog_messages[[length(dialog_messages) + 1L]] <<- list(
-            type = type,
-            message = message
-          )
-        },
-        onFlushed = function(callback, once = FALSE) callback()
+      structure(
+        list(
+          token = real_session$token,
+          sendCustomMessage = function(type, message) {
+            dialog_messages[[length(dialog_messages) + 1L]] <<- list(
+              type = type,
+              message = message
+            )
+          },
+          sendInputMessage = function(...) NULL,
+          onFlushed = function(callback, once = FALSE) callback(),
+          isClosed = function() real_session$isClosed()
+        ),
+        class = "ShinySession"
       ),
       envir = fn_env
     )
@@ -1591,9 +1596,15 @@ test_that("active Build states reject forged stage actions", {
     fn_env <- environment(builder_require_confirmed_build_plan)
     assign(
       "session",
-      list(
-        sendCustomMessage = function(...) NULL,
-        onFlushed = function(callback, once = FALSE) callback()
+      structure(
+        list(
+          token = real_session$token,
+          sendCustomMessage = function(...) NULL,
+          sendInputMessage = function(...) NULL,
+          onFlushed = function(callback, once = FALSE) callback(),
+          isClosed = function() real_session$isClosed()
+        ),
+        class = "ShinySession"
       ),
       envir = fn_env
     )

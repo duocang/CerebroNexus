@@ -968,7 +968,7 @@ test_that("preparing a logical layer joins only its exact-cover members", {
   })
   expect_error(
     builder_prepare_export_layer(blocked, "SPLIT", "data"),
-    "does not contain every cell"
+    "is not available"
   )
 
   subset <- builder_profile_partition_assay("same_subset")
