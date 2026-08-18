@@ -1703,6 +1703,7 @@ test_that("the Builder app has one protocol authority for worker requests", {
     "if (builder_session_closed())",
     fixed = TRUE
   )
+  expect_false(grepl("session_active", text, fixed = TRUE))
   expect_false(grepl("latest_request <- reactiveVal", text, fixed = TRUE))
   expect_match(text, "protocol <- reactiveVal", fixed = TRUE)
   expect_match(text, "builder_protocol_dispatch", fixed = TRUE)
