@@ -731,7 +731,7 @@ test_that("restore dialog explains the session-only skip action", {
   ))
 })
 
-test_that("restore choices render descriptive labels and default to editing", {
+test_that("restore choices render descriptive labels and prefer checked CRB reuse", {
   skip_if_not_installed("shiny")
   runtime <- builder_project_test_runtime()
   runtime$tags <- shiny::tags
