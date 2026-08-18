@@ -275,6 +275,10 @@ builder_upgrade_viewer_content_entry <- function(entry) {
     settings$spatial_coordinate_transforms <- list()
     entry$settings <- settings
   }
+  if (is.null(settings$spatial_point_appearance)) {
+    settings$spatial_point_appearance <- list()
+    entry$settings <- settings
+  }
   if (!is.null(settings$spatial_coordinate_transforms)) {
     settings$spatial_coordinate_transforms <-
       .builder_state_spatial_coordinate_transforms(
@@ -282,6 +286,10 @@ builder_upgrade_viewer_content_entry <- function(entry) {
       )
     entry$settings <- settings
   }
+  settings$spatial_point_appearance <- .builder_state_spatial_point_appearance(
+    settings$spatial_point_appearance
+  )
+  entry$settings <- settings
   if (
     identical(settings$viewer_content_schema_version, 1L) &&
       !"overview_percentage_cells_to_show" %in% names(settings)
@@ -515,6 +523,55 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   normalized
 }
 
+.builder_state_spatial_point_appearance <- function(value) {
+  if (is.null(value)) {
+    return(list())
+  }
+  sections <- names(value)
+  if (
+    !is.list(value) ||
+      is.object(value) ||
+      (length(value) &&
+        (is.null(sections) ||
+          !is.character(sections) ||
+          is.object(sections) ||
+          anyNA(sections) ||
+          any(!nzchar(sections)) ||
+          anyDuplicated(sections)))
+  ) {
+    .builder_state_abort(
+      "invalid_spatial_point_appearance",
+      "Spatial point appearance must be an ordinary named list of FOV settings."
+    )
+  }
+  normalized <- lapply(sections, function(section) {
+    record <- value[[section]]
+    opacity <- suppressWarnings(as.numeric(record$point_opacity))
+    size <- suppressWarnings(as.numeric(record$point_size))
+    if (
+      !is.list(record) ||
+        !identical(sort(names(record)), c("point_opacity", "point_size")) ||
+        length(opacity) != 1L ||
+        is.na(opacity) ||
+        !is.finite(opacity) ||
+        opacity < 0 ||
+        opacity > 1 ||
+        length(size) != 1L ||
+        is.na(size) ||
+        !is.finite(size) ||
+        size <= 0
+    ) {
+      .builder_state_abort(
+        "invalid_spatial_point_appearance",
+        paste0("Spatial point appearance for ", section, " is invalid.")
+      )
+    }
+    list(point_opacity = opacity, point_size = size)
+  })
+  names(normalized) <- sections
+  normalized
+}
+
 .builder_state_validate_viewer_content_settings <- function(entry) {
   settings <- entry$settings
   if (!identical(settings$viewer_content_schema_version, 1L)) {
@@ -741,6 +798,9 @@ builder_upgrade_viewer_content_entry <- function(entry) {
   }
   .builder_state_spatial_coordinate_transforms(
     .subset2(settings, "spatial_coordinate_transforms")
+  )
+  .builder_state_spatial_point_appearance(
+    .subset2(settings, "spatial_point_appearance")
   )
   text_vector <- function(value) {
     is.character(value) &&

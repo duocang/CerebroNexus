@@ -141,6 +141,28 @@ if (builder_state_api_available) {
     )
   })
 
+  test_that("points-only Spatial appearance is upgraded and validated per FOV", {
+    entry <- builder_viewer_settings_entry()
+    entry$settings$spatial_point_appearance <- list(
+      "fov-a" = list(point_opacity = 0.7, point_size = 6)
+    )
+    upgraded <- builder_upgrade_viewer_content_entry(entry)
+
+    expect_identical(
+      upgraded$settings$spatial_point_appearance,
+      list("fov-a" = list(point_opacity = 0.7, point_size = 6))
+    )
+
+    entry$settings$spatial_point_appearance <- list(
+      "fov-a" = list(point_opacity = 1.1, point_size = 6)
+    )
+    error <- capture_builder_state_error(
+      builder_upgrade_viewer_content_entry(entry)
+    )
+    expect_s3_class(error, "builder_state_error")
+    expect_identical(error$code, "invalid_spatial_point_appearance")
+  })
+
   test_that("initial Viewer cell percentage rejects values outside 10 to 100", {
     entry <- builder_upgrade_viewer_content_entry(
       builder_viewer_settings_entry()
