@@ -495,7 +495,7 @@ test_that("alignment controls auto-commit before dataset switches", {
   )
 })
 
-test_that("duplicate tissue image can be confirmed with a unique label", {
+test_that("new images inherit the active image appearance", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   skip_if_not_installed("png")
@@ -504,6 +504,20 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
   image_path <- tempfile(fileext = ".png")
   on.exit(unlink(image_path), add = TRUE)
   write_dummy_png(image_path)
+  encoded <- builder_encode_image(png::readPNG(image_path))
+  parameters <- builder_alignment_defaults()
+  parameters[c("point_opacity", "point_size")] <- list(0.65, 6)
+  existing_record <- builder_alignment_record(
+    source = list(name = "duplicate.png", type = "image/png"),
+    source_uri = encoded$uri,
+    uri = encoded$uri,
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    parameters = parameters,
+    section = list(id = "section-a", kind = "spatial")
+  )
+  active_record <- existing_record
+  active_record$source$name <- "DAPI.png"
+  active_record[c("point_opacity", "point_size")] <- list(0.7, 7)
 
   entry <- list(
     id = "dataset-a",
@@ -515,7 +529,12 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
     profile = list(images = "section-a", extras = list()),
     settings = list(
       name = "Dataset A",
-      images = list(),
+      images = list(
+        `section-a` = list(
+          `duplicate.png` = existing_record,
+          DAPI = active_record
+        )
+      ),
       default_group = "cluster",
       default_projection = "umap",
       palette = "cerebro"
@@ -525,6 +544,7 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
   current <- shiny::reactiveVal(entry$id)
   alignment_preview <- shiny::reactiveVal(NULL)
   spatial_coords <- shiny::reactiveVal(NULL)
+  commit_count <- 0L
   preview <- list(
     available = TRUE,
     bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
@@ -568,6 +588,7 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
           updated <- current_entry()
           updated$settings$images <- images
           current_entry(updated)
+          commit_count <<- commit_count + 1L
         },
         alignment_preview = alignment_preview,
         spatial_coords = spatial_coords
@@ -577,33 +598,67 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
       session$flushReact()
       alignment_preview(preview)
       session$flushReact()
-
-      suppressWarnings(
-        session$setInputs(`enhance-tissue_image_file` = upload)
-      )
-      session$flushReact()
+      expect_identical(alignment$active_image(), "duplicate.png")
       expect_named(
         current_entry()$settings$images[["section-a"]],
-        "duplicate.png"
+        c("duplicate.png", "DAPI")
       )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["duplicate.png"]][
+          c("point_opacity", "point_size")
+        ],
+        list(point_opacity = 0.65, point_size = 6)
+      )
+      session$setInputs(`enhance-active_image` = "DAPI")
+      session$flushReact()
+      expect_identical(alignment$active_image(), "DAPI")
 
-      suppressWarnings(
-        session$setInputs(`enhance-tissue_image_file` = upload)
-      )
+      suppressWarnings(session$setInputs(`enhance-tissue_image_file` = upload))
       session$flushReact()
       expect_true(alignment$pending_upload()$awaiting_label)
 
       session$setInputs(
-        `enhance-new_image_label` = "DAPI",
+        `enhance-new_image_label` = "PAS",
         `enhance-add_image_confirm` = 1L
       )
       session$flushReact()
 
       expect_named(
         current_entry()$settings$images[["section-a"]],
-        c("duplicate.png", "DAPI")
+        c("duplicate.png", "DAPI", "PAS")
+      )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["PAS"]][
+          c("point_opacity", "point_size")
+        ],
+        list(point_opacity = 0.7, point_size = 7)
       )
       expect_null(alignment$pending_upload())
+      expect_identical(commit_count, 1L)
+
+      session$setInputs(`enhance-active_image` = "DAPI")
+      session$flushReact()
+      session$setInputs(`enhance-remove_image_confirm` = 1L)
+      session$flushReact()
+
+      expect_identical(alignment$active_image(), "PAS")
+      expect_named(
+        current_entry()$settings$images[["section-a"]],
+        c("duplicate.png", "PAS")
+      )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["duplicate.png"]][
+          c("point_opacity", "point_size")
+        ],
+        list(point_opacity = 0.65, point_size = 6)
+      )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["PAS"]][
+          c("point_opacity", "point_size")
+        ],
+        list(point_opacity = 0.7, point_size = 7)
+      )
+      expect_identical(commit_count, 2L)
     }
   )
 })

@@ -188,6 +188,8 @@ point opacity and size used by its alignment preview. Those points-only display
 values are project-editor state and are not exported into a CRB. When an image
 is added, Builder transfers the values into that image's alignment record; when
 the last image is removed, it transfers them back to the FOV's project state.
+Additional images inherit the active image's point appearance at creation, then
+retain independent settings; removing one image never rewrites the survivors.
 
 Project checkpoint CRBs always receive a private embedded-image build
 projection so every FOV image travels inside the reusable CRB. This projection
