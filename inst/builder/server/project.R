@@ -829,6 +829,18 @@ output$project_status <- renderUI({
 })
 
 observe({
+  shiny::updateActionButton(
+    session,
+    "save_builder_project",
+    label = if (is.null(builder_project())) {
+      "Create project…"
+    } else {
+      "Save project"
+    }
+  )
+})
+
+observe({
   entries <- sets()
   if (
     length(entries) &&

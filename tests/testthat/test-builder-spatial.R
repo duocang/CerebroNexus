@@ -627,6 +627,7 @@ test_that("alignment preview joins both spaces by cell identity", {
     default_projection = "pca",
     group = group,
     section_id = "section-a",
+    layer = "counts",
     max_cells = 12L
   )
 
@@ -648,6 +649,7 @@ test_that("bounded alignment scenes retain full R-only coverage coordinates", {
   preview <- builder_alignment_preview_model(
     object,
     section_id = "section-a",
+    layer = "counts",
     max_cells = 2L
   )
 
