@@ -142,6 +142,8 @@ builder_project_restore_row_ui <- function(record, root) {
   )
   selected <- if (!isTRUE(record$release$included %||% TRUE)) {
     "skip"
+  } else if (isTRUE(status$checked) && isTRUE(status$artifact_ready)) {
+    "reuse"
   } else if (status$restorable) {
     "resume"
   } else if (status$artifact_ready) {
@@ -162,7 +164,7 @@ builder_project_restore_row_ui <- function(record, root) {
           "builder-project-restore-badge",
           if (status$artifact_ready) "is-ready" else NULL
         ),
-        if (status$checked) "Checked" else "In progress"
+        status$label
       )
     ),
     radioButtons(
