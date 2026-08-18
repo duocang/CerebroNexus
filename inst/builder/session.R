@@ -356,6 +356,7 @@ builder_session_spatial_preview <- function(
     ) {
       tryCatch(
         {
+          builder_worker_require_capability("analysis")
           builder_worker_require_capability("spatial")
           object <- get(
             id,
