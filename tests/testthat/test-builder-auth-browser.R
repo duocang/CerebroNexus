@@ -82,11 +82,7 @@ builder_auth_browser_load_example <- function(app, example = "all_content") {
       )
       builder_browser_dismiss_project_offer(app)
       app$wait_for_idle(timeout = 30000)
-      app$click("complete_dataset_check")
-      app$wait_for_js(
-        "!document.getElementById('continue_to_review').disabled",
-        timeout = 10000
-      )
+      builder_browser_check_all_datasets(app)
     }
   )
 }
@@ -454,11 +450,7 @@ test_that("Builder auth survives redraw and traps focus", {
         "document.querySelectorAll('.builder-pick')[1].getAttribute('aria-current') === 'true'",
         timeout = 10000
       )
-      app$click("complete_dataset_check")
-      app$wait_for_js(
-        "!document.getElementById('continue_to_review').disabled",
-        timeout = 10000
-      )
+      builder_browser_check_all_datasets(app)
     }
   )
   app$wait_for_idle(timeout = 30000)
