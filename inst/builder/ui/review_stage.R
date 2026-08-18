@@ -530,12 +530,17 @@ builder_review_model <- function(plan, verification = NULL) {
     ))
     spatial_alignment <- item$spatial_alignment %||% NULL
     if (!is.null(spatial_alignment)) {
-      spatial_alignment$storage <- switch(
-        item$spatial_image_storage %||% "embedded",
-        external = "External spatial-assets",
-        embedded = "Embedded in CRB",
-        item$spatial_image_storage
-      )
+      image_count <- as.integer(spatial_alignment$image_count %||% 0L)
+      spatial_alignment$storage <- if (image_count > 0L) {
+        switch(
+          item$spatial_image_storage %||% "embedded",
+          external = "External spatial-assets",
+          embedded = "Embedded in CRB",
+          item$spatial_image_storage
+        )
+      } else {
+        NULL
+      }
     }
     list(
       name = item$name %||% "Dataset",
@@ -942,8 +947,12 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
                   dataset$spatial_alignment$section_count,
                   " sections · ",
                   dataset$spatial_alignment$image_count %||% 0L,
-                  " images · ",
-                  dataset$spatial_alignment$storage
+                  " images",
+                  if (!is.null(dataset$spatial_alignment$storage)) {
+                    paste0(" · ", dataset$spatial_alignment$storage)
+                  } else {
+                    ""
+                  }
                 )),
                 if (length(dataset$spatial_alignment$points_only)) {
                   p(

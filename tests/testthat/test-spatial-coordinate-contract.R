@@ -1,12 +1,3 @@
-spatial_contract_inst_path <- function(...) {
-  relative <- file.path(...)
-  path <- testthat::test_path("..", "..", "inst", relative)
-  if (!file.exists(path)) {
-    path <- system.file(relative, package = "CerebroNexus")
-  }
-  path
-}
-
 spatial_contract_core_path <- spatial_contract_inst_path(
   "viewer",
   "core",
