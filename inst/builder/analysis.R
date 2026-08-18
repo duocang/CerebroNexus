@@ -159,25 +159,25 @@ builder_run_analyses <- function(
     res <- try(
       switch(
         step$id,
-        percent_mt_ribo = CerebroNexus::addPercentMtRibo(
+        percent_mt_ribo = addPercentMtRibo(
           object,
           assay = settings$assay,
           organism = settings$organism,
           gene_nomenclature = "name"
         ),
-        most_expressed = CerebroNexus::getMostExpressedGenes(
+        most_expressed = getMostExpressedGenes(
           object,
           assay = settings$assay,
           groups = settings$groups
         ),
-        marker_genes = CerebroNexus::getMarkerGenes(
+        marker_genes = getMarkerGenes(
           object,
           assay = settings$assay,
           organism = settings$organism,
           groups = settings$groups,
           verbose = FALSE
         ),
-        enriched_pathways = CerebroNexus::getEnrichedPathways(object),
+        enriched_pathways = getEnrichedPathways(object),
         object
       ),
       silent = TRUE

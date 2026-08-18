@@ -899,7 +899,9 @@ builder_worker_start <- function(
   snapshot_registry = list(),
   epoch = NULL,
   .new_session = callr::r_session$new,
-  .startup_timeout_ms = 30000L
+  .startup_timeout_ms = 30000L,
+  .async = FALSE,
+  .bootstrap = NULL
 ) {
   if (!requireNamespace("callr", quietly = TRUE)) {
     return(list(error = "The callr package is required for background work."))
@@ -957,109 +959,146 @@ builder_worker_start <- function(
       )
     ))
   }
+  setup_call <- function(
+    dir,
+    root,
+    registry,
+    package_source,
+    bootstrap
+  ) {
+    if (is.function(bootstrap)) {
+      return(bootstrap(dir, root, registry, package_source))
+    }
+    if (!is.null(package_source)) {
+      description <- read.dcf(file.path(package_source, "DESCRIPTION"))
+      collate <- if ("Collate" %in% colnames(description)) {
+        description[1L, "Collate"]
+      } else {
+        NA_character_
+      }
+      if (is.na(collate) || !nzchar(collate)) {
+        runtime_files <- sort(list.files(
+          file.path(package_source, "R"),
+          pattern = "[.][Rr]$",
+          full.names = TRUE
+        ))
+      } else {
+        runtime_files <- scan(
+          text = collate,
+          what = character(),
+          quiet = TRUE
+        )
+        runtime_files <- file.path(package_source, "R", runtime_files)
+      }
+      missing_runtime <- runtime_files[!file.exists(runtime_files)]
+      if (length(missing_runtime)) {
+        stop("The source-tree worker runtime is incomplete.")
+      }
+      for (runtime_file in runtime_files) {
+        sys.source(runtime_file, envir = globalenv())
+      }
+    } else {
+      suppressMessages(library(CerebroNexus))
+    }
+    source(file.path(dir, "io.R"))
+    source(file.path(dir, "loading.R"))
+    source(file.path(
+      dir,
+      "..",
+      "viewer",
+      "core",
+      "viewer_content_contract.R"
+    ))
+    source(file.path(
+      dir,
+      "..",
+      "viewer",
+      "core",
+      "spatial_coordinate_contract.R"
+    ))
+    source(file.path(
+      dir,
+      "..",
+      "viewer",
+      "core",
+      "spatial_coordinate_transform.R"
+    ))
+    source(file.path(dir, "spatial.R"))
+    source(file.path(
+      dir,
+      "..",
+      "viewer",
+      "hla_tcr_motifs",
+      "core",
+      "hla_typing.R"
+    ))
+    source(file.path(
+      dir,
+      "..",
+      "viewer",
+      "hla_tcr_motifs",
+      "core",
+      "hla_motif_core.R"
+    ))
+    source(file.path(
+      dir,
+      "..",
+      "viewer",
+      "hla_tcr_motifs",
+      "core",
+      "hla_association_core.R"
+    ))
+    source(file.path(dir, "manifest.R"))
+    source(file.path(dir, "content_tables.R"))
+    source(file.path(dir, "content_immune.R"))
+    source(file.path(dir, "content_spatial.R"))
+    source(file.path(dir, "content.R"))
+    source(file.path(dir, "profile.R"))
+    source(file.path(dir, "inspect.R"))
+    source(file.path(dir, "adapters.R"))
+    source(file.path(dir, "preview.R"))
+    source(file.path(dir, "stats.R"))
+    source(file.path(dir, "extras.R"))
+    source(file.path(dir, "analysis.R"))
+    source(file.path(dir, "marker_import.R"))
+    source(file.path(dir, "app_bundle.R"))
+    source(file.path(dir, "build.R"))
+    if (!exists("builder_attach_marker_imports", mode = "function")) {
+      stop("Builder worker could not load Marker import support.")
+    }
+    source(file.path(dir, "prerequisite.R"))
+    source(file.path(dir, "state.R"))
+    source(file.path(dir, "plan.R"))
+    source(file.path(dir, "worker.R"))
+    objects <- new.env(parent = emptyenv())
+    snapshots <- new.env(parent = emptyenv())
+    for (id in names(registry)) {
+      snapshot <- registry[[id]]
+      if (!.builder_snapshot_owned(snapshot)) {
+        stop("A registered Builder snapshot is no longer owned.")
+      }
+      assign(id, builder_open_snapshot(snapshot), envir = objects)
+      assign(id, snapshot, envir = snapshots)
+    }
+    assign(".builder_objects", objects, envir = globalenv())
+    assign(".builder_snapshots", snapshots, envir = globalenv())
+    assign(".builder_snapshot_root", root, envir = globalenv())
+    names(registry)
+  }
+  setup_args <- list(
+    dir = normalizePath(builder_dir, mustWork = TRUE),
+    root = normalizePath(snapshot_root, mustWork = TRUE),
+    registry = snapshot_registry,
+    package_source = .builder_worker_package_source(builder_dir),
+    bootstrap = .bootstrap
+  )
   setup <- try(
-    process$run(
-      function(dir, root, registry, package_source) {
-        if (!is.null(package_source)) {
-          if (!requireNamespace("pkgload", quietly = TRUE)) {
-            stop("The pkgload package is required for a source-tree worker.")
-          }
-          pkgload::load_all(package_source, quiet = TRUE)
-        } else {
-          suppressMessages(library(CerebroNexus))
-        }
-        source(file.path(dir, "io.R"))
-        source(file.path(dir, "loading.R"))
-        source(file.path(
-          dir,
-          "..",
-          "viewer",
-          "core",
-          "viewer_content_contract.R"
-        ))
-        source(file.path(
-          dir,
-          "..",
-          "viewer",
-          "core",
-          "spatial_coordinate_contract.R"
-        ))
-        source(file.path(
-          dir,
-          "..",
-          "viewer",
-          "core",
-          "spatial_coordinate_transform.R"
-        ))
-        source(file.path(dir, "spatial.R"))
-        source(file.path(
-          dir,
-          "..",
-          "viewer",
-          "hla_tcr_motifs",
-          "core",
-          "hla_typing.R"
-        ))
-        source(file.path(
-          dir,
-          "..",
-          "viewer",
-          "hla_tcr_motifs",
-          "core",
-          "hla_motif_core.R"
-        ))
-        source(file.path(
-          dir,
-          "..",
-          "viewer",
-          "hla_tcr_motifs",
-          "core",
-          "hla_association_core.R"
-        ))
-        source(file.path(dir, "manifest.R"))
-        source(file.path(dir, "content_tables.R"))
-        source(file.path(dir, "content_immune.R"))
-        source(file.path(dir, "content_spatial.R"))
-        source(file.path(dir, "content.R"))
-        source(file.path(dir, "profile.R"))
-        source(file.path(dir, "inspect.R"))
-        source(file.path(dir, "adapters.R"))
-        source(file.path(dir, "preview.R"))
-        source(file.path(dir, "stats.R"))
-        source(file.path(dir, "extras.R"))
-        source(file.path(dir, "analysis.R"))
-        source(file.path(dir, "marker_import.R"))
-        source(file.path(dir, "app_bundle.R"))
-        source(file.path(dir, "build.R"))
-        if (!exists("builder_attach_marker_imports", mode = "function")) {
-          stop("Builder worker could not load Marker import support.")
-        }
-        source(file.path(dir, "prerequisite.R"))
-        source(file.path(dir, "state.R"))
-        source(file.path(dir, "plan.R"))
-        source(file.path(dir, "worker.R"))
-        objects <- new.env(parent = emptyenv())
-        snapshots <- new.env(parent = emptyenv())
-        for (id in names(registry)) {
-          snapshot <- registry[[id]]
-          if (!.builder_snapshot_owned(snapshot)) {
-            stop("A registered Builder snapshot is no longer owned.")
-          }
-          assign(id, builder_open_snapshot(snapshot), envir = objects)
-          assign(id, snapshot, envir = snapshots)
-        }
-        assign(".builder_objects", objects, envir = globalenv())
-        assign(".builder_snapshots", snapshots, envir = globalenv())
-        assign(".builder_snapshot_root", root, envir = globalenv())
-        names(registry)
-      },
-      args = list(
-        dir = normalizePath(builder_dir, mustWork = TRUE),
-        root = normalizePath(snapshot_root, mustWork = TRUE),
-        registry = snapshot_registry,
-        package_source = .builder_worker_package_source(builder_dir)
-      )
-    ),
+    if (isTRUE(.async)) {
+      process$call(setup_call, args = setup_args)
+      NULL
+    } else {
+      process$run(setup_call, args = setup_args)
+    },
     silent = TRUE
   )
   if (inherits(setup, "try-error")) {
@@ -1089,7 +1128,10 @@ builder_worker_start <- function(
       snapshot_root = normalizePath(snapshot_root, mustWork = TRUE),
       snapshot_registry = snapshot_registry,
       epoch = epoch,
-      ready = TRUE,
+      state = if (isTRUE(.async)) "starting" else "ready",
+      ready = !isTRUE(.async),
+      startup_started_at = Sys.time(),
+      startup_timeout_ms = as.integer(.startup_timeout_ms),
       interrupt = NULL,
       owns_root = owns_root,
       cleanup_safe = TRUE,
@@ -1097,6 +1139,55 @@ builder_worker_start <- function(
     ),
     class = c("builder_worker", "list")
   )
+}
+
+builder_worker_poll_startup <- function(worker, timeout = 0) {
+  .builder_worker_assert(worker)
+  state <- worker$state %||% if (isTRUE(worker$ready)) "ready" else "failed"
+  if (!identical(state, "starting")) {
+    return(list(worker = worker, state = state, error = worker$error %||% NULL))
+  }
+  elapsed_ms <- as.numeric(difftime(
+    Sys.time(),
+    worker$startup_started_at,
+    units = "secs"
+  )) *
+    1000
+  if (is.finite(elapsed_ms) && elapsed_ms >= worker$startup_timeout_ms) {
+    try(worker$process$interrupt(), silent = TRUE)
+    worker$state <- "failed"
+    worker$ready <- FALSE
+    worker$error <- "The background worker startup timed out."
+    return(list(worker = worker, state = "failed", error = worker$error))
+  }
+  process_state <- .builder_worker_process_state(worker$process, timeout)
+  if (identical(process_state, "busy")) {
+    return(list(worker = worker, state = "starting", error = NULL))
+  }
+  if (identical(process_state, "closed")) {
+    worker$state <- "failed"
+    worker$ready <- FALSE
+    worker$error <- "The background worker exited during startup."
+    return(list(worker = worker, state = "failed", error = worker$error))
+  }
+  if (!identical(process_state, "ready")) {
+    return(list(worker = worker, state = "starting", error = NULL))
+  }
+  result <- .builder_worker_read_ready(worker$process)
+  if (is.null(result)) {
+    return(list(worker = worker, state = "starting", error = NULL))
+  }
+  if (!is.null(result$error)) {
+    worker$state <- "failed"
+    worker$ready <- FALSE
+    worker$error <- result$error
+    return(list(worker = worker, state = "failed", error = worker$error))
+  }
+  worker$restored <- result$value
+  worker$state <- "ready"
+  worker$ready <- TRUE
+  worker$error <- NULL
+  list(worker = worker, state = "ready", error = NULL)
 }
 
 .builder_worker_assert <- function(worker) {
