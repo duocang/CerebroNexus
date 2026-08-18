@@ -983,6 +983,52 @@ if (builder_lifecycle_api_available) {
     expect_identical(worker$snapshot_registry, list())
   })
 
+  test_that("session startup returns before a slow worker bootstrap completes", {
+    skip_if_not_installed("callr")
+    gate <- tempfile("builder-worker-startup-gate-")
+    withr::defer(unlink(gate, force = TRUE))
+
+    started_at <- system.time({
+      started <- builder_session_start(
+        builder_profile_inst_path("builder"),
+        .async = TRUE,
+        .bootstrap = local({
+          gate_path <- gate
+          function(...) {
+            while (!file.exists(gate_path)) {
+              Sys.sleep(0.01)
+            }
+            character()
+          }
+        })
+      )
+    })[["elapsed"]]
+    worker <- started$worker
+    withr::defer(try(builder_worker_stop(worker), silent = TRUE))
+
+    expect_null(started$error)
+    expect_lt(started_at, 1)
+    expect_identical(worker$state, "starting")
+    expect_false(worker$ready)
+
+    file.create(gate)
+    deadline <- Sys.time() + 5
+    repeat {
+      startup <- builder_session_poll_startup(worker)
+      worker <- startup$worker
+      if (!identical(startup$state, "starting")) {
+        break
+      }
+      if (Sys.time() >= deadline) {
+        fail("The gated Builder worker did not finish startup.")
+      }
+      Sys.sleep(0.01)
+    }
+
+    expect_identical(startup$state, "ready")
+    expect_true(worker$ready)
+  })
+
   test_that("worker startup tolerates a cold CI process launch", {
     observed_timeout <- NULL
     failed <- builder_worker_start(
