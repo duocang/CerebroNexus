@@ -57,18 +57,6 @@ core_setting_inputs <- c(
   nGene = "core-nGene",
   expression_backend = "core-backend"
 )
-core_layer_user_choice <- reactiveVal(NULL)
-observeEvent(
-  input[["core-layer"]],
-  {
-    id <- current()
-    if (!is.null(id) && identical(input[["core-rendered_for"]], id)) {
-      core_layer_user_choice(list(dataset = id, layer = input[["core-layer"]]))
-    }
-  },
-  ignoreInit = TRUE,
-  priority = 10
-)
 observeEvent(
   input[["core-assay"]],
   {
@@ -118,15 +106,8 @@ observe({
     character()
   layer_missing <- builder_stage_has_text(stored_layer) &&
     !stored_layer %in% stored_layers
-  choice <- isolate(core_layer_user_choice())
   for (setting in names(core_setting_inputs)) {
     next_settings[[setting]] <- values[[setting]]
-  }
-  if (
-    layer_missing &&
-      (!is.list(choice) || !identical(choice$dataset, id))
-  ) {
-    next_settings$layer <- stored_layer
   }
   assay_controls <- builder_core_assay_controls(
     entry$profile,
@@ -135,6 +116,9 @@ observe({
   )
   for (field in names(assay_controls)) {
     next_settings[[field]] <- assay_controls[[field]]$selected
+  }
+  if (layer_missing && identical(values$layer, stored_layer)) {
+    next_settings$layer <- stored_layer
   }
   if (!next_settings$organism %in% c("hg", "mm")) {
     next_settings$analyses <- setdiff(

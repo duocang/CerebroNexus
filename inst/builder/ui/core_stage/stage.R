@@ -196,6 +196,9 @@ builder_core_stage_ui <- function(id, model) {
     if (builder_stage_has_text(model$metadata_attention %||% "")) {
       div(class = "notice warn", model$metadata_attention)
     },
+    if (builder_stage_has_text(model$layer_attention %||% "")) {
+      div(class = "notice bad", model$layer_attention)
+    },
     tags$details(
       class = "builder-disclosure",
       tags$summary("Advanced settings"),
