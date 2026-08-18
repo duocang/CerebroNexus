@@ -1709,6 +1709,35 @@ test_that("worker capabilities load once and preserve failures", {
   expect_identical(failed_loads, 1L)
 })
 
+test_that("spatial alignment preview loads analysis and spatial capabilities", {
+  session <- readLines(
+    builder_profile_inst_path("builder", "session.R"),
+    warn = FALSE
+  )
+  start <- grep(
+    "builder_session_spatial_preview <- function",
+    session,
+    fixed = TRUE
+  )
+  end <- grep(
+    "builder_session_section_bounds <- function",
+    session,
+    fixed = TRUE
+  )
+  body <- paste(session[seq.int(start, end - 1L)], collapse = "\n")
+
+  expect_match(
+    body,
+    'builder_worker_require_capability("analysis")',
+    fixed = TRUE
+  )
+  expect_match(
+    body,
+    'builder_worker_require_capability("spatial")',
+    fixed = TRUE
+  )
+})
+
 test_that("the Builder app has one protocol authority for worker requests", {
   app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
   server <- unlist(lapply(
