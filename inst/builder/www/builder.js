@@ -1514,6 +1514,22 @@
     return row;
   }
 
+  function removeReadyImportOverlap() {
+    var readyIds = new Set(Array.from(
+      document.querySelectorAll("#ds_ready_list > .ds[data-ds]"),
+      function (row) { return row.dataset.ds; }
+    ));
+    var host = document.getElementById("ds_import_list");
+    if (!host || !readyIds.size) return;
+    host.querySelectorAll(".ds[data-import-id]").forEach(function (row) {
+      if (readyIds.has(row.dataset.importId)) row.remove();
+    });
+    var list = host.querySelector(":scope > .builder-import-list");
+    if (list && !list.querySelector(".ds[data-import-id]")) {
+      host.replaceChildren();
+    }
+  }
+
   function reconcileDatasetRail(message) {
     var rail = document.getElementById("ds_ready_list");
     var rows = message && message.rows;
@@ -1577,6 +1593,8 @@
       });
       existing.forEach(function (row) { row.remove(); });
     }
+
+    removeReadyImportOverlap();
 
     var nextFocus = datasetRailFocusTarget(rail, focusIdentity);
     if (nextFocus && focusedElement !== nextFocus) nextFocus.focus();
@@ -1682,6 +1700,7 @@
       existing.delete(item.record.id);
     });
     existing.forEach(function (row) { row.remove(); });
+    removeReadyImportOverlap();
     var nextFocus = importRailFocusTarget(list, focusIdentity);
     if (nextFocus && nextFocus !== focused) nextFocus.focus();
     applyDatasetMutationLock();
