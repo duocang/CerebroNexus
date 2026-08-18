@@ -552,7 +552,7 @@ test_that("a real publish restore failure maps to recovery required", {
   })
 })
 
-test_that("Launch App requires a verified published final App directory", {
+test_that("successful App builds expose only reliable result actions", {
   no_app <- builder_build_status_ui(builder_result_success(
     published = TRUE,
     built = "/release/dataset.crb"
@@ -565,11 +565,9 @@ test_that("Launch App requires a verified published final App directory", {
     report_path = "/release/build-report.json"
   ))
 
-  expect_false(grepl("Launch App", builder_stage_html(no_app), fixed = TRUE))
   verified_html <- builder_stage_html(verified_app)
-  expect_match(verified_html, "Launch App", fixed = TRUE)
-  expect_false(grepl(">Open App<", verified_html, fixed = TRUE))
-  expect_match(verified_html, 'id="open_app"', fixed = TRUE)
+  expect_false(grepl("Launch App", verified_html, fixed = TRUE))
+  expect_false(grepl('id="open_app"', verified_html, fixed = TRUE))
   expect_match(verified_html, "Reveal Folder", fixed = TRUE)
   expect_match(verified_html, "Copy Path", fixed = TRUE)
   expect_match(verified_html, "Copy Report", fixed = TRUE)

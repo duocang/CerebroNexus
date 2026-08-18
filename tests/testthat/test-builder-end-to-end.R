@@ -89,7 +89,6 @@ test_that("Builder release documentation matches the guided workflow", {
     "rollback",
     "recovery",
     "ownership migration",
-    "Launch App",
     "Reveal Folder",
     "Copy Path",
     "Copy Report"
@@ -106,7 +105,7 @@ test_that("Builder release documentation matches the guided workflow", {
     "snapshot payload once",
     "build-report.json",
     ".cerebro-builder-release-v1",
-    "Launch App is available only for a generated App"
+    "Reveal Folder"
   )) {
     expect_match(vignette_text, contract, fixed = TRUE)
   }

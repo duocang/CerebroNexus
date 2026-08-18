@@ -947,14 +947,6 @@ builder_build_status_ui <- function(model) {
     ) {
       div(
         class = "builder-result-actions",
-        if (!is.null(model$app_dir)) {
-          actionButton(
-            "open_app",
-            "Launch App",
-            class = "btn btn-primary",
-            `data-path` = model$app_dir
-          )
-        },
         if (!is.null(model$release_dir)) {
           actionButton(
             "reveal_folder",
