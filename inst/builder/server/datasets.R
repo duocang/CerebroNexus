@@ -465,6 +465,7 @@ observe({
   req(id)
   entry <- builder_upgrade_viewer_content_entry(entry_of(id))
   req(entry)
+  req(!identical(entry$load_state %||% "loaded", "artifact_ready"))
   catalog <- projection_catalog_for_entry(entry)
   ids <- names(catalog)[vapply(
     catalog,
@@ -504,6 +505,7 @@ observe({
   req(id)
   entry <- builder_upgrade_viewer_content_entry(entry_of(id))
   req(entry)
+  req(!identical(entry$load_state %||% "loaded", "artifact_ready"))
   trajectories <- selectable_trajectory_selection(
     trajectory_catalog_for_entry(entry)
   )

@@ -1319,19 +1319,12 @@ observeEvent(input$project_resume_current_source, {
     )
     return()
   }
-  remaining <- Filter(function(entry) !identical(entry$id, id), isolate(sets()))
-  store(builder_state(
-    datasets = remaining,
-    current_dataset = if (length(remaining)) remaining[[1L]]$id else NULL
-  ))
-  marks <- isolate(dataset_check_marks())
-  marks <- marks[names(marks) != id]
-  dataset_check_marks(marks)
   pending <- isolate(builder_project_pending_entries())
+  previous_pending <- pending[[id]] %||% NULL
   pending[[id]] <- record
   builder_project_pending_entries(pending)
   source <- record$source
-  if (identical(source$kind, "example")) {
+  started <- if (identical(source$kind, "example")) {
     start_load("example", source$example, record$name, dataset_id = id)
   } else {
     path <- builder_project_resolve_path(source$path, project$root, source$kind)
@@ -1349,6 +1342,11 @@ observeEvent(input$project_resume_current_source, {
       source_origin = source$origin %||% "upload",
       example_id = source$example %||% NULL
     )
+  }
+  if (!isTRUE(started)) {
+    pending <- isolate(builder_project_pending_entries())
+    pending[[id]] <- previous_pending
+    builder_project_pending_entries(pending)
   }
 })
 

@@ -378,6 +378,9 @@ builder_spatial_alignment_server <- function(
     if (is.null(entry) || !identical(id, selection$dataset)) {
       return(invisible(TRUE))
     }
+    if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
+      return(invisible(TRUE))
+    }
     sections <- sections_for(entry)
     if (!length(sections)) {
       return(invisible(FALSE))

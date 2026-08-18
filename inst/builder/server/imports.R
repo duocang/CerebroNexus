@@ -72,7 +72,19 @@ start_load <- function(
     )
     return(invisible(FALSE))
   }
-  reservation <- builder_source_reserve(sets(), pending_sources(), kind, arg)
+  reservation_entries <- sets()
+  if (isTRUE(restoring_source)) {
+    reservation_entries <- Filter(
+      function(entry) !identical(entry$id, dataset_id),
+      reservation_entries
+    )
+  }
+  reservation <- builder_source_reserve(
+    reservation_entries,
+    pending_sources(),
+    kind,
+    arg
+  )
   if (!isTRUE(reservation$ok)) {
     release_client_import(
       client_id,

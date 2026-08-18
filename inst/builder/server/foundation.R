@@ -31,9 +31,20 @@ finalize_loaded_entry <- function(entry) {
 }
 builder_prepare_loaded_entry_attachment <- function(entry) {
   finalized <- finalize_loaded_entry(entry)
+  current_state <- isolate(store())
+  existing <- Filter(
+    function(candidate) identical(candidate$id, finalized$id),
+    current_state$datasets
+  )
+  replacing_artifact <- length(existing) == 1L &&
+    identical(existing[[1L]]$load_state %||% "loaded", "artifact_ready")
   next_state <- builder_reduce_state(
-    isolate(store()),
-    list(type = "add", entry = finalized)
+    current_state,
+    if (replacing_artifact) {
+      list(type = "replace", id = finalized$id, entry = finalized)
+    } else {
+      list(type = "add", entry = finalized)
+    }
   )
   list(entry = finalized, state = next_state)
 }

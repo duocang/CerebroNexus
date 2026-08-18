@@ -826,8 +826,42 @@ builder_project_stage_spatial_assets <- function(entry, root) {
       return(record)
     }
     field_order <- names(record)
+    payload <- record$source_uri %||% record$uri %||% NULL
+    asset <- record$project_asset %||% NULL
+    if (is.list(asset) && !.builder_project_text(payload)) {
+      fail <- function(reason) {
+        stop(
+          paste0(
+            "Spatial image asset for dataset “",
+            entry$id,
+            "”, FOV “",
+            section,
+            "”, image “",
+            label,
+            "” ",
+            reason,
+            "."
+          ),
+          call. = FALSE
+        )
+      }
+      path <- tryCatch(
+        builder_project_resolve_path(asset$path %||% "", root, "managed"),
+        error = function(error) NULL
+      )
+      if (
+        !.builder_project_text(path) || !file.exists(path) || dir.exists(path)
+      ) {
+        fail("is missing")
+      }
+      current <- builder_project_file_fingerprint(path, content = TRUE)
+      if (!builder_project_fingerprint_matches(asset$fingerprint, current)) {
+        fail("failed its integrity check")
+      }
+      return(record)
+    }
     parsed <- .builder_project_decode_image_uri(
-      record$source_uri %||% record$uri %||% NULL
+      payload
     )
     extension <- switch(
       tolower(parsed$mime),
