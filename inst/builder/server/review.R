@@ -504,6 +504,10 @@ observeEvent(input$complete_dataset_check, {
   alignment_server$request_dataset_switch(target, function() {
     current(target)
     result(NULL)
+    session$sendCustomMessage(
+      "builder_focus_dataset_start",
+      list(dataset = target)
+    )
   })
 })
 

@@ -63,6 +63,7 @@
   var builderConnectionReady = true;
   var builderWorkerReady = false;
   var builderWorkerStatusTimer = null;
+  var datasetStartFocusToken = 0;
   var dynamicContentEnhancementFrame = null;
   var builderActivityState = {
     phase: "none",
@@ -3366,6 +3367,35 @@
     exampleMessageHandlerRegistered = true;
   }
 
+  function focusDatasetStart(message) {
+    var dataset = message && message.dataset;
+    if (typeof dataset !== "string" || !dataset) return;
+    datasetStartFocusToken += 1;
+    var token = datasetStartFocusToken;
+    var attempts = 0;
+    function apply() {
+      if (token !== datasetStartFocusToken) return;
+      var selected = document.querySelector(
+        "#ds_ready_list .ds[data-ds] .builder-pick[aria-current=true]"
+      );
+      var row = selected && selected.closest(".ds[data-ds]");
+      var stage = document.querySelector('[data-workflow-stage="configure"]');
+      var heading = stage && stage.querySelector("h2");
+      if (!row || row.dataset.ds !== dataset || !heading) {
+        attempts += 1;
+        if (attempts < 12) window.setTimeout(apply, 50);
+        return;
+      }
+      window.scrollTo({
+        top: 0,
+        behavior: reducedMotion.matches ? "auto" : "smooth",
+      });
+      heading.setAttribute("tabindex", "-1");
+      heading.focus({ preventScroll: true });
+    }
+    apply();
+  }
+
   function registerBuildDialogHandler() {
     if (buildDialogHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
@@ -3414,6 +3444,10 @@
       updateBuilderProjectSourceProgress
     );
     window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
+    window.Shiny.addCustomMessageHandler(
+      "builder_focus_dataset_start",
+      focusDatasetStart
+    );
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;
       if (["upload", "configure", "review", "build"].indexOf(id) < 0) return;
