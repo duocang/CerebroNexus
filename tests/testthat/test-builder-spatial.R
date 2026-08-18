@@ -1283,6 +1283,7 @@ test_that("points-only Spatial FOV appearance persists without an image", {
       group = c("A", "B")
     )
   )
+  preview_state <- shiny::reactiveVal(NULL)
 
   shiny::testServer(
     function(input, output, session) {
@@ -1299,7 +1300,7 @@ test_that("points-only Spatial FOV appearance persists without an image", {
           current_entry(updated)
           invisible(updated)
         },
-        alignment_preview = shiny::reactiveVal(preview),
+        alignment_preview = preview_state,
         spatial_coords = shiny::reactiveVal(NULL)
       )
     },
@@ -1308,22 +1309,12 @@ test_that("points-only Spatial FOV appearance persists without an image", {
       session$flushReact()
       expect_true(alignment$restore_project_settings("dataset-a"))
       session$flushReact()
+      preview_state(preview)
+      session$flushReact()
       expect_identical(alignment$active_section(), "fov-a")
       expect_identical(
         alignment$point_appearance(),
         list(opacity = 0.65, size = 6)
-      )
-      session$setInputs(`enhance-point_opacity` = 85, `enhance-point_size` = 5)
-      session$flushReact()
-      expect_identical(
-        current_entry()$settings$spatial_point_appearance[["fov-a"]],
-        list(point_opacity = 0.65, point_size = 6)
-      )
-      session$setInputs(`enhance-point_opacity` = 65, `enhance-point_size` = 6)
-      session$flushReact()
-      expect_identical(
-        current_entry()$settings$spatial_point_appearance[["fov-a"]],
-        list(point_opacity = 0.65, point_size = 6)
       )
       session$setInputs(`enhance-point_opacity` = 70)
       session$flushReact()

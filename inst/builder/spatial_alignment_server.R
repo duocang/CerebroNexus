@@ -250,6 +250,7 @@ builder_spatial_alignment_server <- function(
       "enhance-point_opacity",
       "enhance-point_size"
     )
+    ids <- setdiff(ids, c("enhance-point_opacity", "enhance-point_size"))
     invisible(lapply(ids, function(id) shiny::freezeReactiveValue(input, id)))
     shiny::updateSliderInput(
       session,
@@ -1074,10 +1075,22 @@ builder_spatial_alignment_server <- function(
       entry <- entry_of(current())
       section <- active_section()
       if (!is.null(entry) && !is.null(section)) {
+        appearance <- point_appearance_for(entry, section, draft())
+        expected <- shiny::isolate(expected_controls())
+        if (
+          is.null(draft()) &&
+            !is.null(expected) &&
+            identical(
+              expected[c("point_opacity", "point_size")],
+              appearance[c("point_opacity", "point_size")]
+            )
+        ) {
+          return()
+        }
         update_controls(
           draft(),
           preview$bounds,
-          point_appearance_for(entry, section, draft())
+          appearance
         )
       }
     }
