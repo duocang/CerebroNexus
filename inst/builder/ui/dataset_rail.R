@@ -146,7 +146,8 @@ builder_snapshot_release_transition <- function(
     needs_attention = list(label = "Needs attention", icon = "!"),
     blocked = list(label = "Blocked", icon = "\u00d7"),
     loading = list(label = "Loading", icon = "\u2026"),
-    reload_required = list(label = "Reload required", icon = "\u21bb")
+    reload_required = list(label = "Reload required", icon = "\u21bb"),
+    artifact_ready = list(label = "CRB ready", icon = "\u2713")
   )
   .builder_rail_or(
     records[[dataset_state$readiness]],

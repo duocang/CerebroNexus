@@ -217,7 +217,6 @@ test_that("named image stacks remain isolated between spatial sections", {
         uri = "data:image/png;base64,AAAA",
         base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
         parameters = list(dx = dx),
-        saved = TRUE,
         section = list(id = section, kind = "spatial")
       )
     }

@@ -35,7 +35,7 @@ test_that("rail Review and BuildPlan share manifest readiness", {
   })
 })
 
-test_that("an uploaded image with unsaved alignment blocks freezing", {
+test_that("legacy alignment saved flags do not affect freezing", {
   local({
     builder_repo_source("preview.R")
     builder_repo_source("recommend.R")
@@ -45,14 +45,12 @@ test_that("an uploaded image with unsaved alignment blocks freezing", {
     entry$settings$images$fov <- list(
       uri = "data:image/png;base64,AAAA",
       bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
-      saved = FALSE
+      saved = FALSE,
+      outside = 0L
     )
-    blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
-    expect_identical(blocked$error_code, "unsaved_spatial_alignment")
-    expect_match(blocked$error, "fov")
-    expect_match(blocked$error, "no saved alignment")
+    ready <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+    expect_null(ready$error)
 
-    entry$settings$images$fov$saved <- TRUE
     entry$settings$images$fov$outside <- 1L
     blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
     expect_identical(blocked$error_code, "spatial_alignment_outside")
@@ -106,7 +104,6 @@ test_that("spatial image storage and nested image counts freeze exactly", {
       image_opacity = 0.8,
       point_opacity = 0.85,
       point_size = 5,
-      saved = TRUE,
       section_id = "fov",
       section_kind = "spatial"
     )
@@ -141,6 +138,12 @@ test_that("spatial image storage and nested image counts freeze exactly", {
     expect_null(ready$error)
     expect_identical(ready$items[[1L]]$spatial_image_storage, "external")
     expect_identical(ready$items[[1L]]$spatial_alignment$image_count, 1L)
+    expect_false(
+      "saved_count" %in%
+        names(
+          ready$items[[1L]]$spatial_alignment
+        )
+    )
 
     expect_error(
       builder_plan_requires_app("not a list"),
@@ -175,6 +178,33 @@ test_that("spatial image storage and nested image counts freeze exactly", {
 
     blocked <- builder_freeze_plan(list(entry), tempdir(), make_app = TRUE)
     expect_identical(blocked$error_code, "duplicate_spatial_image_label")
+  })
+})
+
+test_that("artifact entries bypass editable Spatial image validation", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    entry$load_state <- "artifact_ready"
+    entry$snapshot <- NULL
+    entry$settings$spatial_image_storage <- "external"
+    entry$settings$images <- list(
+      fov = list(
+        `H&E` = list(
+          project_asset = list(path = "spatial-assets/ds1/fov/image.png"),
+          bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10)
+        )
+      )
+    )
+
+    expect_false(builder_plan_requires_app(list(entry)))
+    preflight <- .builder_plan_preflight_entries(list(entry), make_app = FALSE)
+    expect_true(is.list(preflight))
+    expect_null(preflight$error_code)
+    expect_identical(preflight$labels, "Dataset A")
   })
 })
 

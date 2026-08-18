@@ -86,6 +86,9 @@ builder_plan_requires_app <- function(entries) {
     if (!is.list(entry) || !is.list(entry$settings)) {
       next
     }
+    if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
+      next
+    }
     storage <- entry$settings$spatial_image_storage %||% "embedded"
     if (!identical(storage, "external")) {
       next
@@ -128,6 +131,9 @@ builder_plan_requires_app <- function(entries) {
   }
 
   for (entry in entries) {
+    if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
+      next
+    }
     storage <- entry$settings$spatial_image_storage %||% "embedded"
     if (
       !is.character(storage) ||
@@ -181,22 +187,6 @@ builder_plan_requires_app <- function(entries) {
       return(builder_plan_error(
         "External spatial images require CRB files + Viewer App output.",
         "external_images_require_app"
-      ))
-    }
-    unsaved <- Filter(function(record) identical(record$saved, FALSE), images)
-    if (length(unsaved)) {
-      first <- unsaved[[1L]]
-      return(builder_plan_error(
-        paste0(
-          "Dataset “",
-          entry$settings$name,
-          "”, section “",
-          first$section_id,
-          "”, image “",
-          first$image_label,
-          "” has no saved alignment. Save or remove it before building."
-        ),
-        "unsaved_spatial_alignment"
       ))
     }
     outside_counts <- vapply(

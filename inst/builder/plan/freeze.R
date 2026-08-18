@@ -456,6 +456,38 @@ builder_freeze_plan <- function(
       entry <- entries[[index]]
       settings <- entry$settings
       filename <- planned_filenames[[index]]
+      if (identical(entry$load_state %||% "loaded", "artifact_ready")) {
+        artifact <- entry$project_artifact %||% list()
+        saved <- artifact$plan_item %||% NULL
+        expected <- list(
+          id = entry$id,
+          name = labels[[index]],
+          filename = filename,
+          sidecars = backends[[index]]$sidecars,
+          viewer_bundle_assets = viewer_bundle_asset_sets[[index]],
+          private_assets = private_asset_sets[[index]],
+          viewer_bundle_asset_claims = viewer_bundle_asset_claim_sets[[index]],
+          private_asset_claims = private_asset_claim_sets[[index]]
+        )
+        if (
+          !is.list(saved) ||
+            !.builder_project_text(artifact$resolved_path %||% "") ||
+            !file.exists(artifact$resolved_path) ||
+            !builder_project_reused_plan_matches(saved, expected)
+        ) {
+          stop("invalid_reusable_artifact", call. = FALSE)
+        }
+        saved$reused_artifact <- list(
+          path = artifact$resolved_path,
+          fingerprint = artifact$fingerprint %||% list(),
+          members = artifact$members %||% list()
+        )
+        saved$source_snapshot_identity <- list(
+          available = FALSE,
+          reused_artifact = TRUE
+        )
+        return(.builder_plan_deep_copy(saved))
+      }
       has_marker_genes <- .builder_state_content_available(
         entry,
         "marker_genes"
@@ -569,11 +601,6 @@ builder_freeze_plan <- function(
         spatial_alignment = list(
           section_count = as.integer(length(spatial_sections)),
           image_count = .builder_plan_spatial_image_count(alignments$spatial),
-          saved_count = as.integer(sum(vapply(
-            .builder_plan_flatten_spatial_images(alignments$spatial),
-            function(record) isTRUE(record$saved),
-            logical(1)
-          ))),
           points_only = setdiff(spatial_sections, image_sections)
         ),
         estimated_runtime = if (length(analyses)) {
@@ -641,6 +668,7 @@ builder_freeze_plan <- function(
       conditionMessage(items),
       unsafe_reference = "unsafe_reference",
       invalid_snapshot_identity = "invalid_snapshot_identity",
+      invalid_reusable_artifact = "invalid_reusable_artifact",
       "invalid_frozen_value"
     )
     return(builder_plan_error(

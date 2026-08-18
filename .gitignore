@@ -7,6 +7,9 @@ CerebroNexus_*.tar.gz
 result
 vignettes/*.crb
 docs
+!docs/
+docs/*
+!docs/builder-projects.md
 pkgdown-site/
 .Rproj.user
 *.Rproj

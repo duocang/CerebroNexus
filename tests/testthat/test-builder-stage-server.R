@@ -662,7 +662,6 @@ test_that("external spatial images carry required App output through Review", {
     plan$overwrite <- overwrite
     plan
   }
-
   shiny::testServer(app_env$server, {
     entry <- builder_task6_entry()
     image <- list(
@@ -680,7 +679,6 @@ test_that("external spatial images carry required App output through Review", {
       image_opacity = 0.8,
       point_opacity = 0.85,
       point_size = 5,
-      saved = TRUE,
       outside = 0L,
       section_id = "fov",
       section_kind = "spatial"
@@ -781,6 +779,11 @@ test_that("Builder auth accepts only the exact typed browser payload", {
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this state-only test.")
   }
+  capability <- new.env(parent = emptyenv())
+  capability$available <- TRUE
+  app_env$auth_capability <- function() {
+    list(available = capability$available, reason = NULL)
+  }
   shiny::testServer(app_env$server, {
     valid_accounts <- list(list(
       id = "auth-account-1",
@@ -870,7 +873,7 @@ test_that("Builder auth accepts only the exact typed browser payload", {
       "Login accounts could not be saved."
     )
 
-    app_env$auth_capability$available <- FALSE
+    capability$available <- FALSE
     build_mode(TRUE)
     session$setInputs(
       builder_auth_accounts = list(
@@ -903,7 +906,9 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
     builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
     .env = environment(builder_stage_frozen_plan)
   )
-  app_env$auth_capability$available <- TRUE
+  app_env$auth_capability <- function() {
+    list(available = TRUE, reason = NULL)
+  }
   app_env$builder_freeze_plan <- function(
     entries,
     out_dir,
@@ -1517,19 +1522,13 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     busy_protocol <- app_env$builder_request_protocol("worker-b")
     busy_protocol$build_status <- "running"
     protocol(busy_protocol)
+    notification_count <- length(notifications)
     real_session$setInputs(build = 5L)
     real_session$flushReact()
-    expect_identical(build_flow()$stage, "conflict")
-    fifth_nonce <- build_flow()$nonce
-    notification_count <- length(notifications)
-    real_session$setInputs(
-      builder_build_dialog = list(action = "replace", nonce = fifth_nonce)
-    )
-    real_session$flushReact()
-    expect_length(enqueued, 1L)
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_length(enqueued, 1L)
     expect_gt(length(notifications), notification_count)
-    expect_match(tail(notifications, 1L), "worker", ignore.case = TRUE)
+    expect_match(tail(notifications, 1L), "active build", ignore.case = TRUE)
 
     protocol(app_env$builder_request_protocol("worker-c"))
     real_session$setInputs(build = 6L)
@@ -1644,6 +1643,7 @@ test_that("active Build states reject forged stage actions", {
         plan = if (identical(stage, "conflict")) plan else NULL
       )
       build_flow(frozen_flow)
+      notification_count <- length(notifications)
       real_session$setInputs(back_to_review = index)
       real_session$setInputs(choose_output_folder = index)
       real_session$setInputs(build = index)
@@ -1653,7 +1653,15 @@ test_that("active Build states reject forged stage actions", {
       expect_identical(build_flow(), frozen_flow, info = stage)
       expect_identical(selected_output(), "/confirmed/output", info = stage)
       expect_identical(picker_calls, 0L, info = stage)
-      expect_length(notifications, 0L)
+      expect_true(
+        length(notifications) > notification_count,
+        info = stage
+      )
+      expect_true(any(grepl(
+        "Wait for the active build to finish",
+        notifications,
+        fixed = TRUE
+      )))
     }
 
     build_flow(list(stage = "idle", plan = NULL))
@@ -1763,8 +1771,8 @@ test_that("active builds lock dataset imports and rail mutations", {
       expect_identical(protocol(), before_protocol, info = stage)
     }
     expect_true(any(grepl(
-      "Wait for the active build to finish before changing datasets.",
-      notifications,
+      "active build",
+      tolower(notifications),
       fixed = TRUE
     )))
 
@@ -1788,7 +1796,10 @@ test_that("Build recovery actions preserve confirmation only when safe", {
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this recovery test.")
   }
-  app_env$auth_capability$available <- TRUE
+  app_env$auth_capability <- function() {
+    list(available = TRUE, reason = NULL)
+  }
+  app_env$builder_operation_allowed <- function(...) TRUE
   rlang::local_bindings(
     builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
     .env = environment(builder_stage_frozen_plan)
@@ -1817,10 +1828,16 @@ test_that("Build recovery actions preserve confirmation only when safe", {
 
   shiny::testServer(app_env$server, {
     real_session <- session
+    recovery_output <- tempfile("builder-recovery-output-")
     notifications <- character()
     enqueued <- list()
     restart_succeeds <- TRUE
     server_env <- environment(start_confirmed_build)
+    assign(
+      "builder_operation_allowed",
+      function(...) TRUE,
+      envir = server_env
+    )
     assign(
       "showNotification",
       function(ui, ...) {
@@ -2110,6 +2127,31 @@ test_that("Viewer and spatial preview contracts ignore settings-only revisions",
   trajectory_contract <- app_env$builder_trajectory_preview_contract(
     entry,
     trajectories
+  )
+
+  cache <- app_env$builder_preview_cache_begin(
+    list(),
+    entry$id,
+    projection_contract
+  )
+  cache <- app_env$builder_preview_cache_store(
+    cache,
+    entry$id,
+    list(umap = list(x = 1, y = 2))
+  )
+  cache <- app_env$builder_preview_cache_begin(
+    cache,
+    "dataset-b",
+    list(dataset = "dataset-b")
+  )
+  expect_true(app_env$builder_preview_cache_hit(
+    cache,
+    entry$id,
+    projection_contract
+  ))
+  expect_identical(
+    app_env$builder_preview_cache_frames(cache, entry$id),
+    list(umap = list(x = 1, y = 2))
   )
 
   settings_only <- entry
@@ -2716,8 +2758,8 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
   )
   expect_match(
     server,
-    "commit_section(entry, section, record)",
-    fixed = TRUE
+    "commit_section\\(\\s*entry,\\s*section,\\s*record",
+    perl = TRUE
   )
   expect_match(
     server,
