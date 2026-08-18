@@ -84,6 +84,10 @@ builder_profile_content_context <- function(
 }
 
 builder_profile_optional_content <- function(object, context) {
+  if (exists("builder_worker_require_capability", mode = "function")) {
+    builder_worker_require_capability("immune")
+    builder_worker_require_capability("spatial")
+  }
   parts <- list(
     builder_profile_table_content(object, context),
     builder_profile_immune_content(object, context),
