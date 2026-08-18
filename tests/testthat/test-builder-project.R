@@ -505,6 +505,84 @@ test_that("source synchronization warns on close without locking the workspace",
   expect_false(capabilities$page_inert)
 })
 
+test_that("the first project offer waits for every import ownership layer", {
+  runtime <- builder_project_test_runtime()
+  idle <- runtime$builder_activity_state(has_datasets = TRUE)
+  client_busy <- runtime$builder_activity_state(
+    client_imports = 1L,
+    has_datasets = TRUE
+  )
+  server_busy <- runtime$builder_activity_state(
+    server_imports = TRUE,
+    has_datasets = TRUE
+  )
+  protocol <- list(queue = list(), pending = NULL, awaiting_ack = list())
+  load <- list(kind = "load")
+
+  expect_true(runtime$builder_imports_idle(idle, protocol))
+  expect_false(runtime$builder_imports_idle(client_busy, protocol))
+  expect_false(runtime$builder_imports_idle(server_busy, protocol))
+
+  protocol$queue <- list(load)
+  expect_false(runtime$builder_imports_idle(idle, protocol))
+  protocol$queue <- list()
+  protocol$pending <- load
+  expect_false(runtime$builder_imports_idle(idle, protocol))
+  protocol$pending <- NULL
+  protocol$awaiting_ack <- list(token = load)
+  expect_false(runtime$builder_imports_idle(idle, protocol))
+
+  protocol$awaiting_ack <- list(token = list(kind = "preview"))
+  expect_true(runtime$builder_imports_idle(idle, protocol))
+})
+
+test_that("the first project offer is retryable when imports restart before flush", {
+  runtime <- builder_project_test_runtime()
+  idle <- runtime$builder_activity_state(has_datasets = TRUE)
+  busy <- runtime$builder_activity_state(
+    client_imports = 1L,
+    has_datasets = TRUE
+  )
+  protocol <- list(queue = list(), pending = NULL, awaiting_ack = list())
+  entries <- list(list(id = "ds1"))
+
+  expect_true(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = NULL,
+    offered = FALSE,
+    activity = idle,
+    protocol = protocol
+  ))
+  expect_false(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = NULL,
+    offered = FALSE,
+    activity = busy,
+    protocol = protocol
+  ))
+  expect_true(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = NULL,
+    offered = FALSE,
+    activity = idle,
+    protocol = protocol
+  ))
+  expect_false(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = list(name = "restored"),
+    offered = FALSE,
+    activity = idle,
+    protocol = protocol
+  ))
+  expect_false(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = NULL,
+    offered = TRUE,
+    activity = idle,
+    protocol = protocol
+  ))
+})
+
 test_that("project server uses a dedicated callr source copy process", {
   path <- testthat::test_path(
     "..",
