@@ -183,6 +183,12 @@ Loading the source restores the saved choices onto a fresh inspection of the
 managed file. Coordinate and image controls enter the dataset configuration
 automatically; there is no separate Spatial alignment save action.
 
+For a Spatial FOV without an attached histology image, Builder also retains the
+point opacity and size used by its alignment preview. Those points-only display
+values are project-editor state and are not exported into a CRB. When an image
+is added, Builder transfers the values into that image's alignment record; when
+the last image is removed, it transfers them back to the FOV's project state.
+
 Project checkpoint CRBs always receive a private embedded-image build
 projection so every FOV image travels inside the reusable CRB. This projection
 does not change the dataset's normal Viewer App storage preference.
