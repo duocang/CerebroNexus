@@ -3449,6 +3449,21 @@
     buildDialogHandlerRegistered = true;
   }
 
+  function updateDatasetLoadTimes() {
+    var now = Date.now();
+    document.querySelectorAll(".builder-load-time").forEach(function (node) {
+      var fixed = Number(node.dataset.elapsedMs);
+      var started = Number(node.dataset.startedAtMs);
+      var elapsed = Number.isFinite(fixed)
+        ? fixed
+        : Number.isFinite(started)
+          ? Math.max(0, now - started)
+          : NaN;
+      if (!Number.isFinite(elapsed)) return;
+      node.textContent = (elapsed / 1000).toFixed(1) + "s";
+    });
+  }
+
   function registerClientImportHandlers() {
     if (clientImportHandlersRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler(
@@ -3616,6 +3631,8 @@
     window.addEventListener("scroll", syncSpatialAlignmentScrollbars, { passive: true });
     ensureLiveRegion();
     enhanceDynamicContent();
+    updateDatasetLoadTimes();
+    window.setInterval(updateDatasetLoadTimes, 100);
   }
 
   if (document.readyState === "loading") {

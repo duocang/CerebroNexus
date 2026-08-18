@@ -1356,6 +1356,32 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   text-transform: uppercase;
   transform: rotate(-2deg);
 }
+.ds-ready-summary {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: .28rem;
+}
+.ds-ready-summary.needs-review {
+  position: absolute;
+  z-index: 3;
+  top: .62rem;
+  right: -1rem;
+  width: 2.8rem;
+}
+.ds-ready-summary .ds-ready-stamp.needs-review {
+  position: static;
+}
+.builder-load-time {
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+  font-size: .62rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
 .ds-ready-stamp.needs-review {
   position: absolute;
   z-index: 3;
