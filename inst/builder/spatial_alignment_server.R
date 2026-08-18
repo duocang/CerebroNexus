@@ -1495,6 +1495,16 @@ builder_spatial_alignment_server <- function(
       if (is.null(entry) || is.null(section)) {
         return()
       }
+      session$sendCustomMessage(
+        "builder_coordinate_reset_motion",
+        list(
+          ids = c(
+            "enhance-coordinate_rotation",
+            "enhance-point_opacity",
+            "enhance-point_size"
+          )
+        )
+      )
       store_coordinate_draft(
         spec = spec,
         dataset = entry$id,
