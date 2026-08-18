@@ -197,7 +197,7 @@ builder_alignment_preview_model <- function(
     )
   expression_cells <- tryCatch(
     {
-      expression <- CerebroNexus:::.getExpressionMatrix(
+      expression <- .getExpressionMatrix(
         seurat = object,
         assay = assay,
         slot = layer,
