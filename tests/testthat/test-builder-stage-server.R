@@ -2,6 +2,19 @@ builder_stage_contract_source_runtime(environment())
 builder_profile_source_runtime(environment())
 builder_plan_contract_source_runtime(environment())
 
+test_that("automatic dataset review advance requests top-of-workbench focus", {
+  review <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(review, '"builder_focus_dataset_start"', fixed = TRUE)
+  expect_match(review, "list(dataset = target)", fixed = TRUE)
+})
+
 test_that("Builder shell and workflow UI separate all four stages", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())
