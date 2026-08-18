@@ -1,12 +1,3 @@
-builder_table_inst_path <- function(...) {
-  relative <- file.path(...)
-  path <- testthat::test_path("..", "..", "inst", relative)
-  if (!file.exists(path)) {
-    path <- system.file(relative, package = "CerebroNexus")
-  }
-  path
-}
-
 builder_table_source_runtime <- function(local = parent.frame()) {
   file <- builder_table_inst_path("builder", "content_tables.R")
   if (nzchar(file) && file.exists(file)) {

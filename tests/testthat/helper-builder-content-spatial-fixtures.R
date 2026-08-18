@@ -1,12 +1,3 @@
-builder_content_spatial_inst_path <- function(...) {
-  relative <- file.path(...)
-  path <- testthat::test_path("..", "..", "inst", relative)
-  if (!file.exists(path)) {
-    path <- system.file(relative, package = "CerebroNexus")
-  }
-  path
-}
-
 builder_content_spatial_source_runtime <- function(local = parent.frame()) {
   files <- c(
     builder_content_spatial_inst_path(
