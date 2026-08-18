@@ -202,7 +202,6 @@ builder_alignment_preview_model <- function(
         assay = assay,
         slot = layer,
         join_samples = TRUE,
-        allow_cross_semantic_fallback = TRUE,
         verbose = FALSE
       )
       colnames(expression)

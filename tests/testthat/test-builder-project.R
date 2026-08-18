@@ -731,7 +731,7 @@ test_that("restore dialog explains the session-only skip action", {
   ))
 })
 
-test_that("restore choices render descriptive labels and default to editing", {
+test_that("restore choices render descriptive labels and prefer checked CRB reuse", {
   skip_if_not_installed("shiny")
   runtime <- builder_project_test_runtime()
   runtime$tags <- shiny::tags
@@ -771,7 +771,8 @@ test_that("restore choices render descriptive labels and default to editing", {
 
   expect_match(html, "Use ready CRB — fast, view/build only", fixed = TRUE)
   expect_match(html, "Load source — continue editing", fixed = TRUE)
-  expect_match(html, 'value="resume" checked="checked"', fixed = TRUE)
+  expect_match(html, 'value="reuse" checked="checked"', fixed = TRUE)
+  expect_match(html, "CRB ready", fixed = TRUE)
 })
 
 test_that("project lifecycle capabilities lock only conflicting operations", {
