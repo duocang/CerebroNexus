@@ -659,6 +659,7 @@ test_that("bounded alignment scenes retain full R-only coverage coordinates", {
   scene <- builder_spatial_canvas_scene(
     preview,
     colors = character(),
+    point_appearance = list(point_opacity = 0.65, point_size = 6),
     identity = "dataset::section-a",
     generation = 1L,
     dataset = "dataset-a",
@@ -669,6 +670,8 @@ test_that("bounded alignment scenes retain full R-only coverage coordinates", {
   expect_identical(scene$dataset, "dataset-a")
   expect_identical(scene$snapshotIdentity, "snapshot-a")
   expect_identical(scene$section, "section-a")
+  expect_identical(scene$controls$point_opacity, 0.65)
+  expect_identical(scene$controls$point_size, 6)
 })
 
 test_that("Trekker alignment preview uses its physical and transcriptome spaces", {

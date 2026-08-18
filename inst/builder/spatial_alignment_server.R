@@ -1071,7 +1071,15 @@ builder_spatial_alignment_server <- function(
   shiny::observeEvent(alignment_preview(), {
     preview <- alignment_preview()
     if (isTRUE(preview$available)) {
-      update_controls(draft(), preview$bounds)
+      entry <- entry_of(current())
+      section <- active_section()
+      if (!is.null(entry) && !is.null(section)) {
+        update_controls(
+          draft(),
+          preview$bounds,
+          point_appearance_for(entry, section, draft())
+        )
+      }
     }
   })
 
@@ -1117,6 +1125,7 @@ builder_spatial_alignment_server <- function(
       preview = preview,
       colors = colors(),
       record = draft(),
+      point_appearance = point_appearance_for(entry, section, draft()),
       coordinate_transform = coordinate_draft(),
       identity = identity,
       generation = generation,
@@ -1289,9 +1298,26 @@ builder_spatial_alignment_server <- function(
             expected[c("point_opacity", "point_size")]
           )
         ) {
-          return()
+          default_appearance <- builder_alignment_defaults()[c(
+            "point_opacity",
+            "point_size"
+          )]
+          if (
+            !isTRUE(shiny::isolate(point_appearance_input_ready())) &&
+              identical(
+                list(
+                  point_opacity = appearance$opacity,
+                  point_size = appearance$size
+                ),
+                default_appearance
+              )
+          ) {
+            return()
+          }
+          expected_controls(NULL)
+        } else {
+          expected_controls(NULL)
         }
-        expected_controls(NULL)
       }
       point_appearance_input_ready(TRUE)
       stored <- entry$settings$spatial_point_appearance %||% list()
