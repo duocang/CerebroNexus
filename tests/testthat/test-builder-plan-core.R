@@ -1,5 +1,20 @@
 builder_plan_contract_source_runtime(environment())
 
+test_that("Build preflight blocks a layer no longer present in the profile", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("plan.R")
+    entry <- builder_task6_entry()
+    entry$settings$layer <- "data"
+    entry$profile$assay_profiles[[entry$settings$assay]]$layers <- "counts"
+
+    plan <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+
+    expect_identical(plan$error_code, "missing_layer")
+    expect_match(plan$error, "no longer available", fixed = TRUE)
+  })
+})
+
 test_that("BuildPlan freezes only a safe login summary", {
   local({
     builder_repo_source("preview.R")
