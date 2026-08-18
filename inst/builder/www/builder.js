@@ -64,6 +64,12 @@
   var builderWorkerReady = false;
   var builderWorkerStatusTimer = null;
   var datasetStartFocusToken = 0;
+  var coordinateResetSliderIds = new Set([
+    "enhance-coordinate_rotation",
+    "enhance-point_opacity",
+    "enhance-point_size",
+  ]);
+  var coordinateResetMotionTimers = new Map();
   var dynamicContentEnhancementFrame = null;
   var builderActivityState = {
     phase: "none",
@@ -3396,6 +3402,25 @@
     apply();
   }
 
+  function animateCoordinateResetSliders(message) {
+    var ids = message && Array.isArray(message.ids) ? message.ids : [];
+    ids.forEach(function (id) {
+      if (!coordinateResetSliderIds.has(id)) return;
+      var input = document.getElementById(id);
+      var container = input && input.closest(".shiny-input-container");
+      if (!container) return;
+      var timer = coordinateResetMotionTimers.get(id);
+      if (timer) window.clearTimeout(timer);
+      container.classList.remove("builder-slider-reset-motion");
+      void container.offsetWidth;
+      container.classList.add("builder-slider-reset-motion");
+      coordinateResetMotionTimers.set(id, window.setTimeout(function () {
+        container.classList.remove("builder-slider-reset-motion");
+        coordinateResetMotionTimers.delete(id);
+      }, 380));
+    });
+  }
+
   function registerBuildDialogHandler() {
     if (buildDialogHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
@@ -3447,6 +3472,10 @@
     window.Shiny.addCustomMessageHandler(
       "builder_focus_dataset_start",
       focusDatasetStart
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_coordinate_reset_motion",
+      animateCoordinateResetSliders
     );
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;
