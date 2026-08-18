@@ -268,6 +268,70 @@ test_that("registration publishes a snapshot before exposing an object", {
   expect_s4_class(builder_open_snapshot(snapshot), "Seurat")
 })
 
+test_that("registration reuses an owned snapshot for an unchanged fingerprint", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, "pbmc.rds")
+  saveRDS(SeuratObject::pbmc_small, path)
+  adapter <- builder_seurat_file_adapter(path)
+  objects <- new.env(parent = emptyenv())
+  snapshots <- new.env(parent = emptyenv())
+  cache <- new.env(parent = emptyenv())
+  globals <- c(
+    ".builder_objects",
+    ".builder_snapshots",
+    ".builder_snapshot_cache",
+    ".builder_snapshot_root"
+  )
+  prior <- lapply(globals, function(name) {
+    if (exists(name, envir = globalenv(), inherits = FALSE)) {
+      list(present = TRUE, value = get(name, envir = globalenv()))
+    } else {
+      list(present = FALSE)
+    }
+  })
+  names(prior) <- globals
+  on.exit(
+    {
+      for (name in globals) {
+        if (prior[[name]]$present) {
+          assign(name, prior[[name]]$value, envir = globalenv())
+        } else if (exists(name, envir = globalenv(), inherits = FALSE)) {
+          rm(list = name, envir = globalenv())
+        }
+      }
+    },
+    add = TRUE
+  )
+  assign(".builder_objects", objects, envir = globalenv())
+  assign(".builder_snapshots", snapshots, envir = globalenv())
+  assign(".builder_snapshot_cache", cache, envir = globalenv())
+  assign(".builder_snapshot_root", root, envir = globalenv())
+
+  first <- .builder_register_adapter(adapter, "ds1")
+  second <- .builder_register_adapter(builder_seurat_file_adapter(path), "ds2")
+
+  expect_false(first$cache_hit)
+  expect_true(second$cache_hit)
+  expect_identical(second$snapshot$path, first$snapshot$path)
+  expect_s4_class(get("ds2", envir = objects), "Seurat")
+})
+
+test_that("file fingerprints change when content changes", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, "source.rds")
+  bytes <- as.raw(rep(1L, 131072L))
+  writeBin(bytes, path)
+  first <- builder_seurat_file_adapter(path)$fingerprint
+  info <- file.info(path)
+
+  bytes[[65537L]] <- as.raw(2L)
+  writeBin(bytes, path)
+  Sys.setFileTime(path, info$mtime)
+  second <- builder_seurat_file_adapter(path)$fingerprint
+
+  expect_false(identical(first, second))
+})
+
 test_that("application and worker source adapters after profile contracts", {
   app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
   session <- readLines(
