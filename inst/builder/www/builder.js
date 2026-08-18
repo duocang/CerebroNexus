@@ -62,6 +62,7 @@
   var datasetMutationsLocked = false;
   var builderConnectionReady = true;
   var builderWorkerReady = false;
+  var builderWorkerStatusTimer = null;
   var dynamicContentEnhancementFrame = null;
   var builderActivityState = {
     phase: "none",
@@ -324,10 +325,21 @@
     var detail = document.getElementById("builder-worker-status-detail");
     builderWorkerReady = state === "ready";
     if (status) {
+      if (builderWorkerStatusTimer !== null) {
+        window.clearTimeout(builderWorkerStatusTimer);
+        builderWorkerStatusTimer = null;
+      }
+      status.classList.remove("is-dismissed");
       status.classList.toggle("is-starting", state === "starting");
       status.classList.toggle("is-ready", state === "ready");
       status.classList.toggle("is-error", state === "error");
       status.setAttribute("data-worker-state", state);
+      if (state === "ready") {
+        builderWorkerStatusTimer = window.setTimeout(function () {
+          status.classList.add("is-dismissed");
+          builderWorkerStatusTimer = null;
+        }, 1500);
+      }
     }
     if (title && message.title) title.textContent = message.title;
     if (detail) {

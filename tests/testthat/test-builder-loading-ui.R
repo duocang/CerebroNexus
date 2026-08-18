@@ -106,6 +106,8 @@ test_that("the initial shell explains background workspace startup", {
   expect_match(client, '"builder_worker_status"', fixed = TRUE)
   expect_match(client, "builderWorkerReady", fixed = TRUE)
   expect_match(client, 'detail.hidden = state === "ready"', fixed = TRUE)
+  expect_match(client, 'status.classList.add("is-dismissed")', fixed = TRUE)
+  expect_match(client, "}, 1500)", fixed = TRUE)
 
   css <- paste(
     readLines(
@@ -114,8 +116,8 @@ test_that("the initial shell explains background workspace startup", {
     ),
     collapse = "\n"
   )
-  expect_match(css, "display: inline-flex", fixed = TRUE)
-  expect_match(css, "background: transparent", fixed = TRUE)
+  expect_match(css, "position: fixed", fixed = TRUE)
+  expect_match(css, ".builder-worker-status.is-dismissed", fixed = TRUE)
   expect_match(
     css,
     ".builder-worker-status.is-ready .builder-worker-status-copy span",

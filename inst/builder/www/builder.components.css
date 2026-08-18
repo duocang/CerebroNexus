@@ -40,18 +40,27 @@
 /* ---- resumable Builder projects --------------------------------------- */
 
 .builder-worker-status {
-  display: inline-flex;
+  display: flex;
+  position: fixed;
+  top: 3.65rem;
+  right: var(--builder-page-gutter);
+  z-index: 36;
   min-width: 0;
+  max-width: min(28rem, calc(100vw - (2 * var(--builder-page-gutter))));
   align-items: center;
   gap: .5rem;
-  margin: .75rem var(--builder-page-gutter) 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  margin: 0;
+  padding: .5rem .7rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-3);
   color: var(--c-text-muted);
   font-size: .74rem;
   line-height: 1.2;
-  transition: color var(--duration-base) var(--ease);
+  transition: opacity var(--duration-base) var(--ease),
+              transform var(--duration-base) var(--ease),
+              color var(--duration-base) var(--ease);
 }
 .builder-worker-status-copy {
   display: flex;
@@ -88,12 +97,23 @@
 }
 .builder-worker-status.is-error {
   color: var(--c-error);
+  border-color: color-mix(in srgb, var(--c-error) 30%, var(--c-border));
+}
+.builder-worker-status.is-dismissed {
+  opacity: 0;
+  transform: translateY(-.35rem);
+  pointer-events: none;
 }
 .builder-worker-status.is-error .builder-worker-status-dot {
   background: var(--c-error);
 }
 
 @media (max-width: 58rem) {
+  .builder-worker-status {
+    top: 3.4rem;
+    right: var(--space-3);
+    max-width: calc(100vw - (2 * var(--space-3)));
+  }
   .builder-worker-status-copy span { display: none; }
 }
 
