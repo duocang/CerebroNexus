@@ -139,6 +139,41 @@ builder_activity_capabilities <- function(activity) {
   )
 }
 
+builder_imports_idle <- function(activity, protocol) {
+  if (!inherits(activity, "builder_activity_state")) {
+    stop("A Builder activity state is required.", call. = FALSE)
+  }
+  if (!is.list(protocol)) {
+    return(FALSE)
+  }
+  requests <- c(
+    if (is.null(protocol$pending)) list() else list(protocol$pending),
+    protocol$queue %||% list(),
+    unname(protocol$awaiting_ack %||% list())
+  )
+  has_pending_load <- any(vapply(
+    requests,
+    function(request) is.list(request) && identical(request$kind, "load"),
+    logical(1)
+  ))
+  activity$client_imports == 0L &&
+    !isTRUE(activity$server_imports) &&
+    !has_pending_load
+}
+
+builder_project_first_save_offer_ready <- function(
+  entries,
+  project,
+  offered,
+  activity,
+  protocol
+) {
+  length(entries) > 0L &&
+    is.null(project) &&
+    !isTRUE(offered) &&
+    builder_imports_idle(activity, protocol)
+}
+
 builder_activity_reason <- function(activity, operation) {
   capabilities <- builder_activity_capabilities(activity)
   if (isTRUE(capabilities[[operation]])) {
