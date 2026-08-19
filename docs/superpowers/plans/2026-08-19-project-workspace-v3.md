@@ -6,7 +6,7 @@
 
 **架构：** `project.R` 提供 sidecar 路径、原子写入、配置/cache 读写、legacy payload 兼容与瘦身 digest；Project server 在生成 manifest 时写 sidecars。Review server 和浏览器为 Done checking 提供立即反馈并在小配置摘要完成后切换。
 
-**技术栈：** R、Shiny、jsonlite、RDS、JavaScript、testthat
+**技术栈：** R、Shiny、jsonlite、qs2、JavaScript、testthat
 
 ---
 
@@ -16,9 +16,10 @@
 
 - Raise the current schema to 3 while accepting versions 1 and 2.
 - Add safe managed paths for dataset config and profile cache.
-- Atomically write minimal config JSON and source-derived profile RDS.
+- Atomically write minimal config JSON and source-derived profile qs2.
 - Return path/fingerprint descriptors and reuse a valid existing cache.
 - Read v3 config without eagerly reading profile cache.
+- Keep legacy `.rds` cache descriptors readable during the transition.
 
 ### Task 2: Manifest writer and legacy reader
 
