@@ -410,7 +410,7 @@
   .builder_app_tree_summary(list(entries = entries))
 }
 
-builder_coordinator_prepare <- function(plan, build_id) {
+builder_coordinator_output_preflight <- function(plan) {
   plan_class <- attr(plan, "class", exact = TRUE)
   if (
     !identical(typeof(plan), "list") ||
@@ -423,7 +423,6 @@ builder_coordinator_prepare <- function(plan, build_id) {
   if (!.builder_release_text(.builder_release_or(out_dir, NULL))) {
     stop("A frozen plan with an output release is required.", call. = FALSE)
   }
-  app_contract <- .builder_coordinator_app_contract(plan)
   output_release <- .builder_release_or(
     .subset2(plan, "output_release"),
     list()
@@ -467,6 +466,27 @@ builder_coordinator_prepare <- function(plan, build_id) {
   } else {
     foreign <- record$foreign
   }
+  list(
+    out_dir = out_dir,
+    expected = expected,
+    prior = prior,
+    prior_state = prior_state,
+    prior_paths = prior_paths,
+    record = record,
+    foreign = foreign
+  )
+}
+
+builder_coordinator_prepare <- function(plan, build_id) {
+  app_contract <- .builder_coordinator_app_contract(plan)
+  preflight <- builder_coordinator_output_preflight(plan)
+  out_dir <- preflight$out_dir
+  expected <- preflight$expected
+  prior <- preflight$prior
+  prior_state <- preflight$prior_state
+  prior_paths <- preflight$prior_paths
+  record <- preflight$record
+  foreign <- preflight$foreign
   if (length(foreign)) {
     stop(
       "The output directory contains foreign release entries: ",

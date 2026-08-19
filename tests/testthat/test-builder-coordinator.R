@@ -1192,6 +1192,25 @@ test_that("whole-release publication preserves foreign output occupants", {
   })
 })
 
+test_that("output preflight reports foreign occupants before staging", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    foreign <- c("builder-project.json", "datasets", "sources")
+    writeLines("project", file.path(target, foreign[[1L]]))
+    dir.create(file.path(target, foreign[[2L]]))
+    dir.create(file.path(target, foreign[[3L]]))
+    plan <- builder_crb_coordinator_plan(target, "dataset.crb")
+
+    preflight <- builder_coordinator_output_preflight(plan)
+
+    expect_setequal(preflight$foreign, foreign)
+    expect_false(dir.exists(builder_release_control_path(target)))
+  })
+})
+
 test_that("known prior outputs still require explicit replacement", {
   local({
     builder_task9_source()
