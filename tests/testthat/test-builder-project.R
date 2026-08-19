@@ -920,10 +920,98 @@ test_that("project folders distinguish empty, existing, and unrelated content", 
   expect_identical(runtime$builder_project_folder_state(root)$kind, "empty")
 
   writeLines("keep", file.path(root, ".keep"))
-  expect_identical(runtime$builder_project_folder_state(root)$kind, "nonempty")
+  unrelated <- runtime$builder_project_folder_state(root)
+  expect_identical(unrelated$kind, "nonempty")
+  expect_identical(unrelated$managed_conflicts, character())
+
+  dir.create(file.path(root, "sources"))
+  reserved <- runtime$builder_project_folder_state(root)
+  expect_identical(reserved$kind, "nonempty")
+  expect_identical(reserved$managed_conflicts, "sources")
 
   writeLines("{}", runtime$builder_project_manifest_path(root))
   expect_identical(runtime$builder_project_folder_state(root)$kind, "project")
+})
+
+test_that("non-empty project folders require explicit confirmation", {
+  skip_if_not_installed("shiny")
+  runtime <- new.env(parent = globalenv())
+  runtime$tags <- shiny::tags
+  runtime$modalDialog <- shiny::modalDialog
+  runtime$tagList <- shiny::tagList
+  runtime$actionButton <- shiny::actionButton
+  sys.source(
+    testthat::test_path("..", "..", "inst", "builder", "ui", "project.R"),
+    envir = runtime
+  )
+
+  html <- htmltools::renderTags(
+    runtime$builder_project_nonempty_folder_dialog("/tmp/existing-files")
+  )$html
+
+  expect_match(html, "Folder already contains files", fixed = TRUE)
+  expect_match(html, "Existing files will be kept", fixed = TRUE)
+  expect_match(
+    html,
+    'id="choose_another_builder_project_folder"',
+    fixed = TRUE
+  )
+  expect_match(html, 'id="confirm_builder_project_folder"', fixed = TRUE)
+  expect_match(html, 'id="cancel_builder_project_folder"', fixed = TRUE)
+})
+
+test_that("project creation waits for confirmation and rechecks the folder", {
+  path <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
+  )
+  server <- paste(readLines(path, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    server,
+    "builder_project_pending_folder <- reactiveVal(NULL)",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "request_builder_project_folder <- function()",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "builder_project_pending_folder(choice$path)",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "builder_project_nonempty_folder_dialog(choice$path)",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "observeEvent(input$confirm_builder_project_folder, {",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "folder <- tryCatch(builder_project_folder_state(path), error = identity)",
+    fixed = TRUE
+  )
+  expect_match(server, "create_builder_project_in_folder(path)", fixed = TRUE)
+  expect_match(
+    server,
+    "observeEvent(input$choose_another_builder_project_folder, {",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "observeEvent(input$cancel_builder_project_folder, {",
+    fixed = TRUE
+  )
 })
 
 test_that("the top bar omits the format capability summary", {
