@@ -720,16 +720,16 @@ save_builder_project_state <- function(
       function(record) isTRUE(record$configuration$checked),
       logical(1)
     ))
-    reusable <- sum(vapply(
-      records,
-      function(record) {
-        builder_project_artifact_available(
-          record$artifact,
-          project$root
-        )
-      },
-      logical(1)
-    ))
+    checked_entries <- Filter(
+      function(entry) entry$id %in% isolate(checked_dataset_ids()),
+      built$entries
+    )
+    required_entries <- builder_project_entries_requiring_crb(
+      checked_entries,
+      isolate(builder_project_artifacts()),
+      project$root
+    )
+    reusable <- length(checked_entries) - length(required_entries)
     source_sync <- isolate(builder_project_source_sync())
     session$sendCustomMessage(
       "builder_project_save_result",
@@ -1490,57 +1490,90 @@ enqueue_builder_project_checkpoint <- function(plan) {
   invisible(TRUE)
 }
 
-observeEvent(input$prepare_builder_project_crbs, {
-  if (!builder_operation_allowed("prepare_crbs")) {
-    return()
-  }
+prepare_builder_project_crbs <- function() {
   project <- isolate(builder_project())
   checked <- isolate(checked_dataset_ids())
   entries <- Filter(function(entry) entry$id %in% checked, isolate(sets()))
   if (is.null(project) || !length(entries)) {
+    return(invisible(FALSE))
+  }
+  entries <- builder_project_entries_requiring_crb(
+    entries,
+    isolate(builder_project_artifacts()),
+    project$root
+  )
+  if (!length(entries)) {
+    session$sendCustomMessage(
+      "builder_project_crb_progress",
+      list(status = "ready", completed = 0L, total = 0L)
+    )
+    return(invisible(TRUE))
+  }
+  output <- file.path(
+    project$root,
+    "checkpoints",
+    format(Sys.time(), "%Y%m%dT%H%M%S", tz = "UTC")
+  )
+  dir.create(output, recursive = TRUE, showWarnings = FALSE)
+  checkpoint_entries <- builder_project_checkpoint_entries(entries)
+  plan <- freeze_plan_for_output(
+    output,
+    overwrite = TRUE,
+    output_options = builder_build_options(make_app = FALSE),
+    entries_override = checkpoint_entries
+  )
+  if (
+    !inherits(plan, "builder_build_plan") ||
+      !identical(plan$readiness, "ready")
+  ) {
+    error <- plan$error %||% "Checked CRBs could not be prepared."
+    session$sendCustomMessage(
+      "builder_project_crb_progress",
+      list(
+        status = "failed",
+        completed = 0L,
+        total = length(entries),
+        error = error
+      )
+    )
+    showNotification(error, type = "error", duration = 8)
+    return(invisible(FALSE))
+  }
+  session$sendCustomMessage(
+    "builder_project_crb_progress",
+    list(status = "building", completed = 0L, total = length(plan$items))
+  )
+  queued <- enqueue_builder_project_checkpoint(plan)
+  if (!isTRUE(queued)) {
+    session$sendCustomMessage(
+      "builder_project_crb_progress",
+      list(
+        status = "failed",
+        completed = 0L,
+        total = length(plan$items),
+        error = "Reusable CRBs could not be queued."
+      )
+    )
+  }
+  invisible(isTRUE(queued))
+}
+
+observeEvent(input$prepare_builder_project_crbs, {
+  if (!builder_operation_allowed("prepare_crbs")) {
     return()
   }
-  request_builder_project_save(
-    show_actions = FALSE,
-    materialize = TRUE,
-    notify = TRUE,
-    after = function(ok) {
-      if (!isTRUE(ok)) {
-        return()
+  if (isTRUE(isolate(builder_project_dirty()))) {
+    request_builder_project_save(
+      show_actions = FALSE,
+      materialize = TRUE,
+      notify = TRUE,
+      after = function(ok) {
+        if (isTRUE(ok)) prepare_builder_project_crbs()
       }
-      latest_project <- isolate(builder_project())
-      latest_checked <- isolate(checked_dataset_ids())
-      latest_entries <- Filter(
-        function(entry) entry$id %in% latest_checked,
-        isolate(sets())
-      )
-      output <- file.path(
-        latest_project$root,
-        "checkpoints",
-        format(Sys.time(), "%Y%m%dT%H%M%S", tz = "UTC")
-      )
-      dir.create(output, recursive = TRUE, showWarnings = FALSE)
-      checkpoint_entries <- builder_project_checkpoint_entries(latest_entries)
-      plan <- freeze_plan_for_output(
-        output,
-        overwrite = TRUE,
-        output_options = builder_build_options(make_app = FALSE),
-        entries_override = checkpoint_entries
-      )
-      if (
-        !inherits(plan, "builder_build_plan") ||
-          !identical(plan$readiness, "ready")
-      ) {
-        showNotification(
-          plan$error %||% "Checked CRBs could not be prepared.",
-          type = "error",
-          duration = 8
-        )
-        return()
-      }
-      enqueue_builder_project_checkpoint(plan)
-    }
-  )
+    )
+  } else {
+    prepare_builder_project_crbs()
+  }
 })
 
 observe({
@@ -1560,6 +1593,16 @@ observe({
   if (!isTRUE(terminal)) {
     return()
   }
+  total_crbs <- length(plan$items)
+  completed_crbs <- length(value$built %||% character())
+  session$sendCustomMessage(
+    "builder_project_crb_progress",
+    list(
+      status = "registering",
+      completed = completed_crbs,
+      total = total_crbs
+    )
+  )
   builder_project_operation_phase("registering")
   builder_project_build_plan(NULL)
   builder_project_checkpoint(FALSE)
@@ -1604,6 +1647,15 @@ observe({
         )
         builder_project_operation_phase(
           if (isTRUE(saved)) "idle" else "save_failed"
+        )
+        session$sendCustomMessage(
+          "builder_project_crb_progress",
+          list(
+            status = "failed",
+            completed = completed_crbs,
+            total = total_crbs,
+            error = value$error %||% "Reusable CRBs could not be prepared."
+          )
         )
         return()
       }
@@ -1711,10 +1763,24 @@ observe({
         if (isTRUE(saved)) "idle" else "save_failed"
       )
       if (isTRUE(saved)) {
+        session$sendCustomMessage(
+          "builder_project_crb_progress",
+          list(status = "ready", completed = total_crbs, total = total_crbs)
+        )
         showNotification(
           "Reusable CRBs were added to the project.",
           type = "message",
           duration = 5
+        )
+      } else {
+        session$sendCustomMessage(
+          "builder_project_crb_progress",
+          list(
+            status = "failed",
+            completed = completed_crbs,
+            total = total_crbs,
+            error = "Reusable CRBs were created but could not be saved to the project."
+          )
         )
       }
     },

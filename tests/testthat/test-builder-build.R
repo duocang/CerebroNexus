@@ -34,6 +34,8 @@ test_that("session execution stages artifacts without publishing them", {
     "auth_material = auth_material",
     fixed = TRUE
   )
+  expect_match(session, 'get(".builder_objects"', fixed = TRUE)
+  expect_match(session, "objects = objects", fixed = TRUE)
   expect_false(grepl("builder_publish_batch", session, fixed = TRUE))
 })
 
@@ -127,6 +129,26 @@ builder_build_test_hooks <- function(fail = NULL, outside = NULL) {
     }
   )
 }
+
+test_that("build execution reuses the worker's loaded object", {
+  stage <- withr::local_tempdir()
+  hooks <- builder_build_test_hooks()
+  hooks$open_snapshot <- function(snapshot) {
+    stop("snapshot should not be reopened")
+  }
+  loaded <- list(source = "worker-memory")
+
+  result <- builder_execute_plan(
+    builder_build_test_plan(),
+    stage,
+    snapshots = list(`dataset-a` = list(id = "snapshot-a")),
+    hooks = hooks,
+    objects = list(`dataset-a` = loaded)
+  )
+
+  expect_identical(result$state, "success")
+  expect_true(result$publishable)
+})
 
 test_that("retry recomputes the failed dependency closure", {
   graph <- builder_analysis_graph(c("marker_genes", "enriched_pathways"))
