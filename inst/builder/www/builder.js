@@ -3042,6 +3042,12 @@
       event.stopPropagation();
       return;
     }
+    var continueButton = target.closest("#confirm_review");
+    if (continueButton && !continueButton.disabled) {
+      continueButton.disabled = true;
+      continueButton.setAttribute("aria-busy", "true");
+      continueButton.textContent = "Opening Build…";
+    }
     if (target.closest("#build")) showImmediateBuildStatus();
     var authOpen = target.closest(".builder-auth-open");
     if (authOpen) {

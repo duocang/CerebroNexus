@@ -58,6 +58,33 @@ test_that("Done checking exposes one immediate busy-state handler", {
   expect_match(review, 'alignment_server$request_dataset_switch(', fixed = TRUE)
 })
 
+test_that("Continue to Build reuses the reviewed plan with immediate feedback", {
+  browser <- builder_asset_text("www", "builder.js")
+  review <- builder_asset_text("server", "review.R")
+
+  expect_match(
+    browser,
+    'continueButton.textContent = "Opening Build…"',
+    fixed = TRUE
+  )
+  expect_match(review, "live <- frozen_review_plan()", fixed = TRUE)
+  confirm_handler <- sub(
+    ".*observeEvent\\(input\\$confirm_review, \\{",
+    "",
+    review
+  )
+  confirm_handler <- sub(
+    "\\n\\}\\)\\n\\nobserve\\(\\{.*",
+    "",
+    confirm_handler
+  )
+  expect_false(grepl(
+    "freeze_materialized_plan_for_output",
+    confirm_handler,
+    fixed = TRUE
+  ))
+})
+
 test_that("builder UI includes the Bootstrap dependency required by modals", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(dirname(builder_asset_path("app.R")))
