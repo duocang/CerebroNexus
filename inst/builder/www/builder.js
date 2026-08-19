@@ -205,7 +205,22 @@
         label: "Prepare checked CRBs",
         primary: true,
         action: function () {
-          closeBuilderProjectSaveResult();
+          var elements = builderOperationElements();
+          if (elements.card) {
+            elements.card.classList.remove(
+              "is-result",
+              "is-success",
+              "is-error",
+              "has-actions"
+            );
+          }
+          setBuilderOperationActions([]);
+          setBuilderOperationCopy(
+            "Preparing reusable CRBs",
+            "Building the checked datasets that do not have a current reusable CRB.",
+            "Step 1 of 3 · Planning " + remaining + " CRB" +
+              (remaining === 1 ? "" : "s") + " · Keep this page open."
+          );
           send("prepare_builder_project_crbs", { nonce: Date.now() });
         },
       });
@@ -260,6 +275,56 @@
     } else {
       showBuilderProjectSaveCompletion("ready");
     }
+  }
+
+  function updateBuilderProjectCrbProgress(message) {
+    if (!builderProjectSaveResultOpen || !message) return;
+    var status = message.status || "building";
+    var completed = Math.max(0, Number(message.completed || 0));
+    var total = Math.max(0, Number(message.total || 0));
+    var elements = builderOperationElements();
+    if (!elements.card) return;
+    setBuilderOperationActions([]);
+    if (status === "ready") {
+      elements.card.classList.add("is-result", "is-success");
+      elements.card.classList.remove("is-error");
+      setBuilderOperationCopy(
+        "Project and CRBs saved",
+        total > 0
+          ? total + " reusable CRB" + (total === 1 ? " is" : "s are") + " ready."
+          : "All current reusable CRBs were already up to date.",
+        "You can safely close this page or continue working."
+      );
+      setBuilderOperationActions([
+        { label: "Done", action: closeBuilderProjectSaveResult },
+      ]);
+      return;
+    }
+    if (status === "failed") {
+      elements.card.classList.add("is-result", "is-error");
+      elements.card.classList.remove("is-success");
+      setBuilderOperationCopy(
+        "CRB preparation failed",
+        message.error || "One or more reusable CRBs could not be prepared.",
+        "The Project itself remains saved."
+      );
+      setBuilderOperationActions([
+        { label: "Done", action: closeBuilderProjectSaveResult },
+      ]);
+      return;
+    }
+    elements.card.classList.remove("is-result", "is-success", "is-error");
+    setBuilderOperationCopy(
+      status === "registering" ? "Saving reusable CRBs" : "Preparing reusable CRBs",
+      status === "registering"
+        ? "Adding the completed CRBs to the Project."
+        : "Building the checked datasets that need a new reusable CRB.",
+      status === "registering"
+        ? "Step 3 of 3 · " + completed + " of " + total +
+          " CRBs prepared · Keep this page open."
+        : "Step 2 of 3 · Preparing " + total + " CRB" +
+          (total === 1 ? "" : "s") + " · Keep this page open."
+    );
   }
 
   function applyDatasetMutationLock() {
@@ -3467,6 +3532,10 @@
     window.Shiny.addCustomMessageHandler(
       "builder_project_source_progress",
       updateBuilderProjectSourceProgress
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_project_crb_progress",
+      updateBuilderProjectCrbProgress
     );
     window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
     window.Shiny.addCustomMessageHandler(

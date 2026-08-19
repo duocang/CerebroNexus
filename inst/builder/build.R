@@ -1002,7 +1002,8 @@ builder_execute_plan <- function(
   stage,
   snapshots,
   hooks = builder_build_hooks(),
-  auth_material = NULL
+  auth_material = NULL,
+  objects = list()
 ) {
   on.exit(auth_material <- NULL, add = TRUE)
   if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
@@ -1160,16 +1161,21 @@ builder_execute_plan <- function(
       next
     }
     snapshot <- snapshots[[item$id]]
-    if (is.null(snapshot)) {
+    object <- objects[[item$id]] %||% NULL
+    if (is.null(snapshot) && is.null(object)) {
       return(.builder_build_failure(paste0(
         "The frozen snapshot is missing for ",
         item$name,
         "."
       )))
     }
-    object <- tryCatch(hooks$open_snapshot(snapshot), error = function(error) {
-      error
-    })
+    object <- if (!is.null(object)) {
+      object
+    } else {
+      tryCatch(hooks$open_snapshot(snapshot), error = function(error) {
+        error
+      })
+    }
     if (inherits(object, "condition")) {
       return(.builder_build_failure(paste0(
         item$name,

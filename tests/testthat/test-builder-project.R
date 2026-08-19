@@ -1279,6 +1279,50 @@ test_that("pending coordinate drafts participate in checked identity", {
   )
 })
 
+test_that("reusable CRB preparation skips current artifacts", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  artifact_path <- file.path(root, "dataset.crb")
+  writeLines("ready", artifact_path)
+  entry <- list(
+    id = "ds1",
+    settings = list(name = "Dataset"),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    path = basename(artifact_path),
+    built_from_configuration = runtime$builder_project_configuration_digest(
+      entry
+    )
+  )
+
+  expect_length(
+    runtime$builder_project_entries_requiring_crb(
+      list(entry),
+      list(ds1 = artifact),
+      root
+    ),
+    0L
+  )
+  entry$settings$name <- "Changed"
+  expect_identical(
+    vapply(
+      runtime$builder_project_entries_requiring_crb(
+        list(entry),
+        list(ds1 = artifact),
+        root
+      ),
+      `[[`,
+      character(1),
+      "id"
+    ),
+    "ds1"
+  )
+})
+
 test_that("a matching ready project CRB repairs a missing checked flag", {
   runtime <- builder_project_test_runtime()
   record <- list(

@@ -1228,6 +1228,21 @@ test_that("accepted Builds scroll the document to its absolute top", {
   )
 })
 
+test_that("project CRB preparation stays in one progress dialog", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, '"builder_project_crb_progress"', fixed = TRUE)
+  expect_match(js, "Step 1 of 3 · Planning", fixed = TRUE)
+  expect_match(js, "Step 2 of 3 · Preparing", fixed = TRUE)
+  expect_match(js, "Step 3 of 3 · ", fixed = TRUE)
+  expect_match(js, "Project and CRBs saved", fixed = TRUE)
+  expect_false(grepl(
+    'closeBuilderProjectSaveResult();\n          send("prepare_builder_project_crbs"',
+    js,
+    fixed = TRUE
+  ))
+})
+
 test_that("per-dataset compact review server inputs are removed", {
   app <- builder_app_source_text()
 
