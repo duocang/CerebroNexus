@@ -117,7 +117,6 @@ builder_activity_capabilities <- function(activity) {
       isTRUE(activity$has_datasets),
     save_project = stable &&
       isTRUE(activity$has_project) &&
-      isTRUE(activity$has_datasets) &&
       activity$project_phase %in%
         c("clean", "dirty", "save_failed"),
     open_project = open_safe,
@@ -228,9 +227,10 @@ builder_project_live_dirty <- function(
   entries,
   checked_ids,
   manifest,
-  identity_cache = NULL
+  identity_cache = NULL,
+  ignored_ids = character()
 ) {
-  if (!is.list(manifest) || !is.list(manifest$datasets) || !length(entries)) {
+  if (!is.list(manifest) || !is.list(manifest$datasets)) {
     return(FALSE)
   }
   record_ids <- vapply(
@@ -240,15 +240,25 @@ builder_project_live_dirty <- function(
   )
   records <- stats::setNames(manifest$datasets, record_ids)
   ids <- vapply(entries, `[[`, character(1), "id")
-  if (any(!ids %in% names(records))) {
+  if (anyDuplicated(ids) || any(!ids %in% names(records))) {
     return(TRUE)
   }
   saved_order <- names(sort(vapply(
-    records[ids],
+    records,
     function(record) as.integer(record$order %||% 0L),
     integer(1)
   )))
-  if (!identical(ids, saved_order)) {
+  active_saved_order <- saved_order[vapply(
+    records[saved_order],
+    function(record) isTRUE(record$release$included %||% TRUE),
+    logical(1)
+  )]
+  ignored_ids <- unique(as.character(ignored_ids %||% character()))
+  ignored_ids <- ignored_ids[ignored_ids %in% active_saved_order]
+  expected_live_order <- active_saved_order[
+    !active_saved_order %in% ignored_ids
+  ]
+  if (!identical(ids, expected_live_order)) {
     return(TRUE)
   }
   any(vapply(
@@ -267,6 +277,23 @@ builder_project_live_dirty <- function(
     },
     logical(1)
   ))
+}
+
+builder_project_retain_check_marks <- function(
+  marks,
+  live_ids,
+  last_removed = NULL,
+  can_undo_remove = FALSE
+) {
+  retained_ids <- as.character(live_ids %||% character())
+  if (
+    isTRUE(can_undo_remove) &&
+      is.list(last_removed) &&
+      .builder_project_identifier(last_removed$id %||% NULL)
+  ) {
+    retained_ids <- c(retained_ids, as.character(last_removed$id))
+  }
+  marks[names(marks) %in% unique(retained_ids)]
 }
 .builder_project_manifest_name <- "builder-project.json"
 .builder_project_managed_root_names <- c(
@@ -335,6 +362,31 @@ builder_project_allocate_dataset_id <- function(
       return(list(id = id, sequence = as.integer(sequence)))
     }
   }
+}
+
+builder_project_allocation_ids <- function(
+  entries,
+  import_entries = list(),
+  replacing_id = NULL
+) {
+  entry_ids <- vapply(
+    entries %||% list(),
+    function(entry) {
+      as.character(entry$id %||% "")
+    },
+    character(1)
+  )
+  if (.builder_project_identifier(replacing_id)) {
+    entry_ids <- entry_ids[entry_ids != replacing_id]
+  }
+  import_ids <- vapply(
+    import_entries %||% list(),
+    function(entry) {
+      as.character(entry$id %||% "")
+    },
+    character(1)
+  )
+  c(entry_ids[nzchar(entry_ids)], import_ids[nzchar(import_ids)])
 }
 
 builder_project_reused_plan_matches <- function(saved, expected) {
@@ -433,9 +485,13 @@ builder_project_manifest_lock_path <- function(root) {
   metadata <- file.path(path, expected)
   if (
     !all(utils::file_test("-f", metadata)) ||
-      any(vapply(metadata, function(candidate) {
-        nzchar(tryCatch(Sys.readlink(candidate), error = function(error) ""))
-      }, logical(1)))
+      any(vapply(
+        metadata,
+        function(candidate) {
+          nzchar(tryCatch(Sys.readlink(candidate), error = function(error) ""))
+        },
+        logical(1)
+      ))
   ) {
     return(FALSE)
   }
@@ -477,21 +533,24 @@ builder_project_acquire_manifest_lock <- function(root) {
   if (!.builder_project_text(host)) {
     host <- "unknown"
   }
-  initialized <- tryCatch({
-    writeLines(token, token_path, useBytes = TRUE)
-    writeLines(
-      c(
-        "schema=1",
-        paste0("pid=", Sys.getpid()),
-        paste0("host=", encodeString(host, quote = '"')),
-        paste0("acquired_at=", format(Sys.time(), tz = "UTC", usetz = TRUE))
-      ),
-      owner_path,
-      useBytes = TRUE
-    )
-    Sys.chmod(c(token_path, owner_path), mode = "0600")
-    TRUE
-  }, error = function(error) error)
+  initialized <- tryCatch(
+    {
+      writeLines(token, token_path, useBytes = TRUE)
+      writeLines(
+        c(
+          "schema=1",
+          paste0("pid=", Sys.getpid()),
+          paste0("host=", encodeString(host, quote = '"')),
+          paste0("acquired_at=", format(Sys.time(), tz = "UTC", usetz = TRUE))
+        ),
+        owner_path,
+        useBytes = TRUE
+      )
+      Sys.chmod(c(token_path, owner_path), mode = "0600")
+      TRUE
+    },
+    error = function(error) error
+  )
   if (inherits(initialized, "condition")) {
     stop(
       paste0(
@@ -553,7 +612,10 @@ builder_project_release_manifest_lock <- function(lock) {
   metadata <- file.path(isolated, c("owner-token", "owner.txt"))
   file.remove(metadata)
   if (any(file.exists(metadata)) || !file.remove(isolated)) {
-    warning("The isolated Project write lock could not be removed.", call. = FALSE)
+    warning(
+      "The isolated Project write lock could not be removed.",
+      call. = FALSE
+    )
     return(invisible(FALSE))
   }
   invisible(TRUE)
@@ -863,9 +925,14 @@ builder_project_prepare_source <- function(entry, root, prior = NULL) {
   prior_ready <- .builder_project_text(prior_path) &&
     file.exists(prior_path) &&
     !dir.exists(prior_path) &&
-    identical(entry_path, normalizePath(prior_path, winslash = "/", mustWork = TRUE))
+    identical(
+      entry_path,
+      normalizePath(prior_path, winslash = "/", mustWork = TRUE)
+    )
   ready_target <- if (prior_ready) prior_path else job$target
-  if (prior_ready) relative <- prior_source$path
+  if (prior_ready) {
+    relative <- prior_source$path
+  }
   target_ready <- file.exists(ready_target) && !dir.exists(ready_target)
   if (target_ready) {
     current_metadata <- builder_project_file_fingerprint(
@@ -1086,7 +1153,10 @@ builder_project_source_context <- function(
       !is.list(project$manifest) ||
       !is.list(project$manifest$project)
   ) {
-    stop("A source synchronization requires a saved project identity.", call. = FALSE)
+    stop(
+      "A source synchronization requires a saved project identity.",
+      call. = FALSE
+    )
   }
   project_id <- project$manifest$project$id %||% NULL
   revision <- project$manifest$project$revision %||% NULL
@@ -1103,7 +1173,10 @@ builder_project_source_context <- function(
       !is.finite(revision) ||
       revision < 0
   ) {
-    stop("A source synchronization requires a saved project identity.", call. = FALSE)
+    stop(
+      "A source synchronization requires a saved project identity.",
+      call. = FALSE
+    )
   }
   root <- builder_project_normalize_root(project$root)
   path <- normalizePath(
@@ -1112,11 +1185,16 @@ builder_project_source_context <- function(
     mustWork = FALSE
   )
   active_ids <- unique(as.character(active_ids %||% character()))
-  if (length(active_ids) && any(!vapply(
-    active_ids,
-    .builder_project_identifier,
-    logical(1)
-  ))) {
+  if (
+    length(active_ids) &&
+      any(
+        !vapply(
+          active_ids,
+          .builder_project_identifier,
+          logical(1)
+        )
+      )
+  ) {
     stop("Source synchronization dataset ids are invalid.", call. = FALSE)
   }
   list(
@@ -1141,11 +1219,12 @@ builder_project_source_context_matches <- function(
     builder_project_source_context(project, generation),
     error = function(error) NULL
   )
-  is.list(current) && all(vapply(
-    c("generation", "project_id", "root", "path", "revision"),
-    function(field) identical(context[[field]], current[[field]]),
-    logical(1)
-  ))
+  is.list(current) &&
+    all(vapply(
+      c("generation", "project_id", "root", "path", "revision"),
+      function(field) identical(context[[field]], current[[field]]),
+      logical(1)
+    ))
 }
 
 .builder_project_lexical_path <- function(path) {
@@ -1192,8 +1271,16 @@ builder_project_source_context_matches <- function(
   ) {
     return(TRUE)
   }
-  relative <- if (identical(path, root)) "" else substring(path, nchar(root) + 2L)
-  components <- if (nzchar(relative)) strsplit(relative, "/", fixed = TRUE)[[1L]] else character()
+  relative <- if (identical(path, root)) {
+    ""
+  } else {
+    substring(path, nchar(root) + 2L)
+  }
+  components <- if (nzchar(relative)) {
+    strsplit(relative, "/", fixed = TRUE)[[1L]]
+  } else {
+    character()
+  }
   current <- root
   for (index in seq_along(components)) {
     component <- components[[index]]
@@ -1229,7 +1316,12 @@ builder_project_release_session_source <- function(path, session_root) {
   ) {
     return(FALSE)
   }
-  if (nzchar(tryCatch(Sys.readlink(path.expand(session_root)), error = function(error) ""))) {
+  if (
+    nzchar(tryCatch(
+      Sys.readlink(path.expand(session_root)),
+      error = function(error) ""
+    ))
+  ) {
     return(FALSE)
   }
   rebased <- .builder_project_rebase_lexical_path(path, session_root)
@@ -1291,9 +1383,16 @@ builder_project_cleanup_session_sources <- function(session_root) {
       no.. = TRUE,
       full.names = TRUE
     )
-    if (length(members) && any(vapply(members, function(member) {
-      nzchar(Sys.readlink(member)) || dir.exists(member)
-    }, logical(1)))) {
+    if (
+      length(members) &&
+        any(vapply(
+          members,
+          function(member) {
+            nzchar(Sys.readlink(member)) || dir.exists(member)
+          },
+          logical(1)
+        ))
+    ) {
       return(FALSE)
     }
   }
@@ -1310,14 +1409,21 @@ builder_project_commit_source_entries <- function(
 ) {
   records <- stats::setNames(
     manifest$datasets %||% list(),
-    vapply(manifest$datasets %||% list(), function(record) {
-      as.character(record$id)
-    }, character(1))
+    vapply(
+      manifest$datasets %||% list(),
+      function(record) {
+        as.character(record$id)
+      },
+      character(1)
+    )
   )
   ready <- stats::setNames(
     Filter(function(result) identical(result$status, "ready"), results),
-    vapply(Filter(function(result) identical(result$status, "ready"), results),
-      function(result) as.character(result$id), character(1))
+    vapply(
+      Filter(function(result) identical(result$status, "ready"), results),
+      function(result) as.character(result$id),
+      character(1)
+    )
   )
   released <- character()
   entries <- lapply(entries, function(entry) {
@@ -1478,7 +1584,9 @@ builder_project_write_dataset_config <- function(entry, root) {
   )
   if (file.exists(target)) {
     current <- builder_project_file_fingerprint(target, content = TRUE)
-    if (!builder_project_content_fingerprint_matches(staged_fingerprint, current)) {
+    if (
+      !builder_project_content_fingerprint_matches(staged_fingerprint, current)
+    ) {
       stop(
         "An immutable Project configuration failed its integrity check.",
         call. = FALSE
@@ -1577,7 +1685,10 @@ builder_project_read_dataset_config <- function(record, root) {
   }
   encoded_bytes <- nchar(uri, type = "bytes") - separator
   if (encoded_bytes > max_encoded_bytes) {
-    stop("A Spatial image payload exceeds its encoded size limit.", call. = FALSE)
+    stop(
+      "A Spatial image payload exceeds its encoded size limit.",
+      call. = FALSE
+    )
   }
   payload <- substring(uri, separator + 1L)
   bytes <- tryCatch(
@@ -1661,7 +1772,9 @@ builder_project_stage_spatial_assets <- function(entry, root) {
         fail("is missing")
       }
       current <- builder_project_file_fingerprint(path, content = TRUE)
-      if (!builder_project_content_fingerprint_matches(asset$fingerprint, current)) {
+      if (
+        !builder_project_content_fingerprint_matches(asset$fingerprint, current)
+      ) {
         fail("failed its integrity check")
       }
       record$source_uri <- NULL
@@ -1755,7 +1868,11 @@ builder_project_adopt_spatial_assets <- function(entry, staged) {
   })
 }
 
-builder_project_restore_spatial_assets <- function(entry, root, validate = TRUE) {
+builder_project_restore_spatial_assets <- function(
+  entry,
+  root,
+  validate = TRUE
+) {
   dataset_id <- as.character(entry$id %||% "dataset")
   .builder_project_map_spatial_images(entry, function(record, section, label) {
     asset <- if (is.list(record)) record$project_asset %||% NULL else NULL
@@ -1834,10 +1951,14 @@ builder_project_plan_artifact_reusable <- function(item) {
 }
 
 builder_project_checkpoint_budget <- function(entries, root) {
-  closure_bytes <- sum(vapply(entries, function(entry) {
-    value <- suppressWarnings(as.double(entry$snapshot$closure_bytes %||% 0))
-    if (length(value) == 1L && is.finite(value) && value >= 0) value else 0
-  }, numeric(1)))
+  closure_bytes <- sum(vapply(
+    entries,
+    function(entry) {
+      value <- suppressWarnings(as.double(entry$snapshot$closure_bytes %||% 0))
+      if (length(value) == 1L && is.finite(value) && value >= 0) value else 0
+    },
+    numeric(1)
+  ))
   required <- 2 * closure_bytes + 1024^3
   available <- tryCatch(
     .builder_snapshot_available_bytes(root),
@@ -1946,7 +2067,9 @@ builder_project_cached_configuration_digest <- function(
   digest = builder_project_configuration_digest,
   variant = "live"
 ) {
-  if (!is.environment(cache) || !.builder_project_identifier(entry$id %||% NULL)) {
+  if (
+    !is.environment(cache) || !.builder_project_identifier(entry$id %||% NULL)
+  ) {
     return(digest(entry))
   }
   key <- paste(
@@ -2166,7 +2289,10 @@ builder_project_hydrate_loaded_entry <- function(loaded, record, root) {
   }
   status <- builder_project_dataset_status(record, root)
   if (!isTRUE(status$restorable)) {
-    stop("The saved dataset inputs changed during Project restore.", call. = FALSE)
+    stop(
+      "The saved dataset inputs changed during Project restore.",
+      call. = FALSE
+    )
   }
   saved <- builder_project_restore_entry(
     record,
@@ -2285,8 +2411,10 @@ builder_project_store_artifact_bundle <- function(
       !.builder_project_text(target) ||
         grepl("^/", target) ||
         grepl("^[A-Za-z]:[/\\\\]", target) ||
-        any(strsplit(normalized_target, "/", fixed = TRUE)[[1L]] %in%
-          c("", ".", "..")) ||
+        any(
+          strsplit(normalized_target, "/", fixed = TRUE)[[1L]] %in%
+            c("", ".", "..")
+        ) ||
         identical(normalized_target, basename(built))
     ) {
       stop("An artifact member path is unsafe.", call. = FALSE)
@@ -2343,17 +2471,24 @@ builder_project_store_artifact_bundle <- function(
   )
   promoted <- list()
   generation_committed <- FALSE
-  on.exit({
-    if (!generation_committed && length(promoted)) {
-      for (move in rev(promoted)) {
-        if (file.exists(move$staged) && !file.exists(move$source)) {
-          dir.create(dirname(move$source), recursive = TRUE, showWarnings = FALSE)
-          file.rename(move$staged, move$source)
+  on.exit(
+    {
+      if (!generation_committed && length(promoted)) {
+        for (move in rev(promoted)) {
+          if (file.exists(move$staged) && !file.exists(move$source)) {
+            dir.create(
+              dirname(move$source),
+              recursive = TRUE,
+              showWarnings = FALSE
+            )
+            file.rename(move$staged, move$source)
+          }
         }
       }
-    }
-    unlink(staging, recursive = TRUE, force = TRUE)
-  }, add = TRUE)
+      unlink(staging, recursive = TRUE, force = TRUE)
+    },
+    add = TRUE
+  )
   read_existing_generation <- function() {
     primary_path <- file.path(generation_dir, basename(built))
     stored_members <- lapply(seq_along(members), function(index) {
@@ -2380,14 +2515,23 @@ builder_project_store_artifact_bundle <- function(
         primary_fingerprint,
         stored_primary
       ) ||
-        any(!vapply(seq_along(stored_members), function(index) {
-          builder_project_content_fingerprint_matches(
-            member_fingerprints[[index]],
-            stored_members[[index]]$fingerprint
+        any(
+          !vapply(
+            seq_along(stored_members),
+            function(index) {
+              builder_project_content_fingerprint_matches(
+                member_fingerprints[[index]],
+                stored_members[[index]]$fingerprint
+              )
+            },
+            logical(1)
           )
-        }, logical(1)))
+        )
     ) {
-      stop("The stored artifact generation failed its integrity check.", call. = FALSE)
+      stop(
+        "The stored artifact generation failed its integrity check.",
+        call. = FALSE
+      )
     }
     list(
       path = builder_project_relative_path(primary_path, root),
@@ -2418,7 +2562,11 @@ builder_project_store_artifact_bundle <- function(
       member_target <- file.path(staging, members[[index]]$target)
       if (
         !dir.exists(dirname(member_target)) &&
-          !dir.create(dirname(member_target), recursive = TRUE, showWarnings = FALSE)
+          !dir.create(
+            dirname(member_target),
+            recursive = TRUE,
+            showWarnings = FALSE
+          )
       ) {
         stop("An artifact member folder could not be staged.", call. = FALSE)
       }
@@ -2428,9 +2576,13 @@ builder_project_store_artifact_bundle <- function(
     }
     staged_paths <- c(
       primary_target,
-      vapply(members, function(member) {
-        file.path(staging, member$target)
-      }, character(1))
+      vapply(
+        members,
+        function(member) {
+          file.path(staging, member$target)
+        },
+        character(1)
+      )
     )
     expected <- c(
       primary_fingerprint$md5,
@@ -2438,7 +2590,10 @@ builder_project_store_artifact_bundle <- function(
     )
     staged_md5 <- unname(as.character(tools::md5sum(staged_paths)))
     if (!identical(staged_md5, expected)) {
-      stop("The artifact generation could not be committed safely.", call. = FALSE)
+      stop(
+        "The artifact generation could not be committed safely.",
+        call. = FALSE
+      )
     }
     staged_fingerprints <- lapply(seq_along(staged_paths), function(index) {
       builder_project_file_fingerprint_with_md5(
@@ -2461,7 +2616,10 @@ builder_project_store_artifact_bundle <- function(
       if (dir.exists(generation_dir)) {
         return(read_existing_generation())
       }
-      stop("The artifact generation could not be committed safely.", call. = FALSE)
+      stop(
+        "The artifact generation could not be committed safely.",
+        call. = FALSE
+      )
     }
     generation_committed <- TRUE
     return(list(
@@ -2489,30 +2647,36 @@ builder_project_artifact_available <- function(artifact, root) {
     return(FALSE)
   }
   current <- builder_project_file_fingerprint(path, content = TRUE)
-  if (!builder_project_content_fingerprint_matches(artifact$fingerprint, current)) {
+  if (
+    !builder_project_content_fingerprint_matches(artifact$fingerprint, current)
+  ) {
     return(FALSE)
   }
   members <- artifact$members %||% list()
   if (!is.list(members)) {
     return(FALSE)
   }
-  all(vapply(members, function(member) {
-    member_path <- tryCatch(
-      builder_project_resolve_path(member$path %||% "", root, "managed"),
-      error = function(error) NULL
-    )
-    if (
-      !.builder_project_text(member_path) ||
-        !file.exists(member_path) ||
-        dir.exists(member_path)
-    ) {
-      return(FALSE)
-    }
-    builder_project_content_fingerprint_matches(
-      member$fingerprint,
-      builder_project_file_fingerprint(member_path, content = TRUE)
-    )
-  }, logical(1)))
+  all(vapply(
+    members,
+    function(member) {
+      member_path <- tryCatch(
+        builder_project_resolve_path(member$path %||% "", root, "managed"),
+        error = function(error) NULL
+      )
+      if (
+        !.builder_project_text(member_path) ||
+          !file.exists(member_path) ||
+          dir.exists(member_path)
+      ) {
+        return(FALSE)
+      }
+      builder_project_content_fingerprint_matches(
+        member$fingerprint,
+        builder_project_file_fingerprint(member_path, content = TRUE)
+      )
+    },
+    logical(1)
+  ))
 }
 
 builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
@@ -2546,21 +2710,35 @@ builder_project_spatial_assets_status <- function(record, root) {
         return(image)
       }
       path <- builder_project_resolve_path(asset$path %||% "", root, "managed")
-      if (!.builder_project_text(path) || !file.exists(path) || dir.exists(path)) {
+      if (
+        !.builder_project_text(path) || !file.exists(path) || dir.exists(path)
+      ) {
         stop(
           paste0(
-            "Spatial image asset for dataset “", entry$id, "”, FOV “",
-            section, "”, image “", label, "” is missing."
+            "Spatial image asset for dataset “",
+            entry$id,
+            "”, FOV “",
+            section,
+            "”, image “",
+            label,
+            "” is missing."
           ),
           call. = FALSE
         )
       }
       current <- builder_project_file_fingerprint(path, content = TRUE)
-      if (!builder_project_content_fingerprint_matches(asset$fingerprint, current)) {
+      if (
+        !builder_project_content_fingerprint_matches(asset$fingerprint, current)
+      ) {
         stop(
           paste0(
-            "Spatial image asset for dataset “", entry$id, "”, FOV “",
-            section, "”, image “", label, "” failed its integrity check."
+            "Spatial image asset for dataset “",
+            entry$id,
+            "”, FOV “",
+            section,
+            "”, image “",
+            label,
+            "” failed its integrity check."
           ),
           call. = FALSE
         )
@@ -2570,7 +2748,11 @@ builder_project_spatial_assets_status <- function(record, root) {
     error = identity
   )
   if (inherits(validated, "condition")) {
-    return(list(ready = FALSE, error = conditionMessage(validated), entry = NULL))
+    return(list(
+      ready = FALSE,
+      error = conditionMessage(validated),
+      entry = NULL
+    ))
   }
   list(ready = TRUE, error = NULL, entry = entry)
 }
@@ -2580,7 +2762,10 @@ builder_project_configuration_identity <- function(record) {
     return("")
   }
   unclass(as.character(openssl::md5(serialize(
-    list(id = record$id %||% NULL, configuration = record$configuration %||% NULL),
+    list(
+      id = record$id %||% NULL,
+      configuration = record$configuration %||% NULL
+    ),
     NULL,
     version = 3L
   ))))
@@ -2592,10 +2777,13 @@ builder_project_artifact_identity <- function(artifact) {
   }
   descriptor <- artifact
   descriptor$resolved_path <- NULL
-  descriptor$members <- lapply(descriptor$members %||% list(), function(member) {
-    member$resolved_path <- NULL
-    member
-  })
+  descriptor$members <- lapply(
+    descriptor$members %||% list(),
+    function(member) {
+      member$resolved_path <- NULL
+      member
+    }
+  )
   unclass(as.character(openssl::md5(
     serialize(descriptor, NULL, version = 3L)
   )))
@@ -2638,26 +2826,33 @@ builder_project_status_stat_signature <- function(record, root, entry = NULL) {
       image
     })
   }
-  resolved <- vapply(references, function(reference) {
-    resolved_path <- tryCatch(
-      builder_project_resolve_path(reference$path, root, reference$kind),
-      error = function(error) NA_character_
-    )
-    if (.builder_project_text(resolved_path)) {
-      as.character(resolved_path)
-    } else {
-      NA_character_
-    }
-  }, character(1))
+  resolved <- vapply(
+    references,
+    function(reference) {
+      resolved_path <- tryCatch(
+        builder_project_resolve_path(reference$path, root, reference$kind),
+        error = function(error) NA_character_
+      )
+      if (.builder_project_text(resolved_path)) {
+        as.character(resolved_path)
+      } else {
+        NA_character_
+      }
+    },
+    character(1)
+  )
   paths <- sort(unique(resolved[!is.na(resolved)]), method = "radix")
-  stats::setNames(lapply(paths, function(path) {
-    info <- file.info(path)
-    list(
-      size = suppressWarnings(as.numeric(info$size[[1L]])),
-      mtime = suppressWarnings(as.numeric(info$mtime[[1L]])),
-      ctime = suppressWarnings(as.numeric(info$ctime[[1L]]))
-    )
-  }), paths)
+  stats::setNames(
+    lapply(paths, function(path) {
+      info <- file.info(path)
+      list(
+        size = suppressWarnings(as.numeric(info$size[[1L]])),
+        mtime = suppressWarnings(as.numeric(info$mtime[[1L]])),
+        ctime = suppressWarnings(as.numeric(info$ctime[[1L]]))
+      )
+    }),
+    paths
+  )
 }
 
 builder_project_status_snapshot_fresh <- function(status, record, root) {
@@ -2778,9 +2973,13 @@ builder_project_status_snapshot <- function(manifest, root) {
     record$runtime_restore_status <- NULL
     builder_project_dataset_status(record, root)
   })
-  names(statuses) <- vapply(records, function(record) {
-    as.character(record$id)
-  }, character(1))
+  names(statuses) <- vapply(
+    records,
+    function(record) {
+      as.character(record$id)
+    },
+    character(1)
+  )
   statuses
 }
 
@@ -3280,10 +3479,11 @@ builder_project_artifact_entry <- function(
     is.list(record) &&
     builder_project_status_snapshot_fresh(status, record, root)
   artifact_ready <- if (trusted_status) {
-    isTRUE(status$artifact_ready) && identical(
-      as.character(status$artifact_identity %||% ""),
-      builder_project_artifact_identity(artifact)
-    )
+    isTRUE(status$artifact_ready) &&
+      identical(
+        as.character(status$artifact_identity %||% ""),
+        builder_project_artifact_identity(artifact)
+      )
   } else {
     builder_project_artifact_available(artifact, root)
   }
@@ -3316,14 +3516,19 @@ builder_project_artifact_entry <- function(
 
 builder_project_prepare_open_selection <- function(manifest, root, actions) {
   records <- manifest$datasets %||% list()
-  ids <- vapply(records, function(record) {
-    as.character(record$id)
-  }, character(1))
+  ids <- vapply(
+    records,
+    function(record) {
+      as.character(record$id)
+    },
+    character(1)
+  )
   names(records) <- ids
   reusable_entries <- list()
   pending_entries <- list()
   artifacts <- list()
   marks <- character()
+  skipped_ids <- character()
   for (record in records) {
     action <- actions[[record$id]] %||% "skip"
     status <- builder_project_dataset_status(record, root)
@@ -3355,17 +3560,24 @@ builder_project_prepare_open_selection <- function(manifest, root, actions) {
     } else if (identical(action, "resume") && isTRUE(status$restorable)) {
       record$runtime_restore_status <- status
       pending_entries[[record$id]] <- record
+    } else {
+      skipped_ids <- c(skipped_ids, record$id)
     }
   }
   list(
     reusable_entries = reusable_entries,
     pending_entries = pending_entries,
     artifacts = artifacts,
-    marks = marks
+    marks = marks,
+    skipped_ids = skipped_ids
   )
 }
 
-builder_project_check_identity <- function(entry, identity_cache = NULL, variant = "live") {
+builder_project_check_identity <- function(
+  entry,
+  identity_cache = NULL,
+  variant = "live"
+) {
   if (
     is.list(entry) &&
       identical(entry$load_state %||% "loaded", "artifact_ready") &&

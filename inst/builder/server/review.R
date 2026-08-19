@@ -458,9 +458,7 @@ output$configure_actions <- renderUI({
     readiness$message
   }
   current_index <- match(current(), ids)
-  current_entry <- if (
-    length(current_index) == 1L && !is.na(current_index)
-  ) {
+  current_entry <- if (length(current_index) == 1L && !is.na(current_index)) {
     entries[[current_index]]
   } else {
     NULL
@@ -564,6 +562,7 @@ observeEvent(input$complete_dataset_check, {
 })
 
 render_configure_workbench <- function() {
+  configure_workbench_surface()
   id <- current()
   entry <- isolate(entry_of(id))
   if (is.null(entry)) {

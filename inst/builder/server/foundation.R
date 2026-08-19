@@ -177,6 +177,7 @@ release_client_import <- function(
 }
 example_directory_sent <- reactiveVal(NULL)
 current_id <- reactiveVal(NULL)
+configure_workbench_surface <- reactiveVal(NULL)
 update_current_id <- function(value) {
   if (!identical(value, isolate(current_id()))) {
     current_id(value)
@@ -185,6 +186,24 @@ update_current_id <- function(value) {
 }
 observe({
   update_current_id(store()$current_dataset)
+})
+observe({
+  state <- store()
+  id <- state$current_dataset
+  entries <- state$datasets %||% list()
+  index <- which(vapply(
+    entries,
+    function(entry) identical(entry$id, id),
+    logical(1)
+  ))
+  entry <- if (length(index) == 1L) entries[[index]] else NULL
+  surface <- list(
+    id = id,
+    load_state = if (is.null(entry)) NULL else entry$load_state %||% "loaded"
+  )
+  if (!identical(surface, isolate(configure_workbench_surface()))) {
+    configure_workbench_surface(surface)
+  }
 })
 observe({
   loaded <- store()$datasets %||% list()
@@ -322,10 +341,18 @@ all_datasets_checked <- reactive({
   length(ids) > 0L && all(ids %in% checked_dataset_ids())
 })
 observe({
-  ids <- vapply(sets(), `[[`, character(1), "id")
+  state <- store()
+  ids <- vapply(state$datasets, `[[`, character(1), "id")
   marks <- isolate(dataset_check_marks())
-  kept <- marks[names(marks) %in% ids]
-  if (!identical(kept, marks)) dataset_check_marks(kept)
+  kept <- builder_project_retain_check_marks(
+    marks,
+    live_ids = ids,
+    last_removed = state$last_removed,
+    can_undo_remove = state$can_undo_remove
+  )
+  if (!identical(kept, marks)) {
+    dataset_check_marks(kept)
+  }
   builder_project_configuration_cache_retain_datasets(
     builder_configuration_identity_cache,
     ids

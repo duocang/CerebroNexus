@@ -72,3 +72,24 @@ test_that("legacy inspected profiles stay renderable without raw objects", {
   expect_true(frame$projections$valid)
   expect_identical(frame$spatial$sections, 1L)
 })
+
+test_that("lightweight CRB profiles tolerate configured QC fields without samples", {
+  profile <- list(
+    n_cells = 80L,
+    n_genes = 230L,
+    reductions = "umap",
+    group_counts = list()
+  )
+
+  frame <- builder_stats_frame(
+    profile,
+    list(
+      reductions = "umap",
+      nUMI = "nCount_RNA",
+      nGene = "nFeature_RNA"
+    )
+  )
+
+  expect_identical(nrow(frame$qc), 0L)
+  expect_identical(frame$qc_samples, 0L)
+})

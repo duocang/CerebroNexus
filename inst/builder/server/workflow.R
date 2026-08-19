@@ -122,7 +122,7 @@ output$workbench <- renderUI({
   switch(
     stage,
     upload = tagAppendAttributes(
-      builder_empty_workbench_ui(),
+      builder_empty_workbench_ui(project_active = !is.null(builder_project())),
       class = "builder-stage-upload",
       `data-workflow-stage` = "upload"
     ),

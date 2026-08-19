@@ -7,6 +7,7 @@ builder_project_first_save_scheduled <- reactiveVal(FALSE)
 builder_project_restore <- reactiveVal(NULL)
 builder_project_pending_entries <- reactiveVal(list())
 builder_project_artifacts <- reactiveVal(list())
+builder_project_skipped_ids <- reactiveVal(character())
 builder_project_build_plan <- reactiveVal(NULL)
 builder_project_build_crb_request_id <- reactiveVal(NULL)
 builder_project_checkpoint <- reactiveVal(FALSE)
@@ -87,7 +88,8 @@ builder_project_dirty <- reactive({
     sets(),
     checked_dataset_ids(),
     project$manifest,
-    identity_cache = builder_configuration_identity_cache
+    identity_cache = builder_configuration_identity_cache,
+    ignored_ids = builder_project_skipped_ids()
   )
 })
 
@@ -920,8 +922,11 @@ builder_project_build_manifest <- function(entries, project) {
   retained_ids <- vapply(records, `[[`, character(1), "id")
   inactive <- previous[setdiff(names(previous), retained_ids)]
   if (length(inactive)) {
+    skipped_ids <- isolate(builder_project_skipped_ids())
     inactive <- lapply(inactive, function(record) {
-      record$release <- list(included = FALSE)
+      if (!record$id %in% skipped_ids) {
+        record$release <- list(included = FALSE)
+      }
       record
     })
     records <- c(records, unname(inactive))
@@ -1340,6 +1345,7 @@ create_builder_project_in_folder <- function(path) {
     name = manifest$project$name,
     manifest = manifest
   ))
+  builder_project_skipped_ids(character())
   shiny::removeModal()
   request_builder_project_save(show_actions = FALSE, materialize = TRUE)
   invisible(TRUE)
@@ -1489,6 +1495,29 @@ observeEvent(
   ignoreInit = TRUE
 )
 
+observeEvent(input$choose_saved_project_datasets, {
+  if (!builder_operation_allowed("edit_dataset")) {
+    return()
+  }
+  project <- isolate(builder_project())
+  if (
+    is.null(project) ||
+      length(isolate(sets())) ||
+      length(isolate(imports()$entries %||% list()))
+  ) {
+    return()
+  }
+  builder_project_restore(list(
+    manifest = project$manifest,
+    root = project$root,
+    path = project$path
+  ))
+  shiny::showModal(
+    builder_project_restore_dialog(project$manifest, project$root),
+    session = session
+  )
+})
+
 observeEvent(input$confirm_builder_project_open, {
   pending <- isolate(builder_project_restore())
   operation <- isolate(builder_project_operation_phase())
@@ -1520,6 +1549,7 @@ observeEvent(input$confirm_builder_project_open, {
   pending_entries <- prepared$pending_entries
   artifacts <- prepared$artifacts
   marks <- prepared$marks
+  skipped_ids <- prepared$skipped_ids
   next_store <- tryCatch(
     builder_state(
       datasets = reusable_entries,
@@ -1553,6 +1583,7 @@ observeEvent(input$confirm_builder_project_open, {
   dataset_check_marks(marks)
   builder_project_pending_entries(pending_entries)
   builder_project_artifacts(artifacts)
+  builder_project_skipped_ids(skipped_ids)
   builder_project(list(
     root = root,
     path = pending$path,
@@ -1837,24 +1868,45 @@ observeEvent(input$project_resume_current_source, {
   pending[[id]] <- record
   builder_project_pending_entries(pending)
   source <- record$source
-  started <- if (identical(source$kind, "example")) {
-    start_load("example", source$example, record$name, dataset_id = id)
-  } else {
-    path <- builder_project_resolve_path(source$path, project$root, source$kind)
-    info <- file.info(path)
-    start_load(
-      "file",
-      path,
-      record$name,
-      file_meta = list(
-        name = source$filename %||% basename(path),
-        type = "application/octet-stream",
-        size = as.double(info$size[[1L]])
+  started <- tryCatch(
+    if (identical(source$kind, "example")) {
+      start_load("example", source$example, record$name, dataset_id = id)
+    } else {
+      path <- builder_project_resolve_path(
+        source$path,
+        project$root,
+        source$kind
+      )
+      info <- file.info(path)
+      start_load(
+        "file",
+        path,
+        record$name,
+        file_meta = list(
+          name = source$filename %||% basename(path),
+          type = "application/octet-stream",
+          size = as.double(info$size[[1L]])
+        ),
+        dataset_id = id,
+        source_origin = source$origin %||% "upload",
+        example_id = source$example %||% NULL
+      )
+    },
+    error = identity
+  )
+  if (inherits(started, "condition")) {
+    pending <- isolate(builder_project_pending_entries())
+    pending[[id]] <- previous_pending
+    builder_project_pending_entries(pending)
+    showNotification(
+      paste0(
+        "The source dataset could not be loaded: ",
+        conditionMessage(started)
       ),
-      dataset_id = id,
-      source_origin = source$origin %||% "upload",
-      example_id = source$example %||% NULL
+      type = "error",
+      duration = 8
     )
+    return()
   }
   if (!isTRUE(started)) {
     pending <- isolate(builder_project_pending_entries())
