@@ -3537,6 +3537,30 @@
       "builder_project_crb_progress",
       updateBuilderProjectCrbProgress
     );
+
+    window.Shiny.addCustomMessageHandler(
+      "builder_dataset_check_state",
+      function (message) {
+        var button = document.getElementById("complete_dataset_check");
+        if (!button) return;
+        var active = !!(message && message.active);
+        if (active) {
+          if (!button.dataset.builderCheckLabel) {
+            button.dataset.builderCheckLabel = button.textContent;
+          }
+          button.disabled = true;
+          button.setAttribute("aria-busy", "true");
+          button.textContent = "Saving check…";
+          return;
+        }
+        if (button.dataset.builderCheckLabel) {
+          button.textContent = button.dataset.builderCheckLabel;
+          delete button.dataset.builderCheckLabel;
+          button.disabled = false;
+        }
+        button.removeAttribute("aria-busy");
+      }
+    );
     window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
     window.Shiny.addCustomMessageHandler(
       "builder_focus_dataset_start",

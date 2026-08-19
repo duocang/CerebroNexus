@@ -1323,7 +1323,7 @@ test_that("reusable CRB preparation skips current artifacts", {
   )
 })
 
-test_that("a matching ready project CRB repairs a missing checked flag", {
+test_that("a ready project CRB remains separate from the checked flag", {
   runtime <- builder_project_test_runtime()
   record <- list(
     configuration = list(
@@ -1336,9 +1336,13 @@ test_that("a matching ready project CRB repairs a missing checked flag", {
     )
   )
 
+  expect_false(runtime$builder_project_record_configuration_confirmed(record))
+
+  record$configuration$checked <- TRUE
+  record$configuration$checked_digest <- "same-configuration"
   expect_true(runtime$builder_project_record_configuration_confirmed(record))
 
-  record$artifact$built_from_configuration <- "older-configuration"
+  record$configuration$digest <- "newer-configuration"
   expect_false(runtime$builder_project_record_configuration_confirmed(record))
 })
 

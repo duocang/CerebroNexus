@@ -516,8 +516,9 @@ builder_project_build_manifest <- function(entries, project) {
         })
       }
     }
-    payload_entry <- builder_project_stage_spatial_assets(
-      staged$entry,
+    configuration_entry <- builder_project_configuration_entry(staged$entry)
+    configuration_entry <- builder_project_stage_spatial_assets(
+      configuration_entry,
       project$root
     )
     staged_entries[[index]] <- staged$entry
@@ -528,7 +529,9 @@ builder_project_build_manifest <- function(entries, project) {
       checked = entry$id %in% checked,
       artifact = artifact,
       order = index,
-      payload_entry = payload_entry
+      payload_entry = configuration_entry,
+      root = project$root,
+      prior = prior
     )
   }
   retained_ids <- vapply(records, `[[`, character(1), "id")
