@@ -391,6 +391,18 @@ builder_project_normalize_root <- function(root, must_work = TRUE) {
   root
 }
 
+builder_project_folder_state <- function(root) {
+  root <- builder_project_normalize_root(root)
+  if (file.exists(builder_project_manifest_path(root))) {
+    return(list(kind = "project", root = root))
+  }
+  entries <- list.files(root, all.files = TRUE, no.. = TRUE)
+  list(
+    kind = if (length(entries)) "nonempty" else "empty",
+    root = root
+  )
+}
+
 builder_project_relative_path <- function(path, root) {
   root <- builder_project_normalize_root(root)
   path <- normalizePath(path, winslash = "/", mustWork = TRUE)
