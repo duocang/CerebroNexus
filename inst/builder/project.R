@@ -264,8 +264,10 @@ builder_project_live_dirty <- function(entries, checked_ids, manifest) {
 .builder_project_manifest_name <- "builder-project.json"
 .builder_project_managed_root_names <- c(
   "artifacts",
+  "checkpoints",
   "datasets",
   "session-sources",
+  "spatial-assets",
   "sources"
 )
 
@@ -435,13 +437,36 @@ builder_project_resolve_path <- function(path, root, kind = "managed") {
     return(normalizePath(path.expand(path), winslash = "/", mustWork = FALSE))
   }
   root <- builder_project_normalize_root(root)
-  candidate <- normalizePath(
-    file.path(root, path),
-    winslash = "/",
-    mustWork = FALSE
-  )
+  normalized <- gsub("\\\\", "/", as.character(path), fixed = FALSE)
+  if (
+    grepl("^/", normalized) ||
+      grepl("^[A-Za-z]:/", normalized) ||
+      grepl("^//", normalized)
+  ) {
+    stop("A managed project path is unsafe.", call. = FALSE)
+  }
+  parts <- strsplit(normalized, "/", fixed = TRUE)[[1L]]
+  if (!length(parts) || any(parts %in% c("", ".", ".."))) {
+    stop("A managed project path is unsafe.", call. = FALSE)
+  }
+  candidate <- root
+  for (part in parts) {
+    candidate <- file.path(candidate, part)
+    link <- tryCatch(Sys.readlink(candidate), error = function(error) "")
+    if (.builder_project_text(link)) {
+      stop(
+        "A managed project path contains a symbolic link.",
+        call. = FALSE
+      )
+    }
+  }
   prefix <- paste0(root, "/")
-  if (!startsWith(candidate, prefix)) {
+  resolved <- if (file.exists(candidate) || dir.exists(candidate)) {
+    normalizePath(candidate, winslash = "/", mustWork = TRUE)
+  } else {
+    candidate
+  }
+  if (!startsWith(resolved, prefix)) {
     stop("A managed project path is unsafe.", call. = FALSE)
   }
   candidate
@@ -463,11 +488,20 @@ builder_project_file_fingerprint <- function(path, content = FALSE) {
   )
 }
 
-builder_project_fingerprint_matches <- function(recorded, current) {
+builder_project_file_fingerprint_with_md5 <- function(path, md5) {
+  fingerprint <- builder_project_file_fingerprint(path, content = FALSE)
+  if (is.null(fingerprint) || !.builder_project_text(md5)) {
+    return(NULL)
+  }
+  fingerprint$md5 <- as.character(md5)
+  fingerprint
+}
+
+builder_project_fingerprint_metadata_matches <- function(recorded, current) {
   if (is.null(recorded) || is.null(current)) {
     return(FALSE)
   }
-  same_basic <- identical(
+  identical(
     suppressWarnings(as.double(recorded$bytes)),
     suppressWarnings(as.double(current$bytes))
   ) &&
@@ -475,13 +509,19 @@ builder_project_fingerprint_matches <- function(recorded, current) {
       as.character(recorded$modified_at %||% ""),
       as.character(current$modified_at %||% "")
     )
-  if (!same_basic) {
+}
+
+builder_project_fingerprint_matches <- function(recorded, current) {
+  if (!builder_project_fingerprint_metadata_matches(recorded, current)) {
     return(FALSE)
   }
   recorded_md5 <- recorded$md5 %||% NULL
   current_md5 <- current$md5 %||% NULL
-  is.null(recorded_md5) ||
-    is.null(current_md5) ||
+  if (is.null(recorded_md5) && is.null(current_md5)) {
+    return(TRUE)
+  }
+  .builder_project_text(recorded_md5) &&
+    .builder_project_text(current_md5) &&
     identical(as.character(recorded_md5), as.character(current_md5))
 }
 
@@ -534,7 +574,11 @@ builder_project_stage_source <- function(entry, root) {
     ))
   }
   root <- builder_project_normalize_root(root)
-  target_dir <- file.path(root, "sources", entry$id)
+  target_dir <- builder_project_resolve_path(
+    paste("sources", entry$id, sep = "/"),
+    root,
+    "managed"
+  )
   if (!dir.exists(target_dir) && !dir.create(target_dir, recursive = TRUE)) {
     stop("The dataset source folder could not be created.", call. = FALSE)
   }
@@ -610,10 +654,16 @@ builder_project_source_job <- function(entry, root) {
     filename <- paste0(entry$id, ".rds")
   }
   filename <- basename(filename)
-  target <- file.path(root, "sources", entry$id, filename)
+  target <- builder_project_resolve_path(
+    paste("sources", entry$id, filename, sep = "/"),
+    root,
+    "managed"
+  )
   list(
     id = entry$id,
     source = source,
+    root = root,
+    relative = paste("sources", entry$id, filename, sep = "/"),
     target = target,
     part = paste0(target, ".part"),
     filename = filename,
@@ -631,8 +681,50 @@ builder_project_prepare_source <- function(entry, root, prior = NULL) {
   job <- builder_project_source_job(entry, root)
   relative <- paste("sources", entry$id, job$filename, sep = "/")
   prior_source <- if (is.list(prior)) prior$source %||% list() else list()
-  target_ready <- file.exists(job$target) && !dir.exists(job$target)
+  prior_path <- if (
+    identical(prior_source$kind %||% NULL, "managed") &&
+      .builder_project_text(prior_source$path %||% NULL)
+  ) {
+    tryCatch(
+      builder_project_resolve_path(prior_source$path, root, "managed"),
+      error = function(error) NULL
+    )
+  } else {
+    NULL
+  }
+  entry_path <- if (.builder_project_text(entry$path %||% NULL)) {
+    tryCatch(
+      normalizePath(entry$path, winslash = "/", mustWork = TRUE),
+      error = function(error) NULL
+    )
+  } else {
+    NULL
+  }
+  prior_ready <- .builder_project_text(prior_path) &&
+    file.exists(prior_path) &&
+    !dir.exists(prior_path) &&
+    identical(entry_path, normalizePath(prior_path, winslash = "/", mustWork = TRUE))
+  ready_target <- if (prior_ready) prior_path else job$target
+  if (prior_ready) relative <- prior_source$path
+  target_ready <- file.exists(ready_target) && !dir.exists(ready_target)
   if (target_ready) {
+    current_metadata <- builder_project_file_fingerprint(
+      ready_target,
+      content = FALSE
+    )
+    prior_fingerprint <- prior_source$fingerprint %||% NULL
+    fingerprint <- if (
+      identical(as.character(prior_source$path %||% ""), relative) &&
+        .builder_project_text(prior_fingerprint$md5 %||% NULL) &&
+        builder_project_fingerprint_metadata_matches(
+          prior_fingerprint,
+          current_metadata
+        )
+    ) {
+      prior_fingerprint
+    } else {
+      builder_project_file_fingerprint(ready_target, content = TRUE)
+    }
     return(list(
       entry = entry,
       source = list(
@@ -642,10 +734,7 @@ builder_project_prepare_source <- function(entry, root, prior = NULL) {
         filename = job$filename,
         path = relative,
         status = "ready",
-        fingerprint = builder_project_file_fingerprint(
-          job$target,
-          content = TRUE
-        )
+        fingerprint = fingerprint
       ),
       job = NULL
     ))
@@ -690,24 +779,50 @@ builder_project_copy_source_job <- function(job) {
   ) {
     return(fail("The dataset source is no longer available."))
   }
+  source_md5 <- unname(as.character(tools::md5sum(job$source)))
+  if (!.builder_project_text(source_md5)) {
+    return(fail("The dataset source fingerprint could not be calculated."))
+  }
+  if (
+    .builder_project_text(job$root %||% NULL) &&
+      .builder_project_identifier(job$id %||% NULL)
+  ) {
+    job$relative <- paste(
+      "sources",
+      job$id,
+      "blobs",
+      source_md5,
+      job$filename,
+      sep = "/"
+    )
+    resolved <- tryCatch(
+      builder_project_resolve_path(job$relative, job$root, "managed"),
+      error = function(error) error
+    )
+    if (inherits(resolved, "condition")) {
+      return(fail(conditionMessage(resolved)))
+    }
+    job$target <- resolved
+    job$part <- paste0(resolved, ".part")
+  }
   target_dir <- dirname(job$target)
   if (!dir.exists(target_dir) && !dir.create(target_dir, recursive = TRUE)) {
     return(fail("The Project source directory could not be created."))
   }
-  source_md5 <- unname(as.character(tools::md5sum(job$source)))
-  if (
-    file.exists(job$target) &&
-      identical(
-        unname(as.character(tools::md5sum(job$target))),
-        source_md5
-      )
-  ) {
-    return(list(
-      id = job$id,
-      status = "ready",
-      path = job$target,
-      fingerprint = builder_project_file_fingerprint(job$target, content = TRUE)
-    ))
+  if (file.exists(job$target)) {
+    target_md5 <- unname(as.character(tools::md5sum(job$target)))
+    if (identical(target_md5, source_md5)) {
+      return(list(
+        id = job$id,
+        status = "ready",
+        path = job$target,
+        fingerprint = builder_project_file_fingerprint_with_md5(
+          job$target,
+          target_md5
+        )
+      ))
+    }
+    return(fail("An immutable Project source failed its integrity check."))
   }
   unlink(job$part, force = TRUE)
   if (!file.copy(job$source, job$part, overwrite = TRUE, copy.mode = TRUE)) {
@@ -719,24 +834,26 @@ builder_project_copy_source_job <- function(job) {
   if (!identical(source_size, part_size) || !identical(source_md5, part_md5)) {
     return(fail("The copied dataset source did not pass verification."))
   }
-  backup <- paste0(job$target, ".previous")
-  unlink(backup, force = TRUE)
-  had_target <- file.exists(job$target)
-  if (had_target && !file.rename(job$target, backup)) {
-    return(fail("The existing Project source could not be replaced safely."))
-  }
   if (!file.rename(job$part, job$target)) {
-    if (had_target && file.exists(backup)) {
-      file.rename(backup, job$target)
+    if (file.exists(job$target)) {
+      concurrent_md5 <- unname(as.character(tools::md5sum(job$target)))
+      if (identical(concurrent_md5, source_md5)) {
+        unlink(job$part, force = TRUE)
+      } else {
+        return(fail("The immutable Project source could not be committed."))
+      }
+    } else {
+      return(fail("The verified Project source could not be committed."))
     }
-    return(fail("The verified Project source could not be committed."))
   }
-  unlink(backup, force = TRUE)
   list(
     id = job$id,
     status = "ready",
     path = job$target,
-    fingerprint = builder_project_file_fingerprint(job$target, content = TRUE)
+    fingerprint = builder_project_file_fingerprint_with_md5(
+      job$target,
+      part_md5
+    )
   )
 }
 
@@ -849,46 +966,40 @@ builder_project_configuration_entry <- function(entry) {
   )
 }
 
-builder_project_dataset_config_path <- function(dataset_id, root) {
+builder_project_dataset_config_path <- function(
+  dataset_id,
+  root,
+  content_id = NULL
+) {
   if (!.builder_project_identifier(dataset_id)) {
     stop("A safe dataset id is required.", call. = FALSE)
   }
+  relative <- if (.builder_project_text(content_id)) {
+    paste(
+      "datasets",
+      dataset_id,
+      "configs",
+      paste0(content_id, ".json"),
+      sep = "/"
+    )
+  } else {
+    paste("datasets", dataset_id, "config.json", sep = "/")
+  }
   builder_project_resolve_path(
-    paste("datasets", dataset_id, "config.json", sep = "/"),
+    relative,
     root,
     "managed"
   )
 }
 
-.builder_project_commit_sidecar <- function(temporary, target) {
-  target_dir <- dirname(target)
-  if (
-    !dir.exists(target_dir) &&
-      !dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
-  ) {
-    stop("A Project sidecar directory could not be created.", call. = FALSE)
-  }
-  backup <- paste0(target, ".previous")
-  unlink(backup, force = TRUE)
-  had_target <- file.exists(target)
-  if (had_target && !file.rename(target, backup)) {
-    stop("An existing Project sidecar could not be replaced.", call. = FALSE)
-  }
-  if (!file.rename(temporary, target)) {
-    if (had_target && file.exists(backup)) {
-      file.rename(backup, target)
-    }
-    stop("A Project sidecar could not be committed.", call. = FALSE)
-  }
-  unlink(backup, force = TRUE)
-  invisible(target)
-}
-
 builder_project_write_dataset_config <- function(entry, root) {
   root <- builder_project_normalize_root(root)
   config <- builder_project_configuration_entry(entry)
-  target <- builder_project_dataset_config_path(config$id, root)
-  target_dir <- dirname(target)
+  target_dir <- builder_project_resolve_path(
+    paste("datasets", config$id, "configs", sep = "/"),
+    root,
+    "managed"
+  )
   if (
     !dir.exists(target_dir) &&
       !dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
@@ -909,12 +1020,35 @@ builder_project_write_dataset_config <- function(entry, root) {
     temporary,
     useBytes = TRUE
   )
-  .builder_project_commit_sidecar(temporary, target)
+  staged_fingerprint <- builder_project_file_fingerprint(
+    temporary,
+    content = TRUE
+  )
+  target <- builder_project_dataset_config_path(
+    config$id,
+    root,
+    staged_fingerprint$md5
+  )
+  if (file.exists(target)) {
+    current <- builder_project_file_fingerprint(target, content = TRUE)
+    if (!builder_project_content_fingerprint_matches(staged_fingerprint, current)) {
+      stop(
+        "An immutable Project configuration failed its integrity check.",
+        call. = FALSE
+      )
+    }
+  } else if (!file.rename(temporary, target)) {
+    stop("A Project configuration could not be committed.", call. = FALSE)
+  }
+  fingerprint <- builder_project_file_fingerprint_with_md5(
+    target,
+    staged_fingerprint$md5
+  )
   list(
     schema_version = .builder_project_config_schema_version,
     path = builder_project_relative_path(target, root),
     revision = config$revision,
-    fingerprint = builder_project_file_fingerprint(target, content = TRUE)
+    fingerprint = fingerprint
   )
 }
 
@@ -1062,7 +1196,7 @@ builder_project_stage_spatial_assets <- function(entry, root) {
         fail("is missing")
       }
       current <- builder_project_file_fingerprint(path, content = TRUE)
-      if (!builder_project_fingerprint_matches(asset$fingerprint, current)) {
+      if (!builder_project_content_fingerprint_matches(asset$fingerprint, current)) {
         fail("failed its integrity check")
       }
       return(record)
@@ -1077,11 +1211,15 @@ builder_project_stage_spatial_assets <- function(entry, root) {
       "png"
     )
     asset_id <- unclass(as.character(openssl::md5(parsed$bytes)))
-    target_dir <- file.path(
+    target_dir <- builder_project_resolve_path(
+      paste(
+        "spatial-assets",
+        entry$id,
+        .builder_project_asset_segment(section),
+        sep = "/"
+      ),
       root,
-      "spatial-assets",
-      entry$id,
-      .builder_project_asset_segment(section)
+      "managed"
     )
     if (
       !dir.exists(target_dir) &&
@@ -1160,7 +1298,7 @@ builder_project_restore_spatial_assets <- function(entry, root) {
       fail("is missing")
     }
     current <- builder_project_file_fingerprint(path, content = TRUE)
-    if (!builder_project_fingerprint_matches(asset$fingerprint, current)) {
+    if (!builder_project_content_fingerprint_matches(asset$fingerprint, current)) {
       fail("failed its integrity check")
     }
     mime <- as.character(asset$mime %||% "image/png")[[1L]]
@@ -1446,6 +1584,159 @@ builder_project_hydrate_pending_entries <- function(entries, pending, root) {
   )
 }
 
+builder_project_store_artifact_bundle <- function(
+  built,
+  sidecars = character(),
+  dataset_id,
+  root
+) {
+  if (
+    !.builder_project_identifier(dataset_id) ||
+      !.builder_project_text(built) ||
+      !file.exists(built) ||
+      dir.exists(built)
+  ) {
+    stop("A completed dataset artifact is required.", call. = FALSE)
+  }
+  root <- builder_project_normalize_root(root)
+  built <- normalizePath(built, winslash = "/", mustWork = TRUE)
+  build_root <- normalizePath(dirname(built), winslash = "/", mustWork = TRUE)
+  sidecars <- unique(as.character(sidecars %||% character()))
+  safe_member <- function(target) {
+    normalized_target <- gsub("\\\\", "/", target)
+    if (
+      !.builder_project_text(target) ||
+        grepl("^/", target) ||
+        grepl("^[A-Za-z]:[/\\\\]", target) ||
+        any(strsplit(normalized_target, "/", fixed = TRUE)[[1L]] %in%
+          c("", ".", "..")) ||
+        identical(normalized_target, basename(built))
+    ) {
+      stop("An artifact member path is unsafe.", call. = FALSE)
+    }
+    source <- normalizePath(
+      file.path(build_root, target),
+      winslash = "/",
+      mustWork = TRUE
+    )
+    if (!startsWith(source, paste0(build_root, "/")) || dir.exists(source)) {
+      stop("An artifact member escaped the build folder.", call. = FALSE)
+    }
+    list(target = normalized_target, source = source)
+  }
+  members <- lapply(sidecars, safe_member)
+  normalized_members <- vapply(members, `[[`, character(1), "target")
+  if (anyDuplicated(normalized_members)) {
+    stop("Artifact member paths must be unique.", call. = FALSE)
+  }
+  primary_fingerprint <- builder_project_file_fingerprint(built, content = TRUE)
+  member_fingerprints <- lapply(members, function(member) {
+    builder_project_file_fingerprint(member$source, content = TRUE)
+  })
+  identity <- list(
+    primary = list(name = basename(built), md5 = primary_fingerprint$md5),
+    members = lapply(seq_along(members), function(index) {
+      list(
+        target = members[[index]]$target,
+        md5 = member_fingerprints[[index]]$md5
+      )
+    })
+  )
+  bundle_id <- unclass(as.character(openssl::md5(
+    serialize(identity, NULL, version = 3L)
+  )))
+  relative_dir <- paste(
+    "artifacts",
+    dataset_id,
+    "generations",
+    bundle_id,
+    sep = "/"
+  )
+  generation_dir <- builder_project_resolve_path(relative_dir, root, "managed")
+  generation_parent <- dirname(generation_dir)
+  if (
+    !dir.exists(generation_parent) &&
+      !dir.create(generation_parent, recursive = TRUE, showWarnings = FALSE)
+  ) {
+    stop("The artifact generation folder could not be created.", call. = FALSE)
+  }
+  staging <- tempfile(
+    pattern = paste0(".", dataset_id, "-artifact-"),
+    tmpdir = generation_parent
+  )
+  on.exit(unlink(staging, recursive = TRUE, force = TRUE), add = TRUE)
+  if (!dir.exists(generation_dir)) {
+    if (!dir.create(staging, showWarnings = FALSE)) {
+      stop("The artifact staging folder could not be created.", call. = FALSE)
+    }
+    primary_target <- file.path(staging, basename(built))
+    if (!file.copy(built, primary_target, copy.mode = TRUE)) {
+      stop("The dataset artifact could not be staged.", call. = FALSE)
+    }
+    for (index in seq_along(members)) {
+      member_target <- file.path(staging, members[[index]]$target)
+      if (
+        !dir.exists(dirname(member_target)) &&
+          !dir.create(dirname(member_target), recursive = TRUE, showWarnings = FALSE)
+      ) {
+        stop("An artifact member folder could not be staged.", call. = FALSE)
+      }
+      if (!file.copy(members[[index]]$source, member_target, copy.mode = TRUE)) {
+        stop("An artifact member could not be staged.", call. = FALSE)
+      }
+    }
+    staged_paths <- c(
+      primary_target,
+      vapply(members, function(member) {
+        file.path(staging, member$target)
+      }, character(1))
+    )
+    expected <- c(
+      primary_fingerprint$md5,
+      vapply(member_fingerprints, `[[`, character(1), "md5")
+    )
+    actual <- unname(as.character(tools::md5sum(staged_paths)))
+    if (!identical(actual, expected) || !file.rename(staging, generation_dir)) {
+      stop("The artifact generation could not be committed safely.", call. = FALSE)
+    }
+  }
+  primary_path <- file.path(generation_dir, basename(built))
+  stored_members <- lapply(members, function(member) {
+    path <- file.path(generation_dir, member$target)
+    if (!file.exists(path) || dir.exists(path)) {
+      stop("A stored artifact member is missing.", call. = FALSE)
+    }
+    list(
+      target = member$target,
+      path = builder_project_relative_path(path, root),
+      fingerprint = builder_project_file_fingerprint(path, content = TRUE)
+    )
+  })
+  if (!file.exists(primary_path) || dir.exists(primary_path)) {
+    stop("The stored dataset artifact is missing.", call. = FALSE)
+  }
+  stored_primary <- builder_project_file_fingerprint(primary_path, content = TRUE)
+  if (
+    !builder_project_content_fingerprint_matches(
+      primary_fingerprint,
+      stored_primary
+    ) ||
+      any(!vapply(seq_along(stored_members), function(index) {
+        builder_project_content_fingerprint_matches(
+          member_fingerprints[[index]],
+          stored_members[[index]]$fingerprint
+        )
+      }, logical(1)))
+  ) {
+    stop("The stored artifact generation failed its integrity check.", call. = FALSE)
+  }
+  list(
+    path = builder_project_relative_path(primary_path, root),
+    fingerprint = stored_primary,
+    members = stored_members
+  )
+}
+
 builder_project_artifact_available <- function(artifact, root) {
   if (
     !is.list(artifact) ||
@@ -1458,7 +1749,34 @@ builder_project_artifact_available <- function(artifact, root) {
     builder_project_resolve_path(artifact$path %||% "", root, "managed"),
     error = function(error) NULL
   )
-  .builder_project_text(path) && file.exists(path) && !dir.exists(path)
+  if (!.builder_project_text(path) || !file.exists(path) || dir.exists(path)) {
+    return(FALSE)
+  }
+  current <- builder_project_file_fingerprint(path, content = TRUE)
+  if (!builder_project_content_fingerprint_matches(artifact$fingerprint, current)) {
+    return(FALSE)
+  }
+  members <- artifact$members %||% list()
+  if (!is.list(members)) {
+    return(FALSE)
+  }
+  all(vapply(members, function(member) {
+    member_path <- tryCatch(
+      builder_project_resolve_path(member$path %||% "", root, "managed"),
+      error = function(error) NULL
+    )
+    if (
+      !.builder_project_text(member_path) ||
+        !file.exists(member_path) ||
+        dir.exists(member_path)
+    ) {
+      return(FALSE)
+    }
+    builder_project_content_fingerprint_matches(
+      member$fingerprint,
+      builder_project_file_fingerprint(member_path, content = TRUE)
+    )
+  }, logical(1)))
 }
 
 builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
@@ -1530,14 +1848,14 @@ builder_project_dataset_status <- function(record, root) {
   current_fingerprint <- if (
     source_ready && !identical(source$kind, "example")
   ) {
-    builder_project_file_fingerprint(source_path)
+    builder_project_file_fingerprint(source_path, content = TRUE)
   } else {
     NULL
   }
   recorded_fingerprint <- source$fingerprint %||% NULL
   source_matches <- identical(source$kind, "example") ||
     is.null(recorded_fingerprint) ||
-    builder_project_fingerprint_matches(
+    builder_project_content_fingerprint_matches(
       recorded_fingerprint,
       current_fingerprint
     )

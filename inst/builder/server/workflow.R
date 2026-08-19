@@ -177,6 +177,12 @@ output$build_stage_controls <- renderUI({
 })
 
 observeEvent(input$back_to_review, {
+  if (
+    exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("navigate_workflow"))
+  ) {
+    return()
+  }
   if (builder_build_controls_locked(isolate(build_flow()))) {
     return()
   }

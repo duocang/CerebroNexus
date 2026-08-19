@@ -107,6 +107,7 @@
   var builderProjectSaveResultOpen = false;
   var builderProjectCrbDialogActive = false;
   var buildStatusScrollPhase = 0;
+  var buildStatusFocusToken = 0;
   var normalMotionDuration = 180;
   var authEditor = {
     nextId: 1,
@@ -202,6 +203,17 @@
       ) {
         datasetSwitchState.phase = "slow";
         ensureDatasetSwitchVeil();
+        datasetSwitchState.timeout = window.setTimeout(function () {
+          if (
+            datasetSwitchState.target === target &&
+            datasetSwitchState.generation === generation
+          ) {
+            scheduleStatusAnnouncement(
+              "The dataset switch did not finish. Try selecting it again."
+            );
+            settleDatasetSwitch();
+          }
+        }, 22000);
       }
     }, 8000);
     return true;
@@ -288,6 +300,7 @@
     document.body.classList.remove("builder-project-result-open");
     var elements = builderOperationElements();
     if (elements.overlay) {
+      elements.overlay.removeEventListener("keydown", trapDialogKeydown);
       elements.overlay.setAttribute("role", "status");
       elements.overlay.removeAttribute("aria-modal");
     }
@@ -296,6 +309,8 @@
     }
     setBuilderOperationActions([]);
     applyBuilderActivityState();
+    updateDialogLock();
+    if (elements.overlay) restoreFocus(elements.overlay);
   }
 
   function showBuilderProjectSaveCompletion(status) {
@@ -348,6 +363,7 @@
             );
           }
           setBuilderOperationActions([]);
+          if (elements.overlay) elements.overlay.focus({ preventScroll: true });
           setBuilderOperationCopy(
             "Preparing reusable CRBs",
             "Building the checked datasets that do not have a current reusable CRB.",
@@ -395,8 +411,19 @@
     var elements = builderOperationElements();
     if (elements.overlay) {
       elements.overlay.setAttribute("aria-hidden", "false");
-      elements.overlay.setAttribute("role", "dialog");
-      elements.overlay.setAttribute("aria-modal", "true");
+      elements.overlay.removeEventListener("keydown", trapDialogKeydown);
+      prepareDialog(
+        elements.overlay,
+        document.getElementById("save_builder_project"),
+        function () {
+          if (elements.card && elements.card.classList.contains("has-actions")) {
+            closeBuilderProjectSaveResult();
+          }
+        },
+        function () {
+          return document.getElementById("save_builder_project");
+        }
+      );
     }
     if (elements.card) elements.card.classList.add("is-result");
     var shell = document.querySelector(".builder-shell");
@@ -480,8 +507,10 @@
       var restoreControl = control.matches(
         ".builder-retry-import, .builder-remove-import"
       );
+      var retryQueueLocked =
+        control.matches(".builder-retry-import") && clientImportQueue.length > 0;
       var controlLocked = datasetMutationsLocked ||
-        (activityLocked && !restoreControl);
+        (activityLocked && !restoreControl) || retryQueueLocked;
       if ("disabled" in control) control.disabled = controlLocked;
       control.setAttribute(
         "aria-disabled",
@@ -597,6 +626,9 @@
       project_resume_current_source: activityCapability("edit_dataset"),
       complete_dataset_check: activityCapability("check_dataset"),
       continue_to_review: activityCapability("navigate_workflow"),
+      back_to_settings: activityCapability("navigate_workflow"),
+      confirm_review: activityCapability("navigate_workflow"),
+      back_to_review: activityCapability("navigate_workflow"),
       choose_output_folder: activityCapability("build"),
       build: activityCapability("build"),
     };
@@ -675,20 +707,34 @@
     applyDatasetMutationLock();
   }
 
-  function revealBuildStatus() {
+  function focusBuildStatus() {
     var host = document.getElementById("build-stage-status");
     if (!host || !host.isConnected) {
-      buildStatusScrollPhase = 0;
-      return;
+      return false;
     }
-    var viewportBottom = window.innerHeight - 16;
-    var delta = Math.max(0, Math.ceil(
-      host.getBoundingClientRect().bottom - viewportBottom
-    ));
-    window.scrollBy({
-      top: delta,
+    var topbar = document.querySelector(".topbar");
+    var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
+    host.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
+    host.setAttribute("tabindex", "-1");
+    host.scrollIntoView({
+      block: "start",
       behavior: reducedMotion.matches ? "auto" : "smooth",
     });
+    host.focus({ preventScroll: true });
+    return true;
+  }
+
+  function scheduleBuildStatusFocus() {
+    buildStatusFocusToken += 1;
+    var token = buildStatusFocusToken;
+    var attempts = 0;
+    function apply() {
+      if (token !== buildStatusFocusToken) return;
+      if (focusBuildStatus()) return;
+      attempts += 1;
+      if (attempts < 12) window.setTimeout(apply, 50);
+    }
+    apply();
   }
 
   function showImmediateBuildStatus() {
@@ -720,14 +766,9 @@
     section.append(heading, waiting);
     host.insertBefore(section, output);
 
-    var topbar = document.querySelector(".topbar");
-    var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
-    host.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
-    host.setAttribute("tabindex", "-1");
     buildStatusScrollPhase = 1;
-    revealBuildStatus();
+    scheduleBuildStatusFocus();
     buildStatusScrollPhase = 2;
-    host.focus({ preventScroll: true });
     scheduleStatusAnnouncement("Preparing build.");
   }
 
@@ -1120,7 +1161,7 @@
   }
 
   function openDatasetPicker() {
-    if (datasetMutationsLocked || !builderWorkerReady) return;
+    if (datasetMutationsLocked || !activityCapability("add_dataset")) return;
     var picker = document.createElement("input");
     picker.type = "file";
     picker.multiple = true;
@@ -1306,6 +1347,7 @@
   }
 
   function enqueueClientFiles(fileList) {
+    if (!activityCapability("add_dataset")) return;
     var files = Array.from(fileList || []);
     files.forEach(function (file) {
       var duplicateHint = clientImportQueue.some(function (queued) {
@@ -1337,6 +1379,7 @@
   }
 
   function enqueueExample(example) {
+    if (!activityCapability("add_dataset")) return;
     clientUploadSequence += 1;
     clientImportQueue.push({
       clientId: "client-import-" + clientUploadSequence,
@@ -1424,6 +1467,21 @@
     dispatchNextClientImport();
   }
 
+  function failClientImportReconciliation(entry, message) {
+    entry.state = "error";
+    entry.outcome = "error";
+    entry.error = message;
+    entry.serverId = null;
+    var index = clientImportQueue.indexOf(entry);
+    if (index >= 0) clientImportQueue.splice(index, 1);
+    if (activeClientImport === entry) activeClientImport = null;
+    importSyncPending = false;
+    if (!clientImportFailures.includes(entry)) clientImportFailures.push(entry);
+    scheduleStatusAnnouncement(entry.name + ". " + message);
+    renderClientImportQueue();
+    dispatchNextClientImport();
+  }
+
   function handleClientImportSync(message) {
     var records = Array.isArray(message && message.imports) ? message.imports : [];
     serverImportGate = Boolean(message && message.server_busy);
@@ -1446,15 +1504,11 @@
         dispatchNextClientImport();
         return;
       }
-      entry.state = "unknown";
-      entry.error = "The server could not match this import after reconnecting.";
-      renderClientImportQueue();
+      failClientImportReconciliation(entry, "The server could not match this import after reconnecting.");
       return;
     }
     if (entry.serverId && record.server_id !== entry.serverId) {
-      entry.state = "unknown";
-      entry.error = "The restored import identity did not match.";
-      renderClientImportQueue();
+      failClientImportReconciliation(entry, "The restored import identity did not match.");
       return;
     }
     entry.serverId = record.server_id || entry.serverId;
@@ -3137,7 +3191,7 @@
         "#build-stage-status .builder-build-status-section:not(.is-client-build-status)"
       )
     ) {
-      revealBuildStatus();
+      focusBuildStatus();
       buildStatusScrollPhase = 0;
     }
     setupFirstRun();
@@ -3741,12 +3795,12 @@
       "builder_coordinate_reset_motion",
       animateCoordinateResetSliders
     );
-    window.Shiny.addCustomMessageHandler("builder_scroll_page_top", function (message) {
-      window.scrollTo({
-        top: 0,
-        behavior: reducedMotion.matches ? "auto" : "smooth",
-      });
-    });
+    window.Shiny.addCustomMessageHandler(
+      "builder_focus_build_status",
+      function (message) {
+        scheduleBuildStatusFocus();
+      }
+    );
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;
       if (["upload", "configure", "review", "build"].indexOf(id) < 0) return;
@@ -3971,6 +4025,7 @@
     if (datasetTrigger) {
       datasetTrigger.addEventListener("dragover", function (event) {
         event.preventDefault();
+        if (!activityCapability("add_dataset")) return;
         datasetTrigger.classList.add("is-drag-over");
       });
       datasetTrigger.addEventListener("dragleave", function () {
@@ -3979,6 +4034,7 @@
       datasetTrigger.addEventListener("drop", function (event) {
         event.preventDefault();
         datasetTrigger.classList.remove("is-drag-over");
+        if (!activityCapability("add_dataset")) return;
         enqueueClientFiles(event.dataTransfer && event.dataTransfer.files);
       });
     }
