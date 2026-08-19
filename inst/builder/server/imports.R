@@ -1474,6 +1474,18 @@ observe({
     pending_snapshot_drops(released$pending)
     all <- Filter(function(e) !identical(e$id, p$id), sets())
     sets(all)
+    projection_previews(builder_preview_cache_drop_dataset(
+      isolate(projection_previews()),
+      p$id
+    ))
+    trajectory_previews(builder_preview_cache_drop_dataset(
+      isolate(trajectory_previews()),
+      p$id
+    ))
+    spatial_previews(builder_spatial_preview_cache_drop_dataset(
+      isolate(spatial_previews()),
+      p$id
+    ))
     if (identical(current(), p$id)) {
       current(if (length(all)) all[[1]]$id else NULL)
       result(NULL)

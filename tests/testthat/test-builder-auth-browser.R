@@ -501,6 +501,32 @@ test_that("Builder auth survives redraw and traps focus", {
     vapply(restored, `[[`, character(1), "username"),
     trimws(vapply(accounts, `[[`, character(1), "username"))
   )
+
+  app$run_js(paste0(
+    "window.__authModalBuildClicks = 0;",
+    "window.__authModalBuildWasDisabled = document.getElementById('build').disabled;",
+    "window.__authModalBuildHandler = function(event) {",
+    "window.__authModalBuildClicks += 1; event.preventDefault();",
+    "event.stopImmediatePropagation();",
+    "};",
+    "document.getElementById('build').disabled = false;",
+    "document.getElementById('build').addEventListener(",
+    "'click', window.__authModalBuildHandler, true);",
+    "document.querySelector('.builder-auth-save').focus();",
+    "document.activeElement.dispatchEvent(new KeyboardEvent('keydown',",
+    "{key:'Enter',ctrlKey:true,bubbles:true}));"
+  ))
+  expect_identical(app$get_js("window.__authModalBuildClicks"), 0)
+  expect_false(app$get_js(
+    "document.getElementById('builder-auth-backdrop').hidden"
+  ))
+  app$run_js(paste0(
+    "document.getElementById('build').removeEventListener(",
+    "'click', window.__authModalBuildHandler, true);",
+    "document.getElementById('build').disabled = window.__authModalBuildWasDisabled;",
+    "delete window.__authModalBuildHandler;",
+    "delete window.__authModalBuildWasDisabled;"
+  ))
   app$click(selector = ".builder-auth-cancel")
 
   app$run_js(paste0(

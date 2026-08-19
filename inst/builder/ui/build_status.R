@@ -702,14 +702,14 @@ builder_build_stage_status_model <- function(
   } else {
     "idle"
   }
-  state <- if (!is.null(result)) {
-    "result"
+  state <- if (identical(flow_stage, "preparing")) {
+    "preparing"
   } else if (identical(build_status, "queued")) {
     "queued"
   } else if (build_status %in% c("running", "cancelling")) {
     "building"
-  } else if (identical(flow_stage, "preparing")) {
-    "preparing"
+  } else if (!is.null(result)) {
+    "result"
   } else if (identical(flow_stage, "choosing_folder")) {
     "choosing_folder"
   } else {

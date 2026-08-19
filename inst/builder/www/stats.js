@@ -2,6 +2,8 @@
   "use strict";
 
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var scanFrame = null;
+  var pendingRoots = new Set();
 
   function render(chart) {
     if (!window.Plotly || chart.dataset.rendered === "true") return;
@@ -28,11 +30,39 @@
     chart.setAttribute("aria-label", chart.dataset.label || "Verified statistics chart");
   }
 
-  function scan() {
-    document.querySelectorAll("[data-builder-stats-chart]").forEach(render);
+  function scan(root) {
+    root = root && root.querySelectorAll ? root : document;
+    if (root.matches && root.matches("[data-builder-stats-chart]")) render(root);
+    root.querySelectorAll("[data-builder-stats-chart]").forEach(render);
   }
 
-  document.addEventListener("shiny:value", function () { setTimeout(scan, 0); });
-  document.addEventListener("DOMContentLoaded", scan);
+  function scheduleScan(root) {
+    var candidate = root && root.querySelectorAll ? root : document;
+    var covered = Array.from(pendingRoots).some(function (pending) {
+      return pending === candidate ||
+        (typeof pending.contains === "function" && pending.contains(candidate));
+    });
+    if (!covered) {
+      pendingRoots.forEach(function (pending) {
+        if (
+          typeof candidate.contains === "function" &&
+          candidate.contains(pending)
+        ) pendingRoots.delete(pending);
+      });
+      pendingRoots.add(candidate);
+    }
+    if (scanFrame !== null) return;
+    scanFrame = window.requestAnimationFrame(function () {
+      scanFrame = null;
+      var roots = Array.from(pendingRoots);
+      pendingRoots.clear();
+      roots.forEach(scan);
+    });
+  }
+
+  document.addEventListener("shiny:value", function (event) {
+    scheduleScan(event.target);
+  });
+  document.addEventListener("DOMContentLoaded", function () { scan(document); });
   window.BuilderStats = { scan: scan };
 }());

@@ -49,6 +49,8 @@
   var viewerTrajectoryHandlerRegistered = false;
   var spatialSectionHandlerRegistered = false;
   var desiredSpatialSection = null;
+  var spatialSectionGeneration = 0;
+  var spatialSectionTimers = [];
   var clientUploadSequence = 0;
   var clientImportQueue = [];
   var clientImportFailures = [];
@@ -67,6 +69,7 @@
   var stageFocusToken = 0;
   var datasetSwitchState = {
     target: null,
+    authoritative: null,
     generation: 0,
     phase: "idle",
     timeout: null,
@@ -79,6 +82,8 @@
   ]);
   var coordinateResetMotionTimers = new Map();
   var dynamicContentEnhancementFrame = null;
+  var observedStages = new Set();
+  var datasetLoadTimeTimer = null;
   var builderActivityState = {
     phase: "none",
     capabilities: {
@@ -108,6 +113,9 @@
   var builderProjectCrbDialogActive = false;
   var buildStatusScrollPhase = 0;
   var buildStatusFocusToken = 0;
+  var buildOperationActive = false;
+  var buildOperationRestoreFocus = null;
+  var buildOperationFocusToken = 0;
   var normalMotionDuration = 180;
   var authEditor = {
     nextId: 1,
@@ -189,6 +197,10 @@
       selected.dataset.ds === target
     ) return false;
 
+    if (!datasetSwitchState.target) {
+      var selectedId = selected ? selected.dataset.ds : null;
+      datasetSwitchState.authoritative = selectedId;
+    }
     datasetSwitchState.generation += 1;
     datasetSwitchState.target = target;
     datasetSwitchState.phase = "switching";
@@ -211,7 +223,7 @@
             scheduleStatusAnnouncement(
               "The dataset switch did not finish. Try selecting it again."
             );
-            settleDatasetSwitch();
+            settleDatasetSwitch("error");
           }
         }, 22000);
       }
@@ -219,9 +231,14 @@
     return true;
   }
 
-  function settleDatasetSwitch() {
+  function settleDatasetSwitch(outcome) {
     window.clearTimeout(datasetSwitchState.timeout);
     datasetSwitchState.timeout = null;
+    if (outcome === "ready") {
+      datasetSwitchState.authoritative = datasetSwitchState.target;
+    } else if (outcome === "error") {
+      optimisticallySelectDataset(datasetSwitchState.authoritative);
+    }
     datasetSwitchState.target = null;
     datasetSwitchState.phase = "idle";
     var workbench = document.getElementById("workbench");
@@ -252,9 +269,8 @@
       ensureDatasetSwitchVeil();
       return;
     }
-    if (message.state === "ready" || message.state === "error") {
-      settleDatasetSwitch();
-    }
+    if (message.state === "ready") settleDatasetSwitch("ready");
+    if (message.state === "error") settleDatasetSwitch("error");
   }
 
   function builderOperationElements() {
@@ -667,20 +683,25 @@
 
     var pageInert = builderConnectionReady &&
       builderActivityState.page_inert === true;
-    var shell = document.querySelector(".builder-shell");
-    if (shell) shell.inert = pageInert || builderProjectSaveResultOpen;
-    document.body.classList.toggle("builder-page-inert", pageInert);
-    document.body.classList.toggle(
-      "builder-connection-lost",
-      !builderConnectionReady
-    );
+    var nextBuildOperationActive = pageInert &&
+      builderActivityState.busy_title === "Building output";
     var overlay = document.getElementById("builder-operation-overlay");
+    document.body.classList.toggle("builder-page-inert", pageInert);
     if (overlay) {
       overlay.setAttribute(
         "aria-hidden",
         pageInert || builderProjectSaveResultOpen ? "false" : "true"
       );
     }
+    if (nextBuildOperationActive && !buildOperationActive) {
+      beginBuildOperationFocus(overlay);
+    }
+    var shell = document.querySelector(".builder-shell");
+    if (shell) shell.inert = pageInert || builderProjectSaveResultOpen;
+    document.body.classList.toggle(
+      "builder-connection-lost",
+      !builderConnectionReady
+    );
     var title = document.getElementById("builder-operation-overlay-title");
     var message = document.getElementById("builder-operation-overlay-message");
     var detail = document.getElementById("builder-operation-overlay-detail");
@@ -704,7 +725,57 @@
       var busyDetail = builderActivityState.busy_detail || "";
       if (detail.textContent !== busyDetail) detail.textContent = busyDetail;
     }
+    var priorBuildOperationActive = buildOperationActive;
+    buildOperationActive = nextBuildOperationActive;
+    if (priorBuildOperationActive && !buildOperationActive) {
+      restoreBuildOperationFocus();
+    }
     applyDatasetMutationLock();
+  }
+
+  function beginBuildOperationFocus(overlay) {
+    buildOperationFocusToken += 1;
+    var active = document.activeElement;
+    if (
+      !buildOperationRestoreFocus &&
+      canRestoreFocus(active) &&
+      active !== overlay
+    ) {
+      buildOperationRestoreFocus = active;
+    } else if (!buildOperationRestoreFocus) {
+      buildOperationRestoreFocus = document.getElementById("build");
+    }
+    if (overlay) overlay.focus({ preventScroll: true });
+  }
+
+  function restoreBuildOperationFocus() {
+    buildOperationFocusToken += 1;
+    var token = buildOperationFocusToken;
+    var attempts = 0;
+    function apply() {
+      if (token !== buildOperationFocusToken) return;
+      var heading = document.querySelector(".result-card h2");
+      var action = document.querySelector(
+        ".result-card .builder-result-actions button, " +
+          ".result-card .builder-recovery-action button"
+      );
+      var target = heading || action;
+      if (heading) heading.setAttribute("tabindex", "-1");
+      if (!canRestoreFocus(target)) target = buildOperationRestoreFocus;
+      if (!canRestoreFocus(target)) target = document.getElementById("build");
+      if (canRestoreFocus(target)) {
+        target.focus({ preventScroll: true });
+        buildOperationRestoreFocus = null;
+        return;
+      }
+      attempts += 1;
+      if (attempts >= 12) {
+        buildOperationRestoreFocus = null;
+        return;
+      }
+      window.setTimeout(apply, 50);
+    }
+    window.setTimeout(apply, 0);
   }
 
   function focusBuildStatus() {
@@ -741,6 +812,8 @@
     var host = document.getElementById("build-stage-status");
     var output = document.getElementById("build_stage_status_content");
     if (!host || !output) return;
+    buildOperationRestoreFocus = document.activeElement ||
+      document.getElementById("build");
 
     var previous = host.querySelector(
       ":scope > .builder-build-status-section.is-client-build-status"
@@ -1093,6 +1166,18 @@
       finish,
       window.__builderMotionDuration + 60
     );
+  }
+
+  function pageShortcutBlocked() {
+    if (
+      document.body.classList.contains("modal-open") ||
+      document.body.classList.contains("builder-dialog-open")
+    ) return true;
+    return Array.from(
+      document.querySelectorAll('[aria-modal="true"]')
+    ).some(function (dialog) {
+      return !dialog.closest("[hidden]") && dialog.getClientRects().length > 0;
+    });
   }
 
   function isTextInput(target) {
@@ -1874,7 +1959,8 @@
         authoritative &&
         authoritative.dataset.ds !== datasetSwitchState.target
       ) {
-        settleDatasetSwitch();
+        datasetSwitchState.authoritative = authoritative.dataset.ds;
+        settleDatasetSwitch("error");
       } else {
         ensureDatasetSwitchVeil();
       }
@@ -2184,9 +2270,14 @@
 
   var stageObserver = new IntersectionObserver(
     function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.target.isConnected) return;
+        stageObserver.unobserve(entry.target);
+        observedStages.delete(entry.target);
+      });
       var visible = entries
         .filter(function (entry) {
-          return entry.isIntersecting;
+          return entry.target.isConnected && entry.isIntersecting;
         })
         .sort(function (left, right) {
           return right.intersectionRatio - left.intersectionRatio;
@@ -2197,6 +2288,11 @@
   );
 
   function registerStages() {
+    observedStages.forEach(function (stage) {
+      if (stage.isConnected) return;
+      stageObserver.unobserve(stage);
+      observedStages.delete(stage);
+    });
     var stages = document.querySelectorAll(".builder-stage");
     stages.forEach(function (stage) {
       if (stage.dataset.builderStage === "true") return;
@@ -2211,6 +2307,7 @@
         setCurrentStage(stage);
       });
       stageObserver.observe(stage);
+      observedStages.add(stage);
     });
     if (stages.length && !document.querySelector('[aria-current="stage"]')) {
       setCurrentStage(stages[0]);
@@ -3232,6 +3329,21 @@
     });
   }
 
+  function handleDynamicContentMutations(mutations) {
+    var onlyLoadTimeText = mutations.length > 0 && mutations.every(
+      function (mutation) {
+        var target = mutation.target.nodeType === 1
+          ? mutation.target
+          : mutation.target.parentElement;
+        return target && target.closest(".builder-load-time");
+      }
+    );
+    if (onlyLoadTimeText) return;
+    scheduleDynamicContentEnhancement();
+    updateDatasetLoadTimes();
+    scheduleDatasetLoadTimeUpdates();
+  }
+
   document.addEventListener("click", function (event) {
     var target = event.target;
     var spatialImageTrigger = target.closest(".enhance-tissue-file-button");
@@ -3508,6 +3620,7 @@
     }
     if (!isTextInput(event.target)) {
       var modifier = event.ctrlKey || event.metaKey;
+      if (modifier && pageShortcutBlocked()) return;
       if (modifier && event.key === "Enter") {
         event.preventDefault();
         var build = document.getElementById("build");
@@ -3798,6 +3911,12 @@
     window.Shiny.addCustomMessageHandler(
       "builder_focus_build_status",
       function (message) {
+        if (buildOperationActive) {
+          beginBuildOperationFocus(
+            document.getElementById("builder-operation-overlay")
+          );
+          return;
+        }
         scheduleBuildStatusFocus();
       }
     );
@@ -3874,17 +3993,34 @@
 
   function updateDatasetLoadTimes() {
     var now = Date.now();
+    var running = false;
     document.querySelectorAll(".builder-load-time").forEach(function (node) {
       var fixed = Number(node.dataset.elapsedMs);
       var started = Number(node.dataset.startedAtMs);
+      if (!Number.isFinite(fixed) && Number.isFinite(started)) running = true;
       var elapsed = Number.isFinite(fixed)
         ? fixed
         : Number.isFinite(started)
           ? Math.max(0, now - started)
           : NaN;
       if (!Number.isFinite(elapsed)) return;
-      node.textContent = (elapsed / 1000).toFixed(1) + "s";
+      var text = (elapsed / 1000).toFixed(1) + "s";
+      if (node.textContent !== text) node.textContent = text;
     });
+    if (!running && datasetLoadTimeTimer !== null) {
+      window.clearTimeout(datasetLoadTimeTimer);
+      datasetLoadTimeTimer = null;
+    }
+    return running;
+  }
+
+  function scheduleDatasetLoadTimeUpdates() {
+    if (datasetLoadTimeTimer !== null) return;
+    if (!document.querySelector(".builder-load-time[data-started-at-ms]")) return;
+    datasetLoadTimeTimer = window.setTimeout(function () {
+      datasetLoadTimeTimer = null;
+      if (updateDatasetLoadTimes()) scheduleDatasetLoadTimeUpdates();
+    }, 100);
   }
 
   function registerClientImportHandlers() {
@@ -3945,14 +4081,23 @@
         "builder_spatial_section_state",
         function (message) {
           if (!message || !message.value) return;
+          spatialSectionGeneration += 1;
+          var generation = spatialSectionGeneration;
+          spatialSectionTimers.forEach(window.clearTimeout);
+          spatialSectionTimers = [];
           desiredSpatialSection = message.value;
           [0, 50, 200, 500, 1000, 2000, 5000].forEach(function (delay) {
-            window.setTimeout(function () {
+            var timer = window.setTimeout(function () {
+              if (generation !== spatialSectionGeneration) return;
               var select = document.getElementById("enhance-active_section");
               if (!select) return;
-              if (select.selectize) select.selectize.setValue(message.value, true);
-              else select.value = message.value;
+              if (select.selectize) {
+                select.selectize.setValue(desiredSpatialSection, true);
+              } else {
+                select.value = desiredSpatialSection;
+              }
             }, delay);
+            spatialSectionTimers.push(timer);
           });
         }
       );
@@ -4039,7 +4184,7 @@
       });
     }
 
-    new MutationObserver(scheduleDynamicContentEnhancement).observe(document.documentElement, {
+    new MutationObserver(handleDynamicContentMutations).observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
@@ -4057,7 +4202,7 @@
     ensureLiveRegion();
     enhanceDynamicContent();
     updateDatasetLoadTimes();
-    window.setInterval(updateDatasetLoadTimes, 100);
+    scheduleDatasetLoadTimeUpdates();
   }
 
   if (document.readyState === "loading") {

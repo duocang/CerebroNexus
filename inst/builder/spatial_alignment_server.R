@@ -16,6 +16,35 @@ builder_spatial_preview_cache_key <- function(id, section) {
   paste(id, section, sep = "::")
 }
 
+builder_preview_cache_drop_dataset <- function(cache, id) {
+  if (
+    !is.list(cache) ||
+      !is.character(id) ||
+      length(id) != 1L ||
+      is.na(id) ||
+      !nzchar(id)
+  ) {
+    return(cache)
+  }
+  cache[[id]] <- NULL
+  cache
+}
+
+builder_spatial_preview_cache_drop_dataset <- function(cache, id) {
+  if (
+    !is.list(cache) ||
+      !is.character(id) ||
+      length(id) != 1L ||
+      is.na(id) ||
+      !nzchar(id)
+  ) {
+    return(cache)
+  }
+  prefix <- paste0(id, "::")
+  remove <- startsWith(names(cache) %||% character(), prefix)
+  cache[!remove]
+}
+
 builder_spatial_preview_cache_hit <- function(cache, key, contract) {
   record <- cache[[key]]
   is.list(record) && identical(record$contract, contract)
@@ -493,7 +522,15 @@ builder_spatial_alignment_server <- function(
         raw_image(NULL)
         shiny::showNotification(image$error, type = "error", duration = 8)
       } else {
-        raw_image(image)
+        raw_image(list(
+          array = image$array,
+          width = stored$source_width %||% image$width,
+          height = stored$source_height %||% image$height,
+          source_dimensions = c(
+            width = stored$source_width %||% image$width,
+            height = stored$source_height %||% image$height
+          )
+        ))
       }
     }
     appearance <- point_appearance_for(entry, section, stored)
@@ -918,7 +955,9 @@ builder_spatial_alignment_server <- function(
       max_px = 1400,
       flip_y = transform$flip_y,
       flip_x = transform$flip_x,
-      rotate = transform$rotation
+      rotate = transform$rotation,
+      source_dimensions = image$source_dimensions %||%
+        c(width = image$width, height = image$height)
     )
   }
   current_record <- function(encode = FALSE) {
@@ -960,23 +999,6 @@ builder_spatial_alignment_server <- function(
       )
     )
     record[facts] <- geometry[facts]
-    full_coverage <- preview[["coverage", exact = TRUE]]
-    coverage_spatial <- if (!is.null(full_coverage)) {
-      data.frame(x = full_coverage$x, y = full_coverage$y)
-    } else {
-      preview$spatial
-    }
-    coverage_spatial <- if (identical(kind_for(active_section()), "spatial")) {
-      .spx_apply_coordinate_transform(coverage_spatial, coordinate_baseline())
-    } else {
-      coverage_spatial
-    }
-    cover <- builder_bounds_cover(
-      record$bounds,
-      list(coverage_spatial$x, coverage_spatial$y)
-    )
-    record$outside <- cover$outside
-    record$total <- cover$total
     record
   }
 
@@ -1060,7 +1082,11 @@ builder_spatial_alignment_server <- function(
       shiny::showNotification(image$error, type = "error", duration = 8)
       return(invisible(FALSE))
     }
-    image_encoded <- builder_encode_image(image$array, max_px = 1400)
+    image_encoded <- builder_encode_image(
+      image$array,
+      max_px = 1400,
+      retain_normalized_array = TRUE
+    )
     if (!is.null(image_encoded$error)) {
       shiny::showNotification(image_encoded$error, type = "error", duration = 8)
       return(invisible(FALSE))
@@ -1124,7 +1150,12 @@ builder_spatial_alignment_server <- function(
       )
     )
     record[facts] <- image_encoded[facts]
-    raw_image(image)
+    raw_image(list(
+      array = image_encoded$normalized_array,
+      width = image_encoded$source_width,
+      height = image_encoded$source_height,
+      source_dimensions = image_encoded$source_dimensions
+    ))
     draft(record)
     active_image(proposed_label)
     update_controls(record, preview$bounds)
@@ -1847,61 +1878,45 @@ builder_spatial_alignment_server <- function(
     entry <- entry_of(current())
     source_section <- active_section()
     label <- active_image()
+    original_images <- collection_for(entry)
     images <- builder_alignment_apply_transform_to_matching_label(
-      collection_for(entry),
+      original_images,
       source_section,
       label
     )
-    for (section in names(images)) {
-      record <- images[[section]][[label]]
-      if (is.null(record)) {
-        next
-      }
-      image <- builder_read_image_uri(record$source_uri)
-      if (!is.null(image$error)) {
-        next
-      }
-      image_encoded <- builder_encode_image(
-        image$array,
-        max_px = 1400,
-        flip_y = record$flip_y,
-        flip_x = record$flip_x,
-        rotate = record$rotation
-      )
-      if (!is.null(image_encoded$error)) {
-        next
-      }
-      record$uri <- image_encoded$uri
-      facts <- intersect(
-        names(image_encoded),
-        c(
-          "bytes",
-          "width",
-          "height",
-          "source_width",
-          "source_height",
-          "extent_width",
-          "extent_height",
-          "display_width",
-          "display_height"
-        )
-      )
-      record[facts] <- image_encoded[facts]
-      record$bounds <- builder_alignment_transform_bounds(
-        builder_alignment_oriented_bounds(record$base_bounds, record),
-        record
-      )
-      images[[section]][[label]] <- record
-    }
-    commit_images(entry, images)
-    draft(images[[source_section]][[label]])
-    count <- sum(vapply(
+    rendered <- builder_alignment_render_matching_label(
       images,
-      function(section) {
-        label %in% names(section)
-      },
-      logical(1)
-    ))
+      original_images,
+      label
+    )
+    images <- rendered$images
+    count <- length(rendered$successful_sections)
+    failed <- rendered$failed_sections
+    if (count > 0L) {
+      committed <- commit_images(entry, images)
+      if (is.list(committed) && !is.null(committed$settings$images)) {
+        images <- builder_image_collection_normalize(committed$settings$images)
+      }
+      draft(images[[source_section]][[label]])
+    }
+    if (length(failed)) {
+      shiny::showNotification(
+        paste0(
+          if (count > 0L) {
+            paste0("Applied “", label, "” transform to ", count, " section(s); ")
+          } else {
+            paste0("Could not apply “", label, "” transform; ")
+          },
+          length(failed),
+          " section(s) were left unchanged: ",
+          paste(failed, collapse = ", "),
+          "."
+        ),
+        type = if (count > 0L) "warning" else "error",
+        duration = 7
+      )
+      return(invisible(count > 0L))
+    }
     shiny::showNotification(
       paste0("Applied “", label, "” transform to ", count, " section(s)."),
       type = "message",
