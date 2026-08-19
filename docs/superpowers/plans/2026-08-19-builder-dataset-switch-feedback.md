@@ -4,7 +4,7 @@
 
 **目标：** 数据集点击立即更新左栏并显示右侧轻量加载层，同时缓存契约未变化的 Spatial 预览，消除无反馈等待和重复 Worker 计算。
 
-**架构：** 浏览器持有短生命周期的乐观切换状态，Shiny 的 rail patch 继续作为最终真相；Spatial 模块通过带数据集、section 和设置契约的 session cache 复用预览。服务器只发送 `spatial`、`ready`、`error` 三类权威里程碑，客户端用目标 dataset id 和本地 generation 拒绝过时完成信号。
+**架构：** 浏览器持有短生命周期的乐观切换状态，Shiny 的 rail patch 继续作为最终真相；每次点击产生的 `switch_token` 随 rail 事件、Spatial 请求和完成消息传递，避免 A→B→A 时旧 A 误结算新 A。Spatial 模块通过带数据集、section 和设置契约的 session cache 复用预览，服务器只发送 `spatial`、`ready`、`error` 三类权威里程碑。
 
 **技术栈：** R/Shiny、原生 JavaScript、CSS、testthat、shiny::testServer、shinytest2 浏览器契约。
 
@@ -15,6 +15,8 @@
 - 修改 `inst/builder/app.R`：提供稳定的 Spatial cache key，复用既有 preview cache record 结构。
 - 修改 `inst/builder/server/foundation.R`：创建 session-local `spatial_previews` reactive cache。
 - 修改 `inst/builder/server/enhancements.R`：把 cache 注入 Spatial alignment 模块。
+- 修改 `inst/builder/ui/dataset_rail.R`：解析带 id/token 的 pick 事件并保持字符串输入兼容。
+- 修改 `inst/builder/server/build.R`：把 `switch_token` 传入 Spatial alignment 模块。
 - 修改 `inst/builder/spatial_alignment_server.R`：执行 cache hit/miss、发送 Spatial 阶段和 ready 里程碑。
 - 修改 `inst/builder/server/imports.R`：Worker 返回时先缓存，再只向匹配的当前数据集应用；失败时释放加载状态。
 - 修改 `inst/builder/www/builder.js`：实现乐观 rail 选中、workbench veil、代际竞态保护和服务器 reconciliation。
@@ -234,7 +236,10 @@ git commit -m "perf(builder): reuse spatial previews across dataset switches"
 **文件：**
 - 修改：`inst/builder/spatial_alignment_server.R:481-575, 1110-1160`
 - 修改：`inst/builder/server/imports.R:985-1020`
+- 修改：`inst/builder/ui/dataset_rail.R:280-355`
+- 修改：`inst/builder/server/build.R:600-618`
 - 测试：`tests/testthat/test-builder-spatial.R`
+- 测试：`tests/testthat/test-builder-rail.R`
 
 - [ ] **步骤 1：编写 milestone 消息测试**
 
@@ -254,7 +259,7 @@ expect_true(any(vapply(messages, function(item) {
 }, logical(1))))
 ```
 
-另加非 Spatial entry 测试，`session$flushReact()` 后收到 `ready`，而不是永久停留在 `switching`。
+另加非 Spatial entry 测试，`session$flushReact()` 后收到 `ready`，而不是永久停留在 `switching`。在 `test-builder-rail.R` 验证字符型旧事件仍可用，且 `list(id = "dataset-a", switch_token = 17)` 会把整数 token 传给 `select_dataset`。
 
 - [ ] **步骤 2：运行测试确认当前没有 milestone**
 
@@ -268,13 +273,20 @@ Rscript -e 'testthat::test_file("tests/testthat/test-builder-spatial.R")'
 
 - [ ] **步骤 3：实现统一消息函数和 ready 顺序**
 
-在模块内增加：
+把 `.builder_rail_dataset_id()` 替换为返回 `list(id, switch_token)` 的 `.builder_rail_pick_event()`；字符型输入映射为 `switch_token = NULL`，对象输入只接受非空合法 id 与单个有限数值 token。`builder_dataset_rail_server()` 调用 `select_dataset(event$id, commit, event$switch_token)`，`server/build.R` 再调用 `alignment_server$request_dataset_switch(id, commit, switch_token)`。
+
+Spatial 模块保存 `active_switch_token <- reactiveVal(NULL)`；`request_dataset_switch()` 在 `commit()` 前写入本次 token。随后在模块内增加：
 
 ```r
-send_switch_state <- function(dataset, state, section = NULL) {
+send_switch_state <- function(dataset, state, section = NULL, switch_token = NULL) {
   session$sendCustomMessage(
     "builder_dataset_switch_state",
-    list(dataset = dataset, state = state, section = section)
+    list(
+      dataset = dataset,
+      state = state,
+      section = section,
+      switch_token = switch_token
+    )
   )
 }
 ```
@@ -283,10 +295,10 @@ send_switch_state <- function(dataset, state, section = NULL) {
 
 ```r
 session$sendCustomMessage("builder_spatial_canvas_scene", scene)
-send_switch_state(entry$id, "ready", section)
+send_switch_state(entry$id, "ready", section, active_switch_token())
 ```
 
-没有 Spatial section 时，用 `session$onFlushed(..., once = TRUE)` 发送 matching `ready`，回调中再次检查 `identical(current(), dataset)`。
+没有 Spatial section 时，用 `session$onFlushed(..., once = TRUE)` 发送 matching `ready`，回调中再次检查 `identical(current(), dataset)`。Spatial request payload 同时保存 `switch_token = active_switch_token()`，使 Worker error/result 使用发起请求时的 token，而不是稍后可能变化的 reactive 值。
 
 - [ ] **步骤 4：错误分支释放 matching loader**
 
@@ -296,7 +308,12 @@ send_switch_state(entry$id, "ready", section)
 if (identical(p$kind, "spatial_preview")) {
   session$sendCustomMessage(
     "builder_dataset_switch_state",
-    list(dataset = p$id, state = "error", section = p$section)
+    list(
+      dataset = p$id,
+      state = "error",
+      section = p$section,
+      switch_token = p$switch_token
+    )
   )
 }
 ```
@@ -306,7 +323,7 @@ if (identical(p$kind, "spatial_preview")) {
 运行步骤 2；预期新增用例 PASS。
 
 ```bash
-git add inst/builder/spatial_alignment_server.R inst/builder/server/imports.R tests/testthat/test-builder-spatial.R
+git add inst/builder/ui/dataset_rail.R inst/builder/server/build.R inst/builder/spatial_alignment_server.R inst/builder/server/imports.R tests/testthat/test-builder-rail.R tests/testthat/test-builder-spatial.R
 git commit -m "feat(builder): report dataset switch readiness"
 ```
 
@@ -363,7 +380,7 @@ var datasetSwitchState = {
 
 实现 `beginDatasetSwitch(target)`：若 target 已是 authoritative current 则返回 `false`；否则增加 generation、乐观更新所有 `.builder-pick` 的 `aria-current` 和 `.ds.is-active`、给 `#workbench` 设置 `aria-busy="true"`，插入单例 `.builder-dataset-switch-veil`，并显示 `Switching dataset…`。捕获本次 generation，并在 8 秒后仅当 generation 和 target 仍匹配时把文案改成 `This is taking longer than expected…`；timeout 不清除遮罩、不伪装成功，也不取消服务器请求。
 
-实现 `updateDatasetSwitchPhase(message)`：仅当 `message.dataset === datasetSwitchState.target` 时将文案改为 `Preparing Spatial preview…`，matching `ready` 调用 `settleDatasetSwitch(true)`，matching `error` 调用 `settleDatasetSwitch(false)`。
+实现 `updateDatasetSwitchPhase(message)`：仅当 `message.dataset === datasetSwitchState.target` 且 `message.switch_token === datasetSwitchState.generation` 时将文案改为 `Preparing Spatial preview…`，matching `ready` 调用 `settleDatasetSwitch(true)`，matching `error` 调用 `settleDatasetSwitch(false)`。
 
 实现 `settleDatasetSwitch()`：清 timeout、移除 `aria-busy`、添加短暂退出 class 后删除 veil；不移动焦点。
 
@@ -375,7 +392,10 @@ var datasetSwitchState = {
 var pick = target.closest(".builder-pick");
 if (pick) {
   if (beginDatasetSwitch(pick.dataset.ds)) {
-    send("pick", pick.dataset.ds);
+    send("pick", {
+      id: pick.dataset.ds,
+      switch_token: datasetSwitchState.generation,
+    });
   }
   if (narrowManager.matches) closeDatasetManager();
   return;
