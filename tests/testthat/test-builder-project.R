@@ -913,6 +913,19 @@ test_that("a project folder can be chosen while another dataset is importing", {
   expect_false(capabilities$build)
 })
 
+test_that("project folders distinguish empty, existing, and unrelated content", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+
+  expect_identical(runtime$builder_project_folder_state(root)$kind, "empty")
+
+  writeLines("keep", file.path(root, ".keep"))
+  expect_identical(runtime$builder_project_folder_state(root)$kind, "nonempty")
+
+  writeLines("{}", runtime$builder_project_manifest_path(root))
+  expect_identical(runtime$builder_project_folder_state(root)$kind, "project")
+})
+
 test_that("the top bar omits the format capability summary", {
   path <- testthat::test_path(
     "..",
