@@ -384,7 +384,7 @@ test_that("missing project spatial assets identify the affected FOV and image", 
   status <- runtime$builder_project_dataset_status(record, root)
   expect_false(status$spatial_assets_ready)
   expect_false(status$restorable)
-  expect_match(status$label, "Spatial image missing", fixed = TRUE)
+  expect_identical(status$label, "Needs check · spatial image missing")
   lightweight <- runtime$builder_project_restore_entry(
     record,
     root,
@@ -850,11 +850,21 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
   expect_match(html, "Use ready CRB — fast, view/build only", fixed = TRUE)
   expect_match(html, "Load source — continue editing", fixed = TRUE)
   expect_match(html, 'value="reuse" checked="checked"', fixed = TRUE)
-  expect_match(html, "CRB ready", fixed = TRUE)
+  expect_match(html, "Checked · CRB ready", fixed = TRUE)
   expect_identical(
-    lengths(regmatches(html, gregexpr("CRB ready", html, fixed = TRUE))),
+    lengths(regmatches(
+      html,
+      gregexpr("Checked · CRB ready", html, fixed = TRUE)
+    )),
     1L
   )
+
+  record$configuration$checked <- FALSE
+  record$artifact$status <- "stale"
+  html <- htmltools::renderTags(
+    runtime$builder_project_restore_row_ui(record, root)
+  )$html
+  expect_match(html, "Needs check · load source", fixed = TRUE)
 })
 
 test_that("project lifecycle capabilities lock only conflicting operations", {

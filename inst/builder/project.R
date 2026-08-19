@@ -1345,17 +1345,17 @@ builder_project_dataset_status <- function(record, root) {
     artifact_ready = artifact_ready,
     checked = checked,
     label = if (!isTRUE(spatial_assets$ready)) {
-      "Spatial image missing · review required"
-    } else if (artifact_ready) {
-      "CRB ready"
-    } else if (source_ready && !source_matches) {
-      "Source changed · review required"
-    } else if (source_ready && checked) {
+      "Needs check · spatial image missing"
+    } else if (checked && artifact_ready) {
+      "Checked · CRB ready"
+    } else if (checked) {
       "Checked · source reload required"
+    } else if (source_ready && !source_matches) {
+      "Needs check · source changed"
     } else if (source_ready) {
-      "Resume from source"
+      "Needs check · load source"
     } else {
-      "Source missing"
+      "Needs check · source missing"
     }
   )
 }
