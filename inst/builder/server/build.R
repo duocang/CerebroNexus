@@ -481,6 +481,7 @@ start_confirmed_build <- function() {
   if (!builder_has_text(output_path)) {
     return(invisible(FALSE))
   }
+  result(NULL)
   build_flow(list(stage = "preparing", plan = NULL))
   session$sendCustomMessage("builder_focus_build_status", list())
   session$onFlushed(

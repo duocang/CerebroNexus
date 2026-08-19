@@ -2386,3 +2386,91 @@ test_that("long project paths wrap inside the confirmation dialog", {
   expect_match(css, ".builder-project-dialog-path code {", fixed = TRUE)
   expect_match(css, "overflow-wrap: anywhere;", fixed = TRUE)
 })
+
+test_that("page shortcuts stop at an open modal", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, "function pageShortcutBlocked()", fixed = TRUE)
+  expect_match(js, 'classList.contains("modal-open")', fixed = TRUE)
+  expect_match(js, 'classList.contains("builder-dialog-open")', fixed = TRUE)
+  expect_match(js, 'document.querySelectorAll(\'[aria-modal="true"]\')', fixed = TRUE)
+  expect_match(js, "if (modifier && pageShortcutBlocked()) return;", fixed = TRUE)
+})
+
+test_that("dataset and Spatial optimistic state has an authoritative generation", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, "authoritative: null", fixed = TRUE)
+  expect_match(js, 'settleDatasetSwitch("error")', fixed = TRUE)
+  expect_match(js, 'settleDatasetSwitch("ready")', fixed = TRUE)
+  expect_match(js, "spatialSectionGeneration += 1", fixed = TRUE)
+  expect_match(js, "spatialSectionTimers.forEach(window.clearTimeout)", fixed = TRUE)
+  expect_match(js, "if (generation !== spatialSectionGeneration) return;", fixed = TRUE)
+})
+
+test_that("Build overlay owns focus while the Builder shell is inert", {
+  app <- builder_asset_text("app.R")
+  js <- builder_asset_text("www", "builder.js")
+  build <- builder_asset_text("server", "build.R")
+
+  expect_match(app, 'id = "builder-operation-overlay"', fixed = TRUE)
+  expect_match(app, 'tabindex = "-1"', fixed = TRUE)
+  expect_match(js, "function beginBuildOperationFocus", fixed = TRUE)
+  expect_match(js, "function restoreBuildOperationFocus", fixed = TRUE)
+  expect_match(js, "beginBuildOperationFocus(overlay);", fixed = TRUE)
+  expect_match(js, "if (shell) shell.inert =", fixed = TRUE)
+  expect_match(js, 'document.querySelector(".result-card h2")', fixed = TRUE)
+  expect_match(js, "attempts += 1;", fixed = TRUE)
+  expect_match(
+    js,
+    paste0(
+      "if (attempts >= 12) {\n",
+      "        buildOperationRestoreFocus = null;\n",
+      "        return;"
+    ),
+    fixed = TRUE
+  )
+  expect_match(build, "result(NULL)\n  build_flow(list(stage = \"preparing\"", fixed = TRUE)
+})
+
+test_that("background UI work is bounded to live changing content", {
+  js <- builder_asset_text("www", "builder.js")
+  stats <- builder_asset_text("www", "stats.js")
+
+  expect_match(js, "var observedStages = new Set();", fixed = TRUE)
+  expect_match(js, "stageObserver.unobserve(stage);", fixed = TRUE)
+  expect_match(js, "stageObserver.unobserve(entry.target);", fixed = TRUE)
+  expect_match(js, "observedStages.delete(entry.target);", fixed = TRUE)
+  expect_match(js, "var datasetLoadTimeTimer = null;", fixed = TRUE)
+  expect_match(js, '[data-started-at-ms]', fixed = TRUE)
+  expect_match(js, "if (node.textContent !== text) node.textContent = text;", fixed = TRUE)
+  expect_match(js, "if (!running && datasetLoadTimeTimer !== null)", fixed = TRUE)
+  expect_match(js, "if (updateDatasetLoadTimes()) scheduleDatasetLoadTimeUpdates();", fixed = TRUE)
+  expect_false(grepl("setInterval(updateDatasetLoadTimes", js, fixed = TRUE))
+  expect_match(js, "function handleDynamicContentMutations", fixed = TRUE)
+  expect_match(js, 'closest(".builder-load-time")', fixed = TRUE)
+  expect_match(js, "if (onlyLoadTimeText) return;", fixed = TRUE)
+  expect_match(stats, "var scanFrame = null;", fixed = TRUE)
+  expect_match(stats, "window.requestAnimationFrame", fixed = TRUE)
+  expect_match(stats, "if (scanFrame !== null) return;", fixed = TRUE)
+  expect_match(stats, "pendingRoots.add", fixed = TRUE)
+  expect_match(stats, "pendingRoots.clear();", fixed = TRUE)
+  expect_match(stats, "scheduleScan(event.target);", fixed = TRUE)
+  expect_false(grepl("setTimeout(scan, 0)", stats, fixed = TRUE))
+})
+
+test_that("Spatial canvas hover work stays on the canvas and one frame", {
+  canvas <- builder_asset_text("www", "builder-spatial-canvas.js")
+
+  expect_match(canvas, "hoverFrame: 0", fixed = TRUE)
+  expect_match(canvas, "screenPoints: []", fixed = TRUE)
+  expect_match(canvas, "function setupCanvasHover(node)", fixed = TRUE)
+  expect_match(canvas, 'node.addEventListener("pointermove"', fixed = TRUE)
+  expect_match(canvas, "window.requestAnimationFrame(updateHover)", fixed = TRUE)
+  expect_match(canvas, "var cosine = Math.cos(angle), sine = Math.sin(angle);", fixed = TRUE)
+  expect_false(grepl(
+    'document.addEventListener("pointermove"',
+    canvas,
+    fixed = TRUE
+  ))
+})

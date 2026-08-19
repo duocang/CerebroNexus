@@ -59,6 +59,27 @@ test_that("alignment capability is limited to Spatial and Trekker datasets", {
   expect_match(trekker_sections[[1L]]$unit, "physical", ignore.case = TRUE)
 })
 
+test_that("preview cache pruning drops only the removed dataset", {
+  shared <- list(
+    "dataset-a" = list(status = "ready"),
+    "dataset-b" = list(status = "ready")
+  )
+  spatial <- list(
+    "dataset-a::section-1" = list(status = "ready"),
+    "dataset-a::section-2" = list(status = "pending"),
+    "dataset-b::section-1" = list(status = "ready")
+  )
+
+  expect_identical(
+    names(builder_preview_cache_drop_dataset(shared, "dataset-a")),
+    "dataset-b"
+  )
+  expect_identical(
+    names(builder_spatial_preview_cache_drop_dataset(spatial, "dataset-a")),
+    "dataset-b::section-1"
+  )
+})
+
 test_that("alignment projection prefers UMAP then the current default then PCA", {
   expect_identical(
     builder_alignment_projection(c("pca", "umap"), "pca"),
@@ -481,8 +502,8 @@ test_that("alignment controls auto-commit before dataset switches", {
       expect_identical(alignment$draft()$bounds, canonical$bounds)
       expect_false("outside" %in% names(alignment$draft()))
       expect_false("total" %in% names(alignment$draft()))
-      expect_true(is.numeric(canonical$outside))
-      expect_true(is.numeric(canonical$total))
+      expect_false("outside" %in% names(canonical))
+      expect_false("total" %in% names(canonical))
       alignment$request_dataset_switch("dataset-b", function() {
         switched <<- c(switched, "after-final-change")
       })
@@ -693,7 +714,7 @@ test_that("alignment preview joins both spaces by cell identity", {
   expect_true(all(is.finite(unlist(model$bounds))))
 })
 
-test_that("bounded alignment scenes retain full R-only coverage coordinates", {
+test_that("bounded alignment previews never retain full coverage coordinates", {
   skip_if_not_installed("SeuratObject")
   object <- builder_content_spatial_example_object("section-a")
   preview <- builder_alignment_preview_model(
@@ -705,8 +726,8 @@ test_that("bounded alignment scenes retain full R-only coverage coordinates", {
 
   expect_true(preview$available)
   expect_lte(nrow(preview$spatial), 2L)
-  expect_gt(length(preview$coverage$x), nrow(preview$spatial))
-  expect_identical(length(preview$coverage$x), length(preview$coverage$y))
+  expect_false("coverage" %in% names(preview))
+  expect_identical(preview$total_cells, ncol(object))
 
   scene <- builder_spatial_canvas_scene(
     preview,
@@ -724,6 +745,17 @@ test_that("bounded alignment scenes retain full R-only coverage coordinates", {
   expect_identical(scene$section, "section-a")
   expect_identical(scene$controls$point_opacity, 0.65)
   expect_identical(scene$controls$point_size, 6)
+})
+
+test_that("alignment preview resolves layer membership without expression data", {
+  preview_source <- paste(deparse(body(builder_alignment_preview_model)), collapse = "\n")
+
+  expect_false(grepl(".getExpressionMatrix(", preview_source, fixed = TRUE))
+  expect_match(
+    preview_source,
+    "builder_alignment_layer_cells(",
+    fixed = TRUE
+  )
 })
 
 test_that("Trekker alignment preview uses its physical and transcriptome spaces", {
@@ -1119,6 +1151,95 @@ test_that("matching-label transform never crosses image identities", {
   expect_identical(copied$section_b[["H&E"]]$dx, 4)
   expect_false("saved" %in% names(copied$section_b[["H&E"]]))
   expect_identical(copied$section_b$DAPI, images$section_b$DAPI)
+})
+
+test_that("matching-label rendering rolls back and reports failed sections", {
+  record <- function(section, source_uri, dx) {
+    builder_alignment_record(
+      source = list(name = paste0(section, ".png"), type = "image/png", size = 4),
+      source_uri = source_uri,
+      uri = source_uri,
+      base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+      parameters = list(dx = dx),
+      section = list(id = section, kind = "spatial")
+    )
+  }
+  original <- list(
+    section_a = list(H = record("section_a", "good", 4)),
+    section_b = list(H = record("section_b", "good", 0)),
+    section_c = list(H = record("section_c", "bad", 0))
+  )
+  transformed <- builder_alignment_apply_transform_to_matching_label(
+    original,
+    "section_a",
+    "H"
+  )
+  rendered <- builder_alignment_render_matching_label(
+    transformed,
+    original,
+    "H",
+    read_image = function(uri) {
+      if (identical(uri, "bad")) {
+        return(list(error = "unsafe image"))
+      }
+      list(array = array(1, dim = c(2L, 2L, 3L)), width = 2L, height = 2L)
+    },
+    encode_image = function(...) {
+      list(
+        uri = "rendered",
+        bytes = 4L,
+        width = 2L,
+        height = 2L,
+        source_width = 2L,
+        source_height = 2L,
+        extent_width = 2L,
+        extent_height = 2L,
+        display_width = 2L,
+        display_height = 2L
+      )
+    }
+  )
+
+  expect_identical(rendered$successful_sections, c("section_a", "section_b"))
+  expect_identical(rendered$failed_sections, "section_c")
+  expect_identical(rendered$images$section_c$H, original$section_c$H)
+  expect_identical(rendered$images$section_a$H$uri, "rendered")
+  expect_identical(rendered$images$section_b$H$uri, "rendered")
+  expect_identical(rendered$images$section_b$H$dx, 4)
+
+  server <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "spatial_alignment_server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    server,
+    "count <- length(rendered$successful_sections)",
+    fixed = TRUE
+  )
+  expect_match(server, "if (count > 0L)", fixed = TRUE)
+})
+
+test_that("snapshot drop acknowledgement clears every preview cache", {
+  imports <- paste(
+    readLines(
+      builder_spatial_test_inst_path("builder", "server", "imports.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(imports, "builder_preview_cache_drop_dataset(", fixed = TRUE)
+  expect_match(
+    imports,
+    "builder_spatial_preview_cache_drop_dataset(",
+    fixed = TRUE
+  )
+  expect_match(imports, "projection_previews(", fixed = TRUE)
+  expect_match(imports, "trajectory_previews(", fixed = TRUE)
+  expect_match(imports, "spatial_previews(", fixed = TRUE)
 })
 
 test_that("coordinate drafts stay partitioned and reject stale browser events", {
@@ -2258,6 +2379,152 @@ test_that("PNG and JPEG read while TIFF variants give conversion guidance", {
     expect_match(got$error, "PNG", fixed = TRUE, info = extension)
     expect_match(got$error, "JPEG", fixed = TRUE, info = extension)
   }
+})
+
+test_that("image headers enforce a pixel budget before decoded arrays are kept", {
+  skip_if_not_installed("png")
+  skip_if_not_installed("jpeg")
+  skip_if_not_installed("base64enc")
+  directory <- withr::local_tempdir()
+  rgb <- array(seq(0, 1, length.out = 27L), dim = c(3L, 3L, 3L))
+  png_path <- file.path(directory, "budget.png")
+  jpeg_path <- file.path(directory, "budget.jpeg")
+  png::writePNG(rgb, png_path)
+  jpeg::writeJPEG(rgb, jpeg_path)
+
+  expect_identical(
+    builder_image_file_dimensions(png_path, "budget.png"),
+    c(width = 3L, height = 3L)
+  )
+  expect_identical(
+    builder_image_file_dimensions(jpeg_path, "budget.jpeg"),
+    c(width = 3L, height = 3L)
+  )
+  expect_match(
+    builder_read_image(png_path, max_pixels = 8L)$error,
+    "pixel safety limit",
+    fixed = TRUE
+  )
+  expect_match(
+    builder_read_image(jpeg_path, max_pixels = 8L)$error,
+    "pixel safety limit",
+    fixed = TRUE
+  )
+  expect_match(
+    builder_read_image(png_path, max_encoded_bytes = 8L)$error,
+    "encoded size limit",
+    fixed = TRUE
+  )
+  uri <- paste0(
+    "data:image/png;base64,",
+    base64enc::base64encode(png_path)
+  )
+  expect_match(
+    builder_read_image_uri(uri, max_pixels = 8L)$error,
+    "pixel safety limit",
+    fixed = TRUE
+  )
+  expect_match(
+    builder_read_image_uri(uri, max_encoded_bytes = 8L)$error,
+    "encoded size limit",
+    fixed = TRUE
+  )
+})
+
+test_that("the default resident raster is bounded by decoded R memory", {
+  worst_case_bytes <- as.numeric(BUILDER_IMAGE_MAX_PIXELS) *
+    BUILDER_IMAGE_DECODE_CHANNELS * 8
+
+  expect_lte(worst_case_bytes, BUILDER_IMAGE_MAX_RESIDENT_RASTER_BYTES)
+  expect_lte(BUILDER_IMAGE_MAX_RESIDENT_RASTER_BYTES, 64 * 1024^2)
+})
+
+test_that("JPEG metadata scanning is bounded before main-process decode", {
+  path <- withr::local_tempfile(fileext = ".jpeg")
+  writeBin(
+    c(as.raw(c(0xff, 0xd8)), raw(BUILDER_IMAGE_MAX_HEADER_BYTES)),
+    path
+  )
+
+  dimensions <- builder_image_file_dimensions(path, "padded.jpeg")
+  expect_true(is.list(dimensions))
+  expect_match(dimensions$error, "metadata", ignore.case = TRUE)
+  expect_match(
+    builder_read_image(path, filename = "padded.jpeg")$error,
+    "metadata",
+    ignore.case = TRUE
+  )
+  parser <- paste(deparse(body(.builder_jpeg_dimensions)), collapse = "\n")
+  expect_false(grepl("which(", parser, fixed = TRUE))
+})
+
+test_that("malformed PNG metadata is rejected before URI raster decode", {
+  skip_if_not_installed("base64enc")
+  malformed <- c(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    as.raw(c(0x00, 0x00, 0x00, 0x0c)),
+    charToRaw("IHDR"),
+    as.raw(c(0x00, 0x00, 0x00, 0x03)),
+    as.raw(c(0x00, 0x00, 0x00, 0x03))
+  )
+  uri <- paste0(
+    "data:image/png;base64,",
+    base64enc::base64encode(malformed)
+  )
+
+  expect_null(.builder_png_dimensions(malformed))
+  expect_match(
+    builder_read_image_uri(uri)$error,
+    "metadata",
+    ignore.case = TRUE
+  )
+})
+
+test_that("oversized PNG uint32 dimensions fail through the safety budget", {
+  path <- withr::local_tempfile(fileext = ".png")
+  header <- c(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    as.raw(c(0x00, 0x00, 0x00, 0x0d)),
+    charToRaw("IHDR"),
+    as.raw(c(0x80, 0x00, 0x00, 0x00)),
+    as.raw(c(0x00, 0x00, 0x00, 0x01))
+  )
+  writeBin(header, path)
+
+  dimensions <- builder_image_file_dimensions(path, "oversized.png")
+  expect_identical(unname(dimensions), c(2147483648, 1))
+  expect_false(anyNA(dimensions))
+  expect_match(
+    builder_read_image(path, filename = "oversized.png")$error,
+    "pixel safety limit",
+    fixed = TRUE
+  )
+})
+
+test_that("image encoding can retain only the bounded editable raster", {
+  skip_if_not_installed("png")
+  skip_if_not_installed("base64enc")
+  rgb <- array(seq(0, 1, length.out = 12L * 8L * 3L), dim = c(8L, 12L, 3L))
+
+  encoded <- builder_encode_image(
+    rgb,
+    max_px = 4L,
+    retain_normalized_array = TRUE
+  )
+
+  expect_null(encoded$error)
+  expect_identical(dim(encoded$normalized_array), c(3L, 4L, 4L))
+  expect_identical(encoded$source_dimensions, c(width = 12L, height = 8L))
+  expect_lte(prod(dim(encoded$normalized_array)), 4L * 4L * 4L)
+
+  rotated <- builder_encode_image(
+    encoded$normalized_array,
+    max_px = 4L,
+    rotate = 90,
+    source_dimensions = encoded$source_dimensions
+  )
+  expect_null(rotated$error)
+  expect_identical(rotated$source_dimensions, c(width = 12L, height = 8L))
 })
 
 test_that("image read failures never expose a server-side upload path", {

@@ -17,6 +17,10 @@
     pendingEventAt: null,
     coordinateSequence: 0,
     colorGroups: {},
+    screenPoints: [],
+    hoverFrame: 0,
+    hoverPoint: null,
+    hoverNode: null,
   };
   window.__builderSpatialCanvasMetrics = window.__builderSpatialCanvasMetrics || {
     sceneMessages: 0, renders: 0, latestCoordinateRotation: 0,
@@ -78,14 +82,21 @@
     schedule();
   }
   function clear() {
+    var node = canvas();
+    var tip = node && document.getElementById(node.id + "-tooltip");
+    if (tip) tip.hidden = true;
     state.scene = null;
     state.image = null;
     state.imageUri = null;
     state.colorGroups = {};
+    state.screenPoints = [];
+    state.hoverPoint = null;
+    state.hoverNode = null;
+    if (state.hoverFrame) window.cancelAnimationFrame(state.hoverFrame);
+    state.hoverFrame = 0;
     state.viewKey = null;
     state.controls = null;
     state.controlsHeld = false;
-    var node = canvas();
     if (node) node.getContext("2d").clearRect(0, 0, node.width, node.height);
   }
   function loadImage(uri) {
@@ -147,6 +158,7 @@
     state.frame = 0;
     var node = canvas(), scene = state.scene;
     if (!node || !scene) return;
+    setupCanvasHover(node);
     window.__builderSpatialCanvasMetrics.renders += 1;
     var now = performance.now();
     pushMetric("renderTimes", now);
@@ -168,6 +180,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     ctx.fillStyle = "#fafbfa"; ctx.fillRect(0, 0, cssWidth, cssHeight);
+    state.screenPoints = [];
     if (!scene.available || !scene.bounds) return;
     var pad = 28;
     var layout = viewportLayout(scene.bounds, cssWidth, cssHeight, pad);
@@ -221,12 +234,14 @@
     var cy = (bounds.ymin + bounds.ymax) / 2;
     var angle = finite(c.coordinateRotation, 0) * Math.PI / 180;
     var cosine = Math.cos(angle), sine = Math.sin(angle);
+    state.screenPoints = new Array(p.x.length);
     Object.keys(state.colorGroups).forEach(function (color) {
       ctx.beginPath(); ctx.fillStyle = color;
       state.colorGroups[color].forEach(function (index) {
         var x = p.x[index] - cx, y = p.y[index] - cy;
         var at = screen({x: cx + x * cosine - y * sine,
           y: cy + x * sine + y * cosine});
+        state.screenPoints[index] = at;
         ctx.moveTo(at.x + radius, at.y);
         ctx.arc(at.x, at.y, radius, 0, Math.PI * 2);
       });
@@ -340,33 +355,55 @@
   document.addEventListener("pointerup", finishInteraction, true);
   document.addEventListener("pointercancel", finishInteraction, true);
   document.addEventListener("mouseup", finishInteraction, true);
-  document.addEventListener("pointermove", function (event) {
-    var node = canvas(), scene = state.scene;
-    if (!node || !scene || !scene.available) return;
-    var tip = document.getElementById(node.id + "-tooltip"); if (!tip) return;
+  function updateHover() {
+    state.hoverFrame = 0;
+    var node = canvas(), scene = state.scene, point = state.hoverPoint;
+    if (
+      !node ||
+      node !== state.hoverNode ||
+      !scene ||
+      !scene.available ||
+      !point
+    ) return;
+    var tip = document.getElementById(node.id + "-tooltip");
+    if (!tip) return;
     var rect = node.getBoundingClientRect(), best = -1, bestDistance = 64;
-    var pad = 28;
-    var layout = viewportLayout(scene.bounds, rect.width, rect.height, pad);
-    var view = layout.view, scale = layout.scale;
-    for (var i = 0; i < scene.points.x.length; i += 1) {
-      var p = rotated({x: scene.points.x[i], y: scene.points.y[i]}, scene.bounds,
-        state.controls.coordinateRotation);
-      var x = layout.offsetX + (p.x - view.xmin) * scale;
-      var y = layout.offsetY + (view.ymax - p.y) * scale;
-      var distance = Math.pow(x - (event.clientX - rect.left), 2) +
-        Math.pow(y - (event.clientY - rect.top), 2);
+    var pointerX = point.clientX - rect.left;
+    var pointerY = point.clientY - rect.top;
+    for (var i = 0; i < state.screenPoints.length; i += 1) {
+      var at = state.screenPoints[i];
+      if (!at) continue;
+      var distance = Math.pow(at.x - pointerX, 2) +
+        Math.pow(at.y - pointerY, 2);
       if (distance < bestDistance) { bestDistance = distance; best = i; }
     }
     if (best < 0) { tip.hidden = true; return; }
     tip.textContent = scene.points.barcode[best] + " · " + scene.points.group[best] +
       " · " + scene.points.count[best] + " sampled cells";
-    tip.style.left = (event.clientX - rect.left) + "px";
-    tip.style.top = (event.clientY - rect.top) + "px"; tip.hidden = false;
-  });
-  document.addEventListener("pointerleave", function (event) {
-    if (!event.target.classList || !event.target.classList.contains("builder-spatial-canvas")) return;
-    var tip = document.getElementById(event.target.id + "-tooltip"); if (tip) tip.hidden = true;
-  }, true);
+    tip.style.left = pointerX + "px";
+    tip.style.top = pointerY + "px";
+    tip.hidden = false;
+  }
+  function setupCanvasHover(node) {
+    if (node.dataset.builderSpatialHover === "true") return;
+    node.dataset.builderSpatialHover = "true";
+    node.addEventListener("pointermove", function (event) {
+      state.hoverNode = node;
+      state.hoverPoint = {clientX: event.clientX, clientY: event.clientY};
+      if (!state.hoverFrame) {
+        state.hoverFrame = window.requestAnimationFrame(updateHover);
+      }
+    });
+    node.addEventListener("pointerleave", function () {
+      if (state.hoverNode !== node) return;
+      state.hoverNode = null;
+      state.hoverPoint = null;
+      if (state.hoverFrame) window.cancelAnimationFrame(state.hoverFrame);
+      state.hoverFrame = 0;
+      var tip = document.getElementById(node.id + "-tooltip");
+      if (tip) tip.hidden = true;
+    });
+  }
   window.addEventListener("resize", schedule);
   document.addEventListener("shiny:connected", schedule);
   if (window.jQuery) {
