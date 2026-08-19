@@ -41,6 +41,21 @@ builder_stylesheet_text <- function(
   )
 }
 
+test_that("Done checking exposes one immediate busy-state handler", {
+  browser <- builder_asset_text("www", "builder.js")
+  review <- builder_asset_text("server", "review.R")
+
+  expect_match(browser, '"builder_dataset_check_state"', fixed = TRUE)
+  expect_match(browser, 'button.textContent = "Saving check…"', fixed = TRUE)
+  expect_match(
+    browser,
+    'function (message)',
+    fixed = TRUE
+  )
+  expect_match(review, 'list(active = TRUE)', fixed = TRUE)
+  expect_match(review, 'list(active = FALSE)', fixed = TRUE)
+})
+
 test_that("builder UI includes the Bootstrap dependency required by modals", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(dirname(builder_asset_path("app.R")))

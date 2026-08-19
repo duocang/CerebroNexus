@@ -463,6 +463,22 @@ output$configure_actions <- renderUI({
 })
 
 observeEvent(input$complete_dataset_check, {
+  session$sendCustomMessage(
+    "builder_dataset_check_state",
+    list(active = TRUE)
+  )
+  on.exit(
+    session$onFlushed(
+      function() {
+        session$sendCustomMessage(
+          "builder_dataset_check_state",
+          list(active = FALSE)
+        )
+      },
+      once = TRUE
+    ),
+    add = TRUE
+  )
   if (
     exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
       !isTRUE(builder_operation_allowed("check_dataset"))

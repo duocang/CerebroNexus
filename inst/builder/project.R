@@ -1,8 +1,12 @@
 ## Builder projects keep durable user choices separate from session-only
-## workers. The JSON manifest is intentionally small enough to inspect, while
-## exact R value shapes are retained in one typed payload per dataset.
+## workers. Schema v3 is an index: exact configuration lives in small typed
+## sidecars and source-derived profiles live in replaceable binary caches.
 
-.builder_project_schema_version <- 2L
+.builder_project_schema_version <- 3L
+.builder_project_supported_schema_versions <- c(1L, 2L, 3L)
+.builder_project_config_schema_version <- 1L
+.builder_project_profile_cache_schema_version <- 1L
+.builder_project_configuration_contract_version <- 1L
 
 .builder_project_phases <- c(
   "none",
@@ -456,6 +460,20 @@ builder_project_fingerprint_matches <- function(recorded, current) {
     identical(as.character(recorded_md5), as.character(current_md5))
 }
 
+builder_project_content_fingerprint_matches <- function(recorded, current) {
+  if (!is.list(recorded) || !is.list(current)) {
+    return(FALSE)
+  }
+  recorded_md5 <- recorded$md5 %||% NULL
+  current_md5 <- current$md5 %||% NULL
+  if (
+    .builder_project_text(recorded_md5) && .builder_project_text(current_md5)
+  ) {
+    return(identical(as.character(recorded_md5), as.character(current_md5)))
+  }
+  builder_project_fingerprint_matches(recorded, current)
+}
+
 builder_project_stage_source <- function(entry, root) {
   if (!is.list(entry) || !.builder_project_identifier(entry$id)) {
     stop("A dataset entry is required.", call. = FALSE)
@@ -793,6 +811,258 @@ builder_project_safe_entry <- function(entry) {
   safe
 }
 
+builder_project_configuration_entry <- function(entry) {
+  if (!is.list(entry) || !.builder_project_identifier(entry$id %||% NULL)) {
+    stop("A dataset entry is required.", call. = FALSE)
+  }
+  list(
+    id = as.character(entry$id),
+    revision = as.integer(entry$revision %||% 0L),
+    settings = entry$settings %||% list(),
+    acknowledgements = entry$acknowledgements %||% character(),
+    spatial_drafts = entry$spatial_drafts %||% list()
+  )
+}
+
+builder_project_dataset_config_path <- function(dataset_id, root) {
+  if (!.builder_project_identifier(dataset_id)) {
+    stop("A safe dataset id is required.", call. = FALSE)
+  }
+  builder_project_resolve_path(
+    paste("datasets", dataset_id, "config.json", sep = "/"),
+    root,
+    "managed"
+  )
+}
+
+builder_project_profile_cache_path <- function(dataset_id, root) {
+  if (!.builder_project_identifier(dataset_id)) {
+    stop("A safe dataset id is required.", call. = FALSE)
+  }
+  builder_project_resolve_path(
+    paste("cache", dataset_id, "profile.rds", sep = "/"),
+    root,
+    "managed"
+  )
+}
+
+.builder_project_commit_sidecar <- function(temporary, target) {
+  target_dir <- dirname(target)
+  if (
+    !dir.exists(target_dir) &&
+      !dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+  ) {
+    stop("A Project sidecar directory could not be created.", call. = FALSE)
+  }
+  backup <- paste0(target, ".previous")
+  unlink(backup, force = TRUE)
+  had_target <- file.exists(target)
+  if (had_target && !file.rename(target, backup)) {
+    stop("An existing Project sidecar could not be replaced.", call. = FALSE)
+  }
+  if (!file.rename(temporary, target)) {
+    if (had_target && file.exists(backup)) {
+      file.rename(backup, target)
+    }
+    stop("A Project sidecar could not be committed.", call. = FALSE)
+  }
+  unlink(backup, force = TRUE)
+  invisible(target)
+}
+
+builder_project_write_dataset_config <- function(entry, root) {
+  root <- builder_project_normalize_root(root)
+  config <- builder_project_configuration_entry(entry)
+  target <- builder_project_dataset_config_path(config$id, root)
+  target_dir <- dirname(target)
+  if (
+    !dir.exists(target_dir) &&
+      !dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+  ) {
+    stop(
+      "The dataset configuration directory could not be created.",
+      call. = FALSE
+    )
+  }
+  temporary <- tempfile(
+    paste0(config$id, "-config-"),
+    tmpdir = target_dir,
+    fileext = ".part"
+  )
+  on.exit(unlink(temporary, force = TRUE), add = TRUE)
+  writeLines(
+    jsonlite::serializeJSON(config, digits = NA, pretty = TRUE),
+    temporary,
+    useBytes = TRUE
+  )
+  .builder_project_commit_sidecar(temporary, target)
+  list(
+    schema_version = .builder_project_config_schema_version,
+    path = builder_project_relative_path(target, root),
+    revision = config$revision,
+    fingerprint = builder_project_file_fingerprint(target, content = TRUE)
+  )
+}
+
+builder_project_read_dataset_config <- function(record, root) {
+  configuration <- record$configuration %||% list()
+  path <- configuration$path %||% NULL
+  if (.builder_project_text(path)) {
+    resolved <- builder_project_resolve_path(path, root, "managed")
+    if (!file.exists(resolved) || dir.exists(resolved)) {
+      stop("A saved dataset configuration is missing.", call. = FALSE)
+    }
+    current <- builder_project_file_fingerprint(resolved, content = TRUE)
+    if (
+      is.list(configuration$fingerprint) &&
+        !builder_project_content_fingerprint_matches(
+          configuration$fingerprint,
+          current
+        )
+    ) {
+      stop(
+        "A saved dataset configuration failed its integrity check.",
+        call. = FALSE
+      )
+    }
+    payload <- paste(readLines(resolved, warn = FALSE), collapse = "\n")
+    config <- jsonlite::unserializeJSON(payload)
+    if (
+      !is.list(config) ||
+        !identical(as.character(config$id %||% ""), as.character(record$id))
+    ) {
+      stop("A saved dataset configuration is invalid.", call. = FALSE)
+    }
+    return(config)
+  }
+  payload <- configuration$legacy_payload %||% configuration$payload %||% NULL
+  if (!.builder_project_text(payload)) {
+    stop("A saved dataset configuration is missing.", call. = FALSE)
+  }
+  jsonlite::unserializeJSON(payload)
+}
+
+builder_project_profile_cache_value <- function(entry) {
+  list(
+    schema_version = .builder_project_profile_cache_schema_version,
+    id = as.character(entry$id),
+    profile = entry$profile %||% list(),
+    dataset_profile = entry$dataset_profile %||% list(),
+    levels = entry$levels %||% list()
+  )
+}
+
+builder_project_write_profile_cache <- function(
+  entry,
+  root,
+  source_fingerprint = NULL,
+  prior = NULL
+) {
+  root <- builder_project_normalize_root(root)
+  target <- builder_project_profile_cache_path(entry$id, root)
+  prior_cache <- if (is.list(prior)) prior$cache %||% list() else list()
+  current <- builder_project_file_fingerprint(target, content = TRUE)
+  if (
+    file.exists(target) &&
+      is.list(prior_cache$fingerprint) &&
+      builder_project_content_fingerprint_matches(
+        prior_cache$fingerprint,
+        current
+      ) &&
+      identical(prior_cache$source_fingerprint %||% NULL, source_fingerprint)
+  ) {
+    return(prior_cache)
+  }
+  target_dir <- dirname(target)
+  if (
+    !dir.exists(target_dir) &&
+      !dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+  ) {
+    stop(
+      "The dataset profile cache directory could not be created.",
+      call. = FALSE
+    )
+  }
+  temporary <- tempfile(
+    paste0(entry$id, "-profile-"),
+    tmpdir = target_dir,
+    fileext = ".part"
+  )
+  on.exit(unlink(temporary, force = TRUE), add = TRUE)
+  saveRDS(
+    builder_project_profile_cache_value(entry),
+    temporary,
+    version = 3L,
+    compress = FALSE
+  )
+  .builder_project_commit_sidecar(temporary, target)
+  list(
+    schema_version = .builder_project_profile_cache_schema_version,
+    path = builder_project_relative_path(target, root),
+    source_fingerprint = source_fingerprint,
+    fingerprint = builder_project_file_fingerprint(target, content = TRUE)
+  )
+}
+
+builder_project_read_profile_cache <- function(record, root) {
+  cache <- record$cache %||% list()
+  if (!.builder_project_text(cache$path %||% NULL)) {
+    return(NULL)
+  }
+  path <- builder_project_resolve_path(cache$path, root, "managed")
+  current <- builder_project_file_fingerprint(path, content = TRUE)
+  if (
+    !file.exists(path) ||
+      !is.list(cache$fingerprint) ||
+      !builder_project_content_fingerprint_matches(cache$fingerprint, current)
+  ) {
+    return(NULL)
+  }
+  value <- tryCatch(readRDS(path), error = function(error) NULL)
+  if (
+    !is.list(value) ||
+      !identical(
+        .builder_project_integer(value$schema_version),
+        .builder_project_profile_cache_schema_version
+      ) ||
+      !identical(as.character(value$id %||% ""), as.character(record$id))
+  ) {
+    return(NULL)
+  }
+  value
+}
+
+builder_project_profile_cache_available <- function(record, root) {
+  cache <- record$cache %||% list()
+  if (!.builder_project_text(cache$path %||% NULL)) {
+    return(FALSE)
+  }
+  path <- tryCatch(
+    builder_project_resolve_path(cache$path, root, "managed"),
+    error = function(error) NULL
+  )
+  if (!.builder_project_text(path) || !file.exists(path) || dir.exists(path)) {
+    return(FALSE)
+  }
+  builder_project_content_fingerprint_matches(
+    cache$fingerprint %||% NULL,
+    builder_project_file_fingerprint(path, content = TRUE)
+  )
+}
+
+builder_project_hydrate_profile_cache <- function(entry, record, root) {
+  cached <- builder_project_read_profile_cache(record, root)
+  if (is.null(cached)) {
+    return(entry)
+  }
+  entry$profile <- cached$profile %||% entry$profile %||% list()
+  entry$dataset_profile <- cached$dataset_profile %||%
+    entry$dataset_profile %||%
+    list()
+  entry$levels <- cached$levels %||% entry$levels %||% list()
+  entry
+}
+
 .builder_project_asset_segment <- function(value) {
   value <- as.character(value %||% "")[[1L]]
   readable <- gsub("[^A-Za-z0-9._-]+", "-", value)
@@ -1031,7 +1301,11 @@ builder_project_checkpoint_entries <- function(entries) {
 }
 
 builder_project_configuration_digest <- function(entry) {
-  digest_entry <- unserialize(serialize(entry, NULL, version = 3L))
+  digest_entry <- list(
+    settings = entry$settings %||% list(),
+    acknowledgements = entry$acknowledgements %||% character(),
+    spatial_drafts = entry$spatial_drafts %||% list()
+  )
   digest_entry <- .builder_project_map_spatial_images(
     digest_entry,
     function(record, section, label) {
@@ -1060,6 +1334,7 @@ builder_project_configuration_digest <- function(entry) {
   # `levels` is source-derived and immutable after import. Source fingerprinting,
   # rather than the editable-configuration digest, invalidates it on reload.
   value <- list(
+    contract_version = .builder_project_configuration_contract_version,
     settings = digest_entry$settings %||% list(),
     acknowledgements = digest_entry$acknowledgements %||% character(),
     spatial_drafts = digest_entry$spatial_drafts %||% list()
@@ -1075,13 +1350,53 @@ builder_project_dataset_record <- function(
   checked = FALSE,
   artifact = NULL,
   order = 1L,
-  payload_entry = entry
+  payload_entry = entry,
+  root = NULL,
+  prior = NULL
 ) {
   profile <- entry$profile %||% list()
   spatial <- entry$dataset_profile$content$spatial %||%
     entry$profile$viewer_content$spatial %||%
     list()
   sections <- spatial$sections %||% spatial$fovs %||% character()
+  digest <- builder_project_configuration_digest(entry)
+  sidecar <- if (.builder_project_text(root %||% NULL)) {
+    builder_project_write_dataset_config(payload_entry, root)
+  } else {
+    NULL
+  }
+  configuration <- if (is.null(sidecar)) {
+    list(
+      revision = as.integer(entry$revision %||% 0L),
+      digest = digest,
+      checked = isTRUE(checked),
+      payload = jsonlite::serializeJSON(
+        builder_project_safe_entry(payload_entry),
+        digits = NA,
+        pretty = FALSE
+      )
+    )
+  } else {
+    utils::modifyList(
+      sidecar,
+      list(
+        digest = digest,
+        checked = isTRUE(checked),
+        checked_digest = if (isTRUE(checked)) digest else NULL,
+        contract_version = .builder_project_configuration_contract_version
+      )
+    )
+  }
+  cache <- if (is.null(sidecar)) {
+    NULL
+  } else {
+    builder_project_write_profile_cache(
+      entry,
+      root,
+      source_fingerprint = source$fingerprint %||% NULL,
+      prior = prior
+    )
+  }
   list(
     id = entry$id,
     name = entry$settings$name %||% entry$id,
@@ -1095,16 +1410,8 @@ builder_project_dataset_record <- function(
       projections = as.character(entry$settings$reductions %||% character()),
       fovs = as.character(names(sections) %||% sections %||% character())
     ),
-    configuration = list(
-      revision = as.integer(entry$revision %||% 0L),
-      digest = builder_project_configuration_digest(entry),
-      checked = isTRUE(checked),
-      payload = jsonlite::serializeJSON(
-        builder_project_safe_entry(payload_entry),
-        digits = NA,
-        pretty = FALSE
-      )
-    ),
+    configuration = configuration,
+    cache = cache,
     artifact = artifact,
     release = list(included = TRUE)
   )
@@ -1113,17 +1420,32 @@ builder_project_dataset_record <- function(
 builder_project_restore_entry <- function(
   record,
   root,
-  hydrate_spatial_assets = TRUE
+  hydrate_spatial_assets = TRUE,
+  hydrate_profile_cache = FALSE
 ) {
-  payload <- record$configuration$payload %||% NULL
-  if (!.builder_project_text(payload)) {
-    stop("A saved dataset configuration is missing.", call. = FALSE)
-  }
-  entry <- jsonlite::unserializeJSON(payload)
+  entry <- builder_project_read_dataset_config(record, root)
   entry$id <- as.character(record$id)
   entry$source_id <- entry$id
   entry$output_id <- entry$id
   entry$selector_value <- entry$id
+  entry$revision <- as.integer(
+    entry$revision %||% record$configuration$revision %||% 0L
+  )
+  entry$settings <- entry$settings %||% list(name = record$name %||% entry$id)
+  inspection <- record$inspection %||% list()
+  entry$profile <- entry$profile %||%
+    list(
+      n_cells = as.integer(inspection$cells %||% 0L),
+      n_genes = as.integer(inspection$genes %||% 0L),
+      assays = as.character(inspection$assays %||% character()),
+      reductions = as.character(inspection$projections %||% character())
+    )
+  entry$dataset_profile <- entry$dataset_profile %||% list()
+  entry$levels <- entry$levels %||% list()
+  entry$format <- entry$format %||% record$format %||% NULL
+  if (isTRUE(hydrate_profile_cache)) {
+    entry <- builder_project_hydrate_profile_cache(entry, record, root)
+  }
   entry$load_state <- "reload_required"
   if (isTRUE(hydrate_spatial_assets)) {
     entry <- builder_project_restore_spatial_assets(entry, root)
@@ -1278,11 +1600,10 @@ builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
 }
 
 builder_project_spatial_assets_status <- function(record, root) {
-  payload <- record$configuration$payload %||% NULL
-  if (!.builder_project_text(payload)) {
-    return(list(ready = FALSE, error = "Saved configuration is missing."))
-  }
-  entry <- tryCatch(jsonlite::unserializeJSON(payload), error = identity)
+  entry <- tryCatch(
+    builder_project_read_dataset_config(record, root),
+    error = identity
+  )
   if (inherits(entry, "condition")) {
     return(list(ready = FALSE, error = conditionMessage(entry)))
   }
@@ -1298,24 +1619,22 @@ builder_project_spatial_assets_status <- function(record, root) {
 }
 
 builder_project_record_configuration_confirmed <- function(record) {
-  if (!is.list(record) || !is.list(record$configuration)) {
-    return(FALSE)
-  }
-  if (isTRUE(record$configuration$checked)) {
-    return(TRUE)
-  }
-  artifact <- record$artifact %||% list()
-  digest <- as.character(record$configuration$digest %||% "")
-  identical(artifact$status %||% NULL, "ready") &&
-    .builder_project_text(digest) &&
+  is.list(record) &&
+    is.list(record$configuration) &&
+    isTRUE(record$configuration$checked) &&
     identical(
-      as.character(artifact$built_from_configuration %||% ""),
-      digest
+      as.character(
+        record$configuration$checked_digest %||%
+          record$configuration$digest %||%
+          ""
+      ),
+      as.character(record$configuration$digest %||% "")
     )
 }
 
 builder_project_dataset_status <- function(record, root) {
   artifact_ready <- builder_project_artifact_available(record$artifact, root)
+  profile_cache_ready <- builder_project_profile_cache_available(record, root)
   spatial_assets <- builder_project_spatial_assets_status(record, root)
   source <- record$source %||% list()
   source_path <- if (identical(source$kind, "example")) {
@@ -1347,9 +1666,7 @@ builder_project_dataset_status <- function(record, root) {
       current_fingerprint
     )
   checked <- isTRUE(spatial_assets$ready) &&
-    (isTRUE(record$configuration$checked) ||
-      (artifact_ready &&
-        builder_project_record_configuration_confirmed(record))) &&
+    builder_project_record_configuration_confirmed(record) &&
     source_matches
   list(
     source_ready = source_ready,
@@ -1358,6 +1675,7 @@ builder_project_dataset_status <- function(record, root) {
     spatial_assets_error = spatial_assets$error,
     restorable = source_ready && isTRUE(spatial_assets$ready),
     artifact_ready = artifact_ready,
+    profile_cache_ready = profile_cache_ready,
     checked = checked,
     label = if (!isTRUE(spatial_assets$ready)) {
       "Needs check · spatial image missing"
@@ -1493,15 +1811,18 @@ builder_project_configuration <- function(
   )
 }
 
-builder_project_migrate_manifest <- function(manifest) {
+builder_project_migrate_manifest <- function(manifest, root = NULL) {
   version <- .builder_project_integer(manifest$schema_version)
-  if (!version %in% c(1L, .builder_project_schema_version)) {
+  if (!version %in% .builder_project_supported_schema_versions) {
     stop("This is not a supported Builder project.", call. = FALSE)
   }
-  if (identical(version, 1L)) {
-    manifest$migrated_from_schema <- 1L
-    manifest$configuration <- builder_project_configuration()
-    manifest$schema_version <- .builder_project_schema_version
+  if (version < .builder_project_schema_version) {
+    manifest$migrated_from_schema <- version
+    if (identical(version, 1L)) {
+      manifest$configuration <- builder_project_configuration()
+    }
+    can_write_sidecars <- .builder_project_text(root %||% NULL) &&
+      dir.exists(root)
     manifest$datasets <- lapply(manifest$datasets, function(record) {
       payload <- record$configuration$payload %||% NULL
       if (!.builder_project_text(payload)) {
@@ -1511,6 +1832,7 @@ builder_project_migrate_manifest <- function(manifest) {
       if (inherits(entry, "condition")) {
         return(record)
       }
+      entry$id <- as.character(record$id %||% entry$id %||% "")
       old_digest <- as.character(record$configuration$digest %||% "")
       new_digest <- tryCatch(
         builder_project_configuration_digest(entry),
@@ -1519,7 +1841,44 @@ builder_project_migrate_manifest <- function(manifest) {
       if (!.builder_project_text(new_digest)) {
         return(record)
       }
-      record$configuration$digest <- new_digest
+      if (can_write_sidecars) {
+        config_entry <- builder_project_configuration_entry(entry)
+        config_entry <- builder_project_stage_spatial_assets(
+          config_entry,
+          root
+        )
+        descriptor <- builder_project_write_dataset_config(config_entry, root)
+        record$configuration <- utils::modifyList(
+          descriptor,
+          list(
+            digest = new_digest,
+            checked = isTRUE(record$configuration$checked),
+            checked_digest = if (isTRUE(record$configuration$checked)) {
+              new_digest
+            } else {
+              NULL
+            },
+            contract_version = .builder_project_configuration_contract_version
+          )
+        )
+        record$cache <- builder_project_write_profile_cache(
+          entry,
+          root,
+          source_fingerprint = record$source$fingerprint %||% NULL,
+          prior = record
+        )
+      } else {
+        record$configuration$legacy_payload <- payload
+        record$configuration$payload <- NULL
+        record$configuration$digest <- new_digest
+        record$configuration$checked_digest <- if (
+          isTRUE(record$configuration$checked)
+        ) {
+          new_digest
+        } else {
+          NULL
+        }
+      }
       if (
         is.list(record$artifact) &&
           identical(
@@ -1533,15 +1892,15 @@ builder_project_migrate_manifest <- function(manifest) {
       }
       record
     })
-  } else {
-    configuration <- manifest$configuration %||% list()
-    manifest$configuration <- builder_project_configuration(
-      review_options = configuration$review_options %||% NULL,
-      build_mode = configuration$build_mode %||% FALSE,
-      auth_enabled = configuration$auth_enabled %||% FALSE,
-      initial_dataset = configuration$initial_dataset %||% NULL
-    )
+    manifest$schema_version <- .builder_project_schema_version
   }
+  configuration <- manifest$configuration %||% list()
+  manifest$configuration <- builder_project_configuration(
+    review_options = configuration$review_options %||% NULL,
+    build_mode = configuration$build_mode %||% FALSE,
+    auth_enabled = configuration$auth_enabled %||% FALSE,
+    initial_dataset = configuration$initial_dataset %||% NULL
+  )
   last_ui <- manifest$last_ui %||% list()
   stage <- as.character(last_ui$stage %||% "configure")
   if (
@@ -1657,7 +2016,7 @@ builder_project_read <- function(path) {
   if (
     !is.list(manifest) ||
       !.builder_project_integer(manifest$schema_version) %in%
-        c(1L, .builder_project_schema_version) ||
+        .builder_project_supported_schema_versions ||
       !is.list(manifest$project) ||
       !.builder_project_identifier(manifest$project$id) ||
       !is.list(manifest$datasets)
@@ -1683,7 +2042,7 @@ builder_project_read <- function(path) {
   manifest$project$revision <- .builder_project_integer(
     manifest$project$revision
   )
-  builder_project_migrate_manifest(manifest)
+  builder_project_migrate_manifest(manifest, root = dirname(path))
 }
 
 builder_project_write <- function(manifest, root, expected_revision = NULL) {
@@ -1702,6 +2061,21 @@ builder_project_write <- function(manifest, root, expected_revision = NULL) {
   }
   if (!is.list(manifest$project)) {
     stop("The Builder project header is missing.", call. = FALSE)
+  }
+  inline_payloads <- vapply(
+    manifest$datasets %||% list(),
+    function(record) {
+      configuration <- record$configuration %||% list()
+      .builder_project_text(configuration$payload %||% NULL) ||
+        .builder_project_text(configuration$legacy_payload %||% NULL)
+    },
+    logical(1)
+  )
+  if (any(inline_payloads)) {
+    stop(
+      "Schema v3 cannot write inline dataset payloads.",
+      call. = FALSE
+    )
   }
   manifest$schema_version <- .builder_project_schema_version
   manifest$migrated_from_schema <- NULL
@@ -1729,6 +2103,13 @@ builder_project_write <- function(manifest, root, expected_revision = NULL) {
     pretty = TRUE,
     digits = NA
   )
+  manifest_bytes <- suppressWarnings(as.double(file.info(temporary)$size[[1L]]))
+  if (!is.finite(manifest_bytes) || manifest_bytes > 10 * 1024^2) {
+    stop(
+      "The Project manifest exceeded the schema v3 size limit.",
+      call. = FALSE
+    )
+  }
   if (file.exists(target)) {
     if (file.exists(backup)) {
       unlink(backup)
