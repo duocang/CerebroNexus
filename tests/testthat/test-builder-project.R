@@ -924,10 +924,10 @@ test_that("project folders distinguish empty, existing, and unrelated content", 
   expect_identical(unrelated$kind, "nonempty")
   expect_identical(unrelated$managed_conflicts, character())
 
-  dir.create(file.path(root, "sources"))
+  dir.create(file.path(root, "Sources"))
   reserved <- runtime$builder_project_folder_state(root)
   expect_identical(reserved$kind, "nonempty")
-  expect_identical(reserved$managed_conflicts, "sources")
+  expect_identical(reserved$managed_conflicts, "Sources")
 
   writeLines("{}", runtime$builder_project_manifest_path(root))
   expect_identical(runtime$builder_project_folder_state(root)$kind, "project")
