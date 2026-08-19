@@ -12,6 +12,7 @@ builder_project_checkpoint <- reactiveVal(FALSE)
 builder_project_auto_save_signature <- reactiveVal(NULL)
 builder_project_operation_phase <- reactiveVal("idle")
 builder_project_last_save_error <- reactiveVal(NULL)
+builder_project_pending_folder <- reactiveVal(NULL)
 builder_project_source_sync <- reactiveVal(list(
   status = "idle",
   completed = 0L,
@@ -919,16 +920,62 @@ observe({
   )
 })
 
-observeEvent(input$choose_builder_project_folder, {
+show_builder_project_folder_error <- function(message, type = "error") {
+  showNotification(message, type = type, duration = 7)
+  invisible(FALSE)
+}
+
+builder_project_folder_available <- function(folder) {
+  if (inherits(folder, "condition")) {
+    return(show_builder_project_folder_error(conditionMessage(folder)))
+  }
+  if (identical(folder$kind, "project")) {
+    return(show_builder_project_folder_error(
+      "This folder already contains a Builder project. Use Open project instead.",
+      type = "warning"
+    ))
+  }
+  conflicts <- folder$managed_conflicts %||% character()
+  if (length(conflicts)) {
+    return(show_builder_project_folder_error(paste0(
+      "This folder already contains Builder-managed names: ",
+      paste(conflicts, collapse = ", "),
+      ". Choose another folder."
+    )))
+  }
+  TRUE
+}
+
+create_builder_project_in_folder <- function(path) {
+  folder <- tryCatch(builder_project_folder_state(path), error = identity)
+  if (!isTRUE(builder_project_folder_available(folder))) {
+    return(invisible(FALSE))
+  }
+  manifest_path <- builder_project_manifest_path(folder$root)
+  manifest <- builder_project_new_manifest(folder$root)
+  builder_project_pending_folder(NULL)
+  builder_project(list(
+    root = folder$root,
+    path = manifest_path,
+    name = manifest$project$name,
+    manifest = manifest
+  ))
+  shiny::removeModal()
+  request_builder_project_save(show_actions = FALSE, materialize = TRUE)
+  invisible(TRUE)
+}
+
+request_builder_project_folder <- function() {
+  builder_project_pending_folder(NULL)
   if (!builder_operation_allowed("create_project")) {
-    return()
+    return(invisible(FALSE))
   }
   choice <- builder_choose_project_directory()
   if (!builder_operation_allowed("create_project")) {
-    return()
+    return(invisible(FALSE))
   }
   if (identical(choice$status, "cancelled")) {
-    return()
+    return(invisible(FALSE))
   }
   if (!identical(choice$status, "selected")) {
     showNotification(
@@ -936,26 +983,57 @@ observeEvent(input$choose_builder_project_folder, {
       type = "error",
       duration = 7
     )
+    return(invisible(FALSE))
+  }
+  folder <- tryCatch(
+    builder_project_folder_state(choice$path),
+    error = identity
+  )
+  if (!isTRUE(builder_project_folder_available(folder))) {
+    return(invisible(FALSE))
+  }
+  if (identical(folder$kind, "nonempty")) {
+    builder_project_pending_folder(choice$path)
+    shiny::showModal(builder_project_nonempty_folder_dialog(choice$path))
+    return(invisible(TRUE))
+  }
+  create_builder_project_in_folder(choice$path)
+}
+
+observeEvent(input$choose_builder_project_folder, {
+  request_builder_project_folder()
+})
+
+observeEvent(input$confirm_builder_project_folder, {
+  if (!builder_operation_allowed("create_project")) {
     return()
   }
-  manifest_path <- builder_project_manifest_path(choice$path)
-  if (file.exists(manifest_path)) {
-    showNotification(
-      "This folder already contains a Builder project. Use Open project instead.",
-      type = "warning",
-      duration = 7
-    )
+  path <- isolate(builder_project_pending_folder())
+  if (is.null(path)) {
     return()
   }
-  manifest <- builder_project_new_manifest(choice$path)
-  builder_project(list(
-    root = choice$path,
-    path = manifest_path,
-    name = manifest$project$name,
-    manifest = manifest
-  ))
+  folder <- tryCatch(builder_project_folder_state(path), error = identity)
+  builder_project_pending_folder(NULL)
+  if (!isTRUE(builder_project_folder_available(folder))) {
+    shiny::removeModal()
+    return()
+  }
+  create_builder_project_in_folder(path)
+})
+
+observeEvent(input$choose_another_builder_project_folder, {
+  builder_project_pending_folder(NULL)
   shiny::removeModal()
-  request_builder_project_save(show_actions = FALSE, materialize = TRUE)
+  request_builder_project_folder()
+})
+
+observeEvent(input$cancel_builder_project_folder, {
+  builder_project_pending_folder(NULL)
+  shiny::removeModal()
+})
+
+session$onSessionEnded(function() {
+  builder_project_pending_folder(NULL)
 })
 
 observeEvent(input$save_builder_project, {

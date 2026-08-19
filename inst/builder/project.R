@@ -262,6 +262,12 @@ builder_project_live_dirty <- function(entries, checked_ids, manifest) {
   ))
 }
 .builder_project_manifest_name <- "builder-project.json"
+.builder_project_managed_root_names <- c(
+  "artifacts",
+  "datasets",
+  "session-sources",
+  "sources"
+)
 
 .builder_project_text <- function(value) {
   is.character(value) &&
@@ -394,12 +400,17 @@ builder_project_normalize_root <- function(root, must_work = TRUE) {
 builder_project_folder_state <- function(root) {
   root <- builder_project_normalize_root(root)
   if (file.exists(builder_project_manifest_path(root))) {
-    return(list(kind = "project", root = root))
+    return(list(
+      kind = "project",
+      root = root,
+      managed_conflicts = character()
+    ))
   }
   entries <- list.files(root, all.files = TRUE, no.. = TRUE)
   list(
     kind = if (length(entries)) "nonempty" else "empty",
-    root = root
+    root = root,
+    managed_conflicts = intersect(entries, .builder_project_managed_root_names)
   )
 }
 
