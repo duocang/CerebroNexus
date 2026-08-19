@@ -64,6 +64,7 @@
   var builderWorkerReady = false;
   var builderWorkerStatusTimer = null;
   var datasetStartFocusToken = 0;
+  var stageFocusToken = 0;
   var coordinateResetSliderIds = new Set([
     "enhance-coordinate_rotation",
     "enhance-point_opacity",
@@ -3585,20 +3586,37 @@
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;
       if (["upload", "configure", "review", "build"].indexOf(id) < 0) return;
-      var stage = document.querySelector('[data-workflow-stage="' + id + '"]');
-      if (!stage) return;
-      var heading = stage.querySelector("h2");
-      if (!heading) return;
-      var topbar = document.querySelector(".topbar");
-      var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
-      heading.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
-      heading.setAttribute("tabindex", "-1");
-      heading.scrollIntoView({
-        block: "start",
-        behavior: reducedMotion.matches ? "auto" : "smooth",
-      });
-      heading.focus({ preventScroll: true });
-      scheduleStatusAnnouncement("Opened " + id + " step.");
+      stageFocusToken += 1;
+      var token = stageFocusToken;
+      var attempts = 0;
+      function apply() {
+        if (token !== stageFocusToken) return;
+        var stage = document.querySelector('[data-workflow-stage="' + id + '"]');
+        var heading = stage && stage.querySelector("h2");
+        if (!heading) {
+          attempts += 1;
+          if (attempts < 12) window.setTimeout(apply, 50);
+          return;
+        }
+        heading.setAttribute("tabindex", "-1");
+        if (id === "build") {
+          window.scrollTo({
+            top: 0,
+            behavior: reducedMotion.matches ? "auto" : "smooth",
+          });
+        } else {
+          var topbar = document.querySelector(".topbar");
+          var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
+          heading.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
+          heading.scrollIntoView({
+            block: "start",
+            behavior: reducedMotion.matches ? "auto" : "smooth",
+          });
+        }
+        heading.focus({ preventScroll: true });
+        scheduleStatusAnnouncement("Opened " + id + " step.");
+      }
+      apply();
     });
     window.Shiny.addCustomMessageHandler("builder_import_status", function (message) {
       if (message && message.text) scheduleStatusAnnouncement(message.text);
