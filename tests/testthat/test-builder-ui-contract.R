@@ -1216,7 +1216,7 @@ test_that("accepted Builds scroll the document to its absolute top", {
 
   expect_match(
     js,
-    'addCustomMessageHandler("builder_scroll_page_top"',
+    'addCustomMessageHandler("builder_scroll_page_top", function (message)',
     fixed = TRUE
   )
   expect_match(js, "window.scrollTo({", fixed = TRUE)
