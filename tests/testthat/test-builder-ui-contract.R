@@ -1255,6 +1255,22 @@ test_that("stage focus targets the active heading", {
   expect_match(js, "heading.focus({ preventScroll: true })", fixed = TRUE)
 })
 
+test_that("Build stage focus waits for rendering and reaches the page top", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, "var stageFocusToken = 0;", fixed = TRUE)
+  expect_match(js, "stageFocusToken += 1;", fixed = TRUE)
+  expect_match(js, "if (token !== stageFocusToken) return;", fixed = TRUE)
+  expect_match(
+    js,
+    "if (attempts < 12) window.setTimeout(apply, 50);",
+    fixed = TRUE
+  )
+  expect_match(js, 'if (id === "build") {', fixed = TRUE)
+  expect_match(js, "window.scrollTo({", fixed = TRUE)
+  expect_match(js, "top: 0", fixed = TRUE)
+})
+
 test_that("accepted Builds scroll the document to its absolute top", {
   js <- builder_asset_text("www", "builder.js")
 
