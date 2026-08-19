@@ -957,6 +957,24 @@ test_that("a dead completed owner cannot strand the release lock", {
   })
 })
 
+test_that("completed temporary releases can remove their verified control data", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "checkpoint")
+    handle <- builder_prepare_release(target, "temporary-checkpoint")
+    writeLines("temporary", file.path(handle$stage, "dataset.crb"))
+    published <- builder_publish_release(handle)
+    expect_true(isTRUE(published$published))
+    control <- builder_release_control_path(target)
+    expect_true(dir.exists(control))
+    unlink(target, recursive = TRUE, force = TRUE)
+
+    expect_true(builder_release_cleanup_control(target))
+    expect_false(dir.exists(control))
+  })
+})
+
 test_that("a crash after the stage rename but before journaling is recoverable", {
   skip_if_not_installed("callr")
   local({

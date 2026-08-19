@@ -1425,12 +1425,11 @@ builder_project_commit_source_entries <- function(
       character(1)
     )
   )
-  released <- character()
-  entries <- lapply(entries, function(entry) {
+  committed <- lapply(entries, function(entry) {
     result <- ready[[entry$id]] %||% NULL
     record <- records[[entry$id]] %||% NULL
     if (is.null(result) || !is.list(record$source)) {
-      return(entry)
+      return(list(entry = entry, released = NULL))
     }
     managed <- builder_project_resolve_path(record$source$path, root, "managed")
     if (
@@ -1441,22 +1440,31 @@ builder_project_commit_source_entries <- function(
           normalizePath(managed, winslash = "/", mustWork = TRUE)
         )
     ) {
-      return(entry)
+      return(list(entry = entry, released = NULL))
     }
     prior <- entry$path %||% NULL
     entry$path <- normalizePath(managed, winslash = "/", mustWork = TRUE)
     entry$source <- record$source
-    if (
+    released <- if (
       .builder_project_text(session_root %||% NULL) &&
         .builder_project_text(prior %||% NULL) &&
         is.list(entry$snapshot %||% NULL) &&
         builder_project_release_session_source(prior, session_root)
     ) {
-      released <- c(released, entry$id)
+      entry$id
+    } else {
+      NULL
     }
-    entry
+    list(entry = entry, released = released)
   })
-  list(entries = entries, released = unique(released))
+  list(
+    entries = lapply(committed, `[[`, "entry"),
+    released = unique(as.character(unlist(lapply(
+      committed,
+      `[[`,
+      "released"
+    ))))
+  )
 }
 
 builder_project_retain_session_source <- function(
@@ -1992,17 +2000,37 @@ builder_project_cleanup_checkpoint <- function(path, root) {
     return(FALSE)
   }
   root <- builder_project_normalize_root(root)
-  checkpoint_root <- file.path(root, "checkpoints")
-  candidate <- .builder_project_rebase_lexical_path(path, root)$path
+  candidate <- .builder_project_lexical_path(path)
+  lexical_root <- dirname(dirname(candidate))
+  normalized_lexical_root <- tryCatch(
+    normalizePath(lexical_root, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  normalized_candidate <- tryCatch(
+    normalizePath(candidate, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
   if (
-    !dir.exists(checkpoint_root) ||
-      !startsWith(candidate, paste0(checkpoint_root, "/")) ||
-      .builder_project_path_has_link_within(candidate, root)
+    !identical(normalized_lexical_root, root) ||
+      !identical(
+        dirname(normalized_candidate %||% ""),
+        file.path(root, "checkpoints")
+      ) ||
+      .builder_project_path_has_link_within(candidate, lexical_root)
   ) {
     return(FALSE)
   }
   unlink(candidate, recursive = TRUE, force = TRUE)
-  !dir.exists(candidate)
+  if (dir.exists(candidate)) {
+    return(FALSE)
+  }
+  if (exists("builder_release_cleanup_control", mode = "function")) {
+    return(isTRUE(tryCatch(
+      builder_release_cleanup_control(candidate),
+      error = function(error) FALSE
+    )))
+  }
+  TRUE
 }
 
 builder_project_cleanup_terminal_checkpoint <- function(
