@@ -8,6 +8,7 @@ builder_project_restore <- reactiveVal(NULL)
 builder_project_pending_entries <- reactiveVal(list())
 builder_project_artifacts <- reactiveVal(list())
 builder_project_build_plan <- reactiveVal(NULL)
+builder_project_build_crb_request_id <- reactiveVal(NULL)
 builder_project_checkpoint <- reactiveVal(FALSE)
 builder_project_auto_save_signature <- reactiveVal(NULL)
 builder_project_operation_phase <- reactiveVal("idle")
@@ -253,7 +254,8 @@ builder_activity_message <- function(
     busy_message = message,
     busy_detail = detail,
     has_project = isTRUE(activity$has_project),
-    warn_before_unload = isTRUE(capabilities$warn_before_unload) || build_active,
+    warn_before_unload = isTRUE(capabilities$warn_before_unload) ||
+      build_active,
     page_inert = isTRUE(capabilities$page_inert) || build_active
   )
 }
@@ -282,12 +284,20 @@ observe({
   )
 })
 
-builder_project_capture_build_plan <- function(plan) {
+builder_project_capture_build_plan <- function(
+  plan,
+  crb_request_id = NULL
+) {
   if (is.null(isolate(builder_project()))) {
     builder_project_build_plan(NULL)
+    builder_project_build_crb_request_id(NULL)
     return(invisible(FALSE))
   }
-  builder_project_build_plan(unserialize(serialize(plan, NULL, version = 3L)))
+  captured <- unserialize(serialize(plan, NULL, version = 3L))
+  builder_project_build_plan(captured)
+  builder_project_build_crb_request_id(
+    if (builder_has_text(crb_request_id)) as.character(crb_request_id) else NULL
+  )
   invisible(plan)
 }
 
@@ -1209,10 +1219,13 @@ observeEvent(input$open_builder_project, {
         }
         root <- dirname(selected_path)
         statuses <- builder_project_status_snapshot(manifest, root)
-        manifest$datasets <- lapply(manifest$datasets %||% list(), function(record) {
-          record$runtime_restore_status <- statuses[[record$id]] %||% NULL
-          record
-        })
+        manifest$datasets <- lapply(
+          manifest$datasets %||% list(),
+          function(record) {
+            record$runtime_restore_status <- statuses[[record$id]] %||% NULL
+            record
+          }
+        )
         builder_project_restore(list(
           manifest = manifest,
           root = root,
@@ -1616,7 +1629,74 @@ observeEvent(input$project_resume_current_source, {
   }
 })
 
-enqueue_builder_project_checkpoint <- function(plan) {
+builder_project_crb_request_from_input <- function(value) {
+  if (!is.list(value) || is.object(value)) {
+    return(NULL)
+  }
+  request_id <- value$request_id %||% NULL
+  if (
+    !is.character(request_id) ||
+      length(request_id) != 1L ||
+      is.na(request_id) ||
+      !nzchar(request_id)
+  ) {
+    return(NULL)
+  }
+  request_id
+}
+
+builder_project_send_crb_progress <- function(
+  status,
+  completed = 0L,
+  total = 0L,
+  error = NULL,
+  request_id = NULL
+) {
+  status <- match.arg(
+    status,
+    c("planning", "building", "registering", "ready", "failed")
+  )
+  payload <- list(
+    status = status,
+    completed = as.integer(max(0, completed %||% 0L)),
+    total = as.integer(max(0, total %||% 0L))
+  )
+  if (builder_has_text(error)) {
+    payload$error <- as.character(error)
+  }
+  if (builder_has_text(request_id)) {
+    payload$request_id <- request_id
+  }
+  session$sendCustomMessage("builder_project_crb_progress", payload)
+  invisible(payload)
+}
+
+builder_project_fail_crb_request <- function(
+  error,
+  total = 0L,
+  completed = 0L,
+  request_id = NULL,
+  notify = TRUE
+) {
+  error <- if (builder_has_text(error)) {
+    as.character(error)
+  } else {
+    "Reusable CRBs could not be prepared."
+  }
+  builder_project_send_crb_progress(
+    "failed",
+    completed = completed,
+    total = total,
+    error = error,
+    request_id = request_id
+  )
+  if (isTRUE(notify)) {
+    showNotification(error, type = "error", duration = 8)
+  }
+  invisible(FALSE)
+}
+
+enqueue_builder_project_checkpoint <- function(plan, request_id) {
   current_protocol <- isolate(protocol())
   previous_project <- isolate(builder_project())
   if (
@@ -1635,6 +1715,7 @@ enqueue_builder_project_checkpoint <- function(plan) {
     )
     return(invisible(FALSE))
   }
+  captured_plan <- unserialize(serialize(plan, NULL, version = 3L))
   builder_project_checkpoint(TRUE)
   project <- previous_project
   if (!is.null(project)) {
@@ -1648,17 +1729,59 @@ enqueue_builder_project_checkpoint <- function(plan) {
       started_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC")
     )
     builder_project(project)
-    saved <- save_builder_project_state(
-      show_actions = FALSE,
-      materialize = FALSE,
-      notify = FALSE
+    save_error <- NULL
+    saved <- tryCatch(
+      save_builder_project_state(
+        show_actions = FALSE,
+        materialize = FALSE,
+        notify = FALSE
+      ),
+      error = function(error) {
+        save_error <<- conditionMessage(error)
+        builder_project_last_save_error(save_error)
+        FALSE
+      }
     )
     if (!isTRUE(saved)) {
       builder_project_checkpoint(FALSE)
-      builder_project(previous_project)
-      builder_project_cleanup_checkpoint(plan$out_dir, previous_project$root)
+      terminal_saved <- FALSE
+      if (builder_has_text(save_error)) {
+        failed_project <- isolate(builder_project())
+        if (
+          !is.null(failed_project) &&
+            !is.null(failed_project$manifest$pending_build)
+        ) {
+          failed_project$manifest <- builder_project_finish_pending_build(
+            failed_project$manifest,
+            status = "failed",
+            error = save_error
+          )
+          builder_project(failed_project)
+          terminal_saved <- isTRUE(tryCatch(
+            save_builder_project_state(
+              show_actions = FALSE,
+              materialize = FALSE,
+              notify = FALSE,
+              manage_lifecycle = FALSE
+            ),
+            error = function(error) FALSE
+          ))
+        }
+      } else {
+        builder_project(previous_project)
+      }
+      if (
+        (!builder_has_text(save_error) || isTRUE(terminal_saved)) &&
+          !is.null(previous_project)
+      ) {
+        builder_project_cleanup_checkpoint(plan$out_dir, previous_project$root)
+      }
+      if (!identical(isolate(builder_project_operation_phase()), "conflict")) {
+        builder_project_operation_phase("save_failed")
+      }
       showNotification(
-        builder_project_last_save_error() %||%
+        save_error %||%
+          builder_project_last_save_error() %||%
           "The checkpoint could not be saved. The build was not started.",
         type = "error",
         duration = 8
@@ -1667,19 +1790,28 @@ enqueue_builder_project_checkpoint <- function(plan) {
     }
   }
   result(NULL)
-  queued <- enqueue(list(
-    kind = "build",
-    plan = unserialize(serialize(plan, NULL, version = 3L)),
-    auth_accounts = builder_auth_empty_accounts(),
-    note = paste0(
-      "Preparing ",
-      length(plan$items),
-      " checked CRB",
-      if (length(plan$items) == 1L) "" else "s",
-      "…"
-    )
-  ))
+  enqueue_error <- NULL
+  queued <- tryCatch(
+    enqueue(list(
+      kind = "build",
+      plan = captured_plan,
+      auth_accounts = builder_auth_empty_accounts(),
+      note = paste0(
+        "Preparing ",
+        length(plan$items),
+        " checked CRB",
+        if (length(plan$items) == 1L) "" else "s",
+        "…"
+      )
+    )),
+    error = function(error) {
+      enqueue_error <<- conditionMessage(error)
+      FALSE
+    }
+  )
   if (!isTRUE(queued)) {
+    queue_error <- enqueue_error %||%
+      "The checkpoint build could not be queued."
     builder_project_checkpoint(FALSE)
     project <- isolate(builder_project())
     failed_saved <- FALSE
@@ -1687,7 +1819,7 @@ enqueue_builder_project_checkpoint <- function(plan) {
       project$manifest <- builder_project_finish_pending_build(
         project$manifest,
         status = "failed",
-        error = "The checkpoint build could not be queued."
+        error = queue_error
       )
       builder_project(project)
       failed_saved <- save_builder_project_state(
@@ -1700,13 +1832,14 @@ enqueue_builder_project_checkpoint <- function(plan) {
       builder_project_cleanup_checkpoint(plan$out_dir, previous_project$root)
     }
     showNotification(
-      "The checkpoint build could not be queued.",
+      queue_error,
       type = "error",
       duration = 7
     )
     return(invisible(FALSE))
   }
-  builder_project_capture_build_plan(plan)
+  builder_project_build_plan(captured_plan)
+  builder_project_build_crb_request_id(request_id)
   build_flow(list(stage = "building", plan = NULL))
   shiny::removeModal()
   showNotification(
@@ -1717,125 +1850,193 @@ enqueue_builder_project_checkpoint <- function(plan) {
   invisible(TRUE)
 }
 
-prepare_builder_project_crbs <- function() {
-  project <- isolate(builder_project())
-  checked <- isolate(checked_dataset_ids())
-  entries <- Filter(function(entry) entry$id %in% checked, isolate(sets()))
-  if (is.null(project) || !length(entries)) {
-    return(invisible(FALSE))
-  }
-  entries <- builder_project_entries_requiring_crb(
-    entries,
-    isolate(builder_project_artifacts()),
-    project$root
-  )
-  if (!length(entries)) {
-    session$sendCustomMessage(
-      "builder_project_crb_progress",
-      list(status = "ready", completed = 0L, total = 0L)
-    )
-    return(invisible(TRUE))
-  }
-  budget <- builder_project_checkpoint_budget(entries, project$root)
-  if (!isTRUE(budget$ok)) {
-    showNotification(
-      budget$error %||% "The project volume does not have enough free space.",
-      type = "error",
-      duration = 8
-    )
-    return(invisible(FALSE))
-  }
-  checkpoint_parent <- file.path(project$root, "checkpoints")
-  if (
-    .builder_project_path_has_link_within(checkpoint_parent, project$root)
-  ) {
-    showNotification(
-      "The checkpoint folder is not a safe managed project path.",
-      type = "error",
-      duration = 8
-    )
-    return(invisible(FALSE))
-  }
-  output <- file.path(
-    project$root,
-    "checkpoints",
-    format(Sys.time(), "%Y%m%dT%H%M%S", tz = "UTC")
-  )
-  if (!dir.create(output, recursive = TRUE, showWarnings = FALSE)) {
-    showNotification(
-      "The checkpoint folder could not be created.",
-      type = "error",
-      duration = 8
-    )
-    return(invisible(FALSE))
-  }
-  checkpoint_entries <- builder_project_checkpoint_entries(entries)
-  plan <- freeze_plan_for_output(
-    output,
-    overwrite = TRUE,
-    output_options = builder_build_options(make_app = FALSE),
-    entries_override = checkpoint_entries
-  )
-  if (
-    !inherits(plan, "builder_build_plan") ||
-      !identical(plan$readiness, "ready")
-  ) {
-    error <- plan$error %||% "Checked CRBs could not be prepared."
-    session$sendCustomMessage(
-      "builder_project_crb_progress",
-      list(
-        status = "failed",
-        completed = 0L,
-        total = length(entries),
-        error = error
+prepare_builder_project_crbs <- function(request_id) {
+  project <- NULL
+  output <- NULL
+  total <- 0L
+  tryCatch(
+    {
+      project <- isolate(builder_project())
+      checked <- isolate(checked_dataset_ids())
+      entries <- Filter(function(entry) entry$id %in% checked, isolate(sets()))
+      total <- length(entries)
+      if (is.null(project) || !length(entries)) {
+        return(builder_project_fail_crb_request(
+          "No checked Project datasets are available to prepare.",
+          total = total,
+          request_id = request_id
+        ))
+      }
+      entries <- builder_project_entries_requiring_crb(
+        entries,
+        isolate(builder_project_artifacts()),
+        project$root
       )
-    )
-    showNotification(error, type = "error", duration = 8)
-    builder_project_cleanup_checkpoint(output, project$root)
-    return(invisible(FALSE))
-  }
-  session$sendCustomMessage(
-    "builder_project_crb_progress",
-    list(status = "building", completed = 0L, total = length(plan$items))
-  )
-  queued <- enqueue_builder_project_checkpoint(plan)
-  if (!isTRUE(queued)) {
-    session$sendCustomMessage(
-      "builder_project_crb_progress",
-      list(
-        status = "failed",
+      total <- length(entries)
+      if (!length(entries)) {
+        builder_project_send_crb_progress(
+          "ready",
+          completed = 0L,
+          total = 0L,
+          request_id = request_id
+        )
+        return(invisible(TRUE))
+      }
+      budget <- builder_project_checkpoint_budget(entries, project$root)
+      if (!isTRUE(budget$ok)) {
+        return(builder_project_fail_crb_request(
+          budget$error %||%
+            "The project volume does not have enough free space.",
+          total = total,
+          request_id = request_id
+        ))
+      }
+      checkpoint_parent <- file.path(project$root, "checkpoints")
+      if (
+        .builder_project_path_has_link_within(
+          checkpoint_parent,
+          project$root,
+          allow_missing_leaf = TRUE
+        )
+      ) {
+        return(builder_project_fail_crb_request(
+          "The checkpoint folder is not a safe managed project path.",
+          total = total,
+          request_id = request_id
+        ))
+      }
+      output <- file.path(
+        project$root,
+        "checkpoints",
+        format(Sys.time(), "%Y%m%dT%H%M%S", tz = "UTC")
+      )
+      if (!dir.create(output, recursive = TRUE, showWarnings = FALSE)) {
+        return(builder_project_fail_crb_request(
+          "The checkpoint folder could not be created.",
+          total = total,
+          request_id = request_id
+        ))
+      }
+      checkpoint_entries <- builder_project_checkpoint_entries(entries)
+      plan <- freeze_plan_for_output(
+        output,
+        overwrite = TRUE,
+        output_options = builder_build_options(make_app = FALSE),
+        entries_override = checkpoint_entries
+      )
+      if (
+        !inherits(plan, "builder_build_plan") ||
+          !identical(plan$readiness, "ready")
+      ) {
+        error <- plan$error %||% "Checked CRBs could not be prepared."
+        builder_project_cleanup_checkpoint(output, project$root)
+        output <- NULL
+        return(builder_project_fail_crb_request(
+          error,
+          total = total,
+          request_id = request_id
+        ))
+      }
+      builder_project_send_crb_progress(
+        "building",
         completed = 0L,
         total = length(plan$items),
-        error = "Reusable CRBs could not be queued."
+        request_id = request_id
       )
-    )
-  }
-  invisible(isTRUE(queued))
+      queued <- enqueue_builder_project_checkpoint(plan, request_id)
+      if (!isTRUE(queued)) {
+        return(builder_project_fail_crb_request(
+          "Reusable CRBs could not be queued.",
+          total = length(plan$items),
+          request_id = request_id,
+          notify = FALSE
+        ))
+      }
+      invisible(TRUE)
+    },
+    error = function(error) {
+      failure <- builder_project_fail_crb_request(
+        conditionMessage(error),
+        total = total,
+        request_id = request_id
+      )
+      if (
+        builder_has_text(output) &&
+          !is.null(project) &&
+          builder_has_text(project$root) &&
+          !isTRUE(isolate(builder_project_checkpoint()))
+      ) {
+        tryCatch(
+          builder_project_cleanup_checkpoint(output, project$root),
+          error = function(cleanup_error) FALSE
+        )
+      }
+      failure
+    }
+  )
 }
 
 observeEvent(input$prepare_builder_project_crbs, {
-  if (!builder_operation_allowed("prepare_crbs")) {
-    return()
-  }
-  if (isTRUE(isolate(builder_project_dirty()))) {
-    request_builder_project_save(
-      show_actions = FALSE,
-      materialize = TRUE,
-      notify = TRUE,
-      after = function(ok) {
-        if (isTRUE(ok)) prepare_builder_project_crbs()
+  request_id <- builder_project_crb_request_from_input(
+    input$prepare_builder_project_crbs
+  )
+  builder_project_send_crb_progress(
+    "planning",
+    request_id = request_id
+  )
+  tryCatch(
+    {
+      if (!builder_operation_allowed("prepare_crbs")) {
+        builder_project_fail_crb_request(
+          builder_activity_reason(isolate(builder_activity()), "prepare_crbs"),
+          request_id = request_id,
+          notify = FALSE
+        )
+        return()
       }
-    )
-  } else {
-    prepare_builder_project_crbs()
-  }
+      if (isTRUE(isolate(builder_project_dirty()))) {
+        save_started <- request_builder_project_save(
+          show_actions = FALSE,
+          materialize = TRUE,
+          notify = TRUE,
+          after = function(ok) {
+            if (isTRUE(ok)) {
+              prepare_builder_project_crbs(request_id)
+            } else {
+              builder_project_fail_crb_request(
+                builder_project_last_save_error() %||%
+                  "The Project could not be saved before preparing reusable CRBs.",
+                request_id = request_id,
+                notify = FALSE
+              )
+            }
+          }
+        )
+        if (!isTRUE(save_started)) {
+          builder_project_fail_crb_request(
+            "Wait for the current Project save to finish, then try again.",
+            request_id = request_id
+          )
+        }
+      } else {
+        prepare_builder_project_crbs(request_id)
+      }
+    },
+    error = function(error) {
+      builder_project_fail_crb_request(
+        conditionMessage(error),
+        request_id = request_id
+      )
+    }
+  )
 })
 
 observe({
   value <- result()
   plan <- isolate(builder_project_build_plan())
+  crb_request_id <- isolate(builder_project_build_crb_request_id())
   project <- isolate(builder_project())
-  if (is.null(plan) || is.null(project) || !is.list(value)) {
+  if (is.null(plan) || !is.list(value)) {
     return()
   }
   terminal <- any(vapply(
@@ -1848,224 +2049,250 @@ observe({
   if (!isTRUE(terminal)) {
     return()
   }
+  if (is.null(project)) {
+    builder_project_send_crb_progress(
+      "failed",
+      error = "The Project was closed before reusable CRBs could be saved.",
+      request_id = crb_request_id
+    )
+    builder_project_build_plan(NULL)
+    builder_project_build_crb_request_id(NULL)
+    builder_project_checkpoint(FALSE)
+    return()
+  }
   total_crbs <- length(plan$items)
   completed_crbs <- length(value$built %||% character())
-  session$sendCustomMessage(
-    "builder_project_crb_progress",
-    list(
-      status = "registering",
-      completed = completed_crbs,
-      total = total_crbs
-    )
+  builder_project_send_crb_progress(
+    "registering",
+    completed = completed_crbs,
+    total = total_crbs,
+    request_id = crb_request_id
   )
   builder_project_operation_phase("registering")
   builder_project_build_plan(NULL)
+  builder_project_build_crb_request_id(NULL)
   builder_project_checkpoint(FALSE)
   session$onFlushed(
     function() {
-      project_before_registration <- project
-      on.exit(
+      tryCatch(
         {
-          if (
-            identical(isolate(builder_project_operation_phase()), "registering")
+          project_before_registration <- project
+          on.exit(
+            {
+              if (
+                identical(
+                  isolate(builder_project_operation_phase()),
+                  "registering"
+                )
+              ) {
+                builder_project_operation_phase("save_failed")
+              }
+            },
+            add = TRUE
+          )
+          terminal_status <- if (
+            identical(value$state, "success") &&
+              length(value$built %||% character())
           ) {
-            builder_project_operation_phase("save_failed")
+            "completed"
+          } else {
+            "failed"
+          }
+          if (!is.null(project$manifest$pending_build)) {
+            project$manifest <- builder_project_finish_pending_build(
+              project$manifest,
+              status = terminal_status,
+              error = if (identical(terminal_status, "failed")) {
+                value$error %||% "The checkpoint build failed."
+              } else {
+                NULL
+              }
+            )
+            builder_project(project)
+          }
+          if (
+            !identical(value$state, "success") ||
+              !length(value$built %||% character())
+          ) {
+            saved <- save_builder_project_state(
+              show_actions = FALSE,
+              materialize = FALSE,
+              notify = FALSE,
+              manage_lifecycle = FALSE
+            )
+            builder_project_operation_phase(
+              if (isTRUE(saved)) "idle" else "save_failed"
+            )
+            if (!isTRUE(saved)) {
+              builder_project(project_before_registration)
+            }
+            builder_project_cleanup_terminal_checkpoint(
+              saved = saved,
+              status = terminal_status,
+              path = plan$out_dir,
+              root = project$root
+            )
+            builder_project_send_crb_progress(
+              "failed",
+              completed = completed_crbs,
+              total = total_crbs,
+              error = value$error %||% "Reusable CRBs could not be prepared.",
+              request_id = crb_request_id
+            )
+            return()
+          }
+          previous_artifacts <- isolate(builder_project_artifacts())
+          artifacts <- previous_artifacts
+          entries <- isolate(sets())
+          entry_ids <- vapply(entries, `[[`, character(1), "id")
+          registration_error <- NULL
+          for (item in plan$items) {
+            built <- value$built[[item$name]] %||% NULL
+            if (!.builder_project_text(built) || !file.exists(built)) {
+              registration_error <- paste0(
+                "The reusable CRB for ",
+                item$name,
+                " is missing."
+              )
+              break
+            }
+            bundle <- tryCatch(
+              builder_project_store_artifact_bundle(
+                built,
+                sidecars = item$sidecars %||% character(),
+                dataset_id = item$id,
+                root = project$root,
+                promote = TRUE
+              ),
+              error = function(error) error
+            )
+            if (inherits(bundle, "condition")) {
+              registration_error <- conditionMessage(bundle)
+              break
+            }
+            stored_item <- item
+            stored_item$reused_artifact <- NULL
+            revision <- if (item$id %in% entry_ids) {
+              entries[[match(item$id, entry_ids)]]$revision %||% 0L
+            } else {
+              0L
+            }
+            artifacts[[item$id]] <- list(
+              status = "ready",
+              reusable = identical(
+                item$spatial_image_storage %||% "embedded",
+                "embedded"
+              ) &&
+                !length(setdiff(
+                  item$private_assets %||% character(),
+                  c(item$filename, item$sidecars %||% character())
+                )),
+              path = bundle$path,
+              fingerprint = bundle$fingerprint,
+              built_from_revision = as.integer(revision),
+              built_from_configuration = if (item$id %in% entry_ids) {
+                builder_project_configuration_digest(entries[[match(
+                  item$id,
+                  entry_ids
+                )]])
+              } else {
+                NULL
+              },
+              built_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC"),
+              plan_payload = jsonlite::serializeJSON(
+                stored_item,
+                digits = NA,
+                pretty = FALSE
+              ),
+              members = bundle$members
+            )
+          }
+          if (.builder_project_text(registration_error)) {
+            project$manifest <- builder_project_finish_pending_build(
+              project$manifest,
+              status = "failed",
+              error = registration_error
+            )
+            builder_project(project)
+            saved <- save_builder_project_state(
+              show_actions = FALSE,
+              materialize = FALSE,
+              notify = FALSE,
+              manage_lifecycle = FALSE
+            )
+            builder_project_operation_phase(
+              if (isTRUE(saved)) "idle" else "save_failed"
+            )
+            if (!isTRUE(saved)) {
+              builder_project(project_before_registration)
+            }
+            builder_project_cleanup_terminal_checkpoint(
+              saved = saved,
+              status = "failed",
+              path = plan$out_dir,
+              root = project$root
+            )
+            builder_project_send_crb_progress(
+              "failed",
+              completed = 0L,
+              total = total_crbs,
+              error = registration_error,
+              request_id = crb_request_id
+            )
+            showNotification(registration_error, type = "error", duration = 8)
+            return()
+          }
+          builder_project_artifacts(artifacts)
+          saved <- save_builder_project_state(
+            show_actions = FALSE,
+            materialize = FALSE,
+            notify = FALSE,
+            manage_lifecycle = FALSE
+          )
+          builder_project_operation_phase(
+            if (isTRUE(saved)) "idle" else "save_failed"
+          )
+          if (!isTRUE(saved)) {
+            builder_project_artifacts(previous_artifacts)
+            builder_project(project_before_registration)
+          }
+          if (isTRUE(saved)) {
+            builder_project_cleanup_checkpoint(plan$out_dir, project$root)
+            builder_project_send_crb_progress(
+              "ready",
+              completed = total_crbs,
+              total = total_crbs,
+              request_id = crb_request_id
+            )
+            showNotification(
+              "Reusable CRBs were added to the project.",
+              type = "message",
+              duration = 5
+            )
+          } else {
+            builder_project_send_crb_progress(
+              "failed",
+              completed = completed_crbs,
+              total = total_crbs,
+              error = "Reusable CRBs were created but could not be saved to the project.",
+              request_id = crb_request_id
+            )
           }
         },
-        add = TRUE
-      )
-      terminal_status <- if (
-        identical(value$state, "success") &&
-          length(value$built %||% character())
-      ) {
-        "completed"
-      } else {
-        "failed"
-      }
-      if (!is.null(project$manifest$pending_build)) {
-        project$manifest <- builder_project_finish_pending_build(
-          project$manifest,
-          status = terminal_status,
-          error = if (identical(terminal_status, "failed")) {
-            value$error %||% "The checkpoint build failed."
-          } else {
-            NULL
-          }
-        )
-        builder_project(project)
-      }
-      if (
-        !identical(value$state, "success") ||
-          !length(value$built %||% character())
-      ) {
-        saved <- save_builder_project_state(
-          show_actions = FALSE,
-          materialize = FALSE,
-          notify = FALSE,
-          manage_lifecycle = FALSE
-        )
-        builder_project_operation_phase(
-          if (isTRUE(saved)) "idle" else "save_failed"
-        )
-        if (!isTRUE(saved)) {
-          builder_project(project_before_registration)
-        }
-        builder_project_cleanup_terminal_checkpoint(
-          saved = saved,
-          status = terminal_status,
-          path = plan$out_dir,
-          root = project$root
-        )
-        session$sendCustomMessage(
-          "builder_project_crb_progress",
-          list(
-            status = "failed",
+        error = function(error) {
+          message <- conditionMessage(error)
+          builder_project_operation_phase("save_failed")
+          builder_project_send_crb_progress(
+            "failed",
             completed = completed_crbs,
             total = total_crbs,
-            error = value$error %||% "Reusable CRBs could not be prepared."
+            error = message,
+            request_id = crb_request_id
           )
-        )
-        return()
-      }
-      previous_artifacts <- isolate(builder_project_artifacts())
-      artifacts <- previous_artifacts
-      entries <- isolate(sets())
-      entry_ids <- vapply(entries, `[[`, character(1), "id")
-      registration_error <- NULL
-      for (item in plan$items) {
-        built <- value$built[[item$name]] %||% NULL
-        if (!.builder_project_text(built) || !file.exists(built)) {
-          registration_error <- paste0(
-            "The reusable CRB for ",
-            item$name,
-            " is missing."
-          )
-          break
+          showNotification(message, type = "error", duration = 8)
+          invisible(FALSE)
         }
-        bundle <- tryCatch(
-          builder_project_store_artifact_bundle(
-            built,
-            sidecars = item$sidecars %||% character(),
-            dataset_id = item$id,
-            root = project$root,
-            promote = TRUE
-          ),
-          error = function(error) error
-        )
-        if (inherits(bundle, "condition")) {
-          registration_error <- conditionMessage(bundle)
-          break
-        }
-        stored_item <- item
-        stored_item$reused_artifact <- NULL
-        revision <- if (item$id %in% entry_ids) {
-          entries[[match(item$id, entry_ids)]]$revision %||% 0L
-        } else {
-          0L
-        }
-        artifacts[[item$id]] <- list(
-          status = "ready",
-          reusable = identical(
-            item$spatial_image_storage %||% "embedded",
-            "embedded"
-          ) &&
-            !length(setdiff(
-              item$private_assets %||% character(),
-              c(item$filename, item$sidecars %||% character())
-            )),
-          path = bundle$path,
-          fingerprint = bundle$fingerprint,
-          built_from_revision = as.integer(revision),
-          built_from_configuration = if (item$id %in% entry_ids) {
-            builder_project_configuration_digest(entries[[match(
-              item$id,
-              entry_ids
-            )]])
-          } else {
-            NULL
-          },
-          built_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC"),
-          plan_payload = jsonlite::serializeJSON(
-            stored_item,
-            digits = NA,
-            pretty = FALSE
-          ),
-          members = bundle$members
-        )
-      }
-      if (.builder_project_text(registration_error)) {
-        project$manifest <- builder_project_finish_pending_build(
-          project$manifest,
-          status = "failed",
-          error = registration_error
-        )
-        builder_project(project)
-        saved <- save_builder_project_state(
-          show_actions = FALSE,
-          materialize = FALSE,
-          notify = FALSE,
-          manage_lifecycle = FALSE
-        )
-        builder_project_operation_phase(
-          if (isTRUE(saved)) "idle" else "save_failed"
-        )
-        if (!isTRUE(saved)) {
-          builder_project(project_before_registration)
-        }
-        builder_project_cleanup_terminal_checkpoint(
-          saved = saved,
-          status = "failed",
-          path = plan$out_dir,
-          root = project$root
-        )
-        session$sendCustomMessage(
-          "builder_project_crb_progress",
-          list(
-            status = "failed",
-            completed = 0L,
-            total = total_crbs,
-            error = registration_error
-          )
-        )
-        showNotification(registration_error, type = "error", duration = 8)
-        return()
-      }
-      builder_project_artifacts(artifacts)
-      saved <- save_builder_project_state(
-        show_actions = FALSE,
-        materialize = FALSE,
-        notify = FALSE,
-        manage_lifecycle = FALSE
       )
-      builder_project_operation_phase(
-        if (isTRUE(saved)) "idle" else "save_failed"
-      )
-      if (!isTRUE(saved)) {
-        builder_project_artifacts(previous_artifacts)
-        builder_project(project_before_registration)
-      }
-      if (isTRUE(saved)) {
-        builder_project_cleanup_checkpoint(plan$out_dir, project$root)
-        session$sendCustomMessage(
-          "builder_project_crb_progress",
-          list(status = "ready", completed = total_crbs, total = total_crbs)
-        )
-        showNotification(
-          "Reusable CRBs were added to the project.",
-          type = "message",
-          duration = 5
-        )
-      } else {
-        session$sendCustomMessage(
-          "builder_project_crb_progress",
-          list(
-            status = "failed",
-            completed = completed_crbs,
-            total = total_crbs,
-            error = "Reusable CRBs were created but could not be saved to the project."
-          )
-        )
-      }
     },
     once = TRUE
   )

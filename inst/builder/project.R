@@ -1174,7 +1174,11 @@ builder_project_source_context_matches <- function(
   list(path = lexical_path, root = normalized_root)
 }
 
-.builder_project_path_has_link_within <- function(path, root) {
+.builder_project_path_has_link_within <- function(
+  path,
+  root,
+  allow_missing_leaf = FALSE
+) {
   if (!.builder_project_text(path) || !.builder_project_text(root)) {
     return(TRUE)
   }
@@ -1191,9 +1195,24 @@ builder_project_source_context_matches <- function(
   relative <- if (identical(path, root)) "" else substring(path, nchar(root) + 2L)
   components <- if (nzchar(relative)) strsplit(relative, "/", fixed = TRUE)[[1L]] else character()
   current <- root
-  for (component in components) {
+  for (index in seq_along(components)) {
+    component <- components[[index]]
     current <- file.path(current, component)
-    if (nzchar(tryCatch(Sys.readlink(current), error = function(error) ""))) {
+    link <- tryCatch(
+      Sys.readlink(current),
+      error = function(error) NA_character_
+    )
+    if (is.na(link)) {
+      missing_leaf <- isTRUE(allow_missing_leaf) &&
+        identical(index, length(components)) &&
+        !file.exists(current) &&
+        !dir.exists(current)
+      if (!missing_leaf) {
+        return(TRUE)
+      }
+      next
+    }
+    if (nzchar(link)) {
       return(TRUE)
     }
   }

@@ -1356,12 +1356,30 @@ test_that("project CRB preparation stays in one progress dialog", {
   expect_match(js, "Step 2 of 3 · Preparing", fixed = TRUE)
   expect_match(js, "Step 3 of 3 · ", fixed = TRUE)
   expect_match(js, "Project and CRBs saved", fixed = TRUE)
-  prepare_action <- substr(
+  prepare_request <- substr(
     js,
-    regexpr('label: "Prepare checked CRBs"', js, fixed = TRUE)[[1L]],
-    regexpr('send("prepare_builder_project_crbs"', js, fixed = TRUE)[[1L]]
+    regexpr(
+      "function startBuilderProjectCrbRequest(remaining)",
+      js,
+      fixed = TRUE
+    )[[1L]],
+    regexpr(
+      "function closeBuilderProjectSaveResult()",
+      js,
+      fixed = TRUE
+    )[[1L]] -
+      1L
   )
-  expect_false(grepl('"is-result"', prepare_action, fixed = TRUE))
+  expect_match(
+    js,
+    "startBuilderProjectCrbRequest(remaining);",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    'classList.remove("is-result"',
+    prepare_request,
+    fixed = TRUE
+  ))
   source_progress <- substr(
     js,
     regexpr("function updateBuilderProjectSourceProgress", js, fixed = TRUE)[[
@@ -1424,6 +1442,158 @@ test_that("project CRB preparation stays in one progress dialog", {
   expect_false(grepl(
     'closeBuilderProjectSaveResult();\n          send("prepare_builder_project_crbs"',
     js,
+    fixed = TRUE
+  ))
+})
+
+test_that("project CRB planning has a correlated acknowledgement fallback", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(
+    js,
+    "var builderProjectCrbRequestSequence = 0;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "var builderProjectCrbRequestId = null;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "var builderProjectCrbAcknowledgementTimer = null;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "function clearBuilderProjectCrbAcknowledgement()",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "function startBuilderProjectCrbRequest(remaining)",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "function failBuilderProjectCrbRequest(error)",
+    fixed = TRUE
+  )
+
+  start_request <- substr(
+    js,
+    regexpr(
+      "function startBuilderProjectCrbRequest(remaining)",
+      js,
+      fixed = TRUE
+    )[[1L]],
+    regexpr(
+      "function showBuilderProjectSaveCompletion(status)",
+      js,
+      fixed = TRUE
+    )[[1L]] -
+      1L
+  )
+  expect_match(
+    start_request,
+    "builderProjectCrbRequestSequence += 1;",
+    fixed = TRUE
+  )
+  expect_match(
+    start_request,
+    "builderProjectCrbAcknowledgementTimer = window.setTimeout(function ()",
+    fixed = TRUE
+  )
+  expect_match(
+    start_request,
+    "if (builderProjectCrbRequestId !== requestId) return;",
+    fixed = TRUE
+  )
+  expect_match(
+    start_request,
+    'request_id: requestId',
+    fixed = TRUE
+  )
+  expect_match(
+    start_request,
+    '!builderConnectionReady || !activityCapability("prepare_crbs")',
+    fixed = TRUE
+  )
+
+  progress <- substr(
+    js,
+    regexpr(
+      "function updateBuilderProjectCrbProgress(message)",
+      js,
+      fixed = TRUE
+    )[[1L]],
+    regexpr(
+      "function applyDatasetMutationLock()",
+      js,
+      fixed = TRUE
+    )[[1L]] -
+      1L
+  )
+  id_guard <- regexpr(
+    "message.request_id !== builderProjectCrbRequestId",
+    progress,
+    fixed = TRUE
+  )[[1L]]
+  clear_timer <- regexpr(
+    "clearBuilderProjectCrbAcknowledgement();",
+    progress,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(id_guard, 0L)
+  expect_gt(clear_timer, id_guard)
+  expect_match(progress, 'if (status === "planning")', fixed = TRUE)
+
+  close_result <- substr(
+    js,
+    regexpr("function closeBuilderProjectSaveResult", js, fixed = TRUE)[[1L]],
+    regexpr("function showBuilderProjectSaveCompletion", js, fixed = TRUE)[[
+      1L
+    ]] -
+      1L
+  )
+  expect_match(
+    close_result,
+    "clearBuilderProjectCrbAcknowledgement();",
+    fixed = TRUE
+  )
+  expect_match(
+    close_result,
+    "builderProjectCrbRequestId = null;",
+    fixed = TRUE
+  )
+
+  disconnected <- substr(
+    js,
+    regexpr(
+      'document.addEventListener("shiny:disconnected", function ()',
+      js,
+      fixed = TRUE
+    )[[1L]],
+    regexpr(
+      'document.addEventListener("shiny:sessioninitialized", function ()',
+      js,
+      fixed = TRUE
+    )[[1L]] -
+      1L
+  )
+  expect_match(
+    disconnected,
+    "if (builderProjectCrbDialogActive && !builderProjectCrbTerminal)",
+    fixed = TRUE
+  )
+  expect_match(
+    disconnected,
+    "failBuilderProjectCrbRequest(",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "closeBuilderProjectSaveResult()",
+    disconnected,
     fixed = TRUE
   ))
 })
@@ -2393,8 +2563,16 @@ test_that("page shortcuts stop at an open modal", {
   expect_match(js, "function pageShortcutBlocked()", fixed = TRUE)
   expect_match(js, 'classList.contains("modal-open")', fixed = TRUE)
   expect_match(js, 'classList.contains("builder-dialog-open")', fixed = TRUE)
-  expect_match(js, 'document.querySelectorAll(\'[aria-modal="true"]\')', fixed = TRUE)
-  expect_match(js, "if (modifier && pageShortcutBlocked()) return;", fixed = TRUE)
+  expect_match(
+    js,
+    'document.querySelectorAll(\'[aria-modal="true"]\')',
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "if (modifier && pageShortcutBlocked()) return;",
+    fixed = TRUE
+  )
 })
 
 test_that("dataset and Spatial optimistic state has an authoritative generation", {
@@ -2404,8 +2582,16 @@ test_that("dataset and Spatial optimistic state has an authoritative generation"
   expect_match(js, 'settleDatasetSwitch("error")', fixed = TRUE)
   expect_match(js, 'settleDatasetSwitch("ready")', fixed = TRUE)
   expect_match(js, "spatialSectionGeneration += 1", fixed = TRUE)
-  expect_match(js, "spatialSectionTimers.forEach(window.clearTimeout)", fixed = TRUE)
-  expect_match(js, "if (generation !== spatialSectionGeneration) return;", fixed = TRUE)
+  expect_match(
+    js,
+    "spatialSectionTimers.forEach(window.clearTimeout)",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "if (generation !== spatialSectionGeneration) return;",
+    fixed = TRUE
+  )
 })
 
 test_that("Build overlay owns focus while the Builder shell is inert", {
@@ -2430,7 +2616,11 @@ test_that("Build overlay owns focus while the Builder shell is inert", {
     ),
     fixed = TRUE
   )
-  expect_match(build, "result(NULL)\n  build_flow(list(stage = \"preparing\"", fixed = TRUE)
+  expect_match(
+    build,
+    "result(NULL)\n  build_flow(list(stage = \"preparing\"",
+    fixed = TRUE
+  )
 })
 
 test_that("background UI work is bounded to live changing content", {
@@ -2443,9 +2633,21 @@ test_that("background UI work is bounded to live changing content", {
   expect_match(js, "observedStages.delete(entry.target);", fixed = TRUE)
   expect_match(js, "var datasetLoadTimeTimer = null;", fixed = TRUE)
   expect_match(js, '[data-started-at-ms]', fixed = TRUE)
-  expect_match(js, "if (node.textContent !== text) node.textContent = text;", fixed = TRUE)
-  expect_match(js, "if (!running && datasetLoadTimeTimer !== null)", fixed = TRUE)
-  expect_match(js, "if (updateDatasetLoadTimes()) scheduleDatasetLoadTimeUpdates();", fixed = TRUE)
+  expect_match(
+    js,
+    "if (node.textContent !== text) node.textContent = text;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "if (!running && datasetLoadTimeTimer !== null)",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "if (updateDatasetLoadTimes()) scheduleDatasetLoadTimeUpdates();",
+    fixed = TRUE
+  )
   expect_false(grepl("setInterval(updateDatasetLoadTimes", js, fixed = TRUE))
   expect_match(js, "function handleDynamicContentMutations", fixed = TRUE)
   expect_match(js, 'closest(".builder-load-time")', fixed = TRUE)
@@ -2466,8 +2668,16 @@ test_that("Spatial canvas hover work stays on the canvas and one frame", {
   expect_match(canvas, "screenPoints: []", fixed = TRUE)
   expect_match(canvas, "function setupCanvasHover(node)", fixed = TRUE)
   expect_match(canvas, 'node.addEventListener("pointermove"', fixed = TRUE)
-  expect_match(canvas, "window.requestAnimationFrame(updateHover)", fixed = TRUE)
-  expect_match(canvas, "var cosine = Math.cos(angle), sine = Math.sin(angle);", fixed = TRUE)
+  expect_match(
+    canvas,
+    "window.requestAnimationFrame(updateHover)",
+    fixed = TRUE
+  )
+  expect_match(
+    canvas,
+    "var cosine = Math.cos(angle), sine = Math.sin(angle);",
+    fixed = TRUE
+  )
   expect_false(grepl(
     'document.addEventListener("pointermove"',
     canvas,
