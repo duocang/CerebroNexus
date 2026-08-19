@@ -398,6 +398,16 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
     if (!isTRUE(builder_require_confirmed_build_plan(plan, path))) {
       return(invisible(FALSE))
     }
+    output_preflight <- builder_build_plan_output_preflight(plan)
+    if (!isTRUE(output_preflight$ok)) {
+      build_flow(list(stage = "idle", plan = NULL))
+      showNotification(
+        output_preflight$error %||% "The selected folder cannot be used.",
+        type = "warning",
+        duration = 10
+      )
+      return(invisible(FALSE))
+    }
     conflict_files <- try(
       builder_build_conflict_files(plan),
       silent = TRUE
@@ -434,6 +444,69 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
   })
 }
 
+builder_build_foreign_output_error <- function(foreign) {
+  foreign <- sort(unique(sub("/.*$", "", foreign)), method = "radix")
+  if (!length(foreign)) {
+    return(NULL)
+  }
+  shown <- head(foreign, 8L)
+  remainder <- length(foreign) - length(shown)
+  paste0(
+    "The selected folder contains files that do not belong to this release: ",
+    paste(shown, collapse = ", "),
+    if (remainder > 0L) paste0(" and ", remainder, " more") else "",
+    ". Choose an empty folder or an existing Builder output folder."
+  )
+}
+
+builder_build_plan_output_preflight <- function(plan) {
+  checked <- tryCatch(
+    builder_coordinator_output_preflight(plan),
+    error = identity
+  )
+  if (inherits(checked, "condition")) {
+    return(list(ok = FALSE, error = conditionMessage(checked)))
+  }
+  error <- builder_build_foreign_output_error(checked$foreign)
+  list(ok = is.null(error), error = error)
+}
+
+builder_build_output_preflight <- function(path) {
+  plan <- freeze_plan_for_output(
+    path,
+    overwrite = FALSE,
+    output_options = current_build_options()
+  )
+  if (
+    !inherits(plan, "builder_build_plan") ||
+      !identical(plan$readiness, "ready")
+  ) {
+    return(list(
+      ok = FALSE,
+      error = plan$error %||% "The selected folder cannot be used."
+    ))
+  }
+  expected <- plan$output_release$targets %||% plan$targets %||% character()
+  relative <- vapply(
+    expected,
+    function(target) .builder_release_relative(target, path),
+    character(1)
+  )
+  expected_roots <- unique(sub("/.*$", "", relative))
+  actual_roots <- list.files(path, all.files = TRUE, no.. = TRUE)
+  foreign <- setdiff(
+    actual_roots,
+    c(expected_roots, .builder_release_record_name)
+  )
+  if (length(foreign)) {
+    return(list(
+      ok = FALSE,
+      error = builder_build_foreign_output_error(foreign)
+    ))
+  }
+  builder_build_plan_output_preflight(plan)
+}
+
 choose_build_folder <- function() {
   build_flow(list(stage = "choosing_folder", plan = NULL))
   session$onFlushed(
@@ -449,6 +522,16 @@ choose_build_folder <- function() {
           choice$error %||% "The folder picker could not be opened.",
           type = "error",
           duration = 6
+        )
+        return()
+      }
+      preflight <- builder_build_output_preflight(choice$path)
+      if (!isTRUE(preflight$ok)) {
+        build_flow(list(stage = "idle", plan = NULL))
+        showNotification(
+          preflight$error %||% "The selected folder cannot be used.",
+          type = "warning",
+          duration = 10
         )
         return()
       }
