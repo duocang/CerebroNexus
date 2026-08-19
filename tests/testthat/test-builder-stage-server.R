@@ -15,6 +15,31 @@ test_that("automatic dataset review advance requests top-of-workbench focus", {
   expect_match(review, "list(dataset = target)", fixed = TRUE)
 })
 
+test_that("an accepted Build requests absolute page-top scrolling", {
+  build <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "build.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  start <- regmatches(
+    build,
+    regexpr(
+      "start_confirmed_build <- function\\(\\)[\\s\\S]+?invisible\\(TRUE\\)",
+      build,
+      perl = TRUE
+    )
+  )
+
+  expect_match(start, 'build_flow(list(stage = "preparing"', fixed = TRUE)
+  expect_match(start, '"builder_scroll_page_top"', fixed = TRUE)
+  expect_lt(
+    regexpr('build_flow(list(stage = "preparing"', start, fixed = TRUE)[1L],
+    regexpr('"builder_scroll_page_top"', start, fixed = TRUE)[1L]
+  )
+})
+
 test_that("Builder shell and workflow UI separate all four stages", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())

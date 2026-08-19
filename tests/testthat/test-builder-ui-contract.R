@@ -1211,6 +1211,23 @@ test_that("stage focus targets the active heading", {
   expect_match(js, "heading.focus({ preventScroll: true })", fixed = TRUE)
 })
 
+test_that("accepted Builds scroll the document to its absolute top", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(
+    js,
+    'addCustomMessageHandler("builder_scroll_page_top"',
+    fixed = TRUE
+  )
+  expect_match(js, "window.scrollTo({", fixed = TRUE)
+  expect_match(js, "top: 0", fixed = TRUE)
+  expect_match(
+    js,
+    'behavior: reducedMotion.matches ? "auto" : "smooth"',
+    fixed = TRUE
+  )
+})
+
 test_that("per-dataset compact review server inputs are removed", {
   app <- builder_app_source_text()
 
