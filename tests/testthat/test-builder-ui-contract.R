@@ -1315,10 +1315,70 @@ test_that("project CRB preparation stays in one progress dialog", {
   js <- builder_asset_text("www", "builder.js")
 
   expect_match(js, '"builder_project_crb_progress"', fixed = TRUE)
+  expect_match(js, "var builderProjectCrbDialogActive = false;", fixed = TRUE)
+  expect_match(js, "if (builderProjectCrbDialogActive) return;", fixed = TRUE)
+  expect_match(js, "builderProjectCrbDialogActive = true;", fixed = TRUE)
+  expect_match(js, "builderProjectCrbDialogActive = false;", fixed = TRUE)
   expect_match(js, "Step 1 of 3 · Planning", fixed = TRUE)
   expect_match(js, "Step 2 of 3 · Preparing", fixed = TRUE)
   expect_match(js, "Step 3 of 3 · ", fixed = TRUE)
   expect_match(js, "Project and CRBs saved", fixed = TRUE)
+  prepare_action <- substr(
+    js,
+    regexpr('label: "Prepare checked CRBs"', js, fixed = TRUE)[[1L]],
+    regexpr('send("prepare_builder_project_crbs"', js, fixed = TRUE)[[1L]]
+  )
+  expect_false(grepl('"is-result"', prepare_action, fixed = TRUE))
+  source_progress <- substr(
+    js,
+    regexpr("function updateBuilderProjectSourceProgress", js, fixed = TRUE)[[1L]],
+    regexpr("function showBuilderProjectSaveResult", js, fixed = TRUE)[[1L]] - 1L
+  )
+  expect_match(
+    source_progress,
+    "if (builderProjectCrbDialogActive) return;",
+    fixed = TRUE
+  )
+  save_result <- substr(
+    js,
+    regexpr("function showBuilderProjectSaveResult", js, fixed = TRUE)[[1L]],
+    regexpr("function updateBuilderProjectCrbProgress", js, fixed = TRUE)[[1L]] - 1L
+  )
+  expect_match(
+    save_result,
+    "if (builderProjectCrbDialogActive) return;",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "builderProjectCrbDialogActive = false;",
+    save_result,
+    fixed = TRUE
+  ))
+  crb_progress <- substr(
+    js,
+    regexpr("function updateBuilderProjectCrbProgress", js, fixed = TRUE)[[1L]],
+    regexpr("function applyDatasetMutationLock", js, fixed = TRUE)[[1L]] - 1L
+  )
+  expect_false(grepl(
+    'classList.remove("is-result"',
+    crb_progress,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "builderProjectCrbDialogActive = false;",
+    crb_progress,
+    fixed = TRUE
+  ))
+  close_result <- substr(
+    js,
+    regexpr("function closeBuilderProjectSaveResult", js, fixed = TRUE)[[1L]],
+    regexpr("function showBuilderProjectSaveCompletion", js, fixed = TRUE)[[1L]] - 1L
+  )
+  expect_match(
+    close_result,
+    "builderProjectCrbDialogActive = false;",
+    fixed = TRUE
+  )
   expect_false(grepl(
     'closeBuilderProjectSaveResult();\n          send("prepare_builder_project_crbs"',
     js,
