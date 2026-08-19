@@ -1368,6 +1368,18 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   align-self: flex-end;
   max-width: 100%;
 }
+.builder-cancel-import,
+.builder-cancel-client-import {
+  display: inline-flex;
+  min-height: 2.3rem;
+  align-items: center;
+  justify-content: center;
+  padding: .45rem .95rem;
+  border-radius: var(--r-sm);
+  font-size: .85rem;
+  font-weight: 600;
+  line-height: normal;
+}
 .builder-import-status {
   display: block;
   margin-top: .25rem;
@@ -1551,13 +1563,13 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   background: var(--c-error-100);
   color: var(--c-error-700);
 }
-.ds-del.btn-remove-soft {
+.ds-del.btn-remove-soft:not(.builder-cancel-import) {
   border-color: var(--c-border-2);
   background: var(--c-surface);
   color: var(--c-error);
 }
-.ds-del.btn-remove-soft:hover,
-.ds-del.btn-remove-soft:focus-visible {
+.ds-del.btn-remove-soft:not(.builder-cancel-import):hover,
+.ds-del.btn-remove-soft:not(.builder-cancel-import):focus-visible {
   border-color: var(--c-border-2);
   background: var(--c-surface);
   color: var(--c-error-700);

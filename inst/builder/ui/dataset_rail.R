@@ -721,7 +721,15 @@ builder_import_rail_row_ui <- function(model) {
         },
         shiny::tags$button(
           type = "button",
-          class = "ds-del btn-remove-soft builder-remove-import",
+          class = paste(
+            "ds-del",
+            if (running) {
+              "btn btn-remove-soft builder-cancel-import"
+            } else {
+              "btn-remove-soft"
+            },
+            "builder-remove-import"
+          ),
           `data-import-id` = model$id,
           `aria-label` = if (failed) {
             paste("Remove failed import", model$label)
