@@ -739,10 +739,7 @@ observeEvent(input$confirm_review, {
     return()
   }
   reviewed <- state$review_plan
-  live <- freeze_materialized_plan_for_output(
-    file.path(tempdir(), "cerebro-builder-output-preview"),
-    overwrite = FALSE
-  )
+  live <- frozen_review_plan()
   matches <- builder_review_can_build(live) &&
     identical(
       builder_review_plan_identity(reviewed),
