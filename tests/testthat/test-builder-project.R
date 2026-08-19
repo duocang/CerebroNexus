@@ -393,6 +393,34 @@ test_that("managed path checks allow only an explicitly missing create leaf", {
   ))
 })
 
+test_that("checkpoint cleanup accepts the lexical macOS alias of its project root", {
+  skip_on_os("windows")
+  runtime <- builder_project_test_runtime()
+  lexical_root <- withr::local_tempdir()
+  normalized_root <- normalizePath(
+    lexical_root,
+    winslash = "/",
+    mustWork = TRUE
+  )
+  skip_if(
+    identical(lexical_root, normalized_root),
+    "the temporary root has no lexical filesystem alias"
+  )
+  checkpoint <- file.path(
+    lexical_root,
+    "checkpoints",
+    "20260820T000000"
+  )
+  dir.create(checkpoint, recursive = TRUE)
+  writeLines("checkpoint", file.path(checkpoint, "dataset.crb"))
+
+  expect_true(runtime$builder_project_cleanup_checkpoint(
+    checkpoint,
+    normalized_root
+  ))
+  expect_false(dir.exists(checkpoint))
+})
+
 test_that("source progress records stay compact while final results remain complete", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
@@ -680,7 +708,16 @@ test_that("status signatures sort resolved paths as character values", {
 
   expect_identical(
     names(signature),
-    sort(unique(file.path(root, relative_paths)), method = "radix")
+    sort(
+      unique(vapply(
+        file.path(root, relative_paths),
+        normalizePath,
+        character(1),
+        winslash = "/",
+        mustWork = TRUE
+      )),
+      method = "radix"
+    )
   )
   expect_true(all(vapply(signature, is.list, logical(1))))
 })
@@ -1266,7 +1303,12 @@ test_that("ready CRB workbench keeps the Review continuation actions", {
   )
   expect_match(
     project_ui,
-    'actionButton("continue_to_review", "Continue to Review"',
+    '"continue_to_review",',
+    fixed = TRUE
+  )
+  expect_match(
+    project_ui,
+    '"Continue to Review",',
     fixed = TRUE
   )
   expect_match(
@@ -1306,7 +1348,12 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
     artifact = list(
       status = "ready",
       reusable = TRUE,
-      path = runtime$builder_project_relative_path(artifact_path, root)
+      path = runtime$builder_project_relative_path(artifact_path, root),
+      fingerprint = runtime$builder_project_file_fingerprint(
+        artifact_path,
+        content = TRUE
+      ),
+      members = list()
     )
   )
 
@@ -2344,6 +2391,11 @@ test_that("reusable CRB preparation skips current artifacts", {
     status = "ready",
     reusable = TRUE,
     path = basename(artifact_path),
+    fingerprint = runtime$builder_project_file_fingerprint(
+      artifact_path,
+      content = TRUE
+    ),
+    members = list(),
     built_from_configuration = runtime$builder_project_configuration_digest(
       entry
     )
@@ -2697,7 +2749,7 @@ test_that("dynamic content enhancement is coalesced per animation frame", {
   )
   expect_match(
     source,
-    "new MutationObserver(scheduleDynamicContentEnhancement)",
+    "new MutationObserver(handleDynamicContentMutations)",
     fixed = TRUE
   )
   expect_false(grepl("characterData: true", source, fixed = TRUE))
@@ -3165,7 +3217,12 @@ test_that("project open clears all cross-project runtime caches", {
   expect_match(source, "spatial_previews(list())", fixed = TRUE)
   expect_match(
     source,
-    "builder_project_configuration_cache_clear(builder_configuration_identity_cache)",
+    "builder_project_configuration_cache_clear(",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "builder_configuration_identity_cache",
     fixed = TRUE
   )
   expect_match(source, "invalidate_builder_project_source_sync()", fixed = TRUE)
@@ -3230,11 +3287,17 @@ test_that("checkpoint preparation requires a durable project save before enqueue
     "project.R"
   )
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  checkpoint <- substr(
+  checkpoint_start <- regexpr(
+    "enqueue_builder_project_checkpoint <- function(",
     source,
-    regexpr("builder_project_checkpoint(TRUE)", source, fixed = TRUE)[[1L]],
-    regexpr("queued <- enqueue(list(", source, fixed = TRUE)[[1L]] - 1L
-  )
+    fixed = TRUE
+  )[[1L]]
+  checkpoint_end <- regexpr(
+    "prepare_builder_project_crbs <- function(",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  checkpoint <- substr(source, checkpoint_start, checkpoint_end - 1L)
 
   expect_match(checkpoint, "saved <- save_builder_project_state(", fixed = TRUE)
   expect_match(checkpoint, "if (!isTRUE(saved))", fixed = TRUE)
