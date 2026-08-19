@@ -85,6 +85,29 @@ test_that("Continue to Build reuses the reviewed plan with immediate feedback", 
   ))
 })
 
+test_that("Continue to Review reuses the ready plan with immediate feedback", {
+  browser <- builder_asset_text("www", "builder.js")
+  workflow <- builder_asset_text("server", "workflow.R")
+
+  expect_match(
+    browser,
+    'reviewButton.textContent = "Opening Review…"',
+    fixed = TRUE
+  )
+  handler <- sub(
+    ".*observeEvent\\(input\\$continue_to_review, \\{",
+    "",
+    workflow
+  )
+  handler <- sub("\\n\\}\\)\\n\\nrender_build_workbench.*", "", handler)
+  expect_match(handler, "plan <- frozen_review_plan()", fixed = TRUE)
+  expect_false(grepl(
+    "freeze_materialized_plan_for_output",
+    handler,
+    fixed = TRUE
+  ))
+})
+
 test_that("builder UI includes the Bootstrap dependency required by modals", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(dirname(builder_asset_path("app.R")))

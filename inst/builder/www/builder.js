@@ -3043,6 +3043,12 @@
       event.stopPropagation();
       return;
     }
+    var reviewButton = target.closest("#continue_to_review");
+    if (reviewButton && !reviewButton.disabled) {
+      reviewButton.disabled = true;
+      reviewButton.setAttribute("aria-busy", "true");
+      reviewButton.textContent = "Opening Review…";
+    }
     var continueButton = target.closest("#confirm_review");
     if (continueButton && !continueButton.disabled) {
       continueButton.disabled = true;
