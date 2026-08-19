@@ -6,11 +6,16 @@ sys.source(
 sys.source("app.R", envir = environment())
 
 test_that("active Build phases drive a blocking operation overlay", {
+  stale_result <- builder_result_success(
+    published = TRUE,
+    built = "dataset.crb",
+    app_verified = FALSE
+  )
   preparing <- builder_build_operation_overlay_model(
     flow = list(stage = "preparing", plan = NULL),
     protocol = NULL,
     note = NULL,
-    result = NULL
+    result = stale_result
   )
   expect_true(preparing$active)
   expect_identical(preparing$title, "Building output")
@@ -23,23 +28,34 @@ test_that("active Build phases drive a blocking operation overlay", {
     flow = list(stage = "building", plan = NULL),
     protocol = queued_protocol,
     note = "Waiting for the background worker…",
-    result = NULL
+    result = stale_result
   )
   expect_true(queued$active)
   expect_identical(queued$detail, "Waiting for the background worker…")
 
   finished <- builder_build_operation_overlay_model(
-    flow = list(stage = "building", plan = NULL),
-    protocol = queued_protocol,
+    flow = list(stage = "idle", plan = NULL),
+    protocol = NULL,
     note = NULL,
-    result = builder_result_success(
-      published = TRUE,
-      built = "dataset.crb",
-      app_verified = FALSE
-    )
+    result = stale_result
   )
   expect_false(finished$active)
   expect_null(finished$detail)
+})
+
+test_that("Build overlay takes focus before the shell becomes inert", {
+  js <- paste(
+    readLines(file.path("www", "builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  focus_at <- regexpr("beginBuildOperationFocus(overlay);", js, fixed = TRUE)[[1L]]
+  inert_at <- regexpr("if (shell) shell.inert =", js, fixed = TRUE)[[1L]]
+
+  expect_gt(focus_at, 0L)
+  expect_gt(inert_at, focus_at)
+  expect_match(js, 'document.querySelector(".result-card h2")', fixed = TRUE)
+  expect_match(js, ".builder-result-actions button", fixed = TRUE)
+  expect_match(js, "buildOperationRestoreFocus", fixed = TRUE)
 })
 
 test_that("Review model translates a frozen plan into user language", {

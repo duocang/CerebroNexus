@@ -463,6 +463,11 @@ test_that("dataset switching gives immediate honest browser feedback", {
   expect_match(js, '"This is taking longer than expected…"', fixed = TRUE)
   expect_match(js, '"builder_dataset_switch_state"', fixed = TRUE)
   expect_match(js, "datasetSwitchState.generation", fixed = TRUE)
+  expect_match(js, "authoritative: null", fixed = TRUE)
+  expect_match(js, "datasetSwitchState.authoritative = selectedId", fixed = TRUE)
+  expect_match(js, 'settleDatasetSwitch("error")', fixed = TRUE)
+  expect_match(js, 'settleDatasetSwitch("ready")', fixed = TRUE)
+  expect_match(js, "optimisticallySelectDataset(datasetSwitchState.authoritative)", fixed = TRUE)
   expect_match(js, "datasetSwitchState.removal", fixed = TRUE)
   expect_match(
     js,
@@ -474,4 +479,17 @@ test_that("dataset switching gives immediate honest browser feedback", {
   expect_match(css, ".builder-dataset-switch-veil", fixed = TRUE)
   expect_match(css, ".builder-dataset-switch-status", fixed = TRUE)
   expect_match(css, "@media (prefers-reduced-motion: reduce)", fixed = TRUE)
+})
+
+test_that("Spatial section retries cancel older generations", {
+  js <- builder_dataset_switch_asset("www", "builder.js")
+
+  expect_match(js, "var spatialSectionGeneration = 0;", fixed = TRUE)
+  expect_match(js, "var spatialSectionTimers = [];", fixed = TRUE)
+  expect_match(js, "spatialSectionGeneration += 1;", fixed = TRUE)
+  expect_match(js, "spatialSectionTimers.forEach(window.clearTimeout);", fixed = TRUE)
+  expect_match(js, "spatialSectionTimers = [];", fixed = TRUE)
+  expect_match(js, "if (generation !== spatialSectionGeneration) return;", fixed = TRUE)
+  expect_match(js, "select.selectize.setValue(desiredSpatialSection, true);", fixed = TRUE)
+  expect_match(js, "spatialSectionTimers.push(timer);", fixed = TRUE)
 })
