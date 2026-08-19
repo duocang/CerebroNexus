@@ -130,8 +130,16 @@ test_that("Review presents the frozen CRB data plan", {
   expect_match(html, "Data info", fixed = TRUE)
   expect_match(html, "Marker genes", fixed = TRUE)
   expect_match(html, "Output", fixed = TRUE)
-  expect_match(html, "Folder", fixed = TRUE)
-  expect_match(html, "/private/host/output", fixed = TRUE)
+  expect_false(grepl(">Folder<", html, fixed = TRUE))
+  expect_false(grepl("/private/host/output", html, fixed = TRUE))
+  expect_match(
+    html,
+    "CRB files will be available to download after the build completes.",
+    fixed = TRUE
+  )
+  expect_match(html, "Creates", fixed = TRUE)
+  expect_match(html, "Estimated size", fixed = TRUE)
+  expect_match(html, "Estimated build time", fixed = TRUE)
   expect_false(grepl("Existing files", html, fixed = TRUE))
   expect_false(grepl("Keep existing files", html, fixed = TRUE))
   expect_match(html, "4 KB", fixed = TRUE)
@@ -401,7 +409,7 @@ test_that("Review gives a useful next step when the plan is not ready", {
   ))
 })
 
-test_that("Review handles one dataset and long output folders", {
+test_that("Review handles one dataset without exposing its planning folder", {
   plan <- builder_stage_frozen_plan(TRUE)
   plan$items <- plan$items[1L]
   plan$dataset_order <- "dataset-b"
@@ -414,7 +422,12 @@ test_that("Review handles one dataset and long output folders", {
 
   expect_match(html, "1 dataset", fixed = TRUE)
   expect_false(grepl("1 datasets", html, fixed = TRUE))
-  expect_match(html, plan$output_release$directory, fixed = TRUE)
+  expect_false(grepl(plan$output_release$directory, html, fixed = TRUE))
+  expect_match(
+    html,
+    "CRB files will be available to download after the build completes.",
+    fixed = TRUE
+  )
   expect_null(model$app)
 })
 
