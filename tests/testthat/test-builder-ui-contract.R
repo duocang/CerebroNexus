@@ -1356,6 +1356,7 @@ test_that("project CRB preparation stays in one progress dialog", {
   expect_match(js, "Step 2 of 3 · Preparing", fixed = TRUE)
   expect_match(js, "Step 3 of 3 · ", fixed = TRUE)
   expect_match(js, "Project and CRBs saved", fixed = TRUE)
+  expect_match(js, "Stored inside the Project artifacts folder", fixed = TRUE)
   prepare_request <- substr(
     js,
     regexpr(

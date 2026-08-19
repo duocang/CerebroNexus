@@ -565,7 +565,7 @@
         total > 0
           ? total + " reusable CRB" + (total === 1 ? " is" : "s are") + " ready."
           : "All current reusable CRBs were already up to date.",
-        "You can safely close this page or continue working."
+        "Stored inside the Project artifacts folder. You can safely close this page or continue working."
       );
       setBuilderOperationActions([
         { label: "Done", action: closeBuilderProjectSaveResult },

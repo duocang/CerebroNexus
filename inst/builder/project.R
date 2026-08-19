@@ -1826,6 +1826,13 @@ builder_project_checkpoint_entries <- function(entries) {
   })
 }
 
+builder_project_plan_artifact_reusable <- function(item) {
+  !length(setdiff(
+    item$private_assets %||% character(),
+    c(item$filename, item$sidecars %||% character())
+  ))
+}
+
 builder_project_checkpoint_budget <- function(entries, root) {
   closure_bytes <- sum(vapply(entries, function(entry) {
     value <- suppressWarnings(as.double(entry$snapshot$closure_bytes %||% 0))
@@ -3305,6 +3312,57 @@ builder_project_artifact_entry <- function(
   }
   entry$project_artifact <- artifact
   entry
+}
+
+builder_project_prepare_open_selection <- function(manifest, root, actions) {
+  records <- manifest$datasets %||% list()
+  ids <- vapply(records, function(record) {
+    as.character(record$id)
+  }, character(1))
+  names(records) <- ids
+  reusable_entries <- list()
+  pending_entries <- list()
+  artifacts <- list()
+  marks <- character()
+  for (record in records) {
+    action <- actions[[record$id]] %||% "skip"
+    status <- builder_project_dataset_status(record, root)
+    if (identical(action, "reuse") && isTRUE(status$artifact_ready)) {
+      entry <- builder_project_restore_entry(
+        record,
+        root,
+        hydrate_spatial_assets = FALSE,
+        status = status
+      )
+      entry <- builder_project_artifact_entry(
+        entry,
+        record$artifact,
+        root,
+        status = status,
+        record = record
+      )
+      reusable_entries[[length(reusable_entries) + 1L]] <- entry
+      artifacts[[record$id]] <- record$artifact
+      restored_mark <- builder_project_restored_check_identity(
+        record,
+        entry,
+        status,
+        root
+      )
+      if (!is.null(restored_mark)) {
+        marks[[record$id]] <- restored_mark
+      }
+    } else if (identical(action, "resume") && isTRUE(status$restorable)) {
+      record$runtime_restore_status <- status
+      pending_entries[[record$id]] <- record
+    }
+  }
+  list(
+    reusable_entries = reusable_entries,
+    pending_entries = pending_entries,
+    artifacts = artifacts,
+    marks = marks
+  )
 }
 
 builder_project_check_identity <- function(entry, identity_cache = NULL, variant = "live") {

@@ -1498,69 +1498,58 @@ observeEvent(input$confirm_builder_project_open, {
   manifest <- pending$manifest
   root <- pending$root
   records <- builder_project_record_map(manifest)
-  reusable_entries <- list()
-  pending_entries <- list()
-  artifacts <- list()
-  for (record in records) {
-    action <- input[[paste0("project_restore_", record$id)]] %||% "skip"
-    status <- builder_project_dataset_status(record, root)
-    if (identical(action, "reuse") && status$artifact_ready) {
-      entry <- builder_project_restore_entry(
-        record,
-        root,
-        hydrate_spatial_assets = FALSE,
-        status = status
-      )
-      entry <- builder_project_artifact_entry(
-        entry,
-        record$artifact,
-        root,
-        status = status,
-        record = record
-      )
-      reusable_entries[[length(reusable_entries) + 1L]] <- entry
-      artifacts[[record$id]] <- record$artifact
-    } else if (identical(action, "resume") && status$restorable) {
-      record$runtime_restore_status <- status
-      pending_entries[[record$id]] <- record
-    }
+  actions <- lapply(records, function(record) {
+    input[[paste0("project_restore_", record$id)]] %||% "skip"
+  })
+  prepared <- tryCatch(
+    builder_project_prepare_open_selection(manifest, root, actions),
+    error = identity
+  )
+  if (inherits(prepared, "condition")) {
+    showNotification(
+      paste0(
+        "The selected Project datasets could not be opened: ",
+        conditionMessage(prepared)
+      ),
+      type = "error",
+      duration = 10
+    )
+    return()
   }
-  reusable_entries <- reusable_entries[order(vapply(
-    reusable_entries,
-    function(entry) records[[entry$id]]$order %||% 0L,
-    numeric(1)
-  ))]
+  reusable_entries <- prepared$reusable_entries
+  pending_entries <- prepared$pending_entries
+  artifacts <- prepared$artifacts
+  marks <- prepared$marks
+  next_store <- tryCatch(
+    builder_state(
+      datasets = reusable_entries,
+      current_dataset = if (length(reusable_entries)) {
+        reusable_entries[[1L]]$id
+      } else {
+        NULL
+      }
+    ),
+    error = identity
+  )
+  if (inherits(next_store, "condition")) {
+    showNotification(
+      paste0(
+        "The reusable CRBs could not be attached to this session: ",
+        conditionMessage(next_store)
+      ),
+      type = "error",
+      duration = 10
+    )
+    return()
+  }
   invalidate_builder_project_source_sync()
-  store(builder_state(
-    datasets = reusable_entries,
-    current_dataset = if (length(reusable_entries)) {
-      reusable_entries[[1L]]$id
-    } else {
-      NULL
-    }
-  ))
+  store(next_store)
   projection_previews(list())
   trajectory_previews(list())
   spatial_previews(list())
   builder_project_configuration_cache_clear(
     builder_configuration_identity_cache
   )
-  marks <- character()
-  if (length(reusable_entries)) {
-    for (entry in reusable_entries) {
-      record <- records[[entry$id]]
-      status <- builder_project_dataset_status(record, root)
-      restored_mark <- builder_project_restored_check_identity(
-        record,
-        entry,
-        status,
-        root
-      )
-      if (!is.null(restored_mark)) {
-        marks[[entry$id]] <- restored_mark
-      }
-    }
-  }
   dataset_check_marks(marks)
   builder_project_pending_entries(pending_entries)
   builder_project_artifacts(artifacts)
@@ -2392,6 +2381,14 @@ observe({
           entry_ids <- vapply(entries, `[[`, character(1), "id")
           registration_error <- NULL
           for (item in plan$items) {
+            if (!builder_project_plan_artifact_reusable(item)) {
+              registration_error <- paste0(
+                "The prepared CRB for ",
+                item$name,
+                " still depends on files outside its artifact bundle."
+              )
+              break
+            }
             built <- value$built[[item$name]] %||% NULL
             if (!.builder_project_text(built) || !file.exists(built)) {
               registration_error <- paste0(
@@ -2424,14 +2421,7 @@ observe({
             }
             artifacts[[item$id]] <- list(
               status = "ready",
-              reusable = identical(
-                item$spatial_image_storage %||% "embedded",
-                "embedded"
-              ) &&
-                !length(setdiff(
-                  item$private_assets %||% character(),
-                  c(item$filename, item$sidecars %||% character())
-                )),
+              reusable = TRUE,
               path = bundle$path,
               fingerprint = bundle$fingerprint,
               built_from_revision = as.integer(revision),
