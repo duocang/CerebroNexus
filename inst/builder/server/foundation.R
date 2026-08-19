@@ -348,6 +348,7 @@ add_error <- reactiveVal(NULL)
 preview_frame <- reactiveVal(NULL)
 projection_previews <- reactiveVal(list())
 trajectory_previews <- reactiveVal(list())
+spatial_previews <- reactiveVal(list())
 spatial_coords <- reactiveVal(NULL)
 alignment_preview <- reactiveVal(NULL)
 marker_import_drafts <- reactiveVal(list())
@@ -770,6 +771,19 @@ apply_protocol_recovery <- function(
   protocol(recovered$protocol)
   settle_failed_builds(recovered, reason)
   failed_requests <- recovered$failed %||% list()
+  terminal_preview_requests <- c(
+    failed_requests,
+    recovered$discarded %||% list()
+  )
+  invisible(lapply(terminal_preview_requests, function(request) {
+    payload <- request$payload
+    if (
+      identical(payload$kind, "spatial_preview") &&
+        exists("fail_spatial_preview", mode = "function", inherits = TRUE)
+    ) {
+      fail_spatial_preview(payload)
+    }
+  }))
   invisible(lapply(failed_requests, function(request) {
     payload <- request$payload
     if (identical(payload$kind, "load")) {

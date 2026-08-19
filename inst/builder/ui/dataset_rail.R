@@ -306,12 +306,40 @@ builder_validate_next_plan <- function(
   value
 }
 
+.builder_rail_pick_event <- function(value, ids) {
+  if (is.character(value)) {
+    id <- .builder_rail_dataset_id(value, ids)
+    return(if (is.null(id)) NULL else list(id = id, switch_token = NULL))
+  }
+  if (
+    !is.list(value) ||
+      is.object(value) ||
+      !identical(names(value), c("id", "switch_token"))
+  ) {
+    return(NULL)
+  }
+  id <- .builder_rail_dataset_id(.subset2(value, "id"), ids)
+  token <- .subset2(value, "switch_token")
+  if (
+    is.null(id) ||
+      !is.numeric(token) ||
+      is.object(token) ||
+      length(token) != 1L ||
+      is.na(token) ||
+      !is.finite(token) ||
+      token < 1
+  ) {
+    return(NULL)
+  }
+  list(id = id, switch_token = token)
+}
+
 builder_dataset_rail_server <- function(
   input,
   session,
   store,
   validate_remove,
-  select_dataset = function(id, commit) commit(),
+  select_dataset = function(id, commit, switch_token = NULL) commit(),
   on_select = function(...) invisible(NULL),
   on_remove = function(...) invisible(NULL),
   on_undo = function(...) invisible(NULL),
@@ -349,10 +377,11 @@ builder_dataset_rail_server <- function(
   shiny::observeEvent(input$pick, {
     state <- shiny::isolate(store())
     ids <- vapply(state$datasets, `[[`, character(1), "id")
-    id <- .builder_rail_dataset_id(input$pick, ids)
-    if (is.null(id)) {
+    event <- .builder_rail_pick_event(input$pick, ids)
+    if (is.null(event)) {
       return()
     }
+    id <- event$id
     commit <- local({
       requested_id <- id
       committed <- FALSE
@@ -375,7 +404,11 @@ builder_dataset_rail_server <- function(
         invisible(TRUE)
       }
     })
-    select_dataset(id, commit)
+    if (is.null(event$switch_token)) {
+      select_dataset(id, commit)
+    } else {
+      select_dataset(id, commit, event$switch_token)
+    }
   })
   shiny::observeEvent(input$reorder_ds, {
     if (reject_locked()) {
