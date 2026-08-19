@@ -807,12 +807,7 @@ builder_build_stage_status_body_ui <- function(model) {
   builder_build_stage_status_validate(model)
   switch(
     model$state,
-    ready = if (
-      !isTRUE(model$can_build) &&
-        builder_stage_has_text(model$message %||% "")
-    ) {
-      p(class = "builder-build-readiness", model$message)
-    },
+    ready = NULL,
     choosing_folder = NULL,
     preparing = div(
       class = "builder-build-waiting",

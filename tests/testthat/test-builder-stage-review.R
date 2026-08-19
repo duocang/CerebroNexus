@@ -457,6 +457,19 @@ test_that("Build status has four top-level types and warning Success variant", {
   expect_error(builder_build_status_model(list(error = "legacy")), "typed")
 })
 
+test_that("Build status stays hidden before a build attempt starts", {
+  ready <- builder_build_stage_status_model(
+    flow = list(stage = "idle"),
+    protocol = builder_request_protocol("worker-ready"),
+    note = "Choose an output folder",
+    result = NULL,
+    output_selected = FALSE
+  )
+
+  expect_identical(ready$state, "ready")
+  expect_null(builder_build_stage_status_body_ui(ready))
+})
+
 test_that("build pipeline only renders server-known states", {
   queued <- builder_stage_html(builder_build_pipeline_ui("queued"))
   building <- builder_stage_html(builder_build_pipeline_ui("building"))

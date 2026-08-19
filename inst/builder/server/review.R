@@ -728,6 +728,7 @@ observeEvent(input$confirm_review, {
   if (isTRUE(live$make_app)) {
     build_mode(TRUE)
   }
+  result(NULL)
   workflow(builder_reduce_workflow(
     state,
     list(type = "confirm_review", plan = live)

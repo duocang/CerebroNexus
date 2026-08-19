@@ -434,7 +434,7 @@ test_that("Build result survives failed folder selection and clears on acceptanc
       unlist(output$build_stage_status_content),
       collapse = " "
     )
-    expect_match(pending_content, "Preparing preview…", fixed = TRUE)
+    expect_identical(pending_content, "")
     pending_footer <- paste(unlist(output$build_stage_footer), collapse = " ")
     expect_match(pending_footer, " disabled", fixed = TRUE)
     expect_length(output$busy, 0L)
@@ -761,9 +761,15 @@ test_that("external spatial images carry required App output through Review", {
       configured,
       list(type = "open_review", plan = plan)
     ))
+    result(app_env$builder_result_success(
+      published = TRUE,
+      built = "/old/output/dataset.crb"
+    ))
+    expect_false(is.null(result()))
     session$setInputs(confirm_review = 1L)
     session$flushReact()
     expect_identical(workflow()$stage, "build")
+    expect_null(result())
     expect_true(build_mode())
 
     session$setInputs(build_output_mode = "crb")
