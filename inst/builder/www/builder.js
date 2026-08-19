@@ -3477,7 +3477,7 @@
       "builder_coordinate_reset_motion",
       animateCoordinateResetSliders
     );
-    window.Shiny.addCustomMessageHandler("builder_scroll_page_top", function () {
+    window.Shiny.addCustomMessageHandler("builder_scroll_page_top", function (message) {
       window.scrollTo({
         top: 0,
         behavior: reducedMotion.matches ? "auto" : "smooth",
