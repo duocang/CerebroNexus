@@ -339,6 +339,14 @@ test_that("active imports offer the established server cancellation action", {
   expect_match(rail_html, "builder-remove-import", fixed = TRUE)
   expect_match(rail_html, "Cancel active import patient-one", fixed = TRUE)
   expect_match(rail_html, ">Cancel<", fixed = TRUE)
+  expect_match(
+    rail_html,
+    paste(
+      "ds-del btn btn-remove-soft builder-cancel-import",
+      "builder-remove-import"
+    ),
+    fixed = TRUE
+  )
   expect_false(grepl("builder-remove-import", workbench_html, fixed = TRUE))
   expect_false(grepl("Remove from queue", rail_html, fixed = TRUE))
   expect_false(grepl(">Remove<", workbench_html, fixed = TRUE))
