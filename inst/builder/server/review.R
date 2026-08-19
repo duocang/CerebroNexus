@@ -721,6 +721,12 @@ render_review_workbench <- function() {
 }
 
 observeEvent(input$back_to_settings, {
+  if (
+    exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("navigate_workflow"))
+  ) {
+    return()
+  }
   workflow(builder_reduce_workflow(
     isolate(workflow()),
     list(type = "back_to_settings")
@@ -734,6 +740,12 @@ observeEvent(input$back_to_settings, {
 })
 
 observeEvent(input$confirm_review, {
+  if (
+    exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("navigate_workflow"))
+  ) {
+    return()
+  }
   state <- isolate(workflow())
   if (!identical(state$stage, "review")) {
     return()
