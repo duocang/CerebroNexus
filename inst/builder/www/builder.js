@@ -111,6 +111,10 @@
   var builderProjectSaveResult = null;
   var builderProjectSaveResultOpen = false;
   var builderProjectCrbDialogActive = false;
+  var builderProjectCrbRequestSequence = 0;
+  var builderProjectCrbRequestId = null;
+  var builderProjectCrbAcknowledgementTimer = null;
+  var builderProjectCrbTerminal = false;
   var buildStatusScrollPhase = 0;
   var buildStatusFocusToken = 0;
   var buildOperationActive = false;
@@ -126,9 +130,9 @@
   };
 
   function send(name, value) {
-    if (window.Shiny) {
-      window.Shiny.setInputValue(name, value, { priority: "event" });
-    }
+    if (!window.Shiny) return false;
+    window.Shiny.setInputValue(name, value, { priority: "event" });
+    return true;
   }
 
   function datasetSwitchCopy() {
@@ -309,8 +313,78 @@
     elements.actions.setAttribute("aria-hidden", hasActions ? "false" : "true");
   }
 
+  function clearBuilderProjectCrbAcknowledgement() {
+    if (builderProjectCrbAcknowledgementTimer !== null) {
+      window.clearTimeout(builderProjectCrbAcknowledgementTimer);
+    }
+    builderProjectCrbAcknowledgementTimer = null;
+  }
+
+  function failBuilderProjectCrbRequest(error) {
+    if (!builderProjectCrbDialogActive || !builderProjectSaveResultOpen) return;
+    clearBuilderProjectCrbAcknowledgement();
+    updateBuilderProjectCrbProgress({
+      status: "failed",
+      completed: 0,
+      total: 0,
+      error: error || "Builder did not confirm CRB preparation.",
+      request_id: builderProjectCrbRequestId,
+    });
+  }
+
+  function startBuilderProjectCrbRequest(remaining) {
+    clearBuilderProjectCrbAcknowledgement();
+    builderProjectCrbRequestSequence += 1;
+    var requestId = Date.now().toString(36) + "-" +
+      builderProjectCrbRequestSequence.toString(36);
+    builderProjectCrbRequestId = requestId;
+    builderProjectCrbDialogActive = true;
+    builderProjectCrbTerminal = false;
+    var elements = builderOperationElements();
+    if (elements.card) {
+      elements.card.classList.remove(
+        "is-success",
+        "is-error",
+        "has-actions"
+      );
+    }
+    setBuilderOperationActions([]);
+    if (elements.overlay) elements.overlay.focus({ preventScroll: true });
+    setBuilderOperationCopy(
+      "Preparing reusable CRBs",
+      "Building the checked datasets that do not have a current reusable CRB.",
+      "Step 1 of 3 · Planning " + remaining + " CRB" +
+        (remaining === 1 ? "" : "s") + " · Keep this page open."
+    );
+    if (
+      !builderConnectionReady || !activityCapability("prepare_crbs")
+    ) {
+      failBuilderProjectCrbRequest(
+        "Reusable CRBs cannot be prepared right now. Reconnect or finish the current Builder operation, then try again."
+      );
+      return;
+    }
+    builderProjectCrbAcknowledgementTimer = window.setTimeout(function () {
+      if (builderProjectCrbRequestId !== requestId) return;
+      failBuilderProjectCrbRequest(
+        "Builder did not confirm CRB preparation. Check the connection before trying again."
+      );
+    }, 15000);
+    if (!send("prepare_builder_project_crbs", {
+      request_id: requestId,
+      nonce: Date.now(),
+    })) {
+      failBuilderProjectCrbRequest(
+        "Builder is not connected, so CRB preparation did not start."
+      );
+    }
+  }
+
   function closeBuilderProjectSaveResult() {
+    clearBuilderProjectCrbAcknowledgement();
     builderProjectCrbDialogActive = false;
+    builderProjectCrbRequestId = null;
+    builderProjectCrbTerminal = false;
     builderProjectSaveResultOpen = false;
     builderProjectSaveResult = null;
     document.body.classList.remove("builder-project-result-open");
@@ -369,24 +443,7 @@
         label: "Prepare checked CRBs",
         primary: true,
         action: function () {
-          builderProjectCrbDialogActive = true;
-          var elements = builderOperationElements();
-          if (elements.card) {
-            elements.card.classList.remove(
-              "is-success",
-              "is-error",
-              "has-actions"
-            );
-          }
-          setBuilderOperationActions([]);
-          if (elements.overlay) elements.overlay.focus({ preventScroll: true });
-          setBuilderOperationCopy(
-            "Preparing reusable CRBs",
-            "Building the checked datasets that do not have a current reusable CRB.",
-            "Step 1 of 3 · Planning " + remaining + " CRB" +
-              (remaining === 1 ? "" : "s") + " · Keep this page open."
-          );
-          send("prepare_builder_project_crbs", { nonce: Date.now() });
+          startBuilderProjectCrbRequest(remaining);
         },
       });
     }
@@ -457,13 +514,25 @@
 
   function updateBuilderProjectCrbProgress(message) {
     if (!builderProjectSaveResultOpen || !message) return;
+    if (!builderProjectCrbDialogActive || builderProjectCrbRequestId === null) {
+      return;
+    }
+    if (message.request_id !== builderProjectCrbRequestId) return;
     var status = message.status || "building";
+    if (
+      builderProjectCrbTerminal &&
+      status !== "ready" &&
+      status !== "failed"
+    ) return;
+    clearBuilderProjectCrbAcknowledgement();
     var completed = Math.max(0, Number(message.completed || 0));
     var total = Math.max(0, Number(message.total || 0));
     var elements = builderOperationElements();
     if (!elements.card) return;
+    if (status === "planning") return;
     setBuilderOperationActions([]);
     if (status === "ready") {
+      builderProjectCrbTerminal = true;
       elements.card.classList.add("is-result", "is-success");
       elements.card.classList.remove("is-error");
       setBuilderOperationCopy(
@@ -479,6 +548,7 @@
       return;
     }
     if (status === "failed") {
+      builderProjectCrbTerminal = true;
       elements.card.classList.add("is-result", "is-error");
       elements.card.classList.remove("is-success");
       setBuilderOperationCopy(
@@ -4134,6 +4204,11 @@
     builderConnectionReady = false;
     uploadConnectionReady = false;
     importSyncPending = true;
+    if (builderProjectCrbDialogActive && !builderProjectCrbTerminal) {
+      failBuilderProjectCrbRequest(
+        "The Builder connection was interrupted, so CRB preparation status could not be confirmed."
+      );
+    }
     clientImportQueue.forEach(function (entry) {
       entry.stateBeforePause = entry.state;
       entry.state = "paused";
