@@ -105,6 +105,7 @@
   };
   var builderProjectSaveResult = null;
   var builderProjectSaveResultOpen = false;
+  var builderProjectCrbDialogActive = false;
   var buildStatusScrollPhase = 0;
   var normalMotionDuration = 180;
   var authEditor = {
@@ -281,6 +282,7 @@
   }
 
   function closeBuilderProjectSaveResult() {
+    builderProjectCrbDialogActive = false;
     builderProjectSaveResultOpen = false;
     builderProjectSaveResult = null;
     document.body.classList.remove("builder-project-result-open");
@@ -336,10 +338,10 @@
         label: "Prepare checked CRBs",
         primary: true,
         action: function () {
+          builderProjectCrbDialogActive = true;
           var elements = builderOperationElements();
           if (elements.card) {
             elements.card.classList.remove(
-              "is-result",
               "is-success",
               "is-error",
               "has-actions"
@@ -363,6 +365,7 @@
 
   function updateBuilderProjectSourceProgress(message) {
     if (!builderProjectSaveResultOpen || !builderProjectSaveResult) return;
+    if (builderProjectCrbDialogActive) return;
     var status = message && message.status;
     if (status === "ready" || status === "failed") {
       showBuilderProjectSaveCompletion(status);
@@ -385,6 +388,7 @@
   }
 
   function showBuilderProjectSaveResult(message) {
+    if (builderProjectCrbDialogActive) return;
     builderProjectSaveResult = message || {};
     builderProjectSaveResultOpen = true;
     document.body.classList.add("builder-project-result-open");
@@ -444,7 +448,8 @@
       ]);
       return;
     }
-    elements.card.classList.remove("is-result", "is-success", "is-error");
+    builderProjectCrbDialogActive = true;
+    elements.card.classList.remove("is-success", "is-error");
     setBuilderOperationCopy(
       status === "registering" ? "Saving reusable CRBs" : "Preparing reusable CRBs",
       status === "registering"
