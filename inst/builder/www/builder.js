@@ -732,7 +732,10 @@
       save_builder_project: activityCapability("save_project") ||
         activityCapability("create_project"),
       choose_builder_project_folder: activityCapability("create_project"),
-      confirm_builder_project_open: activityCapability("open_project"),
+      confirm_builder_project_open: activityCapability("open_project") ||
+        (builderActivityState.has_project === true &&
+          activityCapability("edit_dataset")),
+      choose_saved_project_datasets: activityCapability("edit_dataset"),
       prepare_builder_project_crbs: activityCapability("prepare_crbs"),
       project_resume_current_source: activityCapability("edit_dataset"),
       complete_dataset_check: activityCapability("check_dataset"),

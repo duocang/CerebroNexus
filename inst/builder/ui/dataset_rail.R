@@ -537,14 +537,21 @@ builder_pending_dataset_files_ui <- function(files) {
   )
 }
 
-builder_empty_workbench_ui <- function() {
+builder_empty_workbench_ui <- function(project_active = FALSE) {
   shiny::tags$section(
     class = "builder-stage builder-empty-state",
     `aria-labelledby` = "builder-empty-title",
     shiny::h2(id = "builder-empty-title", "Add a dataset to begin"),
     shiny::p(
       "Choose a local Seurat object or try one of the examples in the sidebar."
-    )
+    ),
+    if (isTRUE(project_active)) {
+      shiny::actionButton(
+        "choose_saved_project_datasets",
+        "Choose saved datasets…",
+        class = "btn btn-action"
+      )
+    }
   )
 }
 

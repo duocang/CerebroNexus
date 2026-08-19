@@ -735,6 +735,30 @@ test_that("failed source resume preserves the checked artifact entry", {
   })
 })
 
+test_that("source resume catches start failures and restores pending state", {
+  source <- paste(
+    readLines(
+      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  observer <- sub(
+    ".*observeEvent\\(input\\$project_resume_current_source, \\{",
+    "",
+    source
+  )
+  observer <- sub(
+    "\\n\\}\\)\\n\\nbuilder_project_crb_request_from_input.*",
+    "",
+    observer
+  )
+
+  expect_match(observer, "started <- tryCatch(", fixed = TRUE)
+  expect_match(observer, "conditionMessage(started)", fixed = TRUE)
+  expect_match(observer, "pending[[id]] <- previous_pending", fixed = TRUE)
+})
+
 test_that("failed pre-store hydration releases its unattached snapshot", {
   source <- paste(
     readLines(

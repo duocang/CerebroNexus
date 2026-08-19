@@ -1924,6 +1924,21 @@ test_that("active builds lock dataset imports and rail mutations", {
   })
 })
 
+test_that("removing an artifact also cancels its in-flight source replacement", {
+  source <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "build.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  removal <- sub(".*remove_dataset <- function\\(", "", source)
+  removal <- sub("\\n\\}\\n\\n# observeEvent\\(input\\$drop_ds.*", "", removal)
+
+  expect_match(removal, "import_of(id)", fixed = TRUE)
+  expect_match(removal, "remove_pending_import(id)", fixed = TRUE)
+})
+
 test_that("Build recovery actions preserve confirmation only when safe", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
