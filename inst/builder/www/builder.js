@@ -105,6 +105,7 @@
     busy_message: null,
     busy_detail: null,
     has_project: false,
+    open_cancelable: false,
     warn_before_unload: false,
     page_inert: false,
   };
@@ -120,6 +121,9 @@
   var buildOperationActive = false;
   var buildOperationRestoreFocus = null;
   var buildOperationFocusToken = 0;
+  var projectOpenOperationActive = false;
+  var projectOpenRestoreFocus = null;
+  var projectOpenCancelPending = false;
   var normalMotionDuration = 180;
   var authEditor = {
     nextId: 1,
@@ -311,6 +315,27 @@
     var hasActions = buttons.length > 0;
     elements.card.classList.toggle("has-actions", hasActions);
     elements.actions.setAttribute("aria-hidden", hasActions ? "false" : "true");
+  }
+
+  function cancelBuilderProjectOpen() {
+    if (builderActivityState.open_cancelable !== true) return;
+    projectOpenCancelPending = true;
+    var actions = builderOperationElements().actions;
+    var button = actions && actions.querySelector("button");
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.textContent = "Cancelling…";
+    }
+    var sent = send("cancel_builder_project_open", { nonce: Date.now() });
+    if (!sent) {
+      projectOpenCancelPending = false;
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        button.textContent = "Cancel";
+      }
+    }
   }
 
   function clearBuilderProjectCrbAcknowledgement() {
@@ -755,6 +780,13 @@
       builderActivityState.page_inert === true;
     var nextBuildOperationActive = pageInert &&
       builderActivityState.busy_title === "Building output";
+    var nextProjectOpenOperationActive = pageInert &&
+      builderActivityState.open_cancelable === true &&
+      !builderProjectSaveResultOpen;
+    var projectOpenPriorFocus = !projectOpenOperationActive &&
+      nextProjectOpenOperationActive
+      ? document.activeElement
+      : null;
     var overlay = document.getElementById("builder-operation-overlay");
     document.body.classList.toggle("builder-page-inert", pageInert);
     if (overlay) {
@@ -795,6 +827,56 @@
       var busyDetail = builderActivityState.busy_detail || "";
       if (detail.textContent !== busyDetail) detail.textContent = busyDetail;
     }
+    if (!builderProjectSaveResultOpen) {
+      if (nextProjectOpenOperationActive && !projectOpenOperationActive) {
+        projectOpenCancelPending = false;
+      }
+      setBuilderOperationActions(
+        nextProjectOpenOperationActive
+          ? [{ label: "Cancel", action: cancelBuilderProjectOpen }]
+          : []
+      );
+      if (nextProjectOpenOperationActive && projectOpenCancelPending) {
+        var pendingCancel = builderOperationElements().actions;
+        pendingCancel = pendingCancel && pendingCancel.querySelector("button");
+        if (pendingCancel) {
+          pendingCancel.disabled = true;
+          pendingCancel.setAttribute("aria-busy", "true");
+          pendingCancel.textContent = "Cancelling…";
+        }
+      }
+    }
+    if (nextProjectOpenOperationActive && !projectOpenOperationActive) {
+      projectOpenRestoreFocus = canRestoreFocus(projectOpenPriorFocus)
+        ? projectOpenPriorFocus
+        : document.getElementById("open_builder_project");
+      if (overlay) {
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+      }
+      var cancelOpen = builderOperationElements().actions;
+      cancelOpen = cancelOpen && cancelOpen.querySelector("button");
+      if (cancelOpen) cancelOpen.focus({ preventScroll: true });
+    } else if (
+      projectOpenOperationActive &&
+      !nextProjectOpenOperationActive &&
+      !builderProjectSaveResultOpen
+    ) {
+      if (overlay) {
+        overlay.setAttribute("role", "status");
+        overlay.removeAttribute("aria-modal");
+      }
+      var openRestoreTarget = projectOpenRestoreFocus;
+      projectOpenRestoreFocus = null;
+      projectOpenCancelPending = false;
+      window.setTimeout(function () {
+        if (document.querySelector('.modal.show, [aria-modal="true"]')) return;
+        if (canRestoreFocus(openRestoreTarget)) {
+          openRestoreTarget.focus({ preventScroll: true });
+        }
+      }, 100);
+    }
+    projectOpenOperationActive = nextProjectOpenOperationActive;
     var priorBuildOperationActive = buildOperationActive;
     buildOperationActive = nextBuildOperationActive;
     if (priorBuildOperationActive && !buildOperationActive) {
@@ -3919,6 +4001,7 @@
           busy_message: message.busy_message || null,
           busy_detail: message.busy_detail || null,
           has_project: message.has_project === true,
+          open_cancelable: message.open_cancelable === true,
           warn_before_unload: message.warn_before_unload === true,
           page_inert: message.page_inert === true,
         };
