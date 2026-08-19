@@ -597,7 +597,8 @@ test_that("successful App builds expose only reliable result actions", {
   expect_match(verified_html, "Reveal Folder", fixed = TRUE)
   expect_match(verified_html, "Copy Path", fixed = TRUE)
   expect_match(verified_html, "Copy Report", fixed = TRUE)
-  expect_match(verified_html, 'data-path="/release/cerebro_app"', fixed = TRUE)
+  expect_match(verified_html, 'data-path="/release"', fixed = TRUE)
+  expect_false(grepl("/release/cerebro_app", verified_html, fixed = TRUE))
   expect_match(
     verified_html,
     'data-report="/release/build-report.json"',
