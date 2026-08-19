@@ -352,7 +352,7 @@ test_that("Build stage exclusively owns its live status projection", {
   )
 })
 
-test_that("Build result survives failed folder selection and clears on acceptance", {
+test_that("Build result survives unsafe folder selection and clears on acceptance", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   app_env <- new.env(parent = globalenv())
@@ -402,6 +402,7 @@ test_that("Build result survives failed folder selection and clears on acceptanc
     choices <- list(
       list(status = "cancelled", path = NULL),
       list(status = "error", path = NULL, error = "picker failed"),
+      list(status = "selected", path = "/unsafe/output"),
       list(status = "selected", path = "/new/output")
     )
     folder_env <- environment(choose_build_folder)
@@ -419,7 +420,31 @@ test_that("Build result survives failed folder selection and clears on acceptanc
       },
       envir = folder_env
     )
-    assign("showNotification", function(...) NULL, envir = folder_env)
+    assign(
+      "builder_build_output_preflight",
+      function(path) {
+        if (identical(path, "/unsafe/output")) {
+          return(list(
+            ok = FALSE,
+            error = paste(
+              "The selected folder contains files that do not belong",
+              "to this release: builder-project.json, datasets, sources.",
+              "Choose an empty folder or an existing Builder output folder."
+            )
+          ))
+        }
+        list(ok = TRUE, error = NULL)
+      },
+      envir = folder_env
+    )
+    notifications <- character()
+    assign(
+      "showNotification",
+      function(ui, ...) {
+        notifications <<- c(notifications, as.character(ui))
+      },
+      envir = folder_env
+    )
 
     pending_protocol <- app_env$builder_request_protocol("worker-pending")
     pending_protocol <- app_env$builder_enqueue(
@@ -450,6 +475,15 @@ test_that("Build result survives failed folder selection and clears on acceptanc
     real_session$flushReact()
     expect_identical(result(), success)
     expect_identical(selected_output(), "/old/output")
+    choose_build_folder()
+    real_session$flushReact()
+    expect_identical(result(), success)
+    expect_identical(selected_output(), "/old/output")
+    expect_true(any(grepl(
+      "Choose an empty folder",
+      notifications,
+      fixed = TRUE
+    )))
     choose_build_folder()
     real_session$flushReact()
     expect_null(result())

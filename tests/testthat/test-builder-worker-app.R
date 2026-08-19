@@ -764,9 +764,24 @@ test_that("native output directory selection normalizes selection and preserves 
   expect_match(failed$error, "picker unavailable", fixed = TRUE)
 })
 
-test_that("folder selection is separate from Build and only conflicts prompt", {
+test_that("folder selection preflights safety before Build", {
   lines <- builder_app_lines()
   app <- paste(lines, collapse = "\n")
+  plan_preflight <- builder_app_block(
+    lines,
+    "builder_build_plan_output_preflight <- function(plan) {",
+    "builder_build_output_preflight <- function(path) {"
+  )
+  preflight <- builder_app_block(
+    lines,
+    "builder_build_output_preflight <- function(path) {",
+    "choose_build_folder <- function() {"
+  )
+  prepare <- builder_app_block(
+    lines,
+    "prepare_selected_output <- function(path, overwrite = FALSE) {",
+    "builder_build_foreign_output_error <- function(foreign) {"
+  )
   picker <- builder_app_block(
     lines,
     "choose_build_folder <- function() {",
@@ -789,14 +804,33 @@ test_that("folder selection is separate from Build and only conflicts prompt", {
   )
 
   expect_match(app, "selected_output <- reactiveVal(NULL)", fixed = TRUE)
+  expect_match(preflight, "freeze_plan_for_output(", fixed = TRUE)
+  expect_match(
+    plan_preflight,
+    "builder_coordinator_output_preflight(plan)",
+    fixed = TRUE
+  )
+  expect_match(
+    preflight,
+    "builder_build_plan_output_preflight(plan)",
+    fixed = TRUE
+  )
   expect_match(picker, "builder_choose_output_directory()", fixed = TRUE)
+  expect_match(
+    picker,
+    "builder_build_output_preflight(choice$path)",
+    fixed = TRUE
+  )
   expect_match(picker, "selected_output(choice$path)", fixed = TRUE)
   expect_false(grepl("prepare_selected_output", picker, fixed = TRUE))
-  expect_false(grepl(
-    "freeze_materialized_plan_for_output",
-    picker,
+  preflight_position <- regexpr(
+    "builder_build_plan_output_preflight(plan)",
+    prepare,
     fixed = TRUE
-  ))
+  )[[1L]]
+  enqueue_position <- regexpr("enqueue_build_plan(", prepare, fixed = TRUE)[[1L]]
+  expect_gt(preflight_position, 0L)
+  expect_gt(enqueue_position, preflight_position)
   expect_match(build, "selected_output()", fixed = TRUE)
   expect_match(build, "prepare_selected_output", fixed = TRUE)
   expect_match(build, 'stage = "preparing"', fixed = TRUE)
