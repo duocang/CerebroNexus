@@ -306,6 +306,39 @@ if (builder_state_api_available) {
     }
   })
 
+  test_that("saved CRB descriptors do not require source-derived profiles", {
+    entry <- list(
+      id = "artifact-a",
+      source_id = "artifact-a",
+      output_id = "artifact-a",
+      selector_value = "artifact-a",
+      revision = 1L,
+      load_state = "artifact_ready",
+      settings = list(name = "Saved artifact"),
+      profile = list(n_cells = 10L, n_genes = 5L),
+      dataset_profile = list(),
+      project_artifact = list(
+        status = "ready",
+        reusable = TRUE,
+        path = "artifacts/artifact-a.crb",
+        plan_item = list(
+          analyses = character(),
+          manifest = list(),
+          metadata_policy = list(),
+          viewer_page_expectations = list()
+        )
+      )
+    )
+
+    state <- builder_state(list(entry))
+
+    expect_identical(state$datasets[[1L]]$load_state, "artifact_ready")
+    expect_identical(
+      builder_dataset_state(state$datasets[[1L]])$readiness,
+      "artifact_ready"
+    )
+  })
+
   test_that("dataset reducers always recompute manifest readiness", {
     state <- builder_dataset_state(builder_state_entry())
     blocking <- builder_state_entry("blocking")$dataset_profile$manifest

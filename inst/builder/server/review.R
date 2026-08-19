@@ -443,7 +443,8 @@ output[["inspect_stage"]] <- renderUI({
 
 output$configure_actions <- renderUI({
   readiness <- configure_readiness()
-  ids <- vapply(sets(), `[[`, character(1), "id")
+  entries <- sets()
+  ids <- vapply(entries, `[[`, character(1), "id")
   checked <- checked_dataset_ids()
   unchecked <- setdiff(ids, checked)
   current_checked <- current() %in% checked
@@ -455,6 +456,23 @@ output$configure_actions <- renderUI({
     )
   } else {
     readiness$message
+  }
+  current_index <- match(current(), ids)
+  current_entry <- if (
+    length(current_index) == 1L && !is.na(current_index)
+  ) {
+    entries[[current_index]]
+  } else {
+    NULL
+  }
+  if (
+    is.list(current_entry) &&
+      identical(current_entry$load_state %||% "loaded", "artifact_ready")
+  ) {
+    return(builder_project_artifact_actions_ui(
+      message,
+      readiness$can_continue && !length(unchecked)
+    ))
   }
   builder_configure_actions_ui(
     message,

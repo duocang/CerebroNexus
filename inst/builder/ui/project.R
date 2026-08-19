@@ -268,13 +268,23 @@ builder_project_artifact_workbench_ui <- function(entry, root = NULL) {
         "you load the source and change its settings."
       )
     ),
-    builder_stage_footer_ui(
-      "No source object is using memory.",
-      actionButton(
-        "project_resume_current_source",
-        "Load source to edit",
-        class = "btn"
-      )
+    uiOutput("configure_actions")
+  )
+}
+
+builder_project_artifact_actions_ui <- function(message, can_continue) {
+  builder_stage_footer_ui(
+    message,
+    actionButton(
+      "project_resume_current_source",
+      "Load source to edit",
+      class = "btn"
+    ),
+    actionButton(
+      "continue_to_review",
+      "Continue to Review",
+      class = "btn btn-action",
+      disabled = !isTRUE(can_continue)
     )
   )
 }
