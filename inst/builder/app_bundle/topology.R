@@ -357,6 +357,14 @@
   portable
 }
 
+.builder_app_without_system_metadata <- function(identity) {
+  paths <- names(identity$entries)
+  names_only <- basename(paths)
+  keep <- names_only != ".DS_Store" & !startsWith(names_only, "._")
+  identity$entries <- identity$entries[keep]
+  identity
+}
+
 .builder_app_package_path <- function(...) {
   path <- system.file(..., package = "CerebroNexus")
   if (!nzchar(path) || !.builder_app_path_exists(path)) {
@@ -529,9 +537,14 @@
       stop("The staged App differs from its trusted template.", call. = FALSE)
     }
     expected <- .builder_app_portable_tree_entries(
-      .builder_app_tree_identity(trusted_roots[[relative_root]])
+      .builder_app_without_system_metadata(
+        .builder_app_tree_identity(trusted_roots[[relative_root]])
+      )
     )
-    actual <- .builder_app_portable_tree_entries(identity, relative_root)
+    actual <- .builder_app_portable_tree_entries(
+      .builder_app_without_system_metadata(identity),
+      relative_root
+    )
     if (!identical(actual, expected)) {
       stop("The staged App differs from its trusted template.", call. = FALSE)
     }
