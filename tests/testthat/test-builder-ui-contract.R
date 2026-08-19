@@ -46,7 +46,7 @@ test_that("Done checking exposes one immediate busy-state handler", {
   review <- builder_asset_text("server", "review.R")
 
   expect_match(browser, '"builder_dataset_check_state"', fixed = TRUE)
-  expect_match(browser, 'button.textContent = "Saving check…"', fixed = TRUE)
+  expect_match(browser, 'button.textContent = "Finishing check…"', fixed = TRUE)
   expect_match(
     browser,
     'function (message)',
@@ -54,6 +54,8 @@ test_that("Done checking exposes one immediate busy-state handler", {
   )
   expect_match(review, 'list(active = TRUE)', fixed = TRUE)
   expect_match(review, 'list(active = FALSE)', fixed = TRUE)
+  expect_match(review, 'session$onFlushed(', fixed = TRUE)
+  expect_match(review, 'alignment_server$request_dataset_switch(', fixed = TRUE)
 })
 
 test_that("builder UI includes the Bootstrap dependency required by modals", {

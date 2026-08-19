@@ -1,5 +1,7 @@
 ## Builder server: review.
 
+dataset_check_finishing <- reactiveVal(FALSE)
+
 ## -- the action bar ------------------------------------------------------
 validate_review_inputs <- function(values) {
   next_options <- try(do.call(builder_review_options, values), silent = TRUE)
@@ -463,22 +465,9 @@ output$configure_actions <- renderUI({
 })
 
 observeEvent(input$complete_dataset_check, {
-  session$sendCustomMessage(
-    "builder_dataset_check_state",
-    list(active = TRUE)
-  )
-  on.exit(
-    session$onFlushed(
-      function() {
-        session$sendCustomMessage(
-          "builder_dataset_check_state",
-          list(active = FALSE)
-        )
-      },
-      once = TRUE
-    ),
-    add = TRUE
-  )
+  if (isTRUE(isolate(dataset_check_finishing()))) {
+    return()
+  }
   if (
     exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
       !isTRUE(builder_operation_allowed("check_dataset"))
@@ -489,42 +478,71 @@ observeEvent(input$complete_dataset_check, {
   if (is.null(id)) {
     return()
   }
-  materialized <- alignment_server$materialize_coordinate_drafts(
-    dataset = id,
-    notify = TRUE
-  )
-  if (!isTRUE(materialized$ok)) {
-    return()
-  }
-  entries <- materialized$all_entries
-  ids <- vapply(entries, `[[`, character(1), "id")
-  index <- match(id, ids)
-  if (is.na(index)) {
-    return()
-  }
-  marks <- isolate(dataset_check_marks())
-  marks[[id]] <- builder_project_check_identity(entries[[index]])
-  dataset_check_marks(marks)
-  unchecked <- setdiff(ids, names(marks))
-  if (!length(unchecked)) {
-    return()
-  }
-  after <- if (index < length(ids)) {
-    ids[(index + 1L):length(ids)]
-  } else {
-    character()
-  }
-  before <- if (index > 1L) ids[seq_len(index - 1L)] else character()
-  ordered <- c(after, before)
-  target <- ordered[ordered %in% unchecked][[1L]]
-  alignment_server$request_dataset_switch(target, function() {
-    current(target)
-    result(NULL)
+  finish_check <- function() {
+    dataset_check_finishing(FALSE)
     session$sendCustomMessage(
-      "builder_focus_dataset_start",
-      list(dataset = target)
+      "builder_dataset_check_state",
+      list(active = FALSE)
     )
-  })
+  }
+  dataset_check_finishing(TRUE)
+  session$sendCustomMessage(
+    "builder_dataset_check_state",
+    list(active = TRUE)
+  )
+  session$onFlushed(
+    function() {
+      shiny::isolate({
+        finish_after_work <- TRUE
+        on.exit(
+          if (isTRUE(finish_after_work)) finish_check(),
+          add = TRUE
+        )
+        materialized <- alignment_server$materialize_coordinate_drafts(
+          dataset = id,
+          notify = TRUE
+        )
+        if (!isTRUE(materialized$ok)) {
+          return()
+        }
+        entries <- materialized$all_entries
+        ids <- vapply(entries, `[[`, character(1), "id")
+        index <- match(id, ids)
+        if (is.na(index)) {
+          return()
+        }
+        marks <- dataset_check_marks()
+        marks[[id]] <- builder_project_check_identity(entries[[index]])
+        dataset_check_marks(marks)
+        unchecked <- setdiff(ids, names(marks))
+        if (!length(unchecked)) {
+          return()
+        }
+        after <- if (index < length(ids)) {
+          ids[(index + 1L):length(ids)]
+        } else {
+          character()
+        }
+        before <- if (index > 1L) ids[seq_len(index - 1L)] else character()
+        ordered <- c(after, before)
+        target <- ordered[ordered %in% unchecked][[1L]]
+        switched <- alignment_server$request_dataset_switch(target, function() {
+          current(target)
+          result(NULL)
+          session$sendCustomMessage(
+            "builder_focus_dataset_start",
+            list(dataset = target)
+          )
+        })
+        if (!isTRUE(switched)) {
+          return()
+        }
+        finish_after_work <- FALSE
+        session$onFlushed(finish_check, once = TRUE)
+      })
+    },
+    once = TRUE
+  )
 })
 
 render_configure_workbench <- function() {

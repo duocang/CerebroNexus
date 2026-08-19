@@ -431,9 +431,13 @@ test_that("alignment controls auto-commit before dataset switches", {
       loaded_image <- alignment$raw_image()
       expect_false(is.null(loaded_image))
 
-      alignment$request_dataset_switch("dataset-b", function() {
-        switched <<- c(switched, "immediate")
-      })
+      switch_accepted <- alignment$request_dataset_switch(
+        "dataset-b",
+        function() {
+          switched <<- c(switched, "immediate")
+        }
+      )
+      expect_true(switch_accepted)
       expect_identical(switched, "immediate")
 
       session$setInputs(`enhance-img_dx` = 0)
