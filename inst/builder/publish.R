@@ -1166,6 +1166,58 @@ builder_discover_recovery <- function(target) {
   )
 }
 
+builder_release_cleanup_control <- function(target) {
+  target <- .builder_release_path(target)
+  if (.builder_release_exists(target)) {
+    stop(
+      "Release control data cannot be removed while its target exists.",
+      call. = FALSE
+    )
+  }
+  control <- builder_release_control_path(target)
+  if (!dir.exists(control)) {
+    return(TRUE)
+  }
+  .builder_release_assert_control(control)
+  recovery <- builder_discover_recovery(target)
+  journal <- recovery$journal
+  if (
+    !identical(recovery$state, "ready") ||
+      !is.list(journal) ||
+      !identical(journal$phase, "complete")
+  ) {
+    stop(
+      "Incomplete release control data was preserved for recovery.",
+      call. = FALSE
+    )
+  }
+  entries <- list.files(control, all.files = TRUE, no.. = TRUE)
+  if (!setequal(entries, c("journal.rds", "stages"))) {
+    stop(
+      "Release control data contains entries that must be preserved.",
+      call. = FALSE
+    )
+  }
+  stages <- file.path(control, "stages")
+  if (
+    !dir.exists(stages) ||
+      .builder_release_link(stages) ||
+      length(list.files(stages, all.files = TRUE, no.. = TRUE))
+  ) {
+    stop(
+      "Release stage data was preserved because it is not empty and safe.",
+      call. = FALSE
+    )
+  }
+  unlink(stages, recursive = TRUE, force = TRUE)
+  unlink(file.path(control, "journal.rds"), force = TRUE)
+  if (length(list.files(control, all.files = TRUE, no.. = TRUE))) {
+    stop("Release control data changed during cleanup.", call. = FALSE)
+  }
+  unlink(control, recursive = TRUE, force = TRUE)
+  !dir.exists(control)
+}
+
 builder_prepare_release <- function(
   target,
   build_id,
