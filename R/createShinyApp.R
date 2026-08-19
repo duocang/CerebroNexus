@@ -648,6 +648,29 @@ dedent <- function(string) {
   )
 }
 
+.removeBundleSystemMetadata <- function(root) {
+  metadata <- list.files(
+    root,
+    pattern = "^(\\.DS_Store|\\._.*)$",
+    all.files = TRUE,
+    full.names = TRUE,
+    recursive = TRUE,
+    include.dirs = FALSE,
+    no.. = TRUE
+  )
+  if (!length(metadata)) {
+    return(invisible(TRUE))
+  }
+  unlink(metadata, recursive = FALSE, force = TRUE)
+  if (any(vapply(metadata, .bundlePathExists, logical(1)))) {
+    stop(
+      "Failed to remove filesystem metadata from the staged App.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 .attemptBundleOperation <- function(operation) {
   condition_message <- NULL
   value <- tryCatch(
@@ -2269,6 +2292,7 @@ createShinyApp <- function(
   if (!build_ops$copy(extdata_source, stage_result_dir, recursive = TRUE)) {
     stop("Failed to copy extdata files.", call. = FALSE)
   }
+  .removeBundleSystemMetadata(stage_result_dir)
 
   # Build Cerebro.options ----------------------------------------------------##
   if (verbose) {
