@@ -343,7 +343,7 @@ test_that("schema v1 migration canonicalizes record identity without dirtying", 
     dirname(path),
     migrated_record$configuration$path
   )))
-  expect_true(file.exists(file.path(dirname(path), migrated_record$cache$path)))
+  expect_null(migrated_record$cache)
   expect_identical(
     migrated_record$artifact$built_from_configuration,
     canonical
@@ -425,7 +425,7 @@ test_that("schema v3 preferences survive a manifest write and read", {
   expect_null(restored$migrated_from_schema)
 })
 
-test_that("schema v3 stores small config and replaceable profile sidecars", {
+test_that("schema v3 excludes source-derived profiles from project storage", {
   runtime <- builder_project_hydration_runtime()
   root <- withr::local_tempdir()
   entry <- builder_minimal_entry("ds1", "Dataset one")
@@ -451,53 +451,14 @@ test_that("schema v3 stores small config and replaceable profile sidecars", {
   )
 
   expect_identical(record$configuration$schema_version, 1L)
-  expect_identical(record$cache$format, "qs2")
-  expect_identical(tools::file_ext(record$cache$path), "qs2")
   expect_true(file.exists(file.path(root, record$configuration$path)))
-  expect_true(file.exists(file.path(root, record$cache$path)))
+  expect_null(record$cache)
   expect_null(record$configuration$payload)
   expect_null(record$configuration$legacy_payload)
 
   restored <- runtime$builder_project_restore_entry(record, root)
   expect_identical(restored$settings, entry$settings)
   expect_null(restored$profile$large_derived_value)
-
-  cached <- runtime$builder_project_read_profile_cache(record, root)
-  expect_identical(
-    cached$profile$large_derived_value,
-    rep("profile-only", 1000L)
-  )
-  expect_identical(cached$dataset_profile, entry$dataset_profile)
-})
-
-test_that("schema v3 reads legacy RDS profile caches", {
-  runtime <- builder_project_hydration_runtime()
-  root <- withr::local_tempdir()
-  path <- file.path(root, "cache", "ds1", "profile.rds")
-  dir.create(dirname(path), recursive = TRUE)
-  value <- list(
-    schema_version = 1L,
-    id = "ds1",
-    profile = list(n_cells = 10L),
-    dataset_profile = list(),
-    levels = list()
-  )
-  saveRDS(value, path, version = 3L, compress = FALSE)
-  record <- list(
-    id = "ds1",
-    cache = list(
-      path = "cache/ds1/profile.rds",
-      fingerprint = runtime$builder_project_file_fingerprint(
-        path,
-        content = TRUE
-      )
-    )
-  )
-
-  expect_identical(
-    runtime$builder_project_read_profile_cache(record, root),
-    value
-  )
 })
 
 test_that("last UI restoration uses safe dataset and workflow fallbacks", {

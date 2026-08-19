@@ -530,8 +530,7 @@ builder_project_build_manifest <- function(entries, project) {
       artifact = artifact,
       order = index,
       payload_entry = configuration_entry,
-      root = project$root,
-      prior = prior
+      root = project$root
     )
   }
   retained_ids <- vapply(records, `[[`, character(1), "id")

@@ -3550,7 +3550,7 @@
           }
           button.disabled = true;
           button.setAttribute("aria-busy", "true");
-          button.textContent = "Saving check…";
+          button.textContent = "Finishing check…";
           return;
         }
         if (button.dataset.builderCheckLabel) {

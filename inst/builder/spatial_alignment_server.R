@@ -1783,6 +1783,7 @@ builder_spatial_alignment_server <- function(
       return(invisible(FALSE))
     }
     commit()
+    invisible(TRUE)
   }
 
   list(

@@ -3,8 +3,8 @@
 ## Decision
 
 `builder-project.json` is a small authoritative index, not a serialized runtime
-object. Dataset configuration, regenerable profile caches, source data, spatial
-assets, and build artifacts have separate lifecycles and files.
+object. Dataset configuration, source data, spatial assets, and build artifacts
+have separate lifecycles and files. Regenerable profiles are not persisted.
 
 ## Problems in schema v2
 
@@ -15,8 +15,7 @@ assets, and build artifacts have separate lifecycles and files.
   storage and are repeatedly copied for configuration digests.
 - Every save rewrites the full JSON; one malformed payload can block the whole
   project.
-- Checked state, artifact reuse, source availability, and cache validity are
-  coupled even though they are independent states.
+- Checked state, artifact reuse, and source availability are separate states.
 
 ## Workspace layout
 
@@ -24,7 +23,6 @@ assets, and build artifacts have separate lifecycles and files.
 project/
   builder-project.json
   datasets/<id>/config.json
-  cache/<id>/profile.qs2
   sources/<id>/<source-file>
   assets/<id>/spatial/<asset-file>
   artifacts/<id>/<artifact-file>
@@ -34,10 +32,10 @@ project/
 ## Authoritative manifest
 
 The manifest stores project metadata, dataset order and identity, source
-descriptors, configuration descriptors, cache descriptors, artifact
-descriptors, global Builder preferences, and last UI location. It never stores
-runtime profiles, snapshots, Seurat objects, preview frames, data URIs, or
-inline serialized dataset entries.
+descriptors, configuration descriptors, artifact descriptors, global Builder
+preferences, and last UI location. It never stores
+runtime profiles, profile caches, snapshots, Seurat objects, preview frames,
+data URIs, or inline serialized dataset entries.
 
 ## Dataset configuration
 
@@ -46,14 +44,12 @@ acknowledgements, and spatial drafts. Spatial images are path/fingerprint
 references after asset staging. Checked state records a configuration digest,
 source fingerprint, and contract version.
 
-## Profile cache
+## Source-derived profiles
 
-`cache/<id>/profile.qs2` stores source-derived `profile`, `dataset_profile`, and
-`levels` using `qs2` serialization. It is optional and replaceable. A
-descriptor binds it to a source fingerprint, cache schema, producer version,
-file size, and MD5. Project open does not eagerly load every cache. Existing
-schema-v3 `.rds` descriptors remain readable, but every new or regenerated
-cache is written as `.qs2`.
+`profile`, `dataset_profile`, and `levels` are regenerated while the source is
+loaded. They are not persisted because no restore path can use them instead of
+loading the source object. Existing schema-v3 cache descriptors are ignored;
+their files are harmless orphans and are not deleted automatically.
 
 ## Identities
 
@@ -65,12 +61,10 @@ checked digest. Artifact reuse separately compares the current digest with
 
 ## Lifecycle
 
-- Import keeps the object in the Worker, writes its immutable snapshot, and
-  writes a replaceable binary profile cache.
-- Save writes changed small config files atomically, reuses valid cache files,
-  and commits the manifest last.
-- Open reads the manifest and configs first. Source reload and cache hydration
-  occur per dataset rather than by expanding every runtime entry from JSON.
+- Import keeps the object in the Worker and writes its immutable snapshot.
+- Save writes small config files atomically and commits the manifest last.
+- Open reads the manifest and configs first. Source reload occurs only for the
+  datasets selected by the user.
 - Done checking applies pending drafts, hashes the small config, records the
   checked digest, switches datasets immediately, and lets preview work continue
   asynchronously.
@@ -80,16 +74,16 @@ checked digest. Artifact reuse separately compares the current digest with
 ## Compatibility
 
 Schema v1/v2 remain readable. Their inline payload is treated as a legacy
-source for one session. The next successful save extracts the minimal config,
-writes the profile cache, writes schema v3, and removes the inline payload from
-the manifest. The original `.bak` remains recoverable.
+source for one session. The migration extracts the minimal config, writes
+schema v3, and removes the inline payload from the manifest. The original
+`.bak` remains recoverable.
 
 ## Guardrails
 
 - New manifests cannot contain `configuration.payload`.
 - Config files cannot contain runtime profiles or inline image data.
 - Main manifest target is below 1 MB and warns/rejects pathological output.
-- Cache failure degrades to source reload and never makes the project invalid.
+- Obsolete cache descriptors are ignored and removed from the next manifest.
 - All managed paths are resolved beneath the project root.
 
 ## Expected effects
@@ -97,5 +91,5 @@ the manifest. The original `.bak` remains recoverable.
 - Manifest size depends on dataset count and configuration, not source size.
 - Small setting changes write KB-scale config rather than MB/GB payloads.
 - Checked identity no longer copies the whole entry.
-- Opening and switching become incremental; a broken cache affects one dataset.
+- Opening and switching no longer serialize unused profile data.
 - Large Seurat sources can remain GB-scale without creating GB-scale JSON.
