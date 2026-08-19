@@ -259,6 +259,106 @@ test_that("completed background sources are merged into the latest manifest", {
   )
 })
 
+test_that("completed source sync repoints live entries and releases owned session copies", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  project <- file.path(root, "project")
+  session_root <- file.path(root, "session")
+  retained <- file.path(session_root, "session-sources", "ds1", "sample.qs2")
+  target <- file.path(project, "sources", "ds1", "blobs", "content", "sample.qs2")
+  dir.create(dirname(retained), recursive = TRUE)
+  dir.create(dirname(target), recursive = TRUE)
+  dir.create(project, showWarnings = FALSE)
+  writeBin(charToRaw("ready"), retained)
+  writeBin(charToRaw("ready"), target)
+  manifest <- builder_project_test_manifest("ds1")
+  manifest$datasets[[1L]]$source <- list(
+    kind = "managed",
+    origin = "upload",
+    filename = "sample.qs2",
+    path = runtime$builder_project_relative_path(target, project),
+    status = "ready",
+    fingerprint = runtime$builder_project_file_fingerprint(target, content = TRUE)
+  )
+  entries <- list(list(
+    id = "ds1",
+    path = retained,
+    source_origin = "upload",
+    snapshot = list(path = file.path(session_root, "snapshot-ds1"))
+  ))
+
+  committed <- runtime$builder_project_commit_source_entries(
+    entries,
+    manifest,
+    results = list(list(id = "ds1", status = "ready", path = target)),
+    root = project,
+    session_root = session_root
+  )
+
+  expect_identical(committed$entries[[1L]]$path, normalizePath(target, winslash = "/"))
+  expect_identical(committed$entries[[1L]]$source$kind, "managed")
+  expect_false(file.exists(retained))
+  expect_identical(committed$released, "ds1")
+})
+
+test_that("session source cleanup refuses paths outside the owned session root", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  owned <- file.path(root, "owned")
+  outside <- file.path(root, "outside.qs2")
+  dir.create(file.path(owned, "session-sources", "ds1"), recursive = TRUE)
+  retained <- file.path(owned, "session-sources", "ds1", "sample.qs2")
+  writeBin(charToRaw("owned"), retained)
+  writeBin(charToRaw("outside"), outside)
+
+  expect_true(runtime$builder_project_release_session_source(retained, owned))
+  expect_false(file.exists(retained))
+  expect_false(runtime$builder_project_release_session_source(outside, owned))
+  expect_true(file.exists(outside))
+})
+
+test_that("session source release rejects lexical symlinks without deleting targets", {
+  skip_on_os("windows")
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  owned <- file.path(root, "owned")
+  outside <- file.path(root, "outside.qs2")
+  link <- file.path(owned, "session-sources", "ds1", "linked.qs2")
+  dir.create(dirname(link), recursive = TRUE)
+  writeBin(charToRaw("outside"), outside)
+  skip_if_not(file.symlink(outside, link), "symbolic links are unavailable")
+
+  expect_false(runtime$builder_project_release_session_source(link, owned))
+  expect_true(nzchar(Sys.readlink(link)))
+  expect_true(file.exists(outside))
+})
+
+test_that("source progress records stay compact while final results remain complete", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  project <- file.path(root, "project")
+  dir.create(project)
+  sources <- file.path(root, paste0("source-", 1:3, ".rds"))
+  lapply(seq_along(sources), function(index) {
+    writeBin(charToRaw(paste0("source-", index)), sources[[index]])
+  })
+  jobs <- lapply(seq_along(sources), function(index) {
+    runtime$builder_project_source_job(
+      list(id = paste0("ds", index), path = sources[[index]]),
+      project
+    )
+  })
+  progress_path <- file.path(root, "progress.rds")
+
+  results <- runtime$builder_project_copy_source_jobs(jobs, progress_path)
+  progress <- readRDS(progress_path)
+
+  expect_length(results, 3L)
+  expect_identical(names(progress), c("completed", "total", "failed", "last"))
+  expect_false("results" %in% names(progress))
+  expect_identical(progress$completed, 3L)
+})
+
 test_that("managed example sources retain their example identity when restored", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
@@ -345,11 +445,32 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   )
 
   payload_entry <- runtime$builder_project_stage_spatial_assets(entry, root)
+  adopted <- runtime$builder_project_adopt_spatial_assets(entry, payload_entry)
+  expect_identical(
+    adopted$settings$images[["section/a"]][["H&E"]]$source_uri,
+    image_uri
+  )
+  expect_identical(
+    adopted$settings$images[["section/a"]][["H&E"]]$project_asset,
+    payload_entry$settings$images[["section/a"]][["H&E"]]$project_asset
+  )
+  original_decode <- runtime$.builder_project_decode_image_uri
+  runtime$.builder_project_decode_image_uri <- function(...) {
+    stop("an adopted immutable asset must not decode its URI")
+  }
+  restaged <- runtime$builder_project_stage_spatial_assets(adopted, root)
+  expect_null(restaged$settings$images[["section/a"]][["H&E"]]$source_uri)
+  expect_false(grepl(
+    "serialize(",
+    paste(deparse(body(runtime$builder_project_stage_spatial_assets)), collapse = "\n"),
+    fixed = TRUE
+  ))
   record <- runtime$builder_project_dataset_record(
     entry,
     source = list(kind = "missing", path = NULL),
-    payload_entry = payload_entry
+    payload_entry = restaged
   )
+  runtime$.builder_project_decode_image_uri <- original_decode
   payload <- jsonlite::unserializeJSON(record$configuration$payload)
   first <- payload$settings$images[["section/a"]][["H&E"]]
   second <- payload$settings$images[["section-a"]][["H&E"]]
@@ -421,6 +542,143 @@ test_that("missing project spatial assets identify the affected FOV and image", 
     hydrate_spatial_assets = FALSE
   )
   expect_null(lightweight$settings$images$fov_1$DAPI$source_uri)
+})
+
+test_that("spatial asset status validates descriptors without hydrating image payloads", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  asset <- file.path(root, "spatial-assets", "ds1", "fov", "image.png")
+  dir.create(dirname(asset), recursive = TRUE)
+  writeBin(charToRaw("asset"), asset)
+  entry <- list(
+    id = "ds1",
+    settings = list(images = list(fov = list(image = list(
+      project_asset = list(
+        path = runtime$builder_project_relative_path(asset, root),
+        mime = "image/png",
+        fingerprint = runtime$builder_project_file_fingerprint(asset, content = TRUE)
+      )
+    ))))
+  )
+  record <- list(
+    id = "ds1",
+    configuration = list(payload = jsonlite::serializeJSON(entry))
+  )
+  runtime$builder_project_restore_spatial_assets <- function(...) {
+    stop("status must not hydrate")
+  }
+
+  status <- runtime$builder_project_spatial_assets_status(record, root)
+
+  expect_true(status$ready)
+  expect_null(status$error)
+})
+
+test_that("restore status snapshots are reused without weakening default validation", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "sources", "ds1", "source.rds")
+  artifact_path <- file.path(root, "artifacts", "ds1", "bundle", "ds1.crb")
+  dir.create(dirname(source), recursive = TRUE)
+  dir.create(dirname(artifact_path), recursive = TRUE)
+  writeBin(charToRaw("source"), source)
+  writeBin(charToRaw("artifact"), artifact_path)
+  entry <- list(id = "ds1", settings = list(name = "Dataset"))
+  record <- runtime$builder_project_dataset_record(
+    entry,
+    source = list(
+      kind = "managed",
+      path = runtime$builder_project_relative_path(source, root),
+      fingerprint = runtime$builder_project_file_fingerprint(source, content = TRUE)
+    ),
+    artifact = list(
+      status = "ready",
+      path = runtime$builder_project_relative_path(artifact_path, root),
+      fingerprint = runtime$builder_project_file_fingerprint(artifact_path, content = TRUE),
+      members = list()
+    ),
+    checked = TRUE
+  )
+  manifest <- list(datasets = list(record))
+  calls <- 0L
+  original <- runtime$builder_project_artifact_available
+  runtime$builder_project_artifact_available <- function(...) {
+    calls <<- calls + 1L
+    original(...)
+  }
+  config_reads <- 0L
+  original_read <- runtime$builder_project_read_dataset_config
+  runtime$builder_project_read_dataset_config <- function(...) {
+    config_reads <<- config_reads + 1L
+    original_read(...)
+  }
+
+  snapshot <- runtime$builder_project_status_snapshot(manifest, root)
+  expect_true(runtime$builder_project_status_snapshot_fresh(
+    snapshot[["ds1"]],
+    record,
+    root
+  ))
+  restored <- runtime$builder_project_restore_entry(
+    record,
+    root,
+    hydrate_spatial_assets = FALSE,
+    status = snapshot[["ds1"]]
+  )
+  restored <- runtime$builder_project_artifact_entry(
+    restored,
+    record$artifact,
+    root,
+    status = snapshot[["ds1"]],
+    record = record
+  )
+  mark <- runtime$builder_project_restored_check_identity(
+    record,
+    restored,
+    snapshot[["ds1"]],
+    root
+  )
+
+  expect_identical(calls, 1L)
+  expect_identical(config_reads, 1L)
+  expect_true(snapshot[["ds1"]]$artifact_ready)
+  expect_match(mark, "^artifact:")
+  writeBin(charToRaw("artifact-changed"), artifact_path)
+  expect_error(
+    runtime$builder_project_artifact_entry(
+      entry,
+      record$artifact,
+      root,
+      status = snapshot[["ds1"]],
+      record = record
+    ),
+    "no longer available"
+  )
+  substituted <- record$artifact
+  substituted$path <- "artifacts/ds1/bundle/substituted.crb"
+  expect_error(
+    runtime$builder_project_artifact_entry(
+      entry,
+      substituted,
+      root,
+      status = snapshot[["ds1"]],
+      record = record
+    ),
+    "no longer available"
+  )
+  changed_record <- record
+  changed_record$source$path <- "sources/ds1/missing.rds"
+  changed_record$runtime_restore_status <- snapshot[["ds1"]]
+  changed_status <- runtime$builder_project_dataset_status(changed_record, root)
+  expect_false(changed_status$source_ready)
+  writeBin(charToRaw("source-changed"), source)
+  expect_false(runtime$builder_project_status_snapshot_fresh(
+    snapshot[["ds1"]],
+    record,
+    root
+  ))
+  runtime$builder_project_dataset_status(record, root)
+  expect_gte(calls, 4L)
 })
 
 test_that("checkpoint entries embed spatial images without mutating live settings", {
@@ -1294,14 +1552,7 @@ test_that("checked project records bind confirmation to the restored entry", {
     acknowledgements = character(),
     spatial_drafts = list()
   )
-  record <- list(configuration = list(checked = TRUE))
-  status <- list(source_matches = TRUE, checked = TRUE)
-
-  mark <- runtime$builder_project_restored_check_identity(
-    record,
-    restored,
-    status
-  )
+  mark <- runtime$builder_project_check_identity(restored)
   expect_identical(mark, runtime$builder_project_check_identity(restored))
 
   changed <- restored
@@ -1313,16 +1564,6 @@ test_that("checked project records bind confirmation to the restored entry", {
     runtime$builder_project_check_identity(changed)
   ))
 
-  expect_null(runtime$builder_project_restored_check_identity(
-    list(configuration = list(checked = FALSE)),
-    restored,
-    list(source_matches = TRUE, checked = FALSE)
-  ))
-  expect_null(runtime$builder_project_restored_check_identity(
-    record,
-    restored,
-    list(source_matches = FALSE)
-  ))
 })
 
 test_that("runtime snapshot replacement does not invalidate checked configuration", {
@@ -1753,6 +1994,60 @@ test_that("dataset config generations survive manifest backups and stale writers
   ))
 })
 
+test_that("manifest revision commits are serialized by an owned project lock", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+
+  first <- runtime$builder_project_acquire_manifest_lock(root)
+  expect_error(
+    runtime$builder_project_acquire_manifest_lock(root),
+    "Another Builder window",
+    fixed = TRUE
+  )
+  expect_true(dir.exists(first$path))
+  expect_true(runtime$builder_project_release_manifest_lock(first))
+
+  second <- runtime$builder_project_acquire_manifest_lock(root)
+  expect_true(runtime$builder_project_release_manifest_lock(second))
+
+  implementation <- paste(
+    deparse(body(runtime$builder_project_write)),
+    collapse = "\n"
+  )
+  acquire <- regexpr(
+    "builder_project_acquire_manifest_lock(root)",
+    implementation,
+    fixed = TRUE
+  )[[1L]]
+  read_disk <- regexpr("builder_project_read(target)", implementation, fixed = TRUE)[[1L]]
+  expect_gt(acquire, 0L)
+  expect_gt(read_disk, acquire)
+})
+
+test_that("project input and inline image payloads are bounded before decoding", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  oversized <- file.path(root, "oversized.json")
+  writeBin(
+    rep(as.raw(0x20), runtime$.builder_project_manifest_max_bytes + 1L),
+    oversized
+  )
+
+  expect_error(
+    runtime$builder_project_read(oversized),
+    "size limit",
+    fixed = TRUE
+  )
+  expect_error(
+    runtime$.builder_project_decode_image_uri(
+      paste0("data:image/png;base64,", strrep("A", 12L)),
+      max_encoded_bytes = 8L
+    ),
+    "encoded size limit",
+    fixed = TRUE
+  )
+})
+
 test_that("restored source identity requires the recorded content fingerprint", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
@@ -1866,6 +2161,219 @@ test_that("artifact bundles are immutable generations", {
   expect_identical(length(second$members), 1L)
 })
 
+test_that("checkpoint artifacts promote to immutable shared generations", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  checkpoint <- file.path(root, "checkpoints", "build-1")
+  dir.create(checkpoint, recursive = TRUE)
+  primary <- file.path(checkpoint, "ds1.crb")
+  member <- file.path(checkpoint, "ds1.h5")
+  writeBin(charToRaw("primary"), primary)
+  writeBin(charToRaw("member"), member)
+
+  bundle <- runtime$builder_project_store_artifact_bundle(
+    primary,
+    sidecars = "ds1.h5",
+    dataset_id = "ds1",
+    root = root,
+    promote = TRUE
+  )
+
+  expect_false(file.exists(primary))
+  expect_false(file.exists(member))
+  expect_true(runtime$builder_project_artifact_available(
+    c(list(status = "ready"), bundle),
+    root
+  ))
+
+  second_checkpoint <- file.path(root, "checkpoints", "build-2")
+  dir.create(second_checkpoint, recursive = TRUE)
+  second_primary <- file.path(second_checkpoint, "ds1.crb")
+  second_member <- file.path(second_checkpoint, "ds1.h5")
+  writeBin(charToRaw("primary"), second_primary)
+  writeBin(charToRaw("member"), second_member)
+  adopted <- runtime$builder_project_store_artifact_bundle(
+    second_primary,
+    sidecars = "ds1.h5",
+    dataset_id = "ds1",
+    root = root,
+    promote = TRUE
+  )
+
+  expect_identical(adopted$path, bundle$path)
+  expect_true(file.exists(file.path(root, bundle$path)))
+  expect_true(file.exists(second_primary))
+  expect_true(file.exists(second_member))
+
+  implementation <- paste(
+    deparse(body(runtime$builder_project_store_artifact_bundle)),
+    collapse = "\n"
+  )
+  rename_failure <- regexpr(
+    "if (!file.rename(staging, generation_dir))",
+    implementation,
+    fixed = TRUE
+  )[[1L]]
+  concurrent_adoption <- regexpr(
+    "if (dir.exists(generation_dir))",
+    implementation,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(rename_failure, 0L)
+  expect_gt(concurrent_adoption, rename_failure)
+  expect_match(implementation, "return(read_existing_generation())", fixed = TRUE)
+})
+
+test_that("configuration identity cache invalidates only on entry revision", {
+  runtime <- builder_project_test_runtime()
+  cache <- new.env(parent = emptyenv())
+  calls <- 0L
+  digest <- function(entry) {
+    calls <<- calls + 1L
+    paste0("digest-", entry$revision)
+  }
+  entry <- list(id = "ds1", revision = 1L, settings = list(name = "Dataset"))
+
+  first <- runtime$builder_project_cached_configuration_digest(entry, cache, digest)
+  second <- runtime$builder_project_cached_configuration_digest(entry, cache, digest)
+  entry$revision <- 2L
+  third <- runtime$builder_project_cached_configuration_digest(entry, cache, digest)
+
+  expect_identical(first, second)
+  expect_false(identical(second, third))
+  expect_identical(calls, 2L)
+})
+
+test_that("configuration identity cache bounds variants and drops datasets", {
+  runtime <- builder_project_test_runtime()
+  cache <- new.env(parent = emptyenv())
+  entry <- list(id = "ds1", revision = 1L, settings = list())
+  for (index in 1:20) {
+    runtime$builder_project_cached_configuration_digest(
+      entry,
+      cache,
+      digest = function(entry) paste0("digest-", index),
+      variant = paste0("draft-", index)
+    )
+  }
+  expect_lte(length(ls(cache)), 8L)
+  runtime$builder_project_cached_configuration_digest(
+    list(id = "ds2", revision = 1L, settings = list()),
+    cache,
+    digest = function(entry) "other"
+  )
+
+  runtime$builder_project_configuration_cache_drop_dataset(cache, "ds1")
+
+  expect_false(any(startsWith(ls(cache), "ds1::")))
+  expect_true(any(startsWith(ls(cache), "ds2::")))
+})
+
+test_that("terminal checkpoint cleanup requires a committed failed manifest", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  checkpoint <- file.path(root, "checkpoints", "build-1")
+  dir.create(checkpoint, recursive = TRUE)
+  writeBin(charToRaw("checkpoint"), file.path(checkpoint, "dataset.crb"))
+
+  expect_false(runtime$builder_project_cleanup_terminal_checkpoint(
+    saved = FALSE,
+    status = "failed",
+    path = checkpoint,
+    root = root
+  ))
+  expect_true(dir.exists(checkpoint))
+  expect_true(runtime$builder_project_cleanup_terminal_checkpoint(
+    saved = TRUE,
+    status = "failed",
+    path = checkpoint,
+    root = root
+  ))
+  expect_false(dir.exists(checkpoint))
+})
+
+test_that("checkpoint cleanup refuses lexical symlinks without deleting targets", {
+  skip_on_os("windows")
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  checkpoint_root <- file.path(root, "checkpoints")
+  target <- file.path(checkpoint_root, "retained")
+  link <- file.path(checkpoint_root, "build-link")
+  dir.create(target, recursive = TRUE)
+  writeBin(charToRaw("checkpoint"), file.path(target, "dataset.crb"))
+  skip_if_not(file.symlink(target, link), "symbolic links are unavailable")
+
+  expect_false(runtime$builder_project_cleanup_checkpoint(link, root))
+  expect_true(nzchar(Sys.readlink(link)))
+  expect_true(file.exists(file.path(target, "dataset.crb")))
+})
+
+test_that("project open clears all cross-project runtime caches", {
+  source <- paste(
+    readLines(testthat::test_path("..", "..", "inst", "builder", "server", "project.R")),
+    collapse = "\n"
+  )
+
+  expect_match(source, "projection_previews(list())", fixed = TRUE)
+  expect_match(source, "trajectory_previews(list())", fixed = TRUE)
+  expect_match(source, "spatial_previews(list())", fixed = TRUE)
+  expect_match(
+    source,
+    "builder_project_configuration_cache_clear(builder_configuration_identity_cache)",
+    fixed = TRUE
+  )
+  expect_match(source, "invalidate_builder_project_source_sync()", fixed = TRUE)
+})
+
+test_that("source sync context is bound to project identity and revision", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  project_a <- list(
+    root = root,
+    path = file.path(root, "builder-project.json"),
+    manifest = list(project = list(id = "project-a", revision = 3L))
+  )
+  context <- runtime$builder_project_source_context(
+    project_a,
+    generation = 4L,
+    active_ids = "ds1"
+  )
+
+  expect_true(runtime$builder_project_source_context_matches(
+    context,
+    project_a,
+    generation = 4L
+  ))
+  project_b <- project_a
+  project_b$manifest$project$id <- "project-b"
+  expect_false(runtime$builder_project_source_context_matches(
+    context,
+    project_b,
+    generation = 4L
+  ))
+  project_a$manifest$project$revision <- 4L
+  expect_false(runtime$builder_project_source_context_matches(
+    context,
+    project_a,
+    generation = 4L
+  ))
+  expect_false(runtime$builder_project_source_context_matches(
+    context,
+    project_b,
+    generation = 5L
+  ))
+
+  server <- paste(
+    readLines(
+      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(server, "queued[[job$id]] <- job", fixed = TRUE)
+  expect_false(grepl("if (!job$id %in% active)", server, fixed = TRUE))
+})
+
 test_that("checkpoint preparation requires a durable project save before enqueue", {
   path <- testthat::test_path(
     "..", "..", "inst", "builder", "server", "project.R"
@@ -1880,4 +2388,14 @@ test_that("checkpoint preparation requires a durable project save before enqueue
   expect_match(checkpoint, "saved <- save_builder_project_state(", fixed = TRUE)
   expect_match(checkpoint, "if (!isTRUE(saved))", fixed = TRUE)
   expect_match(checkpoint, "builder_project_checkpoint(FALSE)", fixed = TRUE)
+  expect_match(
+    source,
+    "builder_project_cleanup_checkpoint(plan$out_dir, previous_project$root)",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    ".builder_project_path_has_link_within(checkpoint_parent, project$root)",
+    fixed = TRUE
+  )
 })

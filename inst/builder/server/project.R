@@ -20,6 +20,8 @@ builder_project_source_sync <- reactiveVal(list(
   failed = 0L
 ))
 builder_project_source_process <- reactiveVal(NULL)
+builder_project_source_generation <- reactiveVal(0)
+builder_project_source_run <- reactiveVal(NULL)
 builder_project_source_queue <- reactiveVal(list())
 builder_project_source_active_ids <- reactiveVal(character())
 builder_project_source_progress <- reactiveVal(NULL)
@@ -56,9 +58,13 @@ builder_project_mark_restored_entry <- function(entry) {
   if (is.null(record) || is.null(project)) {
     return(invisible(FALSE))
   }
-  status <- record$runtime_restore_status %||%
-    builder_project_dataset_status(record, project$root)
-  mark <- builder_project_restored_check_identity(record, entry, status)
+  status <- builder_project_dataset_status(record, project$root)
+  mark <- builder_project_restored_check_identity(
+    record,
+    entry,
+    status,
+    project$root
+  )
   if (is.null(mark)) {
     return(invisible(FALSE))
   }
@@ -76,7 +82,8 @@ builder_project_dirty <- reactive({
   builder_project_live_dirty(
     sets(),
     checked_dataset_ids(),
-    project$manifest
+    project$manifest,
+    identity_cache = builder_configuration_identity_cache
   )
 })
 
@@ -298,6 +305,21 @@ builder_project_source_runtime_file <- function() {
 
 builder_project_poll_source_sync <- NULL
 
+invalidate_builder_project_source_sync <- function() {
+  builder_project_source_generation(
+    as.double(isolate(builder_project_source_generation())) + 1
+  )
+  builder_project_source_queue(list())
+  builder_project_source_active_ids(character())
+  builder_project_source_sync(list(
+    status = "idle",
+    completed = 0L,
+    total = 0L,
+    failed = 0L
+  ))
+  invisible(TRUE)
+}
+
 builder_project_start_source_sync <- function() {
   process <- isolate(builder_project_source_process())
   if (!is.null(process)) {
@@ -325,8 +347,27 @@ builder_project_start_source_sync <- function() {
   if (is.null(project)) {
     return(invisible(FALSE))
   }
+  active_ids <- vapply(jobs, `[[`, character(1), "id")
+  source_run <- tryCatch(
+    builder_project_source_context(
+      project,
+      isolate(builder_project_source_generation()),
+      active_ids = active_ids
+    ),
+    error = identity
+  )
+  if (inherits(source_run, "condition")) {
+    builder_project_source_sync(list(
+      status = "failed",
+      completed = 0L,
+      total = length(jobs),
+      failed = length(jobs)
+    ))
+    showNotification(conditionMessage(source_run), type = "error", duration = 8)
+    return(invisible(FALSE))
+  }
   builder_project_source_queue(list())
-  builder_project_source_active_ids(vapply(jobs, `[[`, character(1), "id"))
+  builder_project_source_active_ids(active_ids)
   progress_path <- tempfile(
     pattern = ".builder-source-sync-",
     tmpdir = project$root,
@@ -357,6 +398,7 @@ builder_project_start_source_sync <- function() {
   if (inherits(process, "error")) {
     builder_project_source_active_ids(character())
     builder_project_source_progress(NULL)
+    builder_project_source_run(NULL)
     builder_project_source_sync(list(
       status = "failed",
       completed = 0L,
@@ -367,6 +409,7 @@ builder_project_start_source_sync <- function() {
     return(invisible(FALSE))
   }
   builder_project_source_process(process)
+  builder_project_source_run(source_run)
   builder_project_source_sync(list(
     status = "syncing",
     completed = 0L,
@@ -382,20 +425,26 @@ builder_project_poll_source_sync <- function() {
   if (is.null(process)) {
     return(invisible(FALSE))
   }
+  source_run <- isolate(builder_project_source_run())
+  project <- isolate(builder_project())
+  run_is_current <- builder_project_source_context_matches(
+    source_run,
+    project,
+    isolate(builder_project_source_generation())
+  )
   progress_path <- isolate(builder_project_source_progress())
-  if (.builder_project_text(progress_path) && file.exists(progress_path)) {
+  if (
+    isTRUE(run_is_current) &&
+      .builder_project_text(progress_path) &&
+      file.exists(progress_path)
+  ) {
     progress <- tryCatch(readRDS(progress_path), error = function(error) NULL)
     if (is.list(progress)) {
-      failed <- sum(vapply(
-        Filter(Negate(is.null), progress$results %||% list()),
-        function(result) identical(result$status, "failed"),
-        logical(1)
-      ))
       builder_project_source_sync(list(
         status = "syncing",
         completed = as.integer(progress$completed %||% 0L),
         total = as.integer(progress$total %||% 0L),
-        failed = as.integer(failed)
+        failed = as.integer(progress$failed %||% 0L)
       ))
     }
   }
@@ -404,7 +453,8 @@ builder_project_poll_source_sync <- function() {
     return(invisible(TRUE))
   }
   results <- tryCatch(process$get_result(), error = identity)
-  active_ids <- isolate(builder_project_source_active_ids())
+  active_ids <- source_run$active_ids %||%
+    isolate(builder_project_source_active_ids())
   if (inherits(results, "error")) {
     results <- lapply(active_ids, function(id) {
       list(
@@ -414,9 +464,8 @@ builder_project_poll_source_sync <- function() {
       )
     })
   }
-  project <- isolate(builder_project())
   written <- NULL
-  if (!is.null(project)) {
+  if (isTRUE(run_is_current)) {
     updated <- tryCatch(
       builder_project_apply_source_results(
         project$manifest,
@@ -440,8 +489,21 @@ builder_project_poll_source_sync <- function() {
   }
   unlink(progress_path %||% "", force = TRUE)
   builder_project_source_process(NULL)
+  builder_project_source_run(NULL)
   builder_project_source_progress(NULL)
   builder_project_source_active_ids(character())
+  if (!isTRUE(run_is_current)) {
+    builder_project_source_sync(list(
+      status = "idle",
+      completed = 0L,
+      total = 0L,
+      failed = 0L
+    ))
+    if (length(isolate(builder_project_source_queue()))) {
+      builder_project_start_source_sync()
+    }
+    return(invisible(FALSE))
+  }
   failed <- sum(vapply(
     results,
     function(result) identical(result$status, "failed"),
@@ -462,6 +524,24 @@ builder_project_poll_source_sync <- function() {
     project$manifest <- written$manifest
     project$path <- written$path
     builder_project(project)
+    current_worker <- isolate(worker())
+    live_entries <- isolate(sets())
+    committed <- tryCatch(
+      builder_project_commit_source_entries(
+        live_entries,
+        written$manifest,
+        results,
+        project$root,
+        session_root = current_worker$snapshot_root %||% NULL
+      ),
+      error = identity
+    )
+    if (
+      !inherits(committed, "condition") &&
+        !identical(committed$entries, live_entries)
+    ) {
+      sets(committed$entries)
+    }
   }
   builder_project_source_sync(list(
     status = if (failed) "failed" else "ready",
@@ -480,12 +560,9 @@ request_builder_project_source_sync <- function(jobs) {
   if (!length(jobs)) {
     return(invisible(FALSE))
   }
-  active <- isolate(builder_project_source_active_ids())
   queued <- isolate(builder_project_source_queue())
   for (job in jobs) {
-    if (!job$id %in% active) {
-      queued[[job$id]] <- job
-    }
+    queued[[job$id]] <- job
   }
   builder_project_source_queue(queued)
   builder_project_start_source_sync()
@@ -511,12 +588,21 @@ builder_project_build_manifest <- function(entries, project) {
     } else {
       staged <- builder_project_prepare_source(entry, project$root, prior)
     }
+    configuration_entry <- builder_project_configuration_entry(staged$entry)
+    configuration_entry <- builder_project_stage_spatial_assets(
+      configuration_entry,
+      project$root
+    )
+    current_digest <- builder_project_configuration_digest(configuration_entry)
+    staged$entry <- builder_project_adopt_spatial_assets(
+      staged$entry,
+      configuration_entry
+    )
     artifact <- artifacts[[entry$id]] %||%
       entry$project_artifact %||%
       prior$artifact %||%
       NULL
     if (is.list(artifact)) {
-      current_digest <- builder_project_configuration_digest(staged$entry)
       if (
         !identical(entry$load_state %||% "loaded", "artifact_ready") &&
           !identical(
@@ -545,11 +631,6 @@ builder_project_build_manifest <- function(entries, project) {
         })
       }
     }
-    configuration_entry <- builder_project_configuration_entry(staged$entry)
-    configuration_entry <- builder_project_stage_spatial_assets(
-      configuration_entry,
-      project$root
-    )
     staged_entries[[index]] <- staged$entry
     jobs[[index]] <- staged$job
     records[[index]] <- builder_project_dataset_record(
@@ -559,7 +640,8 @@ builder_project_build_manifest <- function(entries, project) {
       artifact = artifact,
       order = index,
       payload_entry = configuration_entry,
-      root = project$root
+      root = project$root,
+      configuration_digest = current_digest
     )
   }
   retained_ids <- vapply(records, `[[`, character(1), "id")
@@ -714,10 +796,7 @@ save_builder_project_state <- function(
   if (is.list(last_ui)) {
     built$manifest$last_ui <- last_ui
   }
-  changed_paths <- !identical(
-    lapply(entries, `[[`, "path"),
-    lapply(built$entries, `[[`, "path")
-  )
+  entries_changed <- !identical(entries, built$entries)
   written <- tryCatch(
     builder_project_write(
       built$manifest,
@@ -732,7 +811,7 @@ save_builder_project_state <- function(
     }
     return(save_failed(conditionMessage(written)))
   }
-  if (changed_paths) {
+  if (entries_changed) {
     sets(built$entries)
   }
   project$manifest <- written$manifest
@@ -1129,6 +1208,11 @@ observeEvent(input$open_builder_project, {
           manifest$pending_build$status <- "interrupted"
         }
         root <- dirname(selected_path)
+        statuses <- builder_project_status_snapshot(manifest, root)
+        manifest$datasets <- lapply(manifest$datasets %||% list(), function(record) {
+          record$runtime_restore_status <- statuses[[record$id]] %||% NULL
+          record
+        })
         builder_project_restore(list(
           manifest = manifest,
           root = root,
@@ -1166,9 +1250,16 @@ observeEvent(input$confirm_builder_project_open, {
       entry <- builder_project_restore_entry(
         record,
         root,
-        hydrate_spatial_assets = FALSE
+        hydrate_spatial_assets = FALSE,
+        status = status
       )
-      entry <- builder_project_artifact_entry(entry, record$artifact, root)
+      entry <- builder_project_artifact_entry(
+        entry,
+        record$artifact,
+        root,
+        status = status,
+        record = record
+      )
       reusable_entries[[length(reusable_entries) + 1L]] <- entry
       artifacts[[record$id]] <- record$artifact
     } else if (identical(action, "resume") && status$restorable) {
@@ -1181,6 +1272,7 @@ observeEvent(input$confirm_builder_project_open, {
     function(entry) records[[entry$id]]$order %||% 0L,
     numeric(1)
   ))]
+  invalidate_builder_project_source_sync()
   store(builder_state(
     datasets = reusable_entries,
     current_dataset = if (length(reusable_entries)) {
@@ -1189,6 +1281,12 @@ observeEvent(input$confirm_builder_project_open, {
       NULL
     }
   ))
+  projection_previews(list())
+  trajectory_previews(list())
+  spatial_previews(list())
+  builder_project_configuration_cache_clear(
+    builder_configuration_identity_cache
+  )
   marks <- character()
   if (length(reusable_entries)) {
     for (entry in reusable_entries) {
@@ -1197,7 +1295,8 @@ observeEvent(input$confirm_builder_project_open, {
       restored_mark <- builder_project_restored_check_identity(
         record,
         entry,
-        status
+        status,
+        root
       )
       if (!is.null(restored_mark)) {
         marks[[entry$id]] <- restored_mark
@@ -1301,12 +1400,12 @@ observe({
     restored <- batch$restored[[id]]$entry
     record <- batch$restored[[id]]$record
     project <- isolate(builder_project())
-    status <- record$runtime_restore_status %||%
-      builder_project_dataset_status(record, project$root)
+    status <- builder_project_dataset_status(record, project$root)
     restored_mark <- builder_project_restored_check_identity(
       record,
       restored,
-      status
+      status,
+      project$root
     )
     if (!is.null(restored_mark)) {
       marks[[id]] <- restored_mark
@@ -1519,6 +1618,7 @@ observeEvent(input$project_resume_current_source, {
 
 enqueue_builder_project_checkpoint <- function(plan) {
   current_protocol <- isolate(protocol())
+  previous_project <- isolate(builder_project())
   if (
     is.null(current_protocol) ||
       !isTRUE(tryCatch(
@@ -1526,6 +1626,9 @@ enqueue_builder_project_checkpoint <- function(plan) {
         error = function(error) FALSE
       ))
   ) {
+    if (!is.null(previous_project)) {
+      builder_project_cleanup_checkpoint(plan$out_dir, previous_project$root)
+    }
     showNotification(
       "Wait for the current background action to finish.",
       type = "warning"
@@ -1533,7 +1636,6 @@ enqueue_builder_project_checkpoint <- function(plan) {
     return(invisible(FALSE))
   }
   builder_project_checkpoint(TRUE)
-  previous_project <- isolate(builder_project())
   project <- previous_project
   if (!is.null(project)) {
     project$manifest$pending_build <- list(
@@ -1554,6 +1656,7 @@ enqueue_builder_project_checkpoint <- function(plan) {
     if (!isTRUE(saved)) {
       builder_project_checkpoint(FALSE)
       builder_project(previous_project)
+      builder_project_cleanup_checkpoint(plan$out_dir, previous_project$root)
       showNotification(
         builder_project_last_save_error() %||%
           "The checkpoint could not be saved. The build was not started.",
@@ -1579,6 +1682,7 @@ enqueue_builder_project_checkpoint <- function(plan) {
   if (!isTRUE(queued)) {
     builder_project_checkpoint(FALSE)
     project <- isolate(builder_project())
+    failed_saved <- FALSE
     if (!is.null(project)) {
       project$manifest <- builder_project_finish_pending_build(
         project$manifest,
@@ -1586,11 +1690,14 @@ enqueue_builder_project_checkpoint <- function(plan) {
         error = "The checkpoint build could not be queued."
       )
       builder_project(project)
-      save_builder_project_state(
+      failed_saved <- save_builder_project_state(
         show_actions = FALSE,
         materialize = FALSE,
         notify = FALSE
       )
+    }
+    if (isTRUE(failed_saved) && !is.null(previous_project)) {
+      builder_project_cleanup_checkpoint(plan$out_dir, previous_project$root)
     }
     showNotification(
       "The checkpoint build could not be queued.",
@@ -1629,12 +1736,39 @@ prepare_builder_project_crbs <- function() {
     )
     return(invisible(TRUE))
   }
+  budget <- builder_project_checkpoint_budget(entries, project$root)
+  if (!isTRUE(budget$ok)) {
+    showNotification(
+      budget$error %||% "The project volume does not have enough free space.",
+      type = "error",
+      duration = 8
+    )
+    return(invisible(FALSE))
+  }
+  checkpoint_parent <- file.path(project$root, "checkpoints")
+  if (
+    .builder_project_path_has_link_within(checkpoint_parent, project$root)
+  ) {
+    showNotification(
+      "The checkpoint folder is not a safe managed project path.",
+      type = "error",
+      duration = 8
+    )
+    return(invisible(FALSE))
+  }
   output <- file.path(
     project$root,
     "checkpoints",
     format(Sys.time(), "%Y%m%dT%H%M%S", tz = "UTC")
   )
-  dir.create(output, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.create(output, recursive = TRUE, showWarnings = FALSE)) {
+    showNotification(
+      "The checkpoint folder could not be created.",
+      type = "error",
+      duration = 8
+    )
+    return(invisible(FALSE))
+  }
   checkpoint_entries <- builder_project_checkpoint_entries(entries)
   plan <- freeze_plan_for_output(
     output,
@@ -1657,6 +1791,7 @@ prepare_builder_project_crbs <- function() {
       )
     )
     showNotification(error, type = "error", duration = 8)
+    builder_project_cleanup_checkpoint(output, project$root)
     return(invisible(FALSE))
   }
   session$sendCustomMessage(
@@ -1739,12 +1874,15 @@ observe({
         },
         add = TRUE
       )
+      terminal_status <- if (
+        identical(value$state, "success") &&
+          length(value$built %||% character())
+      ) {
+        "completed"
+      } else {
+        "failed"
+      }
       if (!is.null(project$manifest$pending_build)) {
-        terminal_status <- if (identical(value$state, "success")) {
-          "completed"
-        } else {
-          "failed"
-        }
         project$manifest <- builder_project_finish_pending_build(
           project$manifest,
           status = terminal_status,
@@ -1772,6 +1910,12 @@ observe({
         if (!isTRUE(saved)) {
           builder_project(project_before_registration)
         }
+        builder_project_cleanup_terminal_checkpoint(
+          saved = saved,
+          status = terminal_status,
+          path = plan$out_dir,
+          root = project$root
+        )
         session$sendCustomMessage(
           "builder_project_crb_progress",
           list(
@@ -1803,7 +1947,8 @@ observe({
             built,
             sidecars = item$sidecars %||% character(),
             dataset_id = item$id,
-            root = project$root
+            root = project$root,
+            promote = TRUE
           ),
           error = function(error) error
         )
@@ -1867,6 +2012,12 @@ observe({
         if (!isTRUE(saved)) {
           builder_project(project_before_registration)
         }
+        builder_project_cleanup_terminal_checkpoint(
+          saved = saved,
+          status = "failed",
+          path = plan$out_dir,
+          root = project$root
+        )
         session$sendCustomMessage(
           "builder_project_crb_progress",
           list(
@@ -1894,6 +2045,7 @@ observe({
         builder_project(project_before_registration)
       }
       if (isTRUE(saved)) {
+        builder_project_cleanup_checkpoint(plan$out_dir, project$root)
         session$sendCustomMessage(
           "builder_project_crb_progress",
           list(status = "ready", completed = total_crbs, total = total_crbs)
