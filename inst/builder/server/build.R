@@ -398,16 +398,6 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
     if (!isTRUE(builder_require_confirmed_build_plan(plan, path))) {
       return(invisible(FALSE))
     }
-    output_preflight <- builder_build_plan_output_preflight(plan)
-    if (!isTRUE(output_preflight$ok)) {
-      build_flow(list(stage = "idle", plan = NULL))
-      showNotification(
-        output_preflight$error %||% "The selected folder cannot be used.",
-        type = "warning",
-        duration = 10
-      )
-      return(invisible(FALSE))
-    }
     conflict_files <- try(
       builder_build_conflict_files(plan),
       silent = TRUE
@@ -459,18 +449,6 @@ builder_build_foreign_output_error <- function(foreign) {
   )
 }
 
-builder_build_plan_output_preflight <- function(plan) {
-  checked <- tryCatch(
-    builder_coordinator_output_preflight(plan),
-    error = identity
-  )
-  if (inherits(checked, "condition")) {
-    return(list(ok = FALSE, error = conditionMessage(checked)))
-  }
-  error <- builder_build_foreign_output_error(checked$foreign)
-  list(ok = is.null(error), error = error)
-}
-
 builder_build_output_preflight <- function(path) {
   plan <- freeze_plan_for_output(
     path,
@@ -494,6 +472,14 @@ builder_build_output_preflight <- function(path) {
   )
   expected_roots <- unique(sub("/.*$", "", relative))
   actual_roots <- list.files(path, all.files = TRUE, no.. = TRUE)
+  metadata <- .builder_release_ignorable_metadata(actual_roots)
+  if (any(metadata)) {
+    metadata_paths <- file.path(path, actual_roots[metadata])
+    metadata[metadata] <- file.exists(metadata_paths) &
+      !dir.exists(metadata_paths) &
+      !vapply(metadata_paths, .builder_release_link, logical(1))
+    actual_roots <- actual_roots[!metadata]
+  }
   foreign <- setdiff(
     actual_roots,
     c(expected_roots, .builder_release_record_name)
@@ -504,40 +490,57 @@ builder_build_output_preflight <- function(path) {
       error = builder_build_foreign_output_error(foreign)
     ))
   }
-  builder_build_plan_output_preflight(plan)
+  list(ok = TRUE, error = NULL)
 }
 
 choose_build_folder <- function() {
   build_flow(list(stage = "choosing_folder", plan = NULL))
   session$onFlushed(
     function() {
-      choice <- builder_choose_output_directory()
-      if (identical(choice$status, "cancelled")) {
-        build_flow(list(stage = "idle", plan = NULL))
-        return()
-      }
-      if (!identical(choice$status, "selected")) {
-        build_flow(list(stage = "idle", plan = NULL))
-        showNotification(
-          choice$error %||% "The folder picker could not be opened.",
-          type = "error",
-          duration = 6
-        )
-        return()
-      }
-      preflight <- builder_build_output_preflight(choice$path)
-      if (!isTRUE(preflight$ok)) {
-        build_flow(list(stage = "idle", plan = NULL))
-        showNotification(
-          preflight$error %||% "The selected folder cannot be used.",
-          type = "warning",
-          duration = 10
-        )
-        return()
-      }
-      selected_output(choice$path)
-      result(NULL)
-      build_flow(list(stage = "idle", plan = NULL))
+      tryCatch(
+        {
+          choice <- builder_choose_output_directory()
+          if (identical(choice$status, "cancelled")) {
+            build_flow(list(stage = "idle", plan = NULL))
+            return()
+          }
+          if (!identical(choice$status, "selected")) {
+            build_flow(list(stage = "idle", plan = NULL))
+            showNotification(
+              choice$error %||% "The folder picker could not be opened.",
+              type = "error",
+              duration = 6
+            )
+            return()
+          }
+          preflight <- shiny::isolate(
+            builder_build_output_preflight(choice$path)
+          )
+          if (!isTRUE(preflight$ok)) {
+            build_flow(list(stage = "idle", plan = NULL))
+            showNotification(
+              preflight$error %||% "The selected folder cannot be used.",
+              type = "warning",
+              duration = 10
+            )
+            return()
+          }
+          selected_output(choice$path)
+          result(NULL)
+          build_flow(list(stage = "idle", plan = NULL))
+        },
+        error = function(error) {
+          build_flow(list(stage = "idle", plan = NULL))
+          showNotification(
+            paste0(
+              "The selected folder could not be checked: ",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = 10
+          )
+        }
+      )
     },
     once = TRUE
   )

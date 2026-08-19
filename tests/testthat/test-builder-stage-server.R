@@ -1686,7 +1686,17 @@ test_that("active Build states reject forged stage actions", {
     builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
     .env = environment(builder_stage_frozen_plan)
   )
-  app_env$builder_freeze_plan <- function(...) builder_stage_frozen_plan(FALSE)
+  app_env$builder_freeze_plan <- function(out_dir, ...) {
+    plan <- builder_stage_frozen_plan(FALSE)
+    plan$output_release$directory <- out_dir
+    plan$output_release$targets <- file.path(
+      out_dir,
+      basename(plan$output_release$targets)
+    )
+    plan
+  }
+  selected_directory <- file.path(withr::local_tempdir(), "selected-output")
+  dir.create(selected_directory)
 
   shiny::testServer(app_env$server, {
     real_session <- session
@@ -1718,7 +1728,7 @@ test_that("active Build states reject forged stage actions", {
       "builder_choose_output_directory",
       function(...) {
         picker_calls <<- picker_calls + 1L
-        list(status = "selected", path = "/new/output")
+        list(status = "selected", path = selected_directory)
       },
       envir = fn_env
     )
@@ -1775,13 +1785,30 @@ test_that("active Build states reject forged stage actions", {
     }
 
     build_flow(list(stage = "idle", plan = NULL))
+    output_preflight <- get("builder_build_output_preflight", envir = fn_env)
+    assign(
+      "builder_build_output_preflight",
+      function(...) stop("preflight failed"),
+      envir = fn_env
+    )
     real_session$setInputs(choose_output_folder = 4L)
     real_session$flushReact()
     expect_identical(picker_calls, 1L)
-    expect_identical(selected_output(), "/new/output")
+    expect_identical(selected_output(), "/confirmed/output")
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_match(
+      tail(notifications, 1L),
+      "The selected folder could not be checked: preflight failed",
+      fixed = TRUE
+    )
+    assign("builder_build_output_preflight", output_preflight, envir = fn_env)
+    real_session$setInputs(choose_output_folder = 5L)
+    real_session$flushReact()
+    expect_identical(picker_calls, 2L)
+    expect_identical(selected_output(), selected_directory)
     navigation_result <- app_env$builder_result_success(
       published = TRUE,
-      built = "/new/output/dataset.crb"
+      built = file.path(selected_directory, "dataset.crb")
     )
     result(navigation_result)
     real_session$setInputs(back_to_review = 4L)

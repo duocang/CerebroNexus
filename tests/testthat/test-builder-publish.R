@@ -43,6 +43,26 @@ test_that("release existence includes dangling lexical entries", {
   })
 })
 
+test_that("release identity ignores Finder metadata but not other dotfiles", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    nested <- file.path(release, "nested")
+    dir.create(nested, recursive = TRUE)
+    writeLines("payload", file.path(release, "dataset.crb"))
+    writeLines("finder", file.path(release, ".DS_Store"))
+    writeLines("finder", file.path(nested, ".DS_Store"))
+    writeLines("foreign", file.path(release, ".unknown"))
+
+    identity <- builder_release_identity(release)
+    paths <- vapply(identity$entries, `[[`, character(1), "path")
+
+    expect_setequal(paths, c(".unknown", "dataset.crb", "nested"))
+    expect_false(any(basename(paths) == ".DS_Store"))
+  })
+})
+
 test_that("release ownership records require canonical recursive members", {
   local({
     builder_publish_source()

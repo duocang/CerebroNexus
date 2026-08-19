@@ -1211,6 +1211,24 @@ test_that("output preflight reports foreign occupants before staging", {
   })
 })
 
+test_that("output preflight ignores Finder metadata only", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    writeLines("finder", file.path(target, ".DS_Store"))
+    plan <- builder_crb_coordinator_plan(target, "dataset.crb")
+
+    clean <- builder_coordinator_output_preflight(plan)
+    expect_length(clean$foreign, 0L)
+
+    writeLines("foreign", file.path(target, ".unknown"))
+    foreign <- builder_coordinator_output_preflight(plan)
+    expect_identical(foreign$foreign, ".unknown")
+  })
+})
+
 test_that("known prior outputs still require explicit replacement", {
   local({
     builder_task9_source()

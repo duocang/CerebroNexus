@@ -365,6 +365,11 @@ builder_release_control_path <- function(target) {
   md5
 }
 
+.builder_release_ignorable_metadata <- function(paths) {
+  paths <- gsub("\\", "/", as.character(paths), fixed = TRUE)
+  basename(paths) == ".DS_Store"
+}
+
 builder_release_identity <- function(
   target,
   .list_directory = .builder_release_list_directory,
@@ -382,7 +387,27 @@ builder_release_identity <- function(
   if (!length(entries)) {
     return(list(schema_version = 1L, exists = TRUE, entries = list()))
   }
+  relative <- vapply(entries, .builder_release_relative, "", root = target)
   linked <- vapply(entries, .builder_release_link, logical(1))
+  entry_types <- vapply(
+    enumerated$fingerprints,
+    `[[`,
+    character(1),
+    "type"
+  )
+  ignorable <- .builder_release_ignorable_metadata(relative) &
+    !linked &
+    !is.na(entry_types) &
+    entry_types == "file"
+  if (any(ignorable)) {
+    entries <- entries[!ignorable]
+    relative <- relative[!ignorable]
+    linked <- linked[!ignorable]
+    entry_types <- entry_types[!ignorable]
+  }
+  if (!length(entries)) {
+    return(list(schema_version = 1L, exists = TRUE, entries = list()))
+  }
   if (any(linked)) {
     stop(
       "A release identity cannot include a symbolic link: ",
@@ -390,12 +415,6 @@ builder_release_identity <- function(
       call. = FALSE
     )
   }
-  entry_types <- vapply(
-    enumerated$fingerprints,
-    `[[`,
-    character(1),
-    "type"
-  )
   unsupported <- is.na(entry_types) |
     !entry_types %in% c("file", "directory")
   if (any(unsupported)) {
@@ -405,7 +424,6 @@ builder_release_identity <- function(
       call. = FALSE
     )
   }
-  relative <- vapply(entries, .builder_release_relative, "", root = target)
   order_index <- order(relative, method = "radix")
   entries <- entries[order_index]
   relative <- relative[order_index]
@@ -626,9 +644,10 @@ builder_release_identity <- function(
     },
     logical(1)
   )
-  ignorable_shell_paths <- ".DS_Store"
   recorded_present <- intersect(member_paths, actual_paths)
-  shell_foreign <- setdiff(actual_paths, ignorable_shell_paths)
+  shell_foreign <- actual_paths[
+    !.builder_release_ignorable_metadata(actual_paths)
+  ]
   abandoned <- isTRUE(allow_abandoned) &&
     !isTRUE(exact) &&
     length(member_paths) > 0L &&
@@ -642,6 +661,7 @@ builder_release_identity <- function(
   } else {
     setdiff(actual_paths, member_paths)
   }
+  foreign <- foreign[!.builder_release_ignorable_metadata(foreign)]
   if (isTRUE(exact) && length(foreign)) {
     .builder_release_record_error("does not match the complete release.")
   }
