@@ -840,7 +840,7 @@ builder_project_profile_cache_path <- function(dataset_id, root) {
     stop("A safe dataset id is required.", call. = FALSE)
   }
   builder_project_resolve_path(
-    paste("cache", dataset_id, "profile.rds", sep = "/"),
+    paste("cache", dataset_id, "profile.qs2", sep = "/"),
     root,
     "managed"
   )
@@ -989,15 +989,16 @@ builder_project_write_profile_cache <- function(
     fileext = ".part"
   )
   on.exit(unlink(temporary, force = TRUE), add = TRUE)
-  saveRDS(
+  qs2::qs_save(
     builder_project_profile_cache_value(entry),
     temporary,
-    version = 3L,
-    compress = FALSE
+    compress_level = 1L,
+    shuffle = TRUE
   )
   .builder_project_commit_sidecar(temporary, target)
   list(
     schema_version = .builder_project_profile_cache_schema_version,
+    format = "qs2",
     path = builder_project_relative_path(target, root),
     source_fingerprint = source_fingerprint,
     fingerprint = builder_project_file_fingerprint(target, content = TRUE)
@@ -1018,7 +1019,24 @@ builder_project_read_profile_cache <- function(record, root) {
   ) {
     return(NULL)
   }
-  value <- tryCatch(readRDS(path), error = function(error) NULL)
+  format <- as.character(cache$format %||% "")
+  if (!nzchar(format)) {
+    format <- if (identical(tolower(tools::file_ext(path)), "qs2")) {
+      "qs2"
+    } else {
+      "rds"
+    }
+  }
+  value <- tryCatch(
+    if (identical(format, "qs2")) {
+      qs2::qs_read(path, validate_checksum = TRUE)
+    } else if (identical(format, "rds")) {
+      readRDS(path)
+    } else {
+      NULL
+    },
+    error = function(error) NULL
+  )
   if (
     !is.list(value) ||
       !identical(
