@@ -1779,6 +1779,61 @@ builder_project_check_identity <- function(entry) {
   )
 }
 
+builder_project_effective_check_identity <- function(
+  entry,
+  coordinate_drafts = list()
+) {
+  records <- if (
+    is.list(entry) &&
+      .builder_project_text(entry$id %||% "") &&
+      is.list(coordinate_drafts)
+  ) {
+    coordinate_drafts[[entry$id]] %||% list()
+  } else {
+    list()
+  }
+  if (length(records)) {
+    snapshot_identity <- tryCatch(
+      .builder_worker_identity(entry$snapshot),
+      error = function(error) NULL
+    )
+    applied <- if (is.null(snapshot_identity)) {
+      NULL
+    } else {
+      tryCatch(
+        builder_coordinate_drafts_apply_entry(
+          entry,
+          records,
+          snapshot_identity = snapshot_identity
+        ),
+        error = function(error) NULL
+      )
+    }
+    if (!is.list(applied) || !is.list(applied$entry)) {
+      return(NA_character_)
+    }
+    entry <- applied$entry
+  }
+  builder_project_check_identity(entry)
+}
+
+builder_project_checked_ids <- function(
+  entries,
+  marks,
+  coordinate_drafts = list()
+) {
+  ids <- vapply(entries, `[[`, character(1), "id")
+  identities <- vapply(
+    entries,
+    builder_project_effective_check_identity,
+    character(1),
+    coordinate_drafts = coordinate_drafts
+  )
+  matched <- !is.na(identities) & ids %in% names(marks)
+  matched[matched] <- unname(marks[ids[matched]]) == identities[matched]
+  ids[matched]
+}
+
 builder_project_restored_check_identity <- function(record, entry, status) {
   if (
     !is.list(record) ||

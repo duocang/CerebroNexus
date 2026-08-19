@@ -300,15 +300,16 @@ dataset_check_marks <- reactiveVal(character())
 checked_dataset_ids <- reactive({
   entries <- sets()
   marks <- dataset_check_marks()
-  ids <- vapply(entries, `[[`, character(1), "id")
-  identities <- vapply(
-    entries,
-    builder_project_check_identity,
-    character(1)
-  )
-  matched <- ids %in% names(marks)
-  matched[matched] <- unname(marks[ids[matched]]) == identities[matched]
-  ids[matched]
+  coordinate_drafts <- if (
+    exists("alignment_server", inherits = TRUE) &&
+      is.list(alignment_server) &&
+      is.function(alignment_server$coordinate_drafts)
+  ) {
+    alignment_server$coordinate_drafts()
+  } else {
+    list()
+  }
+  builder_project_checked_ids(entries, marks, coordinate_drafts)
 })
 all_datasets_checked <- reactive({
   ids <- vapply(sets(), `[[`, character(1), "id")
