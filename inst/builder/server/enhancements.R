@@ -343,6 +343,7 @@ alignment_server <- builder_spatial_alignment_server(
     commit_enhance_images(entry, images, internal = TRUE)
   },
   alignment_preview = alignment_preview,
+  spatial_previews = spatial_previews,
   spatial_coords = spatial_coords
 )
 active_slice <- alignment_server$active_section

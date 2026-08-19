@@ -604,14 +604,14 @@ rail_controller <- builder_dataset_rail_server(
   session = session,
   store = store,
   validate_remove = validate_rail_removal,
-  select_dataset = function(id, commit) {
+  select_dataset = function(id, commit, switch_token = NULL) {
     if (
       exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
         !isTRUE(builder_operation_allowed("select_dataset"))
     ) {
       return(invisible(FALSE))
     }
-    alignment_server$request_dataset_switch(id, commit)
+    alignment_server$request_dataset_switch(id, commit, switch_token)
   },
   on_select = function(id) {
     active_import_id(NULL)
