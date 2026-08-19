@@ -297,6 +297,7 @@ current <- function(value) {
   invisible(value)
 }
 dataset_check_marks <- reactiveVal(character())
+builder_configuration_identity_cache <- new.env(parent = emptyenv())
 checked_dataset_ids <- reactive({
   entries <- sets()
   marks <- dataset_check_marks()
@@ -309,7 +310,12 @@ checked_dataset_ids <- reactive({
   } else {
     list()
   }
-  builder_project_checked_ids(entries, marks, coordinate_drafts)
+  builder_project_checked_ids(
+    entries,
+    marks,
+    coordinate_drafts,
+    identity_cache = builder_configuration_identity_cache
+  )
 })
 all_datasets_checked <- reactive({
   ids <- vapply(sets(), `[[`, character(1), "id")
@@ -320,6 +326,10 @@ observe({
   marks <- isolate(dataset_check_marks())
   kept <- marks[names(marks) %in% ids]
   if (!identical(kept, marks)) dataset_check_marks(kept)
+  builder_project_configuration_cache_retain_datasets(
+    builder_configuration_identity_cache,
+    ids
+  )
 })
 result <- reactiveVal(NULL)
 build_flow <- reactiveVal(list(stage = "idle", plan = NULL))
@@ -1003,6 +1013,9 @@ session$onSessionEnded(function() {
       }
     }
     builder_import_progress_cleanup(current_worker$snapshot_root)
+    if (isTRUE(current_worker$owns_root)) {
+      builder_project_cleanup_session_sources(current_worker$snapshot_root)
+    }
     remaining <- list.files(
       current_worker$snapshot_root,
       all.files = TRUE,
