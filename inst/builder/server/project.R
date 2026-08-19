@@ -26,6 +26,9 @@ builder_project_source_run <- reactiveVal(NULL)
 builder_project_source_queue <- reactiveVal(list())
 builder_project_source_active_ids <- reactiveVal(character())
 builder_project_source_progress <- reactiveVal(NULL)
+builder_project_open_process <- reactiveVal(NULL)
+builder_project_open_generation <- reactiveVal(0)
+builder_project_open_previous_phase <- reactiveVal("idle")
 builder_client_import_state <- reactiveVal(list(nonce = 0, pending = 0L))
 builder_connection_state <- reactiveVal("connected")
 builder_project_restore_progress <- reactiveVal(list(
@@ -254,6 +257,8 @@ builder_activity_message <- function(
     busy_message = message,
     busy_detail = detail,
     has_project = isTRUE(activity$has_project),
+    open_cancelable = identical(phase, "opening") &&
+      identical(restore_progress$mode %||% NULL, "opening"),
     warn_before_unload = isTRUE(capabilities$warn_before_unload) ||
       build_active,
     page_inert = isTRUE(capabilities$page_inert) || build_active
@@ -311,6 +316,264 @@ builder_project_source_runtime_file <- function() {
     stop("The Builder Project runtime could not be found.", call. = FALSE)
   }
   normalizePath(found[[1L]], winslash = "/", mustWork = TRUE)
+}
+
+builder_project_open_is_current <- function(generation) {
+  identical(
+    as.double(generation),
+    as.double(isolate(builder_project_open_generation()))
+  )
+}
+
+builder_project_reset_open_state <- function(
+  generation = NULL,
+  restore_previous = FALSE
+) {
+  if (
+    !is.null(generation) &&
+      !builder_project_open_is_current(generation)
+  ) {
+    return(invisible(FALSE))
+  }
+  builder_project_open_process(NULL)
+  builder_project_restore_progress(list(
+    mode = "idle",
+    total = 0L,
+    remaining = 0L
+  ))
+  if (identical(isolate(builder_project_operation_phase()), "opening")) {
+    previous_phase <- isolate(builder_project_open_previous_phase())
+    next_phase <- if (
+      isTRUE(restore_previous) &&
+        previous_phase %in% c("idle", "conflict")
+    ) {
+      previous_phase
+    } else {
+      "idle"
+    }
+    builder_project_operation_phase(next_phase)
+    builder_project_open_previous_phase(next_phase)
+  }
+  invisible(TRUE)
+}
+
+builder_project_fail_open <- function(generation, error) {
+  if (!builder_project_open_is_current(generation)) {
+    return(invisible(FALSE))
+  }
+  builder_project_restore(NULL)
+  process <- isolate(builder_project_open_process())
+  if (!is.null(process)) {
+    tryCatch(process$kill(), error = function(error) NULL)
+  }
+  builder_project_reset_open_state(
+    generation,
+    restore_previous = TRUE
+  )
+  message <- if (inherits(error, "condition")) {
+    conditionMessage(error)
+  } else {
+    as.character(error %||% "The project file could not be opened.")
+  }
+  showNotification(
+    message,
+    type = "error",
+    duration = 8,
+    session = session
+  )
+  invisible(FALSE)
+}
+
+invalidate_builder_project_open <- function(kill = TRUE) {
+  process <- isolate(builder_project_open_process())
+  builder_project_open_generation(
+    as.double(isolate(builder_project_open_generation())) + 1
+  )
+  builder_project_open_process(NULL)
+  if (!is.null(process) && isTRUE(kill)) {
+    tryCatch(
+      process$kill(),
+      error = function(error) NULL
+    )
+  }
+  builder_project_restore_progress(list(
+    mode = "idle",
+    total = 0L,
+    remaining = 0L
+  ))
+  if (identical(isolate(builder_project_operation_phase()), "opening")) {
+    previous_phase <- isolate(builder_project_open_previous_phase())
+    builder_project_operation_phase(
+      if (previous_phase %in% c("idle", "conflict")) {
+        previous_phase
+      } else {
+        "idle"
+      }
+    )
+  }
+  invisible(TRUE)
+}
+
+builder_project_poll_open <- NULL
+
+builder_project_schedule_open_poll <- function(generation) {
+  later::later(
+    function() {
+      tryCatch(
+        {
+          if (builder_session_closed()) {
+            invalidate_builder_project_open(kill = TRUE)
+            return(invisible(FALSE))
+          }
+          if (!builder_project_open_is_current(generation)) {
+            return(invisible(FALSE))
+          }
+          shiny::withReactiveDomain(session, {
+            builder_project_poll_open(generation)
+          })
+        },
+        error = function(error) {
+          recovered <- try(
+            shiny::withReactiveDomain(session, {
+              builder_project_fail_open(generation, error)
+            }),
+            silent = TRUE
+          )
+          if (inherits(recovered, "try-error")) {
+            try(
+              builder_project_reset_open_state(
+                generation,
+                restore_previous = TRUE
+              ),
+              silent = TRUE
+            )
+            return(invisible(FALSE))
+          }
+          recovered
+        }
+      )
+    },
+    delay = 0.2
+  )
+  invisible(TRUE)
+}
+
+builder_project_start_open <- function(selected_path) {
+  if (builder_session_closed()) {
+    return(invisible(FALSE))
+  }
+  if (!is.null(isolate(builder_project_open_process()))) {
+    invalidate_builder_project_open(kill = TRUE)
+  }
+  builder_project_restore_progress(list(
+    mode = "opening",
+    total = 0L,
+    remaining = 0L
+  ))
+  builder_project_operation_phase("opening")
+  generation <- as.double(isolate(builder_project_open_generation())) + 1
+  builder_project_open_generation(generation)
+  builder_project_restore(NULL)
+  if (!requireNamespace("callr", quietly = TRUE)) {
+    return(builder_project_fail_open(
+      generation,
+      "The Project could not be checked in the background because callr is unavailable."
+    ))
+  }
+  process <- tryCatch(
+    callr::r_bg(
+      function(selected_path, runtime_file) {
+        runtime <- new.env(parent = globalenv())
+        runtime$`%||%` <- function(left, right) {
+          if (is.null(left)) right else left
+        }
+        sys.source(runtime_file, envir = runtime)
+        runtime$builder_project_open_snapshot(selected_path)
+      },
+      args = list(
+        selected_path = selected_path,
+        runtime_file = builder_project_source_runtime_file()
+      ),
+      supervise = TRUE,
+      stdout = NULL,
+      stderr = NULL
+    ),
+    error = identity
+  )
+  if (inherits(process, "condition")) {
+    return(builder_project_fail_open(generation, process))
+  }
+  if (!builder_project_open_is_current(generation)) {
+    tryCatch(process$kill(), error = function(error) NULL)
+    return(invisible(FALSE))
+  }
+  builder_project_open_process(process)
+  builder_project_schedule_open_poll(generation)
+  invisible(TRUE)
+}
+
+builder_project_poll_open <- function(generation) {
+  if (builder_session_closed()) {
+    invalidate_builder_project_open(kill = TRUE)
+    return(invisible(FALSE))
+  }
+  if (!builder_project_open_is_current(generation)) {
+    return(invisible(FALSE))
+  }
+  process <- isolate(builder_project_open_process())
+  if (is.null(process)) {
+    return(invisible(FALSE))
+  }
+  alive <- tryCatch(process$is_alive(), error = identity)
+  if (inherits(alive, "condition")) {
+    return(builder_project_fail_open(generation, alive))
+  }
+  if (isTRUE(alive)) {
+    builder_project_schedule_open_poll(generation)
+    return(invisible(TRUE))
+  }
+  if (!identical(alive, FALSE)) {
+    return(builder_project_fail_open(
+      generation,
+      "The background Project check returned an invalid process state."
+    ))
+  }
+  opened <- tryCatch(process$get_result(), error = identity)
+  if (!builder_project_open_is_current(generation)) {
+    return(invisible(FALSE))
+  }
+  if (inherits(opened, "condition")) {
+    return(builder_project_fail_open(generation, opened))
+  }
+  if (
+    !is.list(opened) ||
+      !is.list(opened$manifest) ||
+      !.builder_project_text(opened$root) ||
+      !.builder_project_text(opened$path)
+  ) {
+    return(builder_project_fail_open(
+      generation,
+      "The background Project check returned an invalid result."
+    ))
+  }
+  manifest <- opened$manifest
+  if (identical(manifest$pending_build$status %||% NULL, "running")) {
+    manifest$pending_build$status <- "interrupted"
+  }
+  builder_project_restore(list(
+    manifest = manifest,
+    root = opened$root,
+    path = opened$path
+  ))
+  builder_project_reset_open_state(
+    generation,
+    restore_previous = TRUE
+  )
+  shiny::showModal(
+    builder_project_restore_dialog(manifest, opened$root),
+    session = session
+  )
+  invisible(TRUE)
 }
 
 builder_project_poll_source_sync <- NULL
@@ -1151,6 +1414,7 @@ observeEvent(input$cancel_builder_project_folder, {
 
 session$onSessionEnded(function() {
   builder_project_pending_folder(NULL)
+  invalidate_builder_project_open(kill = TRUE)
 })
 
 observeEvent(input$save_builder_project, {
@@ -1186,6 +1450,9 @@ observeEvent(input$open_builder_project, {
     )
     return()
   }
+  builder_project_open_previous_phase(
+    isolate(builder_project_operation_phase())
+  )
   builder_project_restore_progress(list(
     mode = "opening",
     total = 0L,
@@ -1196,53 +1463,31 @@ observeEvent(input$open_builder_project, {
   session$onFlushed(
     function() {
       shiny::isolate({
-        manifest <- tryCatch(
-          builder_project_read(selected_path),
-          error = identity
-        )
-        if (inherits(manifest, "error")) {
-          builder_project_restore_progress(list(
-            mode = "idle",
-            total = 0L,
-            remaining = 0L
-          ))
-          builder_project_operation_phase("idle")
-          showNotification(
-            conditionMessage(manifest),
-            type = "error",
-            duration = 8
-          )
+        if (builder_session_closed()) {
           return()
         }
-        if (identical(manifest$pending_build$status %||% NULL, "running")) {
-          manifest$pending_build$status <- "interrupted"
-        }
-        root <- dirname(selected_path)
-        statuses <- builder_project_status_snapshot(manifest, root)
-        manifest$datasets <- lapply(
-          manifest$datasets %||% list(),
-          function(record) {
-            record$runtime_restore_status <- statuses[[record$id]] %||% NULL
-            record
-          }
-        )
-        builder_project_restore(list(
-          manifest = manifest,
-          root = root,
-          path = selected_path
-        ))
-        builder_project_restore_progress(list(
-          mode = "idle",
-          total = 0L,
-          remaining = 0L
-        ))
-        builder_project_operation_phase("idle")
-        shiny::showModal(builder_project_restore_dialog(manifest, root))
+        builder_project_start_open(selected_path)
       })
     },
     once = TRUE
   )
 })
+
+observeEvent(
+  input$cancel_builder_project_open,
+  {
+    progress <- isolate(builder_project_restore_progress())
+    if (
+      !identical(isolate(builder_project_operation_phase()), "opening") ||
+        !identical(progress$mode %||% NULL, "opening")
+    ) {
+      return()
+    }
+    builder_project_restore(NULL)
+    invalidate_builder_project_open(kill = TRUE)
+  },
+  ignoreInit = TRUE
+)
 
 observeEvent(input$confirm_builder_project_open, {
   pending <- isolate(builder_project_restore())

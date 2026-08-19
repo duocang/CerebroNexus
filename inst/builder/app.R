@@ -474,6 +474,11 @@ ui <- tagList(
     role = "status",
     `aria-live` = "assertive",
     `aria-hidden` = "true",
+    `aria-labelledby` = "builder-operation-overlay-title",
+    `aria-describedby` = paste(
+      "builder-operation-overlay-message",
+      "builder-operation-overlay-detail"
+    ),
     tabindex = "-1",
     div(
       class = "builder-operation-overlay-card",
