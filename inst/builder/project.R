@@ -407,10 +407,13 @@ builder_project_folder_state <- function(root) {
     ))
   }
   entries <- list.files(root, all.files = TRUE, no.. = TRUE)
+  managed_conflicts <- entries[
+    tolower(entries) %in% tolower(.builder_project_managed_root_names)
+  ]
   list(
     kind = if (length(entries)) "nonempty" else "empty",
     root = root,
-    managed_conflicts = intersect(entries, .builder_project_managed_root_names)
+    managed_conflicts = managed_conflicts
   )
 }
 
