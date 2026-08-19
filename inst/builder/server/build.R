@@ -656,6 +656,9 @@ remove_dataset <- function(
 ) {
   ids <- vapply(previous_state$datasets, `[[`, character(1), "id")
   entry <- previous_state$datasets[[match(id, ids)]]
+  if (!is.null(isolate(import_of(id)))) {
+    remove_pending_import(id)
+  }
   previous_removed <- previous_state$last_removed
   if (is.list(previous_removed)) {
     identity <- .builder_worker_identity(previous_removed$entry$snapshot)

@@ -34,6 +34,13 @@ test_that("project dataset ids are allocated without reusing restored ids", {
     runtime$builder_project_allocate_dataset_id(1L, "ds1", "ds1"),
     "already in use"
   )
+
+  replacement_ids <- runtime$builder_project_allocation_ids(
+    entries = list(list(id = "ds1"), list(id = "ds2")),
+    import_entries = list(list(id = "ds3")),
+    replacing_id = "ds1"
+  )
+  expect_identical(replacement_ids, c("ds2", "ds3"))
 })
 
 test_that("uploaded sources are retained separately with their original names", {
@@ -1224,25 +1231,31 @@ test_that("restore dialog explains the session-only skip action", {
 
 test_that("ready CRB workbench keeps the Review continuation actions", {
   project_ui <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
-      "builder",
-      "ui",
-      "project.R"
-    ), warn = FALSE),
+    readLines(
+      testthat::test_path(
+        "..",
+        "..",
+        "inst",
+        "builder",
+        "ui",
+        "project.R"
+      ),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   project_server <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
-      "builder",
-      "server",
-      "review.R"
-    ), warn = FALSE),
+    readLines(
+      testthat::test_path(
+        "..",
+        "..",
+        "inst",
+        "builder",
+        "server",
+        "review.R"
+      ),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
 
@@ -1682,18 +1695,20 @@ test_that("ready CRB restore selection is prepared transactionally in manifest o
   ) {
     paste0("mark-", entry$id)
   }
-  manifest <- list(datasets = list(
-    list(
-      id = "ds2",
-      artifact = list(path = "artifacts/ds2.crb"),
-      runtime_restore_status = list(artifact_ready = TRUE, checked = TRUE)
-    ),
-    list(
-      id = "ds1",
-      artifact = list(path = "artifacts/ds1.crb"),
-      runtime_restore_status = list(artifact_ready = TRUE, checked = TRUE)
+  manifest <- list(
+    datasets = list(
+      list(
+        id = "ds2",
+        artifact = list(path = "artifacts/ds2.crb"),
+        runtime_restore_status = list(artifact_ready = TRUE, checked = TRUE)
+      ),
+      list(
+        id = "ds1",
+        artifact = list(path = "artifacts/ds1.crb"),
+        runtime_restore_status = list(artifact_ready = TRUE, checked = TRUE)
+      )
     )
-  ))
+  )
 
   prepared <- runtime$builder_project_prepare_open_selection(
     manifest,
@@ -1711,6 +1726,15 @@ test_that("ready CRB restore selection is prepared transactionally in manifest o
     c(ds2 = "mark-ds2", ds1 = "mark-ds1")
   )
   expect_identical(prepared$pending_entries, list())
+  expect_identical(prepared$skipped_ids, character())
+
+  skipped <- runtime$builder_project_prepare_open_selection(
+    manifest,
+    "project-root",
+    list(ds2 = "skip", ds1 = "skip")
+  )
+  expect_identical(skipped$reusable_entries, list())
+  expect_identical(skipped$skipped_ids, c("ds2", "ds1"))
 })
 
 test_that("ready CRB confirmation validates the complete state before committing", {
@@ -1769,24 +1793,30 @@ test_that("project open validation runs in an owned background process", {
   )
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
   client <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
-      "builder",
-      "www",
-      "builder.js"
-    ), warn = FALSE),
+    readLines(
+      testthat::test_path(
+        "..",
+        "..",
+        "inst",
+        "builder",
+        "www",
+        "builder.js"
+      ),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   app <- paste(
-    readLines(testthat::test_path(
-      "..",
-      "..",
-      "inst",
-      "builder",
-      "app.R"
-    ), warn = FALSE),
+    readLines(
+      testthat::test_path(
+        "..",
+        "..",
+        "inst",
+        "builder",
+        "app.R"
+      ),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   start_position <- regexpr(
@@ -1837,9 +1867,17 @@ test_that("project open validation runs in an owned background process", {
   )
 
   expect_match(start, "callr::r_bg(", fixed = TRUE)
-  expect_match(start, "runtime$builder_project_open_snapshot(selected_path)", fixed = TRUE)
+  expect_match(
+    start,
+    "runtime$builder_project_open_snapshot(selected_path)",
+    fixed = TRUE
+  )
   expect_match(start, "supervise = TRUE", fixed = TRUE)
-  expect_match(start, "builder_project_open_generation(generation)", fixed = TRUE)
+  expect_match(
+    start,
+    "builder_project_open_generation(generation)",
+    fixed = TRUE
+  )
   expect_match(start, "if (builder_session_closed())", fixed = TRUE)
   expect_match(poll, "process$is_alive()", fixed = TRUE)
   expect_match(
@@ -1879,7 +1917,11 @@ test_that("project open validation runs in an owned background process", {
     ),
     perl = TRUE
   )
-  expect_match(observer, "builder_project_start_open(selected_path)", fixed = TRUE)
+  expect_match(
+    observer,
+    "builder_project_start_open(selected_path)",
+    fixed = TRUE
+  )
   expect_match(observer, "builder_project_open_previous_phase(", fixed = TRUE)
   expect_false(grepl(
     "builder_project_read(selected_path)",
@@ -2042,6 +2084,17 @@ test_that("a revision conflict permits reopening but rejects mutation", {
   )
 })
 
+test_that("an existing project can persist removal of its final dataset", {
+  runtime <- builder_project_test_runtime()
+  activity <- runtime$builder_activity_state(
+    project_phase = "dirty",
+    has_project = TRUE,
+    has_datasets = FALSE
+  )
+
+  expect_true(runtime$builder_activity_capabilities(activity)$save_project)
+})
+
 test_that("project dirty state follows configuration checked state and order", {
   runtime <- builder_project_test_runtime()
   first <- list(
@@ -2099,6 +2152,65 @@ test_that("project dirty state follows configuration checked state and order", {
     "ds2",
     manifest
   ))
+  expect_true(runtime$builder_project_live_dirty(
+    list(first),
+    character(),
+    manifest
+  ))
+  expect_true(runtime$builder_project_live_dirty(
+    list(),
+    character(),
+    manifest
+  ))
+  expect_false(runtime$builder_project_live_dirty(
+    list(),
+    character(),
+    list(datasets = list())
+  ))
+  expect_false(runtime$builder_project_live_dirty(
+    list(),
+    character(),
+    manifest,
+    ignored_ids = c("ds1", "ds2")
+  ))
+  inactive_manifest <- manifest
+  inactive_manifest$datasets <- lapply(
+    inactive_manifest$datasets,
+    function(record) {
+      record$release <- list(included = FALSE)
+      record
+    }
+  )
+  expect_false(runtime$builder_project_live_dirty(
+    list(),
+    character(),
+    inactive_manifest
+  ))
+})
+
+test_that("checked identities survive only while removal remains undoable", {
+  runtime <- builder_project_test_runtime()
+  marks <- c(ds1 = "mark-one", ds2 = "mark-two", stale = "mark-stale")
+  removed <- list(id = "ds2", entry = list(id = "ds2"))
+
+  expect_identical(
+    runtime$builder_project_retain_check_marks(
+      marks,
+      live_ids = "ds1",
+      last_removed = removed,
+      can_undo_remove = TRUE
+    ),
+    c(ds1 = "mark-one", ds2 = "mark-two")
+  )
+  expect_identical(
+    runtime$builder_project_retain_check_marks(
+      marks,
+      live_ids = "ds1",
+      last_removed = removed,
+      can_undo_remove = FALSE
+    ),
+    c(ds1 = "mark-one")
+  )
 })
 
 test_that("checked project records bind confirmation to the restored entry", {

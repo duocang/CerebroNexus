@@ -970,6 +970,32 @@ test_that("the App describes object isolation accurately", {
   expect_match(app, "isolated worker process", fixed = TRUE)
 })
 
+test_that("artifact replacement invalidates only the configure surface", {
+  foundation <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "foundation.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  review <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    foundation,
+    "configure_workbench_surface <- reactiveVal",
+    fixed = TRUE
+  )
+  expect_match(foundation, "entry$load_state %||% \"loaded\"", fixed = TRUE)
+  expect_match(review, "configure_workbench_surface()", fixed = TRUE)
+  expect_match(review, "entry <- isolate(entry_of(id))", fixed = TRUE)
+})
+
 test_that("unchanged settings do not write state or advance revisions", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")

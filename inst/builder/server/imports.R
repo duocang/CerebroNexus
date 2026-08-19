@@ -95,9 +95,10 @@ start_load <- function(
   }
   pending_sources(reservation$pending)
   add_error(NULL)
-  existing_ids <- c(
-    vapply(sets(), `[[`, character(1), "id"),
-    vapply(imports()$entries %||% list(), `[[`, character(1), "id")
+  existing_ids <- builder_project_allocation_ids(
+    entries = sets(),
+    import_entries = imports()$entries %||% list(),
+    replacing_id = if (isTRUE(restoring_source)) dataset_id else NULL
   )
   allocation <- builder_project_allocate_dataset_id(
     seq_id(),

@@ -77,6 +77,54 @@ test_that("the Builder initial HTML contains a stable non-empty shell", {
   expect_false(grepl('uiOutput("ds_list")', pre_server, fixed = TRUE))
 })
 
+test_that("an empty active project can reopen its saved dataset choices", {
+  html <- as.character(builder_empty_workbench_ui(project_active = TRUE))
+  workflow <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "workflow.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  project_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(html, 'id="choose_saved_project_datasets"', fixed = TRUE)
+  expect_match(html, "Choose saved datasets", fixed = TRUE)
+  expect_match(
+    workflow,
+    "builder_empty_workbench_ui(project_active = !is.null(builder_project()))",
+    fixed = TRUE
+  )
+  expect_match(
+    project_server,
+    "observeEvent(input$choose_saved_project_datasets, {",
+    fixed = TRUE
+  )
+  client <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    client,
+    "builderActivityState.has_project === true",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "activityCapability(\"edit_dataset\")",
+    fixed = TRUE
+  )
+})
+
 test_that("the initial shell explains background workspace startup", {
   app <- paste(
     readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
