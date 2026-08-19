@@ -1,11 +1,10 @@
 ## Builder projects keep durable user choices separate from session-only
 ## workers. Schema v3 is an index: exact configuration lives in small typed
-## sidecars and source-derived profiles live in replaceable binary caches.
+## sidecars while source-derived profiles are regenerated from source data.
 
 .builder_project_schema_version <- 3L
 .builder_project_supported_schema_versions <- c(1L, 2L, 3L)
 .builder_project_config_schema_version <- 1L
-.builder_project_profile_cache_schema_version <- 1L
 .builder_project_configuration_contract_version <- 1L
 
 .builder_project_phases <- c(
@@ -835,17 +834,6 @@ builder_project_dataset_config_path <- function(dataset_id, root) {
   )
 }
 
-builder_project_profile_cache_path <- function(dataset_id, root) {
-  if (!.builder_project_identifier(dataset_id)) {
-    stop("A safe dataset id is required.", call. = FALSE)
-  }
-  builder_project_resolve_path(
-    paste("cache", dataset_id, "profile.qs2", sep = "/"),
-    root,
-    "managed"
-  )
-}
-
 .builder_project_commit_sidecar <- function(temporary, target) {
   target_dir <- dirname(target)
   if (
@@ -940,145 +928,6 @@ builder_project_read_dataset_config <- function(record, root) {
     stop("A saved dataset configuration is missing.", call. = FALSE)
   }
   jsonlite::unserializeJSON(payload)
-}
-
-builder_project_profile_cache_value <- function(entry) {
-  list(
-    schema_version = .builder_project_profile_cache_schema_version,
-    id = as.character(entry$id),
-    profile = entry$profile %||% list(),
-    dataset_profile = entry$dataset_profile %||% list(),
-    levels = entry$levels %||% list()
-  )
-}
-
-builder_project_write_profile_cache <- function(
-  entry,
-  root,
-  source_fingerprint = NULL,
-  prior = NULL
-) {
-  root <- builder_project_normalize_root(root)
-  target <- builder_project_profile_cache_path(entry$id, root)
-  prior_cache <- if (is.list(prior)) prior$cache %||% list() else list()
-  current <- builder_project_file_fingerprint(target, content = TRUE)
-  if (
-    file.exists(target) &&
-      is.list(prior_cache$fingerprint) &&
-      builder_project_content_fingerprint_matches(
-        prior_cache$fingerprint,
-        current
-      ) &&
-      identical(prior_cache$source_fingerprint %||% NULL, source_fingerprint)
-  ) {
-    return(prior_cache)
-  }
-  target_dir <- dirname(target)
-  if (
-    !dir.exists(target_dir) &&
-      !dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
-  ) {
-    stop(
-      "The dataset profile cache directory could not be created.",
-      call. = FALSE
-    )
-  }
-  temporary <- tempfile(
-    paste0(entry$id, "-profile-"),
-    tmpdir = target_dir,
-    fileext = ".part"
-  )
-  on.exit(unlink(temporary, force = TRUE), add = TRUE)
-  qs2::qs_save(
-    builder_project_profile_cache_value(entry),
-    temporary,
-    compress_level = 1L,
-    shuffle = TRUE
-  )
-  .builder_project_commit_sidecar(temporary, target)
-  list(
-    schema_version = .builder_project_profile_cache_schema_version,
-    format = "qs2",
-    path = builder_project_relative_path(target, root),
-    source_fingerprint = source_fingerprint,
-    fingerprint = builder_project_file_fingerprint(target, content = TRUE)
-  )
-}
-
-builder_project_read_profile_cache <- function(record, root) {
-  cache <- record$cache %||% list()
-  if (!.builder_project_text(cache$path %||% NULL)) {
-    return(NULL)
-  }
-  path <- builder_project_resolve_path(cache$path, root, "managed")
-  current <- builder_project_file_fingerprint(path, content = TRUE)
-  if (
-    !file.exists(path) ||
-      !is.list(cache$fingerprint) ||
-      !builder_project_content_fingerprint_matches(cache$fingerprint, current)
-  ) {
-    return(NULL)
-  }
-  format <- as.character(cache$format %||% "")
-  if (!nzchar(format)) {
-    format <- if (identical(tolower(tools::file_ext(path)), "qs2")) {
-      "qs2"
-    } else {
-      "rds"
-    }
-  }
-  value <- tryCatch(
-    if (identical(format, "qs2")) {
-      qs2::qs_read(path, validate_checksum = TRUE)
-    } else if (identical(format, "rds")) {
-      readRDS(path)
-    } else {
-      NULL
-    },
-    error = function(error) NULL
-  )
-  if (
-    !is.list(value) ||
-      !identical(
-        .builder_project_integer(value$schema_version),
-        .builder_project_profile_cache_schema_version
-      ) ||
-      !identical(as.character(value$id %||% ""), as.character(record$id))
-  ) {
-    return(NULL)
-  }
-  value
-}
-
-builder_project_profile_cache_available <- function(record, root) {
-  cache <- record$cache %||% list()
-  if (!.builder_project_text(cache$path %||% NULL)) {
-    return(FALSE)
-  }
-  path <- tryCatch(
-    builder_project_resolve_path(cache$path, root, "managed"),
-    error = function(error) NULL
-  )
-  if (!.builder_project_text(path) || !file.exists(path) || dir.exists(path)) {
-    return(FALSE)
-  }
-  builder_project_content_fingerprint_matches(
-    cache$fingerprint %||% NULL,
-    builder_project_file_fingerprint(path, content = TRUE)
-  )
-}
-
-builder_project_hydrate_profile_cache <- function(entry, record, root) {
-  cached <- builder_project_read_profile_cache(record, root)
-  if (is.null(cached)) {
-    return(entry)
-  }
-  entry$profile <- cached$profile %||% entry$profile %||% list()
-  entry$dataset_profile <- cached$dataset_profile %||%
-    entry$dataset_profile %||%
-    list()
-  entry$levels <- cached$levels %||% entry$levels %||% list()
-  entry
 }
 
 .builder_project_asset_segment <- function(value) {
@@ -1369,8 +1218,7 @@ builder_project_dataset_record <- function(
   artifact = NULL,
   order = 1L,
   payload_entry = entry,
-  root = NULL,
-  prior = NULL
+  root = NULL
 ) {
   profile <- entry$profile %||% list()
   spatial <- entry$dataset_profile$content$spatial %||%
@@ -1405,16 +1253,6 @@ builder_project_dataset_record <- function(
       )
     )
   }
-  cache <- if (is.null(sidecar)) {
-    NULL
-  } else {
-    builder_project_write_profile_cache(
-      entry,
-      root,
-      source_fingerprint = source$fingerprint %||% NULL,
-      prior = prior
-    )
-  }
   list(
     id = entry$id,
     name = entry$settings$name %||% entry$id,
@@ -1429,7 +1267,6 @@ builder_project_dataset_record <- function(
       fovs = as.character(names(sections) %||% sections %||% character())
     ),
     configuration = configuration,
-    cache = cache,
     artifact = artifact,
     release = list(included = TRUE)
   )
@@ -1438,8 +1275,7 @@ builder_project_dataset_record <- function(
 builder_project_restore_entry <- function(
   record,
   root,
-  hydrate_spatial_assets = TRUE,
-  hydrate_profile_cache = FALSE
+  hydrate_spatial_assets = TRUE
 ) {
   entry <- builder_project_read_dataset_config(record, root)
   entry$id <- as.character(record$id)
@@ -1461,9 +1297,6 @@ builder_project_restore_entry <- function(
   entry$dataset_profile <- entry$dataset_profile %||% list()
   entry$levels <- entry$levels %||% list()
   entry$format <- entry$format %||% record$format %||% NULL
-  if (isTRUE(hydrate_profile_cache)) {
-    entry <- builder_project_hydrate_profile_cache(entry, record, root)
-  }
   entry$load_state <- "reload_required"
   if (isTRUE(hydrate_spatial_assets)) {
     entry <- builder_project_restore_spatial_assets(entry, root)
@@ -1652,7 +1485,6 @@ builder_project_record_configuration_confirmed <- function(record) {
 
 builder_project_dataset_status <- function(record, root) {
   artifact_ready <- builder_project_artifact_available(record$artifact, root)
-  profile_cache_ready <- builder_project_profile_cache_available(record, root)
   spatial_assets <- builder_project_spatial_assets_status(record, root)
   source <- record$source %||% list()
   source_path <- if (identical(source$kind, "example")) {
@@ -1693,7 +1525,6 @@ builder_project_dataset_status <- function(record, root) {
     spatial_assets_error = spatial_assets$error,
     restorable = source_ready && isTRUE(spatial_assets$ready),
     artifact_ready = artifact_ready,
-    profile_cache_ready = profile_cache_ready,
     checked = checked,
     label = if (!isTRUE(spatial_assets$ready)) {
       "Needs check · spatial image missing"
@@ -1879,12 +1710,7 @@ builder_project_migrate_manifest <- function(manifest, root = NULL) {
             contract_version = .builder_project_configuration_contract_version
           )
         )
-        record$cache <- builder_project_write_profile_cache(
-          entry,
-          root,
-          source_fingerprint = record$source$fingerprint %||% NULL,
-          prior = record
-        )
+        record$cache <- NULL
       } else {
         record$configuration$legacy_payload <- payload
         record$configuration$payload <- NULL
@@ -1919,6 +1745,10 @@ builder_project_migrate_manifest <- function(manifest, root = NULL) {
     auth_enabled = configuration$auth_enabled %||% FALSE,
     initial_dataset = configuration$initial_dataset %||% NULL
   )
+  manifest$datasets <- lapply(manifest$datasets %||% list(), function(record) {
+    record$cache <- NULL
+    record
+  })
   last_ui <- manifest$last_ui %||% list()
   stage <- as.character(last_ui$stage %||% "configure")
   if (
