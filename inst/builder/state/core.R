@@ -763,7 +763,18 @@ builder_upgrade_viewer_content_entry <- function(entry) {
       ) %in%
         names(legacy_profile)
     )
-  if (invalid_profile || !(modern || typed_modern || legacy)) {
+  artifact <- .subset2(entry, "project_artifact")
+  artifact_ready <- identical(.subset2(entry, "load_state"), "artifact_ready") &&
+    is.list(artifact) &&
+    !is.object(artifact) &&
+    identical(.subset2(artifact, "status"), "ready") &&
+    isTRUE(.subset2(artifact, "reusable")) &&
+    .builder_state_fact_text(.subset2(artifact, "path")) &&
+    is.list(.subset2(artifact, "plan_item"))
+  if (
+    invalid_profile ||
+      !(modern || typed_modern || legacy || artifact_ready)
+  ) {
     .builder_state_abort(
       "invalid_dataset_entry",
       "Dataset state requires a recognized modern or legacy profile."
@@ -826,7 +837,7 @@ builder_upgrade_viewer_content_entry <- function(entry) {
       )
     }
   }
-  if (!is.null(.subset2(entry, "output_id"))) {
+  if (!is.null(.subset2(entry, "output_id")) && !artifact_ready) {
     required <- c("name", "groups", "reductions", "layer", "nUMI", "nGene")
     if (!all(required %in% names(settings))) {
       .builder_state_abort(

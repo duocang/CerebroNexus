@@ -813,6 +813,21 @@ test_that("checkpoint entries embed spatial images without mutating live setting
   expect_identical(checkpoint[[1L]]$settings$images, entry$settings$images)
 })
 
+test_that("checkpoint CRBs are reusable when their private closure is bundled", {
+  runtime <- builder_project_test_runtime()
+  item <- list(
+    filename = "dataset.crb",
+    sidecars = "dataset.h5",
+    spatial_image_storage = "external",
+    private_assets = c("dataset.crb", "dataset.h5")
+  )
+
+  expect_true(runtime$builder_project_plan_artifact_reusable(item))
+
+  item$private_assets <- c(item$private_assets, "images/section.png")
+  expect_false(runtime$builder_project_plan_artifact_reusable(item))
+})
+
 test_that("restored project settings refresh the active spatial dataset", {
   spatial_path <- testthat::test_path(
     "..",
@@ -1207,6 +1222,47 @@ test_that("restore dialog explains the session-only skip action", {
   ))
 })
 
+test_that("ready CRB workbench keeps the Review continuation actions", {
+  project_ui <- paste(
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "builder",
+      "ui",
+      "project.R"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
+  project_server <- paste(
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "builder",
+      "server",
+      "review.R"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    project_ui,
+    'uiOutput("configure_actions")',
+    fixed = TRUE
+  )
+  expect_match(
+    project_ui,
+    'actionButton("continue_to_review", "Continue to Review"',
+    fixed = TRUE
+  )
+  expect_match(
+    project_server,
+    "builder_project_artifact_actions_ui(",
+    fixed = TRUE
+  )
+})
+
 test_that("restore choices render descriptive labels and prefer checked CRB reuse", {
   skip_if_not_installed("shiny")
   runtime <- builder_project_test_runtime()
@@ -1591,6 +1647,114 @@ test_that("project open snapshots attach validated runtime status", {
   expect_identical(
     opened$manifest$datasets[[2L]]$runtime_restore_status$label,
     "second"
+  )
+})
+
+test_that("ready CRB restore selection is prepared transactionally in manifest order", {
+  runtime <- builder_project_test_runtime()
+  runtime$builder_project_dataset_status <- function(record, root) {
+    record$runtime_restore_status
+  }
+  runtime$builder_project_restore_entry <- function(
+    record,
+    root,
+    hydrate_spatial_assets = TRUE,
+    status = NULL
+  ) {
+    list(id = record$id, load_state = "reload_required")
+  }
+  runtime$builder_project_artifact_entry <- function(
+    entry,
+    artifact,
+    root,
+    status = NULL,
+    record = NULL
+  ) {
+    entry$load_state <- "artifact_ready"
+    entry$project_artifact <- artifact
+    entry
+  }
+  runtime$builder_project_restored_check_identity <- function(
+    record,
+    entry,
+    status,
+    root
+  ) {
+    paste0("mark-", entry$id)
+  }
+  manifest <- list(datasets = list(
+    list(
+      id = "ds2",
+      artifact = list(path = "artifacts/ds2.crb"),
+      runtime_restore_status = list(artifact_ready = TRUE, checked = TRUE)
+    ),
+    list(
+      id = "ds1",
+      artifact = list(path = "artifacts/ds1.crb"),
+      runtime_restore_status = list(artifact_ready = TRUE, checked = TRUE)
+    )
+  ))
+
+  prepared <- runtime$builder_project_prepare_open_selection(
+    manifest,
+    "project-root",
+    list(ds2 = "reuse", ds1 = "reuse")
+  )
+
+  expect_identical(
+    vapply(prepared$reusable_entries, `[[`, character(1), "id"),
+    c("ds2", "ds1")
+  )
+  expect_identical(names(prepared$artifacts), c("ds2", "ds1"))
+  expect_identical(
+    prepared$marks,
+    c(ds2 = "mark-ds2", ds1 = "mark-ds1")
+  )
+  expect_identical(prepared$pending_entries, list())
+})
+
+test_that("ready CRB confirmation validates the complete state before committing", {
+  path <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
+  )
+  source <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  start <- regexpr(
+    "observeEvent(input$confirm_builder_project_open, {",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  finish <- regexpr(
+    "\nobserve({\n  pending <- builder_project_pending_entries()",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  observer <- substr(source, start, finish - 1L)
+
+  prepare_position <- regexpr(
+    "prepared <- tryCatch(",
+    observer,
+    fixed = TRUE
+  )[[1L]]
+  state_position <- regexpr(
+    "next_store <- tryCatch(",
+    observer,
+    fixed = TRUE
+  )[[1L]]
+  commit_position <- regexpr("store(next_store)", observer, fixed = TRUE)[[1L]]
+
+  expect_gt(prepare_position, 0L)
+  expect_gt(state_position, prepare_position)
+  expect_gt(commit_position, state_position)
+  expect_false(grepl("order(vapply(", observer, fixed = TRUE))
+  expect_match(
+    observer,
+    "The reusable CRBs could not be attached to this session",
+    fixed = TRUE
   )
 })
 
