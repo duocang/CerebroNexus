@@ -65,6 +65,13 @@
   var builderWorkerStatusTimer = null;
   var datasetStartFocusToken = 0;
   var stageFocusToken = 0;
+  var datasetSwitchState = {
+    target: null,
+    generation: 0,
+    phase: "idle",
+    timeout: null,
+    removal: null,
+  };
   var coordinateResetSliderIds = new Set([
     "enhance-coordinate_rotation",
     "enhance-point_opacity",
@@ -111,6 +118,129 @@
   function send(name, value) {
     if (window.Shiny) {
       window.Shiny.setInputValue(name, value, { priority: "event" });
+    }
+  }
+
+  function datasetSwitchCopy() {
+    if (datasetSwitchState.phase === "spatial") {
+      return "Preparing Spatial preview…";
+    }
+    if (datasetSwitchState.phase === "slow") {
+      return "This is taking longer than expected…";
+    }
+    return "Switching dataset…";
+  }
+
+  function ensureDatasetSwitchVeil() {
+    if (!datasetSwitchState.target) return null;
+    var workbench = document.getElementById("workbench");
+    var pane = document.getElementById("pane");
+    if (!workbench || !pane) return null;
+    window.clearTimeout(datasetSwitchState.removal);
+    datasetSwitchState.removal = null;
+    workbench.setAttribute("aria-busy", "true");
+    workbench.inert = true;
+    var veil = pane.querySelector(":scope > .builder-dataset-switch-veil");
+    if (!veil) {
+      veil = document.createElement("div");
+      veil.className = "builder-dataset-switch-veil";
+      veil.setAttribute("role", "status");
+      veil.setAttribute("aria-live", "polite");
+      var status = document.createElement("div");
+      status.className = "builder-dataset-switch-status";
+      var spinner = document.createElement("span");
+      spinner.className = "spinner";
+      spinner.setAttribute("aria-hidden", "true");
+      var text = document.createElement("span");
+      text.className = "builder-dataset-switch-copy";
+      status.append(spinner, text);
+      veil.appendChild(status);
+      pane.appendChild(veil);
+    }
+    veil.classList.remove("is-leaving");
+    var text = veil.querySelector(".builder-dataset-switch-copy");
+    if (text) text.textContent = datasetSwitchCopy();
+    return veil;
+  }
+
+  function optimisticallySelectDataset(target) {
+    document.querySelectorAll("#ds_ready_list .ds[data-ds]").forEach(
+      function (row) {
+        var selected = row.dataset.ds === target;
+        var control = row.querySelector(".builder-pick");
+        row.classList.toggle("is-active", selected);
+        if (!control) return;
+        if (selected) control.setAttribute("aria-current", "true");
+        else control.removeAttribute("aria-current");
+      }
+    );
+  }
+
+  function beginDatasetSwitch(target) {
+    if (typeof target !== "string" || !target) return false;
+    var selected = document.querySelector(
+      "#ds_ready_list .builder-pick[aria-current=true]"
+    );
+    if (
+      !datasetSwitchState.target &&
+      selected &&
+      selected.dataset.ds === target
+    ) return false;
+
+    datasetSwitchState.generation += 1;
+    datasetSwitchState.target = target;
+    datasetSwitchState.phase = "switching";
+    window.clearTimeout(datasetSwitchState.timeout);
+    var generation = datasetSwitchState.generation;
+    optimisticallySelectDataset(target);
+    ensureDatasetSwitchVeil();
+    datasetSwitchState.timeout = window.setTimeout(function () {
+      if (
+        datasetSwitchState.target === target &&
+        datasetSwitchState.generation === generation
+      ) {
+        datasetSwitchState.phase = "slow";
+        ensureDatasetSwitchVeil();
+      }
+    }, 8000);
+    return true;
+  }
+
+  function settleDatasetSwitch() {
+    window.clearTimeout(datasetSwitchState.timeout);
+    datasetSwitchState.timeout = null;
+    datasetSwitchState.target = null;
+    datasetSwitchState.phase = "idle";
+    var workbench = document.getElementById("workbench");
+    var pane = document.getElementById("pane");
+    if (workbench) {
+      workbench.removeAttribute("aria-busy");
+      workbench.inert = false;
+    }
+    if (!pane) return;
+    var veil = pane.querySelector(":scope > .builder-dataset-switch-veil");
+    if (!veil) return;
+    window.clearTimeout(datasetSwitchState.removal);
+    veil.classList.add("is-leaving");
+    datasetSwitchState.removal = window.setTimeout(function () {
+      if (veil.isConnected) veil.remove();
+      datasetSwitchState.removal = null;
+    }, reducedMotion.matches ? 0 : normalMotionDuration);
+  }
+
+  function updateDatasetSwitchPhase(message) {
+    if (
+      !message ||
+      message.dataset !== datasetSwitchState.target ||
+      Number(message.switch_token) !== datasetSwitchState.generation
+    ) return;
+    if (message.state === "spatial") {
+      datasetSwitchState.phase = "spatial";
+      ensureDatasetSwitchVeil();
+      return;
+    }
+    if (message.state === "ready" || message.state === "error") {
+      settleDatasetSwitch();
     }
   }
 
@@ -1677,6 +1807,19 @@
       if (replacement) dialog.__builderRestoreFocus = replacement;
     });
     updateRailSummary();
+    if (datasetSwitchState.target) {
+      var authoritative = rail.querySelector(
+        ".builder-pick[aria-current=true]"
+      );
+      if (
+        authoritative &&
+        authoritative.dataset.ds !== datasetSwitchState.target
+      ) {
+        settleDatasetSwitch();
+      } else {
+        ensureDatasetSwitchVeil();
+      }
+    }
   }
 
   function importRailFocusIdentity(element) {
@@ -2974,6 +3117,7 @@
     registerPrimaryAction();
     updateStatusSemantics();
     updatePipelines();
+    ensureDatasetSwitchVeil();
     var buildStatusHost = document.getElementById("build-stage-status");
     var clientStatus = buildStatusHost && buildStatusHost.querySelector(
       ":scope > .builder-build-status-section.is-client-build-status"
@@ -3261,7 +3405,12 @@
     }
     var pick = target.closest(".builder-pick");
     if (pick) {
-      send("pick", pick.dataset.ds);
+      if (beginDatasetSwitch(pick.dataset.ds)) {
+        send("pick", {
+          id: pick.dataset.ds,
+          switch_token: datasetSwitchState.generation,
+        });
+      }
       if (narrowManager.matches) closeDatasetManager();
       return;
     }
@@ -3549,6 +3698,10 @@
     window.Shiny.addCustomMessageHandler(
       "builder_project_crb_progress",
       updateBuilderProjectCrbProgress
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_dataset_switch_state",
+      updateDatasetSwitchPhase
     );
 
     window.Shiny.addCustomMessageHandler(

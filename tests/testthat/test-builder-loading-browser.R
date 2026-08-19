@@ -319,6 +319,58 @@ test_that("multi-file selection stays FIFO through a single transport", {
       timeout = 120000
     )
   )
+
+  immediate_switch <- app$get_js(paste0(
+    "(() => {",
+    "const rows = Array.from(document.querySelectorAll(",
+    "'#ds_ready_list .builder-pick'));",
+    "const current = rows.findIndex(row => ",
+    "row.getAttribute('aria-current') === 'true');",
+    "const target = rows[current === 0 ? 1 : 0];",
+    "target.click();",
+    "return {",
+    "selected: target.getAttribute('aria-current'),",
+    "busy: document.getElementById('workbench').getAttribute('aria-busy'),",
+    "inert: document.getElementById('workbench').inert,",
+    "veil: Boolean(document.querySelector('.builder-dataset-switch-veil'))",
+    "};",
+    "})()"
+  ))
+  expect_identical(immediate_switch$selected, "true")
+  expect_identical(immediate_switch$busy, "true")
+  expect_true(immediate_switch$inert)
+  expect_true(immediate_switch$veil)
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('.builder-dataset-switch-veil') === null && ",
+      "document.getElementById('workbench').getAttribute('aria-busy') !== 'true'"
+    ),
+    timeout = 30000
+  )
+
+  rapid_switch <- app$get_js(paste0(
+    "(() => {",
+    "const rows = document.querySelectorAll('#ds_ready_list .builder-pick');",
+    "rows[0].click(); rows[1].click(); rows[0].click();",
+    "return {",
+    "selected: rows[0].getAttribute('aria-current'),",
+    "busy: document.getElementById('workbench').getAttribute('aria-busy'),",
+    "veil: Boolean(document.querySelector('.builder-dataset-switch-veil'))",
+    "};",
+    "})()"
+  ))
+  expect_identical(rapid_switch$selected, "true")
+  expect_identical(rapid_switch$busy, "true")
+  expect_true(rapid_switch$veil)
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('.builder-dataset-switch-veil') === null && ",
+      "document.querySelectorAll('#ds_ready_list .builder-pick')",
+      ".item(0).getAttribute('aria-current') === 'true'"
+    ),
+    timeout = 30000
+  )
+
   expect_true(app$get_js(paste0(
     "Boolean(window.__builderFirstReadyRow) && ",
     "window.__builderFirstReadyRow.isConnected && ",

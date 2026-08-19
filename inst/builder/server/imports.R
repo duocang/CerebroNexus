@@ -924,6 +924,35 @@ observe({
   busy_note(nxt$note)
 })
 
+fail_spatial_preview <- function(payload) {
+  if (!identical(payload$kind, "spatial_preview")) {
+    return(invisible(FALSE))
+  }
+  failure <- builder_spatial_preview_failure(
+    isolate(spatial_previews()),
+    payload
+  )
+  spatial_previews(failure$cache)
+  if (isTRUE(failure$matched)) {
+    if (
+      exists("alignment_server", inherits = TRUE) &&
+        is.function(alignment_server$fail_preview_switch)
+    ) {
+      alignment_server$fail_preview_switch(
+        payload$id,
+        payload$section,
+        payload$switch_token
+      )
+    } else {
+      session$sendCustomMessage(
+        "builder_dataset_switch_state",
+        failure$message
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
 ## -- one poller drains whatever the worker was asked to do ---------------
 observe({
   current_protocol <- protocol()
@@ -1008,6 +1037,7 @@ observe({
     } else {
       add_error(worker_error)
     }
+    fail_spatial_preview(p)
     restart_worker_protocol(
       got$worker,
       current_protocol,
@@ -1060,6 +1090,7 @@ observe({
   }
   value <- completed$value
   if (!is.null(completed$error)) {
+    fail_spatial_preview(p)
     cancelled <- identical(p$kind, "load") && p$id %in% cancelled_loads()
     if (identical(request$kind, "build")) {
       result(builder_result_failure(completed$error))
@@ -1361,6 +1392,18 @@ observe({
       spatial_coords(value)
     }
   } else if (identical(p$kind, "spatial_preview")) {
+    cache_key <- p$preview_cache_key %||%
+      builder_spatial_preview_cache_key(p$id, p$section)
+    cache <- isolate(spatial_previews())
+    if (is.list(p$preview_contract)) {
+      cache <- builder_spatial_preview_cache_store_if_match(
+        cache,
+        cache_key,
+        p$preview_contract,
+        value
+      )
+      spatial_previews(cache)
+    }
     if (
       identical(current(), p$id) &&
         identical(active_slice(), p$section)
