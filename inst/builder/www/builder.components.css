@@ -364,6 +364,13 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-project-dialog-icon .fa { font-size: .9rem; }
 .builder-project-dialog-note,
 .builder-project-dialog-intro { color: var(--c-text-muted); }
+
+.builder-project-dialog-path code {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .builder-project-restore-list {
   display: grid;
   gap: var(--space-3);

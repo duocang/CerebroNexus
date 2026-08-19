@@ -482,7 +482,7 @@ start_confirmed_build <- function() {
     return(invisible(FALSE))
   }
   build_flow(list(stage = "preparing", plan = NULL))
-  session$sendCustomMessage("builder_scroll_page_top", list())
+  session$sendCustomMessage("builder_focus_build_status", list())
   session$onFlushed(
     function() prepare_selected_output(output_path),
     once = TRUE
@@ -609,6 +609,12 @@ rail_controller <- builder_dataset_rail_server(
       exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
         !isTRUE(builder_operation_allowed("select_dataset"))
     ) {
+      if (!is.null(switch_token)) {
+        session$sendCustomMessage(
+          "builder_dataset_switch_state",
+          list(dataset = id, state = "error", switch_token = switch_token)
+        )
+      }
       return(invisible(FALSE))
     }
     alignment_server$request_dataset_switch(id, commit, switch_token)

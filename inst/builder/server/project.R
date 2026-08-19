@@ -113,6 +113,15 @@ builder_activity <- reactive({
   )
 })
 
+builder_build_overlay <- reactive({
+  builder_build_operation_overlay_model(
+    flow = build_flow(),
+    protocol = protocol(),
+    note = busy_note(),
+    result = result()
+  )
+})
+
 builder_capabilities <- reactive({
   builder_activity_capabilities(builder_activity())
 })
@@ -168,7 +177,10 @@ observeEvent(
     state <- input$builder_client_connection
     if (is.list(state) && identical(state$status %||% NULL, "connected")) {
       builder_connection_state("connected")
-      activity_message <- builder_activity_message(isolate(builder_activity()))
+      activity_message <- builder_activity_message(
+        isolate(builder_activity()),
+        build_overlay = isolate(builder_build_overlay())
+      )
       session$onFlushed(
         function() {
           session$sendCustomMessage(
@@ -183,29 +195,44 @@ observeEvent(
   ignoreInit = TRUE
 )
 
-builder_activity_message <- function(activity, restore_progress = list()) {
+builder_activity_message <- function(
+  activity,
+  restore_progress = list(),
+  build_overlay = list(active = FALSE)
+) {
   capabilities <- builder_activity_capabilities(activity)
   phase <- activity$project_phase
-  title <- switch(
-    phase,
-    opening = "Opening project",
-    restoring = "Restoring datasets",
-    saving = "Saving project",
-    registering = "Preparing reusable CRBs",
-    "Working on your Builder project"
-  )
-  message <- switch(
-    phase,
-    saving = "Saving the Builder project. Keep this page open.",
-    opening = "Reading the project file and checking saved datasets…",
-    restoring = "Loading the selected source datasets…",
-    registering = "Adding reusable CRBs to the project. Keep this page open.",
-    conflict = "This project changed in another Builder window.",
-    NULL
-  )
+  build_active <- is.list(build_overlay) && isTRUE(build_overlay$active)
+  title <- if (build_active) {
+    build_overlay$title
+  } else {
+    switch(
+      phase,
+      opening = "Opening project",
+      restoring = "Restoring datasets",
+      saving = "Saving project",
+      registering = "Preparing reusable CRBs",
+      "Working on your Builder project"
+    )
+  }
+  message <- if (build_active) {
+    build_overlay$message
+  } else {
+    switch(
+      phase,
+      saving = "Saving the Builder project. Keep this page open.",
+      opening = "Reading the project file and checking saved datasets…",
+      restoring = "Loading the selected source datasets…",
+      registering = "Adding reusable CRBs to the project. Keep this page open.",
+      conflict = "This project changed in another Builder window.",
+      NULL
+    )
+  }
   total <- as.integer(restore_progress$total %||% 0L)
   remaining <- as.integer(restore_progress$remaining %||% 0L)
-  detail <- if (identical(phase, "opening")) {
+  detail <- if (build_active) {
+    build_overlay$detail
+  } else if (identical(phase, "opening")) {
     "Keep this page open."
   } else if (identical(phase, "restoring") && total > 0L) {
     paste0(total - remaining, " of ", total, " datasets restored")
@@ -219,8 +246,8 @@ builder_activity_message <- function(activity, restore_progress = list()) {
     busy_message = message,
     busy_detail = detail,
     has_project = isTRUE(activity$has_project),
-    warn_before_unload = isTRUE(capabilities$warn_before_unload),
-    page_inert = isTRUE(capabilities$page_inert)
+    warn_before_unload = isTRUE(capabilities$warn_before_unload) || build_active,
+    page_inert = isTRUE(capabilities$page_inert) || build_active
   )
 }
 
@@ -229,7 +256,8 @@ observe({
     "builder_activity_state",
     builder_activity_message(
       builder_activity(),
-      builder_project_restore_progress()
+      builder_project_restore_progress(),
+      builder_build_overlay()
     )
   )
 })
@@ -1505,7 +1533,8 @@ enqueue_builder_project_checkpoint <- function(plan) {
     return(invisible(FALSE))
   }
   builder_project_checkpoint(TRUE)
-  project <- isolate(builder_project())
+  previous_project <- isolate(builder_project())
+  project <- previous_project
   if (!is.null(project)) {
     project$manifest$pending_build <- list(
       id = paste0(
@@ -1517,11 +1546,22 @@ enqueue_builder_project_checkpoint <- function(plan) {
       started_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC")
     )
     builder_project(project)
-    save_builder_project_state(
+    saved <- save_builder_project_state(
       show_actions = FALSE,
       materialize = FALSE,
       notify = FALSE
     )
+    if (!isTRUE(saved)) {
+      builder_project_checkpoint(FALSE)
+      builder_project(previous_project)
+      showNotification(
+        builder_project_last_save_error() %||%
+          "The checkpoint could not be saved. The build was not started.",
+        type = "error",
+        duration = 8
+      )
+      return(invisible(FALSE))
+    }
   }
   result(NULL)
   queued <- enqueue(list(
@@ -1688,6 +1728,7 @@ observe({
   builder_project_checkpoint(FALSE)
   session$onFlushed(
     function() {
+      project_before_registration <- project
       on.exit(
         {
           if (
@@ -1728,6 +1769,9 @@ observe({
         builder_project_operation_phase(
           if (isTRUE(saved)) "idle" else "save_failed"
         )
+        if (!isTRUE(saved)) {
+          builder_project(project_before_registration)
+        }
         session$sendCustomMessage(
           "builder_project_crb_progress",
           list(
@@ -1739,58 +1783,33 @@ observe({
         )
         return()
       }
-      artifacts <- isolate(builder_project_artifacts())
+      previous_artifacts <- isolate(builder_project_artifacts())
+      artifacts <- previous_artifacts
       entries <- isolate(sets())
       entry_ids <- vapply(entries, `[[`, character(1), "id")
+      registration_error <- NULL
       for (item in plan$items) {
         built <- value$built[[item$name]] %||% NULL
         if (!.builder_project_text(built) || !file.exists(built)) {
-          next
-        }
-        target_dir <- file.path(project$root, "artifacts", item$id)
-        dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
-        target <- file.path(target_dir, basename(built))
-        same <- identical(
-          normalizePath(built, winslash = "/", mustWork = TRUE),
-          normalizePath(target, winslash = "/", mustWork = FALSE)
-        )
-        if (
-          !same && !file.copy(built, target, overwrite = TRUE, copy.mode = TRUE)
-        ) {
-          next
-        }
-        members <- list()
-        for (member_target in item$sidecars %||% character()) {
-          source <- file.path(dirname(built), member_target)
-          if (!file.exists(source)) {
-            next
-          }
-          member_destination <- file.path(target_dir, member_target)
-          dir.create(
-            dirname(member_destination),
-            recursive = TRUE,
-            showWarnings = FALSE
+          registration_error <- paste0(
+            "The reusable CRB for ",
+            item$name,
+            " is missing."
           )
-          if (
-            file.copy(
-              source,
-              member_destination,
-              overwrite = TRUE,
-              copy.mode = TRUE
-            )
-          ) {
-            members[[length(members) + 1L]] <- list(
-              target = member_target,
-              path = builder_project_relative_path(
-                member_destination,
-                project$root
-              ),
-              fingerprint = builder_project_file_fingerprint(
-                member_destination,
-                content = TRUE
-              )
-            )
-          }
+          break
+        }
+        bundle <- tryCatch(
+          builder_project_store_artifact_bundle(
+            built,
+            sidecars = item$sidecars %||% character(),
+            dataset_id = item$id,
+            root = project$root
+          ),
+          error = function(error) error
+        )
+        if (inherits(bundle, "condition")) {
+          registration_error <- conditionMessage(bundle)
+          break
         }
         stored_item <- item
         stored_item$reused_artifact <- NULL
@@ -1809,11 +1828,8 @@ observe({
               item$private_assets %||% character(),
               c(item$filename, item$sidecars %||% character())
             )),
-          path = builder_project_relative_path(target, project$root),
-          fingerprint = builder_project_file_fingerprint(
-            target,
-            content = TRUE
-          ),
+          path = bundle$path,
+          fingerprint = bundle$fingerprint,
           built_from_revision = as.integer(revision),
           built_from_configuration = if (item$id %in% entry_ids) {
             builder_project_configuration_digest(entries[[match(
@@ -1829,8 +1845,39 @@ observe({
             digits = NA,
             pretty = FALSE
           ),
-          members = members
+          members = bundle$members
         )
+      }
+      if (.builder_project_text(registration_error)) {
+        project$manifest <- builder_project_finish_pending_build(
+          project$manifest,
+          status = "failed",
+          error = registration_error
+        )
+        builder_project(project)
+        saved <- save_builder_project_state(
+          show_actions = FALSE,
+          materialize = FALSE,
+          notify = FALSE,
+          manage_lifecycle = FALSE
+        )
+        builder_project_operation_phase(
+          if (isTRUE(saved)) "idle" else "save_failed"
+        )
+        if (!isTRUE(saved)) {
+          builder_project(project_before_registration)
+        }
+        session$sendCustomMessage(
+          "builder_project_crb_progress",
+          list(
+            status = "failed",
+            completed = 0L,
+            total = total_crbs,
+            error = registration_error
+          )
+        )
+        showNotification(registration_error, type = "error", duration = 8)
+        return()
       }
       builder_project_artifacts(artifacts)
       saved <- save_builder_project_state(
@@ -1842,6 +1889,10 @@ observe({
       builder_project_operation_phase(
         if (isTRUE(saved)) "idle" else "save_failed"
       )
+      if (!isTRUE(saved)) {
+        builder_project_artifacts(previous_artifacts)
+        builder_project(project_before_registration)
+      }
       if (isTRUE(saved)) {
         session$sendCustomMessage(
           "builder_project_crb_progress",

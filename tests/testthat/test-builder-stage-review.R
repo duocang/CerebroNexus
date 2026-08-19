@@ -5,6 +5,43 @@ sys.source(
 )
 sys.source("app.R", envir = environment())
 
+test_that("active Build phases drive a blocking operation overlay", {
+  preparing <- builder_build_operation_overlay_model(
+    flow = list(stage = "preparing", plan = NULL),
+    protocol = NULL,
+    note = NULL,
+    result = NULL
+  )
+  expect_true(preparing$active)
+  expect_identical(preparing$title, "Building output")
+  expect_match(preparing$message, "Do not close this page", fixed = TRUE)
+  expect_identical(preparing$detail, "Preparing build…")
+
+  queued_protocol <- builder_request_protocol("overlay-queued")
+  queued_protocol$build_status <- "queued"
+  queued <- builder_build_operation_overlay_model(
+    flow = list(stage = "building", plan = NULL),
+    protocol = queued_protocol,
+    note = "Waiting for the background worker…",
+    result = NULL
+  )
+  expect_true(queued$active)
+  expect_identical(queued$detail, "Waiting for the background worker…")
+
+  finished <- builder_build_operation_overlay_model(
+    flow = list(stage = "building", plan = NULL),
+    protocol = queued_protocol,
+    note = NULL,
+    result = builder_result_success(
+      published = TRUE,
+      built = "dataset.crb",
+      app_verified = FALSE
+    )
+  )
+  expect_false(finished$active)
+  expect_null(finished$detail)
+})
+
 test_that("Review model translates a frozen plan into user language", {
   plan <- builder_stage_frozen_plan()
   plan$app_auth <- list(

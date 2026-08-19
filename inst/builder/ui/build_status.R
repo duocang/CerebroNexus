@@ -750,6 +750,44 @@ builder_build_stage_status_model <- function(
   )
 }
 
+builder_build_operation_overlay_model <- function(
+  flow,
+  protocol,
+  note,
+  result
+) {
+  model <- builder_build_stage_status_model(
+    flow = flow,
+    protocol = protocol,
+    note = note,
+    result = result,
+    output_selected = TRUE
+  )
+  active <- model$state %in% c("preparing", "queued", "building")
+  list(
+    active = active,
+    title = if (active) "Building output" else NULL,
+    message = if (active) {
+      paste(
+        "Do not close this page.",
+        "This dialog will close automatically when the build finishes."
+      )
+    } else {
+      NULL
+    },
+    detail = if (active) {
+      switch(
+        model$state,
+        preparing = "Preparing build…",
+        queued = model$message %||% "Build queued…",
+        building = model$message %||% "Building output…"
+      )
+    } else {
+      NULL
+    }
+  )
+}
+
 builder_build_stage_status_validate <- function(model) {
   if (
     !is.list(model) ||

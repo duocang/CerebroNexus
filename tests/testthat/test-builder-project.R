@@ -137,11 +137,41 @@ test_that("background source jobs commit exact bytes through a part file", {
 
   expect_identical(result$status, "ready")
   expect_identical(
-    readBin(job$target, "raw", n = 100L),
+    readBin(result$path, "raw", n = 100L),
     charToRaw("immutable-source")
   )
   expect_false(file.exists(job$part))
-  expect_identical(result$fingerprint$md5, unname(tools::md5sum(job$target)))
+  expect_identical(result$fingerprint$md5, unname(tools::md5sum(result$path)))
+  expect_match(
+    runtime$builder_project_relative_path(result$path, project),
+    "^sources/ds1/blobs/[0-9a-f]+/sample\\.qs2$"
+  )
+})
+
+test_that("background source generations never overwrite prior content", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  project <- file.path(root, "project")
+  source <- file.path(root, "session-sources", "ds1", "sample.qs2")
+  dir.create(dirname(source), recursive = TRUE)
+  dir.create(project)
+  writeBin(charToRaw("first-source"), source)
+  job <- runtime$builder_project_source_job(
+    list(id = "ds1", path = source, filename = "sample.qs2"),
+    project
+  )
+  first <- runtime$builder_project_copy_source_job(job)
+  first_bytes <- readBin(first$path, "raw", n = 100L)
+
+  writeBin(charToRaw("second-source"), source)
+  second <- runtime$builder_project_copy_source_job(job)
+
+  expect_false(identical(first$path, second$path))
+  expect_identical(readBin(first$path, "raw", n = 100L), first_bytes)
+  expect_identical(
+    readBin(second$path, "raw", n = 100L),
+    charToRaw("second-source")
+  )
 })
 
 test_that("background source jobs report a missing source without a partial target", {
@@ -1514,7 +1544,12 @@ test_that("connection flush sends a message captured in reactive context", {
 
   expect_match(
     source,
-    "activity_message <- builder_activity_message(isolate(builder_activity()))",
+    "activity_message <- builder_activity_message(",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "build_overlay = isolate(builder_build_overlay())",
     fixed = TRUE
   )
   expect_match(
@@ -1654,4 +1689,195 @@ test_that("spatial canvas is cleared before switching datasets", {
     ),
     fixed = TRUE
   )
+})
+
+test_that("dataset config generations survive manifest backups and stale writers", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  manifest <- runtime$builder_project_new_manifest(root, "Generation safety")
+  entry <- function(name) {
+    list(
+      id = "ds1",
+      revision = 1L,
+      settings = list(name = name),
+      acknowledgements = character(),
+      spatial_drafts = list()
+    )
+  }
+  record <- function(name) {
+    runtime$builder_project_dataset_record(
+      entry(name),
+      source = list(kind = "missing", path = NULL),
+      root = root
+    )
+  }
+
+  manifest$datasets <- list(record("first"))
+  first <- runtime$builder_project_write(manifest, root)
+  stale <- first$manifest
+
+  winner <- first$manifest
+  winner$datasets <- list(record("winner"))
+  winner <- runtime$builder_project_write(
+    winner,
+    root,
+    expected_revision = first$manifest$project$revision
+  )
+
+  stale$datasets <- list(record("stale"))
+  expect_error(
+    runtime$builder_project_write(
+      stale,
+      root,
+      expected_revision = first$manifest$project$revision
+    ),
+    "updated by another Builder window",
+    fixed = TRUE
+  )
+
+  expect_identical(
+    runtime$builder_project_read_dataset_config(
+      winner$manifest$datasets[[1L]],
+      root
+    )$settings$name,
+    "winner"
+  )
+  backup <- runtime$builder_project_read(paste0(winner$path, ".bak"))
+  expect_identical(
+    runtime$builder_project_read_dataset_config(backup$datasets[[1L]], root)$settings$name,
+    "first"
+  )
+  expect_false(identical(
+    backup$datasets[[1L]]$configuration$path,
+    winner$manifest$datasets[[1L]]$configuration$path
+  ))
+})
+
+test_that("restored source identity requires the recorded content fingerprint", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "sources", "ds1", "source.rds")
+  dir.create(dirname(source), recursive = TRUE)
+  writeBin(charToRaw("AAAA"), source)
+  recorded_time <- file.info(source)$mtime[[1L]]
+  record <- runtime$builder_project_dataset_record(
+    list(id = "ds1", settings = list(name = "Dataset")),
+    source = list(
+      kind = "managed",
+      path = "sources/ds1/source.rds",
+      status = "ready",
+      fingerprint = runtime$builder_project_file_fingerprint(source, content = TRUE)
+    ),
+    checked = TRUE
+  )
+
+  writeBin(charToRaw("BBBB"), source)
+  Sys.setFileTime(source, recorded_time)
+  status <- runtime$builder_project_dataset_status(record, root)
+
+  expect_false(status$source_matches)
+  expect_false(status$checked)
+})
+
+test_that("artifact availability validates the primary file and every member", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  primary <- file.path(root, "artifacts", "ds1", "bundle", "ds1.crb")
+  member <- file.path(dirname(primary), "ds1.h5")
+  dir.create(dirname(primary), recursive = TRUE)
+  writeBin(charToRaw("primary"), primary)
+  writeBin(charToRaw("member"), member)
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    path = "artifacts/ds1/bundle/ds1.crb",
+    fingerprint = runtime$builder_project_file_fingerprint(primary, content = TRUE),
+    members = list(list(
+      target = "ds1.h5",
+      path = "artifacts/ds1/bundle/ds1.h5",
+      fingerprint = runtime$builder_project_file_fingerprint(member, content = TRUE)
+    ))
+  )
+
+  expect_true(runtime$builder_project_artifact_available(artifact, root))
+  writeBin(charToRaw("changed"), member)
+  expect_false(runtime$builder_project_artifact_available(artifact, root))
+  unlink(member)
+  expect_false(runtime$builder_project_artifact_available(artifact, root))
+})
+
+test_that("managed writes reject symlink ancestors before creating external files", {
+  skip_on_os("windows")
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  project <- file.path(root, "project")
+  outside <- file.path(root, "outside")
+  dir.create(project)
+  dir.create(outside)
+  if (!isTRUE(file.symlink(outside, file.path(project, "datasets")))) {
+    skip("symlinks are unavailable")
+  }
+
+  expect_error(
+    runtime$builder_project_write_dataset_config(
+      list(id = "ds1", settings = list(name = "Dataset")),
+      project
+    ),
+    "symbolic link",
+    fixed = TRUE
+  )
+  expect_length(list.files(outside, recursive = TRUE, all.files = TRUE), 0L)
+})
+
+test_that("artifact bundles are immutable generations", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  build_dir <- file.path(root, "build")
+  project <- file.path(root, "project")
+  dir.create(build_dir)
+  dir.create(project)
+  primary <- file.path(build_dir, "ds1.crb")
+  member <- file.path(build_dir, "ds1.h5")
+  writeBin(charToRaw("first-primary"), primary)
+  writeBin(charToRaw("first-member"), member)
+
+  first <- runtime$builder_project_store_artifact_bundle(
+    primary,
+    sidecars = "ds1.h5",
+    dataset_id = "ds1",
+    root = project
+  )
+  first_bytes <- readBin(file.path(project, first$path), "raw", n = 100L)
+
+  writeBin(charToRaw("second-primary"), primary)
+  writeBin(charToRaw("second-member"), member)
+  second <- runtime$builder_project_store_artifact_bundle(
+    primary,
+    sidecars = "ds1.h5",
+    dataset_id = "ds1",
+    root = project
+  )
+
+  expect_false(identical(first$path, second$path))
+  expect_identical(
+    readBin(file.path(project, first$path), "raw", n = 100L),
+    first_bytes
+  )
+  expect_identical(length(second$members), 1L)
+})
+
+test_that("checkpoint preparation requires a durable project save before enqueue", {
+  path <- testthat::test_path(
+    "..", "..", "inst", "builder", "server", "project.R"
+  )
+  source <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  checkpoint <- substr(
+    source,
+    regexpr("builder_project_checkpoint(TRUE)", source, fixed = TRUE)[[1L]],
+    regexpr("queued <- enqueue(list(", source, fixed = TRUE)[[1L]] - 1L
+  )
+
+  expect_match(checkpoint, "saved <- save_builder_project_state(", fixed = TRUE)
+  expect_match(checkpoint, "if (!isTRUE(saved))", fixed = TRUE)
+  expect_match(checkpoint, "builder_project_checkpoint(FALSE)", fixed = TRUE)
 })

@@ -54,10 +54,10 @@ test_that("an accepted Build requests absolute page-top scrolling", {
   )
 
   expect_match(start, 'build_flow(list(stage = "preparing"', fixed = TRUE)
-  expect_match(start, '"builder_scroll_page_top"', fixed = TRUE)
+  expect_match(start, '"builder_focus_build_status"', fixed = TRUE)
   expect_lt(
     regexpr('build_flow(list(stage = "preparing"', start, fixed = TRUE)[1L],
-    regexpr('"builder_scroll_page_top"', start, fixed = TRUE)[1L]
+    regexpr('"builder_focus_build_status"', start, fixed = TRUE)[1L]
   )
 })
 
