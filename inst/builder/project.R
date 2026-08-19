@@ -2631,13 +2631,18 @@ builder_project_status_stat_signature <- function(record, root, entry = NULL) {
       image
     })
   }
-  resolved <- lapply(references, function(reference) {
-    tryCatch(
+  resolved <- vapply(references, function(reference) {
+    resolved_path <- tryCatch(
       builder_project_resolve_path(reference$path, root, reference$kind),
-      error = function(error) NULL
+      error = function(error) NA_character_
     )
-  })
-  paths <- sort(unique(Filter(.builder_project_text, resolved)), method = "radix")
+    if (.builder_project_text(resolved_path)) {
+      as.character(resolved_path)
+    } else {
+      NA_character_
+    }
+  }, character(1))
+  paths <- sort(unique(resolved[!is.na(resolved)]), method = "radix")
   stats::setNames(lapply(paths, function(path) {
     info <- file.info(path)
     list(
@@ -2770,6 +2775,24 @@ builder_project_status_snapshot <- function(manifest, root) {
     as.character(record$id)
   }, character(1))
   statuses
+}
+
+builder_project_open_snapshot <- function(path) {
+  manifest <- builder_project_read(path)
+  root <- dirname(path)
+  statuses <- builder_project_status_snapshot(manifest, root)
+  manifest$datasets <- lapply(
+    manifest$datasets %||% list(),
+    function(record) {
+      record$runtime_restore_status <- statuses[[record$id]] %||% NULL
+      record
+    }
+  )
+  list(
+    manifest = manifest,
+    root = root,
+    path = path
+  )
 }
 
 builder_project_new_manifest <- function(root, name = basename(root)) {

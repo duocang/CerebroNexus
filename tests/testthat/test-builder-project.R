@@ -639,6 +639,45 @@ test_that("spatial asset status validates descriptors without hydrating image pa
   expect_null(status$error)
 })
 
+test_that("status signatures sort resolved paths as character values", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  relative_paths <- c(
+    "datasets/ds1/config.json",
+    "sources/ds1/source.rds",
+    "artifacts/ds1/ds1.crb",
+    "artifacts/ds1/metadata.json"
+  )
+  for (relative_path in relative_paths) {
+    path <- file.path(root, relative_path)
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    writeBin(charToRaw(relative_path), path)
+  }
+  record <- list(
+    id = "ds1",
+    configuration = list(path = relative_paths[[1L]]),
+    source = list(kind = "managed", path = relative_paths[[2L]]),
+    artifact = list(
+      path = relative_paths[[3L]],
+      members = list(
+        list(path = relative_paths[[4L]]),
+        list(path = relative_paths[[3L]])
+      )
+    )
+  )
+
+  signature <- runtime$builder_project_status_stat_signature(
+    record,
+    root
+  )
+
+  expect_identical(
+    names(signature),
+    sort(unique(file.path(root, relative_paths)), method = "radix")
+  )
+  expect_true(all(vapply(signature, is.list, logical(1))))
+})
+
 test_that("restore status snapshots are reused without weakening default validation", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
@@ -1525,6 +1564,299 @@ test_that("project open work starts only after loading feedback is flushed", {
   expect_match(source, "session$onFlushed(", fixed = TRUE)
   expect_match(source, "builder_project_restore_progress", fixed = TRUE)
   expect_match(source, 'mode = "restoring"', fixed = TRUE)
+})
+
+test_that("project open snapshots attach validated runtime status", {
+  runtime <- builder_project_test_runtime()
+  project_path <- file.path("project-root", "builder-project.json")
+  runtime$builder_project_read <- function(path) {
+    list(datasets = list(list(id = "ds1"), list(id = "ds2")))
+  }
+  runtime$builder_project_status_snapshot <- function(manifest, root) {
+    expect_identical(root, dirname(project_path))
+    list(
+      ds1 = list(label = "first"),
+      ds2 = list(label = "second")
+    )
+  }
+
+  opened <- runtime$builder_project_open_snapshot(project_path)
+
+  expect_identical(opened$path, project_path)
+  expect_identical(opened$root, dirname(project_path))
+  expect_identical(
+    opened$manifest$datasets[[1L]]$runtime_restore_status$label,
+    "first"
+  )
+  expect_identical(
+    opened$manifest$datasets[[2L]]$runtime_restore_status$label,
+    "second"
+  )
+})
+
+test_that("project open validation runs in an owned background process", {
+  path <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
+  )
+  source <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  client <- paste(
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "builder",
+      "www",
+      "builder.js"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
+  app <- paste(
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "builder",
+      "app.R"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
+  start_position <- regexpr(
+    "builder_project_start_open <- function(selected_path)",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  poll_position <- regexpr(
+    "builder_project_poll_open <- function(generation)",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  observer_position <- regexpr(
+    "observeEvent(input$open_builder_project, {",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  confirm_position <- regexpr(
+    "observeEvent(input$confirm_builder_project_open, {",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  session_end_position <- regexpr(
+    "session$onSessionEnded(function() {",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  save_position <- regexpr(
+    "observeEvent(input$save_builder_project, {",
+    source,
+    fixed = TRUE
+  )[[1L]]
+
+  expect_gt(start_position, 0L)
+  expect_gt(poll_position, start_position)
+  expect_gt(observer_position, poll_position)
+  expect_gt(confirm_position, observer_position)
+  expect_gt(session_end_position, poll_position)
+  expect_gt(save_position, session_end_position)
+
+  start <- substr(source, start_position, poll_position - 1L)
+  poll <- substr(source, poll_position, observer_position - 1L)
+  observer <- substr(source, observer_position, confirm_position - 1L)
+  session_cleanup <- substr(
+    source,
+    session_end_position,
+    save_position - 1L
+  )
+
+  expect_match(start, "callr::r_bg(", fixed = TRUE)
+  expect_match(start, "runtime$builder_project_open_snapshot(selected_path)", fixed = TRUE)
+  expect_match(start, "supervise = TRUE", fixed = TRUE)
+  expect_match(start, "builder_project_open_generation(generation)", fixed = TRUE)
+  expect_match(start, "if (builder_session_closed())", fixed = TRUE)
+  expect_match(poll, "process$is_alive()", fixed = TRUE)
+  expect_match(
+    poll,
+    "builder_project_schedule_open_poll(generation)",
+    fixed = TRUE
+  )
+  expect_match(poll, "process$get_result()", fixed = TRUE)
+  expect_match(poll, "if (builder_session_closed())", fixed = TRUE)
+  expect_match(
+    poll,
+    "alive <- tryCatch(process$is_alive(), error = identity)",
+    fixed = TRUE
+  )
+  expect_match(poll, 'if (inherits(alive, "condition"))', fixed = TRUE)
+  expect_gte(
+    lengths(regmatches(
+      poll,
+      gregexpr(
+        "builder_project_open_is_current(generation)",
+        poll,
+        fixed = TRUE
+      )
+    )),
+    2L
+  )
+  expect_match(
+    poll,
+    "builder_project_restore_dialog(manifest, opened$root)",
+    fixed = TRUE
+  )
+  expect_match(
+    poll,
+    paste0(
+      "builder_project_reset_open_state\\(\\s*generation,\\s*",
+      "restore_previous = TRUE"
+    ),
+    perl = TRUE
+  )
+  expect_match(observer, "builder_project_start_open(selected_path)", fixed = TRUE)
+  expect_match(observer, "builder_project_open_previous_phase(", fixed = TRUE)
+  expect_false(grepl(
+    "builder_project_read(selected_path)",
+    observer,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "builder_project_status_snapshot(manifest, root)",
+    observer,
+    fixed = TRUE
+  ))
+  expect_match(
+    observer,
+    "input$cancel_builder_project_open",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "open_cancelable = identical(phase, \"opening\")",
+    fixed = TRUE
+  )
+  expect_match(
+    observer,
+    'identical(progress$mode %||% NULL, "opening")',
+    fixed = TRUE
+  )
+  expect_match(source, "restore_previous = TRUE", fixed = TRUE)
+  expect_match(
+    session_cleanup,
+    "invalidate_builder_project_open(kill = TRUE)",
+    fixed = TRUE
+  )
+  expect_match(client, "function cancelBuilderProjectOpen()", fixed = TRUE)
+  expect_match(client, 'send("cancel_builder_project_open"', fixed = TRUE)
+  expect_match(
+    client,
+    "builderActivityState.open_cancelable === true",
+    fixed = TRUE
+  )
+  expect_match(client, 'overlay.setAttribute("role", "dialog")', fixed = TRUE)
+  expect_match(client, 'button.textContent = "Cancelling…"', fixed = TRUE)
+  expect_match(
+    app,
+    '`aria-labelledby` = "builder-operation-overlay-title"',
+    fixed = TRUE
+  )
+})
+
+test_that("project open polling stays inside the owning Shiny session", {
+  path <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
+  )
+  source <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  fail_position <- regexpr(
+    "builder_project_fail_open <- function(generation, error)",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  schedule_position <- regexpr(
+    "builder_project_schedule_open_poll <- function(generation)",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  start_position <- regexpr(
+    "builder_project_start_open <- function(selected_path)",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  poll_position <- regexpr(
+    "builder_project_poll_open <- function(generation)",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  source_sync_position <- regexpr(
+    "builder_project_poll_source_sync <- NULL",
+    source,
+    fixed = TRUE
+  )[[1L]]
+
+  expect_gt(fail_position, 0L)
+  expect_gt(schedule_position, fail_position)
+  expect_gt(start_position, schedule_position)
+  expect_gt(poll_position, start_position)
+  expect_gt(source_sync_position, poll_position)
+
+  failure <- substr(source, fail_position, schedule_position - 1L)
+  schedule <- substr(source, schedule_position, start_position - 1L)
+  start <- substr(source, start_position, poll_position - 1L)
+  poll <- substr(source, poll_position, source_sync_position - 1L)
+
+  expect_match(
+    schedule,
+    "shiny::withReactiveDomain(session,",
+    fixed = TRUE
+  )
+  callback_guard_position <- regexpr(
+    "tryCatch(",
+    schedule,
+    fixed = TRUE
+  )[[1L]]
+  closed_guard_position <- regexpr(
+    "if (builder_session_closed())",
+    schedule,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(callback_guard_position, 0L)
+  expect_gt(closed_guard_position, callback_guard_position)
+  expect_match(
+    schedule,
+    "invalidate_builder_project_open(kill = TRUE)",
+    fixed = TRUE
+  )
+  expect_match(
+    schedule,
+    "builder_project_poll_open(generation)",
+    fixed = TRUE
+  )
+  expect_match(
+    schedule,
+    "builder_project_fail_open(generation, error)",
+    fixed = TRUE
+  )
+  expect_match(
+    start,
+    "builder_project_schedule_open_poll(generation)",
+    fixed = TRUE
+  )
+  expect_false(grepl("later::later(", start, fixed = TRUE))
+  expect_match(
+    poll,
+    "builder_project_schedule_open_poll(generation)",
+    fixed = TRUE
+  )
+  expect_false(grepl("later::later(", poll, fixed = TRUE))
+  expect_match(failure, "session = session", fixed = TRUE)
+  expect_match(poll, "session = session", fixed = TRUE)
 })
 
 test_that("a revision conflict permits reopening but rejects mutation", {
