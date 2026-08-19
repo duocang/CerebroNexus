@@ -3477,6 +3477,12 @@
       "builder_coordinate_reset_motion",
       animateCoordinateResetSliders
     );
+    window.Shiny.addCustomMessageHandler("builder_scroll_page_top", function () {
+      window.scrollTo({
+        top: 0,
+        behavior: reducedMotion.matches ? "auto" : "smooth",
+      });
+    });
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;
       if (["upload", "configure", "review", "build"].indexOf(id) < 0) return;
