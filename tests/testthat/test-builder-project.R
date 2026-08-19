@@ -265,7 +265,14 @@ test_that("completed source sync repoints live entries and releases owned sessio
   project <- file.path(root, "project")
   session_root <- file.path(root, "session")
   retained <- file.path(session_root, "session-sources", "ds1", "sample.qs2")
-  target <- file.path(project, "sources", "ds1", "blobs", "content", "sample.qs2")
+  target <- file.path(
+    project,
+    "sources",
+    "ds1",
+    "blobs",
+    "content",
+    "sample.qs2"
+  )
   dir.create(dirname(retained), recursive = TRUE)
   dir.create(dirname(target), recursive = TRUE)
   dir.create(project, showWarnings = FALSE)
@@ -278,7 +285,10 @@ test_that("completed source sync repoints live entries and releases owned sessio
     filename = "sample.qs2",
     path = runtime$builder_project_relative_path(target, project),
     status = "ready",
-    fingerprint = runtime$builder_project_file_fingerprint(target, content = TRUE)
+    fingerprint = runtime$builder_project_file_fingerprint(
+      target,
+      content = TRUE
+    )
   )
   entries <- list(list(
     id = "ds1",
@@ -295,7 +305,10 @@ test_that("completed source sync repoints live entries and releases owned sessio
     session_root = session_root
   )
 
-  expect_identical(committed$entries[[1L]]$path, normalizePath(target, winslash = "/"))
+  expect_identical(
+    committed$entries[[1L]]$path,
+    normalizePath(target, winslash = "/")
+  )
   expect_identical(committed$entries[[1L]]$source$kind, "managed")
   expect_false(file.exists(retained))
   expect_identical(committed$released, "ds1")
@@ -331,6 +344,46 @@ test_that("session source release rejects lexical symlinks without deleting targ
   expect_false(runtime$builder_project_release_session_source(link, owned))
   expect_true(nzchar(Sys.readlink(link)))
   expect_true(file.exists(outside))
+})
+
+test_that("managed path checks allow only an explicitly missing create leaf", {
+  skip_on_os("windows")
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  checkpoint_parent <- file.path(root, "checkpoints")
+
+  expect_true(runtime$.builder_project_path_has_link_within(
+    checkpoint_parent,
+    root
+  ))
+  expect_false(runtime$.builder_project_path_has_link_within(
+    checkpoint_parent,
+    root,
+    allow_missing_leaf = TRUE
+  ))
+  expect_true(runtime$.builder_project_path_has_link_within(
+    file.path(root, "missing-parent", "checkpoints"),
+    root,
+    allow_missing_leaf = TRUE
+  ))
+
+  expect_true(dir.create(checkpoint_parent))
+  expect_false(runtime$.builder_project_path_has_link_within(
+    checkpoint_parent,
+    root,
+    allow_missing_leaf = TRUE
+  ))
+
+  unlink(checkpoint_parent, recursive = TRUE)
+  skip_if_not(
+    file.symlink(file.path(root, "missing-target"), checkpoint_parent),
+    "symbolic links are unavailable"
+  )
+  expect_true(runtime$.builder_project_path_has_link_within(
+    checkpoint_parent,
+    root,
+    allow_missing_leaf = TRUE
+  ))
 })
 
 test_that("source progress records stay compact while final results remain complete", {
@@ -462,7 +515,10 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   expect_null(restaged$settings$images[["section/a"]][["H&E"]]$source_uri)
   expect_false(grepl(
     "serialize(",
-    paste(deparse(body(runtime$builder_project_stage_spatial_assets)), collapse = "\n"),
+    paste(
+      deparse(body(runtime$builder_project_stage_spatial_assets)),
+      collapse = "\n"
+    ),
     fixed = TRUE
   ))
   record <- runtime$builder_project_dataset_record(
@@ -552,13 +608,22 @@ test_that("spatial asset status validates descriptors without hydrating image pa
   writeBin(charToRaw("asset"), asset)
   entry <- list(
     id = "ds1",
-    settings = list(images = list(fov = list(image = list(
-      project_asset = list(
-        path = runtime$builder_project_relative_path(asset, root),
-        mime = "image/png",
-        fingerprint = runtime$builder_project_file_fingerprint(asset, content = TRUE)
+    settings = list(
+      images = list(
+        fov = list(
+          image = list(
+            project_asset = list(
+              path = runtime$builder_project_relative_path(asset, root),
+              mime = "image/png",
+              fingerprint = runtime$builder_project_file_fingerprint(
+                asset,
+                content = TRUE
+              )
+            )
+          )
+        )
       )
-    ))))
+    )
   )
   record <- list(
     id = "ds1",
@@ -589,12 +654,18 @@ test_that("restore status snapshots are reused without weakening default validat
     source = list(
       kind = "managed",
       path = runtime$builder_project_relative_path(source, root),
-      fingerprint = runtime$builder_project_file_fingerprint(source, content = TRUE)
+      fingerprint = runtime$builder_project_file_fingerprint(
+        source,
+        content = TRUE
+      )
     ),
     artifact = list(
       status = "ready",
       path = runtime$builder_project_relative_path(artifact_path, root),
-      fingerprint = runtime$builder_project_file_fingerprint(artifact_path, content = TRUE),
+      fingerprint = runtime$builder_project_file_fingerprint(
+        artifact_path,
+        content = TRUE
+      ),
       members = list()
     ),
     checked = TRUE
@@ -1563,7 +1634,6 @@ test_that("checked project records bind confirmation to the restored entry", {
     mark,
     runtime$builder_project_check_identity(changed)
   ))
-
 })
 
 test_that("runtime snapshot replacement does not invalidate checked configuration", {
@@ -1803,6 +1873,135 @@ test_that("connection flush sends a message captured in reactive context", {
   )
 })
 
+test_that("CRB planning requests always acknowledge or reach a terminal state", {
+  path <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
+  )
+  source <- paste(readLines(path, warn = FALSE), collapse = "\n")
+
+  expect_match(
+    source,
+    "builder_project_build_crb_request_id <- reactiveVal(NULL)",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "builder_project_send_crb_progress <- function(",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "builder_project_fail_crb_request <- function(",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    'payload$request_id <- request_id',
+    fixed = TRUE
+  )
+  expect_identical(
+    lengths(regmatches(
+      source,
+      gregexpr('"builder_project_crb_progress"', source, fixed = TRUE)
+    )),
+    1L
+  )
+
+  prepare_start <- regexpr(
+    "prepare_builder_project_crbs <- function(request_id)",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  prepare_end <- regexpr(
+    "observeEvent(input$prepare_builder_project_crbs",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(prepare_start, 0L)
+  expect_gt(prepare_end, prepare_start)
+  prepare <- substr(source, prepare_start, prepare_end - 1L)
+  expect_match(prepare, "tryCatch(", fixed = TRUE)
+  expect_match(prepare, "error = function(error)", fixed = TRUE)
+  expect_match(
+    prepare,
+    "builder_project_cleanup_checkpoint(output, project$root)",
+    fixed = TRUE
+  )
+  expect_gte(
+    lengths(regmatches(
+      prepare,
+      gregexpr("builder_project_fail_crb_request(", prepare, fixed = TRUE)
+    )),
+    5L
+  )
+
+  observer_end <- regexpr(
+    "\nobserve({\n  value <- result()",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(observer_end, prepare_end)
+  observer <- substr(source, prepare_end, observer_end - 1L)
+  planning_position <- regexpr(
+    'builder_project_send_crb_progress(\n    "planning"',
+    observer,
+    fixed = TRUE
+  )[[1L]]
+  capability_position <- regexpr(
+    'builder_operation_allowed("prepare_crbs")',
+    observer,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(planning_position, 0L)
+  expect_gt(capability_position, planning_position)
+  expect_match(
+    observer,
+    "save_started <- request_builder_project_save(",
+    fixed = TRUE
+  )
+  expect_match(observer, "if (isTRUE(ok)) {", fixed = TRUE)
+  expect_match(observer, "} else {", fixed = TRUE)
+  expect_match(observer, "if (!isTRUE(save_started)) {", fixed = TRUE)
+  expect_match(observer, "error = function(error)", fixed = TRUE)
+
+  expect_match(
+    source,
+    "builder_project_capture_build_plan <- function(\n  plan,\n  crb_request_id = NULL",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "builder_project_build_plan(captured_plan)\n  builder_project_build_crb_request_id(request_id)",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "save_error <- NULL\n    saved <- tryCatch(",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "failed_project$manifest <- builder_project_finish_pending_build(",
+    fixed = TRUE
+  )
+  expect_match(source, "terminal_saved <- isTRUE(tryCatch(", fixed = TRUE)
+  expect_match(
+    source,
+    "crb_request_id <- isolate(builder_project_build_crb_request_id())",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "builder_project_build_crb_request_id(NULL)",
+    fixed = TRUE
+  )
+})
+
 test_that("project save flush runs inside an isolated reactive scope", {
   path <- testthat::test_path(
     "..",
@@ -1985,7 +2184,10 @@ test_that("dataset config generations survive manifest backups and stale writers
   )
   backup <- runtime$builder_project_read(paste0(winner$path, ".bak"))
   expect_identical(
-    runtime$builder_project_read_dataset_config(backup$datasets[[1L]], root)$settings$name,
+    runtime$builder_project_read_dataset_config(
+      backup$datasets[[1L]],
+      root
+    )$settings$name,
     "first"
   )
   expect_false(identical(
@@ -2019,7 +2221,11 @@ test_that("manifest revision commits are serialized by an owned project lock", {
     implementation,
     fixed = TRUE
   )[[1L]]
-  read_disk <- regexpr("builder_project_read(target)", implementation, fixed = TRUE)[[1L]]
+  read_disk <- regexpr(
+    "builder_project_read(target)",
+    implementation,
+    fixed = TRUE
+  )[[1L]]
   expect_gt(acquire, 0L)
   expect_gt(read_disk, acquire)
 })
@@ -2061,7 +2267,10 @@ test_that("restored source identity requires the recorded content fingerprint", 
       kind = "managed",
       path = "sources/ds1/source.rds",
       status = "ready",
-      fingerprint = runtime$builder_project_file_fingerprint(source, content = TRUE)
+      fingerprint = runtime$builder_project_file_fingerprint(
+        source,
+        content = TRUE
+      )
     ),
     checked = TRUE
   )
@@ -2086,11 +2295,17 @@ test_that("artifact availability validates the primary file and every member", {
     status = "ready",
     reusable = TRUE,
     path = "artifacts/ds1/bundle/ds1.crb",
-    fingerprint = runtime$builder_project_file_fingerprint(primary, content = TRUE),
+    fingerprint = runtime$builder_project_file_fingerprint(
+      primary,
+      content = TRUE
+    ),
     members = list(list(
       target = "ds1.h5",
       path = "artifacts/ds1/bundle/ds1.h5",
-      fingerprint = runtime$builder_project_file_fingerprint(member, content = TRUE)
+      fingerprint = runtime$builder_project_file_fingerprint(
+        member,
+        content = TRUE
+      )
     ))
   )
 
@@ -2221,7 +2436,11 @@ test_that("checkpoint artifacts promote to immutable shared generations", {
   )[[1L]]
   expect_gt(rename_failure, 0L)
   expect_gt(concurrent_adoption, rename_failure)
-  expect_match(implementation, "return(read_existing_generation())", fixed = TRUE)
+  expect_match(
+    implementation,
+    "return(read_existing_generation())",
+    fixed = TRUE
+  )
 })
 
 test_that("configuration identity cache invalidates only on entry revision", {
@@ -2234,10 +2453,22 @@ test_that("configuration identity cache invalidates only on entry revision", {
   }
   entry <- list(id = "ds1", revision = 1L, settings = list(name = "Dataset"))
 
-  first <- runtime$builder_project_cached_configuration_digest(entry, cache, digest)
-  second <- runtime$builder_project_cached_configuration_digest(entry, cache, digest)
+  first <- runtime$builder_project_cached_configuration_digest(
+    entry,
+    cache,
+    digest
+  )
+  second <- runtime$builder_project_cached_configuration_digest(
+    entry,
+    cache,
+    digest
+  )
   entry$revision <- 2L
-  third <- runtime$builder_project_cached_configuration_digest(entry, cache, digest)
+  third <- runtime$builder_project_cached_configuration_digest(
+    entry,
+    cache,
+    digest
+  )
 
   expect_identical(first, second)
   expect_false(identical(second, third))
@@ -2310,7 +2541,14 @@ test_that("checkpoint cleanup refuses lexical symlinks without deleting targets"
 
 test_that("project open clears all cross-project runtime caches", {
   source <- paste(
-    readLines(testthat::test_path("..", "..", "inst", "builder", "server", "project.R")),
+    readLines(testthat::test_path(
+      "..",
+      "..",
+      "inst",
+      "builder",
+      "server",
+      "project.R"
+    )),
     collapse = "\n"
   )
 
@@ -2376,7 +2614,12 @@ test_that("source sync context is bound to project identity and revision", {
 
 test_that("checkpoint preparation requires a durable project save before enqueue", {
   path <- testthat::test_path(
-    "..", "..", "inst", "builder", "server", "project.R"
+    "..",
+    "..",
+    "inst",
+    "builder",
+    "server",
+    "project.R"
   )
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
   checkpoint <- substr(
@@ -2395,7 +2638,7 @@ test_that("checkpoint preparation requires a durable project save before enqueue
   )
   expect_match(
     source,
-    ".builder_project_path_has_link_within(checkpoint_parent, project$root)",
+    "allow_missing_leaf = TRUE",
     fixed = TRUE
   )
 })
