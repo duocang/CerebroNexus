@@ -141,10 +141,7 @@ observeEvent(input$continue_to_review, {
     return()
   }
   req(all_datasets_checked())
-  plan <- freeze_materialized_plan_for_output(
-    file.path(tempdir(), "cerebro-builder-output-preview"),
-    overwrite = FALSE
-  )
+  plan <- frozen_review_plan()
   req(builder_review_can_build(plan))
   workflow(builder_reduce_workflow(
     isolate(workflow()),
