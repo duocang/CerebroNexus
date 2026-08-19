@@ -24,7 +24,7 @@ assets, and build artifacts have separate lifecycles and files.
 project/
   builder-project.json
   datasets/<id>/config.json
-  cache/<id>/profile.rds
+  cache/<id>/profile.qs2
   sources/<id>/<source-file>
   assets/<id>/spatial/<asset-file>
   artifacts/<id>/<artifact-file>
@@ -48,10 +48,12 @@ source fingerprint, and contract version.
 
 ## Profile cache
 
-`cache/<id>/profile.rds` stores source-derived `profile`, `dataset_profile`, and
-`levels`. It is optional and replaceable. A descriptor binds it to a source
-fingerprint, cache schema, producer version, file size, and MD5. Project open
-does not eagerly load every cache.
+`cache/<id>/profile.qs2` stores source-derived `profile`, `dataset_profile`, and
+`levels` using `qs2` serialization. It is optional and replaceable. A
+descriptor binds it to a source fingerprint, cache schema, producer version,
+file size, and MD5. Project open does not eagerly load every cache. Existing
+schema-v3 `.rds` descriptors remain readable, but every new or regenerated
+cache is written as `.qs2`.
 
 ## Identities
 
