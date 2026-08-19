@@ -1,6 +1,6 @@
 builder_project_test_runtime <- function() {
   runtime <- new.env(parent = globalenv())
-  for (file in c("io.R", "project.R", "build.R")) {
+  for (file in c("io.R", "worker.R", "extras.R", "project.R", "build.R")) {
     path <- testthat::test_path("..", "..", "inst", "builder", file)
     sys.source(path, envir = runtime)
   }
@@ -1212,6 +1212,61 @@ test_that("runtime snapshot replacement does not invalidate checked configuratio
     runtime$builder_project_check_identity(first),
     runtime$builder_project_check_identity(replacement)
   ))
+})
+
+test_that("pending coordinate drafts participate in checked identity", {
+  runtime <- builder_project_test_runtime()
+  entry <- list(
+    id = "ds1",
+    snapshot = list(
+      path = "/session/ds1",
+      owner_token = "owner-ds1",
+      object_md5 = strrep("a", 32L)
+    ),
+    settings = list(
+      name = "Spatial dataset",
+      images = list(),
+      spatial_coordinate_transforms = list()
+    ),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  confirmed <- runtime$builder_project_effective_check_identity(entry, list())
+  snapshot_identity <- runtime$.builder_worker_identity(entry$snapshot)
+  draft <- function(rotation) {
+    list(
+      ds1 = list(
+        `fov-a` = list(
+          dataset = "ds1",
+          section = "fov-a",
+          snapshot_identity = snapshot_identity,
+          spec = list(
+            schema_version = 1L,
+            rotation_degrees = rotation,
+            scale = 1
+          )
+        )
+      )
+    )
+  }
+
+  expect_false(identical(
+    confirmed,
+    runtime$builder_project_effective_check_identity(entry, draft(37.5))
+  ))
+  expect_identical(
+    runtime$builder_project_effective_check_identity(entry, draft(0)),
+    confirmed
+  )
+  marks <- stats::setNames(confirmed, entry$id)
+  expect_identical(
+    runtime$builder_project_checked_ids(list(entry), marks, draft(37.5)),
+    character()
+  )
+  expect_identical(
+    runtime$builder_project_checked_ids(list(entry), marks, draft(0)),
+    entry$id
+  )
 })
 
 test_that("a matching ready project CRB repairs a missing checked flag", {

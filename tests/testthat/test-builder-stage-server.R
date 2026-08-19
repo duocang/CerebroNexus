@@ -15,6 +15,27 @@ test_that("automatic dataset review advance requests top-of-workbench focus", {
   expect_match(review, "list(dataset = target)", fixed = TRUE)
 })
 
+test_that("checked datasets react to pending coordinate drafts", {
+  foundation <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "foundation.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    foundation,
+    "alignment_server$coordinate_drafts()",
+    fixed = TRUE
+  )
+  expect_match(
+    foundation,
+    "builder_project_checked_ids",
+    fixed = TRUE
+  )
+})
+
 test_that("an accepted Build requests absolute page-top scrolling", {
   build <- paste(
     readLines(
