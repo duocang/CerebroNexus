@@ -1262,6 +1262,21 @@ builder_project_artifact_available <- function(artifact, root) {
   .builder_project_text(path) && file.exists(path) && !dir.exists(path)
 }
 
+builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
+  Filter(
+    function(entry) {
+      artifact <- artifacts[[entry$id]] %||% NULL
+      !is.list(artifact) ||
+        !builder_project_artifact_available(artifact, root) ||
+        !identical(
+          as.character(artifact$built_from_configuration %||% ""),
+          builder_project_configuration_digest(entry)
+        )
+    },
+    entries
+  )
+}
+
 builder_project_spatial_assets_status <- function(record, root) {
   payload <- record$configuration$payload %||% NULL
   if (!.builder_project_text(payload)) {

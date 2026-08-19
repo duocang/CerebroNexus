@@ -684,11 +684,19 @@ builder_session_build <- function(
               ))
             }
           }
+          object_environment <- get(".builder_objects", envir = globalenv())
+          object_ids <- ls(object_environment, all.names = TRUE)
+          objects <- if (length(object_ids)) {
+            mget(object_ids, envir = object_environment, inherits = FALSE)
+          } else {
+            list()
+          }
           value <- builder_execute_plan(
             plan,
             stage,
             registry,
-            auth_material = auth_material
+            auth_material = auth_material,
+            objects = objects
           )
           if (
             isTRUE(plan$make_app) &&
