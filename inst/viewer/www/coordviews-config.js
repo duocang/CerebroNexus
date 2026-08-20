@@ -304,7 +304,14 @@
     if (!state || !state.ready() || !exportReady) {
       status('Select at least one cell before creating a share link.', 'error'); return;
     }
-    if (!preparedCache || sharePreparing || pendingShare) return;
+    if (sharePreparing || pendingShare) return;
+    if (!preparedCache && !setupPreparedCache()) {
+      status(
+        'The view preparation service is not ready. Reload this page and try again.',
+        'error'
+      );
+      return;
+    }
     sharePreparing = true;
     renderShareResult(latestShare);
     status('Creating share link…', 'working');
@@ -683,9 +690,10 @@
     });
   }
   function setupPreparedCache() {
+    if (preparedCache) return true;
     var api = window.cerebroPreparedConfigCache;
     if (!api || typeof api.create !== 'function' ||
-      typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
+      typeof Shiny === 'undefined' || !Shiny.setInputValue) return false;
     preparedCache = api.create({
       debounceMs: 250,
       ready: function () {
@@ -697,6 +705,7 @@
         Shiny.setInputValue('coordviews_config_request', payload, { priority: 'event' });
       }
     });
+    return true;
   }
   function invalidatePrepared() {
     if (preparedCache) preparedCache.invalidate();

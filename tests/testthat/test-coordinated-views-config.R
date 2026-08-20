@@ -652,6 +652,16 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "withPreparedConfig", fixed = TRUE)
   expect_match(controller, "}, 120)", fixed = TRUE)
   expect_match(controller, "preparedCache.invalidate", fixed = TRUE)
+  expect_match(
+    controller,
+    "if (!preparedCache && !setupPreparedCache())",
+    fixed = TRUE
+  )
+  expect_match(
+    controller,
+    "The view preparation service is not ready. Reload this page and try again.",
+    fixed = TRUE
+  )
   expect_match(controller, "payload.config_json = prepared.json", fixed = TRUE)
   expect_match(controller, "250", fixed = TRUE)
   expect_false(grepl("request('save')", controller, fixed = TRUE))
