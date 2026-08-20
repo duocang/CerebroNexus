@@ -190,7 +190,7 @@ observeEvent(
       is.character(raw_action) &&
         length(raw_action) == 1L &&
         !is.na(raw_action) &&
-        raw_action %in% c("copy", "download")
+        raw_action %in% c("copy", "download", "save", "apply")
     ) {
       raw_action
     } else {
@@ -201,34 +201,66 @@ observeEvent(
         cv_config_check_node_limit(request)
         request <- cv_config_record(
           request,
-          c("nonce", "action", "config"),
+          c("nonce", "action", "config", "config_json"),
+          required = c("nonce", "action"),
           path = "$.request"
         )
         nonce <- cv_config_string(request$nonce, "$.request.nonce", 128L)
         action <- cv_config_choice(
           request$action,
           "$.request.action",
-          c("copy", "download")
+          c("copy", "download", "save", "apply")
         )
         bundle <- cv_ok(coordviews_bundle())
         if (is.null(bundle)) {
           cv_config_abort("invalid_dataset", "Linked views is not ready.")
         }
-        prepared <- cv_config_prepare(request$config, cells = bundle$cells)
-        coordviews_config_json(prepared$json)
-        coordviews_config_filename(paste0(
-          "linked-views-",
-          format(Sys.time(), "%Y%m%d-%H%M%S", tz = "UTC"),
-          ".json"
-        ))
-        cv_config_send_result(
-          nonce,
-          action,
-          TRUE,
-          json = prepared$json,
-          filename = coordviews_config_filename(),
-          selected_cells = length(prepared$config$selection$cells)
-        )
+        if (action %in% c("copy", "download", "save")) {
+          request <- cv_config_record(
+            request,
+            c("nonce", "action", "config"),
+            path = "$.request"
+          )
+          prepared <- cv_config_prepare(request$config, cells = bundle$cells)
+          coordviews_config_json(prepared$json)
+          coordviews_config_filename(paste0(
+            "linked-views-",
+            format(Sys.time(), "%Y%m%d-%H%M%S", tz = "UTC"),
+            ".json"
+          ))
+          cv_config_send_result(
+            nonce,
+            action,
+            TRUE,
+            json = prepared$json,
+            filename = coordviews_config_filename(),
+            selected_cells = length(prepared$config$selection$cells)
+          )
+        } else {
+          request <- cv_config_record(
+            request,
+            c("nonce", "action", "config_json"),
+            path = "$.request"
+          )
+          request$config_json <- cv_config_string(
+            request$config_json,
+            "$.request.config_json",
+            CV_CONFIG_MAX_BYTES
+          )
+          normalized <- cv_config_decode(
+            request$config_json,
+            cells = bundle$cells
+          )
+          colour_data <- cv_config_validate_genes(normalized, bundle$cells)
+          cv_config_send_result(
+            nonce,
+            action,
+            TRUE,
+            config = cv_config_json_document(normalized),
+            colour_data = colour_data,
+            selected_cells = length(normalized$selection$cells)
+          )
+        }
       },
       error = function(error) {
         cv_config_log_failure(error)

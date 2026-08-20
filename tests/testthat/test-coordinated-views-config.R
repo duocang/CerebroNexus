@@ -455,6 +455,12 @@ test_that("the coordinated server exposes validated configuration transport", {
   expect_match(server, "/viewer/coordinated_views/config.R", fixed = TRUE)
   expect_match(server, "cv_config_cell_fingerprint(b$cells)", fixed = TRUE)
   expect_match(server, "coordviews_config_request", fixed = TRUE)
+  expect_match(server, 'c("copy", "download", "save", "apply")', fixed = TRUE)
+  expect_match(
+    server,
+    "cv_config_decode(request$config_json, cells = bundle$cells)",
+    fixed = TRUE
+  )
   expect_match(server, "coordviews_config_upload", fixed = TRUE)
   expect_match(server, "coordviews_config_upload_nonce", fixed = TRUE)
   expect_match(server, "coordviews_config_download", fixed = TRUE)
@@ -483,9 +489,14 @@ test_that("the coordinated server exposes validated configuration transport", {
     capture_start,
     capture_end - 1L
   )
+  capture_export <- strsplit(
+    capture_observer,
+    "        } else {",
+    fixed = TRUE
+  )[[1L]][[1L]]
   expect_false(grepl(
     "cv_config_validate_genes",
-    capture_observer,
+    capture_export,
     fixed = TRUE
   ))
 })
