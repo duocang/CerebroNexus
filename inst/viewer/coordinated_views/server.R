@@ -316,11 +316,40 @@ observeEvent(
   ignoreInit = TRUE
 )
 
+coordviews_share_response_cache <- new.env(parent = emptyenv())
+
 cv_share_send <- function(nonce, action, ok, ...) {
+  nonce <- if (is.null(nonce)) "" else as.character(nonce)
+  action <- if (is.null(action)) "" else as.character(action)
+  payload <- c(
+    list(nonce = nonce, action = action, ok = isTRUE(ok)),
+    list(...)
+  )
+  if (nzchar(nonce) && action %in% c("share_create", "share_revoke")) {
+    assign(nonce, payload, envir = coordviews_share_response_cache)
+  }
   session$sendCustomMessage(
     "coordviews_share_result",
-    c(list(nonce = nonce, action = action, ok = isTRUE(ok)), list(...))
+    payload
   )
+}
+
+cv_share_replay <- function(nonce, action) {
+  if (
+    !exists(nonce, envir = coordviews_share_response_cache, inherits = FALSE)
+  ) {
+    return(FALSE)
+  }
+  payload <- get(
+    nonce,
+    envir = coordviews_share_response_cache,
+    inherits = FALSE
+  )
+  if (!identical(payload$action, action)) {
+    return(FALSE)
+  }
+  session$sendCustomMessage("coordviews_share_result", payload)
+  TRUE
 }
 
 observeEvent(
@@ -352,6 +381,9 @@ observeEvent(
           "$.share_request.action",
           c("share_create", "share_open", "share_revoke")
         )
+        if (cv_share_replay(nonce, action)) {
+          return(invisible(NULL))
+        }
         if (is.null(coordviews_share_store)) {
           cv_share_abort(
             "share_unavailable",

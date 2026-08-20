@@ -555,6 +555,12 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "share_open", fixed = TRUE)
   expect_match(controller, "share_revoke", fixed = TRUE)
   expect_match(controller, "linked_view", fixed = TRUE)
+  expect_match(controller, "pendingShare.retried", fixed = TRUE)
+  expect_match(
+    controller,
+    "Shiny.setInputValue('coordviews_share_request', pendingShare.payload",
+    fixed = TRUE
+  )
   expect_match(controller, "saveSnapshotLocally", fixed = TRUE)
   expect_match(controller, "JSON.stringify(state.capture())", fixed = TRUE)
   expect_false(grepl("request('save')", controller, fixed = TRUE))
@@ -576,4 +582,13 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     'cerebro_js("coordviews-config.js", defer = TRUE)',
     fixed = TRUE
   )
+})
+
+test_that("share responses can be replayed without creating duplicate links", {
+  server_file <- file.path(config_inst, "viewer/coordinated_views/server.R")
+  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+
+  expect_match(server, "coordviews_share_response_cache", fixed = TRUE)
+  expect_match(server, "cv_share_replay(nonce, action)", fixed = TRUE)
+  expect_match(server, "assign(nonce, payload", fixed = TRUE)
 })

@@ -251,18 +251,25 @@
       status('Select at least one cell before creating a share link.', 'error'); return;
     }
     var nonce = nextNonce();
-    pendingShare = { nonce: nonce, action: action };
+    pendingShare = { nonce: nonce, action: action, payload: null, retried: false };
     if (pendingShareTimer) window.clearTimeout(pendingShareTimer);
-    pendingShareTimer = window.setTimeout(function () {
-      if (!pendingShare || pendingShare.nonce !== nonce) return;
-      pendingShare = null; pendingShareTimer = null;
-      status('The share request did not finish. Try again.', 'error');
-    }, 10000);
     status(action === 'share_open' ? 'Opening shared view…' :
       (action === 'share_revoke' ? 'Revoking share link…' : 'Creating share link…'), 'working');
     var payload = { nonce: nonce, action: action };
     if (action === 'share_create') payload.config = state.capture();
     if (record) { payload.token = record.token; if (record.receipt) payload.receipt = record.receipt; }
+    pendingShare.payload = payload;
+    pendingShareTimer = window.setTimeout(function retryShareRequest() {
+      if (!pendingShare || pendingShare.nonce !== nonce) return;
+      if (!pendingShare.retried) {
+        pendingShare.retried = true;
+        Shiny.setInputValue('coordviews_share_request', pendingShare.payload, { priority: 'event' });
+        pendingShareTimer = window.setTimeout(retryShareRequest, 4000);
+        return;
+      }
+      pendingShare = null; pendingShareTimer = null;
+      status('The share request did not finish. Try again.', 'error');
+    }, 2000);
     Shiny.setInputValue('coordviews_share_request', payload, { priority: 'event' });
   }
   function receiveShare(result) {
