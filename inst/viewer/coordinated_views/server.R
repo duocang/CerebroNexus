@@ -412,12 +412,6 @@ observeEvent(
           cv_config_abort("invalid_dataset", "Linked views is not ready.")
         }
         if (identical(action, "share_create")) {
-          if (!viewer_is_admin(session)) {
-            cv_share_abort(
-              "forbidden",
-              "Administrator access is required."
-            )
-          }
           request <- cv_config_record(
             request,
             c("nonce", "action", "config_json", "token"),
@@ -438,7 +432,7 @@ observeEvent(
             prepared$json,
             bundle$dataset_fingerprint,
             token = request$token,
-            creator = viewer_auth_context(session)$user,
+            creator = viewer_auth_context(session)$user %||% "",
             dataset_label = cv_selected_dataset_name() %||% ""
           )
           cv_share_send(
