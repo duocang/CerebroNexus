@@ -519,7 +519,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_false(grepl("Import / export view…", ui, fixed = TRUE))
   expect_match(
     css,
-    "color: var(--cv-amber700, #c85a0e); font: 700 12px/1 inherit;",
+    "color: var(--cv-amber700, #c85a0e); font: 750 12px/1 inherit;",
     fixed = TRUE
   )
   expect_match(ui, 'id = "cv-config-dialog"', fixed = TRUE)

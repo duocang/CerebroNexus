@@ -252,7 +252,7 @@
   height: 32px; display: inline-flex; align-items: center; gap: 7px;
   padding: 0 13px; border: 1px solid var(--c-amber-300, #ffb27a);
   border-radius: 6px; background: var(--cv-amber50, #fff4ec);
-  color: var(--cv-amber700, #c85a0e); font: 700 12px/1 inherit;
+  color: var(--cv-amber700, #c85a0e); font: 750 12px/1 inherit;
   white-space: nowrap; cursor: pointer;
 }
 .coordviews-page .cv-config-open:hover:not(:disabled) {
