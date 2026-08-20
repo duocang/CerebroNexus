@@ -673,16 +673,20 @@
   border-radius: 6px; background: var(--cv-surface2); color: var(--cv-text2);
   font-size: 11.5px; font-family: inherit;
 }
-/* The wrapper takes over the vertical centring the canvas used to do itself, so
-   it hugs the square exactly and gives the minimap something to anchor to. */
-.coordviews-page .cv-canvas-wrap { position: relative; margin: auto 0; }
+/* A three-space focus pane can be taller than its square canvas. The wrapper
+   fills that visible plot area and owns the pointer, so a brush can begin in
+   the breathing room as naturally as it can over a point. */
+.coordviews-page .cv-canvas-wrap {
+  position: relative; display: flex; flex: 1 0 auto;
+  align-items: center; justify-content: center;
+  width: 100%; min-height: 0; cursor: crosshair;
+}
 .coordviews-page canvas {
-  /* JS sizes each canvas to a square (>=300px); the wrapper's margin auto centres
-     it vertically in its cell — which matters for the UMAP square in the
-     three-space layout. width/height transition in step with the grid tracks so a
-     height-driven re-fit glides rather than snaps. */
+  /* JS keeps the data canvas square (>=300px); its full-size wrapper centres it
+     within a stretched focus pane while retaining that surrounding space as an
+     interactive part of the plot. */
   display: block; background: var(--cv-surface);
-  border-radius: 6px; cursor: crosshair;
+  border-radius: 6px; cursor: inherit;
   transition: width .28s ease, height .28s ease;
 }
 /* ---- minimap ------------------------------------------------------------ */
@@ -711,8 +715,8 @@
 }
 /* Pan mode: the cursor is the only cue that a drag will move the view rather
    than select cells, so it has to change with the mode and while dragging. */
-.coordviews-page canvas.cv-pannable { cursor: grab; }
-.coordviews-page canvas.cv-grabbing { cursor: grabbing; }
+.coordviews-page .cv-canvas-wrap.cv-pannable { cursor: grab; }
+.coordviews-page .cv-canvas-wrap.cv-grabbing { cursor: grabbing; }
 .coordviews-page .cv-tip {
   position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
   background: rgba(28,28,30,.82); color: #fff; padding: 8px 10px;

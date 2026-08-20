@@ -117,12 +117,9 @@ cv_pane <- function(key) {
         tags$span(class = "cv-focus-label", "Focus")
       )
     ),
-    ## The canvas gets a positioned wrapper so the minimap can sit at the
-    ## CANVAS's bottom-left rather than the pane's. It matters because the square
-    ## is not always flush with the pane: in the three-space layout the UMAP pane
-    ## is stretched over two rows and its canvas centres itself in the extra
-    ## height. Anchoring in CSS also means the minimap follows the canvas's
-    ## width/height transition for free, instead of being re-measured per frame.
+    ## The canvas gets a positioned wrapper which is also the full visible
+    ## plotting surface. In the three-space layout the UMAP pane is stretched
+    ## over two rows, so its intentional breathing room remains interactive.
     div(
       class = "cv-canvas-wrap",
       tags$canvas(id = paste0("cv-cv-", low)),

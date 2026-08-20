@@ -750,8 +750,9 @@ var focusPanel = null;
   // the grab cursor rather than the crosshair that promises a selection.
   function syncCursors() {
     panels.forEach(function (p) {
-      if (!p.canvas) return;
-      p.canvas.classList.toggle('cv-pannable',
+      var surface = p.surface || p.canvas;
+      if (!surface) return;
+      surface.classList.toggle('cv-pannable',
         panelIs3D(p) || selectMode === 'pan' || selectMode === 'orbit');
     });
   }
@@ -2702,7 +2703,10 @@ var focusPanel = null;
     if (ty < m) ty = p.sy[i] + 14;                   // flip below
     tx = Math.max(m, Math.min(tx, p.W - tw - m));
     ty = Math.max(m, Math.min(ty, p.H - th - m));
-    tip.style.left = tx + 'px'; tip.style.top = ty + 'px';
+    // Tips live in the wrapper while `sx`/`sy` belong to the square canvas.
+    // Carry its centred offset across when a bento pane leaves breathing room.
+    tip.style.left = (tx + p.canvas.offsetLeft) + 'px';
+    tip.style.top = (ty + p.canvas.offsetTop) + 'px';
   }
 
   // Pin a panel's tooltip to a cell: it stops following the cursor, gains the
@@ -2776,7 +2780,12 @@ var focusPanel = null;
 
   function wireHover(p) {
     var tip = $(p.tipId);
-    p.canvas.addEventListener('mousemove', function (e) {
+    // The square canvas is deliberately centred in a stretched focus card. The
+    // wrapper is still visibly part of that plot, so it must share the canvas'
+    // hover and brush hit area. Positions remain relative to the canvas: values
+    // in the surrounding margin simply sit outside its coordinate square.
+    var surface = p.surface || p.canvas;
+    surface.addEventListener('mousemove', function (e) {
       var r = p.canvas.getBoundingClientRect();
       var mx = e.clientX - r.left, my = e.clientY - r.top;
       // A pinned tooltip owns this panel's tooltip element until it is closed —
@@ -2798,7 +2807,7 @@ var focusPanel = null;
       tip.innerHTML = hoverHtml(i, false); tip.style.opacity = 1;
       placeTip(p, tip, i);
     });
-    p.canvas.addEventListener('mouseleave', function () {
+    surface.addEventListener('mouseleave', function () {
       setHoverCell(null);
       if (pinnedTip.panel === p) return;
       tip.style.opacity = 0;
@@ -2807,11 +2816,12 @@ var focusPanel = null;
 
   // ---- brush + pick --------------------------------------------------------
   function wireBrush(p) {
+    var surface = p.surface || p.canvas;
     var pos = function (e) {
       var r = p.canvas.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top];
     };
-    p.canvas.addEventListener('mousedown', function (e) {
+    surface.addEventListener('mousedown', function (e) {
       if (isSpatialSpace(spaceById[p.spaceId])) activateSpatial(p.spaceId);
       // A rotatable panel NAVIGATES; it does not select. Selection here is done
       // on screen coordinates, and once the cloud has depth those stop being a
@@ -2829,7 +2839,7 @@ var focusPanel = null;
         e.preventDefault();
         p.orbiting = true; p.orbitFrom = pos(e);
         p.orbitBase = p.rot ? { rx: p.rot.rx, ry: p.rot.ry } : { rx: 0, ry: 0 };
-        p.canvas.classList.add('cv-grabbing');
+        surface.classList.add('cv-grabbing');
         return;
       }
       // Pan: the toolbar's hand mode, or middle-drag / shift-drag from any mode
@@ -2843,7 +2853,7 @@ var focusPanel = null;
         p.panView = p.view
           ? { cx: p.view.cx, cy: p.view.cy, span: p.view.span }
           : { cx: 0.5, cy: 0.5, span: 1 };
-        p.canvas.classList.add('cv-grabbing');
+        surface.classList.add('cv-grabbing');
         return;
       }
       // a fresh brush supersedes any committed lasso (this panel's is replaced,
@@ -2853,7 +2863,7 @@ var focusPanel = null;
       });
       p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start]; p.lassoData = null;
     });
-    p.canvas.addEventListener('mousemove', function (e) {
+    surface.addEventListener('mousemove', function (e) {
       if (p.orbiting) {
         var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
         p.rot = {
@@ -2903,14 +2913,14 @@ var focusPanel = null;
     window.addEventListener('mouseup', function (e) {
       if (p.orbiting) {
         p.orbiting = false;
-        p.canvas.classList.remove('cv-grabbing');
+        surface.classList.remove('cv-grabbing');
         p.miniBg = null;    // the thumbnail is of the old angle
         drawAll();
         return;
       }
       if (p.panning) {
         p.panning = false;
-        p.canvas.classList.remove('cv-grabbing');
+        surface.classList.remove('cv-grabbing');
         drawAll();
         return;
       }
@@ -3000,7 +3010,8 @@ var focusPanel = null;
       var mini = $('cv-mini-' + low);
       var p = { key: key, canvas: cv, ctx: cv.getContext('2d'), tipId: 'cv-tip-' + low,
         // the canvas sits in .cv-canvas-wrap now, so the pane is two levels up
-        pane: cv.closest('.cv-pane'), spaceId: null, W: 0, H: 0,
+        pane: cv.closest('.cv-pane'), surface: cv.closest('.cv-canvas-wrap') || cv,
+        spaceId: null, W: 0, H: 0,
         sx: null, sy: null, ok: null, lasso: null, lassoData: null, drag: false, moved: false,
         view: null, mini: mini, mctx: null, miniBg: null, miniUnit: null };
       // The minimap is a FIXED size, so its backing store is set once here
