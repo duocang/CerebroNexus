@@ -3074,6 +3074,15 @@ var focusPanel = null;
       });
       resizeObserver._cvChromeObserved = true;
     }
+    // The explicit pixel tracks make an individual pane retain its old width
+    // while an ancestor widens. Observe the full grid as well: this catches a
+    // restored workspace becoming visible at its final tab width, then lets
+    // resizeAll recompute the tracks from that current width.
+    if (!resizeObserver._cvPanesObserved) {
+      var panesHost = document.querySelector('.coordviews-page .cv-panes');
+      if (panesHost) resizeObserver.observe(panesHost);
+      resizeObserver._cvPanesObserved = true;
+    }
   }
 
   // Coordinate-source / QC / positioning / Moran's I detail for a Trekker data

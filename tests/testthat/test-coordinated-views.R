@@ -106,6 +106,15 @@ test_that("Linked views places the shared legend above the panel grid", {
   expect_lt(cbar_pos, panes_pos)
 })
 
+test_that("Linked views reflows after its workspace becomes wider", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  expect_match(js, "resizeObserver._cvPanesObserved", fixed = TRUE)
+  expect_match(js, "resizeObserver.observe(panesHost)", fixed = TRUE)
+})
+
 test_that("Linked views keeps replacement controls contextual and user-facing", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
