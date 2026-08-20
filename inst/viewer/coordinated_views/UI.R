@@ -354,16 +354,6 @@ tab_coordinated_views <- tabItem(
       ## the Active cohort bar below, not to this settings row.
       div(
         class = "cv-topbar-right",
-        tags$button(
-          type = "button",
-          id = "cv-config-open",
-          class = "cv-config-open",
-          disabled = "disabled",
-          `aria-haspopup` = "dialog",
-          `aria-controls` = "cv-config-dialog",
-          icon("share-nodes"),
-          tags$span("Save / share")
-        ),
         ## Live "showing N / M cells" readout — hidden unless a filter/subsample
         ## reduces the view, so filtering is visible even when the panels are
         ## coloured by a different variable than the one being filtered.
@@ -548,51 +538,69 @@ tab_coordinated_views <- tabItem(
     ## The quiet opening guide makes the two defining interactions discoverable.
     ## Once cells are selected it yields this space to the richer cohort bar.
     div(
-      class = "cv-workspace-guide cv-collapse",
-      id = "cv-workspace-guide",
-      style = "display:none",
-      tags$span(
-        class = "cv-workspace-kicker",
-        icon("link"),
-        "Linked workspace"
-      ),
-      tags$span(
-        class = "cv-workspace-guide-text",
-        id = "cv-workspace-guide-text",
-        "Drag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked."
-      ),
-      tags$button(
-        type = "button",
-        class = "cv-workspace-overview",
-        id = "cv-workspace-overview",
-        style = "display:none",
-        icon("table-cells-large"),
-        "Back to overview"
-      )
-    ),
-
-    ## Active cohort: the shared state all lenses are describing.
-    div(
-      class = "cv-selbar cv-collapse",
-      id = "cv-selbar",
-      style = "display:none",
-      tags$span(class = "cv-sel-kicker", id = "cv-sel-kicker", "Active cohort"),
-      tags$span(class = "cv-sel-count", id = "cv-seltext", "—"),
-      tags$span(class = "cv-sel-chip", id = "cv-selprofile", ""),
-      tags$span(class = "cv-sel-detail", id = "cv-selorigin", ""),
-      tags$span(class = "cv-sel-detail", id = "cv-selcoverage", ""),
-      ## Actions sit with the cohort they affect, rather than in the unrelated
-      ## global-control row. They remain hidden until a selection/niche exists.
+      class = "cv-workspace-state",
       div(
-        class = "cv-selactions cv-collapse",
-        id = "cv-selactions",
+        class = "cv-workspace-guide cv-collapse",
+        id = "cv-workspace-guide",
         style = "display:none",
-        tags$button(
-          id = "cv-zoom",
-          class = "cv-zoombtn",
-          "Zoom to selection"
+        tags$span(
+          class = "cv-workspace-kicker",
+          icon("link"),
+          "Linked workspace"
         ),
-        tags$button(id = "cv-clear", class = "cv-clearbtn", "Clear selection")
+        tags$span(
+          class = "cv-workspace-guide-text",
+          id = "cv-workspace-guide-text",
+          "Drag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked."
+        ),
+        tags$button(
+          type = "button",
+          class = "cv-workspace-overview",
+          id = "cv-workspace-overview",
+          style = "display:none",
+          icon("table-cells-large"),
+          "Back to overview"
+        )
+      ),
+      ## Active cohort: the shared state all lenses are describing. It occupies
+      ## the same fixed state surface as the workspace guide, enabling a calm
+      ## cross-fade rather than a layout jump.
+      div(
+        class = "cv-selbar cv-collapse",
+        id = "cv-selbar",
+        style = "display:none",
+        tags$span(
+          class = "cv-sel-kicker",
+          id = "cv-sel-kicker",
+          "Active cohort"
+        ),
+        tags$span(class = "cv-sel-count", id = "cv-seltext", "—"),
+        tags$span(class = "cv-sel-chip", id = "cv-selprofile", ""),
+        tags$span(class = "cv-sel-detail", id = "cv-selorigin", ""),
+        tags$span(class = "cv-sel-detail", id = "cv-selcoverage", ""),
+        ## Actions only exist for a current cohort; sharing belongs with Zoom
+        ## and Clear rather than as a disabled global control.
+        div(
+          class = "cv-selactions cv-collapse",
+          id = "cv-selactions",
+          style = "display:none",
+          tags$button(
+            type = "button",
+            id = "cv-config-open",
+            class = "cv-config-open",
+            disabled = "disabled",
+            `aria-haspopup` = "dialog",
+            `aria-controls` = "cv-config-dialog",
+            icon("share-nodes"),
+            tags$span("Save / share")
+          ),
+          tags$button(
+            id = "cv-zoom",
+            class = "cv-zoombtn",
+            "Zoom to selection"
+          ),
+          tags$button(id = "cv-clear", class = "cv-clearbtn", "Clear selection")
+        )
       )
     ),
 

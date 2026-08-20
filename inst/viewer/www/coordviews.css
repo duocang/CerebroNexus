@@ -261,8 +261,8 @@
 .coordviews-page .cv-config-open:disabled {
   opacity: .48; cursor: not-allowed;
 }
-/* Zoom + Clear live inside the active-cohort bar, beside the selection they
-   affect. They stay horizontal and move to a new flex line only when needed. */
+/* Save, Zoom and Clear live inside the active-cohort bar, beside the selection
+   they affect. They stay horizontal and move to a new flex line only when needed. */
 .coordviews-page .cv-selactions {
   display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px;
   align-self: center; margin-left: auto;
@@ -280,6 +280,13 @@
   white-space: nowrap; font-family: inherit; cursor: pointer;
   padding: 0 9px; font-size: 12.5px; font-weight: 700; line-height: 1;
   border: 1px solid; border-radius: 6px;
+}
+.coordviews-page .cv-selactions .cv-config-open {
+  min-width: 0; border-color: var(--c-amber-300, #ffb27a);
+  background: var(--cv-amber50, #fff4ec); color: var(--cv-amber700, #c85a0e);
+}
+.coordviews-page .cv-selactions .cv-config-open:hover:not(:disabled) {
+  background: var(--cv-amber100, #ffe4d1); border-color: var(--cv-amber, #f97316);
 }
 /* These two are deliberately OUTSIDE the amber vocabulary. Everything else in
    the bar is a persistent control whose amber means "this is on"; these appear
@@ -1087,20 +1094,23 @@
   min-width: 5.5em !important;
 }
 
-/* ---- selection bar ------------------------------------------------------ */
-/* Sits between the params and the panels: a clear gap above (stands off the
-   param boxes) and only a small gap below (hugs the panels it describes).
-   Reveals by collapsing height + margins so the panels slide, not jump. */
-.coordviews-page .cv-selbar {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
+/* ---- workspace state ---------------------------------------------------- */
+/* The opening guide and active cohort occupy one reserved surface. Keeping the
+   geometry stable lets their brief cross-fade read as a state change, not a
+   reflow of the panels below. */
+.coordviews-page .cv-workspace-state {
+  display: grid; grid-template: 1fr / 1fr; min-height: 54px;
   margin: 14px 0 8px;
+}
+.coordviews-page .cv-selbar {
+  grid-area: 1 / 1; display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
+  margin: 0;
   background: var(--cv-amber50); border: 1px solid var(--cv-amber200);
   border-radius: 8px; padding: 8px 10px; font-size: 12px;
   color: var(--cv-text2);
   max-height: 120px; overflow: hidden;
-  transition: max-height .2s ease, opacity .18s ease,
-    margin-top .2s ease, margin-bottom .2s ease,
-    padding-top .2s ease, padding-bottom .2s ease;
+  transition: max-height .22s ease, opacity .18s ease, transform .18s ease,
+    padding-top .22s ease, padding-bottom .22s ease;
 }
 .coordviews-page .cv-sel-kicker {
   color: var(--cv-amber700); font-size: 10.5px; font-weight: 750;
@@ -1114,25 +1124,24 @@
 .coordviews-page .cv-sel-detail { color: var(--cv-text3); white-space: nowrap; }
 .coordviews-page .cv-selbar.cv-collapse {
   max-height: 0; opacity: 0;
-  margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
+  transform: translateY(5px); padding-top: 0; padding-bottom: 0;
 }
 
 /* The default workspace state needs an affordance of its own. This compact
    guide occupies the same strip as the Active cohort bar: selection replaces
    it, rather than stacking another block above the plots. */
 .coordviews-page .cv-workspace-guide {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
-  margin: 14px 0 8px; padding: 7px 10px;
+  grid-area: 1 / 1; display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
+  margin: 0; padding: 7px 10px;
   border: 1px solid var(--cv-border); border-radius: 8px;
   background: var(--cv-surface); color: var(--cv-text2); font-size: 12px;
   max-height: 90px; overflow: hidden;
-  transition: max-height .2s ease, opacity .18s ease,
-    margin-top .2s ease, margin-bottom .2s ease,
-    padding-top .2s ease, padding-bottom .2s ease;
+  transition: max-height .22s ease, opacity .18s ease, transform .18s ease,
+    padding-top .22s ease, padding-bottom .22s ease;
 }
 .coordviews-page .cv-workspace-guide.cv-collapse {
   max-height: 0; opacity: 0;
-  margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
+  transform: translateY(-5px); padding-top: 0; padding-bottom: 0;
 }
 .coordviews-page .cv-workspace-kicker {
   display: inline-flex; align-items: center; gap: 5px;
@@ -1148,6 +1157,11 @@
   font-family: inherit; font-size: 11.5px; font-weight: 650;
 }
 .coordviews-page .cv-workspace-overview:hover { background: #fff1e6; }
+@media (prefers-reduced-motion: reduce) {
+  .coordviews-page .cv-workspace-guide,
+  .coordviews-page .cv-selbar,
+  .coordviews-page .cv-selactions { transition: none; }
+}
 
 /* ---- readout (composition + clonotypes) --------------------------------- */
 .coordviews-page .cv-readout {

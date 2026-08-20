@@ -1569,6 +1569,8 @@ var focusPanel = null;
     var hasNiche = !hasSel && pick != null && !!nicheSet;
     var show = hasSel || hasNiche;
     revealEl($('cv-selactions'), show);
+    var share = $('cv-config-open');
+    if (share) share.style.display = hasSel ? '' : 'none';
     var zb = $('cv-zoom');
     // Offered only when there is a flat panel for it to act on: with the
     // expression panel showing a 3-D embedding it would have nothing to zoom,
