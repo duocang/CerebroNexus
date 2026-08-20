@@ -315,7 +315,6 @@ prettifyTable <- function(
   ## - align numerics to the right
   table <- DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = FALSE,
     extensions = table_extensions,
@@ -613,7 +612,6 @@ prettifyTable <- function(
 prepareEmptyTable <- function(table) {
   DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = FALSE,
     filter = "none",
@@ -792,11 +790,24 @@ assignColorsToGroups <- function(table, grouping_variable) {
 ## Build hover info for projections.
 ##----------------------------------------------------------------------------##
 buildHoverInfoForProjections <- function(table) {
+  transcript_column <- intersect(c("nUMI", "nCount_RNA"), colnames(table))
+  gene_column <- intersect(c("nGene", "nFeature_RNA"), colnames(table))
+  transcript_count <- if (length(transcript_column)) {
+    table[[transcript_column[[1]]]]
+  } else {
+    rep(NA_real_, nrow(table))
+  }
+  expressed_genes <- if (length(gene_column)) {
+    table[[gene_column[[1]]]]
+  } else {
+    rep(NA_real_, nrow(table))
+  }
+
   ## put together cell ID, number of transcripts and number of expressed genes
   hover_info <- glue::glue(
     "<b>Cell</b>: {table[[ 'cell_barcode' ]]}<br>",
-    "<b>Transcripts</b>: {formatC(table[[ 'nUMI' ]], format = 'f', big.mark = ',', digits = 0)}<br>",
-    "<b>Expressed genes</b>: {formatC(table[[ 'nGene' ]], format = 'f', big.mark = ',', digits = 0)}"
+    "<b>Transcripts</b>: {formatC(transcript_count, format = 'f', big.mark = ',', digits = 0)}<br>",
+    "<b>Expressed genes</b>: {formatC(expressed_genes, format = 'f', big.mark = ',', digits = 0)}"
   )
   ## add info for known grouping variables
   for (group in getGroups()) {
@@ -877,6 +888,38 @@ getXYranges <- function(table) {
     )
   )
   return(ranges)
+}
+
+##----------------------------------------------------------------------------##
+## Limit a projection to the dimensions the projection plots can draw.
+##----------------------------------------------------------------------------##
+## The plots dispatch on 2 vs. 3 dimensions, so a wider projection used to match
+## neither branch: no plot update was requested at all and the previous
+## projection stayed on screen. `exportFromSeurat()` drops the PCA whenever a
+## non-PCA reduction exists, which is why this went unnoticed, but a PCA is
+## normally computed with far more than three components (`RunPCA()` defaults to
+## 50) and `addProjection()` accepts a projection of any width. Anything wider is
+## therefore shown through its first three dimensions -- what the 3-D plot would
+## display in any case.
+cerebro_max_projection_dimensions <- 3L
+
+nProjectionDimensions <- function(projection) {
+  min(ncol(projection), cerebro_max_projection_dimensions)
+}
+
+## `max_dimensions` is the plottable three by default. The selected-cell panels
+## pass 2: they cbind the projection onto the meta data purely to rebuild the
+## X1-X2 selection identifier, then drop those two columns again -- so every
+## dimension past the second is a coordinate column that reaches the user's table
+## as data, which for a PCA means PC_3 through PC_50.
+capProjectionDimensions <- function(
+  projection,
+  max_dimensions = cerebro_max_projection_dimensions
+) {
+  projection[,
+    seq_len(min(ncol(projection), max_dimensions)),
+    drop = FALSE
+  ]
 }
 
 ##----------------------------------------------------------------------------##
@@ -999,6 +1042,61 @@ match_dataset_by_url <- function(url_dataset, files, file_names = NULL) {
   }
   ## No match
   return('')
+}
+
+##----------------------------------------------------------------------------##
+## Resolve generated-App Viewer defaults for the selected configured dataset.
+##
+## Old Apps and uploaded datasets have no per-dataset entry and intentionally
+## return an empty list, preserving the existing first-item/global fallbacks.
+##----------------------------------------------------------------------------##
+configuredViewerContent <- function(config, selected_file, files = NULL) {
+  if (
+    !is.list(config) ||
+      is.object(config) ||
+      !length(config) ||
+      !is.character(selected_file) ||
+      length(selected_file) != 1L ||
+      is.na(selected_file) ||
+      !nzchar(selected_file) ||
+      !is.character(files) ||
+      !length(files) ||
+      is.null(names(files))
+  ) {
+    return(list())
+  }
+  index <- match(selected_file, unname(files))
+  if (is.na(index) || index < 1L || index > length(files)) {
+    return(list())
+  }
+  label <- names(files)[[index]]
+  value <- config[[label]]
+  if (!is.list(value) || is.object(value)) {
+    return(list())
+  }
+  value
+}
+
+configuredViewerPercentageCellsToShow <- function(
+  viewer_defaults,
+  fallback = 100
+) {
+  value <- if (is.list(viewer_defaults)) {
+    viewer_defaults[["overview_percentage_cells_to_show"]]
+  } else {
+    NULL
+  }
+  if (
+    is.numeric(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      is.finite(value) &&
+      value >= 10 &&
+      value <= 100
+  ) {
+    return(as.numeric(value))
+  }
+  fallback
 }
 
 ##----------------------------------------------------------------------------##

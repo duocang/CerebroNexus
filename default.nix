@@ -23,9 +23,11 @@
 #  > "glue",
 #  > "GSVA",
 #  > "HDF5Array",
+#  > "htmltools",
 #  > "htmlwidgets",
 #  > "httr",
 #  > "igraph",
+#  > "jpeg",
 #  > "later",
 #  > "Matrix",
 #  > "msigdbr",
@@ -33,6 +35,8 @@
 #  > "plotly",
 #  > "qvalue",
 #  > "R6",
+#  > "readxl",
+#  > "rhdf5",
 #  > "rlang",
 #  > "scales",
 #  > "scRepertoire",
@@ -79,9 +83,11 @@ let
       glue
       GSVA
       HDF5Array
+      htmltools
       htmlwidgets
       httr
       igraph
+      jpeg
       later
       Matrix
       msigdbr
@@ -91,6 +97,8 @@ let
       png
       qvalue
       R6
+      readxl
+      rhdf5
       rlang
       scales
       scRepertoire

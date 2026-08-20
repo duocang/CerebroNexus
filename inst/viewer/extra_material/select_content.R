@@ -6,15 +6,24 @@
 ## UI element to set layout for selection of category and specific content,
 ## which are split because the content depends on which category is selected.
 ##----------------------------------------------------------------------------##
+extra_material_category_needed <- function(categories) {
+  categories <- as.character(categories)
+  categories <- categories[!is.na(categories) & nzchar(categories)]
+  length(unique(categories)) > 1L
+}
+
 output[["extra_material_select_category_and_content_UI"]] <- renderUI({
+  categories <- getExtraMaterialCategories()
+  has_category_choice <- extra_material_category_needed(categories)
   tagList(
     fluidRow(
-      column(
-        6,
+      if (has_category_choice) {
+        column(6, uiOutput("extra_material_selected_category_UI"))
+      } else {
         uiOutput("extra_material_selected_category_UI")
-      ),
+      },
       column(
-        6,
+        if (has_category_choice) 6 else 12,
         uiOutput("extra_material_selected_content_UI")
       )
     )
@@ -25,22 +34,28 @@ output[["extra_material_select_category_and_content_UI"]] <- renderUI({
 ## UI element to select from which category the content should be shown.
 ##----------------------------------------------------------------------------##
 output[["extra_material_selected_category_UI"]] <- renderUI({
+  categories <- getExtraMaterialCategories()
+  has_category_choice <- extra_material_category_needed(categories)
+  category_input <- selectInput(
+    "extra_material_selected_category",
+    label = NULL,
+    choices = categories,
+    width = "100%"
+  )
+  if (!has_category_choice) {
+    return(tags$div(class = "visually-hidden", category_input))
+  }
   tagList(
     div(
       HTML(
-        '<h3 style="text-align: center; margin-top: 0"><strong>Choose a category:</strong></h2>'
+        '<h3 style="text-align: center; margin-top: 0"><strong>Choose a category:</strong></h3>'
       )
     ),
     fluidRow(
       column(2),
       column(
         8,
-        selectInput(
-          "extra_material_selected_category",
-          label = NULL,
-          choices = getExtraMaterialCategories(),
-          width = "100%"
-        )
+        category_input
       ),
       column(2)
     )
@@ -61,7 +76,7 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
     tagList(
       div(
         HTML(
-          '<h3 style="text-align: center; margin-top: 0"><strong>Choose a table:</strong></h2>'
+          '<h3 style="text-align: center; margin-top: 0"><strong>Choose a table:</strong></h3>'
         )
       ),
       fluidRow(
@@ -87,7 +102,7 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
     tagList(
       div(
         HTML(
-          '<h3 style="text-align: center; margin-top: 0"><strong>Choose a plot:</strong></h2>'
+          '<h3 style="text-align: center; margin-top: 0"><strong>Choose a plot:</strong></h3>'
         )
       ),
       fluidRow(

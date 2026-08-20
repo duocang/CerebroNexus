@@ -180,6 +180,17 @@ body.skin-blue .main-footer { margin-top: 0 !important; }
 /* -------------------------------------------------------------------------
    Sidebar — white nav rail, rounded items, warm active pill
    ------------------------------------------------------------------------- */
+body.skin-blue .main-sidebar,
+body.skin-blue .left-side {
+  position: fixed !important;
+  top: 0;
+  bottom: 0;
+  min-height: 0;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 body.skin-blue .main-sidebar {
   background: var(--c-white) !important;
   border-right: 1px solid var(--c-border) !important;
@@ -198,6 +209,8 @@ body.skin-blue .sidebar .cerebro-brand .cerebro-logo {
   width: 188px;
   height: auto;
 }
+.cerebro-nav-close,
+#cerebro-nav-scrim { display: none; }
 body.skin-blue .sidebar-menu > li { position: relative; }
 body.skin-blue .sidebar-menu > li > a {
   color: var(--c-text) !important;
@@ -808,6 +821,130 @@ body .btn-group-justified > .btn.radiobtn.btn-primary.active {
   font-weight: 650;
 }
 
+/* Spatial: the common one-image-per-section case is automatic. The rare
+   per-section choices stay in one compact popover instead of growing the Main
+   parameters card by one full select per panel. */
+.spatial-background-mode {
+  display: flex;
+  width: 100%;
+}
+.spatial-background-mode > .spatial-background-mode-option,
+.spatial-background-mode > .spatial-background-customize > button {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 0 !important;
+  color: var(--c-text) !important;
+  background: var(--c-surface) !important;
+  border-color: var(--c-border-2) !important;
+  box-shadow: none !important;
+}
+.spatial-background-mode > :first-child {
+  border-radius: var(--r-sm) 0 0 var(--r-sm) !important;
+}
+.spatial-background-mode > .spatial-background-customize > button {
+  border-radius: 0 var(--r-sm) var(--r-sm) 0 !important;
+  width: 100%;
+}
+.spatial-background-mode > .is-active,
+.spatial-background-mode > .spatial-background-customize.is-active > button {
+  background: var(--c-amber) !important;
+  border-color: var(--c-amber) !important;
+  color: var(--c-white) !important;
+  font-weight: 650;
+}
+.spatial-background-customize {
+  flex: 1.35 1 0;
+}
+.spatial-background-customize .dropdown-menu {
+  max-width: calc(100vw - 40px);
+  padding: 10px;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+}
+.spatial-background-customize-list {
+  display: grid;
+  gap: 8px;
+}
+.spatial-background-row {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+}
+.spatial-background-row-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.spatial-background-row-label {
+  font-weight: 650;
+  color: var(--c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spatial-background-count {
+  flex: 0 0 auto;
+  color: var(--c-text-2);
+  font-size: 11px;
+}
+.spatial-background-row .form-group,
+.spatial-background-row .checkbox,
+.spatial-background-row .material-switch {
+  margin: 0;
+}
+.spatial-background-single {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+.spatial-background-single-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.spatial-background-image-icon {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(224, 109, 25, 0.2);
+  background:
+    radial-gradient(circle at 67% 34%, #ffffff 0 2px, transparent 2.5px),
+    linear-gradient(145deg, #ffe0ca 0 48%, #f29957 49% 66%, #c76321 67% 100%);
+}
+.spatial-background-single-name {
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spatial-background-multiple .form-control {
+  height: 42px;
+  border-color: var(--c-border-2);
+  background: var(--c-surface-2);
+}
+.spatial-background-unavailable {
+  display: block;
+  padding: 8px 9px;
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
 /* -------------------------------------------------------------------------
    Form controls — soft inputs, warm focus ring
    ------------------------------------------------------------------------- */
@@ -892,6 +1029,24 @@ body .selectize-control.multi .selectize-input > .item {
   border-radius: var(--r-xs) !important;
   padding: 1px 8px !important;
   font-size: 13px;
+}
+/* Every multi-select keeps a useful empty target and lets its menu grow to the
+   longest option. The viewport cap preserves full labels by scrolling only
+   when a label genuinely cannot fit on screen. */
+body .selectize-control.multi .selectize-input > input::placeholder {
+  color: var(--c-text-3);
+  opacity: 1;
+}
+body .selectize-control.multi .selectize-input > input:only-child {
+  min-width: 5.5em !important;
+}
+body .selectize-control.multi .selectize-dropdown {
+  width: max-content !important;
+  min-width: 100% !important;
+  max-width: calc(100vw - 32px) !important;
+}
+body .selectize-control.multi .selectize-dropdown .option {
+  white-space: nowrap;
 }
 
 body label, body .control-label {
@@ -1217,7 +1372,7 @@ body .btn:active { transform: translateY(0.5px); }
     position: fixed;
     top: 8px;
     left: 8px;
-    z-index: 1030;
+    z-index: 1400;
     width: 40px;
     height: 40px;
     margin: 0;
@@ -1229,6 +1384,80 @@ body .btn:active { transform: translateY(0.5px); }
     border: 1px solid var(--c-border, rgba(0, 0, 0, 0.12));
     border-radius: 8px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    font-size: 0;
+  }
+  html body.skin-blue .main-header .sidebar-toggle::before {
+    content: "" !important;
+    display: block;
+    width: 18px;
+    height: 14px;
+    background:
+      linear-gradient(currentColor, currentColor) 0 0 / 18px 2px no-repeat,
+      linear-gradient(currentColor, currentColor) 0 6px / 18px 2px no-repeat,
+      linear-gradient(currentColor, currentColor) 0 12px / 18px 2px no-repeat;
+  }
+
+  html body.skin-blue .main-sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 1500 !important;
+    width: min(84vw, 320px) !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow-x: hidden;
+    overflow-y: auto;
+    transform: translateX(-100%) !important;
+    transition: transform .22s var(--ease) !important;
+    box-shadow: var(--shadow-4) !important;
+  }
+  html body.skin-blue.sidebar-open .main-sidebar {
+    transform: translateX(0) !important;
+  }
+  html body.skin-blue.sidebar-open .content-wrapper,
+  html body.skin-blue.sidebar-open .right-side,
+  html body.skin-blue.sidebar-open .main-footer {
+    margin-left: 0 !important;
+    transform: none !important;
+  }
+  html body.skin-blue .cerebro-nav-close {
+    display: grid;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    place-items: center;
+    color: var(--c-text-2);
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-sm);
+    font: 26px/1 var(--font-sans);
+  }
+  html body.skin-blue .cerebro-nav-close:hover,
+  html body.skin-blue .cerebro-nav-close:focus-visible {
+    color: var(--c-text);
+    background: var(--c-surface-2);
+  }
+  html body.skin-blue #cerebro-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1450;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+    background: rgba(28, 28, 30, .36);
+    border: 0;
+    transition: opacity .2s ease;
+  }
+  html body.skin-blue.sidebar-open #cerebro-nav-scrim {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 

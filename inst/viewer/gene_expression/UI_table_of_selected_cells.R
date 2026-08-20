@@ -54,7 +54,7 @@ output[["expression_details_selected_cells"]] <- DT::renderDataTable({
     ## ... selection has been made and at least 1 cell is in it
   } else {
     cells_df <- bind_cols(
-      expression_projection_coordinates(),
+      capProjectionDimensions(expression_projection_coordinates(), 2),
       expression_projection_data()
     )
     if (is.list(expression_projection_expression_levels())) {

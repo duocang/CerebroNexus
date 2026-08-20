@@ -17,6 +17,22 @@ source(
   ),
   local = TRUE
 )
+## color_config.R is pure as well: it resolves the palette configured at bundle
+## creation, which reactive_colors() then lays over the defaults.
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/viewer/color_config.R"
+  ),
+  local = TRUE
+)
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/viewer/core/viewer_content_contract.R"
+  ),
+  local = TRUE
+)
 
 server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
@@ -26,10 +42,43 @@ server <- function(input, output, session) {
     paste0(Cerebro.options[["cerebro_root"]], "/viewer/color_setup.R"),
     local = TRUE
   )
+
+  page_catalog <- builder_viewer_page_catalog()
+  page_rows <- rbind(page_catalog$always, page_catalog$conditional)
+  configured_initial_page <- Cerebro.options[["initial_page"]]
+  if (
+    !is.character(configured_initial_page) ||
+      length(configured_initial_page) != 1L ||
+      is.na(configured_initial_page) ||
+      !configured_initial_page %in% page_rows$id
+  ) {
+    configured_initial_page <- "data_info"
+  }
+  initial_page_row <- page_rows[
+    match(configured_initial_page, page_rows$id),
+    ,
+    drop = FALSE
+  ]
+  initial_navigation <- new.env(parent = emptyenv())
+  initial_navigation$file <- NULL
+  initial_navigation$tab_name <- initial_page_row$tab_name[[1L]]
+  initial_navigation$conditional <- configured_initial_page %in%
+    page_catalog$conditional$id &&
+    !identical(initial_navigation$tab_name, "coordinated_views")
+  initial_navigation$applied <- FALSE
   source(
     paste0(
       Cerebro.options[["cerebro_root"]],
       "/viewer/utility_functions.R"
+    ),
+    local = TRUE
+  )
+  ## What a clone is, for every page that shows one. Sourced before the modules
+  ## so the Immune repertoire tab and Linked views cannot answer it differently.
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/clone_contract.R"
     ),
     local = TRUE
   )
@@ -39,9 +88,22 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   preferences <- reactiveValues(
     overview_plot_point_size = list(
-      min = 1,
+      min = 0,
       max = 20,
       step = 1,
+      configured = if (
+        exists("Cerebro.options") &&
+          !is.null(Cerebro.options[["point_size"]]) &&
+          !is.null(Cerebro.options[["point_size"]][[
+            "overview_projection_point_size"
+          ]])
+      ) {
+        Cerebro.options[["point_size"]][[
+          "overview_projection_point_size"
+        ]]
+      } else {
+        NULL
+      },
       default = ifelse(
         exists('Cerebro.options') &&
           !is.null(Cerebro.options[['overview_default_point_size']]),
@@ -215,12 +277,19 @@ server <- function(input, output, session) {
           }
         }
 
-        ## if not chosen via URL: keep current selection, else pick default.
+        ## if not chosen via URL: keep current selection, then use an explicit
+        ## configured label, else pick the size/order fallback.
         ## crb_pick_smallest_file TRUE/NULL -> smallest file; FALSE -> first.
         if (path_to_load != '') {
           ## already set by URL logic
         } else if (!is.null(available_crb_files$selected)) {
           path_to_load <- available_crb_files$selected
+        } else if (
+          !is.null(Cerebro.options[["initial_dataset"]]) &&
+            Cerebro.options[["initial_dataset"]] %in% names(file_to_load)
+        ) {
+          configured_initial_dataset <- Cerebro.options[["initial_dataset"]]
+          path_to_load <- unname(file_to_load[[configured_initial_dataset]])
         } else {
           pick_smallest <- TRUE
           if (!is.null(Cerebro.options[["crb_pick_smallest_file"]])) {
@@ -364,6 +433,59 @@ server <- function(input, output, session) {
     return(data)
   })
 
+  same_initial_file <- function() {
+    current <- isolate(available_crb_files$selected)
+    !is.null(initial_navigation$file) &&
+      identical(unname(as.character(current)), initial_navigation$file)
+  }
+
+  observeEvent(
+    data_set(),
+    {
+      initial_navigation$file <- unname(as.character(
+        isolate(available_crb_files$selected)
+      ))
+      if (!isTRUE(initial_navigation$conditional)) {
+        if (identical(initial_navigation$tab_name, "loadData")) {
+          initial_navigation$applied <- TRUE
+        } else {
+          session$onFlushed(
+            function() {
+              if (
+                !isTRUE(initial_navigation$applied) &&
+                  same_initial_file()
+              ) {
+                initial_navigation$applied <- TRUE
+                updateTabItems(
+                  session,
+                  "sidebar",
+                  selected = initial_navigation$tab_name
+                )
+              }
+            },
+            once = TRUE
+          )
+        }
+      }
+    },
+    once = TRUE,
+    priority = 100
+  )
+
+  observeEvent(
+    available_crb_files$selected,
+    {
+      if (
+        !is.null(initial_navigation$file) &&
+          !same_initial_file()
+      ) {
+        initial_navigation$applied <- TRUE
+      }
+    },
+    ignoreInit = TRUE,
+    priority = 90
+  )
+
   # list of available trajectories
   available_trajectories <- reactive({
     req(!is.null(data_set()))
@@ -470,10 +592,6 @@ server <- function(input, output, session) {
     local = TRUE
   )
   source(
-    paste0(Cerebro.options[["cerebro_root"]], "/viewer/overview/server.R"),
-    local = TRUE
-  )
-  source(
     paste0(Cerebro.options[["cerebro_root"]], "/viewer/groups/server.R"),
     local = TRUE
   )
@@ -528,6 +646,18 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   ## Dynamic sidebar: insert/remove conditional tabs based on dataset content.
   ##--------------------------------------------------------------------------##
+  maybe_open_initial_page <- function(tab_name) {
+    if (
+      !isTRUE(initial_navigation$applied) &&
+        same_initial_file() &&
+        identical(tab_name, initial_navigation$tab_name)
+    ) {
+      initial_navigation$applied <- TRUE
+      updateTabItems(session, "sidebar", selected = tab_name)
+    }
+    invisible(NULL)
+  }
+
   insertConditionalTab <- function(
     tab_label,
     tab_name,
@@ -562,7 +692,6 @@ server <- function(input, output, session) {
               where = "afterEnd",
               ui = tags$li(
                 id = item_id,
-                class = "treeview",
                 menuItem(
                   tab_label,
                   tabName = tab_name,
@@ -572,6 +701,7 @@ server <- function(input, output, session) {
               immediate = TRUE
             )
             inserted(TRUE)
+            maybe_open_initial_page(tab_name)
           },
           once = TRUE
         )
@@ -621,23 +751,6 @@ server <- function(input, output, session) {
     ## Only supported methods (monocle2) should surface the tab; an unsupported
     ## method would otherwise render a blank tab instead of the empty state.
     function() intersect(getMethodsForTrajectories(), c("monocle2"))
-  )
-  insertConditionalTab(
-    "Spatial",
-    "spatial",
-    "map-pin",
-    function() availableSpatial()
-  )
-  ## Trekker single-cell spatial mapping: its own bespoke page (not the generic
-  ## Spatial tab). Shown only when the loaded .crb carries a `trekker` slot.
-  insertConditionalTab(
-    "Trekker",
-    "trekker",
-    "map-marked-alt",
-    function() {
-      tk <- tryCatch(data_set()$getTrekker(), error = function(e) NULL)
-      !is.null(tk)
-    }
   )
   insertConditionalTab(
     "HLA & TCR Motifs",
@@ -716,21 +829,14 @@ server <- function(input, output, session) {
   source(
     paste0(
       Cerebro.options[["cerebro_root"]],
-      "/viewer/spatial/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/trekker/server.R"
-    ),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
       "/viewer/hla_tcr_motifs/server.R"
+    ),
+    local = TRUE
+  )
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/coordinated_views/server.R"
     ),
     local = TRUE
   )
@@ -739,11 +845,15 @@ server <- function(input, output, session) {
   ## Export reactive values for testing (shinytest2).
   ##--------------------------------------------------------------------------##
   exportTestValues(
-    overview_cells_to_show = {
+    ## The palette actually in force, after the default colorset, the
+    ## configuration from createShinyApp(colors = ) and the Color management
+    ## pickers have been laid over each other. Without this, "the configured
+    ## palette reaches the running app" can only be checked by reading pixels.
+    group_colors = {
       if (is.null(data_set())) {
         NULL
       } else {
-        overview_projection_cells_to_show()
+        reactive_colors()
       }
     },
     expression_levels = {
@@ -765,6 +875,11 @@ server <- function(input, output, session) {
     ## was merely sampled before its callback ran.
     ir_heavy_deps_loaded = any(
       c("scRepertoire", "immApex", "iNEXT") %in% loadedNamespaces()
-    )
+    ),
+    ## Same idea for Linked views: the bundle walks every cell of the object and
+    ## is ~156 KB on the omnibus demo, so it must stay at 0 until the tab is
+    ## opened. It used to be built on connect, and rebuilt in full whenever a
+    ## group colour changed, for sessions that never opened the tab.
+    coordviews_bundles_built = coordviews_build_log$n
   )
 }
