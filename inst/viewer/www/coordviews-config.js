@@ -8,6 +8,7 @@
   var exportReady = false;
   var exportBusy = false;
   var pendingSnapshotName = null;
+  var pendingTimer = null;
   var SNAPSHOT_KEY = 'cerebro.linked-views.snapshots.v1';
   var SNAPSHOT_LIMIT = 12;
   var SNAPSHOT_BYTES = 4 * 1024 * 1024;
@@ -35,6 +36,29 @@
     }
     element.classList.toggle('is-error', tone === 'error');
     element.classList.toggle('is-success', tone === 'success');
+    element.classList.toggle('is-working', tone === 'working');
+  }
+  function clearPending() {
+    if (pendingTimer) window.clearTimeout(pendingTimer);
+    pendingTimer = null;
+    pending = null;
+    setBusy(false);
+  }
+  function startPending(nonce, action) {
+    pending = { nonce: nonce, action: action };
+    if (pendingTimer) window.clearTimeout(pendingTimer);
+    pendingTimer = window.setTimeout(function () {
+      if (!pending || pending.nonce !== nonce) return;
+      clearPending();
+      if (action === 'save') pendingSnapshotName = null;
+      setUploadLoading(false);
+      status(
+        action === 'apply'
+          ? 'Restore did not finish. Reload this page and try again.'
+          : 'Saving did not finish. Reload this page and try again.',
+        'error'
+      );
+    }, 10000);
   }
   function snapshotName(value) {
     return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 80) : '';
@@ -197,7 +221,7 @@
     }
     try {
       var nonce = nextNonce();
-      pending = { nonce: nonce, action: action };
+      startPending(nonce, action);
       setBusy(true);
       status(action === 'copy' ? 'Preparing JSON to copy…' :
         (action === 'save' ? 'Saving this view…' : 'Preparing your download…'));
@@ -207,8 +231,7 @@
         config: state.capture()
       }, { priority: 'event' });
     } catch (error) {
-      pending = null;
-      setBusy(false);
+      clearPending();
       status(error && error.message ? error.message : 'The view could not be saved.', 'error');
     }
   }
@@ -333,8 +356,9 @@
       return;
     }
     var nonce = nextNonce();
-    pending = { nonce: nonce, action: 'apply' };
-    setBusy(true); status('Restoring “' + record.name + '”…');
+    if (pending) return;
+    startPending(nonce, 'apply');
+    setBusy(true); status('Restoring “' + record.name + '”…', 'working');
     Shiny.setInputValue('coordviews_config_request', {
       nonce: nonce, action: 'apply', config_json: record.json
     }, { priority: 'event' });
@@ -362,11 +386,14 @@
     } catch (error) { status(error.message, 'error'); }
   }
   function receive(result) {
-    if (!result || !pending || String(result.nonce) !== pending.nonce ||
-      result.action !== pending.action) return;
+    if (!result || !pending || String(result.nonce) !== pending.nonce) return;
     var action = pending.action;
-    pending = null;
-    setBusy(false);
+    clearPending();
+    if (result.action !== action) {
+      if (action === 'save') pendingSnapshotName = null;
+      status('This page did not receive the expected response. Reload and try again.', 'error');
+      return;
+    }
     if (action === 'apply') {
       var upload = byId('coordviews_config_upload');
       if (upload) upload.value = '';
@@ -385,7 +412,7 @@
   function beginUpload() {
     if (typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
     var nonce = nextNonce();
-    pending = { nonce: nonce, action: 'apply' };
+    startPending(nonce, 'apply');
     setBusy(true);
     setUploadLoading(true);
     status('');

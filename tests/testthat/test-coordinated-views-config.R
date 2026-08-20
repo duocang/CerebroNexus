@@ -524,6 +524,8 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "setUploadLoading", fixed = TRUE)
   expect_match(controller, "cerebro.linked-views.snapshots.v1", fixed = TRUE)
   expect_match(controller, "saveSnapshot", fixed = TRUE)
+  expect_match(controller, "Restore did not finish", fixed = TRUE)
+  expect_match(css, "cv-config-status.is-working", fixed = TRUE)
   expect_match(controller, "cerebro:linkedviews-selection", fixed = TRUE)
   expect_match(css, "background: var(--cv-amber", fixed = TRUE)
   expect_match(css, ".cv-config-upload .btn-file > span", fixed = TRUE)
