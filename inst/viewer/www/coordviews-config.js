@@ -149,12 +149,15 @@
     }
     records.forEach(function (record) {
       var row = document.createElement('div'); row.className = 'cv-snapshot-row';
+      var mark = document.createElement('span'); mark.className = 'cv-snapshot-mark';
+      mark.setAttribute('aria-hidden', 'true'); mark.textContent = '⌑'; row.appendChild(mark);
       var details = document.createElement('div'); details.className = 'cv-snapshot-details';
       var name = document.createElement('strong'); name.textContent = record.name;
       var time = document.createElement('span'); time.textContent = snapshotDate(record.saved_at);
       details.appendChild(name); details.appendChild(time); row.appendChild(details);
+      var primary = document.createElement('div'); primary.className = 'cv-snapshot-primary';
+      primary.appendChild(snapshotButton('Open', restoreSnapshot, record)); row.appendChild(primary);
       var actions = document.createElement('div'); actions.className = 'cv-snapshot-actions';
-      actions.appendChild(snapshotButton('Open', restoreSnapshot, record));
       actions.appendChild(snapshotButton('Download', downloadSnapshot, record));
       actions.appendChild(snapshotButton('Rename', renameSnapshot, record));
       actions.appendChild(snapshotButton('Delete', deleteSnapshot, record));

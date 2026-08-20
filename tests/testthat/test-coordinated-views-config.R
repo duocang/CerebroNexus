@@ -513,6 +513,19 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(ui, 'id = "cv-config-status"', fixed = TRUE)
   expect_match(ui, 'id = "cv-snapshot-save"', fixed = TRUE)
   expect_match(ui, 'id = "cv-snapshot-list"', fixed = TRUE)
+  expect_match(
+    ui,
+    'class = "cv-config-region cv-config-transfer"',
+    fixed = TRUE
+  )
+  expect_match(ui, '"Move a view"', fixed = TRUE)
+  expect_match(
+    ui,
+    'class = "cv-config-region cv-config-save-local"',
+    fixed = TRUE
+  )
+  expect_match(ui, '"Save on this device"', fixed = TRUE)
+  expect_match(ui, 'class = "cv-config-region cv-snapshots"', fixed = TRUE)
   expect_match(ui, '`aria-live` = "polite"', fixed = TRUE)
   expect_match(ui, '"coordviews_config_upload"', fixed = TRUE)
   expect_match(ui, '"coordviews_config_download"', fixed = TRUE)
@@ -526,6 +539,8 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "saveSnapshot", fixed = TRUE)
   expect_match(controller, "Restore did not finish", fixed = TRUE)
   expect_match(controller, "snapshotNeedsColourData", fixed = TRUE)
+  expect_match(controller, "cv-snapshot-mark", fixed = TRUE)
+  expect_match(controller, "cv-snapshot-primary", fixed = TRUE)
   expect_match(css, "cv-config-status.is-working", fixed = TRUE)
   expect_match(controller, "cerebro:linkedviews-selection", fixed = TRUE)
   expect_match(css, "background: var(--cv-amber", fixed = TRUE)

@@ -834,51 +834,71 @@ tab_coordinated_views <- tabItem(
         "The JSON includes selected cell barcodes and view settings. It does ",
         "not include expression data, coordinates, image pixels, or local paths."
       ),
-      div(
-        class = "cv-config-actions",
-        tags$button(
-          type = "button",
-          id = "cv-config-download",
-          class = "cv-config-action cv-config-action-primary",
-          icon("download"),
-          tags$span("Download JSON")
-        ),
-        tags$button(
-          type = "button",
-          id = "cv-config-copy",
-          class = "cv-config-action",
-          icon("copy"),
-          tags$span("Copy JSON")
+      tags$section(
+        class = "cv-config-region cv-config-transfer",
+        `aria-labelledby` = "cv-config-transfer-title",
+        tags$div(
+          class = "cv-config-region-head",
+          tags$h5(id = "cv-config-transfer-title", "Move a view"),
+          tags$p("Download a JSON file, copy it, or open one from disk.")
         ),
         div(
-          class = "cv-config-upload",
-          fileInput(
-            "coordviews_config_upload",
-            label = NULL,
-            accept = c("application/json", ".json"),
-            buttonLabel = tagList(
-              icon("folder-open"),
-              tags$span("Open JSON")
-            ),
-            placeholder = "No file selected"
+          class = "cv-config-actions",
+          tags$button(
+            type = "button",
+            id = "cv-config-download",
+            class = "cv-config-action cv-config-action-primary",
+            icon("download"),
+            tags$span("Download JSON")
+          ),
+          tags$button(
+            type = "button",
+            id = "cv-config-copy",
+            class = "cv-config-action",
+            icon("copy"),
+            tags$span("Copy JSON")
+          ),
+          div(
+            class = "cv-config-upload",
+            fileInput(
+              "coordviews_config_upload",
+              label = NULL,
+              accept = c("application/json", ".json"),
+              buttonLabel = tagList(
+                icon("folder-open"),
+                tags$span("Open JSON")
+              ),
+              placeholder = "No file selected"
+            )
           )
         )
       ),
       tags$section(
-        class = "cv-snapshots",
+        class = "cv-config-region cv-config-save-local",
+        `aria-labelledby` = "cv-config-save-local-title",
+        tags$div(
+          class = "cv-config-region-head",
+          tags$h5(id = "cv-config-save-local-title", "Save on this device"),
+          tags$p("Private to this browser and this cell population.")
+        ),
+        tags$button(
+          type = "button",
+          id = "cv-snapshot-save",
+          class = "cv-snapshot-save",
+          icon("bookmark"),
+          "Save current view"
+        )
+      ),
+      tags$section(
+        class = "cv-config-region cv-snapshots",
         `aria-labelledby` = "cv-snapshots-title",
         tags$div(
-          class = "cv-snapshots-head",
+          class = "cv-config-region-head cv-snapshots-head",
           tags$div(
             tags$h5(id = "cv-snapshots-title", "Saved views"),
-            tags$span("Private to this browser and cell population.")
-          ),
-          tags$button(
-            type = "button",
-            id = "cv-snapshot-save",
-            class = "cv-snapshot-save",
-            icon("bookmark"),
-            "Save current view"
+            tags$p(
+              "Available when you return to this data set in this browser."
+            )
           )
         ),
         tags$div(
