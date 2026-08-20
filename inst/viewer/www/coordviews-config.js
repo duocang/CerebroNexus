@@ -106,16 +106,48 @@
     });
   }
   function finishDownload(result) {
-    var link = byId('coordviews_config_download');
-    if (!link) {
-      status('The download link is unavailable. Try again.', 'error');
+    if (typeof result.json !== 'string') {
+      status('The JSON was validated, but could not be downloaded. Try again.', 'error');
       return;
     }
-    link.click();
-    status(
-      'Downloading the configuration for ' + result.selected_cells + ' selected cells.',
-      'success'
-    );
+    var link = null;
+    var url = null;
+    try {
+      if (typeof window.Blob !== 'function' || !window.URL ||
+        typeof window.URL.createObjectURL !== 'function') {
+        throw new Error('Object URL downloads are unavailable');
+      }
+      var blob = new window.Blob(
+        [result.json],
+        { type: 'application/json;charset=utf-8' }
+      );
+      url = window.URL.createObjectURL(blob);
+      link = document.createElement('a');
+      link.href = url;
+      link.download = typeof result.filename === 'string' && result.filename
+        ? result.filename
+        : 'linked-views.json';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      status(
+        'Downloaded the configuration for ' + result.selected_cells + ' selected cells.',
+        'success'
+      );
+    } catch (ignore) {
+      status('The download could not start. Try Download JSON again.', 'error');
+    } finally {
+      if (link && link.parentNode) link.parentNode.removeChild(link);
+      if (url) {
+        window.setTimeout(function () {
+          try {
+            if (window.URL && typeof window.URL.revokeObjectURL === 'function') {
+              window.URL.revokeObjectURL(url);
+            }
+          } catch (ignore) { /* the document may already be closing */ }
+        }, 1000);
+      }
+    }
   }
   function finishApply(result) {
     try {

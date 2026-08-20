@@ -853,7 +853,10 @@ tab_coordinated_views <- tabItem(
             "coordviews_config_upload",
             label = NULL,
             accept = c("application/json", ".json"),
-            buttonLabel = "Open JSON…",
+            buttonLabel = tagList(
+              icon("folder-open"),
+              tags$span("Open JSON")
+            ),
             placeholder = "No file selected"
           )
         )

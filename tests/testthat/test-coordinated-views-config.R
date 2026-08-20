@@ -474,8 +474,11 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   ui_file <- file.path(config_inst, "viewer/coordinated_views/UI.R")
   shell_file <- file.path(config_inst, "viewer/shiny_UI.R")
   controller_file <- file.path(config_inst, "viewer/www/coordviews-config.js")
+  css_file <- file.path(config_inst, "viewer/www/coordviews.css")
   ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
   shell <- paste(readLines(shell_file, warn = FALSE), collapse = "\n")
+  controller <- paste(readLines(controller_file, warn = FALSE), collapse = "\n")
+  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
 
   expect_match(ui, 'id = "cv-config-open"', fixed = TRUE)
   expect_match(ui, 'id = "cv-config-dialog"', fixed = TRUE)
@@ -483,8 +486,12 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(ui, '`aria-live` = "polite"', fixed = TRUE)
   expect_match(ui, '"coordviews_config_upload"', fixed = TRUE)
   expect_match(ui, '"coordviews_config_download"', fixed = TRUE)
+  expect_match(ui, 'icon("folder-open")', fixed = TRUE)
   expect_match(ui, "cell barcodes", fixed = TRUE)
   expect_true(file.exists(controller_file))
+  expect_match(controller, "new window.Blob", fixed = TRUE)
+  expect_match(controller, "URL.createObjectURL", fixed = TRUE)
+  expect_match(css, "background: var(--cv-amber", fixed = TRUE)
   expect_match(
     shell,
     'cerebro_js("coordviews-config.js", defer = TRUE)',

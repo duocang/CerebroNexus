@@ -226,7 +226,8 @@ observeEvent(
           nonce,
           action,
           TRUE,
-          json = if (identical(action, "copy")) prepared$json else NULL,
+          json = prepared$json,
+          filename = coordviews_config_filename(),
           selected_cells = length(prepared$config$selection$cells)
         )
       },

@@ -93,6 +93,28 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     ),
     "polite"
   )
+  actions <- app$get_js(paste0(
+    "(function(){",
+    "var ids=['cv-config-download','cv-config-copy'];",
+    "var nodes=ids.map(function(id){return document.getElementById(id);});",
+    "nodes.push(document.querySelector('.cv-config-upload .btn-file'));",
+    "var heights=nodes.map(function(node){return node.getBoundingClientRect().height;});",
+    "var primary=getComputedStyle(nodes[0]);",
+    "var launcher=getComputedStyle(document.getElementById('cv-config-open'));",
+    "return {heights:heights,icon:!!document.querySelector(",
+    "'.cv-config-upload [class*=\"fa-folder-open\"]'),",
+    "background:primary.backgroundColor,foreground:primary.color,",
+    "launcherBackground:launcher.backgroundColor,",
+    "launcherBorder:launcher.borderColor,launcherColor:launcher.color};",
+    "})()"
+  ))
+  expect_lte(max(unlist(actions$heights)) - min(unlist(actions$heights)), 1)
+  expect_true(actions$icon)
+  expect_identical(actions$background, "rgb(249, 115, 22)")
+  expect_identical(actions$foreground, "rgb(28, 28, 30)")
+  expect_identical(actions$launcherBackground, "rgb(255, 244, 236)")
+  expect_identical(actions$launcherBorder, "rgb(255, 178, 122)")
+  expect_identical(actions$launcherColor, "rgb(200, 90, 14)")
   app$run_js(paste0(
     "window.__cvStatusBefore=document.getElementById('cv-config-status').textContent;",
     "Shiny.shinyapp.dispatchMessage(JSON.stringify({custom:{",
@@ -336,6 +358,66 @@ test_that("copy uses the real server validation boundary", {
     app$get_js("document.getElementById('cv-config-status').textContent"),
     "could not be opened|different cell population"
   )
+  app$run_js(paste0(
+    "window.__cvWorkingCreateObjectURL=URL.createObjectURL;",
+    "URL.createObjectURL=function(){throw new Error('forced object URL failure');};",
+    "document.getElementById('cv-config-download').click();"
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-config-status').textContent",
+      ".indexOf('Preparing')<0&&",
+      "!document.getElementById('cv-config-download').disabled"
+    ),
+    timeout = 5000
+  )
+  expect_match(
+    app$get_js("document.getElementById('cv-config-status').textContent"),
+    "could not start"
+  )
+  app$run_js("URL.createObjectURL=window.__cvWorkingCreateObjectURL;")
+  app$run_js(paste0(
+    "window.__cvDownloadedJson=null;window.__cvDownloadName=null;",
+    "window.__cvCreateObjectURL=URL.createObjectURL;",
+    "window.__cvRevokeObjectURL=URL.revokeObjectURL;window.__cvRevoked=[];",
+    "window.__cvAnchorClick=HTMLAnchorElement.prototype.click;",
+    "URL.createObjectURL=function(blob){",
+    "blob.text().then(function(text){window.__cvDownloadedJson=text;});",
+    "return 'blob:linked-views-test';};",
+    "URL.revokeObjectURL=function(url){window.__cvRevoked.push(url);};",
+    "HTMLAnchorElement.prototype.click=function(){",
+    "if(this.download){window.__cvDownloadName=this.download;return;}",
+    "return window.__cvAnchorClick.call(this);};",
+    "document.getElementById('cv-config-download').click();"
+  ))
+  app$wait_for_js(
+    paste0(
+      "window.__cvDownloadedJson!==null&&window.__cvDownloadName!==null&&",
+      "document.getElementById('cv-config-status').textContent",
+      ".indexOf('Preparing')<0"
+    ),
+    timeout = 5000
+  )
+  downloaded_json_text <- app$get_js("window.__cvDownloadedJson")
+  downloaded_from_button <- jsonlite::fromJSON(
+    downloaded_json_text,
+    simplifyVector = FALSE
+  )
+  expect_identical(downloaded_from_button$schema, "cerebronexus-linked-view")
+  expect_match(
+    app$get_js("window.__cvDownloadName"),
+    "^linked-views-.*\\.json$"
+  )
+  app$wait_for_js("window.__cvRevoked.length===1", timeout = 3000)
+  expect_identical(
+    app$get_js("window.__cvRevoked[0]"),
+    "blob:linked-views-test"
+  )
+  app$run_js(paste0(
+    "URL.createObjectURL=window.__cvCreateObjectURL;",
+    "URL.revokeObjectURL=window.__cvRevokeObjectURL;",
+    "HTMLAnchorElement.prototype.click=window.__cvAnchorClick;"
+  ))
   app$wait_for_js(
     "document.getElementById('coordviews_config_download').href.length > 0",
     timeout = 10000
@@ -352,7 +434,7 @@ test_that("copy uses the real server validation boundary", {
   config_path <- tempfile("linked-views-", fileext = ".json")
   on.exit(unlink(config_path), add = TRUE)
   writeLines(
-    app$get_js("JSON.stringify(window.cerebroLinkedViewsState.capture())"),
+    downloaded_json_text,
     config_path,
     useBytes = TRUE
   )

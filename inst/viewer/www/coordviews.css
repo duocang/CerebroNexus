@@ -250,13 +250,13 @@
 }
 .coordviews-page .cv-config-open {
   height: 32px; display: inline-flex; align-items: center; gap: 7px;
-  padding: 0 12px; border: 1px solid var(--c-blue-200, #bad2f1);
-  border-radius: 6px; background: var(--cv-blue50, #edf5ff);
-  color: var(--c-blue-700, #1d4ea0); font: 700 12.5px/1 inherit;
+  padding: 0 12px; border: 1px solid var(--c-amber-300, #ffb27a);
+  border-radius: 6px; background: var(--cv-amber50, #fff4ec);
+  color: var(--cv-amber700, #c85a0e); font: 700 12.5px/1 inherit;
   white-space: nowrap; cursor: pointer;
 }
 .coordviews-page .cv-config-open:hover:not(:disabled) {
-  background: var(--cv-blue100, #dceaff); border-color: var(--cv-blue, #3b78c8);
+  background: var(--cv-amber100, #ffe4d1); border-color: var(--cv-amber, #f97316);
 }
 .coordviews-page .cv-config-open:disabled {
   opacity: .48; cursor: not-allowed;
@@ -1377,7 +1377,7 @@
 }
 .cv-config-close:hover { background: var(--cv-surface2, #f5f5f5); }
 .cv-config-kicker {
-  color: var(--c-blue-700, #1d4ea0); font-size: 10.5px; font-weight: 750;
+  color: var(--cv-amber700, #c85a0e); font-size: 10.5px; font-weight: 750;
   letter-spacing: .08em; text-transform: uppercase;
 }
 .cv-config-dialog h4 { margin: 5px 38px 8px 0; font-size: 19px; }
@@ -1401,17 +1401,25 @@
   background: var(--cv-surface2, #f5f7fa); border-color: #b9c1cc;
 }
 .cv-config-action-primary {
-  border-color: var(--cv-blue, #3b78c8); background: var(--cv-blue, #3b78c8);
-  color: #fff;
+  border-color: var(--cv-amber, #f97316); background: var(--cv-amber, #f97316);
+  color: var(--cv-text, #1c1c1e);
 }
 .cv-config-action-primary:hover:not(:disabled) {
-  background: var(--c-blue-700, #1d4ea0); border-color: var(--c-blue-700, #1d4ea0);
+  background: var(--c-amber-600, #ea6a0f); border-color: var(--c-amber-600, #ea6a0f);
 }
 .cv-config-action:disabled { opacity: .55; cursor: wait; }
+.cv-config-actions > .cv-config-action,
+.cv-config-actions > .cv-config-upload { height: 100%; }
 .cv-config-upload .form-group,
-.cv-config-upload .input-group { height: 100%; margin: 0; }
+.cv-config-upload .input-group,
+.cv-config-upload .input-group-btn,
+.cv-config-upload .btn-file { height: 100%; margin: 0; }
 .cv-config-upload .input-group { display: block; }
 .cv-config-upload .input-group-btn { display: block; width: 100%; }
+.cv-config-upload .btn-file {
+  display: flex !important; align-items: center; justify-content: center;
+  white-space: nowrap;
+}
 .cv-config-upload .form-control { display: none; }
 .cv-config-status {
   min-height: 20px; margin: 14px 0 0; padding-top: 12px;
@@ -1423,7 +1431,7 @@
 .cv-config-download-host { display: none !important; }
 .cv-config-dialog :focus-visible,
 .coordviews-page .cv-config-open:focus-visible {
-  outline: 3px solid rgba(59, 120, 200, .3); outline-offset: 2px;
+  outline: 3px solid rgba(249, 115, 22, .3); outline-offset: 2px;
 }
 @media (max-width: 620px) {
   .cv-config-dialog { padding: 20px; }
