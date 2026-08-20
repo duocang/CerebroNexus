@@ -1003,7 +1003,7 @@
 
   function authCopy(accounts) {
     return accounts.map(function (account) {
-      return { id: account.id, username: account.username, password: account.password };
+      return { id: account.id, username: account.username, password: account.password, admin: !!account.admin };
     });
   }
 
@@ -1024,6 +1024,14 @@
       label.appendChild(input);
       row.appendChild(label);
     });
+    var adminLabel = document.createElement("label");
+    adminLabel.className = "builder-auth-admin-label";
+    var admin = document.createElement("input");
+    admin.type = "checkbox";
+    admin.className = "builder-auth-admin";
+    admin.checked = !!account.admin;
+    adminLabel.append(admin, document.createTextNode(" Admin"));
+    row.appendChild(adminLabel);
     var remove = document.createElement("button");
     remove.type = "button";
     remove.className = "btn builder-auth-remove";
@@ -1038,6 +1046,7 @@
         id: row.dataset.authId,
         username: row.querySelector(".builder-auth-username").value,
         password: row.querySelector(".builder-auth-password").value,
+        admin: row.querySelector(".builder-auth-admin").checked,
       };
     });
   }
@@ -1050,7 +1059,7 @@
   }
 
   function authNewAccount() {
-    return { id: "auth-account-" + authEditor.nextId++, username: "", password: "" };
+    return { id: "auth-account-" + authEditor.nextId++, username: "", password: "", admin: false };
   }
 
   function clearAuthLiveInputs() {
