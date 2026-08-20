@@ -513,6 +513,8 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(ui, 'id = "cv-config-status"', fixed = TRUE)
   expect_match(ui, 'id = "cv-snapshot-save"', fixed = TRUE)
   expect_match(ui, 'id = "cv-snapshot-list"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-snapshot-name-dialog"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-snapshot-name-input"', fixed = TRUE)
   expect_match(
     ui,
     'class = "cv-config-region cv-config-transfer"',
@@ -541,6 +543,8 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "snapshotNeedsColourData", fixed = TRUE)
   expect_match(controller, "cv-snapshot-mark", fixed = TRUE)
   expect_match(controller, "cv-snapshot-primary", fixed = TRUE)
+  expect_match(controller, "openSnapshotNameDialog", fixed = TRUE)
+  expect_no_match(controller, "window.prompt", fixed = TRUE)
   expect_match(css, "cv-config-status.is-working", fixed = TRUE)
   expect_match(controller, "cerebro:linkedviews-selection", fixed = TRUE)
   expect_match(css, "background: var(--cv-amber", fixed = TRUE)

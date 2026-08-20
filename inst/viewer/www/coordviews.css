@@ -1384,6 +1384,24 @@
   box-shadow: var(--shadow-4, 0 18px 52px rgba(0, 0, 0, .22));
 }
 .cv-config-dialog::backdrop { background: rgba(20, 27, 38, .48); }
+.cv-snapshot-name-dialog {
+  width: min(430px, calc(100vw - 32px)); padding: 24px;
+  border: 1px solid var(--cv-border, #e5e7eb); border-radius: 14px;
+  background: var(--cv-surface, #fff); color: var(--cv-text, #252527);
+  box-shadow: var(--shadow-4, 0 18px 52px rgba(0,0,0,.22)); z-index: 2000;
+}
+.cv-snapshot-name-dialog::backdrop { background: rgba(20, 27, 38, .58); }
+.cv-snapshot-name-dialog h4 { margin: 5px 34px 6px 0; font-size: 19px; }
+.cv-snapshot-name-dialog p { margin: 0 0 14px; color: var(--cv-text2, #666); font-size: 12.5px; line-height: 1.45; }
+.cv-snapshot-name-close { position:absolute; top:10px; right:12px; width:30px; height:30px; border:0; border-radius:7px; background:transparent; color:var(--cv-text3,#777); font-size:22px; cursor:pointer; }
+.cv-snapshot-name-close:hover { background: var(--cv-surface2, #f5f5f5); }
+.cv-snapshot-name-dialog input { width:100%; box-sizing:border-box; min-height:40px; padding:8px 10px; border:1px solid var(--cv-border,#d8dce3); border-radius:8px; color:var(--cv-text,#252527); font:inherit; }
+.cv-snapshot-name-dialog input:focus { outline:3px solid rgba(249,115,22,.25); border-color:var(--cv-amber,#f97316); }
+.cv-snapshot-name-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+.cv-snapshot-name-actions button { min-height:34px; padding:0 12px; border-radius:7px; font:700 12px/1 inherit; cursor:pointer; }
+.cv-snapshot-name-cancel { border:1px solid var(--cv-border,#d8dce3); background:#fff; color:var(--cv-text2,#575a60); }
+.cv-snapshot-name-confirm { border:1px solid var(--cv-amber200,#fed7aa); background:var(--cv-amber50,#fff4ec); color:var(--cv-text,#1c1c1e); }
+.cv-snapshot-name-confirm:hover { background:var(--cv-amber100,#ffe4d1); }
 .cv-config-close {
   position: absolute; top: 10px; right: 12px; width: 30px; height: 30px;
   border: 0; border-radius: 7px; background: transparent;

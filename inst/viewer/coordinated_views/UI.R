@@ -914,6 +914,46 @@ tab_coordinated_views <- tabItem(
         `aria-live` = "polite"
       )
     ),
+    tags$dialog(
+      id = "cv-snapshot-name-dialog",
+      class = "cv-snapshot-name-dialog",
+      `aria-labelledby` = "cv-snapshot-name-title",
+      `aria-describedby` = "cv-snapshot-name-help",
+      tags$button(
+        type = "button",
+        id = "cv-snapshot-name-close",
+        class = "cv-snapshot-name-close",
+        `aria-label` = "Close",
+        HTML("&times;")
+      ),
+      tags$div(class = "cv-config-kicker", "Saved view"),
+      tags$h4(id = "cv-snapshot-name-title", "Save current view"),
+      tags$p(
+        id = "cv-snapshot-name-help",
+        "Give this view a short name so you can find it later."
+      ),
+      tags$input(
+        id = "cv-snapshot-name-input",
+        type = "text",
+        maxlength = "80",
+        autocomplete = "off"
+      ),
+      tags$div(
+        class = "cv-snapshot-name-actions",
+        tags$button(
+          type = "button",
+          id = "cv-snapshot-name-cancel",
+          class = "cv-snapshot-name-cancel",
+          "Cancel"
+        ),
+        tags$button(
+          type = "button",
+          id = "cv-snapshot-name-confirm",
+          class = "cv-snapshot-name-confirm",
+          "Save view"
+        )
+      )
+    ),
     div(
       class = "cv-config-download-host",
       `aria-hidden` = "true",

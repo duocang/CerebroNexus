@@ -9,6 +9,7 @@
   var exportBusy = false;
   var pendingSnapshotName = null;
   var pendingTimer = null;
+  var snapshotNameRequest = null;
   var SNAPSHOT_KEY = 'cerebro.linked-views.snapshots.v1';
   var SNAPSHOT_LIMIT = 12;
   var SNAPSHOT_BYTES = 4 * 1024 * 1024;
@@ -353,11 +354,36 @@
       status(error && error.message ? error.message : 'This view could not be saved.', 'error');
     } finally { pendingSnapshotName = null; }
   }
+  function openSnapshotNameDialog(mode, record, trigger) {
+    var dialog = byId('cv-snapshot-name-dialog'), input = byId('cv-snapshot-name-input');
+    if (!dialog || !input) return;
+    snapshotNameRequest = { mode: mode, record: record || null, trigger: trigger || document.activeElement };
+    byId('cv-snapshot-name-title').textContent = mode === 'rename' ? 'Rename saved view' : 'Save current view';
+    byId('cv-snapshot-name-help').textContent = mode === 'rename'
+      ? 'Choose a short name that makes this saved view easy to find.'
+      : 'Give this view a short name so you can find it later.';
+    byId('cv-snapshot-name-confirm').textContent = mode === 'rename' ? 'Rename view' : 'Save view';
+    input.value = mode === 'rename' ? record.name : '';
+    dialog.showModal(); input.focus(); input.select();
+  }
+  function closeSnapshotNameDialog() {
+    var dialog = byId('cv-snapshot-name-dialog'); if (dialog && dialog.open) dialog.close();
+  }
+  function confirmSnapshotName() {
+    var requestState = snapshotNameRequest, input = byId('cv-snapshot-name-input');
+    var name = snapshotName(input && input.value); if (!requestState || !name) return;
+    closeSnapshotNameDialog();
+    if (requestState.mode === 'save') { pendingSnapshotName = name; request('save'); return; }
+    if (name === requestState.record.name) return;
+    try {
+      writeSnapshots(readSnapshots().map(function (item) {
+        return item.id === requestState.record.id ? { id: item.id, name: name, saved_at: item.saved_at, json: item.json } : item;
+      }));
+      renderSnapshots();
+    } catch (error) { status(error.message, 'error'); }
+  }
   function saveSnapshot() {
-    var name = snapshotName(window.prompt('Name this saved view:', ''));
-    if (!name) return;
-    pendingSnapshotName = name;
-    request('save');
+    openSnapshotNameDialog('save', null, document.activeElement);
   }
   function restoreSnapshot(record) {
     if (!snapshotNeedsColourData(record)) {
@@ -394,14 +420,7 @@
       filename: 'linked-view-' + record.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') + '.json' });
   }
   function renameSnapshot(record) {
-    var name = snapshotName(window.prompt('Rename saved view:', record.name));
-    if (!name || name === record.name) return;
-    try {
-      writeSnapshots(readSnapshots().map(function (item) {
-        return item.id === record.id ? { id: item.id, name: name, saved_at: item.saved_at, json: item.json } : item;
-      }));
-      renderSnapshots();
-    } catch (error) { status(error.message, 'error'); }
+    openSnapshotNameDialog('rename', record, document.activeElement);
   }
   function deleteSnapshot(record) {
     try {
@@ -459,6 +478,17 @@
     if (save) save.addEventListener('click', saveSnapshot);
     var upload = byId('coordviews_config_upload');
     if (upload) upload.addEventListener('change', beginUpload);
+    byId('cv-snapshot-name-close').addEventListener('click', closeSnapshotNameDialog);
+    byId('cv-snapshot-name-cancel').addEventListener('click', closeSnapshotNameDialog);
+    byId('cv-snapshot-name-confirm').addEventListener('click', confirmSnapshotName);
+    byId('cv-snapshot-name-input').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); confirmSnapshotName(); }
+    });
+    byId('cv-snapshot-name-dialog').addEventListener('close', function () {
+      var target = snapshotNameRequest && snapshotNameRequest.trigger;
+      snapshotNameRequest = null;
+      if (target && document.contains(target)) target.focus();
+    });
     dialog.addEventListener('close', function () {
       status('');
       setUploadLoading(false);
