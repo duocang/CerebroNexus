@@ -263,6 +263,10 @@ ui <- dashboardPage(
           ),
           collapse = ""
         )
+      ),
+      tags$span(
+        class = "cerebro-brand-version",
+        paste0("v", Cerebro.options[["cerebro_version"]])
       )
     ),
     tags$button(
