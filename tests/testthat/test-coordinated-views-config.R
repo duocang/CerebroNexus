@@ -137,6 +137,28 @@ test_that("a version-one configuration round-trips canonically", {
   expect_true(endsWith(encoded, "\n"))
 })
 
+test_that("canonical JSON preserves array fields with one item", {
+  config <- valid_linked_view_config()
+  config$selection$cells <- "cell-a"
+  config$view$projections <- "umap"
+  config$view$filters <- list(sample = "donor-a")
+  config$view$lenses <- config$view$lenses[1L]
+
+  encoded <- config_env$cv_config_encode(
+    config_env$cv_config_normalize(config, cells = config_cells)
+  )
+  decoded <- jsonlite::fromJSON(encoded, simplifyVector = FALSE)
+
+  expect_type(decoded$dataset$cell_fingerprint, "character")
+  expect_type(decoded$selection$cells, "list")
+  expect_type(decoded$view$projections, "list")
+  expect_type(decoded$view$spatial_sections, "list")
+  expect_type(decoded$view$filters$sample, "list")
+  expect_type(decoded$view$hidden_levels[[1L]]$levels, "list")
+  expect_length(decoded$selection$cells, 1L)
+  expect_length(decoded$view$lenses, 1L)
+})
+
 expect_config_error <- function(config, code) {
   error <- tryCatch(
     {
@@ -220,6 +242,9 @@ test_that("display bounds match the controls users can actually choose", {
   config$view$display$point_size <- 0
   config$view$display$point_opacity <- 0
   expect_no_error(config_env$cv_config_normalize(config, cells = config_cells))
+
+  config$view$display$point_size <- 20.1
+  expect_config_error(config, "out_of_range")
 })
 
 test_that("cross-field references must describe one coherent workspace", {
@@ -333,6 +358,13 @@ test_that("the coordinated server exposes validated configuration transport", {
   expect_match(server, "coordviews_config_download", fixed = TRUE)
   expect_match(server, '"coordviews_config_result"', fixed = TRUE)
   expect_match(server, "downloadHandler", fixed = TRUE)
+  expect_match(
+    server,
+    paste0(
+      "outputOptions\\([[:space:]]*output,[[:space:]]*",
+      '\"coordviews_config_download\"'
+    )
+  )
   expect_match(server, "CV_CONFIG_MAX_BYTES", fixed = TRUE)
 })
 

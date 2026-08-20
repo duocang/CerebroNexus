@@ -4726,7 +4726,7 @@ var focusPanel = null;
       ? 'bands' : 'stack';
   }
   function configFilters() {
-    var out = {};
+    var out = Object.create(null);
     Object.keys(groupFilter).sort().forEach(function (name) {
       var group = D.groups && D.groups[name];
       if (!group || !groupFilter[name]) return;
@@ -4788,11 +4788,9 @@ var focusPanel = null;
     if (!D || !D.dataset_fingerprint || !Array.isArray(D.cells)) {
       configFail('Linked views is not ready to save.');
     }
-    var selected = [];
-    if (sel) sel.forEach(function (index) { selected.push(D.cells[index]); });
-    selected.sort(function (left, right) {
-      return D.cells.indexOf(left) - D.cells.indexOf(right);
-    });
+    var selectedIndexes = sel ? Array.from(sel) : [];
+    selectedIndexes.sort(function (left, right) { return left - right; });
+    var selected = selectedIndexes.map(function (index) { return D.cells[index]; });
     var rgb = D.rgb && Array.isArray(D.rgb.genes)
       ? D.rgb.genes.slice(0, 3)
       : ['coordviews_gene_r', 'coordviews_gene_g', 'coordviews_gene_b']
@@ -4852,7 +4850,7 @@ var focusPanel = null;
       configFail('This configuration belongs to a different cell population.');
     }
     var view = config.view || {}, display = view.display || {};
-    var cellIndex = {};
+    var cellIndex = Object.create(null);
     D.cells.forEach(function (cell, index) { cellIndex[cell] = index; });
     var selectedIndexes = new Set();
     configArray((config.selection || {}).cells, 'selection.cells').forEach(function (cell) {
@@ -4892,7 +4890,7 @@ var focusPanel = null;
       configFail('RGB colour mode requires exactly three genes.');
     }
 
-    var filters = {};
+    var filters = Object.create(null);
     Object.keys(view.filters || {}).forEach(function (name) {
       var group = D.groups && D.groups[name];
       if (!group) configFail('A group filter is unavailable here.');
@@ -4917,7 +4915,7 @@ var focusPanel = null;
       });
     });
 
-    var allowedSpaces = {};
+    var allowedSpaces = Object.create(null);
     projections.forEach(function (name) { allowedSpaces[projectionId(name)] = true; });
     spatialSections.forEach(function (name) { allowedSpaces[spatialId(name)] = true; });
     Object.keys(spaceById).forEach(function (id) {
@@ -4925,7 +4923,7 @@ var focusPanel = null;
         allowedSpaces[id] = true;
       }
     });
-    var lenses = {};
+    var lenses = Object.create(null);
     configArray(view.lenses, 'view.lenses').forEach(function (lens) {
       if (!lens || !allowedSpaces[lens.space] || lenses[lens.space]) {
         configFail('A linked lens is unavailable here.');
@@ -4946,6 +4944,16 @@ var focusPanel = null;
     if (view.focus_space != null && !lenses[view.focus_space]) {
       configFail('The focused lens is unavailable here.');
     }
+
+    if ((!D.clone || !spaceById.clone) && display.clone_layout !== 'stack') {
+      configFail('The requested clone layout is unavailable here.');
+    }
+    var trekker = view.trekker || {};
+    if (!D.trekker && (
+      Number(trekker.dissolve_percentage) !== 0 ||
+      trekker.evidence === true ||
+      Number(trekker.niche_radius) !== 250
+    )) configFail('The requested Trekker state is unavailable here.');
 
     var backgrounds = configArray(view.spatial_backgrounds, 'spatial backgrounds')
       .map(function (background) {
@@ -5006,9 +5014,9 @@ var focusPanel = null;
       lenses: lenses,
       backgrounds: backgrounds,
       trekker: {
-        dissolve: configNumber((view.trekker || {}).dissolve_percentage, 'dissolve'),
-        evidence: !!(view.trekker || {}).evidence,
-        niche: configNumber((view.trekker || {}).niche_radius, 'niche radius')
+        dissolve: configNumber(trekker.dissolve_percentage, 'dissolve'),
+        evidence: !!trekker.evidence,
+        niche: configNumber(trekker.niche_radius, 'niche radius')
       }
     };
   }

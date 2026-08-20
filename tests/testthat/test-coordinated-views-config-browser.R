@@ -235,6 +235,21 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     app$get_js("JSON.stringify(window.__cvCapabilityAfter)"),
     app$get_js("JSON.stringify(window.__cvCapabilityBefore)")
   )
+
+  app$run_js(paste0(
+    "window.__cvCloneBefore=window.cerebroLinkedViewsState.capture();",
+    "window.__cvCloneBad=JSON.parse(JSON.stringify(window.__cvCloneBefore));",
+    "window.__cvCloneBad.view.display.clone_layout='bands';",
+    "try{window.cerebroLinkedViewsState.apply(window.__cvCloneBad);}",
+    "catch(error){window.__cvCloneError=error.message;}",
+    "window.__cvCloneAfter=window.cerebroLinkedViewsState.capture();",
+    "window.__cvCloneAfter.created_at=window.__cvCloneBefore.created_at;"
+  ))
+  expect_match(app$get_js("window.__cvCloneError"), "clone")
+  expect_identical(
+    app$get_js("JSON.stringify(window.__cvCloneAfter)"),
+    app$get_js("JSON.stringify(window.__cvCloneBefore)")
+  )
 })
 
 test_that("copy uses the real server validation boundary", {
@@ -271,6 +286,10 @@ test_that("copy uses the real server validation boundary", {
     app$get_js("document.getElementById('cv-config-status').textContent"),
     "could not be opened|different cell population"
   )
+  app$wait_for_js(
+    "document.getElementById('coordviews_config_download').href.length > 0",
+    timeout = 10000
+  )
 
   original_size <- app$get_js(
     "window.cerebroLinkedViewsState.capture().view.display.point_size"
@@ -297,9 +316,13 @@ test_that("copy uses the real server validation boundary", {
   app$wait_for_js(
     paste0(
       "document.getElementById('cv-config-status').textContent.indexOf(",
-      "'Restored ')===0"
+      "'Checking ')!==0"
     ),
     timeout = 20000
+  )
+  expect_match(
+    app$get_js("document.getElementById('cv-config-status').textContent"),
+    "^Restored "
   )
   expect_equal(
     app$get_js(

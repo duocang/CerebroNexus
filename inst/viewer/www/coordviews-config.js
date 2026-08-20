@@ -135,6 +135,10 @@
     var action = pending.action;
     pending = null;
     setBusy(false);
+    if (action === 'apply') {
+      var upload = byId('coordviews_config_upload');
+      if (upload) upload.value = '';
+    }
     if (!result.ok) {
       status(result.message || 'The configuration could not be opened.', 'error');
       return;

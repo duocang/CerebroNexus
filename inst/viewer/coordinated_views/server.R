@@ -193,6 +193,11 @@ output[["coordviews_config_download"]] <- downloadHandler(
     writeBin(charToRaw(enc2utf8(json)), file)
   }
 )
+outputOptions(
+  output,
+  "coordviews_config_download",
+  suspendWhenHidden = FALSE
+)
 
 observeEvent(
   input[["coordviews_config_upload"]],
@@ -234,7 +239,7 @@ observeEvent(
           nonce,
           "apply",
           TRUE,
-          config = normalized,
+          config = cv_config_json_document(normalized),
           selected_cells = length(normalized$selection$cells)
         )
       },

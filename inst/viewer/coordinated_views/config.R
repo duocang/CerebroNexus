@@ -567,7 +567,7 @@ cv_config_normalize <- function(config, cells) {
           display$point_size,
           "$.view.display.point_size",
           0,
-          50
+          20
         ),
         point_opacity = cv_config_number(
           display$point_opacity,
@@ -683,9 +683,30 @@ cv_config_normalize <- function(config, cells) {
   normalized
 }
 
+cv_config_json_document <- function(config) {
+  # `auto_unbox = TRUE` is necessary for scalar contract fields, but it would
+  # otherwise collapse one-item vectors. Mark every array-valued field so the
+  # wire format stays structurally stable for non-R consumers.
+  document <- config
+  document$selection$cells <- I(document$selection$cells)
+  document$view$colour$rgb_genes <- I(document$view$colour$rgb_genes)
+  document$view$projections <- I(document$view$projections)
+  document$view$spatial_sections <- I(document$view$spatial_sections)
+  document$view$filters <- lapply(document$view$filters, I)
+  document$view$hidden_levels <- lapply(
+    document$view$hidden_levels,
+    function(item) {
+      item$levels <- I(item$levels)
+      item
+    }
+  )
+  document
+}
+
 cv_config_encode <- function(config) {
+  document <- cv_config_json_document(config)
   text <- jsonlite::toJSON(
-    config,
+    document,
     auto_unbox = TRUE,
     null = "null",
     na = "null",
