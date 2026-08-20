@@ -117,6 +117,12 @@
     var date = new Date(value);
     return isNaN(date.getTime()) ? '' : date.toLocaleString();
   }
+  function snapshotNeedsColourData(record) {
+    try {
+      var mode = JSON.parse(record.json).view.colour.mode;
+      return mode === '__gene__' || mode === '__rgb__';
+    } catch (ignore) { return true; }
+  }
   function snapshotButton(label, action, record) {
     var button = document.createElement('button');
     button.type = 'button'; button.className = 'cv-snapshot-action';
@@ -351,6 +357,21 @@
     request('save');
   }
   function restoreSnapshot(record) {
+    if (!snapshotNeedsColourData(record)) {
+      try {
+        status('Restoring “' + record.name + '”…', 'working');
+        var summary = adapter().apply(JSON.parse(record.json), null);
+        status('Restored ' + summary.selectedCells + ' selected cells and view settings.', 'success');
+      } catch (error) {
+        status(
+          error && error.message
+            ? error.message
+            : 'This configuration uses a view that is unavailable here.',
+          'error'
+        );
+      }
+      return;
+    }
     if (typeof Shiny === 'undefined' || !Shiny.setInputValue) {
       status('The connection is not ready. Try again in a moment.', 'error');
       return;
@@ -358,7 +379,7 @@
     var nonce = nextNonce();
     if (pending) return;
     startPending(nonce, 'apply');
-    setBusy(true); status('Restoring “' + record.name + '”…', 'working');
+    setBusy(true); status('Restoring “' + record.name + '”… Fetching gene colours.', 'working');
     Shiny.setInputValue('coordviews_config_request', {
       nonce: nonce, action: 'apply', config_json: record.json
     }, { priority: 'event' });
