@@ -125,3 +125,79 @@ test_that("a browser may supply cryptographically generated share credentials", 
     class = "cv_share_error"
   )
 })
+
+test_that("administrators can inventory and revoke independent links", {
+  store <- share_env$cv_share_store_open(tempfile(fileext = ".sqlite"))
+  withr::defer(DBI::dbDisconnect(store$con))
+  now <- as.POSIXct("2026-08-20 12:00:00", tz = "UTC")
+  first <- share_env$cv_share_store_create(
+    store,
+    '{"schema":"first"}',
+    "fingerprint-a",
+    now = now,
+    creator = "alice",
+    dataset_label = "PBMC"
+  )
+  second <- share_env$cv_share_store_create(
+    store,
+    '{"schema":"second"}',
+    "fingerprint-a",
+    now = now + 1,
+    creator = "alice",
+    dataset_label = "PBMC"
+  )
+
+  rows <- share_env$cv_share_store_list(store, now = now + 2)
+  expect_setequal(rows$token, c(first$token, second$token))
+  expect_true(all(rows$creator == "alice"))
+  expect_true(all(rows$dataset_label == "PBMC"))
+  expect_false("json" %in% names(rows))
+  expect_false("receipt_hash" %in% names(rows))
+
+  share_env$cv_share_store_revoke_admin(
+    store,
+    first$token,
+    now = now + 3
+  )
+  expect_error(
+    share_env$cv_share_store_fetch(
+      store,
+      first$token,
+      "fingerprint-a",
+      now = now + 3
+    ),
+    class = "cv_share_error"
+  )
+  expect_identical(
+    share_env$cv_share_store_fetch(
+      store,
+      second$token,
+      "fingerprint-a",
+      now = now + 3
+    )$json,
+    '{"schema":"second"}'
+  )
+})
+
+test_that("opening an existing share database migrates audit columns", {
+  path <- tempfile(fileext = ".sqlite")
+  con <- DBI::dbConnect(RSQLite::SQLite(), path)
+  DBI::dbExecute(
+    con,
+    paste(
+      "CREATE TABLE linked_view_shares (",
+      "token TEXT PRIMARY KEY, receipt_hash TEXT NOT NULL, json TEXT NOT NULL,",
+      "fingerprint TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,",
+      "revoked_at TEXT)"
+    )
+  )
+  DBI::dbDisconnect(con)
+
+  store <- share_env$cv_share_store_open(path)
+  withr::defer(DBI::dbDisconnect(store$con))
+  columns <- DBI::dbGetQuery(
+    store$con,
+    "PRAGMA table_info(linked_view_shares)"
+  )$name
+  expect_true(all(c("creator", "dataset_label") %in% columns))
+})

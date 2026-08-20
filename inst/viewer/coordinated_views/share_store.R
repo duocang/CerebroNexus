@@ -75,6 +75,22 @@ cv_share_store_open <- function(path) {
       "revoked_at TEXT)"
     )
   )
+  columns <- DBI::dbGetQuery(
+    con,
+    "PRAGMA table_info(linked_view_shares)"
+  )$name
+  if (!"creator" %in% columns) {
+    DBI::dbExecute(
+      con,
+      "ALTER TABLE linked_view_shares ADD COLUMN creator TEXT"
+    )
+  }
+  if (!"dataset_label" %in% columns) {
+    DBI::dbExecute(
+      con,
+      "ALTER TABLE linked_view_shares ADD COLUMN dataset_label TEXT"
+    )
+  }
   DBI::dbExecute(
     con,
     "CREATE INDEX IF NOT EXISTS linked_view_shares_expiry ON linked_view_shares (expires_at)"
@@ -97,7 +113,9 @@ cv_share_store_create <- function(
   fingerprint,
   now = Sys.time(),
   token = NULL,
-  receipt = NULL
+  receipt = NULL,
+  creator = "",
+  dataset_label = ""
 ) {
   if (!inherits(store, "cv_share_store")) {
     cv_share_abort("internal", "The share store is unavailable.")
@@ -118,6 +136,22 @@ cv_share_store_create <- function(
   ) {
     cv_share_abort("invalid_dataset", "The shared cell population is invalid.")
   }
+  audit_text <- function(value, field, maximum) {
+    if (
+      !is.character(value) ||
+        length(value) != 1L ||
+        is.na(value) ||
+        nchar(enc2utf8(value), type = "bytes") > maximum
+    ) {
+      cv_share_abort(
+        "invalid_audit",
+        paste0("The share ", field, " is invalid.")
+      )
+    }
+    value
+  }
+  creator <- audit_text(creator, "creator", 200L)
+  dataset_label <- audit_text(dataset_label, "dataset label", 500L)
   created_at <- cv_share_time(now)
   expires_at <- cv_share_time(
     as.POSIXct(now, tz = "UTC") + CV_SHARE_TTL_SECONDS
@@ -141,8 +175,9 @@ cv_share_store_create <- function(
           store$con,
           paste(
             "INSERT INTO linked_view_shares",
-            "(token, receipt_hash, json, fingerprint, created_at, expires_at, revoked_at)",
-            "VALUES (?, ?, ?, ?, ?, ?, NULL)"
+            "(token, receipt_hash, json, fingerprint, created_at, expires_at,",
+            "revoked_at, creator, dataset_label)",
+            "VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)"
           ),
           params = list(
             token,
@@ -150,7 +185,9 @@ cv_share_store_create <- function(
             json,
             fingerprint,
             created_at,
-            expires_at
+            expires_at,
+            creator,
+            dataset_label
           )
         )
         TRUE
@@ -165,6 +202,21 @@ cv_share_store_create <- function(
   cv_share_abort(
     if (supplied) "share_collision" else "internal",
     "The share link could not be created. Try again."
+  )
+}
+
+cv_share_store_list <- function(store, now = Sys.time()) {
+  if (!inherits(store, "cv_share_store")) {
+    cv_share_abort("internal", "The share store is unavailable.")
+  }
+  cv_share_store_cleanup(store, now)
+  DBI::dbGetQuery(
+    store$con,
+    paste(
+      "SELECT token, fingerprint, dataset_label, creator, created_at,",
+      "expires_at, revoked_at FROM linked_view_shares",
+      "WHERE revoked_at IS NULL ORDER BY created_at DESC"
+    )
   )
 }
 
@@ -207,6 +259,29 @@ cv_share_store_revoke <- function(store, token, receipt, now = Sys.time()) {
     cv_share_abort(
       "share_revoke_denied",
       "This link cannot be revoked from this browser."
+    )
+  }
+  invisible(TRUE)
+}
+
+cv_share_store_revoke_admin <- function(store, token, now = Sys.time()) {
+  if (!inherits(store, "cv_share_store")) {
+    cv_share_abort("internal", "The share store is unavailable.")
+  }
+  token <- cv_share_token_input(token, "link")
+  cv_share_store_cleanup(store, now)
+  changed <- DBI::dbExecute(
+    store$con,
+    paste(
+      "UPDATE linked_view_shares SET revoked_at = ?",
+      "WHERE token = ? AND revoked_at IS NULL"
+    ),
+    params = list(cv_share_time(now), token)
+  )
+  if (!identical(as.integer(changed), 1L)) {
+    cv_share_abort(
+      "share_revoke_denied",
+      "This share link is unavailable or already revoked."
     )
   }
   invisible(TRUE)
