@@ -5,6 +5,8 @@
   var pending = null;
   var sequence = 0;
   var lastFocus = null;
+  var exportReady = false;
+  var exportBusy = false;
 
   function byId(id) { return document.getElementById(id); }
   function adapter() { return window.cerebroLinkedViewsState || null; }
@@ -19,16 +21,26 @@
     element.classList.toggle('is-error', tone === 'error');
     element.classList.toggle('is-success', tone === 'success');
   }
-  function setBusy(busy) {
+  function refreshExportControls() {
     ['cv-config-download', 'cv-config-copy'].forEach(function (id) {
       var button = byId(id);
-      if (button) button.disabled = !!busy;
+      if (!button) return;
+      button.disabled = exportBusy || !exportReady;
+      button.title = exportReady
+        ? ''
+        : 'Select at least one cell before exporting this view';
     });
   }
-  function setReady(ready) {
+  function setBusy(busy) {
+    exportBusy = !!busy;
+    refreshExportControls();
+  }
+  function setReady(ready, selectedCells) {
     var button = byId('cv-config-open');
     if (!button) return;
     var enabled = !!ready;
+    exportReady = enabled && Number(selectedCells) > 0;
+    refreshExportControls();
     button.disabled = !enabled;
     button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     button.title = !ready
@@ -55,6 +67,10 @@
     }
     if (typeof Shiny === 'undefined' || !Shiny.setInputValue) {
       status('The connection is not ready. Try again in a moment.', 'error');
+      return;
+    }
+    if (!exportReady) {
+      status('Select at least one cell before exporting this view.', 'error');
       return;
     }
     try {
@@ -217,14 +233,16 @@
     });
     window.addEventListener('cerebro:linkedviews-ready', function (event) {
       var detail = event.detail || {};
-      setReady(!!detail.ready);
+      setReady(!!detail.ready, detail.selectedCells);
     });
     window.addEventListener('cerebro:linkedviews-selection', function (event) {
       var state = adapter();
-      setReady(!!(state && state.ready()));
+      var summary = state && state.summary ? state.summary() : null;
+      setReady(!!(state && state.ready()), summary && summary.selectedCells);
     });
     var state = adapter();
-    setReady(!!(state && state.ready()));
+    var summary = state && state.summary ? state.summary() : null;
+    setReady(!!(state && state.ready()), summary && summary.selectedCells);
 
     if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
       Shiny.addCustomMessageHandler('coordviews_config_result', receive);

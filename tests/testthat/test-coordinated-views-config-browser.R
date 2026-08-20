@@ -80,6 +80,13 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     app$get_js("document.getElementById('cv-config-open').title"),
     "Download, copy, or open"
   )
+  app$run_js("document.getElementById('cv-config-open').click();")
+  app$wait_for_js("document.getElementById('cv-config-dialog').open")
+  expect_true(app$get_js(
+    "document.getElementById('cv-config-download').disabled"
+  ))
+  expect_true(app$get_js("document.getElementById('cv-config-copy').disabled"))
+  app$run_js("document.getElementById('cv-config-close').click();")
 
   app$run_js(paste0(
     "(function(){",
@@ -122,11 +129,12 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     "var nodes=ids.map(function(id){return document.getElementById(id);});",
     "nodes.push(document.querySelector('.cv-config-upload .btn-file'));",
     "var heights=nodes.map(function(node){return node.getBoundingClientRect().height;});",
+    "var widths=nodes.map(function(node){return node.getBoundingClientRect().width;});",
     "var styles=nodes.map(function(node){var s=getComputedStyle(node);return {",
     "family:s.fontFamily,size:s.fontSize,weight:s.fontWeight};});",
     "var primary=getComputedStyle(nodes[0]);",
     "var launcher=getComputedStyle(document.getElementById('cv-config-open'));",
-    "return {heights:heights,styles:styles,icon:!!document.querySelector(",
+    "return {heights:heights,widths:widths,styles:styles,icon:!!document.querySelector(",
     "'.cv-config-upload [class*=\"fa-folder-open\"]'),",
     "background:primary.backgroundColor,foreground:primary.color,",
     "launcherBackground:launcher.backgroundColor,",
@@ -134,9 +142,10 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     "})()"
   ))
   expect_lte(max(unlist(actions$heights)) - min(unlist(actions$heights)), 1)
+  expect_lte(max(unlist(actions$widths)) - min(unlist(actions$widths)), 1)
   expect_true(actions$icon)
   expect_identical(actions$styles[[3L]], actions$styles[[2L]])
-  expect_identical(actions$background, "rgb(249, 115, 22)")
+  expect_identical(actions$background, "rgb(255, 244, 236)")
   expect_identical(actions$foreground, "rgb(28, 28, 30)")
   expect_identical(actions$launcherBackground, "rgb(255, 244, 236)")
   expect_identical(actions$launcherBorder, "rgb(255, 178, 122)")
