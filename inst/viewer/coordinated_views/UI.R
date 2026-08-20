@@ -350,10 +350,19 @@ tab_coordinated_views <- tabItem(
         ## a rotation makes visible as a wobble)
         tags$span(class = "cv-caret")
       ),
-      ## Right-aligned global filter/subsample readout. Cohort actions belong to
-      ## the Active cohort bar below, not to this settings row.
+      ## Right-aligned global workspace controls and filter/subsample readout.
       div(
         class = "cv-topbar-right",
+        tags$button(
+          type = "button",
+          id = "cv-config-open",
+          class = "cv-config-open",
+          disabled = "disabled",
+          `aria-haspopup` = "dialog",
+          `aria-controls` = "cv-config-dialog",
+          icon("folder-open"),
+          tags$span("Workspace JSON")
+        ),
         ## Live "showing N / M cells" readout — hidden unless a filter/subsample
         ## reduces the view, so filtering is visible even when the panels are
         ## coloured by a different variable than the one being filtered.
@@ -578,22 +587,11 @@ tab_coordinated_views <- tabItem(
         tags$span(class = "cv-sel-chip", id = "cv-selprofile", ""),
         tags$span(class = "cv-sel-detail", id = "cv-selorigin", ""),
         tags$span(class = "cv-sel-detail", id = "cv-selcoverage", ""),
-        ## Actions only exist for a current cohort; sharing belongs with Zoom
-        ## and Clear rather than as a disabled global control.
+        ## These actions exist only for a current cohort.
         div(
           class = "cv-selactions cv-collapse",
           id = "cv-selactions",
           style = "display:none",
-          tags$button(
-            type = "button",
-            id = "cv-config-open",
-            class = "cv-config-open",
-            disabled = "disabled",
-            `aria-haspopup` = "dialog",
-            `aria-controls` = "cv-config-dialog",
-            icon("share-nodes"),
-            tags$span("Save / share")
-          ),
           tags$button(
             id = "cv-zoom",
             class = "cv-zoombtn",
@@ -828,11 +826,11 @@ tab_coordinated_views <- tabItem(
         type = "button",
         id = "cv-config-close",
         class = "cv-config-close",
-        `aria-label` = "Close Save and share",
+        `aria-label` = "Close workspace JSON",
         HTML("&times;")
       ),
       tags$div(class = "cv-config-kicker", "Portable linked workspace"),
-      tags$h4(id = "cv-config-title", "Save or share this view"),
+      tags$h4(id = "cv-config-title", "Manage this linked workspace"),
       tags$p(
         id = "cv-config-privacy",
         class = "cv-config-privacy",

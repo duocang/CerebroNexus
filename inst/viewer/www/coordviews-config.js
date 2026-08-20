@@ -25,18 +25,15 @@
       if (button) button.disabled = !!busy;
     });
   }
-  function setReady(ready, selectedCells) {
+  function setReady(ready) {
     var button = byId('cv-config-open');
     if (!button) return;
-    var hasSelection = Number(selectedCells) > 0;
-    var enabled = !!ready && hasSelection;
+    var enabled = !!ready;
     button.disabled = !enabled;
     button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     button.title = !ready
       ? 'Linked views is waiting for a data set'
-      : hasSelection
-        ? 'Save or restore this linked workspace'
-        : 'Select at least one cell to save or share this view';
+      : 'Download, copy, or open a linked workspace JSON file';
   }
   function openDialog() {
     var dialog = byId('cv-config-dialog');
@@ -220,18 +217,14 @@
     });
     window.addEventListener('cerebro:linkedviews-ready', function (event) {
       var detail = event.detail || {};
-      setReady(!!detail.ready, detail.selectedCells);
+      setReady(!!detail.ready);
     });
     window.addEventListener('cerebro:linkedviews-selection', function (event) {
       var state = adapter();
-      setReady(
-        !!(state && state.ready()),
-        event.detail && event.detail.selectedCells
-      );
+      setReady(!!(state && state.ready()));
     });
     var state = adapter();
-    var summary = state && state.summary ? state.summary() : null;
-    setReady(!!(state && state.ready()), summary && summary.selectedCells);
+    setReady(!!(state && state.ready()));
 
     if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
       Shiny.addCustomMessageHandler('coordviews_config_result', receive);

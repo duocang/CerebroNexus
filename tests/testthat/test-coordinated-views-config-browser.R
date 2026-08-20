@@ -75,10 +75,10 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     "document.getElementById('cv-config-open') !== null",
     timeout = 10000
   )
-  expect_true(app$get_js("document.getElementById('cv-config-open').disabled"))
+  expect_false(app$get_js("document.getElementById('cv-config-open').disabled"))
   expect_match(
     app$get_js("document.getElementById('cv-config-open').title"),
-    "Select at least one cell"
+    "Download, copy, or open"
   )
 
   app$run_js(paste0(
@@ -172,7 +172,7 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     "window.cerebroLinkedViewsState.summary().selectedCells === 0",
     timeout = 10000
   )
-  app$wait_for_js("document.getElementById('cv-config-open').disabled")
+  app$wait_for_js("!document.getElementById('cv-config-open').disabled")
   app$run_js("window.cerebroLinkedViewsState.apply(window.__cvSaved);")
   app$wait_for_js(
     paste0(
