@@ -42,8 +42,7 @@
     return Promise.resolve(copied);
   }
   function copyText(text) {
-    return fallbackCopy(text).then(function (copied) {
-      if (copied || !navigator.clipboard || !navigator.clipboard.writeText) return copied;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
       return new Promise(function (resolve) {
         var settled = false;
         function finish(result) {
@@ -60,7 +59,8 @@
           );
         } catch (ignore) { finish(false); }
       });
-    }).catch(function () { return false; });
+    }
+    return fallbackCopy(text).catch(function () { return false; });
   }
   function formatDate(value) {
     var date = new Date(value);
@@ -115,13 +115,19 @@
   function receive(result) {
     if (!result) return;
     if (pending && result.nonce && result.nonce !== pending.nonce) return;
+    var requested = pending;
     pending = null;
     if (!result.ok) {
       status(result.message || 'The Admin request failed.', 'error'); return;
     }
     if (result.action === 'list') {
-      records = Array.isArray(result.records) ? result.records : [];
-      render(); status(records.length ? records.length + ' active share link' + (records.length === 1 ? '.' : 's.') : 'No active share links.');
+      var nextRecords = Array.isArray(result.records) ? result.records : [];
+      var changed = JSON.stringify(nextRecords) !== JSON.stringify(records);
+      records = nextRecords;
+      if (changed) render();
+      if (requested || changed) {
+        status(records.length ? records.length + ' active share link' + (records.length === 1 ? '.' : 's.') : 'No active share links.');
+      }
     } else if (result.action === 'revoke') {
       records = records.filter(function (record) { return record.token !== result.token; });
       render(); status('Share link revoked.', 'success');
@@ -144,6 +150,7 @@
   function boot() {
     var refresh = byId('viewer-admin-refresh');
     if (refresh) refresh.addEventListener('click', function () { send('list'); });
+    window.addEventListener('cerebro:share-created', function () { send('list'); });
     var list = byId('viewer-admin-share-list');
     if (list) list.addEventListener('click', function (event) {
       var target = event.target.closest('[data-action]');

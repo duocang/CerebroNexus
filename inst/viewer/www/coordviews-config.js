@@ -322,6 +322,9 @@
       };
       renderShareResult(latestShare);
       status('Share link saved. It expires in 90 days.', 'success');
+      window.dispatchEvent(new CustomEvent('cerebro:share-created', {
+        detail: { token: result.token }
+      }));
     } else if (action === 'share_open') {
       finishApply(result);
       var url = new URL(window.location.href); url.searchParams.delete('linked_view');
@@ -408,8 +411,7 @@
     return Promise.resolve(copied);
   }
   function copyText(text) {
-    return fallbackCopy(text).then(function (copied) {
-      if (copied || !navigator.clipboard || !navigator.clipboard.writeText) return copied;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
       return new Promise(function (resolve) {
         var settled = false;
         function finish(copied) {
@@ -426,7 +428,8 @@
           );
         } catch (ignore) { finish(false); }
       });
-    }).catch(function () { return false; });
+    }
+    return fallbackCopy(text).catch(function () { return false; });
   }
   function finishCopy(result) {
     if (typeof result.json !== 'string') {

@@ -85,15 +85,12 @@ if (viewer_is_admin(session)) {
   )
 }
 
-observeEvent(
-  input[["sidebar"]],
-  {
-    if (identical(input[["sidebar"]], "admin")) {
-      viewer_admin_inventory()
-    }
-  },
-  ignoreInit = TRUE
-)
+observe({
+  req(viewer_is_admin(session))
+  req(identical(input[["sidebar"]], "admin"))
+  invalidateLater(2000, session)
+  viewer_admin_inventory()
+})
 
 observeEvent(
   input[["viewer_admin_request"]],

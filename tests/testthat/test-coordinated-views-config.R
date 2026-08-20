@@ -588,7 +588,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_false(grepl("copyText(shareUrl(token));", controller, fixed = TRUE))
   expect_match(
     controller,
-    "fallbackCopy(text).then(function (copied)",
+    "if (navigator.clipboard && navigator.clipboard.writeText) {",
     fixed = TRUE
   )
   expect_match(
@@ -596,6 +596,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     "window.setTimeout(function () { finish(false); }, 500)",
     fixed = TRUE
   )
+  expect_match(controller, "cerebro:share-created", fixed = TRUE)
   expect_match(
     server,
     'c("nonce", "action", "config", "token")',
