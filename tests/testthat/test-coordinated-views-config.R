@@ -529,8 +529,13 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     'class = "cv-config-region cv-config-save-local"',
     fixed = TRUE
   )
-  expect_match(ui, '"Save on this device"', fixed = TRUE)
-  expect_match(ui, 'class = "cv-config-region cv-snapshots"', fixed = TRUE)
+  expect_match(ui, '"Saved on this device"', fixed = TRUE)
+  expect_match(ui, 'class = "cv-snapshot-library"', fixed = TRUE)
+  expect_false(grepl(
+    'class = "cv-config-region cv-snapshots"',
+    ui,
+    fixed = TRUE
+  ))
   expect_match(ui, '`aria-live` = "polite"', fixed = TRUE)
   expect_match(ui, '"coordviews_config_upload"', fixed = TRUE)
   expect_match(ui, '"coordviews_config_download"', fixed = TRUE)

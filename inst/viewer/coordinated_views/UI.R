@@ -878,7 +878,7 @@ tab_coordinated_views <- tabItem(
         `aria-labelledby` = "cv-config-save-local-title",
         tags$div(
           class = "cv-config-region-head",
-          tags$h5(id = "cv-config-save-local-title", "Save on this device"),
+          tags$h5(id = "cv-config-save-local-title", "Saved on this device"),
           tags$p("Private to this browser and this cell population.")
         ),
         tags$button(
@@ -887,6 +887,15 @@ tab_coordinated_views <- tabItem(
           class = "cv-snapshot-save",
           icon("bookmark"),
           "Save current view"
+        ),
+        tags$div(
+          class = "cv-snapshot-library",
+          tags$h6("Saved views"),
+          tags$div(
+            id = "cv-snapshot-list",
+            class = "cv-snapshot-list",
+            `aria-live` = "polite"
+          )
         )
       ),
       tags$section(
@@ -911,24 +920,6 @@ tab_coordinated_views <- tabItem(
         tags$div(
           id = "cv-share-list",
           class = "cv-share-list",
-          `aria-live` = "polite"
-        )
-      ),
-      tags$section(
-        class = "cv-config-region cv-snapshots",
-        `aria-labelledby` = "cv-snapshots-title",
-        tags$div(
-          class = "cv-config-region-head cv-snapshots-head",
-          tags$div(
-            tags$h5(id = "cv-snapshots-title", "Saved views"),
-            tags$p(
-              "Available when you return to this data set in this browser."
-            )
-          )
-        ),
-        tags$div(
-          id = "cv-snapshot-list",
-          class = "cv-snapshot-list",
           `aria-live` = "polite"
         )
       ),

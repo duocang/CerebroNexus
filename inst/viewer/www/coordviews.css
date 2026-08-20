@@ -1524,7 +1524,14 @@
   background-size: 220% 100%; animation: cv-config-loading 1.1s linear infinite;
 }
 @keyframes cv-config-loading { to { background-position: -220% 0; } }
-.cv-snapshots-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cv-snapshot-library {
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--cv-amber200, #fed7aa);
+}
+.cv-config-save-local.is-disabled .cv-snapshot-library {
+  border-top-color: var(--cv-border, #e5e7eb);
+}
+.cv-snapshot-library h6 { margin: 0; font-size: 11.5px; }
 .cv-snapshot-save,
 .cv-snapshot-action {
   border: 1px solid var(--cv-border, #d8dce3); border-radius: 6px;
@@ -1544,7 +1551,7 @@
   border-color: var(--cv-border, #e5e7eb); background: var(--cv-surface, #fff);
   color: var(--cv-text3, #868990);
 }
-.cv-snapshot-list { display: grid; gap: 6px; margin-top: 10px; }
+.cv-snapshot-list { display: grid; gap: 6px; margin-top: 8px; }
 .cv-snapshot-empty { margin: 0; color: var(--cv-text3, #868990); font-size: 12px; }
 .cv-snapshot-row {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
