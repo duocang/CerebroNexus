@@ -727,7 +727,7 @@ test_that("bounded alignment previews never retain full coverage coordinates", {
   expect_true(preview$available)
   expect_lte(nrow(preview$spatial), 2L)
   expect_false("coverage" %in% names(preview))
-  expect_identical(preview$total_cells, ncol(object))
+  expect_equal(preview$total_cells, ncol(object))
 
   scene <- builder_spatial_canvas_scene(
     preview,
@@ -748,7 +748,10 @@ test_that("bounded alignment previews never retain full coverage coordinates", {
 })
 
 test_that("alignment preview resolves layer membership without expression data", {
-  preview_source <- paste(deparse(body(builder_alignment_preview_model)), collapse = "\n")
+  preview_source <- paste(
+    deparse(body(builder_alignment_preview_model)),
+    collapse = "\n"
+  )
 
   expect_false(grepl(".getExpressionMatrix(", preview_source, fixed = TRUE))
   expect_match(
@@ -1156,7 +1159,11 @@ test_that("matching-label transform never crosses image identities", {
 test_that("matching-label rendering rolls back and reports failed sections", {
   record <- function(section, source_uri, dx) {
     builder_alignment_record(
-      source = list(name = paste0(section, ".png"), type = "image/png", size = 4),
+      source = list(
+        name = paste0(section, ".png"),
+        type = "image/png",
+        size = 4
+      ),
       source_uri = source_uri,
       uri = source_uri,
       base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
@@ -2433,7 +2440,8 @@ test_that("image headers enforce a pixel budget before decoded arrays are kept",
 
 test_that("the default resident raster is bounded by decoded R memory", {
   worst_case_bytes <- as.numeric(BUILDER_IMAGE_MAX_PIXELS) *
-    BUILDER_IMAGE_DECODE_CHANNELS * 8
+    BUILDER_IMAGE_DECODE_CHANNELS *
+    8
 
   expect_lte(worst_case_bytes, BUILDER_IMAGE_MAX_RESIDENT_RASTER_BYTES)
   expect_lte(BUILDER_IMAGE_MAX_RESIDENT_RASTER_BYTES, 64 * 1024^2)

@@ -684,10 +684,17 @@ builder_session_build <- function(
               ))
             }
           }
-          object_environment <- get(".builder_objects", envir = globalenv())
-          object_ids <- ls(object_environment, all.names = TRUE)
-          objects <- if (length(object_ids)) {
-            mget(object_ids, envir = object_environment, inherits = FALSE)
+          objects <- if (isTRUE(validate_snapshots)) {
+            object_environment <- get(
+              ".builder_objects",
+              envir = globalenv()
+            )
+            object_ids <- ls(object_environment, all.names = TRUE)
+            if (length(object_ids)) {
+              mget(object_ids, envir = object_environment, inherits = FALSE)
+            } else {
+              list()
+            }
           } else {
             list()
           }

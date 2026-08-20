@@ -1187,10 +1187,19 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
   values <- as.integer(bytes)
   total <- length(values)
   start_of_frame <- c(
-    0xc0, 0xc1, 0xc2, 0xc3,
-    0xc5, 0xc6, 0xc7,
-    0xc9, 0xca, 0xcb,
-    0xcd, 0xce, 0xcf
+    0xc0,
+    0xc1,
+    0xc2,
+    0xc3,
+    0xc5,
+    0xc6,
+    0xc7,
+    0xc9,
+    0xca,
+    0xcb,
+    0xcd,
+    0xce,
+    0xcf
   )
   standalone <- c(0x01, 0xd8, 0xd9, 0xd0:0xd7)
   cursor <- 3L
@@ -1220,7 +1229,8 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
     if (marker == 0xdaL || marker_index + 2L > total) {
       return(unsafe())
     }
-    segment_length <- values[[marker_index + 1L]] * 256 +
+    segment_length <- values[[marker_index + 1L]] *
+      256 +
       values[[marker_index + 2L]]
     if (
       !is.finite(segment_length) ||
@@ -1233,10 +1243,8 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
       if (segment_length < 7L || marker_index + 7L > total) {
         return(unsafe())
       }
-      height <- values[[marker_index + 4L]] * 256 +
-        values[[marker_index + 5L]]
-      width <- values[[marker_index + 6L]] * 256 +
-        values[[marker_index + 7L]]
+      height <- values[[marker_index + 4L]] * 256 + values[[marker_index + 5L]]
+      width <- values[[marker_index + 6L]] * 256 + values[[marker_index + 7L]]
       if (!all(is.finite(c(width, height))) || width < 1 || height < 1) {
         return(unsafe())
       }
@@ -1416,7 +1424,9 @@ builder_read_image_uri <- function(
   }
   encoded_bytes <- nchar(payload, type = "bytes")
   if (encoded_bytes > max_encoded_bytes) {
-    return(list(error = "The saved tissue image exceeds its encoded size limit."))
+    return(list(
+      error = "The saved tissue image exceeds its encoded size limit."
+    ))
   }
   decoded <- try(
     base64enc::base64decode(payload),
@@ -1431,9 +1441,7 @@ builder_read_image_uri <- function(
       error = "The saved tissue image has invalid or unsafe PNG metadata."
     ))
   }
-  if (
-    prod(as.numeric(dimensions)) > as.numeric(max_pixels)
-  ) {
+  if (prod(as.numeric(dimensions)) > as.numeric(max_pixels)) {
     return(list(
       error = paste0(
         "This image exceeds the ",
@@ -1598,7 +1606,7 @@ builder_rotation_plan <- function(width, height, degrees, max_edge) {
   scale <- min(1, max_edge / max(full_extent))
   input_dimensions <- pmax(
     1L,
-    as.integer(floor(c(width = width, height = height) * scale))
+    as.integer(round(c(width = width, height = height) * scale))
   )
   names(input_dimensions) <- c("width", "height")
   output_dimensions <- builder_rotation_extent(
@@ -1681,7 +1689,10 @@ builder_encode_image <- function(
       return(list(error = "Image source dimensions are invalid."))
     }
     if (all(c("width", "height") %in% names(source_dimensions))) {
-      supplied <- supplied[match(c("width", "height"), names(source_dimensions))]
+      supplied <- supplied[match(
+        c("width", "height"),
+        names(source_dimensions)
+      )]
     }
     c(width = supplied[[1L]], height = supplied[[2L]])
   }

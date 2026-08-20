@@ -452,7 +452,9 @@ builder_build_foreign_output_error <- function(foreign) {
 builder_build_output_preflight <- function(path) {
   plan <- freeze_plan_for_output(
     path,
-    overwrite = FALSE,
+    ## Folder selection validates ownership and shape only. Existing Builder
+    ## targets are handled by the explicit replace confirmation at Build time.
+    overwrite = TRUE,
     output_options = current_build_options()
   )
   if (
@@ -471,6 +473,27 @@ builder_build_output_preflight <- function(path) {
     character(1)
   )
   expected_roots <- unique(sub("/.*$", "", relative))
+  prior_state <- tryCatch(
+    builder_release_state(
+      path,
+      exact_record = FALSE,
+      allow_abandoned = TRUE
+    ),
+    error = function(error) error
+  )
+  if (inherits(prior_state, "condition")) {
+    return(list(ok = FALSE, error = conditionMessage(prior_state)))
+  }
+  prior_members <- prior_state$record$members %||% list()
+  prior_roots <- if (length(prior_members)) {
+    unique(sub(
+      "/.*$",
+      "",
+      vapply(prior_members, `[[`, character(1), "path")
+    ))
+  } else {
+    character()
+  }
   actual_roots <- list.files(path, all.files = TRUE, no.. = TRUE)
   metadata <- .builder_release_ignorable_metadata(actual_roots)
   if (any(metadata)) {
@@ -482,7 +505,7 @@ builder_build_output_preflight <- function(path) {
   }
   foreign <- setdiff(
     actual_roots,
-    c(expected_roots, .builder_release_record_name)
+    c(expected_roots, prior_roots, .builder_release_record_name)
   )
   if (length(foreign)) {
     return(list(

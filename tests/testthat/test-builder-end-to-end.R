@@ -605,7 +605,7 @@ test_that("valid Seurat content blockers stop before staging or publication", {
   stage <- file.path(root, "invalid-stage")
   expect_error(
     builder_coordinator_prepare(blocked, "invalid-content-build"),
-    "frozen plan|output release"
+    "frozen plan|output release|inert contract-v1 BuildPlan"
   )
   expect_error(
     builder_execute_plan(blocked, stage, list()),

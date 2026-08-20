@@ -68,7 +68,7 @@ test_that("loaded source entries are hydrated before their first store attachmen
   saved$acknowledgements <- "metadata"
   record <- runtime$builder_project_dataset_record(
     saved,
-    source = list(kind = "missing", path = NULL),
+    source = list(kind = "example", example = "all_content"),
     checked = TRUE
   )
 
@@ -110,7 +110,7 @@ test_that("pending project hydration isolates a corrupt dataset", {
   saved$settings$name <- "Saved good"
   good <- runtime$builder_project_dataset_record(
     saved,
-    source = list(kind = "missing", path = NULL),
+    source = list(kind = "example", example = "all_content"),
     checked = TRUE
   )
   corrupt <- good

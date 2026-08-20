@@ -48,8 +48,17 @@ test_that("Build overlay takes focus before the shell becomes inert", {
     readLines(file.path("www", "builder.js"), warn = FALSE),
     collapse = "\n"
   )
-  focus_at <- regexpr("beginBuildOperationFocus(overlay);", js, fixed = TRUE)[[1L]]
-  inert_at <- regexpr("if (shell) shell.inert =", js, fixed = TRUE)[[1L]]
+  activity <- substr(
+    js,
+    regexpr("function applyBuilderActivityState()", js, fixed = TRUE)[[1L]],
+    regexpr("function beginBuildOperationFocus", js, fixed = TRUE)[[1L]] - 1L
+  )
+  focus_at <- regexpr(
+    "beginBuildOperationFocus(overlay);",
+    activity,
+    fixed = TRUE
+  )[[1L]]
+  inert_at <- regexpr("if (shell) shell.inert =", activity, fixed = TRUE)[[1L]]
 
   expect_gt(focus_at, 0L)
   expect_gt(inert_at, focus_at)

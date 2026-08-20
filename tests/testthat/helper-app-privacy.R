@@ -224,6 +224,7 @@ privacy_build_dormant_app <- function(root, contract_version = 1L) {
   on.exit(try(runtime$builder_worker_stop(worker), silent = TRUE), add = TRUE)
   worker$process$run(
     function(package_inst) {
+      builder_worker_require_capability("build")
       .builder_app_package_path <<- local({
         trusted_root <- package_inst
         function(...) {

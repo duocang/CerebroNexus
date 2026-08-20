@@ -10,6 +10,7 @@
 
 skip_if_not_installed("Seurat")
 skip_if_not_installed("SeuratObject")
+builder_repo_source("preview.R")
 
 ## `split()` on an assay, and layers as a concept, arrived with Seurat 5. The
 ## package still declares Seurat (>= 3.0.0), so an older environment has to skip
@@ -80,13 +81,16 @@ test_that("alignment cell resolution never reads expression matrices", {
     ".find_layer_partition",
     ".nested_partition_root"
   )
-  helper <- paste(vapply(cohort_helpers, function(name) {
-    paste(deparse(body(get(name, mode = "function"))), collapse = "\n")
-  }, character(1)), collapse = "\n")
+  calls <- unique(unlist(lapply(cohort_helpers, function(name) {
+    codetools::findGlobals(
+      get(name, mode = "function"),
+      merge = FALSE
+    )$functions
+  })))
 
-  expect_false(grepl(".getExpressionMatrix", helper, fixed = TRUE))
-  expect_false(grepl("LayerData", helper, fixed = TRUE))
-  expect_false(grepl("JoinLayers", helper, fixed = TRUE))
+  expect_false(".getExpressionMatrix" %in% calls)
+  expect_false("LayerData" %in% calls)
+  expect_false("JoinLayers" %in% calls)
 })
 
 test_that("alignment resolves exact Assay5 and legacy Assay memberships", {

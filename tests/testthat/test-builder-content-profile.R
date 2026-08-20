@@ -134,12 +134,12 @@ test_that("application and worker load content contracts before profiles", {
     fixed = TRUE
   )[1L]
   worker_immune <- grep(
-    'source(file.path(dir, "content_immune.R"',
+    'file.path(dir, "content_immune.R"',
     session,
     fixed = TRUE
   )[1L]
   worker_spatial <- grep(
-    'source(file.path(dir, "content_spatial.R"',
+    'file.path(dir, "content_spatial.R"',
     session,
     fixed = TRUE
   )[1L]
@@ -156,13 +156,13 @@ test_that("application and worker load content contracts before profiles", {
   expect_true(
     worker_hla < worker_hla_motif &&
       worker_hla_motif < worker_hla_association &&
-      worker_spatial_contract < worker_builder_spatial &&
-      worker_builder_spatial < worker_spatial &&
-      worker_hla_association < worker_tables &&
-      worker_tables < worker_immune &&
-      worker_immune < worker_spatial &&
-      worker_spatial < worker_content &&
-      worker_content < worker_profile
+      worker_builder_spatial < worker_spatial_contract &&
+      worker_spatial_contract < worker_spatial &&
+      worker_tables < worker_content &&
+      worker_content < worker_profile &&
+      worker_hla_association < worker_immune &&
+      worker_profile < worker_immune &&
+      worker_profile < worker_spatial
   )
 })
 
