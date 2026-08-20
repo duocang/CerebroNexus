@@ -374,6 +374,35 @@ output$ir_param_panel <- renderUI({
   ir_flow_controls(controls)
 })
 
+## Dynamic renderUI keeps an input's browser-side value when the same input ID
+## is rebuilt. After a data-set switch that value can name a receptor class
+## which is no longer present (for example TCR -> BCR-only). Run after the UI
+## output observer and explicitly normalize only stale values; valid user
+## selections are preserved.
+observeEvent(
+  ir_receptor_types(),
+  {
+    choices <- ir_receptor_types()
+    if (!length(choices)) {
+      return()
+    }
+    current <- isolate(input[["ir_p_umap_receptor"]])
+    selected <- if (!is.null(current) && current %in% unname(choices)) {
+      current
+    } else {
+      unname(choices[[1L]])
+    }
+    updateSelectInput(
+      session,
+      "ir_p_umap_receptor",
+      choices = choices,
+      selected = selected
+    )
+  },
+  ignoreInit = FALSE,
+  priority = -1
+)
+
 ## ---- Reactive: number of samples -------------------------------------- ##
 n_samples <- reactive({
   data <- ir_data()
@@ -611,8 +640,11 @@ observeEvent(input$ir_group_filters_info, {
   ))
 })
 
-## Keep the left-column boxes' dynamic UI alive even while their box is
-## collapsed, so controls exist in the DOM (mirrors the Main tab's pattern).
+## Keep all dynamic settings alive while their box or the Immune repertoire
+## tab is hidden. Data-set changes can then replace invalid receptor choices
+## before the user returns to the tab, instead of reviving stale browser input.
+outputOptions(output, "ir_main_params_UI", suspendWhenHidden = FALSE)
+outputOptions(output, "ir_param_panel", suspendWhenHidden = FALSE)
 outputOptions(output, "ir_additional_params_UI", suspendWhenHidden = FALSE)
 outputOptions(output, "ir_group_filters_UI", suspendWhenHidden = FALSE)
 outputOptions(output, "ir_display_panel", suspendWhenHidden = FALSE)
