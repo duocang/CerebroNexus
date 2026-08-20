@@ -565,14 +565,6 @@ tab_coordinated_views <- tabItem(
           class = "cv-workspace-guide-text",
           id = "cv-workspace-guide-text",
           "Drag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked."
-        ),
-        tags$button(
-          type = "button",
-          class = "cv-workspace-overview",
-          id = "cv-workspace-overview",
-          style = "display:none",
-          icon("table-cells-large"),
-          "Back to overview"
         )
       ),
       ## Active cohort: the shared state all lenses are describing.
@@ -661,12 +653,9 @@ tab_coordinated_views <- tabItem(
       )
     ),
 
-    ## Keep the lightweight client readout target for internal state updates, but
-    ## do not expose it on the landing surface. The expensive server-rendered
-    ## selected-cell plot/table has no UI target here and therefore does not run.
+    ## ---- readout: composition + top clonotypes -------------------------- ##
     div(
-      class = "cv-secondary-analysis",
-      style = "display:none",
+      style = "margin-top:14px;",
       div(
         class = "cv-readout",
         id = "cv-readout",
@@ -676,6 +665,12 @@ tab_coordinated_views <- tabItem(
           "every panel, and their composition and top clonotypes appear here."
         )
       )
+    ),
+
+    ## ---- selected-cell detail views (server-rendered) ------------------- ##
+    div(
+      style = "margin-top:6px;",
+      uiOutput("coordviews_selected_cells_UI")
     ),
 
     ## ---- Trekker insights ------------------------------------------------- ##
