@@ -254,11 +254,11 @@ cv_config_normalize_lenses <- function(value, path) {
 }
 
 cv_config_normalize_filters <- function(value, path) {
-  if (!is.list(value) || (length(value) && is.null(names(value)))) {
+  if (!is.list(value) || is.null(names(value))) {
     cv_config_abort("invalid_type", paste0(path, " must be an object."))
   }
   if (!length(value)) {
-    return(list())
+    return(structure(list(), names = character()))
   }
   keys <- names(value)
   if (any(!nzchar(keys)) || anyDuplicated(keys)) {
@@ -299,7 +299,17 @@ cv_config_normalize_hidden_levels <- function(value, path) {
 cv_config_normalize_alignment <- function(value, path) {
   value <- cv_config_record(
     value,
-    c("offset_x", "offset_y", "scale", "rotation"),
+    c(
+      "offset_x",
+      "offset_y",
+      "scale_x",
+      "scale_y",
+      "rotation",
+      "lock_aspect",
+      "flip_x",
+      "flip_y",
+      "show"
+    ),
     path = path
   )
   list(
@@ -315,9 +325,15 @@ cv_config_normalize_alignment <- function(value, path) {
       -1e12,
       1e12
     ),
-    scale = cv_config_number(
-      value$scale,
-      cv_config_path(path, "scale"),
+    scale_x = cv_config_number(
+      value$scale_x,
+      cv_config_path(path, "scale_x"),
+      1e-6,
+      1e6
+    ),
+    scale_y = cv_config_number(
+      value$scale_y,
+      cv_config_path(path, "scale_y"),
       1e-6,
       1e6
     ),
@@ -326,7 +342,14 @@ cv_config_normalize_alignment <- function(value, path) {
       cv_config_path(path, "rotation"),
       -1e6,
       1e6
-    )
+    ),
+    lock_aspect = cv_config_logical(
+      value$lock_aspect,
+      cv_config_path(path, "lock_aspect")
+    ),
+    flip_x = cv_config_logical(value$flip_x, cv_config_path(path, "flip_x")),
+    flip_y = cv_config_logical(value$flip_y, cv_config_path(path, "flip_y")),
+    show = cv_config_logical(value$show, cv_config_path(path, "show"))
   )
 }
 
@@ -537,19 +560,19 @@ cv_config_normalize <- function(config, cells) {
         percentage_cells = cv_config_number(
           display$percentage_cells,
           "$.view.display.percentage_cells",
-          1,
+          5,
           100
         ),
         point_size = cv_config_number(
           display$point_size,
           "$.view.display.point_size",
-          0.1,
+          0,
           50
         ),
         point_opacity = cv_config_number(
           display$point_opacity,
           "$.view.display.point_opacity",
-          0.01,
+          0,
           1
         ),
         group_labels = cv_config_logical(

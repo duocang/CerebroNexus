@@ -78,8 +78,13 @@ valid_linked_view_config <- function() {
           alignment = list(
             offset_x = 3,
             offset_y = -2,
-            scale = 1.1,
-            rotation = 0.05
+            scale_x = 1.1,
+            scale_y = 0.9,
+            rotation = 0.05,
+            lock_aspect = FALSE,
+            flip_x = TRUE,
+            flip_y = FALSE,
+            show = TRUE
           )
         )
       ),
@@ -124,6 +129,11 @@ test_that("a version-one configuration round-trips canonically", {
   expect_identical(decoded$view$display$selection_mode, "lasso")
   expect_identical(decoded$view$lenses[[2L]]$rotation$ry, -0.1)
   expect_identical(decoded$view$spatial_backgrounds[[1L]]$image_id, "he-main")
+  expect_identical(
+    decoded$view$spatial_backgrounds[[1L]]$alignment$scale_y,
+    0.9
+  )
+  expect_true(decoded$view$spatial_backgrounds[[1L]]$alignment$flip_x)
   expect_true(endsWith(encoded, "\n"))
 })
 
@@ -204,6 +214,14 @@ test_that("configuration bounds reject hostile or ambiguous state", {
   expect_config_error(config, "too_deep")
 })
 
+test_that("display bounds match the controls users can actually choose", {
+  config <- valid_linked_view_config()
+  config$view$display$percentage_cells <- 5
+  config$view$display$point_size <- 0
+  config$view$display$point_opacity <- 0
+  expect_no_error(config_env$cv_config_normalize(config, cells = config_cells))
+})
+
 test_that("cross-field references must describe one coherent workspace", {
   config <- valid_linked_view_config()
   config$view$active_spatial <- "not-selected"
@@ -246,8 +264,10 @@ test_that("JSON decoding is bounded and reports safe error codes", {
 })
 
 test_that("canonical output contains only the portable allowlist", {
+  config <- valid_linked_view_config()
+  config$view$filters <- structure(list(), names = character())
   encoded <- config_env$cv_config_encode(config_env$cv_config_normalize(
-    valid_linked_view_config(),
+    config,
     cells = config_cells
   ))
   expect_no_match(encoded, "dataset_id", fixed = TRUE)
@@ -257,6 +277,11 @@ test_that("canonical output contains only the portable allowlist", {
   expect_no_match(encoded, "credentials", fixed = TRUE)
   expect_no_match(encoded, "token", fixed = TRUE)
   expect_no_match(encoded, "/Users/", fixed = TRUE)
+  expect_match(encoded, '"filters": \\{\\}', perl = TRUE)
+
+  invalid <- valid_linked_view_config()
+  invalid$view$filters <- unname(invalid$view$filters)
+  expect_config_error(invalid, "invalid_type")
 })
 
 test_that("the server prepares a canonical snapshot with its own timestamp", {
