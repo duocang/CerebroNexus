@@ -32,6 +32,7 @@
 
   function enhance(select) {
     if (!select || !select.multiple) return;
+    if (select.dataset.cerebroMultiSelectReady) return;
     select.setAttribute("data-placeholder", placeholder);
     var instance = select.selectize;
     if (!instance) return;
@@ -42,14 +43,13 @@
     instance.updatePlaceholder();
     instance.$wrapper.addClass("cerebro-multiselect");
     sizeEmptyControl(select, instance);
-    if (!select.dataset.cerebroMultiSelectReady) {
-      instance.on("change", function () { sizeEmptyControl(select, instance); });
-      select.dataset.cerebroMultiSelectReady = "true";
-    }
+    instance.on("change", function () { sizeEmptyControl(select, instance); });
+    select.dataset.cerebroMultiSelectReady = "true";
   }
 
   function enhanceAll(root) {
-    var scope = root && root.querySelectorAll ? root : document;
+    if (root !== document && (!root || root.nodeType !== Node.ELEMENT_NODE)) return;
+    var scope = root;
     Array.prototype.forEach.call(
       scope.querySelectorAll("select[multiple]"),
       enhance
@@ -57,8 +57,23 @@
     if (scope.matches && scope.matches("select[multiple]")) enhance(scope);
   }
 
+  var pendingRoots = new Set();
+  var pendingTimer = null;
+
   function schedule(root) {
-    window.setTimeout(function () { enhanceAll(root); }, 0);
+    if (root !== document && (!root || root.nodeType !== Node.ELEMENT_NODE)) return;
+    if (root !== document &&
+        !(root.matches("select[multiple]") || root.querySelector("select[multiple]"))) {
+      return;
+    }
+    pendingRoots.add(root);
+    if (pendingTimer) return;
+    pendingTimer = window.setTimeout(function () {
+      var roots = Array.from(pendingRoots);
+      pendingRoots.clear();
+      pendingTimer = null;
+      roots.forEach(enhanceAll);
+    }, 0);
   }
 
   document.addEventListener("DOMContentLoaded", function () { schedule(document); });
