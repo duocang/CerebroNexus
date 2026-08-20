@@ -34,6 +34,8 @@ createShinyApp(
   initial_dataset = NULL,
   initial_page = NULL,
   auth = NULL,
+  admin_account = "admin",
+  admin_password = "admin123",
   ...
 )
 }
@@ -166,6 +168,12 @@ list with \code{credentials}, the path to an encrypted SQLite database
 created by \code{shinymanager::create_db()}, and \code{passphrase_env},
 the name of the environment variable containing its passphrase. Optional
 \code{timeout_minutes} defaults to 15.}
+
+\item{admin_account}{Built-in Administrator account name. Defaults to
+\code{"admin"}.}
+
+\item{admin_password}{Built-in Administrator password. Defaults to
+\code{"admin123"}. Set a deployment-specific value before publishing.}
 
 \item{...}{Currently unused; reserved for future arguments.}
 }
