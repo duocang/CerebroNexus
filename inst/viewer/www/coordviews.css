@@ -1455,7 +1455,11 @@
 }
 .cv-config-action > span,
 .cv-config-upload .btn-file > span { font: inherit !important; }
-.cv-config-action:disabled { opacity: .55; cursor: wait; }
+.cv-config-action:disabled {
+  opacity: 1; cursor: not-allowed;
+  border-color: var(--cv-amber200, #fed7aa); background: var(--cv-amber50, #fff4ec);
+  color: #a87858;
+}
 .cv-config-actions > .cv-config-action,
 .cv-config-actions > .cv-config-upload {
   align-self: stretch; display: flex; height: 56px; min-height: 56px;
@@ -1513,7 +1517,10 @@
 }
 .cv-snapshot-save:hover:not(:disabled),
 .cv-snapshot-action:hover { background: var(--cv-surface2, #f5f7fa); color: var(--cv-text, #252527); }
-.cv-snapshot-save:disabled { opacity: .52; cursor: not-allowed; }
+.cv-snapshot-save:disabled {
+  opacity: 1; cursor: not-allowed;
+  background: var(--cv-amber50, #fff4ec); color: #a87858;
+}
 .cv-snapshot-list { display: grid; gap: 6px; margin-top: 10px; }
 .cv-snapshot-empty { margin: 0; color: var(--cv-text3, #868990); font-size: 12px; }
 .cv-snapshot-row {
