@@ -503,10 +503,12 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   shell_file <- file.path(config_inst, "viewer/shiny_UI.R")
   controller_file <- file.path(config_inst, "viewer/www/coordviews-config.js")
   css_file <- file.path(config_inst, "viewer/www/coordviews.css")
+  server_file <- file.path(config_inst, "viewer/coordinated_views/server.R")
   ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
   shell <- paste(readLines(shell_file, warn = FALSE), collapse = "\n")
   controller <- paste(readLines(controller_file, warn = FALSE), collapse = "\n")
   css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
+  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
 
   expect_match(ui, 'id = "cv-config-open"', fixed = TRUE)
   expect_match(ui, 'icon("share-alt")', fixed = TRUE)
@@ -574,6 +576,23 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     fixed = TRUE
   )
   expect_match(controller, "pendingShare.retried", fixed = TRUE)
+  expect_match(controller, "crypto.getRandomValues", fixed = TRUE)
+  expect_match(
+    controller,
+    "Share link ready. Saving in the background…",
+    fixed = TRUE
+  )
+  expect_match(controller, "copy.textContent = ok ? 'Copied ✓'", fixed = TRUE)
+  expect_match(
+    controller,
+    "window.setTimeout(function () { fallbackCopy",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    'c("nonce", "action", "config", "token", "receipt")',
+    fixed = TRUE
+  )
   receive_share <- substr(
     controller,
     regexpr("function receiveShare", controller, fixed = TRUE),

@@ -91,7 +91,14 @@ cv_share_store_cleanup <- function(store, now = Sys.time()) {
   invisible(NULL)
 }
 
-cv_share_store_create <- function(store, json, fingerprint, now = Sys.time()) {
+cv_share_store_create <- function(
+  store,
+  json,
+  fingerprint,
+  now = Sys.time(),
+  token = NULL,
+  receipt = NULL
+) {
   if (!inherits(store, "cv_share_store")) {
     cv_share_abort("internal", "The share store is unavailable.")
   }
@@ -115,9 +122,19 @@ cv_share_store_create <- function(store, json, fingerprint, now = Sys.time()) {
   expires_at <- cv_share_time(
     as.POSIXct(now, tz = "UTC") + CV_SHARE_TTL_SECONDS
   )
-  for (attempt in seq_len(3L)) {
-    token <- cv_share_token()
-    receipt <- cv_share_token()
+  supplied <- !is.null(token) || !is.null(receipt)
+  if (supplied && (is.null(token) || is.null(receipt))) {
+    cv_share_abort("invalid_token", "The share credentials are incomplete.")
+  }
+  if (supplied) {
+    token <- cv_share_token_input(token, "link")
+    receipt <- cv_share_token_input(receipt, "receipt")
+  }
+  for (attempt in seq_len(if (supplied) 1L else 3L)) {
+    if (!supplied) {
+      token <- cv_share_token()
+      receipt <- cv_share_token()
+    }
     written <- tryCatch(
       {
         DBI::dbExecute(
@@ -145,7 +162,10 @@ cv_share_store_create <- function(store, json, fingerprint, now = Sys.time()) {
       return(list(token = token, receipt = receipt, expires_at = expires_at))
     }
   }
-  cv_share_abort("internal", "The share link could not be created.")
+  cv_share_abort(
+    if (supplied) "share_collision" else "internal",
+    "The share link could not be created. Try again."
+  )
 }
 
 cv_share_store_fetch <- function(store, token, fingerprint, now = Sys.time()) {

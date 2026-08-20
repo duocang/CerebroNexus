@@ -397,14 +397,16 @@ observeEvent(
         if (identical(action, "share_create")) {
           request <- cv_config_record(
             request,
-            c("nonce", "action", "config"),
+            c("nonce", "action", "config", "token", "receipt"),
             path = "$.share_request"
           )
           prepared <- cv_config_prepare(request$config, cells = bundle$cells)
           created <- cv_share_store_create(
             coordviews_share_store,
             prepared$json,
-            bundle$dataset_fingerprint
+            bundle$dataset_fingerprint,
+            token = request$token,
+            receipt = request$receipt
           )
           cv_share_send(
             nonce,

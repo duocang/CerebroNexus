@@ -98,3 +98,30 @@ test_that("a share record is opaque, revocable, and expires after ninety days", 
     class = "cv_share_error"
   )
 })
+
+test_that("a browser may supply cryptographically generated share credentials", {
+  store <- share_env$cv_share_store_open(tempfile(fileext = ".sqlite"))
+  withr::defer(DBI::dbDisconnect(store$con))
+  token <- paste(rep("A", 43L), collapse = "")
+  receipt <- paste(rep("B", 43L), collapse = "")
+  created <- share_env$cv_share_store_create(
+    store,
+    '{"schema":"test"}',
+    "fingerprint-a",
+    token = token,
+    receipt = receipt
+  )
+
+  expect_identical(created$token, token)
+  expect_identical(created$receipt, receipt)
+  expect_error(
+    share_env$cv_share_store_create(
+      store,
+      '{"schema":"test"}',
+      "fingerprint-a",
+      token = token,
+      receipt = receipt
+    ),
+    class = "cv_share_error"
+  )
+})

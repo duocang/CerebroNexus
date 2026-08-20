@@ -122,6 +122,19 @@
     url.searchParams.set('linked_view', token);
     return url.toString();
   }
+  function randomShareToken() {
+    if (!window.crypto || !window.crypto.getRandomValues || !window.btoa) return null;
+    var bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    var binary = '';
+    bytes.forEach(function (value) { binary += String.fromCharCode(value); });
+    return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function removeShareRecord(token) {
+    if (!token) return;
+    writeShares(readShares().filter(function (item) { return item.token !== token; }));
+    renderShares();
+  }
   function renderShares() {
     var list = byId('cv-share-list');
     var create = byId('cv-share-create');
@@ -136,8 +149,15 @@
       var row = document.createElement('div'); row.className = 'cv-share-row';
       var text = document.createElement('span'); text.textContent = 'Expires ' + snapshotDate(record.expires_at);
       var copy = snapshotButton('Copy link', function () {
+        copy.disabled = true;
+        copy.textContent = 'Copying…';
         copyText(shareUrl(record.token)).then(function (ok) {
+          copy.textContent = ok ? 'Copied ✓' : 'Copy failed';
           status(ok ? 'Share link copied.' : 'Clipboard access was blocked.', ok ? 'success' : 'error');
+          window.setTimeout(function () {
+            copy.textContent = 'Copy link';
+            copy.disabled = false;
+          }, 1400);
         });
       }, record);
       var revoke = snapshotButton('Revoke', function () { sendShare('share_revoke', record); }, record);
@@ -256,9 +276,23 @@
     pendingShare = { nonce: nonce, action: action, payload: null, retried: false };
     if (pendingShareTimer) window.clearTimeout(pendingShareTimer);
     status(action === 'share_open' ? 'Opening shared view…' :
-      (action === 'share_revoke' ? 'Revoking share link…' : 'Creating share link…'), 'working');
+      (action === 'share_revoke' ? 'Revoking share link…' : 'Preparing share link…'), 'working');
     var payload = { nonce: nonce, action: action };
-    if (action === 'share_create') payload.config = state.capture();
+    if (action === 'share_create') {
+      payload.config = state.capture();
+      var token = randomShareToken(), receipt = randomShareToken();
+      if (token && receipt) {
+        payload.token = token; payload.receipt = receipt;
+        pendingShare.provisionalToken = token;
+        var expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+        var records = readShares().filter(function (item) { return item.token !== token; });
+        records.unshift({ token: token, receipt: receipt, expires_at: expires,
+          fingerprint: currentFingerprint() });
+        writeShares(records); renderShares();
+        status('Share link ready. Saving in the background…', 'success');
+        copyText(shareUrl(token));
+      }
+    }
     if (record) { payload.token = record.token; if (record.receipt) payload.receipt = record.receipt; }
     pendingShare.payload = payload;
     pendingShareTimer = window.setTimeout(function retryShareRequest() {
@@ -269,25 +303,34 @@
         pendingShareTimer = window.setTimeout(retryShareRequest, 4000);
         return;
       }
+      removeShareRecord(pendingShare.provisionalToken);
       pendingShare = null; pendingShareTimer = null;
-      status('The share request did not finish. Try again.', 'error');
+      status('The share link could not be saved. Try again.', 'error');
     }, 2000);
     Shiny.setInputValue('coordviews_share_request', payload, { priority: 'event' });
   }
   function receiveShare(result) {
     if (!result || !pendingShare || String(result.nonce) !== pendingShare.nonce) return;
-    var action = pendingShare.action; pendingShare = null;
+    var completedShare = pendingShare;
+    var action = completedShare.action; pendingShare = null;
     if (pendingShareTimer) window.clearTimeout(pendingShareTimer);
     pendingShareTimer = null;
     if (result.action !== action) {
       status('The page received an unexpected share response.', 'error'); return;
     }
-    if (!result.ok) { status(result.message || 'The share request failed.', 'error'); return; }
+    if (!result.ok) {
+      removeShareRecord(completedShare.provisionalToken);
+      status(result.message || 'The share request failed.', 'error'); return;
+    }
     if (action === 'share_create') {
       var records = readShares().filter(function (item) { return item.token !== result.token; });
       records.unshift({ token: result.token, receipt: result.receipt,
         expires_at: result.expires_at, fingerprint: currentFingerprint() });
       writeShares(records); renderShares();
+      if (completedShare.provisionalToken) {
+        status('Share link saved. It expires in 90 days.', 'success');
+        return;
+      }
       status('Share link created. Copying it to your clipboard…', 'success');
       var copyFinished = false;
       var copyNotice = window.setTimeout(function () {
@@ -379,8 +422,23 @@
   }
   function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text).then(function () { return true; })
-        .catch(function () { return fallbackCopy(text); });
+      return new Promise(function (resolve) {
+        var settled = false;
+        var timer = null;
+        function finish(copied) {
+          if (settled) return;
+          settled = true;
+          if (timer) window.clearTimeout(timer);
+          resolve(!!copied);
+        }
+        function useFallback() {
+          fallbackCopy(text).then(finish).catch(function () { finish(false); });
+        }
+        timer = window.setTimeout(function () { fallbackCopy(text).then(finish); }, 700);
+        try {
+          navigator.clipboard.writeText(text).then(function () { finish(true); }).catch(useFallback);
+        } catch (ignore) { useFallback(); }
+      });
     }
     return fallbackCopy(text);
   }
