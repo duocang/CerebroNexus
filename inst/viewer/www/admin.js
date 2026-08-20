@@ -3,6 +3,7 @@
 
   var records = [];
   var pending = null;
+  var shinyBound = false;
   function byId(id) { return document.getElementById(id); }
   function nonce() {
     return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
@@ -99,6 +100,20 @@
       render(); status('Share link revoked.', 'success');
     }
   }
+  function connectShiny() {
+    if (shinyBound || typeof Shiny === 'undefined' || !Shiny.addCustomMessageHandler) return;
+    shinyBound = true;
+    Shiny.addCustomMessageHandler('viewer_admin_result', receive);
+    Shiny.addCustomMessageHandler('viewer_admin_access', function (result) {
+      if (result && result.allowed === false) {
+        window.history.replaceState(
+          {},
+          '',
+          appBasePath() + window.location.search + window.location.hash
+        );
+      }
+    });
+  }
   function boot() {
     var refresh = byId('viewer-admin-refresh');
     if (refresh) refresh.addEventListener('click', function () { send('list'); });
@@ -117,21 +132,9 @@
         send('revoke', target.dataset.token);
       }
     });
-    if (/\/admin\/?$/.test(window.location.pathname) && typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('viewer_admin_deep_link', nonce(), { priority: 'event' });
-    }
-    if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
-      Shiny.addCustomMessageHandler('viewer_admin_result', receive);
-      Shiny.addCustomMessageHandler('viewer_admin_access', function (result) {
-        if (result && result.allowed === false) {
-          window.history.replaceState(
-            {},
-            '',
-            appBasePath() + window.location.search + window.location.hash
-          );
-        }
-      });
-    }
+    if (window.jQuery) window.jQuery(document).one('shiny:connected', connectShiny);
+    else document.addEventListener('shiny:connected', connectShiny, { once: true });
+    connectShiny();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

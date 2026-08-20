@@ -55,6 +55,10 @@ if (viewer_is_admin(session)) {
         "viewer_admin_capability",
         list(allowed = TRUE, user = viewer_auth_context(session)$user)
       )
+      if (viewer_admin_route(isolate(session$clientData$url_pathname))) {
+        updateTabItems(session, "sidebar", selected = "admin")
+        viewer_admin_inventory()
+      }
     },
     once = TRUE
   )
@@ -65,6 +69,17 @@ if (viewer_is_admin(session)) {
         "viewer_admin_capability",
         list(allowed = FALSE)
       )
+      if (viewer_admin_route(isolate(session$clientData$url_pathname))) {
+        showNotification(
+          "Administrator access is required.",
+          type = "error",
+          duration = 6
+        )
+        session$sendCustomMessage(
+          "viewer_admin_access",
+          list(allowed = FALSE)
+        )
+      }
     },
     once = TRUE
   )
@@ -78,27 +93,6 @@ observeEvent(
     }
   },
   ignoreInit = TRUE
-)
-
-observeEvent(
-  input[["viewer_admin_deep_link"]],
-  {
-    if (viewer_is_admin(session)) {
-      updateTabItems(session, "sidebar", selected = "admin")
-      viewer_admin_inventory()
-    } else {
-      showNotification(
-        "Administrator access is required.",
-        type = "error",
-        duration = 6
-      )
-      session$sendCustomMessage(
-        "viewer_admin_access",
-        list(allowed = FALSE)
-      )
-    }
-  },
-  ignoreInit = FALSE
 )
 
 observeEvent(

@@ -86,6 +86,38 @@ test_that("Admin UI and assets expose one coherent management page", {
   expect_match(ui, "Shared views", fixed = TRUE)
   expect_match(server, "viewer_admin_request", fixed = TRUE)
   expect_match(server, "viewer_is_admin(session)", fixed = TRUE)
-  expect_match(server, "ignoreInit = FALSE", fixed = TRUE)
+  expect_match(server, 'session$clientData$url_pathname', fixed = TRUE)
   expect_match(script, "Copied ✓", fixed = TRUE)
+  expect_match(script, "shiny:connected", fixed = TRUE)
+})
+
+test_that("Admin deep links switch tabs only after the menu is inserted", {
+  server <- paste(
+    readLines(
+      file.path(viewer_admin_inst, "viewer/admin/server.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  admin_start <- regexpr(
+    "if (viewer_is_admin(session)) {",
+    server,
+    fixed = TRUE
+  )[[1L]]
+  viewer_start <- regexpr(
+    "} else {",
+    server,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(admin_start, 0L)
+  expect_gt(viewer_start, admin_start)
+  admin_flush <- substr(server, admin_start, viewer_start - 1L)
+  insert_at <- regexpr("insertUI(", admin_flush, fixed = TRUE)[[1L]]
+  select_at <- regexpr(
+    'updateTabItems(session, "sidebar", selected = "admin")',
+    admin_flush,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(insert_at, 0L)
+  expect_gt(select_at, insert_at)
 })
