@@ -839,7 +839,7 @@ tab_coordinated_views <- tabItem(
         `aria-labelledby` = "cv-config-transfer-title",
         tags$div(
           class = "cv-config-region-head",
-          tags$h5(id = "cv-config-transfer-title", "Move a view"),
+          tags$h5(id = "cv-config-transfer-title", "Import or export a view"),
           tags$p("Download a JSON file, copy it, or open one from disk.")
         ),
         div(

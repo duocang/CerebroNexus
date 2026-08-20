@@ -520,7 +520,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     'class = "cv-config-region cv-config-transfer"',
     fixed = TRUE
   )
-  expect_match(ui, '"Move a view"', fixed = TRUE)
+  expect_match(ui, '"Import or export a view"', fixed = TRUE)
   expect_match(
     ui,
     'class = "cv-config-region cv-config-save-local"',
