@@ -4797,13 +4797,6 @@ var focusPanel = null;
       Shiny.setInputValue(id, value || '', { priority: 'event' });
     }
   }
-  function configSpaceForFocus() {
-    var found = null;
-    panels.forEach(function (p) {
-      if (focusPanel && p.key === focusPanel) found = p.spaceId || null;
-    });
-    return found;
-  }
   function configCloneMode() {
     return (typeof CLONE_MODE === 'string' && CLONE_MODE === 'bands')
       ? 'bands' : 'stack';
@@ -4913,7 +4906,6 @@ var focusPanel = null;
           selection_mode: selectMode === 'box' ? 'box' : 'lasso',
           clone_layout: configCloneMode()
         },
-        focus_space: configSpaceForFocus(),
         lenses: configLenses(),
         spatial_backgrounds: configSpatialBackgrounds(),
         trekker: {
@@ -5084,9 +5076,6 @@ var focusPanel = null;
         } : null
       };
     });
-    if (view.focus_space != null && !lenses[view.focus_space]) {
-      configFail('The focused lens is unavailable here.');
-    }
     Object.keys(allowedSpaces).forEach(function (space) {
       if (!lenses[space]) configFail('A linked lens is missing from this configuration.');
     });
@@ -5178,7 +5167,6 @@ var focusPanel = null;
         selectionMode: display.selection_mode,
         cloneLayout: display.clone_layout
       },
-      focusSpace: view.focus_space,
       lenses: lenses,
       backgrounds: backgrounds,
       trekker: {
@@ -5189,16 +5177,6 @@ var focusPanel = null;
     };
   }
 
-  function setConfigFocus(spaceId) {
-    var desired = null;
-    if (spaceId != null) {
-      panels.forEach(function (panel) {
-        if (panel.spaceId != null && panel.spaceId === spaceId) desired = panel.key;
-      });
-    }
-    if (focusPanel && focusPanel !== desired) setFocusPanel(focusPanel);
-    if (desired && focusPanel !== desired) setFocusPanel(desired);
-  }
   function commitConfigState(state) {
     setSelectedProjections(state.projections);
     setSelectedSpatial(state.spatialSections);
@@ -5288,7 +5266,6 @@ var focusPanel = null;
       panel.rot = lens.rotation ? { rx: lens.rotation.rx, ry: lens.rotation.ry } : null;
       project(panel);
     });
-    setConfigFocus(state.focusSpace);
     updateClipControl(); clipRange(); renderLegend(); updateSpaceScopedControls();
     positionAllRangeVals(); seedImgControls();
     clearLassos();
@@ -5323,8 +5300,7 @@ var focusPanel = null;
       colourMode: colorBy,
       projections: selectedProjections.slice(),
       spatialSections: selectedSpatial.slice(),
-      activeSpatial: activeSpatial() ? activeSpatial()._sampleName || null : null,
-      focusSpace: configSpaceForFocus()
+      activeSpatial: activeSpatial() ? activeSpatial()._sampleName || null : null
     };
   }
   function reportConfigReadiness() {
