@@ -86,5 +86,6 @@ test_that("Admin UI and assets expose one coherent management page", {
   expect_match(ui, "Shared views", fixed = TRUE)
   expect_match(server, "viewer_admin_request", fixed = TRUE)
   expect_match(server, "viewer_is_admin(session)", fixed = TRUE)
+  expect_match(server, "ignoreInit = FALSE", fixed = TRUE)
   expect_match(script, "Copied ✓", fixed = TRUE)
 })

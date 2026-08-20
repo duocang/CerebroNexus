@@ -98,7 +98,7 @@ observeEvent(
       )
     }
   },
-  ignoreInit = TRUE
+  ignoreInit = FALSE
 )
 
 observeEvent(
