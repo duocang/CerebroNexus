@@ -66,6 +66,8 @@
   function openDialog() {
     var dialog = byId('cv-config-dialog');
     if (!dialog || dialog.open) return;
+    status('');
+    setUploadLoading(false);
     lastFocus = document.activeElement;
     dialog.showModal();
     var close = byId('cv-config-close');
@@ -74,6 +76,8 @@
   function closeDialog() {
     var dialog = byId('cv-config-dialog');
     if (dialog && dialog.open) dialog.close();
+    status('');
+    setUploadLoading(false);
   }
   function request(action) {
     var state = adapter();
@@ -240,6 +244,8 @@
     var upload = byId('coordviews_config_upload');
     if (upload) upload.addEventListener('change', beginUpload);
     dialog.addEventListener('close', function () {
+      status('');
+      setUploadLoading(false);
       var target = lastFocus && document.contains(lastFocus) ? lastFocus : open;
       lastFocus = null;
       if (target) target.focus();
