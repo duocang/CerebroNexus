@@ -272,14 +272,14 @@
 .coordviews-page .cv-selactions.cv-collapse {
   opacity: 0; transform: translateY(-4px); pointer-events: none;
 }
-/* Zoom + Clear share identical compact metrics and differ only by colour, so
-   they read as equal-weight actions on the cohort rather than more settings. */
+/* Cohort actions use one quiet, borderless surface. Colour communicates the
+   action class; geometry stays deliberately identical. */
 .coordviews-page .cv-selactions button {
   min-width: 126px; height: 30px; box-sizing: border-box;
   display: inline-flex; align-items: center; justify-content: center;
   white-space: nowrap; font-family: inherit; cursor: pointer;
   padding: 0 9px; font-size: 12.5px; font-weight: 700; line-height: 1;
-  border: 1px solid; border-radius: 6px;
+  border: 0; border-radius: 6px;
 }
 .coordviews-page .cv-selactions .cv-config-open {
   min-width: 0; border-color: var(--cv-border, #d8dce3);
@@ -288,18 +288,10 @@
 .coordviews-page .cv-selactions .cv-config-open:hover:not(:disabled) {
   background: var(--cv-surface2, #f5f6f8); border-color: var(--cv-text3, #868990);
 }
-/* These two are deliberately OUTSIDE the amber vocabulary. Everything else in
-   the bar is a persistent control whose amber means "this is on"; these appear
-   only once a selection exists and act ON it. Sharing amber with the always-on
-   controls is exactly what made them stop standing out.
-   Blue and red rather than green and red: green/red is the pairing that
+/* Blue and red rather than green and red: green/red is the pairing that
    collapses for the ~8% of men with red-green colour blindness, and blue also
    ties Zoom to the blue already used for selection geometry — the lasso outline
    and the minimap's viewport frame. */
-/* Only background and text are set: the shared rule above declares `border: 1px
-   solid` with no colour, so the border follows `color`. That is what lets one
-   set of box metrics produce two clearly different buttons, and it gives each an
-   outline strong enough to hold its own against the panels behind it. */
 .coordviews-page .cv-zoombtn {
   background: var(--cv-blue50); color: var(--c-blue-700, #1d4ea0);
 }
@@ -308,10 +300,10 @@
    than needing the label to be read. The border is set explicitly here — the
    text has gone white, and an inherited white border would ring the button. */
 .coordviews-page .cv-zoombtn.is-zoomed {
-  border-color: var(--cv-blue); background: var(--cv-blue); color: #fff;
+  background: var(--cv-blue); color: #fff;
 }
 .coordviews-page .cv-zoombtn.is-zoomed:hover {
-  background: var(--c-blue-600, #2560bd); border-color: var(--c-blue-600, #2560bd);
+  background: var(--c-blue-600, #2560bd);
 }
 /* Clear — red, for the one action here that takes something away. */
 .coordviews-page .cv-clearbtn {
