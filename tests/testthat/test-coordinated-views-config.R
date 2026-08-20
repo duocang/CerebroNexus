@@ -532,6 +532,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(css, ".cv-config-upload .btn-file > span", fixed = TRUE)
   expect_match(css, ".cv-config-upload .input-group-prepend", fixed = TRUE)
   expect_match(css, ".shiny-file-input-progress { display: none", fixed = TRUE)
+  expect_match(css, "display: grid; width: 100%; min-width: 0;", fixed = TRUE)
   expect_match(
     shell,
     'cerebro_js("coordviews-config.js", defer = TRUE)',
