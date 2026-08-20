@@ -1560,7 +1560,6 @@ var focusPanel = null;
   function renderWorkspaceGuide() {
     var guide = $('cv-workspace-guide');
     var text = $('cv-workspace-guide-text');
-    var overview = $('cv-workspace-overview');
     if (!guide) return;
     var active = !!((sel && sel.size) || (pick != null && nicheSet));
     if (focusPanel) {
@@ -1571,13 +1570,11 @@ var focusPanel = null;
         text.textContent = 'Focused view: ' + ((sp && sp.label) || 'linked lens') +
           ' · other views remain visible and linked.';
       }
-      if (overview) overview.style.display = '';
     } else {
       if (text) {
         text.textContent = 'Drag in any view to create an active cohort. ' +
           'Use Focus to enlarge one lens while keeping the others linked.';
       }
-      if (overview) overview.style.display = 'none';
     }
     revealEl(guide, !!D && !active);
   }
@@ -5481,10 +5478,6 @@ var focusPanel = null;
       }
       var moranBadge = t && t.closest && t.closest('.cv-moran-badge');
       if (moranBadge) { openMoranDialog(moranBadge); return; }
-      if (t && t.closest && t.closest('#cv-workspace-overview')) {
-        if (focusPanel) setFocusPanel(focusPanel);
-        return;
-      }
       var bgMode = t && t.closest && t.closest('[data-cv-bg-mode]');
       if (bgMode) {
         var mode = bgMode.getAttribute('data-cv-bg-mode');
