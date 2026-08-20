@@ -845,7 +845,17 @@ builder_build_stage_status_body_ui <- function(model) {
   builder_build_stage_status_validate(model)
   switch(
     model$state,
-    ready = NULL,
+    ready = if (
+      !isTRUE(model$can_build) &&
+        identical(model$message, "The background worker is not ready.")
+    ) {
+      div(
+        class = "builder-build-waiting builder-build-blocked",
+        span(model$message)
+      )
+    } else {
+      NULL
+    },
     choosing_folder = NULL,
     preparing = div(
       class = "builder-build-waiting",

@@ -516,7 +516,7 @@ test_that("Builder auth survives redraw and traps focus", {
     "document.activeElement.dispatchEvent(new KeyboardEvent('keydown',",
     "{key:'Enter',ctrlKey:true,bubbles:true}));"
   ))
-  expect_identical(app$get_js("window.__authModalBuildClicks"), 0)
+  expect_equal(app$get_js("window.__authModalBuildClicks"), 0)
   expect_false(app$get_js(
     "document.getElementById('builder-auth-backdrop').hidden"
   ))

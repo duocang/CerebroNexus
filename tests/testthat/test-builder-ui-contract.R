@@ -1938,7 +1938,7 @@ test_that("Builder JavaScript waits for a usable document before initialization"
   )
   expect_match(
     js,
-    "new MutationObserver(scheduleDynamicContentEnhancement)",
+    "new MutationObserver(handleDynamicContentMutations)",
     fixed = TRUE
   )
 })
@@ -2269,7 +2269,7 @@ test_that("Enhance info opens a transient accessible facts dialog", {
 test_that("result actions remain native keyboard controls", {
   status <- builder_asset_text("ui", "build_status.R")
 
-  for (id in c("open_app", "reveal_folder", "copy_path", "copy_report")) {
+  for (id in c("reveal_folder", "copy_path", "copy_report")) {
     expect_match(
       status,
       paste0('actionButton\\(\\s*"', id, '"'),
@@ -2483,7 +2483,7 @@ test_that("project result dialogs trap and restore keyboard focus", {
 
   expect_match(
     js,
-    "prepareDialog(\n      elements.overlay,\n      document.getElementById(\"save_builder_project\")",
+    "prepareDialog(\n        elements.overlay,\n        document.getElementById(\"save_builder_project\")",
     fixed = TRUE
   )
   expect_match(

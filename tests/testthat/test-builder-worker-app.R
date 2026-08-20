@@ -383,7 +383,7 @@ test_that("workflow server exclusively owns loading and stage rendering", {
     workbench,
     paste0(
       "upload = tagAppendAttributes(\n",
-      "      builder_empty_workbench_ui(),\n",
+      "      builder_empty_workbench_ui(project_active = !is.null(builder_project())),\n",
       "      class = \"builder-stage-upload\",\n",
       "      `data-workflow-stage` = \"upload\""
     ),

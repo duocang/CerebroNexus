@@ -319,11 +319,13 @@ test_that("session binds successful App results to the dispatched build id", {
   local({
     builder_repo_source("session.R")
     builder_installed_app_contract_version <- function(namespace = NULL) 1L
+    builder_worker_require_capability <- function(name) invisible(TRUE)
     builder_execute_plan <- function(
       plan,
       stage,
       registry,
-      auth_material = NULL
+      auth_material = NULL,
+      objects = list()
     ) {
       list(state = "success", publishable = TRUE, stage = stage)
     }

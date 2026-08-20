@@ -497,8 +497,12 @@ test_that("client scheduler serializes file and example dispatch", {
   expect_match(client, "importSyncPending = true", fixed = TRUE)
   expect_match(client, "builder_import_sync_request", fixed = TRUE)
   expect_match(client, "builder_import_sync", fixed = TRUE)
-  expect_match(client, 'entry.state = "unknown"', fixed = TRUE)
-  expect_match(client, "Waiting to restore the import state", fixed = TRUE)
+  expect_match(
+    client,
+    'entry.state = record.state || entry.stateBeforePause || "unknown"',
+    fixed = TRUE
+  )
+  expect_match(client, "Connection lost · Waiting to restore", fixed = TRUE)
   expect_match(client, 'getElementById("ds_client_import_queue")', fixed = TRUE)
   expect_match(client, "removeReadyImportOverlap", fixed = TRUE)
   expect_match(client, '"builder_focus_dataset_start"', fixed = TRUE)

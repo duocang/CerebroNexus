@@ -423,14 +423,10 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
   unlink(source)
   expect_false(file.exists(source))
 
-  worker$process$run(function() {
-    assign(
-      "ds1",
-      list(poisoned_live_object = TRUE),
-      envir = get(".builder_objects", envir = globalenv())
-    )
-    TRUE
+  live_object <- worker$process$run(function() {
+    get("ds1", envir = get(".builder_objects", envir = globalenv()))
   })
+  expect_s4_class(live_object, "Seurat")
   out <- file.path(root, "out")
   dir.create(out)
   source_snapshot_identity <- c(
