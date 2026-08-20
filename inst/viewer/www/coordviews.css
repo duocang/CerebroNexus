@@ -1430,17 +1430,20 @@
   background: var(--cv-amber50, #fff4ec); border-color: var(--cv-amber200, #fed7aa);
 }
 .cv-config-save-local.is-disabled {
-  background: var(--cv-surface2, #f5f7fa); border-color: var(--cv-border, #e5e7eb);
+  background: var(--cv-surface, #fff); border-color: var(--cv-border, #e5e7eb);
 }
 .cv-config-share {
-  background: #f7fbff; border-color: #cbdced;
+  background: var(--cv-amber50, #fff4ec); border-color: var(--cv-amber200, #fed7aa);
+}
+.cv-config-share.is-disabled {
+  background: var(--cv-surface, #fff); border-color: var(--cv-border, #e5e7eb);
 }
 .cv-share-create {
   width: 100%; min-height: 40px; display: inline-flex; align-items: center;
-  justify-content: center; gap: 7px; border: 1px solid #bfd3e8; border-radius: 8px;
-  background: #fff; color: #245b8f; font: 700 12px/1 inherit; cursor: pointer;
+  justify-content: center; gap: 7px; border: 1px solid var(--cv-amber200, #fed7aa); border-radius: 8px;
+  background: #fff; color: var(--cv-amber700, #c85a0e); font: 700 12px/1 inherit; cursor: pointer;
 }
-.cv-share-create:hover:not(:disabled) { background: #edf6ff; }
+.cv-share-create:hover:not(:disabled) { background: var(--cv-amber100, #ffe4d1); }
 .cv-share-create:disabled {
   border-color: var(--cv-border, #e5e7eb); background: var(--cv-surface2, #f5f7fa);
   color: var(--cv-text3, #868990); cursor: not-allowed;
@@ -1448,7 +1451,7 @@
 .cv-share-list { display: grid; gap: 6px; margin-top: 8px; }
 .cv-share-row {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #dce8f3;
+  align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid var(--cv-amber200, #fed7aa);
 }
 .cv-share-row > span { color: var(--cv-text3, #868990); font-size: 10.5px; }
 .cv-config-actions {
@@ -1548,7 +1551,7 @@
 .cv-snapshot-action:hover { background: var(--cv-surface2, #f5f7fa); color: var(--cv-text, #252527); }
 .cv-snapshot-save:disabled {
   opacity: 1; cursor: not-allowed;
-  border-color: var(--cv-border, #e5e7eb); background: var(--cv-surface, #fff);
+  border-color: var(--cv-border, #e5e7eb); background: var(--cv-surface2, #f5f7fa);
   color: var(--cv-text3, #868990);
 }
 .cv-snapshot-list { display: grid; gap: 6px; margin-top: 8px; }

@@ -125,6 +125,8 @@
   function renderShares() {
     var list = byId('cv-share-list');
     var create = byId('cv-share-create');
+    var shareRegion = byId('cv-config-share');
+    if (shareRegion) shareRegion.classList.toggle('is-disabled', exportBusy || !exportReady);
     if (create) create.disabled = exportBusy || !exportReady;
     if (!list) return;
     list.replaceChildren();

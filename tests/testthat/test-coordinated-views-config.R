@@ -555,6 +555,11 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "share_open", fixed = TRUE)
   expect_match(controller, "share_revoke", fixed = TRUE)
   expect_match(controller, "linked_view", fixed = TRUE)
+  expect_match(
+    controller,
+    "shareRegion.classList.toggle('is-disabled'",
+    fixed = TRUE
+  )
   expect_match(controller, "pendingShare.retried", fixed = TRUE)
   expect_match(
     controller,
@@ -562,6 +567,9 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     fixed = TRUE
   )
   expect_match(controller, "saveSnapshotLocally", fixed = TRUE)
+  expect_match(css, ".cv-config-share.is-disabled", fixed = TRUE)
+  expect_false(grepl("background: #f7fbff", css, fixed = TRUE))
+  expect_false(grepl("color: #245b8f", css, fixed = TRUE))
   expect_match(controller, "JSON.stringify(state.capture())", fixed = TRUE)
   expect_false(grepl("request('save')", controller, fixed = TRUE))
   expect_match(controller, "Restore did not finish", fixed = TRUE)
