@@ -25,13 +25,18 @@
       if (button) button.disabled = !!busy;
     });
   }
-  function setReady(ready) {
+  function setReady(ready, selectedCells) {
     var button = byId('cv-config-open');
     if (!button) return;
-    button.disabled = !ready;
-    button.setAttribute('aria-disabled', ready ? 'false' : 'true');
-    button.title = ready ? 'Save or restore this linked workspace' :
-      'Linked views is waiting for a data set';
+    var hasSelection = Number(selectedCells) > 0;
+    var enabled = !!ready && hasSelection;
+    button.disabled = !enabled;
+    button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    button.title = !ready
+      ? 'Linked views is waiting for a data set'
+      : hasSelection
+        ? 'Save or restore this linked workspace'
+        : 'Select at least one cell to save or share this view';
   }
   function openDialog() {
     var dialog = byId('cv-config-dialog');
@@ -214,9 +219,19 @@
       closeDialog();
     });
     window.addEventListener('cerebro:linkedviews-ready', function (event) {
-      setReady(!!(event.detail && event.detail.ready));
+      var detail = event.detail || {};
+      setReady(!!detail.ready, detail.selectedCells);
     });
-    setReady(!!(adapter() && adapter().ready()));
+    window.addEventListener('cerebro:linkedviews-selection', function (event) {
+      var state = adapter();
+      setReady(
+        !!(state && state.ready()),
+        event.detail && event.detail.selectedCells
+      );
+    });
+    var state = adapter();
+    var summary = state && state.summary ? state.summary() : null;
+    setReady(!!(state && state.ready()), summary && summary.selectedCells);
 
     if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
       Shiny.addCustomMessageHandler('coordviews_config_result', receive);

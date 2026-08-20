@@ -1394,7 +1394,8 @@
   justify-content: center; gap: 7px; padding: 8px 10px;
   border: 1px solid var(--cv-border, #d8dce3); border-radius: 8px;
   background: var(--cv-surface, #fff); color: var(--cv-text, #252527);
-  font: 700 12.5px/1.2 inherit; cursor: pointer;
+  font-family: inherit; font-size: 12.5px; font-weight: 700; line-height: 1.2;
+  cursor: pointer;
 }
 .cv-config-action:hover:not(:disabled),
 .cv-config-upload .btn-file:hover {
@@ -1407,6 +1408,8 @@
 .cv-config-action-primary:hover:not(:disabled) {
   background: var(--c-amber-600, #ea6a0f); border-color: var(--c-amber-600, #ea6a0f);
 }
+.cv-config-action > span,
+.cv-config-upload .btn-file > span { font: inherit !important; }
 .cv-config-action:disabled { opacity: .55; cursor: wait; }
 .cv-config-actions > .cv-config-action,
 .cv-config-actions > .cv-config-upload { height: 100%; }

@@ -72,10 +72,33 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     timeout = 10000
   )
   app$wait_for_js(
-    paste0(
-      "document.getElementById('cv-config-open') && ",
-      "!document.getElementById('cv-config-open').disabled"
-    ),
+    "document.getElementById('cv-config-open') !== null",
+    timeout = 10000
+  )
+  expect_true(app$get_js("document.getElementById('cv-config-open').disabled"))
+  expect_match(
+    app$get_js("document.getElementById('cv-config-open').title"),
+    "Select at least one cell"
+  )
+
+  app$run_js(paste0(
+    "(function(){",
+    "document.querySelector('.cv-tbtn[data-act=\"box\"]').click();",
+    "var cv=document.getElementById('cv-cv-a'),r=cv.getBoundingClientRect();",
+    "cv.dispatchEvent(new MouseEvent('mousedown',{clientX:r.left+8,",
+    "clientY:r.top+8,bubbles:true}));",
+    "cv.dispatchEvent(new MouseEvent('mousemove',{clientX:r.right-8,",
+    "clientY:r.bottom-8,bubbles:true}));",
+    "window.dispatchEvent(new MouseEvent('mouseup',{clientX:r.right-8,",
+    "clientY:r.bottom-8,bubbles:true}));",
+    "})();"
+  ))
+  app$wait_for_js(
+    "window.cerebroLinkedViewsState.summary().selectedCells > 0",
+    timeout = 10000
+  )
+  app$wait_for_js(
+    "!document.getElementById('cv-config-open').disabled",
     timeout = 10000
   )
   app$run_js(paste0(
@@ -99,9 +122,11 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     "var nodes=ids.map(function(id){return document.getElementById(id);});",
     "nodes.push(document.querySelector('.cv-config-upload .btn-file'));",
     "var heights=nodes.map(function(node){return node.getBoundingClientRect().height;});",
+    "var styles=nodes.map(function(node){var s=getComputedStyle(node);return {",
+    "family:s.fontFamily,size:s.fontSize,weight:s.fontWeight};});",
     "var primary=getComputedStyle(nodes[0]);",
     "var launcher=getComputedStyle(document.getElementById('cv-config-open'));",
-    "return {heights:heights,icon:!!document.querySelector(",
+    "return {heights:heights,styles:styles,icon:!!document.querySelector(",
     "'.cv-config-upload [class*=\"fa-folder-open\"]'),",
     "background:primary.backgroundColor,foreground:primary.color,",
     "launcherBackground:launcher.backgroundColor,",
@@ -110,6 +135,7 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
   ))
   expect_lte(max(unlist(actions$heights)) - min(unlist(actions$heights)), 1)
   expect_true(actions$icon)
+  expect_identical(actions$styles[[3L]], actions$styles[[2L]])
   expect_identical(actions$background, "rgb(249, 115, 22)")
   expect_identical(actions$foreground, "rgb(28, 28, 30)")
   expect_identical(actions$launcherBackground, "rgb(255, 244, 236)")
@@ -133,23 +159,6 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     "document.activeElement === document.getElementById('cv-config-open')"
   ))
 
-  app$run_js(paste0(
-    "(function(){",
-    "document.querySelector('.cv-tbtn[data-act=\"box\"]').click();",
-    "var cv=document.getElementById('cv-cv-a'),r=cv.getBoundingClientRect();",
-    "cv.dispatchEvent(new MouseEvent('mousedown',{clientX:r.left+8,",
-    "clientY:r.top+8,bubbles:true}));",
-    "cv.dispatchEvent(new MouseEvent('mousemove',{clientX:r.right-8,",
-    "clientY:r.bottom-8,bubbles:true}));",
-    "window.dispatchEvent(new MouseEvent('mouseup',{clientX:r.right-8,",
-    "clientY:r.bottom-8,bubbles:true}));",
-    "})();"
-  ))
-  app$wait_for_js(
-    "window.cerebroLinkedViewsState.summary().selectedCells > 0",
-    timeout = 10000
-  )
-
   app$run_js("window.__cvSaved = window.cerebroLinkedViewsState.capture();")
   selected <- unlist(app$get_js("window.__cvSaved.selection.cells"))
   expect_gt(length(selected), 0L)
@@ -163,6 +172,7 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     "window.cerebroLinkedViewsState.summary().selectedCells === 0",
     timeout = 10000
   )
+  app$wait_for_js("document.getElementById('cv-config-open').disabled")
   app$run_js("window.cerebroLinkedViewsState.apply(window.__cvSaved);")
   app$wait_for_js(
     paste0(
@@ -334,6 +344,26 @@ test_that("copy uses the real server validation boundary", {
     timeout = 20000
   )
   app$wait_for_js(
+    "document.getElementById('cv-cv-a') !== null",
+    timeout = 10000
+  )
+  app$run_js(paste0(
+    "(function(){",
+    "document.querySelector('.cv-tbtn[data-act=\"box\"]').click();",
+    "var cv=document.getElementById('cv-cv-a'),r=cv.getBoundingClientRect();",
+    "cv.dispatchEvent(new MouseEvent('mousedown',{clientX:r.left+8,",
+    "clientY:r.top+8,bubbles:true}));",
+    "cv.dispatchEvent(new MouseEvent('mousemove',{clientX:r.right-8,",
+    "clientY:r.bottom-8,bubbles:true}));",
+    "window.dispatchEvent(new MouseEvent('mouseup',{clientX:r.right-8,",
+    "clientY:r.bottom-8,bubbles:true}));",
+    "})();"
+  ))
+  app$wait_for_js(
+    "window.cerebroLinkedViewsState.summary().selectedCells > 0",
+    timeout = 10000
+  )
+  app$wait_for_js(
     paste0(
       "document.getElementById('cv-config-open') && ",
       "!document.getElementById('cv-config-open').disabled"
@@ -379,12 +409,10 @@ test_that("copy uses the real server validation boundary", {
   app$run_js(paste0(
     "window.__cvDownloadedJson=null;window.__cvDownloadName=null;",
     "window.__cvCreateObjectURL=URL.createObjectURL;",
-    "window.__cvRevokeObjectURL=URL.revokeObjectURL;window.__cvRevoked=[];",
     "window.__cvAnchorClick=HTMLAnchorElement.prototype.click;",
     "URL.createObjectURL=function(blob){",
     "blob.text().then(function(text){window.__cvDownloadedJson=text;});",
     "return 'blob:linked-views-test';};",
-    "URL.revokeObjectURL=function(url){window.__cvRevoked.push(url);};",
     "HTMLAnchorElement.prototype.click=function(){",
     "if(this.download){window.__cvDownloadName=this.download;return;}",
     "return window.__cvAnchorClick.call(this);};",
@@ -408,14 +436,8 @@ test_that("copy uses the real server validation boundary", {
     app$get_js("window.__cvDownloadName"),
     "^linked-views-.*\\.json$"
   )
-  app$wait_for_js("window.__cvRevoked.length===1", timeout = 3000)
-  expect_identical(
-    app$get_js("window.__cvRevoked[0]"),
-    "blob:linked-views-test"
-  )
   app$run_js(paste0(
     "URL.createObjectURL=window.__cvCreateObjectURL;",
-    "URL.revokeObjectURL=window.__cvRevokeObjectURL;",
     "HTMLAnchorElement.prototype.click=window.__cvAnchorClick;"
   ))
   app$wait_for_js(

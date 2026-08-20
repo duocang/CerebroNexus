@@ -1514,6 +1514,7 @@ var focusPanel = null;
     updateSelActions();
     updateZselButtons();
     renderSelbar(); renderReadout(); reportSelection(); drawAll();
+    reportConfigSelection();
   }
   // Subtle reveal/collapse for the selection bar + the Zoom/Clear group, so they
   // fade/slide in and out instead of popping. Elements start with `cv-collapse`
@@ -5198,7 +5199,17 @@ var focusPanel = null;
   function reportConfigReadiness() {
     try {
       window.dispatchEvent(new CustomEvent('cerebro:linkedviews-ready', {
-        detail: { ready: !!(D && D.dataset_fingerprint) }
+        detail: {
+          ready: !!(D && D.dataset_fingerprint),
+          selectedCells: sel && sel.size ? sel.size : 0
+        }
+      }));
+    } catch (ignore) { /* CustomEvent is unavailable only in obsolete browsers. */ }
+  }
+  function reportConfigSelection() {
+    try {
+      window.dispatchEvent(new CustomEvent('cerebro:linkedviews-selection', {
+        detail: { selectedCells: sel && sel.size ? sel.size : 0 }
       }));
     } catch (ignore) { /* CustomEvent is unavailable only in obsolete browsers. */ }
   }
