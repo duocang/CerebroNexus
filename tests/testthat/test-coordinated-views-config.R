@@ -514,6 +514,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "cerebro:linkedviews-selection", fixed = TRUE)
   expect_match(css, "background: var(--cv-amber", fixed = TRUE)
   expect_match(css, ".cv-config-upload .btn-file > span", fixed = TRUE)
+  expect_match(css, ".cv-config-upload .input-group-prepend", fixed = TRUE)
   expect_match(
     shell,
     'cerebro_js("coordviews-config.js", defer = TRUE)',

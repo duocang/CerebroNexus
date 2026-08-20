@@ -361,7 +361,7 @@ tab_coordinated_views <- tabItem(
           `aria-haspopup` = "dialog",
           `aria-controls` = "cv-config-dialog",
           icon("folder-open"),
-          tags$span("Workspace JSON")
+          tags$span("Import / export view…")
         ),
         ## Live "showing N / M cells" readout — hidden unless a filter/subsample
         ## reduces the view, so filtering is visible even when the panels are
