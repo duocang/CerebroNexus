@@ -1786,7 +1786,6 @@ var focusPanel = null;
     b.classList.toggle('is-zoomed', zoomed);
   }
   function toggleZoom() {
-    clearLassos();   // reprojecting invalidates the screen-space lasso
     if (zoomed) { resetZoom(); zoomed = false; }
     else { zoomed = zoomToSelection(); }
     updateZoomBtn();
@@ -1883,7 +1882,6 @@ var focusPanel = null;
   // panel centre gives the plain in/out of the toolbar buttons.
   function zoomAt(p, mx, my, factor) {
     if (!p._S) return;
-    clearLassos();
     var v = p.view || { cx: 0.5, cy: 0.5, span: 1 };
     var span = v.span * factor;
     if (span >= 1) {
@@ -5050,6 +5048,10 @@ var focusPanel = null;
     Object.keys(allowedSpaces).forEach(function (space) {
       if (!lenses[space]) configFail('A linked lens is missing from this configuration.');
     });
+    var selectionSpace = spaceById[selectionGeometry.space];
+    if (!selectionSpace || selectionSpace.z) {
+      configFail('The saved selection panel must be a two-dimensional linked view.');
+    }
 
     if ((!D.clone || !spaceById.clone) && display.clone_layout !== 'stack') {
       configFail('The requested clone layout is unavailable here.');
@@ -5495,13 +5497,13 @@ var focusPanel = null;
           else if (act === 'zin') { zoomStep(pp, 0.8); }
           else if (act === 'zout') { zoomStep(pp, 1.25); }
           else if (act === 'focus') { setFocusPanel(pp.key); }
-          else if (act === 'zsel') { clearLassos(); zoomToSelection(pp); }
+          else if (act === 'zsel') { zoomToSelection(pp); }
           else if (act === 'reset') {
             // rotation is part of "where you are looking" too
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
             if (isProjectionPanel(pp)) { zoomed = false; updateZoomBtn(); }
-            clearLassos(); drawAll();
+            drawAll();
           }
         }
         return;
@@ -5661,7 +5663,6 @@ var focusPanel = null;
       }
     });
     window.addEventListener('resize', function () {
-      clearLassos();   // screen-space lasso no longer matches the reprojected points
       if (D) resizeAll();
       // the grid just changed shape; an open card has to be re-centred on it
       if (cardOpen()) centreCard();
