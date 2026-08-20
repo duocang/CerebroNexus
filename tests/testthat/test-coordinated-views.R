@@ -115,6 +115,25 @@ test_that("Linked views reflows after its workspace becomes wider", {
   expect_match(js, "resizeObserver.observe(panesHost)", fixed = TRUE)
 })
 
+test_that("Linked views chooses its grid from both viewport dimensions", {
+  ui_file <- file.path(dirname(bundle_file), "UI.R")
+  js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
+  skip_if_not(file.exists(ui_file) && file.exists(js_file))
+  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  expect_match(js, "function bestOverviewGrid", fixed = TRUE)
+  expect_match(js, "Math.ceil(panelCount / cols)", fixed = TRUE)
+  expect_match(js, "widthSide", fixed = TRUE)
+  expect_match(js, "heightSide", fixed = TRUE)
+  expect_match(js, "VIEWPORT_GUTTER", fixed = TRUE)
+  expect_match(ui, 'class = "cv-secondary-analysis"', fixed = TRUE)
+  expect_match(
+    ui,
+    'class = "cv-secondary-analysis",\n      style = "display:none"'
+  )
+})
+
 test_that("Linked views keeps replacement controls contextual and user-facing", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")

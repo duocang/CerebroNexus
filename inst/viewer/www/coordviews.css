@@ -528,7 +528,8 @@
   /* A restored view can briefly sit in a shrink-to-fit tab wrapper.  Make the
      grid claim the page width before its JS tracks are measured; otherwise two
      saved lenses inherit that narrow measurement and remain stranded left. */
-  display: grid; width: 100%; min-width: 0;
+  display: grid; width: 100%; min-width: 0; box-sizing: border-box;
+  padding: 18px;
   gap: 14px; justify-content: center; align-content: start;
   /* anchors the detail card to the grid's centre (it is absolutely positioned,
      so it stays out of the grid's own layout) */
