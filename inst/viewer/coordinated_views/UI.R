@@ -902,13 +902,14 @@ tab_coordinated_views <- tabItem(
       tags$section(
         id = "cv-config-share",
         class = "cv-config-region cv-config-share",
+        hidden = "hidden",
         `aria-labelledby` = "cv-config-share-title",
         tags$div(
           class = "cv-config-region-head",
           tags$h5(id = "cv-config-share-title", "Share with a link"),
           tags$p(
-            "Anyone with the link can restore this view in the matching cell population. ",
-            "Links expire after 90 days."
+            "Create a read-only snapshot link for this view. ",
+            "Manage all active links from Admin; links expire after 90 days."
           )
         ),
         tags$button(

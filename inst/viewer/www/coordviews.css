@@ -1435,6 +1435,7 @@
 .cv-config-share {
   background: var(--cv-amber50, #fff4ec); border-color: var(--cv-amber200, #fed7aa);
 }
+.cv-config-share[hidden] { display: none; }
 .cv-config-share.is-disabled {
   background: var(--cv-surface, #fff); border-color: var(--cv-border, #e5e7eb);
 }
@@ -1450,7 +1451,7 @@
 }
 .cv-share-list { display: grid; gap: 6px; margin-top: 8px; }
 .cv-share-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
   align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid var(--cv-amber200, #fed7aa);
 }
 .cv-share-row > span { color: var(--cv-text3, #868990); font-size: 10.5px; }

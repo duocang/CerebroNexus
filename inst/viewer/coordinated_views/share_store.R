@@ -156,17 +156,19 @@ cv_share_store_create <- function(
   expires_at <- cv_share_time(
     as.POSIXct(now, tz = "UTC") + CV_SHARE_TTL_SECONDS
   )
-  supplied <- !is.null(token) || !is.null(receipt)
-  if (supplied && (is.null(token) || is.null(receipt))) {
-    cv_share_abort("invalid_token", "The share credentials are incomplete.")
-  }
-  if (supplied) {
+  supplied_token <- !is.null(token)
+  supplied_receipt <- !is.null(receipt)
+  if (supplied_token) {
     token <- cv_share_token_input(token, "link")
+  }
+  if (supplied_receipt) {
     receipt <- cv_share_token_input(receipt, "receipt")
   }
-  for (attempt in seq_len(if (supplied) 1L else 3L)) {
-    if (!supplied) {
+  for (attempt in seq_len(if (supplied_token) 1L else 3L)) {
+    if (!supplied_token) {
       token <- cv_share_token()
+    }
+    if (!supplied_receipt) {
       receipt <- cv_share_token()
     }
     written <- tryCatch(
@@ -200,7 +202,7 @@ cv_share_store_create <- function(
     }
   }
   cv_share_abort(
-    if (supplied) "share_collision" else "internal",
+    if (supplied_token) "share_collision" else "internal",
     "The share link could not be created. Try again."
   )
 }

@@ -325,7 +325,7 @@ cv_share_send <- function(nonce, action, ok, ...) {
     list(nonce = nonce, action = action, ok = isTRUE(ok)),
     list(...)
   )
-  if (nzchar(nonce) && action %in% c("share_create", "share_revoke")) {
+  if (nzchar(nonce) && identical(action, "share_create")) {
     assign(nonce, payload, envir = coordviews_share_response_cache)
   }
   session$sendCustomMessage(
@@ -371,7 +371,7 @@ observeEvent(
         cv_config_check_node_limit(request)
         request <- cv_config_record(
           request,
-          c("nonce", "action", "config", "token", "receipt"),
+          c("nonce", "action", "config", "token"),
           required = c("nonce", "action"),
           path = "$.share_request"
         )
@@ -379,7 +379,7 @@ observeEvent(
         action <- cv_config_choice(
           request$action,
           "$.share_request.action",
-          c("share_create", "share_open", "share_revoke")
+          c("share_create", "share_open")
         )
         if (cv_share_replay(nonce, action)) {
           return(invisible(NULL))
@@ -395,9 +395,15 @@ observeEvent(
           cv_config_abort("invalid_dataset", "Linked views is not ready.")
         }
         if (identical(action, "share_create")) {
+          if (!viewer_is_admin(session)) {
+            cv_share_abort(
+              "forbidden",
+              "Administrator access is required."
+            )
+          }
           request <- cv_config_record(
             request,
-            c("nonce", "action", "config", "token", "receipt"),
+            c("nonce", "action", "config", "token"),
             path = "$.share_request"
           )
           prepared <- cv_config_prepare(request$config, cells = bundle$cells)
@@ -406,14 +412,14 @@ observeEvent(
             prepared$json,
             bundle$dataset_fingerprint,
             token = request$token,
-            receipt = request$receipt
+            creator = viewer_auth_context(session)$user,
+            dataset_label = cv_selected_dataset_name() %||% ""
           )
           cv_share_send(
             nonce,
             action,
             TRUE,
             token = created$token,
-            receipt = created$receipt,
             expires_at = created$expires_at
           )
         } else if (identical(action, "share_open")) {
@@ -437,18 +443,6 @@ observeEvent(
             colour_data = colour_data,
             selected_cells = length(normalized$selection$cells)
           )
-        } else if (identical(action, "share_revoke")) {
-          request <- cv_config_record(
-            request,
-            c("nonce", "action", "token", "receipt"),
-            path = "$.share_request"
-          )
-          cv_share_store_revoke(
-            coordviews_share_store,
-            request$token,
-            request$receipt
-          )
-          cv_share_send(nonce, action, TRUE, token = request$token)
         } else {
           cv_share_abort("invalid_action", "The share request is invalid.")
         }

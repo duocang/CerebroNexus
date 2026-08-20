@@ -123,7 +123,13 @@
     if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
       Shiny.addCustomMessageHandler('viewer_admin_result', receive);
       Shiny.addCustomMessageHandler('viewer_admin_access', function (result) {
-        if (result && result.allowed === false) window.history.replaceState({}, '', appBasePath());
+        if (result && result.allowed === false) {
+          window.history.replaceState(
+            {},
+            '',
+            appBasePath() + window.location.search + window.location.hash
+          );
+        }
       });
     }
   }

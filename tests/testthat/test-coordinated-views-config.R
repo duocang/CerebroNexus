@@ -531,6 +531,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(ui, 'id = "cv-snapshot-name-dialog"', fixed = TRUE)
   expect_match(ui, 'id = "cv-snapshot-name-input"', fixed = TRUE)
   expect_match(ui, 'id = "cv-config-share"', fixed = TRUE)
+  expect_match(ui, 'hidden = "hidden"', fixed = TRUE)
   expect_match(ui, 'id = "cv-share-create"', fixed = TRUE)
   expect_match(ui, 'id = "cv-share-list"', fixed = TRUE)
   expect_match(
@@ -561,20 +562,21 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "URL.createObjectURL", fixed = TRUE)
   expect_match(controller, "setUploadLoading", fixed = TRUE)
   expect_match(controller, "cerebro.linked-views.snapshots.v1", fixed = TRUE)
-  expect_match(
-    controller,
+  expect_false(grepl(
     "cerebro.linked-views.share-receipts.v1",
+    controller,
     fixed = TRUE
-  )
+  ))
   expect_match(controller, "share_create", fixed = TRUE)
   expect_match(controller, "share_open", fixed = TRUE)
-  expect_match(controller, "share_revoke", fixed = TRUE)
+  expect_false(grepl("share_revoke", controller, fixed = TRUE))
   expect_match(controller, "linked_view", fixed = TRUE)
   expect_match(
     controller,
-    "shareRegion.classList.toggle('is-disabled'",
+    "shareRegion.hidden = !shareAdminAllowed",
     fixed = TRUE
   )
+  expect_match(controller, "viewer_admin_capability", fixed = TRUE)
   expect_match(controller, "pendingShare.retried", fixed = TRUE)
   expect_match(controller, "crypto.getRandomValues", fixed = TRUE)
   expect_match(
@@ -590,32 +592,28 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   )
   expect_match(
     server,
-    'c("nonce", "action", "config", "token", "receipt")',
+    'c("nonce", "action", "config", "token")',
     fixed = TRUE
   )
-  receive_share <- substr(
-    controller,
-    regexpr("function receiveShare", controller, fixed = TRUE),
-    nchar(controller)
-  )
-  share_create_result <- substr(
-    receive_share,
-    regexpr("if (action === 'share_create') {", receive_share, fixed = TRUE),
-    regexpr(
-      "} else if (action === 'share_revoke')",
-      receive_share,
-      fixed = TRUE
-    ) -
-      1L
+  expect_match(server, "if (!viewer_is_admin(session))", fixed = TRUE)
+  expect_match(
+    server,
+    "creator = viewer_auth_context(session)$user",
+    fixed = TRUE
   )
   expect_match(
-    share_create_result,
-    "Share link created. Copying it to your clipboard…",
+    server,
+    "dataset_label = cv_selected_dataset_name()",
     fixed = TRUE
   )
+  create_branch <- substr(
+    server,
+    regexpr('if (identical(action, "share_create"))', server, fixed = TRUE),
+    regexpr('} else if (identical(action, "share_open"))', server, fixed = TRUE)
+  )
   expect_lt(
-    regexpr("Share link created. Copying", share_create_result, fixed = TRUE),
-    regexpr("copyText(shareUrl", share_create_result, fixed = TRUE)
+    regexpr("viewer_is_admin(session)", create_branch, fixed = TRUE),
+    regexpr("cv_config_prepare", create_branch, fixed = TRUE)
   )
   expect_match(
     controller,
@@ -623,7 +621,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     fixed = TRUE
   )
   expect_match(controller, "saveSnapshotLocally", fixed = TRUE)
-  expect_match(css, ".cv-config-share.is-disabled", fixed = TRUE)
+  expect_match(css, ".cv-config-share[hidden]", fixed = TRUE)
   expect_false(grepl("background: #f7fbff", css, fixed = TRUE))
   expect_false(grepl("color: #245b8f", css, fixed = TRUE))
   expect_match(controller, "JSON.stringify(state.capture())", fixed = TRUE)

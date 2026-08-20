@@ -126,6 +126,23 @@ test_that("a browser may supply cryptographically generated share credentials", 
   )
 })
 
+test_that("an immediate public token does not require a browser revoke receipt", {
+  store <- share_env$cv_share_store_open(tempfile(fileext = ".sqlite"))
+  withr::defer(DBI::dbDisconnect(store$con))
+  token <- paste(rep("C", 43L), collapse = "")
+  created <- share_env$cv_share_store_create(
+    store,
+    '{"schema":"test"}',
+    "fingerprint-a",
+    token = token,
+    creator = "alice",
+    dataset_label = "PBMC"
+  )
+
+  expect_identical(created$token, token)
+  expect_match(created$receipt, "^[A-Za-z0-9_-]{43}$")
+})
+
 test_that("administrators can inventory and revoke independent links", {
   store <- share_env$cv_share_store_open(tempfile(fileext = ".sqlite"))
   withr::defer(DBI::dbDisconnect(store$con))
