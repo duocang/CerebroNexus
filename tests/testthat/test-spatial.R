@@ -43,7 +43,7 @@ test_that("getSpatialData errors on unknown spatial entry", {
 })
 
 test_that("spatial accessor methods are defined on the class", {
-  cls <- Cerebro_v1.3
+  cls <- Cerebro
   for (m in c("addSpatialData", "getSpatialData", "availableSpatial")) {
     expect_true(is.function(cls$public_methods[[m]]), info = m)
   }
@@ -53,7 +53,7 @@ test_that("addSpatialData validates its input structure", {
   # A malformed entry (missing coordinates/expression) must be rejected so the
   # class contract getSpatialData() relies on cannot be violated silently.
   cls_text <- paste(
-    deparse(Cerebro_v1.3$public_methods$addSpatialData),
+    deparse(Cerebro$public_methods$addSpatialData),
     collapse = "\n"
   )
   expect_match(cls_text, "coordinates", fixed = TRUE)
@@ -210,16 +210,19 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
   expect_true(file.exists(cfg_path))
   cfg <- readRDS(cfg_path)
   expect_true(!is.null(cfg[["spatial_images"]]))
-  # path rewritten to the bundle-relative spatial asset directory
-  stored <- cfg[["spatial_images"]][["Xenium demo"]]
+  # path rewritten under the canonical dataset -> FOV -> image hierarchy
+  by_fov <- cfg[["spatial_images"]][["Xenium demo"]]
+  expect_length(by_fov, 1L)
+  stored <- unname(unlist(by_fov, use.names = FALSE))
+  expect_length(stored, 1L)
   expect_match(stored, "^spatial-assets/", perl = TRUE)
   # and the image really landed in the bundle
   expect_true(file.exists(file.path(out_dir, stored)))
 })
 
-test_that("createShinyApp drops unmatched spatial_images with a warning", {
-  # A spatial_images entry whose name matches no dataset must be ignored (not
-  # errored) so a typo never blocks app generation.
+test_that("createShinyApp rejects unmatched spatial_images", {
+  # An unmatched dataset key is a broken public data contract. Failing before
+  # bundling prevents an apparently successful App with silently missing data.
   skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), img)
@@ -229,7 +232,7 @@ test_that("createShinyApp drops unmatched spatial_images with a warning", {
   )
   on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
 
-  expect_warning(
+  expect_error(
     suppressMessages(
       createShinyApp(
         cerebro_data = c("Xenium demo" = spatial_crb),
@@ -239,10 +242,8 @@ test_that("createShinyApp drops unmatched spatial_images with a warning", {
         verbose = FALSE
       )
     ),
-    "No matching names"
+    "not present"
   )
-  cfg <- readRDS(file.path(out_dir, "cerebro_config.rds"))
-  expect_null(cfg[["spatial_images"]])
 })
 
 test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
@@ -431,9 +432,10 @@ test_that("app.R ships the Visium H&E overlay pre-aligned", {
     readLines(system.file("app.R", package = "CerebroNexus")),
     collapse = "\n"
   )
-  expect_match(app_src, "\"spatial_images_flip_y\"", fixed = TRUE)
-  expect_match(app_src, "\"spatial_images_offset_x\"", fixed = TRUE)
-  expect_match(app_src, "\"spatial_images_scale_x\"", fixed = TRUE)
+  expect_match(app_src, "\"spatial_image_settings\"", fixed = TRUE)
+  expect_match(app_src, "offset_x = 600", fixed = TRUE)
+  expect_match(app_src, "scale_x = 1.55", fixed = TRUE)
+  expect_match(app_src, "flip_y = TRUE", fixed = TRUE)
 })
 
 ##----------------------------------------------------------------------------##
@@ -472,4 +474,28 @@ test_that(".getSpatialData tolerates a real Slide-seq object (NA-named coord col
   expect_true(nrow(res$coordinates) > 0)
   # the NA-named column must not have leaked through the sanitiser
   expect_false(any(is.na(colnames(res$coordinates))))
+})
+
+test_that("Linked views keeps multiple selected spatial sections", {
+  ui <- paste(
+    readLines(file.path(shiny_root, "coordinated_views", "UI.R")),
+    collapse = "\n"
+  )
+  js <- paste(
+    readLines(file.path(shiny_root, "www", "coordviews.js")),
+    collapse = "\n"
+  )
+
+  expect_match(ui, "id = \"cv-pick-spatial\"", fixed = TRUE)
+  expect_match(ui, "multiple = \"multiple\"", fixed = TRUE)
+  expect_match(
+    js,
+    "var previousSelected = selectedSpatial.slice()",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "selEl.selectize.setValue(selectedSpatial, true)",
+    fixed = TRUE
+  )
 })
