@@ -354,6 +354,16 @@ tab_coordinated_views <- tabItem(
       ## the Active cohort bar below, not to this settings row.
       div(
         class = "cv-topbar-right",
+        tags$button(
+          type = "button",
+          id = "cv-config-open",
+          class = "cv-config-open",
+          disabled = "disabled",
+          `aria-haspopup` = "dialog",
+          `aria-controls` = "cv-config-dialog",
+          icon("share-nodes"),
+          tags$span("Save / share")
+        ),
         ## Live "showing N / M cells" readout — hidden unless a filter/subsample
         ## reduces the view, so filtering is visible even when the panels are
         ## coloured by a different variable than the one being filtered.
@@ -795,6 +805,73 @@ tab_coordinated_views <- tabItem(
             )
           )
         )
+      )
+    ),
+
+    ## A portable Linked views configuration contains the cohort's cell
+    ## barcodes and this workspace's controls, but never the source data, image
+    ## pixels, expression values, file paths, or Builder project identity.
+    tags$dialog(
+      id = "cv-config-dialog",
+      class = "cv-config-dialog",
+      `aria-labelledby` = "cv-config-title",
+      `aria-describedby` = "cv-config-privacy",
+      tags$button(
+        type = "button",
+        id = "cv-config-close",
+        class = "cv-config-close",
+        `aria-label` = "Close Save and share",
+        HTML("&times;")
+      ),
+      tags$div(class = "cv-config-kicker", "Portable linked workspace"),
+      tags$h4(id = "cv-config-title", "Save or share this view"),
+      tags$p(
+        id = "cv-config-privacy",
+        class = "cv-config-privacy",
+        "The JSON includes selected cell barcodes and view settings. It does ",
+        "not include expression data, coordinates, image pixels, or local paths."
+      ),
+      div(
+        class = "cv-config-actions",
+        tags$button(
+          type = "button",
+          id = "cv-config-download",
+          class = "cv-config-action cv-config-action-primary",
+          icon("download"),
+          tags$span("Download JSON")
+        ),
+        tags$button(
+          type = "button",
+          id = "cv-config-copy",
+          class = "cv-config-action",
+          icon("copy"),
+          tags$span("Copy JSON")
+        ),
+        div(
+          class = "cv-config-upload",
+          fileInput(
+            "coordviews_config_upload",
+            label = NULL,
+            accept = c("application/json", ".json"),
+            buttonLabel = "Open JSON…",
+            placeholder = "No file selected"
+          )
+        )
+      ),
+      tags$p(
+        id = "cv-config-status",
+        class = "cv-config-status",
+        role = "status",
+        `aria-live` = "polite",
+        "Ready to save this linked workspace."
+      )
+    ),
+    div(
+      class = "cv-config-download-host",
+      `aria-hidden` = "true",
+      downloadLink(
+        "coordviews_config_download",
+        label = "Download prepared Linked views configuration"
       )
     ),
 

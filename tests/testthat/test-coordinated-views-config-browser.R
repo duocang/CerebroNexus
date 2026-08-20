@@ -71,6 +71,45 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     "window.cerebroLinkedViewsState && window.cerebroLinkedViewsState.ready()",
     timeout = 10000
   )
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-config-open') && ",
+      "!document.getElementById('cv-config-open').disabled"
+    ),
+    timeout = 10000
+  )
+  app$run_js(paste0(
+    "document.getElementById('cv-config-open').focus();",
+    "document.getElementById('cv-config-open').click();"
+  ))
+  app$wait_for_js("document.getElementById('cv-config-dialog').open")
+  expect_true(app$get_js(paste0(
+    "document.getElementById('cv-config-dialog').contains(",
+    "document.activeElement)"
+  )))
+  expect_identical(
+    app$get_js(
+      "document.getElementById('cv-config-status').getAttribute('aria-live')"
+    ),
+    "polite"
+  )
+  app$run_js(paste0(
+    "window.__cvStatusBefore=document.getElementById('cv-config-status').textContent;",
+    "Shiny.shinyapp.dispatchMessage(JSON.stringify({custom:{",
+    "coordviews_config_result:{nonce:'stale',action:'apply',ok:false,",
+    "message:'must be ignored'}}}));"
+  ))
+  expect_identical(
+    app$get_js("document.getElementById('cv-config-status').textContent"),
+    app$get_js("window.__cvStatusBefore")
+  )
+  app$run_js(
+    "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));"
+  )
+  app$wait_for_js("!document.getElementById('cv-config-dialog').open")
+  expect_true(app$get_js(
+    "document.activeElement === document.getElementById('cv-config-open')"
+  ))
 
   app$run_js(paste0(
     "(function(){",
@@ -195,5 +234,77 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
   expect_identical(
     app$get_js("JSON.stringify(window.__cvCapabilityAfter)"),
     app$get_js("JSON.stringify(window.__cvCapabilityBefore)")
+  )
+})
+
+test_that("copy uses the real server validation boundary", {
+  local_app_support(config_browser_inst)
+  app <- config_browser_app()
+  on.exit(app$stop(), add = TRUE)
+
+  app$wait_for_js(
+    "window.cerebroLinkedViewsState && window.cerebroLinkedViewsState.ready()",
+    timeout = 20000
+  )
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-config-open') && ",
+      "!document.getElementById('cv-config-open').disabled"
+    ),
+    timeout = 10000
+  )
+  app$run_js(paste0(
+    "document.getElementById('cv-config-open').focus();",
+    "document.getElementById('cv-config-open').click();",
+    "document.getElementById('cv-config-copy').click();"
+  ))
+  app$wait_for_js(
+    paste0(
+      "(function(){var text=document.getElementById('cv-config-status').textContent;",
+      "return text.indexOf('Preparing')<0&&",
+      "(text.indexOf('Copied')>=0||text.indexOf('Clipboard access was blocked')>=0);",
+      "})()"
+    ),
+    timeout = 20000
+  )
+  expect_no_match(
+    app$get_js("document.getElementById('cv-config-status').textContent"),
+    "could not be opened|different cell population"
+  )
+
+  original_size <- app$get_js(
+    "window.cerebroLinkedViewsState.capture().view.display.point_size"
+  )
+  config_path <- tempfile("linked-views-", fileext = ".json")
+  on.exit(unlink(config_path), add = TRUE)
+  writeLines(
+    app$get_js("JSON.stringify(window.cerebroLinkedViewsState.capture())"),
+    config_path,
+    useBytes = TRUE
+  )
+  app$run_js(paste0(
+    "(function(){var input=document.getElementById('cv-ps');",
+    "input.value='7';input.dispatchEvent(new Event('input',{bubbles:true}));",
+    "})()"
+  ))
+  expect_equal(
+    app$get_js(
+      "window.cerebroLinkedViewsState.capture().view.display.point_size"
+    ),
+    7
+  )
+  app$upload_file(coordviews_config_upload = config_path)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-config-status').textContent.indexOf(",
+      "'Restored ')===0"
+    ),
+    timeout = 20000
+  )
+  expect_equal(
+    app$get_js(
+      "window.cerebroLinkedViewsState.capture().view.display.point_size"
+    ),
+    original_size
   )
 })

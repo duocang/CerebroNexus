@@ -350,6 +350,7 @@ ui <- dashboardPage(
       cerebro_js("trekker.js", defer = TRUE),
       cerebro_js("hla_motifs.js", defer = TRUE),
       cerebro_js("coordviews.js", defer = TRUE),
+      cerebro_js("coordviews-config.js", defer = TRUE),
       cerebro_js("viewer-shell.js", defer = TRUE),
       cerebro_js("multiselect.js", defer = TRUE),
       ## Shared projection-scatter engine, loaded ONCE here instead of being

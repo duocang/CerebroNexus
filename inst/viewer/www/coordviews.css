@@ -248,6 +248,19 @@
   font-size: 15px; color: var(--cv-amber700); font-weight: 700;
   white-space: nowrap;
 }
+.coordviews-page .cv-config-open {
+  height: 32px; display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 12px; border: 1px solid var(--c-blue-200, #bad2f1);
+  border-radius: 6px; background: var(--cv-blue50, #edf5ff);
+  color: var(--c-blue-700, #1d4ea0); font: 700 12.5px/1 inherit;
+  white-space: nowrap; cursor: pointer;
+}
+.coordviews-page .cv-config-open:hover:not(:disabled) {
+  background: var(--cv-blue100, #dceaff); border-color: var(--cv-blue, #3b78c8);
+}
+.coordviews-page .cv-config-open:disabled {
+  opacity: .48; cursor: not-allowed;
+}
 /* Zoom + Clear live inside the active-cohort bar, beside the selection they
    affect. They stay horizontal and move to a new flex line only when needed. */
 .coordviews-page .cv-selactions {
@@ -1346,6 +1359,75 @@
   border: 1px solid var(--cv-border, #ececec); border-radius: 12px;
   color: var(--cv-text, #252527); background: var(--cv-surface, #fff);
   box-shadow: var(--shadow-4, 0 18px 52px rgba(0, 0, 0, .22));
+}
+
+/* ---- portable Linked views configuration ------------------------------- */
+.cv-config-dialog {
+  position: relative; width: min(620px, calc(100vw - 32px));
+  padding: 24px; border: 1px solid var(--cv-border, #e5e7eb);
+  border-radius: 14px; color: var(--cv-text, #252527);
+  background: var(--cv-surface, #fff);
+  box-shadow: var(--shadow-4, 0 18px 52px rgba(0, 0, 0, .22));
+}
+.cv-config-dialog::backdrop { background: rgba(20, 27, 38, .48); }
+.cv-config-close {
+  position: absolute; top: 10px; right: 12px; width: 30px; height: 30px;
+  border: 0; border-radius: 7px; background: transparent;
+  color: var(--cv-text3, #777); font-size: 22px; line-height: 1; cursor: pointer;
+}
+.cv-config-close:hover { background: var(--cv-surface2, #f5f5f5); }
+.cv-config-kicker {
+  color: var(--c-blue-700, #1d4ea0); font-size: 10.5px; font-weight: 750;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.cv-config-dialog h4 { margin: 5px 38px 8px 0; font-size: 19px; }
+.cv-config-privacy {
+  margin: 0; color: var(--cv-text2, #666); font-size: 13px; line-height: 1.55;
+}
+.cv-config-actions {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch; gap: 9px; margin-top: 18px;
+}
+.cv-config-action,
+.cv-config-upload .btn-file {
+  min-height: 42px; width: 100%; display: inline-flex; align-items: center;
+  justify-content: center; gap: 7px; padding: 8px 10px;
+  border: 1px solid var(--cv-border, #d8dce3); border-radius: 8px;
+  background: var(--cv-surface, #fff); color: var(--cv-text, #252527);
+  font: 700 12.5px/1.2 inherit; cursor: pointer;
+}
+.cv-config-action:hover:not(:disabled),
+.cv-config-upload .btn-file:hover {
+  background: var(--cv-surface2, #f5f7fa); border-color: #b9c1cc;
+}
+.cv-config-action-primary {
+  border-color: var(--cv-blue, #3b78c8); background: var(--cv-blue, #3b78c8);
+  color: #fff;
+}
+.cv-config-action-primary:hover:not(:disabled) {
+  background: var(--c-blue-700, #1d4ea0); border-color: var(--c-blue-700, #1d4ea0);
+}
+.cv-config-action:disabled { opacity: .55; cursor: wait; }
+.cv-config-upload .form-group,
+.cv-config-upload .input-group { height: 100%; margin: 0; }
+.cv-config-upload .input-group { display: block; }
+.cv-config-upload .input-group-btn { display: block; width: 100%; }
+.cv-config-upload .form-control { display: none; }
+.cv-config-status {
+  min-height: 20px; margin: 14px 0 0; padding-top: 12px;
+  border-top: 1px solid var(--cv-border, #e5e7eb);
+  color: var(--cv-text2, #666); font-size: 12.5px; line-height: 1.45;
+}
+.cv-config-status.is-success { color: #176b42; }
+.cv-config-status.is-error { color: var(--cv-red700, #a72b2b); }
+.cv-config-download-host { display: none !important; }
+.cv-config-dialog :focus-visible,
+.coordviews-page .cv-config-open:focus-visible {
+  outline: 3px solid rgba(59, 120, 200, .3); outline-offset: 2px;
+}
+@media (max-width: 620px) {
+  .cv-config-dialog { padding: 20px; }
+  .cv-config-actions { grid-template-columns: 1fr; }
 }
 .cv-insight-modal::backdrop { background: rgba(0, 0, 0, .42); }
 .cv-insight-modal .cv-insight-x {
