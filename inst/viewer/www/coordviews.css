@@ -1396,7 +1396,7 @@
 }
 .cv-config-action,
 .cv-config-upload .btn-file {
-  min-height: 42px; width: 100%; display: inline-flex; align-items: center;
+  height: 56px; min-height: 56px; width: 100%; display: inline-flex; align-items: center;
   justify-content: center; gap: 7px; padding: 8px 10px;
   border: 1px solid var(--cv-border, #d8dce3); border-radius: 8px;
   background: var(--cv-surface, #fff); color: var(--cv-text, #252527);
@@ -1408,21 +1408,24 @@
   background: var(--cv-surface2, #f5f7fa); border-color: #b9c1cc;
 }
 .cv-config-action-primary {
-  border-color: var(--cv-amber, #f97316); background: var(--cv-amber, #f97316);
+  border-color: var(--cv-amber200, #fed7aa); background: var(--cv-amber50, #fff4ec);
   color: var(--cv-text, #1c1c1e);
 }
 .cv-config-action-primary:hover:not(:disabled) {
-  background: var(--c-amber-600, #ea6a0f); border-color: var(--c-amber-600, #ea6a0f);
+  background: var(--cv-amber100, #ffe4d1); border-color: var(--c-amber-300, #ffb27a);
 }
 .cv-config-action > span,
 .cv-config-upload .btn-file > span { font: inherit !important; }
 .cv-config-action:disabled { opacity: .55; cursor: wait; }
 .cv-config-actions > .cv-config-action,
-.cv-config-actions > .cv-config-upload { height: 100%; }
+.cv-config-actions > .cv-config-upload {
+  align-self: stretch; display: flex; height: 56px; min-height: 56px;
+}
 .cv-config-upload .form-group,
 .cv-config-upload .input-group,
 .cv-config-upload .input-group-btn,
 .cv-config-upload .btn-file { height: 100%; margin: 0; }
+.cv-config-upload .form-group { display: flex; width: 100%; }
 .cv-config-upload .input-group { display: block; }
 .cv-config-upload .input-group-btn { display: block; width: 100%; }
 .cv-config-upload .btn-file {
@@ -1435,6 +1438,7 @@
   border-top: 1px solid var(--cv-border, #e5e7eb);
   color: var(--cv-text2, #666); font-size: 12.5px; line-height: 1.45;
 }
+.cv-config-status:empty { display: none; }
 .cv-config-status.is-success { color: #176b42; }
 .cv-config-status.is-error { color: var(--cv-red700, #a72b2b); }
 .cv-config-download-host { display: none !important; }

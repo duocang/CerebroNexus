@@ -873,8 +873,7 @@ tab_coordinated_views <- tabItem(
         id = "cv-config-status",
         class = "cv-config-status",
         role = "status",
-        `aria-live` = "polite",
-        "Ready to save this linked workspace."
+        `aria-live` = "polite"
       )
     ),
     div(
