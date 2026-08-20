@@ -23,6 +23,13 @@ source(
   ),
   local = TRUE
 )
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/viewer/coordinated_views/config.R"
+  ),
+  local = TRUE
+)
 
 ## Always resolves to something sendable: the bundle, or a list(error = <text>)
 ## describing why this data set has no linked views. Never NULL — see the observe
@@ -50,6 +57,7 @@ coordviews_bundle <- reactive({
           )
         )
       } else {
+        b$dataset_fingerprint <- cv_config_cell_fingerprint(b$cells)
         b
       }
     },
@@ -72,6 +80,182 @@ coordviews_bundle <- reactive({
 cv_ok <- function(b) {
   if (is.null(b) || !is.null(b$error)) NULL else b
 }
+
+##----------------------------------------------------------------------------##
+## Portable Linked views configuration transport.
+##
+## The browser owns the high-frequency workspace state, but it never turns an
+## arbitrary object into a downloadable or applicable document on its own. The
+## R contract above validates the full snapshot and current cell population at
+## this boundary. Only canonical JSON reaches the clipboard/download path, and
+## only normalized state reaches the browser after upload.
+##----------------------------------------------------------------------------##
+coordviews_config_json <- reactiveVal(NULL)
+coordviews_config_filename <- reactiveVal("linked-views.json")
+
+cv_config_send_result <- function(nonce, action, ok, ...) {
+  if (is.null(nonce)) {
+    nonce <- ""
+  }
+  if (is.null(action)) {
+    action <- ""
+  }
+  session$sendCustomMessage(
+    "coordviews_config_result",
+    c(
+      list(
+        nonce = as.character(nonce),
+        action = as.character(action),
+        ok = isTRUE(ok)
+      ),
+      list(...)
+    )
+  )
+}
+
+cv_config_log_failure <- function(error) {
+  code <- if (inherits(error, "cv_config_error")) error$code else "internal"
+  warning(
+    "Linked views configuration failed [",
+    code,
+    "]: ",
+    conditionMessage(error),
+    call. = FALSE
+  )
+}
+
+observeEvent(
+  input[["coordviews_config_request"]],
+  {
+    request <- input[["coordviews_config_request"]]
+    nonce <- if (is.list(request)) request$nonce else NULL
+    action <- if (is.list(request)) request$action else NULL
+    tryCatch(
+      {
+        if (
+          !is.character(nonce) ||
+            length(nonce) != 1L ||
+            !nzchar(nonce) ||
+            !is.character(action) ||
+            length(action) != 1L ||
+            !action %in% c("copy", "download") ||
+            is.null(request$config)
+        ) {
+          cv_config_abort(
+            "invalid_request",
+            "The configuration request is invalid."
+          )
+        }
+        bundle <- cv_ok(coordviews_bundle())
+        if (is.null(bundle)) {
+          cv_config_abort("invalid_dataset", "Linked views is not ready.")
+        }
+        prepared <- cv_config_prepare(request$config, cells = bundle$cells)
+        coordviews_config_json(prepared$json)
+        coordviews_config_filename(paste0(
+          "linked-views-",
+          format(Sys.time(), "%Y%m%d-%H%M%S", tz = "UTC"),
+          ".json"
+        ))
+        cv_config_send_result(
+          nonce,
+          action,
+          TRUE,
+          json = if (identical(action, "copy")) prepared$json else NULL,
+          selected_cells = length(prepared$config$selection$cells)
+        )
+      },
+      error = function(error) {
+        cv_config_log_failure(error)
+        cv_config_send_result(
+          nonce,
+          action,
+          FALSE,
+          code = if (inherits(error, "cv_config_error")) {
+            error$code
+          } else {
+            "internal"
+          },
+          message = cv_config_safe_message(error)
+        )
+      }
+    )
+  },
+  ignoreInit = TRUE
+)
+
+output[["coordviews_config_download"]] <- downloadHandler(
+  filename = function() coordviews_config_filename(),
+  contentType = "application/json; charset=utf-8",
+  content = function(file) {
+    json <- coordviews_config_json()
+    req(!is.null(json))
+    writeBin(charToRaw(enc2utf8(json)), file)
+  }
+)
+
+observeEvent(
+  input[["coordviews_config_upload"]],
+  {
+    upload <- input[["coordviews_config_upload"]]
+    nonce <- isolate(input[["coordviews_config_upload_nonce"]])
+    tryCatch(
+      {
+        if (
+          is.null(upload) ||
+            !is.data.frame(upload) ||
+            nrow(upload) != 1L ||
+            !grepl("[.]json$", upload$name[[1L]], ignore.case = TRUE)
+        ) {
+          cv_config_abort("invalid_file", "Choose one JSON file.")
+        }
+        reported_size <- suppressWarnings(as.numeric(upload$size[[1L]]))
+        actual_size <- suppressWarnings(file.info(upload$datapath[[1L]])$size)
+        if (
+          !is.finite(reported_size) ||
+            !is.finite(actual_size) ||
+            reported_size > CV_CONFIG_MAX_BYTES ||
+            actual_size > CV_CONFIG_MAX_BYTES
+        ) {
+          cv_config_abort(
+            "too_large",
+            "The configuration is larger than 5 MiB."
+          )
+        }
+        connection <- file(upload$datapath[[1L]], open = "rb")
+        on.exit(close(connection), add = TRUE)
+        text <- rawToChar(readBin(connection, what = "raw", n = actual_size))
+        bundle <- cv_ok(coordviews_bundle())
+        if (is.null(bundle)) {
+          cv_config_abort("invalid_dataset", "Linked views is not ready.")
+        }
+        normalized <- cv_config_decode(enc2utf8(text), cells = bundle$cells)
+        cv_config_send_result(
+          nonce,
+          "apply",
+          TRUE,
+          config = normalized,
+          selected_cells = length(normalized$selection$cells)
+        )
+      },
+      error = function(error) {
+        cv_config_log_failure(error)
+        cv_config_send_result(
+          nonce,
+          "apply",
+          FALSE,
+          code = if (inherits(error, "cv_config_error")) {
+            error$code
+          } else {
+            "internal"
+          },
+          message = cv_config_safe_message(error)
+        )
+      }
+    )
+  },
+  ignoreInit = TRUE
+)
 
 ## Nothing is built or sent until the user actually opens the tab.
 ##

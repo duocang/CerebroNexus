@@ -258,3 +258,55 @@ test_that("canonical output contains only the portable allowlist", {
   expect_no_match(encoded, "token", fixed = TRUE)
   expect_no_match(encoded, "/Users/", fixed = TRUE)
 })
+
+test_that("the server prepares a canonical snapshot with its own timestamp", {
+  config <- valid_linked_view_config()
+  config$created_at <- "1999-01-01T00:00:00Z"
+  prepared <- config_env$cv_config_prepare(
+    config,
+    cells = config_cells,
+    now = as.POSIXct("2026-08-20 14:35:42", tz = "UTC")
+  )
+
+  expect_identical(prepared$config$created_at, "2026-08-20T14:35:42Z")
+  expect_identical(
+    config_env$cv_config_decode(prepared$json, cells = config_cells),
+    prepared$config
+  )
+})
+
+test_that("configuration failures map to a bounded public vocabulary", {
+  mismatch <- structure(
+    list(
+      message = "/private/path must never be shown",
+      call = NULL,
+      code = "dataset_mismatch"
+    ),
+    class = c("cv_config_error", "error", "condition")
+  )
+  malformed <- simpleError("parser leaked /private/path")
+
+  expect_identical(
+    config_env$cv_config_safe_message(mismatch),
+    "This configuration belongs to a different cell population."
+  )
+  expect_identical(
+    config_env$cv_config_safe_message(malformed),
+    "The configuration could not be opened."
+  )
+})
+
+test_that("the coordinated server exposes validated configuration transport", {
+  server_file <- file.path(config_inst, "viewer/coordinated_views/server.R")
+  server <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
+
+  expect_match(server, "/viewer/coordinated_views/config.R", fixed = TRUE)
+  expect_match(server, "cv_config_cell_fingerprint(b$cells)", fixed = TRUE)
+  expect_match(server, "coordviews_config_request", fixed = TRUE)
+  expect_match(server, "coordviews_config_upload", fixed = TRUE)
+  expect_match(server, "coordviews_config_upload_nonce", fixed = TRUE)
+  expect_match(server, "coordviews_config_download", fixed = TRUE)
+  expect_match(server, '"coordviews_config_result"', fixed = TRUE)
+  expect_match(server, "downloadHandler", fixed = TRUE)
+  expect_match(server, "CV_CONFIG_MAX_BYTES", fixed = TRUE)
+})

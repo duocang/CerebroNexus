@@ -684,3 +684,33 @@ cv_config_decode <- function(text, cells) {
   )
   cv_config_normalize(value, cells = cells)
 }
+
+cv_config_prepare <- function(config, cells, now = Sys.time()) {
+  if (!is.list(config)) {
+    cv_config_abort("invalid_type", "The configuration must be an object.")
+  }
+  config$created_at <- format(
+    as.POSIXct(now, tz = "UTC"),
+    format = "%Y-%m-%dT%H:%M:%SZ",
+    tz = "UTC"
+  )
+  normalized <- cv_config_normalize(config, cells = cells)
+  list(config = normalized, json = cv_config_encode(normalized))
+}
+
+cv_config_safe_message <- function(error) {
+  code <- if (inherits(error, "cv_config_error")) error$code else NULL
+  if (is.null(code)) {
+    code <- "unknown"
+  }
+  switch(
+    code,
+    too_large = "The configuration is larger than 5 MiB.",
+    unsupported_schema = "This is not a Linked views configuration.",
+    unsupported_version = "This configuration version is not supported.",
+    dataset_mismatch = "This configuration belongs to a different cell population.",
+    missing_cell = "The configuration selects cells that are not in this data set.",
+    invalid_reference = "The configuration uses a view that is unavailable here.",
+    "The configuration could not be opened."
+  )
+}
