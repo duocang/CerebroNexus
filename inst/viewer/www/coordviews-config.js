@@ -354,6 +354,17 @@
       status(error && error.message ? error.message : 'This view could not be saved.', 'error');
     } finally { pendingSnapshotName = null; }
   }
+  function saveSnapshotLocally(name) {
+    var state = adapter();
+    if (!state || !state.ready()) throw new Error('Linked views is not ready to save.');
+    var json = JSON.stringify(state.capture());
+    var records = readSnapshots().filter(function (record) { return record.name !== name; });
+    records.unshift({ id: nextNonce(), name: name, saved_at: new Date().toISOString(),
+      app_version: appVersion(), json: json });
+    writeSnapshots(records);
+    renderSnapshots();
+    status('Saved “' + name + '” on this device.', 'success');
+  }
   function openSnapshotNameDialog(mode, record, trigger) {
     var dialog = byId('cv-snapshot-name-dialog'), input = byId('cv-snapshot-name-input');
     if (!dialog || !input) return;
@@ -373,7 +384,11 @@
     var requestState = snapshotNameRequest, input = byId('cv-snapshot-name-input');
     var name = snapshotName(input && input.value); if (!requestState || !name) return;
     closeSnapshotNameDialog();
-    if (requestState.mode === 'save') { pendingSnapshotName = name; request('save'); return; }
+    if (requestState.mode === 'save') {
+      try { saveSnapshotLocally(name); }
+      catch (error) { status(error && error.message ? error.message : 'This view could not be saved.', 'error'); }
+      return;
+    }
     if (name === requestState.record.name) return;
     try {
       writeSnapshots(readSnapshots().map(function (item) {

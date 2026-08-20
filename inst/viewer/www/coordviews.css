@@ -1540,7 +1540,17 @@
   color: var(--cv-text2, #666); font-size: 12.5px; line-height: 1.45;
 }
 .cv-config-status:empty { display: none; }
-.cv-config-status.is-success { color: #176b42; }
+.cv-config-status.is-success {
+  display: block; margin-top: 14px; padding: 10px 12px 10px 40px;
+  border: 1px solid #a7d8bd; border-radius: 8px; background: #effaf3;
+  color: #176b42; font-weight: 650; position: relative;
+}
+.cv-config-status.is-success::before {
+  content: "✓"; position: absolute; left: 12px; top: 50%;
+  width: 18px; height: 18px; margin-top: -9px; border-radius: 50%;
+  background: #238653; color: #fff; font-size: 12px; font-weight: 800;
+  line-height: 18px; text-align: center;
+}
 .cv-config-status.is-working {
   display: block; margin-top: 14px; padding: 10px 12px 10px 36px;
   border: 1px solid var(--cv-amber200, #fed7aa); border-radius: 8px;
