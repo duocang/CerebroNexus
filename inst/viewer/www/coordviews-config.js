@@ -244,7 +244,7 @@
     button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     button.title = !ready
       ? 'Linked views is waiting for a data set'
-      : 'Download, copy, or open a linked workspace JSON file';
+      : 'Save, open, import, export, or share a linked view';
   }
   function sendShare(action, record) {
     var state = adapter();

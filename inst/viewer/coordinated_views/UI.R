@@ -357,8 +357,9 @@ tab_coordinated_views <- tabItem(
           disabled = "disabled",
           `aria-haspopup` = "dialog",
           `aria-controls` = "cv-config-dialog",
-          icon("folder-open"),
-          tags$span("Import / export view…")
+          title = "Save, open, import, export, or share a linked view",
+          icon("bookmark"),
+          tags$span("Manage views")
         ),
         ## Live "showing N / M cells" readout — hidden unless a filter/subsample
         ## reduces the view, so filtering is visible even when the panels are

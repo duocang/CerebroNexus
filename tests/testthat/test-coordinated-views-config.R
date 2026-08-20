@@ -509,6 +509,14 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
 
   expect_match(ui, 'id = "cv-config-open"', fixed = TRUE)
+  expect_match(ui, 'icon("bookmark")', fixed = TRUE)
+  expect_match(ui, 'tags$span("Manage views")', fixed = TRUE)
+  expect_match(
+    ui,
+    'title = "Save, open, import, export, or share a linked view"',
+    fixed = TRUE
+  )
+  expect_false(grepl("Import / export view…", ui, fixed = TRUE))
   expect_match(ui, 'id = "cv-config-dialog"', fixed = TRUE)
   expect_match(ui, 'id = "cv-config-status"', fixed = TRUE)
   expect_match(ui, 'id = "cv-snapshot-save"', fixed = TRUE)
