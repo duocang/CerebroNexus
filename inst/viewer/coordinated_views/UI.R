@@ -643,9 +643,12 @@ tab_coordinated_views <- tabItem(
       )
     ),
 
-    ## ---- readout: composition + top clonotypes -------------------------- ##
+    ## Keep the lightweight client readout target for internal state updates, but
+    ## do not expose it on the landing surface. The expensive server-rendered
+    ## selected-cell plot/table has no UI target here and therefore does not run.
     div(
-      style = "margin-top:14px;",
+      class = "cv-secondary-analysis",
+      style = "display:none",
       div(
         class = "cv-readout",
         id = "cv-readout",
@@ -655,16 +658,6 @@ tab_coordinated_views <- tabItem(
           "every panel, and their composition and top clonotypes appear here."
         )
       )
-    ),
-
-    ## ---- selected-cell detail views (server-rendered) ------------------- ##
-    ## Mirrors the Projection tab: a "Plot of selected cells" and a "Table of
-    ## selected cells", driven by the barcodes the client reports for the current
-    ## selection. Appears only while cells are selected. The client-side
-    ## composition/clonotype readout above stays as the quick-look summary.
-    div(
-      style = "margin-top:6px;",
-      uiOutput("coordviews_selected_cells_UI")
     ),
 
     ## ---- Trekker insights ------------------------------------------------- ##
