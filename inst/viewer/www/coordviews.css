@@ -1444,6 +1444,21 @@
   white-space: nowrap;
 }
 .cv-config-upload .form-control { display: none; }
+.cv-config-upload .shiny-file-input-progress { display: none !important; }
+.cv-config-upload { position: relative; }
+.cv-config-upload.is-uploading .btn-file { padding-bottom: 17px; }
+.cv-config-upload.is-uploading::before {
+  content: "Loading…"; position: absolute; z-index: 2; left: 12px; bottom: 6px;
+  color: var(--cv-text3, #868990); font-size: 10px; font-weight: 650;
+}
+.cv-config-upload.is-uploading::after {
+  content: ""; position: absolute; z-index: 2; right: 12px; bottom: 9px;
+  width: 44%; height: 3px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--cv-amber200, #fed7aa) 0 35%,
+    var(--cv-amber, #f97316) 50%, var(--cv-amber200, #fed7aa) 65% 100%);
+  background-size: 220% 100%; animation: cv-config-loading 1.1s linear infinite;
+}
+@keyframes cv-config-loading { to { background-position: -220% 0; } }
 .cv-config-status {
   min-height: 20px; margin: 14px 0 0; padding-top: 12px;
   border-top: 1px solid var(--cv-border, #e5e7eb);

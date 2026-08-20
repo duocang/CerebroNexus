@@ -1441,6 +1441,56 @@ var focusPanel = null;
     return any;
   }
 
+  // A portable workspace stores cell identities, not source coordinates. Once
+  // those identities are restored into the same data set, reconstruct a local
+  // outline from the available coordinates so the selected region remains
+  // legible without putting any geometry into the JSON document.
+  function restoreConfigSelectionOutline(indexes, source, mode) {
+    if (!indexes || !indexes.size || !source) return;
+    var panel = null;
+    panels.forEach(function (candidate) {
+      if (!panel && !panelIs3D(candidate) &&
+        selectionSourceLabel(candidate) === source) panel = candidate;
+    });
+    if (!panel || !panel.ok) return;
+    var unit = spaceById[panel.spaceId] && spaceById[panel.spaceId]._unit;
+    if (!unit) return;
+    var points = [];
+    indexes.forEach(function (index) {
+      if (panel.ok[index]) points.push([unit.nx[index], unit.ny[index]]);
+    });
+    if (points.length < 2) return;
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    points.forEach(function (point) {
+      minX = Math.min(minX, point[0]); maxX = Math.max(maxX, point[0]);
+      minY = Math.min(minY, point[1]); maxY = Math.max(maxY, point[1]);
+    });
+    var pad = 0.008;
+    if (mode === 'box' || points.length < 3) {
+      panel.lassoData = [
+        [minX - pad, minY - pad], [maxX + pad, minY - pad],
+        [maxX + pad, maxY + pad], [minX - pad, maxY + pad]
+      ];
+      return;
+    }
+    points.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    var cross = function (origin, left, right) {
+      return (left[0] - origin[0]) * (right[1] - origin[1]) -
+        (left[1] - origin[1]) * (right[0] - origin[0]);
+    };
+    var lower = [], upper = [], i;
+    for (i = 0; i < points.length; i++) {
+      while (lower.length > 1 && cross(lower[lower.length - 2], lower[lower.length - 1], points[i]) <= 0) lower.pop();
+      lower.push(points[i]);
+    }
+    for (i = points.length - 1; i >= 0; i--) {
+      while (upper.length > 1 && cross(upper[upper.length - 2], upper[upper.length - 1], points[i]) <= 0) upper.pop();
+      upper.push(points[i]);
+    }
+    lower.pop(); upper.pop();
+    panel.lassoData = lower.concat(upper);
+  }
+
   // Centre a slider's value bubble over its thumb. Uses the slider's fixed 150px
   // width as a fallback so it positions correctly even while its panel is hidden
   // (offsetWidth 0), and re-runs on every input.
@@ -5175,7 +5225,14 @@ var focusPanel = null;
     setConfigFocus(state.focusSpace);
     updateClipControl(); clipRange(); renderLegend(); updateSpaceScopedControls();
     positionAllRangeVals(); seedImgControls();
+    clearLassos();
     setSelection(state.selectedIndexes, state.selectionSource);
+    restoreConfigSelectionOutline(
+      state.selectedIndexes,
+      state.selectionSource,
+      state.display.selectionMode
+    );
+    drawAll();
   }
   function applyConfigState(config, colourData) {
     var prepared = prepareConfigState(config, colourData);

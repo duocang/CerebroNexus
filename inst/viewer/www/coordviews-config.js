@@ -35,6 +35,11 @@
     exportBusy = !!busy;
     refreshExportControls();
   }
+  function setUploadLoading(loading) {
+    var upload = byId('coordviews_config_upload');
+    var host = upload && upload.closest('.cv-config-upload');
+    if (host) host.classList.toggle('is-uploading', !!loading);
+  }
   function setReady(ready, selectedCells) {
     var button = byId('cv-config-open');
     if (!button) return;
@@ -189,6 +194,7 @@
     if (action === 'apply') {
       var upload = byId('coordviews_config_upload');
       if (upload) upload.value = '';
+      setUploadLoading(false);
     }
     if (!result.ok) {
       status(result.message || 'The configuration could not be opened.', 'error');
@@ -203,7 +209,8 @@
     var nonce = nextNonce();
     pending = { nonce: nonce, action: 'apply' };
     setBusy(true);
-    status('Checking this JSON against the current data set…');
+    setUploadLoading(true);
+    status('');
     Shiny.setInputValue('coordviews_config_upload_nonce', nonce, {
       priority: 'event'
     });

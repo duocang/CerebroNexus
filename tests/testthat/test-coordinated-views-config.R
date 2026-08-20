@@ -511,10 +511,12 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_true(file.exists(controller_file))
   expect_match(controller, "new window.Blob", fixed = TRUE)
   expect_match(controller, "URL.createObjectURL", fixed = TRUE)
+  expect_match(controller, "setUploadLoading", fixed = TRUE)
   expect_match(controller, "cerebro:linkedviews-selection", fixed = TRUE)
   expect_match(css, "background: var(--cv-amber", fixed = TRUE)
   expect_match(css, ".cv-config-upload .btn-file > span", fixed = TRUE)
   expect_match(css, ".cv-config-upload .input-group-prepend", fixed = TRUE)
+  expect_match(css, ".shiny-file-input-progress { display: none", fixed = TRUE)
   expect_match(
     shell,
     'cerebro_js("coordviews-config.js", defer = TRUE)',
