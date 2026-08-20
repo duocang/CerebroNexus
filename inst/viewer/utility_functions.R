@@ -1045,6 +1045,61 @@ match_dataset_by_url <- function(url_dataset, files, file_names = NULL) {
 }
 
 ##----------------------------------------------------------------------------##
+## Resolve generated-App Viewer defaults for the selected configured dataset.
+##
+## Old Apps and uploaded datasets have no per-dataset entry and intentionally
+## return an empty list, preserving the existing first-item/global fallbacks.
+##----------------------------------------------------------------------------##
+configuredViewerContent <- function(config, selected_file, files = NULL) {
+  if (
+    !is.list(config) ||
+      is.object(config) ||
+      !length(config) ||
+      !is.character(selected_file) ||
+      length(selected_file) != 1L ||
+      is.na(selected_file) ||
+      !nzchar(selected_file) ||
+      !is.character(files) ||
+      !length(files) ||
+      is.null(names(files))
+  ) {
+    return(list())
+  }
+  index <- match(selected_file, unname(files))
+  if (is.na(index) || index < 1L || index > length(files)) {
+    return(list())
+  }
+  label <- names(files)[[index]]
+  value <- config[[label]]
+  if (!is.list(value) || is.object(value)) {
+    return(list())
+  }
+  value
+}
+
+configuredViewerPercentageCellsToShow <- function(
+  viewer_defaults,
+  fallback = 100
+) {
+  value <- if (is.list(viewer_defaults)) {
+    viewer_defaults[["overview_percentage_cells_to_show"]]
+  } else {
+    NULL
+  }
+  if (
+    is.numeric(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      is.finite(value) &&
+      value >= 10 &&
+      value <= 100
+  ) {
+    return(as.numeric(value))
+  }
+  fallback
+}
+
+##----------------------------------------------------------------------------##
 ## Functions to interact with data set.
 ##
 ## Never directly interact with data set: data_set()
