@@ -17,7 +17,18 @@
   function status(message, tone) {
     var element = byId('cv-config-status');
     if (!element) return;
-    element.textContent = message;
+    element.replaceChildren();
+    if (tone === 'error' && message) {
+      var title = document.createElement('strong');
+      title.className = 'cv-config-status-title';
+      title.textContent = 'Unable to open this configuration';
+      var detail = document.createElement('span');
+      detail.textContent = message;
+      element.appendChild(title);
+      element.appendChild(detail);
+    } else {
+      element.textContent = message;
+    }
     element.classList.toggle('is-error', tone === 'error');
     element.classList.toggle('is-success', tone === 'success');
   }

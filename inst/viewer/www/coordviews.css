@@ -1466,7 +1466,21 @@
 }
 .cv-config-status:empty { display: none; }
 .cv-config-status.is-success { color: #176b42; }
-.cv-config-status.is-error { color: var(--cv-red700, #a72b2b); }
+.cv-config-status.is-error {
+  display: block; margin-top: 14px; padding: 10px 12px 10px 40px;
+  border: 1px solid #f5b5b5; border-radius: 8px; background: #fff1f1;
+  color: var(--cv-red700, #a72b2b); font-weight: 650; line-height: 1.45;
+  position: relative;
+}
+.cv-config-status.is-error::before {
+  content: "!"; position: absolute; left: 12px; top: 50%;
+  width: 18px; height: 18px; margin-top: -9px; border-radius: 50%;
+  background: var(--cv-red700, #a72b2b); color: #fff;
+  display: grid; place-items: center; font-size: 12px; font-weight: 800;
+}
+.cv-config-status.is-error .cv-config-status-title {
+  display: block; margin-bottom: 2px; color: #8f1f1f; font-size: 12.5px;
+}
 .cv-config-download-host { display: none !important; }
 .cv-config-dialog :focus-visible,
 .coordviews-page .cv-config-open:focus-visible {
