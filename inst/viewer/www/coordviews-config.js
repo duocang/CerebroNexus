@@ -288,7 +288,14 @@
       records.unshift({ token: result.token, receipt: result.receipt,
         expires_at: result.expires_at, fingerprint: currentFingerprint() });
       writeShares(records); renderShares();
+      status('Share link created. Copying it to your clipboard…', 'success');
+      var copyFinished = false;
+      var copyNotice = window.setTimeout(function () {
+        if (!copyFinished) status('Share link created. Use Copy link below.', 'success');
+      }, 1200);
       copyText(shareUrl(result.token)).then(function (ok) {
+        copyFinished = true;
+        window.clearTimeout(copyNotice);
         status(ok ? 'Share link created and copied. It expires in 90 days.' :
           'Share link created. Use Copy link below.', 'success');
       });

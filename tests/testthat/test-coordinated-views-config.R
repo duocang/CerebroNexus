@@ -574,6 +574,30 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     fixed = TRUE
   )
   expect_match(controller, "pendingShare.retried", fixed = TRUE)
+  receive_share <- substr(
+    controller,
+    regexpr("function receiveShare", controller, fixed = TRUE),
+    nchar(controller)
+  )
+  share_create_result <- substr(
+    receive_share,
+    regexpr("if (action === 'share_create') {", receive_share, fixed = TRUE),
+    regexpr(
+      "} else if (action === 'share_revoke')",
+      receive_share,
+      fixed = TRUE
+    ) -
+      1L
+  )
+  expect_match(
+    share_create_result,
+    "Share link created. Copying it to your clipboard…",
+    fixed = TRUE
+  )
+  expect_lt(
+    regexpr("Share link created. Copying", share_create_result, fixed = TRUE),
+    regexpr("copyText(shareUrl", share_create_result, fixed = TRUE)
+  )
   expect_match(
     controller,
     "Shiny.setInputValue('coordviews_share_request', pendingShare.payload",
