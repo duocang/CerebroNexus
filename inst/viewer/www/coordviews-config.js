@@ -10,7 +10,11 @@
   var pendingSnapshotName = null;
   var pendingTimer = null;
   var snapshotNameRequest = null;
+  var pendingShare = null;
+  var pendingShareTimer = null;
+  var shareUrlHandled = false;
   var SNAPSHOT_KEY = 'cerebro.linked-views.snapshots.v1';
+  var SHARE_KEY = 'cerebro.linked-views.share-receipts.v1';
   var SNAPSHOT_LIMIT = 12;
   var SNAPSHOT_BYTES = 4 * 1024 * 1024;
 
@@ -100,6 +104,44 @@
     catch (error) { throw new Error('This browser has no space left for saved views.'); }
     return sorted;
   }
+  function readShares() {
+    try {
+      var stored = window.localStorage && window.localStorage.getItem(SHARE_KEY);
+      var parsed = stored ? JSON.parse(stored) : { records: [] };
+      return Array.isArray(parsed.records) ? parsed.records.filter(function (record) {
+        return record && typeof record.token === 'string' && typeof record.receipt === 'string' &&
+          typeof record.expires_at === 'string' && typeof record.fingerprint === 'string';
+      }) : [];
+    } catch (ignore) { return []; }
+  }
+  function writeShares(records) {
+    window.localStorage.setItem(SHARE_KEY, JSON.stringify({ version: 1, records: records.slice(0, 30) }));
+  }
+  function shareUrl(token) {
+    var url = new URL(window.location.href);
+    url.searchParams.set('linked_view', token);
+    return url.toString();
+  }
+  function renderShares() {
+    var list = byId('cv-share-list');
+    var create = byId('cv-share-create');
+    if (create) create.disabled = exportBusy || !exportReady;
+    if (!list) return;
+    list.replaceChildren();
+    var fingerprint = currentFingerprint();
+    var records = readShares().filter(function (record) { return record.fingerprint === fingerprint; });
+    records.forEach(function (record) {
+      var row = document.createElement('div'); row.className = 'cv-share-row';
+      var text = document.createElement('span'); text.textContent = 'Expires ' + snapshotDate(record.expires_at);
+      var copy = snapshotButton('Copy link', function () {
+        copyText(shareUrl(record.token)).then(function (ok) {
+          status(ok ? 'Share link copied.' : 'Clipboard access was blocked.', ok ? 'success' : 'error');
+        });
+      }, record);
+      var revoke = snapshotButton('Revoke', function () { sendShare('share_revoke', record); }, record);
+      row.appendChild(text); row.appendChild(copy); row.appendChild(revoke); list.appendChild(row);
+    });
+  }
   function recordFingerprint(record) {
     try {
       var config = JSON.parse(record.json);
@@ -181,6 +223,7 @@
     exportBusy = !!busy;
     refreshExportControls();
     renderSnapshots();
+    renderShares();
   }
   function setUploadLoading(loading) {
     var upload = byId('coordviews_config_upload');
@@ -194,11 +237,68 @@
     exportReady = enabled && Number(selectedCells) > 0;
     refreshExportControls();
     renderSnapshots();
+    renderShares();
     button.disabled = !enabled;
     button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     button.title = !ready
       ? 'Linked views is waiting for a data set'
       : 'Download, copy, or open a linked workspace JSON file';
+  }
+  function sendShare(action, record) {
+    var state = adapter();
+    if (typeof Shiny === 'undefined' || !Shiny.setInputValue || pendingShare) return;
+    if (action === 'share_create' && (!state || !state.ready() || !exportReady)) {
+      status('Select at least one cell before creating a share link.', 'error'); return;
+    }
+    var nonce = nextNonce();
+    pendingShare = { nonce: nonce, action: action };
+    if (pendingShareTimer) window.clearTimeout(pendingShareTimer);
+    pendingShareTimer = window.setTimeout(function () {
+      if (!pendingShare || pendingShare.nonce !== nonce) return;
+      pendingShare = null; pendingShareTimer = null;
+      status('The share request did not finish. Try again.', 'error');
+    }, 10000);
+    status(action === 'share_open' ? 'Opening shared view…' :
+      (action === 'share_revoke' ? 'Revoking share link…' : 'Creating share link…'), 'working');
+    var payload = { nonce: nonce, action: action };
+    if (action === 'share_create') payload.config = state.capture();
+    if (record) { payload.token = record.token; if (record.receipt) payload.receipt = record.receipt; }
+    Shiny.setInputValue('coordviews_share_request', payload, { priority: 'event' });
+  }
+  function receiveShare(result) {
+    if (!result || !pendingShare || String(result.nonce) !== pendingShare.nonce) return;
+    var action = pendingShare.action; pendingShare = null;
+    if (pendingShareTimer) window.clearTimeout(pendingShareTimer);
+    pendingShareTimer = null;
+    if (result.action !== action) {
+      status('The page received an unexpected share response.', 'error'); return;
+    }
+    if (!result.ok) { status(result.message || 'The share request failed.', 'error'); return; }
+    if (action === 'share_create') {
+      var records = readShares().filter(function (item) { return item.token !== result.token; });
+      records.unshift({ token: result.token, receipt: result.receipt,
+        expires_at: result.expires_at, fingerprint: currentFingerprint() });
+      writeShares(records); renderShares();
+      copyText(shareUrl(result.token)).then(function (ok) {
+        status(ok ? 'Share link created and copied. It expires in 90 days.' :
+          'Share link created. Use Copy link below.', 'success');
+      });
+    } else if (action === 'share_revoke') {
+      writeShares(readShares().filter(function (item) { return item.token !== result.token; }));
+      renderShares(); status('Share link revoked.', 'success');
+    } else if (action === 'share_open') {
+      finishApply(result);
+      var url = new URL(window.location.href); url.searchParams.delete('linked_view');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }
+  function openShareFromUrl() {
+    if (shareUrlHandled) return;
+    var token = new URLSearchParams(window.location.search).get('linked_view');
+    if (!token || !adapter() || !adapter().ready()) return;
+    shareUrlHandled = true;
+    openDialog();
+    sendShare('share_open', { token: token });
   }
   function openDialog() {
     var dialog = byId('cv-config-dialog');
@@ -206,6 +306,7 @@
     status('');
     setUploadLoading(false);
     renderSnapshots();
+    renderShares();
     lastFocus = document.activeElement;
     dialog.showModal();
     var close = byId('cv-config-close');
@@ -493,6 +594,8 @@
     });
     var save = byId('cv-snapshot-save');
     if (save) save.addEventListener('click', saveSnapshot);
+    var share = byId('cv-share-create');
+    if (share) share.addEventListener('click', function () { sendShare('share_create'); });
     var upload = byId('coordviews_config_upload');
     if (upload) upload.addEventListener('change', beginUpload);
     byId('cv-snapshot-name-close').addEventListener('click', closeSnapshotNameDialog);
@@ -521,6 +624,7 @@
     window.addEventListener('cerebro:linkedviews-ready', function (event) {
       var detail = event.detail || {};
       setReady(!!detail.ready, detail.selectedCells);
+      openShareFromUrl();
     });
     window.addEventListener('cerebro:linkedviews-selection', function (event) {
       var state = adapter();
@@ -534,7 +638,9 @@
 
     if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
       Shiny.addCustomMessageHandler('coordviews_config_result', receive);
+      Shiny.addCustomMessageHandler('coordviews_share_result', receiveShare);
     }
+    window.setTimeout(openShareFromUrl, 0);
   }
 
   if (document.readyState === 'loading') {

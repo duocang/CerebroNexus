@@ -30,6 +30,41 @@ source(
   ),
   local = TRUE
 )
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/viewer/coordinated_views/share_store.R"
+  ),
+  local = TRUE
+)
+
+cv_share_path <- Cerebro.options[["linked_view_share_db"]]
+if (
+  !is.character(cv_share_path) ||
+    length(cv_share_path) != 1L ||
+    !nzchar(cv_share_path)
+) {
+  cv_share_path <- Sys.getenv("CEREBRONEXUS_LINKED_VIEW_SHARE_DB", unset = "")
+}
+if (!nzchar(cv_share_path)) {
+  cv_share_path <- file.path(
+    Cerebro.options[["cerebro_root"]],
+    "private-data",
+    "linked-view-shares.sqlite"
+  )
+}
+coordviews_share_store <- tryCatch(
+  cv_share_store_open(cv_share_path),
+  error = function(error) NULL
+)
+session$onSessionEnded(function() {
+  if (
+    !is.null(coordviews_share_store) &&
+      DBI::dbIsValid(coordviews_share_store$con)
+  ) {
+    DBI::dbDisconnect(coordviews_share_store$con)
+  }
+})
 
 ## Always resolves to something sendable: the bundle, or a list(error = <text>)
 ## describing why this data set has no linked views. Never NULL — see the observe
@@ -274,6 +309,129 @@ observeEvent(
             "internal"
           },
           message = cv_config_safe_message(error)
+        )
+      }
+    )
+  },
+  ignoreInit = TRUE
+)
+
+cv_share_send <- function(nonce, action, ok, ...) {
+  session$sendCustomMessage(
+    "coordviews_share_result",
+    c(list(nonce = nonce, action = action, ok = isTRUE(ok)), list(...))
+  )
+}
+
+observeEvent(
+  input[["coordviews_share_request"]],
+  {
+    request <- input[["coordviews_share_request"]]
+    nonce <- if (is.list(request) && is.character(request$nonce)) {
+      request$nonce[[1L]]
+    } else {
+      ""
+    }
+    action <- if (is.list(request) && is.character(request$action)) {
+      request$action[[1L]]
+    } else {
+      ""
+    }
+    tryCatch(
+      {
+        cv_config_check_node_limit(request)
+        request <- cv_config_record(
+          request,
+          c("nonce", "action", "config", "token", "receipt"),
+          required = c("nonce", "action"),
+          path = "$.share_request"
+        )
+        nonce <- cv_config_string(request$nonce, "$.share_request.nonce", 128L)
+        action <- cv_config_choice(
+          request$action,
+          "$.share_request.action",
+          c("share_create", "share_open", "share_revoke")
+        )
+        if (is.null(coordviews_share_store)) {
+          cv_share_abort(
+            "share_unavailable",
+            "Share links are unavailable on this server."
+          )
+        }
+        bundle <- cv_ok(coordviews_bundle())
+        if (is.null(bundle)) {
+          cv_config_abort("invalid_dataset", "Linked views is not ready.")
+        }
+        if (identical(action, "share_create")) {
+          request <- cv_config_record(
+            request,
+            c("nonce", "action", "config"),
+            path = "$.share_request"
+          )
+          prepared <- cv_config_prepare(request$config, cells = bundle$cells)
+          created <- cv_share_store_create(
+            coordviews_share_store,
+            prepared$json,
+            bundle$dataset_fingerprint
+          )
+          cv_share_send(
+            nonce,
+            action,
+            TRUE,
+            token = created$token,
+            receipt = created$receipt,
+            expires_at = created$expires_at
+          )
+        } else if (identical(action, "share_open")) {
+          request <- cv_config_record(
+            request,
+            c("nonce", "action", "token"),
+            path = "$.share_request"
+          )
+          stored <- cv_share_store_fetch(
+            coordviews_share_store,
+            request$token,
+            bundle$dataset_fingerprint
+          )
+          normalized <- cv_config_decode(stored$json, cells = bundle$cells)
+          colour_data <- cv_config_validate_genes(normalized, bundle$cells)
+          cv_share_send(
+            nonce,
+            action,
+            TRUE,
+            config = cv_config_json_document(normalized),
+            colour_data = colour_data,
+            selected_cells = length(normalized$selection$cells)
+          )
+        } else if (identical(action, "share_revoke")) {
+          request <- cv_config_record(
+            request,
+            c("nonce", "action", "token", "receipt"),
+            path = "$.share_request"
+          )
+          cv_share_store_revoke(
+            coordviews_share_store,
+            request$token,
+            request$receipt
+          )
+          cv_share_send(nonce, action, TRUE, token = request$token)
+        } else {
+          cv_share_abort("invalid_action", "The share request is invalid.")
+        }
+      },
+      error = function(error) {
+        cv_share_send(
+          nonce,
+          action,
+          FALSE,
+          code = if (!is.null(error$code)) error$code else "internal",
+          message = if (
+            inherits(error, c("cv_share_error", "cv_config_error"))
+          ) {
+            conditionMessage(error)
+          } else {
+            "The share request could not be completed."
+          }
         )
       }
     )

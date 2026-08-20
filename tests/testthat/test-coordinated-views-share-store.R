@@ -30,6 +30,7 @@ test_that("a share record is opaque, revocable, and expires after ninety days", 
     inherits = FALSE
   ))
   store <- share_env$cv_share_store_open(tempfile(fileext = ".sqlite"))
+  withr::defer(DBI::dbDisconnect(store$con))
   created_at <- as.POSIXct("2026-08-20 12:00:00", tz = "UTC")
   created <- share_env$cv_share_store_create(
     store,

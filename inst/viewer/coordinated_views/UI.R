@@ -890,6 +890,31 @@ tab_coordinated_views <- tabItem(
         )
       ),
       tags$section(
+        id = "cv-config-share",
+        class = "cv-config-region cv-config-share",
+        `aria-labelledby` = "cv-config-share-title",
+        tags$div(
+          class = "cv-config-region-head",
+          tags$h5(id = "cv-config-share-title", "Share with a link"),
+          tags$p(
+            "Anyone with the link can restore this view in the matching cell population. ",
+            "Links expire after 90 days."
+          )
+        ),
+        tags$button(
+          type = "button",
+          id = "cv-share-create",
+          class = "cv-share-create",
+          icon("link"),
+          "Create share link"
+        ),
+        tags$div(
+          id = "cv-share-list",
+          class = "cv-share-list",
+          `aria-live` = "polite"
+        )
+      ),
+      tags$section(
         class = "cv-config-region cv-snapshots",
         `aria-labelledby` = "cv-snapshots-title",
         tags$div(

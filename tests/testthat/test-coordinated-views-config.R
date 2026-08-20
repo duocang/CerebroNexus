@@ -515,6 +515,9 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(ui, 'id = "cv-snapshot-list"', fixed = TRUE)
   expect_match(ui, 'id = "cv-snapshot-name-dialog"', fixed = TRUE)
   expect_match(ui, 'id = "cv-snapshot-name-input"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-config-share"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-share-create"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-share-list"', fixed = TRUE)
   expect_match(
     ui,
     'class = "cv-config-region cv-config-transfer"',
@@ -538,6 +541,15 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "URL.createObjectURL", fixed = TRUE)
   expect_match(controller, "setUploadLoading", fixed = TRUE)
   expect_match(controller, "cerebro.linked-views.snapshots.v1", fixed = TRUE)
+  expect_match(
+    controller,
+    "cerebro.linked-views.share-receipts.v1",
+    fixed = TRUE
+  )
+  expect_match(controller, "share_create", fixed = TRUE)
+  expect_match(controller, "share_open", fixed = TRUE)
+  expect_match(controller, "share_revoke", fixed = TRUE)
+  expect_match(controller, "linked_view", fixed = TRUE)
   expect_match(controller, "saveSnapshotLocally", fixed = TRUE)
   expect_match(controller, "JSON.stringify(state.capture())", fixed = TRUE)
   expect_false(grepl("request('save')", controller, fixed = TRUE))
