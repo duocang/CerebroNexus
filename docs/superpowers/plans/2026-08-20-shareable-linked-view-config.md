@@ -18,10 +18,10 @@
 - Modify `inst/viewer/www/coordviews.js`: capture/apply adapter over the existing coordinated state.
 - Create `inst/viewer/www/coordviews-config.js`: dialog and Shiny transport controller.
 - Modify `inst/viewer/www/coordviews.css`: styles for the compact dialog and actions.
-- Modify `R/shiny_UI.R`: include the new browser controller in generated and package-launched viewers.
+- Modify `inst/viewer/shiny_UI.R`: include the new browser controller in generated and package-launched viewers.
 - Create `tests/testthat/test-coordinated-views-config.R`: pure contract and bundle-safe integration tests.
 - Create `tests/testthat/test-coordinated-views-config-browser.R`: real-browser state and dialog tests.
-- Modify `tests/testthat/test-smoke-production.R`: assert the generated App contains all configuration runtime assets.
+- Modify `tests/testthat/test-createShinyApp-sibling.R`: assert the generated App contains all configuration runtime assets.
 
 ### Task 1: Versioned R contract and dataset identity
 
@@ -29,7 +29,7 @@
 - Create: `tests/testthat/test-coordinated-views-config.R`
 - Create: `inst/viewer/coordinated_views/config.R`
 
-- [ ] **Step 1: Write failing fingerprint and valid-round-trip tests**
+- [x] **Step 1: Write failing fingerprint and valid-round-trip tests**
 
 ```r
 test_that("linked-view fingerprints ignore cell order", {
@@ -51,13 +51,13 @@ test_that("a version-one configuration round-trips canonically", {
 })
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run: `Rscript -e 'devtools::load_all(".", quiet=TRUE); testthat::test_file("tests/testthat/test-coordinated-views-config.R")'`
 
 Expected: FAIL because `inst/viewer/coordinated_views/config.R` and `cv_config_cell_fingerprint()` do not exist.
 
-- [ ] **Step 3: Implement the fingerprint, envelope validator, and encoder**
+- [x] **Step 3: Implement the fingerprint, envelope validator, and encoder**
 
 ```r
 cv_config_cell_fingerprint <- function(cells) {
@@ -78,13 +78,13 @@ cv_config_decode <- function(text, cells) {
 
 Implement strict helpers for records, scalars, unique arrays, finite bounded numbers, maximum depth 10, and canonical field ordering. Accept no unknown keys.
 
-- [ ] **Step 4: Run the focused test and verify GREEN**
+- [x] **Step 4: Run the focused test and verify GREEN**
 
 Run the command from Step 2.
 
 Expected: PASS with no warnings.
 
-- [ ] **Step 5: Commit the first contract slice**
+- [x] **Step 5: Commit the first contract slice**
 
 ```bash
 git add inst/viewer/coordinated_views/config.R tests/testthat/test-coordinated-views-config.R
@@ -97,7 +97,7 @@ git commit -m "feat: add linked view config contract"
 - Modify: `tests/testthat/test-coordinated-views-config.R`
 - Modify: `inst/viewer/coordinated_views/config.R`
 
-- [ ] **Step 1: Write a failing validation matrix**
+- [x] **Step 1: Write a failing validation matrix**
 
 ```r
 test_that("configuration validation is strict and transactional", {
@@ -118,11 +118,11 @@ test_that("configuration validation is strict and transactional", {
 
 Add individual tests for a document above 5 MiB, depth above 10, strings above their byte limits, non-finite values, out-of-range display values, duplicate lenses, invalid spatial image identifiers, and canonical output privacy.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Expected: the new rejection cases fail because the first slice does not enforce every bound.
 
-- [ ] **Step 3: Complete strict normalization**
+- [x] **Step 3: Complete strict normalization**
 
 ```r
 cv_config_abort <- function(code, message) {
@@ -135,13 +135,13 @@ cv_config_abort <- function(code, message) {
 
 Normalize every version-one field into a fresh allowlisted list, compare both dataset identity fields, require every selected barcode to be present, and map internal failures to stable safe error codes.
 
-- [ ] **Step 4: Run the focused test and verify GREEN**
+- [x] **Step 4: Run the focused test and verify GREEN**
 
 Run the Task 1 test command.
 
 Expected: PASS; canonical JSON contains no path, data URI, expression matrix, metadata payload, token, or credentials.
 
-- [ ] **Step 5: Commit validation**
+- [x] **Step 5: Commit validation**
 
 ```bash
 git add inst/viewer/coordinated_views/config.R tests/testthat/test-coordinated-views-config.R
@@ -154,7 +154,7 @@ git commit -m "feat: validate linked view configs"
 - Modify: `tests/testthat/test-coordinated-views-config.R`
 - Modify: `inst/viewer/coordinated_views/server.R`
 
-- [ ] **Step 1: Write failing server contract tests**
+- [x] **Step 1: Write failing server contract tests**
 
 ```r
 test_that("the coordinated server fingerprints bundles and exposes config transport", {
@@ -168,11 +168,11 @@ test_that("the coordinated server fingerprints bundles and exposes config transp
 
 Add a `shiny::testServer()` case that sends a valid capture request and verifies the canonical JSON reactive; send an invalid request and verify a safe error result with no canonical replacement.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Expected: missing transport symbols and outputs.
 
-- [ ] **Step 3: Implement nonce-based requests and bounded upload**
+- [x] **Step 3: Implement nonce-based requests and bounded upload**
 
 ```r
 coordviews_config_json <- shiny::reactiveVal(NULL)
@@ -193,7 +193,7 @@ shiny::observeEvent(input$coordviews_config_request, {
 
 Source `config.R`, attach `dataset_fingerprint` to each successful bundle, add `downloadHandler`, read uploads only after checking `.json` extension and `size <= 5 * 1024^2`, and never send raw R condition messages.
 
-- [ ] **Step 4: Run contract and existing coordinated-view tests**
+- [x] **Step 4: Run contract and existing coordinated-view tests**
 
 Run:
 
@@ -203,7 +203,7 @@ Rscript -e 'devtools::load_all(".", quiet=TRUE); testthat::test_file("tests/test
 
 Expected: both files PASS without warnings.
 
-- [ ] **Step 5: Commit transport**
+- [x] **Step 5: Commit transport**
 
 ```bash
 git add inst/viewer/coordinated_views/server.R tests/testthat/test-coordinated-views-config.R
@@ -216,7 +216,7 @@ git commit -m "feat: add linked view config transport"
 - Create: `tests/testthat/test-coordinated-views-config-browser.R`
 - Modify: `inst/viewer/www/coordviews.js`
 
-- [ ] **Step 1: Write a failing real-browser round-trip test**
+- [x] **Step 1: Write a failing real-browser round-trip test**
 
 ```r
 test_that("browser adapter restores a selected cohort and view context", {
@@ -231,13 +231,13 @@ test_that("browser adapter restores a selected cohort and view context", {
 
 Use the real coordinated-view bundle and browser engine; do not mock `setSelection()` or canvas events.
 
-- [ ] **Step 2: Run the focused browser test and verify RED**
+- [x] **Step 2: Run the focused browser test and verify RED**
 
 Run: `Rscript -e 'devtools::load_all(".", quiet=TRUE); testthat::test_file("tests/testthat/test-coordinated-views-config-browser.R")'`
 
 Expected: FAIL because `window.cerebroLinkedViewsState` is undefined.
 
-- [ ] **Step 3: Implement capture, prepare, commit, and summary**
+- [x] **Step 3: Implement capture, prepare, commit, and summary**
 
 ```js
 window.cerebroLinkedViewsState = Object.freeze({
@@ -250,17 +250,17 @@ window.cerebroLinkedViewsState = Object.freeze({
 
 Capture only allowlisted JSON data. During apply, resolve all fields into temporary Sets, Maps, panel selections, lens viewports, rotations, spatial image alignments, and Trekker values. Commit control and panel state only after all references pass capability checks, then invoke existing `setSelection()` once with resolved cell indexes.
 
-- [ ] **Step 4: Extend the test across every version-one state family**
+- [x] **Step 4: Extend the test across every version-one state family**
 
 Set projections, Spatial sections, active Spatial section, colour controls, filters, hidden levels, display controls, focus, lens viewport, 3-D rotation, spatial background/alignment, and Trekker controls before capture. After restore, assert the adapter summary and visible controls match.
 
-- [ ] **Step 5: Run focused browser test and verify GREEN**
+- [x] **Step 5: Run focused browser test and verify GREEN**
 
 Run the command from Step 2.
 
 Expected: PASS; applying a capability-mismatched document throws and leaves the pre-apply summary unchanged.
 
-- [ ] **Step 6: Commit state adapter**
+- [x] **Step 6: Commit state adapter**
 
 ```bash
 git add inst/viewer/www/coordviews.js tests/testthat/test-coordinated-views-config-browser.R
@@ -277,7 +277,7 @@ git commit -m "feat: restore linked view state"
 - Modify: `inst/viewer/www/coordviews.css`
 - Modify: `R/shiny_UI.R`
 
-- [ ] **Step 1: Write failing UI and browser interaction tests**
+- [x] **Step 1: Write failing UI and browser interaction tests**
 
 ```r
 test_that("Save/share markup is accessible and runtime assets are bundled", {
@@ -292,11 +292,11 @@ test_that("Save/share markup is accessible and runtime assets are bundled", {
 
 In the browser test, tab to Save/share, open it, assert focus enters the dialog, Escape returns focus to the trigger, and assert a stale nonce result does not replace the current status.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Expected: missing dialog and controller failures.
 
-- [ ] **Step 3: Add native dialog markup and styling**
+- [x] **Step 3: Add native dialog markup and styling**
 
 ```html
 <dialog id="coordviews-config-dialog" aria-labelledby="coordviews-config-title">
@@ -309,15 +309,17 @@ Expected: missing dialog and controller failures.
 
 Use Shiny tag builders in `UI.R`, keep the real `fileInput()` visually integrated and keyboard reachable, and place a hidden `downloadLink()` outside the dialog.
 
-- [ ] **Step 4: Implement the controller**
+- [x] **Step 4: Implement the controller**
 
 `coordviews-config.js` must open/close the dialog, capture adapter state, generate monotonic nonces, send `coordviews_config_request`, activate the real download link only after server acknowledgement, copy canonical JSON with Clipboard API plus a safe fallback, relay uploads through Shiny, reject stale results, and render only server-provided safe status text.
 
-- [ ] **Step 5: Include the controller in every Viewer build path**
+- [x] **Step 5: Include the controller in every Viewer build path**
 
-Add `tags$script(src = "coordviews-config.js")` next to the existing `coordviews.js` inclusion in `R/shiny_UI.R`; verify generated Apps copy the file through the existing `inst/viewer/www` bundling path.
+Add `cerebro_js("coordviews-config.js", defer = TRUE)` next to the existing
+`coordviews.js` inclusion in `inst/viewer/shiny_UI.R`; verify generated Apps
+copy the file through the existing recursive `inst/viewer` bundling path.
 
-- [ ] **Step 6: Run focused R and browser tests and verify GREEN**
+- [x] **Step 6: Run focused R and browser tests and verify GREEN**
 
 Run:
 
@@ -329,65 +331,64 @@ Rscript -e 'devtools::load_all(".", quiet=TRUE); testthat::test_file("tests/test
 
 Expected: syntax checks and both test files PASS.
 
-- [ ] **Step 7: Commit the user experience**
+- [x] **Step 7: Commit the user experience**
 
 ```bash
-git add R/shiny_UI.R inst/viewer/coordinated_views/UI.R inst/viewer/www/coordviews-config.js inst/viewer/www/coordviews.css tests/testthat/test-coordinated-views-config.R tests/testthat/test-coordinated-views-config-browser.R
+git add inst/viewer/shiny_UI.R inst/viewer/coordinated_views/UI.R inst/viewer/www/coordviews-config.js inst/viewer/www/coordviews.css tests/testthat/test-coordinated-views-config.R tests/testthat/test-coordinated-views-config-browser.R
 git commit -m "feat: add linked view sharing dialog"
 ```
 
 ### Task 6: Generated-App coverage and final verification
 
 **Files:**
-- Modify: `tests/testthat/test-smoke-production.R`
+- Modify: `tests/testthat/test-createShinyApp-sibling.R`
 - Modify: `docs/superpowers/plans/2026-08-20-shareable-linked-view-config.md`
 
-- [ ] **Step 1: Write a failing generated-App asset assertion**
+- [x] **Step 1: Write a failing generated-App asset assertion**
 
 ```r
-expect_true(file.exists(file.path(app_dir, "www", "coordviews-config.js")))
+expect_true(file.exists(file.path(app_dir, "viewer", "www", "coordviews-config.js")))
 expect_match(
-  paste(readLines(file.path(app_dir, "coordinated_views", "server.R")), collapse = "\n"),
-  "config.R"
+  paste(readLines(file.path(app_dir, "viewer", "shiny_UI.R")), collapse = "\n"),
+  "coordviews-config\\.js"
 )
 ```
 
-- [ ] **Step 2: Run the focused smoke test and verify RED if copying is incomplete**
+- [x] **Step 2: Run the focused smoke test and verify RED if copying is incomplete**
 
-Run: `Rscript -e 'devtools::load_all(".", quiet=TRUE); testthat::test_file("tests/testthat/test-smoke-production.R")'`
+Run: `Rscript -e 'devtools::load_all(".", quiet=TRUE); testthat::test_file("tests/testthat/test-createShinyApp-sibling.R")'`
 
 Expected: either the new assertion fails and identifies a missing bundle path, or passes because the existing recursive copy already handles the new files; in the latter case, retain the assertion as regression coverage without changing production copy logic.
 
-- [ ] **Step 3: Make only the required bundling correction**
+- [x] **Step 3: Make only the required bundling correction**
 
 If the focused smoke test proves a missing path, update its existing explicit runtime file list to include `coordinated_views/config.R` and `www/coordviews-config.js`. Do not add a second copy mechanism.
 
-- [ ] **Step 4: Run the complete verification ladder**
+- [x] **Step 4: Run the complete verification ladder**
 
 ```bash
 node --check inst/viewer/www/coordviews.js
 node --check inst/viewer/www/coordviews-config.js
-Rscript -e 'devtools::load_all(".", quiet=TRUE); testthat::test_file("tests/testthat/test-coordinated-views-config.R"); testthat::test_file("tests/testthat/test-coordinated-views-config-browser.R"); testthat::test_file("tests/testthat/test-coordinated-views-browser.R"); testthat::test_file("tests/testthat/test-coordinated-views.R"); testthat::test_file("tests/testthat/test-smoke-production.R")'
+Rscript -e 'devtools::load_all(".", quiet=TRUE); testthat::test_file("tests/testthat/test-coordinated-views-config.R"); testthat::test_file("tests/testthat/test-coordinated-views-config-browser.R"); testthat::test_file("tests/testthat/test-coordinated-views-browser.R"); testthat::test_file("tests/testthat/test-coordinated-views.R"); testthat::test_file("tests/testthat/test-createShinyApp-sibling.R")'
 scripts/precheck.sh fast
 scripts/precheck.sh
 ```
 
 Expected: all checks exit 0, with no unexpected warning or skip introduced by this feature.
 
-- [ ] **Step 5: Inspect the real UI at desktop and narrow widths**
+- [x] **Step 5: Inspect the real UI at desktop and narrow widths**
 
 Launch the Viewer, open Linked views, create a box/lasso cohort, exercise Download/Copy/Open, capture screenshots at desktop and narrow widths, and verify readable spacing, keyboard focus, success/error status, and no overlap with existing topbar controls.
 
-- [ ] **Step 6: Run specification and quality reviews**
+- [x] **Step 6: Run specification and quality reviews**
 
 Compare the final diff to `docs/superpowers/specs/2026-08-20-shareable-linked-view-config-design.md`, then review for correctness, self-contained generated-App behavior, privacy leakage, transactionality, accessibility, and test quality. Fix any blocking findings and rerun the smallest affected tests.
 
-- [ ] **Step 7: Mark the plan complete and create the final commit**
+- [x] **Step 7: Mark the plan complete and create the final commit**
 
 Mark every completed checkbox in this file, run `git diff --check`, and commit the remaining test/documentation changes:
 
 ```bash
-git add tests/testthat/test-smoke-production.R docs/superpowers/plans/2026-08-20-shareable-linked-view-config.md
+git add tests/testthat/test-createShinyApp-sibling.R docs/superpowers/plans/2026-08-20-shareable-linked-view-config.md docs/superpowers/specs/2026-08-20-shareable-linked-view-config-design.md
 git commit -m "test: cover shared linked view config"
 ```
-

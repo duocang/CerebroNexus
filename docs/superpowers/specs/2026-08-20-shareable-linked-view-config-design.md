@@ -144,8 +144,12 @@ No dataset path or local filename enters the JSON.
 Schema version 1 is strict. Unknown top-level fields, unknown fields inside
 versioned records, future versions, non-finite numbers, duplicate selected
 barcodes, duplicate lens identities, and values outside documented ranges are
-rejected. Optional capability-specific fields may be absent and default to the
-current dataset's normal state.
+rejected. Array-valued fields remain arrays even when empty or containing one
+item. Capability-specific records remain present with neutral defaults; an
+import fails atomically when it requests a non-default capability that the
+current dataset does not provide. The lens list is complete for the target
+workspace, and each selected Spatial section with images has exactly one
+background record, so omitted records cannot inherit pre-import state.
 
 ## State Boundary
 
@@ -191,6 +195,8 @@ must work in a self-contained generated App without the package installed.
 - a request observer for copy/download snapshots sent by the client;
 - a session-local canonical JSON value consumed by a `downloadHandler`;
 - an upload observer that reads at most 5 MiB and validates before applying;
+- gene/RGB capability validation against the current expression catalog before
+  a document is returned to the browser;
 - `coordviews_config_result` custom messages containing only normalized state,
   canonical JSON for clipboard use, or safe user-facing errors.
 
@@ -221,6 +227,8 @@ internals beyond the adapter.
 
 - Maximum uploaded or canonical JSON size: 5 MiB.
 - Maximum nesting depth: 10.
+- Maximum normalized object size: 300,000 scalar/list nodes, with smaller
+  per-collection bounds for filters, lenses, hidden levels, and backgrounds.
 - Maximum selected cells: the current dataset's cell count, additionally bounded
   by what fits in the byte limit.
 - Strings are UTF-8, scalar where required, and bounded to 256 bytes except cell
@@ -250,9 +258,9 @@ fallback only after the canonical state exists.
 - stable cell fingerprint independent of cell order;
 - canonical version-1 round trip;
 - selection and every supported view-state field normalization;
-- malformed JSON, unsupported schema/version, size/depth limits, duplicate and
-  missing cells, dataset mismatch, non-finite/out-of-range values, and unknown
-  fields;
+- malformed JSON, scalar values masquerading as arrays, unsupported
+  schema/version, size/depth/node limits, duplicate and missing cells, dataset
+  mismatch, non-finite/out-of-range values, and unknown fields;
 - canonical output contains no dataset path, image URI, metadata, expression,
   credentials, or token values.
 

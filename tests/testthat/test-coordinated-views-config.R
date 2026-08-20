@@ -3,7 +3,11 @@
 inst_candidates <- c(
   normalizePath("inst", mustWork = FALSE),
   normalizePath("../../inst", mustWork = FALSE),
-  normalizePath(testthat::test_path("../../inst"), mustWork = FALSE)
+  normalizePath(testthat::test_path("../../inst"), mustWork = FALSE),
+  normalizePath(
+    system.file(package = "CerebroNexus"),
+    mustWork = FALSE
+  )
 )
 config_inst <- inst_candidates[file.exists(file.path(
   inst_candidates,
