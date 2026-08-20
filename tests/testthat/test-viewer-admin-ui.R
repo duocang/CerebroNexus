@@ -89,6 +89,11 @@ test_that("Admin UI and assets expose one coherent management page", {
   expect_match(server, 'session$clientData$url_pathname', fixed = TRUE)
   expect_match(script, "Copied ✓", fixed = TRUE)
   expect_match(script, "shiny:connected", fixed = TRUE)
+  expect_match(
+    script,
+    "window.setTimeout(function () { finish(false); }, 500)",
+    fixed = TRUE
+  )
 })
 
 test_that("Admin deep links switch tabs only after the menu is inserted", {

@@ -279,7 +279,6 @@
         latestShare = { token: token, expires_at: expires, fingerprint: currentFingerprint() };
         renderShareResult(latestShare);
         status('Share link ready. Saving in the background…', 'success');
-        copyText(shareUrl(token));
       }
     }
     if (record) payload.token = record.token;
@@ -390,39 +389,44 @@
     }
   }
   function fallbackCopy(text) {
-    var textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', 'readonly');
-    textarea.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
+    var textarea = null;
     var copied = false;
-    try { copied = document.execCommand('copy'); } catch (ignore) { copied = false; }
-    textarea.remove();
+    try {
+      textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', 'readonly');
+      textarea.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      copied = document.execCommand('copy');
+    } catch (ignore) {
+      copied = false;
+    } finally {
+      if (textarea && textarea.parentNode) textarea.parentNode.removeChild(textarea);
+    }
     return Promise.resolve(copied);
   }
   function copyText(text) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    return fallbackCopy(text).then(function (copied) {
+      if (copied || !navigator.clipboard || !navigator.clipboard.writeText) return copied;
       return new Promise(function (resolve) {
         var settled = false;
-        var timer = null;
         function finish(copied) {
           if (settled) return;
           settled = true;
-          if (timer) window.clearTimeout(timer);
+          window.clearTimeout(timer);
           resolve(!!copied);
         }
-        function useFallback() {
-          fallbackCopy(text).then(finish).catch(function () { finish(false); });
-        }
-        timer = window.setTimeout(function () { fallbackCopy(text).then(finish); }, 700);
+        var timer = window.setTimeout(function () { finish(false); }, 500);
         try {
-          navigator.clipboard.writeText(text).then(function () { finish(true); }).catch(useFallback);
-        } catch (ignore) { useFallback(); }
+          Promise.resolve(navigator.clipboard.writeText(text)).then(
+            function () { finish(true); },
+            function () { finish(false); }
+          );
+        } catch (ignore) { finish(false); }
       });
-    }
-    return fallbackCopy(text);
+    }).catch(function () { return false; });
   }
   function finishCopy(result) {
     if (typeof result.json !== 'string') {

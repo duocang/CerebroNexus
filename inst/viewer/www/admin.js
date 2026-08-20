@@ -23,17 +23,44 @@
     url.searchParams.set('linked_view', token);
     return url.toString();
   }
-  function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+  function fallbackCopy(text) {
+    var input = null;
+    var copied = false;
+    try {
+      input = document.createElement('textarea');
+      input.value = text;
+      input.setAttribute('readonly', 'readonly');
+      input.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(input);
+      input.focus(); input.select();
+      copied = document.execCommand('copy');
+    } catch (ignore) {
+      copied = false;
+    } finally {
+      if (input && input.parentNode) input.parentNode.removeChild(input);
     }
-    var input = document.createElement('textarea');
-    input.value = text; input.setAttribute('readonly', 'readonly');
-    input.style.position = 'fixed'; input.style.opacity = '0';
-    document.body.appendChild(input); input.select();
-    var ok = false;
-    try { ok = document.execCommand('copy'); } catch (ignore) { ok = false; }
-    input.remove(); return Promise.resolve(ok);
+    return Promise.resolve(copied);
+  }
+  function copyText(text) {
+    return fallbackCopy(text).then(function (copied) {
+      if (copied || !navigator.clipboard || !navigator.clipboard.writeText) return copied;
+      return new Promise(function (resolve) {
+        var settled = false;
+        function finish(result) {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(!!result);
+        }
+        var timer = window.setTimeout(function () { finish(false); }, 500);
+        try {
+          Promise.resolve(navigator.clipboard.writeText(text)).then(
+            function () { finish(true); },
+            function () { finish(false); }
+          );
+        } catch (ignore) { finish(false); }
+      });
+    }).catch(function () { return false; });
   }
   function formatDate(value) {
     var date = new Date(value);

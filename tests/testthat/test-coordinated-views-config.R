@@ -585,9 +585,15 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     fixed = TRUE
   )
   expect_match(controller, "copy.textContent = ok ? 'Copied ✓'", fixed = TRUE)
+  expect_false(grepl("copyText(shareUrl(token));", controller, fixed = TRUE))
   expect_match(
     controller,
-    "window.setTimeout(function () { fallbackCopy",
+    "fallbackCopy(text).then(function (copied)",
+    fixed = TRUE
+  )
+  expect_match(
+    controller,
+    "window.setTimeout(function () { finish(false); }, 500)",
     fixed = TRUE
   )
   expect_match(
