@@ -9,6 +9,7 @@ CV_CONFIG_SCHEMA <- "cerebronexus-linked-view"
 CV_CONFIG_VERSION <- 1L
 CV_CONFIG_MAX_BYTES <- 5L * 1024L * 1024L
 CV_CONFIG_MAX_DEPTH <- 10L
+CV_CONFIG_MAX_NODES <- 300000L
 
 cv_config_abort <- function(code, message) {
   stop(structure(
@@ -127,6 +128,27 @@ cv_config_array_values <- function(value, path) {
   value
 }
 
+cv_config_check_node_limit <- function(value) {
+  nodes <- 0
+  walk <- function(item, depth = 1L) {
+    if (depth > CV_CONFIG_MAX_DEPTH) {
+      cv_config_abort("too_deep", "The configuration is nested too deeply.")
+    }
+    nodes <<- nodes + if (is.list(item)) 1L else max(1L, length(item))
+    if (nodes > CV_CONFIG_MAX_NODES) {
+      cv_config_abort("too_complex", "The configuration has too many values.")
+    }
+    if (is.list(item)) {
+      for (child in item) {
+        walk(child, depth + 1L)
+      }
+    }
+    invisible(NULL)
+  }
+  walk(value)
+  invisible(value)
+}
+
 cv_config_string_array <- function(
   value,
   path,
@@ -165,11 +187,63 @@ cv_config_choice <- function(value, path, choices) {
   value
 }
 
-cv_config_depth <- function(value, depth = 1L) {
-  if (!is.list(value) || !length(value)) {
-    return(depth)
+cv_config_require_json_array <- function(value, path) {
+  if (!is.list(value) || !is.null(names(value))) {
+    cv_config_abort("invalid_type", paste0(path, " must be an array."))
   }
-  max(vapply(value, cv_config_depth, integer(1), depth = depth + 1L))
+  invisible(value)
+}
+
+cv_config_check_json_array_shapes <- function(config) {
+  if (!is.list(config) || is.null(names(config))) {
+    return(invisible(config))
+  }
+  selection <- config$selection
+  view <- config$view
+  if (is.list(selection) && !is.null(names(selection))) {
+    cv_config_require_json_array(selection$cells, "$.selection.cells")
+  }
+  if (!is.list(view) || is.null(names(view))) {
+    return(invisible(config))
+  }
+  colour <- view$colour
+  if (is.list(colour) && !is.null(names(colour))) {
+    cv_config_require_json_array(
+      colour$rgb_genes,
+      "$.view.colour.rgb_genes"
+    )
+  }
+  cv_config_require_json_array(view$projections, "$.view.projections")
+  cv_config_require_json_array(
+    view$spatial_sections,
+    "$.view.spatial_sections"
+  )
+  cv_config_require_json_array(view$hidden_levels, "$.view.hidden_levels")
+  cv_config_require_json_array(view$lenses, "$.view.lenses")
+  cv_config_require_json_array(
+    view$spatial_backgrounds,
+    "$.view.spatial_backgrounds"
+  )
+  if (is.list(view$filters) && !is.null(names(view$filters))) {
+    for (name in names(view$filters)) {
+      cv_config_require_json_array(
+        view$filters[[name]],
+        cv_config_path("$.view.filters", name)
+      )
+    }
+  }
+  if (is.list(view$hidden_levels) && is.null(names(view$hidden_levels))) {
+    for (index in seq_along(view$hidden_levels)) {
+      record <- view$hidden_levels[[index]]
+      if (is.list(record) && !is.null(names(record))) {
+        cv_config_require_json_array(
+          record$levels,
+          paste0("$.view.hidden_levels[", index, "].levels")
+        )
+      }
+    }
+  }
+  invisible(config)
 }
 
 cv_config_check_json_size <- function(text) {
@@ -224,6 +298,9 @@ cv_config_normalize_rotation <- function(value, path) {
 
 cv_config_normalize_lenses <- function(value, path) {
   items <- cv_config_array_values(value, path)
+  if (length(items) > 512L) {
+    cv_config_abort("too_many_items", paste0(path, " has too many items."))
+  }
   out <- lapply(seq_along(items), function(index) {
     item_path <- paste0(path, "[", index, "]")
     item <- cv_config_record(
@@ -261,12 +338,19 @@ cv_config_normalize_filters <- function(value, path) {
     return(structure(list(), names = character()))
   }
   keys <- names(value)
+  if (length(keys) > 256L) {
+    cv_config_abort("too_many_items", paste0(path, " has too many fields."))
+  }
   if (any(!nzchar(keys)) || anyDuplicated(keys)) {
     cv_config_abort("invalid_object", paste0(path, " has invalid field names."))
   }
   lapply_keys <- lapply(seq_along(keys), function(index) {
     key <- cv_config_string(keys[[index]], paste0(path, " field name"))
-    cv_config_string_array(value[[index]], cv_config_path(path, key))
+    cv_config_string_array(
+      value[[index]],
+      cv_config_path(path, key),
+      max_items = 65536L
+    )
   })
   names(lapply_keys) <- keys
   lapply_keys
@@ -274,6 +358,9 @@ cv_config_normalize_filters <- function(value, path) {
 
 cv_config_normalize_hidden_levels <- function(value, path) {
   items <- cv_config_array_values(value, path)
+  if (length(items) > 256L) {
+    cv_config_abort("too_many_items", paste0(path, " has too many items."))
+  }
   out <- lapply(seq_along(items), function(index) {
     item_path <- paste0(path, "[", index, "]")
     item <- cv_config_record(
@@ -285,7 +372,8 @@ cv_config_normalize_hidden_levels <- function(value, path) {
       group = cv_config_string(item$group, cv_config_path(item_path, "group")),
       levels = cv_config_string_array(
         item$levels,
-        cv_config_path(item_path, "levels")
+        cv_config_path(item_path, "levels"),
+        max_items = 65536L
       )
     )
   })
@@ -355,6 +443,9 @@ cv_config_normalize_alignment <- function(value, path) {
 
 cv_config_normalize_backgrounds <- function(value, path) {
   items <- cv_config_array_values(value, path)
+  if (length(items) > 256L) {
+    cv_config_abort("too_many_items", paste0(path, " has too many items."))
+  }
   out <- lapply(seq_along(items), function(index) {
     item_path <- paste0(path, "[", index, "]")
     item <- cv_config_record(
@@ -396,9 +487,7 @@ cv_config_normalize_backgrounds <- function(value, path) {
 }
 
 cv_config_normalize <- function(config, cells) {
-  if (cv_config_depth(config) > CV_CONFIG_MAX_DEPTH) {
-    cv_config_abort("too_deep", "The configuration is nested too deeply.")
-  }
+  cv_config_check_node_limit(config)
   cells <- enc2utf8(as.character(cells))
   expected_fingerprint <- cv_config_cell_fingerprint(cells)
   config <- cv_config_record(
@@ -422,11 +511,15 @@ cv_config_normalize <- function(config, cells) {
     )
   }
   created_at <- cv_config_string(config$created_at, "$.created_at", 64L)
+  parsed_at <- suppressWarnings(as.POSIXct(
+    strptime(created_at, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+  ))
   if (
-    !grepl(
-      "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
-      created_at
-    )
+    is.na(parsed_at) ||
+      !identical(
+        format(parsed_at, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+        created_at
+      )
   ) {
     cv_config_abort(
       "invalid_timestamp",
@@ -679,6 +772,24 @@ cv_config_normalize <- function(config, cells) {
       "RGB colour mode requires exactly three genes."
     )
   }
+  if (
+    !identical(normalized_view$colour$mode, "__gene__") &&
+      !is.null(normalized_view$colour$gene)
+  ) {
+    cv_config_abort(
+      "invalid_reference",
+      "Only gene colour mode may carry a selected gene."
+    )
+  }
+  if (
+    !identical(normalized_view$colour$mode, "__rgb__") &&
+      length(normalized_view$colour$rgb_genes)
+  ) {
+    cv_config_abort(
+      "invalid_reference",
+      "Only RGB colour mode may carry RGB genes."
+    )
+  }
 
   normalized
 }
@@ -726,6 +837,7 @@ cv_config_decode <- function(text, cells) {
       cv_config_abort("invalid_json", "The file is not valid JSON.")
     }
   )
+  cv_config_check_json_array_shapes(value)
   cv_config_normalize(value, cells = cells)
 }
 
@@ -750,11 +862,26 @@ cv_config_safe_message <- function(error) {
   switch(
     code,
     too_large = "The configuration is larger than 5 MiB.",
+    too_complex = "The configuration contains too many values.",
+    too_many_items = "The configuration contains too many items.",
+    too_deep = "The configuration is nested too deeply.",
+    invalid_json = "The file is not valid JSON.",
+    invalid_file = "Choose one JSON file.",
     unsupported_schema = "This is not a Linked views configuration.",
     unsupported_version = "This configuration version is not supported.",
     dataset_mismatch = "This configuration belongs to a different cell population.",
     missing_cell = "The configuration selects cells that are not in this data set.",
+    missing_gene = "The configuration uses a gene that is unavailable here.",
     invalid_reference = "The configuration uses a view that is unavailable here.",
+    unknown_field = "The configuration contains an unsupported setting.",
+    missing_field = "The configuration is missing a required setting.",
+    invalid_type = "The configuration contains a value of the wrong type.",
+    invalid_value = "The configuration contains an invalid value.",
+    invalid_object = "The configuration contains an invalid object.",
+    invalid_timestamp = "The configuration contains an invalid timestamp.",
+    duplicate_item = "The configuration contains duplicate items.",
+    string_too_long = "The configuration contains text that is too long.",
+    out_of_range = "The configuration contains a value outside its supported range.",
     "The configuration could not be opened."
   )
 }

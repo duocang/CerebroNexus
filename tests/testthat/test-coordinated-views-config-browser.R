@@ -221,6 +221,39 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
   )))
 
   app$run_js(paste0(
+    "window.__cvRgbEvents=0;",
+    "['coordviews_gene_r','coordviews_gene_g','coordviews_gene_b']",
+    ".forEach(function(id){window.jQuery('#'+id).on('change.cv-config-test',",
+    "function(){window.__cvRgbEvents+=1;});});",
+    "window.__cvRgb=JSON.parse(JSON.stringify(window.__cvContext));",
+    "window.__cvRgb.view.colour.mode='__rgb__';",
+    "window.__cvRgb.view.colour.gene=null;",
+    "window.__cvRgb.view.colour.rgb_genes=['G1','G2','G3'];",
+    "window.__cvRgb.view.hidden_levels=[];",
+    "window.cerebroLinkedViewsState.apply(window.__cvRgb);"
+  ))
+  app$wait_for_js("window.__cvRgbEvents === 3", timeout = 10000)
+  expect_true(app$get_js(paste0(
+    "['coordviews_gene_r','coordviews_gene_g','coordviews_gene_b']",
+    ".map(function(id){return document.getElementById(id).selectize.getValue();})",
+    ".join(',')==='G1,G2,G3'"
+  )))
+  app$run_js(paste0(
+    "window.__cvRgbEvents=0;",
+    "window.__cvRgbData={mode:'__rgb__',genes:['G1','G2','G3'],",
+    "r:[0,1,2,3,4,5,6,7,8],g:[8,7,6,5,4,3,2,1,0],",
+    "b:[1,1,1,1,1,1,1,1,1]};",
+    "window.cerebroLinkedViewsState.apply(window.__cvRgb,window.__cvRgbData);",
+    "window.__cvRgbPrefetched=window.cerebroLinkedViewsState.capture();"
+  ))
+  expect_equal(app$get_js("window.__cvRgbEvents"), 0)
+  expect_identical(
+    unlist(app$get_js("window.__cvRgbPrefetched.view.colour.rgb_genes")),
+    c("G1", "G2", "G3")
+  )
+  app$run_js("window.cerebroLinkedViewsState.apply(window.__cvContext);")
+
+  app$run_js(paste0(
     "window.__cvCapabilityBefore=window.cerebroLinkedViewsState.capture();",
     "window.__cvCapabilityBad=JSON.parse(JSON.stringify(",
     "window.__cvCapabilityBefore));",
@@ -250,6 +283,23 @@ test_that("the browser adapter round-trips a brushed cohort transactionally", {
     app$get_js("JSON.stringify(window.__cvCloneAfter)"),
     app$get_js("JSON.stringify(window.__cvCloneBefore)")
   )
+
+  app$run_js(paste0(
+    "window.__cvMissingLens=JSON.parse(JSON.stringify(window.__cvCloneBefore));",
+    "window.__cvMissingLens.view.lenses.pop();",
+    "try{window.cerebroLinkedViewsState.apply(window.__cvMissingLens);}",
+    "catch(error){window.__cvMissingLensError=error.message;}"
+  ))
+  expect_match(app$get_js("window.__cvMissingLensError"), "lens")
+
+  app$run_js(paste0(
+    "window.__cvMissingBackground=JSON.parse(JSON.stringify(",
+    "window.__cvCloneBefore));",
+    "window.__cvMissingBackground.view.spatial_backgrounds=[];",
+    "try{window.cerebroLinkedViewsState.apply(window.__cvMissingBackground);}",
+    "catch(error){window.__cvMissingBackgroundError=error.message;}"
+  ))
+  expect_match(app$get_js("window.__cvMissingBackgroundError"), "background")
 })
 
 test_that("copy uses the real server validation boundary", {
@@ -290,6 +340,11 @@ test_that("copy uses the real server validation boundary", {
     "document.getElementById('coordviews_config_download').href.length > 0",
     timeout = 10000
   )
+  downloaded <- app$get_download("coordviews_config_download")
+  downloaded_json <- jsonlite::fromJSON(downloaded, simplifyVector = FALSE)
+  expect_identical(downloaded_json$schema, "cerebronexus-linked-view")
+  expect_type(downloaded_json$selection$cells, "list")
+  expect_gt(file.info(downloaded)$size, 0)
 
   original_size <- app$get_js(
     "window.cerebroLinkedViewsState.capture().view.display.point_size"
@@ -306,6 +361,41 @@ test_that("copy uses the real server validation boundary", {
     "input.value='7';input.dispatchEvent(new Event('input',{bubbles:true}));",
     "})()"
   ))
+  expect_equal(
+    app$get_js(
+      "window.cerebroLinkedViewsState.capture().view.display.point_size"
+    ),
+    7
+  )
+  invalid_config_path <- tempfile(
+    "linked-views-invalid-gene-",
+    fileext = ".json"
+  )
+  on.exit(unlink(invalid_config_path), add = TRUE)
+  invalid_config <- jsonlite::fromJSON(
+    app$get_js("JSON.stringify(window.cerebroLinkedViewsState.capture())"),
+    simplifyVector = FALSE
+  )
+  invalid_config$view$colour$mode <- "__gene__"
+  invalid_config$view$colour$gene <- "__definitely_missing_gene__"
+  invalid_config$view$colour$rgb_genes <- list()
+  writeLines(
+    jsonlite::toJSON(invalid_config, auto_unbox = TRUE, null = "null"),
+    invalid_config_path,
+    useBytes = TRUE
+  )
+  app$upload_file(coordviews_config_upload = invalid_config_path)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-config-status').textContent.indexOf(",
+      "'Checking ')!==0"
+    ),
+    timeout = 20000
+  )
+  expect_match(
+    app$get_js("document.getElementById('cv-config-status').textContent"),
+    "gene that is unavailable"
+  )
   expect_equal(
     app$get_js(
       "window.cerebroLinkedViewsState.capture().view.display.point_size"

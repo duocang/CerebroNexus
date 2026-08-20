@@ -119,7 +119,7 @@
   }
   function finishApply(result) {
     try {
-      var summary = adapter().apply(result.config);
+      var summary = adapter().apply(result.config, result.colour_data || null);
       status('Restored ' + summary.selectedCells + ' selected cells and view settings.', 'success');
     } catch (error) {
       status(
@@ -131,7 +131,8 @@
     }
   }
   function receive(result) {
-    if (!result || !pending || String(result.nonce) !== pending.nonce) return;
+    if (!result || !pending || String(result.nonce) !== pending.nonce ||
+      result.action !== pending.action) return;
     var action = pending.action;
     pending = null;
     setBusy(false);

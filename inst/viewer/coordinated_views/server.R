@@ -124,33 +124,98 @@ cv_config_log_failure <- function(error) {
   )
 }
 
+cv_config_validate_genes <- function(config, cells) {
+  colour <- config$view$colour
+  requested <- if (identical(colour$mode, "__gene__")) {
+    colour$gene
+  } else if (identical(colour$mode, "__rgb__")) {
+    colour$rgb_genes
+  } else {
+    character()
+  }
+  if (!length(requested)) {
+    return(NULL)
+  }
+  available <- tryCatch(
+    enc2utf8(as.character(getGeneNames())),
+    error = function(error) character()
+  )
+  if (!length(available) || length(setdiff(requested, available))) {
+    cv_config_abort(
+      "missing_gene",
+      "The configuration uses a gene that is unavailable here."
+    )
+  }
+  values <- lapply(requested, cv_gene_vector, cells = cells)
+  if (any(vapply(values, is.null, logical(1)))) {
+    cv_config_abort(
+      "missing_gene",
+      "The configuration uses a gene that is unavailable here."
+    )
+  }
+  if (identical(colour$mode, "__gene__")) {
+    return(list(
+      mode = "__gene__",
+      gene = requested[[1L]],
+      v = I(values[[1L]]$v),
+      max = values[[1L]]$max
+    ))
+  }
+  list(
+    mode = "__rgb__",
+    genes = I(requested),
+    r = I(values[[1L]]$v),
+    g = I(values[[2L]]$v),
+    b = I(values[[3L]]$v)
+  )
+}
+
 observeEvent(
   input[["coordviews_config_request"]],
   {
     request <- input[["coordviews_config_request"]]
-    nonce <- if (is.list(request)) request$nonce else NULL
-    action <- if (is.list(request)) request$action else NULL
+    raw_nonce <- if (is.list(request)) request$nonce else NULL
+    raw_action <- if (is.list(request)) request$action else NULL
+    nonce <- if (
+      is.character(raw_nonce) &&
+        length(raw_nonce) == 1L &&
+        !is.na(raw_nonce) &&
+        nchar(enc2utf8(raw_nonce), type = "bytes") <= 128L
+    ) {
+      raw_nonce
+    } else {
+      ""
+    }
+    action <- if (
+      is.character(raw_action) &&
+        length(raw_action) == 1L &&
+        !is.na(raw_action) &&
+        raw_action %in% c("copy", "download")
+    ) {
+      raw_action
+    } else {
+      "invalid"
+    }
     tryCatch(
       {
-        if (
-          !is.character(nonce) ||
-            length(nonce) != 1L ||
-            !nzchar(nonce) ||
-            !is.character(action) ||
-            length(action) != 1L ||
-            !action %in% c("copy", "download") ||
-            is.null(request$config)
-        ) {
-          cv_config_abort(
-            "invalid_request",
-            "The configuration request is invalid."
-          )
-        }
+        cv_config_check_node_limit(request)
+        request <- cv_config_record(
+          request,
+          c("nonce", "action", "config"),
+          path = "$.request"
+        )
+        nonce <- cv_config_string(request$nonce, "$.request.nonce", 128L)
+        action <- cv_config_choice(
+          request$action,
+          "$.request.action",
+          c("copy", "download")
+        )
         bundle <- cv_ok(coordviews_bundle())
         if (is.null(bundle)) {
           cv_config_abort("invalid_dataset", "Linked views is not ready.")
         }
         prepared <- cv_config_prepare(request$config, cells = bundle$cells)
+        cv_config_validate_genes(prepared$config, bundle$cells)
         coordviews_config_json(prepared$json)
         coordviews_config_filename(paste0(
           "linked-views-",
@@ -203,9 +268,20 @@ observeEvent(
   input[["coordviews_config_upload"]],
   {
     upload <- input[["coordviews_config_upload"]]
-    nonce <- isolate(input[["coordviews_config_upload_nonce"]])
+    raw_nonce <- isolate(input[["coordviews_config_upload_nonce"]])
+    nonce <- if (
+      is.character(raw_nonce) &&
+        length(raw_nonce) == 1L &&
+        !is.na(raw_nonce) &&
+        nchar(enc2utf8(raw_nonce), type = "bytes") <= 128L
+    ) {
+      raw_nonce
+    } else {
+      ""
+    }
     tryCatch(
       {
+        nonce <- cv_config_string(raw_nonce, "$.upload.nonce", 128L)
         if (
           is.null(upload) ||
             !is.data.frame(upload) ||
@@ -235,11 +311,13 @@ observeEvent(
           cv_config_abort("invalid_dataset", "Linked views is not ready.")
         }
         normalized <- cv_config_decode(enc2utf8(text), cells = bundle$cells)
+        colour_data <- cv_config_validate_genes(normalized, bundle$cells)
         cv_config_send_result(
           nonce,
           "apply",
           TRUE,
           config = cv_config_json_document(normalized),
+          colour_data = colour_data,
           selected_cells = length(normalized$selection$cells)
         )
       },

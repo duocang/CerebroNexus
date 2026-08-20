@@ -4706,7 +4706,7 @@ var focusPanel = null;
     var el = $(id);
     if (el && el.selectize) {
       if (value) el.selectize.addOption({ value: value, label: value });
-      el.selectize.setValue(value || '', !!fire);
+      el.selectize.setValue(value || '', !fire);
       return;
     }
     if (el) el.value = value || '';
@@ -4838,7 +4838,7 @@ var focusPanel = null;
     };
   }
 
-  function prepareConfigState(config) {
+  function prepareConfigState(config, colourData) {
     if (!D || !D.dataset_fingerprint || !Array.isArray(D.cells)) {
       configFail('Linked views is not ready to restore.');
     }
@@ -4889,6 +4889,43 @@ var focusPanel = null;
     if (mode === RGB_MODE && rgbGenes.length !== 3) {
       configFail('RGB colour mode requires exactly three genes.');
     }
+    var preparedColour = null;
+    if (colourData != null) {
+      if (!colourData || colourData.mode !== mode) {
+        configFail('The colour data does not match this configuration.');
+      }
+      if (mode === GENE_MODE) {
+        var geneValues = configArray(colourData.v, 'gene values');
+        if (colourData.gene !== view.colour.gene || geneValues.length !== D.n) {
+          configFail('The requested gene is unavailable here.');
+        }
+        geneValues.forEach(function (value) { configNumber(value, 'gene value'); });
+        preparedColour = {
+          mode: mode,
+          gene: colourData.gene,
+          v: geneValues.slice(),
+          max: configNumber(colourData.max, 'gene maximum')
+        };
+      } else if (mode === RGB_MODE) {
+        var resourceGenes = configArray(colourData.genes, 'RGB genes');
+        if (resourceGenes.join('\u0000') !== rgbGenes.join('\u0000')) {
+          configFail('The requested RGB genes are unavailable here.');
+        }
+        var channels = ['r', 'g', 'b'].map(function (channel) {
+          var values = configArray(colourData[channel], 'RGB values');
+          if (values.length !== D.n) configFail('An RGB gene is unavailable here.');
+          values.forEach(function (value) { configNumber(value, 'RGB value'); });
+          return values.slice();
+        });
+        preparedColour = {
+          mode: mode,
+          genes: resourceGenes.slice(),
+          r: channels[0], g: channels[1], b: channels[2]
+        };
+      } else {
+        configFail('Unexpected colour data was supplied.');
+      }
+    }
 
     var filters = Object.create(null);
     Object.keys(view.filters || {}).forEach(function (name) {
@@ -4918,8 +4955,10 @@ var focusPanel = null;
     var allowedSpaces = Object.create(null);
     projections.forEach(function (name) { allowedSpaces[projectionId(name)] = true; });
     spatialSections.forEach(function (name) { allowedSpaces[spatialId(name)] = true; });
-    Object.keys(spaceById).forEach(function (id) {
-      if (id.indexOf('projection::') !== 0 && id.indexOf('spatial::') !== 0) {
+    panels.forEach(function (panel) {
+      var id = panel.spaceId;
+      if (typeof id === 'string' &&
+        id.indexOf('projection::') !== 0 && id.indexOf('spatial::') !== 0) {
         allowedSpaces[id] = true;
       }
     });
@@ -4944,6 +4983,9 @@ var focusPanel = null;
     if (view.focus_space != null && !lenses[view.focus_space]) {
       configFail('The focused lens is unavailable here.');
     }
+    Object.keys(allowedSpaces).forEach(function (space) {
+      if (!lenses[space]) configFail('A linked lens is missing from this configuration.');
+    });
 
     if ((!D.clone || !spaceById.clone) && display.clone_layout !== 'stack') {
       configFail('The requested clone layout is unavailable here.');
@@ -4955,6 +4997,7 @@ var focusPanel = null;
       Number(trekker.niche_radius) !== 250
     )) configFail('The requested Trekker state is unavailable here.');
 
+    var backgroundSections = Object.create(null);
     var backgrounds = configArray(view.spatial_backgrounds, 'spatial backgrounds')
       .map(function (background) {
         if (!background || spatialSections.indexOf(background.section) < 0) {
@@ -4964,6 +5007,10 @@ var focusPanel = null;
           return item.name === background.section;
         })[0];
         var images = (sample.images || (sample.image ? [sample.image] : []));
+        if (!images.length || backgroundSections[background.section]) {
+          configFail('A Spatial background is unavailable here.');
+        }
+        backgroundSections[background.section] = true;
         if (background.mode === 'image' && !images.some(function (image) {
           return image.id === background.image_id;
         })) configFail('A Spatial background image is unavailable here.');
@@ -4989,6 +5036,13 @@ var focusPanel = null;
           }
         };
       });
+    spatialSections.forEach(function (section) {
+      var sample = samples.filter(function (item) { return item.name === section; })[0];
+      var images = sample && (sample.images || (sample.image ? [sample.image] : []));
+      if (images && images.length && !backgroundSections[section]) {
+        configFail('A Spatial background is missing from this configuration.');
+      }
+    });
 
     return {
       selectedIndexes: selectedIndexes,
@@ -5000,6 +5054,7 @@ var focusPanel = null;
       gene: view.colour.gene,
       rgbGenes: rgbGenes.slice(),
       clip: configNumber(view.colour.clip, 'colour clipping'),
+      colourData: preparedColour,
       filters: filters,
       hidden: hiddenIndexes,
       display: {
@@ -5032,15 +5087,32 @@ var focusPanel = null;
     setSelectedSpatial(state.spatialSections);
     if (state.activeSpatial) activateSpatial(spatialId(state.activeSpatial));
 
-    if (state.mode === GENE_MODE) colourByGene(state.gene);
+    if (state.mode === GENE_MODE && state.colourData) {
+      D.gene = {
+        gene: state.colourData.gene,
+        v: state.colourData.v,
+        max: state.colourData.max
+      };
+      geneWanted = state.gene;
+      configSetInputValue('coordviews_gene', state.gene, false);
+      setColorBy(GENE_MODE);
+    } else if (state.mode === GENE_MODE) colourByGene(state.gene);
     else {
       setColorBy(state.mode);
       var colourPicker = $('cv-pick-color');
       if (colourPicker) colourPicker.value = state.mode;
       if (state.mode === RGB_MODE) {
+        if (state.colourData) {
+          D.rgb = {
+            r: state.colourData.r,
+            g: state.colourData.g,
+            b: state.colourData.b,
+            genes: state.colourData.genes
+          };
+        }
         ['coordviews_gene_r', 'coordviews_gene_g', 'coordviews_gene_b']
           .forEach(function (id, index) {
-            configSetInputValue(id, state.rgbGenes[index], true);
+            configSetInputValue(id, state.rgbGenes[index], !state.colourData);
           });
       }
     }
@@ -5104,8 +5176,8 @@ var focusPanel = null;
     positionAllRangeVals(); seedImgControls();
     setSelection(state.selectedIndexes, state.selectionSource);
   }
-  function applyConfigState(config) {
-    var prepared = prepareConfigState(config);
+  function applyConfigState(config, colourData) {
+    var prepared = prepareConfigState(config, colourData);
     commitConfigState(prepared);
     return configStateSummary();
   }

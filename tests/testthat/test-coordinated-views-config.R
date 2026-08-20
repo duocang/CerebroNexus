@@ -159,6 +159,69 @@ test_that("canonical JSON preserves array fields with one item", {
   expect_length(decoded$view$lenses, 1L)
 })
 
+test_that("JSON scalar values cannot impersonate arrays", {
+  normalized <- config_env$cv_config_normalize(
+    valid_linked_view_config(),
+    cells = config_cells
+  )
+  document <- jsonlite::fromJSON(
+    config_env$cv_config_encode(normalized),
+    simplifyVector = FALSE
+  )
+  mutations <- list(
+    selection_cells = function(value) {
+      value$selection$cells <- "cell-a"
+      value
+    },
+    rgb_genes = function(value) {
+      value$view$colour$rgb_genes <- "CD3D"
+      value
+    },
+    projections = function(value) {
+      value$view$projections <- "umap"
+      value
+    },
+    spatial_sections = function(value) {
+      value$view$spatial_sections <- "donor-a"
+      value
+    },
+    filter_levels = function(value) {
+      value$view$filters$sample <- "donor-a"
+      value
+    },
+    hidden_levels = function(value) {
+      value$view$hidden_levels <- value$view$hidden_levels[[1L]]
+      value
+    },
+    hidden_level_names = function(value) {
+      value$view$hidden_levels[[1L]]$levels <- "Doublet"
+      value
+    },
+    lenses = function(value) {
+      value$view$lenses <- value$view$lenses[[1L]]
+      value
+    },
+    backgrounds = function(value) {
+      value$view$spatial_backgrounds <- value$view$spatial_backgrounds[[1L]]
+      value
+    }
+  )
+
+  for (name in names(mutations)) {
+    text <- jsonlite::toJSON(
+      mutations[[name]](document),
+      auto_unbox = TRUE,
+      null = "null"
+    )
+    error <- tryCatch(
+      config_env$cv_config_decode(text, cells = config_cells),
+      cv_config_error = identity
+    )
+    expect_s3_class(error, "cv_config_error")
+    expect_identical(error$code, "invalid_type", label = name)
+  }
+})
+
 expect_config_error <- function(config, code) {
   error <- tryCatch(
     {
@@ -234,6 +297,19 @@ test_that("configuration bounds reject hostile or ambiguous state", {
     init = "cell-a"
   )
   expect_config_error(config, "too_deep")
+
+  config <- valid_linked_view_config()
+  config$selection$cells <- rep(
+    "cell-a",
+    config_env$CV_CONFIG_MAX_NODES + 1L
+  )
+  expect_config_error(config, "too_complex")
+})
+
+test_that("timestamps must identify a real UTC instant", {
+  config <- valid_linked_view_config()
+  config$created_at <- "2026-99-99T99:99:99Z"
+  expect_config_error(config, "invalid_timestamp")
 })
 
 test_that("display bounds match the controls users can actually choose", {
@@ -267,6 +343,14 @@ test_that("cross-field references must describe one coherent workspace", {
   config <- valid_linked_view_config()
   config$view$colour$mode <- "__rgb__"
   config$view$colour$rgb_genes <- c("CD3D", "MS4A1")
+  expect_config_error(config, "invalid_reference")
+
+  config <- valid_linked_view_config()
+  config$view$colour$gene <- "CD3D"
+  expect_config_error(config, "invalid_reference")
+
+  config <- valid_linked_view_config()
+  config$view$colour$rgb_genes <- c("CD3D", "MS4A1", "LYZ")
   expect_config_error(config, "invalid_reference")
 })
 
@@ -343,6 +427,20 @@ test_that("configuration failures map to a bounded public vocabulary", {
   expect_identical(
     config_env$cv_config_safe_message(malformed),
     "The configuration could not be opened."
+  )
+  expect_identical(
+    config_env$cv_config_safe_message(structure(
+      list(message = "raw parser details", call = NULL, code = "invalid_json"),
+      class = c("cv_config_error", "error", "condition")
+    )),
+    "The file is not valid JSON."
+  )
+  expect_identical(
+    config_env$cv_config_safe_message(structure(
+      list(message = "bad value", call = NULL, code = "out_of_range"),
+      class = c("cv_config_error", "error", "condition")
+    )),
+    "The configuration contains a value outside its supported range."
   )
 })
 
