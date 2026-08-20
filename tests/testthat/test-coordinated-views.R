@@ -127,11 +127,9 @@ test_that("Linked views chooses its grid from both viewport dimensions", {
   expect_match(js, "widthSide", fixed = TRUE)
   expect_match(js, "heightSide", fixed = TRUE)
   expect_match(js, "VIEWPORT_GUTTER", fixed = TRUE)
-  expect_match(ui, 'class = "cv-secondary-analysis"', fixed = TRUE)
-  expect_match(
-    ui,
-    'class = "cv-secondary-analysis",\n      style = "display:none"'
-  )
+  expect_match(ui, 'id = "cv-readout"', fixed = TRUE)
+  expect_match(ui, 'uiOutput("coordviews_selected_cells_UI")', fixed = TRUE)
+  expect_false(grepl('id = "cv-workspace-overview"', ui, fixed = TRUE))
 })
 
 test_that("Linked views keeps replacement controls contextual and user-facing", {
