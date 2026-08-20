@@ -864,6 +864,29 @@ tab_coordinated_views <- tabItem(
           )
         )
       ),
+      tags$section(
+        class = "cv-snapshots",
+        `aria-labelledby` = "cv-snapshots-title",
+        tags$div(
+          class = "cv-snapshots-head",
+          tags$div(
+            tags$h5(id = "cv-snapshots-title", "Saved views"),
+            tags$span("Private to this browser and cell population.")
+          ),
+          tags$button(
+            type = "button",
+            id = "cv-snapshot-save",
+            class = "cv-snapshot-save",
+            icon("bookmark"),
+            "Save current view"
+          )
+        ),
+        tags$div(
+          id = "cv-snapshot-list",
+          class = "cv-snapshot-list",
+          `aria-live` = "polite"
+        )
+      ),
       tags$p(
         id = "cv-config-status",
         class = "cv-config-status",

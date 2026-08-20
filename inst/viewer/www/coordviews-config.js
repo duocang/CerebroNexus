@@ -7,6 +7,10 @@
   var lastFocus = null;
   var exportReady = false;
   var exportBusy = false;
+  var pendingSnapshotName = null;
+  var SNAPSHOT_KEY = 'cerebro.linked-views.snapshots.v1';
+  var SNAPSHOT_LIMIT = 12;
+  var SNAPSHOT_BYTES = 4 * 1024 * 1024;
 
   function byId(id) { return document.getElementById(id); }
   function adapter() { return window.cerebroLinkedViewsState || null; }
@@ -32,6 +36,101 @@
     element.classList.toggle('is-error', tone === 'error');
     element.classList.toggle('is-success', tone === 'success');
   }
+  function snapshotName(value) {
+    return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 80) : '';
+  }
+  function currentFingerprint() {
+    try {
+      var state = adapter();
+      var config = state && state.ready() ? state.capture() : null;
+      return config && config.dataset && typeof config.dataset.cell_fingerprint === 'string'
+        ? config.dataset.cell_fingerprint : null;
+    } catch (ignore) { return null; }
+  }
+  function appVersion() {
+    var node = document.querySelector('.cerebro-brand-version');
+    return node ? String(node.textContent || '').trim() : '';
+  }
+  function readSnapshots() {
+    try {
+      var stored = window.localStorage && window.localStorage.getItem(SNAPSHOT_KEY);
+      var parsed = stored ? JSON.parse(stored) : { records: [] };
+      return Array.isArray(parsed.records) ? parsed.records.filter(function (record) {
+        return record && typeof record.id === 'string' && typeof record.name === 'string' &&
+          typeof record.saved_at === 'string' && typeof record.json === 'string';
+      }) : [];
+    } catch (ignore) { return []; }
+  }
+  function writeSnapshots(records) {
+    var sorted = records.slice().sort(function (a, b) {
+      return String(b.saved_at).localeCompare(String(a.saved_at));
+    }).slice(0, SNAPSHOT_LIMIT);
+    var document = { version: 1, records: sorted };
+    var text = JSON.stringify(document);
+    while (sorted.length && text.length > SNAPSHOT_BYTES) {
+      sorted.pop(); document.records = sorted; text = JSON.stringify(document);
+    }
+    if (!sorted.length && records.length) throw new Error('This view is too large to save in this browser.');
+    try { window.localStorage.setItem(SNAPSHOT_KEY, text); }
+    catch (error) { throw new Error('This browser has no space left for saved views.'); }
+    return sorted;
+  }
+  function recordFingerprint(record) {
+    try {
+      var config = JSON.parse(record.json);
+      return config && config.dataset && typeof config.dataset.cell_fingerprint === 'string'
+        ? config.dataset.cell_fingerprint : null;
+    } catch (ignore) { return null; }
+  }
+  function visibleSnapshots() {
+    var fingerprint = currentFingerprint();
+    if (!fingerprint) return [];
+    return readSnapshots().filter(function (record) {
+      return recordFingerprint(record) === fingerprint;
+    });
+  }
+  function snapshotDate(value) {
+    var date = new Date(value);
+    return isNaN(date.getTime()) ? '' : date.toLocaleString();
+  }
+  function snapshotButton(label, action, record) {
+    var button = document.createElement('button');
+    button.type = 'button'; button.className = 'cv-snapshot-action';
+    button.textContent = label;
+    button.addEventListener('click', function () { action(record); });
+    return button;
+  }
+  function renderSnapshots() {
+    var list = byId('cv-snapshot-list');
+    var save = byId('cv-snapshot-save');
+    if (save) {
+      save.disabled = exportBusy || !exportReady;
+      save.title = exportReady ? '' : 'Select at least one cell before saving this view';
+    }
+    if (!list) return;
+    list.replaceChildren();
+    var records = visibleSnapshots();
+    if (!records.length) {
+      var empty = document.createElement('p');
+      empty.className = 'cv-snapshot-empty';
+      empty.textContent = 'No saved views for this cell population yet.';
+      list.appendChild(empty);
+      return;
+    }
+    records.forEach(function (record) {
+      var row = document.createElement('div'); row.className = 'cv-snapshot-row';
+      var details = document.createElement('div'); details.className = 'cv-snapshot-details';
+      var name = document.createElement('strong'); name.textContent = record.name;
+      var time = document.createElement('span'); time.textContent = snapshotDate(record.saved_at);
+      details.appendChild(name); details.appendChild(time); row.appendChild(details);
+      var actions = document.createElement('div'); actions.className = 'cv-snapshot-actions';
+      actions.appendChild(snapshotButton('Open', restoreSnapshot, record));
+      actions.appendChild(snapshotButton('Download', downloadSnapshot, record));
+      actions.appendChild(snapshotButton('Rename', renameSnapshot, record));
+      actions.appendChild(snapshotButton('Delete', deleteSnapshot, record));
+      row.appendChild(actions); list.appendChild(row);
+    });
+  }
   function refreshExportControls() {
     ['cv-config-download', 'cv-config-copy'].forEach(function (id) {
       var button = byId(id);
@@ -45,6 +144,7 @@
   function setBusy(busy) {
     exportBusy = !!busy;
     refreshExportControls();
+    renderSnapshots();
   }
   function setUploadLoading(loading) {
     var upload = byId('coordviews_config_upload');
@@ -57,6 +157,7 @@
     var enabled = !!ready;
     exportReady = enabled && Number(selectedCells) > 0;
     refreshExportControls();
+    renderSnapshots();
     button.disabled = !enabled;
     button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     button.title = !ready
@@ -68,6 +169,7 @@
     if (!dialog || dialog.open) return;
     status('');
     setUploadLoading(false);
+    renderSnapshots();
     lastFocus = document.activeElement;
     dialog.showModal();
     var close = byId('cv-config-close');
@@ -97,7 +199,8 @@
       var nonce = nextNonce();
       pending = { nonce: nonce, action: action };
       setBusy(true);
-      status(action === 'copy' ? 'Preparing JSON to copy…' : 'Preparing your download…');
+      status(action === 'copy' ? 'Preparing JSON to copy…' :
+        (action === 'save' ? 'Saving this view…' : 'Preparing your download…'));
       Shiny.setInputValue('coordviews_config_request', {
         nonce: nonce,
         action: action,
@@ -200,6 +303,64 @@
       );
     }
   }
+  function finishSave(result) {
+    if (typeof result.json !== 'string' || !pendingSnapshotName) {
+      status('This view could not be saved.', 'error');
+      return;
+    }
+    try {
+      var records = readSnapshots().filter(function (record) { return record.name !== pendingSnapshotName; });
+      records.unshift({
+        id: nextNonce(), name: pendingSnapshotName,
+        saved_at: new Date().toISOString(), app_version: appVersion(), json: result.json
+      });
+      writeSnapshots(records);
+      renderSnapshots();
+      status('Saved “' + pendingSnapshotName + '” in this browser.', 'success');
+    } catch (error) {
+      status(error && error.message ? error.message : 'This view could not be saved.', 'error');
+    } finally { pendingSnapshotName = null; }
+  }
+  function saveSnapshot() {
+    var name = snapshotName(window.prompt('Name this saved view:', ''));
+    if (!name) return;
+    pendingSnapshotName = name;
+    request('save');
+  }
+  function restoreSnapshot(record) {
+    if (typeof Shiny === 'undefined' || !Shiny.setInputValue) {
+      status('The connection is not ready. Try again in a moment.', 'error');
+      return;
+    }
+    var nonce = nextNonce();
+    pending = { nonce: nonce, action: 'apply' };
+    setBusy(true); status('Restoring “' + record.name + '”…');
+    Shiny.setInputValue('coordviews_config_request', {
+      nonce: nonce, action: 'apply', config_json: record.json
+    }, { priority: 'event' });
+  }
+  function downloadSnapshot(record) {
+    var selected = 0;
+    try { selected = (JSON.parse(record.json).selection.cells || []).length; } catch (ignore) { /* validated on restore */ }
+    finishDownload({ json: record.json, selected_cells: selected,
+      filename: 'linked-view-' + record.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') + '.json' });
+  }
+  function renameSnapshot(record) {
+    var name = snapshotName(window.prompt('Rename saved view:', record.name));
+    if (!name || name === record.name) return;
+    try {
+      writeSnapshots(readSnapshots().map(function (item) {
+        return item.id === record.id ? { id: item.id, name: name, saved_at: item.saved_at, json: item.json } : item;
+      }));
+      renderSnapshots();
+    } catch (error) { status(error.message, 'error'); }
+  }
+  function deleteSnapshot(record) {
+    try {
+      writeSnapshots(readSnapshots().filter(function (item) { return item.id !== record.id; }));
+      renderSnapshots(); status('Deleted “' + record.name + '”.', 'success');
+    } catch (error) { status(error.message, 'error'); }
+  }
   function receive(result) {
     if (!result || !pending || String(result.nonce) !== pending.nonce ||
       result.action !== pending.action) return;
@@ -212,12 +373,14 @@
       setUploadLoading(false);
     }
     if (!result.ok) {
+      if (action === 'save') pendingSnapshotName = null;
       status(result.message || 'The configuration could not be opened.', 'error');
       return;
     }
     if (action === 'copy' && result.action === 'copy') finishCopy(result);
     else if (action === 'download' && result.action === 'download') finishDownload(result);
     else if (action === 'apply' && result.action === 'apply') finishApply(result);
+    else if (action === 'save' && result.action === 'save') finishSave(result);
   }
   function beginUpload() {
     if (typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
@@ -241,6 +404,8 @@
     byId('cv-config-download').addEventListener('click', function () {
       request('download');
     });
+    var save = byId('cv-snapshot-save');
+    if (save) save.addEventListener('click', saveSnapshot);
     var upload = byId('coordviews_config_upload');
     if (upload) upload.addEventListener('change', beginUpload);
     dialog.addEventListener('close', function () {
@@ -267,6 +432,7 @@
     var state = adapter();
     var summary = state && state.summary ? state.summary() : null;
     setReady(!!(state && state.ready()), summary && summary.selectedCells);
+    renderSnapshots();
 
     if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
       Shiny.addCustomMessageHandler('coordviews_config_result', receive);

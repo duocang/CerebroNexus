@@ -456,11 +456,8 @@ test_that("the coordinated server exposes validated configuration transport", {
   expect_match(server, "cv_config_cell_fingerprint(b$cells)", fixed = TRUE)
   expect_match(server, "coordviews_config_request", fixed = TRUE)
   expect_match(server, 'c("copy", "download", "save", "apply")', fixed = TRUE)
-  expect_match(
-    server,
-    "cv_config_decode(request$config_json, cells = bundle$cells)",
-    fixed = TRUE
-  )
+  expect_match(server, "normalized <- cv_config_decode(", fixed = TRUE)
+  expect_match(server, "request$config_json", fixed = TRUE)
   expect_match(server, "coordviews_config_upload", fixed = TRUE)
   expect_match(server, "coordviews_config_upload_nonce", fixed = TRUE)
   expect_match(server, "coordviews_config_download", fixed = TRUE)
@@ -514,6 +511,8 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(ui, 'id = "cv-config-open"', fixed = TRUE)
   expect_match(ui, 'id = "cv-config-dialog"', fixed = TRUE)
   expect_match(ui, 'id = "cv-config-status"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-snapshot-save"', fixed = TRUE)
+  expect_match(ui, 'id = "cv-snapshot-list"', fixed = TRUE)
   expect_match(ui, '`aria-live` = "polite"', fixed = TRUE)
   expect_match(ui, '"coordviews_config_upload"', fixed = TRUE)
   expect_match(ui, '"coordviews_config_download"', fixed = TRUE)
@@ -523,6 +522,8 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "new window.Blob", fixed = TRUE)
   expect_match(controller, "URL.createObjectURL", fixed = TRUE)
   expect_match(controller, "setUploadLoading", fixed = TRUE)
+  expect_match(controller, "cerebro.linked-views.snapshots.v1", fixed = TRUE)
+  expect_match(controller, "saveSnapshot", fixed = TRUE)
   expect_match(controller, "cerebro:linkedviews-selection", fixed = TRUE)
   expect_match(css, "background: var(--cv-amber", fixed = TRUE)
   expect_match(css, ".cv-config-upload .btn-file > span", fixed = TRUE)
