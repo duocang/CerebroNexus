@@ -9,11 +9,10 @@ introducing a second password or authentication flow.
 
 ## Chosen interaction
 
-The existing login-account setup gains roles. Exactly one account is the
-**Administrator**; every other account is a **Viewer**. When login is first
-enabled, the first account defaults to Administrator and subsequent accounts
-default to Viewer. The builder requires exactly one Administrator before it can
-build an authenticated Viewer.
+The Viewer consumes the roles already present in the encrypted authentication
+database: accounts with `admin = TRUE` are **Administrators** and all other
+accounts are **Viewers**. Builder UI for assigning those roles and creating a
+default Administrator is explicitly deferred to a later change.
 
 After login:
 
@@ -103,8 +102,6 @@ configuration and dataset validation before any visible state mutates.
 
 ## Acceptance criteria
 
-- Builder account setup visibly distinguishes one Administrator from Viewer
-  accounts and refuses zero or multiple Administrators.
 - Administrator login shows the Admin sidebar page; Viewer login does not.
 - A direct `/admin` visit cannot bypass server authorization.
 - An Administrator can create multiple independent links for the same dataset,
@@ -115,6 +112,12 @@ configuration and dataset validation before any visible state mutates.
   messages.
 - Recipients can restore a valid link but cannot overwrite its stored snapshot.
 - Local saves and JSON import/export continue to behave as before.
+
+## Deferred Builder work
+
+Builder account setup will later expose Administrator and Viewer roles, default
+the first account to Administrator, and require at least one Administrator.
+That authoring workflow is not part of this Viewer-runtime implementation.
 
 ## Rejected alternatives
 
