@@ -134,6 +134,8 @@
   function renderSnapshots() {
     var list = byId('cv-snapshot-list');
     var save = byId('cv-snapshot-save');
+    var saveRegion = document.querySelector('.cv-config-save-local');
+    if (saveRegion) saveRegion.classList.toggle('is-disabled', exportBusy || !exportReady);
     if (save) {
       save.disabled = exportBusy || !exportReady;
       save.title = exportReady ? '' : 'Select at least one cell before saving this view';
