@@ -468,6 +468,26 @@ test_that("the coordinated server exposes validated configuration transport", {
     )
   )
   expect_match(server, "CV_CONFIG_MAX_BYTES", fixed = TRUE)
+  capture_start <- regexpr(
+    'observeEvent(\n  input[["coordviews_config_request"]]',
+    server,
+    fixed = TRUE
+  )
+  capture_end <- regexpr(
+    'output[["coordviews_config_download"]]',
+    server,
+    fixed = TRUE
+  )
+  capture_observer <- substr(
+    server,
+    capture_start,
+    capture_end - 1L
+  )
+  expect_false(grepl(
+    "cv_config_validate_genes",
+    capture_observer,
+    fixed = TRUE
+  ))
 })
 
 test_that("Save and share markup is accessible and bundled in every Viewer", {

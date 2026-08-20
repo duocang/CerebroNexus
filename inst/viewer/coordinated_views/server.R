@@ -215,7 +215,6 @@ observeEvent(
           cv_config_abort("invalid_dataset", "Linked views is not ready.")
         }
         prepared <- cv_config_prepare(request$config, cells = bundle$cells)
-        cv_config_validate_genes(prepared$config, bundle$cells)
         coordviews_config_json(prepared$json)
         coordviews_config_filename(paste0(
           "linked-views-",
