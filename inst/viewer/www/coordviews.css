@@ -282,11 +282,11 @@
   border: 1px solid; border-radius: 6px;
 }
 .coordviews-page .cv-selactions .cv-config-open {
-  min-width: 0; border-color: var(--c-amber-300, #ffb27a);
-  background: var(--cv-amber50, #fff4ec); color: var(--cv-amber700, #c85a0e);
+  min-width: 0; border-color: var(--cv-border, #d8dce3);
+  background: var(--cv-surface, #fff); color: var(--cv-text2, #575a60);
 }
 .coordviews-page .cv-selactions .cv-config-open:hover:not(:disabled) {
-  background: var(--cv-amber100, #ffe4d1); border-color: var(--cv-amber, #f97316);
+  background: var(--cv-surface2, #f5f6f8); border-color: var(--cv-text3, #868990);
 }
 /* These two are deliberately OUTSIDE the amber vocabulary. Everything else in
    the bar is a persistent control whose amber means "this is on"; these appear
