@@ -579,11 +579,6 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "viewer_admin_capability", fixed = TRUE)
   expect_match(controller, "pendingShare.retried", fixed = TRUE)
   expect_match(controller, "crypto.getRandomValues", fixed = TRUE)
-  expect_match(
-    controller,
-    "Share link ready. Saving in the background…",
-    fixed = TRUE
-  )
   expect_match(controller, "copy.textContent = ok ? 'Copied ✓'", fixed = TRUE)
   expect_false(grepl("copyText(shareUrl(token));", controller, fixed = TRUE))
   expect_match(
@@ -597,6 +592,10 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
     fixed = TRUE
   )
   expect_match(controller, "cerebro:share-created", fixed = TRUE)
+  expect_false(grepl("Copying…", controller, fixed = TRUE))
+  expect_false(grepl("Saving in the background…", controller, fixed = TRUE))
+  expect_match(controller, "Creating share link…", fixed = TRUE)
+  expect_match(controller, "Share link ready.", fixed = TRUE)
   expect_match(
     server,
     'c("nonce", "action", "config", "token")',

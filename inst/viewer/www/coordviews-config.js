@@ -121,14 +121,16 @@
   }
   function copyShareButton(record) {
     var copy = snapshotButton('Copy link', function () {
+      if (copy.dataset.copying === 'true') return;
+      copy.dataset.copying = 'true';
       copy.disabled = true;
-      copy.textContent = 'Copying…';
       copyText(shareUrl(record.token)).then(function (ok) {
         copy.textContent = ok ? 'Copied ✓' : 'Copy failed';
         status(ok ? 'Share link copied.' : 'Clipboard access was blocked.', ok ? 'success' : 'error');
         window.setTimeout(function () {
           copy.textContent = 'Copy link';
           copy.disabled = false;
+          delete copy.dataset.copying;
         }, 1400);
       });
     }, record);
@@ -268,17 +270,13 @@
     var nonce = nextNonce();
     pendingShare = { nonce: nonce, action: action, payload: null, retried: false };
     if (pendingShareTimer) window.clearTimeout(pendingShareTimer);
-    status(action === 'share_open' ? 'Opening shared view…' : 'Preparing share link…', 'working');
+    status(action === 'share_open' ? 'Opening shared view…' : 'Creating share link…', 'working');
     var payload = { nonce: nonce, action: action };
     if (action === 'share_create') {
       payload.config = state.capture();
       var token = randomShareToken();
       if (token) {
         payload.token = token;
-        var expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
-        latestShare = { token: token, expires_at: expires, fingerprint: currentFingerprint() };
-        renderShareResult(latestShare);
-        status('Share link ready. Saving in the background…', 'success');
       }
     }
     if (record) payload.token = record.token;
@@ -321,7 +319,7 @@
         fingerprint: currentFingerprint()
       };
       renderShareResult(latestShare);
-      status('Share link saved. It expires in 90 days.', 'success');
+      status('Share link ready.', 'success');
       window.dispatchEvent(new CustomEvent('cerebro:share-created', {
         detail: { token: result.token }
       }));
