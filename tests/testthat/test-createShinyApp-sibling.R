@@ -225,99 +225,32 @@ build_test_app <- function(cerebro_data, result_dir, ...) {
   )
 }
 
-render_bundle_spatial_background <- function(
-  app,
-  config,
-  background_image,
-  background_image_allowlist
-) {
-  renderer <- new.env(parent = globalenv())
-  renderer$Cerebro.options <- config
+source_bundle_coordinated_runtime <- function(app, config) {
+  runtime <- new.env(parent = globalenv())
+  runtime$Cerebro.options <- config
+  files <- config$crb_file_to_load
+  if (is.list(files)) {
+    files <- unlist(files, use.names = TRUE)
+  }
+  runtime$available_crb_files <- list(
+    selected = unname(files[[1L]]),
+    files = files,
+    names = names(files)
+  )
   sys.source(
-    file.path(
-      app,
-      "viewer",
-      "spatial",
-      "func_projection_update_plot.R"
-    ),
-    envir = renderer
+    file.path(app, "viewer", "clone_contract.R"),
+    envir = runtime
   )
+  sys.source(
+    file.path(app, "viewer", "coordinated_views", "bundle.R"),
+    envir = runtime
+  )
+  runtime
+}
 
-  js <- get("js", envir = asNamespace("shinyjs"))
-  binding_names <- c(
-    "getContainerDimensions",
-    "updatePlot2DContinuousSpatial"
-  )
-  binding_existed <- vapply(
-    binding_names,
-    exists,
-    logical(1),
-    envir = js,
-    inherits = FALSE
-  )
-  previous_bindings <- lapply(binding_names, function(name) {
-    if (exists(name, envir = js, inherits = FALSE)) {
-      get(name, envir = js, inherits = FALSE)
-    } else {
-      NULL
-    }
-  })
-  on.exit(
-    for (index in seq_along(binding_names)) {
-      name <- binding_names[[index]]
-      if (binding_existed[[index]]) {
-        assign(name, previous_bindings[[index]], envir = js)
-      } else if (exists(name, envir = js, inherits = FALSE)) {
-        rm(list = name, envir = js)
-      }
-    },
-    add = TRUE
-  )
-
-  rendered_meta <- NULL
-  assign(
-    "getContainerDimensions",
-    function() list(width = 800, height = 600),
-    envir = js
-  )
-  assign(
-    "updatePlot2DContinuousSpatial",
-    function(meta, ...) rendered_meta <<- meta,
-    envir = js
-  )
-
-  withr::with_dir(
-    app,
-    renderer$spatial_projection_update_plot(list(
-      cells_df = data.frame(score = c(1, 2)),
-      coordinates = data.frame(x = c(1, 2), y = c(3, 4)),
-      reset_axes = TRUE,
-      color_assignments = character(),
-      hover_info = c("first", "second"),
-      plot_parameters = list(
-        color_variable = "score",
-        background_image = background_image,
-        background_image_allowlist = background_image_allowlist,
-        n_dimensions = 2,
-        x_range = NULL,
-        y_range = NULL,
-        background_flip_x = FALSE,
-        background_flip_y = FALSE,
-        background_scale_x = 1,
-        background_scale_y = 1,
-        background_offset_x = 0,
-        background_offset_y = 0,
-        background_opacity = 1,
-        plot_type = "Feature plot",
-        point_size = 5,
-        point_opacity = 1,
-        draw_border = FALSE,
-        hover_info = FALSE
-      )
-    ))
-  )
-
-  rendered_meta
+read_bundle_external_images <- function(app, config, spatial_name = "section") {
+  runtime <- source_bundle_coordinated_runtime(app, config)
+  withr::with_dir(app, runtime$cv_external_images(spatial_name))
 }
 
 source_bundle_runtime <- function(app = NULL) {
@@ -2493,7 +2426,12 @@ test_that("spatial images and settings preserve dataset spatial image nesting", 
     spatial_image_settings = list(
       Dataset = list(
         `section-a` = list(
-          `H&E` = list(flip_x = TRUE, scale_x = 1.5, rotation = 90)
+          `H&E` = list(
+            flip_x = TRUE,
+            scale_x = 1.5,
+            rotation = 90,
+            image_opacity = 0.8
+          )
         ),
         `section-b` = list(
           DAPI = list(
@@ -2528,7 +2466,12 @@ test_that("spatial images and settings preserve dataset spatial image nesting", 
   )
   expect_identical(
     config$spatial_image_settings$Dataset[["section-a"]][["H&E"]],
-    list(flip_x = TRUE, scale_x = 1.5, rotation = 90)
+    list(
+      flip_x = TRUE,
+      scale_x = 1.5,
+      rotation = 90,
+      image_opacity = 0.8
+    )
   )
   expect_identical(
     config$spatial_image_settings$Dataset[["section-b"]]$DAPI,
@@ -2731,6 +2674,14 @@ test_that("spatial image settings accept only strict scalar fields", {
     list(settings = list(flip_x = 1), error = "flip_x.*logical scalar"),
     list(settings = list(flip_y = NA), error = "flip_y.*logical scalar"),
     list(settings = list(scale_x = Inf), error = "scale_x.*finite numeric"),
+    list(
+      settings = list(image_opacity = -0.1),
+      error = "image_opacity.*between 0 and 1"
+    ),
+    list(
+      settings = list(image_opacity = 1.1),
+      error = "image_opacity.*between 0 and 1"
+    ),
     list(
       settings = list(rotation = c(0, 90)),
       error = "rotation.*finite numeric"
@@ -2978,12 +2929,15 @@ test_that("one spatial image can be shared by multiple data sets", {
   )
 })
 
-test_that("external spatial images render from disk without an HTTP mapping", {
+test_that("external spatial images reach Linked views without an HTTP mapping", {
   skip_if_not_installed("base64enc")
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(file.path(root, "source"))
   image <- file.path(root, "histology.png")
-  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
+  writeBin(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    image
+  )
   app <- file.path(root, "app")
 
   build_test_app(
@@ -3006,23 +2960,22 @@ test_that("external spatial images render from disk without an HTTP mapping", {
   app_source <- paste(readLines(file.path(app, "app.R")), collapse = "\n")
   expect_false(grepl("addResourcePath", app_source, fixed = TRUE))
 
-  rendered_meta <- render_bundle_spatial_background(
-    app,
-    config,
-    stored,
-    stored
-  )
-
-  expect_match(rendered_meta$background_image, "^data:image/png;base64,")
-  expect_gt(nchar(rendered_meta$background_image), 22L)
+  images <- read_bundle_external_images(app, config)
+  expect_length(images, 1L)
+  expect_identical(images[[1L]]$label, "Tissue background")
+  expect_match(images[[1L]]$uri, "^data:image/png;base64,")
+  expect_gt(nchar(images[[1L]]$uri), 22L)
 })
 
-test_that("forged spatial backgrounds cannot read unconfigured files", {
+test_that("Linked views cannot read spatial assets outside its frozen config", {
   skip_if_not_installed("base64enc")
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(file.path(root, "source"))
   image <- file.path(root, "histology.png")
-  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), image)
+  writeBin(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    image
+  )
   app <- file.path(root, "app")
 
   build_test_app(
@@ -3032,45 +2985,53 @@ test_that("forged spatial backgrounds cannot read unconfigured files", {
   )
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
-  allowed <- config$spatial_images$Dataset$section[["Tissue background"]]
   outside <- file.path(root, "outside-secret.png")
   unconfigured <- file.path(app, "spatial-assets", "unconfigured.png")
   writeLines("OUTSIDE-PRIVATE-SENTINEL", outside)
   writeLines("UNCONFIGURED-PRIVATE-SENTINEL", unconfigured)
 
-  attacks <- list(
-    "private-data/dataset.crb" = c(
-      allowed,
-      "private-data/dataset.crb"
-    ),
-    "../outside-secret.png" = c(allowed, "../outside-secret.png"),
-    "spatial-assets/unconfigured.png" = allowed
+  images <- read_bundle_external_images(app, config)
+  expect_length(images, 1L)
+  expect_match(images[[1L]]$uri, "^data:image/png;base64,")
+
+  runtime <- source_bundle_coordinated_runtime(app, config)
+  expect_null(runtime$cv_authorized_external_image_path(
+    "private-data/dataset.crb",
+    app
+  ))
+  expect_null(runtime$cv_authorized_external_image_path(
+    "../outside-secret.png",
+    app
+  ))
+  expect_identical(
+    length(read_bundle_external_images(app, config)),
+    1L,
+    info = "an unconfigured file inside spatial-assets was returned"
   )
-  for (attack in names(attacks)) {
-    rendered_meta <- render_bundle_spatial_background(
-      app,
-      config,
-      attack,
-      attacks[[attack]]
-    )
-    expect_null(
-      rendered_meta$background_image,
-      info = paste("forged background was returned:", attack)
-    )
-  }
 
   linked <- file.path(app, "spatial-assets", "linked.png")
   if (isTRUE(file.symlink(outside, linked))) {
-    rendered_meta <- render_bundle_spatial_background(
-      app,
-      config,
+    expect_null(runtime$cv_authorized_external_image_path(
       "spatial-assets/linked.png",
-      c(allowed, "spatial-assets/linked.png")
-    )
-    expect_null(
-      rendered_meta$background_image,
-      info = "configured symlink escaped the public spatial-assets directory"
-    )
+      app
+    ))
+  }
+
+  symlink_root <- file.path(root, "symlink-root")
+  outside_assets <- file.path(root, "outside-assets")
+  dir.create(symlink_root)
+  dir.create(outside_assets)
+  writeLines("OUTSIDE-ASSET-SENTINEL", file.path(outside_assets, "secret.png"))
+  if (
+    isTRUE(file.symlink(
+      outside_assets,
+      file.path(symlink_root, "spatial-assets")
+    ))
+  ) {
+    expect_null(runtime$cv_authorized_external_image_path(
+      "spatial-assets/secret.png",
+      symlink_root
+    ))
   }
 })
 

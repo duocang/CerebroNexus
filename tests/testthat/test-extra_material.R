@@ -44,6 +44,26 @@ test_that("extra_material UI defines correct tabName", {
   expect_match(content, 'tabName\\s*=\\s*"extra_material"', perl = TRUE)
 })
 
+test_that("tables-only Viewer content does not expose a redundant category choice", {
+  selector_file <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "viewer",
+    "extra_material",
+    "select_content.R"
+  )
+  skip_if_not(file.exists(selector_file))
+  selector <- paste(readLines(selector_file, warn = FALSE), collapse = "\n")
+
+  expect_match(selector, "extra_material_category_needed", fixed = TRUE)
+  expect_match(
+    selector,
+    "if (!has_category_choice)",
+    fixed = TRUE
+  )
+})
+
 test_that("example.crb extra material returns valid content", {
   skip_if_not(file.exists(example_crb))
   crb <- readRDS(example_crb)
