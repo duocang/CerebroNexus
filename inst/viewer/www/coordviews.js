@@ -4330,6 +4330,7 @@ var focusPanel = null;
   // fell off the bottom -- on the one layout that most needs to be seen at once.
   var PREF_SIDE = 300;
   var MIN_SIDE = 300;
+  var VIEWPORT_GUTTER = 18;
   // Context is a persistent orientation aid, not the place for close reading.
   // Let it become slightly smaller while a primary lens is present so a common
   // 1280px workspace can keep both roles in the same visual field.
@@ -4370,6 +4371,29 @@ var focusPanel = null;
       focusPanel || ''
     ].join('|');
   }
+
+  // Find the rows/columns that produce the largest complete square when BOTH
+  // dimensions are finite. This is deliberately independent of panel order:
+  // adding a linked space changes only the packing, never the visual geometry.
+  function bestOverviewGrid(panelCount, availW, availH, chromeX, chromeY, gap) {
+    var best = { cols: 1, rows: panelCount, side: 0 };
+    for (var cols = 1; cols <= panelCount; cols++) {
+      var rows = Math.ceil(panelCount / cols);
+      var widthSide = Math.floor(
+        (availW - (cols - 1) * gap) / cols - chromeX
+      );
+      var heightSide = Math.floor(
+        (availH - (rows - 1) * gap) / rows - chromeY
+      );
+      var candidate = Math.min(widthSide, heightSide);
+      if (candidate > best.side ||
+          (candidate === best.side && rows < best.rows)) {
+        best = { cols: cols, rows: rows, side: candidate };
+      }
+    }
+    return best;
+  }
+
   function resizeAll() {
     if (!D || !panels.length) return;
     var panes = panels[0].pane && panels[0].pane.parentElement;
@@ -4393,24 +4417,45 @@ var focusPanel = null;
     // canvas fits its pane exactly (never overflows), and make the track = square
     // + chrome. `overhead` already carries the vertical equivalent.
     var chromeX = 26;
-    // Width-driven wrapping, matching the Spatial page: use as many columns as
-    // can keep every canvas at least 300px wide, then flow additional linked
-    // spaces onto the next row. Height is deliberately not a constraint; with
-    // five or six modalities, shrinking everything to keep one viewport made
-    // the panels unreadable.
+    var firstCanvas = vis[0] && vis[0].canvas;
+    var firstPane = vis[0] && vis[0].pane;
+    var overhead = firstPane && firstCanvas
+      ? Math.max(0, firstPane.offsetHeight - firstCanvas.clientHeight) : 58;
+    var scrollHost = panes.closest('.content-wrapper');
+    var visibleBottom = scrollHost
+      ? scrollHost.getBoundingClientRect().bottom : window.innerHeight;
+    var bottomPad = scrollHost
+      ? (parseFloat(getComputedStyle(scrollHost).paddingBottom) || 0) : 0;
+    var availH = Math.floor(
+      visibleBottom - panes.getBoundingClientRect().top - bottomPad -
+      2 * VIEWPORT_GUTTER
+    );
+    var usableW = Math.max(1, availW - 2 * VIEWPORT_GUTTER);
+
+    // Overview is a genuine two-dimensional fit: try every possible column
+    // count and choose the one that maximises a complete square. If there are so
+    // many panels that the result would be unreadable, retain the 300px floor
+    // and let the workspace scroll instead of reducing plots to thumbnails.
+    var overview = !focusPanel
+      ? bestOverviewGrid(k, usableW, Math.max(1, availH), chromeX, overhead, gap)
+      : null;
     var columnFloor = focusPanel ? FOCUS_CONTEXT_SIDE : PREF_SIDE;
     var availableCols = Math.max(1,
-      Math.floor((availW + gap) / (columnFloor + chromeX + gap)));
-    // A focused lens consumes an extra grid track so it can be materially larger
-    // without evicting its peers. In overview, one panel consumes one track.
-    var cols = Math.max(1, Math.min(k + (focusPanel ? 1 : 0), availableCols));
+      Math.floor((usableW + gap) / (columnFloor + chromeX + gap)));
+    var overviewFitsFloor = overview && overview.side >= MIN_SIDE;
+    var cols = focusPanel
+      ? Math.max(1, Math.min(k + 1, availableCols))
+      : (overviewFitsFloor
+        ? overview.cols : Math.max(1, Math.min(k, availableCols)));
     var single = cols === 1;
-    var colW = (availW - (cols - 1) * gap) / cols;
-    var side = Math.max(
-      focusPanel ? FOCUS_CONTEXT_SIDE : MIN_SIDE,
-      Math.floor(colW - chromeX)
-    );
-    if (single && side + chromeX > availW) side = Math.max(150, availW - chromeX);
+    var colW = (usableW - (cols - 1) * gap) / cols;
+    var side = focusPanel
+      ? Math.max(FOCUS_CONTEXT_SIDE, Math.floor(colW - chromeX))
+      : (overviewFitsFloor
+        ? overview.side : Math.max(MIN_SIDE, Math.floor(colW - chromeX)));
+    if (single && side + chromeX > usableW) {
+      side = Math.max(150, usableW - chromeX);
+    }
     // A lone/focused card should use the available HEIGHT as well as width.
     // Without this cap a wide monitor produced a 1200px square that continued
     // far below the viewport. Multi-card grids deliberately keep the 300px
@@ -4423,16 +4468,16 @@ var focusPanel = null;
     if (single || focusPanel) {
       var focusObj = null;
       vis.forEach(function (p) { if (p.key === focusPanel) focusObj = p; });
-      var firstPane = (focusObj || vis[0]) && (focusObj || vis[0]).pane;
+      firstPane = (focusObj || vis[0]) && (focusObj || vis[0]).pane;
       var canvas = (focusObj || vis[0]) && (focusObj || vis[0]).canvas;
-      var overhead = firstPane && canvas
+      overhead = firstPane && canvas
         ? Math.max(0, firstPane.offsetHeight - canvas.clientHeight) : 58;
-      var scrollHost = panes.closest('.content-wrapper');
-      var visibleBottom = scrollHost
+      scrollHost = panes.closest('.content-wrapper');
+      visibleBottom = scrollHost
         ? scrollHost.getBoundingClientRect().bottom : window.innerHeight;
-      var bottomPad = scrollHost
+      bottomPad = scrollHost
         ? (parseFloat(getComputedStyle(scrollHost).paddingBottom) || 0) : 0;
-      var availH = Math.floor(
+      availH = Math.floor(
         visibleBottom - panes.getBoundingClientRect().top - bottomPad - 8
       );
       if (availH > 0) {
