@@ -3308,12 +3308,19 @@ test_that("generated apps include the linked-view configuration runtime", {
     app,
     "viewer",
     "www",
+    "coordviews-config-cache.js"
+  )))
+  expect_true(file.exists(file.path(
+    app,
+    "viewer",
+    "www",
     "coordviews-config.js"
   )))
   ui_text <- paste(
     readLines(file.path(app, "viewer", "shiny_UI.R")),
     collapse = "\n"
   )
+  expect_match(ui_text, "coordviews-config-cache\\.js")
   expect_match(ui_text, "coordviews-config\\.js")
 })
 

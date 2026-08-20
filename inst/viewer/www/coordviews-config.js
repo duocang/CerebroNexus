@@ -12,9 +12,11 @@
   var snapshotNameRequest = null;
   var pendingShare = null;
   var pendingShareTimer = null;
+  var sharePreparing = false;
   var shareUrlHandled = false;
   var shareAdminAllowed = false;
   var latestShare = null;
+  var preparedCache = null;
   var SNAPSHOT_KEY = 'cerebro.linked-views.snapshots.v1';
   var SNAPSHOT_LIMIT = 12;
   var SNAPSHOT_BYTES = 4 * 1024 * 1024;
@@ -144,7 +146,8 @@
       shareRegion.hidden = !shareAdminAllowed;
       shareRegion.classList.toggle('is-disabled', exportBusy || !exportReady);
     }
-    if (create) create.disabled = !shareAdminAllowed || exportBusy || !exportReady;
+    if (create) create.disabled = !shareAdminAllowed || exportBusy ||
+      sharePreparing || !!pendingShare || !exportReady;
     if (!list) return;
     list.replaceChildren();
     if (!record || !record.token) return;
@@ -258,22 +261,15 @@
       ? 'Linked views is waiting for a data set'
       : 'Save, open, import, export, or share a linked view';
   }
-  function sendShare(action, record) {
-    var state = adapter();
+  function sendShareRequest(action, record, prepared) {
     if (typeof Shiny === 'undefined' || !Shiny.setInputValue || pendingShare) return;
-    if (action === 'share_create' && !shareAdminAllowed) {
-      status('Administrator access is required to create share links.', 'error'); return;
-    }
-    if (action === 'share_create' && (!state || !state.ready() || !exportReady)) {
-      status('Select at least one cell before creating a share link.', 'error'); return;
-    }
     var nonce = nextNonce();
     pendingShare = { nonce: nonce, action: action, payload: null, retried: false };
     if (pendingShareTimer) window.clearTimeout(pendingShareTimer);
     status(action === 'share_open' ? 'Opening shared view…' : 'Creating share link…', 'working');
     var payload = { nonce: nonce, action: action };
     if (action === 'share_create') {
-      payload.config = state.capture();
+      payload.config_json = prepared.json;
       var token = randomShareToken();
       if (token) {
         payload.token = token;
@@ -295,6 +291,32 @@
       status('The share link could not be saved. Try again.', 'error');
     }, 2000);
     Shiny.setInputValue('coordviews_share_request', payload, { priority: 'event' });
+  }
+  function sendShare(action, record) {
+    var state = adapter();
+    if (action !== 'share_create') {
+      sendShareRequest(action, record, null);
+      return;
+    }
+    if (!shareAdminAllowed) {
+      status('Administrator access is required to create share links.', 'error'); return;
+    }
+    if (!state || !state.ready() || !exportReady) {
+      status('Select at least one cell before creating a share link.', 'error'); return;
+    }
+    if (!preparedCache || sharePreparing || pendingShare) return;
+    sharePreparing = true;
+    renderShareResult(latestShare);
+    status('Creating share link…', 'working');
+    preparedCache.get().then(function (prepared) {
+      sharePreparing = false;
+      renderShareResult(latestShare);
+      sendShareRequest(action, record, prepared);
+    }, function (error) {
+      sharePreparing = false;
+      renderShareResult(latestShare);
+      status(error && error.message ? error.message : 'The view could not be prepared.', 'error');
+    });
   }
   function receiveShare(result) {
     if (!result || !pendingShare || String(result.nonce) !== pendingShare.nonce) return;
@@ -359,35 +381,45 @@
     status('');
     setUploadLoading(false);
   }
+  function preparedStatus(action) {
+    if (action === 'copy') return 'Preparing JSON to copy…';
+    if (action === 'save') return 'Saving this view…';
+    return 'Preparing your download…';
+  }
+  function withPreparedConfig(action, consumer) {
+    if (!preparedCache) {
+      status('The connection is not ready. Try again in a moment.', 'error');
+      return;
+    }
+    setBusy(true);
+    var workingTimer = window.setTimeout(function () {
+      status(preparedStatus(action), 'working');
+    }, 120);
+    preparedCache.get().then(function (prepared) {
+      window.clearTimeout(workingTimer);
+      setBusy(false);
+      consumer(prepared);
+    }, function (error) {
+      window.clearTimeout(workingTimer);
+      setBusy(false);
+      if (action === 'save') pendingSnapshotName = null;
+      status(error && error.message ? error.message : 'The view could not be prepared.', 'error');
+    });
+  }
   function request(action) {
     var state = adapter();
     if (!state || !state.ready()) {
       status('Linked views is not ready to save.', 'error');
       return;
     }
-    if (typeof Shiny === 'undefined' || !Shiny.setInputValue) {
-      status('The connection is not ready. Try again in a moment.', 'error');
-      return;
-    }
     if (!exportReady) {
       status('Select at least one cell before exporting this view.', 'error');
       return;
     }
-    try {
-      var nonce = nextNonce();
-      startPending(nonce, action);
-      setBusy(true);
-      status(action === 'copy' ? 'Preparing JSON to copy…' :
-        (action === 'save' ? 'Saving this view…' : 'Preparing your download…'));
-      Shiny.setInputValue('coordviews_config_request', {
-        nonce: nonce,
-        action: action,
-        config: state.capture()
-      }, { priority: 'event' });
-    } catch (error) {
-      clearPending();
-      status(error && error.message ? error.message : 'The view could not be saved.', 'error');
-    }
+    withPreparedConfig(action, function (prepared) {
+      if (action === 'copy') finishCopy(prepared);
+      else finishDownload(prepared);
+    });
   }
   function fallbackCopy(text) {
     var textarea = null;
@@ -518,13 +550,13 @@
       status(error && error.message ? error.message : 'This view could not be saved.', 'error');
     } finally { pendingSnapshotName = null; }
   }
-  function saveSnapshotLocally(name) {
-    var state = adapter();
-    if (!state || !state.ready()) throw new Error('Linked views is not ready to save.');
-    var json = JSON.stringify(state.capture());
+  function saveSnapshotLocally(name, prepared) {
+    if (!prepared || typeof prepared.json !== 'string') {
+      throw new Error('Linked views is not ready to save.');
+    }
     var records = readSnapshots().filter(function (record) { return record.name !== name; });
     records.unshift({ id: nextNonce(), name: name, saved_at: new Date().toISOString(),
-      app_version: appVersion(), json: json });
+      app_version: appVersion(), json: prepared.json });
     writeSnapshots(records);
     renderSnapshots();
     status('Saved “' + name + '” on this device.', 'success');
@@ -549,8 +581,12 @@
     var name = snapshotName(input && input.value); if (!requestState || !name) return;
     closeSnapshotNameDialog();
     if (requestState.mode === 'save') {
-      try { saveSnapshotLocally(name); }
-      catch (error) { status(error && error.message ? error.message : 'This view could not be saved.', 'error'); }
+      pendingSnapshotName = name;
+      withPreparedConfig('save', function (prepared) {
+        try { saveSnapshotLocally(name, prepared); }
+        catch (error) { status(error && error.message ? error.message : 'This view could not be saved.', 'error'); }
+        finally { pendingSnapshotName = null; }
+      });
       return;
     }
     if (name === requestState.record.name) return;
@@ -608,6 +644,10 @@
     } catch (error) { status(error.message, 'error'); }
   }
   function receive(result) {
+    if (result && result.action === 'prepare' && preparedCache) {
+      preparedCache.receive(result);
+      return;
+    }
     if (!result || !pending || String(result.nonce) !== pending.nonce) return;
     var action = pending.action;
     clearPending();
@@ -641,6 +681,31 @@
     Shiny.setInputValue('coordviews_config_upload_nonce', nonce, {
       priority: 'event'
     });
+  }
+  function setupPreparedCache() {
+    var api = window.cerebroPreparedConfigCache;
+    if (!api || typeof api.create !== 'function' ||
+      typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
+    preparedCache = api.create({
+      debounceMs: 250,
+      ready: function () {
+        var state = adapter();
+        return !!(exportReady && state && state.ready());
+      },
+      capture: function () { return adapter().capture(); },
+      send: function (payload) {
+        Shiny.setInputValue('coordviews_config_request', payload, { priority: 'event' });
+      }
+    });
+  }
+  function invalidatePrepared() {
+    if (preparedCache) preparedCache.invalidate();
+  }
+  function workspaceEvent(event) {
+    var target = event && event.target;
+    if (!target || !target.closest) return false;
+    if (target.closest('#cv-config-dialog') || target.closest('#cv-snapshot-name-dialog')) return false;
+    return !!target.closest('#shiny-tab-coordinated_views');
   }
   function boot() {
     var open = byId('cv-config-open');
@@ -685,16 +750,28 @@
     window.addEventListener('cerebro:linkedviews-ready', function (event) {
       var detail = event.detail || {};
       setReady(!!detail.ready, detail.selectedCells);
+      invalidatePrepared();
       openShareFromUrl();
     });
     window.addEventListener('cerebro:linkedviews-selection', function (event) {
       var state = adapter();
       var summary = state && state.summary ? state.summary() : null;
       setReady(!!(state && state.ready()), summary && summary.selectedCells);
+      invalidatePrepared();
     });
+    ['input', 'change', 'click'].forEach(function (name) {
+      document.addEventListener(name, function (event) {
+        if (workspaceEvent(event)) invalidatePrepared();
+      });
+    });
+    window.addEventListener('mouseup', function (event) {
+      if (workspaceEvent(event)) invalidatePrepared();
+    });
+    setupPreparedCache();
     var state = adapter();
     var summary = state && state.summary ? state.summary() : null;
     setReady(!!(state && state.ready()), summary && summary.selectedCells);
+    invalidatePrepared();
     renderSnapshots();
 
     if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {

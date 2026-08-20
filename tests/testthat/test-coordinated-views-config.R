@@ -455,7 +455,16 @@ test_that("the coordinated server exposes validated configuration transport", {
   expect_match(server, "/viewer/coordinated_views/config.R", fixed = TRUE)
   expect_match(server, "cv_config_cell_fingerprint(b$cells)", fixed = TRUE)
   expect_match(server, "coordviews_config_request", fixed = TRUE)
-  expect_match(server, 'c("copy", "download", "save", "apply")', fixed = TRUE)
+  expect_match(
+    server,
+    'c("nonce", "action", "revision", "config", "config_json")',
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    'c("prepare", "copy", "download", "save", "apply")',
+    fixed = TRUE
+  )
   expect_match(server, "normalized <- cv_config_decode(", fixed = TRUE)
   expect_match(server, "request$config_json", fixed = TRUE)
   expect_match(server, "coordviews_config_upload", fixed = TRUE)
@@ -502,6 +511,10 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   ui_file <- file.path(config_inst, "viewer/coordinated_views/UI.R")
   shell_file <- file.path(config_inst, "viewer/shiny_UI.R")
   controller_file <- file.path(config_inst, "viewer/www/coordviews-config.js")
+  cache_file <- file.path(
+    config_inst,
+    "viewer/www/coordviews-config-cache.js"
+  )
   css_file <- file.path(config_inst, "viewer/www/coordviews.css")
   server_file <- file.path(config_inst, "viewer/coordinated_views/server.R")
   ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
@@ -558,6 +571,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(ui, 'icon("folder-open")', fixed = TRUE)
   expect_match(ui, "cell barcodes", fixed = TRUE)
   expect_true(file.exists(controller_file))
+  expect_true(file.exists(cache_file))
   expect_match(controller, "new window.Blob", fixed = TRUE)
   expect_match(controller, "URL.createObjectURL", fixed = TRUE)
   expect_match(controller, "setUploadLoading", fixed = TRUE)
@@ -598,7 +612,7 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(controller, "Share link ready.", fixed = TRUE)
   expect_match(
     server,
-    'c("nonce", "action", "config", "token")',
+    'c("nonce", "action", "config", "config_json", "token")',
     fixed = TRUE
   )
   expect_match(server, "if (!viewer_is_admin(session))", fixed = TRUE)
@@ -630,7 +644,16 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(css, ".cv-config-share[hidden]", fixed = TRUE)
   expect_false(grepl("background: #f7fbff", css, fixed = TRUE))
   expect_false(grepl("color: #245b8f", css, fixed = TRUE))
-  expect_match(controller, "JSON.stringify(state.capture())", fixed = TRUE)
+  expect_false(grepl(
+    "JSON.stringify(state.capture())",
+    controller,
+    fixed = TRUE
+  ))
+  expect_match(controller, "withPreparedConfig", fixed = TRUE)
+  expect_match(controller, "}, 120)", fixed = TRUE)
+  expect_match(controller, "preparedCache.invalidate", fixed = TRUE)
+  expect_match(controller, "payload.config_json = prepared.json", fixed = TRUE)
+  expect_match(controller, "250", fixed = TRUE)
   expect_false(grepl("request('save')", controller, fixed = TRUE))
   expect_match(controller, "Restore did not finish", fixed = TRUE)
   expect_match(controller, "snapshotNeedsColourData", fixed = TRUE)
@@ -647,9 +670,57 @@ test_that("Save and share markup is accessible and bundled in every Viewer", {
   expect_match(css, "display: grid; width: 100%; min-width: 0;", fixed = TRUE)
   expect_match(
     shell,
+    'cerebro_js("coordviews-config-cache.js", defer = TRUE)',
+    fixed = TRUE
+  )
+  expect_match(
+    shell,
     'cerebro_js("coordviews-config.js", defer = TRUE)',
     fixed = TRUE
   )
+})
+
+test_that("prepared configuration cache rejects stale responses and reuses JSON", {
+  cache_file <- file.path(config_inst, "viewer/www/coordviews-config-cache.js")
+  expect_true(file.exists(cache_file))
+  if (!nzchar(Sys.which("node")) || !file.exists(cache_file)) {
+    skip("Node.js and the prepared-cache module are required")
+  }
+  script <- paste0(
+    "const api=require(",
+    encodeString(cache_file, quote = '"'),
+    ");",
+    "const watchdog=setTimeout(()=>{console.error('cache timeout missing');process.exit(2);},80);",
+    "let captured=0,sent=[];",
+    "let state={created_at:'2026-08-20T00:00:00Z',selection:{cells:['a']}};",
+    "const cache=api.create({debounceMs:1,capture:()=>{captured++;return {...state};},",
+    "send:x=>sent.push(x),ready:()=>true});",
+    "cache.invalidate();",
+    "setTimeout(()=>{",
+    "if(sent.length!==1)throw Error('one warm request expected');",
+    "const stale=sent[0];cache.invalidate();",
+    "setTimeout(()=>{if(sent.length!==2)throw Error('new revision expected');",
+    "cache.receive({nonce:stale.nonce,action:'prepare',ok:true,json:'stale'});",
+    "const fresh=sent[1];cache.receive({nonce:fresh.nonce,action:'prepare',ok:true,",
+    "json:'canonical',filename:'view.json',selected_cells:1});",
+    "Promise.all([cache.get(),cache.get()]).then(v=>{",
+    "if(v[0].json!=='canonical'||v[1].json!=='canonical')throw Error('cache miss');",
+    "if(sent.length!==2)throw Error('ready cache was not reused');",
+    "const slow=api.create({debounceMs:1,requestTimeoutMs:3,capture:()=>state,",
+    "send:()=>{},ready:()=>true});",
+    "slow.get().then(()=>{throw Error('timeout expected');},error=>{",
+    "if(!/timed out/.test(error.message))throw error;",
+    "clearTimeout(watchdog);console.log('prepared-cache-ok');});});},5);},5);"
+  )
+  script_file <- tempfile(fileext = ".js")
+  writeLines(script, script_file, useBytes = TRUE)
+  output <- system2("node", script_file, stdout = TRUE, stderr = TRUE)
+  expect_identical(
+    attr(output, "status") %||% 0L,
+    0L,
+    info = paste(output, collapse = "\n")
+  )
+  expect_true(any(grepl("prepared-cache-ok", output, fixed = TRUE)))
 })
 
 test_that("share responses can be replayed without creating duplicate links", {

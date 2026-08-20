@@ -225,7 +225,7 @@ observeEvent(
       is.character(raw_action) &&
         length(raw_action) == 1L &&
         !is.na(raw_action) &&
-        raw_action %in% c("copy", "download", "save", "apply")
+        raw_action %in% c("prepare", "copy", "download", "save", "apply")
     ) {
       raw_action
     } else {
@@ -236,7 +236,7 @@ observeEvent(
         cv_config_check_node_limit(request)
         request <- cv_config_record(
           request,
-          c("nonce", "action", "config", "config_json"),
+          c("nonce", "action", "revision", "config", "config_json"),
           required = c("nonce", "action"),
           path = "$.request"
         )
@@ -244,18 +244,21 @@ observeEvent(
         action <- cv_config_choice(
           request$action,
           "$.request.action",
-          c("copy", "download", "save", "apply")
+          c("prepare", "copy", "download", "save", "apply")
         )
         bundle <- cv_ok(coordviews_bundle())
         if (is.null(bundle)) {
           cv_config_abort("invalid_dataset", "Linked views is not ready.")
         }
-        if (action %in% c("copy", "download", "save")) {
+        if (action %in% c("prepare", "copy", "download", "save")) {
           request <- cv_config_record(
             request,
-            c("nonce", "action", "config"),
+            c("nonce", "action", "revision", "config"),
             path = "$.request"
           )
+          if (identical(action, "prepare")) {
+            cv_config_integer(request$revision, "$.request.revision")
+          }
           prepared <- cv_config_prepare(request$config, cells = bundle$cells)
           coordviews_config_json(prepared$json)
           coordviews_config_filename(paste0(
@@ -371,7 +374,7 @@ observeEvent(
         cv_config_check_node_limit(request)
         request <- cv_config_record(
           request,
-          c("nonce", "action", "config", "token"),
+          c("nonce", "action", "config", "config_json", "token"),
           required = c("nonce", "action"),
           path = "$.share_request"
         )
@@ -403,10 +406,23 @@ observeEvent(
           }
           request <- cv_config_record(
             request,
-            c("nonce", "action", "config", "token"),
+            c("nonce", "action", "config", "config_json", "token"),
             path = "$.share_request"
           )
-          prepared <- cv_config_prepare(request$config, cells = bundle$cells)
+          prepared <- if (!is.null(request$config_json)) {
+            canonical <- cv_config_string(
+              request$config_json,
+              "$.share_request.config_json",
+              CV_CONFIG_MAX_BYTES
+            )
+            normalized <- cv_config_decode(canonical, cells = bundle$cells)
+            list(
+              config = normalized,
+              json = cv_config_encode(normalized)
+            )
+          } else {
+            cv_config_prepare(request$config, cells = bundle$cells)
+          }
           created <- cv_share_store_create(
             coordviews_share_store,
             prepared$json,

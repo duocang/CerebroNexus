@@ -360,6 +360,7 @@ ui <- dashboardPage(
       cerebro_js("trekker.js", defer = TRUE),
       cerebro_js("hla_motifs.js", defer = TRUE),
       cerebro_js("coordviews.js", defer = TRUE),
+      cerebro_js("coordviews-config-cache.js", defer = TRUE),
       cerebro_js("coordviews-config.js", defer = TRUE),
       cerebro_js("admin.js", defer = TRUE),
       cerebro_js("viewer-shell.js", defer = TRUE),
