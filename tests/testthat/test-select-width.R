@@ -16,6 +16,16 @@ test_that("viewer select controls have a shared 320px width cap", {
     fixed = TRUE
   )
   expect_match(css, "body .bootstrap-select > .dropdown-toggle", fixed = TRUE)
+  expect_match(
+    css,
+    "body .shiny-input-container .selectize-control",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "body .shiny-input-container > .selectize-control",
+    css,
+    fixed = TRUE
+  ))
   expect_match(css, "width: min(100%, 320px)", fixed = TRUE)
 })
 

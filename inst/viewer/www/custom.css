@@ -854,7 +854,7 @@ body .btn-group-justified > .btn.radiobtn.btn-primary.active {
   padding: 10px;
   border: 1px solid var(--c-border-2);
   border-radius: var(--r-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-2);
 }
 .spatial-background-customize-list {
   display: grid;
@@ -1008,8 +1008,10 @@ body .shiny-input-container:has(.bootstrap-select),
 body .shiny-input-container:has(> input.form-control) {
   width: min(100%, 320px) !important;
 }
-body .shiny-input-container > .selectize-control,
-body .shiny-input-container > .bootstrap-select { width: 100% !important; }
+/* Shiny wraps generated controls in an extra div. A direct-child selector
+   leaves multi-selects sized only to their placeholder. */
+body .shiny-input-container .selectize-control,
+body .shiny-input-container .bootstrap-select { width: 100% !important; }
 body .bootstrap-select .dropdown-menu {
   border: 1px solid var(--c-border-2) !important;
   border-radius: var(--r-sm) !important;

@@ -60,13 +60,17 @@
   font-size: 14px; font-weight: 600; color: var(--cv-text);
   text-transform: none; letter-spacing: 0;
 }
-.coordviews-page .cv-topbar select {
+.coordviews-page .cv-topbar select,
+#cv-more .cv-more-inner select {
   box-sizing: border-box; width: min(320px, 100%); height: 42px; padding: 9px 12px;
   border: 1px solid var(--c-border-2, #e0e0e0);
   border-radius: var(--r-sm, 8px); background: var(--cv-surface); color: var(--cv-text);
-  font-size: 14px; font-family: inherit; min-width: 168px;
+  font-size: 14px; font-family: inherit;
 }
-.coordviews-page .cv-topbar select:focus {
+.coordviews-page .cv-topbar select { min-width: 168px; }
+#cv-more .cv-more-inner select { min-width: 150px; }
+.coordviews-page .cv-topbar select:focus,
+#cv-more .cv-more-inner select:focus {
   outline: none; border-color: var(--cv-amber);
   box-shadow: 0 0 0 3px var(--cv-amber50);
 }
@@ -172,18 +176,6 @@
 .coordviews-page .cv-bg-single input:checked + .cv-bg-switch::after {
   transform: translateX(14px);
 }
-/* The "More" panel is not inside .cv-topbar, so its dropdowns need the same
-   look stated for them rather than inherited. */
-#cv-more .cv-more-inner select {
-  width: min(320px, 100%); min-height: 42px; padding: 9px 12px;
-  border: 1px solid var(--c-border-2, #e0e0e0);
-  border-radius: var(--r-sm, 8px); background: var(--cv-surface); color: var(--cv-text);
-  font-size: 14px; font-family: inherit; min-width: 150px;
-}
-#cv-more .cv-more-inner select:focus {
-  outline: none; border-color: var(--cv-amber);
-  box-shadow: 0 0 0 3px var(--cv-amber50);
-}
 .coordviews-page .cv-ctl-range { min-width: 150px; }
 /* Slider + its value bubble live in one fixed-height box, so this column matches
    the dropdown columns' height and (under the bar's flex-end) its label lines up
@@ -194,36 +186,45 @@
   position: absolute; left: 0; bottom: 4px; margin: 0; width: 150px; height: 26px;
   appearance: none; -webkit-appearance: none; background: transparent;
 }
-.coordviews-page .cv-range input[type=range]::-webkit-slider-runnable-track {
+.coordviews-page .cv-range input[type=range]::-webkit-slider-runnable-track,
+.coordviews-page .cv-img-ctl input[type=range]::-webkit-slider-runnable-track {
   height: 8px; border: 1px solid var(--cv-border); border-radius: 999px;
   background: linear-gradient(to right, var(--cv-amber) 0 var(--cv-range-fill, 50%), #fff var(--cv-range-fill, 50%) 100%);
 }
-.coordviews-page .cv-range input[type=range]::-webkit-slider-thumb {
+.coordviews-page .cv-range input[type=range]::-webkit-slider-thumb,
+.coordviews-page .cv-img-ctl input[type=range]::-webkit-slider-thumb {
   width: 25px; height: 25px; margin-top: -10px; border: 3px solid var(--cv-amber);
   border-radius: 50%; background: #fff; cursor: pointer; -webkit-appearance: none;
 }
-.coordviews-page .cv-range input[type=range]::-moz-range-track {
+.coordviews-page .cv-range input[type=range]::-moz-range-track,
+.coordviews-page .cv-img-ctl input[type=range]::-moz-range-track {
   height: 8px; border: 1px solid var(--cv-border); border-radius: 999px; background: #fff;
 }
-.coordviews-page .cv-range input[type=range]::-moz-range-progress {
+.coordviews-page .cv-range input[type=range]::-moz-range-progress,
+.coordviews-page .cv-img-ctl input[type=range]::-moz-range-progress {
   height: 8px; border-radius: 999px; background: var(--cv-amber);
 }
-.coordviews-page .cv-range input[type=range]::-moz-range-thumb {
+.coordviews-page .cv-range input[type=range]::-moz-range-thumb,
+.coordviews-page .cv-img-ctl input[type=range]::-moz-range-thumb {
   width: 19px; height: 19px; border: 3px solid var(--cv-amber); border-radius: 50%; background: #fff; cursor: pointer;
 }
-.coordviews-page .cv-ps-val {
+.coordviews-page .cv-ps-val,
+.coordviews-page .cv-img-range-value {
   position: absolute; z-index: 1; top: 0; transform: translateX(-50%); pointer-events: none;
   padding: 2px 5px; border-radius: 4px; background: var(--cv-amber); color: #fff;
   font-size: 10.5px; font-weight: 700; line-height: 1.2; white-space: nowrap;
 }
 .coordviews-page .cv-range-min,
-.coordviews-page .cv-range-max {
+.coordviews-page .cv-range-max,
+.coordviews-page .cv-img-range-min,
+.coordviews-page .cv-img-range-max {
   position: absolute; top: 0; padding: 2px 5px; border-radius: 4px;
   background: var(--cv-surface); color: var(--cv-text2); font-size: 10.5px; line-height: 1.2;
 }
 .coordviews-page .cv-range-min { left: 0; }
 .coordviews-page .cv-range-max { right: 0; }
-.coordviews-page .cv-range::after {
+.coordviews-page .cv-range::after,
+.coordviews-page .cv-img-range::after {
   content: ""; position: absolute; z-index: 0; left: 8px; right: 8px; bottom: 0; height: 7px;
   background: repeating-linear-gradient(90deg, var(--cv-text3) 0 1px, transparent 1px 10%);
   opacity: .55; pointer-events: none;
@@ -411,12 +412,6 @@
   }
   #cv-more .cv-more-titlebar { height: 56px; }
   #cv-more .cv-more-inner { padding: 20px 4px 18px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  #cv-more,
-  #cv-more .cv-more-inner > *,
-  .coordviews-page .cv-caret,
-  .coordviews-page .cv-morebtn { transition: none; }
 }
 .coordviews-page .cv-filters { min-width: 200px; }
 /* Trekker-only controls (dissolve + evidence toggle) inside the More panel */
@@ -646,9 +641,6 @@
 .coordviews-page .cv-pane.cv-narrow .cv-tbtn:focus-visible::after {
   transform: translateY(-50%);
 }
-@media (prefers-reduced-motion: reduce) {
-  .coordviews-page .cv-tbtn::after { transition: opacity .01s ease; }
-}
 .coordviews-page .cv-tbtn:hover { background: var(--cv-surface2); color: var(--cv-text); }
 .coordviews-page .cv-tbtn.is-on {
   background: var(--cv-amber50); border-color: var(--cv-amber200);
@@ -705,9 +697,6 @@
    keeps its backing store, so this only shrinks how it is presented). */
 .coordviews-page .cv-pane.cv-narrow .cv-mini {
   width: 64px; height: 64px; left: 8px; bottom: 8px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .coordviews-page .cv-mini { transition: none; }
 }
 /* Pan mode: the cursor is the only cue that a drag will move the view rather
    than select cells, so it has to change with the mode and while dragging. */
@@ -771,10 +760,6 @@
   animation: cvRise .18s cubic-bezier(.22, 1, .36, 1) both;
   animation-delay: var(--cv-rise-delay, 0ms);
 }
-@media (prefers-reduced-motion: reduce) {
-  .coordviews-page .cv-rise { animation: none; }
-}
-
 /* ---- single-cell detail card -------------------------------------------- */
 /* Two elements on purpose: .cv-card-pos holds the centring translate, .cv-card
    holds the fly-in transform. One element would have to rebuild the -50%/-50%
@@ -877,11 +862,6 @@
 .coordviews-page .cv-card-skel span:nth-child(2) { width: 82%; }
 .coordviews-page .cv-card-skel span:nth-child(3) { width: 64%; }
 @keyframes cvSkel { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) {
-  .coordviews-page .cv-card { transition: opacity .12s ease; }
-  .coordviews-page .cv-card-skel span { animation: none; }
-}
-
 /* ---- legend ------------------------------------------------------------- */
 .coordviews-page .cv-legend {
   display: flex; flex-wrap: wrap; gap: 4px 14px;
@@ -959,42 +939,8 @@
 .coordviews-page .cv-img-range {
   position: relative; width: 100%; height: 51px; padding-top: 20px;
 }
-.coordviews-page .cv-img-range-min,
-.coordviews-page .cv-img-range-max {
-  position: absolute; top: 0; padding: 2px 5px; border-radius: 4px;
-  background: var(--cv-surface); color: var(--cv-text2); font-size: 10.5px; line-height: 1.2;
-}
 .coordviews-page .cv-img-range-min { left: 0; }
 .coordviews-page .cv-img-range-max { right: 0; }
-.coordviews-page .cv-img-range-value {
-  position: absolute; z-index: 1; top: 0; transform: translateX(-50%);
-  padding: 2px 5px; border-radius: 4px; background: var(--cv-amber);
-  color: #fff; font-size: 10.5px; font-weight: 700; line-height: 1.2; white-space: nowrap;
-  pointer-events: none;
-}
-.coordviews-page .cv-img-range::after {
-  content: ""; position: absolute; z-index: 0; left: 8px; right: 8px; bottom: 0; height: 7px;
-  background: repeating-linear-gradient(90deg, var(--cv-text3) 0 1px, transparent 1px 10%);
-  opacity: .55; pointer-events: none;
-}
-.coordviews-page .cv-img-ctl input[type=range]::-webkit-slider-runnable-track {
-  height: 8px; border: 1px solid var(--cv-border); border-radius: 999px;
-  background: linear-gradient(to right, var(--cv-amber) 0 var(--cv-range-fill, 50%), #fff var(--cv-range-fill, 50%) 100%);
-}
-.coordviews-page .cv-img-ctl input[type=range]::-webkit-slider-thumb {
-  width: 25px; height: 25px; margin-top: -10px; border: 3px solid var(--cv-amber);
-  border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .05);
-  cursor: pointer; -webkit-appearance: none;
-}
-.coordviews-page .cv-img-ctl input[type=range]::-moz-range-track {
-  height: 8px; border: 1px solid var(--cv-border); border-radius: 999px; background: #fff;
-}
-.coordviews-page .cv-img-ctl input[type=range]::-moz-range-progress {
-  height: 8px; border-radius: 999px; background: var(--cv-amber);
-}
-.coordviews-page .cv-img-ctl input[type=range]::-moz-range-thumb {
-  width: 19px; height: 19px; border: 3px solid var(--cv-amber); border-radius: 50%; background: #fff; cursor: pointer;
-}
 .coordviews-page .cv-chk {
   display: flex; align-items: center; gap: 5px; font-size: 11.5px;
   color: var(--cv-text2); cursor: pointer; user-select: none; margin: 0;
@@ -1218,8 +1164,8 @@
    It is present only for Trekker data and collapsed by default, so retaining
    the old page's inspector/QC/Moran depth does not compete with the canvases. */
 .coordviews-page .cv-tk-insights {
-  margin-top: 14px; border: 1px solid var(--cv-border, #e6e6e8);
-  border-radius: 12px; background: var(--cv-surface, #fff); overflow: hidden;
+  margin-top: 14px; border: 1px solid var(--cv-border);
+  border-radius: 12px; background: var(--cv-surface); overflow: hidden;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .025);
   margin-bottom: var(--cv-tk-anchor-space, 0px);
   transition: margin-bottom .2s cubic-bezier(.4, 0, .2, 1);
@@ -1227,7 +1173,7 @@
 .coordviews-page .cv-tk-insights-toggle {
   width: 100%; min-height: 64px; padding: 12px 16px; border: 0;
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  text-align: left; background: transparent; color: var(--cv-text, #252527);
+  text-align: left; background: transparent; color: var(--cv-text);
   cursor: pointer; font: inherit;
 }
 .coordviews-page .cv-tk-insights-toggle:hover { background: #fafafa; }
@@ -1237,21 +1183,21 @@
 }
 .coordviews-page .cv-tk-insights-toggle strong { font-size: 15px; }
 .coordviews-page .cv-tk-insights-toggle small {
-  grid-column: 2; color: var(--cv-text3, #85858b); font-size: 11.5px;
+  grid-column: 2; color: var(--cv-text3); font-size: 11.5px;
   font-weight: 400;
 }
 .coordviews-page .cv-tk-insights-kicker {
-  color: var(--cv-amber700, #c85109); font-size: 9.5px; font-weight: 750;
+  color: var(--cv-amber700); font-size: 9.5px; font-weight: 750;
   letter-spacing: .09em; text-transform: uppercase;
 }
 .coordviews-page .cv-tk-insights-toggle .fa-chevron-down {
-  color: var(--cv-text3, #777); transition: transform .18s ease;
+  color: var(--cv-text3); transition: transform .18s ease;
 }
 .coordviews-page .cv-tk-insights-toggle.is-open .fa-chevron-down {
   transform: rotate(180deg);
 }
 .coordviews-page .cv-tk-insights-body {
-  border-top: 1px solid var(--cv-border, #ececee); padding: 0 16px 18px;
+  border-top: 1px solid var(--cv-border); padding: 0 16px 18px;
 }
 .coordviews-page .cv-tk-tabs {
   display: flex; gap: 3px; overflow-x: auto; padding: 10px 0 12px;
@@ -1259,13 +1205,13 @@
 }
 .coordviews-page .cv-tk-tab {
   flex: 0 0 auto; padding: 7px 11px; border: 1px solid transparent;
-  border-radius: 7px; background: transparent; color: var(--cv-text2, #626269);
+  border-radius: 7px; background: transparent; color: var(--cv-text2);
   cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 600;
   line-height: 1.2;
 }
 .coordviews-page .cv-tk-tab:hover { background: #f6f6f7; }
 .coordviews-page .cv-tk-tab.is-active {
-  border-color: #ffd1b5; background: #fff5ee; color: var(--cv-amber700, #c85109);
+  border-color: #ffd1b5; background: #fff5ee; color: var(--cv-amber700);
 }
 .coordviews-page .cv-tk-panel-stage {
   position: relative; min-height: 420px; overflow: hidden;
@@ -1289,11 +1235,11 @@
 }
 .coordviews-page .cv-tk-cell-empty {
   padding: 22px; border: 1px dashed #dedee2; border-radius: 8px;
-  color: var(--cv-text3, #85858b); text-align: center; font-size: 12px;
+  color: var(--cv-text3); text-align: center; font-size: 12px;
 }
 .coordviews-page .cv-tk-cell-content > h4 { margin: 0 0 2px; font-size: 16px; }
 .coordviews-page .cv-tk-cell-bc {
-  margin-bottom: 10px; color: var(--cv-text3, #85858b);
+  margin-bottom: 10px; color: var(--cv-text3);
   font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
   word-break: break-all;
 }
@@ -1306,8 +1252,8 @@
 }
 .coordviews-page #cv-tk-cell-body > .cv-tk-cell-block {
   min-width: 0; height: 100%; padding: 12px;
-  border: 1px solid var(--cv-border, #e6e6e8); border-radius: 9px;
-  background: var(--cv-surface2, #f7f7f8);
+  border: 1px solid var(--cv-border); border-radius: 9px;
+  background: var(--cv-surface2);
 }
 .coordviews-page #cv-tk-cell-body .cv-card-sec { margin: 0 0 10px; }
 .coordviews-page #cv-tk-cell-body .cv-card-kv {
@@ -1337,31 +1283,25 @@
     grid-column: auto;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .coordviews-page .cv-tk-insights,
-  .coordviews-page .cv-tk-panel-stage,
-  .coordviews-page .cv-tk-panel { transition: none; }
-}
-
 .cv-insight-modal {
   position: relative; width: min(460px, 92vw); padding: 22px 24px;
-  border: 1px solid var(--cv-border, #ececec); border-radius: 12px;
-  color: var(--cv-text, #252527); background: var(--cv-surface, #fff);
-  box-shadow: var(--shadow-4, 0 18px 52px rgba(0, 0, 0, .22));
+  border: 1px solid var(--c-border); border-radius: var(--r-lg);
+  color: var(--c-text); background: var(--c-surface);
+  box-shadow: var(--shadow-4);
 }
 .cv-insight-modal::backdrop { background: rgba(0, 0, 0, .42); }
 .cv-insight-modal .cv-insight-x {
   position: absolute; top: 10px; right: 12px; width: 28px; height: 28px;
   border: 0; border-radius: 6px; background: transparent; cursor: pointer;
-  color: var(--cv-text3, #777); font-size: 20px; line-height: 1;
+  color: var(--c-text-3); font-size: 20px; line-height: 1;
 }
-.cv-insight-modal .cv-insight-x:hover { background: var(--cv-surface2, #f5f5f5); }
+.cv-insight-modal .cv-insight-x:hover { background: var(--c-surface-2); }
 .cv-insight-modal .cv-insight-kicker {
   color: #35688f; font-size: 10.5px; font-weight: 750;
   letter-spacing: .08em; text-transform: uppercase;
 }
 .cv-insight-modal h4 { margin: 5px 34px 10px 0; font-size: 17px; }
-.cv-insight-modal p { margin: 12px 0 0; color: var(--cv-text2, #666); line-height: 1.55; }
+.cv-insight-modal p { margin: 12px 0 0; color: var(--c-text-2); line-height: 1.55; }
 .cv-moran-modal-value {
   font-size: 30px; font-weight: 700; color: #245779;
   font-variant-numeric: tabular-nums;
@@ -1369,8 +1309,8 @@
 .cv-evidence-modal {
   position: relative; width: min(860px, 94vw); max-height: 90vh;
   padding: 20px; overflow: auto;
-  border: 1px solid var(--cv-border, #ececec); border-radius: 12px;
-  background: var(--cv-surface, #fff); box-shadow: var(--shadow-4);
+  border: 1px solid var(--c-border); border-radius: var(--r-lg);
+  background: var(--c-surface); box-shadow: var(--shadow-4);
 }
 .cv-evidence-modal::backdrop { background: rgba(0, 0, 0, .62); }
 .cv-evidence-modal .cv-insight-x {
@@ -1379,7 +1319,7 @@
   color: #555; cursor: pointer; font-size: 21px; line-height: 1;
 }
 .cv-evidence-modal-cell {
-  margin: 4px 38px 12px 0; color: var(--cv-text2, #666);
+  margin: 4px 38px 12px 0; color: var(--c-text-2);
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
   word-break: break-all;
 }
@@ -1388,6 +1328,27 @@
 /* Kept for old saved markup only. The adaptive focus model no longer folds
    linked context away. */
 .coordviews-page .cv-pane.cv-folded { display: none; }
+
+/* One local fallback keeps this standalone asset accessible; custom.css also
+   applies the same preference globally. */
+@media (prefers-reduced-motion: reduce) {
+  #cv-more,
+  #cv-more .cv-more-inner > *,
+  .coordviews-page .cv-caret,
+  .coordviews-page .cv-morebtn,
+  .coordviews-page .cv-tbtn::after,
+  .coordviews-page .cv-mini,
+  .coordviews-page .cv-rise,
+  .coordviews-page .cv-card,
+  .coordviews-page .cv-card-skel span,
+  .coordviews-page .cv-tk-insights,
+  .coordviews-page .cv-tk-panel-stage,
+  .coordviews-page .cv-tk-panel {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* The focus button while its lens is primary. */
 .coordviews-page .cv-tbtn.cv-focus-btn.is-on {
   background: var(--cv-amber50); color: var(--cv-amber700);
