@@ -20,8 +20,15 @@ test_that("initial_dataset preserves historical positional arguments", {
 
   expect_identical(arguments[[15L]], "welcome_message")
   expect_identical(
-    tail(arguments, 4L),
-    c("initial_dataset", "initial_page", "auth", "...")
+    tail(arguments, 6L),
+    c(
+      "initial_dataset",
+      "initial_page",
+      "auth",
+      "extra_tables",
+      "extra_tables_sheets",
+      "..."
+    )
   )
 })
 

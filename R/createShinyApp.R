@@ -1481,6 +1481,11 @@ dedent <- function(string) {
 #'   created by \code{shinymanager::create_db()}, and \code{passphrase_env},
 #'   the name of the environment variable containing its passphrase. Optional
 #'   \code{timeout_minutes} defaults to 15.
+#' @param extra_tables Optional named collection of CSV, TSV, TXT, or Excel
+#'   file paths to freeze into the generated app as extra material tables.
+#' @param extra_tables_sheets Optional named list of Excel sheet label mappings,
+#'   keyed by \code{extra_tables} labels. Mappings rename sheets only; every
+#'   non-empty sheet is included.
 #' @param ... Currently unused; reserved for future arguments.
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
@@ -1501,6 +1506,18 @@ dedent <- function(string) {
 #'   overwrite = TRUE
 #' )
 #' # Run with shiny::runApp("my_app") or deploy my_app/ to Shiny Server.
+#'
+#' createShinyApp(
+#'   cerebro_data = c("Study" = "study.crb"),
+#'   extra_tables = list(
+#'     "Clinical workbook" = "supplements/clinical.xlsx",
+#'     "QC summary" = "supplements/qc.csv"
+#'   ),
+#'   extra_tables_sheets = list(
+#'     "Clinical workbook" = list("Patient characteristics" = "Patients")
+#'   ),
+#'   result_dir = "my-app"
+#' )
 #' }
 #'
 #' @importFrom later later
@@ -1538,6 +1555,8 @@ createShinyApp <- function(
   initial_dataset = NULL,
   initial_page = NULL,
   auth = NULL,
+  extra_tables = NULL,
+  extra_tables_sheets = NULL,
   ...
 ) {
   # Validate inputs ----------------------------------------------------------##
@@ -1702,6 +1721,10 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
+  extra_table_manifest <- .bundleExtraTables(
+    extra_tables = extra_tables,
+    extra_tables_sheets = extra_tables_sheets
+  )
   viewer_auth <- .compileViewerAuth(auth)
   requested_result_dir <- result_dir
   prepared_result <- .prepareBundleResultTarget(result_dir)
@@ -2318,7 +2341,8 @@ createShinyApp <- function(
     ".bundle_run_options",
     ".viewer_auth",
     "initial_dataset",
-    "initial_page"
+    "initial_page",
+    "extra_tables"
   )
   option_names <- names(cerebro_options)
   if (!is.null(option_names)) {
@@ -2370,6 +2394,9 @@ createShinyApp <- function(
   }
   if (!is.null(spatial_plot_rotation)) {
     cerebro_options[["spatial_plot_rotation"]] <- spatial_plot_rotation
+  }
+  if (!is.null(extra_table_manifest)) {
+    cerebro_options[["extra_tables"]] <- extra_table_manifest
   }
 
   build_ops$save_rds(
