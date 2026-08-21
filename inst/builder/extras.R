@@ -93,7 +93,7 @@ builder_read_table <- function(path, name = NULL, filename = path) {
 #'   without discarding other worksheets.
 builder_read_tables <- function(path, filename = path) {
   extension <- tolower(tools::file_ext(filename))
-  if (!identical(extension, "xlsx")) {
+  if (!extension %in% c("xls", "xlsx", "xlsm")) {
     table <- builder_read_table(
       path,
       name = builder_table_default_name(filename),
@@ -106,7 +106,7 @@ builder_read_tables <- function(path, filename = path) {
   }
   sheets <- suppressWarnings(try(readxl::excel_sheets(path), silent = TRUE))
   if (inherits(sheets, "try-error") || !length(sheets)) {
-    return(list(list(error = "Could not read this XLSX workbook.")))
+    return(list(list(error = "Could not read this Excel workbook.")))
   }
   workbook <- builder_table_default_name(filename)
   records <- lapply(sheets, function(sheet) {
