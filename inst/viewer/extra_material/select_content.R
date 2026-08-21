@@ -3,30 +3,13 @@
 ##----------------------------------------------------------------------------##
 
 ##----------------------------------------------------------------------------##
-## UI element to set layout for selection of category and specific content,
-## which are split because the content depends on which category is selected.
+## UI element to align material selectors on one row.
 ##----------------------------------------------------------------------------##
-extra_material_category_needed <- function(categories) {
-  categories <- as.character(categories)
-  categories <- categories[!is.na(categories) & nzchar(categories)]
-  length(unique(categories)) > 1L
-}
-
 output[["extra_material_select_category_and_content_UI"]] <- renderUI({
-  categories <- getExtraMaterialCategories()
-  has_category_choice <- extra_material_category_needed(categories)
-  tagList(
-    fluidRow(
-      if (has_category_choice) {
-        column(6, uiOutput("extra_material_selected_category_UI"))
-      } else {
-        uiOutput("extra_material_selected_category_UI")
-      },
-      column(
-        if (has_category_choice) 6 else 12,
-        uiOutput("extra_material_selected_content_UI")
-      )
-    )
+  tags$div(
+    style = "display: flex; gap: 32px; align-items: flex-end; flex-wrap: wrap;",
+    uiOutput("extra_material_selected_category_UI"),
+    uiOutput("extra_material_selected_content_UI")
   )
 })
 
@@ -35,30 +18,11 @@ output[["extra_material_select_category_and_content_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 output[["extra_material_selected_category_UI"]] <- renderUI({
   categories <- getExtraMaterialCategories()
-  has_category_choice <- extra_material_category_needed(categories)
-  category_input <- selectInput(
+  selectInput(
     "extra_material_selected_category",
-    label = NULL,
+    label = "Material type:",
     choices = categories,
-    width = "100%"
-  )
-  if (!has_category_choice) {
-    return(tags$div(class = "visually-hidden", category_input))
-  }
-  tagList(
-    div(
-      HTML(
-        '<h3 style="text-align: center; margin-top: 0"><strong>Choose a category:</strong></h3>'
-      )
-    ),
-    fluidRow(
-      column(2),
-      column(
-        8,
-        category_input
-      ),
-      column(2)
-    )
+    width = "320px"
   )
 })
 
@@ -96,49 +60,22 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
       selected_sheet <- unname(sheet_choices)[[1L]]
     }
 
-    tagList(
-      if (length(file_choices) > 1L) {
-        div(
-          HTML(
-            '<h3 style="text-align: center; margin-top: 0"><strong>Choose a file:</strong></h3>'
-          ),
-          fluidRow(
-            column(2),
-            column(
-              8,
-              selectInput(
-                "extra_material_selected_file",
-                label = NULL,
-                choices = file_choices,
-                selected = selected_file,
-                width = "100%"
-              )
-            ),
-            column(2)
-          )
-        )
-      },
-      if (length(sheet_choices) > 1L) {
-        div(
-          HTML(
-            '<h3 style="text-align: center"><strong>Choose a sheet:</strong></h3>'
-          ),
-          fluidRow(
-            column(2),
-            column(
-              8,
-              selectInput(
-                "extra_material_selected_content",
-                label = NULL,
-                choices = sheet_choices,
-                selected = selected_sheet,
-                width = "100%"
-              )
-            ),
-            column(2)
-          )
-        )
-      }
+    tags$div(
+      style = "display: flex; gap: 32px; align-items: flex-end; flex-wrap: wrap;",
+      selectInput(
+        "extra_material_selected_file",
+        label = "Choose a file:",
+        choices = file_choices,
+        selected = selected_file,
+        width = "320px"
+      ),
+      selectInput(
+        "extra_material_selected_content",
+        label = "Choose a table:",
+        choices = sheet_choices,
+        selected = selected_sheet,
+        width = "320px"
+      )
     )
     ## if selected category is `plots`
   } else if (
@@ -146,25 +83,11 @@ output[["extra_material_selected_content_UI"]] <- renderUI({
       checkForExtraPlots() == TRUE
   ) {
     ##
-    tagList(
-      div(
-        HTML(
-          '<h3 style="text-align: center; margin-top: 0"><strong>Choose a plot:</strong></h3>'
-        )
-      ),
-      fluidRow(
-        column(2),
-        column(
-          8,
-          selectInput(
-            "extra_material_selected_content",
-            label = NULL,
-            choices = getNamesOfExtraPlots(),
-            width = "100%"
-          )
-        ),
-        column(2)
-      )
+    selectInput(
+      "extra_material_selected_content",
+      label = "Choose a plot:",
+      choices = getNamesOfExtraPlots(),
+      width = "320px"
     )
   }
 })

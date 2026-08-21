@@ -63,7 +63,7 @@
       call. = FALSE
     )
   }
-  if (any(!file_test("-f", paths))) {
+  if (any(!utils::file_test("-f", paths))) {
     stop(
       "Each extra_tables entry must be an existing regular file.",
       call. = FALSE

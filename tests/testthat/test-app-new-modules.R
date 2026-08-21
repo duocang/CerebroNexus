@@ -157,6 +157,14 @@ test_that("generated apps keep extra-table file and sheet choices separate", {
     "document.getElementById('extra_material_selected_file') !== null",
     timeout = 20000
   )
+  app$wait_for_js(
+    "document.getElementById('extra_material_selected_category') !== null && document.querySelector('label[for=\"extra_material_selected_category\"]').innerText.includes('Material type')",
+    timeout = 20000
+  )
+  app$wait_for_js(
+    "(() => { const ids = ['extra_material_selected_category', 'extra_material_selected_file', 'extra_material_selected_content']; const tops = ids.map(id => document.getElementById(id).getBoundingClientRect().top); return Math.max(...tops) - Math.min(...tops) < 2; })()",
+    timeout = 20000
+  )
   expect_identical(
     app$get_js("document.getElementById('extra_material_selected_file').value"),
     "embedded"
