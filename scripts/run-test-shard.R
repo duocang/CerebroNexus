@@ -13,12 +13,28 @@ ci_browser_test_files <- function() {
     "test-app-viewport-layout.R",
     "test-configured-colors.R",
     "test-coordinated-views-browser.R",
+    "test-builder-auth-browser.R",
+    "test-builder-browser.R",
+    "test-builder-build-folder-browser.R",
+    "test-builder-end-to-end.R",
+    "test-builder-loading-browser.R",
+    "test-builder-marker-choice-browser.R",
+    "test-builder-motion-browser.R",
+    "test-builder-responsive-browser.R",
+    "test-builder-staged-workflow-browser.R",
+    "test-generated-app-multidataset.R",
+    "test-generated-app-pages-analysis.R",
+    "test-generated-app-pages-core.R",
+    "test-generated-app-pages-immune.R",
+    "test-generated-app-pages-spatial.R",
+    "test-generated-app-pages-trekker.R",
+    "test-generated-app-security.R",
     "test-smoke-production.R",
     "test-viewer-shell-browser.R"
   )
 }
 
-ci_process_sensitive_test_files <- function() character()
+ci_process_sensitive_test_files <- function() c("test-builder-worker.R")
 
 ci_test_plan <- function(test_dir = file.path("tests", "testthat")) {
   if (!dir.exists(test_dir)) {
