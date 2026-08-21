@@ -2815,7 +2815,13 @@
     root.querySelectorAll(selector).forEach(function (input) {
       var label = input.closest("label");
       var copy = label && label.querySelector(".viewer-default-copy");
-      if (copy) copy.textContent = input.checked ? "Default" : "Set default";
+      if (copy) {
+        copy.textContent = input.checked
+          ? "Default"
+          : selector === ".viewer-group-default"
+            ? "Set as default"
+            : "Set default";
+      }
     });
   }
 
@@ -2861,7 +2867,7 @@
       var isIncluded = Boolean(checkbox && checkbox.checked && !checkbox.disabled);
       row.classList.toggle("is-included", isIncluded);
       if (radio) {
-        radio.disabled = !isIncluded;
+        radio.disabled = row.dataset.eligible !== "true";
         radio.checked = isIncluded && row.dataset.group === defaultGroup;
       }
     });
@@ -3862,6 +3868,10 @@
       return;
     }
     if (event.target.matches(".viewer-group-default")) {
+      var groupRow = event.target.closest(".viewer-group-row");
+      var groupCheckbox = groupRow &&
+        groupRow.querySelector(".viewer-group-include");
+      if (groupCheckbox && !groupCheckbox.disabled) groupCheckbox.checked = true;
       updateViewerGroupSelection(
         event.target.closest(".viewer-group-workspace"),
         true

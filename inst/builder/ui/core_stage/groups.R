@@ -755,15 +755,11 @@ builder_group_catalog_ui <- function(id, catalog) {
                   value = item$id,
                   `data-group` = item$id,
                   checked = if (item$default) "checked" else NULL,
-                  disabled = if (!item$eligible || !item$included) {
-                    "disabled"
-                  } else {
-                    NULL
-                  }
+                  disabled = if (!item$eligible) "disabled" else NULL
                 ),
                 span(
                   class = "viewer-default-copy",
-                  if (item$default) "Set default ✓" else "Set default"
+                  if (item$default) "Default" else "Set as default"
                 )
               )
             )
