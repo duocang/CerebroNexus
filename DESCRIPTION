@@ -77,7 +77,6 @@ Suggests:
   knitr,
   monocle,
   png,
-  processx,
   reshape2,
   rhdf5,
   rmarkdown,

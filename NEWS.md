@@ -2,12 +2,12 @@
 
 ## Internal
 
-- CI now runs the test suite through deterministic weighted shards: four logic
-  workers and up to six browser workers. Process-sensitive tests run in their
-  own worker only when the branch contains them, while R CMD check no longer
-  repeats the package test suite.
-- `scripts/run-local-validation.R` and `scripts/precheck.sh` use the same test
-  plan locally. Manual pkgdown validation builds the site without deploying it.
+- CI runs the test suite through deterministic fixed shards: four logic workers
+  and six browser workers, while R CMD check no longer repeats the package test
+  suite.
+- `scripts/precheck.sh` runs the same groups sequentially for local checks and
+  never rewrites the working tree. Manual pkgdown validation builds the site
+  without deploying it.
 
 # CerebroNexus 4.3.0
 

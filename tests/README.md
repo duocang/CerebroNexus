@@ -7,19 +7,13 @@ matrix already owns the complete test suite.
 ### CI matrix and local equivalent
 
 The shared plan in `scripts/run-test-shard.R` classifies every `test-*.R` file
-once. Logic tests use four weighted shards; browser tests use six weighted
-shards; a process-sensitive worker is created only when the branch has such a
-test. New ordinary tests join the logic group automatically.
+once. Logic tests use four fixed shards and browser tests use six fixed shards.
+New ordinary tests join the logic group automatically.
 
 ```bash
-# Print the local test schedule and predicted shard loads.
-Rscript scripts/run-local-validation.R --mode tests --dry-run
-
-# Run the parallel test matrix locally, or include check and pkgdown.
-Rscript scripts/run-local-validation.R --mode tests
-Rscript scripts/run-local-validation.R --mode full
-
-# Format first, then invoke the same matrix.
+# Check formatting without changing files, run logic tests, or run the complete
+# sequential suite with check and pkgdown.
+scripts/precheck.sh air
 scripts/precheck.sh fast
 scripts/precheck.sh full
 ```

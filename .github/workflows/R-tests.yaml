@@ -54,8 +54,7 @@ jobs:
           "Rscript scripts/run-test-shard.R
           --group logic
           --shard ${{ matrix.shard }}
-          --shards 4
-          --strategy weighted"
+          --shards 4"
 
   browser:
     name: browser (${{ matrix.shard }}/6)
@@ -99,8 +98,7 @@ jobs:
           "Rscript scripts/run-test-shard.R
           --group browser
           --shard ${{ matrix.shard }}
-          --shards 6
-          --strategy weighted"
+          --shards 6"
 
       - name: Upload test artifacts
         if: always()

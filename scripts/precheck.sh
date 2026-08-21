@@ -1,28 +1,31 @@
 #!/usr/bin/env bash
-# Local entry point for the same test matrix used by GitHub Actions.
+# Local checks mirroring the CI test groups without changing the worktree.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-MODE="${1:-full}"
-case "$MODE" in
+run_group() {
+  Rscript scripts/run-test-shard.R --group "$1" --shard 1 --shards 1
+}
+
+case "${1:-fast}" in
   air)
     command -v air >/dev/null || { echo "air not found (brew install air)"; exit 2; }
-    air format .
     air format --check .
-    exit 0
     ;;
-  fast) VALIDATION_MODE="tests" ;;
-  full) VALIDATION_MODE="full" ;;
+  fast)
+    R CMD INSTALL .
+    run_group logic
+    ;;
+  full)
+    R CMD INSTALL .
+    run_group logic
+    CEREBRO_RUN_BROWSER_TESTS=true run_group browser
+    Rscript -e "devtools::check(args = c('--no-tests'), vignettes = TRUE, error_on = 'warning')"
+    Rscript -e "pkgdown::build_site_github_pages(new_process = FALSE, install = TRUE, dest_dir = 'pkgdown-site')"
+    ;;
   *)
     echo "Usage: scripts/precheck.sh [air|fast|full]" >&2
     exit 2
     ;;
 esac
-
-command -v air >/dev/null || { echo "air not found (brew install air)"; exit 2; }
-command -v Rscript >/dev/null || { echo "Rscript not found"; exit 2; }
-
-air format .
-air format --check .
-exec Rscript scripts/run-local-validation.R --mode "$VALIDATION_MODE"
