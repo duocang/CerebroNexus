@@ -1,3 +1,13 @@
+# CerebroNexus 4.5.1
+
+## Viewer
+
+- `createShinyApp()` can bundle named CSV, TSV, TXT, XLS, XLSX, and XLSM
+  tables into a generated Viewer. Workbooks retain every non-empty Sheet;
+  optional sheet mappings rename labels without filtering the remaining Sheets.
+  The Viewer presents Material type, File, and Table selectors together and
+  retains existing CRB-embedded tables.
+
 # CerebroNexus 4.5.0
 
 ## Linked views
