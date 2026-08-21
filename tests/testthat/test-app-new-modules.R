@@ -78,6 +78,122 @@ test_that("extra_material tab content exists in DOM", {
   expect_true(has_div)
 })
 
+test_that("generated apps keep extra-table file and sheet choices separate", {
+  skip_on_cran()
+  skip_if_not_installed("readxl")
+  skip_if_not_installed("writexl")
+
+  example <- system.file(
+    "extdata/examples/example.crb",
+    package = "CerebroNexus"
+  )
+  skip_if_not(nzchar(example), "example.crb not found")
+
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "study.crb")
+  study <- readRDS(example)
+  study$extra_material <- list()
+  study$addExtraTable("Legacy table", data.frame(source = "embedded"))
+  saveRDS(study, crb)
+
+  clinical <- file.path(root, "clinical.xlsx")
+  markers <- file.path(root, "markers.xlsx")
+  writexl::write_xlsx(
+    list(
+      Summary = data.frame(source = "clinical"),
+      Details = data.frame(source = "clinical-details")
+    ),
+    clinical
+  )
+  writexl::write_xlsx(
+    list(
+      Summary = data.frame(source = "marker"),
+      Details = data.frame(source = "marker-details")
+    ),
+    markers
+  )
+
+  app_dir <- file.path(root, "app")
+  createShinyApp(
+    cerebro_data = c(Study = crb),
+    extra_tables = c(
+      "Clinical workbook" = clinical,
+      "Marker workbook" = markers
+    ),
+    result_dir = app_dir,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  config <- readRDS(file.path(app_dir, "cerebro_config.rds"))
+  expect_named(
+    config$extra_tables$files,
+    c("Clinical workbook", "Marker workbook")
+  )
+
+  app <- AppDriver$new(
+    app_dir,
+    name = "extra_material_external_workbooks",
+    height = 950,
+    width = 1619,
+    load_timeout = 30000
+  )
+  withr::defer(app$stop())
+  app$wait_for_idle(timeout = 20000)
+  app$wait_for_js(
+    "document.querySelector('a[href=\"#shiny-tab-extra_material\"]') !== null",
+    timeout = 20000
+  )
+  app$run_js(
+    'document.querySelector(\'a[href="#shiny-tab-extra_material"]\').click();'
+  )
+
+  ## The default remains the CRB's historical table group.  Switching files
+  ## must replace the sheet choices even when both workbooks use "Summary".
+  app$wait_for_js(
+    "document.getElementById('extra_material_selected_file') !== null",
+    timeout = 20000
+  )
+  expect_identical(
+    app$get_js("document.getElementById('extra_material_selected_file').value"),
+    "embedded"
+  )
+  app$wait_for_js(
+    "document.querySelector('#extra_material_table').innerText.includes('embedded')",
+    timeout = 20000
+  )
+
+  app$run_js(
+    "$('#extra_material_selected_file')[0].selectize.setValue('external-file:1');"
+  )
+  app$wait_for_js(
+    "document.querySelector('#extra_material_selected_content option[value=\"external:1:1\"]') !== null",
+    timeout = 20000
+  )
+  app$run_js(
+    "$('#extra_material_selected_content')[0].selectize.setValue('external:1:1');"
+  )
+  app$wait_for_js(
+    "document.querySelector('#extra_material_table').innerText.includes('clinical')",
+    timeout = 20000
+  )
+
+  app$run_js(
+    "$('#extra_material_selected_file')[0].selectize.setValue('external-file:2');"
+  )
+  app$wait_for_js(
+    "document.querySelector('#extra_material_selected_content option[value=\"external:2:1\"]') !== null && document.querySelector('#extra_material_selected_content option[value=\"external:1:1\"]') === null",
+    timeout = 20000
+  )
+  app$run_js(
+    "$('#extra_material_selected_content')[0].selectize.setValue('external:2:1');"
+  )
+  app$wait_for_js(
+    "document.querySelector('#extra_material_table').innerText.includes('marker')",
+    timeout = 20000
+  )
+})
+
 
 test_that("all three new tabs are visible in sidebar after data load", {
   app <- shared_app()

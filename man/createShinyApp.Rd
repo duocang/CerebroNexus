@@ -34,6 +34,8 @@ createShinyApp(
   initial_dataset = NULL,
   initial_page = NULL,
   auth = NULL,
+  extra_tables = NULL,
+  extra_tables_sheets = NULL,
   ...
 )
 }
@@ -167,6 +169,19 @@ created by \code{shinymanager::create_db()}, and \code{passphrase_env},
 the name of the environment variable containing its passphrase. Optional
 \code{timeout_minutes} defaults to 15.}
 
+\item{extra_tables}{Optional named collection of CSV, TSV, TXT, XLS, XLSX,
+or XLSM file paths to freeze into the generated app as extra material
+tables. The names are the user-facing File choices. Delimited files have
+one table; every non-empty Excel sheet is included. Files must be regular
+files with unique, non-empty names and supported extensions.}
+
+\item{extra_tables_sheets}{Optional named list of Excel sheet label mappings,
+keyed by \code{extra_tables} labels. Each inner mapping is
+\code{list("Displayed sheet name" = "Workbook sheet name")}. It only
+renames matching sheets: every non-empty sheet not named in a mapping is
+still included. Mappings may target only declared Excel files and must
+refer to existing, distinct source sheets with unique final labels.}
+
 \item{...}{Currently unused; reserved for future arguments.}
 }
 \value{
@@ -259,6 +274,18 @@ createShinyApp(
   overwrite = TRUE
 )
 # Run with shiny::runApp("my_app") or deploy my_app/ to Shiny Server.
+
+createShinyApp(
+  cerebro_data = c("Study" = "study.crb"),
+  extra_tables = list(
+    "Clinical workbook" = "supplements/clinical.xlsx",
+    "QC summary" = "supplements/qc.csv"
+  ),
+  extra_tables_sheets = list(
+    "Clinical workbook" = list("Patient characteristics" = "Patients")
+  ),
+  result_dir = "my-app"
+)
 }
 
 }
