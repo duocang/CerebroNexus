@@ -157,4 +157,32 @@
     });
     syncSemantics();
   });
+
+  /* Preserve the last result while a slower Shiny update arrives. Fast updates
+     finish before the delay and therefore show no loading flicker. */
+  ready(function () {
+    if (!window.jQuery) return;
+
+    function finish(el) {
+      if (!el || !el.classList) return;
+      window.clearTimeout(el.__cerebroWaitTimer);
+      el.__cerebroWaitTimer = null;
+      el.classList.remove('cerebro-output-waiting');
+    }
+
+    window.jQuery(document)
+      .on('shiny:outputinvalidated.cerebroMotion', function (event) {
+        var el = event.target;
+        if (!el || !el.classList || !el.classList.contains('shiny-bound-output')) return;
+        if (!el.textContent.trim() && !el.children.length) return;
+        if (el.closest('.cerebro-projection-gate')) return;
+        finish(el);
+        el.__cerebroWaitTimer = window.setTimeout(function () {
+          el.classList.add('cerebro-output-waiting');
+        }, 120);
+      })
+      .on('shiny:value.cerebroMotion shiny:error.cerebroMotion', function (event) {
+        finish(event.target);
+      });
+  });
 })();

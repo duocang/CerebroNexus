@@ -57,24 +57,25 @@
 }
 .coordviews-page .cv-ctl { display: flex; flex-direction: column; gap: 5px; }
 .coordviews-page .cv-ctl > label {
-  font-size: 11px; font-weight: 600; color: var(--cv-text2);
-  text-transform: uppercase; letter-spacing: .03em;
+  font-size: 14px; font-weight: 600; color: var(--cv-text);
+  text-transform: none; letter-spacing: 0;
 }
 .coordviews-page .cv-topbar select {
-  box-sizing: border-box; height: 30px; padding: 6px 9px;
+  box-sizing: border-box; width: min(320px, 100%); height: 42px; padding: 9px 12px;
   border: 1px solid var(--c-border-2, #e0e0e0);
-  border-radius: 6px; background: var(--cv-surface); color: var(--cv-text);
-  font-size: 12.5px; font-family: inherit; min-width: 168px;
+  border-radius: var(--r-sm, 8px); background: var(--cv-surface); color: var(--cv-text);
+  font-size: 14px; font-family: inherit; min-width: 168px;
 }
 .coordviews-page .cv-topbar select:focus {
-  outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
+  outline: none; border-color: var(--cv-amber);
+  box-shadow: 0 0 0 3px var(--cv-amber50);
 }
-.coordviews-page .cv-spatial-ctl .selectize-input { max-width: 310px; }
+.coordviews-page .cv-spatial-ctl .selectize-input { max-width: 320px; }
 .coordviews-page #cv-pick-color + .selectize-control { min-width: 168px; }
 .coordviews-page #cv-pick-color + .selectize-control .selectize-dropdown-content {
   max-height: min(560px, calc(100dvh - 240px));
 }
-.coordviews-page #cv-proj-ctl .selectize-input { max-width: 310px; }
+.coordviews-page #cv-proj-ctl .selectize-input { max-width: 320px; }
 
 /* Background image choices are scoped to the selected spatial data.  The
    compact, intrinsic-width mode switch deliberately avoids filling the full
@@ -85,7 +86,7 @@
   border-radius: 8px; background: var(--cv-surface2);
 }
 .coordviews-page .cv-bg-settings.is-scope-changing {
-  animation: cv-bg-scope-change .52s ease-out;
+  animation: cv-bg-scope-change .2s ease-out;
 }
 @keyframes cv-bg-scope-change {
   0% { border-color: var(--cv-amber); box-shadow: 0 0 0 0 rgba(255, 112, 19, .24); }
@@ -174,12 +175,14 @@
 /* The "More" panel is not inside .cv-topbar, so its dropdowns need the same
    look stated for them rather than inherited. */
 #cv-more .cv-more-inner select {
-  padding: 6px 9px; border: 1px solid var(--c-border-2, #e0e0e0);
-  border-radius: 6px; background: var(--cv-surface); color: var(--cv-text);
-  font-size: 12.5px; font-family: inherit; min-width: 150px;
+  width: min(320px, 100%); min-height: 42px; padding: 9px 12px;
+  border: 1px solid var(--c-border-2, #e0e0e0);
+  border-radius: var(--r-sm, 8px); background: var(--cv-surface); color: var(--cv-text);
+  font-size: 14px; font-family: inherit; min-width: 150px;
 }
 #cv-more .cv-more-inner select:focus {
-  outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
+  outline: none; border-color: var(--cv-amber);
+  box-shadow: 0 0 0 3px var(--cv-amber50);
 }
 .coordviews-page .cv-ctl-range { min-width: 150px; }
 /* Slider + its value bubble live in one fixed-height box, so this column matches
@@ -515,7 +518,7 @@
      resizeAll writes new px column tracks; transitioning them makes the squares
      glide to the new size instead of snapping. The canvas transitions in step
      (below), and resizeAll's crisp redraw lands after the transition settles. */
-  transition: grid-template-columns .28s ease;
+  transition: grid-template-columns .2s ease;
 }
 .coordviews-page .cv-panes.cv-focus-transitioning {
   /* FLIP owns the motion while focus changes: do not make the grid and each
@@ -531,8 +534,8 @@
 }
 .coordviews-page .cv-panes.cv-focus-transitioning .cv-pane {
   will-change: transform, opacity;
-  transition: transform .42s cubic-bezier(.22, .61, .36, 1),
-    opacity .28s ease, border-color .22s ease, box-shadow .22s ease;
+  transition: transform .2s cubic-bezier(.22, .61, .36, 1),
+    opacity .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
 .coordviews-page .cv-panes.cv-focus-transitioning canvas { transition: none; }
 .coordviews-page .cv-pane.cv-focus-primary {
@@ -680,7 +683,7 @@
      height-driven re-fit glides rather than snaps. */
   display: block; background: var(--cv-surface);
   border-radius: 6px; cursor: crosshair;
-  transition: width .28s ease, height .28s ease;
+  transition: width .2s ease, height .2s ease;
 }
 /* ---- minimap ------------------------------------------------------------ */
 /* Deliberately coarse: a subsampled impression of the space plus a frame for the
@@ -765,7 +768,7 @@
   to { opacity: 1; transform: none; }
 }
 .coordviews-page .cv-rise {
-  animation: cvRise .34s cubic-bezier(.22, 1, .36, 1) both;
+  animation: cvRise .18s cubic-bezier(.22, 1, .36, 1) both;
   animation-delay: var(--cv-rise-delay, 0ms);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -803,8 +806,8 @@
      left/top are transitioned too: the card is re-centred when the server's meta
      row arrives and makes it taller, and that correction should glide rather
      than jump. */
-  transition: opacity .2s ease, transform .34s cubic-bezier(.22, 1, .36, 1),
-    left .3s cubic-bezier(.22, 1, .36, 1), top .3s cubic-bezier(.22, 1, .36, 1);
+  transition: opacity .16s ease, transform .2s cubic-bezier(.22, 1, .36, 1),
+    left .2s cubic-bezier(.22, 1, .36, 1), top .2s cubic-bezier(.22, 1, .36, 1);
 }
 .coordviews-page .cv-card.is-open { display: flex; }
 .coordviews-page .cv-card.is-in { opacity: 1; transform: none; }
@@ -1052,26 +1055,24 @@
 .coordviews-page #cv-gene-ctl .form-group,
 .coordviews-page #cv-rgb-ctl .form-group { margin-bottom: 0; }
 .coordviews-page #cv-gene-ctl .selectize-control { min-width: 190px; }
-/* Match the gene / RGB selectize boxes to the native dropdowns (Colour by,
-   Projection): same border, radius, height, font — and keep search enabled.
-   The app theme styles .selectize-input at higher weight, so override with
-   !important on the box-defining properties. */
+/* Match searchable gene controls to the shared native/selectize metrics while
+   retaining their compact widths in this horizontal toolbar. */
 .coordviews-page .cv-topbar .selectize-control .selectize-input {
-  box-sizing: border-box !important; height: 30px !important; min-height: 30px !important;
-  padding: 4px 8px !important; line-height: 1.35 !important;
+  box-sizing: border-box !important; height: 42px !important; min-height: 42px !important;
+  padding: 9px 12px !important; line-height: 22px !important;
   border: 1px solid var(--c-border-2, #e0e0e0) !important;
-  border-radius: 6px !important;
+  border-radius: var(--r-sm, 8px) !important;
   background: var(--cv-surface) !important; color: var(--cv-text) !important;
-  font-size: 12.5px !important; box-shadow: none !important;
+  font-size: 14px !important; box-shadow: none !important;
   display: flex !important; flex-wrap: nowrap !important; align-items: center !important;
   overflow-x: auto !important; overflow-y: hidden !important; white-space: nowrap !important;
 }
 .coordviews-page .cv-topbar .selectize-control .selectize-input.focus {
-  border-color: var(--cv-blue) !important; box-shadow: 0 0 0 2px var(--cv-blue100) !important;
+  border-color: var(--cv-amber) !important; box-shadow: 0 0 0 3px var(--cv-amber50) !important;
 }
 .coordviews-page .cv-topbar .selectize-control .selectize-input input,
-.coordviews-page .cv-topbar .selectize-dropdown { font-size: 12.5px !important; }
-.coordviews-page .cv-topbar .selectize-control { height: 30px; }
+.coordviews-page .cv-topbar .selectize-dropdown { font-size: 14px !important; }
+.coordviews-page .cv-topbar .selectize-control { height: 42px; }
 .coordviews-page .cv-topbar .selectize-control .selectize-input > .item {
   flex: 0 0 auto; margin: 0 3px 0 0 !important; line-height: 18px !important;
 }
@@ -1221,7 +1222,7 @@
   border-radius: 12px; background: var(--cv-surface, #fff); overflow: hidden;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .025);
   margin-bottom: var(--cv-tk-anchor-space, 0px);
-  transition: margin-bottom .28s cubic-bezier(.4, 0, .2, 1);
+  transition: margin-bottom .2s cubic-bezier(.4, 0, .2, 1);
 }
 .coordviews-page .cv-tk-insights-toggle {
   width: 100%; min-height: 64px; padding: 12px 16px; border: 0;
@@ -1268,14 +1269,14 @@
 }
 .coordviews-page .cv-tk-panel-stage {
   position: relative; min-height: 420px; overflow: hidden;
-  transition: height .28s cubic-bezier(.4, 0, .2, 1);
+  transition: height .2s cubic-bezier(.4, 0, .2, 1);
 }
 .coordviews-page .cv-tk-panel-stage.is-switching .cv-tk-panel {
   position: absolute; inset: 0 0 auto; width: 100%;
 }
 .coordviews-page .cv-tk-panel {
   padding-top: 14px; opacity: 1; transform: none;
-  transition: opacity .2s ease, transform .28s cubic-bezier(.4, 0, .2, 1);
+  transition: opacity .16s ease, transform .2s cubic-bezier(.4, 0, .2, 1);
 }
 .coordviews-page .cv-tk-panel.is-leaving {
   opacity: 0; transform: translateY(-5px); pointer-events: none;
