@@ -526,27 +526,38 @@ ir_clonalUMAP_projection_ui <- function() {
       )
     ),
     div(
-      class = "cerebro-selection-actions",
-      style = "margin-top: 6px;",
-      shinyjs::hidden(
-        actionButton(
-          inputId = "ir_clonalUMAP_projection_zoom_to_selection",
-          label = "Zoom to selection",
-          icon = icon("magnifying-glass-plus"),
-          class = "btn-xs btn-default"
-        )
-      ),
-      shinyjs::hidden(
-        actionButton(
-          inputId = "ir_clonalUMAP_projection_clear_selection",
-          label = "Clear selection",
-          icon = icon("eraser"),
-          class = "btn-xs btn-default btn-breathing"
+      class = "cerebro-selection-footer",
+      uiOutput("ir_clonalUMAP_selection_count"),
+      div(
+        class = "cerebro-selection-actions",
+        shinyjs::hidden(
+          actionButton(
+            inputId = "ir_clonalUMAP_projection_zoom_to_selection",
+            label = "Zoom to selection",
+            icon = icon("magnifying-glass-plus"),
+            class = "btn-xs btn-default"
+          )
+        ),
+        shinyjs::hidden(
+          actionButton(
+            inputId = "ir_clonalUMAP_projection_clear_selection",
+            label = "Clear selection",
+            icon = icon("eraser"),
+            class = "btn-xs btn-default btn-breathing"
+          )
         )
       )
     )
   )
 }
+
+output$ir_clonalUMAP_selection_count <- renderUI({
+  sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
+  if (is.null(sel) || is.null(sel$x)) {
+    return(NULL)
+  }
+  selectionCountBadge(length(sel$x))
+})
 
 ## Bootstrap the shared-projection host div. The shared renderer draws into this
 ## same plotly output via Plotly.react (js$updateClonalUMAP); this empty

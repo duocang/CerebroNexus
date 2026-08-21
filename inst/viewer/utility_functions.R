@@ -2062,6 +2062,19 @@ serverSideGeneSelector <- function(
   })
 }
 
+selectionCountBadge <- function(count) {
+  count <- suppressWarnings(as.integer(count))
+  if (length(count) != 1 || is.na(count) || count < 1) {
+    return(NULL)
+  }
+  tags$span(
+    class = "cerebro-selection-count",
+    icon("check"),
+    formatC(count, format = "f", big.mark = ",", digits = 0),
+    "cells selected"
+  )
+}
+
 ##----------------------------------------------------------------------------##
 ## Filter a projection selection down to cells in still-visible groups.
 ##

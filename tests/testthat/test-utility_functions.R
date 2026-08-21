@@ -40,6 +40,16 @@ capProjectionDimensions <- utils_env$capProjectionDimensions
 configuredViewerContent <- utils_env$configuredViewerContent
 configuredViewerPercentageCellsToShow <-
   utils_env$configuredViewerPercentageCellsToShow
+selectionCountBadge <- utils_env$selectionCountBadge
+
+test_that("selection count badge only renders for a real selection", {
+  expect_null(selectionCountBadge(NULL))
+  expect_null(selectionCountBadge(0))
+  badge <- as.character(selectionCountBadge(39))
+  expect_match(badge, "cerebro-selection-count", fixed = TRUE)
+  expect_match(badge, "39", fixed = TRUE)
+  expect_match(badge, "cells selected", fixed = TRUE)
+})
 
 test_that("projection hover info accepts standard Seurat QC columns", {
   utils_env$getGroups <- function() "sample"

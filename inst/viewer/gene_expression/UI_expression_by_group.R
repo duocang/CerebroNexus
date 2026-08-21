@@ -8,6 +8,7 @@
 ## UI element with input selection (which group to show) and plot.
 ##----------------------------------------------------------------------------##
 output[["expression_by_group_UI"]] <- renderUI({
+  req(length(expression_selected_genes()$genes_to_display_present) > 0)
   fluidRow(
     cerebroBox(
       title = tagList(

@@ -87,7 +87,7 @@ output[["trajectory_projection_UI"]] <- renderUI({
               fluidRow(
                 column(
                   width = 8,
-                  htmlOutput("trajectory_number_of_selected_cells")
+                  uiOutput("trajectory_number_of_selected_cells")
                 ),
                 column(
                   width = 4,

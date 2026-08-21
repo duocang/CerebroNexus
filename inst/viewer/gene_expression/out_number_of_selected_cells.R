@@ -6,10 +6,5 @@ output[["expression_number_of_selected_cells"]] <- renderUI({
   if (is.null(selected) || nrow(selected) == 0) {
     return(NULL)
   }
-  tags$span(
-    class = "cerebro-expression-selection-count",
-    icon("check"),
-    formatC(nrow(selected), format = "f", big.mark = ",", digits = 0),
-    "cells selected"
-  )
+  selectionCountBadge(nrow(selected))
 })

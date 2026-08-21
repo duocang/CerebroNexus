@@ -360,18 +360,12 @@ trajectory_projection_selected_cells <- reactive({
 ## Text showing the number of selected cells.
 ##----------------------------------------------------------------------------##
 
-output[["trajectory_number_of_selected_cells"]] <- renderText({
-  if (is.null(trajectory_projection_selected_cells())) {
-    number_of_selected_cells <- 0
-  } else {
-    number_of_selected_cells <- formatC(
-      nrow(trajectory_projection_selected_cells()),
-      format = "f",
-      big.mark = ",",
-      digits = 0
-    )
+output[["trajectory_number_of_selected_cells"]] <- renderUI({
+  selected <- trajectory_projection_selected_cells()
+  if (is.null(selected) || nrow(selected) == 0) {
+    return(NULL)
   }
-  paste0("<b>Number of selected cells</b>: ", number_of_selected_cells)
+  selectionCountBadge(nrow(selected))
 })
 
 ##----------------------------------------------------------------------------##

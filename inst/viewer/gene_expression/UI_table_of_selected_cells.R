@@ -7,6 +7,10 @@
 ## coloring) and table.
 ##----------------------------------------------------------------------------##
 output[["expression_details_selected_cells_UI"]] <- renderUI({
+  selected <- expression_projection_selected_cells()
+  if (is.null(selected) || nrow(selected) == 0) {
+    return(NULL)
+  }
   fluidRow(
     cerebroBox(
       title = tagList(
