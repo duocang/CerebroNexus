@@ -358,26 +358,3 @@ download → extract → subsample → build walk-through).
 - **output**: `inst/extdata/examples/demo_trekker.crb` (~4.7 MB, self-contained incl. evidence images)
 
 **Honest scope**: `ConfPositioned` ≠ "exactly one location" — 264 of the 7,420 (3.56%) are vendor-salvaged multi-location nuclei, and the RDS's `number_clusters` is all `1` (the salvage trace is erased), so the page labels the set `vendor_confidently_positioned`. The vendor's own 2+-location rate (22.56%) exceeds its own manual's `<20%` guideline; the page shows "below vendor reference range" and does **not** adjudicate sample usability. Moran's I is the **upstream** vendor value (`..._variable_features_spatial_moransi.txt`), computed differently from Cerebro's own — labelled `Upstream` and never mixed.
-
-## Omnibus (all modalities)
-
-### demo_omnibus.crb
-- **type**: omnibus (multi-modal: expression + immune_repertoire + hla + spatial + trekker)
-- **technology**: **fully synthetic** — fabricated in R from `set.seed()`, no real assay
-- **dropdown label**: `Omnibus (all modalities)`
-- **organism / tissue**: hg (declared) / synthetic inflamed-tissue section with infiltrating lymphocytes; not real biology
-- **source**: **none — 100% fabricated.** Built to light up every feature the app ships from ONE object, and as the regression test for standard-`spatial` × `trekker` **coexistence** in Linked views (which tiles every space into its own panel — 2×2 when all four exist). It is the only demo carrying both modalities. This coexistence was a bug until 2026-07-23 — a standard spatial silently swallowed the Trekker mapping (`cv_build_bundle` exposed Trekker only `if (is.null(sp))`); fixed by giving Trekker its own space id, and this data set is what makes it testable.
-- **acquire**:
-  ```
-  # nothing to download — the builder synthesises everything:
-  Rscript data-raw/build_omnibus_demo.R
-  ```
-- **object type**: manual `Cerebro_v1.3$new()` construction (no Seurat / exportFromSeurat). Expression is a synthetic sparse `dgCMatrix` (marker-driven Poisson counts, library-size-normalised log1p); UMAP/tSNE are per-cluster Gaussian blobs, PCA from `prcomp`.
-- **sampling**: `set.seed(20260723)`; 3,000 cells (1,000 × 3 synthetic donors), 575 genes (175 markers across 7 cell types + 400 background). Trekker positions a ~70% subset. TCR on the 958 T cells, built as 6 convergent CDR3 families (Hamming-1 variants) so the motif network is legible.
-- **cell-type field**: `cell_type` (7: Epithelial / Fibroblast / Endothelial / Macrophage / CD8 T / CD4 T / B cell) plus `cluster`, `region`, `sample`, and the `dextramer_*` / `restriction_in_genotype` honesty columns (three-state: one donor is homozygous, one has a half-called HLA-B locus)
-- **embedded image**: **yes — THREE.** One synthetic H&E per donor tissue section, embedded as base64 `data:image/png` in each spatial sample (`donorA/B/C tissue`), so multiple histology images ship self-contained. Trekker additionally embeds synthetic positioning-evidence JPEGs.
-- **license**: none required — the data is fabricated and freely redistributable.
-- **build**: `data-raw/build_omnibus_demo.R` (self-contained; needs `base64enc` + `Matrix` at build time)
-- **output**: `inst/extdata/examples/demo_omnibus.crb` (~0.8 MB)
-
-**Honest scope**: every number here is fabricated — the HLA genotypes, dextramer binder calls, CDR3 sequences, Moran's I values, and QC metrics exist only to exercise the app's code paths, not to make any biological claim. Its purpose is coverage and conflict-reproduction, not realism. The `technical_info$tcr_selection_detail` says so inside the object.

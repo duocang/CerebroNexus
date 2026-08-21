@@ -38,22 +38,15 @@ section/FOV remains its own panel. That makes it possible to compare different
 tissues without pretending that their pixel or micron coordinates share an
 origin.
 
-![The shipped Omnibus demo with expression, spatial, Trekker and TCR panels. The control bar selects the colour field, embeddings and spatial sections; an orange outline marks the active panel.](img/linked-views-overview.png)
+![The shipped Mouse brain (Trekker) example with expression and physical-coordinate panels. The control bar selects the shared colour field and an orange outline marks the active panel.](img/linked-views-overview.png)
 
 # Run the shipped demo
 
-The following commands work from a source checkout. They rebuild the synthetic
-Omnibus example deterministically, then start the application with its bundled
-demos. The build requires the package's normal development dependencies plus
-`Matrix` and `base64enc`.
+The following commands work from a source checkout and start the application
+with its shipped, derived examples. No fixture-generation step is needed.
 
 ```sh
 # From the repository root
-Rscript data-raw/build_omnibus_demo.R
-# Expected final lines:
-#   all gates passed.
-#   PUBLISHED inst/extdata/examples/demo_omnibus.crb (... MB)
-
 R --vanilla
 ```
 
@@ -63,18 +56,18 @@ devtools::load_all(".", quiet = TRUE)
 shiny::runApp("inst", launch.browser = TRUE)
 ```
 
-In the **Select dataset** control choose **Omnibus (all modalities)**, then
-open **Linked views**. The initial workspace contains an expression embedding,
-a spatial section, Trekker physical coordinates and a TCR clone panel. This is
-the same dataset used for the screenshot above.
+In the **Select dataset** control choose **Mouse brain (Trekker)**, then open
+**Linked views**. The initial workspace contains an expression embedding and
+Trekker physical coordinates, as shown above. Other shipped examples add the
+spatial or clone panels for the modalities they contain.
 
 For a deployed, fixed-data app, build a self-contained bundle instead. Paths
 are named because the names become dataset labels in the app:
 
 ```{r}
-omnibus <- "inst/extdata/examples/demo_omnibus.crb"
+trekker <- "inst/extdata/examples/demo_trekker.crb"
 createShinyApp(
-  cerebro_data = c("Omnibus (all modalities)" = omnibus),
+  cerebro_data = c("Mouse brain (Trekker)" = trekker),
   result_dir = "linked-views-app",
   launch_browser = FALSE
 )
