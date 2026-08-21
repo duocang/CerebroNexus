@@ -773,7 +773,8 @@ server <- function(input, output, session) {
     placeholder_id = "enriched_pathways"
   )
   insertConditionalTab("Extra material", "extra_material", "gift", function() {
-    getExtraMaterialCategories()
+    length(extra_material_table_groups()) > 0L ||
+      length(getExtraMaterialCategories()) > 0L
   })
   insertConditionalTab(
     "Immune repertoire",

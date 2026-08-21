@@ -69,12 +69,15 @@ output[["extra_material_content_UI"]] <- renderUI({
 ## Table.
 ##----------------------------------------------------------------------------##
 output[["extra_material_table"]] <- DT::renderDataTable({
-  req(
-    input[["extra_material_selected_category"]],
-    input[["extra_material_selected_content"]]
+  req(input[["extra_material_selected_category"]] == "tables")
+  selection <- extra_material_table_selection(
+    extra_material_table_groups(),
+    file_key = input[["extra_material_selected_file"]],
+    sheet_key = input[["extra_material_selected_content"]]
   )
+  req(!is.null(selection))
   ## fetch results
-  results_df <- getExtraTable(input[["extra_material_selected_content"]])
+  results_df <- selection$sheet$table
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
   ## if the table is empty, skip the processing and show and empty table
@@ -95,10 +98,12 @@ output[["extra_material_table"]] <- DT::renderDataTable({
       color_highlighting = input[["extra_material_table_color_highlighting"]],
       hide_long_columns = TRUE,
       download_file_name = paste0(
-        "extra_material_",
-        input[["extra_material_selected_category"]],
-        "_",
-        input[["extra_material_selected_content"]]
+        "extra_material_tables_",
+        gsub(
+          "[^[:alnum:]_-]+",
+          "_",
+          paste(selection$group$label, selection$sheet$label, sep = "_")
+        )
       ),
       page_length_default = 20,
       page_length_menu = c(20, 50, 100)

@@ -28,6 +28,147 @@ fresh_extra_material_crb <- function(include_plots = FALSE) {
   readRDS(path)
 }
 
+extra_material_viewer_env <- function() {
+  utility_file <- testthat::test_path(
+    "..",
+    "..",
+    "inst",
+    "viewer",
+    "utility_functions.R"
+  )
+  env <- new.env(parent = globalenv())
+  sys.source(utility_file, envir = env)
+  env
+}
+
+external_extra_table_manifest <- list(
+  files = list(
+    "Clinical workbook" = list(
+      sheets = list(
+        list(
+          key = "external:1:1",
+          label = "Patients",
+          table = data.frame(id = c(1, 2))
+        ),
+        list(
+          key = "external:1:2",
+          label = "Visits",
+          table = data.frame(id = c(10, 11))
+        )
+      )
+    ),
+    "Marker workbook" = list(
+      sheets = list(
+        list(
+          key = "external:2:1",
+          label = "Patients",
+          table = data.frame(score = c(3, 4))
+        )
+      )
+    )
+  )
+)
+
+test_that("extra table groups keep duplicate sheet labels separate", {
+  viewer <- extra_material_viewer_env()
+  groups <- viewer$extra_material_table_groups(
+    external_manifest = external_extra_table_manifest,
+    embedded = list(Score = data.frame(x = 1))
+  )
+
+  expect_named(
+    groups,
+    c("Embedded tables", "Clinical workbook", "Marker workbook")
+  )
+  expect_identical(
+    viewer$extra_material_table_selection(
+      groups,
+      file_key = "external-file:2",
+      sheet_key = "external:2:1"
+    )$sheet$table$score,
+    c(3, 4)
+  )
+  expect_identical(
+    viewer$extra_material_table_selection(
+      groups,
+      file_key = "embedded",
+      sheet_key = "embedded:1"
+    )$sheet$table$x,
+    1
+  )
+})
+
+test_that("extra table groups retain legacy embedded tables without a manifest", {
+  viewer <- extra_material_viewer_env()
+  groups <- viewer$extra_material_table_groups(
+    external_manifest = NULL,
+    embedded = list("Legacy table" = data.frame(value = 42))
+  )
+
+  expect_named(groups, "Embedded tables")
+  expect_identical(groups[[1]]$sheets[[1]]$label, "Legacy table")
+  expect_identical(
+    viewer$extra_material_table_selection(groups)$sheet$table$value,
+    42
+  )
+})
+
+test_that("extra table selection falls back to the first available group and sheet", {
+  viewer <- extra_material_viewer_env()
+  groups <- viewer$extra_material_table_groups(
+    external_manifest = external_extra_table_manifest,
+    embedded = list(Score = data.frame(x = 1))
+  )
+
+  expect_identical(
+    viewer$extra_material_table_selection(
+      groups,
+      file_key = "missing-file",
+      sheet_key = "missing-sheet"
+    )$sheet$key,
+    "embedded:1"
+  )
+  expect_identical(
+    viewer$extra_material_table_selection(
+      groups,
+      file_key = "external-file:1",
+      sheet_key = "missing-sheet"
+    )$sheet$key,
+    "external:1:1"
+  )
+})
+
+test_that("external file labels stay unchanged when they match the embedded group", {
+  viewer <- extra_material_viewer_env()
+  manifest <- external_extra_table_manifest
+  names(manifest$files)[[1]] <- "Embedded tables"
+  groups <- viewer$extra_material_table_groups(
+    external_manifest = manifest,
+    embedded = list(Score = data.frame(x = 1))
+  )
+
+  expect_identical(groups[[1]]$label, "Embedded tables")
+  expect_identical(groups[[2]]$label, "Embedded tables")
+  expect_identical(groups[[2]]$key, "external-file:1")
+  expect_identical(
+    names(viewer$extra_material_table_file_choices(groups)),
+    c("Embedded tables (from CRB)", "Embedded tables", "Marker workbook")
+  )
+})
+
+test_that("external tables add the tables category without a CRB table", {
+  viewer <- extra_material_viewer_env()
+  viewer$Cerebro.options <- list(extra_tables = external_extra_table_manifest)
+  viewer$data_set <- function() list()
+  viewer$is_cerebro_dataset <- function(data) FALSE
+
+  expect_identical(viewer$getExtraMaterialCategories(), "tables")
+  expect_named(
+    viewer$extra_material_table_groups(),
+    c("Clinical workbook", "Marker workbook")
+  )
+})
+
 test_that("extra_material module files parse without errors", {
   mod_files <- c("UI.R", "server.R", "content.R", "select_content.R")
   for (f in mod_files) {
@@ -62,6 +203,10 @@ test_that("tables-only Viewer content does not expose a redundant category choic
     "if (!has_category_choice)",
     fixed = TRUE
   )
+  expect_match(selector, "extra_material_selected_file", fixed = TRUE)
+  expect_match(selector, "Choose a sheet:", fixed = TRUE)
+  expect_match(selector, "length(file_choices) > 1L", fixed = TRUE)
+  expect_match(selector, "length(sheet_choices) > 1L", fixed = TRUE)
 })
 
 test_that("example.crb extra material returns valid content", {

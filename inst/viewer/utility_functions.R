@@ -1910,15 +1910,180 @@ getEnrichedPathways <- function(method, group) {
 }
 
 ## Wrapper functions for extra_material module.
-getExtraMaterialCategories <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getExtraMaterialCategories())
+##
+## Extra tables can be embedded in a CRB or frozen into the generated app's
+## configuration.  The Viewer deliberately works with the already-loaded
+## data.frames below; it must never depend on the original spreadsheet paths.
+extra_material_table_groups <- function(external_manifest, embedded) {
+  if (missing(external_manifest)) {
+    options <- if (exists("Cerebro.options", inherits = TRUE)) {
+      get("Cerebro.options", inherits = TRUE)
+    } else {
+      NULL
+    }
+    external_manifest <- if (is.list(options)) options$extra_tables else NULL
   }
+
+  if (missing(embedded)) {
+    data <- data_set()
+    embedded <- if (is_cerebro_dataset(data)) {
+      data$getExtraMaterial()$tables
+    } else {
+      NULL
+    }
+  }
+
+  groups <- list()
+  if (is.list(embedded) && length(embedded) > 0L) {
+    embedded_sheets <- lapply(seq_along(embedded), function(index) {
+      table <- embedded[[index]]
+      if (!is.data.frame(table)) {
+        return(NULL)
+      }
+      label <- names(embedded)[[index]]
+      if (is.null(label) || is.na(label) || !nzchar(label)) {
+        label <- paste("Table", index)
+      }
+      list(key = paste0("embedded:", index), label = label, table = table)
+    })
+    embedded_sheets <- Filter(Negate(is.null), embedded_sheets)
+    if (length(embedded_sheets) > 0L) {
+      groups[["Embedded tables"]] <- list(
+        key = "embedded",
+        label = "Embedded tables",
+        sheets = embedded_sheets
+      )
+    }
+  }
+
+  files <- if (is.list(external_manifest)) external_manifest$files else NULL
+  if (is.list(files)) {
+    for (index in seq_along(files)) {
+      file <- files[[index]]
+      sheets <- if (is.list(file)) file$sheets else NULL
+      if (!is.list(sheets) || length(sheets) == 0L) {
+        next
+      }
+      sheets <- Filter(
+        function(sheet) {
+          is.list(sheet) &&
+            is.character(sheet$key) &&
+            length(sheet$key) == 1L &&
+            is.character(sheet$label) &&
+            length(sheet$label) == 1L &&
+            is.data.frame(sheet$table)
+        },
+        sheets
+      )
+      if (length(sheets) == 0L) {
+        next
+      }
+      label <- names(files)[[index]]
+      if (is.null(label) || is.na(label) || !nzchar(label)) {
+        label <- paste("File", index)
+      }
+      group_name <- label
+      if (group_name %in% names(groups)) {
+        group_name <- make.unique(
+          c(names(groups), paste0("external-file-", index))
+        )[[length(groups) + 1L]]
+      }
+      groups[[group_name]] <- list(
+        key = paste0("external-file:", index),
+        label = label,
+        sheets = sheets
+      )
+    }
+  }
+
+  groups
+}
+
+extra_material_table_group_by_key <- function(groups, key) {
+  if (!is.list(groups) || is.null(key) || length(key) != 1L) {
+    return(NULL)
+  }
+  matches <- vapply(
+    groups,
+    function(group) {
+      is.list(group) && identical(group$key, key)
+    },
+    logical(1)
+  )
+  if (!any(matches)) {
+    return(NULL)
+  }
+  groups[[which(matches)[[1L]]]]
+}
+
+extra_material_table_file_choices <- function(groups) {
+  keys <- vapply(groups, `[[`, character(1), "key")
+  labels <- vapply(groups, `[[`, character(1), "label")
+  duplicated_labels <- duplicated(labels) | duplicated(labels, fromLast = TRUE)
+  embedded <- keys == "embedded"
+  labels[duplicated_labels & embedded] <- paste0(
+    labels[duplicated_labels & embedded],
+    " (from CRB)"
+  )
+  stats::setNames(keys, labels)
+}
+
+extra_material_table_sheet_by_key <- function(group, key) {
+  if (
+    !is.list(group) ||
+      !is.list(group$sheets) ||
+      is.null(key) ||
+      length(key) != 1L
+  ) {
+    return(NULL)
+  }
+  matches <- vapply(
+    group$sheets,
+    function(sheet) {
+      is.list(sheet) && identical(sheet$key, key)
+    },
+    logical(1)
+  )
+  if (!any(matches)) {
+    return(NULL)
+  }
+  group$sheets[[which(matches)[[1L]]]]
+}
+
+extra_material_table_selection <- function(
+  groups,
+  file_key = NULL,
+  sheet_key = NULL
+) {
+  group <- extra_material_table_group_by_key(groups, file_key)
+  if (is.null(group) && length(groups) > 0L) {
+    group <- groups[[1L]]
+  }
+  if (is.null(group)) {
+    return(NULL)
+  }
+  sheet <- extra_material_table_sheet_by_key(group, sheet_key)
+  if (is.null(sheet) && length(group$sheets) > 0L) {
+    sheet <- group$sheets[[1L]]
+  }
+  if (is.null(sheet)) {
+    return(NULL)
+  }
+  list(group = group, sheet = sheet)
+}
+
+getExtraMaterialCategories <- function() {
+  categories <- character(0)
+  if (is_cerebro_dataset(data_set())) {
+    categories <- data_set()$getExtraMaterialCategories()
+  }
+  if (length(extra_material_table_groups()) > 0L) {
+    categories <- union(categories, "tables")
+  }
+  categories
 }
 checkForExtraTables <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$checkForExtraTables())
-  }
+  length(extra_material_table_groups()) > 0L
 }
 getNamesOfExtraTables <- function() {
   if (is_cerebro_dataset(data_set())) {
