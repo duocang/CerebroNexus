@@ -138,3 +138,73 @@ test_that("extra table workbook mappings reject duplicate labels and source shee
     "collides with an unmapped source sheet"
   )
 })
+
+extra_tables_app_fixture <- function() {
+  root <- withr::local_tempdir(.local_envir = parent.frame())
+  crb <- file.path(root, "dataset.crb")
+  saveRDS(Cerebro$new(), crb)
+  list(root = root, crb = crb)
+}
+
+test_that("createShinyApp freezes table values but not source paths", {
+  fixture <- extra_tables_app_fixture()
+  csv <- file.path(fixture$root, "qc.csv")
+  utils::write.csv(data.frame(score = 1:2), csv, row.names = FALSE)
+  app <- file.path(fixture$root, "app")
+
+  createShinyApp(
+    cerebro_data = c(Study = fixture$crb),
+    extra_tables = c(QC = csv),
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  config <- readRDS(file.path(app, "cerebro_config.rds"))
+  expect_named(config$extra_tables, "files")
+  expect_identical(config$extra_tables$files$QC$sheets[[1]]$key, "external:1:1")
+  expect_identical(config$extra_tables$files$QC$sheets[[1]]$table$score, 1:2)
+  expect_false(grepl(
+    normalizePath(csv),
+    paste(capture.output(str(config)), collapse = "\n"),
+    fixed = TRUE
+  ))
+})
+
+test_that("createShinyApp omits external table config without external tables", {
+  fixture <- extra_tables_app_fixture()
+  app <- file.path(fixture$root, "app")
+
+  createShinyApp(
+    cerebro_data = c(Study = fixture$crb),
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  expect_null(readRDS(file.path(app, "cerebro_config.rds"))$extra_tables)
+})
+
+test_that("createShinyApp validates external tables before preparing result target", {
+  fixture <- extra_tables_app_fixture()
+  prepare_calls <- 0L
+  testthat::local_mocked_bindings(
+    .prepareBundleResultTarget = function(result_dir) {
+      prepare_calls <<- prepare_calls + 1L
+      stop("result target preparation reached", call. = FALSE)
+    },
+    .package = "CerebroNexus"
+  )
+
+  expect_error(
+    createShinyApp(
+      cerebro_data = c(Study = fixture$crb),
+      extra_tables = c(Missing = file.path(fixture$root, "missing.csv")),
+      result_dir = file.path(fixture$root, "app"),
+      launch_browser = FALSE,
+      verbose = FALSE
+    ),
+    "not found"
+  )
+  expect_identical(prepare_calls, 0L)
+})
