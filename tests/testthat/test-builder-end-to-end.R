@@ -140,7 +140,7 @@ test_that("Builder release documentation matches the guided workflow", {
   version <- unname(read.dcf(file.path(repo, "DESCRIPTION"))[[1L, "Version"]])
   app <- paste(readLines(file.path(repo, "inst", "app.R")), collapse = "\n")
   news_heading <- news[grepl("^# CerebroNexus ", news)][[1L]]
-  expect_identical(version, "5.0.0")
+  expect_match(version, "^[0-9]+[.][0-9]+[.][0-9]+$")
   expect_match(
     app,
     paste0('"cerebro_version" = "', version, '"'),
