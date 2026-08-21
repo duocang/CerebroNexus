@@ -113,6 +113,39 @@ test_that("the pure Builder state API is available", {
 })
 
 if (builder_state_api_available) {
+  test_that("metadata retention automatically removes incompatible Groups", {
+    skip_if_not(exists(
+      "builder_metadata_policy_set_retained",
+      mode = "function"
+    ))
+    policy <- list(
+      columns = list(
+        sample = list(
+          name = "sample",
+          disposition = "included",
+          effective_included = TRUE,
+          retain_in_crb = TRUE,
+          group_enabled = TRUE,
+          forced = FALSE,
+          sensitive = FALSE
+        ),
+        score = list(
+          name = "score",
+          disposition = "included",
+          effective_included = TRUE,
+          retain_in_crb = TRUE,
+          group_enabled = FALSE,
+          forced = FALSE,
+          sensitive = FALSE
+        )
+      )
+    )
+    updated <- builder_metadata_policy_set_retained(policy, "score")
+    expect_false(updated$columns$sample$retain_in_crb)
+    expect_false(updated$columns$sample$group_enabled)
+    expect_true(updated$columns$score$retain_in_crb)
+  })
+
   test_that("legacy settings upgrade to one canonical Viewer content shape", {
     upgraded <- builder_upgrade_viewer_content_entry(
       builder_viewer_settings_entry()

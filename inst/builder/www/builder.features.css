@@ -611,6 +611,25 @@
   margin: 0;
 }
 .viewer-group-check-spacer { pointer-events: none; }
+.viewer-group-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .18rem;
+  min-width: 7.4rem;
+  padding: .45rem .65rem;
+}
+.viewer-group-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .35rem;
+  height: auto;
+  color: var(--c-text);
+  font-size: .78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .viewer-metadata-retain,
 .viewer-group-include,
 .viewer-group-default {
@@ -652,7 +671,7 @@
   align-items: center;
   gap: .3rem;
   margin: 0;
-  padding: .55rem .65rem;
+  padding: .12rem 0;
   color: var(--c-text-muted);
   font-size: .75rem;
   white-space: nowrap;
@@ -1722,11 +1741,14 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   .viewer-group-row {
     grid-template-columns: 2rem minmax(0, 1fr);
   }
+  .viewer-group-controls {
+    grid-column: 2;
+    align-items: flex-start;
+    padding: 0 0 .55rem;
+  }
   .viewer-group-default-label,
   .viewer-group-not-eligible {
-    grid-column: 2;
     justify-self: start;
-    padding-top: 0;
   }
   .review-app-grid,
   .review-output-fields { grid-template-columns: minmax(0, 1fr); }

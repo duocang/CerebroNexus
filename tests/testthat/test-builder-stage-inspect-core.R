@@ -231,7 +231,29 @@ test_that("Core exposes a bounded metadata catalog for Viewer Groups", {
     nGene = "nFeature_RNA",
     nGene_choices = "nFeature_RNA",
     backend = "embedded",
-    backend_choices = "embedded"
+    backend_choices = "embedded",
+    metadata_policy = list(
+      columns = list(
+        cluster = list(
+          name = "cluster",
+          disposition = "included",
+          effective_included = TRUE,
+          retain_in_crb = TRUE,
+          group_enabled = TRUE,
+          forced = FALSE,
+          sensitive = FALSE
+        ),
+        score = list(
+          name = "score",
+          disposition = "included",
+          effective_included = TRUE,
+          retain_in_crb = TRUE,
+          group_enabled = FALSE,
+          forced = FALSE,
+          sensitive = FALSE
+        )
+      )
+    )
   )
 
   html <- builder_stage_html(builder_core_stage_ui("core", model))

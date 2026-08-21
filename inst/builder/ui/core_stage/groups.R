@@ -348,7 +348,10 @@ builder_group_catalog_model <- function(model) {
   default_valid <- builder_stage_has_text(default %||% "") &&
     default %in% included
   focus_valid <- builder_stage_has_text(default %||% "") && default %in% ids
-  preview_items <- utils::head(items, 6L)
+  preview_items <- utils::head(
+    Filter(function(item) isTRUE(item$metadata_retained), items),
+    6L
+  )
   preview_row_count <- min(
     5L,
     max(c(
@@ -752,22 +755,6 @@ builder_group_catalog_ui <- function(id, catalog) {
               ),
               span(class = "visually-hidden", paste("Keep in CRB", item$label))
             ),
-            if (item$eligible) {
-              tags$label(
-                class = "viewer-group-check",
-                `for` = checkbox_id,
-                tags$input(
-                  id = checkbox_id,
-                  type = "checkbox",
-                  class = "viewer-group-include",
-                  `data-group` = item$id,
-                  checked = if (item$included) "checked" else NULL
-                ),
-                span(class = "visually-hidden", paste("Include", item$label))
-              )
-            } else {
-              span(class = "viewer-group-check viewer-group-check-spacer")
-            },
             tags$button(
               type = "button",
               class = "viewer-group-focus",
@@ -788,28 +775,45 @@ builder_group_catalog_ui <- function(id, catalog) {
                 }
               )
             ),
-            if (item$eligible) {
-              tags$label(
-                class = "viewer-group-default-label",
-                `for` = radio_id,
-                tags$input(
-                  id = radio_id,
-                  type = "radio",
-                  name = ns("group_default_choice"),
-                  class = "viewer-group-default",
-                  value = item$id,
-                  `data-group` = item$id,
-                  checked = if (item$default) "checked" else NULL,
-                  disabled = if (!item$included) "disabled" else NULL
-                ),
-                span(
-                  class = "viewer-default-copy",
-                  if (item$default) "Default" else "Set default"
+            div(
+              class = "viewer-group-controls",
+              if (item$eligible) {
+                tags$label(
+                  class = "viewer-group-check",
+                  `for` = checkbox_id,
+                  tags$input(
+                    id = checkbox_id,
+                    type = "checkbox",
+                    class = "viewer-group-include",
+                    `data-group` = item$id,
+                    checked = if (item$included) "checked" else NULL
+                  ),
+                  span("Group")
                 )
-              )
-            } else {
-              span(class = "viewer-group-not-eligible", "Not a Group")
-            }
+              },
+              if (item$eligible) {
+                tags$label(
+                  class = "viewer-group-default-label",
+                  `for` = radio_id,
+                  tags$input(
+                    id = radio_id,
+                    type = "radio",
+                    name = ns("group_default_choice"),
+                    class = "viewer-group-default",
+                    value = item$id,
+                    `data-group` = item$id,
+                    checked = if (item$default) "checked" else NULL,
+                    disabled = if (!item$included) "disabled" else NULL
+                  ),
+                  span(
+                    class = "viewer-default-copy",
+                    if (item$default) "Set default ✓" else "Set default"
+                  )
+                )
+              } else {
+                span(class = "viewer-group-not-eligible", "Not a Group")
+              }
+            )
           )
         })
       ),
