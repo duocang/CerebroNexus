@@ -691,18 +691,6 @@ builder_group_catalog_ui <- function(id, catalog) {
           class = "viewer-group-actions",
           tags$button(
             type = "button",
-            class = "btn viewer-metadata-select",
-            `data-action` = "all-supported",
-            "Keep all supported metadata"
-          ),
-          tags$button(
-            type = "button",
-            class = "btn viewer-metadata-select",
-            `data-action` = "recommended",
-            "Restore recommended retention"
-          ),
-          tags$button(
-            type = "button",
             class = "btn viewer-group-select",
             `data-action` = "suggested",
             "Select suggested"
@@ -718,7 +706,6 @@ builder_group_catalog_ui <- function(id, catalog) {
       div(
         class = "viewer-group-list",
         lapply(catalog$items, function(item) {
-          retain_id <- ns(paste0("metadata_retain_", item$index))
           checkbox_id <- ns(paste0("group_include_", item$index))
           radio_id <- ns(paste0("group_default_", item$index))
           div(
@@ -734,27 +721,6 @@ builder_group_catalog_ui <- function(id, catalog) {
             `data-recommended-retained` = tolower(as.character(
               item$recommended_retained
             )),
-            tags$label(
-              class = "viewer-metadata-check",
-              `for` = retain_id,
-              tags$input(
-                id = retain_id,
-                type = "checkbox",
-                class = "viewer-metadata-retain",
-                `data-group` = item$id,
-                checked = if (isTRUE(item$metadata_retained)) {
-                  "checked"
-                } else {
-                  NULL
-                },
-                disabled = if (isTRUE(item$retention_locked)) {
-                  "disabled"
-                } else {
-                  NULL
-                }
-              ),
-              span(class = "visually-hidden", paste("Keep in CRB", item$label))
-            ),
             tags$button(
               type = "button",
               class = "viewer-group-focus",

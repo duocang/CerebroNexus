@@ -44,6 +44,7 @@
   var firstRunKey = "cerebro-builder-first-run-v1";
   var exampleMessageHandlerRegistered = false;
   var buildDialogHandlerRegistered = false;
+  var viewerGroupHandlerRegistered = false;
   var viewerProjectionHandlerRegistered = false;
   var viewerTrajectoryHandlerRegistered = false;
   var spatialSectionHandlerRegistered = false;
@@ -2726,6 +2727,224 @@
     }
   }
 
+  function updateGroupColor(input) {
+    var item = input.closest(".group-color-item");
+    var editor = input.closest(".builder-group-colors");
+    var normalized = input.value.toUpperCase();
+    var hex = item && item.querySelector(".group-color-hex");
+    var status = editor && editor.querySelector(".group-color-status");
+    var label = item && item.querySelector(".group-color-name");
+    if (hex) hex.textContent = normalized;
+    if (status) {
+      status.textContent = "Color for " +
+        (label ? label.textContent.trim() : input.dataset.level) +
+        " changed to " + normalized + ".";
+    }
+    send(input.dataset.inputId, {
+      group: input.dataset.group,
+      level: input.dataset.level,
+      color: normalized,
+      nonce: Date.now(),
+    });
+  }
+
+  function filterGroupColors(search) {
+    var editor = search.closest(".builder-group-colors");
+    if (!editor) return;
+    var grid = editor.querySelector(".group-color-grid");
+    var query = search.value.trim().toLowerCase();
+    grid.classList.toggle("is-searching", query.length > 0);
+    grid.querySelectorAll(".group-color-item").forEach(function (item) {
+      item.hidden = query.length > 0 &&
+        !item.dataset.search.includes(query);
+    });
+  }
+
+  function toggleGroupColors(button) {
+    var editor = button.closest(".builder-group-colors");
+    if (!editor) return;
+    var grid = editor.querySelector(".group-color-grid");
+    var showAll = button.dataset.action === "show-all";
+    grid.classList.toggle("is-expanded", showAll);
+    grid.classList.toggle("is-collapsed", !showAll);
+    editor.querySelector('[data-action="show-all"]').hidden = showAll;
+    editor.querySelector('[data-action="show-fewer"]').hidden = !showAll;
+  }
+
+  function viewerGroupRows(root) {
+    return Array.from(root.querySelectorAll(".viewer-group-row"));
+  }
+
+  function updateViewerMetadataSelection(root, emit) {
+    if (!root) return;
+    var retained = [];
+    viewerGroupRows(root).forEach(function (row) {
+      var metadata = row.querySelector(".viewer-metadata-retain");
+      var group = row.querySelector(".viewer-group-include");
+      var radio = row.querySelector(".viewer-group-default");
+      if (metadata && metadata.checked) retained.push(row.dataset.group);
+      if (metadata && !metadata.checked) {
+        if (group) group.checked = false;
+        if (radio) radio.checked = false;
+      }
+    });
+    updateViewerGroupSelection(root, false, true);
+    if (emit && root.dataset.metadataInputId) {
+      send(root.dataset.metadataInputId, {
+        action: "set-retention",
+        retained: retained,
+        nonce: Date.now(),
+      });
+    }
+  }
+
+  function selectViewerMetadata(button) {
+    var root = button.closest(".viewer-group-workspace");
+    if (!root) return;
+    var action = button.dataset.action;
+    viewerGroupRows(root).forEach(function (row) {
+      var checkbox = row.querySelector(".viewer-metadata-retain");
+      if (!checkbox || checkbox.disabled) return;
+      checkbox.checked = action === "all-supported" ||
+        row.dataset.recommendedRetained === "true";
+    });
+    updateViewerMetadataSelection(root, true);
+  }
+
+  function updateDefaultCopy(root, selector) {
+    root.querySelectorAll(selector).forEach(function (input) {
+      var label = input.closest("label");
+      var copy = label && label.querySelector(".viewer-default-copy");
+      if (copy) copy.textContent = input.checked ? "Default" : "Set default";
+    });
+  }
+
+  function updateViewerGroupCount(root) {
+    var count = root.querySelectorAll(".viewer-group-include:checked").length;
+    var card = root.closest(".builder-viewer-card");
+    var output = card && card.querySelector("[data-viewer-group-count]");
+    var selected = root.querySelector(".viewer-group-default:checked");
+    var row = selected && selected.closest(".viewer-group-row");
+    var label = row && row.querySelector(".viewer-group-name");
+    if (output) {
+      output.textContent = count + " included · Default: " +
+        (label ? label.textContent.trim() : "None");
+    }
+  }
+
+  function updateViewerGroupSelection(root, emit, allowEmpty) {
+    if (!root) return;
+    var rows = viewerGroupRows(root);
+    var included = rows
+      .filter(function (row) {
+        var checkbox = row.querySelector(".viewer-group-include");
+        return checkbox && checkbox.checked && !checkbox.disabled;
+      })
+      .map(function (row) { return row.dataset.group; });
+    if (!included.length && !allowEmpty) {
+      var first = rows.find(function (row) {
+        return row.dataset.eligible === "true";
+      });
+      var firstCheckbox = first && first.querySelector(".viewer-group-include");
+      if (firstCheckbox) {
+        firstCheckbox.checked = true;
+        included = [first.dataset.group];
+      }
+    }
+    var currentDefault = root.querySelector(".viewer-group-default:checked");
+    var defaultGroup = currentDefault && included.includes(currentDefault.value)
+      ? currentDefault.value
+      : included[0] || null;
+    rows.forEach(function (row) {
+      var checkbox = row.querySelector(".viewer-group-include");
+      var radio = row.querySelector(".viewer-group-default");
+      var isIncluded = Boolean(checkbox && checkbox.checked && !checkbox.disabled);
+      row.classList.toggle("is-included", isIncluded);
+      if (radio) {
+        radio.disabled = !isIncluded;
+        radio.checked = isIncluded && row.dataset.group === defaultGroup;
+      }
+    });
+    updateDefaultCopy(root, ".viewer-group-default");
+    updateViewerGroupCount(root);
+    if (emit && root.dataset.inputId) {
+      send(root.dataset.inputId, {
+        action: "set-groups",
+        included: included,
+        default: defaultGroup,
+        nonce: Date.now(),
+      });
+    }
+  }
+
+  function focusViewerGroup(button) {
+    var root = button.closest(".viewer-group-workspace");
+    if (!root) return;
+    viewerGroupRows(root).forEach(function (row) {
+      var focus = row.querySelector(".viewer-group-focus");
+      var selected = row.dataset.group === button.dataset.group;
+      row.classList.toggle("is-focused", selected);
+      if (focus) focus.setAttribute("aria-pressed", selected ? "true" : "false");
+    });
+    if (root.dataset.focusInputId) {
+      send(root.dataset.focusInputId, {
+        group: button.dataset.group,
+        nonce: Date.now(),
+      });
+    }
+  }
+
+  function filterViewerGroups(search) {
+    var root = search.closest(".viewer-group-workspace");
+    if (!root) return;
+    var query = search.value.trim().toLowerCase();
+    viewerGroupRows(root).forEach(function (row) {
+      row.hidden = query.length > 0 && !row.dataset.search.includes(query);
+    });
+  }
+
+  function selectViewerGroups(button) {
+    var root = button.closest(".viewer-group-workspace");
+    if (!root) return;
+    var action = button.dataset.action;
+    viewerGroupRows(root).forEach(function (row) {
+      var checkbox = row.querySelector(".viewer-group-include");
+      if (!checkbox || checkbox.disabled) return;
+      checkbox.checked = action === "all" || row.dataset.suggested === "true";
+    });
+    updateViewerGroupSelection(root, true);
+  }
+
+  function setupViewerGroupCatalogs() {
+    document.querySelectorAll(".viewer-group-workspace").forEach(function (root) {
+      if (root.dataset.builderGroups === "true") return;
+      root.dataset.builderGroups = "true";
+      updateViewerGroupSelection(root, false);
+      var initial = root.querySelector(".viewer-group-default:checked");
+      var row = initial && initial.closest(".viewer-group-row");
+      var focus = row && row.querySelector(".viewer-group-focus");
+      if (focus) {
+        row.classList.add("is-focused");
+        focus.setAttribute("aria-pressed", "true");
+      }
+    });
+  }
+
+  function applyViewerGroupState(message) {
+    var root = document.querySelector(".viewer-group-workspace");
+    if (!root) return;
+    var included = new Set(messageValues(message && message.included));
+    viewerGroupRows(root).forEach(function (row) {
+      var checkbox = row.querySelector(".viewer-group-include");
+      var radio = row.querySelector(".viewer-group-default");
+      if (checkbox && !checkbox.disabled) checkbox.checked = included.has(row.dataset.group);
+      if (radio) radio.checked = row.dataset.group === (message && message.default);
+    });
+    updateViewerGroupSelection(root, false);
+    var status = root.querySelector(".viewer-group-status");
+    if (status && message && message.message) status.textContent = message.message;
+  }
+
   function projectionCards(root) {
     return Array.from(root.querySelectorAll(".viewer-projection-card"));
   }
@@ -3242,6 +3461,7 @@
     updateDialogLock();
     setupPersistentDisclosures();
     setupViewerContentAccordions();
+    setupViewerGroupCatalogs();
     setupViewerContentCatalogs();
     setupCreatableSelects();
     if (desiredSpatialSection) {
@@ -3368,6 +3588,30 @@
       authRender([]);
       send("builder_auth_accounts", { enabled: false, accounts: [], nonce: Date.now() });
       send("builder_auth_accounts", null);
+      return;
+    }
+    var groupColorToggle = target.closest(".group-color-toggle");
+    if (groupColorToggle) {
+      event.preventDefault();
+      toggleGroupColors(groupColorToggle);
+      return;
+    }
+    var viewerGroupFocus = target.closest(".viewer-group-focus");
+    if (viewerGroupFocus) {
+      event.preventDefault();
+      focusViewerGroup(viewerGroupFocus);
+      return;
+    }
+    var viewerGroupSelect = target.closest(".viewer-group-select");
+    if (viewerGroupSelect) {
+      event.preventDefault();
+      selectViewerGroups(viewerGroupSelect);
+      return;
+    }
+    var viewerMetadataSelect = target.closest(".viewer-metadata-select");
+    if (viewerMetadataSelect) {
+      event.preventDefault();
+      selectViewerMetadata(viewerMetadataSelect);
       return;
     }
     var removeTable = target.closest(".enhance-table-remove");
@@ -3577,6 +3821,14 @@
       updateProjectionCellPercentage(event.target, false);
       return;
     }
+    if (event.target.matches(".viewer-group-search")) {
+      filterViewerGroups(event.target);
+      return;
+    }
+    if (event.target.matches(".group-color-search")) {
+      filterGroupColors(event.target);
+      return;
+    }
     if (event.target.matches('input[type="color"]')) {
       enhanceColour(event.target);
     }
@@ -3595,6 +3847,27 @@
       return;
     }
     if (event.target.matches("#dataset_files")) return;
+    if (event.target.matches(".viewer-group-include")) {
+      updateViewerGroupSelection(
+        event.target.closest(".viewer-group-workspace"),
+        true
+      );
+      return;
+    }
+    if (event.target.matches(".viewer-metadata-retain")) {
+      updateViewerMetadataSelection(
+        event.target.closest(".viewer-group-workspace"),
+        true
+      );
+      return;
+    }
+    if (event.target.matches(".viewer-group-default")) {
+      updateViewerGroupSelection(
+        event.target.closest(".viewer-group-workspace"),
+        true
+      );
+      return;
+    }
     if (event.target.matches(".viewer-projection-include, .viewer-projection-default")) {
       updateProjectionSelection(
         event.target.closest(".viewer-projection-workspace"),
@@ -3615,6 +3888,10 @@
         event.target.closest(".viewer-trajectory-workspace"),
         true
       );
+      return;
+    }
+    if (event.target.matches(".group-color-input")) {
+      updateGroupColor(event.target);
       return;
     }
     if (!event.target.matches(".enhance-table-display-name")) return;
@@ -3936,6 +4213,15 @@
     clientImportHandlersRegistered = true;
   }
 
+  function registerViewerGroupHandler() {
+    if (viewerGroupHandlerRegistered || !window.Shiny) return;
+    window.Shiny.addCustomMessageHandler(
+      "builder_group_state",
+      applyViewerGroupState
+    );
+    viewerGroupHandlerRegistered = true;
+  }
+
   function registerViewerContentHandlers() {
     if (!window.Shiny) return;
     if (!viewerProjectionHandlerRegistered) {
@@ -3987,6 +4273,7 @@
     registerExampleMessageHandler();
     registerBuildDialogHandler();
     registerClientImportHandlers();
+    registerViewerGroupHandler();
     registerViewerContentHandlers();
     send("builder_dataset_rail_sync", { nonce: Date.now() });
     send("builder_import_rail_sync", { nonce: Date.now() });
@@ -4043,6 +4330,7 @@
     registerExampleMessageHandler();
     registerBuildDialogHandler();
     registerClientImportHandlers();
+    registerViewerGroupHandler();
     registerViewerContentHandlers();
 
     var datasetTrigger = document.getElementById("builder_add_datasets");

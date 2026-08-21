@@ -8,6 +8,7 @@ builder_core_stage_ui <- function(id, model) {
   ) {
     organism_choices <- c(organism_choices, organism)
   }
+  group_catalog <- builder_group_catalog_model(model)
   cell_cycle_catalog <- builder_cell_cycle_catalog_model(model)
   projection_catalog <- builder_projection_catalog_model(model)
   trajectory_catalog <- builder_trajectory_catalog_model(model)
@@ -67,13 +68,29 @@ builder_core_stage_ui <- function(id, model) {
         class = "builder-viewer-content-head",
         h4("CRB content"),
         p(
-          "Metadata is carried into the Viewer automatically for cell details and downloads."
+          "Metadata is retained automatically. Review the available columns and configure Viewer Groups, default group, and colors."
         )
       ),
-      div(
-        class = "builder-metadata-auto-note",
-        role = "note",
-        "No metadata selection is required. The Builder keeps the cell metadata needed by the Viewer, including cell details and CSV/Excel downloads."
+      tags$details(
+        class = "builder-viewer-card builder-viewer-groups",
+        `data-disclosure-key` = "viewer-groups",
+        tags$summary(
+          span(class = "builder-viewer-card-title", "Groups"),
+          span(
+            class = "builder-viewer-card-count",
+            `data-viewer-group-count` = "true",
+            paste0(
+              group_catalog$included_count,
+              " included · ",
+              "Default: ",
+              group_catalog$default %||% "None"
+            )
+          )
+        ),
+        div(
+          class = "builder-viewer-card-body",
+          builder_group_catalog_ui(id, group_catalog)
+        )
       ),
       if (length(cell_cycle_catalog$items)) {
         tags$details(
