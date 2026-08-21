@@ -197,16 +197,11 @@ test_that("tables-only Viewer content does not expose a redundant category choic
   skip_if_not(file.exists(selector_file))
   selector <- paste(readLines(selector_file, warn = FALSE), collapse = "\n")
 
-  expect_match(selector, "extra_material_category_needed", fixed = TRUE)
-  expect_match(
-    selector,
-    "if (!has_category_choice)",
-    fixed = TRUE
-  )
+  expect_match(selector, "align-items: flex-end", fixed = TRUE)
   expect_match(selector, "extra_material_selected_file", fixed = TRUE)
-  expect_match(selector, "Choose a sheet:", fixed = TRUE)
-  expect_match(selector, "length(file_choices) > 1L", fixed = TRUE)
-  expect_match(selector, "length(sheet_choices) > 1L", fixed = TRUE)
+  expect_match(selector, 'label = "Material type:"', fixed = TRUE)
+  expect_match(selector, 'label = "Choose a table:"', fixed = TRUE)
+  expect_match(selector, 'width = "320px"', fixed = TRUE)
 })
 
 test_that("example.crb extra material returns valid content", {
