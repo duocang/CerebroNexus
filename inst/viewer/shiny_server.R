@@ -876,8 +876,8 @@ server <- function(input, output, session) {
     ir_heavy_deps_loaded = any(
       c("scRepertoire", "immApex", "iNEXT") %in% loadedNamespaces()
     ),
-    ## Same idea for Linked views: the bundle walks every cell of the object and
-    ## is ~156 KB on the omnibus demo, so it must stay at 0 until the tab is
+    ## Same idea for Linked views: the bundle walks every cell of the object, so
+    ## it must stay at 0 until the tab is
     ## opened. It used to be built on connect, and rebuilt in full whenever a
     ## group colour changed, for sessions that never opened the tab.
     coordviews_bundles_built = coordviews_build_log$n

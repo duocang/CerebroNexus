@@ -1142,7 +1142,7 @@ cv_build_clone <- function(crb, cells, n) {
   clone_size <- as.integer(tab)
   cell_clone <- match(ct, clone_keys) # 1..K, NA if none
   ## A clone is called on CTgene, and one CTgene clone routinely spans several
-  ## CDR3s -- in the omnibus demo every clone does, one of them across twelve.
+  ## CDR3s in real receptor data can do this across many cells.
   ## Labelling it with whichever CDR3 happened to come first therefore named the
   ## row after one of its members: the table showed a single sequence while
   ## clicking it selected cells carrying eleven others. The dominant sequence is

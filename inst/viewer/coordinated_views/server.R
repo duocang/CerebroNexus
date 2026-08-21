@@ -76,8 +76,8 @@ cv_ok <- function(b) {
 ## Nothing is built or sent until the user actually opens the tab.
 ##
 ## `coordviews_bundle()` walks every cell of the loaded object -- reductions,
-## spatial coordinates, the immune repertoire -- and the result is sizeable
-## (~156 KB for the omnibus demo). Doing that on connect made every session pay
+## spatial coordinates, the immune repertoire -- and the result is sizeable.
+## Doing that on connect made every session pay
 ## for a tab most of them never open, and because the bundle reads
 ## reactive_colors(), recolouring a group on the Projection tab rebuilt and
 ## re-sent the whole thing while Linked views sat hidden.

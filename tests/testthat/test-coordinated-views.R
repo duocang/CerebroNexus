@@ -8,7 +8,7 @@
 #     instead of an array (the I()/AsIs contract in cv_group/cv_space/cv_clone),
 #     which made the client throw mid-update and keep the previous data set; and
 #   * a standard `spatial` slot and a `trekker` slot collapsing into one space
-#     instead of two — the omnibus demo carries BOTH and is the fixture for it.
+#     instead of two — each builder keeps its own space identity.
 
 inst_candidates <- c(
   normalizePath("inst", mustWork = FALSE),
@@ -24,14 +24,19 @@ if (!is.na(local_inst)) {
     local_inst,
     "viewer/coordinated_views/bundle.R"
   )
-  omnibus_crb <- file.path(local_inst, "extdata/examples/demo_omnibus.crb")
+  tcr_crb <- file.path(local_inst, "extdata/examples/demo_full_tcr_bcr.crb")
+  trekker_crb <- file.path(local_inst, "extdata/examples/demo_trekker.crb")
 } else {
   bundle_file <- system.file(
     "viewer/coordinated_views/bundle.R",
     package = "CerebroNexus"
   )
-  omnibus_crb <- system.file(
-    "extdata/examples/demo_omnibus.crb",
+  tcr_crb <- system.file(
+    "extdata/examples/demo_full_tcr_bcr.crb",
+    package = "CerebroNexus"
+  )
+  trekker_crb <- system.file(
+    "extdata/examples/demo_trekker.crb",
     package = "CerebroNexus"
   )
 }
@@ -193,28 +198,6 @@ test_that("Trekker depth views form one collapsed insights region", {
     fixed = TRUE
   )
   expect_match(css, ".cv-tk-panel-stage.is-switching", fixed = TRUE)
-})
-
-test_that("the omnibus spatial bundle preserves every embedded background", {
-  skip_if_not(have_bundle)
-  skip_if_not(nzchar(omnibus_crb) && file.exists(omnibus_crb))
-
-  crb <- readRDS(omnibus_crb)
-  cells <- as.character(crb$getMetaData()$cell_barcode)
-  spatial <- cv_env$cv_build_spatial(crb, cells)
-
-  expect_length(spatial$samples, 3L)
-  expect_identical(spatial$samples[[1L]]$name, "donorA tissue")
-  expect_length(spatial$samples[[1L]]$images, 2L)
-  expect_identical(
-    unname(vapply(
-      spatial$samples[[1L]]$images,
-      `[[`,
-      character(1),
-      "label"
-    )),
-    c("Rose H&E", "Blue H&E")
-  )
 })
 
 test_that("cv_group/cv_space/cv_clone force JSON arrays even at length 1", {
@@ -670,111 +653,6 @@ test_that("Builder Trekker backgrounds and appearance reach Linked views", {
   expect_match(js, "function pointOpacityOf(p)", fixed = TRUE)
 })
 
-test_that("cv_build_bundle assembles every modality from the omnibus demo", {
-  skip_if_not(have_bundle)
-  skip_if_not(
-    nzchar(omnibus_crb) && file.exists(omnibus_crb),
-    "omnibus demo .crb not available"
-  )
-  skip_if_not(
-    requireNamespace("CerebroNexus", quietly = TRUE),
-    "CerebroNexus not loaded (R6 class needed to read the .crb)"
-  )
-  crb <- tryCatch(readRDS(omnibus_crb), error = function(e) NULL)
-  skip_if(is.null(crb), "omnibus demo .crb not loadable")
-
-  b <- cv_env$cv_build_bundle(crb)
-  expect_type(b, "list")
-  expect_gt(b$n, 0)
-  expect_length(b$cells, b$n)
-
-  ## spaces: umap + spatial + trekker + clone, each a DISTINCT id. The
-  ## spatial<->trekker coexistence is the regression this fixture exists for.
-  ids <- vapply(b$spaces, function(s) s$id, "")
-  expect_true(all(c("umap", "spatial", "trekker", "clone") %in% ids))
-  expect_equal(anyDuplicated(ids), 0L)
-
-  ## every space is aligned to the SAME cell vector (keyed on cell index).
-  for (s in b$spaces) {
-    expect_length(s$x, b$n)
-    expect_length(s$y, b$n)
-  }
-
-  ## multi-sample spatial: the three donor sections travel in $samples so the
-  ## client can switch between them.
-  sp <- b$spaces[[which(ids == "spatial")]]
-  expect_false(is.null(sp$samples))
-  expect_gte(length(sp$samples), 2)
-
-  ## groups present and aligned; the immune axis adds clone_expansion.
-  expect_gte(length(b$groups), 1)
-  expect_true("clone_expansion" %in% names(b$groups))
-  for (g in b$groups) {
-    expect_length(g$values, b$n)
-  }
-
-  ## side-bundles for the Trekker QC modal and the clone readout.
-  expect_false(is.null(b$trekker))
-  expect_false(is.null(b$clone))
-  expect_true(b$default_projection %in% names(b$projections))
-  expect_true(b$default_group %in% names(b$groups))
-
-  ## Colour-by parity with the Projection tab, which offers EVERY meta column.
-  ## Whatever the meta data holds must be reachable through exactly one of the
-  ## three lists — a column that is in none of them cannot be coloured by, which
-  ## is the gap that kept Linked views from replacing the Projection tab.
-  md <- crb$getMetaData()
-  ## cat_skipped counts as accounted-for: those columns cannot be coloured by,
-  ## but the picker lists them (disabled, with the reason) rather than dropping
-  ## them, so they are still reachable as an answer.
-  offered <- c(
-    names(b$groups),
-    names(b$cat_extra),
-    names(b$cat_skipped),
-    sub(
-      "^meta:",
-      "",
-      names(b$fields)
-    )
-  )
-  for (cn in setdiff(colnames(md), "cell_barcode")) {
-    v <- md[[cn]]
-    ## constant columns have no colouring to offer; everything else must
-    if (length(unique(v[!is.na(v)])) <= 1) {
-      next
-    }
-    expect_true(cn %in% offered, info = cn)
-  }
-  ## the QC columns specifically — they were previously filtered out
-  expect_true("meta:nCount_RNA" %in% names(b$fields))
-  ## fields carry a true range and a quantisation scale, not raw 0-255 codes
-  for (f in b$fields) {
-    expect_length(f$v, b$n)
-    expect_true(is.numeric(f$scale) && f$scale > 0)
-    expect_true(f$max > f$min)
-  }
-  ## Trekker's physical fields join the SAME list (no second lookup on $trekker)
-  expect_null(b$trekker$fields)
-  expect_true(any(!grepl("^meta:", names(b$fields))))
-  ## every projection reports its dimensionality
-  for (p in b$projections) {
-    expect_true(is.numeric(p$ndim) && p$ndim >= 2)
-  }
-  ## The omnibus is the only demo carrying reductions that are not flat, and it
-  ## carries BOTH shapes the client treats differently: exactly three components
-  ## (a RunUMAP(n.components = 3) result) and more than three (a PCA, of which
-  ## only the first three are rendered). Without them the rotate path had no
-  ## demo to run on at all.
-  expect_equal(b$projections$umap_3d$ndim, 3L)
-  expect_length(b$projections$umap_3d$z, b$n)
-  expect_equal(b$projections$pca$ndim, 5L)
-  expect_length(b$projections$pca$z, b$n)
-  ## and the flat ones must NOT carry a z — its presence is what the client uses
-  ## to decide a panel can be turned
-  expect_null(b$projections$umap$z)
-  expect_null(b$projections$tsne$z)
-})
-
 test_that("Viewer ships one global enhancement for every Selectize multi-select", {
   ui_file <- file.path(dirname(bundle_file), "..", "shiny_UI.R")
   js_file <- file.path(dirname(bundle_file), "..", "www", "multiselect.js")
@@ -815,7 +693,7 @@ test_that("Viewer ships one global enhancement for every Selectize multi-select"
 test_that("a clone's label names its dominant CDR3 and says how many it hides", {
   skip_if_not(have_bundle)
   ## A clone is called on CTgene, and one CTgene clone routinely covers several
-  ## CDR3s -- in the omnibus demo, every one of them does. Naming the row after
+  ## CDR3s in realistic receptor data can do this. Naming the row after
   ## whichever CDR3 came first presented one sequence while the row selected
   ## cells carrying the others, under a column header that read "CDR3".
   ir <- list(data.frame(
@@ -862,9 +740,9 @@ test_that("a single-CDR3 clone is not annotated", {
 ## only shape of test that can fail when the two drift apart again.
 test_that("both pages give a clone the same size", {
   skip_if_not(have_bundle)
-  skip_if_not(nzchar(omnibus_crb) && file.exists(omnibus_crb))
+  skip_if_not(nzchar(tcr_crb) && file.exists(tcr_crb))
 
-  crb <- readRDS(omnibus_crb)
+  crb <- readRDS(tcr_crb)
   md <- crb$getMetaData()
   cells <- as.character(md$cell_barcode)
   ir <- crb$getImmuneRepertoire()
@@ -970,7 +848,6 @@ test_that("the histology bar offers both scale axes and a way back", {
 ## the same name. These assertions are on the real output for the real object.
 test_that("the trekker bundle carries what a placement is judged on", {
   skip_if_not(have_bundle)
-  trekker_crb <- file.path(dirname(omnibus_crb), "demo_trekker.crb")
   skip_if_not(file.exists(trekker_crb))
 
   b <- cv_env$cv_build_bundle(readRDS(trekker_crb))

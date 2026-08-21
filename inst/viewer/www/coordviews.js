@@ -4345,8 +4345,8 @@ var focusPanel = null;
   // The square's size is computed from the pane header's height, and the header
   // grows when the pane is narrow enough for its toolbar to wrap. That is a
   // positive feedback loop: a smaller square makes a taller header makes a
-  // smaller square. Measured on the omnibus data set the moment the histology
-  // bar appeared -- 26 shrinking steps over three seconds, from 240px down to
+  // smaller square. Reproduced when the histology bar appeared -- 26 shrinking
+  // steps over three seconds, from 240px down to
   // the floor, while every INPUT (available width, the panels' top, the legend's
   // height, the window) stayed exactly the same. It reads as the panels
   // shivering.

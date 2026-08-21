@@ -70,16 +70,7 @@ Cerebro.options <<- list(
     ## here, which is what the restriction_in_genotype column makes visible.
     ## Nothing on the Associations tab uses them.
     ## Rebuild with data-raw/build_hla_tcr_dextramer_demo.R.
-    "HLA & TCR" = "extdata/examples/demo_hla_tcr_dextramer.crb",
-    ## FULLY SYNTHETIC omnibus demo: one object carrying every modality the app
-    ## supports (expression + UMAP/tSNE/PCA, groups, markers, TCR with convergent
-    ## CDR3 families, HLA typing, THREE spatial sections each with an embedded
-    ## H&E, and a Trekker positioned subset). Lights up every feature from one
-    ## data set, and is the only demo carrying BOTH a standard `spatial` slot and
-    ## a `trekker` slot — the regression test for their coexistence in Linked
-    ## views, which tiles every space into its own panel (2x2 when all four exist).
-    ## Rebuild with data-raw/build_omnibus_demo.R.
-    "Omnibus (all modalities)" = "extdata/examples/demo_omnibus.crb"
+    "HLA & TCR" = "extdata/examples/demo_hla_tcr_dextramer.crb"
   ),
   "crb_pick_smallest_file" = FALSE,
   ## Visium loads its real H&E background from an EXTERNAL image file (rather than
