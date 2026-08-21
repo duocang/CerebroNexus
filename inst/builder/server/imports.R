@@ -1241,10 +1241,7 @@ observe({
       dataset_profile = value$dataset_profile
     )
     settings$recommendations <- recommendations
-    settings$metadata_policy <- builder_metadata_policy_set_retained(
-      recommendations$metadata,
-      recommendations$metadata$retained
-    )
+    settings$metadata_policy <- recommendations$metadata
     entry <- list(
       id = p$id,
       source_id = p$id,

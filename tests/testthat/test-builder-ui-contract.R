@@ -659,17 +659,23 @@ test_that("Builder has no duplicate dataset context banner", {
   expect_false(grepl('output[["dataset_context"]]', review, fixed = TRUE))
 })
 
-test_that("Viewer Group catalog interactions use stable names and client search", {
+test_that("Builder metadata configuration controls are removed", {
   js <- builder_asset_text("www", "builder.js")
   css <- builder_stylesheet_text()
-  core <- builder_core_stage_source_text()
+  core <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "ui", "core_stage", "stage.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
 
-  expect_match(core, "viewer-group-include", fixed = TRUE)
-  expect_match(core, "viewer-group-default", fixed = TRUE)
-  expect_match(core, "Find metadata", fixed = TRUE)
-  expect_match(js, "filterViewerGroups", fixed = TRUE)
-  expect_match(js, "updateViewerGroupSelection", fixed = TRUE)
-  expect_match(js, "viewer-group-focus", fixed = TRUE)
+  expect_false(grepl("viewer-group-include", core, fixed = TRUE))
+  expect_false(grepl("viewer-group-default", core, fixed = TRUE))
+  expect_false(grepl("Find metadata", core, fixed = TRUE))
+  expect_false(grepl("filterViewerGroups", js, fixed = TRUE))
+  expect_false(grepl("updateViewerGroupSelection", js, fixed = TRUE))
+  expect_false(grepl("viewer-group-focus", js, fixed = TRUE))
   expect_match(css, ".builder-viewer-content", fixed = TRUE)
   expect_match(css, ".viewer-group-row", fixed = TRUE)
 })
@@ -898,21 +904,15 @@ test_that("builder interaction states follow the amber theme", {
   ))
 })
 
-test_that("group colors use native bounded controls without projection palettes", {
+test_that("metadata configuration controls are absent from client assets", {
   core <- builder_core_stage_source_text()
   js <- builder_asset_text("www", "builder.js")
   css <- builder_stylesheet_text()
 
-  expect_match(core, 'type = "color"', fixed = TRUE)
-  expect_match(core, 'paste("Show all", model$total, "colors")', fixed = TRUE)
-  expect_match(core, '"Show fewer"', fixed = TRUE)
-  expect_match(core, '"Find a group value"', fixed = TRUE)
-  expect_match(js, "group-color-toggle", fixed = TRUE)
-  expect_match(js, "group-color-search", fixed = TRUE)
+  expect_false(grepl("group-color-toggle", js, fixed = TRUE))
+  expect_false(grepl("group-color-search", js, fixed = TRUE))
   expect_match(css, ".group-color-grid", fixed = TRUE)
-  expect_match(css, ".group-color-item:hover", fixed = TRUE)
-  expect_match(css, ".group-color-input:focus-visible", fixed = TRUE)
-  expect_false(grepl("umap_palette|pca_palette|tsne_palette", core))
+  expect_match(css, ".group-color-input", fixed = TRUE)
 })
 
 test_that("Viewer content cards preserve disclosure state across Shiny redraws", {

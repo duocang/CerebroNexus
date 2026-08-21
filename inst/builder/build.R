@@ -795,24 +795,6 @@ builder_verify_crb <- function(path, item) {
   if (!methods::is(object, "Seurat")) {
     return(object)
   }
-  metadata <- setdiff(
-    item$metadata_policy$retained %||%
-      item$metadata_policy$included %||%
-      character(),
-    "cell_barcode"
-  )
-  if ("percent_mt_ribo" %in% item$analyses) {
-    metadata <- unique(c(metadata, "percent_mt", "percent_ribo"))
-  }
-  missing_metadata <- setdiff(metadata, colnames(object@meta.data))
-  if (length(missing_metadata)) {
-    stop(
-      "Frozen metadata columns are missing from the built object: ",
-      paste(missing_metadata, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  object@meta.data <- object@meta.data[, metadata, drop = FALSE]
   object
 }
 

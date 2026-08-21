@@ -1,45 +1,5 @@
 ## Builder server: datasets.
 
-builder_normalize_group_dependency <- function(entry) {
-  if (!is.list(entry) || !is.list(entry$settings)) {
-    return(entry)
-  }
-  settings <- entry$settings
-  policy <- settings$metadata_policy %||%
-    settings$recommendations$metadata
-  if (!is.list(policy) || !is.list(policy$columns)) {
-    return(entry)
-  }
-  retained <- names(policy$columns)[vapply(
-    policy$columns,
-    function(record) isTRUE(record$retain_in_crb),
-    logical(1)
-  )]
-  groups <- unique(as.character(
-    settings$included_groups %||% settings$groups %||% character()
-  ))
-  groups <- intersect(groups[!is.na(groups) & nzchar(groups)], retained)
-  default <- settings$default_group %||% ""
-  settings$included_groups <- groups
-  settings$groups <- groups
-  settings$default_group <- if (length(groups)) {
-    if (default %in% groups) default else groups[[1L]]
-  } else {
-    NULL
-  }
-  overrides <- builder_settings_color_overrides(settings)
-  settings$group_color_overrides <- overrides[intersect(
-    names(overrides),
-    groups
-  )]
-  settings$metadata_policy <- builder_metadata_policy_set_groups(
-    policy,
-    groups
-  )
-  entry$settings <- settings
-  entry
-}
-
 ## -- the rail ------------------------------------------------------------
 last_dataset_rail_patch <- reactiveVal(NULL)
 observe({
@@ -173,42 +133,6 @@ observe({
   entry$settings <- next_settings
   replace_entry(entry)
 })
-
-group_catalog_for_entry <- function(entry) {
-  builder_group_catalog_model(list(
-    metadata_catalog = entry$dataset_profile$viewer_content$metadata %||%
-      entry$profile$viewer_content$metadata %||%
-      list(),
-    group_choices = unname(entry$profile$group_candidates %||% character()),
-    included_groups = entry$settings$included_groups %||%
-      entry$settings$groups %||%
-      character(),
-    default_group = entry$settings$default_group %||% NULL,
-    suggested_groups = entry$profile$group_preselect %||%
-      entry$settings$included_groups %||%
-      character(),
-    metadata_policy = entry$settings$metadata_policy %||%
-      entry$settings$recommendations$metadata %||%
-      list(),
-    levels = entry$levels %||% list()
-  ))
-}
-
-send_group_state <- function(entry, message = NULL) {
-  session$sendCustomMessage(
-    "builder_group_state",
-    list(
-      dataset = entry$id,
-      included = unname(entry$settings$included_groups %||% character()),
-      default = entry$settings$default_group %||% NULL,
-      message = message
-    )
-  )
-}
-
-group_focus_value <- function(value) {
-  if (is.list(value)) value$group %||% NULL else value
-}
 
 projection_catalog_for_entry <- function(entry) {
   catalog <- entry$dataset_profile$viewer_content$projections %||%
@@ -591,118 +515,6 @@ observe({
 })
 
 observeEvent(
-  input[["core-metadata_action"]],
-  {
-    id <- current()
-    action <- input[["core-metadata_action"]]
-    if (
-      is.null(id) ||
-        !identical(input[["core-rendered_for"]], id) ||
-        !is.list(action) ||
-        !identical(action$action, "set-retention")
-    ) {
-      return()
-    }
-    entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
-    req(entry)
-    policy <- entry$settings$metadata_policy %||%
-      entry$settings$recommendations$metadata
-    req(is.list(policy))
-    retained <- unique(as.character(unlist(
-      action$retained %||% character(),
-      use.names = FALSE
-    )))
-    records <- policy$columns %||% list()
-    source_columns <- entry$dataset_profile$metadata$columns %||% list()
-    supported <- names(records)[vapply(
-      names(records),
-      function(column_id) {
-        record <- records[[column_id]]
-        source <- source_columns[[column_id]]
-        identical(column_id, "cell_barcode") ||
-          (is.list(source) && isTRUE(source$supported)) ||
-          isTRUE(record$forced)
-      },
-      logical(1)
-    )]
-    retained <- intersect(retained, supported)
-    entry$settings$metadata_policy <- builder_metadata_policy_set_retained(
-      policy,
-      retained
-    )
-    changed <- replace_entry(entry)
-    if (isTRUE(changed)) {
-      send_group_state(entry)
-    }
-  },
-  ignoreInit = TRUE
-)
-
-observeEvent(
-  input[["core-group_action"]],
-  {
-    id <- current()
-    action <- input[["core-group_action"]]
-    if (
-      is.null(id) ||
-        !identical(input[["core-rendered_for"]], id) ||
-        !is.list(action) ||
-        !action$action %in% c("set", "set-groups")
-    ) {
-      return()
-    }
-    entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
-    req(entry)
-    catalog <- group_catalog_for_entry(entry)
-    eligible <- vapply(
-      Filter(function(item) isTRUE(item$eligible), catalog$items),
-      `[[`,
-      character(1),
-      "id"
-    )
-    included <- unique(as.character(unlist(
-      action$included %||% character(),
-      use.names = FALSE
-    )))
-    included <- eligible[eligible %in% included]
-    if (!length(included)) {
-      send_group_state(
-        entry,
-        "Keep at least one Viewer Group selected."
-      )
-      return()
-    }
-    default <- action$default
-    if (!builder_stage_has_text(default %||% "") || !default %in% included) {
-      default <- included[[1L]]
-    }
-    current_included <- entry$settings$included_groups %||% character()
-    removed <- setdiff(current_included, included)
-    next_overrides <- builder_settings_color_overrides(entry$settings)
-    for (group in removed) {
-      next_overrides[[group]] <- NULL
-    }
-    entry$settings$included_groups <- included
-    entry$settings$groups <- included
-    entry$settings$default_group <- default
-    entry$settings$group_color_overrides <- next_overrides
-    policy <- entry$settings$metadata_policy %||%
-      entry$settings$recommendations$metadata
-    if (is.list(policy)) {
-      entry$settings$metadata_policy <- builder_metadata_policy_set_groups(
-        policy,
-        included
-      )
-    }
-    changed <- replace_entry(entry)
-    if (isTRUE(changed)) {
-      send_group_state(entry)
-    }
-  },
-  ignoreInit = TRUE
-)
-
-observeEvent(
   input[["core-cell_cycle"]],
   {
     id <- current()
@@ -733,50 +545,6 @@ observeEvent(
   ignoreInit = TRUE,
   ignoreNULL = FALSE
 )
-
-output[["core-group_detail"]] <- renderUI({
-  id <- current()
-  rendered_for <- input[["core-rendered_for"]]
-  if (is.null(id) || !identical(rendered_for, id)) {
-    return(NULL)
-  }
-  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
-  req(entry)
-  catalog <- group_catalog_for_entry(entry)
-  focus <- group_focus_value(input[["core-group_focus"]]) %||%
-    entry$settings$default_group %||%
-    catalog$focus
-  builder_group_detail_ui(
-    "core",
-    builder_group_detail_model(catalog, focus)
-  )
-})
-
-output[["core-group_colors"]] <- renderUI({
-  id <- current()
-  rendered_for <- input[["core-rendered_for"]]
-  if (is.null(id) || !identical(rendered_for, id)) {
-    return(NULL)
-  }
-  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
-  req(entry)
-  catalog <- group_catalog_for_entry(entry)
-  group <- group_focus_value(input[["core-group_focus"]]) %||%
-    entry$settings$default_group %||%
-    catalog$focus %||%
-    ""
-  if (!group %in% (entry$settings$included_groups %||% character())) {
-    return(NULL)
-  }
-  levels <- entry$levels[[group]] %||% character()
-  model <- builder_group_colors_model(
-    group,
-    levels,
-    entry$settings$palette %||% "cerebro",
-    builder_settings_color_overrides(entry$settings)
-  )
-  builder_group_colors_ui("core", model)
-})
 
 output[["core-projection_gallery"]] <- renderUI({
   id <- current()
@@ -830,77 +598,6 @@ output[["core-trajectory_gallery"]] <- renderUI({
   ))
   builder_trajectory_catalog_ui("core", model)
 })
-
-observeEvent(
-  input[["core-group_color"]],
-  {
-    id <- current()
-    change <- input[["core-group_color"]]
-    if (
-      is.null(id) ||
-        !identical(input[["core-rendered_for"]], id) ||
-        !is.list(change) ||
-        !builder_stage_has_text(change$group %||% "") ||
-        !builder_stage_has_text(change$level %||% "")
-    ) {
-      return()
-    }
-    entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
-    req(entry)
-    group <- as.character(change$group)
-    level <- as.character(change$level)
-    if (
-      !group %in% (entry$settings$included_groups %||% character()) ||
-        !level %in% (entry$levels[[group]] %||% character())
-    ) {
-      return()
-    }
-    current_overrides <- builder_settings_color_overrides(entry$settings)
-    next_overrides <- builder_update_color_override(
-      current_overrides,
-      group,
-      level,
-      change$color
-    )
-    if (identical(next_overrides, current_overrides)) {
-      return()
-    }
-    entry$settings$group_color_overrides <- next_overrides
-    entry$settings$colors <- NULL
-    replace_entry(entry)
-  },
-  ignoreInit = TRUE
-)
-
-observeEvent(
-  input[["core-reset_colors"]],
-  {
-    id <- current()
-    if (
-      is.null(id) ||
-        !identical(input[["core-rendered_for"]], id)
-    ) {
-      return()
-    }
-    entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
-    req(entry)
-    group <- group_focus_value(input[["core-group_focus"]]) %||%
-      entry$settings$default_group %||%
-      ""
-    if (!group %in% (entry$settings$included_groups %||% character())) {
-      return()
-    }
-    current_overrides <- builder_settings_color_overrides(entry$settings)
-    next_overrides <- builder_reset_color_overrides(current_overrides, group)
-    if (identical(next_overrides, current_overrides)) {
-      return()
-    }
-    entry$settings$group_color_overrides <- next_overrides
-    entry$settings$colors <- NULL
-    replace_entry(entry)
-  },
-  ignoreInit = TRUE
-)
 
 ## Assay-dependent controls above use the namespaced Core inputs.
 analysis_checkbox_steps <- Filter(

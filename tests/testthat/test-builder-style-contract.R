@@ -729,11 +729,8 @@ test_that("Builder defines semantic action and measure roles", {
 test_that("Builder strong accent preserves all legacy amber-800 uses", {
   css <- style_contract_builder_css()
   selectors <- c(
-    ".viewer-group-select:hover",
     ".viewer-analysis-result-status",
     ".viewer-specialized-badge",
-    ".viewer-group-eligibility",
-    ".viewer-metadata-preview-disclosure > summary:hover,",
     ".viewer-point-size-value",
     ".viewer-card-method",
     ".review-viewer-content-item h5"

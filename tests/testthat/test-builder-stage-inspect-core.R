@@ -113,7 +113,11 @@ test_that("Core keeps technical controls advanced and metadata visible", {
   expect_false(grepl("builder-card", html, fixed = TRUE))
   expect_match(html, "Dataset name", fixed = TRUE)
   expect_match(html, "Organism", fixed = TRUE)
-  expect_match(html, "Groups", fixed = TRUE)
+  expect_match(
+    html,
+    "Metadata is carried into the Viewer automatically",
+    fixed = TRUE
+  )
   expect_match(html, "Projections", fixed = TRUE)
   expect_match(html, 'id="core-projection_gallery"', fixed = TRUE)
   expect_match(html, model$metadata_attention, fixed = TRUE)
@@ -125,8 +129,12 @@ test_that("Core keeps technical controls advanced and metadata visible", {
     )),
     2L
   )
-  expect_match(html, 'id="core-group_detail"', fixed = TRUE)
-  expect_match(html, 'class="visually-hidden"', fixed = TRUE)
+  expect_match(html, "No metadata selection is required", fixed = TRUE)
+  expect_false(grepl('viewer-group-workspace', html, fixed = TRUE))
+  expect_false(grepl('viewer-metadata-retain', html, fixed = TRUE))
+  expect_false(grepl('viewer-group-include', html, fixed = TRUE))
+  expect_false(grepl('viewer-group-default', html, fixed = TRUE))
+  expect_false(grepl('metadata-preview', html, fixed = TRUE))
   expect_false(grepl('class="sr-only', html, fixed = TRUE))
   expect_match(html, 'class="builder-disclosure"', fixed = TRUE)
   expect_match(html, "Advanced settings", fixed = TRUE)
@@ -257,68 +265,16 @@ test_that("Core exposes a bounded metadata catalog for Viewer Groups", {
   )
 
   html <- builder_stage_html(builder_core_stage_ui("core", model))
-  catalog <- builder_group_catalog_model(model)
-  detail <- builder_stage_html(builder_group_detail_ui(
-    "core",
-    builder_group_detail_model(catalog, "cluster")
-  ))
 
   expect_match(html, "CRB content", fixed = TRUE)
   expect_match(
     html,
-    "Choose what each CRB retains from the source dataset.",
+    "Metadata is carried into the Viewer automatically for cell details and downloads.",
     fixed = TRUE
   )
-  expect_match(html, "Groups", fixed = TRUE)
-  expect_match(html, "Find metadata", fixed = TRUE)
-  expect_match(html, "Select suggested", fixed = TRUE)
-  expect_match(html, "Select all eligible", fixed = TRUE)
-  expect_match(html, "Keep in CRB", fixed = TRUE)
-  expect_match(html, "Keep all supported metadata", fixed = TRUE)
-  expect_match(html, "Restore recommended retention", fixed = TRUE)
-  expect_match(html, 'class="viewer-metadata-retain"', fixed = TRUE)
-  expect_match(html, 'class="viewer-group-include"', fixed = TRUE)
-  expect_match(html, 'type="radio"', fixed = TRUE)
-  expect_match(html, "Default", fixed = TRUE)
-  expect_false(grepl("Opens first", html, fixed = TRUE))
-  expect_false(grepl("Include score", html, fixed = TRUE))
-  expect_match(html, "Not a Group", fixed = TRUE)
-  expect_match(
-    html,
-    'data-disclosure-key="viewer-groups"',
-    fixed = TRUE
-  )
-  expect_match(html, "score", fixed = TRUE)
-  expect_match(
-    html,
-    "Continuous numeric values remain available as metadata.",
-    fixed = TRUE
-  )
-  expect_false(grepl('id="core-default_group"', html, fixed = TRUE))
-
-  expect_match(detail, "4 categories", fixed = TRUE)
-  expect_match(detail, "1.25% missing", fixed = TRUE)
-  expect_match(detail, "Categorical", fixed = TRUE)
-  expect_match(detail, "79 non-missing", fixed = TRUE)
-  expect_match(detail, "Preview metadata", fixed = TRUE)
-  expect_match(
-    detail,
-    'class="viewer-metadata-preview-disclosure"',
-    fixed = TRUE
-  )
-  expect_match(detail, '<th scope="col">cluster</th>', fixed = TRUE)
-  expect_match(detail, '<th scope="col">score</th>', fixed = TRUE)
-  expect_match(detail, 'class="viewer-metadata-preview-table"', fixed = TRUE)
-  expect_lte(
-    lengths(regmatches(
-      detail,
-      gregexpr('class="viewer-metadata-preview-row"', detail, fixed = TRUE)
-    )),
-    5L
-  )
-  expect_match(detail, "A", fixed = TRUE)
-  expect_match(detail, "Distribution", fixed = TRUE)
-  expect_lte(length(catalog$items[[1L]]$sample_values), 5L)
+  expect_match(html, "No metadata selection is required", fixed = TRUE)
+  expect_false(grepl("Groups", html, fixed = TRUE))
+  expect_false(grepl("Preview metadata", html, fixed = TRUE))
 })
 
 test_that("constant metadata is retained without becoming a Group", {

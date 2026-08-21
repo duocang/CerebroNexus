@@ -476,9 +476,6 @@ unique_name <- function(label) {
 }
 
 replace_entry <- function(updated, internal = FALSE) {
-  if (exists("builder_normalize_group_dependency", mode = "function")) {
-    updated <- builder_normalize_group_dependency(updated)
-  }
   if (
     !isTRUE(internal) &&
       exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
