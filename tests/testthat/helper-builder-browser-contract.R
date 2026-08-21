@@ -24,9 +24,13 @@ builder_browser_contract_app <- function(
     c(
       readLines(prerequisite, warn = FALSE),
       "",
-      "## Test fixture: fix the installed Viewer contract in this process.",
+      "## Test fixture: fix the active Viewer contract in this process.",
       sprintf(
         "builder_installed_app_contract_version <- function(...) %dL",
+        as.integer(contract_version)
+      ),
+      sprintf(
+        "builder_source_app_contract_version <- function(...) %dL",
         as.integer(contract_version)
       )
     ),

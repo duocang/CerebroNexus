@@ -193,7 +193,7 @@ test_that("project-folder selection remains available during client upload", {
   expect_false(grepl('"create_project"', import_sensitive, fixed = TRUE))
 })
 
-test_that("optional authentication packages are checked only on demand", {
+test_that("runtime requirements block startup and login capability stays fresh", {
   app <- paste(
     readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
     collapse = "\n"
@@ -206,12 +206,13 @@ test_that("optional authentication packages are checked only on demand", {
     collapse = "\n"
   )
 
-  expect_false(grepl(
-    "auth_capability <- builder_auth_capability()",
+  expect_match(app, "builder_runtime_capability()", fixed = TRUE)
+  expect_match(
     app,
+    "auth_capability <- builder_auth_capability",
     fixed = TRUE
-  ))
-  expect_match(app, "auth_capability <- local({", fixed = TRUE)
+  )
+  expect_false(grepl("auth_capability <- local({", app, fixed = TRUE))
   expect_match(build_server, "auth_capability()", fixed = TRUE)
 })
 

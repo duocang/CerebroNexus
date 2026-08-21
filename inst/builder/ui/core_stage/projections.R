@@ -137,7 +137,8 @@ builder_scatter_thumbnail_ui <- function(
         cy = round(point$y, 2L),
         r = round(radius, 2L),
         fill = unname(palette[[groups[[index]]]]),
-        class = "viewer-scatter-point"
+        class = "viewer-scatter-point",
+        `data-group` = groups[[index]]
       )
     })
   )
@@ -215,7 +216,8 @@ builder_projection_catalog_model <- function(model) {
       model$overview_percentage_cells_to_show,
       100
     ),
-    colors = model$preview_colors %||% character()
+    colors = model$preview_colors %||% character(),
+    preview_group = model$preview_group %||% ""
   )
 }
 
@@ -224,6 +226,7 @@ builder_projection_catalog_ui <- function(id, model) {
   div(
     class = "viewer-projection-workspace",
     `data-input-id` = ns("projection_action"),
+    `data-preview-group` = model$preview_group,
     div(
       class = "viewer-projection-toolbar",
       div(

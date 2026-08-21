@@ -133,24 +133,26 @@ builder_configure_actions_ui <- function(
   )
   builder_stage_footer_ui(
     message,
-    actionButton(
-      "complete_dataset_check",
-      if (isTRUE(dataset_checked)) {
-        if (remaining > 0L) "View next dataset needing review" else "Checked"
-      } else if (remaining > 1L) {
-        "Done — view next dataset"
-      } else {
-        "Done checking this dataset"
-      },
-      class = "btn btn-outline-secondary",
-      disabled = isTRUE(dataset_checked) && remaining < 1L
-    ),
-    actionButton(
-      "continue_to_review",
-      "Continue to Review",
-      class = "btn btn-action",
-      disabled = !can_continue
-    )
+    if (remaining < 1L) {
+      actionButton(
+        "continue_to_review",
+        "Continue to Review →",
+        class = "btn btn-action",
+        disabled = !isTRUE(can_continue)
+      )
+    } else {
+      actionButton(
+        "complete_dataset_check",
+        if (isTRUE(dataset_checked)) {
+          "Review next dataset →"
+        } else if (remaining > 1L) {
+          "✓ Mark checked & review next dataset"
+        } else {
+          "✓ Finish checking"
+        },
+        class = "btn btn-dataset-check"
+      )
+    }
   )
 }
 

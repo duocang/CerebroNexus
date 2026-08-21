@@ -117,15 +117,15 @@ addPercentMtRibo <- function(
   ##--------------------------------------------------------------------------##
 
   genes_mt <- utils::read.delim(
-    system.file(
+    .cerebroPackageResource(
+      'extdata',
       paste0(
-        'extdata/genes_mt_',
+        'genes_mt_',
         organism,
         '_',
         gene_nomenclature,
         '.tsv.gz'
-      ),
-      package = 'CerebroNexus'
+      )
     ),
     sep = "\t",
     header = FALSE,
@@ -135,15 +135,15 @@ addPercentMtRibo <- function(
     t() %>%
     as.vector()
   genes_ribo <- utils::read.delim(
-    system.file(
+    .cerebroPackageResource(
+      'extdata',
       paste0(
-        'extdata/genes_ribo_',
+        'genes_ribo_',
         organism,
         '_',
         gene_nomenclature,
         '.tsv.gz'
-      ),
-      package = 'CerebroNexus'
+      )
     ),
     sep = "\t",
     header = FALSE,

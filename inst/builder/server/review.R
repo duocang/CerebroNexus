@@ -31,7 +31,7 @@ observe({
     port = input[["build_port"]],
     max_request_size = current_options$max_request_size,
     display_mode = current_options$display_mode,
-    launch_browser = input[["build_launch_browser"]],
+    launch_browser = FALSE,
     show_upload_ui = input[["build_show_upload_ui"]]
   )
   if (any(vapply(values, is.null, logical(1)))) {
@@ -261,6 +261,16 @@ frozen_review_plan <- reactive({
   }
   plan
 })
+frozen_review_plan <- bindEvent(
+  frozen_review_plan,
+  dataset_check_marks(),
+  imports(),
+  review_options(),
+  review_validation(),
+  auth_enabled(),
+  auth_accounts(),
+  ignoreNULL = FALSE
+)
 
 review_report <- reactive({
   pending <- imports()$entries
@@ -355,9 +365,10 @@ output[["enhance-analysis_modules"]] <- renderUI({
 })
 
 output[["enhance-table_list"]] <- renderUI({
+  enhance_table_ui_revision()
   id <- current()
   req(id)
-  entry <- entry_of(id)
+  entry <- isolate(entry_of(id))
   req(entry)
   tables <- entry$settings$tables %||% list()
   if (!length(tables)) {
@@ -547,9 +558,10 @@ output[["enhance-table_list"]] <- renderUI({
 })
 
 output[["inspect_stage"]] <- renderUI({
+  dataset_check_marks()
   id <- current()
   req(id)
-  entry <- entry_of(id)
+  entry <- isolate(entry_of(id))
   req(entry)
   state <- try(builder_dataset_state(entry), silent = TRUE)
   attention <- if (inherits(state, "try-error")) {
@@ -591,7 +603,10 @@ output$configure_actions <- renderUI({
   current_checked <- current() %in% checked
   message <- if (length(unchecked)) {
     paste0(
-      "Check all datasets before continuing · ",
+      length(ids) - length(unchecked),
+      " of ",
+      length(ids),
+      " datasets checked · ",
       length(unchecked),
       " remaining"
     )

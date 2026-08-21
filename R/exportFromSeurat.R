@@ -17,6 +17,33 @@
   invisible(TRUE)
 }
 
+.exportStageFailureMessage <- function(
+  final_dir,
+  stage,
+  writable = file.access(final_dir, mode = 2L) == 0L,
+  os_type = .Platform$OS.type
+) {
+  if (!isTRUE(writable)) {
+    return(paste(
+      "CRB preparation could not create a temporary folder because the output folder is not writable.",
+      "Save the Project in a writable local folder and try again."
+    ))
+  }
+  if (
+    identical(os_type, "windows") &&
+      nchar(stage, type = "bytes") >= 240L
+  ) {
+    return(paste(
+      "CRB preparation could not create a temporary folder because the Project path is too long for this Windows setup.",
+      "Move the Project to a shorter folder and try again."
+    ))
+  }
+  paste(
+    "CRB preparation could not create a temporary folder because the filesystem rejected it.",
+    "Save the Project in a writable local folder instead of a synced or network folder, then try again."
+  )
+}
+
 .createPrivateExportStage <- function(final_file) {
   final_dir <- dirname(final_file)
   if (!dir.exists(final_dir)) {
@@ -27,11 +54,30 @@
   }
 
   stage <- tempfile(
-    pattern = paste0(".", basename(final_file), "-stage-"),
+    pattern = ".crb-stage-",
     tmpdir = final_dir
   )
-  if (!dir.create(stage, mode = "0700", showWarnings = FALSE)) {
-    stop("Failed to create the export staging directory.", call. = FALSE)
+  creation_warning <- NULL
+  created <- withCallingHandlers(
+    dir.create(stage, mode = "0700", showWarnings = TRUE),
+    warning = function(warning) {
+      creation_warning <<- conditionMessage(warning)
+      invokeRestart("muffleWarning")
+    }
+  )
+  if (!isTRUE(created)) {
+    diagnostic <- if (is.null(creation_warning)) {
+      "dir.create() returned FALSE without a warning."
+    } else {
+      creation_warning
+    }
+    message(
+      "CRB staging diagnostic: ",
+      diagnostic,
+      " Attempted path: ",
+      stage
+    )
+    stop(.exportStageFailureMessage(final_dir, stage), call. = FALSE)
   }
   tryCatch(
     .setExportArtifactMode(stage, "0700", "the export staging directory"),
@@ -830,7 +876,7 @@ exportFromSeurat <- function(
   export$addExperiment('organism', organism)
 
   ## add cerebroApp version
-  export$setVersion(utils::packageVersion('CerebroNexus'))
+  export$setVersion(package_version(.cerebroRuntimeVersion()))
 
   ##--------------------------------------------------------------------------##
   ## add transcript counts

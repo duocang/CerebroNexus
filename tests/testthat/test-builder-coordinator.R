@@ -248,6 +248,7 @@ builder_app_coordinator_fake_app <- function(
     app_dir,
     recursive = TRUE
   )
+  .removeBundleSystemMetadata(app_dir)
   dir.create(file.path(app_dir, "private-data"))
   relative_crbs <- file.path(
     "private-data",

@@ -366,11 +366,24 @@
 }
 
 .builder_app_package_path <- function(...) {
-  path <- system.file(..., package = "CerebroNexus")
+  source_root <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+  source_runtime <- nzchar(source_root) &&
+    file.exists(file.path(source_root, "DESCRIPTION")) &&
+    dir.exists(file.path(source_root, "R")) &&
+    length(list.files(
+      file.path(source_root, "R"),
+      pattern = "[.][Rr]$"
+    )) >
+      0L
+  path <- if (source_runtime) {
+    file.path(source_root, "inst", ...)
+  } else {
+    system.file(..., package = "CerebroNexus")
+  }
   if (!nzchar(path) || !.builder_app_path_exists(path)) {
     stop("A package-owned trusted template is missing.", call. = FALSE)
   }
-  path
+  normalizePath(path, winslash = "/", mustWork = TRUE)
 }
 
 .builder_app_assert_root_topology <- function(identity, spatial_images) {

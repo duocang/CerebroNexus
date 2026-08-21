@@ -680,6 +680,28 @@ test_that("Builder metadata configuration controls are removed", {
   expect_match(css, ".viewer-group-row", fixed = TRUE)
 })
 
+test_that("Groups list is compact, framed, and uses page scrolling", {
+  css <- builder_asset_text("www", "builder.features.css")
+
+  expect_match(
+    css,
+    "\\.viewer-group-list\\s*\\{[^}]*border: 1px solid var\\(--c-border\\);",
+    perl = TRUE
+  )
+  expect_match(css, ".viewer-group-controls {", fixed = TRUE)
+  expect_match(css, "border-left: 1px solid var(--c-border);", fixed = TRUE)
+  expect_false(grepl(
+    "\\.viewer-group-list\\s*\\{[^}]*max-height",
+    css,
+    perl = TRUE
+  ))
+  expect_false(grepl(
+    "\\.viewer-group-list\\s*\\{[^}]*overflow-y",
+    css,
+    perl = TRUE
+  ))
+})
+
 test_that("dataset uploads use an amber trigger over the single transport", {
   app <- builder_asset_text("app.R")
   css <- builder_stylesheet_text()
@@ -2749,4 +2771,14 @@ test_that("Spatial canvas hover work stays on the canvas and one frame", {
     canvas,
     fixed = TRUE
   ))
+})
+
+test_that("lightweight settings update their existing DOM in place", {
+  js <- builder_asset_text("www", "builder.js")
+  projections <- builder_asset_text("ui", "core_stage", "projections.R")
+
+  expect_match(projections, "data-preview-group", fixed = TRUE)
+  expect_match(js, "point.dataset.group", fixed = TRUE)
+  expect_match(js, '"enhance_attachment_saved"', fixed = TRUE)
+  expect_match(js, "setAttachmentEditing(row, false)", fixed = TRUE)
 })

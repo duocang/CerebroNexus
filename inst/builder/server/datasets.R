@@ -696,6 +696,9 @@ observeEvent(
     }
     changed <- replace_entry(entry)
     if (isTRUE(changed)) {
+      group_preview_ui_revision(
+        isolate(group_preview_ui_revision()) + 1L
+      )
       send_group_state(entry)
     }
   },
@@ -734,6 +737,9 @@ observeEvent(
   ignoreNULL = FALSE
 )
 
+group_color_ui_revision <- reactiveVal(0L)
+group_preview_ui_revision <- reactiveVal(0L)
+
 output[["core-group_detail"]] <- renderUI({
   id <- current()
   rendered_for <- input[["core-rendered_for"]]
@@ -753,6 +759,7 @@ output[["core-group_detail"]] <- renderUI({
 })
 
 output[["core-metadata_preview"]] <- renderUI({
+  group_preview_ui_revision()
   id <- current()
   req(!is.null(id), identical(input[["core-rendered_for"]], id))
   entry <- builder_upgrade_viewer_content_entry(entry_of(id))
@@ -762,12 +769,13 @@ output[["core-metadata_preview"]] <- renderUI({
 })
 
 output[["core-group_colors"]] <- renderUI({
+  group_color_ui_revision()
   id <- current()
   rendered_for <- input[["core-rendered_for"]]
   if (is.null(id) || !identical(rendered_for, id)) {
     return(NULL)
   }
-  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+  entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
   req(entry)
   catalog <- group_catalog_for_entry(entry)
   group <- group_focus_value(input[["core-group_focus"]]) %||%
@@ -793,7 +801,7 @@ output[["core-projection_gallery"]] <- renderUI({
   if (is.null(id) || !identical(rendered_for, id)) {
     return(NULL)
   }
-  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+  entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
   req(entry)
   frames <- builder_preview_cache_frames(projection_previews(), id)
   group <- entry$settings$default_group %||% ""
@@ -817,7 +825,8 @@ output[["core-projection_gallery"]] <- renderUI({
       "overview_percentage_cells_to_show"
     ]],
     projection_previews = frames,
-    preview_colors = colors
+    preview_colors = colors,
+    preview_group = group
   ))
   builder_projection_catalog_ui("core", model)
 })
@@ -828,7 +837,7 @@ output[["core-trajectory_gallery"]] <- renderUI({
   if (is.null(id) || !identical(rendered_for, id)) {
     return(NULL)
   }
-  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+  entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
   req(entry)
   frames <- builder_preview_cache_frames(trajectory_previews(), id)
   model <- builder_trajectory_catalog_model(list(
@@ -906,7 +915,9 @@ observeEvent(
     }
     entry$settings$group_color_overrides <- next_overrides
     entry$settings$colors <- NULL
-    replace_entry(entry)
+    if (isTRUE(replace_entry(entry))) {
+      group_color_ui_revision(isolate(group_color_ui_revision()) + 1L)
+    }
   },
   ignoreInit = TRUE
 )

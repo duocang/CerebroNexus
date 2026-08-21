@@ -125,7 +125,12 @@ test_that("Review disables only login when optional auth is unavailable", {
       enabled = FALSE,
       account_count = 0L,
       error = NULL,
-      available = FALSE
+      available = FALSE,
+      reason = paste(
+        "Login is unavailable because this required R package is missing or too old:",
+        "shinymanager (>= 1.1.0).",
+        'Run install.packages("shinymanager"), then restart Builder.'
+      )
     )
   ))
 
@@ -133,8 +138,9 @@ test_that("Review disables only login when optional auth is unavailable", {
     html,
     'id="review-require_login"[^>]*disabled="disabled"'
   )
-  expect_match(html, "optional authentication packages", fixed = TRUE)
-  expect_false(grepl("shinymanager", html, fixed = TRUE))
+  expect_match(html, "Login is unavailable", fixed = TRUE)
+  expect_match(html, "shinymanager (&gt;= 1.1.0)", fixed = TRUE)
+  expect_match(html, "install.packages", fixed = TRUE)
   expect_false(grepl("openssl", html, fixed = TRUE))
   expect_false(grepl(
     'id="review-show_upload_ui" disabled=',

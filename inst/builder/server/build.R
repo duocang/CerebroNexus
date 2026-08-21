@@ -71,7 +71,7 @@ output$build_output_options <- renderUI({
       port = isolate(review_options()$port),
       max_request_size = isolate(review_options()$max_request_size),
       display_mode = isolate(review_options()$display_mode),
-      launch_browser = isolate(review_options()$launch_browser),
+      launch_browser = FALSE,
       show_upload_ui = isolate(review_options()$show_upload_ui),
       initial_dataset = selected_dataset
     ),
@@ -102,7 +102,7 @@ current_build_options <- function() {
     port = options$port,
     max_request_size = options$max_request_size,
     display_mode = options$display_mode,
-    launch_browser = options$launch_browser,
+    launch_browser = FALSE,
     show_upload_ui = options$show_upload_ui,
     initial_dataset = isolate(build_initial_dataset())
   )

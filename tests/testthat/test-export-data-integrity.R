@@ -55,6 +55,7 @@ test_that("the export stage and new artifacts are owner-only", {
   output <- file.path(root, "dataset.crb")
   stage <- .createPrivateExportStage(output)
   withr::defer(unlink(stage, recursive = TRUE, force = TRUE))
+  expect_match(basename(stage), "^\\.crb-stage-")
   expect_identical(artifact_mode(stage), "700")
 
   .publishCerebroExport(
@@ -80,6 +81,39 @@ test_that("the export stage and new artifacts are owner-only", {
     artifact_mode(file.path(root, sidecar_name)),
     "600"
   )
+})
+
+test_that("export stage failures are actionable without exposing local paths", {
+  root <- file.path("private", "lab", "project")
+  stage <- file.path(root, ".crb-stage-example")
+
+  unwritable <- .exportStageFailureMessage(
+    root,
+    stage,
+    writable = FALSE,
+    os_type = "unix"
+  )
+  expect_match(unwritable, "not writable", fixed = TRUE)
+  expect_match(unwritable, "writable local folder", fixed = TRUE)
+
+  long_windows_path <- paste0("C:/", strrep("deep/", 55L), ".crb-stage-example")
+  too_long <- .exportStageFailureMessage(
+    dirname(long_windows_path),
+    long_windows_path,
+    writable = TRUE,
+    os_type = "windows"
+  )
+  expect_match(too_long, "path is too long", fixed = TRUE)
+  expect_match(too_long, "shorter folder", fixed = TRUE)
+
+  rejected <- .exportStageFailureMessage(
+    root,
+    stage,
+    writable = TRUE,
+    os_type = "unix"
+  )
+  expect_match(rejected, "synced or network folder", fixed = TRUE)
+  expect_false(grepl(root, rejected, fixed = TRUE))
 })
 
 test_that("replacing a CRB preserves its existing mode", {

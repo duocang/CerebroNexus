@@ -1308,6 +1308,52 @@ dedent <- function(string) {
 
 # Public API ---------------------------------------------------------------
 
+.cerebroSourceRoot <- function() {
+  source_root <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+  if (
+    nzchar(source_root) &&
+      file.exists(file.path(source_root, "DESCRIPTION")) &&
+      dir.exists(file.path(source_root, "R")) &&
+      length(list.files(
+        file.path(source_root, "R"),
+        pattern = "[.][Rr]$"
+      )) >
+        0L
+  ) {
+    normalizePath(source_root, winslash = "/", mustWork = TRUE)
+  } else {
+    NULL
+  }
+}
+
+.cerebroPackageResource <- function(...) {
+  relative <- file.path(...)
+  source_root <- .cerebroSourceRoot()
+  if (!is.null(source_root)) {
+    source_resource <- file.path(source_root, "inst", relative)
+    return(normalizePath(
+      source_resource,
+      winslash = "/",
+      mustWork = FALSE
+    ))
+  }
+  system.file(..., package = "CerebroNexus")
+}
+
+.cerebroRuntimeVersion <- function() {
+  source_root <- .cerebroSourceRoot()
+  if (!is.null(source_root)) {
+    description <- tryCatch(
+      read.dcf(file.path(source_root, "DESCRIPTION"), fields = "Version"),
+      error = function(e) NULL
+    )
+    if (!is.null(description) && nzchar(description[[1L]])) {
+      return(as.character(description[[1L]]))
+    }
+  }
+  as.character(utils::packageVersion("CerebroNexus"))
+}
+
 #' Create a self-contained CerebroNexus Shiny app folder
 #'
 #' Bundles a CerebroNexus Shiny app into \code{result_dir}, copying the
@@ -1907,31 +1953,30 @@ createShinyApp <- function(
     "spatial_plot_rotation"
   )
 
-  if (!requireNamespace("CerebroNexus", quietly = TRUE)) {
+  if (
+    is.null(.cerebroSourceRoot()) &&
+      !requireNamespace("CerebroNexus", quietly = TRUE)
+  ) {
     stop(
       "Package 'CerebroNexus' is required but not installed.",
       call. = FALSE
     )
   }
-  shiny_source <- system.file("viewer", package = "CerebroNexus")
+  shiny_source <- .cerebroPackageResource("viewer")
   if (!dir.exists(shiny_source)) {
     stop(
       "Shiny source files not found in CerebroNexus package.",
       call. = FALSE
     )
   }
-  extdata_source <- system.file("extdata", package = "CerebroNexus")
+  extdata_source <- .cerebroPackageResource("extdata")
   if (!dir.exists(extdata_source)) {
     stop(
       "extdata source files not found in CerebroNexus package.",
       call. = FALSE
     )
   }
-  app_template_source <- system.file(
-    "viewer",
-    "_bundle_app.R",
-    package = "CerebroNexus"
-  )
+  app_template_source <- .cerebroPackageResource("viewer", "_bundle_app.R")
   if (!file.exists(app_template_source)) {
     stop(
       "The package-owned App entrypoint template is missing.",
@@ -2376,9 +2421,7 @@ createShinyApp <- function(
   ## Resolve the version while the package is present, then serialize it into
   ## the generated app. The standalone bundle never needs CerebroNexus at
   ## runtime merely to render its About page.
-  cerebro_options[["cerebro_version"]] <- as.character(
-    utils::packageVersion("CerebroNexus")
-  )
+  cerebro_options[["cerebro_version"]] <- .cerebroRuntimeVersion()
   cerebro_options[["crb_file_to_load"]] <- crb_files
   cerebro_options[["cerebro_root"]] <- "."
   internal_option_names <- c(

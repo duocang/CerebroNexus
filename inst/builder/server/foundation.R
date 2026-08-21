@@ -178,6 +178,7 @@ release_client_import <- function(
 example_directory_sent <- reactiveVal(NULL)
 current_id <- reactiveVal(NULL)
 configure_workbench_surface <- reactiveVal(NULL)
+workflow_has_datasets <- reactiveVal(FALSE)
 update_current_id <- function(value) {
   if (!identical(value, isolate(current_id()))) {
     current_id(value)
@@ -186,6 +187,12 @@ update_current_id <- function(value) {
 }
 observe({
   update_current_id(store()$current_dataset)
+})
+observe({
+  next_value <- length(store()$datasets %||% list()) > 0L
+  if (!identical(next_value, isolate(workflow_has_datasets()))) {
+    workflow_has_datasets(next_value)
+  }
 })
 observe({
   state <- store()

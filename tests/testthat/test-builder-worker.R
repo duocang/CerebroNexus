@@ -1099,6 +1099,31 @@ if (builder_lifecycle_api_available) {
     )
   })
 
+  test_that("background workers retain the active development source", {
+    skip_if_not_installed("callr")
+    source_root <- normalizePath(
+      test_path("..", ".."),
+      winslash = "/",
+      mustWork = TRUE
+    )
+    withr::local_envvar(CEREBRO_PACKAGE_SOURCE = source_root)
+    worker <- builder_worker_start(builder_profile_inst_path("builder"))
+    withr::defer({
+      try(worker$process$close(), silent = TRUE)
+      if (isTRUE(worker$owns_root)) {
+        unlink(worker$snapshot_root, recursive = TRUE, force = TRUE)
+      }
+    })
+
+    expect_s3_class(worker, "builder_worker")
+    expect_identical(
+      worker$process$run(function() {
+        Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+      }),
+      source_root
+    )
+  })
+
   test_that("main registry rejects an owned snapshot from another root", {
     skip_if_not_installed("callr")
     foreign <- builder_worker_fixture()

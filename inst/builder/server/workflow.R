@@ -18,7 +18,7 @@ output$workflow_progress <- renderUI({
     selected_workflow_stage(),
     available = builder_workflow_stage_availability(
       workflow(),
-      datasets_ready = length(store()$datasets %||% list()) > 0L
+      datasets_ready = workflow_has_datasets()
     ),
     confirmed = is.list(workflow()$confirmation),
     locked = builder_build_controls_locked(build_flow())

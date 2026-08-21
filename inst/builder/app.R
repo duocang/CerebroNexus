@@ -18,6 +18,13 @@ options(shiny.maxRequestSize = 10 * 1024^3)
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
+source("prerequisite.R", local = TRUE)
+builder_activate_source_package()
+runtime_capability <- builder_runtime_capability()
+if (!isTRUE(runtime_capability$available)) {
+  stop(runtime_capability$reason, call. = FALSE)
+}
+
 source(
   file.path("core", "bundle_path_contract.R"),
   local = TRUE
@@ -103,7 +110,6 @@ source("extras.R", local = TRUE)
 source("analysis.R", local = TRUE)
 source("marker_import.R", local = TRUE)
 source("build.R", local = TRUE)
-source("prerequisite.R", local = TRUE)
 source("state.R", local = TRUE)
 source("workflow.R", local = TRUE)
 source("loading.R", local = TRUE)
@@ -175,15 +181,7 @@ builder_preview_revision_independent <- function(kind) {
 }
 
 app_capability <- builder_app_capability()
-auth_capability <- local({
-  cached <- NULL
-  function() {
-    if (is.null(cached)) {
-      cached <<- builder_auth_capability()
-    }
-    cached
-  }
-})
+auth_capability <- builder_auth_capability
 
 ## Inline icons: an icon set would be another dependency, and emoji are not
 ## icons.

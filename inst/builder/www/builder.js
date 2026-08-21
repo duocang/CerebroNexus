@@ -2741,6 +2741,16 @@
         (label ? label.textContent.trim() : input.dataset.level) +
         " changed to " + normalized + ".";
     }
+    var projection = document.querySelector(".viewer-projection-workspace");
+    if (projection && projection.dataset.previewGroup === input.dataset.group) {
+      projection.querySelectorAll(".viewer-scatter-point[data-group]").forEach(
+        function (point) {
+          if (point.dataset.group === input.dataset.level) {
+            point.setAttribute("fill", normalized);
+          }
+        }
+      );
+    }
     send(input.dataset.inputId, {
       group: input.dataset.group,
       level: input.dataset.level,
@@ -3584,6 +3594,26 @@
     });
   }
 
+  function applyAttachmentSaved(message) {
+    if (!message || !message.kind || !message.key || !message.name) return;
+    var selector = message.kind === "workbook"
+      ? ".enhance-workbook-item[data-workbook-key]"
+      : ".enhance-sheet-item";
+    var row = Array.from(document.querySelectorAll(selector)).find(function (item) {
+      var input = item.querySelector(".enhance-attachment-editor input");
+      return input && (message.kind === "workbook"
+        ? input.dataset.workbookKey === message.key
+        : input.dataset.tableKey === message.key);
+    });
+    if (!row) return;
+    var input = row.querySelector(".enhance-attachment-editor input");
+    var name = row.querySelector(".enhance-attachment-name");
+    input.value = message.name;
+    input.dataset.originalValue = message.name;
+    if (name) name.textContent = message.name;
+    setAttachmentEditing(row, false);
+  }
+
   function reopenWorkbookAfterRename(message) {
     var key = message && message.key;
     if (!key) return;
@@ -4184,6 +4214,10 @@
     window.Shiny.addCustomMessageHandler(
       "enhance_tables_added",
       announceAddedTables
+    );
+    window.Shiny.addCustomMessageHandler(
+      "enhance_attachment_saved",
+      applyAttachmentSaved
     );
     window.Shiny.addCustomMessageHandler(
       "enhance_workbook_reopen",

@@ -685,6 +685,7 @@ builder_group_detail_ui <- function(id, model) {
       tags$details(
         class = "viewer-group-colors-disclosure",
         `data-disclosure-key` = paste0("group-colors:", item$id),
+        open = NA,
         tags$summary("Edit colors"),
         div(
           class = "builder-group-colors-slot",

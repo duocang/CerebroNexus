@@ -650,8 +650,11 @@ test_that("Build owns output mode and expanded Viewer App settings", {
 
   app <- builder_build_options_ui(builder_build_options(make_app = TRUE))
   app_html <- builder_stage_html(app)
+  expect_false(builder_build_options(make_app = TRUE)$app$launch_browser)
   expect_match(app_html, "CRB files + Viewer App", fixed = TRUE)
   expect_match(app_html, "Welcome message", fixed = TRUE)
+  expect_false(grepl("Open App after build", app_html, fixed = TRUE))
+  expect_false(grepl("build_launch_browser", app_html, fixed = TRUE))
   expect_match(app_html, "Host", fixed = TRUE)
   expect_match(app_html, "Port", fixed = TRUE)
   expect_match(app_html, "Require login", fixed = TRUE)
@@ -664,13 +667,34 @@ test_that("Build owns output mode and expanded Viewer App settings", {
   ))
   expect_false(grepl("<details", app_html, fixed = TRUE))
 
+  auth_unavailable <- builder_stage_html(builder_build_options_ui(
+    builder_build_options(make_app = TRUE),
+    auth = list(
+      enabled = FALSE,
+      account_count = 0L,
+      error = NULL,
+      available = FALSE,
+      reason = paste(
+        "Login is unavailable because this required R package is missing or too old:",
+        "shinymanager (>= 1.1.0).",
+        'Run install.packages("shinymanager"), then restart Builder.'
+      )
+    )
+  ))
+  expect_match(auth_unavailable, "Login is unavailable", fixed = TRUE)
+  expect_match(auth_unavailable, "shinymanager (&gt;= 1.1.0)", fixed = TRUE)
+
   unavailable <- builder_stage_html(builder_build_options_ui(
     builder_build_options(),
     app_available = FALSE,
     app_reason = "Install Viewer dependencies."
   ))
   expect_match(unavailable, 'value="app" disabled="disabled"', fixed = TRUE)
+  expect_match(unavailable, "builder-app-capability-warning", fixed = TRUE)
+  expect_match(unavailable, "Viewer App unavailable", fixed = TRUE)
   expect_match(unavailable, "Install Viewer dependencies.", fixed = TRUE)
+  expect_match(unavailable, "CRB-only export is still available.", fixed = TRUE)
+  expect_false(grepl("remotes::install_local", unavailable, fixed = TRUE))
 
   locked <- builder_stage_html(builder_build_options_ui(
     builder_build_options(make_app = TRUE),
@@ -961,6 +985,77 @@ test_that("group color changes use the existing settings revision path", {
   expect_match(app, "builder_reset_color_overrides", fixed = TRUE)
   expect_match(app, "replace_entry(entry)", fixed = TRUE)
   expect_false(grepl("umap_palette|pca_palette|tsne_palette", app))
+})
+
+test_that("parameter writes do not eagerly freeze Review or rebuild editors", {
+  review_lines <- readLines(
+    builder_profile_inst_path("builder", "server", "review.R"),
+    warn = FALSE
+  )
+  review <- paste(review_lines, collapse = "\n")
+  dataset_lines <- readLines(
+    builder_profile_inst_path("builder", "server", "datasets.R"),
+    warn = FALSE
+  )
+  datasets <- paste(dataset_lines, collapse = "\n")
+
+  frozen <- builder_app_block(
+    review_lines,
+    "frozen_review_plan <- reactive({",
+    "review_report <- reactive({"
+  )
+  expect_match(frozen, "bindEvent(", fixed = TRUE)
+  expect_match(frozen, "dataset_check_marks()", fixed = TRUE)
+  expect_match(frozen, "imports()", fixed = TRUE)
+
+  colors <- regmatches(
+    datasets,
+    regexpr(
+      'output\\[\\["core-group_colors"\\]\\] <- renderUI\\(\\{[\\s\\S]+?output\\[\\["core-projection_gallery"',
+      datasets,
+      perl = TRUE
+    )
+  )
+  expect_match(colors, "group_color_ui_revision()", fixed = TRUE)
+  expect_match(colors, "isolate(entry_of(id))", fixed = TRUE)
+
+  metadata <- builder_app_block(
+    dataset_lines,
+    'output[["core-metadata_preview"]] <- renderUI({',
+    'output[["core-group_colors"]] <- renderUI({'
+  )
+  expect_match(metadata, "group_preview_ui_revision()", fixed = TRUE)
+  expect_match(metadata, "isolate(entry_of(id))", fixed = TRUE)
+
+  group_action <- builder_app_block(
+    dataset_lines,
+    'input[["core-group_action"]],',
+    'input[["core-cell_cycle"]],'
+  )
+  expect_match(group_action, "group_preview_ui_revision(", fixed = TRUE)
+
+  tables <- builder_app_block(
+    review_lines,
+    'output[["enhance-table_list"]] <- renderUI({',
+    'output[["inspect_stage"]] <- renderUI({'
+  )
+  expect_match(tables, "enhance_table_ui_revision()", fixed = TRUE)
+  expect_match(tables, "isolate(entry_of(id))", fixed = TRUE)
+})
+
+test_that("parameter writes do not rebuild workflow navigation", {
+  workflow_lines <- readLines(
+    builder_profile_inst_path("builder", "server", "workflow.R"),
+    warn = FALSE
+  )
+  progress <- builder_app_block(
+    workflow_lines,
+    "output$workflow_progress <- renderUI({",
+    "navigate_workflow_stage <- function(stage) {"
+  )
+
+  expect_match(progress, "workflow_has_datasets()", fixed = TRUE)
+  expect_false(grepl("store()$datasets", progress, fixed = TRUE))
 })
 
 test_that("the App describes object isolation accurately", {

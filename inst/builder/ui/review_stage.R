@@ -13,7 +13,7 @@ builder_review_options <- function(
   port = 8080L,
   max_request_size = 8000,
   display_mode = "normal",
-  launch_browser = TRUE,
+  launch_browser = FALSE,
   show_upload_ui = FALSE
 ) {
   valid_number <- function(value, lower, upper = Inf, whole = FALSE) {
@@ -162,7 +162,8 @@ builder_review_controls_ui <- function(
     if (!auth_available) {
       div(
         class = "hint review-auth-dependency",
-        "Login requires optional authentication packages. Install them to continue."
+        auth$reason %||%
+          "Login is unavailable. Install the required R package, then restart Builder."
       )
     },
     if (isTRUE(auth$enabled) && auth_available) {

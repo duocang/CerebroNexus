@@ -3,6 +3,27 @@ if (file.exists(builder_app_bundle_path)) {
   sys.source(builder_app_bundle_path, envir = globalenv())
 }
 
+test_that("trusted App templates prefer the active source tree", {
+  source_root <- withr::local_tempdir()
+  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), source_root)
+  dir.create(file.path(source_root, "R"))
+  file.create(file.path(source_root, "R", "source.R"))
+  template <- file.path(
+    source_root,
+    "inst",
+    "viewer",
+    "_bundle_app.R"
+  )
+  dir.create(dirname(template), recursive = TRUE)
+  writeLines("source template", template)
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = source_root)
+
+  expect_identical(
+    .builder_app_package_path("viewer", "_bundle_app.R"),
+    normalizePath(template, winslash = "/", mustWork = TRUE)
+  )
+})
+
 builder_app_bundle_fixture <- function(
   stage = withr::local_tempdir(.local_envir = parent.frame()),
   initial_dataset = "dataset-b",

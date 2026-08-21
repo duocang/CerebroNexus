@@ -1022,6 +1022,7 @@ builder_worker_start <- function(
       return(bootstrap(dir, root, registry, package_source))
     }
     if (!is.null(package_source)) {
+      Sys.setenv(CEREBRO_PACKAGE_SOURCE = package_source)
       description <- read.dcf(file.path(package_source, "DESCRIPTION"))
       collate <- if ("Collate" %in% colnames(description)) {
         description[1L, "Collate"]

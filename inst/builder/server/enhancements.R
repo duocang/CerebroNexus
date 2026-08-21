@@ -6,7 +6,7 @@ output[["enhance-marker_dialog_body"]] <- renderUI({
   if (identical(marker_dialog_mode(), "import")) {
     id <- current()
     req(id)
-    entry <- entry_of(id)
+    entry <- isolate(entry_of(id))
     req(entry)
     groups <- entry$settings$included_groups %||%
       entry$settings$groups %||%
@@ -255,6 +255,11 @@ observeEvent(input[["enhance-marker_import_save"]], {
 })
 
 ## -- supplementary tables -------------------------------------------------
+enhance_table_ui_revision <- reactiveVal(0L)
+refresh_enhance_tables <- function() {
+  enhance_table_ui_revision(isolate(enhance_table_ui_revision()) + 1L)
+}
+
 observeEvent(input[["enhance-table_files"]], {
   id <- current()
   req(id)
@@ -300,7 +305,9 @@ observeEvent(input[["enhance-table_files"]], {
       added[[filename]] <- (added[[filename]] %||% 0L) + 1L
     }
   }
-  replace_entry(entry)
+  if (isTRUE(replace_entry(entry))) {
+    refresh_enhance_tables()
+  }
   if (length(added)) {
     session$onFlushed(
       function() {
@@ -329,6 +336,8 @@ observeEvent(
     req(entry)
     tables <- entry$settings$tables %||% list()
     reopen_workbook <- NULL
+    saved_attachment <- NULL
+    structural_change <- FALSE
     workbook_rows <- vapply(
       tables,
       function(table) identical(table$file_name %||% "", action$key),
@@ -339,6 +348,7 @@ observeEvent(
         return()
       }
       tables <- tables[!workbook_rows]
+      structural_change <- TRUE
     } else if (identical(action$action, "rename_workbook")) {
       new_name <- trimws(as.character(action$name %||% ""))
       other_names <- unique(vapply(
@@ -361,10 +371,16 @@ observeEvent(
         table
       })
       reopen_workbook <- action$key
+      saved_attachment <- list(
+        kind = "workbook",
+        key = action$key,
+        name = new_name
+      )
     } else if (!action$key %in% names(tables)) {
       return()
     } else if (identical(action$action, "remove")) {
       tables[[action$key]] <- NULL
+      structural_change <- TRUE
     } else if (identical(action$action, "rename")) {
       new_name <- trimws(as.character(action$name %||% ""))
       if (!nzchar(new_name)) {
@@ -379,11 +395,28 @@ observeEvent(
       table$display_name <- new_name
       tables[[action$key]] <- table
       reopen_workbook <- table$file_name
+      saved_attachment <- list(
+        kind = "table",
+        key = action$key,
+        name = new_name
+      )
     } else {
       return()
     }
     entry$settings$tables <- tables
-    replace_entry(entry)
+    changed <- replace_entry(entry)
+    if (!isTRUE(changed)) {
+      return()
+    }
+    if (isTRUE(structural_change)) {
+      refresh_enhance_tables()
+    }
+    if (!is.null(saved_attachment)) {
+      session$sendCustomMessage(
+        "enhance_attachment_saved",
+        saved_attachment
+      )
+    }
     if (!is.null(reopen_workbook)) {
       session$onFlushed(
         function() {

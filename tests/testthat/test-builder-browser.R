@@ -154,7 +154,7 @@ test_that("builder interaction reflows and preserves accessible state", {
       paste0(
         "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
         "document.querySelector('[aria-current=stage]') !== null && ",
-        "document.getElementById('continue_to_review') !== null"
+        "document.getElementById('complete_dataset_check') !== null"
       ),
       timeout = 60000
     )
@@ -239,11 +239,11 @@ test_that("builder interaction reflows and preserves accessible state", {
     ".every(node => node.open === false)"
   )))
 
+  builder_browser_check_all_datasets(app)
   app$wait_for_js(
     "document.getElementById('continue_to_review') !== null",
     timeout = 10000
   )
-  builder_browser_check_all_datasets(app)
   readiness_text <- app$get_js(
     "document.querySelector('.builder-configure-readiness').textContent"
   )
@@ -568,12 +568,12 @@ test_that("builder explains a mocked old privacy contract exactly", {
   app$wait_for_idle(timeout = 30000)
   builder_browser_wait_for_example_ready(app)
   app$click(selector = ".example-btn[data-ex=all_content]")
-  app$wait_for_js(
-    "document.getElementById('continue_to_review') !== null",
-    timeout = 60000
-  )
   builder_browser_dismiss_project_offer(app)
   builder_browser_check_all_datasets(app)
+  app$wait_for_js(
+    "document.getElementById('continue_to_review') !== null",
+    timeout = 10000
+  )
   app$click("continue_to_review")
   app$wait_for_js(
     "document.getElementById('confirm_review') !== null",
@@ -589,11 +589,20 @@ test_that("builder explains a mocked old privacy contract exactly", {
   ))
   expect_identical(
     app$get_js(
+      "document.querySelector('.builder-app-capability-title').textContent.trim()"
+    ),
+    "Viewer App unavailable"
+  )
+  expect_match(
+    app$get_js(
       "document.querySelector('.builder-app-capability-reason').textContent.trim()"
     ),
-    paste(
-      "Viewer app creation isn’t available in this installation.",
-      "You can still build CRB files."
-    )
+    "secure Viewer App export runtime"
+  )
+  expect_identical(
+    app$get_js(
+      "document.querySelector('.builder-app-capability-command') === null"
+    ),
+    TRUE
   )
 })

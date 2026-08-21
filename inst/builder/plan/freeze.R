@@ -763,7 +763,7 @@ builder_freeze_plan <- function(
     port = 8080L,
     max_request_size = 8000,
     display_mode = "normal",
-    launch_browser = TRUE
+    launch_browser = FALSE
   )
   frozen_app_options <- utils::modifyList(
     default_app_options,

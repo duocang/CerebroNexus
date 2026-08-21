@@ -82,8 +82,59 @@ test_that("a delayed app privacy marker is never forced", {
   expect_false(forced)
 })
 
-test_that("app capability explains the safe alternatives", {
-  unavailable <- builder_app_capability(0L)
+test_that("source App contract takes precedence over the installed package", {
+  source_root <- withr::local_tempdir()
+  marker <- file.path(
+    source_root,
+    "inst",
+    "builder",
+    "app_bundle",
+    "privacy-contract-version"
+  )
+  dir.create(dirname(marker), recursive = TRUE)
+  writeLines("1", marker)
+
+  expect_identical(builder_source_app_contract_version(source_root), 1L)
+
+  available <- builder_app_capability(
+    installed_contract_version = 0L,
+    source_contract_version = 1L
+  )
+  expect_true(available$available)
+  expect_identical(available$version, 1L)
+  expect_null(available$reason)
+})
+
+test_that("an installed package directory is not mistaken for source", {
+  installed_like <- withr::local_tempdir()
+  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), installed_like)
+  dir.create(file.path(installed_like, "R"))
+
+  expect_null(builder_source_package_root(installed_like))
+})
+
+test_that("Builder startup exports its active source to parent verification", {
+  source_root <- withr::local_tempdir()
+  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), source_root)
+  dir.create(file.path(source_root, "R"))
+  file.create(file.path(source_root, "R", "source.R"))
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = NA_character_)
+
+  expect_identical(
+    builder_activate_source_package(source_root),
+    normalizePath(source_root, winslash = "/", mustWork = TRUE)
+  )
+  expect_identical(
+    Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = ""),
+    normalizePath(source_root, winslash = "/", mustWork = TRUE)
+  )
+})
+
+test_that("app capability explains a genuinely unavailable App contract", {
+  unavailable <- builder_app_capability(
+    installed_contract_version = 0L,
+    source_contract_version = 0L
+  )
 
   expect_identical(
     names(unavailable),
@@ -93,19 +144,18 @@ test_that("app capability explains the safe alternatives", {
   expect_identical(unavailable$version, 0L)
   expect_identical(
     unavailable$reason,
-    paste(
-      "Viewer app creation isn’t available in this installation.",
-      "You can still build CRB files."
-    )
+    "This Builder cannot find a secure Viewer App export runtime."
   )
   expect_false(grepl("PR #", unavailable$reason, fixed = TRUE))
 
-  available <- builder_app_capability(1L)
+  available <- builder_app_capability(1L, source_contract_version = NULL)
   expect_true(available$available)
   expect_identical(available$version, 1L)
   expect_null(available$reason)
 
-  expect_false(builder_app_capability(1)$available)
+  expect_false(
+    builder_app_capability(1, source_contract_version = NULL)$available
+  )
 })
 
 test_that("login capability identifies only missing package requirements", {
@@ -123,6 +173,13 @@ test_that("login capability identifies only missing package requirements", {
   )
   expect_false(missing_manager$available)
   expect_identical(missing_manager$missing, "shinymanager (>= 1.1.0)")
+  expect_match(missing_manager$reason, "Login is unavailable", fixed = TRUE)
+  expect_match(
+    missing_manager$reason,
+    'install.packages("shinymanager")',
+    fixed = TRUE
+  )
+  expect_match(missing_manager$reason, "restart Builder", fixed = TRUE)
 
   old_manager <- builder_auth_capability(
     available,
@@ -152,6 +209,30 @@ test_that("login capability identifies only missing package requirements", {
   )
   expect_false(missing_openssl$available)
   expect_identical(missing_openssl$missing, "openssl")
+})
+
+test_that("Builder runtime capability blocks startup with exact guidance", {
+  capability <- builder_runtime_capability(
+    function(package) identical(package, "callr")
+  )
+
+  expect_false(capability$available)
+  expect_identical(capability$missing, "openssl")
+  expect_identical(
+    capability$reason,
+    paste(
+      "Builder cannot start because this required R package is missing: openssl.",
+      'Run install.packages("openssl"), then start Builder again.'
+    )
+  )
+
+  unavailable <- builder_runtime_capability(function(package) FALSE)
+  expect_identical(unavailable$missing, c("callr", "openssl"))
+  expect_match(
+    unavailable$reason,
+    'install.packages(c("callr", "openssl"))',
+    fixed = TRUE
+  )
 })
 
 test_that("CRB-only plans remain available by default", {
@@ -225,7 +306,28 @@ test_that("builder UI loads the prerequisite before its plan", {
   expect_length(prerequisite_source, 1L)
   expect_length(plan_source, 1L)
   expect_lt(prerequisite_source, plan_source)
-  expect_match(text, "app_capability <- builder_app_capability\\(\\)")
+  expect_match(
+    text,
+    "app_capability <- builder_app_capability\\(\\)"
+  )
+})
+
+test_that("builder UI activates source before loading App verification", {
+  lines <- builder_app_source_lines()
+  activate_source <- grep(
+    "builder_activate_source_package()",
+    lines,
+    fixed = TRUE
+  )
+  app_bundle_source <- grep(
+    'source("app_bundle.R", local = TRUE)',
+    lines,
+    fixed = TRUE
+  )
+
+  expect_length(activate_source, 1L)
+  expect_length(app_bundle_source, 1L)
+  expect_lt(activate_source, app_bundle_source)
 })
 
 test_that("worker setup loads the app prerequisite before planning", {
@@ -287,10 +389,10 @@ test_that("worker rejects a forged app plan before createShinyApp", {
   })
 })
 
-test_that("worker rechecks the current installed app contract", {
+test_that("worker rechecks the current active App contract", {
   local({
     builder_repo_source("session.R")
-    builder_installed_app_contract_version <- function(namespace = NULL) 0L
+    builder_app_capability <- function(...) list(version = 0L)
     create_called <- FALSE
     testthat::local_mocked_bindings(
       createShinyApp = function(...) {
@@ -318,7 +420,7 @@ test_that("worker rechecks the current installed app contract", {
 test_that("session binds successful App results to the dispatched build id", {
   local({
     builder_repo_source("session.R")
-    builder_installed_app_contract_version <- function(namespace = NULL) 1L
+    builder_app_capability <- function(...) list(version = 1L)
     builder_worker_require_capability <- function(name) invisible(TRUE)
     builder_execute_plan <- function(
       plan,

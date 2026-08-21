@@ -39,7 +39,7 @@ builder_build_options <- function(
   port = 8080L,
   max_request_size = 8000,
   display_mode = "normal",
-  launch_browser = TRUE,
+  launch_browser = FALSE,
   show_upload_ui = FALSE,
   initial_dataset = NULL
 ) {
@@ -176,9 +176,30 @@ builder_build_options_ui <- function(
         )
       },
       if (!isTRUE(app_available)) {
-        p(
-          class = "hint builder-app-capability-reason",
-          app_reason %||% "Viewer App creation is unavailable."
+        div(
+          class = "builder-app-capability-warning",
+          role = "alert",
+          div(
+            class = "builder-app-capability-icon",
+            `aria-hidden` = "true",
+            "!"
+          ),
+          div(
+            class = "builder-app-capability-content",
+            tags$strong(
+              class = "builder-app-capability-title",
+              "Viewer App unavailable"
+            ),
+            p(
+              class = "builder-app-capability-reason",
+              app_reason %||%
+                "This installation cannot safely create a Viewer App."
+            ),
+            p(
+              class = "builder-app-capability-note",
+              "CRB-only export is still available."
+            )
+          )
         )
       },
       if (isTRUE(options$make_app)) {
@@ -200,11 +221,6 @@ builder_build_options_ui <- function(
               min = 1,
               max = 65535
             )
-          ),
-          shiny::checkboxInput(
-            "build_launch_browser",
-            "Open App after build",
-            options$app$launch_browser
           ),
           shiny::checkboxInput(
             "build_show_upload_ui",
@@ -229,7 +245,8 @@ builder_build_options_ui <- function(
           if (!auth_available) {
             p(
               class = "hint builder-auth-dependency",
-              "Login requires optional authentication packages."
+              auth$reason %||%
+                "Login is unavailable. Install the required R package, then restart Builder."
             )
           },
           if (isTRUE(auth$enabled) && auth_available) {

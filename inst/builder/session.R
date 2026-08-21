@@ -554,7 +554,7 @@ builder_session_build <- function(
   validate_snapshots <- inherits(worker, "builder_worker")
   snapshots <- if (validate_snapshots) worker$snapshot_registry else list()
   if (isTRUE(plan$make_app)) {
-    current_contract <- builder_installed_app_contract_version()
+    current_contract <- builder_app_capability()$version
     if (
       !identical(plan$app_contract_version, 1L) ||
         !identical(current_contract, 1L)

@@ -109,7 +109,8 @@ test_that("projection cards use real names, shared colors, and native choices", 
     overview_point_size = 6,
     overview_percentage_cells_to_show = 70,
     projection_previews = frames,
-    preview_colors = c(B = "#D97706", T = "#7C3AED")
+    preview_colors = c(B = "#D97706", T = "#7C3AED"),
+    preview_group = "cell_type"
   ))
   html <- htmltools::renderTags(
     builder_projection_catalog_ui("core", model)
@@ -139,6 +140,8 @@ test_that("projection cards use real names, shared colors, and native choices", 
   expect_match(html, "type=\"checkbox\"", fixed = TRUE)
   expect_match(html, "type=\"radio\"", fixed = TRUE)
   expect_match(html, "#D97706", fixed = TRUE)
+  expect_match(html, 'data-preview-group="cell_type"', fixed = TRUE)
+  expect_match(html, 'data-group="B"', fixed = TRUE)
   expect_match(html, "data-projection=\"pca\"", fixed = TRUE)
   expect_match(html, "<h4>PCA</h4>", fixed = TRUE)
 })
