@@ -34,6 +34,10 @@ source(
   local = TRUE
 )
 
+## Loaded CRBs are immutable in the viewer. Share them across browser sessions
+## in this R process so a refresh does not deserialize the same file again.
+.crb_process_cache <- new.env(parent = emptyenv())
+
 server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   ## Load color setup and utility functions.
@@ -66,6 +70,7 @@ server <- function(input, output, session) {
     page_catalog$conditional$id &&
     !identical(initial_navigation$tab_name, "coordinated_views")
   initial_navigation$applied <- FALSE
+  .crb_cache <- .crb_process_cache
   source(
     paste0(
       Cerebro.options[["cerebro_root"]],
@@ -587,13 +592,49 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   ## Tabs.
   ##--------------------------------------------------------------------------##
+  ir_data_build_log <- new.env(parent = emptyenv())
+  ir_data_build_log$n <- 0L
+  group_module_state <- new.env(parent = emptyenv())
+  group_module_state$loaded <- FALSE
+  gene_expression_module_state <- new.env(parent = emptyenv())
+  gene_expression_module_state$loaded <- FALSE
+  ir_module_state <- new.env(parent = emptyenv())
+  ir_module_state$loaded <- FALSE
+  trajectory_module_state <- new.env(parent = emptyenv())
+  trajectory_module_state$loaded <- FALSE
+  hla_module_state <- new.env(parent = emptyenv())
+  hla_module_state$loaded <- FALSE
+  source_tab_on_first_open <- function(tab_name, relative_path, state) {
+    target <- parent.frame()
+    observeEvent(input[["sidebar"]], {
+      if (isTRUE(state$loaded) || !identical(input[["sidebar"]], tab_name)) {
+        return()
+      }
+      source(
+        paste0(Cerebro.options[["cerebro_root"]], relative_path),
+        local = target
+      )
+      state$loaded <- TRUE
+    })
+  }
+
+  ## The conditional HLA sidebar gate needs only these core helpers; the UI
+  ## reactives and renderers remain deferred with the rest of the page.
+  source(
+    paste0(
+      Cerebro.options[["cerebro_root"]],
+      "/viewer/hla_tcr_motifs/core_shim.R"
+    ),
+    local = TRUE
+  )
   source(
     paste0(Cerebro.options[["cerebro_root"]], "/viewer/load_data/server.R"),
     local = TRUE
   )
-  source(
-    paste0(Cerebro.options[["cerebro_root"]], "/viewer/groups/server.R"),
-    local = TRUE
+  source_tab_on_first_open(
+    "groups",
+    "/viewer/groups/server.R",
+    group_module_state
   )
   source(
     paste0(
@@ -602,12 +643,10 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/gene_expression/server.R"
-    ),
-    local = TRUE
+  source_tab_on_first_open(
+    "geneExpression",
+    "/viewer/gene_expression/server.R",
+    gene_expression_module_state
   )
   source(
     paste0(
@@ -813,31 +852,6 @@ server <- function(input, output, session) {
     local = TRUE
   )
 
-  ## Plotly output registration itself is expensive. Keep optional analysis
-  ## modules out of the first flush and source each one into this session only
-  ## when its page is opened for the first time.
-  ir_data_build_log <- new.env(parent = emptyenv())
-  ir_data_build_log$n <- 0L
-  ir_module_state <- new.env(parent = emptyenv())
-  ir_module_state$loaded <- FALSE
-  trajectory_module_state <- new.env(parent = emptyenv())
-  trajectory_module_state$loaded <- FALSE
-  source_tab_on_first_open <- function(tab_name, relative_path, state) {
-    target <- parent.frame()
-    observeEvent(
-      input[["sidebar"]],
-      {
-        if (isTRUE(state$loaded) || !identical(input[["sidebar"]], tab_name)) {
-          return()
-        }
-        source(
-          paste0(Cerebro.options[["cerebro_root"]], relative_path),
-          local = target
-        )
-        state$loaded <- TRUE
-      }
-    )
-  }
   source_tab_on_first_open(
     "immune_repertoire",
     "/viewer/immune_repertoire/server.R",
@@ -848,12 +862,10 @@ server <- function(input, output, session) {
     "/viewer/trajectory/server.R",
     trajectory_module_state
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/hla_tcr_motifs/server.R"
-    ),
-    local = TRUE
+  source_tab_on_first_open(
+    "hla_tcr_motifs",
+    "/viewer/hla_tcr_motifs/server.R",
+    hla_module_state
   )
   source(
     paste0(
@@ -901,8 +913,11 @@ server <- function(input, output, session) {
     ## Preparing the repertoire fans out into every IR plot. It must stay at 0
     ## until the user actually opens that page.
     ir_data_builds = ir_data_build_log$n,
+    groups_server_loaded = group_module_state$loaded,
+    gene_expression_server_loaded = gene_expression_module_state$loaded,
     ir_server_loaded = ir_module_state$loaded,
     trajectory_server_loaded = trajectory_module_state$loaded,
+    hla_server_loaded = hla_module_state$loaded,
     ## Linked views walks every cell of the object, so its full bundle must stay
     ## at 0 until the tab is opened.
     coordviews_bundles_built = coordviews_build_log$n

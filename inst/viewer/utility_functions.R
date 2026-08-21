@@ -1368,14 +1368,18 @@ read_cerebro_file <- function(file) {
 }
 
 ##----------------------------------------------------------------------------##
-## Session-scoped cache for loaded .crb files (B8).
+## Process-scoped cache for loaded .crb files (B8).
 ##
-## Cerebro objects are treated as READ-ONLY within a session. Cache is keyed by
-## file path and backend configuration. Changing the backend configuration for
-## an already loaded path fails closed; overwriting a .crb in place is NOT
-## detected -- start a new app session to pick up either change.
+## Configured Cerebro objects are treated as READ-ONLY. shiny_server.R supplies
+## one cache shared by all browser sessions in this R process, so refreshes
+## reuse the same deserialized object. Uploads stay session-local: retaining
+## arbitrary temporary user files for the process lifetime would leak memory
+## and cross the session boundary.
 ##----------------------------------------------------------------------------##
-.crb_cache <- new.env(parent = emptyenv())
+if (!exists(".crb_cache", inherits = FALSE)) {
+  .crb_cache <- new.env(parent = emptyenv())
+}
+.crb_session_cache <- new.env(parent = emptyenv())
 
 .runtimeBackendPlanError <- function(message, crb_path = NULL) {
   suffix <- if (is.null(crb_path)) {
@@ -1555,7 +1559,12 @@ get_or_load_crb <- function(
     configured_paths
   )
   cache_identity <- .runtimeBackendCacheIdentity(effective_backend)
-  cached <- .crb_cache[[path]]
+  cache <- if (path %in% configured_paths) {
+    .crb_cache
+  } else {
+    .crb_session_cache
+  }
+  cached <- cache[[path]]
   if (!is.null(cached)) {
     if (!identical(cached$backend_identity, cache_identity)) {
       stop(
@@ -1572,7 +1581,7 @@ get_or_load_crb <- function(
   print(glue::glue("[{Sys.time()}] CRB cache miss, loading: {path}"))
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
-  .crb_cache[[path]] <- list(
+  cache[[path]] <- list(
     object = obj,
     backend_identity = cache_identity
   )
