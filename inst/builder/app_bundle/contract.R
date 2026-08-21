@@ -667,7 +667,6 @@
 .builder_app_demo_data <- c(
   "extdata/examples/demo_full_tcr_bcr.crb" = "fcd0c8f02130027d1fd050f25bcad5e0",
   "extdata/examples/demo_hla_tcr_dextramer.crb" = "d4f8f52e08c9185b4ae65a38085076bf",
-  "extdata/examples/demo_omnibus.crb" = "7f6a01cdc74751919224737540935907",
   "extdata/examples/demo_spatial_merfish.crb" = "a9c9d998d5c1db01fc480aece140141c",
   "extdata/examples/demo_spatial_slideseq.crb" = "3f35ef21fbdc163705954a4cc4439711",
   "extdata/examples/demo_spatial_visium.crb" = "7afce4b4d30bb217412b6b281eecab8f",
