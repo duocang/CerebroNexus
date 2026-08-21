@@ -1,5 +1,45 @@
 ## Builder server: datasets.
 
+builder_normalize_group_dependency <- function(entry) {
+  if (!is.list(entry) || !is.list(entry$settings)) {
+    return(entry)
+  }
+  settings <- entry$settings
+  policy <- settings$metadata_policy %||%
+    settings$recommendations$metadata
+  if (!is.list(policy) || !is.list(policy$columns)) {
+    return(entry)
+  }
+  retained <- names(policy$columns)[vapply(
+    policy$columns,
+    function(record) isTRUE(record$retain_in_crb),
+    logical(1)
+  )]
+  groups <- unique(as.character(
+    settings$included_groups %||% settings$groups %||% character()
+  ))
+  groups <- intersect(groups[!is.na(groups) & nzchar(groups)], retained)
+  default <- settings$default_group %||% ""
+  settings$included_groups <- groups
+  settings$groups <- groups
+  settings$default_group <- if (length(groups)) {
+    if (default %in% groups) default else groups[[1L]]
+  } else {
+    NULL
+  }
+  overrides <- builder_settings_color_overrides(settings)
+  settings$group_color_overrides <- overrides[intersect(
+    names(overrides),
+    groups
+  )]
+  settings$metadata_policy <- builder_metadata_policy_set_groups(
+    policy,
+    groups
+  )
+  entry$settings <- settings
+  entry
+}
+
 ## -- the rail ------------------------------------------------------------
 last_dataset_rail_patch <- reactiveVal(NULL)
 observe({
@@ -710,6 +750,15 @@ output[["core-group_detail"]] <- renderUI({
     "core",
     builder_group_detail_model(catalog, focus)
   )
+})
+
+output[["core-metadata_preview"]] <- renderUI({
+  id <- current()
+  req(!is.null(id), identical(input[["core-rendered_for"]], id))
+  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+  req(entry)
+  catalog <- group_catalog_for_entry(entry)
+  builder_metadata_preview_ui(catalog$metadata_preview)
 })
 
 output[["core-group_colors"]] <- renderUI({

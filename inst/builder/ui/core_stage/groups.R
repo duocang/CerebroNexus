@@ -348,7 +348,15 @@ builder_group_catalog_model <- function(model) {
   default_valid <- builder_stage_has_text(default %||% "") &&
     default %in% included
   focus_valid <- builder_stage_has_text(default %||% "") && default %in% ids
-  preview_items <- utils::head(items, 6L)
+  preview_items <- Filter(function(item) isTRUE(item$included), items)
+  if (default_valid) {
+    preview_ids <- vapply(preview_items, `[[`, character(1), "id")
+    preview_items <- preview_items[c(
+      match(default, preview_ids),
+      which(preview_ids != default)
+    )]
+  }
+  preview_items <- utils::head(preview_items, 6L)
   preview_row_count <- min(
     5L,
     max(c(
@@ -390,7 +398,9 @@ builder_group_catalog_model <- function(model) {
       columns = vapply(preview_items, `[[`, character(1), "label"),
       rows = preview_rows,
       shown_columns = length(preview_items),
-      total_columns = length(items)
+      total_columns = length(included),
+      default_column = if (default_valid) default else NULL,
+      column_ids = vapply(preview_items, `[[`, character(1), "id")
     ),
     focus = if (focus_valid) {
       default
@@ -497,14 +507,22 @@ builder_group_detail_model <- function(catalog, group = NULL) {
 
 builder_metadata_preview_ui <- function(preview, disclosure_key = NULL) {
   columns <- preview$columns %||% character()
+  column_ids <- preview$column_ids %||% columns
+  default_column <- preview$default_column %||% ""
   rows <- preview$rows %||% list()
   if (!length(columns) || !length(rows)) {
-    return(NULL)
+    return(tags$section(
+      class = "viewer-metadata-preview",
+      h4("Preview metadata"),
+      p(
+        class = "viewer-metadata-preview-note",
+        "Select a Group column to preview its metadata."
+      )
+    ))
   }
-  tags$details(
-    class = "viewer-metadata-preview-disclosure",
-    `data-disclosure-key` = disclosure_key,
-    tags$summary("Preview metadata"),
+  tags$section(
+    class = "viewer-metadata-preview",
+    h4("Preview metadata"),
     p(
       class = "viewer-metadata-preview-note",
       paste0(
@@ -527,14 +545,34 @@ builder_metadata_preview_ui <- function(preview, disclosure_key = NULL) {
         class = "viewer-metadata-preview-table",
         tags$thead(tags$tr(
           tags$th(scope = "col", "Row"),
-          lapply(columns, function(column) tags$th(scope = "col", column))
+          lapply(seq_along(columns), function(index) {
+            tags$th(
+              scope = "col",
+              class = if (identical(column_ids[[index]], default_column)) {
+                "is-default"
+              },
+              columns[[index]]
+            )
+          })
         )),
         tags$tbody(lapply(seq_along(rows), function(row_index) {
           tags$tr(
             class = "viewer-metadata-preview-row",
             tags$th(scope = "row", row_index),
-            lapply(rows[[row_index]], function(value) {
-              tags$td(title = value, value)
+            lapply(seq_along(rows[[row_index]]), function(column_index) {
+              value <- rows[[row_index]][[column_index]]
+              tags$td(
+                class = if (
+                  identical(
+                    column_ids[[column_index]],
+                    default_column
+                  )
+                ) {
+                  "is-default"
+                },
+                title = value,
+                value
+              )
             })
           )
         }))
@@ -643,10 +681,6 @@ builder_group_detail_ui <- function(id, model) {
       ),
       NULL
     ),
-    builder_metadata_preview_ui(
-      model$metadata_preview,
-      paste0("metadata-preview:", item$id)
-    ),
     if (item$eligible && item$included) {
       tags$details(
         class = "viewer-group-colors-disclosure",
@@ -688,18 +722,6 @@ builder_group_catalog_ui <- function(id, catalog) {
           class = "viewer-group-actions",
           tags$button(
             type = "button",
-            class = "btn viewer-metadata-select",
-            `data-action` = "all-supported",
-            "Keep all supported metadata"
-          ),
-          tags$button(
-            type = "button",
-            class = "btn viewer-metadata-select",
-            `data-action` = "recommended",
-            "Restore recommended retention"
-          ),
-          tags$button(
-            type = "button",
             class = "btn viewer-group-select",
             `data-action` = "suggested",
             "Select suggested"
@@ -715,7 +737,6 @@ builder_group_catalog_ui <- function(id, catalog) {
       div(
         class = "viewer-group-list",
         lapply(catalog$items, function(item) {
-          retain_id <- ns(paste0("metadata_retain_", item$index))
           checkbox_id <- ns(paste0("group_include_", item$index))
           radio_id <- ns(paste0("group_default_", item$index))
           div(
@@ -731,28 +752,19 @@ builder_group_catalog_ui <- function(id, catalog) {
             `data-recommended-retained` = tolower(as.character(
               item$recommended_retained
             )),
-            tags$label(
-              class = "viewer-metadata-check",
-              `for` = retain_id,
-              tags$input(
-                id = retain_id,
-                type = "checkbox",
-                class = "viewer-metadata-retain",
-                `data-group` = item$id,
-                checked = if (isTRUE(item$metadata_retained)) {
-                  "checked"
-                } else {
-                  NULL
-                },
-                disabled = if (isTRUE(item$retention_locked)) {
-                  "disabled"
-                } else {
-                  NULL
-                }
-              ),
-              span(class = "visually-hidden", paste("Keep in CRB", item$label))
+            tags$button(
+              type = "button",
+              class = "viewer-group-focus",
+              `data-group` = item$id,
+              `aria-pressed` = if (item$default) "true" else "false",
+              disabled = if (!item$eligible) "disabled" else NULL,
+              span(class = "viewer-group-name", item$label),
+              if (!item$eligible) {
+                span(class = "viewer-group-meta", item$reason)
+              }
             ),
-            if (item$eligible) {
+            div(
+              class = "viewer-group-controls",
               tags$label(
                 class = "viewer-group-check",
                 `for` = checkbox_id,
@@ -761,34 +773,11 @@ builder_group_catalog_ui <- function(id, catalog) {
                   type = "checkbox",
                   class = "viewer-group-include",
                   `data-group` = item$id,
-                  checked = if (item$included) "checked" else NULL
+                  checked = if (item$included) "checked" else NULL,
+                  disabled = if (!item$eligible) "disabled" else NULL
                 ),
-                span(class = "visually-hidden", paste("Include", item$label))
-              )
-            } else {
-              span(class = "viewer-group-check viewer-group-check-spacer")
-            },
-            tags$button(
-              type = "button",
-              class = "viewer-group-focus",
-              `data-group` = item$id,
-              `aria-pressed` = if (item$default) "true" else "false",
-              span(class = "viewer-group-name", item$label),
-              span(
-                class = "viewer-group-meta",
-                if (item$eligible) {
-                  paste0(
-                    item$category_count,
-                    " categories · ",
-                    format(round(item$missing_percentage, 2L), trim = TRUE),
-                    "% missing"
-                  )
-                } else {
-                  item$reason
-                }
-              )
-            ),
-            if (item$eligible) {
+                span("Group")
+              ),
               tags$label(
                 class = "viewer-group-default-label",
                 `for` = radio_id,
@@ -800,16 +789,14 @@ builder_group_catalog_ui <- function(id, catalog) {
                   value = item$id,
                   `data-group` = item$id,
                   checked = if (item$default) "checked" else NULL,
-                  disabled = if (!item$included) "disabled" else NULL
+                  disabled = if (!item$eligible) "disabled" else NULL
                 ),
                 span(
                   class = "viewer-default-copy",
-                  if (item$default) "Default" else "Set default"
+                  if (item$default) "Default" else "Set as default"
                 )
               )
-            } else {
-              span(class = "viewer-group-not-eligible", "Not a Group")
-            }
+            )
           )
         })
       ),
@@ -819,6 +806,10 @@ builder_group_catalog_ui <- function(id, catalog) {
         `aria-live` = "polite"
       )
     ),
-    uiOutput(ns("group_detail"))
+    div(
+      class = "viewer-group-side",
+      uiOutput(ns("metadata_preview")),
+      uiOutput(ns("group_detail"))
+    )
   )
 }

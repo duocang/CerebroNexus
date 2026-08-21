@@ -108,6 +108,7 @@ builder_metadata_policy_set_retained <- function(policy, retained) {
     record <- policy$columns[[id]]
     keep <- id %in% retained || isTRUE(record$forced)
     record$retain_in_crb <- keep
+    record$group_enabled <- isTRUE(record$group_enabled) && keep
     if (!identical(record$disposition, "blocking")) {
       record$value <- if (keep) "included" else "excluded"
       record$disposition <- record$value

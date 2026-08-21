@@ -2777,12 +2777,18 @@
 
   function updateViewerMetadataSelection(root, emit) {
     if (!root) return;
-    var retained = viewerGroupRows(root)
-      .filter(function (row) {
-        var checkbox = row.querySelector(".viewer-metadata-retain");
-        return checkbox && checkbox.checked;
-      })
-      .map(function (row) { return row.dataset.group; });
+    var retained = [];
+    viewerGroupRows(root).forEach(function (row) {
+      var metadata = row.querySelector(".viewer-metadata-retain");
+      var group = row.querySelector(".viewer-group-include");
+      var radio = row.querySelector(".viewer-group-default");
+      if (metadata && metadata.checked) retained.push(row.dataset.group);
+      if (metadata && !metadata.checked) {
+        if (group) group.checked = false;
+        if (radio) radio.checked = false;
+      }
+    });
+    updateViewerGroupSelection(root, false, true);
     if (emit && root.dataset.metadataInputId) {
       send(root.dataset.metadataInputId, {
         action: "set-retention",
@@ -2809,7 +2815,13 @@
     root.querySelectorAll(selector).forEach(function (input) {
       var label = input.closest("label");
       var copy = label && label.querySelector(".viewer-default-copy");
-      if (copy) copy.textContent = input.checked ? "Default" : "Set default";
+      if (copy) {
+        copy.textContent = input.checked
+          ? "Default"
+          : selector === ".viewer-group-default"
+            ? "Set as default"
+            : "Set default";
+      }
     });
   }
 
@@ -2826,7 +2838,7 @@
     }
   }
 
-  function updateViewerGroupSelection(root, emit) {
+  function updateViewerGroupSelection(root, emit, allowEmpty) {
     if (!root) return;
     var rows = viewerGroupRows(root);
     var included = rows
@@ -2835,7 +2847,7 @@
         return checkbox && checkbox.checked && !checkbox.disabled;
       })
       .map(function (row) { return row.dataset.group; });
-    if (!included.length) {
+    if (!included.length && !allowEmpty) {
       var first = rows.find(function (row) {
         return row.dataset.eligible === "true";
       });
@@ -2855,7 +2867,7 @@
       var isIncluded = Boolean(checkbox && checkbox.checked && !checkbox.disabled);
       row.classList.toggle("is-included", isIncluded);
       if (radio) {
-        radio.disabled = !isIncluded;
+        radio.disabled = row.dataset.eligible !== "true";
         radio.checked = isIncluded && row.dataset.group === defaultGroup;
       }
     });
@@ -3856,6 +3868,10 @@
       return;
     }
     if (event.target.matches(".viewer-group-default")) {
+      var groupRow = event.target.closest(".viewer-group-row");
+      var groupCheckbox = groupRow &&
+        groupRow.querySelector(".viewer-group-include");
+      if (groupCheckbox && !groupCheckbox.disabled) groupCheckbox.checked = true;
       updateViewerGroupSelection(
         event.target.closest(".viewer-group-workspace"),
         true

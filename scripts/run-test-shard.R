@@ -11,10 +11,28 @@ ci_browser_test_files <- function() {
     "test-app-viewport-layout.R",
     "test-configured-colors.R",
     "test-coordinated-views-browser.R",
+    "test-builder-auth-browser.R",
+    "test-builder-browser.R",
+    "test-builder-build-folder-browser.R",
+    "test-builder-end-to-end.R",
+    "test-builder-loading-browser.R",
+    "test-builder-marker-choice-browser.R",
+    "test-builder-motion-browser.R",
+    "test-builder-responsive-browser.R",
+    "test-builder-staged-workflow-browser.R",
+    "test-generated-app-multidataset.R",
+    "test-generated-app-pages-analysis.R",
+    "test-generated-app-pages-core.R",
+    "test-generated-app-pages-immune.R",
+    "test-generated-app-pages-spatial.R",
+    "test-generated-app-pages-trekker.R",
+    "test-generated-app-security.R",
     "test-smoke-production.R",
     "test-viewer-shell-browser.R"
   )
 }
+
+ci_process_sensitive_test_files <- function() c("test-builder-worker.R")
 
 ci_test_plan <- function(test_dir = file.path("tests", "testthat")) {
   if (!dir.exists(test_dir)) {
@@ -26,15 +44,22 @@ ci_test_plan <- function(test_dir = file.path("tests", "testthat")) {
     full.names = FALSE
   ))
   browser <- ci_browser_test_files()
-  missing <- setdiff(browser, all)
+  process_sensitive <- ci_process_sensitive_test_files()
+  explicit <- c(browser, process_sensitive)
+  missing <- setdiff(explicit, all)
   if (length(missing)) {
     stop(
-      "Classified browser test file(s) do not exist: ",
+      "Classified test file(s) do not exist: ",
       paste(missing, collapse = ", "),
       call. = FALSE
     )
   }
-  list(all = all, logic = setdiff(all, browser), browser = browser)
+  list(
+    all = all,
+    logic = setdiff(all, explicit),
+    process_sensitive = process_sensitive,
+    browser = browser
+  )
 }
 
 ci_test_shards <- function(files, shards) {
@@ -53,10 +78,16 @@ ci_test_shards <- function(files, shards) {
 }
 
 ci_test_shard_files <- function(plan, group, shard = 1L, shards = 1L) {
-  if (length(group) != 1L || !group %in% c("logic", "browser")) {
-    stop("group must be logic or browser", call. = FALSE)
+  groups <- c("logic", "process-sensitive", "browser")
+  if (length(group) != 1L || !group %in% groups) {
+    stop("group must be logic, process-sensitive, or browser", call. = FALSE)
   }
-  assignments <- ci_test_shards(plan[[group]], shards)
+  key <- if (identical(group, "process-sensitive")) {
+    "process_sensitive"
+  } else {
+    group
+  }
+  assignments <- ci_test_shards(plan[[key]], shards)
   if (
     length(shard) != 1L ||
       is.na(shard) ||
@@ -176,6 +207,8 @@ ci_main <- function(args = commandArgs(trailingOnly = TRUE)) {
       " tests: ",
       length(plan$logic),
       " logic, ",
+      length(plan$process_sensitive),
+      " process-sensitive, ",
       length(plan$browser),
       " browser"
     )

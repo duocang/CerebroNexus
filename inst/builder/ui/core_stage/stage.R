@@ -67,7 +67,9 @@ builder_core_stage_ui <- function(id, model) {
       div(
         class = "builder-viewer-content-head",
         h4("CRB content"),
-        p("Choose what each CRB retains from the source dataset.")
+        p(
+          "Metadata is retained automatically. Review the available columns and configure Viewer Groups, default group, and colors."
+        )
       ),
       tags$details(
         class = "builder-viewer-card builder-viewer-groups",

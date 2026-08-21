@@ -205,13 +205,7 @@
   one_value_per_cell <- non_missing > 0L &&
     unique_non_missing >= non_missing
 
-  retain_in_crb <- if (!isTRUE(fact$supported)) {
-    FALSE
-  } else if (sensitive) {
-    is_required
-  } else {
-    TRUE
-  }
+  retain_in_crb <- isTRUE(fact$supported)
   group_recommended <- FALSE
 
   disposition <- "excluded"
@@ -293,6 +287,14 @@
     reason <- paste0(
       "Numeric metadata is excluded unless its name is explicitly categorical."
     )
+  }
+
+  if (isTRUE(fact$supported)) {
+    disposition <- "included"
+    effective_included <- TRUE
+    confirmation <- FALSE
+    preview_allowed <- TRUE
+    reason <- "Cell metadata is retained automatically for Viewer details and downloads."
   }
 
   .builder_recommend_record(
