@@ -1,6 +1,6 @@
 Package: CerebroNexus
 Title: Interactive visualization of single cell transcriptomics
-Version: 4.5.1
+Version: 5.0.0
 Authors@R: c(
   person("Michael", "Heming", email = "mihem@mailbox.org", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-9568-2790")),
   person("Roman", "Hillje", email = "roman.hillje@googlemail.com", role = c("aut")),
@@ -49,6 +49,7 @@ Imports:
   plotly (>= 4.9.0),
   qvalue (>= 2.14.0),
   R6 (>= 2.4.0),
+  readxl,
   rlang (>= 0.4.2),
   scales (>= 1.1.0),
   scRepertoire (>= 2.0.0),
@@ -80,6 +81,9 @@ Suggests:
   monocle,
   openssl,
   png,
+  ps,
+  qs,
+  qs2,
   readxl,
   reshape2,
   rhdf5,

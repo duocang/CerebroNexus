@@ -129,7 +129,7 @@ While iterating on the package, use `devtools::test()` — it picks up edits to 
 Error in <fn>: attempt to apply non-function
 ```
 
-The Shiny session never reaches idle, and shinytest2 reports `Shiny app did not become stable in 15000ms` (often with a misleading sidekick `the fixed layout requires the slimscroll plugin!` JS warning — that one is harmless AdminLTE noise).
+The Shiny session never reaches idle, and shinytest2 reports `Shiny app did not become stable in 15000ms`. Browser-console errors should be investigated separately; generated-App tests intentionally fail on all warning/error entries instead of maintaining dependency-noise exceptions.
 
 Whenever you add or rename methods on `Cerebro`, regenerate the example fixture by re-exporting from `inst/extdata/examples/pbmc_seurat.rds` with `exportFromSeurat()`, then commit the new `example.crb`.
 
