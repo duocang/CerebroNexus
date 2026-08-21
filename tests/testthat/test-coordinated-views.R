@@ -106,6 +106,18 @@ test_that("Linked views gives Colour by the shared Selectize control", {
   expect_match(js, "sel.selectize.setValue(colorBy, true)", fixed = TRUE)
 })
 
+test_that("Linked views expands Colour by within the available viewport", {
+  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
+  skip_if_not(file.exists(css_file))
+  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
+  expect_match(
+    css,
+    "#cv-pick-color + .selectize-control .selectize-dropdown-content",
+    fixed = TRUE
+  )
+  expect_match(css, "calc(100dvh - 240px)", fixed = TRUE)
+})
+
 test_that("Linked views places the shared legend above the panel grid", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   skip_if_not(file.exists(ui_file))

@@ -71,6 +71,9 @@
 }
 .coordviews-page .cv-spatial-ctl .selectize-input { max-width: 310px; }
 .coordviews-page #cv-pick-color + .selectize-control { min-width: 168px; }
+.coordviews-page #cv-pick-color + .selectize-control .selectize-dropdown-content {
+  max-height: min(560px, calc(100dvh - 240px));
+}
 .coordviews-page #cv-proj-ctl .selectize-input { max-width: 310px; }
 
 /* Background image choices are scoped to the selected spatial data.  The
