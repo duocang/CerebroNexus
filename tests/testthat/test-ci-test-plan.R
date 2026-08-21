@@ -24,12 +24,14 @@ test_that("process-sensitive and browser tests cannot enter the logic pool", {
   browser_opt_in <- c(
     "test-builder-loading-browser.R",
     "test-builder-browser.R",
-    "test-builder-staged-workflow-browser.R"
+    "test-builder-staged-workflow-browser.R",
+    "test-coordinated-views-config-browser.R",
+    "test-hla-tcr-main-case-browser.R"
   )
 
   expect_identical(plan$process_sensitive, "test-builder-worker.R")
   expect_false("test-builder-worker.R" %in% c(plan$logic, plan$browser))
-  expect_length(plan$browser, 25L)
+  expect_length(plan$browser, 27L)
   expect_length(intersect(plan$browser, plan$logic), 0L)
   expect_true(all(browser_opt_in %in% plan$browser))
   expect_true(all(
