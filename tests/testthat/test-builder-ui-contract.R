@@ -784,7 +784,7 @@ test_that("supplementary tables use an amber native multi-file chooser", {
     fixed = TRUE
   )
   expect_match(stage, 'multiple = "multiple"', fixed = TRUE)
-  expect_match(stage, 'accept = ".csv,.tsv,.txt"', fixed = TRUE)
+  expect_match(stage, 'accept = ".csv,.tsv,.txt,.xlsx"', fixed = TRUE)
   expect_match(
     stage,
     'class = "enhance-table-file-control builder-file-picker builder-file-picker--content"',
@@ -821,7 +821,7 @@ test_that("all local attachments use accessible native file inputs", {
   expect_match(app, 'accept = paste(', fixed = TRUE)
   expect_false(grepl('multiple = "multiple"', app, fixed = TRUE))
   expect_match(js, "picker.multiple = true", fixed = TRUE)
-  expect_match(stage, 'accept = ".csv,.tsv,.txt"', fixed = TRUE)
+  expect_match(stage, 'accept = ".csv,.tsv,.txt,.xlsx"', fixed = TRUE)
   expect_match(stage, 'multiple = "multiple"', fixed = TRUE)
   expect_match(stage, 'accept = ".png,.jpg,.jpeg"', fixed = TRUE)
   expect_match(

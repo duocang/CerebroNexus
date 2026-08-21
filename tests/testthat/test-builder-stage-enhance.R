@@ -40,7 +40,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
         enabled_pages = "extra material",
         cost = "Reads one bounded delimited file.",
         network = "No network access.",
-        prerequisite = "Requires a readable CSV or TSV file.",
+        prerequisite = "Requires a readable CSV, TSV, or XLSX file.",
         selected = "Differential expression",
         replacement_policy = "Replace a table only when its display name matches.",
         skip_consequence = "Skipped tables will not appear in Extra material."
@@ -180,7 +180,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "Tables for Extra material", fixed = TRUE)
   expect_match(
     html,
-    "Add optional CSV or TSV tables to the CRB’s Extra material content.",
+    "Add optional CSV, TSV, or XLSX tables to the CRB’s Extra material content.",
     fixed = TRUE
   )
   expect_match(html, "Spatial alignment", fixed = TRUE)
@@ -209,7 +209,8 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, 'id="enhance-table_files"', fixed = TRUE)
   expect_match(html, 'type="file"', fixed = TRUE)
   expect_match(html, 'multiple="multiple"', fixed = TRUE)
-  expect_match(html, 'accept=".csv,.tsv,.txt"', fixed = TRUE)
+  expect_match(html, 'accept=".csv,.tsv,.txt,.xlsx"', fixed = TRUE)
+  expect_match(html, "CSV, TSV, or XLSX", fixed = TRUE)
   expect_match(
     html,
     'class="enhance-table-file-control builder-file-picker builder-file-picker--content"',
@@ -511,6 +512,29 @@ test_that("table read failures never expose a server-side upload path", {
     "Could not read this table. Check that it is a valid CSV, TSV or TXT file."
   )
   expect_false(grepl(directory, got$error, fixed = TRUE))
+})
+
+test_that("XLSX Extra material imports every non-empty worksheet", {
+  skip_if_not_installed("writexl")
+  path <- withr::local_tempfile(fileext = ".xlsx")
+  writexl::write_xlsx(
+    list(
+      Clinical = data.frame(patient = c("A", "B"), score = c(1, 2)),
+      Empty = data.frame(),
+      Results = data.frame(feature = "CD3D", value = 4.2)
+    ),
+    path
+  )
+
+  got <- builder_read_tables(path, filename = "supplement.xlsx")
+
+  expect_named(got, c("Clinical", "Results"))
+  expect_identical(
+    unname(vapply(got, `[[`, character(1), "name")),
+    c("supplement · Clinical", "supplement · Results")
+  )
+  expect_identical(got$Clinical$table$patient, c("A", "B"))
+  expect_identical(got$Results$table$feature, "CD3D")
 })
 
 test_that("Enhance distinguishes intrinsic absence from dependency blocking", {
