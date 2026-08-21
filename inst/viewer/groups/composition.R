@@ -26,12 +26,16 @@ output[["groups_composition_UI"]] <- renderUI({
 output[["groups_by_other_group_other_group_buttons_UI"]] <- renderUI({
   req(input[["groups_selected_group"]] %in% getGroups())
   tagList(
-    selectInput(
-      "groups_by_other_group_second_group",
-      label = "Group to compare to:",
-      choices = getGroups()[
-        getGroups() %in% input[["groups_selected_group"]] == FALSE
-      ]
+    div(
+      class = "cerebro-compact-select",
+      selectInput(
+        "groups_by_other_group_second_group",
+        label = "Group to compare to:",
+        choices = getGroups()[
+          getGroups() %in% input[["groups_selected_group"]] == FALSE
+        ],
+        width = "100%"
+      )
     ),
     fluidRow(
       column(

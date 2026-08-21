@@ -11,6 +11,7 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
         "Genes" = list_of_genes()
       )),
       multiple = TRUE,
+      width = "100%",
       options = list(
         create = TRUE
       )
@@ -22,7 +23,8 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
       choices = data.table::as.data.table(
         data.frame("Gene sets" = c("-", msigdbr:::msigdbr_genesets$gs_name))
       ),
-      multiple = FALSE
+      multiple = FALSE,
+      width = "100%"
     )
   }
 })

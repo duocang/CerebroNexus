@@ -502,8 +502,8 @@
      grid claim the page width before its JS tracks are measured; otherwise two
      saved lenses inherit that narrow measurement and remain stranded left. */
   display: grid; width: 100%; min-width: 0; box-sizing: border-box;
-  padding: 18px;
-  gap: 14px; justify-content: center; align-content: start;
+  padding: 14px 0 8px;
+  gap: 18px; justify-content: center; align-content: start;
   /* anchors the detail card to the grid's centre (it is absolutely positioned,
      so it stays out of the grid's own layout) */
   position: relative;
@@ -1080,19 +1080,16 @@
 }
 
 /* ---- selection bar ------------------------------------------------------ */
-/* Sits between the params and the panels: a clear gap above (stands off the
-   param boxes) and only a small gap below (hugs the panels it describes).
-   Reveals by collapsing height + margins so the panels slide, not jump. */
+.coordviews-page .cv-status-slot { display: grid; margin: 14px 0 8px; }
+.coordviews-page .cv-status-slot > .cv-workspace-guide,
+.coordviews-page .cv-status-slot > .cv-selbar { grid-area: 1 / 1; margin: 0; }
+/* The status slot keeps the panes still; only its contents fade. */
 .coordviews-page .cv-selbar {
   display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
-  margin: 14px 0 8px;
   background: var(--cv-amber50); border: 1px solid var(--cv-amber200);
   border-radius: 8px; padding: 8px 10px; font-size: 12px;
   color: var(--cv-text2);
-  max-height: 120px; overflow: hidden;
-  transition: max-height .2s ease, opacity .18s ease,
-    margin-top .2s ease, margin-bottom .2s ease,
-    padding-top .2s ease, padding-bottom .2s ease;
+  transition: opacity .18s ease;
 }
 .coordviews-page .cv-sel-kicker {
   color: var(--cv-amber700); font-size: 10.5px; font-weight: 750;
@@ -1105,8 +1102,7 @@
 }
 .coordviews-page .cv-sel-detail { color: var(--cv-text3); white-space: nowrap; }
 .coordviews-page .cv-selbar.cv-collapse {
-  max-height: 0; opacity: 0;
-  margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
+  opacity: 0; visibility: hidden; pointer-events: none;
 }
 
 /* The default workspace state needs an affordance of its own. This compact
@@ -1114,17 +1110,13 @@
    it, rather than stacking another block above the plots. */
 .coordviews-page .cv-workspace-guide {
   display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px;
-  margin: 14px 0 8px; padding: 7px 10px;
+  padding: 7px 10px;
   border: 1px solid var(--cv-border); border-radius: 8px;
   background: var(--cv-surface); color: var(--cv-text2); font-size: 12px;
-  max-height: 90px; overflow: hidden;
-  transition: max-height .2s ease, opacity .18s ease,
-    margin-top .2s ease, margin-bottom .2s ease,
-    padding-top .2s ease, padding-bottom .2s ease;
+  transition: opacity .18s ease;
 }
 .coordviews-page .cv-workspace-guide.cv-collapse {
-  max-height: 0; opacity: 0;
-  margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
+  opacity: 0; visibility: hidden; pointer-events: none;
 }
 .coordviews-page .cv-workspace-kicker {
   display: inline-flex; align-items: center; gap: 5px;

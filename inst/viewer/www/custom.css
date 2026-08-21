@@ -989,6 +989,7 @@ body .selectize-input.focus {
   outline: none;
 }
 body .selectize-input { padding: 7px 12px !important; min-height: 34px; }
+body .shiny-input-container > .selectize-control { width: 100%; }
 /* The dropdown is an overlay: give BOTH the outer panel and its inner content
    a solid white fill and a high z-index, or the options render over a
    see-through panel (page content shows through) and clicks miss. */
@@ -1040,6 +1041,7 @@ body .selectize-control.multi .selectize-input > input::placeholder {
 body .selectize-control.multi .selectize-input > input:only-child {
   min-width: 5.5em !important;
 }
+body .selectize-control.multi .selectize-input > input { min-width: 5.5em !important; }
 body .selectize-control.multi .selectize-dropdown {
   width: max-content !important;
   min-width: 100% !important;
@@ -1047,6 +1049,16 @@ body .selectize-control.multi .selectize-dropdown {
 }
 body .selectize-control.multi .selectize-dropdown .option {
   white-space: nowrap;
+}
+
+/* Reused by grouping-variable and comparison selectors across modules. */
+.cerebro-compact-select { width: min(100%, 42rem); }
+.cerebro-compact-select > h3 { margin: 0 0 8px; text-align: left; }
+.cerebro-compact-select .form-group { margin-bottom: 14px; }
+
+/* Show the short dataset list in full whenever the viewport permits it. */
+#crb_file_selector + .selectize-control .selectize-dropdown-content {
+  max-height: min(420px, calc(100dvh - 240px));
 }
 
 body label, body .control-label {

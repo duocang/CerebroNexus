@@ -120,6 +120,19 @@ test_that("Linked views reflows after its workspace becomes wider", {
   expect_match(js, "resizeObserver.observe(panesHost)", fixed = TRUE)
 })
 
+test_that("Linked views keeps a committed lasso through view-only zooms", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+
+  zoom_body <- function(name) {
+    start <- regexpr(paste0("function ", name, "()"), js, fixed = TRUE)[[1]]
+    expect_gt(start, 0)
+    substr(js, start, start + 500L)
+  }
+  expect_false(grepl("clearLassos", zoom_body("toggleZoom"), fixed = TRUE))
+})
+
 test_that("Linked views chooses its grid from both viewport dimensions", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")

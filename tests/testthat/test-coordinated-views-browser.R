@@ -995,7 +995,7 @@ test_that("a 3-D panel navigates but cannot be selected on", {
   app$wait_for_idle(timeout = 5000)
   expect_false(
     app$get_js(
-      "getComputedStyle(document.getElementById('cv-selbar')).display !== 'none'"
+      "!document.getElementById('cv-selbar').classList.contains('cv-collapse')"
     )
   )
   # the drag was not swallowed either — it turned the cloud
@@ -1021,7 +1021,7 @@ test_that("a 3-D panel navigates but cannot be selected on", {
   # would have passed against a 3-D panel that picked freely.
   expect_false(
     app$get_js(
-      "getComputedStyle(document.getElementById('cv-selbar')).display !== 'none'"
+      "!document.getElementById('cv-selbar').classList.contains('cv-collapse')"
     )
   )
   expect_false(
@@ -1880,7 +1880,11 @@ test_that("a Trekker click opens the inspector without covering linked views", {
     "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));"
   )
   app$wait_for_js(
-    "getComputedStyle(document.getElementById('cv-selbar')).display === 'none'",
+    "document.getElementById('cv-selbar').classList.contains('cv-collapse')",
+    timeout = 5000
+  )
+  app$wait_for_js(
+    "getComputedStyle(document.getElementById('cv-selactions')).display === 'none'",
     timeout = 5000
   )
   expect_equal(
@@ -2325,15 +2329,12 @@ test_that("a panel can become the focus without losing linked context", {
     timeout = 10000
   )
   app$wait_for_js(
-    "getComputedStyle(document.getElementById('cv-workspace-guide')).display === 'none'",
+    "document.getElementById('cv-workspace-guide').classList.contains('cv-collapse')",
     timeout = 10000
   )
-  expect_equal(
-    app$get_js(
-      "getComputedStyle(document.getElementById('cv-workspace-guide')).display"
-    ),
-    "none"
-  )
+  expect_true(app$get_js(
+    "document.getElementById('cv-workspace-guide').classList.contains('cv-collapse')"
+  ))
   before <- app$get_js("document.getElementById('cv-seltext').textContent")
   expect_equal(
     app$get_js("document.getElementById('cv-sel-kicker').textContent"),
@@ -2430,6 +2431,32 @@ test_that("a panel can become the focus without losing linked context", {
     isTRUE(outline_corner$found),
     info = jsonlite::toJSON(outline_corner, auto_unbox = TRUE)
   )
+  ## Zooming the cohort in and back out is a view change, not a new selection:
+  ## its committed outline must still be drawn afterwards. This is the same
+  ## round trip as the top-level "Zoom to selection" action in the UI.
+  app$run_js("document.getElementById('cv-zoom').click();")
+  app$wait_for_js(
+    "document.getElementById('cv-zoom').textContent.indexOf('Zoom back') >= 0",
+    timeout = 10000
+  )
+  app$run_js("document.getElementById('cv-zoom').click();")
+  app$wait_for_js(
+    "document.getElementById('cv-zoom').textContent.indexOf('Zoom to selection') >= 0",
+    timeout = 10000
+  )
+  outline_after_zoom_back <- app$get_js(paste0(
+    "(function () {",
+    " var cv=document.getElementById('cv-cv-a'), sx=cv.width/cv.clientWidth,",
+    " sy=cv.height/cv.clientHeight, x=0.2*cv.width, y=0.2*cv.height,",
+    " r=Math.ceil(7*Math.max(sx,sy)), d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;",
+    " for(var yy=Math.max(0,Math.floor(y)-r);yy<=Math.min(cv.height-1,Math.ceil(y)+r);yy++)",
+    "  for(var xx=Math.max(0,Math.floor(x)-r);xx<=Math.min(cv.width-1,Math.ceil(x)+r);xx++){",
+    "   var i=(yy*cv.width+xx)*4;if(d[i]<80&&d[i+1]>70&&d[i+2]>150)return true;",
+    "  }",
+    " return false;",
+    "})()"
+  ))
+  expect_true(isTRUE(outline_after_zoom_back))
   ## The selection is untouched -- this is magnification, not a reset.
   expect_equal(
     app$get_js("document.getElementById('cv-seltext').textContent"),

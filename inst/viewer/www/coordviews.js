@@ -1537,6 +1537,11 @@ var focusPanel = null;
   // re-add the class to transition out, then set display:none once it settles.
   function revealEl(el, show) {
     if (!el) return;
+    if (el.parentElement && el.parentElement.classList.contains('cv-status-slot')) {
+      el.style.display = '';
+      el.classList.toggle('cv-collapse', !show);
+      return;
+    }
     if (show) {
       if (el._hideT) { clearTimeout(el._hideT); el._hideT = null; }
       el.style.display = '';
@@ -1780,7 +1785,6 @@ var focusPanel = null;
     b.classList.toggle('is-zoomed', zoomed);
   }
   function toggleZoom() {
-    clearLassos();   // reprojecting invalidates the screen-space lasso
     if (zoomed) { resetZoom(); zoomed = false; }
     else { zoomed = zoomToSelection(); }
     updateZoomBtn();
@@ -1877,7 +1881,6 @@ var focusPanel = null;
   // panel centre gives the plain in/out of the toolbar buttons.
   function zoomAt(p, mx, my, factor) {
     if (!p._S) return;
-    clearLassos();
     var v = p.view || { cx: 0.5, cy: 0.5, span: 1 };
     var span = v.span * factor;
     if (span >= 1) {
@@ -4957,13 +4960,13 @@ var focusPanel = null;
           else if (act === 'zin') { zoomStep(pp, 0.8); }
           else if (act === 'zout') { zoomStep(pp, 1.25); }
           else if (act === 'focus') { setFocusPanel(pp.key); }
-          else if (act === 'zsel') { clearLassos(); zoomToSelection(pp); }
+          else if (act === 'zsel') { zoomToSelection(pp); }
           else if (act === 'reset') {
             // rotation is part of "where you are looking" too
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
             if (isProjectionPanel(pp)) { zoomed = false; updateZoomBtn(); }
-            clearLassos(); drawAll();
+            drawAll();
           }
         }
         return;
@@ -5123,7 +5126,6 @@ var focusPanel = null;
       }
     });
     window.addEventListener('resize', function () {
-      clearLassos();   // screen-space lasso no longer matches the reprojected points
       if (D) resizeAll();
       // the grid just changed shape; an open card has to be re-centred on it
       if (cardOpen()) centreCard();
