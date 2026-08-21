@@ -349,7 +349,7 @@ builder_group_catalog_model <- function(model) {
     default %in% included
   focus_valid <- builder_stage_has_text(default %||% "") && default %in% ids
   preview_items <- utils::head(
-    Filter(function(item) isTRUE(item$metadata_retained), items),
+    Filter(function(item) isTRUE(item$included), items),
     6L
   )
   preview_row_count <- min(
@@ -393,7 +393,7 @@ builder_group_catalog_model <- function(model) {
       columns = vapply(preview_items, `[[`, character(1), "label"),
       rows = preview_rows,
       shown_columns = length(preview_items),
-      total_columns = length(items)
+      total_columns = length(included)
     ),
     focus = if (focus_valid) {
       default
@@ -502,12 +502,18 @@ builder_metadata_preview_ui <- function(preview, disclosure_key = NULL) {
   columns <- preview$columns %||% character()
   rows <- preview$rows %||% list()
   if (!length(columns) || !length(rows)) {
-    return(NULL)
+    return(tags$section(
+      class = "viewer-metadata-preview",
+      h4("Preview metadata"),
+      p(
+        class = "viewer-metadata-preview-note",
+        "Select a Group column to preview its metadata."
+      )
+    ))
   }
-  tags$details(
-    class = "viewer-metadata-preview-disclosure",
-    `data-disclosure-key` = disclosure_key,
-    tags$summary("Preview metadata"),
+  tags$section(
+    class = "viewer-metadata-preview",
+    h4("Preview metadata"),
     p(
       class = "viewer-metadata-preview-note",
       paste0(
@@ -646,10 +652,6 @@ builder_group_detail_ui <- function(id, model) {
       ),
       NULL
     ),
-    builder_metadata_preview_ui(
-      model$metadata_preview,
-      paste0("metadata-preview:", item$id)
-    ),
     if (item$eligible && item$included) {
       tags$details(
         class = "viewer-group-colors-disclosure",
@@ -775,6 +777,10 @@ builder_group_catalog_ui <- function(id, catalog) {
         `aria-live` = "polite"
       )
     ),
-    uiOutput(ns("group_detail"))
+    div(
+      class = "viewer-group-side",
+      uiOutput(ns("metadata_preview")),
+      uiOutput(ns("group_detail"))
+    )
   )
 }

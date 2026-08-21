@@ -752,6 +752,15 @@ output[["core-group_detail"]] <- renderUI({
   )
 })
 
+output[["core-metadata_preview"]] <- renderUI({
+  id <- current()
+  req(!is.null(id), identical(input[["core-rendered_for"]], id))
+  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+  req(entry)
+  catalog <- group_catalog_for_entry(entry)
+  builder_metadata_preview_ui(catalog$metadata_preview)
+})
+
 output[["core-group_colors"]] <- renderUI({
   id <- current()
   rendered_for <- input[["core-rendered_for"]]

@@ -436,6 +436,19 @@
   border-radius: var(--r-sm);
   background: var(--c-surface);
 }
+.viewer-group-side {
+  display: grid;
+  min-width: 0;
+  gap: .85rem;
+}
+.viewer-metadata-preview {
+  min-width: 0;
+  padding: .85rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+}
+.viewer-metadata-preview h4 { margin: 0; font-size: 1rem; }
 .viewer-group-tools { padding: .7rem; border-bottom: 1px solid var(--c-border); }
 .viewer-group-search {
   width: 100%;
