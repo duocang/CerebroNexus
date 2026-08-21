@@ -2,6 +2,21 @@
 ## Table or info text when data is missing.
 ##----------------------------------------------------------------------------##
 
+## One source of truth for the selected result. The former nested outputs each
+## fetched the same table independently during first paint.
+marker_genes_results <- reactive({
+  req(
+    input[["marker_genes_selected_method"]],
+    input[["marker_genes_selected_table"]],
+    input[["marker_genes_selected_table"]] %in%
+      getGroupsWithMarkerGenes(input[["marker_genes_selected_method"]])
+  )
+  getMarkerGenes(
+    input[["marker_genes_selected_method"]],
+    input[["marker_genes_selected_table"]]
+  )
+})
+
 ##----------------------------------------------------------------------------##
 ## UI element for output.
 ##----------------------------------------------------------------------------##
@@ -34,12 +49,25 @@ output[["marker_genes_table_or_text_UI"]] <- renderUI({
       getGroupsWithMarkerGenes(input[["marker_genes_selected_method"]])
   )
   ## fetch results
-  results_type <- getMarkerGenes(
-    input[["marker_genes_selected_method"]],
-    input[["marker_genes_selected_table"]]
-  )
+  results_type <- marker_genes_results()
   if (length(results_type) > 0) {
     if (is.data.frame(results_type)) {
+      filter_ui <- NULL
+      if (colnames(results_type)[1] %in% getGroups()) {
+        available_groups <- if (is.factor(results_type[[1]])) {
+          levels(results_type[[1]])
+        } else {
+          unique(as.character(results_type[[1]]))
+        }
+        filter_ui <- conditionalPanel(
+          condition = "!input.marker_genes_table_filter_switch",
+          selectInput(
+            "marker_genes_table_select_group_level",
+            label = "Filter results for subgroup:",
+            choices = available_groups
+          )
+        )
+      }
       fluidRow(
         column(
           12,
@@ -65,7 +93,7 @@ output[["marker_genes_table_or_text_UI"]] <- renderUI({
             inline = TRUE
           )
         ),
-        column(12, uiOutput("marker_genes_filter_subgroups_UI")),
+        column(12, filter_ui),
         column(12, DT::dataTableOutput("marker_genes_table"))
       )
     } else if (
@@ -82,52 +110,6 @@ output[["marker_genes_table_or_text_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 ## UI element for sub-filtering of results if toggled.
 ##----------------------------------------------------------------------------##
-output[["marker_genes_filter_subgroups_UI"]] <- renderUI({
-  req(
-    input[["marker_genes_selected_method"]],
-    input[["marker_genes_selected_table"]],
-    input[["marker_genes_selected_table"]] %in%
-      getGroupsWithMarkerGenes(input[["marker_genes_selected_method"]]),
-    !is.null(input[["marker_genes_table_filter_switch"]])
-  )
-  ## fetch results
-  results_df <- getMarkerGenes(
-    input[["marker_genes_selected_method"]],
-    input[["marker_genes_selected_table"]]
-  )
-  ## don't proceed if input is not a data frame
-  req(is.data.frame(results_df))
-  ## check if pre-filtering is activated and name of first column in table is
-  ## one of the registered groups
-  ## ... it's not
-  if (
-    input[["marker_genes_table_filter_switch"]] == TRUE ||
-      colnames(results_df)[1] %in% getGroups() == FALSE
-  ) {
-    ## return nothing (empty row)
-    fluidRow()
-    ## ... it is
-  } else {
-    ## check for which groups results exist
-    if (is.character(results_df[[1]])) {
-      available_groups <- unique(results_df[[1]])
-    } else if (is.factor(results_df[[1]])) {
-      available_groups <- levels(results_df[[1]])
-    }
-    ## create input selection for available groups
-    fluidRow(
-      column(
-        12,
-        selectInput(
-          "marker_genes_table_select_group_level",
-          label = "Filter results for subgroup:",
-          choices = available_groups
-        )
-      )
-    )
-  }
-})
-
 ##----------------------------------------------------------------------------##
 ## Table with results.
 ##----------------------------------------------------------------------------##
@@ -139,10 +121,7 @@ output[["marker_genes_table"]] <- DT::renderDataTable({
       getGroupsWithMarkerGenes(input[["marker_genes_selected_method"]])
   )
   ## fetch results
-  results_df <- getMarkerGenes(
-    input[["marker_genes_selected_method"]],
-    input[["marker_genes_selected_table"]]
-  )
+  results_df <- marker_genes_results()
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
   ## filter the table for a specific subgroup only if specified by the user

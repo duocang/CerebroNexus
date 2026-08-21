@@ -348,6 +348,13 @@ test_that("{shinytest2} recording: marker_genes", {
   activate_tab(app, "markerGenes")
   app$wait_for_idle(timeout = 10000)
 
+  expect_true(app$get_js(paste0(
+    "(function(){var a=document.getElementById('",
+    "marker_genes_selected_method-label');",
+    "var b=document.getElementById('marker_genes_selected_table-label');",
+    "return !!(a && b);})()"
+  )))
+
   ## select seurat_clusters (only group with actual marker genes)
   app$set_inputs(marker_genes_selected_table = "seurat_clusters", wait_ = FALSE)
   app$wait_for_idle(timeout = 10000)
