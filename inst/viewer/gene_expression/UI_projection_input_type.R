@@ -28,24 +28,12 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
   }
 })
 
-## Keep large gene dictionaries out of the dynamic UI payload. Selectize asks
-## the server for matching options as the user types instead of constructing
-## thousands of browser-side option nodes when the page first opens.
-observeEvent(
-  list_of_genes(),
-  {
-    genes <- list_of_genes()
-    session$onFlushed(
-      function() {
-        updateSelectizeInput(
-          session,
-          "expression_genes_input",
-          choices = genes,
-          server = TRUE
-        )
-      },
-      once = TRUE
-    )
-  },
-  ignoreInit = FALSE
+## Keep the dictionary server-side while handling the asynchronous binding of
+## this renderUI-created selectize. Clicking still opens a browsable list;
+## typing filters it without constructing every option node up front.
+serverSideGeneSelector(
+  session,
+  "expression_genes_input",
+  extra_triggers = function() input[["expression_analysis_mode"]],
+  active = function() identical(input[["sidebar"]], "geneExpression")
 )

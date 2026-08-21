@@ -460,6 +460,14 @@ test_that("{shinytest2} recording: gene_expression", {
   ## tab goes idle. Wait for its element before set_inputs, or the input binding
   ## is "not found" and no gene is ever selected.
   wait_for_input(app, "expression_genes_input")
+  Sys.sleep(1.1)
+  expect_gt(
+    app$get_js(paste0(
+      "Object.keys(document.getElementById('expression_genes_input')",
+      ".selectize.options).length"
+    )),
+    0
+  )
 
   ## select MS4A1 and verify it is found in the data set
   app$set_inputs(expression_genes_input = "MS4A1", wait_ = FALSE)
@@ -475,6 +483,17 @@ test_that("{shinytest2} recording: gene_expression", {
   expect_true(any(expr_levels > 0))
 
   app$stop()
+})
+
+test_that("gene expression uses the race-safe server-side gene selector", {
+  selector_source <- paste(
+    readLines(file.path(
+      inst_dir,
+      "viewer/gene_expression/UI_projection_input_type.R"
+    )),
+    collapse = "\n"
+  )
+  expect_match(selector_source, "serverSideGeneSelector", fixed = TRUE)
 })
 
 test_that("{shinytest2} recording: gene_id_conversion", {
