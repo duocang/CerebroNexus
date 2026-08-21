@@ -989,6 +989,12 @@ body .selectize-input.focus {
   outline: none;
 }
 body .selectize-input { padding: 7px 12px !important; min-height: 34px; }
+/* Keep page-level choice controls readable without letting a long option turn a
+   parameter column into a full-width field. Explicitly wide visual widgets use
+   their own wrappers; ordinary Shiny selects share this cap. */
+body .shiny-input-container:has(select) {
+  width: min(100%, 320px) !important;
+}
 body .shiny-input-container > .selectize-control { width: 100%; }
 /* The dropdown is an overlay: give BOTH the outer panel and its inner content
    a solid white fill and a high z-index, or the options render over a
