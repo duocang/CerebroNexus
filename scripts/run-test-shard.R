@@ -9,7 +9,10 @@ ci_browser_test_files <- function() {
     "test-app-new-modules.R",
     "test-app-trajectory.R",
     "test-app-viewport-layout.R",
-    "test-smoke-production.R"
+    "test-configured-colors.R",
+    "test-coordinated-views-browser.R",
+    "test-smoke-production.R",
+    "test-viewer-shell-browser.R"
   )
 }
 
