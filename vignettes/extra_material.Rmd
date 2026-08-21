@@ -28,9 +28,9 @@ bundled alongside your single-cell data. Common use cases include:
 - Publication-ready figures
 - Any additional analysis you want to share with collaborators
 
-The tab appears _conditionally_ — only when the `.crb` file contains extra
-material. You control what appears, so the interface stays clean when no
-extra content is needed.
+The tab appears _conditionally_ when the `.crb` file contains extra material
+or when an app is built with external tables. You control what appears, so the
+interface stays clean when no extra content is needed.
 
 # Quick start
 
@@ -39,10 +39,12 @@ library(CerebroNexus)
 launchCerebro()
 ```
 
-1. Launch CerebroNexus and load a `.crb` file with extra material
+1. Launch CerebroNexus and load a `.crb` file with extra material, or open a
+   generated app with external tables
 2. If extra material is present, **Extra material** appears in the sidebar
 3. Select a category (`tables` or `plots`)
-4. Choose a specific table or plot to view
+4. For tables, choose a File and then a Sheet when more than one is available
+5. Choose a specific plot to view
 
 # Content categories
 
@@ -65,6 +67,56 @@ exportFromSeurat(seurat_object,
   )
 )
 ```
+
+# Add external table files when building an app
+
+`createShinyApp()` can freeze CSV, TSV, TXT, XLS, XLSX, and XLSM files into a
+generated app. The app reads the files during the build, so deployed Viewers
+do not need access to the original paths. The names in `extra_tables` become
+the **File** choices in the Viewer.
+
+A delimited file contributes one table. An Excel workbook contributes every
+non-empty sheet. Use `extra_tables_sheets` only to rename Excel sheets; it
+never filters sheets out. If a workbook has one file or a file has one sheet,
+the corresponding selector is hidden.
+
+## A CSV table
+
+```{r, eval = FALSE}
+createShinyApp(
+  cerebro_data = c("Study" = "study.crb"),
+  extra_tables = c("QC summary" = "supplements/qc.csv"),
+  result_dir = "my-app"
+)
+```
+
+This displays `QC summary` as one File containing one table. No
+`extra_tables_sheets` entry is needed (or allowed) for a CSV file.
+
+## Two Excel workbooks, with one sheet renamed
+
+```{r, eval = FALSE}
+createShinyApp(
+  cerebro_data = c("Study" = "study.crb"),
+  extra_tables = list(
+    "Clinical workbook" = "supplements/clinical.xlsx",
+    "Marker workbook" = "supplements/markers.xlsx",
+    "QC summary" = "supplements/qc.csv"
+  ),
+  extra_tables_sheets = list(
+    "Clinical workbook" = list(
+      "Patient characteristics" = "Patients"
+    )
+  ),
+  result_dir = "my-app"
+)
+```
+
+For example, if `clinical.xlsx` contains `Patients`, `Visits`, and `Samples`,
+the Viewer shows the File `Clinical workbook` and the Sheets `Patient
+characteristics`, `Visits`, and `Samples`. Only `Patients` was renamed; the
+other non-empty sheets remain available. The original file paths are not
+stored in the generated app configuration.
 
 # See also
 

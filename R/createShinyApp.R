@@ -1481,11 +1481,17 @@ dedent <- function(string) {
 #'   created by \code{shinymanager::create_db()}, and \code{passphrase_env},
 #'   the name of the environment variable containing its passphrase. Optional
 #'   \code{timeout_minutes} defaults to 15.
-#' @param extra_tables Optional named collection of CSV, TSV, TXT, or Excel
-#'   file paths to freeze into the generated app as extra material tables.
+#' @param extra_tables Optional named collection of CSV, TSV, TXT, XLS, XLSX,
+#'   or XLSM file paths to freeze into the generated app as extra material
+#'   tables. The names are the user-facing File choices. Delimited files have
+#'   one table; every non-empty Excel sheet is included. Files must be regular
+#'   files with unique, non-empty names and supported extensions.
 #' @param extra_tables_sheets Optional named list of Excel sheet label mappings,
-#'   keyed by \code{extra_tables} labels. Mappings rename sheets only; every
-#'   non-empty sheet is included.
+#'   keyed by \code{extra_tables} labels. Each inner mapping is
+#'   \code{list("Displayed sheet name" = "Workbook sheet name")}. It only
+#'   renames matching sheets: every non-empty sheet not named in a mapping is
+#'   still included. Mappings may target only declared Excel files and must
+#'   refer to existing, distinct source sheets with unique final labels.
 #' @param ... Currently unused; reserved for future arguments.
 #'
 #' @return Invisibly returns \code{result_dir}. If that path changes resolution
