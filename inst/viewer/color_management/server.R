@@ -8,43 +8,62 @@
 ##----------------------------------------------------------------------------##
 
 output[["color_assignments_UI"]] <- renderUI({
+  color_card <- function(group_name, levels, info_id) {
+    color_inputs <- lapply(levels, function(level) {
+      shiny::tagAppendAttributes(
+        colourpicker::colourInput(
+          inputId = paste0(
+            "color_",
+            group_name,
+            "_",
+            gsub(level, pattern = "[^[:alnum:]]", replacement = "_")
+          ),
+          label = level,
+          value = reactive_colors()[[group_name]][level],
+          showColour = "both",
+          closeOnClick = TRUE,
+          width = "100%"
+        ),
+        class = "cerebro-color-row"
+      )
+    })
+
+    shiny::tagAppendAttributes(
+      box(
+        title = tagList(
+          boxTitle(group_name),
+          tags$span(
+            class = "cerebro-color-count",
+            paste(length(levels), "colours")
+          ),
+          cerebroInfoButton(
+            info_id,
+            onclick = paste0(
+              "Shiny.setInputValue('color_assignments_info', this.id, ",
+              "{priority: 'event'});"
+            )
+          )
+        ),
+        status = "primary",
+        solidHeader = TRUE,
+        width = 4,
+        collapsible = TRUE,
+        tags$div(class = "cerebro-color-list", color_inputs)
+      ),
+      class = "cerebro-color-card"
+    )
+  }
+
   fluidRow(
     tagList({
       group_list <- list()
       groups <- getGroups()
       for (group_index in seq_along(groups)) {
         group_name <- groups[[group_index]]
-        group_list[[group_name]] <- box(
-          title = tagList(
-            boxTitle(group_name),
-            cerebroInfoButton(
-              paste0("color_assignments_info_group_", group_index),
-              onclick = paste0(
-                "Shiny.setInputValue('color_assignments_info', this.id, ",
-                "{priority: 'event'});"
-              )
-            )
-          ),
-          status = "primary",
-          solidHeader = TRUE,
-          width = 4,
-          collapsible = TRUE,
-          tagList({
-            color_list <- list()
-            for (group_level in getGroupLevels(group_name)) {
-              color_list[[group_level]] <- colourpicker::colourInput(
-                inputId = paste0(
-                  'color_',
-                  group_name,
-                  '_',
-                  gsub(group_level, pattern = '[^[:alnum:]]', replacement = '_')
-                ),
-                label = group_level,
-                value = reactive_colors()[[group_name]][group_level]
-              )
-            }
-            color_list
-          })
+        group_list[[group_name]] <- color_card(
+          group_name,
+          getGroupLevels(group_name),
+          paste0("color_assignments_info_group_", group_index)
         )
       }
 
@@ -54,37 +73,10 @@ output[["color_assignments_UI"]] <- renderUI({
         cell_cycle_columns <- getCellCycle()
         for (column_index in seq_along(cell_cycle_columns)) {
           column <- cell_cycle_columns[[column_index]]
-          group_list[[column]] <- box(
-            title = tagList(
-              boxTitle(column),
-              cerebroInfoButton(
-                paste0("color_assignments_info_cycle_", column_index),
-                onclick = paste0(
-                  "Shiny.setInputValue('color_assignments_info', this.id, ",
-                  "{priority: 'event'});"
-                )
-              )
-            ),
-            status = "primary",
-            solidHeader = TRUE,
-            width = 4,
-            collapsible = TRUE,
-            tagList({
-              color_list <- list()
-              for (state in unique(as.character(getMetaData()[[column]]))) {
-                color_list[[state]] <- colourpicker::colourInput(
-                  inputId = paste0(
-                    'color_',
-                    column,
-                    '_',
-                    gsub(state, pattern = '[^[:alnum:]]', replacement = '_')
-                  ),
-                  label = state,
-                  value = reactive_colors()[[column]][state]
-                )
-              }
-              color_list
-            })
+          group_list[[column]] <- color_card(
+            column,
+            unique(as.character(getMetaData()[[column]])),
+            paste0("color_assignments_info_cycle_", column_index)
           )
         }
       }

@@ -996,6 +996,63 @@ body .form-control.shiny-colour-input {
   box-shadow: none !important;
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
+
+/* Color management: a colour is content, not decoration. Keep the swatch and
+   its exact value visible together in a compact, scannable list. */
+.cerebro-color-card .box-title {
+  max-width: calc(100% - 150px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cerebro-color-count {
+  float: right;
+  margin: 2px 34px 0 10px;
+  color: var(--c-text-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.cerebro-color-list {
+  display: grid;
+  gap: 4px;
+}
+.cerebro-color-row.shiny-input-container {
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  grid-template-rows: 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  transition: background-color var(--dur) var(--ease);
+}
+.cerebro-color-row.shiny-input-container:hover {
+  background: var(--c-surface-2);
+}
+.cerebro-color-row > label.control-label {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cerebro-color-row > input.shiny-colour-input {
+  grid-column: 1;
+  grid-row: 1;
+  width: 94px !important;
+  height: 34px !important;
+  padding: 6px 7px;
+  cursor: pointer;
+}
 body .form-control:hover,
 body .selectize-input:hover,
 body .bootstrap-select > .dropdown-toggle:hover {

@@ -545,6 +545,20 @@ test_that("{shinytest2} recording: color_management", {
   info_ids <- as.character(unlist(info_ids, use.names = FALSE))
   expect_gt(length(info_ids), 0L)
   expect_identical(length(unique(info_ids)), length(info_ids))
+  expect_gt(
+    app$get_js(paste0(
+      "document.querySelectorAll('",
+      ".cerebro-color-card .shiny-input-container[data-shiny-input-type=colour]",
+      "').length"
+    )),
+    0L
+  )
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('",
+    ".cerebro-color-card input.shiny-colour-input",
+    "')).every(function(input){return input.dataset.showColour==='both' && ",
+    "/^#[0-9A-F]{6}$/i.test(input.value);})"
+  )))
   app$run_js(
     "document.querySelector('[id^=\"color_assignments_info_group_\"]').click()"
   )
