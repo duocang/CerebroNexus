@@ -1,3 +1,15 @@
+# CerebroNexus 4.5.0
+
+## Linked views
+
+- Added the coordinated cross-modal workspace. Expression, spatial/Trekker, and
+  immune-repertoire panels share one cell-level selection, with live cohort and
+  clonotype summaries; 3-D views remain navigation-only so selections stay
+  reproducible.
+- Improved continuous colour rendering, per-panel zoom and full-panel focus,
+  spatial-image alignment, clone-definition consistency, lazy workspace
+  construction, and escaping of dataset-supplied labels.
+
 # CerebroNexus 4.4.0
 
 ## Internal
@@ -56,90 +68,6 @@
 - `launchCerebro()` is now the single application launcher. The obsolete
   version selector and deprecated version-specific launch exports were removed
   because CerebroNexus ships one Viewer implementation.
-
-## Linked views
-
-- **A new coordinated cross-modal workspace.** Every modality a data set carries
-  -- the expression embedding, the physical map (Spatial or Trekker), and the
-  immune repertoire's clonal axis -- is drawn as its own panel of the *same*
-  cells. A lasso in any 2-D panel highlights those cells in every other panel,
-  because the selection is keyed on the cell rather than on a panel's
-  coordinates: select a cluster to see where it sits in tissue and which
-  clonotypes it carries, or select an expanded clone to see where its cells fall
-  in the embedding. The selection's cell-type composition and its top clonotypes
-  are computed live, and clicking a clonotype selects all of its cells.
-- **3-D embeddings are rotated rather than flattened.** A reduction with three or
-  more components is marked as such in the projection picker and gains a rotate
-  tool; nearer cells are drawn larger so the depth reads. Those panels navigate
-  but do not select -- with depth on screen, what a lasso encloses depends on the
-  viewing angle, so a selection made there could not be verified.
-- **Colouring covers the whole meta data.** Every grouping variable, every other
-  categorical column and every numeric one (transcript counts, percent
-  mitochondrial, scores) is offered, plus single-gene and three-gene
-  co-expression. A column with as many levels as cells is listed greyed out
-  rather than silently dropped.
-
-## Reading a continuous value
-
-- **High values are painted last.** A gene or numeric colouring was drawn in
-  index order, which is arbitrary with respect to the value, so wherever cells
-  overlap a high-expressing one could be covered by whichever low-expressing
-  neighbours came after it in the array -- and a real focus of expression read
-  as absent.
-- **The colour scale no longer belongs to its outlier.** The full min-max was
-  mapped onto viridis, so one extreme cell owned the top of the scale and
-  pressed every other one into the bottom few percent of the colour map. The
-  tails are trimmed by default (1% each side, adjustable in "More"); trimmed
-  cells saturate rather than disappear, and the colourbar reports the range the
-  colours actually span.
-
-## Working in the panels
-
-- **Any panel can take the whole grid, and hand it back.** With three or four
-  panels each square is small enough that detail is guesswork. The folded panels
-  keep their space and their view, and the selection is untouched, so this is a
-  change of magnification rather than of state. Offered from three panels up,
-  where the grid takes a second row and there is height to reclaim.
-- **"Zoom to selection" is offered per panel**, not only for the expression one.
-- **Clicking a cell no longer throws a card over the workspace.** It picks --
-  which on a Trekker data set is how a nucleus's niche is read -- and pins the
-  hover tooltip, which then carries Details and Close. Hovering marks the same
-  cell in every panel that has a position for it.
-- **The Moran's I table links to the map.** Each row in the Trekker detail modal
-  colours every panel by that gene.
-- **Positioning is on the single-cell card**: per-cell confidence, whether
-  positioning evidence was recorded, and Trekker's own physical fields.
-- **Zooming is a toolbar action.** Wheel-zoom made the panels hostile to scroll
-  past, and on a trackpad the scroll and the zoom are one gesture.
-
-## Fixes
-
-- **A clone means the same thing on every page.** The Clonal UMAP and Linked
-  views each decided for themselves which `CT*` column names a clone, which
-  receptor's chains count, and where the expansion bins fall -- and disagreed on
-  two of the three. The same cell could belong to a different clone on each page,
-  and a clone of several hundred cells read "Hyperexpanded" on one and "Large"
-  on the other. Both now read one definition, and Linked views no longer ranks
-  TCR and BCR clonotypes together.
-- **Reductions with more than three dimensions plot.** The projection plots
-  dispatch on 2-D versus 3-D, so a wider reduction -- what `RunPCA()` produces by
-  default, and what `addProjection()` accepts -- matched neither branch and left
-  the previous plot on screen. Its first three components are now drawn. The
-  selected-cell table no longer carries the remaining components as data.
-- **A non-uniform histology calibration survives.** An alignment preset can
-  carry different X and Y scales; one Scale slider had to collapse them, and
-  every control in the bar rewrote the pair from it, so a nudge to the opacity
-  squared the image up. Two sliders now, with an aspect lock and a way back to
-  the preset.
-- **The workspace is built only when it is opened.** Its bundle walks every cell
-  of the loaded object and was previously assembled on connect for every session,
-  then rebuilt whenever a group colour changed -- for a tab most sessions never
-  open.
-- **Values from the data set cannot inject markup.** Space labels, gene names,
-  grouping column names and clonotype labels are escaped wherever they are
-  rendered, and group colours are validated against the browser's own colour
-  parser instead: a colour lands in a `style` attribute, where escaping does not
-  prevent a value from appending declarations of its own.
 
 ## Internal
 
