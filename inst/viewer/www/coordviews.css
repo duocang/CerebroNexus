@@ -48,7 +48,7 @@
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 16px;
-  padding: 12px 14px;
+  padding: 8px 14px 12px;
   background: var(--cv-surface);
   border: 1px solid var(--cv-border);
   border-radius: 10px;
@@ -231,12 +231,13 @@
 }
 /* ---- segmented toggle (clonal-panel layout) ----------------------------- */
 .coordviews-page .cv-seg {
+  height: 42px; box-sizing: border-box;
   display: inline-flex; border: 1px solid var(--c-border-2, #e0e0e0);
-  border-radius: 6px; overflow: hidden; background: var(--cv-surface);
+  border-radius: var(--r-sm, 8px); overflow: hidden; background: var(--cv-surface);
 }
 .coordviews-page .cv-seg-btn {
   border: 0; background: transparent; color: var(--cv-text2);
-  padding: 6px 11px; font-size: 12px; font-family: inherit; cursor: pointer;
+  padding: 0 14px; font-size: 14px; font-family: inherit; cursor: pointer;
   border-left: 1px solid var(--c-border-2, #e0e0e0);
 }
 .coordviews-page .cv-seg-btn:first-child { border-left: 0; }
@@ -310,9 +311,9 @@
 /* ---- "More" toggle + responsive settings drawer ------------------------- */
 .coordviews-page .cv-morebtn {
   align-self: flex-end; display: inline-flex; align-items: center; gap: 7px;
-  padding: 6px 13px; font-size: 12px; font-weight: 700;
+  padding: 0 14px; font-size: 14px; font-weight: 700;
   border: 1px solid var(--cv-amber200); background: var(--cv-amber50);
-  color: var(--cv-amber700); border-radius: 6px; cursor: pointer; height: 32px;
+  color: var(--cv-amber700); border-radius: var(--r-sm, 8px); cursor: pointer; height: 42px;
   transition: background .18s ease, border-color .18s ease, color .18s ease,
     transform .12s cubic-bezier(.34, 1.4, .64, 1);
 }
@@ -957,14 +958,12 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.4 6.3 11.5 13 4.7' fill='none' stroke='%23ff7013' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-size: 14px 14px; background-position: center; background-repeat: no-repeat;
 }
-/* A checkbox sitting in the top bar as a control in its own right: boxed like
-   the selects and sliders beside it, and the same 30px tall so the row's
-   baseline stays even. */
+/* A checkbox sitting in the top bar as a control in its own right. */
 .coordviews-page .cv-chk-ctl {
-  height: 30px; box-sizing: border-box; padding: 0 11px; gap: 7px;
-  border: 1px solid var(--cv-border); border-radius: 6px;
+  height: 42px; box-sizing: border-box; padding: 0 12px; gap: 7px;
+  border: 1px solid var(--cv-border); border-radius: var(--r-sm, 8px);
   background: var(--cv-surface); color: var(--cv-text);
-  font-size: 12px; white-space: nowrap;
+  font-size: 14px; white-space: nowrap;
   transition: background .15s ease, border-color .15s ease;
 }
 .coordviews-page .cv-chk-ctl:hover { background: var(--cv-surface2); }
