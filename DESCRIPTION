@@ -80,6 +80,7 @@ Suggests:
   monocle,
   openssl,
   png,
+  readxl,
   reshape2,
   rhdf5,
   rmarkdown,
@@ -90,7 +91,8 @@ Suggests:
   SummarizedExperiment,
   testthat (>= 3.0.0),
   shinytest2 (>= 0.2.0),
-  withr
+  withr,
+  writexl
 Remotes:
   bnprks/BPCells/r
 VignetteBuilder: knitr
