@@ -456,15 +456,28 @@ test_that("CI workflows use the shared plan without repeating package tests", {
   )
 })
 
-test_that("the base CI workflow skips an empty process-sensitive group", {
+test_that("the CI workflow matches the process-sensitive test plan", {
+  plan <- test_plan_api$ci_test_plan(test_path())
   workflow <- readLines(
     test_path("..", "..", ".github", "workflows", "R-tests.yaml"),
     warn = FALSE
   )
   text <- paste(workflow, collapse = "\n")
 
-  expect_false(any(grepl("^  process_sensitive:$", workflow)))
-  expect_match(text, "needs: [logic, browser]", fixed = TRUE)
+  has_process_sensitive_tests <- length(plan$process_sensitive) > 0L
+  expect_identical(
+    any(grepl("^  process_sensitive:$", workflow)),
+    has_process_sensitive_tests
+  )
+  expect_match(
+    text,
+    if (has_process_sensitive_tests) {
+      "needs: [logic, process_sensitive, browser]"
+    } else {
+      "needs: [logic, browser]"
+    },
+    fixed = TRUE
+  )
 })
 
 test_that("manual pkgdown validation never deploys the site", {
