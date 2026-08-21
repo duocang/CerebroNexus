@@ -513,6 +513,29 @@ test_that("table read failures never expose a server-side upload path", {
   expect_false(grepl(directory, got$error, fixed = TRUE))
 })
 
+test_that("XLSX Extra material imports every non-empty worksheet", {
+  skip_if_not_installed("writexl")
+  path <- withr::local_tempfile(fileext = ".xlsx")
+  writexl::write_xlsx(
+    list(
+      Clinical = data.frame(patient = c("A", "B"), score = c(1, 2)),
+      Empty = data.frame(),
+      Results = data.frame(feature = "CD3D", value = 4.2)
+    ),
+    path
+  )
+
+  got <- builder_read_tables(path, filename = "supplement.xlsx")
+
+  expect_named(got, c("Clinical", "Results"))
+  expect_identical(
+    unname(vapply(got, `[[`, character(1), "name")),
+    c("supplement · Clinical", "supplement · Results")
+  )
+  expect_identical(got$Clinical$table$patient, c("A", "B"))
+  expect_identical(got$Results$table$feature, "CD3D")
+})
+
 test_that("Enhance distinguishes intrinsic absence from dependency blocking", {
   percent <- list(id = "percent_mt_ribo")
   enrichr <- list(id = "enriched_pathways")

@@ -86,6 +86,59 @@ builder_read_table <- function(path, name = NULL, filename = path) {
   )
 }
 
+#' Read one delimited table or every non-empty worksheet in an XLSX workbook.
+#'
+#' @return A named list of table records. Worksheet records carry `sheet`; an
+#'   unreadable worksheet carries `error` so the upload handler can report it
+#'   without discarding other worksheets.
+builder_read_tables <- function(path, filename = path) {
+  extension <- tolower(tools::file_ext(filename))
+  if (!identical(extension, "xlsx")) {
+    table <- builder_read_table(path, filename = filename)
+    return(stats::setNames(list(table), table$name %||% basename(filename)))
+  }
+  if (!file.exists(path)) {
+    return(list(list(error = "File not found.")))
+  }
+  sheets <- suppressWarnings(try(readxl::excel_sheets(path), silent = TRUE))
+  if (inherits(sheets, "try-error") || !length(sheets)) {
+    return(list(list(error = "Could not read this XLSX workbook.")))
+  }
+  workbook <- builder_table_default_name(filename)
+  records <- lapply(sheets, function(sheet) {
+    table <- suppressWarnings(try(
+      as.data.frame(
+        readxl::read_excel(path, sheet = sheet),
+        stringsAsFactors = FALSE
+      ),
+      silent = TRUE
+    ))
+    if (inherits(table, "try-error")) {
+      return(list(
+        sheet = sheet,
+        error = paste0("Could not read worksheet ", sheet, ".")
+      ))
+    }
+    if (!nrow(table) || !ncol(table)) {
+      return(NULL)
+    }
+    list(
+      name = paste(workbook, sheet, sep = " · "),
+      sheet = sheet,
+      table = table
+    )
+  })
+  records <- Filter(Negate(is.null), records)
+  names(records) <- vapply(
+    records,
+    function(record) {
+      record$sheet %||% record$name %||% "Table"
+    },
+    character(1)
+  )
+  records
+}
+
 #' Safe client-side file metadata for compact Builder file lists.
 builder_safe_file_name <- function(name, fallback = "File") {
   name <- as.character(name %||% character())
