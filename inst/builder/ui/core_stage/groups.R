@@ -315,7 +315,6 @@ builder_group_catalog_model <- function(model) {
       search = tolower(paste(id, classification, reason))
     )
   })
-  items <- Filter(function(item) isTRUE(item$eligible), items)
   included <- vapply(
     Filter(function(item) isTRUE(item$included), items),
     `[[`,
@@ -739,7 +738,8 @@ builder_group_catalog_ui <- function(id, catalog) {
                   type = "checkbox",
                   class = "viewer-group-include",
                   `data-group` = item$id,
-                  checked = if (item$included) "checked" else NULL
+                  checked = if (item$included) "checked" else NULL,
+                  disabled = if (!item$eligible) "disabled" else NULL
                 ),
                 span("Group")
               ),
@@ -754,7 +754,11 @@ builder_group_catalog_ui <- function(id, catalog) {
                   value = item$id,
                   `data-group` = item$id,
                   checked = if (item$default) "checked" else NULL,
-                  disabled = if (!item$included) "disabled" else NULL
+                  disabled = if (!item$eligible || !item$included) {
+                    "disabled"
+                  } else {
+                    NULL
+                  }
                 ),
                 span(
                   class = "viewer-default-copy",
