@@ -812,19 +812,41 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/immune_repertoire/server.R"
-    ),
-    local = TRUE
+
+  ## Plotly output registration itself is expensive. Keep optional analysis
+  ## modules out of the first flush and source each one into this session only
+  ## when its page is opened for the first time.
+  ir_data_build_log <- new.env(parent = emptyenv())
+  ir_data_build_log$n <- 0L
+  ir_module_state <- new.env(parent = emptyenv())
+  ir_module_state$loaded <- FALSE
+  trajectory_module_state <- new.env(parent = emptyenv())
+  trajectory_module_state$loaded <- FALSE
+  source_tab_on_first_open <- function(tab_name, relative_path, state) {
+    target <- parent.frame()
+    observeEvent(
+      input[["sidebar"]],
+      {
+        if (isTRUE(state$loaded) || !identical(input[["sidebar"]], tab_name)) {
+          return()
+        }
+        source(
+          paste0(Cerebro.options[["cerebro_root"]], relative_path),
+          local = target
+        )
+        state$loaded <- TRUE
+      }
+    )
+  }
+  source_tab_on_first_open(
+    "immune_repertoire",
+    "/viewer/immune_repertoire/server.R",
+    ir_module_state
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/trajectory/server.R"
-    ),
-    local = TRUE
+  source_tab_on_first_open(
+    "trajectory",
+    "/viewer/trajectory/server.R",
+    trajectory_module_state
   )
   source(
     paste0(
@@ -876,6 +898,11 @@ server <- function(input, output, session) {
     ir_heavy_deps_loaded = any(
       c("scRepertoire", "immApex", "iNEXT") %in% loadedNamespaces()
     ),
+    ## Preparing the repertoire fans out into every IR plot. It must stay at 0
+    ## until the user actually opens that page.
+    ir_data_builds = ir_data_build_log$n,
+    ir_server_loaded = ir_module_state$loaded,
+    trajectory_server_loaded = trajectory_module_state$loaded,
     ## Linked views walks every cell of the object, so its full bundle must stay
     ## at 0 until the tab is opened.
     coordviews_bundles_built = coordviews_build_log$n

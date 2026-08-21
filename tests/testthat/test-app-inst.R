@@ -423,6 +423,9 @@ test_that("app startup does not eagerly load scRepertoire", {
   ## must FAIL, not silently pass as though it were FALSE.
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_data_builds"), 0L)
+  expect_identical(app$get_value(export = "ir_server_loaded"), FALSE)
+  expect_identical(app$get_value(export = "trajectory_server_loaded"), FALSE)
 
   ## Delayed re-check: wait past the former one-second background-prewarm timer,
   ## so any deferred/prewarm-style loader would have fired by now. Still unloaded
@@ -431,6 +434,9 @@ test_that("app startup does not eagerly load scRepertoire", {
   app$wait_for_idle(timeout = 10000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_data_builds"), 0L)
+  expect_identical(app$get_value(export = "ir_server_loaded"), FALSE)
+  expect_identical(app$get_value(export = "trajectory_server_loaded"), FALSE)
 })
 
 test_that("{shinytest2} recording: gene_expression", {

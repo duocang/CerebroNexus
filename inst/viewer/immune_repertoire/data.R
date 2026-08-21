@@ -1,6 +1,8 @@
 ## ---- Reactive: raw repertoire data (as stored in crb) ------------------ ##
 ir_data_raw <- reactive({
+  req(identical(input[["sidebar"]], "immune_repertoire"))
   req(!is.null(data_set()))
+  ir_data_build_log$n <- ir_data_build_log$n + 1L
   data <- getImmuneRepertoire()
   if (is.null(data) || !is.list(data) || length(data) == 0) {
     return(NULL)
