@@ -97,6 +97,15 @@ test_that("Linked views treats projections as a multi-panel selection", {
   expect_match(js, "plugins: ['remove_button']", fixed = TRUE)
 })
 
+test_that("Linked views gives Colour by the shared Selectize control", {
+  js_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  expect_match(js, "function fillColorPicker()", fixed = TRUE)
+  expect_match(js, "window.jQuery(sel).selectize", fixed = TRUE)
+  expect_match(js, "sel.selectize.setValue(colorBy, true)", fixed = TRUE)
+})
+
 test_that("Linked views places the shared legend above the panel grid", {
   ui_file <- file.path(dirname(bundle_file), "UI.R")
   skip_if_not(file.exists(ui_file))

@@ -3279,7 +3279,10 @@ var focusPanel = null;
   function colourByGene(gene) {
     if (!gene) return;
     var sel = $('cv-pick-color');
-    if (sel) { sel.value = GENE_MODE; }
+    if (sel) {
+      if (sel.selectize) sel.selectize.setValue(GENE_MODE, true);
+      else sel.value = GENE_MODE;
+    }
     // Drop the previous gene BEFORE switching: the picker is about to say
     // `gene`, and until the reply arrives the old vector would be drawn under
     // that name. Cells fall back to the neutral "no gene" colour meanwhile.
@@ -3542,9 +3545,18 @@ var focusPanel = null;
     html += grp('Expression',
       '<option value="' + GENE_MODE + '">Gene expression</option>' +
       '<option value="' + RGB_MODE + '">Co-expression (RGB)</option>');
+    if (sel.selectize) sel.selectize.destroy();
     sel.innerHTML = html;
-    if (colorBy) sel.value = colorBy;
-    sel.onchange = function () { setColorBy(sel.value); };
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
+      window.jQuery(sel).selectize({
+        persist: false,
+        onChange: function (value) { setColorBy(value); }
+      });
+      sel.selectize.setValue(colorBy, true);
+    } else {
+      if (colorBy) sel.value = colorBy;
+      sel.onchange = function () { setColorBy(sel.value); };
+    }
   }
   // The colour-range control belongs to a continuous colouring and nothing else:
   // a categorical one has no range to trim, and RGB blends three of them.

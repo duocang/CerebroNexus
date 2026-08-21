@@ -70,6 +70,7 @@
   outline: 2px solid var(--cv-blue100); border-color: var(--cv-blue);
 }
 .coordviews-page .cv-spatial-ctl .selectize-input { max-width: 310px; }
+.coordviews-page #cv-pick-color + .selectize-control { min-width: 168px; }
 .coordviews-page #cv-proj-ctl .selectize-input { max-width: 310px; }
 
 /* Background image choices are scoped to the selected spatial data.  The
