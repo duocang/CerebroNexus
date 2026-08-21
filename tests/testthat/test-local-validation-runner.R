@@ -96,6 +96,33 @@ test_that("test schedule preserves isolation and bounded parallelism", {
   expect_true(all(startsWith(browser_artifacts, output_dir)))
 })
 
+test_that("test schedule omits the process phase when there are no worker tests", {
+  schedule <- local_validation_api$local_validation_schedule(
+    logic_workers = 3L,
+    browser_workers = 2L,
+    mode = "tests",
+    output_dir = withr::local_tempdir(),
+    has_process_sensitive_tests = FALSE
+  )
+
+  expect_identical(unique(schedule$phase), c("logic", "browser"))
+  expect_false(any(schedule$phase == "process-sensitive"))
+})
+
+test_that("precheck delegates test execution to the matrix runner", {
+  precheck <- paste(
+    readLines(test_path("..", "..", "scripts", "precheck.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    precheck,
+    "Rscript scripts/run-local-validation.R --mode \"$VALIDATION_MODE\"",
+    fixed = TRUE
+  )
+  expect_false(grepl("testthat::test_dir", precheck, fixed = TRUE))
+})
+
 test_that("full schedule appends check and pkgdown serially", {
   schedule <- local_validation_api$local_validation_schedule(
     logic_workers = 2L,

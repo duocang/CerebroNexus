@@ -61,3 +61,19 @@ test_that("the base CI workflow skips an empty process-sensitive group", {
   expect_false(any(grepl("^  process_sensitive:$", workflow)))
   expect_match(text, "needs: [logic, browser]", fixed = TRUE)
 })
+
+test_that("manual pkgdown validation never deploys the site", {
+  workflow <- paste(
+    readLines(
+      test_path("..", "..", ".github", "workflows", "pkgdown.yaml"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    workflow,
+    "if: github.event_name == 'push' && github.ref == 'refs/heads/master'",
+    fixed = TRUE
+  )
+})

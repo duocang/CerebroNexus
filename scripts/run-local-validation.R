@@ -104,7 +104,8 @@ local_validation_schedule <- function(
   logic_workers = 3L,
   browser_workers = 2L,
   mode = "full",
-  output_dir = tempfile("cerebro-local-validation-")
+  output_dir = tempfile("cerebro-local-validation-"),
+  has_process_sensitive_tests = TRUE
 ) {
   logic_workers <- local_validation_integer(
     logic_workers,
@@ -120,6 +121,13 @@ local_validation_schedule <- function(
   )
   if (length(mode) != 1L || is.na(mode) || !mode %in% c("tests", "full")) {
     stop("mode must be tests or full", call. = FALSE)
+  }
+  if (
+    !is.logical(has_process_sensitive_tests) ||
+      length(has_process_sensitive_tests) != 1L ||
+      is.na(has_process_sensitive_tests)
+  ) {
+    stop("has_process_sensitive_tests must be one logical value", call. = FALSE)
   }
 
   logic <- do.call(
@@ -137,15 +145,17 @@ local_validation_schedule <- function(
       )
     })
   )
-  process_sensitive <- local_validation_job(
-    "process-sensitive",
-    "process-sensitive",
-    1L,
-    paste(
-      "Rscript scripts/run-test-shard.R",
-      "--group process-sensitive"
+  process_sensitive <- if (has_process_sensitive_tests) {
+    local_validation_job(
+      "process-sensitive",
+      "process-sensitive",
+      1L,
+      paste(
+        "Rscript scripts/run-test-shard.R",
+        "--group process-sensitive"
+      )
     )
-  )
+  }
   browser <- do.call(
     rbind,
     lapply(seq_len(6L), function(shard) {
@@ -167,7 +177,13 @@ local_validation_schedule <- function(
       )
     })
   )
-  schedule <- rbind(logic, process_sensitive, browser)
+  schedule <- do.call(
+    rbind,
+    Filter(
+      Negate(is.null),
+      list(logic, process_sensitive, browser)
+    )
+  )
   if (identical(mode, "full")) {
     check <- local_validation_job(
       "check",
@@ -407,6 +423,15 @@ local_validation_repo_root <- function() {
   dirname(dirname(script))
 }
 
+local_validation_has_process_sensitive_tests <- function(repo_root) {
+  shard_api <- new.env(parent = globalenv())
+  sys.source(
+    file.path(repo_root, "scripts", "run-test-shard.R"),
+    envir = shard_api
+  )
+  length(shard_api$ci_process_sensitive_test_files()) > 0L
+}
+
 local_validation_add_predictions <- function(schedule, repo_root) {
   shard_api <- new.env(parent = globalenv())
   sys.source(
@@ -482,13 +507,16 @@ local_validation_print_summary <- function(results, wall_seconds, output_dir) {
 
 local_validation_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   options <- local_validation_parse_args(args)
+  repo_root <- local_validation_repo_root()
   schedule <- local_validation_schedule(
     logic_workers = options$logic_workers,
     browser_workers = options$browser_workers,
     mode = options$mode,
-    output_dir = options$output_dir
+    output_dir = options$output_dir,
+    has_process_sensitive_tests = local_validation_has_process_sensitive_tests(
+      repo_root
+    )
   )
-  repo_root <- local_validation_repo_root()
   schedule <- local_validation_add_predictions(schedule, repo_root)
   local_validation_print_schedule(schedule)
   estimated <- attr(schedule, "estimated_files")
