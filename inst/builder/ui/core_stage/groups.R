@@ -348,10 +348,15 @@ builder_group_catalog_model <- function(model) {
   default_valid <- builder_stage_has_text(default %||% "") &&
     default %in% included
   focus_valid <- builder_stage_has_text(default %||% "") && default %in% ids
-  preview_items <- utils::head(
-    Filter(function(item) isTRUE(item$included), items),
-    6L
-  )
+  preview_items <- Filter(function(item) isTRUE(item$included), items)
+  if (default_valid) {
+    preview_ids <- vapply(preview_items, `[[`, character(1), "id")
+    preview_items <- preview_items[c(
+      match(default, preview_ids),
+      which(preview_ids != default)
+    )]
+  }
+  preview_items <- utils::head(preview_items, 6L)
   preview_row_count <- min(
     5L,
     max(c(
@@ -393,7 +398,9 @@ builder_group_catalog_model <- function(model) {
       columns = vapply(preview_items, `[[`, character(1), "label"),
       rows = preview_rows,
       shown_columns = length(preview_items),
-      total_columns = length(included)
+      total_columns = length(included),
+      default_column = if (default_valid) default else NULL,
+      column_ids = vapply(preview_items, `[[`, character(1), "id")
     ),
     focus = if (focus_valid) {
       default
@@ -500,6 +507,8 @@ builder_group_detail_model <- function(catalog, group = NULL) {
 
 builder_metadata_preview_ui <- function(preview, disclosure_key = NULL) {
   columns <- preview$columns %||% character()
+  column_ids <- preview$column_ids %||% columns
+  default_column <- preview$default_column %||% ""
   rows <- preview$rows %||% list()
   if (!length(columns) || !length(rows)) {
     return(tags$section(
@@ -536,14 +545,34 @@ builder_metadata_preview_ui <- function(preview, disclosure_key = NULL) {
         class = "viewer-metadata-preview-table",
         tags$thead(tags$tr(
           tags$th(scope = "col", "Row"),
-          lapply(columns, function(column) tags$th(scope = "col", column))
+          lapply(seq_along(columns), function(index) {
+            tags$th(
+              scope = "col",
+              class = if (identical(column_ids[[index]], default_column)) {
+                "is-default"
+              },
+              columns[[index]]
+            )
+          })
         )),
         tags$tbody(lapply(seq_along(rows), function(row_index) {
           tags$tr(
             class = "viewer-metadata-preview-row",
             tags$th(scope = "row", row_index),
-            lapply(rows[[row_index]], function(value) {
-              tags$td(title = value, value)
+            lapply(seq_along(rows[[row_index]]), function(column_index) {
+              value <- rows[[row_index]][[column_index]]
+              tags$td(
+                class = if (
+                  identical(
+                    column_ids[[column_index]],
+                    default_column
+                  )
+                ) {
+                  "is-default"
+                },
+                title = value,
+                value
+              )
             })
           )
         }))

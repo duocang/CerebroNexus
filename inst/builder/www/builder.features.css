@@ -842,8 +842,7 @@
 }
 .viewer-metadata-preview-scroll {
   max-width: 100%;
-  max-height: 12rem;
-  overflow: auto;
+  overflow: visible;
   border-top: 1px solid var(--c-border);
 }
 .viewer-metadata-preview-table {
@@ -871,11 +870,11 @@
 .viewer-metadata-preview-table td:last-child { border-right: 0; }
 .viewer-metadata-preview-table tbody tr:last-child > * { border-bottom: 0; }
 .viewer-metadata-preview-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   background: var(--c-surface);
   color: var(--c-text-muted);
+}
+.viewer-metadata-preview-table .is-default {
+  background: var(--c-amber-50);
 }
 .viewer-projection-workspace,
 .viewer-trajectory-workspace { min-width: 0; }
