@@ -94,7 +94,11 @@ builder_read_table <- function(path, name = NULL, filename = path) {
 builder_read_tables <- function(path, filename = path) {
   extension <- tolower(tools::file_ext(filename))
   if (!identical(extension, "xlsx")) {
-    table <- builder_read_table(path, filename = filename)
+    table <- builder_read_table(
+      path,
+      name = builder_table_default_name(filename),
+      filename = filename
+    )
     return(stats::setNames(list(table), table$name %||% basename(filename)))
   }
   if (!file.exists(path)) {

@@ -40,7 +40,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
         enabled_pages = "extra material",
         cost = "Reads one bounded delimited file.",
         network = "No network access.",
-        prerequisite = "Requires a readable CSV or TSV file.",
+        prerequisite = "Requires a readable CSV, TSV, or XLSX file.",
         selected = "Differential expression",
         replacement_policy = "Replace a table only when its display name matches.",
         skip_consequence = "Skipped tables will not appear in Extra material."
@@ -180,7 +180,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "Tables for Extra material", fixed = TRUE)
   expect_match(
     html,
-    "Add optional CSV or TSV tables to the CRB’s Extra material content.",
+    "Add optional CSV, TSV, or XLSX tables to the CRB’s Extra material content.",
     fixed = TRUE
   )
   expect_match(html, "Spatial alignment", fixed = TRUE)
@@ -209,7 +209,8 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, 'id="enhance-table_files"', fixed = TRUE)
   expect_match(html, 'type="file"', fixed = TRUE)
   expect_match(html, 'multiple="multiple"', fixed = TRUE)
-  expect_match(html, 'accept=".csv,.tsv,.txt"', fixed = TRUE)
+  expect_match(html, 'accept=".csv,.tsv,.txt,.xlsx"', fixed = TRUE)
+  expect_match(html, "CSV, TSV, or XLSX", fixed = TRUE)
   expect_match(
     html,
     'class="enhance-table-file-control builder-file-picker builder-file-picker--content"',

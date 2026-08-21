@@ -101,7 +101,7 @@ builder_enhance_model <- function(
         relevant = TRUE,
         cost = "Reads and validates one bounded delimited file.",
         network = "No network access.",
-        prerequisite = "Requires a readable CSV or TSV file.",
+        prerequisite = "Requires a readable CSV, TSV, or XLSX file.",
         selected = names(settings$tables %||% list()) %||% character(),
         replacement_policy = paste(
           "Replace a table only when its display name matches;",
@@ -715,7 +715,7 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
           h5("Tables for Extra material"),
           p(
             class = "enhance-attachment-description",
-            "Add optional CSV or TSV tables to the CRB’s Extra material content."
+            "Add optional CSV, TSV, or XLSX tables to the CRB’s Extra material content. Every non-empty XLSX worksheet becomes a table."
           ),
           div(
             class = "enhance-table-file-control builder-file-picker builder-file-picker--content",
@@ -725,7 +725,7 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
               class = "shiny-input-file enhance-table-file-input builder-file-input",
               type = "file",
               multiple = "multiple",
-              accept = ".csv,.tsv,.txt",
+              accept = ".csv,.tsv,.txt,.xlsx",
               `tabindex` = "-1"
             ),
             tags$label(

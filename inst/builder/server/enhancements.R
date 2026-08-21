@@ -264,27 +264,36 @@ observeEvent(input[["enhance-table_files"]], {
   req(is.data.frame(uploads), nrow(uploads) > 0L)
   for (index in seq_len(nrow(uploads))) {
     filename <- basename(uploads$name[[index]])
-    display_name <- builder_table_unique_name(
-      builder_table_default_name(filename),
-      names(entry$settings$tables %||% list()) %||% character()
-    )
-    got <- builder_read_table(
+    records <- builder_read_tables(
       uploads$datapath[[index]],
-      display_name,
       filename = filename
     )
-    if (!is.null(got$error)) {
+    if (!length(records)) {
       showNotification(
-        paste0(filename, ": ", got$error),
+        paste0(filename, ": No non-empty worksheets were found."),
         type = "error",
         duration = 8
       )
       next
     }
-    got$file_name <- filename
-    got$file_type <- toupper(tools::file_ext(filename))
-    got$file_size <- suppressWarnings(as.numeric(uploads$size[[index]]))
-    entry$settings$tables[[got$name]] <- got
+    for (got in records) {
+      if (!is.null(got$error)) {
+        showNotification(
+          paste0(filename, ": ", got$error),
+          type = "error",
+          duration = 8
+        )
+        next
+      }
+      got$name <- builder_table_unique_name(
+        got$name,
+        names(entry$settings$tables %||% list()) %||% character()
+      )
+      got$file_name <- filename
+      got$file_type <- toupper(tools::file_ext(filename))
+      got$file_size <- suppressWarnings(as.numeric(uploads$size[[index]]))
+      entry$settings$tables[[got$name]] <- got
+    }
   }
   replace_entry(entry)
 })
