@@ -1026,6 +1026,14 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
   }
 
   shiny::testServer(app_env$server, {
+    added_messages <- list()
+    original_send_custom_message <- session$sendCustomMessage
+    session$sendCustomMessage <- function(type, message) {
+      if (identical(type, "enhance_tables_added")) {
+        added_messages[[length(added_messages) + 1L]] <<- message
+      }
+      original_send_custom_message(type, message)
+    }
     entry <- list(
       id = "dataset-a",
       revision = 0L,
@@ -2426,6 +2434,14 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
   writeLines(c("sample,value", "a,1"), table_path)
 
   shiny::testServer(app_env$server, {
+    added_messages <- list()
+    original_send_custom_message <- session$sendCustomMessage
+    session$sendCustomMessage <- function(type, message) {
+      if (identical(type, "enhance_tables_added")) {
+        added_messages[[length(added_messages) + 1L]] <<- message
+      }
+      original_send_custom_message(type, message)
+    }
     entry <- list(
       id = "dataset-a",
       revision = 0L,
@@ -2852,13 +2868,33 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
       as.character(output[["enhance-table_list"]]),
       collapse = ""
     )
-    expect_match(table_list_html, "Added tables", fixed = TRUE)
-    expect_match(table_list_html, "Table name", fixed = TRUE)
+    expect_match(table_list_html, "1 workbook · 1 table", fixed = TRUE)
     expect_match(table_list_html, "CSV", fixed = TRUE)
     expect_match(table_list_html, "bytes", fixed = TRUE)
     expect_match(table_list_html, "Ready", fixed = TRUE)
-    expect_match(table_list_html, "builder-file-list", fixed = TRUE)
-    expect_match(table_list_html, "builder-file-item", fixed = TRUE)
+    expect_match(table_list_html, "enhance-workbook-item", fixed = TRUE)
+    expect_match(table_list_html, "Remove workbook", fixed = TRUE)
+    expect_match(table_list_html, "enhance-table-edit", fixed = TRUE)
+    expect_match(table_list_html, "enhance-table-save", fixed = TRUE)
+    expect_match(table_list_html, "Editing is local.", fixed = TRUE)
+    expect_false(grepl('<details[^>]*\\bopen=', table_list_html, perl = TRUE))
+    expect_match(
+      table_list_html,
+      'data-workbook-key="clinical-results.csv"',
+      fixed = TRUE
+    )
+    expect_match(table_list_html, "enhance-workbook-controls", fixed = TRUE)
+    expect_false(grepl(
+      'id="enhance-table-upload-notice"',
+      table_list_html,
+      fixed = TRUE
+    ))
+    expect_identical(
+      added_messages,
+      list(list(
+        workbooks = list(list(key = "clinical-results.csv", count = 1L))
+      ))
+    )
     expect_false(grepl(table_path, table_list_html, fixed = TRUE))
     expect_false(grepl("fakepath", table_list_html, fixed = TRUE))
     expect_false(grepl("Tables to retain", table_list_html, fixed = TRUE))
@@ -2871,16 +2907,33 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
       )
     )
     session$flushReact()
-    expect_identical(names(sets()[[1L]]$settings$tables), "Clinical results")
+    expect_identical(names(sets()[[1L]]$settings$tables), "clinical-results")
+    expect_identical(
+      sets()[[1L]]$settings$tables[[1L]]$display_name,
+      "Clinical results"
+    )
     expect_identical(
       sets()[[1L]]$settings$tables[[1L]]$file_name,
       "clinical-results.csv"
     )
     session$setInputs(
       `enhance-table_action` = list(
-        action = "remove",
-        key = "Clinical results",
+        action = "rename_workbook",
+        key = "clinical-results.csv",
+        name = "Clinical exports",
         nonce = 2
+      )
+    )
+    session$flushReact()
+    expect_identical(
+      sets()[[1L]]$settings$tables[[1L]]$workbook_name,
+      "Clinical exports"
+    )
+    session$setInputs(
+      `enhance-table_action` = list(
+        action = "remove",
+        key = "clinical-results",
+        nonce = 3
       )
     )
     session$flushReact()

@@ -70,6 +70,7 @@ Imports:
 Suggests:
   BPCells,
   callr,
+  codetools,
   DelayedArray,
   formattable (>= 0.2.0.1),
   ggtree,

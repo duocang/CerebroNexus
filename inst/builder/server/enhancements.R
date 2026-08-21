@@ -262,6 +262,7 @@ observeEvent(input[["enhance-table_files"]], {
   req(entry)
   uploads <- input[["enhance-table_files"]]
   req(is.data.frame(uploads), nrow(uploads) > 0L)
+  added <- list()
   for (index in seq_len(nrow(uploads))) {
     filename <- basename(uploads$name[[index]])
     records <- builder_read_tables(
@@ -292,10 +293,29 @@ observeEvent(input[["enhance-table_files"]], {
       got$file_name <- filename
       got$file_type <- toupper(tools::file_ext(filename))
       got$file_size <- suppressWarnings(as.numeric(uploads$size[[index]]))
+      got$workbook_name <- got$workbook_name %||% filename
+      got$sheet_name <- got$sheet_name %||% got$sheet %||% got$name
+      got$display_name <- got$display_name %||% got$sheet_name
       entry$settings$tables[[got$name]] <- got
+      added[[filename]] <- (added[[filename]] %||% 0L) + 1L
     }
   }
   replace_entry(entry)
+  if (length(added)) {
+    session$onFlushed(
+      function() {
+        session$sendCustomMessage(
+          "enhance_tables_added",
+          list(
+            workbooks = unname(lapply(names(added), function(key) {
+              list(key = key, count = unname(added[[key]]))
+            }))
+          )
+        )
+      },
+      once = TRUE
+    )
+  }
 })
 
 observeEvent(
@@ -308,33 +328,73 @@ observeEvent(
     entry <- entry_of(id)
     req(entry)
     tables <- entry$settings$tables %||% list()
-    if (!action$key %in% names(tables)) {
+    reopen_workbook <- NULL
+    workbook_rows <- vapply(
+      tables,
+      function(table) identical(table$file_name %||% "", action$key),
+      logical(1)
+    )
+    if (identical(action$action, "remove_workbook")) {
+      if (!any(workbook_rows)) {
+        return()
+      }
+      tables <- tables[!workbook_rows]
+    } else if (identical(action$action, "rename_workbook")) {
+      new_name <- trimws(as.character(action$name %||% ""))
+      other_names <- unique(vapply(
+        tables[!workbook_rows],
+        function(table) table$workbook_name %||% table$file_name %||% "",
+        character(1)
+      ))
+      if (
+        !any(workbook_rows) || !nzchar(new_name) || new_name %in% other_names
+      ) {
+        showNotification(
+          "Workbook names must be non-empty and unique.",
+          type = "error",
+          duration = 5
+        )
+        return()
+      }
+      tables[workbook_rows] <- lapply(tables[workbook_rows], function(table) {
+        table$workbook_name <- new_name
+        table
+      })
+      reopen_workbook <- action$key
+    } else if (!action$key %in% names(tables)) {
       return()
-    }
-    if (identical(action$action, "remove")) {
+    } else if (identical(action$action, "remove")) {
       tables[[action$key]] <- NULL
     } else if (identical(action$action, "rename")) {
       new_name <- trimws(as.character(action$name %||% ""))
-      if (
-        !nzchar(new_name) ||
-          (new_name %in% names(tables) && !identical(new_name, action$key))
-      ) {
+      if (!nzchar(new_name)) {
         showNotification(
-          "Table names must be non-empty and unique.",
+          "Table names must be non-empty.",
           type = "error",
           duration = 5
         )
         return()
       }
       table <- tables[[action$key]]
-      table$name <- new_name
-      tables[[action$key]] <- NULL
-      tables[[new_name]] <- table
+      table$display_name <- new_name
+      tables[[action$key]] <- table
+      reopen_workbook <- table$file_name
     } else {
       return()
     }
     entry$settings$tables <- tables
     replace_entry(entry)
+    if (!is.null(reopen_workbook)) {
+      session$onFlushed(
+        function() {
+          session$sendCustomMessage(
+            "enhance_workbook_reopen",
+            list(key = reopen_workbook)
+          )
+        },
+        once = TRUE
+      )
+    }
   },
   ignoreInit = TRUE
 )

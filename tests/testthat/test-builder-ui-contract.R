@@ -777,6 +777,9 @@ test_that("dataset rail separates lifecycle colours from interaction states", {
 test_that("supplementary tables use an amber native multi-file chooser", {
   stage <- builder_asset_text("ui", "enhance_stage.R")
   css <- builder_stylesheet_text()
+  components <- builder_asset_text("www", "builder.components.css")
+  review <- builder_asset_text("server", "review.R")
+  js <- builder_asset_text("www", "builder.js")
 
   expect_match(
     stage,
@@ -784,7 +787,11 @@ test_that("supplementary tables use an amber native multi-file chooser", {
     fixed = TRUE
   )
   expect_match(stage, 'multiple = "multiple"', fixed = TRUE)
-  expect_match(stage, 'accept = ".csv,.tsv,.txt,.xlsx"', fixed = TRUE)
+  expect_match(
+    stage,
+    'accept = ".csv,.tsv,.txt,.xls,.xlsx,.xlsm"',
+    fixed = TRUE
+  )
   expect_match(
     stage,
     'class = "enhance-table-file-control builder-file-picker builder-file-picker--content"',
@@ -799,11 +806,65 @@ test_that("supplementary tables use an amber native multi-file chooser", {
   expect_match(stage, 'role = "button"', fixed = TRUE)
   expect_match(stage, 'span("+ Add tables…")', fixed = TRUE)
   expect_match(
-    app <- builder_app_source_text(),
-    'span("Table name")',
+    review,
+    'class = "enhance-workbook-item",',
     fixed = TRUE
   )
-  expect_match(app, 'class = "enhance-table-display-name"', fixed = TRUE)
+  expect_match(
+    review,
+    'class = "enhance-attachment-edit enhance-table-edit",',
+    fixed = TRUE
+  )
+  expect_match(
+    review,
+    'class = "enhance-attachment-save enhance-table-save",',
+    fixed = TRUE
+  )
+  expect_match(
+    review,
+    'class = "enhance-attachment-cancel enhance-table-cancel",',
+    fixed = TRUE
+  )
+  expect_match(
+    review,
+    'class = "enhance-attachment-edit enhance-workbook-edit",',
+    fixed = TRUE
+  )
+  expect_match(
+    review,
+    'class = "enhance-workbook-chevron",',
+    fixed = TRUE
+  )
+  expect_match(review, 'viewBox = "0 0 24 24"', fixed = TRUE)
+  expect_match(
+    components,
+    ".enhance-workbook-item[open] .enhance-workbook-chevron",
+    fixed = TRUE
+  )
+  expect_match(components, "margin-left: auto", fixed = TRUE)
+  expect_false(grepl(
+    "@keyframes enhance-workbook-added",
+    components,
+    fixed = TRUE
+  ))
+  expect_match(js, "function commitAttachmentName", fixed = TRUE)
+  expect_false(grepl(
+    "\\.enhance-table-list\\s*\\{[^}]*max-height",
+    components,
+    perl = TRUE
+  ))
+  expect_false(grepl(
+    "\\.enhance-table-list\\s*\\{[^}]*overflow-y",
+    components,
+    perl = TRUE
+  ))
+  expect_match(js, "enhance_tables_added", fixed = TRUE)
+  expect_match(js, "enhance-workbook-item--new", fixed = TRUE)
+  expect_no_match(
+    js,
+    'if \\(!event\\.target\\.matches\\("\\.enhance-table-display-name"\\)\\) return;',
+    perl = TRUE
+  )
   expect_false(grepl('textInput(ns("table_path")', stage, fixed = TRUE))
   expect_false(grepl('textInput(ns("table_name")', stage, fixed = TRUE))
   expect_false(grepl('actionButton(ns("add_table")', stage, fixed = TRUE))
@@ -821,7 +882,11 @@ test_that("all local attachments use accessible native file inputs", {
   expect_match(app, 'accept = paste(', fixed = TRUE)
   expect_false(grepl('multiple = "multiple"', app, fixed = TRUE))
   expect_match(js, "picker.multiple = true", fixed = TRUE)
-  expect_match(stage, 'accept = ".csv,.tsv,.txt,.xlsx"', fixed = TRUE)
+  expect_match(
+    stage,
+    'accept = ".csv,.tsv,.txt,.xls,.xlsx,.xlsm"',
+    fixed = TRUE
+  )
   expect_match(stage, 'multiple = "multiple"', fixed = TRUE)
   expect_match(stage, 'accept = ".png,.jpg,.jpeg"', fixed = TRUE)
   expect_match(

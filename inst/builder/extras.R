@@ -82,6 +82,17 @@ builder_read_table <- function(path, name = NULL, filename = path) {
     } else {
       name
     },
+    workbook_name = basename(filename),
+    sheet_name = if (is.null(name) || !nzchar(name)) {
+      builder_table_default_name(filename)
+    } else {
+      name
+    },
+    display_name = if (is.null(name) || !nzchar(name)) {
+      builder_table_default_name(filename)
+    } else {
+      name
+    },
     table = df
   )
 }
@@ -93,7 +104,7 @@ builder_read_table <- function(path, name = NULL, filename = path) {
 #'   without discarding other worksheets.
 builder_read_tables <- function(path, filename = path) {
   extension <- tolower(tools::file_ext(filename))
-  if (!identical(extension, "xlsx")) {
+  if (!extension %in% c("xls", "xlsx", "xlsm")) {
     table <- builder_read_table(
       path,
       name = builder_table_default_name(filename),
@@ -106,7 +117,7 @@ builder_read_tables <- function(path, filename = path) {
   }
   sheets <- suppressWarnings(try(readxl::excel_sheets(path), silent = TRUE))
   if (inherits(sheets, "try-error") || !length(sheets)) {
-    return(list(list(error = "Could not read this XLSX workbook.")))
+    return(list(list(error = "Could not read this Excel workbook.")))
   }
   workbook <- builder_table_default_name(filename)
   records <- lapply(sheets, function(sheet) {
@@ -128,6 +139,9 @@ builder_read_tables <- function(path, filename = path) {
     }
     list(
       name = paste(workbook, sheet, sep = " · "),
+      workbook_name = basename(filename),
+      sheet_name = sheet,
+      display_name = sheet,
       sheet = sheet,
       table = table
     )
@@ -193,10 +207,21 @@ builder_attach_tables <- function(object, tables) {
   if (is.null(existing)) {
     existing <- list()
   }
+  table_index <- object@misc$extra_material$table_index
+  if (is.null(table_index)) {
+    table_index <- list()
+  }
   for (t in tables) {
     existing[[t$name]] <- t$table
+    table_index[[t$name]] <- list(
+      workbook_name = t$workbook_name %||% basename(t$file_name %||% ""),
+      file_name = t$file_name %||% "",
+      sheet_name = t$sheet_name %||% t$sheet %||% t$name,
+      display_name = t$display_name %||% t$sheet_name %||% t$sheet %||% t$name
+    )
   }
   object@misc$extra_material$tables <- existing
+  object@misc$extra_material$table_index <- table_index
   object
 }
 

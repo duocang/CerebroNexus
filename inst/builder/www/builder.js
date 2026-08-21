@@ -3,6 +3,7 @@
   "use strict";
 
   var workflowProgressScrollTimer = null;
+  var tableUploadHighlightTimer = null;
   var compactWorkflowManager = window.matchMedia("(max-width: 40rem)");
   var narrowManager = window.matchMedia("(max-width: 58rem)");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -3511,6 +3512,88 @@
     scheduleDatasetLoadTimeUpdates();
   }
 
+  function setAttachmentEditing(row, editing) {
+    var name = row.querySelector(".enhance-attachment-name");
+    var editor = row.querySelector(".enhance-attachment-editor");
+    var edit = row.querySelector(".enhance-attachment-edit");
+    var save = row.querySelector(".enhance-attachment-save");
+    var cancel = row.querySelector(".enhance-attachment-cancel");
+    var input = editor && editor.querySelector("input");
+    if (!name || !editor || !edit || !save || !cancel || !input) return;
+    if (editing) {
+      input.dataset.originalValue = input.value;
+      name.hidden = true;
+      editor.hidden = false;
+      edit.hidden = true;
+      save.hidden = false;
+      cancel.hidden = false;
+      input.focus();
+    } else {
+      name.hidden = false;
+      editor.hidden = true;
+      edit.hidden = false;
+      save.hidden = true;
+      cancel.hidden = true;
+    }
+  }
+
+  function announceAddedTables(message) {
+    var workbooks = message && Array.isArray(message.workbooks)
+      ? message.workbooks.filter(function (workbook) {
+        return workbook && workbook.key && Number(workbook.count) > 0;
+      })
+      : [];
+    if (!workbooks.length) return;
+    var cards = [];
+    document.querySelectorAll(".enhance-workbook-item[data-workbook-key]").forEach(
+      function (card) {
+        if (!workbooks.some(function (workbook) {
+          return workbook.key === card.dataset.workbookKey;
+        })) return;
+        card.open = false;
+        card.classList.add("enhance-workbook-item--new");
+        cards.push(card);
+      }
+    );
+    var latest = cards[cards.length - 1];
+    window.clearTimeout(tableUploadHighlightTimer);
+    tableUploadHighlightTimer = window.setTimeout(function () {
+      document.querySelectorAll(".enhance-workbook-item--new").forEach(function (card) {
+        card.classList.remove("enhance-workbook-item--new");
+      });
+    }, 5000);
+    if (!latest) return;
+    var bounds = latest.getBoundingClientRect();
+    if (bounds.top < 0 || bounds.bottom > window.innerHeight) {
+      latest.scrollIntoView({
+        block: "nearest",
+        behavior: reducedMotion.matches ? "auto" : "smooth",
+      });
+    }
+  }
+
+  function commitAttachmentName(row) {
+    var input = row.querySelector(".enhance-attachment-editor input");
+    if (!input || !input.value.trim()) return;
+    var isWorkbook = Boolean(input.dataset.workbookKey);
+    send("enhance-table_action", {
+      action: isWorkbook ? "rename_workbook" : "rename",
+      key: isWorkbook ? input.dataset.workbookKey : input.dataset.tableKey,
+      name: input.value.trim(),
+      nonce: Date.now(),
+    });
+  }
+
+  function reopenWorkbookAfterRename(message) {
+    var key = message && message.key;
+    if (!key) return;
+    document.querySelectorAll(".enhance-workbook-item[data-workbook-key]").forEach(
+      function (workbook) {
+        if (workbook.dataset.workbookKey === key) workbook.open = true;
+      }
+    );
+  }
+
   document.addEventListener("click", function (event) {
     var target = event.target;
     var spatialImageTrigger = target.closest(".enhance-tissue-file-button");
@@ -3618,6 +3701,48 @@
     if (viewerMetadataSelect) {
       event.preventDefault();
       selectViewerMetadata(viewerMetadataSelect);
+      return;
+    }
+    var attachmentEdit = target.closest(".enhance-attachment-edit");
+    if (attachmentEdit) {
+      event.preventDefault();
+      event.stopPropagation();
+      setAttachmentEditing(
+        attachmentEdit.closest(".enhance-sheet-item, .enhance-workbook-item"),
+        true
+      );
+      return;
+    }
+    var attachmentCancel = target.closest(".enhance-attachment-cancel");
+    if (attachmentCancel) {
+      event.preventDefault();
+      event.stopPropagation();
+      var cancelRow = attachmentCancel.closest(
+        ".enhance-sheet-item, .enhance-workbook-item"
+      );
+      var cancelInput = cancelRow.querySelector(".enhance-attachment-editor input");
+      if (cancelInput) cancelInput.value = cancelInput.dataset.originalValue || cancelInput.value;
+      setAttachmentEditing(cancelRow, false);
+      return;
+    }
+    var attachmentSave = target.closest(".enhance-attachment-save");
+    if (attachmentSave) {
+      event.preventDefault();
+      event.stopPropagation();
+      commitAttachmentName(attachmentSave.closest(
+        ".enhance-sheet-item, .enhance-workbook-item"
+      ));
+      return;
+    }
+    var removeWorkbook = target.closest(".enhance-workbook-remove");
+    if (removeWorkbook) {
+      event.preventDefault();
+      event.stopPropagation();
+      send("enhance-table_action", {
+        action: "remove_workbook",
+        key: removeWorkbook.dataset.workbookKey,
+        nonce: Date.now(),
+      });
       return;
     }
     var removeTable = target.closest(".enhance-table-remove");
@@ -3766,6 +3891,22 @@
       event.preventDefault();
       return;
     }
+    if (event.target.matches(".enhance-attachment-editor input")) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitAttachmentName(event.target.closest(
+          ".enhance-sheet-item, .enhance-workbook-item"
+        ));
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        var editRow = event.target.closest(
+          ".enhance-sheet-item, .enhance-workbook-item"
+        );
+        event.target.value = event.target.dataset.originalValue || event.target.value;
+        setAttachmentEditing(editRow, false);
+      }
+      return;
+    }
     var fileTrigger = event.target.closest(".builder-file-trigger");
     if (
       fileTrigger &&
@@ -3904,13 +4045,6 @@
       updateGroupColor(event.target);
       return;
     }
-    if (!event.target.matches(".enhance-table-display-name")) return;
-    send("enhance-table_action", {
-      action: "rename",
-      key: event.target.dataset.tableKey,
-      name: event.target.value,
-      nonce: Date.now(),
-    });
   });
 
   function messageValues(value) {
@@ -4046,6 +4180,14 @@
     window.Shiny.addCustomMessageHandler(
       "builder_dataset_switch_state",
       updateDatasetSwitchPhase
+    );
+    window.Shiny.addCustomMessageHandler(
+      "enhance_tables_added",
+      announceAddedTables
+    );
+    window.Shiny.addCustomMessageHandler(
+      "enhance_workbook_reopen",
+      reopenWorkbookAfterRename
     );
 
     window.Shiny.addCustomMessageHandler(

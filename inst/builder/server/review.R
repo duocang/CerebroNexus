@@ -363,45 +363,186 @@ output[["enhance-table_list"]] <- renderUI({
   if (!length(tables)) {
     return(NULL)
   }
+  files <- unique(vapply(
+    tables,
+    function(table) table$file_name %||% "",
+    character(1)
+  ))
   div(
-    class = "enhance-table-list builder-file-list",
-    h5("Added tables"),
-    lapply(names(tables), function(key) {
-      table <- tables[[key]]
-      filename <- table$file_name %||% paste0(key, ".csv")
-      file_type <- table$file_type %||% toupper(tools::file_ext(filename))
-      file_size <- builder_review_human_size(table$file_size %||% NA_real_)
-      file_summary <- paste(file_type, file_size, sep = " · ")
-      div(
-        class = "enhance-table-item builder-file-item",
+    class = "enhance-table-list",
+    h5(paste(
+      length(files),
+      if (length(files) == 1L) "workbook" else "workbooks",
+      "·",
+      length(tables),
+      if (length(tables) == 1L) "table" else "tables"
+    )),
+    lapply(seq_along(files), function(index) {
+      filename <- files[[index]]
+      keys <- names(tables)[vapply(
+        tables,
+        function(table) identical(table$file_name %||% "", filename),
+        logical(1)
+      )]
+      records <- tables[keys]
+      first <- records[[1L]]
+      file_type <- first$file_type %||% toupper(tools::file_ext(filename))
+      file_size <- builder_review_human_size(first$file_size %||% NA_real_)
+      workbook_name <- first$workbook_name %||% filename
+      tags$details(
+        class = "enhance-workbook-item",
+        `data-workbook-key` = filename,
+        tags$summary(
+          class = "enhance-workbook-summary",
+          tags$span(
+            class = "enhance-workbook-chevron",
+            `aria-hidden` = "true",
+            tags$svg(
+              viewBox = "0 0 24 24",
+              fill = "none",
+              tags$path(
+                d = "m9 18 6-6-6-6",
+                stroke = "currentColor",
+                `stroke-width` = "2.25",
+                `stroke-linecap` = "round",
+                `stroke-linejoin` = "round"
+              )
+            )
+          ),
+          div(
+            class = "enhance-workbook-meta",
+            div(
+              class = "enhance-attachment-name enhance-workbook-name",
+              workbook_name
+            ),
+            div(
+              class = "enhance-attachment-editor",
+              hidden = NA,
+              tags$input(
+                type = "text",
+                class = "enhance-workbook-display-name",
+                value = workbook_name,
+                `data-workbook-key` = filename,
+                `aria-label` = paste("Viewer workbook name for", filename)
+              )
+            ),
+            span(
+              class = "enhance-workbook-source",
+              paste(
+                file_type,
+                file_size,
+                paste(
+                  length(keys),
+                  if (length(keys) == 1L) "sheet" else "sheets"
+                ),
+                sep = " · "
+              )
+            )
+          ),
+          div(
+            class = "enhance-workbook-controls",
+            span(
+              class = "builder-status builder-status--ready",
+              "Ready"
+            ),
+            div(
+              class = "enhance-attachment-actions",
+              tags$button(
+                type = "button",
+                class = "enhance-attachment-edit enhance-workbook-edit",
+                `data-workbook-key` = filename,
+                "Edit"
+              ),
+              tags$button(
+                type = "button",
+                class = "enhance-attachment-save enhance-workbook-save",
+                `data-workbook-key` = filename,
+                hidden = NA,
+                "Save"
+              ),
+              tags$button(
+                type = "button",
+                class = "enhance-attachment-cancel enhance-workbook-cancel",
+                hidden = NA,
+                "Cancel"
+              ),
+              tags$button(
+                type = "button",
+                class = "enhance-workbook-remove",
+                `data-workbook-key` = filename,
+                "Remove workbook"
+              )
+            )
+          )
+        ),
         div(
-          class = "enhance-table-file-meta",
-          span(class = "enhance-table-filename", filename),
-          span(class = "enhance-table-type", file_summary),
-          span(
-            class = "builder-status builder-status--ready",
-            "Ready"
-          )
-        ),
-        tags$label(
-          class = "enhance-table-name-field",
-          span("Table name"),
-          tags$input(
-            type = "text",
-            class = "enhance-table-display-name",
-            value = key,
-            `data-table-key` = key,
-            `aria-label` = paste("Display name for", filename)
-          )
-        ),
-        tags$button(
-          type = "button",
-          class = "enhance-table-remove",
-          `data-table-key` = key,
-          "Remove"
+          class = "enhance-workbook-sheets",
+          lapply(keys, function(key) {
+            table <- tables[[key]]
+            sheet_name <- table$sheet_name %||% table$sheet %||% key
+            display_name <- table$display_name %||% sheet_name
+            div(
+              class = "enhance-sheet-item",
+              div(
+                class = "enhance-sheet-meta",
+                div(
+                  class = "enhance-attachment-name enhance-table-name",
+                  display_name
+                ),
+                div(
+                  class = "enhance-attachment-editor",
+                  hidden = NA,
+                  tags$input(
+                    type = "text",
+                    class = "enhance-table-display-name",
+                    value = display_name,
+                    `data-table-key` = key,
+                    `aria-label` = paste("Viewer table name for", sheet_name)
+                  )
+                ),
+                span(
+                  class = "enhance-sheet-source",
+                  paste("Source sheet:", sheet_name)
+                )
+              ),
+              div(
+                class = "enhance-attachment-actions",
+                tags$button(
+                  type = "button",
+                  class = "enhance-attachment-edit enhance-table-edit",
+                  `data-table-key` = key,
+                  "Edit"
+                ),
+                tags$button(
+                  type = "button",
+                  class = "enhance-attachment-save enhance-table-save",
+                  `data-table-key` = key,
+                  hidden = NA,
+                  "Save"
+                ),
+                tags$button(
+                  type = "button",
+                  class = "enhance-attachment-cancel enhance-table-cancel",
+                  hidden = NA,
+                  "Cancel"
+                ),
+                tags$button(
+                  type = "button",
+                  class = "enhance-table-remove",
+                  `data-table-key` = key,
+                  "Remove"
+                )
+              )
+            )
+          })
         )
       )
-    })
+    }),
+    div(
+      class = "enhance-table-editing-note",
+      span(class = "builder-status builder-status--ready", "Editing is local."),
+      " Typing changes only this browser input. The Builder receives one update when you choose Save or press Enter."
+    )
   )
 })
 

@@ -40,7 +40,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
         enabled_pages = "extra material",
         cost = "Reads one bounded delimited file.",
         network = "No network access.",
-        prerequisite = "Requires a readable CSV, TSV, or XLSX file.",
+        prerequisite = "Requires a readable CSV, TSV, XLS, XLSX, or XLSM file.",
         selected = "Differential expression",
         replacement_policy = "Replace a table only when its display name matches.",
         skip_consequence = "Skipped tables will not appear in Extra material."
@@ -180,7 +180,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "Tables for Extra material", fixed = TRUE)
   expect_match(
     html,
-    "Add optional CSV, TSV, or XLSX tables to the CRB’s Extra material content.",
+    "Add optional CSV, TSV, XLS, XLSX, or XLSM tables to the CRB’s Extra material content.",
     fixed = TRUE
   )
   expect_match(html, "Spatial alignment", fixed = TRUE)
@@ -209,8 +209,12 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, 'id="enhance-table_files"', fixed = TRUE)
   expect_match(html, 'type="file"', fixed = TRUE)
   expect_match(html, 'multiple="multiple"', fixed = TRUE)
-  expect_match(html, 'accept=".csv,.tsv,.txt,.xlsx"', fixed = TRUE)
-  expect_match(html, "CSV, TSV, or XLSX", fixed = TRUE)
+  expect_match(
+    html,
+    'accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm"',
+    fixed = TRUE
+  )
+  expect_match(html, "CSV, TSV, XLS, XLSX, or XLSM", fixed = TRUE)
   expect_match(
     html,
     'class="enhance-table-file-control builder-file-picker builder-file-picker--content"',
@@ -533,8 +537,81 @@ test_that("XLSX Extra material imports every non-empty worksheet", {
     unname(vapply(got, `[[`, character(1), "name")),
     c("supplement · Clinical", "supplement · Results")
   )
+  expect_identical(
+    unname(vapply(got, `[[`, character(1), "workbook_name")),
+    c("supplement.xlsx", "supplement.xlsx")
+  )
+  expect_identical(
+    unname(vapply(got, `[[`, character(1), "sheet_name")),
+    c("Clinical", "Results")
+  )
+  expect_identical(
+    unname(vapply(got, `[[`, character(1), "display_name")),
+    c("Clinical", "Results")
+  )
   expect_identical(got$Clinical$table$patient, c("A", "B"))
   expect_identical(got$Results$table$feature, "CD3D")
+})
+
+test_that("Extra material retains workbook and source-sheet labels for Viewer", {
+  skip_if_not_installed("SeuratObject")
+  object <- SeuratObject::pbmc_small
+  tables <- list(
+    list(
+      name = "30mins",
+      workbook_name = "All samples",
+      file_name = "all-samples.xlsx",
+      sheet_name = "30mins",
+      display_name = "30mins",
+      table = data.frame(value = 1)
+    )
+  )
+
+  attached <- builder_attach_tables(object, tables)
+
+  expect_identical(attached@misc$extra_material$tables$`30mins`$value, 1)
+  expect_identical(
+    attached@misc$extra_material$table_index$`30mins`,
+    list(
+      workbook_name = "All samples",
+      file_name = "all-samples.xlsx",
+      sheet_name = "30mins",
+      display_name = "30mins"
+    )
+  )
+})
+
+test_that("legacy XLS Extra material imports every worksheet", {
+  path <- readxl::readxl_example("datasets.xls")
+
+  got <- builder_read_tables(path, filename = "legacy.xls")
+
+  expect_named(got, readxl::excel_sheets(path))
+  expect_true(all(vapply(
+    got,
+    function(record) {
+      is.data.frame(record$table) && nrow(record$table) > 0L
+    },
+    logical(1)
+  )))
+  expect_true(all(startsWith(
+    vapply(got, `[[`, character(1), "name"),
+    "legacy · "
+  )))
+})
+
+test_that("XLSM Extra material reads workbook data without executing macros", {
+  skip_if_not_installed("writexl")
+  xlsx <- withr::local_tempfile(fileext = ".xlsx")
+  xlsm <- withr::local_tempfile(fileext = ".xlsm")
+  writexl::write_xlsx(list(Data = data.frame(value = c(1, 2))), xlsx)
+  file.copy(xlsx, xlsm, overwrite = TRUE)
+
+  got <- builder_read_tables(xlsm, filename = "macro.xlsm")
+
+  expect_named(got, "Data")
+  expect_identical(got$Data$name, "macro · Data")
+  expect_identical(got$Data$table$value, c(1, 2))
 })
 
 test_that("Enhance distinguishes intrinsic absence from dependency blocking", {
