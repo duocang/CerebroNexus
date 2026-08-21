@@ -87,6 +87,7 @@ test_that("precheck only checks formatting", {
   expect_match(precheck, "air format --check [.]", perl = TRUE)
   expect_false(grepl("air format [.]($|\n)", precheck, perl = TRUE))
   expect_false(grepl("run-local-validation", precheck, fixed = TRUE))
+  expect_match(precheck, "run_group process-sensitive", fixed = TRUE)
 })
 
 test_that("the CI workflow includes the Builder process-sensitive group", {
