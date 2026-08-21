@@ -46,7 +46,7 @@ expression_projection_parameters_plot_raw <- reactive({
 
 expression_projection_parameters_plot <- debounce(
   expression_projection_parameters_plot_raw,
-  150
+  80
 )
 
 ##

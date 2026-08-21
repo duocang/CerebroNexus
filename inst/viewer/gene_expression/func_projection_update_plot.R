@@ -36,7 +36,11 @@ expression_projection_update_plot <- function(input) {
     point_line = list(),
     x_range = plot_parameters[["x_range"]],
     y_range = plot_parameters[["y_range"]],
-    reset_axes = reset_axes
+    reset_axes = reset_axes,
+    has_expression = length(
+      expression_selected_genes()[["genes_to_display_present"]]
+    ) >
+      0
   )
   if (plot_parameters[["draw_border"]]) {
     output_data[['point_line']] <- list(

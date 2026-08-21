@@ -863,6 +863,7 @@
   // Map each named scale we expose to a representative gradient so the legend
   // matches the scatter. reversescale is applied by the caller when needed.
   const NAMED_COLORSCALES = {
+    'Cerebro orange': [[0,'#aeb5bb'],[0.08,'#f7c89d'],[0.38,'#f49a4c'],[0.7,'#e75f25'],[1,'#9f251f']],
     YlGnBu: [[0,'#ffffd9'],[0.25,'#c7e9b4'],[0.5,'#41b6c4'],[0.75,'#225ea8'],[1,'#081d58']],
     YlOrRd: [[0,'#ffffcc'],[0.25,'#fed976'],[0.5,'#fd8d3c'],[0.75,'#e31a1c'],[1,'#800026']],
     Blues:  [[0,'#f7fbff'],[0.25,'#c6dbef'],[0.5,'#6baed6'],[0.75,'#2171b5'],[1,'#08306b']],
@@ -1183,6 +1184,23 @@
       });
       applySelection(traces, selectedKeys);
       createCustomLegend(plotId, meta.traces, extra.coexpr_colors || meta.coexpr_colors);
+    } else if (data.neutral_color) {
+      traces.push({
+        x: data.x,
+        y: data.y,
+        mode: 'markers',
+        type: 'scattergl',
+        marker: {
+          size: data.point_size,
+          opacity: data.point_opacity,
+          line: data.point_line,
+          color: data.neutral_color,
+        },
+        hoverinfo: hover.hoverinfo,
+        text: hover.text,
+        hoverlabel: HOVERLABEL,
+      });
+      applySelection(traces, selectedKeys);
     } else {
       const { min: colorMin, max: colorMax } = finiteExtent(data.color);
       // gene_expression passes an explicit colour range + scale; honour it.
@@ -1252,7 +1270,13 @@
     const cmin = data.color_range ? data.color_range[0] : colorMin;
     const cmax = data.color_range ? data.color_range[1] : colorMax;
     const colorscale = data.colorscale || CONTINUOUS_COLORSCALE;
-    const marker = {
+    const marker = data.neutral_color ? {
+      size: data.point_size,
+      opacity: data.point_opacity,
+      line: data.point_line,
+      color: data.neutral_color,
+      showscale: false,
+    } : {
       size: data.point_size,
       opacity: data.point_opacity,
       line: data.point_line,
@@ -1262,7 +1286,7 @@
       colorscale: colorscale,
       showscale: false,
     };
-    if (data.reversescale) marker.reversescale = true;
+    if (!data.neutral_color && data.reversescale) marker.reversescale = true;
     const traces = [{
       x: data.x,
       y: data.y,
@@ -1276,13 +1300,15 @@
       showlegend: false,
     }];
     applySelection(traces, selectedKeys);
-    createContinuousLegend(
-      plotId,
-      meta.color_variable,
-      cmin,
-      cmax,
-      resolveColorscaleArray(colorscale, data.reversescale)
-    );
+    if (!data.neutral_color) {
+      createContinuousLegend(
+        plotId,
+        meta.color_variable,
+        cmin,
+        cmax,
+        resolveColorscaleArray(colorscale, data.reversescale)
+      );
+    }
 
     const layout = baseLayout3D();
     applyContainerSize(layout, plotId, container);

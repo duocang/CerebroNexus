@@ -20,6 +20,17 @@
 // =============================================================================
 
 const EXPRESSION_PLOT_ID = 'expression_projection';
+const CEREBRO_EXPRESSION_SCALE = [
+  [0, '#aeb5bb'],
+  [0.08, '#f7c89d'],
+  [0.38, '#f49a4c'],
+  [0.7, '#e75f25'],
+  [1, '#9f251f'],
+];
+
+function expressionResolveColorScale(scale) {
+  return scale === 'Cerebro orange' ? CEREBRO_EXPRESSION_SCALE : scale;
+}
 
 if (window.cerebroProjection) {
   window.cerebroProjection.registerPlot(EXPRESSION_PLOT_ID);
@@ -36,9 +47,10 @@ function expressionBuildParams(data, color) {
     color_variable: 'Expression',
   };
   const sharedData = Object.assign({}, data, {
-    colorscale: color.scale,
+    colorscale: expressionResolveColorScale(color.scale),
     color_range: color.range,
-    reversescale: true,
+    reversescale: color.scale !== 'Cerebro orange',
+    neutral_color: data.has_expression ? null : '#aeb5bb',
   });
   return { meta: meta, data: sharedData };
 }
@@ -133,8 +145,8 @@ shinyjs.expressionProjectionUpdatePlot2DMultiPanel = function (params) {
         opacity: params.data.point_opacity,
         line: params.data.point_line,
         color: params.data.color[gene],
-        colorscale: params.color.scale,
-        reversescale: true,
+        colorscale: expressionResolveColorScale(params.color.scale),
+        reversescale: params.color.scale !== 'Cerebro orange',
         cauto: false,
         cmin: params.color.range[0],
         cmax: params.color.range[1]

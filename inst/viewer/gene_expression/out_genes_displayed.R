@@ -1,24 +1,19 @@
 ##----------------------------------------------------------------------------##
-## Text showing which genes are present and missing.
+## Only surface actionable input problems; selected genes are already visible
+## in the selector and repeating them below the plot adds noise.
 ##----------------------------------------------------------------------------##
-output[["expression_genes_displayed"]] <- renderText({
-  ## don't proceed without these inputs
+output[["expression_genes_displayed"]] <- renderUI({
   req(expression_selected_genes())
-  ## prepare text output from reactive data
-  paste0(
-    "<b>Showing expression for ",
-    length(expression_selected_genes()[["genes_to_display_present"]]),
-    " gene(s):</b><br>",
-    paste0(
-      expression_selected_genes()[["genes_to_display_present"]],
-      collapse = ", "
-    ),
-    "<br><br><b>",
-    length(expression_selected_genes()[["genes_to_display_missing"]]),
-    " gene(s) are not in data set: </b><br>",
-    paste0(
-      expression_selected_genes()[["genes_to_display_missing"]],
-      collapse = ", "
+  missing <- expression_selected_genes()[["genes_to_display_missing"]]
+  if (length(missing) == 0) {
+    return(NULL)
+  }
+  tags$div(
+    class = "cerebro-expression-notice",
+    icon("triangle-exclamation"),
+    tags$span(
+      tags$strong("Not found in this dataset: "),
+      paste(missing, collapse = ", ")
     )
   )
 })

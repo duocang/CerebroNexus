@@ -7,13 +7,12 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
     selectizeInput(
       'expression_genes_input',
       label = 'Gene(s)',
-      choices = data.table::as.data.table(data.frame(
-        "Genes" = list_of_genes()
-      )),
+      choices = NULL,
       multiple = TRUE,
       width = "100%",
       options = list(
-        create = TRUE
+        create = TRUE,
+        placeholder = "Search genes..."
       )
     )
   } else if (input[["expression_analysis_mode"]] == "Gene set") {
@@ -28,3 +27,25 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
     )
   }
 })
+
+## Keep large gene dictionaries out of the dynamic UI payload. Selectize asks
+## the server for matching options as the user types instead of constructing
+## thousands of browser-side option nodes when the page first opens.
+observeEvent(
+  list_of_genes(),
+  {
+    genes <- list_of_genes()
+    session$onFlushed(
+      function() {
+        updateSelectizeInput(
+          session,
+          "expression_genes_input",
+          choices = genes,
+          server = TRUE
+        )
+      },
+      once = TRUE
+    )
+  },
+  ignoreInit = FALSE
+)
