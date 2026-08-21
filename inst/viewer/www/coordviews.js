@@ -12,8 +12,9 @@
    the paper claims, generalised so the immune repertoire is a first-class
    space (which a generic viewer cannot express).
 
-   One R->JS handoff per dataset (Shiny message "coordviews_data"); all
-   interaction (brush, highlight, readout) is client-side and instant.
+   One full R->JS handoff per dataset (Shiny message "coordviews_data"); later
+   palette edits travel as a small "coordviews_colors" patch. All interaction
+   (brush, highlight, readout) is client-side and instant.
 
    All ids are `cv-`-prefixed; all styles scoped under `.coordviews-page`.
    ========================================================================== */
@@ -21,6 +22,7 @@
   'use strict';
 
   var D = null;                 // the data bundle
+  var pendingColorPatch = null; // palette received before its dataset bundle
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var sel = null;               // Set of selected cell indices (null = none)
   var selectionSource = null;   // label of the lens that created the active cohort
@@ -4568,6 +4570,22 @@ var focusPanel = null;
     reportSelection();
   }
 
+  function applyColorPatch(patch) {
+    if (!D || !patch || patch.dataset_id !== D.dataset_id) return false;
+    ['groups', 'cat_extra'].forEach(function (kind) {
+      var update = patch[kind] || {};
+      var target = D[kind] || {};
+      Object.keys(update).forEach(function (name) {
+        if (target[name] && Array.isArray(update[name])) {
+          target[name].colors = update[name];
+        }
+      });
+    });
+    sanitiseColors(D);
+    renderLegend(); drawAll();
+    return true;
+  }
+
   function onData(bundle) {
     // A data set the builders cannot turn into a bundle (no embedding, or a
     // build error) arrives as {error: "..."}. Blank the workspace and SAY so —
@@ -4583,9 +4601,9 @@ var focusPanel = null;
     _clipD = null;   // ranges belong to the data set that produced them
     // Image ids belong to the object that produced them, so alignment stored
     // under them is dropped when the DATA SET changes -- not when a bundle
-    // arrives. Bundles are re-sent for reasons that are not a change of data
-    // set: returning to the tab, recolouring a group. Clearing on every push
-    // meant a user's alignment work survived only until they looked away.
+    // arrives. A bundle can be re-sent when returning to the tab; clearing on
+    // every push meant a user's alignment work survived only until they looked
+    // away.
     var dataChanged = D.dataset_id !== dataShown;
     var previousSelected = selectedSpatial.slice();
     var previousProjections = selectedProjections.slice();
@@ -4646,9 +4664,9 @@ var focusPanel = null;
     hidden = new Set(); sel = null; selectionSource = null;
     pick = null; hoverCell = null;
     focusPanel = null;
-    // Reset point appearance only for a genuinely different data set. Bundles
-    // from the same one are re-sent after returning to the tab or recolouring;
-    // those refreshes must not discard the user's shared override.
+    // Reset point appearance only for a genuinely different data set. A bundle
+    // can be re-sent after returning to the tab; that refresh must not discard
+    // the user's shared override.
     groupFilter = {};
     if (dataChanged) {
       var configuredOpacity = Number(D.default_point_opacity);
@@ -4730,6 +4748,9 @@ var focusPanel = null;
     // they'd show stale/wrong cells after a dataset switch.
     reportSelection();
     positionAllRangeVals();
+    if (pendingColorPatch && applyColorPatch(pendingColorPatch)) {
+      pendingColorPatch = null;
+    }
   }
 
   // ---- boot ----------------------------------------------------------------
@@ -4739,6 +4760,9 @@ var focusPanel = null;
   function boot() {
     if (typeof Shiny === 'undefined' || !Shiny.addCustomMessageHandler) return;
     Shiny.addCustomMessageHandler('coordviews_data', onData);
+    Shiny.addCustomMessageHandler('coordviews_colors', function (patch) {
+      if (!applyColorPatch(patch)) pendingColorPatch = patch;
+    });
 
     // Single-gene expression vector (0-255) for the current gene.
     // A reply is only for the gene still being asked about. Two things used to
@@ -4786,9 +4810,7 @@ var focusPanel = null;
     // Report whether the workspace is on screen -- both ways, and not just the
     // first time. Building the bundle walks every cell of the loaded object and
     // this is one tab of eighteen, so a session that never opens it should pay
-    // nothing; but "has opened it once" is not enough either, because the bundle
-    // is rebuilt whenever a group colour changes and the user is by then usually
-    // on the Color management tab. The server holds off while this is false.
+    // nothing; while hidden, both full data and palette patches are held back.
     //
     // The condition is "the workspace has a layout box", not the sidebar's
     // active-tab input: that reports shinydashboard's idea of which tab is
@@ -4808,8 +4830,7 @@ var focusPanel = null;
     reportVisibility();
     // The poll is the backstop; a tab switch is a click, so report on the way
     // out too. Without this the server can still believe the workspace is on
-    // screen for up to one interval after the user has left it -- long enough
-    // for the recolour they went to Color management to make.
+    // screen for up to one interval after the user has left it.
     document.addEventListener('click', function () {
       setTimeout(reportVisibility, 0);
     }, true);

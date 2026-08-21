@@ -17,9 +17,6 @@
 library(shinytest2)
 
 inst_dir <- system.file(package = "CerebroNexus")
-if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
-  inst_dir <- testthat::test_path("../../inst")
-}
 
 ## Open the app on the Linked views tab, ready for a bundle.
 cv_app <- function(name) {
@@ -415,6 +412,34 @@ test_that("the tab renders a pushed bundle and offers every meta column", {
   expect_gt(app$get_js(cv_ink_js()), 1)
 
   app$stop()
+})
+
+test_that("a palette patch recolours the current bundle without replacing it", {
+  local_app_support(inst_dir)
+  app <- cv_app("cv_browser_palette_patch")
+  on.exit(app$stop(), add = TRUE)
+
+  app$run_js(cv_bundle_js("{ dataset_id: 'palette-test' }"))
+  app$wait_for_js(
+    "document.querySelector('#cv-legend .cv-dot') !== null",
+    timeout = 15000
+  )
+  app$run_js(paste0(
+    "Shiny.shinyapp.dispatchMessage(JSON.stringify({ custom: { ",
+    "coordviews_colors: { dataset_id: 'palette-test', ",
+    "groups: { cluster: ['#010203', '#040506', '#070809'] }, ",
+    "cat_extra: {} } } }));"
+  ))
+  app$wait_for_js(
+    "getComputedStyle(document.querySelector('#cv-legend .cv-dot')).backgroundColor === 'rgb(1, 2, 3)'",
+    timeout = 5000
+  )
+  expect_identical(
+    app$get_js(
+      "getComputedStyle(document.querySelector('#cv-legend .cv-dot')).backgroundColor"
+    ),
+    "rgb(1, 2, 3)"
+  )
 })
 
 test_that("Trekker insight tabs resize smoothly without losing their anchor", {
@@ -1462,11 +1487,9 @@ test_that("a data-set switch does not carry the rotation over", {
 ## Linked views is one tab among eighteen, and building its bundle means walking
 ## every cell of the loaded object -- reductions, spatial coordinates, the immune
 ## repertoire -- into ~156 KB of payload. That used to happen on connect, for
-## every session, whether or not anyone opened the tab; worse, the bundle reads
-## the reactive colour map, so recolouring a group on another tab rebuilt and
-## re-sent all of it while the tab sat hidden. Both halves are asserted here: the
-## first version of this test only covered "never opened", and a sticky
-## opened-once flag passed it while still rebuilding on every later colour change.
+## every session, whether or not anyone opened the tab. The full bundle must
+## remain lazy even after a palette edit while the tab is hidden; the colour
+## patch itself is cheap and applies when the workspace returns.
 test_that("the bundle is built only while the workspace is on screen", {
   local_app_support(inst_dir)
   app <- AppDriver$new(
@@ -1501,8 +1524,8 @@ test_that("the bundle is built only while the workspace is on screen", {
   )
   expect_gt(app$get_js(cv_ink_js()), 1)
 
-  ## Leave for Color management and change a group colour. This invalidates the
-  ## bundle, and the workspace is not on screen to receive it.
+  ## Leave for Color management and change a group colour while the workspace
+  ## is hidden. It must not build the full bundle.
   app$run_js(
     "document.querySelector('a[href=\"#shiny-tab-color_management\"]').click();"
   )
@@ -1535,8 +1558,7 @@ test_that("the bundle is built only while the workspace is on screen", {
   app$wait_for_idle(timeout = 15000)
   expect_equal(app$get_value(export = "coordviews_bundles_built"), 1)
 
-  ## Coming back does pick the change up -- the gate defers the work, it does
-  ## not drop it.
+  ## Coming back applies the queued palette without rebuilding the full bundle.
   app$run_js(
     "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"
   )
@@ -1545,7 +1567,7 @@ test_that("the bundle is built only while the workspace is on screen", {
     timeout = 10000
   )
   app$wait_for_idle(timeout = 20000)
-  expect_equal(app$get_value(export = "coordviews_bundles_built"), 2)
+  expect_equal(app$get_value(export = "coordviews_bundles_built"), 1)
 
   app$stop()
 })
@@ -3523,10 +3545,10 @@ test_that("More settings becomes a full-screen settings page on narrow viewports
 })
 
 
-## A bundle is re-sent for reasons that are not a change of data set: returning
-## to the tab, recolouring a group. Clearing the per-image alignment on every
-## push meant the user's work survived only until they looked away -- the state
-## was keyed on "a message arrived" rather than on which data set it described.
+## A bundle can be re-sent on returning to the tab without changing the data
+## set. Clearing the per-image alignment on every push meant the user's work
+## survived only until they looked away -- the state was keyed on "a message
+## arrived" rather than on which data set it described.
 test_that("re-sending the same data set keeps the image adjustments", {
   local_app_support(inst_dir)
   app <- cv_app("cv_browser_img_repush")

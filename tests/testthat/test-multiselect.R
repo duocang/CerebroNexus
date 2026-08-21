@@ -1,11 +1,7 @@
 test_that("global multiselect enhancement cannot observe its own placeholder text", {
-  js_file <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
-    "viewer",
-    "www",
-    "multiselect.js"
+  js_file <- system.file(
+    "viewer/www/multiselect.js",
+    package = "CerebroNexus"
   )
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
 

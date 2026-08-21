@@ -6,9 +6,8 @@
 ## carry NO input/output/session/reactive dependency, so this file is sourced by
 ## server.R (source(..., local = TRUE)) at runtime AND unit-tested in isolation
 ## (tests/testthat/test-coordinated-views.R). cv_build_bundle() tolerates the
-## app-only helpers (reactive_colors / cerebro_group_colors / Cerebro.options)
-## being absent — each is guarded — so it produces the same structure outside
-## the running app, just with the fallback palette.
+## app-only helpers (cerebro_group_colors / Cerebro.options) being absent — each
+## is guarded — so it produces the same structure outside the running app.
 ##
 ## The I()/AsIs wrapping in cv_group / cv_space / cv_clone is the load-bearing
 ## invariant: shiny serialises the bundle with auto_unbox = TRUE, so any array
@@ -473,13 +472,6 @@ cv_external_images <- function(spatial_name = NULL) {
   out
 }
 
-## Kept for callers wanting only the primary image (and for the previous
-## single-image contract): the first external image, or NULL.
-cv_external_image <- function(spatial_name = NULL) {
-  imgs <- cv_external_images(spatial_name)
-  if (!length(imgs)) NULL else imgs[[1]]
-}
-
 ## Bundle constructors — the ONE place the "which fields are JS arrays" contract
 ## lives. shiny serialises the bundle with auto_unbox = TRUE, which is correct for
 ## the genuine scalars (n, K, defaults, max, ...) but wrong for any vector the
@@ -491,6 +483,41 @@ cv_external_image <- function(spatial_name = NULL) {
 ## forget when a new field is added — instead of a scattered, easy-to-miss I().
 cv_group <- function(values, levels, colors) {
   list(values = I(values), levels = I(levels), colors = I(colors))
+}
+
+## Colour management changes labels, not cells or coordinates. Send that small
+## delta separately so recolouring never rebuilds the per-dataset bundle.
+cv_color_patch <- function(bundle, color_map = NULL) {
+  patch_groups <- function(groups) {
+    stats::setNames(
+      lapply(names(groups), function(group_name) {
+        group <- groups[[group_name]]
+        colors <- as.character(group$colors)
+        configured <- if (
+          is.list(color_map) && group_name %in% names(color_map)
+        ) {
+          color_map[[group_name]]
+        } else {
+          NULL
+        }
+        if (!is.null(configured) && !is.null(names(configured))) {
+          replacement <- unname(configured[match(
+            group$levels,
+            names(configured)
+          )])
+          present <- !is.na(replacement)
+          colors[present] <- replacement[present]
+        }
+        I(colors)
+      }),
+      names(groups)
+    )
+  }
+  list(
+    dataset_id = bundle$dataset_id,
+    groups = patch_groups(bundle$groups),
+    cat_extra = patch_groups(bundle$cat_extra)
+  )
 }
 cv_space <- function(id, label, x, y) {
   list(id = id, label = label, x = I(x), y = I(y))
@@ -572,8 +599,7 @@ cv_clone <- function(
   )
 }
 
-## Categorical groupings: each md group column -> {values, levels, colors},
-## coloured via colors_fn (the caller's reactive_colors()-backed resolver).
+## Categorical groupings: each md group column -> {values, levels, colors}.
 cv_build_groups <- function(crb, md, colors_fn) {
   group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
   groups <- list()
@@ -1237,8 +1263,7 @@ cv_build_clone <- function(crb, cells, n) {
 }
 
 ## Assemble the bundle from the loaded Cerebro object. Each modality is built by
-## its own cv_build_* helper; this function wires them into the final list and
-## owns the colour resolver (which depends on the reactive colour map).
+## its own cv_build_* helper; this function wires them into the final list.
 cv_build_bundle <- function(crb) {
   md <- crb$getMetaData()
   if (is.null(md) || !("cell_barcode" %in% colnames(md))) {
@@ -1247,29 +1272,13 @@ cv_build_bundle <- function(crb) {
   cells <- as.character(md$cell_barcode)
   n <- length(cells)
 
-  ## Colours must MATCH the Projection tab, not be freshly invented here. The app
-  ## keeps the authoritative per-group level->colour map in reactive_colors()
-  ## (seeded from the object, user-editable in "Color management"); the Projection
-  ## tab reads it via assignColorsToGroups(). Pull the same map, matched to this
-  ## group's level order, and fall back to cerebro_group_colors() for any level
-  ## without an assignment — the identical fallback assignColorsToGroups() uses.
-  ## Called inside the coordviews_bundle reactive, so recolouring in Color
-  ## management re-pushes the bundle and the panels recolour live.
-  rc <- tryCatch(reactive_colors(), error = function(e) NULL)
+  ## Seed a stable fallback here. The user-editable palette travels separately
+  ## as cv_color_patch(), so changing one colour cannot rebuild this bundle.
   cv_group_colors <- function(group_name, lev) {
-    cols <- rep(NA_character_, length(lev))
-    if (!is.null(rc) && group_name %in% names(rc)) {
-      named <- rc[[group_name]]
-      cols <- unname(named[match(lev, names(named))])
-    }
-    if (anyNA(cols)) {
-      fb <- tryCatch(
-        cerebro_group_colors(length(lev)),
-        error = function(e) cv_colors_for(lev)
-      )
-      cols[is.na(cols)] <- fb[is.na(cols)]
-    }
-    cols
+    tryCatch(
+      cerebro_group_colors(length(lev)),
+      error = function(e) cv_colors_for(lev)
+    )
   }
 
   ## Three colouring sources, mirroring the Projection tab's "Color cells by"
@@ -1410,10 +1419,10 @@ cv_build_bundle <- function(crb) {
 
   list(
     ## Which data set this bundle IS. The client keeps per-image alignment state
-    ## across pushes, and a bundle is re-sent for reasons that are not a change
-    ## of data set -- returning to the tab, recolouring a group. Without an
-    ## identity to compare, "a new bundle" and "a new data set" look the same and
-    ## the user's alignment work is thrown away by walking away and back.
+    ## across pushes, and a bundle can be re-sent when returning to the tab.
+    ## Without an identity to compare, "a new bundle" and "a new data set" look
+    ## the same and the user's alignment work is thrown away by walking away and
+    ## back.
     dataset_id = tryCatch(
       {
         if (

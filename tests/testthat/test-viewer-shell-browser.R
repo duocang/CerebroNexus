@@ -1,12 +1,6 @@
 library(shinytest2)
 
 viewer_inst_dir <- system.file(package = "CerebroNexus")
-if (
-  !nzchar(viewer_inst_dir) ||
-    !file.exists(file.path(viewer_inst_dir, "app.R"))
-) {
-  viewer_inst_dir <- testthat::test_path("../../inst")
-}
 
 test_that("mobile navigation is modal, dismissible, and exclusive with More", {
   local_app_support(viewer_inst_dir)

@@ -1,10 +1,6 @@
 library(shinytest2)
 
-## Locate inst/ whether running via devtools::test() or R CMD check
 inst_dir <- system.file(package = "CerebroNexus")
-if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
-  inst_dir <- testthat::test_path("../../inst")
-}
 
 ## shinytest2's wait_for_idle() tracks server reactivity, NOT the async
 ## client-side projection renderer (www/projection_scatter.js). After it returns,

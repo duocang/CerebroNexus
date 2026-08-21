@@ -73,14 +73,22 @@ cv_ok <- function(b) {
   if (is.null(b) || !is.null(b$error)) NULL else b
 }
 
+## Palette edits do not change cells, coordinates, or available spaces. Keep the
+## expensive bundle reactive independent of Color management and send only the
+## categorical colours that changed.
+coordviews_color_patch <- reactive({
+  b <- cv_ok(coordviews_bundle())
+  req(!is.null(b))
+  colors <- tryCatch(reactive_colors(), error = function(e) NULL)
+  cv_color_patch(b, colors)
+})
+
 ## Nothing is built or sent until the user actually opens the tab.
 ##
 ## `coordviews_bundle()` walks every cell of the loaded object -- reductions,
 ## spatial coordinates, the immune repertoire -- and the result is sizeable.
-## Doing that on connect made every session pay
-## for a tab most of them never open, and because the bundle reads
-## reactive_colors(), recolouring a group on the Projection tab rebuilt and
-## re-sent the whole thing while Linked views sat hidden.
+## Doing that on connect made every session pay for a tab most of them never
+## open; colour edits now stay in the small patch reactive above.
 ##
 ## The client reports whether the workspace is on screen (`coordviews_visible`)
 ## -- see www/coordviews.js for why that signal rather than the sidebar's
@@ -93,18 +101,25 @@ observeEvent(input[["coordviews_visible"]], {
   coordviews_visible(isTRUE(input[["coordviews_visible"]]))
 })
 
-## Push while visible, and on every change that reaches it then: a data-set
-## switch, a recolour. The error payload is pushed too, and that is the point:
-## staying silent would leave the PREVIOUS data set's panels on screen,
-## presenting one data set's cells as another's.
+## Push the full bundle while visible and when the data set changes. The error
+## payload is pushed too, and that is the point: staying silent would leave the
+## PREVIOUS data set's panels on screen, presenting one data set's cells as
+## another's. Colour changes use the patch observer below.
 ##
 ## The req() has to come FIRST. It is what keeps this observer from taking a
-## dependency on the bundle while hidden -- so a colour change then invalidates
-## nothing here, nothing is rebuilt, and the work happens when the user comes
-## back and the observer runs again.
+## dependency on the bundle while hidden -- nothing is built until the user
+## returns to the workspace.
+observe(
+  {
+    req(coordviews_visible())
+    session$sendCustomMessage("coordviews_data", coordviews_bundle())
+  },
+  priority = 1
+)
+
 observe({
   req(coordviews_visible())
-  session$sendCustomMessage("coordviews_data", coordviews_bundle())
+  session$sendCustomMessage("coordviews_colors", coordviews_color_patch())
 })
 
 ##----------------------------------------------------------------------------##

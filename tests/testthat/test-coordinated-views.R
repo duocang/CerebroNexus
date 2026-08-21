@@ -42,8 +42,8 @@ if (!is.na(local_inst)) {
 }
 
 ## Source the pure builders into an isolated env (no app scope). The app-only
-## helpers reactive_colors() / cerebro_group_colors() are absent here; bundle.R
-## guards each, so cv_build_bundle() simply falls back to its own palette.
+## helpers cerebro_group_colors() / Cerebro.options are absent here; bundle.R
+## guards each, so cv_build_bundle() uses its fallback palette.
 ##
 ## clone_contract.R is NOT optional and is deliberately not guarded: it defines
 ## what a clone is, and the app sources it before any module for the same reason
@@ -226,6 +226,30 @@ test_that("cv_group/cv_space/cv_clone force JSON arrays even at length 1", {
   expect_match(arr(cl$size), "^\\[")
   expect_match(arr(cl$label), "^\\[")
   expect_false(startsWith(arr(cl$n_clones), "["))
+})
+
+test_that("cv_color_patch carries only palette updates for the current bundle", {
+  skip_if_not(have_bundle)
+  bundle <- list(
+    dataset_id = "example.crb",
+    groups = list(
+      cluster = cv_env$cv_group(c(0L, 1L), c("A", "B"), c("#aaaaaa", "#bbbbbb"))
+    ),
+    cat_extra = list(
+      donor = cv_env$cv_group(c(0L, 1L), c("d1", "d2"), c("#cccccc", "#dddddd"))
+    )
+  )
+
+  patch <- cv_env$cv_color_patch(
+    bundle,
+    list(cluster = c(A = "#111111", B = "#222222"))
+  )
+
+  expect_named(patch, c("dataset_id", "groups", "cat_extra"))
+  expect_identical(patch$dataset_id, "example.crb")
+  expect_equal(as.character(patch$groups$cluster), c("#111111", "#222222"))
+  expect_equal(as.character(patch$cat_extra$donor), c("#cccccc", "#dddddd"))
+  expect_s3_class(patch$groups$cluster, "AsIs")
 })
 
 ## A minimal but realistically-shaped IR table: the CT* columns spell out chain
