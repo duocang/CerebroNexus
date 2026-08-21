@@ -30,7 +30,18 @@ test_that("long queued upload rows keep Cancel inside the dataset rail", {
     "const cancel = document.createElement('button');",
     "cancel.className = 'btn btn-remove-soft builder-cancel-client-import';",
     "cancel.textContent = 'Cancel';",
-    "row.append(body, dot, cancel); queue.appendChild(row);"
+    "row.append(body, dot, cancel); queue.appendChild(row);",
+    "const activeHost = document.getElementById('ds_import_list');",
+    "const activeRow = document.createElement('div');",
+    "activeRow.className = 'ds ds--import geometry-active-fixture';",
+    "const activeActions = document.createElement('div');",
+    "activeActions.className = 'ds-actions';",
+    "const activeCancel = document.createElement('button');",
+    "activeCancel.className = ",
+    "'ds-del btn btn-remove-soft builder-cancel-import builder-remove-import';",
+    "activeCancel.textContent = 'Cancel';",
+    "activeActions.appendChild(activeCancel);",
+    "activeRow.appendChild(activeActions); activeHost.appendChild(activeRow);"
   ))
   geometry <- app$get_js(paste0(
     "(() => {",
@@ -47,4 +58,21 @@ test_that("long queued upload rows keep Cancel inside the dataset rail", {
   expect_lte(geometry$rowRight, geometry$railRight)
   expect_lte(geometry$buttonRight, geometry$railRight)
   expect_identical(geometry$position, "static")
+
+  styles <- app$get_js(paste0(
+    "(() => {",
+    "const props = ['backgroundColor', 'color', 'borderRadius', 'minHeight', ",
+    "'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', ",
+    "'fontSize', 'fontWeight'];",
+    "const read = selector => { const style = getComputedStyle(",
+    "document.querySelector(selector)); return Object.fromEntries(",
+    "props.map(prop => [prop, style[prop]])); };",
+    "return {",
+    "client: read('.geometry-fixture .builder-cancel-client-import'),",
+    "active: read('.geometry-active-fixture .builder-cancel-import')",
+    "};",
+    "})()"
+  ))
+
+  expect_identical(styles$active, styles$client)
 })

@@ -702,14 +702,14 @@ builder_build_stage_status_model <- function(
   } else {
     "idle"
   }
-  state <- if (!is.null(result)) {
-    "result"
+  state <- if (identical(flow_stage, "preparing")) {
+    "preparing"
   } else if (identical(build_status, "queued")) {
     "queued"
   } else if (build_status %in% c("running", "cancelling")) {
     "building"
-  } else if (identical(flow_stage, "preparing")) {
-    "preparing"
+  } else if (!is.null(result)) {
+    "result"
   } else if (identical(flow_stage, "choosing_folder")) {
     "choosing_folder"
   } else {
@@ -746,6 +746,44 @@ builder_build_stage_status_model <- function(
       NULL
     } else {
       builder_build_status_model(result)
+    }
+  )
+}
+
+builder_build_operation_overlay_model <- function(
+  flow,
+  protocol,
+  note,
+  result
+) {
+  model <- builder_build_stage_status_model(
+    flow = flow,
+    protocol = protocol,
+    note = note,
+    result = result,
+    output_selected = TRUE
+  )
+  active <- model$state %in% c("preparing", "queued", "building")
+  list(
+    active = active,
+    title = if (active) "Building output" else NULL,
+    message = if (active) {
+      paste(
+        "Do not close this page.",
+        "This dialog will close automatically when the build finishes."
+      )
+    } else {
+      NULL
+    },
+    detail = if (active) {
+      switch(
+        model$state,
+        preparing = "Preparing build…",
+        queued = model$message %||% "Build queued…",
+        building = model$message %||% "Building output…"
+      )
+    } else {
+      NULL
     }
   )
 }
@@ -809,9 +847,14 @@ builder_build_stage_status_body_ui <- function(model) {
     model$state,
     ready = if (
       !isTRUE(model$can_build) &&
-        builder_stage_has_text(model$message %||% "")
+        identical(model$message, "The background worker is not ready.")
     ) {
-      p(class = "builder-build-readiness", model$message)
+      div(
+        class = "builder-build-waiting builder-build-blocked",
+        span(model$message)
+      )
+    } else {
+      NULL
     },
     choosing_folder = NULL,
     preparing = div(

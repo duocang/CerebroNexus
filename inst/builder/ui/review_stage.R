@@ -1013,9 +1013,15 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
     tags$section(
       class = "builder-stage-section review-section review-output",
       h3("Output"),
+      p(
+        class = "review-output-download-note",
+        paste(
+          "CRB files will be available to download after the build",
+          "completes."
+        )
+      ),
       tags$dl(
         class = "review-fields review-output-fields",
-        field("Folder", model$output$directory, "is-path"),
         field(
           "Creates",
           plural(model$output$crb_count, "CRB file")

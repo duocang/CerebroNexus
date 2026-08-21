@@ -54,10 +54,10 @@ test_that("an accepted Build requests absolute page-top scrolling", {
   )
 
   expect_match(start, 'build_flow(list(stage = "preparing"', fixed = TRUE)
-  expect_match(start, '"builder_scroll_page_top"', fixed = TRUE)
+  expect_match(start, '"builder_focus_build_status"', fixed = TRUE)
   expect_lt(
     regexpr('build_flow(list(stage = "preparing"', start, fixed = TRUE)[1L],
-    regexpr('"builder_scroll_page_top"', start, fixed = TRUE)[1L]
+    regexpr('"builder_focus_build_status"', start, fixed = TRUE)[1L]
   )
 })
 
@@ -352,7 +352,7 @@ test_that("Build stage exclusively owns its live status projection", {
   )
 })
 
-test_that("Build result survives failed folder selection and clears on acceptance", {
+test_that("Build result survives unsafe folder selection and clears on acceptance", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   app_env <- new.env(parent = globalenv())
@@ -402,6 +402,7 @@ test_that("Build result survives failed folder selection and clears on acceptanc
     choices <- list(
       list(status = "cancelled", path = NULL),
       list(status = "error", path = NULL, error = "picker failed"),
+      list(status = "selected", path = "/unsafe/output"),
       list(status = "selected", path = "/new/output")
     )
     folder_env <- environment(choose_build_folder)
@@ -419,7 +420,31 @@ test_that("Build result survives failed folder selection and clears on acceptanc
       },
       envir = folder_env
     )
-    assign("showNotification", function(...) NULL, envir = folder_env)
+    assign(
+      "builder_build_output_preflight",
+      function(path) {
+        if (identical(path, "/unsafe/output")) {
+          return(list(
+            ok = FALSE,
+            error = paste(
+              "The selected folder contains files that do not belong",
+              "to this release: builder-project.json, datasets, sources.",
+              "Choose an empty folder or an existing Builder output folder."
+            )
+          ))
+        }
+        list(ok = TRUE, error = NULL)
+      },
+      envir = folder_env
+    )
+    notifications <- character()
+    assign(
+      "showNotification",
+      function(ui, ...) {
+        notifications <<- c(notifications, as.character(ui))
+      },
+      envir = folder_env
+    )
 
     pending_protocol <- app_env$builder_request_protocol("worker-pending")
     pending_protocol <- app_env$builder_enqueue(
@@ -434,7 +459,7 @@ test_that("Build result survives failed folder selection and clears on acceptanc
       unlist(output$build_stage_status_content),
       collapse = " "
     )
-    expect_match(pending_content, "Preparing preview…", fixed = TRUE)
+    expect_identical(pending_content, "")
     pending_footer <- paste(unlist(output$build_stage_footer), collapse = " ")
     expect_match(pending_footer, " disabled", fixed = TRUE)
     expect_length(output$busy, 0L)
@@ -450,6 +475,15 @@ test_that("Build result survives failed folder selection and clears on acceptanc
     real_session$flushReact()
     expect_identical(result(), success)
     expect_identical(selected_output(), "/old/output")
+    choose_build_folder()
+    real_session$flushReact()
+    expect_identical(result(), success)
+    expect_identical(selected_output(), "/old/output")
+    expect_true(any(grepl(
+      "Choose an empty folder",
+      notifications,
+      fixed = TRUE
+    )))
     choose_build_folder()
     real_session$flushReact()
     expect_null(result())
@@ -761,9 +795,15 @@ test_that("external spatial images carry required App output through Review", {
       configured,
       list(type = "open_review", plan = plan)
     ))
+    result(app_env$builder_result_success(
+      published = TRUE,
+      built = "/old/output/dataset.crb"
+    ))
+    expect_false(is.null(result()))
     session$setInputs(confirm_review = 1L)
     session$flushReact()
     expect_identical(workflow()$stage, "build")
+    expect_null(result())
     expect_true(build_mode())
 
     session$setInputs(build_output_mode = "crb")
@@ -1646,7 +1686,17 @@ test_that("active Build states reject forged stage actions", {
     builder_viewer_page_catalog = app_env$builder_viewer_page_catalog,
     .env = environment(builder_stage_frozen_plan)
   )
-  app_env$builder_freeze_plan <- function(...) builder_stage_frozen_plan(FALSE)
+  app_env$builder_freeze_plan <- function(out_dir, ...) {
+    plan <- builder_stage_frozen_plan(FALSE)
+    plan$output_release$directory <- out_dir
+    plan$output_release$targets <- file.path(
+      out_dir,
+      basename(plan$output_release$targets)
+    )
+    plan
+  }
+  selected_directory <- file.path(withr::local_tempdir(), "selected-output")
+  dir.create(selected_directory)
 
   shiny::testServer(app_env$server, {
     real_session <- session
@@ -1678,7 +1728,7 @@ test_that("active Build states reject forged stage actions", {
       "builder_choose_output_directory",
       function(...) {
         picker_calls <<- picker_calls + 1L
-        list(status = "selected", path = "/new/output")
+        list(status = "selected", path = selected_directory)
       },
       envir = fn_env
     )
@@ -1735,13 +1785,30 @@ test_that("active Build states reject forged stage actions", {
     }
 
     build_flow(list(stage = "idle", plan = NULL))
+    output_preflight <- get("builder_build_output_preflight", envir = fn_env)
+    assign(
+      "builder_build_output_preflight",
+      function(...) stop("preflight failed"),
+      envir = fn_env
+    )
     real_session$setInputs(choose_output_folder = 4L)
     real_session$flushReact()
     expect_identical(picker_calls, 1L)
-    expect_identical(selected_output(), "/new/output")
+    expect_identical(selected_output(), "/confirmed/output")
+    expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    expect_match(
+      tail(notifications, 1L),
+      "The selected folder could not be checked: preflight failed",
+      fixed = TRUE
+    )
+    assign("builder_build_output_preflight", output_preflight, envir = fn_env)
+    real_session$setInputs(choose_output_folder = 5L)
+    real_session$flushReact()
+    expect_identical(picker_calls, 2L)
+    expect_identical(selected_output(), selected_directory)
     navigation_result <- app_env$builder_result_success(
       published = TRUE,
-      built = "/new/output/dataset.crb"
+      built = file.path(selected_directory, "dataset.crb")
     )
     result(navigation_result)
     real_session$setInputs(back_to_review = 4L)
@@ -1855,6 +1922,21 @@ test_that("active builds lock dataset imports and rail mutations", {
     expect_false(store()$can_undo_remove)
     expect_length(store()$datasets, 2L)
   })
+})
+
+test_that("removing an artifact also cancels its in-flight source replacement", {
+  source <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "build.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  removal <- sub(".*remove_dataset <- function\\(", "", source)
+  removal <- sub("\\n\\}\\n\\n# observeEvent\\(input\\$drop_ds.*", "", removal)
+
+  expect_match(removal, "import_of(id)", fixed = TRUE)
+  expect_match(removal, "remove_pending_import(id)", fixed = TRUE)
 })
 
 test_that("Build recovery actions preserve confirmation only when safe", {

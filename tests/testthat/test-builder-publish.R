@@ -43,6 +43,26 @@ test_that("release existence includes dangling lexical entries", {
   })
 })
 
+test_that("release identity ignores Finder metadata but not other dotfiles", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    release <- file.path(root, "release")
+    nested <- file.path(release, "nested")
+    dir.create(nested, recursive = TRUE)
+    writeLines("payload", file.path(release, "dataset.crb"))
+    writeLines("finder", file.path(release, ".DS_Store"))
+    writeLines("finder", file.path(nested, ".DS_Store"))
+    writeLines("foreign", file.path(release, ".unknown"))
+
+    identity <- builder_release_identity(release)
+    paths <- vapply(identity$entries, `[[`, character(1), "path")
+
+    expect_setequal(paths, c(".unknown", "dataset.crb", "nested"))
+    expect_false(any(basename(paths) == ".DS_Store"))
+  })
+})
+
 test_that("release ownership records require canonical recursive members", {
   local({
     builder_publish_source()
@@ -934,6 +954,24 @@ test_that("a dead completed owner cannot strand the release lock", {
     )
     expect_s3_class(next_handle, "builder_release_handle")
     expect_true(builder_abort_release(next_handle)$aborted)
+  })
+})
+
+test_that("completed temporary releases can remove their verified control data", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "checkpoint")
+    handle <- builder_prepare_release(target, "temporary-checkpoint")
+    writeLines("temporary", file.path(handle$stage, "dataset.crb"))
+    published <- builder_publish_release(handle)
+    expect_true(isTRUE(published$published))
+    control <- builder_release_control_path(target)
+    expect_true(dir.exists(control))
+    unlink(target, recursive = TRUE, force = TRUE)
+
+    expect_true(builder_release_cleanup_control(target))
+    expect_false(dir.exists(control))
   })
 })
 

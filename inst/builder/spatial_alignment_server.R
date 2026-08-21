@@ -2,6 +2,125 @@
 ## one explicit boundary: bounded coordinate models enter, canonical alignment
 ## records leave. The Seurat object and local upload paths never enter state.
 
+builder_spatial_preview_cache_key <- function(id, section) {
+  stopifnot(
+    is.character(id),
+    length(id) == 1L,
+    !is.na(id),
+    nzchar(id),
+    is.character(section),
+    length(section) == 1L,
+    !is.na(section),
+    nzchar(section)
+  )
+  paste(id, section, sep = "::")
+}
+
+builder_preview_cache_drop_dataset <- function(cache, id) {
+  if (
+    !is.list(cache) ||
+      !is.character(id) ||
+      length(id) != 1L ||
+      is.na(id) ||
+      !nzchar(id)
+  ) {
+    return(cache)
+  }
+  cache[[id]] <- NULL
+  cache
+}
+
+builder_spatial_preview_cache_drop_dataset <- function(cache, id) {
+  if (
+    !is.list(cache) ||
+      !is.character(id) ||
+      length(id) != 1L ||
+      is.na(id) ||
+      !nzchar(id)
+  ) {
+    return(cache)
+  }
+  prefix <- paste0(id, "::")
+  remove <- startsWith(names(cache) %||% character(), prefix)
+  cache[!remove]
+}
+
+builder_spatial_preview_cache_hit <- function(cache, key, contract) {
+  record <- cache[[key]]
+  is.list(record) && identical(record$contract, contract)
+}
+
+builder_spatial_preview_cache_begin <- function(cache, key, contract) {
+  cache[[key]] <- list(
+    contract = contract,
+    frames = list(),
+    status = "pending"
+  )
+  cache
+}
+
+builder_spatial_preview_cache_frames <- function(cache, key) {
+  record <- cache[[key]]
+  if (is.list(record) && is.list(record$frames)) record$frames else list()
+}
+
+builder_spatial_preview_cache_store_if_match <- function(
+  cache,
+  key,
+  contract,
+  frames
+) {
+  if (!builder_spatial_preview_cache_hit(cache, key, contract)) {
+    return(cache)
+  }
+  cache[[key]]$frames <- frames
+  cache[[key]]$status <- "ready"
+  cache
+}
+
+builder_spatial_preview_cache_drop_if_match <- function(
+  cache,
+  key,
+  contract
+) {
+  if (!builder_spatial_preview_cache_hit(cache, key, contract)) {
+    return(cache)
+  }
+  cache[[key]] <- NULL
+  cache
+}
+
+builder_spatial_preview_failure <- function(cache, payload) {
+  key <- payload$preview_cache_key
+  if (!is.character(key) || length(key) != 1L || is.na(key) || !nzchar(key)) {
+    key <- builder_spatial_preview_cache_key(payload$id, payload$section)
+  }
+  matched <- if (is.list(payload$preview_contract)) {
+    builder_spatial_preview_cache_hit(cache, key, payload$preview_contract)
+  } else {
+    !is.null(cache[[key]])
+  }
+  if (is.list(payload$preview_contract)) {
+    cache <- builder_spatial_preview_cache_drop_if_match(
+      cache,
+      key,
+      payload$preview_contract
+    )
+  } else {
+    cache[[key]] <- NULL
+  }
+  list(
+    cache = cache,
+    matched = matched,
+    message = list(
+      dataset = payload$id,
+      state = "error",
+      section = payload$section,
+      switch_token = payload$switch_token
+    )
+  )
+}
+
 builder_spatial_alignment_server <- function(
   input,
   output,
@@ -13,8 +132,10 @@ builder_spatial_alignment_server <- function(
   enqueue,
   commit_images,
   alignment_preview,
+  spatial_previews = shiny::reactiveVal(list()),
   spatial_coords
 ) {
+  stopifnot(is.function(spatial_previews))
   raw_image <- shiny::reactiveVal(NULL)
   draft <- shiny::reactiveVal(NULL)
   coordinate_draft <- shiny::reactiveVal(list(rotation_degrees = 0, scale = 1))
@@ -28,6 +149,8 @@ builder_spatial_alignment_server <- function(
   active_dataset <- shiny::reactiveVal(NULL)
   active_section <- shiny::reactiveVal(NULL)
   active_image <- shiny::reactiveVal(NULL)
+  active_switch_dataset <- shiny::reactiveVal(NULL)
+  active_switch_token <- shiny::reactiveVal(NULL)
   pending_project_selection <- shiny::reactiveVal(NULL)
   pending_upload <- shiny::reactiveVal(NULL)
   preview_contract <- shiny::reactiveVal(NULL)
@@ -206,11 +329,80 @@ builder_spatial_alignment_server <- function(
       layer = entry$settings$layer %||% "data"
     )
   }
+  switch_token_for <- function(dataset) {
+    if (identical(shiny::isolate(active_switch_dataset()), dataset)) {
+      shiny::isolate(active_switch_token())
+    } else {
+      NULL
+    }
+  }
+  send_switch_state <- function(dataset, state, section = NULL, token = NULL) {
+    session$sendCustomMessage(
+      "builder_dataset_switch_state",
+      list(
+        dataset = dataset,
+        state = state,
+        section = section,
+        switch_token = token %||% switch_token_for(dataset)
+      )
+    )
+  }
+  finish_switch <- function(dataset, section = NULL) {
+    token <- switch_token_for(dataset)
+    if (!is.null(token)) {
+      send_switch_state(dataset, "ready", section, token)
+    }
+    if (identical(shiny::isolate(active_switch_dataset()), dataset)) {
+      active_switch_dataset(NULL)
+      active_switch_token(NULL)
+    }
+    invisible(TRUE)
+  }
+  fail_preview_switch <- function(
+    dataset,
+    section = NULL,
+    request_token = NULL
+  ) {
+    token <- switch_token_for(dataset) %||% request_token
+    if (!is.null(token)) {
+      send_switch_state(dataset, "error", section, token)
+    }
+    if (identical(shiny::isolate(active_switch_dataset()), dataset)) {
+      active_switch_dataset(NULL)
+      active_switch_token(NULL)
+    }
+    invisible(TRUE)
+  }
   request_preview <- function(entry, section) {
+    contract <- preview_contract_for(entry, section)
+    cache_key <- builder_spatial_preview_cache_key(entry$id, section)
+    cache <- shiny::isolate(spatial_previews())
+    record <- cache[[cache_key]] %||% NULL
+    token <- switch_token_for(entry$id)
+    if (builder_spatial_preview_cache_hit(cache, cache_key, contract)) {
+      preview_contract(contract)
+      send_switch_state(entry$id, "spatial", section, token)
+      if (identical(record$status, "ready")) {
+        value <- builder_spatial_preview_cache_frames(cache, cache_key)
+        alignment_preview(value)
+        if (isTRUE(value$available)) {
+          spatial_coords(list(
+            x = value$spatial$x,
+            y = value$spatial$y,
+            sx = value$spatial$x,
+            sy = value$spatial$y
+          ))
+        }
+      }
+      return(invisible(TRUE))
+    }
     queued <- enqueue(list(
       kind = "spatial_preview",
       id = entry$id,
       section = section,
+      preview_cache_key = cache_key,
+      preview_contract = contract,
+      switch_token = token,
       default_projection = entry$settings$default_projection %||% NULL,
       group = entry$settings$default_group %||% NULL,
       assay = entry$settings$assay %||% NULL,
@@ -219,7 +411,15 @@ builder_spatial_alignment_server <- function(
       note = paste0("Loading paired views for ", section, "…")
     ))
     if (isTRUE(queued)) {
-      preview_contract(preview_contract_for(entry, section))
+      spatial_previews(builder_spatial_preview_cache_begin(
+        cache,
+        cache_key,
+        contract
+      ))
+      preview_contract(contract)
+      send_switch_state(entry$id, "spatial", section, token)
+    } else {
+      send_switch_state(entry$id, "error", section, token)
     }
     invisible(queued)
   }
@@ -322,7 +522,15 @@ builder_spatial_alignment_server <- function(
         raw_image(NULL)
         shiny::showNotification(image$error, type = "error", duration = 8)
       } else {
-        raw_image(image)
+        raw_image(list(
+          array = image$array,
+          width = stored$source_width %||% image$width,
+          height = stored$source_height %||% image$height,
+          source_dimensions = c(
+            width = stored$source_width %||% image$width,
+            height = stored$source_height %||% image$height
+          )
+        ))
       }
     }
     appearance <- point_appearance_for(entry, section, stored)
@@ -510,6 +718,7 @@ builder_spatial_alignment_server <- function(
       active_section(NULL)
       active_image(NULL)
       if (artifact_ready) {
+        finish_switch(entry$id)
         return()
       }
     } else if (
@@ -526,6 +735,7 @@ builder_spatial_alignment_server <- function(
       active_dataset(NULL)
       active_section(NULL)
       active_image(NULL)
+      finish_switch(entry$id)
       return()
     }
     selection <- shiny::isolate(pending_project_selection())
@@ -745,7 +955,9 @@ builder_spatial_alignment_server <- function(
       max_px = 1400,
       flip_y = transform$flip_y,
       flip_x = transform$flip_x,
-      rotate = transform$rotation
+      rotate = transform$rotation,
+      source_dimensions = image$source_dimensions %||%
+        c(width = image$width, height = image$height)
     )
   }
   current_record <- function(encode = FALSE) {
@@ -787,23 +999,6 @@ builder_spatial_alignment_server <- function(
       )
     )
     record[facts] <- geometry[facts]
-    full_coverage <- preview[["coverage", exact = TRUE]]
-    coverage_spatial <- if (!is.null(full_coverage)) {
-      data.frame(x = full_coverage$x, y = full_coverage$y)
-    } else {
-      preview$spatial
-    }
-    coverage_spatial <- if (identical(kind_for(active_section()), "spatial")) {
-      .spx_apply_coordinate_transform(coverage_spatial, coordinate_baseline())
-    } else {
-      coverage_spatial
-    }
-    cover <- builder_bounds_cover(
-      record$bounds,
-      list(coverage_spatial$x, coverage_spatial$y)
-    )
-    record$outside <- cover$outside
-    record$total <- cover$total
     record
   }
 
@@ -887,7 +1082,11 @@ builder_spatial_alignment_server <- function(
       shiny::showNotification(image$error, type = "error", duration = 8)
       return(invisible(FALSE))
     }
-    image_encoded <- builder_encode_image(image$array, max_px = 1400)
+    image_encoded <- builder_encode_image(
+      image$array,
+      max_px = 1400,
+      retain_normalized_array = TRUE
+    )
     if (!is.null(image_encoded$error)) {
       shiny::showNotification(image_encoded$error, type = "error", duration = 8)
       return(invisible(FALSE))
@@ -951,7 +1150,12 @@ builder_spatial_alignment_server <- function(
       )
     )
     record[facts] <- image_encoded[facts]
-    raw_image(image)
+    raw_image(list(
+      array = image_encoded$normalized_array,
+      width = image_encoded$source_width,
+      height = image_encoded$source_height,
+      source_dimensions = image_encoded$source_dimensions
+    ))
     draft(record)
     active_image(proposed_label)
     update_controls(record, preview$bounds)
@@ -1153,6 +1357,7 @@ builder_spatial_alignment_server <- function(
       "controls"
     )])
     session$sendCustomMessage("builder_spatial_canvas_scene", scene)
+    finish_switch(entry$id, section)
   })
 
   output[["enhance-alignment_legend"]] <- shiny::renderUI({
@@ -1673,61 +1878,45 @@ builder_spatial_alignment_server <- function(
     entry <- entry_of(current())
     source_section <- active_section()
     label <- active_image()
+    original_images <- collection_for(entry)
     images <- builder_alignment_apply_transform_to_matching_label(
-      collection_for(entry),
+      original_images,
       source_section,
       label
     )
-    for (section in names(images)) {
-      record <- images[[section]][[label]]
-      if (is.null(record)) {
-        next
-      }
-      image <- builder_read_image_uri(record$source_uri)
-      if (!is.null(image$error)) {
-        next
-      }
-      image_encoded <- builder_encode_image(
-        image$array,
-        max_px = 1400,
-        flip_y = record$flip_y,
-        flip_x = record$flip_x,
-        rotate = record$rotation
-      )
-      if (!is.null(image_encoded$error)) {
-        next
-      }
-      record$uri <- image_encoded$uri
-      facts <- intersect(
-        names(image_encoded),
-        c(
-          "bytes",
-          "width",
-          "height",
-          "source_width",
-          "source_height",
-          "extent_width",
-          "extent_height",
-          "display_width",
-          "display_height"
-        )
-      )
-      record[facts] <- image_encoded[facts]
-      record$bounds <- builder_alignment_transform_bounds(
-        builder_alignment_oriented_bounds(record$base_bounds, record),
-        record
-      )
-      images[[section]][[label]] <- record
-    }
-    commit_images(entry, images)
-    draft(images[[source_section]][[label]])
-    count <- sum(vapply(
+    rendered <- builder_alignment_render_matching_label(
       images,
-      function(section) {
-        label %in% names(section)
-      },
-      logical(1)
-    ))
+      original_images,
+      label
+    )
+    images <- rendered$images
+    count <- length(rendered$successful_sections)
+    failed <- rendered$failed_sections
+    if (count > 0L) {
+      committed <- commit_images(entry, images)
+      if (is.list(committed) && !is.null(committed$settings$images)) {
+        images <- builder_image_collection_normalize(committed$settings$images)
+      }
+      draft(images[[source_section]][[label]])
+    }
+    if (length(failed)) {
+      shiny::showNotification(
+        paste0(
+          if (count > 0L) {
+            paste0("Applied “", label, "” transform to ", count, " section(s); ")
+          } else {
+            paste0("Could not apply “", label, "” transform; ")
+          },
+          length(failed),
+          " section(s) were left unchanged: ",
+          paste(failed, collapse = ", "),
+          "."
+        ),
+        type = if (count > 0L) "warning" else "error",
+        duration = 7
+      )
+      return(invisible(count > 0L))
+    }
     shiny::showNotification(
       paste0("Applied “", label, "” transform to ", count, " section(s)."),
       type = "message",
@@ -1772,7 +1961,7 @@ builder_spatial_alignment_server <- function(
     apply_to_all()
   })
 
-  request_dataset_switch <- function(target, commit) {
+  request_dataset_switch <- function(target, commit, switch_token = NULL) {
     if (
       !is.character(target) ||
         length(target) != 1L ||
@@ -1782,7 +1971,25 @@ builder_spatial_alignment_server <- function(
     ) {
       return(invisible(FALSE))
     }
-    commit()
+    if (
+      !is.null(switch_token) &&
+        (!is.numeric(switch_token) ||
+          length(switch_token) != 1L ||
+          is.na(switch_token) ||
+          !is.finite(switch_token) ||
+          switch_token < 1)
+    ) {
+      return(invisible(FALSE))
+    }
+    active_switch_dataset(target)
+    active_switch_token(switch_token)
+    committed <- !identical(commit(), FALSE)
+    if (!committed) {
+      send_switch_state(target, "error", token = switch_token)
+      active_switch_dataset(NULL)
+      active_switch_token(NULL)
+    }
+    invisible(committed)
   }
 
   list(
@@ -1796,6 +2003,7 @@ builder_spatial_alignment_server <- function(
     pending_upload = pending_upload,
     raw_image = raw_image,
     request_dataset_switch = request_dataset_switch,
+    fail_preview_switch = fail_preview_switch,
     restore_project_settings = restore_project_settings,
     restore_project_selection = restore_project_selection,
     materialize_coordinate_drafts = materialize_coordinate_drafts,

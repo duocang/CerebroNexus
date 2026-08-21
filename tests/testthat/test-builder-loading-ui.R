@@ -77,6 +77,54 @@ test_that("the Builder initial HTML contains a stable non-empty shell", {
   expect_false(grepl('uiOutput("ds_list")', pre_server, fixed = TRUE))
 })
 
+test_that("an empty active project can reopen its saved dataset choices", {
+  html <- as.character(builder_empty_workbench_ui(project_active = TRUE))
+  workflow <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "workflow.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  project_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(html, 'id="choose_saved_project_datasets"', fixed = TRUE)
+  expect_match(html, "Choose saved datasets", fixed = TRUE)
+  expect_match(
+    workflow,
+    "builder_empty_workbench_ui(project_active = !is.null(builder_project()))",
+    fixed = TRUE
+  )
+  expect_match(
+    project_server,
+    "observeEvent(input$choose_saved_project_datasets, {",
+    fixed = TRUE
+  )
+  client <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    client,
+    "builderActivityState.has_project === true",
+    fixed = TRUE
+  )
+  expect_match(
+    client,
+    "activityCapability(\"edit_dataset\")",
+    fixed = TRUE
+  )
+})
+
 test_that("the initial shell explains background workspace startup", {
   app <- paste(
     readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE),
@@ -339,6 +387,14 @@ test_that("active imports offer the established server cancellation action", {
   expect_match(rail_html, "builder-remove-import", fixed = TRUE)
   expect_match(rail_html, "Cancel active import patient-one", fixed = TRUE)
   expect_match(rail_html, ">Cancel<", fixed = TRUE)
+  expect_match(
+    rail_html,
+    paste(
+      "ds-del btn btn-remove-soft builder-cancel-import",
+      "builder-remove-import"
+    ),
+    fixed = TRUE
+  )
   expect_false(grepl("builder-remove-import", workbench_html, fixed = TRUE))
   expect_false(grepl("Remove from queue", rail_html, fixed = TRUE))
   expect_false(grepl(">Remove<", workbench_html, fixed = TRUE))
@@ -441,8 +497,12 @@ test_that("client scheduler serializes file and example dispatch", {
   expect_match(client, "importSyncPending = true", fixed = TRUE)
   expect_match(client, "builder_import_sync_request", fixed = TRUE)
   expect_match(client, "builder_import_sync", fixed = TRUE)
-  expect_match(client, 'entry.state = "unknown"', fixed = TRUE)
-  expect_match(client, "Waiting to restore the import state", fixed = TRUE)
+  expect_match(
+    client,
+    'entry.state = record.state || entry.stateBeforePause || "unknown"',
+    fixed = TRUE
+  )
+  expect_match(client, "Connection lost · Waiting to restore", fixed = TRUE)
   expect_match(client, 'getElementById("ds_client_import_queue")', fixed = TRUE)
   expect_match(client, "removeReadyImportOverlap", fixed = TRUE)
   expect_match(client, '"builder_focus_dataset_start"', fixed = TRUE)

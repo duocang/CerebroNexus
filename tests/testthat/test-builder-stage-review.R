@@ -5,6 +5,68 @@ sys.source(
 )
 sys.source("app.R", envir = environment())
 
+test_that("active Build phases drive a blocking operation overlay", {
+  stale_result <- builder_result_success(
+    published = TRUE,
+    built = "dataset.crb",
+    app_verified = FALSE
+  )
+  preparing <- builder_build_operation_overlay_model(
+    flow = list(stage = "preparing", plan = NULL),
+    protocol = NULL,
+    note = NULL,
+    result = stale_result
+  )
+  expect_true(preparing$active)
+  expect_identical(preparing$title, "Building output")
+  expect_match(preparing$message, "Do not close this page", fixed = TRUE)
+  expect_identical(preparing$detail, "Preparing build…")
+
+  queued_protocol <- builder_request_protocol("overlay-queued")
+  queued_protocol$build_status <- "queued"
+  queued <- builder_build_operation_overlay_model(
+    flow = list(stage = "building", plan = NULL),
+    protocol = queued_protocol,
+    note = "Waiting for the background worker…",
+    result = stale_result
+  )
+  expect_true(queued$active)
+  expect_identical(queued$detail, "Waiting for the background worker…")
+
+  finished <- builder_build_operation_overlay_model(
+    flow = list(stage = "idle", plan = NULL),
+    protocol = NULL,
+    note = NULL,
+    result = stale_result
+  )
+  expect_false(finished$active)
+  expect_null(finished$detail)
+})
+
+test_that("Build overlay takes focus before the shell becomes inert", {
+  js <- paste(
+    readLines(file.path("www", "builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  activity <- substr(
+    js,
+    regexpr("function applyBuilderActivityState()", js, fixed = TRUE)[[1L]],
+    regexpr("function beginBuildOperationFocus", js, fixed = TRUE)[[1L]] - 1L
+  )
+  focus_at <- regexpr(
+    "beginBuildOperationFocus(overlay);",
+    activity,
+    fixed = TRUE
+  )[[1L]]
+  inert_at <- regexpr("if (shell) shell.inert =", activity, fixed = TRUE)[[1L]]
+
+  expect_gt(focus_at, 0L)
+  expect_gt(inert_at, focus_at)
+  expect_match(js, 'document.querySelector(".result-card h2")', fixed = TRUE)
+  expect_match(js, ".builder-result-actions button", fixed = TRUE)
+  expect_match(js, "buildOperationRestoreFocus", fixed = TRUE)
+})
+
 test_that("Review model translates a frozen plan into user language", {
   plan <- builder_stage_frozen_plan()
   plan$app_auth <- list(
@@ -130,8 +192,16 @@ test_that("Review presents the frozen CRB data plan", {
   expect_match(html, "Data info", fixed = TRUE)
   expect_match(html, "Marker genes", fixed = TRUE)
   expect_match(html, "Output", fixed = TRUE)
-  expect_match(html, "Folder", fixed = TRUE)
-  expect_match(html, "/private/host/output", fixed = TRUE)
+  expect_false(grepl(">Folder<", html, fixed = TRUE))
+  expect_false(grepl("/private/host/output", html, fixed = TRUE))
+  expect_match(
+    html,
+    "CRB files will be available to download after the build completes.",
+    fixed = TRUE
+  )
+  expect_match(html, "Creates", fixed = TRUE)
+  expect_match(html, "Estimated size", fixed = TRUE)
+  expect_match(html, "Estimated build time", fixed = TRUE)
   expect_false(grepl("Existing files", html, fixed = TRUE))
   expect_false(grepl("Keep existing files", html, fixed = TRUE))
   expect_match(html, "4 KB", fixed = TRUE)
@@ -401,7 +471,7 @@ test_that("Review gives a useful next step when the plan is not ready", {
   ))
 })
 
-test_that("Review handles one dataset and long output folders", {
+test_that("Review handles one dataset without exposing its planning folder", {
   plan <- builder_stage_frozen_plan(TRUE)
   plan$items <- plan$items[1L]
   plan$dataset_order <- "dataset-b"
@@ -414,7 +484,12 @@ test_that("Review handles one dataset and long output folders", {
 
   expect_match(html, "1 dataset", fixed = TRUE)
   expect_false(grepl("1 datasets", html, fixed = TRUE))
-  expect_match(html, plan$output_release$directory, fixed = TRUE)
+  expect_false(grepl(plan$output_release$directory, html, fixed = TRUE))
+  expect_match(
+    html,
+    "CRB files will be available to download after the build completes.",
+    fixed = TRUE
+  )
   expect_null(model$app)
 })
 
@@ -442,6 +517,19 @@ test_that("Build status has four top-level types and warning Success variant", {
   expect_identical(failure$type, "failure")
   expect_identical(recovery$type, "recovery_required")
   expect_error(builder_build_status_model(list(error = "legacy")), "typed")
+})
+
+test_that("Build status stays hidden before a build attempt starts", {
+  ready <- builder_build_stage_status_model(
+    flow = list(stage = "idle"),
+    protocol = builder_request_protocol("worker-ready"),
+    note = "Choose an output folder",
+    result = NULL,
+    output_selected = FALSE
+  )
+
+  expect_identical(ready$state, "ready")
+  expect_null(builder_build_stage_status_body_ui(ready))
 })
 
 test_that("build pipeline only renders server-known states", {
@@ -571,7 +659,8 @@ test_that("successful App builds expose only reliable result actions", {
   expect_match(verified_html, "Reveal Folder", fixed = TRUE)
   expect_match(verified_html, "Copy Path", fixed = TRUE)
   expect_match(verified_html, "Copy Report", fixed = TRUE)
-  expect_match(verified_html, 'data-path="/release/cerebro_app"', fixed = TRUE)
+  expect_match(verified_html, 'data-path="/release"', fixed = TRUE)
+  expect_false(grepl("/release/cerebro_app", verified_html, fixed = TRUE))
   expect_match(
     verified_html,
     'data-report="/release/build-report.json"',

@@ -383,7 +383,7 @@ test_that("workflow server exclusively owns loading and stage rendering", {
     workbench,
     paste0(
       "upload = tagAppendAttributes(\n",
-      "      builder_empty_workbench_ui(),\n",
+      "      builder_empty_workbench_ui(project_active = !is.null(builder_project())),\n",
       "      class = \"builder-stage-upload\",\n",
       "      `data-workflow-stage` = \"upload\""
     ),
@@ -764,9 +764,19 @@ test_that("native output directory selection normalizes selection and preserves 
   expect_match(failed$error, "picker unavailable", fixed = TRUE)
 })
 
-test_that("folder selection is separate from Build and only conflicts prompt", {
+test_that("folder selection performs only a lightweight structural preflight", {
   lines <- builder_app_lines()
   app <- paste(lines, collapse = "\n")
+  preflight <- builder_app_block(
+    lines,
+    "builder_build_output_preflight <- function(path) {",
+    "choose_build_folder <- function() {"
+  )
+  prepare <- builder_app_block(
+    lines,
+    "prepare_selected_output <- function(path, overwrite = FALSE) {",
+    "builder_build_foreign_output_error <- function(foreign) {"
+  )
   picker <- builder_app_block(
     lines,
     "choose_build_folder <- function() {",
@@ -789,14 +799,31 @@ test_that("folder selection is separate from Build and only conflicts prompt", {
   )
 
   expect_match(app, "selected_output <- reactiveVal(NULL)", fixed = TRUE)
+  expect_match(preflight, "freeze_plan_for_output(", fixed = TRUE)
+  expect_match(
+    preflight,
+    ".builder_release_ignorable_metadata(actual_roots)",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "builder_coordinator_output_preflight",
+    preflight,
+    fixed = TRUE
+  ))
   expect_match(picker, "builder_choose_output_directory()", fixed = TRUE)
+  expect_match(
+    picker,
+    "shiny::isolate\\(\\s*builder_build_output_preflight\\(choice\\$path\\)",
+    perl = TRUE
+  )
   expect_match(picker, "selected_output(choice$path)", fixed = TRUE)
   expect_false(grepl("prepare_selected_output", picker, fixed = TRUE))
   expect_false(grepl(
-    "freeze_materialized_plan_for_output",
-    picker,
+    "builder_coordinator_output_preflight",
+    prepare,
     fixed = TRUE
   ))
+  expect_match(prepare, "enqueue_build_plan(", fixed = TRUE)
   expect_match(build, "selected_output()", fixed = TRUE)
   expect_match(build, "prepare_selected_output", fixed = TRUE)
   expect_match(build, 'stage = "preparing"', fixed = TRUE)
@@ -941,6 +968,32 @@ test_that("the App describes object isolation accurately", {
 
   expect_false(grepl("Objects are read into this process", app, fixed = TRUE))
   expect_match(app, "isolated worker process", fixed = TRUE)
+})
+
+test_that("artifact replacement invalidates only the configure surface", {
+  foundation <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "foundation.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  review <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    foundation,
+    "configure_workbench_surface <- reactiveVal",
+    fixed = TRUE
+  )
+  expect_match(foundation, "entry$load_state %||% \"loaded\"", fixed = TRUE)
+  expect_match(review, "configure_workbench_surface()", fixed = TRUE)
+  expect_match(review, "entry <- isolate(entry_of(id))", fixed = TRUE)
 })
 
 test_that("unchanged settings do not write state or advance revisions", {

@@ -41,6 +41,73 @@ builder_stylesheet_text <- function(
   )
 }
 
+test_that("Done checking exposes one immediate busy-state handler", {
+  browser <- builder_asset_text("www", "builder.js")
+  review <- builder_asset_text("server", "review.R")
+
+  expect_match(browser, '"builder_dataset_check_state"', fixed = TRUE)
+  expect_match(browser, 'button.textContent = "Finishing check…"', fixed = TRUE)
+  expect_match(
+    browser,
+    'function (message)',
+    fixed = TRUE
+  )
+  expect_match(review, 'list(active = TRUE)', fixed = TRUE)
+  expect_match(review, 'list(active = FALSE)', fixed = TRUE)
+  expect_match(review, 'session$onFlushed(', fixed = TRUE)
+  expect_match(review, 'alignment_server$request_dataset_switch(', fixed = TRUE)
+})
+
+test_that("Continue to Build reuses the reviewed plan with immediate feedback", {
+  browser <- builder_asset_text("www", "builder.js")
+  review <- builder_asset_text("server", "review.R")
+
+  expect_match(
+    browser,
+    'continueButton.textContent = "Opening Build…"',
+    fixed = TRUE
+  )
+  expect_match(review, "live <- frozen_review_plan()", fixed = TRUE)
+  confirm_handler <- sub(
+    ".*observeEvent\\(input\\$confirm_review, \\{",
+    "",
+    review
+  )
+  confirm_handler <- sub(
+    "\\n\\}\\)\\n\\nobserve\\(\\{.*",
+    "",
+    confirm_handler
+  )
+  expect_false(grepl(
+    "freeze_materialized_plan_for_output",
+    confirm_handler,
+    fixed = TRUE
+  ))
+})
+
+test_that("Continue to Review reuses the ready plan with immediate feedback", {
+  browser <- builder_asset_text("www", "builder.js")
+  workflow <- builder_asset_text("server", "workflow.R")
+
+  expect_match(
+    browser,
+    'reviewButton.textContent = "Opening Review…"',
+    fixed = TRUE
+  )
+  handler <- sub(
+    ".*observeEvent\\(input\\$continue_to_review, \\{",
+    "",
+    workflow
+  )
+  handler <- sub("\\n\\}\\)\\n\\nrender_build_workbench.*", "", handler)
+  expect_match(handler, "plan <- frozen_review_plan()", fixed = TRUE)
+  expect_false(grepl(
+    "freeze_materialized_plan_for_output",
+    handler,
+    fixed = TRUE
+  ))
+})
+
 test_that("builder UI includes the Bootstrap dependency required by modals", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(dirname(builder_asset_path("app.R")))
@@ -1068,7 +1135,7 @@ test_that("Build gives immediate visible progress before server preparation", {
 
   expect_match(js, "showImmediateBuildStatus", fixed = TRUE)
   expect_match(js, "buildStatusScrollPhase", fixed = TRUE)
-  expect_match(js, "revealBuildStatus", fixed = TRUE)
+  expect_match(js, "focusBuildStatus", fixed = TRUE)
   expect_match(js, ":not(.is-client-build-status)", fixed = TRUE)
   expect_match(js, 'target.closest("#build")', fixed = TRUE)
   expect_match(
@@ -1076,7 +1143,7 @@ test_that("Build gives immediate visible progress before server preparation", {
     'document.getElementById("build-stage-status")',
     fixed = TRUE
   )
-  expect_match(js, "window.scrollBy", fixed = TRUE)
+  expect_match(js, "host.scrollIntoView", fixed = TRUE)
   expect_match(js, "host.insertBefore(section, output)", fixed = TRUE)
   expect_false(grepl("output.replaceChildren(section)", js, fixed = TRUE))
   expect_match(js, "clientStatus.remove()", fixed = TRUE)
@@ -1211,19 +1278,68 @@ test_that("stage focus targets the active heading", {
   expect_match(js, "heading.focus({ preventScroll: true })", fixed = TRUE)
 })
 
-test_that("accepted Builds scroll the document to its absolute top", {
+test_that("Build stage focus waits for rendering and reaches the page top", {
   js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, "var stageFocusToken = 0;", fixed = TRUE)
+  expect_match(js, "stageFocusToken += 1;", fixed = TRUE)
+  expect_match(js, "if (token !== stageFocusToken) return;", fixed = TRUE)
+  expect_match(
+    js,
+    "if (attempts < 12) window.setTimeout(apply, 50);",
+    fixed = TRUE
+  )
+  expect_match(js, 'if (id === "build") {', fixed = TRUE)
+  expect_match(js, "window.scrollTo({", fixed = TRUE)
+  expect_match(js, "top: 0", fixed = TRUE)
+})
+
+test_that("accepted Builds focus the rendered status panel", {
+  js <- builder_asset_text("www", "builder.js")
+  build <- builder_asset_text("server", "build.R")
 
   expect_match(
     js,
-    'addCustomMessageHandler("builder_scroll_page_top", function (message)',
+    '"builder_focus_build_status"',
     fixed = TRUE
   )
-  expect_match(js, "window.scrollTo({", fixed = TRUE)
-  expect_match(js, "top: 0", fixed = TRUE)
+  expect_match(js, "scheduleBuildStatusFocus();", fixed = TRUE)
+  expect_match(js, "host.scrollIntoView({", fixed = TRUE)
+  expect_match(js, 'block: "start"', fixed = TRUE)
   expect_match(
     js,
     'behavior: reducedMotion.matches ? "auto" : "smooth"',
+    fixed = TRUE
+  )
+  expect_match(
+    build,
+    'session$sendCustomMessage("builder_focus_build_status", list())',
+    fixed = TRUE
+  )
+  expect_false(grepl("builder_scroll_page_top", paste(js, build)))
+})
+
+test_that("active Builds reuse the blocking operation overlay", {
+  app <- builder_asset_text("app.R")
+  status <- builder_asset_text("ui", "build_status.R")
+  project <- builder_asset_text("server", "project.R")
+  css <- builder_asset_text("www", "builder.components.css")
+
+  expect_match(app, 'id = "builder-operation-overlay"', fixed = TRUE)
+  expect_match(
+    css,
+    ".builder-page-inert .builder-operation-overlay",
+    fixed = TRUE
+  )
+  expect_match(status, "builder_build_operation_overlay_model", fixed = TRUE)
+  expect_match(status, 'c("preparing", "queued", "building")', fixed = TRUE)
+  expect_match(status, 'title = if (active) "Building output"', fixed = TRUE)
+  expect_match(status, "Do not close this page.", fixed = TRUE)
+  expect_match(project, "builder_build_overlay <- reactive({", fixed = TRUE)
+  expect_match(project, "builder_build_overlay()", fixed = TRUE)
+  expect_match(
+    project,
+    "page_inert = isTRUE(capabilities$page_inert) || build_active",
     fixed = TRUE
   )
 })
@@ -1232,13 +1348,253 @@ test_that("project CRB preparation stays in one progress dialog", {
   js <- builder_asset_text("www", "builder.js")
 
   expect_match(js, '"builder_project_crb_progress"', fixed = TRUE)
+  expect_match(js, "var builderProjectCrbDialogActive = false;", fixed = TRUE)
+  expect_match(js, "if (builderProjectCrbDialogActive) return;", fixed = TRUE)
+  expect_match(js, "builderProjectCrbDialogActive = true;", fixed = TRUE)
+  expect_match(js, "builderProjectCrbDialogActive = false;", fixed = TRUE)
   expect_match(js, "Step 1 of 3 · Planning", fixed = TRUE)
   expect_match(js, "Step 2 of 3 · Preparing", fixed = TRUE)
   expect_match(js, "Step 3 of 3 · ", fixed = TRUE)
   expect_match(js, "Project and CRBs saved", fixed = TRUE)
+  expect_match(js, "Stored inside the Project artifacts folder", fixed = TRUE)
+  prepare_request <- substr(
+    js,
+    regexpr(
+      "function startBuilderProjectCrbRequest(remaining)",
+      js,
+      fixed = TRUE
+    )[[1L]],
+    regexpr(
+      "function closeBuilderProjectSaveResult()",
+      js,
+      fixed = TRUE
+    )[[1L]] -
+      1L
+  )
+  expect_match(
+    js,
+    "startBuilderProjectCrbRequest(remaining);",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    'classList.remove("is-result"',
+    prepare_request,
+    fixed = TRUE
+  ))
+  source_progress <- substr(
+    js,
+    regexpr("function updateBuilderProjectSourceProgress", js, fixed = TRUE)[[
+      1L
+    ]],
+    regexpr("function showBuilderProjectSaveResult", js, fixed = TRUE)[[1L]] -
+      1L
+  )
+  expect_match(
+    source_progress,
+    "if (builderProjectCrbDialogActive) return;",
+    fixed = TRUE
+  )
+  save_result <- substr(
+    js,
+    regexpr("function showBuilderProjectSaveResult", js, fixed = TRUE)[[1L]],
+    regexpr("function updateBuilderProjectCrbProgress", js, fixed = TRUE)[[
+      1L
+    ]] -
+      1L
+  )
+  expect_match(
+    save_result,
+    "if (builderProjectCrbDialogActive) return;",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "builderProjectCrbDialogActive = false;",
+    save_result,
+    fixed = TRUE
+  ))
+  crb_progress <- substr(
+    js,
+    regexpr("function updateBuilderProjectCrbProgress", js, fixed = TRUE)[[1L]],
+    regexpr("function applyDatasetMutationLock", js, fixed = TRUE)[[1L]] - 1L
+  )
+  expect_false(grepl(
+    'classList.remove("is-result"',
+    crb_progress,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "builderProjectCrbDialogActive = false;",
+    crb_progress,
+    fixed = TRUE
+  ))
+  close_result <- substr(
+    js,
+    regexpr("function closeBuilderProjectSaveResult", js, fixed = TRUE)[[1L]],
+    regexpr("function showBuilderProjectSaveCompletion", js, fixed = TRUE)[[
+      1L
+    ]] -
+      1L
+  )
+  expect_match(
+    close_result,
+    "builderProjectCrbDialogActive = false;",
+    fixed = TRUE
+  )
   expect_false(grepl(
     'closeBuilderProjectSaveResult();\n          send("prepare_builder_project_crbs"',
     js,
+    fixed = TRUE
+  ))
+})
+
+test_that("project CRB planning has a correlated acknowledgement fallback", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(
+    js,
+    "var builderProjectCrbRequestSequence = 0;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "var builderProjectCrbRequestId = null;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "var builderProjectCrbAcknowledgementTimer = null;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "function clearBuilderProjectCrbAcknowledgement()",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "function startBuilderProjectCrbRequest(remaining)",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "function failBuilderProjectCrbRequest(error)",
+    fixed = TRUE
+  )
+
+  start_request <- substr(
+    js,
+    regexpr(
+      "function startBuilderProjectCrbRequest(remaining)",
+      js,
+      fixed = TRUE
+    )[[1L]],
+    regexpr(
+      "function showBuilderProjectSaveCompletion(status)",
+      js,
+      fixed = TRUE
+    )[[1L]] -
+      1L
+  )
+  expect_match(
+    start_request,
+    "builderProjectCrbRequestSequence += 1;",
+    fixed = TRUE
+  )
+  expect_match(
+    start_request,
+    "builderProjectCrbAcknowledgementTimer = window.setTimeout(function ()",
+    fixed = TRUE
+  )
+  expect_match(
+    start_request,
+    "if (builderProjectCrbRequestId !== requestId) return;",
+    fixed = TRUE
+  )
+  expect_match(
+    start_request,
+    'request_id: requestId',
+    fixed = TRUE
+  )
+  expect_match(
+    start_request,
+    '!builderConnectionReady || !activityCapability("prepare_crbs")',
+    fixed = TRUE
+  )
+
+  progress <- substr(
+    js,
+    regexpr(
+      "function updateBuilderProjectCrbProgress(message)",
+      js,
+      fixed = TRUE
+    )[[1L]],
+    regexpr(
+      "function applyDatasetMutationLock()",
+      js,
+      fixed = TRUE
+    )[[1L]] -
+      1L
+  )
+  id_guard <- regexpr(
+    "message.request_id !== builderProjectCrbRequestId",
+    progress,
+    fixed = TRUE
+  )[[1L]]
+  clear_timer <- regexpr(
+    "clearBuilderProjectCrbAcknowledgement();",
+    progress,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(id_guard, 0L)
+  expect_gt(clear_timer, id_guard)
+  expect_match(progress, 'if (status === "planning")', fixed = TRUE)
+
+  close_result <- substr(
+    js,
+    regexpr("function closeBuilderProjectSaveResult", js, fixed = TRUE)[[1L]],
+    regexpr("function showBuilderProjectSaveCompletion", js, fixed = TRUE)[[
+      1L
+    ]] -
+      1L
+  )
+  expect_match(
+    close_result,
+    "clearBuilderProjectCrbAcknowledgement();",
+    fixed = TRUE
+  )
+  expect_match(
+    close_result,
+    "builderProjectCrbRequestId = null;",
+    fixed = TRUE
+  )
+
+  disconnected <- substr(
+    js,
+    regexpr(
+      'document.addEventListener("shiny:disconnected", function ()',
+      js,
+      fixed = TRUE
+    )[[1L]],
+    regexpr(
+      'document.addEventListener("shiny:sessioninitialized", function ()',
+      js,
+      fixed = TRUE
+    )[[1L]] -
+      1L
+  )
+  expect_match(
+    disconnected,
+    "if (builderProjectCrbDialogActive && !builderProjectCrbTerminal)",
+    fixed = TRUE
+  )
+  expect_match(
+    disconnected,
+    "failBuilderProjectCrbRequest(",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "closeBuilderProjectSaveResult()",
+    disconnected,
     fixed = TRUE
   ))
 })
@@ -1305,8 +1661,8 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
     )[[1]],
     1L
   )
-  expect_false(grepl("builder_focus_review", js, fixed = TRUE))
-  expect_false(grepl("builder_focus_build", js, fixed = TRUE))
+  expect_false(grepl('"builder_focus_review"', js, fixed = TRUE))
+  expect_false(grepl('"builder_focus_build"', js, fixed = TRUE))
   expect_match(components, ".builder-stage-shell", fixed = TRUE)
   expect_match(components, ".builder-stage-summary", fixed = TRUE)
   expect_match(components, ".builder-stage-section", fixed = TRUE)
@@ -1582,7 +1938,7 @@ test_that("Builder JavaScript waits for a usable document before initialization"
   )
   expect_match(
     js,
-    "new MutationObserver(scheduleDynamicContentEnhancement)",
+    "new MutationObserver(handleDynamicContentMutations)",
     fixed = TRUE
   )
 })
@@ -1913,7 +2269,7 @@ test_that("Enhance info opens a transient accessible facts dialog", {
 test_that("result actions remain native keyboard controls", {
   status <- builder_asset_text("ui", "build_status.R")
 
-  for (id in c("open_app", "reveal_folder", "copy_path", "copy_report")) {
+  for (id in c("reveal_folder", "copy_path", "copy_report")) {
     expect_match(
       status,
       paste0('actionButton\\(\\s*"', id, '"'),
@@ -2064,9 +2420,268 @@ test_that("transient layers expose state-bearing motion lifecycle", {
     paste(layout_css, components_css, sep = "\n"),
     fixed = TRUE
   )
+  non_morphing_layers <- gsub(
+    "\\.builder-slider-reset-motion[^}]+\\}",
+    "",
+    non_morphing_layers,
+    perl = TRUE
+  )
   expect_false(grepl(
     "transition:[^;]*(width|height|top|left|padding|grid)",
     non_morphing_layers,
     perl = TRUE
+  ))
+})
+
+builder_ui_contract_asset <- function(name) {
+  testthat::test_path("..", "..", "inst", "builder", "www", name)
+}
+
+test_that("orphaned reconnect imports become visible terminal client failures", {
+  js <- paste(
+    readLines(builder_ui_contract_asset("builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(js, "function failClientImportReconciliation(", fixed = TRUE)
+  expect_match(
+    js,
+    'failClientImportReconciliation(entry, "The server could not match this import after reconnecting.")',
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    'failClientImportReconciliation(entry, "The restored import identity did not match.")',
+    fixed = TRUE
+  )
+})
+
+test_that("all file ingress paths use the add dataset capability", {
+  js <- paste(
+    readLines(builder_ui_contract_asset("builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  picker <- substr(
+    js,
+    regexpr("function openDatasetPicker()", js, fixed = TRUE)[[1L]],
+    regexpr("function clientQueueStatus", js, fixed = TRUE)[[1L]] - 1L
+  )
+  expect_match(picker, 'activityCapability("add_dataset")', fixed = TRUE)
+  expect_match(
+    js,
+    'if (!activityCapability("add_dataset")) return;',
+    fixed = TRUE
+  )
+})
+
+test_that("project result dialogs trap and restore keyboard focus", {
+  js <- paste(
+    readLines(builder_ui_contract_asset("builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    js,
+    "prepareDialog(\n        elements.overlay,\n        document.getElementById(\"save_builder_project\")",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    'elements.overlay.removeEventListener("keydown", trapDialogKeydown)',
+    fixed = TRUE
+  )
+  expect_match(js, "restoreFocus(elements.overlay)", fixed = TRUE)
+})
+
+test_that("navigation and retry controls share the authoritative activity lock", {
+  js <- paste(
+    readLines(builder_ui_contract_asset("builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  review <- paste(
+    readLines(
+      testthat::test_path("..", "..", "inst", "builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  workflow <- paste(
+    readLines(
+      testthat::test_path(
+        "..",
+        "..",
+        "inst",
+        "builder",
+        "server",
+        "workflow.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  for (id in c("back_to_settings", "confirm_review", "back_to_review")) {
+    expect_match(
+      js,
+      paste0(id, ': activityCapability("navigate_workflow")'),
+      fixed = TRUE
+    )
+  }
+  expect_match(
+    js,
+    'control.matches(".builder-retry-import") && clientImportQueue.length > 0',
+    fixed = TRUE
+  )
+  expect_match(
+    review,
+    'builder_operation_allowed("navigate_workflow")',
+    fixed = TRUE
+  )
+  expect_match(
+    workflow,
+    'builder_operation_allowed("navigate_workflow")',
+    fixed = TRUE
+  )
+})
+
+test_that("long project paths wrap inside the confirmation dialog", {
+  css <- paste(
+    readLines(
+      builder_ui_contract_asset("builder.components.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(css, ".builder-project-dialog-path code {", fixed = TRUE)
+  expect_match(css, "overflow-wrap: anywhere;", fixed = TRUE)
+})
+
+test_that("page shortcuts stop at an open modal", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, "function pageShortcutBlocked()", fixed = TRUE)
+  expect_match(js, 'classList.contains("modal-open")', fixed = TRUE)
+  expect_match(js, 'classList.contains("builder-dialog-open")', fixed = TRUE)
+  expect_match(
+    js,
+    'document.querySelectorAll(\'[aria-modal="true"]\')',
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "if (modifier && pageShortcutBlocked()) return;",
+    fixed = TRUE
+  )
+})
+
+test_that("dataset and Spatial optimistic state has an authoritative generation", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, "authoritative: null", fixed = TRUE)
+  expect_match(js, 'settleDatasetSwitch("error")', fixed = TRUE)
+  expect_match(js, 'settleDatasetSwitch("ready")', fixed = TRUE)
+  expect_match(js, "spatialSectionGeneration += 1", fixed = TRUE)
+  expect_match(
+    js,
+    "spatialSectionTimers.forEach(window.clearTimeout)",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "if (generation !== spatialSectionGeneration) return;",
+    fixed = TRUE
+  )
+})
+
+test_that("Build overlay owns focus while the Builder shell is inert", {
+  app <- builder_asset_text("app.R")
+  js <- builder_asset_text("www", "builder.js")
+  build <- builder_asset_text("server", "build.R")
+
+  expect_match(app, 'id = "builder-operation-overlay"', fixed = TRUE)
+  expect_match(app, 'tabindex = "-1"', fixed = TRUE)
+  expect_match(js, "function beginBuildOperationFocus", fixed = TRUE)
+  expect_match(js, "function restoreBuildOperationFocus", fixed = TRUE)
+  expect_match(js, "beginBuildOperationFocus(overlay);", fixed = TRUE)
+  expect_match(js, "if (shell) shell.inert =", fixed = TRUE)
+  expect_match(js, 'document.querySelector(".result-card h2")', fixed = TRUE)
+  expect_match(js, "attempts += 1;", fixed = TRUE)
+  expect_match(
+    js,
+    paste0(
+      "if (attempts >= 12) {\n",
+      "        buildOperationRestoreFocus = null;\n",
+      "        return;"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    build,
+    "result(NULL)\n  build_flow(list(stage = \"preparing\"",
+    fixed = TRUE
+  )
+})
+
+test_that("background UI work is bounded to live changing content", {
+  js <- builder_asset_text("www", "builder.js")
+  stats <- builder_asset_text("www", "stats.js")
+
+  expect_match(js, "var observedStages = new Set();", fixed = TRUE)
+  expect_match(js, "stageObserver.unobserve(stage);", fixed = TRUE)
+  expect_match(js, "stageObserver.unobserve(entry.target);", fixed = TRUE)
+  expect_match(js, "observedStages.delete(entry.target);", fixed = TRUE)
+  expect_match(js, "var datasetLoadTimeTimer = null;", fixed = TRUE)
+  expect_match(js, '[data-started-at-ms]', fixed = TRUE)
+  expect_match(
+    js,
+    "if (node.textContent !== text) node.textContent = text;",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "if (!running && datasetLoadTimeTimer !== null)",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "if (updateDatasetLoadTimes()) scheduleDatasetLoadTimeUpdates();",
+    fixed = TRUE
+  )
+  expect_false(grepl("setInterval(updateDatasetLoadTimes", js, fixed = TRUE))
+  expect_match(js, "function handleDynamicContentMutations", fixed = TRUE)
+  expect_match(js, 'closest(".builder-load-time")', fixed = TRUE)
+  expect_match(js, "if (onlyLoadTimeText) return;", fixed = TRUE)
+  expect_match(stats, "var scanFrame = null;", fixed = TRUE)
+  expect_match(stats, "window.requestAnimationFrame", fixed = TRUE)
+  expect_match(stats, "if (scanFrame !== null) return;", fixed = TRUE)
+  expect_match(stats, "pendingRoots.add", fixed = TRUE)
+  expect_match(stats, "pendingRoots.clear();", fixed = TRUE)
+  expect_match(stats, "scheduleScan(event.target);", fixed = TRUE)
+  expect_false(grepl("setTimeout(scan, 0)", stats, fixed = TRUE))
+})
+
+test_that("Spatial canvas hover work stays on the canvas and one frame", {
+  canvas <- builder_asset_text("www", "builder-spatial-canvas.js")
+
+  expect_match(canvas, "hoverFrame: 0", fixed = TRUE)
+  expect_match(canvas, "screenPoints: []", fixed = TRUE)
+  expect_match(canvas, "function setupCanvasHover(node)", fixed = TRUE)
+  expect_match(canvas, 'node.addEventListener("pointermove"', fixed = TRUE)
+  expect_match(
+    canvas,
+    "window.requestAnimationFrame(updateHover)",
+    fixed = TRUE
+  )
+  expect_match(
+    canvas,
+    "var cosine = Math.cos(angle), sine = Math.sin(angle);",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    'document.addEventListener("pointermove"',
+    canvas,
+    fixed = TRUE
   ))
 })

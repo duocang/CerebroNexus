@@ -73,8 +73,103 @@ builder_alignment_coordinate_frame <- function(bounds, transform = NULL) {
     spatial = NULL,
     bounds = NULL,
     coordinate_frame = NULL,
+    total_cells = 0L,
     capped = FALSE
   )
+}
+
+#' Resolve the selected layer's cell cohort without reading expression values.
+#'
+#' Spatial alignment only needs cell identities. Materialising a logical split
+#' layer with JoinLayers can be orders of magnitude more expensive than the
+#' preview itself, so reproduce the resolver's partition proof using layer
+#' membership metadata and never request LayerData for an Assay5 object.
+builder_alignment_layer_cells <- function(object, assay, layer) {
+  if (
+    !is.character(assay) ||
+      length(assay) != 1L ||
+      is.na(assay) ||
+      !nzchar(assay) ||
+      !assay %in% names(object@assays)
+  ) {
+    stop("The selected assay is not available.", call. = FALSE)
+  }
+  if (
+    !is.character(layer) ||
+      length(layer) != 1L ||
+      is.na(layer) ||
+      !nzchar(layer)
+  ) {
+    stop("The selected layer is not available.", call. = FALSE)
+  }
+
+  assay_object <- object[[assay]]
+  if (!inherits(assay_object, "Assay5")) {
+    if (!layer %in% methods::slotNames(assay_object)) {
+      stop("The selected layer is not available.", call. = FALSE)
+    }
+    cells <- colnames(methods::slot(assay_object, layer))
+    if (!length(cells)) {
+      stop("The selected layer does not contain cells.", call. = FALSE)
+    }
+    return(as.character(cells))
+  }
+
+  layer_names <- SeuratObject::Layers(assay_object)
+  if (layer %in% layer_names) {
+    cells <- SeuratObject::Cells(assay_object, layer = layer)
+    if (!length(cells)) {
+      stop("The selected layer does not contain cells.", call. = FALSE)
+    }
+    return(as.character(cells))
+  }
+
+  protected_candidates <- .layer_prefix_candidates(assay_object, layer)
+  candidates <- .layer_partition_candidates(protected_candidates, layer)
+  if (!length(candidates)) {
+    stop("The selected layer is not available.", call. = FALSE)
+  }
+  memberships <- lapply(candidates, function(candidate) {
+    SeuratObject::Cells(assay_object, layer = candidate)
+  })
+  names(memberships) <- candidates
+  assay_cells <- SeuratObject::Cells(assay_object)
+  direct_candidates <- .direct_layer_partition_candidates(candidates, layer)
+  direct_partition <- .find_layer_partition(
+    assay_cells,
+    memberships[direct_candidates]
+  )
+  partition <- if (identical(direct_partition$status, "unique")) {
+    direct_partition
+  } else {
+    .find_layer_partition(assay_cells, memberships)
+  }
+  if (identical(partition$status, "ambiguous")) {
+    stop(
+      "The selected layer has more than one valid cell partition.",
+      call. = FALSE
+    )
+  }
+  nested_root <- if (identical(direct_partition$status, "unique")) {
+    NULL
+  } else if (identical(partition$status, "unique")) {
+    .nested_partition_root(layer, partition$layers)
+  } else {
+    NULL
+  }
+  if (!is.null(nested_root)) {
+    stop(
+      "The selected layer has an ambiguous nested cell partition.",
+      call. = FALSE
+    )
+  }
+  if (!identical(partition$status, "unique")) {
+    stop(
+      "The selected split layers do not form one complete cell partition.",
+      call. = FALSE
+    )
+  }
+  as.character(assay_cells)
 }
 
 #' A bounded pair of transcriptome and physical coordinates for alignment.
@@ -167,9 +262,9 @@ builder_alignment_preview_model <- function(
       projection_name = "Trekker UMAP",
       transcriptome = transcriptome_full[keep, , drop = FALSE],
       spatial = spatial_full[keep, , drop = FALSE],
-      coverage = list(x = spatial_full$x, y = spatial_full$y),
       bounds = .builder_alignment_bounds(spatial_full),
       coordinate_frame = .builder_alignment_bounds(spatial_full),
+      total_cells = nrow(spatial_full),
       capped = nrow(spatial_full) > length(keep)
     ))
   }
@@ -195,19 +290,11 @@ builder_alignment_preview_model <- function(
       SeuratObject::DefaultAssay(object),
       error = function(error) NULL
     )
-  expression_cells <- tryCatch(
-    {
-      expression <- .getExpressionMatrix(
-        seurat = object,
-        assay = assay,
-        slot = layer,
-        join_samples = TRUE,
-        verbose = FALSE
-      )
-      colnames(expression)
-    },
-    error = function(error) NULL
+  expression_cohort <- tryCatch(
+    list(cells = builder_alignment_layer_cells(object, assay, layer)),
+    error = function(error) list(error = conditionMessage(error))
   )
+  expression_cells <- expression_cohort$cells
   if (
     is.null(expression_cells) ||
       !is.character(expression_cells) ||
@@ -217,7 +304,8 @@ builder_alignment_preview_model <- function(
   ) {
     return(.builder_alignment_unavailable(
       sections,
-      "The selected assay and layer do not provide a safe expression cohort."
+      expression_cohort$error %||%
+        "The selected assay and layer do not provide a safe expression cohort."
     ))
   }
   physical <- tryCatch(
@@ -265,10 +353,10 @@ builder_alignment_preview_model <- function(
     projection_name = reduction,
     transcriptome = transcriptome_full[keep, , drop = FALSE],
     spatial = spatial_full[keep, , drop = FALSE],
-    coverage = list(x = spatial_full$x, y = spatial_full$y),
     bounds = .builder_alignment_bounds(spatial_full),
     coordinate_frame = coordinate_frame,
     coordinate_transform = NULL,
+    total_cells = nrow(spatial_full),
     capped = nrow(spatial_full) > length(keep)
   )
 }

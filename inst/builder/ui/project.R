@@ -112,6 +112,43 @@ builder_project_first_save_dialog <- function() {
   )
 }
 
+builder_project_nonempty_folder_dialog <- function(path) {
+  modalDialog(
+    title = "Folder already contains files",
+    builder_project_dialog_content(
+      "Create the Builder project in this folder?",
+      paste(
+        "Existing files will be kept. Builder will add its project manifest",
+        "and managed data."
+      ),
+      "exclamation-triangle"
+    ),
+    tags$p(
+      class = "builder-project-dialog-path",
+      tags$code(path)
+    ),
+    footer = tagList(
+      actionButton(
+        "cancel_builder_project_folder",
+        "Cancel",
+        class = "btn btn-outline-secondary"
+      ),
+      actionButton(
+        "choose_another_builder_project_folder",
+        "Choose another folder",
+        class = "btn btn-outline-secondary"
+      ),
+      actionButton(
+        "confirm_builder_project_folder",
+        "Create project here",
+        class = "btn btn-primary"
+      )
+    ),
+    easyClose = FALSE,
+    size = "m"
+  )
+}
+
 builder_project_restore_row_ui <- function(record, root) {
   status <- builder_project_dataset_status(record, root)
   choices <- character()
@@ -231,13 +268,23 @@ builder_project_artifact_workbench_ui <- function(entry, root = NULL) {
         "you load the source and change its settings."
       )
     ),
-    builder_stage_footer_ui(
-      "No source object is using memory.",
-      actionButton(
-        "project_resume_current_source",
-        "Load source to edit",
-        class = "btn"
-      )
+    uiOutput("configure_actions")
+  )
+}
+
+builder_project_artifact_actions_ui <- function(message, can_continue) {
+  builder_stage_footer_ui(
+    message,
+    actionButton(
+      "project_resume_current_source",
+      "Load source to edit",
+      class = "btn"
+    ),
+    actionButton(
+      "continue_to_review",
+      "Continue to Review",
+      class = "btn btn-action",
+      disabled = !isTRUE(can_continue)
     )
   )
 }

@@ -177,6 +177,7 @@ release_client_import <- function(
 }
 example_directory_sent <- reactiveVal(NULL)
 current_id <- reactiveVal(NULL)
+configure_workbench_surface <- reactiveVal(NULL)
 update_current_id <- function(value) {
   if (!identical(value, isolate(current_id()))) {
     current_id(value)
@@ -185,6 +186,24 @@ update_current_id <- function(value) {
 }
 observe({
   update_current_id(store()$current_dataset)
+})
+observe({
+  state <- store()
+  id <- state$current_dataset
+  entries <- state$datasets %||% list()
+  index <- which(vapply(
+    entries,
+    function(entry) identical(entry$id, id),
+    logical(1)
+  ))
+  entry <- if (length(index) == 1L) entries[[index]] else NULL
+  surface <- list(
+    id = id,
+    load_state = if (is.null(entry)) NULL else entry$load_state %||% "loaded"
+  )
+  if (!identical(surface, isolate(configure_workbench_surface()))) {
+    configure_workbench_surface(surface)
+  }
 })
 observe({
   loaded <- store()$datasets %||% list()
@@ -297,6 +316,7 @@ current <- function(value) {
   invisible(value)
 }
 dataset_check_marks <- reactiveVal(character())
+builder_configuration_identity_cache <- new.env(parent = emptyenv())
 checked_dataset_ids <- reactive({
   entries <- sets()
   marks <- dataset_check_marks()
@@ -309,17 +329,34 @@ checked_dataset_ids <- reactive({
   } else {
     list()
   }
-  builder_project_checked_ids(entries, marks, coordinate_drafts)
+  builder_project_checked_ids(
+    entries,
+    marks,
+    coordinate_drafts,
+    identity_cache = builder_configuration_identity_cache
+  )
 })
 all_datasets_checked <- reactive({
   ids <- vapply(sets(), `[[`, character(1), "id")
   length(ids) > 0L && all(ids %in% checked_dataset_ids())
 })
 observe({
-  ids <- vapply(sets(), `[[`, character(1), "id")
+  state <- store()
+  ids <- vapply(state$datasets, `[[`, character(1), "id")
   marks <- isolate(dataset_check_marks())
-  kept <- marks[names(marks) %in% ids]
-  if (!identical(kept, marks)) dataset_check_marks(kept)
+  kept <- builder_project_retain_check_marks(
+    marks,
+    live_ids = ids,
+    last_removed = state$last_removed,
+    can_undo_remove = state$can_undo_remove
+  )
+  if (!identical(kept, marks)) {
+    dataset_check_marks(kept)
+  }
+  builder_project_configuration_cache_retain_datasets(
+    builder_configuration_identity_cache,
+    ids
+  )
 })
 result <- reactiveVal(NULL)
 build_flow <- reactiveVal(list(stage = "idle", plan = NULL))
@@ -348,6 +385,7 @@ add_error <- reactiveVal(NULL)
 preview_frame <- reactiveVal(NULL)
 projection_previews <- reactiveVal(list())
 trajectory_previews <- reactiveVal(list())
+spatial_previews <- reactiveVal(list())
 spatial_coords <- reactiveVal(NULL)
 alignment_preview <- reactiveVal(NULL)
 marker_import_drafts <- reactiveVal(list())
@@ -770,6 +808,19 @@ apply_protocol_recovery <- function(
   protocol(recovered$protocol)
   settle_failed_builds(recovered, reason)
   failed_requests <- recovered$failed %||% list()
+  terminal_preview_requests <- c(
+    failed_requests,
+    recovered$discarded %||% list()
+  )
+  invisible(lapply(terminal_preview_requests, function(request) {
+    payload <- request$payload
+    if (
+      identical(payload$kind, "spatial_preview") &&
+        exists("fail_spatial_preview", mode = "function", inherits = TRUE)
+    ) {
+      fail_spatial_preview(payload)
+    }
+  }))
   invisible(lapply(failed_requests, function(request) {
     payload <- request$payload
     if (identical(payload$kind, "load")) {
@@ -989,6 +1040,9 @@ session$onSessionEnded(function() {
       }
     }
     builder_import_progress_cleanup(current_worker$snapshot_root)
+    if (isTRUE(current_worker$owns_root)) {
+      builder_project_cleanup_session_sources(current_worker$snapshot_root)
+    }
     remaining <- list.files(
       current_worker$snapshot_root,
       all.files = TRUE,

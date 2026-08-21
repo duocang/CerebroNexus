@@ -86,7 +86,11 @@ builder_stats_frame <- function(profile, plan = list()) {
       )))
       values <- values[index]
     }
-    data.frame(field = field, value = values, stringsAsFactors = FALSE)
+    data.frame(
+      field = rep(field, length(values)),
+      value = values,
+      stringsAsFactors = FALSE
+    )
   })
   qc <- if (length(qc_rows)) {
     do.call(rbind, qc_rows)

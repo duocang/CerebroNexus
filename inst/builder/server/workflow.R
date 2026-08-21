@@ -122,7 +122,7 @@ output$workbench <- renderUI({
   switch(
     stage,
     upload = tagAppendAttributes(
-      builder_empty_workbench_ui(),
+      builder_empty_workbench_ui(project_active = !is.null(builder_project())),
       class = "builder-stage-upload",
       `data-workflow-stage` = "upload"
     ),
@@ -141,10 +141,7 @@ observeEvent(input$continue_to_review, {
     return()
   }
   req(all_datasets_checked())
-  plan <- freeze_materialized_plan_for_output(
-    file.path(tempdir(), "cerebro-builder-output-preview"),
-    overwrite = FALSE
-  )
+  plan <- frozen_review_plan()
   req(builder_review_can_build(plan))
   workflow(builder_reduce_workflow(
     isolate(workflow()),
@@ -180,6 +177,12 @@ output$build_stage_controls <- renderUI({
 })
 
 observeEvent(input$back_to_review, {
+  if (
+    exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      !isTRUE(builder_operation_allowed("navigate_workflow"))
+  ) {
+    return()
+  }
   if (builder_build_controls_locked(isolate(build_flow()))) {
     return()
   }

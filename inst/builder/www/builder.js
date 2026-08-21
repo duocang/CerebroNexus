@@ -49,6 +49,8 @@
   var viewerTrajectoryHandlerRegistered = false;
   var spatialSectionHandlerRegistered = false;
   var desiredSpatialSection = null;
+  var spatialSectionGeneration = 0;
+  var spatialSectionTimers = [];
   var clientUploadSequence = 0;
   var clientImportQueue = [];
   var clientImportFailures = [];
@@ -64,6 +66,15 @@
   var builderWorkerReady = false;
   var builderWorkerStatusTimer = null;
   var datasetStartFocusToken = 0;
+  var stageFocusToken = 0;
+  var datasetSwitchState = {
+    target: null,
+    authoritative: null,
+    generation: 0,
+    phase: "idle",
+    timeout: null,
+    removal: null,
+  };
   var coordinateResetSliderIds = new Set([
     "enhance-coordinate_rotation",
     "enhance-point_opacity",
@@ -71,6 +82,8 @@
   ]);
   var coordinateResetMotionTimers = new Map();
   var dynamicContentEnhancementFrame = null;
+  var observedStages = new Set();
+  var datasetLoadTimeTimer = null;
   var builderActivityState = {
     phase: "none",
     capabilities: {
@@ -92,12 +105,25 @@
     busy_message: null,
     busy_detail: null,
     has_project: false,
+    open_cancelable: false,
     warn_before_unload: false,
     page_inert: false,
   };
   var builderProjectSaveResult = null;
   var builderProjectSaveResultOpen = false;
+  var builderProjectCrbDialogActive = false;
+  var builderProjectCrbRequestSequence = 0;
+  var builderProjectCrbRequestId = null;
+  var builderProjectCrbAcknowledgementTimer = null;
+  var builderProjectCrbTerminal = false;
   var buildStatusScrollPhase = 0;
+  var buildStatusFocusToken = 0;
+  var buildOperationActive = false;
+  var buildOperationRestoreFocus = null;
+  var buildOperationFocusToken = 0;
+  var projectOpenOperationActive = false;
+  var projectOpenRestoreFocus = null;
+  var projectOpenCancelPending = false;
   var normalMotionDuration = 180;
   var authEditor = {
     nextId: 1,
@@ -108,9 +134,151 @@
   };
 
   function send(name, value) {
-    if (window.Shiny) {
-      window.Shiny.setInputValue(name, value, { priority: "event" });
+    if (!window.Shiny) return false;
+    window.Shiny.setInputValue(name, value, { priority: "event" });
+    return true;
+  }
+
+  function datasetSwitchCopy() {
+    if (datasetSwitchState.phase === "spatial") {
+      return "Preparing Spatial preview…";
     }
+    if (datasetSwitchState.phase === "slow") {
+      return "This is taking longer than expected…";
+    }
+    return "Switching dataset…";
+  }
+
+  function ensureDatasetSwitchVeil() {
+    if (!datasetSwitchState.target) return null;
+    var workbench = document.getElementById("workbench");
+    var pane = document.getElementById("pane");
+    if (!workbench || !pane) return null;
+    window.clearTimeout(datasetSwitchState.removal);
+    datasetSwitchState.removal = null;
+    workbench.setAttribute("aria-busy", "true");
+    workbench.inert = true;
+    var veil = pane.querySelector(":scope > .builder-dataset-switch-veil");
+    if (!veil) {
+      veil = document.createElement("div");
+      veil.className = "builder-dataset-switch-veil";
+      veil.setAttribute("role", "status");
+      veil.setAttribute("aria-live", "polite");
+      var status = document.createElement("div");
+      status.className = "builder-dataset-switch-status";
+      var spinner = document.createElement("span");
+      spinner.className = "spinner";
+      spinner.setAttribute("aria-hidden", "true");
+      var text = document.createElement("span");
+      text.className = "builder-dataset-switch-copy";
+      status.append(spinner, text);
+      veil.appendChild(status);
+      pane.appendChild(veil);
+    }
+    veil.classList.remove("is-leaving");
+    var text = veil.querySelector(".builder-dataset-switch-copy");
+    if (text) text.textContent = datasetSwitchCopy();
+    return veil;
+  }
+
+  function optimisticallySelectDataset(target) {
+    document.querySelectorAll("#ds_ready_list .ds[data-ds]").forEach(
+      function (row) {
+        var selected = row.dataset.ds === target;
+        var control = row.querySelector(".builder-pick");
+        row.classList.toggle("is-active", selected);
+        if (!control) return;
+        if (selected) control.setAttribute("aria-current", "true");
+        else control.removeAttribute("aria-current");
+      }
+    );
+  }
+
+  function beginDatasetSwitch(target) {
+    if (typeof target !== "string" || !target) return false;
+    var selected = document.querySelector(
+      "#ds_ready_list .builder-pick[aria-current=true]"
+    );
+    if (
+      !datasetSwitchState.target &&
+      selected &&
+      selected.dataset.ds === target
+    ) return false;
+
+    if (!datasetSwitchState.target) {
+      var selectedId = selected ? selected.dataset.ds : null;
+      datasetSwitchState.authoritative = selectedId;
+    }
+    datasetSwitchState.generation += 1;
+    datasetSwitchState.target = target;
+    datasetSwitchState.phase = "switching";
+    window.clearTimeout(datasetSwitchState.timeout);
+    var generation = datasetSwitchState.generation;
+    optimisticallySelectDataset(target);
+    ensureDatasetSwitchVeil();
+    datasetSwitchState.timeout = window.setTimeout(function () {
+      if (
+        datasetSwitchState.target === target &&
+        datasetSwitchState.generation === generation
+      ) {
+        datasetSwitchState.phase = "slow";
+        ensureDatasetSwitchVeil();
+        datasetSwitchState.timeout = window.setTimeout(function () {
+          if (
+            datasetSwitchState.target === target &&
+            datasetSwitchState.generation === generation
+          ) {
+            scheduleStatusAnnouncement(
+              "The dataset switch did not finish. Try selecting it again."
+            );
+            settleDatasetSwitch("error");
+          }
+        }, 22000);
+      }
+    }, 8000);
+    return true;
+  }
+
+  function settleDatasetSwitch(outcome) {
+    window.clearTimeout(datasetSwitchState.timeout);
+    datasetSwitchState.timeout = null;
+    if (outcome === "ready") {
+      datasetSwitchState.authoritative = datasetSwitchState.target;
+    } else if (outcome === "error") {
+      optimisticallySelectDataset(datasetSwitchState.authoritative);
+    }
+    datasetSwitchState.target = null;
+    datasetSwitchState.phase = "idle";
+    var workbench = document.getElementById("workbench");
+    var pane = document.getElementById("pane");
+    if (workbench) {
+      workbench.removeAttribute("aria-busy");
+      workbench.inert = false;
+    }
+    if (!pane) return;
+    var veil = pane.querySelector(":scope > .builder-dataset-switch-veil");
+    if (!veil) return;
+    window.clearTimeout(datasetSwitchState.removal);
+    veil.classList.add("is-leaving");
+    datasetSwitchState.removal = window.setTimeout(function () {
+      if (veil.isConnected) veil.remove();
+      datasetSwitchState.removal = null;
+    }, reducedMotion.matches ? 0 : normalMotionDuration);
+  }
+
+  function updateDatasetSwitchPhase(message) {
+    if (
+      !message ||
+      message.dataset !== datasetSwitchState.target ||
+      Number(message.switch_token) !== datasetSwitchState.generation
+    ) return;
+    if (message.state === "spatial") {
+      datasetSwitchState.phase = "spatial";
+      ensureDatasetSwitchVeil();
+      return;
+    }
+    if (message.state === "ready") settleDatasetSwitch("ready");
+    if (message.state === "error") settleDatasetSwitch("error");
   }
 
   function builderOperationElements() {
@@ -149,12 +317,105 @@
     elements.actions.setAttribute("aria-hidden", hasActions ? "false" : "true");
   }
 
+  function cancelBuilderProjectOpen() {
+    if (builderActivityState.open_cancelable !== true) return;
+    projectOpenCancelPending = true;
+    var actions = builderOperationElements().actions;
+    var button = actions && actions.querySelector("button");
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.textContent = "Cancelling…";
+    }
+    var sent = send("cancel_builder_project_open", { nonce: Date.now() });
+    if (!sent) {
+      projectOpenCancelPending = false;
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        button.textContent = "Cancel";
+      }
+    }
+  }
+
+  function clearBuilderProjectCrbAcknowledgement() {
+    if (builderProjectCrbAcknowledgementTimer !== null) {
+      window.clearTimeout(builderProjectCrbAcknowledgementTimer);
+    }
+    builderProjectCrbAcknowledgementTimer = null;
+  }
+
+  function failBuilderProjectCrbRequest(error) {
+    if (!builderProjectCrbDialogActive || !builderProjectSaveResultOpen) return;
+    clearBuilderProjectCrbAcknowledgement();
+    updateBuilderProjectCrbProgress({
+      status: "failed",
+      completed: 0,
+      total: 0,
+      error: error || "Builder did not confirm CRB preparation.",
+      request_id: builderProjectCrbRequestId,
+    });
+  }
+
+  function startBuilderProjectCrbRequest(remaining) {
+    clearBuilderProjectCrbAcknowledgement();
+    builderProjectCrbRequestSequence += 1;
+    var requestId = Date.now().toString(36) + "-" +
+      builderProjectCrbRequestSequence.toString(36);
+    builderProjectCrbRequestId = requestId;
+    builderProjectCrbDialogActive = true;
+    builderProjectCrbTerminal = false;
+    var elements = builderOperationElements();
+    if (elements.card) {
+      elements.card.classList.remove(
+        "is-success",
+        "is-error",
+        "has-actions"
+      );
+    }
+    setBuilderOperationActions([]);
+    if (elements.overlay) elements.overlay.focus({ preventScroll: true });
+    setBuilderOperationCopy(
+      "Preparing reusable CRBs",
+      "Building the checked datasets that do not have a current reusable CRB.",
+      "Step 1 of 3 · Planning " + remaining + " CRB" +
+        (remaining === 1 ? "" : "s") + " · Keep this page open."
+    );
+    if (
+      !builderConnectionReady || !activityCapability("prepare_crbs")
+    ) {
+      failBuilderProjectCrbRequest(
+        "Reusable CRBs cannot be prepared right now. Reconnect or finish the current Builder operation, then try again."
+      );
+      return;
+    }
+    builderProjectCrbAcknowledgementTimer = window.setTimeout(function () {
+      if (builderProjectCrbRequestId !== requestId) return;
+      failBuilderProjectCrbRequest(
+        "Builder did not confirm CRB preparation. Check the connection before trying again."
+      );
+    }, 15000);
+    if (!send("prepare_builder_project_crbs", {
+      request_id: requestId,
+      nonce: Date.now(),
+    })) {
+      failBuilderProjectCrbRequest(
+        "Builder is not connected, so CRB preparation did not start."
+      );
+    }
+  }
+
   function closeBuilderProjectSaveResult() {
+    clearBuilderProjectCrbAcknowledgement();
+    builderProjectCrbDialogActive = false;
+    builderProjectCrbRequestId = null;
+    builderProjectCrbTerminal = false;
     builderProjectSaveResultOpen = false;
     builderProjectSaveResult = null;
     document.body.classList.remove("builder-project-result-open");
     var elements = builderOperationElements();
     if (elements.overlay) {
+      elements.overlay.removeEventListener("keydown", trapDialogKeydown);
       elements.overlay.setAttribute("role", "status");
       elements.overlay.removeAttribute("aria-modal");
     }
@@ -163,6 +424,8 @@
     }
     setBuilderOperationActions([]);
     applyBuilderActivityState();
+    updateDialogLock();
+    if (elements.overlay) restoreFocus(elements.overlay);
   }
 
   function showBuilderProjectSaveCompletion(status) {
@@ -205,23 +468,7 @@
         label: "Prepare checked CRBs",
         primary: true,
         action: function () {
-          var elements = builderOperationElements();
-          if (elements.card) {
-            elements.card.classList.remove(
-              "is-result",
-              "is-success",
-              "is-error",
-              "has-actions"
-            );
-          }
-          setBuilderOperationActions([]);
-          setBuilderOperationCopy(
-            "Preparing reusable CRBs",
-            "Building the checked datasets that do not have a current reusable CRB.",
-            "Step 1 of 3 · Planning " + remaining + " CRB" +
-              (remaining === 1 ? "" : "s") + " · Keep this page open."
-          );
-          send("prepare_builder_project_crbs", { nonce: Date.now() });
+          startBuilderProjectCrbRequest(remaining);
         },
       });
     }
@@ -232,6 +479,7 @@
 
   function updateBuilderProjectSourceProgress(message) {
     if (!builderProjectSaveResultOpen || !builderProjectSaveResult) return;
+    if (builderProjectCrbDialogActive) return;
     var status = message && message.status;
     if (status === "ready" || status === "failed") {
       showBuilderProjectSaveCompletion(status);
@@ -254,14 +502,26 @@
   }
 
   function showBuilderProjectSaveResult(message) {
+    if (builderProjectCrbDialogActive) return;
     builderProjectSaveResult = message || {};
     builderProjectSaveResultOpen = true;
     document.body.classList.add("builder-project-result-open");
     var elements = builderOperationElements();
     if (elements.overlay) {
       elements.overlay.setAttribute("aria-hidden", "false");
-      elements.overlay.setAttribute("role", "dialog");
-      elements.overlay.setAttribute("aria-modal", "true");
+      elements.overlay.removeEventListener("keydown", trapDialogKeydown);
+      prepareDialog(
+        elements.overlay,
+        document.getElementById("save_builder_project"),
+        function () {
+          if (elements.card && elements.card.classList.contains("has-actions")) {
+            closeBuilderProjectSaveResult();
+          }
+        },
+        function () {
+          return document.getElementById("save_builder_project");
+        }
+      );
     }
     if (elements.card) elements.card.classList.add("is-result");
     var shell = document.querySelector(".builder-shell");
@@ -279,13 +539,25 @@
 
   function updateBuilderProjectCrbProgress(message) {
     if (!builderProjectSaveResultOpen || !message) return;
+    if (!builderProjectCrbDialogActive || builderProjectCrbRequestId === null) {
+      return;
+    }
+    if (message.request_id !== builderProjectCrbRequestId) return;
     var status = message.status || "building";
+    if (
+      builderProjectCrbTerminal &&
+      status !== "ready" &&
+      status !== "failed"
+    ) return;
+    clearBuilderProjectCrbAcknowledgement();
     var completed = Math.max(0, Number(message.completed || 0));
     var total = Math.max(0, Number(message.total || 0));
     var elements = builderOperationElements();
     if (!elements.card) return;
+    if (status === "planning") return;
     setBuilderOperationActions([]);
     if (status === "ready") {
+      builderProjectCrbTerminal = true;
       elements.card.classList.add("is-result", "is-success");
       elements.card.classList.remove("is-error");
       setBuilderOperationCopy(
@@ -293,7 +565,7 @@
         total > 0
           ? total + " reusable CRB" + (total === 1 ? " is" : "s are") + " ready."
           : "All current reusable CRBs were already up to date.",
-        "You can safely close this page or continue working."
+        "Stored inside the Project artifacts folder. You can safely close this page or continue working."
       );
       setBuilderOperationActions([
         { label: "Done", action: closeBuilderProjectSaveResult },
@@ -301,6 +573,7 @@
       return;
     }
     if (status === "failed") {
+      builderProjectCrbTerminal = true;
       elements.card.classList.add("is-result", "is-error");
       elements.card.classList.remove("is-success");
       setBuilderOperationCopy(
@@ -313,7 +586,8 @@
       ]);
       return;
     }
-    elements.card.classList.remove("is-result", "is-success", "is-error");
+    builderProjectCrbDialogActive = true;
+    elements.card.classList.remove("is-success", "is-error");
     setBuilderOperationCopy(
       status === "registering" ? "Saving reusable CRBs" : "Preparing reusable CRBs",
       status === "registering"
@@ -344,8 +618,10 @@
       var restoreControl = control.matches(
         ".builder-retry-import, .builder-remove-import"
       );
+      var retryQueueLocked =
+        control.matches(".builder-retry-import") && clientImportQueue.length > 0;
       var controlLocked = datasetMutationsLocked ||
-        (activityLocked && !restoreControl);
+        (activityLocked && !restoreControl) || retryQueueLocked;
       if ("disabled" in control) control.disabled = controlLocked;
       control.setAttribute(
         "aria-disabled",
@@ -456,11 +732,17 @@
       save_builder_project: activityCapability("save_project") ||
         activityCapability("create_project"),
       choose_builder_project_folder: activityCapability("create_project"),
-      confirm_builder_project_open: activityCapability("open_project"),
+      confirm_builder_project_open: activityCapability("open_project") ||
+        (builderActivityState.has_project === true &&
+          activityCapability("edit_dataset")),
+      choose_saved_project_datasets: activityCapability("edit_dataset"),
       prepare_builder_project_crbs: activityCapability("prepare_crbs"),
       project_resume_current_source: activityCapability("edit_dataset"),
       complete_dataset_check: activityCapability("check_dataset"),
       continue_to_review: activityCapability("navigate_workflow"),
+      back_to_settings: activityCapability("navigate_workflow"),
+      confirm_review: activityCapability("navigate_workflow"),
+      back_to_review: activityCapability("navigate_workflow"),
       choose_output_folder: activityCapability("build"),
       build: activityCapability("build"),
     };
@@ -499,20 +781,32 @@
 
     var pageInert = builderConnectionReady &&
       builderActivityState.page_inert === true;
-    var shell = document.querySelector(".builder-shell");
-    if (shell) shell.inert = pageInert || builderProjectSaveResultOpen;
-    document.body.classList.toggle("builder-page-inert", pageInert);
-    document.body.classList.toggle(
-      "builder-connection-lost",
-      !builderConnectionReady
-    );
+    var nextBuildOperationActive = pageInert &&
+      builderActivityState.busy_title === "Building output";
+    var nextProjectOpenOperationActive = pageInert &&
+      builderActivityState.open_cancelable === true &&
+      !builderProjectSaveResultOpen;
+    var projectOpenPriorFocus = !projectOpenOperationActive &&
+      nextProjectOpenOperationActive
+      ? document.activeElement
+      : null;
     var overlay = document.getElementById("builder-operation-overlay");
+    document.body.classList.toggle("builder-page-inert", pageInert);
     if (overlay) {
       overlay.setAttribute(
         "aria-hidden",
         pageInert || builderProjectSaveResultOpen ? "false" : "true"
       );
     }
+    if (nextBuildOperationActive && !buildOperationActive) {
+      beginBuildOperationFocus(overlay);
+    }
+    var shell = document.querySelector(".builder-shell");
+    if (shell) shell.inert = pageInert || builderProjectSaveResultOpen;
+    document.body.classList.toggle(
+      "builder-connection-lost",
+      !builderConnectionReady
+    );
     var title = document.getElementById("builder-operation-overlay-title");
     var message = document.getElementById("builder-operation-overlay-message");
     var detail = document.getElementById("builder-operation-overlay-detail");
@@ -536,29 +830,145 @@
       var busyDetail = builderActivityState.busy_detail || "";
       if (detail.textContent !== busyDetail) detail.textContent = busyDetail;
     }
+    if (!builderProjectSaveResultOpen) {
+      if (nextProjectOpenOperationActive && !projectOpenOperationActive) {
+        projectOpenCancelPending = false;
+      }
+      setBuilderOperationActions(
+        nextProjectOpenOperationActive
+          ? [{ label: "Cancel", action: cancelBuilderProjectOpen }]
+          : []
+      );
+      if (nextProjectOpenOperationActive && projectOpenCancelPending) {
+        var pendingCancel = builderOperationElements().actions;
+        pendingCancel = pendingCancel && pendingCancel.querySelector("button");
+        if (pendingCancel) {
+          pendingCancel.disabled = true;
+          pendingCancel.setAttribute("aria-busy", "true");
+          pendingCancel.textContent = "Cancelling…";
+        }
+      }
+    }
+    if (nextProjectOpenOperationActive && !projectOpenOperationActive) {
+      projectOpenRestoreFocus = canRestoreFocus(projectOpenPriorFocus)
+        ? projectOpenPriorFocus
+        : document.getElementById("open_builder_project");
+      if (overlay) {
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+      }
+      var cancelOpen = builderOperationElements().actions;
+      cancelOpen = cancelOpen && cancelOpen.querySelector("button");
+      if (cancelOpen) cancelOpen.focus({ preventScroll: true });
+    } else if (
+      projectOpenOperationActive &&
+      !nextProjectOpenOperationActive &&
+      !builderProjectSaveResultOpen
+    ) {
+      if (overlay) {
+        overlay.setAttribute("role", "status");
+        overlay.removeAttribute("aria-modal");
+      }
+      var openRestoreTarget = projectOpenRestoreFocus;
+      projectOpenRestoreFocus = null;
+      projectOpenCancelPending = false;
+      window.setTimeout(function () {
+        if (document.querySelector('.modal.show, [aria-modal="true"]')) return;
+        if (canRestoreFocus(openRestoreTarget)) {
+          openRestoreTarget.focus({ preventScroll: true });
+        }
+      }, 100);
+    }
+    projectOpenOperationActive = nextProjectOpenOperationActive;
+    var priorBuildOperationActive = buildOperationActive;
+    buildOperationActive = nextBuildOperationActive;
+    if (priorBuildOperationActive && !buildOperationActive) {
+      restoreBuildOperationFocus();
+    }
     applyDatasetMutationLock();
   }
 
-  function revealBuildStatus() {
+  function beginBuildOperationFocus(overlay) {
+    buildOperationFocusToken += 1;
+    var active = document.activeElement;
+    if (
+      !buildOperationRestoreFocus &&
+      canRestoreFocus(active) &&
+      active !== overlay
+    ) {
+      buildOperationRestoreFocus = active;
+    } else if (!buildOperationRestoreFocus) {
+      buildOperationRestoreFocus = document.getElementById("build");
+    }
+    if (overlay) overlay.focus({ preventScroll: true });
+  }
+
+  function restoreBuildOperationFocus() {
+    buildOperationFocusToken += 1;
+    var token = buildOperationFocusToken;
+    var attempts = 0;
+    function apply() {
+      if (token !== buildOperationFocusToken) return;
+      var heading = document.querySelector(".result-card h2");
+      var action = document.querySelector(
+        ".result-card .builder-result-actions button, " +
+          ".result-card .builder-recovery-action button"
+      );
+      var target = heading || action;
+      if (heading) heading.setAttribute("tabindex", "-1");
+      if (!canRestoreFocus(target)) target = buildOperationRestoreFocus;
+      if (!canRestoreFocus(target)) target = document.getElementById("build");
+      if (canRestoreFocus(target)) {
+        target.focus({ preventScroll: true });
+        buildOperationRestoreFocus = null;
+        return;
+      }
+      attempts += 1;
+      if (attempts >= 12) {
+        buildOperationRestoreFocus = null;
+        return;
+      }
+      window.setTimeout(apply, 50);
+    }
+    window.setTimeout(apply, 0);
+  }
+
+  function focusBuildStatus() {
     var host = document.getElementById("build-stage-status");
     if (!host || !host.isConnected) {
-      buildStatusScrollPhase = 0;
-      return;
+      return false;
     }
-    var viewportBottom = window.innerHeight - 16;
-    var delta = Math.max(0, Math.ceil(
-      host.getBoundingClientRect().bottom - viewportBottom
-    ));
-    window.scrollBy({
-      top: delta,
+    var topbar = document.querySelector(".topbar");
+    var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
+    host.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
+    host.setAttribute("tabindex", "-1");
+    host.scrollIntoView({
+      block: "start",
       behavior: reducedMotion.matches ? "auto" : "smooth",
     });
+    host.focus({ preventScroll: true });
+    return true;
+  }
+
+  function scheduleBuildStatusFocus() {
+    buildStatusFocusToken += 1;
+    var token = buildStatusFocusToken;
+    var attempts = 0;
+    function apply() {
+      if (token !== buildStatusFocusToken) return;
+      if (focusBuildStatus()) return;
+      attempts += 1;
+      if (attempts < 12) window.setTimeout(apply, 50);
+    }
+    apply();
   }
 
   function showImmediateBuildStatus() {
     var host = document.getElementById("build-stage-status");
     var output = document.getElementById("build_stage_status_content");
     if (!host || !output) return;
+    buildOperationRestoreFocus = document.activeElement ||
+      document.getElementById("build");
 
     var previous = host.querySelector(
       ":scope > .builder-build-status-section.is-client-build-status"
@@ -584,14 +994,9 @@
     section.append(heading, waiting);
     host.insertBefore(section, output);
 
-    var topbar = document.querySelector(".topbar");
-    var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
-    host.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
-    host.setAttribute("tabindex", "-1");
     buildStatusScrollPhase = 1;
-    revealBuildStatus();
+    scheduleBuildStatusFocus();
     buildStatusScrollPhase = 2;
-    host.focus({ preventScroll: true });
     scheduleStatusAnnouncement("Preparing build.");
   }
 
@@ -918,6 +1323,18 @@
     );
   }
 
+  function pageShortcutBlocked() {
+    if (
+      document.body.classList.contains("modal-open") ||
+      document.body.classList.contains("builder-dialog-open")
+    ) return true;
+    return Array.from(
+      document.querySelectorAll('[aria-modal="true"]')
+    ).some(function (dialog) {
+      return !dialog.closest("[hidden]") && dialog.getClientRects().length > 0;
+    });
+  }
+
   function isTextInput(target) {
     return Boolean(target && target.closest(
       "input, textarea, select, [contenteditable='true'], .selectize-input"
@@ -984,7 +1401,7 @@
   }
 
   function openDatasetPicker() {
-    if (datasetMutationsLocked || !builderWorkerReady) return;
+    if (datasetMutationsLocked || !activityCapability("add_dataset")) return;
     var picker = document.createElement("input");
     picker.type = "file";
     picker.multiple = true;
@@ -1170,6 +1587,7 @@
   }
 
   function enqueueClientFiles(fileList) {
+    if (!activityCapability("add_dataset")) return;
     var files = Array.from(fileList || []);
     files.forEach(function (file) {
       var duplicateHint = clientImportQueue.some(function (queued) {
@@ -1201,6 +1619,7 @@
   }
 
   function enqueueExample(example) {
+    if (!activityCapability("add_dataset")) return;
     clientUploadSequence += 1;
     clientImportQueue.push({
       clientId: "client-import-" + clientUploadSequence,
@@ -1288,6 +1707,21 @@
     dispatchNextClientImport();
   }
 
+  function failClientImportReconciliation(entry, message) {
+    entry.state = "error";
+    entry.outcome = "error";
+    entry.error = message;
+    entry.serverId = null;
+    var index = clientImportQueue.indexOf(entry);
+    if (index >= 0) clientImportQueue.splice(index, 1);
+    if (activeClientImport === entry) activeClientImport = null;
+    importSyncPending = false;
+    if (!clientImportFailures.includes(entry)) clientImportFailures.push(entry);
+    scheduleStatusAnnouncement(entry.name + ". " + message);
+    renderClientImportQueue();
+    dispatchNextClientImport();
+  }
+
   function handleClientImportSync(message) {
     var records = Array.isArray(message && message.imports) ? message.imports : [];
     serverImportGate = Boolean(message && message.server_busy);
@@ -1310,15 +1744,11 @@
         dispatchNextClientImport();
         return;
       }
-      entry.state = "unknown";
-      entry.error = "The server could not match this import after reconnecting.";
-      renderClientImportQueue();
+      failClientImportReconciliation(entry, "The server could not match this import after reconnecting.");
       return;
     }
     if (entry.serverId && record.server_id !== entry.serverId) {
-      entry.state = "unknown";
-      entry.error = "The restored import identity did not match.";
-      renderClientImportQueue();
+      failClientImportReconciliation(entry, "The restored import identity did not match.");
       return;
     }
     entry.serverId = record.server_id || entry.serverId;
@@ -1676,6 +2106,20 @@
       if (replacement) dialog.__builderRestoreFocus = replacement;
     });
     updateRailSummary();
+    if (datasetSwitchState.target) {
+      var authoritative = rail.querySelector(
+        ".builder-pick[aria-current=true]"
+      );
+      if (
+        authoritative &&
+        authoritative.dataset.ds !== datasetSwitchState.target
+      ) {
+        datasetSwitchState.authoritative = authoritative.dataset.ds;
+        settleDatasetSwitch("error");
+      } else {
+        ensureDatasetSwitchVeil();
+      }
+    }
   }
 
   function importRailFocusIdentity(element) {
@@ -1981,9 +2425,14 @@
 
   var stageObserver = new IntersectionObserver(
     function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.target.isConnected) return;
+        stageObserver.unobserve(entry.target);
+        observedStages.delete(entry.target);
+      });
       var visible = entries
         .filter(function (entry) {
-          return entry.isIntersecting;
+          return entry.target.isConnected && entry.isIntersecting;
         })
         .sort(function (left, right) {
           return right.intersectionRatio - left.intersectionRatio;
@@ -1994,6 +2443,11 @@
   );
 
   function registerStages() {
+    observedStages.forEach(function (stage) {
+      if (stage.isConnected) return;
+      stageObserver.unobserve(stage);
+      observedStages.delete(stage);
+    });
     var stages = document.querySelectorAll(".builder-stage");
     stages.forEach(function (stage) {
       if (stage.dataset.builderStage === "true") return;
@@ -2008,6 +2462,7 @@
         setCurrentStage(stage);
       });
       stageObserver.observe(stage);
+      observedStages.add(stage);
     });
     if (stages.length && !document.querySelector('[aria-current="stage"]')) {
       setCurrentStage(stages[0]);
@@ -2973,6 +3428,7 @@
     registerPrimaryAction();
     updateStatusSemantics();
     updatePipelines();
+    ensureDatasetSwitchVeil();
     var buildStatusHost = document.getElementById("build-stage-status");
     var clientStatus = buildStatusHost && buildStatusHost.querySelector(
       ":scope > .builder-build-status-section.is-client-build-status"
@@ -2987,7 +3443,7 @@
         "#build-stage-status .builder-build-status-section:not(.is-client-build-status)"
       )
     ) {
-      revealBuildStatus();
+      focusBuildStatus();
       buildStatusScrollPhase = 0;
     }
     setupFirstRun();
@@ -3028,6 +3484,21 @@
     });
   }
 
+  function handleDynamicContentMutations(mutations) {
+    var onlyLoadTimeText = mutations.length > 0 && mutations.every(
+      function (mutation) {
+        var target = mutation.target.nodeType === 1
+          ? mutation.target
+          : mutation.target.parentElement;
+        return target && target.closest(".builder-load-time");
+      }
+    );
+    if (onlyLoadTimeText) return;
+    scheduleDynamicContentEnhancement();
+    updateDatasetLoadTimes();
+    scheduleDatasetLoadTimeUpdates();
+  }
+
   document.addEventListener("click", function (event) {
     var target = event.target;
     var spatialImageTrigger = target.closest(".enhance-tissue-file-button");
@@ -3041,6 +3512,18 @@
       event.preventDefault();
       event.stopPropagation();
       return;
+    }
+    var reviewButton = target.closest("#continue_to_review");
+    if (reviewButton && !reviewButton.disabled) {
+      reviewButton.disabled = true;
+      reviewButton.setAttribute("aria-busy", "true");
+      reviewButton.textContent = "Opening Review…";
+    }
+    var continueButton = target.closest("#confirm_review");
+    if (continueButton && !continueButton.disabled) {
+      continueButton.disabled = true;
+      continueButton.setAttribute("aria-busy", "true");
+      continueButton.textContent = "Opening Build…";
     }
     if (target.closest("#build")) showImmediateBuildStatus();
     var authOpen = target.closest(".builder-auth-open");
@@ -3248,7 +3731,12 @@
     }
     var pick = target.closest(".builder-pick");
     if (pick) {
-      send("pick", pick.dataset.ds);
+      if (beginDatasetSwitch(pick.dataset.ds)) {
+        send("pick", {
+          id: pick.dataset.ds,
+          switch_token: datasetSwitchState.generation,
+        });
+      }
       if (narrowManager.matches) closeDatasetManager();
       return;
     }
@@ -3287,6 +3775,7 @@
     }
     if (!isTextInput(event.target)) {
       var modifier = event.ctrlKey || event.metaKey;
+      if (modifier && pageShortcutBlocked()) return;
       if (modifier && event.key === "Enter") {
         event.preventDefault();
         var build = document.getElementById("build");
@@ -3515,6 +4004,7 @@
           busy_message: message.busy_message || null,
           busy_detail: message.busy_detail || null,
           has_project: message.has_project === true,
+          open_cancelable: message.open_cancelable === true,
           warn_before_unload: message.warn_before_unload === true,
           page_inert: message.page_inert === true,
         };
@@ -3537,6 +4027,34 @@
       "builder_project_crb_progress",
       updateBuilderProjectCrbProgress
     );
+    window.Shiny.addCustomMessageHandler(
+      "builder_dataset_switch_state",
+      updateDatasetSwitchPhase
+    );
+
+    window.Shiny.addCustomMessageHandler(
+      "builder_dataset_check_state",
+      function (message) {
+        var button = document.getElementById("complete_dataset_check");
+        if (!button) return;
+        var active = !!(message && message.active);
+        if (active) {
+          if (!button.dataset.builderCheckLabel) {
+            button.dataset.builderCheckLabel = button.textContent;
+          }
+          button.disabled = true;
+          button.setAttribute("aria-busy", "true");
+          button.textContent = "Finishing check…";
+          return;
+        }
+        if (button.dataset.builderCheckLabel) {
+          button.textContent = button.dataset.builderCheckLabel;
+          delete button.dataset.builderCheckLabel;
+          button.disabled = false;
+        }
+        button.removeAttribute("aria-busy");
+      }
+    );
     window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
     window.Shiny.addCustomMessageHandler(
       "builder_focus_dataset_start",
@@ -3546,29 +4064,52 @@
       "builder_coordinate_reset_motion",
       animateCoordinateResetSliders
     );
-    window.Shiny.addCustomMessageHandler("builder_scroll_page_top", function (message) {
-      window.scrollTo({
-        top: 0,
-        behavior: reducedMotion.matches ? "auto" : "smooth",
-      });
-    });
+    window.Shiny.addCustomMessageHandler(
+      "builder_focus_build_status",
+      function (message) {
+        if (buildOperationActive) {
+          beginBuildOperationFocus(
+            document.getElementById("builder-operation-overlay")
+          );
+          return;
+        }
+        scheduleBuildStatusFocus();
+      }
+    );
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;
       if (["upload", "configure", "review", "build"].indexOf(id) < 0) return;
-      var stage = document.querySelector('[data-workflow-stage="' + id + '"]');
-      if (!stage) return;
-      var heading = stage.querySelector("h2");
-      if (!heading) return;
-      var topbar = document.querySelector(".topbar");
-      var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
-      heading.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
-      heading.setAttribute("tabindex", "-1");
-      heading.scrollIntoView({
-        block: "start",
-        behavior: reducedMotion.matches ? "auto" : "smooth",
-      });
-      heading.focus({ preventScroll: true });
-      scheduleStatusAnnouncement("Opened " + id + " step.");
+      stageFocusToken += 1;
+      var token = stageFocusToken;
+      var attempts = 0;
+      function apply() {
+        if (token !== stageFocusToken) return;
+        var stage = document.querySelector('[data-workflow-stage="' + id + '"]');
+        var heading = stage && stage.querySelector("h2");
+        if (!heading) {
+          attempts += 1;
+          if (attempts < 12) window.setTimeout(apply, 50);
+          return;
+        }
+        heading.setAttribute("tabindex", "-1");
+        if (id === "build") {
+          window.scrollTo({
+            top: 0,
+            behavior: reducedMotion.matches ? "auto" : "smooth",
+          });
+        } else {
+          var topbar = document.querySelector(".topbar");
+          var topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
+          heading.style.scrollMarginTop = Math.max(0, topbarBottom + 12) + "px";
+          heading.scrollIntoView({
+            block: "start",
+            behavior: reducedMotion.matches ? "auto" : "smooth",
+          });
+        }
+        heading.focus({ preventScroll: true });
+        scheduleStatusAnnouncement("Opened " + id + " step.");
+      }
+      apply();
     });
     window.Shiny.addCustomMessageHandler("builder_import_status", function (message) {
       if (message && message.text) scheduleStatusAnnouncement(message.text);
@@ -3608,17 +4149,34 @@
 
   function updateDatasetLoadTimes() {
     var now = Date.now();
+    var running = false;
     document.querySelectorAll(".builder-load-time").forEach(function (node) {
       var fixed = Number(node.dataset.elapsedMs);
       var started = Number(node.dataset.startedAtMs);
+      if (!Number.isFinite(fixed) && Number.isFinite(started)) running = true;
       var elapsed = Number.isFinite(fixed)
         ? fixed
         : Number.isFinite(started)
           ? Math.max(0, now - started)
           : NaN;
       if (!Number.isFinite(elapsed)) return;
-      node.textContent = (elapsed / 1000).toFixed(1) + "s";
+      var text = (elapsed / 1000).toFixed(1) + "s";
+      if (node.textContent !== text) node.textContent = text;
     });
+    if (!running && datasetLoadTimeTimer !== null) {
+      window.clearTimeout(datasetLoadTimeTimer);
+      datasetLoadTimeTimer = null;
+    }
+    return running;
+  }
+
+  function scheduleDatasetLoadTimeUpdates() {
+    if (datasetLoadTimeTimer !== null) return;
+    if (!document.querySelector(".builder-load-time[data-started-at-ms]")) return;
+    datasetLoadTimeTimer = window.setTimeout(function () {
+      datasetLoadTimeTimer = null;
+      if (updateDatasetLoadTimes()) scheduleDatasetLoadTimeUpdates();
+    }, 100);
   }
 
   function registerClientImportHandlers() {
@@ -3679,14 +4237,23 @@
         "builder_spatial_section_state",
         function (message) {
           if (!message || !message.value) return;
+          spatialSectionGeneration += 1;
+          var generation = spatialSectionGeneration;
+          spatialSectionTimers.forEach(window.clearTimeout);
+          spatialSectionTimers = [];
           desiredSpatialSection = message.value;
           [0, 50, 200, 500, 1000, 2000, 5000].forEach(function (delay) {
-            window.setTimeout(function () {
+            var timer = window.setTimeout(function () {
+              if (generation !== spatialSectionGeneration) return;
               var select = document.getElementById("enhance-active_section");
               if (!select) return;
-              if (select.selectize) select.selectize.setValue(message.value, true);
-              else select.value = message.value;
+              if (select.selectize) {
+                select.selectize.setValue(desiredSpatialSection, true);
+              } else {
+                select.value = desiredSpatialSection;
+              }
             }, delay);
+            spatialSectionTimers.push(timer);
           });
         }
       );
@@ -3723,6 +4290,11 @@
     builderConnectionReady = false;
     uploadConnectionReady = false;
     importSyncPending = true;
+    if (builderProjectCrbDialogActive && !builderProjectCrbTerminal) {
+      failBuilderProjectCrbRequest(
+        "The Builder connection was interrupted, so CRB preparation status could not be confirmed."
+      );
+    }
     clientImportQueue.forEach(function (entry) {
       entry.stateBeforePause = entry.state;
       entry.state = "paused";
@@ -3759,6 +4331,7 @@
     if (datasetTrigger) {
       datasetTrigger.addEventListener("dragover", function (event) {
         event.preventDefault();
+        if (!activityCapability("add_dataset")) return;
         datasetTrigger.classList.add("is-drag-over");
       });
       datasetTrigger.addEventListener("dragleave", function () {
@@ -3767,11 +4340,12 @@
       datasetTrigger.addEventListener("drop", function (event) {
         event.preventDefault();
         datasetTrigger.classList.remove("is-drag-over");
+        if (!activityCapability("add_dataset")) return;
         enqueueClientFiles(event.dataTransfer && event.dataTransfer.files);
       });
     }
 
-    new MutationObserver(scheduleDynamicContentEnhancement).observe(document.documentElement, {
+    new MutationObserver(handleDynamicContentMutations).observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
@@ -3789,7 +4363,7 @@
     ensureLiveRegion();
     enhanceDynamicContent();
     updateDatasetLoadTimes();
-    window.setInterval(updateDatasetLoadTimes, 100);
+    scheduleDatasetLoadTimeUpdates();
   }
 
   if (document.readyState === "loading") {

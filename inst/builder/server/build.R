@@ -434,27 +434,136 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
   })
 }
 
+builder_build_foreign_output_error <- function(foreign) {
+  foreign <- sort(unique(sub("/.*$", "", foreign)), method = "radix")
+  if (!length(foreign)) {
+    return(NULL)
+  }
+  shown <- head(foreign, 8L)
+  remainder <- length(foreign) - length(shown)
+  paste0(
+    "The selected folder contains files that do not belong to this release: ",
+    paste(shown, collapse = ", "),
+    if (remainder > 0L) paste0(" and ", remainder, " more") else "",
+    ". Choose an empty folder or an existing Builder output folder."
+  )
+}
+
+builder_build_output_preflight <- function(path) {
+  plan <- freeze_plan_for_output(
+    path,
+    ## Folder selection validates ownership and shape only. Existing Builder
+    ## targets are handled by the explicit replace confirmation at Build time.
+    overwrite = TRUE,
+    output_options = current_build_options()
+  )
+  if (
+    !inherits(plan, "builder_build_plan") ||
+      !identical(plan$readiness, "ready")
+  ) {
+    return(list(
+      ok = FALSE,
+      error = plan$error %||% "The selected folder cannot be used."
+    ))
+  }
+  expected <- plan$output_release$targets %||% plan$targets %||% character()
+  relative <- vapply(
+    expected,
+    function(target) .builder_release_relative(target, path),
+    character(1)
+  )
+  expected_roots <- unique(sub("/.*$", "", relative))
+  prior_state <- tryCatch(
+    builder_release_state(
+      path,
+      exact_record = FALSE,
+      allow_abandoned = TRUE
+    ),
+    error = function(error) error
+  )
+  if (inherits(prior_state, "condition")) {
+    return(list(ok = FALSE, error = conditionMessage(prior_state)))
+  }
+  prior_members <- prior_state$record$members %||% list()
+  prior_roots <- if (length(prior_members)) {
+    unique(sub(
+      "/.*$",
+      "",
+      vapply(prior_members, `[[`, character(1), "path")
+    ))
+  } else {
+    character()
+  }
+  actual_roots <- list.files(path, all.files = TRUE, no.. = TRUE)
+  metadata <- .builder_release_ignorable_metadata(actual_roots)
+  if (any(metadata)) {
+    metadata_paths <- file.path(path, actual_roots[metadata])
+    metadata[metadata] <- file.exists(metadata_paths) &
+      !dir.exists(metadata_paths) &
+      !vapply(metadata_paths, .builder_release_link, logical(1))
+    actual_roots <- actual_roots[!metadata]
+  }
+  foreign <- setdiff(
+    actual_roots,
+    c(expected_roots, prior_roots, .builder_release_record_name)
+  )
+  if (length(foreign)) {
+    return(list(
+      ok = FALSE,
+      error = builder_build_foreign_output_error(foreign)
+    ))
+  }
+  list(ok = TRUE, error = NULL)
+}
+
 choose_build_folder <- function() {
   build_flow(list(stage = "choosing_folder", plan = NULL))
   session$onFlushed(
     function() {
-      choice <- builder_choose_output_directory()
-      if (identical(choice$status, "cancelled")) {
-        build_flow(list(stage = "idle", plan = NULL))
-        return()
-      }
-      if (!identical(choice$status, "selected")) {
-        build_flow(list(stage = "idle", plan = NULL))
-        showNotification(
-          choice$error %||% "The folder picker could not be opened.",
-          type = "error",
-          duration = 6
-        )
-        return()
-      }
-      selected_output(choice$path)
-      result(NULL)
-      build_flow(list(stage = "idle", plan = NULL))
+      tryCatch(
+        {
+          choice <- builder_choose_output_directory()
+          if (identical(choice$status, "cancelled")) {
+            build_flow(list(stage = "idle", plan = NULL))
+            return()
+          }
+          if (!identical(choice$status, "selected")) {
+            build_flow(list(stage = "idle", plan = NULL))
+            showNotification(
+              choice$error %||% "The folder picker could not be opened.",
+              type = "error",
+              duration = 6
+            )
+            return()
+          }
+          preflight <- shiny::isolate(
+            builder_build_output_preflight(choice$path)
+          )
+          if (!isTRUE(preflight$ok)) {
+            build_flow(list(stage = "idle", plan = NULL))
+            showNotification(
+              preflight$error %||% "The selected folder cannot be used.",
+              type = "warning",
+              duration = 10
+            )
+            return()
+          }
+          selected_output(choice$path)
+          result(NULL)
+          build_flow(list(stage = "idle", plan = NULL))
+        },
+        error = function(error) {
+          build_flow(list(stage = "idle", plan = NULL))
+          showNotification(
+            paste0(
+              "The selected folder could not be checked: ",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = 10
+          )
+        }
+      )
     },
     once = TRUE
   )
@@ -481,8 +590,9 @@ start_confirmed_build <- function() {
   if (!builder_has_text(output_path)) {
     return(invisible(FALSE))
   }
+  result(NULL)
   build_flow(list(stage = "preparing", plan = NULL))
-  session$sendCustomMessage("builder_scroll_page_top", list())
+  session$sendCustomMessage("builder_focus_build_status", list())
   session$onFlushed(
     function() prepare_selected_output(output_path),
     once = TRUE
@@ -569,6 +679,9 @@ remove_dataset <- function(
 ) {
   ids <- vapply(previous_state$datasets, `[[`, character(1), "id")
   entry <- previous_state$datasets[[match(id, ids)]]
+  if (!is.null(isolate(import_of(id)))) {
+    remove_pending_import(id)
+  }
   previous_removed <- previous_state$last_removed
   if (is.list(previous_removed)) {
     identity <- .builder_worker_identity(previous_removed$entry$snapshot)
@@ -604,14 +717,20 @@ rail_controller <- builder_dataset_rail_server(
   session = session,
   store = store,
   validate_remove = validate_rail_removal,
-  select_dataset = function(id, commit) {
+  select_dataset = function(id, commit, switch_token = NULL) {
     if (
       exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
         !isTRUE(builder_operation_allowed("select_dataset"))
     ) {
+      if (!is.null(switch_token)) {
+        session$sendCustomMessage(
+          "builder_dataset_switch_state",
+          list(dataset = id, state = "error", switch_token = switch_token)
+        )
+      }
       return(invisible(FALSE))
     }
-    alignment_server$request_dataset_switch(id, commit)
+    alignment_server$request_dataset_switch(id, commit, switch_token)
   },
   on_select = function(id) {
     active_import_id(NULL)

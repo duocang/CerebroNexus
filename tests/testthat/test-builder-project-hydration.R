@@ -68,7 +68,7 @@ test_that("loaded source entries are hydrated before their first store attachmen
   saved$acknowledgements <- "metadata"
   record <- runtime$builder_project_dataset_record(
     saved,
-    source = list(kind = "missing", path = NULL),
+    source = list(kind = "example", example = "all_content"),
     checked = TRUE
   )
 
@@ -110,7 +110,7 @@ test_that("pending project hydration isolates a corrupt dataset", {
   saved$settings$name <- "Saved good"
   good <- runtime$builder_project_dataset_record(
     saved,
-    source = list(kind = "missing", path = NULL),
+    source = list(kind = "example", example = "all_content"),
     checked = TRUE
   )
   corrupt <- good
@@ -299,7 +299,7 @@ test_that("schema v1 projects migrate durable project preferences explicitly", {
 
   migrated <- runtime$builder_project_read(path)
 
-  expect_identical(migrated$schema_version, 2L)
+  expect_identical(migrated$schema_version, 3L)
   expect_identical(migrated$migrated_from_schema, 1L)
   expect_false(migrated$configuration$build_mode)
   expect_false(migrated$configuration$auth_enabled)
@@ -336,9 +336,16 @@ test_that("schema v1 migration canonicalizes record identity without dirtying", 
 
   migrated <- runtime$builder_project_read(path)
 
+  migrated_record <- migrated$datasets[[1L]]
   expect_identical(migrated$datasets[[1L]]$configuration$digest, canonical)
+  expect_null(migrated_record$configuration$payload)
+  expect_true(file.exists(file.path(
+    dirname(path),
+    migrated_record$configuration$path
+  )))
+  expect_null(migrated_record$cache)
   expect_identical(
-    migrated$datasets[[1L]]$artifact$built_from_configuration,
+    migrated_record$artifact$built_from_configuration,
     canonical
   )
   expect_false(runtime$builder_project_live_dirty(
@@ -389,7 +396,7 @@ test_that("project preferences retain only validated non-secret values", {
   ))
 })
 
-test_that("schema v2 preferences survive a manifest write and read", {
+test_that("schema v3 preferences survive a manifest write and read", {
   runtime <- builder_project_hydration_runtime()
   root <- withr::local_tempdir()
   manifest <- runtime$builder_project_new_manifest(root, "Round trip")
@@ -413,9 +420,45 @@ test_that("schema v2 preferences survive a manifest write and read", {
   written <- runtime$builder_project_write(manifest, root)
   restored <- runtime$builder_project_read(written$path)
 
-  expect_identical(restored$schema_version, 2L)
+  expect_identical(restored$schema_version, 3L)
   expect_identical(restored$configuration, written$manifest$configuration)
   expect_null(restored$migrated_from_schema)
+})
+
+test_that("schema v3 excludes source-derived profiles from project storage", {
+  runtime <- builder_project_hydration_runtime()
+  root <- withr::local_tempdir()
+  entry <- builder_minimal_entry("ds1", "Dataset one")
+  entry$profile <- list(
+    n_cells = 123L,
+    n_genes = 45L,
+    large_derived_value = rep("profile-only", 1000L)
+  )
+  entry$dataset_profile <- list(
+    assays = list(large_derived_value = rep(1, 1000L))
+  )
+  entry$levels <- list(cluster = c("A", "B"))
+
+  record <- runtime$builder_project_dataset_record(
+    entry,
+    source = list(
+      kind = "managed",
+      path = "sources/ds1/source.rds",
+      fingerprint = list(md5 = "source-md5")
+    ),
+    checked = TRUE,
+    root = root
+  )
+
+  expect_identical(record$configuration$schema_version, 1L)
+  expect_true(file.exists(file.path(root, record$configuration$path)))
+  expect_null(record$cache)
+  expect_null(record$configuration$payload)
+  expect_null(record$configuration$legacy_payload)
+
+  restored <- runtime$builder_project_restore_entry(record, root)
+  expect_identical(restored$settings, entry$settings)
+  expect_null(restored$profile$large_derived_value)
 })
 
 test_that("last UI restoration uses safe dataset and workflow fallbacks", {
@@ -690,6 +733,30 @@ test_that("failed source resume preserves the checked artifact entry", {
     expect_identical(isolate(dataset_check_marks())[["ds1"]], mark)
     expect_null(isolate(builder_project_pending_entries())[["ds1"]])
   })
+})
+
+test_that("source resume catches start failures and restores pending state", {
+  source <- paste(
+    readLines(
+      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  observer <- sub(
+    ".*observeEvent\\(input\\$project_resume_current_source, \\{",
+    "",
+    source
+  )
+  observer <- sub(
+    "\\n\\}\\)\\n\\nbuilder_project_crb_request_from_input.*",
+    "",
+    observer
+  )
+
+  expect_match(observer, "started <- tryCatch(", fixed = TRUE)
+  expect_match(observer, "conditionMessage(started)", fixed = TRUE)
+  expect_match(observer, "pending[[id]] <- previous_pending", fixed = TRUE)
 })
 
 test_that("failed pre-store hydration releases its unattached snapshot", {

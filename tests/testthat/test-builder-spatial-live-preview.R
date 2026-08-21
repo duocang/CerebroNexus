@@ -55,6 +55,32 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
   expect_false(grepl("Plotly", js, fixed = TRUE))
 })
 
+test_that("Canvas hover coalesces pointer work and reuses rendered screen points", {
+  root <- testthat::test_path("..", "..", "inst", "builder")
+  js <- paste(
+    readLines(
+      file.path(root, "www", "builder-spatial-canvas.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(js, "screenPoints: []", fixed = TRUE)
+  expect_match(js, "state.screenPoints = new Array(p.x.length);", fixed = TRUE)
+  expect_match(js, "state.screenPoints[index] = at;", fixed = TRUE)
+  expect_match(js, "var cosine = Math.cos(angle), sine = Math.sin(angle);", fixed = TRUE)
+  expect_match(js, "function setupCanvasHover(node)", fixed = TRUE)
+  expect_match(js, 'node.addEventListener("pointermove"', fixed = TRUE)
+  expect_match(js, "if (!state.hoverFrame)", fixed = TRUE)
+  expect_match(js, "window.requestAnimationFrame(updateHover)", fixed = TRUE)
+  expect_match(js, "window.cancelAnimationFrame(state.hoverFrame)", fixed = TRUE)
+  expect_false(grepl(
+    'document.addEventListener("pointermove"',
+    js,
+    fixed = TRUE
+  ))
+})
+
 test_that("same-token scene refreshes preserve browser-local controls", {
   root <- testthat::test_path("..", "..", "inst", "builder")
   js <- paste(
