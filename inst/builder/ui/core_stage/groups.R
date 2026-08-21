@@ -315,6 +315,7 @@ builder_group_catalog_model <- function(model) {
       search = tolower(paste(id, classification, reason))
     )
   })
+  items <- Filter(function(item) isTRUE(item$eligible), items)
   included <- vapply(
     Filter(function(item) isTRUE(item$included), items),
     `[[`,
@@ -726,59 +727,40 @@ builder_group_catalog_ui <- function(id, catalog) {
               class = "viewer-group-focus",
               `data-group` = item$id,
               `aria-pressed` = if (item$default) "true" else "false",
-              span(class = "viewer-group-name", item$label),
-              span(
-                class = "viewer-group-meta",
-                if (item$eligible) {
-                  paste0(
-                    item$category_count,
-                    " categories · ",
-                    format(round(item$missing_percentage, 2L), trim = TRUE),
-                    "% missing"
-                  )
-                } else {
-                  item$reason
-                }
-              )
+              span(class = "viewer-group-name", item$label)
             ),
             div(
               class = "viewer-group-controls",
-              if (item$eligible) {
-                tags$label(
-                  class = "viewer-group-check",
-                  `for` = checkbox_id,
-                  tags$input(
-                    id = checkbox_id,
-                    type = "checkbox",
-                    class = "viewer-group-include",
-                    `data-group` = item$id,
-                    checked = if (item$included) "checked" else NULL
-                  ),
-                  span("Group")
+              tags$label(
+                class = "viewer-group-check",
+                `for` = checkbox_id,
+                tags$input(
+                  id = checkbox_id,
+                  type = "checkbox",
+                  class = "viewer-group-include",
+                  `data-group` = item$id,
+                  checked = if (item$included) "checked" else NULL
+                ),
+                span("Group")
+              ),
+              tags$label(
+                class = "viewer-group-default-label",
+                `for` = radio_id,
+                tags$input(
+                  id = radio_id,
+                  type = "radio",
+                  name = ns("group_default_choice"),
+                  class = "viewer-group-default",
+                  value = item$id,
+                  `data-group` = item$id,
+                  checked = if (item$default) "checked" else NULL,
+                  disabled = if (!item$included) "disabled" else NULL
+                ),
+                span(
+                  class = "viewer-default-copy",
+                  if (item$default) "Set default ✓" else "Set default"
                 )
-              },
-              if (item$eligible) {
-                tags$label(
-                  class = "viewer-group-default-label",
-                  `for` = radio_id,
-                  tags$input(
-                    id = radio_id,
-                    type = "radio",
-                    name = ns("group_default_choice"),
-                    class = "viewer-group-default",
-                    value = item$id,
-                    `data-group` = item$id,
-                    checked = if (item$default) "checked" else NULL,
-                    disabled = if (!item$included) "disabled" else NULL
-                  ),
-                  span(
-                    class = "viewer-default-copy",
-                    if (item$default) "Set default ✓" else "Set default"
-                  )
-                )
-              } else {
-                span(class = "viewer-group-not-eligible", "Not a Group")
-              }
+              )
             )
           )
         })

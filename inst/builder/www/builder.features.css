@@ -478,7 +478,7 @@
 }
 .viewer-group-row {
   display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-width: 0;
   border-bottom: 1px solid var(--c-border);
@@ -1739,7 +1739,7 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   .spatial-alignment-controls { grid-template-columns: minmax(0, 1fr); }
   .viewer-group-detail-grid { grid-template-columns: minmax(0, 1fr); }
   .viewer-group-row {
-    grid-template-columns: 2rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
   }
   .viewer-group-controls {
     grid-column: 2;
