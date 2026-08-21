@@ -4,7 +4,7 @@ sys.source(
   envir = ci_test_plan_api
 )
 
-test_that("the base CI plan classifies only tests present on upstream master", {
+test_that("the Viewer CI plan classifies only tests present in the Viewer layer", {
   plan <- ci_test_plan_api$ci_test_plan(test_path())
   discovered <- sort(list.files(
     test_path(),
@@ -20,7 +20,10 @@ test_that("the base CI plan classifies only tests present on upstream master", {
       "test-app-new-modules.R",
       "test-app-trajectory.R",
       "test-app-viewport-layout.R",
-      "test-smoke-production.R"
+      "test-configured-colors.R",
+      "test-coordinated-views-browser.R",
+      "test-smoke-production.R",
+      "test-viewer-shell-browser.R"
     )
   )
   expect_identical(plan$process_sensitive, character())

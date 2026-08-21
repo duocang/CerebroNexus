@@ -62,3 +62,12 @@ logic,test-versionless-layout-contract.R,3.8,estimated
 logic,test-viewer-auth-runtime.R,3.9,measured
 logic,test-zoom-button-uniform.R,3.8,estimated
 logic,test-zoom-to-selection.R,3.8,estimated
+browser,test-configured-colors.R,9.4,measured
+browser,test-coordinated-views-browser.R,219.7,measured
+logic,test-coordinated-views.R,2.1,measured
+logic,test-export-equivalence-current.R,3.8,estimated
+logic,test-legacy-views-removed.R,3.8,estimated
+logic,test-multiselect.R,3.8,estimated
+logic,test-spatial-coordinate-contract.R,3.8,estimated
+logic,test-viewer-content-contract.R,3.8,estimated
+browser,test-viewer-shell-browser.R,13.8,measured
