@@ -71,7 +71,8 @@ test_that("browser references match the explicit browser group", {
   browser_references <- basename(files[vapply(
     files,
     function(file) {
-      any(grepl("shinytest2|AppDriver", readLines(file, warn = FALSE)))
+      code <- sub("#.*$", "", readLines(file, warn = FALSE))
+      any(grepl("shinytest2|AppDriver", code))
     },
     logical(1)
   )])
