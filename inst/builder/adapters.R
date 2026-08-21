@@ -175,12 +175,16 @@
 }
 
 .builder_file_source_fingerprint <- function(state) {
+  content_md5 <- unname(as.character(tools::md5sum(state$location)))
   paste(
+    "builder-snapshot-v2",
+    basename(state$location),
     state$size,
     format(
       as.POSIXct(state$mtime, origin = "1970-01-01", tz = "UTC"),
       "%Y-%m-%dT%H:%M:%OS6%z"
     ),
+    content_md5,
     sep = ":"
   )
 }
@@ -1358,6 +1362,7 @@ builder_adapter_inspect <- function(adapter) {
   target <- file.path(.builder_canonical_path(parent), basename(snapshot_dir))
   object <- .builder_clear_saved_cache(object)
   layer_contracts <- .builder_snapshot_layer_contracts(object)
+  has_on_disk_layers <- length(layer_contracts) > 0L
   if (is.null(available_bytes)) {
     available_bytes <- .builder_snapshot_available_bytes(parent)
   }
@@ -1391,8 +1396,13 @@ builder_adapter_inspect <- function(adapter) {
 
   stub_path <- file.path(stage, "object.rds")
   .builder_snapshot_save_stub(object, stub_path)
-  stub <- readRDS(stub_path)
-  discovered <- .builder_snapshot_validate_cache(.builder_saved_cache(stub))
+  if (has_on_disk_layers) {
+    stub <- readRDS(stub_path)
+    discovered <- .builder_snapshot_validate_cache(.builder_saved_cache(stub))
+  } else {
+    stub <- NULL
+    discovered <- list(cache = NULL, members = list())
+  }
   sources <- unique(unlist(discovered$members, use.names = FALSE))
   source_states <- lapply(sources, .builder_snapshot_tree_state)
   names(source_states) <- sources
@@ -1483,10 +1493,15 @@ builder_adapter_inspect <- function(adapter) {
   published <- TRUE
   .builder_snapshot_after_publish(descriptor)
 
-  reopened <- builder_open_snapshot(descriptor)
-  .builder_snapshot_verify_layer_contracts(reopened, layer_contracts)
+  runtime_object <- if (length(sources)) {
+    rewritten_cache <- .builder_snapshot_validate_cache(cache)
+    .builder_snapshot_reopen_stub(stub, rewritten_cache)
+  } else {
+    object
+  }
+  .builder_snapshot_verify_layer_contracts(runtime_object, layer_contracts)
   success <- TRUE
-  list(snapshot = descriptor, object = reopened)
+  list(snapshot = descriptor, object = runtime_object)
 }
 
 #' Freeze a Seurat object and every live on-disk layer into one snapshot.
@@ -1604,7 +1619,37 @@ builder_snapshot_cleanup <- function(registry, now = Sys.time()) {
   }
   objects <- get(".builder_objects", envir = globalenv())
   snapshots <- get(".builder_snapshots", envir = globalenv())
+  snapshot_cache <- get0(
+    ".builder_snapshot_cache",
+    envir = globalenv(),
+    inherits = FALSE
+  )
   snapshot_root <- get(".builder_snapshot_root", envir = globalenv())
+  cached <- if (
+    is.environment(snapshot_cache) &&
+      exists(adapter$fingerprint, envir = snapshot_cache, inherits = FALSE)
+  ) {
+    get(adapter$fingerprint, envir = snapshot_cache, inherits = FALSE)
+  } else {
+    NULL
+  }
+  if (
+    is.list(cached) &&
+      isTRUE(.builder_snapshot_owned(cached$snapshot)) &&
+      identical(cached$snapshot$source_fingerprint, adapter$fingerprint)
+  ) {
+    reopened <- builder_open_snapshot(cached$snapshot)
+    assign(id, reopened, envir = objects)
+    assign(id, cached$snapshot, envir = snapshots)
+    return(c(
+      cached$result,
+      list(
+        snapshot = cached$snapshot,
+        previous_snapshot = NULL,
+        cache_hit = TRUE
+      )
+    ))
+  }
   inspected <- .builder_adapter_inspect(adapter, progress = progress)
   if (is.function(progress)) {
     progress("preparing")
@@ -1615,6 +1660,7 @@ builder_snapshot_cleanup <- function(registry, now = Sys.time()) {
   )
   frozen <- .builder_snapshot_seurat_impl(inspected$object, target)
   snapshot <- frozen$snapshot
+  snapshot$source_fingerprint <- adapter$fingerprint
   reopened <- frozen$object
   registered <- FALSE
   on.exit(
@@ -1659,7 +1705,7 @@ builder_snapshot_cleanup <- function(registry, now = Sys.time()) {
     }
   )
   registered <- TRUE
-  list(
+  result <- list(
     profile = inspected$legacy_profile,
     dataset_profile = inspected$profile,
     format = inspected$format,
@@ -1668,4 +1714,22 @@ builder_snapshot_cleanup <- function(registry, now = Sys.time()) {
     snapshot = snapshot,
     previous_snapshot = previous_snapshot
   )
+  if (is.environment(snapshot_cache)) {
+    assign(
+      adapter$fingerprint,
+      list(
+        snapshot = snapshot,
+        result = result[c(
+          "profile",
+          "dataset_profile",
+          "format",
+          "levels",
+          "source"
+        )]
+      ),
+      envir = snapshot_cache
+    )
+  }
+  result$cache_hit <- FALSE
+  result
 }

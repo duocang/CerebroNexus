@@ -64,12 +64,12 @@ test_that("parent and worker load App assembly before build authorities", {
     1L
   ]
   app_bundle_worker <- regexpr(
-    'source(file.path(dir, "app_bundle.R"))',
+    'file.path(dir, "app_bundle.R")',
     worker,
     fixed = TRUE
   )[1L]
   build_worker <- regexpr(
-    'source(file.path(dir, "build.R"))',
+    'file.path(dir, "build.R")',
     worker,
     fixed = TRUE
   )[1L]
@@ -604,7 +604,7 @@ test_that("Build status projection keeps one stable typed host", {
     fixed = TRUE
   )
   expect_match(missing_html, " disabled", fixed = TRUE)
-  expect_match(result_html$success, "Launch App", fixed = TRUE)
+  expect_false(grepl("Launch App", result_html$success, fixed = TRUE))
   expect_match(result_html$success, "Reveal Folder", fixed = TRUE)
   expect_match(result_html$success, "Copy Path", fixed = TRUE)
   expect_match(result_html$success, "Copy Report", fixed = TRUE)

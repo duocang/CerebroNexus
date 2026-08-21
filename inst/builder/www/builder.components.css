@@ -175,6 +175,8 @@
 }
 .builder-page-inert .builder-operation-overlay,
 .builder-project-result-open .builder-operation-overlay { display: flex; }
+body.modal-open .modal-backdrop { z-index: 2010; }
+body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-operation-overlay-card {
   display: grid;
   width: min(100%, 32rem);
@@ -340,13 +342,7 @@
   gap: var(--space-3);
   margin-bottom: var(--space-2);
 }
-.builder-project-restore-summary h4,
-.builder-project-restore-summary p { margin: 0; }
-.builder-project-restore-summary p {
-  margin-top: var(--space-1);
-  color: var(--c-text-muted);
-  font-size: .82rem;
-}
+.builder-project-restore-summary h4 { margin: 0; }
 .builder-project-restore-badge {
   flex: 0 0 auto;
   padding: .2rem .5rem;
@@ -1050,6 +1046,19 @@
   background: transparent !important; color: var(--c-text-subtle) !important;
   font-family: var(--font-mono); font-size: 10.5px;
 }
+.builder-slider-reset-motion .irs--shiny .irs-handle,
+.builder-slider-reset-motion .irs--shiny .irs-bar,
+.builder-slider-reset-motion .irs--shiny .irs-single {
+  transition: left 320ms cubic-bezier(.22, 1, .36, 1),
+              width 320ms cubic-bezier(.22, 1, .36, 1) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .builder-slider-reset-motion .irs--shiny .irs-handle,
+  .builder-slider-reset-motion .irs--shiny .irs-bar,
+  .builder-slider-reset-motion .irs--shiny .irs-single {
+    transition: none !important;
+  }
+}
 
 .builder-dialog-open { overflow: hidden; }
 
@@ -1360,6 +1369,40 @@
   text-transform: uppercase;
   transform: rotate(-2deg);
 }
+.ds-ready-summary {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: .28rem;
+}
+.ds-ready-summary.needs-review {
+  position: absolute;
+  z-index: 3;
+  top: .2rem;
+  right: -1rem;
+  width: 2.8rem;
+}
+.ds-ready-summary .ds-ready-stamp.needs-review {
+  position: static;
+}
+.ds-ready-summary.needs-review .builder-load-time {
+  transform: translateX(-.55rem);
+}
+.builder-load-time {
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+  font-size: .62rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ds--import .builder-load-time {
+  position: absolute;
+  top: .72rem;
+  right: .8rem;
+}
 .ds-ready-stamp.needs-review {
   position: absolute;
   z-index: 3;
@@ -1367,9 +1410,9 @@
   right: -1rem;
   flex-direction: column;
   width: 2.8rem;
-  height: 2.8rem;
+  height: 2.5rem;
   min-width: 2.8rem;
-  min-height: 2.8rem;
+  min-height: 2.5rem;
   padding: 0;
   border: 3px solid #c62828;
   border-radius: 50%;

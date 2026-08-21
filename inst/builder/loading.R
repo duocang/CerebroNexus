@@ -134,6 +134,7 @@ builder_import_entry <- function(
       file_type = if (.builder_import_text(file_type)) file_type else NULL,
       size = suppressWarnings(as.numeric(size)[1L]),
       generation = generation,
+      started_at_ms = as.numeric(Sys.time()) * 1000,
       load_state = "queued",
       progress_label = unname(.builder_import_labels[["queued"]]),
       error = NULL,
@@ -264,6 +265,16 @@ builder_import_transition <- function(
   if (identical(state, "error")) {
     private <- unlist(entry$source[c("staged_path", "path")], use.names = FALSE)
     entry$error <- builder_import_public_error(error, private)
+    started_at_ms <- suppressWarnings(as.numeric(entry$started_at_ms))
+    entry$import_elapsed_ms <- if (
+      length(started_at_ms) == 1L &&
+        !is.na(started_at_ms) &&
+        is.finite(started_at_ms)
+    ) {
+      max(0, as.numeric(Sys.time()) * 1000 - started_at_ms)
+    } else {
+      NULL
+    }
   } else {
     entry$error <- NULL
   }
@@ -279,9 +290,11 @@ builder_import_retry <- function(queue, id) {
     .builder_import_abort("Only a failed import can be retried.")
   }
   entry$generation <- .builder_import_generation(entry$generation + 1L)
+  entry$started_at_ms <- as.numeric(Sys.time()) * 1000
   entry$load_state <- "queued"
   entry$progress_label <- unname(.builder_import_labels[["queued"]])
   entry$error <- NULL
+  entry$import_elapsed_ms <- NULL
   queue$entries[[id]] <- entry
   queue$revision <- as.integer(queue$revision) + 1L
   queue

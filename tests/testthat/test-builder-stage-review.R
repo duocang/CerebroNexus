@@ -297,6 +297,24 @@ test_that("Review summarizes saved and points-only spatial sections", {
   expect_false(grepl("histology_image_bounds", html, fixed = TRUE))
 })
 
+test_that("Review omits spatial storage when every section is points-only", {
+  plan <- builder_stage_frozen_plan(TRUE)
+  plan$items[[1L]]$spatial_alignment <- list(
+    section_count = 2L,
+    image_count = 0L,
+    saved_count = 0L,
+    points_only = c("section-a", "section-b")
+  )
+  model <- builder_review_model(plan)
+  html <- builder_stage_html(builder_review_stage_ui("review", model))
+
+  expect_null(model$datasets[[1L]]$spatial_alignment$storage)
+  expect_match(html, "2 sections · 0 images", fixed = TRUE)
+  expect_match(html, "2 sections remain points-only", fixed = TRUE)
+  expect_false(grepl("Embedded in CRB", html, fixed = TRUE))
+  expect_false(grepl("External spatial-assets", html, fixed = TRUE))
+})
+
 test_that("Review keeps group colors compact and distinguishes custom colors", {
   plan <- builder_stage_frozen_plan(TRUE)
   plan$items[[1L]]$colors$cluster <- c(
@@ -534,7 +552,7 @@ test_that("a real publish restore failure maps to recovery required", {
   })
 })
 
-test_that("Launch App requires a verified published final App directory", {
+test_that("successful App builds expose only reliable result actions", {
   no_app <- builder_build_status_ui(builder_result_success(
     published = TRUE,
     built = "/release/dataset.crb"
@@ -547,11 +565,9 @@ test_that("Launch App requires a verified published final App directory", {
     report_path = "/release/build-report.json"
   ))
 
-  expect_false(grepl("Launch App", builder_stage_html(no_app), fixed = TRUE))
   verified_html <- builder_stage_html(verified_app)
-  expect_match(verified_html, "Launch App", fixed = TRUE)
-  expect_false(grepl(">Open App<", verified_html, fixed = TRUE))
-  expect_match(verified_html, 'id="open_app"', fixed = TRUE)
+  expect_false(grepl("Launch App", verified_html, fixed = TRUE))
+  expect_false(grepl('id="open_app"', verified_html, fixed = TRUE))
   expect_match(verified_html, "Reveal Folder", fixed = TRUE)
   expect_match(verified_html, "Copy Path", fixed = TRUE)
   expect_match(verified_html, "Copy Report", fixed = TRUE)

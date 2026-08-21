@@ -202,7 +202,6 @@ builder_alignment_preview_model <- function(
         assay = assay,
         slot = layer,
         join_samples = TRUE,
-        allow_cross_semantic_fallback = TRUE,
         verbose = FALSE
       )
       colnames(expression)
@@ -278,6 +277,7 @@ builder_spatial_canvas_scene <- function(
   preview,
   colors,
   record = NULL,
+  point_appearance = NULL,
   coordinate_transform = NULL,
   identity,
   generation,
@@ -334,7 +334,10 @@ builder_spatial_canvas_scene <- function(
       list(coordinateRotation = coordinate_transform$rotation_degrees %||% 0),
       as.list(
         if (is.null(record)) {
-          builder_alignment_defaults()
+          utils::modifyList(
+            builder_alignment_defaults(),
+            point_appearance %||% list()
+          )
         } else {
           .builder_alignment_parameters(record)
         }

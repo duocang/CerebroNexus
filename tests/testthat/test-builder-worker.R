@@ -80,14 +80,14 @@ test_that("the isolated worker API is available", {
   expect_true(builder_worker_stop_api_available)
 })
 
-test_that("the real worker loads Marker import support before Build", {
+test_that("the real worker lazy-loads Marker import support before Build", {
   worker <- readLines(builder_worker_path, warn = FALSE)
   marker_line <- grep(
-    'source(file.path(dir, "marker_import.R"))',
+    'file.path(dir, "marker_import.R")',
     worker,
     fixed = TRUE
   )
-  build_line <- grep('source(file.path(dir, "build.R"))', worker, fixed = TRUE)
+  build_line <- grep('file.path(dir, "build.R")', worker, fixed = TRUE)
   expect_length(marker_line, 1L)
   expect_length(build_line, 1L)
   expect_lt(marker_line, build_line)
@@ -1680,6 +1680,64 @@ test_that("session calls expose the main-owned snapshot boundary", {
   expect_true(builder_session_api_available)
 })
 
+test_that("worker capabilities load once and preserve failures", {
+  loads <- 0L
+  failed_loads <- 0L
+  registry <- builder_worker_capability_registry(list(
+    analysis = function() {
+      loads <<- loads + 1L
+      invisible(TRUE)
+    },
+    build = function() {
+      failed_loads <<- failed_loads + 1L
+      stop("broken build loader")
+    }
+  ))
+
+  expect_identical(builder_worker_ensure_capability(registry, "analysis"), TRUE)
+  expect_identical(builder_worker_ensure_capability(registry, "analysis"), TRUE)
+  expect_identical(loads, 1L)
+  expect_error(
+    builder_worker_ensure_capability(registry, "build"),
+    "broken build loader"
+  )
+  expect_identical(registry$states[["build"]], "failed")
+  expect_error(
+    builder_worker_ensure_capability(registry, "build"),
+    "broken build loader"
+  )
+  expect_identical(failed_loads, 1L)
+})
+
+test_that("spatial alignment preview loads analysis and spatial capabilities", {
+  session <- readLines(
+    builder_profile_inst_path("builder", "session.R"),
+    warn = FALSE
+  )
+  start <- grep(
+    "builder_session_spatial_preview <- function",
+    session,
+    fixed = TRUE
+  )
+  end <- grep(
+    "builder_session_section_bounds <- function",
+    session,
+    fixed = TRUE
+  )
+  body <- paste(session[seq.int(start, end - 1L)], collapse = "\n")
+
+  expect_match(
+    body,
+    'builder_worker_require_capability("analysis")',
+    fixed = TRUE
+  )
+  expect_match(
+    body,
+    'builder_worker_require_capability("spatial")',
+    fixed = TRUE
+  )
+})
+
 test_that("the Builder app has one protocol authority for worker requests", {
   app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
   server <- unlist(lapply(
@@ -1703,6 +1761,7 @@ test_that("the Builder app has one protocol authority for worker requests", {
     "if (builder_session_closed())",
     fixed = TRUE
   )
+  expect_false(grepl("session_active", text, fixed = TRUE))
   expect_false(grepl("latest_request <- reactiveVal", text, fixed = TRUE))
   expect_match(text, "protocol <- reactiveVal", fixed = TRUE)
   expect_match(text, "builder_protocol_dispatch", fixed = TRUE)
@@ -2004,8 +2063,12 @@ if (builder_session_api_available && builder_lifecycle_api_available) {
       dropped_request$request$request_id
     )
 
-    expect_false(dir.exists(snapshot$path))
+    expect_true(dir.exists(snapshot$path))
     expect_null(worker$snapshot_registry[["dataset-a"]])
+    expect_identical(
+      worker$snapshot_cache[[snapshot$source_fingerprint]],
+      snapshot
+    )
     expect_length(completed_drop$protocol$awaiting_ack, 0L)
   })
 }

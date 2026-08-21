@@ -181,6 +181,7 @@ builder_session_preview <- function(
     function(id, reduction, group, max_cells, request) {
       tryCatch(
         {
+          builder_worker_require_capability("analysis")
           obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
           builder_worker_response(
             request,
@@ -216,6 +217,7 @@ builder_session_projection_previews <- function(
     function(id, projections, group, max_cells, request) {
       tryCatch(
         {
+          builder_worker_require_capability("analysis")
           object <- get(
             id,
             envir = get(".builder_objects", envir = globalenv())
@@ -258,6 +260,7 @@ builder_session_trajectory_previews <- function(
     function(id, trajectories, max_cells, request) {
       tryCatch(
         {
+          builder_worker_require_capability("analysis")
           object <- get(
             id,
             envir = get(".builder_objects", envir = globalenv())
@@ -292,6 +295,7 @@ builder_session_coords <- function(worker, id, image = NULL, request = NULL) {
     function(id, image, request) {
       tryCatch(
         {
+          builder_worker_require_capability("spatial")
           obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
           co <- builder_spatial_coords(obj, image)
           if (is.null(co)) {
@@ -352,6 +356,8 @@ builder_session_spatial_preview <- function(
     ) {
       tryCatch(
         {
+          builder_worker_require_capability("analysis")
+          builder_worker_require_capability("spatial")
           object <- get(
             id,
             envir = get(".builder_objects", envir = globalenv())
@@ -430,6 +436,7 @@ builder_session_section_bounds <- function(
     ) {
       tryCatch(
         {
+          builder_worker_require_capability("spatial")
           obj <- get(id, envir = get(".builder_objects", envir = globalenv()))
           out <- list()
           for (nm in sections) {
@@ -649,6 +656,7 @@ builder_session_build <- function(
       on.exit(auth_material <- NULL, add = TRUE)
       tryCatch(
         {
+          builder_worker_require_capability("build")
           registry <- if (isTRUE(validate_snapshots)) {
             snapshot_environment <- get(
               ".builder_snapshots",
@@ -676,11 +684,19 @@ builder_session_build <- function(
               ))
             }
           }
+          object_environment <- get(".builder_objects", envir = globalenv())
+          object_ids <- ls(object_environment, all.names = TRUE)
+          objects <- if (length(object_ids)) {
+            mget(object_ids, envir = object_environment, inherits = FALSE)
+          } else {
+            list()
+          }
           value <- builder_execute_plan(
             plan,
             stage,
             registry,
-            auth_material = auth_material
+            auth_material = auth_material,
+            objects = objects
           )
           if (
             isTRUE(plan$make_app) &&

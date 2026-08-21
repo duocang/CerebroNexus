@@ -2,6 +2,65 @@ builder_stage_contract_source_runtime(environment())
 builder_profile_source_runtime(environment())
 builder_plan_contract_source_runtime(environment())
 
+test_that("automatic dataset review advance requests top-of-workbench focus", {
+  review <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(review, '"builder_focus_dataset_start"', fixed = TRUE)
+  expect_match(review, "list(dataset = target)", fixed = TRUE)
+})
+
+test_that("checked datasets react to pending coordinate drafts", {
+  foundation <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "foundation.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(
+    foundation,
+    "alignment_server$coordinate_drafts()",
+    fixed = TRUE
+  )
+  expect_match(
+    foundation,
+    "builder_project_checked_ids",
+    fixed = TRUE
+  )
+})
+
+test_that("an accepted Build requests absolute page-top scrolling", {
+  build <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "build.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  start <- regmatches(
+    build,
+    regexpr(
+      "start_confirmed_build <- function\\(\\)[\\s\\S]+?invisible\\(TRUE\\)",
+      build,
+      perl = TRUE
+    )
+  )
+
+  expect_match(start, 'build_flow(list(stage = "preparing"', fixed = TRUE)
+  expect_match(start, '"builder_scroll_page_top"', fixed = TRUE)
+  expect_lt(
+    regexpr('build_flow(list(stage = "preparing"', start, fixed = TRUE)[1L],
+    regexpr('"builder_scroll_page_top"', start, fixed = TRUE)[1L]
+  )
+})
+
 test_that("Builder shell and workflow UI separate all four stages", {
   skip_if_not_installed("shiny")
   app_env <- new.env(parent = globalenv())
@@ -1331,15 +1390,20 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     fn_env <- environment(builder_require_confirmed_build_plan)
     assign(
       "session",
-      list(
-        token = real_session$token,
-        sendCustomMessage = function(type, message) {
-          dialog_messages[[length(dialog_messages) + 1L]] <<- list(
-            type = type,
-            message = message
-          )
-        },
-        onFlushed = function(callback, once = FALSE) callback()
+      structure(
+        list(
+          token = real_session$token,
+          sendCustomMessage = function(type, message) {
+            dialog_messages[[length(dialog_messages) + 1L]] <<- list(
+              type = type,
+              message = message
+            )
+          },
+          sendInputMessage = function(...) NULL,
+          onFlushed = function(callback, once = FALSE) callback(),
+          isClosed = function() real_session$isClosed()
+        ),
+        class = "ShinySession"
       ),
       envir = fn_env
     )
@@ -1591,9 +1655,15 @@ test_that("active Build states reject forged stage actions", {
     fn_env <- environment(builder_require_confirmed_build_plan)
     assign(
       "session",
-      list(
-        sendCustomMessage = function(...) NULL,
-        onFlushed = function(callback, once = FALSE) callback()
+      structure(
+        list(
+          token = real_session$token,
+          sendCustomMessage = function(...) NULL,
+          sendInputMessage = function(...) NULL,
+          onFlushed = function(callback, once = FALSE) callback(),
+          isClosed = function() real_session$isClosed()
+        ),
+        class = "ShinySession"
       ),
       envir = fn_env
     )
@@ -2293,8 +2363,8 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
         nGene = "nFeature_RNA",
         assay_profiles = list(
           RNA = list(
-            layers = c("data", "counts"),
-            default_layer = "data",
+            layers = "counts",
+            default_layer = "counts",
             nUMI_choices = "nCount_RNA",
             nGene_choices = "nFeature_RNA",
             nUMI = "nCount_RNA",
@@ -2403,6 +2473,36 @@ test_that("dynamic Core and Enhance contracts update only their owned controls",
     invisible(output[["inspect_stage"]])
     session$flushReact()
     baseline_enhance_stage_renders <- enhance_stage_renders
+
+    # A project can restore a layer that was present when it was saved but is
+    # no longer available in the freshly loaded source.  Rendering Core must
+    # not silently normalize that saved choice to the assay default: only an
+    # explicit user selection is allowed to repair it.
+    session$setInputs(
+      `core-rendered_for` = "dataset-a",
+      `core-name` = "Dataset A",
+      `core-organism` = "hg",
+      `core-default_group` = "cluster",
+      `core-default_projection` = "umap",
+      `core-assay` = "RNA",
+      `core-layer` = "data",
+      `core-nUMI` = "nCount_RNA",
+      `core-nGene` = "nFeature_RNA",
+      `core-backend` = "embedded"
+    )
+    session$flushReact()
+    expect_identical(sets()[[1L]]$settings$layer, "data")
+
+    session$setInputs(`core-layer` = "counts")
+    session$flushReact()
+    expect_identical(sets()[[1L]]$settings$layer, "counts")
+
+    # Restore the unavailable project value before exercising the normal
+    # assay-switch contract below.
+    unavailable_entry <- sets()[[1L]]
+    unavailable_entry$settings$layer <- "data"
+    replace_entry(unavailable_entry)
+    session$flushReact()
 
     top_level_runs <- 0L
     tracker <- observe({

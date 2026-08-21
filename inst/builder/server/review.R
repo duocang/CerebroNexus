@@ -504,6 +504,10 @@ observeEvent(input$complete_dataset_check, {
   alignment_server$request_dataset_switch(target, function() {
     current(target)
     result(NULL)
+    session$sendCustomMessage(
+      "builder_focus_dataset_start",
+      list(dataset = target)
+    )
   })
 })
 
@@ -604,7 +608,29 @@ render_configure_workbench <- function() {
       levels = entry$levels %||% list(),
       projection_choices = entry$profile$reductions,
       assay_choices = entry$profile$assays,
-      layer_choices = assay_profile$layers,
+      layer_choices = if (
+        builder_has_text(settings$layer) &&
+          !settings$layer %in% (assay_profile$layers %||% character())
+      ) {
+        stats::setNames(
+          c(settings$layer, assay_profile$layers),
+          c(paste0(settings$layer, " (unavailable)"), assay_profile$layers)
+        )
+      } else {
+        assay_profile$layers
+      },
+      layer_attention = if (
+        builder_has_text(settings$layer) &&
+          !settings$layer %in% (assay_profile$layers %||% character())
+      ) {
+        paste0(
+          "Saved layer `",
+          settings$layer,
+          "` is unavailable. Select an available layer and check this dataset again."
+        )
+      } else {
+        ""
+      },
       nUMI_choices = assay_profile$nUMI_choices,
       nGene_choices = assay_profile$nGene_choices,
       backend = settings$expression_backend %||% "embedded",

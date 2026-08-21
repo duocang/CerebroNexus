@@ -588,6 +588,8 @@ builder_import_rail_row_model <- function(entry, current = NULL) {
     },
     load_state = entry$load_state,
     progress_label = entry$progress_label,
+    started_at_ms = suppressWarnings(as.numeric(entry$started_at_ms)),
+    import_elapsed_ms = suppressWarnings(as.numeric(entry$import_elapsed_ms)),
     selected = identical(entry$id, current)
   )
 }
@@ -600,6 +602,8 @@ builder_import_rail_row_fingerprint <- function(model) {
       "detail",
       "load_state",
       "progress_label",
+      "started_at_ms",
+      "import_elapsed_ms",
       "selected"
     )]),
     auto_unbox = TRUE,
@@ -647,7 +651,28 @@ builder_import_rail_row_ui <- function(model) {
             paste0("is-", model$load_state)
           ),
           model$progress_label
-        )
+        ),
+        if (
+          length(model$import_elapsed_ms) == 1L &&
+            !is.na(model$import_elapsed_ms) &&
+            is.finite(model$import_elapsed_ms)
+        ) {
+          shiny::span(
+            class = "builder-load-time",
+            `data-elapsed-ms` = round(model$import_elapsed_ms),
+            sprintf("%.1fs", model$import_elapsed_ms / 1000)
+          )
+        } else if (
+          length(model$started_at_ms) == 1L &&
+            !is.na(model$started_at_ms) &&
+            is.finite(model$started_at_ms)
+        ) {
+          shiny::span(
+            class = "builder-load-time",
+            `data-started-at-ms` = round(model$started_at_ms),
+            "0.0s"
+          )
+        }
       )
     ),
     if (failed || queued || running) {
@@ -728,6 +753,9 @@ builder_dataset_rail_row_model <- function(
     label = .builder_rail_or(entry$settings$name, entry$id),
     cells = as.integer(.builder_rail_or(entry$profile$n_cells, 0L)),
     format = entry$format,
+    import_elapsed_ms = suppressWarnings(as.numeric(
+      .builder_rail_or(entry$import_elapsed_ms, NA_real_)
+    )),
     readiness_label = readiness$label,
     checked = entry$id %in% checked,
     selected = identical(entry$id, current),
@@ -745,6 +773,7 @@ builder_dataset_rail_row_fingerprint <- function(model) {
       "label",
       "cells",
       "format",
+      "import_elapsed_ms",
       "readiness_label",
       "checked",
       "selected",
@@ -798,16 +827,33 @@ builder_dataset_rail_row_ui <- function(model) {
       ),
       shiny::span(
         class = paste(
-          "ds-ready-stamp",
+          "ds-ready-summary",
           if (model$checked) "is-checked" else "needs-review"
         ),
-        role = "status",
-        if (model$checked) {
-          "CHECKED"
-        } else {
-          shiny::tagList(
-            shiny::span("NEEDS"),
-            shiny::span("CHECK")
+        shiny::span(
+          class = paste(
+            "ds-ready-stamp",
+            if (model$checked) "is-checked" else "needs-review"
+          ),
+          role = "status",
+          if (model$checked) {
+            "CHECKED"
+          } else {
+            shiny::tagList(
+              shiny::span("NEEDS"),
+              shiny::span("CHECK")
+            )
+          }
+        ),
+        if (
+          length(model$import_elapsed_ms) == 1L &&
+            !is.na(model$import_elapsed_ms) &&
+            is.finite(model$import_elapsed_ms)
+        ) {
+          shiny::span(
+            class = "builder-load-time",
+            `data-elapsed-ms` = round(model$import_elapsed_ms),
+            sprintf("%.1fs", model$import_elapsed_ms / 1000)
           )
         }
       )

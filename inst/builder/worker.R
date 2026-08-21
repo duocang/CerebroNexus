@@ -22,6 +22,58 @@
     value == floor(value)
 }
 
+builder_worker_capability_registry <- function(loaders) {
+  if (
+    !is.list(loaders) || is.null(names(loaders)) || any(!nzchar(names(loaders)))
+  ) {
+    stop("Worker capability loaders must be a named list.", call. = FALSE)
+  }
+  if (length(loaders) && any(!vapply(loaders, is.function, logical(1)))) {
+    stop("Every worker capability loader must be a function.", call. = FALSE)
+  }
+  registry <- new.env(parent = emptyenv())
+  registry$loaders <- loaders
+  registry$states <- setNames(rep("unloaded", length(loaders)), names(loaders))
+  registry$errors <- setNames(vector("list", length(loaders)), names(loaders))
+  class(registry) <- c("builder_worker_capabilities", "environment")
+  registry
+}
+
+builder_worker_ensure_capability <- function(registry, name) {
+  if (
+    !inherits(registry, "builder_worker_capabilities") ||
+      !.builder_worker_scalar_text(name) ||
+      !name %in% names(registry$loaders)
+  ) {
+    stop("The requested worker capability is unavailable.", call. = FALSE)
+  }
+  state <- registry$states[[name]]
+  if (identical(state, "ready")) {
+    return(TRUE)
+  }
+  if (identical(state, "loading")) {
+    stop("A worker capability loader re-entered itself.", call. = FALSE)
+  }
+  if (identical(state, "failed")) {
+    stop(registry$errors[[name]], call. = FALSE)
+  }
+  registry$states[[name]] <- "loading"
+  loaded <- tryCatch(
+    {
+      registry$loaders[[name]]()
+      TRUE
+    },
+    error = function(error) error
+  )
+  if (inherits(loaded, "error")) {
+    registry$states[[name]] <- "failed"
+    registry$errors[[name]] <- conditionMessage(loaded)
+    stop(registry$errors[[name]], call. = FALSE)
+  }
+  registry$states[[name]] <- "ready"
+  TRUE
+}
+
 .builder_worker_epoch <- function() {
   paste0(
     "worker-",
@@ -1009,69 +1061,98 @@ builder_worker_start <- function(
       "core",
       "viewer_content_contract.R"
     ))
-    source(file.path(
-      dir,
-      "..",
-      "viewer",
-      "core",
-      "spatial_coordinate_contract.R"
-    ))
-    source(file.path(
-      dir,
-      "..",
-      "viewer",
-      "core",
-      "spatial_coordinate_transform.R"
-    ))
-    source(file.path(dir, "spatial.R"))
-    source(file.path(
-      dir,
-      "..",
-      "viewer",
-      "hla_tcr_motifs",
-      "core",
-      "hla_typing.R"
-    ))
-    source(file.path(
-      dir,
-      "..",
-      "viewer",
-      "hla_tcr_motifs",
-      "core",
-      "hla_motif_core.R"
-    ))
-    source(file.path(
-      dir,
-      "..",
-      "viewer",
-      "hla_tcr_motifs",
-      "core",
-      "hla_association_core.R"
-    ))
     source(file.path(dir, "manifest.R"))
+    source(file.path(dir, "spatial.R"))
     source(file.path(dir, "content_tables.R"))
-    source(file.path(dir, "content_immune.R"))
-    source(file.path(dir, "content_spatial.R"))
     source(file.path(dir, "content.R"))
     source(file.path(dir, "profile.R"))
     source(file.path(dir, "inspect.R"))
     source(file.path(dir, "adapters.R"))
-    source(file.path(dir, "preview.R"))
-    source(file.path(dir, "stats.R"))
-    source(file.path(dir, "extras.R"))
-    source(file.path(dir, "analysis.R"))
-    source(file.path(dir, "marker_import.R"))
-    source(file.path(dir, "app_bundle.R"))
-    source(file.path(dir, "build.R"))
-    if (!exists("builder_attach_marker_imports", mode = "function")) {
-      stop("Builder worker could not load Marker import support.")
-    }
     source(file.path(dir, "prerequisite.R"))
     source(file.path(dir, "state.R"))
     source(file.path(dir, "plan.R"))
     source(file.path(dir, "worker.R"))
+    source_files <- function(paths) {
+      for (path in paths) {
+        sys.source(path, envir = globalenv())
+      }
+      invisible(TRUE)
+    }
+    capabilities <- builder_worker_capability_registry(list(
+      spatial = function() {
+        source_files(c(
+          file.path(
+            dir,
+            "..",
+            "viewer",
+            "core",
+            "spatial_coordinate_contract.R"
+          ),
+          file.path(
+            dir,
+            "..",
+            "viewer",
+            "core",
+            "spatial_coordinate_transform.R"
+          ),
+          file.path(dir, "content_spatial.R")
+        ))
+      },
+      immune = function() {
+        source_files(c(
+          file.path(
+            dir,
+            "..",
+            "viewer",
+            "hla_tcr_motifs",
+            "core",
+            "hla_typing.R"
+          ),
+          file.path(
+            dir,
+            "..",
+            "viewer",
+            "hla_tcr_motifs",
+            "core",
+            "hla_motif_core.R"
+          ),
+          file.path(
+            dir,
+            "..",
+            "viewer",
+            "hla_tcr_motifs",
+            "core",
+            "hla_association_core.R"
+          ),
+          file.path(dir, "content_immune.R")
+        ))
+      },
+      analysis = function() {
+        source_files(c(
+          file.path(dir, "preview.R"),
+          file.path(dir, "stats.R"),
+          file.path(dir, "extras.R"),
+          file.path(dir, "analysis.R"),
+          file.path(dir, "marker_import.R")
+        ))
+      },
+      build = function() {
+        builder_worker_ensure_capability(capabilities, "analysis")
+        source_files(c(
+          file.path(dir, "app_bundle.R"),
+          file.path(dir, "build.R")
+        ))
+      }
+    ))
+    assign(".builder_worker_capabilities", capabilities, envir = globalenv())
+    assign(
+      "builder_worker_require_capability",
+      function(name) builder_worker_ensure_capability(capabilities, name),
+      envir = globalenv()
+    )
     objects <- new.env(parent = emptyenv())
     snapshots <- new.env(parent = emptyenv())
+    snapshot_cache <- new.env(parent = emptyenv())
     for (id in names(registry)) {
       snapshot <- registry[[id]]
       if (!.builder_snapshot_owned(snapshot)) {
@@ -1082,6 +1163,7 @@ builder_worker_start <- function(
     }
     assign(".builder_objects", objects, envir = globalenv())
     assign(".builder_snapshots", snapshots, envir = globalenv())
+    assign(".builder_snapshot_cache", snapshot_cache, envir = globalenv())
     assign(".builder_snapshot_root", root, envir = globalenv())
     names(registry)
   }
@@ -1127,6 +1209,7 @@ builder_worker_start <- function(
       builder_dir = normalizePath(builder_dir, mustWork = TRUE),
       snapshot_root = normalizePath(snapshot_root, mustWork = TRUE),
       snapshot_registry = snapshot_registry,
+      snapshot_cache = list(),
       epoch = epoch,
       state = if (isTRUE(.async)) "starting" else "ready",
       ready = !isTRUE(.async),
@@ -1704,6 +1787,10 @@ builder_worker_register_snapshot <- function(worker, id, snapshot) {
     stop("The snapshot is outside this worker's snapshot root.", call. = FALSE)
   }
   worker$snapshot_registry[[id]] <- snapshot
+  fingerprint <- snapshot$source_fingerprint %||% NULL
+  if (.builder_worker_scalar_text(fingerprint)) {
+    worker$snapshot_cache[[fingerprint]] <- snapshot
+  }
   worker
 }
 
@@ -1727,10 +1814,15 @@ builder_worker_release_snapshot <- function(
   ) {
     stop("The snapshot release identity is stale.", call. = FALSE)
   }
-  if (.builder_worker_cleanup_safe(worker)) {
+  fingerprint <- snapshot$source_fingerprint %||% NULL
+  cacheable <- .builder_worker_scalar_text(fingerprint)
+  if (.builder_worker_cleanup_safe(worker) && !cacheable) {
     if (!isTRUE(.builder_snapshot_release(snapshot))) {
       stop("The owned immutable snapshot could not be released.", call. = FALSE)
     }
+  }
+  if (cacheable) {
+    worker$snapshot_cache[[fingerprint]] <- snapshot
   }
   worker$snapshot_registry[[id]] <- NULL
   worker

@@ -1211,6 +1211,38 @@ test_that("stage focus targets the active heading", {
   expect_match(js, "heading.focus({ preventScroll: true })", fixed = TRUE)
 })
 
+test_that("accepted Builds scroll the document to its absolute top", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(
+    js,
+    'addCustomMessageHandler("builder_scroll_page_top", function (message)',
+    fixed = TRUE
+  )
+  expect_match(js, "window.scrollTo({", fixed = TRUE)
+  expect_match(js, "top: 0", fixed = TRUE)
+  expect_match(
+    js,
+    'behavior: reducedMotion.matches ? "auto" : "smooth"',
+    fixed = TRUE
+  )
+})
+
+test_that("project CRB preparation stays in one progress dialog", {
+  js <- builder_asset_text("www", "builder.js")
+
+  expect_match(js, '"builder_project_crb_progress"', fixed = TRUE)
+  expect_match(js, "Step 1 of 3 · Planning", fixed = TRUE)
+  expect_match(js, "Step 2 of 3 · Preparing", fixed = TRUE)
+  expect_match(js, "Step 3 of 3 · ", fixed = TRUE)
+  expect_match(js, "Project and CRBs saved", fixed = TRUE)
+  expect_false(grepl(
+    'closeBuilderProjectSaveResult();\n          send("prepare_builder_project_crbs"',
+    js,
+    fixed = TRUE
+  ))
+})
+
 test_that("per-dataset compact review server inputs are removed", {
   app <- builder_app_source_text()
 
@@ -1998,6 +2030,16 @@ test_that("transient layers expose state-bearing motion lifecycle", {
     fixed = TRUE
   )
   expect_match(components_css, ".builder-dialog.is-visible", fixed = TRUE)
+  expect_match(
+    components_css,
+    "body.modal-open #shiny-modal.modal",
+    fixed = TRUE
+  )
+  expect_match(
+    components_css,
+    "body.modal-open .modal-backdrop",
+    fixed = TRUE
+  )
   expect_match(
     paste(layout_css, components_css, sep = "\n"),
     "transition: opacity var(--duration-normal)",

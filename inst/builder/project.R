@@ -139,6 +139,41 @@ builder_activity_capabilities <- function(activity) {
   )
 }
 
+builder_imports_idle <- function(activity, protocol) {
+  if (!inherits(activity, "builder_activity_state")) {
+    stop("A Builder activity state is required.", call. = FALSE)
+  }
+  if (!is.list(protocol)) {
+    return(FALSE)
+  }
+  requests <- c(
+    if (is.null(protocol$pending)) list() else list(protocol$pending),
+    protocol$queue %||% list(),
+    unname(protocol$awaiting_ack %||% list())
+  )
+  has_pending_load <- any(vapply(
+    requests,
+    function(request) is.list(request) && identical(request$kind, "load"),
+    logical(1)
+  ))
+  activity$client_imports == 0L &&
+    !isTRUE(activity$server_imports) &&
+    !has_pending_load
+}
+
+builder_project_first_save_offer_ready <- function(
+  entries,
+  project,
+  offered,
+  activity,
+  protocol
+) {
+  length(entries) > 0L &&
+    is.null(project) &&
+    !isTRUE(offered) &&
+    builder_imports_idle(activity, protocol)
+}
+
 builder_activity_reason <- function(activity, operation) {
   capabilities <- builder_activity_capabilities(activity)
   if (isTRUE(capabilities[[operation]])) {
@@ -465,7 +500,16 @@ builder_project_stage_source <- function(entry, root) {
     normalizePath(source, winslash = "/", mustWork = TRUE),
     normalizePath(target, winslash = "/", mustWork = FALSE)
   )
-  if (!same && !file.copy(source, target, overwrite = TRUE, copy.mode = TRUE)) {
+  if (
+    !same &&
+      !file.copy(
+        source,
+        target,
+        overwrite = TRUE,
+        copy.mode = TRUE,
+        copy.date = TRUE
+      )
+  ) {
     stop(
       "The uploaded dataset could not be retained in the project.",
       call. = FALSE
@@ -1004,6 +1048,7 @@ builder_project_configuration_digest <- function(entry) {
             error = function(error) NULL
           )
         }
+        # Digest-only content identity; never serialized as project UI state.
         record$source_content_md5 <- source_md5
         record$source_uri <- NULL
         record$uri <- NULL
@@ -1012,6 +1057,8 @@ builder_project_configuration_digest <- function(entry) {
       record
     }
   )
+  # `levels` is source-derived and immutable after import. Source fingerprinting,
+  # rather than the editable-configuration digest, invalidates it on reload.
   value <- list(
     settings = digest_entry$settings %||% list(),
     acknowledgements = digest_entry$acknowledgements %||% character(),
@@ -1215,6 +1262,21 @@ builder_project_artifact_available <- function(artifact, root) {
   .builder_project_text(path) && file.exists(path) && !dir.exists(path)
 }
 
+builder_project_entries_requiring_crb <- function(entries, artifacts, root) {
+  Filter(
+    function(entry) {
+      artifact <- artifacts[[entry$id]] %||% NULL
+      !is.list(artifact) ||
+        !builder_project_artifact_available(artifact, root) ||
+        !identical(
+          as.character(artifact$built_from_configuration %||% ""),
+          builder_project_configuration_digest(entry)
+        )
+    },
+    entries
+  )
+}
+
 builder_project_spatial_assets_status <- function(record, root) {
   payload <- record$configuration$payload %||% NULL
   if (!.builder_project_text(payload)) {
@@ -1298,17 +1360,17 @@ builder_project_dataset_status <- function(record, root) {
     artifact_ready = artifact_ready,
     checked = checked,
     label = if (!isTRUE(spatial_assets$ready)) {
-      "Spatial image missing · review required"
-    } else if (artifact_ready) {
-      "CRB ready"
-    } else if (source_ready && !source_matches) {
-      "Source changed · review required"
-    } else if (source_ready && checked) {
+      "Needs check · spatial image missing"
+    } else if (checked && artifact_ready) {
+      "Checked · CRB ready"
+    } else if (checked) {
       "Checked · source reload required"
+    } else if (source_ready && !source_matches) {
+      "Needs check · source changed"
     } else if (source_ready) {
-      "Resume from source"
+      "Needs check · load source"
     } else {
-      "Source missing"
+      "Needs check · source missing"
     }
   )
 }
@@ -1730,6 +1792,61 @@ builder_project_check_identity <- function(entry) {
     "configuration:",
     builder_project_configuration_digest(entry)
   )
+}
+
+builder_project_effective_check_identity <- function(
+  entry,
+  coordinate_drafts = list()
+) {
+  records <- if (
+    is.list(entry) &&
+      .builder_project_text(entry$id %||% "") &&
+      is.list(coordinate_drafts)
+  ) {
+    coordinate_drafts[[entry$id]] %||% list()
+  } else {
+    list()
+  }
+  if (length(records)) {
+    snapshot_identity <- tryCatch(
+      .builder_worker_identity(entry$snapshot),
+      error = function(error) NULL
+    )
+    applied <- if (is.null(snapshot_identity)) {
+      NULL
+    } else {
+      tryCatch(
+        builder_coordinate_drafts_apply_entry(
+          entry,
+          records,
+          snapshot_identity = snapshot_identity
+        ),
+        error = function(error) NULL
+      )
+    }
+    if (!is.list(applied) || !is.list(applied$entry)) {
+      return(NA_character_)
+    }
+    entry <- applied$entry
+  }
+  builder_project_check_identity(entry)
+}
+
+builder_project_checked_ids <- function(
+  entries,
+  marks,
+  coordinate_drafts = list()
+) {
+  ids <- vapply(entries, `[[`, character(1), "id")
+  identities <- vapply(
+    entries,
+    builder_project_effective_check_identity,
+    character(1),
+    coordinate_drafts = coordinate_drafts
+  )
+  matched <- !is.na(identities) & ids %in% names(marks)
+  matched[matched] <- unname(marks[ids[matched]]) == identities[matched]
+  ids[matched]
 }
 
 builder_project_restored_check_identity <- function(record, entry, status) {

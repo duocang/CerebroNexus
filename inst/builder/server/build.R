@@ -482,6 +482,7 @@ start_confirmed_build <- function() {
     return(invisible(FALSE))
   }
   build_flow(list(stage = "preparing", plan = NULL))
+  session$sendCustomMessage("builder_scroll_page_top", list())
   session$onFlushed(
     function() prepare_selected_output(output_path),
     once = TRUE

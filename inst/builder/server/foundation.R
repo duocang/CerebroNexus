@@ -16,7 +16,6 @@ released_client_import_records <- reactiveVal(list())
 pending_client_import_dispatch <- reactiveVal(NULL)
 pending_client_upload <- reactiveVal(NULL)
 pending_client_upload_sequence <- reactiveVal(0L)
-session_active <- TRUE
 external_import_active <- reactiveVal(NULL)
 client_import_history_limit <- 200L
 
@@ -301,15 +300,16 @@ dataset_check_marks <- reactiveVal(character())
 checked_dataset_ids <- reactive({
   entries <- sets()
   marks <- dataset_check_marks()
-  ids <- vapply(entries, `[[`, character(1), "id")
-  identities <- vapply(
-    entries,
-    builder_project_check_identity,
-    character(1)
-  )
-  matched <- ids %in% names(marks)
-  matched[matched] <- unname(marks[ids[matched]]) == identities[matched]
-  ids[matched]
+  coordinate_drafts <- if (
+    exists("alignment_server", inherits = TRUE) &&
+      is.list(alignment_server) &&
+      is.function(alignment_server$coordinate_drafts)
+  ) {
+    alignment_server$coordinate_drafts()
+  } else {
+    list()
+  }
+  builder_project_checked_ids(entries, marks, coordinate_drafts)
 })
 all_datasets_checked <- reactive({
   ids <- vapply(sets(), `[[`, character(1), "id")
@@ -901,8 +901,11 @@ start_builder_worker <- function() {
   invisible(TRUE)
 }
 
+builder_lifecycle_session <- session
+
 builder_session_closed <- function() {
-  is.function(session$isClosed) && isTRUE(session$isClosed())
+  is.function(builder_lifecycle_session$isClosed) &&
+    isTRUE(builder_lifecycle_session$isClosed())
 }
 
 poll_builder_worker_startup <- function() {
@@ -959,7 +962,6 @@ session$onFlushed(
 )
 
 session$onSessionEnded(function() {
-  session_active <<- FALSE
   current_worker <- isolate(worker())
   if (!is.null(current_worker)) {
     stopped <- try(

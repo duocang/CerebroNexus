@@ -75,12 +75,20 @@ builder_prepare_export_layer <- function(
   )
   choices <- assay_profile$exportable_layers
   if (!layer %in% choices) {
+    physical <- .builder_profile_layer_names(object[[assay]], layer_api)
+    reason <- if (!layer %in% physical) {
+      paste0("Layer `", layer, "` is not available in assay `", assay, "`.")
+    } else {
+      paste0(
+        "Layer `",
+        layer,
+        "` does not contain every cell in assay `",
+        assay,
+        "`."
+      )
+    }
     stop(
-      "Layer `",
-      layer,
-      "` does not contain every cell in assay `",
-      assay,
-      "`."
+      reason
     )
   }
 

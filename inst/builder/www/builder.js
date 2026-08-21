@@ -63,6 +63,13 @@
   var builderConnectionReady = true;
   var builderWorkerReady = false;
   var builderWorkerStatusTimer = null;
+  var datasetStartFocusToken = 0;
+  var coordinateResetSliderIds = new Set([
+    "enhance-coordinate_rotation",
+    "enhance-point_opacity",
+    "enhance-point_size",
+  ]);
+  var coordinateResetMotionTimers = new Map();
   var dynamicContentEnhancementFrame = null;
   var builderActivityState = {
     phase: "none",
@@ -198,7 +205,22 @@
         label: "Prepare checked CRBs",
         primary: true,
         action: function () {
-          closeBuilderProjectSaveResult();
+          var elements = builderOperationElements();
+          if (elements.card) {
+            elements.card.classList.remove(
+              "is-result",
+              "is-success",
+              "is-error",
+              "has-actions"
+            );
+          }
+          setBuilderOperationActions([]);
+          setBuilderOperationCopy(
+            "Preparing reusable CRBs",
+            "Building the checked datasets that do not have a current reusable CRB.",
+            "Step 1 of 3 · Planning " + remaining + " CRB" +
+              (remaining === 1 ? "" : "s") + " · Keep this page open."
+          );
           send("prepare_builder_project_crbs", { nonce: Date.now() });
         },
       });
@@ -253,6 +275,56 @@
     } else {
       showBuilderProjectSaveCompletion("ready");
     }
+  }
+
+  function updateBuilderProjectCrbProgress(message) {
+    if (!builderProjectSaveResultOpen || !message) return;
+    var status = message.status || "building";
+    var completed = Math.max(0, Number(message.completed || 0));
+    var total = Math.max(0, Number(message.total || 0));
+    var elements = builderOperationElements();
+    if (!elements.card) return;
+    setBuilderOperationActions([]);
+    if (status === "ready") {
+      elements.card.classList.add("is-result", "is-success");
+      elements.card.classList.remove("is-error");
+      setBuilderOperationCopy(
+        "Project and CRBs saved",
+        total > 0
+          ? total + " reusable CRB" + (total === 1 ? " is" : "s are") + " ready."
+          : "All current reusable CRBs were already up to date.",
+        "You can safely close this page or continue working."
+      );
+      setBuilderOperationActions([
+        { label: "Done", action: closeBuilderProjectSaveResult },
+      ]);
+      return;
+    }
+    if (status === "failed") {
+      elements.card.classList.add("is-result", "is-error");
+      elements.card.classList.remove("is-success");
+      setBuilderOperationCopy(
+        "CRB preparation failed",
+        message.error || "One or more reusable CRBs could not be prepared.",
+        "The Project itself remains saved."
+      );
+      setBuilderOperationActions([
+        { label: "Done", action: closeBuilderProjectSaveResult },
+      ]);
+      return;
+    }
+    elements.card.classList.remove("is-result", "is-success", "is-error");
+    setBuilderOperationCopy(
+      status === "registering" ? "Saving reusable CRBs" : "Preparing reusable CRBs",
+      status === "registering"
+        ? "Adding the completed CRBs to the Project."
+        : "Building the checked datasets that need a new reusable CRB.",
+      status === "registering"
+        ? "Step 3 of 3 · " + completed + " of " + total +
+          " CRBs prepared · Keep this page open."
+        : "Step 2 of 3 · Preparing " + total + " CRB" +
+          (total === 1 ? "" : "s") + " · Keep this page open."
+    );
   }
 
   function applyDatasetMutationLock() {
@@ -1514,6 +1586,22 @@
     return row;
   }
 
+  function removeReadyImportOverlap() {
+    var readyIds = new Set(Array.from(
+      document.querySelectorAll("#ds_ready_list > .ds[data-ds]"),
+      function (row) { return row.dataset.ds; }
+    ));
+    var host = document.getElementById("ds_import_list");
+    if (!host || !readyIds.size) return;
+    host.querySelectorAll(".ds[data-import-id]").forEach(function (row) {
+      if (readyIds.has(row.dataset.importId)) row.remove();
+    });
+    var list = host.querySelector(":scope > .builder-import-list");
+    if (list && !list.querySelector(".ds[data-import-id]")) {
+      host.replaceChildren();
+    }
+  }
+
   function reconcileDatasetRail(message) {
     var rail = document.getElementById("ds_ready_list");
     var rows = message && message.rows;
@@ -1577,6 +1665,8 @@
       });
       existing.forEach(function (row) { row.remove(); });
     }
+
+    removeReadyImportOverlap();
 
     var nextFocus = datasetRailFocusTarget(rail, focusIdentity);
     if (nextFocus && focusedElement !== nextFocus) nextFocus.focus();
@@ -1682,6 +1772,7 @@
       existing.delete(item.record.id);
     });
     existing.forEach(function (row) { row.remove(); });
+    removeReadyImportOverlap();
     var nextFocus = importRailFocusTarget(list, focusIdentity);
     if (nextFocus && nextFocus !== focused) nextFocus.focus();
     applyDatasetMutationLock();
@@ -3347,6 +3438,54 @@
     exampleMessageHandlerRegistered = true;
   }
 
+  function focusDatasetStart(message) {
+    var dataset = message && message.dataset;
+    if (typeof dataset !== "string" || !dataset) return;
+    datasetStartFocusToken += 1;
+    var token = datasetStartFocusToken;
+    var attempts = 0;
+    function apply() {
+      if (token !== datasetStartFocusToken) return;
+      var selected = document.querySelector(
+        "#ds_ready_list .ds[data-ds] .builder-pick[aria-current=true]"
+      );
+      var row = selected && selected.closest(".ds[data-ds]");
+      var stage = document.querySelector('[data-workflow-stage="configure"]');
+      var heading = stage && stage.querySelector("h2");
+      if (!row || row.dataset.ds !== dataset || !heading) {
+        attempts += 1;
+        if (attempts < 12) window.setTimeout(apply, 50);
+        return;
+      }
+      window.scrollTo({
+        top: 0,
+        behavior: reducedMotion.matches ? "auto" : "smooth",
+      });
+      heading.setAttribute("tabindex", "-1");
+      heading.focus({ preventScroll: true });
+    }
+    apply();
+  }
+
+  function animateCoordinateResetSliders(message) {
+    var ids = message && Array.isArray(message.ids) ? message.ids : [];
+    ids.forEach(function (id) {
+      if (!coordinateResetSliderIds.has(id)) return;
+      var input = document.getElementById(id);
+      var container = input && input.closest(".shiny-input-container");
+      if (!container) return;
+      var timer = coordinateResetMotionTimers.get(id);
+      if (timer) window.clearTimeout(timer);
+      container.classList.remove("builder-slider-reset-motion");
+      void container.offsetWidth;
+      container.classList.add("builder-slider-reset-motion");
+      coordinateResetMotionTimers.set(id, window.setTimeout(function () {
+        container.classList.remove("builder-slider-reset-motion");
+        coordinateResetMotionTimers.delete(id);
+      }, 380));
+    });
+  }
+
   function registerBuildDialogHandler() {
     if (buildDialogHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler("builder_build_dialog", showBuildDialog);
@@ -3394,7 +3533,25 @@
       "builder_project_source_progress",
       updateBuilderProjectSourceProgress
     );
+    window.Shiny.addCustomMessageHandler(
+      "builder_project_crb_progress",
+      updateBuilderProjectCrbProgress
+    );
     window.Shiny.addCustomMessageHandler("builder_marker_dialog", setMarkerDialog);
+    window.Shiny.addCustomMessageHandler(
+      "builder_focus_dataset_start",
+      focusDatasetStart
+    );
+    window.Shiny.addCustomMessageHandler(
+      "builder_coordinate_reset_motion",
+      animateCoordinateResetSliders
+    );
+    window.Shiny.addCustomMessageHandler("builder_scroll_page_top", function (message) {
+      window.scrollTo({
+        top: 0,
+        behavior: reducedMotion.matches ? "auto" : "smooth",
+      });
+    });
     window.Shiny.addCustomMessageHandler("builder_focus_stage", function (message) {
       var id = message && message.id;
       if (["upload", "configure", "review", "build"].indexOf(id) < 0) return;
@@ -3447,6 +3604,21 @@
       send("builder_auth_accounts", null);
     });
     buildDialogHandlerRegistered = true;
+  }
+
+  function updateDatasetLoadTimes() {
+    var now = Date.now();
+    document.querySelectorAll(".builder-load-time").forEach(function (node) {
+      var fixed = Number(node.dataset.elapsedMs);
+      var started = Number(node.dataset.startedAtMs);
+      var elapsed = Number.isFinite(fixed)
+        ? fixed
+        : Number.isFinite(started)
+          ? Math.max(0, now - started)
+          : NaN;
+      if (!Number.isFinite(elapsed)) return;
+      node.textContent = (elapsed / 1000).toFixed(1) + "s";
+    });
   }
 
   function registerClientImportHandlers() {
@@ -3616,6 +3788,8 @@
     window.addEventListener("scroll", syncSpatialAlignmentScrollbars, { passive: true });
     ensureLiveRegion();
     enhanceDynamicContent();
+    updateDatasetLoadTimes();
+    window.setInterval(updateDatasetLoadTimes, 100);
   }
 
   if (document.readyState === "loading") {

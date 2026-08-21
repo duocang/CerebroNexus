@@ -83,6 +83,7 @@ test_that("Manager and confirmation dialogs animate state and restore focus", {
     "window.__builderRapidManagerStable = ",
     "rail.classList.contains('is-manager-open') && ",
     "rail.classList.contains('is-manager-visible') && ",
+    "document.activeElement.classList.contains('rail-manager-close') && ",
     "document.querySelector('.rail-summary').getAttribute('aria-expanded') === 'true';",
     "}, 400);"
   ))

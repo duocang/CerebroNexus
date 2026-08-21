@@ -34,6 +34,8 @@ test_that("session execution stages artifacts without publishing them", {
     "auth_material = auth_material",
     fixed = TRUE
   )
+  expect_match(session, 'get(".builder_objects"', fixed = TRUE)
+  expect_match(session, "objects = objects", fixed = TRUE)
   expect_false(grepl("builder_publish_batch", session, fixed = TRUE))
 })
 
@@ -127,6 +129,26 @@ builder_build_test_hooks <- function(fail = NULL, outside = NULL) {
     }
   )
 }
+
+test_that("build execution reuses the worker's loaded object", {
+  stage <- withr::local_tempdir()
+  hooks <- builder_build_test_hooks()
+  hooks$open_snapshot <- function(snapshot) {
+    stop("snapshot should not be reopened")
+  }
+  loaded <- list(source = "worker-memory")
+
+  result <- builder_execute_plan(
+    builder_build_test_plan(),
+    stage,
+    snapshots = list(`dataset-a` = list(id = "snapshot-a")),
+    hooks = hooks,
+    objects = list(`dataset-a` = loaded)
+  )
+
+  expect_identical(result$state, "success")
+  expect_true(result$publishable)
+})
 
 test_that("retry recomputes the failed dependency closure", {
   graph <- builder_analysis_graph(c("marker_genes", "enriched_pathways"))
@@ -541,7 +563,10 @@ test_that("CRB read-back matches exact frozen artifact identity", {
 
   item <- builder_build_test_plan()$items[[1L]]
   item$artifact_identity$spatial_sections <- "slice-a"
-  item$images <- list(`slice-a` = image)
+  expected_image <- image
+  expected_image$bounds$xmax <- image$bounds$xmax + 2^-46
+  expect_false(identical(expected_image$bounds$xmax, image$bounds$xmax))
+  item$images <- list(`slice-a` = expected_image)
   item$viewer_page_expectations$visible_conditional <- "spatial"
   observed <- builder_verify_crb(crb, item)
   expect_true(observed$valid)
@@ -560,7 +585,7 @@ test_that("CRB read-back matches exact frozen artifact identity", {
   expect_error(builder_verify_crb(crb, item), "cell identity")
 })
 
-test_that("CRB read-back accepts transform provenance despite inverse rounding", {
+test_that("CRB read-back accepts sub-picounit transform serialization drift", {
   crb <- tempfile(fileext = ".crb")
   on.exit(unlink(crb), add = TRUE)
   source_coordinates <- data.frame(
@@ -568,20 +593,13 @@ test_that("CRB read-back accepts transform provenance despite inverse rounding",
     y = c(4736.96875, 5265.10546875),
     row.names = c("cell-b", "cell-a")
   )
-  spec <- list(rotation_degrees = 37.5, scale = 1)
+  spec <- list(rotation_degrees = 78.2, scale = 1)
   transform <- .spx_coordinate_transform_normalize(spec, source_coordinates)
   coordinates <- .spx_apply_coordinate_transform(source_coordinates, spec)
   transform$source_coordinate_fingerprint <-
     .spx_coordinate_transform_fingerprint(source_coordinates)
   transform$transformed_coordinate_fingerprint <-
     .spx_coordinate_transform_fingerprint(coordinates)
-
-  expect_false(identical(
-    .spx_coordinate_transform_fingerprint(
-      .spx_invert_coordinate_transform(coordinates, transform)
-    ),
-    transform$source_coordinate_fingerprint
-  ))
 
   object <- new.env(parent = emptyenv())
   object$expression <- matrix(
@@ -626,7 +644,13 @@ test_that("CRB read-back accepts transform provenance despite inverse rounding",
 
   item <- builder_build_test_plan()$items[[1L]]
   item$artifact_identity$spatial_sections <- "fov.2"
-  item$spatial_coordinate_transforms <- list(`fov.2` = spec)
+  json_spec <- spec
+  json_spec$rotation_degrees <- spec$rotation_degrees + 2^-46
+  expect_false(identical(
+    spec$rotation_degrees,
+    json_spec$rotation_degrees
+  ))
+  item$spatial_coordinate_transforms <- list(`fov.2` = json_spec)
   item$viewer_page_expectations$visible_conditional <- "spatial"
 
   expect_true(builder_verify_crb(crb, item)$valid)

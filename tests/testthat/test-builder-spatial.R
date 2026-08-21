@@ -1,12 +1,3 @@
-builder_spatial_test_inst_path <- function(...) {
-  relative <- file.path(...)
-  path <- testthat::test_path("..", "..", "inst", relative)
-  if (!file.exists(path)) {
-    path <- system.file(relative, package = "CerebroNexus")
-  }
-  path
-}
-
 builder_spatial_test_source <- function(file, local = parent.frame()) {
   path <- builder_spatial_test_inst_path("builder", file)
   if (file.exists(path)) {
@@ -36,6 +27,7 @@ builder_spatial_test_source("spatial.R")
 builder_spatial_test_source("preview.R")
 builder_spatial_test_source("extras.R")
 builder_spatial_test_source("worker.R")
+builder_spatial_test_source("plan/defaults.R")
 builder_spatial_test_source("spatial_alignment_server.R")
 
 test_that("alignment capability is limited to Spatial and Trekker datasets", {
@@ -232,7 +224,10 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       images = list(),
       default_group = "cluster",
       default_projection = "umap",
-      palette = "cerebro"
+      palette = "cerebro",
+      spatial_point_appearance = list(
+        "section-a" = list(point_opacity = 0.65, point_size = 6)
+      )
     )
   )
   current_entry <- shiny::reactiveVal(entry)
@@ -274,7 +269,7 @@ test_that("pending tissue image requires its matching preview and snapshot", {
         worker = shiny::reactiveVal(list()),
         enqueue = function(request) TRUE,
         commit_images = function(entry, images) {
-          updated <- current_entry()
+          updated <- entry
           updated$settings$images <- images
           current_entry(updated)
           committed <<- images
@@ -306,6 +301,11 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       expect_identical(alignment$draft()$source$name, "section-a.png")
       expect_false("saved" %in% names(alignment$draft()))
       expect_match(alignment$draft()$source_uri, "^data:image/png;base64,")
+      expect_identical(alignment$draft()$point_opacity, 0.65)
+      expect_identical(alignment$draft()$point_size, 6)
+      expect_null(current_entry()$settings$spatial_point_appearance[[
+        "section-a"
+      ]])
       expect_named(committed, "section-a")
       expect_identical(commit_count, 1L)
 
@@ -315,6 +315,10 @@ test_that("pending tissue image requires its matching preview and snapshot", {
       session$flushReact()
       expect_null(alignment$draft())
       expect_identical(commit_count, 2L)
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["section-a"]],
+        list(point_opacity = 0.65, point_size = 6)
+      )
 
       alignment_preview(NULL)
       session$setInputs(
@@ -491,7 +495,7 @@ test_that("alignment controls auto-commit before dataset switches", {
   )
 })
 
-test_that("duplicate tissue image can be confirmed with a unique label", {
+test_that("new images inherit the active image appearance", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
   skip_if_not_installed("png")
@@ -500,6 +504,20 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
   image_path <- tempfile(fileext = ".png")
   on.exit(unlink(image_path), add = TRUE)
   write_dummy_png(image_path)
+  encoded <- builder_encode_image(png::readPNG(image_path))
+  parameters <- builder_alignment_defaults()
+  parameters[c("point_opacity", "point_size")] <- list(0.65, 6)
+  existing_record <- builder_alignment_record(
+    source = list(name = "duplicate.png", type = "image/png"),
+    source_uri = encoded$uri,
+    uri = encoded$uri,
+    base_bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    parameters = parameters,
+    section = list(id = "section-a", kind = "spatial")
+  )
+  active_record <- existing_record
+  active_record$source$name <- "DAPI.png"
+  active_record[c("point_opacity", "point_size")] <- list(0.7, 7)
 
   entry <- list(
     id = "dataset-a",
@@ -511,7 +529,12 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
     profile = list(images = "section-a", extras = list()),
     settings = list(
       name = "Dataset A",
-      images = list(),
+      images = list(
+        `section-a` = list(
+          `duplicate.png` = existing_record,
+          DAPI = active_record
+        )
+      ),
       default_group = "cluster",
       default_projection = "umap",
       palette = "cerebro"
@@ -521,6 +544,7 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
   current <- shiny::reactiveVal(entry$id)
   alignment_preview <- shiny::reactiveVal(NULL)
   spatial_coords <- shiny::reactiveVal(NULL)
+  commit_count <- 0L
   preview <- list(
     available = TRUE,
     bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
@@ -564,6 +588,7 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
           updated <- current_entry()
           updated$settings$images <- images
           current_entry(updated)
+          commit_count <<- commit_count + 1L
         },
         alignment_preview = alignment_preview,
         spatial_coords = spatial_coords
@@ -573,33 +598,67 @@ test_that("duplicate tissue image can be confirmed with a unique label", {
       session$flushReact()
       alignment_preview(preview)
       session$flushReact()
-
-      suppressWarnings(
-        session$setInputs(`enhance-tissue_image_file` = upload)
-      )
-      session$flushReact()
+      expect_identical(alignment$active_image(), "duplicate.png")
       expect_named(
         current_entry()$settings$images[["section-a"]],
-        "duplicate.png"
+        c("duplicate.png", "DAPI")
       )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["duplicate.png"]][
+          c("point_opacity", "point_size")
+        ],
+        list(point_opacity = 0.65, point_size = 6)
+      )
+      session$setInputs(`enhance-active_image` = "DAPI")
+      session$flushReact()
+      expect_identical(alignment$active_image(), "DAPI")
 
-      suppressWarnings(
-        session$setInputs(`enhance-tissue_image_file` = upload)
-      )
+      suppressWarnings(session$setInputs(`enhance-tissue_image_file` = upload))
       session$flushReact()
       expect_true(alignment$pending_upload()$awaiting_label)
 
       session$setInputs(
-        `enhance-new_image_label` = "DAPI",
+        `enhance-new_image_label` = "PAS",
         `enhance-add_image_confirm` = 1L
       )
       session$flushReact()
 
       expect_named(
         current_entry()$settings$images[["section-a"]],
-        c("duplicate.png", "DAPI")
+        c("duplicate.png", "DAPI", "PAS")
+      )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["PAS"]][
+          c("point_opacity", "point_size")
+        ],
+        list(point_opacity = 0.7, point_size = 7)
       )
       expect_null(alignment$pending_upload())
+      expect_identical(commit_count, 1L)
+
+      session$setInputs(`enhance-active_image` = "DAPI")
+      session$flushReact()
+      session$setInputs(`enhance-remove_image_confirm` = 1L)
+      session$flushReact()
+
+      expect_identical(alignment$active_image(), "PAS")
+      expect_named(
+        current_entry()$settings$images[["section-a"]],
+        c("duplicate.png", "PAS")
+      )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["duplicate.png"]][
+          c("point_opacity", "point_size")
+        ],
+        list(point_opacity = 0.65, point_size = 6)
+      )
+      expect_identical(
+        current_entry()$settings$images[["section-a"]][["PAS"]][
+          c("point_opacity", "point_size")
+        ],
+        list(point_opacity = 0.7, point_size = 7)
+      )
+      expect_identical(commit_count, 2L)
     }
   )
 })
@@ -614,6 +673,7 @@ test_that("alignment preview joins both spaces by cell identity", {
     default_projection = "pca",
     group = group,
     section_id = "section-a",
+    layer = "counts",
     max_cells = 12L
   )
 
@@ -635,6 +695,7 @@ test_that("bounded alignment scenes retain full R-only coverage coordinates", {
   preview <- builder_alignment_preview_model(
     object,
     section_id = "section-a",
+    layer = "counts",
     max_cells = 2L
   )
 
@@ -646,6 +707,7 @@ test_that("bounded alignment scenes retain full R-only coverage coordinates", {
   scene <- builder_spatial_canvas_scene(
     preview,
     colors = character(),
+    point_appearance = list(point_opacity = 0.65, point_size = 6),
     identity = "dataset::section-a",
     generation = 1L,
     dataset = "dataset-a",
@@ -656,6 +718,8 @@ test_that("bounded alignment scenes retain full R-only coverage coordinates", {
   expect_identical(scene$dataset, "dataset-a")
   expect_identical(scene$snapshotIdentity, "snapshot-a")
   expect_identical(scene$section, "section-a")
+  expect_identical(scene$controls$point_opacity, 0.65)
+  expect_identical(scene$controls$point_size, 6)
 })
 
 test_that("Trekker alignment preview uses its physical and transcriptome spaces", {
@@ -1221,6 +1285,121 @@ test_that("artifact entries do not initialize editable Spatial state", {
       session$flushReact()
       expect_null(alignment$active_section())
       expect_null(alignment$active_image())
+    }
+  )
+})
+
+test_that("points-only Spatial FOV appearance persists without an image", {
+  skip_if_not_installed("shiny")
+  entry <- list(
+    id = "dataset-a",
+    snapshot = list(
+      path = "/private/dataset-a",
+      owner_token = "owner-a",
+      object_md5 = strrep("a", 32L)
+    ),
+    profile = list(images = "fov-a", extras = list()),
+    settings = list(
+      name = "Dataset A",
+      images = list(),
+      default_group = "cluster",
+      default_projection = "umap",
+      palette = "cerebro",
+      spatial_point_appearance = list(
+        "fov-a" = list(point_opacity = 0.65, point_size = 6)
+      )
+    )
+  )
+  current_entry <- shiny::reactiveVal(entry)
+  current <- shiny::reactiveVal(entry$id)
+  preview <- list(
+    available = TRUE,
+    bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
+    section = list(id = "fov-a", kind = "spatial", unit = "pixels"),
+    projection_name = "umap",
+    capped = FALSE,
+    transcriptome = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(-1, 1),
+      y = c(-1, 1),
+      group = c("A", "B")
+    ),
+    spatial = data.frame(
+      cell_id = c("cell-a", "cell-b"),
+      x = c(2, 8),
+      y = c(3, 7),
+      group = c("A", "B")
+    )
+  )
+  preview_state <- shiny::reactiveVal(NULL)
+
+  shiny::testServer(
+    function(input, output, session) {
+      alignment <- builder_spatial_alignment_server(
+        input = input,
+        output = output,
+        session = session,
+        current = current,
+        entry_of = function(id) current_entry(),
+        worker = shiny::reactiveVal(list()),
+        enqueue = function(request) TRUE,
+        commit_images = function(updated, images) {
+          updated$settings$images <- images
+          current_entry(updated)
+          invisible(updated)
+        },
+        alignment_preview = preview_state,
+        spatial_coords = shiny::reactiveVal(NULL)
+      )
+    },
+    {
+      session$flushReact()
+      session$flushReact()
+      expect_true(alignment$restore_project_settings("dataset-a"))
+      session$flushReact()
+      preview_state(preview)
+      session$flushReact()
+      expect_identical(alignment$active_section(), "fov-a")
+      expect_identical(
+        alignment$point_appearance(),
+        list(opacity = 0.65, size = 6)
+      )
+      session$setInputs(`enhance-point_opacity` = 70)
+      session$flushReact()
+
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["fov-a"]],
+        list(point_opacity = 0.7, point_size = 6)
+      )
+
+      identity <- .builder_worker_identity(current_entry()$snapshot)
+      session$setInputs(
+        builder_spatial_coordinate_draft = list(
+          dataset = "dataset-a",
+          snapshotIdentity = identity,
+          section = "fov-a",
+          rotationDegrees = 35,
+          sequence = 1
+        )
+      )
+      before_reset <- alignment$canvas_contract()$resetToken
+      session$setInputs(`enhance-reset_coordinate_transform` = 1L)
+      session$flushReact()
+
+      defaults <- builder_alignment_defaults()
+      expect_identical(
+        alignment$coordinate_drafts()[["dataset-a"]][["fov-a"]]$spec,
+        list(schema_version = 1L, rotation_degrees = 0, scale = 1)
+      )
+      expect_identical(
+        current_entry()$settings$spatial_point_appearance[["fov-a"]],
+        defaults[c("point_opacity", "point_size")]
+      )
+      expect_identical(
+        alignment$point_appearance(),
+        list(opacity = defaults$point_opacity, size = defaults$point_size)
+      )
+      expect_gt(alignment$canvas_contract()$resetToken, before_reset)
     }
   )
 })

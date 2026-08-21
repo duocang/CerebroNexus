@@ -75,6 +75,7 @@ observeEvent(
       input[["core-assay"]]
     )
     for (field in names(controls)) {
+      freezeReactiveValue(input, paste0("core-", field))
       updateSelectInput(
         session,
         paste0("core-", field),
@@ -98,6 +99,13 @@ observe({
   entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
   req(entry)
   next_settings <- entry$settings
+  profile <- entry$profile %||% list()
+  stored_assay <- entry$settings$assay
+  stored_layer <- entry$settings$layer
+  stored_layers <- profile$assay_profiles[[stored_assay]]$layers %||%
+    character()
+  layer_missing <- builder_stage_has_text(stored_layer) &&
+    !stored_layer %in% stored_layers
   for (setting in names(core_setting_inputs)) {
     next_settings[[setting]] <- values[[setting]]
   }
@@ -108,6 +116,13 @@ observe({
   )
   for (field in names(assay_controls)) {
     next_settings[[field]] <- assay_controls[[field]]$selected
+  }
+  if (
+    layer_missing &&
+      identical(values$assay, stored_assay) &&
+      identical(values$layer, stored_layer)
+  ) {
+    next_settings$layer <- stored_layer
   }
   if (!next_settings$organism %in% c("hg", "mm")) {
     next_settings$analyses <- setdiff(

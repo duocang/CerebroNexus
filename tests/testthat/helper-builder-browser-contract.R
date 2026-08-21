@@ -109,9 +109,11 @@ builder_browser_check_all_datasets <- function(app, timeout = 10000) {
   stop("Datasets did not become checked.", call. = FALSE)
 }
 
-builder_browser_dismiss_project_offer <- function(app, timeout = 10000) {
+builder_browser_dismiss_project_offer <- function(app, timeout = 60000) {
   app$wait_for_js(
     paste0(
+      "document.querySelector('.ds--client-upload') === null && ",
+      "document.querySelector('.ds--import') === null && ",
       "document.querySelector('#shiny-modal .modal-title') !== null && ",
       "document.querySelector('#shiny-modal .modal-title')",
       ".textContent.trim() === 'Save this project'"

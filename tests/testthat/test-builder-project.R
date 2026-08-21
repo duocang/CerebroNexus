@@ -1,6 +1,6 @@
 builder_project_test_runtime <- function() {
   runtime <- new.env(parent = globalenv())
-  for (file in c("io.R", "project.R", "build.R")) {
+  for (file in c("io.R", "worker.R", "extras.R", "project.R", "build.R")) {
     path <- testthat::test_path("..", "..", "inst", "builder", file)
     sys.source(path, envir = runtime)
   }
@@ -254,7 +254,7 @@ test_that("managed example sources retain their example identity when restored",
   expect_identical(restored$path, normalizePath(source, winslash = "/"))
 })
 
-test_that("project payload preserves saved coordinate rotation", {
+test_that("project payload preserves saved Spatial FOV controls", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
   entry <- list(
@@ -262,6 +262,9 @@ test_that("project payload preserves saved coordinate rotation", {
     settings = list(
       spatial_coordinate_transforms = list(
         section_a_1_fov_1 = list(rotation_degrees = 66.9, scale = 1)
+      ),
+      spatial_point_appearance = list(
+        section_a_1_fov_1 = list(point_opacity = 0.7, point_size = 6)
       )
     )
   )
@@ -277,6 +280,10 @@ test_that("project payload preserves saved coordinate rotation", {
       "section_a_1_fov_1"
     ]]$rotation_degrees,
     66.9
+  )
+  expect_identical(
+    restored$settings$spatial_point_appearance[["section_a_1_fov_1"]],
+    list(point_opacity = 0.7, point_size = 6)
   )
 })
 
@@ -377,7 +384,7 @@ test_that("missing project spatial assets identify the affected FOV and image", 
   status <- runtime$builder_project_dataset_status(record, root)
   expect_false(status$spatial_assets_ready)
   expect_false(status$restorable)
-  expect_match(status$label, "Spatial image missing", fixed = TRUE)
+  expect_identical(status$label, "Needs check · spatial image missing")
   lightweight <- runtime$builder_project_restore_entry(
     record,
     root,
@@ -496,6 +503,84 @@ test_that("source synchronization warns on close without locking the workspace",
   expect_true(capabilities$edit_dataset)
   expect_true(capabilities$save_project)
   expect_false(capabilities$page_inert)
+})
+
+test_that("the first project offer waits for every import ownership layer", {
+  runtime <- builder_project_test_runtime()
+  idle <- runtime$builder_activity_state(has_datasets = TRUE)
+  client_busy <- runtime$builder_activity_state(
+    client_imports = 1L,
+    has_datasets = TRUE
+  )
+  server_busy <- runtime$builder_activity_state(
+    server_imports = TRUE,
+    has_datasets = TRUE
+  )
+  protocol <- list(queue = list(), pending = NULL, awaiting_ack = list())
+  load <- list(kind = "load")
+
+  expect_true(runtime$builder_imports_idle(idle, protocol))
+  expect_false(runtime$builder_imports_idle(client_busy, protocol))
+  expect_false(runtime$builder_imports_idle(server_busy, protocol))
+
+  protocol$queue <- list(load)
+  expect_false(runtime$builder_imports_idle(idle, protocol))
+  protocol$queue <- list()
+  protocol$pending <- load
+  expect_false(runtime$builder_imports_idle(idle, protocol))
+  protocol$pending <- NULL
+  protocol$awaiting_ack <- list(token = load)
+  expect_false(runtime$builder_imports_idle(idle, protocol))
+
+  protocol$awaiting_ack <- list(token = list(kind = "preview"))
+  expect_true(runtime$builder_imports_idle(idle, protocol))
+})
+
+test_that("the first project offer is retryable when imports restart before flush", {
+  runtime <- builder_project_test_runtime()
+  idle <- runtime$builder_activity_state(has_datasets = TRUE)
+  busy <- runtime$builder_activity_state(
+    client_imports = 1L,
+    has_datasets = TRUE
+  )
+  protocol <- list(queue = list(), pending = NULL, awaiting_ack = list())
+  entries <- list(list(id = "ds1"))
+
+  expect_true(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = NULL,
+    offered = FALSE,
+    activity = idle,
+    protocol = protocol
+  ))
+  expect_false(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = NULL,
+    offered = FALSE,
+    activity = busy,
+    protocol = protocol
+  ))
+  expect_true(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = NULL,
+    offered = FALSE,
+    activity = idle,
+    protocol = protocol
+  ))
+  expect_false(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = list(name = "restored"),
+    offered = FALSE,
+    activity = idle,
+    protocol = protocol
+  ))
+  expect_false(runtime$builder_project_first_save_offer_ready(
+    entries,
+    project = NULL,
+    offered = TRUE,
+    activity = idle,
+    protocol = protocol
+  ))
 })
 
 test_that("project server uses a dedicated callr source copy process", {
@@ -724,7 +809,7 @@ test_that("restore dialog explains the session-only skip action", {
   ))
 })
 
-test_that("restore choices render descriptive labels and default to editing", {
+test_that("restore choices render descriptive labels and prefer checked CRB reuse", {
   skip_if_not_installed("shiny")
   runtime <- builder_project_test_runtime()
   runtime$tags <- shiny::tags
@@ -764,7 +849,22 @@ test_that("restore choices render descriptive labels and default to editing", {
 
   expect_match(html, "Use ready CRB — fast, view/build only", fixed = TRUE)
   expect_match(html, "Load source — continue editing", fixed = TRUE)
-  expect_match(html, 'value="resume" checked="checked"', fixed = TRUE)
+  expect_match(html, 'value="reuse" checked="checked"', fixed = TRUE)
+  expect_match(html, "Checked · CRB ready", fixed = TRUE)
+  expect_identical(
+    lengths(regmatches(
+      html,
+      gregexpr("Checked · CRB ready", html, fixed = TRUE)
+    )),
+    1L
+  )
+
+  record$configuration$checked <- FALSE
+  record$artifact$status <- "stale"
+  html <- htmltools::renderTags(
+    runtime$builder_project_restore_row_ui(record, root)
+  )$html
+  expect_match(html, "Needs check · load source", fixed = TRUE)
 })
 
 test_that("project lifecycle capabilities lock only conflicting operations", {
@@ -1122,6 +1222,105 @@ test_that("runtime snapshot replacement does not invalidate checked configuratio
     runtime$builder_project_check_identity(first),
     runtime$builder_project_check_identity(replacement)
   ))
+})
+
+test_that("pending coordinate drafts participate in checked identity", {
+  runtime <- builder_project_test_runtime()
+  entry <- list(
+    id = "ds1",
+    snapshot = list(
+      path = "/session/ds1",
+      owner_token = "owner-ds1",
+      object_md5 = strrep("a", 32L)
+    ),
+    settings = list(
+      name = "Spatial dataset",
+      images = list(),
+      spatial_coordinate_transforms = list()
+    ),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  confirmed <- runtime$builder_project_effective_check_identity(entry, list())
+  snapshot_identity <- runtime$.builder_worker_identity(entry$snapshot)
+  draft <- function(rotation) {
+    list(
+      ds1 = list(
+        `fov-a` = list(
+          dataset = "ds1",
+          section = "fov-a",
+          snapshot_identity = snapshot_identity,
+          spec = list(
+            schema_version = 1L,
+            rotation_degrees = rotation,
+            scale = 1
+          )
+        )
+      )
+    )
+  }
+
+  expect_false(identical(
+    confirmed,
+    runtime$builder_project_effective_check_identity(entry, draft(37.5))
+  ))
+  expect_identical(
+    runtime$builder_project_effective_check_identity(entry, draft(0)),
+    confirmed
+  )
+  marks <- stats::setNames(confirmed, entry$id)
+  expect_identical(
+    runtime$builder_project_checked_ids(list(entry), marks, draft(37.5)),
+    character()
+  )
+  expect_identical(
+    runtime$builder_project_checked_ids(list(entry), marks, draft(0)),
+    entry$id
+  )
+})
+
+test_that("reusable CRB preparation skips current artifacts", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  artifact_path <- file.path(root, "dataset.crb")
+  writeLines("ready", artifact_path)
+  entry <- list(
+    id = "ds1",
+    settings = list(name = "Dataset"),
+    acknowledgements = character(),
+    spatial_drafts = list()
+  )
+  artifact <- list(
+    status = "ready",
+    reusable = TRUE,
+    path = basename(artifact_path),
+    built_from_configuration = runtime$builder_project_configuration_digest(
+      entry
+    )
+  )
+
+  expect_length(
+    runtime$builder_project_entries_requiring_crb(
+      list(entry),
+      list(ds1 = artifact),
+      root
+    ),
+    0L
+  )
+  entry$settings$name <- "Changed"
+  expect_identical(
+    vapply(
+      runtime$builder_project_entries_requiring_crb(
+        list(entry),
+        list(ds1 = artifact),
+        root
+      ),
+      `[[`,
+      character(1),
+      "id"
+    ),
+    "ds1"
+  )
 })
 
 test_that("a matching ready project CRB repairs a missing checked flag", {

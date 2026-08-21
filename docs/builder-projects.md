@@ -9,9 +9,17 @@ and rebuild only the parts that changed.
 
 ## Project folder
 
-The first successful upload offers to create a project folder. Browser uploads
-are copied out of the Shiny session's temporary directory so they remain
-available after the app closes.
+After an import batch has completely settled, the first successful upload
+offers to create a project folder. The automatic offer waits for browser,
+server, and worker import queues to become idle; the toolbar action remains
+available earlier when the user wants to choose a folder manually. Browser
+uploads are copied out of the Shiny session's temporary directory so they
+remain available after the app closes.
+
+The native folder picker is synchronous on the host operating system. While it
+is open, the background worker may continue processing, but Builder cannot
+render new progress until the picker returns. This is a display pause rather
+than a pause or restart of the import itself.
 
 ```text
 my-project/
@@ -182,6 +190,14 @@ The source can still be loaded later when the user wants to edit that dataset.
 Loading the source restores the saved choices onto a fresh inspection of the
 managed file. Coordinate and image controls enter the dataset configuration
 automatically; there is no separate Spatial alignment save action.
+
+For a Spatial FOV without an attached histology image, Builder also retains the
+point opacity and size used by its alignment preview. Those points-only display
+values are project-editor state and are not exported into a CRB. When an image
+is added, Builder transfers the values into that image's alignment record; when
+the last image is removed, it transfers them back to the FOV's project state.
+Additional images inherit the active image's point appearance at creation, then
+retain independent settings; removing one image never rewrites the survivors.
 
 Project checkpoint CRBs always receive a private embedded-image build
 projection so every FOV image travels inside the reusable CRB. This projection

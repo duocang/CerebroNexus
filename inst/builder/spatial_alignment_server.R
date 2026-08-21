@@ -17,12 +17,13 @@ builder_spatial_alignment_server <- function(
 ) {
   raw_image <- shiny::reactiveVal(NULL)
   draft <- shiny::reactiveVal(NULL)
-  baseline <- shiny::reactiveVal(NULL)
   coordinate_draft <- shiny::reactiveVal(list(rotation_degrees = 0, scale = 1))
   coordinate_baseline <- shiny::reactiveVal(list(
     rotation_degrees = 0,
     scale = 1
   ))
+  point_appearance_baseline <- shiny::reactiveVal(NULL)
+  point_appearance_input_ready <- shiny::reactiveVal(FALSE)
   coordinate_session_drafts <- shiny::reactiveVal(list())
   active_dataset <- shiny::reactiveVal(NULL)
   active_section <- shiny::reactiveVal(NULL)
@@ -154,6 +155,22 @@ builder_spatial_alignment_server <- function(
     }
     transforms
   }
+  point_appearance_for <- function(entry, section, record = NULL) {
+    defaults <- builder_alignment_defaults()
+    from_record <- if (is.null(record)) {
+      NULL
+    } else {
+      .builder_alignment_parameters(record)
+    }
+    if (!is.null(from_record)) {
+      return(from_record[c("point_opacity", "point_size")])
+    }
+    stored <- entry$settings$spatial_point_appearance[[section]] %||% list()
+    list(
+      point_opacity = stored$point_opacity %||% defaults$point_opacity,
+      point_size = stored$point_size %||% defaults$point_size
+    )
+  }
   coordinate_spec_for <- function(entry, section) {
     if (!identical(kind_for(section), "spatial")) {
       return(list(rotation_degrees = 0, scale = 1))
@@ -206,11 +223,18 @@ builder_spatial_alignment_server <- function(
     }
     invisible(queued)
   }
-  update_controls <- function(record = NULL, bounds = NULL) {
+  update_controls <- function(
+    record = NULL,
+    bounds = NULL,
+    point_appearance = NULL
+  ) {
     parameters <- if (is.null(record)) {
       builder_alignment_defaults()
     } else {
       .builder_alignment_parameters(record)
+    }
+    if (!is.null(point_appearance)) {
+      parameters[c("point_opacity", "point_size")] <- point_appearance
     }
     expected_controls(parameters)
     ranges <- builder_alignment_control_ranges(record, bounds)
@@ -225,6 +249,7 @@ builder_spatial_alignment_server <- function(
       "enhance-point_opacity",
       "enhance-point_size"
     )
+    ids <- setdiff(ids, c("enhance-point_opacity", "enhance-point_size"))
     invisible(lapply(ids, function(id) shiny::freezeReactiveValue(input, id)))
     shiny::updateSliderInput(
       session,
@@ -289,7 +314,6 @@ builder_spatial_alignment_server <- function(
       )
     }
     draft(stored)
-    baseline(stored)
     if (is.null(stored)) {
       raw_image(NULL)
     } else {
@@ -301,7 +325,14 @@ builder_spatial_alignment_server <- function(
         raw_image(image)
       }
     }
-    update_controls(stored, alignment_preview()$bounds %||% NULL)
+    appearance <- point_appearance_for(entry, section, stored)
+    point_appearance_baseline(appearance)
+    point_appearance_input_ready(FALSE)
+    update_controls(
+      stored,
+      alignment_preview()$bounds %||% NULL,
+      appearance
+    )
   }
   restore_coordinate_controls <- function(entry, section) {
     spec <- coordinate_spec_for(entry, section)
@@ -458,9 +489,10 @@ builder_spatial_alignment_server <- function(
     session$sendCustomMessage("builder_spatial_canvas_clear", list())
     raw_image(NULL)
     draft(NULL)
-    baseline(NULL)
     coordinate_draft(list(rotation_degrees = 0, scale = 1))
     coordinate_baseline(list(rotation_degrees = 0, scale = 1))
+    point_appearance_baseline(NULL)
+    point_appearance_input_ready(FALSE)
     alignment_preview(NULL)
     spatial_coords(NULL)
     preview_contract(NULL)
@@ -662,9 +694,25 @@ builder_spatial_alignment_server <- function(
   point_appearance <- shiny::reactive({
     current_draft <- draft()
     defaults <- if (is.null(current_draft)) {
-      builder_alignment_defaults()
+      entry <- entry_of(current())
+      section <- active_section()
+      if (is.null(entry) || is.null(section)) {
+        builder_alignment_defaults()
+      } else {
+        utils::modifyList(
+          builder_alignment_defaults(),
+          point_appearance_for(entry, section)
+        )
+      }
     } else {
       current_draft
+    }
+    restored <- point_appearance_baseline()
+    if (!isTRUE(point_appearance_input_ready()) && !is.null(restored)) {
+      return(list(
+        opacity = restored$point_opacity,
+        size = restored$point_size
+      ))
     }
     list(
       opacity = (input[["enhance-point_opacity"]] %||%
@@ -854,7 +902,14 @@ builder_spatial_alignment_server <- function(
         preview$section$kind
       )
     }
-    baseline(previous)
+    parameters <- builder_alignment_defaults()
+    appearance <- point_appearance_for(entry, section, previous)
+    parameters[c("point_opacity", "point_size")] <- appearance
+    if (!length(existing)) {
+      stored_appearance <- entry$settings$spatial_point_appearance %||% list()
+      stored_appearance[[section]] <- NULL
+      entry$settings$spatial_point_appearance <- stored_appearance
+    }
     record <- builder_alignment_record(
       source = list(
         name = filename,
@@ -878,7 +933,7 @@ builder_spatial_alignment_server <- function(
           height = image_encoded$source_height
         )
       ),
-      parameters = builder_alignment_defaults(),
+      parameters = parameters,
       section = preview$section
     )
     facts <- intersect(
@@ -1013,7 +1068,27 @@ builder_spatial_alignment_server <- function(
   shiny::observeEvent(alignment_preview(), {
     preview <- alignment_preview()
     if (isTRUE(preview$available)) {
-      update_controls(draft(), preview$bounds)
+      entry <- entry_of(current())
+      section <- active_section()
+      if (!is.null(entry) && !is.null(section)) {
+        appearance <- point_appearance_for(entry, section, draft())
+        expected <- shiny::isolate(expected_controls())
+        if (
+          is.null(draft()) &&
+            !is.null(expected) &&
+            identical(
+              expected[c("point_opacity", "point_size")],
+              appearance[c("point_opacity", "point_size")]
+            )
+        ) {
+          return()
+        }
+        update_controls(
+          draft(),
+          preview$bounds,
+          appearance
+        )
+      }
     }
   })
 
@@ -1059,6 +1134,7 @@ builder_spatial_alignment_server <- function(
       preview = preview,
       colors = colors(),
       record = draft(),
+      point_appearance = point_appearance_for(entry, section, draft()),
       coordinate_transform = coordinate_draft(),
       identity = identity,
       generation = generation,
@@ -1164,7 +1240,6 @@ builder_spatial_alignment_server <- function(
       observed
     )
     expected_controls(NULL)
-    baseline(next_record)
     draft(next_record)
     commit_section(
       shiny::isolate(entry_of(current())),
@@ -1186,6 +1261,89 @@ builder_spatial_alignment_server <- function(
       input[["enhance-point_size"]]
     ),
     commit_alignment_controls(),
+    ignoreInit = TRUE
+  )
+
+  shiny::observeEvent(
+    list(
+      input[["enhance-point_opacity"]],
+      input[["enhance-point_size"]]
+    ),
+    {
+      if (!is.null(shiny::isolate(draft()))) {
+        return()
+      }
+      entry <- shiny::isolate(entry_of(current()))
+      section <- shiny::isolate(active_section())
+      if (
+        is.null(entry) ||
+          is.null(section) ||
+          !identical(kind_for(section), "spatial")
+      ) {
+        return()
+      }
+      restored <- shiny::isolate(point_appearance_baseline())
+      if (is.null(restored)) {
+        return()
+      }
+      appearance <- list(
+        opacity = (input[["enhance-point_opacity"]] %||%
+          ((restored$point_opacity %||%
+            builder_alignment_defaults()$point_opacity) *
+            100)) /
+          100,
+        size = input[["enhance-point_size"]] %||%
+          (restored$point_size %||% builder_alignment_defaults()$point_size)
+      )
+      expected <- shiny::isolate(expected_controls())
+      if (!is.null(expected)) {
+        if (
+          !identical(
+            list(
+              point_opacity = appearance$opacity,
+              point_size = appearance$size
+            ),
+            expected[c("point_opacity", "point_size")]
+          )
+        ) {
+          default_appearance <- builder_alignment_defaults()[c(
+            "point_opacity",
+            "point_size"
+          )]
+          if (
+            !isTRUE(shiny::isolate(point_appearance_input_ready())) &&
+              identical(
+                list(
+                  point_opacity = appearance$opacity,
+                  point_size = appearance$size
+                ),
+                default_appearance
+              )
+          ) {
+            return()
+          }
+          expected_controls(NULL)
+        } else {
+          expected_controls(NULL)
+        }
+      }
+      point_appearance_input_ready(TRUE)
+      stored <- entry$settings$spatial_point_appearance %||% list()
+      next_value <- list(
+        point_opacity = appearance$opacity,
+        point_size = appearance$size
+      )
+      if (identical(shiny::isolate(point_appearance_baseline()), next_value)) {
+        return()
+      }
+      if (identical(stored[[section]], next_value)) {
+        return()
+      }
+      stored[[section]] <- next_value
+      entry$settings$spatial_point_appearance <- stored
+      point_appearance_baseline(next_value)
+      commit_images(entry, collection_for(entry))
+    },
     ignoreInit = TRUE
   )
 
@@ -1330,11 +1488,23 @@ builder_spatial_alignment_server <- function(
     input[["enhance-reset_coordinate_transform"]],
     {
       spec <- list(rotation_degrees = 0, scale = 1)
+      defaults <- builder_alignment_defaults()
+      appearance <- defaults[c("point_opacity", "point_size")]
       entry <- shiny::isolate(entry_of(current()))
       section <- shiny::isolate(active_section())
       if (is.null(entry) || is.null(section)) {
         return()
       }
+      session$sendCustomMessage(
+        "builder_coordinate_reset_motion",
+        list(
+          ids = c(
+            "enhance-coordinate_rotation",
+            "enhance-point_opacity",
+            "enhance-point_size"
+          )
+        )
+      )
       store_coordinate_draft(
         spec = spec,
         dataset = entry$id,
@@ -1342,11 +1512,36 @@ builder_spatial_alignment_server <- function(
         snapshot_identity = .builder_worker_identity(entry$snapshot),
         force = TRUE
       )
+      current_draft <- shiny::isolate(draft())
+      if (is.null(current_draft)) {
+        stored <- entry$settings$spatial_point_appearance %||% list()
+        stored[[section]] <- appearance
+        entry$settings$spatial_point_appearance <- stored
+        commit_images(entry, collection_for(entry))
+      } else {
+        current_draft[names(appearance)] <- appearance
+        draft(current_draft)
+        commit_section(entry, section, current_draft)
+      }
+      point_appearance_baseline(appearance)
+      point_appearance_input_ready(FALSE)
       shiny::freezeReactiveValue(input, "enhance-coordinate_rotation")
+      shiny::freezeReactiveValue(input, "enhance-point_opacity")
+      shiny::freezeReactiveValue(input, "enhance-point_size")
       shiny::updateSliderInput(
         session,
         "enhance-coordinate_rotation",
         value = 0
+      )
+      shiny::updateSliderInput(
+        session,
+        "enhance-point_opacity",
+        value = defaults$point_opacity * 100
+      )
+      shiny::updateSliderInput(
+        session,
+        "enhance-point_size",
+        value = defaults$point_size
       )
       canvas_reset_token(canvas_reset_token() + 1L)
     }
@@ -1398,6 +1593,17 @@ builder_spatial_alignment_server <- function(
     }
     labels <- image_labels_for(entry, section)
     position <- match(label, labels)
+    if (length(labels) == 1L) {
+      removed <- builder_alignment_normalize(
+        collection_for(entry)[[section]][[label]],
+        section,
+        kind_for(section)
+      )
+      appearance <- point_appearance_for(entry, section, removed)
+      stored_appearance <- entry$settings$spatial_point_appearance %||% list()
+      stored_appearance[[section]] <- appearance
+      entry$settings$spatial_point_appearance <- stored_appearance
+    }
     commit_section(entry, section, NULL, label = label)
     entry <- entry_of(current())
     remaining <- image_labels_for(entry, section)
@@ -1515,7 +1721,6 @@ builder_spatial_alignment_server <- function(
     }
     commit_images(entry, images)
     draft(images[[source_section]][[label]])
-    baseline(images[[source_section]][[label]])
     count <- sum(vapply(
       images,
       function(section) {
@@ -1585,6 +1790,7 @@ builder_spatial_alignment_server <- function(
     active_image = active_image,
     project_selection = project_selection,
     draft = draft,
+    point_appearance = point_appearance,
     coordinate_drafts = coordinate_session_drafts,
     canvas_contract = canvas_contract,
     pending_upload = pending_upload,

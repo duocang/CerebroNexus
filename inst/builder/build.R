@@ -9,6 +9,27 @@
   is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
 }
 
+.builder_build_number_equal <- function(left, right, tolerance = 1e-12) {
+  is.numeric(left) &&
+    is.numeric(right) &&
+    !is.object(left) &&
+    !is.object(right) &&
+    length(left) == 1L &&
+    length(right) == 1L &&
+    is.finite(left) &&
+    is.finite(right) &&
+    abs(as.numeric(left) - as.numeric(right)) <= tolerance
+}
+
+.builder_build_value_equal <- function(left, right, tolerance = 1e-12) {
+  isTRUE(all.equal(
+    left,
+    right,
+    tolerance = tolerance,
+    check.attributes = TRUE
+  ))
+}
+
 .builder_build_stage <- function(stage) {
   if (!.builder_build_text(stage) || !dir.exists(stage)) {
     stop("Build execution requires an existing assigned stage.", call. = FALSE)
@@ -373,13 +394,13 @@ builder_verify_crb <- function(path, item) {
     if (
       !is.list(observed_transform) ||
         !identical(observed_transform$schema_version, 1L) ||
-        !identical(
-          as.numeric(observed_transform$rotation_degrees %||% NA_real_),
-          as.numeric(expected_transform$rotation_degrees)
+        !.builder_build_number_equal(
+          observed_transform$rotation_degrees %||% NA_real_,
+          expected_transform$rotation_degrees
         ) ||
-        !identical(
-          as.numeric(observed_transform$scale %||% NA_real_),
-          as.numeric(expected_transform$scale)
+        !.builder_build_number_equal(
+          observed_transform$scale %||% NA_real_,
+          expected_transform$scale
         ) ||
         !isTRUE(valid_pivot) ||
         !identical(observed_transform$pivot_method, "bounds_center") ||
@@ -434,9 +455,9 @@ builder_verify_crb <- function(path, item) {
       function(expected_payload) {
         any(vapply(
           observed_images,
-          identical,
+          .builder_build_value_equal,
           logical(1),
-          y = expected_payload
+          right = expected_payload
         ))
       },
       logical(1)
@@ -465,7 +486,7 @@ builder_verify_crb <- function(path, item) {
     )
     if (
       has_canonical_alignment &&
-        !identical(
+        !.builder_build_value_equal(
           observed_image$histology_alignment,
           expected_alignment_payload
         )
@@ -486,11 +507,11 @@ builder_verify_crb <- function(path, item) {
           observed_trekker$histology_image,
           expected_trekker_alignment$uri
         ) ||
-        !identical(
+        !.builder_build_value_equal(
           observed_trekker$histology_image_bounds,
           expected_trekker_alignment$bounds
         ) ||
-        !identical(
+        !.builder_build_value_equal(
           observed_trekker$histology_alignment,
           builder_alignment_payload(expected_trekker_alignment)
         )
@@ -981,7 +1002,8 @@ builder_execute_plan <- function(
   stage,
   snapshots,
   hooks = builder_build_hooks(),
-  auth_material = NULL
+  auth_material = NULL,
+  objects = list()
 ) {
   on.exit(auth_material <- NULL, add = TRUE)
   if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
@@ -1139,16 +1161,21 @@ builder_execute_plan <- function(
       next
     }
     snapshot <- snapshots[[item$id]]
-    if (is.null(snapshot)) {
+    object <- objects[[item$id]] %||% NULL
+    if (is.null(snapshot) && is.null(object)) {
       return(.builder_build_failure(paste0(
         "The frozen snapshot is missing for ",
         item$name,
         "."
       )))
     }
-    object <- tryCatch(hooks$open_snapshot(snapshot), error = function(error) {
-      error
-    })
+    object <- if (!is.null(object)) {
+      object
+    } else {
+      tryCatch(hooks$open_snapshot(snapshot), error = function(error) {
+        error
+      })
+    }
     if (inherits(object, "condition")) {
       return(.builder_build_failure(paste0(
         item$name,
