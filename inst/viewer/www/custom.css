@@ -1029,17 +1029,17 @@ body .form-control.shiny-colour-input {
 }
 .cerebro-color-count {
   float: right;
-  margin: 2px 34px 0 10px;
+  margin: 1px 34px 0 10px;
   color: var(--c-text-3);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   letter-spacing: 0.02em;
 }
 .cerebro-color-list {
   display: grid;
-  gap: 4px;
 }
 .cerebro-color-row.shiny-input-container {
+  position: relative;
   display: grid;
   grid-template-columns: 94px minmax(0, 1fr);
   grid-template-rows: 1fr;
@@ -1051,6 +1051,15 @@ body .form-control.shiny-colour-input {
   padding: 7px 8px;
   border-radius: var(--r-sm);
   transition: background-color var(--dur) var(--ease);
+}
+.cerebro-color-row.shiny-input-container:not(:last-child)::after {
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 1px;
+  background: var(--c-border);
+  content: "";
 }
 .cerebro-color-row.shiny-input-container:hover {
   background: var(--c-surface-2);
