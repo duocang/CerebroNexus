@@ -727,7 +727,10 @@ builder_group_catalog_ui <- function(id, catalog) {
               `data-group` = item$id,
               `aria-pressed` = if (item$default) "true" else "false",
               disabled = if (!item$eligible) "disabled" else NULL,
-              span(class = "viewer-group-name", item$label)
+              span(class = "viewer-group-name", item$label),
+              if (!item$eligible) {
+                span(class = "viewer-group-meta", item$reason)
+              }
             ),
             div(
               class = "viewer-group-controls",
