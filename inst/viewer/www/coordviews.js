@@ -4367,7 +4367,7 @@ var focusPanel = null;
   // fell off the bottom -- on the one layout that most needs to be seen at once.
   var PREF_SIDE = 300;
   var MIN_SIDE = 300;
-  var VIEWPORT_GUTTER = 18;
+  var VIEWPORT_GUTTER = 8;
   // Context is a persistent orientation aid, not the place for close reading.
   // Let it become slightly smaller while a primary lens is present so a common
   // 1280px workspace can keep both roles in the same visual field.
@@ -4467,7 +4467,7 @@ var focusPanel = null;
       visibleBottom - panes.getBoundingClientRect().top - bottomPad -
       2 * VIEWPORT_GUTTER
     );
-    var usableW = Math.max(1, availW - 2 * VIEWPORT_GUTTER);
+    var usableW = availW;
 
     // Overview is a genuine two-dimensional fit: try every possible column
     // count and choose the one that maximises a complete square. If there are so
