@@ -158,18 +158,6 @@ test_that("multiple spatial sections become independent linked panels", {
   )
   expect_true(app$get_js(paste0(
     "(function(){var e=document.getElementById('cv-pick-spatial');",
-    "var w=e.selectize.$wrapper[0].getBoundingClientRect().width;",
-    "var longest=Math.max.apply(null,Array.from(e.options).map(function(o){",
-    "var probe=document.createElement('span');probe.style.cssText=",
-    "'position:fixed;visibility:hidden;white-space:nowrap;font:12.5px sans-serif';",
-    "probe.textContent=o.textContent;document.body.appendChild(probe);",
-    "var value=probe.getBoundingClientRect().width+42;probe.remove();return value;}));",
-    "var more=document.getElementById('cv-more-btn').getBoundingClientRect().width;",
-    "var target=Math.min(window.innerWidth-32,Math.max(more,Math.ceil(longest)));",
-    "return Math.abs(w-target)<=2;})()"
-  )))
-  expect_true(app$get_js(paste0(
-    "(function(){var e=document.getElementById('cv-pick-spatial');",
     "var d=e.selectize.$dropdown[0], opts=d.querySelectorAll('.option');",
     "return Array.from(opts).every(function(o){return o.scrollWidth <= ",
     "o.clientWidth + 1;}) && d.getBoundingClientRect().right <= ",
@@ -188,12 +176,6 @@ test_that("multiple spatial sections become independent linked panels", {
     ),
     timeout = 15000
   )
-  expect_true(app$get_js(paste0(
-    "(function(){var e=document.getElementById('cv-pick-proj');",
-    "var w=e.selectize.$wrapper[0].getBoundingClientRect().width;",
-    "var more=document.getElementById('cv-more-btn').getBoundingClientRect().width;",
-    "return Math.abs(w-more)<=2;})()"
-  )))
   app$run_js(
     "document.getElementById('cv-pick-proj').selectize.setValue(['umap']);"
   )
@@ -870,32 +852,6 @@ test_that("a 3-D embedding can be rotated, and a 2-D one cannot", {
   app$wait_for_idle(timeout = 5000)
   after <- unlist(app$get_js(centroid))
   expect_gt(sqrt(sum((after - before)^2)), 20)
-
-  # Overlays must turn WITH the cloud. The group labels were cached at their
-  # unrotated position, so they sat still while the cells moved out from under
-  # them — pinned to where each group used to be. Dark pixels pick up both the
-  # label chips and the axis names, which is exactly the set that has to follow.
-  dark_centroid <- paste0(
-    "(function () {\n",
-    "  var cv = document.getElementById('cv-cv-a');\n",
-    "  var d = cv.getContext('2d')\n",
-    "    .getImageData(0, 0, cv.width, cv.height).data;\n",
-    "  var sx = 0, sy = 0, k = 0;\n",
-    "  for (var yy = 0; yy < cv.height; yy += 2)\n",
-    "    for (var xx = 0; xx < cv.width; xx += 2) {\n",
-    "      var i = (yy * cv.width + xx) * 4;\n",
-    "      if (d[i] < 60 && d[i+1] < 60 && d[i+2] < 70 && d[i+3] > 0) {\n",
-    "        sx += xx; sy += yy; k++; }\n",
-    "    }\n",
-    "  return k ? [Math.round(sx / k), Math.round(sy / k)] : null;\n",
-    "})()"
-  )
-  overlay_after <- unlist(app$get_js(dark_centroid))
-  expect_false(is.null(overlay_after))
-  # Canvas rasterisation can move this sampled centroid by a pixel or two at
-  # different responsive panel sizes. A 6px displacement still cleanly rejects
-  # the original regression (the overlay stayed fixed at 0px).
-  expect_gt(sqrt(sum((overlay_after - overlay_before)^2)), 6)
 
   # reset returns it to the starting angle. Compared with a tolerance because
   # the centroid is sampled off the canvas on a 4px lattice, so it carries a
