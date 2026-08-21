@@ -3012,6 +3012,13 @@ var focusPanel = null;
       });
       resizeObserver._cvChromeObserved = true;
     }
+    // The pane container gains its final width only after a hidden workspace is
+    // restored. Observe it directly so the grid recomputes at that width.
+    if (!resizeObserver._cvPanesObserved) {
+      var panesHost = document.querySelector('.coordviews-page .cv-panes');
+      if (panesHost) resizeObserver.observe(panesHost);
+      resizeObserver._cvPanesObserved = true;
+    }
   }
 
   // Coordinate-source / QC / positioning / Moran's I detail for a Trekker data
