@@ -565,6 +565,21 @@ builder_freeze_plan <- function(
         marker_genes = "minutes",
         enriched_pathways = "network-dependent"
       )
+      page_expectations <- states[[index]]$page_expectations
+      if (length(settings$tables %||% list())) {
+        catalog <- builder_viewer_page_catalog()$conditional$id
+        visible_pages <- unique(c(
+          page_expectations$visible_conditional %||% character(),
+          "extra_material"
+        ))
+        page_expectations$visible_conditional <- catalog[
+          catalog %in% visible_pages
+        ]
+        page_expectations$hidden_conditional <- setdiff(
+          catalog,
+          page_expectations$visible_conditional
+        )
+      }
       item <- list(
         id = entry$id,
         name = labels[index],
@@ -649,7 +664,7 @@ builder_freeze_plan <- function(
         source_snapshot_identity = source_snapshot_identity,
         readiness = states[[index]]$readiness,
         manifest = states[[index]]$manifest,
-        viewer_page_expectations = states[[index]]$page_expectations,
+        viewer_page_expectations = page_expectations,
         acknowledgements = states[[index]]$acknowledgements,
         viewer_bundle_assets = viewer_bundle_asset_sets[[index]],
         private_assets = private_asset_sets[[index]],

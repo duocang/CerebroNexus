@@ -15,6 +15,32 @@ test_that("Build preflight blocks a layer no longer present in the profile", {
   })
 })
 
+test_that("BuildPlan exposes Extra material for attached workbook tables", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("plan.R")
+    entry <- builder_task6_entry()
+    entry$settings$tables <- list(
+      clinical = list(
+        name = "Clinical summary",
+        table = data.frame(patient = "P1", score = 1)
+      )
+    )
+
+    plan <- builder_freeze_plan(
+      list(entry),
+      withr::local_tempdir(),
+      make_app = FALSE
+    )
+
+    expect_null(plan$error)
+    expect_true(
+      "extra_material" %in%
+        plan$items[[1L]]$viewer_page_expectations$visible_conditional
+    )
+  })
+})
+
 test_that("BuildPlan freezes only a safe login summary", {
   local({
     builder_repo_source("preview.R")
