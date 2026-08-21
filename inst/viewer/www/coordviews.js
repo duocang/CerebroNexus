@@ -568,13 +568,17 @@ var focusPanel = null;
   function rebuildDissolve() {
     dissolveThresh = null;
     if (!D || !D.trekker || !D.trekker.conf || dissolvePct <= 0) return;
-    var vals = [];
-    for (var i = 0; i < D.n; i++) {
-      var c = D.trekker.conf[i];
-      if (c != null && !isNaN(c)) vals.push(c);
+    var vals = D.trekker._sortedConf;
+    if (!vals) {
+      vals = [];
+      for (var i = 0; i < D.n; i++) {
+        var c = D.trekker.conf[i];
+        if (c != null && !isNaN(c)) vals.push(c);
+      }
+      vals.sort(function (a, b) { return a - b; });
+      D.trekker._sortedConf = vals;
     }
     if (!vals.length) return;
-    vals.sort(function (a, b) { return a - b; });
     var k = Math.floor(vals.length * dissolvePct / 100);
     dissolveThresh = vals[Math.min(k, vals.length - 1)];
   }
@@ -1137,7 +1141,15 @@ var focusPanel = null;
     c.beginPath(); c.arc(p.sx[i], p.sy[i], radiusOf(p, i), 0, 6.2832); c.fill();
   }
 
-  function draw(p) {
+  function shownState() {
+    var mask = new Uint8Array(D.n), count = 0;
+    for (var i = 0; i < D.n; i++) {
+      if (shown(i)) { mask[i] = 1; count++; }
+    }
+    return { mask: mask, count: count };
+  }
+
+  function draw(p, shownMask) {
     var c = p.ctx; c.clearRect(0, 0, p.W, p.H);
     if (!p.sx) return;
     p._renderPointSize = pointSizeOf(p);
@@ -1157,8 +1169,7 @@ var focusPanel = null;
     // 2n times below (two layers) plus once in the evidence pass; precompute it
     // once. Uint8 mask, indexed instead of recomputed — halves the per-cell work
     // on the hot lasso-drag redraw path.
-    var shownMask = new Uint8Array(n);
-    for (i = 0; i < n; i++) shownMask[i] = shown(i) ? 1 : 0;
+    if (!shownMask || shownMask.length !== n) shownMask = shownState().mask;
     // Within one layer the alpha is CONSTANT (it depends only on fg/hiSet, which
     // is what defines the layer), so a layer can be drawn as one path per colour
     // instead of one path per cell. On a large data set that turns ~n canvas
@@ -1279,17 +1290,19 @@ var focusPanel = null;
   }
   // Live "showing N / M cells" readout — the single feedback that a filter or
   // subsample took effect, regardless of what the panels are coloured by.
-  function renderShownCount() {
+  function renderShownCount(n) {
     var el = $('cv-shown'); if (!el || !D) return;
-    var n = 0;
-    for (var i = 0; i < D.n; i++) if (shown(i)) n++;
     // Hidden entirely when nothing is filtered out; only surfaces to explain a
     // reduced view (group filter, subsample, or legend-hide).
     if (n >= D.n) { el.style.display = 'none'; return; }
     el.style.display = '';
     el.textContent = 'showing ' + fmt(n) + ' of ' + fmt(D.n) + ' cells';
   }
-  function drawAll() { panels.forEach(draw); renderShownCount(); }
+  function drawAll() {
+    var state = shownState();
+    panels.forEach(function (p) { draw(p, state.mask); });
+    renderShownCount(state.count);
+  }
   // Drop any committed lasso outlines when an interaction deliberately changes
   // what the region means (for example a new selection or selection zoom).
   // Returns true if anything was cleared.

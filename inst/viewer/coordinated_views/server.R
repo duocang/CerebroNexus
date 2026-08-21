@@ -35,6 +35,7 @@ source(
 ## unnoticed in the first place.
 coordviews_build_log <- new.env(parent = emptyenv())
 coordviews_build_log$n <- 0L
+coordviews_build_log$sent_n <- 0L
 
 coordviews_bundle <- reactive({
   req(!is.null(data_set()))
@@ -112,7 +113,12 @@ observeEvent(input[["coordviews_visible"]], {
 observe(
   {
     req(coordviews_visible())
-    session$sendCustomMessage("coordviews_data", coordviews_bundle())
+    bundle <- coordviews_bundle()
+    if (identical(coordviews_build_log$sent_n, coordviews_build_log$n)) {
+      return()
+    }
+    session$sendCustomMessage("coordviews_data", bundle)
+    coordviews_build_log$sent_n <- coordviews_build_log$n
   },
   priority = 1
 )

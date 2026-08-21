@@ -1175,30 +1175,26 @@ cv_build_clone <- function(crb, cells, n) {
   ## still the useful handle, so it stays, but the count of the rest travels with
   ## it and the column no longer claims to be a CDR3.
   ctaa <- cp$ctaa
-  clone_cdr3 <- vapply(
-    clone_keys,
-    function(k) {
-      aa <- ctaa[which(ct == k)]
+  clone_aa <- split(
+    ctaa[!is.na(ct)],
+    factor(ct[!is.na(ct)], levels = clone_keys)
+  )
+  clone_summary <- Map(
+    function(aa, k) {
       aa <- aa[!is.na(aa) & nzchar(aa)]
       if (!length(aa)) {
-        return(NA_integer_)
+        return(list(n_cdr3 = NA_integer_, label = k))
       }
-      length(unique(aa))
+      list(
+        n_cdr3 = length(unique(aa)),
+        label = names(sort(table(aa), decreasing = TRUE))[1]
+      )
     },
-    integer(1)
+    clone_aa,
+    clone_keys
   )
-  clone_label <- vapply(
-    clone_keys,
-    function(k) {
-      aa <- ctaa[which(ct == k)]
-      aa <- aa[!is.na(aa) & nzchar(aa)]
-      if (!length(aa)) {
-        return(k)
-      }
-      names(sort(table(aa), decreasing = TRUE))[1]
-    },
-    character(1)
-  )
+  clone_cdr3 <- vapply(clone_summary, `[[`, integer(1), "n_cdr3")
+  clone_label <- vapply(clone_summary, `[[`, character(1), "label")
   K <- length(clone_keys)
   cx <- rep(NA_real_, n)
   cy <- rep(NA_real_, n)
