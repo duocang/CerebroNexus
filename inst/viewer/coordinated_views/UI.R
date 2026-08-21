@@ -82,7 +82,7 @@ cv_panebar <- function(panel) {
 cv_pane <- function(key) {
   low <- tolower(key)
   div(
-    class = "cv-pane",
+    class = "cv-pane cv-hidden",
     div(
       class = "cv-pane-head",
       tags$span(class = "cv-ptitle", id = paste0("cv-title-", low), "—"),
