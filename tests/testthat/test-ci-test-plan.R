@@ -50,3 +50,14 @@ test_that("weighted sharding remains deterministic and lossless", {
   )
   expect_setequal(unlist(assigned, use.names = FALSE), files)
 })
+
+test_that("the base CI workflow skips an empty process-sensitive group", {
+  workflow <- readLines(
+    test_path("..", "..", ".github", "workflows", "R-tests.yaml"),
+    warn = FALSE
+  )
+  text <- paste(workflow, collapse = "\n")
+
+  expect_false(any(grepl("^  process_sensitive:$", workflow)))
+  expect_match(text, "needs: [logic, browser]", fixed = TRUE)
+})
