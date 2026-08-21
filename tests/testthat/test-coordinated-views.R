@@ -173,6 +173,7 @@ test_that("Linked views chooses its grid from both viewport dimensions", {
   expect_match(js, "widthSide", fixed = TRUE)
   expect_match(js, "heightSide", fixed = TRUE)
   expect_match(js, "VIEWPORT_GUTTER", fixed = TRUE)
+  expect_match(js, "var VIEWPORT_GUTTER = 7", fixed = TRUE)
   expect_match(ui, 'class = "cv-secondary-analysis"', fixed = TRUE)
   expect_match(
     ui,
