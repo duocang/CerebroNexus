@@ -24,6 +24,12 @@ builder_viewer_content_source_runtime()
 builder_viewer_content_plan_entry <- function() {
   list(
     id = "dataset-a",
+    dataset_profile = list(
+      identity = list(
+        cells = list(canonical_ids = c("cell-a", "cell-b")),
+        features = list(canonical_ids = c("Gene1", "Gene2"))
+      )
+    ),
     profile = list(
       nUMI = "nCount_RNA",
       nGene = "nFeature_RNA",
