@@ -137,9 +137,27 @@ generated_app_e2e_value <- function(
 
 generated_app_e2e_wait_input <- function(id, timeout = 60000) {
   id_js <- .generated_app_e2e_js_value(id)
-  generated_app_e2e_driver()$wait_for_js(
-    sprintf("document.getElementById(%s) !== null", id_js),
-    timeout = timeout
+  driver <- generated_app_e2e_driver()
+  tryCatch(
+    driver$wait_for_js(
+      sprintf("document.getElementById(%s) !== null", id_js),
+      timeout = timeout
+    ),
+    error = function(error) {
+      details <- driver$get_js(paste0(
+        "Array.from(document.querySelectorAll('.shiny-output-error'))",
+        ".map(function(node){return node.textContent.trim();})"
+      ))
+      stop(
+        conditionMessage(error),
+        if (length(details)) {
+          paste0("\nShiny errors: ", paste(details, collapse = " | "))
+        } else {
+          ""
+        },
+        call. = FALSE
+      )
+    }
   )
   invisible(id)
 }
@@ -334,14 +352,32 @@ generated_app_e2e_selector_options <- function(timeout = 60000) {
 
 generated_app_e2e_wait_plotly <- function(id, timeout = 60000) {
   id_js <- .generated_app_e2e_js_value(id)
-  generated_app_e2e_driver()$wait_for_js(
-    paste0(
-      "(function(){var plot=document.getElementById(",
-      id_js,
-      ");return !!(plot && plot.data && plot.data.some(function(trace){",
-      "return trace.x && trace.x.length>0;}));})()"
+  driver <- generated_app_e2e_driver()
+  tryCatch(
+    driver$wait_for_js(
+      paste0(
+        "(function(){var plot=document.getElementById(",
+        id_js,
+        ");return !!(plot && plot.data && plot.data.some(function(trace){",
+        "return trace.x && trace.x.length>0;}));})()"
+      ),
+      timeout = timeout
     ),
-    timeout = timeout
+    error = function(error) {
+      details <- driver$get_js(paste0(
+        "Array.from(document.querySelectorAll('.shiny-output-error'))",
+        ".map(function(node){return node.textContent.trim();})"
+      ))
+      stop(
+        conditionMessage(error),
+        if (length(details)) {
+          paste0("\nShiny errors: ", paste(details, collapse = " | "))
+        } else {
+          ""
+        },
+        call. = FALSE
+      )
+    }
   )
   invisible(id)
 }

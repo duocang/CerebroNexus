@@ -376,9 +376,6 @@ test_that("Build result survives unsafe folder selection and clears on acceptanc
   app_env <- new.env(parent = globalenv())
   withr::local_dir(builder_profile_inst_path("builder"))
   sys.source("app.R", envir = app_env)
-  app_env$builder_start_build_output_preflight_process <- function(...) {
-    builder_stage_finished_output_preflight()
-  }
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this folder lifecycle test.")
   }
@@ -390,6 +387,11 @@ test_that("Build result survives unsafe folder selection and clears on acceptanc
 
   shiny::testServer(app_env$server, {
     real_session <- session
+    assign(
+      "builder_start_build_output_preflight_process",
+      function(...) builder_stage_finished_output_preflight(),
+      envir = environment(start_builder_build_output_preflight)
+    )
     entry <- list(
       id = "dataset-a",
       revision = 0L,
@@ -1422,9 +1424,6 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(builder_profile_inst_path("builder"))
   sys.source("app.R", envir = app_env)
-  app_env$builder_start_build_output_preflight_process <- function(...) {
-    builder_stage_finished_output_preflight()
-  }
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this state-only test.")
   }
@@ -1469,6 +1468,11 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
 
   shiny::testServer(app_env$server, {
     real_session <- session
+    assign(
+      "builder_start_build_output_preflight_process",
+      function(...) builder_stage_finished_output_preflight(),
+      envir = environment(start_builder_build_output_preflight)
+    )
     dialog_messages <- list()
     notifications <- character()
     fn_env <- environment(builder_require_confirmed_build_plan)
@@ -1999,9 +2003,6 @@ test_that("Build recovery actions preserve confirmation only when safe", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(builder_profile_inst_path("builder"))
   sys.source("app.R", envir = app_env)
-  app_env$builder_start_build_output_preflight_process <- function(...) {
-    builder_stage_finished_output_preflight()
-  }
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this recovery test.")
   }
@@ -2038,6 +2039,11 @@ test_that("Build recovery actions preserve confirmation only when safe", {
 
   shiny::testServer(app_env$server, {
     real_session <- session
+    assign(
+      "builder_start_build_output_preflight_process",
+      function(...) builder_stage_finished_output_preflight(),
+      envir = environment(start_builder_build_output_preflight)
+    )
     recovery_output <- tempfile("builder-recovery-output-")
     notifications <- character()
     enqueued <- list()

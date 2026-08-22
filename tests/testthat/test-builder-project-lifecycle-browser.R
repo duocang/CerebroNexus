@@ -155,11 +155,18 @@ builder_project_lifecycle_prepare_crb <- function(
   app$click(selector = "#builder-operation-overlay-actions .btn-primary")
   app$wait_for_js(
     paste0(
-      "document.getElementById('builder-operation-overlay-title') !== null && ",
-      "document.getElementById('builder-operation-overlay-title')",
-      ".textContent.trim() === 'Project and CRBs saved'"
+      "(function(){var title=document.getElementById(",
+      "'builder-operation-overlay-title');return !!(title && (",
+      "title.textContent.trim() === 'Project and CRBs saved' || ",
+      "title.textContent.trim() === 'CRB preparation failed'));})()"
     ),
     timeout = timeout
+  )
+  expect_identical(
+    app$get_js(
+      "document.getElementById('builder-operation-overlay-title').textContent.trim()"
+    ),
+    "Project and CRBs saved"
   )
   builder_project_lifecycle_wait_for_manifest(
     app,

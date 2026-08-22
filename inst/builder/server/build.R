@@ -655,6 +655,22 @@ start_builder_build_output_preflight <- function(path) {
     )
     return(invisible(FALSE))
   }
+  entries <- tryCatch(
+    list.files(request$path, all.files = TRUE, no.. = TRUE),
+    error = function(error) NULL
+  )
+  if (!is.null(entries) && !length(entries)) {
+    build_output_preflight_request(request)
+    return(builder_finish_build_output_preflight(list(
+      ok = TRUE,
+      error = NULL,
+      foreign = character(),
+      prior_state = list(
+        schema_version = 1L,
+        identity = list(schema_version = 1L, exists = TRUE, entries = list())
+      )
+    )))
+  }
   if (!requireNamespace("callr", quietly = TRUE)) {
     build_flow(list(stage = "idle", plan = NULL))
     showNotification(
