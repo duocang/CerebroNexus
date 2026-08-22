@@ -25,11 +25,42 @@ builder_content_spatial_example_object <- local({
 
   function(section_names = "fov") {
     if (is.null(cached)) {
-      cached <<- readRDS(builder_content_spatial_inst_path(
-        "builder",
-        "fixtures",
-        "all_content.rds"
-      ))
+      set.seed(1)
+      n_cells <- 60L
+      counts <- matrix(
+        stats::rpois(40L * n_cells, lambda = 3),
+        nrow = 40L,
+        dimnames = list(
+          paste0("Gene", seq_len(40L)),
+          paste0("Cell", seq_len(n_cells))
+        )
+      )
+      object <- SeuratObject::CreateSeuratObject(counts = counts)
+      object$sample <- rep(c("S1", "S2"), length.out = n_cells)
+      object$seurat_clusters <- factor(rep(c("C1", "C2"), length.out = n_cells))
+      object[["umap"]] <- SeuratObject::CreateDimReducObject(
+        embeddings = matrix(
+          stats::rnorm(n_cells * 2L),
+          ncol = 2L,
+          dimnames = list(colnames(object), c("UMAP_1", "UMAP_2"))
+        ),
+        key = "UMAP_",
+        assay = "RNA"
+      )
+      coordinates <- data.frame(
+        x = stats::runif(n_cells, 2, 99),
+        y = stats::runif(n_cells, 2, 99),
+        cell = colnames(object),
+        stringsAsFactors = FALSE
+      )
+      object[["fov"]] <- SeuratObject::CreateFOV(
+        coords = list(
+          centroids = SeuratObject::CreateCentroids(coordinates)
+        ),
+        type = "centroids",
+        assay = "RNA"
+      )
+      cached <<- object
     }
 
     object <- unserialize(serialize(cached, NULL))

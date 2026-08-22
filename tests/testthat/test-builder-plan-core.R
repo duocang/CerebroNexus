@@ -359,8 +359,15 @@ test_that("build plans use collision-proof filenames and resolved colours", {
       )
     )
     identity <- builder_task6_entry()$dataset_profile$identity
+    contract <- builder_task6_entry()$dataset_profile
     entries <- lapply(entries, function(entry) {
-      entry$dataset_profile <- list(identity = identity)
+      entry$dataset_profile <- list(
+        schema_version = 2L,
+        identity = identity,
+        source = contract$source,
+        manifest = contract$manifest,
+        content = contract$content
+      )
       entry
     })
 

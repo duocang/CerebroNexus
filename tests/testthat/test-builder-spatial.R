@@ -2533,7 +2533,8 @@ test_that("quarter-turn rotations preserve every RGBA pixel exactly", {
     dimensions <- builder_rotation_plan(
       width = dim(image)[2L],
       height = dim(image)[1L],
-      degrees = angle
+      degrees = angle,
+      max_edge = max(dim(image)[1:2])
     )$output_dimensions
     .builder_rotate_rgba(image, angle, dimensions)
   }

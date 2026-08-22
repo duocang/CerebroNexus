@@ -2,6 +2,24 @@ builder_stage_contract_source_runtime(environment())
 builder_profile_source_runtime(environment())
 builder_plan_contract_source_runtime(environment())
 
+builder_stage_finished_output_preflight <- function() {
+  list(
+    is_alive = function() FALSE,
+    get_result = function() {
+      list(
+        ok = TRUE,
+        error = NULL,
+        foreign = character(),
+        prior_state = list(
+          schema_version = 1L,
+          identity = list(schema_version = 1L, exists = FALSE, entries = list())
+        )
+      )
+    },
+    kill = function() invisible(TRUE)
+  )
+}
+
 test_that("automatic dataset review advance requests top-of-workbench focus", {
   review <- paste(
     readLines(
@@ -358,6 +376,9 @@ test_that("Build result survives unsafe folder selection and clears on acceptanc
   app_env <- new.env(parent = globalenv())
   withr::local_dir(builder_profile_inst_path("builder"))
   sys.source("app.R", envir = app_env)
+  app_env$builder_start_build_output_preflight_process <- function(...) {
+    builder_stage_finished_output_preflight()
+  }
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this folder lifecycle test.")
   }
@@ -1401,6 +1422,9 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(builder_profile_inst_path("builder"))
   sys.source("app.R", envir = app_env)
+  app_env$builder_start_build_output_preflight_process <- function(...) {
+    builder_stage_finished_output_preflight()
+  }
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this state-only test.")
   }
@@ -1975,6 +1999,9 @@ test_that("Build recovery actions preserve confirmation only when safe", {
   app_env <- new.env(parent = globalenv())
   withr::local_dir(builder_profile_inst_path("builder"))
   sys.source("app.R", envir = app_env)
+  app_env$builder_start_build_output_preflight_process <- function(...) {
+    builder_stage_finished_output_preflight()
+  }
   app_env$builder_session_start <- function(...) {
     list(error = "Worker startup is disabled in this recovery test.")
   }

@@ -606,6 +606,7 @@ test_that("managed example sources retain their example identity when restored",
   dir.create(dirname(source), recursive = TRUE)
   writeBin(charToRaw("example"), source)
   entry <- list(id = "ds1", settings = list(name = "All content"))
+  configuration <- runtime$builder_project_write_dataset_config(entry, root)
   record <- list(
     id = "ds1",
     source = list(
@@ -614,7 +615,7 @@ test_that("managed example sources retain their example identity when restored",
       example = "all_content",
       path = "sources/ds1/all_content.rds"
     ),
-    configuration = list(payload = jsonlite::serializeJSON(entry))
+    configuration = configuration
   )
 
   restored <- runtime$builder_project_restore_entry(record, root)
@@ -1004,7 +1005,7 @@ test_that("spatial asset status validates descriptors without hydrating image pa
   )
   record <- list(
     id = "ds1",
-    configuration = list(payload = jsonlite::serializeJSON(entry))
+    configuration = runtime$builder_project_write_dataset_config(entry, root)
   )
   runtime$builder_project_restore_spatial_assets <- function(...) {
     stop("status must not hydrate")

@@ -93,6 +93,10 @@ builder_viewer_content_plan_entry <- function() {
 
   metadata <- c("sample", "batch", "Phase", "nCount_RNA", "nFeature_RNA")
   entry$dataset_profile$schema_version <- 2L
+  contract <- builder_task6_entry()$dataset_profile
+  entry$dataset_profile$source <- contract$source
+  entry$dataset_profile$manifest <- contract$manifest
+  entry$dataset_profile$content <- contract$content
   entry$dataset_profile$identity$cells$count <- 2L
   entry$dataset_profile$metadata <- list(
     columns = setNames(
