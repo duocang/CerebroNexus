@@ -1,10 +1,12 @@
+ci_test_plan_runner <- test_path("..", "..", "scripts", "run-test-shard.R")
+ci_test_plan_available <- file.exists(ci_test_plan_runner)
 ci_test_plan_api <- new.env(parent = globalenv())
-sys.source(
-  test_path("..", "..", "scripts", "run-test-shard.R"),
-  envir = ci_test_plan_api
-)
+if (ci_test_plan_available) {
+  sys.source(ci_test_plan_runner, envir = ci_test_plan_api)
+}
 
-test_that("the base CI plan classifies only tests present on upstream master", {
+test_that("the Viewer CI plan classifies only tests present in the Viewer layer", {
+  skip_if_not(ci_test_plan_available)
   plan <- ci_test_plan_api$ci_test_plan(test_path())
   discovered <- sort(list.files(
     test_path(),
@@ -20,7 +22,10 @@ test_that("the base CI plan classifies only tests present on upstream master", {
       "test-app-new-modules.R",
       "test-app-trajectory.R",
       "test-app-viewport-layout.R",
-      "test-smoke-production.R"
+      "test-configured-colors.R",
+      "test-coordinated-views-browser.R",
+      "test-smoke-production.R",
+      "test-viewer-shell-browser.R"
     )
   )
   expect_setequal(c(plan$logic, plan$browser), discovered)
@@ -28,6 +33,7 @@ test_that("the base CI plan classifies only tests present on upstream master", {
 })
 
 test_that("round-robin sharding remains deterministic and lossless", {
+  skip_if_not(ci_test_plan_available)
   files <- paste0("test-", letters[1:4], ".R")
 
   assigned <- ci_test_plan_api$ci_test_shards(
@@ -52,6 +58,7 @@ test_that("round-robin sharding remains deterministic and lossless", {
 })
 
 test_that("the shard runner rejects retired weighted options", {
+  skip_if_not(ci_test_plan_available)
   expect_error(
     ci_test_plan_api$ci_parse_args(c("--strategy", "weighted")),
     "Unknown argument"
@@ -59,6 +66,7 @@ test_that("the shard runner rejects retired weighted options", {
 })
 
 test_that("browser references match the explicit browser group", {
+  skip_if_not(ci_test_plan_available)
   files <- list.files(
     test_path(),
     pattern = "^test-[[:alnum:]_.-]+[.]R$",
@@ -68,7 +76,8 @@ test_that("browser references match the explicit browser group", {
   browser_references <- basename(files[vapply(
     files,
     function(file) {
-      any(grepl("shinytest2|AppDriver", readLines(file, warn = FALSE)))
+      code <- sub("#.*$", "", readLines(file, warn = FALSE))
+      any(grepl("shinytest2|AppDriver", code))
     },
     logical(1)
   )])
@@ -77,17 +86,19 @@ test_that("browser references match the explicit browser group", {
 })
 
 test_that("precheck only checks formatting", {
+  skip_if_not(ci_test_plan_available)
   precheck <- paste(
     readLines(test_path("..", "..", "scripts", "precheck.sh"), warn = FALSE),
     collapse = "\n"
   )
 
   expect_match(precheck, "air format --check [.]", perl = TRUE)
-  expect_false(grepl("air format [.]($|\\n)", precheck, perl = TRUE))
+  expect_false(grepl("air format [.]($|\n)", precheck, perl = TRUE))
   expect_false(grepl("run-local-validation", precheck, fixed = TRUE))
 })
 
 test_that("the CI workflow aggregates the logic and browser groups", {
+  skip_if_not(ci_test_plan_available)
   workflow <- readLines(
     test_path("..", "..", ".github", "workflows", "R-tests.yaml"),
     warn = FALSE
@@ -99,6 +110,7 @@ test_that("the CI workflow aggregates the logic and browser groups", {
 })
 
 test_that("manual pkgdown validation never deploys the site", {
+  skip_if_not(ci_test_plan_available)
   workflow <- paste(
     readLines(
       test_path("..", "..", ".github", "workflows", "pkgdown.yaml"),

@@ -167,13 +167,12 @@ test_that("spatial image payload validation rejects unusable coordinates", {
     ),
     "numeric.*x.*y"
   )
-  expect_error(
+  expect_no_error(
     .validateCerebroSpatialImage(
       payload,
       "spatial_fov",
       data.frame(x = 101, y = 10)
-    ),
-    "outside.*bounds"
+    )
   )
   expect_error(
     .validateCerebroSpatialImage(

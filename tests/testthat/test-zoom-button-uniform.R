@@ -2,8 +2,7 @@
 ## button alongside "Clear selection": a hidden actionButton keyed
 ## <plot_id>_zoom_to_selection, a shinyjs bridge to the shared zoomToSelection(),
 ## that bridge registered in extendShinyjs(functions=), and an observer that
-## shows/hides it with the selection. Spatial is included here (it already had
-## Clear), so all four projection tabs stay in lock-step.
+## shows/hides it with the selection.
 
 repo_file <- function(...) {
   parts <- c(...)
@@ -36,10 +35,6 @@ read_all <- function(dir) {
 }
 
 tabs <- list(
-  overview = list(
-    plot_id = "overview_projection",
-    bridge = "overviewZoomToSelection"
-  ),
   gene_expression = list(
     plot_id = "expression_projection",
     bridge = "expressionZoomToSelection"
@@ -47,10 +42,6 @@ tabs <- list(
   trajectory = list(
     plot_id = "trajectory_projection",
     bridge = "trajectoryZoomToSelection"
-  ),
-  spatial = list(
-    plot_id = "spatial_projection",
-    bridge = "spatialZoomToSelection"
   )
 )
 
@@ -67,7 +58,6 @@ for (tab in names(tabs)) {
         paste0('inputId = "', plot_id, '_zoom_to_selection"'),
         fixed = TRUE
       )
-      expect_match(src, '"Zoom to selection"', fixed = TRUE)
       expect_match(
         src,
         paste0(
@@ -77,6 +67,7 @@ for (tab in names(tabs)) {
         ),
         perl = TRUE
       )
+      expect_match(src, '"Zoom to selection"', fixed = TRUE)
     })
 
     test_that(paste0(dir, ": bridges to the shared zoomToSelection()"), {
@@ -85,7 +76,11 @@ for (tab in names(tabs)) {
         paste0("shinyjs.", bridge, " = function"),
         fixed = TRUE
       )
-      expect_match(src, "cerebroProjection.zoomToSelection(", fixed = TRUE)
+      expect_match(
+        src,
+        "cerebroCanvasProjection.toggleZoom(",
+        fixed = TRUE
+      )
       expect_match(src, paste0('"', bridge, '"'), fixed = TRUE)
     })
 

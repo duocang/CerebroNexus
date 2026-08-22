@@ -3,9 +3,6 @@
 library(shinytest2)
 
 inst_dir <- system.file(package = "CerebroNexus")
-if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
-  inst_dir <- testthat::test_path("../../inst")
-}
 
 ## Booting the app dominates these recordings: every test below only reads from
 ## the DOM of the same freshly-loaded example.crb, so a driver per test spent

@@ -59,6 +59,18 @@ activate_ir_tab <- function(app, timeout = 60000) {
   )
 }
 
+wait_for_clonal_canvas <- function(app, timeout = 20000) {
+  selector <- "#ir_clonalUMAP_projection canvas.cerebro-projection-canvas"
+  app$wait_for_js(
+    sprintf("document.querySelector('%s') !== null", selector),
+    timeout = timeout
+  )
+  isTRUE(app$get_js(sprintf(
+    "document.querySelector('%s') !== null;",
+    selector
+  )))
+}
+
 ## The tests in this file each booted their own app, and booting dominates their
 ## runtime. The ones that only navigate the plot tabset and read the DOM now
 ## share a single driver, created on first use and stopped when the file ends.
@@ -368,17 +380,7 @@ test_that("Clonal UMAP tab renders with receptor + projection selectors", {
   expect_gte(as.numeric(n_options("ir_p_umap_receptor")), 1)
   expect_gte(as.numeric(n_options("ir_p_umap_projection")), 1)
 
-  # The interactive plotly UMAP should render a plotly canvas (not an R error).
-  # Non-faceted Clonal UMAP now renders through the shared projection engine, so
-  # the plotly host is #ir_clonalUMAP_projection (not the old #ir_plot_clonalUMAP).
-  app$wait_for_js(
-    "document.querySelector('#ir_clonalUMAP_projection .plotly') !== null",
-    timeout = 20000
-  )
-  has_plotly <- app$get_js(
-    "document.querySelector('#ir_clonalUMAP_projection .plotly') !== null;"
-  )
-  expect_true(isTRUE(has_plotly))
+  expect_true(wait_for_clonal_canvas(app))
 })
 
 test_that("Display options panel exposes scatter params on scatter-type tabs", {
@@ -443,17 +445,6 @@ test_that("Clonal UMAP has Show-all toggle and group filters", {
     "document.querySelector('[id^=\"ir_group_filter_\"]') !== null;"
   )
   expect_true(isTRUE(has_group_filter))
-
-  # The interactive plotly UMAP should render a plotly canvas (not an R error).
-  # Non-faceted host is the shared projection engine's #ir_clonalUMAP_projection.
-  app$wait_for_js(
-    "document.querySelector('#ir_clonalUMAP_projection .plotly') !== null",
-    timeout = 20000
-  )
-  has_plotly <- app$get_js(
-    "document.querySelector('#ir_clonalUMAP_projection .plotly') !== null;"
-  )
-  expect_true(isTRUE(has_plotly))
 })
 
 test_that("Clonal UMAP switches to static facets only when grouped", {
@@ -474,18 +465,16 @@ test_that("Clonal UMAP switches to static facets only when grouped", {
 
   # Ungrouped: the non-faceted host renders through the shared projection engine
   # (#ir_clonalUMAP_projection); grouping swaps in the static faceted ggplot.
-  app$wait_for_js(
-    "document.querySelector('#ir_clonalUMAP_projection .plotly') !== null",
-    timeout = 20000
-  )
+  canvas_selector <-
+    "#ir_clonalUMAP_projection canvas.cerebro-projection-canvas"
   expect_true(isTRUE(exists_el("#ir_p_umap_group_by")))
-  expect_true(isTRUE(exists_el("#ir_clonalUMAP_projection .plotly")))
+  expect_true(wait_for_clonal_canvas(app))
   expect_false(isTRUE(exists_el("#ir_plot_clonalUMAP_static img")))
 
   app$set_inputs(ir_p_umap_group_by = "sample", wait_ = FALSE)
   app$wait_for_idle(timeout = 20000)
 
-  expect_false(isTRUE(exists_el("#ir_clonalUMAP_projection .plotly")))
+  expect_false(isTRUE(exists_el(canvas_selector)))
   expect_true(isTRUE(exists_el("#ir_plot_clonalUMAP_static img")))
   plot_value <- app$get_value(output = "ir_plot_clonalUMAP_static")
   panel_rows <- vapply(
@@ -510,6 +499,12 @@ test_that("Clonal UMAP switches to static facets only when grouped", {
   expect_gte(as.numeric(static_size$h), 300)
   expect_gte(as.numeric(static_size$imgW), as.numeric(static_size$w) * 0.9)
   expect_gte(as.numeric(static_size$imgH), 300)
+
+  # Returning to the interactive view replaces the output host. The latest
+  # payload must redraw into that new host instead of leaving it blank.
+  app$set_inputs(ir_p_umap_group_by = "", wait_ = FALSE)
+  expect_true(wait_for_clonal_canvas(app))
+  expect_false(isTRUE(exists_el("#ir_plot_clonalUMAP_static img")))
 })
 
 test_that("Clone call is hidden on the Clonal UMAP tab", {

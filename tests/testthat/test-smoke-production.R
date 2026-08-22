@@ -339,7 +339,7 @@ test_that("the generated app remains self-contained at runtime", {
   expect_false(grepl("library(CerebroNexus", bundled_source, fixed = TRUE))
 })
 
-test_that("the generated real-data app boots with the Spatial tab", {
+test_that("the generated real-data app boots with Linked views", {
   skip_if_not_installed("shinytest2")
   skip_on_cran()
 
@@ -357,10 +357,14 @@ test_that("the generated real-data app boots with the Spatial tab", {
 
   driver$set_inputs(crb_file_selector = app_info$visium_crb, wait_ = FALSE)
   driver$wait_for_idle(timeout = 30000)
-  spatial_tab <- driver$get_js(
-    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;"
+  linked_tab <- driver$get_js(
+    paste0(
+      "document.querySelector(",
+      "'a[href=\"#shiny-tab-coordinated_views\"]'",
+      ") !== null;"
+    )
   )
-  expect_true(isTRUE(spatial_tab))
+  expect_true(isTRUE(linked_tab))
 })
 
 test_that("the generated multi-crb app boots and switches datasets", {
@@ -437,20 +441,22 @@ test_that("the generated multi-crb app boots and switches datasets", {
   expect_identical(option_values, configured_values)
   expect_identical(anyDuplicated(option_values), 0L)
 
-  ## Load the first dataset and confirm the Spatial tab appears (it is only
-  ## inserted when the active dataset carries spatial data).
+  ## Load the first dataset and confirm the unified workspace stays reachable.
   driver$set_inputs(
     crb_file_selector = configured_values[[1L]],
     wait_ = FALSE
   )
   driver$wait_for_idle(timeout = 30000)
-  spatial_tab_a <- driver$get_js(
-    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;"
+  linked_tab_a <- driver$get_js(
+    paste0(
+      "document.querySelector(",
+      "'a[href=\"#shiny-tab-coordinated_views\"]'",
+      ") !== null;"
+    )
   )
-  expect_true(isTRUE(spatial_tab_a))
+  expect_true(isTRUE(linked_tab_a))
 
-  ## Switch to the second dataset; the Spatial tab must still be present, proving
-  ## multi-crb switching keeps the spatial module wired for each dataset.
+  ## Switch to the second dataset; Linked views remains the shared workspace.
   driver$set_inputs(
     crb_file_selector = configured_values[[2L]],
     wait_ = FALSE
@@ -460,10 +466,14 @@ test_that("the generated multi-crb app boots and switches datasets", {
     driver$get_value(input = "crb_file_selector"),
     configured_values[[2L]]
   )
-  spatial_tab_b <- driver$get_js(
-    "document.querySelector('a[href=\"#shiny-tab-spatial\"]') !== null;"
+  linked_tab_b <- driver$get_js(
+    paste0(
+      "document.querySelector(",
+      "'a[href=\"#shiny-tab-coordinated_views\"]'",
+      ") !== null;"
+    )
   )
-  expect_true(isTRUE(spatial_tab_b))
+  expect_true(isTRUE(linked_tab_b))
 })
 
 ## The static self-contained test above proves the BUNDLE SOURCE never names the

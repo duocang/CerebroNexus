@@ -119,30 +119,6 @@ While iterating on the package, use `devtools::test()` — it picks up edits to 
 
 ## Pitfalls and FAQ
 
-### How `inst_dir` is resolved in `test-app-inst.R`
-
-```r
-inst_dir <- system.file(package = "CerebroNexus")
-if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
-  inst_dir <- testthat::test_path("../../inst")
-}
-```
-
-In practice `system.file(package = "CerebroNexus")` always resolves to something with `app.R` at its root:
-
-- Under `devtools::test()`, `pkgload::load_all()` redirects `system.file()` to `<project>/inst/` (the source tree itself acts as the "installed root").
-- Under `Rscript tests/testthat.R` or `testthat::test_dir()`, `library(CerebroNexus)` has already loaded the installed package, so `system.file()` returns its install location.
-
-The fallback to `testthat::test_path("../../inst")` is effectively dead code — none of the supported entry points reach it. (`library(CerebroNexus)` aborts before the test file is sourced when the package is not installed; under `devtools::test()` the first branch already succeeds.)
-
-If you edit `inst/` and want the change reflected:
-
-- Under `devtools::test()` — nothing to do, it reads `inst/` directly.
-- Under `testthat::test_dir()` / `R CMD check` — reinstall:
-  ```r
-  devtools::install(".", quick = TRUE, upgrade = "never")
-  ```
-
 ### Stale `inst/extdata/examples/example.crb` after R6 class changes
 
 `example.crb` is a serialized `Cerebro` R6 object. R6 method tables are baked into the object at serialization time. If a method is added or renamed on the class definition under `R/`, an older `example.crb` will not have that method, and calling it from the Shiny app yields:

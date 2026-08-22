@@ -76,14 +76,15 @@ test_that("trajectory projection fits the viewport with selectors in parameters"
   app$wait_for_idle(timeout = 20000)
 
   # The method/name selectors and the projection render through nested
-  # renderUI + Plotly, which take several server round-trips; on a slow (CI)
+  # renderUI + Canvas, which take several server round-trips; on a slow (CI)
   # machine one wait_for_idle can return before they exist. Wait for the actual
   # nodes so the assertions below never read a half-rendered tab.
   app$wait_for_js(
     paste0(
       "document.getElementById('trajectory_selected_method') != null && ",
       "document.getElementById('trajectory_selected_name') != null && ",
-      "document.querySelector('#trajectory_projection .main-svg') != null && ",
+      "document.querySelector(",
+      "'#trajectory_projection canvas.cerebro-projection-canvas') != null && ",
       "document.getElementById('trajectory_number_of_selected_cells') != null"
     ),
     timeout = 30000
@@ -113,17 +114,12 @@ test_that("trajectory projection fits the viewport with selectors in parameters"
     "const box = plot.closest('.box');",
     "const footer = document.getElementById(",
     "'trajectory_number_of_selected_cells');",
-    "const svg = plot.querySelector('.main-svg');",
-    "const ticks = Array.from(plot.querySelectorAll(",
-    "'.xaxislayer-above .xtick text, .yaxislayer-above .ytick text'));",
-    "const tickBottom = Math.max(...ticks.map(",
-    "tick => tick.getBoundingClientRect().bottom));",
+    "const canvas = plot.querySelector('canvas.cerebro-projection-canvas');",
     "return {",
     "viewport: window.innerHeight,",
     "plotHeight: plot.getBoundingClientRect().height,",
     "plotBottom: plot.getBoundingClientRect().bottom,",
-    "svgBottom: svg.getBoundingClientRect().bottom,",
-    "tickBottom: tickBottom,",
+    "canvasBottom: canvas.getBoundingClientRect().bottom,",
     "footerTop: footer.getBoundingClientRect().top,",
     "boxBottom: box.getBoundingClientRect().bottom,",
     "footerBottom: footer.getBoundingClientRect().bottom",
@@ -132,9 +128,8 @@ test_that("trajectory projection fits the viewport with selectors in parameters"
   ))
 
   expect_gte(geometry$plotHeight, 240)
-  expect_lte(geometry$svgBottom, geometry$plotBottom + 1)
-  expect_lte(geometry$tickBottom, geometry$plotBottom + 1)
-  expect_lt(geometry$tickBottom, geometry$footerTop)
+  expect_lte(geometry$canvasBottom, geometry$plotBottom + 1)
+  expect_lt(geometry$canvasBottom, geometry$footerTop)
   expect_lte(geometry$footerBottom, geometry$viewport)
   expect_lte(geometry$boxBottom, geometry$viewport)
 })

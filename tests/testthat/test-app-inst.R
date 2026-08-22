@@ -1,10 +1,6 @@
 library(shinytest2)
 
-## Locate inst/ whether running via devtools::test() or R CMD check
 inst_dir <- system.file(package = "CerebroNexus")
-if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
-  inst_dir <- testthat::test_path("../../inst")
-}
 
 ## shinytest2's wait_for_idle() tracks server reactivity, NOT the async
 ## client-side projection renderer (www/projection_scatter.js). After it returns,
@@ -86,11 +82,9 @@ wait_for_input <- function(app, id, timeout = 20000) {
   )
 }
 
-## Activate a sidebar tab that is inserted CONDITIONALLY and ASYNCHRONOUSLY
-## (insertConditionalTab in shiny_server.R): Projection ("overview"), Gene
-## expression, Marker genes, etc. are no longer static menuItems, so navigating
-## with set_inputs(sidebar = ...) before the item is inserted silently no-ops and
-## the tab's outputs never render. Wait for the menu link, then click it.
+## Activate a sidebar tab by its real link. Conditional items are inserted
+## asynchronously, while static workspaces such as Linked views are available
+## immediately; the same helper handles both.
 activate_tab <- function(app, tab_name, timeout = 20000) {
   selector <- sprintf("a[href=\"#shiny-tab-%s\"]", tab_name)
   app$wait_for_js(
@@ -118,7 +112,75 @@ test_that("{shinytest2} recording: overview", {
   app$stop()
 })
 
-test_that("Spatial backgrounds reset when the spatial dataset changes", {
+test_that("the native sidebar scrolls and its mobile toggle still works", {
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "native_sidebar_scroll",
+    height = 420,
+    width = 600
+  )
+  withr::defer(app$stop())
+  app$wait_for_idle(timeout = 20000)
+
+  layout <- app$get_js(paste0(
+    "(function () {",
+    "var sidebar = document.querySelector('.main-sidebar');",
+    "var links = Array.from(document.querySelectorAll('.sidebar-menu a'));",
+    "var last = links[links.length - 1];",
+    "var style = getComputedStyle(sidebar);",
+    "return {",
+    "fixedClass: document.body.classList.contains('fixed'),",
+    "position: style.position, overflowY: style.overflowY,",
+    "clientHeight: sidebar.clientHeight, scrollHeight: sidebar.scrollHeight,",
+    "lastText: last ? last.textContent.trim() : '', viewport: innerHeight",
+    "};",
+    "})()"
+  ))
+  expect_false(layout$fixedClass)
+  expect_identical(layout$position, "fixed")
+  expect_match(layout$overflowY, "auto|scroll")
+  expect_lte(layout$clientHeight, layout$viewport)
+  expect_gt(layout$scrollHeight, layout$clientHeight)
+  expect_identical(layout$lastText, "About")
+
+  app$run_js(paste0(
+    "document.querySelector('.main-sidebar').scrollTop = ",
+    "document.querySelector('.main-sidebar').scrollHeight;"
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('.main-sidebar').scrollTop > 0 && ",
+      "Array.from(document.querySelectorAll('.sidebar-menu a')).slice(-1)[0]",
+      ".getBoundingClientRect().bottom <= innerHeight"
+    ),
+    timeout = 5000
+  )
+
+  app$wait_for_js(
+    "getComputedStyle(document.querySelector('.sidebar-toggle')).display !== 'none'",
+    timeout = 5000
+  )
+  app$run_js("document.querySelector('.sidebar-toggle').click();")
+  app$wait_for_js(
+    "document.body.classList.contains('sidebar-open')",
+    timeout = 5000
+  )
+  app$run_js("document.querySelector('.sidebar-toggle').click();")
+  app$wait_for_js(
+    "!document.body.classList.contains('sidebar-open')",
+    timeout = 5000
+  )
+
+  logs <- app$get_logs()
+  expect_false(any(grepl(
+    "fixed layout requires the slimscroll plugin",
+    as.character(logs$message),
+    fixed = TRUE
+  )))
+})
+
+test_that("Linked-view backgrounds and FOVs reset with the dataset", {
   local_app_support(inst_dir)
   app <- AppDriver$new(
     inst_dir,
@@ -134,55 +196,38 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
-  activate_tab(app, "spatial", timeout = 30000)
-  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
+  activate_tab(app, "coordinated_views", timeout = 30000)
   app$wait_for_js(
     paste0(
-      "document.getElementById('spatial_projection_background_image').value === ",
-      "'external::Tissue background'"
+      "(function () {",
+      "var spatial = document.getElementById('cv-pick-spatial');",
+      "var image = document.getElementById('cv-img-pick');",
+      "if (!spatial || !image) return false;",
+      "var fovs = Array.from(spatial.options).map(function (x) { return x.value; });",
+      "var images = Array.from(image.options).map(function (x) { return x.textContent; });",
+      "return fovs.length === 1 && fovs[0] === 'anterior1' && ",
+      "images.length === 2 && images[0] === 'None' && ",
+      "images[1] === 'Tissue background' && image.value !== '__none__';",
+      "})()"
     ),
     timeout = 30000
   )
-  expect_identical(
-    retry_get_value(
-      app,
-      input = "spatial_projection_to_display",
-      timeout = 30000,
-      validate = function(value) identical(value, "anterior1")
-    ),
-    "anterior1"
-  )
+  expect_null(app$get_js(
+    "document.querySelector('a[href=\"#shiny-tab-spatial\"]')"
+  ))
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-ptitle')).some(",
+    "function (x) { return x.textContent.indexOf('anterior1') >= 0; })"
+  )))
   expect_identical(
     unlist(
       app$get_js(paste0(
-        "Object.keys(document.getElementById(",
-        "'spatial_projection_background_image').selectize.options)"
+        "Array.from(document.getElementById('cv-img-pick').options).map(",
+        "function (x) { return x.textContent; })"
       )),
       use.names = FALSE
     ),
-    c("none", "external::Tissue background")
-  )
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('spatial_projection_background') && ",
-      "document.getElementById('spatial_projection_background').dataset.",
-      "backgroundImage.startsWith('data:image/')"
-    ),
-    timeout = 30000
-  )
-  ## Exercise the imageChanged path directly: it clears old interaction state,
-  ## then must seed the renderer-provided rotation in the same sync call.
-  app$run_js(paste0(
-    "shinyjs.syncSpatialBackground(",
-    "'data:image/png;base64,ROTATED', false, false, 1, 1, 1, ",
-    "null, 0, 0, 37);"
-  ))
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('spatial_projection_background').dataset.",
-      "rotate === '37'"
-    ),
-    timeout = 30000
+    c("None", "Tissue background")
   )
 
   app$set_inputs(
@@ -190,82 +235,64 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     wait_ = FALSE
   )
   app$wait_for_idle(timeout = 30000)
-  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
     paste0(
-      "document.getElementById('spatial_projection_background_image').value ",
-      "=== 'none'"
+      "(function () {",
+      "var spatial = document.getElementById('cv-pick-spatial');",
+      "var image = document.getElementById('cv-img-pick');",
+      "if (!spatial || !image) return false;",
+      "var fovs = Array.from(spatial.options).map(function (x) { return x.value; });",
+      "var images = Array.from(image.options).map(function (x) { return x.textContent; });",
+      "return fovs.length === 1 && fovs[0] === 'image' && ",
+      "images.length === 1 && images[0] === 'None' && ",
+      "image.value === '__none__' && image.disabled;",
+      "})()"
     ),
     timeout = 30000
   )
   expect_identical(
-    retry_get_value(
-      app,
-      input = "spatial_projection_to_display",
-      timeout = 30000,
-      validate = function(value) identical(value, "image")
+    unlist(
+      app$get_js(paste0(
+        "Array.from(document.getElementById('cv-pick-spatial').options).map(",
+        "function (x) { return x.value; })"
+      )),
+      use.names = FALSE
     ),
     "image"
   )
   expect_identical(
     unlist(
       app$get_js(paste0(
-        "Object.keys(document.getElementById(",
-        "'spatial_projection_background_image').selectize.options)"
+        "Array.from(document.getElementById('cv-img-pick').options).map(",
+        "function (x) { return x.textContent; })"
       )),
       use.names = FALSE
     ),
-    "none"
+    "None"
   )
-  app$wait_for_js(
-    paste0(
-      "document.getElementById('spatial_projection_background') && ",
-      "document.getElementById('spatial_projection_background').dataset.",
-      "backgroundImage === ''"
-    ),
-    timeout = 30000
-  )
+  expect_false(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-ptitle')).some(",
+    "function (x) { return x.textContent.indexOf('anterior1') >= 0; })"
+  )))
 })
 
 
-test_that("{shinytest2} recording: main", {
+test_that("{shinytest2} recording: Linked views", {
   local_app_support(inst_dir)
   app <- AppDriver$new(inst_dir, name = "main", height = 950, width = 1619)
   app$wait_for_idle(timeout = 20000)
 
-  activate_tab(app, "overview")
-  app$wait_for_idle(timeout = 10000)
-
-  ## verify the projection renders
-  plot_val <- retry_get_value(app, output = "overview_projection")
-  expect_false(is.null(plot_val))
-
-  ## get unfiltered cell count
-  cells_all <- retry_get_value(app, export = "overview_cells_to_show")
-  expect_true(length(cells_all) > 0)
-
-  ## filter to cluster 0 only and verify fewer cells are shown
-  app$set_inputs(overview_projection_group_filter_seurat_clusters = "0")
-  app$wait_for_idle(timeout = 10000)
-  cells_filtered <- retry_get_value(app, export = "overview_cells_to_show")
-  expect_true(length(cells_filtered) < length(cells_all))
-
-  ## verify input parameters are applied
-  app$set_inputs(overview_projection_point_size = 9)
-  app$set_inputs(overview_projection_point_opacity = 0.9)
-  app$set_inputs(overview_projection_percentage_cells_to_show = 100)
-  app$wait_for_idle(timeout = 10000)
-
-  app$expect_values(
-    input = c(
-      "overview_projection_point_size",
-      "overview_projection_point_opacity",
-      "overview_projection_percentage_cells_to_show",
-      "overview_projection_group_filter_seurat_clusters"
+  activate_tab(app, "coordinated_views")
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll(",
+      "'.cv-panes .cv-pane'",
+      ").length > 0"
     ),
-    output = FALSE,
-    export = FALSE
+    timeout = 20000
   )
+  bundles <- retry_get_value(app, export = "coordviews_bundles_built")
+  expect_gt(bundles, 0L)
   app$stop()
 })
 
@@ -320,6 +347,13 @@ test_that("{shinytest2} recording: marker_genes", {
   # runner instead of navigating before it exists.
   activate_tab(app, "markerGenes")
   app$wait_for_idle(timeout = 10000)
+
+  expect_true(app$get_js(paste0(
+    "(function(){var a=document.getElementById('",
+    "marker_genes_selected_method-label');",
+    "var b=document.getElementById('marker_genes_selected_table-label');",
+    "return !!(a && b);})()"
+  )))
 
   ## select seurat_clusters (only group with actual marker genes)
   app$set_inputs(marker_genes_selected_table = "seurat_clusters", wait_ = FALSE)
@@ -396,6 +430,9 @@ test_that("app startup does not eagerly load scRepertoire", {
   ## must FAIL, not silently pass as though it were FALSE.
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_data_builds"), 0L)
+  expect_identical(app$get_value(export = "ir_server_loaded"), FALSE)
+  expect_identical(app$get_value(export = "trajectory_server_loaded"), FALSE)
 
   ## Delayed re-check: wait past the former one-second background-prewarm timer,
   ## so any deferred/prewarm-style loader would have fired by now. Still unloaded
@@ -404,6 +441,9 @@ test_that("app startup does not eagerly load scRepertoire", {
   app$wait_for_idle(timeout = 10000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_data_builds"), 0L)
+  expect_identical(app$get_value(export = "ir_server_loaded"), FALSE)
+  expect_identical(app$get_value(export = "trajectory_server_loaded"), FALSE)
 })
 
 test_that("{shinytest2} recording: gene_expression", {
@@ -427,18 +467,27 @@ test_that("{shinytest2} recording: gene_expression", {
   ## tab goes idle. Wait for its element before set_inputs, or the input binding
   ## is "not found" and no gene is ever selected.
   wait_for_input(app, "expression_genes_input")
+  Sys.sleep(1.1)
+  expect_gt(
+    app$get_js(paste0(
+      "Object.keys(document.getElementById('expression_genes_input')",
+      ".selectize.options).length"
+    )),
+    0
+  )
 
   ## select MS4A1 and verify it is found in the data set
   app$set_inputs(expression_genes_input = "MS4A1", wait_ = FALSE)
   app$wait_for_idle(timeout = 15000)
 
-  genes_text <- retry_get_value(app, output = "expression_genes_displayed")
-  expect_true(grepl("MS4A1", genes_text))
-  expect_true(grepl("0 gene(s) are not in data set", genes_text, fixed = TRUE))
-
-  ## projection plot renders after gene selection
-  proj_val <- retry_get_value(app, output = "expression_projection")
-  expect_false(is.null(proj_val))
+  ## The 2-D projection is client-rendered Canvas, not a Shiny Plotly output.
+  app$wait_for_js(
+    paste0(
+      "document.querySelector(",
+      "'#expression_projection canvas.cerebro-projection-canvas') !== null"
+    ),
+    timeout = 15000
+  )
 
   ## verify expression levels have some non-zero values (cells with color)
   expr_levels <- retry_get_value(app, export = "expression_levels")
@@ -446,6 +495,17 @@ test_that("{shinytest2} recording: gene_expression", {
   expect_true(any(expr_levels > 0))
 
   app$stop()
+})
+
+test_that("gene expression uses the race-safe server-side gene selector", {
+  selector_source <- paste(
+    readLines(file.path(
+      inst_dir,
+      "viewer/gene_expression/UI_projection_input_type.R"
+    )),
+    collapse = "\n"
+  )
+  expect_match(selector_source, "serverSideGeneSelector", fixed = TRUE)
 })
 
 test_that("{shinytest2} recording: gene_id_conversion", {
@@ -482,6 +542,45 @@ test_that("{shinytest2} recording: color_management", {
 
   ui_val <- retry_get_value(app, output = "color_assignments_UI")
   expect_false(is.null(ui_val))
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll(",
+      "'[id^=\"color_assignments_info_group_\"]').length > 0"
+    ),
+    timeout = 20000
+  )
+  info_ids <- app$get_js(paste0(
+    "Array.from(document.querySelectorAll(",
+    "'[id^=\"color_assignments_info_group_\"]')).map(function(button){",
+    "return button.id;})"
+  ))
+  info_ids <- as.character(unlist(info_ids, use.names = FALSE))
+  expect_gt(length(info_ids), 0L)
+  expect_identical(length(unique(info_ids)), length(info_ids))
+  expect_gt(
+    app$get_js(paste0(
+      "document.querySelectorAll('",
+      ".cerebro-color-card .shiny-input-container[data-shiny-input-type=colour]",
+      "').length"
+    )),
+    0L
+  )
+  expect_true(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('",
+    ".cerebro-color-card input.shiny-colour-input",
+    "')).every(function(input){return input.dataset.showColour==='both' && ",
+    "/^#[0-9A-F]{6}$/i.test(input.value);})"
+  )))
+  app$run_js(
+    "document.querySelector('[id^=\"color_assignments_info_group_\"]').click()"
+  )
+  app$wait_for_js(
+    paste0(
+      "(function(){var title=document.querySelector('.modal-title');return !!(",
+      "title && title.textContent.indexOf('Colors for groups')!==-1);})()"
+    ),
+    timeout = 20000
+  )
 
   app$stop()
 })
