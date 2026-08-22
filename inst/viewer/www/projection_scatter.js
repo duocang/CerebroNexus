@@ -434,11 +434,21 @@
   function bindProjectionWindowResize() {
     if (projectionWindowResizeBound) return;
     projectionWindowResizeBound = true;
-    window.addEventListener('resize', function () {
+    const scheduleRegisteredPlots = function () {
       projectionResizeState.forEach(function (_state, plotId) {
         scheduleProjectionResize(plotId);
       });
-    });
+    };
+    window.addEventListener('resize', scheduleRegisteredPlots);
+    // Projection cards are created by renderUI after registerPlot() has already
+    // run. Measure once Shiny has bound the inserted DOM so the 60vh placeholder
+    // is replaced before the browser paints it, rather than after Plotly finishes.
+    if (window.jQuery) {
+      window.jQuery(document).on(
+        'shiny:bound shown.bs.tab shiny:visualchange',
+        scheduleRegisteredPlots
+      );
+    }
   }
 
   function getSelection(plotId) {
