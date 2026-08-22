@@ -1859,13 +1859,8 @@ body .btn:active { transform: translateY(0.5px); }
 /* -------------------------------------------------------------------------
    Shared projection legend (all projection tabs)
 
-   The projection-scatter renderer (www/projection_scatter.js) builds a custom
-   HTML legend as a horizontal bar ABOVE the plot, in its own band, so it never
-   covers data points and switching categorical <-> continuous never shifts the
-   scatter. Every tab's legend container gets the class .cerebro-projection-legend
-   (its id is <plot_id>_legend); these styles were formerly inline in
-   spatial/UI.R and are now shared so overview / gene_expression / trajectory /
-   immune_repertoire render an identical legend.
+   Canvas projections and the Plotly 3-D fallback share one legend container,
+   positioned above the plot so it never covers data points.
    ------------------------------------------------------------------------- */
 .cerebro-projection-legend {
   position: static;
@@ -1893,32 +1888,6 @@ body .btn:active { transform: translateY(0.5px); }
   font-weight: 600;
   font-size: 13px;
   color: #333;
-}
-.cerebro-projection-legend .custom-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-  border-radius: 3px;
-}
-.cerebro-projection-legend .custom-legend-item:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-.cerebro-projection-legend .legend-color-box {
-  display: inline-block;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-}
-.cerebro-projection-legend .legend-text {
-  color: #333;
-  white-space: nowrap;
-}
-.cerebro-projection-legend .legend-item-hidden {
-  opacity: 0.35;
-}
-.cerebro-projection-legend .legend-item-hidden .legend-text {
-  text-decoration: line-through;
 }
 .cerebro-projection-legend .continuous-legend-content {
   display: flex;
