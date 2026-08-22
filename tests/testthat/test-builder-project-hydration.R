@@ -68,7 +68,8 @@ test_that("loaded source entries are hydrated before their first store attachmen
   record <- runtime$builder_project_dataset_record(
     saved,
     source = list(kind = "example", example = "all_content"),
-    checked = TRUE
+    checked = TRUE,
+    root = root
   )
 
   hydrated <- runtime$builder_project_hydrate_loaded_entry(loaded, record, root)
@@ -79,7 +80,6 @@ test_that("loaded source entries are hydrated before their first store attachmen
   expect_identical(hydrated$source_id, "ds1")
   expect_gt(hydrated$revision, loaded$revision)
   expect_true(runtime$builder_project_entry_hydrated_from(hydrated, record))
-  expect_null(runtime$builder_project_safe_entry(hydrated)$project_hydration)
 
   another_record <- record
   another_record$configuration$digest <- "another-configuration"
@@ -110,11 +110,22 @@ test_that("pending project hydration isolates a corrupt dataset", {
   good <- runtime$builder_project_dataset_record(
     saved,
     source = list(kind = "example", example = "all_content"),
-    checked = TRUE
+    checked = TRUE,
+    root = root
   )
-  corrupt <- good
-  corrupt$id <- "corrupt"
-  corrupt$configuration$payload <- "not serialized JSON"
+  corrupt <- runtime$builder_project_dataset_record(
+    loaded("corrupt"),
+    source = list(kind = "example", example = "all_content"),
+    root = root
+  )
+  writeLines(
+    "not serialized JSON",
+    runtime$builder_project_resolve_path(
+      corrupt$configuration$path,
+      root,
+      "managed"
+    )
+  )
 
   result <- runtime$builder_project_hydrate_pending_entries(
     entries = list(loaded("good"), loaded("corrupt")),
@@ -314,7 +325,14 @@ test_that("schema v1 migration canonicalizes record identity without dirtying", 
   record <- runtime$builder_project_dataset_record(
     entry,
     source = list(kind = "example", example = "all_content"),
-    checked = TRUE
+    checked = TRUE,
+    root = dirname(path)
+  )
+  record$configuration <- list(
+    revision = as.integer(entry$revision %||% 0L),
+    digest = "legacy-digest",
+    checked = TRUE,
+    payload = jsonlite::serializeJSON(entry, digits = NA, pretty = FALSE)
   )
   record$configuration$digest <- "legacy-digest"
   record$artifact <- list(
@@ -614,7 +632,8 @@ test_that("the assembled Builder server registers pre-store project hydration", 
   record <- app_env$builder_project_dataset_record(
     saved,
     source = list(kind = "managed", path = "sources/ds1/input.rds"),
-    checked = TRUE
+    checked = TRUE,
+    root = root
   )
 
   shiny::testServer(app_env$server, {
@@ -669,7 +688,8 @@ test_that("the assembled Builder server registers pre-store project hydration", 
     invalid_record <- app_env$builder_project_dataset_record(
       invalid_saved,
       source = list(kind = "managed", path = "sources/ds1/input.rds"),
-      checked = TRUE
+      checked = TRUE,
+      root = root
     )
     builder_project_pending_entries(list(ds1 = invalid_record))
     use_state_only_fixture(list())
@@ -701,7 +721,8 @@ test_that("failed source resume preserves the checked artifact entry", {
       path = "sources/ds1/input.rds",
       filename = "input.rds"
     ),
-    checked = TRUE
+    checked = TRUE,
+    root = root
   )
   artifact <- saved
   artifact$load_state <- "artifact_ready"

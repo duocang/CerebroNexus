@@ -119,15 +119,6 @@ test_that("Enhance model derives attachments and retained content from state", {
     fixed = TRUE
   )
 
-  settings <- list(
-    tables = list(first = 1, second = 2),
-    images = list(`section-a` = 1, `section-b` = 2)
-  )
-  settings <- builder_enhance_retain(settings, "tables", "second")
-  settings <- builder_enhance_retain(settings, "images", "section-a")
-  expect_identical(names(settings$tables), "second")
-  expect_identical(names(settings$images), "section-a")
-
   no_spatial <- builder_enhance_model(
     id = "dataset-b",
     profile = list(images = character()),

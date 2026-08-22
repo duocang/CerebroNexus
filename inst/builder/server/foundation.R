@@ -1002,7 +1002,6 @@ builder_schedule_native_picker <- function(
     return(invisible(FALSE))
   }
   builder_native_pickers[[key]] <- picker
-  poll <- NULL
   poll <- function() {
     if (builder_session_closed()) {
       builder_cancel_native_picker(key)

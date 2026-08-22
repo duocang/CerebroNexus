@@ -15,7 +15,6 @@
 
   --c-blue-50: #eef4fb;
   --c-blue-100: #d7e6f7;
-  --c-blue-300: #7bb0e8;
   --c-blue: #2f6fd6;
   --c-blue-600: #2560bd;
   --c-blue-700: #1d4ea0;
@@ -24,8 +23,6 @@
   --c-amber-100: #ffe4d1;
   --c-amber-300: #ffb27a;
   --c-amber: #f97316;
-  --c-amber-600: #ea6a0f;
-  --c-amber-700: #c85a0e;
 
   --c-success: #16a34a;
   --c-success-50: #eefbf2;
@@ -49,9 +46,6 @@
   --r-pill: 999px;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur: 0.16s;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
-               "Helvetica Neue", Arial, sans-serif;
   --font-mono: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
 
   /* Builder-only semantic roles. */
@@ -61,7 +55,6 @@
   --builder-accent-strong: #65230f;
   --builder-focus-ring: var(--c-blue-600);
   --builder-selection-bg: var(--builder-action);
-  --builder-selection-fg: var(--c-white);
   --builder-text-muted: var(--c-text-2);
   --builder-text-subtle: var(--c-text-3);
   --builder-text-disabled: #a9adb4;
@@ -84,18 +77,11 @@
   --builder-page-gutter: 24px;
   --builder-stage-padding: var(--space-5);
   --builder-section-gap: var(--space-5);
-  --builder-footer-gap: var(--space-6);
   --builder-rail-width: 20.5rem;
   --builder-shell-gap: var(--builder-section-gap);
   --spatial-preview-aspect: 4 / 3;
 
   /* Semantic content and review tag palette. */
-  --builder-tag-metadata-bg: #f5f3ff;
-  --builder-tag-metadata-border: #ddd6fe;
-  --builder-tag-metadata-text: #6d28d9;
-  --builder-tag-projection-bg: var(--c-amber-50);
-  --builder-tag-projection-border: var(--c-amber-100);
-  --builder-tag-projection-text: var(--builder-action-active);
   --builder-tag-spatial-bg: #f0fdf4;
   --builder-tag-spatial-border: #bbf7d0;
   --builder-tag-spatial-text: #15803d;
@@ -113,21 +99,17 @@
   --builder-tag-extra-text: #c2410c;
   /* Compatibility aliases for existing Builder components. */
   --c-surface-muted: var(--c-surface-2);
-  --c-surface-subtle: var(--c-surface-3);
   --c-border-strong: var(--c-border-2);
   --c-text-muted: var(--builder-text-muted);
   --c-text-subtle: var(--builder-text-subtle);
   --c-error-50: #fff1f2;
   --c-error-100: #ffe4e6;
-  --c-error50: var(--c-error-50);
   --shadow-sm: var(--shadow-1);
   --shadow-md: var(--shadow-2);
-  --shadow-lg: var(--shadow-3);
   --shadow-dialog: var(--shadow-4);
   --radius-xs: var(--r-xs);
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
-  --radius-lg: var(--r-lg);
   --radius-pill: var(--r-pill);
   --ease-standard: var(--ease);
   --duration-fast: 120ms;

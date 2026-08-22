@@ -2163,11 +2163,11 @@
     });
     updateRailSummary();
     if (window.BuilderIcons) window.BuilderIcons.decorate(rail);
-    applyDatasetMutationLock();
+    applyDatasetMutationLock([rail]);
     rail.querySelectorAll(".builder-pick").forEach(function (control) {
       setActivityDisabled(control, !activityCapability("select_dataset"));
     });
-    updateDatasetLoadTimes();
+    updateDatasetLoadTimes([rail]);
     scheduleDatasetLoadTimeUpdates();
     if (datasetSwitchState.target) {
       var authoritative = rail.querySelector(
@@ -2283,7 +2283,7 @@
     var nextFocus = importRailFocusTarget(list, focusIdentity);
     if (nextFocus && nextFocus !== focused) nextFocus.focus();
     if (window.BuilderIcons) window.BuilderIcons.decorate(host);
-    applyDatasetMutationLock();
+    applyDatasetMutationLock([host]);
     updateRailSummary();
   }
 
@@ -2637,146 +2637,6 @@
       Math.round(milliseconds) : normalMotionDuration;
   }
 
-  function plotSummaryRows(plot) {
-    return (plot.data || []).map(function (trace, index) {
-      var points = Math.max(
-        Array.isArray(trace.x) ? trace.x.length : 0,
-        Array.isArray(trace.y) ? trace.y.length : 0
-      );
-      return {
-        name: trace.name || "Series " + (index + 1),
-        points: points,
-      };
-    });
-  }
-
-  function renderPlotSummary(plot) {
-    if (!plot.data) return;
-    var rows = plotSummaryRows(plot);
-    var summary = plot.parentNode.querySelector(".builder-preview-summary");
-    if (!summary) {
-      summary = document.createElement("details");
-      summary.className = "builder-preview-summary";
-      summary.id = (plot.id || "builder-preview") + "-summary";
-      var toggle = document.createElement("summary");
-      toggle.textContent = "Accessible preview data";
-      var table = document.createElement("table");
-      table.innerHTML =
-        "<thead><tr><th scope='col'>Series</th>" +
-        "<th scope='col'>Points</th></tr></thead><tbody></tbody>";
-      summary.appendChild(toggle);
-      summary.appendChild(table);
-      plot.insertAdjacentElement("afterend", summary);
-    }
-    var body = summary.querySelector("tbody");
-    body.textContent = "";
-    rows.forEach(function (row) {
-      var tr = document.createElement("tr");
-      var name = document.createElement("th");
-      name.scope = "row";
-      name.textContent = row.name;
-      var points = document.createElement("td");
-      points.textContent = String(row.points);
-      tr.appendChild(name);
-      tr.appendChild(points);
-      body.appendChild(tr);
-    });
-    var total = rows.reduce(function (sum, row) {
-      return sum + row.points;
-    }, 0);
-    plot.setAttribute("role", "img");
-    plot.setAttribute(
-      "aria-label",
-      "Spatial alignment preview with " + rows.length + " series and " +
-        total + " plotted points."
-    );
-    plot.setAttribute("aria-describedby", summary.id);
-  }
-
-  function enhancePlot(plot) {
-    if (!plot || plot.dataset.builderPreview === "true") return;
-    if (!plot.data || typeof plot.on !== "function") return;
-    plot.dataset.builderPreview = "true";
-    plot.on("plotly_afterplot", function () {
-      syncSpatialPreviewAspect(plot);
-      renderPlotSummary(plot);
-      plot.classList.remove("is-updating");
-    });
-    plot.on("plotly_relayouting", function () {
-      plot.classList.add("is-updating");
-    });
-    syncSpatialPreviewAspect(plot);
-    renderPlotSummary(plot);
-  }
-
-  function finiteExtent(values) {
-    var finite = Array.from(values || []).map(Number).filter(Number.isFinite);
-    if (!finite.length) return null;
-    return Math.max.apply(null, finite) - Math.min.apply(null, finite);
-  }
-
-  function spatialPreviewAspect(plot) {
-    var images = plot && plot.layout && Array.from(plot.layout.images || []);
-    if (images && images.length) {
-      var image = images[0];
-      var imageWidth = Math.abs(Number(image.sizex));
-      var imageHeight = Math.abs(Number(image.sizey));
-      if (imageWidth > 0 && imageHeight > 0) return imageWidth / imageHeight;
-    }
-    var xs = [], ys = [];
-    Array.from((plot && plot.data) || []).forEach(function (trace) {
-      xs = xs.concat(Array.from(trace.x || []));
-      ys = ys.concat(Array.from(trace.y || []));
-    });
-    var width = finiteExtent(xs);
-    var height = finiteExtent(ys);
-    return width > 0 && height > 0 ? width / height : 4 / 3;
-  }
-
-  function syncSpatialPreviewAspect(plot) {
-    var frame = plot && plot.closest(".spatial-alignment-plot-frame");
-    if (!frame) return;
-    var ratio = spatialPreviewAspect(plot);
-    ratio = Math.max(0.75, Math.min(3, ratio));
-    var value = ratio.toFixed(4);
-    if (frame.dataset.spatialPreviewAspect === value) return;
-    frame.dataset.spatialPreviewAspect = value;
-    frame.style.setProperty("--spatial-preview-aspect", value);
-    syncSpatialWorkbench(frame, plot, ratio);
-    if (window.Plotly && window.Plotly.Plots) {
-      window.requestAnimationFrame(function () {
-        if (plot.isConnected && plot.offsetParent !== null && plot.clientWidth > 0) {
-          window.Plotly.Plots.resize(plot);
-        }
-      });
-    }
-  }
-
-  function syncSpatialWorkbench(frame, plot, ratio) {
-    var workbench = frame && frame.closest(".spatial-alignment-workbench");
-    var figure = frame && frame.closest(".spatial-alignment-figure");
-    if (!workbench || !figure) return;
-    var desktop = window.matchMedia("(min-width: 68.8125rem)").matches;
-    if (!desktop) {
-      frame.style.removeProperty("width");
-      frame.style.removeProperty("height");
-      return;
-    }
-    frame.style.width = "100%";
-    frame.style.height = "100%";
-    if (!frame.builderResizeObserver && window.ResizeObserver) {
-      frame.builderResizeObserver = new ResizeObserver(function () {
-        window.requestAnimationFrame(function () {
-          syncSpatialWorkbench(frame, plot, spatialPreviewAspect(plot));
-          if (window.Plotly && window.Plotly.Plots && plot.isConnected &&
-              plot.offsetParent !== null && plot.clientWidth > 0) {
-            window.Plotly.Plots.resize(plot);
-          }
-        });
-      });
-      frame.builderResizeObserver.observe(figure);
-    }
-  }
 
   function colourLabel(input) {
     var swatch = input.closest(".swatch");
@@ -3612,7 +3472,6 @@
       }
     }
     applyBuilderActivityState(roots);
-    matchingDynamicElements(roots, ".js-plotly-plot").forEach(enhancePlot);
     matchingDynamicElements(roots, 'input[type="color"]').forEach(enhanceColour);
     matchingDynamicElements(roots, "select[multiple]").forEach(enhanceMultiSelect);
   }
@@ -3644,8 +3503,7 @@
     );
     if (isSelfManagedRailMutation) return;
     var ignoredSelector =
-      ".js-plotly-plot, .selectize-control, .builder-icon-slot, " +
-      ".shiny-notification-panel";
+      ".selectize-control, .builder-icon-slot, .shiny-notification-panel";
     var affectedSelector =
       ".shiny-html-output, .modal, .builder-dialog, " +
       "[data-workflow-stage], #build-stage-status, #builder-operation-overlay";

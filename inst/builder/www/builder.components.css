@@ -5,36 +5,6 @@
   min-width: 0;
   max-width: 100%;
 }
-.builder-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-1);
-  padding: var(--builder-stage-padding);
-}
-.builder-section {
-  height: auto;
-  min-width: 0;
-  align-self: start;
-  overflow-wrap: anywhere;
-  transition: border-color var(--duration-base) var(--ease),
-              box-shadow var(--duration-base) var(--ease);
-}
-.builder-subcard {
-  min-width: 0;
-  height: auto;
-  padding: var(--space-4);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  background: var(--c-surface);
-}
-.card-stack {
-  display: grid;
-  gap: 1rem;
-  align-content: start;
-}
-.card-stack > .card { margin: 0; }
-.detail-footer { grid-column: 1 / -1; }
 .result-card { margin-bottom: 1rem; }
 
 /* ---- resumable Builder projects --------------------------------------- */
@@ -193,9 +163,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   transition:
     width .28s cubic-bezier(.2, .8, .2, 1),
     max-width .28s cubic-bezier(.2, .8, .2, 1),
-    padding .28s cubic-bezier(.2, .8, .2, 1),
-    border-color .2s ease,
-    box-shadow .2s ease;
+    padding .28s cubic-bezier(.2, .8, .2, 1);
   animation: builder-operation-card-in .22s cubic-bezier(.2, .8, .2, 1) both;
 }
 .builder-operation-overlay-card.is-result {
@@ -374,8 +342,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   width: min(27rem, 100%);
   margin: 0;
   transform: translateY(.5rem) scale(.99);
-  transition: opacity var(--duration-normal) var(--ease-standard),
-    transform var(--duration-normal) var(--ease-standard);
+  transition: transform var(--duration-normal) var(--ease-standard);
 }
 #shiny-modal.modal.in:has(.builder-project-first-save-dialog) .modal-dialog {
   transform: none;
@@ -532,15 +499,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 }
 
 /* ---- shared stage composition ----------------------------------------- */
-.builder-stage-shell {
-  min-width: 0;
-  max-width: 100%;
-  padding: var(--builder-stage-padding);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  background: var(--c-surface);
-  box-shadow: var(--shadow-1);
-}
 .builder-stage-shell[aria-current="stage"] {
   border-color: var(--c-border);
   box-shadow: var(--shadow-1);
@@ -607,13 +565,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   border-radius: var(--radius-sm);
   background: var(--c-surface);
 }
-.builder-state-panel {
-  min-width: 0;
-  padding: var(--space-4);
-  border-left: 2px solid var(--c-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--c-surface-muted);
-}
 .builder-stage-footer {
   display: flex;
   min-width: 0;
@@ -677,10 +628,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-stage-configure .builder-viewer-card-title {
   font-size: .9rem;
   font-weight: 600;
-}
-.builder-stage-configure .builder-viewer-card-count {
-  transition: color 240ms var(--ease-standard),
-    opacity 240ms var(--ease-standard);
 }
 .builder-stage-configure .builder-viewer-card-count.is-updating {
   animation: builder-data-setup-summary-update 240ms var(--ease-standard) both;
@@ -822,7 +769,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   transform: translateY(1px);
 }
 .builder-file-input:focus-visible + .builder-file-trigger,
-.dataset-file-input:focus-visible + .dataset-file-button,
 .enhance-table-file-input:focus-visible + .enhance-table-file-button,
 .enhance-tissue-file-input:focus-visible + .enhance-tissue-file-button,
 .builder-file-trigger:focus-visible {
@@ -831,7 +777,11 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   box-shadow: 0 0 0 3px var(--c-amber-50);
 }
 
-.enhance-attachment-description { color: var(--c-text-muted); font-size: .84rem; }
+.enhance-attachment-description {
+  margin: 0 0 var(--space-3);
+  color: var(--c-text-muted);
+  font-size: .84rem;
+}
 .builder-file-list {
   display: grid;
   max-height: 22rem;
@@ -861,28 +811,17 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   border-radius: var(--radius-sm);
   background: var(--c-surface-muted);
 }
-.rail-pending-files {
-  max-height: 15rem;
-  margin: 0;
-  padding: var(--space-3);
-  border-top: 1px solid var(--c-border);
-}
-.rail-pending-file {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-}
-.rail-pending-file-meta,
 .enhance-tissue-file-meta {
   display: grid;
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
 }
-.rail-pending-file-meta strong,
 .enhance-tissue-file-meta strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rail-pending-file .builder-action-row,
 .enhance-tissue-file-item .builder-action-row {
   flex-wrap: nowrap;
 }
@@ -923,6 +862,8 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
+  padding: .65rem .85rem .65rem 2.9rem;
+  border-top: 1px solid var(--c-border);
 }
 .enhance-workbook-summary {
   display: grid;
@@ -965,7 +906,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .enhance-workbook-source,
 .enhance-sheet-source { display: block; color: var(--c-text-subtle); font-size: .74rem; }
 .enhance-workbook-sheets { border-top: 1px solid var(--c-border); }
-.enhance-sheet-item { padding: .65rem .85rem .65rem 2.9rem; border-top: 1px solid var(--c-border); }
 .enhance-sheet-item:first-child { border-top: 0; }
 .enhance-attachment-editor { min-width: 0; }
 .enhance-table-display-name,
@@ -1003,10 +943,14 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .enhance-table-remove:hover,
 .enhance-workbook-remove:hover { background: var(--c-error-100); }
 @media (max-width: 48rem) {
-  .enhance-workbook-summary,
-  .enhance-sheet-item { align-items: flex-start; }
-  .enhance-workbook-summary { grid-template-columns: auto minmax(0, 1fr); }
-  .enhance-sheet-item { padding-left: 1.15rem; }
+  .enhance-workbook-summary {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: flex-start;
+  }
+  .enhance-sheet-item {
+    align-items: flex-start;
+    padding-left: 1.15rem;
+  }
   .enhance-workbook-controls { grid-column: 2; flex-wrap: wrap; white-space: normal; }
   .enhance-attachment-actions { flex-wrap: wrap; justify-content: flex-end; }
 }
@@ -1068,35 +1012,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   line-height: 1.4;
 }
 .facts div { padding: .15rem 0; }
-.facts .k { color: var(--c-text-subtle); }
-.facts .v { color: var(--c-text); font-variant-numeric: tabular-nums; }
-
-/* ---- pills ------------------------------------------------------------- */
-
-.pills { display: flex; flex-wrap: wrap; gap: .35rem; }
-.pill {
-  font-family: var(--font-mono); font-size: .75rem;
-  padding: .18em .6em; border-radius: var(--r-xs);
-  border: 1px solid var(--c-border-2); color: var(--c-text-subtle);
-  background: var(--c-surface-2);
-}
-/* "The object already has this" is a structural fact, not a success event, so
-   it takes the structural blue. Green would be a third colour that means
-   nothing the theme defines, and amber is spent on action -- the build button,
-   the selected data set, the ribbon -- so lending it to a dozen pills would
-   flatten exactly the signal it exists to carry. */
-.pill.on {
-  color: var(--c-blue-700);
-  border-color: var(--c-blue-100);
-  background: var(--c-blue-50);
-}
-.pill.off { opacity: .55; }
-.pill.new {
-  color: var(--builder-action-active); border-color: var(--c-amber-300);
-  background: var(--c-amber-50);
-  text-transform: none; letter-spacing: 0;
-  margin-left: auto;
-}
 
 /* ---- components: forms and disclosure --------------------------------- */
 
@@ -1109,7 +1024,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   width: 100%;
   max-width: var(--builder-measure-form);
 }
-.builder-measure-form { width: 100%; max-width: var(--builder-measure-form); }
 .builder-field { min-width: 0; }
 .builder-field > .form-group,
 .builder-advanced-grid > .form-group { width: 100%; }
@@ -1176,7 +1090,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   font-size: .75rem;
   line-height: 1.35;
 }
-.builder-field--default-projection { max-width: 30rem; }
 /* Checkbox groups read as a scannable list, not a wall. Two columns when there
    are enough entries to be worth it -- laid out with a grid rather than CSS
    columns, which split a checkbox from its label mid-item. */
@@ -1189,11 +1102,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 }
 .shiny-options-group .checkbox input { cursor: pointer; accent-color: var(--builder-action); }
 .shiny-options-group .checkbox label:hover { color: var(--builder-action-active); }
-.cols-2 .shiny-options-group {
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  column-gap: 1.5rem;
-}
-
 /* ---- buttons ----------------------------------------------------------- */
 
 .btn {
@@ -1287,19 +1195,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   opacity: 1;
 }
 
-/* Shared disclosure hit target and summary rhythm. */
-.builder-viewer-card > summary,
-.review-app-options > summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 2.75rem;
-  padding: .65rem .8rem;
-  color: var(--c-text);
-  cursor: pointer;
-  list-style: none;
-}
-
 /* ---- notices ----------------------------------------------------------- */
 
 .builder-empty-state {
@@ -1362,9 +1257,9 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   margin: 0;
   font-size: 1rem;
 }
-.builder-dataset-dropzone-formats {
+.builder-dataset-dropzone .builder-dataset-dropzone-formats {
   color: var(--c-text-subtle);
-  font-size: .82rem !important;
+  font-size: .82rem;
 }
 .builder-empty-project-action {
   display: flex;
@@ -1385,11 +1280,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   line-height: 1.35;
 }
 .builder-status--ready { color: var(--c-success); }
-.builder-status--attention { color: var(--c-warning); }
-.builder-status--error { color: var(--c-error); }
-.builder-status--ready::before,
-.builder-status--attention::before,
-.builder-status--error::before {
+.builder-status--ready::before {
   width: .45rem;
   height: .45rem;
   flex: 0 0 auto;
@@ -1411,10 +1302,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .is-empty { border-style: dashed; }
 .is-loading { background: linear-gradient(90deg, var(--c-surface-2), var(--c-surface), var(--c-surface-2)); }
 .is-ready { border-left: 3px solid var(--c-success); }
-.is-attention { border-left: 3px solid var(--c-warning); }
-.is-blocking { border-left: 3px solid var(--c-error); background: var(--c-error-50); }
-.is-building { border-left: 3px solid var(--builder-action); }
-.is-decision-required,
 .is-needs_decision { border-left: 3px solid var(--c-warning); background: var(--c-warning-50); }
 .is-failure { border-left: 3px solid var(--c-error); background: var(--c-error-50); }
 .is-recovery { border-left: 3px double var(--c-error); background: var(--c-error-50); }
@@ -1645,34 +1532,11 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   line-height: 1.45;
 }
 
-.builder-preview-summary {
-  margin-top: .6rem;
-  color: var(--c-text-muted);
-  font-size: .82rem;
-}
-.builder-preview-summary table {
-  width: 100%;
-  margin-top: .45rem;
-  border-collapse: collapse;
-}
-.builder-preview-summary th,
-.builder-preview-summary td {
-  padding: .3rem .45rem;
-  border-bottom: 1px solid var(--c-border);
-  text-align: left;
-}
-
-@media (max-width: 68.75rem) {
-  .cols-2 .shiny-options-group { grid-template-columns: 1fr; }
-}
-
 @media (max-width: 40rem) {
   .builder-form-grid,
   .builder-advanced-grid { grid-template-columns: minmax(0, 1fr); }
   .builder-field--name,
-  .builder-field--organism,
-  .builder-field--default-group,
-  .builder-field--default-projection {
+  .builder-field--organism {
     grid-column: 1;
     grid-row: auto;
   }
@@ -1689,7 +1553,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
     max-height: calc(100vh - 2rem);
     overflow-y: auto;
   }
-  .notice, .privacy { overflow-wrap: anywhere; }
+  .notice { overflow-wrap: anywhere; }
   .builder-analysis-info-facts { grid-template-columns: 1fr; }
   .builder-analysis-info-fact.is-wide { grid-column: auto; }
 }
@@ -2081,8 +1945,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
     animation: none;
     transform: none;
   }
-  .builder-dialog,
-  .builder-dialog.is-visible { transform: none !important; }
+  .builder-dialog { transform: none !important; }
 }
 
 /* ---- staged workflow --------------------------------------------------- */
@@ -2190,8 +2053,4 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   .builder-workflow-progress ol { gap: 0; }
   .builder-workflow-progress li > a,
   .builder-workflow-progress li > span { padding-inline: .15rem; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .builder-workflow-progress *,
-  .builder-stage-footer * { transition-duration: 0s !important; animation-duration: 0s !important; }
 }

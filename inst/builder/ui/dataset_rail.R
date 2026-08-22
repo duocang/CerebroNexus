@@ -516,38 +516,6 @@ builder_dataset_rail_server <- function(
   )
 }
 
-builder_pending_dataset_files_ui <- function(files) {
-  files <- Filter(function(file) isTRUE(file$visible %||% TRUE), files)
-  if (!length(files)) {
-    return(NULL)
-  }
-  shiny::div(
-    class = "builder-file-list rail-pending-files",
-    `aria-label` = "Files being added",
-    `aria-live` = "polite",
-    lapply(files, function(file) {
-      filename <- builder_safe_file_name(file$filename, "Dataset file")
-      detail <- paste(
-        builder_file_type_label(filename, file$type),
-        builder_file_human_size(file$size %||% NA_real_),
-        sep = " · "
-      )
-      shiny::div(
-        class = "builder-file-item rail-pending-file",
-        shiny::div(
-          class = "rail-pending-file-meta",
-          shiny::strong(filename),
-          shiny::span(class = "hint", detail)
-        ),
-        shiny::span(
-          class = "builder-status builder-status--reading",
-          "Reading…"
-        )
-      )
-    })
-  )
-}
-
 builder_empty_workbench_ui <- function(project_active = FALSE) {
   shiny::tags$section(
     class = "builder-stage builder-empty-state",
@@ -796,18 +764,6 @@ builder_import_rail_row_ui <- function(model) {
 
 builder_import_rail_model <- function(entries, current = NULL) {
   lapply(entries, builder_import_rail_row_model, current = current)
-}
-
-builder_import_rail_ui <- function(entries, current = NULL) {
-  models <- builder_import_rail_model(entries, current)
-  if (!length(models)) {
-    return(NULL)
-  }
-  shiny::div(
-    class = "builder-import-list",
-    `aria-label` = "Datasets being added",
-    lapply(models, builder_import_rail_row_ui)
-  )
 }
 
 builder_import_rail_patch <- function(entries, current = NULL) {

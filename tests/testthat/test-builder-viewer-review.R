@@ -162,17 +162,6 @@ test_that("Review remains compatible with legacy items and omits empty trajector
   expect_false(grepl("Trajectories", html, fixed = TRUE))
 })
 
-test_that("Review does not override per-dataset Viewer point size", {
-  options <- builder_review_options(point_size = 3)
-  frozen <- builder_review_options_for_plan(options, "dataset-a")
-  html <- builder_viewer_review_html(builder_review_controls_ui(
-    "review",
-    options
-  ))
-
-  expect_null(frozen$point_size)
-  expect_false(grepl('id="review-point_size"', html, fixed = TRUE))
-})
 
 test_that("Review summarizes analysis results without exposing diagnostics", {
   plan <- builder_viewer_review_plan()

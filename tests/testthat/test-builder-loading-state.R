@@ -143,7 +143,7 @@ test_that("imports follow the bounded loading state machine", {
   queue <- builder_loading_call("builder_import_add", queue, entry)
 
   expect_s3_class(queue, "builder_import_queue")
-  expect_identical(builder_import_pending_ids(queue), "ds1")
+  expect_identical(builder_import_find(queue, "ds1")$load_state, "queued")
 
   for (state in c("reading", "inspecting", "validating", "preparing")) {
     queue <- builder_import_transition(queue, "ds1", state, generation = 1L)
@@ -267,11 +267,7 @@ test_that("the queue enforces one active importer and skips removed work", {
   )
 
   queue <- builder_import_remove(queue, "ds3")
-  expect_false("ds3" %in% builder_import_pending_ids(queue))
-  expect_identical(
-    builder_import_pending_ids(queue),
-    paste0("ds", c(1L, 2L, 4L:10L))
-  )
+  expect_identical(names(queue$entries), paste0("ds", c(1L, 2L, 4L:10L)))
 })
 
 test_that("import focus follows the first non-terminal entry in FIFO order", {
@@ -321,12 +317,4 @@ test_that("import focus is empty when every entry is terminal", {
   queue <- builder_import_transition(queue, "ds1", "ready", 1L)
 
   expect_null(builder_import_focus_id(queue))
-})
-
-test_that("legacy ready entries retain the established loaded default", {
-  entry <- list(load_state = NULL)
-  expect_identical(
-    builder_loading_call("builder_import_legacy_state", entry),
-    "ready"
-  )
 })

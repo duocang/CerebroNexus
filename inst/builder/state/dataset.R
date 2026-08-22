@@ -227,72 +227,6 @@ builder_dataset_state_cache_clear <- function(cache) {
   invisible(length(keys) > 0L)
 }
 
-#' Apply a typed event to one pure dataset state.
-builder_reduce_dataset <- function(state, action) {
-  if (!inherits(state, "builder_dataset_state") || !is.list(state)) {
-    .builder_state_abort(
-      "invalid_dataset_state",
-      "Expected a Builder dataset state."
-    )
-  }
-  if (!is.list(action) || !.builder_state_text(action$type)) {
-    .builder_state_abort(
-      "invalid_dataset_action",
-      "Dataset actions require a type."
-    )
-  }
-  next_revision <- .builder_state_revision(state$revision) + 1L
-  entry <- state$entry
-
-  if (identical(action$type, "replace_manifest")) {
-    entry$manifest <- action$manifest
-    entry$revision <- next_revision
-    return(builder_dataset_state(entry))
-  }
-  if (identical(action$type, "replace_entry")) {
-    if (!is.list(action$entry)) {
-      .builder_state_abort(
-        "invalid_dataset_entry",
-        "A replacement dataset entry is required."
-      )
-    }
-    entry <- action$entry
-    entry$revision <- next_revision
-    return(builder_dataset_state(entry))
-  }
-  if (identical(action$type, "set_acknowledgements")) {
-    entry$acknowledgements <- action$acknowledgements
-    entry$revision <- next_revision
-    return(builder_dataset_state(entry))
-  }
-  if (identical(action$type, "loading")) {
-    entry$load_state <- "loading"
-    entry$revision <- next_revision
-    return(builder_dataset_state(entry))
-  }
-  if (identical(action$type, "reload_required")) {
-    entry$load_state <- "reload_required"
-    entry$revision <- next_revision
-    return(builder_dataset_state(entry))
-  }
-  if (identical(action$type, "loaded")) {
-    if (!is.list(action$entry)) {
-      .builder_state_abort(
-        "invalid_dataset_entry",
-        "A loaded dataset entry is required."
-      )
-    }
-    entry <- action$entry
-    entry$load_state <- "loaded"
-    entry$revision <- next_revision
-    return(builder_dataset_state(entry))
-  }
-  .builder_state_abort(
-    "unknown_dataset_action",
-    "Dataset action type is not supported."
-  )
-}
-
 .builder_store_validate_entry <- function(entry) {
   invisible(builder_dataset_state(entry))
   if (.builder_state_has_reference(entry)) {
@@ -482,15 +416,6 @@ builder_state <- function(
     }
   }
   ids
-}
-
-#' Derive the generated App's initial dataset from dataset order.
-builder_effective_initial_dataset <- function(state) {
-  ids <- .builder_store_assert(state)
-  if (!length(ids)) {
-    return(list(id = NULL, mode = "automatic"))
-  }
-  list(id = ids[[1L]], mode = "automatic")
 }
 
 #' Adapt mutable Builder state to the frozen plan's App options.

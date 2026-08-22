@@ -48,14 +48,10 @@
    path in a <pre> would push the whole column past the viewport. */
 .shell > * { min-width: 0; }
 #workbench,
-.builder-stage,
-.review-app-options,
-.row2 > *,
-.field-grid > * {
+.builder-stage {
   min-width: 0;
   max-width: 100%;
 }
-.rail { z-index: 3; }
 #pane { position: relative; z-index: 1; }
 .builder-content {
   display: flex;
@@ -115,15 +111,12 @@
   align-items: start;
 }
 #workbench > * { min-width: 0; }
-.builder-stage,
-.review-app-options {
+.builder-stage {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-1);
   padding: var(--builder-stage-padding);
-}
-.builder-stage {
   height: auto;
   align-self: start;
   overflow-wrap: anywhere;
@@ -137,8 +130,7 @@
   border-color: var(--c-amber-300);
   box-shadow: var(--shadow-2);
 }
-.builder-stage > h2,
-.review-app-options > h2 { margin-top: 0; }
+.builder-stage > h2 { margin-top: 0; }
 
 @keyframes builder-stage-enter {
   from { opacity: 0; transform: translateX(10px); }
@@ -187,6 +179,7 @@
 }
 
 .rail {
+  z-index: 3;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
@@ -310,7 +303,10 @@
 .ds-del {
   display: inline-flex;
   justify-content: center;
+  position: static;
+  width: auto;
   min-height: 1.8rem;
+  padding: .35rem .55rem;
   border: 1px solid transparent;
   border-radius: var(--r-xs);
   background: var(--c-error-50);
@@ -330,6 +326,8 @@
   padding: 0 .8rem .55rem;
 }
 .ds-move {
+  display: inline-flex;
+  width: auto;
   min-width: 1.8rem;
   min-height: 1.8rem;
   margin: 0;
@@ -348,13 +346,7 @@
   font-size: .75rem;
   line-height: 1;
 }
-.ds-move { display: inline-flex; width: auto; }
 .ds-action-label { white-space: nowrap; }
-.ds-del {
-  position: static;
-  width: auto;
-  padding: .35rem .55rem;
-}
 .ds-move:focus-visible {
   outline: 2px solid var(--builder-action);
   outline-offset: 1px;
@@ -368,14 +360,6 @@
 .rail-add { padding: .85rem .95rem; }
 
 .builder-stage-core { max-width: none; overflow: visible; }
-
-/* Field groups wrap only when a field would become too narrow to read. */
-.row2,
-.field-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
-  gap: 0 1rem;
-}
 
 @media (max-width: 68.75rem) {
   :root {
@@ -481,6 +465,5 @@
     transition: none;
   }
   .ds:not(.is-active)::before { display: none; }
-  .rail.is-manager-open,
-  .rail.is-manager-visible { transform: none !important; }
+  .rail.is-manager-open { transform: none; }
 }

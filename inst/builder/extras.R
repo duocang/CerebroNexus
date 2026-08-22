@@ -557,47 +557,6 @@ builder_alignment_reset <- function(record) {
   reset
 }
 
-#' Copy only transform parameters to sections that already own an image.
-builder_alignment_apply_transform_to_all <- function(images, source_section) {
-  if (!is.list(images) || !source_section %in% names(images)) {
-    return(images)
-  }
-  source <- builder_alignment_normalize(
-    images[[source_section]],
-    source_section
-  )
-  if (is.null(source)) {
-    return(images)
-  }
-  fields <- c(
-    "dx",
-    "dy",
-    "scale",
-    "rotation",
-    "flip_x",
-    "flip_y",
-    "image_opacity",
-    "point_opacity",
-    "point_size"
-  )
-  for (name in setdiff(names(images), source_section)) {
-    target <- builder_alignment_normalize(images[[name]], name)
-    if (is.null(target)) {
-      next
-    }
-    for (field in fields) {
-      target[[field]] <- source[[field]]
-    }
-    target$bounds <- builder_alignment_transform_bounds(
-      builder_alignment_oriented_bounds(target$base_bounds, target),
-      target
-    )
-    images[[name]] <- target
-  }
-  images[[source_section]] <- source
-  images
-}
-
 #' The small alignment contract written to a generated Viewer payload.
 builder_alignment_payload <- function(record) {
   normalized <- builder_alignment_normalize(record)
@@ -825,34 +784,6 @@ builder_image_collection_flatten <- function(images) {
     recursive = FALSE,
     use.names = FALSE
   )
-}
-
-builder_image_collection_count <- function(images) {
-  as.integer(sum(lengths(builder_image_collection_normalize(images))))
-}
-
-builder_image_collection_add <- function(images, section, label, record) {
-  images <- builder_image_collection_normalize(images)
-  label <- trimws(as.character(label %||% ""))
-  if (!nzchar(section) || !nzchar(label)) {
-    stop("Spatial section and image label must be non-empty.", call. = FALSE)
-  }
-  if (label %in% names(images[[section]] %||% list())) {
-    stop(
-      "Spatial image labels must be unique within each section.",
-      call. = FALSE
-    )
-  }
-  normalized <- builder_alignment_normalize(
-    record,
-    section_id = section,
-    section_kind = "spatial"
-  )
-  if (is.null(normalized)) {
-    stop("Spatial image record is invalid.", call. = FALSE)
-  }
-  images[[section]][[label]] <- normalized
-  images
 }
 
 builder_image_collection_rename <- function(images, section, from, to) {
@@ -1948,49 +1879,6 @@ builder_pair_sections <- function(picture, per_section) {
   out
 }
 
-#' Write the background into a `.crb` that has already been exported.
-#'
-#' `exportFromSeurat()` cannot carry an image, so this is a read-modify-write
-#' on the file it produced -- the same thing the repository's own demo builds
-#' do by hand.
-builder_attach_histology <- function(crb_path, images) {
-  if (!length(images)) {
-    return(list(applied = character()))
-  }
-  crb <- try(readRDS(crb_path), silent = TRUE)
-  if (inherits(crb, "try-error")) {
-    return(list(error = "The exported .crb could not be read back."))
-  }
-  available <- try(crb$availableSpatial(), silent = TRUE)
-  if (inherits(available, "try-error") || !length(available)) {
-    return(list(error = "The .crb contains no spatial data."))
-  }
-  targets <- intersect(names(images), available)
-  if (!length(targets)) {
-    return(list(error = "Configured image sections are absent from the .crb."))
-  }
-  ## One image and one extent PER SECTION. Writing a single pair into every
-  ## section -- which is what this did -- puts one slide's histology behind
-  ## every other slide's cells, at an extent computed from the wrong
-  ## coordinates. The .crb has carried per-section fields all along.
-  for (nm in targets) {
-    sd <- crb$getSpatialData(nm)
-    sd <- builder_attach_spatial_image(sd, images[[nm]])
-    if (is.null(sd)) {
-      return(list(
-        error = paste0(
-          "The configured image for spatial section `",
-          nm,
-          "` is invalid."
-        )
-      ))
-    }
-    crb$addSpatialData(nm, sd)
-  }
-  saveRDS(crb, crb_path, compress = "xz")
-  list(applied = targets)
-}
-
 #' Attach every post-export payload with one atomic CRB replacement.
 #'
 #' Histology and Trekker both require a read-modify-write after
@@ -2248,36 +2136,6 @@ builder_spatial_coords <- function(object, image = NULL) {
     }
   }
   out
-}
-
-#' Rotate an image array by an arbitrary angle.
-#'
-#' Nearest-neighbour: this is a background behind points, and the alternative
-#' is pulling in an imaging package for a picture nobody will zoom into.
-#' The canvas grows so nothing is cropped, and the new corners are transparent
-#' where the source does not reach.
-builder_rotate_array <- function(
-  arr,
-  degrees,
-  max_edge = max(dim(arr)[1:2])
-) {
-  plan <- builder_rotation_plan(
-    width = dim(arr)[2L],
-    height = dim(arr)[1L],
-    degrees = degrees,
-    max_edge = max_edge
-  )
-  normalized <- builder_normalize_image(
-    arr,
-    max_display_px = plan$input_max_edge,
-    display_dimensions = plan$input_dimensions
-  )
-  if (!is.null(normalized$error)) {
-    stop(normalized$error, call. = FALSE)
-  }
-  arr <- normalized$array
-  normalized$array <- NULL
-  .builder_rotate_rgba(arr, degrees, plan$output_dimensions)
 }
 
 #' Shift and scale the image extent, the way a user nudges an overlay.

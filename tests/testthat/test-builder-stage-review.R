@@ -130,55 +130,6 @@ test_that("Review excludes login and all App configuration", {
   expect_false(grepl('value="auth-', html, fixed = TRUE))
 })
 
-test_that("Review disables only login when optional auth is unavailable", {
-  options <- builder_review_options()
-  html <- builder_stage_html(builder_review_controls_ui(
-    "review",
-    options,
-    auth = list(
-      enabled = FALSE,
-      account_count = 0L,
-      error = NULL,
-      available = FALSE,
-      reason = paste(
-        "Login is unavailable because this required R package is missing or too old:",
-        "shinymanager (>= 1.1.0).",
-        'Run install.packages("shinymanager"), then restart Builder.'
-      )
-    )
-  ))
-
-  expect_match(
-    html,
-    'id="review-require_login"[^>]*disabled="disabled"'
-  )
-  expect_match(html, "Login is unavailable", fixed = TRUE)
-  expect_match(html, "shinymanager (&gt;= 1.1.0)", fixed = TRUE)
-  expect_match(html, "install.packages", fixed = TRUE)
-  expect_false(grepl("openssl", html, fixed = TRUE))
-  expect_false(grepl(
-    'id="review-show_upload_ui" disabled=',
-    html,
-    fixed = TRUE
-  ))
-  expect_false(grepl('class="builder-auth-open"', html, fixed = TRUE))
-})
-
-test_that("Review auth controls consume only enabled count and error", {
-  html <- builder_stage_html(builder_review_controls_ui(
-    "review",
-    builder_review_options(),
-    auth = list(
-      enabled = TRUE,
-      account_count = 2L,
-      error = NULL,
-      available = TRUE
-    )
-  ))
-
-  expect_match(html, "Login required · 2 accounts", fixed = TRUE)
-  expect_match(html, "Edit accounts", fixed = TRUE)
-})
 
 test_that("Review presents the frozen CRB data plan", {
   crbs <- builder_review_model(builder_stage_frozen_plan(FALSE))
@@ -277,7 +228,6 @@ test_that("Build shows the confirmed frozen plan revision", {
   html <- builder_stage_html(builder_build_workbench_ui(model))
 
   expect_match(html, "builder-stage-shell", fixed = TRUE)
-  expect_false(grepl("builder-stage-build builder-card", html, fixed = TRUE))
   expect_match(html, "builder-stage-summary", fixed = TRUE)
   expect_match(html, 'id="build_stage_footer"', fixed = TRUE)
   expect_false(grepl("Build status", html, fixed = TRUE))
@@ -428,7 +378,6 @@ test_that("Review keeps group colors compact and distinguishes custom colors", {
   expect_lte(length(model$datasets[[1L]]$group_colors$preview), 5L)
   expect_match(html, "3 colors customized", fixed = TRUE)
   expect_match(html, "0 colors customized", fixed = TRUE)
-  expect_false(grepl("review-group-color-dot", html, fixed = TRUE))
   expect_false(grepl(">#111111<", html, fixed = TRUE))
   expect_false(grepl("palettes are frozen", html, ignore.case = TRUE))
 })
@@ -473,22 +422,6 @@ test_that("Review translates network-dependent runtime into user language", {
   )
 })
 
-test_that("Review gives a useful next step when the plan is not ready", {
-  html <- builder_stage_html(builder_review_blocked_ui(
-    "review",
-    "Choose a valid output folder."
-  ))
-
-  expect_match(html, "Review", fixed = TRUE)
-  expect_match(html, "Needs attention", fixed = TRUE)
-  expect_match(html, "Choose a valid output folder.", fixed = TRUE)
-  expect_match(html, "Correct the highlighted settings", fixed = TRUE)
-  expect_false(grepl(
-    "Choose the required dataset settings before building.",
-    html,
-    fixed = TRUE
-  ))
-})
 
 test_that("Review handles one dataset without exposing its planning folder", {
   plan <- builder_stage_frozen_plan(TRUE)
@@ -855,79 +788,4 @@ test_that("Open App rejects malformed authentication files before launch", {
     builder_open_final_app(login, .open = function(...) TRUE),
     "Authentication files are incomplete"
   )
-})
-
-test_that("typed Review controls expose only accepted App options", {
-  options <- builder_review_options(
-    welcome_message = "Welcome, team!",
-    initial_page = "projection",
-    point_size = 5,
-    variable_to_compare = TRUE,
-    host = "127.0.0.1",
-    port = 4242L,
-    max_request_size = 512,
-    display_mode = "normal",
-    launch_browser = FALSE,
-    show_upload_ui = FALSE
-  )
-
-  expect_s3_class(options, "builder_review_options")
-  frozen <- builder_review_options_for_plan(
-    options,
-    initial_dataset = "dataset-a"
-  )
-  expect_identical(
-    names(frozen),
-    c(
-      "show_upload_ui",
-      "initial_dataset",
-      "initial_page",
-      "welcome_message",
-      "variable_to_compare",
-      "host",
-      "port",
-      "max_request_size",
-      "display_mode",
-      "launch_browser"
-    )
-  )
-  expect_null(frozen$point_size)
-  expect_identical(frozen$initial_page, "projection")
-  expect_error(builder_review_options(port = 0), "Review options")
-  expect_error(
-    builder_review_options(initial_page = "missing"),
-    "Review options"
-  )
-
-  page_choices <- builder_review_initial_page_choices(list(
-    always = builder_viewer_page_catalog()$always,
-    visible_conditional = "trajectory"
-  ))
-  html <- builder_stage_html(builder_review_controls_ui(
-    "review",
-    options,
-    page_choices
-  ))
-  for (label in c(
-    "Starting page",
-    "Welcome message",
-    "Variable to compare",
-    "Allow uploads"
-  )) {
-    expect_match(html, label, fixed = TRUE)
-  }
-  expect_match(html, "review-initial_page", fixed = TRUE)
-  expect_match(html, "Linked views", fixed = TRUE)
-  expect_match(html, "Trajectory", fixed = TRUE)
-  expect_false(grepl("Spatial", html, fixed = TRUE))
-  for (label in c(
-    "Point size",
-    "Host",
-    "Port",
-    "Request size",
-    "Display mode",
-    "Launch browser"
-  )) {
-    expect_false(grepl(label, html, fixed = TRUE))
-  }
 })

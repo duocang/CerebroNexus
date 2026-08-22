@@ -110,10 +110,9 @@ test_that("confirmed Build waits for a separately selected output folder", {
   )
   app$wait_for_idle(timeout = 10000)
 
-  expect_false(app$get_js(paste0(
-    "document.querySelector('.busy.is-building') !== null || ",
+  expect_false(app$get_js(
     "document.querySelector('#build-stage-status .result-card') !== null"
-  )))
+  ))
 
   app$click("build")
   app$wait_for_js(

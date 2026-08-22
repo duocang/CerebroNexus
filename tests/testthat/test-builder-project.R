@@ -640,7 +640,8 @@ test_that("project payload preserves saved Spatial FOV controls", {
   )
   record <- runtime$builder_project_dataset_record(
     entry,
-    source = list(kind = "missing", path = NULL)
+    source = list(kind = "missing", path = NULL),
+    root = root
   )
 
   restored <- runtime$builder_project_restore_entry(record, root)
@@ -718,11 +719,12 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   record <- runtime$builder_project_dataset_record(
     entry,
     source = list(kind = "missing", path = NULL),
-    payload_entry = restaged
+    payload_entry = restaged,
+    root = root
   )
   runtime$.builder_project_decode_image_uri <- original_decode
   runtime$builder_project_file_fingerprint <- original_fingerprint
-  payload <- jsonlite::unserializeJSON(record$configuration$payload)
+  payload <- runtime$builder_project_read_dataset_config(record, root)
   first <- payload$settings$images[["section/a"]][["H&E"]]
   second <- payload$settings$images[["section-a"]][["H&E"]]
 
@@ -731,7 +733,7 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   expect_match(first$project_asset$path, "^spatial-assets/ds1/")
   expect_false(identical(first$project_asset$path, second$project_asset$path))
   expect_true(file.exists(file.path(root, first$project_asset$path)))
-  expect_false(grepl("data:image", record$configuration$payload, fixed = TRUE))
+  expect_null(record$configuration$payload)
 
   restored <- runtime$builder_project_restore_entry(record, root)
   expect_identical(
@@ -953,7 +955,8 @@ test_that("missing project spatial assets identify the affected FOV and image", 
   record <- runtime$builder_project_dataset_record(
     entry,
     list(kind = "missing", path = NULL),
-    payload_entry = payload_entry
+    payload_entry = payload_entry,
+    root = root
   )
   asset <- payload_entry$settings$images$fov_1$DAPI$project_asset$path
   unlink(file.path(root, asset))
@@ -1090,7 +1093,8 @@ test_that("restore status snapshots are reused without weakening default validat
       ),
       members = list()
     ),
-    checked = TRUE
+    checked = TRUE,
+    root = root
   )
   manifest <- list(datasets = list(record))
   calls <- 0L
@@ -1194,27 +1198,6 @@ test_that("checkpoint entries embed spatial images without mutating live setting
   )
   expect_identical(entry$settings$spatial_image_storage, "external")
   expect_identical(checkpoint[[1L]]$settings$images, entry$settings$images)
-})
-
-test_that("safe project entries drop runtime ownership without mutating live state", {
-  runtime <- builder_project_test_runtime()
-  entry <- list(
-    id = "ds1",
-    settings = list(name = "Dataset 1"),
-    snapshot = list(path = "snapshot.rds"),
-    project_artifact = list(path = "dataset.crb"),
-    project_hydration = list(state = "ready"),
-    load_state = "loaded"
-  )
-
-  safe <- runtime$builder_project_safe_entry(entry)
-
-  expect_null(safe$snapshot)
-  expect_null(safe$project_artifact)
-  expect_null(safe$project_hydration)
-  expect_identical(safe$load_state, "reload_required")
-  expect_identical(entry$load_state, "loaded")
-  expect_identical(entry$snapshot$path, "snapshot.rds")
 })
 
 test_that("checkpoint CRBs are reusable when their private closure is bundled", {
@@ -1633,7 +1616,8 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
         content = TRUE
       ),
       members = list()
-    )
+    ),
+    root = root
   )
 
   html <- htmltools::renderTags(
@@ -1751,67 +1735,6 @@ test_that("non-empty project folders require explicit confirmation", {
   )
   expect_match(html, 'id="confirm_builder_project_folder"', fixed = TRUE)
   expect_match(html, 'id="cancel_builder_project_folder"', fixed = TRUE)
-})
-
-test_that("project creation waits for confirmation and rechecks the folder", {
-  path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
-    "builder",
-    "server",
-    "project.R"
-  )
-  server <- paste(readLines(path, warn = FALSE), collapse = "\n")
-
-  expect_match(
-    server,
-    "builder_project_pending_folder <- reactiveVal(NULL)",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "request_builder_project_folder <- function()",
-    fixed = TRUE
-  )
-  expect_match(server, "shiny::withReactiveDomain(session, {", fixed = TRUE)
-  expect_match(
-    server,
-    "select_builder_project_folder <- function(path)",
-    fixed = TRUE
-  )
-  expect_match(server, "builder_project_pending_folder(path)", fixed = TRUE)
-  expect_match(
-    server,
-    "builder_project_nonempty_folder_dialog(path)",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "select_builder_project_folder(choice$path)",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "observeEvent(input$confirm_builder_project_folder, {",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "folder <- tryCatch(builder_project_folder_state(path), error = identity)",
-    fixed = TRUE
-  )
-  expect_match(server, "create_builder_project_in_folder(path)", fixed = TRUE)
-  expect_match(
-    server,
-    "observeEvent(input$choose_another_builder_project_folder, {",
-    fixed = TRUE
-  )
-  expect_match(
-    server,
-    "observeEvent(input$cancel_builder_project_folder, {",
-    fixed = TRUE
-  )
 })
 
 test_that("the top bar omits the format capability summary", {
@@ -2957,7 +2880,8 @@ test_that("restored source identity requires the recorded content fingerprint", 
         content = TRUE
       )
     ),
-    checked = TRUE
+    checked = TRUE,
+    root = root
   )
 
   writeBin(charToRaw("BBBB"), source)
@@ -3196,7 +3120,7 @@ test_that("configuration identity reuses a spatial source content digest", {
   expect_identical(decode_calls, 0L)
 })
 
-test_that("configuration identity cache bounds variants and drops datasets", {
+test_that("configuration identity cache bounds variants", {
   runtime <- builder_project_test_runtime()
   cache <- new.env(parent = emptyenv())
   entry <- list(id = "ds1", revision = 1L, settings = list())
@@ -3209,16 +3133,6 @@ test_that("configuration identity cache bounds variants and drops datasets", {
     )
   }
   expect_lte(length(ls(cache)), 8L)
-  runtime$builder_project_cached_configuration_digest(
-    list(id = "ds2", revision = 1L, settings = list()),
-    cache,
-    digest = function(entry) "other"
-  )
-
-  runtime$builder_project_configuration_cache_drop_dataset(cache, "ds1")
-
-  expect_false(any(startsWith(ls(cache), "ds1::")))
-  expect_true(any(startsWith(ls(cache), "ds2::")))
 })
 
 test_that("terminal checkpoint cleanup requires a committed failed manifest", {

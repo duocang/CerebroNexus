@@ -143,16 +143,6 @@ builder_enhance_model <- function(
   )
 }
 
-builder_enhance_retain <- function(settings, kind, selected) {
-  if (!is.list(settings) || !kind %in% c("tables", "images")) {
-    stop("Enhance retention settings are invalid.", call. = FALSE)
-  }
-  selected <- as.character(selected %||% character())
-  available <- settings[[kind]] %||% list()
-  settings[[kind]] <- available[intersect(names(available), selected)]
-  settings
-}
-
 builder_enhance_analysis_profile <- function(profile, organism) {
   profile$organism_guess <- organism
   profile

@@ -709,7 +709,6 @@ test_that("Builder defines semantic action and measure roles", {
   )
   expect_identical(unname(builder["--builder-measure-copy"]), "48rem")
   expect_identical(unname(builder["--builder-measure-form"]), "56rem")
-  expect_identical(unname(builder["--builder-footer-gap"]), "40px")
   builder_font_sans <- paste(
     '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",',
     '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",',
@@ -791,7 +790,6 @@ test_that("Builder layered stylesheets own their declared responsibilities", {
     ".rail-summary" = "layout",
     ".builder-stage-footer" = "components",
     ".btn" = "components",
-    ".review-app-options > summary" = "components",
     ".builder-dialog" = "components",
     ".builder-file-picker" = "components",
     ".builder-loading-stage" = "components",
@@ -886,73 +884,6 @@ test_that("Viewer result cards share one surface geometry recipe", {
   )
 })
 
-test_that("Builder disclosures share one summary geometry recipe", {
-  css <- style_contract_builder_css("builder.components.css")
-  summary <- style_contract_assert_exclusive_recipe(
-    css,
-    c(
-      ".builder-viewer-card > summary",
-      ".review-app-options > summary"
-    ),
-    c(
-      "display",
-      "align-items",
-      "gap",
-      "min-height",
-      "padding",
-      "color",
-      "cursor",
-      "list-style"
-    )
-  )
-
-  expect_setequal(
-    summary,
-    c(
-      "display: flex",
-      "align-items: center",
-      "gap: var(--space-3)",
-      "min-height: 2.75rem",
-      "padding: .65rem .8rem",
-      "color: var(--c-text)",
-      "cursor: pointer",
-      "list-style: none"
-    )
-  )
-})
-
-test_that("Builder disclosures share an explicit state indicator", {
-  css <- style_contract_builder_css("builder.features.css")
-  indicator <- style_contract_rule_declarations(
-    css,
-    c(
-      ".builder-viewer-card > summary::before",
-      ".review-app-options > summary::before"
-    )
-  )
-  open_indicator <- style_contract_rule_declarations(
-    css,
-    c(
-      ".builder-viewer-card[open] > summary::before",
-      ".review-app-options[open] > summary::before"
-    )
-  )
-
-  expect_setequal(
-    indicator,
-    c(
-      'content: "›"',
-      "color: var(--builder-action-active)",
-      "font-size: 1.15rem",
-      "transform: rotate(0deg)",
-      paste(
-        "transition: transform var(--duration-fast)",
-        "var(--ease-standard)"
-      )
-    )
-  )
-  expect_setequal(open_indicator, "transform: rotate(90deg)")
-})
 
 test_that("Optional analysis states change emphasis without moving cards", {
   css <- style_contract_builder_css("builder.features.css")

@@ -1,7 +1,6 @@
 ## Builder server: durable projects.
 
 builder_project <- reactiveVal(NULL)
-builder_project_saving <- reactiveVal(FALSE)
 builder_project_restore <- reactiveVal(NULL)
 builder_project_pending_entries <- reactiveVal(list())
 builder_project_artifacts <- reactiveVal(list())
@@ -23,7 +22,6 @@ builder_project_source_process <- reactiveVal(NULL)
 builder_project_source_generation <- reactiveVal(0)
 builder_project_source_run <- reactiveVal(NULL)
 builder_project_source_queue <- reactiveVal(list())
-builder_project_source_active_ids <- reactiveVal(character())
 builder_project_source_progress <- reactiveVal(NULL)
 builder_project_open_process <- reactiveVal(NULL)
 builder_project_open_generation <- reactiveVal(0)
@@ -435,8 +433,6 @@ invalidate_builder_project_open <- function(kill = TRUE) {
   invisible(TRUE)
 }
 
-builder_project_poll_open <- NULL
-
 builder_project_schedule_open_poll <- function(generation) {
   later::later(
     function() {
@@ -605,14 +601,11 @@ builder_project_poll_open <- function(generation) {
   invisible(TRUE)
 }
 
-builder_project_poll_source_sync <- NULL
-
 invalidate_builder_project_source_sync <- function() {
   builder_project_source_generation(
     as.double(isolate(builder_project_source_generation())) + 1
   )
   builder_project_source_queue(list())
-  builder_project_source_active_ids(character())
   builder_project_source_sync(list(
     status = "idle",
     completed = 0L,
@@ -669,7 +662,6 @@ builder_project_start_source_sync <- function() {
     return(invisible(FALSE))
   }
   builder_project_source_queue(list())
-  builder_project_source_active_ids(active_ids)
   progress_path <- tempfile(
     pattern = ".builder-source-sync-",
     tmpdir = project$root,
@@ -698,7 +690,6 @@ builder_project_start_source_sync <- function() {
     error = identity
   )
   if (inherits(process, "error")) {
-    builder_project_source_active_ids(character())
     builder_project_source_progress(NULL)
     builder_project_source_run(NULL)
     builder_project_source_sync(list(
@@ -769,8 +760,7 @@ builder_project_poll_source_sync <- function() {
     return(invisible(TRUE))
   }
   results <- tryCatch(process$get_result(), error = identity)
-  active_ids <- source_run$active_ids %||%
-    isolate(builder_project_source_active_ids())
+  active_ids <- source_run$active_ids %||% character()
   if (inherits(results, "error")) {
     results <- lapply(active_ids, function(id) {
       list(
@@ -807,7 +797,6 @@ builder_project_poll_source_sync <- function() {
   builder_project_source_process(NULL)
   builder_project_source_run(NULL)
   builder_project_source_progress(NULL)
-  builder_project_source_active_ids(character())
   if (!isTRUE(run_is_current)) {
     builder_project_source_sync(list(
       status = "idle",
@@ -1084,13 +1073,14 @@ save_builder_project_state <- function(
     shiny::showModal(builder_project_first_save_dialog())
     return(invisible(FALSE))
   }
-  if (isTRUE(manage_lifecycle) && isTRUE(isolate(builder_project_saving()))) {
+  if (
+    isTRUE(manage_lifecycle) &&
+      identical(isolate(builder_project_operation_phase()), "saving")
+  ) {
     return(invisible(FALSE))
   }
   if (isTRUE(manage_lifecycle)) {
-    builder_project_saving(TRUE)
     builder_project_operation_phase("saving")
-    on.exit(builder_project_saving(FALSE), add = TRUE)
   }
   save_failed <- function(message) {
     builder_project_last_save_error(message)
@@ -1222,7 +1212,6 @@ save_builder_project_state <- function(
 }
 
 finish_builder_project_save_request <- function(ok, after = NULL) {
-  builder_project_saving(FALSE)
   if (isTRUE(ok)) {
     builder_project_operation_phase("idle")
   } else {
@@ -1334,7 +1323,6 @@ start_builder_project_table_asset_save <- function(
     ))
   }
   builder_project_table_asset_process(process)
-  poll <- NULL
   poll <- function() {
     if (builder_session_closed()) {
       invalidate_builder_project_table_asset_save(kill = TRUE)
@@ -1419,10 +1407,9 @@ request_builder_project_save <- function(
   notify = TRUE,
   after = NULL
 ) {
-  if (isTRUE(isolate(builder_project_saving()))) {
+  if (identical(isolate(builder_project_operation_phase()), "saving")) {
     return(invisible(FALSE))
   }
-  builder_project_saving(TRUE)
   builder_project_operation_phase("saving")
   session$onFlushed(
     function() {
@@ -1497,9 +1484,7 @@ observe({
 observe({
   project <- builder_project()
   entries <- sets()
-  if (
-    is.null(project) || !length(entries) || isTRUE(builder_project_saving())
-  ) {
+  if (is.null(project) || !length(entries)) {
     return()
   }
   if (!isTRUE(builder_capabilities()$save_project)) {
@@ -1603,11 +1588,7 @@ builder_project_folder_available <- function(folder) {
   TRUE
 }
 
-create_builder_project_in_folder <- function(path) {
-  folder <- tryCatch(builder_project_folder_state(path), error = identity)
-  if (!isTRUE(builder_project_folder_available(folder))) {
-    return(invisible(FALSE))
-  }
+create_builder_project_in_folder <- function(folder) {
   manifest_path <- builder_project_manifest_path(folder$root)
   manifest <- builder_project_new_manifest(folder$root)
   builder_project_pending_folder(NULL)
@@ -1633,7 +1614,7 @@ select_builder_project_folder <- function(path) {
     shiny::showModal(builder_project_nonempty_folder_dialog(path))
     return(invisible(TRUE))
   }
-  create_builder_project_in_folder(path)
+  create_builder_project_in_folder(folder)
 }
 
 request_builder_project_folder <- function() {
@@ -1706,7 +1687,7 @@ observeEvent(input$confirm_builder_project_folder, {
     shiny::removeModal()
     return()
   }
-  create_builder_project_in_folder(path)
+  create_builder_project_in_folder(folder)
 })
 
 observeEvent(input$choose_another_builder_project_folder, {
@@ -1841,6 +1822,35 @@ observeEvent(input$choose_saved_project_datasets, {
   )
 })
 
+start_builder_project_record_load <- function(record, root) {
+  source <- record$source %||% list()
+  if (identical(source$kind, "example")) {
+    return(start_load(
+      "example",
+      source$example,
+      record$name,
+      dataset_id = record$id
+    ))
+  }
+  kind <- source$kind %||% "managed"
+  path <- builder_project_resolve_path(source$path, root, kind)
+  info <- file.info(path)
+  start_load(
+    "file",
+    path,
+    record$name,
+    file_meta = list(
+      name = source$filename %||% basename(path),
+      type = "application/octet-stream",
+      size = as.double(info$size[[1L]])
+    ),
+    dataset_id = record$id,
+    source_origin = source$origin %||% "upload",
+    example_id = source$example %||% NULL,
+    retained_path = if (identical(kind, "managed")) path
+  )
+}
+
 observeEvent(input$confirm_builder_project_open, {
   pending <- isolate(builder_project_restore())
   operation <- isolate(builder_project_operation_phase())
@@ -1943,36 +1953,7 @@ observeEvent(input$confirm_builder_project_open, {
     function() {
       shiny::isolate({
         for (record in entries_to_restore) {
-          source <- record$source %||% list()
-          if (identical(source$kind, "example")) {
-            start_load(
-              "example",
-              source$example,
-              record$name,
-              dataset_id = record$id
-            )
-          } else {
-            path <- builder_project_resolve_path(
-              source$path,
-              root,
-              source$kind %||% "managed"
-            )
-            info <- file.info(path)
-            start_load(
-              "file",
-              path,
-              record$name,
-              file_meta = list(
-                name = source$filename %||% basename(path),
-                type = "application/octet-stream",
-                size = as.double(info$size[[1L]])
-              ),
-              dataset_id = record$id,
-              source_origin = source$origin %||% "upload",
-              example_id = source$example %||% NULL,
-              retained_path = if (identical(source$kind, "managed")) path
-            )
-          }
+          start_builder_project_record_load(record, root)
         }
         builder_project_operation_phase("restoring")
       })
@@ -2189,32 +2170,8 @@ observeEvent(input$project_resume_current_source, {
   previous_pending <- pending[[id]] %||% NULL
   pending[[id]] <- record
   builder_project_pending_entries(pending)
-  source <- record$source
   started <- tryCatch(
-    if (identical(source$kind, "example")) {
-      start_load("example", source$example, record$name, dataset_id = id)
-    } else {
-      path <- builder_project_resolve_path(
-        source$path,
-        project$root,
-        source$kind
-      )
-      info <- file.info(path)
-      start_load(
-        "file",
-        path,
-        record$name,
-        file_meta = list(
-          name = source$filename %||% basename(path),
-          type = "application/octet-stream",
-          size = as.double(info$size[[1L]])
-        ),
-        dataset_id = id,
-        source_origin = source$origin %||% "upload",
-        example_id = source$example %||% NULL,
-        retained_path = if (identical(source$kind, "managed")) path
-      )
-    },
+    start_builder_project_record_load(record, project$root),
     error = identity
   )
   if (inherits(started, "condition")) {

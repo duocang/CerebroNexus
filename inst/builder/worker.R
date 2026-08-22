@@ -1216,7 +1216,6 @@ builder_worker_start <- function(
       ready = !isTRUE(.async),
       startup_started_at = Sys.time(),
       startup_timeout_ms = as.integer(.startup_timeout_ms),
-      interrupt = NULL,
       owns_root = owns_root,
       cleanup_safe = TRUE,
       restored = setup
@@ -1560,8 +1559,6 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
 
   if (!isTRUE(alive)) {
     worker$ready <- FALSE
-    worker$interrupt <- NULL
-    worker$last_result <- NULL
     worker$cleanup_safe <- FALSE
     return(list(
       worker = worker,
@@ -1670,8 +1667,6 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
   }
 
   worker$ready <- FALSE
-  worker$interrupt <- NULL
-  worker$last_result <- NULL
   worker$cleanup_safe <- cleanup_safe
 
   cleanup <- NULL
@@ -1707,8 +1702,6 @@ builder_worker_stop <- function(worker, grace_ms = 5000L) {
 
 .builder_worker_restart_failure <- function(worker, error, cleanup = NULL) {
   worker$ready <- FALSE
-  worker$interrupt <- NULL
-  worker$last_result <- NULL
   worker$error <- error
   structure(
     list(
@@ -1829,37 +1822,6 @@ builder_worker_release_snapshot <- function(
   worker
 }
 
-#' Begin cooperative cancellation without blocking the Shiny process.
-builder_worker_interrupt <- function(
-  worker,
-  grace_ms = 5000L,
-  now = Sys.time()
-) {
-  .builder_worker_assert(worker)
-  grace_ms <- .builder_worker_grace_ms(grace_ms)
-  if (identical(worker$interrupt$status, "waiting")) {
-    return(worker)
-  }
-  state <- .builder_worker_process_state(worker$process, 0)
-  if (identical(state, "closed")) {
-    return(.builder_worker_poll_restart(worker))
-  }
-  if (identical(state, "ready")) {
-    result <- .builder_worker_read_ready(worker$process)
-    if (isTRUE(result$done)) {
-      worker$last_result <- result
-      worker$interrupt <- NULL
-      return(worker)
-    }
-  }
-  try(worker$process$interrupt(), silent = TRUE)
-  worker$interrupt <- list(
-    status = "waiting",
-    deadline = now + grace_ms / 1000
-  )
-  worker
-}
-
 .builder_worker_poll_restart <- function(worker) {
   restarted <- builder_worker_restart(worker)
   if (inherits(restarted, "builder_worker_restart_failed")) {
@@ -1877,26 +1839,9 @@ builder_worker_interrupt <- function(
   )
 }
 
-#' Poll once, restarting only after a closed pipe or expired interrupt grace.
-builder_worker_poll <- function(
-  worker,
-  timeout = 0,
-  now = Sys.time()
-) {
+#' Poll once, restarting after a closed worker pipe.
+builder_worker_poll <- function(worker, timeout = 0) {
   .builder_worker_assert(worker)
-  if (!is.null(worker$last_result)) {
-    result <- worker$last_result
-    worker$last_result <- NULL
-    if (isTRUE(result$done)) {
-      worker$interrupt <- NULL
-      return(list(
-        worker = worker,
-        result = result,
-        event = "completed",
-        error = NULL
-      ))
-    }
-  }
   state <- .builder_worker_process_state(worker$process, timeout)
   if (identical(state, "closed")) {
     return(.builder_worker_poll_restart(worker))
@@ -1904,7 +1849,6 @@ builder_worker_poll <- function(
   if (identical(state, "ready")) {
     result <- .builder_worker_read_ready(worker$process)
     if (isTRUE(result$done)) {
-      worker$interrupt <- NULL
       return(list(
         worker = worker,
         result = result,
@@ -1912,12 +1856,6 @@ builder_worker_poll <- function(
         error = NULL
       ))
     }
-  }
-  if (
-    identical(worker$interrupt$status, "waiting") &&
-      isTRUE(now >= worker$interrupt$deadline)
-  ) {
-    return(.builder_worker_poll_restart(worker))
   }
   list(worker = worker, result = NULL, event = NULL, error = NULL)
 }

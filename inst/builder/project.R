@@ -703,20 +703,6 @@ builder_project_fingerprint_metadata_matches <- function(recorded, current) {
     )
 }
 
-builder_project_fingerprint_matches <- function(recorded, current) {
-  if (!builder_project_fingerprint_metadata_matches(recorded, current)) {
-    return(FALSE)
-  }
-  recorded_md5 <- recorded$md5 %||% NULL
-  current_md5 <- current$md5 %||% NULL
-  if (is.null(recorded_md5) && is.null(current_md5)) {
-    return(TRUE)
-  }
-  .builder_project_text(recorded_md5) &&
-    .builder_project_text(current_md5) &&
-    identical(as.character(recorded_md5), as.character(current_md5))
-}
-
 builder_project_content_fingerprint_matches <- function(recorded, current) {
   if (!is.list(recorded) || !is.list(current)) {
     return(FALSE)
@@ -728,7 +714,9 @@ builder_project_content_fingerprint_matches <- function(recorded, current) {
   ) {
     return(identical(as.character(recorded_md5), as.character(current_md5)))
   }
-  builder_project_fingerprint_matches(recorded, current)
+  is.null(recorded_md5) &&
+    is.null(current_md5) &&
+    builder_project_fingerprint_metadata_matches(recorded, current)
 }
 
 builder_project_content_addressed_source <- function(path, id) {
@@ -822,7 +810,7 @@ builder_project_source_job <- function(entry, root) {
 
 builder_project_prepare_source <- function(entry, root, prior = NULL) {
   job <- builder_project_source_job(entry, root)
-  relative <- paste("sources", entry$id, job$filename, sep = "/")
+  relative <- job$relative
   prior_source <- if (is.list(prior)) prior$source %||% list() else list()
   prior_path <- if (
     identical(prior_source$kind %||% NULL, "managed") &&
@@ -1386,10 +1374,11 @@ builder_project_commit_source_entries <- function(
       character(1)
     )
   )
+  ready <- Filter(function(result) identical(result$status, "ready"), results)
   ready <- stats::setNames(
-    Filter(function(result) identical(result$status, "ready"), results),
+    ready,
     vapply(
-      Filter(function(result) identical(result$status, "ready"), results),
+      ready,
       function(result) as.character(result$id),
       character(1)
     )
@@ -1547,15 +1536,6 @@ builder_project_load_retained_source <- function(
   value
 }
 
-builder_project_safe_entry <- function(entry) {
-  safe <- entry
-  safe$snapshot <- NULL
-  safe$project_artifact <- NULL
-  safe$project_hydration <- NULL
-  safe$load_state <- "reload_required"
-  safe
-}
-
 builder_project_configuration_entry <- function(entry) {
   if (!is.list(entry) || !.builder_project_identifier(entry$id %||% NULL)) {
     stop("A dataset entry is required.", call. = FALSE)
@@ -1591,6 +1571,10 @@ builder_project_table_asset_jobs <- function(entries, root) {
       }
       source <- normalizePath(source, winslash = "/", mustWork = TRUE)
       asset <- record$project_asset %||% list()
+      source_fingerprint <- builder_project_file_fingerprint(
+        source,
+        content = FALSE
+      )
       managed <- tryCatch(
         builder_project_resolve_path(asset$path %||% "", root, "managed"),
         error = function(error) NULL
@@ -1600,7 +1584,7 @@ builder_project_table_asset_jobs <- function(entries, root) {
           identical(source, managed) &&
           builder_project_fingerprint_metadata_matches(
             asset$fingerprint,
-            builder_project_file_fingerprint(source, content = FALSE)
+            source_fingerprint
           )
       ) {
         next
@@ -1614,10 +1598,7 @@ builder_project_table_asset_jobs <- function(entries, root) {
         entry_id = entry$id,
         source = source,
         filename = basename(record$file_name %||% source),
-        source_fingerprint = builder_project_file_fingerprint(
-          source,
-          content = FALSE
-        )
+        source_fingerprint = source_fingerprint
       )
     }
   }
@@ -1928,12 +1909,6 @@ builder_project_restore_table_assets <- function(entry, root) {
         fingerprint
       )
     }
-    if (!isTRUE(matches) && !is.null(fingerprint$md5 %||% NULL)) {
-      matches <- builder_project_content_fingerprint_matches(
-        asset$fingerprint,
-        fingerprint
-      )
-    }
     if (
       is.null(path) ||
         !file.exists(path) ||
@@ -1959,22 +1934,21 @@ builder_project_restore_table_assets <- function(entry, root) {
 builder_project_dataset_config_path <- function(
   dataset_id,
   root,
-  content_id = NULL
+  content_id
 ) {
-  if (!.builder_project_identifier(dataset_id)) {
-    stop("A safe dataset id is required.", call. = FALSE)
+  if (
+    !.builder_project_identifier(dataset_id) ||
+      !.builder_project_text(content_id)
+  ) {
+    stop("A safe dataset id and content id are required.", call. = FALSE)
   }
-  relative <- if (.builder_project_text(content_id)) {
-    paste(
-      "datasets",
-      dataset_id,
-      "configs",
-      paste0(content_id, ".json"),
-      sep = "/"
-    )
-  } else {
-    paste("datasets", dataset_id, "config.json", sep = "/")
-  }
+  relative <- paste(
+    "datasets",
+    dataset_id,
+    "configs",
+    paste0(content_id, ".json"),
+    sep = "/"
+  )
   builder_project_resolve_path(
     relative,
     root,
@@ -2075,11 +2049,7 @@ builder_project_read_dataset_config <- function(record, root) {
     }
     return(config)
   }
-  payload <- configuration$legacy_payload %||% configuration$payload %||% NULL
-  if (!.builder_project_text(payload)) {
-    stop("A saved dataset configuration is missing.", call. = FALSE)
-  }
-  jsonlite::unserializeJSON(payload)
+  stop("A saved dataset configuration is missing.", call. = FALSE)
 }
 
 .builder_project_asset_segment <- function(value) {
@@ -2567,13 +2537,14 @@ builder_project_cached_configuration_digest <- function(
     as.integer(entry$revision %||% 0L),
     "::"
   )
-  stale <- ls(cache)[
-    startsWith(ls(cache), id_prefix) & !startsWith(ls(cache), revision_prefix)
+  keys <- ls(cache)
+  stale <- keys[
+    startsWith(keys, id_prefix) & !startsWith(keys, revision_prefix)
   ]
   if (length(stale)) {
     rm(list = stale, envir = cache)
   }
-  revision_keys <- ls(cache)[startsWith(ls(cache), revision_prefix)]
+  revision_keys <- keys[startsWith(keys, revision_prefix)]
   overflow <- setdiff(revision_keys, key)
   if (length(revision_keys) > 8L && length(overflow)) {
     rm(
@@ -2582,18 +2553,6 @@ builder_project_cached_configuration_digest <- function(
     )
   }
   value
-}
-
-builder_project_configuration_cache_drop_dataset <- function(cache, id) {
-  if (!is.environment(cache) || !.builder_project_identifier(id %||% NULL)) {
-    return(invisible(FALSE))
-  }
-  keys <- ls(cache)
-  drop <- keys[startsWith(keys, paste0(id, "::"))]
-  if (length(drop)) {
-    rm(list = drop, envir = cache)
-  }
-  invisible(TRUE)
 }
 
 builder_project_configuration_cache_clear <- function(cache) {
@@ -2627,7 +2586,7 @@ builder_project_dataset_record <- function(
   artifact = NULL,
   order = 1L,
   payload_entry = entry,
-  root = NULL,
+  root,
   configuration_digest = NULL
 ) {
   profile <- entry$profile %||% list()
@@ -2637,33 +2596,15 @@ builder_project_dataset_record <- function(
   sections <- spatial$sections %||% spatial$fovs %||% character()
   digest <- configuration_digest %||%
     builder_project_configuration_digest(payload_entry)
-  sidecar <- if (.builder_project_text(root %||% NULL)) {
-    builder_project_write_dataset_config(payload_entry, root)
-  } else {
-    NULL
-  }
-  configuration <- if (is.null(sidecar)) {
+  configuration <- utils::modifyList(
+    builder_project_write_dataset_config(payload_entry, root),
     list(
-      revision = as.integer(entry$revision %||% 0L),
       digest = digest,
       checked = isTRUE(checked),
-      payload = jsonlite::serializeJSON(
-        builder_project_safe_entry(payload_entry),
-        digits = NA,
-        pretty = FALSE
-      )
+      checked_digest = if (isTRUE(checked)) digest else NULL,
+      contract_version = .builder_project_configuration_contract_version
     )
-  } else {
-    utils::modifyList(
-      sidecar,
-      list(
-        digest = digest,
-        checked = isTRUE(checked),
-        checked_digest = if (isTRUE(checked)) digest else NULL,
-        contract_version = .builder_project_configuration_contract_version
-      )
-    )
-  }
+  )
   list(
     id = entry$id,
     name = entry$settings$name %||% entry$id,
@@ -2691,14 +2632,6 @@ builder_project_restore_entry <- function(
 ) {
   trusted_status <- is.list(status) &&
     builder_project_status_snapshot_fresh(status, record, root) &&
-    identical(
-      as.character(status$record_identity %||% ""),
-      builder_project_record_status_identity(record)
-    ) &&
-    identical(
-      as.character(status$configuration_identity %||% ""),
-      builder_project_configuration_identity(record)
-    ) &&
     is.list(status$configuration_entry %||% NULL)
   entry <- if (trusted_status) {
     status$configuration_entry
@@ -3225,38 +3158,6 @@ builder_project_spatial_assets_status <- function(record, root) {
   list(ready = TRUE, error = NULL, entry = entry)
 }
 
-builder_project_configuration_identity <- function(record) {
-  if (!is.list(record)) {
-    return("")
-  }
-  unclass(as.character(openssl::md5(serialize(
-    list(
-      id = record$id %||% NULL,
-      configuration = record$configuration %||% NULL
-    ),
-    NULL,
-    version = 3L
-  ))))
-}
-
-builder_project_artifact_identity <- function(artifact) {
-  if (!is.list(artifact)) {
-    return("")
-  }
-  descriptor <- artifact
-  descriptor$resolved_path <- NULL
-  descriptor$members <- lapply(
-    descriptor$members %||% list(),
-    function(member) {
-      member$resolved_path <- NULL
-      member
-    }
-  )
-  unclass(as.character(openssl::md5(
-    serialize(descriptor, NULL, version = 3L)
-  )))
-}
-
 builder_project_record_status_identity <- function(record) {
   if (!is.list(record)) {
     return("")
@@ -3420,9 +3321,7 @@ builder_project_dataset_status <- function(record, root) {
     spatial_assets_error = spatial_assets$error,
     restorable = source_ready && isTRUE(spatial_assets$ready),
     artifact_ready = artifact_ready,
-    artifact_identity = builder_project_artifact_identity(record$artifact),
     record_identity = builder_project_record_status_identity(record),
-    configuration_identity = builder_project_configuration_identity(record),
     configuration_entry = spatial_assets$entry,
     stat_signature = builder_project_status_stat_signature(
       record,
@@ -3638,7 +3537,7 @@ builder_project_configuration <- function(
   )
 }
 
-builder_project_migrate_manifest <- function(manifest, root = NULL) {
+builder_project_migrate_manifest <- function(manifest, root) {
   version <- .builder_project_integer(manifest$schema_version)
   if (!version %in% .builder_project_supported_schema_versions) {
     stop("This is not a supported Builder project.", call. = FALSE)
@@ -3648,8 +3547,6 @@ builder_project_migrate_manifest <- function(manifest, root = NULL) {
     if (identical(version, 1L)) {
       manifest$configuration <- builder_project_configuration()
     }
-    can_write_sidecars <- .builder_project_text(root %||% NULL) &&
-      dir.exists(root)
     manifest$datasets <- lapply(manifest$datasets, function(record) {
       payload <- record$configuration$payload %||% NULL
       if (!.builder_project_text(payload)) {
@@ -3668,39 +3565,23 @@ builder_project_migrate_manifest <- function(manifest, root = NULL) {
       if (!.builder_project_text(new_digest)) {
         return(record)
       }
-      if (can_write_sidecars) {
-        config_entry <- builder_project_configuration_entry(entry)
-        config_entry <- builder_project_stage_spatial_assets(
-          config_entry,
-          root
+      config_entry <- builder_project_configuration_entry(entry)
+      config_entry <- builder_project_stage_spatial_assets(config_entry, root)
+      descriptor <- builder_project_write_dataset_config(config_entry, root)
+      record$configuration <- utils::modifyList(
+        descriptor,
+        list(
+          digest = new_digest,
+          checked = isTRUE(record$configuration$checked),
+          checked_digest = if (isTRUE(record$configuration$checked)) {
+            new_digest
+          } else {
+            NULL
+          },
+          contract_version = .builder_project_configuration_contract_version
         )
-        descriptor <- builder_project_write_dataset_config(config_entry, root)
-        record$configuration <- utils::modifyList(
-          descriptor,
-          list(
-            digest = new_digest,
-            checked = isTRUE(record$configuration$checked),
-            checked_digest = if (isTRUE(record$configuration$checked)) {
-              new_digest
-            } else {
-              NULL
-            },
-            contract_version = .builder_project_configuration_contract_version
-          )
-        )
-        record$cache <- NULL
-      } else {
-        record$configuration$legacy_payload <- payload
-        record$configuration$payload <- NULL
-        record$configuration$digest <- new_digest
-        record$configuration$checked_digest <- if (
-          isTRUE(record$configuration$checked)
-        ) {
-          new_digest
-        } else {
-          NULL
-        }
-      }
+      )
+      record$cache <- NULL
       if (
         is.list(record$artifact) &&
           identical(
@@ -3998,11 +3879,7 @@ builder_project_artifact_entry <- function(
     is.list(record) &&
     builder_project_status_snapshot_fresh(status, record, root)
   artifact_ready <- if (trusted_status) {
-    isTRUE(status$artifact_ready) &&
-      identical(
-        as.character(status$artifact_identity %||% ""),
-        builder_project_artifact_identity(artifact)
-      )
+    isTRUE(status$artifact_ready) && identical(artifact, record$artifact)
   } else {
     builder_project_artifact_available(artifact, root)
   }
@@ -4192,10 +4069,6 @@ builder_project_restored_check_identity <- function(
       !is.list(status) ||
       !isTRUE(status$checked) ||
       !isTRUE(status$source_matches) ||
-      !identical(
-        as.character(status$record_identity %||% ""),
-        builder_project_record_status_identity(record)
-      ) ||
       !builder_project_status_snapshot_fresh(status, record, root)
   ) {
     return(NULL)

@@ -71,11 +71,6 @@ test_that("loading workbench remains visible and accessible", {
 })
 
 test_that("loading rail rows expose safe status and real actions", {
-  fun <- get0("builder_import_rail_ui", mode = "function")
-  expect_true(is.function(fun))
-  if (!is.function(fun)) {
-    return()
-  }
   entry <- builder_import_entry(
     "ds1",
     "patient-one",
@@ -87,7 +82,10 @@ test_that("loading rail rows expose safe status and real actions", {
     file_type = "RDS",
     size = 2048
   )
-  html <- htmltools::renderTags(fun(list(ds1 = entry), current = "ds1"))$html
+  html <- builder_import_rail_patch(
+    list(ds1 = entry),
+    current = "ds1"
+  )$rows[[1L]]$html
 
   expect_match(html, "patient-one", fixed = TRUE)
   expect_match(html, "Waiting to load", fixed = TRUE)
@@ -117,9 +115,10 @@ test_that("active imports offer the established server cancellation action", {
   queue <- builder_import_add(builder_import_queue(), entry)
   queue <- builder_import_transition(queue, "ds1", "reading", 1L)
 
-  rail_html <- htmltools::renderTags(
-    builder_import_rail_ui(queue$entries, current = "ds1")
-  )$html
+  rail_html <- builder_import_rail_patch(
+    queue$entries,
+    current = "ds1"
+  )$rows[[1L]]$html
   workbench_html <- htmltools::renderTags(
     builder_loading_workbench_ui(queue$entries[["ds1"]])
   )$html
@@ -141,11 +140,6 @@ test_that("active imports offer the established server cancellation action", {
 })
 
 test_that("error rows offer Retry and Remove without internal details", {
-  fun <- get0("builder_import_rail_ui", mode = "function")
-  expect_true(is.function(fun))
-  if (!is.function(fun)) {
-    return()
-  }
   entry <- builder_import_entry(
     "ds1",
     "broken",
@@ -160,7 +154,10 @@ test_that("error rows offer Retry and Remove without internal details", {
     1L,
     error = "/private/session/broken.rds: invalid object"
   )
-  html <- htmltools::renderTags(fun(queue$entries, current = "ds1"))$html
+  html <- builder_import_rail_patch(
+    queue$entries,
+    current = "ds1"
+  )$rows[[1L]]$html
 
   expect_match(html, "Could not load dataset", fixed = TRUE)
   expect_match(html, "builder-retry-import", fixed = TRUE)

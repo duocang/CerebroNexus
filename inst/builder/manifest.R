@@ -56,20 +56,6 @@ builder_content_manifest <- function(entries) {
   structure(entries, class = c("builder_content_manifest", "list"))
 }
 
-builder_manifest_entry_by_id <- function(manifest, id) {
-  .builder_manifest_validate(manifest)
-  if (!.builder_manifest_text(id)) {
-    .builder_manifest_abort(
-      "invalid_id",
-      "Manifest lookup ids must be non-empty strings."
-    )
-  }
-  if (!id %in% names(manifest)) {
-    return(NULL)
-  }
-  manifest[[id]]
-}
-
 builder_manifest_readiness <- function(
   manifest,
   acknowledgements = character()

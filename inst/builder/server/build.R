@@ -221,15 +221,6 @@ builder_build_confirmation_status <- function(state, plan) {
   list(ok = TRUE, reason = NULL)
 }
 
-builder_build_confirmation_matches <- function(plan) {
-  isTRUE(
-    builder_build_confirmation_status(
-      isolate(workflow()),
-      plan
-    )$ok
-  )
-}
-
 builder_build_recovery_needs_fresh_review <- function(message) {
   state <- isolate(workflow())
   if (state$stage %in% c("review", "build")) {
@@ -298,22 +289,9 @@ builder_require_confirmed_build_plan <- function(plan, output_path = NULL) {
   if (isTRUE(status$ok)) {
     return(invisible(TRUE))
   }
-  if (state$stage %in% c("review", "build")) {
-    workflow(builder_reduce_workflow(state, list(type = "invalidate")))
-  }
-  selected_output(NULL)
-  build_flow(list(stage = "idle", plan = NULL))
-  result(NULL)
-  session$sendCustomMessage(
-    "builder_build_dialog",
-    list(action = "close")
+  builder_build_recovery_needs_fresh_review(
+    "Settings changed. Review the updated plan before building."
   )
-  showNotification(
-    "Settings changed. Review the updated plan before building.",
-    type = "warning",
-    duration = 6
-  )
-  invisible(FALSE)
 }
 
 builder_build_attempt_failed <- function(message) {
@@ -621,7 +599,6 @@ builder_finish_build_output_preflight <- function(checked) {
   invisible(TRUE)
 }
 
-builder_poll_build_output_preflight <- NULL
 builder_poll_build_output_preflight <- function() {
   process <- isolate(build_output_preflight_process())
   if (is.null(process)) {
@@ -720,10 +697,6 @@ start_builder_build_output_preflight <- function(path) {
   invisible(TRUE)
 }
 
-select_build_output_folder <- function(path) {
-  start_builder_build_output_preflight(path)
-}
-
 session$onSessionEnded(function() {
   process <- isolate(build_output_preflight_process())
   if (!is.null(process)) {
@@ -764,7 +737,7 @@ choose_build_folder <- function() {
             show_builder_build_server_path()
             return()
           }
-          select_build_output_folder(choice$path)
+          start_builder_build_output_preflight(choice$path)
         },
         error = function(error) {
           build_flow(list(stage = "idle", plan = NULL))
@@ -810,7 +783,7 @@ observeEvent(input$use_builder_build_server_folder, {
     return()
   }
   accepted <- tryCatch(
-    select_build_output_folder(path),
+    start_builder_build_output_preflight(path),
     error = function(error) {
       build_flow(list(stage = "idle", plan = NULL))
       showNotification(

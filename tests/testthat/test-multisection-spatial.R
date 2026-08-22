@@ -101,7 +101,7 @@ test_that("histology is attached per section, not once for all of them", {
       )
     }
 
-    applied <- builder_attach_histology(crb_path, images)
+    applied <- builder_attach_crb_extras(crb_path, images)
     expect_null(applied$error)
     expect_setequal(applied$applied, sections)
 
@@ -160,7 +160,7 @@ test_that("attaching to some sections leaves the others without an image", {
 
     arr <- array(stats::runif(6 * 6 * 3), dim = c(6, 6, 3))
     enc <- builder_encode_image(arr, max_px = 6)
-    applied <- builder_attach_histology(
+    applied <- builder_attach_crb_extras(
       crb_path,
       list(
         sectionA2 = list(
@@ -192,12 +192,12 @@ test_that("attaching nothing, or to a section that is absent, is handled", {
 
     ## No images at all: a no-op, not an error -- most data sets have none.
     expect_equal(
-      builder_attach_histology(crb_path, list())$applied,
+      builder_attach_crb_extras(crb_path, list())$applied,
       character()
     )
 
     ## A name that is not in the object is a mistake worth reporting.
-    bad <- builder_attach_histology(
+    bad <- builder_attach_crb_extras(
       crb_path,
       list(
         nosuchsection = list(uri = "data:image/png;base64,AA", bounds = list())

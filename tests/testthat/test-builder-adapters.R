@@ -214,10 +214,6 @@ test_that("adapter and snapshot public interfaces stay narrow", {
     c("object", "snapshot_dir", "available_bytes")
   )
   expect_identical(names(formals(builder_open_snapshot)), "snapshot")
-  expect_identical(
-    names(formals(builder_snapshot_cleanup)),
-    c("registry", "now")
-  )
 })
 
 test_that("registration publishes a snapshot before exposing an object", {

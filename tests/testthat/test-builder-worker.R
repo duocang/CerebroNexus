@@ -53,7 +53,6 @@ builder_protocol_terminal_api_available <- all(vapply(
 builder_lifecycle_api <- c(
   "builder_worker_start",
   "builder_worker_restart",
-  "builder_worker_interrupt",
   "builder_worker_poll",
   "builder_worker_cell_count",
   "builder_worker_register_snapshot",
@@ -917,13 +916,12 @@ if (builder_lifecycle_api_available) {
     process <- new.env(parent = emptyenv())
     process$poll_process <- function(timeout) state
     process$read <- function() message
-    process$interrupt <- function() invisible(TRUE)
     process
   }
 
-  .builder_fake_worker <- function(process, interrupt = NULL) {
+  .builder_fake_worker <- function(process) {
     structure(
-      list(process = process, interrupt = interrupt),
+      list(process = process),
       class = c("builder_worker", "list")
     )
   }
@@ -1309,87 +1307,6 @@ if (builder_lifecycle_api_available) {
     expect_false(polled$worker$process$is_alive())
   })
 
-  test_that("interrupt reports a closed-worker restart transition", {
-    skip_if_not_installed("callr")
-    worker <- builder_worker_start(builder_profile_inst_path("builder"))
-    old_epoch <- worker$epoch
-    root <- worker$snapshot_root
-    worker$process$close()
-
-    interrupted <- builder_worker_interrupt(worker)
-    withr::defer({
-      try(interrupted$worker$process$close(), silent = TRUE)
-      unlink(root, recursive = TRUE, force = TRUE)
-    })
-
-    expect_identical(interrupted$event, "restarted")
-    expect_true(interrupted$worker$ready)
-    expect_false(identical(interrupted$worker$epoch, old_epoch))
-  })
-
-  test_that("interrupt returns an already-ready result exactly once", {
-    skip_if_not_installed("callr")
-    worker <- builder_worker_start(builder_profile_inst_path("builder"))
-    withr::defer({
-      try(worker$process$close(), silent = TRUE)
-      if (isTRUE(worker$owns_root)) {
-        unlink(worker$snapshot_root, recursive = TRUE, force = TRUE)
-      }
-    })
-    worker$process$call(function() 42L)
-    .builder_wait_for_process_state(worker$process, "ready")
-
-    interrupted <- builder_worker_interrupt(worker)
-    first <- builder_worker_poll(interrupted, timeout = 0)
-    second <- builder_worker_poll(first$worker, timeout = 0)
-
-    expect_identical(first$event, "completed")
-    expect_identical(first$result$value, 42L)
-    expect_true(first$result$done)
-    expect_null(second$result)
-    expect_null(second$event)
-  })
-
-  test_that("interrupt has one non-extensible five-second deadline", {
-    process <- .builder_fake_process("working")
-    worker <- .builder_fake_worker(process)
-    started <- as.POSIXct("2026-08-04 10:00:00", tz = "UTC")
-
-    first <- builder_worker_interrupt(
-      worker,
-      grace_ms = 9000L,
-      now = started
-    )
-    repeated <- builder_worker_interrupt(
-      first,
-      grace_ms = 5000L,
-      now = started + 1
-    )
-
-    expect_equal(as.numeric(first$interrupt$deadline - started), 5)
-    expect_identical(repeated$interrupt$deadline, first$interrupt$deadline)
-  })
-
-  test_that("interim callr messages do not clear an interrupt deadline", {
-    deadline <- as.POSIXct("2026-08-04 10:00:05", tz = "UTC")
-    process <- .builder_fake_process("ready", list(code = 301L))
-    worker <- .builder_fake_worker(
-      process,
-      interrupt = list(status = "waiting", deadline = deadline)
-    )
-
-    polled <- builder_worker_poll(
-      worker,
-      timeout = 0,
-      now = deadline - 1
-    )
-
-    expect_null(polled$event)
-    expect_null(polled$result)
-    expect_identical(polled$worker$interrupt$status, "waiting")
-    expect_identical(polled$worker$interrupt$deadline, deadline)
-  })
-
   test_that("a callr read failure is one completed typed error", {
     process <- .builder_fake_process("ready")
     process$read <- function() stop("closed response channel")
@@ -1400,45 +1317,6 @@ if (builder_lifecycle_api_available) {
     expect_identical(first$event, "completed")
     expect_true(first$result$done)
     expect_match(first$result$error, "could not be read")
-  })
-
-  test_that("interrupt is non-blocking then kills and restores an uncooperative worker", {
-    skip_if_not_installed("callr")
-    fixture <- builder_worker_fixture()
-    withr::defer(.builder_snapshot_release(fixture$snapshot))
-    worker <- builder_worker_start(
-      builder_profile_inst_path("builder"),
-      snapshot_root = fixture$root,
-      snapshot_registry = fixture$registry
-    )
-    worker$process$call(function() {
-      repeat {
-        try(Sys.sleep(0.05), silent = TRUE)
-      }
-    })
-    started <- Sys.time()
-    interrupted <- builder_worker_interrupt(
-      worker,
-      grace_ms = 20L,
-      now = started
-    )
-    expect_lt(as.numeric(difftime(Sys.time(), started, units = "secs")), 1)
-    expect_identical(interrupted$epoch, worker$epoch)
-    expect_identical(interrupted$interrupt$status, "waiting")
-
-    polled <- builder_worker_poll(
-      interrupted,
-      timeout = 0,
-      now = started + 1
-    )
-    withr::defer(try(polled$worker$process$close(), silent = TRUE))
-
-    expect_identical(polled$event, "restarted")
-    expect_false(identical(polled$worker$epoch, worker$epoch))
-    expect_equal(
-      builder_worker_cell_count(polled$worker, "dataset-a"),
-      80L
-    )
   })
 
   test_that("worker drop only evicts and never releases main-owned snapshots", {

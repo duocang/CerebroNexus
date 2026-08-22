@@ -782,66 +782,6 @@ test_that("snapshot failure does not leave a partial or replace a target", {
   expect_false(any(grepl("stage", list.files(root), fixed = TRUE)))
 })
 
-test_that("cleanup removes only old snapshots owned by its descriptor", {
-  root <- withr::local_tempdir()
-  object <- .builder_snapshot_object(.builder_snapshot_dense())
-  adapter_env <- environment(builder_snapshot_seurat)
-  original_now <- .builder_snapshot_now
-  assign(
-    ".builder_snapshot_now",
-    function() as.POSIXct("2026-01-01", tz = "UTC"),
-    envir = adapter_env
-  )
-  on.exit(
-    assign(".builder_snapshot_now", original_now, envir = adapter_env),
-    add = TRUE
-  )
-  old <- builder_snapshot_seurat(
-    object,
-    file.path(root, "old.snapshot"),
-    available_bytes = 2^40
-  )
-  assign(
-    ".builder_snapshot_now",
-    function() as.POSIXct("2026-01-02 11:30:00", tz = "UTC"),
-    envir = adapter_env
-  )
-  fresh <- builder_snapshot_seurat(
-    object,
-    file.path(root, "fresh.snapshot"),
-    available_bytes = 2^40
-  )
-  foreign <- old
-  foreign$path <- file.path(root, "foreign.snapshot")
-  dir.create(foreign$path)
-
-  result <- builder_snapshot_cleanup(
-    list(old = old, fresh = fresh, foreign = foreign),
-    now = as.POSIXct("2026-01-02 12:00:00", tz = "UTC")
-  )
-  expect_false(dir.exists(old$path))
-  expect_true(dir.exists(fresh$path))
-  expect_true(dir.exists(foreign$path))
-  expect_identical(result$removed, "old")
-  expect_setequal(result$preserved, c("fresh", "foreign"))
-
-  again <- builder_snapshot_cleanup(
-    list(old = old),
-    now = as.POSIXct("2026-01-03", tz = "UTC")
-  )
-  expect_identical(again$removed, character())
-
-  tampered <- fresh
-  tampered$created_at <- as.POSIXct("2020-01-01", tz = "UTC")
-  tampered_result <- builder_snapshot_cleanup(
-    list(tampered = tampered),
-    now = as.POSIXct("2026-01-04", tz = "UTC")
-  )
-  expect_true(dir.exists(fresh$path))
-  expect_identical(tampered_result$preserved, "tampered")
-  expect_identical(tampered_result$errors, "tampered")
-})
-
 test_that("free space is queried before the snapshot object is written", {
   lines <- readLines(
     builder_profile_inst_path("builder", "adapters.R"),

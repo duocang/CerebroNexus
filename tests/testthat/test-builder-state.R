@@ -7,7 +7,6 @@ if (nzchar(builder_state_path) && file.exists(builder_state_path)) {
 
 builder_state_api <- c(
   "builder_dataset_state",
-  "builder_reduce_dataset",
   "builder_build_state",
   "builder_reduce_build"
 )
@@ -372,21 +371,6 @@ if (builder_state_api_available) {
     )
   })
 
-  test_that("dataset reducers always recompute manifest readiness", {
-    state <- builder_dataset_state(builder_state_entry())
-    blocking <- builder_state_entry("blocking")$dataset_profile$manifest
-
-    reduced <- builder_reduce_dataset(
-      state,
-      list(type = "replace_manifest", manifest = blocking)
-    )
-
-    expect_identical(state$readiness, "ready")
-    expect_identical(reduced$readiness, "blocked")
-    expect_identical(reduced$blocking_ids, "expression")
-    expect_gt(reduced$revision, state$revision)
-  })
-
   test_that("dataset state keeps canonical acknowledgement semantics", {
     acknowledge <- builder_state_entry()
     acknowledge$dataset_profile$manifest <- builder_content_manifest(list(
@@ -411,16 +395,6 @@ if (builder_state_api_available) {
       builder_dataset_state(choose)$readiness,
       "needs_attention"
     )
-  })
-
-  test_that("dataset reducers reject unknown actions", {
-    error <- capture_builder_state_error(builder_reduce_dataset(
-      builder_dataset_state(builder_state_entry()),
-      list(type = "invented")
-    ))
-
-    expect_s3_class(error, "builder_state_error")
-    expect_identical(error$code, "unknown_dataset_action")
   })
 
   test_that("build state rejects a second in-flight build", {

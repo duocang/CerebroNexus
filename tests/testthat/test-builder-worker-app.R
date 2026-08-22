@@ -549,6 +549,12 @@ test_that("Build status projection keeps one stable typed host", {
   expect_false(pending$can_build)
   expect_identical(pending$message, "Preparing preview…")
   expect_true(quiescent$can_build)
+  render_status <- function(model) {
+    htmltools::renderTags(htmltools::tagList(
+      builder_build_stage_status_body_ui(model),
+      builder_build_stage_primary_action_ui(model)
+    ))$html
+  }
 
   results <- list(
     success = builder_result_success(
@@ -581,24 +587,14 @@ test_that("Build status projection keeps one stable typed host", {
     )
     expect_identical(model$state, "result")
     expect_s3_class(model$result_model, "builder_build_status")
-    htmltools::renderTags(builder_build_stage_status_ui(model))$html
+    render_status(model)
   })
 
-  ready_html <- htmltools::renderTags(
-    builder_build_stage_status_ui(idle)
-  )$html
-  choosing_html <- htmltools::renderTags(
-    builder_build_stage_status_ui(choosing)
-  )$html
-  queued_html <- htmltools::renderTags(
-    builder_build_stage_status_ui(queued)
-  )$html
-  running_html <- htmltools::renderTags(
-    builder_build_stage_status_ui(running)
-  )$html
-  missing_html <- htmltools::renderTags(
-    builder_build_stage_status_ui(missing_protocol)
-  )$html
+  ready_html <- render_status(idle)
+  choosing_html <- render_status(choosing)
+  queued_html <- render_status(queued)
+  running_html <- render_status(running)
+  missing_html <- render_status(missing_protocol)
   all_html <- c(
     list(ready_html, choosing_html, queued_html, running_html, missing_html),
     result_html
@@ -640,7 +636,7 @@ test_that("Build status projection keeps one stable typed host", {
     fixed = TRUE
   )
   expect_error(
-    builder_build_stage_status_ui(list(state = "future")),
+    render_status(list(state = "future")),
     "Build-stage status is unsupported"
   )
   expect_error(
@@ -673,11 +669,6 @@ test_that("Build owns output mode and expanded Viewer App settings", {
   expect_match(app_html, "Require login", fixed = TRUE)
   expect_match(app_html, "builder-stage-section", fixed = TRUE)
   expect_match(app_html, "builder-build-options-fields", fixed = TRUE)
-  expect_false(grepl(
-    "builder-app-settings builder-card",
-    app_html,
-    fixed = TRUE
-  ))
   expect_match(app_html, "<details", fixed = TRUE)
   expect_match(app_html, "Connection settings", fixed = TRUE)
 
@@ -1490,7 +1481,6 @@ test_that("the App keeps Build execution private until the workflow reaches it",
   expect_match(app, "builder_reduce_build", fixed = TRUE)
   expect_false(grepl("observeEvent(input$cancel_build, {", app, fixed = TRUE))
   expect_false(grepl("builder_protocol_cancel", app, fixed = TRUE))
-  expect_false(grepl("builder_worker_interrupt", app, fixed = TRUE))
   expect_false(grepl('"cancel_build"', workbench, fixed = TRUE))
   expect_false(grepl('actionButton(\n      "build"', app, fixed = TRUE))
   expect_match(workbench, "build = render_build_workbench()", fixed = TRUE)

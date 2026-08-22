@@ -950,20 +950,6 @@ builder_build_stage_status_body_ui <- function(model) {
   )
 }
 
-builder_build_stage_status_ui <- function(model) {
-  content <- tagList(
-    builder_build_stage_status_body_ui(model),
-    builder_build_stage_primary_action_ui(model)
-  )
-  div(
-    class = paste(
-      "builder-build-stage-status-content",
-      paste0("is-", model$state)
-    ),
-    content
-  )
-}
-
 builder_build_status_ui <- function(model) {
   if (inherits(model, "builder_result")) {
     model <- builder_build_status_model(model)

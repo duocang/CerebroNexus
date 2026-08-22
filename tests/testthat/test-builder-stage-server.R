@@ -1105,7 +1105,6 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
     ))
     session$flushReact()
     expect_identical(workflow()$stage, "build")
-    expect_true(builder_build_confirmation_matches(frozen_review_plan()))
     invalid_app_plan <- freeze_plan_for_output(
       tempfile("invalid-app-output-"),
       output_options = current_build_options()
@@ -1124,7 +1123,6 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
     session$flushReact()
 
     expect_identical(workflow()$stage, "build")
-    expect_true(builder_build_confirmation_matches(review_plan))
     expect_identical(workflow()$review_plan, review_plan)
 
     review_options(builder_review_options(
@@ -1158,7 +1156,6 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
       "password-a|password-b|user-a|user-b",
       capture.output(dput(plan_b))
     )))
-    expect_true(builder_build_confirmation_matches(plan_b))
 
     build_flow(list(stage = "building", plan = NULL))
     session$setInputs(build_output_mode = "crb")
@@ -1323,7 +1320,6 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
       reviewed,
       list(type = "confirm_review", plan = plan_a)
     ))
-    expect_true(builder_build_confirmation_matches(plan_a))
 
     build_flow(list(stage = "confirming", plan = plan_a))
     workflow(app_env$builder_reduce_workflow(
@@ -1342,7 +1338,6 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
     ))
     relocated <- plan_a
     relocated$out_dir <- tempfile("relocated-output-")
-    expect_true(builder_build_confirmation_matches(relocated))
 
     plan_b <- plan_a
     plan_b$items[[1L]]$name <- "Changed after dialog opened"

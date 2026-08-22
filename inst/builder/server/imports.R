@@ -1292,7 +1292,6 @@ finish_builder_release_settlement <- function(settled) {
   invisible(TRUE)
 }
 
-poll_builder_release_settlement <- NULL
 poll_builder_release_settlement <- function() {
   process <- isolate(release_settlement_process())
   if (is.null(process) || builder_session_closed()) {

@@ -90,35 +90,6 @@ builder_rail_source("state.R")
 builder_rail_source("extras.R")
 builder_rail_source(file.path("ui", "dataset_rail.R"))
 
-test_that("pending dataset files render safe bounded Reading rows", {
-  html <- htmltools::renderTags(builder_pending_dataset_files_ui(list(
-    ds1 = list(
-      id = "ds1",
-      filename = "/private/shiny-upload/alpha.rds",
-      type = "RDS",
-      size = 2048,
-      visible = TRUE
-    ),
-    ds2 = list(
-      id = "ds2",
-      filename = "C:\\fakepath\\beta.qs2",
-      type = "QS2",
-      size = 4096,
-      visible = TRUE
-    )
-  )))$html
-
-  expect_match(html, "builder-file-list", fixed = TRUE)
-  expect_match(html, "builder-file-item", fixed = TRUE)
-  expect_match(html, "alpha.rds", fixed = TRUE)
-  expect_match(html, "beta.qs2", fixed = TRUE)
-  expect_match(html, "RDS · 2 KB", fixed = TRUE)
-  expect_match(html, "QS2 · 4 KB", fixed = TRUE)
-  expect_match(html, "Reading…", fixed = TRUE)
-  expect_false(grepl("pending-upload-remove", html, fixed = TRUE))
-  expect_false(grepl("/private/shiny-upload", html, fixed = TRUE))
-  expect_false(grepl("fakepath", html, fixed = TRUE))
-})
 
 test_that("the Builder launcher bounds uploads without leaking process options", {
   launcher_path <- testthat::test_path(
@@ -142,7 +113,6 @@ test_that("the Builder launcher bounds uploads without leaking process options",
 builder_rail_api <- c(
   "builder_state",
   "builder_reduce_state",
-  "builder_effective_initial_dataset",
   "builder_app_options_for_plan",
   "builder_dataset_rail_ui",
   "builder_dataset_rail_server",
@@ -271,17 +241,13 @@ if (builder_rail_api_available) {
     expect_identical(selected$current_dataset, "b")
   })
 
-  test_that("dataset order is the only initial-App choice", {
+  test_that("initial-App selection is not stored in dataset state", {
     state <- builder_state(lapply(c("a", "b", "c"), builder_rail_entry))
     reordered <- builder_reduce_state(
       state,
       list(type = "reorder", order = c("c", "a", "b"))
     )
 
-    expect_identical(
-      builder_effective_initial_dataset(reordered),
-      list(id = "c", mode = "automatic")
-    )
     expect_identical(builder_app_options_for_plan(reordered), list())
     expect_error(
       builder_state(

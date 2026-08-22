@@ -262,8 +262,8 @@ refresh_enhance_tables <- function() {
 
 add_enhance_table_files <- function(
   uploads,
-  id = current(),
-  inventories = NULL
+  inventories,
+  id = current()
 ) {
   if (!builder_has_text(id)) {
     return(invisible(FALSE))
@@ -275,14 +275,8 @@ add_enhance_table_files <- function(
   added <- list()
   for (index in seq_len(nrow(uploads))) {
     filename <- basename(uploads$name[[index]])
-    records <- if (is.null(inventories)) {
-      builder_table_inventory(
-        uploads$datapath[[index]],
-        filename = filename
-      )
-    } else {
-      inventories[[index]] %||% list(error = "Could not read this workbook.")
-    }
+    records <- inventories[[index]] %||%
+      list(error = "Could not read this workbook.")
     if (!length(records) || !is.null(records$error)) {
       showNotification(
         records$error %||% paste0(filename, ": No worksheets were found."),
@@ -407,13 +401,12 @@ schedule_enhance_table_files <- function(
       )
       return(invisible(FALSE))
     }
-    shiny::isolate(add_enhance_table_files(uploads, id, inventories))
+    shiny::isolate(add_enhance_table_files(uploads, inventories, id))
   }
   if (inherits(process, "condition")) {
     finish(failed = TRUE)
     return(invisible(FALSE))
   }
-  poll <- NULL
   poll <- function() {
     if (builder_session_closed()) {
       try(process$kill(), silent = TRUE)

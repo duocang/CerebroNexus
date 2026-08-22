@@ -168,15 +168,6 @@ builder_import_find <- function(queue, id) {
   queue$entries[[id]]
 }
 
-builder_import_pending_ids <- function(queue) {
-  .builder_import_queue_assert(queue)
-  names(Filter(
-    function(entry) !entry$load_state %in% c("ready", "cancelled"),
-    queue$entries
-  )) |>
-    .builder_import_or(character())
-}
-
 builder_import_active_ids <- function(queue) {
   .builder_import_queue_assert(queue)
   names(Filter(
@@ -369,11 +360,6 @@ builder_import_auto_focus <- function(current_id, active_id, new_id) {
     return(NULL)
   }
   new_id
-}
-
-builder_import_legacy_state <- function(entry) {
-  state <- entry$load_state
-  if (is.null(state) || identical(state, "loaded")) "ready" else state
 }
 
 ## -- Private worker-to-app progress records --------------------------------

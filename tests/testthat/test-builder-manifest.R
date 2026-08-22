@@ -210,11 +210,8 @@ test_that("content manifests accept only valid entries with unique ids", {
 
   expect_s3_class(manifest, "builder_content_manifest")
   expect_identical(names(manifest), c("expression", "metadata"))
-  expect_identical(
-    builder_manifest_entry_by_id(manifest, "metadata"),
-    second
-  )
-  expect_null(builder_manifest_entry_by_id(manifest, "missing"))
+  expect_identical(manifest[["metadata"]], second)
+  expect_null(manifest[["missing"]])
 
   expect_builder_manifest_code(
     builder_content_manifest(list(list(id = "forged"))),

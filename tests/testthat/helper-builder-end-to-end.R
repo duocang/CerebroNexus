@@ -86,25 +86,12 @@ builder_e2e_entry <- function(record, caller = parent.frame()) {
       record$make()$object
     )
   )
-  matrix <- SeuratObject::LayerData(
-    inspected$object,
-    assay = inspected$legacy_profile$default_assay,
-    layer = inspected$legacy_profile$default_layer
-  )
-  recommendations <- get(
-    "builder_recommend_dataset",
+  metadata <- get(
+    "builder_recommend_metadata",
     caller,
     inherits = TRUE
   )(
     inspected$profile,
-    matrix_summary = list(
-      estimated_bytes = as.numeric(utils::object.size(matrix)),
-      sparse = inherits(matrix, "sparseMatrix")
-    ),
-    available = list(
-      build = list(bpcells = FALSE, h5 = FALSE),
-      viewer = list(bpcells = FALSE, h5 = FALSE)
-    ),
     required = c(
       inspected$legacy_profile$nUMI,
       inspected$legacy_profile$nGene
@@ -117,6 +104,7 @@ builder_e2e_entry <- function(record, caller = parent.frame()) {
       )
     )
   )
+  recommendations <- list(metadata = metadata)
   settings <- get("builder_default_settings", caller, inherits = TRUE)(
     inspected$legacy_profile,
     record$label,

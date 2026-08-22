@@ -101,104 +101,6 @@ builder_review_initial_page_choices <- function(page_expectations = list()) {
   stats::setNames(pages$id, pages$label)
 }
 
-builder_review_controls_ui <- function(
-  id,
-  options,
-  initial_page_choices = c("Data info" = "data_info"),
-  auth = list(
-    enabled = FALSE,
-    account_count = 0L,
-    error = NULL,
-    available = TRUE
-  )
-) {
-  stopifnot(inherits(options, "builder_review_options"))
-  ns <- NS(id)
-  auth_available <- isTRUE(auth$available)
-  require_login <- checkboxInput(
-    ns("require_login"),
-    "Require login",
-    isTRUE(auth$enabled)
-  )
-  if (!auth_available) {
-    require_login <- htmltools::tagQuery(require_login)$find("input")$addAttrs(
-      disabled = "disabled"
-    )$allTags()
-  }
-  selected_page <- if (options$initial_page %in% initial_page_choices) {
-    options$initial_page
-  } else {
-    "data_info"
-  }
-  tags$details(
-    class = "review-app-options builder-card builder-section",
-    tags$summary("App options"),
-    selectInput(
-      ns("initial_page"),
-      "Starting page",
-      choices = initial_page_choices,
-      selected = selected_page
-    ),
-    textInput(
-      ns("welcome_message"),
-      "Welcome message",
-      options$welcome_message
-    ),
-    checkboxInput(
-      ns("variable_to_compare"),
-      "Variable to compare",
-      options$variable_to_compare
-    ),
-    checkboxInput(
-      ns("show_upload_ui"),
-      "Allow uploads",
-      options$show_upload_ui
-    ),
-    require_login,
-    if (!auth_available) {
-      div(
-        class = "hint review-auth-dependency",
-        auth$reason %||%
-          "Login is unavailable. Install the required R package, then restart Builder."
-      )
-    },
-    if (isTRUE(auth$enabled) && auth_available) {
-      div(
-        class = "review-auth-controls",
-        span(
-          class = "review-auth-summary",
-          if (identical(auth$account_count, 1L)) {
-            "Login required · 1 account"
-          } else if (
-            is.integer(auth$account_count) && auth$account_count > 1L
-          ) {
-            paste0("Login required · ", auth$account_count, " accounts")
-          } else {
-            "Add at least one account"
-          }
-        ),
-        tags$button(
-          type = "button",
-          class = "btn builder-auth-open",
-          if (is.integer(auth$account_count) && auth$account_count > 0L) {
-            "Edit accounts"
-          } else {
-            "Set up accounts"
-          }
-        ),
-        if (
-          is.character(auth$error) &&
-            length(auth$error) == 1L &&
-            !is.na(auth$error) &&
-            nzchar(auth$error)
-        ) {
-          div(class = "hint review-auth-error", auth$error)
-        }
-      )
-    }
-  )
-}
-
 builder_auth_dialog_ui <- function() {
   div(
     id = "builder-auth-backdrop",
@@ -689,27 +591,6 @@ builder_review_model <- function(plan, verification = NULL) {
     can_build = builder_review_can_build(plan)
   )
   model
-}
-
-builder_review_blocked_ui <- function(id, message = NULL) {
-  ns <- NS(id)
-  issue <- if (builder_stage_has_text(message %||% "")) {
-    message
-  } else {
-    "Review the highlighted settings before building."
-  }
-  div(
-    id = ns("stage"),
-    class = "builder-stage builder-stage-review builder-card builder-section",
-    h2("Review"),
-    p(class = "stage-intro", "Check your datasets and output before building."),
-    tags$section(
-      class = "review-section review-needs-attention",
-      h3("Needs attention"),
-      p(issue),
-      p("Correct the highlighted settings, then return here to build.")
-    )
-  )
 }
 
 ## The Review surface consumes only the user-facing projection above. The

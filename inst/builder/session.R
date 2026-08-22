@@ -807,10 +807,6 @@ builder_session_drop <- function(worker, id, request = NULL) {
 #' before the one carrying the result. Treating those as the answer is how a
 #' panel ends up permanently empty while the worker has in fact finished, so
 #' only the completion code counts.
-builder_session_poll <- function(
-  worker,
-  timeout = 0,
-  now = Sys.time()
-) {
-  builder_worker_poll(worker, timeout = timeout, now = now)
+builder_session_poll <- function(worker, timeout = 0) {
+  builder_worker_poll(worker, timeout = timeout)
 }

@@ -118,24 +118,6 @@ test_that("external Builder images reject active or forged payloads", {
   )
 })
 
-test_that("alignment previews are display-only Plotly figures", {
-  frame <- data.frame(
-    x = c(-1, 1),
-    y = c(1, -1),
-    group = c("A", "B"),
-    cell_barcode = c("cell-a", "cell-b"),
-    stringsAsFactors = FALSE
-  )
-  plot <- plotly::plotly_build(builder_alignment_plot(frame))
-
-  expect_true(isTRUE(plot$x$config$staticPlot))
-  expect_false(isTRUE(plot$x$config$displayModeBar))
-  expect_true(isTRUE(plot$x$config$responsive))
-  expect_false(identical(plot$x$layout$dragmode, "select"))
-  expect_null(plot$x$data[[1L]]$customdata)
-  expect_lte(sum(unlist(plot$x$layout$margin)), 36)
-})
-
 test_that("alignment server does not subscribe to Plotly selection events", {
   server <- paste(
     readLines(
@@ -939,35 +921,7 @@ test_that("rotated alignment bounds preserve one data-unit scale per image pixel
   expect_equal(record$bounds, expected, tolerance = 1e-12)
 })
 
-test_that("alignment plot preserves decimal coordinate rotation labels", {
-  skip_if_not_installed("plotly")
-  frame <- data.frame(
-    cell_barcode = c("a", "b", "c"),
-    x = c(0, 20, 80),
-    y = c(0, 55, 10),
-    group = c("A", "B", "C")
-  )
-  transform <- .spx_coordinate_transform_normalize(
-    list(rotation_degrees = 37.5, scale = 1.2),
-    frame
-  )
-  plot <- plotly::plotly_build(builder_alignment_plot(
-    frame,
-    coordinate_frame = .builder_alignment_bounds(frame),
-    coordinate_transform = transform
-  ))
-  traces <- plot$x$data
-  label_traces <- vapply(
-    traces,
-    function(trace) identical(trace$mode, "text"),
-    logical(1)
-  )
-  label <- traces[[which(label_traces)]]$text
-
-  expect_identical(unname(label), "+37.5°")
-})
-
-test_that("reset and apply-to-all preserve each section image identity", {
+test_that("reset preserves the section image identity", {
   defaults <- builder_alignment_defaults()
   first <- builder_alignment_record(
     source = list(name = "first.png", type = "image/png"),
@@ -987,29 +941,6 @@ test_that("reset and apply-to-all preserve each section image identity", {
     ),
     section = list(id = "first", kind = "spatial")
   )
-  second <- builder_alignment_record(
-    source = list(name = "second.png", type = "image/png"),
-    source_uri = "data:image/png;base64,SECOND",
-    uri = "data:image/png;base64,SECOND",
-    base_bounds = list(xmin = 100, xmax = 130, ymin = 50, ymax = 70),
-    parameters = defaults,
-    section = list(id = "second", kind = "spatial")
-  )
-
-  copied <- builder_alignment_apply_transform_to_all(
-    list(first = first, second = second),
-    "first"
-  )
-  expect_identical(copied$second$source_uri, second$source_uri)
-  expect_identical(copied$second$source$name, "second.png")
-  expect_identical(copied$second$rotation, first$rotation)
-  expect_identical(copied$second$flip_x, first$flip_x)
-  expect_identical(copied$second$dx, first$dx)
-  expect_identical(copied$second$image_opacity, first$image_opacity)
-  expect_identical(copied$second$point_opacity, first$point_opacity)
-  expect_identical(copied$second$point_size, first$point_size)
-  expect_false(identical(copied$second$bounds, first$bounds))
-
   reset <- builder_alignment_reset(first)
   expect_identical(reset$source_uri, first$source_uri)
   expect_identical(reset$base_bounds, first$base_bounds)
@@ -1052,7 +983,7 @@ test_that("named spatial image collections normalize without losing labels", {
   normalized <- builder_image_collection_normalize(images)
   expect_named(normalized, "section_a")
   expect_named(normalized$section_a, c("H&E", "DAPI"))
-  expect_identical(builder_image_collection_count(normalized), 2L)
+  expect_length(builder_image_collection_flatten(normalized), 2L)
   expect_identical(
     vapply(
       builder_image_collection_flatten(normalized),
@@ -1101,8 +1032,9 @@ test_that("named spatial image actions preserve unaffected records", {
   }
   he <- record("section_a", "he.png", dx = 3)
   dapi <- record("section_a", "dapi.png")
-  images <- builder_image_collection_add(list(), "section_a", "H&E", he)
-  images <- builder_image_collection_add(images, "section_a", "DAPI", dapi)
+  images <- builder_image_collection_normalize(list(
+    section_a = list(`H&E` = he, DAPI = dapi)
+  ))
   expect_named(images$section_a, c("H&E", "DAPI"))
   expect_identical(images$section_a[["H&E"]], he)
 
@@ -2587,10 +2519,6 @@ test_that("encoding round-trips grayscale alpha through RGBA", {
     expect_equal(decoded[,, channel], gray, tolerance = 1 / 255)
   }
   expect_equal(decoded[,, 4L], alpha, tolerance = 1 / 255)
-
-  rotated <- builder_rotate_array(gray_alpha, 90)
-  expect_identical(dim(rotated)[3L], 4L)
-  expect_true(any(rotated[,, 4L] < 1))
 })
 
 test_that("quarter-turn rotations preserve every RGBA pixel exactly", {
@@ -2601,11 +2529,17 @@ test_that("quarter-turn rotations preserve every RGBA pixel exactly", {
   pixel_signatures <- function(image) {
     sort(as.vector(apply(image, c(1L, 2L), paste, collapse = ":")))
   }
+  rotate <- function(image, angle) {
+    dimensions <- builder_rotation_plan(
+      width = dim(image)[2L],
+      height = dim(image)[1L],
+      degrees = angle
+    )$output_dimensions
+    .builder_rotate_rgba(image, angle, dimensions)
+  }
   rotations <- lapply(
     c(`90` = 90, `180` = 180, `270` = 270, `-90` = -90),
-    function(angle) {
-      builder_rotate_array(rgba, angle)
-    }
+    function(angle) rotate(rgba, angle)
   )
   expected_dimensions <- list(
     `90` = c(3L, 2L, 4L),
@@ -2642,11 +2576,11 @@ test_that("quarter-turn rotations preserve every RGBA pixel exactly", {
   labelled <- array(1, dim = c(2L, 3L, 4L))
   labelled[,, 1L] <- matrix(1:6 / 10, nrow = 2L, byrow = TRUE)
   expect_identical(
-    builder_rotate_array(labelled, 90)[,, 1L],
+    rotate(labelled, 90)[,, 1L],
     matrix(c(3, 6, 2, 5, 1, 4) / 10, nrow = 3L, byrow = TRUE)
   )
   expect_identical(
-    builder_rotate_array(labelled, -90)[,, 1L],
+    rotate(labelled, -90)[,, 1L],
     matrix(c(4, 1, 5, 2, 6, 3) / 10, nrow = 3L, byrow = TRUE)
   )
 
@@ -2717,24 +2651,6 @@ test_that("arbitrary rotation plans bound allocation before mapping", {
   expect_lt(max(plan$input_dimensions), 4000L)
   expect_true(plan$prescaled)
 
-  moderate <- array(
-    seq(0.01, 0.99, length.out = 80L * 100L * 4L),
-    dim = c(80L, 100L, 4L)
-  )
-  rotated <- builder_rotate_array(moderate, 45, max_edge = 50L)
-  expect_lte(max(dim(rotated)[1:2]), 50L)
-  expect_identical(dim(rotated)[3L], 4L)
-  expect_true(any(rotated[,, 4L] == 0))
-
-  implementation <- paste(deparse(body(builder_rotate_array)), collapse = "\n")
-  for (full_grid in c(
-    "yy <- matrix",
-    "xx <- matrix",
-    "src_index <- ifelse"
-  )) {
-    expect_false(grepl(full_grid, implementation, fixed = TRUE))
-  }
-
   encode_implementation <- paste(
     deparse(body(builder_encode_image)),
     collapse = "\n"
@@ -2745,28 +2661,6 @@ test_that("arbitrary rotation plans bound allocation before mapping", {
     fixed = TRUE
   )[[1L]]
   expect_identical(sum(normalization_calls > 0L), 1L)
-})
-
-test_that("arbitrary rotation preserves tiny raster pixels and alpha", {
-  single <- array(c(0.2, 0.4, 0.6, 0.8), dim = c(1L, 1L, 4L))
-  single_rotated <- builder_rotate_array(single, 45, max_edge = 10L)
-  expect_true(any(single_rotated[,, 4L] == single[,, 4L]))
-  expect_true(any(apply(
-    single_rotated,
-    c(1L, 2L),
-    function(pixel) identical(as.numeric(pixel), as.numeric(single[1, 1, ]))
-  )))
-
-  strip <- array(0, dim = c(1L, 3L, 4L))
-  strip[,, 1L] <- c(0.1, 0.2, 0.3)
-  strip[,, 2L] <- c(0.4, 0.5, 0.6)
-  strip[,, 3L] <- c(0.7, 0.8, 0.9)
-  strip[,, 4L] <- c(0.25, 0.5, 0.75)
-  strip_rotated <- builder_rotate_array(strip, 45, max_edge = 10L)
-  expect_setequal(
-    strip_rotated[,, 4L][strip_rotated[,, 4L] > 0],
-    strip[,, 4L]
-  )
 })
 
 test_that("rotation prescaling samples thin images from pixel centres", {
@@ -2849,10 +2743,9 @@ test_that("encoded display limits preserve transformed source extent", {
   )
 })
 
-test_that("rotated image extent drives bounds and Plotly aspect", {
+test_that("rotated image extent drives bounds", {
   skip_if_not_installed("png")
   skip_if_not_installed("base64enc")
-  skip_if_not_installed("plotly")
   image <- array(
     seq(0.01, 0.99, length.out = 2L * 4L * 4L),
     dim = c(2L, 4L, 4L)
@@ -2892,17 +2785,6 @@ test_that("rotated image extent drives bounds and Plotly aspect", {
         ymin = 0,
         ymax = expected[[angle]][["height"]]
       ),
-      info = angle
-    )
-    built <- plotly::plotly_build(builder_overlay_plot(
-      data.frame(sx = c(0, 1), sy = c(0, 1)),
-      encoded$uri,
-      bounds
-    ))
-    layout_image <- built$x$layout$images[[1L]]
-    expect_equal(
-      layout_image$sizex / layout_image$sizey,
-      expected[[angle]][["width"]] / expected[[angle]][["height"]],
       info = angle
     )
   }

@@ -25,16 +25,11 @@ builder_content_spatial_example_object <- local({
 
   function(section_names = "fov") {
     if (is.null(cached)) {
-      environment <- new.env(parent = baseenv())
-      sys.source(
-        builder_content_spatial_inst_path("builder", "io.R"),
-        envir = environment
-      )
-      built <- suppressWarnings(environment$builder_make_spatial_example())
-      if (!is.null(built$error)) {
-        stop(built$error, call. = FALSE)
-      }
-      cached <<- built$object
+      cached <<- readRDS(builder_content_spatial_inst_path(
+        "builder",
+        "fixtures",
+        "all_content.rds"
+      ))
     }
 
     object <- unserialize(serialize(cached, NULL))

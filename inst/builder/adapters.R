@@ -1572,46 +1572,6 @@ builder_open_snapshot <- function(snapshot) {
   )
 }
 
-#' Remove snapshots older than 24 hours when their owner record still matches.
-builder_snapshot_cleanup <- function(registry, now = Sys.time()) {
-  if (!is.list(registry)) {
-    .builder_adapter_abort("The snapshot registry must be a list.")
-  }
-  keys <- names(registry)
-  if (is.null(keys)) {
-    keys <- as.character(seq_along(registry))
-  }
-  removed <- preserved <- errors <- character()
-  for (index in seq_along(registry)) {
-    key <- keys[[index]]
-    snapshot <- registry[[index]]
-    if (!is.list(snapshot) || !dir.exists(snapshot$path %||% "")) {
-      next
-    }
-    if (!.builder_snapshot_owned(snapshot)) {
-      preserved <- c(preserved, key)
-      errors <- c(errors, key)
-      next
-    }
-    marker <- .builder_snapshot_marker(snapshot)
-    age <- tryCatch(
-      as.numeric(difftime(now, marker$created_at, units = "secs")),
-      error = function(error) NA_real_
-    )
-    if (is.na(age) || age < 24 * 60 * 60) {
-      preserved <- c(preserved, key)
-      next
-    }
-    if (.builder_snapshot_release(snapshot)) {
-      removed <- c(removed, key)
-    } else {
-      preserved <- c(preserved, key)
-      errors <- c(errors, key)
-    }
-  }
-  list(removed = removed, preserved = preserved, errors = errors)
-}
-
 ## -- Worker registration ----------------------------------------------------
 
 .builder_register_adapter <- function(adapter, id, progress = NULL) {
