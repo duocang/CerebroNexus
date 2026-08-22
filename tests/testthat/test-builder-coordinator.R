@@ -1212,6 +1212,29 @@ test_that("output preflight reports foreign occupants before staging", {
   })
 })
 
+test_that("output preflight can reuse a previously verified release state", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    writeLines("old", file.path(target, "dataset.crb"))
+    plan <- builder_crb_coordinator_plan(
+      target,
+      "dataset.crb",
+      overwrite = TRUE
+    )
+    verified <- builder_coordinator_output_preflight(plan)
+
+    reused <- builder_coordinator_output_preflight(
+      plan,
+      prior_state = verified$prior_state
+    )
+
+    expect_identical(reused, verified)
+  })
+})
+
 test_that("output preflight ignores Finder metadata only", {
   local({
     builder_task9_source()
@@ -2102,6 +2125,60 @@ test_that("coordinator reports after App verification and before ownership", {
     expect_identical(events, c("app_verify", "report", "ownership"))
     expect_true(published$published)
     expect_true(file.exists(published$report_path))
+  })
+})
+
+test_that("coordinator reuses the ownership identity before final publication", {
+  local({
+    builder_task9_source()
+    fixture <- builder_app_coordinator_fixture(
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    stage <- normalizePath(
+      fixture$handle$stage,
+      winslash = "/",
+      mustWork = TRUE
+    )
+    original_identity <- builder_release_identity
+    events <- character()
+    builder_release_identity <- function(target, ...) {
+      path <- normalizePath(target, winslash = "/", mustWork = FALSE)
+      if (identical(path, stage)) {
+        events <<- c(events, "stage_identity")
+      }
+      original_identity(target, ...)
+    }
+
+    published <- builder_coordinator_publish(
+      fixture$handle,
+      fixture$result,
+      .record_move = function(from, to) {
+        events <<- c(events, "ownership")
+        file.rename(from, to)
+      },
+      .publish = function(...) {
+        events <<- c(events, "publish_entry")
+        builder_publish_release(...)
+      }
+    )
+
+    after_ownership <- events[seq.int(
+      match("ownership", events),
+      length(events)
+    )]
+    expect_identical(
+      after_ownership,
+      c(
+        "ownership",
+        "stage_identity",
+        "publish_entry",
+        "stage_identity"
+      )
+    )
+    expect_true(published$published)
   })
 })
 

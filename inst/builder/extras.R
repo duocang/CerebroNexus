@@ -35,7 +35,7 @@ builder_table_unique_name <- function(name, existing = character()) {
 
 #' List the tables available in one uploaded file without reading their data.
 builder_table_inventory <- function(path, filename = path) {
-  if (!file.exists(path)) {
+  if (!file.exists(path) || dir.exists(path)) {
     return(list(error = "File not found."))
   }
   ext <- tolower(tools::file_ext(filename))
@@ -78,6 +78,17 @@ builder_table_inventory <- function(path, filename = path) {
   })
   names(records) <- sheets
   records
+}
+
+builder_table_inventory_metadata <- function(path, filename = path) {
+  records <- builder_table_inventory(path, filename)
+  if (!is.null(records$error)) {
+    return(records)
+  }
+  lapply(records, function(record) {
+    record$source_path <- NULL
+    record
+  })
 }
 
 #' Read one selected table only when it becomes part of a build.
@@ -555,6 +566,7 @@ builder_alignment_reset <- function(record) {
       "extent_height",
       "display_width",
       "display_height",
+      "source_content_md5",
       "outside",
       "total"
     ),
@@ -1847,6 +1859,7 @@ builder_encode_image <- function(
       "data:image/png;base64,",
       base64enc::base64encode(tmp)
     ),
+    content_md5 = unname(as.character(tools::md5sum(tmp))),
     bytes = file.size(tmp),
     width = display_dimensions[["width"]],
     height = display_dimensions[["height"]],

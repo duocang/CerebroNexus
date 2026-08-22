@@ -129,8 +129,8 @@
       Math.min.apply(null, frame.map(function (p) { return p.x; }));
     var height = Math.max.apply(null, frame.map(function (p) { return p.y; })) -
       Math.min.apply(null, frame.map(function (p) { return p.y; }));
-    width = Math.max(width, 1) * 1.06;
-    height = Math.max(height, 1) * 1.06;
+    width = Math.max(width, 1);
+    height = Math.max(height, 1);
     return {xmin: cx - width / 2, xmax: cx + width / 2,
       ymin: cy - height / 2, ymax: cy + height / 2};
   }
@@ -187,7 +187,7 @@
     ctx.fillStyle = "#fafbfa"; ctx.fillRect(0, 0, cssWidth, cssHeight);
     state.screenPoints = [];
     if (!scene.available || !scene.bounds) return;
-    var pad = 28;
+    var pad = 2;
     var angle = finite(state.controls.coordinateRotation, 0);
     var layout = viewportLayout(
       scene.bounds,

@@ -262,6 +262,10 @@ test_that("registration publishes a snapshot before exposing an object", {
   unlink(path)
 
   expect_s3_class(result$dataset_profile, "builder_dataset_profile")
+  expect_null(result$dataset_profile$identity$cells$ids)
+  expect_true(builder_axis_identity_valid(
+    result$dataset_profile$identity$cells$axis_identity
+  ))
   expect_s4_class(get("ds1", envir = objects), "Seurat")
   snapshot <- get("ds1", envir = snapshots)
   expect_true(dir.exists(snapshot$path))

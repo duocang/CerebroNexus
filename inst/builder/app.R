@@ -308,26 +308,17 @@ builder_app_settle_release <- function(
       "The parent release coordinator identity was lost."
     ))
   }
-  target <- release$handle$target
-  if (identical(value$state, "success") && isTRUE(value$publishable)) {
-    published <- try(.publish(release$handle, value), silent = TRUE)
-    if (!inherits(published, "try-error")) {
-      return(builder_as_result(published))
-    }
-    publication_error <- conditionMessage(attr(published, "condition"))
-    try(.abort(release$handle), silent = TRUE)
-    return(.release_error(publication_error, target))
+  settled <- builder_coordinator_settle(
+    release$handle,
+    value,
+    .publish = .publish,
+    .abort = .abort,
+    .recovery = function(target) NULL
+  )
+  if (!isTRUE(settled$ok)) {
+    return(.release_error(settled$error, release$handle$target))
   }
-  cleaned <- try(.abort(release$handle), silent = TRUE)
-  if (inherits(cleaned, "try-error") || !isTRUE(cleaned$aborted)) {
-    cleanup_error <- if (inherits(cleaned, "try-error")) {
-      conditionMessage(attr(cleaned, "condition"))
-    } else {
-      "The assigned build stage could not be cleaned."
-    }
-    return(.release_error(cleanup_error, target))
-  }
-  typed <- try(builder_as_result(value), silent = TRUE)
+  typed <- try(builder_as_result(settled$value), silent = TRUE)
   if (inherits(typed, "try-error")) {
     return(builder_result_failure(
       "The worker returned an unsupported terminal build result."
@@ -437,14 +428,24 @@ ui <- tagList(
             ),
             hidden = "hidden"
           ),
-          tags$label(
-            id = "builder_add_datasets",
-            class = "dataset-file-button builder-file-trigger",
-            tabindex = "0",
-            role = "button",
+          tags$button(
+            id = "choose_local_datasets",
+            class = "btn btn-primary dataset-file-button action-button",
+            type = "button",
+            `data-val` = "0",
             icon_svg(ICON_PLUS),
-            span("Add datasets…")
+            span("Choose local datasets…")
           )
+        ),
+        tags$button(
+          id = "builder_upload_datasets",
+          class = paste(
+            "btn btn-outline-secondary builder-file-trigger",
+            "builder-file-trigger--secondary"
+          ),
+          type = "button",
+          icon_svg(ICON_PLUS),
+          span("Upload through browser…")
         ),
         div(class = "or", "or try an example"),
         builder_example_buttons_ui(),

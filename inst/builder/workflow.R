@@ -6,16 +6,11 @@
   "revision"
 )
 .builder_review_identity_fields <- c(
-  "revision",
   "dataset_order",
   "items",
   "manifest",
   "acknowledgements"
 )
-
-.builder_workflow_copy <- function(value) {
-  unserialize(serialize(value, NULL, version = 3L))
-}
 
 .builder_workflow_plan_valid <- function(plan) {
   is.list(plan) &&
@@ -24,7 +19,28 @@
 }
 
 .builder_workflow_plan_identity <- function(plan) {
-  .builder_workflow_copy(plan[.builder_review_identity_fields])
+  identity <- plan[.builder_review_identity_fields]
+  strip_runtime_fields <- function(value, fields) {
+    if (!is.list(value)) {
+      return(value)
+    }
+    for (field in intersect(names(value), fields)) {
+      value[[field]] <- NULL
+    }
+    lapply(value, strip_runtime_fields, fields = fields)
+  }
+  identity$items <- lapply(identity$items, function(item) {
+    item$tables <- strip_runtime_fields(
+      item$tables,
+      c("source_path", "table", "project_asset")
+    )
+    item$images <- strip_runtime_fields(
+      item$images,
+      c("source_path", "source_uri", "uri", "project_asset")
+    )
+    item
+  })
+  identity
 }
 
 .builder_workflow_confirmation_valid <- function(confirmation, review_plan) {
@@ -97,7 +113,7 @@ builder_final_build_identity <- function(plan) {
   }
   list(
     review = builder_review_plan_identity(plan),
-    output = .builder_workflow_copy(plan[c(
+    output = plan[c(
       "out_dir",
       "overwrite",
       "targets",
@@ -105,7 +121,7 @@ builder_final_build_identity <- function(plan) {
       "app_contract_version",
       "app_options",
       "app_auth"
-    )])
+    )]
   )
 }
 
@@ -173,7 +189,7 @@ builder_reduce_workflow <- function(state, event) {
     .builder_workflow_stop_invalid()
   }
 
-  next_state <- .builder_workflow_copy(state)
+  next_state <- state
   type <- event$type
 
   if (identical(type, "empty")) {
@@ -190,7 +206,7 @@ builder_reduce_workflow <- function(state, event) {
     ) {
       next_state["confirmation"] <- list(NULL)
     }
-    next_state$review_plan <- .builder_workflow_copy(event$plan)
+    next_state$review_plan <- event$plan
     next_state$stage <- "review"
   } else if (identical(type, "confirm_review")) {
     if (!identical(next_state$stage, "review")) {
@@ -206,7 +222,9 @@ builder_reduce_workflow <- function(state, event) {
         call. = FALSE
       )
     }
-    next_state$review_plan <- .builder_workflow_copy(event$plan)
+    if (!identical(event$plan, state$review_plan)) {
+      next_state$review_plan <- event$plan
+    }
     next_state$confirmation <- list(
       identity = identity,
       plan_revision = event$plan$revision

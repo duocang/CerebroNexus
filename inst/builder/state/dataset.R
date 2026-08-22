@@ -163,6 +163,70 @@ builder_dataset_state <- function(entry) {
   ))
 }
 
+builder_cached_dataset_state <- function(entry, cache = NULL) {
+  if (
+    !is.environment(cache) ||
+      !is.list(entry) ||
+      !.builder_state_fact_text(entry$id %||% NULL)
+  ) {
+    return(builder_dataset_state(entry))
+  }
+  revision <- tryCatch(
+    .builder_state_revision(entry$revision %||% 0L),
+    error = function(error) NULL
+  )
+  if (is.null(revision)) {
+    return(builder_dataset_state(entry))
+  }
+  prefix <- paste0(entry$id, "::")
+  key <- paste0(prefix, revision)
+  cached <- get0(key, envir = cache, inherits = FALSE)
+  if (inherits(cached, "builder_dataset_state")) {
+    return(cached)
+  }
+  value <- builder_dataset_state(entry)
+  stale <- Filter(
+    function(candidate) startsWith(candidate, prefix),
+    ls(cache, all.names = TRUE)
+  )
+  if (length(stale)) {
+    rm(list = stale, envir = cache)
+  }
+  assign(key, value, envir = cache)
+  value
+}
+
+builder_dataset_state_cache_retain <- function(cache, ids) {
+  if (!is.environment(cache)) {
+    return(invisible(FALSE))
+  }
+  ids <- unique(as.character(ids %||% character()))
+  keys <- ls(cache, all.names = TRUE)
+  keep <- vapply(
+    keys,
+    function(key) {
+      any(startsWith(key, paste0(ids, "::")))
+    },
+    logical(1)
+  )
+  stale <- keys[!keep]
+  if (length(stale)) {
+    rm(list = stale, envir = cache)
+  }
+  invisible(length(stale) > 0L)
+}
+
+builder_dataset_state_cache_clear <- function(cache) {
+  if (!is.environment(cache)) {
+    return(invisible(FALSE))
+  }
+  keys <- ls(cache, all.names = TRUE)
+  if (length(keys)) {
+    rm(list = keys, envir = cache)
+  }
+  invisible(length(keys) > 0L)
+}
+
 #' Apply a typed event to one pure dataset state.
 builder_reduce_dataset <- function(state, action) {
   if (!inherits(state, "builder_dataset_state") || !is.list(state)) {
@@ -240,7 +304,7 @@ builder_reduce_dataset <- function(state, action) {
   invisible(entry)
 }
 
-.builder_store_ids <- function(datasets) {
+.builder_store_ids <- function(datasets, validate_entries = TRUE) {
   if (!is.list(datasets) || is.object(datasets)) {
     .builder_state_abort(
       "invalid_builder_state",
@@ -266,12 +330,10 @@ builder_reduce_dataset <- function(state, action) {
       "Builder dataset ids must be unique."
     )
   }
-  invisible(lapply(datasets, .builder_store_validate_entry))
+  if (isTRUE(validate_entries)) {
+    invisible(lapply(datasets, .builder_store_validate_entry))
+  }
   ids
-}
-
-.builder_store_copy <- function(value) {
-  unserialize(serialize(value, NULL, version = 3L))
 }
 
 #' Create the typed top-level state for the persistent dataset rail.
@@ -311,7 +373,7 @@ builder_state <- function(
   state
 }
 
-.builder_store_assert <- function(state) {
+.builder_store_assert <- function(state, validate_entries = TRUE) {
   required_fields <- c(
     "datasets",
     "current_dataset",
@@ -332,7 +394,10 @@ builder_state <- function(
       "Expected a typed Builder state."
     )
   }
-  ids <- .builder_store_ids(state$datasets)
+  ids <- .builder_store_ids(
+    state$datasets,
+    validate_entries = validate_entries
+  )
   if (
     !is.null(state$current_dataset) &&
       (!.builder_state_fact_text(state$current_dataset) ||
@@ -412,7 +477,9 @@ builder_state <- function(
         "The removed dataset record is malformed."
       )
     }
-    .builder_store_validate_entry(removed$entry)
+    if (isTRUE(validate_entries)) {
+      .builder_store_validate_entry(removed$entry)
+    }
   }
   ids
 }
@@ -435,19 +502,24 @@ builder_app_options_for_plan <- function(state) {
 #' Return the exact ordered dataset members consumed by the next BuildPlan.
 builder_datasets_for_plan <- function(state) {
   .builder_store_assert(state)
-  .builder_store_copy(state$datasets)
+  state$datasets
 }
 
 #' Apply a typed event to the persistent dataset rail state.
-builder_reduce_state <- function(state, action) {
-  ids <- .builder_store_assert(state)
+builder_reduce_state <- function(state, action, trusted = FALSE) {
+  ids <- .builder_store_assert(
+    state,
+    validate_entries = !isTRUE(trusted)
+  )
   if (!is.list(action) || !.builder_state_text(action$type)) {
     .builder_state_abort(
       "invalid_builder_action",
       "Builder actions require a type."
     )
   }
-  next_state <- .builder_store_copy(state)
+  # Ordinary R lists are copy-on-write. Replacing the changed branch preserves
+  # reducer purity without serializing every dataset on every input event.
+  next_state <- state
   type <- action$type
 
   require_id <- function(id) {
@@ -627,7 +699,7 @@ builder_reduce_state <- function(state, action) {
 
   next_state$revision <- .builder_state_revision(state$revision) + 1L
   next_state <- structure(next_state, class = c("builder_state", "list"))
-  .builder_store_assert(next_state)
+  .builder_store_assert(next_state, validate_entries = FALSE)
   next_state
 }
 

@@ -6,6 +6,42 @@
 ## answering while a marker-gene run takes its minutes.
 auth_accounts_state <- auth_accounts
 conflict_nonce_sequence <- 0L
+build_output_preflight_process <- reactiveVal(NULL)
+build_output_preflight_request <- reactiveVal(NULL)
+selected_output_release_state <- reactiveVal(NULL)
+
+builder_selected_output_release_state <- function(path) {
+  cached <- isolate(selected_output_release_state())
+  normalized <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  if (
+    !is.list(cached) ||
+      !builder_has_text(normalized %||% "") ||
+      !identical(cached$path, normalized)
+  ) {
+    return(NULL)
+  }
+  cached$prior_state %||% NULL
+}
+
+observeEvent(
+  selected_output(),
+  {
+    cached <- isolate(selected_output_release_state())
+    selected <- selected_output()
+    if (
+      is.list(cached) &&
+        (!builder_has_text(selected %||% "") ||
+          !identical(cached$path, selected))
+    ) {
+      selected_output_release_state(NULL)
+    }
+  },
+  ignoreNULL = FALSE
+)
+
 next_conflict_nonce <- function() {
   conflict_nonce_sequence <<- conflict_nonce_sequence + 1L
   paste(session$token, conflict_nonce_sequence, sep = "-")
@@ -56,9 +92,17 @@ output$build_output_options <- renderUI({
     vapply(items, `[[`, character(1), "id"),
     vapply(items, `[[`, character(1), "name")
   )
-  selected_dataset <- isolate(build_initial_dataset())
+  selected_dataset <- build_initial_dataset()
   if (is.null(selected_dataset) && length(dataset_choices)) {
     selected_dataset <- unname(dataset_choices[[1L]])
+  }
+  selected_index <- match(selected_dataset, unname(dataset_choices))
+  page_expectations <- if (
+    length(selected_index) == 1L && !is.na(selected_index)
+  ) {
+    items[[selected_index]]$viewer_page_expectations %||% list()
+  } else {
+    list()
   }
   builder_build_options_ui(
     builder_build_options(
@@ -78,7 +122,9 @@ output$build_output_options <- renderUI({
     app_available = isTRUE(app_capability$available),
     app_reason = app_capability$reason,
     app_required = isTRUE(plan$make_app),
-    initial_page_choices = review_page_contract()$choices,
+    initial_page_choices = builder_review_initial_page_choices(
+      page_expectations
+    ),
     dataset_choices = dataset_choices,
     auth = list(
       enabled = isTRUE(auth_enabled()),
@@ -309,7 +355,6 @@ enqueue_build_plan <- function(
       "The background worker is busy. Try Build again when it is ready."
     ))
   }
-  plan <- unserialize(serialize(plan, NULL, version = 3L))
   if (!identical(builder_final_build_identity(plan), expected_identity)) {
     return(builder_build_attempt_failed(
       "Output settings changed before the build was queued. Try Build again."
@@ -356,13 +401,15 @@ enqueue_build_plan <- function(
   invisible(TRUE)
 }
 
-builder_build_conflict_files <- function(plan) {
+builder_build_conflict_files <- function(plan, prior_state = NULL) {
   conflicts <- basename(plan$existing_targets %||% character())
-  prior_state <- builder_release_state(
-    plan$out_dir,
-    exact_record = FALSE,
-    allow_abandoned = TRUE
-  )
+  if (is.null(prior_state)) {
+    prior_state <- builder_release_state(
+      plan$out_dir,
+      exact_record = FALSE,
+      allow_abandoned = TRUE
+    )
+  }
   record <- prior_state$record
   if (!is.null(record) && !isTRUE(record$abandoned)) {
     owned_paths <- vapply(
@@ -399,7 +446,10 @@ prepare_selected_output <- function(path, overwrite = FALSE) {
       return(invisible(FALSE))
     }
     conflict_files <- try(
-      builder_build_conflict_files(plan),
+      builder_build_conflict_files(
+        plan,
+        builder_selected_output_release_state(plan$out_dir)
+      ),
       silent = TRUE
     )
     if (inherits(conflict_files, "try-error")) {
@@ -450,79 +500,256 @@ builder_build_foreign_output_error <- function(foreign) {
 }
 
 builder_build_output_preflight <- function(path) {
-  plan <- freeze_plan_for_output(
-    path,
-    ## Folder selection validates ownership and shape only. Existing Builder
-    ## targets are handled by the explicit replace confirmation at Build time.
-    overwrite = TRUE,
-    output_options = current_build_options()
-  )
-  if (
-    !inherits(plan, "builder_build_plan") ||
-      !identical(plan$readiness, "ready")
-  ) {
+  state <- isolate(workflow())
+  plan <- state$review_plan
+  if (!builder_workflow_confirmation_matches(state, plan)) {
     return(list(
       ok = FALSE,
-      error = plan$error %||% "The selected folder cannot be used."
+      error = "Settings changed. Review the updated plan before building."
     ))
   }
-  expected <- plan$output_release$targets %||% plan$targets %||% character()
-  relative <- vapply(
-    expected,
-    function(target) .builder_release_relative(target, path),
-    character(1)
-  )
-  expected_roots <- unique(sub("/.*$", "", relative))
-  prior_state <- tryCatch(
-    builder_release_state(
-      path,
-      exact_record = FALSE,
-      allow_abandoned = TRUE
-    ),
-    error = function(error) error
-  )
-  if (inherits(prior_state, "condition")) {
-    return(list(ok = FALSE, error = conditionMessage(prior_state)))
-  }
-  prior_members <- prior_state$record$members %||% list()
-  prior_roots <- if (length(prior_members)) {
-    unique(sub(
-      "/.*$",
-      "",
-      vapply(prior_members, `[[`, character(1), "path")
-    ))
+  path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+  options <- current_build_options()
+  expected <- if (isTRUE(options$make_app)) {
+    c(
+      "cerebro_app",
+      if (isTRUE(isolate(auth_enabled()))) "viewer-auth.env" else character()
+    )
   } else {
-    character()
+    unlist(
+      lapply(plan$items, function(item) {
+        c(item$filename, item$sidecars %||% character())
+      }),
+      use.names = FALSE
+    )
   }
-  actual_roots <- list.files(path, all.files = TRUE, no.. = TRUE)
-  metadata <- .builder_release_ignorable_metadata(actual_roots)
-  if (any(metadata)) {
-    metadata_paths <- file.path(path, actual_roots[metadata])
-    metadata[metadata] <- file.exists(metadata_paths) &
-      !dir.exists(metadata_paths) &
-      !vapply(metadata_paths, .builder_release_link, logical(1))
-    actual_roots <- actual_roots[!metadata]
-  }
-  foreign <- setdiff(
-    actual_roots,
-    c(expected_roots, prior_roots, .builder_release_record_name)
+  expected_roots <- unique(sub("/.*$", "", expected))
+  list(
+    ok = TRUE,
+    error = NULL,
+    path = path,
+    expected_roots = expected_roots
   )
-  if (length(foreign)) {
-    return(list(
-      ok = FALSE,
-      error = builder_build_foreign_output_error(foreign)
-    ))
+}
+
+builder_start_build_output_preflight_process <- function(path, expected_roots) {
+  runtime_files <- builder_release_runtime_files()
+  callr::r_bg(
+    function(path, expected_roots, contract_file, publish_file) {
+      runtime <- new.env(parent = globalenv())
+      runtime$`%||%` <- function(left, right) {
+        if (is.null(left)) right else left
+      }
+      sys.source(contract_file, envir = runtime)
+      sys.source(publish_file, envir = runtime)
+      runtime$builder_release_output_preflight(path, expected_roots)
+    },
+    args = list(
+      path = path,
+      expected_roots = expected_roots,
+      contract_file = runtime_files$contract,
+      publish_file = runtime_files$publish
+    ),
+    supervise = TRUE,
+    stdout = "|",
+    stderr = "|"
+  )
+}
+
+builder_finish_build_output_preflight <- function(checked) {
+  request <- isolate(build_output_preflight_request())
+  build_output_preflight_process(NULL)
+  build_output_preflight_request(NULL)
+  build_flow(list(stage = "idle", plan = NULL))
+  if (inherits(checked, "condition")) {
+    showNotification(
+      paste0(
+        "The selected folder could not be checked: ",
+        conditionMessage(checked)
+      ),
+      type = "error",
+      duration = 10
+    )
+    return(invisible(FALSE))
   }
-  list(ok = TRUE, error = NULL)
+  if (
+    !is.list(checked) || !is.logical(checked$ok) || length(checked$ok) != 1L
+  ) {
+    showNotification(
+      "The selected folder check returned an invalid result.",
+      type = "error",
+      duration = 10
+    )
+    return(invisible(FALSE))
+  }
+  if (!isTRUE(checked$ok)) {
+    message <- checked$error %||%
+      builder_build_foreign_output_error(checked$foreign %||% character()) %||%
+      "The selected folder cannot be used."
+    showNotification(message, type = "warning", duration = 10)
+    return(invisible(FALSE))
+  }
+  valid_prior_state <- is.list(checked$prior_state) &&
+    identical(checked$prior_state$schema_version, 1L) &&
+    .builder_release_identity_valid(checked$prior_state$identity)
+  if (!valid_prior_state) {
+    showNotification(
+      "The selected folder check returned an invalid release state.",
+      type = "error",
+      duration = 10
+    )
+    return(invisible(FALSE))
+  }
+  state <- isolate(workflow())
+  if (
+    !is.list(request) ||
+      !builder_workflow_confirmation_matches(state, state$review_plan)
+  ) {
+    showNotification(
+      "Settings changed. Review the updated plan before building.",
+      type = "warning",
+      duration = 8
+    )
+    return(invisible(FALSE))
+  }
+  selected_output_release_state(list(
+    path = request$path,
+    prior_state = checked$prior_state
+  ))
+  selected_output(request$path)
+  result(NULL)
+  invisible(TRUE)
+}
+
+builder_poll_build_output_preflight <- NULL
+builder_poll_build_output_preflight <- function() {
+  process <- isolate(build_output_preflight_process())
+  if (is.null(process)) {
+    return(invisible(FALSE))
+  }
+  if (builder_session_closed()) {
+    try(process$kill(), silent = TRUE)
+    build_output_preflight_process(NULL)
+    build_output_preflight_request(NULL)
+    return(invisible(FALSE))
+  }
+  alive <- tryCatch(process$is_alive(), error = identity)
+  if (inherits(alive, "condition")) {
+    return(builder_finish_build_output_preflight(alive))
+  }
+  if (isTRUE(alive)) {
+    later::later(
+      function() {
+        shiny::withReactiveDomain(
+          builder_lifecycle_session,
+          builder_poll_build_output_preflight()
+        )
+      },
+      delay = 0.1
+    )
+    return(invisible(TRUE))
+  }
+  checked <- tryCatch(process$get_result(), error = identity)
+  builder_finish_build_output_preflight(checked)
+}
+
+start_builder_build_output_preflight <- function(path) {
+  if (!is.null(isolate(build_output_preflight_process()))) {
+    return(invisible(FALSE))
+  }
+  build_flow(list(stage = "checking_folder", plan = NULL))
+  request <- tryCatch(
+    shiny::isolate(builder_build_output_preflight(path)),
+    error = identity
+  )
+  if (inherits(request, "condition") || !isTRUE(request$ok)) {
+    build_flow(list(stage = "idle", plan = NULL))
+    showNotification(
+      if (inherits(request, "condition")) {
+        paste0(
+          "The selected folder could not be checked: ",
+          conditionMessage(request)
+        )
+      } else {
+        request$error %||% "The selected folder cannot be used."
+      },
+      type = "warning",
+      duration = 10
+    )
+    return(invisible(FALSE))
+  }
+  if (!requireNamespace("callr", quietly = TRUE)) {
+    build_flow(list(stage = "idle", plan = NULL))
+    showNotification(
+      "The selected folder cannot be checked because callr is unavailable.",
+      type = "error",
+      duration = 8
+    )
+    return(invisible(FALSE))
+  }
+  process <- tryCatch(
+    builder_start_build_output_preflight_process(
+      request$path,
+      request$expected_roots
+    ),
+    error = identity
+  )
+  if (inherits(process, "condition")) {
+    build_flow(list(stage = "idle", plan = NULL))
+    showNotification(
+      paste0(
+        "The selected folder could not be checked: ",
+        conditionMessage(process)
+      ),
+      type = "error",
+      duration = 10
+    )
+    return(invisible(FALSE))
+  }
+  build_output_preflight_request(request)
+  build_output_preflight_process(process)
+  later::later(
+    function() {
+      shiny::withReactiveDomain(
+        builder_lifecycle_session,
+        builder_poll_build_output_preflight()
+      )
+    },
+    delay = 0
+  )
+  invisible(TRUE)
+}
+
+select_build_output_folder <- function(path) {
+  start_builder_build_output_preflight(path)
+}
+
+session$onSessionEnded(function() {
+  process <- isolate(build_output_preflight_process())
+  if (!is.null(process)) {
+    try(process$kill(), silent = TRUE)
+  }
+})
+
+show_builder_build_server_path <- function() {
+  shiny::showModal(builder_server_path_dialog(
+    title = "Choose build destination from server path",
+    input_id = "builder_build_server_folder",
+    action_id = "use_builder_build_server_folder",
+    label = "Output folder",
+    action_label = "Use folder"
+  ))
+  invisible(TRUE)
 }
 
 choose_build_folder <- function() {
   build_flow(list(stage = "choosing_folder", plan = NULL))
-  later::later(
-    function() {
+  builder_schedule_native_picker(
+    "output_directory",
+    key = "build-output",
+    on_result = function(choice) {
       tryCatch(
         {
-          choice <- builder_choose_output_directory()
           if (identical(choice$status, "cancelled")) {
             build_flow(list(stage = "idle", plan = NULL))
             return()
@@ -534,23 +761,10 @@ choose_build_folder <- function() {
               type = "error",
               duration = 6
             )
+            show_builder_build_server_path()
             return()
           }
-          preflight <- shiny::isolate(
-            builder_build_output_preflight(choice$path)
-          )
-          if (!isTRUE(preflight$ok)) {
-            build_flow(list(stage = "idle", plan = NULL))
-            showNotification(
-              preflight$error %||% "The selected folder cannot be used.",
-              type = "warning",
-              duration = 10
-            )
-            return()
-          }
-          selected_output(choice$path)
-          result(NULL)
-          build_flow(list(stage = "idle", plan = NULL))
+          select_build_output_folder(choice$path)
         },
         error = function(error) {
           build_flow(list(stage = "idle", plan = NULL))
@@ -565,7 +779,11 @@ choose_build_folder <- function() {
         }
       )
     },
-    delay = 0
+    on_error = function(error) {
+      build_flow(list(stage = "idle", plan = NULL))
+      showNotification(conditionMessage(error), type = "error", duration = 6)
+      show_builder_build_server_path()
+    }
   )
 }
 
@@ -574,6 +792,41 @@ observeEvent(input$choose_output_folder, {
     return()
   }
   choose_build_folder()
+})
+
+observeEvent(input$use_builder_build_server_folder, {
+  if (builder_build_controls_locked(isolate(build_flow()))) {
+    return()
+  }
+  path <- tryCatch(
+    builder_server_path_resolve(
+      input$builder_build_server_folder %||% "",
+      "directory"
+    ),
+    error = identity
+  )
+  if (inherits(path, "condition")) {
+    showNotification(conditionMessage(path), type = "error", duration = 7)
+    return()
+  }
+  accepted <- tryCatch(
+    select_build_output_folder(path),
+    error = function(error) {
+      build_flow(list(stage = "idle", plan = NULL))
+      showNotification(
+        paste0(
+          "The selected folder could not be checked: ",
+          conditionMessage(error)
+        ),
+        type = "error",
+        duration = 10
+      )
+      FALSE
+    }
+  )
+  if (isTRUE(accepted)) {
+    shiny::removeModal()
+  }
 })
 
 start_confirmed_build <- function() {
@@ -593,7 +846,14 @@ start_confirmed_build <- function() {
   result(NULL)
   build_flow(list(stage = "preparing", plan = NULL))
   session$sendCustomMessage("builder_focus_build_status", list())
-  later::later(function() prepare_selected_output(output_path), delay = 0)
+  later::later(
+    function() {
+      shiny::withReactiveDomain(builder_lifecycle_session, {
+        prepare_selected_output(output_path)
+      })
+    },
+    delay = 0
+  )
   invisible(TRUE)
 }
 
@@ -732,6 +992,22 @@ rail_controller <- builder_dataset_rail_server(
   on_select = function(id) {
     active_import_id(NULL)
     result(NULL)
+  },
+  on_reorder = function(previous, updated) {
+    if (identical(previous$datasets, updated$datasets)) {
+      return(invisible(FALSE))
+    }
+    state <- isolate(workflow())
+    if (!is.null(state$review_plan) || !is.null(state$confirmation)) {
+      workflow(builder_reduce_workflow(state, list(type = "invalidate")))
+      build_flow(list(stage = "idle", plan = NULL))
+      result(NULL)
+      session$sendCustomMessage(
+        "builder_build_dialog",
+        list(action = "close")
+      )
+    }
+    invisible(TRUE)
   },
   on_remove = remove_dataset,
   on_undo = function() result(NULL),

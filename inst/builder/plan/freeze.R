@@ -20,6 +20,106 @@
     }
 }
 
+.builder_plan_manifest_with_tables <- function(manifest, tables) {
+  tables <- tables %||% list()
+  if (!length(tables)) {
+    return(manifest)
+  }
+  table_names <- names(tables)
+  if (is.null(table_names)) {
+    table_names <- rep.int("", length(tables))
+  }
+  labels <- vapply(
+    seq_along(tables),
+    function(index) {
+      table <- tables[[index]]
+      candidates <- trimws(as.character(c(
+        table$name %||% character(),
+        table$display_name %||% character(),
+        table$sheet_name %||% character(),
+        table_names[[index]]
+      )))
+      candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
+      if (length(candidates)) candidates[[1L]] else paste("Table", index)
+    },
+    character(1)
+  )
+  workbooks <- unique(vapply(
+    tables,
+    function(table) {
+      values <- trimws(as.character(c(
+        table$workbook_name %||% character(),
+        table$file_name %||% character()
+      )))
+      values <- values[!is.na(values) & nzchar(values)]
+      if (length(values)) values[[1L]] else ""
+    },
+    character(1)
+  ))
+  workbooks <- workbooks[nzchar(workbooks)]
+
+  existing <- manifest[["extra_material"]] %||% NULL
+  evidence <- existing$evidence %||% list()
+  normalized <- evidence$normalized %||% list()
+  merged_tables <- normalized$tables %||% list()
+  for (label in labels) {
+    merged_tables[[label]] <- list()
+  }
+  normalized$tables <- merged_tables
+  normalized$plots <- normalized$plots %||% list()
+  diagnostics <- existing$diagnostics %||% list()
+  diagnostics$table_count <- as.integer(length(merged_tables))
+  diagnostics$attached_table_count <- as.integer(length(tables))
+  diagnostics$workbook_count <- as.integer(max(1L, length(workbooks)))
+  if ("normalized" %in% names(diagnostics)) {
+    diagnostics$normalized <- normalized
+  }
+  status <- existing$status %||% "not_applicable"
+  if (identical(status, "not_applicable")) {
+    status <- "valid"
+  }
+  compatibility <- existing$compatibility %||% list()
+  compatibility$viewer <- status %in% c("valid", "attention")
+  entry <- builder_manifest_entry(
+    id = "extra_material",
+    source = list(type = "builder_attachment", location = "settings$tables"),
+    status = status,
+    disposition = "attached",
+    artifact_scope = existing$artifact_scope %||% "both",
+    summary = paste(length(merged_tables), "table(s) will be included."),
+    diagnostics = diagnostics,
+    compatibility = compatibility,
+    pages = unique(c(existing$pages %||% character(), "extra_material")),
+    required_action = existing$required_action %||% NULL,
+    verifier = existing$verifier %||% "verify_extra_material"
+  )
+  evidence$detected <- TRUE
+  evidence$valid <- !status %in% c("blocking", "checking")
+  evidence$normalized <- normalized
+  evidence$diagnostics <- evidence$diagnostics %||% character()
+  evidence$requirements <- unique(c(
+    evidence$requirements %||% character(),
+    "named_tables_or_plots",
+    "unique_names"
+  ))
+  evidence$page_candidates <- unique(c(
+    evidence$page_candidates %||% character(),
+    "extra_material"
+  ))
+  entry$evidence <- evidence
+  entry$page_visible <- TRUE
+
+  entries <- unname(manifest)
+  ids <- vapply(entries, `[[`, character(1), "id")
+  index <- match("extra_material", ids)
+  if (is.na(index)) {
+    entries[[length(entries) + 1L]] <- entry
+  } else {
+    entries[[index]] <- entry
+  }
+  builder_content_manifest(entries)
+}
+
 builder_freeze_plan <- function(
   entries,
   out_dir,
@@ -32,7 +132,8 @@ builder_freeze_plan <- function(
     enabled = FALSE,
     account_count = 0L,
     timeout_minutes = 15L
-  )
+  ),
+  dataset_state_cache = NULL
 ) {
   if (
     !exists(
@@ -239,7 +340,7 @@ builder_freeze_plan <- function(
 
   states <- lapply(entries, function(entry) {
     tryCatch(
-      builder_dataset_state(entry),
+      builder_cached_dataset_state(entry, dataset_state_cache),
       builder_state_error = function(error) error,
       builder_manifest_error = function(error) error
     )
@@ -486,7 +587,7 @@ builder_freeze_plan <- function(
           available = FALSE,
           reused_artifact = TRUE
         )
-        return(.builder_plan_deep_copy(saved))
+        return(saved)
       }
       has_marker_genes <- .builder_state_content_available(
         entry,
@@ -580,6 +681,10 @@ builder_freeze_plan <- function(
           page_expectations$visible_conditional
         )
       }
+      item_manifest <- .builder_plan_manifest_with_tables(
+        states[[index]]$manifest,
+        settings$tables %||% list()
+      )
       item <- list(
         id = entry$id,
         name = labels[index],
@@ -602,11 +707,13 @@ builder_freeze_plan <- function(
           list(),
         cell_count = as.integer(
           entry$profile$n_cells %||%
-            length(artifact_identity$cells %||% character())
+            artifact_identity$cells$count %||%
+            0L
         ),
         gene_count = as.integer(
           entry$profile$n_genes %||%
-            length(artifact_identity$features %||% character())
+            artifact_identity$features$count %||%
+            0L
         ),
         histology_coverage = list(
           sections = spatial_sections,
@@ -663,7 +770,7 @@ builder_freeze_plan <- function(
         sidecars = backends[[index]]$sidecars,
         source_snapshot_identity = source_snapshot_identity,
         readiness = states[[index]]$readiness,
-        manifest = states[[index]]$manifest,
+        manifest = item_manifest,
         viewer_page_expectations = page_expectations,
         acknowledgements = states[[index]]$acknowledgements,
         viewer_bundle_assets = viewer_bundle_asset_sets[[index]],
@@ -674,7 +781,7 @@ builder_freeze_plan <- function(
       if (!is.null(settings$recommendations)) {
         item$recommendations <- settings$recommendations
       }
-      .builder_plan_deep_copy(item)
+      item
     }),
     error = function(error) error
   )
@@ -683,6 +790,7 @@ builder_freeze_plan <- function(
       conditionMessage(items),
       unsafe_reference = "unsafe_reference",
       invalid_snapshot_identity = "invalid_snapshot_identity",
+      invalid_artifact_identity = "invalid_artifact_identity",
       invalid_reusable_artifact = "invalid_reusable_artifact",
       "invalid_frozen_value"
     )
@@ -870,21 +978,21 @@ builder_freeze_plan <- function(
     private_asset_claims = private_asset_claims,
     acknowledgements = acknowledgements,
     app_options = frozen_app_options,
-    app_auth = .builder_plan_deep_copy(app_auth),
+    app_auth = app_auth,
     output_release = output_release,
     expected_prior_identity = expected_prior_identity
   )
-  frozen <- tryCatch(
-    .builder_plan_deep_copy(plan),
-    error = function(error) error
+  safe <- tryCatch(
+    !.builder_plan_has_reference(plan),
+    error = function(error) FALSE
   )
-  if (inherits(frozen, "condition")) {
+  if (!isTRUE(safe)) {
     return(builder_plan_error(
       "BuildPlan values could not be frozen safely.",
       "unsafe_reference"
     ))
   }
-  structure(frozen, class = c("builder_build_plan", "list"))
+  structure(plan, class = c("builder_build_plan", "list"))
 }
 
 builder_make_plan <- function(

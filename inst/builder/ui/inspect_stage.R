@@ -117,12 +117,6 @@ builder_inspect_stage_ui <- function(id, model) {
     id = ns("stage"),
     class = "builder-stage-section builder-stage-inspect",
     h3("Import & Inspect"),
-    div(
-      class = "facts",
-      lapply(as.character(model$summary %||% character()), function(value) {
-        div(class = "fact", value)
-      })
-    ),
     if (length(c(attention, blockers))) {
       div(
         class = "notice warn",
@@ -130,20 +124,32 @@ builder_inspect_stage_ui <- function(id, model) {
         builder_stage_text_items(c(attention, blockers))
       )
     },
-    if (length(model$content_tags %||% list())) {
+    div(
+      class = "builder-dataset-summary",
       div(
-        class = "builder-detected-content",
-        h4("Detected content"),
+        class = "facts builder-dataset-summary-facts",
+        lapply(as.character(model$summary %||% character()), function(value) {
+          div(class = "fact", value)
+        })
+      ),
+      if (length(model$content_tags %||% list())) {
         div(
-          class = "builder-content-tags",
-          lapply(model$content_tags, function(tag) {
-            span(
-              class = paste("builder-content-tag", paste0("is-", tag$tone)),
-              tag$label
-            )
-          })
+          class = "builder-detected-content",
+          h4("Detected content"),
+          div(
+            class = "builder-content-tags",
+            lapply(model$content_tags, function(tag) {
+              span(
+                class = paste(
+                  "builder-content-tag",
+                  paste0("is-", tag$tone)
+                ),
+                tag$label
+              )
+            })
+          )
         )
-      )
-    }
+      }
+    )
   )
 }

@@ -82,6 +82,7 @@ Suggests:
   monocle,
   openssl,
   png,
+  processx,
   ps,
   qs,
   qs2,

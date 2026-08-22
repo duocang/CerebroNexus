@@ -495,6 +495,19 @@ test_that("frozen plans own every reviewed value", {
   })
 })
 
+test_that("final plan validation does not serialize the full frozen plan", {
+  freeze <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "plan", "freeze.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_false(grepl(".builder_plan_deep_copy(plan)", freeze, fixed = TRUE))
+  expect_match(freeze, ".builder_plan_has_reference(plan)", fixed = TRUE)
+})
+
 test_that("Review App options are typed, range checked, and frozen", {
   local({
     builder_repo_source("preview.R")
@@ -646,9 +659,15 @@ test_that("BuildPlan freezes exact artifact identities for read-back", {
     plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
     expect_null(plan$error)
     expectation <- plan$items[[1L]]$artifact_identity
-    expect_identical(expectation$schema_version, 2L)
-    expect_identical(expectation$cells, c("cell-b", "cell-a"))
-    expect_identical(expectation$features, c("Gene2", "Gene1"))
+    expect_identical(expectation$schema_version, 3L)
+    expect_identical(
+      expectation$cells,
+      builder_axis_identity(c("cell-b", "cell-a"))
+    )
+    expect_identical(
+      expectation$features,
+      builder_axis_identity(c("Gene2", "Gene1"))
+    )
     expect_identical(expectation$group_levels$cluster, c("B", "A"))
     expect_identical(expectation$projections, "umap")
     expect_identical(
@@ -666,8 +685,47 @@ test_that("BuildPlan freezes exact artifact identities for read-back", {
 
     entry$dataset_profile$identity$cells$canonical_ids[[1L]] <- "changed"
     entry$levels$cluster[[1L]] <- "changed"
-    expect_identical(expectation$cells, c("cell-b", "cell-a"))
+    expect_identical(
+      expectation$cells,
+      builder_axis_identity(c("cell-b", "cell-a"))
+    )
     expect_identical(expectation$group_levels$cluster, c("B", "A"))
+  })
+})
+
+test_that("BuildPlan reuses compact workspace axis identities", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    cells <- builder_axis_identity(c("cell-b", "cell-a"))
+    features <- builder_axis_identity(c("Gene2", "Gene1"))
+    entry$dataset_profile$identity <- list(
+      cells = list(count = 2L, valid = TRUE, axis_identity = cells),
+      features = list(count = 2L, valid = TRUE, axis_identity = features)
+    )
+
+    plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
+
+    expect_null(plan$error)
+    expect_identical(plan$items[[1L]]$artifact_identity$cells, cells)
+    expect_identical(plan$items[[1L]]$artifact_identity$features, features)
+  })
+})
+
+test_that("BuildPlan rejects missing axis identity data", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    entry$dataset_profile$identity$cells <- list(count = 2L, valid = TRUE)
+    plan <- builder_freeze_plan(list(entry), tempdir(), FALSE)
+
+    expect_identical(plan$error_code, "invalid_artifact_identity")
   })
 })
 

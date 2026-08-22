@@ -339,6 +339,7 @@ builder_example_adapter <- function(id, object) {
     progress("validating")
   }
   legacy <- describe_seurat(object)
+  profile <- builder_profile_workspace_contract(profile)
   list(
     object = object,
     profile = profile,

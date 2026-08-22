@@ -267,13 +267,6 @@ builder_has_text <- function(value) {
   FALSE
 }
 
-.builder_plan_deep_copy <- function(value) {
-  if (.builder_plan_has_reference(value)) {
-    stop("unsafe_reference", call. = FALSE)
-  }
-  unserialize(serialize(value, NULL, version = 3L))
-}
-
 .builder_plan_revision <- function(revision, entries) {
   if (is.null(revision)) {
     entry_revisions <- vapply(

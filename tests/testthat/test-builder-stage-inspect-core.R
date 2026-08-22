@@ -16,6 +16,8 @@ test_that("Inspect leads with attention and compact detected-content tags", {
 
   expect_match(html, "builder-stage-section", fixed = TRUE)
   expect_match(html, "<h3>Import &amp; Inspect</h3>", fixed = TRUE)
+  expect_match(html, "builder-dataset-summary", fixed = TRUE)
+  expect_match(html, "builder-dataset-summary-facts", fixed = TRUE)
   expect_match(html, "<h4>Needs attention</h4>", fixed = TRUE)
   expect_match(html, "<h4>Detected content</h4>", fixed = TRUE)
   expect_false(grepl("builder-card", html, fixed = TRUE))

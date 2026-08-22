@@ -9,6 +9,42 @@
   is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
 }
 
+.builder_build_copy_file <- function(source, target) {
+  if (
+    !.builder_build_text(source) ||
+      !.builder_build_text(target) ||
+      !file.exists(source) ||
+      dir.exists(source) ||
+      file.exists(target) ||
+      dir.exists(target)
+  ) {
+    return(FALSE)
+  }
+  cloned <- FALSE
+  if (
+    identical(unname(Sys.info()[["sysname"]]), "Darwin") &&
+      file.exists("/bin/cp")
+  ) {
+    status <- suppressWarnings(system2(
+      "/bin/cp",
+      c("-c", "--", shQuote(source), shQuote(target)),
+      stdout = FALSE,
+      stderr = FALSE
+    ))
+    cloned <- isTRUE(status == 0L) && file.exists(target)
+    if (!cloned) {
+      unlink(target, force = TRUE)
+    }
+  }
+  cloned ||
+    file.copy(
+      source,
+      target,
+      overwrite = FALSE,
+      copy.mode = TRUE
+    )
+}
+
 .builder_build_number_equal <- function(left, right, tolerance = 1e-12) {
   is.numeric(left) &&
     is.numeric(right) &&
@@ -256,17 +292,42 @@ builder_verify_crb <- function(path, item) {
     )
   }
   expectation <- item$artifact_identity
+  expected_axis <- function(value) {
+    compact <- builder_axis_identity_normalize(value)
+    if (!is.null(compact)) {
+      return(compact)
+    }
+    if (is.character(value) && !anyNA(value)) {
+      return(builder_axis_identity(value))
+    }
+    NULL
+  }
+  expected_cells <- expected_axis(expectation$cells)
+  expected_features <- expected_axis(expectation$features)
+  if (is.null(expected_cells) || is.null(expected_features)) {
+    stop("BuildPlan contains an invalid dataset identity.", call. = FALSE)
+  }
   cells <- .builder_build_identity(object, "cells")
   features <- .builder_build_identity(object, "features")
   h5_identity <- .builder_build_h5_identities(path, item)
   if (!is.null(h5_identity)) {
-    if (!identical(h5_identity$cells, expectation$cells)) {
+    if (
+      !identical(
+        builder_axis_identity(h5_identity$cells),
+        expected_cells
+      )
+    ) {
       stop(
         "The staged H5 sidecar cell identity differs from BuildPlan.",
         call. = FALSE
       )
     }
-    if (!identical(h5_identity$features, expectation$features)) {
+    if (
+      !identical(
+        builder_axis_identity(h5_identity$features),
+        expected_features
+      )
+    ) {
       stop(
         "The staged H5 sidecar feature identity differs from BuildPlan.",
         call. = FALSE
@@ -279,10 +340,12 @@ builder_verify_crb <- function(path, item) {
   if (!length(features)) {
     features <- h5_identity$features %||% character()
   }
-  if (!identical(cells, expectation$cells)) {
+  cell_identity <- builder_axis_identity(cells)
+  feature_identity <- builder_axis_identity(features)
+  if (!identical(cell_identity, expected_cells)) {
     stop("The staged CRB cell identity differs from BuildPlan.", call. = FALSE)
   }
-  if (!identical(features, expectation$features)) {
+  if (!identical(feature_identity, expected_features)) {
     stop(
       "The staged CRB feature identity differs from BuildPlan.",
       call. = FALSE
@@ -557,8 +620,10 @@ builder_verify_crb <- function(path, item) {
   list(
     valid = TRUE,
     path = path,
-    cells = cells,
-    features = features,
+    cell_count = as.integer(cell_identity$count),
+    feature_count = as.integer(feature_identity$count),
+    cell_identity = cell_identity,
+    feature_identity = feature_identity,
     groups = groups,
     projections = projections,
     metadata = metadata,
@@ -1087,7 +1152,7 @@ builder_execute_plan <- function(
       target <- file.path(stage, item$filename)
       if (
         !.builder_build_path_within(target, stage, must_exist = FALSE) ||
-          !file.copy(reused$path, target, overwrite = FALSE, copy.mode = TRUE)
+          !.builder_build_copy_file(reused$path, target)
       ) {
         return(.builder_build_failure(paste0(
           item$name,
@@ -1118,12 +1183,7 @@ builder_execute_plan <- function(
         dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
         if (
           !.builder_build_path_within(destination, stage, must_exist = FALSE) ||
-            !file.copy(
-              member_source,
-              destination,
-              overwrite = FALSE,
-              copy.mode = TRUE
-            )
+            !.builder_build_copy_file(member_source, destination)
         ) {
           return(.builder_build_failure(paste0(
             item$name,
@@ -1254,6 +1314,11 @@ builder_execute_plan <- function(
       result$spatial_image_settings[[item$name]] <-
         extras$external_settings[[item$name]]
     }
+    objects[[item$id]] <- NULL
+    object <- NULL
+    analyses <- NULL
+    extras <- NULL
+    invisible(gc(FALSE))
     verified <- tryCatch(hooks$verify(exported, item), error = function(error) {
       error
     })

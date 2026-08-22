@@ -39,7 +39,6 @@ test_that("review identity includes CRB intent and excludes output intent", {
   expect_named(
     identity,
     c(
-      "revision",
       "dataset_order",
       "items",
       "manifest",
@@ -62,6 +61,55 @@ test_that("review identity includes CRB intent and excludes output intent", {
   expect_false(identical(
     identity,
     builder_review_plan_identity(changed_crb)
+  ))
+
+  rehydrated <- plan
+  rehydrated$revision <- plan$revision + 1L
+  expect_identical(
+    identity,
+    builder_review_plan_identity(rehydrated)
+  )
+})
+
+test_that("review identity ignores managed attachment storage", {
+  plan <- builder_workflow_test_plan()
+  plan$items[[1L]]$tables <- list(
+    Clinical = list(
+      file_name = "supplement.xlsx",
+      sheet_name = "Clinical",
+      display_name = "Clinical",
+      source_path = "/uploads/supplement.xlsx"
+    )
+  )
+  plan$items[[1L]]$images <- list(
+    section_a = list(
+      `H&E` = list(
+        source_content_md5 = strrep("a", 32L),
+        source_uri = "data:image/png;base64,eA==",
+        rotation_degrees = 0
+      )
+    )
+  )
+  managed <- plan
+  managed$items[[1L]]$tables$Clinical$source_path <-
+    "/project/attachments/supplement.xlsx"
+  managed$items[[1L]]$tables$Clinical$project_asset <- list(
+    path = "attachments/dataset-a/supplement.xlsx"
+  )
+  managed$items[[1L]]$images$section_a[["H&E"]]$source_uri <- NULL
+  managed$items[[1L]]$images$section_a[["H&E"]]$project_asset <- list(
+    path = "spatial-assets/dataset-a/image.png"
+  )
+
+  expect_identical(
+    builder_review_plan_identity(plan),
+    builder_review_plan_identity(managed)
+  )
+
+  managed$items[[1L]]$tables$Clinical$display_name <- "Patients"
+  expect_false(identical(
+    builder_review_plan_identity(plan),
+    builder_review_plan_identity(managed)
   ))
 })
 
@@ -165,6 +213,10 @@ test_that("workflow advances through review and confirmation", {
   expect_identical(state$confirmation$plan_revision, plan$revision)
   expect_true(builder_workflow_confirmation_matches(state, plan))
 
+  rehydrated <- plan
+  rehydrated$revision <- plan$revision + 1L
+  expect_true(builder_workflow_confirmation_matches(state, rehydrated))
+
   changed_viewer <- plan
   changed_viewer$app_options$welcome_message <- "Changed"
   expect_true(builder_workflow_confirmation_matches(state, changed_viewer))
@@ -186,6 +238,45 @@ test_that("workflow advances through review and confirmation", {
   expect_identical(state$stage, "configure")
   expect_null(state$review_plan)
   expect_null(state$confirmation)
+})
+
+test_that("workflow transitions reuse an already frozen plan without serializing it", {
+  plan <- builder_workflow_test_plan()
+  plan$items[[1L]]$payload <- raw(1024L * 1024L)
+  runtime <- environment(builder_reduce_workflow)
+  had_serialize <- exists("serialize", envir = runtime, inherits = FALSE)
+  original_serialize <- if (had_serialize) {
+    get("serialize", envir = runtime, inherits = FALSE)
+  } else {
+    NULL
+  }
+  assign(
+    "serialize",
+    function(...) stop("workflow serialized a frozen plan", call. = FALSE),
+    envir = runtime
+  )
+  on.exit(
+    {
+      if (had_serialize) {
+        assign("serialize", original_serialize, envir = runtime)
+      } else if (exists("serialize", envir = runtime, inherits = FALSE)) {
+        rm("serialize", envir = runtime)
+      }
+    },
+    add = TRUE
+  )
+
+  state <- builder_reduce_workflow(
+    builder_workflow_state(),
+    list(type = "open_review", plan = plan)
+  )
+  state <- builder_reduce_workflow(
+    state,
+    list(type = "confirm_review", plan = plan)
+  )
+
+  expect_identical(state$stage, "build")
+  expect_true(builder_workflow_confirmation_matches(state, plan))
 })
 
 test_that("available workflow stages can be revisited without losing confirmation", {

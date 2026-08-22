@@ -12,6 +12,373 @@
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
+builder_server_path_roots <- function(
+  roots = getOption(
+    "CerebroNexus.builder.server_path_roots",
+    path.expand("~")
+  )
+) {
+  if (!is.character(roots) || !length(roots)) {
+    stop("No allowed server folders are configured.", call. = FALSE)
+  }
+  roots <- unique(path.expand(roots[!is.na(roots) & nzchar(roots)]))
+  roots <- roots[vapply(roots, fs::is_absolute_path, logical(1))]
+  roots <- roots[dir.exists(roots)]
+  resolved <- vapply(
+    roots,
+    function(path) {
+      tryCatch(
+        as.character(fs::path_real(path)),
+        error = function(error) ""
+      )
+    },
+    character(1)
+  )
+  resolved <- unique(resolved[nzchar(resolved)])
+  if (!length(resolved)) {
+    stop("No allowed server folders are available.", call. = FALSE)
+  }
+  resolved
+}
+
+builder_server_path_resolve <- function(
+  value,
+  type = c("directory", "file"),
+  roots = builder_server_path_roots()
+) {
+  type <- match.arg(type)
+  if (
+    !is.character(value) ||
+      length(value) != 1L ||
+      is.na(value) ||
+      !nzchar(trimws(value)) ||
+      !isTRUE(fs::is_absolute_path(trimws(value)))
+  ) {
+    stop("Enter an absolute server path.", call. = FALSE)
+  }
+  path <- tryCatch(
+    as.character(fs::path_real(path.expand(trimws(value)))),
+    error = function(error) NULL
+  )
+  valid_path <- is.character(path) &&
+    length(path) == 1L &&
+    !is.na(path) &&
+    nzchar(path)
+  valid_type <- valid_path &&
+    if (identical(type, "directory")) {
+      dir.exists(path)
+    } else {
+      file.exists(path) && !dir.exists(path)
+    }
+  if (!isTRUE(valid_type)) {
+    stop(
+      if (identical(type, "directory")) {
+        "The server folder does not exist."
+      } else {
+        "The server file does not exist."
+      },
+      call. = FALSE
+    )
+  }
+  allowed_roots <- builder_server_path_roots(roots)
+  allowed <- any(vapply(
+    allowed_roots,
+    function(root) .pathWithin(path, root),
+    logical(1)
+  ))
+  if (!allowed) {
+    stop("The path is outside the allowed server folders.", call. = FALSE)
+  }
+  path
+}
+
+builder_macos_picker_script <- function(command) {
+  paste(
+    "try",
+    command,
+    "on error number -128",
+    'return ""',
+    "end try",
+    sep = "\n"
+  )
+}
+
+builder_windows_picker_script <- function() {
+  paste(
+    "args <- commandArgs(trailingOnly = TRUE)",
+    "kind <- args[[1L]]",
+    "prompt <- args[[2L]]",
+    "title <- args[[3L]]",
+    "patterns <- args[[4L]]",
+    "chosen <- tryCatch(",
+    "  switch(",
+    "    kind,",
+    "    output_directory = utils::choose.dir(caption = prompt),",
+    "    project_directory = utils::choose.dir(caption = prompt),",
+    paste0(
+      "    project_manifest = utils::choose.files(caption = prompt, ",
+      "multi = FALSE, filters = matrix(c('Builder project', '*.json', ",
+      "'All files', '*.*'), ncol = 2L, byrow = TRUE)),"
+    ),
+    paste0(
+      "    utils::choose.files(caption = prompt, multi = TRUE, filters = ",
+      "matrix(c(title, patterns, 'All files', '*.*'), ncol = 2L, ",
+      "byrow = TRUE))"
+    ),
+    "  ),",
+    "  error = function(error) {",
+    "    writeLines(conditionMessage(error), con = stderr())",
+    "    quit(save = 'no', status = 1L, runLast = FALSE)",
+    "  }",
+    ")",
+    "chosen <- as.character(chosen)",
+    "chosen <- chosen[!is.na(chosen) & nzchar(chosen)]",
+    "if (length(chosen)) writeLines(enc2utf8(chosen), useBytes = TRUE)",
+    sep = "\n"
+  )
+}
+
+builder_project_osascript <- function(kind = c("directory", "manifest")) {
+  kind <- match.arg(kind)
+  command <- if (identical(kind, "directory")) {
+    paste0(
+      "POSIX path of (choose folder with prompt ",
+      "\"Choose a folder for the Builder project.\")"
+    )
+  } else {
+    paste0(
+      "POSIX path of (choose file with prompt ",
+      "\"Open a Builder project.\" of type {\"public.json\"})"
+    )
+  }
+  builder_macos_picker_script(command)
+}
+
+builder_dataset_extensions <- function() {
+  unique(tolower(unlist(lapply(builder_formats, `[[`, "extensions"))))
+}
+
+builder_table_extensions <- function() {
+  c("csv", "tsv", "txt", "xls", "xlsx", "xlsm")
+}
+
+builder_native_picker_spec <- function(
+  kind = c(
+    "output_directory",
+    "dataset_files",
+    "table_files",
+    "project_directory",
+    "project_manifest",
+    "local_files"
+  ),
+  extensions = NULL,
+  label = NULL,
+  .system = Sys.info()[["sysname"]] %||% "",
+  .rscript = NULL,
+  .which = Sys.which
+) {
+  kind <- match.arg(kind)
+  if (identical(kind, "dataset_files")) {
+    extensions <- builder_dataset_extensions()
+    label <- "dataset"
+  } else if (identical(kind, "table_files")) {
+    extensions <- builder_table_extensions()
+    label <- "table"
+  }
+  if (identical(kind, "local_files")) {
+    extensions <- unique(tolower(as.character(extensions)))
+    stopifnot(length(extensions), is.character(label), length(label) == 1L)
+  }
+  files <- kind %in% c("dataset_files", "table_files", "local_files")
+  prompt <- switch(
+    kind,
+    output_directory = "Choose where to save the build output.",
+    project_directory = "Choose a folder for the Builder project.",
+    project_manifest = "Open a Builder project.",
+    paste0("Choose ", label, " files.")
+  )
+  title <- if (files) paste0(tools::toTitleCase(label), " files") else NULL
+  if (identical(.system, "Windows")) {
+    rscript <- .rscript %||% file.path(R.home("bin"), "Rscript.exe")
+    return(list(
+      command = rscript,
+      args = c(
+        "--vanilla",
+        "-e",
+        builder_windows_picker_script(),
+        kind,
+        prompt,
+        title %||% "",
+        paste0("*.", extensions, collapse = ";")
+      ),
+      cancel_status = integer()
+    ))
+  }
+  if (identical(.system, "Darwin")) {
+    script <- switch(
+      kind,
+      output_directory = builder_macos_picker_script(paste0(
+        "POSIX path of (choose folder with prompt \"",
+        prompt,
+        "\")"
+      )),
+      project_directory = builder_project_osascript("directory"),
+      project_manifest = builder_project_osascript("manifest"),
+      builder_macos_picker_script(paste(
+        paste0(
+          'set chosenFiles to choose file with prompt "',
+          prompt,
+          '" with multiple selections allowed'
+        ),
+        'set chosenPaths to ""',
+        "repeat with chosenFile in chosenFiles",
+        "set chosenPaths to chosenPaths & POSIX path of chosenFile & linefeed",
+        "end repeat",
+        "return chosenPaths",
+        sep = "\n"
+      ))
+    )
+    return(list(
+      command = "osascript",
+      args = c("-e", script),
+      cancel_status = integer()
+    ))
+  }
+  zenity <- .which("zenity")
+  if (nzchar(zenity)) {
+    args <- switch(
+      kind,
+      output_directory = c(
+        "--file-selection",
+        "--directory",
+        paste0("--title=", prompt)
+      ),
+      project_directory = c(
+        "--file-selection",
+        "--directory",
+        paste0("--title=", prompt)
+      ),
+      project_manifest = c(
+        "--file-selection",
+        paste0("--title=", prompt),
+        "--file-filter=Builder project | *.json"
+      ),
+      c(
+        "--file-selection",
+        "--multiple",
+        "--separator=\n",
+        paste0("--title=", prompt)
+      )
+    )
+    return(list(command = unname(zenity), args = args, cancel_status = 1L))
+  }
+  kdialog <- .which("kdialog")
+  if (nzchar(kdialog)) {
+    args <- switch(
+      kind,
+      output_directory = c("--getexistingdirectory", path.expand("~")),
+      project_directory = c("--getexistingdirectory", path.expand("~")),
+      project_manifest = c("--getopenfilename", path.expand("~"), "*.json"),
+      c(
+        "--getopenfilename",
+        path.expand("~"),
+        paste0(title, " (", paste0("*.", extensions, collapse = " "), ")"),
+        "--multiple",
+        "--separate-output"
+      )
+    )
+    return(list(command = unname(kdialog), args = args, cancel_status = 1L))
+  }
+  stop(
+    if (files) {
+      "No system file picker is available."
+    } else {
+      "No system folder picker is available."
+    },
+    call. = FALSE
+  )
+}
+
+builder_native_picker_lines <- function(output) {
+  output <- paste(as.character(output), collapse = "\n")
+  if (!nzchar(output)) {
+    return(character())
+  }
+  lines <- strsplit(gsub("\r", "", output, fixed = TRUE), "\n", fixed = TRUE)[[
+    1L
+  ]]
+  lines[nzchar(lines)]
+}
+
+builder_native_picker_output <- function(
+  status,
+  output,
+  errors = character(),
+  cancel_status = integer()
+) {
+  output <- builder_native_picker_lines(output)
+  errors <- builder_native_picker_lines(errors)
+  if (is.null(status)) {
+    status <- 0L
+  }
+  status <- if (length(status) == 1L && !is.na(status)) {
+    as.integer(status)
+  } else {
+    NA_integer_
+  }
+  if (identical(status, 0L)) {
+    return(output)
+  }
+  if (
+    !is.na(status) &&
+      status %in% as.integer(cancel_status) &&
+      !length(output) &&
+      !length(errors)
+  ) {
+    return(character())
+  }
+  detail <- if (length(errors)) {
+    paste(errors, collapse = "\n")
+  } else {
+    label <- if (is.na(status)) "unknown" else status
+    paste0("The system picker exited with status ", label, ".")
+  }
+  stop(detail, call. = FALSE)
+}
+
+builder_native_picker_select <- function(
+  kind,
+  extensions = NULL,
+  label = NULL
+) {
+  spec <- builder_native_picker_spec(kind, extensions, label)
+  if (requireNamespace("processx", quietly = TRUE)) {
+    result <- processx::run(
+      spec$command,
+      spec$args,
+      error_on_status = FALSE,
+      echo = FALSE
+    )
+    return(builder_native_picker_output(
+      result$status,
+      result$stdout,
+      result$stderr,
+      spec$cancel_status
+    ))
+  }
+  output <- suppressWarnings(system2(
+    spec$command,
+    vapply(spec$args, shQuote, character(1)),
+    stdout = TRUE,
+    stderr = FALSE
+  ))
+  builder_native_picker_output(
+    attr(output, "status") %||% 0L,
+    output,
+    cancel_status = spec$cancel_status
+  )
+}
+
 #' Choose a local output directory with the operating system's picker.
 #'
 #' The optional selector keeps platform UI outside the Build flow and makes
@@ -19,44 +386,7 @@
 builder_choose_output_directory <- function(.select = NULL) {
   select <- .select %||%
     function() {
-      system <- Sys.info()[["sysname"]] %||% ""
-      if (identical(system, "Windows")) {
-        return(utils::choose.dir(
-          caption = "Choose where to save the build output."
-        ))
-      }
-      if (identical(system, "Darwin")) {
-        script <- paste(
-          "POSIX path of (choose folder with prompt",
-          '"Choose where to save the build output.")'
-        )
-        return(system2("osascript", c("-e", shQuote(script)), stdout = TRUE))
-      }
-      zenity <- Sys.which("zenity")
-      if (nzchar(zenity)) {
-        return(system2(
-          zenity,
-          c(
-            "--file-selection",
-            "--directory",
-            shQuote(
-              "--title=Choose where to save the build output."
-            )
-          ),
-          stdout = TRUE,
-          stderr = FALSE
-        ))
-      }
-      kdialog <- Sys.which("kdialog")
-      if (nzchar(kdialog)) {
-        return(system2(
-          kdialog,
-          c("--getexistingdirectory", shQuote(path.expand("~"))),
-          stdout = TRUE,
-          stderr = FALSE
-        ))
-      }
-      stop("No system folder picker is available.", call. = FALSE)
+      builder_native_picker_select("output_directory")
     }
   chosen <- tryCatch(select(), error = identity)
   if (inherits(chosen, "error")) {
@@ -87,17 +417,71 @@ builder_choose_output_directory <- function(.select = NULL) {
   list(status = "selected", path = path)
 }
 
-builder_project_osascript <- function(kind = c("directory", "manifest")) {
-  kind <- match.arg(kind)
-  if (identical(kind, "directory")) {
-    return(paste0(
-      "POSIX path of (choose folder with prompt ",
-      "\"Choose a folder for the Builder project.\")"
+builder_choose_local_files <- function(
+  extensions,
+  label,
+  .select = NULL
+) {
+  extensions <- unique(tolower(as.character(extensions)))
+  select <- .select %||%
+    function() {
+      builder_native_picker_select("local_files", extensions, label)
+    }
+  chosen <- tryCatch(select(), error = identity)
+  if (inherits(chosen, "error")) {
+    return(list(
+      status = "error",
+      paths = character(),
+      error = conditionMessage(chosen)
     ))
   }
-  paste0(
-    "POSIX path of (choose file with prompt ",
-    "\"Open a Builder project.\" of type {\"public.json\"})"
+  chosen <- as.character(chosen)
+  chosen <- chosen[!is.na(chosen) & nzchar(chosen)]
+  if (!length(chosen)) {
+    return(list(status = "cancelled", paths = character()))
+  }
+  paths <- tryCatch(
+    unique(normalizePath(
+      path.expand(chosen),
+      winslash = "/",
+      mustWork = TRUE
+    )),
+    error = identity
+  )
+  supported <- !inherits(paths, "error") &&
+    all(file.exists(paths) & !dir.exists(paths)) &&
+    all(tolower(tools::file_ext(paths)) %in% extensions)
+  if (!isTRUE(supported)) {
+    return(list(
+      status = "error",
+      paths = character(),
+      error = paste0(
+        "Choose supported ",
+        label,
+        " files (.",
+        paste(extensions, collapse = ", ."),
+        ")."
+      )
+    ))
+  }
+  list(status = "selected", paths = paths)
+}
+
+#' Choose one or more datasets without sending them through Shiny's upload
+#' transport. The browser upload remains available for remote sessions.
+builder_choose_dataset_files <- function(.select = NULL) {
+  builder_choose_local_files(
+    extensions = builder_dataset_extensions(),
+    label = "dataset",
+    .select = .select
+  )
+}
+
+builder_choose_table_files <- function(.select = NULL) {
+  builder_choose_local_files(
+    extensions = builder_table_extensions(),
+    label = "table",
+    .select = .select
   )
 }
 
@@ -105,39 +489,7 @@ builder_project_osascript <- function(kind = c("directory", "manifest")) {
 builder_choose_project_directory <- function(.select = NULL) {
   select <- .select %||%
     function() {
-      system <- Sys.info()[["sysname"]] %||% ""
-      if (identical(system, "Windows")) {
-        return(utils::choose.dir(
-          caption = "Choose a folder for the Builder project."
-        ))
-      }
-      if (identical(system, "Darwin")) {
-        script <- builder_project_osascript("directory")
-        return(system2("osascript", c("-e", shQuote(script)), stdout = TRUE))
-      }
-      zenity <- Sys.which("zenity")
-      if (nzchar(zenity)) {
-        return(system2(
-          zenity,
-          c(
-            "--file-selection",
-            "--directory",
-            shQuote("--title=Choose a folder for the Builder project.")
-          ),
-          stdout = TRUE,
-          stderr = FALSE
-        ))
-      }
-      kdialog <- Sys.which("kdialog")
-      if (nzchar(kdialog)) {
-        return(system2(
-          kdialog,
-          c("--getexistingdirectory", shQuote(path.expand("~"))),
-          stdout = TRUE,
-          stderr = FALSE
-        ))
-      }
-      stop("No system folder picker is available.", call. = FALSE)
+      builder_native_picker_select("project_directory")
     }
   chosen <- tryCatch(select(), error = identity)
   if (inherits(chosen, "error")) {
@@ -172,37 +524,7 @@ builder_choose_project_directory <- function(.select = NULL) {
 builder_choose_project_manifest <- function(.select = NULL) {
   select <- .select %||%
     function() {
-      system <- Sys.info()[["sysname"]] %||% ""
-      if (identical(system, "Windows")) {
-        return(file.choose())
-      }
-      if (identical(system, "Darwin")) {
-        script <- builder_project_osascript("manifest")
-        return(system2("osascript", c("-e", shQuote(script)), stdout = TRUE))
-      }
-      zenity <- Sys.which("zenity")
-      if (nzchar(zenity)) {
-        return(system2(
-          zenity,
-          c(
-            "--file-selection",
-            shQuote("--title=Open a Builder project."),
-            shQuote("--file-filter=Builder project | *.json")
-          ),
-          stdout = TRUE,
-          stderr = FALSE
-        ))
-      }
-      kdialog <- Sys.which("kdialog")
-      if (nzchar(kdialog)) {
-        return(system2(
-          kdialog,
-          c("--getopenfilename", shQuote(path.expand("~")), shQuote("*.json")),
-          stdout = TRUE,
-          stderr = FALSE
-        ))
-      }
-      stop("No system file picker is available.", call. = FALSE)
+      builder_native_picker_select("project_manifest")
     }
   chosen <- tryCatch(select(), error = identity)
   if (inherits(chosen, "error")) {
@@ -231,6 +553,109 @@ builder_choose_project_manifest <- function(.select = NULL) {
     ))
   }
   list(status = "selected", path = path)
+}
+
+builder_native_picker_result <- function(kind, select) {
+  switch(
+    kind,
+    output_directory = builder_choose_output_directory(.select = select),
+    dataset_files = builder_choose_dataset_files(.select = select),
+    table_files = builder_choose_table_files(.select = select),
+    project_directory = builder_choose_project_directory(.select = select),
+    project_manifest = builder_choose_project_manifest(.select = select),
+    stop("The native picker kind is unsupported.", call. = FALSE)
+  )
+}
+
+# Run the operating-system dialog outside Shiny's main R event loop. A dialog
+# may stay open for minutes; only its small path result returns to the session.
+builder_start_native_picker <- function(
+  kind = c(
+    "output_directory",
+    "dataset_files",
+    "table_files",
+    "project_directory",
+    "project_manifest"
+  ),
+  .spec = NULL,
+  .process_new = NULL
+) {
+  kind <- match.arg(kind)
+  spec <- .spec %||% builder_native_picker_spec(kind)
+  if (is.null(.process_new) && !requireNamespace("processx", quietly = TRUE)) {
+    return(list(
+      kind = kind,
+      process = NULL,
+      result = builder_native_picker_result(
+        kind,
+        function() {
+          stop(
+            "The processx package is required for a non-blocking system picker.",
+            call. = FALSE
+          )
+        }
+      )
+    ))
+  }
+  process_new <- .process_new %||% processx::process$new
+  process <- tryCatch(
+    process_new(
+      command = spec$command,
+      args = spec$args,
+      stdout = "|",
+      stderr = "|",
+      cleanup = TRUE,
+      cleanup_tree = TRUE
+    ),
+    error = identity
+  )
+  if (inherits(process, "condition")) {
+    return(list(
+      kind = kind,
+      process = NULL,
+      result = builder_native_picker_result(
+        kind,
+        function() stop(conditionMessage(process), call. = FALSE)
+      )
+    ))
+  }
+  list(
+    kind = kind,
+    process = process,
+    result = NULL,
+    cancel_status = spec$cancel_status %||% integer()
+  )
+}
+
+builder_native_picker_is_alive <- function(picker) {
+  !is.null(picker$process) && isTRUE(picker$process$is_alive())
+}
+
+builder_collect_native_picker <- function(picker) {
+  if (!is.null(picker$result)) {
+    return(picker$result)
+  }
+  if (builder_native_picker_is_alive(picker)) {
+    stop("The native picker is still open.", call. = FALSE)
+  }
+  output <- picker$process$read_all_output_lines()
+  errors <- picker$process$read_all_error_lines()
+  status <- picker$process$get_exit_status()
+  builder_native_picker_result(picker$kind, function() {
+    builder_native_picker_output(
+      status,
+      output,
+      errors,
+      picker$cancel_status %||% integer()
+    )
+  })
+}
+
+builder_kill_native_picker <- function(picker) {
+  if (builder_native_picker_is_alive(picker)) {
+    tryCatch(picker$process$kill(), error = function(error) NULL)
+  }
+  invisible(TRUE)
 }
 
 ## Resource lookup must stay in the same immutable inst/ tree as this file.
@@ -459,6 +884,13 @@ builder_list_candidates <- function(dir) {
 
 .builder_example_path <- function(relative) {
   root <- .builder_example_inst_root
+  source_root <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+  if (!nzchar(root) && nzchar(source_root)) {
+    candidate <- file.path(source_root, "inst")
+    if (dir.exists(candidate)) {
+      root <- candidate
+    }
+  }
   if (!nzchar(root)) {
     root <- system.file(package = "CerebroNexus")
   }

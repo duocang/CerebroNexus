@@ -674,7 +674,8 @@ builder_recommend_nomenclature <- function(profile, organism) {
   profile <- .builder_recommend_profile(profile)
   organism <- .builder_recommend_organism_value(organism)
   choices <- builder_nomenclature_choices(organism)
-  features <- profile$identity$features$ids
+  features <- profile$identity$features$sample_ids %||%
+    profile$identity$features$ids
   if (!is.character(features)) {
     features <- character()
   }

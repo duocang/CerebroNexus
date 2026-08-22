@@ -63,6 +63,39 @@ test_that("release identity ignores Finder metadata but not other dotfiles", {
   })
 })
 
+test_that("output preflight reports only foreign top-level members", {
+  local({
+    builder_publish_source()
+    release <- withr::local_tempdir()
+    writeLines("crb", file.path(release, "dataset.crb"))
+    writeLines("finder", file.path(release, ".DS_Store"))
+    writeLines("foreign", file.path(release, "notes.txt"))
+
+    checked <- builder_release_output_preflight(
+      release,
+      expected_roots = "dataset.crb"
+    )
+
+    expect_false(checked$ok)
+    expect_identical(checked$foreign, "notes.txt")
+    expect_identical(
+      checked$prior_state$identity,
+      builder_release_state(
+        release,
+        exact_record = FALSE,
+        allow_abandoned = TRUE
+      )$identity
+    )
+    unlink(file.path(release, "notes.txt"))
+    expect_true(
+      builder_release_output_preflight(
+        release,
+        expected_roots = "dataset.crb"
+      )$ok
+    )
+  })
+})
+
 test_that("release ownership records require canonical recursive members", {
   local({
     builder_publish_source()
@@ -835,6 +868,51 @@ test_that("process death between renames leaves exact recoverable evidence", {
   })
 })
 
+test_that("process death after protecting the prior release keeps recovery intent", {
+  skip_if_not_installed("callr")
+  local({
+    root_path <- testthat::test_path("..", "..", "inst", "builder")
+    if (!dir.exists(root_path)) {
+      root_path <- system.file("builder", package = "CerebroNexus")
+    }
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    dir.create(target)
+    writeLines("old", file.path(target, "dataset.crb"))
+    crash <- callr::r_bg(
+      function(builder_root, target) {
+        source(file.path(builder_root, "core", "bundle_path_contract.R"))
+        source(file.path(builder_root, "publish.R"))
+        handle <- builder_prepare_release(
+          target,
+          "build-moving-crash",
+          builder_release_identity(target)
+        )
+        writeLines("new", file.path(handle$stage, "dataset.crb"))
+        builder_publish_release(
+          handle,
+          .after_move = function(move) {
+            if (identical(move, "old_to_backup")) {
+              quit(save = "no", status = 21L, runLast = FALSE)
+            }
+          }
+        )
+      },
+      list(root_path, target)
+    )
+    crash$wait(timeout = 10000)
+    expect_identical(crash$get_exit_status(), 21L)
+
+    builder_publish_source()
+    recovery <- builder_discover_recovery(target)
+    expect_identical(recovery$phase, "old_moving")
+    expect_false(dir.exists(target))
+    expect_true(dir.exists(recovery$backup))
+    expect_true(builder_recover_release(target, "restore")$recovered)
+    expect_identical(readLines(file.path(target, "dataset.crb")), "old")
+  })
+})
+
 test_that("process death after the new release can still restore the prior one", {
   skip_if_not_installed("callr")
   local({
@@ -1056,6 +1134,93 @@ test_that("foreign or unverifiable locks remain fail closed", {
     )
     expect_true(dir.exists(lock))
     expect_identical(readRDS(file.path(lock, "owner.rds")), owner)
+  })
+})
+
+test_that("release lock ownership can move to a trusted publication process", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    handle <- builder_prepare_release(target, "build-owner-transfer")
+    original <- .builder_release_lock_owner(handle$lock)
+    child_pid <- original$pid + 1L
+
+    transferred <- .builder_release_transfer_lock(
+      handle$lock,
+      handle$token,
+      from_pid = original$pid,
+      to_pid = child_pid
+    )
+
+    expect_identical(transferred$pid, child_pid)
+    expect_identical(
+      .builder_release_lock_owner(handle$lock)$pid,
+      child_pid
+    )
+    expect_error(
+      .builder_release_transfer_lock(
+        handle$lock,
+        handle$token,
+        from_pid = original$pid,
+        to_pid = original$pid + 2L
+      ),
+      "ownership changed"
+    )
+    expect_true(builder_abort_release(handle)$aborted)
+  })
+})
+
+test_that("interrupted atomic writes stay outside control and lock roots", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    handle <- builder_prepare_release(target, "build-atomic-orphan")
+    diagnostics <- file.path(handle$control, "diagnostics")
+    orphan <- file.path(diagnostics, ".journal.rds.interrupted.tmp")
+    writeLines("interrupted", orphan)
+
+    expect_silent(.builder_release_assert_control(handle$control))
+    expect_true(.builder_release_lock_known(handle$lock))
+    expect_true(builder_abort_release(handle)$aborted)
+    expect_true(file.exists(orphan))
+
+    next_handle <- builder_prepare_release(target, "build-after-orphan")
+    expect_s3_class(next_handle, "builder_release_handle")
+    expect_true(builder_abort_release(next_handle)$aborted)
+  })
+})
+
+test_that("completed releases cannot be rewritten as aborted", {
+  local({
+    builder_publish_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    handle <- builder_prepare_release(target, "build-complete-abort")
+    handle <- .builder_release_write_phase(handle, "complete")
+
+    expect_error(builder_abort_release(handle), "cannot be aborted")
+    expect_identical(
+      .builder_release_journal(target, required = TRUE)$phase,
+      "complete"
+    )
+  })
+})
+
+test_that("terminal journals with a surviving lock require stale-lock cleanup", {
+  local({
+    builder_publish_source()
+    for (phase in c("complete", "aborted", "recovered")) {
+      root <- withr::local_tempdir()
+      target <- file.path(root, "release")
+      handle <- builder_prepare_release(target, paste0("build-", phase))
+      handle <- .builder_release_write_phase(handle, phase)
+
+      recovery <- builder_discover_recovery(target)
+      expect_identical(recovery$state, "stale_lock")
+      expect_identical(recovery$journal$phase, phase)
+    }
   })
 })
 

@@ -165,7 +165,7 @@ test_that("Builder shell and workflow UI separate all four stages", {
     )),
     1L
   )
-  expect_match(actions_html, ">Continue to Review<", fixed = TRUE)
+  expect_match(actions_html, "Continue to Review", fixed = TRUE)
   expect_match(actions_html, " disabled", fixed = TRUE)
   expect_false(grepl("make_app", actions_html, fixed = TRUE))
   expect_false(grepl("Create a Viewer app", actions_html, fixed = TRUE))
@@ -412,11 +412,11 @@ test_that("Build result survives unsafe folder selection and clears on acceptanc
       envir = folder_env
     )
     assign(
-      "builder_choose_output_directory",
+      "builder_start_native_picker",
       function(...) {
         choice <- choices[[1L]]
         choices <<- choices[-1L]
-        choice
+        list(kind = "output_directory", process = NULL, result = choice)
       },
       envir = folder_env
     )
@@ -489,6 +489,7 @@ test_that("Build result survives unsafe folder selection and clears on acceptanc
     expect_null(result())
     expect_identical(selected_output(), "/new/output")
     expect_identical(build_flow(), list(stage = "idle", plan = NULL))
+    real_session$flushReact()
     content <- paste(unlist(output$build_stage_footer), collapse = " ")
     expect_match(content, ">Build<", fixed = TRUE)
     expect_false(grepl(" disabled", content, fixed = TRUE))
@@ -567,9 +568,22 @@ test_that("workflow server owns loading and Configure rendering", {
   )
   expect_match(
     workflow_server,
-    "plan <- freeze_materialized_plan_for_output(",
+    "plan <- isolate(frozen_review_plan())",
     fixed = TRUE
   )
+  foundation_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "foundation.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(
+    foundation_server,
+    "dataset_order <- reactiveVal(character())",
+    fixed = TRUE
+  )
+  expect_match(review_server, "dataset_order()", fixed = TRUE)
   expect_match(review_server, "plan <- workflow()$review_plan", fixed = TRUE)
   expect_match(review_server, "input$back_to_settings", fixed = TRUE)
   expect_match(review_server, "input$confirm_review", fixed = TRUE)
@@ -735,7 +749,8 @@ test_that("external spatial images carry required App output through Review", {
     make_app,
     overwrite,
     app_options,
-    app_auth
+    app_auth,
+    ...
   ) {
     if (!isTRUE(make_app)) {
       return(real_builder_freeze_plan(
@@ -1014,7 +1029,8 @@ test_that("Build-only auth changes preserve the confirmed CRB review", {
     make_app,
     overwrite,
     app_options,
-    app_auth
+    app_auth,
+    ...
   ) {
     plan <- builder_stage_frozen_plan(make_app)
     plan$dataset_order <- vapply(entries, `[[`, character(1), "id")
@@ -1411,7 +1427,8 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
     make_app,
     overwrite,
     app_options,
-    app_auth
+    app_auth,
+    ...
   ) {
     plan <- builder_stage_frozen_plan(FALSE)
     target <- file.path(out_dir, "artifact.crb")
@@ -1463,8 +1480,14 @@ test_that("Build conflict actions preserve confirmation and fail closed", {
       envir = fn_env
     )
     assign(
-      "builder_choose_output_directory",
-      function(...) list(status = "selected", path = replacement_dir),
+      "builder_start_native_picker",
+      function(...) {
+        list(
+          kind = "output_directory",
+          process = NULL,
+          result = list(status = "selected", path = replacement_dir)
+        )
+      },
       envir = fn_env
     )
     enqueued <- list()
@@ -1733,10 +1756,14 @@ test_that("active Build states reject forged stage actions", {
       envir = fn_env
     )
     assign(
-      "builder_choose_output_directory",
+      "builder_start_native_picker",
       function(...) {
         picker_calls <<- picker_calls + 1L
-        list(status = "selected", path = selected_directory)
+        list(
+          kind = "output_directory",
+          process = NULL,
+          result = list(status = "selected", path = selected_directory)
+        )
       },
       envir = fn_env
     )
@@ -1970,7 +1997,8 @@ test_that("Build recovery actions preserve confirmation only when safe", {
     make_app,
     overwrite,
     app_options,
-    app_auth
+    app_auth,
+    ...
   ) {
     plan <- builder_stage_frozen_plan(make_app)
     plan$revision <- max(vapply(entries, `[[`, integer(1), "revision"))

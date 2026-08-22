@@ -20,12 +20,21 @@ test_that("BuildPlan exposes Extra material for attached workbook tables", {
     builder_repo_source("preview.R")
     builder_repo_source("plan.R")
     entry <- builder_task6_entry()
-    entry$settings$tables <- list(
+    entry$dataset_profile$content$extra_material <- .builder_table_record(
+      detected = TRUE,
+      valid = TRUE,
+      normalized = list(
+        tables = list(`Source table` = list(n_rows = 2L)),
+        plots = list(`Source plot` = list(class = "ggplot"))
+      ),
+      page_candidates = "extra_material"
+    )
+    entry$settings$tables <- unname(list(
       clinical = list(
         name = "Clinical summary",
         table = data.frame(patient = "P1", score = 1)
       )
-    )
+    ))
 
     plan <- builder_freeze_plan(
       list(entry),
@@ -38,6 +47,22 @@ test_that("BuildPlan exposes Extra material for attached workbook tables", {
       "extra_material" %in%
         plan$items[[1L]]$viewer_page_expectations$visible_conditional
     )
+    extra <- plan$items[[1L]]$manifest[["extra_material"]]
+    expect_identical(extra$status, "valid")
+    expect_identical(extra$disposition, "attached")
+    expect_identical(extra$pages, "extra_material")
+    expect_identical(extra$diagnostics$table_count, 2L)
+    expect_identical(extra$diagnostics$attached_table_count, 1L)
+    expect_identical(extra$diagnostics$workbook_count, 1L)
+    expect_identical(
+      names(extra$evidence$normalized$tables),
+      c("Source table", "Clinical summary")
+    )
+    expect_identical(
+      names(extra$evidence$normalized$plots),
+      "Source plot"
+    )
+    expect_identical(plan$manifest[["extra_material"]]$status, "valid")
   })
 })
 

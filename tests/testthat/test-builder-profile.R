@@ -36,6 +36,58 @@ test_that("a real small Seurat object produces a versioned typed profile", {
   expect_s3_class(profile$manifest, "builder_content_manifest")
 })
 
+test_that("workspace profiles replace full axis vectors with compact identities", {
+  skip_if_not_installed("SeuratObject")
+
+  object <- builder_profile_pbmc()
+  profile <- builder_dataset_profile(
+    object,
+    builder_profile_source_fixture()
+  )
+  cells <- SeuratObject::Cells(object)
+  features <- SeuratObject::Features(object)
+  workspace <- builder_profile_workspace_contract(profile)
+
+  expect_s3_class(workspace, "builder_dataset_profile")
+  expect_identical(
+    workspace$identity$cells$axis_identity,
+    builder_axis_identity(cells)
+  )
+  expect_identical(
+    workspace$identity$features$axis_identity,
+    builder_axis_identity(features)
+  )
+  expect_null(workspace$identity$cells$ids)
+  expect_null(workspace$identity$cells$canonical_ids)
+  expect_null(workspace$identity$cells$reorder_index)
+  expect_identical(
+    workspace$identity$features$sample_ids,
+    utils::head(features, 500L)
+  )
+  first_layer <- workspace$assays[[1L]]$layers[[1L]]
+  expect_null(first_layer$cells$ids)
+  expect_null(first_layer$features$ids)
+  expect_true(all(vapply(
+    workspace$reductions,
+    function(reduction) is.null(reduction$cells$ids),
+    logical(1)
+  )))
+  expect_null(
+    workspace$manifest[["dataset_identity"]]$diagnostics$cells$ids
+  )
+})
+
+test_that("axis identities preserve order, missing values, and UTF-8 text", {
+  ids <- c("cell/一", "line\nbreak", enc2utf8("é"), NA_character_)
+  identity <- builder_axis_identity(ids)
+
+  expect_true(builder_axis_identity_valid(identity))
+  expect_identical(identity$schema_version, 2L)
+  expect_identical(identity$count, 4)
+  expect_identical(identity, builder_axis_identity(ids))
+  expect_false(identical(identity, builder_axis_identity(rev(ids))))
+})
+
 test_that("legacy spatial fields reuse the bounded content profile", {
   skip_if_not_installed("SeuratObject")
 

@@ -42,11 +42,14 @@ builder_normalize_group_dependency <- function(entry) {
 
 ## -- the rail ------------------------------------------------------------
 last_dataset_rail_patch <- reactiveVal(NULL)
+dataset_rail_row_cache <- new.env(parent = emptyenv())
 observe({
   next_patch <- builder_dataset_rail_patch(
     store(),
     current(),
-    checked_dataset_ids()
+    checked_dataset_ids(),
+    row_cache = dataset_rail_row_cache,
+    state_cache = builder_dataset_state_cache
   )
   if (identical(next_patch, isolate(last_dataset_rail_patch()))) {
     return()
@@ -60,7 +63,14 @@ observeEvent(
   {
     session$sendCustomMessage(
       "builder_dataset_rail_patch",
-      builder_dataset_rail_patch(store(), current(), checked_dataset_ids())
+      builder_dataset_rail_patch(
+        store(),
+        current(),
+        checked_dataset_ids(),
+        row_cache = dataset_rail_row_cache,
+        force_html = TRUE,
+        state_cache = builder_dataset_state_cache
+      )
     )
   },
   ignoreInit = TRUE
@@ -317,7 +327,10 @@ lapply(
         fact <- entry$dataset_profile$content$immune_repertoire %||%
           entry$profile$content$immune_repertoire %||%
           list()
-        state <- try(builder_dataset_state(entry), silent = TRUE)
+        state <- try(
+          builder_cached_dataset_state(entry, builder_dataset_state_cache),
+          silent = TRUE
+        )
         if (inherits(state, "try-error")) {
           return()
         }
@@ -546,7 +559,7 @@ observe({
     dataset_revision = entry$revision,
     projections = ids,
     group = entry$settings$default_group %||% NULL,
-    max_cells = 600L,
+    max_cells = BUILDER_PREVIEW_MAX,
     replaces = "viewer-projection-gallery"
   ))
   if (isTRUE(queued)) {
@@ -582,7 +595,7 @@ observe({
     id = id,
     dataset_revision = entry$revision,
     trajectories = trajectories,
-    max_cells = 600L,
+    max_cells = BUILDER_PREVIEW_MAX,
     replaces = "viewer-trajectory-gallery"
   ))
   if (isTRUE(queued)) {
@@ -632,6 +645,9 @@ observeEvent(
     )
     changed <- replace_entry(entry)
     if (isTRUE(changed)) {
+      group_preview_ui_revision(
+        isolate(group_preview_ui_revision()) + 1L
+      )
       send_group_state(entry)
     }
   },
@@ -741,12 +757,13 @@ group_color_ui_revision <- reactiveVal(0L)
 group_preview_ui_revision <- reactiveVal(0L)
 
 output[["core-group_detail"]] <- renderUI({
+  group_preview_ui_revision()
   id <- current()
   rendered_for <- input[["core-rendered_for"]]
   if (is.null(id) || !identical(rendered_for, id)) {
     return(NULL)
   }
-  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+  entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
   req(entry)
   catalog <- group_catalog_for_entry(entry)
   focus <- group_focus_value(input[["core-group_focus"]]) %||%
@@ -762,7 +779,7 @@ output[["core-metadata_preview"]] <- renderUI({
   group_preview_ui_revision()
   id <- current()
   req(!is.null(id), identical(input[["core-rendered_for"]], id))
-  entry <- builder_upgrade_viewer_content_entry(entry_of(id))
+  entry <- builder_upgrade_viewer_content_entry(isolate(entry_of(id)))
   req(entry)
   catalog <- group_catalog_for_entry(entry)
   builder_metadata_preview_ui(catalog$metadata_preview)

@@ -44,7 +44,8 @@ builder_prepare_loaded_entry_attachment <- function(entry) {
       list(type = "replace", id = finalized$id, entry = finalized)
     } else {
       list(type = "add", entry = finalized)
-    }
+    },
+    trusted = TRUE
   )
   list(entry = finalized, state = next_state)
 }
@@ -277,6 +278,14 @@ use_state_only_fixture <- function(datasets = list()) {
     entry
   })
   fixture <- app_store_compat_entries(builder_state(), datasets, mark = TRUE)
+  if (exists("builder_dataset_state_cache", inherits = TRUE)) {
+    builder_dataset_state_cache_clear(builder_dataset_state_cache)
+  }
+  if (exists("builder_configuration_identity_cache", inherits = TRUE)) {
+    builder_project_configuration_cache_clear(
+      builder_configuration_identity_cache
+    )
+  }
   store(fixture)
   invisible(fixture)
 }
@@ -288,7 +297,8 @@ sets <- function(value) {
   updated <- try(
     builder_reduce_state(
       current_state,
-      list(type = "replace_all", datasets = value)
+      list(type = "replace_all", datasets = value),
+      trusted = TRUE
     ),
     silent = TRUE
   )
@@ -303,6 +313,14 @@ sets <- function(value) {
       value
     )
   }
+  if (exists("builder_dataset_state_cache", inherits = TRUE)) {
+    builder_dataset_state_cache_clear(builder_dataset_state_cache)
+  }
+  if (exists("builder_configuration_identity_cache", inherits = TRUE)) {
+    builder_project_configuration_cache_clear(
+      builder_configuration_identity_cache
+    )
+  }
   store(updated)
   invisible(value)
 }
@@ -315,7 +333,8 @@ current <- function(value) {
   }
   updated <- builder_reduce_state(
     isolate(store()),
-    list(type = "select", id = value)
+    list(type = "select", id = value),
+    trusted = TRUE
   )
   store(updated)
   active_import_id(NULL)
@@ -323,7 +342,9 @@ current <- function(value) {
   invisible(value)
 }
 dataset_check_marks <- reactiveVal(character())
+dataset_order <- reactiveVal(character())
 builder_configuration_identity_cache <- new.env(parent = emptyenv())
+builder_dataset_state_cache <- new.env(parent = emptyenv())
 checked_dataset_ids <- reactive({
   entries <- sets()
   marks <- dataset_check_marks()
@@ -350,6 +371,9 @@ all_datasets_checked <- reactive({
 observe({
   state <- store()
   ids <- vapply(state$datasets, `[[`, character(1), "id")
+  if (!identical(ids, isolate(dataset_order()))) {
+    dataset_order(ids)
+  }
   marks <- isolate(dataset_check_marks())
   kept <- builder_project_retain_check_marks(
     marks,
@@ -364,6 +388,7 @@ observe({
     builder_configuration_identity_cache,
     ids
   )
+  builder_dataset_state_cache_retain(builder_dataset_state_cache, ids)
 })
 result <- reactiveVal(NULL)
 build_flow <- reactiveVal(list(stage = "idle", plan = NULL))
@@ -382,10 +407,6 @@ enhance_contract <- reactiveVal(list(
   organism = NULL,
   analysis_dependencies = character(),
   marker_import_ids = character()
-))
-review_page_contract <- reactiveVal(list(
-  dataset = NULL,
-  choices = c("Data info" = "data_info")
 ))
 seq_id <- reactiveVal(0L)
 add_error <- reactiveVal(NULL)
@@ -443,30 +464,6 @@ observe({
   }
 })
 
-observe({
-  entries <- store()$datasets %||% list()
-  entry <- if (length(entries)) entries[[1L]] else NULL
-  state <- if (is.null(entry)) {
-    NULL
-  } else {
-    try(builder_dataset_state(entry), silent = TRUE)
-  }
-  choices <- builder_review_initial_page_choices(
-    if (is.null(state) || inherits(state, "try-error")) {
-      list()
-    } else {
-      state$page_expectations %||% list()
-    }
-  )
-  next_contract <- list(
-    dataset = entry$id %||% NULL,
-    choices = choices
-  )
-  if (!identical(next_contract, isolate(review_page_contract()))) {
-    review_page_contract(next_contract)
-  }
-})
-
 ## Names end up as the app's dataset switcher labels, so duplicates are not
 ## cosmetic: they block the build. Loading the same example twice is an
 ## obvious thing to do, so suffix rather than refuse.
@@ -510,7 +507,8 @@ replace_entry <- function(updated, internal = FALSE) {
   updated_state <- try(
     builder_reduce_state(
       current_state,
-      list(type = "replace", id = existing$id, entry = existing)
+      list(type = "replace", id = existing$id, entry = existing),
+      trusted = TRUE
     ),
     silent = TRUE
   )
@@ -554,11 +552,14 @@ worker_available <- reactiveVal(FALSE)
 protocol <- reactiveVal(NULL)
 build_state <- reactiveVal(builder_build_state())
 active_release <- reactiveVal(NULL)
+release_settlement_process <- reactiveVal(NULL)
+release_settlement_context <- reactiveVal(NULL)
 request_sequence <- reactiveVal(0L)
 pending_snapshot_drops <- reactiveVal(list())
 pending_sources <- reactiveVal(character())
 pending_uploads <- reactiveVal(list())
 cancelled_loads <- reactiveVal(character())
+failed_import_cleanup_pending <- reactiveVal(FALSE)
 import_of <- function(id) {
   builder_import_find(imports(), id)
 }
@@ -966,6 +967,79 @@ builder_session_closed <- function() {
     isTRUE(builder_lifecycle_session$isClosed())
 }
 
+builder_native_pickers <- new.env(parent = emptyenv())
+
+builder_cancel_native_picker <- function(key) {
+  key <- as.character(key)[1L]
+  picker <- builder_native_pickers[[key]] %||% NULL
+  if (!is.null(picker)) {
+    builder_kill_native_picker(picker)
+    rm(list = key, envir = builder_native_pickers)
+  }
+  invisible(TRUE)
+}
+
+builder_schedule_native_picker <- function(
+  kind,
+  on_result,
+  key = kind,
+  on_error = NULL,
+  on_finally = NULL
+) {
+  stopifnot(is.function(on_result), builder_has_text(key))
+  key <- as.character(key)[1L]
+  if (exists(key, envir = builder_native_pickers, inherits = FALSE)) {
+    return(invisible(FALSE))
+  }
+  picker <- tryCatch(builder_start_native_picker(kind), error = identity)
+  if (inherits(picker, "condition")) {
+    if (is.function(on_error)) {
+      shiny::isolate(on_error(picker))
+    }
+    if (is.function(on_finally)) {
+      shiny::isolate(on_finally())
+    }
+    return(invisible(FALSE))
+  }
+  builder_native_pickers[[key]] <- picker
+  poll <- NULL
+  poll <- function() {
+    if (builder_session_closed()) {
+      builder_cancel_native_picker(key)
+      return(invisible(FALSE))
+    }
+    current <- builder_native_pickers[[key]] %||% NULL
+    if (is.null(current)) {
+      return(invisible(FALSE))
+    }
+    if (builder_native_picker_is_alive(current)) {
+      later::later(
+        function() shiny::withReactiveDomain(builder_lifecycle_session, poll()),
+        delay = 0.1
+      )
+      return(invisible(TRUE))
+    }
+    result <- tryCatch(builder_collect_native_picker(current), error = identity)
+    rm(list = key, envir = builder_native_pickers)
+    if (is.function(on_finally)) {
+      on.exit(shiny::isolate(on_finally()), add = TRUE)
+    }
+    if (inherits(result, "condition")) {
+      if (is.function(on_error)) {
+        shiny::isolate(on_error(result))
+      }
+      return(invisible(FALSE))
+    }
+    shiny::isolate(on_result(result))
+    invisible(TRUE)
+  }
+  later::later(
+    function() shiny::withReactiveDomain(builder_lifecycle_session, poll()),
+    delay = 0
+  )
+  invisible(TRUE)
+}
+
 poll_builder_worker_startup <- function() {
   if (builder_session_closed()) {
     return(invisible(FALSE))
@@ -1020,6 +1094,12 @@ session$onFlushed(
 )
 
 session$onSessionEnded(function() {
+  for (key in ls(builder_native_pickers, all.names = TRUE)) {
+    builder_cancel_native_picker(key)
+  }
+  if (!isTRUE(stop_builder_release_settlement())) {
+    return()
+  }
   current_worker <- isolate(worker())
   if (!is.null(current_worker)) {
     stopped <- try(

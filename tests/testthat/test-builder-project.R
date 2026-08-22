@@ -70,6 +70,108 @@ test_that("uploaded sources are retained separately with their original names", 
   expect_true(file.exists(retained_second))
 })
 
+test_that("retained upload bytes do not alias the transient source", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "0.qs2")
+  writeBin(charToRaw("first"), source)
+
+  retained <- runtime$builder_project_retain_session_source(
+    source,
+    "sample.qs2",
+    root,
+    "ds1"
+  )
+  writeBin(charToRaw("second"), source)
+
+  expect_identical(
+    readBin(retained, "raw", n = 100L),
+    charToRaw("first")
+  )
+})
+
+test_that("browser uploads are retained by the background loader", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "browser-upload.qs2")
+  retained <- file.path(root, "session-sources", "ds1", "sample.qs2")
+  writeBin(charToRaw("uploaded-bytes"), source)
+
+  loaded <- runtime$builder_project_load_retained_source(
+    "ds1",
+    list(source = source, retained_path = retained),
+    progress = NULL,
+    .adapter = function(path) list(path = path),
+    .register = function(adapter, id, progress) {
+      list(adapter = adapter, id = id)
+    }
+  )
+
+  expect_identical(loaded$retained_path, normalizePath(retained))
+  expect_identical(loaded$adapter$path, normalizePath(retained))
+  expect_identical(
+    readBin(retained, "raw", n = 100L),
+    charToRaw("uploaded-bytes")
+  )
+
+  unlink(source)
+  retried <- runtime$builder_project_load_retained_source(
+    "ds1",
+    list(source = source, retained_path = retained),
+    progress = NULL,
+    .adapter = function(path) list(path = path),
+    .register = function(adapter, id, progress) list(adapter = adapter, id = id)
+  )
+  expect_identical(retried$retained_path, normalizePath(retained))
+})
+
+test_that("failed background retention removes its partial file", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "browser-upload.qs2")
+  retained <- file.path(root, "session-sources", "ds1", "sample.qs2")
+  writeBin(charToRaw("uploaded-bytes"), source)
+
+  expect_error(
+    runtime$builder_project_load_retained_source(
+      "ds1",
+      list(source = source, retained_path = retained),
+      progress = NULL,
+      .adapter = identity,
+      .register = function(...) stop("register should not run"),
+      .copy = function(source, target, ...) {
+        writeBin(charToRaw("partial"), target)
+        FALSE
+      }
+    ),
+    "could not be retained"
+  )
+
+  expect_false(file.exists(retained))
+  expect_length(
+    list.files(dirname(retained), pattern = "[.]part$", all.files = TRUE),
+    0L
+  )
+})
+
+test_that("managed project restores reuse their stable source path", {
+  server <- paste(
+    readLines(
+      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_gte(
+    lengths(regmatches(
+      server,
+      gregexpr("retained_path = path", server, fixed = TRUE)
+    )),
+    2L
+  )
+})
+
 test_that("example sources use the same retained file contract as uploads", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
@@ -96,30 +198,6 @@ test_that("example sources use the same retained file contract as uploads", {
     readBin(retained, "raw", n = 100L),
     charToRaw("example-bytes")
   )
-})
-
-test_that("examples with retained files are managed project sources", {
-  runtime <- builder_project_test_runtime()
-  root <- withr::local_tempdir()
-  session_source <- file.path(root, "session-sources", "ds1", "all_content.rds")
-  dir.create(dirname(session_source), recursive = TRUE)
-  writeBin(charToRaw("example-bytes"), session_source)
-  project <- file.path(root, "project")
-  dir.create(project)
-  entry <- list(
-    id = "ds1",
-    path = session_source,
-    filename = "all_content.rds",
-    example = "all_content",
-    source_origin = "example"
-  )
-
-  staged <- runtime$builder_project_stage_source(entry, project)
-
-  expect_identical(staged$source$kind, "managed")
-  expect_identical(staged$source$origin, "example")
-  expect_identical(staged$source$filename, "all_content.rds")
-  expect_true(file.exists(staged$entry$path))
 })
 
 test_that("background source jobs commit exact bytes through a part file", {
@@ -153,6 +231,98 @@ test_that("background source jobs commit exact bytes through a part file", {
     runtime$builder_project_relative_path(result$path, project),
     "^sources/ds1/blobs/[0-9a-f]+/sample\\.qs2$"
   )
+})
+
+test_that("source jobs reuse the MD5 frozen with a dataset snapshot", {
+  runtime <- builder_project_test_runtime()
+  entry <- list(
+    id = "ds1",
+    snapshot = list(
+      source_fingerprint = paste(
+        "builder-snapshot-v2",
+        "sample.rds",
+        "12",
+        "2026-08-22T00:00:00.000000+0000",
+        "ABCDEF0123456789ABCDEF0123456789",
+        sep = ":"
+      )
+    )
+  )
+
+  expect_identical(
+    runtime$builder_project_snapshot_source_md5(entry),
+    "abcdef0123456789abcdef0123456789"
+  )
+})
+
+test_that("only content-addressed managed sources reuse metadata on restore", {
+  runtime <- builder_project_test_runtime()
+
+  expect_true(runtime$builder_project_content_addressed_source(
+    "sources/ds1/blobs/abcdef0123456789abcdef0123456789/sample.rds",
+    "ds1"
+  ))
+  expect_false(runtime$builder_project_content_addressed_source(
+    "sources/ds1/sample.rds",
+    "ds1"
+  ))
+})
+
+test_that("restored examples reuse the matching managed source", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  staged <- file.path(root, "all_content.rds")
+  writeBin(charToRaw("managed-example"), staged)
+  source_md5 <- unname(tools::md5sum(staged))
+  relative <- paste(
+    "sources",
+    "ds1",
+    "blobs",
+    source_md5,
+    "all_content.rds",
+    sep = "/"
+  )
+  managed <- file.path(root, relative)
+  dir.create(dirname(managed), recursive = TRUE)
+  expect_true(file.rename(staged, managed))
+  fingerprint <- runtime$builder_project_file_fingerprint(
+    managed,
+    content = TRUE
+  )
+  prior <- list(
+    source = list(
+      kind = "managed",
+      origin = "example",
+      example = "all_content",
+      filename = "all_content.rds",
+      path = relative,
+      status = "ready",
+      fingerprint = fingerprint
+    )
+  )
+  entry <- list(
+    id = "ds1",
+    path = NULL,
+    filename = "all_content.rds",
+    example = "all_content",
+    source_origin = "example",
+    snapshot = list(
+      source_fingerprint = paste(
+        "builder-snapshot-v2",
+        "all_content.rds",
+        "15",
+        "2026-08-22T00:00:00.000000+0000",
+        source_md5,
+        sep = ":"
+      )
+    )
+  )
+
+  prepared <- runtime$builder_project_prepare_source(entry, root, prior)
+
+  expect_identical(prepared$source$status, "ready")
+  expect_identical(prepared$source$path, relative)
+  expect_null(prepared$job)
 })
 
 test_that("background source generations never overwrite prior content", {
@@ -543,11 +713,18 @@ test_that("project spatial assets are externalized per dataset and FOV", {
     payload_entry$settings$images[["section/a"]][["H&E"]]$project_asset
   )
   original_decode <- runtime$.builder_project_decode_image_uri
+  original_fingerprint <- runtime$builder_project_file_fingerprint
+  fingerprint_content <- logical()
   runtime$.builder_project_decode_image_uri <- function(...) {
     stop("an adopted immutable asset must not decode its URI")
   }
+  runtime$builder_project_file_fingerprint <- function(..., content = FALSE) {
+    fingerprint_content <<- c(fingerprint_content, content)
+    original_fingerprint(..., content = content)
+  }
   restaged <- runtime$builder_project_stage_spatial_assets(adopted, root)
   expect_null(restaged$settings$images[["section/a"]][["H&E"]]$source_uri)
+  expect_false(any(fingerprint_content))
   expect_false(grepl(
     "serialize(",
     paste(
@@ -562,6 +739,7 @@ test_that("project spatial assets are externalized per dataset and FOV", {
     payload_entry = restaged
   )
   runtime$.builder_project_decode_image_uri <- original_decode
+  runtime$builder_project_file_fingerprint <- original_fingerprint
   payload <- jsonlite::unserializeJSON(record$configuration$payload)
   first <- payload$settings$images[["section/a"]][["H&E"]]
   second <- payload$settings$images[["section-a"]][["H&E"]]
@@ -628,6 +806,143 @@ test_that("project restores multi-sheet attachments with one file fingerprint", 
     restored$settings$tables$Clinical$source_path,
     restored$settings$tables$QC$source_path
   )
+
+  adopted <- runtime$builder_project_adopt_table_assets(entry, staged, root)
+  expect_identical(
+    runtime$builder_project_configuration_digest(entry),
+    runtime$builder_project_configuration_digest(staged)
+  )
+  expect_identical(
+    runtime$builder_project_configuration_digest(entry),
+    runtime$builder_project_configuration_digest(adopted)
+  )
+  renamed <- adopted
+  renamed$settings$tables$Clinical$display_name <- "Patients"
+  expect_false(identical(
+    runtime$builder_project_configuration_digest(entry),
+    runtime$builder_project_configuration_digest(renamed)
+  ))
+  fingerprint_content <- logical()
+  runtime$builder_project_file_fingerprint <- function(..., content = FALSE) {
+    fingerprint_content <<- c(fingerprint_content, content)
+    original_fingerprint(..., content = content)
+  }
+  runtime$builder_project_stage_table_assets(adopted, root)
+  expect_false(any(fingerprint_content))
+})
+
+test_that("project table asset jobs deduplicate sheets from one workbook", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "supplement.xlsx")
+  writeBin(charToRaw("workbook-bytes"), source)
+  table <- function(sheet) {
+    list(
+      file_name = "supplement.xlsx",
+      sheet_name = sheet,
+      source_path = source
+    )
+  }
+  entries <- list(list(
+    id = "ds1",
+    revision = 4L,
+    settings = list(
+      tables = list(
+        Clinical = table("Clinical"),
+        QC = table("QC")
+      )
+    )
+  ))
+
+  jobs <- runtime$builder_project_table_asset_jobs(entries, root)
+
+  expect_length(jobs, 1L)
+  expect_identical(jobs[[1L]]$entry_id, "ds1")
+  expect_identical(jobs[[1L]]$source, normalizePath(source, winslash = "/"))
+  expect_identical(jobs[[1L]]$filename, "supplement.xlsx")
+
+  results <- runtime$builder_project_stage_table_asset_jobs(jobs, root)
+  expect_true(runtime$builder_project_table_asset_results_match(jobs, results))
+  applied <- runtime$builder_project_apply_table_asset_results(
+    entries,
+    results,
+    root
+  )
+  expect_identical(
+    applied[[1L]]$settings$tables$Clinical$source_path,
+    applied[[1L]]$settings$tables$QC$source_path
+  )
+  expect_true(file.exists(
+    applied[[1L]]$settings$tables$Clinical$source_path
+  ))
+  original_fingerprint <- runtime$builder_project_file_fingerprint
+  fingerprint_content <- logical()
+  runtime$builder_project_file_fingerprint <- function(..., content = FALSE) {
+    fingerprint_content <<- c(fingerprint_content, content)
+    original_fingerprint(..., content = content)
+  }
+  runtime$builder_project_stage_table_assets(
+    runtime$builder_project_configuration_entry(applied[[1L]]),
+    root
+  )
+  expect_false(any(fingerprint_content))
+
+  writeBin(charToRaw("changed-workbook-bytes"), source)
+  expect_false(identical(
+    jobs,
+    runtime$builder_project_table_asset_jobs(entries, root)
+  ))
+})
+
+test_that("project table asset save has an asynchronous stale-result guard", {
+  source <- paste(
+    readLines(
+      testthat::test_path(
+        "..",
+        "..",
+        "inst",
+        "builder",
+        "server",
+        "project.R"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(source, "builder_project_table_asset_generation", fixed = TRUE)
+  expect_match(source, "callr::r_bg(", fixed = TRUE)
+  expect_match(source, "builder_project_table_asset_jobs", fixed = TRUE)
+  expect_match(source, "builder_project_table_save_signature", fixed = TRUE)
+  expect_match(source, "process$get_result()", fixed = TRUE)
+})
+
+test_that("project table save signature changes with manifest or configuration", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  project <- list(
+    root = root,
+    manifest = list(project = list(id = "project-safe", revision = 2L))
+  )
+  entries <- list(list(
+    id = "ds1",
+    revision = 3L,
+    settings = list(name = "Dataset A", tables = list())
+  ))
+  signature <- runtime$builder_project_table_save_signature(project, entries)
+
+  changed_project <- project
+  changed_project$manifest$project$revision <- 3L
+  expect_false(identical(
+    signature,
+    runtime$builder_project_table_save_signature(changed_project, entries)
+  ))
+  changed_entries <- entries
+  changed_entries[[1L]]$settings$name <- "Dataset B"
+  expect_false(identical(
+    signature,
+    runtime$builder_project_table_save_signature(project, changed_entries)
+  ))
 })
 
 test_that("missing project spatial assets identify the affected FOV and image", {
@@ -899,6 +1214,27 @@ test_that("checkpoint entries embed spatial images without mutating live setting
   expect_identical(checkpoint[[1L]]$settings$images, entry$settings$images)
 })
 
+test_that("safe project entries drop runtime ownership without mutating live state", {
+  runtime <- builder_project_test_runtime()
+  entry <- list(
+    id = "ds1",
+    settings = list(name = "Dataset 1"),
+    snapshot = list(path = "snapshot.rds"),
+    project_artifact = list(path = "dataset.crb"),
+    project_hydration = list(state = "ready"),
+    load_state = "loaded"
+  )
+
+  safe <- runtime$builder_project_safe_entry(entry)
+
+  expect_null(safe$snapshot)
+  expect_null(safe$project_artifact)
+  expect_null(safe$project_hydration)
+  expect_identical(safe$load_state, "reload_required")
+  expect_identical(entry$load_state, "loaded")
+  expect_identical(entry$snapshot$path, "snapshot.rds")
+})
+
 test_that("checkpoint CRBs are reusable when their private closure is bundled", {
   runtime <- builder_project_test_runtime()
   item <- list(
@@ -1018,6 +1354,7 @@ test_that("project server uses a dedicated callr source copy process", {
   expect_match(source, "request_builder_project_source_sync", fixed = TRUE)
   expect_match(source, "callr::r_bg", fixed = TRUE)
   expect_match(source, "later::later", fixed = TRUE)
+  expect_match(source, "shiny::withReactiveDomain(session, {", fixed = TRUE)
   expect_match(source, "builder_project_apply_source_results", fixed = TRUE)
 })
 
@@ -1070,20 +1407,21 @@ test_that("project manifests reject unsafe and duplicate dataset ids", {
 test_that("macOS project pickers emit valid AppleScript prompts", {
   runtime <- builder_project_test_runtime()
 
-  expect_identical(
-    runtime$builder_project_osascript("directory"),
-    paste0(
-      "POSIX path of (choose folder with prompt ",
-      "\"Choose a folder for the Builder project.\")"
-    )
+  directory <- runtime$builder_project_osascript("directory")
+  manifest <- runtime$builder_project_osascript("manifest")
+
+  expect_match(
+    directory,
+    'POSIX path of (choose folder with prompt "Choose a folder for the Builder project.")',
+    fixed = TRUE
   )
-  expect_identical(
-    runtime$builder_project_osascript("manifest"),
-    paste0(
-      "POSIX path of (choose file with prompt ",
-      "\"Open a Builder project.\" of type {\"public.json\"})"
-    )
+  expect_match(
+    manifest,
+    'POSIX path of (choose file with prompt "Open a Builder project." of type {"public.json"})',
+    fixed = TRUE
   )
+  expect_match(directory, "on error number -128", fixed = TRUE)
+  expect_match(manifest, "on error number -128", fixed = TRUE)
 })
 
 test_that("reusable artifacts must retain their saved content fingerprint", {
@@ -1098,6 +1436,21 @@ test_that("reusable artifacts must retain their saved content fingerprint", {
     artifact,
     fingerprint
   ))
+})
+
+test_that("reusable artifacts are staged without replacing existing files", {
+  runtime <- builder_project_test_runtime()
+  source <- withr::local_tempfile(fileext = ".crb")
+  target <- withr::local_tempfile(fileext = ".crb")
+  writeBin(charToRaw("artifact"), source)
+  unlink(target)
+
+  expect_true(runtime$.builder_build_copy_file(source, target))
+  expect_identical(readBin(target, "raw", n = 100L), charToRaw("artifact"))
+
+  writeBin(charToRaw("existing"), target)
+  expect_false(runtime$.builder_build_copy_file(source, target))
+  expect_identical(readBin(target, "raw", n = 100L), charToRaw("existing"))
 })
 
 test_that("persisted artifact fingerprints contain only plain JSON values", {
@@ -1459,14 +1812,21 @@ test_that("project creation waits for confirmation and rechecks the folder", {
     "request_builder_project_folder <- function()",
     fixed = TRUE
   )
+  expect_match(server, "shiny::withReactiveDomain(session, {", fixed = TRUE)
   expect_match(
     server,
-    "builder_project_pending_folder(choice$path)",
+    "select_builder_project_folder <- function(path)",
+    fixed = TRUE
+  )
+  expect_match(server, "builder_project_pending_folder(path)", fixed = TRUE)
+  expect_match(
+    server,
+    "builder_project_nonempty_folder_dialog(path)",
     fixed = TRUE
   )
   expect_match(
     server,
-    "builder_project_nonempty_folder_dialog(choice$path)",
+    "select_builder_project_folder(choice$path)",
     fixed = TRUE
   )
   expect_match(
@@ -1585,10 +1945,10 @@ test_that("project saving can commit spatial drafts through the internal mutatio
   )
 })
 
-test_that("opening and restoring projects make the page inert with close protection", {
+test_that("project location selection, opening, and restore make the page inert", {
   runtime <- builder_project_test_runtime()
 
-  for (phase in c("opening", "restoring")) {
+  for (phase in c("choosing", "opening", "restoring")) {
     activity <- runtime$builder_activity_state(project_phase = phase)
     capabilities <- runtime$builder_activity_capabilities(activity)
     expect_true(capabilities$page_inert)
@@ -1625,7 +1985,7 @@ test_that("pending project settings survive until source imports are dispatched"
   )
 })
 
-test_that("project open work starts only after loading feedback is flushed", {
+test_that("project open work is deferred until selection feedback can render", {
   path <- testthat::test_path(
     "..",
     "..",
@@ -1641,7 +2001,7 @@ test_that("project open work starts only after loading feedback is flushed", {
     'builder_project_operation_phase("opening")',
     fixed = TRUE
   )
-  expect_match(source, "session$onFlushed(", fixed = TRUE)
+  expect_match(source, "later::later(", fixed = TRUE)
   expect_match(source, "builder_project_restore_progress", fixed = TRUE)
   expect_match(source, 'mode = "restoring"', fixed = TRUE)
 })
@@ -1930,7 +2290,7 @@ test_that("project open validation runs in an owned background process", {
   )
   expect_match(
     observer,
-    "builder_project_start_open(selected_path)",
+    "builder_project_start_open(choice$path)",
     fixed = TRUE
   )
   expect_match(observer, "builder_project_open_previous_phase(", fixed = TRUE)
@@ -2427,6 +2787,11 @@ test_that("browser lifecycle code includes queue sync and close protection", {
   expect_match(source, "builder_activity_state", fixed = TRUE)
   expect_match(source, "beforeunload", fixed = TRUE)
   expect_match(source, "builder-operation-overlay", fixed = TRUE)
+  expect_match(
+    source,
+    "#configure_actions .btn-dataset-check, #continue_to_review",
+    fixed = TRUE
+  )
 })
 
 test_that("project save dialogs share concise structured copy", {
@@ -2603,6 +2968,20 @@ test_that("CRB planning requests always acknowledge or reach a terminal state", 
     "builder_project_build_plan(captured_plan)\n  builder_project_build_crb_request_id(request_id)",
     fixed = TRUE
   )
+  capture_start <- regexpr(
+    "builder_project_capture_build_plan <- function(",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  capture_end <- regexpr(
+    "builder_project_source_runtime_file <- function()",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  capture <- substr(source, capture_start, capture_end - 1L)
+  expect_false(grepl("serialize(", capture, fixed = TRUE))
+  expect_match(capture, "builder_project_build_plan(plan)", fixed = TRUE)
+  expect_match(source, "captured_plan <- plan", fixed = TRUE)
   expect_match(
     source,
     "save_error <- NULL\n    saved <- tryCatch(",
@@ -2624,9 +3003,14 @@ test_that("CRB planning requests always acknowledge or reach a terminal state", 
     "builder_project_build_crb_request_id(NULL)",
     fixed = TRUE
   )
+  expect_match(
+    source,
+    "promote = builder_has_text(crb_request_id)",
+    fixed = TRUE
+  )
 })
 
-test_that("project save flush runs inside an isolated reactive scope", {
+test_that("deferred project saves keep the Shiny session domain", {
   path <- testthat::test_path(
     "..",
     "..",
@@ -2639,7 +3023,7 @@ test_that("project save flush runs inside an isolated reactive scope", {
 
   expect_match(
     source,
-    "session$onFlushed(\n    function() {\n      shiny::isolate({",
+    "later::later(\n    function() {\n      shiny::withReactiveDomain(session, {",
     fixed = TRUE
   )
 })
@@ -2708,7 +3092,27 @@ test_that("dynamic content enhancement is coalesced per animation frame", {
 
   expect_match(
     source,
-    "function scheduleDynamicContentEnhancement()",
+    "function matchingDynamicElements(roots, selector)",
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "function matchingDynamicContainers(roots, selector)",
+    fixed = TRUE
+  )
+  expect_match(source, "root.closest(selector)", fixed = TRUE)
+  expect_match(
+    source,
+    "function scheduleDynamicContentEnhancement(root)",
+    fixed = TRUE
+  )
+  expect_match(source, "setupDatasetDropzones(roots);", fixed = TRUE)
+  expect_match(source, "registerStages(roots);", fixed = TRUE)
+  expect_match(source, "setupCreatableSelects(roots);", fixed = TRUE)
+  expect_match(source, "updateDatasetLoadTimes(roots);", fixed = TRUE)
+  expect_match(
+    source,
+    "Array.from(mutation.addedNodes || []).forEach",
     fixed = TRUE
   )
   expect_match(
@@ -2717,6 +3121,21 @@ test_that("dynamic content enhancement is coalesced per animation frame", {
     fixed = TRUE
   )
   expect_false(grepl("characterData: true", source, fixed = TRUE))
+  expect_match(
+    source,
+    'sidebar.addEventListener("scroll", scheduleSpatialAlignmentScrollbars',
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    'window.addEventListener("scroll", scheduleSpatialAlignmentScrollbars',
+    fixed = TRUE
+  )
+  expect_match(
+    source,
+    "if (spatialScrollbarFrame !== null) return;",
+    fixed = TRUE
+  )
 })
 
 test_that("spatial canvas is cleared before switching datasets", {
@@ -2981,6 +3400,8 @@ test_that("artifact bundles are immutable generations", {
     dataset_id = "ds1",
     root = project
   )
+  expect_true(file.exists(primary))
+  expect_true(file.exists(member))
   first_bytes <- readBin(file.path(project, first$path), "raw", n = 100L)
 
   writeBin(charToRaw("second-primary"), primary)
@@ -3097,6 +3518,40 @@ test_that("configuration identity cache invalidates only on entry revision", {
   expect_identical(first, second)
   expect_false(identical(second, third))
   expect_identical(calls, 2L)
+})
+
+test_that("configuration identity reuses a spatial source content digest", {
+  runtime <- builder_project_test_runtime()
+  content_md5 <- strrep("a", 32L)
+  entry <- list(
+    settings = list(
+      images = list(
+        section = list(
+          image = list(
+            source_uri = "data:image/png;base64,AAAA",
+            uri = "data:image/png;base64,AAAA",
+            source_content_md5 = content_md5
+          )
+        )
+      )
+    )
+  )
+  original_decode <- runtime$.builder_project_decode_image_uri
+  on.exit(
+    runtime$.builder_project_decode_image_uri <- original_decode,
+    add = TRUE
+  )
+  decode_calls <- 0L
+  runtime$.builder_project_decode_image_uri <- function(...) {
+    decode_calls <<- decode_calls + 1L
+    original_decode(...)
+  }
+
+  expect_match(
+    runtime$builder_project_configuration_digest(entry),
+    "^[[:xdigit:]]{32}$"
+  )
+  expect_identical(decode_calls, 0L)
 })
 
 test_that("configuration identity cache bounds variants and drops datasets", {

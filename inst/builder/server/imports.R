@@ -46,7 +46,8 @@ start_load <- function(
   client_id = NULL,
   dataset_id = NULL,
   source_origin = NULL,
-  example_id = NULL
+  example_id = NULL,
+  retained_path = NULL
 ) {
   if (isTRUE(replay_existing_client_import(client_id))) {
     return(invisible(FALSE))
@@ -110,7 +111,13 @@ start_load <- function(
   filename <- NULL
   file_type <- NULL
   file_size <- NA_real_
-  retained_source <- NULL
+  retained_source <- if (
+    builder_has_text(retained_path) && file.exists(retained_path)
+  ) {
+    normalizePath(retained_path, winslash = "/", mustWork = TRUE)
+  } else {
+    NULL
+  }
   if (identical(kind, "file") && is.list(file_meta)) {
     uploads <- pending_uploads()
     filename <- builder_safe_file_name(file_meta$name, paste0(label, ".rds"))
@@ -158,16 +165,35 @@ start_load <- function(
     builder_has_text(retained_source) &&
     builder_has_text(snapshot_root) &&
     dir.exists(snapshot_root)
-  if (identical(kind, "file") || retain_example) {
+  retain_upload <- identical(kind, "file") &&
+    !identical(source_origin, "local") &&
+    !builder_has_text(retained_source)
+  retain_in_worker <- FALSE
+  if (retain_upload) {
     retained <- try(
-      builder_project_retain_session_source(
-        retained_source %||% arg,
+      builder_project_session_source_path(
+        arg,
         filename,
         snapshot_root,
         id
       ),
       silent = TRUE
     )
+    retain_in_worker <- !inherits(retained, "try-error")
+  } else if (retain_example) {
+    retained <- try(
+      builder_project_retain_session_source(
+        retained_source,
+        filename,
+        snapshot_root,
+        id
+      ),
+      silent = TRUE
+    )
+  } else {
+    retained <- retained_source
+  }
+  if (retain_upload || retain_example) {
     if (inherits(retained, "try-error")) {
       pending_sources(builder_source_release(
         pending_sources(),
@@ -185,9 +211,6 @@ start_load <- function(
       return(invisible(FALSE))
     }
     retained_source <- retained
-    if (identical(kind, "file")) {
-      arg <- retained
-    }
   }
   source_descriptor <- list(
     kind = kind,
@@ -197,7 +220,9 @@ start_load <- function(
       } else {
         "upload"
       },
-    staged_path = retained_source,
+    staged_path = retained_source %||%
+      if (identical(kind, "file")) arg else NULL,
+    transport_path = if (isTRUE(retain_in_worker)) arg else NULL,
     example = example_id %||% if (identical(kind, "example")) arg else NULL,
     reservation_key = reservation$key,
     fingerprint = if (identical(kind, "example")) {
@@ -238,6 +263,7 @@ start_load <- function(
     id = id,
     path = if (identical(kind, "file")) arg else NA_character_,
     retained_path = retained_source,
+    retain_source = retain_in_worker,
     example = example_id %||% if (identical(kind, "example")) arg else NULL,
     source_origin = source_descriptor$origin,
     label = label,
@@ -418,6 +444,53 @@ observeEvent(input$dataset_files, {
   )
 })
 
+observeEvent(input$choose_local_datasets, {
+  if (dataset_mutations_locked()) {
+    return()
+  }
+  session$sendCustomMessage(
+    "builder_import_status",
+    list(text = "Choose dataset files…")
+  )
+  builder_schedule_native_picker(
+    "dataset_files",
+    key = "datasets",
+    on_result = function(choice) {
+      if (
+        identical(choice$status, "cancelled") || dataset_mutations_locked(FALSE)
+      ) {
+        return()
+      }
+      if (!identical(choice$status, "selected")) {
+        showNotification(
+          choice$error %||% "The file picker could not be opened.",
+          type = "error",
+          duration = 6
+        )
+        return()
+      }
+      for (path in choice$paths) {
+        info <- suppressWarnings(file.info(path))
+        filename <- basename(path)
+        start_load(
+          "file",
+          path,
+          tools::file_path_sans_ext(filename),
+          file_meta = list(
+            name = filename,
+            type = "",
+            size = suppressWarnings(as.numeric(info$size[[1L]]))
+          ),
+          source_origin = "local"
+        )
+      }
+    },
+    on_error = function(error) {
+      showNotification(conditionMessage(error), type = "error", duration = 6)
+    }
+  )
+})
+
 observeEvent(input$builder_import_example, {
   event <- input$builder_import_example
   client_id <- if (is.list(event) && !is.object(event)) {
@@ -521,8 +594,9 @@ remove_pending_import <- function(id) {
       kind = "load",
       source = entry$source$kind,
       id = entry$id,
-      path = entry$source$staged_path,
-      example = entry$source$example
+      path = entry$source$transport_path %||% entry$source$staged_path,
+      example = entry$source$example,
+      reservation_key = entry$source$reservation_key
     ))
     return(invisible(TRUE))
   }
@@ -636,16 +710,19 @@ observeEvent(input$retry_import, {
     list(active = TRUE, server_id = id)
   )
   cancelled_loads(setdiff(cancelled_loads(), id))
+  retry_path <- entry$source$transport_path %||% entry$source$staged_path
   queued <- enqueue(list(
     kind = "load",
     source = entry$source$kind,
     id = entry$id,
-    path = entry$source$staged_path,
+    path = retry_path,
     retained_path = entry$source$staged_path,
+    retain_source = builder_has_text(entry$source$transport_path),
     example = entry$source$example,
     source_origin = entry$source$origin,
     label = entry$label,
     filename = entry$filename,
+    reservation_key = entry$source$reservation_key,
     import_generation = entry$generation,
     progress_path = progress_path,
     note = paste0("Loading ", entry$label, "…")
@@ -662,6 +739,43 @@ observeEvent(input$retry_import, {
       entry$generation,
       "The background worker is not ready yet."
     )
+  }
+})
+
+schedule_failed_import_cleanup <- function(current_worker) {
+  if (
+    inherits(current_worker, "builder_worker") &&
+      !length(current_worker$snapshot_registry)
+  ) {
+    failed_import_cleanup_pending(TRUE)
+  }
+  invisible(TRUE)
+}
+
+observe({
+  if (!isTRUE(failed_import_cleanup_pending())) {
+    return()
+  }
+  current_protocol <- protocol()
+  current_worker <- worker()
+  if (is.null(current_protocol) || is.null(current_worker)) {
+    return()
+  }
+  if (length(current_worker$snapshot_registry)) {
+    failed_import_cleanup_pending(FALSE)
+    return()
+  }
+  if (!builder_protocol_is_quiescent(current_protocol)) {
+    return()
+  }
+  failed_import_cleanup_pending(FALSE)
+  recycled <- restart_worker_protocol(
+    current_worker,
+    current_protocol,
+    "Reclaiming memory after a failed dataset import."
+  )
+  if (isTRUE(recycled)) {
+    add_error(NULL)
   }
 })
 
@@ -750,8 +864,23 @@ observe({
       busy_note(NULL)
       return()
     }
+    prior_state <- if (
+      exists(
+        "builder_selected_output_release_state",
+        mode = "function",
+        inherits = TRUE
+      )
+    ) {
+      builder_selected_output_release_state(plan$out_dir)
+    } else {
+      NULL
+    }
     coordinator <- try(
-      builder_coordinator_prepare(plan, request$build_id),
+      builder_coordinator_prepare(
+        plan,
+        request$build_id,
+        prior_state = prior_state
+      ),
       silent = TRUE
     )
     if (inherits(coordinator, "try-error")) {
@@ -806,10 +935,19 @@ observe({
         builder_session_load(
           current_worker,
           nxt$id,
-          nxt$path,
+          if (isTRUE(nxt$retain_source)) {
+            list(source = nxt$path, retained_path = nxt$retained_path)
+          } else {
+            nxt$path
+          },
           request,
           progress_path = nxt$progress_path,
-          import_generation = nxt$import_generation %||% 1L
+          import_generation = nxt$import_generation %||% 1L,
+          .importer = if (isTRUE(nxt$retain_source)) {
+            builder_project_load_retained_source
+          } else {
+            NULL
+          }
         )
       } else {
         builder_session_example(
@@ -834,20 +972,21 @@ observe({
         nxt$id,
         nxt$projections,
         nxt$group,
-        nxt$max_cells %||% 600L,
+        nxt$max_cells %||% BUILDER_PREVIEW_MAX,
         request
       ),
       trajectory_previews = builder_session_trajectory_previews(
         current_worker,
         nxt$id,
         nxt$trajectories,
-        nxt$max_cells %||% 600L,
+        nxt$max_cells %||% BUILDER_PREVIEW_MAX,
         request
       ),
       coords = builder_session_coords(
         current_worker,
         nxt$id,
         nxt$image,
+        BUILDER_PREVIEW_MAX,
         request
       ),
       spatial_preview = builder_session_spatial_preview(
@@ -859,7 +998,7 @@ observe({
         nxt$assay,
         nxt$layer,
         nxt$coordinate_transforms,
-        4000L,
+        BUILDER_PREVIEW_MAX,
         request
       ),
       align_all = builder_session_section_bounds(
@@ -952,6 +1091,339 @@ fail_spatial_preview <- function(payload) {
     }
   }
   invisible(TRUE)
+}
+
+builder_release_package_runtime <- function(builder_root) {
+  source_root <- .builder_worker_package_source(builder_root)
+  if (is.null(source_root)) {
+    return(list(source_root = NULL, files = character()))
+  }
+  description <- read.dcf(file.path(source_root, "DESCRIPTION"))
+  collate <- if ("Collate" %in% colnames(description)) {
+    description[1L, "Collate"]
+  } else {
+    NA_character_
+  }
+  files <- if (is.na(collate) || !nzchar(collate)) {
+    sort(list.files(
+      file.path(source_root, "R"),
+      pattern = "[.][Rr]$",
+      full.names = TRUE
+    ))
+  } else {
+    file.path(
+      source_root,
+      "R",
+      scan(text = collate, what = character(), quiet = TRUE)
+    )
+  }
+  if (!length(files) || any(!file.exists(files))) {
+    stop("The source-tree release runtime is incomplete.", call. = FALSE)
+  }
+  list(source_root = source_root, files = files)
+}
+
+builder_start_release_settlement_process <- function(release, value) {
+  runtime_files <- builder_release_runtime_files()
+  package_runtime <- builder_release_package_runtime(runtime_files$root)
+  callr::r_bg(
+    function(
+      handle,
+      value,
+      runtime_files,
+      package_source,
+      package_files
+    ) {
+      runtime <- new.env(parent = globalenv())
+      runtime$`%||%` <- function(left, right) {
+        if (is.null(left)) right else left
+      }
+      if (is.null(package_source)) {
+        suppressPackageStartupMessages(library(CerebroNexus))
+      } else {
+        Sys.setenv(CEREBRO_PACKAGE_SOURCE = package_source)
+        for (path in package_files) {
+          sys.source(path, envir = runtime)
+        }
+      }
+      for (name in c(
+        "contract",
+        "publish",
+        "app_bundle",
+        "report",
+        "coordinator"
+      )) {
+        sys.source(runtime_files[[name]], envir = runtime)
+      }
+      if (!is.null(package_source)) {
+        validator <- get0(
+          ".viewerAuthValidateDatabase",
+          envir = runtime,
+          inherits = FALSE
+        )
+        verify_pair <- get0(
+          "builder_auth_verify_database_pair",
+          envir = runtime,
+          inherits = FALSE
+        )
+        if (!is.function(validator) || !is.function(verify_pair)) {
+          stop("The source-tree authentication runtime is incomplete.")
+        }
+        verify_formals <- formals(verify_pair)
+        verify_formals$.validate <- quote(.viewerAuthValidateDatabase)
+        formals(verify_pair) <- verify_formals
+        assign(
+          "builder_auth_verify_database_pair",
+          verify_pair,
+          envir = runtime
+        )
+      }
+      handle <- runtime$builder_coordinator_claim(handle)
+      runtime$builder_coordinator_settle(handle, value)
+    },
+    args = list(
+      handle = release$handle,
+      value = value,
+      runtime_files = runtime_files,
+      package_source = package_runtime$source_root,
+      package_files = package_runtime$files
+    ),
+    supervise = TRUE,
+    stdout = "|",
+    stderr = "|"
+  )
+}
+
+builder_release_settlement_result <- function(settled, release) {
+  target <- release$handle$target %||% ""
+  if (inherits(settled, "condition")) {
+    try(builder_coordinator_abort(release$handle), silent = TRUE)
+    return(builder_release_error_result(
+      paste0(
+        "The completed Build could not be published: ",
+        conditionMessage(settled)
+      ),
+      target
+    ))
+  }
+  if (
+    !is.list(settled) ||
+      !is.logical(settled$ok) ||
+      length(settled$ok) != 1L ||
+      is.na(settled$ok)
+  ) {
+    try(builder_coordinator_abort(release$handle), silent = TRUE)
+    return(builder_release_error_result(
+      "The release process returned an invalid result.",
+      target
+    ))
+  }
+  if (!isTRUE(settled$ok)) {
+    recovery <- settled$recovery
+    if (
+      is.list(recovery) &&
+        identical(recovery$state, "recovery_required")
+    ) {
+      return(builder_result_recovery_required(
+        recovery$message %||% settled$error,
+        recovery = recovery
+      ))
+    }
+    return(builder_result_failure(
+      settled$error %||% "The completed Build could not be published."
+    ))
+  }
+  typed <- try(builder_as_result(settled$value), silent = TRUE)
+  if (inherits(typed, "try-error")) {
+    return(builder_result_failure(
+      "The release process returned an unsupported Build result."
+    ))
+  }
+  typed
+}
+
+acknowledge_builder_build <- function(request_id) {
+  acknowledged <- try(
+    builder_app_acknowledge_build(isolate(protocol()), request_id),
+    silent = TRUE
+  )
+  if (inherits(acknowledged, "try-error")) {
+    protocol(NULL)
+    worker_available(FALSE)
+    add_error(paste0(
+      "The completed Build could not be acknowledged. ",
+      "Restart this Builder session."
+    ))
+    return(invisible(FALSE))
+  }
+  protocol(acknowledged)
+  invisible(TRUE)
+}
+
+finish_builder_release_settlement <- function(settled) {
+  context <- isolate(release_settlement_context())
+  release_settlement_process(NULL)
+  release_settlement_context(NULL)
+  if (!is.list(context) || !is.list(context$release)) {
+    busy_note(NULL)
+    add_error("The completed Build lost its release context.")
+    return(invisible(FALSE))
+  }
+  value <- builder_release_settlement_result(settled, context$release)
+  active <- isolate(active_release())
+  if (
+    is.null(active) ||
+      !identical(active$id, context$build_id)
+  ) {
+    value <- builder_result_failure(
+      "The completed Build no longer matches its release coordinator."
+    )
+  }
+  result(value)
+  update_build_state(builder_app_build_action(value, context$build_id))
+  if (identical(value$state, "success") && isTRUE(value$published)) {
+    selected_output_release_state(NULL)
+    selected_output(NULL)
+  }
+  active_release(NULL)
+  acknowledge_builder_build(context$request_id)
+  busy_note(NULL)
+  build_flow(list(stage = "idle", plan = NULL))
+  invisible(TRUE)
+}
+
+poll_builder_release_settlement <- NULL
+poll_builder_release_settlement <- function() {
+  process <- isolate(release_settlement_process())
+  if (is.null(process) || builder_session_closed()) {
+    return(invisible(FALSE))
+  }
+  alive <- tryCatch(process$is_alive(), error = identity)
+  if (inherits(alive, "condition")) {
+    return(finish_builder_release_settlement(alive))
+  }
+  if (isTRUE(alive)) {
+    later::later(
+      function() {
+        shiny::withReactiveDomain(
+          builder_lifecycle_session,
+          poll_builder_release_settlement()
+        )
+      },
+      delay = 0.1
+    )
+    return(invisible(TRUE))
+  }
+  settled <- tryCatch(process$get_result(), error = identity)
+  finish_builder_release_settlement(settled)
+}
+
+start_builder_release_settlement <- function(release, value, request) {
+  existing_process <- isolate(release_settlement_process())
+  if (!is.null(existing_process)) {
+    existing_context <- isolate(release_settlement_context())
+    if (
+      is.list(existing_context) &&
+        identical(existing_context$request_id, request$request_id)
+    ) {
+      return(invisible(TRUE))
+    }
+    add_error("Another release is already being finalized.")
+    return(invisible(FALSE))
+  }
+  if (
+    !is.list(release) ||
+      !is.list(release$handle) ||
+      !identical(release$id, request$build_id)
+  ) {
+    actual_release <- isolate(active_release())
+    mismatch <- builder_result_failure(
+      "The completed Build no longer matches its release coordinator."
+    )
+    settled <- if (is.list(actual_release) && is.list(actual_release$handle)) {
+      builder_app_settle_release(actual_release, mismatch)
+    } else {
+      mismatch
+    }
+    result(settled)
+    update_build_state(builder_app_build_action(settled, request$build_id))
+    acknowledge_builder_build(request$request_id)
+    active_release(NULL)
+    busy_note(NULL)
+    build_flow(list(stage = "idle", plan = NULL))
+    return(invisible(FALSE))
+  }
+  busy_note("Verifying and publishing…")
+  release_settlement_context(list(
+    release = release,
+    build_id = request$build_id,
+    request_id = request$request_id
+  ))
+  process <- tryCatch(
+    builder_start_release_settlement_process(release, value),
+    error = identity
+  )
+  if (inherits(process, "condition")) {
+    settled <- list(
+      ok = FALSE,
+      value = NULL,
+      error = paste0(
+        "The release process could not start: ",
+        conditionMessage(process)
+      ),
+      target = release$handle$target,
+      recovery = tryCatch(
+        {
+          try(builder_coordinator_abort(release$handle), silent = TRUE)
+          builder_coordinator_recovery(release$handle$target)
+        },
+        error = function(error) NULL
+      )
+    )
+    finish_builder_release_settlement(settled)
+    return(invisible(FALSE))
+  }
+  release_settlement_process(process)
+  later::later(
+    function() {
+      shiny::withReactiveDomain(
+        builder_lifecycle_session,
+        poll_builder_release_settlement()
+      )
+    },
+    delay = 0
+  )
+  invisible(TRUE)
+}
+
+stop_builder_release_settlement <- function() {
+  process <- isolate(release_settlement_process())
+  if (is.null(process)) {
+    return(TRUE)
+  }
+  context <- isolate(release_settlement_context())
+  alive <- tryCatch(process$is_alive(), error = function(error) NA)
+  if (isTRUE(alive)) {
+    try(process$kill(), silent = TRUE)
+    try(process$wait(timeout = 5000L), silent = TRUE)
+    alive <- tryCatch(process$is_alive(), error = function(error) NA)
+  }
+  safe <- identical(alive, FALSE)
+  if (safe) {
+    if (is.list(context) && is.list(context$release$handle)) {
+      try(builder_coordinator_abort(context$release$handle), silent = TRUE)
+      active <- isolate(active_release())
+      if (
+        is.list(active) &&
+          identical(active$id, context$build_id)
+      ) {
+        active_release(NULL)
+      }
+    }
+    release_settlement_process(NULL)
+    release_settlement_context(NULL)
+  }
+  safe
 }
 
 ## -- one poller drains whatever the worker was asked to do ---------------
@@ -1061,6 +1533,23 @@ observe({
   protocol(completed$protocol)
   busy_note(NULL)
   if (!isTRUE(completed$accepted)) {
+    if (identical(request$kind, "build")) {
+      release <- isolate(active_release())
+      if (
+        is.null(release) ||
+          !identical(release$id, request$build_id)
+      ) {
+        release <- NULL
+      }
+      start_builder_release_settlement(
+        release,
+        builder_result_failure(
+          "A stale Build result was rejected. Retry the action."
+        ),
+        request
+      )
+      return()
+    }
     if (identical(p$kind, "load")) {
       release_client_import(
         client_import_id_for(p$id),
@@ -1094,12 +1583,19 @@ observe({
     fail_spatial_preview(p)
     cancelled <- identical(p$kind, "load") && p$id %in% cancelled_loads()
     if (identical(request$kind, "build")) {
-      result(builder_result_failure(completed$error))
-      update_build_state(list(
-        type = "fail",
-        id = request$build_id,
-        error = completed$error
-      ))
+      release <- isolate(active_release())
+      if (
+        is.null(release) ||
+          !identical(release$id, request$build_id)
+      ) {
+        release <- NULL
+      }
+      start_builder_release_settlement(
+        release,
+        builder_result_failure(completed$error),
+        request
+      )
+      return()
     } else if (identical(p$kind, "load") && !cancelled) {
       set_import_state(
         p$id,
@@ -1121,33 +1617,11 @@ observe({
         request$request_id
       ))
     }
+    if (identical(p$kind, "load")) {
+      schedule_failed_import_cleanup(got$worker)
+    }
     return()
   }
-  if (identical(request$kind, "build") && isTRUE(request$persistent)) {
-    on.exit(
-      {
-        current <- isolate(protocol())
-        if (!is.null(current)) {
-          acknowledged <- try(
-            builder_app_acknowledge_build(current, request$request_id),
-            silent = TRUE
-          )
-          if (inherits(acknowledged, "try-error")) {
-            protocol(NULL)
-            worker_available(FALSE)
-            add_error(paste0(
-              "The completed Build could not be acknowledged. ",
-              "Restart this Builder session."
-            ))
-          } else {
-            protocol(acknowledged)
-          }
-        }
-      },
-      add = TRUE
-    )
-  }
-
   if (identical(p$kind, "load")) {
     cancelled <- p$id %in% cancelled_loads()
     if (!is.null(value$error)) {
@@ -1164,6 +1638,7 @@ observe({
         release_pending_source(p)
       }
       protocol(builder_protocol_acknowledge(protocol(), request$request_id))
+      schedule_failed_import_cleanup(got$worker)
       return()
     }
     pending_entry <- isolate(import_of(p$id))
@@ -1242,13 +1717,14 @@ observe({
     )
     settings$recommendations <- recommendations
     settings$metadata_policy <- recommendations$metadata
+    loaded_path <- value$retained_path %||% p$retained_path %||% p$path
     entry <- list(
       id = p$id,
       source_id = p$id,
       output_id = p$id,
       selector_value = p$id,
-      path = p$retained_path %||% p$path,
-      filename = p$filename %||% basename(p$retained_path %||% p$path),
+      path = loaded_path,
+      filename = p$filename %||% basename(loaded_path),
       source_origin = p$source_origin %||%
         if (identical(p$source, "example")) "example" else "upload",
       ## Which built-in example produced this, so removing it puts the
@@ -1334,7 +1810,8 @@ observe({
     }
     next_state <- builder_reduce_state(
       next_state,
-      list(type = "replace", id = entry$id, entry = entry)
+      list(type = "replace", id = entry$id, entry = entry),
+      trusted = TRUE
     )
     store(next_state)
     if (exists("builder_project_mark_restored_entry", mode = "function")) {
@@ -1426,10 +1903,7 @@ observe({
     ) {
       release <- NULL
     }
-    value <- builder_app_settle_release(release, value)
-    active_release(NULL)
-    result(value)
-    update_build_state(builder_app_build_action(value, request$build_id))
+    start_builder_release_settlement(release, value, request)
   } else if (identical(p$kind, "drop")) {
     active_state <- store()
     retained <- active_state$datasets

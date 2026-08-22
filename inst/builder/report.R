@@ -573,8 +573,14 @@ builder_build_report <- function(plan, result) {
         excluded = unname(item$metadata_policy$excluded %||% character()),
         forced = unname(item$metadata_policy$forced %||% character())
       ),
-      cell_count = length(verification$cells %||% character()),
-      feature_count = length(verification$features %||% character()),
+      cell_count = as.integer(
+        verification$cell_count %||%
+          length(verification$cells %||% character())
+      ),
+      feature_count = as.integer(
+        verification$feature_count %||%
+          length(verification$features %||% character())
+      ),
       expression_backend = item$expression_backend,
       expression_storage = list(mode = item$expression_backend),
       spatial_image_storage = list(

@@ -1,5 +1,31 @@
 ##----------------------------------------------------------------------------##
 ## Parent-side ownership of Builder stages and release publication.
+
+builder_release_runtime_files <- function() {
+  roots <- unique(c(
+    getwd(),
+    file.path(getwd(), "inst", "builder"),
+    system.file("builder", package = "CerebroNexus")
+  ))
+  roots <- roots[nzchar(roots)]
+  required <- c(
+    contract = file.path("core", "bundle_path_contract.R"),
+    publish = "publish.R",
+    app_bundle = "app_bundle.R",
+    report = "report.R",
+    coordinator = "coordinator.R"
+  )
+  usable <- vapply(
+    roots,
+    function(root) all(file.exists(file.path(root, required))),
+    logical(1)
+  )
+  if (!any(usable)) {
+    stop("The release runtime is unavailable.", call. = FALSE)
+  }
+  root <- normalizePath(roots[usable][[1L]], winslash = "/", mustWork = TRUE)
+  c(list(root = root), as.list(file.path(root, required)))
+}
 ##----------------------------------------------------------------------------##
 
 .builder_coordinator_freeze <- function(value) {
@@ -410,7 +436,7 @@
   .builder_app_tree_summary(list(entries = entries))
 }
 
-builder_coordinator_output_preflight <- function(plan) {
+builder_coordinator_output_preflight <- function(plan, prior_state = NULL) {
   plan_class <- attr(plan, "class", exact = TRUE)
   if (
     !identical(typeof(plan), "list") ||
@@ -439,18 +465,26 @@ builder_coordinator_output_preflight <- function(plan) {
     ""
   )
   expected <- sort(unique(relative), method = "radix")
-  prior <- .builder_release_or(
-    .subset2(plan, "expected_prior_identity"),
-    builder_release_identity(out_dir)
-  )
-  if (!.builder_release_identity_valid(prior)) {
+  declared_prior <- .subset2(plan, "expected_prior_identity")
+  if (
+    !is.null(declared_prior) && !.builder_release_identity_valid(declared_prior)
+  ) {
     stop("The expected prior release identity is invalid.", call. = FALSE)
   }
-  prior_state <- builder_release_state(
-    out_dir,
-    exact_record = FALSE,
-    allow_abandoned = TRUE
-  )
+  if (is.null(prior_state)) {
+    prior_state <- builder_release_state(
+      out_dir,
+      exact_record = FALSE,
+      allow_abandoned = TRUE
+    )
+  }
+  valid_prior_state <- is.list(prior_state) &&
+    identical(prior_state$schema_version, 1L) &&
+    .builder_release_identity_valid(prior_state$identity)
+  if (!valid_prior_state) {
+    stop("The verified prior release state is invalid.", call. = FALSE)
+  }
+  prior <- declared_prior %||% prior_state$identity
   if (!identical(prior_state$identity, prior)) {
     stop(
       "The release changed after Review; nothing was published.",
@@ -477,9 +511,9 @@ builder_coordinator_output_preflight <- function(plan) {
   )
 }
 
-builder_coordinator_prepare <- function(plan, build_id) {
+builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
   app_contract <- .builder_coordinator_app_contract(plan)
-  preflight <- builder_coordinator_output_preflight(plan)
+  preflight <- builder_coordinator_output_preflight(plan, prior_state)
   out_dir <- preflight$out_dir
   expected <- preflight$expected
   prior <- preflight$prior
@@ -1050,15 +1084,7 @@ builder_coordinator_publish <- function(
     handle$expected_payload_targets,
     .builder_release_record_name
   )
-  final_identity <- .builder_coordinator_stage_identity(
-    handle,
-    expected = handle$expected_final_targets,
-    exact = TRUE
-  )
-  if (!identical(final_identity, ownership$identity)) {
-    stop("The ownership record read-back identity changed.", call. = FALSE)
-  }
-  handle$expected_stage_identity <- final_identity
+  handle$expected_stage_identity <- ownership$identity
   publication_guard <- function(root, phase) {
     if (!app_expected) {
       return(TRUE)
@@ -1222,6 +1248,94 @@ builder_coordinator_publish <- function(
 builder_coordinator_abort <- function(handle) {
   handle <- .builder_coordinator_handle(handle)
   builder_abort_release(handle)
+}
+
+builder_coordinator_claim <- function(handle) {
+  handle <- .builder_coordinator_handle(handle)
+  pid <- as.integer(Sys.getpid())
+  .builder_release_transfer_lock(
+    handle$lock,
+    handle$token,
+    from_pid = as.integer(handle$pid),
+    to_pid = pid
+  )
+  handle$pid <- pid
+  handle$host <- .builder_release_host()
+  handle$record$pid <- pid
+  handle$record$host <- handle$host
+  handle
+}
+
+builder_coordinator_settle <- function(
+  handle,
+  build_result,
+  .publish = builder_coordinator_publish,
+  .abort = builder_coordinator_abort,
+  .recovery = builder_coordinator_recovery
+) {
+  target <- if (
+    is.list(handle) && .builder_release_text(handle$target %||% "")
+  ) {
+    handle$target
+  } else {
+    NULL
+  }
+  failed <- function(message) {
+    recovery <- if (!is.null(target)) {
+      tryCatch(.recovery(target), error = function(error) NULL)
+    } else {
+      NULL
+    }
+    list(
+      ok = FALSE,
+      value = NULL,
+      error = message,
+      target = target,
+      recovery = recovery
+    )
+  }
+  if (is.null(target)) {
+    return(failed("The parent release coordinator identity was lost."))
+  }
+  if (
+    is.list(build_result) &&
+      identical(build_result$state, "success") &&
+      isTRUE(build_result$publishable)
+  ) {
+    published <- tryCatch(
+      .publish(handle, build_result),
+      error = function(error) error
+    )
+    if (!inherits(published, "condition")) {
+      return(list(
+        ok = TRUE,
+        value = published,
+        error = NULL,
+        target = target,
+        recovery = NULL
+      ))
+    }
+    publication_error <- conditionMessage(published)
+    try(.abort(handle), silent = TRUE)
+    return(failed(publication_error))
+  }
+  cleaned <- tryCatch(.abort(handle), error = function(error) error)
+  if (inherits(cleaned, "condition") || !isTRUE(cleaned$aborted)) {
+    return(failed(
+      if (inherits(cleaned, "condition")) {
+        conditionMessage(cleaned)
+      } else {
+        "The assigned build stage could not be cleaned."
+      }
+    ))
+  }
+  list(
+    ok = TRUE,
+    value = build_result,
+    error = NULL,
+    target = target,
+    recovery = NULL
+  )
 }
 
 builder_coordinator_recovery <- function(target) {

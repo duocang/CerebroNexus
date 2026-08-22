@@ -55,7 +55,7 @@
   min-width: 0;
   max-width: 100%;
 }
-.rail { position: relative; z-index: 3; }
+.rail { z-index: 3; }
 #pane { position: relative; z-index: 1; }
 .builder-content {
   display: flex;
@@ -80,18 +80,6 @@
   border-radius: var(--r-md);
   background: rgb(255 255 255 / .96);
   box-shadow: var(--shadow-1);
-  backdrop-filter: blur(10px);
-  transition:
-    padding var(--duration-fast) var(--ease),
-    border-radius var(--duration-fast) var(--ease),
-    box-shadow var(--duration-fast) var(--ease),
-    background-color var(--duration-fast) var(--ease);
-}
-#builder-workspace .builder-workflow-progress.is-stuck {
-  padding-block: var(--space-1);
-  border-radius: 0 0 var(--r-md) var(--r-md);
-  background: rgb(255 255 255 / .3);
-  box-shadow: 0 10px 24px rgb(30 24 20 / .12);
 }
 #builder-workspace .builder-workflow-progress ol {
   width: 100%;
@@ -137,7 +125,6 @@
 }
 .builder-stage {
   height: auto;
-  min-width: 0;
   align-self: start;
   overflow-wrap: anywhere;
   animation: builder-stage-enter 200ms var(--ease) both;
@@ -259,7 +246,6 @@
   transition: transform .22s var(--ease);
 }
 .ds.is-active::before {
-  background: var(--builder-rail-selected-marker);
   transform: scaleY(1);
 }
 
@@ -322,12 +308,9 @@
 
 /* Destructive actions remain visible without relying on pointer hover. */
 .ds-del {
-  position: absolute;
-  right: .5rem;
-  top: .55rem;
-  display: inline-flex; align-items: center; justify-content: center;
+  display: inline-flex;
+  justify-content: center;
   min-height: 1.8rem;
-  padding: .3rem .5rem;
   border: 1px solid transparent;
   border-radius: var(--r-xs);
   background: var(--c-error-50);
@@ -401,8 +384,6 @@
   }
   .shell,
   .builder-shell {
-    grid-template-columns: var(--builder-rail-width) minmax(0, 1fr);
-    gap: var(--builder-shell-gap);
     padding-inline: var(--space-6);
   }
 }
@@ -481,7 +462,7 @@
     margin-left: 0;
   }
   .builder-project-toolbar .builder-project-status { margin-right: auto; }
-  .topbar .formats { width: 100%; margin-left: 0; order: 4; }
+  .topbar .formats { width: 100%; order: 4; }
   .shell,
   .builder-shell { padding-block: var(--space-4); }
   .ds-move,
@@ -499,8 +480,6 @@
     transform: none;
     transition: none;
   }
-  .ds.is-active::before,
-  .ds::before { transform: scaleY(1); }
   .ds:not(.is-active)::before { display: none; }
   .rail.is-manager-open,
   .rail.is-manager-visible { transform: none !important; }

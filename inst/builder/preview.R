@@ -9,7 +9,7 @@
 ##----------------------------------------------------------------------------##
 
 ## Above this many cells the plot stops being informative and starts being slow.
-BUILDER_PREVIEW_MAX <- 12000L
+BUILDER_PREVIEW_MAX <- 1000L
 
 .builder_alignment_sample <- function(rows, max_cells) {
   max_cells <- suppressWarnings(as.integer(max_cells %||% BUILDER_PREVIEW_MAX))
@@ -534,7 +534,7 @@ builder_projection_preview_catalog <- function(
   object,
   projections,
   group = NULL,
-  max_cells = 600L
+  max_cells = BUILDER_PREVIEW_MAX
 ) {
   projections <- unique(as.character(projections %||% character()))
   projections <- projections[
@@ -547,7 +547,7 @@ builder_projection_preview_catalog <- function(
   }
   max_cells <- suppressWarnings(as.integer(max_cells))
   if (is.na(max_cells) || max_cells < 1L) {
-    max_cells <- 600L
+    max_cells <- BUILDER_PREVIEW_MAX
   }
   previews <- lapply(projections, function(projection) {
     builder_preview_frame(
@@ -569,7 +569,7 @@ builder_projection_preview_catalog <- function(
 builder_trajectory_preview_catalog <- function(
   object,
   trajectories,
-  max_cells = 600L,
+  max_cells = BUILDER_PREVIEW_MAX,
   max_edges = 250L
 ) {
   if (!is.list(trajectories) || !length(trajectories)) {
@@ -582,7 +582,7 @@ builder_trajectory_preview_catalog <- function(
   max_cells <- suppressWarnings(as.integer(max_cells))
   max_edges <- suppressWarnings(as.integer(max_edges))
   if (is.na(max_cells) || max_cells < 1L) {
-    max_cells <- 600L
+    max_cells <- BUILDER_PREVIEW_MAX
   }
   if (is.na(max_edges) || max_edges < 1L) {
     max_edges <- 250L

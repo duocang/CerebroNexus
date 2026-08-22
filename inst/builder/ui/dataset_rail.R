@@ -341,6 +341,7 @@ builder_dataset_rail_server <- function(
   validate_remove,
   select_dataset = function(id, commit, switch_token = NULL) commit(),
   on_select = function(...) invisible(NULL),
+  on_reorder = function(...) invisible(NULL),
   on_remove = function(...) invisible(NULL),
   on_undo = function(...) invisible(NULL),
   on_validation = function(...) invisible(NULL),
@@ -352,6 +353,7 @@ builder_dataset_rail_server <- function(
     is.function(validate_remove),
     is.function(select_dataset),
     is.function(on_select),
+    is.function(on_reorder),
     is.function(on_remove),
     is.function(on_undo),
     is.function(on_validation),
@@ -398,7 +400,8 @@ builder_dataset_rail_server <- function(
         committed <<- TRUE
         store(builder_reduce_state(
           latest,
-          list(type = "select", id = selected_id)
+          list(type = "select", id = selected_id),
+          trusted = TRUE
         ))
         on_select(selected_id)
         invisible(TRUE)
@@ -434,10 +437,13 @@ builder_dataset_rail_server <- function(
     ) {
       return()
     }
-    store(builder_reduce_state(
+    updated <- builder_reduce_state(
       state,
-      list(type = "move", id = event$id, direction = event$direction)
-    ))
+      list(type = "move", id = event$id, direction = event$direction),
+      trusted = TRUE
+    )
+    store(updated)
+    on_reorder(state, updated)
   })
   shiny::observeEvent(input$drop_ds, {
     if (reject_locked()) {
@@ -469,7 +475,8 @@ builder_dataset_rail_server <- function(
     }
     next_state <- builder_reduce_state(
       previous,
-      list(type = "remove", id = id)
+      list(type = "remove", id = id),
+      trusted = TRUE
     )
     result <- validate_remove(next_state, id)
     if (!inherits(result, "builder_rail_validation")) {
@@ -495,7 +502,11 @@ builder_dataset_rail_server <- function(
     if (!isTRUE(state$can_undo_remove)) {
       return()
     }
-    store(builder_reduce_state(state, list(type = "undo_remove")))
+    store(builder_reduce_state(
+      state,
+      list(type = "undo_remove"),
+      trusted = TRUE
+    ))
     on_undo()
   })
 
@@ -817,9 +828,12 @@ builder_dataset_rail_row_model <- function(
   index,
   total,
   current,
-  checked = character()
+  checked = character(),
+  state_cache = NULL
 ) {
-  readiness <- .builder_rail_readiness(builder_dataset_state(entry))
+  readiness <- .builder_rail_readiness(
+    builder_cached_dataset_state(entry, state_cache)
+  )
   list(
     index = as.integer(index),
     id = entry$id,
@@ -968,7 +982,8 @@ builder_dataset_rail_row_ui <- function(model) {
 builder_dataset_rail_model <- function(
   state,
   current = state$current_dataset,
-  checked = character()
+  checked = character(),
+  state_cache = NULL
 ) {
   ids <- .builder_store_assert(state)
   lapply(seq_along(state$datasets), function(index) {
@@ -977,7 +992,8 @@ builder_dataset_rail_model <- function(
       index,
       length(ids),
       current,
-      checked
+      checked,
+      state_cache
     )
   })
 }
@@ -985,9 +1001,10 @@ builder_dataset_rail_model <- function(
 builder_dataset_rail_ui <- function(
   state,
   current = state$current_dataset,
-  checked = character()
+  checked = character(),
+  state_cache = NULL
 ) {
-  rows <- builder_dataset_rail_model(state, current, checked)
+  rows <- builder_dataset_rail_model(state, current, checked, state_cache)
   if (!length(rows)) {
     return(shiny::div(
       class = "rail-empty",
@@ -1000,17 +1017,88 @@ builder_dataset_rail_ui <- function(
 builder_dataset_rail_patch <- function(
   state,
   current = state$current_dataset,
-  checked = character()
+  checked = character(),
+  row_cache = NULL,
+  force_html = FALSE,
+  state_cache = NULL
 ) {
-  rows <- builder_dataset_rail_model(state, current, checked)
-  list(
-    rows = lapply(rows, function(model) {
+  if (is.null(row_cache)) {
+    rows <- builder_dataset_rail_model(
+      state,
+      current,
+      checked,
+      state_cache
+    )
+    records <- lapply(rows, function(model) {
       list(
         id = model$id,
         fingerprint = builder_dataset_rail_row_fingerprint(model),
         html = htmltools::renderTags(builder_dataset_rail_row_ui(model))$html
       )
-    }),
+    })
+  } else {
+    if (!is.environment(row_cache)) {
+      stop("`row_cache` must be an environment.", call. = FALSE)
+    }
+    entries <- state$datasets %||% list()
+    ids <- vapply(entries, `[[`, character(1), "id")
+    stale <- setdiff(ls(row_cache, all.names = TRUE), ids)
+    if (length(stale)) {
+      rm(list = stale, envir = row_cache)
+    }
+    records <- lapply(seq_along(entries), function(index) {
+      entry <- entries[[index]]
+      id <- ids[[index]]
+      key <- list(
+        revision = as.integer(entry$revision %||% 0L),
+        source_id = entry$source_id %||% NULL,
+        output_id = entry$output_id %||% NULL,
+        load_state = entry$load_state %||% "loaded",
+        snapshot = entry$snapshot[c("object_md5", "source_md5")],
+        artifact = entry$project_artifact$fingerprint$md5 %||% NULL,
+        label = entry$settings$name %||% id,
+        cells = entry$profile$n_cells %||% 0L,
+        format = entry$format %||% NULL,
+        import_elapsed_ms = entry$import_elapsed_ms %||% NULL,
+        index = as.integer(index),
+        can_down = index < length(entries),
+        checked = id %in% checked,
+        selected = identical(id, current)
+      )
+      cached <- get0(id, envir = row_cache, inherits = FALSE)
+      if (is.list(cached) && identical(cached$key, key)) {
+        return(list(
+          id = id,
+          fingerprint = cached$fingerprint,
+          html = if (isTRUE(force_html)) cached$html else NULL
+        ))
+      }
+      model <- builder_dataset_rail_row_model(
+        entry,
+        index,
+        length(entries),
+        current,
+        checked,
+        state_cache
+      )
+      fingerprint <- builder_dataset_rail_row_fingerprint(model)
+      html <- htmltools::renderTags(builder_dataset_rail_row_ui(model))$html
+      unchanged <- is.list(cached) &&
+        identical(cached$fingerprint, fingerprint)
+      assign(
+        id,
+        list(key = key, fingerprint = fingerprint, html = html),
+        envir = row_cache
+      )
+      list(
+        id = id,
+        fingerprint = fingerprint,
+        html = if (isTRUE(force_html) || !unchanged) html else NULL
+      )
+    })
+  }
+  list(
+    rows = records,
     empty_html = htmltools::renderTags(shiny::div(
       class = "rail-empty",
       "No datasets yet. Add one below."

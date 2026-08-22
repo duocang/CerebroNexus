@@ -524,6 +524,18 @@ test_that("table inventory failures never expose a server-side upload path", {
   expect_false(grepl(directory, got$error, fixed = TRUE))
 })
 
+test_that("background table inventory returns metadata without source paths", {
+  path <- withr::local_tempfile(fileext = ".csv")
+  writeLines(c("sample,value", "A,1"), path)
+
+  got <- builder_table_inventory_metadata(path, "supplement.csv")
+
+  expect_named(got, "supplement")
+  expect_null(got$supplement$source_path)
+  expect_identical(got$supplement$workbook_name, "supplement.csv")
+  expect_identical(got$supplement$sheet_name, "supplement")
+})
+
 test_that("XLSX Extra material inventories worksheets without reading them", {
   skip_if_not_installed("writexl")
   path <- withr::local_tempfile(fileext = ".xlsx")

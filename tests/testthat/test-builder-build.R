@@ -150,6 +150,31 @@ test_that("build execution reuses the worker's loaded object", {
   expect_true(result$publishable)
 })
 
+test_that("build execution releases working objects before CRB verification", {
+  stage <- withr::local_tempdir()
+  hooks <- builder_build_test_hooks()
+  hooks$verify <- function(path, item) {
+    execution <- parent.frame()
+    expect_null(get("object", envir = execution, inherits = FALSE))
+    expect_null(get("analyses", envir = execution, inherits = FALSE))
+    expect_null(
+      get("objects", envir = execution, inherits = FALSE)[[item$id]]
+    )
+    list(valid = TRUE, path = path)
+  }
+
+  result <- builder_execute_plan(
+    builder_build_test_plan(),
+    stage,
+    snapshots = list(`dataset-a` = list(id = "snapshot-a")),
+    hooks = hooks,
+    objects = list(`dataset-a` = list(source = "worker-memory"))
+  )
+
+  expect_identical(result$state, "success")
+  expect_true(result$publishable)
+})
+
 test_that("retry recomputes the failed dependency closure", {
   graph <- builder_analysis_graph(c("marker_genes", "enriched_pathways"))
   expect_identical(
@@ -570,8 +595,18 @@ test_that("CRB read-back matches exact frozen artifact identity", {
   item$viewer_page_expectations$visible_conditional <- "spatial"
   observed <- builder_verify_crb(crb, item)
   expect_true(observed$valid)
-  expect_identical(observed$cells, item$artifact_identity$cells)
-  expect_identical(observed$features, item$artifact_identity$features)
+  expect_identical(
+    observed$cell_identity,
+    builder_axis_identity(item$artifact_identity$cells)
+  )
+  expect_identical(
+    observed$feature_identity,
+    builder_axis_identity(item$artifact_identity$features)
+  )
+  expect_identical(observed$cell_count, 2L)
+  expect_identical(observed$feature_count, 2L)
+  expect_null(observed$cells)
+  expect_null(observed$features)
   expect_identical(observed$groups, names(item$artifact_identity$group_levels))
   expect_identical(observed$projections, item$artifact_identity$projections)
   expect_identical(observed$metadata, item$artifact_identity$metadata)
@@ -580,6 +615,15 @@ test_that("CRB read-back matches exact frozen artifact identity", {
     item$artifact_identity$spatial_sections
   )
   expect_identical(observed$image_sections, "slice-a")
+
+  compact_item <- item
+  compact_item$artifact_identity$cells <- builder_axis_identity(
+    item$artifact_identity$cells
+  )
+  compact_item$artifact_identity$features <- builder_axis_identity(
+    item$artifact_identity$features
+  )
+  expect_true(builder_verify_crb(crb, compact_item)$valid)
 
   item$artifact_identity$cells <- rev(item$artifact_identity$cells)
   expect_error(builder_verify_crb(crb, item), "cell identity")

@@ -203,14 +203,13 @@
           error = function(error) FALSE
         ))
       if (owned) {
-        frozen <- .builder_plan_deep_copy(snapshot)
         return(c(
           list(
             available = TRUE,
-            snapshot = frozen,
+            snapshot = snapshot,
             source = source_identity
           ),
-          frozen
+          snapshot
         ))
       }
     }
@@ -292,13 +291,20 @@
   axis_ids <- function(axis) {
     record <- identity[[axis]]
     if (!is.list(record)) {
-      return(character())
+      stop("invalid_artifact_identity", call. = FALSE)
     }
-    values <- record$canonical_ids %||% record$ids %||% character()
+    compact <- builder_axis_identity_normalize(record$axis_identity)
+    if (!is.null(compact)) {
+      return(compact)
+    }
+    values <- record$canonical_ids %||% record$ids
+    if (is.null(values)) {
+      stop("invalid_artifact_identity", call. = FALSE)
+    }
     if (!is.character(values) || anyNA(values)) {
-      return(character())
+      stop("invalid_artifact_identity", call. = FALSE)
     }
-    unname(values)
+    builder_axis_identity(unname(values))
   }
   levels <- if (is.list(entry$levels)) entry$levels else list()
   group_levels <- lapply(included_groups, function(group) {
@@ -339,7 +345,7 @@
     spatial_sections <- character()
   }
   list(
-    schema_version = 2L,
+    schema_version = 3L,
     cells = axis_ids("cells"),
     features = axis_ids("features"),
     group_levels = group_levels,
@@ -373,7 +379,10 @@
     )
     statuses <- vapply(entries, `[[`, "", "status")
     exemplar <- candidates[[which.max(unname(rank[statuses[candidates]]))]]
-    record <- .builder_plan_deep_copy(entries[[exemplar]])
+    record <- entries[[exemplar]]
+    if (.builder_plan_has_reference(record)) {
+      stop("unsafe_reference", call. = FALSE)
+    }
     record$page_visible <- any(visible)
     record$dataset_ids <- dataset_ids
     record$dataset_entries <- entries

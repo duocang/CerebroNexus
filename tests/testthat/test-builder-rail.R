@@ -36,7 +36,8 @@ test_that("the dataset rail presents a button and single-file transport", {
   expect_false(grepl('multiple = "multiple"', rail, fixed = TRUE))
   expect_match(rail, 'hidden = "hidden"', fixed = TRUE)
   expect_match(rail, "tags$button(", fixed = TRUE)
-  expect_match(rail, 'id = "builder_add_datasets"', fixed = TRUE)
+  expect_match(rail, 'id = "choose_local_datasets"', fixed = TRUE)
+  expect_match(rail, 'id = "builder_upload_datasets"', fixed = TRUE)
   expect_match(
     rail,
     'class = "dataset-file-control builder-file-picker builder-file-picker--sidebar"',
@@ -44,7 +45,8 @@ test_that("the dataset rail presents a button and single-file transport", {
   )
   expect_match(rail, "builder-upload-transport", fixed = TRUE)
   expect_match(rail, "builder-file-trigger", fixed = TRUE)
-  expect_match(rail, '"Add datasets…"', fixed = TRUE)
+  expect_match(rail, '"Choose local datasets…"', fixed = TRUE)
+  expect_match(rail, '"Upload through browser…"', fixed = TRUE)
   expect_false(grepl("fileInput(", rail, fixed = TRUE))
   expect_match(rail, "builder_example_buttons_ui(", fixed = TRUE)
   expect_false(grepl('uiOutput("example_buttons")', rail, fixed = TRUE))
@@ -189,6 +191,86 @@ test_that("the persistent dataset rail API is available", {
 })
 
 if (builder_rail_api_available) {
+  test_that("rail actions use copy-on-write instead of serializing the store", {
+    state <- builder_state(lapply(c("a", "b"), builder_rail_entry))
+    reducer_environment <- environment(builder_reduce_state)
+    expect_false(exists(
+      ".builder_store_copy",
+      envir = reducer_environment,
+      inherits = FALSE
+    ))
+
+    selected <- builder_reduce_state(state, list(type = "select", id = "b"))
+    planned <- builder_datasets_for_plan(state)
+    selected$datasets[[1L]]$settings$name <- "Changed"
+    planned[[2L]]$settings$name <- "Changed too"
+
+    expect_identical(state$current_dataset, "a")
+    expect_identical(state$datasets[[1L]]$settings$name, "A")
+    expect_identical(state$datasets[[2L]]$settings$name, "B")
+  })
+
+  test_that("derived dataset state is shared for one entry revision", {
+    entry <- builder_rail_entry("a", "Dataset A")
+    entry$revision <- 1L
+    cache <- new.env(parent = emptyenv())
+    runtime <- environment(builder_dataset_state)
+    original_dataset_state <- get("builder_dataset_state", envir = runtime)
+    calls <- 0L
+    assign(
+      "builder_dataset_state",
+      function(entry) {
+        calls <<- calls + 1L
+        original_dataset_state(entry)
+      },
+      envir = runtime
+    )
+    on.exit(
+      assign("builder_dataset_state", original_dataset_state, envir = runtime),
+      add = TRUE
+    )
+
+    first <- builder_cached_dataset_state(entry, cache)
+    second <- builder_cached_dataset_state(entry, cache)
+    entry$revision <- 2L
+    third <- builder_cached_dataset_state(entry, cache)
+
+    expect_identical(first, second)
+    expect_s3_class(third, "builder_dataset_state")
+    expect_identical(calls, 2L)
+    expect_length(ls(cache, all.names = TRUE), 1L)
+  })
+
+  test_that("trusted rail actions validate only the action boundary", {
+    state <- builder_state(lapply(c("a", "b"), builder_rail_entry))
+    reducer_environment <- environment(builder_reduce_state)
+    original_dataset_state <- get(
+      "builder_dataset_state",
+      envir = reducer_environment
+    )
+    assign(
+      "builder_dataset_state",
+      function(...) stop("an unchanged entry was revalidated"),
+      envir = reducer_environment
+    )
+    on.exit(
+      assign(
+        "builder_dataset_state",
+        original_dataset_state,
+        envir = reducer_environment
+      ),
+      add = TRUE
+    )
+
+    selected <- builder_reduce_state(
+      state,
+      list(type = "select", id = "b"),
+      trusted = TRUE
+    )
+
+    expect_identical(selected$current_dataset, "b")
+  })
+
   test_that("dataset order is the only initial-App choice", {
     state <- builder_state(lapply(c("a", "b", "c"), builder_rail_entry))
     reordered <- builder_reduce_state(
@@ -659,6 +741,78 @@ if (builder_rail_api_available) {
     )
   })
 
+  test_that("ready rail patch caches unchanged rows by entry revision", {
+    state <- builder_state(list(
+      builder_rail_entry("a", "Dataset A"),
+      builder_rail_entry("b", "Dataset B")
+    ))
+    cache <- new.env(parent = emptyenv())
+    first <- builder_dataset_rail_patch(
+      state,
+      current = "a",
+      row_cache = cache
+    )
+    expect_true(all(vapply(
+      first$rows,
+      function(row) is.character(row$html),
+      logical(1)
+    )))
+
+    original_dataset_state <- builder_dataset_state
+    calls <- 0L
+    assign(
+      "builder_dataset_state",
+      function(entry) {
+        calls <<- calls + 1L
+        original_dataset_state(entry)
+      },
+      envir = environment(builder_dataset_rail_patch)
+    )
+    on.exit(
+      assign(
+        "builder_dataset_state",
+        original_dataset_state,
+        envir = environment(builder_dataset_rail_patch)
+      ),
+      add = TRUE
+    )
+
+    unchanged <- builder_dataset_rail_patch(
+      state,
+      current = "a",
+      row_cache = cache
+    )
+    expect_identical(calls, 0L)
+    expect_true(all(vapply(
+      unchanged$rows,
+      function(row) is.null(row$html),
+      logical(1)
+    )))
+
+    state$datasets[[2L]]$settings$name <- "Renamed"
+    state$datasets[[2L]]$revision <- 1L
+    changed <- builder_dataset_rail_patch(
+      state,
+      current = "a",
+      row_cache = cache
+    )
+    expect_identical(calls, 1L)
+    expect_null(changed$rows[[1L]]$html)
+    expect_match(changed$rows[[2L]]$html, "Renamed", fixed = TRUE)
+
+    synced <- builder_dataset_rail_patch(
+      state,
+      current = "a",
+      row_cache = cache,
+      force_html = TRUE
+    )
+    expect_true(all(vapply(
+      synced$rows,
+      function(row) is.character(row$html),
+      logical(1)
+    )))
+  })
+
   test_that("ready rail server publishes snapshots instead of renderUI", {
     server <- paste(
       readLines(
@@ -739,6 +893,9 @@ if (builder_rail_api_available) {
     expect_match(js, "dataset.railFingerprint", fixed = TRUE)
     expect_match(js, "row.replaceWith(item.parsed)", fixed = TRUE)
     expect_match(js, "rail.appendChild(row)", fixed = TRUE)
+    expect_match(js, "isSelfManagedRailMutation", fixed = TRUE)
+    expect_match(js, "window.BuilderIcons.decorate(rail)", fixed = TRUE)
+    expect_false(grepl("syncWorkflowStickyState", js, fixed = TRUE))
     expect_match(js, "datasetRailFocusTarget", fixed = TRUE)
     expect_match(js, "updateRailSummary()", fixed = TRUE)
     expect_false(grepl(
@@ -767,7 +924,8 @@ if (builder_rail_api_available) {
     expect_match(rail, "tags$input(", fixed = TRUE)
     expect_match(rail, 'type = "file"', fixed = TRUE)
     expect_false(grepl('multiple = "multiple"', rail, fixed = TRUE))
-    expect_match(rail, 'id = "builder_add_datasets"', fixed = TRUE)
+    expect_match(rail, 'id = "choose_local_datasets"', fixed = TRUE)
+    expect_match(rail, 'id = "builder_upload_datasets"', fixed = TRUE)
     expect_match(rail, 'id = "ds_client_import_queue"', fixed = TRUE)
     expect_match(rail, "builder_example_buttons_ui()", fixed = TRUE)
     expect_false(grepl("browse_open", text, fixed = TRUE))

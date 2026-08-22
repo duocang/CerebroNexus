@@ -48,6 +48,10 @@ builder_session_poll_startup <- function(worker, timeout = 0) {
   worker
 }
 
+.builder_session_collect_failed_import <- function(.gc = gc) {
+  invisible(.gc(full = TRUE))
+}
+
 #' Load one of the built-in examples, without a file.
 builder_session_example <- function(
   worker,
@@ -66,40 +70,53 @@ builder_session_example <- function(
       request,
       progress_path,
       import_generation,
-      importer
+      importer,
+      collect_failed_import
     ) {
       progress <- .builder_import_progress_callback(
         progress_path,
         import_generation
       )
-      tryCatch(
+      completed <- FALSE
+      on.exit(
+        {
+          if (!completed) {
+            collect_failed_import()
+          }
+        },
+        add = TRUE
+      )
+      response <- tryCatch(
         {
           if (is.function(importer)) {
             value <- importer(id, example_id, progress)
-            return(builder_worker_response(request, value))
+          } else {
+            ex <- Filter(
+              function(e) identical(e$id, example_id),
+              builder_examples()
+            )
+            if (!length(ex)) {
+              stop("This example does not exist.", call. = FALSE)
+            }
+            made <- ex[[1]]$make()
+            if (!is.null(made$error)) {
+              stop(made$error, call. = FALSE)
+            }
+            value <- .builder_register_adapter(
+              builder_example_adapter(example_id, made$object),
+              id,
+              progress = progress
+            )
           }
-          ex <- Filter(
-            function(e) identical(e$id, example_id),
-            builder_examples()
-          )
-          if (!length(ex)) {
-            stop("This example does not exist.", call. = FALSE)
-          }
-          made <- ex[[1]]$make()
-          if (!is.null(made$error)) {
-            stop(made$error, call. = FALSE)
-          }
-          value <- .builder_register_adapter(
-            builder_example_adapter(example_id, made$object),
-            id,
-            progress = progress
-          )
-          builder_worker_response(request, value)
+          response <- builder_worker_response(request, value)
+          completed <- TRUE
+          response
         },
         error = function(error) {
           builder_worker_response(request, error = conditionMessage(error))
         }
       )
+      response
     },
     args = list(
       id = id,
@@ -107,7 +124,8 @@ builder_session_example <- function(
       request = request,
       progress_path = progress_path,
       import_generation = import_generation,
-      importer = .importer
+      importer = .importer,
+      collect_failed_import = .builder_session_collect_failed_import
     )
   )
 }
@@ -132,29 +150,42 @@ builder_session_load <- function(
       request,
       progress_path,
       import_generation,
-      importer
+      importer,
+      collect_failed_import
     ) {
       progress <- .builder_import_progress_callback(
         progress_path,
         import_generation
       )
-      tryCatch(
+      completed <- FALSE
+      on.exit(
+        {
+          if (!completed) {
+            collect_failed_import()
+          }
+        },
+        add = TRUE
+      )
+      response <- tryCatch(
         {
           if (is.function(importer)) {
             value <- importer(id, path, progress)
-            return(builder_worker_response(request, value))
+          } else {
+            value <- .builder_register_adapter(
+              builder_seurat_file_adapter(path),
+              id,
+              progress = progress
+            )
           }
-          value <- .builder_register_adapter(
-            builder_seurat_file_adapter(path),
-            id,
-            progress = progress
-          )
-          builder_worker_response(request, value)
+          response <- builder_worker_response(request, value)
+          completed <- TRUE
+          response
         },
         error = function(error) {
           builder_worker_response(request, error = conditionMessage(error))
         }
       )
+      response
     },
     args = list(
       id = id,
@@ -162,7 +193,8 @@ builder_session_load <- function(
       request = request,
       progress_path = progress_path,
       import_generation = import_generation,
-      importer = .importer
+      importer = .importer,
+      collect_failed_import = .builder_session_collect_failed_import
     )
   )
 }
@@ -209,7 +241,7 @@ builder_session_projection_previews <- function(
   id,
   projections,
   group,
-  max_cells = 600L,
+  max_cells = BUILDER_PREVIEW_MAX,
   request = NULL
 ) {
   rs <- .builder_session_process(worker)
@@ -252,7 +284,7 @@ builder_session_trajectory_previews <- function(
   worker,
   id,
   trajectories,
-  max_cells = 600L,
+  max_cells = BUILDER_PREVIEW_MAX,
   request = NULL
 ) {
   rs <- .builder_session_process(worker)
@@ -289,10 +321,16 @@ builder_session_trajectory_previews <- function(
 }
 
 #' Spatial coordinates, for deciding where a background image sits.
-builder_session_coords <- function(worker, id, image = NULL, request = NULL) {
+builder_session_coords <- function(
+  worker,
+  id,
+  image = NULL,
+  max_cells = BUILDER_PREVIEW_MAX,
+  request = NULL
+) {
   rs <- .builder_session_process(worker)
   rs$call(
-    function(id, image, request) {
+    function(id, image, max_cells, request) {
       tryCatch(
         {
           builder_worker_require_capability("spatial")
@@ -303,9 +341,9 @@ builder_session_coords <- function(worker, id, image = NULL, request = NULL) {
           }
           ## Sampled: the alignment preview needs a shape, not every cell.
           n <- length(co[[1]])
-          keep <- if (n > 4000) {
+          keep <- if (n > max_cells) {
             set.seed(7)
-            sort(sample.int(n, 4000))
+            sort(sample.int(n, max_cells))
           } else {
             seq_len(n)
           }
@@ -324,7 +362,12 @@ builder_session_coords <- function(worker, id, image = NULL, request = NULL) {
         }
       )
     },
-    args = list(id = id, image = image, request = request)
+    args = list(
+      id = id,
+      image = image,
+      max_cells = max_cells,
+      request = request
+    )
   )
 }
 
@@ -338,7 +381,7 @@ builder_session_spatial_preview <- function(
   assay = NULL,
   layer = "data",
   coordinate_transforms = NULL,
-  max_cells = 4000L,
+  max_cells = BUILDER_PREVIEW_MAX,
   request = NULL
 ) {
   rs <- .builder_session_process(worker)

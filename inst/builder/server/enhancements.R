@@ -260,20 +260,29 @@ refresh_enhance_tables <- function() {
   enhance_table_ui_revision(isolate(enhance_table_ui_revision()) + 1L)
 }
 
-observeEvent(input[["enhance-table_files"]], {
-  id <- current()
-  req(id)
+add_enhance_table_files <- function(
+  uploads,
+  id = current(),
+  inventories = NULL
+) {
+  if (!builder_has_text(id)) {
+    return(invisible(FALSE))
+  }
   entry <- entry_of(id)
-  req(entry)
-  uploads <- input[["enhance-table_files"]]
-  req(is.data.frame(uploads), nrow(uploads) > 0L)
+  if (!is.list(entry) || !is.data.frame(uploads) || !nrow(uploads)) {
+    return(invisible(FALSE))
+  }
   added <- list()
   for (index in seq_len(nrow(uploads))) {
     filename <- basename(uploads$name[[index]])
-    records <- builder_table_inventory(
-      uploads$datapath[[index]],
-      filename = filename
-    )
+    records <- if (is.null(inventories)) {
+      builder_table_inventory(
+        uploads$datapath[[index]],
+        filename = filename
+      )
+    } else {
+      inventories[[index]] %||% list(error = "Could not read this workbook.")
+    }
     if (!length(records) || !is.null(records$error)) {
       showNotification(
         records$error %||% paste0(filename, ": No worksheets were found."),
@@ -316,7 +325,194 @@ observeEvent(input[["enhance-table_files"]], {
       once = TRUE
     )
   }
+  invisible(length(added) > 0L)
+}
+
+builder_table_inventory_runtime_file <- function() {
+  candidates <- c(
+    file.path(getwd(), "extras.R"),
+    file.path(getwd(), "inst", "builder", "extras.R"),
+    system.file("builder", "extras.R", package = "CerebroNexus")
+  )
+  found <- candidates[nzchar(candidates) & file.exists(candidates)]
+  if (!length(found)) {
+    stop("The table inventory runtime is unavailable.", call. = FALSE)
+  }
+  normalizePath(found[[1L]], winslash = "/", mustWork = TRUE)
+}
+
+start_enhance_table_inventory <- function(uploads) {
+  files <- lapply(seq_len(nrow(uploads)), function(index) {
+    list(
+      path = as.character(uploads$datapath[[index]]),
+      filename = basename(as.character(uploads$name[[index]]))
+    )
+  })
+  callr::r_bg(
+    function(files, runtime_file) {
+      runtime <- new.env(parent = baseenv())
+      runtime$`%||%` <- function(left, right) {
+        if (is.null(left)) right else left
+      }
+      sys.source(runtime_file, envir = runtime)
+      lapply(files, function(file) {
+        tryCatch(
+          runtime$builder_table_inventory_metadata(file$path, file$filename),
+          error = function(error) list(error = "Could not read this workbook.")
+        )
+      })
+    },
+    args = list(
+      files = files,
+      runtime_file = builder_table_inventory_runtime_file()
+    ),
+    supervise = TRUE,
+    stdout = "|",
+    stderr = "|"
+  )
+}
+
+schedule_enhance_table_files <- function(
+  uploads,
+  id = current(),
+  on_complete = NULL
+) {
+  if (!is.data.frame(uploads) || !nrow(uploads)) {
+    if (is.function(on_complete)) {
+      try(on_complete(), silent = TRUE)
+    }
+    return(invisible(FALSE))
+  }
+  showNotification(
+    "Reading workbook sheets…",
+    id = "builder-table-inventory",
+    duration = NULL,
+    session = session
+  )
+  process <- tryCatch(start_enhance_table_inventory(uploads), error = identity)
+  finish <- function(inventories = NULL, failed = FALSE) {
+    removeNotification("builder-table-inventory", session = session)
+    if (is.function(on_complete)) {
+      try(on_complete(), silent = TRUE)
+    }
+    if (builder_session_closed()) {
+      return(invisible(FALSE))
+    }
+    if (isTRUE(failed)) {
+      showNotification(
+        "Workbook sheets could not be read.",
+        type = "error",
+        duration = 7,
+        session = session
+      )
+      return(invisible(FALSE))
+    }
+    shiny::isolate(add_enhance_table_files(uploads, id, inventories))
+  }
+  if (inherits(process, "condition")) {
+    finish(failed = TRUE)
+    return(invisible(FALSE))
+  }
+  poll <- NULL
+  poll <- function() {
+    if (builder_session_closed()) {
+      try(process$kill(), silent = TRUE)
+      return(invisible(FALSE))
+    }
+    alive <- tryCatch(process$is_alive(), error = identity)
+    if (inherits(alive, "condition")) {
+      finish(failed = TRUE)
+      return(invisible(FALSE))
+    }
+    if (isTRUE(alive)) {
+      later::later(
+        function() shiny::withReactiveDomain(session, poll()),
+        delay = 0.1
+      )
+      return(invisible(TRUE))
+    }
+    inventories <- tryCatch(process$get_result(), error = identity)
+    finish(
+      inventories = if (inherits(inventories, "condition")) {
+        NULL
+      } else {
+        inventories
+      },
+      failed = inherits(inventories, "condition")
+    )
+  }
+  later::later(
+    function() shiny::withReactiveDomain(session, poll()),
+    delay = 0
+  )
+  invisible(TRUE)
+}
+
+observeEvent(input[["enhance-table_files"]], {
+  schedule_enhance_table_files(
+    input[["enhance-table_files"]],
+    id = current()
+  )
 })
+
+native_table_picker_active <- FALSE
+observeEvent(
+  input[["enhance-choose_local_tables"]],
+  {
+    selected_id <- current()
+    if (
+      isTRUE(native_table_picker_active) ||
+        !builder_operation_allowed("edit_dataset") ||
+        !builder_has_text(selected_id)
+    ) {
+      return()
+    }
+    native_table_picker_active <<- TRUE
+    handed_off <- FALSE
+    builder_schedule_native_picker(
+      "table_files",
+      key = "extra-material-tables",
+      on_result = function(choice) {
+        if (identical(choice$status, "cancelled")) {
+          return()
+        }
+        if (!identical(choice$status, "selected")) {
+          showNotification(
+            choice$error %||% "The file picker could not be opened.",
+            type = "error",
+            duration = 6
+          )
+          return()
+        }
+        info <- suppressWarnings(file.info(choice$paths))
+        uploads <- data.frame(
+          name = basename(choice$paths),
+          size = suppressWarnings(as.numeric(info$size)),
+          type = "",
+          datapath = choice$paths,
+          stringsAsFactors = FALSE
+        )
+        schedule_enhance_table_files(
+          uploads,
+          id = selected_id,
+          on_complete = function() {
+            native_table_picker_active <<- FALSE
+          }
+        )
+        handed_off <<- TRUE
+      },
+      on_error = function(error) {
+        showNotification(conditionMessage(error), type = "error", duration = 6)
+      },
+      on_finally = function() {
+        if (!handed_off) {
+          native_table_picker_active <<- FALSE
+        }
+      }
+    )
+  },
+  ignoreInit = TRUE
+)
 
 observeEvent(
   input[["enhance-table_action"]],

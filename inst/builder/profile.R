@@ -105,6 +105,92 @@ builder_profile_source <- function(source) {
   as.character(ids)
 }
 
+builder_axis_identity <- function(ids) {
+  ids <- unname(.builder_profile_ids(ids))
+  present <- !is.na(ids)
+  ids[present] <- enc2utf8(ids[present])
+  path <- tempfile("cerebro-builder-axis-")
+  connection <- file(path, open = "wb")
+  Sys.chmod(path, mode = "0600")
+  closed <- FALSE
+  on.exit(
+    {
+      if (!closed) {
+        try(close(connection), silent = TRUE)
+      }
+      if (file.exists(path)) {
+        unlink(path, force = TRUE)
+      }
+    },
+    add = TRUE
+  )
+  # A length-prefixed UTF-8 stream keeps saved identities stable across R versions.
+  header <- paste0("CEREBRO_AXIS_IDENTITY_V1:", length(ids), ":")
+  writeBin(charToRaw(header), connection)
+  if (length(ids)) {
+    chunk_size <- 10000L
+    for (start in seq.int(1L, length(ids), by = chunk_size)) {
+      end <- min(length(ids), start + chunk_size - 1L)
+      values <- ids[start:end]
+      available <- !is.na(values)
+      records <- rep("-1:", length(values))
+      if (any(available)) {
+        records[available] <- paste0(
+          nchar(values[available], type = "bytes"),
+          ":",
+          values[available]
+        )
+      }
+      writeBin(charToRaw(paste0(records, collapse = "")), connection)
+    }
+  }
+  close(connection)
+  closed <- TRUE
+  md5 <- unname(as.character(tools::md5sum(path)))
+  if (
+    length(md5) != 1L ||
+      is.na(md5) ||
+      !grepl("^[[:xdigit:]]{32}$", md5)
+  ) {
+    stop("Dataset identity could not be summarized safely.", call. = FALSE)
+  }
+  list(
+    schema_version = 2L,
+    count = as.double(length(ids)),
+    md5 = tolower(md5)
+  )
+}
+
+builder_axis_identity_valid <- function(value) {
+  is.list(value) &&
+    is.numeric(value$schema_version) &&
+    length(value$schema_version) == 1L &&
+    !is.na(value$schema_version) &&
+    is.finite(value$schema_version) &&
+    value$schema_version == 2 &&
+    is.numeric(value$count) &&
+    length(value$count) == 1L &&
+    !is.na(value$count) &&
+    is.finite(value$count) &&
+    value$count >= 0 &&
+    value$count == floor(value$count) &&
+    is.character(value$md5) &&
+    length(value$md5) == 1L &&
+    !is.na(value$md5) &&
+    grepl("^[[:xdigit:]]{32}$", value$md5)
+}
+
+builder_axis_identity_normalize <- function(value) {
+  if (!builder_axis_identity_valid(value)) {
+    return(NULL)
+  }
+  list(
+    schema_version = 2L,
+    count = as.double(value$count),
+    md5 = tolower(value$md5)
+  )
+}
+
 builder_identity_profile <- function(ids, expected = ids) {
   match <- builder_match_cells(ids, expected, mode = "exact")
 
@@ -165,6 +251,128 @@ builder_feature_profile <- function(ids, expected) {
     diagnostics <- c(diagnostics, "reordered")
   }
   diagnostics
+}
+
+.builder_profile_identity_record <- function(value) {
+  is.list(value) &&
+    all(
+      c("ids", "count", "valid", "canonical_ids", "reorder_index") %in%
+        names(value)
+    )
+}
+
+.builder_profile_compact_identity <- function(
+  value,
+  exact = FALSE,
+  sample_max = 20L
+) {
+  ids <- value$ids %||% character()
+  canonical <- value$canonical_ids %||% ids
+  if (isTRUE(exact)) {
+    value$axis_identity <- builder_axis_identity(canonical)
+  }
+  value$sample_ids <- unname(utils::head(ids, sample_max))
+  for (field in c(
+    "duplicates",
+    "blanks",
+    "missing",
+    "extra",
+    "casefold_duplicates"
+  )) {
+    if (!is.null(value[[field]])) {
+      value[[paste0(field, "_count")]] <- as.double(length(value[[field]]))
+      value[[field]] <- unname(utils::head(value[[field]], 20L))
+    }
+  }
+  for (field in c("ids", "canonical_ids", "reorder_index")) {
+    value[[field]] <- NULL
+  }
+  value
+}
+
+builder_profile_workspace_contract <- function(profile) {
+  if (
+    !inherits(profile, "builder_dataset_profile") ||
+      !is.list(profile$identity)
+  ) {
+    .builder_profile_abort(
+      "invalid_profile",
+      "A DatasetProfile v2 record is required for workspace transport."
+    )
+  }
+  if (.builder_profile_identity_record(profile$identity$cells)) {
+    profile$identity$cells <- .builder_profile_compact_identity(
+      profile$identity$cells,
+      exact = TRUE
+    )
+  }
+  if (.builder_profile_identity_record(profile$identity$features)) {
+    profile$identity$features <- .builder_profile_compact_identity(
+      profile$identity$features,
+      exact = TRUE,
+      sample_max = 500L
+    )
+  }
+  if (.builder_profile_identity_record(profile$identity$metadata)) {
+    profile$identity$metadata <- .builder_profile_compact_identity(
+      profile$identity$metadata
+    )
+  }
+  for (assay_index in seq_along(profile$assays)) {
+    assay <- profile$assays[[assay_index]]
+    for (layer_index in seq_along(assay$layers)) {
+      layer <- assay$layers[[layer_index]]
+      for (axis in c("cells", "features")) {
+        if (.builder_profile_identity_record(layer[[axis]])) {
+          layer[[axis]] <- .builder_profile_compact_identity(layer[[axis]])
+        }
+      }
+      if (is.list(layer$feature_members)) {
+        layer$feature_members <- lapply(
+          layer$feature_members,
+          function(value) {
+            if (.builder_profile_identity_record(value)) {
+              .builder_profile_compact_identity(value)
+            } else {
+              value
+            }
+          }
+        )
+      }
+      assay$layers[[layer_index]] <- layer
+    }
+    profile$assays[[assay_index]] <- assay
+  }
+  for (field in c("identity", "column_identity")) {
+    if (.builder_profile_identity_record(profile$metadata[[field]])) {
+      profile$metadata[[field]] <- .builder_profile_compact_identity(
+        profile$metadata[[field]]
+      )
+    }
+  }
+  for (index in seq_along(profile$reductions)) {
+    reduction <- profile$reductions[[index]]
+    if (.builder_profile_identity_record(reduction$cells)) {
+      reduction$cells <- .builder_profile_compact_identity(reduction$cells)
+    }
+    profile$reductions[[index]] <- reduction
+  }
+  if (is.list(profile$manifest[["dataset_identity"]])) {
+    profile$manifest[["dataset_identity"]]$diagnostics <- profile$identity
+  }
+  if (is.list(profile$manifest[["metadata"]])) {
+    profile$manifest[["metadata"]]$diagnostics <- list(
+      rows = profile$metadata$identity,
+      columns = profile$metadata$column_identity
+    )
+  }
+  for (name in names(profile$reductions)) {
+    id <- paste0("reduction:", name)
+    if (is.list(profile$manifest[[id]])) {
+      profile$manifest[[id]]$diagnostics <- profile$reductions[[name]]
+    }
+  }
+  profile
 }
 
 # Assays & layers ----

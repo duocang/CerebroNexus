@@ -1516,7 +1516,7 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
 .builder_worker_kill_handles <- function(handles) {
   for (handle in rev(handles)) {
     if (.builder_worker_handle_alive(handle)) {
-      try(ps::ps_send_signal(handle, 9L), silent = TRUE)
+      try(ps::ps_kill(handle), silent = TRUE)
     }
   }
   invisible(handles)

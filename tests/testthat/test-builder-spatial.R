@@ -1496,6 +1496,15 @@ test_that("points-only Spatial FOV appearance persists without an image", {
         alignment$point_appearance(),
         list(opacity = 0.65, size = 6)
       )
+      scene_generation <- alignment$canvas_contract()$generation
+      renamed <- current_entry()
+      renamed$settings$name <- "Renamed without changing Spatial"
+      current_entry(renamed)
+      session$flushReact()
+      expect_identical(
+        alignment$canvas_contract()$generation,
+        scene_generation
+      )
       session$setInputs(`enhance-point_opacity` = 70)
       session$flushReact()
 
@@ -2521,6 +2530,15 @@ test_that("image encoding can retain only the bounded editable raster", {
   )
 
   expect_null(encoded$error)
+  encoded_bytes <- base64enc::base64decode(sub(
+    "^[^,]+,",
+    "",
+    encoded$uri
+  ))
+  expect_identical(
+    encoded$content_md5,
+    unclass(as.character(openssl::md5(encoded_bytes)))
+  )
   expect_identical(dim(encoded$normalized_array), c(3L, 4L, 4L))
   expect_identical(encoded$source_dimensions, c(width = 12L, height = 8L))
   expect_lte(prod(dim(encoded$normalized_array)), 4L * 4L * 4L)

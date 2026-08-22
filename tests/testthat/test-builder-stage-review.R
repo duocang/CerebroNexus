@@ -5,6 +5,18 @@ sys.source(
 )
 sys.source("app.R", envir = environment())
 
+test_that("Review model construction does not serialize the full model", {
+  review <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "ui", "review_stage.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_false(grepl(".builder_review_copy", review, fixed = TRUE))
+})
+
 test_that("active Build phases drive a blocking operation overlay", {
   stale_result <- builder_result_success(
     published = TRUE,
@@ -50,7 +62,9 @@ test_that("Build overlay takes focus before the shell becomes inert", {
   )
   activity <- substr(
     js,
-    regexpr("function applyBuilderActivityState()", js, fixed = TRUE)[[1L]],
+    regexpr("function applyBuilderActivityState(roots)", js, fixed = TRUE)[[
+      1L
+    ]],
     regexpr("function beginBuildOperationFocus", js, fixed = TRUE)[[1L]] - 1L
   )
   focus_at <- regexpr(

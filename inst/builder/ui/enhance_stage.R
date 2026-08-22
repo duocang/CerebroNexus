@@ -749,22 +749,38 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
               "Add optional CSV, TSV, XLS, XLSX, or XLSM tables. Sheet names are listed now; selected tables are read when building."
             ),
             div(
-              class = "enhance-table-file-control builder-file-picker builder-file-picker--content",
-              tags$input(
-                id = ns("table_files"),
-                name = ns("table_files"),
-                class = "shiny-input-file enhance-table-file-input builder-file-input",
-                type = "file",
-                multiple = "multiple",
-                accept = ".csv,.tsv,.txt,.xls,.xlsx,.xlsm",
-                `tabindex` = "-1"
+              class = "enhance-table-file-actions builder-action-row",
+              tags$button(
+                id = ns("choose_local_tables"),
+                class = paste(
+                  "btn btn-primary action-button",
+                  "enhance-table-local-button"
+                ),
+                type = "button",
+                `data-val` = "0",
+                span("Choose local tables…")
               ),
-              tags$label(
-                `for` = ns("table_files"),
-                class = "enhance-table-file-button builder-file-trigger",
-                `tabindex` = "0",
-                role = "button",
-                span("+ Add tables…")
+              div(
+                class = "enhance-table-file-control builder-file-picker builder-file-picker--content",
+                tags$input(
+                  id = ns("table_files"),
+                  name = ns("table_files"),
+                  class = "shiny-input-file enhance-table-file-input builder-file-input",
+                  type = "file",
+                  multiple = "multiple",
+                  accept = ".csv,.tsv,.txt,.xls,.xlsx,.xlsm",
+                  `tabindex` = "-1"
+                ),
+                tags$label(
+                  `for` = ns("table_files"),
+                  class = paste(
+                    "enhance-table-file-button builder-file-trigger",
+                    "builder-file-trigger--secondary"
+                  ),
+                  `tabindex` = "0",
+                  role = "button",
+                  span("Upload through browser…")
+                )
               )
             ),
             uiOutput(ns("table_list"))

@@ -224,7 +224,8 @@ freeze_plan_for_output <- function(
     make_app = make_app,
     overwrite = isTRUE(overwrite),
     app_options = app_options,
-    app_auth = builder_auth_summary(login_enabled, parsed_auth$accounts)
+    app_auth = builder_auth_summary(login_enabled, parsed_auth$accounts),
+    dataset_state_cache = builder_dataset_state_cache
   )
 }
 
@@ -263,7 +264,8 @@ frozen_review_plan <- reactive({
 })
 frozen_review_plan <- bindEvent(
   frozen_review_plan,
-  store(),
+  dataset_check_marks(),
+  dataset_order(),
   imports(),
   review_options(),
   review_validation(),
@@ -563,7 +565,10 @@ output[["inspect_stage"]] <- renderUI({
   req(id)
   entry <- isolate(entry_of(id))
   req(entry)
-  state <- try(builder_dataset_state(entry), silent = TRUE)
+  state <- try(
+    builder_cached_dataset_state(entry, builder_dataset_state_cache),
+    silent = TRUE
+  )
   attention <- if (inherits(state, "try-error")) {
     character()
   } else {
@@ -664,53 +669,61 @@ observeEvent(input$complete_dataset_check, {
   )
   later::later(
     function() {
-      shiny::isolate({
-        finish_after_work <- TRUE
-        on.exit(
-          if (isTRUE(finish_after_work)) finish_check(),
-          add = TRUE
-        )
-        materialized <- alignment_server$materialize_coordinate_drafts(
-          dataset = id,
-          notify = TRUE
-        )
-        if (!isTRUE(materialized$ok)) {
-          return()
-        }
-        entries <- materialized$all_entries
-        ids <- vapply(entries, `[[`, character(1), "id")
-        index <- match(id, ids)
-        if (is.na(index)) {
-          return()
-        }
-        marks <- dataset_check_marks()
-        marks[[id]] <- builder_project_check_identity(entries[[index]])
-        dataset_check_marks(marks)
-        unchecked <- setdiff(ids, names(marks))
-        if (!length(unchecked)) {
-          return()
-        }
-        after <- if (index < length(ids)) {
-          ids[(index + 1L):length(ids)]
-        } else {
-          character()
-        }
-        before <- if (index > 1L) ids[seq_len(index - 1L)] else character()
-        ordered <- c(after, before)
-        target <- ordered[ordered %in% unchecked][[1L]]
-        switched <- alignment_server$request_dataset_switch(target, function() {
-          current(target)
-          result(NULL)
-          session$sendCustomMessage(
-            "builder_focus_dataset_start",
-            list(dataset = target)
+      shiny::withReactiveDomain(builder_lifecycle_session, {
+        shiny::isolate({
+          finish_after_work <- TRUE
+          on.exit(
+            if (isTRUE(finish_after_work)) finish_check(),
+            add = TRUE
           )
+          materialized <- alignment_server$materialize_coordinate_drafts(
+            dataset = id,
+            notify = TRUE
+          )
+          if (!isTRUE(materialized$ok)) {
+            return()
+          }
+          entries <- materialized$all_entries
+          ids <- vapply(entries, `[[`, character(1), "id")
+          index <- match(id, ids)
+          if (is.na(index)) {
+            return()
+          }
+          marks <- dataset_check_marks()
+          marks[[id]] <- builder_project_check_identity(
+            entries[[index]],
+            builder_configuration_identity_cache
+          )
+          dataset_check_marks(marks)
+          unchecked <- setdiff(ids, names(marks))
+          if (!length(unchecked)) {
+            return()
+          }
+          after <- if (index < length(ids)) {
+            ids[(index + 1L):length(ids)]
+          } else {
+            character()
+          }
+          before <- if (index > 1L) ids[seq_len(index - 1L)] else character()
+          ordered <- c(after, before)
+          target <- ordered[ordered %in% unchecked][[1L]]
+          switched <- alignment_server$request_dataset_switch(
+            target,
+            function() {
+              current(target)
+              result(NULL)
+              session$sendCustomMessage(
+                "builder_focus_dataset_start",
+                list(dataset = target)
+              )
+            }
+          )
+          if (!isTRUE(switched)) {
+            return()
+          }
+          finish_after_work <- FALSE
+          later::later(finish_check, delay = 0)
         })
-        if (!isTRUE(switched)) {
-          return()
-        }
-        finish_after_work <- FALSE
-        later::later(finish_check, delay = 0)
       })
     },
     delay = 0
@@ -731,7 +744,10 @@ render_configure_workbench <- function() {
       root = if (is.null(project)) NULL else project$root
     ))
   }
-  state <- try(builder_dataset_state(entry), silent = TRUE)
+  state <- try(
+    builder_cached_dataset_state(entry, builder_dataset_state_cache),
+    silent = TRUE
+  )
   attention <- if (inherits(state, "try-error")) {
     character()
   } else {

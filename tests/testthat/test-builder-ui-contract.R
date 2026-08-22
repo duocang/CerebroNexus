@@ -985,13 +985,20 @@ test_that("metadata configuration controls are absent from client assets", {
 test_that("Viewer content cards preserve disclosure state across Shiny redraws", {
   core <- builder_core_stage_source_text()
   js <- builder_asset_text("www", "builder.js")
+  inspect <- builder_asset_text("ui", "inspect_stage.R")
 
+  expect_match(inspect, "builder-dataset-summary", fixed = TRUE)
   expect_false(grepl('open = "open"', core, fixed = TRUE))
   expect_match(core, "data-disclosure-key", fixed = TRUE)
   expect_match(js, "viewerDisclosureState", fixed = TRUE)
   expect_match(js, "setupPersistentDisclosures", fixed = TRUE)
   expect_match(js, 'details[data-disclosure-key]', fixed = TRUE)
   expect_match(js, "setupViewerContentAccordions", fixed = TRUE)
+  expect_match(
+    js,
+    'document.querySelectorAll(".builder-stage-configure")',
+    fixed = TRUE
+  )
   expect_match(js, 'addEventListener("toggle"', fixed = TRUE)
   expect_match(js, "sibling.open = false", fixed = TRUE)
 })
@@ -1596,7 +1603,7 @@ test_that("project CRB planning has a correlated acknowledgement fallback", {
       fixed = TRUE
     )[[1L]],
     regexpr(
-      "function applyDatasetMutationLock()",
+      "function applyDatasetMutationLock(roots)",
       js,
       fixed = TRUE
     )[[1L]] -
@@ -1987,7 +1994,11 @@ test_that("Builder JavaScript waits for a usable document before initialization"
     fixed = TRUE
   )
   expect_match(js, 'document.readyState === "loading"', fixed = TRUE)
-  expect_match(js, "function scheduleDynamicContentEnhancement()", fixed = TRUE)
+  expect_match(
+    js,
+    "function scheduleDynamicContentEnhancement(root)",
+    fixed = TRUE
+  )
   expect_match(
     js,
     "dynamicContentEnhancementFrame = window.requestAnimationFrame",
@@ -2005,7 +2016,7 @@ test_that("explicitly declared creatable selects use the integrated menu enhance
   base_css <- builder_asset_text("www", "builder.base.css")
   component_css <- builder_asset_text("www", "builder.components.css")
 
-  expect_match(js, "function setupCreatableSelects()", fixed = TRUE)
+  expect_match(js, "function setupCreatableSelects(roots)", fixed = TRUE)
   expect_match(js, "function setupCreatableSelect(root)", fixed = TRUE)
   expect_match(
     js,
@@ -2709,7 +2720,7 @@ test_that("background UI work is bounded to live changing content", {
   expect_false(grepl("setInterval(updateDatasetLoadTimes", js, fixed = TRUE))
   expect_match(js, "function handleDynamicContentMutations", fixed = TRUE)
   expect_match(js, 'closest(".builder-load-time")', fixed = TRUE)
-  expect_match(js, "if (onlyLoadTimeText) return;", fixed = TRUE)
+  expect_match(js, "if (isSelfManagedRailMutation) return;", fixed = TRUE)
   expect_match(stats, "var scanFrame = null;", fixed = TRUE)
   expect_match(stats, "window.requestAnimationFrame", fixed = TRUE)
   expect_match(stats, "if (scanFrame !== null) return;", fixed = TRUE)

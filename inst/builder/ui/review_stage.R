@@ -1,9 +1,5 @@
 ## Frozen-plan Review stage. This file never reads mutable draft inputs.
 
-.builder_review_copy <- function(value) {
-  unserialize(serialize(value, NULL, version = 3L))
-}
-
 builder_review_options <- function(
   welcome_message = "Welcome to CerebroNexus!",
   initial_page = "data_info",
@@ -692,7 +688,7 @@ builder_review_model <- function(plan, verification = NULL) {
     warnings = warning_values,
     can_build = builder_review_can_build(plan)
   )
-  .builder_review_copy(model)
+  model
 }
 
 builder_review_blocked_ui <- function(id, message = NULL) {

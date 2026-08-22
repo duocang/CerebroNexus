@@ -156,6 +156,35 @@ builder_configure_actions_ui <- function(
   )
 }
 
+builder_server_path_dialog <- function(
+  title,
+  input_id,
+  action_id,
+  label,
+  action_label
+) {
+  modalDialog(
+    title = title,
+    tags$p(
+      "The native picker is unavailable. Enter an absolute path on this server."
+    ),
+    tags$label(label, `for` = input_id),
+    tags$input(
+      id = input_id,
+      type = "text",
+      class = "shiny-input-text form-control",
+      autocomplete = "off",
+      spellcheck = "false"
+    ),
+    footer = tagList(
+      modalButton("Cancel"),
+      actionButton(action_id, action_label, class = "btn btn-primary")
+    ),
+    easyClose = FALSE,
+    size = "m"
+  )
+}
+
 builder_build_stage_controls_ui <- function(
   output_path,
   controls_disabled = FALSE

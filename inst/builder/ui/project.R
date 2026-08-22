@@ -42,6 +42,7 @@ builder_project_status_ui <- function(
     switch(
       phase,
       dirty = paste0(project$name %||% "Builder project", " · Unsaved changes"),
+      choosing = "Choosing project location…",
       saving = "Saving project…",
       restoring = "Restoring project…",
       registering = "Adding reusable CRBs…",
@@ -58,6 +59,7 @@ builder_project_status_ui <- function(
     switch(
       phase,
       dirty = "is-dirty",
+      choosing = "is-busy",
       saving = "is-busy",
       restoring = "is-busy",
       registering = "is-busy",

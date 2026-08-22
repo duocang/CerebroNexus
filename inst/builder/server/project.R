@@ -28,6 +28,8 @@ builder_project_source_progress <- reactiveVal(NULL)
 builder_project_open_process <- reactiveVal(NULL)
 builder_project_open_generation <- reactiveVal(0)
 builder_project_open_previous_phase <- reactiveVal("idle")
+builder_project_table_asset_process <- reactiveVal(NULL)
+builder_project_table_asset_generation <- reactiveVal(0)
 builder_client_import_state <- reactiveVal(list(nonce = 0, pending = 0L))
 builder_connection_state <- reactiveVal("connected")
 builder_project_restore_progress <- reactiveVal(list(
@@ -219,6 +221,7 @@ builder_activity_message <- function(
   } else {
     switch(
       phase,
+      choosing = "Choose project location",
       opening = "Opening project",
       restoring = "Restoring datasets",
       saving = "Saving project",
@@ -231,6 +234,7 @@ builder_activity_message <- function(
   } else {
     switch(
       phase,
+      choosing = "The project picker is open.",
       saving = "Saving the Builder project. Keep this page open.",
       opening = "Reading the project file and checking saved datasets…",
       restoring = "Loading the selected source datasets…",
@@ -298,8 +302,7 @@ builder_project_capture_build_plan <- function(
     builder_project_build_crb_request_id(NULL)
     return(invisible(FALSE))
   }
-  captured <- unserialize(serialize(plan, NULL, version = 3L))
-  builder_project_build_plan(captured)
+  builder_project_build_plan(plan)
   builder_project_build_crb_request_id(
     if (builder_has_text(crb_request_id)) as.character(crb_request_id) else NULL
   )
@@ -316,6 +319,24 @@ builder_project_source_runtime_file <- function() {
     stop("The Builder Project runtime could not be found.", call. = FALSE)
   }
   normalizePath(found[[1L]], winslash = "/", mustWork = TRUE)
+}
+
+builder_project_open_runtime_files <- function(include_server_paths = FALSE) {
+  project <- builder_project_source_runtime_file()
+  builder_dir <- dirname(project)
+  files <- if (isTRUE(include_server_paths)) {
+    c(
+      file.path(builder_dir, "core", "bundle_path_contract.R"),
+      file.path(builder_dir, "io.R"),
+      project
+    )
+  } else {
+    project
+  }
+  if (any(!file.exists(files))) {
+    stop("The Builder Project open runtime could not be found.", call. = FALSE)
+  }
+  normalizePath(files, winslash = "/", mustWork = TRUE)
 }
 
 builder_project_open_is_current <- function(generation) {
@@ -458,7 +479,7 @@ builder_project_schedule_open_poll <- function(generation) {
   invisible(TRUE)
 }
 
-builder_project_start_open <- function(selected_path) {
+builder_project_start_open <- function(selected_path, external_roots = NULL) {
   if (builder_session_closed()) {
     return(invisible(FALSE))
   }
@@ -482,17 +503,25 @@ builder_project_start_open <- function(selected_path) {
   }
   process <- tryCatch(
     callr::r_bg(
-      function(selected_path, runtime_file) {
+      function(selected_path, runtime_files, external_roots) {
         runtime <- new.env(parent = globalenv())
         runtime$`%||%` <- function(left, right) {
           if (is.null(left)) right else left
         }
-        sys.source(runtime_file, envir = runtime)
-        runtime$builder_project_open_snapshot(selected_path)
+        for (runtime_file in runtime_files) {
+          sys.source(runtime_file, envir = runtime)
+        }
+        runtime$builder_project_open_snapshot(
+          selected_path,
+          external_roots = external_roots
+        )
       },
       args = list(
         selected_path = selected_path,
-        runtime_file = builder_project_source_runtime_file()
+        runtime_files = builder_project_open_runtime_files(
+          include_server_paths = !is.null(external_roots)
+        ),
+        external_roots = external_roots
       ),
       supervise = TRUE,
       stdout = NULL,
@@ -689,7 +718,14 @@ builder_project_start_source_sync <- function() {
     total = length(jobs),
     failed = 0L
   ))
-  later::later(builder_project_poll_source_sync, delay = 0.2)
+  later::later(
+    function() {
+      shiny::withReactiveDomain(session, {
+        builder_project_poll_source_sync()
+      })
+    },
+    delay = 0.2
+  )
   invisible(TRUE)
 }
 
@@ -722,7 +758,14 @@ builder_project_poll_source_sync <- function() {
     }
   }
   if (isTRUE(process$is_alive())) {
-    later::later(builder_project_poll_source_sync, delay = 0.2)
+    later::later(
+      function() {
+        shiny::withReactiveDomain(session, {
+          builder_project_poll_source_sync()
+        })
+      },
+      delay = 0.2
+    )
     return(invisible(TRUE))
   }
   results <- tryCatch(process$get_result(), error = identity)
@@ -877,7 +920,8 @@ builder_project_build_manifest <- function(entries, project) {
     )
     staged$entry <- builder_project_adopt_table_assets(
       staged$entry,
-      configuration_entry
+      configuration_entry,
+      project$root
     )
     artifact <- artifacts[[entry$id]] %||%
       entry$project_artifact %||%
@@ -1014,12 +1058,26 @@ restore_builder_project_last_ui <- function(manifest) {
   invisible(target)
 }
 
+restore_builder_project_last_ui_after_flush <- function(last_ui) {
+  session$onFlushed(
+    function() {
+      shiny::withReactiveDomain(builder_lifecycle_session, {
+        shiny::isolate(
+          restore_builder_project_last_ui(list(last_ui = last_ui))
+        )
+      })
+    },
+    once = TRUE
+  )
+}
+
 save_builder_project_state <- function(
   show_actions = FALSE,
   materialize = TRUE,
   notify = TRUE,
   manage_lifecycle = TRUE,
-  last_ui = NULL
+  last_ui = NULL,
+  table_asset_results = NULL
 ) {
   project <- isolate(builder_project())
   if (is.null(project)) {
@@ -1066,6 +1124,13 @@ save_builder_project_state <- function(
       ))
     }
     entries <- materialized$all_entries
+  }
+  if (!is.null(table_asset_results)) {
+    entries <- builder_project_apply_table_asset_results(
+      entries,
+      table_asset_results,
+      project$root
+    )
   }
   built <- tryCatch(
     builder_project_build_manifest(entries, project),
@@ -1156,6 +1221,198 @@ save_builder_project_state <- function(
   invisible(TRUE)
 }
 
+finish_builder_project_save_request <- function(ok, after = NULL) {
+  builder_project_saving(FALSE)
+  if (isTRUE(ok)) {
+    builder_project_operation_phase("idle")
+  } else {
+    message <- builder_project_last_save_error() %||% ""
+    builder_project_operation_phase(
+      if (grepl("updated by another Builder window", message, fixed = TRUE)) {
+        "conflict"
+      } else {
+        "save_failed"
+      }
+    )
+  }
+  if (is.function(after)) {
+    after(isTRUE(ok))
+  }
+  invisible(isTRUE(ok))
+}
+
+complete_builder_project_save_request <- function(
+  show_actions = FALSE,
+  materialize = TRUE,
+  notify = TRUE,
+  after = NULL,
+  table_asset_results = NULL
+) {
+  ok <- tryCatch(
+    save_builder_project_state(
+      show_actions = show_actions,
+      materialize = materialize,
+      notify = notify,
+      manage_lifecycle = FALSE,
+      table_asset_results = table_asset_results
+    ),
+    error = function(error) {
+      builder_project_last_save_error(conditionMessage(error))
+      if (isTRUE(notify)) {
+        showNotification(
+          conditionMessage(error),
+          type = "error",
+          duration = 8
+        )
+      }
+      FALSE
+    }
+  )
+  finish_builder_project_save_request(ok, after)
+}
+
+fail_builder_project_table_asset_save <- function(
+  message,
+  notify = TRUE,
+  after = NULL
+) {
+  builder_project_last_save_error(message)
+  if (isTRUE(notify)) {
+    showNotification(message, type = "error", duration = 8)
+  }
+  finish_builder_project_save_request(FALSE, after)
+}
+
+invalidate_builder_project_table_asset_save <- function(kill = TRUE) {
+  process <- isolate(builder_project_table_asset_process())
+  builder_project_table_asset_generation(
+    as.double(isolate(builder_project_table_asset_generation())) + 1
+  )
+  builder_project_table_asset_process(NULL)
+  if (isTRUE(kill) && !is.null(process)) {
+    try(process$kill(), silent = TRUE)
+  }
+  invisible(TRUE)
+}
+
+start_builder_project_table_asset_save <- function(
+  jobs,
+  signature,
+  show_actions,
+  materialize,
+  notify,
+  after
+) {
+  generation <- as.double(isolate(builder_project_table_asset_generation())) + 1
+  builder_project_table_asset_generation(generation)
+  process <- tryCatch(
+    callr::r_bg(
+      function(jobs, root, runtime_file) {
+        runtime <- new.env(parent = baseenv())
+        runtime$`%||%` <- function(left, right) {
+          if (is.null(left)) right else left
+        }
+        sys.source(runtime_file, envir = runtime)
+        runtime$builder_project_stage_table_asset_jobs(jobs, root)
+      },
+      args = list(
+        jobs = jobs,
+        root = signature$root,
+        runtime_file = builder_project_source_runtime_file()
+      ),
+      supervise = TRUE,
+      stdout = "|",
+      stderr = "|"
+    ),
+    error = identity
+  )
+  if (inherits(process, "condition")) {
+    return(fail_builder_project_table_asset_save(
+      "Project attachments could not be saved.",
+      notify,
+      after
+    ))
+  }
+  builder_project_table_asset_process(process)
+  poll <- NULL
+  poll <- function() {
+    if (builder_session_closed()) {
+      invalidate_builder_project_table_asset_save(kill = TRUE)
+      return(invisible(FALSE))
+    }
+    if (
+      !identical(
+        generation,
+        as.double(isolate(builder_project_table_asset_generation()))
+      )
+    ) {
+      return(invisible(FALSE))
+    }
+    alive <- tryCatch(process$is_alive(), error = identity)
+    if (inherits(alive, "condition")) {
+      invalidate_builder_project_table_asset_save(kill = FALSE)
+      return(fail_builder_project_table_asset_save(
+        "Project attachments could not be saved.",
+        notify,
+        after
+      ))
+    }
+    if (isTRUE(alive)) {
+      later::later(
+        function() shiny::withReactiveDomain(session, poll()),
+        delay = 0.1
+      )
+      return(invisible(TRUE))
+    }
+    results <- tryCatch(process$get_result(), error = identity)
+    builder_project_table_asset_process(NULL)
+    if (
+      inherits(results, "condition") ||
+        !builder_project_table_asset_results_match(jobs, results)
+    ) {
+      return(fail_builder_project_table_asset_save(
+        "Project attachments could not be saved.",
+        notify,
+        after
+      ))
+    }
+    current_project <- isolate(builder_project())
+    current_entries <- isolate(sets())
+    current_signature <- tryCatch(
+      builder_project_table_save_signature(current_project, current_entries),
+      error = identity
+    )
+    current_jobs <- tryCatch(
+      builder_project_table_asset_jobs(current_entries, current_project$root),
+      error = identity
+    )
+    if (
+      inherits(current_signature, "condition") ||
+        inherits(current_jobs, "condition") ||
+        !identical(signature, current_signature) ||
+        !identical(jobs, current_jobs)
+    ) {
+      return(fail_builder_project_table_asset_save(
+        "Project settings changed while attachments were saving. Save again.",
+        notify,
+        after
+      ))
+    }
+    complete_builder_project_save_request(
+      show_actions = show_actions,
+      materialize = materialize,
+      notify = notify,
+      after = after,
+      table_asset_results = results
+    )
+  }
+  later::later(
+    function() shiny::withReactiveDomain(session, poll()),
+    delay = 0
+  )
+  invisible(TRUE)
+}
+
 request_builder_project_save <- function(
   show_actions = FALSE,
   materialize = TRUE,
@@ -1170,42 +1427,44 @@ request_builder_project_save <- function(
   session$onFlushed(
     function() {
       shiny::isolate({
-        ok <- tryCatch(
-          save_builder_project_state(
-            show_actions = show_actions,
-            materialize = materialize,
-            notify = notify,
-            manage_lifecycle = FALSE
-          ),
-          error = function(error) {
-            builder_project_last_save_error(conditionMessage(error))
-            if (isTRUE(notify)) {
-              showNotification(
-                conditionMessage(error),
-                type = "error",
-                duration = 8
-              )
-            }
-            FALSE
-          }
+        project <- builder_project()
+        entries <- sets()
+        prepared <- tryCatch(
+          {
+            jobs <- builder_project_table_asset_jobs(entries, project$root)
+            list(
+              jobs = jobs,
+              signature = if (length(jobs)) {
+                builder_project_table_save_signature(project, entries)
+              } else {
+                NULL
+              }
+            )
+          },
+          error = identity
         )
-        builder_project_saving(FALSE)
-        if (isTRUE(ok)) {
-          builder_project_operation_phase("idle")
-        } else {
-          message <- builder_project_last_save_error() %||% ""
-          builder_project_operation_phase(
-            if (
-              grepl("updated by another Builder window", message, fixed = TRUE)
-            ) {
-              "conflict"
-            } else {
-              "save_failed"
-            }
+        if (inherits(prepared, "condition")) {
+          fail_builder_project_table_asset_save(
+            conditionMessage(prepared),
+            notify,
+            after
           )
-        }
-        if (is.function(after)) {
-          after(isTRUE(ok))
+        } else if (length(prepared$jobs)) {
+          start_builder_project_table_asset_save(
+            prepared$jobs,
+            prepared$signature,
+            show_actions,
+            materialize,
+            notify,
+            after
+          )
+        } else {
+          complete_builder_project_save_request(
+            show_actions,
+            materialize,
+            notify,
+            after
+          )
         }
       })
     },
@@ -1279,6 +1538,50 @@ show_builder_project_folder_error <- function(message, type = "error") {
   invisible(FALSE)
 }
 
+show_builder_project_server_path <- function(kind = c("create", "open")) {
+  kind <- match.arg(kind)
+  shiny::showModal(builder_server_path_dialog(
+    title = if (identical(kind, "create")) {
+      "Create project from server path"
+    } else {
+      "Open project from server path"
+    },
+    input_id = if (identical(kind, "create")) {
+      "builder_project_server_folder"
+    } else {
+      "builder_project_server_manifest"
+    },
+    action_id = if (identical(kind, "create")) {
+      "use_builder_project_server_folder"
+    } else {
+      "use_builder_project_server_manifest"
+    },
+    label = if (identical(kind, "create")) {
+      "Project folder"
+    } else {
+      "builder-project.json file"
+    },
+    action_label = if (identical(kind, "create")) "Continue" else "Open project"
+  ))
+  invisible(TRUE)
+}
+
+builder_project_server_path <- function(
+  value,
+  type,
+  roots = builder_server_path_roots()
+) {
+  path <- tryCatch(
+    builder_server_path_resolve(value, type = type, roots = roots),
+    error = identity
+  )
+  if (inherits(path, "condition")) {
+    show_builder_project_folder_error(conditionMessage(path))
+    return(NULL)
+  }
+  path
+}
+
 builder_project_folder_available <- function(folder) {
   if (inherits(folder, "condition")) {
     return(show_builder_project_folder_error(conditionMessage(folder)))
@@ -1320,43 +1623,73 @@ create_builder_project_in_folder <- function(path) {
   invisible(TRUE)
 }
 
+select_builder_project_folder <- function(path) {
+  folder <- tryCatch(builder_project_folder_state(path), error = identity)
+  if (!isTRUE(builder_project_folder_available(folder))) {
+    return(invisible(FALSE))
+  }
+  if (identical(folder$kind, "nonempty")) {
+    builder_project_pending_folder(path)
+    shiny::showModal(builder_project_nonempty_folder_dialog(path))
+    return(invisible(TRUE))
+  }
+  create_builder_project_in_folder(path)
+}
+
 request_builder_project_folder <- function() {
   builder_project_pending_folder(NULL)
   if (!builder_operation_allowed("create_project")) {
     return(invisible(FALSE))
   }
-  choice <- builder_choose_project_directory()
-  if (!builder_operation_allowed("create_project")) {
-    return(invisible(FALSE))
-  }
-  if (identical(choice$status, "cancelled")) {
-    return(invisible(FALSE))
-  }
-  if (!identical(choice$status, "selected")) {
-    showNotification(
-      choice$error %||% "The project folder could not be opened.",
-      type = "error",
-      duration = 7
-    )
-    return(invisible(FALSE))
-  }
-  folder <- tryCatch(
-    builder_project_folder_state(choice$path),
-    error = identity
+  builder_project_operation_phase("choosing")
+  builder_schedule_native_picker(
+    "project_directory",
+    key = "project-create",
+    on_result = function(choice) {
+      shiny::isolate({
+        builder_project_operation_phase("idle")
+        if (!builder_operation_allowed("create_project")) {
+          return(invisible(FALSE))
+        }
+        if (identical(choice$status, "cancelled")) {
+          return(invisible(FALSE))
+        }
+        if (!identical(choice$status, "selected")) {
+          showNotification(
+            choice$error %||% "The project folder could not be opened.",
+            type = "error",
+            duration = 7
+          )
+          show_builder_project_server_path("create")
+          return(invisible(FALSE))
+        }
+        select_builder_project_folder(choice$path)
+      })
+    },
+    on_error = function(error) {
+      builder_project_operation_phase("idle")
+      showNotification(conditionMessage(error), type = "error", duration = 7)
+      show_builder_project_server_path("create")
+    }
   )
-  if (!isTRUE(builder_project_folder_available(folder))) {
-    return(invisible(FALSE))
-  }
-  if (identical(folder$kind, "nonempty")) {
-    builder_project_pending_folder(choice$path)
-    shiny::showModal(builder_project_nonempty_folder_dialog(choice$path))
-    return(invisible(TRUE))
-  }
-  create_builder_project_in_folder(choice$path)
+  invisible(TRUE)
 }
 
 observeEvent(input$choose_builder_project_folder, {
   request_builder_project_folder()
+})
+
+observeEvent(input$use_builder_project_server_folder, {
+  if (!builder_operation_allowed("create_project")) {
+    return()
+  }
+  path <- builder_project_server_path(
+    input$builder_project_server_folder,
+    type = "directory"
+  )
+  if (!is.null(path)) {
+    select_builder_project_folder(path)
+  }
 })
 
 observeEvent(input$confirm_builder_project_folder, {
@@ -1389,6 +1722,7 @@ observeEvent(input$cancel_builder_project_folder, {
 
 session$onSessionEnded(function() {
   builder_project_pending_folder(NULL)
+  invalidate_builder_project_table_asset_save(kill = TRUE)
   invalidate_builder_project_open(kill = TRUE)
 })
 
@@ -1410,42 +1744,62 @@ observeEvent(input$open_builder_project, {
   if (!builder_operation_allowed("open_project")) {
     return()
   }
-  choice <- builder_choose_project_manifest()
+  previous_phase <- isolate(builder_project_operation_phase())
+  builder_project_operation_phase("choosing")
+  builder_schedule_native_picker(
+    "project_manifest",
+    key = "project-open",
+    on_result = function(choice) {
+      shiny::isolate({
+        builder_project_operation_phase(previous_phase)
+        if (!builder_operation_allowed("open_project")) {
+          return()
+        }
+        if (identical(choice$status, "cancelled")) {
+          return()
+        }
+        if (!identical(choice$status, "selected")) {
+          showNotification(
+            choice$error %||% "The project file could not be opened.",
+            type = "error",
+            duration = 7
+          )
+          show_builder_project_server_path("open")
+          return()
+        }
+        builder_project_open_previous_phase(previous_phase)
+        builder_project_start_open(choice$path)
+      })
+    },
+    on_error = function(error) {
+      builder_project_operation_phase(previous_phase)
+      showNotification(conditionMessage(error), type = "error", duration = 7)
+      show_builder_project_server_path("open")
+    }
+  )
+})
+
+observeEvent(input$use_builder_project_server_manifest, {
   if (!builder_operation_allowed("open_project")) {
     return()
   }
-  if (identical(choice$status, "cancelled")) {
+  roots <- tryCatch(builder_server_path_roots(), error = identity)
+  if (inherits(roots, "condition")) {
+    show_builder_project_folder_error(conditionMessage(roots))
     return()
   }
-  if (!identical(choice$status, "selected")) {
-    showNotification(
-      choice$error %||% "The project file could not be opened.",
-      type = "error",
-      duration = 7
-    )
+  path <- builder_project_server_path(
+    input$builder_project_server_manifest,
+    type = "file",
+    roots = roots
+  )
+  if (is.null(path)) {
     return()
   }
-  builder_project_open_previous_phase(
-    isolate(builder_project_operation_phase())
-  )
-  builder_project_restore_progress(list(
-    mode = "opening",
-    total = 0L,
-    remaining = 0L
-  ))
-  builder_project_operation_phase("opening")
-  selected_path <- choice$path
-  session$onFlushed(
-    function() {
-      shiny::isolate({
-        if (builder_session_closed()) {
-          return()
-        }
-        builder_project_start_open(selected_path)
-      })
-    },
-    once = TRUE
-  )
+  previous_phase <- isolate(builder_project_operation_phase())
+  shiny::removeModal()
+  builder_project_open_previous_phase(previous_phase)
+  builder_project_start_open(path, external_roots = roots)
 })
 
 observeEvent(
@@ -1570,7 +1924,7 @@ observeEvent(input$confirm_builder_project_open, {
       remaining = 0L
     ))
     builder_project_operation_phase("idle")
-    restore_builder_project_last_ui(manifest)
+    restore_builder_project_last_ui_after_flush(manifest$last_ui)
     return()
   }
   builder_project_restore_progress(list(
@@ -1615,7 +1969,8 @@ observeEvent(input$confirm_builder_project_open, {
               ),
               dataset_id = record$id,
               source_origin = source$origin %||% "upload",
-              example_id = source$example %||% NULL
+              example_id = source$example %||% NULL,
+              retained_path = if (identical(source$kind, "managed")) path
             )
           }
         }
@@ -1764,9 +2119,7 @@ observe({
       if (isTRUE(saved)) "idle" else "save_failed"
     )
     if (isTRUE(saved)) {
-      restore_builder_project_last_ui(
-        list(last_ui = restored_last_ui)
-      )
+      restore_builder_project_last_ui_after_flush(restored_last_ui)
     }
   }
 })
@@ -1858,7 +2211,8 @@ observeEvent(input$project_resume_current_source, {
         ),
         dataset_id = id,
         source_origin = source$origin %||% "upload",
-        example_id = source$example %||% NULL
+        example_id = source$example %||% NULL,
+        retained_path = if (identical(source$kind, "managed")) path
       )
     },
     error = identity
@@ -1970,7 +2324,7 @@ enqueue_builder_project_checkpoint <- function(plan, request_id) {
     )
     return(invisible(FALSE))
   }
-  captured_plan <- unserialize(serialize(plan, NULL, version = 3L))
+  captured_plan <- plan
   builder_project_checkpoint(TRUE)
   project <- previous_project
   if (!is.null(project)) {
@@ -2425,7 +2779,7 @@ observe({
                 sidecars = item$sidecars %||% character(),
                 dataset_id = item$id,
                 root = project$root,
-                promote = TRUE
+                promote = builder_has_text(crb_request_id)
               ),
               error = function(error) error
             )

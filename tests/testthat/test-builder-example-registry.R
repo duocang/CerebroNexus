@@ -51,3 +51,25 @@ test_that("rendering the static directory cannot invoke example makers", {
   expect_false(any(grepl("builder_examples()", pre_server, fixed = TRUE)))
   expect_false(any(grepl("readRDS", pre_server, fixed = TRUE)))
 })
+
+test_that("source-mode examples resolve from the active package source", {
+  source_root <- normalizePath(
+    testthat::test_path("..", ".."),
+    winslash = "/",
+    mustWork = TRUE
+  )
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = source_root)
+  original_inst_root <- builder_example_registry_env$.builder_example_inst_root
+  withr::defer(
+    builder_example_registry_env$.builder_example_inst_root <- original_inst_root
+  )
+  builder_example_registry_env$.builder_example_inst_root <- ""
+
+  source <- builder_example_registry_env$builder_example_catalog()$all_content$serialized_path
+
+  expect_true(file.exists(source))
+  expect_identical(
+    source,
+    file.path(source_root, "inst", "builder", "fixtures", "all_content.rds")
+  )
+})

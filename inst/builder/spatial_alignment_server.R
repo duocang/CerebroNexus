@@ -999,6 +999,7 @@ builder_spatial_alignment_server <- function(
       )
     )
     record[facts] <- geometry[facts]
+    record$source_content_md5 <- current_draft$source_content_md5 %||% NULL
     record
   }
 
@@ -1150,6 +1151,7 @@ builder_spatial_alignment_server <- function(
       )
     )
     record[facts] <- image_encoded[facts]
+    record$source_content_md5 <- image_encoded$content_md5
     raw_image(list(
       array = image_encoded$normalized_array,
       width = image_encoded$source_width,
@@ -1296,29 +1298,52 @@ builder_spatial_alignment_server <- function(
     }
   })
 
-  colors <- shiny::reactive({
-    preview <- alignment_preview()
+  scene_entry_contract <- shiny::reactiveVal(NULL)
+  shiny::observe({
     id <- current()
     entry <- if (is.null(id)) NULL else entry_of(id)
-    if (!isTRUE(preview$available) || is.null(entry)) {
+    next_contract <- if (is.null(entry)) {
+      NULL
+    } else {
+      group <- entry$settings$default_group %||% ""
+      list(
+        id = entry$id,
+        snapshot_identity = .builder_worker_identity(entry$snapshot),
+        default_group = group,
+        palette = entry$settings$palette %||% "cerebro",
+        color_overrides = builder_settings_color_overrides(
+          entry$settings
+        )[[group]] %||%
+          character(),
+        spatial_point_appearance = entry$settings$spatial_point_appearance %||%
+          list()
+      )
+    }
+    if (!identical(next_contract, shiny::isolate(scene_entry_contract()))) {
+      scene_entry_contract(next_contract)
+    }
+  })
+
+  colors <- shiny::reactive({
+    preview <- alignment_preview()
+    contract <- scene_entry_contract()
+    if (!isTRUE(preview$available) || is.null(contract)) {
       return(character())
     }
     levels <- unique(as.character(preview$spatial$group))
-    group <- entry$settings$default_group %||% ""
-    overrides <- builder_settings_color_overrides(entry$settings)[[group]]
     builder_level_colors(
       levels,
-      entry$settings$palette %||% "cerebro",
-      overrides
+      contract$palette,
+      contract$color_overrides
     )
   })
   shiny::observe({
     preview <- alignment_preview()
-    entry <- entry_of(current())
+    contract <- scene_entry_contract()
     section <- active_section()
     if (
       is.null(preview) ||
-        is.null(entry) ||
+        is.null(contract) ||
         is.null(section) ||
         !identical(preview$section$id, section)
     ) {
@@ -1327,8 +1352,8 @@ builder_spatial_alignment_server <- function(
     generation <- shiny::isolate(canvas_generation()) + 1L
     canvas_generation(generation)
     identity <- paste(
-      entry$id,
-      .builder_worker_identity(entry$snapshot),
+      contract$id,
+      contract$snapshot_identity,
       section,
       kind_for(section),
       active_image() %||% "",
@@ -1338,13 +1363,21 @@ builder_spatial_alignment_server <- function(
       preview = preview,
       colors = colors(),
       record = draft(),
-      point_appearance = point_appearance_for(entry, section, draft()),
+      point_appearance = point_appearance_for(
+        list(
+          settings = list(
+            spatial_point_appearance = contract$spatial_point_appearance
+          )
+        ),
+        section,
+        draft()
+      ),
       coordinate_transform = coordinate_draft(),
       identity = identity,
       generation = generation,
       reset_token = canvas_reset_token(),
-      dataset = entry$id,
-      snapshot_identity = .builder_worker_identity(entry$snapshot),
+      dataset = contract$id,
+      snapshot_identity = contract$snapshot_identity,
       section = section
     )
     canvas_contract(scene[c(
@@ -1357,7 +1390,7 @@ builder_spatial_alignment_server <- function(
       "controls"
     )])
     session$sendCustomMessage("builder_spatial_canvas_scene", scene)
-    finish_switch(entry$id, section)
+    finish_switch(contract$id, section)
   })
 
   output[["enhance-alignment_legend"]] <- shiny::renderUI({
@@ -1903,7 +1936,13 @@ builder_spatial_alignment_server <- function(
       shiny::showNotification(
         paste0(
           if (count > 0L) {
-            paste0("Applied “", label, "” transform to ", count, " section(s); ")
+            paste0(
+              "Applied “",
+              label,
+              "” transform to ",
+              count,
+              " section(s); "
+            )
           } else {
             paste0("Could not apply “", label, "” transform; ")
           },

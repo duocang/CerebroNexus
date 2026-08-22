@@ -25,6 +25,7 @@ builder_mutations_locked <- function(flow, protocol) {
       "building",
       "choosing",
       "choosing_folder",
+      "checking_folder",
       "conflict"
     )
 }
@@ -774,6 +775,8 @@ builder_build_stage_status_model <- function(
     "queued"
   } else if (build_status %in% c("running", "cancelling")) {
     "building"
+  } else if (identical(flow_stage, "checking_folder")) {
+    "checking_folder"
   } else if (!is.null(result)) {
     "result"
   } else if (identical(flow_stage, "choosing_folder")) {
@@ -876,6 +879,7 @@ builder_build_stage_status_label <- function(model) {
       model$message %||% ""
     },
     choosing_folder = "Choosing output folder…",
+    checking_folder = "Checking output folder…",
     preparing = "Preparing build…",
     queued = "Build queued",
     building = "Build in progress",
@@ -923,6 +927,11 @@ builder_build_stage_status_body_ui <- function(model) {
       NULL
     },
     choosing_folder = NULL,
+    checking_folder = div(
+      class = "builder-build-waiting",
+      span(class = "spinner"),
+      span("Checking output folder…")
+    ),
     preparing = div(
       class = "builder-build-waiting",
       span(class = "spinner"),

@@ -897,6 +897,54 @@ builder_release_state <- function(
   )
 }
 
+builder_release_output_preflight <- function(target, expected_roots) {
+  expected_roots <- unique(sub("/.*$", "", as.character(expected_roots)))
+  prior_state <- tryCatch(
+    builder_release_state(
+      target,
+      exact_record = FALSE,
+      allow_abandoned = TRUE
+    ),
+    error = function(error) error
+  )
+  if (inherits(prior_state, "condition")) {
+    return(list(
+      ok = FALSE,
+      error = conditionMessage(prior_state),
+      foreign = character()
+    ))
+  }
+  prior_members <- prior_state$record$members %||% list()
+  prior_roots <- if (length(prior_members)) {
+    unique(sub(
+      "/.*$",
+      "",
+      vapply(prior_members, `[[`, character(1), "path")
+    ))
+  } else {
+    character()
+  }
+  actual_roots <- list.files(target, all.files = TRUE, no.. = TRUE)
+  metadata <- .builder_release_ignorable_metadata(actual_roots)
+  if (any(metadata)) {
+    metadata_paths <- file.path(target, actual_roots[metadata])
+    metadata[metadata] <- file.exists(metadata_paths) &
+      !dir.exists(metadata_paths) &
+      !vapply(metadata_paths, .builder_release_link, logical(1))
+    actual_roots <- actual_roots[!metadata]
+  }
+  foreign <- setdiff(
+    actual_roots,
+    c(expected_roots, prior_roots, .builder_release_record_name)
+  )
+  list(
+    ok = !length(foreign),
+    error = NULL,
+    foreign = foreign,
+    prior_state = prior_state
+  )
+}
+
 .builder_release_identity_valid <- function(identity) {
   is.list(identity) &&
     identical(identity$schema_version, 1L) &&
@@ -906,10 +954,41 @@ builder_release_state <- function(
     is.list(identity$entries)
 }
 
-.builder_release_atomic_rds <- function(value, path, token) {
+.builder_release_atomic_directory <- function(control) {
+  directory <- file.path(control, "diagnostics")
+  if (!dir.exists(directory)) {
+    if (
+      .builder_release_exists(directory) ||
+        !dir.create(directory, mode = "0700")
+    ) {
+      stop("The release journal workspace could not be created.", call. = FALSE)
+    }
+  }
+  if (
+    .builder_release_link(directory) ||
+      !.builder_release_mode_owner_only(directory)
+  ) {
+    stop("The release journal workspace is unsafe.", call. = FALSE)
+  }
+  directory
+}
+
+.builder_release_atomic_rds <- function(value, path, token, control) {
+  if (!.pathWithin(path, control)) {
+    stop("The release journal path escaped its control root.", call. = FALSE)
+  }
+  temporary_root <- .builder_release_atomic_directory(control)
   temporary <- file.path(
-    dirname(path),
-    paste0(".", basename(path), ".", token, ".tmp")
+    temporary_root,
+    paste0(
+      ".",
+      basename(path),
+      ".",
+      token,
+      ".",
+      .builder_release_token("atomic"),
+      ".tmp"
+    )
   )
   if (.builder_release_exists(temporary)) {
     stop("A journal temporary path is already occupied.", call. = FALSE)
@@ -923,7 +1002,17 @@ builder_release_state <- function(
   )
   saveRDS(value, temporary, version = 3)
   Sys.chmod(temporary, mode = "0600")
-  if (!file.rename(temporary, path)) {
+  moved <- tryCatch(
+    {
+      fs::file_move(temporary, path)
+      !file.exists(temporary) &&
+        file.exists(path) &&
+        !dir.exists(path) &&
+        !.builder_release_link(path)
+    },
+    error = function(error) FALSE
+  )
+  if (!isTRUE(moved)) {
     stop(
       "The publication journal could not be replaced atomically.",
       call. = FALSE
@@ -977,6 +1066,14 @@ builder_release_state <- function(
       call. = FALSE
     )
   }
+  diagnostics <- file.path(control, "diagnostics")
+  if (
+    .builder_release_exists(diagnostics) &&
+      (!dir.exists(diagnostics) ||
+        !.builder_release_mode_owner_only(diagnostics))
+  ) {
+    stop("The release journal workspace is unsafe.", call. = FALSE)
+  }
   invisible(control)
 }
 
@@ -1014,7 +1111,7 @@ builder_release_state <- function(
   owner_path <- file.path(lock, "owner.rds")
   owner <- .builder_release_owner(token)
   tryCatch(
-    .builder_release_atomic_rds(owner, owner_path, token),
+    .builder_release_atomic_rds(owner, owner_path, token, control),
     error = function(error) {
       entries <- list.files(lock, all.files = TRUE, no.. = TRUE)
       if (!length(entries)) {
@@ -1055,6 +1152,45 @@ builder_release_state <- function(
   invisible(owner)
 }
 
+.builder_release_transfer_lock <- function(
+  lock,
+  token,
+  from_pid,
+  to_pid = as.integer(Sys.getpid())
+) {
+  valid_pid <- function(pid) {
+    is.integer(pid) && length(pid) == 1L && !is.na(pid) && pid > 0L
+  }
+  from_pid <- as.integer(from_pid)
+  to_pid <- as.integer(to_pid)
+  if (!valid_pid(from_pid) || !valid_pid(to_pid)) {
+    stop("The release lock process identity is invalid.", call. = FALSE)
+  }
+  owner <- .builder_release_assert_lock(lock, token)
+  if (identical(owner$pid, to_pid)) {
+    return(invisible(owner))
+  }
+  if (
+    !identical(owner$pid, from_pid) ||
+      !identical(owner$host, .builder_release_host())
+  ) {
+    stop("The release lock ownership changed.", call. = FALSE)
+  }
+  owner$pid <- to_pid
+  owner$transferred_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
+  .builder_release_atomic_rds(
+    owner,
+    file.path(lock, "owner.rds"),
+    token,
+    dirname(lock)
+  )
+  confirmed <- .builder_release_assert_lock(lock, token)
+  if (!identical(confirmed$pid, to_pid)) {
+    stop("The release lock ownership transfer failed.", call. = FALSE)
+  }
+  invisible(confirmed)
+}
+
 .builder_release_lock_known <- function(lock) {
   entries <- list.files(lock, all.files = TRUE, no.. = TRUE)
   identical(entries, "owner.rds")
@@ -1068,7 +1204,10 @@ builder_release_state <- function(
       call. = FALSE
     )
   }
-  isolated <- file.path(control, paste0(".released-lock-", token))
+  isolated <- file.path(
+    .builder_release_atomic_directory(control),
+    paste0("released-lock-", token, "-", .builder_release_token("atomic"))
+  )
   if (.builder_release_exists(isolated) || !file.rename(lock, isolated)) {
     stop("The release lock could not be isolated safely.", call. = FALSE)
   }
@@ -1085,7 +1224,12 @@ builder_release_state <- function(
   journal$phase <- phase
   journal$updated_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
   journal$detail <- detail
-  .builder_release_atomic_rds(journal, handle$journal, handle$token)
+  .builder_release_atomic_rds(
+    journal,
+    handle$journal,
+    handle$token,
+    handle$control
+  )
   handle$record <- journal
   handle
 }
@@ -1129,7 +1273,7 @@ builder_discover_recovery <- function(target) {
   lock <- file.path(control, "lock")
   if (
     !is.null(journal) &&
-      identical(journal$phase, "complete") &&
+      journal$phase %in% c("complete", "aborted", "recovered") &&
       dir.exists(lock)
   ) {
     return(list(
@@ -1190,6 +1334,19 @@ builder_release_cleanup_control <- function(target) {
       "Incomplete release control data was preserved for recovery.",
       call. = FALSE
     )
+  }
+  diagnostics <- file.path(control, "diagnostics")
+  if (dir.exists(diagnostics)) {
+    if (length(list.files(diagnostics, all.files = TRUE, no.. = TRUE))) {
+      stop(
+        "Release diagnostics were preserved because they are not empty.",
+        call. = FALSE
+      )
+    }
+    unlink(diagnostics, recursive = TRUE, force = TRUE)
+    if (dir.exists(diagnostics)) {
+      stop("Release diagnostics could not be removed.", call. = FALSE)
+    }
   }
   entries <- list.files(control, all.files = TRUE, no.. = TRUE)
   if (!setequal(entries, c("journal.rds", "stages"))) {
@@ -1328,7 +1485,7 @@ builder_prepare_release <- function(
     updated_at = format(Sys.time(), tz = "UTC", usetz = TRUE),
     detail = NULL
   )
-  .builder_release_atomic_rds(record, journal, token)
+  .builder_release_atomic_rds(record, journal, token, control)
   prepared <- TRUE
   structure(
     c(record, list(record = record)),
@@ -1421,16 +1578,29 @@ builder_publish_release <- function(
     )
   }
   if (isTRUE(current$exists)) {
+    handle <- .builder_release_write_phase(handle, "old_moving")
+    .after_phase("old_moving")
     moved <- tryCatch(
       .move(handle$target, handle$backup),
       error = function(error) FALSE
     )
     if (!isTRUE(moved)) {
-      handle <- .builder_release_write_phase(
-        handle,
-        "prepared",
-        "The prior release could not be protected."
-      )
+      prior_unchanged <-
+        !.builder_release_exists(handle$backup) &&
+        identical(
+          tryCatch(
+            builder_release_state(handle$target, exact_record = FALSE),
+            error = function(error) NULL
+          ),
+          handle$expected_prior_state
+        )
+      if (isTRUE(prior_unchanged)) {
+        handle <- .builder_release_write_phase(
+          handle,
+          "prepared",
+          "The prior release could not be protected."
+        )
+      }
       stop("The prior release could not be protected.", call. = FALSE)
     }
     .after_move("old_to_backup")
@@ -1497,14 +1667,37 @@ builder_publish_release <- function(
   .after_phase("new_published")
   handle <- .builder_release_write_phase(handle, "complete")
   .after_phase("complete")
-  .builder_release_release_lock(handle$control, handle$lock, handle$token)
   warning <- NULL
+  retired_backup <- NULL
   if (dir.exists(handle$backup)) {
-    unlink(handle$backup, recursive = TRUE, force = TRUE)
-    if (dir.exists(handle$backup)) {
+    candidate <- file.path(
+      .builder_release_atomic_directory(handle$control),
+      paste0(
+        "retired-backup-",
+        handle$token,
+        "-",
+        .builder_release_token("atomic")
+      )
+    )
+    if (
+      !.builder_release_exists(candidate) &&
+        file.rename(handle$backup, candidate)
+    ) {
+      retired_backup <- candidate
+    } else {
       warning <- paste0(
         "The release was published, but its prior backup remains: ",
         handle$backup
+      )
+    }
+  }
+  .builder_release_release_lock(handle$control, handle$lock, handle$token)
+  if (!is.null(retired_backup)) {
+    unlink(retired_backup, recursive = TRUE, force = TRUE)
+    if (dir.exists(retired_backup)) {
+      warning <- paste0(
+        "The release was published, but its prior backup remains: ",
+        retired_backup
       )
     }
   }
@@ -1520,10 +1713,7 @@ builder_publish_release <- function(
 
 builder_abort_release <- function(handle) {
   handle <- .builder_release_handle(handle)
-  if (
-    handle$record$phase %in%
-      c("old_moved", "new_published", "recovery_required")
-  ) {
+  if (!handle$record$phase %in% c("prepared", "locked")) {
     stop("This release requires recovery and cannot be aborted.", call. = FALSE)
   }
   if (dir.exists(handle$stage)) {
@@ -1535,6 +1725,17 @@ builder_abort_release <- function(handle) {
 }
 
 .builder_release_pid_alive <- function(pid) {
+  if (identical(.Platform$OS.type, "windows")) {
+    if (!requireNamespace("ps", quietly = TRUE)) {
+      return(TRUE)
+    }
+    return(isTRUE(tryCatch(
+      ps::ps_is_running(ps::ps_handle(as.integer(pid))),
+      error = function(error) {
+        if (inherits(error, "no_such_process")) FALSE else TRUE
+      }
+    )))
+  }
   isTRUE(tryCatch(tools::pskill(pid, signal = 0L), error = function(error) {
     FALSE
   }))
@@ -1553,7 +1754,15 @@ builder_abort_release <- function(handle) {
       call. = FALSE
     )
   }
-  isolated <- file.path(control, paste0(".stale-lock-", owner$token))
+  isolated <- file.path(
+    .builder_release_atomic_directory(control),
+    paste0(
+      "stale-lock-",
+      owner$token,
+      "-",
+      .builder_release_token("atomic")
+    )
+  )
   if (.builder_release_exists(isolated) || !file.rename(lock, isolated)) {
     stop("The stale release lock could not be isolated.", call. = FALSE)
   }
@@ -1604,7 +1813,8 @@ builder_recover_release <- function(target, action = c("restore", "abort")) {
   .builder_release_atomic_rds(
     journal,
     .builder_release_journal_path(control),
-    token
+    token,
+    control
   )
   target <- recovery$target
   backup <- recovery$backup
@@ -1657,7 +1867,8 @@ builder_recover_release <- function(target, action = c("restore", "abort")) {
   .builder_release_atomic_rds(
     journal,
     .builder_release_journal_path(control),
-    token
+    token,
+    control
   )
   .builder_release_release_lock(control, recovery_lock, token)
   list(recovered = TRUE, action = action, target = target)

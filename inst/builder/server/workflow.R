@@ -36,21 +36,15 @@ navigate_workflow_stage <- function(stage) {
     return(invisible(FALSE))
   }
   state <- isolate(workflow())
-  available <- builder_workflow_stage_availability(
-    state,
-    datasets_ready = length(isolate(store()$datasets %||% list())) > 0L
-  )
-  if (!isTRUE(available[[stage]])) {
-    return(invisible(FALSE))
-  }
+  datasets_ready <- length(isolate(store()$datasets %||% list())) > 0L
   if (stage %in% c("review", "build") && !isTRUE(all_datasets_checked())) {
     return(invisible(FALSE))
   }
   if (identical(stage, "review")) {
-    plan <- freeze_materialized_plan_for_output(
-      file.path(tempdir(), "cerebro-builder-output-preview"),
-      overwrite = FALSE
-    )
+    if (!datasets_ready) {
+      return(invisible(FALSE))
+    }
+    plan <- isolate(frozen_review_plan())
     if (!builder_review_can_build(plan)) {
       return(invisible(FALSE))
     }
@@ -58,7 +52,16 @@ navigate_workflow_stage <- function(stage) {
       state,
       list(type = "open_review", plan = plan)
     )
-  } else if (identical(stage, "build")) {
+  } else {
+    available <- builder_workflow_stage_availability(
+      state,
+      datasets_ready = datasets_ready
+    )
+    if (!isTRUE(available[[stage]])) {
+      return(invisible(FALSE))
+    }
+  }
+  if (identical(stage, "build")) {
     plan <- state$review_plan
     if (!builder_workflow_confirmation_matches(state, plan)) {
       workflow(builder_reduce_workflow(

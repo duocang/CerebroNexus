@@ -5,23 +5,6 @@
   var tableUploadHighlightTimer = null;
   var narrowManager = window.matchMedia("(max-width: 58rem)");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  function syncWorkflowStickyState() {
-    var progress = document.querySelector(".builder-workflow-progress");
-    if (!progress) return;
-    var host = document.getElementById("workflow_progress") || progress;
-    var stickyTop = parseFloat(window.getComputedStyle(host).top) || 0;
-    var naturalTop = 0;
-    var node = host;
-    while (node) {
-      naturalTop += node.offsetTop;
-      node = node.offsetParent;
-    }
-    progress.classList.toggle(
-      "is-stuck",
-      window.scrollY + stickyTop >= naturalTop
-    );
-  }
-
   function syncWorkflowProgressHeight() {
     var progress = document.querySelector(".builder-workflow-progress");
     var topbar = document.querySelector(".topbar");
@@ -36,10 +19,8 @@
       "--builder-workflow-progress-height",
       height + "px"
     );
-    syncWorkflowStickyState();
   }
   window.addEventListener("resize", syncWorkflowProgressHeight);
-  window.addEventListener("scroll", syncWorkflowStickyState, { passive: true });
 
   var statusTimer = null;
   var lastAnnouncement = "";
@@ -85,6 +66,8 @@
   ]);
   var coordinateResetMotionTimers = new Map();
   var dynamicContentEnhancementFrame = null;
+  var dynamicContentEnhancementRoots = new Set();
+  var spatialScrollbarFrame = null;
   var observedStages = new Set();
   var datasetLoadTimeTimer = null;
   var builderActivityState = {
@@ -140,6 +123,27 @@
     if (!window.Shiny) return false;
     window.Shiny.setInputValue(name, value, { priority: "event" });
     return true;
+  }
+
+  function matchingDynamicElements(roots, selector) {
+    var matches = new Set();
+    (roots && roots.length ? roots : [document]).forEach(function (root) {
+      if (root.nodeType === 1 && root.matches(selector)) matches.add(root);
+      root.querySelectorAll(selector).forEach(function (node) {
+        matches.add(node);
+      });
+    });
+    return Array.from(matches);
+  }
+
+  function matchingDynamicContainers(roots, selector) {
+    var matches = new Set(matchingDynamicElements(roots, selector));
+    (roots && roots.length ? roots : [document]).forEach(function (root) {
+      if (root.nodeType !== 1) return;
+      var container = root.closest(selector);
+      if (container) matches.add(container);
+    });
+    return Array.from(matches);
   }
 
   function datasetSwitchCopy() {
@@ -604,11 +608,13 @@
     );
   }
 
-  function applyDatasetMutationLock() {
+  function applyDatasetMutationLock(roots) {
     var activityLocked = !builderConnectionReady || !builderWorkerReady ||
       builderActivityState.capabilities.mutate_datasets === false;
     var selectors = [
       "#dataset_files",
+      "#choose_local_datasets",
+      "#enhance-choose_local_tables",
       ".builder-file-trigger",
       ".example-btn",
       ".builder-reorder",
@@ -617,7 +623,7 @@
       ".builder-remove-import",
       "#undo_remove",
     ].join(", ");
-    document.querySelectorAll(selectors).forEach(function (control) {
+    matchingDynamicElements(roots, selectors).forEach(function (control) {
       var restoreControl = control.matches(
         ".builder-retry-import, .builder-remove-import"
       );
@@ -728,7 +734,7 @@
     control.setAttribute("aria-disabled", wasDisabled ? "true" : "false");
   }
 
-  function applyBuilderActivityState() {
+  function applyBuilderActivityState(roots) {
     var capabilities = builderActivityState.capabilities || {};
     var projectControls = {
       open_builder_project: activityCapability("open_project"),
@@ -755,7 +761,7 @@
         !projectControls[id]
       );
     });
-    document.querySelectorAll(".builder-pick").forEach(function (control) {
+    matchingDynamicElements(roots, ".builder-pick").forEach(function (control) {
       setActivityDisabled(control, !activityCapability("select_dataset"));
     });
 
@@ -768,13 +774,14 @@
     }
 
     var workspaceLocked = !activityCapability("edit_dataset");
-    document.querySelectorAll(
+    matchingDynamicElements(
+      roots,
       "#builder-workspace input, #builder-workspace select, " +
       "#builder-workspace textarea, #builder-workspace button"
     ).forEach(function (control) {
       setActivityDisabled(control, workspaceLocked);
     });
-    document.querySelectorAll(".builder-workflow-stage-link").forEach(function (link) {
+    matchingDynamicElements(roots, ".builder-workflow-stage-link").forEach(function (link) {
       var locked = !activityCapability("navigate_workflow");
       link.classList.toggle("is-activity-locked", locked);
       link.setAttribute("aria-disabled", locked ? "true" : "false");
@@ -888,7 +895,7 @@
     if (priorBuildOperationActive && !buildOperationActive) {
       restoreBuildOperationFocus();
     }
-    applyDatasetMutationLock();
+    applyDatasetMutationLock(roots);
   }
 
   function beginBuildOperationFocus(overlay) {
@@ -1346,7 +1353,12 @@
 
   function setupFirstRun() {
     var guide = document.querySelector(".builder-first-run[data-first-run]");
-    if (!guide || guide.dataset.ready === "true") return;
+    if (!guide) return;
+    if (document.querySelector("#configure_actions .btn-dataset-check, #continue_to_review")) {
+      guide.hidden = true;
+      return;
+    }
+    if (guide.dataset.ready === "true") return;
     guide.dataset.ready = "true";
     var dismissed = false;
     try { dismissed = window.localStorage.getItem(firstRunKey) === "dismissed"; } catch (error) {}
@@ -1420,8 +1432,8 @@
     picker.click();
   }
 
-  function setupDatasetDropzones() {
-    document.querySelectorAll(".builder-dataset-dropzone").forEach(function (dropzone) {
+  function setupDatasetDropzones(roots) {
+    matchingDynamicElements(roots, ".builder-dataset-dropzone").forEach(function (dropzone) {
       if (dropzone.dataset.dropzoneBound === "true") return;
       dropzone.dataset.dropzoneBound = "true";
       dropzone.addEventListener("click", openDatasetPicker);
@@ -1462,9 +1474,9 @@
       (entry.duplicateHint ? " · Possible duplicate" : "");
   }
 
-  function applyClientImportQueueLock() {
+  function applyClientImportQueueLock(roots) {
     var locked = clientImportQueue.length > 0;
-    document.querySelectorAll(".builder-retry-import").forEach(function (control) {
+    matchingDynamicElements(roots, ".builder-retry-import").forEach(function (control) {
       control.disabled = locked;
       control.setAttribute("aria-disabled", locked ? "true" : "false");
     });
@@ -2072,6 +2084,10 @@
     var rows = message && message.rows;
     if (!rail || !Array.isArray(rows) || typeof message.empty_html !== "string") return;
 
+    var existing = new Map();
+    rail.querySelectorAll(":scope > .ds[data-ds]").forEach(function (row) {
+      existing.set(row.dataset.ds, row);
+    });
     var ids = new Set();
     var target = [];
     for (var index = 0; index < rows.length; index++) {
@@ -2083,11 +2099,20 @@
         console.error("Builder rejected an invalid dataset rail snapshot.");
         return;
       }
-      var parsed = parseDatasetRailElement(
-        record.html, record.id, record.fingerprint
+      var currentRow = existing.get(record.id);
+      var parsed = null;
+      var needsMarkup = (
+        !currentRow ||
+        currentRow.dataset.railFingerprint !== record.fingerprint
       );
-      if (!parsed) {
+      if (needsMarkup) {
+        parsed = parseDatasetRailElement(
+          record.html, record.id, record.fingerprint
+        );
+      }
+      if (needsMarkup && !parsed) {
         console.error("Builder rejected invalid dataset rail row markup.");
+        send("builder_dataset_rail_sync", { nonce: Date.now() });
         return;
       }
       ids.add(record.id);
@@ -2108,10 +2133,6 @@
 
     var focusedElement = document.activeElement;
     var focusIdentity = datasetRailFocusIdentity(focusedElement);
-    var existing = new Map();
-    rail.querySelectorAll(":scope > .ds[data-ds]").forEach(function (row) {
-      existing.set(row.dataset.ds, row);
-    });
 
     if (!target.length) {
       rail.replaceChildren(empty);
@@ -2141,6 +2162,13 @@
       if (replacement) dialog.__builderRestoreFocus = replacement;
     });
     updateRailSummary();
+    if (window.BuilderIcons) window.BuilderIcons.decorate(rail);
+    applyDatasetMutationLock();
+    rail.querySelectorAll(".builder-pick").forEach(function (control) {
+      setActivityDisabled(control, !activityCapability("select_dataset"));
+    });
+    updateDatasetLoadTimes();
+    scheduleDatasetLoadTimeUpdates();
     if (datasetSwitchState.target) {
       var authoritative = rail.querySelector(
         ".builder-pick[aria-current=true]"
@@ -2254,6 +2282,7 @@
     removeReadyImportOverlap();
     var nextFocus = importRailFocusTarget(list, focusIdentity);
     if (nextFocus && nextFocus !== focused) nextFocus.focus();
+    if (window.BuilderIcons) window.BuilderIcons.decorate(host);
     applyDatasetMutationLock();
     updateRailSummary();
   }
@@ -2477,13 +2506,13 @@
     { rootMargin: "-15% 0px -55% 0px", threshold: [0.15, 0.5, 0.85] }
   );
 
-  function registerStages() {
+  function registerStages(roots) {
     observedStages.forEach(function (stage) {
       if (stage.isConnected) return;
       stageObserver.unobserve(stage);
       observedStages.delete(stage);
     });
-    var stages = document.querySelectorAll(".builder-stage");
+    var stages = matchingDynamicElements(roots, ".builder-stage");
     stages.forEach(function (stage) {
       if (stage.dataset.builderStage === "true") return;
       stage.dataset.builderStage = "true";
@@ -2545,9 +2574,9 @@
     scheduleStatusAnnouncement(status);
   }
 
-  function updatePipelines() {
+  function updatePipelines(roots) {
     var order = ["queued", "building", "complete"];
-    document.querySelectorAll(".pipeline[data-pipeline-state]").forEach(function (pipeline) {
+    matchingDynamicElements(roots, ".pipeline[data-pipeline-state]").forEach(function (pipeline) {
       var state = pipeline.dataset.pipelineState;
       var activeIndex = order.indexOf(state);
       pipeline.querySelectorAll(".pipeline-step").forEach(function (step) {
@@ -2870,6 +2899,14 @@
     });
   }
 
+  function updateDisclosureSummary(output, text) {
+    if (!output || output.textContent === text) return;
+    output.textContent = text;
+    output.classList.remove("is-updating");
+    void output.offsetWidth;
+    output.classList.add("is-updating");
+  }
+
   function updateViewerGroupCount(root) {
     var count = root.querySelectorAll(".viewer-group-include:checked").length;
     var card = root.closest(".builder-viewer-card");
@@ -2877,10 +2914,11 @@
     var selected = root.querySelector(".viewer-group-default:checked");
     var row = selected && selected.closest(".viewer-group-row");
     var label = row && row.querySelector(".viewer-group-name");
-    if (output) {
-      output.textContent = count + " included · Default: " +
-        (label ? label.textContent.trim() : "None");
-    }
+    updateDisclosureSummary(
+      output,
+      count + " included · Default: " +
+        (label ? label.textContent.trim() : "None")
+    );
   }
 
   function updateViewerGroupSelection(root, emit, allowEmpty) {
@@ -2966,12 +3004,12 @@
     updateViewerGroupSelection(root, true);
   }
 
-  function setupViewerGroupCatalogs() {
-    document.querySelectorAll(".viewer-group-workspace").forEach(function (root) {
-      if (root.dataset.builderGroups === "true") return;
-      root.dataset.builderGroups = "true";
-      updateViewerGroupSelection(root, false);
-      var initial = root.querySelector(".viewer-group-default:checked");
+  function setupViewerGroupCatalogs(roots) {
+    matchingDynamicElements(roots, ".viewer-group-workspace").forEach(function (workspace) {
+      if (workspace.dataset.builderGroups === "true") return;
+      workspace.dataset.builderGroups = "true";
+      updateViewerGroupSelection(workspace, false);
+      var initial = workspace.querySelector(".viewer-group-default:checked");
       var row = initial && initial.closest(".viewer-group-row");
       var focus = row && row.querySelector(".viewer-group-focus");
       if (focus) {
@@ -3041,10 +3079,11 @@
       return card.dataset.projection === defaultProjection;
     });
     var defaultLabel = defaultCard && defaultCard.querySelector("h4");
-    if (countOutput) {
-      countOutput.textContent = included.length + " included · Default: " +
-        (defaultLabel ? defaultLabel.textContent.trim() : "None");
-    }
+    updateDisclosureSummary(
+      countOutput,
+      included.length + " included · Default: " +
+        (defaultLabel ? defaultLabel.textContent.trim() : "None")
+    );
     if (emit && root.dataset.inputId) {
       send(root.dataset.inputId, {
         action: "set",
@@ -3116,10 +3155,11 @@
     var summary = root.closest(".builder-viewer-card");
     var countOutput = summary && summary.querySelector("[data-viewer-trajectory-count]");
     var defaultLabel = defaultCard && defaultCard.querySelector("h4");
-    if (countOutput) {
-      countOutput.textContent = includedCards.length + " included" +
-        (defaultLabel ? " · Default: " + defaultLabel.textContent.trim() : "");
-    }
+    updateDisclosureSummary(
+      countOutput,
+      includedCards.length + " included" +
+        (defaultLabel ? " · Default: " + defaultLabel.textContent.trim() : "")
+    );
     if (emit && root.dataset.inputId) {
       send(root.dataset.inputId, {
         action: "set",
@@ -3130,20 +3170,20 @@
     }
   }
 
-  function setupViewerContentCatalogs() {
-    document.querySelectorAll(".viewer-projection-workspace").forEach(function (root) {
-      if (root.dataset.builderProjections === "true") return;
-      root.dataset.builderProjections = "true";
-      updateProjectionSelection(root, false);
-      var pointSize = root.querySelector(".viewer-point-size-input");
+  function setupViewerContentCatalogs(roots) {
+    matchingDynamicElements(roots, ".viewer-projection-workspace").forEach(function (workspace) {
+      if (workspace.dataset.builderProjections === "true") return;
+      workspace.dataset.builderProjections = "true";
+      updateProjectionSelection(workspace, false);
+      var pointSize = workspace.querySelector(".viewer-point-size-input");
       if (pointSize) updateProjectionPointSize(pointSize, false);
-      var cellPercentage = root.querySelector(".viewer-cell-percentage-input");
+      var cellPercentage = workspace.querySelector(".viewer-cell-percentage-input");
       if (cellPercentage) updateProjectionCellPercentage(cellPercentage, false);
     });
-    document.querySelectorAll(".viewer-trajectory-workspace").forEach(function (root) {
-      if (root.dataset.builderTrajectories === "true") return;
-      root.dataset.builderTrajectories = "true";
-      updateTrajectorySelection(root, false);
+    matchingDynamicElements(roots, ".viewer-trajectory-workspace").forEach(function (workspace) {
+      if (workspace.dataset.builderTrajectories === "true") return;
+      workspace.dataset.builderTrajectories = "true";
+      updateTrajectorySelection(workspace, false);
     });
   }
 
@@ -3154,8 +3194,8 @@
     return datasetId + "::" + details.dataset.disclosureKey;
   }
 
-  function setupPersistentDisclosures() {
-    document.querySelectorAll("details[data-disclosure-key]").forEach(function (details) {
+  function setupPersistentDisclosures(roots) {
+    matchingDynamicElements(roots, "details[data-disclosure-key]").forEach(function (details) {
       if (details.dataset.builderDisclosure === "true") return;
       var key = disclosureStateKey(details);
       if (viewerDisclosureState.has(key)) {
@@ -3168,11 +3208,13 @@
     });
   }
 
-  function setupViewerContentAccordions() {
-    document.querySelectorAll(".builder-viewer-content").forEach(function (root) {
-      if (root.dataset.builderAccordion === "true") return;
-      root.dataset.builderAccordion = "true";
-      var cards = Array.from(root.querySelectorAll(".builder-viewer-card"));
+  function setupViewerContentAccordions(roots) {
+    matchingDynamicElements(roots, ".builder-stage-configure").forEach(function (stage) {
+      if (stage.dataset.builderAccordion === "true") return;
+      stage.dataset.builderAccordion = "true";
+      var cards = Array.from(stage.querySelectorAll(
+        ".builder-viewer-card[data-disclosure-key]"
+      ));
       cards.forEach(function (card) {
         card.addEventListener("toggle", function () {
           if (!card.open) return;
@@ -3339,8 +3381,8 @@
     root.dataset.builderCreatableSelectReady = "true";
   }
 
-  function setupCreatableSelects() {
-    document.querySelectorAll("[data-builder-creatable-select='true']").forEach(
+  function setupCreatableSelects(roots) {
+    matchingDynamicElements(roots, "[data-builder-creatable-select='true']").forEach(
       setupCreatableSelect
     );
   }
@@ -3443,9 +3485,9 @@
         document.addEventListener("pointermove", drag);
         document.addEventListener("pointerup", stop, { once: true });
       });
-      sidebar.addEventListener("scroll", function () {
-        syncSpatialAlignmentScrollbar(sidebar);
-      }, { passive: true });
+      sidebar.addEventListener("scroll", scheduleSpatialAlignmentScrollbars, {
+        passive: true,
+      });
     }
 
     var visible = spatialAlignmentHasImage(sidebar);
@@ -3469,46 +3511,66 @@
     thumb.style.transform = "translateY(" + thumbTop + "px)";
   }
 
-  function syncSpatialAlignmentScrollbars() {
-    document.querySelectorAll(".spatial-alignment-sidebar").forEach(
+  function syncSpatialAlignmentScrollbars(roots) {
+    matchingDynamicElements(roots, ".spatial-alignment-sidebar").forEach(
       syncSpatialAlignmentScrollbar
     );
   }
 
-  function updateOptionalAnalysisCount() {
-    document.querySelectorAll("[data-analysis-count]").forEach(function (output) {
-      var disclosure = output.closest(".builder-viewer-optional-analyses");
-      if (!disclosure) return;
+  function scheduleSpatialAlignmentScrollbars() {
+    if (spatialScrollbarFrame !== null) return;
+    spatialScrollbarFrame = window.requestAnimationFrame(function () {
+      spatialScrollbarFrame = null;
+      syncSpatialAlignmentScrollbars();
+    });
+  }
+
+  function updateOptionalAnalysisCount(roots) {
+    matchingDynamicContainers(
+      roots,
+      ".builder-viewer-optional-analyses"
+    ).forEach(function (disclosure) {
+      var output = disclosure.querySelector("[data-analysis-count]");
+      if (!output) return;
       var selected = disclosure.querySelectorAll(
         ".enhance-module-checkbox:checked, " +
         ".marker-genes-action[aria-pressed=\"true\"]"
       ).length;
-      output.textContent = selected + " included";
+      updateDisclosureSummary(output, selected + " included");
     });
   }
 
-  function updateExtraMaterialCount() {
-    document.querySelectorAll("[data-extra-material-count]").forEach(function (output) {
-      var disclosure = output.closest(".builder-viewer-extra-material");
-      if (!disclosure) return;
-      output.textContent = disclosure.querySelectorAll(".enhance-sheet-item").length +
-        " included";
+  function updateExtraMaterialCount(roots) {
+    matchingDynamicContainers(
+      roots,
+      ".builder-viewer-extra-material"
+    ).forEach(function (disclosure) {
+      var output = disclosure.querySelector("[data-extra-material-count]");
+      if (!output) return;
+      updateDisclosureSummary(
+        output,
+        disclosure.querySelectorAll(".enhance-sheet-item").length + " included"
+      );
     });
   }
 
-  function enhanceDynamicContent() {
+  function enhanceDynamicContent(roots) {
     syncWorkflowProgressHeight();
-    setupDatasetDropzones();
-    syncSpatialAlignmentScrollbars();
-    updateOptionalAnalysisCount();
-    updateExtraMaterialCount();
-    if (window.BuilderIcons) window.BuilderIcons.decorate(document);
+    setupDatasetDropzones(roots);
+    syncSpatialAlignmentScrollbars(roots);
+    updateOptionalAnalysisCount(roots);
+    updateExtraMaterialCount(roots);
+    if (window.BuilderIcons) {
+      (roots && roots.length ? roots : [document]).forEach(function (root) {
+        window.BuilderIcons.decorate(root);
+      });
+    }
     setupRail();
     updateRailSummary();
-    registerStages();
+    registerStages(roots);
     registerPrimaryAction();
     updateStatusSemantics();
-    updatePipelines();
+    updatePipelines(roots);
     ensureDatasetSwitchVeil();
     var buildStatusHost = document.getElementById("build-stage-status");
     var clientStatus = buildStatusHost && buildStatusHost.querySelector(
@@ -3534,11 +3596,11 @@
       try { window.localStorage.setItem(firstRunKey, "dismissed"); } catch (error) {}
     }
     updateDialogLock();
-    setupPersistentDisclosures();
-    setupViewerContentAccordions();
-    setupViewerGroupCatalogs();
-    setupViewerContentCatalogs();
-    setupCreatableSelects();
+    setupPersistentDisclosures(roots);
+    setupViewerContentAccordions(roots);
+    setupViewerGroupCatalogs(roots);
+    setupViewerContentCatalogs(roots);
+    setupCreatableSelects(roots);
     if (desiredSpatialSection) {
       var sectionSelect = document.getElementById("enhance-active_section");
       if (sectionSelect && sectionSelect.value !== desiredSpatialSection) {
@@ -3549,34 +3611,69 @@
         }
       }
     }
-    applyDatasetMutationLock();
-    applyClientImportQueueLock();
-    applyBuilderActivityState();
-    document.querySelectorAll(".js-plotly-plot").forEach(enhancePlot);
-    document.querySelectorAll('input[type="color"]').forEach(enhanceColour);
-    document.querySelectorAll("select[multiple]").forEach(enhanceMultiSelect);
+    applyBuilderActivityState(roots);
+    matchingDynamicElements(roots, ".js-plotly-plot").forEach(enhancePlot);
+    matchingDynamicElements(roots, 'input[type="color"]').forEach(enhanceColour);
+    matchingDynamicElements(roots, "select[multiple]").forEach(enhanceMultiSelect);
   }
 
-  function scheduleDynamicContentEnhancement() {
+  function scheduleDynamicContentEnhancement(root) {
+    dynamicContentEnhancementRoots.add(
+      root && root.querySelectorAll ? root : document
+    );
     if (dynamicContentEnhancementFrame !== null) return;
     dynamicContentEnhancementFrame = window.requestAnimationFrame(function () {
       dynamicContentEnhancementFrame = null;
-      enhanceDynamicContent();
+      var roots = Array.from(dynamicContentEnhancementRoots);
+      dynamicContentEnhancementRoots.clear();
+      enhanceDynamicContent(roots);
     });
   }
 
   function handleDynamicContentMutations(mutations) {
-    var onlyLoadTimeText = mutations.length > 0 && mutations.every(
+    var isSelfManagedRailMutation = mutations.length > 0 && mutations.every(
       function (mutation) {
         var target = mutation.target.nodeType === 1
           ? mutation.target
           : mutation.target.parentElement;
-        return target && target.closest(".builder-load-time");
+        return target && target.closest(
+          "#ds_ready_list, #ds_import_list, #ds_client_import_queue, " +
+          ".builder-load-time"
+        );
       }
     );
-    if (onlyLoadTimeText) return;
-    scheduleDynamicContentEnhancement();
-    updateDatasetLoadTimes();
+    if (isSelfManagedRailMutation) return;
+    var ignoredSelector =
+      ".js-plotly-plot, .selectize-control, .builder-icon-slot, " +
+      ".shiny-notification-panel";
+    var affectedSelector =
+      ".shiny-html-output, .modal, .builder-dialog, " +
+      "[data-workflow-stage], #build-stage-status, #builder-operation-overlay";
+    var relevantTargets = new Set();
+    mutations.forEach(function (mutation) {
+      var target = mutation.target.nodeType === 1
+        ? mutation.target
+        : mutation.target.parentElement;
+      if (!target || target.closest(ignoredSelector)) return;
+      var affected = target.closest(affectedSelector);
+      if (affected) {
+        relevantTargets.add(affected);
+        return;
+      }
+      Array.from(mutation.addedNodes || []).forEach(function (node) {
+        if (
+          node.nodeType === 1 &&
+          !node.closest(ignoredSelector) &&
+          (node.matches(affectedSelector) || node.querySelector(affectedSelector))
+        ) {
+          relevantTargets.add(node);
+        }
+      });
+    });
+    if (!relevantTargets.size) return;
+    var roots = Array.from(relevantTargets);
+    roots.forEach(scheduleDynamicContentEnhancement);
+    updateDatasetLoadTimes(roots);
     scheduleDatasetLoadTimeUpdates();
   }
 
@@ -3941,7 +4038,7 @@
       return;
     }
 
-    if (target.closest("#builder_add_datasets")) {
+    if (target.closest("#builder_upload_datasets")) {
       openDatasetPicker();
       return;
     }
@@ -4001,7 +4098,13 @@
       (event.key === "Enter" || event.key === " ")
     ) {
       event.preventDefault();
-      if (fileTrigger.id === "builder_add_datasets") openDatasetPicker();
+      if (fileTrigger.id === "builder_upload_datasets") {
+        openDatasetPicker();
+      } else {
+        var targetId = fileTrigger.getAttribute("for");
+        var fileInput = targetId ? document.getElementById(targetId) : null;
+        if (fileInput) fileInput.click();
+      }
       return;
     }
     var enhanceCheckbox = event.target.closest(".enhance-module-checkbox");
@@ -4400,10 +4503,10 @@
     buildDialogHandlerRegistered = true;
   }
 
-  function updateDatasetLoadTimes() {
+  function updateDatasetLoadTimes(roots) {
     var now = Date.now();
     var running = false;
-    document.querySelectorAll(".builder-load-time").forEach(function (node) {
+    matchingDynamicElements(roots, ".builder-load-time").forEach(function (node) {
       var fixed = Number(node.dataset.elapsedMs);
       var started = Number(node.dataset.startedAtMs);
       if (!Number.isFinite(fixed) && Number.isFinite(started)) running = true;
@@ -4416,7 +4519,7 @@
       var text = (elapsed / 1000).toFixed(1) + "s";
       if (node.textContent !== text) node.textContent = text;
     });
-    if (!running && datasetLoadTimeTimer !== null) {
+    if (!roots && !running && datasetLoadTimeTimer !== null) {
       window.clearTimeout(datasetLoadTimeTimer);
       datasetLoadTimeTimer = null;
     }
@@ -4563,7 +4666,7 @@
     requestClientImportSync();
   });
   document.addEventListener("shiny:conditional", function () {
-    window.requestAnimationFrame(syncSpatialAlignmentScrollbars);
+    scheduleSpatialAlignmentScrollbars();
   });
   window.addEventListener("beforeunload", function (event) {
     if (
@@ -4580,7 +4683,7 @@
     registerViewerGroupHandler();
     registerViewerContentHandlers();
 
-    var datasetTrigger = document.getElementById("builder_add_datasets");
+    var datasetTrigger = document.getElementById("builder_upload_datasets");
     if (datasetTrigger) {
       datasetTrigger.addEventListener("dragover", function (event) {
         event.preventDefault();
@@ -4611,8 +4714,8 @@
       reducedMotion.addListener(updateMotionDuration);
     }
     updateMotionDuration();
-    window.addEventListener("resize", syncSpatialAlignmentScrollbars, { passive: true });
-    window.addEventListener("scroll", syncSpatialAlignmentScrollbars, { passive: true });
+    window.addEventListener("resize", scheduleSpatialAlignmentScrollbars, { passive: true });
+    window.addEventListener("scroll", scheduleSpatialAlignmentScrollbars, { passive: true });
     ensureLiveRegion();
     enhanceDynamicContent();
     updateDatasetLoadTimes();
