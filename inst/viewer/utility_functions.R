@@ -1911,9 +1911,9 @@ getEnrichedPathways <- function(method, group) {
 
 ## Wrapper functions for extra_material module.
 ##
-## Extra tables can be embedded in a CRB or frozen into the generated app's
-## configuration.  The Viewer deliberately works with the already-loaded
-## data.frames below; it must never depend on the original spreadsheet paths.
+## External table assets are read only when selected and cached per session.
+extra_material_external_table_cache <- new.env(parent = emptyenv())
+
 extra_material_table_groups <- function(external_manifest, embedded) {
   if (missing(external_manifest)) {
     options <- if (exists("Cerebro.options", inherits = TRUE)) {
@@ -1960,22 +1960,23 @@ extra_material_table_groups <- function(external_manifest, embedded) {
   if (is.list(files)) {
     for (index in seq_along(files)) {
       file <- files[[index]]
-      sheets <- if (is.list(file)) file$sheets else NULL
-      if (!is.list(sheets) || length(sheets) == 0L) {
+      sheet_specs <- if (is.list(file)) file$sheets else NULL
+      if (!is.list(sheet_specs) || length(sheet_specs) == 0L) {
         next
       }
-      sheets <- Filter(
+      sheet_specs <- Filter(
         function(sheet) {
           is.list(sheet) &&
             is.character(sheet$key) &&
             length(sheet$key) == 1L &&
             is.character(sheet$label) &&
             length(sheet$label) == 1L &&
-            is.data.frame(sheet$table)
+            is.character(sheet$path) &&
+            length(sheet$path) == 1L
         },
-        sheets
+        sheet_specs
       )
-      if (length(sheets) == 0L) {
+      if (length(sheet_specs) == 0L) {
         next
       }
       label <- names(files)[[index]]
@@ -1991,12 +1992,69 @@ extra_material_table_groups <- function(external_manifest, embedded) {
       groups[[group_name]] <- list(
         key = paste0("external-file:", index),
         label = label,
-        sheets = sheets
+        sheet_specs = sheet_specs
       )
     }
   }
 
   groups
+}
+
+extra_material_table_sheets <- function(group) {
+  if (!is.list(group)) {
+    return(NULL)
+  }
+  if (!is.null(group$sheets)) {
+    return(group$sheets)
+  }
+  group$sheet_specs
+}
+
+extra_material_external_table <- function(group, sheet) {
+  if (
+    exists(
+      sheet$key,
+      envir = extra_material_external_table_cache,
+      inherits = FALSE
+    )
+  ) {
+    return(get(sheet$key, envir = extra_material_external_table_cache))
+  }
+  root <- if (exists("Cerebro.options", inherits = TRUE)) {
+    get("Cerebro.options", inherits = TRUE)$cerebro_root
+  } else {
+    "."
+  }
+  if (
+    !is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)
+  ) {
+    root <- "."
+  }
+  table <- tryCatch(
+    readRDS(file.path(root, sheet$path)),
+    error = function(error) {
+      stop(
+        "Unable to read table `",
+        sheet$label,
+        "` from `",
+        group$label,
+        "`.",
+        call. = FALSE
+      )
+    }
+  )
+  if (!is.data.frame(table)) {
+    stop(
+      "Table `",
+      sheet$label,
+      "` from `",
+      group$label,
+      "` is invalid.",
+      call. = FALSE
+    )
+  }
+  assign(sheet$key, table, envir = extra_material_external_table_cache)
+  table
 }
 
 extra_material_table_group_by_key <- function(groups, key) {
@@ -2029,16 +2087,15 @@ extra_material_table_file_choices <- function(groups) {
 }
 
 extra_material_table_sheet_by_key <- function(group, key) {
-  if (
-    !is.list(group) ||
-      !is.list(group$sheets) ||
-      is.null(key) ||
-      length(key) != 1L
-  ) {
+  if (!is.list(group) || is.null(key) || length(key) != 1L) {
+    return(NULL)
+  }
+  sheets <- extra_material_table_sheets(group)
+  if (!is.list(sheets)) {
     return(NULL)
   }
   matches <- vapply(
-    group$sheets,
+    sheets,
     function(sheet) {
       is.list(sheet) && identical(sheet$key, key)
     },
@@ -2047,13 +2104,14 @@ extra_material_table_sheet_by_key <- function(group, key) {
   if (!any(matches)) {
     return(NULL)
   }
-  group$sheets[[which(matches)[[1L]]]]
+  sheets[[which(matches)[[1L]]]]
 }
 
 extra_material_table_selection <- function(
   groups,
   file_key = NULL,
-  sheet_key = NULL
+  sheet_key = NULL,
+  load = TRUE
 ) {
   group <- extra_material_table_group_by_key(groups, file_key)
   if (is.null(group) && length(groups) > 0L) {
@@ -2063,11 +2121,15 @@ extra_material_table_selection <- function(
     return(NULL)
   }
   sheet <- extra_material_table_sheet_by_key(group, sheet_key)
-  if (is.null(sheet) && length(group$sheets) > 0L) {
-    sheet <- group$sheets[[1L]]
+  sheets <- extra_material_table_sheets(group)
+  if (is.null(sheet) && length(sheets) > 0L) {
+    sheet <- sheets[[1L]]
   }
   if (is.null(sheet)) {
     return(NULL)
+  }
+  if (isTRUE(load) && is.null(sheet$table)) {
+    sheet$table <- extra_material_external_table(group, sheet)
   }
   list(group = group, sheet = sheet)
 }

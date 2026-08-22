@@ -1,4 +1,4 @@
-#' Bundle external tables for the Viewer
+#' Prepare external tables for a generated Viewer
 #'
 #' @keywords internal
 #' @noRd
@@ -53,15 +53,11 @@
   }
 
   extensions <- tolower(tools::file_ext(paths))
-  supported <- c("csv", "tsv", "txt", "xls", "xlsx", "xlsm")
-  if (any(!extensions %in% supported)) {
+  if (any(!extensions %in% c("csv", "tsv", "txt", "xls", "xlsx", "xlsm"))) {
     stop("extra_tables contains an unsupported file extension.", call. = FALSE)
   }
   if (any(!file.exists(paths))) {
-    stop(
-      "Extra table file(s) not found.",
-      call. = FALSE
-    )
+    stop("Extra table file(s) not found.", call. = FALSE)
   }
   if (any(!utils::file_test("-f", paths))) {
     stop(
@@ -71,10 +67,10 @@
   }
 
   sheet_maps <- .extraTableSheetMaps(extra_tables_sheets, labels, extensions)
-  bundled <- lapply(seq_along(paths), function(file_index) {
+  files <- lapply(seq_along(paths), function(file_index) {
     path <- paths[[file_index]]
     extension <- extensions[[file_index]]
-    source_tables <- if (extension %in% c("csv", "tsv", "txt")) {
+    tables <- if (extension %in% c("csv", "tsv", "txt")) {
       stats::setNames(
         list(.readExtraDelimited(path, extension)),
         labels[[file_index]]
@@ -82,13 +78,13 @@
     } else {
       .readExtraWorkbook(path, labels[[file_index]])
     }
-    sheet_indices <- attr(source_tables, "sheet_indices")
+    sheet_indices <- attr(tables, "sheet_indices")
     if (is.null(sheet_indices)) {
-      sheet_indices <- seq_along(source_tables)
+      sheet_indices <- seq_along(tables)
     }
     mapping <- sheet_maps[[labels[[file_index]]]]
     if (!is.null(mapping)) {
-      missing <- setdiff(unname(mapping), names(source_tables))
+      missing <- setdiff(unname(mapping), names(tables))
       if (length(missing) > 0L) {
         stop(
           "Mapped source sheet `",
@@ -97,8 +93,10 @@
           call. = FALSE
         )
       }
-      unmapped_sources <- setdiff(names(source_tables), unname(mapping))
-      collisions <- intersect(names(mapping), unmapped_sources)
+      collisions <- intersect(
+        names(mapping),
+        setdiff(names(tables), unname(mapping))
+      )
       if (length(collisions) > 0L) {
         stop(
           "Mapped final label `",
@@ -107,35 +105,35 @@
           call. = FALSE
         )
       }
-      labels_by_source <- stats::setNames(
-        names(source_tables),
-        names(source_tables)
-      )
-      labels_by_source[unname(mapping)] <- names(mapping)
+      final_labels <- names(tables)
+      final_labels[match(unname(mapping), names(tables))] <- names(mapping)
     } else {
-      labels_by_source <- names(source_tables)
+      final_labels <- names(tables)
     }
-    lapply(seq_along(source_tables), function(sheet_index) {
-      list(
-        key = paste(
-          "external",
-          file_index,
-          sheet_indices[[sheet_index]],
-          sep = ":"
-        ),
-        label = labels_by_source[[sheet_index]],
-        table = source_tables[[sheet_index]]
+    list(
+      key = paste0("external-file:", file_index),
+      sheets = Map(
+        function(table, label, sheet_index) {
+          list(
+            key = paste("external", file_index, sheet_index, sep = ":"),
+            label = label,
+            table = table
+          )
+        },
+        tables,
+        final_labels,
+        sheet_indices
       )
-    })
+    )
   })
-  names(bundled) <- labels
-  bundled <- lapply(bundled, function(sheets) list(sheets = sheets))
-  list(files = bundled)
+  names(files) <- labels
+  list(files = files)
 }
 
 .extraTableSheetMaps <- function(maps, labels, extensions) {
+  result <- stats::setNames(vector("list", length(labels)), labels)
   if (is.null(maps)) {
-    return(stats::setNames(vector("list", length(labels)), labels))
+    return(result)
   }
   if (
     !is.list(maps) ||
@@ -155,7 +153,6 @@
       call. = FALSE
     )
   }
-  result <- stats::setNames(vector("list", length(labels)), labels)
   for (file_label in names(maps)) {
     if (
       !extensions[[match(file_label, labels)]] %in% c("xls", "xlsx", "xlsm")
@@ -211,11 +208,10 @@
 }
 
 .readExtraDelimited <- function(path, extension) {
-  separator <- if (extension == "csv") "," else "\t"
   utils::read.table(
     path,
     header = TRUE,
-    sep = separator,
+    sep = if (extension == "csv") "," else "\t",
     stringsAsFactors = FALSE,
     check.names = FALSE,
     comment.char = ""
@@ -232,10 +228,12 @@
   workbook <- tryCatch(
     {
       sheets <- readxl::excel_sheets(path)
-      tables <- lapply(sheets, function(sheet) {
-        readxl::read_excel(path, sheet = sheet)
-      })
-      list(sheets = sheets, tables = tables)
+      list(
+        sheets = sheets,
+        tables = lapply(sheets, function(sheet) {
+          readxl::read_excel(path, sheet = sheet)
+        })
+      )
     },
     error = function(error) {
       stop(
@@ -246,12 +244,9 @@
       )
     }
   )
-  sheets <- workbook$sheets
-  tables <- workbook$tables
-  non_empty <- vapply(tables, nrow, integer(1)) > 0L
-  tables[non_empty] <- lapply(tables[non_empty], as.data.frame)
-  tables <- tables[non_empty]
-  names(tables) <- sheets[non_empty]
+  non_empty <- vapply(workbook$tables, nrow, integer(1)) > 0L
+  tables <- lapply(workbook$tables[non_empty], as.data.frame)
+  names(tables) <- workbook$sheets[non_empty]
   attr(tables, "sheet_indices") <- which(non_empty)
   tables
 }

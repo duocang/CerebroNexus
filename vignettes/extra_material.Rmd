@@ -70,10 +70,11 @@ exportFromSeurat(seurat_object,
 
 # Add external table files when building an app
 
-`createShinyApp()` can freeze CSV, TSV, TXT, XLS, XLSX, and XLSM files into a
-generated app. The app reads the files during the build, so deployed Viewers
-do not need access to the original paths. The names in `extra_tables` become
-the **File** choices in the Viewer.
+`createShinyApp()` bundles CSV, TSV, TXT, XLS, XLSX, and XLSM files into a
+generated app, so deployed Viewers do not need access to the original paths.
+During the build, each non-empty table becomes a private resource. The Viewer
+reads only the selected Sheet and caches it for the session. The names in
+`extra_tables` become the **File** choices.
 
 A delimited file contributes one table. An Excel workbook contributes every
 non-empty sheet. Use `extra_tables_sheets` only to rename Excel sheets; it

@@ -1482,15 +1482,16 @@ dedent <- function(string) {
 #'   the name of the environment variable containing its passphrase. Optional
 #'   \code{timeout_minutes} defaults to 15.
 #' @param extra_tables Optional named collection of CSV, TSV, TXT, XLS, XLSX,
-#'   or XLSM file paths to freeze into the generated app as extra material
-#'   tables. The names are the user-facing File choices. Delimited files have
-#'   one table; every non-empty Excel sheet is included. Files must be regular
-#'   files with unique, non-empty names and supported extensions.
+#'   or XLSM file paths to bundle as extra material tables. Each non-empty
+#'   sheet is written as a private app resource during the build and read only
+#'   when selected in the Viewer. The names are the user-facing File choices.
+#'   Files must be regular files with unique, non-empty names and supported
+#'   extensions.
 #' @param extra_tables_sheets Optional named list of Excel sheet label mappings,
 #'   keyed by \code{extra_tables} labels. Each inner mapping is
 #'   \code{list("Displayed sheet name" = "Workbook sheet name")}. It only
-#'   renames matching sheets: every non-empty sheet not named in a mapping is
-#'   still included. Mappings may target only declared Excel files and must
+#'   renames matching sheets: every sheet not named in a mapping is still
+#'   included. Mappings may target only declared Excel files and must
 #'   refer to existing, distinct source sheets with unique final labels.
 #' @param ... Currently unused; reserved for future arguments.
 #'
@@ -1727,7 +1728,7 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
-  extra_table_manifest <- .bundleExtraTables(
+  extra_table_bundle <- .bundleExtraTables(
     extra_tables = extra_tables,
     extra_tables_sheets = extra_tables_sheets
   )
@@ -2290,6 +2291,44 @@ createShinyApp <- function(
     }
   }
 
+  if (!is.null(extra_table_bundle)) {
+    for (file_index in seq_along(extra_table_bundle$files)) {
+      file <- extra_table_bundle$files[[file_index]]
+      for (sheet_index in seq_along(file$sheets)) {
+        sheet <- file$sheets[[sheet_index]]
+        target <- file.path(
+          private_data_root,
+          "extra-tables",
+          paste0(file_index, "-", sheet_index, ".rds")
+        )
+        target_path <- file.path(stage_result_dir, target)
+        dir.create(dirname(target_path), recursive = TRUE, showWarnings = FALSE)
+        written <- tryCatch(
+          {
+            build_ops$save_rds(sheet$table, target_path)
+            file.exists(target_path)
+          },
+          error = function(error) FALSE
+        )
+        if (!isTRUE(written)) {
+          stop(
+            "Failed to write extra table `",
+            sheet$label,
+            "` from `",
+            names(extra_table_bundle$files)[[file_index]],
+            "`.",
+            call. = FALSE
+          )
+        }
+        extra_table_bundle$files[[file_index]]$sheets[[sheet_index]] <- list(
+          key = sheet$key,
+          label = sheet$label,
+          path = target
+        )
+      }
+    }
+  }
+
   if (!is.null(viewer_auth)) {
     auth_database <- file.path(
       stage_result_dir,
@@ -2401,8 +2440,8 @@ createShinyApp <- function(
   if (!is.null(spatial_plot_rotation)) {
     cerebro_options[["spatial_plot_rotation"]] <- spatial_plot_rotation
   }
-  if (!is.null(extra_table_manifest)) {
-    cerebro_options[["extra_tables"]] <- extra_table_manifest
+  if (!is.null(extra_table_bundle)) {
+    cerebro_options[["extra_tables"]] <- list(files = extra_table_bundle$files)
   }
 
   build_ops$save_rds(

@@ -297,6 +297,18 @@ body.skin-blue .sidebar-menu > li > a[data-value="geneExpression"] > i { color: 
   text-align: left !important;
 }
 
+.extra-material-selectors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 24px;
+  padding: 8px 20px 12px;
+}
+.extra-material-selectors .result-selector-field {
+  flex: 0 1 320px;
+  margin: 0;
+}
+
 .cerebro-selection-count {
   padding: 7px 11px;
   color: #4b5563;

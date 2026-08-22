@@ -9,7 +9,19 @@ output[["extra_material_content_UI"]] <- renderUI({
   req(input[["extra_material_selected_category"]])
   ## if selected category is `tables`
   if (input[["extra_material_selected_category"]] == 'tables') {
-    ##
+    selection <- extra_material_table_selection(
+      extra_material_table_groups(),
+      file_key = input[["extra_material_selected_file"]],
+      sheet_key = input[["extra_material_selected_content"]]
+    )
+    if (is.null(selection)) {
+      return(fluidRow(
+        cerebroBox(
+          title = boxTitle("Extra material"),
+          "No non-empty tables available."
+        )
+      ))
+    }
     fluidRow(
       cerebroBox(
         title = tagList(
@@ -80,14 +92,9 @@ output[["extra_material_table"]] <- DT::renderDataTable({
   results_df <- selection$sheet$table
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))
-  ## if the table is empty, skip the processing and show and empty table
-  ## (otherwise the procedure would result in an error)
+  ## prettifyTable() needs at least one row to infer formatting.
   if (nrow(results_df) == 0) {
-    results_df %>%
-      as.data.frame() %>%
-      dplyr::slice(0) %>%
-      prepareEmptyTable()
-    ## if there is at least 1 row, create proper table
+    prepareEmptyTable(results_df[0, , drop = FALSE])
   } else {
     prettifyTable(
       results_df,

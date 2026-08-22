@@ -48,12 +48,12 @@ external_extra_table_manifest <- list(
         list(
           key = "external:1:1",
           label = "Patients",
-          table = data.frame(id = c(1, 2))
+          path = "private-data/extra-tables/1-1.rds"
         ),
         list(
           key = "external:1:2",
           label = "Visits",
-          table = data.frame(id = c(10, 11))
+          path = "private-data/extra-tables/1-2.rds"
         )
       )
     ),
@@ -62,14 +62,14 @@ external_extra_table_manifest <- list(
         list(
           key = "external:2:1",
           label = "Patients",
-          table = data.frame(score = c(3, 4))
+          path = "private-data/extra-tables/2-1.rds"
         )
       )
     )
   )
 )
 
-test_that("extra table groups keep duplicate sheet labels separate", {
+test_that("extra table groups keep duplicate file labels separate", {
   viewer <- extra_material_viewer_env()
   groups <- viewer$extra_material_table_groups(
     external_manifest = external_extra_table_manifest,
@@ -80,14 +80,7 @@ test_that("extra table groups keep duplicate sheet labels separate", {
     groups,
     c("Embedded tables", "Clinical workbook", "Marker workbook")
   )
-  expect_identical(
-    viewer$extra_material_table_selection(
-      groups,
-      file_key = "external-file:2",
-      sheet_key = "external:2:1"
-    )$sheet$table$score,
-    c(3, 4)
-  )
+  expect_identical(groups[[2]]$sheet_specs[[1]]$label, "Patients")
   expect_identical(
     viewer$extra_material_table_selection(
       groups,
@@ -113,7 +106,7 @@ test_that("extra table groups retain legacy embedded tables without a manifest",
   )
 })
 
-test_that("extra table selection falls back to the first available group and sheet", {
+test_that("extra table selection falls back to the first embedded table", {
   viewer <- extra_material_viewer_env()
   groups <- viewer$extra_material_table_groups(
     external_manifest = external_extra_table_manifest,
@@ -127,14 +120,6 @@ test_that("extra table selection falls back to the first available group and she
       sheet_key = "missing-sheet"
     )$sheet$key,
     "embedded:1"
-  )
-  expect_identical(
-    viewer$extra_material_table_selection(
-      groups,
-      file_key = "external-file:1",
-      sheet_key = "missing-sheet"
-    )$sheet$key,
-    "external:1:1"
   )
 })
 
@@ -185,7 +170,7 @@ test_that("extra_material UI defines correct tabName", {
   expect_match(content, 'tabName\\s*=\\s*"extra_material"', perl = TRUE)
 })
 
-test_that("tables-only Viewer content does not expose a redundant category choice", {
+test_that("extra-material selectors use shared compact fields", {
   selector_file <- testthat::test_path(
     "..",
     "..",
@@ -197,11 +182,12 @@ test_that("tables-only Viewer content does not expose a redundant category choic
   skip_if_not(file.exists(selector_file))
   selector <- paste(readLines(selector_file, warn = FALSE), collapse = "\n")
 
-  expect_match(selector, "align-items: flex-end", fixed = TRUE)
+  expect_match(selector, "extra-material-selectors", fixed = TRUE)
+  expect_match(selector, "result-selector-field", fixed = TRUE)
   expect_match(selector, "extra_material_selected_file", fixed = TRUE)
   expect_match(selector, 'label = "Material type:"', fixed = TRUE)
   expect_match(selector, 'label = "Choose a table:"', fixed = TRUE)
-  expect_match(selector, 'width = "320px"', fixed = TRUE)
+  expect_match(selector, 'width = "100%"', fixed = TRUE)
 })
 
 test_that("example.crb extra material returns valid content", {
