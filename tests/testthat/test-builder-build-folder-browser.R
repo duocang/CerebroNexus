@@ -38,17 +38,13 @@ builder_build_folder_open_stage <- function(app) {
   app$wait_for_js(
     paste0(
       "document.querySelector('.ds-pick[aria-current=true]') !== null && ",
-      "document.getElementById('continue_to_review') !== null"
+      "document.getElementById('complete_dataset_check') !== null"
     ),
     timeout = 60000
   )
   builder_browser_dismiss_project_offer(app)
   app$wait_for_idle(timeout = 30000)
-  app$click("complete_dataset_check")
-  app$wait_for_js(
-    "!document.getElementById('continue_to_review').disabled",
-    timeout = 10000
-  )
+  builder_browser_check_all_datasets(app)
   app$click("continue_to_review")
   app$wait_for_js(
     paste0(

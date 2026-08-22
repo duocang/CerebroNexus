@@ -358,6 +358,11 @@ test_that("build plans use collision-proof filenames and resolved colours", {
         )
       )
     )
+    identity <- builder_task6_entry()$dataset_profile$identity
+    entries <- lapply(entries, function(entry) {
+      entry$dataset_profile <- list(identity = identity)
+      entry
+    })
 
     out_dir <- withr::local_tempdir()
     plan <- builder_make_plan(

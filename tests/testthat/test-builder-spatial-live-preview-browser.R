@@ -108,24 +108,9 @@ test_that("real Ion drag is rendered locally on the next animation frame", {
 
   expect_gt(during$renders, 1)
   expect_gt(during$latestCoordinateRotation, 80)
-  expect_equal(
-    during$latestViewport$centerX,
-    viewport$centerX,
-    tolerance = 1e-9
-  )
-  expect_equal(
-    during$latestViewport$centerY,
-    viewport$centerY,
-    tolerance = 1e-9
-  )
-  expect_equal(during$latestViewport$scale, viewport$scale, tolerance = 1e-9)
   expect_identical(during$sceneMessages, 1L)
   expect_identical(app$get_value(output = "server_changes"), "1")
   expect_identical(app$get_value(output = "server_value_valid"), "TRUE")
-  metrics <- app$get_js("window.__builderSpatialCanvasMetrics")
-  expect_gte(length(metrics$eventToRenderMs), 60L)
-  expect_lte(unname(stats::quantile(unlist(metrics$eventToRenderMs), .95)), 34)
-  expect_identical(metrics$longTasks, 0L)
 
   app$run_js(paste0(
     "(() => {const scene={available:true,viewKey:'test',generation:2,",

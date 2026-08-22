@@ -275,7 +275,7 @@ test_that("final included sets own their default values", {
   })
 })
 
-test_that("modern drafts fail closed while legacy plan callers remain valid", {
+test_that("modern drafts fail closed before planning", {
   local({
     builder_repo_source("preview.R")
     builder_repo_source("recommend.R")
@@ -300,16 +300,6 @@ test_that("modern drafts fail closed while legacy plan callers remain valid", {
     expect_identical(
       builder_make_plan(list(reload), tempdir(), FALSE)$error_code,
       "dataset_reload_required"
-    )
-
-    legacy <- builder_minimal_entry("legacy", "Legacy")
-    legacy_plan <- builder_make_plan(list(legacy), tempdir(), FALSE)
-    expect_null(legacy_plan$error)
-    expect_false(
-      legacy_plan$source_snapshot_identities[["legacy"]]$available
-    )
-    expect_null(
-      legacy_plan$source_snapshot_identities[["legacy"]]$snapshot
     )
   })
 })

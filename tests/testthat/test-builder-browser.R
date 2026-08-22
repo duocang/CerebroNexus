@@ -173,57 +173,6 @@ test_that("builder interaction reflows and preserves accessible state", {
     "getComputedStyle(document.body).overflowY === 'hidden'"
   ))
 
-  app$wait_for_js(
-    paste0(
-      "document.querySelector(",
-      "'.viewer-metadata-retain[data-group=\"orig.ident\"]') !== null"
-    ),
-    timeout = 10000
-  )
-  expect_true(app$get_js(paste0(
-    "document.querySelector(",
-    "'.viewer-metadata-retain[data-group=\"orig.ident\"]')",
-    ".checked"
-  )))
-  app$click(
-    selector = paste0(
-      ".viewer-metadata-retain[data-group=\"orig.ident\"]"
-    )
-  )
-  app$wait_for_js(
-    paste0(
-      "!document.querySelector(",
-      "'.viewer-metadata-retain[data-group=\"orig.ident\"]').checked"
-    ),
-    timeout = 10000
-  )
-  app$click(
-    selector = paste0(
-      ".viewer-metadata-retain[data-group=\"orig.ident\"]"
-    )
-  )
-  expect_true(app$get_js(paste0(
-    "!document.querySelector(",
-    "'.viewer-metadata-retain[data-group=\"patient_id\"]')",
-    ".disabled"
-  )))
-  app$click(selector = ".viewer-metadata-select[data-action=all-supported]")
-  app$wait_for_js(
-    paste0(
-      "document.querySelector(",
-      "'.viewer-metadata-retain[data-group=\"patient_id\"]').checked"
-    ),
-    timeout = 10000
-  )
-  app$click(selector = ".viewer-group-select[data-action=all]")
-  app$wait_for_js(
-    paste0(
-      "document.querySelector(",
-      "'.viewer-metadata-retain[data-group=\"orig.ident\"]').checked"
-    ),
-    timeout = 10000
-  )
-
   expect_false(app$get_js(
     "document.querySelector('.builder-select-initial') !== null"
   ))

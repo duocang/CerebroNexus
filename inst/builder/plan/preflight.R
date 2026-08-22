@@ -508,7 +508,9 @@ builder_plan_requires_app <- function(entries) {
   )
   if (inherits(coordinate_transforms, "condition")) {
     message <- conditionMessage(coordinate_transforms)
-    code <- if (grepl("unknown FOV", message, fixed = TRUE)) {
+    code <- if (identical(message, "invalid_artifact_identity")) {
+      "invalid_artifact_identity"
+    } else if (grepl("unknown FOV", message, fixed = TRUE)) {
       "unknown_spatial_coordinate_transform"
     } else {
       "invalid_spatial_coordinate_transform"

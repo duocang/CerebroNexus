@@ -64,14 +64,10 @@ test_that("staged workflow remains focused and overflow-free", {
     )
     builder_expect_no_horizontal_overflow(app)
     app$wait_for_js(
-      "document.getElementById('continue_to_review') !== null",
+      "document.getElementById('complete_dataset_check') !== null",
       timeout = 60000
     )
     builder_browser_dismiss_project_offer(app)
-    expect_identical(
-      app$get_js("document.querySelectorAll('#continue_to_review').length"),
-      1L
-    )
     expect_identical(
       app$get_js(
         "document.querySelectorAll('.builder-workflow-stage-link').length"
@@ -91,6 +87,10 @@ test_that("staged workflow remains focused and overflow-free", {
     builder_expect_no_horizontal_overflow(app)
 
     builder_browser_check_all_datasets(app)
+    expect_identical(
+      app$get_js("document.querySelectorAll('#continue_to_review').length"),
+      1L
+    )
     app$click("continue_to_review")
     builder_wait_for_visible_stage_focus(app, "review")
     expect_identical(

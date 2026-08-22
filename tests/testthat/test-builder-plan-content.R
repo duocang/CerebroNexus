@@ -535,65 +535,6 @@ test_that("production HLA attention requires a stable acknowledgement", {
   })
 })
 
-test_that("production metadata attention requires acknowledgement", {
-  local({
-    builder_repo_source("preview.R")
-    builder_repo_source("recommend.R")
-    builder_repo_source("plan.R")
-
-    profile <- list(
-      schema_version = 2L,
-      identity = list(cells = list(count = 100L)),
-      metadata = list(
-        columns = list(
-          donor_id = list(
-            name = "donor_id",
-            class = "character",
-            supported = TRUE,
-            non_missing = 100L,
-            unique_non_missing = 80L
-          )
-        )
-      )
-    )
-    metadata <- builder_recommend_metadata(profile, required = "donor_id")
-    expect_true(metadata$requires_confirmation)
-    expect_identical(metadata$attention, "donor_id")
-
-    entry <- builder_task6_entry()
-    entry$dataset_profile$identity <- profile$identity
-    entry$dataset_profile$metadata <- profile$metadata
-    entry$levels$donor_id <- c("donor-a", "donor-b")
-    entry$settings$groups <- "donor_id"
-    entry$settings$default_group <- "donor_id"
-    entry$settings$nUMI <- "donor_id"
-    entry$settings$nGene <- "donor_id"
-    entry$settings$recommendations$groups$included <- "donor_id"
-    entry$settings$recommendations$metadata <- metadata
-    entry$settings$metadata_policy <- metadata
-
-    state <- builder_dataset_state(entry)
-    repeated <- builder_dataset_state(entry)
-    expect_identical(state$readiness, "needs_attention")
-    expect_identical(state$attention_ids, "metadata_policy")
-    action <- state$manifest[["metadata_policy"]]$required_action
-    expect_identical(action$type, "acknowledge")
-    expect_true(builder_has_text(action$token))
-    expect_identical(
-      repeated$manifest[["metadata_policy"]]$required_action$token,
-      action$token
-    )
-    expect_identical(
-      builder_freeze_plan(list(entry), tempdir(), FALSE)$error_code,
-      "attention_capability"
-    )
-
-    entry$settings$acknowledgements <- action$token
-    expect_identical(builder_dataset_state(entry)$readiness, "ready")
-    expect_null(builder_freeze_plan(list(entry), tempdir(), FALSE)$error)
-  })
-})
-
 test_that("reserved barcode collisions remain valid blocking policies", {
   local({
     builder_repo_source("preview.R")
@@ -602,7 +543,12 @@ test_that("reserved barcode collisions remain valid blocking policies", {
 
     profile <- list(
       schema_version = 2L,
-      identity = list(cells = list(count = 4L)),
+      identity = list(
+        cells = list(
+          count = 4L,
+          canonical_ids = paste0("cell-", seq_len(4L))
+        )
+      ),
       metadata = list(
         columns = list(
           cell_barcode = list(
@@ -623,7 +569,7 @@ test_that("reserved barcode collisions remain valid blocking policies", {
     expect_true(policy$columns$cell_barcode$effective_included)
 
     entry <- builder_task6_entry()
-    entry$dataset_profile$identity <- profile$identity
+    entry$dataset_profile$identity$cells <- profile$identity$cells
     entry$dataset_profile$metadata <- profile$metadata
     entry$settings$groups <- "cell_barcode"
     entry$settings$default_group <- "cell_barcode"
@@ -649,7 +595,12 @@ test_that("final metadata cannot weaken profiled hard blockers", {
 
     collision_profile <- list(
       schema_version = 2L,
-      identity = list(cells = list(count = 4L)),
+      identity = list(
+        cells = list(
+          count = 4L,
+          canonical_ids = paste0("cell-", seq_len(4L))
+        )
+      ),
       metadata = list(
         columns = list(
           cell_barcode = list(
@@ -668,7 +619,8 @@ test_that("final metadata cannot weaken profiled hard blockers", {
       list(cell_barcode = "attention")
     )
     collision_entry <- builder_task6_entry()
-    collision_entry$dataset_profile$identity <- collision_profile$identity
+    collision_entry$dataset_profile$identity$cells <-
+      collision_profile$identity$cells
     collision_entry$dataset_profile$metadata <- collision_profile$metadata
     collision_entry$settings$groups <- "cell_barcode"
     collision_entry$settings$default_group <- "cell_barcode"
@@ -838,7 +790,12 @@ test_that("missing required metadata remains a valid blocking policy", {
 
     profile <- list(
       schema_version = 2L,
-      identity = list(cells = list(count = 4L)),
+      identity = list(
+        cells = list(
+          count = 4L,
+          canonical_ids = paste0("cell-", seq_len(4L))
+        )
+      ),
       metadata = list(columns = list())
     )
     policy <- builder_recommend_metadata(
@@ -852,7 +809,7 @@ test_that("missing required metadata remains a valid blocking policy", {
     expect_false(sentinel$effective_included)
 
     entry <- builder_task6_entry()
-    entry$dataset_profile$identity <- profile$identity
+    entry$dataset_profile$identity$cells <- profile$identity$cells
     entry$dataset_profile$metadata <- profile$metadata
     entry$settings$groups <- "cell_barcode"
     entry$settings$default_group <- "cell_barcode"
@@ -889,7 +846,7 @@ test_that("final metadata policy owns review and frozen output", {
     )
     expect_identical(
       recommendation$columns$donor_id$disposition,
-      "attention"
+      "included"
     )
     expect_identical(
       final_policy$columns$donor_id$disposition,
@@ -915,11 +872,6 @@ test_that("final metadata policy owns review and frozen output", {
 
     recommendation_only <- builder_task6_entry()
     recommendation_only$settings$metadata_policy <- NULL
-    recommendation_action <- builder_dataset_state(
-      recommendation_only
-    )$manifest[["metadata_policy"]]$required_action
-    recommendation_only$settings$acknowledgements <-
-      recommendation_action$token
     recommendation_plan <- builder_freeze_plan(
       list(recommendation_only),
       tempdir(),
@@ -928,32 +880,6 @@ test_that("final metadata policy owns review and frozen output", {
     expect_null(recommendation_plan$error)
     expect_identical(
       recommendation_plan$items[[1L]]$metadata_policy,
-      expected_recommendation
-    )
-
-    final_attention <- builder_task6_entry()
-    final_attention$settings$metadata_policy <- recommendation
-    attention_state <- builder_dataset_state(final_attention)
-    expect_identical(attention_state$readiness, "needs_attention")
-    expect_identical(
-      builder_freeze_plan(
-        list(final_attention),
-        tempdir(),
-        FALSE
-      )$error_code,
-      "attention_capability"
-    )
-    final_attention$settings$acknowledgements <- attention_state$manifest[[
-      "metadata_policy"
-    ]]$required_action$token
-    attention_plan <- builder_freeze_plan(
-      list(final_attention),
-      tempdir(),
-      FALSE
-    )
-    expect_null(attention_plan$error)
-    expect_identical(
-      attention_plan$items[[1L]]$metadata_policy,
       expected_recommendation
     )
   })

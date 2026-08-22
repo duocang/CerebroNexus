@@ -63,7 +63,6 @@ test_that("loaded source entries are hydrated before their first store attachmen
   )
   saved$settings$palette <- "okabe_ito"
   saved$settings$content_sources <- list(immune_repertoire = "vdj")
-  saved$settings$tables <- list(qc = list(name = "QC", rows = 12L))
   saved$settings$analyses <- c("most_expressed", "marker_genes")
   saved$acknowledgements <- "metadata"
   record <- runtime$builder_project_dataset_record(
