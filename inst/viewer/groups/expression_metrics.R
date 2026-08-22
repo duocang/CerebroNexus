@@ -45,6 +45,10 @@ output[["groups_expression_metrics_UI"]] <- renderUI({
 ## Number of transcripts.
 ##----------------------------------------------------------------------------##
 output[["groups_nUMI_UI"]] <- renderUI({
+  req(identical(
+    input[["groups_expression_metrics_tabs"]],
+    "Number of transcripts"
+  ))
   if ("nUMI" %in% colnames(getMetaData())) {
     plotly::plotlyOutput("groups_nUMI_plot")
   } else {
@@ -77,6 +81,10 @@ output[["groups_nUMI_plot"]] <- plotly::renderPlotly({
 ## Number of expressed genes.
 ##----------------------------------------------------------------------------##
 output[["groups_nGene_UI"]] <- renderUI({
+  req(identical(
+    input[["groups_expression_metrics_tabs"]],
+    "Number of expressed genes"
+  ))
   if ("nGene" %in% colnames(getMetaData())) {
     plotly::plotlyOutput("groups_nGene_plot")
   } else {
@@ -109,6 +117,10 @@ output[["groups_nGene_plot"]] <- plotly::renderPlotly({
 ## Expression from mitochondrial genes.
 ##----------------------------------------------------------------------------##
 output[["groups_percent_mt_UI"]] <- renderUI({
+  req(identical(
+    input[["groups_expression_metrics_tabs"]],
+    "Mitochondrial gene expression"
+  ))
   if ("percent_mt" %in% colnames(getMetaData())) {
     plotly::plotlyOutput("groups_percent_mt_plot")
   } else {
@@ -141,6 +153,10 @@ output[["groups_percent_mt_plot"]] <- plotly::renderPlotly({
 ## Expression from ribosomal genes.
 ##----------------------------------------------------------------------------##
 output[["groups_percent_ribo_UI"]] <- renderUI({
+  req(identical(
+    input[["groups_expression_metrics_tabs"]],
+    "Ribosomal gene expression"
+  ))
   if ("percent_ribo" %in% colnames(getMetaData())) {
     plotly::plotlyOutput("groups_percent_ribo_plot")
   } else {

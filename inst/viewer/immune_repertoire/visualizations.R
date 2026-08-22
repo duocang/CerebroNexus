@@ -485,6 +485,7 @@ ir_clonal_umap_ggplot <- function(df, group_by, point_size, alpha, ncol) {
 }
 
 output$ir_ui_clonalUMAP <- renderUI({
+  req(identical(input$ir_tabs, "Clonal UMAP"))
   group_by <- ir_param("ir_p_umap_group_by", "")
   if (is.null(group_by) || !nzchar(group_by)) {
     ## Non-faceted: render through the shared projection-scatter engine (same
@@ -767,6 +768,7 @@ observe({
 
 output$ir_plot_clonalUMAP_static <- renderPlot(
   {
+    req(identical(input$ir_tabs, "Clonal UMAP"))
     req_plot_space("ir_plot_clonalUMAP_static")
     receptor <- ir_param("ir_p_umap_receptor")
     projection <- ir_param("ir_p_umap_projection")
@@ -855,6 +857,7 @@ output$ir_plot_clonalUMAP_static <- renderPlot(
 
 ## ---- BCR-specific renderers --------------------------------------------- ##
 output$ir_plot_isotype <- plotly::renderPlotly({
+  req(identical(input$ir_tabs, "Isotype"))
   req_plot_space("ir_plot_isotype")
   data <- ir_data()
   req(!is.null(data))
@@ -884,6 +887,7 @@ ir_sample_meta <- reactive({
 })
 
 output$ir_ui_pairedScatter <- renderUI({
+  req(identical(input$ir_tabs, "Paired Scatter"))
   groups <- ir_compare_groups()
   if (length(groups) < 2) {
     return(div(
@@ -985,6 +989,7 @@ ir_paired_plotly_output <- function() {
 }
 
 output$ir_ui_pairedScatter_plot <- renderUI({
+  req(identical(input$ir_tabs, "Paired Scatter"))
   pair_mode <- input$ir_pair_compare
   # Single-plot case (no compare mode): fill the viewport like every other tab.
   if (is.null(pair_mode) || !nzchar(pair_mode)) {
@@ -1050,6 +1055,7 @@ ir_paired_scatter_panel <- function(
 ## Single-panel paired scatter -> interactive plotly. The default ggplotly hover
 ## already shows the x/y group values and the clone class.
 output$ir_plot_pairedScatter <- plotly::renderPlotly({
+  req(identical(input$ir_tabs, "Paired Scatter"))
   req_scRepertoire()
   req_plot_space("ir_plot_pairedScatter")
   data <- ir_data_annotated()
@@ -1112,6 +1118,7 @@ output$ir_plot_pairedScatter <- plotly::renderPlotly({
 ## Faceted paired scatter -> static patchwork grid (plotly cannot lay out the
 ## multi-panel grid cleanly, so this variant stays a ggplot).
 output$ir_plot_pairedScatter_facet <- renderPlot({
+  req(identical(input$ir_tabs, "Paired Scatter"))
   req_scRepertoire()
   req_plot_space("ir_plot_pairedScatter_facet")
   data <- ir_data_annotated()
@@ -1181,6 +1188,7 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
   )
 
 output$ir_plot_clonalAbundance <- plotly::renderPlotly({
+  req(identical(input$ir_tabs, "Abundance"))
   req_scRepertoire()
   req_plot_space("ir_plot_clonalAbundance")
   data <- ir_data()
@@ -1213,6 +1221,7 @@ output$ir_plot_clonalAbundance <- plotly::renderPlotly({
 ## graph mode was dropped: Compare is about tracking clones across groups, which
 ## is the alluvial, and mixing a plotOutput/plotlyOutput per mode is not worth it.
 output$ir_plot_clonalCompare <- plotly::renderPlotly({
+  req(identical(input$ir_tabs, "Compare"))
   req_scRepertoire()
   req_plot_space("ir_plot_clonalCompare")
   samples <- input$ir_compare_samples
@@ -1415,6 +1424,7 @@ ir_plot_clonal_diversity <- function(
 }
 
 output$ir_plot_clonalDiversity <- plotly::renderPlotly({
+  req(identical(input$ir_tabs, "Diversity"))
   req_scRepertoire()
   req_plot_space("ir_plot_clonalDiversity")
   data <- ir_data()
@@ -1452,6 +1462,7 @@ output$ir_plot_clonalDiversity <- plotly::renderPlotly({
   )
 
 output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
+  req(identical(input$ir_tabs, "Homeostasis"))
   req_scRepertoire()
   req_plot_space("ir_plot_clonalHomeostasis")
   data <- ir_data()
@@ -1480,6 +1491,7 @@ output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
   )
 
 output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
+  req(identical(input$ir_tabs, "SizeDist"))
   req_scRepertoire()
   req_plot_space("ir_plot_clonalSizeDistribution")
   data <- ir_data()
@@ -1525,6 +1537,7 @@ output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
 ## Public(within-group) / Public(cross-group) using the chosen sharing unit and
 ## the active group.by, then bars the class counts.
 output$ir_plot_cloneSharing <- plotly::renderPlotly({
+  req(identical(input$ir_tabs, "Clone Sharing"))
   ## Self-made plot (ir_build_sharing_plot in data.R) — does NOT call
   ## scRepertoire, so gate on the cheap availability probe only and never load
   ## the namespace here.

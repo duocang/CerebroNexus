@@ -286,6 +286,7 @@
       typeof Plotly !== 'undefined' &&
       fullLayout &&
       typeof Plotly.relayout === 'function' &&
+      !(state && state.relayoutFailed) &&
       !plotlySizeMatches
     ) {
       // transition duration 0: the size change must be instantaneous, never an
@@ -293,14 +294,31 @@
       // layer). Mark a relayout in flight so reveal waits for its repaint, then
       // clear it and reschedule so the confirming frame re-checks the gate.
       state && (state.relayoutPending = true);
-      const relayoutDone = Plotly.relayout(elements.plot, {
-        width: width,
-        height: height,
-        'transition.duration': 0,
-      });
+      let relayoutDone;
+      try {
+        relayoutDone = Plotly.relayout(elements.plot, {
+          width: width,
+          height: height,
+          'transition.duration': 0,
+        });
+      } catch (_) {
+        if (state) {
+          state.relayoutPending = false;
+          state.relayoutFailed = true;
+        }
+        Plotly.Plots.resize(elements.plot);
+        scheduleProjectionResize(plotId);
+        return;
+      }
       if (relayoutDone && typeof relayoutDone.then === 'function') {
         relayoutDone.then(function () {
           if (state) state.relayoutPending = false;
+          scheduleProjectionResize(plotId);
+        }).catch(function () {
+          if (state) {
+            state.relayoutPending = false;
+            state.relayoutFailed = true;
+          }
           scheduleProjectionResize(plotId);
         });
       } else {
@@ -401,6 +419,7 @@
         // "jump"). Starts false: a plot whose first measured size already
         // matches never calls relayout, so it must still be revealable.
         relayoutPending: false,
+        relayoutFailed: false,
       };
       projectionResizeState.set(plotId, state);
     }

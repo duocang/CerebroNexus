@@ -460,6 +460,7 @@ hla_visnet <- reactive({
 ## threshold keeps. Reads the same finalized graph the network draws, so it
 ## always agrees with what is on screen and updates when the slider settles.
 output$hla_motif_readout <- renderUI({
+  req(identical(input$hla_tabs, "Motif Network"))
   req(hla_ready_latch())
   g <- hla_motif_graph_cached()
   if (!hla_motif_graph_ok(g)) {
@@ -482,6 +483,7 @@ output$hla_motif_readout <- renderUI({
 })
 
 output$hla_plot_motifNetwork <- visNetwork::renderVisNetwork({
+  req(identical(input$hla_tabs, "Motif Network"))
   # Re-render only on a STRUCTURE change. Gate on the readiness latch rather than
   # the colour-reading hla_params_ready() gate, depend on the cached graph for
   # structure, and read the coloured visnet ISOLATED so a colour-only change does
@@ -787,6 +789,7 @@ output$hla_export_analysis <- downloadHandler(
 
 ## ---- Note under the network (guard messages / empty state) ------------- ##
 output$hla_motif_note <- renderUI({
+  req(identical(input$hla_tabs, "Motif Network"))
   if (!hla_has_deps()) {
     return(tags$p(
       class = "text-muted",
@@ -872,6 +875,7 @@ output$hla_motif_note <- renderUI({
 ## not. A flex row wraps to as many lines as the levels require, so a 20-level
 ## scale is readable instead of clipped, and the network keeps the full width.
 output$hla_legend_ui <- renderUI({
+  req(identical(input$hla_tabs, "Motif Network"))
   vn <- hla_visnet()
   if (is.null(vn) || is.null(vn$legend) || nrow(vn$legend) == 0) {
     return(NULL)

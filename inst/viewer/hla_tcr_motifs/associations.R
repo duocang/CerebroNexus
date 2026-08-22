@@ -135,6 +135,7 @@ hla_overlap_table <- reactive({
 })
 
 output$hla_associations_ui <- renderUI({
+  req(identical(input$hla_tabs, "HLA Associations"))
   if (!hla_has_typing()) {
     return(tags$p(
       class = "text-muted",

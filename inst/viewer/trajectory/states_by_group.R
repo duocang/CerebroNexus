@@ -9,7 +9,7 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_by_group_UI"]] <- renderUI({
-  req(trajectory_selection_ok())
+  req(trajectory_details_ready(), trajectory_selection_ok())
 
   fluidRow(
     cerebroBox(

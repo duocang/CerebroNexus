@@ -181,6 +181,7 @@ ir_flow_controls_inline <- function(controls, min_width = "160px") {
 
 ## ---- Scatter sample selectors (Scatter tab only) --------------------- ##
 output$ir_scatter_settings <- renderUI({
+  req(identical(input$ir_tabs, "Scatter"))
   available_samples <- ir_compare_groups()
   if (length(available_samples) < 2) {
     return(helpText(
@@ -216,6 +217,7 @@ output$ir_scatter_settings <- renderUI({
 
 ## ---- Compare sample selector (Compare tab only) ---------------------- ##
 output$ir_compare_settings <- renderUI({
+  req(identical(input$ir_tabs, "Compare"))
   available_samples <- ir_compare_groups()
   if (length(available_samples) < 2) {
     return(helpText(

@@ -97,6 +97,7 @@ hla_network_table_grain <- reactive({
 ## stays "cell" so the reactives and the CSV name are unchanged; only the label
 ## follows the declared unit.
 output$hla_table_grain_ui <- renderUI({
+  req(identical(input$hla_tabs, "Network data"))
   unit <- getObservationUnit()$singular
   tagList(
     radioButtons(
@@ -185,6 +186,7 @@ hla_network_table_data <- reactive({
 })
 
 output$hla_network_table <- DT::renderDataTable({
+  req(identical(input$hla_tabs, "Network data"))
   df <- hla_network_table_data()
   if (is.null(df)) {
     df <- data.frame(Note = "No rows in the current network scope.")
