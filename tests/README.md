@@ -26,6 +26,8 @@ tests/
 ├── testthat/              # actual unit + shinytest2 suite (committed)
 │   ├── setup.R            # sets NOT_CRAN=true so shinytest2 tests are not skipped
 │   ├── test-app-inst.R    # shinytest2 end-to-end smoke tests against inst/
+│   ├── test-app-immune_repertoire.R # shared-driver IR browser regressions
+│   ├── test-coordinated-views-browser.R # linked-view interactions
 │   ├── test-exportFromSeurat.R
 │   ├── test-r-functions.R
 │   └── _snaps/            # testthat snapshot fixtures
@@ -41,7 +43,7 @@ R `>= 3.5.1` and the package's runtime deps installed. For the full test suite y
 | Package | Why |
 |---|---|
 | `testthat (>= 3.0.0)` | core framework |
-| `shinytest2 (>= 0.2.0)` | drives the Shiny app in `test-app-inst.R` |
+| `shinytest2 (>= 0.2.0)` | drives the Shiny browser regression tests |
 | `chromote` | transitive dep of `shinytest2`; controls headless Chrome |
 | Google Chrome / Chromium | actual browser binary `chromote` launches |
 

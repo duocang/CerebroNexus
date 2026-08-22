@@ -71,6 +71,7 @@ articles:
       - immune_repertoire_analysis
       - trajectory_analysis
       - spatial_analysis
+      - linked_views
       - trekker_spatial_mapping
       - hla_tcr_motifs
       - hla_bulk_tcr_associations

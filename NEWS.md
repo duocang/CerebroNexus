@@ -1,3 +1,15 @@
+# CerebroNexus 4.5.0
+
+## Linked views
+
+- Added the coordinated cross-modal workspace. Expression, spatial/Trekker, and
+  immune-repertoire panels share one cell-level selection, with live cohort and
+  clonotype summaries; 3-D views remain navigation-only so selections stay
+  reproducible.
+- Improved continuous colour rendering, per-panel zoom and full-panel focus,
+  spatial-image alignment, clone-definition consistency, lazy workspace
+  construction, and escaping of dataset-supplied labels.
+
 # CerebroNexus 4.4.0
 
 ## Internal
@@ -250,7 +262,6 @@
   `convertSeuratToCerebro()` also hands its already validated resolution to
   `exportFromSeurat()`, avoiding a second joined matrix and the corresponding
   peak-memory duplication.
-
 # CerebroNexus 3.0.2
 
 ## Interface and documentation
