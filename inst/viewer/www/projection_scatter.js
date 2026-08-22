@@ -37,50 +37,6 @@
   // each projection plot has its own independent selection.
   const selectionByPlot = new Map(); // plotId -> Set<"x|y"> (or absent)
 
-  // Groups hidden via the legend, per plot. Pushed to Shiny so the selected-
-  // cells count/panels can exclude cells in hidden groups. Kept separate from
-  // the Plotly trace visibility so it survives re-renders that rebuild traces.
-  const hiddenGroupsByPlot = new Map(); // plotId -> Set<groupName>
-  function setHiddenGroup(plotId, groupName, hidden) {
-    let set = hiddenGroupsByPlot.get(plotId);
-    if (!set) {
-      set = new Set();
-      hiddenGroupsByPlot.set(plotId, set);
-    }
-    if (hidden) {
-      set.add(groupName);
-    } else {
-      set.delete(groupName);
-    }
-    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue(plotId + '_hidden_groups', Array.from(set));
-    }
-  }
-
-  // The colouring variable the hidden set was recorded against. When it changes,
-  // the group labels are a different set, so the old hidden state is meaningless
-  // (and would wrongly hide same-named groups under the new variable); drop it.
-  const hiddenGroupsVariableByPlot = new Map(); // plotId -> color_variable
-  function clearHiddenGroups(plotId) {
-    const set = hiddenGroupsByPlot.get(plotId);
-    if (set && set.size) {
-      set.clear();
-      if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-        Shiny.setInputValue(plotId + '_hidden_groups', []);
-      }
-    }
-  }
-  function syncHiddenGroupsForVariable(plotId, colorVariable) {
-    if (hiddenGroupsVariableByPlot.get(plotId) !== colorVariable) {
-      clearHiddenGroups(plotId);
-      hiddenGroupsVariableByPlot.set(plotId, colorVariable);
-    }
-  }
-  function isGroupHidden(plotId, groupName) {
-    const set = hiddenGroupsByPlot.get(plotId);
-    return !!(set && set.has(groupName));
-  }
-
   // --- viewport sizing -------------------------------------------------------
   // Projection legends and footers are ordinary HTML outside Plotly's fixed-
   // height widget. Their height is only known after layout (and categorical
@@ -752,82 +708,6 @@
     return legendContainer;
   }
 
-  function createCustomLegend(plotId, traces, colors) {
-    const legendContainer = ensureLegendContainer(plotId);
-    if (!legendContainer) return;
-
-    legendContainer.innerHTML = '';
-    legendContainer.style.display = 'flex';
-    legendContainer.classList.remove('is-continuous');
-
-    const count = traces.length;
-    let fontSize = 13;
-    let itemMargin = 6;
-    let itemPadding = 4;
-    let itemPaddingX = 6;
-    let boxSize = 16;
-
-    if (count > 10) {
-      if (count <= 20) {
-        fontSize = 12; itemMargin = 4; itemPadding = 3; boxSize = 14;
-      } else if (count <= 30) {
-        fontSize = 11; itemMargin = 3; itemPadding = 2; boxSize = 12;
-      } else if (count <= 50) {
-        fontSize = 10; itemMargin = 2; itemPadding = 1; boxSize = 10;
-      } else {
-        fontSize = 9; itemMargin = 1; itemPadding = 0; boxSize = 8;
-      }
-    }
-
-    traces.forEach((traceName, index) => {
-      const item = document.createElement('div');
-      item.className = 'custom-legend-item';
-      // Reflect a group hidden on a previous render (its trace is rebuilt as
-      // 'legendonly') so the fresh legend item reads as disabled rather than
-      // enabled-while-Shiny-still-excludes-it.
-      if (isGroupHidden(plotId, traceName)) {
-        item.classList.add('legend-item-hidden');
-      }
-      item.style.marginBottom = itemMargin + 'px';
-      item.style.padding = itemPadding + 'px ' + itemPaddingX + 'px';
-
-      const colorBox = document.createElement('span');
-      colorBox.className = 'legend-color-box';
-      colorBox.style.backgroundColor = colors[index];
-      colorBox.style.width = boxSize + 'px';
-      colorBox.style.height = boxSize + 'px';
-
-      const text = document.createElement('span');
-      text.className = 'legend-text';
-      text.innerText = traceName;
-      text.style.fontSize = fontSize + 'px';
-
-      item.appendChild(colorBox);
-      item.appendChild(text);
-
-      // Toggle visibility on click. Trace index corresponds to legend index.
-      item.onclick = function () {
-        if (legendContainer.dataset.isDragging === 'true') return;
-        const plot = document.getElementById(plotId);
-        let isVisible = true;
-        if (plot.data && plot.data[index]) {
-          isVisible =
-            plot.data[index].visible !== false &&
-            plot.data[index].visible !== 'legendonly';
-        }
-        const newVisible = isVisible ? false : true;
-        Plotly.restyle(plotId, { visible: newVisible }, [index]);
-        item.classList.toggle('legend-item-hidden', isVisible);
-        // Report the now-hidden groups to Shiny so the selected-cells count and
-        // panels can drop cells in hidden groups. traceName is the group label.
-        setHiddenGroup(plotId, traceName, !newVisible);
-      };
-
-      legendContainer.appendChild(item);
-    });
-    scheduleProjectionResize(plotId);
-  }
-
   function removeCustomLegend(plotId) {
     const legendContainer = document.getElementById(plotId + '_legend');
     if (legendContainer) legendContainer.style.display = 'none';
@@ -945,11 +825,6 @@
   };
 
   // --- layout helpers ---------------------------------------------------------
-  function baseLayout2D() {
-    return JSON.parse(
-      JSON.stringify(window.cerebroProjectionLayout.make2D({ uirevision: 'true' }))
-    );
-  }
   function baseLayout3D() {
     return JSON.parse(
       JSON.stringify(window.cerebroProjectionLayout.make3D({ uirevision: 'true' }))
@@ -965,29 +840,6 @@
       if (plotContainer && plotContainer.parentElement) {
         layout.width = plotContainer.parentElement.clientWidth;
         layout.height = plotContainer.parentElement.clientHeight;
-      }
-    }
-  }
-
-  function apply2DAxes(layout, data) {
-    if (data.reset_axes) {
-      layout.xaxis.autorange = true;
-      delete layout.xaxis.range;
-      layout.yaxis.autorange = true;
-      delete layout.yaxis.range;
-    } else {
-      // Preserve the current view. Only pin an explicit range when the server
-      // sent a real [min, max]; an empty/absent range with autorange:false is
-      // not a valid viewport (Plotly falls back / resets on redraw), so leave
-      // the axis untouched and let the layout's uirevision keep the user's
-      // pan/zoom. Trajectory sends empty ranges to mean "keep the current view".
-      if (Array.isArray(data.x_range) && data.x_range.length === 2) {
-        layout.xaxis.autorange = false;
-        layout.xaxis.range = [...data.x_range];
-      }
-      if (Array.isArray(data.y_range) && data.y_range.length === 2) {
-        layout.yaxis.autorange = false;
-        layout.yaxis.range = [...data.y_range];
       }
     }
   }
@@ -1185,113 +1037,9 @@
     plotContainer.on('plotly_selected', handler);
   }
 
-  // --- the four render entry points -------------------------------------------
-  // Each takes the SAME (meta, data, hover, group_centers, container, extra)
-  // positional shape the R dispatchers already produce. `extra` carries
-  // tab-specific optional payloads (group hulls, trajectory shapes,
-  // coexpression swatch colours). meta.plot_id selects the target.
-
-  function render2DContinuous(meta, data, hover, group_centers, container, extra) {
-    const plotId = meta.plot_id;
-    if (!projectionTargetReady(plotId)) return;
-    beginRenderFeedback(plotId);
-    extra = extra || {};
-    const selectedKeys = getSelection(plotId);
-    const selectionOutline = harvestSelectionOutline(plotId);
-    removeCustomLegend(plotId);
-    removeContinuousLegend(plotId);
-
-    const traces = [];
-    const isCoexpr = meta.color_type === 'coexpression';
-    if (isCoexpr) {
-      traces.push({
-        x: data.x,
-        y: data.y,
-        mode: 'markers',
-        type: 'scattergl',
-        marker: {
-          size: data.point_size,
-          opacity: data.point_opacity,
-          line: data.point_line,
-          color: data.color,
-        },
-        hoverinfo: hover.hoverinfo,
-        hoverlabel: HOVERLABEL,
-      });
-      applySelection(traces, selectedKeys);
-      createCustomLegend(plotId, meta.traces, extra.coexpr_colors || meta.coexpr_colors);
-    } else if (data.neutral_color) {
-      traces.push({
-        x: data.x,
-        y: data.y,
-        mode: 'markers',
-        type: 'scattergl',
-        marker: {
-          size: data.point_size,
-          opacity: data.point_opacity,
-          line: data.point_line,
-          color: data.neutral_color,
-        },
-        hoverinfo: hover.hoverinfo,
-        text: hover.text,
-        hoverlabel: HOVERLABEL,
-      });
-      applySelection(traces, selectedKeys);
-    } else {
-      const { min: colorMin, max: colorMax } = finiteExtent(data.color);
-      // gene_expression passes an explicit colour range + scale; honour it.
-      const cmin = data.color_range ? data.color_range[0] : colorMin;
-      const cmax = data.color_range ? data.color_range[1] : colorMax;
-      const colorscale = data.colorscale || CONTINUOUS_COLORSCALE;
-      const marker = {
-        size: data.point_size,
-        opacity: data.point_opacity,
-        line: data.point_line,
-        color: data.color,
-        cmin: cmin,
-        cmax: cmax,
-        colorscale: colorscale,
-        showscale: false,
-      };
-      if (data.reversescale) marker.reversescale = true;
-      traces.push({
-        x: data.x,
-        y: data.y,
-        mode: 'markers',
-        type: 'scattergl',
-        marker: marker,
-        hoverinfo: hover.hoverinfo,
-        text: hover.text,
-        hoverlabel: HOVERLABEL,
-      });
-      applySelection(traces, selectedKeys);
-      createContinuousLegend(
-        plotId,
-        meta.color_variable,
-        cmin,
-        cmax,
-        resolveColorscaleArray(colorscale, data.reversescale)
-      );
-    }
-
-    const layout = baseLayout2D();
-    if (selectionOutline) layout.selections = selectionOutline;
-    if (extra.shapes) layout.shapes = extra.shapes;
-    apply2DAxes(layout, data);
-    applyContainerSize(layout, plotId, container);
-
-    Plotly.react(plotId, traces, layout, REACT_CONFIG)
-      .then(() => {
-        endRenderFeedback(plotId);
-        setupSelection(plotId);
-        syncBackground(plotId, meta);
-        detachModebar(plotId);
-        scheduleProjectionResize(plotId);
-      })
-      // Never leave the plot stuck dimmed if a render rejects: clear the
-      // loading state even on failure (the .then() above would be skipped).
-      .catch(() => endRenderFeedback(plotId));
-  }
+  // --- 3-D Plotly fallback ----------------------------------------------------
+  // Primary 2-D projections use the Canvas renderer. Plotly remains for the
+  // gene-expression 3-D and multi-panel views.
 
   function render3DContinuous(meta, data, hover, group_centers, container, extra) {
     const plotId = meta.plot_id;
@@ -1362,221 +1110,8 @@
   }
 
   // The target plotly div must already be in the DOM before Plotly.react runs.
-  // Every tab creates it via an empty bootstrap renderPlotly, but a tab whose
-  // host lives behind a renderUI branch (immune_repertoire's Clonal UMAP is only
-  // emitted when non-faceted) can fire an update before/without the div. Bail
-  // quietly in that case instead of throwing; the next update redraws once the
-  // div exists. Harmless for the always-present hosts of the other tabs.
   function projectionTargetReady(plotId) {
     return !!(plotId && document.getElementById(plotId));
-  }
-
-  function render2DCategorical(meta, data, hover, group_centers, container, extra) {
-    const plotId = meta.plot_id;
-    if (!projectionTargetReady(plotId)) return;
-    beginRenderFeedback(plotId);
-    extra = extra || {};
-    const selectedKeys = getSelection(plotId);
-    const selectionOutline = harvestSelectionOutline(plotId);
-    removeContinuousLegend(plotId);
-    // A group hidden via the legend must survive trace rebuilds (size/opacity/
-    // colour changes) AND be dropped when the colouring variable itself changes,
-    // so client trace visibility and the <plot>_hidden_groups sent to Shiny stay
-    // in agreement. Reconcile against the current variable, then reapply below.
-    syncHiddenGroupsForVariable(plotId, meta.color_variable);
-
-    // Legend mode. Existing tabs (spatial/overview/gene_expr/trajectory) never
-    // set meta.legend_position, so they keep the custom top-bar legend. A tab
-    // that DOES set it (immune_repertoire, whose users pick a position) gets
-    // plotly's native legend for right/bottom/left, and 'none' hides both — the
-    // custom bar only covers the 'top' choice. Native-legend traces set
-    // showlegend so plotly draws them; the custom bar keeps showlegend false.
-    const legendPosition = meta.legend_position || 'custom';
-    const useCustomLegend = legendPosition === 'custom' || legendPosition === 'top';
-    const useNativeLegend =
-      legendPosition === 'right' ||
-      legendPosition === 'bottom' ||
-      legendPosition === 'left';
-    if (useCustomLegend) {
-      createCustomLegend(plotId, meta.traces, data.color);
-    } else {
-      removeCustomLegend(plotId);
-    }
-
-    // hover.hoverinfo may be a single value (all traces share it — the existing
-    // tabs) or a per-trace array (immune_repertoire: the grey "Other cells"
-    // background skips hover, the coloured levels show it). Resolve per trace.
-    const perTraceHoverinfo = Array.isArray(hover.hoverinfo);
-
-    const traces = data.x.map((xVal, i) => ({
-      x: xVal,
-      y: data.y[i],
-      name: meta.traces[i],
-      // Reapply a legend-hidden group across this rebuild so the trace stays
-      // 'legendonly' instead of springing back to visible while Shiny still
-      // treats it as hidden.
-      visible: isGroupHidden(plotId, meta.traces[i]) ? 'legendonly' : true,
-      mode: 'markers',
-      type: 'scattergl',
-      marker: {
-        size: data.point_size,
-        opacity: data.point_opacity,
-        line: data.point_line,
-        color: data.color[i],
-      },
-      hoverinfo: perTraceHoverinfo ? hover.hoverinfo[i] : hover.hoverinfo,
-      text: hover.text[i],
-      hoverlabel: HOVERLABEL,
-      showlegend: useNativeLegend,
-    }));
-
-    // Optional per-group convex-hull outlines (spatial). Drawn under labels.
-    const hulls = extra.group_hulls;
-    if (hulls && hulls.group && hulls.group.length >= 1) {
-      hulls.group.forEach((g, i) => {
-        traces.push({
-          x: hulls.x[i],
-          y: hulls.y[i],
-          type: 'scatter',
-          mode: 'lines',
-          name: g + ' region',
-          line: { color: hulls.color[i], width: 2 },
-          fill: 'toself',
-          fillcolor: 'rgba(0,0,0,0)',
-          opacity: 0.7,
-          hoverinfo: 'skip',
-          inherit: false,
-          showlegend: false,
-        });
-      });
-    }
-
-    if (group_centers && group_centers.group && group_centers.group.length >= 1) {
-      traces.push({
-        x: group_centers.x,
-        y: group_centers.y,
-        text: group_centers.group,
-        type: 'scatter',
-        mode: 'text',
-        name: 'Labels',
-        textposition: 'middle center',
-        textfont: { color: '#000000', size: 16 },
-        hoverinfo: 'skip',
-        inherit: false,
-        showlegend: false,
-      });
-    }
-
-    applySelection(traces, selectedKeys);
-
-    const layout = baseLayout2D();
-    if (selectionOutline) layout.selections = selectionOutline;
-    if (extra.shapes) layout.shapes = extra.shapes;
-    apply2DAxes(layout, data);
-    applyContainerSize(layout, plotId, container);
-    applyNativeLegend(layout, legendPosition, meta.legend_font_size);
-
-    Plotly.react(plotId, traces, layout, REACT_CONFIG)
-      .then(() => {
-        endRenderFeedback(plotId);
-        setupSelection(plotId);
-        syncBackground(plotId, meta);
-        detachModebar(plotId);
-        scheduleProjectionResize(plotId);
-      })
-      // Never leave the plot stuck dimmed if a render rejects: clear the
-      // loading state even on failure (the .then() above would be skipped).
-      .catch(() => endRenderFeedback(plotId));
-  }
-
-  // Position plotly's native legend for the categorical tabs that opt in via
-  // meta.legend_position (immune_repertoire). The base layout is tuned for the
-  // custom top bar (no native legend), so the default 'custom'/'top'/'none'
-  // paths leave showlegend off and let the custom bar (or nothing) handle it.
-  function applyNativeLegend(layout, legendPosition, fontSize) {
-    const font = { size: fontSize > 0 ? fontSize : 12 };
-    if (legendPosition === 'right') {
-      layout.showlegend = true;
-      layout.legend = { itemsizing: 'constant', font: font };
-    } else if (legendPosition === 'left') {
-      layout.showlegend = true;
-      layout.legend = { itemsizing: 'constant', font: font, x: -0.2 };
-    } else if (legendPosition === 'bottom') {
-      layout.showlegend = true;
-      layout.legend = {
-        itemsizing: 'constant',
-        font: font,
-        orientation: 'h',
-        x: 0,
-        y: -0.15,
-      };
-    } else {
-      // 'custom' / 'top' (custom bar handles it) or 'none' (hidden): no native
-      // legend. Explicitly off so a re-render from a side position clears it.
-      layout.showlegend = false;
-    }
-  }
-
-  function render3DCategorical(meta, data, hover, group_centers, container, extra) {
-    const plotId = meta.plot_id;
-    if (!projectionTargetReady(plotId)) return;
-    beginRenderFeedback(plotId);
-    extra = extra || {};
-    const selectedKeys = getSelection(plotId);
-    removeContinuousLegend(plotId);
-    createCustomLegend(plotId, meta.traces, data.color);
-
-    const traces = data.x.map((xVal, i) => ({
-      x: xVal,
-      y: data.y[i],
-      z: data.z[i],
-      name: meta.traces[i],
-      mode: 'markers',
-      type: 'scatter3d',
-      marker: {
-        size: data.point_size,
-        opacity: data.point_opacity,
-        line: data.point_line,
-        color: data.color[i],
-      },
-      hoverinfo: hover.hoverinfo,
-      text: hover.text[i],
-      hoverlabel: HOVERLABEL,
-      showlegend: false,
-    }));
-
-    if (group_centers && group_centers.group && group_centers.group.length >= 1) {
-      traces.push({
-        x: group_centers.x,
-        y: group_centers.y,
-        z: group_centers.z,
-        text: group_centers.group,
-        type: 'scatter3d',
-        mode: 'text',
-        name: 'Labels',
-        textposition: 'middle center',
-        textfont: { color: '#000000', size: 16 },
-        hoverinfo: 'skip',
-        inherit: false,
-        showlegend: false,
-      });
-    }
-
-    applySelection(traces, selectedKeys);
-
-    const layout = baseLayout3D();
-    applyContainerSize(layout, plotId, container);
-    Plotly.react(plotId, traces, layout, REACT_CONFIG)
-      .then(() => {
-        endRenderFeedback(plotId);
-        setupSelection(plotId);
-        syncBackground(plotId, meta);
-        detachModebar(plotId);
-        scheduleProjectionResize(plotId);
-      })
-      // Never leave the plot stuck dimmed if a render rejects: clear the
-      // loading state even on failure (the .then() above would be skipped).
-      .catch(() => endRenderFeedback(plotId));
   }
 
   // Clear the selection for one plot (button / Esc / Delete). Also drop any
@@ -1600,17 +1135,6 @@
         plotContainer.emit('plotly_deselect');
       });
     }
-  }
-
-  function getContainerDimensions(plotId) {
-    const plotContainer = document.getElementById(plotId);
-    if (plotContainer && plotContainer.parentElement) {
-      return {
-        width: plotContainer.parentElement.clientWidth,
-        height: plotContainer.parentElement.clientHeight,
-      };
-    }
-    return { width: 0, height: 0 };
   }
 
   // Global Delete/Backspace/Escape -> clear the visible projection's selection.
@@ -1643,17 +1167,13 @@
   // needs to know about plot ids beyond passing meta.plot_id.
   window.cerebroProjection = {
     __ready: true,
-    render2DContinuous: render2DContinuous,
     render3DContinuous: render3DContinuous,
-    render2DCategorical: render2DCategorical,
-    render3DCategorical: render3DCategorical,
     clearSelection: clearSelection,
     zoomToSelection: toggleZoom,
     // Reattach the shared plotly_selected handler. gene_expression multi-panel
     // renders directly via Plotly.react (not the shared 2D path), so it must
     // call this after each react to restore box/lasso selection.
     setupSelection: setupSelection,
-    getContainerDimensions: getContainerDimensions,
     // Hide both legend variants for a plot. Used by tab-specific render modes
     // that draw their own legend (gene_expression multi-panel uses a native
     // plotly colorbar), so the shared custom legend bar doesn't linger above.

@@ -148,8 +148,6 @@ observeEvent(trajectory_projection_prepared(), {
   coordinates <- list(cells_df[["DR_1"]], cells_df[["DR_2"]])
   color_input <- cells_df[[color_variable]]
 
-  point_line <- list(color = cerebro_plotly_theme()$axis, width = 1)
-
   ## continuous colouring (pseudotime / numeric metadata)
   if (is.numeric(color_input)) {
     output_meta <- list(
@@ -163,7 +161,6 @@ observeEvent(trajectory_projection_prepared(), {
       color = color_input,
       point_size = prepared[["point_size"]],
       point_opacity = prepared[["point_opacity"]],
-      point_line = point_line,
       x_range = list(),
       y_range = list(),
       reset_axes = reset_axes_now
@@ -202,7 +199,6 @@ observeEvent(trajectory_projection_prepared(), {
       color = list(),
       point_size = prepared[["point_size"]],
       point_opacity = prepared[["point_opacity"]],
-      point_line = point_line,
       x_range = list(),
       y_range = list(),
       reset_axes = reset_axes_now

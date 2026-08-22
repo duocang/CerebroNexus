@@ -30,7 +30,7 @@ shinyjs.updateClonalUMAP = function (params) {
   meta.plot_id = IR_CLONAL_UMAP_PLOT_ID;
   // The Clonal UMAP host lives behind a renderUI branch, so an update can arrive
   // before plotly.js has loaded or before the host div exists (a race the always-
-  // present hosts of the other tabs never hit). render2DCategorical bails quietly
+  // present hosts of the other tabs never hit). The Canvas renderer bails quietly
   // if the div is missing, and Plotly.react needs the global; if either is not
   // ready yet, retry on the next frame with the SAME payload until both are — the
   // R side pushes the data once, so the retry must not be dropped.
