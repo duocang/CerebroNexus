@@ -104,7 +104,19 @@ builder_e2e_entry <- function(record, caller = parent.frame()) {
       )
     )
   )
-  recommendations <- list(metadata = metadata)
+  groups <- as.character(inspected$legacy_profile$group_preselect)
+  projections <- as.character(inspected$legacy_profile$reduction_preselect)
+  recommendations <- list(
+    metadata = metadata,
+    groups = list(value = groups[[1L]], included = groups),
+    projections = list(
+      value = projections[[1L]],
+      included = projections
+    ),
+    organism = list(value = inspected$legacy_profile$organism_guess),
+    nomenclature = list(value = "name"),
+    backend = list(value = "embedded")
+  )
   settings <- get("builder_default_settings", caller, inherits = TRUE)(
     inspected$legacy_profile,
     record$label,
