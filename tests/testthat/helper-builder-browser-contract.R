@@ -143,18 +143,22 @@ builder_browser_dismiss_project_offer <- function(app, timeout = 60000) {
   app$wait_for_js(
     paste0(
       "document.querySelector('.ds--client-upload') === null && ",
-      "document.querySelector('.ds--import') === null && ",
-      "document.querySelector('#shiny-modal .modal-title') !== null && ",
-      "document.querySelector('#shiny-modal .modal-title')",
-      ".textContent.trim() === 'Save this project'"
+      "document.querySelector('.ds--import') === null"
     ),
     timeout = timeout
   )
-  app$click(selector = "#shiny-modal [data-dismiss=modal]")
-  app$wait_for_js(
-    "document.getElementById('shiny-modal') === null",
-    timeout = timeout
-  )
+  offered <- app$get_js(paste0(
+    "document.querySelector('#shiny-modal .modal-title') !== null && ",
+    "document.querySelector('#shiny-modal .modal-title')",
+    ".textContent.trim() === 'Save this project'"
+  ))
+  if (isTRUE(offered)) {
+    app$click(selector = "#shiny-modal [data-dismiss=modal]")
+    app$wait_for_js(
+      "document.getElementById('shiny-modal') === null",
+      timeout = timeout
+    )
+  }
   invisible(TRUE)
 }
 

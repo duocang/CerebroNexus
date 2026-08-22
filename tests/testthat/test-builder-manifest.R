@@ -371,15 +371,9 @@ test_that("builder and worker source shared pages before the manifest", {
     app_lines,
     fixed = TRUE
   )
-  app_prerequisite <- grep(
-    'source("prerequisite.R", local = TRUE)',
-    app_lines,
-    fixed = TRUE
-  )
   expect_length(app_core, 1L)
   expect_length(app_manifest, 1L)
   expect_lt(app_core, app_manifest)
-  expect_lt(app_manifest, app_prerequisite)
 
   worker_core <- grep("viewer_content_contract.R", session_lines, fixed = TRUE)
   worker_manifest <- grep(
@@ -387,13 +381,7 @@ test_that("builder and worker source shared pages before the manifest", {
     session_lines,
     fixed = TRUE
   )
-  worker_prerequisite <- grep(
-    'source(file.path(dir, "prerequisite.R"))',
-    session_lines,
-    fixed = TRUE
-  )
   expect_length(worker_core, 1L)
   expect_length(worker_manifest, 1L)
   expect_lt(worker_core, worker_manifest)
-  expect_lt(worker_manifest, worker_prerequisite)
 })

@@ -865,6 +865,25 @@ builder_verify_crb <- function(path, item) {
   if (!methods::is(object, "Seurat")) {
     return(object)
   }
+  retained <- unique(c(
+    item$included_groups,
+    item$cell_cycle %||% character(),
+    item$nUMI,
+    item$nGene,
+    item$metadata_policy$retained %||% item$metadata_policy$included,
+    item$artifact_identity$source_metadata
+  ))
+  retained <- setdiff(retained, "cell_barcode")
+  missing <- setdiff(retained, colnames(object@meta.data))
+  if (length(missing)) {
+    stop(
+      "The source object is missing retained metadata: ",
+      paste(missing, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  object@meta.data <- object@meta.data[, retained, drop = FALSE]
   object
 }
 

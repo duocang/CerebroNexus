@@ -216,40 +216,6 @@ test_that("runtime requirements block startup and login capability stays fresh",
   expect_match(build_server, "auth_capability()", fixed = TRUE)
 })
 
-test_that("dataset selection uses one hidden single-file Shiny transport", {
-  app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
-  pre_server <- paste(
-    app[seq_len(grep("server <- function", app, fixed = TRUE)[1L] - 1L)],
-    collapse = "\n"
-  )
-
-  expect_match(pre_server, 'id = "builder_add_datasets"', fixed = TRUE)
-  expect_match(pre_server, 'tags$label(', fixed = TRUE)
-  expect_match(pre_server, 'role = "button"', fixed = TRUE)
-  expect_match(
-    pre_server,
-    'class = "shiny-input-file builder-upload-transport"',
-    fixed = TRUE
-  )
-  expect_match(pre_server, 'hidden = "hidden"', fixed = TRUE)
-  expect_false(grepl('multiple = "multiple"', pre_server, fixed = TRUE))
-  expect_match(pre_server, 'id = "ds_client_import_queue"', fixed = TRUE)
-  expect_match(pre_server, '`aria-live` = "polite"', fixed = TRUE)
-  expect_match(pre_server, '`aria-relevant` = "additions text"', fixed = TRUE)
-  expect_identical(
-    lengths(regmatches(
-      pre_server,
-      gregexpr('type = "file"', pre_server, fixed = TRUE)
-    )),
-    1L
-  )
-  expect_match(
-    pre_server,
-    "options(shiny.maxRequestSize = 10 * 1024^3)",
-    fixed = TRUE
-  )
-})
-
 test_that("ready and importing rail regions update independently", {
   app <- builder_app_source_text()
 

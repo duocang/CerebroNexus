@@ -237,9 +237,9 @@ builder_task6_entry <- function(
     schema_version = 2L,
     identity = list(
       cells = list(
-        count = 2L,
+        count = 100L,
         valid = TRUE,
-        canonical_ids = c("cell-a", "cell-b")
+        canonical_ids = paste0("cell-", seq_len(100L))
       ),
       features = list(
         count = 2L,
