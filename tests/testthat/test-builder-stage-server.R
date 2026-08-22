@@ -456,7 +456,12 @@ test_that("Build result survives unsafe folder selection and clears on acceptanc
             )
           ))
         }
-        list(ok = TRUE, error = NULL)
+        list(
+          ok = TRUE,
+          error = NULL,
+          path = path,
+          expected_roots = character()
+        )
       },
       envir = folder_env
     )

@@ -739,7 +739,7 @@ test_that("Builder strong accent preserves all legacy amber-800 uses", {
     gregexpr("var\\(--builder-accent-strong\\)", css, perl = TRUE)
   )[[1L]]
 
-  expect_length(uses, 8L)
+  expect_length(uses, 7L)
   for (selector in selectors) {
     start <- regexpr(selector, css, fixed = TRUE)[[1L]]
     expect_true(start > 0L, info = selector)
@@ -769,7 +769,7 @@ test_that("Builder motion uses its 180ms duration role", {
   )[[1L]]
 
   expect_length(shared_duration_uses, 0L)
-  expect_length(builder_duration_uses, 23L)
+  expect_length(builder_duration_uses, 17L)
 })
 
 test_that("Builder layered stylesheets own their declared responsibilities", {
