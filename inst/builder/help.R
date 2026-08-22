@@ -57,7 +57,3 @@ builder_help_resolve <- function(term) {
   }
   list(term = key, title = entry[[1L]], plain = entry[[2L]])
 }
-
-builder_help_registry <- function() {
-  lapply(names(.builder_help_entries), builder_help_resolve)
-}

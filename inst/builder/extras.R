@@ -239,33 +239,6 @@ builder_alignment_defaults <- function() {
   )
 }
 
-#' Read the saved coverage diagnostic without accepting malformed values.
-#'
-#' Older Builder projects may omit `outside`; that means no recorded failures.
-#' Once present, the value must be one finite, non-negative integer count.
-builder_alignment_outside_count <- function(record) {
-  if (!is.list(record)) {
-    return(NA_integer_)
-  }
-  if (is.null(record[["outside"]])) {
-    return(0L)
-  }
-  value <- record[["outside"]]
-  if (
-    !is.numeric(value) ||
-      is.object(value) ||
-      length(value) != 1L ||
-      is.na(value) ||
-      !is.finite(value) ||
-      value < 0 ||
-      value != floor(value) ||
-      value > .Machine$integer.max
-  ) {
-    return(NA_integer_)
-  }
-  as.integer(value)
-}
-
 .builder_alignment_valid_bounds <- function(bounds) {
   is.list(bounds) &&
     all(c("xmin", "xmax", "ymin", "ymax") %in% names(bounds)) &&
@@ -1211,14 +1184,6 @@ BUILDER_IMAGE_MAX_PIXELS <- floor(
     (8 * BUILDER_IMAGE_DECODE_CHANNELS)
 )
 
-.builder_image_uint16_be <- function(bytes) {
-  if (length(bytes) != 2L) {
-    return(NA_real_)
-  }
-  values <- as.numeric(as.integer(bytes))
-  values[[1L]] * 256 + values[[2L]]
-}
-
 .builder_image_uint32_be <- function(bytes) {
   if (length(bytes) != 4L) {
     return(NA_real_)
@@ -1945,41 +1910,6 @@ builder_bounds_cover <- function(bounds, coords) {
     na.rm = TRUE
   )
   list(outside = outside, total = length(x))
-}
-
-#' Carry `@misc$trekker` into a `.crb` that has already been exported.
-#'
-#' The other modalities need nothing from the builder: `exportFromSeurat()`
-#' reads immune repertoire and HLA typing straight off `@misc`. Trekker is the
-#' exception -- the exporter never looks at it, so an object carrying a Trekker
-#' map exports without one and the page silently never appears. The repository's
-#' own demo build works around this the same way, with `crb$addTrekker()` after
-#' the fact.
-#'
-#' @param crb_path The `.crb` just written.
-#' @param trekker The `@misc$trekker` payload, or `NULL` to do nothing.
-builder_attach_trekker <- function(crb_path, trekker) {
-  if (is.null(trekker) || !length(trekker)) {
-    return(list(applied = FALSE))
-  }
-  if (!is.list(trekker)) {
-    return(list(error = "Trekker data must be a list."))
-  }
-  crb <- try(readRDS(crb_path), silent = TRUE)
-  if (inherits(crb, "try-error")) {
-    return(list(error = "The exported .crb could not be read back."))
-  }
-  ok <- try(crb$addTrekker(trekker), silent = TRUE)
-  if (inherits(ok, "try-error")) {
-    return(list(
-      error = paste0(
-        "Could not attach Trekker data: ",
-        conditionMessage(attr(ok, "condition"))
-      )
-    ))
-  }
-  saveRDS(crb, crb_path, compress = "xz")
-  list(applied = TRUE)
 }
 
 #' Pair one shared picture with the extent computed for each section.

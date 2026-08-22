@@ -201,7 +201,6 @@ icon_svg <- function(path, label = NULL) {
   )
 }
 ICON_PLUS <- "M12 5v14M5 12h14"
-ICON_TRASH <- "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"
 
 ## The viewer's wordmark, inlined. The builder and the viewer are one product
 ## and should look like it; inlining avoids a resource path that would have to

@@ -138,22 +138,6 @@ builder_windows_picker_script <- function() {
   )
 }
 
-builder_project_osascript <- function(kind = c("directory", "manifest")) {
-  kind <- match.arg(kind)
-  command <- if (identical(kind, "directory")) {
-    paste0(
-      "POSIX path of (choose folder with prompt ",
-      "\"Choose a folder for the Builder project.\")"
-    )
-  } else {
-    paste0(
-      "POSIX path of (choose file with prompt ",
-      "\"Open a Builder project.\" of type {\"public.json\"})"
-    )
-  }
-  builder_macos_picker_script(command)
-}
-
 builder_dataset_extensions <- function() {
   unique(tolower(unlist(lapply(builder_formats, `[[`, "extensions"))))
 }
@@ -168,28 +152,22 @@ builder_native_picker_spec <- function(
     "dataset_files",
     "table_files",
     "project_directory",
-    "project_manifest",
-    "local_files"
+    "project_manifest"
   ),
-  extensions = NULL,
-  label = NULL,
   .system = Sys.info()[["sysname"]] %||% "",
   .rscript = NULL,
   .which = Sys.which
 ) {
   kind <- match.arg(kind)
-  if (identical(kind, "dataset_files")) {
-    extensions <- builder_dataset_extensions()
-    label <- "dataset"
-  } else if (identical(kind, "table_files")) {
-    extensions <- builder_table_extensions()
-    label <- "table"
-  }
-  if (identical(kind, "local_files")) {
-    extensions <- unique(tolower(as.character(extensions)))
-    stopifnot(length(extensions), is.character(label), length(label) == 1L)
-  }
-  files <- kind %in% c("dataset_files", "table_files", "local_files")
+  files <- kind %in% c("dataset_files", "table_files")
+  directory <- kind %in% c("output_directory", "project_directory")
+  label <- if (identical(kind, "dataset_files")) "dataset" else "table"
+  extensions <- switch(
+    kind,
+    dataset_files = builder_dataset_extensions(),
+    table_files = builder_table_extensions(),
+    character()
+  )
   prompt <- switch(
     kind,
     output_directory = "Choose where to save the build output.",
@@ -215,15 +193,18 @@ builder_native_picker_spec <- function(
     ))
   }
   if (identical(.system, "Darwin")) {
-    script <- switch(
-      kind,
-      output_directory = builder_macos_picker_script(paste0(
+    script <- if (directory) {
+      builder_macos_picker_script(paste0(
         "POSIX path of (choose folder with prompt \"",
         prompt,
         "\")"
-      )),
-      project_directory = builder_project_osascript("directory"),
-      project_manifest = builder_project_osascript("manifest"),
+      ))
+    } else if (identical(kind, "project_manifest")) {
+      builder_macos_picker_script(paste0(
+        "POSIX path of (choose file with prompt ",
+        "\"Open a Builder project.\" of type {\"public.json\"})"
+      ))
+    } else {
       builder_macos_picker_script(paste(
         paste0(
           'set chosenFiles to choose file with prompt "',
@@ -237,7 +218,7 @@ builder_native_picker_spec <- function(
         "return chosenPaths",
         sep = "\n"
       ))
-    )
+    }
     return(list(
       command = "osascript",
       args = c("-e", script),
@@ -246,39 +227,35 @@ builder_native_picker_spec <- function(
   }
   zenity <- .which("zenity")
   if (nzchar(zenity)) {
-    args <- switch(
-      kind,
-      output_directory = c(
+    args <- if (directory) {
+      c(
         "--file-selection",
         "--directory",
         paste0("--title=", prompt)
-      ),
-      project_directory = c(
-        "--file-selection",
-        "--directory",
-        paste0("--title=", prompt)
-      ),
-      project_manifest = c(
+      )
+    } else if (identical(kind, "project_manifest")) {
+      c(
         "--file-selection",
         paste0("--title=", prompt),
         "--file-filter=Builder project | *.json"
-      ),
+      )
+    } else {
       c(
         "--file-selection",
         "--multiple",
         "--separator=\n",
         paste0("--title=", prompt)
       )
-    )
+    }
     return(list(command = unname(zenity), args = args, cancel_status = 1L))
   }
   kdialog <- .which("kdialog")
   if (nzchar(kdialog)) {
-    args <- switch(
-      kind,
-      output_directory = c("--getexistingdirectory", path.expand("~")),
-      project_directory = c("--getexistingdirectory", path.expand("~")),
-      project_manifest = c("--getopenfilename", path.expand("~"), "*.json"),
+    args <- if (directory) {
+      c("--getexistingdirectory", path.expand("~"))
+    } else if (identical(kind, "project_manifest")) {
+      c("--getopenfilename", path.expand("~"), "*.json")
+    } else {
       c(
         "--getopenfilename",
         path.expand("~"),
@@ -286,7 +263,7 @@ builder_native_picker_spec <- function(
         "--multiple",
         "--separate-output"
       )
-    )
+    }
     return(list(command = unname(kdialog), args = args, cancel_status = 1L))
   }
   stop(
@@ -346,99 +323,40 @@ builder_native_picker_output <- function(
   stop(detail, call. = FALSE)
 }
 
-builder_native_picker_select <- function(
-  kind,
-  extensions = NULL,
-  label = NULL
-) {
-  spec <- builder_native_picker_spec(kind, extensions, label)
-  if (requireNamespace("processx", quietly = TRUE)) {
-    result <- processx::run(
-      spec$command,
-      spec$args,
-      error_on_status = FALSE,
-      echo = FALSE
+builder_native_picker_result <- function(kind, select) {
+  kind <- match.arg(
+    kind,
+    c(
+      "output_directory",
+      "dataset_files",
+      "table_files",
+      "project_directory",
+      "project_manifest"
     )
-    return(builder_native_picker_output(
-      result$status,
-      result$stdout,
-      result$stderr,
-      spec$cancel_status
-    ))
-  }
-  output <- suppressWarnings(system2(
-    spec$command,
-    vapply(spec$args, shQuote, character(1)),
-    stdout = TRUE,
-    stderr = FALSE
-  ))
-  builder_native_picker_output(
-    attr(output, "status") %||% 0L,
-    output,
-    cancel_status = spec$cancel_status
   )
-}
-
-#' Choose a local output directory with the operating system's picker.
-#'
-#' The optional selector keeps platform UI outside the Build flow and makes
-#' cancellation and path normalization directly testable.
-builder_choose_output_directory <- function(.select = NULL) {
-  select <- .select %||%
-    function() {
-      builder_native_picker_select("output_directory")
+  multiple <- kind %in% c("dataset_files", "table_files")
+  result <- function(status, paths = character(), error = NULL) {
+    value <- if (multiple) {
+      list(status = status, paths = paths)
+    } else {
+      list(status = status, path = NULL)
     }
-  chosen <- tryCatch(select(), error = identity)
-  if (inherits(chosen, "error")) {
-    return(list(
-      status = "error",
-      path = NULL,
-      error = conditionMessage(chosen)
-    ))
-  }
-  if (!length(chosen) || is.na(chosen[[1L]]) || !nzchar(trimws(chosen[[1L]]))) {
-    return(list(status = "cancelled", path = NULL))
-  }
-  path <- tryCatch(
-    normalizePath(
-      path.expand(trimws(chosen[[1L]])),
-      winslash = "/",
-      mustWork = TRUE
-    ),
-    error = identity
-  )
-  if (inherits(path, "error") || !dir.exists(path)) {
-    return(list(
-      status = "error",
-      path = NULL,
-      error = "The selected folder is not available."
-    ))
-  }
-  list(status = "selected", path = path)
-}
-
-builder_choose_local_files <- function(
-  extensions,
-  label,
-  .select = NULL
-) {
-  extensions <- unique(tolower(as.character(extensions)))
-  select <- .select %||%
-    function() {
-      builder_native_picker_select("local_files", extensions, label)
+    if (!is.null(error)) {
+      value$error <- error
     }
+    value
+  }
   chosen <- tryCatch(select(), error = identity)
-  if (inherits(chosen, "error")) {
-    return(list(
-      status = "error",
-      paths = character(),
-      error = conditionMessage(chosen)
-    ))
+  if (inherits(chosen, "condition")) {
+    return(result("error", error = conditionMessage(chosen)))
   }
   chosen <- as.character(chosen)
   chosen <- chosen[!is.na(chosen) & nzchar(chosen)]
-  if (!length(chosen)) {
-    return(list(status = "cancelled", paths = character()))
+  if (!multiple && length(chosen)) {
+    chosen <- trimws(chosen[[1L]])
+  }
+  if (!length(chosen) || (!multiple && !nzchar(chosen))) {
+    return(result("cancelled"))
   }
   paths <- tryCatch(
     unique(normalizePath(
@@ -448,123 +366,46 @@ builder_choose_local_files <- function(
     )),
     error = identity
   )
-  supported <- !inherits(paths, "error") &&
-    all(file.exists(paths) & !dir.exists(paths)) &&
-    all(tolower(tools::file_ext(paths)) %in% extensions)
-  if (!isTRUE(supported)) {
-    return(list(
-      status = "error",
-      paths = character(),
-      error = paste0(
-        "Choose supported ",
-        label,
-        " files (.",
+  extensions <- switch(
+    kind,
+    dataset_files = builder_dataset_extensions(),
+    table_files = builder_table_extensions(),
+    NULL
+  )
+  valid <- !inherits(paths, "condition") &&
+    switch(
+      kind,
+      output_directory = dir.exists(paths[[1L]]),
+      project_directory = dir.exists(paths[[1L]]),
+      project_manifest = file.exists(paths[[1L]]) && !dir.exists(paths[[1L]]),
+      dataset_files = all(file.exists(paths) & !dir.exists(paths)) &&
+        all(tolower(tools::file_ext(paths)) %in% extensions),
+      table_files = all(file.exists(paths) & !dir.exists(paths)) &&
+        all(tolower(tools::file_ext(paths)) %in% extensions)
+    )
+  if (!isTRUE(valid)) {
+    message <- switch(
+      kind,
+      output_directory = "The selected folder is not available.",
+      project_directory = "The selected folder is not available.",
+      project_manifest = "The selected project file is not available.",
+      dataset_files = paste0(
+        "Choose supported dataset files (.",
+        paste(extensions, collapse = ", ."),
+        ")."
+      ),
+      table_files = paste0(
+        "Choose supported table files (.",
         paste(extensions, collapse = ", ."),
         ")."
       )
-    ))
+    )
+    return(result("error", error = message))
   }
-  list(status = "selected", paths = paths)
-}
-
-#' Choose one or more datasets without sending them through Shiny's upload
-#' transport. The browser upload remains available for remote sessions.
-builder_choose_dataset_files <- function(.select = NULL) {
-  builder_choose_local_files(
-    extensions = builder_dataset_extensions(),
-    label = "dataset",
-    .select = .select
-  )
-}
-
-builder_choose_table_files <- function(.select = NULL) {
-  builder_choose_local_files(
-    extensions = builder_table_extensions(),
-    label = "table",
-    .select = .select
-  )
-}
-
-#' Choose a durable Builder project folder.
-builder_choose_project_directory <- function(.select = NULL) {
-  select <- .select %||%
-    function() {
-      builder_native_picker_select("project_directory")
-    }
-  chosen <- tryCatch(select(), error = identity)
-  if (inherits(chosen, "error")) {
-    return(list(
-      status = "error",
-      path = NULL,
-      error = conditionMessage(chosen)
-    ))
+  if (multiple) {
+    return(result("selected", paths))
   }
-  if (!length(chosen) || is.na(chosen[[1L]]) || !nzchar(trimws(chosen[[1L]]))) {
-    return(list(status = "cancelled", path = NULL))
-  }
-  path <- tryCatch(
-    normalizePath(
-      path.expand(trimws(chosen[[1L]])),
-      winslash = "/",
-      mustWork = TRUE
-    ),
-    error = identity
-  )
-  if (inherits(path, "error") || !dir.exists(path)) {
-    return(list(
-      status = "error",
-      path = NULL,
-      error = "The selected folder is not available."
-    ))
-  }
-  list(status = "selected", path = path)
-}
-
-#' Choose an existing Builder project manifest with the operating system picker.
-builder_choose_project_manifest <- function(.select = NULL) {
-  select <- .select %||%
-    function() {
-      builder_native_picker_select("project_manifest")
-    }
-  chosen <- tryCatch(select(), error = identity)
-  if (inherits(chosen, "error")) {
-    return(list(
-      status = "error",
-      path = NULL,
-      error = conditionMessage(chosen)
-    ))
-  }
-  if (!length(chosen) || is.na(chosen[[1L]]) || !nzchar(trimws(chosen[[1L]]))) {
-    return(list(status = "cancelled", path = NULL))
-  }
-  path <- tryCatch(
-    normalizePath(
-      path.expand(trimws(chosen[[1L]])),
-      winslash = "/",
-      mustWork = TRUE
-    ),
-    error = identity
-  )
-  if (inherits(path, "error") || !file.exists(path) || dir.exists(path)) {
-    return(list(
-      status = "error",
-      path = NULL,
-      error = "The selected project file is not available."
-    ))
-  }
-  list(status = "selected", path = path)
-}
-
-builder_native_picker_result <- function(kind, select) {
-  switch(
-    kind,
-    output_directory = builder_choose_output_directory(.select = select),
-    dataset_files = builder_choose_dataset_files(.select = select),
-    table_files = builder_choose_table_files(.select = select),
-    project_directory = builder_choose_project_directory(.select = select),
-    project_manifest = builder_choose_project_manifest(.select = select),
-    stop("The native picker kind is unsupported.", call. = FALSE)
-  )
+  list(status = "selected", path = paths[[1L]])
 }
 
 # Run the operating-system dialog outside Shiny's main R event loop. A dialog
@@ -747,41 +588,6 @@ builder_formats <- list(
 #'
 #' @return A data.frame with one row per format: id, label, extensions,
 #'   package, available.
-builder_available_formats <- function() {
-  do.call(
-    rbind,
-    lapply(builder_formats, function(f) {
-      data.frame(
-        id = f$id,
-        label = f$label,
-        extensions = paste(f$extensions, collapse = ", "),
-        package = if (is.null(f$package)) NA_character_ else f$package,
-        available = is.null(f$package) ||
-          requireNamespace(f$package, quietly = TRUE),
-        stringsAsFactors = FALSE
-      )
-    })
-  )
-}
-
-#' A short line naming what can and cannot be read, for the interface.
-builder_format_summary <- function() {
-  fmt <- builder_available_formats()
-  ok <- fmt$label[fmt$available]
-  missing <- fmt[!fmt$available, ]
-  out <- paste0("Reads: ", paste(unique(ok), collapse = ", "))
-  if (nrow(missing) > 0) {
-    out <- paste0(
-      out,
-      ". Install ",
-      paste(unique(missing$package), collapse = ", "),
-      " to also read ",
-      paste(unique(missing$label), collapse = ", ")
-    )
-  }
-  out
-}
-
 #' Pick the format for a path, by extension.
 #'
 #' @return The format entry, or `NULL` when the extension is not one we claim.
@@ -861,21 +667,6 @@ builder_read_object <- function(path) {
     ))
   }
   list(object = obj, format = fmt$label)
-}
-
-#' Everything readable in a directory, for the file picker.
-builder_list_candidates <- function(dir) {
-  if (!nzchar(dir) || !dir.exists(dir)) {
-    return(character())
-  }
-  exts <- unique(unlist(lapply(builder_formats, `[[`, "extensions")))
-  pattern <- paste0("[.](", paste(exts, collapse = "|"), ")$")
-  sort(list.files(
-    dir,
-    pattern = pattern,
-    ignore.case = TRUE,
-    full.names = TRUE
-  ))
 }
 
 ## ---------------------------------------------------------------------------

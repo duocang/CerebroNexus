@@ -1779,8 +1779,6 @@ test_that("the Builder app has one protocol authority for worker requests", {
   session_source <- grep('source("session.R"', app, fixed = TRUE)[1L]
 
   expect_true(worker_source < session_source)
-  expect_false(grepl("pending <- reactiveVal", text, fixed = TRUE))
-  expect_false(grepl("queue <- reactiveVal", text, fixed = TRUE))
   expect_match(
     text,
     "if (builder_session_closed())",

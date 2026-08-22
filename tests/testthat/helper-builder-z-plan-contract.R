@@ -235,7 +235,18 @@ builder_task6_entry <- function(
   immune$valid <- if (immune_detected) aggregate_valid else TRUE
   entry$dataset_profile <- list(
     schema_version = 2L,
-    identity = list(cells = list(count = 100L)),
+    identity = list(
+      cells = list(
+        count = 2L,
+        valid = TRUE,
+        canonical_ids = c("cell-a", "cell-b")
+      ),
+      features = list(
+        count = 2L,
+        valid = TRUE,
+        canonical_ids = c("Gene1", "Gene2")
+      )
+    ),
     metadata = list(
       columns = list(
         cluster = list(

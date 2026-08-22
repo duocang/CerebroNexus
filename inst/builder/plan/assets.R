@@ -58,10 +58,6 @@
   )
 }
 
-.builder_plan_asset_claim_valid <- function(claim) {
-  !is.null(.builder_plan_normalize_asset_claim(claim))
-}
-
 .builder_plan_asset_set <- function(value) {
   if (is.null(value)) {
     value <- character()

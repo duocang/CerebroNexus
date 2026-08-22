@@ -91,10 +91,6 @@
   .builder_immune_bound_text(values)
 }
 
-.builder_immune_preview <- function(values) {
-  .builder_immune_preview_info(values)$value
-}
-
 .builder_immune_unique_summary <- function(values) {
   values <- .builder_immune_unique_text(values)
   count <- length(values)
@@ -186,14 +182,6 @@
     value <- unclass(value)
   }
   length(value)
-}
-
-.builder_immune_data_frame_rows <- function(value) {
-  .builder_immune_row_names_attribute(value)$count
-}
-
-.builder_immune_data_frame_row_names <- function(value) {
-  .builder_immune_row_names_attribute(value)$value
 }
 
 .builder_immune_record <- function(

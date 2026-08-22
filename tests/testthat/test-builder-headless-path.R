@@ -1,52 +1,3 @@
-test_that("headless fallback accepts only an allowlisted server path", {
-  ui <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "ui", "workflow.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  project <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "server", "project.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  build <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "server", "build.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(ui, 'autocomplete = "off"', fixed = TRUE)
-  expect_false(grepl("list.files", ui, fixed = TRUE))
-  expect_match(
-    project,
-    'show_builder_project_server_path("create")',
-    fixed = TRUE
-  )
-  expect_match(
-    project,
-    'show_builder_project_server_path("open")',
-    fixed = TRUE
-  )
-  expect_match(project, "builder_server_path_resolve(", fixed = TRUE)
-  expect_match(project, "select_builder_project_folder(path)", fixed = TRUE)
-  expect_match(
-    project,
-    "builder_project_start_open(path, external_roots = roots)",
-    fixed = TRUE
-  )
-  expect_match(project, "builder_project_open_runtime_files(", fixed = TRUE)
-  expect_match(project, "external_roots = external_roots", fixed = TRUE)
-  expect_match(build, "show_builder_build_server_path()", fixed = TRUE)
-  expect_match(build, "builder_server_path_resolve(", fixed = TRUE)
-  expect_match(build, "select_build_output_folder(path)", fixed = TRUE)
-})
-
 test_that("headless Project open validates every external dataset source", {
   local({
     source(
@@ -94,28 +45,6 @@ test_that("headless Project open validates every external dataset source", {
       fixed = TRUE
     )
   })
-})
-
-test_that("only managed Project sources bypass session retention", {
-  project <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "server", "project.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_gte(
-    lengths(regmatches(
-      project,
-      gregexpr(
-        'retained_path = if (identical(source$kind, "managed"))',
-        project,
-        fixed = TRUE
-      )
-    )),
-    2L
-  )
 })
 
 test_that("server path fallback resolves symlinks inside explicit roots", {

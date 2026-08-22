@@ -203,30 +203,3 @@ builder_auth_capability <- function(
     }
   )
 }
-
-builder_app_control <- function(capability, current_value = NULL) {
-  available <- is.list(capability) &&
-    isTRUE(capability$available) &&
-    identical(capability$version, 1L)
-  checked <- available &&
-    (is.null(current_value) || isTRUE(current_value))
-
-  shiny::tagList(
-    shiny::tags$fieldset(
-      disabled = if (!available) "disabled",
-      style = "border:0;padding:0;margin:0;min-width:0;",
-      shiny::checkboxInput(
-        "make_app",
-        "Create a Viewer app",
-        value = checked,
-        width = "auto"
-      )
-    ),
-    if (!available) {
-      shiny::tags$div(
-        class = "hint app-capability-reason",
-        capability$reason
-      )
-    }
-  )
-}

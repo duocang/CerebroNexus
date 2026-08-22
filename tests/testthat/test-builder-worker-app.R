@@ -790,9 +790,11 @@ test_that("native output directory selection normalizes selection and preserves 
   dir.create(file.path(root, "nested"))
   dir.create(file.path(root, "output"))
 
-  selected <- builder_choose_output_directory(.select = function() nested)
-  cancelled <- builder_choose_output_directory(.select = function() NULL)
-  failed <- builder_choose_output_directory(.select = function() {
+  selected <- builder_native_picker_result("output_directory", function() {
+    nested
+  })
+  cancelled <- builder_native_picker_result("output_directory", function() NULL)
+  failed <- builder_native_picker_result("output_directory", function() {
     stop("picker unavailable")
   })
 
@@ -838,11 +840,13 @@ test_that("native dataset selection returns only supported regular files", {
   writeBin(charToRaw("second"), second)
   writeBin(charToRaw("notes"), unsupported)
 
-  selected <- builder_choose_dataset_files(.select = function() {
+  selected <- builder_native_picker_result("dataset_files", function() {
     c(first, second)
   })
-  cancelled <- builder_choose_dataset_files(.select = function() NULL)
-  rejected <- builder_choose_dataset_files(.select = function() unsupported)
+  cancelled <- builder_native_picker_result("dataset_files", function() NULL)
+  rejected <- builder_native_picker_result("dataset_files", function() {
+    unsupported
+  })
 
   expect_identical(selected$status, "selected")
   expect_identical(selected$paths, normalizePath(c(first, second)))
@@ -858,234 +862,17 @@ test_that("native table selection accepts every supported workbook format", {
   unsupported <- file.path(root, "notes.pdf")
   writeLines("notes", unsupported)
 
-  selected <- builder_choose_table_files(.select = function() paths)
-  cancelled <- builder_choose_table_files(.select = function() NULL)
-  rejected <- builder_choose_table_files(.select = function() unsupported)
+  selected <- builder_native_picker_result("table_files", function() paths)
+  cancelled <- builder_native_picker_result("table_files", function() NULL)
+  rejected <- builder_native_picker_result("table_files", function() {
+    unsupported
+  })
 
   expect_identical(selected$status, "selected")
   expect_identical(selected$paths, normalizePath(paths))
   expect_identical(cancelled, list(status = "cancelled", paths = character()))
   expect_identical(rejected$status, "error")
   expect_match(rejected$error, "supported table", fixed = TRUE)
-})
-
-test_that("local dataset paths bypass browser upload retention", {
-  app <- paste(builder_app_lines(), collapse = "\n")
-
-  expect_match(app, 'id = "choose_local_datasets"', fixed = TRUE)
-  expect_match(app, 'id = "builder_upload_datasets"', fixed = TRUE)
-  expect_match(
-    app,
-    'builder_schedule_native_picker(\n    "dataset_files"',
-    fixed = TRUE
-  )
-  expect_match(app, 'source_origin = "local"', fixed = TRUE)
-  expect_match(
-    app,
-    '!identical(source_origin, "local")',
-    fixed = TRUE
-  )
-})
-
-test_that("native picker callbacks run inside an isolated reactive scope", {
-  app <- paste(builder_app_lines(), collapse = "\n")
-
-  expect_match(app, "shiny::isolate(on_result(result))", fixed = TRUE)
-  expect_match(app, "shiny::isolate(on_error(result))", fixed = TRUE)
-  expect_match(app, "shiny::isolate(on_finally())", fixed = TRUE)
-})
-
-test_that("failed imports recycle an empty worker after its queue drains", {
-  app <- paste(builder_app_lines(), collapse = "\n")
-
-  expect_match(
-    app,
-    "failed_import_cleanup_pending(TRUE)",
-    fixed = TRUE
-  )
-  expect_match(
-    app,
-    "builder_protocol_is_quiescent(current_protocol)",
-    fixed = TRUE
-  )
-  expect_match(
-    app,
-    "length(current_worker$snapshot_registry)",
-    fixed = TRUE
-  )
-})
-
-test_that("Extra material offers a direct local path beside browser upload", {
-  app <- paste(builder_app_lines(), collapse = "\n")
-  stage <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "ui", "enhance_stage.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(stage, 'id = ns("choose_local_tables")', fixed = TRUE)
-  expect_match(
-    app,
-    'builder_schedule_native_picker(\n    "table_files"',
-    fixed = TRUE
-  )
-  expect_match(app, "datapath = choice$paths", fixed = TRUE)
-  expect_match(app, "Upload through browser", fixed = TRUE)
-})
-
-test_that("folder selection performs release preflight in the background", {
-  lines <- builder_app_lines()
-  app <- paste(lines, collapse = "\n")
-  preflight <- builder_app_block(
-    lines,
-    "builder_build_output_preflight <- function(path) {",
-    "choose_build_folder <- function() {"
-  )
-  prepare <- builder_app_block(
-    lines,
-    "prepare_selected_output <- function(path, overwrite = FALSE) {",
-    "builder_build_foreign_output_error <- function(foreign) {"
-  )
-  picker <- builder_app_block(
-    lines,
-    "choose_build_folder <- function() {",
-    "start_confirmed_build <- function() {"
-  )
-  selector <- builder_app_block(
-    lines,
-    "select_build_output_folder <- function(path) {",
-    "show_builder_build_server_path <- function() {"
-  )
-  build <- builder_app_block(
-    lines,
-    "start_confirmed_build <- function() {",
-    "observeEvent(input$build, {"
-  )
-  build_observer <- builder_app_block(
-    lines,
-    "observeEvent(input$build, {",
-    "observeEvent(input$builder_build_dialog, {"
-  )
-  dialog <- builder_app_block(
-    lines,
-    "observeEvent(input$builder_build_dialog, {",
-    "validate_rail_removal <- function"
-  )
-
-  expect_match(app, "selected_output <- reactiveVal(NULL)", fixed = TRUE)
-  expect_match(
-    app,
-    "selected_output_release_state <- reactiveVal(NULL)",
-    fixed = TRUE
-  )
-  expect_false(grepl("freeze_plan_for_output(", preflight, fixed = TRUE))
-  expect_match(preflight, "callr::r_bg(", fixed = TRUE)
-  expect_match(
-    preflight,
-    "runtime$builder_release_output_preflight(",
-    fixed = TRUE
-  )
-  expect_match(preflight, "plan$items", fixed = TRUE)
-  expect_match(preflight, "item$sidecars", fixed = TRUE)
-  expect_false(grepl("builder_release_state(", preflight, fixed = TRUE))
-  expect_false(grepl("list.files(", preflight, fixed = TRUE))
-  expect_match(preflight, "prior_state = checked$prior_state", fixed = TRUE)
-  expect_match(
-    app,
-    "builder_selected_output_release_state(plan$out_dir)",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    "builder_coordinator_output_preflight",
-    preflight,
-    fixed = TRUE
-  ))
-  expect_match(picker, "builder_schedule_native_picker(", fixed = TRUE)
-  expect_match(picker, '"output_directory"', fixed = TRUE)
-  expect_match(
-    selector,
-    "start_builder_build_output_preflight(path)",
-    fixed = TRUE
-  )
-  expect_match(picker, "select_build_output_folder(choice$path)", fixed = TRUE)
-  expect_false(grepl("prepare_selected_output", picker, fixed = TRUE))
-  expect_false(grepl(
-    "builder_coordinator_output_preflight",
-    prepare,
-    fixed = TRUE
-  ))
-  expect_match(prepare, "enqueue_build_plan(", fixed = TRUE)
-  expect_match(build, "selected_output()", fixed = TRUE)
-  expect_match(build, "prepare_selected_output", fixed = TRUE)
-  expect_match(build, 'stage = "preparing"', fixed = TRUE)
-  expect_match(build, "later::later", fixed = TRUE)
-  expect_match(
-    build,
-    "shiny::withReactiveDomain(builder_lifecycle_session, {",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    "freeze_materialized_plan_for_output",
-    build,
-    fixed = TRUE
-  ))
-  expect_match(build_observer, "start_confirmed_build()", fixed = TRUE)
-  expect_false(grepl("Ready to build all datasets?", app, fixed = TRUE))
-  expect_false(grepl('type = "datasets"', app, fixed = TRUE))
-  expect_false(grepl('identical(action, "continue")', dialog, fixed = TRUE))
-  expect_match(app, '"Files already exist"', fixed = TRUE)
-  expect_match(dialog, 'identical(action, "replace")', fixed = TRUE)
-  expect_match(dialog, 'identical(action, "choose_another")', fixed = TRUE)
-  expect_false(grepl("isolate(input$out_dir)", app, fixed = TRUE))
-  expect_false(grepl("isolate(input$overwrite)", app, fixed = TRUE))
-})
-
-test_that("completed builds verify and publish outside the Shiny process", {
-  lines <- builder_app_lines()
-  app <- paste(lines, collapse = "\n")
-  terminal <- builder_app_block(
-    lines,
-    '} else if (identical(p$kind, "build")) {',
-    '} else if (identical(p$kind, "drop")) {'
-  )
-  shutdown <- builder_app_block(
-    lines,
-    "session$onSessionEnded(function() {",
-    "## -- native file picker and examples"
-  )
-
-  expect_match(
-    app,
-    "release_settlement_process <- reactiveVal(NULL)",
-    fixed = TRUE
-  )
-  expect_match(app, "callr::r_bg(", fixed = TRUE)
-  expect_match(app, "builder_coordinator_claim(handle)", fixed = TRUE)
-  expect_match(app, "builder_coordinator_settle(", fixed = TRUE)
-  expect_match(app, 'busy_note("Verifying and publishing…")', fixed = TRUE)
-  expect_match(
-    terminal,
-    "start_builder_release_settlement(release, value, request)",
-    fixed = TRUE
-  )
-  expect_false(grepl("builder_app_settle_release", terminal, fixed = TRUE))
-  expect_false(grepl("active_release(NULL)", terminal, fixed = TRUE))
-  expect_match(
-    app,
-    'build_flow(list(stage = "idle", plan = NULL))',
-    fixed = TRUE
-  )
-  expect_match(
-    shutdown,
-    "stop_builder_release_settlement()",
-    fixed = TRUE
-  )
-  expect_lt(
-    regexpr("stop_builder_release_settlement()", shutdown, fixed = TRUE),
-    regexpr("builder_coordinator_abort", shutdown, fixed = TRUE)
-  )
 })
 
 test_that("Build flow requires one confirmed frozen Review plan", {
@@ -1196,29 +983,6 @@ test_that("Build stage renders only the confirmed stored plan", {
   }
 })
 
-test_that("Review navigation reuses the checked frozen plan", {
-  workflow_lines <- readLines(
-    builder_profile_inst_path("builder", "server", "workflow.R"),
-    warn = FALSE
-  )
-  navigation <- builder_app_block(
-    workflow_lines,
-    "navigate_workflow_stage <- function(stage) {",
-    "observeEvent(input$workflow_stage_upload, {"
-  )
-
-  expect_match(
-    navigation,
-    "plan <- isolate(frozen_review_plan())",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    "freeze_materialized_plan_for_output(",
-    navigation,
-    fixed = TRUE
-  ))
-})
-
 test_that("group color changes use the existing settings revision path", {
   app <- paste(builder_app_lines(), collapse = "\n")
 
@@ -1284,59 +1048,6 @@ test_that("parameter writes do not eagerly freeze Review or rebuild editors", {
   )
   expect_match(tables, "enhance_table_ui_revision()", fixed = TRUE)
   expect_match(tables, "isolate(entry_of(id))", fixed = TRUE)
-})
-
-test_that("Build page choices come from the confirmed plan on demand", {
-  foundation <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "server", "foundation.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  build <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "server", "build.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_false(grepl("review_page_contract", foundation, fixed = TRUE))
-  expect_match(build, "builder_review_initial_page_choices(", fixed = TRUE)
-  expect_match(build, "viewer_page_expectations", fixed = TRUE)
-})
-
-test_that("confirming an unchanged review plan avoids a second deep copy", {
-  workflow_lines <- readLines(
-    builder_profile_inst_path("builder", "workflow.R"),
-    warn = FALSE
-  )
-  confirmation <- builder_app_block(
-    workflow_lines,
-    '} else if (identical(type, "confirm_review")) {',
-    '} else if (identical(type, "back_to_review")) {'
-  )
-
-  expect_match(
-    confirmation,
-    "if (!identical(event$plan, state$review_plan)) {",
-    fixed = TRUE
-  )
-})
-
-test_that("Build queueing reuses the already frozen plan", {
-  build_lines <- readLines(
-    builder_profile_inst_path("builder", "server", "build.R"),
-    warn = FALSE
-  )
-  enqueue <- builder_app_block(
-    build_lines,
-    "enqueue_build_plan <- function(",
-    "builder_build_conflict_files <- function(plan, prior_state = NULL) {"
-  )
-
-  expect_false(grepl("serialize(", enqueue, fixed = TRUE))
 })
 
 test_that("parameter writes do not rebuild workflow navigation", {

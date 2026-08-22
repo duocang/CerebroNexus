@@ -65,16 +65,6 @@ builder_marker_dialog_ui <- function() {
   )
 }
 
-builder_marker_import_pending_ui <- function() {
-  div(
-    class = "marker-import-workbench",
-    p(
-      class = "hint",
-      "The file mapping workbench is loading in the next implementation step."
-    )
-  )
-}
-
 builder_marker_import_status_label <- function(source) {
   if (builder_marker_import_source_ready(source)) {
     return("Ready")

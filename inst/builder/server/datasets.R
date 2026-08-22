@@ -1,45 +1,5 @@
 ## Builder server: datasets.
 
-builder_normalize_group_dependency <- function(entry) {
-  if (!is.list(entry) || !is.list(entry$settings)) {
-    return(entry)
-  }
-  settings <- entry$settings
-  policy <- settings$metadata_policy %||%
-    settings$recommendations$metadata
-  if (!is.list(policy) || !is.list(policy$columns)) {
-    return(entry)
-  }
-  retained <- names(policy$columns)[vapply(
-    policy$columns,
-    function(record) isTRUE(record$retain_in_crb),
-    logical(1)
-  )]
-  groups <- unique(as.character(
-    settings$included_groups %||% settings$groups %||% character()
-  ))
-  groups <- intersect(groups[!is.na(groups) & nzchar(groups)], retained)
-  default <- settings$default_group %||% ""
-  settings$included_groups <- groups
-  settings$groups <- groups
-  settings$default_group <- if (length(groups)) {
-    if (default %in% groups) default else groups[[1L]]
-  } else {
-    NULL
-  }
-  overrides <- builder_settings_color_overrides(settings)
-  settings$group_color_overrides <- overrides[intersect(
-    names(overrides),
-    groups
-  )]
-  settings$metadata_policy <- builder_metadata_policy_set_groups(
-    policy,
-    groups
-  )
-  entry$settings <- settings
-  entry
-}
-
 ## -- the rail ------------------------------------------------------------
 last_dataset_rail_patch <- reactiveVal(NULL)
 dataset_rail_row_cache <- new.env(parent = emptyenv())

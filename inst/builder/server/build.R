@@ -969,7 +969,7 @@ remove_dataset <- function(
 }
 
 # observeEvent(input$drop_ds, ...) is owned by builder_dataset_rail_server().
-rail_controller <- builder_dataset_rail_server(
+builder_dataset_rail_server(
   input = input,
   session = session,
   store = store,

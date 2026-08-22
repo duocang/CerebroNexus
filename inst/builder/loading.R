@@ -526,10 +526,3 @@ builder_import_progress_cleanup <- function(root) {
     ))
   }
 }
-
-.builder_import_report <- function(progress, stage) {
-  if (is.function(progress)) {
-    progress(stage)
-  }
-  invisible(stage)
-}
