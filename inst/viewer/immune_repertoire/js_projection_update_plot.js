@@ -1,17 +1,17 @@
 // =============================================================================
 // Immune-repertoire Clonal UMAP projection: thin wrapper over the shared
-// projection-scatter renderer (www/projection_scatter.js). Only the NON-FACETED
+// 2-D Canvas renderer. Only the NON-FACETED
 // Clonal UMAP renders through here — the faceted variant (a group_by column is
 // chosen) stays on the static ggplot renderPlot, which faceting needs and the
 // single-canvas shared renderer cannot express.
 //
 // The Clonal UMAP is always categorical: a grey "Other cells" background trace
 // plus one trace per clonal-expansion level. It is passed as a normal
-// categorical render, so it inherits the shared persistent x|y selection,
+// categorical render, so it inherits persistent x|y selection,
 // zoom-to-selection and unified hover for free. Two IR-specific inputs ride on
 // meta: legend_position (IR users pick right/bottom/left/top/none) and per-trace
 // hover.hoverinfo (the grey background skips hover, the coloured levels show it)
-// — both are honoured by the shared render2DCategorical.
+// — both are honoured by the shared Canvas renderer.
 //
 // Same wiring as overview/js_projection_update_plot.js: shinyjs delivers the
 // positional R args as one array `params`, and this file is prepended into the
@@ -36,7 +36,7 @@ shinyjs.updateClonalUMAP = function (params) {
   // R side pushes the data once, so the retry must not be dropped.
   const draw = function (attempt) {
     if (
-      typeof Plotly === 'undefined' ||
+      typeof window.cerebroCanvasProjection === 'undefined' ||
       !document.getElementById(IR_CLONAL_UMAP_PLOT_ID)
     ) {
       if (attempt < 60) {
@@ -46,7 +46,7 @@ shinyjs.updateClonalUMAP = function (params) {
       }
       return;
     }
-    window.cerebroProjection.render2DCategorical(
+    window.cerebroCanvasProjection.renderCategorical(
       meta,
       data,
       hover,
@@ -59,9 +59,9 @@ shinyjs.updateClonalUMAP = function (params) {
 };
 
 shinyjs.irClonalUMAPClearSelection = function () {
-  window.cerebroProjection.clearSelection(IR_CLONAL_UMAP_PLOT_ID);
+  window.cerebroCanvasProjection.clearSelection(IR_CLONAL_UMAP_PLOT_ID);
 };
 
 shinyjs.irClonalUMAPZoomToSelection = function () {
-  window.cerebroProjection.zoomToSelection(IR_CLONAL_UMAP_PLOT_ID);
+  window.cerebroCanvasProjection.toggleZoom(IR_CLONAL_UMAP_PLOT_ID);
 };

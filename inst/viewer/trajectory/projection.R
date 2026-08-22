@@ -78,10 +78,10 @@ output[["trajectory_projection_UI"]] <- renderUI({
               )
             ),
             tagList(
-              plotly::plotlyOutput(
-                "trajectory_projection",
-                width = "auto",
-                height = "60vh"
+              tags$div(
+                id = "trajectory_projection",
+                class = "cerebro-canvas-host",
+                style = "width:100%;height:60vh;"
               ),
               tags$br(),
               fluidRow(

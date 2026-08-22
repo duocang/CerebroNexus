@@ -276,6 +276,13 @@
 
     elements.wrapper.style.height = height + 'px';
     elements.plot.style.height = height + 'px';
+    // The shared 2-D Canvas renderer uses the same viewport measurement but has
+    // no Plotly layout to relayout. Its backing bitmap follows the host through
+    // ResizeObserver, so stop here and reveal the already-final host size.
+    if (elements.plot.classList.contains('cerebro-canvas-host')) {
+      revealProjectionHost(elements.plot);
+      return;
+    }
     // Plotly.react receives an explicit width/height from the Shiny round trip.
     // Merely changing CSS and calling Plots.resize does not replace those layout
     // values, leaving the internal SVG at its old size and letting axis labels

@@ -99,14 +99,10 @@ output[["expression_projection_UI"]] <- renderUI({
             )
           ),
           tagList(
-            shinycssloaders::withSpinner(
-              plotly::plotlyOutput(
-                "expression_projection",
-                width = "auto",
-                height = "60vh"
-              ),
-              type = 8,
-              hide.ui = FALSE
+            tags$div(
+              id = "expression_projection",
+              class = "cerebro-canvas-host",
+              style = "width:100%;height:60vh;"
             ),
             tags$br(),
             fluidRow(

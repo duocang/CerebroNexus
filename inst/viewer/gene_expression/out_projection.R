@@ -1,28 +1,7 @@
 ##----------------------------------------------------------------------------##
-## Plot of projection.
+## Projection help and modal content. The 2-D plot is rendered directly by the
+## shared browser Canvas engine; 3-D and multi-panel modes retain Plotly.
 ##----------------------------------------------------------------------------##
-output[["expression_projection"]] <- plotly::renderPlotly({
-  plotly::plot_ly(
-    type = 'scattergl',
-    mode = 'markers',
-    source = "expression_projection"
-  ) %>%
-    plotly::layout(
-      xaxis = list(
-        autorange = TRUE,
-        mirror = TRUE,
-        showline = TRUE,
-        zeroline = FALSE
-      ),
-      yaxis = list(
-        autorange = TRUE,
-        mirror = TRUE,
-        showline = TRUE,
-        zeroline = FALSE
-      )
-    )
-})
-
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.
 ##----------------------------------------------------------------------------##

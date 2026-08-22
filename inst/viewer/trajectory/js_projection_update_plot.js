@@ -1,15 +1,10 @@
 // =============================================================================
-// Trajectory projection: thin wrappers over the shared projection-scatter
-// renderer (inst/shiny/www/projection_scatter.js). Trajectory was previously a
-// pure-R renderPlotly; it now uses the shared empty-skeleton + JS-observer model
-// so it gets the custom top legend, persistent x|y selection, group labels and
-// modebar-off look. The trajectory PATH is a layout `shapes` overlay (black line
-// segments) passed as the tab-specific `extra.shapes`.
+// Trajectory projection: thin wrappers over the shared 2-D Canvas renderer.
+// The trajectory path is passed as line-segment shapes below the cells.
 //
 // The R observer calls:
 //   trajectoryUpdatePlot2DContinuous(meta, data, hover, group_centers, container, shapes)
 //   trajectoryUpdatePlot2DCategorical(meta, data, hover, group_centers, container, shapes)
-//   trajectoryGetContainerDimensions()
 // shinyjs delivers positional args as ONE array `params`.
 // =============================================================================
 
@@ -22,7 +17,7 @@ if (window.cerebroProjection) {
 shinyjs.trajectoryUpdatePlot2DContinuous = function (params) {
   const [meta, data, hover, group_centers, container, shapes] = params;
   meta.plot_id = TRAJECTORY_PLOT_ID;
-  window.cerebroProjection.render2DContinuous(meta, data, hover, group_centers, container, {
+  window.cerebroCanvasProjection.renderContinuous(meta, data, hover, group_centers, container, {
     shapes: shapes || [],
   });
 };
@@ -30,19 +25,15 @@ shinyjs.trajectoryUpdatePlot2DContinuous = function (params) {
 shinyjs.trajectoryUpdatePlot2DCategorical = function (params) {
   const [meta, data, hover, group_centers, container, shapes] = params;
   meta.plot_id = TRAJECTORY_PLOT_ID;
-  window.cerebroProjection.render2DCategorical(meta, data, hover, group_centers, container, {
+  window.cerebroCanvasProjection.renderCategorical(meta, data, hover, group_centers, container, {
     shapes: shapes || [],
   });
 };
 
-shinyjs.trajectoryGetContainerDimensions = function () {
-  return window.cerebroProjection.getContainerDimensions(TRAJECTORY_PLOT_ID);
-};
-
 shinyjs.trajectoryClearSelection = function () {
-  window.cerebroProjection.clearSelection(TRAJECTORY_PLOT_ID);
+  window.cerebroCanvasProjection.clearSelection(TRAJECTORY_PLOT_ID);
 };
 
 shinyjs.trajectoryZoomToSelection = function () {
-  window.cerebroProjection.zoomToSelection(TRAJECTORY_PLOT_ID);
+  window.cerebroCanvasProjection.toggleZoom(TRAJECTORY_PLOT_ID);
 };

@@ -58,7 +58,7 @@ function expressionBuildParams(data, color) {
 shinyjs.expressionProjectionUpdatePlot2D = function (params) {
   const [data, hover, color, trajectory] = params;
   const { meta, data: sharedData } = expressionBuildParams(data, color);
-  window.cerebroProjection.render2DContinuous(meta, sharedData, hover, null, null, {
+  window.cerebroCanvasProjection.renderContinuous(meta, sharedData, hover, null, null, {
     shapes: trajectory || [],
   });
 };
@@ -66,15 +66,20 @@ shinyjs.expressionProjectionUpdatePlot2D = function (params) {
 shinyjs.expressionProjectionUpdatePlot3D = function (params) {
   const [data, hover, color] = params;
   const { meta, data: sharedData } = expressionBuildParams(data, color);
+  window.cerebroCanvasProjection.deactivate(EXPRESSION_PLOT_ID);
   window.cerebroProjection.render3DContinuous(meta, sharedData, hover, null, null, {});
 };
 
 shinyjs.expressionClearSelection = function () {
-  window.cerebroProjection.clearSelection(EXPRESSION_PLOT_ID);
+  if (!window.cerebroCanvasProjection.clearSelection(EXPRESSION_PLOT_ID)) {
+    window.cerebroProjection.clearSelection(EXPRESSION_PLOT_ID);
+  }
 };
 
 shinyjs.expressionZoomToSelection = function () {
-  window.cerebroProjection.zoomToSelection(EXPRESSION_PLOT_ID);
+  if (!window.cerebroCanvasProjection.toggleZoom(EXPRESSION_PLOT_ID)) {
+    window.cerebroProjection.zoomToSelection(EXPRESSION_PLOT_ID);
+  }
 };
 
 // =============================================================================
@@ -102,6 +107,7 @@ const expression_projection_multi_default_params = {
 };
 
 shinyjs.expressionProjectionUpdatePlot2DMultiPanel = function (params) {
+  window.cerebroCanvasProjection.deactivate(EXPRESSION_PLOT_ID);
   params = shinyjs.getParams(params, expression_projection_multi_default_params);
   if (Array.isArray(params.data.color)) {
     return null;

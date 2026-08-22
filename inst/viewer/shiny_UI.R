@@ -355,11 +355,12 @@ ui <- dashboardPage(
       ## Shared projection-scatter engine, loaded ONCE here instead of being
       ## inlined into each remaining projection-style detail tab. Both
       ## files expose only window globals (window.cerebroProjectionLayout /
-      ## window.cerebroProjection); each tab's thin js_projection_update_plot.js
+      ## window.cerebroCanvasProjection / window.cerebroProjection); each tab's thin js_projection_update_plot.js
       ## (still inlined via extendShinyjs) calls those globals. These are NOT
       ## deferred so the globals exist before the tab scripts' registerPlot()
       ## runs; layouts before scatter since scatter builds on the layout helpers.
       cerebro_js("projection_layouts.js"),
+      cerebro_js("projection_canvas.js"),
       cerebro_js("projection_scatter.js")
     ),
     tabItems(

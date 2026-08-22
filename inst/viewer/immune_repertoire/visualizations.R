@@ -504,26 +504,15 @@ output$ir_ui_clonalUMAP <- renderUI({
   )
 })
 
-## Shared-projection host for the non-faceted Clonal UMAP: the plotly div the
-## shared renderer targets, plus the Clear/Zoom-to-selection buttons (hidden
-## until a selection exists). Mirrors overview/UI_projection.R.
+## Shared Canvas host for the non-faceted Clonal UMAP, plus selection actions.
 ir_clonalUMAP_projection_ui <- function() {
   tagList(
     div(
       class = "cerebro-projection-gate",
-      shinycssloaders::withSpinner(
-        plotly::plotlyOutput(
-          "ir_clonalUMAP_projection",
-          width = "auto",
-          # 60vh placeholder, same as the overview projection: the shared
-          # renderer measures and resizes to the real viewport height, and the
-          # projection reveal gate keeps it hidden until then. A placeholder
-          # close to the settled height means no visible jump on reveal (the old
-          # calc(100vh - 250px) started ~125px too tall and shrank in view).
-          height = "60vh"
-        ),
-        type = 8,
-        hide.ui = FALSE
+      tags$div(
+        id = "ir_clonalUMAP_projection",
+        class = "cerebro-canvas-host",
+        style = "width:100%;height:60vh;"
       )
     ),
     div(
@@ -560,25 +549,10 @@ output$ir_clonalUMAP_selection_count <- renderUI({
   selectionCountBadge(length(sel$x))
 })
 
-## Bootstrap the shared-projection host div. The shared renderer draws into this
-## same plotly output via Plotly.react (js$updateClonalUMAP); this empty
-## scattergl only creates the target div, exactly like overview/out_projection.R.
-output$ir_clonalUMAP_projection <- plotly::renderPlotly({
-  plotly::plot_ly(
-    type = "scattergl",
-    mode = "markers",
-    source = "ir_clonalUMAP_projection"
-  ) %>%
-    plotly::layout(
-      xaxis = ir_projection_axis(),
-      yaxis = ir_projection_axis()
-    )
-})
-
-## Draw the non-faceted Clonal UMAP through the shared projection-scatter engine.
+## Draw the non-faceted Clonal UMAP through the shared Canvas engine.
 ## We marshal the same grey "Other cells" background + one-trace-per-expansion-
 ## level data the old renderPlotly built, but as the meta/data/hover arrays the
-## shared render2DCategorical consumes, then hand off to JS. Runs only when no
+## shared categorical renderer consumes, then hand off to JS. Runs only when no
 ## grouping column is chosen (the faceted variant uses the static ggplot below).
 observe({
   group_by <- ir_param("ir_p_umap_group_by", "")
@@ -586,16 +560,6 @@ observe({
   if (!is.null(group_by) && nzchar(group_by)) {
     return()
   }
-
-  ## Depend on the host div's reported width so the render RE-FIRES once the div
-  ## materialises. The host lives behind renderUI (emitted only when non-faceted),
-  ## so unlike the always-present Main plot, the div may not exist when this first
-  ## runs. clientData width is populated once the div is in the DOM and sized;
-  ## requiring it both registers the dependency and avoids a react on a 0-size or
-  ## absent div (which would draw blank or throw). Re-fires on faceted->non-
-  ## faceted switches and tab re-open, and harmlessly on resize.
-  plot_width <- session$clientData[["output_ir_clonalUMAP_projection_width"]]
-  req(!is.null(plot_width) && plot_width > 0)
 
   receptor <- ir_param("ir_p_umap_receptor")
   projection <- ir_param("ir_p_umap_projection")
