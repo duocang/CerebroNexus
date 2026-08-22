@@ -136,8 +136,13 @@ test_that("Core keeps technical controls advanced and metadata visible", {
   expect_false(grepl('viewer-group-default', html, fixed = TRUE))
   expect_false(grepl('metadata-preview', html, fixed = TRUE))
   expect_false(grepl('class="sr-only', html, fixed = TRUE))
-  expect_match(html, 'class="builder-disclosure"', fixed = TRUE)
+  expect_match(
+    html,
+    'class="builder-viewer-card builder-viewer-advanced-settings"',
+    fixed = TRUE
+  )
   expect_match(html, "Advanced settings", fixed = TRUE)
+  expect_match(html, "5 settings", fixed = TRUE)
   expect_false(grepl("Advanced technical settings", html, fixed = TRUE))
   expect_match(html, "Assay", fixed = TRUE)
   expect_match(html, "Expression backend", fixed = TRUE)

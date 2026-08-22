@@ -93,17 +93,33 @@ builder_project_dialog_content <- function(primary, secondary, icon) {
 
 builder_project_first_save_dialog <- function() {
   modalDialog(
-    title = "Save this project",
-    builder_project_dialog_content(
-      "Choose a folder to save your datasets and current settings.",
-      "Uploaded files will be copied into the project so you can continue later.",
-      "folder-open"
+    title = tagList(
+      tags$span(class = "builder-project-modal-kicker", "Builder project"),
+      tags$span("Save this project")
+    ),
+    tags$div(
+      class = "builder-project-dialog builder-project-first-save-dialog",
+      tags$p(
+        class = "builder-project-dialog-lead",
+        "Choose a folder for your datasets and current Builder settings."
+      ),
+      tags$div(
+        class = "builder-project-dialog-note",
+        tags$span(
+          class = "builder-project-dialog-icon",
+          `aria-hidden` = "true",
+          shiny::icon("check")
+        ),
+        tags$p(
+          "Source files are copied into the project so you can continue later."
+        )
+      )
     ),
     footer = tagList(
-      modalButton("Not now"),
+      modalButton("Cancel"),
       actionButton(
         "choose_builder_project_folder",
-        "Choose project folder…",
+        "Choose folder…",
         class = "btn btn-primary"
       )
     ),

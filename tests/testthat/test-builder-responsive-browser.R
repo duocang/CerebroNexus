@@ -90,6 +90,12 @@ test_that("Builder preserves responsive geometry before Build", {
     timeout = 60000
   )
   builder_browser_dismiss_project_offer(app)
+  app$run_js(
+    "document.querySelector('.builder-viewer-spatial-alignment').open = true"
+  )
+  app$wait_for_js(
+    "document.querySelector('.spatial-alignment-plot-frame').clientWidth > 0"
+  )
   app$wait_for_idle(timeout = 30000)
 
   geometries <- list()

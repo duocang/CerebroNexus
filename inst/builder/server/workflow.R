@@ -46,7 +46,7 @@ navigate_workflow_stage <- function(stage) {
   if (stage %in% c("review", "build") && !isTRUE(all_datasets_checked())) {
     return(invisible(FALSE))
   }
-  if (stage %in% c("review", "build")) {
+  if (identical(stage, "review")) {
     plan <- freeze_materialized_plan_for_output(
       file.path(tempdir(), "cerebro-builder-output-preview"),
       overwrite = FALSE
@@ -54,12 +54,13 @@ navigate_workflow_stage <- function(stage) {
     if (!builder_review_can_build(plan)) {
       return(invisible(FALSE))
     }
-    if (identical(stage, "review")) {
-      state <- builder_reduce_workflow(
-        state,
-        list(type = "open_review", plan = plan)
-      )
-    } else if (!builder_workflow_confirmation_matches(state, plan)) {
+    state <- builder_reduce_workflow(
+      state,
+      list(type = "open_review", plan = plan)
+    )
+  } else if (identical(stage, "build")) {
+    plan <- state$review_plan
+    if (!builder_workflow_confirmation_matches(state, plan)) {
       workflow(builder_reduce_workflow(
         state,
         list(type = "open_review", plan = plan)

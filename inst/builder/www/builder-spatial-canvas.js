@@ -121,16 +121,21 @@
     return {x: cx + x * Math.cos(angle) - y * Math.sin(angle),
       y: cy + x * Math.sin(angle) + y * Math.cos(angle)};
   }
-  function viewport(bounds) {
+  function viewport(bounds, degrees) {
     var cx = (bounds.xmin + bounds.xmax) / 2;
     var cy = (bounds.ymin + bounds.ymax) / 2;
-    var side = Math.hypot(bounds.xmax - bounds.xmin, bounds.ymax - bounds.ymin);
-    side = Math.max(side, 1) * 1.12;
-    return {xmin: cx - side / 2, xmax: cx + side / 2,
-      ymin: cy - side / 2, ymax: cy + side / 2};
+    var frame = corners(bounds, degrees);
+    var width = Math.max.apply(null, frame.map(function (p) { return p.x; })) -
+      Math.min.apply(null, frame.map(function (p) { return p.x; }));
+    var height = Math.max.apply(null, frame.map(function (p) { return p.y; })) -
+      Math.min.apply(null, frame.map(function (p) { return p.y; }));
+    width = Math.max(width, 1) * 1.06;
+    height = Math.max(height, 1) * 1.06;
+    return {xmin: cx - width / 2, xmax: cx + width / 2,
+      ymin: cy - height / 2, ymax: cy + height / 2};
   }
-  function viewportLayout(bounds, width, height, pad) {
-    var view = viewport(bounds);
+  function viewportLayout(bounds, degrees, width, height, pad) {
+    var view = viewport(bounds, degrees);
     var viewWidth = view.xmax - view.xmin;
     var viewHeight = view.ymax - view.ymin;
     var scale = Math.min(
@@ -183,7 +188,14 @@
     state.screenPoints = [];
     if (!scene.available || !scene.bounds) return;
     var pad = 28;
-    var layout = viewportLayout(scene.bounds, cssWidth, cssHeight, pad);
+    var angle = finite(state.controls.coordinateRotation, 0);
+    var layout = viewportLayout(
+      scene.bounds,
+      angle,
+      cssWidth,
+      cssHeight,
+      pad
+    );
     var scale = layout.scale, screen = layout.screen;
     window.__builderSpatialCanvasMetrics.latestViewport = {
       centerX: layout.offsetX + (layout.view.xmax - layout.view.xmin) * scale / 2,
@@ -194,7 +206,6 @@
     drawImage(ctx, scene, screen, scale);
     drawPoints(ctx, scene, screen);
     drawFrame(ctx, scene.bounds, screen, 0, "#9a958d", [4, 4], 1);
-    var angle = finite(state.controls.coordinateRotation, 0);
     drawFrame(ctx, scene.bounds, screen, angle, "#5f5a54", [], 1.5);
     drawReference(ctx, scene.bounds, screen, angle);
     var summary = document.getElementById(node.id + "-summary");
@@ -355,6 +366,14 @@
   document.addEventListener("pointerup", finishInteraction, true);
   document.addEventListener("pointercancel", finishInteraction, true);
   document.addEventListener("mouseup", finishInteraction, true);
+  document.addEventListener("toggle", function (event) {
+    if (
+      event.target.matches &&
+      event.target.matches(".builder-viewer-spatial-alignment[open]")
+    ) {
+      schedule();
+    }
+  }, true);
   function updateHover() {
     state.hoverFrame = 0;
     var node = canvas(), scene = state.scene, point = state.hoverPoint;

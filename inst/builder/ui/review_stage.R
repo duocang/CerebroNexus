@@ -760,6 +760,16 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
       ),
       span(paste("Creates", model$output_label))
     ),
+    if (length(model$warnings %||% character())) {
+      tags$section(
+        class = paste(
+          "builder-stage-section review-section",
+          "review-needs-attention"
+        ),
+        h3("Needs attention"),
+        tags$ul(lapply(model$warnings, tags$li))
+      )
+    },
     tags$section(
       class = "builder-stage-section review-section review-datasets",
       h3("Datasets"),
@@ -770,243 +780,241 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
         ),
         lapply(model$datasets, function(dataset) {
           viewer_content <- dataset$viewer_content
-          div(
+          pages <- dataset$pages %||% list()
+          shown_pages <- utils::head(pages, 8L)
+          more_pages <- utils::tail(pages, max(0L, length(pages) - 8L))
+          tags$details(
             class = "builder-object review-dataset-card",
-            h4(dataset$name),
-            p(
-              class = "review-dataset-counts",
-              paste0(
-                format(dataset$cells, big.mark = ","),
-                " cells · ",
-                format(dataset$genes, big.mark = ","),
-                " genes"
+            open = if (identical(length(model$datasets), 1L)) "open" else NULL,
+            tags$summary(
+              tags$strong(dataset$name),
+              span(
+                class = "review-dataset-counts",
+                paste0(
+                  format(dataset$cells, big.mark = ","),
+                  " cells · ",
+                  format(dataset$genes, big.mark = ","),
+                  " genes"
+                )
               )
             ),
             div(
-              class = "review-viewer-content",
-              if (viewer_content$metadata$total_count > 0L) {
+              class = "review-dataset-body",
+              div(
+                class = "review-viewer-content",
+                if (viewer_content$metadata$total_count > 0L) {
+                  div(
+                    class = "review-viewer-content-item review-viewer-metadata",
+                    h5("Metadata"),
+                    p(paste0(
+                      viewer_content$metadata$kept_count,
+                      " retained · ",
+                      viewer_content$metadata$excluded_count,
+                      " excluded"
+                    )),
+                    if (viewer_content$metadata$attention_count > 0L) {
+                      p(
+                        class = "hint",
+                        paste(
+                          viewer_content$metadata$attention_count,
+                          "needs attention"
+                        )
+                      )
+                    }
+                  )
+                },
                 div(
-                  class = "review-viewer-content-item review-viewer-metadata",
-                  h5("Metadata"),
+                  class = "review-viewer-content-item review-expression-storage",
+                  h5("Expression storage"),
+                  p(dataset$expression_storage)
+                ),
+                div(
+                  class = "review-viewer-content-item review-viewer-groups",
+                  h5("Groups"),
                   p(paste0(
-                    viewer_content$metadata$kept_count,
-                    " retained · ",
-                    viewer_content$metadata$excluded_count,
-                    " excluded"
+                    viewer_content$groups$included_count,
+                    " included · Default: ",
+                    viewer_content$groups$default
                   )),
-                  if (viewer_content$metadata$attention_count > 0L) {
+                  p(
+                    class = "hint",
+                    paste(
+                      viewer_content$groups$custom_color_count,
+                      "colors customized"
+                    )
+                  )
+                ),
+                if (!is.null(viewer_content$cell_cycle)) {
+                  div(
+                    class = "review-viewer-content-item review-viewer-cell-cycle",
+                    h5("Cell cycle"),
+                    p(paste(
+                      viewer_content$cell_cycle$included,
+                      collapse = ", "
+                    ))
+                  )
+                },
+                div(
+                  class = "review-viewer-content-item review-viewer-projections",
+                  h5("Projections"),
+                  p(paste(
+                    viewer_content$projections$included,
+                    collapse = ", "
+                  )),
+                  p(paste0(
+                    "Default: ",
+                    viewer_content$projections$default
+                  )),
+                  p(
+                    class = "hint",
+                    paste("Point size", viewer_content$projections$point_size)
+                  )
+                ),
+                if (!is.null(viewer_content$trajectories)) {
+                  div(
+                    class = "review-viewer-content-item review-viewer-trajectories",
+                    h5("Trajectories"),
+                    p(paste0(
+                      viewer_content$trajectories$included_count,
+                      " included · Default: ",
+                      viewer_content$trajectories$default
+                    ))
+                  )
+                },
+                if (viewer_content$analysis_results$total_count > 0L) {
+                  div(
+                    class = paste(
+                      "review-viewer-content-item",
+                      "review-viewer-analysis-results"
+                    ),
+                    h5("Analysis results"),
+                    p(paste(
+                      c(
+                        if (
+                          viewer_content$analysis_results$existing_count > 0L
+                        ) {
+                          paste(
+                            viewer_content$analysis_results$existing_count,
+                            "existing"
+                          )
+                        },
+                        if (
+                          viewer_content$analysis_results$generated_count > 0L
+                        ) {
+                          paste(
+                            viewer_content$analysis_results$generated_count,
+                            "will be generated"
+                          )
+                        },
+                        if (
+                          viewer_content$analysis_results$attention_count > 0L
+                        ) {
+                          paste(
+                            viewer_content$analysis_results$attention_count,
+                            "needs attention"
+                          )
+                        },
+                        if (
+                          viewer_content$analysis_results$excluded_count > 0L
+                        ) {
+                          paste(
+                            viewer_content$analysis_results$excluded_count,
+                            "not included"
+                          )
+                        }
+                      ),
+                      collapse = " · "
+                    )),
                     p(
                       class = "hint",
                       paste(
-                        viewer_content$metadata$attention_count,
-                        "needs attention"
+                        vapply(
+                          viewer_content$analysis_results$items,
+                          `[[`,
+                          character(1),
+                          "label"
+                        ),
+                        collapse = ", "
+                      )
+                    )
+                  )
+                },
+                if (viewer_content$specialized$total_count > 0L) {
+                  div(
+                    class = paste(
+                      "review-viewer-content-item",
+                      "review-viewer-specialized-content"
+                    ),
+                    h5("Specialized content"),
+                    p(viewer_content$specialized$summary),
+                    p(
+                      class = "hint",
+                      paste(
+                        vapply(
+                          viewer_content$specialized$items,
+                          `[[`,
+                          character(1),
+                          "label"
+                        ),
+                        collapse = ", "
+                      )
+                    )
+                  )
+                }
+              ),
+              if (
+                !is.null(dataset$spatial_alignment) &&
+                  dataset$spatial_alignment$section_count > 0L
+              ) {
+                div(
+                  class = "review-spatial-alignment",
+                  tags$b("Spatial"),
+                  p(paste0(
+                    dataset$spatial_alignment$section_count,
+                    " sections · ",
+                    dataset$spatial_alignment$image_count %||% 0L,
+                    " images",
+                    if (!is.null(dataset$spatial_alignment$storage)) {
+                      paste0(" · ", dataset$spatial_alignment$storage)
+                    } else {
+                      ""
+                    }
+                  )),
+                  if (length(dataset$spatial_alignment$points_only)) {
+                    p(
+                      class = "hint",
+                      paste0(
+                        length(dataset$spatial_alignment$points_only),
+                        if (
+                          length(dataset$spatial_alignment$points_only) == 1L
+                        ) {
+                          " section remains points-only."
+                        } else {
+                          " sections remain points-only."
+                        }
                       )
                     )
                   }
                 )
               },
               div(
-                class = "review-viewer-content-item review-expression-storage",
-                h5("Expression storage"),
-                p(dataset$expression_storage)
-              ),
-              div(
-                class = "review-viewer-content-item review-viewer-groups",
-                h5("Groups"),
-                p(paste0(
-                  viewer_content$groups$included_count,
-                  " included · Default: ",
-                  viewer_content$groups$default
-                )),
-                p(
-                  class = "hint",
-                  paste(
-                    viewer_content$groups$custom_color_count,
-                    "colors customized"
-                  )
-                )
-              ),
-              if (!is.null(viewer_content$cell_cycle)) {
-                div(
-                  class = "review-viewer-content-item review-viewer-cell-cycle",
-                  h5("Cell cycle"),
-                  p(paste(viewer_content$cell_cycle$included, collapse = ", "))
-                )
-              },
-              div(
-                class = "review-viewer-content-item review-viewer-projections",
-                h5("Projections"),
-                p(paste(
-                  viewer_content$projections$included,
-                  collapse = ", "
-                )),
-                p(paste0(
-                  "Default: ",
-                  viewer_content$projections$default
-                )),
-                p(
-                  class = "hint",
-                  paste("Point size", viewer_content$projections$point_size)
-                )
-              ),
-              if (!is.null(viewer_content$trajectories)) {
-                div(
-                  class = "review-viewer-content-item review-viewer-trajectories",
-                  h5("Trajectories"),
-                  p(paste0(
-                    viewer_content$trajectories$included_count,
-                    " included · Default: ",
-                    viewer_content$trajectories$default
-                  ))
-                )
-              },
-              if (viewer_content$analysis_results$total_count > 0L) {
-                div(
-                  class = paste(
-                    "review-viewer-content-item",
-                    "review-viewer-analysis-results"
-                  ),
-                  h5("Analysis results"),
-                  p(paste(
-                    c(
-                      if (viewer_content$analysis_results$existing_count > 0L) {
-                        paste(
-                          viewer_content$analysis_results$existing_count,
-                          "existing"
-                        )
-                      },
-                      if (
-                        viewer_content$analysis_results$generated_count > 0L
-                      ) {
-                        paste(
-                          viewer_content$analysis_results$generated_count,
-                          "will be generated"
-                        )
-                      },
-                      if (
-                        viewer_content$analysis_results$attention_count > 0L
-                      ) {
-                        paste(
-                          viewer_content$analysis_results$attention_count,
-                          "needs attention"
-                        )
-                      },
-                      if (viewer_content$analysis_results$excluded_count > 0L) {
-                        paste(
-                          viewer_content$analysis_results$excluded_count,
-                          "not included"
-                        )
-                      }
-                    ),
-                    collapse = " · "
-                  )),
-                  p(
-                    class = "hint",
-                    paste(
-                      vapply(
-                        viewer_content$analysis_results$items,
-                        `[[`,
-                        character(1),
-                        "label"
-                      ),
-                      collapse = ", "
-                    )
-                  )
-                )
-              },
-              if (viewer_content$specialized$total_count > 0L) {
-                div(
-                  class = paste(
-                    "review-viewer-content-item",
-                    "review-viewer-specialized-content"
-                  ),
-                  h5("Specialized content"),
-                  p(viewer_content$specialized$summary),
-                  p(
-                    class = "hint",
-                    paste(
-                      vapply(
-                        viewer_content$specialized$items,
-                        `[[`,
-                        character(1),
-                        "label"
-                      ),
-                      collapse = ", "
-                    )
-                  )
-                )
-              }
-            ),
-            if (
-              !is.null(dataset$spatial_alignment) &&
-                dataset$spatial_alignment$section_count > 0L
-            ) {
-              div(
-                class = "review-spatial-alignment",
-                tags$b("Spatial"),
-                p(paste0(
-                  dataset$spatial_alignment$section_count,
-                  " sections · ",
-                  dataset$spatial_alignment$image_count %||% 0L,
-                  " images",
-                  if (!is.null(dataset$spatial_alignment$storage)) {
-                    paste0(" · ", dataset$spatial_alignment$storage)
-                  } else {
-                    ""
-                  }
-                )),
-                if (length(dataset$spatial_alignment$points_only)) {
-                  p(
-                    class = "hint",
-                    paste0(
-                      length(dataset$spatial_alignment$points_only),
-                      if (length(dataset$spatial_alignment$points_only) == 1L) {
-                        " section remains points-only."
-                      } else {
-                        " sections remain points-only."
-                      }
-                    )
+                class = "review-dataset-pages",
+                h5("Viewer pages"),
+                page_tags(shown_pages),
+                if (length(more_pages)) {
+                  tags$details(
+                    class = "review-pages-more",
+                    tags$summary(paste("Show", length(more_pages), "more")),
+                    page_tags(more_pages)
                   )
                 }
+              ),
+              p(
+                class = "review-dataset-file",
+                span("Output file: "),
+                tags$code(dataset$output_file)
               )
-            },
-            p(
-              class = "review-dataset-file",
-              span("Output file: "),
-              tags$code(dataset$output_file)
             )
-          )
-        })
-      )
-    ),
-    tags$section(
-      class = "builder-stage-section review-section review-pages",
-      h3("Content available from the CRBs"),
-      div(
-        class = paste(
-          "review-dataset-grid review-content-grid",
-          if (identical(length(model$datasets), 1L)) "is-single-dataset"
-        ),
-        lapply(model$datasets, function(dataset) {
-          pages <- dataset$pages %||% list()
-          shown_pages <- utils::head(pages, 8L)
-          more_pages <- utils::tail(pages, max(0L, length(pages) - 8L))
-          div(
-            class = "builder-object review-dataset-card review-content-card",
-            h4(dataset$name),
-            p(
-              class = "review-dataset-file",
-              span("Output file: "),
-              tags$code(dataset$output_file)
-            ),
-            page_tags(shown_pages),
-            if (length(more_pages)) {
-              tags$details(
-                class = "review-pages-more",
-                tags$summary(paste("Show", length(more_pages), "more")),
-                page_tags(more_pages)
-              )
-            }
           )
         })
       )
@@ -1031,16 +1039,6 @@ builder_review_stage_ui <- function(id, model, footer = NULL) {
         field("Estimated build time", model$output$estimated_time)
       )
     ),
-    if (length(model$warnings %||% character())) {
-      tags$section(
-        class = paste(
-          "builder-stage-section review-section",
-          "review-needs-attention"
-        ),
-        h3("Needs attention"),
-        tags$ul(lapply(model$warnings, tags$li))
-      )
-    },
     footer
   )
 }

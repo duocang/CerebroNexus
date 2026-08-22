@@ -2,42 +2,44 @@
 (function () {
   "use strict";
 
-  var workflowProgressScrollTimer = null;
   var tableUploadHighlightTimer = null;
-  var compactWorkflowManager = window.matchMedia("(max-width: 40rem)");
   var narrowManager = window.matchMedia("(max-width: 58rem)");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  function syncWorkflowStickyState() {
+    var progress = document.querySelector(".builder-workflow-progress");
+    if (!progress) return;
+    var host = document.getElementById("workflow_progress") || progress;
+    var stickyTop = parseFloat(window.getComputedStyle(host).top) || 0;
+    var naturalTop = 0;
+    var node = host;
+    while (node) {
+      naturalTop += node.offsetTop;
+      node = node.offsetParent;
+    }
+    progress.classList.toggle(
+      "is-stuck",
+      window.scrollY + stickyTop >= naturalTop
+    );
+  }
+
   function syncWorkflowProgressHeight() {
     var progress = document.querySelector(".builder-workflow-progress");
+    var topbar = document.querySelector(".topbar");
     var height = progress ? Math.ceil(progress.getBoundingClientRect().height) : 0;
+    if (topbar) {
+      document.documentElement.style.setProperty(
+        "--builder-topbar-height",
+        Math.ceil(topbar.getBoundingClientRect().height) + "px"
+      );
+    }
     document.documentElement.style.setProperty(
       "--builder-workflow-progress-height",
       height + "px"
     );
+    syncWorkflowStickyState();
   }
-  function updateWorkflowProgressVisibility() {
-    var progress = document.querySelector(".builder-workflow-progress");
-    if (!progress) return;
-    if (
-      !compactWorkflowManager.matches ||
-      reducedMotion.matches ||
-      progress.matches(":focus-within")
-    ) {
-      progress.classList.remove("is-scrolling");
-      return;
-    }
-    progress.classList.add("is-scrolling");
-    window.clearTimeout(workflowProgressScrollTimer);
-    workflowProgressScrollTimer = window.setTimeout(function () {
-      progress.classList.remove("is-scrolling");
-    }, 250);
-  }
-  window.addEventListener("scroll", updateWorkflowProgressVisibility, { passive: true });
-  window.addEventListener("resize", function () {
-    var progress = document.querySelector(".builder-workflow-progress");
-    if (progress) progress.classList.remove("is-scrolling");
-    syncWorkflowProgressHeight();
-  });
+  window.addEventListener("resize", syncWorkflowProgressHeight);
+  window.addEventListener("scroll", syncWorkflowStickyState, { passive: true });
 
   var statusTimer = null;
   var lastAnnouncement = "";
@@ -1358,6 +1360,9 @@
     section.setAttribute("aria-atomic", "true");
     var copy = document.createElement("div");
     copy.className = "builder-loading-copy";
+    var visual = document.createElement("div");
+    visual.className = "builder-loading-visual";
+    visual.setAttribute("aria-hidden", "true");
     var kicker = document.createElement("span");
     kicker.className = "builder-loading-kicker";
     kicker.textContent = "Dataset import";
@@ -1369,6 +1374,7 @@
     var state = document.createElement("p");
     state.className = "builder-loading-status";
     state.textContent = status;
+    copy.appendChild(visual);
     copy.appendChild(kicker);
     copy.appendChild(title);
     copy.appendChild(name);
@@ -1412,6 +1418,34 @@
       enqueueClientFiles(picker.files);
     }, { once: true });
     picker.click();
+  }
+
+  function setupDatasetDropzones() {
+    document.querySelectorAll(".builder-dataset-dropzone").forEach(function (dropzone) {
+      if (dropzone.dataset.dropzoneBound === "true") return;
+      dropzone.dataset.dropzoneBound = "true";
+      dropzone.addEventListener("click", openDatasetPicker);
+      dropzone.addEventListener("keydown", function (event) {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        openDatasetPicker();
+      });
+      dropzone.addEventListener("dragover", function (event) {
+        event.preventDefault();
+        if (!activityCapability("add_dataset")) return;
+        dropzone.classList.add("is-drag-over");
+      });
+      dropzone.addEventListener("dragleave", function (event) {
+        if (event.relatedTarget && dropzone.contains(event.relatedTarget)) return;
+        dropzone.classList.remove("is-drag-over");
+      });
+      dropzone.addEventListener("drop", function (event) {
+        event.preventDefault();
+        dropzone.classList.remove("is-drag-over");
+        if (!activityCapability("add_dataset")) return;
+        enqueueClientFiles(event.dataTransfer && event.dataTransfer.files);
+      });
+    });
   }
 
   function clientQueueStatus(entry, index) {
@@ -3441,9 +3475,33 @@
     );
   }
 
+  function updateOptionalAnalysisCount() {
+    document.querySelectorAll("[data-analysis-count]").forEach(function (output) {
+      var disclosure = output.closest(".builder-viewer-optional-analyses");
+      if (!disclosure) return;
+      var selected = disclosure.querySelectorAll(
+        ".enhance-module-checkbox:checked, " +
+        ".marker-genes-action[aria-pressed=\"true\"]"
+      ).length;
+      output.textContent = selected + " included";
+    });
+  }
+
+  function updateExtraMaterialCount() {
+    document.querySelectorAll("[data-extra-material-count]").forEach(function (output) {
+      var disclosure = output.closest(".builder-viewer-extra-material");
+      if (!disclosure) return;
+      output.textContent = disclosure.querySelectorAll(".enhance-sheet-item").length +
+        " included";
+    });
+  }
+
   function enhanceDynamicContent() {
     syncWorkflowProgressHeight();
+    setupDatasetDropzones();
     syncSpatialAlignmentScrollbars();
+    updateOptionalAnalysisCount();
+    updateExtraMaterialCount();
     if (window.BuilderIcons) window.BuilderIcons.decorate(document);
     setupRail();
     updateRailSummary();
@@ -4024,6 +4082,9 @@
       return;
     }
     if (event.target.matches("#dataset_files")) return;
+    if (event.target.matches(".enhance-module-checkbox")) {
+      updateOptionalAnalysisCount();
+    }
     if (event.target.matches(".viewer-group-include")) {
       updateViewerGroupSelection(
         event.target.closest(".viewer-group-workspace"),

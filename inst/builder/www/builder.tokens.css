@@ -81,11 +81,11 @@
   --builder-measure-copy: 48rem;
   --builder-measure-form: 56rem;
   --builder-measure-data: none;
-  --builder-page-gutter: 26px;
-  --builder-stage-padding: var(--space-6);
-  --builder-section-gap: var(--space-6);
-  --builder-footer-gap: 40px;
-  --builder-rail-width: 19.5rem;
+  --builder-page-gutter: 24px;
+  --builder-stage-padding: var(--space-5);
+  --builder-section-gap: var(--space-5);
+  --builder-footer-gap: var(--space-6);
+  --builder-rail-width: 20.5rem;
   --builder-shell-gap: var(--builder-section-gap);
   --spatial-preview-aspect: 4 / 3;
 
@@ -134,7 +134,8 @@
   --duration-normal: 180ms;
   --duration-base: var(--duration-normal);
   --motion-fast: var(--duration-fast);
-  --builder-workflow-progress-height: 4.75rem;
+  --builder-topbar-height: 3.75rem;
+  --builder-workflow-progress-height: 4.25rem;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;

@@ -42,7 +42,7 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
         network = "No network access.",
         prerequisite = "Requires a readable CSV, TSV, XLS, XLSX, or XLSM file.",
         selected = "Differential expression",
-        replacement_policy = "Replace a table only when its display name matches.",
+        replacement_policy = "Each selected sheet is kept separately.",
         skip_consequence = "Skipped tables will not appear in Extra material."
       ),
       histology = list(
@@ -146,7 +146,6 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, "Select Marker genes first", fixed = TRUE)
   expect_match(html, "disabled", fixed = TRUE)
   expect_match(html, "enhance-module is-blocked", fixed = TRUE)
-  expect_match(html, "Optional attachments", fixed = TRUE)
   expect_length(
     gregexpr('class="enhance-group ', html, fixed = TRUE)[[1L]],
     2L
@@ -157,8 +156,13 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
     fixed = TRUE
   )
   expect_match(html, "<h3>Optional enhancements</h3>", fixed = TRUE)
-  expect_match(html, "<h4>Optional analyses</h4>", fixed = TRUE)
-  expect_match(html, "<h4>Optional attachments</h4>", fixed = TRUE)
+  expect_match(html, "Optional analyses", fixed = TRUE)
+  expect_match(html, "1 included", fixed = TRUE)
+  expect_match(
+    html,
+    'data-disclosure-key="optional-analyses"',
+    fixed = TRUE
+  )
   expect_match(
     html,
     'id="enhance-stage" class="builder-enhancement-stack"',
@@ -177,10 +181,10 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
     'class="enhance-group enhance-group--attachments"',
     fixed = TRUE
   )
-  expect_match(html, "Tables for Extra material", fixed = TRUE)
+  expect_match(html, "Extra material", fixed = TRUE)
   expect_match(
     html,
-    "Add optional CSV, TSV, XLS, XLSX, or XLSM tables to the CRB’s Extra material content.",
+    "Add optional CSV, TSV, XLS, XLSX, or XLSM tables.",
     fixed = TRUE
   )
   expect_match(html, "Spatial alignment", fixed = TRUE)
@@ -254,7 +258,10 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   expect_match(html, 'aria-label="Spatial-space cell plot"', fixed = TRUE)
   expect_match(
     html,
-    'class="enhance-attachment-block enhance-attachment-block--tables"',
+    paste(
+      'class="enhance-attachment-block enhance-attachment-block--tables',
+      'builder-viewer-card builder-viewer-extra-material"'
+    ),
     fixed = TRUE
   )
   expect_false(grepl("enhance-attachment-block--spatial", html, fixed = TRUE))
@@ -280,14 +287,16 @@ test_that("Enhance renders only relevant opt-in modules and consequences", {
   )
   expect_match(
     html,
-    '<h5>Tables for Extra material</h5>',
+    'data-disclosure-key="extra-material"',
     fixed = TRUE
   )
+  expect_match(html, "Spatial alignment", fixed = TRUE)
   expect_match(
     html,
-    '<h3 class="spatial-alignment-title">Spatial alignment</h3>',
+    'data-disclosure-key="spatial-alignment"',
     fixed = TRUE
   )
+  expect_match(html, "2 sections", fixed = TRUE)
   expect_match(html, "Position", fixed = TRUE)
   expect_match(html, "Scale &amp; orientation", fixed = TRUE)
   expect_match(html, "Image appearance", fixed = TRUE)
@@ -503,22 +512,19 @@ test_that("table uploads derive a display name from the client filename", {
   expect_identical(builder_table_default_name("nested.name.tsv"), "nested.name")
 })
 
-test_that("table read failures never expose a server-side upload path", {
+test_that("table inventory failures never expose a server-side upload path", {
   directory <- withr::local_tempdir()
 
-  got <- builder_read_table(
+  got <- builder_table_inventory(
     directory,
     filename = "supplement.csv"
   )
 
-  expect_identical(
-    got$error,
-    "Could not read this table. Check that it is a valid CSV, TSV or TXT file."
-  )
+  expect_identical(got$error, "File not found.")
   expect_false(grepl(directory, got$error, fixed = TRUE))
 })
 
-test_that("XLSX Extra material imports every non-empty worksheet", {
+test_that("XLSX Extra material inventories worksheets without reading them", {
   skip_if_not_installed("writexl")
   path <- withr::local_tempfile(fileext = ".xlsx")
   writexl::write_xlsx(
@@ -530,27 +536,30 @@ test_that("XLSX Extra material imports every non-empty worksheet", {
     path
   )
 
-  got <- builder_read_tables(path, filename = "supplement.xlsx")
+  got <- builder_table_inventory(path, filename = "supplement.xlsx")
 
-  expect_named(got, c("Clinical", "Results"))
+  expect_named(got, c("Clinical", "Empty", "Results"))
   expect_identical(
     unname(vapply(got, `[[`, character(1), "name")),
-    c("supplement · Clinical", "supplement · Results")
+    c("supplement · Clinical", "supplement · Empty", "supplement · Results")
   )
   expect_identical(
     unname(vapply(got, `[[`, character(1), "workbook_name")),
-    c("supplement.xlsx", "supplement.xlsx")
+    rep("supplement.xlsx", 3L)
   )
   expect_identical(
     unname(vapply(got, `[[`, character(1), "sheet_name")),
-    c("Clinical", "Results")
+    c("Clinical", "Empty", "Results")
   )
   expect_identical(
     unname(vapply(got, `[[`, character(1), "display_name")),
-    c("Clinical", "Results")
+    c("Clinical", "Empty", "Results")
   )
-  expect_identical(got$Clinical$table$patient, c("A", "B"))
-  expect_identical(got$Results$table$feature, "CD3D")
+  expect_null(got$Clinical$table)
+  expect_identical(
+    builder_read_table_source(got$Results)$table$feature,
+    "CD3D"
+  )
 })
 
 test_that("Extra material retains workbook and source-sheet labels for Viewer", {
@@ -581,17 +590,15 @@ test_that("Extra material retains workbook and source-sheet labels for Viewer", 
   )
 })
 
-test_that("legacy XLS Extra material imports every worksheet", {
+test_that("legacy XLS Extra material inventories every worksheet", {
   path <- readxl::readxl_example("datasets.xls")
 
-  got <- builder_read_tables(path, filename = "legacy.xls")
+  got <- builder_table_inventory(path, filename = "legacy.xls")
 
   expect_named(got, readxl::excel_sheets(path))
   expect_true(all(vapply(
     got,
-    function(record) {
-      is.data.frame(record$table) && nrow(record$table) > 0L
-    },
+    function(record) !is.null(record$source_path),
     logical(1)
   )))
   expect_true(all(startsWith(
@@ -600,18 +607,18 @@ test_that("legacy XLS Extra material imports every worksheet", {
   )))
 })
 
-test_that("XLSM Extra material reads workbook data without executing macros", {
+test_that("XLSM Extra material reads a selected sheet only when needed", {
   skip_if_not_installed("writexl")
   xlsx <- withr::local_tempfile(fileext = ".xlsx")
   xlsm <- withr::local_tempfile(fileext = ".xlsm")
   writexl::write_xlsx(list(Data = data.frame(value = c(1, 2))), xlsx)
   file.copy(xlsx, xlsm, overwrite = TRUE)
 
-  got <- builder_read_tables(xlsm, filename = "macro.xlsm")
+  got <- builder_table_inventory(xlsm, filename = "macro.xlsm")
 
   expect_named(got, "Data")
   expect_identical(got$Data$name, "macro · Data")
-  expect_identical(got$Data$table$value, c(1, 2))
+  expect_identical(builder_read_table_source(got$Data)$table$value, c(1, 2))
 })
 
 test_that("Enhance distinguishes intrinsic absence from dependency blocking", {

@@ -541,15 +541,36 @@ builder_empty_workbench_ui <- function(project_active = FALSE) {
   shiny::tags$section(
     class = "builder-stage builder-empty-state",
     `aria-labelledby` = "builder-empty-title",
-    shiny::h2(id = "builder-empty-title", "Add a dataset to begin"),
-    shiny::p(
-      "Choose a local Seurat object or try one of the examples in the sidebar."
+    shiny::tags$div(
+      class = "builder-dataset-dropzone",
+      role = "button",
+      tabindex = "0",
+      `aria-labelledby` = "builder-empty-title",
+      `aria-describedby` = "builder-empty-description builder-empty-formats",
+      shiny::tags$div(
+        class = "builder-dataset-dropzone-icon",
+        `aria-hidden` = "true",
+        shiny::icon("cloud-upload")
+      ),
+      shiny::h2(id = "builder-empty-title", "Drop datasets here"),
+      shiny::p(
+        id = "builder-empty-description",
+        "or click to choose multiple files"
+      ),
+      shiny::p(
+        id = "builder-empty-formats",
+        class = "builder-dataset-dropzone-formats",
+        "Seurat .rds and compatible .qs / .qs2 files"
+      )
     ),
     if (isTRUE(project_active)) {
-      shiny::actionButton(
-        "choose_saved_project_datasets",
-        "Choose saved datasets…",
-        class = "btn btn-action"
+      shiny::tags$div(
+        class = "builder-empty-project-action",
+        shiny::actionButton(
+          "choose_saved_project_datasets",
+          "Choose saved datasets…",
+          class = "btn"
+        )
       )
     }
   )
@@ -568,6 +589,10 @@ builder_loading_workbench_ui <- function(entry) {
     `aria-atomic` = "true",
     shiny::div(
       class = "builder-loading-copy",
+      shiny::div(
+        class = "builder-loading-visual",
+        `aria-hidden` = "true"
+      ),
       shiny::span(
         class = "builder-loading-kicker",
         if (failed) "Import stopped" else "Dataset import"

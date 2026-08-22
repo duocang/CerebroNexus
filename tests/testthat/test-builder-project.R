@@ -588,6 +588,48 @@ test_that("project spatial assets are externalized per dataset and FOV", {
   )
 })
 
+test_that("project restores multi-sheet attachments with one file fingerprint", {
+  runtime <- builder_project_test_runtime()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "supplement.xlsx")
+  writeBin(charToRaw("workbook-bytes"), source)
+  sheet <- function(name) {
+    list(
+      file_name = "supplement.xlsx",
+      sheet_name = name,
+      display_name = name,
+      source_path = source
+    )
+  }
+  entry <- list(
+    id = "ds1",
+    settings = list(
+      tables = list(Clinical = sheet("Clinical"), QC = sheet("QC"))
+    )
+  )
+
+  staged <- runtime$builder_project_stage_table_assets(entry, root)
+  expect_null(staged$settings$tables$Clinical$source_path)
+  expect_identical(
+    staged$settings$tables$Clinical$project_asset,
+    staged$settings$tables$QC$project_asset
+  )
+
+  original_fingerprint <- runtime$builder_project_file_fingerprint
+  calls <- 0L
+  runtime$builder_project_file_fingerprint <- function(...) {
+    calls <<- calls + 1L
+    original_fingerprint(...)
+  }
+  restored <- runtime$builder_project_restore_table_assets(staged, root)
+
+  expect_identical(calls, 1L)
+  expect_identical(
+    restored$settings$tables$Clinical$source_path,
+    restored$settings$tables$QC$source_path
+  )
+})
+
 test_that("missing project spatial assets identify the affected FOV and image", {
   skip_if_not_installed("base64enc")
   runtime <- builder_project_test_runtime()
@@ -960,84 +1002,6 @@ test_that("source synchronization warns on close without locking the workspace",
   expect_true(capabilities$edit_dataset)
   expect_true(capabilities$save_project)
   expect_false(capabilities$page_inert)
-})
-
-test_that("the first project offer waits for every import ownership layer", {
-  runtime <- builder_project_test_runtime()
-  idle <- runtime$builder_activity_state(has_datasets = TRUE)
-  client_busy <- runtime$builder_activity_state(
-    client_imports = 1L,
-    has_datasets = TRUE
-  )
-  server_busy <- runtime$builder_activity_state(
-    server_imports = TRUE,
-    has_datasets = TRUE
-  )
-  protocol <- list(queue = list(), pending = NULL, awaiting_ack = list())
-  load <- list(kind = "load")
-
-  expect_true(runtime$builder_imports_idle(idle, protocol))
-  expect_false(runtime$builder_imports_idle(client_busy, protocol))
-  expect_false(runtime$builder_imports_idle(server_busy, protocol))
-
-  protocol$queue <- list(load)
-  expect_false(runtime$builder_imports_idle(idle, protocol))
-  protocol$queue <- list()
-  protocol$pending <- load
-  expect_false(runtime$builder_imports_idle(idle, protocol))
-  protocol$pending <- NULL
-  protocol$awaiting_ack <- list(token = load)
-  expect_false(runtime$builder_imports_idle(idle, protocol))
-
-  protocol$awaiting_ack <- list(token = list(kind = "preview"))
-  expect_true(runtime$builder_imports_idle(idle, protocol))
-})
-
-test_that("the first project offer is retryable when imports restart before flush", {
-  runtime <- builder_project_test_runtime()
-  idle <- runtime$builder_activity_state(has_datasets = TRUE)
-  busy <- runtime$builder_activity_state(
-    client_imports = 1L,
-    has_datasets = TRUE
-  )
-  protocol <- list(queue = list(), pending = NULL, awaiting_ack = list())
-  entries <- list(list(id = "ds1"))
-
-  expect_true(runtime$builder_project_first_save_offer_ready(
-    entries,
-    project = NULL,
-    offered = FALSE,
-    activity = idle,
-    protocol = protocol
-  ))
-  expect_false(runtime$builder_project_first_save_offer_ready(
-    entries,
-    project = NULL,
-    offered = FALSE,
-    activity = busy,
-    protocol = protocol
-  ))
-  expect_true(runtime$builder_project_first_save_offer_ready(
-    entries,
-    project = NULL,
-    offered = FALSE,
-    activity = idle,
-    protocol = protocol
-  ))
-  expect_false(runtime$builder_project_first_save_offer_ready(
-    entries,
-    project = list(name = "restored"),
-    offered = FALSE,
-    activity = idle,
-    protocol = protocol
-  ))
-  expect_false(runtime$builder_project_first_save_offer_ready(
-    entries,
-    project = NULL,
-    offered = TRUE,
-    activity = idle,
-    protocol = protocol
-  ))
 })
 
 test_that("project server uses a dedicated callr source copy process", {

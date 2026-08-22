@@ -58,30 +58,45 @@
 .rail { position: relative; z-index: 3; }
 #pane { position: relative; z-index: 1; }
 .builder-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
   min-width: 0;
   width: 100%;
   max-width: 100%;
 }
-#builder-workspace { padding-bottom: 4.75rem; }
+#builder-workspace { padding-bottom: var(--space-8); }
+#builder-workspace #pane { order: 2; }
+#builder-workspace #workflow_progress {
+  position: sticky;
+  top: var(--builder-topbar-height);
+  z-index: 10;
+  order: 1;
+  align-self: stretch;
+}
 #builder-workspace .builder-workflow-progress {
-  position: fixed;
-  left: calc(
-    var(--builder-page-gutter) + var(--builder-rail-width) +
-    var(--builder-shell-gap)
-  );
-  right: var(--builder-page-gutter);
-  bottom: 0;
-  z-index: 12;
-  background: rgb(255 255 255 / .97);
-  border-top: 1px solid var(--c-border);
-  padding: .55rem max(var(--builder-page-gutter), env(safe-area-inset-right))
-    max(.55rem, env(safe-area-inset-bottom))
-    max(var(--builder-page-gutter), env(safe-area-inset-left));
-  transition: opacity var(--duration-base) var(--ease), transform var(--duration-base) var(--ease);
+  padding: var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: rgb(255 255 255 / .96);
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(10px);
+  transition:
+    padding var(--duration-fast) var(--ease),
+    border-radius var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease);
+}
+#builder-workspace .builder-workflow-progress.is-stuck {
+  padding-block: var(--space-1);
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  background: rgb(255 255 255 / .3);
+  box-shadow: 0 10px 24px rgb(30 24 20 / .12);
 }
 #builder-workspace .builder-workflow-progress ol {
-  max-width: 44rem;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 #builder-workspace .builder-workflow-progress li {
   font-size: clamp(.82rem, .35vw + .76rem, .92rem);
@@ -90,11 +105,6 @@
 #builder-workspace .builder-workflow-progress li[aria-current="step"] {
   color: var(--builder-action);
   font-weight: 600;
-}
-#builder-workspace .builder-workflow-progress.is-scrolling {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(100%);
 }
 /* The dataset navigator has a different purpose from the workspace. On
    desktop it gets its own scrollport; the workspace keeps the document
@@ -130,6 +140,7 @@
   min-width: 0;
   align-self: start;
   overflow-wrap: anywhere;
+  animation: builder-stage-enter 200ms var(--ease) both;
   transition: border-color var(--duration-base) var(--ease),
               box-shadow var(--duration-base) var(--ease);
 }
@@ -141,6 +152,11 @@
 }
 .builder-stage > h2,
 .review-app-options > h2 { margin-top: 0; }
+
+@keyframes builder-stage-enter {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 
 /* ---- dataset rail ------------------------------------------------------ */
 
@@ -192,9 +208,7 @@
   top: 4.2rem;
   box-shadow: var(--shadow-1);
 }
-.ds--ready:has(.ds-ready-stamp.needs-review) .ds-pick {
-  padding-right: 3.8rem;
-}
+.ds--ready:has(.ds-ready-stamp.needs-review) .ds-pick { padding-right: 2.5rem; }
 .rail-head {
   padding: .75rem .95rem;
   border-bottom: 1px solid var(--c-border);
@@ -254,8 +268,7 @@
   align-items: flex-start;
   gap: .7rem;
   width: 100%;
-  /* Room on the right so a long name never runs under the remove button. */
-  padding: .6rem 2.5rem .6rem .8rem;
+  padding: .6rem 1rem .6rem .8rem;
   border: none;
   background: transparent;
   text-align: left;
@@ -383,7 +396,7 @@
 
 @media (max-width: 68.75rem) {
   :root {
-    --builder-rail-width: 17.75rem;
+    --builder-rail-width: 15.5rem;
     --builder-shell-gap: var(--space-4);
   }
   .shell,
@@ -400,10 +413,6 @@
     grid-template-columns: minmax(0, 1fr);
     gap: var(--builder-section-gap);
     padding-inline: var(--builder-page-gutter);
-  }
-  #builder-workspace .builder-workflow-progress {
-    left: var(--builder-page-gutter);
-    right: var(--builder-page-gutter);
   }
   .rail-summary { display: flex; }
   .rail-manager-backdrop.is-open {
@@ -453,6 +462,10 @@
     font: inherit;
     cursor: pointer;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .builder-stage { animation: none; }
 }
 
 @media (max-width: 40rem) {

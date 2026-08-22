@@ -31,8 +31,11 @@ body {
 .form-group { margin-bottom: .85rem; }
 label, .control-label {
   display: block;
-  font-size: .82rem; font-weight: 600; color: var(--c-text-muted);
-  margin-bottom: .25rem;
+  margin-bottom: .3rem;
+  color: var(--c-text-muted);
+  font-size: .78rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
 .form-control, .selectize-input {
   display: block;

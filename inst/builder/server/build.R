@@ -518,7 +518,7 @@ builder_build_output_preflight <- function(path) {
 
 choose_build_folder <- function() {
   build_flow(list(stage = "choosing_folder", plan = NULL))
-  session$onFlushed(
+  later::later(
     function() {
       tryCatch(
         {
@@ -565,7 +565,7 @@ choose_build_folder <- function() {
         }
       )
     },
-    once = TRUE
+    delay = 0
   )
 }
 
@@ -593,10 +593,7 @@ start_confirmed_build <- function() {
   result(NULL)
   build_flow(list(stage = "preparing", plan = NULL))
   session$sendCustomMessage("builder_focus_build_status", list())
-  session$onFlushed(
-    function() prepare_selected_output(output_path),
-    once = TRUE
-  )
+  later::later(function() prepare_selected_output(output_path), delay = 0)
   invisible(TRUE)
 }
 

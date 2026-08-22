@@ -33,127 +33,112 @@ builder_table_unique_name <- function(name, existing = character()) {
   }
 }
 
-#' Read a delimited file into a data.frame for the Extra material page.
-#'
-#' @param path File to read.
-#' @param name What to call it in the interface.
-#' @param filename Original client filename, used to identify the format when
-#'   an uploaded temporary path has no extension.
-#'
-#' @return A list with `name` and `table`, or `error`.
-builder_read_table <- function(path, name = NULL, filename = path) {
+#' List the tables available in one uploaded file without reading their data.
+builder_table_inventory <- function(path, filename = path) {
   if (!file.exists(path)) {
     return(list(error = "File not found."))
   }
   ext <- tolower(tools::file_ext(filename))
-  sep <- switch(ext, csv = ",", tsv = "\t", txt = "\t", NULL)
-  if (is.null(sep)) {
+  if (ext %in% c("csv", "tsv", "txt")) {
+    name <- builder_table_default_name(filename)
+    return(stats::setNames(
+      list(list(
+        name = name,
+        workbook_name = basename(filename),
+        sheet_name = name,
+        display_name = name,
+        source_path = path
+      )),
+      name
+    ))
+  }
+  if (!ext %in% c("xls", "xlsx", "xlsm")) {
     return(list(
       error = paste0(
-        "Supported table formats are .csv, .tsv and .txt, not .",
+        "Supported table formats are CSV, TSV, TXT, XLS, XLSX and XLSM, not .",
         ext,
         "."
       )
     ))
   }
-  df <- suppressWarnings(try(
-    utils::read.delim(
-      path,
-      sep = sep,
-      stringsAsFactors = FALSE,
-      check.names = FALSE
-    ),
-    silent = TRUE
-  ))
-  if (inherits(df, "try-error")) {
-    return(list(
-      error = paste0(
-        "Could not read this table. Check that it is a valid ",
-        "CSV, TSV or TXT file."
-      )
-    ))
-  }
-  if (!is.data.frame(df) || nrow(df) == 0 || ncol(df) == 0) {
-    return(list(error = "This file has no usable tabular content."))
-  }
-  list(
-    name = if (is.null(name) || !nzchar(name)) {
-      builder_table_default_name(path)
-    } else {
-      name
-    },
-    workbook_name = basename(filename),
-    sheet_name = if (is.null(name) || !nzchar(name)) {
-      builder_table_default_name(filename)
-    } else {
-      name
-    },
-    display_name = if (is.null(name) || !nzchar(name)) {
-      builder_table_default_name(filename)
-    } else {
-      name
-    },
-    table = df
-  )
-}
-
-#' Read one delimited table or every non-empty worksheet in an XLSX workbook.
-#'
-#' @return A named list of table records. Worksheet records carry `sheet`; an
-#'   unreadable worksheet carries `error` so the upload handler can report it
-#'   without discarding other worksheets.
-builder_read_tables <- function(path, filename = path) {
-  extension <- tolower(tools::file_ext(filename))
-  if (!extension %in% c("xls", "xlsx", "xlsm")) {
-    table <- builder_read_table(
-      path,
-      name = builder_table_default_name(filename),
-      filename = filename
-    )
-    return(stats::setNames(list(table), table$name %||% basename(filename)))
-  }
-  if (!file.exists(path)) {
-    return(list(list(error = "File not found.")))
-  }
   sheets <- suppressWarnings(try(readxl::excel_sheets(path), silent = TRUE))
   if (inherits(sheets, "try-error") || !length(sheets)) {
-    return(list(list(error = "Could not read this Excel workbook.")))
+    return(list(error = "Could not read this Excel workbook."))
   }
   workbook <- builder_table_default_name(filename)
   records <- lapply(sheets, function(sheet) {
-    table <- suppressWarnings(try(
-      as.data.frame(
-        readxl::read_excel(path, sheet = sheet),
-        stringsAsFactors = FALSE
-      ),
-      silent = TRUE
-    ))
-    if (inherits(table, "try-error")) {
-      return(list(
-        sheet = sheet,
-        error = paste0("Could not read worksheet ", sheet, ".")
-      ))
-    }
-    if (!nrow(table) || !ncol(table)) {
-      return(NULL)
-    }
     list(
       name = paste(workbook, sheet, sep = " · "),
       workbook_name = basename(filename),
       sheet_name = sheet,
       display_name = sheet,
       sheet = sheet,
-      table = table
+      source_path = path
     )
   })
-  records <- Filter(Negate(is.null), records)
-  names(records) <- vapply(
-    records,
-    function(record) {
-      record$sheet %||% record$name %||% "Table"
+  names(records) <- sheets
+  records
+}
+
+#' Read one selected table only when it becomes part of a build.
+builder_read_table_source <- function(record) {
+  if (is.data.frame(record$table)) {
+    return(record)
+  }
+  path <- record$source_path %||% ""
+  filename <- record$file_name %||% record$workbook_name %||% path
+  if (!file.exists(path)) {
+    return(list(error = paste0(filename, ": File not found.")))
+  }
+  extension <- tolower(tools::file_ext(filename))
+  table <- suppressWarnings(try(
+    if (extension %in% c("csv", "tsv", "txt")) {
+      utils::read.table(
+        path,
+        header = TRUE,
+        sep = if (extension == "csv") "," else "\t",
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        comment.char = ""
+      )
+    } else if (extension %in% c("xls", "xlsx", "xlsm")) {
+      readxl::read_excel(path, sheet = record$sheet_name %||% record$sheet)
+    } else {
+      stop("Unsupported table format.")
     },
-    character(1)
-  )
+    silent = TRUE
+  ))
+  if (inherits(table, "try-error") || !is.data.frame(table)) {
+    return(list(
+      error = paste0(
+        filename,
+        ": ",
+        record$sheet_name %||%
+          record$sheet %||%
+          record$display_name %||%
+          "Table",
+        " could not be read."
+      )
+    ))
+  }
+  if (!nrow(table) || !ncol(table)) {
+    record$empty <- TRUE
+    return(record)
+  }
+  record$table <- as.data.frame(table, stringsAsFactors = FALSE)
+  record
+}
+
+builder_materialize_tables <- function(tables) {
+  records <- lapply(tables %||% list(), builder_read_table_source)
+  errors <- vapply(records, function(record) !is.null(record$error), logical(1))
+  if (any(errors)) {
+    stop(records[[which(errors)[[1L]]]]$error, call. = FALSE)
+  }
+  records <- Filter(function(record) !isTRUE(record$empty), records)
+  if (!length(records)) {
+    stop("No selected attachments contain tabular data.", call. = FALSE)
+  }
   records
 }
 

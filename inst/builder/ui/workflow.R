@@ -136,8 +136,8 @@ builder_configure_actions_ui <- function(
     if (remaining < 1L) {
       actionButton(
         "continue_to_review",
-        "Continue to Review →",
-        class = "btn btn-action",
+        "✓ Continue to Review →",
+        class = "btn btn-action builder-review-ready",
         disabled = !isTRUE(can_continue)
       )
     } else {
@@ -222,16 +222,18 @@ builder_build_workbench_ui <- function(model) {
     ),
     builder_stage_summary_ui(
       class = "builder-build-summary",
-      p(
+      span(
         class = "confirmed-plan-revision",
         paste("Confirmed plan revision", model$revision)
       ),
-      p(
-        strong(paste0(model$output$crb_count, " dataset")),
-        if (identical(model$output$crb_count, 1L)) "" else "s",
-        " · ",
-        output_label
-      )
+      span(
+        paste0(
+          model$output$crb_count,
+          " dataset",
+          if (identical(model$output$crb_count, 1L)) "" else "s"
+        )
+      ),
+      span(output_label)
     ),
     uiOutput("build_output_options"),
     uiOutput("build_stage_controls"),

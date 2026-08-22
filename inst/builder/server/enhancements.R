@@ -270,27 +270,19 @@ observeEvent(input[["enhance-table_files"]], {
   added <- list()
   for (index in seq_len(nrow(uploads))) {
     filename <- basename(uploads$name[[index]])
-    records <- builder_read_tables(
+    records <- builder_table_inventory(
       uploads$datapath[[index]],
       filename = filename
     )
-    if (!length(records)) {
+    if (!length(records) || !is.null(records$error)) {
       showNotification(
-        paste0(filename, ": No non-empty worksheets were found."),
+        records$error %||% paste0(filename, ": No worksheets were found."),
         type = "error",
         duration = 8
       )
       next
     }
     for (got in records) {
-      if (!is.null(got$error)) {
-        showNotification(
-          paste0(filename, ": ", got$error),
-          type = "error",
-          duration = 8
-        )
-        next
-      }
       got$name <- builder_table_unique_name(
         got$name,
         names(entry$settings$tables %||% list()) %||% character()
@@ -298,6 +290,7 @@ observeEvent(input[["enhance-table_files"]], {
       got$file_name <- filename
       got$file_type <- toupper(tools::file_ext(filename))
       got$file_size <- suppressWarnings(as.numeric(uploads$size[[index]]))
+      got$source_path <- uploads$datapath[[index]]
       got$workbook_name <- got$workbook_name %||% filename
       got$sheet_name <- got$sheet_name %||% got$sheet %||% got$name
       got$display_name <- got$display_name %||% got$sheet_name

@@ -120,7 +120,7 @@ builder_build_options_ui <- function(
   auth_available <- isTRUE(auth$available)
   require_login <- shiny::checkboxInput(
     "build_require_login",
-    "Require login",
+    NULL,
     isTRUE(auth$enabled)
   )
   if (!auth_available) {
@@ -162,12 +162,12 @@ builder_build_options_ui <- function(
   if (!isTRUE(app_available)) {
     output_mode <- disable_output_choice(output_mode, "app")
   }
-  tags$section(
-    class = "builder-stage-section builder-build-options",
-    h3("Output type"),
-    tags$fieldset(
-      class = "builder-build-options-fields",
-      disabled = if (controls_disabled) "disabled",
+  tags$fieldset(
+    class = "builder-build-options-fields",
+    disabled = if (controls_disabled) "disabled",
+    tags$section(
+      class = "builder-stage-section builder-build-options",
+      h3("Output"),
       output_mode,
       if (isTRUE(app_required)) {
         p(
@@ -201,15 +201,118 @@ builder_build_options_ui <- function(
             )
           )
         )
-      },
-      if (isTRUE(options$make_app)) {
+      }
+    ),
+    if (isTRUE(options$make_app)) {
+      tags$section(
+        class = "builder-stage-section builder-app-settings",
         div(
-          class = "builder-app-settings builder-state-panel",
-          h3("Viewer App settings"),
-          shiny::textInput(
-            "build_welcome_message",
-            "Welcome message",
-            options$app$welcome_message
+          class = "builder-app-settings-head",
+          h3("Viewer App"),
+          p("Choose what visitors see when the app opens.")
+        ),
+        tags$section(
+          class = "builder-app-settings-group",
+          p(class = "builder-app-settings-label", "Opening view"),
+          div(
+            class = "builder-app-opening-fields",
+            div(
+              class = "builder-app-field builder-app-field--wide",
+              shiny::textInput(
+                "build_welcome_message",
+                "Welcome message",
+                options$app$welcome_message
+              )
+            ),
+            if (length(dataset_choices)) {
+              div(
+                class = "builder-app-field",
+                shiny::selectInput(
+                  "build_initial_dataset",
+                  "Starting dataset",
+                  choices = dataset_choices,
+                  selected = selected_dataset
+                )
+              )
+            },
+            div(
+              class = "builder-app-field",
+              shiny::selectInput(
+                "build_initial_page",
+                "Starting page",
+                choices = initial_page_choices,
+                selected = selected_page
+              )
+            )
+          )
+        ),
+        tags$section(
+          class = "builder-app-settings-group",
+          p(class = "builder-app-settings-label", "Access"),
+          div(
+            class = "builder-app-toggle",
+            tags$label(
+              class = "builder-app-toggle-copy",
+              `for` = "build_show_upload_ui",
+              tags$strong("Allow visitor uploads"),
+              span("Visitors can open their own compatible data.")
+            ),
+            shiny::checkboxInput(
+              "build_show_upload_ui",
+              NULL,
+              options$app$show_upload_ui
+            )
+          ),
+          div(
+            class = "builder-app-toggle",
+            tags$label(
+              class = "builder-app-toggle-copy",
+              `for` = "build_require_login",
+              tags$strong("Require login"),
+              span("Restrict access to configured accounts.")
+            ),
+            require_login
+          )
+        ),
+        if (!auth_available) {
+          p(
+            class = "hint builder-auth-dependency",
+            auth$reason %||%
+              "Login is unavailable. Install the required R package, then restart Builder."
+          )
+        },
+        if (isTRUE(auth$enabled) && auth_available) {
+          div(
+            class = "review-auth-controls",
+            span(
+              class = "review-auth-summary",
+              if (identical(auth$account_count, 1L)) {
+                "Login required · 1 account"
+              } else if (auth$account_count > 1L) {
+                paste0("Login required · ", auth$account_count, " accounts")
+              } else {
+                "Add at least one account"
+              }
+            ),
+            tags$button(
+              type = "button",
+              class = "btn builder-auth-open",
+              if (auth$account_count > 0L) {
+                "Edit accounts"
+              } else {
+                "Set up accounts"
+              }
+            ),
+            if (builder_stage_has_text(auth$error %||% "")) {
+              p(class = "hint review-auth-error", auth$error)
+            }
+          )
+        },
+        tags$details(
+          class = "builder-app-connection-settings",
+          tags$summary(
+            span("Connection settings"),
+            span(class = "builder-app-connection-summary", "Host · Port")
           ),
           div(
             class = "builder-app-network-fields",
@@ -221,64 +324,10 @@ builder_build_options_ui <- function(
               min = 1,
               max = 65535
             )
-          ),
-          shiny::checkboxInput(
-            "build_show_upload_ui",
-            "Allow visitor uploads",
-            options$app$show_upload_ui
-          ),
-          if (length(dataset_choices)) {
-            shiny::selectInput(
-              "build_initial_dataset",
-              "Starting dataset",
-              choices = dataset_choices,
-              selected = selected_dataset
-            )
-          },
-          shiny::selectInput(
-            "build_initial_page",
-            "Starting page",
-            choices = initial_page_choices,
-            selected = selected_page
-          ),
-          require_login,
-          if (!auth_available) {
-            p(
-              class = "hint builder-auth-dependency",
-              auth$reason %||%
-                "Login is unavailable. Install the required R package, then restart Builder."
-            )
-          },
-          if (isTRUE(auth$enabled) && auth_available) {
-            div(
-              class = "review-auth-controls",
-              span(
-                class = "review-auth-summary",
-                if (identical(auth$account_count, 1L)) {
-                  "Login required · 1 account"
-                } else if (auth$account_count > 1L) {
-                  paste0("Login required · ", auth$account_count, " accounts")
-                } else {
-                  "Add at least one account"
-                }
-              ),
-              tags$button(
-                type = "button",
-                class = "btn builder-auth-open",
-                if (auth$account_count > 0L) {
-                  "Edit accounts"
-                } else {
-                  "Set up accounts"
-                }
-              ),
-              if (builder_stage_has_text(auth$error %||% "")) {
-                p(class = "hint review-auth-error", auth$error)
-              }
-            )
-          }
+          )
         )
-      }
-    )
+      )
+    }
   )
 }
 
@@ -824,7 +873,7 @@ builder_build_stage_status_label <- function(model) {
     ready = if (isTRUE(model$can_build)) {
       "Ready to build"
     } else {
-      model$message %||% "Choose an output folder"
+      model$message %||% ""
     },
     choosing_folder = "Choosing output folder…",
     preparing = "Preparing build…",

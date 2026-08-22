@@ -202,39 +202,46 @@ builder_core_stage_ui <- function(id, model) {
       div(class = "notice bad", model$layer_attention)
     },
     tags$details(
-      class = "builder-disclosure",
-      tags$summary("Advanced settings"),
+      class = "builder-viewer-card builder-viewer-advanced-settings",
+      `data-disclosure-key` = "viewer-advanced-settings",
+      tags$summary(
+        span(class = "builder-viewer-card-title", "Advanced settings"),
+        span(class = "builder-viewer-card-count", "5 settings")
+      ),
       div(
-        class = "builder-advanced-grid",
-        selectInput(
-          ns("assay"),
-          "Assay",
-          choices = model$assay_choices,
-          selected = model$assay
-        ),
-        selectInput(
-          ns("layer"),
-          "Layer",
-          choices = model$layer_choices,
-          selected = model$layer
-        ),
-        selectInput(
-          ns("nUMI"),
-          "UMI QC column",
-          choices = model$nUMI_choices,
-          selected = model$nUMI
-        ),
-        selectInput(
-          ns("nGene"),
-          "Gene QC column",
-          choices = model$nGene_choices,
-          selected = model$nGene
-        ),
-        selectInput(
-          ns("backend"),
-          "Expression backend",
-          choices = model$backend_choices,
-          selected = model$backend
+        class = "builder-viewer-card-body",
+        div(
+          class = "builder-advanced-grid",
+          selectInput(
+            ns("assay"),
+            "Assay",
+            choices = model$assay_choices,
+            selected = model$assay
+          ),
+          selectInput(
+            ns("layer"),
+            "Layer",
+            choices = model$layer_choices,
+            selected = model$layer
+          ),
+          selectInput(
+            ns("nUMI"),
+            "UMI QC column",
+            choices = model$nUMI_choices,
+            selected = model$nUMI
+          ),
+          selectInput(
+            ns("nGene"),
+            "Gene QC column",
+            choices = model$nGene_choices,
+            selected = model$nGene
+          ),
+          selectInput(
+            ns("backend"),
+            "Expression backend",
+            choices = model$backend_choices,
+            selected = model$backend
+          )
         )
       )
     )

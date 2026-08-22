@@ -143,41 +143,6 @@ builder_activity_capabilities <- function(activity) {
   )
 }
 
-builder_imports_idle <- function(activity, protocol) {
-  if (!inherits(activity, "builder_activity_state")) {
-    stop("A Builder activity state is required.", call. = FALSE)
-  }
-  if (!is.list(protocol)) {
-    return(FALSE)
-  }
-  requests <- c(
-    if (is.null(protocol$pending)) list() else list(protocol$pending),
-    protocol$queue %||% list(),
-    unname(protocol$awaiting_ack %||% list())
-  )
-  has_pending_load <- any(vapply(
-    requests,
-    function(request) is.list(request) && identical(request$kind, "load"),
-    logical(1)
-  ))
-  activity$client_imports == 0L &&
-    !isTRUE(activity$server_imports) &&
-    !has_pending_load
-}
-
-builder_project_first_save_offer_ready <- function(
-  entries,
-  project,
-  offered,
-  activity,
-  protocol
-) {
-  length(entries) > 0L &&
-    is.null(project) &&
-    !isTRUE(offered) &&
-    builder_imports_idle(activity, protocol)
-}
-
 builder_activity_reason <- function(activity, operation) {
   capabilities <- builder_activity_capabilities(activity)
   if (isTRUE(capabilities[[operation]])) {
@@ -1527,6 +1492,154 @@ builder_project_configuration_entry <- function(entry) {
   )
 }
 
+builder_project_stage_table_assets <- function(entry, root) {
+  tables <- entry$settings$tables %||% list()
+  if (!length(tables)) {
+    return(entry)
+  }
+  root <- builder_project_normalize_root(root)
+  assets <- list()
+  for (key in names(tables)) {
+    record <- tables[[key]]
+    source <- record$source_path %||% ""
+    if (!.builder_project_text(source) && is.data.frame(record$table)) {
+      next
+    }
+    if (
+      !.builder_project_text(source) ||
+        !file.exists(source) ||
+        dir.exists(source)
+    ) {
+      stop(
+        paste0(
+          "Attachment ",
+          record$display_name %||% key,
+          " is no longer available. Add it again before saving."
+        ),
+        call. = FALSE
+      )
+    }
+    source <- normalizePath(source, winslash = "/", mustWork = TRUE)
+    asset <- assets[[source]]
+    if (is.null(asset)) {
+      filename <- basename(record$file_name %||% source)
+      source_fingerprint <- builder_project_file_fingerprint(
+        source,
+        content = TRUE
+      )
+      target <- builder_project_resolve_path(
+        file.path(
+          "attachments",
+          entry$id,
+          paste0(
+            .builder_project_asset_segment(filename),
+            "-",
+            substr(source_fingerprint$md5, 1L, 10L)
+          )
+        ),
+        root,
+        "managed"
+      )
+      dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+      if (
+        !file.exists(target) ||
+          !identical(
+            builder_project_file_fingerprint(target, content = TRUE)$md5,
+            source_fingerprint$md5
+          )
+      ) {
+        temporary <- tempfile(
+          "attachment-",
+          tmpdir = dirname(target),
+          fileext = ".part"
+        )
+        on.exit(unlink(temporary, force = TRUE), add = TRUE)
+        if (
+          !file.copy(source, temporary, overwrite = TRUE, copy.mode = TRUE) ||
+            !file.rename(temporary, target)
+        ) {
+          stop(
+            paste0("Attachment ", filename, " could not be saved."),
+            call. = FALSE
+          )
+        }
+      }
+      asset <- list(
+        path = builder_project_relative_path(target, root),
+        fingerprint = builder_project_file_fingerprint(target, content = TRUE)
+      )
+      assets[[source]] <- asset
+    }
+    record$project_asset <- asset
+    record$source_path <- NULL
+    record$table <- NULL
+    tables[[key]] <- record
+  }
+  entry$settings$tables <- tables
+  entry
+}
+
+builder_project_adopt_table_assets <- function(entry, staged) {
+  if (!is.list(entry) || !is.list(staged)) {
+    return(entry)
+  }
+  tables <- entry$settings$tables %||% list()
+  staged_tables <- staged$settings$tables %||% list()
+  for (key in intersect(names(tables), names(staged_tables))) {
+    tables[[key]]$project_asset <- staged_tables[[key]]$project_asset %||% NULL
+  }
+  entry$settings$tables <- tables
+  entry
+}
+
+builder_project_restore_table_assets <- function(entry, root) {
+  tables <- entry$settings$tables %||% list()
+  fingerprints <- list()
+  for (key in names(tables)) {
+    record <- tables[[key]]
+    asset <- record$project_asset %||% list()
+    if (is.null(asset$path) && is.data.frame(record$table)) {
+      next
+    }
+    path <- tryCatch(
+      builder_project_resolve_path(asset$path %||% "", root, "managed"),
+      error = function(error) NULL
+    )
+    fingerprint <- fingerprints[[path %||% ""]]
+    if (
+      !is.null(path) &&
+        is.null(fingerprint) &&
+        file.exists(path) &&
+        !dir.exists(path)
+    ) {
+      fingerprint <- builder_project_file_fingerprint(path, content = TRUE)
+      fingerprints[[path]] <- fingerprint
+    }
+    if (
+      is.null(path) ||
+        !file.exists(path) ||
+        dir.exists(path) ||
+        !builder_project_content_fingerprint_matches(
+          asset$fingerprint,
+          fingerprint
+        )
+    ) {
+      stop(
+        paste0(
+          "Attachment ",
+          record$display_name %||% key,
+          " is missing or has changed."
+        ),
+        call. = FALSE
+      )
+    }
+    record$source_path <- path
+    tables[[key]] <- record
+  }
+  entry$settings$tables <- tables
+  entry
+}
+
 builder_project_dataset_config_path <- function(
   dataset_id,
   root,
@@ -2284,6 +2397,7 @@ builder_project_restore_entry <- function(
       validate = !trusted_status
     )
   }
+  entry <- builder_project_restore_table_assets(entry, root)
   source <- record$source %||% list()
   entry$source_origin <- source$origin %||%
     if (identical(source$kind, "example")) "example" else "upload"

@@ -263,7 +263,7 @@ frozen_review_plan <- reactive({
 })
 frozen_review_plan <- bindEvent(
   frozen_review_plan,
-  dataset_check_marks(),
+  store(),
   imports(),
   review_options(),
   review_validation(),
@@ -662,7 +662,7 @@ observeEvent(input$complete_dataset_check, {
     "builder_dataset_check_state",
     list(active = TRUE)
   )
-  session$onFlushed(
+  later::later(
     function() {
       shiny::isolate({
         finish_after_work <- TRUE
@@ -710,10 +710,10 @@ observeEvent(input$complete_dataset_check, {
           return()
         }
         finish_after_work <- FALSE
-        session$onFlushed(finish_check, once = TRUE)
+        later::later(finish_check, delay = 0)
       })
     },
-    once = TRUE
+    delay = 0
   )
 })
 
@@ -924,13 +924,7 @@ observeEvent(input$confirm_review, {
     return()
   }
   reviewed <- state$review_plan
-  live <- frozen_review_plan()
-  matches <- builder_review_can_build(live) &&
-    identical(
-      builder_review_plan_identity(reviewed),
-      builder_review_plan_identity(live)
-    )
-  if (!isTRUE(matches)) {
+  if (!builder_review_can_build(reviewed)) {
     workflow(builder_reduce_workflow(state, list(type = "invalidate")))
     result(NULL)
     session$onFlushed(
@@ -941,13 +935,13 @@ observeEvent(input$confirm_review, {
     )
     return()
   }
-  if (isTRUE(live$make_app)) {
+  if (isTRUE(reviewed$make_app)) {
     build_mode(TRUE)
   }
   result(NULL)
   workflow(builder_reduce_workflow(
     state,
-    list(type = "confirm_review", plan = live)
+    list(type = "confirm_review", plan = reviewed)
   ))
   session$onFlushed(
     function() {

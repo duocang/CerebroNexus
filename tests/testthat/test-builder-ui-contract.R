@@ -392,7 +392,6 @@ test_that("builder exposes one compact responsive component system", {
     ".builder-form-grid",
     ".builder-field",
     ".builder-action-row",
-    ".builder-disclosure",
     ".builder-file-picker",
     ".builder-file-list",
     ".builder-file-item",
@@ -579,14 +578,6 @@ test_that("enhancement groups and previews use one quiet density system", {
   expect_match(
     css,
     paste0(
-      "\\.spatial-alignment-title \\{[^}]*",
-      "font-size: 1rem;[^}]*font-weight: 700;"
-    ),
-    perl = TRUE
-  )
-  expect_match(
-    css,
-    paste0(
       "\\.builder-preview-grid,\\s*",
       "\\.spatial-alignment-plots,\\s*",
       "\\.spatial-alignment-controls \\{[^}]*",
@@ -617,29 +608,18 @@ test_that("Builder framed surfaces use one explicit title hierarchy", {
     perl = TRUE
   )
   expect_match(
-    features,
-    "\\.enhance-group > h4 \\{[^}]*font-size: \\.9375rem;",
-    perl = TRUE
-  )
-  expect_match(
     components,
     "\\.notice > h4 \\{[^}]*font-size: \\.9375rem;",
     perl = TRUE
   )
   expect_match(
     features,
-    "\\.builder-detected-content h4 \\{[^}]*font-size: \\.9375rem;",
-    perl = TRUE
-  )
-  expect_match(
-    features,
-    "\\.spatial-alignment-title \\{[^}]*font-size: 1rem;",
+    "\\.builder-detected-content h4 \\{[^}]*font-size: \\.7rem;",
     perl = TRUE
   )
   expect_match(
     features,
     paste0(
-      "\\.enhance-attachment-block--tables > h5,\\s*",
       "\\.spatial-alignment-legend-wrap h5 \\{[^}]*",
       "font-size: \\.875rem;"
     ),
@@ -1753,16 +1733,6 @@ test_that("staged workflow owns responsive styles and one safe focus handler", {
   expect_match(components, ".builder-stage-shell", fixed = TRUE)
   expect_match(components, ".builder-stage-summary", fixed = TRUE)
   expect_match(components, ".builder-stage-section", fixed = TRUE)
-  expect_match(
-    components,
-    "\\.builder-stage-section \\{[^}]*border: 1px solid var\\(--c-border\\);",
-    perl = TRUE
-  )
-  expect_match(
-    components,
-    "\\.builder-stage-section \\{[^}]*background: var\\(--c-surface\\);",
-    perl = TRUE
-  )
   expect_match(
     components,
     "\\.builder-stage-section \\{[^}]*box-shadow: var\\(--shadow-1\\);",

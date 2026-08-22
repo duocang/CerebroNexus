@@ -26,6 +26,8 @@ my-project/
 ├── builder-project.json
 ├── sources/
 │   └── <dataset-id>/...
+├── attachments/
+│   └── <dataset-id>/...
 ├── spatial-assets/
 │   └── <dataset-id>/<fov>/...
 ├── artifacts/
@@ -36,15 +38,16 @@ my-project/
 
 `builder-project.json` is the working manifest. It records stable dataset IDs,
 source locations, inspection summaries, user settings, checked state, and CRB
-metadata. Managed paths are relative to the project folder. Authentication
-secrets are not stored.
+metadata. Supplementary table files live under `attachments/`; the manifest
+stores only their managed path and selected sheet names. Managed paths are
+relative to the project folder. Authentication secrets are not stored.
 
-Schema version 2 also records the last safe workflow location and non-secret
+Schema version 3 also records the last safe workflow location and non-secret
 Viewer/Build preferences (output mode, welcome text, initial page and dataset,
 host/port, display and launch options, and whether login was requested). Login
 accounts, usernames, passwords, tokens, active builds, worker snapshots, and
-preview caches remain session-only. Version-1 manifests are migrated in memory
-when opened and are written as version 2 on the next save.
+preview caches remain session-only. Older manifests are migrated in memory and
+are written as version 3 on the next save.
 
 The last UI location includes the active Spatial FOV and image label for the
 selected dataset. These values are navigation state rather than dataset
@@ -121,7 +124,7 @@ writes the manifest, and tells the user to keep the page open.
 flowchart TD
     A[Save project] --> L[Lock editing and show Saving]
     L --> B[Materialize committed spatial settings]
-    B --> C[Retain dataset sources and Spatial image assets]
+    B --> C[Retain dataset sources, attachments, and Spatial image assets]
     C --> D[Write a new manifest atomically]
     D --> E{Checked datasets without a reusable CRB?}
     E -- No --> F[Project is safe]
@@ -230,6 +233,8 @@ snapshot, analysis, export, and verification path.
 
 - Managed uploads use additional disk space, but they are the reliable default
   for browser-based uploads whose original local path is unavailable.
+- Supplementary workbooks are copied into the project once. Their sheet names
+  are saved immediately, but sheet data is read only for the build that uses it.
 - External spatial assets and expression sidecars must travel with their CRB;
   a missing companion file makes the artifact unavailable for reuse.
 - A changed or re-linked source must be inspected again. It must not silently

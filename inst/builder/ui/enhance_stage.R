@@ -96,17 +96,14 @@ builder_enhance_model <- function(
     modules = modules,
     attachments = list(
       tables = list(
-        label = "Tables for Extra material",
+        label = "Extra material",
         enabled_pages = "extra material",
         relevant = TRUE,
-        cost = "Reads and validates one bounded delimited file.",
+        cost = "Lists sheets now and reads selected tables when building.",
         network = "No network access.",
         prerequisite = "Requires a readable CSV, TSV, XLS, XLSX, or XLSM file.",
         selected = names(settings$tables %||% list()) %||% character(),
-        replacement_policy = paste(
-          "Replace a table only when its display name matches;",
-          "otherwise append it."
-        ),
+        replacement_policy = "Each selected sheet is kept separately.",
         skip_consequence = paste(
           "Skipped tables will not appear in Extra material."
         )
@@ -408,10 +405,6 @@ builder_spatial_alignment_ui <- function(id, model) {
   }
   controls <- model$controls %||% builder_alignment_defaults()
   tagList(
-    h3(
-      class = "spatial-alignment-title",
-      model$label %||% "Spatial alignment"
-    ),
     p(
       class = "enhance-attachment-description",
       "Align tissue images with the spatial coordinates for each FOV or section."
@@ -676,6 +669,15 @@ builder_spatial_alignment_ui <- function(id, model) {
 builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
   ns <- NS(id)
   histology <- model$attachments$histology %||% list()
+  analysis_modules <- Filter(
+    function(module) isTRUE(module$relevant),
+    model$modules %||% list()
+  )
+  selected_analysis_count <- sum(vapply(
+    analysis_modules,
+    function(module) isTRUE(module$selected),
+    logical(1)
+  ))
   div(
     id = ns("stage"),
     class = "builder-enhancement-stack",
@@ -690,53 +692,83 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
     ),
     tags$section(
       class = "builder-stage-section builder-stage-enhance",
-      h3("Optional enhancements"),
-      p(
-        class = "stage-intro",
-        "Optional: add analysis pages or attach supporting files. You can skip this stage."
-      ),
-      div(
-        class = "enhance-group enhance-group--analyses",
-        h4("Optional analyses"),
+      tags$details(
+        class = paste(
+          "enhance-group enhance-group--analyses",
+          "builder-viewer-card builder-viewer-optional-analyses"
+        ),
+        `data-disclosure-key` = "optional-analyses",
+        tags$summary(
+          span(class = "builder-viewer-card-title", "Optional analyses"),
+          span(
+            class = "builder-viewer-card-count",
+            `data-analysis-count` = "true",
+            paste(selected_analysis_count, "included")
+          )
+        ),
         div(
-          class = "enhance-module-grid",
-          if (isTRUE(dynamic_modules)) {
-            uiOutput(ns("analysis_modules"))
-          } else {
-            builder_enhance_modules_ui(id, model$modules %||% list())
-          }
+          class = "builder-viewer-card-body",
+          h3("Optional enhancements"),
+          p(
+            class = "stage-intro",
+            "Optional: add analysis pages or attach supporting files. You can skip this stage."
+          ),
+          div(
+            class = "enhance-module-grid",
+            if (isTRUE(dynamic_modules)) {
+              uiOutput(ns("analysis_modules"))
+            } else {
+              builder_enhance_modules_ui(id, model$modules %||% list())
+            }
+          )
         )
       ),
       div(
         class = "enhance-group enhance-group--attachments",
-        h4("Optional attachments"),
-        div(
-          class = "enhance-attachment-block enhance-attachment-block--tables",
-          h5("Tables for Extra material"),
-          p(
-            class = "enhance-attachment-description",
-            "Add optional CSV, TSV, XLS, XLSX, or XLSM tables to the CRB’s Extra material content. Every non-empty workbook sheet becomes a table."
+        tags$details(
+          class = paste(
+            "enhance-attachment-block enhance-attachment-block--tables",
+            "builder-viewer-card builder-viewer-extra-material"
           ),
-          div(
-            class = "enhance-table-file-control builder-file-picker builder-file-picker--content",
-            tags$input(
-              id = ns("table_files"),
-              name = ns("table_files"),
-              class = "shiny-input-file enhance-table-file-input builder-file-input",
-              type = "file",
-              multiple = "multiple",
-              accept = ".csv,.tsv,.txt,.xls,.xlsx,.xlsm",
-              `tabindex` = "-1"
-            ),
-            tags$label(
-              `for` = ns("table_files"),
-              class = "enhance-table-file-button builder-file-trigger",
-              `tabindex` = "0",
-              role = "button",
-              span("+ Add tables…")
+          `data-disclosure-key` = "extra-material",
+          tags$summary(
+            span(class = "builder-viewer-card-title", "Extra material"),
+            span(
+              class = "builder-viewer-card-count",
+              `data-extra-material-count` = "true",
+              paste(
+                length(model$attachments$tables$selected %||% character()),
+                "included"
+              )
             )
           ),
-          uiOutput(ns("table_list"))
+          div(
+            class = "builder-viewer-card-body",
+            p(
+              class = "enhance-attachment-description",
+              "Add optional CSV, TSV, XLS, XLSX, or XLSM tables. Sheet names are listed now; selected tables are read when building."
+            ),
+            div(
+              class = "enhance-table-file-control builder-file-picker builder-file-picker--content",
+              tags$input(
+                id = ns("table_files"),
+                name = ns("table_files"),
+                class = "shiny-input-file enhance-table-file-input builder-file-input",
+                type = "file",
+                multiple = "multiple",
+                accept = ".csv,.tsv,.txt,.xls,.xlsx,.xlsm",
+                `tabindex` = "-1"
+              ),
+              tags$label(
+                `for` = ns("table_files"),
+                class = "enhance-table-file-button builder-file-trigger",
+                `tabindex` = "0",
+                role = "button",
+                span("+ Add tables…")
+              )
+            ),
+            uiOutput(ns("table_list"))
+          )
         )
       )
     ),
@@ -746,7 +778,28 @@ builder_enhance_stage_ui <- function(id, model, dynamic_modules = FALSE) {
           "builder-stage-section builder-stage-spatial",
           "spatial-alignment-workbench"
         ),
-        builder_spatial_alignment_ui(id, histology)
+        tags$details(
+          class = "builder-viewer-card builder-viewer-spatial-alignment",
+          `data-disclosure-key` = "spatial-alignment",
+          tags$summary(
+            span(class = "builder-viewer-card-title", "Spatial alignment"),
+            span(
+              class = "builder-viewer-card-count",
+              paste(
+                length(histology$sections %||% character()),
+                if (length(histology$sections %||% character()) == 1L) {
+                  "section"
+                } else {
+                  "sections"
+                }
+              )
+            )
+          ),
+          div(
+            class = "builder-viewer-card-body builder-spatial-alignment-body",
+            builder_spatial_alignment_ui(id, histology)
+          )
+        )
       )
     }
   )
