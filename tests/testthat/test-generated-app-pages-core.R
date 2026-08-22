@@ -92,6 +92,7 @@ test_that("Linked views uses Builder defaults, palette, and complete cell set", 
 test_that("Gene expression renders the exact selected source-gene values", {
   fixture <- generated_app_e2e_select_dataset("basic")
   generated_app_e2e_activate_tab("gene_expression")
+  generated_app_e2e_set_input("expression_analysis_mode", "Gene(s)")
   generated_app_e2e_wait_input("expression_genes_input")
   generated_app_e2e_set_input("expression_genes_input", "GENE001")
 

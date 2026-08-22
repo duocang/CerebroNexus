@@ -358,8 +358,9 @@ generated_app_e2e_wait_plotly <- function(id, timeout = 60000) {
       paste0(
         "(function(){var plot=document.getElementById(",
         id_js,
-        ");return !!(plot && plot.data && plot.data.some(function(trace){",
-        "return trace.x && trace.x.length>0;}));})()"
+        ");return !!(plot && ((plot.data && plot.data.some(function(trace){",
+        "return trace.x && trace.x.length>0;})) || ",
+        "Number(plot.dataset.pointCount)>0));})()"
       ),
       timeout = timeout
     ),
@@ -387,7 +388,9 @@ generated_app_e2e_plotly_point_count <- function(id) {
   value <- generated_app_e2e_driver()$get_js(paste0(
     "(function(){var plot=document.getElementById(",
     id_js,
-    ");if(!plot || !plot.data)return 0;return plot.data.reduce(",
+    ");if(!plot)return 0;if(Number(plot.dataset.pointCount)>0)",
+    "return Number(plot.dataset.pointCount);if(!plot.data)return 0;",
+    "return plot.data.reduce(",
     "function(total,trace){var mode=String(trace.mode||'');return total+",
     "(mode.indexOf('markers')!==-1&&trace.x?trace.x.length:0);},0);})()"
   ))

@@ -170,7 +170,7 @@ test_that("staged workflow remains focused and overflow-free", {
       timeout = 10000
     )
     expect_true(app$get_js(sprintf(
-      "Array.from(document.querySelectorAll('.review-dataset-card h4')).some(node => node.textContent.trim() === %s)",
+      "Array.from(document.querySelectorAll('.review-dataset-card > summary strong')).some(node => node.textContent.trim() === %s)",
       jsonlite::toJSON(paste0("Accepted ", viewport[[1]]), auto_unbox = TRUE)
     )))
     expect_identical(

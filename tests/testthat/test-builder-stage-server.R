@@ -2132,7 +2132,7 @@ test_that("Build recovery actions preserve confirmation only when safe", {
         auth_enabled(TRUE)
       }
       if (isTRUE(stale)) {
-        plan$revision <- plan$revision - 1L
+        plan$items[[1L]]$name <- "Changed after review"
       }
       reviewed <- app_env$builder_reduce_workflow(
         app_env$builder_workflow_state(),

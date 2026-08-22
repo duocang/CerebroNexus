@@ -285,6 +285,7 @@
   }
   function common(state, data, extra) {
     state.radius=Math.max(1.5,Number(data.point_size||5)/2);state.opacity=Number(data.point_opacity||.85);state.shapes=(extra&&extra.shapes)||[];
+    state.host.dataset.pointCount=String(state.points.length);
     state.fullBounds=paddedBounds(state.points.map(p=>p.x),state.points.map(p=>p.y));
     if(!state.bounds||data.reset_axes)state.bounds=Object.assign({},state.fullBounds);
     resize(state);schedule(state);

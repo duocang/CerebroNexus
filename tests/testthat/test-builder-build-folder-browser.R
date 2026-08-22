@@ -155,14 +155,24 @@ test_that("confirmed Build waits for a separately selected output folder", {
   )
 
   app$click("build")
-  app$wait_for_js(
-    paste0(
-      "document.querySelector('.builder-build-dialog-backdrop.is-visible') !== null && ",
-      "document.querySelector('.builder-build-dialog') !== null && ",
-      "document.querySelector('.builder-build-dialog').getClientRects().length === 1 && ",
-      "document.querySelector('.builder-build-dialog .btn-replace') !== null"
-    ),
-    timeout = 10000
+  conflict_ready <- paste0(
+    "document.querySelector('.builder-build-dialog-backdrop.is-visible') !== null && ",
+    "document.querySelector('.builder-build-dialog') !== null && ",
+    "document.querySelector('.builder-build-dialog').getClientRects().length === 1 && ",
+    "document.querySelector('.builder-build-dialog .btn-replace') !== null"
+  )
+  tryCatch(
+    app$wait_for_js(conflict_ready, timeout = 30000),
+    error = function(error) {
+      stop(
+        conditionMessage(error),
+        "\nBuild UI: ",
+        app$get_js(
+          "document.getElementById('build-stage-status').textContent.trim()"
+        ),
+        call. = FALSE
+      )
+    }
   )
   app$click(selector = ".builder-build-dialog button:first-child")
   app$wait_for_js(

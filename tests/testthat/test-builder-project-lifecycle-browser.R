@@ -166,7 +166,10 @@ builder_project_lifecycle_prepare_crb <- function(
     app$get_js(
       "document.getElementById('builder-operation-overlay-title').textContent.trim()"
     ),
-    "Project and CRBs saved"
+    "Project and CRBs saved",
+    info = app$get_js(
+      "document.getElementById('builder-operation-overlay').textContent.trim()"
+    )
   )
   builder_project_lifecycle_wait_for_manifest(
     app,
