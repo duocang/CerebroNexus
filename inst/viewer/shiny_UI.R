@@ -163,10 +163,6 @@ source(
   local = TRUE
 )
 source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/overview/UI.R"),
-  local = TRUE
-)
-source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/groups/UI.R"),
   local = TRUE
 )
@@ -228,15 +224,14 @@ source(
   local = TRUE
 )
 source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/spatial/UI.R"),
-  local = TRUE
-)
-source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/trekker/UI.R"),
-  local = TRUE
-)
-source(
   paste0(Cerebro.options[["cerebro_root"]], "/viewer/hla_tcr_motifs/UI.R"),
+  local = TRUE
+)
+source(
+  paste0(
+    Cerebro.options[["cerebro_root"]],
+    "/viewer/coordinated_views/UI.R"
+  ),
   local = TRUE
 )
 
@@ -270,6 +265,13 @@ ui <- dashboardPage(
         )
       )
     ),
+    tags$button(
+      type = "button",
+      id = "cerebro-nav-close",
+      class = "cerebro-nav-close",
+      `aria-label` = "Close navigation",
+      HTML("&times;")
+    ),
     sidebarMenu(
       id = "sidebar",
       menuItem(
@@ -278,7 +280,11 @@ ui <- dashboardPage(
         icon = icon("info"),
         selected = TRUE
       ),
-      menuItem("Projection", tabName = "overview", icon = icon("home")),
+      menuItem(
+        "Linked views",
+        tabName = "coordinated_views",
+        icon = icon("diagram-project")
+      ),
       menuItem("Groups", tabName = "groups", icon = icon("layer-group")),
       ## Marker genes and Most expressed genes are inserted conditionally (see
       ## insertConditionalTab in shiny_server.R): a data set that carries neither
@@ -292,8 +298,6 @@ ui <- dashboardPage(
       div(id = "sidebar_item_extra_material_placeholder"),
       div(id = "sidebar_item_immune_repertoire_placeholder"),
       div(id = "sidebar_item_trajectory_placeholder"),
-      div(id = "sidebar_item_spatial_placeholder"),
-      div(id = "sidebar_item_trekker_placeholder"),
       div(id = "sidebar_item_hla_tcr_motifs_placeholder"),
       menuItem(
         "Gene expression",
@@ -315,6 +319,13 @@ ui <- dashboardPage(
   ),
   dashboardBody(
     shinyjs::useShinyjs(),
+    tags$button(
+      type = "button",
+      id = "cerebro-nav-scrim",
+      `aria-label` = "Close navigation",
+      `aria-hidden` = "true",
+      tabindex = "-1"
+    ),
     ## App CSS/JS as cacheable static resources (served from the cerebro_www
     ## resource path registered above) instead of inlined into every page. The
     ## browser caches them across connections and downloads them in parallel;
@@ -322,29 +333,38 @@ ui <- dashboardPage(
     ## self-contained IIFE with its own Shiny-readiness retry, so order-safe).
     ##  - custom.css      : Console design language; overrides AdminLTE 2 chrome.
     ##  - fill_height.js  : sizes any .cerebro-fill element to the live viewport.
-    ##  - trekker.*       : Trekker page assets (scoped under .trekker-page / tk-).
+    ##  - cv-geom.js      : shared 2-D geometry kernels (window.CBGeom) used by
+    ##                      the canvas engines below. Deferred scripts execute in
+    ##                      document order, so it is defined before them.
+    ##  - trekker.*       : Shared Trekker QC/Moran renderers used by Linked views.
     ##  - hla_motifs.*    : modebar over the visNetwork motif network.
+    ##  - coordviews.*    : Linked views assets (scoped under .coordviews-page /
+    ##                      cv- ids).
     tags$head(
       cerebro_css("custom.css"),
       cerebro_css("trekker.css"),
       cerebro_css("hla_motifs.css"),
+      cerebro_css("coordviews.css"),
       cerebro_js("fill_height.js", defer = TRUE),
+      cerebro_js("cv-geom.js", defer = TRUE),
       cerebro_js("trekker.js", defer = TRUE),
       cerebro_js("hla_motifs.js", defer = TRUE),
+      cerebro_js("coordviews.js", defer = TRUE),
+      cerebro_js("viewer-shell.js", defer = TRUE),
+      cerebro_js("multiselect.js", defer = TRUE),
       ## Shared projection-scatter engine, loaded ONCE here instead of being
-      ## inlined into all five projection tabs' extendShinyjs() (~69KB x5). Both
+      ## inlined into each remaining projection-style detail tab. Both
       ## files expose only window globals (window.cerebroProjectionLayout /
-      ## window.cerebroProjection); each tab's thin js_projection_update_plot.js
+      ## window.cerebroCanvasProjection / window.cerebroProjection); each tab's thin js_projection_update_plot.js
       ## (still inlined via extendShinyjs) calls those globals. These are NOT
       ## deferred so the globals exist before the tab scripts' registerPlot()
       ## runs; layouts before scatter since scatter builds on the layout helpers.
       cerebro_js("projection_layouts.js"),
+      cerebro_js("projection_canvas.js"),
       cerebro_js("projection_scatter.js")
     ),
-    tags$script(HTML('$("body").addClass("fixed");')),
     tabItems(
       tab_load_data,
-      tab_overview,
       tab_groups,
       tab_marker_genes,
       tab_most_expressed_genes,
@@ -352,9 +372,8 @@ ui <- dashboardPage(
       tab_extra_material,
       tab_immune_repertoire,
       tab_trajectory,
-      tab_spatial,
-      tab_trekker,
       tab_hla_tcr_motifs,
+      tab_coordinated_views,
       tab_gene_expression,
       tab_gene_id_conversion,
       tab_color_management,

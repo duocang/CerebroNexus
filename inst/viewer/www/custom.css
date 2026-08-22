@@ -180,6 +180,17 @@ body.skin-blue .main-footer { margin-top: 0 !important; }
 /* -------------------------------------------------------------------------
    Sidebar — white nav rail, rounded items, warm active pill
    ------------------------------------------------------------------------- */
+body.skin-blue .main-sidebar,
+body.skin-blue .left-side {
+  position: fixed !important;
+  top: 0;
+  bottom: 0;
+  min-height: 0;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 body.skin-blue .main-sidebar {
   background: var(--c-white) !important;
   border-right: 1px solid var(--c-border) !important;
@@ -198,6 +209,8 @@ body.skin-blue .sidebar .cerebro-brand .cerebro-logo {
   width: 188px;
   height: auto;
 }
+.cerebro-nav-close,
+#cerebro-nav-scrim { display: none; }
 body.skin-blue .sidebar-menu > li { position: relative; }
 body.skin-blue .sidebar-menu > li > a {
   color: var(--c-text) !important;
@@ -253,6 +266,57 @@ body.skin-blue .sidebar-menu > li > a[data-value="immune_repertoire"] > i { colo
 body.skin-blue .sidebar-menu > li > a[data-value="spatial"] > i { color: #0891b2 !important; }
 body.skin-blue .sidebar-menu > li > a[data-value="trajectory"] > i { color: #06b6d4 !important; }
 body.skin-blue .sidebar-menu > li > a[data-value="geneExpression"] > i { color: #6366f1 !important; }
+
+.cerebro-selection-count,
+.cerebro-expression-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* Result selectors share one compact field: the label and control always have
+   the same left edge, even while each field is centred in its half-row. */
+.result-selectors {
+  padding: 8px 20px 12px;
+}
+.result-selector-field {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+}
+.result-selector-field .shiny-input-container {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+.result-selector-field label.control-label {
+  display: block;
+  margin-bottom: 7px;
+  text-align: left !important;
+}
+
+.cerebro-selection-count {
+  padding: 7px 11px;
+  color: #4b5563;
+  background: #f1f3f5;
+}
+.cerebro-selection-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.cerebro-expression-notice {
+  margin-top: 8px;
+  padding: 9px 12px;
+  color: #9a4b0f;
+  background: #fff4e8;
+  border: 1px solid #f5c38f;
+}
 body.skin-blue .sidebar-menu > li > a[data-value="geneIdConversion"] > i { color: #84cc16 !important; }
 body.skin-blue .sidebar-menu > li > a[data-value="color_management"] > i { color: #d946ef !important; }
 body.skin-blue .sidebar-menu > li > a[data-value="about"] > i { color: #64748b !important; }
@@ -400,18 +464,12 @@ body .content { padding-left: 0 !important; padding-right: 0 !important; }
   /* Hidden until the JS has applied a measured height (adds .is-filled), so the
      one intermediate frame at the placeholder/pre-settle size is never seen. */
   opacity: 0;
+  transition: opacity var(--dur) var(--ease);
 }
 .cerebro-fill.is-filled {
   opacity: 1;
-  /* Reveal INSTANTLY — no opacity fade. The plot is shown only after
-     fill_height.js has measured a settled height (two equal frames), so the
-     first visible frame is already final; fading it in just makes an
-     already-rendered plot blink in on the first view of each sub-tab (the IR
-     "flash" users see). Match the projection engine, which reveals via
-     `visibility` with no tween. Height is likewise never transitioned: a height
-     tween would animate the 60vh placeholder up/down to the final size — the
-     "short-then-tall" grow the projection tabs never had. Re-measures (resize,
-     legend wrap) also apply in one frame. */
+  /* The height is already settled before this class is added. Only opacity is
+     eased, so first paint feels connected without animating layout. */
 }
 /* The spinner wrapper (or the output directly) fills the sized wrapper. */
 .cerebro-fill > .shiny-spinner-output-container,
@@ -808,6 +866,130 @@ body .btn-group-justified > .btn.radiobtn.btn-primary.active {
   font-weight: 650;
 }
 
+/* Spatial: the common one-image-per-section case is automatic. The rare
+   per-section choices stay in one compact popover instead of growing the Main
+   parameters card by one full select per panel. */
+.spatial-background-mode {
+  display: flex;
+  width: 100%;
+}
+.spatial-background-mode > .spatial-background-mode-option,
+.spatial-background-mode > .spatial-background-customize > button {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 0 !important;
+  color: var(--c-text) !important;
+  background: var(--c-surface) !important;
+  border-color: var(--c-border-2) !important;
+  box-shadow: none !important;
+}
+.spatial-background-mode > :first-child {
+  border-radius: var(--r-sm) 0 0 var(--r-sm) !important;
+}
+.spatial-background-mode > .spatial-background-customize > button {
+  border-radius: 0 var(--r-sm) var(--r-sm) 0 !important;
+  width: 100%;
+}
+.spatial-background-mode > .is-active,
+.spatial-background-mode > .spatial-background-customize.is-active > button {
+  background: var(--c-amber) !important;
+  border-color: var(--c-amber) !important;
+  color: var(--c-white) !important;
+  font-weight: 650;
+}
+.spatial-background-customize {
+  flex: 1.35 1 0;
+}
+.spatial-background-customize .dropdown-menu {
+  max-width: calc(100vw - 40px);
+  padding: 10px;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+}
+.spatial-background-customize-list {
+  display: grid;
+  gap: 8px;
+}
+.spatial-background-row {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+}
+.spatial-background-row-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.spatial-background-row-label {
+  font-weight: 650;
+  color: var(--c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spatial-background-count {
+  flex: 0 0 auto;
+  color: var(--c-text-2);
+  font-size: 11px;
+}
+.spatial-background-row .form-group,
+.spatial-background-row .checkbox,
+.spatial-background-row .material-switch {
+  margin: 0;
+}
+.spatial-background-single {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+.spatial-background-single-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.spatial-background-image-icon {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(224, 109, 25, 0.2);
+  background:
+    radial-gradient(circle at 67% 34%, #ffffff 0 2px, transparent 2.5px),
+    linear-gradient(145deg, #ffe0ca 0 48%, #f29957 49% 66%, #c76321 67% 100%);
+}
+.spatial-background-single-name {
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spatial-background-multiple .form-control {
+  height: 42px;
+  border-color: var(--c-border-2);
+  background: var(--c-surface-2);
+}
+.spatial-background-unavailable {
+  display: block;
+  padding: 8px 9px;
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
 /* -------------------------------------------------------------------------
    Form controls — soft inputs, warm focus ring
    ------------------------------------------------------------------------- */
@@ -818,7 +1000,8 @@ body .btn-group-justified > .btn.radiobtn.btn-primary.active {
    still beat the inline style, so exclusion is the only clean fix). */
 body .form-control:not(.colourpicker-input):not(.shiny-colour-input),
 body .selectize-input,
-body .selectize-dropdown {
+body .selectize-dropdown,
+body .bootstrap-select > .dropdown-toggle {
   border: 1px solid var(--c-border-2) !important;
   border-radius: var(--r-sm) !important;
   background: var(--c-surface) !important;
@@ -841,17 +1024,125 @@ body .form-control.shiny-colour-input {
   box-shadow: none !important;
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
+
+/* Color management: a colour is content, not decoration. Keep the swatch and
+   its exact value visible together in a compact, scannable list. */
+.cerebro-color-card .box-title {
+  max-width: calc(100% - 150px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cerebro-color-count {
+  float: right;
+  margin: 1px 34px 0 10px;
+  color: var(--c-text-3);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.cerebro-color-list {
+  display: grid;
+}
+.cerebro-color-row.shiny-input-container {
+  position: relative;
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  grid-template-rows: 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  transition: background-color var(--dur) var(--ease);
+}
+.cerebro-color-row.shiny-input-container:not(:last-child)::after {
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 1px;
+  background: var(--c-border);
+  content: "";
+}
+.cerebro-color-row.shiny-input-container:hover {
+  background: var(--c-surface-2);
+}
+.cerebro-color-row > label.control-label {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cerebro-color-row > input.shiny-colour-input {
+  grid-column: 1;
+  grid-row: 1;
+  width: 94px !important;
+  height: 34px !important;
+  padding: 6px 7px;
+  cursor: pointer;
+}
 body .form-control:hover,
-body .selectize-input:hover {
+body .selectize-input:hover,
+body .bootstrap-select > .dropdown-toggle:hover {
   border-color: var(--c-text-3) !important;
 }
 body .form-control:focus,
-body .selectize-input.focus {
+body .selectize-input.focus,
+body .bootstrap-select.open > .dropdown-toggle,
+body .bootstrap-select > .dropdown-toggle:focus {
   border-color: var(--c-amber) !important;
   box-shadow: 0 0 0 3px var(--c-amber-50) !important;
   outline: none;
 }
-body .selectize-input { padding: 7px 12px !important; min-height: 34px; }
+body select.form-control,
+body input.form-control,
+body .selectize-input,
+body .bootstrap-select > .dropdown-toggle {
+  min-height: 42px;
+  padding: 9px 12px !important;
+  line-height: 22px;
+}
+body .bootstrap-select > .dropdown-toggle {
+  text-align: left;
+}
+body .bootstrap-select > .dropdown-toggle .filter-option {
+  padding: 0 !important;
+}
+/* Keep page-level choice controls readable without letting a long option turn a
+   parameter column into a full-width field. Explicitly wide visual widgets use
+   their own wrappers; ordinary Shiny selects share this cap. */
+body .shiny-input-container:has(select),
+body .shiny-input-container:has(.bootstrap-select),
+body .shiny-input-container:has(> input.form-control) {
+  width: min(100%, 320px) !important;
+}
+/* Shiny wraps generated controls in an extra div. A direct-child selector
+   leaves multi-selects sized only to their placeholder. */
+body .shiny-input-container .selectize-control,
+body .shiny-input-container .bootstrap-select { width: 100% !important; }
+body .bootstrap-select .dropdown-menu {
+  border: 1px solid var(--c-border-2) !important;
+  border-radius: var(--r-sm) !important;
+  box-shadow: var(--shadow-2) !important;
+}
+body .bootstrap-select .dropdown-menu > li > a {
+  padding: 7px 12px;
+  color: var(--c-text);
+}
+body .bootstrap-select .dropdown-menu > li > a:hover,
+body .bootstrap-select .dropdown-menu > li.selected > a {
+  color: var(--c-amber-700);
+  background: var(--c-amber-50);
+}
 /* The dropdown is an overlay: give BOTH the outer panel and its inner content
    a solid white fill and a high z-index, or the options render over a
    see-through panel (page content shows through) and clicks miss. */
@@ -892,6 +1183,35 @@ body .selectize-control.multi .selectize-input > .item {
   border-radius: var(--r-xs) !important;
   padding: 1px 8px !important;
   font-size: 13px;
+}
+/* Every multi-select keeps a useful empty target and lets its menu grow to the
+   longest option. The viewport cap preserves full labels by scrolling only
+   when a label genuinely cannot fit on screen. */
+body .selectize-control.multi .selectize-input > input::placeholder {
+  color: var(--c-text-3);
+  opacity: 1;
+}
+body .selectize-control.multi .selectize-input > input:only-child {
+  min-width: 5.5em !important;
+}
+body .selectize-control.multi .selectize-input > input { min-width: 5.5em !important; }
+body .selectize-control.multi .selectize-dropdown {
+  width: max-content !important;
+  min-width: 100% !important;
+  max-width: calc(100vw - 32px) !important;
+}
+body .selectize-control.multi .selectize-dropdown .option {
+  white-space: nowrap;
+}
+
+/* Reused by grouping-variable and comparison selectors across modules. */
+.cerebro-compact-select { width: min(100%, 42rem); }
+.cerebro-compact-select > h3 { margin: 0 0 8px; text-align: left; }
+.cerebro-compact-select .form-group { margin-bottom: 14px; }
+
+/* Show the short dataset list in full whenever the viewport permits it. */
+#crb_file_selector + .selectize-control .selectize-dropdown-content {
+  max-height: min(420px, calc(100dvh - 240px));
 }
 
 body label, body .control-label {
@@ -1081,7 +1401,20 @@ body .modal-footer { border-top: 1px solid var(--c-border); padding: 15px 24px; 
 /* -------------------------------------------------------------------------
    Loading / progress / notifications — unified to the warm accent
    ------------------------------------------------------------------------- */
-body .recalculating { opacity: 0.55; transition: opacity var(--dur) var(--ease); }
+/* Keep an already-rendered result in place while Shiny recalculates. JS adds
+   the dim only after 120ms, so fast updates never flash a loading state. */
+body .shiny-bound-output {
+  transition: opacity var(--dur) var(--ease);
+}
+body .recalculating { opacity: 1; }
+body .shiny-bound-output.cerebro-output-waiting { opacity: 0.58; }
+body .load-container {
+  animation: console-delayed-spinner var(--dur) 120ms var(--ease) backwards;
+}
+@keyframes console-delayed-spinner {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 /* Unexpected output errors remain visibly distinct from intentional validation
    messages so failures are not mistaken for empty or unavailable content. */
 body .shiny-output-error { color: var(--c-error); font-family: var(--font-mono); font-size: 12.5px; }
@@ -1151,7 +1484,7 @@ body .fa-spinner { color: var(--c-amber) !important; }
 ::-webkit-scrollbar-thumb:hover { background: var(--c-text-3); }
 
 /* Sidebar item fade-in — gentle opacity hint only */
-.skin-blue .sidebar-menu > li { animation: console-fadeIn .22s var(--ease) forwards; }
+.skin-blue .sidebar-menu > li { animation: console-fadeIn var(--dur) var(--ease) forwards; }
 @keyframes console-fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* -------------------------------------------------------------------------
@@ -1165,7 +1498,7 @@ body .fa-spinner { color: var(--c-amber) !important; }
    dropdowns behind the cards below them (they render see-through and clicks
    miss). A gentle fade gives the same "content settled in" feel without that
    trap. Fill-mode is `backwards` only, so nothing lingers after it runs. */
-.tab-pane.active > * { animation: console-fadeInContent .28s var(--ease) backwards; }
+.tab-pane.active > * { animation: console-fadeInContent var(--dur) var(--ease) backwards; }
 @keyframes console-fadeInContent {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -1217,7 +1550,7 @@ body .btn:active { transform: translateY(0.5px); }
     position: fixed;
     top: 8px;
     left: 8px;
-    z-index: 1030;
+    z-index: 1400;
     width: 40px;
     height: 40px;
     margin: 0;
@@ -1229,6 +1562,80 @@ body .btn:active { transform: translateY(0.5px); }
     border: 1px solid var(--c-border, rgba(0, 0, 0, 0.12));
     border-radius: 8px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    font-size: 0;
+  }
+  html body.skin-blue .main-header .sidebar-toggle::before {
+    content: "" !important;
+    display: block;
+    width: 18px;
+    height: 14px;
+    background:
+      linear-gradient(currentColor, currentColor) 0 0 / 18px 2px no-repeat,
+      linear-gradient(currentColor, currentColor) 0 6px / 18px 2px no-repeat,
+      linear-gradient(currentColor, currentColor) 0 12px / 18px 2px no-repeat;
+  }
+
+  html body.skin-blue .main-sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 1500 !important;
+    width: min(84vw, 320px) !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow-x: hidden;
+    overflow-y: auto;
+    transform: translateX(-100%) !important;
+    transition: transform .22s var(--ease) !important;
+    box-shadow: var(--shadow-4) !important;
+  }
+  html body.skin-blue.sidebar-open .main-sidebar {
+    transform: translateX(0) !important;
+  }
+  html body.skin-blue.sidebar-open .content-wrapper,
+  html body.skin-blue.sidebar-open .right-side,
+  html body.skin-blue.sidebar-open .main-footer {
+    margin-left: 0 !important;
+    transform: none !important;
+  }
+  html body.skin-blue .cerebro-nav-close {
+    display: grid;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    place-items: center;
+    color: var(--c-text-2);
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-sm);
+    font: 26px/1 var(--font-sans);
+  }
+  html body.skin-blue .cerebro-nav-close:hover,
+  html body.skin-blue .cerebro-nav-close:focus-visible {
+    color: var(--c-text);
+    background: var(--c-surface-2);
+  }
+  html body.skin-blue #cerebro-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1450;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+    background: rgba(28, 28, 30, .36);
+    border: 0;
+    transition: opacity .2s ease;
+  }
+  html body.skin-blue.sidebar-open #cerebro-nav-scrim {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 
@@ -1275,6 +1682,98 @@ body .btn:active { transform: translateY(0.5px); }
 }
 .cerebro-projection-gate.is-sized .js-plotly-plot {
   visibility: visible !important;
+}
+
+/* Shared 2-D cell projection canvas. */
+.cerebro-canvas-host {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: #fff;
+  touch-action: none;
+}
+.cerebro-projection-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+.cerebro-canvas-selection {
+  display: none;
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed #2563b8;
+  background: rgba(37, 99, 184, .08);
+}
+.cerebro-canvas-tip {
+  position: absolute;
+  z-index: 5;
+  max-width: 280px;
+  padding: 7px 9px;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .96);
+  color: var(--c-text);
+  box-shadow: var(--shadow-2);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-line;
+  opacity: 0;
+  pointer-events: none;
+}
+.cerebro-canvas-tip.is-visible { opacity: 1; }
+.cerebro-canvas-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+}
+.cerebro-canvas-legend-item > span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.cerebro-canvas-legend-item.is-hidden { opacity: .35; }
+.cerebro-canvas-gradient {
+  width: min(240px, 28vw);
+  height: 8px;
+  border-radius: var(--r-pill);
+}
+.cerebro-canvas-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 5px;
+}
+.cerebro-plot-tool {
+  position: relative;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--c-border);
+  border-radius: 5px;
+  background: var(--c-surface);
+  color: var(--c-text-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.cerebro-plot-tool:hover {
+  background: var(--c-surface-3);
+  color: var(--c-text);
+}
+.cerebro-plot-tool.is-active,
+.cerebro-plot-tool.is-on {
+  border-color: var(--c-amber-300);
+  background: var(--c-amber-50);
+  color: var(--c-amber-700);
 }
 
 /* -------------------------------------------------------------------------
@@ -1326,34 +1825,23 @@ body .btn:active { transform: translateY(0.5px); }
 /* Colour-code the two actions so they read apart at a glance: Zoom is a blue
    accent (a "focus in" action), Clear is a muted red (a "discard" action). Both
    are outline buttons at rest and fill on hover, matching the app's flat look.
-   !important is required: the Console theme sets `body .btn-default { color:
-   var(--c-text) !important }`, which an id selector alone cannot override. */
-.cerebro-selection-actions #overview_projection_zoom_to_selection,
-.cerebro-selection-actions #expression_projection_zoom_to_selection,
-.cerebro-selection-actions #trajectory_projection_zoom_to_selection,
-.cerebro-selection-actions #spatial_projection_zoom_to_selection {
+   !important is required because the Console theme marks its default button
+   colours important too. Matching the shared action suffix keeps every page,
+   including future projection pages, on this one visual rule. */
+.cerebro-selection-actions [id$="_projection_zoom_to_selection"] {
   color: #2c7ab3 !important;
   border-color: #a4c8e1 !important;
 }
-.cerebro-selection-actions #overview_projection_zoom_to_selection:hover,
-.cerebro-selection-actions #expression_projection_zoom_to_selection:hover,
-.cerebro-selection-actions #trajectory_projection_zoom_to_selection:hover,
-.cerebro-selection-actions #spatial_projection_zoom_to_selection:hover {
+.cerebro-selection-actions [id$="_projection_zoom_to_selection"]:hover {
   color: #ffffff !important;
   background-color: #2c7ab3 !important;
   border-color: #2c7ab3 !important;
 }
-.cerebro-selection-actions #overview_projection_clear_selection,
-.cerebro-selection-actions #expression_projection_clear_selection,
-.cerebro-selection-actions #trajectory_projection_clear_selection,
-.cerebro-selection-actions #spatial_projection_clear_selection {
+.cerebro-selection-actions [id$="_projection_clear_selection"] {
   color: #c0392b !important;
   border-color: #e6b0aa !important;
 }
-.cerebro-selection-actions #overview_projection_clear_selection:hover,
-.cerebro-selection-actions #expression_projection_clear_selection:hover,
-.cerebro-selection-actions #trajectory_projection_clear_selection:hover,
-.cerebro-selection-actions #spatial_projection_clear_selection:hover {
+.cerebro-selection-actions [id$="_projection_clear_selection"]:hover {
   color: #ffffff !important;
   background-color: #c0392b !important;
   border-color: #c0392b !important;
@@ -1365,19 +1853,9 @@ body .btn:active { transform: translateY(0.5px); }
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
-/* Active (zoomed-in) state for the Zoom button: a solid blue fill with WHITE
-   text so it reads as "currently zoomed — click to reset". The selectors repeat
-   the button ids: the rest-state rules above are id-specific, so the active rule
-   must match that specificity (id + class) or its white text loses to the blue
-   rest colour and becomes invisible against the blue fill. */
-.cerebro-selection-actions #overview_projection_zoom_to_selection.is-zoomed,
-.cerebro-selection-actions #expression_projection_zoom_to_selection.is-zoomed,
-.cerebro-selection-actions #trajectory_projection_zoom_to_selection.is-zoomed,
-.cerebro-selection-actions #spatial_projection_zoom_to_selection.is-zoomed,
-.cerebro-selection-actions #overview_projection_zoom_to_selection.is-zoomed:hover,
-.cerebro-selection-actions #expression_projection_zoom_to_selection.is-zoomed:hover,
-.cerebro-selection-actions #trajectory_projection_zoom_to_selection.is-zoomed:hover,
-.cerebro-selection-actions #spatial_projection_zoom_to_selection.is-zoomed:hover {
+/* Active (zoomed-in) state: solid blue signals "click to reset". */
+.cerebro-selection-actions [id$="_projection_zoom_to_selection"].is-zoomed,
+.cerebro-selection-actions [id$="_projection_zoom_to_selection"].is-zoomed:hover {
   background-color: #2c7ab3 !important;
   border-color: #2c7ab3 !important;
   color: #ffffff !important;
@@ -1386,13 +1864,8 @@ body .btn:active { transform: translateY(0.5px); }
 /* -------------------------------------------------------------------------
    Shared projection legend (all projection tabs)
 
-   The projection-scatter renderer (www/projection_scatter.js) builds a custom
-   HTML legend as a horizontal bar ABOVE the plot, in its own band, so it never
-   covers data points and switching categorical <-> continuous never shifts the
-   scatter. Every tab's legend container gets the class .cerebro-projection-legend
-   (its id is <plot_id>_legend); these styles were formerly inline in
-   spatial/UI.R and are now shared so overview / gene_expression / trajectory /
-   immune_repertoire render an identical legend.
+   Canvas projections and the Plotly 3-D fallback share one legend container,
+   positioned above the plot so it never covers data points.
    ------------------------------------------------------------------------- */
 .cerebro-projection-legend {
   position: static;
@@ -1420,32 +1893,6 @@ body .btn:active { transform: translateY(0.5px); }
   font-weight: 600;
   font-size: 13px;
   color: #333;
-}
-.cerebro-projection-legend .custom-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-  border-radius: 3px;
-}
-.cerebro-projection-legend .custom-legend-item:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-.cerebro-projection-legend .legend-color-box {
-  display: inline-block;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-}
-.cerebro-projection-legend .legend-text {
-  color: #333;
-  white-space: nowrap;
-}
-.cerebro-projection-legend .legend-item-hidden {
-  opacity: 0.35;
-}
-.cerebro-projection-legend .legend-item-hidden .legend-text {
-  text-decoration: line-through;
 }
 .cerebro-projection-legend .continuous-legend-content {
   display: flex;

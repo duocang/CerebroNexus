@@ -89,6 +89,7 @@ tab_hla_tcr_motifs <- tabItem(
                 class = "hla-plot-wrap",
                 tags$div(
                   class = "cerebro-fill",
+                  `data-cerebro-fill-tail` = "22",
                   shinycssloaders::withSpinner(
                     visNetwork::visNetworkOutput(
                       "hla_plot_motifNetwork",

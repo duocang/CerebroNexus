@@ -9,7 +9,7 @@
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_by_group_UI"]] <- renderUI({
-  req(trajectory_selection_ok())
+  req(trajectory_details_ready(), trajectory_selection_ok())
 
   fluidRow(
     cerebroBox(
@@ -49,10 +49,14 @@ output[["trajectory_states_by_group_UI"]] <- renderUI({
           )
         ),
         tagList(
-          selectInput(
-            "states_by_group_select_other_group",
-            label = "Group to compare to:",
-            choices = c(getGroups(), getCellCycle())
+          div(
+            class = "cerebro-compact-select",
+            selectInput(
+              "states_by_group_select_other_group",
+              label = "Group to compare to:",
+              choices = c(getGroups(), getCellCycle()),
+              width = "100%"
+            )
           ),
           uiOutput("states_by_group_table_UI")
         )

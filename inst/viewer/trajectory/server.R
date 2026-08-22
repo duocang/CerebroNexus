@@ -38,6 +38,12 @@ trajectory_data_reactive <- reactive({
   )
 })
 
+## Let the projection reach the browser before constructing the lower analysis
+## panels. They become ready on the next reactive flush, so the first visible
+## result is never queued behind several Plotly widgets below the fold.
+trajectory_details_ready <- reactiveVal(FALSE)
+session$onFlushed(function() trajectory_details_ready(TRUE), once = TRUE)
+
 source(
   paste0(
     Cerebro.options[["cerebro_root"]],

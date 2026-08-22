@@ -10,6 +10,7 @@
 
 output[["trajectory_distribution_along_pseudotime_UI"]] <- renderUI({
   req(
+    trajectory_details_ready(),
     input[["trajectory_selected_method"]],
     input[["trajectory_selected_name"]]
   )

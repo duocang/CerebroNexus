@@ -1,6 +1,8 @@
 ## ---- Reactive: raw repertoire data (as stored in crb) ------------------ ##
 ir_data_raw <- reactive({
+  req(identical(input[["sidebar"]], "immune_repertoire"))
   req(!is.null(data_set()))
+  ir_data_build_log$n <- ir_data_build_log$n + 1L
   data <- getImmuneRepertoire()
   if (is.null(data) || !is.list(data) || length(data) == 0) {
     return(NULL)
@@ -288,23 +290,27 @@ ir_plot_height <- function(facet_mode = c("none", "grid", "wrap")) {
 ##----------------------------------------------------------------------------##
 
 ## ---- Chains that define each receptor class --------------------------- ##
-IR_TCR_CHAINS <- c("TRA", "TRB", "TRG", "TRD")
-IR_BCR_CHAINS <- c("IGH", "IGK", "IGL")
+## Defined in clone_contract.R, which Linked views reads too. Kept under the
+## IR_ names because this module's call sites and tests use them; the point is
+## that there is now one definition rather than two that can drift apart.
+IR_TCR_CHAINS <- CEREBRO_TCR_CHAINS
+IR_BCR_CHAINS <- CEREBRO_BCR_CHAINS
 
 ## ---- Which receptor classes are present in the data ------------------- ##
 ## Returns a named vector ("TCR" / "BCR") of the receptor types actually
 ## detected, so the Clonal UMAP selector only offers what exists. The names
 ## are the labels shown to the user; values feed ir_umap_chains().
+## Reads clone_contract.R's detector rather than detect_chains(), which samples
+## only the first three list entries -- fine for picking a default gene family,
+## wrong here: a data set whose fourth sample is the only one carrying TCR would
+## offer a different default receptor on this page than in Linked views, and the
+## two would then be describing different cells.
 ir_receptor_types <- reactive({
-  chains <- tryCatch(detect_chains(ir_data()), error = function(e) character(0))
-  types <- character(0)
-  if (length(intersect(chains, IR_TCR_CHAINS)) > 0) {
-    types <- c(types, "TCR" = "TCR")
-  }
-  if (length(intersect(chains, IR_BCR_CHAINS)) > 0) {
-    types <- c(types, "BCR" = "BCR")
-  }
-  types
+  present <- tryCatch(
+    cerebro_receptors_present(ir_data()),
+    error = function(e) character(0)
+  )
+  stats::setNames(present, present)
 })
 
 ## ---- Chains belonging to the selected receptor type ------------------- ##
@@ -315,25 +321,14 @@ ir_umap_chains <- function(receptor) {
 ## ---- Clone-size bin breaks / labels (scRepertoire cloneSize defaults) -- ##
 ## A clone's size = number of cells carrying that clonotype (within the
 ## selected receptor). Cells are binned into the standard expansion levels.
-IR_CLONE_BINS <- c(0, 1, 5, 20, 100, Inf)
-IR_CLONE_LABELS <- c(
-  "Single (0 < X <= 1)",
-  "Small (1 < X <= 5)",
-  "Medium (5 < X <= 20)",
-  "Large (20 < X <= 100)",
-  "Hyperexpanded (100 < X)"
-)
+## Shared with Linked views via clone_contract.R -- see there for why.
+IR_CLONE_BINS <- CEREBRO_CLONE_BINS
+IR_CLONE_LABELS <- CEREBRO_CLONE_LABELS
 
 ## ---- Which CT* column a cloneCall maps to ----------------------------- ##
+## Shared with Linked views via clone_contract.R.
 ir_clonecall_col <- function(cloneCall) {
-  switch(
-    cloneCall %||% "gene",
-    "gene" = "CTgene",
-    "nt" = "CTnt",
-    "aa" = "CTaa",
-    "strict" = "CTstrict",
-    "CTgene"
-  )
+  cerebro_clonecall_col(cloneCall)
 }
 
 ## ---- Clonal UMAP data: coords + per-cell expansion level --------------- ##
@@ -424,6 +419,21 @@ ir_clonal_umap_data <- function(
   if (has_receptor) {
     # Clone size = number of cells sharing the clonotype; bin into expansion levels.
     rows <- rows[!is.na(rows$clone) & nzchar(rows$clone), , drop = FALSE]
+    # Count over cells the object actually HAS. An IR table can reference
+    # barcodes that never made it into the data set, and counting those inflated
+    # every clone they touched -- silently, and differently from Linked views,
+    # which aligns to the cell list first. A clone straddling a bin boundary then
+    # read Large on one page and Medium on the other. The restriction is to the
+    # object's cells, never to the group filter: a clone's size is a property of
+    # the data set, not of what is on screen.
+    all_cells <- tryCatch(
+      as.character(getMetaData()$cell_barcode),
+      error = function(e) NULL
+    )
+    if (!is.null(all_cells)) {
+      rows <- rows[rows$barcode %in% all_cells, , drop = FALSE]
+    }
+    has_receptor <- nrow(rows) > 0
   }
   if (!has_receptor || nrow(rows) == 0) {
     # No receptor cells. With show_all we can still draw the grey background;

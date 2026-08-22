@@ -14,22 +14,14 @@ output[["most_expressed_genes_select_group_UI"]] <- renderUI({
   ) {
     tagList(
       div(
-        HTML(
-          '<h3 style="text-align: center; margin-top: 0"><strong>Choose a grouping variable:</strong></h2>'
+        class = "cerebro-compact-select",
+        tags$h3("Choose a grouping variable:"),
+        selectInput(
+          "most_expressed_genes_selected_group",
+          label = NULL,
+          choices = getGroupsWithMostExpressedGenes(),
+          width = "100%"
         )
-      ),
-      fluidRow(
-        column(2),
-        column(
-          8,
-          selectInput(
-            "most_expressed_genes_selected_group",
-            label = NULL,
-            choices = getGroupsWithMostExpressedGenes(),
-            width = "100%"
-          )
-        ),
-        column(2)
       )
     )
   }

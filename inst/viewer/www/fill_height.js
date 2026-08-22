@@ -25,6 +25,11 @@
 
        div(class = "cerebro-fill", <the output at height = "100%">)
 
+   A page that deliberately keeps a small action tail below its visual frame can
+   opt in to that allowance with `data-cerebro-fill-tail`; it is added after the
+   normal viewport calculation so the card, not just the plot, shares the same
+   visual baseline as the other fill pages.
+
    custom.css makes `.cerebro-fill` a flex column whose child fills it, so the
    output (and any spinner wrapper between) inherits the measured height without
    needing its own resolved-height chain.
@@ -156,13 +161,14 @@
       return;
     }
     var top = el.getBoundingClientRect().top;
+    var cerebroFillTail = px(el.getAttribute("data-cerebro-fill-tail"));
     var h = targetHeight(
       window.innerHeight,
       top,
       contentBelow(el),
       BOTTOM_GAP,
       MIN_HEIGHT
-    );
+    ) + cerebroFillTail;
     /* Idempotent: only write when the value actually changed. This is what keeps
        the ResizeObserver below from looping — resizing this element changes the
        page height, which fires the observer, which recomputes the SAME height

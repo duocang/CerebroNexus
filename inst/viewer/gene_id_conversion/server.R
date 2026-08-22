@@ -1,17 +1,30 @@
 ##----------------------------------------------------------------------------##
 ## Table of gene IDs and symbols.
 ##----------------------------------------------------------------------------##
+gene_id_table_path <- function(filename) {
+  candidates <- c(
+    file.path(Cerebro.options[["cerebro_root"]], "extdata", filename),
+    file.path(getwd(), "extdata", filename),
+    system.file("extdata", filename, package = "CerebroNexus")
+  )
+  path <- candidates[file.exists(candidates)][1L]
+  if (is.na(path)) {
+    stop("Gene ID conversion table is unavailable.", call. = FALSE)
+  }
+  path
+}
+
 output[["gene_info"]] <- DT::renderDataTable({
   if (input[["geneIdConversion_organism"]] == "mouse") {
     conversion_table <- read.table(
-      paste0(Cerebro.options$cerebro_root, "/extdata/mm10_gene_ID_name.tsv.gz"),
+      gene_id_table_path("mm10_gene_ID_name.tsv.gz"),
       sep = "\t",
       header = TRUE,
       stringsAsFactors = FALSE
     )
   } else if (input[["geneIdConversion_organism"]] == "human") {
     conversion_table <- read.table(
-      paste0(Cerebro.options$cerebro_root, "/extdata/hg38_gene_ID_name.tsv.gz"),
+      gene_id_table_path("hg38_gene_ID_name.tsv.gz"),
       sep = "\t",
       header = TRUE,
       stringsAsFactors = FALSE
@@ -22,7 +35,6 @@ output[["gene_info"]] <- DT::renderDataTable({
     filter = "none",
     selection = "multiple",
     escape = FALSE,
-    autoHideNavigation = TRUE,
     rownames = FALSE,
     options = list(
       scrollX = FALSE,

@@ -78,16 +78,16 @@ output[["trajectory_projection_UI"]] <- renderUI({
               )
             ),
             tagList(
-              plotly::plotlyOutput(
-                "trajectory_projection",
-                width = "auto",
-                height = "60vh"
+              tags$div(
+                id = "trajectory_projection",
+                class = "cerebro-canvas-host",
+                style = "width:100%;height:60vh;"
               ),
               tags$br(),
               fluidRow(
                 column(
                   width = 8,
-                  htmlOutput("trajectory_number_of_selected_cells")
+                  uiOutput("trajectory_number_of_selected_cells")
                 ),
                 column(
                   width = 4,
@@ -196,27 +196,9 @@ trajectory_projection_main_parameters_info <- list(
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_projection_additional_parameters_UI"]] <- renderUI({
-  ## Start from a dynamic default sized to the cell count + canvas, falling back
-  ## to the fixed default if that can't be computed. A configured preset (below)
-  ## still takes precedence over this when one is set.
-  default_point_size <- tryCatch(
-    dynamicPointSize(
-      n_points = nrow(getMetaData()),
-      plot_width_px = session$clientData[[
-        "output_trajectory_projection_width"
-      ]],
-      plot_height_px = session$clientData[[
-        "output_trajectory_projection_height"
-      ]],
-      min = preferences[["gene_expression_plot_point_size"]][["min"]],
-      max = preferences[["gene_expression_plot_point_size"]][["max"]],
-      step = preferences[["gene_expression_plot_point_size"]][["step"]],
-      fallback = preferences[["gene_expression_plot_point_size"]][["default"]]
-    ),
-    error = function(e) {
-      preferences[["gene_expression_plot_point_size"]][["default"]]
-    }
-  )
+  default_point_size <- preferences[["gene_expression_plot_point_size"]][[
+    "default"
+  ]]
 
   if (
     exists("Cerebro.options") &&

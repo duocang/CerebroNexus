@@ -315,7 +315,6 @@ prettifyTable <- function(
   ## - align numerics to the right
   table <- DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = FALSE,
     extensions = table_extensions,
@@ -613,7 +612,6 @@ prettifyTable <- function(
 prepareEmptyTable <- function(table) {
   DT::datatable(
     table,
-    autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
     escape = FALSE,
     filter = "none",
@@ -792,11 +790,24 @@ assignColorsToGroups <- function(table, grouping_variable) {
 ## Build hover info for projections.
 ##----------------------------------------------------------------------------##
 buildHoverInfoForProjections <- function(table) {
+  transcript_column <- intersect(c("nUMI", "nCount_RNA"), colnames(table))
+  gene_column <- intersect(c("nGene", "nFeature_RNA"), colnames(table))
+  transcript_count <- if (length(transcript_column)) {
+    table[[transcript_column[[1]]]]
+  } else {
+    rep(NA_real_, nrow(table))
+  }
+  expressed_genes <- if (length(gene_column)) {
+    table[[gene_column[[1]]]]
+  } else {
+    rep(NA_real_, nrow(table))
+  }
+
   ## put together cell ID, number of transcripts and number of expressed genes
   hover_info <- glue::glue(
     "<b>Cell</b>: {table[[ 'cell_barcode' ]]}<br>",
-    "<b>Transcripts</b>: {formatC(table[[ 'nUMI' ]], format = 'f', big.mark = ',', digits = 0)}<br>",
-    "<b>Expressed genes</b>: {formatC(table[[ 'nGene' ]], format = 'f', big.mark = ',', digits = 0)}"
+    "<b>Transcripts</b>: {formatC(transcript_count, format = 'f', big.mark = ',', digits = 0)}<br>",
+    "<b>Expressed genes</b>: {formatC(expressed_genes, format = 'f', big.mark = ',', digits = 0)}"
   )
   ## add info for known grouping variables
   for (group in getGroups()) {
@@ -877,6 +888,38 @@ getXYranges <- function(table) {
     )
   )
   return(ranges)
+}
+
+##----------------------------------------------------------------------------##
+## Limit a projection to the dimensions the projection plots can draw.
+##----------------------------------------------------------------------------##
+## The plots dispatch on 2 vs. 3 dimensions, so a wider projection used to match
+## neither branch: no plot update was requested at all and the previous
+## projection stayed on screen. `exportFromSeurat()` drops the PCA whenever a
+## non-PCA reduction exists, which is why this went unnoticed, but a PCA is
+## normally computed with far more than three components (`RunPCA()` defaults to
+## 50) and `addProjection()` accepts a projection of any width. Anything wider is
+## therefore shown through its first three dimensions -- what the 3-D plot would
+## display in any case.
+cerebro_max_projection_dimensions <- 3L
+
+nProjectionDimensions <- function(projection) {
+  min(ncol(projection), cerebro_max_projection_dimensions)
+}
+
+## `max_dimensions` is the plottable three by default. The selected-cell panels
+## pass 2: they cbind the projection onto the meta data purely to rebuild the
+## X1-X2 selection identifier, then drop those two columns again -- so every
+## dimension past the second is a coordinate column that reaches the user's table
+## as data, which for a PCA means PC_3 through PC_50.
+capProjectionDimensions <- function(
+  projection,
+  max_dimensions = cerebro_max_projection_dimensions
+) {
+  projection[,
+    seq_len(min(ncol(projection), max_dimensions)),
+    drop = FALSE
+  ]
 }
 
 ##----------------------------------------------------------------------------##
@@ -999,6 +1042,61 @@ match_dataset_by_url <- function(url_dataset, files, file_names = NULL) {
   }
   ## No match
   return('')
+}
+
+##----------------------------------------------------------------------------##
+## Resolve generated-App Viewer defaults for the selected configured dataset.
+##
+## Old Apps and uploaded datasets have no per-dataset entry and intentionally
+## return an empty list, preserving the existing first-item/global fallbacks.
+##----------------------------------------------------------------------------##
+configuredViewerContent <- function(config, selected_file, files = NULL) {
+  if (
+    !is.list(config) ||
+      is.object(config) ||
+      !length(config) ||
+      !is.character(selected_file) ||
+      length(selected_file) != 1L ||
+      is.na(selected_file) ||
+      !nzchar(selected_file) ||
+      !is.character(files) ||
+      !length(files) ||
+      is.null(names(files))
+  ) {
+    return(list())
+  }
+  index <- match(selected_file, unname(files))
+  if (is.na(index) || index < 1L || index > length(files)) {
+    return(list())
+  }
+  label <- names(files)[[index]]
+  value <- config[[label]]
+  if (!is.list(value) || is.object(value)) {
+    return(list())
+  }
+  value
+}
+
+configuredViewerPercentageCellsToShow <- function(
+  viewer_defaults,
+  fallback = 100
+) {
+  value <- if (is.list(viewer_defaults)) {
+    viewer_defaults[["overview_percentage_cells_to_show"]]
+  } else {
+    NULL
+  }
+  if (
+    is.numeric(value) &&
+      length(value) == 1L &&
+      !is.na(value) &&
+      is.finite(value) &&
+      value >= 10 &&
+      value <= 100
+  ) {
+    return(as.numeric(value))
+  }
+  fallback
 }
 
 ##----------------------------------------------------------------------------##
@@ -1270,14 +1368,18 @@ read_cerebro_file <- function(file) {
 }
 
 ##----------------------------------------------------------------------------##
-## Session-scoped cache for loaded .crb files (B8).
+## Process-scoped cache for loaded .crb files (B8).
 ##
-## Cerebro objects are treated as READ-ONLY within a session. Cache is keyed by
-## file path and backend configuration. Changing the backend configuration for
-## an already loaded path fails closed; overwriting a .crb in place is NOT
-## detected -- start a new app session to pick up either change.
+## Configured Cerebro objects are treated as READ-ONLY. shiny_server.R supplies
+## one cache shared by all browser sessions in this R process, so refreshes
+## reuse the same deserialized object. Uploads stay session-local: retaining
+## arbitrary temporary user files for the process lifetime would leak memory
+## and cross the session boundary.
 ##----------------------------------------------------------------------------##
-.crb_cache <- new.env(parent = emptyenv())
+if (!exists(".crb_cache", inherits = FALSE)) {
+  .crb_cache <- new.env(parent = emptyenv())
+}
+.crb_session_cache <- new.env(parent = emptyenv())
 
 .runtimeBackendPlanError <- function(message, crb_path = NULL) {
   suffix <- if (is.null(crb_path)) {
@@ -1457,7 +1559,12 @@ get_or_load_crb <- function(
     configured_paths
   )
   cache_identity <- .runtimeBackendCacheIdentity(effective_backend)
-  cached <- .crb_cache[[path]]
+  cache <- if (path %in% configured_paths) {
+    .crb_cache
+  } else {
+    .crb_session_cache
+  }
+  cached <- cache[[path]]
   if (!is.null(cached)) {
     if (!identical(cached$backend_identity, cache_identity)) {
       stop(
@@ -1474,7 +1581,7 @@ get_or_load_crb <- function(
   print(glue::glue("[{Sys.time()}] CRB cache miss, loading: {path}"))
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
-  .crb_cache[[path]] <- list(
+  cache[[path]] <- list(
     object = obj,
     backend_identity = cache_identity
   )
@@ -1953,6 +2060,19 @@ serverSideGeneSelector <- function(
     later::later(send_update, delay = 0.3)
     later::later(send_update, delay = 1.0)
   })
+}
+
+selectionCountBadge <- function(count) {
+  count <- suppressWarnings(as.integer(count))
+  if (length(count) != 1 || is.na(count) || count < 1) {
+    return(NULL)
+  }
+  tags$span(
+    class = "cerebro-selection-count",
+    icon("check"),
+    formatC(count, format = "f", big.mark = ",", digits = 0),
+    "cells selected"
+  )
 }
 
 ##----------------------------------------------------------------------------##

@@ -79,6 +79,7 @@ hla_qc_table <- reactive({
 
 ## ---- The Data & QC tab body ------------------------------------------- ##
 output$hla_data_qc_ui <- renderUI({
+  req(identical(input$hla_tabs, "Data & QC"))
   ir_samples <- names(getImmuneRepertoire())
   tagList(
     fluidRow(

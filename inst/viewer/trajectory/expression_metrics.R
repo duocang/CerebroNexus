@@ -15,7 +15,7 @@
 
 output[["trajectory_expression_metrics_UI"]] <- renderUI({
   ##
-  req(trajectory_selection_ok())
+  req(trajectory_details_ready(), trajectory_selection_ok())
 
   ## build list of tab panels dynamically based on available data
   tab_panels <- list()
@@ -81,6 +81,10 @@ output[["trajectory_expression_metrics_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_nUMI_UI"]] <- renderUI({
+  req(identical(
+    input[["trajectory_expression_metrics_tabs"]],
+    "Number of transcripts"
+  ))
   if ("nUMI" %in% colnames(getMetaData())) {
     plotly::plotlyOutput("trajectory_states_nUMI_plot")
   } else {
@@ -131,6 +135,10 @@ output[["trajectory_states_nUMI_plot"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_nGene_UI"]] <- renderUI({
+  req(identical(
+    input[["trajectory_expression_metrics_tabs"]],
+    "Number of expressed genes"
+  ))
   if ("nGene" %in% colnames(getMetaData())) {
     plotly::plotlyOutput("trajectory_states_nGene_plot")
   } else {
@@ -181,6 +189,10 @@ output[["trajectory_states_nGene_plot"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_percent_mt_UI"]] <- renderUI({
+  req(identical(
+    input[["trajectory_expression_metrics_tabs"]],
+    "Mitochondrial gene expression"
+  ))
   if (hasMitoColumn()) {
     plotly::plotlyOutput("trajectory_states_percent_mt_plot")
   } else {
@@ -234,6 +246,10 @@ output[["trajectory_states_percent_mt_plot"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_percent_ribo_UI"]] <- renderUI({
+  req(identical(
+    input[["trajectory_expression_metrics_tabs"]],
+    "Ribosomal gene expression"
+  ))
   if (hasRiboColumn()) {
     plotly::plotlyOutput("trajectory_states_percent_ribo_plot")
   } else {
@@ -287,6 +303,10 @@ output[["trajectory_states_percent_ribo_plot"]] <- plotly::renderPlotly({
 ##----------------------------------------------------------------------------##
 
 output[["trajectory_states_percent_ery_UI"]] <- renderUI({
+  req(identical(
+    input[["trajectory_expression_metrics_tabs"]],
+    "Erythrocyte gene expression"
+  ))
   if (hasEryColumn()) {
     plotly::plotlyOutput("trajectory_states_percent_ery_plot")
   } else {

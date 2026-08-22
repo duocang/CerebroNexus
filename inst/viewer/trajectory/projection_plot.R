@@ -1,40 +1,13 @@
 ##----------------------------------------------------------------------------##
 ## Tab: Trajectory — projection plot.
 ##
-## Rendered through the SHARED projection-scatter system (the empty-skeleton +
-## JS-observer model spatial/overview/gene_expression use), so the trajectory
-## projection gets the same custom top legend, persistent x|y selection,
-## group labels and modebar-off look. The trajectory path itself is drawn as a
-## layout `shapes` overlay (black line segments), passed as the tab-specific
-## `extra.shapes`. Colouring is categorical (state / metadata) or continuous
-## (pseudotime / numeric).
+## Rendered through the shared 2-D Canvas engine. R prepares the compact
+## meta/data/hover payload while selection, zoom and redraw stay in the browser.
 ##----------------------------------------------------------------------------##
 
 ##----------------------------------------------------------------------------##
-## Empty plotly skeleton; the shared JS observer fills it via Plotly.react.
+## Data preparation for the Canvas projection.
 ##----------------------------------------------------------------------------##
-output[["trajectory_projection"]] <- plotly::renderPlotly({
-  plotly::plot_ly(
-    type = "scattergl",
-    mode = "markers",
-    source = "trajectory_projection"
-  ) %>%
-    plotly::layout(
-      xaxis = list(
-        autorange = TRUE,
-        mirror = TRUE,
-        showline = TRUE,
-        zeroline = FALSE
-      ),
-      yaxis = list(
-        autorange = TRUE,
-        mirror = TRUE,
-        showline = TRUE,
-        zeroline = FALSE
-      )
-    )
-})
-
 ##----------------------------------------------------------------------------##
 ## Reactive that prepares the cells + trajectory-line data for the current
 ## parameters (filtering, subsetting, hover, colours). One source of truth so
@@ -126,7 +99,7 @@ trajectory_projection_prepared <- reactive({
 ## apply to their parameter/data reactives.
 trajectory_projection_prepared <- debounce(
   trajectory_projection_prepared,
-  200
+  20
 )
 
 ##----------------------------------------------------------------------------##
@@ -175,14 +148,6 @@ observeEvent(trajectory_projection_prepared(), {
   coordinates <- list(cells_df[["DR_1"]], cells_df[["DR_2"]])
   color_input <- cells_df[[color_variable]]
 
-  container_dimensions <- shinyjs::js$trajectoryGetContainerDimensions()
-  container_info <- list(
-    width = container_dimensions[["width"]],
-    height = container_dimensions[["height"]]
-  )
-
-  point_line <- list(color = cerebro_plotly_theme()$axis, width = 1)
-
   ## continuous colouring (pseudotime / numeric metadata)
   if (is.numeric(color_input)) {
     output_meta <- list(
@@ -196,7 +161,6 @@ observeEvent(trajectory_projection_prepared(), {
       color = color_input,
       point_size = prepared[["point_size"]],
       point_opacity = prepared[["point_opacity"]],
-      point_line = point_line,
       x_range = list(),
       y_range = list(),
       reset_axes = reset_axes_now
@@ -207,7 +171,7 @@ observeEvent(trajectory_projection_prepared(), {
       output_data,
       output_hover,
       list(),
-      container_info,
+      list(),
       prepared[["trajectory_lines"]]
     )
 
@@ -235,7 +199,6 @@ observeEvent(trajectory_projection_prepared(), {
       color = list(),
       point_size = prepared[["point_size"]],
       point_opacity = prepared[["point_opacity"]],
-      point_line = point_line,
       x_range = list(),
       y_range = list(),
       reset_axes = reset_axes_now
@@ -274,7 +237,7 @@ observeEvent(trajectory_projection_prepared(), {
       output_data,
       output_hover,
       output_group_centers,
-      container_info,
+      list(),
       prepared[["trajectory_lines"]]
     )
   }
@@ -360,18 +323,12 @@ trajectory_projection_selected_cells <- reactive({
 ## Text showing the number of selected cells.
 ##----------------------------------------------------------------------------##
 
-output[["trajectory_number_of_selected_cells"]] <- renderText({
-  if (is.null(trajectory_projection_selected_cells())) {
-    number_of_selected_cells <- 0
-  } else {
-    number_of_selected_cells <- formatC(
-      nrow(trajectory_projection_selected_cells()),
-      format = "f",
-      big.mark = ",",
-      digits = 0
-    )
+output[["trajectory_number_of_selected_cells"]] <- renderUI({
+  selected <- trajectory_projection_selected_cells()
+  if (is.null(selected) || nrow(selected) == 0) {
+    return(NULL)
   }
-  paste0("<b>Number of selected cells</b>: ", number_of_selected_cells)
+  selectionCountBadge(nrow(selected))
 })
 
 ##----------------------------------------------------------------------------##

@@ -7,12 +7,12 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
     selectizeInput(
       'expression_genes_input',
       label = 'Gene(s)',
-      choices = data.table::as.data.table(data.frame(
-        "Genes" = list_of_genes()
-      )),
+      choices = NULL,
       multiple = TRUE,
+      width = "100%",
       options = list(
-        create = TRUE
+        create = TRUE,
+        placeholder = "Search genes..."
       )
     )
   } else if (input[["expression_analysis_mode"]] == "Gene set") {
@@ -22,7 +22,18 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
       choices = data.table::as.data.table(
         data.frame("Gene sets" = c("-", msigdbr:::msigdbr_genesets$gs_name))
       ),
-      multiple = FALSE
+      multiple = FALSE,
+      width = "100%"
     )
   }
 })
+
+## Keep the dictionary server-side while handling the asynchronous binding of
+## this renderUI-created selectize. Clicking still opens a browsable list;
+## typing filters it without constructing every option node up front.
+serverSideGeneSelector(
+  session,
+  "expression_genes_input",
+  extra_triggers = function() input[["expression_analysis_mode"]],
+  active = function() identical(input[["sidebar"]], "geneExpression")
+)

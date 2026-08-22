@@ -2,26 +2,9 @@
 ## UI elements to set additional plotting parameters.
 ##----------------------------------------------------------------------------##
 output[["expression_projection_additional_parameters_UI"]] <- renderUI({
-  ## Dynamic default point size from cell count + canvas size, falling back to
-  ## the configured fixed default if either is unavailable.
-  point_size_default <- tryCatch(
-    dynamicPointSize(
-      n_points = nrow(getMetaData()),
-      plot_width_px = session$clientData[[
-        "output_expression_projection_width"
-      ]],
-      plot_height_px = session$clientData[[
-        "output_expression_projection_height"
-      ]],
-      min = preferences[["gene_expression_plot_point_size"]][["min"]],
-      max = preferences[["gene_expression_plot_point_size"]][["max"]],
-      step = preferences[["gene_expression_plot_point_size"]][["step"]],
-      fallback = preferences[["gene_expression_plot_point_size"]][["default"]]
-    ),
-    error = function(e) {
-      preferences[["gene_expression_plot_point_size"]][["default"]]
-    }
-  )
+  point_size_default <- preferences[["gene_expression_plot_point_size"]][[
+    "default"
+  ]]
 
   tagList(
     selectInput(

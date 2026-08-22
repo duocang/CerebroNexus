@@ -8,22 +8,14 @@
 output[["groups_select_group_UI"]] <- renderUI({
   tagList(
     div(
-      HTML(
-        '<h3 style="text-align: center; margin-top: 0"><strong>Choose a grouping variable:</strong></h2>'
+      class = "cerebro-compact-select",
+      tags$h3("Choose a grouping variable:"),
+      selectInput(
+        "groups_selected_group",
+        label = NULL,
+        choices = getGroups(),
+        width = "100%"
       )
-    ),
-    fluidRow(
-      column(2),
-      column(
-        8,
-        selectInput(
-          "groups_selected_group",
-          label = NULL,
-          choices = getGroups(),
-          width = "100%"
-        )
-      ),
-      column(2)
     )
   )
 })
