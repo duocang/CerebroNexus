@@ -15,24 +15,30 @@ output[["marker_genes_select_method_and_table_UI"]] <- renderUI({
 
   selected_method <- methods[[1]]
   fluidRow(
-    class = "marker-genes-selectors",
+    class = "result-selectors",
     column(
       6,
-      selectInput(
-        "marker_genes_selected_method",
-        label = "Choose a method:",
-        choices = methods,
-        selected = selected_method,
-        width = "100%"
+      div(
+        class = "result-selector-field",
+        selectInput(
+          "marker_genes_selected_method",
+          label = "Choose a method:",
+          choices = methods,
+          selected = selected_method,
+          width = "100%"
+        )
       )
     ),
     column(
       6,
-      selectInput(
-        "marker_genes_selected_table",
-        label = "Choose a table:",
-        choices = getGroupsWithMarkerGenes(selected_method),
-        width = "100%"
+      div(
+        class = "result-selector-field",
+        selectInput(
+          "marker_genes_selected_table",
+          label = "Choose a table:",
+          choices = getGroupsWithMarkerGenes(selected_method),
+          width = "100%"
+        )
       )
     )
   )

@@ -276,19 +276,25 @@ body.skin-blue .sidebar-menu > li > a[data-value="geneExpression"] > i { color: 
   font-weight: 600;
 }
 
-/* Marker-gene selectors use the same left-aligned field hierarchy as the rest
-   of the app; avoid the former centred heading + nested grid treatment. */
-.marker-genes-selectors {
+/* Result selectors share one compact field: the label and control always have
+   the same left edge, even while each field is centred in its half-row. */
+.result-selectors {
   padding: 8px 20px 12px;
 }
-.marker-genes-selectors .shiny-input-container {
+.result-selector-field {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+}
+.result-selector-field .shiny-input-container {
+  width: 100%;
   margin-left: 0;
   margin-right: 0;
 }
-.marker-genes-selectors label.control-label {
+.result-selector-field label.control-label {
   display: block;
   margin-bottom: 7px;
-  text-align: left;
+  text-align: left !important;
 }
 
 .cerebro-selection-count {
