@@ -685,6 +685,9 @@ start_builder_build_output_preflight <- function(path) {
   }
   build_output_preflight_request(request)
   build_output_preflight_process(process)
+  if (!isTRUE(tryCatch(process$is_alive(), error = function(error) TRUE))) {
+    return(builder_poll_build_output_preflight())
+  }
   later::later(
     function() {
       shiny::withReactiveDomain(
