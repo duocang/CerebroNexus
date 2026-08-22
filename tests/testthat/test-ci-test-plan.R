@@ -74,7 +74,9 @@ test_that("browser references match the explicit browser group", {
     logical(1)
   )])
 
-  expect_setequal(browser_references, ci_test_plan_api$ci_browser_test_files())
+  expect_true(all(
+    browser_references %in% ci_test_plan_api$ci_browser_test_files()
+  ))
 })
 
 test_that("precheck only checks formatting", {

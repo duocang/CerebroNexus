@@ -266,6 +266,7 @@ frozen_review_plan <- bindEvent(
   frozen_review_plan,
   dataset_check_marks(),
   dataset_order(),
+  dataset_revisions(),
   imports(),
   review_options(),
   review_validation(),

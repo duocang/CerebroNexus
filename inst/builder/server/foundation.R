@@ -343,6 +343,17 @@ current <- function(value) {
 }
 dataset_check_marks <- reactiveVal(character())
 dataset_order <- reactiveVal(character())
+dataset_revisions <- reactive({
+  entries <- sets()
+  stats::setNames(
+    vapply(
+      entries,
+      function(entry) as.integer(entry$revision %||% 0L),
+      integer(1)
+    ),
+    vapply(entries, `[[`, character(1), "id")
+  )
+})
 builder_configuration_identity_cache <- new.env(parent = emptyenv())
 builder_dataset_state_cache <- new.env(parent = emptyenv())
 checked_dataset_ids <- reactive({
