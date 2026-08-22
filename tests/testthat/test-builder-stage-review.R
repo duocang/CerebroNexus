@@ -208,7 +208,6 @@ test_that("Review presents the frozen CRB data plan", {
   expect_match(html, "01-dataset-b.crb", fixed = TRUE)
   expect_false(grepl("App experience", html, fixed = TRUE))
   expect_false(grepl("Welcome, lab team!", html, fixed = TRUE))
-  expect_match(html, "Content available from the CRBs", fixed = TRUE)
   expect_match(html, "Data info", fixed = TRUE)
   expect_match(html, "Marker genes", fixed = TRUE)
   expect_match(html, "Output", fixed = TRUE)

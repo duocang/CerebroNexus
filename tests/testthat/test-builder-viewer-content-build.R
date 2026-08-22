@@ -22,7 +22,7 @@ builder_viewer_content_source_runtime <- function(local = parent.frame()) {
 builder_viewer_content_source_runtime()
 
 builder_viewer_content_plan_entry <- function() {
-  list(
+  entry <- list(
     id = "dataset-a",
     dataset_profile = list(
       identity = list(
@@ -90,6 +90,29 @@ builder_viewer_content_plan_entry <- function() {
       )
     )
   )
+
+  metadata <- c("sample", "batch", "Phase", "nCount_RNA", "nFeature_RNA")
+  entry$dataset_profile$schema_version <- 2L
+  entry$dataset_profile$identity$cells$count <- 2L
+  entry$dataset_profile$metadata <- list(
+    columns = setNames(
+      lapply(metadata, function(name) {
+        list(
+          name = name,
+          class = "character",
+          supported = TRUE,
+          non_missing = 2L,
+          unique_non_missing = 2L
+        )
+      }),
+      metadata
+    )
+  )
+  entry$settings$metadata_policy <- builder_metadata_policy_set_groups(
+    builder_recommend_metadata(entry$dataset_profile),
+    "sample"
+  )
+  entry
 }
 
 test_that("BuildPlan freezes the complete Viewer-content selection", {

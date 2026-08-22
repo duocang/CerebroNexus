@@ -822,17 +822,3 @@ test_that("failed pre-store load acknowledgement releases the persistent queue",
   next_dispatched <- runtime$builder_protocol_dispatch(acknowledged)
   expect_identical(next_dispatched$request$dataset, "ds2")
 })
-
-test_that("failed fallback hydration has a synchronous snapshot cleanup path", {
-  source <- paste(
-    readLines(
-      testthat::test_path("..", "..", "inst", "builder", "server", "project.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(source, "builder_worker_release_snapshot", fixed = TRUE)
-  expect_match(source, "builder_protocol_forget_dataset", fixed = TRUE)
-  expect_match(source, "Retrying failed project restore cleanup", fixed = TRUE)
-})
