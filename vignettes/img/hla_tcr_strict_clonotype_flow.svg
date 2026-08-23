@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 300" role="img" aria-labelledby="title desc">
+  <title id="title">Strict TRB clonotype end-to-end workflow</title>
+  <desc id="desc">Real twelve-thousand-cell data flows through a nearby TCR motif, an exact ten-cell TRB clonotype, UMAP and donor HLA context, a stable barcode selection, and Linked views sharing.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      .box { stroke-width: 2; rx: 16; }
+      .step { font: 700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; text-anchor: middle; }
+      .detail { font: 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; text-anchor: middle; }
+      .arrow { stroke: #64748b; stroke-width: 4; fill: none; marker-end: url(#arrow); }
+      .badge { font: 700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1d4ed8; text-anchor: middle; letter-spacing: .4px; }
+    </style>
+  </defs>
+
+  <path class="arrow" d="M230 150 H265"/>
+  <path class="arrow" d="M475 150 H510"/>
+  <path class="arrow" d="M720 150 H755"/>
+  <path class="arrow" d="M965 150 H1000"/>
+  <path class="arrow" d="M1210 150 H1245"/>
+
+  <rect class="box" x="20" y="70" width="210" height="160" fill="#f8fafc" stroke="#94a3b8"/>
+  <text class="step" x="125" y="112"><tspan x="125">Real data</tspan></text>
+  <text class="detail" x="125" y="145"><tspan x="125">12,000 CD8 T cells</tspan><tspan x="125" dy="25">4 donors · paired TCR</tspan><tspan x="125" dy="25">transcriptome + UMAP</tspan></text>
+
+  <rect class="box" x="265" y="70" width="210" height="160" fill="#faf5ff" stroke="#a855f7"/>
+  <text class="step" x="370" y="112"><tspan x="370">Nearby motif</tspan></text>
+  <text class="detail" x="370" y="145"><tspan x="370">TRBV19::M13_1</tspan><tspan x="370" dy="25">15 TRB nodes</tspan><tspan x="370" dy="25">30 cells · 3 donors</tspan></text>
+
+  <rect class="box" x="510" y="52" width="210" height="196" fill="#eff6ff" stroke="#2563eb"/>
+  <text class="badge" x="615" y="82">STRICT SEQUENCE</text>
+  <text class="step" x="615" y="115"><tspan x="615">Exact TRB</tspan></text>
+  <text class="detail" x="615" y="146"><tspan x="615">TRBV19 / TRBJ1-5</tspan><tspan x="615" dy="25">CASSIYSNQPQHF</tspan><tspan x="615" dy="25">10 cells · donor1/2</tspan></text>
+
+  <rect class="box" x="755" y="70" width="210" height="160" fill="#ecfeff" stroke="#0891b2"/>
+  <text class="step" x="860" y="112"><tspan x="860">Cell context</tspan></text>
+  <text class="detail" x="860" y="145"><tspan x="860">Map to real UMAP</tspan><tspan x="860" dy="25">compare donors</tspan><tspan x="860" dy="25">inspect HLA context</tspan></text>
+
+  <rect class="box" x="1000" y="70" width="210" height="160" fill="#fffbeb" stroke="#d97706"/>
+  <text class="step" x="1105" y="112"><tspan x="1105">Freeze selection</tspan></text>
+  <text class="detail" x="1105" y="145"><tspan x="1105">10 stable barcodes</tspan><tspan x="1105" dy="25">checked-in JSON</tspan><tspan x="1105" dy="25">reproducible view</tspan></text>
+
+  <rect class="box" x="1245" y="70" width="210" height="160" fill="#f0fdf4" stroke="#16a34a"/>
+  <text class="step" x="1350" y="112"><tspan x="1350">Share</tspan></text>
+  <text class="detail" x="1350" y="145"><tspan x="1350">Linked views</tspan><tspan x="1350" dy="25">restore same cells</tspan><tspan x="1350" dy="25">create share link</tspan></text>
+</svg>

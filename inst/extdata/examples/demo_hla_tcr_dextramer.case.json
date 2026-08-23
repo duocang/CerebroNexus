@@ -1,0 +1,93 @@
+{
+  "schema": "cerebronexus-hla-tcr-end-to-end-case",
+  "version": 1,
+  "case_id": "hla-tcr-antigen-selected-golden-clonotype-v1",
+  "dataset": {
+    "path": "inst/extdata/examples/demo_hla_tcr_dextramer.crb",
+    "cell_count": 12000,
+    "donor_count": 4,
+    "sha256": "61b7e5e288f4c3ec06663eec45f8bbe877b4c764e00e352f91c75667025b0d41",
+    "cell_fingerprint": "md5-cell-set-v1:9bbf86fb3ea3103e700e23d7d18432dc",
+    "source": "10x Genomics CD8+ T cells of Healthy Donor 1-4 (2019), Zhang et al. Sci Adv 2021, CC BY 4.0",
+    "build_command": "Rscript data-raw/build_hla_tcr_dextramer_demo.R",
+    "case_command": "Rscript data-raw/prepare_hla_tcr_end_to_end_case.R"
+  },
+  "golden_clonotype": {
+    "chain": "TRB",
+    "v_gene": "TRBV19",
+    "j_gene": "TRBJ1-5",
+    "cdr3": "CASSIYSNQPQHF",
+    "clone_key": "TRBV19;TRBJ1-5;CASSIYSNQPQHF",
+    "cell_count": 10,
+    "donor_counts": {
+      "donor1": 2,
+      "donor2": 8
+    },
+    "cell_barcodes": ["donor1_GAATAAGCAGATGGGT-12", "donor1_TTGGAACTCGTACCGG-16", "donor2_AGACGTTTCATCATTC-32", "donor2_ATTCTACCATGGTTGT-16", "donor2_ATTCTACGTGTTCTTT-26", "donor2_CCTTTCTAGCGTCAAG-22", "donor2_CGGAGCTGTTCCCGAG-5", "donor2_GACTGCGTCTGGTATG-33", "donor2_GGGAATGCAATCCGAT-37", "donor2_TAAGAGAGTCGGATCC-20"],
+    "paired_alpha_v_genes": ["TRAV21", "TRAV27"],
+    "paired_alpha_j_genes": ["TRAJ35", "TRAJ39", "TRAJ42"],
+    "paired_alpha_cdr3s": ["CAAALYNNAGNMLTF", "CAGAVGGFGNVLHC", "CAGGGQGGSQGNLIF"],
+    "dextramer_antigen_counts": {
+      "Flu-MP_Influenza": 10
+    },
+    "dextramer_peptide_counts": {
+      "GILGFVFTL": 10
+    },
+    "dextramer_allele_counts": {
+      "HLA-A*02:01": 10
+    },
+    "restriction_in_genotype_counts": {
+      "yes": 10,
+      "no": 0,
+      "unknown": 0
+    },
+    "umap": {
+      "projection": "umap",
+      "x_min": -8.45146812575406,
+      "x_max": -0.401382521563229,
+      "y_min": -4.48557478727951,
+      "y_max": 5.36152737794265,
+      "x_mean": -6.9641067840392,
+      "y_mean": -1.84633695425644
+    }
+  },
+  "motif": {
+    "chain": "TRB",
+    "group": "TRBV19::M13_1",
+    "consensus": "CASxxxxxQPQHF",
+    "max_mismatch": 4,
+    "node_count": 15,
+    "cell_count": 30,
+    "donor_counts": {
+      "donor1": 6,
+      "donor2": 22,
+      "donor3": 2
+    },
+    "nodes": {
+      "TRBV19::CASAFYSNQPQHF": "CASAFYSNQPQHF",
+      "TRBV19::CASGVYSNQPQHF": "CASGVYSNQPQHF",
+      "TRBV19::CASSFYSNQPQHF": "CASSFYSNQPQHF",
+      "TRBV19::CASSIHKNQPQHF": "CASSIHKNQPQHF",
+      "TRBV19::CASSIHSNQPQHF": "CASSIHSNQPQHF",
+      "TRBV19::CASSILSNQPQHF": "CASSILSNQPQHF",
+      "TRBV19::CASSIRSNQPQHF": "CASSIRSNQPQHF",
+      "TRBV19::CASSIYSNQPQHF": "CASSIYSNQPQHF",
+      "TRBV19::CASSLYSNQPQHF": "CASSLYSNQPQHF",
+      "TRBV19::CASSPRSNQPQHF": "CASSPRSNQPQHF",
+      "TRBV19::CASSPRSSQPQHF": "CASSPRSSQPQHF",
+      "TRBV19::CASSTYSNQPQHF": "CASSTYSNQPQHF",
+      "TRBV19::CASSVYSNQPQHF": "CASSVYSNQPQHF",
+      "TRBV19::CASSWLSNQPQHF": "CASSWLSNQPQHF",
+      "TRBV19::CASSYYSNQPQHF": "CASSYYSNQPQHF"
+    }
+  },
+  "viewer_clone_contract": {
+    "clone_call": "CTgene",
+    "selection_authority": "barcode-list",
+    "note": "The Viewer clone workspace uses CTgene as its clone call. The strict TRB V/J/CDR3 case selection spans two CTgene calls because one paired alpha gene call differs; use the barcode list or Linked views JSON as the authoritative 10-cell selection."
+  },
+  "claims": {
+    "can_say": ["The fixed TRB clonotype is expanded in donor1 and donor2.", "Its nearby TRB CDR3 motif family contains 15 nodes and cells from donor1, donor2, and donor3.", "The selected cells can be located in the real UMAP and shared by stable barcode."],
+    "cannot_say": ["A dextramer binder call is not validated peptide-level antigen specificity.", "The four donors are not enough for a statistical HLA association claim.", "The reagent restriction does not prove that an HLA allele caused this TCR."]
+  }
+}

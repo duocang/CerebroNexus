@@ -34,6 +34,53 @@ The emphasis is on the two parts that decide whether the HLA & TCR Motifs page
 says anything true: **how the TCR is transformed**, and **where the HLA comes
 from**.
 
+# The end-to-end story in one minute
+
+This vignette uses one real, antigen-selected single-cell data set to follow a
+small receptor-defined population all the way through the application.
+
+**The data.** `demo_hla_tcr_dextramer.crb` contains 12,000 real 10x Genomics
+CD8+ T cells from four donors (3,000 per donor), with paired TRA/TRB TCRs,
+transcriptomes and UMAP coordinates, per-cell dextramer labels, and the donors'
+published HLA genotypes. The source is Zhang *et al.*, *Science Advances*
+(2021), CC BY 4.0. Nothing in this case is a synthetic cell or an invented TCR.
+
+**The question.** Can we start with a strict TRB sequence, find its nearby
+sequence family, locate its cells in the real transcriptome UMAP, inspect donor
+and HLA context, and hand the same cells to a collaborator?
+
+![Strict TRB clonotype end-to-end workflow](img/hla_tcr_strict_clonotype_flow.svg)
+
+*Figure 1. Real data → nearby TRB motif → strict sequence-defined clonotype →
+UMAP and donor/HLA context → stable barcode selection → Linked views sharing.*
+
+**The fixed endpoint.** We use `TRBV19 / TRBJ1-5 / CASSIYSNQPQHF`. It contains
+10 cells: 2 from donor1 and 8 from donor2. All 10 carry the same reagent labels
+(`Flu-MP_Influenza`, peptide `GILGFVFTL`, reagent allele `HLA-A*02:01`) and all
+10 have `restriction_in_genotype = yes` for their published donor genotype.
+The sequence sits in motif `TRBV19::M13_1`, a nearby family with 15 TRB nodes,
+30 cells, and cells from donor1, donor2, and donor3.
+
+**The hand-off.** The 10 stable barcodes are loaded into Linked views, where
+the selection restores the UMAP, colour, and selected cells. The same selection
+can then be exported as JSON or shared as a link. The barcode list is the
+authority; a mouse-drawn region is not. The checked-in records are
+`demo_hla_tcr_dextramer.case.json` and
+`demo_hla_tcr_dextramer.golden-clone.barcodes.tsv`.
+
+![Golden TRB clonotype in the real CD8 T-cell UMAP](../inst/extdata/examples/demo_hla_tcr_dextramer.golden-clone-umap.png)
+
+*Figure 2. Gray points are all 12,000 cells; blue points are the golden
+clonotype in donor1 (2 cells); red points are the golden clonotype in donor2
+(8 cells).*
+
+This supports a reproducible description of sequence convergence and cell
+mapping in this selected cohort. It does **not** prove peptide-level antigen
+specificity, show that HLA-A*02:01 caused the TCR, or provide a statistical HLA
+association from four donors. The second vignette is a different, broader
+case: a 293-cell `CTgene`-defined expanded clone. Its numbers must not be
+combined with this strict 10-cell TRB case.
+
 ## Why this demo
 
 One HLA demo ships, and everything in it is measured:
@@ -50,6 +97,14 @@ a demo that is neither real nor single-cell earns its place only if nothing
 better exists. This one is both, so it replaces them. Their build pipelines
 remain in `data-raw/` (see `data-raw/hla.md`) if you want to reproduce them, and
 the bulk workflow now lives in its own guide as *bring your own cohort*.
+
+The first screen already exposes the scale and provenance of the object: this
+is not a motif network detached from cells, but a 12,000-cell, four-donor
+single-cell data set loaded into the same Viewer used for the analysis.
+
+![Real HLA/TCR data set loaded in CerebroNexus](img/hla_tcr_real_data_info.png)
+
+*Figure 3. The real antigen-selected HLA/TCR object loaded in the Viewer.*
 
 Replacing them required answering a fair objection first: *if the motif network
 is only legible on synthetic data, what is the feature for?*
@@ -504,6 +559,10 @@ stored dense.
 
 Open the data set and go to **HLA & TCR Motifs**:
 
+![Real TRB motif network](img/hla_tcr_real_motif_network.png)
+
+*Figure 4. The motif network computed from the shipped real `.crb` object.*
+
 * **Motif Network** — families of real CDR3β sequences at Hamming distance 1.
   Colour by *Sample of origin* to see the same motif reached independently by
   more than one donor: that is convergence, and it is the whole argument.
@@ -518,3 +577,12 @@ Open the data set and go to **HLA & TCR Motifs**:
   ascertainment and donor/panel confounding remain. These contrasts do **not**
   use the dextramer binder calls.
 * **Data & QC** — the published genotypes and their coverage.
+
+![Real HLA association context](img/hla_tcr_real_hla_associations.png)
+
+*Figure 5. The Viewer keeps the HLA contrast descriptive and displays the
+  ascertainment and raw-binder caveats beside the result.*
+
+![Published HLA typing and coverage](img/hla_tcr_real_data_qc.png)
+
+*Figure 6. The stored `.crb` carries genotyped HLA context for all four donors.*

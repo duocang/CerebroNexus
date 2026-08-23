@@ -15,6 +15,19 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 | know what a sub-directory here is | [Directory layout](#directory-layout) below |
 | add a **new** dataset | copy the template in [`DATASETS.md`](DATASETS.md), then add a build script + a per-type notes file |
 
+## End-to-end HLA/TCR main case
+
+The real antigen-selected dextramer demo has a frozen biological case built
+from the shipped `.crb`:
+
+```bash
+Rscript data-raw/prepare_hla_tcr_end_to_end_case.R
+```
+
+This writes the golden-clonotype JSON, stable barcode list, Linked views JSON,
+and `.crb` SHA-256 beside the demo object. The walkthrough and scientific
+claim boundaries are in [`docs/hla-tcr-end-to-end-case.md`](../docs/hla-tcr-end-to-end-case.md).
+
 `DATASETS.md` is the single source of truth for provenance across all data types. The per-type notes files (`spatial.md`, `immune_repertoire.md`, `trajectory.md`) carry only design and rebuild details and link back to it. This keeps citations in one place and avoids duplicating source info per file.
 
 ## Data families
