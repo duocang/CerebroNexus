@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 300" role="img" aria-labelledby="title desc">
+  <title id="title">Gene-defined expanded clone end-to-end workflow</title>
+  <desc id="desc">Real twelve-thousand-cell data flows through a 293-cell gene-defined clone, clonal expansion and ten TRB sequences, motif and UMAP context, a portable JSON selection, and Linked views sharing.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      .box { stroke-width: 2; rx: 16; }
+      .step { font: 700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; text-anchor: middle; }
+      .detail { font: 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; text-anchor: middle; }
+      .arrow { stroke: #64748b; stroke-width: 4; fill: none; marker-end: url(#arrow); }
+      .badge { font: 700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b45309; text-anchor: middle; letter-spacing: .4px; }
+    </style>
+  </defs>
+
+  <path class="arrow" d="M230 150 H265"/>
+  <path class="arrow" d="M475 150 H510"/>
+  <path class="arrow" d="M720 150 H755"/>
+  <path class="arrow" d="M965 150 H1000"/>
+  <path class="arrow" d="M1210 150 H1245"/>
+
+  <rect class="box" x="20" y="70" width="210" height="160" fill="#f8fafc" stroke="#94a3b8"/>
+  <text class="step" x="125" y="112"><tspan x="125">Real data</tspan></text>
+  <text class="detail" x="125" y="145"><tspan x="125">12,000 CD8 T cells</tspan><tspan x="125" dy="25">4 donors · paired TCR</tspan><tspan x="125" dy="25">transcriptome + UMAP</tspan></text>
+
+  <rect class="box" x="265" y="52" width="210" height="196" fill="#fff7ed" stroke="#ea580c"/>
+  <text class="badge" x="370" y="82">BROADER GENE CALL</text>
+  <text class="step" x="370" y="115"><tspan x="370">CTgene clone</tspan></text>
+  <text class="detail" x="370" y="146"><tspan x="370">293 cells</tspan><tspan x="370" dy="25">donor1: 142</tspan><tspan x="370" dy="25">donor2: 151</tspan></text>
+
+  <rect class="box" x="510" y="70" width="210" height="160" fill="#fefce8" stroke="#ca8a04"/>
+  <text class="step" x="615" y="112"><tspan x="615">Expansion</tspan></text>
+  <text class="detail" x="615" y="145"><tspan x="615">10 TRB CDR3s</tspan><tspan x="615" dy="25">dominant sequence</tspan><tspan x="615" dy="25">227 cells</tspan></text>
+
+  <rect class="box" x="755" y="70" width="210" height="160" fill="#faf5ff" stroke="#a855f7"/>
+  <text class="step" x="860" y="112"><tspan x="860">Sequence context</tspan></text>
+  <text class="detail" x="860" y="145"><tspan x="860">34-node TRB motif</tspan><tspan x="860" dy="25">627 cells · 3 donors</tspan><tspan x="860" dy="25">map back to UMAP</tspan></text>
+
+  <rect class="box" x="1000" y="70" width="210" height="160" fill="#fffbeb" stroke="#d97706"/>
+  <text class="step" x="1105" y="112"><tspan x="1105">Freeze selection</tspan></text>
+  <text class="detail" x="1105" y="145"><tspan x="1105">293 barcodes</tspan><tspan x="1105" dy="25">portable view JSON</tspan><tspan x="1105" dy="25">same UMAP settings</tspan></text>
+
+  <rect class="box" x="1245" y="70" width="210" height="160" fill="#f0fdf4" stroke="#16a34a"/>
+  <text class="step" x="1350" y="112"><tspan x="1350">Share</tspan></text>
+  <text class="detail" x="1350" y="145"><tspan x="1350">Linked views</tspan><tspan x="1350" dy="25">restore same cells</tspan><tspan x="1350" dy="25">create share link</tspan></text>
+</svg>
