@@ -2723,8 +2723,8 @@ createShinyApp <- function(
         identical(build_ops$mode(auth_directory), 448L) &&
         identical(build_ops$mode(auth_database), 384L)
     }
-    accessible <- build_ops$access(auth_database, mode = 6L) == 0L &&
-      build_ops$access(auth_directory, mode = 3L) == 0L
+    accessible <- build_ops$access(auth_database, mode = 4L) == 0L &&
+      build_ops$access(auth_directory, mode = 1L) == 0L
     if (!isTRUE(private_modes) || !isTRUE(accessible)) {
       stop(
         "Failed to prepare the authentication database for runtime.",

@@ -158,8 +158,8 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
   }
   accessible <- !is.null(database) &&
     isTRUE(utils::file_test("-f", database)) &&
-    isTRUE(file.access(database, mode = 6L) == 0L) &&
-    isTRUE(file.access(dirname(database), mode = 3L) == 0L)
+    isTRUE(file.access(database, mode = 4L) == 0L) &&
+    isTRUE(file.access(dirname(database), mode = 1L) == 0L)
   if (!accessible) {
     .viewer_auth_error(
       "Authentication credentials database is not accessible."
