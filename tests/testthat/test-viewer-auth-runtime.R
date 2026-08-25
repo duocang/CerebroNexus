@@ -46,12 +46,20 @@ test_that("Viewer authentication runtime is a no-op when disabled", {
   expect_identical(app$server, server)
 })
 
-test_that("Viewer authentication runtime requires its deployed secret", {
+test_that("Viewer accepts read-only credentials and requires its secret", {
   runtime <- viewer_auth_runtime_environment()
   root <- withr::local_tempdir()
   database <- file.path(root, "private-data", "auth", "credentials.sqlite")
   dir.create(dirname(database), recursive = TRUE)
   writeBin(as.raw(c(0x53, 0x51, 0x4c)), database)
+  if (!identical(.Platform$OS.type, "windows")) {
+    withr::defer({
+      Sys.chmod(dirname(database), mode = "0700")
+      Sys.chmod(database, mode = "0600")
+    })
+    expect_true(isTRUE(unname(Sys.chmod(database, mode = "0400"))))
+    expect_true(isTRUE(unname(Sys.chmod(dirname(database), mode = "0500"))))
+  }
   withr::local_envvar(CEREBRO_AUTH_TEST_KEY = NA)
 
   expect_error(

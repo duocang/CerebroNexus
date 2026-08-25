@@ -411,11 +411,11 @@ test_that("createShinyApp bundles only encrypted authentication configuration", 
   )))
 })
 
-test_that("createShinyApp makes the bundled database writable at runtime", {
+test_that("createShinyApp makes the bundled database private and readable", {
   skip_on_os("windows")
   fixture <- auth_test_build_fixture()
   Sys.chmod(fixture$credentials, mode = "0400")
-  app <- file.path(fixture$root, "writable-auth-app")
+  app <- file.path(fixture$root, "readable-auth-app")
   testthat::local_mocked_bindings(
     .compileViewerAuth = function(auth) {
       auth_test_compiled_config(auth$credentials)
@@ -440,8 +440,8 @@ test_that("createShinyApp makes the bundled database writable at runtime", {
     "auth",
     "credentials.sqlite"
   )
-  expect_identical(unname(file.access(bundled, mode = 6L)), 0L)
-  expect_identical(unname(file.access(dirname(bundled), mode = 3L)), 0L)
+  expect_identical(unname(file.access(bundled, mode = 4L)), 0L)
+  expect_identical(unname(file.access(dirname(bundled), mode = 1L)), 0L)
   expect_identical(as.integer(file.info(bundled)$mode), 384L)
   expect_identical(as.integer(file.info(dirname(bundled))$mode), 448L)
 })
@@ -746,7 +746,7 @@ test_that("authentication deployment documentation is runnable and credited", {
   }
 
   description <- read.dcf(auth_test_package_file("DESCRIPTION"))
-  expect_identical(description[[1L, "Version"]], "4.3.0")
+  expect_identical(description[[1L, "Version"]], "4.3.1")
   suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
   expect_false(any(grepl("askpass|chromote", suggests)))

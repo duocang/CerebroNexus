@@ -1,3 +1,11 @@
+# CerebroNexus 4.3.1
+
+## Viewer
+
+- Generated Viewers no longer require write access to authentication databases
+  at runtime. Read-only deployments can update accounts or passwords in the
+  private source database and deploy the change through a rebuilt Viewer.
+
 # CerebroNexus 4.3.0
 
 ## Data and conversion
