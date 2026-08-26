@@ -1301,6 +1301,10 @@ read_cerebro_file <- function(file) {
 ##----------------------------------------------------------------------------##
 .crb_cache <- new.env(parent = emptyenv())
 
+.crbLogLabel <- function(path) {
+  basename(path)
+}
+
 .runtimeBackendPlanError <- function(message, crb_path = NULL) {
   suffix <- if (is.null(crb_path)) {
     ""
@@ -1490,10 +1494,12 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue("[{Sys.time()}] CRB cache hit: {path}"))
+    print(glue::glue("[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"))
     return(cached$object)
   }
-  print(glue::glue("[{Sys.time()}] CRB cache miss, loading: {path}"))
+  print(glue::glue(
+    "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
+  ))
   obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
   .crb_cache[[path]] <- list(
