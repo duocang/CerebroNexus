@@ -745,7 +745,7 @@ test_that("authentication deployment documentation is runnable and credited", {
   }
 
   description <- read.dcf(auth_test_package_file("DESCRIPTION"))
-  expect_identical(description[[1L, "Version"]], "4.3.2")
+  expect_identical(description[[1L, "Version"]], "4.3.3")
   suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
   expect_false(any(grepl("askpass|chromote", suggests)))

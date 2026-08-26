@@ -143,6 +143,14 @@ test_that("createShinyApp validates run options before target preparation", {
       0,
       "TRUE"
     ),
+    show_upload_ui = list(
+      NULL,
+      logical(),
+      c(TRUE, FALSE),
+      NA,
+      0,
+      "TRUE"
+    ),
     display_mode = list(
       NULL,
       character(),
@@ -313,6 +321,41 @@ test_that("createShinyApp freezes typed run options into config", {
   expect_identical(runtime$after_source, runtime$sentinel)
   expect_identical(runtime$during, runtime$expected_bytes)
   expect_identical(runtime$after_stop, runtime$sentinel)
+})
+
+test_that("show_upload_ui controls the generated Viewer upload mode", {
+  fixture <- run_options_test_fixture()
+  default_app <- run_options_build_app(
+    fixture,
+    result_name = "default-app"
+  )
+  closed_app <- run_options_build_app(
+    fixture,
+    result_name = "closed-app",
+    show_upload_ui = FALSE
+  )
+  open_app <- run_options_build_app(
+    fixture,
+    result_name = "open-app",
+    show_upload_ui = TRUE
+  )
+
+  expect_identical(
+    readRDS(file.path(default_app, "cerebro_config.rds"))$mode,
+    "closed"
+  )
+  expect_identical(
+    readRDS(file.path(closed_app, "cerebro_config.rds"))$mode,
+    "closed"
+  )
+  expect_false(
+    readRDS(file.path(default_app, "cerebro_config.rds"))$show_upload_ui
+  )
+  expect_identical(
+    readRDS(file.path(open_app, "cerebro_config.rds"))$mode,
+    "open"
+  )
+  expect_true(readRDS(file.path(open_app, "cerebro_config.rds"))$show_upload_ui)
 })
 
 test_that("createShinyApp accepts every supported display mode", {

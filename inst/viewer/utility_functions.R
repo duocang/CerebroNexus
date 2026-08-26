@@ -1,4 +1,26 @@
 ##----------------------------------------------------------------------------##
+## Upload policy.
+##----------------------------------------------------------------------------##
+viewerUploadsEnabled <- function(options) {
+  is.list(options) && identical(options[["mode"]], "open")
+}
+
+viewerUploadPath <- function(input_file, options) {
+  datapath <- if (is.list(input_file)) input_file[["datapath"]] else NULL
+  if (
+    !viewerUploadsEnabled(options) ||
+      !is.character(datapath) ||
+      length(datapath) != 1L ||
+      is.na(datapath) ||
+      !nzchar(datapath) ||
+      !file.exists(datapath)
+  ) {
+    return("")
+  }
+  datapath
+}
+
+##----------------------------------------------------------------------------##
 ## Guarded bindCache wrapper for plot/reactive outputs.
 ##
 ## Mirrors the immune_repertoire module's ir_bindCache():
