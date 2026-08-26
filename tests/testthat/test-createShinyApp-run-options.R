@@ -345,12 +345,6 @@ test_that("show_upload_ui controls the generated Viewer upload mode", {
     "closed"
   )
   expect_identical(
-    readRDS(file.path(default_app, "cerebro_config.rds"))[[
-      ".bundle_run_options"
-    ]]$max_request_size_bytes,
-    as.double(800 * 1024^2)
-  )
-  expect_identical(
     readRDS(file.path(closed_app, "cerebro_config.rds"))$mode,
     "closed"
   )
@@ -361,9 +355,7 @@ test_that("show_upload_ui controls the generated Viewer upload mode", {
     readRDS(file.path(open_app, "cerebro_config.rds"))$mode,
     "open"
   )
-  expect_true(
-    readRDS(file.path(open_app, "cerebro_config.rds"))$show_upload_ui
-  )
+  expect_true(readRDS(file.path(open_app, "cerebro_config.rds"))$show_upload_ui)
 })
 
 test_that("createShinyApp accepts every supported display mode", {

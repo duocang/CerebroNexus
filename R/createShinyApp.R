@@ -1951,7 +1951,7 @@ dedent <- function(string) {
 #'   must not use the reserved build-lock namespace, and its final target must
 #'   not be a symbolic link or unresolved filesystem entry.
 #' @param max_request_size One finite positive numeric upload limit in MB;
-#'   defaults to 800.
+#'   defaults to 8000.
 #' @param port One whole-number port from 1 through 65535; defaults to 8080.
 #' @param host One non-empty character value that the generated app binds to;
 #'   defaults to "127.0.0.1".
@@ -2047,7 +2047,7 @@ dedent <- function(string) {
 #'   result_dir = "my_app",
 #'   port = 8080,
 #'   host = "127.0.0.1",
-#'   max_request_size = 800,
+#'   max_request_size = 8000,
 #'   overwrite = TRUE
 #' )
 #' # Run with shiny::runApp("my_app") or deploy my_app/ to Shiny Server.
@@ -2059,7 +2059,7 @@ dedent <- function(string) {
 createShinyApp <- function(
   cerebro_data,
   result_dir = NULL,
-  max_request_size = 800,
+  max_request_size = 8000,
   port = 8080,
   host = "127.0.0.1",
   launch_browser = TRUE,

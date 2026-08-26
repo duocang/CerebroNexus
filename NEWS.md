@@ -1,3 +1,10 @@
+# CerebroNexus 4.3.4
+
+## Viewer
+
+- Viewer cache messages identify CRB files by basename without logging their
+  absolute server paths.
+
 # CerebroNexus 4.3.3
 
 ## Viewer
