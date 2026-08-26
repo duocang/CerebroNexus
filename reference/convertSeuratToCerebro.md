@@ -30,8 +30,7 @@ convertSeuratToCerebro(
   add_most_expressed_genes = TRUE,
   most_expressed_genes = NULL,
   bcr_file = NULL,
-  tcr_file = NULL,
-  spatial_coordinate_transforms = NULL
+  tcr_file = NULL
 )
 ```
 
@@ -131,12 +130,6 @@ convertSeuratToCerebro(
   Missing bounds are derived from the exported coordinates. Supplied
   images are embedded in the generated CRB; existing embedded images
   declared by the Seurat object are retained.
-
-- spatial_coordinate_transforms:
-
-  Optional named list of spatial coordinate transforms keyed by exact
-  Seurat FOV/image name. Entries are forwarded unchanged to
-  [`exportFromSeurat()`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md).
 
 - verbose:
 

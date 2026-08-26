@@ -78,9 +78,10 @@ shiny::runApp(out_dir)
 | `port`, `host` | whole-number port `1`-`65535` and a non-empty host string; defaults to `8080` / `127.0.0.1` |
 | `launch_browser`, `quiet`, `display_mode` | non-missing logical flags and exactly `auto`, `normal`, or `showcase` for [`shiny::runApp()`](https://rdrr.io/pkg/shiny/man/runApp.html) |
 | `welcome_message` | text shown in the Load Data tab |
-| `colors` | optional per-dataset palettes; see below |
+| `colors` | optional named list of palettes (one entry per dataset name) |
 | `cerebro_options` | extra entries merged into `Cerebro.options`; matrix overrides must be absolute host paths (native paths must resolve outside `result_dir`) |
-| `crb_pick_smallest_file`, `show_upload_ui` | forwarded into `Cerebro.options` |
+| `crb_pick_smallest_file` | forwarded into `Cerebro.options` |
+| `show_upload_ui` | allow users to upload their own data; defaults to `FALSE` for generated apps |
 | `point_size`, `variable_to_compare` | forwarded into `Cerebro.options` |
 
 ## Bundling multiple datasets (available since 2.0.0)
@@ -88,23 +89,6 @@ shiny::runApp(out_dir)
 The names of `cerebro_data` are what the user picks from inside Cerebro.
 You can also supply matching `colors` so each dataset gets a
 deterministic palette.
-
-`colors` is keyed first by the dataset label, then by grouping variable,
-then by group level:
-
-    colors = list(
-      "<dataset label>" = list(
-        "<grouping variable>" = c("<group level>" = "<colour>")
-      )
-    )
-
-The level names have to be the ones in the data. A palette may cover
-only some of them; the rest keep the default colour. A colour that R
-cannot read, or a dataset label that was not passed in `cerebro_data`,
-is reported when the app is built rather than silently ignored.
-
-Anyone opening the app can still override a colour in the Color
-management tab; those choices win for that session and are not saved.
 
 ``` r
 crb_pbmc <- system.file("extdata/examples/example.crb", package = "CerebroNexus")
@@ -117,8 +101,7 @@ createShinyApp(
   ),
   result_dir = file.path(tempdir(), "cerebro_app_multi"),
   colors = list(
-    ## `sample` in this demo has levels sample_1, sample_2 and sample_3
-    "PBMC example" = list(sample = c(sample_1 = "#1f77b4"))
+    "PBMC example" = list(sample = c(pbmc_1 = "#1f77b4"))
   ),
   welcome_message = "Welcome to my Cerebro deployment.",
   launch_browser = FALSE

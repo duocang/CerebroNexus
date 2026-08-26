@@ -2,7 +2,6 @@
 <url><loc>https://mihem.github.io/CerebroNexus/404.html</loc></url>
 <url><loc>https://mihem.github.io/CerebroNexus/LICENSE-text.html</loc></url>
 <url><loc>https://mihem.github.io/CerebroNexus/LICENSE.html</loc></url>
-<url><loc>https://mihem.github.io/CerebroNexus/articles/build_a_data_set_by_pointing.html</loc></url>
 <url><loc>https://mihem.github.io/CerebroNexus/articles/cerebronexus_workflow_seurat.html</loc></url>
 <url><loc>https://mihem.github.io/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html</loc></url>
 <url><loc>https://mihem.github.io/CerebroNexus/articles/create_a_self_contained_shiny_app.html</loc></url>
@@ -98,7 +97,6 @@
 <url><loc>https://mihem.github.io/CerebroNexus/reference/hla_visnetwork_import.html</loc></url>
 <url><loc>https://mihem.github.io/CerebroNexus/reference/index.html</loc></url>
 <url><loc>https://mihem.github.io/CerebroNexus/reference/launchCerebro.html</loc></url>
-<url><loc>https://mihem.github.io/CerebroNexus/reference/launchCerebroBuilder.html</loc></url>
 <url><loc>https://mihem.github.io/CerebroNexus/reference/performGeneSetEnrichmentAnalysis.html</loc></url>
 </urlset>
 

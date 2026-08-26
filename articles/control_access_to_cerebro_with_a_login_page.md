@@ -136,8 +136,12 @@ Sys.unsetenv("CEREBRO_AUTH_PASSPHRASE")
 | Bundled encrypted database | `private-data/auth/` | Yes |
 | Plaintext account table | Trusted R memory only | **Never** |
 
-The runtime account needs write access to `private-data/auth/` because
-SQLite may create login-state sidecars.
+The runtime account needs only read access to the bundled database. The
+Viewer decrypts its hashed credentials into memory and does not use
+SQLite for runtime state. Login history, database-backed account
+locking, and in-App password changes are intentionally disabled. Update
+accounts or passwords in the private source database, then rebuild and
+redeploy the App.
 
 ![The App and external passphrase travel separately and meet only in the
 trusted runtime process.](img/auth-deployment-boundary.svg)
@@ -181,7 +185,6 @@ Every new R process must load the external secret:
 
 ``` r
 # R console — run this in every local App process.
-options("shinymanager.pwd_failure_limit" = 10L)
 readRenviron("/srv/cerebro/private/viewer-auth.env")
 shiny::runApp("/srv/cerebro/apps/my_app")
 ```
@@ -208,8 +211,8 @@ Publish the App and secret separately:
 # Terminal — run these commands on the Shiny Server host.
 sudo cp -R /srv/cerebro/apps/my_app /srv/shiny-server/
 sudo chown -R shiny:shiny /srv/shiny-server/my_app/private-data/auth
-sudo chmod 0700 /srv/shiny-server/my_app/private-data/auth
-sudo chmod 0600 /srv/shiny-server/my_app/private-data/auth/credentials.sqlite
+sudo chmod 0500 /srv/shiny-server/my_app/private-data/auth
+sudo chmod 0400 /srv/shiny-server/my_app/private-data/auth/credentials.sqlite
 
 # Install the external secret at the exact path used by the systemd override.
 sudo install -d -m 0750 /etc/cerebronexus
@@ -346,25 +349,18 @@ Validate login before retiring the old deployment.
 
 ## Limit failed sign-ins
 
-**Run this as:** the person configuring the App startup process.
+**Run this as:** the reverse-proxy administrator.
 
-**Run it on:** every runtime host, in the R profile or startup command
-used by the actual service account.
+**Run it on:** the reverse proxy in front of the Viewer.
 
-**What happens:** `shinymanager` locks an account after the configured
-number of consecutive failed passwords.
+**What happens:** the proxy limits repeated authentication requests by
+source before they reach Shiny.
 
-**Verify:** use a disposable test account to confirm the chosen policy,
-then check that the reverse proxy also performs source-aware rate
-limiting.
+**Verify:** exceed the configured request limit from a test client and
+confirm that the proxy rejects further attempts temporarily.
 
-``` r
-# R console — place this in the real App startup process or its `.Rprofile`.
-options("shinymanager.pwd_failure_limit" = 10L)
-```
-
-Also configure source-aware rate limiting at the reverse proxy. Account
-locking alone can be abused for denial of service.
+Configure source-aware rate limiting at the reverse proxy. The read-only
+Viewer does not persist failed-login counters or account locks.
 
 ## Add, remove, or rotate users
 
@@ -393,7 +389,7 @@ rollback window.
 | Missing environment variable | Compare `passphrase_env` with the env-file name |
 | Database cannot decrypt | Load the secret paired with that database |
 | Deployed App stops | Inspect the service environment, not your shell |
-| SQLite write error | Fix access only for `private-data/auth/` |
+| Database is not accessible | Give the runtime account read and directory traversal access |
 | Docker rebuild loses auth | Inject the external file at runtime |
 
 ## Security checklist
@@ -401,7 +397,7 @@ rollback window.
 - Use HTTPS.
 - Keep passwords, passphrase, and env file outside the App and Git.
 - Pair each App release with exactly one matching secret.
-- Verify valid login, invalid login, runtime write access, and rollback.
+- Verify valid login, invalid login, runtime read access, and rollback.
 - Add monitoring and rate limiting.
 
 ## See also

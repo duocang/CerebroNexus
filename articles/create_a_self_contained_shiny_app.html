@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.3.4</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -34,7 +34,6 @@
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
 <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Workflows</h6></li>
-    <li><a class="dropdown-item" href="../articles/build_a_data_set_by_pointing.html">Build a data set without writing code</a></li>
     <li><a class="dropdown-item" href="../articles/cerebronexus_workflow_seurat.html">Introduction to the CerebroNexus workflow (Seurat)</a></li>
     <li><a class="dropdown-item" href="../articles/export_a_data_set_in_SCE_format.html">Export a data set in SCE format</a></li>
     <li><hr class="dropdown-divider"></li>
@@ -98,9 +97,9 @@
                         <h4 data-toc-skip class="author">Xuesong
 Wang</h4>
             
-            <h4 data-toc-skip class="date">19 August, 2026</h4>
+            <h4 data-toc-skip class="date">26 August, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/feat/builder-project-workspace/vignettes/create_a_self_contained_shiny_app.Rmd" class="external-link"><code>vignettes/create_a_self_contained_shiny_app.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/vignettes/create_a_self_contained_shiny_app.Rmd" class="external-link"><code>vignettes/create_a_self_contained_shiny_app.Rmd</code></a></small>
       <div class="d-none name"><code>create_a_self_contained_shiny_app.Rmd</code></div>
     </div>
 
@@ -228,7 +227,7 @@ host string; defaults to <code>8080</code> / <code>127.0.0.1</code>
 </tr>
 <tr class="even">
 <td><code>colors</code></td>
-<td>optional per-dataset palettes; see below</td>
+<td>optional named list of palettes (one entry per dataset name)</td>
 </tr>
 <tr class="odd">
 <td><code>cerebro_options</code></td>
@@ -237,14 +236,16 @@ overrides must be absolute host paths (native paths must resolve outside
 <code>result_dir</code>)</td>
 </tr>
 <tr class="even">
-<td>
-<code>crb_pick_smallest_file</code>,
-<code>show_upload_ui</code>
-</td>
+<td><code>crb_pick_smallest_file</code></td>
 <td>forwarded into <code>Cerebro.options</code>
 </td>
 </tr>
 <tr class="odd">
+<td><code>show_upload_ui</code></td>
+<td>allow users to upload their own data; defaults to <code>FALSE</code>
+for generated apps</td>
+</tr>
+<tr class="even">
 <td>
 <code>point_size</code>, <code>variable_to_compare</code>
 </td>
@@ -260,22 +261,7 @@ overrides must be absolute host paths (native paths must resolve outside
 <p>The names of <code>cerebro_data</code> are what the user picks from
 inside Cerebro. You can also supply matching <code>colors</code> so each
 dataset gets a deterministic palette.</p>
-<p><code>colors</code> is keyed first by the dataset label, then by
-grouping variable, then by group level:</p>
-<pre><code><span><span class="va">colors</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>  <span class="st">"&lt;dataset label&gt;"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>    <span class="st">"&lt;grouping variable&gt;"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"&lt;group level&gt;"</span> <span class="op">=</span> <span class="st">"&lt;colour&gt;"</span><span class="op">)</span></span>
-<span>  <span class="op">)</span></span>
-<span><span class="op">)</span></span></code></pre>
-<p>The level names have to be the ones in the data. A palette may cover
-only some of them; the rest keep the default colour. A colour that R
-cannot read, or a dataset label that was not passed in
-<code>cerebro_data</code>, is reported when the app is built rather than
-silently ignored.</p>
-<p>Anyone opening the app can still override a colour in the Color
-management tab; those choices win for that session and are not
-saved.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">crb_pbmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata/examples/example.crb"</span>, package <span class="op">=</span> <span class="st">"CerebroNexus"</span><span class="op">)</span></span>
 <span><span class="co"># crb_other &lt;- "/path/to/another_dataset.crb"</span></span>
 <span></span>
@@ -286,8 +272,7 @@ saved.</p>
 <span>  <span class="op">)</span>,</span>
 <span>  result_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"cerebro_app_multi"</span><span class="op">)</span>,</span>
 <span>  colors <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>    <span class="co">## `sample` in this demo has levels sample_1, sample_2 and sample_3</span></span>
-<span>    <span class="st">"PBMC example"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>sample <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>sample_1 <span class="op">=</span> <span class="st">"#1f77b4"</span><span class="op">)</span><span class="op">)</span></span>
+<span>    <span class="st">"PBMC example"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>sample <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>pbmc_1 <span class="op">=</span> <span class="st">"#1f77b4"</span><span class="op">)</span><span class="op">)</span></span>
 <span>  <span class="op">)</span>,</span>
 <span>  welcome_message <span class="op">=</span> <span class="st">"Welcome to my Cerebro deployment."</span>,</span>
 <span>  launch_browser <span class="op">=</span> <span class="cn">FALSE</span></span>
@@ -430,7 +415,7 @@ files.</p>
 <p>Anything you want to surface in <code>Cerebro.options</code> that
 isn’t already a top-level argument can go through
 <code>cerebro_options</code>.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/createShinyApp.html">createShinyApp</a></span><span class="op">(</span></span>
 <span>  cerebro_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"PBMC example"</span> <span class="op">=</span> <span class="va">crb</span><span class="op">)</span>,</span>
 <span>  result_dir   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"cerebro_app_opts"</span><span class="op">)</span>,</span>
@@ -453,7 +438,7 @@ supply for those keys is overwritten.</p>
 is self-contained: shipping the folder is all that is required. If you
 configured a host-managed matrix override, provision that absolute path
 separately on the deployment host. Three common targets:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># 1. Local</span></span>
 <span><span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/runApp.html" class="external-link">runApp</a></span><span class="op">(</span><span class="va">out_dir</span><span class="op">)</span></span>
 <span></span>
