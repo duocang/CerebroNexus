@@ -139,14 +139,8 @@ server <- function(input, output, session) {
 
   ## listen to selected 'input_file', initialize before UI element is loaded
   observeEvent(input[['input_file']], ignoreNULL = FALSE, {
-    path_to_load <- ''
-    ## grab path from 'input_file' if one is specified
-    if (
-      !is.null(input[["input_file"]]) &&
-        all(!is.na(input[["input_file"]])) &&
-        file.exists(input[["input_file"]]$datapath)
-    ) {
-      path_to_load <- input[["input_file"]]$datapath
+    path_to_load <- viewerUploadPath(input[["input_file"]], Cerebro.options)
+    if (nzchar(path_to_load)) {
       ## an uploaded file replaces the pre-configured data sets, so clear the
       ## switcher state — otherwise the dropdown keeps offering the old data
       ## sets, which no longer match what is loaded.

@@ -82,8 +82,8 @@ directory is rejected before any files are written.}
 
 \item{crb_pick_smallest_file}{Forwarded to \code{Cerebro.options}.}
 
-\item{show_upload_ui}{Whether generated Viewers allow visitors to upload
-their own data. Defaults to \code{FALSE}.}
+\item{show_upload_ui}{One non-missing logical controlling whether users may
+upload their own data; defaults to \code{FALSE}.}
 
 \item{welcome_message}{Welcome message shown in the Load Data tab.}
 

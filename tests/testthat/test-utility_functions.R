@@ -35,6 +35,35 @@ prettifyTable <- utils_env$prettifyTable
 centerOfGroups <- utils_env$centerOfGroups
 cachePlot <- utils_env$cachePlot
 dynamicPointSize <- utils_env$dynamicPointSize
+viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
+viewerUploadPath <- utils_env$viewerUploadPath
+
+test_that("Viewer uploads require explicit open mode", {
+  expect_false(viewerUploadsEnabled(list(mode = "closed")))
+  expect_false(viewerUploadsEnabled(list()))
+  expect_false(viewerUploadsEnabled(NULL))
+  expect_false(viewerUploadsEnabled(list(mode = TRUE)))
+  expect_true(viewerUploadsEnabled(list(mode = "open")))
+})
+
+test_that("Viewer ignores uploaded files unless upload mode is open", {
+  upload <- tempfile(fileext = ".crb")
+  writeLines("uploaded", upload)
+  withr::defer(unlink(upload))
+  input_file <- data.frame(datapath = upload)
+
+  expect_identical(viewerUploadPath(input_file, list(mode = "closed")), "")
+  expect_identical(viewerUploadPath(input_file, list()), "")
+  expect_identical(viewerUploadPath(list(), list(mode = "open")), "")
+  expect_identical(
+    viewerUploadPath(input_file, list(mode = "open")),
+    upload
+  )
+  expect_identical(
+    viewerUploadPath(data.frame(datapath = NA_character_), list(mode = "open")),
+    ""
+  )
+})
 
 test_that("spatial offset ranges require finite coordinates", {
   path <- file.path(
