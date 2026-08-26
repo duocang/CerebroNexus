@@ -38,6 +38,18 @@ dynamicPointSize <- utils_env$dynamicPointSize
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
 
+test_that("CRB cache log labels omit directory paths", {
+  label <- get0(".crbLogLabel", envir = utils_env, inherits = FALSE)
+  expect_true(is.function(label))
+  if (!is.function(label)) {
+    return(invisible(NULL))
+  }
+  expect_identical(
+    label("/private/shiny/session/uploaded-dataset.crb"),
+    "uploaded-dataset.crb"
+  )
+})
+
 test_that("Viewer uploads require explicit open mode", {
   expect_false(viewerUploadsEnabled(list(mode = "closed")))
   expect_false(viewerUploadsEnabled(list()))
