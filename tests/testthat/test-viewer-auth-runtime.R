@@ -84,6 +84,7 @@ test_that("Viewer authentication supplies bundled CerebroNexus branding", {
   withr::local_envvar(CEREBRO_AUTH_TEST_KEY = "runtime test passphrase")
   captured <- NULL
   testthat::local_mocked_bindings(
+    read_db_decrypt = function(...) data.frame(user = "alice"),
     check_credentials = function(...) {
       function(user, password) list(result = TRUE)
     },
@@ -200,7 +201,7 @@ test_that("Viewer starts after server-authoritative authentication", {
   })
 })
 
-test_that("client input cannot bypass a required password change", {
+test_that("Viewer keeps account management outside the runtime", {
   skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
   runtime <- viewer_auth_runtime_environment()
   root <- withr::local_tempdir()
@@ -210,30 +211,31 @@ test_that("client input cannot bypass a required password change", {
   passphrase <- "runtime test passphrase"
   shinymanager::create_db(
     credentials_data = data.frame(
-      user = "alice",
-      password = "alice-login-password",
+      user = c("alice", "bob"),
+      password = c("alice-login-password", "bob-login-password"),
       stringsAsFactors = FALSE
     ),
     sqlite_path = database,
     passphrase = passphrase
   )
-  policy <- shinymanager::read_db_decrypt(
-    database,
-    name = "pwd_mngt",
-    passphrase = passphrase
-  )
-  policy$must_change <- "TRUE"
-  shinymanager::write_db_encrypt(
-    database,
-    value = policy,
-    name = "pwd_mngt",
-    passphrase = passphrase
-  )
+  source_hash <- unname(tools::md5sum(database))
+  if (!identical(.Platform$OS.type, "windows")) {
+    withr::defer({
+      Sys.chmod(dirname(database), mode = "0700")
+      Sys.chmod(database, mode = "0600")
+    })
+    Sys.chmod(database, mode = "0400")
+    Sys.chmod(dirname(database), mode = "0500")
+  }
   withr::local_envvar(CEREBRO_AUTH_TEST_KEY = passphrase)
   auth_state <- shiny::reactiveValues(user = NULL)
+  captured_checker <- NULL
   testthat::local_mocked_bindings(
     secure_app = function(ui, ...) ui,
-    secure_server = function(...) auth_state,
+    secure_server = function(check_credentials, ...) {
+      captured_checker <<- check_credentials
+      auth_state
+    },
     .package = "shinymanager"
   )
   starts <- 0L
@@ -246,27 +248,23 @@ test_that("client input cannot bypass a required password change", {
     root
   )
 
-  shiny::testServer(app$server, {
-    session$setInputs(shinymanager_where = "application")
-    auth_state$user <- "alice"
-    session$flushReact()
-    expect_identical(starts, 0L)
+  token_store <- getFromNamespace(".tok", "shinymanager")
+  expect_null(token_store$get_sqlite_path())
+  expect_null(token_store$get_sql_config_db())
 
-    policy$must_change <- "FALSE"
-    policy$have_changed <- "TRUE"
-    policy$date_change <- as.character(Sys.Date())
-    shinymanager::write_db_encrypt(
-      database,
-      value = policy,
-      name = "pwd_mngt",
-      passphrase = passphrase
-    )
-    auth_state$user <- NULL
-    session$flushReact()
+  shiny::testServer(app$server, {
+    expect_true(is.function(captured_checker))
+    expect_true(captured_checker("alice", "alice-login-password")$result)
+    expect_true(captured_checker("bob", "bob-login-password")$result)
+    expect_false(captured_checker("alice", "wrong-password")$result)
+    update_pwd <- getFromNamespace("update_pwd", "shinymanager")
+    expect_false(update_pwd("alice", "new-login-password")$result)
+    expect_false(captured_checker("alice", "new-login-password")$result)
     auth_state$user <- "alice"
     session$flushReact()
     expect_identical(starts, 1L)
   })
+  expect_identical(unname(tools::md5sum(database)), source_hash)
 })
 
 test_that("Viewer session closes when the authenticated user changes", {

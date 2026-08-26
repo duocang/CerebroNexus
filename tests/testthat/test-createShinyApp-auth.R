@@ -649,7 +649,6 @@ test_that("authentication deployment documentation is runnable and credited", {
     "openssl rand -base64 32",
     "sudo install -d -m 0700",
     "sudo install -d -m 0755",
-    "shinymanager.pwd_failure_limit",
     "rate limiting",
     "Shiny Server",
     "systemd",
@@ -746,7 +745,7 @@ test_that("authentication deployment documentation is runnable and credited", {
   }
 
   description <- read.dcf(auth_test_package_file("DESCRIPTION"))
-  expect_identical(description[[1L, "Version"]], "4.3.1")
+  expect_identical(description[[1L, "Version"]], "4.3.2")
   suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
   expect_false(any(grepl("askpass|chromote", suggests)))
