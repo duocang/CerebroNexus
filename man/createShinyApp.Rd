@@ -18,7 +18,7 @@ createShinyApp(
   overwrite = TRUE,
   verbose = TRUE,
   crb_pick_smallest_file = TRUE,
-  show_upload_ui = TRUE,
+  show_upload_ui = FALSE,
   welcome_message = "Welcome to CerebroNexus!",
   point_size = list(overview_projection_point_size = NULL),
   variable_to_compare = NULL,
@@ -82,7 +82,8 @@ directory is rejected before any files are written.}
 
 \item{crb_pick_smallest_file}{Forwarded to \code{Cerebro.options}.}
 
-\item{show_upload_ui}{Forwarded to \code{Cerebro.options}.}
+\item{show_upload_ui}{Whether generated Viewers allow visitors to upload
+their own data. Defaults to \code{FALSE}.}
 
 \item{welcome_message}{Welcome message shown in the Load Data tab.}
 

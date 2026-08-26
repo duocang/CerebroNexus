@@ -1976,7 +1976,8 @@ dedent <- function(string) {
 #'   directory is rejected before any files are written.
 #' @param verbose Print progress messages; defaults to TRUE.
 #' @param crb_pick_smallest_file Forwarded to \code{Cerebro.options}.
-#' @param show_upload_ui Forwarded to \code{Cerebro.options}.
+#' @param show_upload_ui Whether generated Viewers allow visitors to upload
+#'   their own data. Defaults to \code{FALSE}.
 #' @param welcome_message Welcome message shown in the Load Data tab.
 #' @param point_size Named list with \code{overview_projection_point_size}
 #'   (and optionally other keys) forwarded to \code{Cerebro.options}.
@@ -2069,7 +2070,7 @@ createShinyApp <- function(
   overwrite = TRUE,
   verbose = TRUE,
   crb_pick_smallest_file = TRUE,
-  show_upload_ui = TRUE,
+  show_upload_ui = FALSE,
   welcome_message = "Welcome to CerebroNexus!",
   point_size = list(
     overview_projection_point_size = NULL
@@ -2751,7 +2752,7 @@ createShinyApp <- function(
     names(cerebro_data)
   )
 
-  cerebro_options[["mode"]] <- "open"
+  cerebro_options[["mode"]] <- if (isFALSE(show_upload_ui)) "closed" else "open"
   ## Resolve the version while the package is present, then serialize it into
   ## the generated app. The standalone bundle never needs CerebroNexus at
   ## runtime merely to render its About page.
