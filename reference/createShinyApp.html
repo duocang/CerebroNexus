@@ -77,7 +77,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Create a self-contained CerebroNexus Shiny app folder</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/restack1/5-viewer-bundle-contract/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/restack1/2-unified-specialist-views/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
       <div class="d-none name"><code>createShinyApp.Rd</code></div>
     </div>
 
@@ -106,7 +106,6 @@ run with <code>shiny::runApp(result_dir)</code>.</p>
 <span>  verbose <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  crb_pick_smallest_file <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  show_upload_ui <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  initial_page <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  welcome_message <span class="op">=</span> <span class="st">"Welcome to CerebroNexus!"</span>,</span>
 <span>  point_size <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>overview_projection_point_size <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span>,</span>
 <span>  variable_to_compare <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -120,10 +119,6 @@ run with <code>shiny::runApp(result_dir)</code>.</p>
 <span>  spatial_images_offset_y <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  spatial_plot_rotation <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  auth <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  extra_tables <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  extra_tables_sheets <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  admin_account <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  admin_password_env <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -147,8 +142,7 @@ not be a symbolic link or unresolved filesystem entry.</p></dd>
 
 <dt id="arg-max-request-size">max_request_size<a class="anchor" aria-label="anchor" href="#arg-max-request-size"></a></dt>
 <dd><p>One finite positive numeric upload limit in MB;
-defaults to 8000. Closed Viewers cap the effective request size at 6 MB;
-open Viewers use the supplied value.</p></dd>
+defaults to 8000.</p></dd>
 
 
 <dt id="arg-port">port<a class="anchor" aria-label="anchor" href="#arg-port"></a></dt>
@@ -208,18 +202,6 @@ directory is rejected before any files are written.</p></dd>
 <dt id="arg-show-upload-ui">show_upload_ui<a class="anchor" aria-label="anchor" href="#arg-show-upload-ui"></a></dt>
 <dd><p>One non-missing logical controlling whether users may
 upload their own data; defaults to <code>FALSE</code>.</p></dd>
-
-
-<dt id="arg-initial-page">initial_page<a class="anchor" aria-label="anchor" href="#arg-initial-page"></a></dt>
-<dd><p>Optional initial Viewer page. Supported stable IDs are
-<code>"data_info"</code>, <code>"projection"</code>, <code>"linked_views"</code>,
-<code>"groups"</code>, <code>"marker_genes"</code>, <code>"most_expressed_genes"</code>,
-<code>"enriched_pathways"</code>, <code>"extra_material"</code>,
-<code>"immune_repertoire"</code>, <code>"trajectory"</code>, <code>"spatial"</code>,
-<code>"trekker"</code>, <code>"hla_tcr_motifs"</code>, <code>"gene_expression"</code>,
-<code>"gene_id_conversion"</code>, <code>"color_management"</code>, and
-<code>"about"</code>. A conditional page is selected only when it is available for
-the loaded dataset. Shared links take precedence after restoration.</p></dd>
 
 
 <dt id="arg-welcome-message">welcome_message<a class="anchor" aria-label="anchor" href="#arg-welcome-message"></a></dt>
@@ -314,29 +296,6 @@ the name of the environment variable containing its passphrase. Optional
 <code>timeout_minutes</code> defaults to 15.</p></dd>
 
 
-<dt id="arg-extra-tables">extra_tables<a class="anchor" aria-label="anchor" href="#arg-extra-tables"></a></dt>
-<dd><p>Optional named collection of CSV, TSV, TXT, XLS, XLSX,
-or XLSM files to bundle as private Extra material tables. Workbook sheets
-are listed separately and loaded only when selected in the Viewer.</p></dd>
-
-
-<dt id="arg-extra-tables-sheets">extra_tables_sheets<a class="anchor" aria-label="anchor" href="#arg-extra-tables-sheets"></a></dt>
-<dd><p>Optional named list of Excel sheet renames keyed
-by <code>extra_tables</code> labels. Each entry maps displayed names to source
-sheet names; unmapped sheets remain available.</p></dd>
-
-
-<dt id="arg-admin-account">admin_account<a class="anchor" aria-label="anchor" href="#arg-admin-account"></a></dt>
-<dd><p>Optional Viewer Administrator account name. Supply it
-together with <code>admin_password_env</code> to enable Shared Link management.</p></dd>
-
-
-<dt id="arg-admin-password-env">admin_password_env<a class="anchor" aria-label="anchor" href="#arg-admin-password-env"></a></dt>
-<dd><p>Optional environment-variable name containing the
-Viewer Administrator password. The secret must contain at least 12 bytes and
-is validated but never written into the generated app.</p></dd>
-
-
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Currently unused; reserved for future arguments.</p></dd>
 
@@ -373,18 +332,6 @@ select the same resolved input file.
 Generated bundles follow the standard deployment model of one app per R
 process; process-global <code>Cerebro.options</code> does not provide same-process
 isolation between separately sourced apps.</p>
-<p>Shared Links are disabled unless
-<code>CEREBRONEXUS_LINKED_VIEW_SHARE_DB</code> (or
-<code>cerebro_options[["linked_view_share_db"]]</code>) names a writable SQLite
-path outside the generated app directory. Keeping that database external
-prevents <code>overwrite = TRUE</code> from deleting live links. Records are
-isolated by a namespace derived from the deployment root; replicated or
-relocated deployments should set
-<code>CEREBRONEXUS_LINKED_VIEW_SHARE_NAMESPACE</code> to one stable app-specific
-value.
-Links expire after 7 days without a usable Viewer Administrator and after
-90 days when <code>admin_account</code> and <code>admin_password_env</code> resolve at
-runtime.</p>
 <p>Launch settings are validated and frozen in a typed internal manifest before
 target preparation. The generated <code>app.R</code> reads that manifest instead of
 interpolating user values into source, and the staged source is parsed before
