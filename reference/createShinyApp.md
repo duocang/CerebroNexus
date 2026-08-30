@@ -24,7 +24,6 @@ createShinyApp(
   verbose = TRUE,
   crb_pick_smallest_file = TRUE,
   show_upload_ui = FALSE,
-  initial_page = NULL,
   welcome_message = "Welcome to CerebroNexus!",
   point_size = list(overview_projection_point_size = NULL),
   variable_to_compare = NULL,
@@ -38,10 +37,6 @@ createShinyApp(
   spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
   auth = NULL,
-  extra_tables = NULL,
-  extra_tables_sheets = NULL,
-  admin_account = NULL,
-  admin_password_env = NULL,
   ...
 )
 ```
@@ -63,8 +58,6 @@ createShinyApp(
 - max_request_size:
 
   One finite positive numeric upload limit in MB; defaults to 8000.
-  Closed Viewers cap the effective request size at 6 MB; open Viewers
-  use the supplied value.
 
 - port:
 
@@ -125,17 +118,6 @@ createShinyApp(
 
   One non-missing logical controlling whether users may upload their own
   data; defaults to `FALSE`.
-
-- initial_page:
-
-  Optional initial Viewer page. Supported stable IDs are `"data_info"`,
-  `"projection"`, `"linked_views"`, `"groups"`, `"marker_genes"`,
-  `"most_expressed_genes"`, `"enriched_pathways"`, `"extra_material"`,
-  `"immune_repertoire"`, `"trajectory"`, `"spatial"`, `"trekker"`,
-  `"hla_tcr_motifs"`, `"gene_expression"`, `"gene_id_conversion"`,
-  `"color_management"`, and `"about"`. A conditional page is selected
-  only when it is available for the loaded dataset. Shared links take
-  precedence after restoration.
 
 - welcome_message:
 
@@ -229,29 +211,6 @@ createShinyApp(
   and `passphrase_env`, the name of the environment variable containing
   its passphrase. Optional `timeout_minutes` defaults to 15.
 
-- extra_tables:
-
-  Optional named collection of CSV, TSV, TXT, XLS, XLSX, or XLSM files
-  to bundle as private Extra material tables. Workbook sheets are listed
-  separately and loaded only when selected in the Viewer.
-
-- extra_tables_sheets:
-
-  Optional named list of Excel sheet renames keyed by `extra_tables`
-  labels. Each entry maps displayed names to source sheet names;
-  unmapped sheets remain available.
-
-- admin_account:
-
-  Optional Viewer Administrator account name. Supply it together with
-  `admin_password_env` to enable Shared Link management.
-
-- admin_password_env:
-
-  Optional environment-variable name containing the Viewer Administrator
-  password. The secret must contain at least 12 bytes and is validated
-  but never written into the generated app.
-
 - ...:
 
   Currently unused; reserved for future arguments.
@@ -287,17 +246,6 @@ both unique: two labels cannot select the same resolved input file.
 Generated bundles follow the standard deployment model of one app per R
 process; process-global `Cerebro.options` does not provide same-process
 isolation between separately sourced apps.
-
-Shared Links are disabled unless `CEREBRONEXUS_LINKED_VIEW_SHARE_DB` (or
-`cerebro_options[["linked_view_share_db"]]`) names a writable SQLite
-path outside the generated app directory. Keeping that database external
-prevents `overwrite = TRUE` from deleting live links. Records are
-isolated by a namespace derived from the deployment root; replicated or
-relocated deployments should set
-`CEREBRONEXUS_LINKED_VIEW_SHARE_NAMESPACE` to one stable app-specific
-value. Links expire after 7 days without a usable Viewer Administrator
-and after 90 days when `admin_account` and `admin_password_env` resolve
-at runtime.
 
 Launch settings are validated and frozen in a typed internal manifest
 before target preparation. The generated `app.R` reads that manifest
