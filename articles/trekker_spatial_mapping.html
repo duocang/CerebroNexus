@@ -99,7 +99,7 @@ Wang</h4>
             
             <h4 data-toc-skip class="date">30 August, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/vignettes/trekker_spatial_mapping.Rmd" class="external-link"><code>vignettes/trekker_spatial_mapping.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/restack1/3-portable-shared-views/vignettes/trekker_spatial_mapping.Rmd" class="external-link"><code>vignettes/trekker_spatial_mapping.Rmd</code></a></small>
       <div class="d-none name"><code>trekker_spatial_mapping.Rmd</code></div>
     </div>
 
@@ -367,9 +367,9 @@ self-contained <code>.crb</code>.</p>
 <span><span class="va">ev_bc</span>   <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">sub</a></span><span class="op">(</span><span class="st">"\\.jpe?g$"</span>, <span class="st">""</span>, <span class="fu"><a href="https://rdrr.io/r/base/basename.html" class="external-link">basename</a></span><span class="op">(</span><span class="va">ev_file</span><span class="op">)</span><span class="op">)</span>, <span class="st">"-1"</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">encode_jpeg</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">path</span>, <span class="va">max_px</span> <span class="op">=</span> <span class="fl">620L</span>, <span class="va">quality</span> <span class="op">=</span> <span class="fl">68L</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">img</span> <span class="op">&lt;-</span> <span class="fu">magick</span><span class="fu">::</span><span class="fu"><a href="https://docs.ropensci.org/magick/reference/editing.html" class="external-link">image_read</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span></span>
-<span>  <span class="va">img</span> <span class="op">&lt;-</span> <span class="fu">magick</span><span class="fu">::</span><span class="fu"><a href="https://docs.ropensci.org/magick/reference/transform.html" class="external-link">image_resize</a></span><span class="op">(</span><span class="va">img</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="va">max_px</span>, <span class="st">"x"</span>, <span class="va">max_px</span>, <span class="st">"&gt;"</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="va">raw</span> <span class="op">&lt;-</span> <span class="fu">magick</span><span class="fu">::</span><span class="fu"><a href="https://docs.ropensci.org/magick/reference/editing.html" class="external-link">image_write</a></span><span class="op">(</span><span class="va">img</span>, format <span class="op">=</span> <span class="st">"jpeg"</span>, quality <span class="op">=</span> <span class="va">quality</span><span class="op">)</span></span>
+<span>  <span class="va">img</span> <span class="op">&lt;-</span> <span class="fu">magick</span><span class="fu">::</span><span class="fu"><a href="https://docs.ropensci.org/magick//reference/editing.html" class="external-link">image_read</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span></span>
+<span>  <span class="va">img</span> <span class="op">&lt;-</span> <span class="fu">magick</span><span class="fu">::</span><span class="fu"><a href="https://docs.ropensci.org/magick//reference/transform.html" class="external-link">image_resize</a></span><span class="op">(</span><span class="va">img</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="va">max_px</span>, <span class="st">"x"</span>, <span class="va">max_px</span>, <span class="st">"&gt;"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">raw</span> <span class="op">&lt;-</span> <span class="fu">magick</span><span class="fu">::</span><span class="fu"><a href="https://docs.ropensci.org/magick//reference/editing.html" class="external-link">image_write</a></span><span class="op">(</span><span class="va">img</span>, format <span class="op">=</span> <span class="st">"jpeg"</span>, quality <span class="op">=</span> <span class="va">quality</span><span class="op">)</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"data:image/jpeg;base64,"</span>, <span class="fu">base64enc</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/base64enc/man/base64.html" class="external-link">base64encode</a></span><span class="op">(</span><span class="va">raw</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">}</span></span></code></pre></div>
 </div>
@@ -518,7 +518,7 @@ off.</li>
 <span><span class="co">#&gt; Running under: Ubuntu 24.04.4 LTS</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Matrix products: default</span></span>
-<span><span class="co">#&gt; BLAS/LAPACK: /nix/store/bw1pyf3q5xagajh247fla11gv80ggarr-blas-3/lib/libblas.so.3;  LAPACK version 3.12.0</span></span>
+<span><span class="co">#&gt; BLAS/LAPACK: /nix/store/ffv6vz8kps2qz63xq85ksfz0iwvvvq7w-blas-3/lib/libblas.so.3;  LAPACK version 3.12.0</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; locale:</span></span>
 <span><span class="co">#&gt;  [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              </span></span>
