@@ -26,23 +26,18 @@ createShinyApp(
   show_upload_ui = FALSE,
   initial_page = NULL,
   welcome_message = "Welcome to CerebroNexus!",
-  point_size = list(overview_projection_point_size = NULL),
+  point_size = 5,
+  point_opacity = 1,
+  percentage_cells_to_show = 100,
   variable_to_compare = NULL,
   spatial_images = NULL,
   spatial_image_settings = NULL,
-  spatial_images_flip_x = NULL,
-  spatial_images_flip_y = NULL,
-  spatial_images_scale_x = NULL,
-  spatial_images_scale_y = NULL,
-  spatial_images_offset_x = NULL,
-  spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
   admin_account = NULL,
-  admin_password_env = NULL,
-  ...
+  admin_password_env = NULL
 )
 ```
 
@@ -143,8 +138,22 @@ createShinyApp(
 
 - point_size:
 
-  Named list with `overview_projection_point_size` (and optionally other
-  keys) forwarded to `Cerebro.options`.
+  Point size from 1 through 20. Supply one number for every dataset, or
+  a named numeric vector/list whose names exactly match `cerebro_data`.
+  The value initializes every cell scatter view.
+
+- point_opacity:
+
+  Point opacity from 0.1 through 1. Supply one number for every dataset,
+  or a named numeric vector/list whose names exactly match
+  `cerebro_data`. The value initializes every cell scatter view.
+
+- percentage_cells_to_show:
+
+  Percentage of cells from 10 through 100. Supply one number for every
+  dataset, or a named numeric vector/list whose names exactly match
+  `cerebro_data`. The value initializes every cell scatter view;
+  subsequent UI changes remain page-local.
 
 - variable_to_compare:
 
@@ -167,53 +176,12 @@ createShinyApp(
   Optional nested settings in
   `dataset -> spatial entry -> image label -> settings` form. Settings
   may contain only `flip_x`, `flip_y`, `scale_x`, `scale_y`, `offset_x`,
-  `offset_y`, and `rotation`. A leaf may target an embedded or external
-  image available under that exact dataset and spatial entry. The image
-  label must exist in the union of the CRB's embedded images and this
-  call's `spatial_images`; unknown identities are rejected. Labels are
-  user-facing names, not protocol names.
-
-- spatial_images_flip_x:
-
-  Legacy named per-dataset horizontal flip values. Each dataset must
-  resolve to exactly one spatial image target, unless a legacy
-  multi-path `spatial_images` declaration was migrated; then the value
-  applies to every migrated external image.
-
-- spatial_images_flip_y:
-
-  Legacy named per-dataset vertical flip values. Each dataset must
-  resolve to exactly one spatial image target, unless a legacy
-  multi-path `spatial_images` declaration was migrated; then the value
-  applies to every migrated external image.
-
-- spatial_images_scale_x:
-
-  Legacy named per-dataset X scale values. Each dataset must resolve to
-  exactly one spatial image target, unless a legacy multi-path
-  `spatial_images` declaration was migrated; then the value applies to
-  every migrated external image.
-
-- spatial_images_scale_y:
-
-  Legacy named per-dataset Y scale values. Each dataset must resolve to
-  exactly one spatial image target, unless a legacy multi-path
-  `spatial_images` declaration was migrated; then the value applies to
-  every migrated external image.
-
-- spatial_images_offset_x:
-
-  Legacy named per-dataset horizontal offsets. Each dataset must resolve
-  to exactly one spatial image target, unless a legacy multi-path
-  `spatial_images` declaration was migrated; then the value applies to
-  every migrated external image.
-
-- spatial_images_offset_y:
-
-  Legacy named per-dataset vertical offsets. Each dataset must resolve
-  to exactly one spatial image target, unless a legacy multi-path
-  `spatial_images` declaration was migrated; then the value applies to
-  every migrated external image.
+  `offset_y`, and `rotation`. `image_opacity` may additionally set the
+  initial image opacity from 0 through 1. A leaf may target an embedded
+  or external image available under that exact dataset and spatial
+  entry. The image label must exist in the union of the CRB's embedded
+  images and this call's `spatial_images`; unknown identities are
+  rejected. Labels are user-facing names, not protocol names.
 
 - spatial_plot_rotation:
 
@@ -251,10 +219,6 @@ createShinyApp(
   Optional environment-variable name containing the Viewer Administrator
   password. The secret must contain at least 12 bytes and is validated
   but never written into the generated app.
-
-- ...:
-
-  Currently unused; reserved for future arguments.
 
 ## Value
 
