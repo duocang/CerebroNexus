@@ -1,45 +1,5 @@
 # Changelog
 
-## CerebroNexus 4.3.9
-
-### Viewer
-
-- Generated Viewers can bundle private CSV, TSV and Excel workbooks as
-  lazy Extra material tables with optional display names for workbook
-  sheets.
-- [`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
-  now applies nested per-dataset colour palettes and rejects flat colour
-  vectors that generated Viewers cannot interpret.
-- Generated Viewers can open on a configured initial page, including
-  pages that are available only for the loaded dataset, without shifting
-  historical positional arguments.
-- Closed Viewers cap request bodies at 6 MiB, while open Viewers retain
-  their configured upload limit.
-- Generated Viewers can configure an independent administrator account
-  and password environment variable for Shared Link management.
-- Manual colour choices remain scoped to the dataset where they were
-  made.
-
-## CerebroNexus 4.3.8
-
-### Viewer
-
-- Generated Viewers can configure a separate Viewer Administrator for
-  managing shared links without exposing or reusing the credentials
-  database password.
-- Database authentication cannot grant Viewer Administrator authority
-  unless the independent administrator credential succeeds.
-
-## CerebroNexus 4.3.7
-
-### Viewer
-
-- Linked views can be saved locally, restored, exported and shared
-  through expiring links while preserving panels, filters, viewports and
-  selections.
-- Share storage now scopes anonymous creation quotas by client identity
-  and excludes revoked or expired links from active capacity.
-
 ## CerebroNexus 4.3.6
 
 ### Viewer
