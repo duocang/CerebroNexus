@@ -24,7 +24,6 @@ createShinyApp(
   verbose = TRUE,
   crb_pick_smallest_file = TRUE,
   show_upload_ui = FALSE,
-  initial_page = NULL,
   welcome_message = "Welcome to CerebroNexus!",
   point_size = 5,
   point_opacity = 1,
@@ -32,12 +31,19 @@ createShinyApp(
   variable_to_compare = NULL,
   spatial_images = NULL,
   spatial_image_settings = NULL,
+  spatial_images_flip_x = NULL,
+  spatial_images_flip_y = NULL,
+  spatial_images_scale_x = NULL,
+  spatial_images_scale_y = NULL,
+  spatial_images_offset_x = NULL,
+  spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
   auth = NULL,
   extra_tables = NULL,
   extra_tables_sheets = NULL,
   admin_account = NULL,
-  admin_password_env = NULL
+  admin_password_env = NULL,
+  initial_page = NULL
 )
 ```
 
@@ -183,10 +189,38 @@ createShinyApp(
   images and this call's `spatial_images`; unknown identities are
   rejected. Labels are user-facing names, not protocol names.
 
+- spatial_images_flip_x:
+
+  Legacy named per-dataset horizontal flip values.
+
+- spatial_images_flip_y:
+
+  Legacy named per-dataset vertical flip values.
+
+- spatial_images_scale_x:
+
+  Legacy named per-dataset X scale values.
+
+- spatial_images_scale_y:
+
+  Legacy named per-dataset Y scale values.
+
+- spatial_images_offset_x:
+
+  Legacy named per-dataset horizontal offsets.
+
+- spatial_images_offset_y:
+
+  Legacy named per-dataset vertical offsets.
+
 - spatial_plot_rotation:
 
-  Named list/vector; initial rotation (degrees) applied to spatial cell
-  coordinates. Names must match `cerebro_data`.
+  Optional nested rotations in `dataset -> spatial entry -> degrees`
+  form, applied only to spatial cell coordinates. The legacy named
+  per-dataset vector form remains supported and applies one rotation to
+  every spatial entry in that dataset. Dataset names must match
+  `cerebro_data`; spatial names must match the corresponding CRB's
+  `availableSpatial()`.
 
 - auth:
 
