@@ -1,6 +1,6 @@
 # Changelog
 
-## CerebroNexus 4.3.9
+## CerebroNexus 4.3.8
 
 ### Viewer
 
@@ -20,7 +20,7 @@
 - Manual colour choices remain scoped to the dataset where they were
   made.
 
-## CerebroNexus 4.3.8
+## CerebroNexus 4.3.7
 
 ### Viewer
 
@@ -30,7 +30,7 @@
 - Database authentication cannot grant Viewer Administrator authority
   unless the independent administrator credential succeeds.
 
-## CerebroNexus 4.3.7
+## CerebroNexus 4.3.6
 
 ### Viewer
 
@@ -40,7 +40,7 @@
 - Share storage now scopes anonymous creation quotas by client identity
   and excludes revoked or expired links from active capacity.
 
-## CerebroNexus 4.3.6
+## CerebroNexus 4.3.5
 
 ### Viewer
 
@@ -50,11 +50,6 @@
 - Generated Viewers preserve legacy Spatial image settings and
   row-name-only cell identities throughout linked selections and cell
   details.
-
-## CerebroNexus 4.3.5
-
-### Viewer
-
 - Linked views combine projections, Spatial sections, Trekker and clonal
   layouts in one coordinated workspace with shared selection, colouring,
   filtering and cell details.
