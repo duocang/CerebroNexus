@@ -1,5 +1,15 @@
 # Changelog
 
+## CerebroNexus 4.3.8
+
+### Viewer
+
+- Generated Viewers can configure a separate Viewer Administrator for
+  managing shared links without exposing or reusing the credentials
+  database password.
+- Database authentication cannot grant Viewer Administrator authority
+  unless the independent administrator credential succeeds.
+
 ## CerebroNexus 4.3.7
 
 ### Viewer
