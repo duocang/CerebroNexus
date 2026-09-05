@@ -20,6 +20,10 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
   spatial_images = NULL,
+  trekker_data = NULL,
+  trekker_images = NULL,
+  trekker_sections = NULL,
+  trekker_image_settings = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
 )
@@ -37,6 +41,23 @@ bottlenecks in the Cerebro interface.}
 \item{file}{Where to save the output. External backends require a
 \code{.crb} filename and store the matrix under a sibling name derived
 from the stem.}
+
+\item{trekker_data}{Optional official Trekker companion data. Supply a
+directory or a named list with \code{location} and any of \code{metrics},
+\code{cluster_markers}, \code{moran}, and \code{report}. Supplying this
+argument explicitly declares the export as Trekker; Seurat content alone
+never does.}
+
+\item{trekker_images}{Optional nested list in
+\code{section -> image label -> path} form. Images are copied to the sibling
+\code{<stem>.trekker/images/} directory; only descriptors are stored in CRB.}
+
+\item{trekker_sections}{Optional named cell-to-section vector or a data frame
+with \code{barcode} and \code{section}. Required when multiple sections cannot
+be inferred.}
+
+\item{trekker_image_settings}{Optional per-image visibility, opacity, rotation,
+flip, scale, and offset settings matching \code{trekker_images}.}
 
 \item{experiment_name}{Experiment name.}
 

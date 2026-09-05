@@ -557,7 +557,7 @@ ui <- dashboardPage(
     ## self-contained IIFE with its own Shiny-readiness retry, so order-safe).
     ##  - custom.css      : Console design language; overrides AdminLTE 2 chrome.
     ##  - fill_height.js  : sizes any .cerebro-fill element to the live viewport.
-    ##  - trekker.css     : Trekker insight/QC presentation shared with Linked views.
+    ##  - trekker.css     : Trekker workbench presentation.
     ##  - hla_motifs.*    : modebar over the visNetwork motif network.
     tags$head(
       cerebro_css("custom.css"),

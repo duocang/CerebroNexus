@@ -137,10 +137,7 @@ test_that("Informational Canvas text uses the readable secondary token", {
     ".cv-ctable th",
     ".cv-hint",
     ".cv-field-table-title span",
-    ".cv-field-values span",
-    ".cv-tk-insights-toggle small",
-    ".cv-tk-cell-empty",
-    ".cv-tk-cell-bc"
+    ".cv-field-values span"
   )) {
     expect_match(
       coordviews,
@@ -440,52 +437,6 @@ test_that("Linked actions stay compact and match their scope", {
   )
 })
 
-test_that("Trekker transition accepts Shiny slider change events", {
-  javascript <- viewer_source("www", "cell_views.js")
-  server <- viewer_source("trekker", "server.R")
-  css <- viewer_source("www", "custom.css")
-
-  expect_match(javascript, "function updateTrekkerTransition", fixed = TRUE)
-  expect_match(
-    javascript,
-    "window.jQuery(document)",
-    fixed = TRUE
-  )
-  expect_match(
-    javascript,
-    "input.cvTrekkerTransition change.cvTrekkerTransition",
-    fixed = TRUE
-  )
-  expect_match(javascript, "'#trekker_morph'", fixed = TRUE)
-  expect_match(javascript, ".off(", fixed = TRUE)
-  expect_match(javascript, ".on(", fixed = TRUE)
-  expect_no_match(
-    javascript,
-    "document.addEventListener('input', updateTrekkerTransition);",
-    fixed = TRUE
-  )
-  expect_no_match(
-    javascript,
-    "document.addEventListener('change', updateTrekkerTransition);",
-    fixed = TRUE
-  )
-  expect_match(javascript, "function transitionUnit", fixed = TRUE)
-  expect_match(javascript, "fromUnit: unitOf", fixed = TRUE)
-  expect_match(
-    javascript,
-    "space._unit = transitionUnit(source.fromUnit, source.toUnit, transition);",
-    fixed = TRUE
-  )
-  expect_match(server, 'class = "trekker-transition-control"', fixed = TRUE)
-  expect_match(server, "ticks = FALSE", fixed = TRUE)
-  expect_match(
-    css,
-    ".trekker-transition-control .irs-single",
-    fixed = TRUE
-  )
-  expect_no_match(css, "#trekker_morph + .irs--shiny", fixed = TRUE)
-})
-
 test_that("Settings drawer controls use one spacing system", {
   css <- viewer_source("www", "custom.css")
 
@@ -572,7 +523,6 @@ test_that("All settings drawers use the shared shell and responsive grid", {
   expect_match(linked_ui, '"Background image"', fixed = TRUE)
   expect_match(linked_ui, '"Appearance"', fixed = TRUE)
   expect_match(linked_ui, '"Data"', fixed = TRUE)
-  expect_match(linked_ui, '"Spatial mapping"', fixed = TRUE)
   expect_match(linked_ui, '"Group filters"', fixed = TRUE)
   expect_match(
     linked_ui,
@@ -588,7 +538,7 @@ test_that("All settings drawers use the shared shell and responsive grid", {
   for (id in c("cv-labels", "cv-borders", "cv-square-plots")) {
     expect_match(linked_ui, paste0('"', id, '"'), fixed = TRUE)
   }
-  for (id in c("cv-ps", "cv-opacity", "cv-pct", "cv-dissolve", "cv-niche")) {
+  for (id in c("cv-ps", "cv-opacity", "cv-pct")) {
     expect_match(
       linked_ui,
       paste0('sliderInput\\([[:space:]]*"', id, '"')

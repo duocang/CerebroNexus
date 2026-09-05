@@ -606,13 +606,13 @@ server <- function(input, output, session) {
     "spatial",
     function() availableSpatial()
   )
-  ## Trekker single-cell spatial mapping: its own bespoke page (not the generic
-  ## Spatial tab). Shown only when the loaded .crb carries a `trekker` slot.
+  ## Trekker is explicit: only the official schema-v1 import contract exposes
+  ## the page. Spatial structure alone is never used as a technology signal.
   toggleConditionalTab(
     "trekker",
     function() {
       tk <- tryCatch(data_set()$getTrekker(), error = function(e) NULL)
-      !is.null(tk)
+      identical(tk$schema_version, 1L)
     }
   )
   toggleConditionalTab(

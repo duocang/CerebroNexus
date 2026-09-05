@@ -22,12 +22,11 @@ Cerebro.options <<- list(
   ## This bundled app ships several distinct demo data sets so the sidebar
   ## "Select dataset:" switcher is visible out of the box: switching changes
   ## the UMAP, the cell-type composition, and the conditional tabs (Immune
-  ## Repertoire / Trajectory on the PBMC set, Spatial on the spatial sets).
+  ## Repertoire / Trajectory on the PBMC set, Spatial on the spatial sets, and
+  ## Trekker on the official TrekkerU C subset).
   ## They are embedded-backend .crb files, so no h5 matrix is configured. The
-  ## PBMC set (Full, T+B) is listed first and loaded by default
-  ## (crb_pick_smallest_file = FALSE); it carries TCR + BCR and a monocle2
-  ## B-cell trajectory, so it surfaces both the Immune Repertoire and Trajectory
-  ## tabs (dynamically inserted by insertConditionalTab).
+  ## PBMC set remains the default; the official Trekker subset is available in
+  ## the same dataset selector.
   "crb_file_to_load" = c(
     "PBMC - Full (T+B)" = "extdata/examples/demo_full_tcr_bcr.crb",
     ## REAL public spatial data, one per technology (down-sampled). The bracketed
@@ -43,15 +42,15 @@ Cerebro.options <<- list(
     "Mouse hippocampus (Slide-seq v2)" = "extdata/examples/demo_spatial_slideseq.crb",
     "Mouse ileum (MERFISH)" = "extdata/examples/demo_spatial_merfish.crb",
     "Mouse brain (Xenium)" = "extdata/examples/demo_spatial_xenium.crb",
-    ## REAL Trekker single-cell spatial-mapping output (Curio / Takara), down-
-    ## sampled from the smallest official bundle (Mouse_Brain_TrekkerU_C). Unlike
-    ## the spatial demos above it drives the bespoke **Trekker** tab, not the
-    ## generic Spatial tab: real single nuclei x whole transcriptome, positions
-    ## inferred from bead spatial barcodes, no histology image. Carries a
-    ## `trekker` slot (three coordinate orientations, positioning QC, upstream
-    ## Moran's I, embedded per-nucleus positioning-evidence images).
-    ## Rebuild with data-raw/build_trekker_demo.R (see data-raw/trekker.md).
-    "Mouse brain (Trekker)" = "extdata/examples/demo_trekker.crb",
+    ## REAL official Trekker output, deterministically sampled to 706 nuclei and
+    ## 100 genes. Its four official companion files live in the sibling
+    ## .trekker/ directory. Sampled nuclei alternate between two synthetic UI
+    ## sections so each retains the full coordinate field; each section adds two
+    ## tiny, distinctly shaped overlays that are not measured tissue images. The
+    ## optional 12.9 MB vendor report is deliberately omitted from this sub-1
+    ## MiB package demo; rebuild with
+    ## data-raw/build_trekker_official_demo.R.
+    "Mouse brain (TrekkerU C)" = "extdata/examples/demo_trekker_mouse_brain_u_c.crb",
     ## The HLA & TCR demo: REAL single cells with REAL paired TCR, from 10x's
     ## dextramer cohort. The repertoire is ANTIGEN-SELECTED (cells were sorted
     ## for binding a pMHC dextramer), which is precisely why its motif network is
@@ -152,7 +151,7 @@ Cerebro.options <<- list(
     "Mouse hippocampus (Slide-seq v2)" = 5,
     "Mouse ileum (MERFISH)" = 5,
     "Mouse brain (Xenium)" = 5,
-    "Mouse brain (Trekker)" = 4.4,
+    "Mouse brain (TrekkerU C)" = 7,
     "HLA & TCR" = 1
   ),
   "point_opacity" = c(
@@ -161,7 +160,7 @@ Cerebro.options <<- list(
     "Mouse hippocampus (Slide-seq v2)" = 1,
     "Mouse ileum (MERFISH)" = 1,
     "Mouse brain (Xenium)" = 1,
-    "Mouse brain (Trekker)" = 0.85,
+    "Mouse brain (TrekkerU C)" = 0.9,
     "HLA & TCR" = 0.3
   ),
   "percentage_cells_to_show" = 100,

@@ -54,6 +54,27 @@
   paste0(stem, suffix)
 }
 
+.trekkerSidecarName <- function(final_file) {
+  paste0(tools::file_path_sans_ext(basename(final_file)), ".trekker")
+}
+
+.publishedExportOwnsTrekkerSidecar <- function(final_file, sidecar_name) {
+  if (!file.exists(final_file) || dir.exists(final_file)) {
+    return(FALSE)
+  }
+  object <- tryCatch(readRDS(final_file), error = function(error) NULL)
+  trekker <- tryCatch(object$getTrekker(), error = function(error) NULL)
+  if (is.null(trekker) || !identical(trekker$schema_version, 1L)) {
+    return(FALSE)
+  }
+  paths <- gsub(
+    "\\\\",
+    "/",
+    vapply(trekker$files, function(file) file$path, character(1))
+  )
+  length(paths) > 0L && all(startsWith(paths, paste0(sidecar_name, "/")))
+}
+
 .validatePortableExportBasename <- function(final_file) {
   name <- basename(final_file)
   stem <- tools::file_path_sans_ext(name)
@@ -145,7 +166,8 @@
   export,
   final_file,
   stage_dir,
-  expression_matrix_mode
+  expression_matrix_mode,
+  trekker_sidecar = NULL
 ) {
   final_dir <- dirname(final_file)
   if (!dir.exists(final_dir)) {
@@ -170,6 +192,40 @@
     )
   }
   previous_backend <- .readPublishedExportBackend(final_file)
+  trekker_name <- .trekkerSidecarName(final_file)
+  stage_trekker <- if (is.null(trekker_sidecar)) {
+    NULL
+  } else {
+    file.path(stage_dir, trekker_name)
+  }
+  final_trekker <- file.path(final_dir, trekker_name)
+  owns_existing_trekker <- .publishedExportOwnsTrekkerSidecar(
+    final_file,
+    trekker_name
+  )
+  if (!is.null(stage_trekker) && !dir.exists(stage_trekker)) {
+    stop("The staged Trekker sidecar is missing.", call. = FALSE)
+  }
+  if (file.exists(final_trekker) && !dir.exists(final_trekker)) {
+    stop(
+      "The Trekker sidecar target exists but is not a directory.",
+      call. = FALSE
+    )
+  }
+  if (.pathIsSymbolicLink(final_trekker)) {
+    stop("Refusing to replace a symbolic-link Trekker sidecar.", call. = FALSE)
+  }
+  if (
+    !is.null(stage_trekker) &&
+      dir.exists(final_trekker) &&
+      !owns_existing_trekker
+  ) {
+    stop(
+      "Refusing to replace an existing Trekker sidecar not owned by the published CRB: ",
+      final_trekker,
+      call. = FALSE
+    )
+  }
   stage_sidecar <- NULL
   final_sidecar <- NULL
   if (!identical(backend$type, "embedded")) {
@@ -203,6 +259,7 @@
 
   old_crb_backup <- NULL
   old_sidecar_backup <- NULL
+  old_trekker_backup <- NULL
   retired_sidecar <- NULL
   if (
     !is.null(previous_backend) &&
@@ -223,6 +280,7 @@
   }
   installed_crb <- FALSE
   installed_sidecar <- FALSE
+  installed_trekker <- FALSE
   committed <- FALSE
   on.exit(
     {
@@ -255,6 +313,21 @@
               "Export rollback could not restore the previous expression ",
               "sidecar from: ",
               old_sidecar_backup,
+              call. = FALSE
+            )
+          }
+        }
+        if (
+          installed_trekker &&
+            (file.exists(final_trekker) || dir.exists(final_trekker))
+        ) {
+          unlink(final_trekker, recursive = TRUE, force = TRUE)
+        }
+        if (!is.null(old_trekker_backup) && dir.exists(old_trekker_backup)) {
+          if (!file.rename(old_trekker_backup, final_trekker)) {
+            warning(
+              "Export rollback could not restore the previous Trekker sidecar from: ",
+              old_trekker_backup,
               call. = FALSE
             )
           }
@@ -339,6 +412,23 @@
     }
   }
 
+  if (!is.null(stage_trekker)) {
+    if (dir.exists(final_trekker)) {
+      old_trekker_backup <- tempfile(
+        pattern = paste0(".", basename(final_trekker), "-backup-"),
+        tmpdir = final_dir
+      )
+      if (!file.rename(final_trekker, old_trekker_backup)) {
+        stop("Failed to preserve the previous Trekker sidecar.", call. = FALSE)
+      }
+    }
+    .setExportArtifactMode(stage_trekker, "0700", "the staged Trekker sidecar")
+    if (!file.rename(stage_trekker, final_trekker)) {
+      stop("Failed to install the staged Trekker sidecar.", call. = FALSE)
+    }
+    installed_trekker <- TRUE
+  }
+
   saveRDS(export, stage_crb)
   if (!file.exists(stage_crb)) {
     stop("Failed to serialise the staged Cerebro object.", call. = FALSE)
@@ -365,7 +455,7 @@
   )
   committed <- TRUE
 
-  for (backup in c(old_crb_backup, old_sidecar_backup)) {
+  for (backup in c(old_crb_backup, old_sidecar_backup, old_trekker_backup)) {
     if (
       !is.null(backup) &&
         (file.exists(backup) || dir.exists(backup))
@@ -378,6 +468,20 @@
           call. = FALSE
         )
       }
+    }
+  }
+  if (
+    is.null(stage_trekker) &&
+      owns_existing_trekker &&
+      dir.exists(final_trekker)
+  ) {
+    status <- unlink(final_trekker, recursive = TRUE, force = TRUE)
+    if (!identical(status, 0L)) {
+      warning(
+        "The new export was published, but the previous Trekker sidecar remains at: ",
+        final_trekker,
+        call. = FALSE
+      )
     }
   }
   if (
@@ -419,6 +523,24 @@
 #' @param file Where to save the output. External backends require a
 #'   \code{.crb} filename and store the matrix under a sibling name derived
 #'   from the stem.
+#' @param trekker_data Optional official Trekker companion data. Supply a
+#'   directory or a named list with \code{location} and any of \code{metrics},
+#'   \code{cluster_markers}, \code{moran}, and \code{report}. Supplying this
+#'   argument explicitly declares the export as Trekker; Seurat content alone
+#'   never does.
+#' @param trekker_images Optional nested list in
+#'   \code{section -> image label -> path} form. A leaf may contain \code{path},
+#'   optional coordinate \code{bounds}, and optional \code{provenance}. Images
+#'   are copied under the sibling \code{<stem>.trekker/images/} directory; only
+#'   descriptors and checksums are stored in the CRB.
+#' @param trekker_sections Optional cell-to-section assignment as a named
+#'   character vector or a data frame with \code{barcode} and \code{section}.
+#'   It is required when multiple sections cannot be inferred from the Seurat
+#'   images or Location file.
+#' @param trekker_image_settings Optional nested per-image settings matching
+#'   \code{trekker_images}. Supported fields are \code{rotation}, \code{flip_x},
+#'   \code{flip_y}, \code{scale_x}, \code{scale_y}, \code{offset_x},
+#'   \code{offset_y}, \code{image_opacity}, and \code{visible}.
 #' @param experiment_name Experiment name.
 #' @param organism Organism, e.g. \code{hg} (human), \code{mm} (mouse), etc.
 #' @param groups Names of grouping variables in meta data
@@ -551,6 +673,10 @@ exportFromSeurat <- function(
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
   spatial_images = NULL,
+  trekker_data = NULL,
+  trekker_images = NULL,
+  trekker_sections = NULL,
+  trekker_image_settings = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
 ) {
@@ -1665,10 +1791,48 @@ exportFromSeurat <- function(
   }
 
   ##--------------------------------------------------------------------------##
-  ## Trekker single-cell spatial mapping
+  ## Official Trekker companion data
   ##--------------------------------------------------------------------------##
-  if (!is.null(object@misc$trekker)) {
-    export$addTrekker(object@misc$trekker)
+  trekker_sidecar <- NULL
+  if (!is.null(trekker_data)) {
+    trekker_files <- .normalize_trekker_files(trekker_data)
+    trekker_sidecar <- .trekkerSidecarName(final_file)
+    spatial_coordinates <- tryCatch(
+      Seurat::Embeddings(object, reduction = "SPATIAL"),
+      error = function(error) NULL
+    )
+    trekker_payload <- .build_trekker_payload(
+      trekker_files,
+      cells = Seurat::Cells(object),
+      sidecar_name = trekker_sidecar,
+      declared_by = "exportFromSeurat",
+      spatial_coordinates = spatial_coordinates,
+      trekker_images = trekker_images,
+      trekker_sections = trekker_sections,
+      trekker_image_settings = trekker_image_settings,
+      object = object
+    )
+    trekker_image_sources <- attr(trekker_payload, "trekker_image_sources")
+    attr(trekker_payload, "trekker_image_sources") <- NULL
+    export$addTrekker(trekker_payload)
+    .copy_trekker_files(
+      trekker_files,
+      file.path(export_stage_dir, trekker_sidecar)
+    )
+    .copy_trekker_images(
+      trekker_image_sources,
+      trekker_payload$images,
+      file.path(export_stage_dir, trekker_sidecar)
+    )
+  } else if (
+    !is.null(trekker_images) ||
+      !is.null(trekker_sections) ||
+      !is.null(trekker_image_settings)
+  ) {
+    stop(
+      "Trekker images, sections, and image settings require `trekker_data`.",
+      call. = FALSE
+    )
   }
 
   ##--------------------------------------------------------------------------##
@@ -1840,7 +2004,8 @@ exportFromSeurat <- function(
     export = export,
     final_file = final_file,
     stage_dir = export_stage_dir,
-    expression_matrix_mode = expression_matrix_mode
+    expression_matrix_mode = expression_matrix_mode,
+    trekker_sidecar = trekker_sidecar
   )
 
   ## log message

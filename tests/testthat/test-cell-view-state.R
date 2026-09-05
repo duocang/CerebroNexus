@@ -48,7 +48,7 @@ test_that("specialist state transitions use semantic identities", {
       role = "single::trekker_projection::trekker",
       lens = 2L,
       missing = NULL,
-      controls = list(trekker_mode = "gene", trekker_gene_pick = "CD3D"),
+      controls = list(trekker_colour = "gene", trekker_gene = "CD3D"),
       inactive = NULL,
       panel = "__linked_gene_1::projection::umap"
     )

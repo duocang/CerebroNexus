@@ -87,8 +87,6 @@ cv_panebar <- function(panel) {
 ## One panel slot. Four initial slots avoid DOM churn for the common case;
 ## www/cell_views.js clones more when several spatial sections push the linked
 ## workspace beyond four panels, then lays all visible slots out responsively.
-## Every head carries a (hidden) Trekker info button, shown by JS on whichever
-## panel ends up holding the Trekker space.
 cv_pane <- function(key) {
   low <- tolower(key)
   div(
@@ -100,16 +98,6 @@ cv_pane <- function(key) {
         class = "cv-role-badge",
         id = paste0("cv-role-", low),
         style = "display:none"
-      ),
-      tags$button(
-        type = "button",
-        class = "cv-tbtn",
-        id = paste0("cv-tk-info-", low),
-        `data-act` = "trekker-info",
-        style = "display:none",
-        `data-tip` = "Trekker coordinate source, QC & Moran's I",
-        `aria-label` = "Trekker coordinate source, QC and Moran's I",
-        icon("circle-info")
       ),
       cv_panebar(key),
       ## Focus is a primary workspace action, not an advanced plotting tool.
@@ -422,41 +410,6 @@ tab_coordinated_views <- tabItem(
             ),
             style = "display:none"
           ),
-          shiny::tagAppendAttributes(
-            cerebroSettingsSection(
-              "Spatial mapping",
-              div(
-                class = "cv-trekker cerebro-settings-contents",
-                id = "cv-trekker-ctl",
-                style = "display:none",
-                sliderInput(
-                  "cv-dissolve",
-                  label = "Dissolve least-confident (%)",
-                  min = 0,
-                  max = 95,
-                  step = 5,
-                  value = 0
-                ),
-                shiny::tagAppendAttributes(
-                  sliderInput(
-                    "cv-niche",
-                    label = "Niche radius (µm)",
-                    min = 50,
-                    max = 500,
-                    step = 25,
-                    value = 250
-                  ),
-                  id = "cv-niche-wrap"
-                ),
-                checkboxInput(
-                  "cv-evidence",
-                  label = "Mark positioning evidence",
-                  value = FALSE
-                )
-              )
-            ),
-            style = "display:none"
-          ),
           cerebroSettingsSection(
             "Group filters",
             div(
@@ -628,137 +581,6 @@ tab_coordinated_views <- tabItem(
     ## the initial workspace entirely available to the visualisations.
     div(class = "cv-readout", id = "cv-readout", style = "display:none"),
 
-    ## ---- Trekker insights ------------------------------------------------- ##
-    ## One discoverable, default-collapsed analysis region replaces the old
-    ## page's three vertically stacked boxes. It is client-driven: the selected
-    ## cell, QC and upstream Moran values are already in the Linked views bundle.
-    div(
-      class = "cv-tk-insights",
-      id = "cv-tk-insights",
-      style = "display:none",
-      tags$button(
-        type = "button",
-        class = "cv-tk-insights-toggle",
-        id = "cv-tk-insights-toggle",
-        `aria-expanded` = "false",
-        tags$span(
-          tags$span(class = "cv-tk-insights-kicker", "Trekker"),
-          tags$strong("Trekker insights"),
-          tags$small(
-            "Cell inspector, positioning quality and spatial autocorrelation"
-          )
-        ),
-        icon("chevron-down")
-      ),
-      div(
-        class = "cv-tk-insights-body trekker-page",
-        id = "cv-tk-insights-body",
-        style = "display:none",
-        div(
-          class = "cv-tk-tabs",
-          role = "tablist",
-          `aria-label` = "Trekker insights",
-          tags$button(
-            type = "button",
-            class = "cv-tk-tab is-active",
-            id = "cv-tk-tab-cell",
-            `data-tk-tab` = "cell",
-            role = "tab",
-            `aria-selected` = "true",
-            "Cell inspector"
-          ),
-          tags$button(
-            type = "button",
-            class = "cv-tk-tab",
-            id = "cv-tk-tab-qc",
-            `data-tk-tab` = "qc",
-            role = "tab",
-            `aria-selected` = "false",
-            "Data and QC"
-          ),
-          tags$button(
-            type = "button",
-            class = "cv-tk-tab",
-            id = "cv-tk-tab-moran",
-            `data-tk-tab` = "moran",
-            role = "tab",
-            `aria-selected` = "false",
-            "Spatial autocorrelation — Moran's I"
-          )
-        ),
-        div(
-          class = "cv-tk-panel-stage",
-          id = "cv-tk-panel-stage",
-          div(
-            class = "cv-tk-panel is-active",
-            id = "cv-tk-panel-cell",
-            role = "tabpanel",
-            `aria-labelledby` = "cv-tk-tab-cell",
-            div(
-              class = "cv-tk-cell-empty",
-              id = "cv-tk-cell-empty",
-              "Click a nucleus in any linked cell view to inspect its identity, ",
-              "physical neighbourhood and positioning evidence."
-            ),
-            div(
-              class = "cv-tk-cell-content",
-              id = "cv-tk-cell-content",
-              style = "display:none",
-              tags$h4(id = "cv-tk-cell-title", "—"),
-              tags$div(class = "cv-tk-cell-bc", id = "cv-tk-cell-bc"),
-              div(class = "cv-card-body", id = "cv-tk-cell-body")
-            )
-          ),
-          div(
-            class = "cv-tk-panel",
-            id = "cv-tk-panel-qc",
-            role = "tabpanel",
-            `aria-labelledby` = "cv-tk-tab-qc",
-            style = "display:none",
-            div(class = "tk-grid", id = "cv-tk-stats"),
-            div(
-              class = "tk-two",
-              div(
-                tags$h4(class = "tk-sub-h", "Positioning class distribution"),
-                tags$table(
-                  class = "tk-table",
-                  tags$thead(tags$tr(
-                    tags$th("Spatial locations"),
-                    tags$th(class = "num", "Nuclei"),
-                    tags$th(class = "num", "Share"),
-                    tags$th("Handling")
-                  )),
-                  tags$tbody(id = "cv-tk-postbl")
-                ),
-                div(class = "tk-flag", id = "cv-tk-salvflag")
-              ),
-              div(
-                tags$h4(class = "tk-sub-h", "Provenance"),
-                tags$dl(class = "tk-kv", id = "cv-tk-prov"),
-                div(class = "tk-flag", id = "cv-tk-rangeflag")
-              )
-            )
-          ),
-          div(
-            class = "cv-tk-panel",
-            id = "cv-tk-panel-moran",
-            role = "tabpanel",
-            `aria-labelledby` = "cv-tk-tab-moran",
-            style = "display:none",
-            tags$table(
-              class = "tk-table",
-              tags$thead(tags$tr(
-                tags$th(class = "num", "#"),
-                tags$th("Gene"),
-                tags$th(class = "num", "Moran's I")
-              )),
-              tags$tbody(id = "cv-tk-morantbl")
-            )
-          )
-        )
-      )
-    ),
-
     ## Detailed selected-cell plot and table are rendered only while a selection
     ## exists, so the landing surface stays compact without dropping the result.
     div(
@@ -874,20 +696,6 @@ tab_coordinated_views <- tabItem(
         "cells tend to differ. The estimate uses each cell's six nearest spatial ",
         "neighbours and a stable sample of at most 1,000 positioned cells."
       )
-    ),
-
-    tags$dialog(
-      id = "cv-evidence-modal",
-      class = "cv-evidence-modal",
-      tags$button(
-        class = "cv-insight-x",
-        onclick = "document.getElementById('cv-evidence-modal').close()",
-        `aria-label` = "Close",
-        HTML("&times;")
-      ),
-      tags$div(class = "cv-insight-kicker", "Positioning evidence"),
-      tags$div(class = "cv-evidence-modal-cell", id = "cv-evidence-modal-cell"),
-      tags$img(id = "cv-evidence-modal-img", alt = "Positioning evidence")
     )
   )
 )

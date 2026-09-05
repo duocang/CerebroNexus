@@ -25,6 +25,12 @@ createShinyApp(
   percentage_cells_to_show = 100,
   variable_to_compare = NULL,
   spatial_images = NULL,
+  trekker_data = NULL,
+  trekker_replace = NULL,
+  trekker_images = NULL,
+  trekker_sections = NULL,
+  trekker_image_settings = NULL,
+  trekker_image_replace = NULL,
   spatial_image_settings = NULL,
   spatial_images_flip_x = NULL,
   spatial_images_flip_y = NULL,
@@ -128,6 +134,29 @@ non-empty within an entry. A leaf may instead be a descriptor containing
 copied to opaque, safe relative paths under \code{spatial-assets/}. The
 legacy \code{c(Dataset = path)} form is accepted only
 when that CRB has exactly one spatial entry.}
+
+\item{trekker_data}{Optional official Trekker companion data. For one CRB,
+supply a directory or named companion-file list. For multiple CRBs, supply
+a named list keyed by \code{cerebro_data}. A Location file upgrades an
+ordinary CRB in the staged app; existing Trekker data may be augmented.}
+
+\item{trekker_replace}{Optional categories to replace when supplied content
+differs from an existing CRB. Allowed values are \code{metrics},
+\code{cluster_markers}, \code{moran}, and \code{report}, keyed by dataset
+for multiple CRBs. Location is immutable here and requires re-export.}
+
+\item{trekker_images}{Optional nested manifest in
+\code{dataset -> section -> image label -> path} form. The dataset level may be
+omitted for one CRB. Files are copied into the app's private Trekker directory.}
+
+\item{trekker_sections}{Optional named cell-to-section assignments, keyed by
+dataset for multiple CRBs.}
+
+\item{trekker_image_settings}{Optional settings matching
+\code{trekker_images}. They may update an existing image without resupplying it.}
+
+\item{trekker_image_replace}{Exact existing image identities allowed to receive
+different content, in \code{dataset -> section -> character image labels} form.}
 
 \item{spatial_image_settings}{Optional nested settings in
 \code{dataset -> spatial entry -> image label -> settings} form. Settings

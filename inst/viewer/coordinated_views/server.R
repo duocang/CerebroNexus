@@ -845,6 +845,42 @@ output[["coordviews_image_ui"]] <- renderUI({
       }
     }
   }
+  ## Trekker layers use the same client-owned alignment controls. Their pixels
+  ## arrive through the specialist bundle rather than the Linked views bundle,
+  ## so use one descriptor only to create this shared control fragment; the
+  ## browser re-seeds it from whichever layer is selected for editing.
+  if (is.null(img)) {
+    tk <- tryCatch(data_set()$getTrekker(), error = function(error) NULL)
+    descriptor <- NULL
+    if (identical(tk$schema_version, 1L)) {
+      for (section_images in (tk$images %||% list())) {
+        if (length(section_images)) {
+          descriptor <- section_images[[1L]]
+          break
+        }
+      }
+    }
+    if (!is.null(descriptor)) {
+      settings <- descriptor$settings
+      bounds <- unlist(descriptor$bounds)
+      img <- list(
+        preset = list(
+          opacity = settings$image_opacity,
+          offsetX = settings$offset_x,
+          offsetY = settings$offset_y,
+          scaleX = settings$scale_x,
+          scaleY = settings$scale_y,
+          flipX = settings$flip_x,
+          flipY = settings$flip_y,
+          rotation = settings$rotation
+        ),
+        coord_span = c(
+          diff(bounds[c("xmin", "xmax")]),
+          diff(bounds[c("ymin", "ymax")])
+        )
+      )
+    }
+  }
   if (is.null(img)) {
     return(NULL)
   }

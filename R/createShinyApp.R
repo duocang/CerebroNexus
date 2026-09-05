@@ -2112,6 +2112,28 @@ dedent <- function(string) {
 #'   copied to opaque, safe relative paths under \code{spatial-assets/}. The
 #'   legacy \code{c(Dataset = path)} form is accepted only
 #'   when that CRB has exactly one spatial entry.
+#' @param trekker_data Optional official Trekker companion data. For one CRB,
+#'   supply a directory or named companion-file list. For multiple CRBs, supply
+#'   a named list keyed by \code{cerebro_data}. A Location file upgrades an
+#'   ordinary CRB in the staged app; existing Trekker data may be augmented.
+#' @param trekker_replace Optional categories to replace when supplied content
+#'   differs from an existing CRB. Allowed values are \code{metrics},
+#'   \code{cluster_markers}, \code{moran}, and \code{report}, keyed by dataset
+#'   for multiple CRBs. Location is immutable here and requires re-export.
+#' @param trekker_images Optional nested manifest in
+#'   \code{dataset -> section -> image label -> path} form. For one dataset the
+#'   dataset level may be omitted. Images are copied into the app's private
+#'   Trekker directory and represented by descriptors in its staged CRB.
+#' @param trekker_sections Optional cell-to-section assignments, keyed by
+#'   dataset for multiple CRBs. Each assignment is a named character vector or
+#'   a data frame with \code{barcode} and \code{section}.
+#' @param trekker_image_settings Optional nested settings matching
+#'   \code{trekker_images}. Settings may also update an image already present in
+#'   the CRB without supplying the image again.
+#' @param trekker_image_replace Exact existing image identities that may be
+#'   replaced with different content, in
+#'   \code{dataset -> section -> character image labels} form. Different content
+#'   otherwise raises an error; identical checksums are deduplicated.
 #' @param spatial_image_settings Optional nested settings in
 #'   \code{dataset -> spatial entry -> image label -> settings} form. Settings
 #'   may contain only \code{flip_x}, \code{flip_y}, \code{scale_x},
@@ -2191,6 +2213,12 @@ createShinyApp <- function(
   percentage_cells_to_show = 100,
   variable_to_compare = NULL,
   spatial_images = NULL,
+  trekker_data = NULL,
+  trekker_replace = NULL,
+  trekker_images = NULL,
+  trekker_sections = NULL,
+  trekker_image_settings = NULL,
+  trekker_image_replace = NULL,
   spatial_image_settings = NULL,
   spatial_images_flip_x = NULL,
   spatial_images_flip_y = NULL,
@@ -2264,6 +2292,30 @@ createShinyApp <- function(
   if (anyDuplicated(data_labels)) {
     stop("cerebro_data labels must be unique.", call. = FALSE)
   }
+  trekker_inputs <- .normalize_app_trekker_data(trekker_data, data_labels)
+  trekker_replacements <- .normalize_trekker_replace(
+    trekker_replace,
+    data_labels
+  )
+  trekker_image_inputs <- .normalize_app_trekker_option(
+    trekker_images,
+    data_labels,
+    "trekker_images"
+  )
+  trekker_section_inputs <- .normalize_app_trekker_option(
+    trekker_sections,
+    data_labels,
+    "trekker_sections"
+  )
+  trekker_image_setting_inputs <- .normalize_app_trekker_option(
+    trekker_image_settings,
+    data_labels,
+    "trekker_image_settings"
+  )
+  trekker_image_replacements <- .normalize_trekker_image_replace(
+    trekker_image_replace,
+    data_labels
+  )
   point_size <- .normalizeDatasetNumericOption(
     point_size,
     data_labels,
@@ -2694,6 +2746,48 @@ createShinyApp <- function(
     )
   }
 
+  trekker_plans <- setNames(vector("list", length(cerebro_data)), data_labels)
+  for (index in seq_along(cerebro_data)) {
+    dataset <- data_labels[[index]]
+    target_root <- paste0(
+      "trekker/",
+      .spatialImageBundlePathComponent(dataset)
+    )
+    bundle_target_root <- paste0(private_data_root, "/", target_root)
+    plan <- .prepare_app_trekker(
+      resolved_crb_sources[[index]],
+      supplied = trekker_inputs[[dataset]],
+      replace = trekker_replacements[[dataset]],
+      target_root = target_root,
+      dataset = dataset,
+      supplied_images = trekker_image_inputs[[dataset]],
+      supplied_sections = trekker_section_inputs[[dataset]],
+      supplied_image_settings = trekker_image_setting_inputs[[dataset]],
+      image_replace = trekker_image_replacements[[dataset]]
+    )
+    trekker_plans[[dataset]] <- plan
+    if (is.null(plan)) {
+      next
+    }
+    for (category in names(plan$files)) {
+      claim_target(
+        paste0(bundle_target_root, "/", basename(plan$files[[category]])),
+        plan$files[[category]],
+        paste0("Trekker ", category, " companion file")
+      )
+    }
+    for (section in names(plan$images)) {
+      for (label in names(plan$images[[section]])) {
+        descriptor <- plan$payload$images[[section]][[label]]
+        claim_target(
+          paste0(private_data_root, "/", descriptor$path),
+          plan$images[[section]][[label]],
+          paste0("Trekker image ", section, "/", label)
+        )
+      }
+    }
+  }
+
   override_keys <- c("expression_matrix_h5", "expression_matrix_BPCells")
   result_target <- .canonicalTargetPath(result_dir)
   for (key in override_keys) {
@@ -2940,6 +3034,39 @@ createShinyApp <- function(
     if (verbose) {
       cat("  -", entry$target, paste0("(", entry$artifact, ")\n"))
     }
+  }
+
+  for (index in seq_along(cerebro_data)) {
+    plan <- trekker_plans[[data_labels[[index]]]]
+    if (is.null(plan)) {
+      next
+    }
+    staged_crb <- file.path(stage_result_dir, crb_targets[[index]])
+    for (descriptor in plan$payload$files) {
+      staged_file <- file.path(private_data_dir, descriptor$path)
+      if (!identical(.trekker_sha256(staged_file), descriptor$sha256)) {
+        stop(
+          "Trekker companion checksum changed while copying: ",
+          descriptor$name,
+          call. = FALSE
+        )
+      }
+    }
+    for (section in names(plan$payload$images)) {
+      for (descriptor in plan$payload$images[[section]]) {
+        staged_file <- file.path(private_data_dir, descriptor$path)
+        if (!identical(.trekker_sha256(staged_file), descriptor$sha256)) {
+          stop(
+            "Trekker image checksum changed while copying: ",
+            descriptor$name,
+            call. = FALSE
+          )
+        }
+      }
+    }
+    object <- readRDS(staged_crb)
+    object$addTrekker(plan$payload)
+    build_ops$save_rds(object, staged_crb)
   }
 
   if (!is.null(viewer_auth)) {

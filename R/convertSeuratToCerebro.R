@@ -364,6 +364,14 @@
 #'   ymax = ...))}. Missing bounds are derived from the exported coordinates.
 #'   Supplied images are embedded in the generated CRB; existing embedded images
 #'   declared by the Seurat object are retained.
+#' @param trekker_data Optional official Trekker companion directory or named
+#'   file list forwarded to \code{exportFromSeurat()}.
+#' @param trekker_images Optional Trekker image manifest forwarded to
+#'   \code{exportFromSeurat()}.
+#' @param trekker_sections Optional Trekker cell-to-section assignment forwarded
+#'   to \code{exportFromSeurat()}.
+#' @param trekker_image_settings Optional Trekker per-image display and alignment
+#'   settings forwarded to \code{exportFromSeurat()}.
 #' @param verbose Logical indicating whether to print progress messages; default:
 #'   \code{TRUE}.
 #' @param cell_cycle Character vector of column names in metadata containing
@@ -453,6 +461,10 @@ convertSeuratToCerebro <- function(
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
   spatial_images = NULL,
+  trekker_data = NULL,
+  trekker_images = NULL,
+  trekker_sections = NULL,
+  trekker_image_settings = NULL,
   verbose = TRUE,
   cell_cycle = NULL,
   marker_file = NULL,
@@ -1048,6 +1060,10 @@ convertSeuratToCerebro <- function(
         use_delayed_array = use_delayed_array,
         expression_matrix_mode = expression_matrix_mode,
         spatial_images = spatial_images,
+        trekker_data = trekker_data,
+        trekker_images = trekker_images,
+        trekker_sections = trekker_sections,
+        trekker_image_settings = trekker_image_settings,
         .expression_resolution = expr_resolution
       )
       cat("Successfully exported:", file_name, "\n")

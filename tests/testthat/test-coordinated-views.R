@@ -6,9 +6,7 @@
 # drive it directly. Two past regressions are guarded here explicitly:
 #   * a single-level group / single clonotype serialising as a JSON scalar
 #     instead of an array (the I()/AsIs contract in cv_group/cv_space/cv_clone),
-#     which made the client throw mid-update and keep the previous data set; and
-#   * a standard `spatial` slot and a `trekker` slot collapsing into one space
-#     instead of two — each builder keeps its own space identity.
+#     which made the client throw mid-update and keep the previous data set.
 
 inst_candidates <- c(
   normalizePath("inst", mustWork = FALSE),
@@ -25,7 +23,6 @@ if (!is.na(local_inst)) {
     "viewer/coordinated_views/bundle.R"
   )
   tcr_crb <- file.path(local_inst, "extdata/examples/demo_full_tcr_bcr.crb")
-  trekker_crb <- file.path(local_inst, "extdata/examples/demo_trekker.crb")
 } else {
   bundle_file <- system.file(
     "viewer/coordinated_views/bundle.R",
@@ -33,10 +30,6 @@ if (!is.na(local_inst)) {
   )
   tcr_crb <- system.file(
     "extdata/examples/demo_full_tcr_bcr.crb",
-    package = "CerebroNexus"
-  )
-  trekker_crb <- system.file(
-    "extdata/examples/demo_trekker.crb",
     package = "CerebroNexus"
   )
 }
@@ -448,45 +441,6 @@ test_that("Linked views keeps replacement controls contextual and user-facing", 
   expect_match(ui, "cv-moran-badge", fixed = TRUE)
   expect_match(js, "function updateMoranBadges", fixed = TRUE)
   expect_match(js, "function fieldSummaryHtml", fixed = TRUE)
-})
-
-test_that("Trekker depth views form one collapsed insights region", {
-  ui_file <- file.path(dirname(bundle_file), "UI.R")
-  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
-  css_file <- file.path(dirname(bundle_file), "..", "www", "coordviews.css")
-  skip_if_not(
-    file.exists(ui_file) && file.exists(js_file) && file.exists(css_file)
-  )
-
-  ui <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
-  css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
-
-  expect_match(ui, 'id = "cv-tk-insights"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-insights-toggle"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-tab-cell"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-tab-qc"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-tab-moran"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-panel-stage"', fixed = TRUE)
-  expect_match(ui, 'id = "cv-tk-cell-body"', fixed = TRUE)
-  expect_no_match(ui, 'id = "cv-tk-modal"', fixed = TRUE)
-
-  expect_match(js, "function openTrekkerInsights", fixed = TRUE)
-  expect_match(js, "function selectTrekkerInsight", fixed = TRUE)
-  expect_match(js, "function animateTrekkerInsight", fixed = TRUE)
-  expect_match(js, "function trekkerScrollHost", fixed = TRUE)
-  expect_match(js, "function fillTrekkerInsights", fixed = TRUE)
-  expect_match(js, "cv-tk-cell-block--position", fixed = TRUE)
-  expect_match(js, "cv-tk-cell-block--evidence", fixed = TRUE)
-  expect_match(js, "cv-tk-cell-block--metadata", fixed = TRUE)
-
-  expect_match(css, "#cv-tk-cell-body > .cv-tk-cell-block", fixed = TRUE)
-  expect_match(
-    css,
-    "grid-template-columns: repeat(4, minmax(0, 1fr))",
-    fixed = TRUE
-  )
-  expect_match(css, ".cv-tk-panel-stage.is-switching", fixed = TRUE)
 })
 
 test_that("cv_group/cv_space/cv_clone force JSON arrays even at length 1", {
@@ -1009,7 +963,7 @@ test_that("Linked views consumes the selected dataset point appearance", {
   expect_identical(bundle$default_percentage_cells_to_show, 60)
 })
 
-test_that("spatial and Trekker spaces do not require an expression projection", {
+test_that("spatial spaces do not require an expression projection", {
   skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   md <- data.frame(cell_barcode = cells, row.names = cells)
@@ -1042,118 +996,6 @@ test_that("spatial and Trekker spaces do not require an expression projection", 
     vapply(spatial_bundle$spaces, `[[`, character(1), "id"),
     "spatial"
   )
-
-  trekker_crb <- base
-  trekker_crb$availableSpatial <- function() character()
-  trekker_crb$getSpatialData <- function(name) NULL
-  trekker_crb$getTrekker <- function() {
-    list(
-      x = c(10, 20),
-      y = c(30, 40),
-      barcodes = cells,
-      fields = list(),
-      evidence = list(),
-      qc = NULL,
-      moran = NULL
-    )
-  }
-
-  trekker_bundle <- cv_env$cv_build_bundle(trekker_crb)
-  expect_type(trekker_bundle, "list")
-  expect_length(trekker_bundle$projections, 0L)
-  expect_null(trekker_bundle$default_projection)
-  expect_identical(
-    vapply(trekker_bundle$spaces, `[[`, character(1), "id"),
-    "trekker"
-  )
-})
-
-test_that("Builder Trekker backgrounds and appearance reach Linked views", {
-  skip_if_not(have_bundle)
-  cells <- c("c1", "c2")
-  md <- data.frame(cell_barcode = cells, row.names = cells)
-  crb <- list(
-    getMetaData = function() md,
-    getGroups = function() character(),
-    getParameters = function() list(),
-    availableProjections = function() character(),
-    availableSpatial = function() character(),
-    getImmuneRepertoire = function() NULL,
-    getTrekker = function() {
-      list(
-        x = c(10, 20),
-        y = c(30, 40),
-        barcodes = cells,
-        fields = list(),
-        evidence = list(),
-        qc = NULL,
-        moran = NULL,
-        histology_image = "data:image/png;base64,AA==",
-        histology_image_bounds = c(
-          xmin = 0,
-          xmax = 30,
-          ymin = 20,
-          ymax = 50
-        ),
-        histology_alignment = list(
-          source = "trekker.png",
-          image_opacity = 0.7,
-          point_opacity = 0.65,
-          point_size = 9
-        )
-      )
-    }
-  )
-
-  cv_env$Cerebro.options <- list(
-    point_size = c(ds = 5),
-    point_opacity = c(ds = 0.65),
-    viewer_content = list(
-      ds = list()
-    )
-  )
-  cv_env$available_crb_files <- list(
-    selected = "f.crb",
-    files = c(ds = "f.crb")
-  )
-  on.exit(
-    {
-      rm("Cerebro.options", envir = cv_env)
-      rm("available_crb_files", envir = cv_env)
-    },
-    add = TRUE
-  )
-
-  bundle <- cv_env$cv_build_bundle(crb)
-  trekker <- bundle$spaces[[which(
-    vapply(
-      bundle$spaces,
-      `[[`,
-      character(1),
-      "id"
-    ) ==
-      "trekker"
-  )]]
-  expect_length(trekker$images, 1L)
-  expect_identical(trekker$images[[1L]]$label, "trekker.png")
-  expect_identical(
-    trekker$images[[1L]]$uri,
-    "data:image/png;base64,AA=="
-  )
-  expect_identical(trekker$images[[1L]]$preset$opacity, 0.7)
-  expect_identical(trekker$background_scope, "Trekker")
-  ## Cell appearance belongs to the dataset, not its background image.
-  expect_identical(bundle$default_point_size, 5)
-  expect_identical(bundle$default_point_opacity, 0.65)
-  expect_null(trekker$builder_point_opacity)
-  expect_null(trekker$builder_point_size)
-
-  js <- paste(
-    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
-    collapse = "\n"
-  )
-  expect_match(js, "function pointSizeOf(p)", fixed = TRUE)
-  expect_match(js, "function pointOpacityOf(p)", fixed = TRUE)
 })
 
 test_that("Canvas uses one point-size unit in linked and standalone views", {
@@ -1332,53 +1174,6 @@ test_that("the histology bar offers compact numeric alignment controls", {
   expect_no_match(css, ".cv-img-range::after", fixed = TRUE)
 })
 
-
-## The card's Positioning section is only as good as what the builder actually
-## ships. It used to be tested against a hand-written payload, which is how it
-## came to read a `fields.bead_noise` that no builder has ever produced while
-## printing position confidence twice -- once from `conf`, once from the field of
-## the same name. These assertions are on the real output for the real object.
-test_that("the trekker bundle carries what a placement is judged on", {
-  skip_if_not(have_bundle)
-  skip_if_not(file.exists(trekker_crb))
-
-  b <- cv_env$cv_build_bundle(readRDS(trekker_crb))
-  expect_false(is.null(b$trekker))
-
-  ## position_confidence is a FIELD -- a colouring -- so the card reads it from
-  ## there. `conf` remains the bare vector the dissolve slider indexes.
-  expect_true("position_confidence" %in% names(b$fields))
-  expect_false(is.null(b$trekker$conf))
-  purity <- b$fields$spatial_purity
-  expect_identical(purity$source, "trekker")
-  expect_true(nzchar(purity$desc))
-  expect_true(length(purity$by_type) > 0)
-  expect_true(all(vapply(
-    purity$by_type,
-    function(x) !is.null(x$type) && !is.null(x$median),
-    logical(1)
-  )))
-
-  ## The two numbers the dedicated page prints beside confidence, which say
-  ## whether that confidence is worth anything, now travel with it.
-  expect_false(is.null(b$trekker$conf_noise))
-  expect_false(is.null(b$trekker$conf_sb))
-  expect_equal(length(b$trekker$conf_noise), b$n)
-  expect_equal(length(b$trekker$conf_sb), b$n)
-
-  ## Evidence is not just a ring: the detail card must be able to explain why a
-  ## nucleus was placed there without sending the user back to the old page.
-  expect_equal(length(b$trekker$evidence_img), b$n)
-  evidence <- Filter(Negate(is.null), unclass(b$trekker$evidence_img))
-  expect_true(length(evidence) > 0)
-  expect_true(all(startsWith(unlist(evidence), "data:image/")))
-
-  ## No field is invented: everything the card lists as Trekker's own is a key
-  ## the builder produced.
-  tk_fields <- Filter(function(k) !startsWith(k, "meta:"), names(b$fields))
-  expect_true(length(tk_fields) > 0)
-  expect_false("bead_noise" %in% tk_fields)
-})
 
 test_that("the histology bar exists when any section carries an image", {
   ## A space's own `image` is its FIRST sample's. A data set whose first section

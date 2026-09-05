@@ -33,7 +33,7 @@
 
   S.trekkerGeneControls = function (activeView, gene) {
     if (activeView !== 'trekker_projection' || !gene) return null;
-    return { trekker_mode: 'gene', trekker_gene_pick: gene };
+    return { trekker_colour: 'gene', trekker_gene: gene };
   };
 
   S.shouldStashSingleState = function (activeView, targetView, preserveTarget) {

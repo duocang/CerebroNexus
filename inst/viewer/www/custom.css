@@ -1656,26 +1656,6 @@ body .irs--shiny .irs-from, body .irs--shiny .irs-to, body .irs--shiny .irs-sing
 body .irs--shiny .irs-line { background: var(--c-surface-3) !important; }
 body .irs--shiny .irs-grid-text { color: var(--c-text-2) !important; }
 
-/* Trekker transition stays as compact as the neighbouring selects. */
-body .trekker-transition-control .irs--shiny {
-  height: var(--c-toolbar-control-height);
-}
-body .trekker-transition-control .irs-min,
-body .trekker-transition-control .irs-max,
-body .trekker-transition-control .irs-from,
-body .trekker-transition-control .irs-to,
-body .trekker-transition-control .irs-single,
-body .trekker-transition-control .irs-grid {
-  display: none !important;
-}
-body .trekker-transition-control .irs-line,
-body .trekker-transition-control .irs-bar {
-  top: 17px;
-}
-body .trekker-transition-control .irs-handle {
-  top: 10px;
-}
-
 /* materialSwitch → soft toggle, warm ON state, no inset shadow */
 body .material-switch > label::before {
   background: var(--c-surface-3) !important;

@@ -20,6 +20,10 @@ convertSeuratToCerebro(
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
   spatial_images = NULL,
+  trekker_data = NULL,
+  trekker_images = NULL,
+  trekker_sections = NULL,
+  trekker_image_settings = NULL,
   verbose = TRUE,
   cell_cycle = NULL,
   marker_file = NULL,
@@ -97,6 +101,18 @@ vector is path shorthand; a leaf may instead be
 ymax = ...))}. Missing bounds are derived from the exported coordinates.
 Supplied images are embedded in the generated CRB; existing embedded images
 declared by the Seurat object are retained.}
+
+\item{trekker_data}{Optional official Trekker companion directory or named
+file list forwarded to \code{exportFromSeurat()}.}
+
+\item{trekker_images}{Optional Trekker image manifest forwarded to
+\code{exportFromSeurat()}.}
+
+\item{trekker_sections}{Optional Trekker cell-to-section assignment forwarded
+to \code{exportFromSeurat()}.}
+
+\item{trekker_image_settings}{Optional Trekker per-image display and alignment
+settings forwarded to \code{exportFromSeurat()}.}
 
 \item{verbose}{Logical indicating whether to print progress messages; default:
 \code{TRUE}.}

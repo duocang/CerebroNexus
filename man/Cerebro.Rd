@@ -96,12 +96,10 @@ compatibility with older .crb files).}
 
     \item{\code{spatial}}{\code{list} that contains spatial data (coordinates and expression).}
 
-    \item{\code{trekker}}{\code{list} with Trekker single-cell spatial-mapping
-content: canonical and variant (transposed / y-mirrored) coordinates,
-UMAP coordinates, per-nucleus cluster/cell-type, positioning QC in the
-vendor's original field names, the upstream (vendor) Moran's I table,
-and per-nucleus positioning-evidence images (base64 \code{data:} URIs).
-Consumed by the Trekker page. Optional; older .crb files simply lack it.}
+    \item{\code{trekker}}{Optional Trekker import contract. Schema version 1
+stores Location coordinates for every CRB cell, complete parsed official
+companion tables, bounded report metadata, and descriptors for the immutable
+original files retained outside the CRB.}
   }
   \if{html}{\out{</div>}}
 }
@@ -1505,8 +1503,7 @@ normalized on read.
 \if{latex}{\out{\hypertarget{method-Cerebro-getTrekker}{}}}
 \subsection{\code{Cerebro$getTrekker()}}{
   Get Trekker single-cell spatial-mapping data, or \code{NULL} when none is
-stored. Safe on older objects that predate the field (the slot is read
-through a \code{tryCatch} so the getter never errors on a legacy .crb).
+stored.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$getTrekker()}
@@ -1530,9 +1527,7 @@ through a \code{tryCatch} so the getter never errors on a legacy .crb).
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{data}}{\code{list} carrying the Trekker page content (coordinates,
-cell metadata, positioning QC, upstream Moran's I, and positioning
-evidence). See the Trekker page module for the expected structure.}
+      \item{\code{data}}{Trekker schema-version-1 import contract.}
     }
     \if{html}{\out{</div>}}
   }

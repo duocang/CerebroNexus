@@ -642,9 +642,8 @@ cv_build_trajectories <- function(crb, cells) {
 
 ## A continuous colouring. `v` is quantised to 0..scale (an integer vector keeps
 ## the bundle small); `min`/`max` carry the TRUE range so the client can render a
-## real-valued colourbar and hover value instead of the quantised index. Trekker's
-## own fields arrive pre-quantised to 0-255, hence the per-field `scale` rather
-## than one global constant. Must match FIELD_PREFIX in www/cell_views.js.
+## real-valued colourbar and hover value instead of the quantised index. Must
+## match FIELD_PREFIX in www/cell_views.js.
 cv_field_mode <- "__field__"
 cv_field_scale <- 1000L
 cv_field <- function(
@@ -669,23 +668,6 @@ cv_field <- function(
   )
 }
 
-cv_trekker_by_type <- function(value) {
-  if (is.null(value) || !length(value)) {
-    return(NULL)
-  }
-  if (is.list(value) && all(vapply(value, is.list, logical(1)))) {
-    return(I(unname(value)))
-  }
-  labels <- names(value) %||% dimnames(value)[[1]]
-  if (is.null(labels) || length(labels) != length(value)) {
-    return(NULL)
-  }
-  I(Map(
-    function(type, median) list(type = type, median = as.numeric(median)),
-    as.character(labels),
-    as.numeric(value)
-  ))
-}
 cv_clone <- function(
   id,
   label,
@@ -1086,23 +1068,14 @@ cv_build_spatial <- function(crb, cells) {
   space
 }
 
-## Trekker single-cell spatial mapping: its physical coordinates live in the
-## `trekker` slot, not `spatial`, so availableSpatial() misses them. Exposed as
-## its OWN space (id "trekker"), distinct from a standard `spatial` space, so a
-## data set carrying BOTH keeps both — the right panel switches between them
-## rather than one silently swallowing the other. Aligned to `cells` via barcodes
-## (NA where a cell was not positioned). Returns list(space, bundle) or NULL.
+## Official Trekker Location coordinates form an independent physical space.
 cv_build_trekker <- function(crb, cells, md) {
   tk <- tryCatch(crb$getTrekker(), error = function(e) NULL)
-  if (
-    is.null(tk) ||
-      is.null(tk$x) ||
-      is.null(tk$y) ||
-      is.null(tk$barcodes)
-  ) {
+  coordinates <- tk$coordinates
+  if (!identical(tk$schema_version, 1L) || is.null(coordinates)) {
     return(NULL)
   }
-  trekker_cells <- cv_cell_ids(tk$barcodes, "Trekker data")
+  trekker_cells <- cv_cell_ids(coordinates$barcode, "Trekker data")
   tk_idx <- match(cells, trekker_cells)
   if (!any(!is.na(tk_idx))) {
     return(NULL)
@@ -1110,166 +1083,10 @@ cv_build_trekker <- function(crb, cells, md) {
   space <- cv_space(
     "trekker",
     "Physical (Trekker)",
-    round(as.numeric(tk$x)[tk_idx], 2),
-    round(as.numeric(tk$y)[tk_idx], 2)
+    round(as.numeric(coordinates$x)[tk_idx], 2),
+    round(as.numeric(coordinates$y)[tk_idx], 2)
   )
-  alignment <- tk[["histology_alignment", exact = TRUE]]
-  appearance <- cv_alignment_appearance(alignment)
-  histology <- tk[["histology_image", exact = TRUE]]
-  if (
-    is.character(histology) &&
-      length(histology) == 1L &&
-      !is.na(histology) &&
-      nzchar(histology)
-  ) {
-    positioned_x <- as.numeric(tk$x)[tk_idx]
-    positioned_y <- as.numeric(tk$y)[tk_idx]
-    xr <- suppressWarnings(range(positioned_x, na.rm = TRUE))
-    yr <- suppressWarnings(range(positioned_y, na.rm = TRUE))
-    if (!all(is.finite(xr)) || diff(xr) <= 0) {
-      finite_x <- positioned_x[is.finite(positioned_x)]
-      centre <- if (length(finite_x)) finite_x[[1L]] else 0
-      xr <- c(centre - 0.5, centre + 0.5)
-    }
-    if (!all(is.finite(yr)) || diff(yr) <= 0) {
-      finite_y <- positioned_y[is.finite(positioned_y)]
-      centre <- if (length(finite_y)) finite_y[[1L]] else 0
-      yr <- c(centre - 0.5, centre + 0.5)
-    }
-    bounds <- tk[["histology_image_bounds", exact = TRUE]]
-    required_bounds <- c("xmin", "xmax", "ymin", "ymax")
-    valid_bounds <- !is.null(bounds) &&
-      !is.null(names(bounds)) &&
-      all(required_bounds %in% names(bounds))
-    if (valid_bounds) {
-      bounds <- suppressWarnings(as.numeric(bounds[required_bounds]))
-      valid_bounds <- length(bounds) == 4L &&
-        !anyNA(bounds) &&
-        all(is.finite(bounds)) &&
-        bounds[[1L]] < bounds[[2L]] &&
-        bounds[[3L]] < bounds[[4L]]
-    }
-    if (!valid_bounds) {
-      bounds <- c(xr[[1L]], xr[[2L]], yr[[1L]], yr[[2L]])
-    }
-    names(bounds) <- required_bounds
-    source <- if (is.list(alignment)) {
-      as.character(alignment[["source"]] %||% character())
-    } else {
-      character()
-    }
-    label <- if (length(source) == 1L && !is.na(source) && nzchar(source)) {
-      basename(source)
-    } else {
-      "Trekker background"
-    }
-    preset <- cv_image_preset("trekker", label)
-    if (length(appearance$image_opacity) == 1L) {
-      preset$opacity <- appearance$image_opacity
-    }
-    image_entry <- list(
-      id = "trekker-embedded",
-      label = label,
-      uri = histology,
-      bounds = as.list(bounds),
-      preset = preset,
-      coord_span = c(diff(xr), diff(yr))
-    )
-    space$image <- image_entry[c(
-      "id",
-      "label",
-      "bounds",
-      "preset",
-      "coord_span"
-    )]
-    space$images <- I(list(image_entry))
-    space$background_scope <- "Trekker"
-  }
-  ## Bring the Trekker page's extra controls into Linked views: continuous
-  ## physical fields to colour by, per-cell positioning confidence (dissolve),
-  ## and a positioning-evidence flag (nuclei markers). All aligned to `cells`;
-  ## positioned-only fields are NA where unpositioned. Numeric META columns are
-  ## NOT built here — cv_build_fields() offers every one of them for every data
-  ## set, Trekker or not.
-  flds <- list()
-  for (fn in names(tk$fields)) {
-    f <- tk$fields[[fn]]
-    if (is.null(f$v)) {
-      next
-    }
-    ## Trekker's own fields arrive pre-quantised to 0-255.
-    flds[[fn]] <- cv_field(
-      f$label %||% fn,
-      as.integer(f$v)[tk_idx],
-      f$min %||% 0,
-      f$max %||% 1,
-      scale = 255L,
-      source = "trekker",
-      desc = f$desc %||% NULL,
-      by_type = cv_trekker_by_type(f$by_type %||% NULL)
-    )
-  }
-  conf_v <- if (!is.null(tk$conf) && !is.null(tk$conf$prop_top)) {
-    I(round(as.numeric(tk$conf$prop_top)[tk_idx], 3))
-  } else {
-    NULL
-  }
-  ## The rest of what Trekker recorded about a position, per cell. `conf` stays a
-  ## bare vector because the dissolve slider indexes it directly; these travel
-  ## beside it. Without them the workspace could say how confident a placement
-  ## was but not how noisy the beads under it were or how many spatial barcodes
-  ## it rested on -- the two numbers the dedicated page shows next to it, and the
-  ## ones that say whether the confidence is worth anything.
-  conf_extra <- list()
-  if (!is.null(tk$conf)) {
-    for (k in c("prop_noise", "sb_total", "sb_umi_top")) {
-      v <- tk$conf[[k]]
-      if (is.null(v)) {
-        next
-      }
-      conf_extra[[k]] <- I(round(as.numeric(v)[tk_idx], 4))
-    }
-  }
-  ev_flag <- NULL
-  ev_img <- NULL
-  if (length(tk$evidence)) {
-    ev_bc <- vapply(
-      tk$evidence,
-      function(e) e$bc %||% "",
-      character(1)
-    )
-    ev_flag <- I(as.integer(cells %in% ev_bc))
-    ## Keep the evidence aligned to the bundle's cell order. Most entries are
-    ## NULL (the vendor ships images for only a small subset), so this adds the
-    ## actual explanation to the detail card without duplicating barcodes or
-    ## forcing a server round-trip for every click.
-    ev_img <- vector("list", length(cells))
-    for (e in tk$evidence) {
-      at <- match(as.character(e$bc %||% ""), cells)
-      img <- e$img %||% NULL
-      if (!is.na(at) && !is.null(img) && nzchar(img)) {
-        ev_img[at] <- list(as.character(img))
-      }
-    }
-    ev_img <- I(ev_img)
-  }
-  bundle <- list(
-    conf = conf_v,
-    conf_noise = conf_extra$prop_noise,
-    conf_sb = conf_extra$sb_total,
-    conf_sb_umi = conf_extra$sb_umi_top,
-    evidence = ev_flag,
-    evidence_img = ev_img,
-    ## Dataset-level (not per-cell, no `tk_idx` re-indexing needed): the
-    ## same coordinate-source / QC / Moran's I detail the Trekker page
-    ## shows, surfaced here via a modal (see cell_views.js `cv-tk-info-btn`).
-    qc = tk$qc,
-    moran = tk$moran
-  )
-  ## `fields` goes to the bundle's TOP-LEVEL field list, not into $trekker: the
-  ## client reads one list of continuous colourings regardless of where each came
-  ## from, so there is a single place to add, look up and render them.
-  list(space = space, bundle = bundle, fields = flds)
+  list(space = space, bundle = NULL, fields = list())
 }
 
 ## Immune axis: clone identity, sizes, ranks, a clone "space", expansion level.
@@ -1446,7 +1263,7 @@ cv_build_bundle <- function(crb) {
   ## (which lists only getGroups()):
   ##   groups    — registered grouping variables: colour AND filter
   ##   cat_extra — other categorical columns: colour only
-  ##   fields    — numeric columns (+ Trekker's physical fields): continuous
+  ##   fields    — numeric columns: continuous
   group_names <- tryCatch(crb$getGroups(), error = function(e) character(0))
   groups <- cv_build_groups(crb, md, cv_group_colors)
   extra <- cv_build_extra_groups(md, group_names, cv_group_colors)

@@ -916,22 +916,22 @@
     return [x * Math.cos(theta) - y * Math.sin(theta),
       x * Math.sin(theta) + y * Math.cos(theta)];
   }
-  function drawImage(p) {
-    var sp = spaceById[p.spaceId];
-    var cimg = currentImage(sp);
-    var state = sp && sp._imgState;
-    if (!sp || !cimg || !sp._imgEl || !sp._imgReady || !state || !state.show) return;
+  function drawImageLayer(p, cimg, imageElement, ready, state) {
+    if (!cimg || !imageElement || !ready || !state || !state.show) return;
     var b = cimg.bounds;
     if (!b) return;
     state = imageRenderState(cimg, state);
-    var tlData = rotateDataPoint(b.xmin, b.ymax, state.rotate);
-    var trData = rotateDataPoint(b.xmax, b.ymax, state.rotate);
-    var blData = rotateDataPoint(b.xmin, b.ymin, state.rotate);
-    var centerData = rotateDataPoint(
+    var centerData = [
       (Number(b.xmin) + Number(b.xmax)) / 2,
-      (Number(b.ymin) + Number(b.ymax)) / 2,
-      state.rotate
-    );
+      (Number(b.ymin) + Number(b.ymax)) / 2
+    ];
+    var rotated = function (x, y) {
+      var point = rotateDataPoint(x - centerData[0], y - centerData[1], state.rotate);
+      return [point[0] + centerData[0], point[1] + centerData[1]];
+    };
+    var tlData = rotated(b.xmin, b.ymax);
+    var trData = rotated(b.xmax, b.ymax);
+    var blData = rotated(b.xmin, b.ymin);
     var tl = dataToScreen(p, tlData[0], tlData[1]);
     var tr = dataToScreen(p, trData[0], trData[1]);
     var bl = dataToScreen(p, blData[0], blData[1]);
@@ -952,9 +952,20 @@
     c.transform(tr[0] - tl[0], tr[1] - tl[1],
       bl[0] - tl[0], bl[1] - tl[1],
       tl[0] - center[0], tl[1] - center[1]);
-    c.drawImage(sp._imgEl, 0, 0, 1, 1);
+    c.drawImage(imageElement, 0, 0, 1, 1);
     c.restore();
     c.globalAlpha = 1;
+  }
+  function drawImage(p) {
+    var sp = spaceById[p.spaceId];
+    if (!sp) return;
+    if (sp._imgLayers && sp._imgLayers.length) {
+      sp._imgLayers.forEach(function (layer) {
+        drawImageLayer(p, layer.image, layer.element, layer.ready, layer.state);
+      });
+      return;
+    }
+    drawImageLayer(p, currentImage(sp), sp._imgEl, sp._imgReady, sp._imgState);
   }
 
   function drawTrajectory(p) {
@@ -3753,19 +3764,19 @@
       gene
     );
     if (trekkerControls) {
-      var mode = $('trekker_mode');
-      var picker = $('trekker_gene_pick');
+      var mode = $('trekker_colour');
+      var picker = $('trekker_gene');
       if (mode && mode.selectize) {
-        mode.selectize.setValue(trekkerControls.trekker_mode, false);
+        mode.selectize.setValue(trekkerControls.trekker_colour, false);
       }
       if (picker && picker.selectize) {
         picker.selectize.addOption({ value: gene, label: gene });
-        picker.selectize.setValue(trekkerControls.trekker_gene_pick, false);
+        picker.selectize.setValue(trekkerControls.trekker_gene, false);
       } else if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-        Shiny.setInputValue('trekker_mode', trekkerControls.trekker_mode);
+        Shiny.setInputValue('trekker_colour', trekkerControls.trekker_colour);
         Shiny.setInputValue(
-          'trekker_gene_pick',
-          trekkerControls.trekker_gene_pick
+          'trekker_gene',
+          trekkerControls.trekker_gene
         );
       }
     }
@@ -4181,7 +4192,17 @@
   function isSpatialSpace(sp) {
     return !!(sp && (sp._spatialSample || sp.background_scope));
   }
+  function activeTrekkerLayerSpace() {
+    if (singleActive !== 'trekker_projection') return null;
+    for (var i = 0; i < singleSpaceIds.length; i++) {
+      var sp = spaceById[singleSpaceIds[i]];
+      if (sp && sp._layerImages && sp._layerImages.length) return sp;
+    }
+    return null;
+  }
   function backgroundSpaces() {
+    var trekker = activeTrekkerLayerSpace();
+    if (trekker) return [trekker];
     var out = selectedSpatial.map(function (name) {
       return spaceById[spatialId(name)];
     }).filter(Boolean);
@@ -4192,12 +4213,19 @@
     return out;
   }
   function activeSpatial() {
-    if (activeSpatialId && spaceById[activeSpatialId]) return spaceById[activeSpatialId];
-    for (var id in spaceById) if (isSpatialSpace(spaceById[id])) return spaceById[id];
+    var trekker = activeTrekkerLayerSpace();
+    if (trekker) return trekker;
+    if (activeSpatialId && spaceById[activeSpatialId]) {
+      return spaceById[activeSpatialId];
+    }
+    for (var id in spaceById) {
+      if (isSpatialSpace(spaceById[id])) return spaceById[id];
+    }
     return null;
   }
   function spatialImages(sp) {
     if (!sp) return [];
+    if (sp._layerImages && sp._layerImages.length) return sp._layerImages;
     if (sp.images && sp.images.length) return sp.images;
     // Multi-section bundles keep the large image payload on each sample rather
     // than duplicating the opening sample's base64 data at the space level.
@@ -4221,6 +4249,17 @@
       if (list[i].id === wanted) return list[i];
     }
     return list[0];
+  }
+  function layerForImage(sp, img) {
+    if (!sp || !img || !sp._imgLayers) return null;
+    for (var i = 0; i < sp._imgLayers.length; i++) {
+      if (sp._imgLayers[i].image.id === img.id) return sp._imgLayers[i];
+    }
+    return null;
+  }
+  function currentImageState(sp, img) {
+    var layer = layerForImage(sp, img || currentImage(sp));
+    return layer ? layer.state : (sp && sp._imgState);
   }
   function spatialName(sp) {
     return sp && (sp._sampleName ||
@@ -4247,7 +4286,7 @@
   function presetState(img) {
     var pr = (img && img.preset) || {};
     return {
-      show: true,
+      show: pr.show !== false,
       opacity: (pr.opacity != null ? pr.opacity : 0.6),
       offsetX: (pr.offsetX != null ? pr.offsetX : 0),
       offsetY: (pr.offsetY != null ? pr.offsetY : 0),
@@ -4272,10 +4311,12 @@
       var stateKey = backgroundStateKey(sp);
       if (stateKey) imgChoice[stateKey] = sp._customImageId || null;
     }
-    var k = imgKey(sp, currentImage(sp));
-    if (!k || !sp || !sp._imgState) return;
+    var img = currentImage(sp);
+    var state = currentImageState(sp, img);
+    var k = imgKey(sp, img);
+    if (!k || !state) return;
     var copy = {};
-    for (var f in sp._imgState) copy[f] = sp._imgState[f];
+    for (var f in state) copy[f] = state[f];
     imgStates[k] = copy;
   }
   function loadSpaceImage(space) {
@@ -4288,6 +4329,36 @@
     // guard below exists to stop the layout retriggering ITSELF, not to skip a
     // relayout the data asked for.
     _layoutKey = null;
+    if (space._layerImages && space._layerImages.length) {
+      var layerToken = space._imgToken;
+      var scopeKey = backgroundStateKey(space);
+      var wanted = imgChoice[scopeKey];
+      var available = space._layerImages.some(function (image) {
+        return image.id === wanted;
+      });
+      space._customImageId = available ? wanted : space._layerImages[0].id;
+      space._imgLayers = space._layerImages.map(function (image) {
+        var key = imgKey(space, image);
+        var state = (key && imgStates[key]) ? imgStates[key] : presetState(image);
+        state.show = true;
+        var layer = {
+          image: image,
+          element: null,
+          ready: false,
+          state: state
+        };
+        var element = new Image();
+        element.onload = function () {
+          if (layerToken !== space._imgToken) return;
+          layer.ready = true; drawAll();
+        };
+        element.src = image.uri;
+        layer.element = element;
+        return layer;
+      });
+      return;
+    }
+    space._imgLayers = null;
     var img = currentImage(space);
     if (!img || !img.uri) return;
     var k = imgKey(space, img);
@@ -4339,9 +4410,21 @@
     var active = activeSpatial();
     if (!active || allSpaces.indexOf(active) < 0) active = allSpaces[0] || null;
     var section = ctl.closest('.cerebro-settings-section');
-    if (section) section.style.display = active ? '' : 'none';
-    ctl.style.display = active ? '' : 'none';
+    var images = active ? spatialImages(active) : [];
+    var layerMode = !!(active && active._layerImages);
+    if (section) {
+      section.style.display = images.length ? '' : 'none';
+      var heading = section.querySelector('.cerebro-settings-heading > span');
+      if (heading) heading.textContent = layerMode ? 'Layer image' : 'Background image';
+    }
+    ctl.style.display = images.length ? '' : 'none';
+    var displayTitle = ctl.querySelector('.cv-bg-display-title');
+    if (displayTitle) displayTitle.textContent = layerMode ? 'Edit layer' : 'Display';
+    var showInput = $('cv-img-show');
+    var showLabel = showInput && showInput.closest('label');
+    if (showLabel) showLabel.style.display = layerMode ? 'none' : '';
     if (tabs) {
+      tabs.style.display = layerMode ? 'none' : '';
       tabs.innerHTML = allSpaces.map(function (sp) {
         return '<button type="button" class="cv-bg-space-tab' + (sp === active ? ' is-on' : '') +
           '" data-cv-bg-tab="' + esc(sp.id) + '">' +
@@ -4364,13 +4447,16 @@
         backgroundScopePulse = false;
       }
     }
-    var images = active ? spatialImages(active) : [];
     var options = images.map(function (im) {
       return { value: im.id, text: im.label || im.id };
-    }).concat([{ value: IMG_NONE, text: 'None' }]);
+    });
+    if (!layerMode) options.push({ value: IMG_NONE, text: 'None' });
     var value = active && active._customImageId
       ? active._customImageId
       : (images[0] ? images[0].id : IMG_NONE);
+    if (!options.some(function (option) { return option.value === value; })) {
+      value = images[0] ? images[0].id : IMG_NONE;
+    }
     if (!select.selectize && window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
       window.jQuery(select).selectize({
         persist: false,
@@ -4383,9 +4469,9 @@
       select.selectize.setValue(value, true);
       if (images.length) select.selectize.enable(); else select.selectize.disable();
     } else {
-      select.innerHTML = images.map(function (im) {
-        return '<option value="' + esc(im.id) + '">' + esc(im.label || im.id) + '</option>';
-      }).concat(['<option value="' + IMG_NONE + '">None</option>']).join('');
+      select.innerHTML = options.map(function (option) {
+        return '<option value="' + esc(option.value) + '">' + esc(option.text) + '</option>';
+      }).join('');
       select.disabled = !images.length;
       select.value = value;
       select.onchange = function () { setSpatialImage(select.value, active); };
@@ -4401,8 +4487,8 @@
     stashImgState(sp);
     sp._customImageId = id;
     imgChoice[backgroundStateKey(sp)] = id;
-    loadSpaceImage(sp);
-    if (sp.id === activeSpatialId) {
+    if (!sp._layerImages) loadSpaceImage(sp);
+    if (sp === activeSpatial()) {
       seedImgControls();
     }
     renderImagePicker();
@@ -4438,7 +4524,7 @@
     var sp = activeSpatial();
     if (!sp) return;
     var cur = currentImage(sp);
-    var v = st || sp._imgState || presetState(cur);
+    var v = st || currentImageState(sp, cur) || presetState(cur);
     var set = function (id, x) { syncImgRangeValue($(id), x); };
     var tick = function (id, on) { var el = $(id); if (el) el.checked = !!on; };
     var span = (cur && cur.coord_span) || null;
@@ -4485,10 +4571,17 @@
     var sp = activeSpatial();
     if (!sp) return;
     var cur = currentImage(sp);
-    sp._imgState = presetState(cur);
+    var layer = layerForImage(sp, cur);
+    var state = presetState(cur);
+    if (layer) {
+      state.show = true;
+      layer.state = state;
+    } else {
+      sp._imgState = state;
+    }
     var k = imgKey(sp, cur);
     if (k) delete imgStates[k];   // forget the adjustments, for this pair only
-    seedImgControls(sp._imgState);
+    seedImgControls(state);
     drawAll();
   }
 
@@ -4648,12 +4741,15 @@
   // controls (before render / no image) leave the current value unchanged.
   function syncImgControls(changed) {
     var sp = activeSpatial();
-    if (!sp || !currentImage(sp)) return;
-    if (!sp._imgState) sp._imgState = presetState(currentImage(sp));
-    var imgState = sp._imgState;
+    var image = currentImage(sp);
+    if (!sp || !image) return;
+    var layer = layerForImage(sp, image);
+    if (layer && !layer.state) layer.state = presetState(image);
+    if (!layer && !sp._imgState) sp._imgState = presetState(image);
+    var imgState = layer ? layer.state : sp._imgState;
     var num = function (id, cur) { var el = $(id); return el ? parseFloat(el.value) : cur; };
     var chk = function (id, cur) { var el = $(id); return el ? el.checked : cur; };
-    imgState.show = chk('cv-img-show', imgState.show);
+    if (!layer) imgState.show = chk('cv-img-show', imgState.show);
     imgState.opacity = num('cv-img-opacity', imgState.opacity);
     imgState.offsetX = num('cv-img-offx', imgState.offsetX);   // data units
     imgState.offsetY = num('cv-img-offy', imgState.offsetY);   // data units
@@ -5433,6 +5529,9 @@
         }];
         space._customImageId = space.images[0].id;
       }
+      if (panel.multi_image_layers && Array.isArray(panel.images)) {
+        space._layerImages = panel.images;
+      }
       spaceById[spaceId] = space;
       spaces.push(spaceId);
       modes[spaceId] = mode;
@@ -5620,6 +5719,8 @@
     psSeeded = pointSizeEdited = pointOpacityEdited = true;
     ensurePanelSlots(singleSpaceIds.length); buildPanels(); layoutPanels();
     renderGroupFilters();
+    renderImagePicker();
+    seedImgControls();
     updateSpaceScopedControls();
     setTrekkerSettingsVisible(!!D.trekker);
     var trekkerInsights = $('cv-tk-insights');
@@ -6136,12 +6237,7 @@
         },
         focus_space: focusSpace,
         lenses: savedLenses(),
-        spatial_backgrounds: savedBackgrounds(),
-        trekker: {
-          dissolve_percentage: dissolvePct,
-          evidence: evidenceOn,
-          niche_radius: nicheRadius
-        }
+        spatial_backgrounds: savedBackgrounds()
       }
     };
   }
@@ -6313,9 +6409,6 @@
     selectMode = display.selection_mode;
     applyCloneLayout(display.clone_layout);
     setSegOn(display.clone_layout);
-    dissolvePct = finiteNumber(view.trekker && view.trekker.dissolve_percentage, dissolvePct, 0, 100);
-    evidenceOn = !!(view.trekker && view.trekker.evidence);
-    nicheRadius = finiteNumber(view.trekker && view.trekker.niche_radius, nicheRadius, 1, 100000);
     rebuildPctMask(); rebuildDissolve();
 
     [['cv-ps', ps], ['cv-opacity', pointOpacity], ['cv-pct', pctShow],
@@ -6628,6 +6721,12 @@
       if (t && t.closest && t.closest('#cv-more-btn, #trekker_more_button')) {
         setTimeout(syncPointControls, 0);
       }
+      if (t && t.closest && t.closest('#trekker_more_button')) {
+        setTimeout(function () {
+          renderImagePicker();
+          seedImgControls();
+        }, 0);
+      }
       if (t && t.closest && t.closest('#cv-tk-insights-toggle')) {
         var tkToggle = $('cv-tk-insights-toggle');
         setTrekkerInsightsOpen(
@@ -6746,28 +6845,6 @@
         return;
       }
     });
-    function updateTrekkerTransition(e) {
-      var id = e.target && e.target.id;
-      if (id !== 'trekker_morph' || singleActive !== 'trekker_projection') return;
-      var transition = Math.max(0, Math.min(1, Number(e.target.value) || 0));
-      singleSpaceIds.forEach(function (spaceId) {
-        var space = spaceById[spaceId], source = space && space._transition;
-        if (!source) return;
-        space.x = source.fromX.map(function (value, index) {
-          return value == null || source.toX[index] == null ? null
-            : value + (source.toX[index] - value) * transition;
-        });
-        space.y = source.fromY.map(function (value, index) {
-          return value == null || source.toY[index] == null ? null
-            : value + (source.toY[index] - value) * transition;
-        });
-        space._unit = transitionUnit(source.fromUnit, source.toUnit, transition);
-        panels.forEach(function (panel) {
-          if (panel.spaceId === spaceId) project(panel);
-        });
-      });
-      drawAll();
-    }
     function updateLinkedSlider(target) {
       if (!target || target._cvSyncing) return;
       var id = target.id, value = Number(target.value);
@@ -6784,15 +6861,6 @@
       } else if (id === 'cv-pct') {
         pctShow = value;
         rebuildPctMask(); applyActiveChange();
-      } else if (id === 'cv-dissolve') {
-        dissolvePct = value;
-        rebuildDissolve(); applyActiveChange();
-      } else if (id === 'cv-niche') {
-        nicheRadius = value;
-        rebuildNiche();
-        renderSelbar();
-        drawAll();
-        if (!sel) renderReadout();
       }
     }
     function updateLinkedToggle(target) {
@@ -6823,26 +6891,12 @@
     }
     window.jQuery(document)
       .off(
-        'input.cvTrekkerTransition change.cvTrekkerTransition',
-        '#trekker_morph'
-      )
-      .on(
-        'input.cvTrekkerTransition change.cvTrekkerTransition',
-        '#trekker_morph',
-        function () {
-          updateTrekkerTransition({
-            target: { id: this.id, value: this.value }
-          });
-        }
-      );
-    window.jQuery(document)
-      .off(
         'input.cvLinkedSettings',
-        '#cv-ps, #cv-opacity, #cv-pct, #cv-dissolve, #cv-niche'
+        '#cv-ps, #cv-opacity, #cv-pct'
       )
       .on(
         'input.cvLinkedSettings',
-        '#cv-ps, #cv-opacity, #cv-pct, #cv-dissolve, #cv-niche',
+        '#cv-ps, #cv-opacity, #cv-pct',
         function () { updateLinkedSlider(this); }
       );
     document.addEventListener('input', function (e) {
@@ -6885,7 +6939,6 @@
         renderLegend(); drawAll();
         return;
       }
-      if (id === 'cv-evidence') { evidenceOn = e.target.checked; drawAll(); return; }
       if (updateLinkedToggle(e.target)) return;
       // a group-filter level checkbox toggled
       var fwrap = e.target && e.target.closest &&
