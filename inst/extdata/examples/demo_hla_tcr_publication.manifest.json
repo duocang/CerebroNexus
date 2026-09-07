@@ -105,7 +105,7 @@
     {
       "file": "demo_hla_tcr_publication.screenshots.json",
       "bytes": 1945,
-      "sha256": "ad06848173790fb311147fd963e9be46bff7adc48b74a1847bfb4114c3050cc1"
+      "sha256": "40b33be53fe7060550365883bca66c9f819c806a8e5beb69746a1b2c89af1427"
     }
   ],
   "figures": {
@@ -128,7 +128,7 @@
       "sha256": "850e736fdf810270f60d1cb89959fd0603fc2c329ff73ba64cfd9edaefca8c77"
     }
   },
-  "screenshot_source_commit": "95625bf3214923e765bbe46dcafc3bf743fddd14",
+  "screenshot_source_commit": "eb6fa10eef5d54ea681cf11e883566ad8f137341",
   "screenshots": [
     {
       "file": "vignettes/img/hla_tcr_real_data_info.png",
@@ -136,7 +136,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "44727d64b7ab4eff1bdaa299150c8acc06afe071aacddc7011a2c8beed5a7ec3"
+      "sha256": "2df966eca26ccc1602ab8d6bec751ace749256a5c4d41d602d804c4da1f2d61c"
     },
     {
       "file": "vignettes/img/hla_tcr_main_case_linked_views_all.png",
@@ -144,7 +144,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "ce5b7716e5fbd7a3e504448df3b8a2939ca39ce1ed121d8ec3659f078c848a23"
+      "sha256": "8fc57d80442755f1c5dde3a37b3dceb6f327d957d08fa48508aa8b095b79a1fd"
     },
     {
       "file": "vignettes/img/hla_tcr_strict_linked_views_selected.png",
@@ -152,7 +152,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": "md5-cell-set-v1:610343eab7f6b1e68abe64b327192a6e",
-      "sha256": "e65e87b887c2956b78258959cd7f7a4829bb235db1b3d8d932a79d7d0bc31761"
+      "sha256": "bf9119964a5d0b0b93c0ba8c46f1358788f0ca8abd43af2dd41921666c4c91c2"
     },
     {
       "file": "vignettes/img/hla_tcr_main_case_linked_views_selected.png",
@@ -160,7 +160,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": "md5-cell-set-v1:51f5964f2c17318cb0adcee6eaa91d2e",
-      "sha256": "c42fabeabd4d41e84de42cf17b326f48bcd3830bb61792c51fb4ccd4e548a364"
+      "sha256": "4b335c7cccd58c925a731d8bbad7d92acba9df8ee119d33859ddc1c55a718c72"
     },
     {
       "file": "vignettes/img/hla_tcr_main_case_share_dialog.png",
@@ -184,7 +184,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "66178ca265cde82ab791907f5f8a3f48ca7c7bdc7dc62ca04709e0ea37f702c6"
+      "sha256": "3ce2d8210f07cc8ef3c7f18aff0ce4f2cfa80273787dbe579dcf73841d46e02f"
     },
     {
       "file": "vignettes/img/hla_tcr_real_data_qc.png",
@@ -192,7 +192,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "9d94361cba33133ecd8810c0545eaf7ca54e899103388f2414a840864c861cfd"
+      "sha256": "af6e0ae3eef515c38379c327b99aa309451226aaf6f1889383450ca8e9c39a19"
     }
   ]
 }
