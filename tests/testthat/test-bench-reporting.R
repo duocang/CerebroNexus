@@ -134,6 +134,7 @@ test_that("report and plots consume repeated publication rows", {
   exports$total_mb <- rep(c(3, 1, 2), 3)
   exports$rss_mb <- 10
   exports$r_peak_mb <- 20
+  exports$peak_rss_mb <- 24
   exports$query_plan_fingerprint <- "plan"
   utils::write.csv(
     exports,
@@ -158,6 +159,7 @@ test_that("report and plots consume repeated publication rows", {
   access$load_secs <- 0.1
   access$attach_secs <- 0.2
   access$rss_mb <- rep(c(30, 10, 20), 6)
+  access$peak_rss_mb <- access$rss_mb + 5
   access$first_query_secs <- 0.03
   access$hot_p50_secs <- rep(c(0.03, 0.01, 0.02), 6)
   access$hot_p95_secs <- access$hot_p50_secs * 1.2
@@ -251,6 +253,7 @@ test_that("report and plots consume repeated publication rows", {
   report <- readLines(file.path(result_dir, "summary.md"), warn = FALSE)
   expect_true(any(grepl("Publication-profile evidence", report, fixed = TRUE)))
   expect_true(any(grepl("n=3", report, fixed = TRUE)))
+  expect_true(any(grepl("peak process RSS MB", report, fixed = TRUE)))
 
   plot_status <- system2(
     file.path(R.home("bin"), "Rscript"),
@@ -275,4 +278,17 @@ test_that("report and plots consume repeated publication rows", {
     out_dir,
     "expression_backend_benchmark_ceiling.png"
   )))
+})
+
+test_that("publication figure labels distinct Viewer workloads", {
+  skip_unless_bench_reporting()
+  script <- readLines(
+    file.path(bench_root, "src", "41_draw_figures.R"),
+    warn = FALSE
+  )
+  source <- paste(script, collapse = "\n")
+
+  expect_match(source, "Interactive single-gene latency", fixed = TRUE)
+  expect_match(source, "Marker-panel block latency", fixed = TRUE)
+  expect_match(source, 'plot_annotation(tag_levels = "A")', fixed = TRUE)
 })

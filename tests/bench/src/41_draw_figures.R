@@ -132,15 +132,15 @@ panel_line <- function(df, metric, title, subtitle, ylab, log_y = TRUE) {
 p_hot <- panel_line(
   access_summary,
   "hot_p50_secs",
-  "Warmed single-gene query",
-  "median and range across fresh-process repeats; log scale",
+  "Interactive single-gene latency",
+  "warmed Viewer gene lookup; median and range; log scale",
   "seconds"
 )
 p_block <- panel_line(
   access_summary,
   "block_secs",
-  "12-gene block read",
-  "marker-view access pattern; median and range; log scale",
+  "Marker-panel block latency",
+  "12 genes across all cells; median and range; log scale",
   "seconds"
 )
 p_rss <- panel_line(
@@ -183,7 +183,8 @@ p_disk <- ggplot(
   base
 
 overview <- (p_hot / p_block / p_rss / p_disk) +
-  plot_layout(guides = "collect") &
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "A") &
   theme(legend.position = "bottom")
 
 ggsave(

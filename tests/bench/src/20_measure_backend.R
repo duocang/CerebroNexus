@@ -67,6 +67,7 @@ row <- data.frame(
   load_secs = NA_real_,
   attach_secs = NA_real_,
   rss_mb = NA_real_,
+  peak_rss_mb = NA_real_,
   first_query_secs = NA_real_,
   hot_p50_secs = NA_real_,
   hot_p95_secs = NA_real_,
@@ -125,6 +126,7 @@ row$reference_row_fingerprint <- metrics$reference_row_fingerprint
 row$block_fingerprint <- metrics$block_fingerprint
 row$reference_block_fingerprint <- metrics$reference_block_fingerprint
 row$query_plan_fingerprint <- metrics$query_plan_fingerprint
+row$peak_rss_mb <- bench_peak_rss_mb()
 
 bench_append_row(result, row)
 bench_msg(

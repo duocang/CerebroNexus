@@ -81,6 +81,7 @@ row <- data.frame(
   sibling_mb = NA_real_,
   total_mb = NA_real_,
   rss_mb = NA_real_,
+  peak_rss_mb = NA_real_,
   r_peak_mb = NA_real_,
   query_plan_fingerprint = NA_character_,
   stringsAsFactors = FALSE
@@ -176,6 +177,7 @@ row$crb_mb <- bench_path_mb(crb)
 row$sibling_mb <- bench_path_mb(sibling)
 row$total_mb <- sum(c(row$crb_mb, row$sibling_mb), na.rm = TRUE)
 row$rss_mb <- bench_rss_mb()
+row$peak_rss_mb <- bench_peak_rss_mb()
 # gc() alternates (count, Mb) columns and the count named "max used" is NOT the
 # figure wanted; the Mb that follows it is. The column index is not fixed
 # either: an R with a vector memory limit set inserts a "limit (Mb)" column, so

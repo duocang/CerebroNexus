@@ -20,6 +20,50 @@ BENCH_PROFILE=publication tests/bench/run_sweep.sh
 BENCH_PROFILE=stress tests/bench/run_sweep.sh
 ```
 
+Set `BENCH_RESULT_ROOT` for exploratory runs so generated evidence does not
+dirty the checkout that will later produce publication evidence. Set
+`BENCH_SOURCE_CACHE` to reuse the two checksum-verified source downloads.
+
+```bash
+BENCH_RESULT_ROOT="$TMPDIR/cerebro-quick-results" \
+  BENCH_SOURCE_CACHE="/shared/cerebro-benchmark-sources" \
+  BENCH_SOURCES_ONLY=mouse_brain_e18 \
+  BENCH_PROFILE=quick tests/bench/run_sweep.sh
+```
+
+## HPC publication run
+
+Use the pinned Nix environment and an exclusive node. `BENCH_THREADS` defaults
+to one and is propagated to the common BLAS/OpenMP thread controls; keep the
+same value for every compared backend.
+
+```bash
+git clone --filter=blob:none --single-branch \
+  --branch paper/real-data-benchmark \
+  https://github.com/duocang/CerebroNexus.git
+cd CerebroNexus
+
+nix-shell default.nix -A shell
+
+git status --short                 # must print nothing
+git rev-parse HEAD                 # record the exact code under test
+
+BENCH_THREADS=1 \
+  BENCH_SOURCE_CACHE="/shared/cerebro-benchmark-sources" \
+  BENCH_SCRATCH_PARENT="${SLURM_TMPDIR:-/fast/local/scratch/$USER}" \
+  BENCH_PROFILE=publication tests/bench/run_sweep.sh
+```
+
+After validation, `tests/bench/result/CURRENT` names the immutable result. Add
+only that pointer and its run directory when returning evidence to Git.
+
+```bash
+run_id=$(< tests/bench/result/CURRENT)
+git add tests/bench/result/CURRENT "tests/bench/result/runs/$run_id"
+git commit -m "docs(bench): publish real-data evidence"
+git push origin paper/real-data-benchmark
+```
+
 Limit a run to one source when developing the harness:
 
 ```bash
@@ -71,4 +115,4 @@ The 2026-07-30 single-run pilot is retained under `result/archive/pilot-2026-07-
 | `50_check_outputs.R` | ensure the report package is complete |
 | `60_publish_results.R` | publish immutably and update `CURRENT` last |
 
-The two default public sources are 10x mouse brain E18 (4.2 GB) and the HBCC human prefrontal-cortex atlas (14.2 GB). The MSSM cohort is opt-in through `BENCH_SOURCES_EXTRA=human_pfc_mssm`.
+The two default public sources are 10x mouse brain E18 (4.2 GB) and the HBCC human prefrontal-cortex atlas (14.2 GB). Publication comparisons use 50k and 150k cells from both sources; the resource preflight therefore requires a high-memory host. The MSSM cohort is opt-in through `BENCH_SOURCES_EXTRA=human_pfc_mssm`.

@@ -14,6 +14,21 @@ bench_rss_mb <- function() {
   if (is.na(val)) NA_real_ else val / 1024
 }
 
+# Peak resident set size on Linux. VmHWM includes native allocations that R's
+# gc() accounting misses. Other platforms return NA rather than a false proxy.
+bench_peak_rss_mb <- function(status_path = "/proc/self/status") {
+  if (!file.exists(status_path)) {
+    return(NA_real_)
+  }
+  line <- grep(
+    "^VmHWM:",
+    readLines(status_path, warn = FALSE),
+    value = TRUE
+  )
+  value_kb <- suppressWarnings(as.numeric(gsub("[^0-9.]", "", line[1L])))
+  if (!length(value_kb) || !is.finite(value_kb)) NA_real_ else value_kb / 1024
+}
+
 bench_path_mb <- function(path) {
   if (is.null(path) || !file.exists(path)) {
     return(NA_real_)

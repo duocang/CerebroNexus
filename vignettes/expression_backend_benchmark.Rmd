@@ -73,15 +73,20 @@ Each `(source, tier, backend)` combination runs in its own R process, so a resid
 | `load_secs` | `readRDS()` of the `.crb` |
 | `attach_secs` | resolving the external backend at load time |
 | `rss_mb` | resident set size after load plus attach |
-| `cold_secs` | first single-gene read after attach |
-| `hot_p50_secs`, `hot_p95_secs` | 30 single-gene reads rotating over a 50-gene pool |
-| `bulk_secs` | a densified 50-gene x all-cells block, the marker-genes pattern |
+| `first_query_secs` | first single-gene read after attach |
+| `hot_p50_secs`, `hot_p95_secs` | warmed reads over 11 genes from the fixed 12-gene panel |
+| `block_secs` | one 12-gene x all-cells block, the marker-view pattern |
 
 Reads go through `getExpressionRow()` and `getExpressionBlock()`, and the attach goes through the same helper the Shiny server calls, so the numbers describe the runtime path rather than raw matrix indexing. The gene pool is filtered to genes that actually carry counts, because a query for an all-zero row would let a lazy backend skip work a real query cannot skip.
 
 Grouping variables and the 2-D embedding are synthetic. A real clustering and UMAP would add tens of minutes per tier without changing anything being measured; the counts, dimensions and sparsity are all real.
 
 # Exploratory pilot results
+
+> The retained pilot below used an older 50-gene block. It is shown only as
+> historical motivation. The current publication protocol uses the fixed
+> 12-gene panel described above, and the HPC run will replace this figure and
+> its numerical claims.
 
 ![Four views of the same sweep. Query latency and bulk reads are on log scales; note that the ranking flips between the first two panels. The mouse 250k bar in the bottom panel comes from a follow-up run of the `embedded` backend alone, used to bracket the ceiling in the next section.](img/expression_backend_benchmark_overview.png)
 
@@ -108,7 +113,7 @@ At 150,000 human cells a single-gene read costs 0.0088 s on `h5` against 0.925 s
 
 ## Bulk reads: the ranking inverts
 
-`embedded` is the **slowest** backend for a 50-gene block: 0.955 s against 0.014 s for `bpcells`, a factor of 68. This is not a paradox. The matrix is stored genes x cells in compressed-sparse-column form, and a bulk read pulls whole rows -- the pathological direction for that layout. It is also the pattern the marker-genes view uses.
+In the historical pilot, `embedded` was the **slowest** backend for a 50-gene block: 0.955 s against 0.014 s for `bpcells`, a factor of 68. This is not a paradox. The matrix is stored genes x cells in compressed-sparse-column form, and a block read pulls whole rows -- the pathological direction for that layout. It is also the pattern the marker-genes view uses.
 
 `bpcells` is the mirror image: fastest bulk read of the three, slowest per-gene read of the three, losing even to `embedded`. It is optimised for block access, and single-gene lookup is its worst case.
 

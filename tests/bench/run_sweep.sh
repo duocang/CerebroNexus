@@ -15,8 +15,24 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export BENCH_ROOT="$REPO/tests/bench"
-RESULT_ROOT="$BENCH_ROOT/result"
+RESULT_ROOT="${BENCH_RESULT_ROOT:-$BENCH_ROOT/result}"
 export BENCH_PROFILE="${BENCH_PROFILE:-quick}"
+export BENCH_THREADS="${BENCH_THREADS:-1}"
+
+case "$BENCH_THREADS" in
+  ''|*[!0-9]*|0)
+    echo "BENCH_THREADS must be a positive integer" >&2
+    exit 1
+    ;;
+esac
+export OMP_NUM_THREADS="$BENCH_THREADS"
+export OPENBLAS_NUM_THREADS="$BENCH_THREADS"
+export MKL_NUM_THREADS="$BENCH_THREADS"
+export VECLIB_MAXIMUM_THREADS="$BENCH_THREADS"
+export BLIS_NUM_THREADS="$BENCH_THREADS"
+export RCPP_PARALLEL_NUM_THREADS="$BENCH_THREADS"
+
+source "$BENCH_ROOT/lib/source_cache.sh"
 
 SCRATCH_PARENT="${BENCH_SCRATCH_PARENT:-${TMPDIR:-/tmp}}"
 mkdir -p "$SCRATCH_PARENT"
@@ -51,20 +67,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-sha256_file() {
-  local path=$1
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$path" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$path" | awk '{print $1}'
-  elif command -v openssl >/dev/null 2>&1; then
-    openssl dgst -sha256 "$path" | awk '{print $NF}'
-  else
-    echo "no SHA-256 implementation found" >&2
-    return 1
-  fi
-}
-
 mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" "$BENCH_LIB"
 printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,order_position,stage,exit_code' > "$CRASH_CSV"
 printf '%s\n' 'run_id,source,url,bytes,sha256' > "$SOURCE_MANIFEST"
@@ -98,17 +100,16 @@ SOURCES=$(Rscript -e 'source(file.path(Sys.getenv("BENCH_ROOT"), "config", "sour
 
 for src in $SOURCES; do
   url=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$url)")
-  file="$SCRATCH/sources/$(basename "${url%%\?*}")"
-  part="$file.part"
+  expected_bytes=$(Rscript -e "source(file.path(Sys.getenv('BENCH_ROOT'), 'config', 'sources.R')); cat(BENCH_SOURCES[['$src']]\$expected_bytes)")
 
-  echo "==> [$src] fetching $(basename "$file")"
-  if ! curl -fL --retry 3 --retry-delay 5 --continue-at - -o "$part" "$url"; then
+  echo "==> [$src] fetching $(basename "${url%%\?*}")"
+  if ! bench_fetch_source "$url" "$expected_bytes" "$SCRATCH/sources"; then
     echo "!! download failed for $src; validation will preserve the previous run"
     continue
   fi
-  mv "$part" "$file"
-  bytes=$(wc -c < "$file" | tr -d '[:space:]')
-  sha256=$(sha256_file "$file") || exit 1
+  file=$BENCH_FETCHED_FILE
+  bytes=$BENCH_FETCHED_BYTES
+  sha256=$BENCH_FETCHED_SHA256
   printf '"%s","%s","%s",%s,"%s"\n' \
     "$BENCH_RUN_ID" "$src" "$url" "$bytes" "$sha256" >> "$SOURCE_MANIFEST"
   echo "    local copy: $bytes bytes, sha256 ${sha256:0:12}..."

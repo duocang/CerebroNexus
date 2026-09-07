@@ -83,6 +83,11 @@ manifest <- c(
   os = paste(Sys.info()[c("sysname", "release", "version")], collapse = " "),
   cpu = cpu_name(),
   logical_cores = as.character(parallel::detectCores(logical = TRUE)),
+  benchmark_threads = Sys.getenv("BENCH_THREADS", "1"),
+  slurm_job_id = Sys.getenv("SLURM_JOB_ID"),
+  slurm_node_list = Sys.getenv("SLURM_NODELIST"),
+  slurm_cpus_per_task = Sys.getenv("SLURM_CPUS_PER_TASK"),
+  slurm_memory_per_node = Sys.getenv("SLURM_MEM_PER_NODE"),
   memory_mb = format(memory_mb(), scientific = FALSE, trim = TRUE),
   r_vector_limit_mb = format(mem.maxVSize(), scientific = FALSE, trim = TRUE)
 )

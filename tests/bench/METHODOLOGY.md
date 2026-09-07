@@ -8,7 +8,7 @@ The benchmark does not compare biological methods, remote-network throughput, or
 
 ## Experimental unit and replication
 
-An export process is the experimental unit for export time, disk size, and peak R heap. A fresh access process is the experimental unit for startup, resident memory, and query timings. Repeated getter calls inside one access process estimate its warmed-query distribution; they are not counted as independent replicates.
+An export process is the experimental unit for export time, disk size, peak R heap, and peak process RSS. A fresh access process is the experimental unit for startup, resident memory, peak process RSS, and query timings. Repeated getter calls inside one access process estimate its warmed-query distribution; they are not counted as independent replicates.
 
 The backend order rotates deterministically across three export repeats:
 
@@ -62,6 +62,7 @@ Speed is not accepted without value equality. The source matrix supplies an XDR 
 | `r_peak_mb` | maximum R heap observed across read, Seurat construction, and export |
 | `load_secs`, `attach_secs` | fresh-process CRB load and backend attachment |
 | `rss_mb` | process RSS immediately after load and attach |
+| `peak_rss_mb` | Linux process high-water RSS, including native allocations |
 | `first_query_secs` | first backend getter call in that R process |
 | `hot_p50_secs`, `hot_p95_secs` | within-process warmed single-gene distribution |
 | `block_secs` | one 12-gene by all-cell block request |
@@ -70,13 +71,15 @@ Reports show median, minimum, maximum, and the number of independent processes. 
 
 ## Provenance and publication
 
-`run_manifest.csv` records the run ID, profile, Git SHA and dirty state, package version, R and dependency versions, operating system, CPU, logical cores, RAM, and R vector-memory limit. A publication-profile run is rejected when the Git worktree is dirty.
+`run_manifest.csv` records the run ID, profile, Git SHA and dirty state, package version, R and dependency versions, operating system, CPU, logical cores, fixed benchmark thread count, Slurm job/node allocation when present, RAM, and R vector-memory limit. A publication-profile run is rejected when the Git worktree is dirty.
 
 All files are written to scratch. Measurements are validated before report and figure generation; the complete staged package is checked again before it is copied into `result/runs/<run-id>/`. `result/CURRENT` is replaced last. A crash before that pointer update leaves the previous evidence current and keeps every older immutable run available.
 
 ## Interpretation boundaries
 
 - Runtime comparisons apply to the recorded host, dependencies, data hashes, cell tiers, and query panel. They are not cross-platform confidence intervals.
+- Timed backend processes run sequentially with one fixed thread count; use an exclusive node for publication evidence.
+- `peak_rss_mb` is available on Linux through `/proc`; other platforms report it as missing rather than substituting a different metric.
 - The first-query metric does not control the operating-system disk cache.
 - The current scale estimate is descriptive: it reports the number and range of distinct source/tier points. It is not a universal bytes-per-non-zero law.
 - A full source exceeding the `Matrix::dgCMatrix` 32-bit non-zero limit cannot enter the current Seurat exporter, but that statement does not apply to every sparse representation available in R.

@@ -51,6 +51,61 @@ test_that("sweep stages use plain names in a safe publication order", {
   expect_true(all(diff(positions) > 0))
 })
 
+test_that("sweep supports clean external results and verified source caching", {
+  skip_unless_bench_cli()
+  sweep <- readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE)
+  source_cache <- file.path(bench_root, "lib", "source_cache.sh")
+  cache_helper <- if (file.exists(source_cache)) {
+    readLines(source_cache, warn = FALSE)
+  } else {
+    character()
+  }
+
+  expect_true(any(grepl("BENCH_RESULT_ROOT", sweep, fixed = TRUE)))
+  expect_true(any(grepl("BENCH_SOURCE_CACHE", cache_helper, fixed = TRUE)))
+  expect_true(file.exists(source_cache))
+})
+
+test_that("source cache reuses only checksum-verified files", {
+  skip_unless_bench_cli()
+  helper <- file.path(bench_root, "lib", "source_cache.sh")
+  expect_true(file.exists(helper))
+  if (!file.exists(helper)) return()
+
+  root <- tempfile("bench-cache-")
+  origin <- file.path(root, "origin", "fixture.h5")
+  cache <- file.path(root, "cache")
+  scratch <- file.path(root, "scratch")
+  dir.create(dirname(origin), recursive = TRUE)
+  dir.create(scratch)
+  writeBin(charToRaw("benchmark-fixture"), origin)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+
+  command <- file.path(root, "fetch.sh")
+  writeLines(
+    c(
+      "set -euo pipefail",
+      sprintf("source %s", shQuote(helper)),
+      sprintf("export BENCH_SOURCE_CACHE=%s", shQuote(cache)),
+      sprintf(
+        "bench_fetch_source %s %d %s",
+        shQuote(paste0("file://", normalizePath(origin))),
+        file.size(origin),
+        shQuote(scratch)
+      ),
+      "test -f \"$BENCH_FETCHED_FILE\"",
+      "test -n \"$BENCH_FETCHED_SHA256\""
+    ),
+    command
+  )
+  first <- system2("bash", command, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(first, "status"), info = paste(first, collapse = "\n"))
+
+  unlink(origin)
+  second <- system2("bash", command, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(second, "status"), info = paste(second, collapse = "\n"))
+})
+
 run_bench_rscript <- function(script, args = character(), env = character()) {
   out <- tempfile("bench-cli-stdout-")
   err <- tempfile("bench-cli-stderr-")
@@ -106,7 +161,14 @@ test_that("manifest CLI records source revision and runtime", {
   run <- run_bench_rscript(
     "02_record_environment.R",
     result,
-    env = c("BENCH_PROFILE=quick", "BENCH_RUN_ID=test-run")
+    env = c(
+      "BENCH_PROFILE=quick",
+      "BENCH_RUN_ID=test-run",
+      "BENCH_THREADS=3",
+      "SLURM_JOB_ID=job-42",
+      "SLURM_NODELIST=node-a",
+      "SLURM_CPUS_PER_TASK=3"
+    )
   )
   expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
   manifest <- utils::read.csv(result, stringsAsFactors = FALSE)
@@ -116,6 +178,10 @@ test_that("manifest CLI records source revision and runtime", {
   expect_match(values[["git_sha"]], "^[0-9a-f]{40}$")
   expect_match(values[["r_version"]], "^R version")
   expect_true(nzchar(values[["cpu"]]))
+  expect_equal(values[["benchmark_threads"]], "3")
+  expect_equal(values[["slurm_job_id"]], "job-42")
+  expect_equal(values[["slurm_node_list"]], "node-a")
+  expect_equal(values[["slurm_cpus_per_task"]], "3")
 })
 
 test_that("validator CLI accepts complete results and rejects drift", {

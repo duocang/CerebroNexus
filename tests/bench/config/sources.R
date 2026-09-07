@@ -47,7 +47,7 @@ BENCH_SOURCES <- list(
     # 32 GB wall at less than half the cell count of the mouse fixture even
     # though the two files hold a comparable number of cells.
     tiers = c(50e3, 150e3, 300e3),
-    comparison_tiers = 50e3
+    comparison_tiers = c(50e3, 150e3)
   ),
 
   # Same collection, MSSM cohort: 4,140,453 cells, 33.6 GB remote. Opt-in via

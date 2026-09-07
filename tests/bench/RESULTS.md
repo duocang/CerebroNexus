@@ -15,6 +15,7 @@ Values such as `2.4 [2.2-2.9], n=6` mean median 2.4, observed range 2.2 to 2.9, 
 | `export_secs` | backend export only | within the same source and cell tier |
 | `total_mb` | CRB plus external sibling bytes | within the same source/tier |
 | `r_peak_mb` | maximum R heap during preparation/export | host-specific |
+| `peak_rss_mb` | Linux process high-water RSS | same host only |
 | `load_secs` | deserialize the CRB | within the same source/tier |
 | `attach_secs` | attach an external backend | within the same source/tier |
 | `rss_mb` | resident memory after load and attach | same host only |

@@ -89,11 +89,21 @@ if (!is.null(probe) && nrow(probe)) {
 }
 
 if (!is.null(exports) && nrow(exports)) {
+  if (!"peak_rss_mb" %in% names(exports)) {
+    exports$peak_rss_mb <- NA_real_
+  }
   exports$r_peak_mb[exports$r_peak_mb > 4e6] <- NA_real_
   export_summary <- bench_summarise_metrics(
     exports,
     group = c("source", "n_cells", "backend"),
-    metrics = c("crb_mb", "sibling_mb", "total_mb", "export_secs", "r_peak_mb")
+    metrics = c(
+      "crb_mb",
+      "sibling_mb",
+      "total_mb",
+      "export_secs",
+      "r_peak_mb",
+      "peak_rss_mb"
+    )
   )
   export_summary <- export_summary[
     order(
@@ -110,21 +120,25 @@ if (!is.null(exports) && nrow(exports)) {
     "",
     "Values are median [minimum-maximum], followed by the number of independent export processes.",
     "",
-    "| source | cells | backend | total MB | export seconds | peak R heap MB |",
-    "|---|---:|---|---:|---:|---:|"
+    paste0(
+      "| source | cells | backend | total MB | export seconds | ",
+      "peak R heap MB | peak process RSS MB |"
+    ),
+    "|---|---:|---|---:|---:|---:|---:|"
   )
   for (i in seq_len(nrow(export_summary))) {
     row <- export_summary[i, , drop = FALSE]
     out <- c(
       out,
       sprintf(
-        "| %s | %s | %s | %s | %s | %s |",
+        "| %s | %s | %s | %s | %s | %s | %s |",
         row$source,
         format(row$n_cells, big.mark = ","),
         row$backend,
         interval(row, "total_mb", 1L),
         interval(row, "export_secs", 1L),
-        interval(row, "r_peak_mb", 0L)
+        interval(row, "r_peak_mb", 0L),
+        interval(row, "peak_rss_mb", 0L)
       )
     )
   }
@@ -157,6 +171,9 @@ if (!is.null(exports) && nrow(exports)) {
 }
 
 if (!is.null(access) && nrow(access)) {
+  if (!"peak_rss_mb" %in% names(access)) {
+    access$peak_rss_mb <- NA_real_
+  }
   access$startup_secs <- access$load_secs + access$attach_secs
   access_summary <- bench_summarise_metrics(
     access,
@@ -164,6 +181,7 @@ if (!is.null(access) && nrow(access)) {
     metrics = c(
       "startup_secs",
       "rss_mb",
+      "peak_rss_mb",
       "first_query_secs",
       "hot_p50_secs",
       "hot_p95_secs",
@@ -188,20 +206,25 @@ if (!is.null(access) && nrow(access)) {
       "The operating-system file cache is uncontrolled, so it is not a cold-disk measurement."
     ),
     "",
-    "| source | cells | backend | startup s | RSS MB | first query s | warmed p50 s | warmed p95 s | 12-gene block s |",
-    "|---|---:|---|---:|---:|---:|---:|---:|---:|"
+    paste0(
+      "| source | cells | backend | startup s | RSS MB | ",
+      "peak process RSS MB | first query s | warmed p50 s | warmed p95 s | ",
+      "12-gene block s |"
+    ),
+    "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|"
   )
   for (i in seq_len(nrow(access_summary))) {
     row <- access_summary[i, , drop = FALSE]
     out <- c(
       out,
       sprintf(
-        "| %s | %s | %s | %s | %s | %s | %s | %s | %s |",
+        "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |",
         row$source,
         format(row$n_cells, big.mark = ","),
         row$backend,
         interval(row, "startup_secs", 2L),
         interval(row, "rss_mb", 0L),
+        interval(row, "peak_rss_mb", 0L),
         interval(row, "first_query_secs", 4L),
         interval(row, "hot_p50_secs", 4L),
         interval(row, "hot_p95_secs", 4L),
@@ -291,6 +314,11 @@ provenance_keys <- c(
   "os",
   "cpu",
   "logical_cores",
+  "benchmark_threads",
+  "slurm_job_id",
+  "slurm_node_list",
+  "slurm_cpus_per_task",
+  "slurm_memory_per_node",
   "memory_mb",
   "r_vector_limit_mb"
 )

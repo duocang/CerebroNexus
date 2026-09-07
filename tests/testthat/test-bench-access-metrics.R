@@ -37,6 +37,17 @@ test_that("query plans stratify genes and fingerprint source values", {
   )
 })
 
+test_that("Linux peak RSS reads the process high-water mark", {
+  skip_unless_bench_access()
+  source(file.path(bench_root <- file.path("..", "bench"), "lib", "bench_utils.R"), local = TRUE)
+  status <- tempfile("proc-status-")
+  on.exit(unlink(status), add = TRUE)
+  writeLines(c("Name:\tR", "VmRSS:\t1024 kB", "VmHWM:\t4096 kB"), status)
+
+  expect_equal(bench_peak_rss_mb(status), 4)
+  expect_true(is.na(bench_peak_rss_mb(paste0(status, "-missing"))))
+})
+
 test_that("the first backend call is the timed fresh-process query", {
   skip_unless_bench_access()
   source(bench_protocol, local = TRUE)

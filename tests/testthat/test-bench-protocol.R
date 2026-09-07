@@ -72,6 +72,22 @@ test_that("quick schedules run only the smallest comparison tier", {
   expect_equal(nrow(schedule), 3L)
 })
 
+test_that("default sources share 50k and 150k comparison tiers", {
+  skip_unless_bench_protocol()
+  source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
+
+  defaults <- BENCH_SOURCES[!vapply(
+    BENCH_SOURCES,
+    function(source) isTRUE(source$opt_in),
+    logical(1)
+  )]
+  expect_true(all(vapply(
+    defaults,
+    function(source) all(c(50e3, 150e3) %in% source$comparison_tiers),
+    logical(1)
+  )))
+})
+
 test_that("query panels are deterministic and span expression density", {
   skip_unless_bench_protocol()
   source(bench_protocol, local = TRUE)
