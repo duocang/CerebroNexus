@@ -44,7 +44,7 @@ output[["load_data_number_of_cells"]] <- renderValueBox({
     ),
     subtitle = "Cells",
     color = "light-blue",
-    icon = icon("list"),
+    icon = icon("th"),
   )
 })
 

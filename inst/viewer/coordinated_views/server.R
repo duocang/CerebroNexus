@@ -720,7 +720,7 @@ lapply(
   }
 )
 
-cv_gene_job <- cerebro_async_latest_value(session, cerebro_async_source_call)
+cv_gene_job <- cerebro_async_latest_value(session)
 
 cv_gene_request <- function(genes, cells, kind) {
   genes <- unique(genes[!is.na(genes) & nzchar(genes)])
@@ -818,7 +818,7 @@ observe({
 ## single-gene selector above. Without it this observer built the whole bundle
 ## on connect -- the one place the laziness leaked, and invisible from outside
 ## because the bundle was built but never sent.
-cv_rgb_job <- cerebro_async_latest_value(session, cerebro_async_source_call)
+cv_rgb_job <- cerebro_async_latest_value(session)
 
 coordviews_rgb_result <- reactive({
   req(coordviews_visible())

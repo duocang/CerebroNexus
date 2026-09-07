@@ -24,9 +24,10 @@ read_viewer <- function(...) {
 
 test_that("motif graph construction is dispatched with latest-wins caching", {
   source <- read_viewer("hla_tcr_motifs", "data.R")
+  runtime <- read_viewer("async_runtime.R")
 
   expect_match(source, "cerebro_async_latest_value", fixed = TRUE)
-  expect_match(source, "cerebro_async_source_call", fixed = TRUE)
+  expect_match(runtime, "worker = cerebro_async_source_call", fixed = TRUE)
   expect_match(
     source,
     'function_name = "hla_build_motif_graph_raw"',

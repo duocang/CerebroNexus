@@ -23,43 +23,28 @@ cerebro_async_config <- function(options = NULL) {
     stop("Unknown mirai option: ", unknown[[1L]], ".", call. = FALSE)
   }
   config <- utils::modifyList(defaults, options)
-  if (
-    !is.logical(config$enabled) ||
-      length(config$enabled) != 1L ||
-      is.na(config$enabled)
-  ) {
+  is_scalar <- function(value) length(value) == 1L && !is.na(value)
+  is_positive <- function(value) {
+    is.numeric(value) && is_scalar(value) && is.finite(value) && value > 0
+  }
+  is_positive_integer <- function(value) {
+    is_positive(value) && value == as.integer(value)
+  }
+  if (!is.logical(config$enabled) || !is_scalar(config$enabled)) {
     stop("mirai enabled must be TRUE or FALSE.", call. = FALSE)
   }
-  if (
-    !is.numeric(config$workers) ||
-      length(config$workers) != 1L ||
-      is.na(config$workers) ||
-      config$workers < 1 ||
-      config$workers != as.integer(config$workers)
-  ) {
+  if (!is_positive_integer(config$workers)) {
     stop("mirai workers must be a positive integer.", call. = FALSE)
   }
-  if (
-    !is.numeric(config$queue_memory_mb) ||
-      length(config$queue_memory_mb) != 1L ||
-      is.na(config$queue_memory_mb) ||
-      config$queue_memory_mb <= 0
-  ) {
+  if (!is_positive(config$queue_memory_mb)) {
     stop("mirai queue_memory_mb must be positive.", call. = FALSE)
   }
-  if (
-    !is.numeric(config$timeout_ms) ||
-      length(config$timeout_ms) != 1L ||
-      is.na(config$timeout_ms) ||
-      config$timeout_ms <= 0 ||
-      config$timeout_ms != as.integer(config$timeout_ms)
-  ) {
+  if (!is_positive_integer(config$timeout_ms)) {
     stop("mirai timeout_ms must be a positive integer.", call. = FALSE)
   }
   if (
     !is.character(config$compute) ||
-      length(config$compute) != 1L ||
-      is.na(config$compute) ||
+      !is_scalar(config$compute) ||
       !nzchar(config$compute)
   ) {
     stop("mirai compute must be a non-empty string.", call. = FALSE)
@@ -67,18 +52,6 @@ cerebro_async_config <- function(options = NULL) {
   config$workers <- as.integer(config$workers)
   config$timeout_ms <- as.integer(config$timeout_ms)
   config
-}
-
-cerebro_async_generation <- function() {
-  value <- 0L
-  list(
-    "next" = function() {
-      value <<- value + 1L
-      value
-    },
-    current = function(token) identical(token, value),
-    value = function() value
-  )
 }
 
 ## Environment names are limited to 10,000 bytes, so large cell selections
@@ -97,16 +70,6 @@ cerebro_async_cache_key <- function(...) {
   )
 }
 
-cerebro_async_execute <- function(worker, args = list()) {
-  if (!is.function(worker)) {
-    stop("worker must be a function.", call. = FALSE)
-  }
-  if (!is.list(args)) {
-    stop("args must be a list.", call. = FALSE)
-  }
-  do.call(worker, args)
-}
-
 ## Run a pure helper from the standalone viewer bundle without serialising a
 ## Shiny session, reactive graph, R6 object, or file-backed matrix handle.
 cerebro_async_source_call <- function(
@@ -120,13 +83,11 @@ cerebro_async_source_call <- function(
   for (file in files) {
     sys.source(file.path(root, file), envir = worker_env)
   }
-  for (argument in names(function_args)) {
-    args[[argument]] <- get(
-      function_args[[argument]],
-      envir = worker_env,
-      inherits = FALSE
-    )
-  }
+  args[names(function_args)] <- unname(mget(
+    function_args,
+    envir = worker_env,
+    inherits = FALSE
+  ))
   do.call(get(function_name, envir = worker_env, inherits = FALSE), args)
 }
 environment(cerebro_async_source_call) <- baseenv()
@@ -140,14 +101,11 @@ cerebro_async_namespace_call <- function(
   args = list(),
   quiet_warnings = character(0)
 ) {
-  call <- function() {
-    do.call(getExportedValue(package, function_name), args)
-  }
   if (!length(quiet_warnings)) {
-    return(call())
+    return(do.call(getExportedValue(package, function_name), args))
   }
   withCallingHandlers(
-    call(),
+    do.call(getExportedValue(package, function_name), args),
     warning = function(condition) {
       if (any(grepl(quiet_warnings, conditionMessage(condition)))) {
         invokeRestart("muffleWarning")
@@ -169,12 +127,6 @@ cerebro_async_ggsave <- function(path, plot, width, height) {
 environment(cerebro_async_ggsave) <- baseenv()
 
 cerebro_async_backend <- function() {
-  if (!requireNamespace("mirai", quietly = TRUE)) {
-    stop(
-      "The mirai package is required when asynchronous execution is enabled.",
-      call. = FALSE
-    )
-  }
   list(
     daemons_set = function(compute) mirai::daemons_set(.compute = compute),
     start = function(config) {
@@ -199,20 +151,10 @@ cerebro_async_backend <- function() {
 }
 
 .cerebro_async_state <- new.env(parent = emptyenv())
-.cerebro_async_state$active <- FALSE
 .cerebro_async_state$owned <- FALSE
 .cerebro_async_state$started <- FALSE
 .cerebro_async_state$config <- cerebro_async_config(list(enabled = FALSE))
 .cerebro_async_state$backend <- NULL
-
-cerebro_async_status <- function() {
-  list(
-    active = isTRUE(.cerebro_async_state$active),
-    owned = isTRUE(.cerebro_async_state$owned),
-    started = isTRUE(.cerebro_async_state$started),
-    config = .cerebro_async_state$config
-  )
-}
 
 cerebro_async_init <- function(
   config = cerebro_async_config(),
@@ -221,16 +163,15 @@ cerebro_async_init <- function(
   if (!is.list(config) || is.null(config$enabled)) {
     config <- cerebro_async_config(config)
   }
-  if (isTRUE(.cerebro_async_state$active)) {
+  if (!is.null(.cerebro_async_state$backend)) {
     cerebro_async_shutdown()
   }
   .cerebro_async_state$config <- config
-  .cerebro_async_state$backend <- backend
-  .cerebro_async_state$active <- FALSE
+  .cerebro_async_state$backend <- NULL
   .cerebro_async_state$owned <- FALSE
   .cerebro_async_state$started <- FALSE
   if (!isTRUE(config$enabled)) {
-    return(cerebro_async_status())
+    return(invisible(FALSE))
   }
   if (is.null(backend)) {
     required <- c("mirai", "promises")
@@ -251,47 +192,45 @@ cerebro_async_init <- function(
         "); using synchronous execution.",
         call. = FALSE
       )
-      return(cerebro_async_status())
+      return(invisible(FALSE))
     }
     backend <- cerebro_async_backend()
-    .cerebro_async_state$backend <- backend
   }
   existing <- isTRUE(backend$daemons_set(config$compute))
-  .cerebro_async_state$active <- TRUE
+  .cerebro_async_state$backend <- backend
   .cerebro_async_state$owned <- !existing
   .cerebro_async_state$started <- existing
-  cerebro_async_status()
+  invisible(TRUE)
 }
 
 cerebro_async_start <- function() {
   if (
-    isTRUE(.cerebro_async_state$active) &&
+    !is.null(.cerebro_async_state$backend) &&
       !isTRUE(.cerebro_async_state$started)
   ) {
     .cerebro_async_state$backend$start(.cerebro_async_state$config)
     .cerebro_async_state$started <- TRUE
   }
-  cerebro_async_status()
+  invisible(TRUE)
 }
 
 cerebro_async_shutdown <- function() {
   if (
-    isTRUE(.cerebro_async_state$active) &&
+    !is.null(.cerebro_async_state$backend) &&
       isTRUE(.cerebro_async_state$owned) &&
-      isTRUE(.cerebro_async_state$started) &&
-      !is.null(.cerebro_async_state$backend)
+      isTRUE(.cerebro_async_state$started)
   ) {
     .cerebro_async_state$backend$stop(.cerebro_async_state$config$compute)
   }
-  .cerebro_async_state$active <- FALSE
+  .cerebro_async_state$backend <- NULL
   .cerebro_async_state$owned <- FALSE
   .cerebro_async_state$started <- FALSE
   invisible(TRUE)
 }
 
 cerebro_async_submit <- function(worker, args = list()) {
-  if (!isTRUE(.cerebro_async_state$active)) {
-    return(cerebro_async_execute(worker, args))
+  if (is.null(.cerebro_async_state$backend)) {
+    return(do.call(worker, args))
   }
   cerebro_async_start()
   .cerebro_async_state$backend$submit(
@@ -323,19 +262,6 @@ cerebro_async_chain <- function(task, on_value, on_error) {
   promises::then(task, onFulfilled = on_value, onRejected = on_error)
 }
 
-cerebro_async_session_task <- function(
-  session,
-  worker,
-  args,
-  on_value,
-  on_error
-) {
-  task <- cerebro_async_submit(worker, args)
-  session$onSessionEnded(function() cerebro_async_cancel(task))
-  cerebro_async_chain(task, on_value, on_error)
-  invisible(task)
-}
-
 cerebro_async_error_message <- function(error) {
   if (inherits(error, "condition")) {
     return(conditionMessage(error))
@@ -352,13 +278,11 @@ cerebro_async_latest <- function(
   cancel = cerebro_async_cancel,
   chain = cerebro_async_chain
 ) {
-  generation <- cerebro_async_generation()
+  generation <- 0L
   current <- NULL
 
-  cancel_current <- function(invalidate = TRUE) {
-    if (isTRUE(invalidate)) {
-      generation[["next"]]()
-    }
+  cancel_current <- function() {
+    generation <<- generation + 1L
     if (!is.null(current)) {
       cancel(current)
       current <<- NULL
@@ -370,20 +294,21 @@ cerebro_async_latest <- function(
     if (!is.null(current)) {
       cancel(current)
     }
-    token <- generation[["next"]]()
+    generation <<- generation + 1L
+    token <- generation
     task <- submit(worker, args)
     current <<- task
     chain(
       task,
       function(value) {
-        if (generation$current(token)) {
+        if (identical(token, generation)) {
           current <<- NULL
           on_value(value)
         }
         invisible(value)
       },
       function(error) {
-        if (generation$current(token)) {
+        if (identical(token, generation)) {
           current <<- NULL
           on_error(error)
         }
@@ -395,15 +320,17 @@ cerebro_async_latest <- function(
 
   list(
     invoke = invoke,
-    cancel = cancel_current,
-    generation = generation$value,
-    current = function() current
+    cancel = cancel_current
   )
 }
 
 ## Adapt latest-wins tasks to a Shiny reactive value with a small per-session
 ## cache. Callers pass only immutable, serialisable arguments to invoke().
-cerebro_async_latest_value <- function(session, worker, max_entries = 8L) {
+cerebro_async_latest_value <- function(
+  session,
+  worker = cerebro_async_source_call,
+  max_entries = 8L
+) {
   if (!is.function(worker)) {
     stop("worker must be a function.", call. = FALSE)
   }
@@ -424,12 +351,11 @@ cerebro_async_latest_value <- function(session, worker, max_entries = 8L) {
   published_key <- NULL
   state <- shiny::reactiveVal(list(ready = FALSE, value = NULL))
   error <- shiny::reactiveVal(NULL)
-  pending <- shiny::reactiveVal(FALSE)
 
   remember <- function(key, value) {
     assign(key, value, envir = cache)
     cache_order <<- c(setdiff(cache_order, key), key)
-    while (length(cache_order) > max_entries) {
+    if (length(cache_order) > max_entries) {
       remove(list = cache_order[[1L]], envir = cache)
       cache_order <<- cache_order[-1L]
     }
@@ -442,12 +368,10 @@ cerebro_async_latest_value <- function(session, worker, max_entries = 8L) {
       pending_key <<- NULL
       published_key <<- active_key
       error(NULL)
-      pending(FALSE)
       state(list(ready = TRUE, value = value))
     },
     on_error = function(condition) {
       pending_key <<- NULL
-      pending(FALSE)
       error(condition)
     }
   )
@@ -465,7 +389,6 @@ cerebro_async_latest_value <- function(session, worker, max_entries = 8L) {
       controller$cancel()
       pending_key <<- NULL
       published_key <<- key
-      pending(FALSE)
       state(list(
         ready = TRUE,
         value = get(key, envir = cache, inherits = FALSE)
@@ -477,7 +400,6 @@ cerebro_async_latest_value <- function(session, worker, max_entries = 8L) {
     }
     pending_key <<- key
     published_key <<- NULL
-    pending(TRUE)
     state(list(ready = FALSE, value = NULL))
     controller$invoke(args)
   }
@@ -496,8 +418,6 @@ cerebro_async_latest_value <- function(session, worker, max_entries = 8L) {
   session$onSessionEnded(function() controller$cancel())
   list(
     invoke = invoke,
-    result = result,
-    pending = shiny::reactive(pending()),
-    cancel = controller$cancel
+    result = result
   )
 }

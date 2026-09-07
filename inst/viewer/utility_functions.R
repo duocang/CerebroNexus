@@ -178,11 +178,14 @@ saveViewerPlotAsync <- function(
   width = 11,
   height = 8
 ) {
-  cerebro_async_session_task(
-    session = session,
-    worker = cerebro_async_ggsave,
-    args = list(path = path, plot = plot, width = width, height = height),
-    on_value = function(saved_path) {
+  task <- cerebro_async_submit(
+    cerebro_async_ggsave,
+    list(path = path, plot = plot, width = width, height = height)
+  )
+  session$onSessionEnded(function() cerebro_async_cancel(task))
+  cerebro_async_chain(
+    task,
+    function(saved_path) {
       shinyWidgets::sendSweetAlert(
         session = session,
         title = "Success!",
@@ -190,7 +193,7 @@ saveViewerPlotAsync <- function(
         type = "success"
       )
     },
-    on_error = function(error) {
+    function(error) {
       warning("Plot export failed: ", cerebro_async_error_message(error))
       shinyWidgets::sendSweetAlert(
         session = session,
@@ -200,6 +203,7 @@ saveViewerPlotAsync <- function(
       )
     }
   )
+  invisible(task)
 }
 
 ## Return the first complete reactive value immediately; debounce only later
@@ -2168,23 +2172,7 @@ get_or_load_crb <- function(
   print(glue::glue(
     "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
   ))
-  raw_cache <- if (
-    path %in%
-      configured_paths &&
-      exists(".crb_raw_process_cache", inherits = TRUE)
-  ) {
-    get(".crb_raw_process_cache", inherits = TRUE)
-  } else {
-    NULL
-  }
-  obj <- if (!is.null(raw_cache) && !is.null(raw_cache[[path]])) {
-    print(glue::glue(
-      "[{Sys.time()}] CRB startup preload hit: {.crbLogLabel(path)}"
-    ))
-    raw_cache[[path]]
-  } else {
-    read_cerebro_file(path)
-  }
+  obj <- read_cerebro_file(path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
   cache[[path]] <- list(
     object = obj,

@@ -38,6 +38,10 @@ test_that("the first browser flush renders the active page before hidden control
 
   Sys.sleep(1.2)
   expect_silent(app$get_value(output = "load_data_number_of_cells"))
+  expect_true(app$get_js(paste0(
+    "document.getElementById('cerebro-dataset-stage')",
+    ".classList.contains('is-ready')"
+  )))
   app$wait_for_js(
     paste0(
       "window.cerebroLinkedViewsState && ",
@@ -51,13 +55,15 @@ test_that("the first browser flush renders the active page before hidden control
   )))
 })
 
-test_that("startup source defines process preloading and delayed page warmup", {
+test_that("startup avoids eager CRB reads and delays page warmup", {
   server <- paste(
     readLines(file.path(startup_inst_dir, "viewer", "shiny_server.R")),
     collapse = "\n"
   )
 
-  expect_match(server, ".crb_raw_process_cache", fixed = TRUE)
+  expect_match(server, ".crb_process_cache", fixed = TRUE)
+  expect_no_match(server, ".crb_raw_process_cache", fixed = TRUE)
+  expect_no_match(server, "startup_crb", fixed = TRUE)
   expect_match(server, "viewer_after_first_paint", fixed = TRUE)
   expect_match(server, "viewer_deferred_output_spacing_ms <- 50L", fixed = TRUE)
   expect_match(
@@ -89,6 +95,39 @@ test_that("startup source defines process preloading and delayed page warmup", {
     )
     expect_match(source, "debounceAfterFirst", fixed = TRUE)
   }
+})
+
+test_that("Data Info shows a static status while its CRB loads", {
+  ui <- paste(
+    readLines(file.path(startup_inst_dir, "viewer", "load_data", "UI.R")),
+    collapse = "\n"
+  )
+  client <- paste(
+    readLines(file.path(startup_inst_dir, "viewer", "www", "viewer-shell.js")),
+    collapse = "\n"
+  )
+  css <- paste(
+    readLines(file.path(startup_inst_dir, "viewer", "www", "custom.css")),
+    collapse = "\n"
+  )
+
+  expect_match(ui, "cerebro-dataset-stage", fixed = TRUE)
+  expect_match(ui, "cerebro-dataset-loading", fixed = TRUE)
+  expect_match(ui, "Loading dataset", fixed = TRUE)
+  expect_match(ui, "Large datasets may take a while", fixed = TRUE)
+  expect_match(client, "loading.dataset.outputId", fixed = TRUE)
+  expect_match(client, "change.cerebroDatasetLoad", fixed = TRUE)
+  expect_match(client, "#crb_file_selector, #input_file", fixed = TRUE)
+  expect_match(client, "is-loading", fixed = TRUE)
+  expect_match(client, "is-ready", fixed = TRUE)
+  expect_match(
+    client,
+    'stage.setAttribute("aria-busy", loading ? "true" : "false")',
+    fixed = TRUE
+  )
+  expect_match(css, "cerebro-dataset-ready", fixed = TRUE)
+  expect_match(css, "translateY(6px)", fixed = TRUE)
+  expect_match(css, "220ms", fixed = TRUE)
 })
 
 test_that("Linked Views pure helpers are parsed once per process", {

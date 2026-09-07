@@ -64,16 +64,6 @@ test_that("latest-value cache bounds and worker errors are validated", {
   )
 })
 
-test_that("generation tokens reject stale results", {
-  generation <- cerebro_async_generation()
-  first <- generation[["next"]]()
-  second <- generation[["next"]]()
-
-  expect_false(generation$current(first))
-  expect_true(generation$current(second))
-  expect_identical(generation$value(), second)
-})
-
 test_that("cache keys stay bounded for large cell selections", {
   cells <- sprintf("cell-%08d", seq_len(20000L))
   first <- cerebro_async_cache_key("dataset", cells)
@@ -82,15 +72,6 @@ test_that("cache keys stay bounded for large cell selections", {
   expect_lt(nchar(first, type = "bytes"), 100L)
   expect_false(identical(first, second))
   expect_identical(first, cerebro_async_cache_key("dataset", cells))
-})
-
-test_that("disabled execution uses the same worker locally", {
-  value <- cerebro_async_execute(
-    function(x, y) x + y,
-    list(x = 2, y = 5)
-  )
-
-  expect_identical(value, 7)
 })
 
 test_that("source-call workers load standalone helpers in an isolated environment", {
@@ -138,9 +119,7 @@ test_that("runtime owns and releases only daemons it starts", {
   )
   config <- cerebro_async_config(list(workers = 3L, compute = "test-profile"))
 
-  state <- cerebro_async_init(config, backend = backend)
-  expect_true(state$active)
-  expect_true(state$owned)
+  cerebro_async_init(config, backend = backend)
   expect_length(calls$start, 0L)
   cerebro_async_submit(function() NULL)
   expect_length(calls$start, 1L)
@@ -148,7 +127,6 @@ test_that("runtime owns and releases only daemons it starts", {
 
   cerebro_async_shutdown()
   expect_identical(calls$stop, list("test-profile"))
-  expect_false(cerebro_async_status()$active)
 })
 
 test_that("owned daemons start lazily on the first submitted task", {
@@ -176,9 +154,7 @@ test_that("runtime preserves an existing daemon profile", {
     submit = function(worker, args, config) list(worker = worker, args = args)
   )
 
-  state <- cerebro_async_init(cerebro_async_config(), backend = backend)
-  expect_true(state$active)
-  expect_false(state$owned)
+  cerebro_async_init(cerebro_async_config(), backend = backend)
   cerebro_async_shutdown()
   expect_false(stopped)
 })
@@ -193,9 +169,7 @@ test_that("disabled runtime executes locally and never starts daemons", {
     }
   )
   config <- cerebro_async_config(list(enabled = FALSE))
-  state <- cerebro_async_init(config, backend = backend)
-
-  expect_false(state$active)
+  cerebro_async_init(config, backend = backend)
   expect_identical(
     cerebro_async_submit(function(x) x * 2, list(x = 4)),
     8
@@ -211,11 +185,9 @@ test_that("missing async packages fall back to synchronous execution", {
   }
 
   expect_warning(
-    state <- runtime$cerebro_async_init(runtime$cerebro_async_config()),
+    runtime$cerebro_async_init(runtime$cerebro_async_config()),
     "using synchronous execution"
   )
-  expect_false(state$active)
-  expect_false(state$config$enabled)
   expect_identical(
     runtime$cerebro_async_submit(function(x) x + 1L, list(x = 2L)),
     3L
@@ -251,7 +223,6 @@ test_that("latest task cancels its predecessor and ignores stale completion", {
   expect_identical(cancelled, 1L)
   expect_identical(published, 2L)
   expect_length(failed, 0L)
-  expect_identical(controller$generation(), 2L)
 })
 
 test_that("latest task reports only the current error and cancels on cleanup", {

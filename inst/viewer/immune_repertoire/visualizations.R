@@ -1098,18 +1098,16 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
     input$ir_p_dot_size
   )
 
-ir_abundance_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_namespace_call
-)
-ir_homeostasis_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_namespace_call
-)
-ir_compare_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_namespace_call
-)
+ir_new_async_job <- function() {
+  cerebro_async_latest_value(session, cerebro_async_namespace_call)
+}
+ir_abundance_job <- ir_new_async_job()
+ir_homeostasis_job <- ir_new_async_job()
+ir_compare_job <- ir_new_async_job()
+ir_diversity_job <- ir_new_async_job()
+ir_overlap_job <- ir_new_async_job()
+ir_rarefaction_job <- ir_new_async_job()
+ir_size_distribution_job <- ir_new_async_job()
 
 output$ir_plot_clonalAbundance <- plotly::renderPlotly({
   req_scRepertoire()
@@ -1212,23 +1210,6 @@ output$ir_plot_clonalCompare <- plotly::renderPlotly({
     input$ir_p_compare_prop,
     input$ir_p_order_by
   )
-
-ir_diversity_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_namespace_call
-)
-ir_overlap_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_namespace_call
-)
-ir_rarefaction_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_namespace_call
-)
-ir_size_distribution_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_namespace_call
-)
 
 ir_async_sc_plot <- function(
   job,

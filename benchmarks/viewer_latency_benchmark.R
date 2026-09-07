@@ -10,14 +10,19 @@ argument <- function(name, default = NULL) {
 }
 
 baseline <- argument("baseline")
+baseline_label <- argument("baseline-label", "master")
 candidate <- argument("candidate", normalizePath(".", mustWork = TRUE))
 repetitions <- as.integer(argument("reps", "3"))
+crb_delay <- as.numeric(argument("crb-delay", "0"))
 output <- argument("output")
 if (is.null(baseline) || !dir.exists(baseline)) {
   stop("Pass an existing checkout with --baseline=/path.", call. = FALSE)
 }
 if (is.na(repetitions) || repetitions < 1L) {
   stop("--reps must be a positive integer.", call. = FALSE)
+}
+if (is.na(crb_delay) || crb_delay < 0) {
+  stop("--crb-delay must be a non-negative number.", call. = FALSE)
 }
 
 app_dir <- function(root) {
@@ -59,7 +64,92 @@ click_and_wait <- function(app, tab, ready, timeout = 60000) {
   1000 * (proc.time()[["elapsed"]] - started)
 }
 
+measure_http_ready <- function(root, build, crb_delay = 0, timeout = 60000) {
+  port <- httpuv::randomPort()
+  started <- proc.time()[["elapsed"]]
+  process <- callr::r_bg(
+    function(directory, port, delay) {
+      Sys.setenv(NOT_CRAN = "true")
+      if (delay > 0) {
+        original <- base::readRDS
+        readRDS <- function(file, ...) {
+          if (endsWith(tolower(file), ".crb")) {
+            Sys.sleep(delay)
+          }
+          original(file, ...)
+        }
+        assign("readRDS", readRDS, envir = .GlobalEnv)
+      }
+      shiny::runApp(
+        directory,
+        host = "127.0.0.1",
+        port = port,
+        launch.browser = FALSE
+      )
+    },
+    args = list(app_dir(root), port, crb_delay),
+    stdout = "|",
+    stderr = "2>&1",
+    supervise = TRUE
+  )
+  on.exit(if (process$is_alive()) process$kill(), add = TRUE)
+  deadline <- Sys.time() + timeout / 1000
+  repeat {
+    response <- tryCatch(
+      curl::curl_fetch_memory(
+        sprintf("http://127.0.0.1:%d", port),
+        curl::new_handle(timeout_ms = 1000)
+      ),
+      error = function(error) NULL
+    )
+    if (!is.null(response) && response$status_code == 200L) {
+      if (
+        identical(build, "optimized") &&
+          !grepl(
+            "cerebro-dataset-loading",
+            rawToChar(response$content),
+            fixed = TRUE
+          )
+      ) {
+        stop(
+          "Optimized shell omitted the dataset loading status.",
+          call. = FALSE
+        )
+      }
+      return(1000 * (proc.time()[["elapsed"]] - started))
+    }
+    if (!process$is_alive()) {
+      stop(
+        paste(process$read_all_output_lines(), collapse = "\n"),
+        call. = FALSE
+      )
+    }
+    if (Sys.time() > deadline) {
+      stop(
+        "Timed out waiting for the app HTTP shell.\n",
+        paste(process$read_all_output_lines(), collapse = "\n"),
+        call. = FALSE
+      )
+    }
+    Sys.sleep(0.025)
+  }
+}
+
 measure <- function(root, build, repetition) {
+  http_ready <- measure_http_ready(root, build, crb_delay = crb_delay)
+  http_metric <- if (crb_delay > 0) {
+    sprintf("process_to_http_ready_with_%gs_crb_read", crb_delay)
+  } else {
+    "process_to_http_ready"
+  }
+  if (crb_delay > 0) {
+    return(data.frame(
+      build = build,
+      repetition = repetition,
+      metric = http_metric,
+      milliseconds = http_ready
+    ))
+  }
   started <- proc.time()[["elapsed"]]
   app <- shinytest2::AppDriver$new(
     app_dir(root),
@@ -134,6 +224,7 @@ measure <- function(root, build, repetition) {
     build = build,
     repetition = repetition,
     metric = c(
+      http_metric,
       "process_to_data_info",
       "browser_connected_to_data_info",
       "projection_first_open",
@@ -142,6 +233,7 @@ measure <- function(root, build, repetition) {
       "projection_plus_linked_journey"
     ),
     milliseconds = c(
+      http_ready,
       startup,
       connected_to_data,
       projection,
@@ -152,7 +244,7 @@ measure <- function(root, build, repetition) {
   )
 }
 
-builds <- list(master = baseline, optimized = candidate)
+builds <- setNames(list(baseline, candidate), c(baseline_label, "optimized"))
 results <- do.call(
   rbind,
   lapply(

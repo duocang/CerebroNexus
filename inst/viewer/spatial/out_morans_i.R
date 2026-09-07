@@ -7,10 +7,7 @@
 ## down-sampling to a fixed number of cells, so the score stays responsive on
 ## large slides (it's an estimate of the same statistic on a random subset).
 ##----------------------------------------------------------------------------##
-spatial_morans_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_source_call
-)
+spatial_morans_job <- cerebro_async_latest_value(session)
 
 spatial_morans_payload <- reactive({
   plot_parameters <- spatial_projection_parameters_plot()

@@ -45,42 +45,7 @@ for (path in c(
 ## avoids repeating the largest deserialisation and bundle walk for every
 ## concurrent browser session in the same R process.
 .crb_process_cache <- new.env(parent = emptyenv())
-.crb_raw_process_cache <- new.env(parent = emptyenv())
 .coordviews_process_cache <- new.env(parent = emptyenv())
-
-viewerDefaultCrbPath <- function(options) {
-  files <- options[["crb_file_to_load"]]
-  if (is.null(files)) {
-    return(NULL)
-  }
-  files <- unname(files)
-  files <- files[file.exists(files)]
-  if (!length(files)) {
-    return(NULL)
-  }
-  pick_smallest <- options[["crb_pick_smallest_file"]]
-  if (is.null(pick_smallest) || isTRUE(pick_smallest)) {
-    return(files[[which.min(file.size(files))]])
-  }
-  files[[1L]]
-}
-
-startup_crb <- viewerDefaultCrbPath(Cerebro.options)
-if (!is.null(startup_crb)) {
-  tryCatch(
-    {
-      .crb_raw_process_cache[[startup_crb]] <- readRDS(startup_crb)
-      message("CRB startup preload: ", basename(startup_crb))
-    },
-    error = function(condition) {
-      warning(
-        "CRB startup preload failed: ",
-        conditionMessage(condition),
-        call. = FALSE
-      )
-    }
-  )
-}
 
 server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##

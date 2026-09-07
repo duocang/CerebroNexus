@@ -638,7 +638,6 @@ observeEvent(hla_visnet(), ignoreInit = TRUE, {
 hla_export_generation <- 0L
 hla_export_job <- cerebro_async_latest_value(
   session,
-  cerebro_async_source_call,
   max_entries = 2L
 )
 

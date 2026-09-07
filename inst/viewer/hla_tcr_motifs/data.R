@@ -865,14 +865,8 @@ hla_graph_worker_root <- file.path(
   "hla_tcr_motifs",
   "core"
 )
-hla_scoped_graph_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_source_call
-)
-hla_global_graph_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_source_call
-)
+hla_scoped_graph_job <- cerebro_async_latest_value(session)
+hla_global_graph_job <- cerebro_async_latest_value(session)
 
 hla_graph_request <- function(seg, scope_key) {
   pair_scope <- !is.null(seg) && "pair_allele" %in% colnames(seg)

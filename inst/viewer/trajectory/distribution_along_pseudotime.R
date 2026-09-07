@@ -84,10 +84,7 @@ output[["trajectory_distribution_along_pseudotime_UI"]] <- renderUI({
 ## Plot.
 ##----------------------------------------------------------------------------##
 
-trajectory_density_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_source_call
-)
+trajectory_density_job <- cerebro_async_latest_value(session)
 
 output[[
   "trajectory_distribution_along_pseudotime_plot"

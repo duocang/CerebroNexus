@@ -5,10 +5,7 @@
 ## requested genes x cells slice is materialised there; conversion to RGB
 ## panels, separate panels, or a per-cell mean runs in mirai.
 ##----------------------------------------------------------------------------##
-expression_projection_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_source_call
-)
+expression_projection_job <- cerebro_async_latest_value(session)
 
 expression_projection_request <- reactive({
   req(

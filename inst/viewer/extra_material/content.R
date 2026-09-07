@@ -74,10 +74,7 @@ output[["extra_material_content_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 ## Table.
 ##----------------------------------------------------------------------------##
-extra_material_table_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_source_call
-)
+extra_material_table_job <- cerebro_async_latest_value(session)
 
 extra_material_async_selection <- reactive({
   selection <- extra_material_table_selection(

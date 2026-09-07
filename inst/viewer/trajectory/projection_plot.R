@@ -9,10 +9,7 @@
 ## parameters (filtering, subsetting, hover, colours). One source of truth so
 ## the coordinates sent to the plot match those used for selection and hover.
 ##----------------------------------------------------------------------------##
-trajectory_projection_job <- cerebro_async_latest_value(
-  session,
-  cerebro_async_source_call
-)
+trajectory_projection_job <- cerebro_async_latest_value(session)
 
 trajectory_projection_request <- reactive({
   req(

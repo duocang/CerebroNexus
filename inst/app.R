@@ -153,7 +153,7 @@ Cerebro.options <<- list(
     "Mouse ileum (MERFISH)" = 5,
     "Mouse brain (Xenium)" = 5,
     "Mouse brain (Trekker)" = 4.4,
-    "HLA & TCR" = 1
+    "HLA & TCR" = 5
   ),
   "point_opacity" = c(
     "PBMC - Full (T+B)" = 1,

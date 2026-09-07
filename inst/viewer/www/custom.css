@@ -1310,22 +1310,22 @@ body .small-box p {
 }
 /* Keep the decorative icon but fade + shrink it to a quiet corner glyph
    tinted with the warm accent, instead of AdminLTE's huge ghost icon.
-   shinydashboard renders it as `.icon-large > i`, so target both. */
+   Apply opacity once to the wrapper so it is not multiplied by the child. */
 body .small-box .icon,
-body .small-box .icon-large,
-body .small-box .icon-large > i,
-body .small-box .icon > i {
+body .small-box .icon-large {
   color: var(--c-amber) !important;
-  opacity: 0.18;
+  opacity: 0.26;
   font-size: 42px !important;
   top: 50% !important;
   right: 18px !important;
   transform: translateY(-50%);
-  transition: opacity var(--dur) var(--ease);
+  transition: opacity 180ms var(--ease), transform 180ms var(--ease);
 }
 body .small-box:hover .icon,
-body .small-box:hover .icon-large,
-body .small-box:hover .icon-large > i { opacity: 0.28; }
+body .small-box:hover .icon-large {
+  opacity: 0.42;
+  transform: translateY(-50%) scale(1.06);
+}
 body .small-box .small-box-footer, body .small-box > a { display: none !important; }
 
 /* box(background = "...") — the Organism / Date cards on the Data-info page */
@@ -1815,6 +1815,57 @@ body .modal-footer { border-top: 1px solid var(--c-border); padding: 15px 24px; 
    messages so failures are not mistaken for empty or unavailable content. */
 body .shiny-output-error { color: var(--c-error); font-family: var(--font-mono); font-size: 12.5px; }
 body .shiny-output-error-validation { color: var(--c-text-2); font-style: italic; }
+
+body .cerebro-dataset-stage {
+  display: grid;
+  margin: 12px 0 20px;
+  min-height: 168px;
+}
+body .cerebro-dataset-stage > .cerebro-dataset-loading,
+body .cerebro-dataset-stage > #load_data_sample_info_UI {
+  grid-area: 1 / 1;
+}
+body .cerebro-dataset-loading {
+  align-items: center;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  color: var(--c-text);
+  display: flex;
+  gap: 14px;
+  min-height: 168px;
+  padding: 18px 20px;
+  position: relative;
+  z-index: 1;
+}
+body .cerebro-dataset-stage.is-loading > .cerebro-dataset-loading {
+  opacity: 1;
+  transition: none;
+  visibility: visible;
+}
+body .cerebro-dataset-stage.is-loading > #load_data_sample_info_UI {
+  opacity: 0;
+  visibility: hidden;
+}
+body .cerebro-dataset-stage.is-ready > .cerebro-dataset-loading {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease-out, visibility 0s linear 140ms;
+  visibility: hidden;
+}
+body .cerebro-dataset-stage.is-ready > #load_data_sample_info_UI {
+  animation: cerebro-dataset-ready 220ms cubic-bezier(.2, .8, .2, 1) both;
+}
+body .cerebro-dataset-loading i { color: var(--c-amber); font-size: 24px; }
+body .cerebro-dataset-loading strong { font-size: 15px; }
+body .cerebro-dataset-loading p {
+  color: var(--c-text-2);
+  margin: 3px 0 0;
+}
+@keyframes cerebro-dataset-ready {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 body #shiny-notification-panel { bottom: 24px !important; right: 24px !important; width: 340px; }
 body .shiny-notification {

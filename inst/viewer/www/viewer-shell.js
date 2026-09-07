@@ -148,7 +148,17 @@
       element.__cerebroWaitTimer = null;
       element.classList.remove("cerebro-output-waiting");
     }
+    function setDatasetLoading(loading) {
+      var stage = document.getElementById("cerebro-dataset-stage");
+      if (!stage) return;
+      stage.classList.toggle("is-loading", loading);
+      stage.classList.toggle("is-ready", !loading);
+      stage.setAttribute("aria-busy", loading ? "true" : "false");
+    }
     window.jQuery(document)
+      .on("change.cerebroDatasetLoad", "#crb_file_selector, #input_file", function () {
+        setDatasetLoading(true);
+      })
       .on("shiny:outputinvalidated.cerebroMotion", function (event) {
         var element = event.target;
         if (!element || !element.classList ||
@@ -161,6 +171,10 @@
       })
       .on("shiny:value.cerebroMotion shiny:error.cerebroMotion", function (event) {
         finish(event.target);
+        var loading = document.getElementById("cerebro-dataset-loading");
+        if (loading && event.target.id === loading.dataset.outputId) {
+          setDatasetLoading(false);
+        }
       });
   });
 }());
