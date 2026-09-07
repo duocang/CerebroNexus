@@ -109,6 +109,7 @@ test_that("Panel C wrapper runs isolated incremental parts", {
   expect_match(body, "BENCH_PROFILE=panel_c2", fixed = TRUE)
   expect_match(body, "result/panel-c1", fixed = TRUE)
   expect_match(body, "result/panel-c2", fixed = TRUE)
+  expect_match(body, "combine_if_complete", fixed = TRUE)
   expect_false(grepl("BENCH_PROFILE=publication", body, fixed = TRUE))
 })
 

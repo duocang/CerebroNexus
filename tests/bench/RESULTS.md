@@ -4,7 +4,10 @@ This guide explains what the generated files mean. It does not contain a fixed p
 
 ## Start with the evidence label
 
-Open `result/CURRENT`, then read `result/runs/<run-id>/summary.md`. Only a `publication` run may support the user-facing article. `quick` is exploratory, `standard` is local review evidence, and `stress` describes a host boundary.
+Open `result/CURRENT`, then read `result/runs/<run-id>/summary.md` for A/B.
+Incremental C1 and C2 evidence uses `result/panel-c1/CURRENT` and
+`result/panel-c2/CURRENT`; the combined interpretation is
+`result/panel-c/summary.md`.
 
 ## How to read the tables
 
@@ -50,6 +53,7 @@ Every successful access row must say `correctness = OK` and match both source fi
 
 - “cold disk” latency: the operating-system cache is not controlled;
 - universal bytes per non-zero: the estimate is descriptive for one host;
-- full-source support: both default complete sources exceed `dgCMatrix`'s 32-bit non-zero index limit;
+- embedded full-source support: both complete sources exceed `dgCMatrix`'s
+  32-bit non-zero index limit; Panel C2 instead tests BPCells and H5 out of core;
 - biological performance: grouping and embeddings are synthetic fixtures;
 - academic peer review: `publication` is an internal evidence gate.

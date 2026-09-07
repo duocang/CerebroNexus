@@ -25,6 +25,8 @@ Each backend therefore occupies every order position once on a repeated tier. Th
 | `quick` | 1 | 1 | smoke-check the harness |
 | `standard` | 3 | 1 | local review and debugging |
 | `publication` | 3 | 2 | evidence for the pkgdown article |
+| `panel_c1` | 3 | 2 | 400k mouse / 300k human, all three backends |
+| `panel_c2` | 3 | 2 | complete sources, BPCells and H5 only |
 | `stress` | 1 | 1 | explicit host memory-boundary experiment |
 
 The `quick` profile runs only the smallest comparison tier for each selected source. Normal profiles exclude large tiers that exist only to locate a pass/fail boundary. Those tiers belong to `stress`, and resource preflight rejects them unless the recorded host has a safe budget or the operator uses an explicit unsafe override. Only `publication` results may regenerate the article figures.
@@ -40,6 +42,13 @@ Unsafe tiers are never silently removed. The run stops before bulk transfer and 
 The default sources are a 10x mouse-brain H5 matrix and a CELLxGENE human-PFC H5AD matrix. Both are downloaded once per run, read locally, hashed with SHA-256, and deleted with the scratch tree. The source URL, byte size, and hash are stored in `source_manifest.csv`.
 
 Each tier contains four evenly spaced contiguous cell runs. Contiguity keeps each source read to a small number of HDF5 hyperslabs; spacing avoids measuring only the first donors in a donor-ordered file. The subsets are suitable for storage and access measurements, not biological inference.
+
+Panel C1 uses the same path at 400,000 mouse cells and 300,000 human cells.
+Panel C2 is different: BPCells opens the complete cached 10x/H5AD source lazily,
+streams it into BPCells or TENx HDF5 storage, and never creates a full
+`dgCMatrix`. Its `.crb` contains deterministic full-cell metadata and a
+synthetic projection, while expression remains in the relative sibling
+backend.
 
 ## Query panel and cache semantics
 
@@ -92,6 +101,7 @@ BENCH_PROFILE=quick tests/bench/run_sweep.sh
 BENCH_PROFILE=standard tests/bench/run_sweep.sh
 BENCH_PROFILE=publication tests/bench/run_sweep.sh
 BENCH_PROFILE=stress tests/bench/run_sweep.sh
+BENCH_SOURCE_CACHE=/persistent/cache tests/bench/run_panel_c.sh
 
 # Regenerate tracked figures only from the validated current publication run.
 Rscript tests/bench/src/41_draw_figures.R
