@@ -952,39 +952,23 @@ observeEvent(
   ignoreInit = FALSE
 )
 
-## Keep bindCache at the public computation boundary as a second-level cache
-## shared with existing Shiny cache configuration. The async adapter owns the
-## latest-wins task and its small session-local hot set.
+## Do not wrap an initially-pending async result in bindCache: the first req()
+## would cache a shiny.silent.error under the stable graph key and replay it
+## after the daemon completes. The async adapter already owns the keyed cache.
 hla_motif_graph_raw_cached <- reactive({
   hla_scoped_graph_job$result()
-}) %>%
-  hla_bindCache(
-    hla_active_chain(),
-    hla_param("hla_by_v", hla_by_v_default()),
-    paste(hla_node_meta_cols(), collapse = ","),
-    hla_scope_key(),
-    available_crb_files$selected
-  )
+})
 
 ## The CHEAP half: filter the cached full graph by minimum size / isolated and
-## relabel clusters. Cached on those two so returning to a value is instant; on a
-## new value the raw build above is a cache hit and only this cheap step runs.
+## relabel clusters. The raw graph remains cached by the async adapter; this
+## inexpensive step reruns when its display filters change.
 hla_motif_graph_cached <- reactive({
   hla_finalize_motif_graph(
     hla_motif_graph_raw_cached(),
     min_nodes = hla_min_nodes_debounced(),
     show_isolated = isTRUE(hla_param("hla_show_isolated", FALSE))
   )
-}) %>%
-  hla_bindCache(
-    hla_active_chain(),
-    hla_param("hla_by_v", hla_by_v_default()),
-    hla_min_nodes_debounced(),
-    hla_param("hla_show_isolated", FALSE),
-    paste(hla_node_meta_cols(), collapse = ","),
-    hla_scope_key(),
-    available_crb_files$selected
-  )
+})
 
 hla_motif_graph <- reactive({
   req(hla_params_ready())
@@ -1021,14 +1005,7 @@ hla_global_motif_graph_raw_cached <- reactive({
     return(hla_motif_graph_raw_cached())
   }
   hla_global_graph_job$result()
-}) %>%
-  hla_bindCache(
-    hla_active_chain(),
-    hla_param("hla_by_v", hla_by_v_default()),
-    paste(hla_node_meta_cols(), collapse = ","),
-    "all",
-    available_crb_files$selected
-  )
+})
 
 ## Filtered to the same minimum size / isolated rule as the drawn graph.
 hla_global_motif_graph_cached <- reactive({
@@ -1037,16 +1014,7 @@ hla_global_motif_graph_cached <- reactive({
     min_nodes = hla_min_nodes_debounced(),
     show_isolated = isTRUE(hla_param("hla_show_isolated", FALSE))
   )
-}) %>%
-  hla_bindCache(
-    hla_active_chain(),
-    hla_param("hla_by_v", hla_by_v_default()),
-    hla_min_nodes_debounced(),
-    hla_param("hla_show_isolated", FALSE),
-    paste(hla_node_meta_cols(), collapse = ","),
-    "all",
-    available_crb_files$selected
-  )
+})
 
 hla_global_motif_graph <- reactive({
   req(hla_params_ready())

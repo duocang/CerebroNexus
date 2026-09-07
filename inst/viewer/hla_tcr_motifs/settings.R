@@ -3,12 +3,11 @@
 ##----------------------------------------------------------------------------##
 
 ## ---- Two-line option renderer ----------------------------------------- ##
-## selectize draws each option/item as one run of text, so a label long enough
-## to wrap breaks wherever it runs out of room — "re-colours" or "non-carrier"
-## split across two lines. This renders "name|explanation" as a name plus a
-## smaller, muted second line, so the break is a decision. escape() is
-## selectize's own HTML escaper; the labels are ours, but rendering them raw
-## would make any future label an injection point.
+## The open menu renders "name|explanation" as a name plus a smaller, muted
+## second line. The collapsed item shows only the name so every toolbar control
+## keeps the same height and baseline. escape() is selectize's own HTML escaper;
+## the labels are ours, but rendering them raw would make any future label an
+## injection point.
 ##
 ## Shared by every picker on this page whose label is "what it is" plus "what it
 ## means": network scope, and both allele pickers.
@@ -24,11 +23,7 @@ HLA_TWO_LINE_RENDER <- I(
     },
     item: function(item, escape) {
       var p = item.label.split('|');
-      return '<div class=\"item\" style=\"line-height:1.35;\">' +
-             '<div>' + escape(p[0]) + '</div>' +
-             (p[1] ? '<div style=\"font-size:11px;color:#8a8a90;\">' +
-                     escape(p[1]) + '</div>' : '') +
-             '</div>';
+      return '<div class=\"item\">' + escape(p[0]) + '</div>';
     }
   }"
 )

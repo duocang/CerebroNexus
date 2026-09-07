@@ -22,6 +22,28 @@ hla_params_ready_src <- function(data_src) {
   m
 }
 
+test_that("collapsed HLA selectize items stay single-line", {
+  src <- paste(
+    readLines(
+      hla_inst_file("viewer/hla_tcr_motifs/settings.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  item_renderer <- regmatches(
+    src,
+    regexpr(
+      "item: function\\(item, escape\\) \\{[\\s\\S]{0,500}?\\n    \\}",
+      src,
+      perl = TRUE
+    )
+  )
+
+  expect_length(item_renderer, 1L)
+  expect_match(item_renderer, "escape(p[0])", fixed = TRUE)
+  expect_no_match(item_renderer, "p[1]", fixed = TRUE)
+})
+
 test_that("HLA Associations is wired to a frozen motif feature", {
   src <- paste(
     readLines(
@@ -956,33 +978,31 @@ test_that("scope guards test for 'all', never for one scope's name", {
   )
 })
 
-test_that("the parameter gate stays OUTSIDE the cached graph reactives", {
+test_that("pending async graphs are never wrapped in bindCache", {
   # Both heavy graphs are gated on hla_params_ready() so the page does not build
   # and draw once against hla_param()'s fallbacks and then again for real the
   # moment output$hla_parameters_ui's inputs report.
   #
-  # The gate must sit in the uncached wrapper. req() raises a silent condition,
-  # and inside a bindCache body that condition is a value the cache may store
-  # under the current key — every later hit on that key would then replay the
-  # stop instead of building. Structural, and silent when broken: the page would
-  # simply go blank for whichever parameters were live when it first opened.
+  # req() raises a silent condition. If any async result or downstream finalize
+  # reactive is wrapped in bindCache, its initial pending condition is cached
+  # under the stable graph key and replayed after the daemon completes.
   data_src <- paste(
     readLines(hla_inst_file("viewer/hla_tcr_motifs/data.R"), warn = FALSE),
     collapse = "\n"
   )
-  # Each cached reactive is bindCache'd and must not gate. Both the expensive raw
-  # builds and the cheap finalize layers are cached, so all four are pinned.
+  # The async adapter already owns the keyed raw-graph cache. Keep all four
+  # async-dependent reactives outside bindCache so readiness can invalidate them.
   for (nm in c(
     "hla_motif_graph_raw_cached",
     "hla_motif_graph_cached",
     "hla_global_motif_graph_raw_cached",
     "hla_global_motif_graph_cached"
   )) {
-    expect_match(
+    expect_no_match(
       data_src,
       paste0(nm, " <- reactive\\(\\{[\\s\\S]{0,400}hla_bindCache\\("),
       perl = TRUE,
-      info = paste(nm, "must be the bindCache'd reactive")
+      info = paste(nm, "must not cache an initially-pending async result")
     )
     expect_no_match(
       data_src,
