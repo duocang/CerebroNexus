@@ -11,7 +11,14 @@ builder_project_test_runtime <- function() {
     ),
     envir = runtime
   )
-  for (file in c("io.R", "worker.R", "extras.R", "project.R", "build.R")) {
+  for (file in c(
+    "io.R",
+    file.path("core", "plan_identity.R"),
+    "worker.R",
+    "extras.R",
+    "project.R",
+    "build.R"
+  )) {
     path <- testthat::test_path("..", "..", "inst", "builder", file)
     sys.source(path, envir = runtime)
   }
@@ -1451,8 +1458,12 @@ test_that("build execution rejects a reusable CRB changed after checkpoint", {
   fingerprint <- list(md5 = unname(tools::md5sum(artifact)))
   writeBin(charToRaw("replacement"), artifact)
   stage <- withr::local_tempdir()
+  release <- file.path(dirname(stage), "release")
   plan <- structure(
     list(
+      readiness = "ready",
+      revision = 1L,
+      dataset_order = "ds1",
       items = list(list(
         id = "ds1",
         name = "Dataset 1",
@@ -1463,8 +1474,19 @@ test_that("build execution rejects a reusable CRB changed after checkpoint", {
           members = list()
         )
       )),
+      manifest = list(),
+      acknowledgements = character(),
+      out_dir = release,
+      overwrite = FALSE,
+      targets = file.path(release, "dataset-1.crb"),
       make_app = FALSE,
-      app_auth = list(enabled = FALSE)
+      app_contract_version = NULL,
+      app_options = list(),
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      )
     ),
     class = c("builder_build_plan", "list")
   )

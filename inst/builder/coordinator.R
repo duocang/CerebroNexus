@@ -10,6 +10,7 @@ builder_release_runtime_files <- function() {
   roots <- roots[nzchar(roots)]
   required <- c(
     contract = file.path("core", "bundle_path_contract.R"),
+    identity = file.path("core", "plan_identity.R"),
     publish = "publish.R",
     app_bundle = "app_bundle.R",
     report = "report.R",
@@ -47,6 +48,14 @@ builder_release_runtime_files <- function() {
 }
 
 .builder_coordinator_report_plan <- function(plan) {
+  publication_plan_digest <- if (
+    inherits(plan, "builder_build_plan") &&
+      identical(.subset2(plan, "readiness"), "ready")
+  ) {
+    builder_publication_plan_digest(plan)
+  } else {
+    NULL
+  }
   app_auth <- .subset2(plan, "app_auth")
   items <- lapply(.subset2(plan, "items"), function(item) {
     list(
@@ -103,6 +112,7 @@ builder_release_runtime_files <- function() {
   })
   projected <- structure(
     list(
+      publication_plan_digest = publication_plan_digest,
       revision = .subset2(plan, "revision"),
       readiness = .subset2(plan, "readiness"),
       out_dir = .subset2(plan, "out_dir"),

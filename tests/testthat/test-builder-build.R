@@ -1,5 +1,6 @@
 builder_build_source_runtime <- function(local = parent.frame()) {
   for (file in c(
+    "core/plan_identity.R",
     "spatial.R",
     "profile.R",
     "inspect.R",
@@ -77,6 +78,7 @@ test_that("session execution stages artifacts without publishing them", {
 })
 
 builder_build_test_plan <- function(analyses = character()) {
+  out_dir <- tempfile("builder-build-output-")
   item <- list(
     id = "dataset-a",
     name = "Dataset A",
@@ -102,8 +104,15 @@ builder_build_test_plan <- function(analyses = character()) {
   )
   structure(
     list(
+      readiness = "ready",
+      revision = 1L,
       items = list(item),
       dataset_order = "dataset-a",
+      out_dir = out_dir,
+      overwrite = FALSE,
+      targets = file.path(out_dir, "dataset-a.crb"),
+      manifest = list(),
+      acknowledgements = list(),
       make_app = FALSE,
       app_contract_version = 0L,
       app_options = list(
@@ -185,6 +194,10 @@ test_that("build execution reuses the worker's loaded object", {
 
   expect_identical(result$state, "success")
   expect_true(result$publishable)
+  expect_identical(
+    result$plan_digest,
+    builder_publication_plan_digest(builder_build_test_plan())
+  )
 })
 
 test_that("build execution releases working objects before CRB verification", {
@@ -1560,10 +1573,20 @@ test_that("a real example is exported and verified only inside its stage", {
       hidden_conditional = character()
     )
   )
+  out_dir <- tempfile("builder-real-output-")
   plan <- structure(
     list(
+      readiness = "ready",
+      revision = 1L,
+      dataset_order = "pbmc-small",
       items = list(item),
+      manifest = list(),
+      acknowledgements = list(),
+      out_dir = out_dir,
+      overwrite = FALSE,
+      targets = file.path(out_dir, item$filename),
       make_app = FALSE,
+      app_contract_version = 0L,
       app_options = list(enabled = FALSE),
       app_auth = list(
         enabled = FALSE,

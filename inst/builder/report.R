@@ -386,7 +386,7 @@
   ) {
     stop("A portable Builder report is required.", call. = FALSE)
   }
-  expected <- c(
+  expected_v1 <- c(
     "schema_version",
     "identity",
     "plan_revision",
@@ -399,10 +399,28 @@
     "output_members",
     "warnings"
   )
+  expected_v2 <- append(expected_v1, "plan_digest", after = 2L)
+  schema_valid <- .builder_report_count(report$schema_version) &&
+    report$schema_version %in% c(1L, 2L)
+  expected <- if (
+    isTRUE(schema_valid) && identical(report$schema_version, 2L)
+  ) {
+    expected_v2
+  } else {
+    expected_v1
+  }
+  plan_digest_valid <- if (
+    isTRUE(schema_valid) && identical(report$schema_version, 2L)
+  ) {
+    .builder_report_text(report$plan_digest) &&
+      grepl("^[0-9a-f]{32}$", report$plan_digest)
+  } else {
+    is.null(report$plan_digest)
+  }
   if (
     !identical(names(report), expected) ||
-      !.builder_report_count(report$schema_version) ||
-      !identical(report$schema_version, 1L) ||
+      !isTRUE(schema_valid) ||
+      !isTRUE(plan_digest_valid) ||
       !.builder_report_text(report$identity) ||
       !grepl("^[0-9a-f]{32}$", report$identity) ||
       !.builder_report_count(report$plan_revision) ||
@@ -497,6 +515,20 @@ builder_build_report <- function(plan, result) {
   ) {
     stop(
       "A frozen plan and verified successful result are required.",
+      call. = FALSE
+    )
+  }
+  plan_digest <- plan$publication_plan_digest %||%
+    builder_publication_plan_digest(plan)
+  if (
+    !.builder_report_text(plan_digest) ||
+      !grepl("^[0-9a-f]{32}$", plan_digest)
+  ) {
+    stop("The frozen plan identity is invalid.", call. = FALSE)
+  }
+  if (!identical(result$plan_digest, plan_digest)) {
+    stop(
+      "The worker result does not match the frozen plan identity.",
       call. = FALSE
     )
   }
@@ -645,8 +677,9 @@ builder_build_report <- function(plan, result) {
     method = "radix"
   )
   report <- list(
-    schema_version = 1L,
+    schema_version = 2L,
     identity = paste(rep("0", 32L), collapse = ""),
+    plan_digest = plan_digest,
     plan_revision = as.integer(plan$revision),
     artifact_mode = if (!isTRUE(plan$make_app)) {
       "crbs_only"

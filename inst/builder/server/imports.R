@@ -1208,6 +1208,7 @@ builder_start_release_settlement_process <- function(release, value) {
       }
       for (name in c(
         "contract",
+        "identity",
         "publish",
         "app_bundle",
         "report",

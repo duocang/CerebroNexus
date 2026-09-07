@@ -1,6 +1,10 @@
 builder_e2e_source_runtime <- function(local = parent.frame()) {
   builder_profile_source_runtime(local)
   builder_dir <- normalizePath(builder_profile_inst_path("builder"))
+  sys.source(
+    file.path(builder_dir, "core", "plan_identity.R"),
+    envir = local
+  )
   for (file in c(
     "io.R",
     "recommend.R",

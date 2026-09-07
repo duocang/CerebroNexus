@@ -1101,6 +1101,7 @@ builder_execute_plan <- function(
   if (!inherits(plan, "builder_build_plan") || !is.list(plan$items)) {
     stop("Build execution requires a frozen BuildPlan.", call. = FALSE)
   }
+  plan_digest <- builder_publication_plan_digest(plan)
   stage <- .builder_build_stage(stage)
   auth_enabled <- isTRUE(plan$app_auth$enabled)
   cleanup_complete <- !auth_enabled
@@ -1167,7 +1168,8 @@ builder_execute_plan <- function(
     retry_closure = character(),
     app_dir = NULL,
     app_verification = NULL,
-    stage = stage
+    stage = stage,
+    plan_digest = plan_digest
   )
   for (item in plan$items) {
     reused <- item$reused_artifact %||% NULL

@@ -114,6 +114,10 @@ privacy_source_builder_runtime <- function(contract_version = 1L) {
     file.path(builder_dir, "core", "bundle_path_contract.R"),
     envir = runtime
   )
+  sys.source(
+    file.path(builder_dir, "core", "plan_identity.R"),
+    envir = runtime
+  )
   for (file in c(
     "publish.R",
     "app_bundle.R",

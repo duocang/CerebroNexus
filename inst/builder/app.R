@@ -31,6 +31,7 @@ source(
   file.path("core", "bundle_path_contract.R"),
   local = TRUE
 )
+source(file.path("core", "plan_identity.R"), local = TRUE)
 source("publish.R", local = TRUE)
 source("app_bundle.R", local = TRUE)
 source("report.R", local = TRUE)

@@ -436,6 +436,14 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
   object <- SeuratObject::pbmc_small
   plan <- structure(
     list(
+      readiness = "ready",
+      revision = 1L,
+      dataset_order = "ds1",
+      out_dir = out,
+      overwrite = FALSE,
+      targets = file.path(out, "pbmc.crb"),
+      manifest = list(),
+      acknowledgements = list(),
       make_app = FALSE,
       app_contract_version = 0L,
       app_options = list(enabled = FALSE),

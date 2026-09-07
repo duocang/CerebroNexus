@@ -4,6 +4,7 @@ builder_task9_source <- function(local = parent.frame()) {
     root <- system.file("builder", package = "CerebroNexus")
   }
   source(file.path(root, "core", "bundle_path_contract.R"), local = local)
+  source(file.path(root, "core", "plan_identity.R"), local = local)
   source(file.path(root, "publish.R"), local = local)
   source(file.path(root, "app_bundle.R"), local = local)
   source(file.path(root, "report.R"), local = local)
@@ -160,6 +161,7 @@ builder_crb_coordinator_result <- function(handle, artifacts, labels = NULL) {
     }),
     app_dir = NULL,
     app_verification = NULL,
+    plan_digest = handle$report_plan$publication_plan_digest,
     auth_enabled = FALSE,
     auth_env_file = NULL
   )
@@ -409,6 +411,7 @@ builder_app_coordinator_fixture <- function(
     }),
     app_dir = NULL,
     app_verification = NULL,
+    plan_digest = handle$report_plan$publication_plan_digest,
     auth_enabled = FALSE,
     auth_env_file = NULL
   )
@@ -687,6 +690,7 @@ test_that("only one process can coordinate one release", {
     barrier <- file.path(root, "go")
     runner <- function(id, builder_root, target, barrier) {
       source(file.path(builder_root, "core", "bundle_path_contract.R"))
+      source(file.path(builder_root, "core", "plan_identity.R"))
       source(file.path(builder_root, "publish.R"))
       source(file.path(builder_root, "app_bundle.R"))
       source(file.path(builder_root, "report.R"))
@@ -752,7 +756,8 @@ test_that("only one process can coordinate one release", {
                 metadata = character()
               )),
               app_dir = NULL,
-              app_verification = NULL
+              app_verification = NULL,
+              plan_digest = handle$report_plan$publication_plan_digest
             )
           )
           list(published = isTRUE(result$published), error = result$error)

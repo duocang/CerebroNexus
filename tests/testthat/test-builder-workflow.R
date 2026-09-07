@@ -1,3 +1,14 @@
+plan_identity_path <- testthat::test_path(
+  "..",
+  "..",
+  "inst",
+  "builder",
+  "core",
+  "plan_identity.R"
+)
+if (file.exists(plan_identity_path)) {
+  sys.source(plan_identity_path, envir = environment())
+}
 builder_repo_source("review.R")
 builder_repo_source("workflow.R")
 
@@ -108,6 +119,57 @@ test_that("final build identity adds output-only settings", {
     builder_final_build_identity(plan),
     builder_final_build_identity(changed)
   ))
+})
+
+test_that("publication plan digest is portable and choice-sensitive", {
+  plan <- builder_workflow_test_plan()
+  plan$items[[1L]]$source_snapshot_identity <- list(
+    path = tempfile("source-snapshot-"),
+    object_file = tempfile("source-object-"),
+    owner_token = "runtime-owner-token",
+    object_md5 = "0123456789abcdef0123456789abcdef"
+  )
+  plan$items[[1L]]$reused_artifact <- list(
+    path = tempfile("reused-crb-"),
+    fingerprint = list(md5 = "fedcba9876543210fedcba9876543210"),
+    members = list(list(
+      resolved_path = tempfile("reused-sidecar-"),
+      relative_path = "dataset-a.h5"
+    ))
+  )
+  relocated <- plan
+  relocated$out_dir <- tempfile("relocated-builder-output-")
+  relocated$targets <- file.path(relocated$out_dir, "dataset-a.crb")
+  relocated$items[[1L]]$source_snapshot_identity$path <- tempfile(
+    "relocated-source-snapshot-"
+  )
+  relocated$items[[1L]]$source_snapshot_identity$object_file <- tempfile(
+    "relocated-source-object-"
+  )
+  relocated$items[[1L]]$reused_artifact$path <- tempfile("relocated-crb-")
+  relocated$items[[1L]]$reused_artifact$members[[1L]]$resolved_path <-
+    tempfile("relocated-sidecar-")
+  changed <- plan
+  changed$app_options$welcome_message <- "A different welcome message"
+
+  digest <- builder_publication_plan_digest(plan)
+
+  expect_match(digest, "^[0-9a-f]{32}$")
+  expect_identical(digest, builder_publication_plan_digest(relocated))
+  expect_false(identical(
+    digest,
+    builder_publication_plan_digest(changed)
+  ))
+})
+
+test_that("review identity accepts frozen BuildPlan subclasses", {
+  plan <- builder_workflow_test_plan()
+  class(plan) <- c("special_builder_plan", class(plan))
+
+  expect_identical(
+    builder_review_plan_identity(plan),
+    builder_review_plan_identity(builder_workflow_test_plan())
+  )
 })
 
 test_that("workflow advances through snapshot review and confirmation", {

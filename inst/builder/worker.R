@@ -1140,6 +1140,7 @@ builder_worker_start <- function(
       build = function() {
         builder_worker_ensure_capability(capabilities, "analysis")
         source_files(c(
+          file.path(dir, "core", "plan_identity.R"),
           file.path(dir, "app_bundle.R"),
           file.path(dir, "build.R")
         ))

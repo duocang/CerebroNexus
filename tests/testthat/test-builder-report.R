@@ -1,4 +1,15 @@
 builder_repo_source("core/bundle_path_contract.R")
+plan_identity_path <- testthat::test_path(
+  "..",
+  "..",
+  "inst",
+  "builder",
+  "core",
+  "plan_identity.R"
+)
+if (file.exists(plan_identity_path)) {
+  sys.source(plan_identity_path, envir = environment())
+}
 builder_repo_source("publish.R")
 builder_repo_source("report.R")
 
@@ -73,7 +84,12 @@ builder_report_fixture <- function(
       )
     ),
     app_dir = NULL,
-    app_verification = NULL
+    app_verification = NULL,
+    plan_digest = if (exists("builder_publication_plan_digest")) {
+      builder_publication_plan_digest(plan)
+    } else {
+      NULL
+    }
   )
   list(stage = stage, plan = plan, result = result)
 }
@@ -83,7 +99,11 @@ test_that("portable reports derive redacted identity from plan and verification"
   report <- builder_build_report(fixture$plan, fixture$result)
 
   expect_s3_class(report, "builder_build_report")
-  expect_identical(report$schema_version, 1L)
+  expect_identical(report$schema_version, 2L)
+  expect_identical(
+    report$plan_digest,
+    builder_publication_plan_digest(fixture$plan)
+  )
   expect_identical(report$plan_revision, 12L)
   expect_identical(report$artifact_mode, "crbs_only")
   expect_identical(report$dataset_order, "dataset-a")
@@ -125,6 +145,44 @@ test_that("portable reports derive redacted identity from plan and verification"
   ))
 })
 
+test_that("portable reports reject a worker plan identity mismatch", {
+  fixture <- builder_report_fixture()
+  fixture$result$plan_digest <- strrep("f", 32L)
+
+  expect_error(
+    builder_build_report(fixture$plan, fixture$result),
+    "plan identity"
+  )
+})
+
+test_that("portable report reader remains compatible with schema v1", {
+  fixture <- builder_report_fixture()
+  report <- builder_build_report(fixture$plan, fixture$result)
+  report$schema_version <- 1L
+  report$plan_digest <- NULL
+  report <- report[c(
+    "schema_version",
+    "identity",
+    "plan_revision",
+    "artifact_mode",
+    "dataset_order",
+    "datasets",
+    "content",
+    "viewer_bundle_assets",
+    "private_assets",
+    "output_members",
+    "warnings"
+  )]
+  class(report) <- c("builder_build_report", "list")
+  report$identity <- .builder_report_identity(report)
+
+  expect_silent(.builder_report_validate(report, require_class = TRUE))
+  path <- builder_write_build_report(fixture$stage, report)
+  reread <- builder_read_build_report(path)
+  expect_identical(reread$schema_version, 1L)
+  expect_null(reread$plan_digest)
+})
+
 test_that("portable report reader accepts the strict legacy private-App topology", {
   fixture <- builder_report_fixture()
   report <- builder_build_report(fixture$plan, fixture$result)
@@ -164,6 +222,7 @@ test_that("report JSON writes atomically and rereads exact schema identity", {
   )
   expect_true(file.exists(path))
   expect_identical(reread$identity, report$identity)
+  expect_identical(reread$plan_digest, report$plan_digest)
   expect_identical(reread$plan_revision, 12L)
   expect_false(file.exists(paste0(path, ".tmp")))
 })
@@ -175,6 +234,7 @@ test_that("not-applicable manifest dispositions round-trip as portable null", {
     disposition = NA_character_,
     pages = character()
   )
+  fixture$result$plan_digest <- builder_publication_plan_digest(fixture$plan)
 
   report <- builder_build_report(fixture$plan, fixture$result)
   expect_null(report$content$marker_genes$disposition)
@@ -188,6 +248,9 @@ test_that("not-applicable manifest dispositions round-trip as portable null", {
   for (invalid in list(1L, list("preserved"), c("a", "b"))) {
     malformed <- builder_report_fixture()
     malformed$plan$manifest$marker_genes$disposition <- invalid
+    malformed$result$plan_digest <- builder_publication_plan_digest(
+      malformed$plan
+    )
     expect_error(
       builder_build_report(malformed$plan, malformed$result),
       "schema"
@@ -198,6 +261,7 @@ test_that("not-applicable manifest dispositions round-trip as portable null", {
 test_that("reports with no documented warnings retain identity", {
   fixture <- builder_report_fixture()
   fixture$plan$acknowledgements <- list()
+  fixture$result$plan_digest <- builder_publication_plan_digest(fixture$plan)
   report <- builder_build_report(fixture$plan, fixture$result)
 
   expect_identical(report$warnings, character())
