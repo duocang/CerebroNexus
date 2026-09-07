@@ -105,7 +105,7 @@
     {
       "file": "demo_hla_tcr_publication.screenshots.json",
       "bytes": 1945,
-      "sha256": "504fb8c6be7b46779812409b2053220d026e0820f88cc64754cb0af4584d69d3"
+      "sha256": "ad06848173790fb311147fd963e9be46bff7adc48b74a1847bfb4114c3050cc1"
     }
   ],
   "figures": {
@@ -128,7 +128,7 @@
       "sha256": "850e736fdf810270f60d1cb89959fd0603fc2c329ff73ba64cfd9edaefca8c77"
     }
   },
-  "screenshot_source_commit": "9aa1facdcf5f9e42d313538945e43c3b72e882ff",
+  "screenshot_source_commit": "95625bf3214923e765bbe46dcafc3bf743fddd14",
   "screenshots": [
     {
       "file": "vignettes/img/hla_tcr_real_data_info.png",
@@ -136,7 +136,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "2df966eca26ccc1602ab8d6bec751ace749256a5c4d41d602d804c4da1f2d61c"
+      "sha256": "44727d64b7ab4eff1bdaa299150c8acc06afe071aacddc7011a2c8beed5a7ec3"
     },
     {
       "file": "vignettes/img/hla_tcr_main_case_linked_views_all.png",
@@ -144,7 +144,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "bbaf18682c2689da7bd39b224decaf0a811a7f64fa468d1eb5e2626566cc64b5"
+      "sha256": "ce5b7716e5fbd7a3e504448df3b8a2939ca39ce1ed121d8ec3659f078c848a23"
     },
     {
       "file": "vignettes/img/hla_tcr_strict_linked_views_selected.png",
@@ -184,7 +184,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "b0958b1bdd00b30c740c83edee0b7a05f5bcd6f4ed2795956c7c34a4ac7a6844"
+      "sha256": "66178ca265cde82ab791907f5f8a3f48ca7c7bdc7dc62ca04709e0ea37f702c6"
     },
     {
       "file": "vignettes/img/hla_tcr_real_data_qc.png",
@@ -192,7 +192,7 @@
       "width": 1440,
       "height": 900,
       "selection_fingerprint": null,
-      "sha256": "a2a77ea2aaee63daba81b4b1f161afd44cc1bcee7e3094901ad39e5bd96bb7b3"
+      "sha256": "9d94361cba33133ecd8810c0545eaf7ca54e899103388f2414a840864c861cfd"
     }
   ]
 }
