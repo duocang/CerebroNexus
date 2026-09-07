@@ -22,6 +22,8 @@ case "$PART" in
   all)
     run_c1
     run_c2
+    Rscript "$BENCH_ROOT/src/42_write_panel_c_report.R" "$BENCH_ROOT/result"
+    Rscript "$BENCH_ROOT/src/43_draw_panel_c_figure.R" "$BENCH_ROOT/result"
     ;;
   c1)
     run_c1

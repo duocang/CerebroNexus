@@ -292,3 +292,48 @@ test_that("publication figure labels distinct Viewer workloads", {
   expect_match(source, "Marker-panel block latency", fixed = TRUE)
   expect_match(source, 'plot_annotation(tag_levels = "A")', fixed = TRUE)
 })
+
+test_that("Panel C input guard accepts only the recorded A/B evidence", {
+  skip_unless_bench_reporting()
+  source(bench_reporting, local = TRUE)
+  baseline_id <- "20260907T172844Z-9c6ab101e4a5-publication"
+  baseline <- file.path(bench_root, "result", "runs", baseline_id)
+  testthat::skip_if_not(dir.exists(baseline))
+
+  expect_true(bench_validate_panel_c_baseline(baseline))
+  manifest <- utils::read.csv(
+    file.path(baseline, "run_manifest.csv"),
+    stringsAsFactors = FALSE
+  )
+  manifest$value[manifest$key == "git_sha"] <- paste(
+    rep("0", 40),
+    collapse = ""
+  )
+  expect_error(
+    bench_validate_panel_c_baseline(baseline, manifest = manifest),
+    "Git SHA"
+  )
+  access <- utils::read.csv(
+    file.path(baseline, "20_access.csv"),
+    stringsAsFactors = FALSE
+  )
+  access$query_plan_fingerprint[1L] <- "drift"
+  expect_error(
+    bench_validate_panel_c_baseline(baseline, access = access),
+    "query-plan"
+  )
+})
+
+test_that("Panel C combined report scripts are present", {
+  skip_unless_bench_reporting()
+  expect_true(file.exists(file.path(
+    bench_root,
+    "src",
+    "42_write_panel_c_report.R"
+  )))
+  expect_true(file.exists(file.path(
+    bench_root,
+    "src",
+    "43_draw_panel_c_figure.R"
+  )))
+})
