@@ -1,7 +1,7 @@
 ---
 title: "A real antigen-selected single-cell TCR demo, end to end"
 author: "Xuesong Wang"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+date: "8 September 2026"
 output:
   html_document:
     toc: true
@@ -20,6 +20,22 @@ vignette: >
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+evidence_candidates <- c(
+  file.path("..", "inst", "extdata", "examples",
+            "demo_hla_tcr_publication.manifest.json"),
+  system.file("extdata", "examples",
+              "demo_hla_tcr_publication.manifest.json",
+              package = "CerebroNexus")
+)
+evidence_file <- evidence_candidates[file.exists(evidence_candidates)][1]
+publication <- jsonlite::fromJSON(evidence_file, simplifyVector = FALSE)
+strict_case <- publication$strict_case
+viewer_case <- publication$viewer_case
+cohort <- read.csv(
+  file.path(dirname(evidence_file), "demo_hla_tcr_publication.cohort.csv"),
+  stringsAsFactors = FALSE
+)
+restriction_carried <- sum(cohort$restriction_yes)
 ```
 
 # What this guide does
@@ -39,7 +55,8 @@ from**.
 This vignette uses one real, antigen-selected single-cell data set to follow a
 small receptor-defined population all the way through the application.
 
-**The data.** `demo_hla_tcr_dextramer.crb` contains 12,000 real 10x Genomics
+**The data.** `demo_hla_tcr_dextramer.crb` contains
+`r format(publication$dataset$cell_count, big.mark = ",")` real 10x Genomics
 CD8+ T cells from four donors (3,000 per donor), with paired TRA/TRB TCRs,
 transcriptomes and UMAP coordinates, per-cell dextramer labels, and the donors'
 published HLA genotypes. The source is Zhang *et al.*, *Science Advances*
@@ -54,31 +71,58 @@ and HLA context, and hand the same cells to a collaborator?
 *Figure 1. Real data → nearby TRB motif → strict sequence-defined clonotype →
 UMAP and donor/HLA context → stable barcode selection → Linked views sharing.*
 
-**The fixed endpoint.** We use `TRBV19 / TRBJ1-5 / CASSIYSNQPQHF`. It contains
-10 cells: 2 from donor1 and 8 from donor2. All 10 carry the same reagent labels
+**The fixed endpoint.** We use
+`r paste(unlist(strict_case$definition), collapse = " / ")`. It contains
+`r strict_case$cell_count` cells: `r strict_case$donor_counts$donor1` from
+donor1 and `r strict_case$donor_counts$donor2` from donor2. All selected cells
+carry the same reagent labels
 (`Flu-MP_Influenza`, peptide `GILGFVFTL`, reagent allele `HLA-A*02:01`) and all
-10 have `restriction_in_genotype = yes` for their published donor genotype.
-The sequence sits in motif `TRBV19::M13_1`, a nearby family with 15 TRB nodes,
-30 cells, and cells from donor1, donor2, and donor3.
+have `restriction_in_genotype = yes` for their published donor genotype.
+The nearby family has `r strict_case$motif$node_count` TRB nodes and
+`r strict_case$motif$cell_count` cells across donor1, donor2, and donor3.
 
-**The hand-off.** The 10 stable barcodes are loaded into Linked views, where
+**The hand-off.** The `r strict_case$cell_count` stable barcodes are loaded into
+Linked views, where
 the selection restores the UMAP, colour, and selected cells. The same selection
 can then be exported as JSON or shared as a link. The barcode list is the
 authority; a mouse-drawn region is not. The checked-in records are
 `demo_hla_tcr_dextramer.case.json` and
 `demo_hla_tcr_dextramer.golden-clone.barcodes.tsv`.
 
-![Golden TRB clonotype in the real CD8 T-cell UMAP](../inst/extdata/examples/demo_hla_tcr_dextramer.golden-clone-umap.png)
+![Strict and secondary selections in the real CD8 T-cell UMAP](img/hla_tcr_publication_umap.svg)
 
-*Figure 2. Gray points are all 12,000 cells; blue points are the golden
-clonotype in donor1 (2 cells); red points are the golden clonotype in donor2
-(8 cells).*
+*Figure 2. The primary strict clonotype and secondary Viewer selection are
+recomputed from the tracked Cerebro object. Gray context points are a fixed,
+donor-balanced 2,000-cell display sample; all selected cells are shown.*
+
+![Sequence neighbourhoods for both cases](img/hla_tcr_publication_motifs.svg)
+
+*Figure 3. The exact Hamming-1 components used for the reported motif counts;
+node area reflects the number of cells carrying each TRB CDR3.*
+
+![Dextramer restriction labels versus published donor genotype](img/hla_tcr_publication_restriction.svg)
+
+*Figure 4. Per-donor raw binder-label context. This exposes cross-reactivity
+and missing HLA-B copies rather than treating reagent restriction as validated
+specificity.*
+
+```{r publication-cohort-table, echo = FALSE, eval = TRUE}
+knitr::kable(
+  cohort,
+  caption = paste(
+    "Donor-level descriptive counts regenerated from the publication",
+    "Cerebro object. No population-level inferential test is reported for",
+    "this four-donor selected cohort."
+  )
+)
+```
 
 This supports a reproducible description of sequence convergence and cell
 mapping in this selected cohort. It does **not** prove peptide-level antigen
 specificity, show that HLA-A*02:01 caused the TCR, or provide a statistical HLA
 association from four donors. The second vignette is a different, broader
-case: a 293-cell `CTgene`-defined expanded clone. Its numbers must not be
+case: a `r viewer_case$cell_count`-cell `CTgene`-defined expanded clone. Its
+numbers must not be
 combined with this strict 10-cell TRB case.
 
 ## Why this demo
@@ -87,7 +131,7 @@ One HLA demo ships, and everything in it is measured:
 
 | | `demo_hla_tcr_dextramer.crb` |
 |---|---|
-| cells | **real** — 12,000 sequenced CD8+ T cells |
+| cells | **real** — `r format(publication$dataset$cell_count, big.mark = ",")` sequenced CD8+ T cells |
 | TCR | **real** — paired αβ contigs, V gene + CDR3 |
 | HLA | **real** — the donors' published genotypes (table S1), measured independently of these cells |
 
@@ -99,12 +143,13 @@ remain in `data-raw/` (see `data-raw/hla.md`) if you want to reproduce them, and
 the bulk workflow now lives in its own guide as *bring your own cohort*.
 
 The first screen already exposes the scale and provenance of the object: this
-is not a motif network detached from cells, but a 12,000-cell, four-donor
+is not a motif network detached from cells, but a
+`r format(publication$dataset$cell_count, big.mark = ",")`-cell, four-donor
 single-cell data set loaded into the same Viewer used for the analysis.
 
 ![Real HLA/TCR data set loaded in CerebroNexus](img/hla_tcr_real_data_info.png)
 
-*Figure 3. The real antigen-selected HLA/TCR object loaded in the Viewer.*
+*Figure 5. The real antigen-selected HLA/TCR object loaded in the Viewer.*
 
 Replacing them required answering a fair objection first: *if the motif network
 is only legible on synthetic data, what is the feature for?*
@@ -286,7 +331,9 @@ It is a property of the **reagent**, not a verified property of the cell. A
 binder call does not establish that the cell is specific for that peptide, nor
 that the reagent's allele is what presents it in that donor. Dextramer staining
 is heavily cross-reactive in this experiment, and the size of the effect is
-easy to state: only **5,271 of the 12,000 shipped cells (44 %)** bound a
+easy to state: only **`r format(restriction_carried, big.mark = ",")` of the
+`r format(publication$dataset$cell_count, big.mark = ",")` shipped cells
+(`r round(100 * restriction_carried / publication$dataset$cell_count)` %)** bound a
 reagent whose restriction their donor actually carries. 6,654 bound one their
 donor demonstrably does not, and 75 more cannot be decided at all
 (per donor, yes / no / unknown of 3,000: 2,046 / 879 / 75 · 2,532 / 468 / 0 ·
@@ -551,7 +598,10 @@ On the shipped object the gate prints:
    PUBLISHED inst/extdata/examples/demo_hla_tcr_dextramer.crb (5.2 MB)
 ```
 
-12,000 dextramer-selected cells (3,000 per donor, every one paired αβ), 2,000
+`r format(publication$dataset$cell_count, big.mark = ",")` dextramer-selected
+cells (`r format(publication$dataset$cell_count / publication$dataset$donor_count,
+big.mark = ",")` per donor, every one paired αβ),
+`r format(publication$dataset$expression_features, big.mark = ",")`
 variable genes, **5.2 MB** — it was 7.9 MB while the expression block was
 stored dense.
 
@@ -561,7 +611,7 @@ Open the data set and go to **HLA & TCR Motifs**:
 
 ![Real TRB motif network](img/hla_tcr_real_motif_network.png)
 
-*Figure 4. The motif network computed from the shipped real `.crb` object.*
+*Figure 6. The motif network computed from the shipped real `.crb` object.*
 
 * **Motif Network** — families of real CDR3β sequences at Hamming distance 1.
   Colour by *Sample of origin* to see the same motif reached independently by
@@ -580,9 +630,9 @@ Open the data set and go to **HLA & TCR Motifs**:
 
 ![Real HLA association context](img/hla_tcr_real_hla_associations.png)
 
-*Figure 5. The Viewer keeps the HLA contrast descriptive and displays the
+*Figure 7. The Viewer keeps the HLA contrast descriptive and displays the
   ascertainment and raw-binder caveats beside the result.*
 
 ![Published HLA typing and coverage](img/hla_tcr_real_data_qc.png)
 
-*Figure 6. The stored `.crb` carries genotyped HLA context for all four donors.*
+*Figure 8. The stored `.crb` carries genotyped HLA context for all four donors.*

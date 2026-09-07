@@ -122,3 +122,31 @@ test_that("the unified publication artifact set is complete", {
     expect_identical(publication_sha256(figure_path), figure$sha256)
   }
 })
+
+test_that("HLA/TCR articles consume generated evidence", {
+  strict_file <- file.path(
+    publication_root,
+    "vignettes/hla_tcr_antigen_selected.Rmd"
+  )
+  viewer_file <- file.path(publication_root, "vignettes/hla_tcr_main_case.Rmd")
+  guide_file <- file.path(publication_root, "docs/hla-tcr-end-to-end-case.md")
+  strict <- paste(readLines(strict_file, warn = FALSE), collapse = "\n")
+  viewer <- paste(readLines(viewer_file, warn = FALSE), collapse = "\n")
+  guide <- paste(readLines(guide_file, warn = FALSE), collapse = "\n")
+
+  expect_match(strict, "demo_hla_tcr_publication.manifest.json", fixed = TRUE)
+  expect_match(strict, "publication$strict_case", fixed = TRUE)
+  expect_match(viewer, "demo_hla_tcr_publication.manifest.json", fixed = TRUE)
+  expect_match(viewer, "publication$viewer_case", fixed = TRUE)
+  expect_match(strict, "hla_tcr_publication_umap.svg", fixed = TRUE)
+  expect_match(viewer, "hla_tcr_publication_motifs.svg", fixed = TRUE)
+
+  combined <- paste(strict, viewer, guide, sep = "\n")
+  expect_false(grepl("prepare_hla_tcr_end_to_end_case.R", combined, fixed = TRUE))
+  expect_false(grepl("build_hla_tcr_main_case.R", combined, fixed = TRUE))
+  expect_match(
+    guide,
+    "build_hla_tcr_publication.R --from-crb --verify",
+    fixed = TRUE
+  )
+})

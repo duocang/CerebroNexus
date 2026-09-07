@@ -586,6 +586,7 @@ again.
 cd "$(git rev-parse --show-toplevel)"
 
 Rscript data-raw/build_hla_tcr_dextramer_demo.R   # SHIPPED; ~1.6 GB on first run
+Rscript data-raw/build_hla_tcr_publication.R --from-crb --verify
 Rscript data-raw/build_hla_tcr_demo.R             # not shipped: synthetic fixture, self-contained
 Rscript data-raw/build_hla_tcr_bulk_demo.R        # not shipped: real bulk, ~349 MB on first run
 ```
