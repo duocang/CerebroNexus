@@ -1,0 +1,133 @@
+{
+  "schema_version": 2,
+  "identity": "df5ec5d315aa79c221812becb4f5a152",
+  "plan_digest": "694547521457f2469b27c112b1dbd3e5",
+  "plan_revision": 1,
+  "artifact_mode": "crbs_only",
+  "dataset_order": "visium_brain",
+  "datasets": [
+    {
+      "id": "visium_brain",
+      "name": "10x Visium mouse brain sagittal anterior section 1",
+      "artifact_members": "01-10x-visium-mouse-brain-sagittal-anterior-section-visium-brain.crb",
+      "organism": "mm",
+      "methods": [],
+      "groups": "builder_evaluation_partition",
+      "projections": "builder_evaluation",
+      "metadata_columns": ["cell_barcode", "builder_evaluation_partition", "nUMI", "nGene", "orig.ident", "slice", "region", "public_source"],
+      "metadata": {
+        "retained": ["cell_barcode", "orig.ident", "nCount_Spatial", "nFeature_Spatial", "slice", "region", "public_source", "builder_evaluation_partition"],
+        "excluded": [],
+        "forced": ["cell_barcode", "nCount_Spatial", "nFeature_Spatial"]
+      },
+      "cell_count": 200,
+      "feature_count": 31053,
+      "expression_backend": "embedded",
+      "expression_storage": {
+        "mode": "embedded"
+      },
+      "spatial_image_storage": {
+        "mode": "external",
+        "image_count": 0,
+        "section_count": 1
+      },
+      "pages": "spatial"
+    }
+  ],
+  "content": {
+    "dataset_identity": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "data_info"
+    },
+    "expression": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "gene_expression"
+    },
+    "metadata": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": ["data_info", "groups"]
+    },
+    "groups": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": ["groups", "color_management"]
+    },
+    "reduction:builder_evaluation": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "projection"
+    },
+    "projection": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "projection"
+    },
+    "marker_genes": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "most_expressed_genes": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "mean_expression": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "enriched_pathways": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "trajectory": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "extra_material": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "immune_repertoire": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "hla_tcr_motifs": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "hla": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "spatial": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "spatial"
+    },
+    "trekker": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "metadata_policy": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": []
+    }
+  },
+  "viewer_bundle_assets": [],
+  "private_assets": "01-10x-visium-mouse-brain-sagittal-anterior-section-visium-brain.crb",
+  "output_members": ["01-10x-visium-mouse-brain-sagittal-anterior-section-visium-brain.crb", "build-report.json"],
+  "warnings": []
+}

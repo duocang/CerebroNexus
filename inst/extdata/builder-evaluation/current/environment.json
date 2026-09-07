@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "git_sha": "8d49009208df8a4f53e9b501f92abac18623b7ac",
+  "git_dirty": false,
+  "timestamp_utc": "2026-08-24 06:19:43 UTC",
+  "r_version": "R version 4.6.1 (2026-06-24)",
+  "platform": "aarch64-apple-darwin23",
+  "operating_system": ["Darwin", "27.0.0", "arm64"],
+  "package_version": "5.0.0",
+  "package_versions": {
+    "Seurat": "5.5.1",
+    "SeuratObject": "5.4.0",
+    "jsonlite": "2.0.0",
+    "callr": "3.8.0",
+    "testthat": "3.3.2"
+  },
+  "evaluation_profile": "publication",
+  "protocol_validation_error": null
+}

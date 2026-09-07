@@ -1,0 +1,261 @@
+{
+  "schema_version": 2,
+  "support": [
+    {
+      "capability": "marker_genes",
+      "positive_support": 2,
+      "negative_support": 8
+    },
+    {
+      "capability": "most_expressed_genes",
+      "positive_support": 2,
+      "negative_support": 8
+    },
+    {
+      "capability": "mean_expression",
+      "positive_support": 2,
+      "negative_support": 8
+    },
+    {
+      "capability": "enriched_pathways",
+      "positive_support": 2,
+      "negative_support": 8
+    },
+    {
+      "capability": "trajectory",
+      "positive_support": 3,
+      "negative_support": 7
+    },
+    {
+      "capability": "extra_material",
+      "positive_support": 2,
+      "negative_support": 8
+    },
+    {
+      "capability": "immune_repertoire",
+      "positive_support": 2,
+      "negative_support": 8
+    },
+    {
+      "capability": "hla",
+      "positive_support": 2,
+      "negative_support": 8
+    },
+    {
+      "capability": "spatial",
+      "positive_support": 2,
+      "negative_support": 8
+    },
+    {
+      "capability": "trekker",
+      "positive_support": 2,
+      "negative_support": 8
+    }
+  ],
+  "fixtures": {
+    "minimal": {
+      "id": "minimal",
+      "truth": {
+        "marker_genes": false,
+        "most_expressed_genes": false,
+        "mean_expression": false,
+        "enriched_pathways": false,
+        "trajectory": false,
+        "extra_material": false,
+        "immune_repertoire": false,
+        "hla": false,
+        "spatial": false,
+        "trekker": false
+      },
+      "object_hash": "8a074be2ab4e3ab32f32471f69423345"
+    },
+    "multi_assay": {
+      "id": "multi_assay",
+      "truth": {
+        "marker_genes": false,
+        "most_expressed_genes": false,
+        "mean_expression": false,
+        "enriched_pathways": false,
+        "trajectory": false,
+        "extra_material": false,
+        "immune_repertoire": false,
+        "hla": false,
+        "spatial": false,
+        "trekker": false
+      },
+      "object_hash": "d48fc94db2435add9660804f79d29abd"
+    },
+    "spatial": {
+      "id": "spatial",
+      "truth": {
+        "marker_genes": false,
+        "most_expressed_genes": false,
+        "mean_expression": false,
+        "enriched_pathways": false,
+        "trajectory": false,
+        "extra_material": false,
+        "immune_repertoire": false,
+        "hla": false,
+        "spatial": true,
+        "trekker": true
+      },
+      "object_hash": "67d5003e8212ba8265fa4064bbe28698"
+    },
+    "spatial_b": {
+      "id": "spatial_b",
+      "truth": {
+        "marker_genes": false,
+        "most_expressed_genes": false,
+        "mean_expression": false,
+        "enriched_pathways": false,
+        "trajectory": false,
+        "extra_material": false,
+        "immune_repertoire": false,
+        "hla": false,
+        "spatial": true,
+        "trekker": true
+      },
+      "object_hash": "1f7e6d54bd90eb18c967061d1a4fdac5"
+    },
+    "immune_hla": {
+      "id": "immune_hla",
+      "truth": {
+        "marker_genes": false,
+        "most_expressed_genes": false,
+        "mean_expression": false,
+        "enriched_pathways": false,
+        "trajectory": false,
+        "extra_material": false,
+        "immune_repertoire": true,
+        "hla": true,
+        "spatial": false,
+        "trekker": false
+      },
+      "object_hash": "025499ba1ca9b8181be666f103583f70"
+    },
+    "immune_hla_b": {
+      "id": "immune_hla_b",
+      "truth": {
+        "marker_genes": false,
+        "most_expressed_genes": false,
+        "mean_expression": false,
+        "enriched_pathways": false,
+        "trajectory": false,
+        "extra_material": false,
+        "immune_repertoire": true,
+        "hla": true,
+        "spatial": false,
+        "trekker": false
+      },
+      "object_hash": "a1dee5c75153ef673b03e62c07e05bc6"
+    },
+    "trajectory": {
+      "id": "trajectory",
+      "truth": {
+        "marker_genes": false,
+        "most_expressed_genes": false,
+        "mean_expression": false,
+        "enriched_pathways": false,
+        "trajectory": true,
+        "extra_material": false,
+        "immune_repertoire": false,
+        "hla": false,
+        "spatial": false,
+        "trekker": false
+      },
+      "object_hash": "69d2488228563c99ebe1942172996058"
+    },
+    "extra_content": {
+      "id": "extra_content",
+      "truth": {
+        "marker_genes": true,
+        "most_expressed_genes": true,
+        "mean_expression": true,
+        "enriched_pathways": true,
+        "trajectory": true,
+        "extra_material": true,
+        "immune_repertoire": false,
+        "hla": false,
+        "spatial": false,
+        "trekker": false
+      },
+      "object_hash": "e2d376c92b3748d1a2a9d9fd6db6594f"
+    },
+    "table_content_b": {
+      "id": "table_content_b",
+      "truth": {
+        "marker_genes": true,
+        "most_expressed_genes": true,
+        "mean_expression": true,
+        "enriched_pathways": true,
+        "trajectory": true,
+        "extra_material": true,
+        "immune_repertoire": false,
+        "hla": false,
+        "spatial": false,
+        "trekker": false
+      },
+      "object_hash": "217ece02eed7b9af06df735196d3faf4"
+    },
+    "malformed": {
+      "id": "malformed",
+      "truth": {
+        "marker_genes": false,
+        "most_expressed_genes": false,
+        "mean_expression": false,
+        "enriched_pathways": false,
+        "trajectory": false,
+        "extra_material": false,
+        "immune_repertoire": false,
+        "hla": false,
+        "spatial": false,
+        "trekker": false
+      },
+      "object_hash": "2066d0695d2eb0f4139aaf7a34302803"
+    }
+  },
+  "challenges": {
+    "invalid_marker": {
+      "id": "invalid_marker",
+      "capability": "marker_genes",
+      "expected_state": "invalid",
+      "object_hash": "ad64473fcbbbb30dfc0e60e3cae7d85a"
+    },
+    "invalid_trajectory": {
+      "id": "invalid_trajectory",
+      "capability": "trajectory",
+      "expected_state": "invalid",
+      "object_hash": "e00c3a323927f764eddf47b4ba302b82"
+    },
+    "invalid_extra_material": {
+      "id": "invalid_extra_material",
+      "capability": "extra_material",
+      "expected_state": "invalid",
+      "object_hash": "6f6f02a479a218a9db03279b462ebbd3"
+    },
+    "invalid_spatial": {
+      "id": "invalid_spatial",
+      "capability": "spatial",
+      "expected_state": "invalid",
+      "object_hash": "5acff88edb4c52154c7eff325025a5c3"
+    },
+    "invalid_trekker": {
+      "id": "invalid_trekker",
+      "capability": "trekker",
+      "expected_state": "invalid",
+      "object_hash": "d2a8597ed6cf6173c8100e7abe3bd393"
+    },
+    "invalid_immune_repertoire": {
+      "id": "invalid_immune_repertoire",
+      "capability": "immune_repertoire",
+      "expected_state": "invalid",
+      "object_hash": "d506654f030fc4341efe5191f06823cd"
+    },
+    "invalid_hla": {
+      "id": "invalid_hla",
+      "capability": "hla",
+      "expected_state": "invalid",
+      "object_hash": "08d759debab342d3149e419150cd6072"
+    }
+  }
+}

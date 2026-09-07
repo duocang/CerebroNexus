@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "pbmc_expression": {
+      "schema_version": 1,
+      "source_id": "pbmc_expression",
+      "label": "10x PBMC 3k gene expression",
+      "provider": "10x Genomics",
+      "accession": "pbmc3k; Cell Ranger 1.1.0",
+      "source_url": "https://cf.10xgenomics.com/samples/cell-exp/1.1.0/pbmc3k/pbmc3k_web_summary.html",
+      "license": "CC BY 4.0",
+      "organism": "Homo sapiens",
+      "tissue": "peripheral blood",
+      "technology": "Chromium Single Cell 3-prime gene expression",
+      "acquisition": "download_archive",
+      "preparation": "Create a Seurat object from the filtered gene-barcode matrix, retain stable feature identifiers, take the lexicographically first requested cells, normalize RNA, and add declared technical Builder grouping/projection controls.",
+      "cells": 200,
+      "features": 32738,
+      "object_bytes": 920864,
+      "object_sha256": "63caad3cf824a7363aae72bc27a6b0c4b60c102bfd3a0914cd434a4e289e3360",
+      "files": [
+        {
+          "role": "matrix_archive",
+          "filename": "pbmc3k_filtered_gene_bc_matrices.tar.gz",
+          "url": "https://cf.10xgenomics.com/samples/cell-exp/1.1.0/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz",
+          "bytes": 7621991,
+          "sha256": "847d6ebd9a1ec9a768f2be7e40ca42cbfe75ebeb6d76a4c24167041699dc28b5"
+        }
+      ]
+    },
+    "visium_brain": {
+      "schema_version": 1,
+      "source_id": "visium_brain",
+      "label": "10x Visium mouse brain sagittal anterior section 1",
+      "provider": "10x Genomics; SeuratData",
+      "accession": "V1_Mouse_Brain_Sagittal_Anterior; stxBrain 0.1.2",
+      "source_url": "https://www.10xgenomics.com/datasets/mouse-brain-serial-section-1-sagittal-anterior-1-standard-1-1-0",
+      "license": "CC BY 4.0",
+      "organism": "Mus musculus",
+      "tissue": "brain, sagittal anterior",
+      "technology": "10x Visium Spatial Gene Expression",
+      "acquisition": "r_package",
+      "preparation": "Load stxBrain anterior1 through SeuratData, update the object, take the lexicographically first requested spots, and add declared technical Builder grouping/projection controls.",
+      "cells": 200,
+      "features": 31053,
+      "object_bytes": 3699179,
+      "object_sha256": "ab819f079329c1215efaad6ad3411e22b2b1721d15f7322bab0651b6930ae167",
+      "files": [
+        {
+          "role": "package_data_1",
+          "filename": "Rdata.rds",
+          "url": "https://www.10xgenomics.com/datasets/mouse-brain-serial-section-1-sagittal-anterior-1-standard-1-1-0",
+          "bytes": 107,
+          "sha256": "8bced00d0bcd5480b2365e2c0ff417e0a2df98e892508110550f5f3062c4ecd5"
+        },
+        {
+          "role": "package_data_2",
+          "filename": "Rdata.rdx",
+          "url": "https://www.10xgenomics.com/datasets/mouse-brain-serial-section-1-sagittal-anterior-1-standard-1-1-0",
+          "bytes": 195,
+          "sha256": "eeff3cdda6b3d2bc41131920f04650b42ecff01ca275d8ea9ea19bab490aa3d6"
+        },
+        {
+          "role": "package_data_3",
+          "filename": "Rdata.rdb",
+          "url": "https://www.10xgenomics.com/datasets/mouse-brain-serial-section-1-sagittal-anterior-1-standard-1-1-0",
+          "bytes": 128979812,
+          "sha256": "1c1b552441a490298f50ad9a37c9080859215f742d1c0365940d3a2d951e2be6"
+        }
+      ]
+    },
+    "pbmc_vdj": {
+      "schema_version": 1,
+      "source_id": "pbmc_vdj",
+      "label": "10x PBMC 5-prime matched gene expression, TCR, and BCR",
+      "provider": "10x Genomics",
+      "accession": "vdj_v1_hs_pbmc3; Cell Ranger 3.1.0",
+      "source_url": "https://www.10xgenomics.com/datasets/pbm-cs-of-a-healthy-donor-next-gem-v-1-1-1-1-standard-3-1-0",
+      "license": "CC BY 4.0",
+      "organism": "Homo sapiens",
+      "tissue": "peripheral blood",
+      "technology": "Chromium Next GEM 5-prime gene expression and V(D)J",
+      "acquisition": "download_archive_and_contigs",
+      "preparation": "Create a Seurat object from the matched filtered feature matrix, retain stable feature identifiers and requested cells with productive TCR/BCR contigs, collapse one deterministic receptor record per barcode, normalize RNA, and add declared technical Builder grouping/projection controls.",
+      "cells": 200,
+      "features": 33538,
+      "object_bytes": 1505028,
+      "object_sha256": "b6f025264e198854f09ba1e6fb881f0d303c3998f33e0e1bfafd3b158940ff8c",
+      "files": [
+        {
+          "role": "matrix_archive",
+          "filename": "vdj_v1_hs_pbmc3_filtered_feature_bc_matrix.tar.gz",
+          "url": "https://cf.10xgenomics.com/samples/cell-vdj/3.1.0/vdj_v1_hs_pbmc3/vdj_v1_hs_pbmc3_filtered_feature_bc_matrix.tar.gz",
+          "bytes": 40522127,
+          "sha256": "73a84efb6d02c47c6005e9f91fcc8f36293b2aa08ed3c1529601e5516ee71884"
+        },
+        {
+          "role": "t_contigs",
+          "filename": "vdj_v1_hs_pbmc3_t_filtered_contigs.csv",
+          "url": "https://cf.10xgenomics.com/samples/cell-vdj/3.1.0/vdj_v1_hs_pbmc3/vdj_v1_hs_pbmc3_t_filtered_contig_annotations.csv",
+          "bytes": 1962332,
+          "sha256": "5cb5a061a7da7e9d5e31b7f5dbd9c7f56629fc946f52dd4d681bd798cbffd806"
+        },
+        {
+          "role": "b_contigs",
+          "filename": "vdj_v1_hs_pbmc3_b_filtered_contigs.csv",
+          "url": "https://cf.10xgenomics.com/samples/cell-vdj/3.1.0/vdj_v1_hs_pbmc3/vdj_v1_hs_pbmc3_b_filtered_contig_annotations.csv",
+          "bytes": 396832,
+          "sha256": "f17d8477fd8df49992f020a3c133a748e0582c267bb3ec1d8954e302e9a4d1d9"
+        }
+      ]
+    }
+  }
+}

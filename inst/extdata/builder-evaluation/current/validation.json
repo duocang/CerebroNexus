@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "evidence_schema_version": 2,
+  "profile": "publication",
+  "git_sha": "8d49009208df8a4f53e9b501f92abac18623b7ac",
+  "validated_at_utc": "2026-08-24 06:19:43 UTC",
+  "gates": {
+    "capability_detection": true,
+    "plan_immutability": true,
+    "artifact_fidelity": true,
+    "build_success": true,
+    "handled_recovery": true,
+    "incremental_scope": true
+  },
+  "table_rows": {
+    "capability_detection": 100,
+    "plan_immutability": 126,
+    "artifact_fidelity": 540,
+    "build_runs": 42,
+    "fault_injection": 9,
+    "incremental_rebuild": 3
+  },
+  "figure_md5": {
+    "builder_eval_capability.png": "2b2a0d9760c66307c4070e3afa715837",
+    "builder_eval_plan_identity.png": "39ddcb44f774eceaffd5d1500bad4955",
+    "builder_eval_artifact_fidelity.png": "0a3837ffa4ac7d339bb4d0798e9bc7a6",
+    "builder_eval_build_timing.png": "b241ab6792ef8cab20299b818641e4ba",
+    "builder_eval_recovery.png": "26e08a488b593f62f0865e37378c4c83",
+    "builder_eval_incremental.png": "bd2547ff6d3c8db3abd378664cd96e62",
+    "builder_eval_claim_boundaries.png": "198aa265e03599a45e3ef66b9b2104db",
+    "builder_evidence_chain.svg": "de614672abf2df21dc5fa421a23379af"
+  }
+}

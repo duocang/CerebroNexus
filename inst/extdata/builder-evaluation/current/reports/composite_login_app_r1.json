@@ -1,0 +1,160 @@
+{
+  "schema_version": 2,
+  "identity": "0976b218d0c263e73218c69feebfdda0",
+  "plan_digest": "6becbdcfd69c3987c2d86938789dfae8",
+  "plan_revision": 1,
+  "artifact_mode": "authenticated_private_app",
+  "dataset_order": ["pbmc_expression", "pbmc_vdj"],
+  "datasets": [
+    {
+      "id": "pbmc_expression",
+      "name": "10x PBMC 3k gene expression",
+      "artifact_members": "cerebro_app/private-data/01-10x-pbmc-3k-gene-expression-pbmc-expression.crb",
+      "organism": "hg",
+      "methods": [],
+      "groups": "builder_evaluation_partition",
+      "projections": "builder_evaluation",
+      "metadata_columns": ["cell_barcode", "builder_evaluation_partition", "nUMI", "nGene", "orig.ident", "sample", "public_source"],
+      "metadata": {
+        "retained": ["cell_barcode", "orig.ident", "nCount_RNA", "nFeature_RNA", "sample", "public_source", "builder_evaluation_partition"],
+        "excluded": [],
+        "forced": ["cell_barcode", "nCount_RNA", "nFeature_RNA"]
+      },
+      "cell_count": 200,
+      "feature_count": 32738,
+      "expression_backend": "embedded",
+      "expression_storage": {
+        "mode": "embedded"
+      },
+      "spatial_image_storage": {
+        "mode": "external",
+        "image_count": 0,
+        "section_count": 0
+      },
+      "pages": []
+    },
+    {
+      "id": "pbmc_vdj",
+      "name": "10x PBMC 5-prime matched gene expression, TCR, and BCR",
+      "artifact_members": "cerebro_app/private-data/02-10x-pbmc-5-prime-matched-gene-expression-tcr-and-pbmc-vdj.crb",
+      "organism": "hg",
+      "methods": [],
+      "groups": ["receptor_type", "builder_evaluation_partition"],
+      "projections": "builder_evaluation",
+      "metadata_columns": ["cell_barcode", "receptor_type", "builder_evaluation_partition", "nUMI", "nGene", "orig.ident", "sample", "public_source"],
+      "metadata": {
+        "retained": ["cell_barcode", "orig.ident", "nCount_RNA", "nFeature_RNA", "sample", "receptor_type", "public_source", "builder_evaluation_partition"],
+        "excluded": [],
+        "forced": ["cell_barcode", "nCount_RNA", "nFeature_RNA"]
+      },
+      "cell_count": 200,
+      "feature_count": 33538,
+      "expression_backend": "embedded",
+      "expression_storage": {
+        "mode": "embedded"
+      },
+      "spatial_image_storage": {
+        "mode": "external",
+        "image_count": 0,
+        "section_count": 0
+      },
+      "pages": ["immune_repertoire", "hla_tcr_motifs"]
+    }
+  ],
+  "content": {
+    "dataset_identity": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "data_info"
+    },
+    "expression": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "gene_expression"
+    },
+    "metadata": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": ["data_info", "groups"]
+    },
+    "groups": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": ["groups", "color_management"]
+    },
+    "reduction:builder_evaluation": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "projection"
+    },
+    "projection": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "projection"
+    },
+    "marker_genes": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "most_expressed_genes": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "mean_expression": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "enriched_pathways": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "trajectory": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "extra_material": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "immune_repertoire": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "immune_repertoire"
+    },
+    "hla_tcr_motifs": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "hla_tcr_motifs"
+    },
+    "hla": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "spatial": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "trekker": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "metadata_policy": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": []
+    }
+  },
+  "viewer_bundle_assets": [],
+  "private_assets": ["cerebro_app/private-data/01-10x-pbmc-3k-gene-expression-pbmc-expression.crb", "cerebro_app/private-data/02-10x-pbmc-5-prime-matched-gene-expression-tcr-and-pbmc-vdj.crb", "cerebro_app/private-data/auth/credentials.sqlite"],
+  "output_members": ["build-report.json", "cerebro_app", "cerebro_app/private-data/01-10x-pbmc-3k-gene-expression-pbmc-expression.crb", "cerebro_app/private-data/02-10x-pbmc-5-prime-matched-gene-expression-tcr-and-pbmc-vdj.crb", "cerebro_app/private-data/auth/credentials.sqlite", "viewer-auth.env"],
+  "warnings": []
+}

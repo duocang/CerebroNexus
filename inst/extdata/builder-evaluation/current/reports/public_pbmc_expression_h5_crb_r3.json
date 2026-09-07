@@ -1,0 +1,133 @@
+{
+  "schema_version": 2,
+  "identity": "e09574e8a7d8d408f5a065a8603b4348",
+  "plan_digest": "bda0bc5e88607bb92aaf0b9b51d170b4",
+  "plan_revision": 1,
+  "artifact_mode": "crbs_only",
+  "dataset_order": "pbmc_expression",
+  "datasets": [
+    {
+      "id": "pbmc_expression",
+      "name": "10x PBMC 3k gene expression",
+      "artifact_members": ["01-10x-pbmc-3k-gene-expression-pbmc-expression.crb", "01-10x-pbmc-3k-gene-expression-pbmc-expression.h5"],
+      "organism": "hg",
+      "methods": [],
+      "groups": "builder_evaluation_partition",
+      "projections": "builder_evaluation",
+      "metadata_columns": ["cell_barcode", "builder_evaluation_partition", "nUMI", "nGene", "orig.ident", "sample", "public_source"],
+      "metadata": {
+        "retained": ["cell_barcode", "orig.ident", "nCount_RNA", "nFeature_RNA", "sample", "public_source", "builder_evaluation_partition"],
+        "excluded": [],
+        "forced": ["cell_barcode", "nCount_RNA", "nFeature_RNA"]
+      },
+      "cell_count": 200,
+      "feature_count": 32738,
+      "expression_backend": "h5",
+      "expression_storage": {
+        "mode": "h5"
+      },
+      "spatial_image_storage": {
+        "mode": "external",
+        "image_count": 0,
+        "section_count": 0
+      },
+      "pages": []
+    }
+  ],
+  "content": {
+    "dataset_identity": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "data_info"
+    },
+    "expression": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "gene_expression"
+    },
+    "metadata": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": ["data_info", "groups"]
+    },
+    "groups": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": ["groups", "color_management"]
+    },
+    "reduction:builder_evaluation": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "projection"
+    },
+    "projection": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": "projection"
+    },
+    "marker_genes": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "most_expressed_genes": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "mean_expression": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "enriched_pathways": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "trajectory": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "extra_material": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "immune_repertoire": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "hla_tcr_motifs": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "hla": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "spatial": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "trekker": {
+      "status": "not_applicable",
+      "disposition": null,
+      "pages": []
+    },
+    "metadata_policy": {
+      "status": "valid",
+      "disposition": "preserved",
+      "pages": []
+    }
+  },
+  "viewer_bundle_assets": [],
+  "private_assets": ["01-10x-pbmc-3k-gene-expression-pbmc-expression.crb", "01-10x-pbmc-3k-gene-expression-pbmc-expression.h5"],
+  "output_members": ["01-10x-pbmc-3k-gene-expression-pbmc-expression.crb", "01-10x-pbmc-3k-gene-expression-pbmc-expression.h5", "build-report.json"],
+  "warnings": []
+}

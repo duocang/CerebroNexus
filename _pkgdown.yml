@@ -45,6 +45,7 @@ articles:
     navbar: Workflows
     contents:
       - build_a_data_set_by_pointing
+      - builder_publication_evaluation
       - cerebronexus_workflow_seurat
       - export_a_data_set_in_SCE_format
   - title: "Data model"

@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "profile": "publication",
+  "experimental_unit": "independent R process",
+  "tables": {
+    "capability_detection": {
+      "required_columns": ["trial_id", "fixture", "capability", "truth", "observed", "outcome"],
+      "key": ["trial_id", "capability"],
+      "non_missing": ["trial_id", "fixture", "capability", "outcome"],
+      "levels": {
+        "outcome": ["TP", "FP", "FN", "TN"]
+      }
+    },
+    "plan_immutability": {
+      "required_columns": ["trial_id", "boundary", "plan_digest", "matches_confirmation", "mutation_not_propagated"],
+      "key": ["trial_id", "boundary"],
+      "non_missing": ["trial_id", "boundary", "plan_digest"],
+      "levels": {
+        "boundary": ["confirmation", "worker_result", "build_report"]
+      }
+    },
+    "artifact_fidelity": {
+      "required_columns": ["trial_id", "dataset", "capability", "selected", "observed", "outcome"],
+      "key": ["trial_id", "dataset", "capability"],
+      "non_missing": ["trial_id", "dataset", "capability", "outcome"],
+      "levels": {
+        "outcome": ["TP", "FP", "FN", "TN"]
+      }
+    },
+    "build_runs": {
+      "required_columns": ["trial_id", "cell_id", "output_type", "backend", "repetition", "measured", "success", "elapsed_seconds"],
+      "key": "trial_id",
+      "non_missing": ["trial_id", "cell_id", "output_type", "backend", "repetition", "measured", "success"],
+      "levels": {
+        "output_type": ["CRB", "public_app", "login_app"],
+        "backend": ["embedded", "h5", "bpcells"]
+      },
+      "repetitions": {
+        "group_by": "cell_id",
+        "repetition_column": "repetition",
+        "expected": [1, 2, 3, 4, 5],
+        "where": {
+          "measured": true
+        }
+      }
+    },
+    "fault_injection": {
+      "required_columns": ["trial_id", "scenario", "fault_class", "old_preserved", "old_crb_reopenable", "recovery_success", "subsequent_publish_success", "subsequent_crb_reopenable", "partial_target_count", "stage_residue_count", "lock_residue_count", "backup_residue_count", "retired_backup_residue_count", "journal_state"],
+      "key": "trial_id",
+      "non_missing": ["trial_id", "scenario", "fault_class"],
+      "levels": {
+        "fault_class": ["handled_error", "process_exit"]
+      }
+    },
+    "incremental_rebuild": {
+      "required_columns": ["trial_id", "dataset", "expected_reused", "expected_rebuilt", "project_managed", "real_builder_hooks", "configuration_changed", "hash_preserved", "scope_correct"],
+      "key": ["trial_id", "dataset"],
+      "non_missing": ["trial_id", "dataset"]
+    }
+  }
+}

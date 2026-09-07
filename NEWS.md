@@ -4,6 +4,10 @@
 
 - The guided Builder now ships a reproducible example matrix, private App
   bundles, immutable release plans, and isolated runtime acceptance coverage.
+- Added a paper-facing Builder evaluation with balanced synthetic truth,
+  SHA-256-pinned public PBMC/Visium/V(D)J sources, independent-process build
+  repetitions, real release recovery and project-reuse trials, validated raw
+  evidence, and figures generated from the committed snapshot.
 - Builder-generated Apps can now require login with multiple local accounts.
 - Generated Apps no longer duplicate CRB payloads at the release root; dataset
   files remain inside the App's private data directory.
