@@ -91,6 +91,60 @@ test_that("exportFromSeurat carries the spatial extraction path", {
   expect_match(fn_text, "addSpatialData", fixed = TRUE)
 })
 
+test_that("exportFromSeurat exports a spatial reduction without an image", {
+  skip_if_not_installed("SeuratObject")
+  skip_if_not_installed("Seurat")
+
+  set.seed(7)
+  counts <- matrix(
+    stats::rpois(12L * 8L, lambda = 3),
+    nrow = 12L,
+    dimnames = list(paste0("Gene", seq_len(12L)), paste0("Cell", seq_len(8L)))
+  )
+  object <- SeuratObject::CreateSeuratObject(
+    counts = methods::as(counts, "CsparseMatrix")
+  )
+  object <- Seurat::NormalizeData(object, verbose = FALSE)
+  object$cluster <- rep(c("A", "B"), each = 4L)
+  make_reduction <- function(key) {
+    values <- matrix(
+      stats::rnorm(16L),
+      nrow = 8L,
+      dimnames = list(colnames(object), paste0(key, seq_len(2L)))
+    )
+    SeuratObject::CreateDimReducObject(
+      embeddings = values,
+      key = key,
+      assay = "RNA"
+    )
+  }
+  object[["umap"]] <- make_reduction("UMAP_")
+  object[["spatial"]] <- make_reduction("SPATIAL_")
+  path <- tempfile(fileext = ".crb")
+  on.exit(unlink(path), add = TRUE)
+
+  exportFromSeurat(
+    object = object,
+    assay = "RNA",
+    slot = "data",
+    file = path,
+    experiment_name = "spatial reduction",
+    organism = "hg",
+    groups = "cluster",
+    nUMI = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    add_all_meta_data = TRUE,
+    projections = "umap",
+    verbose = FALSE
+  )
+
+  crb <- readRDS(path)
+  expect_identical(crb$availableSpatial(), "spatial")
+  spatial <- crb$getSpatialData("spatial")
+  expect_equal(nrow(spatial$coordinates), ncol(object))
+  expect_identical(rownames(spatial$coordinates), colnames(object))
+})
+
 ##----------------------------------------------------------------------------##
 ## Session B: Shiny tab wiring guards.
 ##----------------------------------------------------------------------------##

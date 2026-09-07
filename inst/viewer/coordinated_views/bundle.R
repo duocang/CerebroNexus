@@ -1378,13 +1378,21 @@ cv_build_clone <- function(crb, cells, n) {
 
 ## Pick the initial categorical colouring from human-written metadata names.
 ## Separators and case are irrelevant; a short edit-distance fallback catches
-## common transpositions such as "Cell Tyep". Cell type wins over sample, and a
-## data set with neither starts on one randomly selected categorical field.
-cv_default_group <- function(available) {
+## common transpositions such as "Cell Tyep". An explicit main_group wins;
+## otherwise cell type wins over sample, followed by the first categorical field.
+cv_default_group <- function(available, preferred = NULL) {
   available <- unique(as.character(available))
   available <- available[!is.na(available) & nzchar(available)]
   if (!length(available)) {
     return(NULL)
+  }
+  if (
+    is.character(preferred) &&
+      length(preferred) == 1L &&
+      !is.na(preferred) &&
+      preferred %in% available
+  ) {
+    return(preferred)
   }
 
   normalized <- tolower(gsub("[^[:alnum:]]", "", available))
@@ -1459,6 +1467,7 @@ cv_build_bundle <- function(crb) {
   projections <- cv_build_projections(crb, cells)
   viewer_content <- cv_selected_viewer_content()
   default_projection <- NULL
+  initial_projections <- character()
   appearance <- viewerScatterDefaults(
     if (exists("Cerebro.options")) Cerebro.options else list(),
     cv_selected_dataset_name()
@@ -1468,6 +1477,16 @@ cv_build_bundle <- function(crb) {
   default_point_opacity <- appearance$point_opacity
   spaces <- list()
   if (length(projections)) {
+    configured_initial <- viewer_content[["initial_projections"]]
+    if (is.character(configured_initial) && !is.object(configured_initial)) {
+      configured_initial <- unique(configured_initial[
+        !is.na(configured_initial) &
+          nzchar(trimws(configured_initial)) &
+          configured_initial %in% names(projections)
+      ])
+    } else {
+      configured_initial <- character()
+    }
     configured_projection <- viewer_content[["default_projection"]]
     default_projection <- if (
       is.character(configured_projection) &&
@@ -1476,11 +1495,17 @@ cv_build_bundle <- function(crb) {
         configured_projection %in% names(projections)
     ) {
       configured_projection
+    } else if (length(configured_initial)) {
+      configured_initial[[1L]]
     } else if ("umap" %in% names(projections)) {
       "umap"
     } else {
       names(projections)[1]
     }
+    initial_projections <- c(
+      default_projection,
+      configured_initial[configured_initial != default_projection]
+    )
     dp <- projections[[default_projection]]
     expression_space <- cv_space(
       "umap",
@@ -1535,7 +1560,11 @@ cv_build_bundle <- function(crb) {
   ## then any categorical field. If no categorical field exists, use the first
   ## continuous field; with no colourable metadata the panels draw one colour.
   available_groups <- c(names(groups), names(cat_extra))
-  default_group <- cv_default_group(available_groups)
+  configured_group <- tryCatch(
+    crb$getParameters()[["main_group"]],
+    error = function(e) NULL
+  )
+  default_group <- cv_default_group(available_groups, configured_group)
   if (is.null(default_group) && length(fields)) {
     default_group <- paste0(cv_field_mode, names(fields)[1])
   }
@@ -1585,6 +1614,7 @@ cv_build_bundle <- function(crb) {
     default_point_opacity = default_point_opacity,
     projections = projections,
     default_projection = default_projection,
+    initial_projections = initial_projections,
     trajectories = trajectories,
     spaces = spaces,
     clone = clone_bundle,

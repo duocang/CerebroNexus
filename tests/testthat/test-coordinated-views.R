@@ -152,6 +152,7 @@ test_that("Linked views treats projections as a multi-panel selection", {
   expect_match(js, "function rebuildProjectionInstances()", fixed = TRUE)
   expect_match(js, "function setSelectedProjections(names)", fixed = TRUE)
   expect_match(js, "selectedProjections.forEach", fixed = TRUE)
+  expect_match(js, "D.initial_projections", fixed = TRUE)
   expect_match(js, "plugins: ['remove_button']", fixed = TRUE)
 })
 
@@ -169,6 +170,7 @@ test_that("Linked views delegates menu height to the shared viewport sizing", {
   js_file <- file.path(dirname(bundle_file), "..", "www", "multiselect.js")
   skip_if_not(file.exists(css_file))
   css <- paste(readLines(css_file, warn = FALSE), collapse = "\n")
+
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
   expect_false(grepl(
     "#cv-pick-color + .selectize-control .selectize-dropdown-content",
@@ -985,6 +987,7 @@ test_that("Linked views consumes the selected dataset point appearance", {
     viewer_content = list(
       ds = list(
         default_projection = "tsne",
+        initial_projections = c("tsne", "umap"),
         default_trajectory = NULL
       )
     )
@@ -1003,7 +1006,8 @@ test_that("Linked views consumes the selected dataset point appearance", {
 
   bundle <- cv_env$cv_build_bundle(crb)
   expect_identical(bundle$default_projection, "tsne")
-  expect_identical(bundle$default_group, "cell_type")
+  expect_identical(bundle$initial_projections, c("tsne", "umap"))
+  expect_identical(bundle$default_group, "region")
   expect_identical(bundle$default_point_size, 5)
   expect_identical(bundle$default_point_opacity, 0.7)
   expect_identical(bundle$default_percentage_cells_to_show, 60)
