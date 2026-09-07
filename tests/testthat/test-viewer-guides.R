@@ -33,6 +33,23 @@ if (file.exists(helpers_file)) {
     ))))
   })
 
+  test_that("catalogued guide images are packaged", {
+    catalogue <- guide_env$viewerGuideCatalogue()
+    sources <- vapply(
+      catalogue$slug,
+      function(slug) repo_file("vignettes", paste0(slug, ".Rmd")),
+      character(1)
+    )
+    image_refs <- unique(unlist(lapply(sources, function(source_file) {
+      lines <- readLines(source_file, warn = FALSE)
+      matches <- regmatches(lines, gregexpr("img/[A-Za-z0-9_.-]+", lines))
+      unlist(matches, use.names = FALSE)
+    })))
+
+    expect_true(length(image_refs) > 0L)
+    expect_true(all(file.exists(repo_file("vignettes", image_refs))))
+  })
+
   test_that("guide links prefer bundled HTML and fall back online", {
     root <- withr::local_tempdir()
     dir.create(
