@@ -217,6 +217,7 @@ test_that("the HLA/TCR main-case artifacts match the shipped biology", {
   expect_identical(config$view$colour$mode, "sample")
   expect_identical(config$view$projections, "umap")
   expect_identical(config$view$display$clone_layout, "stack")
+  expect_identical(config$view$focus_space, "clone")
   expect_identical(
     config$dataset$cell_fingerprint,
     config_environment$cv_config_cell_fingerprint(cells)

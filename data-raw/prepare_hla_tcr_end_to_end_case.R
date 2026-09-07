@@ -169,7 +169,7 @@ config <- list(
     cells = target_barcodes,
     source = "golden-clonotype-barcode-list",
     geometry = list(
-      space = "umap",
+      space = "projection::umap",
       mode = "box",
       polygon = polygon
     )
@@ -177,6 +177,7 @@ config <- list(
   view = list(
     colour = list(
       mode = "sample",
+      genes = character(),
       gene = NULL,
       rgb_genes = character(),
       clip = 0
@@ -191,12 +192,15 @@ config <- list(
       point_size = 5,
       point_opacity = 0.8,
       group_labels = FALSE,
+      cell_borders = FALSE,
       selection_mode = "box",
-      clone_layout = "stack"
+      clone_layout = "stack",
+      keep_square = FALSE
     ),
+    focus_space = "projection::umap",
     lenses = list(
       list(
-        space = "umap",
+        space = "projection::umap",
         viewport = list(
           cx = mean(target_umap[, "UMAP_1"]),
           cy = mean(target_umap[, "UMAP_2"]),
@@ -222,7 +226,10 @@ config <- list(
   )
 )
 normalized_config <- cv_config_normalize(config, cells = meta$cell_barcode)
-config_json <- cv_config_encode(normalized_config)
+config_json <- cv_config_encode_document(
+  cv_config_json_document(normalized_config)
+)
+config_json <- sub("\n$", "", config_json)
 
 case <- list(
   schema = "cerebronexus-hla-tcr-end-to-end-case",

@@ -259,6 +259,7 @@ linked_view <- list(
   view = list(
     colour = list(
       mode = "sample",
+      genes = character(),
       gene = NULL,
       rgb_genes = character(),
       clip = 0
@@ -273,9 +274,12 @@ linked_view <- list(
       point_size = 3,
       point_opacity = 0.8,
       group_labels = TRUE,
+      cell_borders = FALSE,
       selection_mode = "box",
-      clone_layout = "stack"
+      clone_layout = "stack",
+      keep_square = FALSE
     ),
+    focus_space = "clone",
     lenses = list(
       list(
         space = "projection::umap",
@@ -300,7 +304,10 @@ linked_view <- config_environment$cv_config_normalize(
   linked_view,
   cells = cells
 )
-linked_view_json <- config_environment$cv_config_encode(linked_view)
+linked_view_json <- config_environment$cv_config_encode_document(
+  config_environment$cv_config_json_document(linked_view)
+)
+linked_view_json <- sub("\n$", "", linked_view_json)
 decoded <- config_environment$cv_config_decode(linked_view_json, cells = cells)
 stopifnot(
   "the generated Linked views selection drifted" = identical(
@@ -309,15 +316,15 @@ stopifnot(
   )
 )
 
-manifest_json <- jsonlite::toJSON(
+manifest_json <- as.character(jsonlite::toJSON(
   manifest,
   auto_unbox = TRUE,
   null = "null",
   na = "null",
   digits = NA,
   pretty = TRUE
-)
-writeLines(paste0(as.character(manifest_json), "\n"), manifest_file)
+))
+writeLines(manifest_json, manifest_file)
 writeLines(linked_view_json, linked_view_file)
 
 message(

@@ -23,6 +23,7 @@
   "view": {
     "colour": {
       "mode": "sample",
+      "genes": [],
       "gene": null,
       "rgb_genes": [],
       "clip": 0
@@ -37,9 +38,12 @@
       "point_size": 3,
       "point_opacity": 0.8,
       "group_labels": true,
+      "cell_borders": false,
       "selection_mode": "box",
-      "clone_layout": "stack"
+      "clone_layout": "stack",
+      "keep_square": false
     },
+    "focus_space": "clone",
     "lenses": [
       {
         "space": "projection::umap",
