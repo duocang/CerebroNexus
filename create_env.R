@@ -102,7 +102,8 @@ rix(
   ),
   system_pkgs = c(
     "chromium", # headless browser for shinytest2
-    "pandoc" # required for building vignettes
+    "pandoc", # required for building vignettes
+    "zip" # required for HLA analysis archives
   ),
   git_pkgs = list(
     # BPCells is not on CRAN, install from GitHub

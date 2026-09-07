@@ -50,7 +50,8 @@
 #  > "stringdist",
 #  > "visNetwork"),
 #  > system_pkgs = c("chromium",
-#  > "pandoc"),
+#  > "pandoc",
+#  > "zip"),
 #  > git_pkgs = list(list(package_name = "BPCells",
 #  > repo_url = "https://github.com/bnprks/BPCells/r",
 #  > commit = bpcells_sha)),
@@ -158,7 +159,8 @@ let
       glibcLocales
       nix
       pandoc
-      R;
+      R
+      zip;
   };
   
   shell = pkgs.mkShell {
