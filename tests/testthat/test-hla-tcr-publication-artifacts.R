@@ -100,4 +100,25 @@ test_that("the unified publication artifact set is complete", {
       info = artifact$file
     )
   }
+
+  figure_files <- c(
+    "vignettes/img/hla_tcr_publication_umap.svg",
+    "vignettes/img/hla_tcr_publication_motifs.svg",
+    "vignettes/img/hla_tcr_publication_restriction.svg"
+  )
+  expect_identical(
+    unname(vapply(manifest$figures, `[[`, character(1), "file")),
+    figure_files
+  )
+  for (figure in manifest$figures) {
+    figure_path <- file.path(publication_root, figure$file)
+    expect_true(file.exists(figure_path), info = figure$file)
+    if (!file.exists(figure_path)) {
+      next
+    }
+    svg <- paste(readLines(figure_path, warn = FALSE), collapse = "\n")
+    expect_match(svg, "<svg", fixed = TRUE)
+    expect_match(svg, "viewBox=", fixed = TRUE)
+    expect_identical(publication_sha256(figure_path), figure$sha256)
+  }
 })

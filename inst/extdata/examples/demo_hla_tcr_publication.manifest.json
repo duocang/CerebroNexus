@@ -102,5 +102,25 @@
       "bytes": 719,
       "sha256": "ab2c8424f8d15061650111d3013d72389f771c02020dfe1e6a1c3718170b7784"
     }
-  ]
+  ],
+  "figures": {
+    "hla_tcr_publication_umap.svg": {
+      "file": "vignettes/img/hla_tcr_publication_umap.svg",
+      "width_in": 10,
+      "height_in": 4.8,
+      "sha256": "7aaea121b221653e78f7f2c9b30f959a43c1ff9b8cdf1b276c4dc7e963ec9003"
+    },
+    "hla_tcr_publication_motifs.svg": {
+      "file": "vignettes/img/hla_tcr_publication_motifs.svg",
+      "width_in": 10,
+      "height_in": 4.8,
+      "sha256": "049fdc3c547893186e55deb4040f3940e020c5d45f01ad66843ada6ae8e9c7d3"
+    },
+    "hla_tcr_publication_restriction.svg": {
+      "file": "vignettes/img/hla_tcr_publication_restriction.svg",
+      "width_in": 7.2,
+      "height_in": 4.8,
+      "sha256": "850e736fdf810270f60d1cb89959fd0603fc2c329ff73ba64cfd9edaefca8c77"
+    }
+  }
 }

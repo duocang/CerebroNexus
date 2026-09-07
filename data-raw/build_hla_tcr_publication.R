@@ -539,6 +539,149 @@ write_table(cohort, cohort_name)
 write_table(hla, hla_name)
 write_table(sequences, sequences_name)
 
+with_svg <- function(filename, width, height, draw) {
+  path <- file.path(stage_dir, filename)
+  grDevices::svg(path, width = width, height = height, pointsize = 10)
+  old_par <- graphics::par(
+    family = "sans",
+    mar = c(4.2, 4.2, 2.6, 0.8),
+    mgp = c(2.4, 0.7, 0),
+    tcl = -0.25
+  )
+  on.exit({
+    graphics::par(old_par)
+    grDevices::dev.off()
+  })
+  draw()
+}
+
+umap_figure <- "hla_tcr_publication_umap.svg"
+with_svg(umap_figure, 10, 4.8, function() {
+  graphics::par(mfrow = c(1, 2))
+  all_umap <- umap[cells, c("UMAP_1", "UMAP_2"), drop = FALSE]
+  context_cells <- unlist(lapply(split(cells, metadata$sample), function(x) {
+    x[unique(round(seq(1, length(x), length.out = 500L)))]
+  }), use.names = FALSE)
+  context <- match(context_cells, cells)
+  draw_selection <- function(selected, colour, title, label) {
+    chosen <- cells %in% selected
+    graphics::plot(
+      all_umap,
+      type = "n",
+      xlab = "UMAP 1",
+      ylab = "UMAP 2",
+      main = title,
+      asp = 1
+    )
+    graphics::points(
+      all_umap[context, , drop = FALSE],
+      pch = 16,
+      cex = 0.28,
+      col = "#d7dde5"
+    )
+    graphics::points(
+      all_umap[chosen, , drop = FALSE],
+      pch = 21,
+      cex = 0.65,
+      bg = colour,
+      col = "#172033",
+      lwd = 0.35
+    )
+    graphics::legend(
+      "bottomleft",
+      legend = c("cohort context", label),
+      pch = c(16, 21),
+      col = c("#d7dde5", "#172033"),
+      pt.bg = c(NA, colour),
+      bty = "n",
+      cex = 0.8
+    )
+  }
+  draw_selection(
+    strict_cells,
+    "#d9485f",
+    "A  Strict sequence-defined clonotype",
+    "10 cells"
+  )
+  draw_selection(
+    viewer_cells,
+    "#2374ab",
+    "B  Secondary CTgene Viewer case",
+    "293 cells"
+  )
+})
+
+motif_figure <- "hla_tcr_publication_motifs.svg"
+with_svg(motif_figure, 10, 4.8, function() {
+  graphics::par(mfrow = c(1, 2), mar = c(1, 1, 2.6, 1))
+  draw_motif <- function(graph, keep, anchor, title) {
+    index <- which(igraph::V(graph)$name %in% keep)
+    subgraph <- igraph::induced_subgraph(graph, vids = index)
+    coordinates <- cbind(
+      as.numeric(igraph::V(subgraph)$layout_x),
+      as.numeric(igraph::V(subgraph)$layout_y)
+    )
+    is_anchor <- igraph::V(subgraph)$name == anchor
+    igraph::plot.igraph(
+      subgraph,
+      layout = coordinates,
+      vertex.size = 4 + sqrt(as.numeric(igraph::V(subgraph)$clone_count)) * 1.5,
+      vertex.color = ifelse(is_anchor, "#d9485f", "#7cb7d6"),
+      vertex.frame.color = "#172033",
+      vertex.label = ifelse(is_anchor, igraph::V(subgraph)$cdr3, NA_character_),
+      vertex.label.cex = 0.7,
+      vertex.label.color = "#172033",
+      vertex.label.dist = 1.4,
+      vertex.label.degree = pi / 2,
+      edge.color = "#9aa7b8",
+      edge.width = 0.8,
+      main = title,
+      margin = 0.12
+    )
+  }
+  draw_motif(
+    strict_graph,
+    strict_nodes,
+    strict_node,
+    "A  Strict motif: 15 nodes / 30 cells"
+  )
+  draw_motif(
+    viewer_graph,
+    viewer_members,
+    viewer_anchor_cdr3,
+    "B  Viewer motif: 34 nodes / 627 cells"
+  )
+})
+
+restriction_figure <- "hla_tcr_publication_restriction.svg"
+with_svg(restriction_figure, 7.2, 4.8, function() {
+  values <- t(as.matrix(cohort[c(
+    "restriction_yes",
+    "restriction_no",
+    "restriction_unknown"
+  )]))
+  colnames(values) <- cohort$donor
+  proportions <- sweep(values, 2, colSums(values), "/") * 100
+  graphics::barplot(
+    proportions,
+    col = c("#2a9d8f", "#d9485f", "#d4a72c"),
+    border = NA,
+    ylim = c(0, 108),
+    ylab = "Cells (%)",
+    xlab = "Published donor genotype",
+    main = "Dextramer restriction allele in donor genotype"
+  )
+  graphics::legend(
+    "topright",
+    legend = c("carried", "not carried", "unknown locus copy"),
+    fill = c("#2a9d8f", "#d9485f", "#d4a72c"),
+    border = NA,
+    bty = "n",
+    horiz = TRUE,
+    cex = 0.78
+  )
+})
+
 artifact_names <- c(
   strict_case_name, strict_barcodes_name, strict_config_name, sha_name,
   viewer_case_name, viewer_config_name, cohort_name, hla_name, sequences_name
@@ -551,6 +694,21 @@ artifact_entries <- lapply(artifact_names, function(filename) {
     sha256 = sha256_file(path)
   )
 })
+figure_names <- c(umap_figure, motif_figure, restriction_figure)
+figure_destinations <- file.path("vignettes/img", figure_names)
+figure_entries <- Map(function(filename, destination) {
+  path <- file.path(stage_dir, filename)
+  list(
+    file = destination,
+    width_in = switch(
+      filename,
+      hla_tcr_publication_restriction.svg = 7.2,
+      10
+    ),
+    height_in = 4.8,
+    sha256 = sha256_file(path)
+  )
+}, figure_names, figure_destinations)
 
 manifest <- list(
   schema = "cerebronexus-hla-tcr-publication",
@@ -593,7 +751,8 @@ manifest <- list(
       "population-level HLA association or validated peptide specificity."
     )
   ),
-  artifacts = artifact_entries
+  artifacts = artifact_entries,
+  figures = figure_entries
 )
 manifest_name <- "demo_hla_tcr_publication.manifest.json"
 write_json(manifest, manifest_name)
@@ -628,7 +787,24 @@ if (verify_only) {
       call. = FALSE
     )
   }
-  message("Verified ", length(published_names), " publication artifacts.")
+  figure_differences <- figure_names[vapply(seq_along(figure_names), function(i) {
+    published <- file.path(root, figure_destinations[[i]])
+    !file.exists(published) || !identical(
+      sha256_file(file.path(stage_dir, figure_names[[i]])),
+      sha256_file(published)
+    )
+  }, logical(1))]
+  if (length(figure_differences)) {
+    stop(
+      "publication figures differ: ",
+      paste(figure_differences, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  message(
+    "Verified ", length(published_names), " artifacts and ",
+    length(figure_names), " figures."
+  )
 } else {
   for (filename in published_names) {
     staged <- file.path(stage_dir, filename)
@@ -640,8 +816,19 @@ if (verify_only) {
       stop("could not publish ", filename, call. = FALSE)
     }
   }
+  for (i in seq_along(figure_names)) {
+    staged <- file.path(stage_dir, figure_names[[i]])
+    destination <- file.path(root, figure_destinations[[i]])
+    if (file.exists(destination)) {
+      unlink(destination)
+    }
+    if (!file.rename(staged, destination)) {
+      stop("could not publish ", figure_destinations[[i]], call. = FALSE)
+    }
+  }
   message(
-    "Published ", length(published_names), " HLA/TCR evidence artifacts: ",
+    "Published ", length(published_names), " artifacts and ",
+    length(figure_names), " figures: ",
     nrow(strict), " strict cells; ", length(viewer_cells), " Viewer cells."
   )
 }
