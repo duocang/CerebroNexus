@@ -115,7 +115,16 @@ set.seed(20260721)
 DONORS <- 1:4
 CACHE <- "data-raw/vdj_10x_dextramer"
 OUT <- "inst/extdata/examples/demo_hla_tcr_dextramer.crb"
-BASE <- "https://cf.10xgenomics.com/samples/cell-vdj/3.0.2"
+SOURCE_REGISTRY <- "data-raw/hla_tcr_dextramer_sources.csv"
+ARTIFACT_RELEASE_DATE <- as.Date("2026-09-08")
+
+sources <- read.csv(SOURCE_REGISTRY, stringsAsFactors = FALSE)
+stopifnot(
+  "source registry must contain 12 inputs" = nrow(sources) == 12L,
+  "source registry keys must be unique" = nrow(unique(
+    sources[c("donor", "modality")]
+  )) == 12L
+)
 
 ## The donors' REAL genotypes: table S1 ("HLA haplotypes of the healthy donors")
 ## of the paper's supplementary PDF, transcribed by hand. Kept inline so this
@@ -211,8 +220,56 @@ fetch <- function(url, dest) {
     unlink(part)
     stop("download failed: ", url, call. = FALSE)
   }
-  file.rename(part, dest)
+  if (!file.rename(part, dest)) {
+    stop("could not publish downloaded file: ", dest, call. = FALSE)
+  }
   invisible(dest)
+}
+
+sha256_file <- function(path) {
+  if (nzchar(Sys.which("sha256sum"))) {
+    output <- system2("sha256sum", path, stdout = TRUE)
+    hash <- sub("[[:space:]].*$", "", output[[1L]])
+  } else if (nzchar(Sys.which("shasum"))) {
+    output <- system2("shasum", c("-a", "256", path), stdout = TRUE)
+    hash <- sub("[[:space:]].*$", "", output[[1L]])
+  } else if (nzchar(Sys.which("openssl"))) {
+    output <- system2("openssl", c("dgst", "-sha256", path), stdout = TRUE)
+    hash <- sub("^.*= ", "", output[[1L]])
+  } else {
+    stop("sha256sum, shasum, or openssl is required", call. = FALSE)
+  }
+  stopifnot("invalid SHA-256 output" = grepl("^[0-9a-fA-F]{64}$", hash))
+  tolower(hash)
+}
+
+source_entry <- function(donor, modality) {
+  entry <- sources[
+    sources$donor == donor & sources$modality == modality,
+    ,
+    drop = FALSE
+  ]
+  stopifnot("source registry lookup must be unique" = nrow(entry) == 1L)
+  entry
+}
+
+verify_source <- function(path, donor, modality) {
+  expected <- source_entry(donor, modality)
+  stopifnot(
+    "source filename differs from registry" = identical(
+      basename(path),
+      expected$filename[[1L]]
+    ),
+    "source byte size differs from registry" = identical(
+      as.numeric(file.info(path)$size),
+      as.numeric(expected$bytes[[1L]])
+    ),
+    "source SHA-256 differs from registry" = identical(
+      sha256_file(path),
+      expected$sha256[[1L]]
+    )
+  )
+  invisible(path)
 }
 
 donor_files <- function(d) {
@@ -224,17 +281,20 @@ donor_files <- function(d) {
       CACHE,
       sprintf("%s_filtered_feature_bc_matrix.tar.gz", stem)
     ),
-    gex_dir = file.path(CACHE, sprintf("%s_gex", stem)),
-    url_stem = sprintf("%s/%s/%s", BASE, stem, stem)
+    gex_dir = file.path(CACHE, sprintf("%s_gex", stem))
   )
 }
 
 cat("== 1. raw data ==\n")
 for (d in DONORS) {
   f <- donor_files(d)
-  fetch(paste0(f$url_stem, "_all_contig_annotations.csv"), f$contigs)
-  fetch(paste0(f$url_stem, "_binarized_matrix.csv"), f$binarized)
-  fetch(paste0(f$url_stem, "_filtered_feature_bc_matrix.tar.gz"), f$gex_tar)
+  donor <- sprintf("donor%d", d)
+  fetch(source_entry(donor, "contigs")$url[[1L]], f$contigs)
+  fetch(source_entry(donor, "binarized")$url[[1L]], f$binarized)
+  fetch(source_entry(donor, "gex")$url[[1L]], f$gex_tar)
+  verify_source(f$contigs, donor, "contigs")
+  verify_source(f$binarized, donor, "binarized")
+  verify_source(f$gex_tar, donor, "gex")
   if (!dir.exists(f$gex_dir)) {
     dir.create(f$gex_dir, showWarnings = FALSE, recursive = TRUE)
     utils::untar(f$gex_tar, exdir = f$gex_dir)
@@ -492,7 +552,13 @@ so <- Seurat::NormalizeData(so, verbose = FALSE)
 so <- Seurat::FindVariableFeatures(so, nfeatures = N_GENES, verbose = FALSE)
 so <- Seurat::ScaleData(so, verbose = FALSE)
 so <- Seurat::RunPCA(so, npcs = 30, verbose = FALSE)
-so <- Seurat::RunUMAP(so, dims = 1:30, verbose = FALSE)
+so <- Seurat::RunUMAP(
+  so,
+  dims = 1:30,
+  seed.use = 20260721,
+  n.threads = 1,
+  verbose = FALSE
+)
 
 ## Keep the block SPARSE. Normalized single-cell expression is ~90% zeros, and
 ## every other demo this package ships is a dgCMatrix; densifying this one cost
@@ -631,7 +697,7 @@ crb$immune_repertoire <- immune_repertoire
 crb$experiment <- list(
   experiment_name = "Antigen-selected CD8 T cells - real 10x dextramer cohort",
   organism = "hg",
-  date_of_export = Sys.Date()
+  date_of_export = ARTIFACT_RELEASE_DATE
 )
 crb$technical_info <- list(
   observation_unit = "cell",
