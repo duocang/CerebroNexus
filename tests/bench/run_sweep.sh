@@ -89,8 +89,15 @@ Rscript "$BENCH_ROOT/src/01_inspect_data.R" "$STAGE/00_probe.csv" 2>&1 \
 Rscript "$BENCH_ROOT/src/02_record_environment.R" "$STAGE/run_manifest.csv" || exit 1
 Rscript "$BENCH_ROOT/src/03_plan_runs.R" "$SCHEDULE" "$SCHEDULE_TSV" || exit 1
 
+RESOURCE_SCRIPT="04_check_resources.R"
+BUILD_SCRIPT="10_export_backend.R"
+if [ "$BENCH_PROFILE" = "panel_c2" ]; then
+  RESOURCE_SCRIPT="04_check_full_resources.R"
+  BUILD_SCRIPT="11_build_full_backend.R"
+fi
+
 echo "==> checking whether this machine can run the plan"
-Rscript "$BENCH_ROOT/src/04_check_resources.R" \
+Rscript "$BENCH_ROOT/src/$RESOURCE_SCRIPT" \
   "$STAGE/00_probe.csv" "$SCHEDULE" "$STAGE/run_manifest.csv" \
   "$STAGE/resource_check.csv" || exit 1
 
@@ -127,8 +134,8 @@ for src in $SOURCES; do
     out_dir="$SCRATCH/export/$tag"
     crb="$out_dir/bench.crb"
 
-    echo "==> [$tag] export (position $order_position)"
-    Rscript "$BENCH_ROOT/src/10_export_backend.R" \
+    echo "==> [$tag] build (position $order_position)"
+    Rscript "$BENCH_ROOT/src/$BUILD_SCRIPT" \
       "$src" "$tier" "$backend" "$export_repeat" "$order_position" \
       "$SCRATCH" "$EXPORT_CSV" "$query_plan" \
       > "$LOG_DIR/export_$tag.log" 2>&1

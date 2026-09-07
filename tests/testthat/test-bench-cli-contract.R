@@ -95,6 +95,33 @@ test_that("Panel C2 build CLI uses only the lazy full-source path", {
   expect_false(grepl("as.matrix(source_matrix)", body, fixed = TRUE))
 })
 
+test_that("Panel C wrapper runs isolated incremental parts", {
+  skip_unless_bench_cli()
+  wrapper <- file.path(bench_root, "run_panel_c.sh")
+  expect_true(file.exists(wrapper))
+  if (!file.exists(wrapper)) {
+    return()
+  }
+
+  body <- paste(readLines(wrapper, warn = FALSE), collapse = "\n")
+  expect_match(body, "BENCH_PANEL_C_PART", fixed = TRUE)
+  expect_match(body, "BENCH_PROFILE=panel_c1", fixed = TRUE)
+  expect_match(body, "BENCH_PROFILE=panel_c2", fixed = TRUE)
+  expect_match(body, "result/panel-c1", fixed = TRUE)
+  expect_match(body, "result/panel-c2", fixed = TRUE)
+  expect_false(grepl("BENCH_PROFILE=publication", body, fixed = TRUE))
+})
+
+test_that("shared sweep selects the full-source build and resource paths", {
+  skip_unless_bench_cli()
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(sweep, "04_check_full_resources.R", fixed = TRUE)
+  expect_match(sweep, "11_build_full_backend.R", fixed = TRUE)
+})
+
 test_that("source cache reuses only checksum-verified files", {
   skip_unless_bench_cli()
   helper <- file.path(bench_root, "lib", "source_cache.sh")
