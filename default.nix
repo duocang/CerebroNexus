@@ -23,17 +23,22 @@
 #  > "glue",
 #  > "GSVA",
 #  > "HDF5Array",
+#  > "htmltools",
 #  > "htmlwidgets",
 #  > "httr",
 #  > "igraph",
+#  > "jpeg",
 #  > "later",
+#  > "mirai",
 #  > "Matrix",
 #  > "msigdbr",
 #  > "pbapply",
 #  > "plotly",
+#  > "promises",
 #  > "qvalue",
 #  > "R6",
 #  > "readxl",
+#  > "rhdf5",
 #  > "rlang",
 #  > "scales",
 #  > "scRepertoire",
@@ -79,19 +84,24 @@ let
       glue
       GSVA
       HDF5Array
+      htmltools
       htmlwidgets
       httr
       igraph
+      jpeg
       later
+      mirai
       Matrix
       msigdbr
       pbapply
       pkgdown
       plotly
       png
+      promises
       qvalue
       R6
       readxl
+      rhdf5
       rlang
       scales
       scRepertoire

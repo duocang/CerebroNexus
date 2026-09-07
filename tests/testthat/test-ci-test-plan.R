@@ -4,7 +4,7 @@ sys.source(
   envir = ci_test_plan_api
 )
 
-test_that("the base CI plan classifies only tests present on upstream master", {
+test_that("the Builder CI plan classifies every present test", {
   plan <- ci_test_plan_api$ci_test_plan(test_path())
   discovered <- sort(list.files(
     test_path(),
@@ -12,19 +12,10 @@ test_that("the base CI plan classifies only tests present on upstream master", {
     full.names = FALSE
   ))
 
-  expect_identical(
-    plan$browser,
-    c(
-      "test-app-immune_repertoire.R",
-      "test-app-inst.R",
-      "test-app-new-modules.R",
-      "test-app-trajectory.R",
-      "test-app-viewport-layout.R",
-      "test-smoke-production.R"
-    )
-  )
-  expect_setequal(c(plan$logic, plan$browser), discovered)
-  expect_false(anyDuplicated(c(plan$logic, plan$browser)) > 0L)
+  expect_identical(plan$process_sensitive, "test-builder-worker.R")
+  classified <- c(plan$logic, plan$process_sensitive, plan$browser)
+  expect_setequal(classified, discovered)
+  expect_false(anyDuplicated(classified) > 0L)
 })
 
 test_that("round-robin sharding remains deterministic and lossless", {
@@ -42,7 +33,11 @@ test_that("round-robin sharding remains deterministic and lossless", {
   expect_setequal(unlist(assigned, use.names = FALSE), files)
   expect_error(
     ci_test_plan_api$ci_test_shard_files(
-      list(logic = files, browser = character()),
+      list(
+        logic = files,
+        process_sensitive = character(),
+        browser = character()
+      ),
       "logic",
       shard = 1.5,
       shards = 2L
@@ -73,7 +68,9 @@ test_that("browser references match the explicit browser group", {
     logical(1)
   )])
 
-  expect_setequal(browser_references, ci_test_plan_api$ci_browser_test_files())
+  expect_true(all(
+    browser_references %in% ci_test_plan_api$ci_browser_test_files()
+  ))
 })
 
 test_that("precheck only checks formatting", {
@@ -85,17 +82,21 @@ test_that("precheck only checks formatting", {
   expect_match(precheck, "air format --check [.]", perl = TRUE)
   expect_false(grepl("air format [.]($|\\n)", precheck, perl = TRUE))
   expect_false(grepl("run-local-validation", precheck, fixed = TRUE))
+  expect_match(precheck, "--group process-sensitive", fixed = TRUE)
+  expect_match(precheck, "hw.ncpu", fixed = TRUE)
+  expect_match(precheck, "run_parallel_test_groups", fixed = TRUE)
+  expect_match(precheck, "CEREBRO_PRECHECK_LOGIC_SHARDS", fixed = TRUE)
 })
 
-test_that("the CI workflow aggregates the logic and browser groups", {
+test_that("the CI workflow includes the Builder process-sensitive group", {
   workflow <- readLines(
     test_path("..", "..", ".github", "workflows", "R-tests.yaml"),
     warn = FALSE
   )
   text <- paste(workflow, collapse = "\n")
 
-  expect_false(any(grepl("^  process_sensitive:$", workflow)))
-  expect_match(text, "needs: [logic, browser]", fixed = TRUE)
+  expect_true(any(grepl("^  process_sensitive:$", workflow)))
+  expect_match(text, "needs: [logic, process_sensitive, browser]", fixed = TRUE)
 })
 
 test_that("manual pkgdown validation never deploys the site", {

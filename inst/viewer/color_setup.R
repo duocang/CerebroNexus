@@ -2,56 +2,36 @@
 ## Color management.
 ##----------------------------------------------------------------------------##
 # Qualitative palette for categorical groups (clusters, samples, ...) when the
-# user has NOT picked colours in the Color management tab. These are the vibrant
-# flatuicolors sets (Dutch + Spanish), used so distinct clusters stay easy to
-# tell apart. cerebro_group_colors() below keeps the overflow-safe interpolation
+# user has NOT picked colours in the Color management tab. The restrained base
+# keeps adjacent groups distinct without overwhelming the data view.
+# cerebro_group_colors() below keeps the overflow-safe interpolation
 # so many-cluster data sets still get valid colours instead of NAs.
 #
 # Users can still override any group colour with the colour picker; this is only
 # the default fallback (see reactive_colors() below).
 colorset_dutch <- c(
-  "#FFC312",
-  "#C4E538",
-  "#12CBC4",
-  "#FDA7DF",
-  "#ED4C67",
-  "#F79F1F",
-  "#A3CB38",
-  "#1289A7",
-  "#D980FA",
-  "#B53471",
-  "#EE5A24",
-  "#009432",
-  "#0652DD",
-  "#9980FA",
-  "#833471",
-  "#EA2027",
-  "#006266",
-  "#1B1464",
-  "#5758BB",
-  "#6F1E51"
+  "#4C78A8",
+  "#E07B39",
+  "#59A14F",
+  "#B279A2",
+  "#76B7B2",
+  "#E15759",
+  "#9C755F",
+  "#D6B84C",
+  "#6F6F78",
+  "#86A873"
 )
 colorset_spanish <- c(
-  "#40407a",
-  "#706fd3",
-  "#f7f1e3",
-  "#34ace0",
-  "#33d9b2",
-  "#2c2c54",
-  "#474787",
-  "#aaa69d",
-  "#227093",
-  "#218c74",
-  "#ff5252",
-  "#ff793f",
-  "#d1ccc0",
-  "#ffb142",
-  "#ffda79",
-  "#b33939",
-  "#cd6133",
-  "#84817a",
-  "#cc8e35",
-  "#ccae62"
+  "#5B8E9E",
+  "#C26D8A",
+  "#7A6FA8",
+  "#B88A44",
+  "#4F8A76",
+  "#A8644A",
+  "#7896C1",
+  "#8C7B6B",
+  "#6E9E9A",
+  "#A77B9D"
 )
 default_colorset_base <- c(colorset_dutch, colorset_spanish)
 

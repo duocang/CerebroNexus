@@ -7,6 +7,77 @@
 ## Cerebro R6 class
 ## ---------------------------------------------------------------------------
 
+test_that("generated App resources prefer the active source tree", {
+  source_root <- withr::local_tempdir()
+  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), source_root)
+  dir.create(file.path(source_root, "R"))
+  file.create(file.path(source_root, "R", "source.R"))
+  viewer <- file.path(source_root, "inst", "viewer")
+  dir.create(viewer, recursive = TRUE)
+  writeLines("source asset", file.path(viewer, "source-only.txt"))
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = source_root)
+
+  expect_identical(
+    .cerebroPackageResource("viewer"),
+    normalizePath(viewer, winslash = "/", mustWork = TRUE)
+  )
+})
+
+test_that("generated App metadata uses the active source version", {
+  source_root <- withr::local_tempdir()
+  write.dcf(
+    matrix(
+      c("CerebroNexus", "99.1.2"),
+      nrow = 1L,
+      dimnames = list(NULL, c("Package", "Version"))
+    ),
+    file.path(source_root, "DESCRIPTION")
+  )
+  dir.create(file.path(source_root, "R"))
+  file.create(file.path(source_root, "R", "source.R"))
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = source_root)
+
+  expect_identical(.cerebroRuntimeVersion(), "99.1.2")
+})
+
+test_that("source-tree exporters do not require an installed package", {
+  seurat_source <- paste(deparse(body(exportFromSeurat)), collapse = "\n")
+  sce_source <- paste(deparse(body(exportFromSCE)), collapse = "\n")
+  percent_source <- paste(deparse(body(addPercentMtRibo)), collapse = "\n")
+
+  expect_match(seurat_source, ".cerebroRuntimeVersion", fixed = TRUE)
+  expect_match(sce_source, ".cerebroRuntimeVersion", fixed = TRUE)
+  expect_false(grepl(
+    'packageVersion("CerebroNexus")',
+    seurat_source,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    'packageVersion("CerebroNexus")',
+    sce_source,
+    fixed = TRUE
+  ))
+  expect_match(percent_source, ".cerebroPackageResource", fixed = TRUE)
+  expect_false(grepl('package = "CerebroNexus"', percent_source, fixed = TRUE))
+})
+
+test_that("an incomplete source tree never mixes in installed Viewer assets", {
+  source_root <- withr::local_tempdir()
+  file.copy(testthat::test_path("..", "..", "DESCRIPTION"), source_root)
+  dir.create(file.path(source_root, "R"))
+  file.create(file.path(source_root, "R", "source.R"))
+  withr::local_envvar(CEREBRO_PACKAGE_SOURCE = source_root)
+
+  expect_identical(
+    .cerebroPackageResource("viewer"),
+    file.path(
+      normalizePath(source_root, winslash = "/", mustWork = TRUE),
+      "inst",
+      "viewer"
+    )
+  )
+})
+
 test_that("Cerebro object can be instantiated", {
   obj <- Cerebro$new()
   expect_true(inherits(obj, "Cerebro"))

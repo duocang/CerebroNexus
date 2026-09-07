@@ -3669,9 +3669,73 @@
     }
   }
 
+  function trekkerStatsGrid(q) {
+    var pass2p = q.pct_2plus < 20;
+    return [
+      ['Total nuclei', fmt(q.total_nuclei), 'single-nuclei library', ''],
+      ['In Trekker library', q.pct_in_lib.toFixed(2) + '%', fmt(q.in_lib) + ' nuclei · ref >95%', q.pct_in_lib > 95 ? 'ok' : 'warn'],
+      ['Valid spatial barcodes', q.pct_valid_sb.toFixed(2) + '%', 'ref >95%', q.pct_valid_sb > 95 ? 'ok' : 'warn'],
+      ['At least 1 location', q.pct_positioned.toFixed(2) + '%', fmt(q.positioned) + ' nuclei · ref >60%', q.pct_positioned > 60 ? 'ok' : 'warn'],
+      ['Confidently positioned', q.pct_conf.toFixed(2) + '%', fmt(q.conf) + ' nuclei · ref >40%', q.pct_conf > 40 ? 'ok' : 'warn'],
+      ['2+ locations', q.pct_2plus.toFixed(2) + '%', 'ref <20% ' + (pass2p ? '' : '← over'), pass2p ? 'ok' : 'warn']
+    ].map(function (r) {
+      return '<div class="tk-stat ' + r[3] + '"><div class="tk-k">' + r[0] + '</div><div class="tk-v">' +
+        r[1] + '</div><div class="tk-m">' + r[2] + '</div></div>';
+    }).join('');
+  }
+
+  function trekkerPositionTable(q) {
+    var total = q.total_nuclei;
+    return [
+      ['0 (unpositioned)', q.n_0, 'Excluded · coordinate is the <code>0,0</code> sentinel'],
+      ['1', q.n_1, '<b>Imported</b> (incl. salvaged)'],
+      ['2', q.n_2, 'Excluded'], ['3', q.n_3, 'Excluded'], ['≥4', q.n_4p, 'Excluded']
+    ].map(function (r) {
+      return '<tr><td>' + r[0] + '</td><td class="num">' + fmt(r[1]) + '</td><td class="num">' +
+        (r[1] / total * 100).toFixed(2) + '%</td><td class="tk-muted">' + r[2] + '</td></tr>';
+    }).join('');
+  }
+
+  function trekkerSalvageFlag(q) {
+    var salvaged = q.salv_2 + q.salv_3;
+    return '<b>Confidently positioned ≠ exactly one location.</b> The ' +
+      fmt(q.n_1) + ' imported nuclei = native single-location ' + fmt(q.o_1) +
+      ' + vendor-salvaged from 2 (' + q.salv_2 + ') + from 3 (' + q.salv_3 + '), i.e. <b>' + salvaged +
+      ' (' + (salvaged / q.n_1 * 100).toFixed(2) + '%)</b> are upstream-salvaged multi-location nuclei. ' +
+      'The label must be <code>vendor_confidently_positioned</code>.';
+  }
+
+  function trekkerProvenance(q) {
+    return [
+      ['Platform / assay', esc(q.assay)], ['Sample ID', esc(q.sample_id)], ['Tile ID', esc(q.tile_id)],
+      ['Pipeline version', '<span class="tk-muted">missing (metric absent)</span>'],
+      ['Coordinate source', 'Location CSV (canonical)'],
+      ['Coordinate unit', 'µm <span class="tk-muted">(per manual; not declared in file)</span>'],
+      ['DBSCAN eps', esc(q.eps)], ['minPts', esc(q.min_sb)],
+      ['Histology image', '<span class="tk-muted">none (not provided in bundle)</span>'],
+      ['Moran\'s I source', '<span class="tk-badge tk-badge-soft" style="font-size:10px">Upstream</span>']
+    ].map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>'; }).join('');
+  }
+
+  function trekkerRangeFlag(q) {
+    return '<b>The vendor\'s own demo crosses the vendor\'s own reference line.</b> ' +
+      'The 2+ location rate ' + q.pct_2plus + '% > the manual\'s suggested <20%. The app should only show ' +
+      '"below vendor reference range" and must not adjudicate sample usability for the user.';
+  }
+
+  function trekkerMoranRows(moran, linkable) {
+    return moran.map(function (r) {
+      var link = linkable
+        ? '<td><a href="#" class="tk-link" data-g="' + esc(r.gene) + '">Show in plot →</a></td>'
+        : '';
+      return '<tr><td class="num tk-muted">' + r.rank + '</td>' +
+        '<td style="font-weight:600">' + esc(r.gene) + '</td><td class="num">' + r.I.toFixed(4) + '</td>' +
+        link + '</tr>';
+    }).join('');
+  }
+
   function fillTrekkerInsights() {
-    var CT = window.CerebroTrekker;
-    if (!CT || !D || !D.trekker) return;
+    if (!D || !D.trekker) return;
     var q = D.trekker.qc || {};
     // Each box is filled independently. The builders read a couple of dozen QC
     // fields and throw on one that is absent, so a .crb carrying a partial QC
@@ -3681,17 +3745,17 @@
       var el = $(id); if (!el) return;
       try { el.innerHTML = build(q); } catch (err) { el.innerHTML = ''; }
     };
-    fill('cv-tk-stats', CT.buildStatsGrid);
-    fill('cv-tk-postbl', CT.buildPositionTable);
-    fill('cv-tk-salvflag', CT.buildSalvFlag);
-    fill('cv-tk-prov', CT.buildProvenanceDl);
-    fill('cv-tk-rangeflag', CT.buildRangeFlag);
+    fill('cv-tk-stats', trekkerStatsGrid);
+    fill('cv-tk-postbl', trekkerPositionTable);
+    fill('cv-tk-salvflag', trekkerSalvageFlag);
+    fill('cv-tk-prov', trekkerProvenance);
+    fill('cv-tk-rangeflag', trekkerRangeFlag);
     // Linkable: the table names the genes whose expression is spatially
     // structured, and this workspace can colour by a gene, so each row is one
     // click from the map that makes the number mean something. It was built
     // unlinked back when there was no gene mode here to send it to.
     $('cv-tk-morantbl').innerHTML = D.trekker.moran
-      ? CT.buildMoranRows(D.trekker.moran, true) : '';
+      ? trekkerMoranRows(D.trekker.moran, true) : '';
     Array.prototype.forEach.call(
       $('cv-tk-morantbl').querySelectorAll('a[data-g]'),
       function (a) {
@@ -5670,6 +5734,12 @@
     var previous = registerSingle(id); if (!previous) return;
     singleRequests.delete(id);
     meta = meta || {}; data = data || {};
+    var host = singleHost(id), keys = data.selection_key || [];
+    if (host) {
+      host.dataset.pointCount = String(Array.isArray(keys[0])
+        ? keys.reduce(function (total, values) { return total + values.length; }, 0)
+        : keys.length);
+    }
     var changedGroup = previous.meta && previous.meta.color_variable !== meta.color_variable;
     singleViews[id] = Object.assign(previous, {
       id: id, meta: meta || {}, data: data || {}, hover: hover || {},
@@ -5828,7 +5898,16 @@
       }
     });
     var projectionNames = D.projections ? Object.keys(D.projections) : [];
-    selectedProjections = dataChanged ? [] : previousProjections.filter(function (name) {
+    var configuredInitialProjections = Array.isArray(D.initial_projections)
+      ? D.initial_projections
+      : (typeof D.initial_projections === 'string' ? [D.initial_projections] : []);
+    configuredInitialProjections = configuredInitialProjections.filter(function (name, index) {
+      return projectionNames.indexOf(name) >= 0 &&
+        configuredInitialProjections.indexOf(name) === index;
+    });
+    selectedProjections = dataChanged
+      ? configuredInitialProjections
+      : previousProjections.filter(function (name) {
       return projectionNames.indexOf(name) >= 0;
     });
     if (!selectedProjections.length && projectionNames.length) {
