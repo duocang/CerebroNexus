@@ -42,7 +42,10 @@ memory_mb <- suppressWarnings(as.numeric(manifest_values[["memory_mb"]]))
 vector_limit_mb <- suppressWarnings(
   as.numeric(manifest_values[["r_vector_limit_mb"]])
 )
-if (!is.finite(memory_mb) || !is.finite(vector_limit_mb)) {
+if (
+  !is.finite(memory_mb) || memory_mb <= 0 ||
+    is.na(vector_limit_mb) || vector_limit_mb <= 0
+) {
   stop("run manifest has no usable memory limits", call. = FALSE)
 }
 
