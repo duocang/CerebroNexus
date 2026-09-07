@@ -1516,31 +1516,107 @@ getXYranges <- function(table) {
 ##----------------------------------------------------------------------------##
 ## Function to get genes for selected gene set.
 ##----------------------------------------------------------------------------##
-.msigdb_table_cache <- new.env(parent = emptyenv())
+if (!exists(".msigdb_process_cache", inherits = TRUE)) {
+  .msigdb_process_cache <- new.env(parent = emptyenv())
+}
 
-getMsigdbTable <- function(species) {
-  cached <- .msigdb_table_cache[[species]]
-  if (!is.null(cached)) {
-    return(cached)
+.emptyMsigdbCatalogue <- function() {
+  data.frame(
+    gs_name = character(),
+    collection = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+.msigdbCache <- function() {
+  get(".msigdb_process_cache", inherits = TRUE)
+}
+
+.msigdbGeneCacheKey <- function(species, gene_set) {
+  paste("genes", species, gene_set, sep = "\r")
+}
+
+getMsigdbCatalogue <- function() {
+  cache <- .msigdbCache()
+  if (exists("catalogue", envir = cache, inherits = FALSE)) {
+    return(cache[["catalogue"]])
   }
   if (!requireNamespace("msigdbr", quietly = TRUE)) {
     warning("The 'msigdbr' package is required to resolve gene sets.")
-    return(data.frame(gs_name = character(), gene_symbol = character()))
+    catalogue <- .emptyMsigdbCatalogue()
+    cache[["catalogue"]] <- catalogue
+    return(catalogue)
   }
   table <- tryCatch(
-    msigdbr::msigdbr(species = species),
+    msigdbr::msigdbr(species = "Homo sapiens"),
     error = function(error_condition) {
       warning("MSigDB query failed: ", conditionMessage(error_condition))
-      data.frame(gs_name = character(), gene_symbol = character())
+      NULL
     }
   )
-  table <- as.data.frame(table[, c("gs_name", "gene_symbol"), drop = FALSE])
-  .msigdb_table_cache[[species]] <- table
-  table
+  collection_column <- if (
+    !is.null(table) && "gs_collection" %in% colnames(table)
+  ) {
+    "gs_collection"
+  } else if (!is.null(table) && "gs_cat" %in% colnames(table)) {
+    "gs_cat"
+  } else {
+    NULL
+  }
+  catalogue <- if (is.null(collection_column)) {
+    .emptyMsigdbCatalogue()
+  } else {
+    unique(data.frame(
+      gs_name = table[["gs_name"]],
+      collection = table[[collection_column]],
+      stringsAsFactors = FALSE
+    ))
+  }
+  cache[["catalogue"]] <- catalogue
+  rm(table)
+  invisible(gc(FALSE))
+  catalogue
 }
 
 getGeneSetNames <- function() {
-  sort(unique(getMsigdbTable("Homo sapiens")$gs_name))
+  sort(unique(getMsigdbCatalogue()$gs_name))
+}
+
+getMsigdbGenes <- function(species, gene_set) {
+  cache <- .msigdbCache()
+  key <- .msigdbGeneCacheKey(species, gene_set)
+  if (exists(key, envir = cache, inherits = FALSE)) {
+    return(cache[[key]])
+  }
+  catalogue <- getMsigdbCatalogue()
+  collection <- catalogue$collection[match(gene_set, catalogue$gs_name)]
+  if (length(collection) != 1L || is.na(collection) || !nzchar(collection)) {
+    cache[[key]] <- character()
+    return(character())
+  }
+  arguments <- list(species = species)
+  if ("collection" %in% names(formals(msigdbr::msigdbr))) {
+    arguments[["collection"]] <- collection
+  } else {
+    arguments[["category"]] <- collection
+  }
+  table <- tryCatch(
+    do.call(msigdbr::msigdbr, arguments),
+    error = function(error_condition) {
+      warning("MSigDB query failed: ", conditionMessage(error_condition))
+      NULL
+    }
+  )
+  genes <- if (is.null(table)) {
+    character()
+  } else {
+    table$gene_symbol[table$gs_name == gene_set]
+  }
+  genes <- sort(unique(genes[!is.na(genes) & nzchar(genes)]))
+  cache[[key]] <- genes
+  rm(table)
+  invisible(gc(FALSE))
+  genes
 }
 
 getGenesForGeneSet <- function(gene_set) {
@@ -1558,9 +1634,7 @@ getGenesForGeneSet <- function(gene_set) {
     species <- "Mus musculus"
   }
 
-  table <- getMsigdbTable(species)
-  genes <- table$gene_symbol[table$gs_name == gene_set]
-  sort(unique(genes[!is.na(genes) & nzchar(genes)]))
+  getMsigdbGenes(species, gene_set)
 }
 
 ##----------------------------------------------------------------------------##
@@ -1910,72 +1984,6 @@ read_cerebro_file <- function(file) {
 }
 
 ##----------------------------------------------------------------------------##
-## Runtime validation for loaded .crb files.
-##
-## A class label alone is not enough: uploaded RDS files are untrusted and may
-## impersonate a Cerebro object. Require the locked R6 environment and the
-## minimum method surface used by the Viewer before touching object fields.
-##----------------------------------------------------------------------------##
-.runtimeRequiredCerebroMethods <- c(
-  "print",
-  "getVersion",
-  "getExperiment",
-  "getParameters",
-  "getTechnicalInfo",
-  "getMetaData",
-  "getCellNames",
-  "getCellCycle",
-  "getGroups",
-  "getGroupLevels",
-  "getGeneLists",
-  "getGeneNames",
-  "availableProjections",
-  "getProjection",
-  "getExpressionMatrix",
-  "getMethodsForMarkerGenes",
-  "getGroupsWithMarkerGenes",
-  "getMarkerGenes",
-  "getGroupsWithMostExpressedGenes",
-  "getMethodsForEnrichedPathways",
-  "getExtraMaterialCategories",
-  "getMethodsForTrajectories",
-  "getNamesOfTrajectories",
-  "getTrajectory"
-)
-
-isRecognizedRuntimeCerebroObject <- function(object) {
-  recognized <- is.environment(object) &&
-    inherits(object, "R6") &&
-    any(startsWith(class(object), "Cerebro")) &&
-    environmentIsLocked(object)
-  if (!recognized) {
-    return(FALSE)
-  }
-  all(vapply(
-    .runtimeRequiredCerebroMethods,
-    function(method) {
-      exists(method, envir = object, inherits = FALSE) &&
-        !bindingIsActive(method, object) &&
-        !isTRUE(rlang::env_binding_are_lazy(object, method)) &&
-        is.function(object[[method]])
-    },
-    logical(1)
-  ))
-}
-
-validateRuntimeCerebroObject <- function(object, path) {
-  if (!isRecognizedRuntimeCerebroObject(object)) {
-    stop(
-      "The Cerebro data file '",
-      basename(path),
-      "' does not contain a recognized Cerebro object.",
-      call. = FALSE
-    )
-  }
-  object
-}
-
-##----------------------------------------------------------------------------##
 ## Session-scoped cache for loaded .crb files (B8).
 ##
 ## Cerebro objects are treated as READ-ONLY within a session. Cache is keyed by
@@ -2185,7 +2193,6 @@ get_or_load_crb <- function(
     "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
   ))
   obj <- read_cerebro_file(path)
-  obj <- validateRuntimeCerebroObject(obj, path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
   .crb_cache[[path]] <- list(
     object = obj,

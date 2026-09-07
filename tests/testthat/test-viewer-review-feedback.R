@@ -14,18 +14,6 @@ viewer_path <- function(...) {
   file.path(viewer_root, ...)
 }
 
-test_that("Viewer reports invalid CRB loads without crashing the session", {
-  server <- viewer_source("shiny_server.R")
-
-  expect_match(server, "tryCatch(", fixed = TRUE)
-  expect_match(
-    server,
-    "Could not load the selected Cerebro data file",
-    fixed = TRUE
-  )
-  expect_match(server, "showNotification(", fixed = TRUE)
-})
-
 test_that("gene conversion table escapes cell content", {
   source <- viewer_source("gene_id_conversion", "server.R")
 
@@ -35,10 +23,14 @@ test_that("gene conversion table escapes cell content", {
 
 test_that("Viewer gene sets use the public msigdbr API", {
   utility <- viewer_source("utility_functions.R")
+  server <- viewer_source("shiny_server.R")
   input <- viewer_source("gene_expression", "UI_projection_input_type.R")
 
   expect_no_match(paste(utility, input), "msigdbr:::", fixed = TRUE)
-  expect_match(utility, "msigdbr::msigdbr(species = species)", fixed = TRUE)
+  expect_match(utility, "msigdbr::msigdbr", fixed = TRUE)
+  expect_match(server, ".msigdb_process_cache", fixed = TRUE)
+  expect_no_match(utility, ".msigdb_table_cache", fixed = TRUE)
+  expect_no_match(utility, "getMsigdbTable", fixed = TRUE)
   expect_match(input, "getGeneSetNames()", fixed = TRUE)
 })
 

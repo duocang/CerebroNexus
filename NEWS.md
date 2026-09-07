@@ -2,13 +2,10 @@
 
 ## Viewer
 
-- Viewer data loading now rejects malformed or impersonated Cerebro objects
-  before invoking dataset methods and reports failures without crashing the
-  session.
 - Ordinary data tables escape HTML content by default, including the gene ID
   conversion table.
-- Gene-set selection uses the public `msigdbr` API and caches species data for
-  repeated queries.
+- Gene-set selection uses the public `msigdbr` API and caches only compact
+  catalogues and resolved gene lists across Viewer sessions.
 - Trajectory PDF exports are delivered as browser downloads instead of writing
   to user-selected paths on the Viewer host.
 

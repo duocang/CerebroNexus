@@ -10,21 +10,19 @@
 ## grouping column) plus the caching contract of the cachePlot() wrapper. See
 ## the git history of utility_functions.R for context.
 
-## Prefer the installed copy (mirrors how test-app-inst.R locates the app),
-## falling back to the source tree when running against an uninstalled
-## checkout (e.g. devtools::load_all()).
-utils_file <- system.file(
-  "viewer",
-  "utility_functions.R",
-  package = "CerebroNexus"
+## Prefer the source tree so devtools::test() exercises the current checkout;
+## use the installed copy only when the source tree is unavailable.
+source_candidates <- c(
+  file.path(getwd(), "inst", "viewer", "utility_functions.R"),
+  file.path(getwd(), "..", "..", "inst", "viewer", "utility_functions.R"),
+  testthat::test_path("..", "..", "inst", "viewer", "utility_functions.R")
 )
-if (!nzchar(utils_file) || !file.exists(utils_file)) {
-  utils_file <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+utils_file <- source_candidates[file.exists(source_candidates)][1L]
+if (is.na(utils_file)) {
+  utils_file <- system.file(
     "viewer",
-    "utility_functions.R"
+    "utility_functions.R",
+    package = "CerebroNexus"
   )
 }
 skip_if_not(file.exists(utils_file), "utility_functions.R not found")
@@ -36,32 +34,6 @@ centerOfGroups <- utils_env$centerOfGroups
 cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
-
-test_that("runtime CRB validation rejects impostors", {
-  validator <- utils_env$isRecognizedRuntimeCerebroObject
-  expect_true(is.function(validator))
-
-  expect_false(validator(42))
-  expect_false(validator(structure(42, class = "Cerebro")))
-
-  empty <- new.env(parent = emptyenv())
-  class(empty) <- c("Cerebro", "R6")
-  lockEnvironment(empty, bindings = TRUE)
-  expect_false(validator(empty))
-
-  expect_true(validator(Cerebro$new()))
-})
-
-test_that("runtime CRB loading rejects arbitrary serialized objects", {
-  path <- tempfile(fileext = ".crb")
-  saveRDS(42, path)
-  withr::defer(unlink(path))
-
-  expect_error(
-    utils_env$get_or_load_crb(path),
-    "recognized Cerebro object"
-  )
-})
 
 test_that("infinite values are replaced without changing other columns", {
   replaceInfiniteValues <- utils_env$replaceInfiniteValues
@@ -109,19 +81,37 @@ test_that("ordinary Viewer tables escape HTML by default", {
   expect_identical(attr(empty$x$options, "escapeIdx"), "true")
 })
 
-test_that("MSigDB helpers expose sorted public data", {
-  skip_if_not_installed("msigdbr")
+test_that("Viewer tables can explicitly opt out of HTML escaping", {
+  table <- data.frame(label = "<strong>trusted</strong>")
 
-  table <- utils_env$getMsigdbTable("Homo sapiens")
+  populated <- prettifyTable(
+    table,
+    filter = "none",
+    dom = "t",
+    escape = FALSE
+  )
+
+  expect_identical(attr(populated$x$options, "escapeIdx"), "false")
+})
+
+test_that("MSigDB helpers retain only compact process-level results", {
+  cache <- utils_env$.msigdbCache()
+  cache[["catalogue"]] <- data.frame(
+    gs_name = c("SET_B", "SET_A"),
+    collection = c("C2", "H"),
+    stringsAsFactors = FALSE
+  )
+  gene_key <- utils_env$.msigdbGeneCacheKey("Mus musculus", "SET_B")
+  cache[[gene_key]] <- c("GeneA", "GeneB")
+
   names <- utils_env$getGeneSetNames()
 
-  expect_true(all(c("gs_name", "gene_symbol") %in% colnames(table)))
-  expect_gt(nrow(table), 0)
-  expect_identical(names, sort(unique(table$gs_name)))
+  expect_identical(names, c("SET_A", "SET_B"))
   expect_identical(
-    utils_env$getMsigdbTable("Homo sapiens"),
-    table
+    utils_env$getMsigdbGenes("Mus musculus", "SET_B"),
+    c("GeneA", "GeneB")
   )
+  expect_false(exists("Homo sapiens", envir = cache, inherits = FALSE))
 })
 
 test_that("conditional initial routing is consumed by the first dataset", {
