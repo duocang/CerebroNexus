@@ -64,3 +64,33 @@ if (file.exists(helpers_file)) {
     )
   })
 }
+
+test_that("Viewer navigation registers the Guides tab", {
+  ui <- paste(readLines(repo_file(
+    "inst",
+    "viewer",
+    "shiny_UI.R"
+  ), warn = FALSE), collapse = "\n")
+  about <- paste(readLines(repo_file(
+    "inst",
+    "viewer",
+    "about",
+    "server.R"
+  ), warn = FALSE), collapse = "\n")
+  runtime <- paste(readLines(repo_file(
+    "inst",
+    "viewer",
+    "shiny_server.R"
+  ), warn = FALSE), collapse = "\n")
+  builder <- paste(readLines(repo_file(
+    "R",
+    "createShinyApp.R"
+  ), warn = FALSE), collapse = "\n")
+
+  expect_match(ui, "/viewer/guides/UI.R", fixed = TRUE)
+  expect_match(ui, 'menuItem("Guides", tabName = "guides"', fixed = TRUE)
+  expect_match(ui, "tab_guides", fixed = TRUE)
+  expect_match(about, "#shiny-tab-guides", fixed = TRUE)
+  expect_match(runtime, 'guides = "guides"', fixed = TRUE)
+  expect_match(builder, 'guides = "guides"', fixed = TRUE)
+})

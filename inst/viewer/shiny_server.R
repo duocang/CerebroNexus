@@ -98,6 +98,7 @@ server <- function(input, output, session) {
     gene_expression = "geneExpression",
     gene_id_conversion = "geneIdConversion",
     color_management = "color_management",
+    guides = "guides",
     about = "about"
   )
   initial_page <- Cerebro.options[["initial_page"]]
