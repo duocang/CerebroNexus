@@ -17,16 +17,19 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 
 ## End-to-end HLA/TCR main case
 
-The real antigen-selected dextramer demo has a frozen biological case built
-from the shipped `.crb`:
+The real antigen-selected dextramer demo has one publication evidence command.
+The normal offline gate starts from the tracked `.crb`:
 
 ```bash
-Rscript data-raw/prepare_hla_tcr_end_to_end_case.R
+Rscript data-raw/build_hla_tcr_publication.R --from-crb --verify
 ```
 
-This writes the golden-clonotype JSON, stable barcode list, Linked views JSON,
-and `.crb` SHA-256 beside the demo object. The walkthrough and scientific
-claim boundaries are in [`docs/hla-tcr-end-to-end-case.md`](../docs/hla-tcr-end-to-end-case.md).
+Run without `--verify` to regenerate the two cases, CSV tables, scientific
+figures, Linked views configurations, and checksummed manifest. For a release
+audit, `--from-raw` first rebuilds the Cerebro object from the 12 inputs pinned
+in `hla_tcr_dextramer_sources.csv`. No Seurat object or raw source is tracked.
+The walkthrough and scientific claim boundaries are in
+[`docs/hla-tcr-end-to-end-case.md`](../docs/hla-tcr-end-to-end-case.md).
 
 `DATASETS.md` is the single source of truth for provenance across all data types. The per-type notes files (`spatial.md`, `immune_repertoire.md`, `trajectory.md`) carry only design and rebuild details and link back to it. This keeps citations in one place and avoids duplicating source info per file.
 
