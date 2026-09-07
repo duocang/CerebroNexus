@@ -1,6 +1,22 @@
 # Running tests locally
 
-This directory holds the package's automated tests. `R CMD check` and CI (`.github/workflows/R-tests.yaml`, `R-cmd-check.yaml`) run these on every PR.
+This directory holds the package's automated tests. CI runs `R-tests.yaml` and
+`R-cmd-check.yaml` on every PR; `R CMD check` uses `--no-tests` because the
+matrix already owns the complete test suite.
+
+### CI matrix and local equivalent
+
+The shared plan in `scripts/run-test-shard.R` classifies every `test-*.R` file
+once. Logic tests use four fixed shards and browser tests use six fixed shards.
+New ordinary tests join the logic group automatically.
+
+```bash
+# Check formatting without changing files, run logic tests, or run the complete
+# sequential suite with check and pkgdown.
+scripts/precheck.sh air
+scripts/precheck.sh fast
+scripts/precheck.sh full
+```
 
 ## Layout
 

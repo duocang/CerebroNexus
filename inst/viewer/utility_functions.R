@@ -201,6 +201,12 @@ cachePlot <- function(x, ...) {
   }
 }
 
+.runtimeDiagnostic <- function(x) {
+  if (!isTRUE(getOption("cerebro.quiet_runtime", FALSE))) {
+    print(x)
+  }
+}
+
 cerebroCellViewMessage <- function(
   id,
   meta,
@@ -2106,10 +2112,12 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue("[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"))
+    .runtimeDiagnostic(glue::glue(
+      "[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"
+    ))
     return(cached$object)
   }
-  print(glue::glue(
+  .runtimeDiagnostic(glue::glue(
     "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
   ))
   obj <- read_cerebro_file(path)
@@ -2350,7 +2358,9 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue("[{Sys.time()}] Attaching bpcells backend: {loc_abs}"))
+    .runtimeDiagnostic(glue::glue(
+      "[{Sys.time()}] Attaching bpcells backend: {loc_abs}"
+    ))
     obj$expression <- BPCells::open_matrix_dir(dir = loc_abs)
   } else if (be$type == "h5") {
     if (!requireNamespace("HDF5Array", quietly = TRUE)) {
@@ -2375,7 +2385,7 @@ get_or_load_crb <- function(
         call. = FALSE
       )
     }
-    print(glue::glue(
+    .runtimeDiagnostic(glue::glue(
       "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
     ))
 

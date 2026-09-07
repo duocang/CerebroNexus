@@ -14,6 +14,15 @@
   configured upload limit.
 - Manual colour choices remain scoped to the dataset where they were made.
 
+## Internal
+
+- CI runs the test suite through deterministic fixed shards: four logic workers
+  and six browser workers, while R CMD check no longer repeats the package test
+  suite.
+- `scripts/precheck.sh` runs the same groups sequentially for local checks and
+  never rewrites the working tree. Manual pkgdown validation builds the site
+  without deploying it.
+
 # CerebroNexus 4.3.6
 
 ## Viewer
