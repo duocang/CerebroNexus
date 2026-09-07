@@ -1,3 +1,18 @@
+# CerebroNexus 4.4.1
+
+## Viewer
+
+- Expensive HLA and TCR, immune-repertoire, spatial, trajectory, gene-expression
+  and export work now runs through a bounded `mirai` runtime, keeping the Shiny
+  event loop responsive with cancellation, timeouts and stale-result rejection.
+- Generated Viewers show their shell and loading state before large CRB files are
+  deserialized, retain visible progress while switching data sets, and reuse
+  immutable process-level data safely across sessions.
+- Deferred content now appears with a restrained transition, while projection
+  points and sample-information icons remain clearer during routine interaction.
+- A reproducible benchmark and runtime vignette document responsiveness,
+  concurrency semantics, failure handling and deployment configuration.
+
 # CerebroNexus 4.4.0
 
 ## Viewer
