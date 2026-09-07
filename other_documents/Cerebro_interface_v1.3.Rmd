@@ -47,8 +47,7 @@ In the "Overview" tab, you have access to all the dimensional reductions (e.g. t
 Dimensional reductions can be either 2- or 3-dimensional and aim to represent the complex expression profiles of all the cells in a more interpretable way.
 
 The plot is interactive which means you can hover over the cells with your cursor to get extra info, zoom in and out, and pan around.
-You may also export the plot to a PDF image by hitting the "export to PDF" button in the title bar.
-The file will the stored on your desktop.
+Use the "Download PNG" action in the plot toolbar to save the current view.
 
 In the input box on the left, you can select a bunch of parameters for the plot.
 For example, if there are multiple dimensional reductions, you can choose which one should be shown.

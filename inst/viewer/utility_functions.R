@@ -1536,6 +1536,10 @@ if (!exists(".msigdb_process_cache", inherits = TRUE)) {
   paste("genes", species, gene_set, sep = "\r")
 }
 
+.msigdbFunction <- function() {
+  msigdbr::msigdbr
+}
+
 getMsigdbCatalogue <- function() {
   cache <- .msigdbCache()
   if (exists("catalogue", envir = cache, inherits = FALSE)) {
@@ -1543,12 +1547,10 @@ getMsigdbCatalogue <- function() {
   }
   if (!requireNamespace("msigdbr", quietly = TRUE)) {
     warning("The 'msigdbr' package is required to resolve gene sets.")
-    catalogue <- .emptyMsigdbCatalogue()
-    cache[["catalogue"]] <- catalogue
-    return(catalogue)
+    return(.emptyMsigdbCatalogue())
   }
   table <- tryCatch(
-    msigdbr::msigdbr(species = "Homo sapiens"),
+    do.call(.msigdbFunction(), list(species = "Homo sapiens")),
     error = function(error_condition) {
       warning("MSigDB query failed: ", conditionMessage(error_condition))
       NULL
@@ -1563,15 +1565,21 @@ getMsigdbCatalogue <- function() {
   } else {
     NULL
   }
-  catalogue <- if (is.null(collection_column)) {
-    .emptyMsigdbCatalogue()
-  } else {
-    unique(data.frame(
-      gs_name = table[["gs_name"]],
-      collection = table[[collection_column]],
-      stringsAsFactors = FALSE
-    ))
+  if (
+    is.null(collection_column) ||
+      !is.data.frame(table) ||
+      !"gs_name" %in% colnames(table)
+  ) {
+    if (!is.null(table)) {
+      warning("MSigDB query returned unexpected columns.")
+    }
+    return(.emptyMsigdbCatalogue())
   }
+  catalogue <- unique(data.frame(
+    gs_name = table[["gs_name"]],
+    collection = table[[collection_column]],
+    stringsAsFactors = FALSE
+  ))
   cache[["catalogue"]] <- catalogue
   rm(table)
   invisible(gc(FALSE))
@@ -1591,29 +1599,37 @@ getMsigdbGenes <- function(species, gene_set) {
   catalogue <- getMsigdbCatalogue()
   collection <- catalogue$collection[match(gene_set, catalogue$gs_name)]
   if (length(collection) != 1L || is.na(collection) || !nzchar(collection)) {
-    cache[[key]] <- character()
     return(character())
   }
   arguments <- list(species = species)
-  if ("collection" %in% names(formals(msigdbr::msigdbr))) {
+  query <- .msigdbFunction()
+  if ("collection" %in% names(formals(query))) {
     arguments[["collection"]] <- collection
   } else {
     arguments[["category"]] <- collection
   }
   table <- tryCatch(
-    do.call(msigdbr::msigdbr, arguments),
+    do.call(query, arguments),
     error = function(error_condition) {
       warning("MSigDB query failed: ", conditionMessage(error_condition))
       NULL
     }
   )
-  genes <- if (is.null(table)) {
-    character()
-  } else {
-    table$gene_symbol[table$gs_name == gene_set]
+  if (is.null(table)) {
+    return(character())
   }
+  if (
+    !is.data.frame(table) ||
+      !all(c("gs_name", "gene_symbol") %in% colnames(table))
+  ) {
+    warning("MSigDB gene query returned unexpected columns.")
+    return(character())
+  }
+  genes <- table$gene_symbol[table$gs_name == gene_set]
   genes <- sort(unique(genes[!is.na(genes) & nzchar(genes)]))
-  cache[[key]] <- genes
+  if (length(genes) > 0L) {
+    cache[[key]] <- genes
+  }
   rm(table)
   invisible(gc(FALSE))
   genes

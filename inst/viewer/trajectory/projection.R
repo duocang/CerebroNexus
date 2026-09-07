@@ -40,13 +40,7 @@ output[["trajectory_projection_UI"]] <- renderUI({
           div(
             class = "cerebro-viz-primary",
             uiOutput("trajectory_select_method_and_name_UI"),
-            uiOutput("trajectory_projection_main_parameters_UI"),
-            downloadButton(
-              "trajectory_projection_export",
-              label = "Export PDF",
-              title = "Export trajectory to PDF file.",
-              class = "cerebro-toolbar-export"
-            )
+            uiOutput("trajectory_projection_main_parameters_UI")
           ),
           cerebroSettingsButton(
             "trajectory_projection_more_button",

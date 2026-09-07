@@ -320,7 +320,3 @@ output[["trajectory_projection_composition"]] <- renderUI({
     composition = TRUE
   )
 })
-
-##----------------------------------------------------------------------------##
-## Export projection plot to PDF when pressing the "export to PDF" button.
-##----------------------------------------------------------------------------##

@@ -56,13 +56,8 @@ cerebro_plotly_hoverlabel <- function() {
   )
 }
 
-## ggplot theme for the static PDF/SVG *exports* (the "export to PDF" buttons).
-## Submission-grade defaults: a clean sans base family, hairline warm-neutral
-## panel border and gridlines matching the on-screen Viewer palette, so the
-## exported figure reads as the same design system as the interactive plot.
-## `base_family = ""` lets the device pick its default sans (Helvetica/Arial on
-## the common PDF/SVG devices), which keeps exported text editable in Illustrator
-## and avoids a hard font dependency.
+## ggplot theme shared by static plot builders. It matches the interactive
+## Viewer palette while leaving font selection to the active graphics device.
 cerebro_export_theme <- function(base_size = 12) {
   th <- cerebro_plotly_theme()
   ggplot2::theme_bw(base_size = base_size, base_family = "") +

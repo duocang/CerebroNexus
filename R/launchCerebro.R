@@ -72,7 +72,6 @@
 #' @import shiny
 #' @importFrom shinycssloaders withSpinner
 #' @import shinydashboard
-#' @importFrom shinyFiles getVolumes parseSavePath shinyFileSave shinySaveButton
 #' @importFrom shinyjs inlineCSS
 #' @importFrom shinyWidgets awesomeCheckbox dropdownButton materialSwitch radioGroupButtons sendSweetAlert
 #'
