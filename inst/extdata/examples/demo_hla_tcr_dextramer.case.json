@@ -10,7 +10,7 @@
     "cell_fingerprint": "md5-cell-set-v1:9bbf86fb3ea3103e700e23d7d18432dc",
     "source": "10x Genomics CD8+ T cells of Healthy Donor 1-4 (2019), Zhang et al. Sci Adv 2021, CC BY 4.0",
     "build_command": "Rscript data-raw/build_hla_tcr_dextramer_demo.R",
-    "case_command": "Rscript data-raw/prepare_hla_tcr_end_to_end_case.R"
+    "case_command": "Rscript data-raw/build_hla_tcr_publication.R --from-crb"
   },
   "golden_clonotype": {
     "chain": "TRB",
