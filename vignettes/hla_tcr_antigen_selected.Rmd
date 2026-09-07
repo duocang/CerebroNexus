@@ -106,6 +106,12 @@ node area reflects the number of cells carrying each TRB CDR3.*
 and missing HLA-B copies rather than treating reagent restriction as validated
 specificity.*
 
+![Strict barcode selection restored in Linked views](img/hla_tcr_strict_linked_views_selected.png)
+
+*Figure 5. The generated configuration restores the complete strict barcode
+set in the real Viewer; this screen is visual evidence, while the barcode TSV
+and browser assertion remain authoritative.*
+
 ```{r publication-cohort-table, echo = FALSE, eval = TRUE}
 knitr::kable(
   cohort,
@@ -149,7 +155,7 @@ single-cell data set loaded into the same Viewer used for the analysis.
 
 ![Real HLA/TCR data set loaded in CerebroNexus](img/hla_tcr_real_data_info.png)
 
-*Figure 5. The real antigen-selected HLA/TCR object loaded in the Viewer.*
+*Figure 6. The real antigen-selected HLA/TCR object loaded in the Viewer.*
 
 Replacing them required answering a fair objection first: *if the motif network
 is only legible on synthetic data, what is the feature for?*
@@ -611,7 +617,7 @@ Open the data set and go to **HLA & TCR Motifs**:
 
 ![Real TRB motif network](img/hla_tcr_real_motif_network.png)
 
-*Figure 6. The motif network computed from the shipped real `.crb` object.*
+*Figure 7. The motif network computed from the shipped real `.crb` object.*
 
 * **Motif Network** — families of real CDR3β sequences at Hamming distance 1.
   Colour by *Sample of origin* to see the same motif reached independently by
@@ -630,9 +636,9 @@ Open the data set and go to **HLA & TCR Motifs**:
 
 ![Real HLA association context](img/hla_tcr_real_hla_associations.png)
 
-*Figure 7. The Viewer keeps the HLA contrast descriptive and displays the
+*Figure 8. The Viewer keeps the HLA contrast descriptive and displays the
   ascertainment and raw-binder caveats beside the result.*
 
 ![Published HLA typing and coverage](img/hla_tcr_real_data_qc.png)
 
-*Figure 8. The stored `.crb` carries genotyped HLA context for all four donors.*
+*Figure 9. The stored `.crb` carries genotyped HLA context for all four donors.*

@@ -1,0 +1,64 @@
+{
+  "schema": "cerebronexus-hla-tcr-screenshots",
+  "version": 1,
+  "source_commit": "9aa1facdcf5f9e42d313538945e43c3b72e882ff",
+  "dataset_fingerprint": "md5-cell-set-v1:9bbf86fb3ea3103e700e23d7d18432dc",
+  "screenshots": [
+    {
+      "file": "vignettes/img/hla_tcr_real_data_info.png",
+      "state": "dataset-information",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null
+    },
+    {
+      "file": "vignettes/img/hla_tcr_main_case_linked_views_all.png",
+      "state": "linked-views-all-cells",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null
+    },
+    {
+      "file": "vignettes/img/hla_tcr_strict_linked_views_selected.png",
+      "state": "linked-views-strict-selection",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": "md5-cell-set-v1:610343eab7f6b1e68abe64b327192a6e"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_main_case_linked_views_selected.png",
+      "state": "linked-views-viewer-selection",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": "md5-cell-set-v1:51f5964f2c17318cb0adcee6eaa91d2e"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_main_case_share_dialog.png",
+      "state": "share-selection-dialog",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": "md5-cell-set-v1:51f5964f2c17318cb0adcee6eaa91d2e"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_real_motif_network.png",
+      "state": "trb-motif-network",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null
+    },
+    {
+      "file": "vignettes/img/hla_tcr_real_hla_associations.png",
+      "state": "hla-association-context",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null
+    },
+    {
+      "file": "vignettes/img/hla_tcr_real_data_qc.png",
+      "state": "real-data-qc",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null
+    }
+  ]
+}
