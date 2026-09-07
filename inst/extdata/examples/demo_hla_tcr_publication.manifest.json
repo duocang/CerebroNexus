@@ -1,0 +1,106 @@
+{
+  "schema": "cerebronexus-hla-tcr-publication",
+  "version": 1,
+  "release_date": "2026-09-08",
+  "dataset": {
+    "file": "demo_hla_tcr_dextramer.crb",
+    "cell_count": 12000,
+    "donor_count": 4,
+    "expression_features": 2000,
+    "sha256": "61b7e5e288f4c3ec06663eec45f8bbe877b4c764e00e352f91c75667025b0d41",
+    "cell_fingerprint": "md5-cell-set-v1:9bbf86fb3ea3103e700e23d7d18432dc"
+  },
+  "strict_case": {
+    "definition": {
+      "v_gene": "TRBV19",
+      "j_gene": "TRBJ1-5",
+      "cdr3": "CASSIYSNQPQHF"
+    },
+    "cell_count": 10,
+    "donor_counts": {
+      "donor1": 2,
+      "donor2": 8
+    },
+    "motif": {
+      "node_count": 15,
+      "cell_count": 30,
+      "donor_counts": {
+        "donor1": 6,
+        "donor2": 22,
+        "donor3": 2
+      }
+    }
+  },
+  "viewer_case": {
+    "definition": {
+      "CTgene": "TRAV27.TRAJ42.TRAC_TRBV19.None.TRBJ2-7.TRBC2"
+    },
+    "cell_count": 293,
+    "donor_counts": {
+      "donor1": 142,
+      "donor2": 151
+    },
+    "motif": {
+      "anchor_cdr3": "CASSIRSSYEQYF",
+      "node_count": 34,
+      "cell_count": 627,
+      "donor_counts": {
+        "donor1": 308,
+        "donor2": 318,
+        "donor4": 1
+      }
+    }
+  },
+  "scientific_scope": {
+    "primary": "strict sequence-defined TRB clonotype",
+    "secondary": "CTgene-defined Viewer workflow",
+    "limitation": "Four antigen-selected donors support reproducible case studies, not population-level HLA association or validated peptide specificity."
+  },
+  "artifacts": [
+    {
+      "file": "demo_hla_tcr_dextramer.case.json",
+      "bytes": 3896,
+      "sha256": "1caf8f99fce16595e0aeaa45af46c354e33f2bd0708a45fb076835926f4fbc3b"
+    },
+    {
+      "file": "demo_hla_tcr_dextramer.golden-clone.barcodes.tsv",
+      "bytes": 282,
+      "sha256": "dcb4dcd778098ee5d3fb803f0f9a27092bb7e8f877b287c8c01d92158da42479"
+    },
+    {
+      "file": "demo_hla_tcr_dextramer.linked-views.json",
+      "bytes": 1999,
+      "sha256": "c221dea718ea0ab56d2591977b2d0de39717753ef976761bb042864b58cc7ab4"
+    },
+    {
+      "file": "demo_hla_tcr_dextramer.sha256",
+      "bytes": 92,
+      "sha256": "575f3de3f8d20557de79cafa060846cc6350d6aaf9cb87044388a116c960a9a3"
+    },
+    {
+      "file": "demo_hla_tcr_main_case.expectations.json",
+      "bytes": 11049,
+      "sha256": "fbdb7c3d7542eb8958c41c8c06d19499ce7b689d09955ec77b4a9bc38516480a"
+    },
+    {
+      "file": "demo_hla_tcr_main_case.linked-view.json",
+      "bytes": 10246,
+      "sha256": "5b56208a467c557d364896095d5722f68737e71442a64e717de9dd40a83478ef"
+    },
+    {
+      "file": "demo_hla_tcr_publication.cohort.csv",
+      "bytes": 307,
+      "sha256": "c9ceedb13f4f6a4605148a3162bb965a5c9e2ad44610265e33a525b880c46de2"
+    },
+    {
+      "file": "demo_hla_tcr_publication.hla.csv",
+      "bytes": 2977,
+      "sha256": "36287448df3d474c8a07f6be5079156aca5e58ce3fab0d91e4b9d69b49d95abb"
+    },
+    {
+      "file": "demo_hla_tcr_publication.sequences.csv",
+      "bytes": 719,
+      "sha256": "ab2c8424f8d15061650111d3013d72389f771c02020dfe1e6a1c3718170b7784"
+    }
+  ]
+}

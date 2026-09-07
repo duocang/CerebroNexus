@@ -1,0 +1,5 @@
+"donor","total_cells","strict_clonotype_cells","strict_motif_cells","viewer_clone_cells","viewer_motif_cells","restriction_yes","restriction_no","restriction_unknown"
+"donor1",3000,2,6,142,308,2046,879,75
+"donor2",3000,8,22,151,318,2532,468,0
+"donor3",3000,0,2,0,0,3,2997,0
+"donor4",3000,0,0,0,1,690,2310,0

@@ -10,6 +10,15 @@ publication_root <- publication_root_candidates[file.exists(file.path(
   "DESCRIPTION"
 ))][1]
 
+publication_sha256 <- function(path) {
+  if (nzchar(Sys.which("sha256sum"))) {
+    output <- system2("sha256sum", path, stdout = TRUE)
+    return(tolower(sub("[[:space:]].*$", "", output[[1L]])))
+  }
+  output <- system2("shasum", c("-a", "256", path), stdout = TRUE)
+  tolower(sub("[[:space:]].*$", "", output[[1L]]))
+}
+
 test_that("HLA/TCR raw inputs are pinned and verified", {
   registry_file <- file.path(
     publication_root,
@@ -41,4 +50,54 @@ test_that("HLA/TCR raw inputs are pinned and verified", {
   builder <- paste(readLines(builder_file, warn = FALSE), collapse = "\n")
   expect_match(builder, "hla_tcr_dextramer_sources.csv", fixed = TRUE)
   expect_false(grepl("Sys.Date()", builder, fixed = TRUE))
+})
+
+test_that("the unified publication artifact set is complete", {
+  artifact_dir <- file.path(publication_root, "inst/extdata/examples")
+  required <- c(
+    "demo_hla_tcr_publication.manifest.json",
+    "demo_hla_tcr_publication.cohort.csv",
+    "demo_hla_tcr_publication.hla.csv",
+    "demo_hla_tcr_publication.sequences.csv"
+  )
+  paths <- file.path(artifact_dir, required)
+  expect_true(all(file.exists(paths)))
+  if (!all(file.exists(paths))) {
+    return(invisible(NULL))
+  }
+
+  manifest <- jsonlite::fromJSON(paths[[1L]], simplifyVector = FALSE)
+  expect_identical(manifest$schema, "cerebronexus-hla-tcr-publication")
+  expect_identical(as.integer(manifest$version), 1L)
+  expect_identical(as.integer(manifest$dataset$cell_count), 12000L)
+  expect_identical(as.integer(manifest$strict_case$cell_count), 10L)
+  expect_identical(as.integer(manifest$strict_case$motif$node_count), 15L)
+  expect_identical(as.integer(manifest$strict_case$motif$cell_count), 30L)
+  expect_identical(as.integer(manifest$viewer_case$cell_count), 293L)
+  expect_identical(as.integer(manifest$viewer_case$motif$node_count), 34L)
+  expect_identical(as.integer(manifest$viewer_case$motif$cell_count), 627L)
+
+  cohort <- read.csv(paths[[2L]], stringsAsFactors = FALSE)
+  hla <- read.csv(paths[[3L]], stringsAsFactors = FALSE)
+  sequences <- read.csv(paths[[4L]], stringsAsFactors = FALSE)
+  expect_identical(cohort$donor, paste0("donor", 1:4))
+  expect_identical(cohort$total_cells, rep(3000L, 4))
+  expect_equal(nrow(hla), 14L)
+  expect_equal(sum(sequences$case_id == "strict-clonotype"), 1L)
+  expect_equal(sum(sequences$case_id == "viewer-expanded-clone"), 10L)
+
+  for (artifact in manifest$artifacts) {
+    artifact_path <- file.path(artifact_dir, artifact$file)
+    expect_true(file.exists(artifact_path), info = artifact$file)
+    expect_identical(
+      unname(file.info(artifact_path)$size),
+      as.numeric(artifact$bytes),
+      info = artifact$file
+    )
+    expect_identical(
+      publication_sha256(artifact_path),
+      artifact$sha256,
+      info = artifact$file
+    )
+  }
 })
