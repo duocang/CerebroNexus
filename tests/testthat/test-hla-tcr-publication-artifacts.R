@@ -5,9 +5,19 @@ publication_root_candidates <- c(
   normalizePath("../..", mustWork = FALSE),
   normalizePath(testthat::test_path("../.."), mustWork = FALSE)
 )
-publication_root <- publication_root_candidates[file.exists(file.path(
+publication_source_root <- publication_root_candidates[file.exists(file.path(
   publication_root_candidates,
-  "DESCRIPTION"
+  "data-raw/hla_tcr_dextramer_sources.csv"
+))][1]
+publication_inst_candidates <- c(
+  if (!is.na(publication_source_root)) {
+    file.path(publication_source_root, "inst")
+  },
+  system.file(package = "CerebroNexus")
+)
+publication_inst <- publication_inst_candidates[file.exists(file.path(
+  publication_inst_candidates,
+  "extdata/examples/demo_hla_tcr_publication.manifest.json"
 ))][1]
 
 publication_sha256 <- function(path) {
@@ -20,12 +30,13 @@ publication_sha256 <- function(path) {
 }
 
 test_that("HLA/TCR raw inputs are pinned and verified", {
+  skip_if(is.na(publication_source_root), "source tree not present")
   registry_file <- file.path(
-    publication_root,
+    publication_source_root,
     "data-raw/hla_tcr_dextramer_sources.csv"
   )
   builder_file <- file.path(
-    publication_root,
+    publication_source_root,
     "data-raw/build_hla_tcr_dextramer_demo.R"
   )
 
@@ -53,7 +64,7 @@ test_that("HLA/TCR raw inputs are pinned and verified", {
 })
 
 test_that("the unified publication artifact set is complete", {
-  artifact_dir <- file.path(publication_root, "inst/extdata/examples")
+  artifact_dir <- file.path(publication_inst, "extdata/examples")
   required <- c(
     "demo_hla_tcr_publication.manifest.json",
     "demo_hla_tcr_publication.cohort.csv",
@@ -110,16 +121,18 @@ test_that("the unified publication artifact set is complete", {
     unname(vapply(manifest$figures, `[[`, character(1), "file")),
     figure_files
   )
-  for (figure in manifest$figures) {
-    figure_path <- file.path(publication_root, figure$file)
-    expect_true(file.exists(figure_path), info = figure$file)
-    if (!file.exists(figure_path)) {
-      next
+  if (!is.na(publication_source_root)) {
+    for (figure in manifest$figures) {
+      figure_path <- file.path(publication_source_root, figure$file)
+      expect_true(file.exists(figure_path), info = figure$file)
+      if (!file.exists(figure_path)) {
+        next
+      }
+      svg <- paste(readLines(figure_path, warn = FALSE), collapse = "\n")
+      expect_match(svg, "<svg", fixed = TRUE)
+      expect_match(svg, "viewBox=", fixed = TRUE)
+      expect_identical(publication_sha256(figure_path), figure$sha256)
     }
-    svg <- paste(readLines(figure_path, warn = FALSE), collapse = "\n")
-    expect_match(svg, "<svg", fixed = TRUE)
-    expect_match(svg, "viewBox=", fixed = TRUE)
-    expect_identical(publication_sha256(figure_path), figure$sha256)
   }
 
   screenshot_metadata <- file.path(
@@ -136,26 +149,32 @@ test_that("the unified publication artifact set is complete", {
     )
     expect_identical(metadata$source_commit, manifest$screenshot_source_commit)
     for (screenshot in manifest$screenshots) {
-      screenshot_path <- file.path(publication_root, screenshot$file)
-      expect_true(file.exists(screenshot_path), info = screenshot$file)
       expect_identical(as.integer(screenshot$width), 1440L)
       expect_identical(as.integer(screenshot$height), 900L)
-      expect_identical(
-        publication_sha256(screenshot_path),
-        screenshot$sha256,
-        info = screenshot$file
-      )
+      if (!is.na(publication_source_root)) {
+        screenshot_path <- file.path(publication_source_root, screenshot$file)
+        expect_true(file.exists(screenshot_path), info = screenshot$file)
+        expect_identical(
+          publication_sha256(screenshot_path),
+          screenshot$sha256,
+          info = screenshot$file
+        )
+      }
     }
   }
 })
 
 test_that("HLA/TCR articles consume generated evidence", {
+  skip_if(is.na(publication_source_root), "source tree not present")
   strict_file <- file.path(
-    publication_root,
+    publication_source_root,
     "vignettes/hla_tcr_antigen_selected.Rmd"
   )
-  viewer_file <- file.path(publication_root, "vignettes/hla_tcr_main_case.Rmd")
-  readme_file <- file.path(publication_root, "data-raw/README.md")
+  viewer_file <- file.path(
+    publication_source_root,
+    "vignettes/hla_tcr_main_case.Rmd"
+  )
+  readme_file <- file.path(publication_source_root, "data-raw/README.md")
   strict <- paste(readLines(strict_file, warn = FALSE), collapse = "\n")
   viewer <- paste(readLines(viewer_file, warn = FALSE), collapse = "\n")
   readme <- paste(readLines(readme_file, warn = FALSE), collapse = "\n")
@@ -168,7 +187,7 @@ test_that("HLA/TCR articles consume generated evidence", {
   expect_match(viewer, "hla_tcr_publication_motifs.svg", fixed = TRUE)
 
   browser_test <- paste(readLines(file.path(
-    publication_root,
+    publication_source_root,
     "tests/testthat/test-hla-tcr-publication-browser.R"
   ), warn = FALSE), collapse = "\n")
   expect_match(browser_test, "expect_setequal", fixed = TRUE)

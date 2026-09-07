@@ -1,12 +1,16 @@
 # test-hla-tcr-publication-data.R — independent biological recomputation.
 
-publication_data_root <- normalizePath(
-  testthat::test_path("../.."),
-  mustWork = TRUE
+publication_data_inst_candidates <- c(
+  normalizePath(testthat::test_path("../../inst"), mustWork = FALSE),
+  system.file(package = "CerebroNexus")
 )
+publication_data_inst <- publication_data_inst_candidates[file.exists(file.path(
+  publication_data_inst_candidates,
+  "extdata/examples/demo_hla_tcr_dextramer.crb"
+))][1]
 publication_data_crb <- readRDS(file.path(
-  publication_data_root,
-  "inst/extdata/examples/demo_hla_tcr_dextramer.crb"
+  publication_data_inst,
+  "extdata/examples/demo_hla_tcr_dextramer.crb"
 ))
 
 publication_annotate_repertoire <- function(crb) {
