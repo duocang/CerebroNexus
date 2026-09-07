@@ -21,6 +21,9 @@ test_that("runtime dependencies are declared for every app form", {
   expect_match(description, "promises (>= 1.3.0)", fixed = TRUE)
   expect_match(description, "shiny (>= 1.8.1)", fixed = TRUE)
   if (async_contract_has_source) {
+    fields <- read.dcf(file.path(async_contract_source_root, "DESCRIPTION"))
+    expect_false(grepl("mirai", fields[1L, "Imports"], fixed = TRUE))
+    expect_match(fields[1L, "Suggests"], "mirai (>= 2.7.0)", fixed = TRUE)
     create_env <- readLines(file.path(
       async_contract_source_root,
       "create_env.R"

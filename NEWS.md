@@ -2,9 +2,11 @@
 
 ## Viewer
 
-- Expensive HLA and TCR, immune-repertoire, spatial, trajectory, gene-expression
-  and export work now runs through a bounded `mirai` runtime, keeping the Shiny
-  event loop responsive with cancellation, timeouts and stale-result rejection.
+- When the optional `mirai` package is installed, expensive HLA and TCR,
+  immune-repertoire, spatial, trajectory, gene-expression and export work runs
+  through a bounded runtime, keeping the Shiny event loop responsive with
+  cancellation, timeouts and stale-result rejection. Viewers retain a
+  synchronous fallback when `mirai` is unavailable.
 - Generated Viewers show their shell and loading state before large CRB files are
   deserialized, retain visible progress while switching data sets, and reuse
   immutable process-level data safely across sessions.

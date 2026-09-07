@@ -90,10 +90,10 @@ Set `enabled = FALSE` to execute the same worker functions synchronously. This
 is useful for diagnosis and provides deterministic parity testing; production
 apps should normally keep the default enabled runtime.
 
-Installed packages receive `mirai` and `promises` through `Imports`. A source or
-standalone checkout with either package missing now emits one warning and uses
-the same synchronous workers instead of terminating the Shiny process. Install
-the declared dependencies to restore asynchronous execution.
+Installed packages receive `promises` through `Imports`; `mirai` is an optional
+`Suggests` dependency. When `mirai` is unavailable, installed and standalone
+Viewers emit one warning and use the same synchronous workers instead of
+terminating the Shiny process. Install `mirai` to enable asynchronous execution.
 
 Daemon creation is lazy. Configuration and ownership are established when the
 app starts, while owned processes start after the first browser paint or when a
