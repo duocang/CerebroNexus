@@ -337,35 +337,49 @@ server <- function(input, output, session) {
   data_set <- reactive({
     req(!is.null(available_crb_files$selected))
     dataset_to_load <- available_crb_files$selected
-    if (exists(dataset_to_load)) {
-      print(glue::glue(
-        "[{Sys.time()}] Load data set from variable: {dataset_to_load}"
-      ))
-      data <- get(dataset_to_load)
-    } else {
-      ## Route through the session cache defined in utility_functions.R.
-      ## Configured bundle CRBs consume the exact backend plan validated during
-      ## createShinyApp(). Uploads and older configurations fall back to the
-      ## ordinary expression_backend field; serialized getters are not called.
-      backend_plan <- if (exists("Cerebro.options")) {
-        Cerebro.options[[".bundle_backend_plan"]]
-      } else {
+    data <- tryCatch(
+      {
+        if (exists(dataset_to_load)) {
+          print(glue::glue(
+            "[{Sys.time()}] Load data set from variable: {dataset_to_load}"
+          ))
+          validateRuntimeCerebroObject(get(dataset_to_load), dataset_to_load)
+        } else {
+          ## Route through the session cache defined in utility_functions.R.
+          ## Configured bundle CRBs consume the exact backend plan validated
+          ## during createShinyApp(). Uploads and older configurations fall back
+          ## to the ordinary expression_backend field.
+          backend_plan <- if (exists("Cerebro.options")) {
+            Cerebro.options[[".bundle_backend_plan"]]
+          } else {
+            NULL
+          }
+          configured_paths <- if (
+            exists("Cerebro.options") &&
+              !is.null(Cerebro.options[["crb_file_to_load"]])
+          ) {
+            unname(Cerebro.options[["crb_file_to_load"]])
+          } else {
+            character()
+          }
+          get_or_load_crb(
+            dataset_to_load,
+            backend_plan,
+            configured_paths
+          )
+        }
+      },
+      error = function(error_condition) {
+        message(conditionMessage(error_condition))
+        showNotification(
+          "Could not load the selected Cerebro data file.",
+          type = "error",
+          duration = 10
+        )
         NULL
       }
-      configured_paths <- if (
-        exists("Cerebro.options") &&
-          !is.null(Cerebro.options[["crb_file_to_load"]])
-      ) {
-        unname(Cerebro.options[["crb_file_to_load"]])
-      } else {
-        character()
-      }
-      data <- get_or_load_crb(
-        dataset_to_load,
-        backend_plan,
-        configured_paths
-      )
-    }
+    )
+    req(!is.null(data))
     ## log message
     message(data$print())
     ## check if 'expression' slot exists and print log message with its format

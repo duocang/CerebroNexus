@@ -37,6 +37,32 @@ cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
 
+test_that("runtime CRB validation rejects impostors", {
+  validator <- utils_env$isRecognizedRuntimeCerebroObject
+  expect_true(is.function(validator))
+
+  expect_false(validator(42))
+  expect_false(validator(structure(42, class = "Cerebro")))
+
+  empty <- new.env(parent = emptyenv())
+  class(empty) <- c("Cerebro", "R6")
+  lockEnvironment(empty, bindings = TRUE)
+  expect_false(validator(empty))
+
+  expect_true(validator(Cerebro$new()))
+})
+
+test_that("runtime CRB loading rejects arbitrary serialized objects", {
+  path <- tempfile(fileext = ".crb")
+  saveRDS(42, path)
+  withr::defer(unlink(path))
+
+  expect_error(
+    utils_env$get_or_load_crb(path),
+    "recognized Cerebro object"
+  )
+})
+
 test_that("infinite values are replaced without changing other columns", {
   replaceInfiniteValues <- utils_env$replaceInfiniteValues
   expect_true(is.function(replaceInfiniteValues))

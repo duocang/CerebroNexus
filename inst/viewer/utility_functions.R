@@ -1904,6 +1904,72 @@ read_cerebro_file <- function(file) {
 }
 
 ##----------------------------------------------------------------------------##
+## Runtime validation for loaded .crb files.
+##
+## A class label alone is not enough: uploaded RDS files are untrusted and may
+## impersonate a Cerebro object. Require the locked R6 environment and the
+## minimum method surface used by the Viewer before touching object fields.
+##----------------------------------------------------------------------------##
+.runtimeRequiredCerebroMethods <- c(
+  "print",
+  "getVersion",
+  "getExperiment",
+  "getParameters",
+  "getTechnicalInfo",
+  "getMetaData",
+  "getCellNames",
+  "getCellCycle",
+  "getGroups",
+  "getGroupLevels",
+  "getGeneLists",
+  "getGeneNames",
+  "availableProjections",
+  "getProjection",
+  "getExpressionMatrix",
+  "getMethodsForMarkerGenes",
+  "getGroupsWithMarkerGenes",
+  "getMarkerGenes",
+  "getGroupsWithMostExpressedGenes",
+  "getMethodsForEnrichedPathways",
+  "getExtraMaterialCategories",
+  "getMethodsForTrajectories",
+  "getNamesOfTrajectories",
+  "getTrajectory"
+)
+
+isRecognizedRuntimeCerebroObject <- function(object) {
+  recognized <- is.environment(object) &&
+    inherits(object, "R6") &&
+    any(startsWith(class(object), "Cerebro")) &&
+    environmentIsLocked(object)
+  if (!recognized) {
+    return(FALSE)
+  }
+  all(vapply(
+    .runtimeRequiredCerebroMethods,
+    function(method) {
+      exists(method, envir = object, inherits = FALSE) &&
+        !bindingIsActive(method, object) &&
+        !isTRUE(rlang::env_binding_are_lazy(object, method)) &&
+        is.function(object[[method]])
+    },
+    logical(1)
+  ))
+}
+
+validateRuntimeCerebroObject <- function(object, path) {
+  if (!isRecognizedRuntimeCerebroObject(object)) {
+    stop(
+      "The Cerebro data file '",
+      basename(path),
+      "' does not contain a recognized Cerebro object.",
+      call. = FALSE
+    )
+  }
+  object
+}
+
+##----------------------------------------------------------------------------##
 ## Session-scoped cache for loaded .crb files (B8).
 ##
 ## Cerebro objects are treated as READ-ONLY within a session. Cache is keyed by
@@ -2113,6 +2179,7 @@ get_or_load_crb <- function(
     "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
   ))
   obj <- read_cerebro_file(path)
+  obj <- validateRuntimeCerebroObject(obj, path)
   obj <- .attachExternalExpression(obj, path, effective_backend)
   .crb_cache[[path]] <- list(
     object = obj,

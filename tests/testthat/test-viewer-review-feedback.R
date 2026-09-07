@@ -14,6 +14,18 @@ viewer_path <- function(...) {
   file.path(viewer_root, ...)
 }
 
+test_that("Viewer reports invalid CRB loads without crashing the session", {
+  server <- viewer_source("shiny_server.R")
+
+  expect_match(server, "tryCatch(", fixed = TRUE)
+  expect_match(
+    server,
+    "Could not load the selected Cerebro data file",
+    fixed = TRUE
+  )
+  expect_match(server, "showNotification(", fixed = TRUE)
+})
+
 test_that("Viewer copy uses British colour spelling", {
   sidebar <- viewer_source("shiny_UI.R")
   management <- viewer_source("color_management", "server.R")
