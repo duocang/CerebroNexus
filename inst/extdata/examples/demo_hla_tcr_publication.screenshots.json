@@ -1,7 +1,7 @@
 {
   "schema": "cerebronexus-hla-tcr-screenshots",
   "version": 1,
-  "source_commit": "95625bf3214923e765bbe46dcafc3bf743fddd14",
+  "source_commit": "eb6fa10eef5d54ea681cf11e883566ad8f137341",
   "dataset_fingerprint": "md5-cell-set-v1:9bbf86fb3ea3103e700e23d7d18432dc",
   "screenshots": [
     {
