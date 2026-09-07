@@ -66,6 +66,18 @@ test_that("sweep supports clean external results and verified source caching", {
   expect_true(file.exists(source_cache))
 })
 
+test_that("sweep isolates benchmark R processes from user startup files", {
+  skip_unless_bench_cli()
+  sweep <- paste(
+    readLines(file.path(bench_root, "run_sweep.sh"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(sweep, "R_ENVIRON_USER=/dev/null", fixed = TRUE)
+  expect_match(sweep, "R_PROFILE_USER=/dev/null", fixed = TRUE)
+  expect_match(sweep, 'R_LIBS_USER="$SCRATCH/r-user-library"', fixed = TRUE)
+})
+
 test_that("source cache reuses only checksum-verified files", {
   skip_unless_bench_cli()
   helper <- file.path(bench_root, "lib", "source_cache.sh")

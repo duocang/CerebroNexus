@@ -40,6 +40,11 @@ SCRATCH="$(mktemp -d "$SCRATCH_PARENT/cerebro-bench.XXXXXX")" || exit 1
 SCRATCH_MARKER="$SCRATCH/.cerebro-benchmark-scratch"
 : > "$SCRATCH_MARKER"
 export BENCH_LIB="$SCRATCH/rlib"
+# Publication evidence must not load packages or startup hooks from the caller's
+# personal R installation. Nix-provided site libraries remain available.
+export R_ENVIRON_USER=/dev/null
+export R_PROFILE_USER=/dev/null
+export R_LIBS_USER="$SCRATCH/r-user-library"
 export BENCH_RUN_ID="${BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$(git -C "$REPO" rev-parse --short=12 HEAD)-$BENCH_PROFILE}"
 
 STAGE="$SCRATCH/result"
@@ -67,7 +72,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" "$BENCH_LIB"
+mkdir -p "$STAGE" "$LOG_DIR" "$SCRATCH/sources" "$SCRATCH/query-plans" \
+  "$BENCH_LIB" "$R_LIBS_USER"
 printf '%s\n' 'run_id,profile,source,n_cells,backend,export_repeat,order_position,stage,exit_code' > "$CRASH_CSV"
 printf '%s\n' 'run_id,source,url,bytes,sha256' > "$SOURCE_MANIFEST"
 
