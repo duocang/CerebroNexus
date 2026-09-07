@@ -10,7 +10,7 @@
     "cells": ["donor1_GAATAAGCAGATGGGT-12", "donor1_TTGGAACTCGTACCGG-16", "donor2_AGACGTTTCATCATTC-32", "donor2_ATTCTACCATGGTTGT-16", "donor2_ATTCTACGTGTTCTTT-26", "donor2_CCTTTCTAGCGTCAAG-22", "donor2_CGGAGCTGTTCCCGAG-5", "donor2_GACTGCGTCTGGTATG-33", "donor2_GGGAATGCAATCCGAT-37", "donor2_TAAGAGAGTCGGATCC-20"],
     "source": "golden-clonotype-barcode-list",
     "geometry": {
-      "space": "umap",
+      "space": "projection::umap",
       "mode": "box",
       "polygon": [
         [-8.70146812575406, -4.73557478727951],
@@ -23,6 +23,7 @@
   "view": {
     "colour": {
       "mode": "sample",
+      "genes": [],
       "gene": null,
       "rgb_genes": [],
       "clip": 0
@@ -37,12 +38,15 @@
       "point_size": 5,
       "point_opacity": 0.8,
       "group_labels": false,
+      "cell_borders": false,
       "selection_mode": "box",
-      "clone_layout": "stack"
+      "clone_layout": "stack",
+      "keep_square": false
     },
+    "focus_space": "projection::umap",
     "lenses": [
       {
-        "space": "umap",
+        "space": "projection::umap",
         "viewport": {
           "cx": -6.9641067840392,
           "cy": -1.84633695425644,

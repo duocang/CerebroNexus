@@ -96,9 +96,10 @@ test_that("the frozen case configuration selects stable barcodes in the shipped 
   expect_identical(config$view$colour$mode, "sample")
   expect_true(any(vapply(
     config$view$lenses,
-    function(x) x$space == "umap",
+    function(x) x$space == "projection::umap",
     logical(1)
   )))
+  expect_identical(config$view$focus_space, "projection::umap")
   expect_true(any(vapply(
     config$view$lenses,
     function(x) x$space == "clone",
