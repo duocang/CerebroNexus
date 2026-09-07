@@ -267,6 +267,9 @@ cerebroCellViewMessage <- function(
       )) {
         panel[[field]] <- wire_array(panel[[field]])
       }
+      if (is.list(panel$density)) {
+        panel$density <- lapply(panel$density, wire_array)
+      }
       panel
     })
   }

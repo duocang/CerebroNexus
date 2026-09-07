@@ -43,10 +43,12 @@ bottlenecks in the Cerebro interface.}
 from the stem.}
 
 \item{trekker_data}{Optional official Trekker companion data. Supply a
-directory or a named list with \code{location} and any of \code{metrics},
-\code{cluster_markers}, \code{moran}, and \code{report}. Supplying this
-argument explicitly declares the export as Trekker; Seurat content alone
-never does.}
+directory or a named list with \code{location} and any of
+\code{positioning} (the Trekker \code{coords_<sample>.txt} output),
+\code{metrics}, \code{cluster_markers}, \code{moran}, and \code{report}.
+Positioning evidence is aligned to CRB cells and retained without deriving
+a composite confidence score. Supplying this argument explicitly declares
+the export as Trekker; Seurat content alone never does.}
 
 \item{trekker_images}{Optional nested list in
 \code{section -> image label -> path} form. Images are copied to the sibling

@@ -524,8 +524,11 @@
 #'   \code{.crb} filename and store the matrix under a sibling name derived
 #'   from the stem.
 #' @param trekker_data Optional official Trekker companion data. Supply a
-#'   directory or a named list with \code{location} and any of \code{metrics},
-#'   \code{cluster_markers}, \code{moran}, and \code{report}. Supplying this
+#'   directory or a named list with \code{location} and any of
+#'   \code{positioning} (the Trekker \code{coords_<sample>.txt} output),
+#'   \code{metrics}, \code{cluster_markers}, \code{moran}, and \code{report}.
+#'   Positioning evidence is aligned to CRB cells and retained without deriving
+#'   a composite confidence score. Supplying this
 #'   argument explicitly declares the export as Trekker; Seurat content alone
 #'   never does.
 #' @param trekker_images Optional nested list in
@@ -606,7 +609,8 @@
 #' attributes, and security labels remain the deployment system's
 #' responsibility on every platform.
 #' @param spatial_images Optional named list mapping Seurat image names to named
-#'   image paths or descriptors of the form code{list(path = ..., bounds = ...)}.
+#'   image paths or descriptors of the form
+#'   \code{list(path = ..., bounds = ...)}.
 #'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
 #'   derived from the exported x/y coordinate range.
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;

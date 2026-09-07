@@ -490,6 +490,14 @@
   cell metadata, run QC, marker genes, Moran results, report metadata, provenance,
   original-file downloads, section selection, and simultaneous image layers with
   independent visibility and alignment controls.
+- Optional `coords_<sample>.txt` input now preserves nucleus-level positioning
+  evidence. The Viewer exposes the supplied candidate-location, spatial-barcode,
+  UMI, noise, top-location, and recovery fields without inventing a composite
+  confidence score.
+- Evidence and RNA-QC ranges can define an active cohort shared by the physical
+  map, QC, neighbourhood, spatial-profile, local-neighbourhood, and
+  UMAP-layout-overlap summaries. Interactive neighbourhood work is bounded by
+  deterministic sampling and is labelled as exploratory.
 - The fabricated Trekker demo, embedded evidence images, inferred cell labels,
   derived purity/concordance values, and their build documentation were removed.
   The replacement demo is a deterministic subset of official Mouse Brain

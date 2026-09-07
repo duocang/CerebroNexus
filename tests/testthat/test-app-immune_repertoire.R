@@ -459,7 +459,7 @@ test_that("Display options panel exposes scatter params on scatter-type tabs", {
   )
 })
 
-test_that("Linked views shows the dataset point size in More settings", {
+test_that("Linked views shows the dataset point size in Settings", {
   app <- shared_app()
   app$run_js(
     "document.querySelector('a[href=\"#shiny-tab-coordinated_views\"]').click();"

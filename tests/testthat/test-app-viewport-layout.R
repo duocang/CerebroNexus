@@ -599,7 +599,7 @@ test_that("IR fill layout survives tab activation and responsive resize", {
     timeout = 10000
   )
 
-  ## More settings is a viewport drawer, not another layout row. Opening it
+  ## Settings is a viewport drawer, not another layout row. Opening it
   ## must leave the visualization at exactly the same position and size.
   viz_geometry_js <- paste0(
     "(() => {",

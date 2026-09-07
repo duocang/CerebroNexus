@@ -388,6 +388,18 @@ tab_coordinated_views <- tabItem(
           ),
           shiny::tagAppendAttributes(
             cerebroSettingsSection(
+              "Trekker",
+              checkboxInput(
+                "cv-trekker-density",
+                "Spatial density",
+                value = FALSE
+              )
+            ),
+            id = "cv-trekker-density-ctl",
+            style = "display:none"
+          ),
+          shiny::tagAppendAttributes(
+            cerebroSettingsSection(
               "Background image",
               div(
                 class = "cv-ctl cv-bg-ctl cerebro-settings-full",

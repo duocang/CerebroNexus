@@ -50,7 +50,12 @@ test_that("current Linked views state round-trips through the JSON validator", {
         viewport = list(cx = 0.5, cy = 0.5, span = 1),
         rotation = NULL
       )),
-      spatial_backgrounds = list()
+      spatial_backgrounds = list(),
+      trekker = list(
+        dissolve_percentage = 0,
+        evidence = FALSE,
+        niche_radius = 150
+      )
     )
   )
 
@@ -108,7 +113,12 @@ test_that("Linked views round-trip without a selection geometry", {
         viewport = list(cx = 0.5, cy = 0.5, span = 1),
         rotation = NULL
       )),
-      spatial_backgrounds = list()
+      spatial_backgrounds = list(),
+      trekker = list(
+        dissolve_percentage = 0,
+        evidence = FALSE,
+        niche_radius = 150
+      )
     )
   )
 

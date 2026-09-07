@@ -3,32 +3,171 @@
   font-family: var(--font-sans);
 }
 
+.trekker-page .tk-page-head {
+  position: relative;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+  margin-bottom: 8px;
+  padding-right: 120px;
+}
+
+.trekker-page .tk-page-title {
+  flex: 1 1 420px;
+  min-width: 220px;
+}
+
+.trekker-page .tk-page-title .cerebro-viz-page-meta {
+  padding-bottom: 0;
+  line-height: 1.35;
+}
+
+.trekker-page .tk-page-head > .shiny-html-output {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  min-width: 0;
+}
+
+.trekker-page .tk-page-head >
+  .shiny-html-output:has(.tk-summary-disclosure[open]) {
+  width: min(960px, 100%);
+}
+
+.trekker-page .tk-page-head > .shiny-html-output:empty {
+  display: none;
+}
+
+.trekker-page .tk-summary-disclosure {
+  margin-left: auto;
+}
+
+.trekker-page .tk-summary-disclosure[open] {
+  display: block;
+}
+
+.trekker-page .tk-summary-disclosure[open] > .tk-summary-toggle {
+  display: none;
+}
+
+.trekker-page .tk-summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--c-amber);
+  border-radius: var(--r-sm);
+  color: var(--c-amber-700);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.trekker-page .tk-summary-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.trekker-page .tk-summary-toggle:hover {
+  background: var(--c-amber-50);
+}
+
+.trekker-page .tk-summary-chevron {
+  transition: transform 140ms ease;
+}
+
+.trekker-page .tk-summary-disclosure[open] .tk-summary-chevron {
+  transform: rotate(180deg);
+}
+
 .trekker-page .tk-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin: 0 0 14px;
-  padding: 12px 18px;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 12px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 10%);
+  transform-origin: right bottom;
+}
+
+.trekker-page .tk-summary-disclosure[open] > .tk-summary {
+  animation: tk-summary-reveal 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.trekker-page .tk-summary-closing > .tk-summary {
+  animation: tk-summary-dismiss 220ms ease-out both;
+}
+
+@keyframes tk-summary-reveal {
+  from {
+    opacity: 0;
+    transform: translate(8px, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes tk-summary-dismiss {
+  from {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(6px, 4px);
+  }
+}
+
+.trekker-page .tk-summary .btn {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  white-space: nowrap;
 }
 
 .trekker-page .tk-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 5px;
 }
 
 .trekker-page .tk-badge {
-  padding: 3px 9px;
+  padding: 2px 8px;
   border: 1px solid var(--c-blue-100);
   border-radius: var(--r-pill);
   background: var(--c-blue-50);
   color: var(--c-blue-700);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
+}
+
+.trekker-page .cerebro-viz-toolbar {
+  margin-bottom: 8px;
+  padding: 6px 12px 8px;
+}
+
+.trekker-page .cerebro-selection-status-slot {
+  margin-bottom: 4px;
+}
+
+.trekker-page .cerebro-selection-status-slot >
+  .cerebro-selection-status-guide,
+.trekker-page .cerebro-selection-status-slot >
+  .cerebro-selection-status-active {
+  min-height: 42px;
+}
+
+.trekker-page .cerebro-cell-view-host .cv-panes {
+  padding-top: 8px;
 }
 
 .trekker-page .tk-badge-gray {
@@ -39,13 +178,119 @@
 
 .trekker-page .tk-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 14px 0;
 }
 
+.trekker-page .tk-run-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+
+.trekker-page .tk-context-item {
+  display: flex;
+  min-width: 150px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trekker-page .tk-context-label {
+  color: var(--c-text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.trekker-page .tk-context-value {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.trekker-page .tk-analysis-tabs {
+  margin-top: 8px;
+}
+
+.trekker-page .tk-analysis-tabs > .nav-tabs-custom {
+  margin-bottom: 0;
+  box-shadow: none;
+}
+
+.trekker-page .tk-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.trekker-page .tk-chart-panel {
+  min-width: 0;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+}
+
+.trekker-page .tk-chart-grid > .tk-chart-panel {
+  margin: 0;
+}
+
+.trekker-page .tk-chart-panel h4,
+.trekker-page .tk-analysis-tabs .tab-pane > h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.trekker-page .tk-inline-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 12px 0;
+}
+
+.trekker-page .tk-inline-controls .form-group {
+  width: min(280px, 100%);
+  margin: 0;
+}
+
+.trekker-page .tk-selection-export {
+  display: flex;
+  margin: 0;
+}
+
+.trekker-page .tk-selection-export .btn {
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.trekker-page .tk-qc-filter .irs {
+  min-width: 280px;
+}
+
+.trekker-page .tk-qc-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.trekker-page .tk-note {
+  margin: 8px 0 12px;
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
 .trekker-page .tk-stat {
-  padding: 11px;
+  min-width: 0;
+  padding: 12px 14px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);
   background: var(--c-surface-2);
@@ -53,15 +298,17 @@
 
 .trekker-page .tk-stat .tk-k {
   color: var(--c-text-2);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
+  line-height: 1.35;
 }
 
 .trekker-page .tk-v {
-  margin-top: 3px;
-  font-size: 18px;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+  font-size: 20px;
   font-weight: 650;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
@@ -107,8 +354,74 @@
 }
 
 @media (max-width: 760px) {
+  .trekker-page .tk-page-head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+    padding-right: 0;
+  }
+
+  .trekker-page .tk-page-title {
+    min-width: 0;
+  }
+
+  .trekker-page .tk-page-head > .shiny-html-output {
+    position: static;
+    align-self: flex-end;
+    max-width: 100%;
+  }
+
+  .trekker-page .tk-page-head >
+    .shiny-html-output:has(.tk-summary-disclosure[open]) {
+    align-self: stretch;
+    width: 100%;
+  }
+
+  .trekker-page .tk-summary-disclosure[open] {
+    display: block;
+  }
+
+  .trekker-page .tk-grid,
+  .trekker-page .tk-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
   .trekker-page .tk-summary {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (min-width: 1200px) {
+  .trekker-page .cerebro-viz-toolbar,
+  .trekker-page .cerebro-viz-primary {
+    flex-wrap: nowrap;
+  }
+
+  .trekker-page .cerebro-viz-primary > .form-group,
+  .trekker-page .cerebro-viz-primary >
+    .shiny-panel-conditional:has(> .form-group) {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 140px;
+  }
+
+  .trekker-page .cerebro-viz-primary >
+    .shiny-panel-conditional > .form-group {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  .trekker-page .tk-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trekker-page .tk-summary-disclosure[open] > .tk-summary,
+  .trekker-page .tk-summary-closing > .tk-summary {
+    animation: none;
   }
 }

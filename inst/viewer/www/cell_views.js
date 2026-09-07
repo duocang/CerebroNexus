@@ -469,7 +469,9 @@
     }
     return {
       nx: nx, ny: ny, nz: null, ok: ok,
-      aspect: from.aspect + (to.aspect - from.aspect) * t,
+      // Both endpoints already preserve their shape inside this shared unit box.
+      // A varying panel aspect would apply that shape a second time on redraw.
+      aspect: 1,
       bx: { x0: 0, x1: 1, y0: 0, y1: 1 },
       occ: occ, sat: occSAT(occ),
       cmx: cnt ? cmx / cnt : 0.5, cmy: cnt ? cmy / cnt : 0.5
@@ -968,6 +970,29 @@
     drawImageLayer(p, currentImage(sp), sp._imgEl, sp._imgReady, sp._imgState);
   }
 
+  function drawDensity(p) {
+    var space = spaceById[p.spaceId], density = space && space.density;
+    if (!density || !Array.isArray(density.count) || !density.count.length) return;
+    var maximum = Math.max.apply(null, density.count.map(Number));
+    if (!isFinite(maximum) || maximum <= 0) return;
+    var c = p.ctx;
+    for (var i = 0; i < density.count.length; i++) {
+      var a = dataToScreen(p, Number(density.x0[i]), Number(density.y0[i]));
+      var b = dataToScreen(p, Number(density.x1[i]), Number(density.y1[i]));
+      if (!a || !b) continue;
+      var strength = Math.sqrt(Math.max(0, Number(density.count[i])) / maximum);
+      c.globalAlpha = 0.08 + 0.48 * strength;
+      c.fillStyle = '#ff6d16';
+      c.fillRect(
+        Math.min(a[0], b[0]),
+        Math.min(a[1], b[1]),
+        Math.abs(b[0] - a[0]) + 0.5,
+        Math.abs(b[1] - a[1]) + 0.5
+      );
+    }
+    c.globalAlpha = 1;
+  }
+
   function drawTrajectory(p) {
     var sp = spaceById[p.spaceId];
     if (!sp || !sp.trajectory || !sp.edges || !sp.edges.length) return;
@@ -1300,6 +1325,7 @@
     p._renderPointSize = pointSizeOf(p);
     var panelPointOpacity = pointOpacityOf(p);
     drawImage(p);
+    drawDensity(p);
     drawHulls(p);
     drawTrajectory(p);
     drawAxes(p);
@@ -1488,7 +1514,7 @@
     setLinkedSliderValue('cv-ps', ps);
   }
 
-  // ---- the shared More settings overlay ------------------------------------
+  // ---- the shared Settings overlay -----------------------------------------
   // The app-wide settings_drawer.js owns mounting, focus and overlay state.
   // This renderer only requests closure when its data context resets.
   function closeMore() {
@@ -4393,10 +4419,13 @@
 
   function setTrekkerSettingsVisible(visible) {
     var controls = $('cv-trekker-ctl');
-    if (!controls) return;
-    controls.style.display = visible ? '' : 'none';
-    var section = controls.closest('.cerebro-settings-section');
-    if (section) section.style.display = visible ? '' : 'none';
+    if (controls) {
+      controls.style.display = visible ? '' : 'none';
+      var section = controls.closest('.cerebro-settings-section');
+      if (section) section.style.display = visible ? '' : 'none';
+    }
+    var density = $('cv-trekker-density-ctl');
+    if (density) density.style.display = visible ? '' : 'none';
   }
 
   // The background picker is scoped to the selected spatial section. Its tabs
@@ -5532,6 +5561,9 @@
       if (panel.multi_image_layers && Array.isArray(panel.images)) {
         space._layerImages = panel.images;
       }
+      if (panel.density && Array.isArray(panel.density.count)) {
+        space.density = panel.density;
+      }
       spaceById[spaceId] = space;
       spaces.push(spaceId);
       modes[spaceId] = mode;
@@ -5722,7 +5754,7 @@
     renderImagePicker();
     seedImgControls();
     updateSpaceScopedControls();
-    setTrekkerSettingsVisible(!!D.trekker);
+    setTrekkerSettingsVisible(!!D.trekker || id === 'trekker_projection');
     var trekkerInsights = $('cv-tk-insights');
     if (trekkerInsights) trekkerInsights.style.display = D.trekker ? '' : 'none';
     if (D.trekker) fillTrekkerInsights();
@@ -6552,6 +6584,29 @@
       if (!message || !message.id) return;
       updateSingleBackground(message.id, message.values);
     });
+    Shiny.addCustomMessageHandler('cell_view_focus_groups', function (message) {
+      if (!message || message.id !== singleActive || !singleSpaceIds.length) return;
+      var group = catOf(singleSpaceModes[singleSpaceIds[0]]);
+      if (!group || !Array.isArray(group.levels)) return;
+      var wanted = new Set((message.groups || []).map(String));
+      hidden = new Set();
+      group.levels.forEach(function (level, index) {
+        if (!wanted.has(String(level))) hidden.add(index);
+      });
+      renderLegend();
+      drawAll();
+      reportSingleHiddenGroups();
+    });
+    Shiny.addCustomMessageHandler('cell_view_set_selection', function (message) {
+      if (!message || message.id !== singleActive || !D || !Array.isArray(D.cells)) return;
+      var wanted = new Set((message.ids || []).map(String));
+      sel = new Set();
+      D.cells.forEach(function (cell, index) {
+        if (wanted.has(String(cell))) sel.add(index);
+      });
+      drawAll();
+      reportSelection();
+    });
 
     // Single-gene expression vector (0-255) for the current gene.
     // A reply is only for the gene still being asked about. Two things used to
@@ -6845,6 +6900,28 @@
         return;
       }
     });
+    function updateTrekkerTransition(e) {
+      var id = e.target && e.target.id;
+      if (id !== 'trekker_morph' || singleActive !== 'trekker_projection') return;
+      var transition = Math.max(0, Math.min(1, Number(e.target.value) || 0));
+      singleSpaceIds.forEach(function (spaceId) {
+        var space = spaceById[spaceId], source = space && space._transition;
+        if (!source) return;
+        space.x = source.fromX.map(function (value, index) {
+          return value == null || source.toX[index] == null ? null
+            : value + (source.toX[index] - value) * transition;
+        });
+        space.y = source.fromY.map(function (value, index) {
+          return value == null || source.toY[index] == null ? null
+            : value + (source.toY[index] - value) * transition;
+        });
+        space._unit = transitionUnit(source.fromUnit, source.toUnit, transition);
+        panels.forEach(function (panel) {
+          if (panel.spaceId === spaceId) project(panel);
+        });
+      });
+      drawAll();
+    }
     function updateLinkedSlider(target) {
       if (!target || target._cvSyncing) return;
       var id = target.id, value = Number(target.value);
@@ -6889,6 +6966,20 @@
       }
       return false;
     }
+    window.jQuery(document)
+      .off(
+        'input.cvTrekkerTransition change.cvTrekkerTransition',
+        '#trekker_morph'
+      )
+      .on(
+        'input.cvTrekkerTransition change.cvTrekkerTransition',
+        '#trekker_morph',
+        function () {
+          updateTrekkerTransition({
+            target: { id: this.id, value: this.value }
+          });
+        }
+      );
     window.jQuery(document)
       .off(
         'input.cvLinkedSettings',

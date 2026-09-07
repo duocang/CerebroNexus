@@ -365,7 +365,8 @@
 #'   Supplied images are embedded in the generated CRB; existing embedded images
 #'   declared by the Seurat object are retained.
 #' @param trekker_data Optional official Trekker companion directory or named
-#'   file list forwarded to \code{exportFromSeurat()}.
+#'   file list forwarded to \code{exportFromSeurat()}; this may include the
+#'   \code{positioning} category for a Trekker \code{coords_<sample>.txt} file.
 #' @param trekker_images Optional Trekker image manifest forwarded to
 #'   \code{exportFromSeurat()}.
 #' @param trekker_sections Optional Trekker cell-to-section assignment forwarded

@@ -2117,9 +2117,10 @@ dedent <- function(string) {
 #'   a named list keyed by \code{cerebro_data}. A Location file upgrades an
 #'   ordinary CRB in the staged app; existing Trekker data may be augmented.
 #' @param trekker_replace Optional categories to replace when supplied content
-#'   differs from an existing CRB. Allowed values are \code{metrics},
-#'   \code{cluster_markers}, \code{moran}, and \code{report}, keyed by dataset
-#'   for multiple CRBs. Location is immutable here and requires re-export.
+#'   differs from an existing CRB. Allowed values are \code{positioning},
+#'   \code{metrics}, \code{cluster_markers}, \code{moran}, and \code{report},
+#'   keyed by dataset for multiple CRBs. Location is immutable here and requires
+#'   re-export.
 #' @param trekker_images Optional nested manifest in
 #'   \code{dataset -> section -> image label -> path} form. For one dataset the
 #'   dataset level may be omitted. Images are copied into the app's private

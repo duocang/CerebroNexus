@@ -1,0 +1,279 @@
+---
+title: "Trekker positioning evidence and robustness"
+author: "Xuesong Wang"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: true
+    self_contained: yes
+    mode: selfcontained
+vignette: >
+  %\VignetteIndexEntry{Trekker positioning evidence and robustness}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+# What this module adds
+
+Trekker coordinates are inferred from the spatial barcodes associated with a
+nucleus. They are not directly observed image coordinates. CerebroNexus
+therefore treats the final position and the evidence supporting that position
+as separate data:
+
+```text
+Seurat expression and metadata
+        +
+official Trekker companions
+        |
+        v
+.crb metadata and parsed tables + .trekker/ original files and images
+        |
+        v
+positioning evidence -> active cohort -> robustness analyses
+```
+
+The Viewer does more than place nuclei on another scatter plot. It can expose
+the vendor-provided evidence for each position, let the user select nuclei by
+an evidence range, and recompute downstream summaries for that active cohort.
+It does not combine unrelated evidence fields into an uncalibrated confidence
+score.
+
+# Explicit Trekker declaration
+
+A Seurat object does not prove how its spatial coordinates were generated.
+CerebroNexus marks a dataset as Trekker only when the user explicitly supplies
+official Trekker companion data through `trekker_data`.
+
+The Location file is the minimum contract:
+
+| Category | Input | Required | Stored use |
+|---|---|---:|---|
+| `location` | `*Location_ConfPositionedNuclei*.csv` | yes | authoritative physical coordinates |
+| `positioning` | `coords_<sample>.txt` | no | nucleus-level positioning evidence |
+| `metrics` | `*summary_metrics*.csv` | no | run QC and positioning funnel |
+| `cluster_markers` | `*variable_features_clusters*.csv` | no | official marker evidence |
+| `moran` | `*variable_features_spatial_moransi*.txt` | no | official spatial-gene evidence |
+| `report` | `*Trekker_Report*.html` | no | unchanged downloadable report |
+
+`positioning_evidence` is accepted as an input alias for `positioning`; the
+stored category is always `positioning`. The `cell_bc` values in the positioning
+file are aligned to the nuclei in the Location/CRB contract. Missing, duplicate,
+or ambiguous barcode matches stop the import.
+
+# Export directly from Seurat
+
+Only one Seurat object is required. Supply the official Location file to create
+a valid Trekker CRB, then add whichever optional companions are available:
+
+```{r export-from-seurat}
+library(CerebroNexus)
+
+exportFromSeurat(
+  object = seurat,
+  assay = "RNA",
+  slot = "data",
+  file = "sample.crb",
+  experiment_name = "Trekker sample",
+  organism = "mm",
+  groups = c("sample", "seurat_clusters"),
+  trekker_data = list(
+    location = "sample_Location_ConfPositionedNuclei.csv",
+    positioning = "coords_sample.txt",
+    metrics = "sample_summary_metrics.csv",
+    cluster_markers = "sample_variable_features_clusters.csv",
+    moran = "sample_variable_features_spatial_moransi.txt",
+    report = "sample_Trekker_Report.html"
+  )
+)
+```
+
+Parsed coordinates, evidence, and analysis tables are stored in the CRB.
+Original companion files remain byte-for-byte unchanged in the sibling
+`sample.trekker/` directory, together with their checksums. Keep the CRB and
+this directory together.
+
+# Add Trekker data while building an app
+
+An ordinary CRB can become a Trekker dataset during app creation. This is useful
+when the expression export has already finished:
+
+```{r enrich-app}
+createShinyApp(
+  cerebro_data = c("Trekker sample" = "sample.crb"),
+  result_dir = "trekker-app",
+  trekker_data = list(
+    location = "sample_Location_ConfPositionedNuclei.csv",
+    positioning = "coords_sample.txt",
+    metrics = "sample_summary_metrics.csv"
+  ),
+  initial_page = "trekker"
+)
+```
+
+The source CRB is not modified. `createShinyApp()` enriches a staged copy and
+places the original Trekker files in the app's private data directory.
+
+## Conflict and replacement rules
+
+When both the CRB and `createShinyApp()` provide the same category:
+
+- identical content is deduplicated;
+- different content raises an error rather than silently overwriting data;
+- `positioning`, `metrics`, `cluster_markers`, `moran`, and `report` can be
+  replaced only when named explicitly in `trekker_replace`;
+- Location cannot be replaced while building an app because it defines the
+  authoritative nucleus coordinates. Re-export the CRB to change it.
+
+For one dataset:
+
+```{r replace-positioning}
+createShinyApp(
+  cerebro_data = c("Trekker sample" = "sample.crb"),
+  result_dir = "trekker-app",
+  trekker_data = list(positioning = "coords_sample_revised.txt"),
+  trekker_replace = "positioning"
+)
+```
+
+For several datasets, key both arguments by the names in `cerebro_data`.
+
+# Sections and image layers
+
+A Trekker run may contain one or more sections/FOVs. Every nucleus belongs to
+exactly one section, and every section may have several ordered image layers.
+Image bytes are not embedded in the CRB.
+
+```{r sections-and-images}
+exportFromSeurat(
+  object = seurat,
+  assay = "RNA",
+  slot = "data",
+  file = "brain.crb",
+  experiment_name = "Brain",
+  organism = "mm",
+  groups = "seurat_clusters",
+  trekker_data = list(
+    location = "brain_Location_ConfPositionedNuclei.csv"
+  ),
+  trekker_sections = c(
+    cell_a = "slice1",
+    cell_b = "slice2"
+  ),
+  trekker_images = list(
+    slice1 = list(DAPI = "slice1-dapi.png", IF = "slice1-if.png"),
+    slice2 = list(DAPI = "slice2-dapi.png", IF = "slice2-if.png")
+  ),
+  trekker_image_settings = list(
+    slice1 = list(
+      DAPI = list(image_opacity = 0.55, flip_y = TRUE)
+    )
+  )
+)
+```
+
+The Viewer provides a multi-select **Layer image** control for the current
+section. Each selected layer has independent opacity, offset, scale, rotation,
+aspect-ratio, and flip controls under **Settings**. Image layers are hidden in
+the transition view because that view interpolates between UMAP and physical
+coordinates on a single coordinate system.
+
+`createShinyApp()` accepts the same section, image, and settings structures. If
+an existing `(section, image label)` receives different bytes, list that exact
+identity under `trekker_image_replace`; equal SHA-256 content is deduplicated.
+
+# Evidence and robustness workflow
+
+## Inspect positioning evidence
+
+When `positioning` is available, the **Overview** tab exposes numeric fields
+that are present in the official `coords_<sample>.txt`, including candidate
+location counts, spatial-barcode/UMI support, noise fractions, top-location
+fractions, and recovery status.
+
+Selecting one nucleus shows its source barcode, supplied evidence fields, final
+Location coordinates, section, gene expression, and CRB metadata. Values are
+shown as vendor evidence; the Viewer does not reinterpret them as a probability
+that the position is correct.
+
+## Create an active cohort
+
+Choose an evidence field and range, then select nuclei inside or outside that
+range. The same active cohort is sent back to the main physical map and used by:
+
+- active-cohort RNA QC;
+- neighbourhood enrichment and composition;
+- cluster spatial profiles;
+- local neighbourhood maps;
+- UMAP-layout versus physical-layout neighbour overlap.
+
+Clearing the evidence filter restores analysis of the complete current section.
+The active cohort can also be downloaded with barcode, section, Location
+coordinates, and CRB metadata.
+
+This supports a direct robustness question: do the visible marker, QC, and
+neighbourhood patterns remain after nuclei with weak or atypical positioning
+evidence are excluded?
+
+# Viewer outputs and interpretation
+
+The Trekker page combines four evidence layers:
+
+1. **Physical context**: Location map, optional UMAP pair/transition, external
+   image layers, metadata and expression colouring.
+2. **Positioning and run QC**: per-nucleus evidence, positioning funnel, read and
+   barcode retention, depth, ambiguity, and recovery summaries.
+3. **Biological evidence**: official cluster markers, official Moran results,
+   gene maps, and multi-gene summaries.
+4. **Exploratory robustness**: cohort-aware neighbourhood and section
+   comparisons computed by the Viewer.
+
+The **Files** tab reports provenance and checksums and lets users download the
+original companions and image layers. Official HTML is retained for download;
+it is not executed inside the Viewer.
+
+## Scale limits
+
+Display and exploratory neighbourhood calculations are bounded for large runs:
+
+- physical expression and QC previews use at most 8,000 deterministically
+  sampled nuclei;
+- neighbourhood summaries use at most 1,000 deterministically sampled nuclei;
+- neighbourhood empirical P values use 199 fixed-seed label permutations and
+  BH correction.
+
+These calculations are interactive summaries, not a replacement for a
+pre-registered spatial statistics workflow. In particular, the UMAP-layout
+overlap compares two two-dimensional layouts; it must not be described as
+agreement between physical space and the original high-dimensional molecular
+space.
+
+# Bundled demo
+
+The bundled Mouse Brain TrekkerU C demo is a size-limited subset of official
+Location, run-QC, marker, Moran, Seurat expression, and metadata files. The
+public example bundle does not contain `coords_<sample>.txt`, so the demo does
+not fabricate positioning evidence.
+
+Its two sections and four small SVG layers exist only to exercise the
+multi-section and multi-layer interface. They are labelled as synthetic UI
+overlays and must not be interpreted as measured tissue images or independent
+biological sections.
+
+# Further reading
+
+- [Data integrity from Seurat to a self-contained Cerebro app](data_integrity_contracts.html)
+- [Create a self-contained Shiny app](create_a_self_contained_shiny_app.html)
+- [Spatial transcriptomics analysis](spatial_analysis.html)

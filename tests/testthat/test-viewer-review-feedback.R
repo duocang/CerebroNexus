@@ -154,13 +154,104 @@ test_that("Informational Canvas text uses the readable secondary token", {
   }
 })
 
+test_that("Trekker QC cards use semantic labels without overflowing", {
+  helpers <- new.env(parent = baseenv())
+  sys.source(viewer_path("trekker", "helpers.R"), envir = helpers)
+
+  expect_identical(
+    helpers$trekker_metric_label(c(
+      "Sample_ID",
+      "Single_cell_assay",
+      "Tile_ID",
+      "eps",
+      "Min_spatial_barcodes_used_to_locate_a_nucleus_centroid",
+      "Maximum_UMI_cutoff"
+    )),
+    c(
+      "Sample",
+      "Single-cell assay",
+      "Tile",
+      "Positioning radius (ε)",
+      "Minimum spatial barcodes",
+      "Maximum UMI cutoff"
+    )
+  )
+
+  server <- viewer_source("trekker", "server.R")
+  css <- viewer_source("www", "trekker.css")
+  expect_match(server, "trekker_positioning_summary(metrics)$qc", fixed = TRUE)
+  expect_match(server, "qc$label[[index]]", fixed = TRUE)
+  expect_no_match(server, "min(6L, nrow(metrics))", fixed = TRUE)
+  expect_match(
+    css,
+    "grid-template-columns: repeat(3, minmax(0, 1fr));",
+    fixed = TRUE
+  )
+  expect_match(css, "overflow-wrap: anywhere;", fixed = TRUE)
+  expect_no_match(css, "text-transform: uppercase;", fixed = TRUE)
+})
+
+test_that("Trekker keeps desktop chrome compact", {
+  css <- viewer_source("www", "trekker.css")
+
+  expect_no_match(css, "@media (max-width: 1500px)", fixed = TRUE)
+  expect_match(css, "@media (min-width: 1200px)", fixed = TRUE)
+  expect_match(
+    css,
+    paste0(
+      ".trekker-page .cerebro-viz-toolbar,\n",
+      "  .trekker-page .cerebro-viz-primary {\n",
+      "    flex-wrap: nowrap;"
+    ),
+    fixed = TRUE
+  )
+})
+
+test_that("Trekker summary hides only when all official data are absent", {
+  server <- viewer_source("trekker", "server.R")
+  css <- viewer_source("www", "trekker.css")
+
+  expect_match(
+    server,
+    "if (!length(available) && !image_count)",
+    fixed = TRUE
+  )
+  expect_match(server, '"not provided"', fixed = TRUE)
+  expect_match(
+    server,
+    'outputOptions(output, "trekker_summary", suspendWhenHidden = FALSE)',
+    fixed = TRUE
+  )
+  expect_match(server, '"Official data"', fixed = TRUE)
+  expect_match(server, "tags$details(", fixed = TRUE)
+  expect_match(server, "tags$summary(", fixed = TRUE)
+  expect_match(server, 'icon("database")', fixed = TRUE)
+  expect_match(server, "onmouseleave =", fixed = TRUE)
+  expect_match(server, "}, 220);", fixed = TRUE)
+  expect_match(server, 'sprintf("Data (%d)", available_count)', fixed = TRUE)
+  expect_match(css, ".tk-summary-disclosure[open]", fixed = TRUE)
+  expect_match(
+    css,
+    ".tk-summary-disclosure[open] > .tk-summary-toggle",
+    fixed = TRUE
+  )
+  expect_match(css, ".tk-summary-closing > .tk-summary", fixed = TRUE)
+  expect_match(css, "position: absolute;", fixed = TRUE)
+  expect_match(css, "width: min(960px, 100%);", fixed = TRUE)
+  expect_match(css, "transform-origin: right bottom;", fixed = TRUE)
+  expect_match(css, "@keyframes tk-summary-reveal", fixed = TRUE)
+  expect_no_match(css, "tk-summary-in", fixed = TRUE)
+  expect_no_match(css, "transition: max-width", fixed = TRUE)
+  expect_match(css, ".shiny-html-output:empty", fixed = TRUE)
+})
+
 test_that("Projection defaults to cell type when available", {
   ui <- viewer_source("overview", "UI_projection_main_parameters.R")
 
   expect_match(ui, '"cell_type" %in% color_choices', fixed = TRUE)
 })
 
-test_that("Cell-view More settings expose only effective appearance controls", {
+test_that("Cell-view Settings expose only effective appearance controls", {
   linked <- viewer_source("coordinated_views", "UI.R")
   overview <- paste(
     viewer_source("overview", "UI_projection.R"),

@@ -70,6 +70,7 @@ articles:
       - extra_material
       - immune_repertoire_analysis
       - trajectory_analysis
+      - trekker_positioning_evidence
       - spatial_analysis
       - hla_tcr_motifs
       - hla_bulk_tcr_associations

@@ -141,9 +141,10 @@ a named list keyed by \code{cerebro_data}. A Location file upgrades an
 ordinary CRB in the staged app; existing Trekker data may be augmented.}
 
 \item{trekker_replace}{Optional categories to replace when supplied content
-differs from an existing CRB. Allowed values are \code{metrics},
-\code{cluster_markers}, \code{moran}, and \code{report}, keyed by dataset
-for multiple CRBs. Location is immutable here and requires re-export.}
+differs from an existing CRB. Allowed values are \code{positioning},
+\code{metrics}, \code{cluster_markers}, \code{moran}, and \code{report},
+keyed by dataset for multiple CRBs. Location is immutable here and requires
+re-export.}
 
 \item{trekker_images}{Optional nested manifest in
 \code{dataset -> section -> image label -> path} form. The dataset level may be

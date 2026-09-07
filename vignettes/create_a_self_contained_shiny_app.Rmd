@@ -332,4 +332,6 @@ rsconnect::deployApp(appDir = out_dir)
 
 - `?createShinyApp`
 - `vignette("cerebronexus_workflow_seurat")` for end-to-end Seurat → `.crb` → app
+- `vignette("trekker_positioning_evidence")` for bundling official Trekker
+  companions, sections, and image layers
 - `vignette("host_cerebro_on_shinyapps")` for shinyapps.io specifics

@@ -440,7 +440,7 @@ IR_PARAM_SPEC <- list(
 ## IR display parameters that have a consistent consumer on scatter plots.
 ##
 ## Font and legend controls were removed: they affected only some ggplot paths
-## and were no-ops on shared Canvas / several Plotly views. More settings should
+## and were no-ops on shared Canvas / several Plotly views. Settings should
 ## expose only controls that behave consistently wherever they are shown.
 ## ---------------------------------------------------------------------------
 
@@ -500,7 +500,7 @@ IR_ORDER_BY_TABS <- c(
   "Property"
 )
 
-## Low-frequency analysis controls live in More settings. Everything else in
+## Low-frequency analysis controls live in Settings. Everything else in
 ## IR_PARAM_SPEC remains in the top bar because it directly defines the plot.
 IR_MORE_PARAM_IDS <- c(
   "ir_p_umap_show_all",

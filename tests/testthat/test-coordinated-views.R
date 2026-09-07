@@ -1366,7 +1366,7 @@ test_that("each section offers only its own configured backgrounds", {
   expect_match(js, "pr.rotation != null ? pr.rotation : 0", fixed = TRUE)
   expect_match(
     js,
-    "rotateDataPoint(b.xmin, b.ymax, state.rotate)",
+    "rotateDataPoint(x - centerData[0], y - centerData[1], state.rotate)",
     fixed = TRUE
   )
 })
@@ -1528,7 +1528,7 @@ test_that("the alignment bar follows the chosen background, not the data set", {
   expect_no_match(txt, "hasImg = D.spaces.some", fixed = TRUE)
 })
 
-test_that("background display is one image dropdown with None last", {
+test_that("single-background display appends None outside layer mode", {
   ui_path <- file.path(dirname(bundle_file), "UI.R")
   ui <- paste(readLines(ui_path, warn = FALSE), collapse = "\n")
   js_path <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
@@ -1539,7 +1539,11 @@ test_that("background display is one image dropdown with None last", {
   expect_no_match(ui, 'data-cv-bg-mode', fixed = TRUE)
   expect_no_match(ui, '"Auto"', fixed = TRUE)
   expect_no_match(ui, '"Customize…"', fixed = TRUE)
-  expect_match(js, ".concat(['<option value=\"' + IMG_NONE", fixed = TRUE)
+  expect_match(
+    js,
+    "if (!layerMode) options.push({ value: IMG_NONE, text: 'None' });",
+    fixed = TRUE
+  )
   expect_match(js, "selectize.addOption(options)", fixed = TRUE)
 })
 
@@ -1684,7 +1688,7 @@ test_that("the alignment sliders contain the preset they are given", {
   expect_no_match(txt, 'rng("cv-img-scalex", 0.3, 3', fixed = TRUE)
 })
 
-test_that("More settings is an accessible drawer rather than a draggable window", {
+test_that("Settings is an accessible drawer rather than a draggable window", {
   skip_if(is.na(local_inst), "viewer sources not found")
 
   ui <- paste(
@@ -1740,7 +1744,7 @@ test_that("More settings is an accessible drawer rather than a draggable window"
   expect_no_match(css, "transition: transform .3s", fixed = TRUE)
 })
 
-test_that("Linked views keeps labels in More settings and explains RGB blends", {
+test_that("Linked views keeps labels in Settings and explains RGB blends", {
   skip_if(is.na(local_inst), "viewer sources not found")
 
   ui <- paste(

@@ -173,6 +173,8 @@ to a no-op (no flip, scale 1.0, no rotation).
 
 # See also
 
+- `vignette("trekker_positioning_evidence")` for inferred Trekker positions,
+  official positioning evidence, and cohort robustness checks.
 - `vignette("cerebronexus_workflow_seurat")` for the complete export workflow.
 - `vignette("create_a_self_contained_shiny_app")` for app bundling options.
 - `vignette("multi_crb")` for hosting several datasets in one app.

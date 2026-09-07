@@ -1,5 +1,6 @@
 .trekker_categories <- c(
   "location",
+  "positioning",
   "metrics",
   "cluster_markers",
   "moran",
@@ -8,6 +9,7 @@
 
 .trekker_patterns <- c(
   location = "Location_ConfPositionedNuclei.*\\.csv$",
+  positioning = "^coords_.*\\.txt$",
   metrics = "summary_metrics.*\\.csv$",
   cluster_markers = "variable_features_clusters.*\\.csv$",
   moran = "variable_features_spatial_moransi.*\\.txt$",
@@ -108,6 +110,8 @@
     }
     aliases <- c(
       location = "location",
+      positioning = "positioning",
+      positioning_evidence = "positioning",
       metrics = "metrics",
       cluster_markers = "cluster_markers",
       markers = "cluster_markers",
@@ -119,7 +123,10 @@
       stop(
         "Unknown `trekker_data` category: ",
         unknown[[1L]],
-        ". Valid categories are location, metrics, cluster_markers, moran, and report.",
+        paste0(
+          ". Valid categories are location, positioning, metrics, ",
+          "cluster_markers, moran, and report."
+        ),
         call. = FALSE
       )
     }
@@ -180,6 +187,83 @@
     row.names = 1L
   )
   data.frame(row_id = rownames(table), table, check.names = FALSE)
+}
+
+.trekker_barcode_key <- function(value) {
+  sub("-[0-9]+$", "", as.character(value))
+}
+
+.read_trekker_positioning <- function(path, cells) {
+  positioning <- utils::read.table(
+    path,
+    header = TRUE,
+    quote = '"',
+    comment.char = "",
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  if (!"cell_bc" %in% names(positioning)) {
+    stop("Trekker positioning evidence must contain `cell_bc`.", call. = FALSE)
+  }
+  source_barcodes <- as.character(positioning$cell_bc)
+  if (
+    anyNA(source_barcodes) ||
+      any(!nzchar(source_barcodes)) ||
+      anyDuplicated(source_barcodes)
+  ) {
+    stop(
+      "Trekker positioning evidence barcodes must be non-empty and unique.",
+      call. = FALSE
+    )
+  }
+
+  index <- match(cells, source_barcodes)
+  unresolved <- which(is.na(index))
+  if (length(unresolved)) {
+    source_keys <- .trekker_barcode_key(source_barcodes)
+    cell_keys <- .trekker_barcode_key(cells[unresolved])
+    needed <- source_keys %in% cell_keys
+    if (
+      anyDuplicated(source_keys[needed]) ||
+        anyDuplicated(cell_keys)
+    ) {
+      stop(
+        "Trekker positioning evidence has ambiguous barcode suffixes.",
+        call. = FALSE
+      )
+    }
+    index[unresolved] <- match(cell_keys, source_keys)
+  }
+  if (anyNA(index) || anyDuplicated(index)) {
+    missing <- cells[is.na(index)]
+    if (length(missing)) {
+      stop(
+        "Trekker positioning evidence is missing ",
+        length(missing),
+        " CRB cell(s), including: ",
+        paste(utils::head(missing, 5L), collapse = ", "),
+        call. = FALSE
+      )
+    }
+    stop(
+      "Trekker positioning evidence has ambiguous barcode suffixes.",
+      call. = FALSE
+    )
+  }
+
+  aligned <- positioning[
+    index,
+    setdiff(names(positioning), "cell_bc"),
+    drop = FALSE
+  ]
+  rownames(aligned) <- NULL
+  data.frame(
+    barcode = as.character(cells),
+    source_barcode = source_barcodes[index],
+    aligned,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
 }
 
 .trekker_report_metadata <- function(path) {
@@ -259,7 +343,7 @@
 }
 
 .trekker_named_list <- function(value, context) {
-  if (is.null(value)) {
+  if (is.null(value) || (is.list(value) && !length(value))) {
     return(list())
   }
   if (
@@ -668,6 +752,11 @@
       )
     }
   }
+  positioning <- if (is.null(files$positioning)) {
+    NULL
+  } else {
+    .read_trekker_positioning(files$positioning, cells)
+  }
   cluster_markers <- NULL
   if (!is.null(files$cluster_markers)) {
     cluster_markers <- .read_trekker_row_table(files$cluster_markers)
@@ -735,6 +824,7 @@
   names(descriptors) <- names(files)
   payload <- list(
     schema_version = 1L,
+    entity_type = "nucleus",
     source = list(
       declared_by = declared_by,
       imported_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
@@ -742,6 +832,7 @@
     ),
     files = descriptors,
     coordinates = coordinates,
+    positioning = positioning,
     images = image_plan$descriptors,
     metrics = metrics,
     cluster_markers = cluster_markers,
@@ -760,9 +851,21 @@
   if (!is.list(data) || !identical(data$schema_version, 1L)) {
     stop("Trekker data must use schema_version 1.", call. = FALSE)
   }
-  required <- c("source", "files", "coordinates")
-  if (!all(required %in% names(data)) || !is.data.frame(data$coordinates)) {
-    stop("Trekker data is missing required schema fields.", call. = FALSE)
+  required <- c("entity_type", "source", "files", "coordinates")
+  missing <- setdiff(required, names(data))
+  if (length(missing)) {
+    stop(
+      "Trekker data is missing required schema field: ",
+      missing[[1L]],
+      ".",
+      call. = FALSE
+    )
+  }
+  if (!is.data.frame(data$coordinates)) {
+    stop("Trekker coordinates must be a data frame.", call. = FALSE)
+  }
+  if (!identical(data$entity_type, "nucleus")) {
+    stop("Trekker entity_type must be `nucleus`.", call. = FALSE)
   }
   if (!all(c("barcode", "section", "x", "y") %in% names(data$coordinates))) {
     stop(
@@ -788,6 +891,45 @@
   if (is.null(data$files$location)) {
     stop(
       "Trekker data must retain its Location file descriptor.",
+      call. = FALSE
+    )
+  }
+  if (!is.null(data$positioning)) {
+    positioning <- data$positioning
+    if (
+      !is.data.frame(positioning) ||
+        !all(c("barcode", "source_barcode") %in% names(positioning)) ||
+        !identical(
+          as.character(positioning$barcode),
+          as.character(coordinates$barcode)
+        ) ||
+        anyNA(positioning$source_barcode) ||
+        any(!nzchar(as.character(positioning$source_barcode)))
+    ) {
+      stop(
+        "Trekker positioning evidence must align one row to every coordinate.",
+        call. = FALSE
+      )
+    }
+    numeric_fields <- vapply(positioning, is.numeric, logical(1))
+    invalid_numeric <- vapply(
+      positioning[numeric_fields],
+      function(value) any(!is.na(value) & !is.finite(value)),
+      logical(1)
+    )
+    if (any(invalid_numeric)) {
+      stop(
+        "Trekker positioning evidence contains non-finite values.",
+        call. = FALSE
+      )
+    }
+  }
+  if (xor(is.null(data$positioning), is.null(data$files$positioning))) {
+    stop(
+      paste(
+        "Trekker positioning evidence and its file descriptor",
+        "must be supplied together."
+      ),
       call. = FALSE
     )
   }
@@ -1051,7 +1193,13 @@
 }
 
 .normalize_trekker_replace <- function(trekker_replace, dataset_names) {
-  allowed <- c("metrics", "cluster_markers", "moran", "report")
+  allowed <- c(
+    "positioning",
+    "metrics",
+    "cluster_markers",
+    "moran",
+    "report"
+  )
   result <- setNames(vector("list", length(dataset_names)), dataset_names)
   if (is.null(trekker_replace)) {
     return(result)
