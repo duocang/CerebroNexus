@@ -94,3 +94,73 @@ test_that("Viewer navigation registers the Guides tab", {
   expect_match(runtime, 'guides = "guides"', fixed = TRUE)
   expect_match(builder, 'guides = "guides"', fixed = TRUE)
 })
+
+renderer_file <- repo_file("scripts", "render-viewer-guides.R")
+
+test_that("Viewer guide renderer is available", {
+  expect_true(file.exists(renderer_file))
+})
+
+if (file.exists(renderer_file)) {
+  renderer_env <- new.env(parent = globalenv())
+  source(renderer_file, local = renderer_env)
+
+  test_that("guide rendering is offline and never evaluates vignette code", {
+    skip_if_not_installed("rmarkdown")
+    skip_if_not(rmarkdown::pandoc_available(), "pandoc is unavailable")
+    root <- withr::local_tempdir()
+    vignettes <- file.path(root, "vignettes")
+    output <- file.path(root, "guides")
+    dir.create(vignettes)
+    dir.create(file.path(vignettes, "img"))
+    writeLines(
+      '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+      file.path(vignettes, "img", "example.svg")
+    )
+    writeLines(
+      c(
+        "---",
+        'title: "Safe rendering"',
+        "---",
+        "",
+        "```{r}",
+        'stop("must not run")',
+        "```",
+        "",
+        "![Local image](img/example.svg)"
+      ),
+      file.path(vignettes, "safe.Rmd")
+    )
+
+    rendered <- renderer_env$render_viewer_guides(
+      vignette_dir = vignettes,
+      output_dir = output,
+      slugs = "safe",
+      quiet = TRUE
+    )
+
+    expect_identical(rendered, "safe")
+    expect_true(file.exists(file.path(output, "safe.html")))
+    expect_true(file.exists(file.path(output, "img", "example.svg")))
+
+    html <- paste(
+      readLines(file.path(output, "safe.html"), warn = FALSE),
+      collapse = "\n"
+    )
+    expect_false(grepl("mathjax.rstudio.com", html, fixed = TRUE))
+    expect_false(grepl(normalizePath(vignettes), html, fixed = TRUE))
+    expect_match(html, 'src="img/example.svg"', fixed = TRUE)
+  })
+}
+
+test_that("generated guides are ignored and rendered in CI", {
+  ignore <- paste(readLines(repo_file(".gitignore"), warn = FALSE), collapse = "\n")
+  workflow <- paste(readLines(repo_file(
+    ".github",
+    "workflows",
+    "R-cmd-check.yaml"
+  ), warn = FALSE), collapse = "\n")
+
+  expect_match(ignore, "inst/viewer/www/guides/", fixed = TRUE)
+  expect_match(workflow, "Rscript scripts/render-viewer-guides.R", fixed = TRUE)
+})
