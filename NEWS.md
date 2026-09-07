@@ -1,3 +1,17 @@
+# CerebroNexus 4.4.1
+
+## Viewer
+
+- Viewer data loading now rejects malformed or impersonated Cerebro objects
+  before invoking dataset methods and reports failures without crashing the
+  session.
+- Ordinary data tables escape HTML content by default, including the gene ID
+  conversion table.
+- Gene-set selection uses the public `msigdbr` API and caches species data for
+  repeated queries.
+- Trajectory PDF exports are delivered as browser downloads instead of writing
+  to user-selected paths on the Viewer host.
+
 # CerebroNexus 4.4.0
 
 ## Viewer
