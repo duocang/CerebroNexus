@@ -105,6 +105,65 @@ test_that("all spatial module files parse without errors", {
   }
 })
 
+test_that("spatial RGB reads all requested genes in one matrix slice", {
+  source <- paste(
+    readLines(file.path(
+      shiny_root,
+      "spatial",
+      "obj_projection_data_to_plot.R"
+    )),
+    collapse = "\n"
+  )
+  block <- sub(
+    '^[\\s\\S]*?plot_parameters\\$plot_type == "Co-expression \\(RGB\\)"',
+    "",
+    source,
+    perl = TRUE
+  )
+  block <- sub("## get colors[\\s\\S]*$", "", block, perl = TRUE)
+
+  calls <- gregexpr("getExpressionMatrix\\(", block, perl = TRUE)[[1L]]
+  expect_equal(sum(calls > 0L), 1L)
+  expect_match(block, "genes = requested_genes", fixed = TRUE)
+  expect_match(block, "!is.null(gene) &&", fixed = TRUE)
+})
+
+test_that("spatial full extent is isolated from colour recomputation", {
+  source <- paste(
+    readLines(file.path(
+      shiny_root,
+      "spatial",
+      "obj_projection_data_to_plot.R"
+    )),
+    collapse = "\n"
+  )
+
+  expect_match(
+    source,
+    "spatial_projection_full_extent <- reactive({",
+    fixed = TRUE
+  )
+  extent <- sub(
+    "^[\\s\\S]*?spatial_projection_full_extent <- reactive\\(\\{",
+    "",
+    source,
+    perl = TRUE
+  )
+  extent <- sub(
+    "\\n\\}\\)\\n\\nspatial_projection_data_to_plot_raw[\\s\\S]*$",
+    "",
+    extent,
+    perl = TRUE
+  )
+  expect_match(extent, "getSpatialData(projection)", fixed = TRUE)
+  expect_no_match(extent, "spatial_projection_parameters_plot", fixed = TRUE)
+  expect_match(
+    source,
+    "extent <- spatial_projection_full_extent()",
+    fixed = TRUE
+  )
+})
+
 test_that("background-image selection only recreates image calibration controls", {
   # The scatter controls retain user-selected values while moving between
   # backgrounds. Keep them in their own renderUI so that the selected image

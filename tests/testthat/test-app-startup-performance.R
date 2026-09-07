@@ -59,6 +59,23 @@ test_that("startup source defines process preloading and delayed page warmup", {
 
   expect_match(server, ".crb_raw_process_cache", fixed = TRUE)
   expect_match(server, "viewer_after_first_paint", fixed = TRUE)
+  expect_match(server, "viewer_deferred_output_spacing_ms <- 50L", fixed = TRUE)
+  expect_match(
+    server,
+    "lapply(seq_along(deferred_ids), function(index)",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "delay = (index - 1L) * viewer_deferred_output_spacing_ms / 1000",
+    fixed = TRUE
+  )
+  expect_match(
+    server,
+    "viewer_after_first_paint(TRUE)\n          deferred_ids <-",
+    fixed = TRUE
+  )
+  expect_no_match(server, "delay = length(deferred_ids)", fixed = TRUE)
   expect_match(server, "viewer_dataset_capabilities", fixed = TRUE)
   for (path in c(
     "overview/obj_projection_data_to_plot.R",

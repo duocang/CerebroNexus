@@ -140,6 +140,7 @@ server <- function(input, output, session) {
   viewer_first_paint$ready <- FALSE
   viewer_after_first_paint <- reactiveVal(FALSE)
   viewer_deferred_output_options <- list()
+  viewer_deferred_output_spacing_ms <- 50L
   outputOptions <- function(output, x, ...) {
     options <- list(...)
     if (
@@ -162,16 +163,21 @@ server <- function(input, output, session) {
           if (exists("cerebro_async_start", mode = "function")) {
             cerebro_async_start()
           }
-          for (id in names(viewer_deferred_output_options)) {
-            do.call(
-              shiny::outputOptions,
-              c(
-                list(x = output, name = id),
-                viewer_deferred_output_options[[id]]
-              )
-            )
-          }
           viewer_after_first_paint(TRUE)
+          deferred_ids <- names(viewer_deferred_output_options)
+          invisible(lapply(seq_along(deferred_ids), function(index) {
+            id <- deferred_ids[[index]]
+            options <- viewer_deferred_output_options[[id]]
+            later::later(
+              function() {
+                do.call(
+                  shiny::outputOptions,
+                  c(list(x = output, name = id), options)
+                )
+              },
+              delay = (index - 1L) * viewer_deferred_output_spacing_ms / 1000
+            )
+          }))
         },
         delay = 1
       )

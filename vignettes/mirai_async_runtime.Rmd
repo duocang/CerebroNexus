@@ -38,12 +38,12 @@ but the Shiny event loop remains available.
 | Rapid input changes | Earlier computations continue and may finish late | Latest-wins cancellation plus generation tokens discard stale results |
 | HLA motif graph | Distance graph and layout block the session | Plain segment tables are processed in a daemon; finalized graphs retain the existing Shiny cache |
 | scRepertoire | Package loading and seven expensive plot/table calls run in the main process | Namespace loading and abundance, diversity, homeostasis, compare, overlap, rarefaction, and size-distribution calls run in daemons |
-| Spatial | Moran's I builds a distance matrix in the main process | Only `x`, `y`, and expression vectors cross the boundary; Moran's I runs in a daemon |
+| Spatial | Moran's I builds a distance matrix in the main process; RGB reads each channel separately; every colour change recomputes the full coordinate extent | Moran's I runs in a daemon; RGB uses one multi-gene slice; the full extent is cached by dataset, projection, and rotation |
 | Trajectory | Projection preparation and density estimation block reactive delivery | Immutable data frames/vectors are prepared in daemons |
 | Gene expression | RGB mode can read one gene at a time; means are calculated in the main process | One requested genes-by-cells slice is read, then RGB, panels, and means are prepared in a daemon |
 | Linked Views | Every session rebuilds the same full bundle; genes are fetched separately | Immutable bundles are shared across sessions; one multi-gene slice feeds asynchronous colour preparation |
 | Extra material | First access calls `readRDS()` and sanitizes the table synchronously | External tables are read and formula-sanitized in a daemon, then shared across sessions |
-| First browser paint | Hidden controls and nine capability checks join the first reactive flush | The configured CRB is preloaded once, hidden controls and capability checks wait until after the active page paints |
+| First browser paint | Hidden controls and nine capability checks join the first reactive flush | The configured CRB is preloaded once; hidden controls wait until after paint and are activated 50 ms apart, while Linked Views keeps its original post-paint warm-up signal |
 | First page activation | Every projection update waits for its full debounce; opening Projection also builds hidden Linked Views | The first value bypasses debounce, dedicated pages request only their own payload, and Linked Views warms only after first paint while no dedicated canvas is active |
 | Linked Views definitions | Bundle and configuration functions are parsed again for every session | Pure definitions are parsed once per R process and rebound to each session |
 | CRB loading | Every browser session deserializes the same CRB | The default CRB is preloaded before sessions connect; the live R6/file-backed object remains local and is shared read-only across sessions |
@@ -223,6 +223,14 @@ warm-up, Projection, Gene Expression, and immune-repertoire/Clonal UMAP paths.
 `node --check inst/viewer/www/cell_views.js` also passed. The benchmark table
 above is the median of the 36 raw observations retained in the repository, not
 an extrapolation from unit timings.
+
+The follow-up startup/Spatial pass on the same date intentionally used only the
+two directly affected test files. `test-app-startup-performance.R` and
+`test-spatial.R` both completed with zero failures, and `git diff --check`
+reported no whitespace errors. This focused pass verifies that hidden outputs
+are staggered without delaying the Linked Views warm-up signal, RGB requests one
+expression slice, and colour-only changes do not invalidate the full spatial
+extent. No new browser timing is claimed for this follow-up.
 
 # Operational interpretation
 
