@@ -1,0 +1,266 @@
+# Responsive Shiny workloads with mirai
+
+## Why this runtime exists
+
+The `master` viewer performs scientific calculations, file reads, plot
+export, and reactive orchestration in the same R process. Shiny
+serializes work within that process: while one handler constructs a
+motif graph or Moran statistic, the process cannot service another input
+or session.
+
+The optimized runtime keeps Shiny as the owner of sessions, reactive
+state, validation, file-backed matrices, and final rendering. It moves
+pure, serializable work to bounded `mirai` daemons over NNG. This
+targets response latency, not merely task wall time: a task may take the
+same time in a daemon, but the Shiny event loop remains available.
+
+## Before and after
+
+| Area | `master` | Optimized branch |
+|----|----|----|
+| Runtime | All work in the Shiny R process | One bounded `mirai` compute profile, dispatcher, timeout, and queue-memory limit |
+| Rapid input changes | Earlier computations continue and may finish late | Latest-wins cancellation plus generation tokens discard stale results |
+| HLA motif graph | Distance graph and layout block the session | Plain segment tables are processed in a daemon; finalized graphs retain the existing Shiny cache |
+| scRepertoire | Package loading and seven expensive plot/table calls run in the main process | Namespace loading and abundance, diversity, homeostasis, compare, overlap, rarefaction, and size-distribution calls run in daemons |
+| Spatial | Moran’s I builds a distance matrix in the main process; RGB reads each channel separately; every colour change recomputes the full coordinate extent | Moran’s I runs in a daemon; RGB uses one multi-gene slice; the full extent is cached by dataset, projection, and rotation |
+| Trajectory | Projection preparation and density estimation block reactive delivery | Immutable data frames/vectors are prepared in daemons |
+| Gene expression | RGB mode can read one gene at a time; means are calculated in the main process | One requested genes-by-cells slice is read, then RGB, panels, and means are prepared in a daemon |
+| Linked Views | Every session rebuilds the same full bundle; genes are fetched separately | Immutable bundles are shared across sessions; one multi-gene slice feeds asynchronous colour preparation |
+| Extra material | First access calls [`readRDS()`](https://rdrr.io/r/base/readRDS.html) and sanitizes the table synchronously | External tables are read and formula-sanitized in a daemon, then shared across sessions |
+| First browser paint | Hidden controls and nine capability checks join the first reactive flush | The HTTP shell and a static dataset-loading status arrive before CRB deserialization; hidden controls wait until after paint and are activated 50 ms apart, while Linked Views keeps its original post-paint warm-up signal |
+| First page activation | Every projection update waits for its full debounce; opening Projection also builds hidden Linked Views | The first value bypasses debounce, dedicated pages request only their own payload, and Linked Views warms only after first paint while no dedicated canvas is active |
+| Linked Views definitions | Bundle and configuration functions are parsed again for every session | Pure definitions are parsed once per R process and rebound to each session |
+| CRB loading | Every browser session deserializes the same CRB | Initial load and dataset switches show an immediate loading status, followed by a 220 ms fade-and-rise reveal; the live R6/file-backed object remains local and is shared read-only across later sessions |
+| PDF export | [`ggsave()`](https://ggplot2.tidyverse.org/reference/ggsave.html) blocks the event handler | Overview, expression, spatial, and trajectory PDFs are written in a daemon and report completion asynchronously |
+| HLA ZIP export | CSV creation and compression start on click in the main process | The archive is prepared in a daemon after the HLA page becomes active; download writes ready bytes |
+| App forms | No daemon lifecycle | Installed, source, and generated standalone apps initialize the same runtime, start daemons after first paint/first task, and stop only owned daemons |
+
+## Process boundary
+
+The important boundary is deliberately narrow:
+
+``` text
+browser input -> Shiny validates/snapshots -> mirai daemon computes
+              <- plain R result           <-
+              -> Shiny renders/sends result
+```
+
+The following objects never cross NNG: `session`, reactive expressions,
+the live Cerebro R6 object, HDF5Array/BPCells handles, and graphics
+devices. A file-backed expression request is sliced once in the main
+process because its handle belongs there; only the small materialized
+matrix is sent. CRB loading also remains local for the same reason. Lazy
+process-level caching keeps the first read out of process startup and
+removes repeat reads from later concurrent sessions without unsafe
+serialization.
+
+## Runtime configuration
+
+The default uses at most two workers, a 256 MB dispatcher queue, and a
+five minute task timeout.
+[`launchCerebro()`](https://mihem.github.io/CerebroNexus/reference/launchCerebro.md)
+accepts overrides:
+
+``` r
+launchCerebro(
+  crb_file_to_load = "dataset.crb",
+  mirai_options = list(
+    workers = 2L,
+    queue_memory_mb = 256,
+    timeout_ms = 300000L,
+    compute = "cerebro"
+  )
+)
+```
+
+Set `enabled = FALSE` to execute the same worker functions
+synchronously. This is useful for diagnosis and provides deterministic
+parity testing; production apps should normally keep the default enabled
+runtime.
+
+Installed packages receive `promises` through `Imports`; `mirai` is an
+optional `Suggests` dependency. When `mirai` is unavailable, installed
+and standalone Viewers emit one warning and use the same synchronous
+workers instead of terminating the Shiny process. Install `mirai` to
+enable asynchronous execution.
+
+Daemon creation is lazy. Configuration and ownership are established
+when the app starts, while owned processes start after the first browser
+paint or when a task is submitted first. Thus daemon startup does not
+delay the initial Shiny response.
+
+## Reproducible benchmark
+
+The repository includes `benchmarks/mirai_runtime_benchmark.R`. It
+compares the unchanged scientific worker synchronously (the `master`
+execution model) with a warm one-daemon runtime, verifies scientific
+equality, and measures a zero-delay `later` callback as an event-loop
+responsiveness probe.
+
+Run it from the repository root:
+
+``` r
+system2(
+  "Rscript",
+  c("benchmarks/mirai_runtime_benchmark.R", "benchmark-results.csv")
+)
+```
+
+The following medians were measured over three repetitions on 7
+September 2026 using an Apple M1 Pro with 32 GB RAM and R 4.6.1. The
+daemon was warmed before measurement; filesystem measurements used the
+operating system’s normal warm page cache. Raw observations are retained
+in `benchmarks/results/mirai_runtime_2026-09-07.csv`.
+
+| Workload | Mode | Return/submit (ms) | Event-loop lag (ms) | Total (ms) | Payload (MB) |
+|----|---:|---:|---:|---:|---:|
+| HLA motif graph, 12,000 receptors | `master` synchronous | 893 | 893 | 893 | 0 |
+| HLA motif graph, 12,000 receptors | `mirai` asynchronous | 6 | 6 | 549 | 4.231 |
+| Moran’s I, 1,200 cells | `master` synchronous | 98 | 98 | 98 | 0 |
+| Moran’s I, 1,200 cells | `mirai` asynchronous | 1 | 1 | 125 | 0.029 |
+| CRB load in a later session | `master` per-session | 169 | 169 | 169 | 0 |
+| CRB load in a later session | process cache hit | \<1 | \<1 | \<1 | 0 |
+| Linked Views bundle in a later session | `master` per-session | 430 | 430 | 430 | 0 |
+| Linked Views bundle in a later session | process cache hit | \<1 | \<1 | \<1 | 0 |
+
+The primary result is the event-loop column. HLA submission reduced
+measured main-loop occupancy by about 99.3%; Moran submission returned
+in one millisecond. Moran total time increased because daemon dispatch
+and serialization dominate this small synthetic case. That is an
+acceptable trade-off for an interactive multi-session server; very small
+work remains a candidate for synchronous execution if production traces
+show dispatch costs outweighing contention.
+
+### Browser startup and first-open latency
+
+`benchmarks/viewer_latency_benchmark.R` first probes the HTTP shell from
+a fresh R process, then drives the unchanged `master` app and optimized
+app through Chrome with `shinytest2`. It verifies that the optimized
+shell contains the static dataset-loading status, waits for Data info,
+allows a fixed 1.5 second post-paint window, then opens Projection,
+Linked Views, and Gene Expression. The Gene Expression measurement
+includes selecting `MS4A1` and receiving the first canvas. Run it with
+two independent checkouts:
+
+``` r
+system2(
+  "Rscript",
+  c(
+    "benchmarks/viewer_latency_benchmark.R",
+    "--baseline=/path/to/master-checkout",
+    "--candidate=.",
+    "--reps=3",
+    "--output=benchmarks/results/viewer_latency.csv"
+  )
+)
+```
+
+The following are the three-repetition medians recorded from
+`upstream/master@6e16833e` and the optimized branch after runtime
+cleanup, using the bundled PBMC demo, Apple M1 Pro, 32 GB RAM, R 4.6.1,
+and Chrome. Raw observations are retained in
+`benchmarks/results/viewer_latency_2026-09-07.csv`.
+
+| Browser milestone | `master` (ms) | Optimized (ms) | Change |
+|----|---:|---:|---:|
+| Fresh process to HTTP shell | 1,103 | 1,153 | +4.5% |
+| Fresh process to Data info (dataset ready) | 3,482 | 3,612 | +3.7% |
+| Browser connected to Data info (dataset ready) | 1,691.3 | 1,554.7 | -8.1% |
+| Projection first open | 720 | 314 | -56.4% |
+| Linked Views first open | 48 | 49 | +2.1% |
+| Projection then Linked Views | 768 | 363 | -52.7% |
+| Gene Expression first open and first gene canvas | 1,002 | 941 | -6.1% |
+
+The post-paint window is intentional. Once Data info is usable, the
+optimized app prepares Linked Views while the browser is otherwise idle
+and no dedicated cell-view canvas is active. This keeps the initial
+response out of the critical path without moving a roughly 300 ms cold
+render onto the user’s first Linked Views click. If the user opens
+Projection or another dedicated cell view before the warm-up begins,
+that page keeps ownership of the shared canvas and the warm-up waits.
+
+Fresh-process-to-Data-info time is within 3.7% of `master`, while the
+app-specific connected-to-Data-info interval fell by 8.1%. The HTTP
+shell probe is 50 ms slower on the optimized build, but it no longer
+scales with CRB read time.
+
+To verify the large-file path deterministically, the same script can
+wrap only `.crb` reads with a fixed delay and compare the former preload
+implementation at `bde9fa6e` with the lazy-loading source tree:
+
+``` r
+system2(
+  "Rscript",
+  c(
+    "benchmarks/viewer_latency_benchmark.R",
+    "--baseline=/path/to/bde9fa6e-checkout",
+    "--baseline-label=preload",
+    "--candidate=.",
+    "--reps=3",
+    "--crb-delay=5",
+    "--output=benchmarks/results/viewer_crb_shell.csv"
+  )
+)
+```
+
+| Controlled CRB read | Preload build (ms) | Lazy-loading build (ms) | Change |
+|----|---:|---:|---:|
+| First visible HTTP shell with a five-second `.crb` read | 6,677 | 1,133 | -83.0% |
+
+All six raw observations are retained in
+`benchmarks/results/viewer_crb_shell_2026-09-07.csv`. The lazy-loading
+build returns the shell and status before the controlled read begins;
+the preload build cannot listen until that read finishes. This
+controlled delay models the latency shape of multi-gigabyte CRBs without
+claiming a particular disk or compression throughput.
+
+## Concurrency and failure semantics
+
+Each interactive workload has a small per-session result cache. When a
+user changes a gene, chain, scope, or trajectory before the prior task
+finishes, the runtime stops the prior mirai when possible and advances a
+generation token. Any late callback from the old generation is ignored.
+Session termination cancels its outstanding tasks.
+
+Worker failures are converted to Shiny validation messages rather than
+escaping through the server loop. Existing daemons under the configured
+compute name are preserved; CerebroNexus only stops a daemon profile it
+started itself.
+
+## Validation
+
+Focused tests cover configuration, lifecycle ownership, cancellation,
+stale result suppression, bounded caches, real out-of-process execution,
+standalone app contracts, pure-worker parity, and every workload
+integration. The full package test suite remains the final compatibility
+check:
+
+``` r
+devtools::load_all(".")
+testthat::test_dir(
+  "tests/testthat",
+  reporter = testthat::default_reporter(),
+  stop_on_failure = TRUE
+)
+```
+
+On 7 September 2026 the final source tree produced `11,327` passing
+assertions, zero failures, zero errors, zero warnings, and one
+environment-dependent skip in the complete `tests/testthat` run. The
+browser coverage includes the installed app form, standalone
+`inst/app.R`, Data-info-first paint, idle Linked Views warm-up,
+Projection, Gene Expression, and immune-repertoire/Clonal UMAP paths.
+`node --check inst/viewer/www/cell_views.js` also passed. The benchmark
+table above is the median of the 42 normal-workload observations
+retained in the repository, plus six controlled shell observations, not
+an extrapolation from unit timings.
+
+## Operational interpretation
+
+`mirai` does not create unlimited capacity. The queue remains bounded
+and two workers remain two workers. For production, scale Shiny
+processes for user isolation and use these daemons to keep each process
+responsive. Monitor queue wait, task duration, cancellation rate,
+payload size, and worker RSS before raising the worker count or queue
+memory; more workers can reduce latency while increasing memory pressure
+from loaded R packages and copied task inputs.

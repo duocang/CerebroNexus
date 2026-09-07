@@ -15,7 +15,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.3.8</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -40,6 +40,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
+    <li><a class="dropdown-item" href="../articles/mirai_async_runtime.html">Responsive Shiny workloads with mirai</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -77,7 +78,7 @@ run with shiny::runApp(result_dir)."><meta property="og:image" content="https://
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Create a self-contained CerebroNexus Shiny app folder</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/codex/ci-restack-5/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/mirai-async-runtime/R/createShinyApp.R" class="external-link"><code>R/createShinyApp.R</code></a></small>
       <div class="d-none name"><code>createShinyApp.Rd</code></div>
     </div>
 
@@ -123,8 +124,6 @@ run with <code>shiny::runApp(result_dir)</code>.</p>
 <span>  auth <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  extra_tables <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  extra_tables_sheets <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  admin_account <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  admin_password_env <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  initial_page <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -220,7 +219,9 @@ upload their own data; defaults to <code>FALSE</code>.</p></dd>
 <code>"trekker"</code>, <code>"hla_tcr_motifs"</code>, <code>"gene_expression"</code>,
 <code>"gene_id_conversion"</code>, <code>"color_management"</code>, and
 <code>"about"</code>. A conditional page is selected only when it is available for
-the loaded dataset. Shared links take precedence after restoration.</p></dd>
+the first loaded dataset. Initial routing is attempted only once, so switching
+datasets later never triggers a delayed redirect. Shared links take precedence
+after restoration.</p></dd>
 
 
 <dt id="arg-welcome-message">welcome_message<a class="anchor" aria-label="anchor" href="#arg-welcome-message"></a></dt>
@@ -316,7 +317,6 @@ created by <code><a href="https://rdrr.io/pkg/shinymanager/man/create_db.html" c
 the name of the environment variable containing its passphrase. Optional
 <code>timeout_minutes</code> defaults to 15.</p></dd>
 
-
 <dt id="arg-extra-tables">extra_tables<a class="anchor" aria-label="anchor" href="#arg-extra-tables"></a></dt>
 <dd><p>Optional named collection of CSV, TSV, TXT, XLS, XLSX,
 or XLSM files to bundle as private Extra material tables. Workbook sheets
@@ -327,18 +327,6 @@ are listed separately and loaded only when selected in the Viewer.</p></dd>
 <dd><p>Optional named list of Excel sheet renames keyed
 by <code>extra_tables</code> labels. Each entry maps displayed names to source
 sheet names; unmapped sheets remain available.</p></dd>
-
-
-<dt id="arg-admin-account">admin_account<a class="anchor" aria-label="anchor" href="#arg-admin-account"></a></dt>
-<dd><p>Optional Viewer Administrator account name. Supply it
-together with <code>admin_password_env</code> to enable Shared Link management.</p></dd>
-
-
-<dt id="arg-admin-password-env">admin_password_env<a class="anchor" aria-label="anchor" href="#arg-admin-password-env"></a></dt>
-<dd><p>Optional environment-variable name containing the
-Viewer Administrator password. The secret must contain at least 12 bytes and
-is validated but never written into the generated app.</p></dd>
-
 
 </dl></div>
     <div class="section level2">
@@ -372,20 +360,8 @@ Dataset labels and canonical CRB sources are both unique: two labels cannot
 select the same resolved input file.
 Generated bundles follow the standard deployment model of one app per R
 process; process-global <code>Cerebro.options</code> does not provide same-process
-isolation between separately sourced apps.</p>
-<p>Shared Links are disabled unless
-<code>CEREBRONEXUS_LINKED_VIEW_SHARE_DB</code> (or
-<code>cerebro_options[["linked_view_share_db"]]</code>) names a writable SQLite
-path outside the generated app directory. Keeping that database external
-prevents <code>overwrite = TRUE</code> from deleting live links. Records are
-isolated by a namespace derived from the deployment root; replicated or
-relocated deployments should set
-<code>CEREBRONEXUS_LINKED_VIEW_SHARE_NAMESPACE</code> to one stable app-specific
-value.
-Links expire after 7 days without a usable Viewer Administrator and after
-90 days when <code>admin_account</code> and <code>admin_password_env</code> resolve at
-runtime.</p>
-<p>Launch settings are validated and frozen in a typed internal manifest before
+isolation between separately sourced apps.
+Launch settings are validated and frozen in a typed internal manifest before
 target preparation. The generated <code>app.R</code> reads that manifest instead of
 interpolating user values into source, and the staged source is parsed before
 publication. The upload limit is installed as

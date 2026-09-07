@@ -1,44 +1,50 @@
 # Changelog
 
-## CerebroNexus 4.3.8
+## CerebroNexus 4.4.1
+
+### Viewer
+
+- When the optional `mirai` package is installed, expensive HLA and TCR,
+  immune-repertoire, spatial, trajectory, gene-expression and export
+  work runs through a bounded runtime, keeping the Shiny event loop
+  responsive with cancellation, timeouts and stale-result rejection.
+  Viewers retain a synchronous fallback when `mirai` is unavailable.
+- Generated Viewers show their shell and loading state before large CRB
+  files are deserialized, retain visible progress while switching data
+  sets, and reuse immutable process-level data safely across sessions.
+- Deferred content now appears with a restrained transition, while
+  projection points and sample-information icons remain clearer during
+  routine interaction.
+- A reproducible benchmark and runtime vignette document responsiveness,
+  concurrency semantics, failure handling and deployment configuration.
+
+## CerebroNexus 4.4.0
 
 ### Viewer
 
 - Generated Viewers can bundle private CSV, TSV and Excel workbooks as
   lazy Extra material tables with optional display names for workbook
-  sheets.
+  sheets; formula-like cells and column names are neutralized before
+  export.
 - [`createShinyApp()`](https://mihem.github.io/CerebroNexus/reference/createShinyApp.md)
-  now applies nested per-dataset colour palettes and rejects flat colour
-  vectors that generated Viewers cannot interpret.
+  now applies nested per-dataset colour palettes and rejects flat
+  vectors or invalid colour values that generated Viewers cannot
+  interpret.
 - Generated Viewers can open on a configured initial page, including
   pages that are available only for the loaded dataset, without shifting
   historical positional arguments.
 - Closed Viewers cap request bodies at 6 MiB, while open Viewers retain
   their configured upload limit.
-- Generated Viewers can configure an independent administrator account
-  and password environment variable for Shared Link management.
 - Manual colour choices remain scoped to the dataset where they were
   made.
-
-## CerebroNexus 4.3.7
-
-### Viewer
-
-- Generated Viewers can configure a separate Viewer Administrator for
-  managing shared links without exposing or reusing the credentials
-  database password.
-- Database authentication cannot grant Viewer Administrator authority
-  unless the independent administrator credential succeeds.
 
 ## CerebroNexus 4.3.6
 
 ### Viewer
 
-- Linked views can be saved locally, restored, exported and shared
-  through expiring links while preserving panels, filters, viewports and
-  selections.
-- Share storage now scopes anonymous creation quotas by client identity
-  and excludes revoked or expired links from active capacity.
+- Linked and specialist views can be downloaded as validated portable
+  JSON and opened in another compatible Cerebro session while preserving
+  panels, filters, viewports and selections.
 
 ## CerebroNexus 4.3.5
 

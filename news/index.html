@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.3.8</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.4.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -32,6 +32,7 @@
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
+    <li><a class="dropdown-item" href="../articles/mirai_async_runtime.html">Responsive Shiny workloads with mirai</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -69,36 +70,36 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/codex/ci-restack-5/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/mirai-async-runtime/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="4.3.8" id="cerebronexus-438">CerebroNexus 4.3.8<a class="anchor" aria-label="anchor" href="#cerebronexus-438"></a></h2>
+<h2 class="pkg-version" data-toc-text="4.4.1" id="cerebronexus-441">CerebroNexus 4.4.1<a class="anchor" aria-label="anchor" href="#cerebronexus-441"></a></h2>
 <div class="section level3">
-<h3 id="viewer-4-3-8">Viewer<a class="anchor" aria-label="anchor" href="#viewer-4-3-8"></a></h3>
-<ul><li>Generated Viewers can bundle private CSV, TSV and Excel workbooks as lazy Extra material tables with optional display names for workbook sheets.</li>
-<li>
-<code><a href="../reference/createShinyApp.html">createShinyApp()</a></code> now applies nested per-dataset colour palettes and rejects flat colour vectors that generated Viewers cannot interpret.</li>
-<li>Generated Viewers can open on a configured initial page, including pages that are available only for the loaded dataset, without shifting historical positional arguments.</li>
-<li>Closed Viewers cap request bodies at 6 MiB, while open Viewers retain their configured upload limit.</li>
-<li>Generated Viewers can configure an independent administrator account and password environment variable for Shared Link management.</li>
-<li>Manual colour choices remain scoped to the dataset where they were made.</li>
+<h3 id="viewer-4-4-1">Viewer<a class="anchor" aria-label="anchor" href="#viewer-4-4-1"></a></h3>
+<ul><li>When the optional <code>mirai</code> package is installed, expensive HLA and TCR, immune-repertoire, spatial, trajectory, gene-expression and export work runs through a bounded runtime, keeping the Shiny event loop responsive with cancellation, timeouts and stale-result rejection. Viewers retain a synchronous fallback when <code>mirai</code> is unavailable.</li>
+<li>Generated Viewers show their shell and loading state before large CRB files are deserialized, retain visible progress while switching data sets, and reuse immutable process-level data safely across sessions.</li>
+<li>Deferred content now appears with a restrained transition, while projection points and sample-information icons remain clearer during routine interaction.</li>
+<li>A reproducible benchmark and runtime vignette document responsiveness, concurrency semantics, failure handling and deployment configuration.</li>
 </ul></div>
 </div>
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="4.3.7" id="cerebronexus-437">CerebroNexus 4.3.7<a class="anchor" aria-label="anchor" href="#cerebronexus-437"></a></h2>
+<h2 class="pkg-version" data-toc-text="4.4.0" id="cerebronexus-440">CerebroNexus 4.4.0<a class="anchor" aria-label="anchor" href="#cerebronexus-440"></a></h2>
 <div class="section level3">
-<h3 id="viewer-4-3-7">Viewer<a class="anchor" aria-label="anchor" href="#viewer-4-3-7"></a></h3>
-<ul><li>Generated Viewers can configure a separate Viewer Administrator for managing shared links without exposing or reusing the credentials database password.</li>
-<li>Database authentication cannot grant Viewer Administrator authority unless the independent administrator credential succeeds.</li>
+<h3 id="viewer-4-4-0">Viewer<a class="anchor" aria-label="anchor" href="#viewer-4-4-0"></a></h3>
+<ul><li>Generated Viewers can bundle private CSV, TSV and Excel workbooks as lazy Extra material tables with optional display names for workbook sheets; formula-like cells and column names are neutralized before export.</li>
+<li>
+<code><a href="../reference/createShinyApp.html">createShinyApp()</a></code> now applies nested per-dataset colour palettes and rejects flat vectors or invalid colour values that generated Viewers cannot interpret.</li>
+<li>Generated Viewers can open on a configured initial page, including pages that are available only for the loaded dataset, without shifting historical positional arguments.</li>
+<li>Closed Viewers cap request bodies at 6 MiB, while open Viewers retain their configured upload limit.</li>
+<li>Manual colour choices remain scoped to the dataset where they were made.</li>
 </ul></div>
 </div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.3.6" id="cerebronexus-436">CerebroNexus 4.3.6<a class="anchor" aria-label="anchor" href="#cerebronexus-436"></a></h2>
 <div class="section level3">
 <h3 id="viewer-4-3-6">Viewer<a class="anchor" aria-label="anchor" href="#viewer-4-3-6"></a></h3>
-<ul><li>Linked views can be saved locally, restored, exported and shared through expiring links while preserving panels, filters, viewports and selections.</li>
-<li>Share storage now scopes anonymous creation quotas by client identity and excludes revoked or expired links from active capacity.</li>
+<ul><li>Linked and specialist views can be downloaded as validated portable JSON and opened in another compatible Cerebro session while preserving panels, filters, viewports and selections.</li>
 </ul></div>
 </div>
     <div class="section level2">
