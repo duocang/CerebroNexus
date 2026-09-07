@@ -116,23 +116,25 @@ system2(
 )
 ```
 
-The following medians were measured over three repetitions on an Apple M1 Pro
-with 32 GB RAM and R 4.6.1. The daemon was warmed before measurement; filesystem
-measurements used the operating system's normal warm page cache.
+The following medians were measured over three repetitions on 7 September 2026
+using an Apple M1 Pro with 32 GB RAM and R 4.6.1. The daemon was warmed before
+measurement; filesystem measurements used the operating system's normal warm
+page cache. Raw observations are retained in
+`benchmarks/results/mirai_runtime_2026-09-07.csv`.
 
 | Workload | Mode | Return/submit (ms) | Event-loop lag (ms) | Total (ms) | Payload (MB) |
 |---|---:|---:|---:|---:|---:|
 | HLA motif graph, 12,000 receptors | `master` synchronous | 663 | 663 | 663 | 0 |
-| HLA motif graph, 12,000 receptors | `mirai` asynchronous | 4 | 4 | 414 | 4.231 |
-| Moran's I, 1,200 cells | `master` synchronous | 73 | 73 | 73 | 0 |
-| Moran's I, 1,200 cells | `mirai` asynchronous | <1 | <1 | 100 | 0.029 |
-| CRB load in a later session | `master` per-session | 121 | 121 | 121 | 0 |
+| HLA motif graph, 12,000 receptors | `mirai` asynchronous | 5 | 5 | 414 | 4.231 |
+| Moran's I, 1,200 cells | `master` synchronous | 77 | 77 | 77 | 0 |
+| Moran's I, 1,200 cells | `mirai` asynchronous | <1 | <1 | 101 | 0.029 |
+| CRB load in a later session | `master` per-session | 125 | 125 | 125 | 0 |
 | CRB load in a later session | process cache hit | <1 | <1 | <1 | 0 |
-| Linked Views bundle in a later session | `master` per-session | 351 | 351 | 351 | 0 |
+| Linked Views bundle in a later session | `master` per-session | 368 | 368 | 368 | 0 |
 | Linked Views bundle in a later session | process cache hit | <1 | <1 | <1 | 0 |
 
 The primary result is the event-loop column. HLA submission reduced measured
-main-loop occupancy by about 99.4%; Moran submission returned within the clock's
+main-loop occupancy by about 99.2%; Moran submission returned within the clock's
 millisecond resolution. Moran total time increased because daemon dispatch and
 serialization dominate this small synthetic case. That is an acceptable
 trade-off for an interactive multi-session server; very small work remains a
@@ -161,19 +163,20 @@ system2(
 )
 ```
 
-The following are the three-repetition medians recorded on 7 September 2026
-using the bundled PBMC demo, Apple M1 Pro, 32 GB RAM, R 4.6.1, and Chrome. Raw
-observations are retained in
+The following are the three-repetition medians recorded from
+`upstream/master@6e16833e` and the optimized runtime at `f2b4a181`, using the
+bundled PBMC demo, Apple M1 Pro, 32 GB RAM, R 4.6.1, and Chrome. Raw observations
+are retained in
 `benchmarks/results/viewer_latency_2026-09-07.csv`.
 
 | Browser milestone | `master` (ms) | Optimized (ms) | Change |
 |---|---:|---:|---:|
-| Fresh process to Data info | 3,383 | 3,086 | -8.8% |
-| Browser connected to Data info | 1,580.8 | 842.5 | -46.7% |
-| Projection first open | 525 | 413 | -21.3% |
-| Linked Views first open | 44 | 45 | +2.3% |
-| Projection then Linked Views | 569 | 459 | -19.3% |
-| Gene Expression first open and first gene canvas | 1,019 | 633 | -37.9% |
+| Fresh process to Data info | 3,442 | 3,423 | -0.6% |
+| Browser connected to Data info | 1,667.9 | 970.8 | -41.8% |
+| Projection first open | 714 | 413 | -42.2% |
+| Linked Views first open | 50 | 49 | -2.0% |
+| Projection then Linked Views | 761 | 462 | -39.3% |
+| Gene Expression first open and first gene canvas | 1,010 | 837 | -17.1% |
 
 The post-paint window is intentional. Once Data info is usable, the optimized
 app prepares Linked Views while the browser is otherwise idle and no dedicated
@@ -185,7 +188,7 @@ warm-up waits.
 
 Fresh-process time is dominated by starting R and Chrome and therefore barely
 changes. The app-specific connected-to-Data-info interval is the relevant
-first-paint measure and falls by 46.7%.
+first-paint measure and falls by 41.8%.
 
 # Concurrency and failure semantics
 
@@ -215,7 +218,7 @@ testthat::test_dir(
 )
 ```
 
-On 7 September 2026 the final source tree produced `11,319` passing assertions,
+On 7 September 2026 the final source tree produced `11,332` passing assertions,
 zero failures, zero errors, zero warnings, and one environment-dependent skip
 in the complete `tests/testthat` run. The browser coverage includes the installed
 app form, standalone `inst/app.R`, Data-info-first paint, idle Linked Views
@@ -223,14 +226,6 @@ warm-up, Projection, Gene Expression, and immune-repertoire/Clonal UMAP paths.
 `node --check inst/viewer/www/cell_views.js` also passed. The benchmark table
 above is the median of the 36 raw observations retained in the repository, not
 an extrapolation from unit timings.
-
-The follow-up startup/Spatial pass on the same date intentionally used only the
-two directly affected test files. `test-app-startup-performance.R` and
-`test-spatial.R` both completed with zero failures, and `git diff --check`
-reported no whitespace errors. This focused pass verifies that hidden outputs
-are staggered without delaying the Linked Views warm-up signal, RGB requests one
-expression slice, and colour-only changes do not invalidate the full spatial
-extent. No new browser timing is claimed for this follow-up.
 
 # Operational interpretation
 

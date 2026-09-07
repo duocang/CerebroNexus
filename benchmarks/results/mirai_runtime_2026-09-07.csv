@@ -1,0 +1,9 @@
+"workload","mode","submit_ms","event_loop_lag_ms","total_ms","payload_mb"
+"HLA motif graph (12,000 receptors)","master synchronous",663,663,663,0
+"HLA motif graph (12,000 receptors)","mirai asynchronous",5,5,414,4.231
+"Moran's I (1,200 cells)","master synchronous",77,77,77,0
+"Moran's I (1,200 cells)","mirai asynchronous",0,0,101,0.029
+"CRB load, later session","master per-session",125,125,125,0
+"CRB load, later session","process cache hit",0,0,0,0
+"Linked Views bundle, later session","master per-session",368,368,368,0
+"Linked Views bundle, later session","process cache hit",0,0,0,0

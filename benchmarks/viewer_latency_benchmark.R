@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 
+Sys.setenv(NOT_CRAN = "true")
+
 arguments <- commandArgs(trailingOnly = TRUE)
 argument <- function(name, default = NULL) {
   prefix <- paste0("--", name, "=")
