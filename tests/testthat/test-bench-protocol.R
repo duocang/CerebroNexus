@@ -76,16 +76,60 @@ test_that("default sources share 50k and 150k comparison tiers", {
   skip_unless_bench_protocol()
   source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
 
-  defaults <- BENCH_SOURCES[!vapply(
-    BENCH_SOURCES,
-    function(source) isTRUE(source$opt_in),
-    logical(1)
-  )]
+  defaults <- BENCH_SOURCES[
+    !vapply(
+      BENCH_SOURCES,
+      function(source) isTRUE(source$opt_in),
+      logical(1)
+    )
+  ]
   expect_true(all(vapply(
     defaults,
     function(source) all(c(50e3, 150e3) %in% source$comparison_tiers),
     logical(1)
   )))
+})
+
+test_that("Panel C1 is the exact three-backend scale bridge", {
+  skip_unless_bench_protocol()
+  source(bench_protocol, local = TRUE)
+  source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
+
+  schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c1")
+
+  expect_equal(nrow(schedule), 18L)
+  expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5"))
+  expect_equal(
+    unique(schedule$n_cells[schedule$source == "mouse_brain_e18"]),
+    400e3
+  )
+  expect_equal(
+    unique(schedule$n_cells[schedule$source == "human_pfc_hbcc"]),
+    300e3
+  )
+  expect_false(any(schedule$n_cells == 800e3))
+  expect_true(all(schedule$access_repeats == 2L))
+})
+
+test_that("Panel C2 is the exact two-backend full-source schedule", {
+  skip_unless_bench_protocol()
+  source(bench_protocol, local = TRUE)
+  source(file.path("..", "bench", "config", "sources.R"), local = TRUE)
+
+  schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c2")
+
+  expect_equal(nrow(schedule), 12L)
+  expect_setequal(unique(schedule$backend), c("bpcells", "h5"))
+  expect_equal(
+    unique(schedule$n_cells[schedule$source == "mouse_brain_e18"]),
+    1306127
+  )
+  expect_equal(
+    unique(schedule$n_cells[schedule$source == "human_pfc_hbcc"]),
+    1486324
+  )
+  expect_true(all(schedule$access_repeats == 2L))
+  expect_error(bench_panel_c_schedule(BENCH_SOURCES, "unknown"), "c1 or c2")
 })
 
 test_that("query panels are deterministic and span expression density", {

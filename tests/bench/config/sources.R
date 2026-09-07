@@ -22,6 +22,8 @@ BENCH_SOURCES <- list(
     organism = "mm10",
     slot = "counts",
     expected_bytes = 4216018749,
+    full_cells = 1306127,
+    panel_c1_cells = 400e3,
     # 2010 nnz/cell. A dgCMatrix costs 12 B per non-zero and assembling one
     # peaks at roughly twice that (the slot assignment copies), so budget
     # ~48 kB of peak RAM per cell: a 32 GB host runs out somewhere past 400k
@@ -43,6 +45,8 @@ BENCH_SOURCES <- list(
     organism = "hg38",
     slot = "data",
     expected_bytes = 14150526668,
+    full_cells = 1486324,
+    panel_c1_cells = 300e3,
     # 4112 nnz/cell, so ~98 kB of peak RAM per cell: this source hits the same
     # 32 GB wall at less than half the cell count of the mouse fixture even
     # though the two files hold a comparable number of cells.

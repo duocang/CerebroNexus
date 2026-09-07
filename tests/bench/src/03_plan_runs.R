@@ -14,11 +14,15 @@ source(file.path(here, "config", "sources.R"))
 source(file.path(here, "lib", "protocol.R"))
 
 profile <- bench_profile(Sys.getenv("BENCH_PROFILE", "quick"))
-schedule <- bench_schedule(
-  BENCH_SOURCES,
-  profile,
-  sources = bench_active_sources()
-)
+schedule <- if (profile$name %in% c("panel_c1", "panel_c2")) {
+  bench_panel_c_schedule(BENCH_SOURCES, sub("panel_c", "c", profile$name))
+} else {
+  bench_schedule(
+    BENCH_SOURCES,
+    profile,
+    sources = bench_active_sources()
+  )
+}
 dir.create(dirname(result), recursive = TRUE, showWarnings = FALSE)
 utils::write.csv(schedule, result, row.names = FALSE)
 if (!is.null(tsv_result)) {

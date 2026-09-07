@@ -32,6 +32,26 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
       comparison_tier_mode = "all",
       article_eligible = TRUE
     ),
+    panel_c1 = list(
+      name = "panel_c1",
+      export_repeats = 3L,
+      access_repeats = 2L,
+      query_genes = 12L,
+      hot_iterations = 3L,
+      include_scale_tiers = FALSE,
+      comparison_tier_mode = "all",
+      article_eligible = TRUE
+    ),
+    panel_c2 = list(
+      name = "panel_c2",
+      export_repeats = 3L,
+      access_repeats = 2L,
+      query_genes = 12L,
+      hot_iterations = 3L,
+      include_scale_tiers = FALSE,
+      comparison_tier_mode = "all",
+      article_eligible = TRUE
+    ),
     stress = list(
       name = "stress",
       export_repeats = 1L,
@@ -48,11 +68,49 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
     stop(
       "unknown benchmark profile: ",
       name,
-      "; expected quick, standard, publication, or stress",
+      "; expected quick, standard, publication, panel_c1, panel_c2, or stress",
       call. = FALSE
     )
   }
   profile
+}
+
+bench_panel_c_schedule <- function(specs, part = c("c1", "c2")) {
+  if (length(part) != 1L || !part %in% c("c1", "c2")) {
+    stop("Panel C part must be c1 or c2", call. = FALSE)
+  }
+  sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), names(specs))
+  if (length(sources) != 2L) {
+    stop(
+      "Panel C requires the mouse and human publication sources",
+      call. = FALSE
+    )
+  }
+  field <- if (part == "c1") "panel_c1_cells" else "full_cells"
+  missing <- sources[vapply(
+    specs[sources],
+    function(x) is.null(x[[field]]),
+    logical(1)
+  )]
+  if (length(missing)) {
+    stop("Panel C source metadata is missing ", field, call. = FALSE)
+  }
+  panel_specs <- specs[sources]
+  for (source in sources) {
+    tier <- panel_specs[[source]][[field]]
+    panel_specs[[source]]$tiers <- tier
+    panel_specs[[source]]$comparison_tiers <- tier
+  }
+  bench_schedule(
+    panel_specs,
+    paste0("panel_c", substring(part, 2L)),
+    sources = sources,
+    backends = if (part == "c1") {
+      c("embedded", "bpcells", "h5")
+    } else {
+      c("bpcells", "h5")
+    }
+  )
 }
 
 bench_schedule <- function(
