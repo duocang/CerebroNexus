@@ -28,8 +28,9 @@ Run without `--verify` to regenerate the two cases, CSV tables, scientific
 figures, Linked views configurations, and checksummed manifest. For a release
 audit, `--from-raw` first rebuilds the Cerebro object from the 12 inputs pinned
 in `hla_tcr_dextramer_sources.csv`. No Seurat object or raw source is tracked.
-The walkthrough and scientific claim boundaries are in
-[`docs/hla-tcr-end-to-end-case.md`](../docs/hla-tcr-end-to-end-case.md).
+The primary scientific case and secondary Viewer workflow are in
+[`hla_tcr_antigen_selected.Rmd`](../vignettes/hla_tcr_antigen_selected.Rmd) and
+[`hla_tcr_main_case.Rmd`](../vignettes/hla_tcr_main_case.Rmd), respectively.
 
 `DATASETS.md` is the single source of truth for provenance across all data types. The per-type notes files (`spatial.md`, `immune_repertoire.md`, `trajectory.md`) carry only design and rebuild details and link back to it. This keeps citations in one place and avoids duplicating source info per file.
 
