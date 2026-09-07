@@ -78,11 +78,30 @@ test_that("sweep isolates benchmark R processes from user startup files", {
   expect_match(sweep, 'R_LIBS_USER="$SCRATCH/r-user-library"', fixed = TRUE)
 })
 
+test_that("Panel C2 build CLI uses only the lazy full-source path", {
+  skip_unless_bench_cli()
+  script <- file.path(bench_root, "src", "11_build_full_backend.R")
+
+  expect_true(file.exists(script))
+  if (!file.exists(script)) {
+    return()
+  }
+  body <- paste(readLines(script, warn = FALSE), collapse = "\n")
+  expect_match(body, "bench_open_full_source", fixed = TRUE)
+  expect_match(body, "bench_write_full_backend", fixed = TRUE)
+  expect_match(body, "bench_build_lazy_query_plan", fixed = TRUE)
+  expect_match(body, "bench_make_full_shell", fixed = TRUE)
+  expect_false(grepl("dgCMatrix", body, fixed = TRUE))
+  expect_false(grepl("as.matrix(source_matrix)", body, fixed = TRUE))
+})
+
 test_that("source cache reuses only checksum-verified files", {
   skip_unless_bench_cli()
   helper <- file.path(bench_root, "lib", "source_cache.sh")
   expect_true(file.exists(helper))
-  if (!file.exists(helper)) return()
+  if (!file.exists(helper)) {
+    return()
+  }
 
   root <- tempfile("bench-cache-")
   origin <- file.path(root, "origin", "fixture.h5")
