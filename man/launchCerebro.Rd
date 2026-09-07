@@ -16,6 +16,7 @@ launchCerebro(
   point_opacity = 1,
   percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
+  mirai_options = NULL,
   ...
 )
 }
@@ -71,6 +72,10 @@ defaults to 100.}
 
 \item{projections_show_hover_info}{Show hover infos in projections. This
 setting can be changed in the UI; defaults to TRUE.}
+
+\item{mirai_options}{Optional named list overriding the asynchronous worker
+configuration. Supported entries are \code{enabled}, \code{workers},
+\code{queue_memory_mb}, \code{timeout_ms}, and \code{compute}.}
 
 \item{...}{Further parameters that are used by \code{shiny::runApp}, e.g.
 \code{host} or \code{port}.}

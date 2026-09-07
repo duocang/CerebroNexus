@@ -7,7 +7,12 @@
 ## down-sampling to a fixed number of cells, so the score stays responsive on
 ## large slides (it's an estimate of the same statistic on a random subset).
 ##----------------------------------------------------------------------------##
-output[["spatial_projection_morans_i"]] <- renderText({
+spatial_morans_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_source_call
+)
+
+spatial_morans_payload <- reactive({
   plot_parameters <- spatial_projection_parameters_plot()
   req(identical(plot_parameters[["plot_type"]], "ImageFeaturePlot"))
   gene <- plot_parameters[["feature_to_display"]]
@@ -47,18 +52,48 @@ output[["spatial_projection_morans_i"]] <- renderText({
     idx <- sort(sample(idx, max_cells))
   }
 
-  score <- morans_i(
-    coords[[1]][idx],
-    coords[[2]][idx],
-    expr[idx],
-    k = 6
+  list(
+    key = paste(
+      available_crb_files$selected,
+      plot_parameters[["projection"]],
+      gene,
+      sep = "\r"
+    ),
+    args = list(
+      root = file.path(Cerebro.options[["cerebro_root"]], "viewer"),
+      files = "spatial/func_spatial_helpers.R",
+      function_name = "morans_i",
+      args = list(
+        x = coords[[1]][idx],
+        y = coords[[2]][idx],
+        values = expr[idx],
+        k = 6L
+      )
+    ),
+    n = n,
+    max_cells = max_cells
   )
+}) %>%
+  debounce(150)
+
+observeEvent(spatial_morans_payload(), {
+  payload <- spatial_morans_payload()
+  spatial_morans_job$invoke(payload$key, payload$args)
+})
+
+output[["spatial_projection_morans_i"]] <- renderText({
+  payload <- spatial_morans_payload()
+  score <- spatial_morans_job$result()
   if (is.na(score)) {
     return("not enough cells")
   }
   paste0(
     formatC(score, format = "f", digits = 3),
-    if (n > max_cells) paste0(" (", max_cells, "-cell subsample)") else ""
+    if (payload$n > payload$max_cells) {
+      paste0(" (", payload$max_cells, "-cell subsample)")
+    } else {
+      ""
+    }
   )
 }) %>%
   cachePlot(
@@ -66,14 +101,6 @@ output[["spatial_projection_morans_i"]] <- renderText({
     spatial_projection_parameters_plot()[["feature_to_display"]],
     available_crb_files$selected
   )
-
-## Keep it computed even when the title-bar span is momentarily hidden (e.g.
-## while switching plot type), so the value is ready as soon as it reappears.
-outputOptions(
-  output,
-  "spatial_projection_morans_i",
-  suspendWhenHidden = FALSE
-)
 
 ## Info box explaining the score, shown when pressing the "info" button next to
 ## the Moran's I value in the projection title bar.

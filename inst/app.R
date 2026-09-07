@@ -173,10 +173,18 @@ options(shiny.maxRequestSize = 6 * 1024^2)
 ##----------------------------------------------------------------------------##
 ## load server and UI functions
 ##----------------------------------------------------------------------------##
+source("viewer/async_runtime.R", local = TRUE)
 source("viewer/shiny_UI.R", local = TRUE)
 source("viewer/shiny_server.R", local = TRUE)
 
 ##----------------------------------------------------------------------------##
 ## launch app
 ##----------------------------------------------------------------------------##
-shiny::shinyApp(ui = ui, server = server)
+shiny::shinyApp(
+  ui = ui,
+  server = server,
+  onStart = function() {
+    cerebro_async_init(cerebro_async_config(Cerebro.options[["mirai"]]))
+    shiny::onStop(cerebro_async_shutdown)
+  }
+)

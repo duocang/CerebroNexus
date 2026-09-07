@@ -5188,6 +5188,44 @@
     }
     return true;
   }
+  function singlePayloadCells(payload) {
+    var data = payload && payload.data || {}, cells = [], seen = new Set();
+    var add = function (values) {
+      if (!Array.isArray(values)) return;
+      values.forEach(function (value) {
+        if (Array.isArray(value)) add(value);
+        else if (value != null && !seen.has(String(value))) {
+          seen.add(String(value)); cells.push(String(value));
+        }
+      });
+    };
+    add(data.selection_key);
+    (data.panels || []).forEach(function (panel) {
+      add(panel && panel.selection_key);
+    });
+    return cells;
+  }
+  function ensureSingleBase(payload) {
+    if (linkedBundle && !linkedBundle._singleOnly) return;
+    var cells = linkedBundle && linkedBundle.cells
+      ? linkedBundle.cells.slice() : [];
+    var seen = new Set(cells.map(String));
+    singlePayloadCells(payload).forEach(function (cell) {
+      if (!seen.has(cell)) { seen.add(cell); cells.push(cell); }
+    });
+    if (!cells.length) return;
+    linkedBundle = {
+      _singleOnly: true,
+      dataset_id: 'single-view',
+      cells: cells,
+      n: cells.length,
+      groups: {}, cat_extra: {}, cat_skipped: {}, fields: {},
+      genes: [], projections: {}, trajectories: {}, spaces: [],
+      default_group: null
+    };
+    D = linkedBundle;
+    singleIndexCells = null; singleIndexMap = null;
+  }
   function singleIndex() {
     var cells = linkedBundle && linkedBundle.cells;
     if (cells === singleIndexCells && singleIndexMap) return singleIndexMap;
@@ -5656,6 +5694,7 @@
       id: id, meta: meta || {}, data: data || {}, hover: hover || {},
       extra: extra || {}
     });
+    ensureSingleBase(singleViews[id]);
     if (changedGroup) singleViews[id].hiddenGroups = [];
     if (data.reset_axes) singleViews[id].lenses = [];
     var pending = singleViews[id].pendingSavedState;
@@ -6566,7 +6605,6 @@
       var el = $('cv-meta');
       var linkedVis = !!(el && el.offsetParent !== null);
       var singleId = visibleSingleId();
-      var vis = linkedVis || !!singleId;
       var key = linkedVis ? 'linked' : (singleId || 'hidden');
       var host = singleId && singleHost(singleId);
       var surface = host && host.querySelector('.cerebro-cell-view-surface');
@@ -6586,7 +6624,10 @@
         activateLinked();
       }
       if (Shiny.setInputValue) {
-        Shiny.setInputValue('coordviews_visible', vis);
+        // Dedicated pages request only their own payload above. They must not
+        // trigger the full Linked Views bundle while its workspace is hidden.
+        Shiny.setInputValue('coordviews_visible', linkedVis);
+        Shiny.setInputValue('coordviews_warmable', !singleId);
       }
     }
     setInterval(reportVisibility, 250);

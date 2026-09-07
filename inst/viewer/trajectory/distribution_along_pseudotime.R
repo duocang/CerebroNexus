@@ -84,6 +84,11 @@ output[["trajectory_distribution_along_pseudotime_UI"]] <- renderUI({
 ## Plot.
 ##----------------------------------------------------------------------------##
 
+trajectory_density_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_source_call
+)
+
 output[[
   "trajectory_distribution_along_pseudotime_plot"
 ]] <- plotly::renderPlotly({
@@ -144,24 +149,45 @@ output[[
 
       incProgress(0.4, detail = "Calculating densities...")
 
+      density_key <- paste(
+        c(
+          available_crb_files$selected,
+          input[["trajectory_selected_method"]],
+          input[["trajectory_selected_name"]],
+          color_variable,
+          group_levels
+        ),
+        collapse = "\r"
+      )
+      trajectory_density_job$invoke(
+        density_key,
+        list(
+          root = file.path(
+            Cerebro.options[["cerebro_root"]],
+            "viewer",
+            "trajectory"
+          ),
+          files = "async_workers.R",
+          function_name = "trajectory_density_series",
+          args = list(
+            pseudotime = cells_df[["pseudotime"]],
+            group = as.character(cells_df[[color_variable]]),
+            group_levels = group_levels
+          )
+        )
+      )
+      density_series <- trajectory_density_job$result()
+
       ## add trace to plot for every group level
       for (i in seq_along(group_levels)) {
         ## get name of current group level
         current_group <- group_levels[i]
 
         ## filter cells for those that are in current group
-        temp_data <- cells_df[
-          which(cells_df[[color_variable]] == current_group),
-        ]
+        temp_density <- density_series[[current_group]]
 
         ## only proceed if at least 2 cells are in this subgroup
-        if (nrow(temp_data) > 1) {
-          ## calculate density over pseudotime
-          temp_density <- stats::density(
-            temp_data[["pseudotime"]],
-            kernel = "gaussian"
-          )
-
+        if (!is.null(temp_density)) {
           ## add alpha value to hex colors
           temp_color <- grDevices::col2rgb(colors_for_groups[i])
           temp_color <- grDevices::rgb(
@@ -179,8 +205,8 @@ output[[
           ## add trace to plot
           plot <- plot %>%
             plotly::add_trace(
-              x = temp_density$x,
-              y = temp_density$y,
+              x = temp_density[["x"]],
+              y = temp_density[["y"]],
               name = current_group,
               type = scatter_type,
               mode = 'lines',
@@ -197,7 +223,7 @@ output[[
                 "</b><br>",
                 "<b>Pseudotime</b>: ",
                 formatC(
-                  temp_density$x,
+                  temp_density[["x"]],
                   format = "f",
                   big.mark = ",",
                   digits = 2
@@ -205,7 +231,7 @@ output[[
                 "<br>",
                 "<b>Density</b>: ",
                 formatC(
-                  temp_density$y,
+                  temp_density[["y"]],
                   format = "f",
                   big.mark = ",",
                   digits = 2

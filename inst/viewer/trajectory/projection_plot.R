@@ -9,7 +9,12 @@
 ## parameters (filtering, subsetting, hover, colours). One source of truth so
 ## the coordinates sent to the plot match those used for selection and hover.
 ##----------------------------------------------------------------------------##
-trajectory_projection_prepared <- reactive({
+trajectory_projection_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_source_call
+)
+
+trajectory_projection_request <- reactive({
   req(
     trajectory_selection_ok(),
     input[["trajectory_percentage_cells_to_show"]],
@@ -22,9 +27,8 @@ trajectory_projection_prepared <- reactive({
 
   trajectory_data <- trajectory_data_reactive()
 
-  ## build data frame with data
   cells_df <- mergeTrajectoryWithMetaData(trajectory_data) %>%
-    dplyr::filter(!is.na(pseudotime))
+    as.data.frame()
 
   groups <- getGroups()
   group_filters <- stats::setNames(
@@ -34,61 +38,9 @@ trajectory_projection_prepared <- reactive({
     }),
     groups
   )
-  cells_df <- cells_df[cerebroGroupFilterMask(cells_df, group_filters), ]
-
-  ## randomly remove cells (if necessary)
-  cells_df <- randomlySubsetCells(
-    cells_df,
-    input[["trajectory_percentage_cells_to_show"]]
-  )
-
-  ## Send an explicit empty payload so clearing every filter cannot leave the
-  ## previous Canvas frame visible.
-  if (nrow(cells_df) == 0L) {
-    return(list(
-      cells_df = cells_df,
-      trajectory_lines = list(),
-      hover_info = character(0),
-      color_variable = input[["trajectory_point_color"]],
-      point_size = input[["trajectory_point_size"]],
-      point_opacity = input[["trajectory_point_opacity"]],
-      group_labels = isTRUE(input[["trajectory_projection_group_labels"]]),
-      draw_border = isTRUE(input[["trajectory_projection_point_border"]]),
-      keep_square = isTRUE(input[["trajectory_projection_keep_square"]])
-    ))
-  }
-
-  ## put rows in random order (so no group is drawn systematically on top)
-  cells_df <- cells_df[sample(seq_len(nrow(cells_df))), ]
-
-  ## trajectory path as line-segment shapes (warm near-black, the theme title
-  ## colour), drawn under the points as the structural backbone
   trajectory_edges <- trajectory_data[["edges"]]
-  trajectory_lines <- lapply(seq_len(nrow(trajectory_edges)), function(i) {
-    list(
-      type = "line",
-      line = list(color = cerebro_plotly_theme()$title, width = 1),
-      xref = "x",
-      yref = "y",
-      x0 = trajectory_edges$source_dim_1[i],
-      y0 = trajectory_edges$source_dim_2[i],
-      x1 = trajectory_edges$target_dim_1[i],
-      y1 = trajectory_edges$target_dim_2[i]
-    )
-  })
-
-  ## hover info: cell + metadata + state + pseudotime
-  hover_info <- buildHoverInfoForProjections(cells_df)
-  hover_info <- glue::glue(
-    "{hover_info}<br>",
-    "<b>State</b>: {cells_df$state}<br>",
-    "<b>Pseudotime</b>: {formatC(cells_df$pseudotime, format = 'f', digits = 2)}"
-  )
-
-  list(
-    cells_df = cells_df,
-    trajectory_lines = trajectory_lines,
-    hover_info = as.character(hover_info),
+  percentage <- input[["trajectory_percentage_cells_to_show"]]
+  display <- list(
     color_variable = input[["trajectory_point_color"]],
     point_size = input[["trajectory_point_size"]],
     point_opacity = input[["trajectory_point_opacity"]],
@@ -96,17 +48,49 @@ trajectory_projection_prepared <- reactive({
     draw_border = isTRUE(input[["trajectory_projection_point_border"]]),
     keep_square = isTRUE(input[["trajectory_projection_keep_square"]])
   )
+  list(
+    key = cerebro_async_cache_key(
+      available_crb_files$selected,
+      input[["trajectory_selected_method"]],
+      input[["trajectory_selected_name"]],
+      percentage,
+      group_filters,
+      display
+    ),
+    args = list(
+      root = file.path(
+        Cerebro.options[["cerebro_root"]],
+        "viewer",
+        "trajectory"
+      ),
+      files = "async_workers.R",
+      function_name = "trajectory_prepare_projection",
+      args = list(
+        cells_df = cells_df,
+        trajectory_edges = trajectory_edges,
+        group_filters = group_filters,
+        percentage = percentage,
+        display = display,
+        line_color = cerebro_plotly_theme()$title,
+        hover_groups = groups
+      )
+    )
+  )
 })
 
-## Debounce the prepared reactive so dragging a slider (point size / opacity /
+## Debounce the request so dragging a slider (point size / opacity /
 ## "% of cells") coalesces its rapid-fire input events into a single redraw
-## after the drag settles, instead of rebuilding the Canvas payload on every
-## intermediate value. Mirrors the debounce the other projection tabs already
-## apply to their parameter/data reactives.
-trajectory_projection_prepared <- debounce(
-  trajectory_projection_prepared,
+## and cancel any superseded daemon computation.
+trajectory_projection_request <- debounceAfterFirst(
+  trajectory_projection_request,
   200
 )
+
+trajectory_projection_prepared <- reactive({
+  request <- trajectory_projection_request()
+  trajectory_projection_job$invoke(request$key, request$args)
+  trajectory_projection_job$result()
+})
 
 ##----------------------------------------------------------------------------##
 ## Axis-reset state, mirroring the overview / gene-expression projections.

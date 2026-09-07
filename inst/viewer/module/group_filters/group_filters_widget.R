@@ -88,7 +88,7 @@ registerGroupFiltersUI <- function(output, prefix, getGroups, getGroupLevels) {
   })
 
   ## ensure rendered even when the surrounding cerebroBox is collapsed
-  shiny::outputOptions(output, output_id, suspendWhenHidden = FALSE)
+  outputOptions(output, output_id, suspendWhenHidden = FALSE)
 }
 
 #' Register the info-button modal for the group-filters panel.

@@ -210,12 +210,12 @@ test_that("renderers pass supported scRepertoire parameters", {
 
   expect_match(
     content,
-    "clonalAbundance\\([\\s\\S]{0,300}chain\\s*=\\s*pars\\$chain",
+    '"clonalAbundance",[\\s\\S]{0,300}chain\\s*=\\s*pars\\$chain',
     perl = TRUE
   )
   expect_match(
     content,
-    "clonalSizeDistribution\\([\\s\\S]{0,300}chain\\s*=\\s*pars\\$chain",
+    '"clonalSizeDistribution",[\\s\\S]{0,300}chain\\s*=\\s*pars\\$chain',
     perl = TRUE
   )
 })
@@ -403,7 +403,7 @@ test_that("renderers enforce scRepertoire parameter constraints", {
   # clone definition for the bundled data, so cloneCall is forced to "strict"
   expect_match(
     content,
-    "clonalSizeDistribution\\([\\s\\S]{0,200}cloneCall = \"strict\"",
+    '"clonalSizeDistribution",[\\s\\S]{0,200}cloneCall = "strict"',
     perl = TRUE
   )
 

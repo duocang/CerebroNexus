@@ -3082,6 +3082,7 @@ createShinyApp <- function(
     bundle_run_options <- Cerebro.options$.bundle_run_options
     shiny_options <- bundle_run_options$shiny_app_options
 
+    source(file.path(cerebro_root, "viewer/async_runtime.R"))
     source(file.path(cerebro_root, "viewer/shiny_UI.R"))
     source(file.path(cerebro_root, "viewer/shiny_server.R"))
     source(file.path(cerebro_root, "viewer/auth.R"), local = TRUE)
@@ -3097,10 +3098,12 @@ createShinyApp <- function(
       ui = viewer_app$ui,
       server = viewer_app$server,
       onStart = function() {
+        cerebro_async_init(cerebro_async_config(Cerebro.options[["mirai"]]))
         previous <- options(
           shiny.maxRequestSize = bundle_run_options$max_request_size_bytes
         )
         shiny::onStop(function() {
+          cerebro_async_shutdown()
           options(previous)
         })
       },

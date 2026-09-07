@@ -12,25 +12,8 @@
 ## panel highlights the same cells in every other panel — across modalities.
 ##----------------------------------------------------------------------------##
 
-## Per-dataset bundle builders (pure functions; see bundle.R). Sourced first so
-## cv_build_bundle() and every cv_build_* / cv_* helper is in scope for the
-## reactive below. Kept in a separate file so the builders can be unit-tested
-## without a running session (tests/testthat/test-coordinated-views.R).
-source(
-  paste0(
-    Cerebro.options[["cerebro_root"]],
-    "/viewer/coordinated_views/bundle.R"
-  ),
-  local = TRUE
-)
-
-source(
-  paste0(
-    Cerebro.options[["cerebro_root"]],
-    "/viewer/coordinated_views/config.R"
-  ),
-  local = TRUE
-)
+## Pure bundle/config helpers are compiled once by shiny_server.R and rebound
+## into this session before this module is sourced.
 
 cv_saved_view_dataset <- reactive({
   metadata <- getMetaData()
@@ -58,7 +41,7 @@ observe({
 ## Always resolves to something sendable: the bundle, or a list(error = <text>)
 ## describing why this data set has no linked views. Never NULL — see the observe
 ## below for why silence is the one outcome we cannot afford.
-## How many times the bundle has actually been built this session. A plain
+## How many times the bundle has been resolved for this session. A plain
 ## environment rather than a reactiveVal: it is written from inside the reactive
 ## that it counts, and a reactive value would make that a dependency on itself.
 ## Read back through exportTestValues -- "was any work done for a tab nobody
@@ -67,13 +50,41 @@ observe({
 coordviews_build_log <- new.env(parent = emptyenv())
 coordviews_build_log$n <- 0L
 coordviews_build_log$sent_n <- 0L
+coordviews_session_cache <- new.env(parent = emptyenv())
 
 coordviews_bundle <- reactive({
   req(!is.null(data_set()))
   coordviews_build_log$n <- coordviews_build_log$n + 1L
   tryCatch(
     {
-      b <- cv_build_bundle(data_set())
+      selected <- available_crb_files$selected %||% "in-memory"
+      file_identity <- if (file.exists(selected)) {
+        info <- file.info(selected)
+        paste(normalizePath(selected), info$size, info$mtime, sep = "\r")
+      } else {
+        as.character(selected)
+      }
+      configured <- unname(
+        Cerebro.options[["crb_file_to_load"]] %||% character()
+      )
+      bundle_cache <- if (selected %in% configured) {
+        .coordviews_process_cache
+      } else {
+        coordviews_session_cache
+      }
+      b <- if (
+        exists(
+          file_identity,
+          envir = bundle_cache,
+          inherits = FALSE
+        )
+      ) {
+        get(file_identity, envir = bundle_cache, inherits = FALSE)
+      } else {
+        built <- cv_build_bundle(data_set())
+        assign(file_identity, built, envir = bundle_cache)
+        built
+      }
       if (is.null(b)) {
         list(
           error = paste(
@@ -355,12 +366,11 @@ observeEvent(
 )
 
 
-## Nothing is built or sent until the user actually opens the tab.
-##
 ## `coordviews_bundle()` walks every cell of the loaded object -- reductions,
 ## spatial coordinates, the immune repertoire -- and the result is sizeable.
-## Doing that on connect made every session pay for a tab most of them never
-## open; colour edits now stay in the small patch reactive above.
+## Doing that before the first browser flush delayed the whole app. Build and
+## paint it only after the active page is usable, while no dedicated cell view
+## owns the shared canvas, so the later Linked Views switch has no cold start.
 ##
 ## The client reports whether the workspace is on screen (`coordviews_visible`)
 ## -- see www/cell_views.js for why that signal rather than the sidebar's
@@ -374,25 +384,31 @@ observeEvent(input[["coordviews_visible"]], {
 })
 
 ## Push the full bundle while visible and when the data set changes. The error
-## payload is pushed too, and that is the point: staying silent would leave the
-## PREVIOUS data set's panels on screen, presenting one data set's cells as
-## another's. Colour changes use the patch observer below.
-##
-## The req() has to come FIRST. It is what keeps this observer from taking a
-## dependency on the bundle while hidden -- nothing is built until the user
-## returns to the workspace.
+## payload is pushed too: silence would leave the previous data set on screen.
+coordviews_send_bundle <- function() {
+  bundle <- coordviews_bundle()
+  if (identical(coordviews_build_log$sent_n, coordviews_build_log$n)) {
+    return()
+  }
+  if (is.null(bundle$error)) {
+    bundle <- cv_apply_color_patch(bundle, isolate(coordviews_color_patch()))
+  }
+  session$sendCustomMessage("coordviews_data", bundle)
+  coordviews_build_log$sent_n <- coordviews_build_log$n
+}
+
+observe({
+  req(
+    viewer_after_first_paint(),
+    isTRUE(input[["coordviews_warmable"]])
+  )
+  coordviews_send_bundle()
+})
+
 observe(
   {
     req(coordviews_visible())
-    bundle <- coordviews_bundle()
-    if (identical(coordviews_build_log$sent_n, coordviews_build_log$n)) {
-      return()
-    }
-    if (is.null(bundle$error)) {
-      bundle <- cv_apply_color_patch(bundle, isolate(coordviews_color_patch()))
-    }
-    session$sendCustomMessage("coordviews_data", bundle)
-    coordviews_build_log$sent_n <- coordviews_build_log$n
+    coordviews_send_bundle()
   },
   priority = 1
 )
@@ -704,60 +720,96 @@ lapply(
   }
 )
 
-observeEvent(
-  list(
-    input[["coordviews_gene"]],
-    input[["coordviews_expression_mode"]]
-  ),
-  {
-    req(coordviews_visible())
-    b <- cv_ok(coordviews_bundle())
-    genes <- unique(input[["coordviews_gene"]])
-    genes <- genes[!is.na(genes) & nzchar(genes)]
-    if (is.null(b) || length(genes) == 0) {
-      session$sendCustomMessage(
-        "coordviews_geneval",
-        list(gene = "", ok = FALSE)
-      )
-      session$sendCustomMessage("coordviews_genepanels", list(ok = FALSE))
-      return()
-    }
-    values <- lapply(genes, cv_gene_values, cells = b$cells)
-    keep <- !vapply(values, is.null, logical(1))
-    genes <- genes[keep]
-    values <- values[keep]
-    if (length(values) == 0) {
-      session$sendCustomMessage(
-        "coordviews_geneval",
-        list(gene = "", ok = FALSE)
-      )
-      session$sendCustomMessage("coordviews_genepanels", list(ok = FALSE))
-      return()
-    }
-    mode <- input[["coordviews_expression_mode"]]
-    if (identical(mode, "panels")) {
-      session$sendCustomMessage(
-        "coordviews_genepanels",
-        cv_gene_panels_payload(genes, values)
-      )
-    } else {
-      mean_values <- Reduce(`+`, values) / length(values)
-      gv <- cv_scale_gene_values(mean_values)
-      session$sendCustomMessage(
-        "coordviews_geneval",
-        cv_gene_message(
-          if (length(genes) == 1) {
-            genes[[1]]
-          } else {
-            paste0("Mean expression (", length(genes), " genes)")
-          },
-          gv$v,
-          gv$max
-        )
-      )
-    }
+cv_gene_job <- cerebro_async_latest_value(session, cerebro_async_source_call)
+
+cv_gene_request <- function(genes, cells, kind) {
+  genes <- unique(genes[!is.na(genes) & nzchar(genes)])
+  if (!length(genes)) {
+    return(NULL)
   }
-)
+  expression_matrix <- tryCatch(
+    data_set()$getExpressionMatrix(cells = cells, genes = genes),
+    error = function(error) NULL
+  )
+  if (is.null(expression_matrix)) {
+    return(NULL)
+  }
+  list(
+    key = paste(
+      available_crb_files$selected,
+      kind,
+      cv_config_cell_fingerprint(cells),
+      paste(genes, collapse = "\r"),
+      sep = "\r"
+    ),
+    args = list(
+      root = file.path(
+        Cerebro.options[["cerebro_root"]],
+        "viewer",
+        "coordinated_views"
+      ),
+      files = "async_workers.R",
+      function_name = "cv_prepare_gene_values",
+      args = list(
+        expression_matrix = expression_matrix,
+        genes = genes,
+        cells = cells
+      )
+    )
+  )
+}
+
+coordviews_gene_result <- reactive({
+  req(coordviews_visible())
+  b <- cv_ok(coordviews_bundle())
+  req(!is.null(b))
+  genes <- unique(input[["coordviews_gene"]])
+  genes <- genes[!is.na(genes) & nzchar(genes)]
+  if (!length(genes)) {
+    return(list(ok = FALSE))
+  }
+  request <- cv_gene_request(genes, b$cells, "standard")
+  if (is.null(request)) {
+    return(list(ok = FALSE))
+  }
+  cv_gene_job$invoke(request$key, request$args)
+  list(
+    ok = TRUE,
+    genes = genes,
+    mode = input[["coordviews_expression_mode"]],
+    values = cv_gene_job$result()
+  )
+})
+
+observe({
+  result <- coordviews_gene_result()
+  if (!isTRUE(result$ok)) {
+    session$sendCustomMessage("coordviews_geneval", list(gene = "", ok = FALSE))
+    session$sendCustomMessage("coordviews_genepanels", list(ok = FALSE))
+    return()
+  }
+  if (identical(result$mode, "panels")) {
+    session$sendCustomMessage(
+      "coordviews_genepanels",
+      cv_gene_panels_payload(result$genes, result$values)
+    )
+    return()
+  }
+  mean_values <- Reduce(`+`, result$values) / length(result$values)
+  gv <- cv_scale_gene_values(mean_values)
+  session$sendCustomMessage(
+    "coordviews_geneval",
+    cv_gene_message(
+      if (length(result$genes) == 1L) {
+        result$genes[[1L]]
+      } else {
+        paste0("Mean expression (", length(result$genes), " genes)")
+      },
+      gv$v,
+      gv$max
+    )
+  )
+})
 
 ## RGB co-expression: one gene per channel, each scaled independently; an empty
 ## channel is all-zero. Recompute whenever any of the three genes changes.
@@ -766,41 +818,53 @@ observeEvent(
 ## single-gene selector above. Without it this observer built the whole bundle
 ## on connect -- the one place the laziness leaked, and invisible from outside
 ## because the bundle was built but never sent.
-observeEvent(
+cv_rgb_job <- cerebro_async_latest_value(session, cerebro_async_source_call)
+
+coordviews_rgb_result <- reactive({
+  req(coordviews_visible())
+  b <- cv_ok(coordviews_bundle())
+  req(!is.null(b))
+  channels <- c(
+    r = input[["coordviews_gene_r"]] %||% "",
+    g = input[["coordviews_gene_g"]] %||% "",
+    b = input[["coordviews_gene_b"]] %||% ""
+  )
+  genes <- unique(unname(channels[nzchar(channels)]))
+  if (!length(genes)) {
+    return(list(ok = FALSE))
+  }
+  request <- cv_gene_request(genes, b$cells, "rgb")
+  if (is.null(request)) {
+    return(list(ok = FALSE))
+  }
+  cv_rgb_job$invoke(request$key, request$args)
   list(
-    input[["coordviews_gene_r"]],
-    input[["coordviews_gene_g"]],
-    input[["coordviews_gene_b"]]
-  ),
-  {
-    req(coordviews_visible())
-    b <- cv_ok(coordviews_bundle())
-    if (is.null(b)) {
-      return()
+    ok = TRUE,
+    channels = channels,
+    values = cv_rgb_job$result(),
+    n = b$n
+  )
+})
+
+observe({
+  result <- coordviews_rgb_result()
+  if (!isTRUE(result$ok)) {
+    session$sendCustomMessage("coordviews_rgbval", list(ok = FALSE))
+    return()
+  }
+  channel <- function(name) {
+    gene <- result$channels[[name]]
+    if (!nzchar(gene)) {
+      return(list(v = rep(0L, result$n), gene = ""))
     }
-    zero <- rep(0L, b$n)
-    chan <- function(id) {
-      g <- input[[id]]
-      if (is.null(g) || !nzchar(g)) {
-        return(list(v = zero, gene = ""))
-      }
-      gv <- cv_gene_vector(g, b$cells)
-      if (is.null(gv)) list(v = zero, gene = "") else list(v = gv$v, gene = g)
-    }
-    r <- chan("coordviews_gene_r")
-    g <- chan("coordviews_gene_g")
-    bl <- chan("coordviews_gene_b")
-    if (!nzchar(r$gene) && !nzchar(g$gene) && !nzchar(bl$gene)) {
-      session$sendCustomMessage("coordviews_rgbval", list(ok = FALSE))
-      return()
-    }
-    session$sendCustomMessage(
-      "coordviews_rgbval",
-      cv_rgb_message(r, g, bl)
-    )
-  },
-  ignoreInit = TRUE
-)
+    scaled <- cv_scale_gene_values(result$values[[gene]])
+    list(v = scaled$v, gene = gene)
+  }
+  session$sendCustomMessage(
+    "coordviews_rgbval",
+    cv_rgb_message(channel("r"), channel("g"), channel("b"))
+  )
+})
 
 ##----------------------------------------------------------------------------##
 ## Spatial histology-image controls — shown only when the current data set's

@@ -1,123 +1,86 @@
 ##----------------------------------------------------------------------------##
 ## Expression levels of cells in projection.
 ##
-## bindCache() was attempted here but backed out: the reactive depends on
-## expression_selected_genes(), which is an eventReactive that req()s
-## input$expression_analysis_mode, and the chain with isolate() inside a
-## bindCache key reliably produced inconsistent body-execution behaviour on
-## repeated gene switches (some clicks hit cache even when the gene had just
-## changed, risking stale plots). Leaving the per-gene compute in place for
-## now; step 4's extractExpression refactor is the safer place to reclaim
-## repeated-click latency on this reactive.
+## The file-backed expression object stays on the Shiny process. Only the
+## requested genes x cells slice is materialised there; conversion to RGB
+## panels, separate panels, or a per-cell mean runs in mirai.
 ##----------------------------------------------------------------------------##
-expression_projection_expression_levels <- reactive({
+expression_projection_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_source_call
+)
+
+expression_projection_request <- reactive({
   req(
     expression_projection_cells_to_show(),
     expression_selected_genes()
   )
 
-  withProgress(message = 'Calculating expression levels...', value = 0.2, {
-    cells_to_show <- expression_projection_cells_to_show()
-    ## expression_projection_cells_to_show() returns numeric row ids (see
-    ## obj_projection_cells_to_show.R: `cells_to_show <- cells_df$row_id`),
-    ## not cell barcodes. Passing numeric ids into getExpressionMatrix(cells=)
-    ## works by accident on dgCMatrix (R's `[` accepts column positions) but
-    ## breaks the RleMatrix branch in class-Cerebro.R, which calls
-    ## match(cells, colnames(self$expression)) -- matching numbers against
-    ## barcode strings returns NA. Translate once here so every backend sees
-    ## the documented contract: cells = character barcodes.
-    cells_to_show_bc <- colnames(data_set()$expression)[cells_to_show]
-    n_cells <- length(cells_to_show)
-    genes_data <- expression_selected_genes()
+  cells_to_show <- expression_projection_cells_to_show()
+  cells_to_show_bc <- colnames(data_set()$expression)[cells_to_show]
+  n_cells <- length(cells_to_show)
+  genes_data <- expression_selected_genes()
+  genes_present <- intersect(
+    genes_data$genes_to_display_present,
+    getGeneNames()
+  )
+  panel_mode <- input[["expression_projection_genes_in_separate_panels"]]
+  req(panel_mode)
 
-    ## expression_selected_genes() is an eventReactive bound to the
-    ## "Plot Expression" button, so its cached `genes_to_display_present` is
-    ## NOT refreshed on a dataset switch. If the user previously plotted
-    ## genes that exist in the old dataset but not in the new one, the cache
-    ## still holds them and getExpressionMatrix(genes=) below would crash
-    ## with vctrs::vec_slice "Element X doesn't exist". Re-filter against
-    ## the current dataset's gene names every time this reactive fires.
-    genes_present <- intersect(
-      genes_data$genes_to_display_present,
-      getGeneNames()
+  separate <- FALSE
+  if (length(genes_present) > 0L) {
+    req(expression_projection_coordinates())
+    separate <- ncol(expression_projection_coordinates()) == 2L &&
+      identical(panel_mode, "separate") &&
+      length(genes_present) >= 2L &&
+      length(genes_present) <= 9L
+  }
+  mode <- if (identical(panel_mode, "rgb")) {
+    "rgb"
+  } else if (separate) {
+    "separate"
+  } else {
+    "aggregate"
+  }
+
+  if (length(genes_present)) {
+    expression_matrix <- data_set()$getExpressionMatrix(
+      cells = cells_to_show_bc,
+      genes = genes_present
     )
+  } else {
+    expression_matrix <- matrix(numeric(0), nrow = 0L, ncol = n_cells)
+  }
 
-    if (length(genes_present) == 0) {
-      expression_levels <- if (
-        identical(
-          input[["expression_projection_genes_in_separate_panels"]],
-          "rgb"
-        )
-      ) {
-        list(r = rep(0, n_cells), g = rep(0, n_cells), b = rep(0, n_cells))
-      } else {
-        rep(0, n_cells)
-      }
-    } else {
-      req(expression_projection_coordinates())
-      ## All branches below go through data_set()$getExpressionMatrix(cells, genes)
-      ## with character barcodes (cells_to_show_bc) instead of subscripting
-      ## data_set()$expression directly. The helper materialises only the
-      ## requested gene x cell slice, avoiding the previous pattern of
-      ## extracting a full row (all cells) and subsetting afterwards. Using
-      ## barcodes lets the helper dispatch correctly across dgCMatrix (named
-      ## [ ] subset), RleMatrix (match() against colnames), and IterableMatrix,
-      ## so the former IterableMatrix special case is no longer needed.
-      if (
-        identical(
-          input[["expression_projection_genes_in_separate_panels"]],
-          "rgb"
-        )
-      ) {
-        incProgress(0.3, detail = "Calculating RGB co-expression...")
-        expression_levels <- lapply(genes_data[["rgb_genes"]], function(gene) {
-          if (is.null(gene) || !gene %in% genes_present) {
-            return(rep(0, n_cells))
-          }
-          unname(as.numeric(data_set()$getExpressionMatrix(
-            cells = cells_to_show_bc,
-            genes = gene
-          )))
-        })
-      } else if (
-        ncol(expression_projection_coordinates()) == 2 &&
-          identical(
-            input[["expression_projection_genes_in_separate_panels"]],
-            "separate"
-          ) &&
-          length(genes_present) >= 2 &&
-          length(genes_present) <= 9
-      ) {
-        incProgress(0.3, detail = "Extracting matrix for multiple panels...")
-        expression_matrix <- data_set()$getExpressionMatrix(
-          cells = cells_to_show_bc,
-          genes = genes_present
-        )
-        expression_matrix <- Matrix::t(expression_matrix)
-        expression_levels <- list()
-        for (i in seq_len(ncol(expression_matrix))) {
-          expression_levels[[colnames(expression_matrix)[
-            i
-          ]]] <- as.vector(expression_matrix[, i])
-        }
-      } else if (length(genes_present) == 1) {
-        incProgress(0.3, detail = "Extracting single gene expression...")
-        expression_matrix <- data_set()$getExpressionMatrix(
-          cells = cells_to_show_bc,
-          genes = genes_present
-        )
-        expression_levels <- unname(as.numeric(expression_matrix))
-      } else if (length(genes_present) >= 2) {
-        incProgress(0.3, detail = "Calculating mean expression...")
-        ## Per-cell mean across the requested genes, restricted to cells_to_show.
-        expression_levels <- unname(
-          data_set()$getMeanExpressionForCells(
-            cells = cells_to_show_bc,
-            genes = genes_present
-          )
-        )
-      }
-    }
-    return(expression_levels)
-  })
+  list(
+    key = cerebro_async_cache_key(
+      available_crb_files$selected,
+      mode,
+      genes_present,
+      genes_data[["rgb_genes"]],
+      cells_to_show_bc
+    ),
+    args = list(
+      root = file.path(
+        Cerebro.options[["cerebro_root"]],
+        "viewer",
+        "gene_expression"
+      ),
+      files = "async_workers.R",
+      function_name = "expression_prepare_levels",
+      args = list(
+        expression_matrix = expression_matrix,
+        mode = mode,
+        genes_present = genes_present,
+        rgb_genes = genes_data[["rgb_genes"]],
+        n_cells = n_cells
+      )
+    )
+  )
+})
+
+expression_projection_expression_levels <- reactive({
+  request <- expression_projection_request()
+  expression_projection_job$invoke(request$key, request$args)
+  expression_projection_job$result()
 })

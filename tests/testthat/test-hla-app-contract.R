@@ -812,7 +812,7 @@ test_that("the page's nav gate scans every sample, like the core does", {
   )
   expect_match(
     src,
-    "\"hla_tcr_motifs\",[\\s\\S]{0,1500}hla_detect_chains\\(getImmuneRepertoire\\(\\)\\)",
+    "repertoire <- tryCatch\\(getImmuneRepertoire\\(\\)[\\s\\S]{0,800}hla_detect_chains\\(repertoire\\)",
     perl = TRUE
   )
 })

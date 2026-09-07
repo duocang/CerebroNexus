@@ -115,28 +115,6 @@ observeEvent(input[["expression_projection_export"]], {
     }
     ## plot must be a ggplot object, otherwise don't proceed
     req(is.ggplot(plot))
-    ## save plot
-    pdf(NULL)
-    ggsave(save_file_path, plot, height = 8, width = 11)
-    ## check if file was succesfully saved
-    ## ... successful
-    if (file.exists(save_file_path)) {
-      ## give positive message
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "Success!",
-        text = paste0("Plot saved successfully as: ", save_file_path),
-        type = "success"
-      )
-      ## ... failed
-    } else {
-      ## give negative message
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "Error!",
-        text = "Sorry, it seems something went wrong...",
-        type = "error"
-      )
-    }
+    saveViewerPlotAsync(session, save_file_path, plot)
   }
 })

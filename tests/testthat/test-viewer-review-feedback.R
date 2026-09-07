@@ -716,8 +716,14 @@ test_that("Specialist group filters reuse the Linked views control", {
   expect_match(ir_settings, 'identical(p$type, "select")', fixed = TRUE)
 
   trajectory_plot <- viewer_source("trajectory", "projection_plot.R")
-  expect_match(trajectory_plot, "cerebroGroupFilterMask", fixed = TRUE)
-  expect_match(trajectory_plot, "trajectory_lines = list()", fixed = TRUE)
+  trajectory_worker <- viewer_source("trajectory", "async_workers.R")
+  expect_match(trajectory_plot, "group_filters = group_filters", fixed = TRUE)
+  expect_match(
+    trajectory_worker,
+    "for (group in names(group_filters))",
+    fixed = TRUE
+  )
+  expect_match(trajectory_worker, "trajectory_lines <- lapply", fixed = TRUE)
 })
 
 test_that("Gene expression display and colour modes are linked", {
@@ -849,7 +855,7 @@ test_that("cell scatter pages debounce only complete render snapshots", {
   }
   for (path in snapshot_files) {
     source <- paste(readLines(path, warn = FALSE), collapse = "\n")
-    expect_match(source, "<- debounce(", fixed = TRUE)
+    expect_match(source, "<- debounceAfterFirst(", fixed = TRUE)
   }
 
   spatial_update <- viewer_source(

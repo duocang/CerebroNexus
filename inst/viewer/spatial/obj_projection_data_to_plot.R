@@ -162,7 +162,7 @@ spatial_projection_data_to_plot_raw <- reactive({
   return(to_return)
 })
 
-spatial_projection_data_to_plot <- debounce(
+spatial_projection_data_to_plot <- debounceAfterFirst(
   spatial_projection_data_to_plot_raw,
   150
 )

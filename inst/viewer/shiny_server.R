@@ -22,9 +22,65 @@ source(
   local = TRUE
 )
 
+## Linked Views builders and configuration validators are pure. Parse them once,
+## then bind lightweight closure copies to each session so their guarded app
+## helpers still resolve in the session environment.
+.coordviews_runtime <- new.env(parent = environment())
+for (path in c(
+  "/viewer/clone_contract.R",
+  "/viewer/coordinated_views/bundle.R",
+  "/viewer/coordinated_views/config.R"
+)) {
+  sys.source(
+    paste0(Cerebro.options[["cerebro_root"]], path),
+    envir = .coordviews_runtime,
+    keep.source = FALSE
+  )
+}
 ## Generated Extra material tables are immutable. Share their lazy cache across
 ## sessions instead of reading the same sheet again for every browser tab.
 .extra_material_process_cache <- new.env(parent = emptyenv())
+
+## CRB objects and linked-view bundles are immutable at runtime. Sharing them
+## avoids repeating the largest deserialisation and bundle walk for every
+## concurrent browser session in the same R process.
+.crb_process_cache <- new.env(parent = emptyenv())
+.crb_raw_process_cache <- new.env(parent = emptyenv())
+.coordviews_process_cache <- new.env(parent = emptyenv())
+
+viewerDefaultCrbPath <- function(options) {
+  files <- options[["crb_file_to_load"]]
+  if (is.null(files)) {
+    return(NULL)
+  }
+  files <- unname(files)
+  files <- files[file.exists(files)]
+  if (!length(files)) {
+    return(NULL)
+  }
+  pick_smallest <- options[["crb_pick_smallest_file"]]
+  if (is.null(pick_smallest) || isTRUE(pick_smallest)) {
+    return(files[[which.min(file.size(files))]])
+  }
+  files[[1L]]
+}
+
+startup_crb <- viewerDefaultCrbPath(Cerebro.options)
+if (!is.null(startup_crb)) {
+  tryCatch(
+    {
+      .crb_raw_process_cache[[startup_crb]] <- readRDS(startup_crb)
+      message("CRB startup preload: ", basename(startup_crb))
+    },
+    error = function(condition) {
+      warning(
+        "CRB startup preload failed: ",
+        conditionMessage(condition),
+        call. = FALSE
+      )
+    }
+  )
+}
 
 server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
@@ -41,13 +97,13 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/clone_contract.R"
-    ),
-    local = TRUE
-  )
+  for (name in ls(.coordviews_runtime, all.names = TRUE)) {
+    value <- get(name, envir = .coordviews_runtime, inherits = FALSE)
+    if (is.function(value)) {
+      environment(value) <- environment()
+    }
+    assign(name, value, envir = environment())
+  }
 
   ##--------------------------------------------------------------------------##
   ## Central parameters.
@@ -75,6 +131,52 @@ server <- function(input, output, session) {
       Cerebro.options[['projections_show_hover_info']],
       TRUE
     )
+  )
+
+  ## Hidden settings previously joined the first reactive flush. Queue their
+  ## suspendWhenHidden = FALSE requests until the active page has painted, then
+  ## warm them so later tab switches retain their existing instant controls.
+  viewer_first_paint <- new.env(parent = emptyenv())
+  viewer_first_paint$ready <- FALSE
+  viewer_after_first_paint <- reactiveVal(FALSE)
+  viewer_deferred_output_options <- list()
+  outputOptions <- function(output, x, ...) {
+    options <- list(...)
+    if (
+      !isTRUE(viewer_first_paint$ready) &&
+        identical(options$suspendWhenHidden, FALSE)
+    ) {
+      viewer_deferred_output_options[[x]] <<- options
+      return(invisible(NULL))
+    }
+    do.call(
+      shiny::outputOptions,
+      c(list(x = output, name = x), options)
+    )
+  }
+  session$onFlushed(
+    function() {
+      later::later(
+        function() {
+          viewer_first_paint$ready <- TRUE
+          if (exists("cerebro_async_start", mode = "function")) {
+            cerebro_async_start()
+          }
+          for (id in names(viewer_deferred_output_options)) {
+            do.call(
+              shiny::outputOptions,
+              c(
+                list(x = output, name = id),
+                viewer_deferred_output_options[[id]]
+              )
+            )
+          }
+          viewer_after_first_paint(TRUE)
+        },
+        delay = 1
+      )
+    },
+    once = TRUE
   )
 
   viewer_initial_page_tabs <- c(
@@ -548,19 +650,46 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   ## Dynamic sidebar: show/hide conditional tabs based on dataset content.
   ##--------------------------------------------------------------------------##
-  toggleConditionalTab <- function(tab_name, check_fn) {
+  viewer_dataset_capabilities <- reactive({
+    req(viewer_after_first_paint(), data_set())
+    repertoire <- tryCatch(getImmuneRepertoire(), error = function(e) NULL)
+    stats::setNames(
+      c(
+        length(getMethodsForMarkerGenes()) > 0L,
+        length(getGroupsWithMostExpressedGenes()) > 0L,
+        length(getMethodsForEnrichedPathways()) > 0L,
+        length(getExtraMaterialCategories()) > 0L,
+        length(repertoire) > 0L,
+        length(intersect(getMethodsForTrajectories(), "monocle2")) > 0L,
+        length(availableSpatial()) > 0L,
+        !is.null(tryCatch(data_set()$getTrekker(), error = function(e) NULL)),
+        any(
+          tryCatch(
+            hla_detect_chains(repertoire),
+            error = function(e) character(0)
+          ) %in%
+            c("TRA", "TRB")
+        )
+      ),
+      c(
+        "markerGenes",
+        "mostExpressedGenes",
+        "enrichedPathways",
+        "extra_material",
+        "immune_repertoire",
+        "trajectory",
+        "spatial",
+        "trekker",
+        "hla_tcr_motifs"
+      )
+    )
+  })
+
+  toggleConditionalTab <- function(tab_name) {
     item_id <- paste0("sidebar_item_", tab_name)
-    show_reactive <- reactive({
-      req(data_set())
-      result <- tryCatch(check_fn(), error = function(e) FALSE)
-      if (is.logical(result)) {
-        return(result)
-      }
-      length(result) > 0
-    })
     observe({
-      req(!is.null(data_set()))
-      should_show <- show_reactive()
+      capabilities <- viewer_dataset_capabilities()
+      should_show <- isTRUE(capabilities[[tab_name]])
       shinyjs::toggle(id = item_id, condition = should_show)
       decision <- viewerInitialPageDecision(
         initial_tab,
@@ -577,69 +706,7 @@ server <- function(input, output, session) {
     })
   }
 
-  toggleConditionalTab(
-    "markerGenes",
-    function() getMethodsForMarkerGenes()
-  )
-  toggleConditionalTab(
-    "mostExpressedGenes",
-    function() getGroupsWithMostExpressedGenes()
-  )
-  toggleConditionalTab(
-    "enrichedPathways",
-    function() getMethodsForEnrichedPathways()
-  )
-  toggleConditionalTab("extra_material", function() {
-    length(getExtraMaterialCategories()) > 0L
-  })
-  toggleConditionalTab(
-    "immune_repertoire",
-    function() {
-      getImmuneRepertoire()
-    }
-  )
-  toggleConditionalTab(
-    "trajectory",
-    ## Only supported methods (monocle2) should surface the tab; an unsupported
-    ## method would otherwise render a blank tab instead of the empty state.
-    function() intersect(getMethodsForTrajectories(), c("monocle2"))
-  )
-  toggleConditionalTab(
-    "spatial",
-    function() availableSpatial()
-  )
-  ## Trekker single-cell spatial mapping: its own bespoke page (not the generic
-  ## Spatial tab). Shown only when the loaded .crb carries a `trekker` slot.
-  toggleConditionalTab(
-    "trekker",
-    function() {
-      tk <- tryCatch(data_set()$getTrekker(), error = function(e) NULL)
-      !is.null(tk)
-    }
-  )
-  toggleConditionalTab(
-    "hla_tcr_motifs",
-    ## Show only when the data set actually carries a TCR (TRA/TRB). HLA typing
-    ## is NOT required — the motif network works without it, and the Data & QC
-    ## tab is where a user would add HLA, so the page must be reachable first.
-    ##
-    ## hla_detect_chains(), not the IR module's detect_chains(): the latter only
-    ## scans the first three samples, so a cohort whose TCR data starts at sample
-    ## four would hide this page while the core underneath could analyse it
-    ## perfectly well — and the page is the only way to reach Data & QC, so there
-    ## would be no way in. The gate has to agree with what the page can do.
-    ## Bound into this scope by the module's core_shim, which is sourced before
-    ## this closure is ever evaluated.
-    function() {
-      any(
-        tryCatch(
-          hla_detect_chains(getImmuneRepertoire()),
-          error = function(e) character(0)
-        ) %in%
-          c("TRA", "TRB")
-      )
-    }
-  )
+  lapply(conditional_tabs, toggleConditionalTab)
 
   ## Cleanup snapshot artifacts that may have been left by test runs.
   snapshot_dir <- file.path(

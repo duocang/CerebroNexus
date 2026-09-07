@@ -104,33 +104,8 @@ observeEvent(input[["spatial_projection_export"]], {
           )
       }
 
-      incProgress(0.6, detail = "Writing PDF file...")
-      ## save plot
-      pdf(NULL)
-      ggsave(save_file_path, plot, height = 8, width = 11)
-
-      incProgress(0.9, detail = "Finishing...")
-
-      ## check if file was succesfully saved
-      ## ... successful
-      if (file.exists(save_file_path)) {
-        ## give positive message
-        shinyWidgets::sendSweetAlert(
-          session = session,
-          title = "Success!",
-          text = paste0("Plot saved successfully as: ", save_file_path),
-          type = "success"
-        )
-        ## ... failed
-      } else {
-        ## give negative message
-        shinyWidgets::sendSweetAlert(
-          session = session,
-          title = "Error!",
-          text = "Sorry, it seems something went wrong...",
-          type = "error"
-        )
-      }
+      incProgress(0.6, detail = "Queueing PDF export...")
+      saveViewerPlotAsync(session, save_file_path, plot)
       ## ... selection projection consists of 3 dimensions
     } else if (plot_parameters[['n_dimensions']] == 3) {
       ## give error message

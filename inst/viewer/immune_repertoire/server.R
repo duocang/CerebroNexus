@@ -19,40 +19,13 @@ has_scRepertoire <- function() {
 }
 
 ## ---- Lazy-load boundary ------------------------------------------------ ##
-## scRepertoire is loaded lazily: the first scRepertoire::fn() call inside a
-## plot renderer triggers loadNamespace() (~8s, ~90 packages). We deliberately
-## do NOT prewarm it in the background — later::later() is cooperative
-## scheduling on Shiny's single R thread, so a "background" loadNamespace()
-## still blocks the event loop and freezes every session sharing the process.
-## Startup therefore never loads scRepertoire; a repertoire user instead pays a
-## predictable one-time load on their first plot.
-##
-## req_scRepertoire() gates every repertoire renderer. It cheaply confirms the
-## package is installed (system.file, no namespace load), then forces the
-## idempotent namespace load HERE so a broken or partial install surfaces as an
-## explicit, useful message inside the plot box — rather than an opaque error
-## from deep inside a scRepertoire call, or a full UI that only fails when a
-## renderer runs (system.file alone cannot detect a missing transitive
-## dependency, incompatible binary, failed .onLoad, or corrupt lazy-load DB).
-## The settings and tab gates keep using the cheap has_scRepertoire() probe so
-## the first flush stays free of any namespace load.
+## Never load scRepertoire on the Shiny process. Its namespace pulls roughly 90
+## packages and used to freeze every session sharing that process for several
+## seconds. Heavy calls below are sent to mirai daemons, where namespace startup
+## and computation cannot block input handling. Worker failures return through
+## the async adapter and are rendered in the plot output.
 req_scRepertoire <- function() {
   req(has_scRepertoire())
-  loaded <- tryCatch(
-    {
-      loadNamespace("scRepertoire")
-      TRUE
-    },
-    error = function(e) conditionMessage(e)
-  )
-  validate(need(
-    isTRUE(loaded),
-    paste0(
-      "scRepertoire is installed but could not be loaded",
-      if (is.character(loaded)) paste0(": ", loaded) else "",
-      ". Please reinstall it and its dependencies."
-    )
-  ))
 }
 
 ## ---- Missing-dependency notice ---------------------------------------- ##

@@ -319,11 +319,8 @@ test_that("Spatial tab is wired into the app UI and server", {
   )
   expect_match(server_src, "spatial/server\\.R")
   expect_match(server_src, "group_filters/group_filters_widget\\.R")
-  expect_match(
-    server_src,
-    'toggleConditionalTab\\([\\s\\S]{0,80}"spatial"',
-    perl = TRUE
-  )
+  expect_match(server_src, '"spatial"[\\s\\S]{0,120}"trekker"', perl = TRUE)
+  expect_match(server_src, "lapply\\(conditional_tabs, toggleConditionalTab\\)")
 })
 
 ##----------------------------------------------------------------------------##

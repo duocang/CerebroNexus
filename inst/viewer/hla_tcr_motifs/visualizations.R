@@ -635,6 +635,125 @@ observeEvent(hla_visnet(), ignoreInit = TRUE, {
 ## as recomputable tables, plus a manifest carrying the parameters and every
 ## caveat that applies — so numbers cannot leave the app stripped of the fact
 ## that, say, the receptors were selected on the association being displayed.
+hla_export_generation <- 0L
+hla_export_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_source_call,
+  max_entries = 2L
+)
+
+hla_export_request <- reactive({
+  g <- hla_motif_graph()
+  tabs <- hla_graph_tables(g)
+  motifs <- hla_motif_summary(g)
+  typing <- hla_active_typing()
+  ir_samples <- names(getImmuneRepertoire())
+  unit_map <- tryCatch(
+    hla_analysis_unit_map(typing, ir_samples),
+    error = function(e) NULL
+  )
+  qc <- tryCatch(attr(typing, "qc"), error = function(e) NULL)
+
+  manifest <- hla_build_manifest(
+    dataset = tryCatch(
+      data_set()$experiment$experiment_name,
+      error = function(e) NA_character_
+    ),
+    chain = hla_active_chain(),
+    input_channel = if (
+      !is.null(hla_session_typing()) && nrow(hla_session_typing()) > 0
+    ) {
+      "session upload"
+    } else if (hla_has_typing()) {
+      "stored .crb"
+    } else {
+      "none"
+    },
+    hla_source_type = if (hla_has_typing()) {
+      paste(unique(typing$source_type), collapse = ", ")
+    } else {
+      NA_character_
+    },
+    unit_type = if (is.null(unit_map)) {
+      NA_character_
+    } else {
+      paste(unique(unit_map$unit_type), collapse = ", ")
+    },
+    observation_unit = hla_unit_noun(),
+    n_units = length(ir_samples),
+    n_nodes = nrow(tabs$nodes),
+    n_edges = nrow(tabs$edges),
+    n_motifs = nrow(motifs),
+    min_nodes = hla_param("hla_min_nodes", hla_default_min_nodes()),
+    split_by_v = isTRUE(hla_param("hla_by_v", hla_by_v_default())),
+    show_isolated = isTRUE(hla_param("hla_show_isolated", FALSE)),
+    allele = hla_color_allele() %||% NA_character_,
+    scope = tryCatch(hla_scope_mode(), error = function(e) NA_character_),
+    allele_i = tryCatch(
+      hla_pair_allele_i() %||% NA_character_,
+      error = function(e) NA_character_
+    ),
+    allele_ii = tryCatch(
+      hla_pair_allele_ii() %||% NA_character_,
+      error = function(e) NA_character_
+    ),
+    lineage_column = tryCatch(
+      hla_celltype_col() %||% NA_character_,
+      error = function(e) NA_character_
+    ),
+    tcr_selection = tryCatch(
+      data_set()$technical_info$tcr_selection %||% NA_character_,
+      error = function(e) NA_character_
+    ),
+    qc_warnings = if (is.data.frame(qc) && nrow(qc) > 0) {
+      qc$issue
+    } else {
+      character(0)
+    },
+    app_version = as.character(
+      Cerebro.options[["cerebro_version"]] %||% "unknown"
+    )
+  )
+  tables <- list(
+    manifest = manifest,
+    nodes = tabs$nodes,
+    edges = tabs$edges,
+    motifs = motifs
+  )
+  if (hla_has_typing()) {
+    tables$hla_typing <- typing
+  }
+  overlap <- tryCatch(hla_overlap_table(), error = function(e) NULL)
+  if (is.data.frame(overlap) && nrow(overlap) > 0) {
+    tables$allele_overlap <- overlap
+  }
+  hla_export_generation <<- hla_export_generation + 1L
+  list(
+    key = paste0("hla-export-", hla_export_generation),
+    args = list(
+      root = file.path(
+        Cerebro.options[["cerebro_root"]],
+        "viewer",
+        "hla_tcr_motifs"
+      ),
+      files = "async_workers.R",
+      function_name = "hla_build_export_archive",
+      args = list(tables = tables)
+    )
+  )
+})
+
+hla_export_archive <- reactive({
+  request <- hla_export_request()
+  hla_export_job$invoke(request$key, request$args)
+  hla_export_job$result()
+})
+
+observe({
+  req(identical(input[["sidebar"]], "hla_tcr_motifs"))
+  hla_export_archive()
+})
+
 output$hla_export_analysis <- downloadHandler(
   filename = function() {
     sprintf(
@@ -644,116 +763,9 @@ output$hla_export_analysis <- downloadHandler(
     )
   },
   content = function(file) {
-    g <- hla_motif_graph()
-    tabs <- hla_graph_tables(g)
-    motifs <- hla_motif_summary(g)
-    typing <- hla_active_typing()
-    ir_samples <- names(getImmuneRepertoire())
-    unit_map <- tryCatch(
-      hla_analysis_unit_map(typing, ir_samples),
-      error = function(e) NULL
-    )
-    qc <- tryCatch(attr(typing, "qc"), error = function(e) NULL)
-
-    manifest <- hla_build_manifest(
-      dataset = tryCatch(
-        data_set()$experiment$experiment_name,
-        error = function(e) NA_character_
-      ),
-      chain = hla_active_chain(),
-      input_channel = if (
-        !is.null(hla_session_typing()) && nrow(hla_session_typing()) > 0
-      ) {
-        "session upload"
-      } else if (hla_has_typing()) {
-        "stored .crb"
-      } else {
-        "none"
-      },
-      hla_source_type = if (hla_has_typing()) {
-        paste(unique(typing$source_type), collapse = ", ")
-      } else {
-        NA_character_
-      },
-      unit_type = if (is.null(unit_map)) {
-        NA_character_
-      } else {
-        paste(unique(unit_map$unit_type), collapse = ", ")
-      },
-      observation_unit = hla_unit_noun(),
-      n_units = length(ir_samples),
-      n_nodes = nrow(tabs$nodes),
-      n_edges = nrow(tabs$edges),
-      n_motifs = nrow(motifs),
-      min_nodes = hla_param("hla_min_nodes", hla_default_min_nodes()),
-      split_by_v = isTRUE(hla_param("hla_by_v", hla_by_v_default())),
-      show_isolated = isTRUE(hla_param("hla_show_isolated", FALSE)),
-      allele = hla_color_allele() %||% NA_character_,
-      scope = tryCatch(hla_scope_mode(), error = function(e) NA_character_),
-      allele_i = tryCatch(
-        hla_pair_allele_i() %||% NA_character_,
-        error = function(e) NA_character_
-      ),
-      allele_ii = tryCatch(
-        hla_pair_allele_ii() %||% NA_character_,
-        error = function(e) NA_character_
-      ),
-      lineage_column = tryCatch(
-        hla_celltype_col() %||% NA_character_,
-        error = function(e) NA_character_
-      ),
-      tcr_selection = tryCatch(
-        data_set()$technical_info$tcr_selection %||% NA_character_,
-        error = function(e) NA_character_
-      ),
-      qc_warnings = if (is.data.frame(qc) && nrow(qc) > 0) {
-        qc$issue
-      } else {
-        character(0)
-      },
-      # The app version comes from the runtime config, not from the installed
-      # CerebroNexus package: an exported app must not reference the package at
-      # runtime (see the self-containment check in test-smoke-production.R).
-      app_version = as.character(
-        Cerebro.options[["cerebro_version"]] %||% "unknown"
-      )
-    )
-
-    # A unique staging directory per download. Concurrent user sessions share
-    # one R process, so a fixed tempdir()/hla_export path lets one download's
-    # cleanup delete or mix another's files mid-write (corrupt archives, and a
-    # cross-session leak). tempfile() is unique per call; on.exit removes the
-    # directory once the archive has been written.
-    tmp <- tempfile("hla_export_")
-    dir.create(tmp, showWarnings = FALSE, recursive = TRUE)
-    on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
-    utils::write.csv(
-      manifest,
-      file.path(tmp, "manifest.csv"),
-      row.names = FALSE
-    )
-    utils::write.csv(tabs$nodes, file.path(tmp, "nodes.csv"), row.names = FALSE)
-    utils::write.csv(tabs$edges, file.path(tmp, "edges.csv"), row.names = FALSE)
-    utils::write.csv(motifs, file.path(tmp, "motifs.csv"), row.names = FALSE)
-    if (hla_has_typing()) {
-      utils::write.csv(
-        typing,
-        file.path(tmp, "hla_typing.csv"),
-        row.names = FALSE
-      )
-    }
-    ov <- tryCatch(hla_overlap_table(), error = function(e) NULL)
-    if (is.data.frame(ov) && nrow(ov) > 0) {
-      utils::write.csv(
-        ov,
-        file.path(tmp, "allele_overlap.csv"),
-        row.names = FALSE
-      )
-    }
-    # utils::zip (base R) rather than the zip package: no new dependency. "-j"
-    # junks the temp directory path so the archive holds plain file names.
-    files <- list.files(tmp, full.names = TRUE)
-    utils::zip(zipfile = file, files = files, flags = "-j -q")
+    archive <- hla_export_archive()
+    validate(need(length(archive) > 0L, "The export is still being prepared."))
+    writeBin(archive, file)
   }
 )
 

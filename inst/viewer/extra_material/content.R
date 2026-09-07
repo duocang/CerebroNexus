@@ -74,14 +74,67 @@ output[["extra_material_content_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 ## Table.
 ##----------------------------------------------------------------------------##
-output[["extra_material_table"]] <- DT::renderDataTable({
-  req(input[["extra_material_selected_category"]] == "tables")
+extra_material_table_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_source_call
+)
+
+extra_material_async_selection <- reactive({
   selection <- extra_material_table_selection(
     extra_material_table_groups(),
     file_key = input[["extra_material_selected_file"]],
-    sheet_key = input[["extra_material_selected_content"]]
+    sheet_key = input[["extra_material_selected_content"]],
+    load = FALSE
   )
   req(!is.null(selection))
+  if (!is.null(selection$sheet$table)) {
+    return(selection)
+  }
+  key <- selection$sheet$key
+  if (
+    exists(
+      key,
+      envir = extra_material_external_table_cache,
+      inherits = FALSE
+    )
+  ) {
+    selection$sheet$table <- get(
+      key,
+      envir = extra_material_external_table_cache,
+      inherits = FALSE
+    )
+    return(selection)
+  }
+  extra_material_table_job$invoke(
+    key,
+    list(
+      root = file.path(
+        Cerebro.options[["cerebro_root"]],
+        "viewer",
+        "extra_material"
+      ),
+      files = "async_workers.R",
+      function_name = "extra_material_read_table",
+      args = list(
+        root = Cerebro.options[["cerebro_root"]],
+        path = selection$sheet$path,
+        group_label = selection$group$label,
+        sheet_label = selection$sheet$label
+      )
+    )
+  )
+  selection$sheet$table <- extra_material_table_job$result()
+  assign(
+    key,
+    selection$sheet$table,
+    envir = extra_material_external_table_cache
+  )
+  selection
+})
+
+output[["extra_material_table"]] <- DT::renderDataTable({
+  req(input[["extra_material_selected_category"]] == "tables")
+  selection <- extra_material_async_selection()
   results_df <- selection$sheet$table
   ## don't proceed if input is not a data frame
   req(is.data.frame(results_df))

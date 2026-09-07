@@ -106,22 +106,25 @@ test_that("toggleConditionalTab is defined and wired to conditional tabs", {
   skip_if_not(file.exists(server_file))
   content <- paste(readLines(server_file), collapse = "\n")
 
-  # Function is defined with the tab identity and availability check.
+  # One shared capability scan feeds every conditional tab after first paint.
   expect_match(
     content,
-    "toggleConditionalTab\\s*<-\\s*function\\s*\\(\\s*tab_name\\s*,\\s*check_fn",
-    perl = TRUE
-  )
-
-  # Calls are present for enriched pathways and extra material.
-  expect_match(
-    content,
-    'toggleConditionalTab\\s*\\(\\s*"enrichedPathways"',
+    "viewer_dataset_capabilities\\s*<-\\s*reactive",
     perl = TRUE
   )
   expect_match(
     content,
-    'toggleConditionalTab\\s*\\(\\s*"extra_material"',
+    "toggleConditionalTab\\s*<-\\s*function\\s*\\(\\s*tab_name\\s*\\)",
+    perl = TRUE
+  )
+  expect_match(
+    content,
+    '"enrichedPathways"[\\s\\S]{0,100}"extra_material"',
+    perl = TRUE
+  )
+  expect_match(
+    content,
+    "lapply\\(conditional_tabs, toggleConditionalTab\\)",
     perl = TRUE
   )
 })

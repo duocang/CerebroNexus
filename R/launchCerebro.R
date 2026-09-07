@@ -45,6 +45,9 @@
 #'   defaults to 100.
 #' @param projections_show_hover_info Show hover infos in projections. This
 #' setting can be changed in the UI; defaults to TRUE.
+#' @param mirai_options Optional named list overriding the asynchronous worker
+#' configuration. Supported entries are \code{enabled}, \code{workers},
+#' \code{queue_memory_mb}, \code{timeout_ms}, and \code{compute}.
 #' @param ... Further parameters that are used by \code{shiny::runApp}, e.g.
 #' \code{host} or \code{port}.
 #'
@@ -90,6 +93,7 @@ launchCerebro <- function(
   point_opacity = 1,
   percentage_cells_to_show = 100,
   projections_show_hover_info = TRUE,
+  mirai_options = NULL,
   ...
 ) {
   ##--------------------------------------------------------------------------##
@@ -165,7 +169,8 @@ launchCerebro <- function(
     "point_size" = point_size,
     "point_opacity" = point_opacity,
     "percentage_cells_to_show" = percentage_cells_to_show,
-    "projections_show_hover_info" = projections_show_hover_info
+    "projections_show_hover_info" = projections_show_hover_info,
+    "mirai" = mirai_options
   )
   assign("Cerebro.options", cerebro_options, envir = .GlobalEnv)
 
@@ -177,6 +182,16 @@ launchCerebro <- function(
   ##--------------------------------------------------------------------------##
   ## Load server and UI functions.
   ##--------------------------------------------------------------------------##
+  source(
+    system.file(
+      paste0("viewer/async_runtime.R"),
+      package = "CerebroNexus"
+    ),
+    local = TRUE
+  )
+  async_config <- get("cerebro_async_config", inherits = FALSE)
+  async_init <- get("cerebro_async_init", inherits = FALSE)
+  async_shutdown <- get("cerebro_async_shutdown", inherits = FALSE)
   source(
     system.file(
       paste0("viewer/shiny_UI.R"),
@@ -205,6 +220,10 @@ launchCerebro <- function(
   shiny::shinyApp(
     ui = ui,
     server = server,
+    onStart = function() {
+      async_init(async_config(Cerebro.options[["mirai"]]))
+      shiny::onStop(async_shutdown)
+    },
     ...
   )
 }

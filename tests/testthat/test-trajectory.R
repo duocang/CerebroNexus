@@ -125,9 +125,6 @@ test_that("Trajectory tab is wired into the app UI and server", {
     collapse = "\n"
   )
   expect_match(server_src, "trajectory/server\\.R")
-  expect_match(
-    server_src,
-    'toggleConditionalTab\\([\\s\\S]{0,80}"trajectory"',
-    perl = TRUE
-  )
+  expect_match(server_src, '"trajectory"[\\s\\S]{0,120}"spatial"', perl = TRUE)
+  expect_match(server_src, "lapply\\(conditional_tabs, toggleConditionalTab\\)")
 })

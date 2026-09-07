@@ -1098,21 +1098,42 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
     input$ir_p_dot_size
   )
 
+ir_abundance_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_namespace_call
+)
+ir_homeostasis_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_namespace_call
+)
+ir_compare_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_namespace_call
+)
+
 output$ir_plot_clonalAbundance <- plotly::renderPlotly({
   req_scRepertoire()
   req_plot_space("ir_plot_clonalAbundance")
   data <- ir_data()
   req(!is.null(data))
   pars <- ir_params()
-  ir_render_ggplotly(
-    scRepertoire::clonalAbundance(
+  scale <- isTRUE(ir_param("ir_p_scale", FALSE))
+  order_by <- ir_order_by()
+  plot <- ir_async_sc_plot(
+    ir_abundance_job,
+    "clonalAbundance",
+    list(
       data,
       cloneCall = pars$cloneCall,
       chain = pars$chain,
       group.by = pars$groupBy,
-      order.by = ir_order_by(),
-      scale = isTRUE(ir_param("ir_p_scale", FALSE))
+      order.by = order_by,
+      scale = scale
     ),
+    list(pars$cloneCall, pars$chain, pars$groupBy, order_by, scale)
+  )
+  ir_render_ggplotly(
+    plot,
     "clonalAbundance"
   )
 }) %>%
@@ -1142,16 +1163,29 @@ output$ir_plot_clonalCompare <- plotly::renderPlotly({
 
   tryCatch(
     {
-      tab <- scRepertoire::clonalCompare(
-        data,
-        cloneCall = pars$cloneCall,
-        chain = pars$chain,
-        group.by = pars$groupBy,
-        order.by = ir_order_by(),
-        samples = samples,
-        top.clones = as.numeric(ir_param("ir_p_top_clones", 10)),
-        proportion = proportion,
-        exportTable = TRUE
+      tab <- ir_async_sc_plot(
+        ir_compare_job,
+        "clonalCompare",
+        list(
+          data,
+          cloneCall = pars$cloneCall,
+          chain = pars$chain,
+          group.by = pars$groupBy,
+          order.by = ir_order_by(),
+          samples = samples,
+          top.clones = as.numeric(ir_param("ir_p_top_clones", 10)),
+          proportion = proportion,
+          exportTable = TRUE
+        ),
+        list(
+          pars$cloneCall,
+          pars$chain,
+          pars$groupBy,
+          ir_order_by(),
+          samples,
+          ir_param("ir_p_top_clones", 10),
+          proportion
+        )
       )
       prep <- ir_prepare_compare_alluvial(tab, samples, proportion = proportion)
       if (!isTRUE(prep$ok)) {
@@ -1179,6 +1213,51 @@ output$ir_plot_clonalCompare <- plotly::renderPlotly({
     input$ir_p_order_by
   )
 
+ir_diversity_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_namespace_call
+)
+ir_overlap_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_namespace_call
+)
+ir_rarefaction_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_namespace_call
+)
+ir_size_distribution_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_namespace_call
+)
+
+ir_async_sc_plot <- function(
+  job,
+  function_name,
+  args,
+  key_parts,
+  quiet_warnings = character(0)
+) {
+  encode <- function(value) paste(as.character(value), collapse = ",")
+  key <- paste(
+    c(
+      available_crb_files$selected,
+      function_name,
+      vapply(key_parts, encode, character(1))
+    ),
+    collapse = "\r"
+  )
+  job$invoke(
+    key,
+    list(
+      package = "scRepertoire",
+      function_name = function_name,
+      args = args,
+      quiet_warnings = quiet_warnings
+    )
+  )
+  job$result()
+}
+
 ir_plot_clonal_diversity <- function(
   data,
   clone_call,
@@ -1187,7 +1266,9 @@ ir_plot_clonal_diversity <- function(
   metric,
   x_axis,
   n_boots,
-  palette = IR_PALETTE
+  palette = IR_PALETTE,
+  order_by = NULL,
+  output_df = NULL
 ) {
   # scRepertoire 2.6.x can coerce factor x.axis values to numeric positions and
   # its boxplot layer does not explicitly group by x.axis. Use its bootstrap
@@ -1219,11 +1300,12 @@ ir_plot_clonal_diversity <- function(
   if (!is.null(x_axis)) {
     scr_args[["x.axis"]] <- x_axis
   }
-  ob <- ir_order_by()
-  if (!is.null(ob)) {
-    scr_args[["order.by"]] <- ob
+  if (!is.null(order_by)) {
+    scr_args[["order.by"]] <- order_by
   }
-  output_df <- do.call(scRepertoire::clonalDiversity, scr_args)
+  if (is.null(output_df)) {
+    output_df <- do.call(scRepertoire::clonalDiversity, scr_args)
+  }
 
   group_col <- if (is.null(group_by)) "Group" else group_by
 
@@ -1331,6 +1413,46 @@ output$ir_plot_clonalDiversity <- plotly::renderPlotly({
   if (is.na(n_boots) || n_boots < 1) {
     n_boots <- 20
   }
+  order_by <- ir_order_by()
+  plot_data <- lapply(data, function(df) {
+    for (col in unique(c(pars$groupBy, x_axis))) {
+      if (!is.null(col) && col %in% colnames(df)) {
+        df[[col]] <- as.character(df[[col]])
+      }
+    }
+    df
+  })
+  scr_args <- list(
+    plot_data,
+    cloneCall = pars$cloneCall,
+    chain = pars$chain,
+    group.by = pars$groupBy,
+    metric = metric,
+    n.boots = n_boots,
+    return.boots = TRUE,
+    exportTable = TRUE,
+    palette = IR_PALETTE
+  )
+  if (!is.null(x_axis)) {
+    scr_args[["x.axis"]] <- x_axis
+  }
+  if (!is.null(order_by)) {
+    scr_args[["order.by"]] <- order_by
+  }
+  output_df <- ir_async_sc_plot(
+    ir_diversity_job,
+    "clonalDiversity",
+    scr_args,
+    list(
+      pars$cloneCall,
+      pars$chain,
+      pars$groupBy,
+      metric,
+      x_axis,
+      n_boots,
+      order_by
+    )
+  )
   ir_render_ggplotly(
     ir_plot_clonal_diversity(
       data = data,
@@ -1340,7 +1462,9 @@ output$ir_plot_clonalDiversity <- plotly::renderPlotly({
       metric = metric,
       x_axis = x_axis,
       n_boots = n_boots,
-      palette = IR_PALETTE
+      palette = IR_PALETTE,
+      order_by = order_by,
+      output_df = output_df
     ),
     "clonalDiversity"
   )
@@ -1361,17 +1485,25 @@ output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
   data <- ir_data()
   req(!is.null(data))
   pars <- ir_params()
-  ir_render_ggplotly(
-    scRepertoire::clonalHomeostasis(
+  clone_size <- ir_clone_size()
+  order_by <- ir_order_by()
+  plot <- ir_async_sc_plot(
+    ir_homeostasis_job,
+    "clonalHomeostasis",
+    list(
       data,
       cloneCall = pars$cloneCall,
       chain = pars$chain,
-      cloneSize = ir_clone_size(),
+      cloneSize = clone_size,
       group.by = pars$groupBy,
-      order.by = ir_order_by(),
+      order.by = order_by,
       exportTable = FALSE,
       palette = IR_PALETTE
     ),
+    list(pars$cloneCall, pars$chain, pars$groupBy, clone_size, order_by)
+  )
+  ir_render_ggplotly(
+    plot,
     "clonalHomeostasis"
   )
 }) %>%
@@ -1457,16 +1589,23 @@ output$ir_plot_clonalOverlap <- renderPlot({
   data <- ir_data()
   req(!is.null(data))
   pars <- ir_params()
-  safeRenderPlot(
-    scRepertoire::clonalOverlap(
+  method <- ir_param("ir_p_overlap_method", "overlap")
+  plot <- ir_async_sc_plot(
+    ir_overlap_job,
+    "clonalOverlap",
+    list(
       data,
       cloneCall = pars$cloneCall,
       chain = pars$chain,
       group.by = pars$groupBy,
-      method = ir_param("ir_p_overlap_method", "overlap"),
+      method = method,
       exportTable = FALSE,
       palette = IR_PALETTE
     ),
+    list(pars$cloneCall, pars$chain, pars$groupBy, method)
+  )
+  safeRenderPlot(
+    plot,
     "clonalOverlap"
   )
 }) %>%
@@ -1556,20 +1695,34 @@ output$ir_plot_clonalRarefaction <- renderPlot({
   if (is.na(n_boots) || n_boots < 1) {
     n_boots <- 20
   }
-  safeRenderPlot(
-    ir_quiet_inext(
-      scRepertoire::clonalRarefaction(
-        data,
-        cloneCall = pars$cloneCall,
-        chain = pars$chain,
-        group.by = pars$groupBy,
-        plot.type = as.numeric(ir_param("ir_p_rare_plot_type", 1)),
-        hill.numbers = as.numeric(ir_param("ir_p_hill_numbers", 0)),
-        n.boots = n_boots,
-        exportTable = FALSE,
-        palette = IR_PALETTE
-      )
+  plot_type <- as.numeric(ir_param("ir_p_rare_plot_type", 1))
+  hill_numbers <- as.numeric(ir_param("ir_p_hill_numbers", 0))
+  plot <- ir_async_sc_plot(
+    ir_rarefaction_job,
+    "clonalRarefaction",
+    list(
+      data,
+      cloneCall = pars$cloneCall,
+      chain = pars$chain,
+      group.by = pars$groupBy,
+      plot.type = plot_type,
+      hill.numbers = hill_numbers,
+      n.boots = n_boots,
+      exportTable = FALSE,
+      palette = IR_PALETTE
     ),
+    list(
+      pars$cloneCall,
+      pars$chain,
+      pars$groupBy,
+      plot_type,
+      hill_numbers,
+      n_boots
+    ),
+    quiet_warnings = IR_NOISE_WARNINGS
+  )
+  safeRenderPlot(
+    plot,
     "clonalRarefaction"
   )
 }) %>%
@@ -1658,22 +1811,26 @@ output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
   if (is.na(threshold) || threshold < 1) {
     threshold <- 1
   }
+  method <- ir_param("ir_p_sd_method", "ward.D2")
+  p <- ir_async_sc_plot(
+    ir_size_distribution_job,
+    "clonalSizeDistribution",
+    list(
+      data,
+      cloneCall = "strict",
+      chain = pars$chain,
+      group.by = pars$groupBy,
+      method = method,
+      threshold = threshold,
+      exportTable = FALSE
+    ),
+    list(pars$chain, pars$groupBy, method, threshold)
+  )
+  # clonalSizeDistribution maps color = as.factor(label) internally, so the
+  # colour legend title comes through as the raw "as.factor(label)". Rename
+  # it to what it actually is (the grouping variable).
   ir_render_ggplotly(
-    {
-      p <- scRepertoire::clonalSizeDistribution(
-        data,
-        cloneCall = "strict",
-        chain = pars$chain,
-        group.by = pars$groupBy,
-        method = ir_param("ir_p_sd_method", "ward.D2"),
-        threshold = threshold,
-        exportTable = FALSE
-      )
-      # clonalSizeDistribution maps color = as.factor(label) internally, so the
-      # colour legend title comes through as the raw "as.factor(label)". Rename
-      # it to what it actually is (the grouping variable).
-      p + ggplot2::labs(colour = "Group")
-    },
+    p + ggplot2::labs(colour = "Group"),
     "clonalSizeDistribution"
   )
 }) %>%

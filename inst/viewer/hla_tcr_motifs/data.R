@@ -853,14 +853,110 @@ hla_min_nodes_debounced <- shiny::debounce(
   millis = 250
 )
 
-## The EXPENSIVE half, cached on the BUILD parameters alone (chain, by_v,
-## metadata, scope, dataset) and NOT on min_nodes / show_isolated. Sweeping the
-## threshold therefore never rebuilds the Hamming distance matrix or the layout:
-## it reuses this cached full graph. The gate lives in an UNCACHED wrapper
-## (hla_motif_graph below), never inside a bindCache body, because a req() stop
-## there would be a value the cache stores under the current key and replays.
+## The expensive half runs in mirai daemons. Only plain segment data and scalar
+## build options cross the process boundary; no reactive, Cerebro R6 instance,
+## or file-backed expression handle is serialised. Latest-wins cancellation
+## prevents a superseded scope/chain choice from consuming a worker, while the
+## session cache makes returning to a prior build instant.
+hla_graph_worker_files <- c("hla_typing.R", "hla_motif_core.R")
+hla_graph_worker_root <- file.path(
+  Cerebro.options[["cerebro_root"]],
+  "viewer",
+  "hla_tcr_motifs",
+  "core"
+)
+hla_scoped_graph_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_source_call
+)
+hla_global_graph_job <- cerebro_async_latest_value(
+  session,
+  cerebro_async_source_call
+)
+
+hla_graph_request <- function(seg, scope_key) {
+  pair_scope <- !is.null(seg) && "pair_allele" %in% colnames(seg)
+  context_col <- if (pair_scope) {
+    "pair_allele"
+  } else if (!is.null(seg) && "mhc_context" %in% colnames(seg)) {
+    "mhc_context"
+  } else {
+    NULL
+  }
+  by_v <- isTRUE(hla_param("hla_by_v", hla_by_v_default()))
+  meta_cols <- hla_node_meta_cols()
+  key <- paste(
+    available_crb_files$selected,
+    hla_active_chain(),
+    by_v,
+    paste(meta_cols, collapse = ","),
+    scope_key,
+    sep = "\r"
+  )
+  list(
+    key = key,
+    args = list(
+      root = hla_graph_worker_root,
+      files = hla_graph_worker_files,
+      function_name = "hla_build_motif_graph_raw",
+      args = list(
+        seg = seg,
+        by_v = by_v,
+        meta_cols = meta_cols,
+        context_col = context_col
+      ),
+      function_args = c(
+        context_summary = if (pair_scope) {
+          "hla_pair_class_summary"
+        } else {
+          "hla_context_summary"
+        }
+      )
+    )
+  )
+}
+
+observeEvent(
+  list(
+    hla_ready_latch(),
+    hla_scoped_segments(),
+    hla_param("hla_by_v", hla_by_v_default()),
+    paste(hla_node_meta_cols(), collapse = ","),
+    hla_scope_key(),
+    available_crb_files$selected
+  ),
+  {
+    req(hla_params_ready())
+    request <- hla_graph_request(hla_scoped_segments(), hla_scope_key())
+    hla_scoped_graph_job$invoke(request$key, request$args)
+  },
+  ignoreInit = FALSE
+)
+
+observeEvent(
+  list(
+    hla_ready_latch(),
+    hla_segments(),
+    hla_param("hla_by_v", hla_by_v_default()),
+    paste(hla_node_meta_cols(), collapse = ","),
+    hla_scope_mode(),
+    available_crb_files$selected
+  ),
+  {
+    req(hla_params_ready())
+    if (!identical(hla_scope_mode(), "all")) {
+      request <- hla_graph_request(hla_segments(), "all")
+      hla_global_graph_job$invoke(request$key, request$args)
+    }
+  },
+  ignoreInit = FALSE
+)
+
+## Keep bindCache at the public computation boundary as a second-level cache
+## shared with existing Shiny cache configuration. The async adapter owns the
+## latest-wins task and its small session-local hot set.
 hla_motif_graph_raw_cached <- reactive({
-  hla_build_graph_raw_from(hla_scoped_segments())
+  hla_scoped_graph_job$result()
 }) %>%
   hla_bindCache(
     hla_active_chain(),
@@ -924,7 +1020,7 @@ hla_global_motif_graph_raw_cached <- reactive({
   if (identical(hla_scope_mode(), "all")) {
     return(hla_motif_graph_raw_cached())
   }
-  hla_build_graph_raw_from(hla_segments())
+  hla_global_graph_job$result()
 }) %>%
   hla_bindCache(
     hla_active_chain(),

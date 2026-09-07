@@ -171,6 +171,53 @@ rotateSpatialCoordinates <- function(coordinates, degrees) {
   coordinates
 }
 
+saveViewerPlotAsync <- function(
+  session,
+  path,
+  plot,
+  width = 11,
+  height = 8
+) {
+  cerebro_async_session_task(
+    session = session,
+    worker = cerebro_async_ggsave,
+    args = list(path = path, plot = plot, width = width, height = height),
+    on_value = function(saved_path) {
+      shinyWidgets::sendSweetAlert(
+        session = session,
+        title = "Success!",
+        text = paste0("Plot saved successfully as: ", saved_path),
+        type = "success"
+      )
+    },
+    on_error = function(error) {
+      warning("Plot export failed: ", cerebro_async_error_message(error))
+      shinyWidgets::sendSweetAlert(
+        session = session,
+        title = "Error!",
+        text = "Sorry, it seems something went wrong...",
+        type = "error"
+      )
+    }
+  )
+}
+
+## Return the first complete reactive value immediately; debounce only later
+## invalidations caused by interactive controls. This avoids charging the page's
+## first visible render the same delay used to coalesce slider drags.
+debounceAfterFirst <- function(reactive, millis) {
+  delayed <- shiny::debounce(reactive, millis)
+  delivered <- FALSE
+  shiny::reactive({
+    if (!delivered) {
+      value <- reactive()
+      delivered <<- TRUE
+      return(value)
+    }
+    delayed()
+  })
+}
+
 ##----------------------------------------------------------------------------##
 ## Guarded bindCache wrapper for plot/reactive outputs.
 ##
@@ -1904,12 +1951,14 @@ read_cerebro_file <- function(file) {
 }
 
 ##----------------------------------------------------------------------------##
-## Session-scoped cache for loaded .crb files (B8).
+## Preconfigured read-only CRBs use the app's process cache. Uploads stay in
+## this session cache so arbitrary user files do not accumulate for the life of
+## a long-running process.
 ##
-## Cerebro objects are treated as READ-ONLY within a session. Cache is keyed by
+## Cerebro objects are treated as READ-ONLY by the viewer. Cache is keyed by
 ## file path and backend configuration. Changing the backend configuration for
-## an already loaded path fails closed; overwriting a .crb in place is NOT
-## detected -- start a new app session to pick up either change.
+## an already loaded path fails closed; restart the app process after replacing
+## a .crb in place or changing its backend configuration.
 ##----------------------------------------------------------------------------##
 .crb_cache <- new.env(parent = emptyenv())
 
@@ -2095,14 +2144,21 @@ get_or_load_crb <- function(
     configured_paths
   )
   cache_identity <- .runtimeBackendCacheIdentity(effective_backend)
-  cached <- .crb_cache[[path]]
+  cache <- if (
+    path %in% configured_paths && exists(".crb_process_cache", inherits = TRUE)
+  ) {
+    get(".crb_process_cache", inherits = TRUE)
+  } else {
+    .crb_cache
+  }
+  cached <- cache[[path]]
   if (!is.null(cached)) {
     if (!identical(cached$backend_identity, cache_identity)) {
       stop(
         "The cached CRB '",
         path,
-        "' backend configuration changed after it was loaded. Start a new ",
-        "app session before using the new configuration.",
+        "' backend configuration changed after it was loaded. Restart the ",
+        "app process before using the new configuration.",
         call. = FALSE
       )
     }
@@ -2112,9 +2168,25 @@ get_or_load_crb <- function(
   print(glue::glue(
     "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
   ))
-  obj <- read_cerebro_file(path)
+  raw_cache <- if (
+    path %in%
+      configured_paths &&
+      exists(".crb_raw_process_cache", inherits = TRUE)
+  ) {
+    get(".crb_raw_process_cache", inherits = TRUE)
+  } else {
+    NULL
+  }
+  obj <- if (!is.null(raw_cache) && !is.null(raw_cache[[path]])) {
+    print(glue::glue(
+      "[{Sys.time()}] CRB startup preload hit: {.crbLogLabel(path)}"
+    ))
+    raw_cache[[path]]
+  } else {
+    read_cerebro_file(path)
+  }
   obj <- .attachExternalExpression(obj, path, effective_backend)
-  .crb_cache[[path]] <- list(
+  cache[[path]] <- list(
     object = obj,
     backend_identity = cache_identity
   )
