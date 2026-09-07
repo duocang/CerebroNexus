@@ -41,10 +41,6 @@ if (identical(mode, "from-raw")) {
     stop("raw HLA/TCR object rebuild failed", call. = FALSE)
   }
 }
-if (screenshots) {
-  message("Screenshot capture is handled after evidence verification.")
-}
-
 suppressPackageStartupMessages({
   library(igraph)
   library(jsonlite)
@@ -528,6 +524,7 @@ viewer_config_name <- "demo_hla_tcr_main_case.linked-view.json"
 cohort_name <- "demo_hla_tcr_publication.cohort.csv"
 hla_name <- "demo_hla_tcr_publication.hla.csv"
 sequences_name <- "demo_hla_tcr_publication.sequences.csv"
+screenshot_metadata_name <- "demo_hla_tcr_publication.screenshots.json"
 
 write_json(strict_case, strict_case_name)
 write_text(c("cell_barcode", strict_cells), strict_barcodes_name)
@@ -538,6 +535,16 @@ write_text(encode_config(viewer_config), viewer_config_name)
 write_table(cohort, cohort_name)
 write_table(hla, hla_name)
 write_table(sequences, sequences_name)
+
+screenshot_metadata_path <- file.path(out_dir, screenshot_metadata_name)
+if (file.exists(screenshot_metadata_path)) {
+  copied <- file.copy(
+    screenshot_metadata_path,
+    file.path(stage_dir, screenshot_metadata_name),
+    overwrite = TRUE
+  )
+  stopifnot("could not stage screenshot metadata" = copied)
+}
 
 with_svg <- function(filename, width, height, draw) {
   path <- file.path(stage_dir, filename)
@@ -686,6 +693,9 @@ artifact_names <- c(
   strict_case_name, strict_barcodes_name, strict_config_name, sha_name,
   viewer_case_name, viewer_config_name, cohort_name, hla_name, sequences_name
 )
+if (file.exists(screenshot_metadata_path)) {
+  artifact_names <- c(artifact_names, screenshot_metadata_name)
+}
 artifact_entries <- lapply(artifact_names, function(filename) {
   path <- file.path(stage_dir, filename)
   list(
@@ -709,6 +719,57 @@ figure_entries <- Map(function(filename, destination) {
     sha256 = sha256_file(path)
   )
 }, figure_names, figure_destinations)
+
+png_dimensions <- function(path) {
+  header <- readBin(path, what = "raw", n = 24L)
+  stopifnot(
+    "invalid PNG header" = length(header) == 24L && identical(
+      as.integer(header[1:8]),
+      c(137L, 80L, 78L, 71L, 13L, 10L, 26L, 10L)
+    )
+  )
+  decode <- function(bytes) {
+    sum(as.integer(bytes) * 256^(3:0))
+  }
+  c(width = decode(header[17:20]), height = decode(header[21:24]))
+}
+
+screenshot_source_commit <- NULL
+screenshot_entries <- list()
+if (file.exists(screenshot_metadata_path)) {
+  screenshot_metadata <- jsonlite::fromJSON(
+    screenshot_metadata_path,
+    simplifyVector = FALSE
+  )
+  stopifnot(
+    "screenshot metadata has the wrong schema" = identical(
+      screenshot_metadata$schema,
+      "cerebronexus-hla-tcr-screenshots"
+    ),
+    "screenshot dataset fingerprint drifted" = identical(
+      screenshot_metadata$dataset_fingerprint,
+      dataset_fingerprint
+    )
+  )
+  screenshot_source_commit <- screenshot_metadata$source_commit
+  screenshot_entries <- lapply(screenshot_metadata$screenshots, function(entry) {
+    path <- file.path(root, entry$file)
+    stopifnot("publication screenshot is missing" = file.exists(path))
+    dimensions <- png_dimensions(path)
+    stopifnot(
+      "publication screenshot width drifted" = identical(
+        as.integer(entry$width),
+        as.integer(dimensions[["width"]])
+      ),
+      "publication screenshot height drifted" = identical(
+        as.integer(entry$height),
+        as.integer(dimensions[["height"]])
+      )
+    )
+    entry$sha256 <- sha256_file(path)
+    entry
+  })
+}
 
 manifest <- list(
   schema = "cerebronexus-hla-tcr-publication",
@@ -752,7 +813,9 @@ manifest <- list(
     )
   ),
   artifacts = artifact_entries,
-  figures = figure_entries
+  figures = figure_entries,
+  screenshot_source_commit = screenshot_source_commit,
+  screenshots = screenshot_entries
 )
 manifest_name <- "demo_hla_tcr_publication.manifest.json"
 write_json(manifest, manifest_name)
@@ -833,3 +896,36 @@ if (verify_only) {
   )
 }
 unlink(stage_dir, recursive = TRUE)
+
+if (screenshots) {
+  old_capture_root <- Sys.getenv("CEREBRONEXUS_CAPTURE_HLA_TCR_ROOT", unset = NA)
+  on.exit({
+    if (is.na(old_capture_root)) {
+      Sys.unsetenv("CEREBRONEXUS_CAPTURE_HLA_TCR_ROOT")
+    } else {
+      Sys.setenv(CEREBRONEXUS_CAPTURE_HLA_TCR_ROOT = old_capture_root)
+    }
+  }, add = TRUE)
+  Sys.setenv(CEREBRONEXUS_CAPTURE_HLA_TCR_ROOT = root)
+  test_expression <- paste0(
+    "devtools::test(filter=\"hla-tcr-publication-browser\", ",
+    "stop_on_failure=TRUE)"
+  )
+  status <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c("-e", shQuote(test_expression)),
+    stdout = "",
+    stderr = ""
+  )
+  if (!identical(status, 0L)) {
+    stop("Viewer screenshot capture failed", call. = FALSE)
+  }
+  status <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(file.path(root, "data-raw/build_hla_tcr_publication.R"), "--from-crb")
+  )
+  if (!identical(status, 0L)) {
+    stop("could not refresh manifest after screenshots", call. = FALSE)
+  }
+  message("Captured and indexed 8 Viewer screenshots.")
+}

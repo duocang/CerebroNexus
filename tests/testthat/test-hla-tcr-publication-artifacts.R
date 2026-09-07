@@ -121,6 +121,32 @@ test_that("the unified publication artifact set is complete", {
     expect_match(svg, "viewBox=", fixed = TRUE)
     expect_identical(publication_sha256(figure_path), figure$sha256)
   }
+
+  screenshot_metadata <- file.path(
+    artifact_dir,
+    "demo_hla_tcr_publication.screenshots.json"
+  )
+  expect_true(file.exists(screenshot_metadata))
+  expect_length(manifest$screenshots, 8L)
+  if (file.exists(screenshot_metadata) && length(manifest$screenshots) == 8L) {
+    metadata <- jsonlite::fromJSON(screenshot_metadata, simplifyVector = FALSE)
+    expect_identical(
+      metadata$dataset_fingerprint,
+      manifest$dataset$cell_fingerprint
+    )
+    expect_identical(metadata$source_commit, manifest$screenshot_source_commit)
+    for (screenshot in manifest$screenshots) {
+      screenshot_path <- file.path(publication_root, screenshot$file)
+      expect_true(file.exists(screenshot_path), info = screenshot$file)
+      expect_identical(as.integer(screenshot$width), 1440L)
+      expect_identical(as.integer(screenshot$height), 900L)
+      expect_identical(
+        publication_sha256(screenshot_path),
+        screenshot$sha256,
+        info = screenshot$file
+      )
+    }
+  }
 })
 
 test_that("HLA/TCR articles consume generated evidence", {
@@ -140,6 +166,13 @@ test_that("HLA/TCR articles consume generated evidence", {
   expect_match(viewer, "publication$viewer_case", fixed = TRUE)
   expect_match(strict, "hla_tcr_publication_umap.svg", fixed = TRUE)
   expect_match(viewer, "hla_tcr_publication_motifs.svg", fixed = TRUE)
+
+  browser_test <- paste(readLines(file.path(
+    publication_root,
+    "tests/testthat/test-hla-tcr-publication-browser.R"
+  ), warn = FALSE), collapse = "\n")
+  expect_match(browser_test, "expect_setequal", fixed = TRUE)
+  expect_match(browser_test, "recalculating", fixed = TRUE)
 
   combined <- paste(strict, viewer, guide, sep = "\n")
   expect_false(grepl("prepare_hla_tcr_end_to_end_case.R", combined, fixed = TRUE))

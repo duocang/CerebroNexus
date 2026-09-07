@@ -101,6 +101,11 @@
       "file": "demo_hla_tcr_publication.sequences.csv",
       "bytes": 719,
       "sha256": "ab2c8424f8d15061650111d3013d72389f771c02020dfe1e6a1c3718170b7784"
+    },
+    {
+      "file": "demo_hla_tcr_publication.screenshots.json",
+      "bytes": 1945,
+      "sha256": "504fb8c6be7b46779812409b2053220d026e0820f88cc64754cb0af4584d69d3"
     }
   ],
   "figures": {
@@ -122,5 +127,72 @@
       "height_in": 4.8,
       "sha256": "850e736fdf810270f60d1cb89959fd0603fc2c329ff73ba64cfd9edaefca8c77"
     }
-  }
+  },
+  "screenshot_source_commit": "9aa1facdcf5f9e42d313538945e43c3b72e882ff",
+  "screenshots": [
+    {
+      "file": "vignettes/img/hla_tcr_real_data_info.png",
+      "state": "dataset-information",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null,
+      "sha256": "2df966eca26ccc1602ab8d6bec751ace749256a5c4d41d602d804c4da1f2d61c"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_main_case_linked_views_all.png",
+      "state": "linked-views-all-cells",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null,
+      "sha256": "bbaf18682c2689da7bd39b224decaf0a811a7f64fa468d1eb5e2626566cc64b5"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_strict_linked_views_selected.png",
+      "state": "linked-views-strict-selection",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": "md5-cell-set-v1:610343eab7f6b1e68abe64b327192a6e",
+      "sha256": "e65e87b887c2956b78258959cd7f7a4829bb235db1b3d8d932a79d7d0bc31761"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_main_case_linked_views_selected.png",
+      "state": "linked-views-viewer-selection",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": "md5-cell-set-v1:51f5964f2c17318cb0adcee6eaa91d2e",
+      "sha256": "c42fabeabd4d41e84de42cf17b326f48bcd3830bb61792c51fb4ccd4e548a364"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_main_case_share_dialog.png",
+      "state": "share-selection-dialog",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": "md5-cell-set-v1:51f5964f2c17318cb0adcee6eaa91d2e",
+      "sha256": "645465fdfa3b9b1630d476d5200edb0d08543ab25acf153fd5e237503f6578cf"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_real_motif_network.png",
+      "state": "trb-motif-network",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null,
+      "sha256": "fe557b0a7c1cf6e8a9fa4c2db2989083940beb8f8946d88c78f62a8c73b13aff"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_real_hla_associations.png",
+      "state": "hla-association-context",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null,
+      "sha256": "b0958b1bdd00b30c740c83edee0b7a05f5bcd6f4ed2795956c7c34a4ac7a6844"
+    },
+    {
+      "file": "vignettes/img/hla_tcr_real_data_qc.png",
+      "state": "real-data-qc",
+      "width": 1440,
+      "height": 900,
+      "selection_fingerprint": null,
+      "sha256": "a2a77ea2aaee63daba81b4b1f161afd44cc1bcee7e3094901ad39e5bd96bb7b3"
+    }
+  ]
 }
