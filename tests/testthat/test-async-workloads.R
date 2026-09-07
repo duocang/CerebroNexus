@@ -226,6 +226,7 @@ test_that("pure async workers preserve scientific and export results", {
   expect_identical(names(safe), "'=formula")
   expect_identical(safe[[1L]], "'@cmd")
 
+  withr::local_envvar(R_ZIPCMD = "")
   archive <- hla_build_export_archive(list(manifest = data.frame(x = 1L)))
   expect_type(archive, "raw")
   expect_gt(length(archive), 0L)
