@@ -1,44 +1,19 @@
-observeEvent(input[["trajectory_projection_export"]], {
-  ##
-  req(
-    trajectory_selection_ok(),
-    input[["trajectory_point_color"]],
-    input[["trajectory_percentage_cells_to_show"]],
-    input[["trajectory_point_size"]],
-    input[["trajectory_point_opacity"]],
-    !is.null(input[["trajectory_projection_point_border"]])
-  )
+output[["trajectory_projection_export"]] <- downloadHandler(
+  filename = function() {
+    paste0("trajectory_", format(Sys.Date()), ".pdf")
+  },
+  content = function(file) {
+    req(
+      trajectory_selection_ok(),
+      input[["trajectory_point_color"]],
+      input[["trajectory_percentage_cells_to_show"]],
+      input[["trajectory_point_size"]],
+      input[["trajectory_point_opacity"]],
+      !is.null(input[["trajectory_projection_point_border"]])
+    )
 
-  ## open dialog to select where plot should be saved and how the file should
-  ## be named
-  shinyFiles::shinyFileSave(
-    input,
-    id = "trajectory_projection_export",
-    roots = available_storage_volumes,
-    session = session,
-    restrictions = system.file(package = "base")
-  )
-
-  ## retrieve info from dialog
-  save_file_input <- shinyFiles::parseSavePath(
-    available_storage_volumes,
-    input[["trajectory_projection_export"]]
-  )
-
-  ## only proceed if a path has been provided
-  if (nrow(save_file_input) > 0) {
-    ## extract specified file path
-    save_file_path <- as.character(save_file_input$datapath[1])
-
-    ## ggplot2 functions are necessary to create the plot
     if (!requireNamespace("ggplot2", quietly = TRUE)) {
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "Error!",
-        text = "The 'ggplot2' package is required to export trajectory plots.",
-        type = "error"
-      )
-      return()
+      stop("The 'ggplot2' package is required to export trajectory plots.")
     }
 
     trajectory_data <- getTrajectory(
@@ -46,17 +21,12 @@ observeEvent(input[["trajectory_projection_export"]], {
       input[["trajectory_selected_name"]]
     )
 
-    ## build data frame with data
     cells_df <- mergeTrajectoryWithMetaData(trajectory_data) %>%
       dplyr::filter(!is.na(pseudotime))
-
-    ## randomly remove cells (if necessary)
     cells_df <- randomlySubsetCells(
       cells_df,
       input[["trajectory_percentage_cells_to_show"]]
     )
-
-    ## put rows in random order
     cells_df <- cells_df[sample(seq_len(nrow(cells_df))), ]
 
     color_variable <- input[["trajectory_point_color"]]
@@ -66,7 +36,6 @@ observeEvent(input[["trajectory_projection_export"]], {
       cells_df[[color_variable]] <- factor(cells_df[[color_variable]])
     }
 
-    ## start building the plot
     stroke <- if (isTRUE(input[["trajectory_projection_point_border"]])) {
       0.2
     } else {
@@ -100,16 +69,8 @@ observeEvent(input[["trajectory_projection_export"]], {
       ) +
       cerebro_export_theme()
 
-    ## depending on type of cell coloring, add different color scale
-    ## ... categorical
     if (categorical) {
-      ## get colors for groups
-      colors_for_groups <- assignColorsToGroups(
-        cells_df,
-        color_variable
-      )
-
-      ## add color assignments
+      colors_for_groups <- assignColorsToGroups(cells_df, color_variable)
       plot <- plot + scale_fill_manual(values = colors_for_groups)
 
       if (isTRUE(input[["trajectory_projection_group_labels"]])) {
@@ -132,42 +93,18 @@ observeEvent(input[["trajectory_projection_export"]], {
             show.legend = FALSE
           )
       }
-
-      ## ... not categorical (probably numerical)
     } else {
-      ## add continuous color scale
       plot <- plot +
         scale_fill_distiller(
           palette = "Blues",
           direction = 1,
-          guide = guide_colorbar(frame.colour = "black", ticks.colour = "black")
+          guide = guide_colorbar(
+            frame.colour = "black",
+            ticks.colour = "black"
+          )
         )
     }
 
-    ## save plot
-    pdf(NULL)
-    ggsave(save_file_path, plot, height = 8, width = 11)
-
-    ## check if file was succesfully saved
-    ## ... successful
-    if (file.exists(save_file_path)) {
-      ## give positive message
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "Success!",
-        text = paste0("Plot saved successfully as: ", save_file_path),
-        type = "success"
-      )
-
-      ## ... failed
-    } else {
-      ## give negative message
-      shinyWidgets::sendSweetAlert(
-        session = session,
-        title = "Error!",
-        text = "Sorry, it seems something went wrong...",
-        type = "error"
-      )
-    }
+    ggsave(file, plot, height = 8, width = 11, device = "pdf")
   }
-})
+)

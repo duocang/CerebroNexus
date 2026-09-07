@@ -42,6 +42,18 @@ test_that("Viewer gene sets use the public msigdbr API", {
   expect_match(input, "getGeneSetNames()", fixed = TRUE)
 })
 
+test_that("trajectory PDFs stream through the browser", {
+  ui <- viewer_source("trajectory", "projection.R")
+  server <- viewer_source("trajectory", "projection_export.R")
+
+  expect_match(ui, "downloadButton(", fixed = TRUE)
+  expect_no_match(ui, "shinySaveButton(", fixed = TRUE)
+  expect_match(server, "downloadHandler(", fixed = TRUE)
+  expect_match(server, "ggsave(file,", fixed = TRUE)
+  expect_no_match(server, "shinyFileSave(", fixed = TRUE)
+  expect_no_match(server, "parseSavePath(", fixed = TRUE)
+})
+
 test_that("Viewer copy uses British colour spelling", {
   sidebar <- viewer_source("shiny_UI.R")
   management <- viewer_source("color_management", "server.R")

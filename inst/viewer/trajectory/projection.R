@@ -41,12 +41,10 @@ output[["trajectory_projection_UI"]] <- renderUI({
             class = "cerebro-viz-primary",
             uiOutput("trajectory_select_method_and_name_UI"),
             uiOutput("trajectory_projection_main_parameters_UI"),
-            shinyFiles::shinySaveButton(
+            downloadButton(
               "trajectory_projection_export",
               label = "Export PDF",
               title = "Export trajectory to PDF file.",
-              filetype = "pdf",
-              viewtype = "icon",
               class = "cerebro-toolbar-export"
             )
           ),
