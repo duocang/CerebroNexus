@@ -155,10 +155,10 @@ test_that("HLA/TCR articles consume generated evidence", {
     "vignettes/hla_tcr_antigen_selected.Rmd"
   )
   viewer_file <- file.path(publication_root, "vignettes/hla_tcr_main_case.Rmd")
-  guide_file <- file.path(publication_root, "docs/hla-tcr-end-to-end-case.md")
+  readme_file <- file.path(publication_root, "data-raw/README.md")
   strict <- paste(readLines(strict_file, warn = FALSE), collapse = "\n")
   viewer <- paste(readLines(viewer_file, warn = FALSE), collapse = "\n")
-  guide <- paste(readLines(guide_file, warn = FALSE), collapse = "\n")
+  readme <- paste(readLines(readme_file, warn = FALSE), collapse = "\n")
 
   expect_match(strict, "demo_hla_tcr_publication.manifest.json", fixed = TRUE)
   expect_match(strict, "publication$strict_case", fixed = TRUE)
@@ -174,11 +174,11 @@ test_that("HLA/TCR articles consume generated evidence", {
   expect_match(browser_test, "expect_setequal", fixed = TRUE)
   expect_match(browser_test, "recalculating", fixed = TRUE)
 
-  combined <- paste(strict, viewer, guide, sep = "\n")
+  combined <- paste(strict, viewer, readme, sep = "\n")
   expect_false(grepl("prepare_hla_tcr_end_to_end_case.R", combined, fixed = TRUE))
   expect_false(grepl("build_hla_tcr_main_case.R", combined, fixed = TRUE))
   expect_match(
-    guide,
+    readme,
     "build_hla_tcr_publication.R --from-crb --verify",
     fixed = TRUE
   )
