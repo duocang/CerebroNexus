@@ -32,7 +32,6 @@
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
-    <li><a class="dropdown-item" href="../articles/mirai_async_runtime.html">Responsive Shiny workloads with mirai</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -70,17 +69,17 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/mirai-async-runtime/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/fix/viewer-runtime-hardening/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.4.1" id="cerebronexus-441">CerebroNexus 4.4.1<a class="anchor" aria-label="anchor" href="#cerebronexus-441"></a></h2>
 <div class="section level3">
 <h3 id="viewer-4-4-1">Viewer<a class="anchor" aria-label="anchor" href="#viewer-4-4-1"></a></h3>
-<ul><li>When the optional <code>mirai</code> package is installed, expensive HLA and TCR, immune-repertoire, spatial, trajectory, gene-expression and export work runs through a bounded runtime, keeping the Shiny event loop responsive with cancellation, timeouts and stale-result rejection. Viewers retain a synchronous fallback when <code>mirai</code> is unavailable.</li>
-<li>Generated Viewers show their shell and loading state before large CRB files are deserialized, retain visible progress while switching data sets, and reuse immutable process-level data safely across sessions.</li>
-<li>Deferred content now appears with a restrained transition, while projection points and sample-information icons remain clearer during routine interaction.</li>
-<li>A reproducible benchmark and runtime vignette document responsiveness, concurrency semantics, failure handling and deployment configuration.</li>
+<ul><li>Viewer data loading now rejects malformed or impersonated Cerebro objects before invoking dataset methods and reports failures without crashing the session.</li>
+<li>Ordinary data tables escape HTML content by default, including the gene ID conversion table.</li>
+<li>Gene-set selection uses the public <code>msigdbr</code> API and caches species data for repeated queries.</li>
+<li>Trajectory PDF exports are delivered as browser downloads instead of writing to user-selected paths on the Viewer host.</li>
 </ul></div>
 </div>
     <div class="section level2">

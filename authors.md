@@ -12,7 +12,7 @@
 ## Citation
 
 Source:
-[`inst/CITATION`](https://github.com/mihem/CerebroNexus/blob/perf/mirai-async-runtime/inst/CITATION)
+[`inst/CITATION`](https://github.com/mihem/CerebroNexus/blob/fix/viewer-runtime-hardening/inst/CITATION)
 
 Hillje, R., Pelicci, P.G. & Luzi, L. Cerebro: Interactive visualization
 of scRNA-seq data. Bioinformatics (2019).

@@ -4,19 +4,15 @@
 
 ### Viewer
 
-- When the optional `mirai` package is installed, expensive HLA and TCR,
-  immune-repertoire, spatial, trajectory, gene-expression and export
-  work runs through a bounded runtime, keeping the Shiny event loop
-  responsive with cancellation, timeouts and stale-result rejection.
-  Viewers retain a synchronous fallback when `mirai` is unavailable.
-- Generated Viewers show their shell and loading state before large CRB
-  files are deserialized, retain visible progress while switching data
-  sets, and reuse immutable process-level data safely across sessions.
-- Deferred content now appears with a restrained transition, while
-  projection points and sample-information icons remain clearer during
-  routine interaction.
-- A reproducible benchmark and runtime vignette document responsiveness,
-  concurrency semantics, failure handling and deployment configuration.
+- Viewer data loading now rejects malformed or impersonated Cerebro
+  objects before invoking dataset methods and reports failures without
+  crashing the session.
+- Ordinary data tables escape HTML content by default, including the
+  gene ID conversion table.
+- Gene-set selection uses the public `msigdbr` API and caches species
+  data for repeated queries.
+- Trajectory PDF exports are delivered as browser downloads instead of
+  writing to user-selected paths on the Viewer host.
 
 ## CerebroNexus 4.4.0
 

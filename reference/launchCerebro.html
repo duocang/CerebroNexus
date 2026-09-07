@@ -32,7 +32,6 @@
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
     <li><a class="dropdown-item" href="../articles/create_expression_matrix_in_h5_format.html">Store the expression matrix in H5 format</a></li>
     <li><a class="dropdown-item" href="../articles/expression_backend_benchmark.html">Expression backend benchmark: embedded vs bpcells vs h5 at scale</a></li>
-    <li><a class="dropdown-item" href="../articles/mirai_async_runtime.html">Responsive Shiny workloads with mirai</a></li>
     <li><a class="dropdown-item" href="../articles/launch_cerebro_with_pre-loaded_data_set.html">Launch Cerebro with pre-loaded data set</a></li>
     <li><a class="dropdown-item" href="../articles/multi_crb.html">Loading multiple data sets (multi-crb) with a dataset switcher</a></li>
     <li><a class="dropdown-item" href="../articles/export_and_visualize_custom_tables_and_plots.html">Export and visualize custom tables and plots</a></li>
@@ -70,7 +69,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Launch CerebroNexus</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/perf/mirai-async-runtime/R/launchCerebro.R" class="external-link"><code>R/launchCerebro.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/fix/viewer-runtime-hardening/R/launchCerebro.R" class="external-link"><code>R/launchCerebro.R</code></a></small>
       <div class="d-none name"><code>launchCerebro.Rd</code></div>
     </div>
 
@@ -92,7 +91,6 @@
 <span>  point_opacity <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  percentage_cells_to_show <span class="op">=</span> <span class="fl">100</span>,</span>
 <span>  projections_show_hover_info <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  mirai_options <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -173,12 +171,6 @@ defaults to 100.</p></dd>
 <dt id="arg-projections-show-hover-info">projections_show_hover_info<a class="anchor" aria-label="anchor" href="#arg-projections-show-hover-info"></a></dt>
 <dd><p>Show hover infos in projections. This
 setting can be changed in the UI; defaults to TRUE.</p></dd>
-
-
-<dt id="arg-mirai-options">mirai_options<a class="anchor" aria-label="anchor" href="#arg-mirai-options"></a></dt>
-<dd><p>Optional named list overriding the asynchronous worker
-configuration. Supported entries are <code>enabled</code>, <code>workers</code>,
-<code>queue_memory_mb</code>, <code>timeout_ms</code>, and <code>compute</code>.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
