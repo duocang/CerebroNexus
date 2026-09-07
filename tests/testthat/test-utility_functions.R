@@ -99,6 +99,16 @@ test_that("spreadsheet formulas are neutralized in cells and column names", {
   expect_identical(result[[2L]], c("text", "'@SUM(A1)"))
 })
 
+test_that("ordinary Viewer tables escape HTML by default", {
+  table <- data.frame(label = "<script>alert(1)</script>")
+
+  populated <- prettifyTable(table, filter = "none", dom = "t")
+  empty <- utils_env$prepareEmptyTable(table[0, , drop = FALSE])
+
+  expect_identical(attr(populated$x$options, "escapeIdx"), "true")
+  expect_identical(attr(empty$x$options, "escapeIdx"), "true")
+})
+
 test_that("conditional initial routing is consumed by the first dataset", {
   decide <- utils_env$viewerInitialPageDecision
 

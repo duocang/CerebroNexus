@@ -26,6 +26,13 @@ test_that("Viewer reports invalid CRB loads without crashing the session", {
   expect_match(server, "showNotification(", fixed = TRUE)
 })
 
+test_that("gene conversion table escapes cell content", {
+  source <- viewer_source("gene_id_conversion", "server.R")
+
+  expect_match(source, "escape = TRUE", fixed = TRUE)
+  expect_no_match(source, "escape = FALSE", fixed = TRUE)
+})
+
 test_that("Viewer copy uses British colour spelling", {
   sidebar <- viewer_source("shiny_UI.R")
   management <- viewer_source("color_management", "server.R")

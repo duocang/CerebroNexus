@@ -782,7 +782,7 @@ prettifyTable <- function(
   table,
   filter,
   dom,
-  escape = FALSE,
+  escape = TRUE,
   show_buttons = FALSE,
   number_formatting = FALSE,
   color_highlighting = FALSE,
@@ -808,7 +808,7 @@ prettifyTable <- function(
   color_highlighting <- as_toggle(color_highlighting, FALSE)
   show_buttons <- as_toggle(show_buttons, FALSE)
   hide_long_columns <- as_toggle(hide_long_columns, FALSE)
-  escape <- as_toggle(escape, FALSE)
+  escape <- as_toggle(escape, TRUE)
 
   ## replace Inf and -Inf values in numeric columns with 999 or -999,
   ## respectively, because other the columns will be converted to characters
@@ -1231,7 +1231,7 @@ prepareEmptyTable <- function(table) {
     table,
     autoHideNavigation = TRUE,
     class = "stripe table-bordered table-condensed",
-    escape = FALSE,
+    escape = TRUE,
     filter = "none",
     rownames = FALSE,
     selection = "none",
