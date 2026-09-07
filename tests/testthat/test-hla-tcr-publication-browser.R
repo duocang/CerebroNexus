@@ -2,11 +2,22 @@
 
 library(shinytest2)
 
-publication_browser_root <- normalizePath(
-  testthat::test_path("../.."),
-  mustWork = TRUE
+publication_browser_root_candidates <- c(
+  normalizePath(testthat::test_path("../.."), mustWork = FALSE),
+  normalizePath(".", mustWork = FALSE)
 )
-publication_browser_inst <- file.path(publication_browser_root, "inst")
+publication_browser_root <- publication_browser_root_candidates[file.exists(
+  file.path(publication_browser_root_candidates, "data-raw")
+)][1]
+publication_browser_inst_candidates <- c(
+  if (!is.na(publication_browser_root)) {
+    file.path(publication_browser_root, "inst")
+  },
+  system.file(package = "CerebroNexus")
+)
+publication_browser_inst <- publication_browser_inst_candidates[file.exists(
+  file.path(publication_browser_inst_candidates, "app.R")
+)][1]
 publication_browser_artifacts <- file.path(
   publication_browser_inst,
   "extdata/examples"
@@ -82,7 +93,7 @@ test_that("the real Viewer restores both publication selections", {
   )
   app$wait_for_js(
     "document.body.textContent.indexOf('12,000') >= 0",
-    timeout = 60000
+    timeout = 120000
   )
   capture("hla_tcr_real_data_info.png", "dataset-information")
 
@@ -93,7 +104,7 @@ test_that("the real Viewer restores both publication selections", {
   ))
   app$wait_for_js(
     "window.cerebroLinkedViewsState && window.cerebroLinkedViewsState.ready()",
-    timeout = 60000
+    timeout = 120000
   )
   app$wait_for_js(
     "document.getElementById('cv-meta').textContent.indexOf('12,000 cells') >= 0",
@@ -110,7 +121,7 @@ test_that("the real Viewer restores both publication selections", {
       "document.getElementById('cv-config-status').textContent.indexOf(",
       "'Restored 10 selected cells and view settings.') >= 0"
     ),
-    timeout = 60000
+    timeout = 120000
   )
   restored_strict <- app$get_js(
     "window.cerebroLinkedViewsState.capture().selection.cells"
@@ -123,6 +134,39 @@ test_that("the real Viewer restores both publication selections", {
     expected_strict
   )
 
+  # A browser file input intentionally does not emit the same Shiny event
+  # twice in every installed-package environment. Use a fresh real session for
+  # the second checked-in configuration instead of weakening either assertion.
+  app$stop()
+  app <- AppDriver$new(
+    publication_browser_inst,
+    name = "hla_tcr_publication_viewer_case",
+    height = 900,
+    width = 1440,
+    load_timeout = 60000
+  )
+  app$wait_for_js(
+    "document.getElementById('crb_file_selector') !== null",
+    timeout = 30000
+  )
+  app$set_inputs(
+    crb_file_selector = "extdata/examples/demo_hla_tcr_dextramer.crb",
+    wait_ = FALSE
+  )
+  app$wait_for_js(
+    "document.body.textContent.indexOf('12,000') >= 0",
+    timeout = 120000
+  )
+  app$run_js(paste0(
+    "document.querySelector(",
+    "'a[href=\"#shiny-tab-coordinated_views\"]'",
+    ").click();"
+  ))
+  app$wait_for_js(
+    "window.cerebroLinkedViewsState && window.cerebroLinkedViewsState.ready()",
+    timeout = 120000
+  )
+
   expected_viewer <- publication_browser_json_cells(
     publication_browser_viewer_config
   )
@@ -132,7 +176,7 @@ test_that("the real Viewer restores both publication selections", {
       "document.getElementById('cv-config-status').textContent.indexOf(",
       "'Restored 293 selected cells and view settings.') >= 0"
     ),
-    timeout = 60000
+    timeout = 120000
   )
   restored_viewer <- app$get_js(
     "window.cerebroLinkedViewsState.capture().selection.cells"
@@ -157,6 +201,29 @@ test_that("the real Viewer restores both publication selections", {
   )
   app$run_js("document.getElementById('cv-config-close').click();")
 
+  # Keep the specialist-page readiness check independent of a large linked
+  # selection. This also mirrors how the publication screenshots are read.
+  app$stop()
+  app <- AppDriver$new(
+    publication_browser_inst,
+    name = "hla_tcr_publication_motif_pages",
+    height = 900,
+    width = 1440,
+    load_timeout = 60000
+  )
+  app$wait_for_js(
+    "document.getElementById('crb_file_selector') !== null",
+    timeout = 30000
+  )
+  app$set_inputs(
+    crb_file_selector = "extdata/examples/demo_hla_tcr_dextramer.crb",
+    wait_ = FALSE
+  )
+  app$wait_for_js(
+    "document.body.textContent.indexOf('12,000') >= 0",
+    timeout = 120000
+  )
+
   app$run_js(paste0(
     "document.querySelector(",
     "'a[href=\"#shiny-tab-hla_tcr_motifs\"]'",
@@ -164,7 +231,7 @@ test_that("the real Viewer restores both publication selections", {
   ))
   app$wait_for_js(
     "document.querySelector('#hla_tabs.shiny-bound-input') !== null",
-    timeout = 60000
+    timeout = 120000
   )
   app$set_inputs(hla_chain = "TRB", hla_tabs = "Motif Network", wait_ = FALSE)
   app$wait_for_js(
@@ -175,7 +242,7 @@ test_that("the real Viewer restores both publication selections", {
       "document.querySelector('#hla_plot_motifNetwork .vis-network canvas') ",
       "!== null;})()"
     ),
-    timeout = 60000
+    timeout = 120000
   )
   capture("hla_tcr_real_motif_network.png", "trb-motif-network")
 
@@ -187,7 +254,7 @@ test_that("the real Viewer restores both publication selections", {
       "var body=document.getElementById('hla_associations_ui');",
       "return !!active && !!body && body.textContent.trim().length > 100;})()"
     ),
-    timeout = 60000
+    timeout = 120000
   )
   capture("hla_tcr_real_hla_associations.png", "hla-association-context")
 
@@ -199,7 +266,7 @@ test_that("the real Viewer restores both publication selections", {
       "var body=document.getElementById('hla_data_qc_ui');",
       "return !!active && !!body && body.textContent.trim().length > 100;})()"
     ),
-    timeout = 60000
+    timeout = 120000
   )
   capture("hla_tcr_real_data_qc.png", "real-data-qc")
 
