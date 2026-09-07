@@ -1050,7 +1050,9 @@ convertSeuratToCerebro <- function(
         spatial_images = spatial_images,
         .expression_resolution = expr_resolution
       )
-      cat("Successfully exported:", file_name, "\n")
+      if (!isTRUE(getOption("cerebro.quiet_runtime", FALSE))) {
+        cat("Successfully exported:", file_name, "\n")
+      }
     },
     error = function(e) {
       stop(

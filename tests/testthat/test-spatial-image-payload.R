@@ -304,20 +304,23 @@ test_that("convertSeuratToCerebro forwards spatial_images without mutation", {
     },
     .package = "CerebroNexus"
   )
+  withr::local_options(cerebro.quiet_runtime = TRUE)
 
-  convertSeuratToCerebro(
-    seurat_file = object,
-    result_dir = tempfile("spatial-wrapper-"),
-    assay = "Spatial",
-    slot = "data",
-    experiment_name = "Forward images",
-    organism = "mouse",
-    groups = c("seurat_clusters", "cell_type_final"),
-    nUMI = "nCount_Spatial",
-    nGene = "nFeature_Spatial",
-    add_most_expressed_genes = FALSE,
-    spatial_images = declared,
-    verbose = FALSE
+  expect_silent(
+    convertSeuratToCerebro(
+      seurat_file = object,
+      result_dir = tempfile("spatial-wrapper-"),
+      assay = "Spatial",
+      slot = "data",
+      experiment_name = "Forward images",
+      organism = "mouse",
+      groups = c("seurat_clusters", "cell_type_final"),
+      nUMI = "nCount_Spatial",
+      nGene = "nFeature_Spatial",
+      add_most_expressed_genes = FALSE,
+      spatial_images = declared,
+      verbose = FALSE
+    )
   )
 
   expect_identical(received$spatial_images, declared)

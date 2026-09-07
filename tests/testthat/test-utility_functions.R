@@ -35,6 +35,34 @@ cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
 viewerUploadPath <- utils_env$viewerUploadPath
 
+test_that("CRB cache diagnostics stay quiet when requested", {
+  runtime <- new.env(parent = globalenv())
+  sys.source(utils_file, envir = runtime)
+  runtime$.crb_cache <- new.env(parent = emptyenv())
+  runtime$.configuredRuntimeBackendPlan <- function(...) NULL
+  runtime$.runtimeBackendCacheIdentity <- function(...) "test"
+  runtime$read_cerebro_file <- function(path) list(path = path)
+  runtime$.attachExternalExpression <- function(object, ...) object
+  withr::local_options(cerebro.quiet_runtime = TRUE)
+
+  expect_identical(
+    capture.output(invisible(runtime$get_or_load_crb("fixture.crb"))),
+    character()
+  )
+  expect_identical(
+    capture.output(invisible(runtime$get_or_load_crb("fixture.crb"))),
+    character()
+  )
+
+  withr::local_options(cerebro.quiet_runtime = FALSE)
+  runtime$.crb_cache <- new.env(parent = emptyenv())
+  expect_output(
+    invisible(runtime$get_or_load_crb("fixture.crb")),
+    "CRB cache miss",
+    fixed = TRUE
+  )
+})
+
 test_that("infinite values are replaced without changing other columns", {
   replaceInfiniteValues <- utils_env$replaceInfiniteValues
   expect_true(is.function(replaceInfiniteValues))
