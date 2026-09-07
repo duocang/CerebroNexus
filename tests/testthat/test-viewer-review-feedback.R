@@ -33,6 +33,15 @@ test_that("gene conversion table escapes cell content", {
   expect_no_match(source, "escape = FALSE", fixed = TRUE)
 })
 
+test_that("Viewer gene sets use the public msigdbr API", {
+  utility <- viewer_source("utility_functions.R")
+  input <- viewer_source("gene_expression", "UI_projection_input_type.R")
+
+  expect_no_match(paste(utility, input), "msigdbr:::", fixed = TRUE)
+  expect_match(utility, "msigdbr::msigdbr(species = species)", fixed = TRUE)
+  expect_match(input, "getGeneSetNames()", fixed = TRUE)
+})
+
 test_that("Viewer copy uses British colour spelling", {
   sidebar <- viewer_source("shiny_UI.R")
   management <- viewer_source("color_management", "server.R")

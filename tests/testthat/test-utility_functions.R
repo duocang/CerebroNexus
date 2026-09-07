@@ -109,6 +109,21 @@ test_that("ordinary Viewer tables escape HTML by default", {
   expect_identical(attr(empty$x$options, "escapeIdx"), "true")
 })
 
+test_that("MSigDB helpers expose sorted public data", {
+  skip_if_not_installed("msigdbr")
+
+  table <- utils_env$getMsigdbTable("Homo sapiens")
+  names <- utils_env$getGeneSetNames()
+
+  expect_true(all(c("gs_name", "gene_symbol") %in% colnames(table)))
+  expect_gt(nrow(table), 0)
+  expect_identical(names, sort(unique(table$gs_name)))
+  expect_identical(
+    utils_env$getMsigdbTable("Homo sapiens"),
+    table
+  )
+})
+
 test_that("conditional initial routing is consumed by the first dataset", {
   decide <- utils_env$viewerInitialPageDecision
 

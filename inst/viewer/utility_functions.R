@@ -1516,6 +1516,33 @@ getXYranges <- function(table) {
 ##----------------------------------------------------------------------------##
 ## Function to get genes for selected gene set.
 ##----------------------------------------------------------------------------##
+.msigdb_table_cache <- new.env(parent = emptyenv())
+
+getMsigdbTable <- function(species) {
+  cached <- .msigdb_table_cache[[species]]
+  if (!is.null(cached)) {
+    return(cached)
+  }
+  if (!requireNamespace("msigdbr", quietly = TRUE)) {
+    warning("The 'msigdbr' package is required to resolve gene sets.")
+    return(data.frame(gs_name = character(), gene_symbol = character()))
+  }
+  table <- tryCatch(
+    msigdbr::msigdbr(species = species),
+    error = function(error_condition) {
+      warning("MSigDB query failed: ", conditionMessage(error_condition))
+      data.frame(gs_name = character(), gene_symbol = character())
+    }
+  )
+  table <- as.data.frame(table[, c("gs_name", "gene_symbol"), drop = FALSE])
+  .msigdb_table_cache[[species]] <- table
+  table
+}
+
+getGeneSetNames <- function() {
+  sort(unique(getMsigdbTable("Homo sapiens")$gs_name))
+}
+
 getGenesForGeneSet <- function(gene_set) {
   if (
     !is.null(getExperiment()$organism) &&
@@ -1531,30 +1558,9 @@ getGenesForGeneSet <- function(gene_set) {
     species <- "Mus musculus"
   }
 
-  ## - get list of gene set names
-  ## - filter for selected gene set
-  ## - extract genes that belong to the gene set
-  ## - get orthologs for the genes
-  ## - convert gene symbols to vector
-  ## - only keep unique gene symbols
-  ## - sort genes
-  msigdbr:::msigdbr_genesets[, 1:2] %>%
-    dplyr::filter(.data$gs_name == gene_set) %>%
-    dplyr::inner_join(
-      .,
-      msigdbr:::msigdbr_genes,
-      by = "gs_id"
-    ) %>%
-    dplyr::inner_join(
-      .,
-      msigdbr:::msigdbr_orthologs %>%
-        dplyr::filter(.data$species_name == species) %>%
-        dplyr::select(human_entrez_gene, gene_symbol),
-      by = "human_entrez_gene"
-    ) %>%
-    dplyr::pull(gene_symbol) %>%
-    unique() %>%
-    sort()
+  table <- getMsigdbTable(species)
+  genes <- table$gene_symbol[table$gs_name == gene_set]
+  sort(unique(genes[!is.na(genes) & nzchar(genes)]))
 }
 
 ##----------------------------------------------------------------------------##
