@@ -527,7 +527,6 @@
     var mode = panelColorMode(p);
     var key = mode === GENE_MODE
       ? mode + '|' + (D.gene ? D.gene.gene : '') : mode;
-    if (_ordCache.has(key)) return _ordCache.get(key);
     var vals = null;
     if (mode === GENE_MODE && D.gene) {
       vals = D.gene.v;
@@ -535,6 +534,8 @@
       var f = fieldForMode(mode);
       if (f) vals = f.v;
     }
+    var cached = _ordCache.get(key);
+    if (cached && cached.values === vals) return cached.order;
     var ord = null;
     if (vals) {
       ord = new Array(D.n);
@@ -548,7 +549,7 @@
         return va - vb;
       });
     }
-    _ordCache.set(key, ord);
+    _ordCache.set(key, { values: vals, order: ord });
     return ord;
   }
 
@@ -575,7 +576,8 @@
     if (field && field.unclipped) return { lo: 0, hi: span };
     var key = (mode === GENE_MODE
       ? mode + '|' + (D.gene ? D.gene.gene : '') : mode) + '|' + colorClip;
-    if (_clipCache.has(key)) return _clipCache.get(key);
+    var cached = _clipCache.get(key);
+    if (cached && cached.values === vals) return cached.range;
     var r;
     if (colorClip <= 0) {
       r = { lo: 0, hi: span };
@@ -601,7 +603,7 @@
       if (hi <= lo) { lo = 0; hi = span; }   // degenerate (constant) -- show it all
       r = { lo: lo, hi: hi };
     }
-    _clipCache.set(key, r);
+    _clipCache.set(key, { values: vals, range: r });
     return r;
   }
   // Quantised value -> 0..1 across the active colour range.
@@ -3178,7 +3180,7 @@
       // A pinned tooltip owns this panel's tooltip element until it is closed —
       // but the cross-panel mark still follows the cursor.
       var own = pinnedTip.panel !== p;
-      if (p.drag || p.panning) {
+      if (p.drag || p.panning || p.orbiting) {
         if (own) tip.style.opacity = 0;
         setHoverCell(null);
         return;
@@ -3208,7 +3210,7 @@
       var r = p.canvas.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top];
     };
-    var dragFrame = null, dragEvent = null;
+    var dragFrame = null, dragEvents = [];
     function applyDragMove(e) {
       if (p.orbiting) {
         var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
@@ -3219,8 +3221,7 @@
           rx: Math.max(-1.4, Math.min(1.4,
             p.orbitBase.rx + (oq[1] - p.orbitFrom[1]) * RAD))
         };
-        project(p); draw(p);
-        return;
+        return true;
       }
       if (p.panning) {
         var pq = pos(e), SX = p._SX || 1, SY = p._SY || 1, v = p.panView;
@@ -3232,10 +3233,9 @@
           (pq[0] - p.panFrom[0]) / SX,
           (pq[1] - p.panFrom[1]) / SY
         ));
-        project(p); draw(p);
-        return;
+        return true;
       }
-      if (!p.drag) return;
+      if (!p.drag) return false;
       var q = pos(e);
       if (selectMode === 'box') {
         // rectangle from the drag origin to the cursor; inPoly treats it as a
@@ -3243,20 +3243,33 @@
         var a = p.start;
         if (Math.abs(q[0] - a[0]) + Math.abs(q[1] - a[1]) > 3) {
           p.lasso = [[a[0], a[1]], [q[0], a[1]], [q[0], q[1]], [a[0], q[1]]];
-          p.moved = true; draw(p);
+          p.moved = true; return true;
         }
       } else {
         var last = p.lasso[p.lasso.length - 1];
         if (Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) > 3) {
-          p.lasso.push(q); p.moved = true; draw(p);
+          p.lasso.push(q); p.moved = true; return true;
         }
       }
+      return false;
     }
-    function flushDragMove(e) {
-      if (!p.orbiting && !p.panning && !p.drag && dragFrame === null) return;
+    function applyDragMoves(events) {
+      var changed = false;
+      events.forEach(function (event) {
+        if (applyDragMove(event)) changed = true;
+      });
+      if (!changed) return;
+      if (p.orbiting || p.panning) project(p);
+      draw(p);
+    }
+    function flushDragMoves(e) {
+      if (!p.orbiting && !p.panning && !p.drag &&
+        dragFrame === null && !dragEvents.length) return;
       if (dragFrame !== null) cancelAnimationFrame(dragFrame);
-      dragFrame = null; dragEvent = null;
-      applyDragMove(e);
+      if (e) dragEvents.push({ clientX: e.clientX, clientY: e.clientY });
+      var pending = dragEvents;
+      dragFrame = null; dragEvents = [];
+      applyDragMoves(pending);
     }
     brushTarget.addEventListener('mousedown', function (e) {
       if (e.target.closest && e.target.closest('button, select, input, a, .cv-tip')) return;
@@ -3308,12 +3321,12 @@
     });
     window.addEventListener('mousemove', function (e) {
       if (!p.orbiting && !p.panning && !p.drag) return;
-      dragEvent = { clientX: e.clientX, clientY: e.clientY };
+      dragEvents.push({ clientX: e.clientX, clientY: e.clientY });
       if (dragFrame !== null) return;
       dragFrame = requestAnimationFrame(function () {
-        var latest = dragEvent;
-        dragFrame = null; dragEvent = null;
-        if (latest) applyDragMove(latest);
+        var pending = dragEvents;
+        dragFrame = null; dragEvents = [];
+        applyDragMoves(pending);
       });
     });
     // Zooming is a toolbar action only. Wheel-zoom made the panels hostile to
@@ -3321,7 +3334,7 @@
     // it instead, and on a trackpad the two gestures are the same one. The wheel
     // is therefore left to the page.
     window.addEventListener('mouseup', function (e) {
-      flushDragMove(e);
+      flushDragMoves(e);
       if (p.orbiting) {
         p.orbiting = false;
         p.canvas.classList.remove('cv-grabbing');
@@ -5269,8 +5282,8 @@
       if (sameFingerprint && sameId) return;
       linkedBundle = null; D = null; resetSingleViews();
     }
-    if (linkedBundle && identity.savedFingerprint &&
-      linkedBundle._singleIdentity !== identity.token) {
+    if (linkedBundle && linkedBundle._singleOnly &&
+      (!identity.savedFingerprint || linkedBundle._singleIdentity !== identity.token)) {
       linkedBundle = null; D = null; resetSingleViews();
     }
     var cells = linkedBundle && linkedBundle._singleOnly

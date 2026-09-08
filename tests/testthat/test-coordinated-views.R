@@ -2083,6 +2083,163 @@ test_that("brush gestures start from visualization pane whitespace", {
   )
 })
 
+run_cell_views_node <- function(hooks, body, setup = character()) {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
+  skip_if_not(file.exists(js_file))
+  js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
+  close_at <- tail(gregexpr("\n})();", js, fixed = TRUE)[[1]], 1L)
+  stopifnot(close_at > 0L)
+  js <- paste0(
+    substr(js, 1L, close_at - 1L),
+    "\n",
+    paste(hooks, collapse = "\n"),
+    substr(js, close_at, nchar(js))
+  )
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "'use strict';",
+      "global.window = global; window.devicePixelRatio = 1;",
+      "global.document = {readyState:'loading', addEventListener:()=>{},",
+      "  getElementById:()=>null, querySelectorAll:()=>[],",
+      "  createElement:()=>({getContext:()=>null})};",
+      "window.addEventListener = ()=>{};",
+      setup,
+      js,
+      body
+    ),
+    runner
+  )
+  output <- suppressWarnings(system2(
+    "node",
+    runner,
+    stdout = TRUE,
+    stderr = TRUE
+  ))
+  status <- attr(output, "status")
+  expect_true(
+    is.null(status) || identical(as.integer(status), 0L),
+    info = paste(output, collapse = "\n")
+  )
+  output
+}
+
+test_that("specialist bases do not reuse cells without a dataset fingerprint", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  ensure: ensureSingleBase,",
+      "  base: function () { return linkedBundle; },",
+      "  seedView: function () { singleViews.old = {id:'old'}; },",
+      "  viewCount: function () { return Object.keys(singleViews).length; }",
+      "};"
+    ),
+    c(
+      "window.cerebroSavedViewDataset = {};",
+      "__cellViewsTest.ensure({data:{selection_key:['old']}});",
+      "__cellViewsTest.seedView();",
+      "__cellViewsTest.ensure({data:{selection_key:['new']}});",
+      "console.log(__cellViewsTest.base().cells.join(',') + '|' +",
+      "  __cellViewsTest.viewCount());"
+    )
+  )
+
+  expect_identical(tail(output, 1L), "new|0")
+})
+
+test_that("continuous caches follow replaced value arrays", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  setData: function (data) { D = data; colorClip = 0.25; },",
+      "  replaceGene: function (values) { D.gene = {gene:'G', v:values}; },",
+      "  replaceField: function (values) { D.fields.score = {v:values, scale:255}; },",
+      "  order: function (mode) { return paintOrder({colorBy:mode}); },",
+      "  range: function (mode) { return clipRange({colorBy:mode}); },",
+      "  geneMode: GENE_MODE, fieldMode: FIELD_PREFIX + 'score',",
+      "  otherMode: FIELD_PREFIX + 'other'",
+      "};"
+    ),
+    c(
+      "const t = __cellViewsTest;",
+      "t.setData({n:4, gene:{gene:'G', v:[0,100,50,200]}, fields:{",
+      "  score:{v:[0,0,0,255], scale:255},",
+      "  other:{v:[40,30,20,10], scale:255}}});",
+      "t.order(t.geneMode); t.range(t.geneMode);",
+      "t.replaceGene([10,40,20,30]);",
+      "const geneOrder = t.order(t.geneMode);",
+      "const geneRange = t.range(t.geneMode);",
+      "t.order(t.fieldMode); t.range(t.fieldMode);",
+      "t.replaceField([10,40,20,30]);",
+      "const fieldOrder = t.order(t.fieldMode);",
+      "const fieldRange = t.range(t.fieldMode);",
+      "t.order(t.otherMode); t.range(t.otherMode);",
+      "const fieldOrderAgain = t.order(t.fieldMode);",
+      "const fieldRangeAgain = t.range(t.fieldMode);",
+      "console.log([geneOrder.join(','), geneRange.lo + ':' + geneRange.hi,",
+      "  fieldOrder.join(','), fieldRange.lo + ':' + fieldRange.hi,",
+      "  fieldOrder === fieldOrderAgain, fieldRange === fieldRangeAgain].join('|'));"
+    )
+  )
+
+  expect_identical(
+    tail(output, 1L),
+    "0,2,3,1|10:40|0,2,3,1|10:40|true|true"
+  )
+})
+
+test_that("freehand drag queues every point and flushes mouseup", {
+  output <- run_cell_views_node(
+    c(
+      "window.__cellViewsTest = {",
+      "  wire: wireBrush,",
+      "  prepare: function () { D = null; selectMode = 'lasso'; },",
+      "  stubDraw: function (fn) { draw = fn; }",
+      "};"
+    ),
+    c(
+      "const listeners = window.__listeners, frames = window.__frames;",
+      "const pane = {addEventListener:()=>{}};",
+      "const canvas = {getBoundingClientRect:()=>({left:0, top:0}),",
+      "  classList:{add:()=>{}, remove:()=>{}}};",
+      "const panel = {pane:pane, canvas:canvas, drag:true, start:[0,0],",
+      "  lasso:[[0,0]], moved:false, ok:null, sx:null};",
+      "const snapshots = [];",
+      "__cellViewsTest.prepare();",
+      "__cellViewsTest.stubDraw(p=>snapshots.push(p.lasso.map(q=>q.join(',')).join(';')));",
+      "__cellViewsTest.wire(panel);",
+      "const move = listeners.mousemove[0], up = listeners.mouseup[0];",
+      "move({clientX:5, clientY:0}); move({clientX:10, clientY:0});",
+      "frames[0].fn();",
+      "move({clientX:15, clientY:0}); move({clientX:20, clientY:0});",
+      "up({clientX:25, clientY:0});",
+      "console.log([snapshots[0], snapshots[1], snapshots.length,",
+      "  window.__cancelled.length].join('|'));"
+    ),
+    c(
+      "window.__listeners = {}; window.__frames = []; window.__cancelled = [];",
+      "window.addEventListener = (name, fn) => {",
+      "  (window.__listeners[name] ||= []).push(fn);",
+      "};",
+      "global.requestAnimationFrame = fn => {",
+      "  const frame = {id:window.__frames.length + 1, fn:fn};",
+      "  window.__frames.push(frame); return frame.id;",
+      "};",
+      "global.cancelAnimationFrame = id => window.__cancelled.push(id);"
+    )
+  )
+
+  expect_identical(
+    tail(output, 1L),
+    paste0(
+      "0,0;5,0;10,0|",
+      "0,0;5,0;10,0;15,0;20,0;25,0|2|1"
+    )
+  )
+})
+
 test_that("dedicated cell views do not request the Linked Views bundle", {
   js_file <- file.path(dirname(bundle_file), "..", "www", "cell_views.js")
   skip_if_not(file.exists(js_file))
@@ -2107,11 +2264,18 @@ test_that("continuous panel calculations cache every field for the current data"
   js <- paste(readLines(js_file, warn = FALSE), collapse = "\n")
 
   expect_match(js, "var _ordD = null, _ordCache = new Map();", fixed = TRUE)
-  expect_match(js, "_ordCache.has(key)", fixed = TRUE)
-  expect_match(js, "_ordCache.set(key, ord)", fixed = TRUE)
+  expect_match(js, "cached.values === vals", fixed = TRUE)
+  expect_match(
+    js,
+    "_ordCache.set(key, { values: vals, order: ord });",
+    fixed = TRUE
+  )
   expect_match(js, "var _clipD = null, _clipCache = new Map();", fixed = TRUE)
-  expect_match(js, "_clipCache.has(key)", fixed = TRUE)
-  expect_match(js, "_clipCache.set(key, r)", fixed = TRUE)
+  expect_match(
+    js,
+    "_clipCache.set(key, { values: vals, range: r });",
+    fixed = TRUE
+  )
   expect_no_match(js, "_ordKey", fixed = TRUE)
   expect_no_match(js, "_clipKey", fixed = TRUE)
 })
@@ -2128,15 +2292,16 @@ test_that("pointer drags coalesce frames and flush the final event", {
   )[[1]]
   brush <- substring(js, start, start + finish - 2L)
 
-  expect_match(brush, "var dragFrame = null, dragEvent = null;", fixed = TRUE)
-  expect_match(brush, "function applyDragMove(e)", fixed = TRUE)
+  expect_match(brush, "var dragFrame = null, dragEvents = [];", fixed = TRUE)
+  expect_match(brush, "function applyDragMoves(events)", fixed = TRUE)
   expect_match(brush, "dragFrame = requestAnimationFrame", fixed = TRUE)
   expect_match(brush, "cancelAnimationFrame(dragFrame)", fixed = TRUE)
   expect_match(
     brush,
-    "window.addEventListener('mouseup', function (e) {\n      flushDragMove(e);",
+    "window.addEventListener('mouseup', function (e) {\n      flushDragMoves(e);",
     fixed = TRUE
   )
+  expect_match(js, "p.drag || p.panning || p.orbiting", fixed = TRUE)
   expect_equal(
     lengths(regmatches(
       brush,
