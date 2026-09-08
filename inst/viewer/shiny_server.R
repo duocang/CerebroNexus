@@ -81,6 +81,52 @@ server <- function(input, output, session) {
     )
   )
 
+  ## Let the active page paint before warming controls whose outputs explicitly
+  ## opt out of Shiny's hidden-output suspension.
+  viewer_first_paint <- new.env(parent = emptyenv())
+  viewer_first_paint$ready <- FALSE
+  viewer_deferred_output_options <- list()
+  viewer_deferred_output_spacing_ms <- 50L
+  outputOptions <- function(output, x, ...) {
+    options <- list(...)
+    if (
+      !isTRUE(viewer_first_paint$ready) &&
+        identical(options$suspendWhenHidden, FALSE)
+    ) {
+      viewer_deferred_output_options[[x]] <<- options
+      return(invisible(NULL))
+    }
+    do.call(
+      shiny::outputOptions,
+      c(list(x = output, name = x), options)
+    )
+  }
+  session$onFlushed(
+    function() {
+      later::later(
+        function() {
+          viewer_first_paint$ready <- TRUE
+          deferred_ids <- names(viewer_deferred_output_options)
+          invisible(lapply(seq_along(deferred_ids), function(index) {
+            id <- deferred_ids[[index]]
+            options <- viewer_deferred_output_options[[id]]
+            later::later(
+              function() {
+                do.call(
+                  shiny::outputOptions,
+                  c(list(x = output, name = id), options)
+                )
+              },
+              delay = (index - 1L) * viewer_deferred_output_spacing_ms / 1000
+            )
+          }))
+        },
+        delay = 1
+      )
+    },
+    once = TRUE
+  )
+
   viewer_initial_page_tabs <- c(
     data_info = "loadData",
     projection = "overview",

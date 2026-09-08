@@ -201,6 +201,71 @@ cachePlot <- function(x, ...) {
   }
 }
 
+## Return the first complete reactive value immediately; debounce only later
+## invalidations caused by interactive controls.
+debounceAfterFirst <- function(reactive, millis) {
+  delayed <- shiny::debounce(reactive, millis)
+  delivered <- FALSE
+  shiny::reactive({
+    if (!delivered) {
+      value <- reactive()
+      delivered <<- TRUE
+      return(value)
+    }
+    delayed()
+  })
+}
+
+## Fetch several genes in one backend call and align every returned vector to
+## the requested cell order. Missing genes are omitted from the result.
+viewerExpressionValues <- function(data_set, cells, genes) {
+  cells <- as.character(cells)
+  genes <- unique(as.character(unlist(genes, use.names = FALSE)))
+  genes <- genes[!is.na(genes) & nzchar(genes)]
+  if (!length(genes)) {
+    return(list())
+  }
+
+  expression_matrix <- data_set$getExpressionMatrix(
+    cells = cells,
+    genes = genes
+  )
+  if (is.null(expression_matrix)) {
+    return(list())
+  }
+  if (is.null(dim(expression_matrix))) {
+    if (length(genes) != 1L) {
+      return(list())
+    }
+    expression_matrix <- matrix(
+      as.numeric(expression_matrix),
+      nrow = 1L,
+      dimnames = list(genes, NULL)
+    )
+  }
+
+  gene_names <- rownames(expression_matrix)
+  if (is.null(gene_names) && nrow(expression_matrix) == length(genes)) {
+    gene_names <- genes
+  }
+  cell_names <- colnames(expression_matrix)
+  cell_index <- if (is.null(cell_names)) {
+    seq_len(min(length(cells), ncol(expression_matrix)))
+  } else {
+    match(cells, cell_names)
+  }
+
+  values <- lapply(genes, function(gene) {
+    row_index <- match(gene, gene_names)
+    if (is.na(row_index)) {
+      return(NULL)
+    }
+    as.numeric(expression_matrix[row_index, cell_index, drop = TRUE])
+  })
+  names(values) <- genes
+  values[!vapply(values, is.null, logical(1))]
+}
+
 cerebroCellViewMessage <- function(
   id,
   meta,

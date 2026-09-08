@@ -70,14 +70,21 @@ expression_projection_expression_levels <- reactive({
         )
       ) {
         incProgress(0.3, detail = "Calculating RGB co-expression...")
-        expression_levels <- lapply(genes_data[["rgb_genes"]], function(gene) {
-          if (is.null(gene) || !gene %in% genes_present) {
+        rgb_genes <- genes_data[["rgb_genes"]]
+        requested_genes <- intersect(
+          unique(unlist(rgb_genes, use.names = FALSE)),
+          genes_present
+        )
+        expression_values <- viewerExpressionValues(
+          data_set(),
+          cells_to_show_bc,
+          requested_genes
+        )
+        expression_levels <- lapply(rgb_genes, function(gene) {
+          if (is.null(gene) || !gene %in% names(expression_values)) {
             return(rep(0, n_cells))
           }
-          unname(as.numeric(data_set()$getExpressionMatrix(
-            cells = cells_to_show_bc,
-            genes = gene
-          )))
+          unname(expression_values[[gene]])
         })
       } else if (
         ncol(expression_projection_coordinates()) == 2 &&
