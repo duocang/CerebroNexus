@@ -5776,7 +5776,8 @@
     // feeding it to onData() would treat it as an error and erase the state that
     // was just stashed above.
     if (linkedBundle._singleOnly) {
-      D = null; linkedState = null;
+      linkedState = null;
+      showUnavailable('Loading Linked views…');
       return;
     }
     rebuildingBase = true;
@@ -5960,8 +5961,11 @@
     var previousSelected = selectedSpatial.slice();
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
-    if (dataChanged) {
+    var incompatibleSingleBase = !!(previousSingleBase && !preserveSingleViews);
+    if (dataChanged || incompatibleSingleBase) {
       resetSingleViews(preserveSingleViews ? singleViews : null, preserveSingleViews);
+    }
+    if (dataChanged) {
       imgStates = {};
       imgChoice = {};
     }

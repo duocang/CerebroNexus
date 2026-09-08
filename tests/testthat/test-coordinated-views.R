@@ -2221,6 +2221,11 @@ test_that("first Linked bundle preserves matching specialist state", {
       "  },",
       "  toLinked: activateLinked,",
       "  show: function (id) { visibleTestId = id; },",
+      "  residual: function (fingerprint) {",
+      "    window.cerebroSavedViewDataset = {cell_count:2,",
+      "      cell_fingerprint:fingerprint};",
+      "    dataShown = 'full\\u0000' + fingerprint;",
+      "  },",
       "  state: function () {",
       "    var view = singleViews.view;",
       "    return view ? [view.selection.join(','), view.lenses[0].spaceId,",
@@ -2228,7 +2233,8 @@ test_that("first Linked bundle preserves matching specialist state", {
       "  },",
       "  activated: function () { return activatedTestId || 'none'; },",
       "  kind: function () { return linkedBundle && linkedBundle._singleOnly",
-      "    ? 'single' : 'full'; }",
+      "    ? 'single' : 'full'; },",
+      "  fingerprint: function () { return bundleFingerprint(linkedBundle); }",
       "};"
     ),
     c(
@@ -2238,13 +2244,62 @@ test_that("first Linked bundle preserves matching specialist state", {
       "const matched = t.state().concat(t.activated(), t.kind());",
       "t.seed('same'); t.toLinked(); t.show('view'); t.full('other');",
       "const mismatched = t.state().concat(t.activated());",
-      "console.log(pending.concat(matched, mismatched).join('|'));"
+      "t.seed('A'); t.residual('B'); t.toLinked(); t.show('view'); t.full('B');",
+      "const interleaved = t.state().concat(t.activated(), t.kind(), t.fingerprint());",
+      "console.log(pending.concat(matched, mismatched, interleaved).join('|'));"
     )
   )
 
   expect_identical(
     tail(output, 1L),
-    "a|lens|hidden|a|lens|hidden|view|full|lost|none"
+    "a|lens|hidden|a|lens|hidden|view|full|lost|none|lost|none|full|B"
+  )
+})
+
+test_that("single-only Linked wait hides and disables the old canvas", {
+  output <- run_cell_views_node(
+    c(
+      "var noop = function () {};",
+      "closeCard = unpinTip = setTrekkerSettingsVisible = noop;",
+      "setTrekkerInsightsOpen = closeMore = reportSelection = noop;",
+      "restoreLinkedSurface = noop;",
+      "stashSingleState = function () {",
+      "  var view = singleViews[singleActive];",
+      "  view.selection = ['a']; view.hiddenGroups = ['hidden'];",
+      "  view.lenses = [{spaceId:'lens'}];",
+      "};",
+      "window.__cellViewsTest = {",
+      "  run: function () {",
+      "    var hidden = false, cleared = 0;",
+      "    var panel = {spaceId:'space', sx:[1], sy:[1], ok:[true],",
+      "      lasso:[[1,1]], lassoData:[[1,1]], view:{cx:1}, W:10, H:10,",
+      "      pane:{classList:{add:function (name) {",
+      "        if (name === 'cv-hidden') hidden = true;",
+      "      }}}, ctx:{clearRect:function () { cleared++; }}};",
+      "    panels = [panel];",
+      "    linkedBundle = {_singleOnly:true, dataset_fingerprint:'same',",
+      "      cell_fingerprint:'same', cells:['a'], n:1, spaces:[]};",
+      "    D = Object.assign({}, linkedBundle);",
+      "    singleViews = {view:{id:'view'}}; singleActive = 'view';",
+      "    singleSpaceIds = ['space']; singleSpaceModes = {};",
+      "    activateLinked();",
+      "    var view = singleViews.view;",
+      "    return [hidden ? 'hidden' : 'visible',",
+      "      panel.sx === null && panel.sy === null && panel.ok === null",
+      "        ? 'inert' : 'interactive',",
+      "      cleared, view.selection.join(','), view.lenses[0].spaceId,",
+      "      view.hiddenGroups.join(','), linkedBundle._singleOnly ? 'single' : 'full'];",
+      "  }",
+      "};"
+    ),
+    c(
+      "console.log(__cellViewsTest.run().join('|'));"
+    )
+  )
+
+  expect_identical(
+    tail(output, 1L),
+    "hidden|inert|1|a|lens|hidden|single"
   )
 })
 
