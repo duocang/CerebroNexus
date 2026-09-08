@@ -16,7 +16,12 @@ if (nzchar(Sys.getenv("BENCH_LIB"))) {
 }
 
 capture_command <- function(command, args = character()) {
-  out <- suppressWarnings(system2(command, args, stdout = TRUE, stderr = FALSE))
+  out <- suppressWarnings(system2(
+    command,
+    vapply(args, shQuote, character(1)),
+    stdout = TRUE,
+    stderr = FALSE
+  ))
   paste(trimws(out), collapse = " ")
 }
 

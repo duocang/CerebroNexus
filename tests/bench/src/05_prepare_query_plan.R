@@ -67,11 +67,11 @@ fail <- function(stage, error) {
   quit(status = 1L)
 }
 
-matrix <- NULL
+source_matrix <- NULL
 profile <- Sys.getenv("BENCH_PROFILE")
 row$source_prepare_secs <- tryCatch(
   bench_time({
-    matrix <<- if (identical(profile, "panel_c2")) {
+    source_matrix <<- if (identical(profile, "panel_c2")) {
       bench_open_full_source(spec, source_path)
     } else {
       spec$local_path <- source_path
@@ -80,20 +80,23 @@ row$source_prepare_secs <- tryCatch(
   }),
   error = function(error) fail("source", error)
 )
-if (ncol(matrix) != n_cells) {
+if (ncol(source_matrix) != n_cells) {
   fail(
     "source",
     simpleError("prepared source cell count differs from schedule")
   )
 }
-row$n_genes <- nrow(matrix)
+row$n_genes <- nrow(source_matrix)
 plan <- NULL
 row$query_plan_secs <- tryCatch(
   bench_time({
     plan <<- if (identical(profile, "panel_c2")) {
-      bench_build_lazy_query_plan(matrix, bench_profile(profile)$query_genes)
+      bench_build_lazy_query_plan(
+        source_matrix,
+        bench_profile(profile)$query_genes
+      )
     } else {
-      bench_build_query_plan(matrix, bench_profile(profile)$query_genes)
+      bench_build_query_plan(source_matrix, bench_profile(profile)$query_genes)
     }
   }),
   error = function(error) fail("query plan", error)

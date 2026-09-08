@@ -117,6 +117,7 @@ test_that("query plans are prepared before any timed backend build", {
   expect_match(prepare_body, "bench_build_query_plan", fixed = TRUE)
   expect_match(prepare_body, "bench_build_lazy_query_plan", fixed = TRUE)
   expect_match(prepare_body, "query_panel_result", fixed = TRUE)
+  expect_false(grepl("\\bmatrix\\s*<<-", prepare_body, perl = TRUE))
   expect_match(sampled_body, "readRDS(query_plan_path)", fixed = TRUE)
   expect_false(grepl("bench_build_query_plan", sampled_body, fixed = TRUE))
   expect_lt(
@@ -279,6 +280,20 @@ run_bench_rscript <- function(script, args = character(), env = character()) {
     stderr = readLines(err, warn = FALSE)
   )
 }
+
+test_that("run provenance quotes Git magic pathspecs", {
+  skip_unless_bench_cli()
+  result <- tempfile(fileext = ".csv")
+  on.exit(unlink(result), add = TRUE)
+
+  run <- run_bench_rscript("02_record_environment.R", result)
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+  expect_false(
+    any(grepl("syntax error|unexpected token", run$stderr, ignore.case = TRUE)),
+    info = paste(run$stderr, collapse = "\n")
+  )
+  expect_true(file.exists(result))
+})
 
 test_that("schedule CLI emits a complete quick-profile grid", {
   skip_unless_bench_cli()
