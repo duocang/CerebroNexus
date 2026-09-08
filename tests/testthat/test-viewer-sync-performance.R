@@ -17,6 +17,85 @@ read_sync_perf_viewer <- function(...) {
   )
 }
 
+sync_perf_reactive <- function(value) {
+  expression <- substitute(value)
+  scope <- parent.frame()
+  function() eval(expression, envir = scope)
+}
+
+find_sync_perf_assignment <- function(expression, name) {
+  if (
+    is.call(expression) &&
+      identical(expression[[1L]], quote(`<-`)) &&
+      identical(expression[[2L]], as.name(name))
+  ) {
+    return(expression[[3L]])
+  }
+  if (!is.recursive(expression)) {
+    return(NULL)
+  }
+  for (index in seq_along(expression)) {
+    if (identical(expression[[index]], quote(expr = ))) {
+      next
+    }
+    part <- expression[[index]]
+    found <- find_sync_perf_assignment(part, name)
+    if (!is.null(found)) {
+      return(found)
+    }
+  }
+  NULL
+}
+
+run_sync_perf_cell_sampling <- function(view, metadata, filters, percentage) {
+  utility <- new.env(parent = globalenv())
+  sys.source(
+    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    envir = utility
+  )
+
+  sample_calls <- list()
+  scope <- new.env(parent = globalenv())
+  scope$reactive <- sync_perf_reactive
+  scope$req <- shiny::req
+  scope$`%>%` <- magrittr::`%>%`
+  scope$input <- c(
+    stats::setNames(
+      list(percentage),
+      paste0(view$prefix, "_percentage_cells_to_show")
+    ),
+    stats::setNames(
+      filters,
+      paste0(view$prefix, "_group_filter_", names(filters))
+    )
+  )
+  scope$getGroups <- function() names(filters)
+  scope$getMetaData <- function() metadata
+  scope$cerebroGroupFilterMask <- utility$cerebroGroupFilterMask
+  scope$sample <- function(x, size, replace = FALSE, prob = NULL) {
+    sample_calls[[length(sample_calls) + 1L]] <<- "sample"
+    if (missing(size)) {
+      return(base::sample(x, replace = replace, prob = prob))
+    }
+    base::sample(x, size, replace = replace, prob = prob)
+  }
+  scope$sample.int <- function(n, size, replace = FALSE, prob = NULL) {
+    sample_calls[[length(sample_calls) + 1L]] <<- "sample.int"
+    base::sample.int(n, size, replace = replace, prob = prob)
+  }
+  scope$randomlySubsetCells <- utility$randomlySubsetCells
+  environment(scope$randomlySubsetCells) <- scope
+
+  sys.source(
+    file.path(sync_perf_viewer_root, view$file),
+    envir = scope
+  )
+  list(
+    cells = scope[[view$reactive]](),
+    sample_calls = unlist(sample_calls, use.names = FALSE)
+  )
+}
+
 test_that("the first reactive value bypasses debounce", {
   utility_env <- new.env(parent = globalenv())
   sys.source(
@@ -336,4 +415,239 @@ test_that("Viewer source parsing is cached but evaluation remains per session", 
   third <- new.env(parent = baseenv())
   cache_env$viewerSource(source_file, third)
   expect_identical(third$value, 200L)
+})
+
+test_that("specialist cell sampling uses one original-row index sample", {
+  views <- list(
+    overview = list(
+      file = "overview/obj_projection_cells_to_show.R",
+      prefix = "overview_projection",
+      reactive = "overview_projection_cells_to_show"
+    ),
+    gene = list(
+      file = "gene_expression/obj_projection_cells_to_show.R",
+      prefix = "expression_projection",
+      reactive = "expression_projection_cells_to_show"
+    ),
+    spatial = list(
+      file = "spatial/obj_projection_cells_to_show.R",
+      prefix = "spatial_projection",
+      reactive = "spatial_projection_cells_to_show"
+    )
+  )
+  metadata <- data.frame(
+    cell_barcode = paste0("cell", seq_len(7L)),
+    batch = c("drop", "keep", "drop", "keep", "keep", "drop", "keep"),
+    state = c("T", "T", "T", "B", "T", "B", "B"),
+    matrix(seq_len(140L), nrow = 7L),
+    check.names = FALSE
+  )
+  eligible <- c(2L, 4L, 5L, 7L)
+
+  for (name in names(views)) {
+    result <- run_sync_perf_cell_sampling(
+      views[[name]],
+      metadata,
+      filters = list(batch = "keep", state = c("T", "B")),
+      percentage = 50
+    )
+    expect_identical(
+      result$sample_calls,
+      "sample.int",
+      info = name
+    )
+    expect_equal(
+      length(result$cells),
+      ceiling(length(eligible) * 0.5),
+      info = name
+    )
+    expect_true(all(result$cells %in% eligible), info = name)
+    expect_equal(
+      length(unique(result$cells)),
+      length(result$cells),
+      info = name
+    )
+  }
+
+  all_cells <- run_sync_perf_cell_sampling(
+    views$overview,
+    metadata,
+    filters = list(batch = c("drop", "keep"), state = c("T", "B")),
+    percentage = 100
+  )
+  expect_identical(all_cells$cells, seq_len(nrow(metadata)))
+  expect_length(all_cells$sample_calls, 0L)
+
+  no_cells <- run_sync_perf_cell_sampling(
+    views$gene,
+    metadata,
+    filters = list(batch = character(), state = c("T", "B")),
+    percentage = 50
+  )
+  expect_identical(no_cells$cells, integer())
+  expect_length(no_cells$sample_calls, 0L)
+
+  scalar_metadata <- data.frame(
+    cell_barcode = paste0("cell", seq_len(50L)),
+    batch = replace(rep("drop", 50L), 42L, "keep")
+  )
+  scalar <- run_sync_perf_cell_sampling(
+    views$spatial,
+    scalar_metadata,
+    filters = list(batch = "keep"),
+    percentage = 50
+  )
+  expect_identical(scalar$cells, 42L)
+  expect_identical(scalar$sample_calls, "sample.int")
+
+  for (view in views) {
+    source <- read_sync_perf_viewer(view$file)
+    expect_no_match(source, "dplyr::mutate", fixed = TRUE)
+    expect_no_match(source, "dplyr::select", fixed = TRUE)
+    expect_no_match(source, "randomlySubsetCells", fixed = TRUE)
+  }
+})
+
+test_that("projection hover formats only displayed metadata rows", {
+  expressions <- parse(file.path(sync_perf_viewer_root, "shiny_server.R"))
+  definition <- NULL
+  for (expression in expressions) {
+    definition <- find_sync_perf_assignment(
+      expression,
+      "hover_info_projections"
+    )
+    if (!is.null(definition)) {
+      break
+    }
+  }
+  is_plain_function <- is.call(definition) &&
+    identical(definition[[1L]], quote(`function`))
+  expect_true(is_plain_function)
+
+  if (is_plain_function) {
+    metadata <- data.frame(
+      cell_barcode = paste0("cell", seq_len(5L)),
+      nUMI = seq_len(5L) * 10L,
+      nGene = seq_len(5L),
+      group = LETTERS[seq_len(5L)]
+    )
+    formatted <- NULL
+    metadata_calls <- 0L
+    format_calls <- 0L
+    scope <- list2env(list(
+      preferences = list(show_hover_info_in_projections = TRUE),
+      getMetaData = function() {
+        metadata_calls <<- metadata_calls + 1L
+        metadata
+      },
+      buildHoverInfoForProjections = function(cells) {
+        format_calls <<- format_calls + 1L
+        formatted <<- cells
+        paste0("hover-", cells$cell_barcode)
+      }
+    ))
+    hover <- eval(definition, envir = scope)
+
+    result <- hover(c(4L, 2L))
+    expect_identical(formatted, metadata[c(4L, 2L), , drop = FALSE])
+    expect_identical(
+      result,
+      stats::setNames(c("hover-cell4", "hover-cell2"), c("cell4", "cell2"))
+    )
+    expect_identical(metadata_calls, 1L)
+    expect_identical(format_calls, 1L)
+
+    scope$preferences[["show_hover_info_in_projections"]] <- FALSE
+    expect_identical(hover(c(1L, 3L)), "none")
+    expect_identical(metadata_calls, 1L)
+    expect_identical(format_calls, 1L)
+  }
+})
+
+test_that("specialist hover consumers pass cells exactly once", {
+  cases <- list(
+    overview = list(
+      file = "overview/obj_projection_hover_info.R",
+      cells = "overview_projection_cells_to_show",
+      hover = "overview_projection_hover_info",
+      value = integer()
+    ),
+    gene = list(
+      file = "gene_expression/obj_projection_hover_info.R",
+      cells = "expression_projection_cells_to_show",
+      hover = "expression_projection_hover_info",
+      value = c(5L, 2L)
+    ),
+    spatial = list(
+      file = "spatial/obj_projection_hover_info.R",
+      cells = "spatial_projection_cells_to_show",
+      hover = "spatial_projection_hover_info",
+      value = c(9L, 3L)
+    )
+  )
+
+  for (name in names(cases)) {
+    case <- cases[[name]]
+    cell_calls <- 0L
+    helper_calls <- 0L
+    requested <- NULL
+    scope <- new.env(parent = globalenv())
+    scope$reactive <- sync_perf_reactive
+    scope$req <- shiny::req
+    scope$preferences <- list(show_hover_info_in_projections = TRUE)
+    scope[[case$cells]] <- function() {
+      cell_calls <<- cell_calls + 1L
+      case$value
+    }
+    scope$hover_info_projections <- function(cells_to_show = NULL) {
+      helper_calls <<- helper_calls + 1L
+      requested <<- cells_to_show
+      if (is.null(cells_to_show)) {
+        return(paste0("hover-", seq_len(50L)))
+      }
+      if (!length(cells_to_show)) {
+        return(stats::setNames(character(), character()))
+      }
+      stats::setNames(
+        paste0("hover-", cells_to_show),
+        paste0("cell", cells_to_show)
+      )
+    }
+
+    sys.source(file.path(sync_perf_viewer_root, case$file), envir = scope)
+    result <- scope[[case$hover]]()
+
+    expect_identical(cell_calls, 1L, info = name)
+    expect_identical(helper_calls, 1L, info = name)
+    expect_identical(requested, case$value, info = name)
+    expected <- if (length(case$value)) {
+      stats::setNames(
+        paste0("hover-", case$value),
+        paste0("cell", case$value)
+      )
+    } else {
+      stats::setNames(character(), character())
+    }
+    expect_identical(result, expected, info = name)
+  }
+
+  for (name in c("gene", "spatial")) {
+    case <- cases[[name]]
+    helper_called <- FALSE
+    scope <- new.env(parent = globalenv())
+    scope$reactive <- sync_perf_reactive
+    scope$req <- shiny::req
+    scope[[case$cells]] <- function() integer()
+    scope$hover_info_projections <- function(cells_to_show) {
+      helper_called <<- TRUE
+    }
+    sys.source(file.path(sync_perf_viewer_root, case$file), envir = scope)
+
+    condition <- tryCatch(
+      scope[[case$hover]](),
+      shiny.silent.error = identity
+    )
+    expect_true(inherits(condition, "shiny.silent.error"), info = name)
+    expect_false(helper_called, info = name)
+  }
 })

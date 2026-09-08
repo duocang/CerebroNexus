@@ -19,22 +19,13 @@ spatial_projection_cells_to_show <- reactive({
 
   keep <- cerebroGroupFilterMask(meta_data, group_filters)
 
-  # Get indices
-  cells_indices <- which(keep)
-
-  # Randomly subset if needed
-  if (length(cells_indices) > 0 && pct_cells < 100) {
-    n_to_keep <- ceiling(length(cells_indices) * (pct_cells / 100))
-    cells_indices <- sample(cells_indices, n_to_keep)
+  indices <- which(keep)
+  if (!length(indices)) {
+    return(integer())
   }
-
-  # Shuffle for plotting order (avoid occlusion bias)
-  # Check if we have cells to show
-  if (length(cells_indices) > 0) {
-    cells_to_show <- sample(cells_indices)
-  } else {
-    cells_to_show <- integer(0)
+  if (pct_cells < 100) {
+    n <- ceiling(length(indices) * pct_cells / 100)
+    indices <- indices[sample.int(length(indices), n)]
   }
-
-  return(cells_to_show)
+  return(indices)
 })
