@@ -469,13 +469,12 @@ server <- function(input, output, session) {
   })
 
   # hover info for projection.
-  hover_info_projections <- function(cells_to_show) {
+  hover_info_projections <- function(cells_df) {
     # message('--> trigger "hover_info_projections"')
     if (
       !is.null(preferences[["show_hover_info_in_projections"]]) &&
         preferences[['show_hover_info_in_projections']] == TRUE
     ) {
-      cells_df <- getMetaData()[cells_to_show, , drop = FALSE]
       hover_info <- buildHoverInfoForProjections(cells_df)
       hover_info <- setNames(hover_info, cells_df$cell_barcode)
     } else {

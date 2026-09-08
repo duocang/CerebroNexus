@@ -55,6 +55,7 @@ run_sync_perf_cell_sampling <- function(view, metadata, filters, percentage) {
   )
 
   sample_calls <- list()
+  mask_calls <- 0L
   scope <- new.env(parent = globalenv())
   scope$reactive <- sync_perf_reactive
   scope$req <- shiny::req
@@ -69,8 +70,14 @@ run_sync_perf_cell_sampling <- function(view, metadata, filters, percentage) {
     )
   )
   scope$getGroups <- function() names(filters)
+  scope$getGroupLevels <- function(group) unique(metadata[[group]])
   scope$getMetaData <- function() metadata
-  scope$cerebroGroupFilterMask <- utility$cerebroGroupFilterMask
+  scope$cerebroGroupFilterMask <- function(metadata, filters) {
+    mask_calls <<- mask_calls + 1L
+    utility$cerebroGroupFilterMask(metadata, filters)
+  }
+  scope$viewerProjectionCellIndices <- utility$viewerProjectionCellIndices
+  environment(scope$viewerProjectionCellIndices) <- scope
   scope$sample <- function(x, size, replace = FALSE, prob = NULL) {
     sample_calls[[length(sample_calls) + 1L]] <<- "sample"
     if (missing(size)) {
@@ -91,7 +98,8 @@ run_sync_perf_cell_sampling <- function(view, metadata, filters, percentage) {
   )
   list(
     cells = scope[[view$reactive]](),
-    sample_calls = unlist(sample_calls, use.names = FALSE)
+    sample_calls = unlist(sample_calls, use.names = FALSE),
+    mask_calls = mask_calls
   )
 }
 
@@ -445,8 +453,10 @@ test_that("specialist cell sampling uses one original-row index sample", {
   )
   metadata <- data.frame(
     cell_barcode = paste0("cell", seq_len(7L)),
-    batch = c("drop", "keep", "drop", "keep", "keep", "drop", "keep"),
-    state = c("T", "T", "T", "B", "T", "B", "B"),
+    batch = factor(
+      c("drop", "keep", "drop", "keep", "keep", "drop", "keep")
+    ),
+    state = factor(c("T", "T", "T", "B", "T", "B", "B")),
     matrix(seq_len(140L), nrow = 7L),
     check.names = FALSE
   )
@@ -464,6 +474,7 @@ test_that("specialist cell sampling uses one original-row index sample", {
       "sample.int",
       info = name
     )
+    expect_identical(result$mask_calls, 1L, info = name)
     expect_equal(
       length(result$cells),
       ceiling(length(eligible) * 0.5),
@@ -485,6 +496,19 @@ test_that("specialist cell sampling uses one original-row index sample", {
   )
   expect_identical(all_cells$cells, seq_len(nrow(metadata)))
   expect_length(all_cells$sample_calls, 0L)
+  expect_identical(all_cells$mask_calls, 0L)
+
+  character_missing <- run_sync_perf_cell_sampling(
+    views$overview,
+    data.frame(
+      cell_barcode = c("cell1", "cell2"),
+      batch = c("keep", NA_character_)
+    ),
+    filters = list(batch = "keep"),
+    percentage = 100
+  )
+  expect_identical(character_missing$cells, 1L)
+  expect_identical(character_missing$mask_calls, 1L)
 
   no_cells <- run_sync_perf_cell_sampling(
     views$gene,
@@ -510,13 +534,16 @@ test_that("specialist cell sampling uses one original-row index sample", {
 
   for (view in views) {
     source <- read_sync_perf_viewer(view$file)
+    expect_match(source, "viewerProjectionCellIndices", fixed = TRUE)
+    expect_no_match(source, "cerebroGroupFilterMask", fixed = TRUE)
+    expect_no_match(source, "sample.int", fixed = TRUE)
     expect_no_match(source, "dplyr::mutate", fixed = TRUE)
     expect_no_match(source, "dplyr::select", fixed = TRUE)
     expect_no_match(source, "randomlySubsetCells", fixed = TRUE)
   }
 })
 
-test_that("projection hover formats only displayed metadata rows", {
+test_that("projection hover formats an existing metadata subset", {
   expressions <- parse(file.path(sync_perf_viewer_root, "shiny_server.R"))
   definition <- NULL
   for (expression in expressions) {
@@ -540,14 +567,9 @@ test_that("projection hover formats only displayed metadata rows", {
       group = LETTERS[seq_len(5L)]
     )
     formatted <- NULL
-    metadata_calls <- 0L
     format_calls <- 0L
     scope <- list2env(list(
       preferences = list(show_hover_info_in_projections = TRUE),
-      getMetaData = function() {
-        metadata_calls <<- metadata_calls + 1L
-        metadata
-      },
       buildHoverInfoForProjections = function(cells) {
         format_calls <<- format_calls + 1L
         formatted <<- cells
@@ -556,39 +578,77 @@ test_that("projection hover formats only displayed metadata rows", {
     ))
     hover <- eval(definition, envir = scope)
 
-    result <- hover(c(4L, 2L))
-    expect_identical(formatted, metadata[c(4L, 2L), , drop = FALSE])
+    displayed <- metadata[c(4L, 2L), , drop = FALSE]
+    result <- hover(displayed)
+    expect_identical(formatted, displayed)
     expect_identical(
       result,
       stats::setNames(c("hover-cell4", "hover-cell2"), c("cell4", "cell2"))
     )
-    expect_identical(metadata_calls, 1L)
     expect_identical(format_calls, 1L)
 
     scope$preferences[["show_hover_info_in_projections"]] <- FALSE
-    expect_identical(hover(c(1L, 3L)), "none")
-    expect_identical(metadata_calls, 1L)
+    expect_identical(hover(metadata[c(1L, 3L), , drop = FALSE]), "none")
     expect_identical(format_calls, 1L)
   }
 })
 
-test_that("specialist hover consumers pass cells exactly once", {
+test_that("projection hover text is assembled in one vectorized pass", {
+  utility <- new.env(parent = globalenv())
+  sys.source(
+    file.path(sync_perf_viewer_root, "utility_functions.R"),
+    envir = utility
+  )
+  utility$getGroups <- function() c("sample", "cell_type")
+  metadata <- data.frame(
+    cell_barcode = c("cell1", "cell2"),
+    nUMI = c(1200, 34567),
+    nGene = c(800, 9012),
+    sample = c("A", "B"),
+    cell_type = c("T", "B")
+  )
+
+  expect_identical(
+    as.character(utility$buildHoverInfoForProjections(metadata)),
+    c(
+      paste0(
+        "<b>Cell</b>: cell1<br><b>Transcripts</b>: 1,200",
+        "<br><b>Expressed genes</b>: 800",
+        "<br><b>sample</b>: A<br><b>cell_type</b>: T"
+      ),
+      paste0(
+        "<b>Cell</b>: cell2<br><b>Transcripts</b>: 34,567",
+        "<br><b>Expressed genes</b>: 9,012",
+        "<br><b>sample</b>: B<br><b>cell_type</b>: B"
+      )
+    )
+  )
+  expect_identical(
+    utility$buildHoverInfoForProjections(metadata[FALSE, , drop = FALSE]),
+    character()
+  )
+  source <- read_sync_perf_viewer("utility_functions.R")
+  expect_match(source, "do.call(paste0, parts)", fixed = TRUE)
+  expect_no_match(source, "hover_info <- glue::glue", fixed = TRUE)
+})
+
+test_that("specialist hover consumers reuse their metadata subset", {
   cases <- list(
     overview = list(
       file = "overview/obj_projection_hover_info.R",
-      cells = "overview_projection_cells_to_show",
+      data = "overview_projection_data",
       hover = "overview_projection_hover_info",
       value = integer()
     ),
     gene = list(
       file = "gene_expression/obj_projection_hover_info.R",
-      cells = "expression_projection_cells_to_show",
+      data = "expression_projection_data",
       hover = "expression_projection_hover_info",
       value = c(5L, 2L)
     ),
     spatial = list(
       file = "spatial/obj_projection_hover_info.R",
-      cells = "spatial_projection_cells_to_show",
+      data = "spatial_projection_metadata",
       hover = "spatial_projection_hover_info",
       value = c(9L, 3L)
     )
@@ -596,38 +656,39 @@ test_that("specialist hover consumers pass cells exactly once", {
 
   for (name in names(cases)) {
     case <- cases[[name]]
-    cell_calls <- 0L
+    data_calls <- 0L
     helper_calls <- 0L
     requested <- NULL
     scope <- new.env(parent = globalenv())
     scope$reactive <- sync_perf_reactive
     scope$req <- shiny::req
     scope$preferences <- list(show_hover_info_in_projections = TRUE)
-    scope[[case$cells]] <- function() {
-      cell_calls <<- cell_calls + 1L
-      case$value
+    displayed <- data.frame(
+      cell_barcode = sprintf("cell%d", case$value),
+      value = case$value
+    )
+    scope[[case$data]] <- function() {
+      data_calls <<- data_calls + 1L
+      displayed
     }
-    scope$hover_info_projections <- function(cells_to_show = NULL) {
+    scope$hover_info_projections <- function(cells_df) {
       helper_calls <<- helper_calls + 1L
-      requested <<- cells_to_show
-      if (is.null(cells_to_show)) {
-        return(paste0("hover-", seq_len(50L)))
-      }
-      if (!length(cells_to_show)) {
+      requested <<- cells_df
+      if (!nrow(cells_df)) {
         return(stats::setNames(character(), character()))
       }
       stats::setNames(
-        paste0("hover-", cells_to_show),
-        paste0("cell", cells_to_show)
+        paste0("hover-", cells_df$value),
+        cells_df$cell_barcode
       )
     }
 
     sys.source(file.path(sync_perf_viewer_root, case$file), envir = scope)
     result <- scope[[case$hover]]()
 
-    expect_identical(cell_calls, 1L, info = name)
+    expect_identical(data_calls, 1L, info = name)
     expect_identical(helper_calls, 1L, info = name)
-    expect_identical(requested, case$value, info = name)
+    expect_identical(requested, displayed, info = name)
     expected <- if (length(case$value)) {
       stats::setNames(
         paste0("hover-", case$value),
@@ -637,25 +698,5 @@ test_that("specialist hover consumers pass cells exactly once", {
       stats::setNames(character(), character())
     }
     expect_identical(result, expected, info = name)
-  }
-
-  for (name in c("gene", "spatial")) {
-    case <- cases[[name]]
-    helper_called <- FALSE
-    scope <- new.env(parent = globalenv())
-    scope$reactive <- sync_perf_reactive
-    scope$req <- shiny::req
-    scope[[case$cells]] <- function() integer()
-    scope$hover_info_projections <- function(cells_to_show) {
-      helper_called <<- TRUE
-    }
-    sys.source(file.path(sync_perf_viewer_root, case$file), envir = scope)
-
-    condition <- tryCatch(
-      scope[[case$hover]](),
-      shiny.silent.error = identity
-    )
-    expect_true(inherits(condition, "shiny.silent.error"), info = name)
-    expect_false(helper_called, info = name)
   }
 })
