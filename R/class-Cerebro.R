@@ -510,6 +510,9 @@ Cerebro <- R6::R6Class(
         return(Matrix::colMeans(mat))
       }
 
+      if (is.null(cells) && ncol(self$expression) == 0L) {
+        cells <- character()
+      }
       mat <- self$getExpressionBlock(genes = genes, cells = cells)
       if (ncol(mat) == 0L) {
         return(numeric())

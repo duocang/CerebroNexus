@@ -215,6 +215,25 @@ test_that("Cerebro: per-cell means preserve dense and sparse semantics", {
   }
 })
 
+test_that("Cerebro: zero-column matrices preserve empty-cell semantics", {
+  dense <- matrix(
+    numeric(),
+    nrow = 2L,
+    dimnames = list(c("g1", "g2"), NULL)
+  )
+
+  for (mat in list(dense, Matrix::Matrix(dense, sparse = TRUE))) {
+    obj <- Cerebro$new()
+    obj$setExpression(mat)
+
+    expect_identical(obj$getMeanExpressionForCells(), numeric())
+    expect_error(
+      obj$getMeanExpressionForCells(genes = "missing"),
+      "Gene\\(s\\) not found"
+    )
+  }
+})
+
 test_that("Cerebro: non-empty per-cell means request one native block", {
   SpyCerebro <- R6::R6Class(
     NULL,
