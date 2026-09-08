@@ -40,19 +40,22 @@ route gene-set aggregation through the existing block API.
 - Modify: `inst/viewer/shiny_server.R`
 - Modify: `inst/viewer/overview/obj_projection_cells_to_show.R`
 - Modify: `inst/viewer/gene_expression/obj_projection_cells_to_show.R`
+- Modify: `inst/viewer/spatial/obj_projection_cells_to_show.R`
 - Modify: specialist hover consumers under `inst/viewer/overview/`,
   `inst/viewer/gene_expression/`, and `inst/viewer/spatial/` only if required
   to preserve row ordering.
 - Modify: `tests/testthat/test-viewer-sync-performance.R`
 
 - [ ] Add tests proving hover formatting receives only requested indices and
-  Overview/Gene sampling returns valid, unique integer row positions without
-  copying or sampling a metadata frame.
+  Overview/Gene/Spatial sampling returns valid, unique integer row positions
+  without copying or sampling a metadata frame. Cover the scalar-index case so
+  base R's `sample(x)` shorthand cannot sample `1:x` by mistake.
 - [ ] Run `NOT_CRAN=true Rscript -e 'devtools::test(filter="viewer-sync-performance|viewer-review-feedback", reporter="summary")'`
   and confirm the new assertions fail for the missing behaviour.
 - [ ] Move hover construction behind an index-aware session helper and replace
-  the two metadata-frame samples with a single integer sample. Preserve the
-  existing percentage, group filtering, ordering, and empty-set semantics.
+  metadata-frame samples and Spatial's two-step sample with a single integer
+  sample. Preserve the existing percentage, group filtering, ordering, and
+  empty-set semantics.
 - [ ] Re-run the focused command and confirm zero failures.
 
 ### Task 3: Sparse gene-set aggregation

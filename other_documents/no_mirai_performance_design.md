@@ -37,8 +37,8 @@ packages or changing asynchronous execution semantics.
 3. Pointer-driven pan, orbit, and lasso redraws are coalesced to one browser
    animation frame. Final mouse-up state is still rendered synchronously.
 4. Projection hover HTML is built only for cells that the specialist view can
-   display. Overview and Gene Expression sampling use integer row indices and
-   perform one sample operation without copying the metadata frame.
+   display. Overview, Gene Expression, and Spatial sampling use integer row
+   indices and perform one sample operation without copying the metadata frame.
 5. Gene-set means use the existing block-expression API and backend-aware
    matrix operations instead of materialising a dense gene-by-cell matrix.
 
