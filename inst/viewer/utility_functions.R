@@ -216,6 +216,124 @@ debounceAfterFirst <- function(reactive, millis) {
   })
 }
 
+## Debounce a cheap event and evaluate the expensive reactive only after the
+## event settles. The first complete event is delivered immediately.
+debounceEventAfterFirst <- function(
+  event,
+  value,
+  millis,
+  domain = shiny::getDefaultReactiveDomain()
+) {
+  delivered <- FALSE
+  settled_event <- shiny::debounce(
+    event,
+    function() if (delivered) millis else 0,
+    domain = domain
+  )
+  shiny::reactive({
+    settled_event()
+    result <- shiny::isolate(value())
+    delivered <<- TRUE
+    result
+  })
+}
+
+## Resolve outputs that must keep rendering inside collapsed boxes to the
+## sidebar tab that owns them. Unknown IDs are intentionally left unclassified.
+viewerOutputTab <- function(ids) {
+  prefixes <- c(
+    overview_ = "overview",
+    expression_ = "geneExpression",
+    spatial_ = "spatial",
+    coordviews_ = "coordinated_views",
+    ir_ = "immune_repertoire",
+    trajectory_ = "trajectory",
+    trekker_ = "trekker",
+    hla_ = "hla_tcr_motifs"
+  )
+  vapply(
+    ids,
+    function(id) {
+      match <- which(startsWith(id, names(prefixes)))
+      if (length(match)) unname(prefixes[[match[[1L]]]]) else NA_character_
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
+## Track only lightweight page inputs so bursts settle before expensive cell,
+## expression, coordinate, and hover snapshots are rebuilt.
+viewerProjectionEvent <- function(
+  prefix,
+  tab,
+  extra = function() list(),
+  colors = FALSE
+) {
+  shiny::reactive({
+    shiny::req(identical(input[["sidebar"]], tab), data_set())
+    groups <- getGroups()
+    state <- list(
+      dataset = available_crb_files$selected,
+      projection = input[[paste0(prefix, "_to_display")]],
+      percentage = input[[paste0(prefix, "_percentage_cells_to_show")]],
+      point_color = input[[paste0(prefix, "_point_color")]],
+      point_size = input[[paste0(prefix, "_point_size")]],
+      point_opacity = input[[paste0(prefix, "_point_opacity")]],
+      point_border = input[[paste0(prefix, "_point_border")]],
+      group_labels = input[[paste0(prefix, "_group_labels")]],
+      keep_square = input[[paste0(prefix, "_keep_square")]],
+      group_filters = stats::setNames(
+        lapply(groups, function(group) {
+          input[[paste0(prefix, "_group_filter_", group)]]
+        }),
+        groups
+      ),
+      use_webgl = preferences[["use_webgl"]],
+      show_hover = preferences[["show_hover_info_in_projections"]]
+    )
+    if (colors) {
+      state$colors <- reactive_colors()
+    }
+    c(state, extra())
+  })
+}
+
+## Prefer the R6 row accessor so a single-gene request never needs a temporary
+## 1 x cells matrix. Older serialized objects fall back to the matrix method.
+viewerExpressionRow <- function(data_set, cells, gene) {
+  cells <- as.character(cells)
+  get_row <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
+  if (is.function(get_row)) {
+    return(as.numeric(get_row(gene = gene, cells = cells)))
+  }
+  expression_matrix <- data_set$getExpressionMatrix(
+    cells = cells,
+    genes = gene
+  )
+  if (is.null(expression_matrix)) {
+    return(NULL)
+  }
+  if (is.null(dim(expression_matrix))) {
+    return(as.numeric(expression_matrix))
+  }
+  row_index <- if (is.null(rownames(expression_matrix))) {
+    1L
+  } else {
+    match(gene, rownames(expression_matrix))
+  }
+  if (is.na(row_index)) {
+    return(NULL)
+  }
+  cell_names <- colnames(expression_matrix)
+  cell_index <- if (is.null(cell_names) || identical(cells, cell_names)) {
+    seq_len(min(length(cells), ncol(expression_matrix)))
+  } else {
+    match(cells, cell_names)
+  }
+  as.numeric(expression_matrix[row_index, cell_index, drop = TRUE])
+}
+
 ## Fetch several genes in one backend call and align every returned vector to
 ## the requested cell order. Missing genes are omitted from the result.
 viewerExpressionValues <- function(data_set, cells, genes) {
@@ -224,6 +342,14 @@ viewerExpressionValues <- function(data_set, cells, genes) {
   genes <- genes[!is.na(genes) & nzchar(genes)]
   if (!length(genes)) {
     return(list())
+  }
+
+  if (length(genes) == 1L) {
+    value <- viewerExpressionRow(data_set, cells, genes[[1L]])
+    if (is.null(value)) {
+      return(list())
+    }
+    return(stats::setNames(list(value), genes))
   }
 
   expression_matrix <- data_set$getExpressionMatrix(
@@ -251,6 +377,8 @@ viewerExpressionValues <- function(data_set, cells, genes) {
   cell_names <- colnames(expression_matrix)
   cell_index <- if (is.null(cell_names)) {
     seq_len(min(length(cells), ncol(expression_matrix)))
+  } else if (identical(cells, cell_names)) {
+    seq_along(cells)
   } else {
     match(cells, cell_names)
   }

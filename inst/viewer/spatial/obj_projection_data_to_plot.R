@@ -1,33 +1,48 @@
 ##----------------------------------------------------------------------------##
 ## Collect data required to update projection.
 ##----------------------------------------------------------------------------##
-spatial_projection_full_extent <- reactive({
-  projection <- input[["spatial_projection_to_display"]]
-  req(projection, projection %in% availableSpatial())
-  dataset <- viewerDatasetName(
+spatial_projection_full_extent <- cachePlot(
+  reactive({
+    projection <- input[["spatial_projection_to_display"]]
+    req(projection, projection %in% availableSpatial())
+    dataset <- viewerDatasetName(
+      available_crb_files$files,
+      available_crb_files$selected
+    )
+    rotation <- spatialPlotRotation(Cerebro.options, dataset, projection)
+    coordinates <- rotateSpatialCoordinates(
+      getSpatialData(projection)$coordinates,
+      rotation
+    )
+    x_range <- range(coordinates[[1]], na.rm = TRUE)
+    y_range <- range(coordinates[[2]], na.rm = TRUE)
+    x_margin <- diff(x_range) * 0.02
+    y_margin <- diff(y_range) * 0.02
+    ranges_are_finite <- all(is.finite(x_range)) && all(is.finite(y_range))
+    list(
+      rotation = rotation,
+      x_range = if (ranges_are_finite) {
+        c(x_range[[1]] - x_margin, x_range[[2]] + x_margin)
+      },
+      y_range = if (ranges_are_finite) {
+        c(y_range[[1]] - y_margin, y_range[[2]] + y_margin)
+      }
+    )
+  }),
+  viewerDatasetName(
     available_crb_files$files,
     available_crb_files$selected
+  ),
+  input[["spatial_projection_to_display"]],
+  spatialPlotRotation(
+    Cerebro.options,
+    viewerDatasetName(
+      available_crb_files$files,
+      available_crb_files$selected
+    ),
+    input[["spatial_projection_to_display"]]
   )
-  rotation <- spatialPlotRotation(Cerebro.options, dataset, projection)
-  coordinates <- rotateSpatialCoordinates(
-    getSpatialData(projection)$coordinates,
-    rotation
-  )
-  x_range <- range(coordinates[[1]], na.rm = TRUE)
-  y_range <- range(coordinates[[2]], na.rm = TRUE)
-  x_margin <- diff(x_range) * 0.02
-  y_margin <- diff(y_range) * 0.02
-  ranges_are_finite <- all(is.finite(x_range)) && all(is.finite(y_range))
-  list(
-    rotation = rotation,
-    x_range = if (ranges_are_finite) {
-      c(x_range[[1]] - x_margin, x_range[[2]] + x_margin)
-    },
-    y_range = if (ranges_are_finite) {
-      c(y_range[[1]] - y_margin, y_range[[2]] + y_margin)
-    }
-  )
-})
+)
 
 spatial_projection_data_to_plot_raw <- reactive({
   req(
@@ -56,16 +71,12 @@ spatial_projection_data_to_plot_raw <- reactive({
       } else {
         cells_to_extract <- rownames(metadata)
       }
-      # Slice only the requested gene x cells to avoid materializing the full
-      # dense matrix on every call. getExpressionMatrix is a Cerebro R6 method,
-      # not a bare function — reach it through data_set() like the gene-
-      # expression module does.
-      expression_data <- data_set()$getExpressionMatrix(
-        cells = cells_to_extract,
-        genes = gene
+      expr_values <- viewerExpressionRow(
+        data_set(),
+        cells_to_extract,
+        gene
       )
-      if (!is.null(expression_data) && gene %in% rownames(expression_data)) {
-        expr_values <- as.vector(expression_data[gene, cells_to_extract])
+      if (!is.null(expr_values)) {
         metadata[[gene]] <- expr_values
       }
     }
@@ -170,7 +181,25 @@ spatial_projection_data_to_plot_raw <- reactive({
   return(to_return)
 })
 
-spatial_projection_data_to_plot <- debounceAfterFirst(
+spatial_projection_render_event <- viewerProjectionEvent(
+  "spatial_projection",
+  "spatial",
+  extra = function() {
+    list(
+      plot_type = input[["spatial_projection_plot_type"]],
+      feature = input[["spatial_projection_feature_to_display"]],
+      coexpr_r = input[["spatial_projection_coexpr_r"]],
+      coexpr_g = input[["spatial_projection_coexpr_g"]],
+      coexpr_b = input[["spatial_projection_coexpr_b"]],
+      region_outlines = input[["spatial_projection_show_region_outlines"]],
+      background_image = input[["spatial_projection_background_image"]]
+    )
+  },
+  colors = TRUE
+)
+
+spatial_projection_data_to_plot <- debounceEventAfterFirst(
+  spatial_projection_render_event,
   spatial_projection_data_to_plot_raw,
   150
 )

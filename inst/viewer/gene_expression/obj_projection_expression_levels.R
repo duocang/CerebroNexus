@@ -109,11 +109,11 @@ expression_projection_expression_levels <- reactive({
         }
       } else if (length(genes_present) == 1) {
         incProgress(0.3, detail = "Extracting single gene expression...")
-        expression_matrix <- data_set()$getExpressionMatrix(
-          cells = cells_to_show_bc,
-          genes = genes_present
-        )
-        expression_levels <- unname(as.numeric(expression_matrix))
+        expression_levels <- unname(viewerExpressionRow(
+          data_set(),
+          cells_to_show_bc,
+          genes_present[[1L]]
+        ))
       } else if (length(genes_present) >= 2) {
         incProgress(0.3, detail = "Calculating mean expression...")
         ## Per-cell mean across the requested genes, restricted to cells_to_show.

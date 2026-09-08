@@ -34,7 +34,14 @@ overview_projection_data_to_plot_raw <- reactive({
   )
 })
 
-overview_projection_data_to_plot <- debounceAfterFirst(
+overview_projection_render_event <- viewerProjectionEvent(
+  "overview_projection",
+  "overview",
+  colors = TRUE
+)
+
+overview_projection_data_to_plot <- debounceEventAfterFirst(
+  overview_projection_render_event,
   overview_projection_data_to_plot_raw,
   150
 )

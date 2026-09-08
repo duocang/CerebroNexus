@@ -886,7 +886,7 @@ test_that("cell scatter pages debounce only after the first complete snapshot", 
   }
   for (path in snapshot_files) {
     source <- paste(readLines(path, warn = FALSE), collapse = "\n")
-    expect_match(source, "<- debounceAfterFirst(", fixed = TRUE)
+    expect_match(source, "<- debounceEventAfterFirst(", fixed = TRUE)
   }
 
   spatial_update <- viewer_source(

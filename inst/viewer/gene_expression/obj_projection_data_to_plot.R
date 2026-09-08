@@ -46,7 +46,26 @@ expression_projection_data_to_plot_raw <- reactive({
   return(to_return)
 })
 
-expression_projection_data_to_plot <- debounceAfterFirst(
+expression_projection_render_event <- viewerProjectionEvent(
+  "expression_projection",
+  "geneExpression",
+  extra = function() {
+    list(
+      plotting_order = input[["expression_projection_plotting_order"]],
+      display_mode = input[["expression_projection_genes_in_separate_panels"]],
+      analysis_mode = input[["expression_analysis_mode"]],
+      genes = input[["expression_genes_input"]],
+      gene_set = input[["expression_select_gene_set"]],
+      rgb_r = input[["expression_rgb_gene_r"]],
+      rgb_g = input[["expression_rgb_gene_g"]],
+      rgb_b = input[["expression_rgb_gene_b"]],
+      color_mode = input[["expression_projection_gene_color_mode"]]
+    )
+  }
+)
+
+expression_projection_data_to_plot <- debounceEventAfterFirst(
+  expression_projection_render_event,
   expression_projection_data_to_plot_raw,
   250
 )
