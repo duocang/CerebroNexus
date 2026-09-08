@@ -48,6 +48,9 @@ test_that("Viewer omits server-side PDF exports", {
   expect_false(any(file.exists(c(
     viewer_path("overview", "event_projection_export_plot.R"),
     viewer_path("gene_expression", "event_projection_export_plot.R"),
+    viewer_path("gene_expression", "func_pltExpProj2DMultPanExp.R"),
+    viewer_path("gene_expression", "func_pltExpProj2DSglPanExp.R"),
+    viewer_path("gene_expression", "func_pltExpTrj2DSglPanExp.R"),
     viewer_path("spatial", "event_projection_export_plot.R"),
     viewer_path("trajectory", "projection_export.R")
   ))))

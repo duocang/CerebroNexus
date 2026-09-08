@@ -56,21 +56,6 @@ cerebro_plotly_hoverlabel <- function() {
   )
 }
 
-## ggplot theme shared by static plot builders. It matches the interactive
-## Viewer palette while leaving font selection to the active graphics device.
-cerebro_export_theme <- function(base_size = 12) {
-  th <- cerebro_plotly_theme()
-  ggplot2::theme_bw(base_size = base_size, base_family = "") +
-    ggplot2::theme(
-      panel.border = ggplot2::element_rect(colour = th$axis, fill = NA),
-      panel.grid.major = ggplot2::element_line(colour = th$grid),
-      panel.grid.minor = ggplot2::element_blank(),
-      axis.text = ggplot2::element_text(colour = th$tick),
-      axis.title = ggplot2::element_text(colour = th$title),
-      legend.key = ggplot2::element_blank()
-    )
-}
-
 ##----------------------------------------------------------------------------##
 ## Violin plots with plotly, e.g. for expression metrics.
 ##----------------------------------------------------------------------------##

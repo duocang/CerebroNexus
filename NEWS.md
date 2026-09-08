@@ -6,8 +6,9 @@
   conversion table.
 - Gene-set selection uses the public `msigdbr` API and caches only compact
   catalogues and resolved gene lists across Viewer sessions.
-- Trajectory PDF exports are delivered as browser downloads instead of writing
-  to user-selected paths on the Viewer host.
+- Unsafe server-side PDF export controls were removed; compatible plots use
+  browser-side PNG downloads from the plot toolbar. Portable views also offer
+  PNG download through Share view.
 
 # CerebroNexus 4.4.0
 

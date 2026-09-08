@@ -1576,10 +1576,26 @@ getMsigdbCatalogue <- function() {
     return(.emptyMsigdbCatalogue())
   }
   catalogue <- unique(data.frame(
-    gs_name = table[["gs_name"]],
-    collection = table[[collection_column]],
+    gs_name = trimws(as.character(table[["gs_name"]])),
+    collection = trimws(as.character(table[[collection_column]])),
     stringsAsFactors = FALSE
   ))
+  catalogue <- catalogue[
+    !is.na(catalogue$gs_name) &
+      nzchar(catalogue$gs_name) &
+      !is.na(catalogue$collection) &
+      nzchar(catalogue$collection),
+    ,
+    drop = FALSE
+  ]
+  ambiguous <- duplicated(catalogue$gs_name) |
+    duplicated(catalogue$gs_name, fromLast = TRUE)
+  catalogue <- catalogue[!ambiguous, , drop = FALSE]
+  row.names(catalogue) <- NULL
+  if (nrow(catalogue) == 0L) {
+    warning("MSigDB query returned an empty catalogue.")
+    return(.emptyMsigdbCatalogue())
+  }
   cache[["catalogue"]] <- catalogue
   rm(table)
   invisible(gc(FALSE))
@@ -1625,7 +1641,9 @@ getMsigdbGenes <- function(species, gene_set) {
     warning("MSigDB gene query returned unexpected columns.")
     return(character())
   }
-  genes <- table$gene_symbol[table$gs_name == gene_set]
+  returned_names <- trimws(as.character(table[["gs_name"]]))
+  matches <- !is.na(returned_names) & returned_names == gene_set
+  genes <- trimws(as.character(table[["gene_symbol"]][matches]))
   genes <- sort(unique(genes[!is.na(genes) & nzchar(genes)]))
   if (length(genes) > 0L) {
     cache[[key]] <- genes

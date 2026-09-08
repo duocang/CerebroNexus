@@ -207,6 +207,62 @@ test_that("MSigDB catalogue retries failures and malformed responses", {
   expect_identical(calls, 3L)
 })
 
+test_that("MSigDB catalogue rejects empty and invalid results", {
+  cache <- utils_env$.msigdbCache()
+  original_query <- utils_env$.msigdbFunction
+  rm(list = ls(cache, all.names = TRUE), envir = cache)
+  on.exit(
+    {
+      utils_env$.msigdbFunction <- original_query
+      rm(list = ls(cache, all.names = TRUE), envir = cache)
+    },
+    add = TRUE
+  )
+
+  calls <- 0L
+  utils_env$.msigdbFunction <- function() {
+    function(species, collection = NULL) {
+      if (!is.null(collection)) {
+        return(data.frame(
+          gs_name = c(" SET_A ", "SET_A", "SET_B"),
+          gene_symbol = c(" GENE_B ", "GENE_A", "OTHER")
+        ))
+      }
+      calls <<- calls + 1L
+      if (calls == 1L) {
+        return(data.frame(
+          gs_name = character(),
+          gs_collection = character()
+        ))
+      }
+      data.frame(
+        gs_name = c("", " ", NA, " SET_A ", "SET_A", "AMBIG", "AMBIG"),
+        gs_collection = c("H", "H", "H", " H ", "H", " C2 ", "C5")
+      )
+    }
+  }
+
+  expect_warning(
+    first <- utils_env$getMsigdbCatalogue(),
+    "empty catalogue"
+  )
+  expect_equal(nrow(first), 0L)
+  expect_false(exists("catalogue", envir = cache, inherits = FALSE))
+
+  second <- utils_env$getMsigdbCatalogue()
+  expect_identical(second, data.frame(
+    gs_name = "SET_A",
+    collection = "H",
+    stringsAsFactors = FALSE
+  ))
+  expect_true(exists("catalogue", envir = cache, inherits = FALSE))
+  expect_identical(calls, 2L)
+  expect_identical(
+    utils_env$getMsigdbGenes("Homo sapiens", "SET_A"),
+    c("GENE_A", "GENE_B")
+  )
+})
+
 test_that("MSigDB gene queries retry failures and ignore invalid names", {
   cache <- utils_env$.msigdbCache()
   original_query <- utils_env$.msigdbFunction

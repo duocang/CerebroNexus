@@ -25,7 +25,7 @@ A few general notes:
 
 * Please note that we have placed "info" boxes in many title bars which might provide helpful information.
 * Most plots are interactive. Hover over them with your cursor to get additional information.
-* Most plots can be exported to a file PNG file (a small button in the top right corner of the plot that looks like a camera), but some - projections/dimensional reductions - can be saved as a PDF file through the dedicated button in the respective title bar.
+* Compatible plots can be exported to PNG from the plot toolbar. Portable views also offer PNG export through **Share view**.
 * Tables can be sorted (by clicking on the respective column title) and columns can be dragged in a different order. Some can also be searched through the search boxes, and exported to either CSV or Excel format. Some tables also have a "Column visibility" button that allows you to hide some columns (which is useful on small screens and/or when there are many columns). Please note that in some tables some columns are hidden by default and need to be activated to be seen. With Cerebro v1.3 are, some tables also offer to automatically format numbers, e.g. hide decimals for integers or show p-values in scientific format, and highlight values through colors, e.g. clusters or high expression values. The functions behind those features try to guess the content of a column, which doesn't always work perfectly. If it doesn't feel free to switch the automatic formatting and color highlighting off to see the plain table.
 
 # Load data
@@ -47,7 +47,7 @@ In the "Overview" tab, you have access to all the dimensional reductions (e.g. t
 Dimensional reductions can be either 2- or 3-dimensional and aim to represent the complex expression profiles of all the cells in a more interpretable way.
 
 The plot is interactive which means you can hover over the cells with your cursor to get extra info, zoom in and out, and pan around.
-Use the "Download PNG" action in the plot toolbar to save the current view.
+Use **Download PNG** in the plot toolbar to save the current view directly. If the current view supports portable sharing, you can instead open **Share view** and select **Download PNG** there. Share view also provides a portable JSON configuration containing the current display state and selected cell barcodes, which can be opened in another compatible CerebroNexus session without including the source data.
 
 In the input box on the left, you can select a bunch of parameters for the plot.
 For example, if there are multiple dimensional reductions, you can choose which one should be shown.
