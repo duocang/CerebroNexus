@@ -2174,6 +2174,80 @@ test_that("specialist payload replaces an unidentifiable full bundle", {
   expect_identical(tail(output, 1L), "new|0")
 })
 
+test_that("first Linked bundle preserves matching specialist state", {
+  output <- run_cell_views_node(
+    c(
+      "var visibleTestId = null, activatedTestId = null;",
+      "var noop = function () {};",
+      "sanitiseColors = syncCloneTiers = closeCard = unpinTip = noop;",
+      "rebuildProjectionInstances = rebuildSpatialInstances = rebuildPctMask = noop;",
+      "setLinkedSliderValue = closeMore = setTrekkerSettingsVisible = noop;",
+      "ensurePanelSlots = renderMeta = buildPanels = layoutPanels = noop;",
+      "updateZoomBtn = syncModeButtons = updateSelActions = updateZselButtons = noop;",
+      "updateSpaceScopedControls = setTrekkerInsightsOpen = selectTrekkerInsight = noop;",
+      "fillColorPicker = fillProjPicker = fillSpatialPicker = renderGroupFilters = noop;",
+      "activateSpatial = updateClipControl = renderLegend = resizeAll = noop;",
+      "syncPointControls = renderSelbar = renderReadout = reportSelection = noop;",
+      "reportWorkspaceReady = showUnavailable = restoreLinkedSurface = noop;",
+      "activeSpatial = function () { return null; };",
+      "spatialSamples = orderedSpaces = function () { return []; };",
+      "visibleSingleId = function () { return visibleTestId; };",
+      "activateSingle = function (id) { activatedTestId = id; return true; };",
+      "stashSingleState = function () {",
+      "  var view = singleViews[singleActive]; if (!view) return;",
+      "  view.selection = ['a']; view.hiddenGroups = ['hidden'];",
+      "  view.lenses = [{spaceId:'lens'}];",
+      "};",
+      "window.__cellViewsTest = {",
+      "  seed: function (fingerprint) {",
+      "    window.cerebroSavedViewDataset = {cell_count:2,",
+      "      cell_fingerprint:fingerprint};",
+      "    linkedBundle = {_singleOnly:true, dataset_id:'cells:' + fingerprint,",
+      "      dataset_fingerprint:fingerprint, cell_fingerprint:fingerprint,",
+      "      cells:['a','b'], n:2, groups:{}, cat_extra:{}, cat_skipped:{},",
+      "      fields:{}, genes:[], projections:{}, trajectories:{}, spaces:[]};",
+      "    D = Object.assign({}, linkedBundle); dataShown = null; linkedState = null;",
+      "    singleViews = {view:{id:'view', meta:{},",
+      "      data:{selection_key:['a','b']}}};",
+      "    singleActive = 'view'; singleSpaceIds = []; singleSpaceModes = {};",
+      "    selectedSpatial = []; selectedProjections = []; panels = [];",
+      "    visibleTestId = null; activatedTestId = null;",
+      "  },",
+      "  full: function (fingerprint) {",
+      "    onData({dataset_id:'full', dataset_fingerprint:fingerprint,",
+      "      cell_fingerprint:fingerprint, cells:['a','b'], n:2, groups:{},",
+      "      cat_extra:{}, cat_skipped:{}, fields:{}, genes:[], projections:{},",
+      "      trajectories:{}, spaces:[{id:'direct'}]});",
+      "  },",
+      "  toLinked: activateLinked,",
+      "  show: function (id) { visibleTestId = id; },",
+      "  state: function () {",
+      "    var view = singleViews.view;",
+      "    return view ? [view.selection.join(','), view.lenses[0].spaceId,",
+      "      view.hiddenGroups.join(',')] : ['lost'];",
+      "  },",
+      "  activated: function () { return activatedTestId || 'none'; },",
+      "  kind: function () { return linkedBundle && linkedBundle._singleOnly",
+      "    ? 'single' : 'full'; }",
+      "};"
+    ),
+    c(
+      "const t = __cellViewsTest;",
+      "t.seed('same'); t.toLinked(); const pending = t.state();",
+      "t.show('view'); t.full('same');",
+      "const matched = t.state().concat(t.activated(), t.kind());",
+      "t.seed('same'); t.toLinked(); t.show('view'); t.full('other');",
+      "const mismatched = t.state().concat(t.activated());",
+      "console.log(pending.concat(matched, mismatched).join('|'));"
+    )
+  )
+
+  expect_identical(
+    tail(output, 1L),
+    "a|lens|hidden|a|lens|hidden|view|full|lost|none"
+  )
+})
+
 test_that("hidden specialist payload leaves the active specialist intact", {
   output <- run_cell_views_node(
     c(
@@ -2291,8 +2365,9 @@ test_that("gene caches retain only the current value array", {
       "  order: function () { return paintOrder({colorBy:GENE_MODE}); },",
       "  range: function () { return clipRange({colorBy:GENE_MODE}); },",
       "  clearGene: function () {",
-      "    D.gene = null; clipRange({colorBy:GENE_MODE});",
-      "    return _clipCache.has(GENE_MODE);",
+      "    D.gene = null; paintOrder({colorBy:GENE_MODE});",
+      "    clipRange({colorBy:GENE_MODE});",
+      "    return [_ordCache.has(GENE_MODE), _clipCache.has(GENE_MODE)];",
       "  },",
       "  stats: function (values, order, range) {",
       "    var orders = Array.from(_ordCache.entries()).filter(function (entry) {",
@@ -2320,7 +2395,7 @@ test_that("gene caches retain only the current value array", {
     )
   )
 
-  expect_identical(tail(output, 1L), "1|1|0|0|true|true|false")
+  expect_identical(tail(output, 1L), "1|1|0|0|true|true|false|false")
 })
 
 test_that("freehand drag queues every point and flushes mouseup", {

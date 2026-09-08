@@ -535,6 +535,10 @@
       var f = fieldForMode(mode);
       if (f) vals = f.v;
     }
+    if (!vals && mode === GENE_MODE) {
+      _ordCache.delete(GENE_MODE);
+      return null;
+    }
     var cached = _ordCache.get(key);
     if (cached && cached.values === vals) return cached.order;
     var ord = null;
@@ -5209,10 +5213,12 @@
       surfaceHome.insightsNext
     );
   }
-  function resetSingleViews(preserve) {
+  function resetSingleViews(preserve, preserveAll) {
+    var retained = {};
+    if (preserveAll && preserve) retained = preserve;
+    else if (preserve && preserve.id) retained[preserve.id] = preserve;
     restoreLinkedSurface();
-    singleViews = {};
-    if (preserve && preserve.id) singleViews[preserve.id] = preserve;
+    singleViews = retained;
     singleActive = null;
     singleRequests.clear();
     singleSpaceIds = []; singleSpaceModes = {};
@@ -5765,6 +5771,14 @@
     var state = linkedState;
     stashSingleState(); restoreLinkedSurface();
     singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
+    // A specialist-only base has no Linked spaces to render. Keep it solely as
+    // the identity bridge until coordviews_visible brings the full bundle back;
+    // feeding it to onData() would treat it as an error and erase the state that
+    // was just stashed above.
+    if (linkedBundle._singleOnly) {
+      D = null; linkedState = null;
+      return;
+    }
     rebuildingBase = true;
     try {
       onData(linkedBundle);
@@ -5919,6 +5933,14 @@
       reportWorkspaceReady();
       return;
     }
+    var previousSingleBase = linkedBundle && linkedBundle._singleOnly
+      ? linkedBundle : null;
+    var savedIdentity = window.cerebroSavedViewDataset || {};
+    var savedFingerprint = typeof savedIdentity.cell_fingerprint === 'string'
+      ? savedIdentity.cell_fingerprint : '';
+    var preserveSingleViews = !!(previousSingleBase && savedFingerprint &&
+      bundleFingerprint(previousSingleBase) === savedFingerprint &&
+      bundleFingerprint(bundle) === savedFingerprint);
     if (singleActive) {
       stashSingleState(); restoreLinkedSurface();
       singleActive = null; singleSpaceIds = []; singleSpaceModes = {};
@@ -5939,7 +5961,7 @@
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
     if (dataChanged) {
-      resetSingleViews();
+      resetSingleViews(preserveSingleViews ? singleViews : null, preserveSingleViews);
       imgStates = {};
       imgChoice = {};
     }
